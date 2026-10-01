@@ -41,8 +41,12 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
         model: { type: "string" },
         thinking: { type: "string" },
         resume: { type: "string" },
+        "output-format": { type: "string", default: "text" },
       },
     }));
+    if (values["output-format"] !== "text" && values["output-format"] !== "stream-json") {
+      throw new Error("--output-format must be text or stream-json");
+    }
     if (values.model !== undefined && !/^[^/]+\/.+/.test(values.model)) {
       throw new Error(`--model must be provider/id, got "${values.model}"`);
     }
@@ -71,8 +75,12 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
       resumeId: values.resume,
     });
     const prompt = values.prompt ?? (await readStdin(io)).trimEnd();
-    const { text } = await session.run(prompt, { signal: io.signal });
-    io.stdout(`${text}\n`);
+    const streamJson = values["output-format"] === "stream-json";
+    const { text } = await session.run(prompt, {
+      signal: io.signal,
+      onEvent: streamJson ? (event) => io.stdout(`${JSON.stringify(event)}\n`) : undefined,
+    });
+    if (!streamJson) io.stdout(`${text}\n`);
     return 0;
   } catch (error) {
     if (io.signal?.aborted) {

@@ -141,7 +141,7 @@ Status: ready-for-agent
 
 ### Agent Core（`@neant/agent`）对外接口
 
-- 只有一个入口：用 `createSession(options)` 创建或恢复一个 Session，然后调用 `session.run(prompt, { signal })`，它返回事件流，结束时给出 result。
+- 只有一个入口：用 `createSession(options)` 创建或恢复一个 Session，然后调用 `session.run(prompt, { signal, onEvent })`。可选的 `onEvent` 回调按顺序接收实时事件（`session_start` → pi 事件 → `result`），返回的 Promise 在成功时给出 `RunResult`。Run 失败或中断时，先在存储关闭后通过回调发出失败的 `result`，再拒绝 Promise；保持既有 `await session.run()` 的调用方式。
 - options 包括：`cwd`、`homeDir`（默认 `~`，测试时可以注入）、合并后的 settings、可选的 `streamFn`（默认使用 pi-ai 的 `streamSimple`，测试时注入假实现）、`store`（Session Store 实现）、`resumeId`、额外放开的工具（对应 CLI 的 `--allow-tools`）、`yolo`、`trustProjectMcp`。
 - Session 负责：组装 pi `Agent`（system prompt、工具集、hooks），加载 skills 并连接 MCP，在 hooks 里注入 reminder 和做权限拦截，把消息写入 store，在 Run 结束时清理 MCP 连接。
 

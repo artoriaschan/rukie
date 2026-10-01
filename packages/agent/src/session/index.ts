@@ -1,8 +1,13 @@
-import { Agent, type StreamFn } from "@earendil-works/pi-agent-core";
+import { Agent, type AgentEvent, type StreamFn } from "@earendil-works/pi-agent-core";
 import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { resolve } from "node:path";
-import type { Settings } from "@neant/shared";
+import type {
+  CustomSessionEvent,
+  RunResult,
+  SessionEvent as SharedSessionEvent,
+  Settings,
+} from "@neant/shared";
 import { resolveModel } from "../config/index.ts";
 import { createJsonlStore, type SessionStore } from "../store/index.ts";
 
@@ -23,14 +28,18 @@ export interface SessionOptions {
   resumeId?: string;
 }
 
-export interface RunResult {
-  /** Final assistant text of the run. */
-  text: string;
-}
+export type SessionEvent = SharedSessionEvent<AgentEvent>;
 
 export interface Session {
   readonly id: string;
-  run(prompt: string, options?: { signal?: AbortSignal }): Promise<RunResult>;
+  run(
+    prompt: string,
+    options?: {
+      signal?: AbortSignal;
+      /** Ordered events; result is emitted after storage closes, including on failure. */
+      onEvent?: (event: SessionEvent) => void | Promise<void>;
+    },
+  ): Promise<RunResult>;
 }
 
 export async function createSession(options: SessionOptions): Promise<Session> {
@@ -74,42 +83,77 @@ export async function createSession(options: SessionOptions): Promise<Session> {
   let running = false;
   return {
     id: stored.metadata.id,
-    async run(prompt, { signal } = {}) {
-      signal?.throwIfAborted();
+    async run(prompt, { signal, onEvent } = {}) {
       if (running) throw new Error("Session already has an active Run.");
       running = true;
+      const started = performance.now();
+      const result: RunResult = {
+        text: "",
+        success: false,
+        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 },
+        durationMs: 0,
+      };
+      const emit = (event: AgentEvent | CustomSessionEvent) =>
+        onEvent?.({ ...event, sessionId: stored.metadata.id });
       const abort = () => agent.abort();
-      signal?.addEventListener("abort", abort);
       let active;
       let unsubscribe;
       try {
-        active = await store.open(stored.metadata, context);
-        const branch = await active.branch("main", context);
-        if (!branch) throw new Error("Session has no main branch.");
-        unsubscribe = agent.subscribe(async (event) => {
-          if (event.type === "message_end") {
-            await branch.appendMessage(event.message, context);
-          }
+        await emit({
+          type: "session_start",
+          model: `${model.provider}/${model.id}`,
+          cwd,
+          tools: agent.state.tools.map((tool) => tool.name),
         });
-        signal?.throwIfAborted();
-        await agent.prompt(prompt);
-      } finally {
-        signal?.removeEventListener("abort", abort);
-        unsubscribe?.();
         try {
+          signal?.addEventListener("abort", abort);
+          signal?.throwIfAborted();
+          active = await store.open(stored.metadata, context);
+          const branch = await active.branch("main", context);
+          if (!branch) throw new Error("Session has no main branch.");
+          unsubscribe = agent.subscribe(async (event) => {
+            if (event.type === "message_end") {
+              await branch.appendMessage(event.message, context);
+              if (event.message.role === "assistant") {
+                const message = event.message;
+                result.text = message.content
+                  .flatMap((c) => (c.type === "text" ? [c.text] : []))
+                  .join("");
+                result.usage.input += message.usage.input;
+                result.usage.output += message.usage.output;
+                result.usage.cacheRead += message.usage.cacheRead;
+                result.usage.cacheWrite += message.usage.cacheWrite;
+                result.usage.totalTokens += message.usage.totalTokens;
+                if (message.stopReason === "error" || message.stopReason === "aborted") {
+                  result.error = message.errorMessage ?? `Model stopped: ${message.stopReason}`;
+                }
+              }
+            }
+            await emit(event);
+          });
+          signal?.throwIfAborted();
+          await agent.prompt(prompt);
+        } finally {
+          signal?.removeEventListener("abort", abort);
+          unsubscribe?.();
           await active?.close(context);
+        }
+        signal?.throwIfAborted();
+        if (result.error) throw new Error(result.error);
+        if (agent.state.errorMessage) throw new Error(agent.state.errorMessage);
+        result.success = true;
+      } catch (error) {
+        result.error = error instanceof Error ? error.message : String(error);
+        throw error;
+      } finally {
+        try {
+          result.durationMs = performance.now() - started;
+          await emit({ type: "result", ...result });
         } finally {
           running = false;
         }
       }
-      signal?.throwIfAborted();
-      if (agent.state.errorMessage) throw new Error(agent.state.errorMessage);
-      const last = agent.state.messages.findLast((m) => m.role === "assistant");
-      const text =
-        last?.role === "assistant"
-          ? last.content.flatMap((c) => (c.type === "text" ? [c.text] : [])).join("")
-          : "";
-      return { text };
+      return result;
     },
   };
 }

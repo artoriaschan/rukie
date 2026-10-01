@@ -8,12 +8,20 @@ import { fakeOpenAI } from "../helpers/fake-openai.ts";
 
 const MAIN = join(import.meta.dir, "../../src/main.ts");
 const cleanups: (() => unknown)[] = [];
+
+function parseEvents(stdout: string) {
+  return stdout
+    .trimEnd()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+}
+
 afterEach(async () => {
   await Promise.all(cleanups.splice(0).map((f) => f()));
 });
 
 /** Temp home whose user settings point a custom provider `fake` at a fake server. */
-async function setup(settings: object = {}, options: { holdOpen?: boolean } = {}) {
+async function setup(settings: object = {}, options: { holdOpen?: boolean; error?: string } = {}) {
   const server = fakeOpenAI("hello from fake", options);
   const root = await mkdtemp(join(tmpdir(), "neant-cli-"));
   cleanups.push(server.stop, () => rm(root, { recursive: true, force: true }));
@@ -73,6 +81,124 @@ test("prints the model's reply using the configured custom provider", async () =
   expect(server.requests[0]!.body.model).toBe("m");
   expect(JSON.stringify(server.requests[0]!.body.messages)).toContain("hi");
 });
+
+test("stream-json emits session metadata, verbatim pi events, and the Run result in order", async () => {
+  const { server, ...dirs } = await setup();
+  const result = await neant(["-p", "hi", "--output-format", "stream-json"], {
+    ...dirs,
+    key: "sk-test",
+  });
+
+  expect(result.exitCode).toBe(0);
+  expect(result.stderr).toBe("");
+  expect(result.stdout.endsWith("\n")).toBe(true);
+  const events = parseEvents(result.stdout);
+  const sessionId = events[0].sessionId;
+  expect(sessionId).toBeString();
+  expect(sessionId).not.toBe("");
+  expect(events.every((event) => event.sessionId === sessionId)).toBe(true);
+  expect(events[0]).toEqual({
+    type: "session_start",
+    sessionId,
+    model: "fake/m",
+    cwd: await realpath(dirs.cwd),
+    tools: [],
+  });
+  expect(events.map((event) => event.type)).toEqual([
+    "session_start",
+    "agent_start",
+    "turn_start",
+    "message_start",
+    "message_end",
+    "message_start",
+    "message_update",
+    "message_update",
+    "message_update",
+    "message_end",
+    "turn_end",
+    "agent_end",
+    "result",
+  ]);
+  expect(events.find((event) => event.assistantMessageEvent?.type === "text_delta")).toMatchObject({
+    type: "message_update",
+    message: { role: "assistant", model: "m" },
+    assistantMessageEvent: { type: "text_delta", delta: "hello from fake" },
+  });
+  expect(events.at(-1)).toEqual({
+    type: "result",
+    sessionId,
+    text: "hello from fake",
+    success: true,
+    usage: { input: 8, output: 5, cacheRead: 4, cacheWrite: 0, totalTokens: 17 },
+    durationMs: expect.any(Number),
+  });
+  expect(events.at(-1).durationMs).toBeGreaterThanOrEqual(0);
+  expect(server.requests).toHaveLength(1);
+
+  const resumed = await neant(
+    ["-p", "continue", "--resume", sessionId, "--output-format", "stream-json"],
+    {
+      ...dirs,
+      key: "sk-test",
+    },
+  );
+  expect(resumed.exitCode).toBe(0);
+  const next = parseEvents(resumed.stdout);
+  expect(next.every((event) => event.sessionId === sessionId)).toBe(true);
+  expect(next.at(-1)).toMatchObject({
+    type: "result",
+    success: true,
+    text: "hello from fake",
+    usage: { input: 8, output: 5, cacheRead: 4, cacheWrite: 0, totalTokens: 17 },
+  });
+});
+
+test("a failed stream-json Run emits a failure result and exits 1", async () => {
+  const { server, ...dirs } = await setup({}, { error: "model unavailable" });
+  const result = await neant(["-p", "hi", "--output-format", "stream-json"], {
+    ...dirs,
+    key: "sk-test",
+  });
+  expect(result.exitCode).toBe(1);
+  expect(result.stderr).toContain("model unavailable");
+  const events = parseEvents(result.stdout);
+  expect(events[0].type).toBe("session_start");
+  expect(events.at(-2).type).toBe("agent_end");
+  expect(events.at(-1)).toMatchObject({
+    type: "result",
+    sessionId: events[0].sessionId,
+    success: false,
+    text: "",
+    error: expect.stringContaining("model unavailable"),
+    usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 },
+    durationMs: expect.any(Number),
+  });
+  expect(events.every((event) => event.sessionId === events[0].sessionId)).toBe(true);
+  expect(events.filter((event) => event.type === "result")).toHaveLength(1);
+  expect(server.requests).toHaveLength(1);
+});
+
+test.each(["text", "stream-json"])(
+  "%s sends configuration warnings only to stderr",
+  async (format) => {
+    const { server, ...dirs } = await setup();
+    await Bun.write(join(dirs.cwd, ".neant/settings.json"), JSON.stringify({ providers: [] }));
+    const result = await neant(["-p", "hi", "--output-format", format], {
+      ...dirs,
+      key: "sk-test",
+    });
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain("Warning:");
+    if (format === "text") {
+      expect(result.stdout).toBe("hello from fake\n");
+    } else {
+      const events = parseEvents(result.stdout);
+      expect(events[0].type).toBe("session_start");
+      expect(events.at(-1)).toMatchObject({ type: "result", success: true });
+    }
+    expect(server.requests).toHaveLength(1);
+  },
+);
 
 test("reads a piped prompt and completes normally", async () => {
   const { server, ...dirs } = await setup();
@@ -154,6 +280,62 @@ test("SIGINT exits 130 after saving the interrupted Run's messages", async () =>
     { role: "user", content: [{ type: "text", text: "interrupted prompt" }] },
     { role: "assistant", stopReason: "aborted" },
   ]);
+});
+
+test("stream-json delivers live deltas and ends an interrupted Run with a failure result", async () => {
+  const { server, ...dirs } = await setup({}, { holdOpen: true });
+  const proc = Bun.spawn(["bun", MAIN, "-p", "hi", "--output-format", "stream-json"], {
+    cwd: dirs.cwd,
+    env: { PATH: process.env.PATH, HOME: dirs.home, FAKE_API_KEY: "sk-test" },
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  cleanups.push(() => {
+    if (proc.exitCode === null) proc.kill("SIGKILL");
+  });
+  const errors = new Response(proc.stderr).text();
+  const reader = proc.stdout.getReader();
+  const decoder = new TextDecoder();
+  let output = "";
+  let pending = "";
+  let delta;
+  while (!delta) {
+    const { value, done } = await reader.read();
+    if (done) throw new Error("CLI exited before emitting a live delta");
+    const chunk = decoder.decode(value, { stream: true });
+    output += chunk;
+    pending += chunk;
+    const lines = pending.split("\n");
+    pending = lines.pop()!;
+    delta = lines
+      .map((line) => JSON.parse(line))
+      .find((event) => event.assistantMessageEvent?.type === "text_delta");
+  }
+  expect(delta.assistantMessageEvent.delta).toBe("hello from fake");
+  expect(proc.exitCode).toBeNull();
+  proc.kill("SIGINT");
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    output += decoder.decode(value, { stream: true });
+  }
+  output += decoder.decode();
+  expect(await proc.exited).toBe(130);
+  expect(await errors).toContain("Interrupted");
+  const events = parseEvents(output);
+  expect(events[0].type).toBe("session_start");
+  expect(events.at(-1)).toMatchObject({
+    type: "result",
+    sessionId: events[0].sessionId,
+    success: false,
+    text: "hello from fake",
+    error: expect.any(String),
+    durationMs: expect.any(Number),
+  });
+  expect(events.every((event) => event.sessionId === events[0].sessionId)).toBe(true);
+  expect(events.filter((event) => event.type === "result")).toHaveLength(1);
+  expect(server.requests).toHaveLength(1);
 });
 
 test("SIGINT exits 130 while stdin is still open", async () => {
@@ -262,15 +444,17 @@ test("invalid settings exit 1 naming the file and field", async () => {
   expect(result.stderr).toContain("/thinking");
 });
 
-test.each([[["--nope"]], [["-p", "hi", "--thinking", "extreme"]], [["-p", "hi", "--model", "m"]]])(
-  "bad arguments %j exit 2",
-  async (args) => {
-    const { server, ...dirs } = await setup();
+test.each([
+  [["--nope"]],
+  [["-p", "hi", "--thinking", "extreme"]],
+  [["-p", "hi", "--model", "m"]],
+  [["-p", "hi", "--output-format", "json"]],
+])("bad arguments %j exit 2", async (args) => {
+  const { server, ...dirs } = await setup();
 
-    const result = await neant(args, { ...dirs, key: "sk-test" });
+  const result = await neant(args, { ...dirs, key: "sk-test" });
 
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).not.toBe("");
-    expect(server.requests).toHaveLength(0);
-  },
-);
+  expect(result.exitCode).toBe(2);
+  expect(result.stderr).not.toBe("");
+  expect(server.requests).toHaveLength(0);
+});

@@ -1,7 +1,11 @@
 import { afterEach, expect, test } from "bun:test";
-import { fauxAssistantMessage } from "@earendil-works/pi-ai";
+import {
+  createAssistantMessageEventStream,
+  fauxAssistantMessage,
+  fauxToolCall,
+} from "@earendil-works/pi-ai";
 import { MemorySessionRepo } from "@earendil-works/pi-agent-core/harness/session";
-import { createSession } from "../../src/index.ts";
+import { createSession, type SessionEvent } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { abortingModel } from "../helpers/aborting-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
@@ -30,6 +34,90 @@ test("a model error fails the run", async () => {
   const session = await createSession({ cwd: dirs.cwd, homeDir: dirs.homeDir, ...fake });
 
   await expect(session.run("hello")).rejects.toThrow("boom");
+});
+
+test("the Run result totals every Turn and forwards tool events without changing their payload", async () => {
+  dirs = await tempDirs();
+  const first = fauxAssistantMessage(fauxToolCall("missing", { path: "a.ts" }, { id: "call-1" }), {
+    stopReason: "toolUse",
+  });
+  first.usage = {
+    input: 10,
+    output: 3,
+    cacheRead: 2,
+    cacheWrite: 1,
+    totalTokens: 16,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  };
+  const second = fauxAssistantMessage("final reply");
+  second.usage = {
+    input: 20,
+    output: 4,
+    cacheRead: 5,
+    cacheWrite: 0,
+    totalTokens: 29,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  };
+  // pi's faux provider estimates usage itself; this boundary supplies known provider counts.
+  const fake = fakeModel([]);
+  const replies = [first, second];
+  fake.streamFn = (_model, context) => {
+    fake.contexts.push(context);
+    const stream = createAssistantMessageEventStream();
+    const message = replies.shift()!;
+    stream.push({
+      type: "done",
+      reason: message.stopReason === "toolUse" ? "toolUse" : "stop",
+      message,
+    });
+    stream.end(message);
+    return stream;
+  };
+  const session = await createSession({ cwd: dirs.cwd, homeDir: dirs.homeDir, ...fake });
+  const events: SessionEvent[] = [];
+  const result = await session.run("hi", {
+    onEvent: (event) => {
+      events.push(structuredClone(event));
+    },
+  });
+
+  expect(result).toEqual({
+    text: "final reply",
+    success: true,
+    durationMs: expect.any(Number),
+    usage: { input: 30, output: 7, cacheRead: 7, cacheWrite: 1, totalTokens: 45 },
+  });
+  expect(events[0]).toMatchObject({ type: "session_start", sessionId: session.id });
+  expect(events.at(-1)).toEqual({ type: "result", sessionId: session.id, ...result });
+  expect(events.find((event) => event.type === "tool_execution_start")).toEqual({
+    type: "tool_execution_start",
+    sessionId: session.id,
+    toolCallId: "call-1",
+    toolName: "missing",
+    args: { path: "a.ts" },
+  });
+  expect(fake.contexts).toHaveLength(2);
+});
+
+test("a model error without an error message still emits a failed result and rejects", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([fauxAssistantMessage("partial", { stopReason: "error" })]);
+  const session = await createSession({ cwd: dirs.cwd, homeDir: dirs.homeDir, ...fake });
+  const events: SessionEvent[] = [];
+  await expect(
+    session.run("hi", {
+      onEvent: (event) => {
+        events.push(structuredClone(event));
+      },
+    }),
+  ).rejects.toThrow("Model stopped: error");
+  expect(events.at(-1)).toMatchObject({
+    type: "result",
+    sessionId: session.id,
+    success: false,
+    text: "partial",
+    error: "Model stopped: error",
+  });
 });
 
 test("an already-aborted signal stops the run before the model is called", async () => {

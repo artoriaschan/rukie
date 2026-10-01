@@ -2,7 +2,7 @@
  * Fake OpenAI-compatible Chat Completions endpoint for Seam 2: streams `reply` for every
  * request and records the request bodies and auth headers it receives.
  */
-export function fakeOpenAI(reply: string, options: { holdOpen?: boolean } = {}) {
+export function fakeOpenAI(reply: string, options: { holdOpen?: boolean; error?: string } = {}) {
   const received = Promise.withResolvers<void>();
   const requests: { body: any; authorization: string | null }[] = [];
   const chunk = (delta: object, finish: string | null) =>
@@ -18,6 +18,9 @@ export function fakeOpenAI(reply: string, options: { holdOpen?: boolean } = {}) 
     async fetch(req) {
       requests.push({ body: await req.json(), authorization: req.headers.get("authorization") });
       received.resolve();
+      if (options.error) {
+        return Response.json({ error: { message: options.error } }, { status: 400 });
+      }
       if (options.holdOpen) {
         return new Response(
           new ReadableStream({
@@ -31,7 +34,22 @@ export function fakeOpenAI(reply: string, options: { holdOpen?: boolean } = {}) 
         );
       }
       const body =
-        chunk({ role: "assistant", content: reply }, null) + chunk({}, "stop") + "data: [DONE]\n\n";
+        chunk({ role: "assistant", content: reply }, null) +
+        chunk({}, "stop") +
+        `data: ${JSON.stringify({
+          id: "chatcmpl-1",
+          object: "chat.completion.chunk",
+          created: 0,
+          model: "m",
+          choices: [],
+          usage: {
+            prompt_tokens: 12,
+            completion_tokens: 5,
+            total_tokens: 17,
+            prompt_tokens_details: { cached_tokens: 4 },
+          },
+        })}\n\n` +
+        "data: [DONE]\n\n";
       return new Response(body, { headers: { "content-type": "text/event-stream" } });
     },
   });
