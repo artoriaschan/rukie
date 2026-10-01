@@ -3,7 +3,7 @@ import { lineWidth, textLines, type TextSpan, type TextStyle } from "../text";
 import { Node, Direction, Edge, FlexDirection, Gutter, MeasureMode } from "../yoga";
 
 export type HostType = "tui-box" | "tui-text";
-export type HostProps = BoxProps & TextProps;
+export type HostProps = BoxProps & TextProps & { input?: boolean; cursorOffset?: number };
 
 export interface HostNode {
   type: HostType | "raw";
@@ -48,7 +48,12 @@ export function createNode(type: HostNode["type"], props: HostProps = {}, text =
     node.yoga.setMeasureFunc((width, widthMode) => {
       const columns =
         widthMode === MeasureMode.Undefined ? Infinity : Math.max(0, Math.floor(width));
-      const lines = textLines(content(node), columns, node.props.wrap !== "truncate");
+      const lines = textLines(
+        content(node),
+        columns,
+        node.props.wrap !== "truncate",
+        node.props.input,
+      );
       return { width: Math.max(0, ...lines.map(lineWidth)), height: lines.length };
     });
   }

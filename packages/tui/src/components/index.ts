@@ -1,5 +1,6 @@
 import { createElement, type ReactNode } from "react";
 import type { TextStyle } from "../text";
+export { TextInput, type TextInputProps } from "./text-input";
 
 export interface BoxProps {
   children?: ReactNode;

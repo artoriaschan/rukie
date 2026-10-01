@@ -1,7 +1,7 @@
-import { createContext, type ReactNode } from "react";
+import { createContext, createElement, type ReactNode } from "react";
 import Reconciler from "react-reconciler";
 import { ConcurrentRoot, DefaultEventPriority, NoEventPriority } from "react-reconciler/constants";
-import type { Readable } from "node:stream";
+import { createTerminalSession, TerminalContext, type TerminalIO } from "../terminal";
 import {
   calculateTree,
   createNode,
@@ -15,16 +15,27 @@ import {
 } from "../layout";
 import { createScreen } from "../screen";
 
-export interface RenderOptions {
-  stdin: Readable;
-  stdout: { columns: number; rows: number; write(text: string): unknown };
-}
+export interface RenderOptions extends TerminalIO {}
 
 interface Container {
   tree: HostNode;
   options: RenderOptions;
   active: boolean;
   screen: ReturnType<typeof createScreen>;
+  error?: unknown;
+  onError(error: unknown): void;
+}
+
+function paint(container: Container) {
+  if (!container.active) return;
+  const { stdout } = container.options;
+  try {
+    stdout.write(
+      container.screen(calculateTree(container.tree, stdout.columns), stdout.columns, stdout.rows),
+    );
+  } catch (error) {
+    container.onError(error);
+  }
 }
 
 let priority = NoEventPriority;
@@ -41,13 +52,7 @@ const reconciler = Reconciler({
   getChildHostContext: (context: object) => context,
   getPublicInstance: (node: HostNode) => node,
   prepareForCommit: () => null,
-  resetAfterCommit: (container: Container) => {
-    if (!container.active) return;
-    const { stdout } = container.options;
-    stdout.write(
-      container.screen(calculateTree(container.tree, stdout.columns), stdout.columns, stdout.rows),
-    );
-  },
+  resetAfterCommit: paint,
   createInstance: (type: HostType, props: HostProps) => createNode(type, props),
   createTextInstance: (text: string) => createNode("raw", {}, text),
   appendInitialChild: insertNode,
@@ -115,11 +120,28 @@ export function render(element: ReactNode, options: RenderOptions) {
     options,
     active: true,
     screen: createScreen(),
+    onError(error) {
+      container.error = error;
+      terminal.dispose();
+    },
   };
   const exit = Promise.withResolvers<void>();
-  const fail = (error: Error) => {
-    throw error;
-  };
+  // Startup errors are thrown synchronously; retain the rejection for waitUntilExit callers.
+  void exit.promise.catch(noop);
+  const terminal = createTerminalSession(
+    options,
+    () => {
+      if (!container.active) return;
+      container.screen = createScreen();
+      paint(container);
+    },
+    () => {
+      container.active = false;
+      if (container.error !== undefined) exit.reject(container.error);
+      else exit.resolve();
+    },
+  );
+  const fail = container.onError;
   const root = reconciler.createContainer(
     container,
     ConcurrentRoot,
@@ -133,15 +155,33 @@ export function render(element: ReactNode, options: RenderOptions) {
     noop,
     null,
   );
-  reconciler.updateContainerSync(element, root, null, null);
-  reconciler.flushSyncWork();
+  try {
+    reconciler.updateContainerSync(
+      createElement(TerminalContext.Provider, { value: terminal }, element),
+      root,
+      null,
+      null,
+    );
+    reconciler.flushSyncWork();
+    if (container.error !== undefined) throw container.error;
+  } catch (error) {
+    terminal.dispose();
+    reconciler.updateContainerSync(null, root, null, null);
+    reconciler.flushSyncWork();
+    throw error;
+  }
+  let unmounted = false;
   return {
     unmount() {
-      if (!container.active) return;
+      if (unmounted) return;
+      unmounted = true;
       container.active = false;
-      reconciler.updateContainerSync(null, root, null, null);
-      reconciler.flushSyncWork();
-      exit.resolve();
+      try {
+        reconciler.updateContainerSync(null, root, null, null);
+        reconciler.flushSyncWork();
+      } finally {
+        terminal.dispose();
+      }
     },
     waitUntilExit: () => exit.promise,
   };

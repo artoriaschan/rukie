@@ -1,0 +1,19 @@
+import { useLayoutEffect, useRef, useSyncExternalStore } from "react";
+import type { InputEvent } from "../input";
+import { useTerminal } from "../terminal";
+
+export function useInput(handler: (event: InputEvent) => void, { isActive = true } = {}) {
+  const terminal = useTerminal();
+  const latest = useRef(handler);
+  useLayoutEffect(() => {
+    latest.current = handler;
+  });
+  useLayoutEffect(() => {
+    if (isActive) return terminal.subscribeInput((event) => latest.current(event));
+  }, [terminal, isActive]);
+}
+
+export function useTerminalSize() {
+  const terminal = useTerminal();
+  return useSyncExternalStore(terminal.subscribeSize, terminal.getSize);
+}

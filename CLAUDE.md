@@ -14,7 +14,7 @@ apps/
 packages/
   shared/       @neant/shared   runtime-agnostic types, typebox schemas, pure functions
   tui/          @neant/tui      React reconciler → TS Yoga → cell grid → ANSI
-    src/{components,renderer,layout,text,screen,yoga}/
+    src/{components,hooks,input,terminal,renderer,layout,text,screen,yoga}/
   agent/        @neant/agent    Agent Core
     src/index.ts
     src/{session,prompt,reminders,tools,permissions,skills,mcp,store,config}/

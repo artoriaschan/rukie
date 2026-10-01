@@ -1,0 +1,71 @@
+import { createElement, useLayoutEffect, useRef, useState } from "react";
+import { useInput } from "../hooks";
+
+export interface TextInputProps {
+  value: string;
+  onChange(value: string): void;
+  onSubmit?(value: string): void;
+  isActive?: boolean;
+}
+
+const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+function graphemeBoundaries(text: string) {
+  return [
+    0,
+    ...Array.from(segmenter.segment(text), ({ index, segment }) => index + segment.length),
+  ];
+}
+
+/** Controlled multiline editor. Cursor offsets follow graphemes, rather than code units. */
+export function TextInput({ value, onChange, onSubmit, isActive = true }: TextInputProps) {
+  const [cursor, setCursor] = useState(value.length);
+  const editing = useRef({ value, cursor: value.length });
+  const position = graphemeBoundaries(value).findLast((offset) => offset <= cursor) ?? 0;
+  useLayoutEffect(() => {
+    editing.current.value = value;
+    editing.current.cursor = position;
+    if (cursor !== position) setCursor(position);
+  });
+  useInput(
+    (event) => {
+      const current = editing.current;
+      const boundaries = graphemeBoundaries(current.value);
+      const before = boundaries.findLast((offset) => offset < current.cursor) ?? 0;
+      const after = boundaries.find((offset) => offset > current.cursor) ?? current.value.length;
+      const move = (offset: number) => {
+        current.cursor = offset;
+        setCursor(offset);
+      };
+      const replace = (start: number, end: number, text: string) => {
+        current.value = current.value.slice(0, start) + text + current.value.slice(end);
+        move(start + text.length);
+        onChange(current.value);
+      };
+      if (event.type === "paste") {
+        replace(current.cursor, current.cursor, event.input.replace(/\r\n?/g, "\n"));
+        return;
+      }
+      const { key, input } = event;
+      if (key.ctrl || key.alt) return;
+      if (key.name === "left") move(before);
+      else if (key.name === "right") move(after);
+      else if (key.name === "backspace" && current.cursor > 0) replace(before, current.cursor, "");
+      else if (key.name === "delete" && current.cursor < current.value.length)
+        replace(current.cursor, after, "");
+      else if (key.name === "enter") {
+        const atLineEnd =
+          current.cursor === current.value.length || current.value[current.cursor] === "\n";
+        if (key.shift) replace(current.cursor, current.cursor, "\n");
+        else if (atLineEnd && current.value[current.cursor - 1] === "\\")
+          replace(current.cursor - 1, current.cursor, "\n");
+        else onSubmit?.(current.value);
+      } else if (input) replace(current.cursor, current.cursor, input);
+    },
+    { isActive },
+  );
+  return createElement(
+    "tui-text",
+    { input: true, cursorOffset: isActive ? position : undefined },
+    value + " ",
+  );
+}

@@ -1,5 +1,5 @@
 import type { LayoutNode } from "../layout";
-import { textLines, type TextStyle } from "../text";
+import { textCursor, textLines, type TextStyle } from "../text";
 
 interface Cell {
   text: string;
@@ -60,7 +60,7 @@ function paintGrid(root: LayoutNode, columns: number, rows: number): Cell[][] {
       put(x + width - 1, y + height - 1, "┘");
     }
     if (node.type === "tui-text") {
-      textLines(node.spans, width, node.props.wrap !== "truncate")
+      textLines(node.spans, width, node.props.wrap !== "truncate", node.props.input)
         .slice(0, height)
         .forEach((line, row) => {
           let col = 0;
@@ -111,6 +111,20 @@ export function createScreen() {
     previous = grid;
     previousColumns = columns;
     previousRows = rows;
-    return ansi + `\x1b[0m\x1b[?7h\x1b[${Math.min(root.height + 1, rows)};1H`;
+    let cursor = { x: 0, y: Math.min(root.height, rows - 1) };
+    let visible = false;
+    function findCursor(node: LayoutNode) {
+      if (node.props.cursorOffset !== undefined) {
+        const { x, y } = textCursor(node.spans, node.width, node.props.cursorOffset);
+        cursor = { x: node.x + x, y: node.y + y };
+        visible = cursor.x >= 0 && cursor.x < columns && cursor.y >= 0 && cursor.y < rows;
+      }
+      node.children.forEach(findCursor);
+    }
+    findCursor(root);
+    return (
+      ansi +
+      `\x1b[0m\x1b[?7h\x1b[${Math.max(0, Math.min(cursor.y, rows - 1)) + 1};${Math.max(0, Math.min(cursor.x, columns - 1)) + 1}H\x1b[?25${visible ? "h" : "l"}`
+    );
   };
 }

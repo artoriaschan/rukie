@@ -4,12 +4,21 @@ import xterm from "@xterm/headless";
 /** Real ANSI interpretation at the renderer's IO boundary, with deterministic dimensions. */
 export function createTerminal(columns = 20, rows = 8) {
   const terminal = new xterm.Terminal({ cols: columns, rows, allowProposedApi: true });
-  const stdin = new PassThrough();
+  const stdin = Object.assign(new PassThrough(), {
+    isTTY: true,
+    isRaw: false,
+    setRawMode(raw: boolean) {
+      this.isRaw = raw;
+      return this;
+    },
+  });
   let bytesWritten = 0;
+  let output = "";
   const stdout = Object.assign(
     new Writable({
       write(chunk, _encoding, callback) {
         bytesWritten += chunk.length;
+        output += chunk.toString();
         terminal.write(chunk, callback);
       },
     }),
@@ -23,6 +32,7 @@ export function createTerminal(columns = 20, rows = 8) {
     stdout,
     terminal,
     bytesWritten: () => bytesWritten,
+    output: () => output,
     flush,
     async waitFor(predicate: () => boolean) {
       const deadline = performance.now() + 1000;
@@ -41,6 +51,13 @@ export function createTerminal(columns = 20, rows = 8) {
           .translateToString(true)
           .trimEnd(),
       );
+    },
+    resize(columns: number, newRows: number) {
+      rows = newRows;
+      terminal.resize(columns, rows);
+      stdout.columns = columns;
+      stdout.rows = rows;
+      stdout.emit("resize");
     },
     cursor() {
       return { x: terminal.buffer.active.cursorX, y: terminal.buffer.active.cursorY };
