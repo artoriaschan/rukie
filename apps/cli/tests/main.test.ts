@@ -1,17 +1,25 @@
 import { expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { main } from "../src/main.ts";
 import { echoModel } from "./helpers/echo-model.ts";
 
-function run(argv: string[], stdin = "") {
+async function run(argv: string[], stdin = "") {
+  const root = await mkdtemp(join(tmpdir(), "neant-main-"));
   let stdout = "";
   let stderr = "";
-  const code = main(argv, {
-    readStdin: async () => stdin,
-    stdout: (s) => (stdout += s),
-    stderr: (s) => (stderr += s),
-    session: { cwd: process.cwd(), homeDir: process.cwd(), ...echoModel() },
-  });
-  return code.then((exitCode) => ({ exitCode, stdout, stderr }));
+  try {
+    const exitCode = await main(argv, {
+      readStdin: async () => stdin,
+      stdout: (s) => (stdout += s),
+      stderr: (s) => (stderr += s),
+      session: { cwd: root, homeDir: root, ...echoModel() },
+    });
+    return { exitCode, stdout, stderr };
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 }
 
 test("-p prints the final assistant text", async () => {

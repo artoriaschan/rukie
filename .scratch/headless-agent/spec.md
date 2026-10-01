@@ -158,7 +158,7 @@ Status: ready-for-agent
 - **tools**：注册 pi 内置的 read、write、edit、bash；自己实现 glob（基于 `Bun.Glob`，遵守 `.gitignore`）和 grep（调用 `rg`，找不到时返回错误）；再加上 `skill` 工具（按名称返回 skill 正文）。
 - **skills**：按用户级和项目级的 `.neant`、`.claude`、`.agents` 下的 skills 目录调用 `loadSkills` 做发现，名称冲突时项目级优先；解析 prompt 开头的 `/name` 做 Skill Invocation，展开的正文作为 reminder 附在这条 user 消息上。
 - **mcp**：用 `pi-mcp` 连接用户级的 `mcp.json`，以及（仅限 Trusted Project 或带 trust 参数时）项目的 `.mcp.json`；把 MCP 工具适配成 `mcp__<server>__<tool>`；单个 server 失败时发出 `mcp_server_error` 事件并继续运行；收集各 server 的 instructions 交给 reminders；Session 结束时关闭所有连接。
-- **store**：使用 pi 的 session repo 接口，headless 模式下用 `JsonlSessionRepo`，路径为 `~/.neant/sessions/<项目路径 slug>/<id>.jsonl`。现在只用线性结构，不用分支。SQLite 实现不在本 spec 范围内（见 ADR-0003）。
+- **store**：使用 pi 的 session repo 接口，headless 模式下用 `JsonlSessionRepo` 的原生 v4 格式，路径为 `~/.neant/sessions/<项目路径 slug>/<时间戳>_<id>.jsonl`（slug 和文件名由 pi 生成）。现在只用线性结构，不提供分支操作。SQLite 实现不在本 spec 范围内（见 ADR-0003）。
 - **compaction**：在每个 turn 开始前估算 token 用量，超过上下文窗口约 80% 时调用 pi 的 `compact`；生成的摘要作为一条 entry 写入，原始消息保留；发出 `compaction` 事件。
 
 ### CLI（`@neant/cli`）

@@ -2,7 +2,8 @@
  * Fake OpenAI-compatible Chat Completions endpoint for Seam 2: streams `reply` for every
  * request and records the request bodies and auth headers it receives.
  */
-export function fakeOpenAI(reply: string) {
+export function fakeOpenAI(reply: string, options: { holdOpen?: boolean } = {}) {
+  const received = Promise.withResolvers<void>();
   const requests: { body: any; authorization: string | null }[] = [];
   const chunk = (delta: object, finish: string | null) =>
     `data: ${JSON.stringify({
@@ -16,10 +17,28 @@ export function fakeOpenAI(reply: string) {
     port: 0,
     async fetch(req) {
       requests.push({ body: await req.json(), authorization: req.headers.get("authorization") });
+      received.resolve();
+      if (options.holdOpen) {
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(
+                new TextEncoder().encode(chunk({ role: "assistant", content: reply }, null)),
+              );
+            },
+          }),
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      }
       const body =
         chunk({ role: "assistant", content: reply }, null) + chunk({}, "stop") + "data: [DONE]\n\n";
       return new Response(body, { headers: { "content-type": "text/event-stream" } });
     },
   });
-  return { baseUrl: `${server.url.origin}/v1`, requests, stop: () => server.stop(true) };
+  return {
+    baseUrl: `${server.url.origin}/v1`,
+    requests,
+    received: received.promise,
+    stop: () => server.stop(true),
+  };
 }

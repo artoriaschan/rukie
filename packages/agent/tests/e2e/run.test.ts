@@ -1,7 +1,9 @@
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { MemorySessionRepo } from "@earendil-works/pi-agent-core/harness/session";
 import { createSession } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
+import { abortingModel } from "../helpers/aborting-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
@@ -37,4 +39,118 @@ test("an already-aborted signal stops the run before the model is called", async
 
   await expect(session.run("hello", { signal: AbortSignal.abort() })).rejects.toThrow();
   expect(fake.contexts).toHaveLength(0);
+});
+
+test("aborting an active run reports the caller's abort reason after the model settles", async () => {
+  dirs = await tempDirs();
+  const controller = new AbortController();
+  const reason = new Error("caller cancelled the run");
+  const fake = fakeModel([
+    () => {
+      controller.abort(reason);
+      return fauxAssistantMessage("unfinished");
+    },
+  ]);
+  const session = await createSession({ cwd: dirs.cwd, homeDir: dirs.homeDir, ...fake });
+
+  await expect(session.run("hello", { signal: controller.signal })).rejects.toThrow(reason.message);
+  expect(fake.contexts).toHaveLength(1);
+});
+
+test("resuming a stored session restores the exact context prefix and appends to that session", async () => {
+  dirs = await tempDirs();
+  const reply = fauxAssistantMessage("first reply", { timestamp: 1234 });
+  const fake = fakeModel([reply, fauxAssistantMessage("second reply")]);
+  const session = await createSession({ cwd: dirs.cwd, homeDir: dirs.homeDir, ...fake });
+  const prompt = "first prompt\n<system-reminder>keep this verbatim</system-reminder>";
+  await session.run(prompt);
+  await session.run("second prompt");
+  const expectedPrefix = structuredClone(fake.contexts[1]!.messages);
+
+  const next = fakeModel([fauxAssistantMessage("resumed reply")]);
+  const resumed = await createSession({
+    cwd: dirs.cwd,
+    homeDir: dirs.homeDir,
+    ...next,
+    resumeId: session.id,
+  });
+  await resumed.run("third prompt");
+
+  expect(resumed.id).toBe(session.id);
+  expect(next.contexts[0]!.messages.slice(0, -2)).toEqual(expectedPrefix);
+  expect(next.contexts[0]!.messages.at(-2)).toMatchObject({
+    role: "assistant",
+    content: [{ type: "text", text: "second reply" }],
+  });
+  expect(next.contexts[0]!.messages.at(-1)).toMatchObject({
+    role: "user",
+    content: [{ type: "text", text: "third prompt" }],
+  });
+});
+
+test("an unknown resume id fails without calling the model", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([fauxAssistantMessage("unused")]);
+  await expect(
+    createSession({
+      cwd: dirs.cwd,
+      homeDir: dirs.homeDir,
+      ...fake,
+      resumeId: "missing",
+    }),
+  ).rejects.toThrow("Session not found: missing");
+  expect(fake.contexts).toHaveLength(0);
+});
+
+test("a supplied pi repo can persist and resume without the JSONL backend", async () => {
+  dirs = await tempDirs();
+  const store = new MemorySessionRepo();
+  const fake = fakeModel([fauxAssistantMessage("stored reply")]);
+  const session = await createSession({ cwd: dirs.cwd, homeDir: dirs.homeDir, store, ...fake });
+  await session.run("stored prompt");
+  const next = fakeModel([fauxAssistantMessage("next reply")]);
+  const resumed = await createSession({
+    cwd: dirs.cwd,
+    homeDir: dirs.homeDir,
+    store,
+    ...next,
+    resumeId: session.id,
+  });
+  await resumed.run("next prompt");
+  expect(next.contexts[0]!.messages).toMatchObject([
+    { role: "user", content: [{ type: "text", text: "stored prompt" }] },
+    { role: "assistant", content: [{ type: "text", text: "stored reply" }] },
+    { role: "user", content: [{ type: "text", text: "next prompt" }] },
+  ]);
+});
+
+test("an aborted Run persists the user message and partial assistant output before rejecting", async () => {
+  dirs = await tempDirs();
+  const fake = abortingModel();
+  const session = await createSession({ cwd: dirs.cwd, homeDir: dirs.homeDir, ...fake });
+  const controller = new AbortController();
+  const run = session.run("interrupted prompt", { signal: controller.signal });
+  // Bun's rejects matcher waits eagerly; attach a handler while arranging the abort.
+  void run.catch(() => {});
+  await fake.started;
+  controller.abort();
+  await expect(run).rejects.toThrow();
+
+  const next = fakeModel([fauxAssistantMessage("continued")]);
+  const resumed = await createSession({
+    cwd: dirs.cwd,
+    homeDir: dirs.homeDir,
+    ...next,
+    resumeId: session.id,
+  });
+  await resumed.run("continue");
+  expect(next.contexts[0]!.messages).toMatchObject([
+    { role: "user", content: [{ type: "text", text: "interrupted prompt" }] },
+    {
+      role: "assistant",
+      content: [{ type: "text", text: "partial output" }],
+      stopReason: "aborted",
+    },
+    { role: "user", content: [{ type: "text", text: "continue" }] },
+  ]);
 });
