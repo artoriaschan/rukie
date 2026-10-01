@@ -1,4 +1,5 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import { convertToLlm as convertPiMessages } from "@earendil-works/pi-agent-core";
 import type { Message } from "@earendil-works/pi-ai";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -44,7 +45,7 @@ export function convertToLlm(messages: AgentMessage[]): Message[] {
     ) {
       return [message];
     }
-    return [];
+    return convertPiMessages([message]);
   });
 }
 

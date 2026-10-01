@@ -1,5 +1,11 @@
 import { Agent, type AgentEvent, type StreamFn, type Skill } from "@earendil-works/pi-agent-core";
 import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
+import {
+  branchTip,
+  insertEntry,
+  setValue,
+  type Session as StoredSession,
+} from "@earendil-works/pi-agent-core/harness/session";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { resolve } from "node:path";
 import type {
@@ -16,6 +22,7 @@ import { SYSTEM_PROMPT } from "../prompt/index.ts";
 import { collectReminders, convertToLlm, type ReminderSource } from "../reminders/index.ts";
 import { discoverSkills, skillInvocation, skillsReminder } from "../skills/index.ts";
 import { createMcpConnections } from "../mcp/index.ts";
+import { compactTurn, restoreContext } from "../compaction/index.ts";
 
 export interface SessionOptions {
   /** Project directory the session works in. */
@@ -80,20 +87,21 @@ export async function createSession(options: SessionOptions): Promise<Session> {
   const stored = metadata
     ? await store.open(metadata, context)
     : await store.create({ cwd }, context);
-  let messages;
+  let entries;
   try {
     const branch =
       (await stored.branch("main", context)) ?? (await stored.createBranch("main", null, context));
-    messages = (await branch.findEntries({ order: "oldestFirst" }, context)).flatMap((entry) =>
-      entry.type === "message" ? [entry.message] : [],
-    );
+    entries = await branch.findEntries({ order: "oldestFirst" }, context);
   } finally {
     await stored.close(context);
   }
   let emitRunEvent: ((event: CustomSessionEvent) => void | Promise<void>) | undefined;
+  const transcriptMessages = entries.flatMap((entry) =>
+    entry.type === "message" ? [entry.message] : [],
+  );
   // Older Sessions did not persist their implicit baseline. Do not append it
   // behind existing conversation messages; pi will seed it when restoring them.
-  let baselinePersisted = messages.length > 0;
+  let baselinePersisted = transcriptMessages.length > 0;
   let skills = new Map<string, Skill>();
   const agent = new Agent({
     streamFn: options.streamFn ?? streamFn,
@@ -113,7 +121,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     },
     initialState: {
       model,
-      messages,
+      messages: restoreContext(entries),
       systemPrompt: SYSTEM_PROMPT,
       tools: createBuiltinTools(cwd, (name) => skills.get(name)),
       ...(settings.thinking && { thinkingLevel: settings.thinking }),
@@ -143,7 +151,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           await emit(event);
         }
       };
-      let active;
+      let active: StoredSession | undefined;
       let unsubscribe;
       try {
         try {
@@ -170,17 +178,58 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         try {
           signal?.addEventListener("abort", abort);
           signal?.throwIfAborted();
-          active = await store.open(stored.metadata, context);
-          const branch = await active.branch("main", context);
+          const runStore = await store.open(stored.metadata, context);
+          active = runStore;
+          const branch = await runStore.branch("main", context);
           if (!branch) throw new Error("Session has no main branch.");
           if (!baselinePersisted) {
             await branch.appendMessage(agent.state.messages[0]!, context);
             baselinePersisted = true;
           }
+          agent.prepareRequest = async ({ context: requestContext }, turnSignal) => {
+            const compacted = await compactTurn({
+              messages: requestContext.messages,
+              entries: () => branch.findEntries({ order: "oldestFirst" }, context),
+              model,
+              streamFn: options.streamFn ?? streamFn,
+              thinkingLevel: agent.state.thinkingLevel,
+              signal: turnSignal,
+            });
+            if (!compacted) return;
+            await runStore.mutate(async (mutator) => {
+              const tip = await mutator.getValue(branchTip("main"), context);
+              if (!tip) throw new Error("Session has no main branch.");
+              const id = runStore.idGenerator.next();
+              await mutator.commit(
+                [
+                  insertEntry({
+                    ...compacted,
+                    id,
+                    parentId: tip.value,
+                    type: "compaction",
+                    fromHook: false,
+                  }),
+                  setValue(branchTip("main"), id),
+                ],
+                context,
+              );
+            }, context);
+            const messages = restoreContext(
+              await branch.findEntries({ order: "oldestFirst" }, context),
+            );
+            agent.state.messages = messages;
+            await emit({
+              type: "compaction",
+              summary: compacted.summary,
+              tokensBefore: compacted.tokensBefore,
+            });
+            return { context: { ...requestContext, messages } };
+          };
           unsubscribe = agent.subscribe(async (event) => {
             await emitMcpErrors();
             if (event.type === "message_end") {
               await branch.appendMessage(event.message, context);
+              transcriptMessages.push(event.message);
               if (event.message.role === "system-reminder") {
                 await emit({
                   type: "reminder_injected",
@@ -210,7 +259,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           skills = discovered.skills;
           for (const warning of discovered.warnings) (options.onWarning ?? console.warn)(warning);
           const reminders = await collectReminders({
-            messages: agent.state.messages,
+            messages: transcriptMessages,
             cwd,
             homeDir: options.homeDir,
             now: (options.now ?? (() => new Date()))(),
@@ -220,7 +269,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 source: "mcp",
                 currentContent: () =>
                   mcp.hasServers ||
-                  agent.state.messages.some(
+                  transcriptMessages.some(
                     (message) => message.role === "system-reminder" && message.source === "mcp",
                   )
                     ? mcp.reminder()
@@ -248,6 +297,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         } finally {
           signal?.removeEventListener("abort", abort);
           unsubscribe?.();
+          agent.prepareRequest = undefined;
           await active?.close(context);
         }
         signal?.throwIfAborted();
