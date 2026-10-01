@@ -96,7 +96,7 @@ test("no model configured exits 1 with a clear error", async () => {
   expect(server.requests).toHaveLength(0);
 });
 
-test("apiKeyEnv that is not an env var name is sent as the key itself", async () => {
+test("apiKeyEnv never falls back to sending its value as a literal key", async () => {
   const dirs = await setup();
   const server = dirs.server;
   const settings = await Bun.file(join(dirs.home, ".neant/settings.json")).json();
@@ -105,8 +105,9 @@ test("apiKeyEnv that is not an env var name is sent as the key itself", async ()
 
   const result = await neant(["-p", "hi"], dirs);
 
-  expect(result.exitCode).toBe(0);
-  expect(server.requests[0]!.authorization).toBe("Bearer sk-literal-1");
+  expect(result.exitCode).toBe(1);
+  expect(result.stderr).toContain("No API key");
+  expect(server.requests).toHaveLength(0);
 });
 
 test("missing API key exits 1 naming the env var", async () => {

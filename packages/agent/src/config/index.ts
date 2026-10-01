@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
-import { createProvider, type Api, type ApiKeyAuth, type Model } from "@earendil-works/pi-ai";
+import { createProvider, envApiKeyAuth, type Api, type Model } from "@earendil-works/pi-ai";
 import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messages.lazy";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
@@ -83,23 +83,6 @@ const customApis = {
   "anthropic-messages": anthropicMessagesApi,
 };
 
-/**
- * `apiKeyEnv` normally names an env var; any other value is sent as the key itself.
- * ponytail: "looks like an env var" is UPPER_SNAKE, so an unset `FOO_KEY` still reports a
- * missing key instead of sending its name; an all-caps literal key would need a real var.
- */
-function apiKeyAuth(providerId: string, apiKeyEnv: string): ApiKeyAuth {
-  const isEnvName = /^[A-Z_][A-Z0-9_]*$/.test(apiKeyEnv);
-  return {
-    name: `${providerId} API key`,
-    resolve: async ({ ctx }) => {
-      if (!isEnvName) return { auth: { apiKey: apiKeyEnv }, source: "settings" };
-      const key = await ctx.env(apiKeyEnv);
-      return key ? { auth: { apiKey: key }, source: apiKeyEnv } : undefined;
-    },
-  };
-}
-
 /** Resolves `settings.model` against pi-ai's built-in providers plus the user's custom ones. */
 export async function resolveModel(
   settings: Settings,
@@ -112,7 +95,7 @@ export async function resolveModel(
       createProvider({
         id: p.id,
         baseUrl: p.baseUrl,
-        auth: { apiKey: apiKeyAuth(p.id, p.apiKeyEnv) },
+        auth: { apiKey: envApiKeyAuth(`${p.id} API key`, [p.apiKeyEnv]) },
         api: customApis[p.api](),
         models: p.models.map((m) => ({
           id: m.id,
