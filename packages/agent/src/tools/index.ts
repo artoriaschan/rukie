@@ -6,12 +6,14 @@ import {
   type AgentHarnessTool,
   type AgentTool,
   type ExecutionToolContext,
+  type Skill,
 } from "@earendil-works/pi-agent-core";
 import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
 import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/pi-agent-core/harness/context";
 import { Type, type TSchema } from "typebox";
 import { createGlobTool } from "./glob.ts";
 import { createGrepTool } from "./grep.ts";
+import { createSkillTool } from "./skill.ts";
 
 /** pi's built-ins use the harness context; Agent uses an AbortSignal. */
 function adaptTool<T extends TSchema, D>(
@@ -44,7 +46,10 @@ function adaptTool<T extends TSchema, D>(
   };
 }
 
-export function createBuiltinTools(cwd: string): AgentTool[] {
+export function createBuiltinTools(
+  cwd: string,
+  getSkill: (name: string) => Skill | undefined,
+): AgentTool[] {
   const env = new NodeExecutionEnv({ cwd });
   const bashTool = createBashTool();
   const bash = adaptTool<typeof bashTool.parameters, unknown>(bashTool, env);
@@ -68,5 +73,6 @@ export function createBuiltinTools(cwd: string): AgentTool[] {
     timedBash,
     createGlobTool(cwd),
     createGrepTool(cwd),
+    createSkillTool(getSkill),
   ];
 }

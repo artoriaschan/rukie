@@ -111,6 +111,50 @@ async function neant(
   return { stdout, stderr, exitCode };
 }
 
+test.each(["text", "stream-json"])(
+  "%s loads skills while malformed skill warnings go only to stderr",
+  async (format) => {
+    const { server, ...dirs } = await setup(
+      {},
+      {
+        toolCalls: [{ name: "skill", arguments: { name: "review" } }],
+      },
+    );
+    await Bun.write(
+      join(dirs.cwd, ".agents/skills/review/SKILL.md"),
+      "---\nname: review\ndescription: Review changes\n---\nCheck the changed behavior.",
+    );
+    const broken = join(dirs.home, ".neant/skills/broken/SKILL.md");
+    await Bun.write(broken, "---\nname: broken\ndescription: [invalid\n---\nBad YAML");
+    const result = await neant(["-p", "/review original prompt", "--output-format", format], {
+      ...dirs,
+      key: "sk-test",
+    });
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain("Warning:");
+    expect(result.stderr).toContain(broken);
+    expect(result.stdout).not.toContain("Warning:");
+    expect(server.requests).toHaveLength(2);
+    expect(JSON.stringify(server.requests[0]!.body.messages)).toContain("/review original prompt");
+    expect(JSON.stringify(server.requests[0]!.body.messages)).toContain(
+      "Check the changed behavior.",
+    );
+    const tool = server.requests[1]!.body.messages.find(
+      (message: { role: string }) => message.role === "tool",
+    );
+    expect(JSON.stringify(tool)).toContain("Check the changed behavior.");
+    if (format === "text") expect(result.stdout).toBe("hello from fake\n");
+    else {
+      const events = parseEvents(result.stdout);
+      expect(events[0].type).toBe("session_start");
+      expect(
+        events.find((event) => event.type === "tool_execution_end" && event.toolName === "skill"),
+      ).toMatchObject({ isError: false });
+      expect(events.at(-1)).toMatchObject({ type: "result", success: true });
+    }
+  },
+);
+
 test("CLI grep uses bundled ripgrep when the child process PATH is empty", async () => {
   const { server, ...dirs } = await setup(
     {},
@@ -207,12 +251,15 @@ test("stream-json emits session metadata, verbatim pi events, and the Run result
     sessionId,
     model: "fake/m",
     cwd: await realpath(dirs.cwd),
-    tools: ["read", "write", "edit", "bash", "glob", "grep"],
+    tools: ["read", "write", "edit", "bash", "glob", "grep", "skill"],
   });
   expect(events.map((event) => event.type)).toEqual([
     "session_start",
     "agent_start",
     "turn_start",
+    "message_start",
+    "reminder_injected",
+    "message_end",
     "message_start",
     "reminder_injected",
     "message_end",
@@ -247,6 +294,7 @@ test("stream-json emits session metadata, verbatim pi events, and the Run result
   expect(events.filter((event) => event.type === "reminder_injected")).toMatchObject([
     { source: "environment", content: expect.stringContaining(`cwd: ${await realpath(dirs.cwd)}`) },
     { source: "date", content: expect.stringContaining("Current date:") },
+    { source: "skills", content: "Available skills: none." },
   ]);
   expect(server.requests).toHaveLength(1);
 
@@ -332,6 +380,12 @@ test("reads a piped prompt and completes normally", async () => {
         { type: "text", text: expect.stringContaining("<system-reminder>\nCurrent date:") },
       ],
     },
+    {
+      role: "user",
+      content: [
+        { type: "text", text: "<system-reminder>\nAvailable skills: none.\n</system-reminder>" },
+      ],
+    },
     { role: "user", content: [{ type: "text", text: "from pipe" }] },
   ]);
 });
@@ -407,6 +461,7 @@ test("SIGINT exits 130 after saving the interrupted Run's messages", async () =>
     { role: "system", content: expect.stringContaining("You are Neant") },
     { role: "system-reminder", source: "environment" },
     { role: "system-reminder", source: "date" },
+    { role: "system-reminder", source: "skills" },
     { role: "user", content: [{ type: "text", text: "interrupted prompt" }] },
     { role: "assistant", stopReason: "aborted" },
   ]);

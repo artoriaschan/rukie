@@ -244,6 +244,12 @@ test("an aborted Run persists the user message and partial assistant output befo
         { type: "text", text: expect.stringContaining("<system-reminder>\nCurrent date:") },
       ],
     },
+    {
+      role: "user",
+      content: [
+        { type: "text", text: "<system-reminder>\nAvailable skills: none.\n</system-reminder>" },
+      ],
+    },
     { role: "user", content: [{ type: "text", text: "interrupted prompt" }] },
     {
       role: "assistant",

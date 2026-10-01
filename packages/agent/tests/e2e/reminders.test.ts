@@ -36,6 +36,7 @@ test("the first Run supplies static identity, environment and both levels of Pro
     "date",
     "user-instructions",
     "project-instructions",
+    "skills",
   ]);
   expect(reminders[0]!.content).toContain(`cwd: ${dirs.cwd}`);
   expect(reminders[0]!.content).toContain(`platform: ${process.platform}`);
@@ -103,6 +104,7 @@ test("resume preserves the model and Transcript prefix and appends only a change
       source: "project-instructions",
       content: expect.stringContaining("Original project instructions"),
     },
+    { source: "skills", content: "Available skills: none." },
   ]);
   const events: SessionEvent[] = [];
   await session.run("second prompt", {

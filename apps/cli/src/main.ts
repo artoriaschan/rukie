@@ -90,6 +90,7 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
       cwd,
       homeDir,
       settings,
+      onWarning: (warning) => io.stderr(`Warning: ${warning}\n`),
       ...io.session,
       resumeId: values.resume,
       allowTools: [...(io.session?.allowTools ?? []), ...(values["allow-tools"] ?? [])],

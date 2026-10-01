@@ -1,4 +1,4 @@
-import { Agent, type AgentEvent, type StreamFn } from "@earendil-works/pi-agent-core";
+import { Agent, type AgentEvent, type StreamFn, type Skill } from "@earendil-works/pi-agent-core";
 import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { resolve } from "node:path";
@@ -14,6 +14,7 @@ import { decidePermission } from "../permissions/index.ts";
 import { createBuiltinTools } from "../tools/index.ts";
 import { SYSTEM_PROMPT } from "../prompt/index.ts";
 import { collectReminders, convertToLlm, type ReminderSource } from "../reminders/index.ts";
+import { discoverSkills, skillInvocation, skillsReminder } from "../skills/index.ts";
 
 export interface SessionOptions {
   /** Project directory the session works in. */
@@ -38,6 +39,8 @@ export interface SessionOptions {
   now?: () => Date;
   /** Additional content sources, compared with the latest persisted reminder per source. */
   reminderSources?: ReminderSource[];
+  /** Discovery diagnostics; defaults to stderr via console.warn. */
+  onWarning?: (warning: string) => void;
 }
 
 export type SessionEvent = SharedSessionEvent<AgentEvent>;
@@ -88,6 +91,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
   // Older Sessions did not persist their implicit baseline. Do not append it
   // behind existing conversation messages; pi will seed it when restoring them.
   let baselinePersisted = messages.length > 0;
+  let skills = new Map<string, Skill>();
   const agent = new Agent({
     streamFn: options.streamFn ?? streamFn,
     convertToLlm,
@@ -108,7 +112,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       model,
       messages,
       systemPrompt: SYSTEM_PROMPT,
-      tools: createBuiltinTools(cwd),
+      tools: createBuiltinTools(cwd, (name) => skills.get(name)),
       ...(settings.thinking && { thinkingLevel: settings.thinking }),
     },
   });
@@ -176,17 +180,34 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             await emit(event);
           });
           signal?.throwIfAborted();
+          const discovered = await discoverSkills(cwd, options.homeDir);
+          skills = discovered.skills;
+          for (const warning of discovered.warnings) (options.onWarning ?? console.warn)(warning);
           const reminders = await collectReminders({
             messages: agent.state.messages,
             cwd,
             homeDir: options.homeDir,
             now: (options.now ?? (() => new Date()))(),
-            sources: options.reminderSources ?? [],
+            sources: [
+              { source: "skills", currentContent: () => skillsReminder(skills) },
+              ...(options.reminderSources ?? []),
+            ],
           });
           signal?.throwIfAborted();
+          const invocation = skillInvocation(prompt, skills);
           await agent.prompt([
             ...reminders,
             { role: "user", content: [{ type: "text", text: prompt }], timestamp: Date.now() },
+            ...(invocation === undefined
+              ? []
+              : [
+                  {
+                    role: "system-reminder" as const,
+                    source: "skill-invocation",
+                    content: invocation,
+                    timestamp: Date.now(),
+                  },
+                ]),
           ]);
         } finally {
           signal?.removeEventListener("abort", abort);
