@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
-import { createProvider, envApiKeyAuth, type Api, type Model } from "@earendil-works/pi-ai";
+import { createProvider, type Api, type ApiKeyAuth, type Model } from "@earendil-works/pi-ai";
 import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messages.lazy";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
@@ -54,28 +54,65 @@ export async function loadSettings(options: { cwd: string; homeDir: string }) {
   return { settings, warnings };
 }
 
+/** Pasteable example settings; kept valid against `SettingsSchema` by the CLI e2e test. */
+const EXAMPLE_SETTINGS: Settings = {
+  model: "local/my-model",
+  providers: [
+    {
+      id: "local",
+      api: "openai-completions",
+      baseUrl: "http://127.0.0.1:11434/v1",
+      apiKeyEnv: "LOCAL_API_KEY",
+      models: [{ id: "my-model" }],
+    },
+  ],
+};
+
+function noModelMessage(userFile: string) {
+  return [
+    `No model configured. Set "model" in ${userFile} or pass --model provider/id.`,
+    'Built-in providers read their standard env var, e.g. "model": "anthropic/<id>" with ANTHROPIC_API_KEY.',
+    "Example with a custom OpenAI-compatible provider:",
+    JSON.stringify(EXAMPLE_SETTINGS, null, 2),
+  ].join("\n");
+}
+
 const customApis = {
   "openai-completions": openAICompletionsApi,
   "openai-responses": openAIResponsesApi,
   "anthropic-messages": anthropicMessagesApi,
 };
 
+/**
+ * `apiKeyEnv` normally names an env var; any other value is sent as the key itself.
+ * ponytail: "looks like an env var" is UPPER_SNAKE, so an unset `FOO_KEY` still reports a
+ * missing key instead of sending its name; an all-caps literal key would need a real var.
+ */
+function apiKeyAuth(providerId: string, apiKeyEnv: string): ApiKeyAuth {
+  const isEnvName = /^[A-Z_][A-Z0-9_]*$/.test(apiKeyEnv);
+  return {
+    name: `${providerId} API key`,
+    resolve: async ({ ctx }) => {
+      if (!isEnvName) return { auth: { apiKey: apiKeyEnv }, source: "settings" };
+      const key = await ctx.env(apiKeyEnv);
+      return key ? { auth: { apiKey: key }, source: apiKeyEnv } : undefined;
+    },
+  };
+}
+
 /** Resolves `settings.model` against pi-ai's built-in providers plus the user's custom ones. */
 export async function resolveModel(
   settings: Settings,
+  homeDir: string,
 ): Promise<{ model: Model<Api>; streamFn: StreamFn }> {
-  if (!settings.model) {
-    throw new Error(
-      'No model configured. Set "model" in ~/.neant/settings.json or pass --model provider/id.',
-    );
-  }
+  if (!settings.model) throw new Error(noModelMessage(join(homeDir, ".neant/settings.json")));
   const models = builtinModels();
   for (const p of settings.providers ?? []) {
     models.setProvider(
       createProvider({
         id: p.id,
         baseUrl: p.baseUrl,
-        auth: { apiKey: envApiKeyAuth(`${p.id} API key`, [p.apiKeyEnv]) },
+        auth: { apiKey: apiKeyAuth(p.id, p.apiKeyEnv) },
         api: customApis[p.api](),
         models: p.models.map((m) => ({
           id: m.id,

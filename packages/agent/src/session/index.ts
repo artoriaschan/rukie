@@ -30,7 +30,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
   if (options.model && !options.streamFn) throw new Error("`model` requires `streamFn`.");
   const { model, streamFn } = options.model
     ? { model: options.model, streamFn: options.streamFn! }
-    : await resolveModel(settings);
+    : await resolveModel(settings, options.homeDir);
   const agent = new Agent({
     streamFn: options.streamFn ?? streamFn,
     initialState: {

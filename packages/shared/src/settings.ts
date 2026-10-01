@@ -15,6 +15,7 @@ const CustomProvider = Type.Object({
   api: Type.Enum(["openai-completions", "openai-responses", "anthropic-messages"]),
   baseUrl: Type.String(),
   /** Name of the env var holding the key; settings never contain the key itself. */
+  /** Env var holding the key; a value that isn't a set env var is used as the key itself. */
   apiKeyEnv: Type.String({ minLength: 1 }),
   models: Type.Array(CustomModel),
 });
