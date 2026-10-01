@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import { createProvider, envApiKeyAuth, type Api, type Model } from "@earendil-works/pi-ai";
 import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messages.lazy";
@@ -52,6 +52,11 @@ export async function loadSettings(options: { cwd: string; homeDir: string }) {
   if (project.model !== undefined) settings.model = project.model;
   if (project.allowTools !== undefined) settings.allowTools = project.allowTools;
   return { settings, warnings };
+}
+
+/** Trust applies to the exact project directory, never to a child or project-supplied list. */
+export function isTrustedProject(cwd: string, settings: Settings): boolean {
+  return settings.trustedProjects?.some((project) => resolve(project) === resolve(cwd)) ?? false;
 }
 
 /** Pasteable example settings; kept valid against `SettingsSchema` by the CLI e2e test. */

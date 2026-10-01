@@ -46,6 +46,7 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
         "output-format": { type: "string", default: "text" },
         "allow-tools": { type: "string", multiple: true },
         yolo: { type: "boolean" },
+        "trust-project-mcp": { type: "boolean" },
       },
     });
     values = parsed.values;
@@ -95,6 +96,7 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
       resumeId: values.resume,
       allowTools: [...(io.session?.allowTools ?? []), ...(values["allow-tools"] ?? [])],
       yolo: values.yolo ?? io.session?.yolo,
+      trustProjectMcp: values["trust-project-mcp"] ?? io.session?.trustProjectMcp,
     });
     const prompt = values.prompt ?? (await readStdin(io)).trimEnd();
     const streamJson = values["output-format"] === "stream-json";

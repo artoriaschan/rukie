@@ -6,6 +6,7 @@
   "dependencies": {
     "@earendil-works/pi-agent-core": "0.99.2",
     "@earendil-works/pi-ai": "0.99.2",
+    "@earendil-works/pi-mcp": "0.99.2",
     "@neant/shared": "workspace:*",
     "@vscode/ripgrep": "1.18.0",
     "ignore": "7.0.8",

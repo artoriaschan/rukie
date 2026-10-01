@@ -15,6 +15,7 @@ import { createBuiltinTools } from "../tools/index.ts";
 import { SYSTEM_PROMPT } from "../prompt/index.ts";
 import { collectReminders, convertToLlm, type ReminderSource } from "../reminders/index.ts";
 import { discoverSkills, skillInvocation, skillsReminder } from "../skills/index.ts";
+import { createMcpConnections } from "../mcp/index.ts";
 
 export interface SessionOptions {
   /** Project directory the session works in. */
@@ -35,6 +36,8 @@ export interface SessionOptions {
   allowTools?: string[];
   /** Allow every tool. */
   yolo?: boolean;
+  /** Load this project's .mcp.json even when it is not in the user trust list. */
+  trustProjectMcp?: boolean;
   /** Clock used for reminder dates; defaults to the local current date. */
   now?: () => Date;
   /** Additional content sources, compared with the latest persisted reminder per source. */
@@ -133,15 +136,37 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         onEvent?.({ ...event, sessionId: stored.metadata.id });
       emitRunEvent = emit;
       const abort = () => agent.abort();
+      const mcp = createMcpConnections();
+      const emitMcpErrors = async () => {
+        for (const event of mcp.errors.splice(0)) {
+          (options.onWarning ?? console.warn)(`MCP server ${event.server}: ${event.error}`);
+          await emit(event);
+        }
+      };
       let active;
       let unsubscribe;
       try {
-        await emit({
-          type: "session_start",
-          model: `${model.provider}/${model.id}`,
-          cwd,
-          tools: agent.state.tools.map((tool) => tool.name),
-        });
+        try {
+          await mcp.connect({
+            cwd,
+            homeDir: options.homeDir,
+            settings,
+            trustProjectMcp: options.trustProjectMcp,
+            signal,
+          });
+        } finally {
+          agent.state.tools = [
+            ...createBuiltinTools(cwd, (name) => skills.get(name)),
+            ...mcp.tools,
+          ];
+          await emit({
+            type: "session_start",
+            model: `${model.provider}/${model.id}`,
+            cwd,
+            tools: agent.state.tools.map((tool) => tool.name),
+          });
+        }
+        await emitMcpErrors();
         try {
           signal?.addEventListener("abort", abort);
           signal?.throwIfAborted();
@@ -153,6 +178,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             baselinePersisted = true;
           }
           unsubscribe = agent.subscribe(async (event) => {
+            await emitMcpErrors();
             if (event.type === "message_end") {
               await branch.appendMessage(event.message, context);
               if (event.message.role === "system-reminder") {
@@ -190,6 +216,16 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             now: (options.now ?? (() => new Date()))(),
             sources: [
               { source: "skills", currentContent: () => skillsReminder(skills) },
+              {
+                source: "mcp",
+                currentContent: () =>
+                  mcp.hasServers ||
+                  agent.state.messages.some(
+                    (message) => message.role === "system-reminder" && message.source === "mcp",
+                  )
+                    ? mcp.reminder()
+                    : undefined,
+              },
               ...(options.reminderSources ?? []),
             ],
           });
@@ -223,6 +259,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         throw error;
       } finally {
         try {
+          await mcp.close();
+          await emitMcpErrors();
           result.durationMs = performance.now() - started;
           await emit({ type: "result", ...result });
         } finally {

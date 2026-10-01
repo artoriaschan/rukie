@@ -2,6 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtemp, rm, readdir, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { SettingsSchema } from "@neant/shared";
 import { Value } from "typebox/value";
 import { fakeOpenAI, type FakeOpenAIOptions } from "../helpers/fake-openai.ts";
@@ -46,6 +47,99 @@ async function setup(settings: object = {}, options: FakeOpenAIOptions = {}) {
   );
   return { server, home, cwd };
 }
+
+test.each(["untrusted", "flag", "settings"])(
+  "CLI project MCP trust and server tool permission: %s",
+  async (trust) => {
+    const { server, ...dirs } = await setup(
+      {},
+      {
+        toolCalls: [{ name: "mcp__project__echo", arguments: { text: "hello" } }],
+      },
+    );
+    if (trust === "settings") {
+      const path = join(dirs.home, ".neant/settings.json");
+      const settings = await Bun.file(path).json();
+      settings.trustedProjects = [await realpath(dirs.cwd)];
+      await Bun.write(path, JSON.stringify(settings));
+    }
+    const pidPath = join(dirs.home, "mcp-pids");
+    await Bun.write(
+      join(dirs.home, "manifest.json"),
+      JSON.stringify({ instructions: "CLI MCP instructions." }),
+    );
+    await Bun.write(
+      join(dirs.cwd, ".mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          project: {
+            command: process.execPath,
+            args: [
+              fileURLToPath(
+                new URL("../../../../packages/agent/tests/helpers/mcp-server.ts", import.meta.url),
+              ),
+            ],
+            env: {
+              MCP_MANIFEST: join(dirs.home, "manifest.json"),
+              MCP_PIDS: pidPath,
+              MCP_CALLS: join(dirs.home, "mcp-calls"),
+            },
+          },
+        },
+      }),
+    );
+    const result = await neant(
+      [
+        "-p",
+        "use MCP",
+        "--output-format",
+        "stream-json",
+        "--allow-tools",
+        "mcp__project__*",
+        ...(trust === "flag" ? ["--trust-project-mcp"] : []),
+      ],
+      { ...dirs, key: "sk-test" },
+    );
+    expect(result.exitCode).toBe(0);
+    const events = parseEvents(result.stdout);
+    expect(events[0].type).toBe("session_start");
+    expect(events[0].tools.includes("mcp__project__echo")).toBe(trust !== "untrusted");
+    expect(events.at(-1)).toMatchObject({ type: "result", success: true });
+    expect(await Bun.file(pidPath).exists()).toBe(trust !== "untrusted");
+    if (trust !== "untrusted") {
+      expect(JSON.stringify(server.requests[1]!.body.messages)).toContain("MCP: hello");
+      for (const pid of (await Bun.file(pidPath).text()).trim().split("\n"))
+        expect(() => process.kill(Number(pid), 0)).toThrow();
+    }
+  },
+);
+
+test.each(["text", "stream-json"])(
+  "CLI reports MCP server failure in %s and continues",
+  async (format) => {
+    const { server, ...dirs } = await setup();
+    await Bun.write(
+      join(dirs.home, ".neant/mcp.json"),
+      JSON.stringify({ mcpServers: { missing: { command: join(dirs.cwd, "missing-command") } } }),
+    );
+    const result = await neant(["-p", "hi", "--output-format", format], {
+      ...dirs,
+      key: "sk-test",
+    });
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain("Warning: MCP server missing:");
+    if (format === "text") expect(result.stdout).toBe("hello from fake\n");
+    else {
+      const events = parseEvents(result.stdout);
+      expect(events[0].type).toBe("session_start");
+      expect(events.filter((event) => event.type === "mcp_server_error")).toMatchObject([
+        { server: "missing" },
+      ]);
+      expect(events.at(-1)).toMatchObject({ type: "result", success: true });
+    }
+    expect(server.requests).toHaveLength(1);
+  },
+);
 
 test.each(["default", "patterns", "repeated", "equals", "yolo", "settings"])(
   "CLI permissions: %s",
