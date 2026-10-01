@@ -106,13 +106,13 @@ test("a full viewport clips excess content without scrolling after its bottom-ri
   const terminal = createTerminal(4, 3);
   const app = render(
     <Box flexDirection="column">
-      <Text>{"AB中\n1234\n中文\nclipped"}</Text>
+      <Text>{"AB中\n1234\n中文\nEND!"}</Text>
     </Box>,
     terminal,
   );
   try {
     await terminal.flush();
-    expect(terminal.screen()).toEqual(["AB中", "1234", "中文"]);
+    expect(terminal.screen()).toEqual(["1234", "中文", "END!"]);
     expect(terminal.terminal.buffer.active.baseY).toBe(0);
     expect(terminal.cursor()).toEqual({ x: 0, y: 2 });
   } finally {

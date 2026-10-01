@@ -4,6 +4,7 @@ import { ConcurrentRoot, DefaultEventPriority, NoEventPriority } from "react-rec
 import type { Readable } from "node:stream";
 import {
   calculateTree,
+  calculateStaticTree,
   createNode,
   insertNode,
   removeNode,
@@ -12,6 +13,7 @@ import {
   type HostNode,
   type HostProps,
   type HostType,
+  type LayoutNode,
 } from "../layout";
 import { createScreen } from "../screen";
 
@@ -25,6 +27,22 @@ interface Container {
   options: RenderOptions;
   active: boolean;
   screen: ReturnType<typeof createScreen>;
+  completed: WeakSet<HostNode>;
+  pending: LayoutNode[];
+  timer?: ReturnType<typeof setTimeout>;
+}
+
+function paint(container: Container) {
+  const { stdout } = container.options;
+  stdout.write(
+    container.screen(
+      calculateTree(container.tree, stdout.columns),
+      stdout.columns,
+      stdout.rows,
+      container.pending,
+    ),
+  );
+  container.pending = [];
 }
 
 let priority = NoEventPriority;
@@ -44,9 +62,22 @@ const reconciler = Reconciler({
   resetAfterCommit: (container: Container) => {
     if (!container.active) return;
     const { stdout } = container.options;
-    stdout.write(
-      container.screen(calculateTree(container.tree, stdout.columns), stdout.columns, stdout.rows),
-    );
+    function collect(node: HostNode) {
+      if (node.type === "tui-static") {
+        for (const child of node.children) {
+          if (container.completed.has(child)) continue;
+          container.pending.push(calculateStaticTree(child, stdout.columns));
+          container.completed.add(child);
+        }
+      } else {
+        node.children.forEach(collect);
+      }
+    }
+    collect(container.tree);
+    container.timer ??= setTimeout(() => {
+      container.timer = undefined;
+      if (container.active) paint(container);
+    }, 16);
   },
   createInstance: (type: HostType, props: HostProps) => createNode(type, props),
   createTextInstance: (text: string) => createNode("raw", {}, text),
@@ -108,13 +139,15 @@ const reconciler = Reconciler({
   bindToConsole: (_method: string, args: unknown[]) => () => console.log(...args),
 });
 
-/** Mount synchronously; subsequent React state updates paint on each commit. */
+/** Mount synchronously; later commits coalesce into at most one frame every 16ms. */
 export function render(element: ReactNode, options: RenderOptions) {
   const container: Container = {
     tree: createNode("tui-box", { flexDirection: "column" }),
     options,
     active: true,
     screen: createScreen(),
+    completed: new WeakSet(),
+    pending: [],
   };
   const exit = Promise.withResolvers<void>();
   const fail = (error: Error) => {
@@ -135,10 +168,15 @@ export function render(element: ReactNode, options: RenderOptions) {
   );
   reconciler.updateContainerSync(element, root, null, null);
   reconciler.flushSyncWork();
+  clearTimeout(container.timer);
+  container.timer = undefined;
+  paint(container);
   return {
     unmount() {
       if (!container.active) return;
       container.active = false;
+      clearTimeout(container.timer);
+      container.pending = [];
       reconciler.updateContainerSync(null, root, null, null);
       reconciler.flushSyncWork();
       exit.resolve();

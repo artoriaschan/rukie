@@ -44,7 +44,8 @@ function paintGrid(root: LayoutNode, columns: number, rows: number): Cell[][] {
     if (width === 2) grid[y]![x + 1] = { text: "", width: 0, style: codes };
   }
   function paint(node: LayoutNode) {
-    const { x, y, width, height } = node;
+    const { x, width, height } = node;
+    const y = node.y - Math.max(0, root.height - rows);
     if (node.props.borderStyle && width >= 2 && height >= 2) {
       for (let col = 1; col < width - 1; col++) {
         put(x + col, y, "─");
@@ -82,12 +83,59 @@ export function createScreen() {
   let previous: Cell[][] | undefined;
   let previousColumns = 0;
   let previousRows = 0;
-  return (root: LayoutNode, columns: number, rows: number): string => {
-    const grid = paintGrid(root, columns, rows);
-    const full = !previous || columns !== previousColumns || rows !== previousRows;
-    let ansi = "\x1b[0m\x1b[?7l" + (full ? "\x1b[2J" : "");
+  let cursorRow = 0;
+  return (
+    root: LayoutNode,
+    columns: number,
+    rows: number,
+    completed: LayoutNode[] = [],
+  ): string => {
+    const height = Math.min(root.height, rows);
+    const endRow = Math.min(height, rows - 1);
+    let ansi = "\x1b[0m\x1b[?7l\r";
+    if (cursorRow) ansi += `\x1b[${cursorRow}A`;
+    let currentRow = 0;
+    const resized = columns !== previousColumns || rows !== previousRows;
+    if (completed.length || (previous && resized)) {
+      ansi += "\x1b[J";
+      for (const item of completed) {
+        for (const line of paintGrid(item, columns, item.height)) {
+          let style = sgr({});
+          for (const cell of line) {
+            if (!cell.width) continue;
+            if (cell.style !== style) ansi += cell.style;
+            ansi += cell.text;
+            style = cell.style;
+          }
+          ansi += "\x1b[0m\r\n";
+        }
+      }
+      previous = undefined;
+    }
+    const reserved = Math.min(previous?.length ?? 0, rows - 1);
+    if (endRow > reserved) {
+      if (reserved) ansi += `\x1b[${reserved}B`;
+      ansi += "\r\n".repeat(endRow - reserved);
+      currentRow = endRow;
+    }
+    const grid = paintGrid(root, columns, height);
+    const full = !previous || resized;
+    const move = (y: number, x: number) => {
+      let codes = "\r";
+      if (y !== currentRow)
+        codes += `\x1b[${Math.abs(y - currentRow)}${y < currentRow ? "A" : "B"}`;
+      if (x) codes += `\x1b[${x}C`;
+      currentRow = y;
+      return codes;
+    };
     let style = sgr({});
-    grid.forEach((line, y) => {
+    for (let y = 0; y < Math.max(grid.length, previous?.length ?? 0); y++) {
+      const line = grid[y];
+      if (!line) {
+        ansi += move(y, 0) + "\x1b[0m\x1b[2K";
+        style = sgr({});
+        continue;
+      }
       let nextColumn = -1;
       for (let x = 0; x < line.length; x++) {
         const cell = line[x]!;
@@ -101,16 +149,17 @@ export function createScreen() {
           old.style === cell.style
         )
           continue;
-        if (x !== nextColumn) ansi += `\x1b[${y + 1};${x + 1}H`;
+        if (x !== nextColumn) ansi += move(y, x);
         if (cell.style !== style) ansi += cell.style;
         ansi += cell.text;
         style = cell.style;
         nextColumn = x + cell.width;
       }
-    });
+    }
     previous = grid;
     previousColumns = columns;
     previousRows = rows;
-    return ansi + `\x1b[0m\x1b[?7h\x1b[${Math.min(root.height + 1, rows)};1H`;
+    cursorRow = endRow;
+    return ansi + "\x1b[0m\x1b[?7h" + move(endRow, 0);
   };
 }

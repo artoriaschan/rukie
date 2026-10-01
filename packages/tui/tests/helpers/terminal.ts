@@ -6,10 +6,12 @@ export function createTerminal(columns = 20, rows = 8) {
   const terminal = new xterm.Terminal({ cols: columns, rows, allowProposedApi: true });
   const stdin = new PassThrough();
   let bytesWritten = 0;
+  const writes: { text: string; time: number }[] = [];
   const stdout = Object.assign(
     new Writable({
       write(chunk, _encoding, callback) {
         bytesWritten += chunk.length;
+        if (chunk.length) writes.push({ text: chunk.toString(), time: performance.now() });
         terminal.write(chunk, callback);
       },
     }),
@@ -23,6 +25,7 @@ export function createTerminal(columns = 20, rows = 8) {
     stdout,
     terminal,
     bytesWritten: () => bytesWritten,
+    writes,
     flush,
     async waitFor(predicate: () => boolean) {
       const deadline = performance.now() + 1000;
@@ -44,6 +47,12 @@ export function createTerminal(columns = 20, rows = 8) {
     },
     cursor() {
       return { x: terminal.buffer.active.cursorX, y: terminal.buffer.active.cursorY };
+    },
+    scrollback() {
+      const buffer = terminal.buffer.active;
+      return Array.from({ length: buffer.baseY }, (_, y) =>
+        buffer.getLine(y)!.translateToString(true).trimEnd(),
+      );
     },
     dispose() {
       stdin.destroy();
