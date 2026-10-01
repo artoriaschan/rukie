@@ -17,6 +17,7 @@
 | 模型调用               | @earendil-works/pi-ai 0.99.2                    |
 | Agent loop 和 harness  | @earendil-works/pi-agent-core 0.99.2            |
 | glob 的 gitignore 匹配 | ignore 7.0.8                                    |
+| grep 的内置二进制      | @vscode/ripgrep 1.18.0                          |
 | MCP                    | @earendil-works/pi-mcp 0.99.2                   |
 | 支持的协议             | Chat Completions、Responses、Anthropic Messages |
 

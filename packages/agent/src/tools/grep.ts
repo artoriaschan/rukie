@@ -17,33 +17,39 @@ export function createGrepTool(cwd: string): AgentTool<typeof schema> {
     parameters: schema,
     async execute(_id, { pattern, path }, signal) {
       signal?.throwIfAborted();
-      const rg = Bun.which("rg", { PATH: process.env.PATH });
-      if (!rg)
-        throw new Error(
-          "grep requires ripgrep (rg). Install it with `brew install ripgrep` (macOS) or `apt install ripgrep` (Debian/Ubuntu).",
+      let proc;
+      try {
+        const { rgPath: rg } = await import("@vscode/ripgrep");
+        signal?.throwIfAborted();
+        proc = Bun.spawn(
+          [
+            rg,
+            "--line-number",
+            "--with-filename",
+            "--no-heading",
+            "--color",
+            "never",
+            "--regexp",
+            pattern,
+            "--",
+            path ?? ".",
+          ],
+          {
+            cwd,
+            signal,
+            timeout: 60_000,
+            stdin: "ignore",
+            stdout: "pipe",
+            stderr: "pipe",
+          },
         );
-      const proc = Bun.spawn(
-        [
-          rg,
-          "--line-number",
-          "--with-filename",
-          "--no-heading",
-          "--color",
-          "never",
-          "--regexp",
-          pattern,
-          "--",
-          path ?? ".",
-        ],
-        {
-          cwd,
-          signal,
-          timeout: 60_000,
-          stdin: "ignore",
-          stdout: "pipe",
-          stderr: "pipe",
-        },
-      );
+      } catch (error) {
+        signal?.throwIfAborted();
+        throw new Error(
+          `内置 ripgrep 不可用。请重新安装 Neant 的依赖（包含 optionalDependencies），并检查平台兼容性或二进制执行权限。原因：${error instanceof Error ? error.message : String(error)}`,
+          { cause: error },
+        );
+      }
       const [stdout, stderr, code] = await Promise.all([
         new Response(proc.stdout).text(),
         new Response(proc.stderr).text(),

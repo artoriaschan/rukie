@@ -90,11 +90,11 @@ test.each(["default", "patterns", "repeated", "equals", "yolo", "settings"])(
 
 async function neant(
   args: string[],
-  opts: { home: string; cwd: string; key?: string; input?: string },
+  opts: { home: string; cwd: string; key?: string; input?: string; env?: Record<string, string> },
 ) {
-  const proc = Bun.spawn(["bun", MAIN, ...args], {
+  const proc = Bun.spawn([process.execPath, MAIN, ...args], {
     cwd: opts.cwd,
-    env: { PATH: process.env.PATH, HOME: opts.home, FAKE_API_KEY: opts.key },
+    env: { PATH: process.env.PATH, HOME: opts.home, FAKE_API_KEY: opts.key, ...opts.env },
     stdin: opts.input === undefined ? "ignore" : "pipe",
     stdout: "pipe",
     stderr: "pipe",
@@ -110,6 +110,70 @@ async function neant(
   ]);
   return { stdout, stderr, exitCode };
 }
+
+test("CLI grep uses bundled ripgrep when the child process PATH is empty", async () => {
+  const { server, ...dirs } = await setup(
+    {},
+    { toolCalls: [{ name: "grep", arguments: { pattern: "hello (Bun|rg)", path: "file.txt" } }] },
+  );
+  await Bun.write(join(dirs.cwd, "file.txt"), "hello Bun\nhello rg\n");
+  const result = await neant(["-p", "search", "--output-format", "stream-json"], {
+    ...dirs,
+    key: "sk-test",
+    env: { PATH: "" },
+  });
+  expect(result).toMatchObject({ exitCode: 0, stderr: "" });
+  const events = parseEvents(result.stdout);
+  expect(
+    events.find((event) => event.type === "tool_execution_end" && event.toolName === "grep"),
+  ).toMatchObject({
+    isError: false,
+    result: { content: [{ type: "text", text: "file.txt:1:hello Bun\nfile.txt:2:hello rg" }] },
+  });
+  expect(events.at(-1)).toMatchObject({ type: "result", success: true });
+  expect(server.requests).toHaveLength(2);
+  expect(JSON.stringify(server.requests[1]!.body.messages)).toContain("file.txt:1:hello Bun");
+});
+
+test("an unavailable bundled ripgrep returns a tool error while read and the Run still succeed", async () => {
+  const { server, ...dirs } = await setup(
+    {},
+    {
+      toolCalls: [
+        { name: "grep", arguments: { pattern: "available", path: "file.txt" } },
+        { name: "read", arguments: { path: "file.txt" } },
+      ],
+    },
+  );
+  await Bun.write(join(dirs.cwd, "file.txt"), "available text\n");
+  const result = await neant(["-p", "search and read", "--output-format", "stream-json"], {
+    ...dirs,
+    key: "sk-test",
+    env: { npm_config_arch: "neant-test-unsupported" },
+  });
+  expect(result).toMatchObject({ exitCode: 0, stderr: "" });
+  const events = parseEvents(result.stdout);
+  const grep = events.find(
+    (event) => event.type === "tool_execution_end" && event.toolName === "grep",
+  );
+  expect(grep).toMatchObject({ isError: true });
+  expect(JSON.stringify(grep.result.content)).toContain("内置 ripgrep 不可用");
+  expect(JSON.stringify(grep.result.content)).toContain("neant-test-unsupported");
+  expect(JSON.stringify(grep.result.content)).not.toContain("brew install ripgrep");
+  expect(
+    events.find((event) => event.type === "tool_execution_end" && event.toolName === "read"),
+  ).toMatchObject({
+    isError: false,
+    result: { content: [{ type: "text", text: "available text\n" }] },
+  });
+  expect(events.at(-1)).toMatchObject({ type: "result", success: true, text: "hello from fake" });
+  expect(server.requests).toHaveLength(2);
+  const toolResults = server.requests[1]!.body.messages.filter(
+    (message: { role: string }) => message.role === "tool",
+  );
+  expect(JSON.stringify(toolResults)).toContain("内置 ripgrep 不可用");
+  expect(JSON.stringify(toolResults)).toContain("available text");
+});
 
 test("prints the model's reply using the configured custom provider", async () => {
   const { server, ...dirs } = await setup();

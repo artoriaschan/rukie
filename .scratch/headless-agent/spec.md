@@ -71,7 +71,7 @@ Status: ready-for-agent
 36. 作为开发者，我希望 agent 能用 `read` 读取文件（支持行范围），这样它能理解代码。
 37. 作为开发者，我希望 agent 能用 `glob` 按模式找文件，并且遵守 `.gitignore`，这样搜索不会被 `node_modules` 之类的目录淹没。
 38. 作为开发者，我希望 agent 能用 `grep` 做正则搜索（底层调用 `rg`），这样大仓库里搜索也很快。
-39. 作为开发者，我希望系统里没装 `rg` 时，`grep` 工具返回带安装提示的错误，而不是让整个进程崩溃。
+39. 作为开发者，我希望系统里没装 `rg` 时，`grep` 仍能通过内置二进制搜索；如果内置二进制无法加载或启动，则返回带依赖修复提示的 `isError`，而不是让整个进程崩溃。
 40. 作为开发者，我希望 agent 能用 `write` 和 `edit` 修改文件，这样它能真正完成编码任务。
 41. 作为开发者，我希望 agent 能用 `bash` 执行命令，有超时控制，而且 Ctrl-C 会终止子进程，这样它能跑测试和构建。
 42. 作为开发者，我希望工具抛出的异常会作为 `isError` 结果返回给模型，而不是中断 Run，这样模型可以自己修正。
@@ -155,7 +155,7 @@ Status: ready-for-agent
   - 首次 Run 时，在第一条 user 消息之前注入全部内容。之后的 Run（resume）里，先和 Transcript 中最近一次注入的内容比较，只补发有变化的部分（日期、skills 列表、MCP 工具列表）。
   - 注入的内容写进 Transcript，以后不再修改。
 - **permissions**：一个纯判定函数，根据工具名、默认的只读集合、settings 和 CLI 放开的模式（glob 匹配）以及 yolo 开关，返回 `allow`、`deny` 或 `ask`。它挂在 `beforeToolCall` 上；判定不是 allow 时阻止这次调用，向模型返回"该工具未获授权"的错误，并发出 `permission_denied` 事件。
-- **tools**：注册 pi 内置的 read、write、edit、bash；自己实现 glob（基于 `Bun.Glob`，遵守 `.gitignore`）和 grep（调用 `rg`，找不到时返回错误）；再加上 `skill` 工具（按名称返回 skill 正文）。
+- **tools**：注册 pi 内置的 read、write、edit、bash；自己实现 glob（基于 `Bun.Glob`，遵守 `.gitignore`）和 grep（执行时延迟加载 `@vscode/ripgrep`，调用其内置二进制的绝对路径，加载或启动失败时返回 `isError` 和依赖修复提示）；再加上 `skill` 工具（按名称返回 skill 正文）。grep 不查找或回退系统 PATH 中的 rg，也不修改 bash 的 PATH。当前只验收 Bun 源码运行；Bun 单文件和 Electron 打包另行处理。
 - **skills**：按用户级和项目级的 `.neant`、`.claude`、`.agents` 下的 skills 目录调用 `loadSkills` 做发现，名称冲突时项目级优先；解析 prompt 开头的 `/name` 做 Skill Invocation，展开的正文作为 reminder 附在这条 user 消息上。
 - **mcp**：用 `pi-mcp` 连接用户级的 `mcp.json`，以及（仅限 Trusted Project 或带 trust 参数时）项目的 `.mcp.json`；把 MCP 工具适配成 `mcp__<server>__<tool>`；单个 server 失败时发出 `mcp_server_error` 事件并继续运行；收集各 server 的 instructions 交给 reminders；Session 结束时关闭所有连接。
 - **store**：使用 pi 的 session repo 接口，headless 模式下用 `JsonlSessionRepo` 的原生 v4 格式，路径为 `~/.neant/sessions/<项目路径 slug>/<时间戳>_<id>.jsonl`（slug 和文件名由 pi 生成）。现在只用线性结构，不提供分支操作。SQLite 实现不在本 spec 范围内（见 ADR-0003）。

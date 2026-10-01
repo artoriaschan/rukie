@@ -165,24 +165,24 @@ test("grep returns regex matches with file and line numbers, respects ignores, a
   });
 });
 
-test("grep reports installation guidance when rg is unavailable and the Run continues", async () => {
+test("grep searches with bundled ripgrep when PATH contains no rg", async () => {
   dirs = await tempDirs();
+  await Bun.write(join(dirs.cwd, "file.txt"), "one\nhello bundled rg\n");
   const fake = fakeModel([
-    fauxAssistantMessage(fauxToolCall("grep", { pattern: "anything" }), { stopReason: "toolUse" }),
-    fauxAssistantMessage("recovered"),
+    fauxAssistantMessage(fauxToolCall("grep", { pattern: "bundled" }), { stopReason: "toolUse" }),
+    fauxAssistantMessage("done"),
   ]);
   const session = await createSession({ ...dirs, ...fake });
   const originalPath = process.env.PATH;
   try {
     process.env.PATH = dirs.cwd;
-    expect((await session.run("search")).text).toBe("recovered");
+    expect((await session.run("search")).text).toBe("done");
   } finally {
     process.env.PATH = originalPath;
   }
   const result = fake.contexts[1]!.messages.at(-1)!;
-  expect(result).toMatchObject({ role: "toolResult", isError: true });
-  expect(JSON.stringify(result.content)).toContain("ripgrep");
-  expect(JSON.stringify(result.content)).toContain("brew install ripgrep");
+  expect(result).toMatchObject({ role: "toolResult", isError: false });
+  expect(JSON.stringify(result.content)).toContain("file.txt:2:hello bundled rg");
 });
 
 test("glob finds dotfiles and nested files while respecting nested gitignore rules", async () => {
