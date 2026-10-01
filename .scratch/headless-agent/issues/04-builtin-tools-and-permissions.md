@@ -9,11 +9,20 @@
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] glob 基于 `Bun.Glob`，遵守 `.gitignore`
-- [ ] grep 调用 `rg`；找不到 `rg` 时，工具返回带安装提示的错误，进程不崩溃
-- [ ] bash 有超时；Run 被中止时会终止子进程
-- [ ] 工具抛出的异常作为 `isError` 结果返回给模型，不中断 Run
-- [ ] 判定挂在 `beforeToolCall` 上；CLI 的模式、settings 的 `allowTools` 和 `--yolo` 三种放开方式都能生效
-- [ ] Seam 1 测试覆盖：默认拒绝写类工具和 bash；用 glob 模式放开；yolo 放开全部；被拒时模型收到的错误内容和 `permission_denied` 事件；grep 和 glob 在临时仓库里的结果
+- [x] glob 基于 `Bun.Glob`，遵守 `.gitignore`
+- [x] grep 调用 `rg`；找不到 `rg` 时，工具返回带安装提示的错误，进程不崩溃
+- [x] bash 有超时；Run 被中止时会终止子进程
+- [x] 工具抛出的异常作为 `isError` 结果返回给模型，不中断 Run
+- [x] 判定挂在 `beforeToolCall` 上；CLI 的模式、settings 的 `allowTools` 和 `--yolo` 三种放开方式都能生效
+- [x] Seam 1 测试覆盖：默认拒绝写类工具和 bash；用 glob 模式放开；yolo 放开全部；被拒时模型收到的错误内容和 `permission_denied` 事件；grep 和 glob 在临时仓库里的结果
+
+## Comments
+
+- 2026-10-01：注册 pi 0.99.2 的 read/write/edit/bash，通过适配器将 Agent 的 AbortSignal 传入 harness context；bash 默认超时 120 秒，模型可指定 timeout（秒），中止时由 pi 终止整个进程组。
+- permissions 是单独的纯判定函数，决策类型为 allow/deny/ask；当前策略只产生 allow/deny，headless hook 对任何非 allow 决策都阻止执行。默认只允许 read/glob/grep，skill 在 07 加入；settings.allowTools 与 SessionOptions.allowTools 合并，yolo 允许全部。拒绝结果包含“该工具未获授权”并发出带 toolCallId/toolName/sessionId 的 permission_denied 事件。
+- glob 使用 Bun.Glob 扫描和匹配，ignore 7.0.8 处理根目录、嵌套及否定规则，剪枝忽略目录与 .git，不遍历目录符号链接；搜索子目录及从 Git 仓库子目录启动 Session 都保留适用的祖先规则，支持 worktree 的 .git 指针文件。
+- grep 通过参数数组调用 rg，返回文件名、行号和匹配文本；无匹配不是错误，输出截断时提示缩小搜索范围。缺少 rg 时提供 macOS/Linux 安装命令，错误作为 isError 交给模型；工具异常由 pi loop 转为错误结果，Run 可继续。
+- CLI 支持 --allow-tools <pattern...>、重复传参、--allow-tools=<pattern> 和 --yolo，错误参数退出 2。Seam 2 使用真实 CLI 子进程和假的 OpenAI 服务验证默认拒绝、模式授权、settings 授权与 yolo。
+- 验证：bun run check 通过（格式、lint、tsc -b、knip、全量 60 个测试）。code-review 两轴审查：规范审查修复一项祖先 .gitignore 遗漏后复查通过，0 项遗留；规格审查 0 项问题。

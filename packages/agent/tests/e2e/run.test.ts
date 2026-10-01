@@ -206,6 +206,7 @@ test("a supplied pi repo can persist and resume without the JSONL backend", asyn
   });
   await resumed.run("next prompt");
   expect(next.contexts[0]!.messages).toMatchObject([
+    { role: "system", toolsAdded: expect.any(Array) },
     { role: "user", content: [{ type: "text", text: "stored prompt" }] },
     { role: "assistant", content: [{ type: "text", text: "stored reply" }] },
     { role: "user", content: [{ type: "text", text: "next prompt" }] },
@@ -233,6 +234,7 @@ test("an aborted Run persists the user message and partial assistant output befo
   });
   await resumed.run("continue");
   expect(next.contexts[0]!.messages).toMatchObject([
+    { role: "system", toolsAdded: expect.any(Array) },
     { role: "user", content: [{ type: "text", text: "interrupted prompt" }] },
     {
       role: "assistant",

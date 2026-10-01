@@ -34,16 +34,35 @@ async function readStdin(io: CliIo): Promise<string> {
 export async function main(argv: string[], io: CliIo): Promise<number> {
   let values;
   try {
-    ({ values } = parseArgs({
+    const parsed = parseArgs({
       args: argv,
+      tokens: true,
+      allowPositionals: true,
       options: {
         prompt: { type: "string", short: "p" },
         model: { type: "string" },
         thinking: { type: "string" },
         resume: { type: "string" },
         "output-format": { type: "string", default: "text" },
+        "allow-tools": { type: "string", multiple: true },
+        yolo: { type: "boolean" },
       },
-    }));
+    });
+    values = parsed.values;
+    // parseArgs consumes the first pattern; subsequent positionals belong only
+    // to the immediately preceding --allow-tools option, until the next flag.
+    let collectingTools = false;
+    for (const token of parsed.tokens) {
+      if (token.kind === "option") collectingTools = token.name === "allow-tools";
+      else if (token.kind === "positional" && collectingTools) {
+        values["allow-tools"]!.push(token.value);
+      } else if (token.kind === "positional") {
+        throw new Error(`Unexpected argument: ${token.value}`);
+      } else collectingTools = false;
+    }
+    if (values["allow-tools"]?.some((pattern) => !pattern)) {
+      throw new Error("--allow-tools requires non-empty tool patterns");
+    }
     if (values["output-format"] !== "text" && values["output-format"] !== "stream-json") {
       throw new Error("--output-format must be text or stream-json");
     }
@@ -73,6 +92,8 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
       settings,
       ...io.session,
       resumeId: values.resume,
+      allowTools: [...(io.session?.allowTools ?? []), ...(values["allow-tools"] ?? [])],
+      yolo: values.yolo ?? io.session?.yolo,
     });
     const prompt = values.prompt ?? (await readStdin(io)).trimEnd();
     const streamJson = values["output-format"] === "stream-json";

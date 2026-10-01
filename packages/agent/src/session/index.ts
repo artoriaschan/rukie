@@ -10,6 +10,8 @@ import type {
 } from "@neant/shared";
 import { resolveModel } from "../config/index.ts";
 import { createJsonlStore, type SessionStore } from "../store/index.ts";
+import { decidePermission } from "../permissions/index.ts";
+import { createBuiltinTools } from "../tools/index.ts";
 
 export interface SessionOptions {
   /** Project directory the session works in. */
@@ -26,6 +28,10 @@ export interface SessionOptions {
   store?: SessionStore;
   /** Continue an existing Session in this project; never silently creates a new one. */
   resumeId?: string;
+  /** Additional tool-name glob patterns, combined with settings.allowTools. */
+  allowTools?: string[];
+  /** Allow every tool. */
+  yolo?: boolean;
 }
 
 export type SessionEvent = SharedSessionEvent<AgentEvent>;
@@ -72,11 +78,26 @@ export async function createSession(options: SessionOptions): Promise<Session> {
   } finally {
     await stored.close(context);
   }
+  let emitRunEvent: ((event: CustomSessionEvent) => void | Promise<void>) | undefined;
   const agent = new Agent({
     streamFn: options.streamFn ?? streamFn,
+    beforeToolCall: async ({ toolCall }) => {
+      const decision = decidePermission(toolCall.name, {
+        allowTools: [...(settings.allowTools ?? []), ...(options.allowTools ?? [])],
+        yolo: options.yolo,
+      });
+      if (decision === "allow") return undefined;
+      await emitRunEvent?.({
+        type: "permission_denied",
+        toolCallId: toolCall.id,
+        toolName: toolCall.name,
+      });
+      return { block: true, reason: `该工具未获授权: ${toolCall.name}` };
+    },
     initialState: {
       model,
       messages,
+      tools: createBuiltinTools(cwd),
       ...(settings.thinking && { thinkingLevel: settings.thinking }),
     },
   });
@@ -95,6 +116,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       };
       const emit = (event: AgentEvent | CustomSessionEvent) =>
         onEvent?.({ ...event, sessionId: stored.metadata.id });
+      emitRunEvent = emit;
       const abort = () => agent.abort();
       let active;
       let unsubscribe;
@@ -150,6 +172,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           result.durationMs = performance.now() - started;
           await emit({ type: "result", ...result });
         } finally {
+          emitRunEvent = undefined;
           running = false;
         }
       }
