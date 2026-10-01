@@ -214,6 +214,12 @@ test("stream-json emits session metadata, verbatim pi events, and the Run result
     "agent_start",
     "turn_start",
     "message_start",
+    "reminder_injected",
+    "message_end",
+    "message_start",
+    "reminder_injected",
+    "message_end",
+    "message_start",
     "message_end",
     "message_start",
     "message_update",
@@ -238,6 +244,10 @@ test("stream-json emits session metadata, verbatim pi events, and the Run result
     durationMs: expect.any(Number),
   });
   expect(events.at(-1).durationMs).toBeGreaterThanOrEqual(0);
+  expect(events.filter((event) => event.type === "reminder_injected")).toMatchObject([
+    { source: "environment", content: expect.stringContaining(`cwd: ${await realpath(dirs.cwd)}`) },
+    { source: "date", content: expect.stringContaining("Current date:") },
+  ]);
   expect(server.requests).toHaveLength(1);
 
   const resumed = await neant(
@@ -249,6 +259,7 @@ test("stream-json emits session metadata, verbatim pi events, and the Run result
   );
   expect(resumed.exitCode).toBe(0);
   const next = parseEvents(resumed.stdout);
+  expect(next.filter((event) => event.type === "reminder_injected")).toEqual([]);
   expect(next.every((event) => event.sessionId === sessionId)).toBe(true);
   expect(next.at(-1)).toMatchObject({
     type: "result",
@@ -310,6 +321,17 @@ test("reads a piped prompt and completes normally", async () => {
   const result = await neant([], { ...dirs, key: "sk-test", input: "from pipe\n" });
   expect(result).toMatchObject({ exitCode: 0, stdout: "hello from fake\n", stderr: "" });
   expect(server.requests[0]!.body.messages).toEqual([
+    { role: "developer", content: expect.stringContaining("You are Neant") },
+    {
+      role: "user",
+      content: [{ type: "text", text: expect.stringContaining("<system-reminder>\ncwd:") }],
+    },
+    {
+      role: "user",
+      content: [
+        { type: "text", text: expect.stringContaining("<system-reminder>\nCurrent date:") },
+      ],
+    },
     { role: "user", content: [{ type: "text", text: "from pipe" }] },
   ]);
 });
@@ -330,7 +352,7 @@ test("--resume continues the persisted session in another CLI process", async ()
 
   expect(result).toMatchObject({ exitCode: 0, stdout: "hello from fake\n", stderr: "" });
   expect(server.requests[1]!.body.messages).toEqual([
-    { role: "user", content: [{ type: "text", text: "first prompt" }] },
+    ...server.requests[0]!.body.messages,
     { role: "assistant", content: "hello from fake" },
     { role: "user", content: [{ type: "text", text: "second prompt" }] },
   ]);
@@ -382,6 +404,9 @@ test("SIGINT exits 130 after saving the interrupted Run's messages", async () =>
     .filter((write) => write.kind === "entry")
     .map((write) => write.message);
   expect(entries).toMatchObject([
+    { role: "system", content: expect.stringContaining("You are Neant") },
+    { role: "system-reminder", source: "environment" },
+    { role: "system-reminder", source: "date" },
     { role: "user", content: [{ type: "text", text: "interrupted prompt" }] },
     { role: "assistant", stopReason: "aborted" },
   ]);

@@ -7,3 +7,4 @@ export {
   type SessionOptions,
 } from "./session/index.ts";
 export type { RunResult } from "@neant/shared";
+export type { ReminderSource } from "./reminders/index.ts";

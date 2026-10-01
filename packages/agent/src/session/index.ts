@@ -12,6 +12,8 @@ import { resolveModel } from "../config/index.ts";
 import { createJsonlStore, type SessionStore } from "../store/index.ts";
 import { decidePermission } from "../permissions/index.ts";
 import { createBuiltinTools } from "../tools/index.ts";
+import { SYSTEM_PROMPT } from "../prompt/index.ts";
+import { collectReminders, convertToLlm, type ReminderSource } from "../reminders/index.ts";
 
 export interface SessionOptions {
   /** Project directory the session works in. */
@@ -32,6 +34,10 @@ export interface SessionOptions {
   allowTools?: string[];
   /** Allow every tool. */
   yolo?: boolean;
+  /** Clock used for reminder dates; defaults to the local current date. */
+  now?: () => Date;
+  /** Additional content sources, compared with the latest persisted reminder per source. */
+  reminderSources?: ReminderSource[];
 }
 
 export type SessionEvent = SharedSessionEvent<AgentEvent>;
@@ -79,8 +85,12 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     await stored.close(context);
   }
   let emitRunEvent: ((event: CustomSessionEvent) => void | Promise<void>) | undefined;
+  // Older Sessions did not persist their implicit baseline. Do not append it
+  // behind existing conversation messages; pi will seed it when restoring them.
+  let baselinePersisted = messages.length > 0;
   const agent = new Agent({
     streamFn: options.streamFn ?? streamFn,
+    convertToLlm,
     beforeToolCall: async ({ toolCall }) => {
       const decision = decidePermission(toolCall.name, {
         allowTools: [...(settings.allowTools ?? []), ...(options.allowTools ?? [])],
@@ -97,6 +107,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     initialState: {
       model,
       messages,
+      systemPrompt: SYSTEM_PROMPT,
       tools: createBuiltinTools(cwd),
       ...(settings.thinking && { thinkingLevel: settings.thinking }),
     },
@@ -133,9 +144,20 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           active = await store.open(stored.metadata, context);
           const branch = await active.branch("main", context);
           if (!branch) throw new Error("Session has no main branch.");
+          if (!baselinePersisted) {
+            await branch.appendMessage(agent.state.messages[0]!, context);
+            baselinePersisted = true;
+          }
           unsubscribe = agent.subscribe(async (event) => {
             if (event.type === "message_end") {
               await branch.appendMessage(event.message, context);
+              if (event.message.role === "system-reminder") {
+                await emit({
+                  type: "reminder_injected",
+                  source: event.message.source,
+                  content: event.message.content,
+                });
+              }
               if (event.message.role === "assistant") {
                 const message = event.message;
                 result.text = message.content
@@ -154,7 +176,18 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             await emit(event);
           });
           signal?.throwIfAborted();
-          await agent.prompt(prompt);
+          const reminders = await collectReminders({
+            messages: agent.state.messages,
+            cwd,
+            homeDir: options.homeDir,
+            now: (options.now ?? (() => new Date()))(),
+            sources: options.reminderSources ?? [],
+          });
+          signal?.throwIfAborted();
+          await agent.prompt([
+            ...reminders,
+            { role: "user", content: [{ type: "text", text: prompt }], timestamp: Date.now() },
+          ]);
         } finally {
           signal?.removeEventListener("abort", abort);
           unsubscribe?.();
