@@ -13,7 +13,7 @@ import {
   type HostProps,
   type HostType,
 } from "../layout";
-import { fullFrame } from "../screen";
+import { createScreen } from "../screen";
 
 export interface RenderOptions {
   stdin: Readable;
@@ -24,6 +24,7 @@ interface Container {
   tree: HostNode;
   options: RenderOptions;
   active: boolean;
+  screen: ReturnType<typeof createScreen>;
 }
 
 let priority = NoEventPriority;
@@ -44,7 +45,7 @@ const reconciler = Reconciler({
     if (!container.active) return;
     const { stdout } = container.options;
     stdout.write(
-      fullFrame(calculateTree(container.tree, stdout.columns), stdout.columns, stdout.rows),
+      container.screen(calculateTree(container.tree, stdout.columns), stdout.columns, stdout.rows),
     );
   },
   createInstance: (type: HostType, props: HostProps) => createNode(type, props),
@@ -113,6 +114,7 @@ export function render(element: ReactNode, options: RenderOptions) {
     tree: createNode("tui-box", { flexDirection: "column" }),
     options,
     active: true,
+    screen: createScreen(),
   };
   const exit = Promise.withResolvers<void>();
   const fail = (error: Error) => {

@@ -5,9 +5,11 @@ import xterm from "@xterm/headless";
 export function createTerminal(columns = 20, rows = 8) {
   const terminal = new xterm.Terminal({ cols: columns, rows, allowProposedApi: true });
   const stdin = new PassThrough();
+  let bytesWritten = 0;
   const stdout = Object.assign(
     new Writable({
       write(chunk, _encoding, callback) {
+        bytesWritten += chunk.length;
         terminal.write(chunk, callback);
       },
     }),
@@ -20,6 +22,7 @@ export function createTerminal(columns = 20, rows = 8) {
     stdin,
     stdout,
     terminal,
+    bytesWritten: () => bytesWritten,
     flush,
     async waitFor(predicate: () => boolean) {
       const deadline = performance.now() + 1000;

@@ -4,7 +4,7 @@ import { textLines, type TextStyle } from "../text";
 interface Cell {
   text: string;
   width: number;
-  style: TextStyle;
+  style: string;
 }
 
 const colors = {
@@ -33,15 +33,15 @@ function sgr(style: TextStyle): string {
   return `\x1b[${codes.join(";")}m`;
 }
 
-/** Paint a fresh cell grid and serialize the whole viewport, without scrolling. */
-export function fullFrame(root: LayoutNode, columns: number, rows: number): string {
+function paintGrid(root: LayoutNode, columns: number, rows: number): Cell[][] {
   const grid: Cell[][] = Array.from({ length: rows }, () =>
-    Array.from({ length: columns }, () => ({ text: " ", width: 1, style: {} })),
+    Array.from({ length: columns }, () => ({ text: " ", width: 1, style: sgr({}) })),
   );
   function put(x: number, y: number, text: string, width = 1, style: TextStyle = {}) {
     if (x < 0 || y < 0 || y >= rows || x + width > columns) return;
-    grid[y]![x] = { text, width, style };
-    if (width === 2) grid[y]![x + 1] = { text: "", width: 0, style };
+    const codes = sgr(style);
+    grid[y]![x] = { text, width, style: codes };
+    if (width === 2) grid[y]![x + 1] = { text: "", width: 0, style: codes };
   }
   function paint(node: LayoutNode) {
     const { x, y, width, height } = node;
@@ -74,17 +74,43 @@ export function fullFrame(root: LayoutNode, columns: number, rows: number): stri
     node.children.forEach(paint);
   }
   paint(root);
-  let ansi = "\x1b[0m\x1b[?7l\x1b[2J";
-  grid.forEach((line, y) => {
-    ansi += `\x1b[${y + 1};1H`;
-    let previous = "";
-    for (const cell of line) {
-      if (cell.width === 0) continue;
-      const style = sgr(cell.style);
-      if (style !== previous) ansi += style;
-      ansi += cell.text;
-      previous = style;
-    }
-  });
-  return ansi + `\x1b[0m\x1b[?7h\x1b[${Math.min(root.height + 1, rows)};1H`;
+  return grid;
+}
+
+/** Each mounted renderer owns its previous viewport; only changed cells are written. */
+export function createScreen() {
+  let previous: Cell[][] | undefined;
+  let previousColumns = 0;
+  let previousRows = 0;
+  return (root: LayoutNode, columns: number, rows: number): string => {
+    const grid = paintGrid(root, columns, rows);
+    const full = !previous || columns !== previousColumns || rows !== previousRows;
+    let ansi = "\x1b[0m\x1b[?7l" + (full ? "\x1b[2J" : "");
+    let style = sgr({});
+    grid.forEach((line, y) => {
+      let nextColumn = -1;
+      for (let x = 0; x < line.length; x++) {
+        const cell = line[x]!;
+        // A wide glyph writes both cells; never address its continuation separately.
+        if (cell.width === 0) continue;
+        const old = previous?.[y]?.[x];
+        if (
+          !full &&
+          old?.text === cell.text &&
+          old.width === cell.width &&
+          old.style === cell.style
+        )
+          continue;
+        if (x !== nextColumn) ansi += `\x1b[${y + 1};${x + 1}H`;
+        if (cell.style !== style) ansi += cell.style;
+        ansi += cell.text;
+        style = cell.style;
+        nextColumn = x + cell.width;
+      }
+    });
+    previous = grid;
+    previousColumns = columns;
+    previousRows = rows;
+    return ansi + `\x1b[0m\x1b[?7h\x1b[${Math.min(root.height + 1, rows)};1H`;
+  };
 }
