@@ -1,14 +1,26 @@
 # Neant
 
-Neant 是桌面端 coding agent。先做 headless agent：负责 agent loop、工具、MCP、skills 和上下文注入。之后桌面 UI 会通过 server 驱动同一个 agent。
+Neant 是 coding agent。Agent Core 负责 agent loop、工具、MCP、skills 和上下文注入；Headless CLI、TUI 和以后的桌面端都是驱动它的 frontend。
 
 ## Language
 
 ### 运行
 
 **Agent Core**:
-headless 的 agent 运行时。CLI 等前端（以后还有 server）通过它来运行 session。
+与界面无关的 agent 运行时。各个 frontend 通过它来运行 session。
 _Avoid_: engine, backend
+
+**Frontend**:
+驱动 Agent Core 并把 run 呈现给用户的程序：Headless CLI、TUI，以后还有桌面端。
+_Avoid_: client, UI
+
+**Headless CLI**:
+非交互的 frontend：读入一条 prompt，执行一个 run，输出文本或 stream-json 后退出。
+_Avoid_: CLI（会和 TUI 混淆）
+
+**TUI**:
+运行在终端里的交互式 frontend，在同一个 session 里连续接收 prompt。
+_Avoid_: CLI, REPL
 
 **Session**:
 用户与 agent 在同一个工作目录下的一段连续对话，可以凭 id 恢复。
@@ -27,7 +39,7 @@ _Avoid_: step, round
 _Avoid_: task, job
 
 **Session Store**:
-transcript 的持久化位置。headless CLI 存成 JSONL 文件，桌面端存到 SQLite。
+transcript 的持久化位置。Headless CLI 和 TUI 存成 JSONL 文件，桌面端存到 SQLite。
 _Avoid_: database, history store
 
 ### 给模型的上下文
@@ -67,5 +79,5 @@ _Avoid_: safe project, whitelisted repo
 _Avoid_: slash command, macro
 
 **Permission Decision**:
-对单次工具调用在执行前做出的判定：`allow`、`deny` 或 `ask`。headless 模式下 `ask` 按 `deny` 处理。
+对单次工具调用在执行前做出的判定：`allow`、`deny` 或 `ask`。`ask` 交给 frontend 询问用户；Headless CLI 没法询问，按 `deny` 处理。
 _Avoid_: approval, consent
