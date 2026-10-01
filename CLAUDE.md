@@ -1,3 +1,7 @@
+## Tech stack
+
+Pinned versions and deviations from the original list: see `docs/tech-stack.md`. Update it whenever a dependency version changes.
+
 ## Repo layout
 
 Bun workspaces (`apps/*`, `packages/*`). Internal packages are not built: `exports` points at `src/index.ts` and dependents use `workspace:*`.
