@@ -1,8 +1,8 @@
 {
-  "name": "@neant/cli",
+  "name": "@neant/neant-cli",
   "private": true,
   "bin": {
-    "neant": "./src/main.ts"
+    "neant-cli": "./src/main.ts"
   },
   "type": "module",
   "dependencies": {

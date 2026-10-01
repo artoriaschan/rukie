@@ -8,7 +8,7 @@ Bun workspaces (`apps/*`, `packages/*`). Internal packages are not built: `expor
 
 ```
 apps/
-  cli/          @neant/cli      argv → Agent Core → text / stream-json output
+  neant-cli/    @neant/neant-cli  argv → Agent Core → text / stream-json output
   server/       (later) @neant/server   Hono + WS
   desktop/      (later) @neant/desktop  src/{main,preload,renderer}
 packages/

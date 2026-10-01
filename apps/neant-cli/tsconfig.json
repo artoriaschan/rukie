@@ -1,5 +1,5 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "types": ["bun"], "outDir": "../../node_modules/.cache/tsc/cli" },
+  "compilerOptions": { "types": ["bun"], "outDir": "../../node_modules/.cache/tsc/neant-cli" },
   "include": ["src", "tests"]
 }

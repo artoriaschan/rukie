@@ -8,9 +8,9 @@ Status: ready-for-agent
 
 ## Solution
 
-做一个 Bun monorepo。核心是 Agent Core（`@neant/agent`），建在 pi-agent-core 的 harness 之上；前端是 `neant` CLI（`@neant/cli`）；跨运行时共享的类型和 schema 放在 `@neant/shared`。
+做一个 Bun monorepo。核心是 Agent Core（`@neant/agent`），建在 pi-agent-core 的 harness 之上；前端是 `neant-cli`（Headless CLI，`@neant/neant-cli`，位于 `apps/neant-cli`）；跨运行时共享的类型和 schema 放在 `@neant/shared`。
 
-用户运行 `neant -p "<prompt>"`，agent 在当前目录下完成一个 Run，结果以纯文本或 JSONL 事件流（`stream-json`）输出。具体行为：
+用户运行 `neant-cli -p "<prompt>"`，agent 在当前目录下完成一个 Run，结果以纯文本或 JSONL 事件流（`stream-json`）输出。具体行为：
 
 - Session 自动保存为 JSONL，可以用 `--resume <id>` 接着聊。
 - 模型通过 System Prompt 和 System Reminder 拿到身份、环境、Project Instructions 和可用 skills 等信息。
@@ -21,7 +21,7 @@ Status: ready-for-agent
 
 ### 运行与输出
 
-1. 作为开发者，我想运行 `neant -p "<prompt>"` 让 agent 在当前目录处理一个任务，这样不用打开 GUI 就能用 agent。
+1. 作为开发者，我想运行 `neant-cli -p "<prompt>"` 让 agent 在当前目录处理一个任务，这样不用打开 GUI 就能用 agent。
 2. 作为开发者，我想默认得到纯文本输出（最终的 assistant 回复），这样在终端里能直接读。
 3. 作为脚本作者，我想用 `--output-format stream-json` 拿到 JSONL 事件流，这样可以用程序消费 agent 的执行过程。
 4. 作为脚本作者，我想每个事件都带 `sessionId`，这样能把事件和 session 对应起来。
@@ -120,7 +120,7 @@ Status: ready-for-agent
 
 ### 仓库与包
 
-- Bun workspaces，目录分为 `apps/*` 和 `packages/*`。本 spec 包含三个包：`@neant/shared`、`@neant/agent`、`@neant/cli`。server 和 desktop 不在本 spec 范围内。
+- Bun workspaces，目录分为 `apps/*` 和 `packages/*`。本 spec 包含三个包：`@neant/shared`、`@neant/agent`、`@neant/neant-cli`。server 和 desktop 不在本 spec 范围内。
 - 内部包不构建：`exports` 直接指向源码入口，用 `workspace:*` 互相引用。
 - 每个 CONTEXT.md 里的概念对应一个目录，目录对外只通过各自的入口文件导出；跨概念引用只能经过这个入口。
 - TypeScript 使用公共的 base 配置，开启 strict，`moduleResolution` 为 `bundler`；用 `tsc -b` 对所有包做类型检查。
@@ -161,7 +161,7 @@ Status: ready-for-agent
 - **store**：使用 pi 的 session repo 接口，headless 模式下用 `JsonlSessionRepo` 的原生 v4 格式，路径为 `~/.neant/sessions/<项目路径 slug>/<时间戳>_<id>.jsonl`（slug 和文件名由 pi 生成）。现在只用线性结构，不提供分支操作。SQLite 实现不在本 spec 范围内（见 ADR-0003）。
 - **compaction**：在每个 turn 开始前估算 token 用量，超过上下文窗口约 80% 时调用 pi 的 `compact`；生成的摘要作为一条 entry 写入，原始消息保留；发出 `compaction` 事件。
 
-### CLI（`@neant/cli`）
+### CLI（`@neant/neant-cli`）
 
 - 参数：`-p/--prompt`（不写时从 stdin 读取）、`--output-format text|stream-json`（默认 text）、`--resume <id>`、`--model`、`--thinking`、`--allow-tools <pattern...>`、`--yolo`、`--trust-project-mcp`。
 - text 模式下只输出最终的 assistant 文本，警告写到 stderr；stream-json 模式下每行一个事件写到 stdout。
@@ -180,7 +180,7 @@ Status: ready-for-agent
   - 覆盖：reminder 的首次注入和增量补发（还要验证 resume 后上下文前缀和之前完全一致）、权限的放开和拒绝（包括 glob 模式匹配和 yolo）、skill 工具和 `/name` 展开、grep 和 glob 的结果、JSONL 写入和 resume、项目级 settings 不能定义 provider、MCP 的信任判断和失败降级、compaction 的触发和写入、abort 之后消息不丢失。
   - MCP 用 `tests/helpers` 里一个真实的 stdio MCP server 脚本，测试时作为子进程启动，不用 mock。
 - **Seam 2：CLI 进程**（只写少量测试）
-  - 真正启动 `neant` 子进程。模型端用 `Bun.serve` 起一个假的 OpenAI 兼容服务（Chat Completions），通过临时 home 目录里 settings 的自定义 provider 指向它。
+  - 真正启动 `neant-cli` 子进程。模型端用 `Bun.serve` 起一个假的 OpenAI 兼容服务（Chat Completions），通过临时 home 目录里 settings 的自定义 provider 指向它。
   - 覆盖：text 输出、stream-json 的事件顺序（以 `session_start` 开头、以 `result` 结尾）、`--resume`、缺少模型或 key 时的报错和退出码、参数错误时退出码为 2。
 - `@neant/shared` 不单独测试，通过上面两个 seam 间接覆盖。
 - 仓库里还没有测试，这个 spec 的测试会成为后续测试的参考范例。

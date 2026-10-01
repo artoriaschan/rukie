@@ -16,10 +16,10 @@
         "typescript": "6.0.3",
       },
     },
-    "apps/cli": {
-      "name": "@neant/cli",
+    "apps/neant-cli": {
+      "name": "@neant/neant-cli",
       "bin": {
-        "neant": "./src/main.ts",
+        "neant-cli": "./src/main.ts",
       },
       "dependencies": {
         "@neant/agent": "workspace:*",
@@ -208,7 +208,7 @@
 
     "@neant/agent": ["@neant/agent@workspace:packages/agent"],
 
-    "@neant/cli": ["@neant/cli@workspace:apps/cli"],
+    "@neant/neant-cli": ["@neant/neant-cli@workspace:apps/neant-cli"],
 
     "@neant/shared": ["@neant/shared@workspace:packages/shared"],
 
