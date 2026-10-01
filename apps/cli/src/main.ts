@@ -1,13 +1,14 @@
 #!/usr/bin/env bun
 import { homedir } from "node:os";
 import { parseArgs } from "node:util";
-import { createSession, type SessionOptions } from "@neant/agent";
+import { createSession, loadSettings, type SessionOptions } from "@neant/agent";
+import { THINKING_LEVELS, type ThinkingLevel } from "@neant/shared";
 
 export interface CliIo {
   readStdin: () => Promise<string>;
   stdout: (text: string) => void;
   stderr: (text: string) => void;
-  /** Overrides for the session; tests inject `streamFn` and `model` here. */
+  /** Overrides for the session; in-process tests inject `streamFn` and `model` here. */
   session?: Partial<SessionOptions>;
 }
 
@@ -15,26 +16,36 @@ export interface CliIo {
 export async function main(argv: string[], io: CliIo): Promise<number> {
   let values;
   try {
-    ({ values } = parseArgs({ args: argv, options: { prompt: { type: "string", short: "p" } } }));
+    ({ values } = parseArgs({
+      args: argv,
+      options: {
+        prompt: { type: "string", short: "p" },
+        model: { type: "string" },
+        thinking: { type: "string" },
+      },
+    }));
+    if (values.model !== undefined && !/^[^/]+\/.+/.test(values.model)) {
+      throw new Error(`--model must be provider/id, got "${values.model}"`);
+    }
+    if (
+      values.thinking !== undefined &&
+      !THINKING_LEVELS.includes(values.thinking as ThinkingLevel)
+    ) {
+      throw new Error(`--thinking must be one of ${THINKING_LEVELS.join(", ")}`);
+    }
   } catch (error) {
     io.stderr(`${(error as Error).message}\n`);
     return 2;
   }
-  const { streamFn, model, ...rest } = io.session ?? {};
-  // ponytail: model comes from settings in ticket 02; until then only injected models work
-  if (!streamFn || !model) {
-    io.stderr("No model configured.\n");
-    return 1;
-  }
-  const prompt = values.prompt ?? (await io.readStdin()).trimEnd();
   try {
-    const session = await createSession({
-      cwd: process.cwd(),
-      homeDir: homedir(),
-      ...rest,
-      streamFn,
-      model,
-    });
+    const cwd = io.session?.cwd ?? process.cwd();
+    const homeDir = io.session?.homeDir ?? homedir();
+    const { settings, warnings } = await loadSettings({ cwd, homeDir });
+    for (const warning of warnings) io.stderr(`Warning: ${warning}\n`);
+    if (values.model) settings.model = values.model;
+    if (values.thinking) settings.thinking = values.thinking as ThinkingLevel;
+    const session = await createSession({ cwd, homeDir, settings, ...io.session });
+    const prompt = values.prompt ?? (await io.readStdin()).trimEnd();
     const { text } = await session.run(prompt);
     io.stdout(`${text}\n`);
     return 0;

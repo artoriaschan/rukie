@@ -6,7 +6,8 @@
   },
   "type": "module",
   "dependencies": {
-    "@neant/agent": "workspace:*"
+    "@neant/agent": "workspace:*",
+    "@neant/shared": "workspace:*"
   },
   "devDependencies": {
     "@earendil-works/pi-ai": "0.99.2"
