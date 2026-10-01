@@ -1,6 +1,7 @@
 # 02: 真实模型与配置
 
 **What to build:** 用户在 `~/.neant/settings.json` 里配好 `model`（以及可选的自定义 provider）之后，`neant -p` 会调用真实模型。具体行为：
+
 - 内置 provider 从标准环境变量读取 key。
 - 自定义 provider 支持 Chat Completions、Responses、Anthropic Messages 三种 api，配置里只写存放 key 的环境变量名，不写明文 key。
 - 项目级 `.neant/settings.json` 只能覆盖 `model` 和 `allowTools`；如果它定义了 `providers`，则忽略并给出警告。

@@ -1,6 +1,7 @@
 # 04: 内置工具与权限
 
 **What to build:** agent 能用 read、write、edit、bash（pi 自带）以及 glob、grep（自己实现）来完成编码任务，并且受权限控制：
+
 - 默认只放开只读的 `read`、`glob`、`grep`（`skill` 工具在 07 加入只读集合）。
 - 用户可以用 `--allow-tools <pattern...>`（glob 模式）、settings 里的 `allowTools`，或者 `--yolo` 放开更多工具。
 - 没有授权的调用不会执行，而是以 `isError` 告诉模型"该工具未获授权"，同时发出 `permission_denied` 事件。

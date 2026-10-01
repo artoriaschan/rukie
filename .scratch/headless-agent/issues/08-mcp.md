@@ -1,6 +1,7 @@
 # 08: MCP
 
 **What to build:** agent 能使用 MCP Server 提供的工具。
+
 - **连接**：通过 `pi-mcp` 连接 stdio 和 Streamable HTTP 两种 server，HTTP 支持配置 headers。
 - **配置来源**：用户级的 `~/.neant/mcp.json`（兼容 `mcpServers` 格式）总是加载；项目的 `.mcp.json` 只在 Trusted Project（在 settings 的 `trustedProjects` 里）或加了 `--trust-project-mcp` 时才加载。
 - **命名与权限**：MCP 工具命名为 `mcp__<server>__<tool>`，默认禁用，需要授权。

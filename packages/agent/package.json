@@ -1,0 +1,10 @@
+{
+  "name": "@neant/agent",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "0.99.2",
+    "@earendil-works/pi-ai": "0.99.2"
+  }
+}

@@ -1,6 +1,7 @@
 # 07: Skills
 
 **What to build:** agent 能发现并使用符合 Agent Skills 规范的 skill。
+
 - **发现**：在用户级和项目级的 `.neant/skills`、`.claude/skills`、`.agents/skills` 中查找（使用 pi 的 `loadSkills`）。重名时项目级优先；格式有问题的 skill 跳过并给出警告。
 - **注入**：skills 的名称和描述列表通过 System Reminder 注入，resume 时如果列表有变化，补发增量。
 - **加载**：模型通过 `skill` 工具（属于只读工具，默认放开）按名称加载正文。
