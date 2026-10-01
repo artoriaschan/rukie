@@ -3,6 +3,10 @@
   "categories": { "correctness": "error" },
   "overrides": [
     {
+      "files": ["packages/tui/src/yoga/**"],
+      "rules": { "no-unused-vars": "off", "unicorn/no-new-array": "off" }
+    },
+    {
       "files": ["packages/shared/**"],
       "rules": {
         "no-restricted-imports": [
