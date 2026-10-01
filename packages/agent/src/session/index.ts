@@ -24,6 +24,15 @@ import { discoverSkills, skillInvocation, skillsReminder } from "../skills/index
 import { createMcpConnections } from "../mcp/index.ts";
 import { compactTurn, restoreContext } from "../compaction/index.ts";
 
+export interface PermissionAskRequest {
+  toolCallId: string;
+  toolName: string;
+  /** Validated arguments for this tool call. */
+  args: unknown;
+  /** Aborted when the Run is cancelled; frontends can dismiss their pending question. */
+  signal: AbortSignal;
+}
+
 export interface SessionOptions {
   /** Project directory the session works in. */
   cwd: string;
@@ -43,6 +52,8 @@ export interface SessionOptions {
   allowTools?: string[];
   /** Allow every tool. */
   yolo?: boolean;
+  /** Decide tool calls requiring permission; defaults to deny. */
+  onPermissionAsk?: (request: PermissionAskRequest) => Promise<"allow" | "deny">;
   /** Load this project's .mcp.json even when it is not in the user trust list. */
   trustProjectMcp?: boolean;
   /** Clock used for reminder dates; defaults to the local current date. */
@@ -65,6 +76,23 @@ export interface Session {
       onEvent?: (event: SessionEvent) => void | Promise<void>;
     },
   ): Promise<RunResult>;
+}
+
+async function askPermission(
+  request: PermissionAskRequest,
+  ask: NonNullable<SessionOptions["onPermissionAsk"]>,
+): Promise<"allow" | "deny"> {
+  const { signal } = request;
+  if (signal.aborted) return "deny";
+  const aborted = Promise.withResolvers<"deny">();
+  const abort = () => aborted.resolve("deny");
+  signal.addEventListener("abort", abort, { once: true });
+  try {
+    const decision = await Promise.race([ask(request), aborted.promise]);
+    return signal.aborted ? "deny" : decision;
+  } finally {
+    signal.removeEventListener("abort", abort);
+  }
 }
 
 export async function createSession(options: SessionOptions): Promise<Session> {
@@ -106,11 +134,24 @@ export async function createSession(options: SessionOptions): Promise<Session> {
   const agent = new Agent({
     streamFn: options.streamFn ?? streamFn,
     convertToLlm,
-    beforeToolCall: async ({ toolCall }) => {
-      const decision = decidePermission(toolCall.name, {
+    beforeToolCall: async ({ toolCall, args }, signal) => {
+      let decision = decidePermission(toolCall.name, {
         allowTools: [...(settings.allowTools ?? []), ...(options.allowTools ?? [])],
         yolo: options.yolo,
       });
+      if (decision === "ask") {
+        decision = options.onPermissionAsk
+          ? await askPermission(
+              {
+                toolCallId: toolCall.id,
+                toolName: toolCall.name,
+                args,
+                signal: signal ?? new AbortController().signal,
+              },
+              options.onPermissionAsk,
+            )
+          : "deny";
+      }
       if (decision === "allow") return undefined;
       await emitRunEvent?.({
         type: "permission_denied",

@@ -10,5 +10,5 @@ export function decidePermission(toolName: string, options: PermissionOptions): 
   if (options.yolo || ["read", "glob", "grep", "skill"].includes(toolName)) return "allow";
   return options.allowTools?.some((pattern) => new Bun.Glob(pattern).match(toolName))
     ? "allow"
-    : "deny";
+    : "ask";
 }
