@@ -1,7 +1,4 @@
-import { useRef, useState, useSyncExternalStore } from "react";
 import type { Session, SessionEvent } from "@neant/agent";
-import { Box, Spinner, Static, Text, TextInput, useInput } from "@neant/tui";
-import { PermissionDialog, type createPermissions } from "../permissions";
 
 interface ToolCall {
   id: string;
@@ -9,7 +6,7 @@ interface ToolCall {
 }
 
 type CompletedEntry =
-  | { type: "message"; text: string }
+  | { type: "message"; role: "user" | "assistant"; text: string }
   | { type: "tool"; summary: string; isError: boolean; error?: string }
   | { type: "notice"; text: string };
 
@@ -68,13 +65,13 @@ function replayMessages(messages: Session["messages"]): CompletedEntry[] {
   const tools = new Map<string, string>();
   return messages.flatMap((message): CompletedEntry[] => {
     const text = messageText(message);
-    if (message.role === "user") return [{ type: "message", text: `> ${text}` }];
+    if (message.role === "user") return [{ type: "message", role: "user", text }];
     if (message.role === "assistant") {
       for (const content of message.content) {
         if (content.type === "toolCall")
           tools.set(content.id, toolSummary(content.name, content.arguments));
       }
-      return text ? [{ type: "message", text }] : [];
+      return text ? [{ type: "message", role: "assistant", text }] : [];
     }
     if (message.role === "toolResult") {
       const summary = tools.get(message.toolCallId) ?? message.toolName;
@@ -100,13 +97,15 @@ function reduceEvent(state: ViewState, event: SessionEvent): ViewState {
       if (event.message.role === "user") {
         return {
           ...state,
-          completed: [...state.completed, { type: "message", text: `> ${text}` }],
+          completed: [...state.completed, { type: "message", role: "user", text }],
         };
       }
       if (event.message.role !== "assistant") return state;
       return {
         ...state,
-        completed: text ? [...state.completed, { type: "message", text }] : state.completed,
+        completed: text
+          ? [...state.completed, { type: "message", role: "assistant", text }]
+          : state.completed,
         assistant: "",
         input: state.input + event.message.usage.input,
         output: state.output + event.message.usage.output,
@@ -151,7 +150,7 @@ function reduceEvent(state: ViewState, event: SessionEvent): ViewState {
       return {
         ...state,
         completed: state.assistant
-          ? [...state.completed, { type: "message", text: state.assistant }]
+          ? [...state.completed, { type: "message", role: "assistant", text: state.assistant }]
           : state.completed,
         assistant: "",
         running: false,
@@ -219,113 +218,4 @@ export function createConversation(session: Session, model: string) {
       await active?.promise;
     },
   };
-}
-
-export function Conversation({
-  conversation,
-  permissions,
-  onExit,
-}: {
-  conversation: ReturnType<typeof createConversation>;
-  permissions: ReturnType<typeof createPermissions>;
-  onExit(): void;
-}) {
-  const state = useSyncExternalStore(conversation.subscribe, conversation.getSnapshot);
-  const question = useSyncExternalStore(permissions.subscribe, permissions.getSnapshot);
-  const [input, setInput] = useState("");
-  const draft = useRef("");
-  const lastInterrupt = useRef<number | undefined>(undefined);
-  const change = (value: string) => {
-    draft.current = value;
-    lastInterrupt.current = undefined;
-    setInput(value);
-  };
-  useInput((event) => {
-    if (event.type !== "key") {
-      lastInterrupt.current = undefined;
-      return;
-    }
-    const { key } = event;
-    const pending = permissions.getSnapshot();
-    if (pending && !(key.ctrl && key.name === "c")) {
-      lastInterrupt.current = undefined;
-      if (key.name === "escape") permissions.deny();
-      else if (!key.ctrl && !key.alt && !key.shift) {
-        if (key.name === "enter") permissions.confirm();
-        else if (key.name === "up" || key.name === "left") permissions.select(pending.selected - 1);
-        else if (key.name === "down" || key.name === "right")
-          permissions.select(pending.selected + 1);
-        else if (/^[1-3]$/.test(event.input)) permissions.select(Number(event.input) - 1);
-      }
-      return;
-    }
-    if (key.name === "escape" || (key.ctrl && key.name === "c")) {
-      if (conversation.isRunning()) {
-        conversation.interrupt();
-        lastInterrupt.current = undefined;
-      } else if (key.ctrl) {
-        if (draft.current) change("");
-        else {
-          const now = performance.now();
-          if (lastInterrupt.current !== undefined && now - lastInterrupt.current <= 1000) onExit();
-          else lastInterrupt.current = now;
-        }
-      }
-    } else if (key.ctrl && key.name === "d" && !draft.current) {
-      if (!conversation.isRunning()) onExit();
-    } else lastInterrupt.current = undefined;
-  });
-  return (
-    <Box flexDirection="column">
-      <Static>
-        {state.completed.map((entry, index) =>
-          entry.type === "tool" ? (
-            <Box key={index} flexDirection="column">
-              <Text wrap="truncate">{`${entry.isError ? "✗" : "✓"} ${entry.summary}`}</Text>
-              {entry.error && (
-                <Text color="red" wrap="truncate">
-                  {entry.error}
-                </Text>
-              )}
-            </Box>
-          ) : (
-            <Text
-              key={index}
-              dimColor={entry.type === "notice"}
-              wrap={entry.type === "notice" ? "truncate" : "wrap"}
-            >
-              {entry.text}
-            </Text>
-          ),
-        )}
-      </Static>
-      {state.assistant && <Text>{state.assistant}</Text>}
-      {state.tools.map((tool) => (
-        <Text key={tool.id} wrap="truncate">
-          <Spinner /> {tool.summary}
-        </Text>
-      ))}
-      {state.error && <Text color="red">{state.error}</Text>}
-      {question && <PermissionDialog {...question} />}
-      {!question && (
-        <Box>
-          <Box width={2} flexShrink={0}>
-            <Text>{">"}</Text>
-          </Box>
-          <Box flexGrow={1}>
-            <TextInput
-              value={input}
-              onChange={change}
-              onSubmit={(prompt) => {
-                if (conversation.submit(prompt)) change("");
-              }}
-            />
-          </Box>
-        </Box>
-      )}
-      <Text
-        dimColor
-      >{`${state.model} · input ${state.input} · output ${state.output} · ${state.running ? "Running" : "Ready"}`}</Text>
-    </Box>
-  );
 }

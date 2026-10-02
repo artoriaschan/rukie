@@ -1,11 +1,10 @@
 #!/usr/bin/env bun
 import { homedir } from "node:os";
 import { parseArgs } from "node:util";
-import { createSession, loadSettings, type SessionOptions } from "@neant/agent";
+import { loadSettings, type SessionOptions } from "@neant/agent";
 import { THINKING_LEVELS, type ThinkingLevel } from "@neant/shared";
 import { render, type RenderOptions } from "@neant/tui";
-import { Conversation, createConversation } from "./conversation";
-import { createPermissions } from "./permissions";
+import { createChat } from "./screens/chat";
 
 export interface TuiIo extends RenderOptions {
   stderr(text: string): void;
@@ -58,7 +57,7 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
     return 2;
   }
   let app: ReturnType<typeof render> | undefined;
-  let conversation: ReturnType<typeof createConversation> | undefined;
+  let chat: Awaited<ReturnType<typeof createChat>> | undefined;
   try {
     const cwd = io.session?.cwd ?? process.cwd();
     const homeDir = io.session?.homeDir ?? homedir();
@@ -66,36 +65,26 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
     for (const warning of warnings) io.stderr(`Warning: ${warning}\n`);
     if (values.model) settings.model = values.model;
     if (values.thinking) settings.thinking = values.thinking as ThinkingLevel;
-    const permissions = createPermissions();
-    const session = await createSession({
-      cwd,
-      homeDir,
-      settings,
-      onWarning: (warning) => {
-        // MCP errors also arrive as SessionEvents and are rendered as inline notices.
-        if (!warning.startsWith("MCP server ")) io.stderr(`Warning: ${warning}\n`);
-      },
-      ...io.session,
-      onPermissionAsk: io.session?.onPermissionAsk ?? permissions.ask,
-      resumeId: values.resume,
-      allowTools: [...(io.session?.allowTools ?? []), ...(values["allow-tools"] ?? [])],
-      yolo: values.yolo ?? io.session?.yolo,
-      trustProjectMcp: values["trust-project-mcp"] ?? io.session?.trustProjectMcp,
-    });
     const model = io.session?.model;
-    conversation = createConversation(
-      session,
+    chat = await createChat(
+      {
+        cwd,
+        homeDir,
+        settings,
+        onWarning: (warning) => {
+          // MCP errors also arrive as SessionEvents and are rendered as inline notices.
+          if (!warning.startsWith("MCP server ")) io.stderr(`Warning: ${warning}\n`);
+        },
+        ...io.session,
+        resumeId: values.resume,
+        allowTools: [...(io.session?.allowTools ?? []), ...(values["allow-tools"] ?? [])],
+        yolo: values.yolo ?? io.session?.yolo,
+        trustProjectMcp: values["trust-project-mcp"] ?? io.session?.trustProjectMcp,
+      },
       model ? `${model.provider}/${model.id}` : settings.model!,
     );
-    app = render(
-      <Conversation
-        conversation={conversation}
-        permissions={permissions}
-        onExit={() => app?.unmount()}
-      />,
-      io,
-    );
-    if (prompt !== undefined) conversation.submit(prompt);
+    app = render(<chat.Chat onExit={() => app?.unmount()} />, io);
+    if (prompt !== undefined) chat.submit(prompt);
     await app.waitUntilExit();
     return 0;
   } catch (error) {
@@ -103,7 +92,7 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
     return 1;
   } finally {
     app?.unmount();
-    await conversation?.stop();
+    await chat?.stop();
   }
 }
 
