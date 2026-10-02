@@ -1,0 +1,62 @@
+import { PassThrough, Writable } from "node:stream";
+import xterm from "@xterm/headless";
+
+/** Interpret the frontend's ANSI output at its terminal IO seam. */
+export function createTerminal(columns = 80, rows = 8) {
+  const terminal = new xterm.Terminal({ cols: columns, rows, allowProposedApi: true });
+  const stdin = Object.assign(new PassThrough(), {
+    isRaw: false,
+    setRawMode(raw: boolean) {
+      this.isRaw = raw;
+      return this;
+    },
+  });
+  let output = "";
+  const stdout = Object.assign(
+    new Writable({
+      write(chunk, _encoding, callback) {
+        output += chunk.toString();
+        terminal.write(chunk, callback);
+      },
+    }),
+    { columns, rows },
+  );
+  const flush = () => new Promise<void>((resolve) => stdout.write("", () => resolve()));
+  function screen() {
+    const buffer = terminal.buffer.active;
+    return Array.from({ length: rows }, (_, y) =>
+      buffer
+        .getLine(buffer.viewportY + y)!
+        .translateToString(true)
+        .trimEnd(),
+    );
+  }
+  return {
+    stdin,
+    stdout,
+    terminal,
+    flush,
+    screen,
+    output: () => output,
+    allLines() {
+      const buffer = terminal.buffer.active;
+      return Array.from({ length: buffer.baseY }, (_, y) =>
+        buffer.getLine(y)!.translateToString(true).trimEnd(),
+      ).concat(screen());
+    },
+    async waitFor(predicate: () => boolean) {
+      const deadline = performance.now() + 2000;
+      do {
+        await flush();
+        if (predicate()) return;
+        await Bun.sleep(1);
+      } while (performance.now() < deadline);
+      throw new Error(`Terminal did not reach expected state:\n${screen().join("\n")}`);
+    },
+    dispose() {
+      stdin.destroy();
+      stdout.destroy();
+      terminal.dispose();
+    },
+  };
+}

@@ -30,6 +30,23 @@
         "typebox": "1.3.27",
       },
     },
+    "apps/neant-tui": {
+      "name": "@neant/neant-tui",
+      "bin": {
+        "neant": "./src/main.tsx",
+      },
+      "dependencies": {
+        "@neant/agent": "workspace:*",
+        "@neant/shared": "workspace:*",
+        "@neant/tui": "workspace:*",
+        "react": "19.3.0",
+      },
+      "devDependencies": {
+        "@earendil-works/pi-ai": "0.99.2",
+        "@types/react": "19.3.0",
+        "@xterm/headless": "6.0.0",
+      },
+    },
     "packages/agent": {
       "name": "@neant/agent",
       "dependencies": {
@@ -221,6 +238,8 @@
     "@neant/agent": ["@neant/agent@workspace:packages/agent"],
 
     "@neant/neant-cli": ["@neant/neant-cli@workspace:apps/neant-cli"],
+
+    "@neant/neant-tui": ["@neant/neant-tui@workspace:apps/neant-tui"],
 
     "@neant/shared": ["@neant/shared@workspace:packages/shared"],
 

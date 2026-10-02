@@ -1,0 +1,19 @@
+{
+  "name": "@neant/neant-tui",
+  "private": true,
+  "bin": {
+    "neant": "./src/main.tsx"
+  },
+  "type": "module",
+  "dependencies": {
+    "@neant/agent": "workspace:*",
+    "@neant/shared": "workspace:*",
+    "@neant/tui": "workspace:*",
+    "react": "19.3.0"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "0.99.2",
+    "@types/react": "19.3.0",
+    "@xterm/headless": "6.0.0"
+  }
+}

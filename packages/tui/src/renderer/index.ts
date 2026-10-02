@@ -178,6 +178,9 @@ export function render(element: ReactNode, options: RenderOptions) {
       if (container.error !== undefined) exit.reject(container.error);
       else exit.resolve();
     },
+    // Controlled editors must see parent resets before decoding the next key.
+    // ANSI output remains coalesced by schedulePaint, including during a paste.
+    (notify) => reconciler.flushSyncFromReconciler(notify),
   );
   const fail = container.onError;
   const root = reconciler.createContainer(

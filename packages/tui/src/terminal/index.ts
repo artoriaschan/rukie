@@ -30,6 +30,7 @@ export function createTerminalSession(
   { stdin, stdout }: TerminalIO,
   redraw: () => void,
   onDispose: () => void,
+  dispatchInput: (notify: () => void) => void,
 ) {
   const inputs = new Set<(event: InputEvent) => void>();
   const sizes = new Set<() => void>();
@@ -65,7 +66,9 @@ export function createTerminalSession(
   try {
     stdin.setRawMode?.(true);
     stdout.write("\x1b[?25l\x1b[?2004h");
-    stopInput = listenInput(stdin, (event) => inputs.forEach((listener) => listener(event)));
+    stopInput = listenInput(stdin, (event) =>
+      dispatchInput(() => inputs.forEach((listener) => listener(event))),
+    );
     stdout.on?.("resize", resize);
     if (sessions.size === 0) {
       process.on("exit", restoreAll);

@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["bun"],
+    "jsx": "react-jsx",
+    "outDir": "../../node_modules/.cache/tsc/neant-tui"
+  },
+  "include": ["src", "tests"]
+}
