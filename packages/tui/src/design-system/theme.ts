@@ -11,6 +11,13 @@ export interface Theme {
   promptBorder: `#${string}`;
   logoFrom: `#${string}`;
   logoTo: `#${string}`;
+  barSystem: `#${string}`;
+  barPrompt: `#${string}`;
+  barAssistant: `#${string}`;
+  barThinking: `#${string}`;
+  barTools: `#${string}`;
+  barFree: `#${string}`;
+  barFreeText: `#${string}`;
 }
 
 export const dark: Theme = {
@@ -26,4 +33,11 @@ export const dark: Theme = {
   promptBorder: "#55606F",
   logoFrom: "#7DA1DE",
   logoTo: "#D7E4FF",
+  barSystem: "#22305F",
+  barPrompt: "#2B3D78",
+  barAssistant: "#344A92",
+  barThinking: "#4D6BFE",
+  barTools: "#5A7CFF",
+  barFree: "#2E3440",
+  barFreeText: "#8D95A6",
 };

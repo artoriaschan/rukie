@@ -23,15 +23,21 @@ function useColor(color?: ThemeColor) {
       : (color as TextProps["color"]);
 }
 
-export interface ThemedTextProps extends Omit<TextProps, "color"> {
+export interface ThemedTextProps extends Omit<TextProps, "color" | "backgroundColor"> {
   color?: ThemeColor;
+  backgroundColor?: ThemeColor;
 }
 
-export function ThemedText({ color, ...props }: ThemedTextProps) {
+export function ThemedText({ color, backgroundColor, ...props }: ThemedTextProps) {
   const resolved = useColor(color);
+  const theme = useTheme();
+  const background =
+    backgroundColor !== undefined && backgroundColor in theme
+      ? theme[backgroundColor as keyof Theme]
+      : (backgroundColor as TextProps["backgroundColor"]);
   return (
     <ColorContext.Provider value={resolved}>
-      <Text {...props} color={resolved} />
+      <Text {...props} color={resolved} backgroundColor={background} />
     </ColorContext.Provider>
   );
 }
