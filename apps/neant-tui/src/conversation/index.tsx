@@ -1,6 +1,7 @@
 import { useRef, useState, useSyncExternalStore } from "react";
 import type { Session, SessionEvent } from "@neant/agent";
 import { Box, Spinner, Static, Text, TextInput, useInput } from "@neant/tui";
+import { PermissionDialog, type createPermissions } from "../permissions";
 
 interface ToolCall {
   id: string;
@@ -192,12 +193,15 @@ export function createConversation(session: Session, model: string) {
 
 export function Conversation({
   conversation,
+  permissions,
   onExit,
 }: {
   conversation: ReturnType<typeof createConversation>;
+  permissions: ReturnType<typeof createPermissions>;
   onExit(): void;
 }) {
   const state = useSyncExternalStore(conversation.subscribe, conversation.getSnapshot);
+  const question = useSyncExternalStore(permissions.subscribe, permissions.getSnapshot);
   const [input, setInput] = useState("");
   const draft = useRef("");
   const lastInterrupt = useRef<number | undefined>(undefined);
@@ -212,6 +216,19 @@ export function Conversation({
       return;
     }
     const { key } = event;
+    const pending = permissions.getSnapshot();
+    if (pending && !(key.ctrl && key.name === "c")) {
+      lastInterrupt.current = undefined;
+      if (key.name === "escape") permissions.deny();
+      else if (!key.ctrl && !key.alt && !key.shift) {
+        if (key.name === "enter") permissions.confirm();
+        else if (key.name === "up" || key.name === "left") permissions.select(pending.selected - 1);
+        else if (key.name === "down" || key.name === "right")
+          permissions.select(pending.selected + 1);
+        else if (/^[1-3]$/.test(event.input)) permissions.select(Number(event.input) - 1);
+      }
+      return;
+    }
     if (key.name === "escape" || (key.ctrl && key.name === "c")) {
       if (conversation.isRunning()) {
         conversation.interrupt();
@@ -259,20 +276,23 @@ export function Conversation({
         </Text>
       ))}
       {state.error && <Text color="red">{state.error}</Text>}
-      <Box>
-        <Box width={2} flexShrink={0}>
-          <Text>{">"}</Text>
+      {question && <PermissionDialog {...question} />}
+      {!question && (
+        <Box>
+          <Box width={2} flexShrink={0}>
+            <Text>{">"}</Text>
+          </Box>
+          <Box flexGrow={1}>
+            <TextInput
+              value={input}
+              onChange={change}
+              onSubmit={(prompt) => {
+                if (conversation.submit(prompt)) change("");
+              }}
+            />
+          </Box>
         </Box>
-        <Box flexGrow={1}>
-          <TextInput
-            value={input}
-            onChange={change}
-            onSubmit={(prompt) => {
-              if (conversation.submit(prompt)) change("");
-            }}
-          />
-        </Box>
-      </Box>
+      )}
       <Text
         dimColor
       >{`${state.model} · input ${state.input} · output ${state.output} · ${state.running ? "Running" : "Ready"}`}</Text>

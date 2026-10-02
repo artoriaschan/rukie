@@ -29,7 +29,7 @@ export async function start(
     exit,
     stderr: () => stderr,
     async cleanup() {
-      terminal.stdin.write("\x1b");
+      terminal.stdin.write("\x03");
       await terminal.waitFor(
         () =>
           !fake.calls.at(-1) ||

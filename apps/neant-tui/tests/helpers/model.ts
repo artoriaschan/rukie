@@ -73,6 +73,7 @@ export function controlledModel() {
       tools,
       fail: (message) => fail("error", message),
     });
+    if (options?.signal?.aborted) abort();
     return stream;
   };
   return { model, streamFn, calls };

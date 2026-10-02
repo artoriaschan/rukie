@@ -5,6 +5,7 @@ import { createSession, loadSettings, type SessionOptions } from "@neant/agent";
 import { THINKING_LEVELS, type ThinkingLevel } from "@neant/shared";
 import { render, type RenderOptions } from "@neant/tui";
 import { Conversation, createConversation } from "./conversation";
+import { createPermissions } from "./permissions";
 
 export interface TuiIo extends RenderOptions {
   stderr(text: string): void;
@@ -65,6 +66,7 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
     for (const warning of warnings) io.stderr(`Warning: ${warning}\n`);
     if (values.model) settings.model = values.model;
     if (values.thinking) settings.thinking = values.thinking as ThinkingLevel;
+    const permissions = createPermissions();
     const session = await createSession({
       cwd,
       homeDir,
@@ -74,6 +76,7 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
         if (!warning.startsWith("MCP server ")) io.stderr(`Warning: ${warning}\n`);
       },
       ...io.session,
+      onPermissionAsk: io.session?.onPermissionAsk ?? permissions.ask,
       resumeId: values.resume,
       allowTools: [...(io.session?.allowTools ?? []), ...(values["allow-tools"] ?? [])],
       yolo: values.yolo ?? io.session?.yolo,
@@ -84,7 +87,14 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
       session,
       model ? `${model.provider}/${model.id}` : settings.model!,
     );
-    app = render(<Conversation conversation={conversation} onExit={() => app?.unmount()} />, io);
+    app = render(
+      <Conversation
+        conversation={conversation}
+        permissions={permissions}
+        onExit={() => app?.unmount()}
+      />,
+      io,
+    );
     if (prompt !== undefined) conversation.submit(prompt);
     await app.waitUntilExit();
     return 0;
