@@ -40,21 +40,28 @@ export function ActivityLine({
   phase,
   line,
   suffix,
+  warnPct = 0,
 }: {
   phase: "waiting" | "thinking" | "tool" | "done";
   line: string;
   suffix: string;
+  warnPct?: number;
 }) {
   const theme = useTheme();
   const { columns } = useTerminalSize();
   const [, time] = useAnimationFrame(phase === "done" ? null : 60);
   const base = phase === "tool" ? theme.accent : theme.activity;
   const { frames, intervalMs } = figures.activityFrames;
+  const warning: Segment[] =
+    warnPct >= 80
+      ? [{ text: `⚠ 上下文 ${warnPct}% · `, color: warnPct >= 95 ? theme.error : theme.warning }]
+      : [];
   const segments: Segment[] =
     phase === "done"
-      ? [{ text: line, color: theme.accent }]
+      ? [...warning, { text: line, color: theme.accent }]
       : [
           { text: `${frames[Math.floor(time / intervalMs) % frames.length]} `, color: base },
+          ...warning,
           ...sweep(line, time, rgb(base), rgb(theme.activityFlash)).map((segment) => ({
             ...segment,
             bold: true,

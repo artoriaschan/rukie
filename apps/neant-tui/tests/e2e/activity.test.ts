@@ -28,11 +28,11 @@ test("a tool Run shows live tokens and approval, then hides activity until the n
     app.calls[1]!.delta("abcdefgh");
     await app.waitFor(() => screen().includes("↑ 11 · ↓ 7 tokens"));
     app.calls[1]!.finish(21, 9);
-    await app.waitFor(() => screen().includes("input 32 · output 14"));
+    await app.waitFor(() => screen().includes("32→14"));
     expect(screen()).not.toContain("tokens");
     expect(screen()).not.toContain(" 工具 · 想");
     expect(screen()).not.toContain("esc 中断");
-    expect(screen()).toContain("input 32 · output 14");
+    expect(screen()).toContain("32→14");
     expect(screen()).not.toContain("Running");
     await Bun.sleep(120);
     await app.flush();
@@ -56,7 +56,7 @@ test("thinking and text estimates are corrected downward to the final usage", as
     app.calls[0]!.delta("ijklmnop");
     await app.waitFor(() => screen().includes("↓ 4 tokens"));
     app.calls[0]!.finish(8000, 1);
-    await app.waitFor(() => screen().includes("input 8000 · output 1"));
+    await app.waitFor(() => screen().includes("8.0k→1"));
     expect(screen()).not.toContain("tokens");
     expect(screen()).not.toContain("esc 中断");
   } finally {

@@ -1,6 +1,6 @@
 # 05: chat 屏幕接线、tps 采样与活动行压力前缀
 
-Status: ready-for-agent
+Status: resolved
 
 **What to build:** 见 spec 中 ④ chat 屏幕和 ③ `ActivityLine` 两节。
 
@@ -14,11 +14,22 @@ Status: ready-for-agent
 
 **Blocked by:** 03, 04
 
-- [ ] 终端 e2e：footer 在 80、60、40 列下的三行内容
-- [ ] 终端 e2e：运行中第三行显示 `esc 中断`，结束后清空；活动行后缀不再出现 `esc 中断`
-- [ ] 终端 e2e：滚动离开底部后第三行出现提示，输入框上方不多占一行
-- [ ] 终端 e2e：悬停 ctx 或 model 显示明细，footer 高度不变
-- [ ] 终端 e2e：usage ≥80% 时活动行出现 `⚠ 上下文` 前缀
-- [ ] 终端 e2e：两次提交后 Session 累计 token 正确
-- [ ] 手动运行 `neant`，确认分段条颜色、hover 和 tps 显示
-- [ ] `bun run check` 全绿
+- [x] 终端 e2e：footer 在 80、60、40 列下的三行内容
+- [x] 终端 e2e：运行中第三行显示 `esc 中断`，结束后清空；活动行后缀不再出现 `esc 中断`
+- [x] 终端 e2e：滚动离开底部后第三行出现提示，输入框上方不多占一行
+- [x] 终端 e2e：悬停 ctx 或 model 显示明细，footer 高度不变
+- [x] 终端 e2e：usage ≥80% 时活动行出现 `⚠ 上下文` 前缀
+- [x] 终端 e2e：两次提交后 Session 累计 token 正确
+- [x] 手动运行 `neant`，确认分段条颜色、hover 和 tps 显示
+- [x] `bun run check` 全绿
+
+## Comments
+
+- Chat 接入常驻三行 StatusLine：模型、provider、thinking、最新 Context Usage、Session 累计 input/output/cacheRead/cacheWrite、git、cwd 和 tps。提交仅重置 Run 指标；resume 不回放历史 usage。
+- tps 从首个 text/thinking/toolcall delta 开始计 decode 时间；500ms 后显示字符估算，每个 assistant message_end 用真实 output 校正；排除首 token 等待、工具及 Turn 间耗时。Run 结束记录一个样本，保留最近 500 个；刷新 deadline 与计算由 conversation 统一维护。
+- hover 明细、滚动提示、工作中断提示共用第三行；删除输入框上方的滚动提示与 ActivityLine 中重复的 esc 后缀。活动行压力前缀在 80%/95% 使用 warning/error 色，原有 Run token 统计和小屏分支保留。
+- 新增 10 个公开终端 e2e 和 3 个组件阈值用例，覆盖 80/60/40 列、两次提交、缓存累加、hover/滚动高度、压力色、decode 校正/多 Turn/工具 delta，以及 501 次 Run 后只保留 500 个样本。更新旧 footer 断言和 resume 从零开始的验证。
+- PTY 冒烟：通过生产 main 入口与真实 stdin/stdout 运行，注入受控模型以提供确定的 usage/delta。验证主题分段背景色、85.9% 读数、ctx 原位仪表、model/tps 明细、第二次 Run 的 86% 压力前缀、累计 token 和退出时终端模式恢复。此项未调用真实 provider。
+- 验证：`rtk bun x tsc -b` 和相关单文件测试通过；最终 `rtk proxy env -u NO_COLOR bun run check` 全绿，361 pass / 0 fail，格式、lint、类型检查和 Knip 通过。移除 NO_COLOR 以验证实际主题颜色。
+- code-review：Standards 0 findings；Spec 0 findings。Standards 提出的 decode deadline 重复逻辑已收回 conversation；输入预算疑问经原 fullscreen 访谈与实现记录核对后撤回，输入框预算仍独立于活动行/状态栏。
+- 已同步 `.scratch/working-activity/spec.md` 的后缀、第三行提示优先级和上下文压力描述。

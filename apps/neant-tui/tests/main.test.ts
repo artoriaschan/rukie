@@ -22,7 +22,7 @@ test("streams verbatim replies and continues two prompts in the same Session", a
     app.calls[0]!.finish();
     await app.waitFor(() => !app.isWorking());
     expect(app.screen().join("\n")).toContain("faux/faux");
-    expect(app.screen().join("\n")).toContain("input 11 · output 5");
+    expect(app.screen().at(-2)).toContain("11→5");
     app.stdin.write("second prompt\r");
     await app.waitFor(() => app.calls.length === 2);
     expect(app.calls[1]!.context.messages.slice(-3)).toMatchObject([
@@ -32,7 +32,7 @@ test("streams verbatim replies and continues two prompts in the same Session", a
     ]);
     app.calls[1]!.delta("final reply");
     app.calls[1]!.finish(7, 2);
-    await app.waitFor(() => app.screen().some((line) => line.includes("input 7 · output 2")));
+    await app.waitFor(() => app.screen().at(-2)?.includes("18→7") === true);
     expect(app.allLines().filter((line) => line === "❯ first prompt")).toHaveLength(1);
     expect(app.allLines().filter((line) => line === `${assistant} **literal** 中`)).toHaveLength(1);
     expect(app.allLines()).toContain("❯ second prompt");
@@ -382,7 +382,7 @@ for (const [mode, argv, session] of [
       });
       app.calls[1]!.delta("file written");
       app.calls[1]!.finish(13, 3);
-      await app.waitFor(() => app.screen().some((line) => line.includes("input 24 · output 8")));
+      await app.waitFor(() => app.screen().at(-2)?.includes("24→8") === true);
       expect(app.allLines()).toContain(`${assistant} file written`);
     } finally {
       await app.cleanup();

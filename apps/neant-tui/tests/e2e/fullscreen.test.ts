@@ -124,11 +124,11 @@ test("Chat fills the alternate screen, scrolls its body and clears the UI on exi
     );
     await app.waitFor(() => app.screen().includes("line-49"));
     expect(app.terminal.buffer.active.type).toBe("alternate");
-    expect(app.screen().at(-1)).toContain("input");
-    expect(app.screen().at(-2)).toMatch(/^╰─+╯$/);
+    expect(app.screen().at(-1)?.trim()).toBe("esc 中断");
+    expect(app.screen().at(-4)).toMatch(/^╰─+╯$/);
     app.stdin.write("\x1b[<64;5;2M");
     await app.waitFor(() => app.screen().some((line) => line.includes("Ctrl+End 回到底部")));
-    const bodyHeight = app.screen().findIndex((line) => line.includes("Ctrl+End 回到底部"));
+    const bodyHeight = app.screen().findIndex((line) => /^[🌑🌒🌓🌔🌕🌖🌗🌘] /u.test(line));
     const reading = app.screen().slice(0, bodyHeight);
     app.calls[0]!.delta("\nnew output");
     await app.waitFor(() => app.screen().some((line) => line.includes("有新输出")));
@@ -241,7 +241,8 @@ test("approval details scroll independently with pinned choices and preserve the
     await app.waitFor(() => app.screen().includes("}"));
     expect(app.screen()).toContain("❯ 1. 允许一次");
     const divider = app.screen().findIndex((line) => line.includes("权限确认"));
-    expect(app.screen().length - 1 - divider).toBeLessThanOrEqual(6);
+    expect(app.screen().length - 3 - divider).toBeLessThanOrEqual(6);
+    expect(app.screen().at(-2)).toContain("ctx ");
     app.stdin.write("\x1b[<64;5;6M");
     await Bun.sleep(25);
     expect(app.screen()).toContain("❯ 1. 允许一次");

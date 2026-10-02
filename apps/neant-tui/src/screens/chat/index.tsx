@@ -17,6 +17,7 @@ import {
   Notice,
   PermissionDialog,
   PromptInput,
+  StatusLine,
   ToolCall,
   UserMessage,
 } from "../../components";
@@ -98,15 +99,15 @@ function Chat({
   const draft = useRef("");
   const lastInterrupt = useRef<number | undefined>(undefined);
   const [now, setNow] = useState(Date.now);
-  const activity = renderActivity(state.activity, Math.max(now, Date.now()));
+  const currentTime = Math.max(now, Date.now());
+  const activity = renderActivity(state.activity, currentTime);
+  const speed = conversation.getTpsMetrics(currentTime);
+  const nextWakeAt = Math.min(activity.nextWakeAt ?? Infinity, speed.nextWakeAt ?? Infinity);
   useEffect(() => {
-    if (!state.running || activity.nextWakeAt === undefined) return;
-    const timer = setTimeout(
-      () => setNow(Date.now()),
-      Math.max(0, activity.nextWakeAt - Date.now()),
-    );
+    if (!state.running || !Number.isFinite(nextWakeAt)) return;
+    const timer = setTimeout(() => setNow(Date.now()), Math.max(0, nextWakeAt - Date.now()));
     return () => clearTimeout(timer);
-  }, [state.running, state.activity, activity.nextWakeAt]);
+  }, [state.running, nextWakeAt]);
   const approvalOpen = question !== undefined;
   useEffect(() => {
     conversation.dispatchActivity({ type: approvalOpen ? "approval-open" : "approval-close" });
@@ -262,16 +263,16 @@ function Chat({
           <ThemedText wrap="truncate">请调整窗口至至少 40 列 × 12 行 · Ctrl+C 中断/退出</ThemedText>
         ) : (
           <>
-            {bodyScroll && !bodyScroll.following && (
-              <ThemedText color="subtle" wrap="truncate">
-                {unread ? "有新输出 · Ctrl+End 回到底部" : "Ctrl+End 回到底部"}
-              </ThemedText>
-            )}
             {state.running && activity.phase !== "idle" && (
               <ActivityLine
                 phase={activity.phase}
+                warnPct={
+                  state.contextUsage && state.contextUsage.window > 0
+                    ? Math.round((state.contextUsage.used / state.contextUsage.window) * 100)
+                    : undefined
+                }
                 line={activity.line}
-                suffix={` · ↑ ${fmtTokens(state.activityInput)} · ↓ ${fmtTokens(state.output + Math.ceil(state.streamedChars / 4))} tokens · esc 中断`}
+                suffix={` · ↑ ${fmtTokens(state.activityInput)} · ↓ ${fmtTokens(state.output + Math.ceil(state.streamedChars / 4))} tokens`}
               />
             )}
             {question && (
@@ -300,9 +301,27 @@ function Chat({
                 }}
               />
             )}
-            <ThemedText color="subtle" wrap="truncate">
-              {`${state.model} · input ${state.input} · output ${state.output}`}
-            </ThemedText>
+            <StatusLine
+              columns={columns}
+              model={state.model.slice(state.model.indexOf("/") + 1)}
+              provider={state.model.split("/")[0]!}
+              contextUsage={state.contextUsage}
+              thinking={thinking}
+              tps={speed.value}
+              tpsSamples={state.tpsSamples}
+              now={currentTime}
+              usage={state.usage}
+              gitBranch={state.activity.gitBranch}
+              cwd={cwd}
+              working={state.running}
+              scrollHint={
+                bodyScroll && !bodyScroll.following
+                  ? unread
+                    ? "有新输出 · Ctrl+End 回到底部"
+                    : "Ctrl+End 回到底部"
+                  : undefined
+              }
+            />
           </>
         )}
       </Box>

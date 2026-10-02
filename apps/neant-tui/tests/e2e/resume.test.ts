@@ -30,6 +30,7 @@ test("resume replays stored text before input and appends the next Run to the sa
   });
   try {
     await app.waitFor(() => app.screen().includes("❯"));
+    expect(app.screen().at(-2)).toContain("0→0");
     expect(app.screen().join("\n")).not.toContain("tokens");
     expect(app.calls).toHaveLength(0);
     const logoTop = "██  ██ ██▀▀▀▀  ▄▀▀▄  ██  ██ ▀▀██▀▀";

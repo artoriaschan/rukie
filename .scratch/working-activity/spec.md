@@ -8,7 +8,7 @@ Status: ready-for-agent
 
 ## Solution
 
-全量移植 `dsh-working-activity`（中文部分）的文案与状态机，按 dsh-TUI `ActivityLine` 的方式渲染：输入框上方一行 `🌔 脑子在冒烟 · 总12s · ↑ 8.1k · ↓ 1.2k tokens · esc 中断`，月相帧 + 扫光文字。状态机重写为纯函数，以 Neant 的 `SessionEvent` 为输入；术语沿用 Neant/pi：原包的 turn 一律对应 **Run**。
+全量移植 `dsh-working-activity`（中文部分）的文案与状态机，按 dsh-TUI `ActivityLine` 的方式渲染：输入框上方一行 `🌔 脑子在冒烟 · 总12s · ↑ 8.1k · ↓ 1.2k tokens`，月相帧 + 扫光文字。`esc 中断` 和滚动提示放在输入框下方固定三行 StatusLine 的第三行。状态机重写为纯函数，以 Neant 的 `SessionEvent` 为输入；术语沿用 Neant/pi：原包的 turn 一律对应 **Run**。
 
 ## User Stories
 
@@ -18,7 +18,7 @@ Status: ready-for-agent
 4. 作为用户，我想看到模型自己写的一句话自述（`⏵ 查一下报错原因`）显示在状态行，而不出现在回复正文里。
 5. 作为用户，我想在权限对话框打开时看到"在等你点头"，这样知道是我在挡路。
 6. 作为用户，我想让 ActivityLine 只在 Run 进行中显示，Run 成功、失败或打断后立即消失；底部状态栏保留 token 统计，错误提示和打断前的回复正文保留，下次提交时重新显示 ActivityLine。
-7. 作为用户，我想在行尾看到实时的 `↑ 输入 · ↓ 输出 tokens · esc 中断`，输出数在流式过程中实时增长。
+7. 作为用户，我想在行尾看到实时的 `↑ 输入 · ↓ 输出 tokens`，输出数在流式过程中实时增长；工作中的 `esc 中断` 显示在 StatusLine 第三行。
 8. 作为用户，我想看到 git 分支 `· git main`。
 9. 作为用户，我想让状态行在窄终端下截断而不是换行把界面挤乱。
 10. 作为维护者，我想让状态机是 `reduce(state, event, now)` + `render(state, now)` 纯函数，用假时钟就能测。
@@ -40,13 +40,14 @@ Status: ready-for-agent
 
 ### ③ 应用组件（`apps/neant-tui/src/components/activity-line/`）
 
-- `ActivityLine({ phase, line, suffix })`：
+- `ActivityLine({ phase, line, suffix, warnPct })`：
   - `useAnimationFrame(60)` 驱动。
   - 非 done：帧（tool 阶段 `accent`，其余 `activity`）+ 空格 + `sweep(line, time, base, activityFlash)` 加粗文字，base 在 tool 阶段为 `accent`，其余为 `activity`。
   - done：无帧，文字纯 `accent`；done 阶段不订阅时钟（`intervalMs = null`）。
   - `suffix` 为 `subtle` 色。
+  - `warnPct` ≥80% 时在帧与文字之间插入 `⚠ 上下文 N% · `，用 warning 色；≥95% 用 error 色。比例取最新 Context Usage 的 used/window，四舍五入为整数百分比。
   - 整行单行截断（`wrap` 关闭，超宽末尾 `…`）。
-- `status-line/`：删掉 `Running` / `Ready` 状态词及 `running` prop，只剩 `model · input N · output N`。
+- `status-line/`：常驻固定三行（上下文分段条、字段行、提示行），详见 `.scratch/status-line/spec.md`。不显示 `Running` / `Ready` 状态词。
 - `assistant-message/`：渲染前剥掉行首 `⏵` 自述行（流式和回放共用）。
 
 ### ④ 屏幕（`apps/neant-tui/src/screens/chat/`）
@@ -69,7 +70,8 @@ Status: ready-for-agent
 - `conversation.ts`：把事件同时喂给 activity reducer；跟踪 token 段。`↑` 为最近一个 Turn 的 assistant `usage.input`；`↓` 在流式时为本 Turn 已收到的文本 + thinking 字符数 / 4，`message_end` 时校正为真实 `usage.output`，跨 Turn 累计。
 - `index.tsx`：
   - 输入框上方渲染 `ActivityLine`。
-  - suffix 为 `· ↑ {fmtTokens} · ↓ {fmtTokens} tokens · esc 中断`。
+  - suffix 为 `· ↑ {fmtTokens} · ↓ {fmtTokens} tokens`。
+  - `esc 中断` 放在 StatusLine 第三行；第三行优先级为 hover 明细 > 滚动提示 > 工作中的中断提示 > 空。滚动提示不在输入框上方额外占一行，hover 与滚动都不改变 footer 高度。
   - 仅在 Run 进行中且 phase 非 `idle` 时渲染；成功、失败或打断结束后隐藏，不展示 done 汇总或接梗。状态机保留内部 done 终态。
   - 权限对话框开关时派发 `approval-open` / `approval-close`。
   - Run 进行中按 `render` 返回的 `nextWakeAt` 安排下一次刷新，与 60ms 的扫光动画分开；Run 结束后停止刷新。
@@ -113,12 +115,13 @@ Status: ready-for-agent
 
 以下功能缺少 Agent Core 事件，暂不做，各开 `needs-triage` 工单：
 
-| 工单             | 需要的事件                                    | 状态行用途                                |
-| ---------------- | --------------------------------------------- | ----------------------------------------- |
-| retry            | 模型请求重试开始 / 结束（含原因）             | 卡住原因 `被限流了，缓缓再试`             |
-| model-switch     | Session 中途切换模型                          | 换模型接梗 MODEL_QUIPS                    |
-| subagent         | 子代理启动 / 结束                             | `子代理 N 个`                             |
-| context-pressure | `session_start` 或 usage 附带 `contextWindow` | `⚠ 上下文NN%`（≥80% warning，≥95% error） |
+| 工单         | 需要的事件                        | 状态行用途                    |
+| ------------ | --------------------------------- | ----------------------------- |
+| retry        | 模型请求重试开始 / 结束（含原因） | 卡住原因 `被限流了，缓缓再试` |
+| model-switch | Session 中途切换模型              | 换模型接梗 MODEL_QUIPS        |
+| subagent     | 子代理启动 / 结束                 | `子代理 N 个`                 |
+
+context-pressure 已由 `.scratch/status-line/issues/05-chat-wiring.md` 接入 `context_usage`，原 09 工单标记为 wontfix。
 
 ## Further Notes
 

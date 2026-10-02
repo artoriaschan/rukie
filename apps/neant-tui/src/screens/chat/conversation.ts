@@ -1,4 +1,6 @@
 import type { Session, SessionEvent } from "@neant/agent";
+import type { ContextUsageEvent, RunResult } from "@neant/shared";
+import type { TpsSample } from "../../components/status-line";
 import { createActivity, reduce } from "./activity/activity";
 
 interface ToolCall {
@@ -48,6 +50,10 @@ interface ViewState {
   running: boolean;
   input: number;
   output: number;
+  usage: Pick<RunResult["usage"], "input" | "output" | "cacheRead" | "cacheWrite">;
+  contextUsage?: ContextUsageEvent;
+  decode: { tokens: number; ms: number; step?: { startedAt: number; chars: number } };
+  tpsSamples: readonly TpsSample[];
   activity: ReturnType<typeof createActivity>;
   activityInput: number;
   streamedChars: number;
@@ -85,18 +91,49 @@ function replayMessages(messages: Session["messages"]): CompletedEntry[] {
 }
 
 /** Snapshot text at the event boundary: pi mutates partial messages while streaming. */
-function reduceEvent(state: ViewState, event: SessionEvent): ViewState {
+function decodeMetrics(state: ViewState, now: number) {
+  const { tokens, ms, step } = state.decode;
+  const elapsed = step ? Math.max(0, now - step.startedAt) : 0;
+  if (step && elapsed < 500)
+    return { value: ms > 0 ? (tokens * 1000) / ms : 0, nextWakeAt: step.startedAt + 500 };
+  return {
+    value: ms + elapsed > 0 ? ((tokens + (step?.chars ?? 0) / 4) * 1000) / (ms + elapsed) : 0,
+    nextWakeAt: undefined,
+  };
+}
+
+function reduceEvent(state: ViewState, event: SessionEvent, now: number): ViewState {
   switch (event.type) {
     case "session_start":
       return { ...state, model: event.model };
+    case "context_usage":
+      return { ...state, contextUsage: event };
     case "turn_start":
-      return { ...state, streamedChars: 0 };
+      return { ...state, streamedChars: 0, decode: { ...state.decode, step: undefined } };
     case "message_update": {
       const delta = event.assistantMessageEvent;
       const streamedChars =
         state.streamedChars +
         (delta.type === "text_delta" || delta.type === "thinking_delta" ? delta.delta.length : 0);
-      return { ...state, assistant: messageText(event.message), streamedChars };
+      const chars =
+        delta.type === "text_delta" ||
+        delta.type === "thinking_delta" ||
+        delta.type === "toolcall_delta"
+          ? delta.delta.length
+          : 0;
+      const step = state.decode.step;
+      return {
+        ...state,
+        assistant: messageText(event.message),
+        streamedChars,
+        decode:
+          chars > 0
+            ? {
+                ...state.decode,
+                step: { startedAt: step?.startedAt ?? now, chars: (step?.chars ?? 0) + chars },
+              }
+            : state.decode,
+      };
     }
     case "message_start":
       return event.message.role === "assistant"
@@ -111,6 +148,7 @@ function reduceEvent(state: ViewState, event: SessionEvent): ViewState {
         };
       }
       if (event.message.role !== "assistant") return state;
+      const step = state.decode.step;
       return {
         ...state,
         completed: text
@@ -121,6 +159,10 @@ function reduceEvent(state: ViewState, event: SessionEvent): ViewState {
         output: state.output + event.message.usage.output,
         activityInput: event.message.usage.input,
         streamedChars: 0,
+        decode: {
+          tokens: state.decode.tokens + (step ? event.message.usage.output : 0),
+          ms: state.decode.ms + (step ? Math.max(0, now - step.startedAt) : 0),
+        },
       };
     }
     case "tool_execution_start":
@@ -168,6 +210,16 @@ function reduceEvent(state: ViewState, event: SessionEvent): ViewState {
         running: false,
         input: event.usage.input,
         output: event.usage.output,
+        usage: {
+          input: state.usage.input + event.usage.input,
+          output: state.usage.output + event.usage.output,
+          cacheRead: state.usage.cacheRead + event.usage.cacheRead,
+          cacheWrite: state.usage.cacheWrite + event.usage.cacheWrite,
+        },
+        tpsSamples: [
+          ...state.tpsSamples,
+          { at: now, value: decodeMetrics(state, now).value },
+        ].slice(-500),
         streamedChars: 0,
         error: event.success ? undefined : event.error,
       };
@@ -186,6 +238,9 @@ export function createConversation(session: Session, model: string) {
     running: false,
     input: 0,
     output: 0,
+    usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    decode: { tokens: 0, ms: 0 },
+    tpsSamples: [],
     activity: createActivity(),
     activityInput: 0,
     streamedChars: 0,
@@ -202,6 +257,7 @@ export function createConversation(session: Session, model: string) {
   return {
     dispatchActivity,
     getSnapshot: () => state,
+    getTpsMetrics: (now: number) => decodeMetrics(state, now),
     subscribe(listener: () => void) {
       listeners.add(listener);
       return () => {
@@ -219,16 +275,19 @@ export function createConversation(session: Session, model: string) {
         error: undefined,
         activityInput: 0,
         streamedChars: 0,
+        decode: { tokens: 0, ms: 0 },
         activity: reduce(state.activity, { type: "submit" }, Date.now()),
       });
       const promise = session
         .run(prompt, {
           signal: controller.signal,
-          onEvent: (event) =>
+          onEvent: (event) => {
+            const now = Date.now();
             update({
-              ...reduceEvent(state, event),
-              activity: reduce(state.activity, event, Date.now()),
-            }),
+              ...reduceEvent(state, event, now),
+              activity: reduce(state.activity, event, now),
+            });
+          },
         })
         .catch((error: unknown) => {
           if (!controller.signal.aborted) {

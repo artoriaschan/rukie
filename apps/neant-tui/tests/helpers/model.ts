@@ -17,7 +17,8 @@ export function controlledModel() {
     reasoning?: string;
     delta(text: string): void;
     thinking(text: string): void;
-    finish(input?: number, output?: number): void;
+    toolDelta(text: string): void;
+    finish(input?: number, output?: number, cache?: { read: number; write: number }): void;
     tool(name: string, args: Parameters<typeof fauxToolCall>[1]): void;
     tools(tools: { name: string; args: Parameters<typeof fauxToolCall>[1] }[]): void;
     fail(message: string): void;
@@ -39,10 +40,22 @@ export function controlledModel() {
     const abort = () => fail("aborted", "Request was aborted");
     options?.signal?.addEventListener("abort", abort, { once: true });
     stream.push({ type: "start", partial });
-    const complete = (message: AssistantMessage, input = 11, output = 5) => {
+    const complete = (
+      message: AssistantMessage,
+      input = 11,
+      output = 5,
+      cache = { read: 0, write: 0 },
+    ) => {
       ended = true;
       options?.signal?.removeEventListener("abort", abort);
-      message.usage = { ...message.usage, input, output, totalTokens: input + output };
+      message.usage = {
+        ...message.usage,
+        input,
+        output,
+        cacheRead: cache.read,
+        cacheWrite: cache.write,
+        totalTokens: input + output + cache.read + cache.write,
+      };
       stream.push({
         type: "done",
         reason: message.stopReason === "toolUse" ? "toolUse" : "stop",
@@ -79,8 +92,12 @@ export function controlledModel() {
         ];
         stream.push({ type: "thinking_delta", contentIndex: 0, delta, partial });
       },
-      finish(input = 11, output = 5) {
-        complete({ ...partial, stopReason: "stop" }, input, output);
+      toolDelta(delta) {
+        partial.content = [fauxToolCall("bash", {}, { id: "partial-tool" })];
+        stream.push({ type: "toolcall_delta", contentIndex: 0, delta, partial });
+      },
+      finish(input = 11, output = 5, cache) {
+        complete({ ...partial, stopReason: "stop" }, input, output, cache);
       },
       tool: (name, args) => tools([{ name, args }]),
       tools,
