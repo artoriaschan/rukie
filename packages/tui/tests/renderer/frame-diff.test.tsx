@@ -17,6 +17,8 @@ function terminalState(io: ReturnType<typeof createTerminal>) {
           color: cell.getFgColor(),
           bold: cell.isBold(),
           dim: cell.isDim(),
+          inverse: cell.isInverse(),
+          italic: cell.isItalic(),
         };
       }),
     ),
@@ -65,7 +67,16 @@ test("successive text, style and wide glyph changes match fresh full renders cel
     </Text>,
     <Text color="blue">AB</Text>,
     <Text color="#12ab34">AB</Text>,
+    <Text inverse>AB</Text>,
+    <Text italic>AB</Text>,
+    <Text inverse italic>
+      AB
+    </Text>,
     <Text>AB</Text>,
+    <Text>中文AB</Text>,
+    <Text inverse italic>
+      中文AB
+    </Text>,
     <Text>中文AB</Text>,
     <Text>ABCDEF</Text>,
     <Text>A中DEF</Text>,

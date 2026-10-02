@@ -77,12 +77,16 @@ export function Static({ children }: StaticProps) {
 
 const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
+export interface SpinnerProps extends TextStyle {
+  frames?: string[];
+}
+
 /** An animated text glyph with the same color and emphasis options as Text. */
-export function Spinner(props: TextStyle) {
+export function Spinner({ frames = spinnerFrames, ...props }: SpinnerProps) {
   const [frame, setFrame] = useState(0);
   useEffect(() => {
-    const timer = setInterval(() => setFrame((index) => (index + 1) % spinnerFrames.length), 80);
+    const timer = setInterval(() => setFrame((index) => (index + 1) % frames.length), 80);
     return () => clearInterval(timer);
-  }, []);
-  return createElement(Text, props, spinnerFrames[frame]);
+  }, [frames.length]);
+  return createElement(Text, props, frames[frame % frames.length]);
 }

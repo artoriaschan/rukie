@@ -14,6 +14,8 @@ export interface TextStyle {
   color?: Color;
   bold?: boolean;
   dimColor?: boolean;
+  inverse?: boolean;
+  italic?: boolean;
 }
 
 export interface TextSpan {

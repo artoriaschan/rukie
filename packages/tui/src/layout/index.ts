@@ -31,6 +31,8 @@ function content(node: HostNode, inherited: TextStyle = {}): TextSpan[] {
     color: node.props.color ?? inherited.color,
     bold: node.props.bold ?? inherited.bold,
     dimColor: node.props.dimColor ?? inherited.dimColor,
+    inverse: node.props.inverse ?? inherited.inverse,
+    italic: node.props.italic ?? inherited.italic,
   };
   return node.children.flatMap((child) => content(child, style));
 }

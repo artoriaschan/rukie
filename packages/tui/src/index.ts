@@ -7,6 +7,7 @@ export {
   type TextInputProps,
   Static,
   Spinner,
+  type SpinnerProps,
   type StaticProps,
 } from "./components";
 export { render, type RenderOptions } from "./renderer";
