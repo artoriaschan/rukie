@@ -1,1 +1,1 @@
-export { StatusLine } from "./status-line";
+export { StatusLine, type StatusLineProps, type TpsSample } from "./status-line";

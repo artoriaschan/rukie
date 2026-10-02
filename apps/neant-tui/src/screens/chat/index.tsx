@@ -17,7 +17,6 @@ import {
   Notice,
   PermissionDialog,
   PromptInput,
-  StatusLine,
   ToolCall,
   UserMessage,
 } from "../../components";
@@ -301,7 +300,9 @@ function Chat({
                 }}
               />
             )}
-            <StatusLine model={state.model} input={state.input} output={state.output} />
+            <ThemedText color="subtle" wrap="truncate">
+              {`${state.model} · input ${state.input} · output ${state.output}`}
+            </ThemedText>
           </>
         )}
       </Box>
