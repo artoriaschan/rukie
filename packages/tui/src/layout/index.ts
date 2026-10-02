@@ -2,7 +2,7 @@ import type { BoxProps, TextProps } from "../components";
 import { lineWidth, textLines, type TextSpan, type TextStyle } from "../text";
 import { Node, Direction, Edge, FlexDirection, Gutter, MeasureMode } from "../yoga";
 
-export type HostType = "tui-box" | "tui-text";
+export type HostType = "tui-box" | "tui-text" | "tui-static";
 export type HostProps = BoxProps & TextProps & { input?: boolean; cursorOffset?: number };
 
 export interface HostNode {
@@ -90,7 +90,7 @@ export function updateText(node: HostNode, text: string) {
 
 export function removeNode(parent: HostNode, child: HostNode) {
   parent.children.splice(parent.children.indexOf(child), 1);
-  if (parent.type === "tui-box") parent.yoga.removeChild(child.yoga);
+  if (parent.type === "tui-box" && child.type !== "tui-static") parent.yoga.removeChild(child.yoga);
   child.parent = undefined;
   dirty(parent);
 }
@@ -100,7 +100,12 @@ export function insertNode(parent: HostNode, child: HostNode, before?: HostNode)
   const index = before ? parent.children.indexOf(before) : parent.children.length;
   parent.children.splice(index, 0, child);
   child.parent = parent;
-  if (parent.type === "tui-box") parent.yoga.insertChild(child.yoga, index);
+  if (parent.type === "tui-box" && child.type !== "tui-static") {
+    const yogaIndex = parent.children
+      .slice(0, index)
+      .filter((node) => node.type !== "tui-static").length;
+    parent.yoga.insertChild(child.yoga, yogaIndex);
+  }
   dirty(parent);
 }
 
@@ -118,8 +123,25 @@ export function calculateTree(root: HostNode, columns: number): LayoutNode {
       y,
       width: Math.round(node.yoga.getComputedWidth()),
       height: Math.round(node.yoga.getComputedHeight()),
-      children: node.type === "tui-box" ? node.children.map((child) => snapshot(child, x, y)) : [],
+      children:
+        node.type === "tui-box"
+          ? node.children
+              .filter((child) => child.type !== "tui-static")
+              .map((child) => snapshot(child, x, y))
+          : [],
     };
   }
   return snapshot(root);
+}
+
+/** Measure a completed item in its own column, including its outer margins. */
+export function calculateStaticTree(item: HostNode, columns: number): LayoutNode {
+  const root = createNode("tui-box", { flexDirection: "column" });
+  root.children.push(item);
+  root.yoga.insertChild(item.yoga, 0);
+  try {
+    return calculateTree(root, columns);
+  } finally {
+    root.yoga.removeChild(item.yoga);
+  }
 }

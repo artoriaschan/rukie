@@ -4,6 +4,7 @@ import { ConcurrentRoot, DefaultEventPriority, NoEventPriority } from "react-rec
 import { createTerminalSession, TerminalContext, type TerminalIO } from "../terminal";
 import {
   calculateTree,
+  calculateStaticTree,
   createNode,
   insertNode,
   removeNode,
@@ -12,6 +13,7 @@ import {
   type HostNode,
   type HostProps,
   type HostType,
+  type LayoutNode,
 } from "../layout";
 import { createScreen } from "../screen";
 
@@ -22,6 +24,9 @@ interface Container {
   options: RenderOptions;
   active: boolean;
   screen: ReturnType<typeof createScreen>;
+  completed: WeakSet<HostNode>;
+  pending: LayoutNode[];
+  timer?: ReturnType<typeof setTimeout>;
   error?: unknown;
   onError(error: unknown): void;
 }
@@ -31,11 +36,24 @@ function paint(container: Container) {
   const { stdout } = container.options;
   try {
     stdout.write(
-      container.screen(calculateTree(container.tree, stdout.columns), stdout.columns, stdout.rows),
+      container.screen(
+        calculateTree(container.tree, stdout.columns),
+        stdout.columns,
+        stdout.rows,
+        container.pending,
+      ),
     );
+    container.pending = [];
   } catch (error) {
     container.onError(error);
   }
+}
+
+function schedulePaint(container: Container) {
+  container.timer ??= setTimeout(() => {
+    container.timer = undefined;
+    paint(container);
+  }, 16);
 }
 
 let priority = NoEventPriority;
@@ -52,7 +70,23 @@ const reconciler = Reconciler({
   getChildHostContext: (context: object) => context,
   getPublicInstance: (node: HostNode) => node,
   prepareForCommit: () => null,
-  resetAfterCommit: paint,
+  resetAfterCommit: (container: Container) => {
+    if (!container.active) return;
+    const { stdout } = container.options;
+    function collect(node: HostNode) {
+      if (node.type === "tui-static") {
+        for (const child of node.children) {
+          if (container.completed.has(child)) continue;
+          container.pending.push(calculateStaticTree(child, stdout.columns));
+          container.completed.add(child);
+        }
+      } else {
+        node.children.forEach(collect);
+      }
+    }
+    collect(container.tree);
+    schedulePaint(container);
+  },
   createInstance: (type: HostType, props: HostProps) => createNode(type, props),
   createTextInstance: (text: string) => createNode("raw", {}, text),
   appendInitialChild: insertNode,
@@ -113,13 +147,15 @@ const reconciler = Reconciler({
   bindToConsole: (_method: string, args: unknown[]) => () => console.log(...args),
 });
 
-/** Mount synchronously; subsequent React state updates paint on each commit. */
+/** Mount synchronously; later commits coalesce into at most one frame every 16ms. */
 export function render(element: ReactNode, options: RenderOptions) {
   const container: Container = {
     tree: createNode("tui-box", { flexDirection: "column" }),
     options,
     active: true,
     screen: createScreen(),
+    completed: new WeakSet(),
+    pending: [],
     onError(error) {
       container.error = error;
       terminal.dispose();
@@ -132,11 +168,13 @@ export function render(element: ReactNode, options: RenderOptions) {
     options,
     () => {
       if (!container.active) return;
-      container.screen = createScreen();
-      paint(container);
+      container.screen.invalidate();
+      schedulePaint(container);
     },
     () => {
       container.active = false;
+      clearTimeout(container.timer);
+      container.pending = [];
       if (container.error !== undefined) exit.reject(container.error);
       else exit.resolve();
     },
@@ -163,6 +201,9 @@ export function render(element: ReactNode, options: RenderOptions) {
       null,
     );
     reconciler.flushSyncWork();
+    clearTimeout(container.timer);
+    container.timer = undefined;
+    paint(container);
     if (container.error !== undefined) throw container.error;
   } catch (error) {
     terminal.dispose();
@@ -176,6 +217,8 @@ export function render(element: ReactNode, options: RenderOptions) {
       if (unmounted) return;
       unmounted = true;
       container.active = false;
+      clearTimeout(container.timer);
+      container.pending = [];
       try {
         reconciler.updateContainerSync(null, root, null, null);
         reconciler.flushSyncWork();

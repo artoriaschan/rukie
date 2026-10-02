@@ -62,7 +62,7 @@ test("wrapped whitespace and graphemes keep cursor movement and deletion aligned
     await terminal.waitFor(() => terminal.cursor().x === 5);
     expect(terminal.cursor()).toEqual({ x: 5, y: 0 });
     terminal.resize(4, 6);
-    await terminal.flush();
+    await terminal.waitFor(() => terminal.cursor().x === 1 && terminal.cursor().y === 1);
     expect(terminal.screen()).toEqual(["中", "AB", "", "", "", ""]);
     expect(terminal.cursor()).toEqual({ x: 1, y: 1 });
     terminal.stdin.write("é👩‍💻");
@@ -133,7 +133,7 @@ test("external controlled replacement snaps the cursor to a grapheme boundary be
     replace();
     await terminal.waitFor(() => terminal.screen()[0] === "é👩‍💻");
     terminal.stdin.write("\x7f");
-    await terminal.flush();
+    await terminal.waitFor(() => terminal.cursor().x === 0);
     expect(changes).toEqual(["👩‍💻"]);
     expect(terminal.cursor()).toEqual({ x: 0, y: 0 });
   } finally {
@@ -148,7 +148,7 @@ test("narrow resize omits overwide glyphs consistently for both text and cursor"
   try {
     await terminal.flush();
     terminal.resize(1, 6);
-    await terminal.flush();
+    await terminal.waitFor(() => terminal.screen()[0] === "A");
     expect(terminal.screen()).toEqual(["A", "", "", "", "", ""]);
     expect(terminal.cursor()).toEqual({ x: 0, y: 1 });
   } finally {

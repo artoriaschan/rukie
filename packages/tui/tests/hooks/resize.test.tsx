@@ -42,7 +42,7 @@ test("a resize event repaints even when dimensions are unchanged", async () => {
     terminal.stdout.write("\x1b[3;1Hresidue");
     await terminal.flush();
     terminal.resize(10, 4);
-    await terminal.flush();
+    await terminal.waitFor(() => terminal.screen()[2] === "");
     expect(terminal.screen()).toEqual(["clean", "", "", ""]);
   } finally {
     app.unmount();

@@ -1,4 +1,13 @@
-import { createElement, type ReactNode } from "react";
+import {
+  Children,
+  createElement,
+  isValidElement,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import type { TextStyle } from "../text";
 export { TextInput, type TextInputProps } from "./text-input";
 
@@ -41,4 +50,39 @@ export function Box(props: BoxProps) {
 /** Text is measured and painted in display columns, rather than UTF-16 units. */
 export function Text(props: TextProps) {
   return createElement("tui-text", props);
+}
+
+export interface StaticProps {
+  children?: ReactNode;
+}
+
+/** Append-only items. Give each child a stable key; completed items are never repainted. */
+export function Static({ children }: StaticProps) {
+  const completed = useRef(new Set<string>());
+  const pending = Children.toArray(children)
+    .map((child, index) => ({
+      child,
+      key: isValidElement(child) ? String(child.key) : String(index),
+    }))
+    .filter(({ key }) => !completed.current.has(key));
+  useLayoutEffect(() => {
+    for (const { key } of pending) completed.current.add(key);
+  });
+  return createElement(
+    "tui-static",
+    {},
+    pending.map(({ child }) => child),
+  );
+}
+
+const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+/** An animated text glyph with the same color and emphasis options as Text. */
+export function Spinner(props: TextStyle) {
+  const [frame, setFrame] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setFrame((index) => (index + 1) % spinnerFrames.length), 80);
+    return () => clearInterval(timer);
+  }, []);
+  return createElement(Text, props, spinnerFrames[frame]);
 }

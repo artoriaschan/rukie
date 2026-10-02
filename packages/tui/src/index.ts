@@ -5,6 +5,9 @@ export {
   type BoxProps,
   type TextProps,
   type TextInputProps,
+  Static,
+  Spinner,
+  type StaticProps,
 } from "./components";
 export { render, type RenderOptions } from "./renderer";
 export { useInput, useTerminalSize } from "./hooks";

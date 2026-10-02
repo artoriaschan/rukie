@@ -14,11 +14,13 @@ export function createTerminal(columns = 20, rows = 8) {
   });
   let bytesWritten = 0;
   let output = "";
+  const writes: { text: string; time: number }[] = [];
   const stdout = Object.assign(
     new Writable({
       write(chunk, _encoding, callback) {
         bytesWritten += chunk.length;
         output += chunk.toString();
+        if (chunk.length) writes.push({ text: chunk.toString(), time: performance.now() });
         terminal.write(chunk, callback);
       },
     }),
@@ -33,6 +35,7 @@ export function createTerminal(columns = 20, rows = 8) {
     terminal,
     bytesWritten: () => bytesWritten,
     output: () => output,
+    writes,
     flush,
     async waitFor(predicate: () => boolean) {
       const deadline = performance.now() + 1000;
@@ -61,6 +64,12 @@ export function createTerminal(columns = 20, rows = 8) {
     },
     cursor() {
       return { x: terminal.buffer.active.cursorX, y: terminal.buffer.active.cursorY };
+    },
+    scrollback() {
+      const buffer = terminal.buffer.active;
+      return Array.from({ length: buffer.baseY }, (_, y) =>
+        buffer.getLine(y)!.translateToString(true).trimEnd(),
+      );
     },
     dispose() {
       stdin.destroy();
