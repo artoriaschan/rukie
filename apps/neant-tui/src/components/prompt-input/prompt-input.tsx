@@ -1,4 +1,4 @@
-import { Box, Text, TextInput } from "@neant/tui";
+import { Box, Divider, TextInput, ThemedText, figures } from "@neant/tui";
 
 export function PromptInput({
   value,
@@ -10,13 +10,17 @@ export function PromptInput({
   onSubmit(prompt: string): void;
 }) {
   return (
-    <Box>
-      <Box width={2} flexShrink={0}>
-        <Text>{">"}</Text>
+    <Box flexDirection="column">
+      <Divider color="promptBorder" />
+      <Box>
+        <Box width={2} flexShrink={0}>
+          <ThemedText>{`${figures.user} `}</ThemedText>
+        </Box>
+        <Box flexGrow={1}>
+          <TextInput value={value} onChange={onChange} onSubmit={onSubmit} />
+        </Box>
       </Box>
-      <Box flexGrow={1}>
-        <TextInput value={value} onChange={onChange} onSubmit={onSubmit} />
-      </Box>
+      <Divider color="promptBorder" />
     </Box>
   );
 }

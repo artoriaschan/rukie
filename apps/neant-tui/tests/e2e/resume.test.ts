@@ -35,7 +35,7 @@ test("resume replays stored text before input and appends the next Run to the sa
       `${assistant} **stored reply** 中`,
       "second line",
     ]);
-    expect(app.screen()).toContain(">");
+    expect(app.screen()).toContain("❯");
     expect(app.allLines().join("\n")).not.toContain("hidden project instructions");
     expect(app.allLines().join("\n")).not.toContain("system-reminder");
 

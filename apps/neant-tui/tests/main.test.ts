@@ -53,7 +53,7 @@ test("submission clears the editor before the next key in the same input chunk",
     await app.waitFor(() => app.stdin.isRaw);
     app.stdin.write("first\rnext");
     await app.waitFor(() => app.calls.length === 1);
-    await app.waitFor(() => app.screen().includes("> next"));
+    await app.waitFor(() => app.screen().includes("❯ next"));
     app.calls[0]!.delta("first reply");
     app.calls[0]!.finish();
     await app.waitFor(
@@ -80,7 +80,7 @@ test("idle Ctrl+C clears the editor before subsequent keys in the same input chu
   try {
     await app.waitFor(() => app.stdin.isRaw);
     app.stdin.write("discard");
-    await app.waitFor(() => app.screen().includes("> discard"));
+    await app.waitFor(() => app.screen().includes("❯ discard"));
     app.stdin.write("\x03fresh\r");
     await app.waitFor(() => app.calls.length === 1);
     expect(app.calls[0]!.context.messages.at(-1)).toMatchObject({
@@ -108,7 +108,7 @@ for (const [name, key] of [
       app.calls[0]!.delta("retained partial");
       await app.waitFor(() => app.screen().includes(`${assistant} retained partial`));
       app.stdin.write("next draft\r");
-      await app.waitFor(() => app.screen().includes("> next draft"));
+      await app.waitFor(() => app.screen().includes("❯ next draft"));
       expect(app.calls).toHaveLength(1);
       app.stdin.write(key!);
       await app.waitFor(() => app.screen().some((line) => line.includes("Ready")));
@@ -138,7 +138,7 @@ test("Ctrl+C clears an idle draft, then two presses on empty input exit and rest
   try {
     await app.waitFor(() => app.stdin.isRaw);
     app.stdin.write("discard draft");
-    await app.waitFor(() => app.screen().includes("> discard draft"));
+    await app.waitFor(() => app.screen().includes("❯ discard draft"));
     app.stdin.write("\x03");
     await app.waitFor(() => !app.screen().join("\n").includes("discard draft"));
     app.stdin.write("\x03");
@@ -184,7 +184,7 @@ test("Ctrl+D exits only on idle empty input", async () => {
   try {
     await app.waitFor(() => app.stdin.isRaw);
     app.stdin.write("keep draft\x04");
-    await app.waitFor(() => app.screen().includes("> keep draft"));
+    await app.waitFor(() => app.screen().includes("❯ keep draft"));
     expect(app.stdin.isRaw).toBe(true);
     app.stdin.write("\r");
     await app.waitFor(() => app.calls.length === 1);

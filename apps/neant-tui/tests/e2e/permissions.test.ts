@@ -74,14 +74,14 @@ test("Ctrl+C closes the question, cancels the Run and preserves the draft withou
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.stdin.write("next draft");
-    await app.waitFor(() => app.screen().includes("> next draft"));
+    await app.waitFor(() => app.screen().includes("❯ next draft"));
     app.calls[0]!.tool("bash", { command: "printf cancelled" });
     await app.waitFor(() => app.screen().join("\n").includes("权限确认"));
     app.stdin.write("2");
-    await app.waitFor(() => app.screen().some((line) => line.startsWith("> 2.")));
+    await app.waitFor(() => app.screen().some((line) => line.startsWith("❯ 2.")));
     app.stdin.write("\x03");
     await app.waitFor(() => app.screen().some((line) => line.includes("Ready")));
-    expect(app.screen()).toContain("> next draft");
+    expect(app.screen()).toContain("❯ next draft");
     expect(app.screen().join("\n")).not.toContain("权限确认");
     expect(app.calls.every((call) => call.signal!.aborted)).toBe(true);
     const nextCall = app.calls.length;
@@ -188,7 +188,7 @@ test("concurrent questions are answered individually and dialog keys do not edit
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.stdin.write("next draft");
-    await app.waitFor(() => app.screen().includes("> next draft"));
+    await app.waitFor(() => app.screen().includes("❯ next draft"));
     app.calls[0]!.tools([
       { name: "bash", args: { command: "printf allowed-parallel" } },
       { name: "write", args: { path: "refused.txt", content: "refused" } },
@@ -212,7 +212,7 @@ test("concurrent questions are answered individually and dialog keys do not edit
     ]);
     app.calls[1]!.finish();
     await app.waitFor(() => app.screen().some((line) => line.includes("Ready")));
-    expect(app.screen()).toContain("> next draft");
+    expect(app.screen()).toContain("❯ next draft");
     app.stdin.write("\r");
     await app.waitFor(() => app.calls.length === 3);
     expect(app.calls[2]!.context.messages.at(-1)).toMatchObject({
