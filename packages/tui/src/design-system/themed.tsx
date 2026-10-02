@@ -1,5 +1,12 @@
 import { createContext, useContext } from "react";
-import { Box, Text, type BoxProps, type TextProps } from "../components";
+import {
+  Box,
+  Text,
+  TextInput,
+  type BoxProps,
+  type TextProps,
+  type TextInputProps,
+} from "../components";
 import type { Theme } from "./theme";
 import { useTheme } from "./theme-provider";
 
@@ -27,6 +34,14 @@ export function ThemedText({ color, ...props }: ThemedTextProps) {
       <Text {...props} color={resolved} />
     </ColorContext.Provider>
   );
+}
+
+export interface ThemedTextInputProps extends Omit<TextInputProps, "color"> {
+  color?: ThemeColor;
+}
+
+export function ThemedTextInput({ color, ...props }: ThemedTextInputProps) {
+  return <TextInput {...props} color={useColor(color)} />;
 }
 
 export interface ThemedBoxProps extends BoxProps {

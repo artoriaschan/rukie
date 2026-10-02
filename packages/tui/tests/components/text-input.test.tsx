@@ -174,6 +174,41 @@ test("the cursor remains visible before an explicit newline following a full Chi
   }
 });
 
+test("a block caret follows wide graphemes and empty lines and clears when inactive", async () => {
+  const terminal = createTerminal(4, 5);
+  let deactivate = () => {};
+  function View() {
+    const [active, setActive] = useState(true);
+    useLayoutEffect(() => {
+      deactivate = () => setActive(false);
+    }, []);
+    return (
+      <TextInput value={"中文\n\nA"} onChange={() => {}} cursorStyle="block" isActive={active} />
+    );
+  }
+  const app = render(<View />, terminal);
+  const cell = (x: number, y: number) => terminal.terminal.buffer.active.getLine(y)!.getCell(x)!;
+  try {
+    await terminal.flush();
+    expect(cell(1, 2).isInverse()).toBeTruthy();
+    terminal.stdin.write("\x1b[H\x1b[A");
+    await terminal.waitFor(() => terminal.cursor().y === 1);
+    expect(cell(0, 1).isInverse()).toBeTruthy();
+    expect(cell(1, 2).isInverse()).toBeFalsy();
+    terminal.stdin.write("\x1b[A");
+    await terminal.waitFor(() => terminal.cursor().y === 0);
+    expect(cell(0, 0).isInverse()).toBeTruthy();
+    expect(cell(1, 0).isInverse()).toBeTruthy();
+    expect(cell(0, 1).isInverse()).toBeFalsy();
+    deactivate();
+    await terminal.waitFor(() => !cell(0, 0).isInverse());
+    expect(terminal.screen()).toEqual(["中文", "", "A", "", ""]);
+  } finally {
+    app.unmount();
+    terminal.dispose();
+  }
+});
+
 test("Shift+Enter and a backslash at line end insert newlines, while a paste changes the value once", async () => {
   const terminal = createTerminal(12, 7);
   const changes: string[] = [];

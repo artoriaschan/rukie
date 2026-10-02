@@ -37,7 +37,9 @@ export {
   type HintLineProps,
   ThemedText,
   ThemedBox,
+  ThemedTextInput,
   type ThemeColor,
   type ThemedTextProps,
   type ThemedBoxProps,
+  type ThemedTextInputProps,
 } from "./design-system";

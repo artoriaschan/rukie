@@ -80,6 +80,10 @@ function paintGrid(root: LayoutNode, columns: number, rows: number): Cell[][] {
     }
     if (node.type === "tui-text") {
       const top = node.textTop ?? 0;
+      const caret =
+        node.props.cursorStyle === "block" && node.props.cursorOffset !== undefined
+          ? textCursor(node.spans, width, node.props.cursorOffset)
+          : undefined;
       const first = Math.max(0, clip.top - y);
       const end = Math.min(height, clip.bottom - y);
       (
@@ -97,9 +101,21 @@ function paintGrid(root: LayoutNode, columns: number, rows: number): Cell[][] {
           for (const glyph of line) {
             if (!glyph.width) continue;
             if (col + glyph.width > width) break;
-            put(x + col, y + first + row, glyph.text, glyph.width, glyph.style);
+            const atCaret = caret?.x === col && caret.y === top + first + row;
+            put(
+              x + col,
+              y + first + row,
+              glyph.text,
+              glyph.width,
+              atCaret ? { ...glyph.style, inverse: true } : glyph.style,
+            );
             col += glyph.width;
           }
+          if (caret?.x === col && caret.y === top + first + row && col < width)
+            put(x + col, y + first + row, " ", 1, {
+              color: node.props.color,
+              inverse: true,
+            });
         });
     }
     const previousClip = clip;

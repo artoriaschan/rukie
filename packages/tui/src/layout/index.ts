@@ -12,7 +12,13 @@ import type { ScrollState } from "../scroll";
 
 export type HostType = "tui-box" | "tui-text" | "tui-static" | "tui-scroll";
 export type HostProps = BoxProps &
-  TextProps & { input?: boolean; maxLines?: number; cursorOffset?: number; scroll?: ScrollState };
+  TextProps & {
+    input?: boolean;
+    maxLines?: number;
+    cursorOffset?: number;
+    cursorStyle?: "block";
+    scroll?: ScrollState;
+  };
 
 export interface HostNode {
   type: HostType | "raw";

@@ -10,7 +10,9 @@ export { HintLine, type HintLineProps } from "./hint-line";
 export {
   ThemedText,
   ThemedBox,
+  ThemedTextInput,
   type ThemeColor,
   type ThemedTextProps,
   type ThemedBoxProps,
+  type ThemedTextInputProps,
 } from "./themed";

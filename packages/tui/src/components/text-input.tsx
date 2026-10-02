@@ -1,14 +1,15 @@
 import { createElement, useLayoutEffect, useRef, useState } from "react";
 import { useInput, useTerminalSize } from "../hooks";
-import { textCursor, textLines } from "../text";
+import { textCursor, textLines, type TextStyle } from "../text";
 
-export interface TextInputProps {
+export interface TextInputProps extends TextStyle {
   value: string;
   onChange(value: string): void;
   onSubmit?(value: string): void;
   isActive?: boolean;
   maxLines?: number;
   columns?: number;
+  cursorStyle?: "block";
 }
 
 const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
@@ -27,6 +28,8 @@ export function TextInput({
   isActive = true,
   maxLines,
   columns,
+  cursorStyle,
+  ...style
 }: TextInputProps) {
   const size = useTerminalSize();
   const width = Math.max(1, columns ?? size.columns);
@@ -100,7 +103,14 @@ export function TextInput({
   );
   return createElement(
     "tui-text",
-    { input: true, width: columns, maxLines, cursorOffset: isActive ? position : undefined },
+    {
+      ...style,
+      input: true,
+      width: columns,
+      maxLines,
+      cursorStyle,
+      cursorOffset: isActive ? position : undefined,
+    },
     value + " ",
   );
 }

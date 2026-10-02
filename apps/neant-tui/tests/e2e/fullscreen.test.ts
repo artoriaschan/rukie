@@ -93,7 +93,7 @@ test("Chat fills the alternate screen, scrolls its body and clears the UI on exi
     await app.waitFor(() => app.screen().includes("line-49"));
     expect(app.terminal.buffer.active.type).toBe("alternate");
     expect(app.screen().at(-1)).toContain("input");
-    expect(app.screen().at(-2)).toMatch(/^─+$/);
+    expect(app.screen().at(-2)).toMatch(/^╰─+╯$/);
     app.stdin.write("\x1b[<64;5;2M");
     await app.waitFor(() => app.screen().some((line) => line.includes("Ctrl+End 回到底部")));
     const bodyHeight = app.screen().findIndex((line) => line.includes("Ctrl+End 回到底部"));
@@ -145,7 +145,7 @@ test("small windows suspend editing and restore the draft while a Run continues"
   }
 });
 
-test("the input area includes its dividers within the six-row and one-third budget", async () => {
+test("the input area includes its gap and borders within the six-row and one-third budget", async () => {
   for (const [columns, rows, budget] of [
     [80, 24, 6],
     [40, 12, 4],
@@ -156,10 +156,11 @@ test("the input area includes its dividers within the six-row and one-third budg
       app.stdin.write(
         "\x1b[200~" + Array.from({ length: 10 }, (_, i) => `draft-${i}`).join("\n") + "\x1b[201~",
       );
-      await app.waitFor(() => app.screen().some((line) => line.trim() === "draft-9"));
-      const dividers = app.screen().flatMap((line, i) => (/^─+$/.test(line) ? [i] : []));
+      await app.waitFor(() => app.screen().some((line) => line.endsWith("draft-9")));
+      const dividers = app.screen().flatMap((line, i) => (/^[╭╰]─+[╮╯]$/.test(line) ? [i] : []));
       expect(dividers).toHaveLength(2);
-      expect(dividers[1]! - dividers[0]! + 1).toBe(budget!);
+      expect(app.screen()[dividers[0]! - 1]).toBe("");
+      expect(dividers[1]! - dividers[0]! + 2).toBe(budget!);
       expect(app.terminal.buffer.active.cursorY).toBeLessThan(dividers[1]!);
     } finally {
       await app.cleanup();
@@ -168,7 +169,7 @@ test("the input area includes its dividers within the six-row and one-third budg
 });
 
 test("Home and End use the available input columns rather than the longest draft line", async () => {
-  const app = await start([], { columns: 40, rows: 12 });
+  const app = await start([], { columns: 40, rows: 18 });
   try {
     await app.waitFor(() => app.stdin.isRaw);
     app.stdin.write("\x1b[200~AAAA\nB\x1b[201~");

@@ -277,8 +277,9 @@ function Chat({
             )}
             {!question && (
               <PromptInput
-                maxLines={Math.max(1, Math.min(6, Math.floor(rows / 3)) - 2)}
-                columns={columns - 2}
+                maxLines={Math.max(1, Math.min(6, Math.floor(rows / 3)) - 3)}
+                columns={columns}
+                working={state.running}
                 value={input}
                 onChange={change}
                 onSubmit={(prompt) => {
