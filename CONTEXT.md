@@ -60,6 +60,10 @@ _Avoid_: memory, rules file
 上下文接近模型上下文窗口时，把较早的 transcript 摘要成一条 entry。之后的 turn 和 resume 都从这条摘要加上它之后的消息继续，原始消息仍保留在 transcript 里。
 _Avoid_: summarization, context pruning
 
+**Context Usage**:
+当前 transcript 发给模型时占用的 token 数，相对于模型的上下文窗口。总量以 provider 报告为准；按 system / prompt / assistant / thinking / tools 分段只是估算，用来表示占比。
+_Avoid_: context size, token count
+
 ### 能力
 
 **Tool**:
