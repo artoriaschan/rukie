@@ -24,11 +24,15 @@ await app.waitUntilExit();
 
 Box dimensions and spacing use terminal cells. Direction defaults to `row`; grow and shrink default to zero. Padding and margin accept a uniform value, X/Y values, or individual edges (individual edges take precedence). `borderStyle="single"` adds a one-cell border. Text supports the eight ANSI color names, `gray`, six-digit RGB hex colors, `bold`, and `dimColor`. Nested Text inherits styles, with explicit `false` disabling inherited bold/dim styles. Text uses `Bun.wrapAnsi` to wrap at word boundaries, splitting long words by display columns and trimming whitespace at line boundaries; `wrap="truncate"` clips each explicit line. A wide glyph that cannot fit even on an empty line is omitted.
 
+In fullscreen mode, mouse tracking includes button motion (1002) and any motion (1003), using SGR coordinates (1006). `Box` accepts `onMouseEnter()` and `onMouseLeave()`. Hover uses the last painted screen rectangles, including ScrollBox offsets and clipping, and includes the hit node's ancestors with hover callbacks. Callbacks run from the innermost Box outward, with all leaves before any enters; repeated motion in the same cell does nothing. Resize dispatches leaves and clears hover until the next frame. All mouse tracking modes are disabled on exit.
+
 Rendering starts at the current terminal line on the main screen, preserving output above it. Each mounted renderer owns its active area and frame history. Subsequent frames compare characters, display widths and styles and clear removed content. An active area taller than the terminal shows its bottom rows without sending earlier active frames into scrollback. Resize clears and repaints the active area on the next scheduled frame using the new dimensions, preserving completed output.
 
 `useInput(handler, { isActive?: boolean })` subscribes to parsed input. The handler receives an `InputEvent`: either `{ type: "key", input, key: { name, ctrl, shift, alt } }` or `{ type: "paste", input }`. Key names include `left`, `right`, `up`, `down`, `enter`, `backspace`, `delete`, `escape`, `tab`, `home`, `end`, `pageup`, and `pagedown`. Printable and Ctrl keys also carry their character in `input`; special keys have an empty `input`. UTF-8 and escape sequences may span stdin chunks. Bracketed paste delivers the complete original payload once, including embedded newlines and control bytes. The renderer leaves Ctrl+C and Ctrl+D decisions to the frontend.
 
 `useTerminalSize()` returns `{ columns, rows }` and updates on stdout's `resize` event. Hooks must be called inside a tree mounted by `render`.
+
+Mouse input also delivers `{ type: "move", x, y }` for motion with no button held, and `{ type: "wheel", input: "", x, y, delta }` for wheel scrolling (`delta` is -1 up or 1 down). Coordinates are zero-based screen cells. Input handlers should narrow by `type` before reading keyboard or paste fields; `TextInput` ignores mouse events.
 
 ```tsx
 import { TextInput, render, useInput, useTerminalSize } from "@neant/tui";

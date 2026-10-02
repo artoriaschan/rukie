@@ -17,6 +17,7 @@ import {
 } from "../layout";
 import { createScreen } from "../screen";
 import { ClockProvider } from "../hooks/animation-frame";
+import { createHover } from "./hover";
 
 export interface RenderOptions extends TerminalIO {
   fullscreen?: boolean;
@@ -27,6 +28,7 @@ interface Container {
   options: RenderOptions;
   active: boolean;
   screen: ReturnType<typeof createScreen>;
+  hover: ReturnType<typeof createHover>;
   completed: WeakSet<HostNode>;
   pending: LayoutNode[];
   timer?: ReturnType<typeof setTimeout>;
@@ -38,18 +40,13 @@ function paint(container: Container) {
   if (!container.active) return;
   const { stdout } = container.options;
   try {
-    stdout.write(
-      container.screen(
-        calculateTree(
-          container.tree,
-          stdout.columns,
-          container.options.fullscreen ? stdout.rows : undefined,
-        ),
-        stdout.columns,
-        stdout.rows,
-        container.pending,
-      ),
+    const layout = calculateTree(
+      container.tree,
+      stdout.columns,
+      container.options.fullscreen ? stdout.rows : undefined,
     );
+    stdout.write(container.screen(layout, stdout.columns, stdout.rows, container.pending));
+    container.hover.record(layout, stdout.columns, stdout.rows);
     container.pending = [];
   } catch (error) {
     container.onError(error);
@@ -161,6 +158,7 @@ export function render(element: ReactNode, options: RenderOptions) {
     options,
     active: true,
     screen: createScreen(options.fullscreen),
+    hover: createHover(),
     completed: new WeakSet(),
     pending: [],
     onError(error) {
@@ -175,6 +173,7 @@ export function render(element: ReactNode, options: RenderOptions) {
     options,
     () => {
       if (!container.active) return;
+      container.hover.clear();
       container.screen.invalidate();
       schedulePaint(container);
     },
@@ -190,6 +189,9 @@ export function render(element: ReactNode, options: RenderOptions) {
     (notify) => reconciler.flushSyncFromReconciler(notify),
     options.fullscreen,
   );
+  terminal.subscribeInput((event) => {
+    if (event.type === "move") container.hover.move(event.x, event.y);
+  });
   const fail = container.onError;
   const root = reconciler.createContainer(
     container,

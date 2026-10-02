@@ -34,6 +34,8 @@ export interface BoxProps {
   marginBottom?: number;
   gap?: number;
   borderStyle?: "single";
+  onMouseEnter?(): void;
+  onMouseLeave?(): void;
 }
 
 export interface TextProps extends TextStyle {

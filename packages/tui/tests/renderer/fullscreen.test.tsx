@@ -21,6 +21,8 @@ test("fullscreen occupies the viewport and restores the original terminal conten
   try {
     await terminal.flush();
     expect(terminal.terminal.buffer.active.type).toBe("alternate");
+    expect(terminal.output()).toContain("\x1b[?1002h\x1b[?1003h");
+    expect(terminal.terminal.modes.mouseTrackingMode).toBe("any");
     expect(terminal.screen()[0]).toBe("body");
     expect(terminal.screen()[7]).toBe("fixed input");
     expect(terminal.scrollback()).toEqual([]);
@@ -32,6 +34,7 @@ test("fullscreen occupies the viewport and restores the original terminal conten
     expect(terminal.cursor()).toEqual(cursor);
     expect(terminal.stdin.isRaw).toBe(false);
     expect(terminal.terminal.modes.mouseTrackingMode).toBe("none");
+    expect(terminal.output()).toContain("\x1b[?1002l\x1b[?1003l");
   } finally {
     app.unmount();
     terminal.dispose();

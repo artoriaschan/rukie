@@ -13,7 +13,9 @@ test("unmount restores raw mode, bracketed paste and cursor visibility and detac
     error: process.listenerCount("uncaughtExceptionMonitor"),
   };
   function View() {
-    useInput((event) => events.push(event.input));
+    useInput((event) => {
+      if (event.type !== "move") events.push(event.input);
+    });
     return <Text>ready</Text>;
   }
   const app = render(<View />, terminal);

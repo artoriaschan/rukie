@@ -138,6 +138,7 @@ function Chat({
     setInput(value);
   };
   useInput((event) => {
+    if (event.type === "move") return;
     if (event.type === "wheel") {
       if (small) return;
       const viewport = details.current?.getSnapshot();

@@ -7,6 +7,20 @@ import { start } from "../helpers/app";
 import { createTerminal } from "../helpers/terminal";
 import { controlledModel } from "../helpers/model";
 
+test("mouse motion between consecutive Ctrl+C presses does not cancel idle exit", async () => {
+  const app = await start([]);
+  try {
+    await app.waitFor(() => app.stdin.isRaw);
+    app.stdin.write("\x03\x1b[<35;5;2M\x03");
+    await Bun.sleep(25);
+    await app.flush();
+    expect(app.terminal.buffer.active.type).toBe("normal");
+    expect(await app.exit).toBe(0);
+  } finally {
+    await app.cleanup();
+  }
+});
+
 test("startup header receives the configured thinking level and shows cwd on its own row without tips", async () => {
   let cwd = "";
   const app = await start(["--thinking", "high"], {

@@ -65,12 +65,15 @@ export function createTerminalSession(
     if (paused) stdin.pause();
     stdout.write(
       "\x1b[0m\x1b[?7h\x1b[?25h\x1b[?2004l" +
-        (fullscreen ? "\x1b[?1000l\x1b[?1006l\x1b[?1049l" : ""),
+        (fullscreen ? "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1049l" : ""),
     );
   }
   try {
     stdin.setRawMode?.(true);
-    stdout.write((fullscreen ? "\x1b[?1049h\x1b[?1000h\x1b[?1006h" : "") + "\x1b[?25l\x1b[?2004h");
+    stdout.write(
+      (fullscreen ? "\x1b[?1049h\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1006h" : "") +
+        "\x1b[?25l\x1b[?2004h",
+    );
     stopInput = listenInput(stdin, (event) =>
       dispatchInput(() => inputs.forEach((listener) => listener(event))),
     );

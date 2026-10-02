@@ -11,6 +11,7 @@ export interface Key {
 export type InputEvent =
   | { type: "key"; input: string; key: Key }
   | { type: "wheel"; input: ""; x: number; y: number; delta: number }
+  | { type: "move"; x: number; y: number }
   | { type: "paste"; input: string };
 
 const names: Record<string, string> = {
@@ -85,6 +86,15 @@ export function listenInput(stdin: Readable, emit: (event: InputEvent) => void) 
                 y: row - 1,
                 delta: button === 64 ? -1 : 1,
               });
+            } else if (
+              final === "M" &&
+              button !== undefined &&
+              (button & 0x20) !== 0 &&
+              (button & 0xc3) === 3 &&
+              column !== undefined &&
+              row !== undefined
+            ) {
+              emit({ type: "move", x: column - 1, y: row - 1 });
             }
             continue;
           }
