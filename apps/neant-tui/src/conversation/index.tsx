@@ -1,9 +1,34 @@
 import { useRef, useState, useSyncExternalStore } from "react";
 import type { Session, SessionEvent } from "@neant/agent";
-import { Box, Static, Text, TextInput, useInput } from "@neant/tui";
+import { Box, Spinner, Static, Text, TextInput, useInput } from "@neant/tui";
+
+interface ToolCall {
+  id: string;
+  summary: string;
+}
+
+type CompletedEntry =
+  | { type: "message"; text: string }
+  | { type: "tool"; summary: string; isError: boolean; error?: string }
+  | { type: "notice"; text: string };
+
+type ToolResultMessage = Extract<
+  Extract<SessionEvent, { type: "message_end" }>["message"],
+  { role: "toolResult" }
+>;
+
+function errorPreview(result: Pick<ToolResultMessage, "content">) {
+  return result.content
+    .flatMap((content) => (content.type === "text" ? [content.text] : []))
+    .join("\n")
+    .split(/\r?\n/)
+    .slice(0, 3)
+    .join("\n");
+}
 
 interface ViewState {
-  completed: string[];
+  completed: CompletedEntry[];
+  tools: ToolCall[];
   assistant: string;
   model: string;
   running: boolean;
@@ -34,21 +59,69 @@ function reduceEvent(state: ViewState, event: SessionEvent): ViewState {
     case "message_end": {
       const text = messageText(event.message);
       if (event.message.role === "user") {
-        return { ...state, completed: [...state.completed, `> ${text}`] };
+        return {
+          ...state,
+          completed: [...state.completed, { type: "message", text: `> ${text}` }],
+        };
       }
       if (event.message.role !== "assistant") return state;
       return {
         ...state,
-        completed: text ? [...state.completed, text] : state.completed,
+        completed: text ? [...state.completed, { type: "message", text }] : state.completed,
         assistant: "",
         input: state.input + event.message.usage.input,
         output: state.output + event.message.usage.output,
       };
     }
+    case "tool_execution_start":
+      return {
+        ...state,
+        tools: [
+          ...state.tools,
+          {
+            id: event.toolCallId,
+            summary: `${event.toolName} ${JSON.stringify(event.args)}`.replace(/\s+/g, " "),
+          },
+        ],
+      };
+    case "tool_execution_end": {
+      const tool = state.tools.find((tool) => tool.id === event.toolCallId);
+      if (!tool) return state;
+      return {
+        ...state,
+        tools: state.tools.filter((tool) => tool.id !== event.toolCallId),
+        completed: [
+          ...state.completed,
+          {
+            type: "tool",
+            summary: tool.summary,
+            isError: event.isError,
+            error: event.isError ? errorPreview(event.result) : undefined,
+          },
+        ],
+      };
+    }
+    case "compaction":
+    case "mcp_server_error":
+      return {
+        ...state,
+        completed: [
+          ...state.completed,
+          {
+            type: "notice",
+            text:
+              event.type === "compaction"
+                ? `Context compacted (${event.tokensBefore} tokens)`
+                : `MCP server ${event.server}: ${event.error}`.replace(/\s+/g, " "),
+          },
+        ],
+      };
     case "result":
       return {
         ...state,
-        completed: state.assistant ? [...state.completed, state.assistant] : state.completed,
+        completed: state.assistant
+          ? [...state.completed, { type: "message", text: state.assistant }]
+          : state.completed,
         assistant: "",
         running: false,
         input: event.usage.input,
@@ -64,6 +137,7 @@ function reduceEvent(state: ViewState, event: SessionEvent): ViewState {
 export function createConversation(session: Session, model: string) {
   let state: ViewState = {
     completed: [],
+    tools: [],
     assistant: "",
     model,
     running: false,
@@ -157,11 +231,33 @@ export function Conversation({
   return (
     <Box flexDirection="column">
       <Static>
-        {state.completed.map((text, index) => (
-          <Text key={index}>{text}</Text>
-        ))}
+        {state.completed.map((entry, index) =>
+          entry.type === "tool" ? (
+            <Box key={index} flexDirection="column">
+              <Text wrap="truncate">{`${entry.isError ? "✗" : "✓"} ${entry.summary}`}</Text>
+              {entry.error && (
+                <Text color="red" wrap="truncate">
+                  {entry.error}
+                </Text>
+              )}
+            </Box>
+          ) : (
+            <Text
+              key={index}
+              dimColor={entry.type === "notice"}
+              wrap={entry.type === "notice" ? "truncate" : "wrap"}
+            >
+              {entry.text}
+            </Text>
+          ),
+        )}
       </Static>
       {state.assistant && <Text>{state.assistant}</Text>}
+      {state.tools.map((tool) => (
+        <Text key={tool.id} wrap="truncate">
+          <Spinner /> {tool.summary}
+        </Text>
+      ))}
       {state.error && <Text color="red">{state.error}</Text>}
       <Box>
         <Box width={2} flexShrink={0}>

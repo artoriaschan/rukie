@@ -69,7 +69,10 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
       cwd,
       homeDir,
       settings,
-      onWarning: (warning) => io.stderr(`Warning: ${warning}\n`),
+      onWarning: (warning) => {
+        // MCP errors also arrive as SessionEvents and are rendered as inline notices.
+        if (!warning.startsWith("MCP server ")) io.stderr(`Warning: ${warning}\n`);
+      },
       ...io.session,
       resumeId: values.resume,
       allowTools: [...(io.session?.allowTools ?? []), ...(values["allow-tools"] ?? [])],

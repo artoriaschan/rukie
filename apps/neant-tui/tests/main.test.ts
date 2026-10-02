@@ -2,49 +2,11 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createSession, type SessionOptions } from "@neant/agent";
+import { createSession } from "@neant/agent";
 import { main } from "../src/main";
 import { controlledModel } from "./helpers/model";
 import { createTerminal } from "./helpers/terminal";
-
-async function start(
-  argv: string[] = [],
-  options: {
-    session?: Partial<SessionOptions>;
-    prepare?(root: string): Promise<void>;
-  } = {},
-) {
-  const root = await mkdtemp(join(tmpdir(), "neant-tui-"));
-  await options.prepare?.(root);
-  const terminal = createTerminal();
-  const fake = controlledModel();
-  let stderr = "";
-  const exit = main(argv, {
-    ...terminal,
-    stderr: (text) => (stderr += text),
-    session: { cwd: root, homeDir: root, ...fake, ...options.session },
-  });
-  return {
-    ...terminal,
-    ...fake,
-    exit,
-    stderr: () => stderr,
-    async cleanup() {
-      terminal.stdin.write("\x1b");
-      await terminal.waitFor(
-        () =>
-          !fake.calls.at(-1) ||
-          fake.calls.at(-1)!.signal!.aborted ||
-          terminal.screen().some((line) => line.includes("Ready")),
-      );
-      await Bun.sleep(40);
-      terminal.stdin.write("\x03\x03\x03");
-      await exit;
-      terminal.dispose();
-      await rm(root, { recursive: true, force: true });
-    },
-  };
-}
+import { start } from "./helpers/app";
 
 test("streams verbatim replies and continues two prompts in the same Session", async () => {
   const app = await start();
@@ -453,7 +415,8 @@ test("--trust-project-mcp loads project configuration", async () => {
   });
   try {
     await app.waitFor(() => app.calls.length === 1);
-    expect(app.stderr()).toContain("Warning: MCP server broken: Invalid MCP configuration:");
+    await app.waitFor(() => app.allLines().some((line) => line.startsWith("MCP server broken:")));
+    expect(app.stderr()).toBe("");
     app.calls[0]!.delta("project MCP checked");
     app.calls[0]!.finish();
     await app.waitFor(() => app.allLines().includes("project MCP checked"));

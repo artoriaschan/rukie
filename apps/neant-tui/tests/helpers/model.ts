@@ -18,6 +18,7 @@ export function controlledModel() {
     delta(text: string): void;
     finish(input?: number, output?: number): void;
     tool(name: string, args: Parameters<typeof fauxToolCall>[1]): void;
+    tools(tools: { name: string; args: Parameters<typeof fauxToolCall>[1] }[]): void;
     fail(message: string): void;
   }[] = [];
   const streamFn: NonNullable<SessionOptions["streamFn"]> = (_model, context, options) => {
@@ -47,6 +48,15 @@ export function controlledModel() {
       });
       stream.end(message);
     };
+    const tools = (tools: { name: string; args: Parameters<typeof fauxToolCall>[1] }[]) =>
+      complete(
+        fauxAssistantMessage(
+          tools.map(({ name, args }, index) =>
+            fauxToolCall(name, args, { id: `call-${calls.length}-${index}` }),
+          ),
+          { stopReason: "toolUse" },
+        ),
+      );
     calls.push({
       context: structuredClone(context),
       signal: options?.signal,
@@ -59,8 +69,8 @@ export function controlledModel() {
       finish(input = 11, output = 5) {
         complete({ ...partial, stopReason: "stop" }, input, output);
       },
-      tool: (name, args) =>
-        complete(fauxAssistantMessage(fauxToolCall(name, args), { stopReason: "toolUse" })),
+      tool: (name, args) => tools([{ name, args }]),
+      tools,
       fail: (message) => fail("error", message),
     });
     return stream;
