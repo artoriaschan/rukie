@@ -349,6 +349,7 @@ test("stream-json emits session metadata, verbatim pi events, and the Run result
   });
   expect(events.map((event) => event.type)).toEqual([
     "session_start",
+    "context_usage",
     "agent_start",
     "turn_start",
     "message_start",
@@ -367,10 +368,35 @@ test("stream-json emits session metadata, verbatim pi events, and the Run result
     "message_update",
     "message_update",
     "message_end",
+    "context_usage",
     "turn_end",
     "agent_end",
     "result",
   ]);
+  const usage = events.filter((event) => event.type === "context_usage");
+  expect(usage).toHaveLength(2);
+  expect(usage[0]).toEqual({
+    type: "context_usage",
+    sessionId,
+    used: usage[0].segments.system,
+    window: expect.any(Number),
+    segments: { system: expect.any(Number), prompt: 0, assistant: 0, thinking: 0, tools: 0 },
+  });
+  expect(usage[0].used).toBeGreaterThan(0);
+  expect(usage[0].window).toBeGreaterThan(0);
+  expect(usage[1]).toEqual({
+    type: "context_usage",
+    sessionId,
+    used: 12, // Provider input 8 + cacheRead 4, excluding output 5.
+    window: usage[0].window,
+    segments: {
+      system: usage[0].segments.system,
+      prompt: expect.any(Number),
+      assistant: 4,
+      thinking: 0,
+      tools: 0,
+    },
+  });
   expect(events.find((event) => event.assistantMessageEvent?.type === "text_delta")).toMatchObject({
     type: "message_update",
     message: { role: "assistant", model: "m" },

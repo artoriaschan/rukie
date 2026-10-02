@@ -29,6 +29,7 @@ import { collectReminders, convertToLlm, type ReminderSource } from "../reminder
 import { discoverSkills, skillInvocation, skillsReminder } from "../skills/index.ts";
 import { createMcpConnections } from "../mcp/index.ts";
 import { compactTurn, estimateContextTokens, restoreContext } from "../compaction/index.ts";
+import { contextUsage } from "../context-usage/index.ts";
 
 export interface PermissionAskRequest {
   toolCallId: string;
@@ -177,6 +178,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     },
   });
   let running = false;
+  let inputTokens: number | undefined;
   return {
     id: stored.metadata.id,
     get messages() {
@@ -194,6 +196,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       };
       const emit = (event: AgentEvent | CustomSessionEvent) =>
         onEvent?.({ ...event, sessionId: stored.metadata.id });
+      const emitContextUsage = () =>
+        emit(contextUsage(agent.state.messages, model.contextWindow, inputTokens));
       emitRunEvent = emit;
       const abort = () => agent.abort();
       const mcp = createMcpConnections();
@@ -225,6 +229,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             cwd,
             tools: agent.state.tools.map((tool) => tool.name),
           });
+          await emitContextUsage();
         }
         await emitMcpErrors();
         try {
@@ -271,12 +276,14 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               await branch.findEntries({ order: "oldestFirst" }, context),
             );
             agent.state.messages = messages;
+            inputTokens = undefined;
             await emit({
               type: "compaction_end",
               summary: compacted.summary,
               tokensBefore: compacted.tokensBefore,
               tokensAfter: estimateContextTokens(messages),
             });
+            await emitContextUsage();
             return { context: { ...requestContext, messages } };
           };
           unsubscribe = agent.subscribe(async (event) => {
@@ -307,6 +314,11 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               }
             }
             await emit(event);
+            if (event.type === "message_end" && event.message.role === "assistant") {
+              const { input, cacheRead, cacheWrite } = event.message.usage;
+              inputTokens = input + cacheRead + cacheWrite || undefined;
+              await emitContextUsage();
+            }
           });
           signal?.throwIfAborted();
           const discovered = await discoverSkills(cwd, options.homeDir);

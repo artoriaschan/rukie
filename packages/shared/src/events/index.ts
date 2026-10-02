@@ -15,8 +15,23 @@ export interface RunResult {
   error?: string;
 }
 
+/** Provider input usage, with estimates showing the composition of the current context. */
+export interface ContextUsageEvent {
+  type: "context_usage";
+  used: number;
+  window: number;
+  segments: {
+    system: number;
+    prompt: number;
+    assistant: number;
+    thinking: number;
+    tools: number;
+  };
+}
+
 export type CustomSessionEvent =
   | { type: "session_start"; model: string; cwd: string; tools: string[] }
+  | ContextUsageEvent
   | ({ type: "result" } & RunResult)
   | { type: "reminder_injected"; source: string; content: string }
   | { type: "permission_denied"; toolCallId: string; toolName: string }
