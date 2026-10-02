@@ -181,12 +181,106 @@ test("split self-narration only starts at a line boundary and expires after five
   expect(narration).toStartWith("👩‍💻中文é");
 });
 
+test("compaction copy stays deterministic above other copy and below approval without changing phase", () => {
+  let state = reduce(createActivity(), { type: "submit" }, start, random);
+  state = reduce(state, delta("⏵ 在查问题", "text_delta"), start, random);
+  state = reduce(state, { type: "interrupt" }, start + 50, random);
+  state = reduce(
+    state,
+    { type: "compaction_start", sessionId, tokensBefore: 120_000 },
+    start + 100,
+    random,
+  );
+  const phrase = render(state, start + 100).line.split(" · ")[0]!;
+  expect(["收拾一下上下文…", "整理背包中…"]).toContain(phrase);
+  expect(render(state, start + 30_000)).toMatchObject({
+    phase: "thinking",
+    line: `${phrase} · 总30s`,
+  });
+  expect(render(state, start + 30_000)).toEqual(render(state, start + 30_000));
+  state = reduce(state, { type: "approval-open" }, start + 200, random);
+  expect(APPROVAL_PHRASES).toContain(render(state, start + 200).line.split(" · ")[0]!);
+  state = reduce(state, { type: "approval-close" }, start + 300, random);
+  expect(render(state, start + 300).line).toStartWith(`${phrase} · `);
+  state = reduce(state, result(), start + 31_000, random);
+  expect(render(state, start + 31_000).line).toContain("想31s");
+});
+
+test.each(["waiting", "thinking", "tool"] as const)(
+  "compaction preserves the %s phase and keeps elapsed time advancing",
+  (phase) => {
+    let state = reduce(createActivity(), { type: "submit" }, start, random);
+    if (phase === "thinking") state = reduce(state, delta(), start + 50, random);
+    if (phase === "tool") state = reduce(state, toolStart("a"), start + 50, random);
+    state = reduce(
+      state,
+      { type: "compaction_start", sessionId, tokensBefore: 120_000 },
+      start + 100,
+      random,
+    );
+    const line = render(state, start + 100).line.split(" · ")[0]!;
+    expect(["收拾一下上下文…", "整理背包中…"]).toContain(line);
+    expect(render(state, start + 5000)).toMatchObject({ phase, line: `${line} · 总5s` });
+    expect(render(state, start + 5000).nextWakeAt).toBeGreaterThan(start + 5000);
+  },
+);
+
+const clearingEvents: Parameters<typeof reduce>[1][] = [
+  {
+    type: "compaction_end",
+    sessionId,
+    summary: "private summary",
+    tokensBefore: 120_000,
+    tokensAfter: 18_000,
+  },
+  { type: "message_start", sessionId, message: fauxAssistantMessage("") },
+  result(),
+  { type: "interrupt" },
+];
+test.each(clearingEvents)("$type clears compaction waiting copy", (event) => {
+  let state = reduce(createActivity(), { type: "submit" }, start, random);
+  state = reduce(
+    state,
+    { type: "compaction_start", sessionId, tokensBefore: 120_000 },
+    start + 100,
+    random,
+  );
+  state = reduce(state, event, start + 200, random);
+  expect(render(state, start + 200).line).not.toMatch(/收拾一下上下文|整理背包中/);
+  if (event.type === "result") {
+    state = reduce(state, { type: "submit" }, start + 300, random);
+    expect(render(state, start + 300).line).not.toMatch(/收拾一下上下文|整理背包中/);
+  }
+});
+
+test("compaction completion reports formatted before and after tokens for exactly six seconds", () => {
+  let state = reduce(createActivity(), { type: "submit" }, start, random);
+  state = reduce(
+    state,
+    { type: "compaction_start", sessionId, tokensBefore: 120_000 },
+    start + 100,
+    random,
+  );
+  state = reduce(state, clearingEvents[0]!, start + 200, random);
+  state = reduce(
+    state,
+    { type: "message_start", sessionId, message: fauxAssistantMessage("") },
+    start + 201,
+    random,
+  );
+  expect(render(state, start + 200).line).toBe("压缩了一下 · 120.0k→18.0k · 总0s");
+  expect(render(state, start + 6199).line).toContain("120.0k→18.0k");
+  expect(render(state, start + 6199).nextWakeAt).toBe(start + 6200);
+  expect(render(state, start + 6200).line).not.toContain("120.0k→18.0k");
+  expect(render(state, start + 200).line).not.toContain("private summary");
+});
+
 test("approval overrides narration and compaction; a closed dialog restores fresh copy", () => {
   let state = reduce(createActivity(), { type: "submit" }, start, random);
   state = reduce(state, delta("⏵ 在查问题", "text_delta"), start, random);
   state = reduce(
     state,
-    { type: "compaction", sessionId, summary: "", tokensBefore: 1 },
+    { type: "compaction_end", sessionId, summary: "", tokensBefore: 1, tokensAfter: 0 },
     start + 100,
     random,
   );

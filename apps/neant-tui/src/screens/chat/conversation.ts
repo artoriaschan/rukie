@@ -143,7 +143,7 @@ function reduceEvent(state: ViewState, event: SessionEvent): ViewState {
         completed: [...state.completed, toolEntry(tool.summary, event.isError, event.result)],
       };
     }
-    case "compaction":
+    case "compaction_end":
     case "mcp_server_error":
       return {
         ...state,
@@ -152,7 +152,7 @@ function reduceEvent(state: ViewState, event: SessionEvent): ViewState {
           {
             type: "notice",
             text:
-              event.type === "compaction"
+              event.type === "compaction_end"
                 ? `Context compacted (${event.tokensBefore} tokens)`
                 : `MCP server ${event.server}: ${event.error}`.replace(/\s+/g, " "),
           },

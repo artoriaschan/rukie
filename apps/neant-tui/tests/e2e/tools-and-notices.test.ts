@@ -164,10 +164,13 @@ test("compaction is a warning-colored one-line scrollback notice without exposin
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.tool("read", { path: "large.txt" });
     await app.waitFor(() => app.calls.length === 2);
+    await app.waitFor(() => app.screen().some((line) => /收拾一下上下文…|整理背包中…/.test(line)));
     app.calls[1]!.delta("private-compaction-summary\nsecond summary line");
     app.calls[1]!.finish();
     await app.waitFor(() => app.calls.length === 3);
     await app.waitFor(() => app.screen().some((line) => line.startsWith("Context compacted")));
+    await app.waitFor(() => app.screen().some((line) => / · [\d.]+k→[\d.]+k/.test(line)));
+    expect(app.screen().join("\n")).not.toMatch(/收拾一下上下文…|整理背包中…/);
     const row = app.screen().findIndex((line) => line.startsWith("Context compacted"));
     expect(
       app.terminal.buffer.active

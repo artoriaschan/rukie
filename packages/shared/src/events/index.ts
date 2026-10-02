@@ -21,7 +21,8 @@ export type CustomSessionEvent =
   | { type: "reminder_injected"; source: string; content: string }
   | { type: "permission_denied"; toolCallId: string; toolName: string }
   | { type: "mcp_server_error"; server: string; error: string }
-  | { type: "compaction"; summary: string; tokensBefore: number };
+  | { type: "compaction_start"; tokensBefore: number }
+  | { type: "compaction_end"; summary: string; tokensBefore: number; tokensAfter: number };
 
 /** The caller supplies pi's native AgentEvent without a runtime or type dependency here. */
 export type SessionEvent<PiEvent extends { type: string }> = (PiEvent | CustomSessionEvent) & {

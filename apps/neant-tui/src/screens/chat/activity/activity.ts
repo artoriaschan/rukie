@@ -3,6 +3,7 @@ import {
   ACTION_MAP,
   APPROVAL_PHRASES,
   COMPACT_PHRASES,
+  COMPACTION_START_PHRASES,
   CONTINUE_PHRASES,
   FAIL_PHRASES,
   FALLBACK_ACTIONS,
@@ -47,6 +48,7 @@ interface ActivityState {
   pending?: { line: string; until: number };
   interrupted: boolean;
   approvalStartedAt?: number;
+  compactionStartedAt?: number;
   gitBranch?: string;
 }
 
@@ -107,6 +109,8 @@ export function reduce(
   // Events arriving after a result cannot revive or change a completed Run.
   if (state.phase === "idle" || state.phase === "done") return state;
   switch (event.type) {
+    case "message_start":
+      return { ...state, compactionStartedAt: undefined };
     case "turn_start":
       return { ...state, streamLine: "", narration: undefined, lastChunkAt: undefined };
     case "message_update": {
@@ -136,12 +140,19 @@ export function reduce(
       return {
         ...state,
         interrupted: true,
+        compactionStartedAt: undefined,
         pending: { line: pickPhrase(CONTINUE_PHRASES, random), until: now + 6000 },
       };
-    case "compaction":
+    case "compaction_start":
+      return { ...state, compactionStartedAt: state.compactionStartedAt ?? now };
+    case "compaction_end":
       return {
         ...state,
-        pending: { line: pickPhrase(COMPACT_PHRASES, random), until: now + 6000 },
+        compactionStartedAt: undefined,
+        pending: {
+          line: `${pickPhrase(COMPACT_PHRASES, random)} · ${fmtTokens(event.tokensBefore)}→${fmtTokens(event.tokensAfter)}`,
+          until: now + 6000,
+        },
       };
     case "tool_execution_start": {
       if (state.tools.some((tool) => tool.id === event.toolCallId)) return state;
@@ -184,6 +195,7 @@ export function reduce(
         ...transition(state, "done", now),
         tools: [],
         approvalStartedAt: undefined,
+        compactionStartedAt: undefined,
         tokens: event.usage.totalTokens,
         donePrefix: pickPhrase(event.success ? DONE_PHRASES : FAIL_PHRASES, random),
         pending:
@@ -252,6 +264,12 @@ export function render(state: ActivityState, now: number) {
     phrase = `⏵ ${state.narration}${state.phase === "tool" ? ` · ${phrase}` : ""}`;
   }
   if (pending) phrase = pending.line;
+  if (state.compactionStartedAt !== undefined)
+    phrase = pickPhraseAt(
+      COMPACTION_START_PHRASES,
+      state.runStartedAt + state.compactionStartedAt,
+      0,
+    );
   if (state.approvalStartedAt !== undefined)
     phrase = pickPhraseAt(APPROVAL_PHRASES, state.runStartedAt + state.approvalStartedAt, 0);
   const candidates = [

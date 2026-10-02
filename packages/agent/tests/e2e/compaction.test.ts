@@ -25,22 +25,34 @@ test("only a Turn above the context threshold compacts before answering", async 
   const events: SessionEvent[] = [];
   const onEvent = (event: SessionEvent) => {
     events.push(event);
+    if (event.type === "compaction_start") expect(fake.contexts).toHaveLength(1);
+    if (event.type === "compaction_end") expect(fake.contexts).toHaveLength(2);
   };
 
   await session.run("start", { onEvent });
-  expect(events.filter((event) => event.type === "compaction")).toEqual([]);
+  expect(
+    events.filter((event) => event.type === "compaction_start" || event.type === "compaction_end"),
+  ).toEqual([]);
   expect(fake.contexts).toHaveLength(1);
 
   const result = await session.run("continue", { onEvent });
   expect(result.text).toBe("continued");
-  expect(events.filter((event) => event.type === "compaction")).toEqual([
+  const compactions = events.filter(
+    (event) => event.type === "compaction_start" || event.type === "compaction_end",
+  );
+  expect(compactions).toEqual([
+    { type: "compaction_start", sessionId: session.id, tokensBefore: expect.any(Number) },
     {
-      type: "compaction",
+      type: "compaction_end",
       sessionId: session.id,
       summary: expect.stringContaining("Summary of old work."),
       tokensBefore: expect.any(Number),
+      tokensAfter: expect.any(Number),
     },
   ]);
+  const ended = compactions.find((event) => event.type === "compaction_end")!;
+  expect(compactions[0]).toMatchObject({ tokensBefore: ended.tokensBefore });
+  expect(ended.tokensAfter).toBeLessThan(ended.tokensBefore);
   expect(JSON.stringify(fake.contexts[1])).toContain("old work");
   expect(JSON.stringify(fake.contexts[1])).toContain("Preserve the widget contract.");
   expect(JSON.stringify(fake.contexts[2])).toContain("Summary of old work.");
@@ -49,6 +61,37 @@ test("only a Turn above the context threshold compacts before answering", async 
     role: "user",
     content: [{ type: "text", text: "continue" }],
   });
+});
+
+test("a request above the threshold emits no compaction events when no work remains to compress", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([
+    fauxAssistantMessage("old work ".repeat(2500)),
+    fauxAssistantMessage("Summary of old work."),
+    fauxAssistantMessage("answered"),
+  ]);
+  fake.model.contextWindow = 4000;
+  const session = await createSession({ ...dirs, ...fake });
+  await session.run("first");
+  // Leave the Transcript at a completed compaction, before any new model work.
+  await expect(
+    session.run("compact", {
+      onEvent: (event) => {
+        if (event.type === "compaction_end") throw new Error("pause after compaction");
+      },
+    }),
+  ).rejects.toThrow("pause after compaction");
+  const events: SessionEvent[] = [];
+  const result = await session.run("pending request ".repeat(2500), {
+    onEvent: (event) => {
+      events.push(event);
+    },
+  });
+  expect(result.text).toBe("answered");
+  expect(fake.contexts).toHaveLength(3);
+  expect(
+    events.filter((event) => event.type === "compaction_start" || event.type === "compaction_end"),
+  ).toEqual([]);
 });
 
 test("compaction appends a native Transcript entry and resume restores summary plus suffix", async () => {
@@ -67,7 +110,8 @@ test("compaction appends a native Transcript entry and resume restores summary p
   await session.run("next prompt", {
     onEvent: async (event) => {
       events.push(event);
-      if (event.type === "compaction") expect(await transcript()).toContain('"type":"compaction"');
+      if (event.type === "compaction_end")
+        expect(await transcript()).toContain('"type":"compaction"');
     },
   });
   const after = await transcript();
@@ -127,7 +171,7 @@ test("a large tool result compacts before the next Turn within the same Run", as
       })
     ).text,
   ).toBe("finished");
-  expect(events.filter((event) => event.type === "compaction")).toHaveLength(1);
+  expect(events.filter((event) => event.type === "compaction_end")).toHaveLength(1);
   expect(JSON.stringify(fake.contexts[1])).toContain("tool output tool output");
   expect(JSON.stringify(fake.contexts.at(-1))).not.toContain("tool output tool output");
   expect(JSON.stringify(fake.contexts.at(-1))).toContain("The file contained large tool output.");
@@ -200,7 +244,7 @@ test.each(["oversized batch", "split prefix"])(
         })
       ).text,
     ).toBe("finished");
-    expect(events.filter((event) => event.type === "compaction")).toHaveLength(2);
+    expect(events.filter((event) => event.type === "compaction_end")).toHaveLength(2);
     const updatedRequest = fake.contexts.at(-2)!;
     expect(JSON.stringify(updatedRequest)).toContain("CRITICAL PREVIOUS GOAL");
     expect(JSON.stringify(fake.contexts.at(-1))).toContain("Updated summary");
@@ -231,7 +275,10 @@ test("failed summarization preserves the Transcript for a later resume", async (
       },
     }),
   ).rejects.toThrow("summary unavailable");
-  expect(events.filter((event) => event.type === "compaction")).toEqual([]);
+  expect(events.filter((event) => event.type === "compaction_start")).toEqual([
+    { type: "compaction_start", sessionId: session.id, tokensBefore: expect.any(Number) },
+  ]);
+  expect(events.filter((event) => event.type === "compaction_end")).toEqual([]);
   expect(events.at(-1)).toMatchObject({ type: "result", success: false });
   expect(await transcript()).not.toContain('"type":"compaction"');
   const next = fakeModel([
@@ -336,9 +383,14 @@ test("aborting summary generation cancels its provider request without persistin
   });
   void run.catch(() => {});
   await summary.started;
+  expect(events.at(-1)).toMatchObject({ type: "compaction_start" });
   controller.abort(new Error("cancel summary"));
   await expect(run).rejects.toThrow("cancel summary");
-  expect(events.filter((event) => event.type === "compaction")).toEqual([]);
+  expect(events.at(-1)).toMatchObject({ type: "result", success: false });
+  expect(events.filter((event) => event.type === "compaction_start")).toEqual([
+    { type: "compaction_start", sessionId: session.id, tokensBefore: expect.any(Number) },
+  ]);
+  expect(events.filter((event) => event.type === "compaction_end")).toEqual([]);
   expect(await transcript()).not.toContain('"type":"compaction"');
   const next = fakeModel([
     fauxAssistantMessage("Recovered summary."),

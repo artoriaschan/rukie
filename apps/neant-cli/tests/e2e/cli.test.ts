@@ -411,6 +411,43 @@ test("stream-json emits session metadata, verbatim pi events, and the Run result
   });
 });
 
+test("stream-json reports compaction start and end around a large tool result", async () => {
+  const { server, ...dirs } = await setup(
+    {},
+    {
+      toolCalls: [{ name: "read", arguments: { path: "large.txt" } }],
+    },
+  );
+  await Bun.write(join(dirs.cwd, "large.txt"), "tool output ".repeat(2500));
+  const settingsPath = join(dirs.home, ".neant/settings.json");
+  const settings = await Bun.file(settingsPath).json();
+  settings.providers[0].models[0].contextWindow = 4000;
+  await Bun.write(settingsPath, JSON.stringify(settings));
+  const result = await neant(["-p", "read the file", "--output-format", "stream-json"], {
+    ...dirs,
+    key: "sk-test",
+  });
+  expect(result).toMatchObject({ exitCode: 0, stderr: "" });
+  const events = parseEvents(result.stdout);
+  const compactions = events.filter(
+    (event) => event.type === "compaction_start" || event.type === "compaction_end",
+  );
+  expect(compactions).toEqual([
+    { type: "compaction_start", sessionId: events[0].sessionId, tokensBefore: expect.any(Number) },
+    {
+      type: "compaction_end",
+      sessionId: events[0].sessionId,
+      summary: expect.stringContaining("hello from fake"),
+      tokensBefore: compactions[0].tokensBefore,
+      tokensAfter: expect.any(Number),
+    },
+  ]);
+  expect(compactions[1].tokensAfter).toBeLessThan(compactions[1].tokensBefore);
+  expect(events.filter((event) => event.type === "compaction")).toEqual([]);
+  expect(events.at(-1)).toMatchObject({ type: "result", success: true });
+  expect(server.requests).toHaveLength(3);
+});
+
 test("a failed stream-json Run emits a failure result and exits 1", async () => {
   const { server, ...dirs } = await setup({}, { error: "model unavailable" });
   const result = await neant(["-p", "hi", "--output-format", "stream-json"], {

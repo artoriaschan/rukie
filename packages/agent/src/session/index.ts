@@ -28,7 +28,7 @@ import { SYSTEM_PROMPT } from "../prompt/index.ts";
 import { collectReminders, convertToLlm, type ReminderSource } from "../reminders/index.ts";
 import { discoverSkills, skillInvocation, skillsReminder } from "../skills/index.ts";
 import { createMcpConnections } from "../mcp/index.ts";
-import { compactTurn, restoreContext } from "../compaction/index.ts";
+import { compactTurn, estimateContextTokens, restoreContext } from "../compaction/index.ts";
 
 export interface PermissionAskRequest {
   toolCallId: string;
@@ -246,6 +246,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               streamFn: options.streamFn ?? streamFn,
               thinkingLevel: agent.state.thinkingLevel,
               signal: turnSignal,
+              onStart: (tokensBefore) => emit({ type: "compaction_start", tokensBefore }),
             });
             if (!compacted) return;
             await runStore.mutate(async (mutator) => {
@@ -271,9 +272,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             );
             agent.state.messages = messages;
             await emit({
-              type: "compaction",
+              type: "compaction_end",
               summary: compacted.summary,
               tokensBefore: compacted.tokensBefore,
+              tokensAfter: estimateContextTokens(messages),
             });
             return { context: { ...requestContext, messages } };
           };

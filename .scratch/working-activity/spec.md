@@ -52,7 +52,7 @@ Status: ready-for-agent
 ### ④ 屏幕（`apps/neant-tui/src/screens/chat/`）
 
 - `activity/`（屏幕私有模块，按需拆文件）：
-  - `phrases.ts`：从 `dsh-working-activity/src/phrases.ts` 拷贝中文文案池与选择器（THINKING、30/60/300s 分档、WAITING、TOOL_OPENING、FALLBACK、FAIL、DONE、NIGHT、RARE、周末、节日 + 农历新年表、CONTINUE、COMPACT、APPROVAL、ACTION_MAP、`pickPhraseAt`、`mixSlot`、`fmtDuration` 等）。删去 en、MODEL_QUIPS、RETRY、COMPACTION_START、OVERFLOW、COMPACT_RETRY 及其他无输入来源的池。文件头保留 BSD-3-Clause 版权与许可全文，并注明来源路径与版本 `0.5.1`。
+  - `phrases.ts`：从 `dsh-working-activity/src/phrases.ts` 拷贝中文文案池与选择器（THINKING、30/60/300s 分档、WAITING、TOOL_OPENING、FALLBACK、FAIL、DONE、NIGHT、RARE、周末、节日 + 农历新年表、CONTINUE、COMPACT、COMPACTION_START、APPROVAL、ACTION_MAP、`pickPhraseAt`、`mixSlot`、`fmtDuration` 等）。删去 en、MODEL_QUIPS、RETRY、OVERFLOW、COMPACT_RETRY 及其他无输入来源的池。文件头保留 BSD-3-Clause 版权与许可全文，并注明来源路径与版本 `0.5.1`。
   - `activity.ts`：按 `status.ts` 重写的纯函数状态机。
     - `reduce(state, event, now)`：输入为 `SessionEvent` 加上屏幕自有事件 `submit`、`interrupt`、`approval-open` / `approval-close`、`git-branch`。
     - `render(state, now) → { phase, line, nextWakeAt }`。
@@ -61,8 +61,8 @@ Status: ready-for-agent
     - 工具动词在 `tool_execution_start` 时抽一次，done 前缀在 `result` 时抽一次。随机源可注入，供测试使用。
     - `detailFor` 按 `path|file|file_path → command|cmd → pattern|query → url → description → name` 取参数，清洗控制字符后截到 40 列。
     - 自述：从流式 assistant 文本中取行首 `⏵`（最多 80 显示列），静默 5s 过期。
-    - 一次性插话（打断接梗、`compaction` 完成）显示 6s。
-    - 卡住原因"审批"优先于文案池。
+    - 一次性插话（打断接梗、`compaction_end` 完成）显示 6s；压缩完成插话为 `<COMPACT_PHRASES> · before→after`，数字用 `fmtTokens` 格式化。
+    - 卡住原因"审批"优先于压缩，压缩优先于文案池、自述和插话。`compaction_start` 记录 `compactionStartedAt`，按 `runStartedAt + compactionStartedAt` 确定性选取 COMPACTION_START 文案，阶段不变。`compaction_end`、`message_start`、`result` 或 `interrupt` 清除压缩原因。
     - 连击：同 Run 内工具间隔 ≤10s 且 ≥2 次时显示 `工具xN`。
     - git 段：`· git <branch>`。
     - 不做 snapshot / restore、兼容层、minimal 模式、配置项。
@@ -116,7 +116,6 @@ Status: ready-for-agent
 | 工单             | 需要的事件                                    | 状态行用途                                |
 | ---------------- | --------------------------------------------- | ----------------------------------------- |
 | retry            | 模型请求重试开始 / 结束（含原因）             | 卡住原因 `被限流了，缓缓再试`             |
-| compaction-start | compaction 开始                               | 卡住原因 `压缩上下文中…`                  |
 | model-switch     | Session 中途切换模型                          | 换模型接梗 MODEL_QUIPS                    |
 | subagent         | 子代理启动 / 结束                             | `子代理 N 个`                             |
 | context-pressure | `session_start` 或 usage 附带 `contextWindow` | `⚠ 上下文NN%`（≥80% warning，≥95% error） |

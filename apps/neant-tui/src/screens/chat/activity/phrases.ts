@@ -819,6 +819,8 @@ export const CONTINUE_PHRASES: readonly string[] = [
   "快好了",
 ];
 
+export const COMPACTION_START_PHRASES: readonly string[] = ["收拾一下上下文…", "整理背包中…"];
+
 export const COMPACT_PHRASES: readonly string[] = [
   "压缩了一下",
   "瘦了个身",

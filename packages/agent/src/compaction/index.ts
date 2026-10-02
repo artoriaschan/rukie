@@ -56,6 +56,18 @@ export function restoreContext(entries: Entry[]): AgentMessage[] {
   ];
 }
 
+/** Estimate the model-visible context consistently before and after compaction. */
+export function estimateContextTokens(messages: AgentMessage[]): number {
+  return convertToLlm(messages).reduce(
+    (total, message) =>
+      total +
+      (message.role === "system"
+        ? Math.ceil(JSON.stringify(message).length / 4)
+        : estimateTokens(message)),
+    0,
+  );
+}
+
 /** A single provider boundary serves normal Turns and pi's standalone summary requests. */
 export async function compactTurn(options: {
   messages: AgentMessage[];
@@ -64,16 +76,10 @@ export async function compactTurn(options: {
   streamFn: StreamFn;
   thinkingLevel: ThinkingLevel;
   signal?: AbortSignal;
+  onStart: (tokensBefore: number) => void | Promise<void>;
 }) {
   const { model, signal } = options;
-  const tokensBefore = convertToLlm(options.messages).reduce(
-    (total, message) =>
-      total +
-      (message.role === "system"
-        ? Math.ceil(JSON.stringify(message).length / 4)
-        : estimateTokens(message)),
-    0,
-  );
+  const tokensBefore = estimateContextTokens(options.messages);
   if (tokensBefore <= model.contextWindow * 0.8) return undefined;
   const entries = await options.entries();
   const latestUserIndex = entries.findLastIndex(
@@ -144,6 +150,8 @@ export async function compactTurn(options: {
   const models = createModels();
   models.completeSimple = async (summaryModel, context, requestOptions) =>
     (await options.streamFn(summaryModel, normalizeContext(context), requestOptions)).result();
+  signal?.throwIfAborted();
+  await options.onStart(tokensBefore);
   const result = await compact(
     preparation.value,
     models,
