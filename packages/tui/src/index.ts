@@ -11,7 +11,7 @@ export {
   type StaticProps,
 } from "./components";
 export { render, type RenderOptions } from "./renderer";
-export { useInput, useTerminalSize } from "./hooks";
+export { useInput, useTerminalSize, ClockProvider, useAnimationFrame } from "./hooks";
 export type { InputEvent, Key } from "./input";
 export {
   dark,
@@ -19,6 +19,11 @@ export {
   ThemeProvider,
   useTheme,
   figures,
+  rgb,
+  hex,
+  interpolateColor,
+  type Rgb,
+  sweep,
   StatusIcon,
   type StatusIconProps,
   Divider,

@@ -2,13 +2,8 @@
 // src/components/bigfont.ts and src/components/Spinner/spinnerUtils.ts (interpolateColor)
 // at commit 646740f12c34546d6c195f5b7031be0dc67421a5.
 // Source provenance and accepted risks: docs/adr/0005-own-tui-renderer.md.
+import { hex, interpolateColor, rgb } from "@neant/tui";
 import { bold } from "./splash-font";
-
-interface Rgb {
-  r: number;
-  g: number;
-  b: number;
-}
 
 interface ColoredCell {
   ch: string;
@@ -24,27 +19,6 @@ export function mergeColoredCells(cells: readonly ColoredCell[]) {
     else segments.push({ text: ch, color });
   }
   return segments;
-}
-
-function interpolateColor(color1: Rgb, color2: Rgb, t: number): Rgb {
-  const blend = (from: number, to: number) => Math.round(from + (to - from) * t);
-  return {
-    r: blend(color1.r, color2.r),
-    g: blend(color1.g, color2.g),
-    b: blend(color1.b, color2.b),
-  };
-}
-
-function rgb(hex: `#${string}`): Rgb {
-  return {
-    r: parseInt(hex.slice(1, 3), 16),
-    g: parseInt(hex.slice(3, 5), 16),
-    b: parseInt(hex.slice(5, 7), 16),
-  };
-}
-
-function hex({ r, g, b }: Rgb): `#${string}` {
-  return `#${[r, g, b].map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
 }
 
 /** Five rows of bold cells, with one spacing column between glyphs. */

@@ -2,13 +2,12 @@ import {
   Children,
   createElement,
   isValidElement,
-  useEffect,
   useLayoutEffect,
   useRef,
-  useState,
   type ReactNode,
 } from "react";
 import type { TextStyle } from "../text";
+import { useAnimationFrame } from "../hooks/animation-frame";
 export { TextInput, type TextInputProps } from "./text-input";
 
 export interface BoxProps {
@@ -83,10 +82,7 @@ export interface SpinnerProps extends TextStyle {
 
 /** An animated text glyph with the same color and emphasis options as Text. */
 export function Spinner({ frames = spinnerFrames, ...props }: SpinnerProps) {
-  const [frame, setFrame] = useState(0);
-  useEffect(() => {
-    const timer = setInterval(() => setFrame((index) => (index + 1) % frames.length), 80);
-    return () => clearInterval(timer);
-  }, [frames.length]);
+  const [, time] = useAnimationFrame(80);
+  const frame = Math.floor(time / 80);
   return createElement(Text, props, frames[frame % frames.length]);
 }

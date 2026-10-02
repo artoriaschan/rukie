@@ -16,6 +16,7 @@ import {
   type LayoutNode,
 } from "../layout";
 import { createScreen } from "../screen";
+import { ClockProvider } from "../hooks/animation-frame";
 
 export interface RenderOptions extends TerminalIO {}
 
@@ -198,7 +199,11 @@ export function render(element: ReactNode, options: RenderOptions) {
   );
   try {
     reconciler.updateContainerSync(
-      createElement(TerminalContext.Provider, { value: terminal }, element),
+      createElement(
+        TerminalContext.Provider,
+        { value: terminal },
+        createElement(ClockProvider, null, element),
+      ),
       root,
       null,
       null,

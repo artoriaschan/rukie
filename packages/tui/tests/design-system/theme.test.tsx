@@ -9,6 +9,8 @@ test("ThemedText resolves dark theme tokens to terminal foreground colors", asyn
       <ThemedText color="text">T</ThemedText>
       <ThemedText color="subtle">S</ThemedText>
       <ThemedText color="accent">A</ThemedText>
+      <ThemedText color="activity">A</ThemedText>
+      <ThemedText color="activityFlash">F</ThemedText>
       <ThemedText color="permission">P</ThemedText>
       <ThemedText color="success">S</ThemedText>
       <ThemedText color="error">E</ThemedText>
@@ -22,9 +24,9 @@ test("ThemedText resolves dark theme tokens to terminal foreground colors", asyn
   try {
     await terminal.flush();
     const line = terminal.terminal.buffer.active.getLine(0)!;
-    expect(Array.from({ length: 10 }, (_, x) => line.getCell(x)!.getFgColor())).toEqual([
-      0xe8e6e0, 0x5e6673, 0x7da1de, 0xabc2ec, 0x82b89d, 0xda8a93, 0xd8b270, 0x55606f, 0x7da1de,
-      0xd7e4ff,
+    expect(Array.from({ length: 12 }, (_, x) => line.getCell(x)!.getFgColor())).toEqual([
+      0xe8e6e0, 0x5e6673, 0x7da1de, 0x7da1de, 0xc6d8f8, 0xabc2ec, 0x82b89d, 0xda8a93, 0xd8b270,
+      0x55606f, 0x7da1de, 0xd7e4ff,
     ]);
   } finally {
     app.unmount();

@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import type { InputEvent } from "../input";
 import { useTerminal } from "../terminal";
+export { ClockProvider, useAnimationFrame } from "./animation-frame";
 
 export function useInput(handler: (event: InputEvent) => void, { isActive = true } = {}) {
   const terminal = useTerminal();
