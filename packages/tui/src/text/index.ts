@@ -12,6 +12,7 @@ type Color =
 
 export interface TextStyle {
   color?: Color;
+  backgroundColor?: Color;
   bold?: boolean;
   dimColor?: boolean;
   inverse?: boolean;

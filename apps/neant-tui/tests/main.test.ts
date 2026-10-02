@@ -327,7 +327,10 @@ test("--resume continues the existing Session context", async () => {
     fake.calls[1]!.delta("resumed reply");
     fake.calls[1]!.finish();
     await terminal.waitFor(() => terminal.screen().includes(`${assistant} resumed reply`));
-    expect(terminal.allLines().slice(6, 10)).toEqual([
+    const lines = terminal.allLines();
+    const restored = lines.indexOf("❯ stored prompt");
+    expect(restored).toBeGreaterThanOrEqual(0);
+    expect(lines.slice(restored, restored + 4)).toEqual([
       "❯ stored prompt",
       `${assistant} stored reply`,
       "❯ continuation",

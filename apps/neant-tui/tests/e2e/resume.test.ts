@@ -33,9 +33,16 @@ test("resume replays stored text before input and appends the next Run to the sa
     expect(app.screen().join("\n")).not.toContain("tokens");
     expect(app.calls).toHaveLength(0);
     const logoTop = "██  ██ ██▀▀▀▀  ▄▀▀▄  ██  ██ ▀▀██▀▀";
-    expect(app.allLines()[0]).toBe(logoTop);
-    expect(app.allLines()[5]).toBe(`${app.model.provider}/${app.model.id} · ${root}`);
-    expect(app.allLines().slice(6, 9)).toEqual([
+    const lines = app.allLines();
+    expect(lines.some((line) => line.slice(42) === logoTop)).toBe(true);
+    const metadata = lines.findIndex(
+      (line) => line.slice(42) === `${app.model.provider}/${app.model.id}`,
+    );
+    expect(metadata).toBeGreaterThanOrEqual(0);
+    expect(lines[metadata + 1]?.slice(42)).toBe(root.slice(0, 38));
+    const restored = lines.indexOf("❯ stored prompt 中");
+    expect(restored).toBeGreaterThan(metadata);
+    expect(lines.slice(restored, restored + 3)).toEqual([
       "❯ stored prompt 中",
       `${assistant} **stored reply** 中`,
       "second line",
@@ -68,9 +75,9 @@ test("resume replays stored text before input and appends the next Run to the sa
     ).toHaveLength(1);
     expect(app.terminal.buffer.active.baseY).toBe(0);
     app.stdin.write("\x1b[5~");
-    await app.waitFor(() => app.screen()[0] === logoTop);
-    expect(app.allLines()[0]).toBe(logoTop);
-    expect(app.allLines().filter((line) => line === logoTop)).toHaveLength(1);
+    await app.waitFor(() => app.screen()[3]?.slice(42) === logoTop);
+    expect(app.allLines()[0]).toBe(lines[0]);
+    expect(app.allLines().filter((line) => line.slice(42) === logoTop)).toHaveLength(1);
     const resumed = await createSession({ cwd: root, homeDir: root, ...app, resumeId: id });
     expect(resumed.id).toBe(id);
     expect(resumed.messages.slice(-2)).toMatchObject([
@@ -140,7 +147,12 @@ test("resume replays each tool's collapsed result and error preview without remi
     await app.waitFor(() => app.screen().includes("❯"));
     expect(app.calls).toHaveLength(0);
     const lines = app.allLines();
-    expect(lines.slice(6, 8)).toEqual(["❯ stored tools", `${assistant} before tools`]);
+    const restored = lines.indexOf("❯ stored tools");
+    expect(restored).toBeGreaterThanOrEqual(0);
+    expect(lines.slice(restored, restored + 2)).toEqual([
+      "❯ stored tools",
+      `${assistant} before tools`,
+    ]);
     expect(lines.filter((line) => line === '• read {"path":"first.txt"}')).toHaveLength(1);
     expect(lines.filter((line) => line === '• read {"path":"second.txt"}')).toHaveLength(1);
     expect(lines.filter((line) => line.startsWith('✗ bash {"command":'))).toHaveLength(1);
@@ -200,7 +212,10 @@ test("resume replays the restored compaction suffix without exposing its summary
   });
   try {
     await app.waitFor(() => app.screen().includes("❯"));
-    expect(app.allLines().slice(6, 8)).toEqual([
+    const lines = app.allLines();
+    const restored = lines.indexOf("❯ retained prompt");
+    expect(restored).toBeGreaterThanOrEqual(0);
+    expect(lines.slice(restored, restored + 2)).toEqual([
       "❯ retained prompt",
       `${assistant} retained reply`,
     ]);

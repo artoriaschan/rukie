@@ -52,6 +52,7 @@ function content(node: HostNode, inherited: TextStyle = {}): TextSpan[] {
   if (node.type === "raw") return [{ text: node.text, style: inherited }];
   const style: TextStyle = {
     color: node.props.color ?? inherited.color,
+    backgroundColor: node.props.backgroundColor ?? inherited.backgroundColor,
     bold: node.props.bold ?? inherited.bold,
     dimColor: node.props.dimColor ?? inherited.dimColor,
     inverse: node.props.inverse ?? inherited.inverse,

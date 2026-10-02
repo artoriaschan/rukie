@@ -19,6 +19,17 @@ const colors = {
   gray: 90,
 };
 
+function colorCode(color: TextStyle["color"], background = false) {
+  if (!color) return undefined;
+  if (color.startsWith("#")) {
+    if (!/^#[0-9a-f]{6}$/i.test(color))
+      throw new Error(`Invalid text ${background ? "background color" : "color"}: ${color}`);
+    const rgb = Number.parseInt(color.slice(1), 16);
+    return `${background ? 48 : 38};2;${rgb >> 16};${(rgb >> 8) & 255};${rgb & 255}`;
+  }
+  return String(colors[color as keyof typeof colors] + (background ? 10 : 0));
+}
+
 function sgr(style: TextStyle): string {
   const codes = ["0"];
   if (style.bold) codes.push("1");
@@ -26,14 +37,10 @@ function sgr(style: TextStyle): string {
   if (style.italic) codes.push("3");
   if (style.inverse) codes.push("7");
   if (!process.env.NO_COLOR) {
-    if (style.color?.startsWith("#")) {
-      if (!/^#[0-9a-f]{6}$/i.test(style.color))
-        throw new Error(`Invalid text color: ${style.color}`);
-      const rgb = Number.parseInt(style.color.slice(1), 16);
-      codes.push(`38;2;${rgb >> 16};${(rgb >> 8) & 255};${rgb & 255}`);
-    } else if (style.color) {
-      codes.push(String(colors[style.color as keyof typeof colors]));
-    }
+    const foreground = colorCode(style.color);
+    const background = colorCode(style.backgroundColor, true);
+    if (foreground) codes.push(foreground);
+    if (background) codes.push(background);
   }
   return `\x1b[${codes.join(";")}m`;
 }
@@ -114,6 +121,7 @@ function paintGrid(root: LayoutNode, columns: number, rows: number): Cell[][] {
           if (caret?.x === col && caret.y === top + first + row && col < width)
             put(x + col, y + first + row, " ", 1, {
               color: node.props.color,
+              backgroundColor: node.props.backgroundColor,
               inverse: true,
             });
         });

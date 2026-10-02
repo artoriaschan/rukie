@@ -7,6 +7,24 @@ import { start } from "../helpers/app";
 import { createTerminal } from "../helpers/terminal";
 import { controlledModel } from "../helpers/model";
 
+test("startup header receives the configured thinking level and shows cwd on its own row without tips", async () => {
+  let cwd = "";
+  const app = await start(["--thinking", "high"], {
+    prepare(root) {
+      cwd = root;
+      return Promise.resolve();
+    },
+  });
+  try {
+    await app.waitFor(() => app.screen().some((line) => line.includes("High effort")));
+    const row = app.screen().findIndex((line) => line.includes("High effort"));
+    expect(app.screen()[row + 1]?.slice(42)).toBe(cwd.slice(0, 38));
+    expect(app.screen().join("\n")).not.toMatch(/提示|Tip:|\/tips/);
+  } finally {
+    await app.cleanup();
+  }
+});
+
 test("non-interactive terminals fail before rendering or requesting a model", async () => {
   for (const [stdin, stdout, term] of [
     [false, true, "xterm-256color"],

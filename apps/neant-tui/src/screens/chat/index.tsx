@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createSession, type SessionOptions } from "@neant/agent";
+import type { ThinkingLevel } from "@neant/shared";
 import {
   Box,
   ScrollBox,
@@ -58,6 +59,7 @@ export async function createChat(options: SessionOptions, model: string) {
           conversation={conversation}
           permissions={permissions}
           cwd={options.cwd}
+          thinking={options.settings?.thinking}
           onExit={onExit}
         />
       );
@@ -69,11 +71,13 @@ function Chat({
   conversation,
   permissions,
   cwd,
+  thinking,
   onExit,
 }: {
   conversation: ReturnType<typeof createConversation>;
   permissions: ReturnType<typeof createPermissions>;
   cwd: string;
+  thinking?: ThinkingLevel;
   onExit(): void;
 }) {
   const state = useSyncExternalStore(conversation.subscribe, conversation.getSnapshot);
@@ -239,7 +243,13 @@ function Chat({
         height={small ? 0 : undefined}
         flexGrow={small ? 0 : 1}
       >
-        <Logo key="startup-logo" model={state.model} cwd={cwd} />
+        <Logo
+          key="startup-logo"
+          model={state.model}
+          cwd={cwd}
+          thinking={thinking}
+          working={state.running}
+        />
         {completed}
         {state.assistant && <AssistantMessage text={state.assistant} />}
         {state.tools.map((tool) => (
