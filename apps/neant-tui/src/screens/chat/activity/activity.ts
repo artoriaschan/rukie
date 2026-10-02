@@ -279,7 +279,7 @@ function nextBoundary(anchor: number, now: number, interval: number): number {
   return anchor + (Math.floor(Math.max(0, now - anchor) / interval) + 1) * interval;
 }
 
-function fmtTokens(tokens: number): string {
+export function fmtTokens(tokens: number): string {
   if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
   if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}k`;
   return String(tokens);

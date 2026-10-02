@@ -1,8 +1,9 @@
-import { useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createSession, type SessionOptions } from "@neant/agent";
 import { Box, Static, useInput } from "@neant/tui";
 import {
   AssistantMessage,
+  ActivityLine,
   Logo,
   Notice,
   PermissionDialog,
@@ -13,6 +14,7 @@ import {
 } from "../../components";
 import { createConversation } from "./conversation";
 import { createPermissions } from "./permissions";
+import { fmtTokens, render as renderActivity } from "./activity/activity";
 
 /** Bind the Session and private stores to one chat screen for its lifetime. */
 export async function createChat(options: SessionOptions, model: string) {
@@ -22,6 +24,18 @@ export async function createChat(options: SessionOptions, model: string) {
     onPermissionAsk: options.onPermissionAsk ?? permissions.ask,
   });
   const conversation = createConversation(session, model);
+  try {
+    const git = Bun.spawn(["git", "branch", "--show-current"], {
+      cwd: options.cwd,
+      stdout: "pipe",
+      stderr: "ignore",
+    });
+    const branch = await new Response(git.stdout).text();
+    if ((await git.exited) === 0)
+      conversation.dispatchActivity({ type: "git-branch", branch: branch.trim() });
+  } catch {
+    // Missing git or a non-repository cwd simply omits the branch segment.
+  }
   return {
     submit: conversation.submit,
     stop: conversation.stop,
@@ -54,6 +68,20 @@ function Chat({
   const [input, setInput] = useState("");
   const draft = useRef("");
   const lastInterrupt = useRef<number | undefined>(undefined);
+  const [now, setNow] = useState(Date.now);
+  const activity = renderActivity(state.activity, Math.max(now, Date.now()));
+  useEffect(() => {
+    if (activity.nextWakeAt === undefined) return;
+    const timer = setTimeout(
+      () => setNow(Date.now()),
+      Math.max(0, activity.nextWakeAt - Date.now()),
+    );
+    return () => clearTimeout(timer);
+  }, [state.activity, activity.nextWakeAt]);
+  const approvalOpen = question !== undefined;
+  useEffect(() => {
+    conversation.dispatchActivity({ type: approvalOpen ? "approval-open" : "approval-close" });
+  }, [conversation, approvalOpen]);
   const change = (value: string) => {
     draft.current = value;
     lastInterrupt.current = undefined;
@@ -126,6 +154,13 @@ function Chat({
         <ToolCall key={tool.id} summary={tool.summary} status="running" />
       ))}
       {state.error && <Notice kind="error" text={state.error} />}
+      {activity.phase !== "idle" && (
+        <ActivityLine
+          phase={activity.phase}
+          line={activity.line}
+          suffix={` · ↑ ${fmtTokens(state.activityInput)} · ↓ ${fmtTokens(state.output + Math.ceil(state.streamedChars / 4))} tokens${activity.phase === "done" ? "" : " · esc 中断"}`}
+        />
+      )}
       {question && (
         <PermissionDialog
           toolName={question.request.toolName}
@@ -142,12 +177,7 @@ function Chat({
           }}
         />
       )}
-      <StatusLine
-        model={state.model}
-        input={state.input}
-        output={state.output}
-        running={state.running}
-      />
+      <StatusLine model={state.model} input={state.input} output={state.output} />
     </Box>
   );
 }

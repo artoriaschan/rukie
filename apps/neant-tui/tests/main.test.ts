@@ -20,7 +20,7 @@ test("streams verbatim replies and continues two prompts in the same Session", a
     await app.waitFor(() => app.screen().includes(`${assistant} **literal** 中`));
     expect(app.screen()).toContain("second line");
     app.calls[0]!.finish();
-    await app.waitFor(() => app.screen().some((line) => line.includes("Ready")));
+    await app.waitFor(() => app.screen().some((line) => line.includes(" 工具 · 想")));
     expect(app.screen().join("\n")).toContain("faux/faux");
     expect(app.screen().join("\n")).toContain("input 11 · output 5");
     app.stdin.write("second prompt\r");
@@ -59,7 +59,7 @@ test("submission clears the editor before the next key in the same input chunk",
     await app.waitFor(
       () =>
         app.allLines().includes(`${assistant} first reply`) &&
-        app.screen().some((line) => line.includes("Ready")),
+        app.screen().some((line) => line.includes(" 工具 · 想")),
     );
     app.stdin.write("\r");
     await app.waitFor(() => app.calls.length === 2);
@@ -111,7 +111,7 @@ for (const [name, key] of [
       await app.waitFor(() => app.screen().includes("❯ next draft"));
       expect(app.calls).toHaveLength(1);
       app.stdin.write(key!);
-      await app.waitFor(() => app.screen().some((line) => line.includes("Ready")));
+      await app.waitFor(() => app.screen().some((line) => line.includes(" 工具 · 想")));
       expect(app.calls[0]!.signal!.aborted).toBe(true);
       expect(app.allLines()).toContain("❯ interrupt me");
       expect(
@@ -126,7 +126,7 @@ for (const [name, key] of [
       });
       app.calls[1]!.delta("continued reply");
       app.calls[1]!.finish();
-      await app.waitFor(() => app.screen().some((line) => line.includes("Ready")));
+      await app.waitFor(() => app.screen().some((line) => line.includes(" 工具 · 想")));
     } finally {
       await app.cleanup();
     }
@@ -194,7 +194,7 @@ test("Ctrl+D exits only on idle empty input", async () => {
     expect(app.stdin.isRaw).toBe(true);
     app.calls[0]!.delta("done");
     app.calls[0]!.finish();
-    await app.waitFor(() => app.screen().some((line) => line.includes("Ready")));
+    await app.waitFor(() => app.screen().some((line) => line.includes(" 工具 · 想")));
     app.stdin.write("\x04");
     expect(await app.exit).toBe(0);
     expect(app.stdin.isRaw).toBe(false);
@@ -213,7 +213,7 @@ test("a positional prompt is submitted automatically", async () => {
     });
     app.calls[0]!.delta("automatic reply");
     app.calls[0]!.finish();
-    await app.waitFor(() => app.screen().some((line) => line.includes("Ready")));
+    await app.waitFor(() => app.screen().some((line) => line.includes(" 工具 · 想")));
     expect(app.allLines()).toContain("❯ auto prompt");
     expect(app.allLines()).toContain(`${assistant} automatic reply`);
   } finally {
@@ -236,7 +236,7 @@ test("a model failure preserves partial output and permits the next prompt", asy
     await app.waitFor(
       () =>
         app.allLines().includes(`${assistant} retry succeeded`) &&
-        app.screen().some((line) => line.includes("Ready")),
+        app.screen().some((line) => line.includes(" 工具 · 想")),
     );
     expect(app.screen()).not.toContain("provider unavailable");
     expect(app.allLines()).toContain(`${assistant} retry succeeded`);

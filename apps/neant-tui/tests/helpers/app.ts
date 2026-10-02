@@ -34,7 +34,7 @@ export async function start(
         () =>
           !fake.calls.at(-1) ||
           fake.calls.at(-1)!.signal!.aborted ||
-          terminal.screen().some((line) => line.includes("Ready")),
+          terminal.screen().some((line) => line.includes(" 工具 · 想")),
       );
       await Bun.sleep(40);
       terminal.stdin.write("\x03\x03\x03");

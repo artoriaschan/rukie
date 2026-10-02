@@ -33,7 +33,7 @@ test("allow once executes the tool and asks again for its next call", async () =
     await app.waitFor(() => app.calls.length === 3);
     app.calls[2]!.delta("finished");
     app.calls[2]!.finish();
-    await app.waitFor(() => app.screen().some((line) => line.includes("Ready")));
+    await app.waitFor(() => app.screen().some((line) => line.includes(" 工具 · 想")));
     expect(app.screen().join("\n")).not.toContain("权限确认");
     expect(app.allLines().join("\n")).not.toContain("权限确认");
   } finally {
@@ -61,7 +61,7 @@ test.each([
     });
     app.calls[1]!.delta("continuing after refusal");
     app.calls[1]!.finish();
-    await app.waitFor(() => app.screen().some((line) => line.includes("Ready")));
+    await app.waitFor(() => app.screen().some((line) => line.includes(" 工具 · 想")));
     expect(app.allLines()).toContain(`${assistant} continuing after refusal`);
     expect(app.screen().join("\n")).not.toContain("权限确认");
   } finally {
@@ -80,7 +80,7 @@ test("Ctrl+C closes the question, cancels the Run and preserves the draft withou
     app.stdin.write("2");
     await app.waitFor(() => app.screen().some((line) => line.startsWith("❯ 2.")));
     app.stdin.write("\x03");
-    await app.waitFor(() => app.screen().some((line) => line.includes("Ready")));
+    await app.waitFor(() => app.screen().some((line) => line.includes(" 工具 · 想")));
     expect(app.screen()).toContain("❯ next draft");
     expect(app.screen().join("\n")).not.toContain("权限确认");
     expect(app.calls.every((call) => call.signal!.aborted)).toBe(true);
@@ -125,7 +125,7 @@ test.each(["flag", "settings", "yolo", "readonly"])(
       expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({ isError: false });
       expect(app.screen().join("\n")).not.toContain("权限确认");
       app.calls[1]!.finish();
-      await app.waitFor(() => app.screen().some((line) => line.includes("Ready")));
+      await app.waitFor(() => app.screen().some((line) => line.includes(" 工具 · 想")));
       expect(app.allLines().join("\n")).not.toContain("权限确认");
     } finally {
       await app.cleanup();
@@ -151,7 +151,7 @@ test("always allow remembers only this tool across Runs and leaves settings unch
     expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({ isError: false });
     app.calls[1]!.delta("first done");
     app.calls[1]!.finish();
-    await app.waitFor(() => app.screen().some((line) => line.includes("Ready")));
+    await app.waitFor(() => app.screen().some((line) => line.includes(" 工具 · 想")));
     app.stdin.write("again\r");
     await app.waitFor(() => app.calls.length === 3);
     app.calls[2]!.tool("bash", { command: "printf still-allowed" });
@@ -167,7 +167,7 @@ test("always allow remembers only this tool across Runs and leaves settings unch
     app.stdin.write("\x1b");
     await app.waitFor(() => app.calls.length === 5);
     app.calls[4]!.finish();
-    await app.waitFor(() => app.screen().some((line) => line.includes("Ready")));
+    await app.waitFor(() => app.screen().some((line) => line.includes(" 工具 · 想")));
     expect(await Bun.file(join(root, ".neant/settings.json")).text()).toBe(settings);
   } finally {
     await app.cleanup();
@@ -211,7 +211,7 @@ test("concurrent questions are answered individually and dialog keys do not edit
       },
     ]);
     app.calls[1]!.finish();
-    await app.waitFor(() => app.screen().some((line) => line.includes("Ready")));
+    await app.waitFor(() => app.screen().some((line) => line.includes(" 工具 · 想")));
     expect(app.screen()).toContain("❯ next draft");
     app.stdin.write("\r");
     await app.waitFor(() => app.calls.length === 3);
@@ -239,7 +239,7 @@ test("the question stays visible above a multiline draft and restores the draft 
     expect(dialog).toContain("2. 本 session 内一直允许这个工具");
     expect(dialog).toContain("3. 拒绝");
     app.stdin.write("\x03");
-    await app.waitFor(() => app.screen().some((line) => line.includes("Ready")));
+    await app.waitFor(() => !app.screen().join("\n").includes("权限确认"));
     expect(app.screen().some((line) => line.trim() === "draft-line-9")).toBe(true);
     const nextCall = app.calls.length;
     app.stdin.write("\r");
@@ -271,7 +271,7 @@ test("always allow also releases queued calls of the same tool", async () => {
       { isError: false, content: [{ type: "text", text: "second-parallel" }] },
     ]);
     app.calls[1]!.finish();
-    await app.waitFor(() => app.screen().some((line) => line.includes("Ready")));
+    await app.waitFor(() => app.screen().some((line) => line.includes(" 工具 · 想")));
     expect(app.screen().join("\n")).not.toContain("权限确认");
   } finally {
     await app.cleanup();

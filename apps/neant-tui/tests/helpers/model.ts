@@ -16,6 +16,7 @@ export function controlledModel() {
     signal?: AbortSignal;
     reasoning?: string;
     delta(text: string): void;
+    thinking(text: string): void;
     finish(input?: number, output?: number): void;
     tool(name: string, args: Parameters<typeof fauxToolCall>[1]): void;
     tools(tools: { name: string; args: Parameters<typeof fauxToolCall>[1] }[]): void;
@@ -25,6 +26,7 @@ export function controlledModel() {
     const stream = createAssistantMessageEventStream();
     const partial = fauxAssistantMessage("", { stopReason: "pending" });
     let text = "";
+    let thinking = "";
     let ended = false;
     const fail = (reason: "aborted" | "error", errorMessage: string) => {
       if (ended) return;
@@ -63,8 +65,19 @@ export function controlledModel() {
       reasoning: options?.reasoning,
       delta(delta) {
         text += delta;
-        partial.content = [{ type: "text", text }];
-        stream.push({ type: "text_delta", contentIndex: 0, delta, partial });
+        partial.content = [
+          ...(thinking ? [{ type: "thinking" as const, thinking }] : []),
+          { type: "text", text },
+        ];
+        stream.push({ type: "text_delta", contentIndex: thinking ? 1 : 0, delta, partial });
+      },
+      thinking(delta) {
+        thinking += delta;
+        partial.content = [
+          { type: "thinking", thinking },
+          ...(text ? [{ type: "text" as const, text }] : []),
+        ];
+        stream.push({ type: "thinking_delta", contentIndex: 0, delta, partial });
       },
       finish(input = 11, output = 5) {
         complete({ ...partial, stopReason: "stop" }, input, output);

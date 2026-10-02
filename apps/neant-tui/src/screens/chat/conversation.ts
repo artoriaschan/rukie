@@ -1,4 +1,5 @@
 import type { Session, SessionEvent } from "@neant/agent";
+import { createActivity, reduce } from "./activity/activity";
 
 interface ToolCall {
   id: string;
@@ -47,6 +48,9 @@ interface ViewState {
   running: boolean;
   input: number;
   output: number;
+  activity: ReturnType<typeof createActivity>;
+  activityInput: number;
+  streamedChars: number;
   error?: string;
 }
 
@@ -85,8 +89,16 @@ function reduceEvent(state: ViewState, event: SessionEvent): ViewState {
   switch (event.type) {
     case "session_start":
       return { ...state, model: event.model };
+    case "turn_start":
+      return { ...state, streamedChars: 0 };
+    case "message_update": {
+      const delta = event.assistantMessageEvent;
+      const streamedChars =
+        state.streamedChars +
+        (delta.type === "text_delta" || delta.type === "thinking_delta" ? delta.delta.length : 0);
+      return { ...state, assistant: messageText(event.message), streamedChars };
+    }
     case "message_start":
-    case "message_update":
       return event.message.role === "assistant"
         ? { ...state, assistant: messageText(event.message) }
         : state;
@@ -107,6 +119,8 @@ function reduceEvent(state: ViewState, event: SessionEvent): ViewState {
         assistant: "",
         input: state.input + event.message.usage.input,
         output: state.output + event.message.usage.output,
+        activityInput: event.message.usage.input,
+        streamedChars: 0,
       };
     }
     case "tool_execution_start":
@@ -154,6 +168,7 @@ function reduceEvent(state: ViewState, event: SessionEvent): ViewState {
         running: false,
         input: event.usage.input,
         output: event.usage.output,
+        streamedChars: 0,
         error: event.success ? undefined : event.error,
       };
     default:
@@ -171,6 +186,9 @@ export function createConversation(session: Session, model: string) {
     running: false,
     input: 0,
     output: 0,
+    activity: createActivity(),
+    activityInput: 0,
+    streamedChars: 0,
   };
   const listeners = new Set<() => void>();
   let active: { controller: AbortController; promise: Promise<unknown> } | undefined;
@@ -178,7 +196,11 @@ export function createConversation(session: Session, model: string) {
     state = next;
     listeners.forEach((listener) => listener());
   };
+  const dispatchActivity = (event: Parameters<typeof reduce>[1]) => {
+    update({ ...state, activity: reduce(state.activity, event, Date.now()) });
+  };
   return {
+    dispatchActivity,
     getSnapshot: () => state,
     subscribe(listener: () => void) {
       listeners.add(listener);
@@ -189,11 +211,24 @@ export function createConversation(session: Session, model: string) {
     submit(prompt: string) {
       if (active || !prompt.trim()) return false;
       const controller = new AbortController();
-      update({ ...state, running: true, input: 0, output: 0, error: undefined });
+      update({
+        ...state,
+        running: true,
+        input: 0,
+        output: 0,
+        error: undefined,
+        activityInput: 0,
+        streamedChars: 0,
+        activity: reduce(state.activity, { type: "submit" }, Date.now()),
+      });
       const promise = session
         .run(prompt, {
           signal: controller.signal,
-          onEvent: (event) => update(reduceEvent(state, event)),
+          onEvent: (event) =>
+            update({
+              ...reduceEvent(state, event),
+              activity: reduce(state.activity, event, Date.now()),
+            }),
         })
         .catch((error: unknown) => {
           if (!controller.signal.aborted) {
@@ -210,7 +245,11 @@ export function createConversation(session: Session, model: string) {
       return true;
     },
     isRunning: () => active !== undefined,
-    interrupt: () => active?.controller.abort(),
+    interrupt() {
+      if (!active) return;
+      dispatchActivity({ type: "interrupt" });
+      active.controller.abort();
+    },
     async stop() {
       active?.controller.abort();
       await active?.promise;
