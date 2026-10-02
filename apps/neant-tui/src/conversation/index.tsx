@@ -27,6 +27,23 @@ function errorPreview(result: Pick<ToolResultMessage, "content">) {
     .join("\n");
 }
 
+function toolSummary(name: string, args: unknown) {
+  return `${name} ${JSON.stringify(args)}`.replace(/\s+/g, " ");
+}
+
+function toolEntry(
+  summary: string,
+  isError: boolean,
+  result: Pick<ToolResultMessage, "content">,
+): CompletedEntry {
+  return {
+    type: "tool",
+    summary,
+    isError,
+    error: isError ? errorPreview(result) : undefined,
+  };
+}
+
 interface ViewState {
   completed: CompletedEntry[];
   tools: ToolCall[];
@@ -45,6 +62,27 @@ function messageText(message: Extract<SessionEvent, { type: "message_end" }>["me
     : message.content
         .flatMap((content) => (content.type === "text" ? [content.text] : []))
         .join("");
+}
+
+function replayMessages(messages: Session["messages"]): CompletedEntry[] {
+  const tools = new Map<string, string>();
+  return messages.flatMap((message): CompletedEntry[] => {
+    const text = messageText(message);
+    if (message.role === "user") return [{ type: "message", text: `> ${text}` }];
+    if (message.role === "assistant") {
+      for (const content of message.content) {
+        if (content.type === "toolCall")
+          tools.set(content.id, toolSummary(content.name, content.arguments));
+      }
+      return text ? [{ type: "message", text }] : [];
+    }
+    if (message.role === "toolResult") {
+      const summary = tools.get(message.toolCallId) ?? message.toolName;
+      tools.delete(message.toolCallId);
+      return [toolEntry(summary, message.isError, message)];
+    }
+    return [];
+  });
 }
 
 /** Snapshot text at the event boundary: pi mutates partial messages while streaming. */
@@ -81,7 +119,7 @@ function reduceEvent(state: ViewState, event: SessionEvent): ViewState {
           ...state.tools,
           {
             id: event.toolCallId,
-            summary: `${event.toolName} ${JSON.stringify(event.args)}`.replace(/\s+/g, " "),
+            summary: toolSummary(event.toolName, event.args),
           },
         ],
       };
@@ -91,15 +129,7 @@ function reduceEvent(state: ViewState, event: SessionEvent): ViewState {
       return {
         ...state,
         tools: state.tools.filter((tool) => tool.id !== event.toolCallId),
-        completed: [
-          ...state.completed,
-          {
-            type: "tool",
-            summary: tool.summary,
-            isError: event.isError,
-            error: event.isError ? errorPreview(event.result) : undefined,
-          },
-        ],
+        completed: [...state.completed, toolEntry(tool.summary, event.isError, event.result)],
       };
     }
     case "compaction":
@@ -137,7 +167,7 @@ function reduceEvent(state: ViewState, event: SessionEvent): ViewState {
 /** Own the active Run outside React so back-to-back input events cannot submit twice. */
 export function createConversation(session: Session, model: string) {
   let state: ViewState = {
-    completed: [],
+    completed: replayMessages(session.messages),
     tools: [],
     assistant: "",
     model,

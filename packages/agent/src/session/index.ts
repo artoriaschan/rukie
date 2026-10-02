@@ -1,4 +1,10 @@
-import { Agent, type AgentEvent, type StreamFn, type Skill } from "@earendil-works/pi-agent-core";
+import {
+  Agent,
+  type AgentEvent,
+  type AgentMessage,
+  type StreamFn,
+  type Skill,
+} from "@earendil-works/pi-agent-core";
 import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
 import {
   branchTip,
@@ -68,6 +74,8 @@ export type SessionEvent = SharedSessionEvent<AgentEvent>;
 
 export interface Session {
   readonly id: string;
+  /** Current restored context in memory, including reminders and any compaction. */
+  readonly messages: readonly AgentMessage[];
   run(
     prompt: string,
     options?: {
@@ -171,6 +179,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
   let running = false;
   return {
     id: stored.metadata.id,
+    get messages() {
+      return agent.state.messages;
+    },
     async run(prompt, { signal, onEvent } = {}) {
       if (running) throw new Error("Session already has an active Run.");
       running = true;

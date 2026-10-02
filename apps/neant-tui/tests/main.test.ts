@@ -321,6 +321,12 @@ test("--resume continues the existing Session context", async () => {
     fake.calls[1]!.delta("resumed reply");
     fake.calls[1]!.finish();
     await terminal.waitFor(() => terminal.screen().includes("resumed reply"));
+    expect(terminal.allLines().slice(0, 4)).toEqual([
+      "> stored prompt",
+      "stored reply",
+      "> continuation",
+      "resumed reply",
+    ]);
     terminal.stdin.write("\x04");
     expect(await exit).toBe(0);
     expect(stderr).toBe("");

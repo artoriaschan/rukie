@@ -87,6 +87,9 @@ test("compaction appends a native Transcript entry and resume restores summary p
   const next = fakeModel([fauxAssistantMessage("resumed")]);
   next.model.contextWindow = 4000;
   const resumed = await createSession({ ...dirs, ...next, resumeId: session.id });
+  expect(resumed.messages).toEqual(session.messages);
+  expect(JSON.stringify(resumed.messages)).toContain("Saved summary.");
+  expect(JSON.stringify(resumed.messages)).not.toContain(original);
   const resumedEvents: SessionEvent[] = [];
   await resumed.run("resume prompt", {
     onEvent: (event) => {

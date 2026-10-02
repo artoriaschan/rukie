@@ -162,6 +162,14 @@ test("resuming a stored session restores the exact context prefix and appends to
     ...next,
     resumeId: session.id,
   });
+  expect(next.contexts).toHaveLength(0);
+  expect(resumed.messages).toEqual(session.messages);
+  expect(resumed.messages.slice(-4)).toMatchObject([
+    { role: "user", content: [{ type: "text", text: prompt }] },
+    { role: "assistant", content: [{ type: "text", text: "first reply" }] },
+    { role: "user", content: [{ type: "text", text: "second prompt" }] },
+    { role: "assistant", content: [{ type: "text", text: "second reply" }] },
+  ]);
   await resumed.run("third prompt");
 
   expect(resumed.id).toBe(session.id);
@@ -174,6 +182,12 @@ test("resuming a stored session restores the exact context prefix and appends to
     role: "user",
     content: [{ type: "text", text: "third prompt" }],
   });
+  expect(resumed.messages.slice(-2)).toMatchObject([
+    { role: "user", content: [{ type: "text", text: "third prompt" }] },
+    { role: "assistant", content: [{ type: "text", text: "resumed reply" }] },
+  ]);
+  const reopened = await createSession({ ...dirs, ...next, resumeId: session.id });
+  expect(reopened.messages).toEqual(resumed.messages);
 });
 
 test("an unknown resume id fails without calling the model", async () => {

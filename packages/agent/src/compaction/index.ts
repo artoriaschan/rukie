@@ -26,6 +26,15 @@ export function restoreContext(entries: Entry[]): AgentMessage[] {
     return entries.flatMap((entry) => (entry.type === "message" ? [entry.message] : []));
   const entry = entries[index]!;
   if (entry.type !== "compaction") throw new Error("Expected compaction entry.");
+  // Native compaction retains model-converted reminders. Recover their original
+  // roles from the unchanged Transcript, rather than interpreting user text.
+  const reminders = new Map<string, AgentMessage>();
+  for (const item of entries.slice(0, index)) {
+    if (item.type === "message" && item.message.role === "system-reminder") {
+      const converted = convertToLlm([item.message])[0]!;
+      reminders.set(JSON.stringify([converted.timestamp, converted.content]), item.message);
+    }
+  }
   const baseline = getCurrentSystemMessage(
     entries
       .slice(0, index + 1)
@@ -36,7 +45,13 @@ export function restoreContext(entries: Entry[]): AgentMessage[] {
   return [
     ...(baseline ? [baseline] : []),
     createCompactionSummaryMessage(entry.summary, entry.tokensBefore, entry.timestamp),
-    ...entry.retainedTail.filter((message) => message.role !== "system"),
+    ...entry.retainedTail
+      .filter((message) => message.role !== "system")
+      .map((message) =>
+        message.role === "user"
+          ? (reminders.get(JSON.stringify([message.timestamp, message.content])) ?? message)
+          : message,
+      ),
     ...entries.slice(index + 1).flatMap((item) => (item.type === "message" ? [item.message] : [])),
   ];
 }
