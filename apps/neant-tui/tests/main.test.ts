@@ -8,6 +8,8 @@ import { controlledModel } from "./helpers/model";
 import { createTerminal } from "./helpers/terminal";
 import { start } from "./helpers/app";
 
+const assistant = process.platform === "darwin" ? "⏺" : "●";
+
 test("streams verbatim replies and continues two prompts in the same Session", async () => {
   const app = await start();
   try {
@@ -15,7 +17,7 @@ test("streams verbatim replies and continues two prompts in the same Session", a
     app.stdin.write("first prompt\r");
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.delta("**literal** 中\nsecond line");
-    await app.waitFor(() => app.screen().includes("**literal** 中"));
+    await app.waitFor(() => app.screen().includes(`${assistant} **literal** 中`));
     expect(app.screen()).toContain("second line");
     app.calls[0]!.finish();
     await app.waitFor(() => app.screen().some((line) => line.includes("Ready")));
@@ -31,10 +33,10 @@ test("streams verbatim replies and continues two prompts in the same Session", a
     app.calls[1]!.delta("final reply");
     app.calls[1]!.finish(7, 2);
     await app.waitFor(() => app.screen().some((line) => line.includes("input 7 · output 2")));
-    expect(app.allLines().filter((line) => line === "> first prompt")).toHaveLength(1);
-    expect(app.allLines().filter((line) => line === "**literal** 中")).toHaveLength(1);
-    expect(app.allLines()).toContain("> second prompt");
-    expect(app.allLines()).toContain("final reply");
+    expect(app.allLines().filter((line) => line === "❯ first prompt")).toHaveLength(1);
+    expect(app.allLines().filter((line) => line === `${assistant} **literal** 中`)).toHaveLength(1);
+    expect(app.allLines()).toContain("❯ second prompt");
+    expect(app.allLines()).toContain(`${assistant} final reply`);
     expect(app.allLines().join("\n")).not.toContain("system-reminder");
     app.stdin.write("\x04");
     expect(await app.exit).toBe(0);
@@ -56,7 +58,7 @@ test("submission clears the editor before the next key in the same input chunk",
     app.calls[0]!.finish();
     await app.waitFor(
       () =>
-        app.allLines().includes("first reply") &&
+        app.allLines().includes(`${assistant} first reply`) &&
         app.screen().some((line) => line.includes("Ready")),
     );
     app.stdin.write("\r");
@@ -67,7 +69,7 @@ test("submission clears the editor before the next key in the same input chunk",
     });
     app.calls[1]!.delta("second reply");
     app.calls[1]!.finish();
-    await app.waitFor(() => app.allLines().includes("second reply"));
+    await app.waitFor(() => app.allLines().includes(`${assistant} second reply`));
   } finally {
     await app.cleanup();
   }
@@ -87,7 +89,7 @@ test("idle Ctrl+C clears the editor before subsequent keys in the same input chu
     });
     app.calls[0]!.delta("fresh reply");
     app.calls[0]!.finish();
-    await app.waitFor(() => app.allLines().includes("fresh reply"));
+    await app.waitFor(() => app.allLines().includes(`${assistant} fresh reply`));
   } finally {
     await app.cleanup();
   }
@@ -104,15 +106,17 @@ for (const [name, key] of [
       app.stdin.write("interrupt me\r");
       await app.waitFor(() => app.calls.length === 1);
       app.calls[0]!.delta("retained partial");
-      await app.waitFor(() => app.screen().includes("retained partial"));
+      await app.waitFor(() => app.screen().includes(`${assistant} retained partial`));
       app.stdin.write("next draft\r");
       await app.waitFor(() => app.screen().includes("> next draft"));
       expect(app.calls).toHaveLength(1);
       app.stdin.write(key!);
       await app.waitFor(() => app.screen().some((line) => line.includes("Ready")));
       expect(app.calls[0]!.signal!.aborted).toBe(true);
-      expect(app.allLines()).toContain("> interrupt me");
-      expect(app.allLines().filter((line) => line === "retained partial")).toHaveLength(1);
+      expect(app.allLines()).toContain("❯ interrupt me");
+      expect(
+        app.allLines().filter((line) => line === `${assistant} retained partial`),
+      ).toHaveLength(1);
       expect(app.stdin.isRaw).toBe(true);
       app.stdin.write("\r");
       await app.waitFor(() => app.calls.length === 2);
@@ -210,8 +214,8 @@ test("a positional prompt is submitted automatically", async () => {
     app.calls[0]!.delta("automatic reply");
     app.calls[0]!.finish();
     await app.waitFor(() => app.screen().some((line) => line.includes("Ready")));
-    expect(app.allLines()).toContain("> auto prompt");
-    expect(app.allLines()).toContain("automatic reply");
+    expect(app.allLines()).toContain("❯ auto prompt");
+    expect(app.allLines()).toContain(`${assistant} automatic reply`);
   } finally {
     await app.cleanup();
   }
@@ -224,18 +228,18 @@ test("a model failure preserves partial output and permits the next prompt", asy
     app.calls[0]!.delta("partial before failure");
     app.calls[0]!.fail("provider unavailable");
     await app.waitFor(() => app.screen().includes("provider unavailable"));
-    expect(app.allLines()).toContain("partial before failure");
+    expect(app.allLines()).toContain(`${assistant} partial before failure`);
     app.stdin.write("retry\r");
     await app.waitFor(() => app.calls.length === 2);
     app.calls[1]!.delta("retry succeeded");
     app.calls[1]!.finish();
     await app.waitFor(
       () =>
-        app.allLines().includes("retry succeeded") &&
+        app.allLines().includes(`${assistant} retry succeeded`) &&
         app.screen().some((line) => line.includes("Ready")),
     );
     expect(app.screen()).not.toContain("provider unavailable");
-    expect(app.allLines()).toContain("retry succeeded");
+    expect(app.allLines()).toContain(`${assistant} retry succeeded`);
   } finally {
     await app.cleanup();
   }
@@ -320,12 +324,12 @@ test("--resume continues the existing Session context", async () => {
     ]);
     fake.calls[1]!.delta("resumed reply");
     fake.calls[1]!.finish();
-    await terminal.waitFor(() => terminal.screen().includes("resumed reply"));
+    await terminal.waitFor(() => terminal.screen().includes(`${assistant} resumed reply`));
     expect(terminal.allLines().slice(0, 4)).toEqual([
-      "> stored prompt",
-      "stored reply",
-      "> continuation",
-      "resumed reply",
+      "❯ stored prompt",
+      `${assistant} stored reply`,
+      "❯ continuation",
+      `${assistant} resumed reply`,
     ]);
     terminal.stdin.write("\x04");
     expect(await exit).toBe(0);
@@ -374,7 +378,7 @@ for (const [mode, argv, session] of [
       app.calls[1]!.delta("file written");
       app.calls[1]!.finish(13, 3);
       await app.waitFor(() => app.screen().some((line) => line.includes("input 24 · output 8")));
-      expect(app.allLines()).toContain("file written");
+      expect(app.allLines()).toContain(`${assistant} file written`);
     } finally {
       await app.cleanup();
     }
@@ -388,7 +392,7 @@ test("--thinking is forwarded to the model request", async () => {
     expect(app.calls[0]!.reasoning).toBe("high");
     app.calls[0]!.delta("thoughtful reply");
     app.calls[0]!.finish();
-    await app.waitFor(() => app.allLines().includes("thoughtful reply"));
+    await app.waitFor(() => app.allLines().includes(`${assistant} thoughtful reply`));
   } finally {
     await app.cleanup();
   }
@@ -425,7 +429,7 @@ test("--trust-project-mcp loads project configuration", async () => {
     expect(app.stderr()).toBe("");
     app.calls[0]!.delta("project MCP checked");
     app.calls[0]!.finish();
-    await app.waitFor(() => app.allLines().includes("project MCP checked"));
+    await app.waitFor(() => app.allLines().includes(`${assistant} project MCP checked`));
   } finally {
     await app.cleanup();
   }

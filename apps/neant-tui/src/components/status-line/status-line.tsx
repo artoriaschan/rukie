@@ -1,4 +1,4 @@
-import { Text } from "@neant/tui";
+import { ThemedText } from "@neant/tui";
 
 export function StatusLine({
   model,
@@ -12,8 +12,9 @@ export function StatusLine({
   running: boolean;
 }) {
   return (
-    <Text
-      dimColor
-    >{`${model} · input ${input} · output ${output} · ${running ? "Running" : "Ready"}`}</Text>
+    <ThemedText color="subtle">
+      {`${model} · input ${input} · output ${output} · `}
+      <ThemedText color={running ? "accent" : "subtle"}>{running ? "Running" : "Ready"}</ThemedText>
+    </ThemedText>
   );
 }

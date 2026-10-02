@@ -13,3 +13,17 @@ export {
 export { render, type RenderOptions } from "./renderer";
 export { useInput, useTerminalSize } from "./hooks";
 export type { InputEvent, Key } from "./input";
+export {
+  dark,
+  type Theme,
+  ThemeProvider,
+  useTheme,
+  figures,
+  StatusIcon,
+  type StatusIconProps,
+  ThemedText,
+  ThemedBox,
+  type ThemeColor,
+  type ThemedTextProps,
+  type ThemedBoxProps,
+} from "./design-system";

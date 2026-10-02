@@ -1,0 +1,44 @@
+import { createContext, useContext } from "react";
+import { Box, Text, type BoxProps, type TextProps } from "../components";
+import type { Theme } from "./theme";
+import { useTheme } from "./theme-provider";
+
+export type ThemeColor = keyof Theme | NonNullable<TextProps["color"]>;
+const ColorContext = createContext<TextProps["color"]>(undefined);
+
+function useColor(color?: ThemeColor) {
+  const theme = useTheme();
+  const inherited = useContext(ColorContext);
+  return color === undefined
+    ? (inherited ?? theme.text)
+    : color in theme
+      ? theme[color as keyof Theme]
+      : (color as TextProps["color"]);
+}
+
+export interface ThemedTextProps extends Omit<TextProps, "color"> {
+  color?: ThemeColor;
+}
+
+export function ThemedText({ color, ...props }: ThemedTextProps) {
+  const resolved = useColor(color);
+  return (
+    <ColorContext.Provider value={resolved}>
+      <Text {...props} color={resolved} />
+    </ColorContext.Provider>
+  );
+}
+
+export interface ThemedBoxProps extends BoxProps {
+  color?: ThemeColor;
+}
+
+/** Box is layout-only; scope the foreground color for descendant themed text. */
+export function ThemedBox({ color, ...props }: ThemedBoxProps) {
+  const resolved = useColor(color);
+  return (
+    <ColorContext.Provider value={resolved}>
+      <Box {...props} />
+    </ColorContext.Provider>
+  );
+}

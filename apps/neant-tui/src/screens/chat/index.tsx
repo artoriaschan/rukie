@@ -95,6 +95,7 @@ function Chat({
                   key={index}
                   summary={entry.summary}
                   status={entry.isError ? "error" : "success"}
+                  result={entry.result}
                   error={entry.error}
                 />
               );

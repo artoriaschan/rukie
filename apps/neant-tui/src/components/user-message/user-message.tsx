@@ -1,5 +1,5 @@
-import { Text } from "@neant/tui";
+import { ThemedText, figures } from "@neant/tui";
 
 export function UserMessage({ text }: { text: string }) {
-  return <Text>{`> ${text}`}</Text>;
+  return <ThemedText>{`${figures.user} ${text}`}</ThemedText>;
 }

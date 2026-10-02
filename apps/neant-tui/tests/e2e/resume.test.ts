@@ -4,6 +4,8 @@ import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-wo
 import { createSession } from "@neant/agent";
 import { start } from "../helpers/app";
 
+const assistant = process.platform === "darwin" ? "⏺" : "●";
+
 test("resume replays stored text before input and appends the next Run to the same Session", async () => {
   const argv: string[] = [];
   let root = "";
@@ -29,8 +31,8 @@ test("resume replays stored text before input and appends the next Run to the sa
     await app.waitFor(() => app.screen().some((line) => line.includes("Ready")));
     expect(app.calls).toHaveLength(0);
     expect(app.allLines().slice(0, 3)).toEqual([
-      "> stored prompt 中",
-      "**stored reply** 中",
+      "❯ stored prompt 中",
+      `${assistant} **stored reply** 中`,
       "second line",
     ]);
     expect(app.screen()).toContain(">");
@@ -48,11 +50,15 @@ test("resume replays stored text before input and appends the next Run to the sa
     app.calls[0]!.finish();
     await app.waitFor(
       () =>
-        app.allLines().filter((line) => line === "resumed reply").length === 12 &&
-        app.screen().some((line) => line.includes("Ready")),
+        app
+          .allLines()
+          .filter((line) => line === "resumed reply" || line === `${assistant} resumed reply`)
+          .length === 12 && app.screen().some((line) => line.includes("Ready")),
     );
-    expect(app.allLines().filter((line) => line === "> stored prompt 中")).toHaveLength(1);
-    expect(app.allLines().filter((line) => line === "**stored reply** 中")).toHaveLength(1);
+    expect(app.allLines().filter((line) => line === "❯ stored prompt 中")).toHaveLength(1);
+    expect(
+      app.allLines().filter((line) => line === `${assistant} **stored reply** 中`),
+    ).toHaveLength(1);
     expect(app.terminal.buffer.active.baseY).toBeGreaterThan(0);
     const resumed = await createSession({ cwd: root, homeDir: root, ...app, resumeId: id });
     expect(resumed.id).toBe(id);
@@ -66,7 +72,7 @@ test("resume replays stored text before input and appends the next Run to the sa
   }
 });
 
-test("resume replays each tool's collapsed result and error preview without reminders or output", async () => {
+test("resume replays each tool's collapsed result and error preview without reminders", async () => {
   const argv: string[] = [];
   const original = createFauxCore({ api: "faux", provider: "faux" });
   original.setResponses([
@@ -108,23 +114,27 @@ test("resume replays each tool's collapsed result and error preview without remi
     await app.waitFor(() => app.screen().some((line) => line.includes("Ready")));
     expect(app.calls).toHaveLength(0);
     const lines = app.allLines();
-    expect(lines.slice(0, 2)).toEqual(["> stored tools", "before tools"]);
-    expect(lines.filter((line) => line === '✓ read {"path":"first.txt"}')).toHaveLength(1);
-    expect(lines.filter((line) => line === '✓ read {"path":"second.txt"}')).toHaveLength(1);
+    expect(lines.slice(0, 2)).toEqual(["❯ stored tools", `${assistant} before tools`]);
+    expect(lines.filter((line) => line === '• read {"path":"first.txt"}')).toHaveLength(1);
+    expect(lines.filter((line) => line === '• read {"path":"second.txt"}')).toHaveLength(1);
     expect(lines.filter((line) => line.startsWith('✗ bash {"command":'))).toHaveLength(1);
-    expect(lines).toContain("first failure");
-    expect(lines).toContain("second failure");
-    expect(lines).toContain("third failure");
-    expect(lines.indexOf("after tools")).toBeGreaterThan(lines.indexOf("third failure"));
-    for (const hidden of [
-      "fourth-hidden",
-      "hidden first output",
-      "hidden second output",
-      "hidden reasoning",
-      "system-reminder",
-    ])
+    expect(lines).toContain("⎿ first failure");
+    expect(lines).toContain("⎿ hidden first output");
+    expect(lines).toContain("⎿ hidden second output");
+    expect(lines).toContain("  second failure");
+    expect(lines).toContain("  third failure");
+    expect(lines.indexOf(`${assistant} after tools`)).toBeGreaterThan(
+      lines.indexOf("  third failure"),
+    );
+    for (const hidden of ["fourth-hidden", "hidden reasoning", "system-reminder"])
       expect(lines.join("\n")).not.toContain(hidden);
-    expect(lines.some((line) => /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/.test(line))).toBe(false);
+    expect(
+      lines.some(
+        (line, row) =>
+          /^[·•●] (read|bash) /.test(line) &&
+          app.terminal.buffer.active.getLine(row)!.getCell(0)!.getFgColor() === 0x7da1de,
+      ),
+    ).toBe(false);
 
     app.stdin.write("next\r");
     await app.waitFor(() => app.calls.length === 1);
@@ -132,10 +142,10 @@ test("resume replays each tool's collapsed result and error preview without remi
     app.calls[0]!.finish();
     await app.waitFor(
       () =>
-        app.allLines().includes("next reply") &&
+        app.allLines().includes(`${assistant} next reply`) &&
         app.screen().some((line) => line.includes("Ready")),
     );
-    expect(app.allLines().filter((line) => line.startsWith("✓ read "))).toHaveLength(2);
+    expect(app.allLines().filter((line) => line.startsWith("• read "))).toHaveLength(2);
     expect(app.allLines().filter((line) => line.startsWith("✗ bash "))).toHaveLength(1);
     expect(app.stderr()).toBe("");
   } finally {
@@ -168,7 +178,10 @@ test("resume replays the restored compaction suffix without exposing its summary
   });
   try {
     await app.waitFor(() => app.screen().some((line) => line.includes("Ready")));
-    expect(app.allLines().slice(0, 2)).toEqual(["> retained prompt", "retained reply"]);
+    expect(app.allLines().slice(0, 2)).toEqual([
+      "❯ retained prompt",
+      `${assistant} retained reply`,
+    ]);
     expect(app.allLines().join("\n")).not.toContain("old transcript");
     expect(app.allLines().join("\n")).not.toContain("hidden compaction summary");
     expect(app.allLines().join("\n")).not.toContain("system-reminder");
@@ -213,9 +226,9 @@ test("resume hides a skill reminder retained by compaction while preserving user
   try {
     await app.waitFor(() => app.screen().some((line) => line.includes("Ready")));
     expect(app.allLines().join("\n")).not.toContain("Hidden skill instructions.");
-    expect(app.allLines()).not.toContain("> <system-reminder>");
-    expect(app.allLines()).toContain(`> ${prompt}`);
-    expect(app.allLines()).toContain("done");
+    expect(app.allLines()).not.toContain("❯ <system-reminder>");
+    expect(app.allLines()).toContain(`❯ ${prompt}`);
+    expect(app.allLines()).toContain(`${assistant} done`);
     expect(app.calls).toHaveLength(0);
     app.stdin.write("continue\r");
     await app.waitFor(() => app.calls.length === 1);
@@ -224,7 +237,8 @@ test("resume hides a skill reminder retained by compaction while preserving user
     app.calls[0]!.finish();
     await app.waitFor(
       () =>
-        app.allLines().includes("continued") && app.screen().some((line) => line.includes("Ready")),
+        app.allLines().includes(`${assistant} continued`) &&
+        app.screen().some((line) => line.includes("Ready")),
     );
     expect(app.allLines().join("\n")).not.toContain("Hidden skill instructions.");
   } finally {

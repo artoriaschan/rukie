@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { parseArgs } from "node:util";
 import { loadSettings, type SessionOptions } from "@neant/agent";
 import { THINKING_LEVELS, type ThinkingLevel } from "@neant/shared";
-import { render, type RenderOptions } from "@neant/tui";
+import { render, ThemeProvider, type RenderOptions } from "@neant/tui";
 import { createChat } from "./screens/chat";
 
 export interface TuiIo extends RenderOptions {
@@ -83,7 +83,12 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
       },
       model ? `${model.provider}/${model.id}` : settings.model!,
     );
-    app = render(<chat.Chat onExit={() => app?.unmount()} />, io);
+    app = render(
+      <ThemeProvider>
+        <chat.Chat onExit={() => app?.unmount()} />
+      </ThemeProvider>,
+      io,
+    );
     if (prompt !== undefined) chat.submit(prompt);
     await app.waitUntilExit();
     return 0;

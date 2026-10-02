@@ -1,26 +1,30 @@
-import { Box, Spinner, Text } from "@neant/tui";
+import { StatusIcon, ThemedBox, ThemedText, figures, type StatusIconProps } from "@neant/tui";
 
 export function ToolCall({
   summary,
   status,
+  result,
   error,
 }: {
   summary: string;
-  status: "running" | "success" | "error";
+  status: StatusIconProps["status"];
+  result?: string;
   error?: string;
 }) {
-  return status === "running" ? (
-    <Text wrap="truncate">
-      <Spinner /> {summary}
-    </Text>
-  ) : (
-    <Box flexDirection="column">
-      <Text wrap="truncate">{`${status === "error" ? "✗" : "✓"} ${summary}`}</Text>
-      {error && (
-        <Text color="red" wrap="truncate">
-          {error}
-        </Text>
+  const output = status === "error" ? error?.split(/\r?\n/).slice(0, 3).join("\n") : result;
+  return (
+    <ThemedBox flexDirection="column">
+      <ThemedText wrap="truncate">
+        <StatusIcon status={status} /> {summary}
+      </ThemedText>
+      {status !== "running" && output && (
+        <ThemedBox color={status === "error" ? "error" : "text"}>
+          <ThemedBox width={2}>
+            <ThemedText>{figures.result}</ThemedText>
+          </ThemedBox>
+          <ThemedText wrap="truncate">{output}</ThemedText>
+        </ThemedBox>
       )}
-    </Box>
+    </ThemedBox>
   );
 }

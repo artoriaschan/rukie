@@ -1,5 +1,9 @@
-import { Text } from "@neant/tui";
+import { ThemedText, figures } from "@neant/tui";
 
 export function AssistantMessage({ text }: { text: string }) {
-  return <Text>{text}</Text>;
+  return (
+    <ThemedText>
+      <ThemedText color="accent">{figures.assistant}</ThemedText> {text}
+    </ThemedText>
+  );
 }

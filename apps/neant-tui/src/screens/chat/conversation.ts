@@ -7,7 +7,7 @@ interface ToolCall {
 
 type CompletedEntry =
   | { type: "message"; role: "user" | "assistant"; text: string }
-  | { type: "tool"; summary: string; isError: boolean; error?: string }
+  | { type: "tool"; summary: string; isError: boolean; result?: string; error?: string }
   | { type: "notice"; text: string };
 
 type ToolResultMessage = Extract<
@@ -15,12 +15,9 @@ type ToolResultMessage = Extract<
   { role: "toolResult" }
 >;
 
-function errorPreview(result: Pick<ToolResultMessage, "content">) {
+function resultText(result: Pick<ToolResultMessage, "content">) {
   return result.content
     .flatMap((content) => (content.type === "text" ? [content.text] : []))
-    .join("\n")
-    .split(/\r?\n/)
-    .slice(0, 3)
     .join("\n");
 }
 
@@ -37,7 +34,8 @@ function toolEntry(
     type: "tool",
     summary,
     isError,
-    error: isError ? errorPreview(result) : undefined,
+    result: isError ? undefined : resultText(result),
+    error: isError ? resultText(result) : undefined,
   };
 }
 

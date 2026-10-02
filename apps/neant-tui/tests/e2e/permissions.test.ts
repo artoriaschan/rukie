@@ -2,6 +2,8 @@ import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { start } from "../helpers/app";
 
+const assistant = process.platform === "darwin" ? "⏺" : "●";
+
 test("allow once executes the tool and asks again for its next call", async () => {
   const app = await start(["use bash"]);
   try {
@@ -60,7 +62,7 @@ test.each([
     app.calls[1]!.delta("continuing after refusal");
     app.calls[1]!.finish();
     await app.waitFor(() => app.screen().some((line) => line.includes("Ready")));
-    expect(app.allLines()).toContain("continuing after refusal");
+    expect(app.allLines()).toContain(`${assistant} continuing after refusal`);
     expect(app.screen().join("\n")).not.toContain("权限确认");
   } finally {
     await app.cleanup();
