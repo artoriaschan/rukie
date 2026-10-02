@@ -14,6 +14,7 @@ import {
 } from "../../components";
 import { createConversation } from "./conversation";
 import { createPermissions } from "./permissions";
+import { NARRATE_INSTRUCTION } from "./narration";
 import { fmtTokens, render as renderActivity } from "./activity/activity";
 
 /** Bind the Session and private stores to one chat screen for its lifetime. */
@@ -21,6 +22,10 @@ export async function createChat(options: SessionOptions, model: string) {
   const permissions = createPermissions();
   const session = await createSession({
     ...options,
+    reminderSources: [
+      ...(options.reminderSources ?? []),
+      { source: "narration", currentContent: () => NARRATE_INSTRUCTION },
+    ],
     onPermissionAsk: options.onPermissionAsk ?? permissions.ask,
   });
   const conversation = createConversation(session, model);

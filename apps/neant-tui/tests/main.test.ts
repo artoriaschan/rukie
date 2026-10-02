@@ -317,9 +317,10 @@ test("--resume continues the existing Session context", async () => {
       session: { cwd: root, homeDir: root, ...fake },
     });
     await terminal.waitFor(() => fake.calls.length === 2);
-    expect(fake.calls[1]!.context.messages.slice(-3)).toMatchObject([
+    expect(fake.calls[1]!.context.messages.slice(-4)).toMatchObject([
       { role: "user", content: [{ type: "text", text: "stored prompt" }] },
       { role: "assistant", content: [{ type: "text", text: "stored reply" }] },
+      { role: "user", content: [{ type: "text", text: expect.stringContaining("[状态栏]") }] },
       { role: "user", content: [{ type: "text", text: "continuation" }] },
     ]);
     fake.calls[1]!.delta("resumed reply");

@@ -11,7 +11,8 @@ test("resume replays stored text before input and appends the next Run to the sa
   let root = "";
   let id = "";
   const original = createFauxCore({ api: "faux", provider: "faux" });
-  original.setResponses([fauxAssistantMessage("**stored reply** 中\nsecond line")]);
+  const storedReply = "⏵ 查一下报错原因\n**stored reply** 中\n⏵ 给补丁跑个验证\nsecond line";
+  original.setResponses([fauxAssistantMessage(storedReply)]);
   const app = await start(argv, {
     prepare: async (directory) => {
       root = directory;
@@ -42,12 +43,14 @@ test("resume replays stored text before input and appends the next Run to the sa
     expect(app.screen()).toContain("❯");
     expect(app.allLines().join("\n")).not.toContain("hidden project instructions");
     expect(app.allLines().join("\n")).not.toContain("system-reminder");
+    expect(app.allLines().join("\n")).not.toContain("⏵");
 
     app.stdin.write("continuation\r");
     await app.waitFor(() => app.calls.length === 1);
-    expect(app.calls[0]!.context.messages.slice(-3)).toMatchObject([
+    expect(app.calls[0]!.context.messages.slice(-4)).toMatchObject([
       { role: "user", content: [{ type: "text", text: "stored prompt 中" }] },
-      { role: "assistant", content: [{ type: "text", text: "**stored reply** 中\nsecond line" }] },
+      { role: "assistant", content: [{ type: "text", text: storedReply }] },
+      { role: "user", content: [{ type: "text", text: expect.stringContaining("[状态栏]") }] },
       { role: "user", content: [{ type: "text", text: "continuation" }] },
     ]);
     app.calls[0]!.delta("resumed reply\n".repeat(12));
@@ -72,6 +75,21 @@ test("resume replays stored text before input and appends the next Run to the sa
       { role: "user", content: [{ type: "text", text: "continuation" }] },
       { role: "assistant", content: [{ type: "text", text: "resumed reply\n".repeat(12) }] },
     ]);
+    const replay = await start(["--resume", id], { session: { cwd: root, homeDir: root } });
+    try {
+      await replay.waitFor(() => replay.screen().includes("❯"));
+      expect(replay.allLines().join("\n")).not.toContain("⏵");
+      replay.stdin.write("resume again\r");
+      await replay.waitFor(() => replay.calls.length === 1);
+      expect(
+        replay.calls[0]!.context.messages.filter(
+          (message) =>
+            message.role === "user" && JSON.stringify(message.content).includes("[状态栏]"),
+        ),
+      ).toHaveLength(1);
+    } finally {
+      await replay.cleanup();
+    }
     expect(app.stderr()).toBe("");
   } finally {
     await app.cleanup();
