@@ -17,7 +17,7 @@ Status: ready-for-agent
 3. 作为用户，我想在工具运行时看到动词 + 参数，如 `跑个命令 npm test · 12s`，连续调工具时显示 `工具x3`，工具刚完成时保留 2.5 秒 `✓ 读一下 src/a.ts · 87ms`。
 4. 作为用户，我想看到模型自己写的一句话自述（`⏵ 查一下报错原因`）显示在状态行，而不出现在回复正文里。
 5. 作为用户，我想在权限对话框打开时看到"在等你点头"，这样知道是我在挡路。
-6. 作为用户，我想在 Run 结束后看到汇总行 `齐活 · 4 工具 · 想12s 干11s · 🔥 12.3k`，直到下一次提交；按 Esc 打断后看到打断接梗。
+6. 作为用户，我想让 ActivityLine 只在 Run 进行中显示，Run 成功、失败或打断后立即消失；底部状态栏保留 token 统计，错误提示和打断前的回复正文保留，下次提交时重新显示 ActivityLine。
 7. 作为用户，我想在行尾看到实时的 `↑ 输入 · ↓ 输出 tokens · esc 中断`，输出数在流式过程中实时增长。
 8. 作为用户，我想看到 git 分支 `· git main`。
 9. 作为用户，我想让状态行在窄终端下截断而不是换行把界面挤乱。
@@ -69,10 +69,10 @@ Status: ready-for-agent
 - `conversation.ts`：把事件同时喂给 activity reducer；跟踪 token 段。`↑` 为最近一个 Turn 的 assistant `usage.input`；`↓` 在流式时为本 Turn 已收到的文本 + thinking 字符数 / 4，`message_end` 时校正为真实 `usage.output`，跨 Turn 累计。
 - `index.tsx`：
   - 输入框上方渲染 `ActivityLine`。
-  - suffix 为 `· ↑ {fmtTokens} · ↓ {fmtTokens} tokens · esc 中断`，done 时省略 `esc 中断`。
-  - phase 为 `idle` 时不渲染（启动后首次提交前）。
+  - suffix 为 `· ↑ {fmtTokens} · ↓ {fmtTokens} tokens · esc 中断`。
+  - 仅在 Run 进行中且 phase 非 `idle` 时渲染；成功、失败或打断结束后隐藏，不展示 done 汇总或接梗。状态机保留内部 done 终态。
   - 权限对话框开关时派发 `approval-open` / `approval-close`。
-  - 按 `render` 返回的 `nextWakeAt` 安排下一次 reduce 刷新，与 60ms 的扫光动画分开。
+  - Run 进行中按 `render` 返回的 `nextWakeAt` 安排下一次刷新，与 60ms 的扫光动画分开；Run 结束后停止刷新。
 - `createChat`：
   - 向 `createSession` 传 `reminderSources: [{ source: "narration", currentContent: () => NARRATE_INSTRUCTION }]`，指令文本照搬 `lang.ts` 的 `narrate-instruction`（zh）。基础 System Prompt 不改；内容不变时 `collectReminders` 不会重复注入。
   - 启动时读一次 `git branch --show-current`，失败则不显示 git 段。
@@ -98,7 +98,7 @@ Status: ready-for-agent
 - `ActivityLine` 一条冒烟测试：render + headless terminal 读回首格为月相帧、文字加粗、suffix 为 subtle 色、超宽单行截断。
 - 剥离：`AssistantMessage` 不渲染行首 `⏵` 行；resume 回放同样不渲染。
 - e2e（`apps/neant-tui/tests/e2e/`）：用假 `streamFn` 跑一次带工具的 Run：
-  - 运行中能看到状态行，结束后显示 done 行，下次提交时 done 行被替换。
+  - 运行中能看到状态行；成功、失败或打断结束后隐藏，下次提交时重新显示；底部 token 统计、错误提示及已输出正文保留。
   - 状态栏不再出现 `Running`。
   - 首次 Run 注入的 reminder 里含 narration 指令，第二次 Run 不重复注入。
 - 视觉（扫光、帧速、颜色）手动运行 `neant` 确认。

@@ -41,6 +41,7 @@ export function createTerminal(columns = 80, rows = 8) {
     terminal,
     flush,
     screen,
+    isWorking: () => screen().some((line) => /^[🌑🌒🌓🌔🌕🌖🌗🌘] /u.test(line)),
     output: () => output,
     allLines() {
       const buffer = terminal.buffer.active;

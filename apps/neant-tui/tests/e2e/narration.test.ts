@@ -22,7 +22,7 @@ test("TUI injects narration once per Session alongside caller reminders without 
     expect(JSON.stringify(first.messages)).toContain("caller reminder");
     app.calls[0]!.delta("first reply");
     app.calls[0]!.finish();
-    await app.waitFor(() => app.screen().some((line) => line.includes(" 工具 · 想")));
+    await app.waitFor(() => !app.isWorking());
     app.stdin.write("second\r");
     await app.waitFor(() => app.calls.length === 2);
     expect(
@@ -57,7 +57,7 @@ test("streamed narration stays in the activity line while reply text enters scro
     await app.waitFor(() => app.screen().some((line) => line.includes("⏵ 给补丁跑个验证")));
     expect(app.screen()).toContain("验证通过");
     app.calls[0]!.finish();
-    await app.waitFor(() => app.screen().some((line) => line.includes(" 工具 · 想")));
+    await app.waitFor(() => !app.isWorking());
     expect(app.allLines()).toContain(`${figures.assistant} 找到原因`);
     expect(app.allLines()).toContain("验证通过");
     expect(app.allLines().join("\n")).not.toContain("⏵");

@@ -76,13 +76,13 @@ function Chat({
   const [now, setNow] = useState(Date.now);
   const activity = renderActivity(state.activity, Math.max(now, Date.now()));
   useEffect(() => {
-    if (activity.nextWakeAt === undefined) return;
+    if (!state.running || activity.nextWakeAt === undefined) return;
     const timer = setTimeout(
       () => setNow(Date.now()),
       Math.max(0, activity.nextWakeAt - Date.now()),
     );
     return () => clearTimeout(timer);
-  }, [state.activity, activity.nextWakeAt]);
+  }, [state.running, state.activity, activity.nextWakeAt]);
   const approvalOpen = question !== undefined;
   useEffect(() => {
     conversation.dispatchActivity({ type: approvalOpen ? "approval-open" : "approval-close" });
@@ -159,11 +159,11 @@ function Chat({
         <ToolCall key={tool.id} summary={tool.summary} status="running" />
       ))}
       {state.error && <Notice kind="error" text={state.error} />}
-      {activity.phase !== "idle" && (
+      {state.running && activity.phase !== "idle" && (
         <ActivityLine
           phase={activity.phase}
           line={activity.line}
-          suffix={` · ↑ ${fmtTokens(state.activityInput)} · ↓ ${fmtTokens(state.output + Math.ceil(state.streamedChars / 4))} tokens${activity.phase === "done" ? "" : " · esc 中断"}`}
+          suffix={` · ↑ ${fmtTokens(state.activityInput)} · ↓ ${fmtTokens(state.output + Math.ceil(state.streamedChars / 4))} tokens · esc 中断`}
         />
       )}
       {question && (

@@ -60,7 +60,7 @@ test("resume replays stored text before input and appends the next Run to the sa
         app
           .allLines()
           .filter((line) => line === "resumed reply" || line === `${assistant} resumed reply`)
-          .length === 12 && app.screen().some((line) => line.includes(" 工具 · 想")),
+          .length === 12 && !app.isWorking(),
     );
     expect(app.allLines().filter((line) => line === "❯ stored prompt 中")).toHaveLength(1);
     expect(
@@ -164,11 +164,7 @@ test("resume replays each tool's collapsed result and error preview without remi
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.delta("next reply");
     app.calls[0]!.finish();
-    await app.waitFor(
-      () =>
-        app.allLines().includes(`${assistant} next reply`) &&
-        app.screen().some((line) => line.includes(" 工具 · 想")),
-    );
+    await app.waitFor(() => app.allLines().includes(`${assistant} next reply`) && !app.isWorking());
     expect(app.allLines().filter((line) => line.startsWith("• read "))).toHaveLength(2);
     expect(app.allLines().filter((line) => line.startsWith("✗ bash "))).toHaveLength(1);
     expect(app.stderr()).toBe("");
@@ -259,11 +255,7 @@ test("resume hides a skill reminder retained by compaction while preserving user
     expect(JSON.stringify(app.calls[0]!.context.messages)).toContain("Hidden skill instructions.");
     app.calls[0]!.delta("continued");
     app.calls[0]!.finish();
-    await app.waitFor(
-      () =>
-        app.allLines().includes(`${assistant} continued`) &&
-        app.screen().some((line) => line.includes(" 工具 · 想")),
-    );
+    await app.waitFor(() => app.allLines().includes(`${assistant} continued`) && !app.isWorking());
     expect(app.allLines().join("\n")).not.toContain("Hidden skill instructions.");
   } finally {
     await app.cleanup();

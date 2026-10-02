@@ -39,7 +39,7 @@ test("a tool shows an animated one-line summary then completes once in scrollbac
     await app.waitFor(() => app.calls.length === 2);
     app.calls[1]!.delta("file written");
     app.calls[1]!.finish();
-    await app.waitFor(() => app.screen().some((line) => line.includes(" 工具 · 想")));
+    await app.waitFor(() => !app.isWorking());
     expect(app.allLines().filter((line) => line.startsWith("• write "))).toHaveLength(1);
     expect(app.allLines().join("\n")).toContain("⎿ Successfully wrote");
     expect(runningTools(app).some((line) => line.includes("write "))).toBe(false);
@@ -50,7 +50,7 @@ test("a tool shows an animated one-line summary then completes once in scrollbac
     await app.waitFor(
       () =>
         app.allLines().filter((line) => line === "next reply" || line === `${assistant} next reply`)
-          .length === 12 && app.screen().some((line) => line.includes(" 工具 · 想")),
+          .length === 12 && !app.isWorking(),
     );
     expect(app.allLines().filter((line) => line.startsWith("• write "))).toHaveLength(1);
     expect(app.terminal.buffer.active.baseY).toBeGreaterThan(0);
@@ -101,9 +101,7 @@ test("parallel calls of the same tool finish independently and show only the fir
     app.calls[1]!.delta("tools finished");
     app.calls[1]!.finish();
     await app.waitFor(
-      () =>
-        app.allLines().includes(`${assistant} tools finished`) &&
-        app.screen().some((line) => line.includes(" 工具 · 想")),
+      () => app.allLines().includes(`${assistant} tools finished`) && !app.isWorking(),
     );
     expect(active()).toHaveLength(0);
     const completed = app.allLines().filter((line) => /^[•✗] bash /.test(line));
@@ -184,7 +182,7 @@ test("compaction is a warning-colored one-line scrollback notice without exposin
         app
           .allLines()
           .filter((line) => line === "after compaction" || line === `${assistant} after compaction`)
-          .length === 10 && app.screen().some((line) => line.includes(" 工具 · 想")),
+          .length === 10 && !app.isWorking(),
     );
     expect(app.allLines().filter((line) => line.startsWith("Context compacted"))).toHaveLength(1);
     expect(app.allLines().join("\n")).not.toContain("private-compaction-summary");

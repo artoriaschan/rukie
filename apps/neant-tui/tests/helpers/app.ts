@@ -31,10 +31,7 @@ export async function start(
     async cleanup() {
       terminal.stdin.write("\x03");
       await terminal.waitFor(
-        () =>
-          !fake.calls.at(-1) ||
-          fake.calls.at(-1)!.signal!.aborted ||
-          terminal.screen().some((line) => line.includes(" 工具 · 想")),
+        () => !fake.calls.at(-1) || fake.calls.at(-1)!.signal!.aborted || !terminal.isWorking(),
       );
       await Bun.sleep(40);
       terminal.stdin.write("\x03\x03\x03");

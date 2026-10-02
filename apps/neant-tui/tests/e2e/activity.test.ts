@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { start } from "../helpers/app";
 
-test("a tool Run shows live tokens, approval and a retained summary replaced on submit", async () => {
+test("a tool Run shows live tokens and approval, then hides activity until the next submit", async () => {
   const app = await start();
   const screen = () => app.screen().join("\n");
   try {
@@ -28,17 +28,17 @@ test("a tool Run shows live tokens, approval and a retained summary replaced on 
     app.calls[1]!.delta("abcdefgh");
     await app.waitFor(() => screen().includes("↑ 11 · ↓ 7 tokens"));
     app.calls[1]!.finish(21, 9);
-    await app.waitFor(() => screen().includes("1 工具") && !screen().includes("esc 中断"));
-    expect(screen()).toContain("↑ 21 · ↓ 14 tokens");
+    await app.waitFor(() => screen().includes("input 32 · output 14"));
+    expect(screen()).not.toContain("tokens");
+    expect(screen()).not.toContain(" 工具 · 想");
+    expect(screen()).not.toContain("esc 中断");
     expect(screen()).toContain("input 32 · output 14");
     expect(screen()).not.toContain("Running");
-    const summary = app.screen().find((line) => line.includes("1 工具"))!;
     await Bun.sleep(120);
     await app.flush();
-    expect(app.screen()).toContain(summary);
+    expect(screen()).not.toContain("tokens");
     app.stdin.write("again\r");
     await app.waitFor(() => app.calls.length === 3 && screen().includes("esc 中断"));
-    expect(app.screen()).not.toContain(summary);
     expect(screen()).toContain("↑ 0 · ↓ 0 tokens");
   } finally {
     await app.cleanup();
@@ -56,7 +56,8 @@ test("thinking and text estimates are corrected downward to the final usage", as
     app.calls[0]!.delta("ijklmnop");
     await app.waitFor(() => screen().includes("↓ 4 tokens"));
     app.calls[0]!.finish(8000, 1);
-    await app.waitFor(() => screen().includes("↑ 8.0k · ↓ 1 tokens"));
+    await app.waitFor(() => screen().includes("input 8000 · output 1"));
+    expect(screen()).not.toContain("tokens");
     expect(screen()).not.toContain("esc 中断");
   } finally {
     await app.cleanup();
@@ -88,8 +89,8 @@ test("git branch is captured once at startup and retained across Runs", async ()
     app.stdin.write("first\r");
     await app.waitFor(() => app.calls.length === 1 && screen().includes("git activity-test"));
     app.calls[0]!.finish();
-    await app.waitFor(() => screen().includes(" 工具 · 想"));
-    expect(screen()).toContain("git activity-test");
+    await app.waitFor(() => !app.isWorking());
+    expect(screen()).not.toContain("git activity-test");
     app.stdin.write("second\r");
     await app.waitFor(() => app.calls.length === 2 && screen().includes("esc 中断"));
     expect(screen()).toContain("git activity-test");
