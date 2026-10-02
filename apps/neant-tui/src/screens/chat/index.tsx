@@ -3,6 +3,7 @@ import { createSession, type SessionOptions } from "@neant/agent";
 import { Box, Static, useInput } from "@neant/tui";
 import {
   AssistantMessage,
+  Logo,
   Notice,
   PermissionDialog,
   PromptInput,
@@ -25,7 +26,14 @@ export async function createChat(options: SessionOptions, model: string) {
     submit: conversation.submit,
     stop: conversation.stop,
     Chat({ onExit }: { onExit(): void }) {
-      return <Chat conversation={conversation} permissions={permissions} onExit={onExit} />;
+      return (
+        <Chat
+          conversation={conversation}
+          permissions={permissions}
+          cwd={options.cwd}
+          onExit={onExit}
+        />
+      );
     },
   };
 }
@@ -33,10 +41,12 @@ export async function createChat(options: SessionOptions, model: string) {
 function Chat({
   conversation,
   permissions,
+  cwd,
   onExit,
 }: {
   conversation: ReturnType<typeof createConversation>;
   permissions: ReturnType<typeof createPermissions>;
+  cwd: string;
   onExit(): void;
 }) {
   const state = useSyncExternalStore(conversation.subscribe, conversation.getSnapshot);
@@ -87,6 +97,7 @@ function Chat({
   return (
     <Box flexDirection="column">
       <Static>
+        <Logo key="startup-logo" model={state.model} cwd={cwd} />
         {state.completed.map((entry, index) => {
           switch (entry.type) {
             case "tool":

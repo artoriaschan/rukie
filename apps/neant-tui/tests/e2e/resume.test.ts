@@ -30,7 +30,10 @@ test("resume replays stored text before input and appends the next Run to the sa
   try {
     await app.waitFor(() => app.screen().some((line) => line.includes("Ready")));
     expect(app.calls).toHaveLength(0);
-    expect(app.allLines().slice(0, 3)).toEqual([
+    const logoTop = "██  ██ ██▀▀▀▀  ▄▀▀▄  ██  ██ ▀▀██▀▀";
+    expect(app.allLines()[0]).toBe(logoTop);
+    expect(app.allLines()[5]).toBe(`${app.model.provider}/${app.model.id} · ${root}`);
+    expect(app.allLines().slice(6, 9)).toEqual([
       "❯ stored prompt 中",
       `${assistant} **stored reply** 中`,
       "second line",
@@ -60,6 +63,8 @@ test("resume replays stored text before input and appends the next Run to the sa
       app.allLines().filter((line) => line === `${assistant} **stored reply** 中`),
     ).toHaveLength(1);
     expect(app.terminal.buffer.active.baseY).toBeGreaterThan(0);
+    expect(app.allLines()[0]).toBe(logoTop);
+    expect(app.allLines().filter((line) => line === logoTop)).toHaveLength(1);
     const resumed = await createSession({ cwd: root, homeDir: root, ...app, resumeId: id });
     expect(resumed.id).toBe(id);
     expect(resumed.messages.slice(-2)).toMatchObject([
@@ -114,7 +119,7 @@ test("resume replays each tool's collapsed result and error preview without remi
     await app.waitFor(() => app.screen().some((line) => line.includes("Ready")));
     expect(app.calls).toHaveLength(0);
     const lines = app.allLines();
-    expect(lines.slice(0, 2)).toEqual(["❯ stored tools", `${assistant} before tools`]);
+    expect(lines.slice(6, 8)).toEqual(["❯ stored tools", `${assistant} before tools`]);
     expect(lines.filter((line) => line === '• read {"path":"first.txt"}')).toHaveLength(1);
     expect(lines.filter((line) => line === '• read {"path":"second.txt"}')).toHaveLength(1);
     expect(lines.filter((line) => line.startsWith('✗ bash {"command":'))).toHaveLength(1);
@@ -178,7 +183,7 @@ test("resume replays the restored compaction suffix without exposing its summary
   });
   try {
     await app.waitFor(() => app.screen().some((line) => line.includes("Ready")));
-    expect(app.allLines().slice(0, 2)).toEqual([
+    expect(app.allLines().slice(6, 8)).toEqual([
       "❯ retained prompt",
       `${assistant} retained reply`,
     ]);

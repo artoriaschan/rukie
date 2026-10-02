@@ -5,3 +5,4 @@ export { PermissionDialog } from "./permission-dialog";
 export { PromptInput } from "./prompt-input";
 export { StatusLine } from "./status-line";
 export { ToolCall } from "./tool-call";
+export { Logo } from "./logo";
