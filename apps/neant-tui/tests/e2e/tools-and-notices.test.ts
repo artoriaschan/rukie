@@ -16,7 +16,7 @@ function runningTools(app: Awaited<ReturnType<typeof start>>) {
   );
 }
 
-test("a tool shows an animated one-line summary then completes once in scrollback", async () => {
+test("a tool shows an animated one-line summary then remains once in the scrollable body", async () => {
   const permission = Promise.withResolvers<"allow" | "deny">();
   const app = await start(["write a file"], {
     session: { onPermissionAsk: () => permission.promise },
@@ -53,7 +53,10 @@ test("a tool shows an animated one-line summary then completes once in scrollbac
           .length === 12 && !app.isWorking(),
     );
     expect(app.allLines().filter((line) => line.startsWith("• write "))).toHaveLength(1);
-    expect(app.terminal.buffer.active.baseY).toBeGreaterThan(0);
+    expect(app.terminal.buffer.active.baseY).toBe(0);
+    app.stdin.write("\x1b[5~");
+    await app.waitFor(() => app.screen().includes("❯ write a file"));
+    expect(app.screen().filter((line) => line.startsWith("• write "))).toHaveLength(1);
   } finally {
     permission.resolve("deny");
     await app.cleanup();
@@ -153,7 +156,7 @@ test("MCP failures appear once as a warning-colored one-line notice while system
   }
 });
 
-test("compaction is a warning-colored one-line scrollback notice without exposing the summary", async () => {
+test("compaction is a warning-colored one-line message notice without exposing the summary", async () => {
   const app = await start(["read the file"], {
     prepare: async (root) => {
       await Bun.write(join(root, "large.txt"), "tool output ".repeat(2500));

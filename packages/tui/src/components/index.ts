@@ -9,6 +9,7 @@ import {
 import type { TextStyle } from "../text";
 import { useAnimationFrame } from "../hooks/animation-frame";
 export { TextInput, type TextInputProps } from "./text-input";
+export { ScrollBox, type ScrollBoxProps } from "./scroll-box";
 
 export interface BoxProps {
   children?: ReactNode;
@@ -39,6 +40,8 @@ export interface TextProps extends TextStyle {
   children?: ReactNode;
   /** Word wrap, splitting long words by display columns, or clip each explicit line. */
   wrap?: "wrap" | "truncate";
+  /** Preserve indentation and spaces when wrapping formatted text. */
+  preserveWhitespace?: boolean;
 }
 
 /** Flex container measured in terminal cells; rows are the default direction. */

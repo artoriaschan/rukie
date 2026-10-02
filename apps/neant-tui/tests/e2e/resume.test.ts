@@ -66,7 +66,9 @@ test("resume replays stored text before input and appends the next Run to the sa
     expect(
       app.allLines().filter((line) => line === `${assistant} **stored reply** 中`),
     ).toHaveLength(1);
-    expect(app.terminal.buffer.active.baseY).toBeGreaterThan(0);
+    expect(app.terminal.buffer.active.baseY).toBe(0);
+    app.stdin.write("\x1b[5~");
+    await app.waitFor(() => app.screen()[0] === logoTop);
     expect(app.allLines()[0]).toBe(logoTop);
     expect(app.allLines().filter((line) => line === logoTop)).toHaveLength(1);
     const resumed = await createSession({ cwd: root, homeDir: root, ...app, resumeId: id });

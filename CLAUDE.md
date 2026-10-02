@@ -9,14 +9,14 @@ Bun workspaces (`apps/*`, `packages/*`). Internal packages are not built: `expor
 ```
 apps/
   neant-cli/    @neant/neant-cli  argv → Agent Core → text / stream-json output
-  neant-tui/    @neant/neant-tui  neant → Agent Core → inline conversation / scrollback
+  neant-tui/    @neant/neant-tui  neant → Agent Core → fullscreen conversation / fixed input
     src/{components,screens}/
   server/       (later) @neant/server   Hono + WS
   desktop/      (later) @neant/desktop  src/{main,preload,renderer}
 packages/
   shared/       @neant/shared   runtime-agnostic types, typebox schemas, pure functions
   tui/          @neant/tui      React reconciler → TS Yoga → cell grid → ANSI
-    src/{components,design-system,hooks,input,terminal,renderer,layout,text,screen,yoga}/
+    src/{components,design-system,hooks,input,terminal,renderer,layout,text,screen,scroll,yoga}/
   agent/        @neant/agent    Agent Core
     src/index.ts
     src/{session,prompt,reminders,tools,permissions,skills,mcp,store,config}/

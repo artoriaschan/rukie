@@ -11,11 +11,13 @@ export async function start(
   options: {
     session?: Partial<SessionOptions>;
     prepare?(root: string): Promise<void>;
+    columns?: number;
+    rows?: number;
   } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), "neant-tui-"));
   await options.prepare?.(root);
-  const terminal = createTerminal();
+  const terminal = createTerminal(options.columns, options.rows);
   const fake = controlledModel();
   let stderr = "";
   const exit = main(argv, {

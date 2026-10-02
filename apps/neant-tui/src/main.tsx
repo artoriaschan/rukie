@@ -7,6 +7,7 @@ import { render, ThemeProvider, type RenderOptions } from "@neant/tui";
 import { createChat } from "./screens/chat";
 
 export interface TuiIo extends RenderOptions {
+  term?: string;
   stderr(text: string): void;
   /** Session overrides; in-process tests inject a model and streamFn. */
   session?: Partial<SessionOptions>;
@@ -58,6 +59,12 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
   }
   let app: ReturnType<typeof render> | undefined;
   let chat: Awaited<ReturnType<typeof createChat>> | undefined;
+  if (!io.stdin.isTTY || !io.stdout.isTTY || (io.term ?? process.env.TERM) === "dumb") {
+    io.stderr(
+      "neant requires an interactive terminal. Use neant-cli for piped or non-interactive output.\n",
+    );
+    return 1;
+  }
   try {
     const cwd = io.session?.cwd ?? process.cwd();
     const homeDir = io.session?.homeDir ?? homedir();
@@ -87,12 +94,13 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
       <ThemeProvider>
         <chat.Chat onExit={() => app?.unmount()} />
       </ThemeProvider>,
-      io,
+      { ...io, fullscreen: true },
     );
     if (prompt !== undefined) chat.submit(prompt);
     await app.waitUntilExit();
     return 0;
   } catch (error) {
+    app?.unmount();
     io.stderr(`${(error as Error).message}\n`);
     return 1;
   } finally {

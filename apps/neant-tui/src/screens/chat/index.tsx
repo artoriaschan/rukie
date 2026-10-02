@@ -1,6 +1,14 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createSession, type SessionOptions } from "@neant/agent";
-import { Box, Static, useInput } from "@neant/tui";
+import {
+  Box,
+  ScrollBox,
+  ThemedText,
+  useInput,
+  useTerminalSize,
+  type ScrollHandle,
+  type ScrollSnapshot,
+} from "@neant/tui";
 import {
   AssistantMessage,
   ActivityLine,
@@ -71,6 +79,19 @@ function Chat({
   const state = useSyncExternalStore(conversation.subscribe, conversation.getSnapshot);
   const question = useSyncExternalStore(permissions.subscribe, permissions.getSnapshot);
   const [input, setInput] = useState("");
+  const { columns, rows } = useTerminalSize();
+  const small = columns < 40 || rows < 12;
+  const body = useRef<ScrollHandle>(null);
+  const details = useRef<ScrollHandle>(null);
+  const [bodyScroll, setBodyScroll] = useState<ScrollSnapshot>();
+  const [scrollFocus, setScrollFocus] = useState<"body" | "details">("body");
+  const [unread, setUnread] = useState(false);
+  const previousOutput = useRef({
+    completed: state.completed,
+    assistant: state.assistant,
+    tools: state.tools,
+    error: state.error,
+  });
   const draft = useRef("");
   const lastInterrupt = useRef<number | undefined>(undefined);
   const [now, setNow] = useState(Date.now);
@@ -87,19 +108,76 @@ function Chat({
   useEffect(() => {
     conversation.dispatchActivity({ type: approvalOpen ? "approval-open" : "approval-close" });
   }, [conversation, approvalOpen]);
+  useEffect(() => {
+    setScrollFocus("body");
+  }, [question?.request.toolCallId]);
+  useEffect(() => {
+    const previous = previousOutput.current;
+    if (bodyScroll?.following) setUnread(false);
+    else if (
+      previous.completed !== state.completed ||
+      previous.assistant !== state.assistant ||
+      previous.tools !== state.tools ||
+      previous.error !== state.error
+    )
+      setUnread(true);
+    previousOutput.current = {
+      completed: state.completed,
+      assistant: state.assistant,
+      tools: state.tools,
+      error: state.error,
+    };
+  }, [bodyScroll?.following, state.completed, state.assistant, state.tools, state.error]);
   const change = (value: string) => {
     draft.current = value;
     lastInterrupt.current = undefined;
     setInput(value);
   };
   useInput((event) => {
+    if (event.type === "wheel") {
+      if (small) return;
+      const viewport = details.current?.getSnapshot();
+      if (
+        question &&
+        viewport &&
+        event.x >= viewport.x &&
+        event.x < viewport.x + viewport.width &&
+        event.y >= viewport.y &&
+        event.y < viewport.y + viewport.height
+      )
+        details.current?.scrollBy(event.delta * 3);
+      else if (bodyScroll && event.y >= bodyScroll.y && event.y < bodyScroll.y + bodyScroll.height)
+        body.current?.scrollBy(event.delta * 3);
+      lastInterrupt.current = undefined;
+      return;
+    }
     if (event.type !== "key") {
       lastInterrupt.current = undefined;
       return;
     }
     const { key } = event;
     const pending = permissions.getSnapshot();
-    if (pending && !(key.ctrl && key.name === "c")) {
+    if (!small && key.ctrl && key.name === "end") {
+      body.current?.scrollToBottom();
+      lastInterrupt.current = undefined;
+      return;
+    }
+    if (!small && pending && key.name === "tab") {
+      setScrollFocus((focus) => (focus === "body" ? "details" : "body"));
+      lastInterrupt.current = undefined;
+      return;
+    }
+    if (!small && (key.name === "pageup" || key.name === "pagedown")) {
+      const viewport = pending && scrollFocus === "details" ? details.current : body.current;
+      viewport?.scrollBy(
+        Math.max(1, (viewport.getSnapshot().height ?? 1) - 1) * (key.name === "pageup" ? -1 : 1),
+      );
+      lastInterrupt.current = undefined;
+      return;
+    }
+    if (small && key.name !== "escape" && !(key.ctrl && (key.name === "c" || key.name === "d")))
+      return;
+    if (!small && pending && !(key.ctrl && key.name === "c")) {
       lastInterrupt.current = undefined;
       if (key.name === "escape") permissions.deny();
       else if (!key.ctrl && !key.alt && !key.shift) {
@@ -127,62 +205,94 @@ function Chat({
       if (!conversation.isRunning()) onExit();
     } else lastInterrupt.current = undefined;
   });
+  const completed = useMemo(
+    () =>
+      state.completed.map((entry, index) => {
+        switch (entry.type) {
+          case "tool":
+            return (
+              <ToolCall
+                key={index}
+                summary={entry.summary}
+                status={entry.isError ? "error" : "success"}
+                result={entry.result}
+                error={entry.error}
+              />
+            );
+          case "notice":
+            return <Notice key={index} kind="info" text={entry.text} />;
+          case "message":
+            return entry.role === "user" ? (
+              <UserMessage key={index} text={entry.text} />
+            ) : (
+              <AssistantMessage key={index} text={entry.text} />
+            );
+        }
+      }),
+    [state.completed],
+  );
   return (
-    <Box flexDirection="column">
-      <Static>
+    <Box flexDirection="column" height={rows}>
+      <ScrollBox
+        ref={body}
+        onScroll={setBodyScroll}
+        height={small ? 0 : undefined}
+        flexGrow={small ? 0 : 1}
+      >
         <Logo key="startup-logo" model={state.model} cwd={cwd} />
-        {state.completed.map((entry, index) => {
-          switch (entry.type) {
-            case "tool":
-              return (
-                <ToolCall
-                  key={index}
-                  summary={entry.summary}
-                  status={entry.isError ? "error" : "success"}
-                  result={entry.result}
-                  error={entry.error}
-                />
-              );
-            case "notice":
-              return <Notice key={index} kind="info" text={entry.text} />;
-            case "message":
-              return entry.role === "user" ? (
-                <UserMessage key={index} text={entry.text} />
-              ) : (
-                <AssistantMessage key={index} text={entry.text} />
-              );
-          }
-        })}
-      </Static>
-      {state.assistant && <AssistantMessage text={state.assistant} />}
-      {state.tools.map((tool) => (
-        <ToolCall key={tool.id} summary={tool.summary} status="running" />
-      ))}
-      {state.error && <Notice kind="error" text={state.error} />}
-      {state.running && activity.phase !== "idle" && (
-        <ActivityLine
-          phase={activity.phase}
-          line={activity.line}
-          suffix={` · ↑ ${fmtTokens(state.activityInput)} · ↓ ${fmtTokens(state.output + Math.ceil(state.streamedChars / 4))} tokens · esc 中断`}
-        />
-      )}
-      {question && (
-        <PermissionDialog
-          toolName={question.request.toolName}
-          args={question.request.args}
-          selected={question.selected}
-        />
-      )}
-      {!question && (
-        <PromptInput
-          value={input}
-          onChange={change}
-          onSubmit={(prompt) => {
-            if (conversation.submit(prompt)) change("");
-          }}
-        />
-      )}
-      <StatusLine model={state.model} input={state.input} output={state.output} />
+        {completed}
+        {state.assistant && <AssistantMessage text={state.assistant} />}
+        {state.tools.map((tool) => (
+          <ToolCall key={tool.id} summary={tool.summary} status="running" />
+        ))}
+        {state.error && <Notice kind="error" text={state.error} />}
+      </ScrollBox>
+      <Box flexDirection="column" flexShrink={0}>
+        {small ? (
+          <ThemedText wrap="truncate">请调整窗口至至少 40 列 × 12 行 · Ctrl+C 中断/退出</ThemedText>
+        ) : (
+          <>
+            {bodyScroll && !bodyScroll.following && (
+              <ThemedText color="subtle" wrap="truncate">
+                {unread ? "有新输出 · Ctrl+End 回到底部" : "Ctrl+End 回到底部"}
+              </ThemedText>
+            )}
+            {state.running && activity.phase !== "idle" && (
+              <ActivityLine
+                phase={activity.phase}
+                line={activity.line}
+                suffix={` · ↑ ${fmtTokens(state.activityInput)} · ↓ ${fmtTokens(state.output + Math.ceil(state.streamedChars / 4))} tokens · esc 中断`}
+              />
+            )}
+            {question && (
+              <PermissionDialog
+                key={question.request.toolCallId}
+                toolName={question.request.toolName}
+                args={question.request.args}
+                selected={question.selected}
+                maxHeight={Math.floor(rows / 2)}
+                scrollRef={details}
+                scrollFocused={scrollFocus === "details"}
+              />
+            )}
+            {!question && (
+              <PromptInput
+                maxLines={Math.max(1, Math.min(6, Math.floor(rows / 3)) - 2)}
+                columns={columns - 2}
+                value={input}
+                onChange={change}
+                onSubmit={(prompt) => {
+                  if (conversation.submit(prompt)) {
+                    body.current?.scrollToBottom();
+                    change("");
+                  }
+                }}
+              />
+            )}
+            <StatusLine model={state.model} input={state.input} output={state.output} />
+          </>
+        )}
+      </Box>
     </Box>
   );
 }

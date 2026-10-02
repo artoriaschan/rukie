@@ -51,7 +51,7 @@ export function createTerminal(columns = 20, rows = 8) {
       return Array.from({ length: rows }, (_, y) =>
         buffer
           .getLine(buffer.viewportY + y)!
-          .translateToString(true)
+          .translateToString(true, 0, terminal.cols)
           .trimEnd(),
       );
     },

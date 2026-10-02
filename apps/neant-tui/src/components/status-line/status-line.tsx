@@ -9,5 +9,10 @@ export function StatusLine({
   input: number;
   output: number;
 }) {
-  return <ThemedText color="subtle">{`${model} · input ${input} · output ${output}`}</ThemedText>;
+  return (
+    <ThemedText
+      color="subtle"
+      wrap="truncate"
+    >{`${model} · input ${input} · output ${output}`}</ThemedText>
+  );
 }

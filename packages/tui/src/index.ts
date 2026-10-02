@@ -6,10 +6,13 @@ export {
   type TextProps,
   type TextInputProps,
   Static,
+  ScrollBox,
+  type ScrollBoxProps,
   Spinner,
   type SpinnerProps,
   type StaticProps,
 } from "./components";
+export type { ScrollHandle, ScrollSnapshot } from "./scroll";
 export { render, type RenderOptions } from "./renderer";
 export { useInput, useTerminalSize, ClockProvider, useAnimationFrame } from "./hooks";
 export type { InputEvent, Key } from "./input";

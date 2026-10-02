@@ -10,6 +10,7 @@ export interface Key {
 
 export type InputEvent =
   | { type: "key"; input: string; key: Key }
+  | { type: "wheel"; input: ""; x: number; y: number; delta: number }
   | { type: "paste"; input: string };
 
 const names: Record<string, string> = {
@@ -69,6 +70,24 @@ export function listenInput(stdin: Readable, emit: (event: InputEvent) => void) 
           if (!sequence) return;
           buffer = buffer.slice(sequence[0].length);
           const [, parameters = "", , final = ""] = sequence;
+          if (parameters.startsWith("<")) {
+            const [button, column, row] = parameters.slice(1).split(";").map(Number);
+            if (
+              final === "M" &&
+              (button === 64 || button === 65) &&
+              column !== undefined &&
+              row !== undefined
+            ) {
+              emit({
+                type: "wheel",
+                input: "",
+                x: column - 1,
+                y: row - 1,
+                delta: button === 64 ? -1 : 1,
+              });
+            }
+            continue;
+          }
           if (!/^[0-9;]*$/.test(parameters)) continue;
           const [code = 1, modifiers = 1] = parameters.split(";").map(Number);
           if (final === "u" || (final === "~" && code === 27)) {

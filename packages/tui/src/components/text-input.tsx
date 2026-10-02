@@ -1,11 +1,14 @@
 import { createElement, useLayoutEffect, useRef, useState } from "react";
-import { useInput } from "../hooks";
+import { useInput, useTerminalSize } from "../hooks";
+import { textCursor, textLines } from "../text";
 
 export interface TextInputProps {
   value: string;
   onChange(value: string): void;
   onSubmit?(value: string): void;
   isActive?: boolean;
+  maxLines?: number;
+  columns?: number;
 }
 
 const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
@@ -17,7 +20,16 @@ function graphemeBoundaries(text: string) {
 }
 
 /** Controlled multiline editor. Cursor offsets follow graphemes, rather than code units. */
-export function TextInput({ value, onChange, onSubmit, isActive = true }: TextInputProps) {
+export function TextInput({
+  value,
+  onChange,
+  onSubmit,
+  isActive = true,
+  maxLines,
+  columns,
+}: TextInputProps) {
+  const size = useTerminalSize();
+  const width = Math.max(1, columns ?? size.columns);
   const [cursor, setCursor] = useState(value.length);
   const editing = useRef({ value, cursor: value.length });
   const position = graphemeBoundaries(value).findLast((offset) => offset <= cursor) ?? 0;
@@ -28,6 +40,7 @@ export function TextInput({ value, onChange, onSubmit, isActive = true }: TextIn
   });
   useInput(
     (event) => {
+      if (event.type === "wheel") return;
       const current = editing.current;
       const boundaries = graphemeBoundaries(current.value);
       const before = boundaries.findLast((offset) => offset < current.cursor) ?? 0;
@@ -49,7 +62,29 @@ export function TextInput({ value, onChange, onSubmit, isActive = true }: TextIn
       if (key.ctrl || key.alt) return;
       if (key.name === "left") move(before);
       else if (key.name === "right") move(after);
-      else if (key.name === "backspace" && current.cursor > 0) replace(before, current.cursor, "");
+      else if (key.name === "home")
+        move(current.cursor === 0 ? 0 : current.value.lastIndexOf("\n", current.cursor - 1) + 1);
+      else if (key.name === "end") {
+        const end = current.value.indexOf("\n", current.cursor);
+        move(end < 0 ? current.value.length : end);
+      } else if (key.name === "up" || key.name === "down") {
+        const spans = [{ text: current.value + " ", style: {} }];
+        const caret = textCursor(spans, width, current.cursor);
+        const lines = textLines(spans, width, true, true);
+        const row = caret.y + (key.name === "up" ? -1 : 1);
+        const line = lines[row];
+        if (line) {
+          let x = 0;
+          let offset = line[0]?.offset ?? current.cursor;
+          for (const glyph of line) {
+            if (x > caret.x) break;
+            offset = glyph.offset;
+            x += glyph.width;
+          }
+          move(Math.min(current.value.length, offset));
+        }
+      } else if (key.name === "backspace" && current.cursor > 0)
+        replace(before, current.cursor, "");
       else if (key.name === "delete" && current.cursor < current.value.length)
         replace(current.cursor, after, "");
       else if (key.name === "enter") {
@@ -65,7 +100,7 @@ export function TextInput({ value, onChange, onSubmit, isActive = true }: TextIn
   );
   return createElement(
     "tui-text",
-    { input: true, cursorOffset: isActive ? position : undefined },
+    { input: true, width: columns, maxLines, cursorOffset: isActive ? position : undefined },
     value + " ",
   );
 }

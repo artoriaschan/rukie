@@ -3,8 +3,9 @@ import type { Readable } from "node:stream";
 import { listenInput, type InputEvent } from "../input";
 
 export interface TerminalIO {
-  stdin: Readable & { isRaw?: boolean; setRawMode?(raw: boolean): unknown };
+  stdin: Readable & { isTTY?: boolean; isRaw?: boolean; setRawMode?(raw: boolean): unknown };
   stdout: {
+    isTTY?: boolean;
     columns: number;
     rows: number;
     write(text: string): unknown;
@@ -31,6 +32,7 @@ export function createTerminalSession(
   redraw: () => void,
   onDispose: () => void,
   dispatchInput: (notify: () => void) => void,
+  fullscreen = false,
 ) {
   const inputs = new Set<(event: InputEvent) => void>();
   const sizes = new Set<() => void>();
@@ -61,11 +63,14 @@ export function createTerminalSession(
     }
     stdin.setRawMode?.(raw);
     if (paused) stdin.pause();
-    stdout.write("\x1b[0m\x1b[?7h\x1b[?25h\x1b[?2004l");
+    stdout.write(
+      "\x1b[0m\x1b[?7h\x1b[?25h\x1b[?2004l" +
+        (fullscreen ? "\x1b[?1000l\x1b[?1006l\x1b[?1049l" : ""),
+    );
   }
   try {
     stdin.setRawMode?.(true);
-    stdout.write("\x1b[?25l\x1b[?2004h");
+    stdout.write((fullscreen ? "\x1b[?1049h\x1b[?1000h\x1b[?1006h" : "") + "\x1b[?25l\x1b[?2004h");
     stopInput = listenInput(stdin, (event) =>
       dispatchInput(() => inputs.forEach((listener) => listener(event))),
     );
@@ -83,6 +88,7 @@ export function createTerminalSession(
   }
   return {
     dispose,
+    redraw,
     getSize: () => size,
     subscribeSize(listener: () => void) {
       sizes.add(listener);

@@ -48,8 +48,9 @@ function paintGrid(root: LayoutNode, columns: number, rows: number): Cell[][] {
   const grid: Cell[][] = Array.from({ length: rows }, () =>
     Array.from({ length: columns }, () => ({ text: " ", width: 1, style: sgr({}) })),
   );
+  let clip = { left: 0, top: 0, right: columns, bottom: rows };
   function put(x: number, y: number, text: string, width = 1, style: TextStyle = {}) {
-    if (x < 0 || y < 0 || y >= rows || x + width > columns) return;
+    if (x < clip.left || y < clip.top || y >= clip.bottom || x + width > clip.right) return;
     const codes = sgr(style);
     grid[y]![x] = { text, width, style: codes };
     if (width === 2) grid[y]![x + 1] = { text: "", width: 0, style: codes };
@@ -57,12 +58,18 @@ function paintGrid(root: LayoutNode, columns: number, rows: number): Cell[][] {
   function paint(node: LayoutNode) {
     const { x, width, height } = node;
     const y = node.y - Math.max(0, root.height - rows);
+    if (y + height <= clip.top || y >= clip.bottom || x + width <= clip.left || x >= clip.right)
+      return;
     if (node.props.borderStyle && width >= 2 && height >= 2) {
       for (let col = 1; col < width - 1; col++) {
         put(x + col, y, "─");
         put(x + col, y + height - 1, "─");
       }
-      for (let row = 1; row < height - 1; row++) {
+      for (
+        let row = Math.max(1, clip.top - y);
+        row < Math.min(height - 1, clip.bottom - y);
+        row++
+      ) {
         put(x, y + row, "│");
         put(x + width - 1, y + row, "│");
       }
@@ -72,25 +79,47 @@ function paintGrid(root: LayoutNode, columns: number, rows: number): Cell[][] {
       put(x + width - 1, y + height - 1, "┘");
     }
     if (node.type === "tui-text") {
-      textLines(node.spans, width, node.props.wrap !== "truncate", node.props.input)
-        .slice(0, height)
+      const top = node.textTop ?? 0;
+      const first = Math.max(0, clip.top - y);
+      const end = Math.min(height, clip.bottom - y);
+      (
+        node.lines ??
+        textLines(
+          node.spans,
+          width,
+          node.props.wrap !== "truncate",
+          node.props.input || node.props.preserveWhitespace,
+        )
+      )
+        .slice(top + first, top + end)
         .forEach((line, row) => {
           let col = 0;
           for (const glyph of line) {
+            if (!glyph.width) continue;
             if (col + glyph.width > width) break;
-            put(x + col, y + row, glyph.text, glyph.width, glyph.style);
+            put(x + col, y + first + row, glyph.text, glyph.width, glyph.style);
             col += glyph.width;
           }
         });
     }
+    const previousClip = clip;
+    if (node.type === "tui-scroll") {
+      clip = {
+        left: Math.max(clip.left, x),
+        top: Math.max(clip.top, y),
+        right: Math.min(clip.right, x + width),
+        bottom: Math.min(clip.bottom, y + height),
+      };
+    }
     node.children.forEach(paint);
+    clip = previousClip;
   }
   paint(root);
   return grid;
 }
 
 /** Each mounted renderer owns its previous viewport; only changed cells are written. */
-export function createScreen() {
+export function createScreen(fullscreen = false) {
   let previous: Cell[][] | undefined;
   let previousColumns = 0;
   let previousRows = 0;
@@ -102,10 +131,10 @@ export function createScreen() {
     rows: number,
     completed: LayoutNode[] = [],
   ): string => {
-    const height = Math.min(root.height, rows);
+    const height = fullscreen ? rows : Math.min(root.height, rows);
     const endRow = Math.min(height, rows - 1);
-    let ansi = "\x1b[0m\x1b[?7l\r";
-    if (invalidated) {
+    let ansi = "\x1b[0m\x1b[?7l" + (fullscreen ? "\x1b[H" : "\r");
+    if (invalidated && !fullscreen) {
       ansi += "\x1b[u";
       // Native reflow shifts the saved position for expanded active lines too.
       // Keep that adjustment for history, but move back over the active expansion.
@@ -119,10 +148,10 @@ export function createScreen() {
             ) ?? 0)
           : 0;
       if (expanded) ansi += `\x1b[${expanded}A`;
-    } else if (cursorRow) ansi += `\x1b[${cursorRow}A`;
+    } else if (cursorRow && !fullscreen) ansi += `\x1b[${cursorRow}A`;
     let currentRow = 0;
     const resized = columns !== previousColumns || rows !== previousRows;
-    if (completed.length || invalidated || (previous && resized)) {
+    if (!fullscreen && (completed.length || invalidated || (previous && resized))) {
       ansi += "\x1b[J";
       for (const item of completed) {
         for (const line of paintGrid(item, columns, item.height)) {
@@ -140,7 +169,7 @@ export function createScreen() {
     }
     invalidated = false;
     const reserved = Math.min(previous?.length ?? 0, rows - 1);
-    if (endRow > reserved) {
+    if (!fullscreen && endRow > reserved) {
       if (reserved) ansi += `\x1b[${reserved}B`;
       ansi += "\r\n".repeat(endRow - reserved);
       currentRow = endRow;
@@ -148,6 +177,7 @@ export function createScreen() {
     const grid = paintGrid(root, columns, height);
     const full = !previous || resized;
     const move = (y: number, x: number) => {
+      if (fullscreen) return `\x1b[${y + 1};${x + 1}H`;
       let codes = "\r";
       if (y !== currentRow)
         codes += `\x1b[${Math.abs(y - currentRow)}${y < currentRow ? "A" : "B"}`;
@@ -155,7 +185,7 @@ export function createScreen() {
       currentRow = y;
       return codes;
     };
-    ansi += move(0, 0) + "\x1b[s";
+    ansi += move(0, 0) + (fullscreen ? "" : "\x1b[s");
     let style = sgr({});
     for (let y = 0; y < Math.max(grid.length, previous?.length ?? 0); y++) {
       const line = grid[y];
@@ -201,7 +231,10 @@ export function createScreen() {
     function findCursor(node: LayoutNode) {
       if (node.props.cursorOffset !== undefined) {
         const { x, y } = textCursor(node.spans, node.width, node.props.cursorOffset);
-        cursor = { x: node.x + x, y: node.y + y - Math.max(0, root.height - rows) };
+        cursor = {
+          x: node.x + x,
+          y: node.y + y - (node.textTop ?? 0) - Math.max(0, root.height - rows),
+        };
         visible = cursor.x >= 0 && cursor.x < columns && cursor.y >= 0 && cursor.y < rows;
       }
       node.children.forEach(findCursor);

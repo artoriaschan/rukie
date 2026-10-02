@@ -2,6 +2,8 @@ Status: ready-for-agent
 
 # Spec: TUI（`@neant/tui` 渲染器 + `neant` 交互式 frontend）
 
+全屏布局、滚动和退出行为已按 [全屏 TUI 访谈](../fullscreen-tui/interview.md) 的 Q1–Q19 更新，决策见 [ADR-0006](../../docs/adr/0006-fullscreen-tui.md)。
+
 ## Problem Statement
 
 Headless CLI 已经能用了，但每次只能处理一条 prompt，处理完进程就退出。要接着聊只能手动带 `--resume`，看不到工具在做什么，模型要调用写文件或执行命令这类工具时，也没法当场问我同不同意，只能事先用 `--allow-tools` 放开，或者干脆 `--yolo`。我想在终端里像用 Claude Code 那样用 Neant：在一个 session 里连续对话，回复和工具调用实时显示，需要授权的时候当场问我。以后桌面端也得把 `ask` 交给用户确认，这个能力最好现在就在 Agent Core 里做好。
@@ -13,7 +15,7 @@ Headless CLI 已经能用了，但每次只能处理一条 prompt，处理完进
 - `@neant/tui`：和 agent 无关的终端渲染器。管线是 React 协调树 → Yoga 布局 → 内存里的 cell 网格 → 前后帧差分 → ANSI 写出（ADR-0005）。对外提供少量通用原语。
 - `@neant/neant-tui`（命令 `neant`）：在进程内创建 session，把 run 的事件流渲染成对话界面。
 
-默认在主屏幕上 inline 渲染：已经完成的消息写进终端的 scrollback，只重画底部的活动区（流式中的回复、正在跑的工具、权限对话框、输入框、状态栏）。所以终端原生的滚动、搜索、复制都照常能用。
+`neant` 在 alternate screen 全屏渲染：Logo、启动信息、完成消息与活动回复都在滚动主体；工作状态、输入或审批、状态栏固定底部。退出恢复启动前的终端内容和光标，不残留本次 TUI 内容，不删除 Session。原生选择与复制通过终端自身的选择手势使用。
 
 Agent Core 新增两个能力：前端可以接管 `ask` 判定；session 暴露只读的消息列表，用于 resume 时回显。Headless CLI 的行为不变，它已经改名为 `neant-cli`，`neant` 这个命令名留给 TUI。
 
@@ -44,12 +46,12 @@ Agent Core 新增两个能力：前端可以接管 `ask` 判定；session 暴露
 23. 作为开发者，我想把一大段文字粘贴进输入框后它保持原样、不会被当成多次提交，这样能直接粘贴代码和日志。
 24. 作为开发者，我想正常输入和显示中文等宽字符，光标位置也不错位，这样能用中文对话。
 25. 作为开发者，我想在调整终端窗口大小后界面跟着重新排版，不留残影，这样随时可以拉宽窗口看长内容。
-26. 作为开发者，我想在长对话里滚回去查看、搜索、复制之前的消息，靠的是终端原生的 scrollback，这样不用学一套新的滚动操作。
+26. 作为开发者，我想通过滚轮、PageUp/PageDown 浏览消息主体，浏览时新输出不抢占位置，Ctrl+End 或提交新消息恢复底部跟随，并能使用终端原生选择复制。
 27. 作为开发者，我想让快速流式输出时界面不闪烁、CPU 占用也不高，这样长回复也能流畅地看完。
 28. 作为开发者，我想在 compaction 发生或 MCP server 连接失败时看到一行灰色提示，这样知道上下文被压缩了，或者某些工具不可用。
 29. 作为开发者，我想在底部状态栏看到当前模型名和本次 run 的 token 数，这样心里对成本有数。
 30. 作为开发者，我想在 settings 有问题或缺少模型配置时看到和 `neant-cli` 一样的报错，并且以非 0 退出码退出，这样排查方式一致。
-31. 作为开发者，我想在退出时终端恢复原状（光标可见、退出 raw mode），这样退出后 shell 还能正常用。
+31. 作为开发者，我想在退出时恢复启动前的终端画面、光标和模式，TUI 内容不残留，这样退出后 shell 还能正常用。
 32. 作为开发者，我想让 TUI 的 session 和 `neant-cli` 写进同一个 Session Store，这样两边可以互相 `--resume`。
 33. 作为开发者，我想让 `neant-cli` 遇到需要授权的工具时还是直接拒绝，这样 headless 脚本的行为不受影响。
 34. 作为以后开发桌面端的开发者，我想让 Agent Core 通过回调把 `ask` 交给 frontend 决定，这样桌面端可以复用同一个口子。
@@ -83,23 +85,28 @@ Agent Core 新增两个能力：前端可以接管 `ask` 判定；session 暴露
   - 和上一帧的网格逐 cell 比较，只把变化的部分转成光标移动和 SGR 序列写出。
 - **Yoga**：拷贝 dsh-TUI 的纯 TS 移植，作为包内的一个独立模块。文件头注明来源和 commit，来源风险见 ADR-0005。只通过布局模块使用它，不对外导出。
 - **文本宽度和换行**：用 `Bun.stringWidth` 和 `Bun.wrapAnsi`，不额外引入依赖。
-- **Inline 模式**：
+- **Inline 模式**（通用渲染器保留，`neant` 不提供用户切换选项）：
   - 活动区画在当前光标往下的区域。
   - `Static` 里新增的子项按顺序写在活动区上方，随后被推进 scrollback，之后不再重画，也不参与差分。
   - 活动区的高度超过屏幕时，只画最底下那部分。
   - resize 后清掉活动区，完整重画一次（scrollback 里已有的内容交给终端自己重排）。
+- **全屏模式**（`render(..., { fullscreen: true })`）：
+  - 进入 alternate screen，以绝对光标位置绘制整个视口；退出和可处理异常恢复原画面、raw mode、光标、粘贴及鼠标上报。
+  - `ScrollBox` 独立测量内容、裁剪可见区域；底部跟随，上滚暂停，回到底部恢复；宽度重排按可见文本锚点恢复位置。
+  - 已展示条目不截断，只绘制视口行并复用文本测量；鼠标仅解析 SGR 滚轮，不提供应用内拖选。
 - **帧调度**：React commit 时标记“脏”，合并到每 16ms 最多一帧。
 - **输入**：开启 raw mode，解析按键（方向键、Ctrl 组合键、Esc、Shift+Enter 等常见编码），开启 bracketed paste，粘贴的内容整段作为一个事件交出去。退出时（包括异常退出）恢复 raw mode、光标、bracketed paste 的状态。
 - **对外 API**：
-  - `render(element, { stdin, stdout })`：返回 `{ unmount, waitUntilExit }`；
+  - `render(element, { stdin, stdout, fullscreen? })`：返回 `{ unmount, waitUntilExit }`；
   - `Box`：flex 布局，支持 padding、margin、gap 和边框；
   - `Text`：颜色、粗体、暗色、换行或截断；
-  - `Static`；
+  - `Static`（用于 inline）；
+  - `ScrollBox`、`ScrollHandle`（`scrollBy`、`scrollToBottom`、`getSnapshot`）；
   - `useInput`；
   - `useTerminalSize`；
-  - `TextInput`：多行，受控，支持光标移动；
+  - `TextInput`：多行，受控，支持方向键与 Home/End，`maxLines` 限制可见高度并保持光标可见；
   - `Spinner`。
-- 不做：鼠标、文本选择、超链接、图片、alt-screen、ScrollBox。
+- 不做：应用内文本选择与自动复制、鼠标拖选、超链接、图片。
 
 ### TUI frontend（`@neant/neant-tui`，新 app，命令 `neant`）
 
@@ -108,24 +115,27 @@ Agent Core 新增两个能力：前端可以接管 `ask` 判定；session 暴露
   - 支持：`--model`、`--thinking`、`--resume`、`--allow-tools`（规则和 `neant-cli` 一样，可以带多个值）、`--yolo`、`--trust-project-mcp`，以及可选的一个位置参数作为第一条 prompt。
   - 参数错误时退出码为 2。
   - settings 有问题或缺少模型时，按 `neant-cli` 的文案打印到 stderr，以 1 退出，这时还没进入渲染。
-- **启动**：调用 `loadSettings`，再调用 `createSession`（使用默认的 JSONL Session Store），然后开始渲染。resume 时先把 `session.messages` 放进 `Static`。
+- **启动**：参数解析后先验证 stdin/stdout 为 TTY 且 TERM 不是 dumb；不满足时以 1 退出，提示使用 neant-cli，不创建 Session 或请求模型。随后调用 `loadSettings`、`createSession` 并进入全屏。resume 从 `session.messages` 回放现有压缩后上下文，不新增完整 Transcript 展示接口。
 - **视图状态**：由 `SessionEvent` 驱动的 reducer 维护 `{ 已完成的条目, 流式中的助手文本, 正在跑的工具调用, 待确认的权限请求, run 状态, 本次 run 的 usage }`。
   - 条目类型有：用户消息、助手文本、工具调用、系统提示（compaction 和 MCP 报错）。
-  - 一个条目完成后移进 `Static`。
+  - 完成条目保留在消息主体中，当前运行中已展示的旧条目不会因 compaction 被移除。
 - **显示**：
   - 助手文本按原样显示。
   - 工具调用显示“名字和参数摘要”，摘要截断到一行。跑的时候带 Spinner，结束后显示 ✓ 或 ✗；出错时显示错误的前几行。
   - System reminder 不显示。
   - 状态栏显示模型名，以及本次 run 的 input 和 output token 数。
+- **布局**：输入区包含上下分隔线，最多 6 行且不超过屏高三分之一，长草稿内部滚动；审批替换输入，最多半屏，详情独立滚动、选项与提示固定。小于 40 列或 12 行时暂停编辑和审批决定，保留中断/退出，Run 不自动取消，草稿不丢失。
 - **权限对话框**：`onPermissionAsk` 先检查“本 session 一直允许”的集合，命中就直接返回 `allow`；否则把请求放进视图状态，渲染对话框，等用户选择。
   - 三个选项：允许一次、本 session 内一直允许这个工具、拒绝。
+  - 默认滚动消息主体，Tab 切换消息区/详情的翻页焦点；滚轮作用于指针所在区，Ctrl+End 始终回到主体底部。结束后恢复草稿与输入焦点，不自动提交。
   - 方向键或数字键选择，Enter 确认，Esc 等于拒绝。
+- **滚动**：PageUp/PageDown 翻一视口减一行，滚轮默认 3 行；暂停跟随时显示回到底部提示，新输出（含已有流式回复的增长）更新提示。提交新消息恢复跟随，编辑草稿不改变阅读位置。
 - **按键**：
   - run 进行中：Esc 或 Ctrl+C 触发这次 run 的 AbortController。
   - 空闲时：Ctrl+C 清空输入框；输入框为空时，1 秒内第二次 Ctrl+C 退出；输入框为空时按 Ctrl+D 退出。
   - run 进行中可以编辑输入框，但 Enter 不提交。
   - Shift+Enter 或行尾的 `\` 加回车换行。
-- **退出**：卸载渲染器，恢复终端状态，退出码为 0。
+- **退出**：卸载渲染器，恢复原终端画面和模式，正常退出码为 0；致命错误在恢复后输出 stderr。
 
 ### 仓库
 
@@ -152,7 +162,10 @@ Agent Core 新增两个能力：前端可以接管 `ask` 判定；session 暴露
     - 中文等宽字符的列对齐；
     - 多帧之后的屏幕和从头完整渲染一次的结果一致（验证差分正确）；
     - `Static` 的内容进入 scrollback，只出现一次；
-    - resize 之后没有残影；
+    - resize 之后没有残影，浏览时保持文本阅读锚点；
+    - 全屏占满视口、固定底部、独立主体滚动、跟随与暂停、1000 条消息可回看；
+    - 退出、可处理信号和绘制异常恢复原画面与光标，关闭鼠标上报；
+    - 有限高度输入保留完整草稿并保持编辑光标可见；
     - 退出后终端状态已经恢复；
     - 粘贴的内容作为一个整体到达。
   - `@neant/neant-tui` 用同一个 seam 驱动 `main(argv, io)`，`io` 里注入假 `streamFn`，覆盖：
@@ -162,10 +175,11 @@ Agent Core 新增两个能力：前端可以接管 `ask` 判定；session 暴露
     - Esc 中断 run；
     - 两次 Ctrl+C 退出；
     - `--resume` 回显旧对话；
-    - 参数错误时退出码为 2。
+    - 参数错误时退出码为 2；
+    - 非 TTY/TERM=dumb 拒绝启动、全屏退出清理、40×12 与极小窗口、审批详情滚动与焦点及草稿恢复。
   - 拷进来的 Yoga 不单独测试，通过 Box 的布局测试间接覆盖。
   - 参考：`apps/neant-cli/tests/main.test.ts` 的进程内 `main(argv, io)` 写法；dsh-TUI 用 `@xterm/headless` 还原屏幕的验证脚本（只参考思路）。
-- 不起真实的 TTY 子进程，也不做截图测试。
+- 自动回归使用上述两个 seam，不依赖截图。另以真实 PTY 验证启动、滚轮/翻页和退出；真实终端原生复制手势的 GUI 验收结果与工具限制记录在全屏实施记录中。
 
 ## Out of Scope
 
@@ -174,7 +188,7 @@ Agent Core 新增两个能力：前端可以接管 `ask` 判定；session 暴露
 - run 进行中把消息排队，等结束后自动发送。
 - 把“一直允许”写进 settings 的 `allowTools`。
 - 权限规则引擎（真正的 `deny` 规则）。
-- alt-screen 全屏模式、ScrollBox、鼠标、文本选择、超链接、图片。
+- 应用内文本选择、自动复制、鼠标拖选、超链接、图片。
 - 主题和颜色配置、国际化。
 - 粘贴图片。
 - TUI 通过 server 和 WS 连接 Agent Core（现在在进程内直接调用）。

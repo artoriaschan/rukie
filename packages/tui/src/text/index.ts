@@ -27,7 +27,9 @@ export interface Glyph {
   text: string;
   width: number;
   style: TextStyle;
+  offset: number;
   cursorMarker?: boolean;
+  lineBreak?: boolean;
 }
 
 const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
@@ -37,7 +39,7 @@ function fitLine(glyphs: Glyph[], columns: number, wrap: boolean): Glyph[][] {
   let width = 0;
   for (const [index, glyph] of glyphs.entries()) {
     // A caret uses the next visible glyph's cell, or a blank cell at line end.
-    const requiredWidth = glyph.cursorMarker ? (glyphs[index + 1]?.width ?? 1) : glyph.width;
+    const requiredWidth = glyph.cursorMarker ? glyphs[index + 1]?.width || 1 : glyph.width;
     if (width + requiredWidth > columns) {
       if (!wrap) break;
       lines.push([]);
@@ -82,28 +84,58 @@ function layoutText(
   // A terminal glyph has one style, inherited from its first code point.
   for (const { segment, index } of segmenter.segment(sanitized.map((span) => span.text).join(""))) {
     if (cursorIndex !== undefined && index >= cursorIndex) {
-      explicit[explicit.length - 1]!.push({ text: "", width: 0, style: {}, cursorMarker: true });
+      explicit[explicit.length - 1]!.push({
+        text: "",
+        width: 0,
+        style: {},
+        offset: index,
+        cursorMarker: true,
+      });
       cursorIndex = undefined;
     }
     while (spanIndex < sanitized.length - 1 && index >= spanEnd) {
       spanEnd += sanitized[++spanIndex]!.text.length;
     }
     if (segment === "\n") {
+      explicit[explicit.length - 1]!.push({
+        text: "",
+        width: 0,
+        style: {},
+        offset: index,
+        lineBreak: true,
+      });
       explicit.push([]);
     } else {
       explicit[explicit.length - 1]!.push({
         text: segment,
         width: Bun.stringWidth(segment),
         style: sanitized[spanIndex]!.style,
+        offset: index,
       });
     }
   }
   if (cursorIndex !== undefined)
-    explicit[explicit.length - 1]!.push({ text: "", width: 0, style: {}, cursorMarker: true });
+    explicit[explicit.length - 1]!.push({
+      text: "",
+      width: 0,
+      style: {},
+      offset: cursorIndex,
+      cursorMarker: true,
+    });
+  if (explicit[explicit.length - 1]!.length === 0) {
+    explicit[explicit.length - 1]!.push({
+      text: "",
+      width: 0,
+      style: {},
+      offset: sanitized.reduce((length, span) => length + span.text.length, 0),
+      lineBreak: true,
+    });
+  }
   const lines: Glyph[][] = [];
   for (const line of explicit) {
     const fitting = line.filter(
-      (glyph) => glyph.cursorMarker || (glyph.width > 0 && glyph.width <= columns),
+      (glyph) =>
+        glyph.cursorMarker || glyph.lineBreak || (glyph.width > 0 && glyph.width <= columns),
     );
     if (wrap && !preserveWhitespace && Number.isFinite(columns) && columns > 0) {
       // Use Bun for word boundaries, but split overlong words ourselves: its
@@ -118,6 +150,10 @@ function layoutText(
           while (fitting[offset]?.text !== segment && offset < fitting.length) offset++;
           const glyph = fitting[offset++];
           if (glyph) current.push(glyph);
+        }
+        if (current.length === 0) {
+          const empty = fitting.find((glyph) => glyph.lineBreak);
+          if (empty) current.push(empty);
         }
         lines.push(...fitLine(current, columns, true));
       }

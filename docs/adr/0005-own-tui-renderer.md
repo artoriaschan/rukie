@@ -2,6 +2,8 @@
 
 `@neant/tui` 自己实现渲染管线：用 `react-reconciler` 维护宿主树，用 Yoga 的 flexbox 算法排版，把结果画进内存里的 cell 网格，再和上一帧做差分，只把变化的部分写成 ANSI。设计参考 dsh-TUI 的 `src/ink/`，但不拷贝它的代码。只有 Yoga 例外：直接拷贝 dsh-TUI 的纯 TypeScript 移植（`src/native-ts/yoga-layout`，约 3.3k 行，没有外部依赖），文件头注明来源，不依赖 wasm 或 native 包。默认用 inline 模式：已经完成的内容交给终端的 scrollback，只重画底部的活动区。
 
+默认 inline 的选择后来由 [ADR-0006](0006-fullscreen-tui.md) 的全屏 TUI 设计替代；本 ADR 关于渲染管线和代码复用边界的决策仍然有效。
+
 ## Considered Options
 
 - 直接用开源 Ink：它按行擦除再重画，没有 cell 网格和差分，长对话流式输出时会闪烁，也很慢。

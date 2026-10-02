@@ -18,7 +18,9 @@ import {
 import { createScreen } from "../screen";
 import { ClockProvider } from "../hooks/animation-frame";
 
-export interface RenderOptions extends TerminalIO {}
+export interface RenderOptions extends TerminalIO {
+  fullscreen?: boolean;
+}
 
 interface Container {
   tree: HostNode;
@@ -38,7 +40,11 @@ function paint(container: Container) {
   try {
     stdout.write(
       container.screen(
-        calculateTree(container.tree, stdout.columns),
+        calculateTree(
+          container.tree,
+          stdout.columns,
+          container.options.fullscreen ? stdout.rows : undefined,
+        ),
         stdout.columns,
         stdout.rows,
         container.pending,
@@ -154,7 +160,7 @@ export function render(element: ReactNode, options: RenderOptions) {
     tree: createNode("tui-box", { flexDirection: "column" }),
     options,
     active: true,
-    screen: createScreen(),
+    screen: createScreen(options.fullscreen),
     completed: new WeakSet(),
     pending: [],
     onError(error) {
@@ -182,6 +188,7 @@ export function render(element: ReactNode, options: RenderOptions) {
     // Controlled editors must see parent resets before decoding the next key.
     // ANSI output remains coalesced by schedulePaint, including during a paste.
     (notify) => reconciler.flushSyncFromReconciler(notify),
+    options.fullscreen,
   );
   const fail = container.onError;
   const root = reconciler.createContainer(
