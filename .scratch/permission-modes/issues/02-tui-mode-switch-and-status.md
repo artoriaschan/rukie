@@ -33,3 +33,9 @@ StatusLine 新增 `mode` props，作为字段行第一位；`full-access` 使用
 初审发现窄屏 hover 长说明会截掉 shift+tab 提示；已补充短文案和 40 / 60 / 80 列回归测试。复审未发现剩余缺项、错误行为或范围扩张。
 
 审查结果：Standards 0 项问题；Spec 1 项已修复，0 项剩余问题。
+
+### 中文模式名称
+
+2026-10-03：状态栏与 hover 详情统一展示 `询问` / `自动评审` / `完全访问`；模式标签与说明共用 typed mapping。布局按 `Bun.stringWidth` 计算终端显示列宽，40 / 60 / 80 列和大 context 数值下均保留完整模式名称，`完全访问` 仍使用危险色。Session、settings 和 CLI 的英文枚举与权限行为保持原有契约。
+
+验证：中文展示测试先 red 后 green；状态栏组件 41 项测试通过，权限行为与 Chat hover / 回到底部点击回归通过，`bunx tsc -b` 通过。最终 `rtk proxy env -u NO_COLOR bun run check` 通过格式、Lint、类型检查、Knip 和全部 490 项测试（0 fail，2850 assertions）。Standards 与 Spec 评审均为 0 项问题。

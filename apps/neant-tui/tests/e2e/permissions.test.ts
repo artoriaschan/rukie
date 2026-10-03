@@ -6,9 +6,12 @@ import { start } from "../helpers/app";
 
 const assistant = process.platform === "darwin" ? "⏺" : "●";
 
-test.each(["ask", "auto-review"] as const)(
+test.each([
+  ["ask", "询问"],
+  ["auto-review", "自动评审"],
+] as const)(
   "mode switches leave settings and reminders unchanged and resume restores %s",
-  async (defaultMode) => {
+  async (defaultMode, label) => {
     let root = "";
     let id = "";
     const argv: string[] = ["first"];
@@ -34,12 +37,12 @@ test.each(["ask", "auto-review"] as const)(
     });
     try {
       await app.waitFor(() => app.calls.length === 1);
-      expect(app.screen().at(-2)).toStartWith(` ${defaultMode} ·`);
+      expect(app.screen().at(-2)).toStartWith(` ${label} ·`);
       const firstContext = app.calls[0]!.context;
       app.calls[0]!.finish();
       await app.waitFor(() => !app.isWorking());
       app.stdin.write(defaultMode === "ask" ? "\x1b[Z\x1b[Z" : "\x1b[Z");
-      await app.waitFor(() => app.screen().at(-2)!.startsWith(" full-access ·"));
+      await app.waitFor(() => app.screen().at(-2)!.startsWith(" 完全访问 ·"));
       app.stdin.write("second\r");
       await app.waitFor(() => app.calls.length === 2);
       const secondContext = app.calls[1]!.context;
@@ -63,7 +66,7 @@ test.each(["ask", "auto-review"] as const)(
         session: { cwd: root, homeDir: join(root, "home"), settings },
       });
       try {
-        await replay.waitFor(() => replay.screen().at(-2)!.startsWith(` ${defaultMode} ·`));
+        await replay.waitFor(() => replay.screen().at(-2)!.startsWith(` ${label} ·`));
         replay.stdin.write("resumed\r");
         await replay.waitFor(() => replay.calls.length === 1);
         replay.calls[0]!.tool("bash", { command: "printf must-ask-after-resume" });
@@ -85,12 +88,12 @@ test("shift+tab cycles modes during a Run and changes the next tool permission i
   const app = await start(["switch during run"]);
   try {
     await app.waitFor(() => app.calls.length === 1);
-    expect(app.screen().at(-2)).toStartWith(" ask ·");
+    expect(app.screen().at(-2)).toStartWith(" 询问 ·");
     app.stdin.write("next draft\x1b[Z");
-    await app.waitFor(() => app.screen().at(-2)!.startsWith(" auto-review ·"));
+    await app.waitFor(() => app.screen().at(-2)!.startsWith(" 自动评审 ·"));
     expect(app.screen()).toContain("❯ next draft");
     app.stdin.write("\x1b[Z");
-    await app.waitFor(() => app.screen().at(-2)!.startsWith(" full-access ·"));
+    await app.waitFor(() => app.screen().at(-2)!.startsWith(" 完全访问 ·"));
     app.calls[0]!.tool("bash", { command: "printf switched-permission" });
     await app.waitFor(() => app.calls.length === 2);
     expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
@@ -100,7 +103,7 @@ test("shift+tab cycles modes during a Run and changes the next tool permission i
     });
     expect(app.screen().join("\n")).not.toContain("等待审批");
     app.stdin.write("\x1b[Z");
-    await app.waitFor(() => app.screen().at(-2)!.startsWith(" ask ·"));
+    await app.waitFor(() => app.screen().at(-2)!.startsWith(" 询问 ·"));
     app.calls[1]!.tool("bash", { command: "printf ask-again" });
     await app.waitFor(() => app.screen().join("\n").includes("等待审批"));
     const dialog = app.screen().slice(app.screen().findIndex((line) => line.includes("等待审批")));
@@ -121,7 +124,7 @@ test("shift+tab cycles modes during a Run and changes the next tool permission i
     app.stdin.write("\x1b[Z\x1b[Z\x1b[Z");
     await Bun.sleep(30);
     await app.flush();
-    expect(app.screen().at(-2)).toStartWith(" ask ·");
+    expect(app.screen().at(-2)).toStartWith(" 询问 ·");
   } finally {
     await app.cleanup();
   }
@@ -223,7 +226,7 @@ test("auto-review still asks after this tool was always allowed in ask mode", as
     app.stdin.write("2\r");
     await app.waitFor(() => app.calls.length === 2);
     app.stdin.write("\x1b[Z");
-    await app.waitFor(() => app.screen().at(-2)!.startsWith(" auto-review ·"));
+    await app.waitFor(() => app.screen().at(-2)!.startsWith(" 自动评审 ·"));
     app.calls[1]!.tool("bash", { command: "printf review-must-ask" });
     await app.waitFor(() => app.screen().join("\n").includes("Test review requires consent"));
     expect(app.screen().join("\n")).toContain("Test review requires consent");

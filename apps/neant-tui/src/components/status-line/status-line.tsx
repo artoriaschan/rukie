@@ -37,13 +37,18 @@ export interface StatusLineProps {
 
 type HoverField = "bar" | "ctx" | "mode" | "model" | "tps" | "cache" | "tokens" | "git" | "cwd";
 
-const modeDescriptions: Record<PermissionMode, { full: string; compact: string }> = {
-  ask: { full: "只读工具直接允许，其余请求批准", compact: "非只读需批准" },
+const modeDescriptions: Record<PermissionMode, { label: string; full: string; compact: string }> = {
+  ask: { label: "询问", full: "只读工具直接允许，其余请求批准", compact: "非只读需批准" },
   "auto-review": {
+    label: "自动评审",
     full: "自动评审工具调用，有风险或评审失败时请求批准",
     compact: "评审，有风险询问",
   },
-  "full-access": { full: "允许所有工具调用，无权限拦截", compact: "全部允许，无拦截" },
+  "full-access": {
+    label: "完全访问",
+    full: "允许所有工具调用，无权限拦截",
+    compact: "全部允许，无拦截",
+  },
 };
 
 function Meter({
@@ -87,6 +92,8 @@ export function StatusLine(props: StatusLineProps) {
     onMouseLeave: () => setHover(undefined),
   });
   const width = Math.max(0, props.columns - 2);
+  const description = modeDescriptions[props.mode];
+  const modeWidth = Bun.stringWidth(description.label);
   const usage = props.contextUsage;
   const showBar = usage !== undefined && width >= 14;
   const pct = usage && usage.window > 0 ? (usage.used / usage.window) * 100 : 0;
@@ -137,7 +144,7 @@ export function StatusLine(props: StatusLineProps) {
   const totalInput = props.usage.input + props.usage.cacheRead + props.usage.cacheWrite;
   const cacheRate = totalInput > 0 ? (props.usage.cacheRead / totalInput) * 100 : undefined;
   const fields: { id: HoverField | "effort"; content: ReactNode }[] = [
-    { id: "mode", content: props.mode },
+    { id: "mode", content: description.label },
     { id: "model", content: props.model },
     { id: "tps", content: speedView },
     ...(props.thinking ? [{ id: "effort" as const, content: props.thinking }] : []),
@@ -148,11 +155,11 @@ export function StatusLine(props: StatusLineProps) {
     ...(props.gitBranch ? [{ id: "git" as const, content: props.gitBranch }] : []),
     { id: "cwd", content: basename(props.cwd) || props.cwd },
   ];
-  const ctxWidth = Math.min(ctx.length, Math.max(0, width - props.mode.length - (ctx ? 1 : 0)));
+  const ctxWidth = Math.min(ctx.length, Math.max(0, width - modeWidth - (ctx ? 1 : 0)));
   const leftWidth = Math.max(0, width - ctxWidth - (ctx ? 1 : 0));
   // Keep the permission policy legible before spending columns on optional fields.
-  while (fields.length > 1 && leftWidth < props.mode.length + (fields.length - 1) * 2) fields.pop();
-  const separator = leftWidth >= props.mode.length + (fields.length - 1) * 4 ? " · " : "·";
+  while (fields.length > 1 && leftWidth < modeWidth + (fields.length - 1) * 2) fields.pop();
+  const separator = leftWidth >= modeWidth + (fields.length - 1) * 4 ? " · " : "·";
   const naturalWidths = fields.map(({ id, content }) =>
     Bun.stringWidth(id === "tps" ? speedText : String(content)),
   );
@@ -162,20 +169,20 @@ export function StatusLine(props: StatusLineProps) {
       ? naturalWidths
       : allocateColumns(
           naturalWidths,
-          fields.map(({ id }) => (id === "mode" ? props.mode.length : 1)),
+          fields.map(({ id }) => (id === "mode" ? modeWidth : 1)),
           budget,
         );
   let detail: ReactNode;
   if (hover === "mode") {
-    const description = modeDescriptions[props.mode];
     const fits =
-      Bun.stringWidth(`mode ${props.mode} · ${description.full} · shift+tab 切换模式`) <= width;
+      Bun.stringWidth(`模式 ${description.label} · ${description.full} · shift+tab 切换模式`) <=
+      width;
     detail = (
       <Details
         fields={
           fits
             ? [
-                ["mode", props.mode],
+                ["模式", description.label],
                 ["", description.full],
                 ["", "shift+tab 切换模式"],
               ]

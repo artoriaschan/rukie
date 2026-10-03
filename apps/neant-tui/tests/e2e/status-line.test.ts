@@ -7,12 +7,13 @@ for (const columns of [80, 60, 40]) {
     const app = await start([], { columns });
     try {
       await app.waitFor(
-        () => app.stdin.isRaw && app.screen().at(-2)?.startsWith(" ask ·") === true,
+        () => app.stdin.isRaw && app.screen().at(-2)?.startsWith(" 询问 ·") === true,
       );
       expect(app.screen().at(-3)).toMatch(/^╰─+╯$/);
       expect(app.screen().at(-1)).toBe("");
       const fieldsBeforeRun = app.screen().at(-2)!;
-      const modelX = fieldsBeforeRun.indexOf("·") + 2 + (fieldsBeforeRun.includes(" · ") ? 1 : 0);
+      const modelStart = fieldsBeforeRun.indexOf("·") + (fieldsBeforeRun.includes(" · ") ? 2 : 1);
+      const modelX = Bun.stringWidth(fieldsBeforeRun.slice(0, modelStart)) + 1;
       app.stdin.write(`\x1b[<35;${modelX};23M`);
       await app.waitFor(() => app.screen().at(-1)?.includes("model faux-1") === true);
       expect(app.screen().at(-3)).toMatch(/^╰─+╯$/);
@@ -200,7 +201,11 @@ test("centered return button sits above activity and input, survives footer hove
     expect(app.screen().at(-2)).toContain("ctx ▕");
     expect(app.screen().slice(0, inputTop - 2)).toEqual(body);
     expect(app.screen().findIndex((line) => /^╭─+╮$/.test(line))).toBe(inputTop);
-    app.stdin.write(`\x1b[<35;${app.screen().at(-2)!.indexOf("faux") + 1};23M`);
+    const modelColumn = () => {
+      const fields = app.screen().at(-2)!;
+      return Bun.stringWidth(fields.slice(0, fields.indexOf("faux"))) + 1;
+    };
+    app.stdin.write(`\x1b[<35;${modelColumn()};23M`);
     await app.waitFor(
       () => app.screen().at(-1)?.includes("model faux-1 · provider faux · ctx 128k") === true,
     );
@@ -223,7 +228,7 @@ test("centered return button sits above activity and input, survives footer hove
     );
     expect(app.screen().slice(0, pillY - 1)).toEqual(reading);
     expect(app.screen().filter((line) => line.includes("回到底部"))).toHaveLength(1);
-    app.stdin.write(`\x1b[<35;${app.screen().at(-2)!.indexOf("faux") + 1};23M`);
+    app.stdin.write(`\x1b[<35;${modelColumn()};23M`);
     await app.waitFor(() => app.screen().at(-1)?.startsWith(" model faux-1") === true);
     expect(app.screen()[pillY]).toContain("有新输出");
     app.stdin.write("\x1b[<35;80;1M");

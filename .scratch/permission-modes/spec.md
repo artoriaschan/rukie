@@ -73,7 +73,7 @@ TUI 用 shift+tab 循环切换并在状态栏显示；settings 配默认值；CL
 - **Headless CLI**：新增 `--permission-mode`；`--yolo` 等价 `--permission-mode full-access`，两者同时给出且冲突时报参数错误。不传 `onPermissionAsk`，ask 仍为 deny。
 - **TUI**：
   - chat screen 持有当前 mode，shift+tab 循环并调用 `session.setPermissionMode`；对话框打开时忽略。
-  - 状态栏 row 2 第一个字段 `mode`，`full-access` 用 danger 色，hover 详情含模式说明与 shift+tab 提示。StatusLine 仍只收 props。
+  - 状态栏 row 2 第一个字段显示中文模式名称：`ask` → `询问`、`auto-review` → `自动评审`、`full-access` → `完全访问`；完全访问用 danger 色。hover 详情显示中文模式名称、模式说明与 shift+tab 提示，宽度不足时使用紧凑说明。名称按终端显示列宽分配预算，40/60/80 列及大 ctx 读数下仍保持完整。StatusLine 仍只收 props；Session / settings / CLI 使用原英文枚举值。
   - 权限对话框：`mode === "auto-review"` 时只两项（允许一次 / 拒绝）；参考 dsh-TUI ApprovalPanel，标题显示居中的“⏳ 等待审批 · 工具名”，命令/参数与 `reason` 放在可滚动正文，正文下方显示“要允许这次操作吗？”（小窗口收紧留白并优先保留详情和选项）。面板按详情的实际显示行数收缩，最多半屏，底部额外保留一行外边距与后续区域隔开；选项与提示固定，切换焦点只改变指示符和样式，不改变任何选项行的位置。ask 保留三项；数字键仍先选择，Enter 确认。
   - ActivityLine 新增 review 状态与 REVIEW 文案池，由 `permission_review` 事件驱动。
   - 也接受 `--permission-mode` / `--yolo`。
