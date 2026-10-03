@@ -41,7 +41,7 @@ TUI 用 shift+tab 循环切换并在状态栏显示；settings 配默认值；CL
 21. As a user, I want medium-risk actions (deleting existing things, force push, deploy, external writes) allowed only when I explicitly authorized that action, target and scope, so that the reviewer doesn't overreach.
 22. As a user, I want high-risk actions (exfiltrating credentials or private data) always escalated to me, so that the worst outcomes always require a human.
 23. As a user, I want a review deny to become an approval prompt rather than an outright rejection, so that I keep the final say.
-24. As a user, I want the approval dialog title to show the reviewer's reason, so that I know why I'm being asked.
+24. As a user, I want the approval dialog body to show the reviewer's reason beneath the tool command or arguments, so that I know why I'm being asked.
 25. As a user, I want the model told only "user rejected" when I decline, so that reviewer internals don't pollute the transcript.
 26. As a user, I want review failures (provider error, invalid JSON, 30s timeout, oversized input) to fall back to asking me, so that a flaky reviewer never silently blocks or allows.
 27. As a user in `auto-review`, I want the approval dialog to offer only "allow once" and "deny", so that "always allow this tool" can't quietly disable review for the rest of the session.
@@ -74,7 +74,7 @@ TUI 用 shift+tab 循环切换并在状态栏显示；settings 配默认值；CL
 - **TUI**：
   - chat screen 持有当前 mode，shift+tab 循环并调用 `session.setPermissionMode`；对话框打开时忽略。
   - 状态栏 row 2 第一个字段 `mode`，`full-access` 用 danger 色，hover 详情含模式说明与 shift+tab 提示。StatusLine 仍只收 props。
-  - 权限对话框：`mode === "auto-review"` 时只两项（允许一次 / 拒绝）；有 `reason` 时作为标题。
+  - 权限对话框：`mode === "auto-review"` 时只两项（允许一次 / 拒绝）；参考 dsh-TUI ApprovalPanel，标题显示“等待审批 · 工具名”，命令/参数与 `reason` 放在可滚动正文，正文下方显示“要允许这次操作吗？”（小窗口收紧留白并优先保留详情和选项）。选项与提示固定，ask 保留三项；数字键仍先选择，Enter 确认。
   - ActivityLine 新增 review 状态与 REVIEW 文案池，由 `permission_review` 事件驱动。
   - 也接受 `--permission-mode` / `--yolo`。
 
@@ -84,7 +84,7 @@ TUI 用 shift+tab 循环切换并在状态栏显示；settings 配默认值；CL
 
 - **Agent Core e2e**（`createSession` + fake `streamFn`，参照现有 permissions e2e 测试）：fake model 按请求 system prompt 区分评审请求与主 turn。覆盖三模式判定、只读与 `allowTools` 优先级、评审 allow/deny→ask、失败（坏 JSON / provider 错 / 超时 / 超长）→ ask、评审输入不含 assistant 文本与工具结果、compaction 后截取、abort→deny、运行中 `setPermissionMode` 立即生效、`permission_review` 事件、评审 token 不进 context_usage。
 - **config**（参照 `tests/config/`）：新字段解析，项目级 `permissionMode` 丢弃并警告。
-- **TUI chat screen**（参照 chat permissions / status-line 测试）：shift+tab 循环与对话框打开时屏蔽、mode 字段文字与颜色、auto-review 对话框两选项与 reason 标题、ActivityLine REVIEW 文案。
+- **TUI chat screen**（参照 chat permissions / status-line 测试）：shift+tab 循环与对话框打开时屏蔽、mode 字段文字与颜色、auto-review 对话框两选项、工具标题与可滚动 reason 正文、ActivityLine REVIEW 文案。
 - **CLI 参数**（参照 `main.test.ts`）：`--permission-mode`、`--yolo` 别名与冲突报错。
 
 ## Out of Scope
@@ -103,3 +103,5 @@ TUI 用 shift+tab 循环切换并在状态栏显示；settings 配默认值；CL
 - 术语见 `CONTEXT.md`：Permission Decision、Permission Mode、Permission Review。决策依据见 ADR-0007。
 - 参考：deepseek-harness `packages/experimental/auto-review/src/index.ts`（review policy、过滤历史、严格 JSON 解析）。差异：Neant 评审失败转 ask 而非直接拒绝；只读工具与 `allowTools` 不评审；auto-review 下不提供"一直允许"。
 - SessionEvent / stream-json 目前无外部消费者，新增与删除字段（`yolo`）无需兼容层。
+
+2026-10-03 用户后续要求：参考本地 dsh-TUI 的 ApprovalPanel 更新权限确认面板；该要求替代最初将 reason 放在标题的展示决定。Neant 保留当前两种模式的选项和按键语义。

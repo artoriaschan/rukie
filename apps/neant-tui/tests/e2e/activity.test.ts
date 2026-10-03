@@ -38,7 +38,7 @@ test("REVIEW stays visible until all concurrent reviews finish, without counting
 });
 
 test.each(["deny", "failure"])(
-  "review %s becomes a reason title and cancellation clears concurrent reviews",
+  "review %s shows its reason in the panel and cancellation clears concurrent reviews",
   async (outcome) => {
     const app = await start(["--permission-mode", "auto-review", "review and ask"], {
       controlReviews: true,
@@ -61,7 +61,7 @@ test.each(["deny", "failure"])(
       expect(screen()).not.toContain("REVIEW");
       expect(screen()).not.toContain("一直允许");
       expect(screen()).toMatch(
-        outcome === "deny" ? /─ 需要你确认操作范围 ─/ : /─ Permission Review failed/,
+        outcome === "deny" ? /需要你确认操作范围/ : /Permission Review failed/,
       );
       // An approval takes priority over the second review, which remains cancellable.
       app.stdin.write("\x03");
@@ -119,7 +119,7 @@ test("a tool Run shows live tokens and approval, then hides activity until the n
     app.calls[0]!.delta("ijklmnop");
     await app.waitFor(() => screen().includes("↓ 4 tokens"));
     app.calls[0]!.tool("bash", { command: "printf activity-tool" });
-    await app.waitFor(() => screen().includes("权限确认"));
+    await app.waitFor(() => screen().includes("等待审批"));
     expect(screen()).toContain("↑ 11 · ↓ 5 tokens");
     const approval = /在等你点头|等你批准呢——看一眼？|模型在等你决定/;
     expect(screen()).toMatch(approval);

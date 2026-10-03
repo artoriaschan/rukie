@@ -227,25 +227,25 @@ test("approval details scroll independently with pinned choices and preserve the
       path: "file.txt",
       content: "start-marker " + "abcdefghij ".repeat(40) + "tail-marker",
     });
-    await app.waitFor(() => app.screen().some((line) => line.includes("权限确认")));
-    expect(app.screen()).toContain("write");
-    expect(app.screen()).toContain("❯ 1. 允许一次");
+    await app.waitFor(() => app.screen().some((line) => line.includes("等待审批")));
+    expect(app.screen().join("\n")).toContain("等待审批 · write");
+    expect(app.screen().map((line) => line.trimStart())).toContain("❯ 1. 允许（仅本次）");
     app.resize(39, 11);
     await app.waitFor(() => app.screen().some((line) => line.includes("请调整窗口")));
     app.stdin.write("\r");
     await Bun.sleep(25);
     expect(app.calls).toHaveLength(1);
     app.resize(40, 12);
-    await app.waitFor(() => app.screen().includes("write"));
+    await app.waitFor(() => app.screen().some((line) => line.includes("等待审批 · write")));
     app.stdin.write("\t" + "\x1b[6~".repeat(30));
-    await app.waitFor(() => app.screen().includes("}"));
-    expect(app.screen()).toContain("❯ 1. 允许一次");
-    const divider = app.screen().findIndex((line) => line.includes("权限确认"));
+    await app.waitFor(() => app.screen().some((line) => line.trim() === "}"));
+    expect(app.screen().map((line) => line.trimStart())).toContain("❯ 1. 允许（仅本次）");
+    const divider = app.screen().findIndex((line) => line.includes("等待审批"));
     expect(app.screen().length - 3 - divider).toBeLessThanOrEqual(6);
     expect(app.screen().at(-2)).toContain("ctx ");
     app.stdin.write("\x1b[<64;5;6M");
     await Bun.sleep(25);
-    expect(app.screen()).toContain("❯ 1. 允许一次");
+    expect(app.screen().map((line) => line.trimStart())).toContain("❯ 1. 允许（仅本次）");
     app.stdin.write("\x1b");
     await app.waitFor(() => app.calls.length === 2);
     expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({

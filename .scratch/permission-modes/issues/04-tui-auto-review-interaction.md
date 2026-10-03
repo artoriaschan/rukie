@@ -2,12 +2,12 @@
 
 Status: resolved
 
-**What to build:** TUI 在 `auto-review` 下：评审进行时 ActivityLine 显示 REVIEW 文案；评审转来的审批对话框以评审理由为标题，只提供"允许一次"和"拒绝"。见 spec Implementation Decisions 的 TUI 节。
+**What to build:** TUI 在 `auto-review` 下：评审进行时 ActivityLine 显示 REVIEW 文案；评审转来的审批对话框展示评审理由，只提供"允许一次"和"拒绝"。见 spec Implementation Decisions 的 TUI 节。
 
 **Blocked by:** 02, 03
 
 - [x] `mode === "auto-review"` 的审批请求，对话框只有"允许一次 / 拒绝"两项
-- [x] 请求带 `reason` 时作为对话框标题
+- [x] 请求带 `reason` 时展示评审理由（后续用户要求：工具名作为标题，理由放入可滚动正文）
 - [x] `ask` 模式对话框保持现有三项不变
 - [x] ActivityLine 新增 review 状态与 REVIEW 文案池，由 `permission_review` start/end 驱动
 - [x] chat screen 测试覆盖以上行为
@@ -31,3 +31,7 @@ ActivityLine 新增 review 展示状态和 REVIEW 文案池。Chat activity 按 
 未发现缺项、错误实现或范围扩张；测试等待条件修正后复审仍为 0 项问题。
 
 审查结果：Standards 0 项问题；Spec 0 项问题。
+
+2026-10-03 用户后续要求：参考 dsh-TUI ApprovalPanel 更新权限确认面板。标题改为“等待审批 · 工具名”，bash 命令单独缩进展示，额外参数和其它工具保留 JSON；理由放入可滚动正文，确认问题与选项固定。普通窗口增加边距、分组留白和焦点强调；小窗口收紧布局，40 列时使用紧凑快捷键提示。ask 三项、auto-review 两项，以及数字键选择后 Enter 确认的行为保留。
+
+本次跟进验证：40 项定向测试通过；Standards / Spec 两路审查均为 0 项问题。`rtk proxy env -u NO_COLOR bun run check` 通过格式、Lint、类型检查、Knip 和全部 472 项测试（0 fail，2712 assertions）。

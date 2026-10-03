@@ -67,7 +67,9 @@ test.each(["ask", "auto-review"] as const)(
         replay.stdin.write("resumed\r");
         await replay.waitFor(() => replay.calls.length === 1);
         replay.calls[0]!.tool("bash", { command: "printf must-ask-after-resume" });
-        await replay.waitFor(() => replay.screen().some((line) => line.includes("1. 允许一次")));
+        await replay.waitFor(() =>
+          replay.screen().some((line) => line.includes("1. 允许（仅本次）")),
+        );
         expect(replay.calls).toHaveLength(1);
         expect(await Bun.file(join(root, "home/.neant/settings.json")).text()).toBe(userSettings);
       } finally {
@@ -96,16 +98,16 @@ test("shift+tab cycles modes during a Run and changes the next tool permission i
       isError: false,
       content: [{ type: "text", text: "switched-permission" }],
     });
-    expect(app.screen().join("\n")).not.toContain("权限确认");
+    expect(app.screen().join("\n")).not.toContain("等待审批");
     app.stdin.write("\x1b[Z");
     await app.waitFor(() => app.screen().at(-2)!.startsWith(" ask ·"));
     app.calls[1]!.tool("bash", { command: "printf ask-again" });
-    await app.waitFor(() => app.screen().join("\n").includes("权限确认"));
-    const dialog = app.screen().slice(app.screen().findIndex((line) => line.includes("权限确认")));
+    await app.waitFor(() => app.screen().join("\n").includes("等待审批"));
+    const dialog = app.screen().slice(app.screen().findIndex((line) => line.includes("等待审批")));
     app.stdin.write("\x1b[Z\x1b[Z");
     await Bun.sleep(30);
     await app.flush();
-    expect(app.screen().slice(app.screen().findIndex((line) => line.includes("权限确认")))).toEqual(
+    expect(app.screen().slice(app.screen().findIndex((line) => line.includes("等待审批")))).toEqual(
       dialog,
     );
     expect(app.calls).toHaveLength(2);
@@ -135,10 +137,10 @@ test.each(["default", "ask"])(
     try {
       await app.waitFor(() => app.calls.length === 1);
       app.calls[0]!.tool("bash", { command: "printf first-permitted" });
-      await app.waitFor(() => app.screen().some((line) => line.includes("权限确认")));
+      await app.waitFor(() => app.screen().some((line) => line.includes("等待审批")));
       const dialog = app.screen().join("\n");
       expect(dialog).toContain('bash {"command":"printf first-permitted"}');
-      expect(dialog).toContain("1. 允许一次");
+      expect(dialog).toContain("1. 允许（仅本次）");
       expect(dialog).toContain("2. 本 session 内一直允许这个工具");
       expect(dialog).toContain("3. 拒绝");
       app.stdin.write("1");
@@ -153,15 +155,15 @@ test.each(["default", "ask"])(
       });
       app.calls[1]!.tool("bash", { command: "printf second-permitted" });
       await app.waitFor(() => app.screen().join("\n").includes("second-permitted"));
-      expect(app.screen().join("\n")).toContain("权限确认");
+      expect(app.screen().join("\n")).toContain("等待审批");
       expect(app.calls).toHaveLength(2);
       app.stdin.write("1\r");
       await app.waitFor(() => app.calls.length === 3);
       app.calls[2]!.delta("finished");
       app.calls[2]!.finish();
       await app.waitFor(() => !app.isWorking());
-      expect(app.screen().join("\n")).not.toContain("权限确认");
-      expect(app.allLines().join("\n")).not.toContain("权限确认");
+      expect(app.screen().join("\n")).not.toContain("等待审批");
+      expect(app.allLines().join("\n")).not.toContain("等待审批");
     } finally {
       await app.cleanup();
     }
@@ -176,8 +178,9 @@ test.each(["2\r", "\x1b[A\r", "\x1b[B\r", "\x1b"])(
     try {
       await app.waitFor(() => app.calls.length === 1);
       app.calls[0]!.tool("bash", { command: "printf reviewed-once" });
-      await app.waitFor(() => app.screen().some((line) => line.includes("1. 允许一次")));
-      expect(app.screen().join("\n")).toContain(`─ ${reason} ─`);
+      await app.waitFor(() => app.screen().some((line) => line.includes("1. 允许（仅本次）")));
+      expect(app.screen().join("\n")).toContain("─ 等待审批 · bash ─");
+      expect(app.screen().join("\n")).toContain(reason);
       expect(app.screen().join("\n")).toContain("2. 拒绝");
       expect(app.screen().join("\n")).not.toContain("一直允许");
       expect(app.screen().join("\n")).not.toContain("3.");
@@ -189,13 +192,13 @@ test.each(["2\r", "\x1b[A\r", "\x1b[B\r", "\x1b"])(
       });
       app.calls[1]!.tool("bash", { command: "printf must-be-refused" });
       await app.waitFor(() =>
-        app.screen().some((line) => line.includes('"command": "printf must-be-refused"')),
+        app.screen().some((line) => line.trim() === "printf must-be-refused"),
       );
       // Invalid digits do not select a hidden option; Shift+Tab cannot change the request.
       app.stdin.write("3\x1b[Z");
       await Bun.sleep(30);
       await app.flush();
-      expect(app.screen()).toContain("❯ 1. 允许一次");
+      expect(app.screen().map((line) => line.trimStart())).toContain("❯ 1. 允许（仅本次）");
       app.stdin.write(reject);
       await app.waitFor(() => app.calls.length === 3);
       expect(app.calls[2]!.context.messages.at(-1)).toMatchObject({
@@ -243,7 +246,7 @@ test.each([
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.tool("bash", { command: "printf must-not-run" });
-    await app.waitFor(() => app.screen().join("\n").includes("权限确认"));
+    await app.waitFor(() => app.screen().join("\n").includes("等待审批"));
     app.stdin.write(key!);
     await app.waitFor(() => app.calls.length === 2);
     expect(app.calls[1]!.signal!.aborted).toBe(false);
@@ -256,7 +259,7 @@ test.each([
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
     expect(app.allLines()).toContain(`${assistant} continuing after refusal`);
-    expect(app.screen().join("\n")).not.toContain("权限确认");
+    expect(app.screen().join("\n")).not.toContain("等待审批");
   } finally {
     await app.cleanup();
   }
@@ -269,13 +272,13 @@ test("Ctrl+C closes the question, cancels the Run and preserves the draft withou
     app.stdin.write("next draft");
     await app.waitFor(() => app.screen().includes("❯ next draft"));
     app.calls[0]!.tool("bash", { command: "printf cancelled" });
-    await app.waitFor(() => app.screen().join("\n").includes("权限确认"));
+    await app.waitFor(() => app.screen().join("\n").includes("等待审批"));
     app.stdin.write("2");
-    await app.waitFor(() => app.screen().some((line) => line.startsWith("❯ 2.")));
+    await app.waitFor(() => app.screen().some((line) => line.trimStart().startsWith("❯ 2.")));
     app.stdin.write("\x03");
     await app.waitFor(() => !app.isWorking());
     expect(app.screen()).toContain("❯ next draft");
-    expect(app.screen().join("\n")).not.toContain("权限确认");
+    expect(app.screen().join("\n")).not.toContain("等待审批");
     expect(app.calls.every((call) => call.signal!.aborted)).toBe(true);
     const nextCall = app.calls.length;
     app.stdin.write("\r");
@@ -285,7 +288,7 @@ test("Ctrl+C closes the question, cancels the Run and preserves the draft withou
       content: [{ type: "text", text: "next draft" }],
     });
     app.calls[nextCall]!.tool("bash", { command: "printf still-needs-permission" });
-    await app.waitFor(() => app.screen().join("\n").includes("权限确认"));
+    await app.waitFor(() => app.screen().join("\n").includes("等待审批"));
     expect(app.screen().join("\n")).toContain("still-needs-permission");
   } finally {
     await app.cleanup();
@@ -316,10 +319,10 @@ test.each(["flag", "settings", "yolo", "readonly"])(
       );
       await app.waitFor(() => app.calls.length === 2);
       expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({ isError: false });
-      expect(app.screen().join("\n")).not.toContain("权限确认");
+      expect(app.screen().join("\n")).not.toContain("等待审批");
       app.calls[1]!.finish();
       await app.waitFor(() => !app.isWorking());
-      expect(app.allLines().join("\n")).not.toContain("权限确认");
+      expect(app.allLines().join("\n")).not.toContain("等待审批");
     } finally {
       await app.cleanup();
     }
@@ -338,7 +341,7 @@ test("always allow remembers only this tool across Runs and leaves settings unch
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.tool("bash", { command: "printf first-allowed" });
-    await app.waitFor(() => app.screen().join("\n").includes("权限确认"));
+    await app.waitFor(() => app.screen().join("\n").includes("等待审批"));
     app.stdin.write("\x1b[B\r");
     await app.waitFor(() => app.calls.length === 2);
     expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({ isError: false });
@@ -353,9 +356,9 @@ test("always allow remembers only this tool across Runs and leaves settings unch
       isError: false,
       content: [{ type: "text", text: "still-allowed" }],
     });
-    expect(app.screen().join("\n")).not.toContain("权限确认");
+    expect(app.screen().join("\n")).not.toContain("等待审批");
     app.calls[3]!.tool("write", { path: "other.txt", content: "other tool" });
-    await app.waitFor(() => app.screen().join("\n").includes("权限确认"));
+    await app.waitFor(() => app.screen().join("\n").includes("等待审批"));
     expect(app.screen().join("\n")).toContain("write ");
     app.stdin.write("\x1b");
     await app.waitFor(() => app.calls.length === 5);
@@ -370,7 +373,7 @@ test("always allow remembers only this tool across Runs and leaves settings unch
   try {
     await next.waitFor(() => next.calls.length === 1);
     next.calls[0]!.tool("bash", { command: "printf needs-permission" });
-    await next.waitFor(() => next.screen().join("\n").includes("权限确认"));
+    await next.waitFor(() => next.screen().join("\n").includes("等待审批"));
   } finally {
     await next.cleanup();
   }
@@ -386,11 +389,11 @@ test("concurrent questions are answered individually and dialog keys do not edit
       { name: "bash", args: { command: "printf allowed-parallel" } },
       { name: "write", args: { path: "refused.txt", content: "refused" } },
     ]);
-    await app.waitFor(() => app.screen().join("\n").includes("权限确认"));
+    await app.waitFor(() => app.screen().join("\n").includes("等待审批"));
     expect(app.screen().join("\n")).toContain("allowed-parallel");
     app.stdin.write("ignored\x1b[200~pasted\x1b[201~1\r");
     await app.waitFor(() => app.screen().join("\n").includes("refused.txt"));
-    expect(app.screen().join("\n")).toContain("权限确认");
+    expect(app.screen().join("\n")).toContain("等待审批");
     app.stdin.write("3\r");
     await app.waitFor(() => app.calls.length === 2);
     expect(
@@ -425,14 +428,14 @@ test("the question stays visible above a multiline draft and restores the draft 
     app.stdin.write(`\x1b[200~${draft}\x1b[201~`);
     await app.waitFor(() => app.screen().some((line) => line.trim() === "draft-line-9"));
     app.calls[0]!.tool("bash", { command: "printf visible-request" });
-    await app.waitFor(() => app.screen().join("\n").includes("权限确认"));
+    await app.waitFor(() => app.screen().join("\n").includes("等待审批"));
     const dialog = app.screen().join("\n");
     expect(dialog).toContain('bash {"command":"printf visible-request"}');
-    expect(dialog).toContain("1. 允许一次");
+    expect(dialog).toContain("1. 允许（仅本次）");
     expect(dialog).toContain("2. 本 session 内一直允许这个工具");
     expect(dialog).toContain("3. 拒绝");
     app.stdin.write("\x03");
-    await app.waitFor(() => !app.screen().join("\n").includes("权限确认"));
+    await app.waitFor(() => !app.screen().join("\n").includes("等待审批"));
     expect(app.screen().some((line) => line.trim() === "draft-line-9")).toBe(true);
     const nextCall = app.calls.length;
     app.stdin.write("\r");
@@ -454,7 +457,7 @@ test("always allow also releases queued calls of the same tool", async () => {
       { name: "bash", args: { command: "printf first-parallel" } },
       { name: "bash", args: { command: "printf second-parallel" } },
     ]);
-    await app.waitFor(() => app.screen().join("\n").includes("权限确认"));
+    await app.waitFor(() => app.screen().join("\n").includes("等待审批"));
     app.stdin.write("2\r");
     await app.waitFor(() => app.calls.length === 2);
     expect(
@@ -465,7 +468,7 @@ test("always allow also releases queued calls of the same tool", async () => {
     ]);
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
-    expect(app.screen().join("\n")).not.toContain("权限确认");
+    expect(app.screen().join("\n")).not.toContain("等待审批");
   } finally {
     await app.cleanup();
   }
