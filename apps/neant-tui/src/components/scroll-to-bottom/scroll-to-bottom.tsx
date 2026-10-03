@@ -1,13 +1,17 @@
+import type { Locale } from "@neant/i18n";
+import { createTuiI18n } from "../../i18n";
 import { useState } from "react";
 import { Box, ThemedBox, ThemedText } from "@neant/tui";
 
 /** Fixed bottom-chrome button; the chat screen owns the scroll action. */
 export function ScrollToBottom({
+  locale = "zh",
   columns,
   unread,
   onClick,
   compact = false,
 }: {
+  locale?: Locale;
   columns: number;
   unread: boolean;
   onClick(): void;
@@ -15,7 +19,8 @@ export function ScrollToBottom({
   compact?: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
-  const label = ` ↓ ${unread ? "有新输出 · " : ""}回到底部（Ctrl+End） `;
+  const t = createTuiI18n(locale);
+  const label = ` ↓ ${t(unread ? "scroll.unread" : "scroll.return")} `;
   const available = Math.max(0, columns - 4);
   const width = Math.min(available, Bun.stringWidth(label));
   return (

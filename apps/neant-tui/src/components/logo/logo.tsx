@@ -1,3 +1,5 @@
+import type { Locale } from "@neant/i18n";
+import { createTuiI18n } from "../../i18n";
 import { Box, ThemedText, useTerminalSize, useTheme } from "@neant/tui";
 import type { ThinkingLevel } from "@neant/shared";
 import { mergeColoredCells, renderBigText } from "./bigfont";
@@ -5,16 +7,19 @@ import { SpiritArt, useSpiritPose } from "./spirit";
 
 /** Responsive welcome header: original ANSI mascot and a text column, without usage tips. */
 export function Logo({
+  locale = "zh",
   model,
   cwd,
   thinking,
   working = false,
 }: {
+  locale?: Locale;
   model: string;
   cwd: string;
   thinking?: ThinkingLevel;
   working?: boolean;
 }) {
+  const t = createTuiI18n(locale);
   const theme = useTheme();
   const { columns, rows: terminalRows } = useTerminalSize();
   const showArt = columns >= 76 && terminalRows >= 20;
@@ -45,9 +50,7 @@ export function Logo({
         <ThemedText wrap="truncate">
           {model}
           {thinking !== undefined && (
-            <ThemedText color="subtle">
-              {` · ${thinking[0]!.toUpperCase()}${thinking.slice(1)} effort`}
-            </ThemedText>
+            <ThemedText color="subtle">{` · ${t(`logo.effort.${thinking}`)}`}</ThemedText>
           )}
         </ThemedText>
         <ThemedText color="subtle" wrap="truncate">

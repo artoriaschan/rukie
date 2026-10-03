@@ -1,3 +1,5 @@
+import type { Locale } from "@neant/i18n";
+import { createTuiI18n } from "../../i18n";
 import {
   figures,
   rgb,
@@ -37,16 +39,19 @@ function truncate(segments: Segment[], columns: number): Segment[] {
 }
 
 export function ActivityLine({
+  locale = "zh",
   phase,
   line,
   suffix,
   warnPct = 0,
 }: {
+  locale?: Locale;
   phase: "waiting" | "thinking" | "tool" | "review" | "done";
   line: string;
   suffix: string;
   warnPct?: number;
 }) {
+  const t = createTuiI18n(locale);
   const theme = useTheme();
   const { columns } = useTerminalSize();
   const [, time] = useAnimationFrame(phase === "done" ? null : 60);
@@ -54,7 +59,12 @@ export function ActivityLine({
   const { frames, intervalMs } = figures.activityFrames;
   const warning: Segment[] =
     warnPct >= 80
-      ? [{ text: `⚠ 上下文 ${warnPct}% · `, color: warnPct >= 95 ? theme.error : theme.warning }]
+      ? [
+          {
+            text: t("context.warning", { percent: warnPct }),
+            color: warnPct >= 95 ? theme.error : theme.warning,
+          },
+        ]
       : [];
   const segments: Segment[] =
     phase === "done"

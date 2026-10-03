@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { start } from "../helpers/app";
+import { createTerminal } from "../helpers/terminal";
+import { main } from "../../src/main";
 
 test.each([
   [{ LANG: "en_US.UTF-8" }, undefined, "Ask", "Allow once", "Deny"],
@@ -87,6 +89,165 @@ test.each([
     await app.waitFor(() => app.stdin.isRaw);
     app.stdin.write("\x1b[<35;2;23M");
     await app.waitFor(() => app.screen().at(-1)?.includes(description) === true);
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test.each([
+  [["--nope"], "未知选项：--nope"],
+  [["one", "two"], "多余参数：two"],
+  [["--model", "invalid"], '--model 必须为 provider/id，收到 "invalid"'],
+  [["--thinking", "invalid"], "--thinking 必须为以下值之一"],
+  [["--allow-tools", ""], "--allow-tools 需要非空的工具匹配模式"],
+  [["--model"], "选项 --model <value> 缺少参数"],
+  [["--yolo=yes"], "选项 --yolo 不接受参数"],
+  [["--permission-mode", "invalid"], "--permission-mode 必须为以下值之一"],
+  [["--yolo", "--permission-mode", "ask"], "--yolo 与 --permission-mode 冲突"],
+] as const)("argv %j uses environment locale before settings", async (argv, message) => {
+  const app = await start([...argv], {
+    env: { LANG: "en", LC_MESSAGES: "zh_CN.UTF-8" },
+    prepare: (root) =>
+      Bun.write(join(root, ".neant/settings.json"), '{"locale":"en"}').then(() => {}),
+  });
+  try {
+    expect(await app.exit).toBe(2);
+    expect(app.stderr()).toContain(message);
+    expect(app.output()).toBe("");
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test.each([
+  ["zh", "neant 需要交互式终端"],
+  ["en", "neant requires an interactive terminal"],
+] as const)("%s non-interactive terminal guidance", async (locale, message) => {
+  const terminal = createTerminal();
+  terminal.stdin.isTTY = false;
+  let stderr = "";
+  try {
+    expect(
+      await main([], { ...terminal, env: { LANG: locale }, stderr: (text) => (stderr += text) }),
+    ).toBe(1);
+    expect(stderr).toContain(message);
+    expect(stderr).toContain("neant-cli");
+    expect(terminal.output()).toBe("");
+  } finally {
+    terminal.dispose();
+  }
+});
+
+test("settings warning prefix follows user locale", async () => {
+  const session: { homeDir?: string } = {};
+  const app = await start([], {
+    env: { LANG: "en" },
+    session,
+    prepare: async (root) => {
+      session.homeDir = join(root, "home");
+      await Bun.write(join(root, "home/.neant/settings.json"), '{"locale":"zh"}');
+      await Bun.write(join(root, ".neant/settings.json"), '{"locale":"en"}');
+    },
+  });
+  try {
+    await app.waitFor(() => app.stdin.isRaw);
+    expect(app.stderr()).toStartWith("警告：");
+    expect(app.stderr()).toContain('ignoring "locale"');
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("English approval dialog shows translated title, question and keyboard hints", async () => {
+  const app = await start(["permission"], { columns: 120, rows: 40, env: { LANG: "en" } });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("bash", { command: "printf consent" });
+    await app.waitFor(() => app.screen().some((line) => line.includes("1. Allow once")));
+    const screen = app.screen().join("\n");
+    expect(screen).toContain("Waiting for approval · bash");
+    expect(screen).toContain("Allow this operation?");
+    expect(screen).toContain("↑↓ select · Enter confirm · Esc deny · Tab details");
+    app.stdin.write("\x1b[9u");
+    await app.waitFor(() => app.screen().some((line) => line.includes("Tab transcript")));
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("English status chrome and hover labels render through the startup locale", async () => {
+  const app = await start(["first"], { columns: 160, env: { LANG: "en" } });
+  const move = (column: number, row = 23) => app.stdin.write(`\x1b[<35;${column};${row}M`);
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    expect(app.screen().at(-1)?.trim()).toBe("esc interrupt");
+    move(2);
+    await app.waitFor(() => app.screen().at(-1)?.includes("shift+tab switch mode") === true);
+    expect(app.screen().at(-1)).toContain("Mode Ask");
+    move(2, 22);
+    await app.waitFor(() => app.screen().at(-1)?.includes("system ") === true);
+    for (const label of ["prompt", "assistant", "thinking", "tools"])
+      expect(app.screen().at(-1)).toContain(label);
+    app.calls[0]!.finish(1000, 5, { read: 2000, write: 1000 });
+    await app.waitFor(() => !app.isWorking());
+    expect(app.screen().at(-2)).toContain("cache 50.0%");
+    const fields = app.screen().at(-2)!;
+    move(Bun.stringWidth(fields.slice(0, fields.indexOf("cache"))) + 1);
+    await app.waitFor(
+      () =>
+        app.screen().at(-1)?.includes("cache 50.0% · read 2.0k · write 1.0k · input 1.0k") === true,
+    );
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("English return badge, context warning and small-window hint", async () => {
+  const app = await start(["long reply"], { columns: 120, env: { LANG: "en" } });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.delta(Array.from({ length: 50 }, (_, i) => `line-${i}`).join("\n"));
+    await app.waitFor(() => app.screen().includes("  line-49"));
+    app.stdin.write("\x1b[<64;5;2M");
+    await app.waitFor(() => app.screen().some((line) => line.includes("Ctrl+End")));
+    expect(app.screen().join("\n")).toContain("Back to bottom (Ctrl+End)");
+    app.calls[0]!.delta("\nnew output");
+    await app.waitFor(() =>
+      app.screen().some((line) => line.includes("New output · Back to bottom")),
+    );
+    app.stdin.write("\x1b[1;5F");
+    app.calls[0]!.finish(102400, 10);
+    await app.waitFor(() => !app.isWorking());
+    app.stdin.write("second\r");
+    await app.waitFor(
+      () => app.calls.length === 2 && app.screen().some((line) => line.includes("⚠ Context 80%")),
+    );
+    app.resize(90, 10);
+    await app.waitFor(() => app.screen().some((line) => line.includes("40 columns × 12 rows")));
+    expect(app.screen().join("\n")).toContain("Ctrl+C interrupt/exit");
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("Chinese context segment names use Chinese while technical abbreviations stay stable", async () => {
+  const app = await start(["first"], { columns: 160, env: { LANG: "zh" } });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.stdin.write("\x1b[<35;2;22M");
+    await app.waitFor(() => app.screen().at(-1)?.includes("■") === true);
+    for (const label of ["系统", "提示词", "助手", "思考", "工具"])
+      expect(app.screen().at(-1)).toContain(label);
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("English welcome header localizes configured effort", async () => {
+  const app = await start(["--thinking", "high"], { env: { LANG: "en" } });
+  try {
+    await app.waitFor(() => app.screen().some((line) => line.includes("High effort")));
+    expect(app.screen().join("\n")).not.toContain("推理强度");
   } finally {
     await app.cleanup();
   }

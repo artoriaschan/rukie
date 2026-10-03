@@ -260,7 +260,7 @@ for (const [argv, message] of [
   [["--permission-mode", "auto-review", "--yolo"], "--yolo conflicts with --permission-mode"],
 ] as const) {
   test(`invalid arguments ${argv.join(" ")} exit with 2 before entering rendering`, async () => {
-    const app = await start([...argv]);
+    const app = await start([...argv], { env: { LANG: "en" } });
     try {
       expect(await app.exit).toBe(2);
       expect(app.stderr()).toContain(message);
@@ -441,7 +441,9 @@ test("--trust-project-mcp loads project configuration", async () => {
   });
   try {
     await app.waitFor(() => app.calls.length === 1);
-    await app.waitFor(() => app.allLines().some((line) => line.startsWith("MCP server broken:")));
+    await app.waitFor(() =>
+      app.allLines().some((line) => line.startsWith("MCP 服务器 broken 出错：")),
+    );
     expect(app.stderr()).toBe("");
     app.calls[0]!.delta("project MCP checked");
     app.calls[0]!.finish();

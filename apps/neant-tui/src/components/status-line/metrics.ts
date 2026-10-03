@@ -1,11 +1,11 @@
 import type { ContextUsageEvent } from "@neant/shared";
 
 export const segments = [
-  { key: "system", name: "system", short: "sys", color: "barSystem" },
-  { key: "prompt", name: "prompt", short: "pr", color: "barPrompt" },
-  { key: "assistant", name: "assistant", short: "ast", color: "barAssistant" },
-  { key: "thinking", name: "thinking", short: "th", color: "barThinking" },
-  { key: "tools", name: "tools", short: "tl", color: "barTools" },
+  { key: "system", color: "barSystem" },
+  { key: "prompt", color: "barPrompt" },
+  { key: "assistant", color: "barAssistant" },
+  { key: "thinking", color: "barThinking" },
+  { key: "tools", color: "barTools" },
 ] as const;
 
 export function count(value: number): string {

@@ -44,6 +44,7 @@ export function PermissionDialog({
   reason?: string;
 }) {
   const { columns } = useTerminalSize();
+  const t = createTuiI18n(locale);
   const choices = permissionChoices(mode, locale);
   const spacious = maxHeight >= choices.length + 6;
   const showQuestion = maxHeight >= choices.length + 4;
@@ -54,7 +55,7 @@ export function PermissionDialog({
   // Only details consume the remaining budget; selection never changes the fixed rows.
   const fixedHeight = choices.length + 2 + Number(showQuestion) + (spacious ? 2 : 0);
   const height = Math.min(maxHeight, fixedHeight + Math.max(1, detailHeight));
-  const title = ` ⏳ 等待审批 · ${toolName} `;
+  const title = ` ⏳ ${t("dialog.title", { tool: toolName })} `;
   const ruleWidth = Math.max(0, columns - 4 - Bun.stringWidth(title));
   const command =
     toolName === "bash" &&
@@ -93,7 +94,7 @@ export function PermissionDialog({
       </ScrollBox>
       {showQuestion && (
         <ThemedText dimColor wrap="truncate">
-          要允许这次操作吗？
+          {t("dialog.question")}
         </ThemedText>
       )}
       <Box flexDirection="column" marginTop={spacious ? 1 : 0} flexShrink={0}>
@@ -102,9 +103,12 @@ export function PermissionDialog({
         ))}
       </Box>
       <HintLine>
-        {["↑↓选择", "Enter确认", "Esc拒绝", `Tab${scrollFocused ? "主体" : "详情"}`].join(
-          columns < 50 ? " " : " · ",
-        )}
+        {[
+          t("dialog.select"),
+          t("dialog.confirm"),
+          t("dialog.deny"),
+          t(scrollFocused ? "dialog.transcript" : "dialog.details"),
+        ].join(columns < 50 ? " " : " · ")}
       </HintLine>
     </Box>
   );

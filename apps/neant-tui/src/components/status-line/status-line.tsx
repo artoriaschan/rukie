@@ -9,7 +9,7 @@ import {
   gauge,
   percentage,
   pressure,
-  segments,
+  segments as contextSegments,
   sparkline,
   speedColor,
 } from "./metrics";
@@ -80,6 +80,11 @@ export function StatusLine(props: StatusLineProps) {
   });
   const width = Math.max(0, props.columns - 2);
   const t = createTuiI18n(props.locale ?? "zh");
+  const segments = contextSegments.map((segment) => ({
+    ...segment,
+    name: t(`status.${segment.key}`),
+    short: t(`status.${segment.key}-short`),
+  }));
   const description = {
     label: t(`permission-mode.${props.mode}.name`),
     full: t(`permission-mode.${props.mode}.description`),
@@ -90,7 +95,7 @@ export function StatusLine(props: StatusLineProps) {
   const showBar = usage !== undefined && width >= 14;
   const pct = usage && usage.window > 0 ? (usage.used / usage.window) * 100 : 0;
   const counts = usage ? `${count(usage.used)}/${count(usage.window)}` : "";
-  const ctx = usage ? `ctx ${percentage(pct)}% (${counts})` : "";
+  const ctx = usage ? `${t("status.ctx")} ${percentage(pct)}% (${counts})` : "";
   const widths = usage ? barWidths(usage, width) : [];
   const free = widths[5] ?? 0;
   const full = `${counts} ${pct.toFixed(1)}%`;
@@ -115,11 +120,11 @@ export function StatusLine(props: StatusLineProps) {
     if (!props.working) speedParts.push({ text: " " });
     speedParts.push(
       { text: String(Math.round(speed)), color: speedColor(speed) },
-      { text: " tps" },
+      { text: ` ${t("status.tps")}` },
     );
   } else {
     speedParts.push({
-      text: `${Math.round(speed)} ${props.working ? "tps" : "t/s"}`,
+      text: `${Math.round(speed)} ${t(props.working ? "status.tps" : "status.tps-idle")}`,
       dimColor: true,
     });
   }
@@ -141,7 +146,12 @@ export function StatusLine(props: StatusLineProps) {
     { id: "tps", content: speedView },
     ...(props.thinking ? [{ id: "effort" as const, content: props.thinking }] : []),
     ...(cacheRate !== undefined
-      ? [{ id: "cache" as const, content: `缓存 ${cacheRate.toFixed(1)}%` }]
+      ? [
+          {
+            id: "cache" as const,
+            content: t("status.cache-rate", { percent: cacheRate.toFixed(1) }),
+          },
+        ]
       : []),
     { id: "tokens", content: `${count(props.usage.input)}→${count(props.usage.output)}` },
     ...(props.gitBranch ? [{ id: "git" as const, content: props.gitBranch }] : []),
@@ -167,20 +177,21 @@ export function StatusLine(props: StatusLineProps) {
   let detail: ReactNode;
   if (hover === "mode") {
     const fits =
-      Bun.stringWidth(`模式 ${description.label} · ${description.full} · shift+tab 切换模式`) <=
-      width;
+      Bun.stringWidth(
+        `${t("status.mode")} ${description.label} · ${description.full} · ${t("status.switch-mode")}`,
+      ) <= width;
     detail = (
       <Details
         fields={
           fits
             ? [
-                ["模式", description.label],
+                [t("status.mode"), description.label],
                 ["", description.full],
-                ["", "shift+tab 切换模式"],
+                ["", t("status.switch-mode")],
               ]
             : [
                 ["", description.compact],
-                ["", "shift+tab 切换"],
+                ["", t("status.switch")],
               ]
         }
       />
@@ -192,7 +203,7 @@ export function StatusLine(props: StatusLineProps) {
         fields={[
           ["", `${percentage(pct)}%`],
           ["", counts],
-          ["free", count(Math.max(0, usage.window - usage.used))],
+          [t("status.free"), count(Math.max(0, usage.window - usage.used))],
           ...segments.map(({ key, short }) => [short, count(usage.segments[key])] as const),
         ]}
       />
@@ -235,10 +246,10 @@ export function StatusLine(props: StatusLineProps) {
     detail = (
       <Details
         fields={[
-          ["cache", `${cacheRate.toFixed(1)}%`],
-          ["read", count(props.usage.cacheRead)],
-          ["write", count(props.usage.cacheWrite)],
-          ["input", count(props.usage.input)],
+          [t("status.cache"), `${cacheRate.toFixed(1)}%`],
+          [t("status.read"), count(props.usage.cacheRead)],
+          [t("status.write"), count(props.usage.cacheWrite)],
+          [t("status.input"), count(props.usage.input)],
         ]}
       />
     );
@@ -246,21 +257,21 @@ export function StatusLine(props: StatusLineProps) {
     detail = (
       <Details
         fields={[
-          ["model", props.model],
-          ["provider", props.provider],
-          ["ctx", usage ? count(usage.window) : "—"],
+          [t("status.model"), props.model],
+          [t("status.provider"), props.provider],
+          [t("status.ctx"), usage ? count(usage.window) : "—"],
         ]}
       />
     );
-  if (hover === "git") detail = <Details fields={[["git", props.gitBranch ?? ""]]} />;
-  if (hover === "cwd") detail = <Details fields={[["cwd", props.cwd]]} />;
+  if (hover === "git") detail = <Details fields={[[t("status.git"), props.gitBranch ?? ""]]} />;
+  if (hover === "cwd") detail = <Details fields={[[t("status.cwd"), props.cwd]]} />;
   if (hover === "tokens")
     detail = (
       <Details
         fields={[
-          ["in", props.usage.input.toLocaleString("en-US")],
-          ["out", props.usage.output.toLocaleString("en-US")],
-          ["total", (totalInput + props.usage.output).toLocaleString("en-US")],
+          [t("status.in"), props.usage.input.toLocaleString("en-US")],
+          [t("status.out"), props.usage.output.toLocaleString("en-US")],
+          [t("status.total"), (totalInput + props.usage.output).toLocaleString("en-US")],
         ]}
       />
     );
@@ -274,10 +285,10 @@ export function StatusLine(props: StatusLineProps) {
     detail = (
       <Details
         fields={[
-          ["tps", String(Math.round(speed))],
-          ["avg60", mean(recent).toFixed(1)],
-          ["mean", mean(sorted).toFixed(1)],
-          ["p95", (sorted[Math.ceil(sorted.length * 0.95) - 1] ?? 0).toFixed(1)],
+          [t("status.tps"), String(Math.round(speed))],
+          [t("status.avg60"), mean(recent).toFixed(1)],
+          [t("status.mean"), mean(sorted).toFixed(1)],
+          [t("status.p95"), (sorted[Math.ceil(sorted.length * 0.95) - 1] ?? 0).toFixed(1)],
         ]}
       />
     );
@@ -339,7 +350,8 @@ export function StatusLine(props: StatusLineProps) {
           <ThemedText wrap="truncate">
             {hover === "ctx" && usage ? (
               <>
-                ctx <Meter value={pct / 100} width={counts.length + 2} color={pressure(pct)} />{" "}
+                {t("status.ctx")}{" "}
+                <Meter value={pct / 100} width={counts.length + 2} color={pressure(pct)} />{" "}
                 {percentage(pct)}%
               </>
             ) : (
@@ -351,7 +363,7 @@ export function StatusLine(props: StatusLineProps) {
       <Box height={1} flexShrink={0}>
         {detail ?? (
           <ThemedText color="subtle" wrap="truncate">
-            {props.working ? "esc 中断" : ""}
+            {props.working ? t("status.interrupt") : ""}
           </ThemedText>
         )}
       </Box>

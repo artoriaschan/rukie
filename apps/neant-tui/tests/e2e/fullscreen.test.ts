@@ -66,8 +66,8 @@ test("startup header receives the configured thinking level and shows cwd on its
     },
   });
   try {
-    await app.waitFor(() => app.screen().some((line) => line.includes("High effort")));
-    const row = app.screen().findIndex((line) => line.includes("High effort"));
+    await app.waitFor(() => app.screen().some((line) => line.includes("推理强度：高")));
+    const row = app.screen().findIndex((line) => line.includes("推理强度：高"));
     expect(app.screen()[row + 1]?.slice(42)).toBe(cwd.slice(0, 38));
     expect(app.screen().join("\n")).not.toMatch(/提示|Tip:|\/tips/);
   } finally {

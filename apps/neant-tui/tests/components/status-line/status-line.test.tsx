@@ -349,16 +349,16 @@ test("motion swaps ctx in place, shows ctx/bar/cache details, and restores the i
   expect(terminal.screen()[1]!.length).toBe(initial.length);
   expect(terminal.screen()[1]).toContain("▕");
   expect(terminal.screen()[2]).toBe(
-    " 20% · 13k/64k · free 52k · sys 1.0k · pr 2.0k · ast 3.0k · th 4.0k · tl 2.5k",
+    " 20% · 13k/64k · 剩余 52k · sys 1.0k · pr 2.0k · ast 3.0k · th 4.0k · tl 2.5k",
   );
   expect(terminal.screen()[3]).toBe("after footer");
   await move(terminal, 2, 0);
   expect(terminal.screen()[1]).toBe(initial);
   expect(terminal.screen()[2]).toBe(
-    " ■ system 1.0k · ■ prompt 2.0k · ■ assistant 3.0k · ■ thinking 4.0k · ■ tools 2.5k",
+    " ■ 系统 1.0k · ■ 提示词 2.0k · ■ 助手 3.0k · ■ 思考 4.0k · ■ 工具 2.5k",
   );
   await move(terminal, columnOf(initial, "缓存"), 1);
-  expect(terminal.screen()[2]).toBe(" cache 62.5% · read 20k · write 0 · input 12k");
+  expect(terminal.screen()[2]).toBe(" 缓存 62.5% · 读取 20k · 写入 0 · 输入 12k");
   await move(terminal, 0, 4);
   expect(terminal.screen()[2]).toBe(" esc 中断");
   terminal.rerender({ working: false });
@@ -418,9 +418,9 @@ test("hover details expose provider, full token numbers, speed statistics, branc
   });
   const initial = terminal.screen()[1]!;
   for (const [field, detail] of [
-    ["deepseek-chat", "model deepseek-chat · provider deepseek · ctx 64k"],
-    ["42 tps", "tps 42 · avg60 40.0 · mean 30.0 · p95 60.0"],
-    ["12k→3.0k", "in 12,000 · out 3,000 · total 35,000"],
+    ["deepseek-chat", "模型 deepseek-chat · 提供商 deepseek · ctx 64k"],
+    ["42 tps", "tps 42 · avg60 40.0 · 均值 30.0 · p95 60.0"],
+    ["12k→3.0k", "输入 12,000 · 输出 3,000 · 总计 35,000"],
     ["main", "git main"],
     ["Neant", "cwd /work/Neant"],
   ]) {
@@ -460,7 +460,7 @@ test.each([
   [80, "■ system 1.0k ■ prompt 2.0k ■ assistant 3.0k ■ thinking 4.0k ■ tools 2.5k"],
   [60, "■ sys 1.0k ■ pr 2.0k ■ ast 3.0k ■ th 4.0k ■ tl 2.5k"],
 ])("bar hover degrades its separators and names at %s columns", async (columns, detail) => {
-  const terminal = await mount({ columns });
+  const terminal = await mount({ columns, locale: "en" });
   await move(terminal, 2, 0);
   expect(terminal.screen()[2]).toBe(` ${detail}`);
   expect(terminal.terminal.buffer.active.getLine(2)!.getCell(1)!.getFgColor()).toBe(

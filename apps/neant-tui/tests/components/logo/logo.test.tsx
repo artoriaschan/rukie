@@ -48,7 +48,7 @@ test("wide header paints the ghost beside the name and separate model, effort an
   try {
     await terminal.flush();
     expect(terminal.screen()[3]?.slice(42)).toBe("██  ██ ██▀▀▀▀  ▄▀▀▄  ██  ██ ▀▀██▀▀");
-    expect(terminal.screen()[9]?.slice(42)).toBe("local/model · High effort");
+    expect(terminal.screen()[9]?.slice(42)).toBe("local/model · 推理强度：高");
     expect(terminal.screen()[10]?.slice(42)).toBe("/project");
     expect(terminal.screen().join("\n")).not.toMatch(/提示|Tip:|\/tips/);
     const buffer = terminal.terminal.buffer.active;

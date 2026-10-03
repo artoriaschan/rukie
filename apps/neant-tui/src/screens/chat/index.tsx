@@ -23,6 +23,7 @@ import {
   ToolCall,
   UserMessage,
 } from "../../components";
+import { createTuiI18n } from "../../i18n";
 import { createConversation } from "./conversation";
 import { createPermissions } from "./permissions";
 import { permissionChoices } from "../../components/permission-dialog/permission-dialog";
@@ -40,7 +41,7 @@ export async function createChat(options: SessionOptions, model: string, locale:
     ],
     onPermissionAsk: options.onPermissionAsk ?? permissions.ask,
   });
-  const conversation = createConversation(session, model);
+  const conversation = createConversation(session, model, locale);
   try {
     const git = Bun.spawn(["git", "branch", "--show-current"], {
       cwd: options.cwd,
@@ -89,6 +90,7 @@ function Chat({
   locale: Locale;
   onExit(): void;
 }) {
+  const t = createTuiI18n(locale);
   const state = useSyncExternalStore(conversation.subscribe, conversation.getSnapshot);
   const question = useSyncExternalStore(permissions.subscribe, permissions.getSnapshot);
   const [input, setInput] = useState("");
@@ -290,6 +292,7 @@ function Chat({
         flexGrow={small ? 0 : 1}
       >
         <Logo
+          locale={locale}
           key="startup-logo"
           model={state.model}
           cwd={cwd}
@@ -305,11 +308,12 @@ function Chat({
       </ScrollBox>
       <Box flexDirection="column" flexShrink={0}>
         {small ? (
-          <ThemedText wrap="truncate">请调整窗口至至少 40 列 × 12 行 · Ctrl+C 中断/退出</ThemedText>
+          <ThemedText wrap="truncate">{t("window.small")}</ThemedText>
         ) : (
           <>
             {showReturn && (
               <ScrollToBottom
+                locale={locale}
                 columns={columns}
                 unread={unread}
                 onClick={returnToBottom}
@@ -318,6 +322,7 @@ function Chat({
             )}
             {showActivity && (
               <ActivityLine
+                locale={locale}
                 phase={activity.phase}
                 warnPct={
                   state.contextUsage && state.contextUsage.window > 0

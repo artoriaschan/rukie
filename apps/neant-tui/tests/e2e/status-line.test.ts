@@ -15,7 +15,7 @@ for (const columns of [80, 60, 40]) {
       const modelStart = fieldsBeforeRun.indexOf("·") + (fieldsBeforeRun.includes(" · ") ? 2 : 1);
       const modelX = Bun.stringWidth(fieldsBeforeRun.slice(0, modelStart)) + 1;
       app.stdin.write(`\x1b[<35;${modelX};23M`);
-      await app.waitFor(() => app.screen().at(-1)?.includes("model faux-1") === true);
+      await app.waitFor(() => app.screen().at(-1)?.includes("模型 faux-1") === true);
       expect(app.screen().at(-3)).toMatch(/^╰─+╯$/);
       app.stdin.write("\x1b[<35;80;1M");
       await app.waitFor(() => app.screen().at(-1) === "");
@@ -37,7 +37,7 @@ for (const columns of [80, 60, 40]) {
         const fields = app.screen().at(-2)!;
         const x = Bun.stringWidth(fields.slice(0, fields.indexOf("1.0k→"))) + 1;
         app.stdin.write(`\x1b[<35;${x};23M`);
-        await app.waitFor(() => app.screen().at(-1)?.includes("in 1,000 · out 2,000") === true);
+        await app.waitFor(() => app.screen().at(-1)?.includes("输入 1,000 · 输出 2,000") === true);
         app.stdin.write("\x1b[<35;80;1M");
         await app.waitFor(() => app.screen().at(-1)?.trim() === "esc 中断");
       }
@@ -48,7 +48,7 @@ for (const columns of [80, 60, 40]) {
         expect(fields).toContain("3.0k→5");
         const x = Bun.stringWidth(fields.slice(0, fields.indexOf("3.0k→"))) + 1;
         app.stdin.write(`\x1b[<35;${x};23M`);
-        await app.waitFor(() => app.screen().at(-1)?.includes("in 3,000 · out 5,000") === true);
+        await app.waitFor(() => app.screen().at(-1)?.includes("输入 3,000 · 输出 5,000") === true);
       }
       expect(app.screen().at(-4)).toMatch(/^╰─+╯$/);
     } finally {
@@ -90,7 +90,7 @@ test("tps starts after 500ms of decoding and final usage corrects the Run sample
     const x = Bun.stringWidth(fields.slice(0, fields.indexOf("▅"))) + 1;
     app.stdin.write(`\x1b[<35;${x};23M`);
     await app.waitFor(
-      () => app.screen().at(-1)?.includes("tps 50 · avg60 50.0 · mean 50.0 · p95 50.0") === true,
+      () => app.screen().at(-1)?.includes("tps 50 · avg60 50.0 · 均值 50.0 · p95 50.0") === true,
     );
   } finally {
     await app.cleanup();
@@ -128,7 +128,7 @@ test("tps includes tool-call deltas and completed Turns while excluding time bet
     const x = Bun.stringWidth(fields.slice(0, fields.indexOf("▅"))) + 1;
     app.stdin.write(`\x1b[<35;${x};23M`);
     await app.waitFor(
-      () => app.screen().at(-1)?.includes("tps 50 · avg60 50.0 · mean 50.0 · p95 50.0") === true,
+      () => app.screen().at(-1)?.includes("tps 50 · avg60 50.0 · 均值 50.0 · p95 50.0") === true,
     );
   } finally {
     await app.cleanup();
@@ -153,7 +153,7 @@ test("Session cache counters accumulate across Runs in hover details", async () 
     app.stdin.write(`\x1b[<35;${x};23M`);
     await app.waitFor(
       () =>
-        app.screen().at(-1)?.includes("cache 60.0% · read 6.0k · write 2.0k · input 2.0k") === true,
+        app.screen().at(-1)?.includes("缓存 60.0% · 读取 6.0k · 写入 2.0k · 输入 2.0k") === true,
     );
   } finally {
     await app.cleanup();
@@ -180,7 +180,7 @@ test("tps statistics retain only the latest 500 Run samples", async () => {
     const x = Bun.stringWidth(fields.slice(0, fields.indexOf("▅"))) + 1;
     app.stdin.write(`\x1b[<35;${x};23M`);
     await app.waitFor(
-      () => app.screen().at(-1)?.includes("tps 50 · avg60 50.0 · mean 50.0 · p95 50.0") === true,
+      () => app.screen().at(-1)?.includes("tps 50 · avg60 50.0 · 均值 50.0 · p95 50.0") === true,
     );
   } finally {
     await app.cleanup();
@@ -197,7 +197,7 @@ test("centered return button sits above activity and input, survives footer hove
     const inputTop = app.screen().findIndex((line) => /^╭─+╮$/.test(line));
     const body = app.screen().slice(0, inputTop - 2);
     app.stdin.write("\x1b[<35;75;23M");
-    await app.waitFor(() => app.screen().at(-1)?.includes("free ") === true);
+    await app.waitFor(() => app.screen().at(-1)?.includes("剩余 ") === true);
     expect(app.screen().at(-2)).toContain("ctx ▕");
     expect(app.screen().slice(0, inputTop - 2)).toEqual(body);
     expect(app.screen().findIndex((line) => /^╭─+╮$/.test(line))).toBe(inputTop);
@@ -207,7 +207,7 @@ test("centered return button sits above activity and input, survives footer hove
     };
     app.stdin.write(`\x1b[<35;${modelColumn()};23M`);
     await app.waitFor(
-      () => app.screen().at(-1)?.includes("model faux-1 · provider faux · ctx 128k") === true,
+      () => app.screen().at(-1)?.includes("模型 faux-1 · 提供商 faux · ctx 128k") === true,
     );
     expect(app.screen().at(-2)).toContain("ctx ");
     expect(app.screen().at(-2)).not.toContain("ctx ▕");
@@ -229,7 +229,7 @@ test("centered return button sits above activity and input, survives footer hove
     expect(app.screen().slice(0, pillY - 1)).toEqual(reading);
     expect(app.screen().filter((line) => line.includes("回到底部"))).toHaveLength(1);
     app.stdin.write(`\x1b[<35;${modelColumn()};23M`);
-    await app.waitFor(() => app.screen().at(-1)?.startsWith(" model faux-1") === true);
+    await app.waitFor(() => app.screen().at(-1)?.startsWith(" 模型 faux-1") === true);
     expect(app.screen()[pillY]).toContain("有新输出");
     app.stdin.write("\x1b[<35;80;1M");
     await app.waitFor(() => app.screen().at(-1)?.trim() === "esc 中断");

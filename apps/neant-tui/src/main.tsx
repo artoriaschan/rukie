@@ -11,6 +11,7 @@ import {
 } from "@neant/shared";
 import { render, ThemeProvider, type RenderOptions } from "@neant/tui";
 import { createChat } from "./screens/chat";
+import { createTuiI18n } from "./i18n";
 
 export interface TuiIo extends RenderOptions {
   term?: string;
@@ -22,6 +23,9 @@ export interface TuiIo extends RenderOptions {
 
 /** Run the interactive frontend and resolve to its process exit code. */
 export async function main(argv: string[], io: TuiIo): Promise<number> {
+  const env = io.env ?? process.env;
+  const environmentLocale = resolveLocale([env.LC_ALL, env.LC_MESSAGES, env.LANG]);
+  const argvT = createTuiI18n(environmentLocale);
   let values;
   let prompt: string | undefined;
   try {
@@ -46,53 +50,67 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
       else if (token.kind === "positional" && collectingTools)
         values["allow-tools"]!.push(token.value);
       else if (token.kind === "positional" && prompt === undefined) prompt = token.value;
-      else if (token.kind === "positional") throw new Error(`Unexpected argument: ${token.value}`);
+      else if (token.kind === "positional")
+        throw new Error(argvT("argv.unexpected", { argument: token.value }));
       else collectingTools = false;
     }
     if (values["allow-tools"]?.some((pattern) => !pattern)) {
-      throw new Error("--allow-tools requires non-empty tool patterns");
+      throw new Error(argvT("argv.allow-tools"));
     }
     if (
       values["permission-mode"] !== undefined &&
       !PERMISSION_MODES.includes(values["permission-mode"] as PermissionMode)
     ) {
-      throw new Error(`--permission-mode must be one of ${PERMISSION_MODES.join(", ")}`);
+      throw new Error(argvT("argv.permission-mode", { values: PERMISSION_MODES.join(", ") }));
     }
     if (
       values.yolo &&
       values["permission-mode"] !== undefined &&
       values["permission-mode"] !== "full-access"
     ) {
-      throw new Error("--yolo conflicts with --permission-mode; --yolo requires full-access");
+      throw new Error(argvT("argv.yolo-conflict"));
     }
     if (values.model !== undefined && !/^[^/]+\/.+/.test(values.model)) {
-      throw new Error(`--model must be provider/id, got "${values.model}"`);
+      throw new Error(argvT("argv.model", { model: values.model }));
     }
     if (
       values.thinking !== undefined &&
       !THINKING_LEVELS.includes(values.thinking as ThinkingLevel)
     ) {
-      throw new Error(`--thinking must be one of ${THINKING_LEVELS.join(", ")}`);
+      throw new Error(argvT("argv.thinking", { values: THINKING_LEVELS.join(", ") }));
     }
   } catch (error) {
-    io.stderr(`${(error as Error).message}\n`);
+    const failure = error as Error & { code?: string };
+    const option = /'([^']+)'/.exec(failure.message)?.[1] ?? "";
+    const message =
+      failure.code === "ERR_PARSE_ARGS_UNKNOWN_OPTION"
+        ? argvT("argv.unknown-option", { option })
+        : failure.code === "ERR_PARSE_ARGS_INVALID_OPTION_VALUE"
+          ? argvT(
+              failure.message.includes("argument missing")
+                ? "argv.missing-value"
+                : failure.message.includes("does not take an argument")
+                  ? "argv.unexpected-value"
+                  : "argv.invalid-value",
+              { option },
+            )
+          : failure.message;
+    io.stderr(`${message}\n`);
     return 2;
   }
   let app: ReturnType<typeof render> | undefined;
   let chat: Awaited<ReturnType<typeof createChat>> | undefined;
   if (!io.stdin.isTTY || !io.stdout.isTTY || (io.term ?? process.env.TERM) === "dumb") {
-    io.stderr(
-      "neant requires an interactive terminal. Use neant-cli for piped or non-interactive output.\n",
-    );
+    io.stderr(`${argvT("startup.terminal")}\n`);
     return 1;
   }
   try {
     const cwd = io.session?.cwd ?? process.cwd();
     const homeDir = io.session?.homeDir ?? homedir();
     const { settings, warnings } = await loadSettings({ cwd, homeDir });
-    const env = io.env ?? process.env;
     const locale = resolveLocale([settings.locale, env.LC_ALL, env.LC_MESSAGES, env.LANG]);
-    for (const warning of warnings) io.stderr(`Warning: ${warning}\n`);
+    const t = createTuiI18n(locale);
+    for (const warning of warnings) io.stderr(`${t("startup.warning", { warning })}\n`);
     if (values.model) settings.model = values.model;
     if (values.thinking) settings.thinking = values.thinking as ThinkingLevel;
     const model = io.session?.model;
@@ -103,7 +121,8 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
         settings,
         onWarning: (warning) => {
           // MCP errors also arrive as SessionEvents and are rendered as inline notices.
-          if (!warning.startsWith("MCP server ")) io.stderr(`Warning: ${warning}\n`);
+          if (!warning.startsWith("MCP server "))
+            io.stderr(`${t("startup.warning", { warning })}\n`);
         },
         ...io.session,
         resumeId: values.resume,

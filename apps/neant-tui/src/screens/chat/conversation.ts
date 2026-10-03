@@ -1,3 +1,5 @@
+import type { Locale } from "@neant/i18n";
+import { createTuiI18n } from "../../i18n";
 import type { Session, SessionEvent } from "@neant/agent";
 import type { ContextUsageEvent, RunResult } from "@neant/shared";
 import type { TpsSample } from "../../components/status-line";
@@ -102,7 +104,12 @@ function decodeMetrics(state: ViewState, now: number) {
   };
 }
 
-function reduceEvent(state: ViewState, event: SessionEvent, now: number): ViewState {
+function reduceEvent(
+  state: ViewState,
+  event: SessionEvent,
+  now: number,
+  t: ReturnType<typeof createTuiI18n>,
+): ViewState {
   switch (event.type) {
     case "session_start":
       return { ...state, model: event.model };
@@ -195,8 +202,11 @@ function reduceEvent(state: ViewState, event: SessionEvent, now: number): ViewSt
             type: "notice",
             text:
               event.type === "compaction_end"
-                ? `Context compacted (${event.tokensBefore} tokens)`
-                : `MCP server ${event.server}: ${event.error}`.replace(/\s+/g, " "),
+                ? t("notice.compaction", { tokens: event.tokensBefore })
+                : t("notice.mcp-error", { server: event.server, error: event.error }).replace(
+                    /\s+/g,
+                    " ",
+                  ),
           },
         ],
       };
@@ -229,7 +239,8 @@ function reduceEvent(state: ViewState, event: SessionEvent, now: number): ViewSt
 }
 
 /** Own the active Run outside React so back-to-back input events cannot submit twice. */
-export function createConversation(session: Session, model: string) {
+export function createConversation(session: Session, model: string, locale: Locale = "zh") {
+  const t = createTuiI18n(locale);
   let state: ViewState = {
     completed: replayMessages(session.messages),
     tools: [],
@@ -284,7 +295,7 @@ export function createConversation(session: Session, model: string) {
           onEvent: (event) => {
             const now = Date.now();
             update({
-              ...reduceEvent(state, event, now),
+              ...reduceEvent(state, event, now, t),
               activity: reduce(state.activity, event, now),
             });
           },
