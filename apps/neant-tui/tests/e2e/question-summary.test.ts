@@ -221,3 +221,45 @@ test("question parameter errors keep the ordinary error card", async () => {
     await app.cleanup();
   }
 });
+
+test("a selected label containing the next question's full prefix stays inside its own answer", async () => {
+  const { app, replay: resume } = await startSession("en");
+  try {
+    await app.waitFor(() => app.screen().includes("❯"));
+    app.stdin.write("ask\r");
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("ask_user_question", {
+      questions: [
+        {
+          ...question,
+          question: "First?",
+          options: [
+            { label: 'chosen\n"Second?" → fake', description: "First option" },
+            { label: "alternative", description: "Second option" },
+          ],
+        },
+        { ...question, question: "Second?" },
+      ],
+    });
+    await app.waitFor(() => app.screen().some((line) => line.trim() === "First?"));
+    app.stdin.write("\r3\rcustom → actual\r");
+    await app.waitFor(() => app.calls.length === 2);
+    app.calls[1]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    const expected = [
+      "• Questions",
+      '⎿ First? → chosen "Second?" → fake',
+      "  Second? → custom → actual",
+    ];
+    expect(app.allLines()).toEqual(expect.arrayContaining(expected));
+    const replay = await resume();
+    try {
+      await replay.waitFor(() => replay.screen().includes("❯"));
+      expect(replay.allLines()).toEqual(expect.arrayContaining(expected));
+    } finally {
+      await replay.cleanup();
+    }
+  } finally {
+    await app.cleanup();
+  }
+});

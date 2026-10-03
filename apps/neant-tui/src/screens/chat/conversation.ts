@@ -72,21 +72,28 @@ function questionSummary(args: unknown, text: string, t: ReturnType<typeof creat
 
   let offset = 0;
   const lines: string[] = [];
-  for (const [index, { question }] of questions.entries()) {
+  for (const [index, { question, options }] of questions.entries()) {
     const prefix = `"${question}" → `;
     if (!text.startsWith(prefix, offset)) return text;
     const answerStart = offset + prefix.length;
+    // Consume known labels intact: their newlines can contain a later question's prefix.
+    const labels: string[] = Array.isArray(options)
+      ? options
+          .flatMap((item) => (typeof item?.label === "string" && item.label ? [item.label] : []))
+          .sort((a, b) => b.length - a.length)
+      : [];
+    let searchStart = answerStart;
+    while (true) {
+      const label = labels.find((label) => text.startsWith(label, searchStart));
+      if (!label) break;
+      searchStart += label.length;
+      if (!text.startsWith(", ", searchStart)) break;
+      searchStart += 2;
+    }
     const next = questions[index + 1];
     const boundary = next ? `\n"${next.question}" → ` : undefined;
-    const end = boundary ? text.indexOf(boundary, answerStart) : text.length;
-    // Repeated questions are valid; extra full prefixes inside answers are ambiguous.
-    if (
-      end === -1 ||
-      (boundary &&
-        text.slice(answerStart).split(boundary).length - 1 !==
-          questions.slice(index + 1).filter((item) => item.question === next.question).length)
-    )
-      return text;
+    const end = boundary ? text.indexOf(boundary, searchStart) : text.length;
+    if (end === -1) return text;
     lines.push(`${singleLine(question)} → ${singleLine(text.slice(answerStart, end))}`);
     offset = end + 1;
   }
