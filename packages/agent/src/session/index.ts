@@ -39,6 +39,7 @@ import { compactTurn, estimateContextTokens, restoreContext } from "../compactio
 import { contextUsage } from "../context-usage/index.ts";
 import { reviewPermission, type ReviewResult } from "../review/index.ts";
 import { requestInteraction } from "../interaction/index.ts";
+import { createToolState, todoState, type TodoItem } from "../tool-state/index.ts";
 
 export interface PermissionAskRequest {
   toolCallId: string;
@@ -94,6 +95,8 @@ export interface Session {
   setPermissionMode(mode: PermissionMode): void;
   /** Current restored context in memory, including reminders and any compaction. */
   readonly messages: readonly AgentMessage[];
+  /** Current Tool State snapshot; undefined before the first write. */
+  toolState(name: string): unknown;
   run(
     prompt: string,
     options?: {
@@ -137,6 +140,13 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     await stored.close(context);
   }
   let emitRunEvent: ((event: CustomSessionEvent) => void | Promise<void>) | undefined;
+  const toolState = createToolState([todoState], entries, options.onWarning ?? console.warn);
+  let activeStore: StoredSession | undefined;
+  const setTodo = async (todos: TodoItem[]) => {
+    if (!activeStore) throw new Error("Tool State writes require an active Run.");
+    const value = await toolState.set("todo", todos, activeStore, context);
+    await emitRunEvent?.({ type: "tool_state_changed", name: "todo", value });
+  };
   const transcriptMessages = entries.flatMap((entry) =>
     entry.type === "message" ? [entry.message] : [],
   );
@@ -272,7 +282,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       model,
       messages: restoreContext(entries),
       systemPrompt: SYSTEM_PROMPT,
-      tools: createBuiltinTools(cwd, (name) => skills.get(name), options.onQuestion),
+      tools: createBuiltinTools(cwd, (name) => skills.get(name), setTodo, options.onQuestion),
       ...(settings.thinking && { thinkingLevel: settings.thinking }),
     },
   });
@@ -289,6 +299,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     get messages() {
       return agent.state.messages;
     },
+    toolState: toolState.get,
     async run(prompt, { signal, onEvent } = {}) {
       if (running) throw new Error("Session already has an active Run.");
       running = true;
@@ -325,7 +336,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           });
         } finally {
           agent.state.tools = [
-            ...createBuiltinTools(cwd, (name) => skills.get(name), options.onQuestion),
+            ...createBuiltinTools(cwd, (name) => skills.get(name), setTodo, options.onQuestion),
             ...mcp.tools,
           ];
           await emit({
@@ -342,6 +353,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           signal?.throwIfAborted();
           const runStore = await store.open(stored.metadata, context);
           active = runStore;
+          activeStore = runStore;
           const branch = await runStore.branch("main", context);
           if (!branch) throw new Error("Session has no main branch.");
           if (!baselinePersisted) {
@@ -470,6 +482,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           unsubscribe?.();
           agent.prepareRequest = undefined;
           await active?.close(context);
+          activeStore = undefined;
         }
         signal?.throwIfAborted();
         if (result.error) throw new Error(result.error);

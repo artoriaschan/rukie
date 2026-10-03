@@ -16,7 +16,7 @@ export function decidePermission({
 }: PermissionOptions): PermissionDecision | "review" {
   if (
     mode === "full-access" ||
-    ["read", "glob", "grep", "skill", "ask_user_question"].includes(toolName)
+    ["read", "glob", "grep", "skill", "ask_user_question", "todo_write"].includes(toolName)
   )
     return "allow";
   if (allowTools?.some((pattern) => new Bun.Glob(pattern).match(toolName))) return "allow";

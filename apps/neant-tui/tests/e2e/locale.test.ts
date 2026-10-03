@@ -125,18 +125,25 @@ test.each([
   ["zh", "neant 需要交互式终端"],
   ["en", "neant requires an interactive terminal"],
 ] as const)("%s non-interactive terminal guidance", async (locale, message) => {
+  const root = await mkdtemp(join(tmpdir(), "neant-locale-terminal-"));
   const terminal = createTerminal();
   terminal.stdin.isTTY = false;
   let stderr = "";
   try {
     expect(
-      await main([], { ...terminal, env: { LANG: locale }, stderr: (text) => (stderr += text) }),
+      await main([], {
+        ...terminal,
+        env: { LANG: locale },
+        session: { cwd: root, homeDir: root },
+        stderr: (text) => (stderr += text),
+      }),
     ).toBe(1);
     expect(stderr).toContain(message);
     expect(stderr).toContain("neant-cli");
     expect(terminal.output()).toBe("");
   } finally {
     terminal.dispose();
+    await rm(root, { recursive: true, force: true });
   }
 });
 

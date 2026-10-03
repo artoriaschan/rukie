@@ -398,7 +398,7 @@ test("stream-json emits session metadata, verbatim pi events, and the Run result
     sessionId,
     model: "fake/m",
     cwd: await realpath(dirs.cwd),
-    tools: ["read", "write", "edit", "bash", "glob", "grep", "skill"],
+    tools: ["read", "write", "edit", "bash", "glob", "grep", "skill", "todo_write"],
   });
   expect(events.map((event) => event.type)).toEqual([
     "session_start",

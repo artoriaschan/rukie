@@ -16,6 +16,8 @@ import { createGlobTool } from "./glob.ts";
 import { createGrepTool } from "./grep.ts";
 import { createSkillTool } from "./skill.ts";
 import { createQuestionTool, type OnQuestion } from "./question.ts";
+import { createTodoTool } from "./todo.ts";
+import type { TodoItem } from "../tool-state/index.ts";
 export type { Question, QuestionRequest, QuestionReply } from "./question.ts";
 
 /** pi's built-ins use the harness context; Agent uses an AbortSignal. */
@@ -74,6 +76,7 @@ function preserveErrorDetails<T extends TSchema>(tool: AgentTool<T>): AgentTool<
 export function createBuiltinTools(
   cwd: string,
   getSkill: (name: string) => Skill | undefined,
+  setTodo: (todos: TodoItem[]) => Promise<void>,
   onQuestion?: OnQuestion,
 ): AgentTool[] {
   const env = new NodeExecutionEnv({ cwd });
@@ -100,6 +103,7 @@ export function createBuiltinTools(
     createGlobTool(cwd),
     preserveErrorDetails(createGrepTool(cwd)),
     createSkillTool(getSkill),
+    createTodoTool(setTodo),
     ...(onQuestion ? [createQuestionTool(onQuestion)] : []),
   ];
 }
