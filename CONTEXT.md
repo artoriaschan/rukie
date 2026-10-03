@@ -89,3 +89,11 @@ _Avoid_: slash command, macro
 **Permission Decision**:
 对单次工具调用在执行前做出的判定：`allow`、`deny` 或 `ask`。`ask` 交给 frontend 询问用户；Headless CLI 没法询问，按 `deny` 处理。
 _Avoid_: approval, consent
+
+**Permission Mode**:
+决定 permission decision 如何得出的 session 级开关，三选一：`ask`（只读工具 allow，其余 ask）、`auto-review`（由 permission review 判定，安全的 allow，有风险的 ask）、`full-access`（全部 allow，无任何拦截）。默认 `ask`；运行中可切换，只对当前 session 生效，resume 时回到默认值。
+_Avoid_: yolo（仅作 CLI 别名 `--yolo`）, approval mode, trust level
+
+**Permission Review**:
+`auto-review` 模式下，对单次工具调用发起的一次独立模型调用，判断风险等级（low / medium / high）并给出 allow 或 deny。它看用户指令和历史工具调用，不看 assistant 文本和工具结果。deny 或评审失败都转为向用户 ask。
+_Avoid_: classifier, auto approval, safety check
