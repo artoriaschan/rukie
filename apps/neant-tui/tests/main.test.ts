@@ -342,6 +342,7 @@ test("--resume continues the existing Session context", async () => {
       "❯ continuation",
       `${assistant} resumed reply`,
     ]);
+    await terminal.waitFor(() => !terminal.isWorking());
     terminal.stdin.write("\x04");
     expect(await exit).toBe(0);
     expect(stderr).toBe("");
