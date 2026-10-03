@@ -11,6 +11,13 @@ export function createHover() {
   }[] = [];
   let hovered = new Set<HostNode>();
   let position: { x: number; y: number } | undefined;
+  let pressed: HostNode | undefined;
+
+  function hit(x: number, y: number) {
+    return rectangles.findLast(
+      (rect) => x >= rect.left && x < rect.right && y >= rect.top && y < rect.bottom,
+    );
+  }
 
   function dispatch(next: Set<HostNode>) {
     const previous = hovered;
@@ -33,7 +40,7 @@ export function createHover() {
         ancestors: HostNode[],
       ) {
         const chain =
-          node.props.onMouseEnter || node.props.onMouseLeave
+          node.props.onMouseEnter || node.props.onMouseLeave || node.props.onClick
             ? [node.source, ...ancestors]
             : ancestors;
         const rectangle = {
@@ -54,14 +61,25 @@ export function createHover() {
       if (!rectangles.length) return;
       if (position?.x === x && position.y === y) return;
       position = { x, y };
-      const hit = rectangles.findLast(
-        (rect) => x >= rect.left && x < rect.right && y >= rect.top && y < rect.bottom,
-      );
-      dispatch(new Set(hit?.ancestors));
+      dispatch(new Set(hit(x, y)?.ancestors));
+    },
+    press(x: number, y: number, button: number) {
+      pressed = button === 0 ? hit(x, y)?.ancestors.find((node) => node.props.onClick) : undefined;
+    },
+    release(x: number, y: number, button: number) {
+      const target = pressed;
+      pressed = undefined;
+      if (
+        button === 0 &&
+        target &&
+        hit(x, y)?.ancestors.find((node) => node.props.onClick) === target
+      )
+        target.props.onClick?.();
     },
     clear() {
       rectangles = [];
       position = undefined;
+      pressed = undefined;
       dispatch(new Set());
     },
   };

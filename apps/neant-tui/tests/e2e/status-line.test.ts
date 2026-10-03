@@ -187,7 +187,7 @@ test("tps statistics retain only the latest 500 Run samples", async () => {
   }
 }, 60000);
 
-test("hover details and scroll hints share the third footer row without shrinking the body", async () => {
+test("centered return button sits above activity and input, survives footer hover, and clicks restore following", async () => {
   const app = await start(["long reply"]);
   try {
     await app.waitFor(() => app.calls.length === 1);
@@ -206,25 +206,85 @@ test("hover details and scroll hints share the third footer row without shrinkin
     );
     expect(app.screen().at(-2)).toContain("ctx ");
     expect(app.screen().at(-2)).not.toContain("ctx ▕");
+    app.stdin.write("keep draft");
     app.stdin.write("\x1b[<35;80;1M\x1b[<64;5;2M");
-    await app.waitFor(() => app.screen().at(-1)?.trim() === "Ctrl+End 回到底部");
+    await app.waitFor(() => app.screen().some((line) => line.includes("↓ 回到底部（Ctrl+End）")));
     expect(app.screen().findIndex((line) => /^╭─+╮$/.test(line))).toBe(inputTop);
-    const reading = app.screen().slice(0, inputTop - 2);
+    const pillY = app.screen().findIndex((line) => line.includes("回到底部"));
+    const activityY = app.screen().findIndex((line) => line.includes("tokens"));
+    expect(pillY).toBeLessThan(activityY);
+    expect(activityY).toBeLessThan(inputTop);
+    expect(app.screen()[pillY - 1]).toBe("");
+    expect(app.screen().at(-1)?.trim()).toBe("esc 中断");
+    const reading = app.screen().slice(0, pillY - 1);
     app.calls[0]!.delta("\nnew output");
-    await app.waitFor(() => app.screen().at(-1)?.trim() === "有新输出 · Ctrl+End 回到底部");
-    expect(app.screen().slice(0, inputTop - 2)).toEqual(reading);
+    await app.waitFor(
+      () => app.screen()[pillY]?.includes("↓ 有新输出 · 回到底部（Ctrl+End）") === true,
+    );
+    expect(app.screen().slice(0, pillY - 1)).toEqual(reading);
     expect(app.screen().filter((line) => line.includes("回到底部"))).toHaveLength(1);
     app.stdin.write(`\x1b[<35;${app.screen().at(-2)!.indexOf("faux") + 1};23M`);
     await app.waitFor(() => app.screen().at(-1)?.startsWith(" model faux-1") === true);
+    expect(app.screen()[pillY]).toContain("有新输出");
     app.stdin.write("\x1b[<35;80;1M");
-    await app.waitFor(() => app.screen().at(-1)?.includes("有新输出") === true);
-    app.stdin.write("\x1b[1;5F");
+    await app.waitFor(() => app.screen().at(-1)?.trim() === "esc 中断");
+    app.stdin.write(`\x1b[<0;1;${pillY + 1}M\x1b[<0;1;${pillY + 1}m`);
+    await app.flush();
+    expect(app.screen()[pillY]).toContain("有新输出");
+    const x = Bun.stringWidth(app.screen()[pillY]!.split("↓")[0]!) + 1;
+    app.stdin.write(`\x1b[<0;${x};${pillY + 1}M\x1b[<0;${x};${pillY + 1}m`);
     await app.waitFor(() => app.screen().includes("  new output"));
+    expect(app.screen().join("\n")).not.toContain("回到底部");
+    expect(app.screen().join("\n")).toContain("keep draft");
+    expect(app.calls).toHaveLength(1);
+    app.calls[0]!.delta("\nafter click");
+    await app.waitFor(() => app.screen().includes("  after click"));
     expect(app.screen().at(-1)?.trim()).toBe("esc 中断");
   } finally {
     await app.cleanup();
   }
 });
+
+test.each(["idle", "approval"] as const)(
+  "return button also works while %s without confirming permission",
+  async (phase) => {
+    const app = await start(["long reply"], { columns: 40, rows: 12 });
+    try {
+      await app.waitFor(() => app.calls.length === 1);
+      app.calls[0]!.delta(Array.from({ length: 50 }, (_, i) => `line-${i}`).join("\n"));
+      await app.waitFor(() => app.screen().includes("  line-49"));
+      if (phase === "idle") {
+        app.calls[0]!.finish();
+        await app.waitFor(() => !app.isWorking());
+      } else {
+        app.calls[0]!.tool("bash", { command: "printf must-wait-for-permission" });
+        await app.waitFor(() => app.screen().some((line) => line.includes("等待审批")));
+      }
+      app.stdin.write("\x1b[<64;5;1M");
+      await app.waitFor(() => app.screen().some((line) => line.includes("↓ 回到底部")));
+      const y = app.screen().findIndex((line) => line.includes("回到底部"));
+      expect(app.screen().at(-2)).toContain("ctx ");
+      expect(app.screen().at(-1)?.trim()).toBe(phase === "idle" ? "" : "esc 中断");
+      if (phase === "approval") {
+        expect(y).toBeLessThan(app.screen().findIndex((line) => line.includes("等待审批")));
+        expect(app.screen().some((line) => line.trim() === "printf must-wait-for-permission")).toBe(
+          true,
+        );
+        for (const label of ["1. 允许", "2. 本 session", "3. 拒绝", "Esc拒绝"])
+          expect(app.screen().join("\n")).toContain(label);
+      } else expect(y).toBeLessThan(app.screen().findIndex((line) => /^╭─+╮$/.test(line)));
+      const x = Bun.stringWidth(app.screen()[y]!.split("↓")[0]!) + 1;
+      app.stdin.write(`\x1b[<0;${x};${y + 1}M\x1b[<0;${x};${y + 1}m`);
+      await app.waitFor(() => !app.screen().some((line) => line.includes("回到底部")));
+      if (phase === "idle") expect(app.screen()).toContain("  line-49");
+      else expect(app.screen()[0]).toMatch(/^[·•●] bash \{"command":/);
+      expect(app.calls).toHaveLength(1);
+      if (phase === "approval") expect(app.screen().join("\n")).toContain("等待审批");
+    } finally {
+      await app.cleanup();
+    }
+  },
+);
 
 for (const [input, pct, color] of [
   [102400, 80, dark.warning],

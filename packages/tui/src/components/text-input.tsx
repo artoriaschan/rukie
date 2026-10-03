@@ -43,7 +43,7 @@ export function TextInput({
   });
   useInput(
     (event) => {
-      if (event.type === "wheel" || event.type === "move") return;
+      if (event.type !== "key" && event.type !== "paste") return;
       const current = editing.current;
       const boundaries = graphemeBoundaries(current.value);
       const before = boundaries.findLast((offset) => offset < current.cursor) ?? 0;

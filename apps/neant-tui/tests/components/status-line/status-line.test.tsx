@@ -280,7 +280,7 @@ async function move(terminal: Awaited<ReturnType<typeof mount>>, x: number, y: n
 }
 
 test("mode hover explains the current policy and shortcut, then restores the hint", async () => {
-  const terminal = await mount({ columns: 160, scrollHint: "Ctrl+End 回到底部" });
+  const terminal = await mount({ columns: 160 });
   await move(terminal, 1, 1);
   expect(terminal.screen()[2]).toBe(
     " mode ask · 只读工具直接允许，其余请求批准 · shift+tab 切换模式",
@@ -296,7 +296,7 @@ test("mode hover explains the current policy and shortcut, then restores the hin
     " mode full-access · 允许所有工具调用，无权限拦截 · shift+tab 切换模式",
   );
   await move(terminal, 0, 4);
-  expect(terminal.screen()[2]).toBe(" Ctrl+End 回到底部");
+  expect(terminal.screen()[2]).toBe(" esc 中断");
 });
 
 test.each([40, 60, 80])(
@@ -337,8 +337,8 @@ test("mode remains complete when a large context readout competes for a narrow r
   expect(terminal.screen()[1]).toStartWith(" full-access");
 });
 
-test("motion swaps ctx in place, shows ctx/bar/cache details, and restores the scroll hint", async () => {
-  const terminal = await mount({ columns: 160, scrollHint: "有新输出 · Ctrl+End 回到底部" });
+test("motion swaps ctx in place, shows ctx/bar/cache details, and restores the interrupt hint", async () => {
+  const terminal = await mount({ columns: 160 });
   const initial = terminal.screen()[1]!;
   const x = initial.indexOf("ctx ");
   await move(terminal, Bun.stringWidth(initial.slice(0, x)), 1);
@@ -357,9 +357,7 @@ test("motion swaps ctx in place, shows ctx/bar/cache details, and restores the s
   await move(terminal, initial.indexOf("缓存"), 1);
   expect(terminal.screen()[2]).toBe(" cache 62.5% · read 20k · write 0 · input 12k");
   await move(terminal, 0, 4);
-  expect(terminal.screen()[2]).toBe(" 有新输出 · Ctrl+End 回到底部");
-  terminal.rerender({ scrollHint: undefined });
-  await terminal.waitFor(() => terminal.screen()[2] === " esc 中断");
+  expect(terminal.screen()[2]).toBe(" esc 中断");
   terminal.rerender({ working: false });
   await terminal.waitFor(() => terminal.screen()[2] === "");
   expect(terminal.screen()[3]).toBe("after footer");

@@ -12,6 +12,7 @@ export type InputEvent =
   | { type: "key"; input: string; key: Key }
   | { type: "wheel"; input: ""; x: number; y: number; delta: number }
   | { type: "move"; x: number; y: number }
+  | { type: "mouse"; action: "press" | "release"; button: number; x: number; y: number }
   | { type: "paste"; input: string };
 
 const names: Record<string, string> = {
@@ -95,6 +96,23 @@ export function listenInput(stdin: Readable, emit: (event: InputEvent) => void) 
               row !== undefined
             ) {
               emit({ type: "move", x: column - 1, y: row - 1 });
+            } else if (
+              (final === "M" || final === "m") &&
+              button !== undefined &&
+              (button & 0xe0) === 0 &&
+              (button & 3) < 3 &&
+              column !== undefined &&
+              column > 0 &&
+              row !== undefined &&
+              row > 0
+            ) {
+              emit({
+                type: "mouse",
+                action: final === "M" ? "press" : "release",
+                button: button & 3,
+                x: column - 1,
+                y: row - 1,
+              });
             }
             continue;
           }

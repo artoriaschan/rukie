@@ -14,7 +14,7 @@ test("unmount restores raw mode, bracketed paste and cursor visibility and detac
   };
   function View() {
     useInput((event) => {
-      if (event.type !== "move") events.push(event.input);
+      if ("input" in event) events.push(event.input);
     });
     return <Text>ready</Text>;
   }

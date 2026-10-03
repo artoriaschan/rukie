@@ -13,11 +13,13 @@ test("fragmented SGR motion delivers cell coordinates while buttons and wheel re
   try {
     terminal.stdin.write("\x1b[<35;4;");
     expect(events).toEqual([]);
-    terminal.stdin.write("2M\x1b[<63;5;3M\x1b[<32;4;2M\x1b[<0;4;2M\x1b[<3;4;2m");
+    terminal.stdin.write("2M\x1b[<63;5;3M\x1b[<32;4;2M\x1b[<0;4;2M\x1b[<0;4;2m");
     terminal.stdin.write("\x1b[<64;4;2M\x1b[<65;4;2M");
     expect(events).toEqual([
       { type: "move", x: 3, y: 1 },
       { type: "move", x: 4, y: 2 },
+      { type: "mouse", action: "press", button: 0, x: 3, y: 1 },
+      { type: "mouse", action: "release", button: 0, x: 3, y: 1 },
       { type: "wheel", input: "", x: 3, y: 1, delta: -1 },
       { type: "wheel", input: "", x: 3, y: 1, delta: 1 },
     ]);

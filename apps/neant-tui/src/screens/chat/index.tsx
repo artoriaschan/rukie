@@ -17,6 +17,7 @@ import {
   Notice,
   PermissionDialog,
   PromptInput,
+  ScrollToBottom,
   StatusLine,
   ToolCall,
   UserMessage,
@@ -142,6 +143,26 @@ function Chat({
     lastInterrupt.current = undefined;
     setInput(value);
   };
+  const returnToBottom = () => {
+    body.current?.scrollToBottom();
+    lastInterrupt.current = undefined;
+  };
+  const showReturn = !!bodyScroll && !bodyScroll.following;
+  const statusHeight = state.contextUsage && columns - 2 >= 14 ? 3 : 2;
+  const hasActivity = state.running && activity.phase !== "idle";
+  const minimumDialogHeight = question ? permissionChoices(question.request.mode).length + 3 : 0;
+  // Reserve the dialog's bottom gap and at least one transcript row before allocating chrome.
+  const permissionSpace = rows - statusHeight - 2;
+  const compactReturn =
+    !!question && showReturn && permissionSpace < minimumDialogHeight + Number(hasActivity) + 2;
+  const returnHeight = showReturn ? (compactReturn ? 1 : 2) : 0;
+  // The dialog title already conveys waiting for approval when this duplicate line cannot fit.
+  const showActivity =
+    hasActivity && (!question || permissionSpace >= minimumDialogHeight + returnHeight + 1);
+  const dialogMaxHeight = Math.max(
+    minimumDialogHeight,
+    Math.min(Math.floor(rows / 2), permissionSpace - returnHeight - Number(showActivity)),
+  );
   useInput((event) => {
     if (event.type === "move") return;
     if (event.type === "wheel") {
@@ -180,8 +201,7 @@ function Chat({
       return;
     }
     if (!small && key.ctrl && key.name === "end") {
-      body.current?.scrollToBottom();
-      lastInterrupt.current = undefined;
+      returnToBottom();
       return;
     }
     if (!small && pending && key.name === "tab") {
@@ -284,7 +304,15 @@ function Chat({
           <ThemedText wrap="truncate">请调整窗口至至少 40 列 × 12 行 · Ctrl+C 中断/退出</ThemedText>
         ) : (
           <>
-            {state.running && activity.phase !== "idle" && (
+            {showReturn && (
+              <ScrollToBottom
+                columns={columns}
+                unread={unread}
+                onClick={returnToBottom}
+                compact={compactReturn}
+              />
+            )}
+            {showActivity && (
               <ActivityLine
                 phase={activity.phase}
                 warnPct={
@@ -304,7 +332,7 @@ function Chat({
                 mode={question.request.mode}
                 reason={question.request.reason}
                 selected={question.selected}
-                maxHeight={Math.floor(rows / 2)}
+                maxHeight={dialogMaxHeight}
                 scrollRef={details}
                 scrollFocused={scrollFocus === "details"}
               />
@@ -338,13 +366,6 @@ function Chat({
               gitBranch={state.activity.gitBranch}
               cwd={cwd}
               working={state.running}
-              scrollHint={
-                bodyScroll && !bodyScroll.following
-                  ? unread
-                    ? "有新输出 · Ctrl+End 回到底部"
-                    : "Ctrl+End 回到底部"
-                  : undefined
-              }
             />
           </>
         )}

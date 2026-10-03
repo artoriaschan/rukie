@@ -18,7 +18,7 @@ esc 中断
 
 - 第 1 行是上下文分段条：system、prompt、assistant、thinking、tools 五段按估算比例着色，剩余部分是空闲段，读数显示在空闲段右端。
 - 第 2 行是字段行，各字段之间用 `·` 分隔，ctx 字段固定在最右边。
-- 第 3 行是提示行，按优先级显示以下内容之一：hover 明细、滚动提示、`esc 中断`。
+- 第 3 行是提示行，按优先级显示以下内容之一：hover 明细、`esc 中断`。回到底部按钮单独放在正文下方、活动行/权限弹窗/输入区域上方，水平居中。
 - 上下文分段条不展示时不保留空行，字段行直接位于输入框下方，随后仍保留提示行。
 - 鼠标悬停字段时，第 3 行显示该字段的明细；悬停 ctx 时，ctx 字段原位变成小仪表。
 
@@ -52,7 +52,7 @@ Agent Core 新增 `context_usage` 事件，把 Context Usage 交给所有 fronte
 24. 作为用户，我想在悬停 git 或 cwd 时看到完整的分支名或路径，以免被截断后看不全。
 25. 作为用户，我想让鼠标移开字段后，第三行恢复原来的提示。
 26. 作为用户，我想在工作中让第三行显示 `esc 中断`，空闲时为空。
-27. 作为用户，我想让"有新输出 · Ctrl+End 回到底部"显示在第三行，不再在输入框上方额外占一行。
+27. 作为用户，我想让回到底部提示使用 dsh-TUI 的背景按钮样式，位于正文下方、活动行/权限弹窗/输入区域上方并水平居中，点击后回到底部并恢复跟随新输出。
 28. 作为用户，我想让 footer 高度保持不变，悬停或出现提示时正文不会被顶上去。
 29. 作为用户，我想在上下文用到 80% 以上时看到活动行出现 `⚠ 上下文 85%` 前缀（≥95% 为 error 色），因为工作中我的视线在活动行上。
 30. 作为用户，我想让活动行后缀不再重复显示 `esc 中断`。
@@ -107,7 +107,7 @@ Agent Core 新增 `context_usage` 事件，把 Context Usage 交给所有 fronte
 
 ### ③ `StatusLine` 组件（只接收 props）
 
-- props 包含 Context Usage、模型名、provider、thinking 级别、tps 当前值和样本、Session 累计 usage（input / output / cacheRead / cacheWrite）、git 分支、cwd、是否在工作、滚动提示文案和终端列数。组件内部只有 hover 状态。
+- props 包含 Context Usage、模型名、provider、thinking 级别、tps 当前值和样本、Session 累计 usage（input / output / cacheRead / cacheWrite）、git 分支、cwd、是否在工作和终端列数。组件内部只有 hover 状态。
 - 根节点为 `paddingX={1}`、宽度等于终端列数，内容宽度为 `columns - 2`。上下文条可见时占三行，隐藏时占两行；仅第三行提示即使为空也保留占位。上下文条隐藏时，字段行直接位于输入框下方。
 - **分段条**：
   - 每个非零的已用段至少占 1 列，其余列（含空闲段）按最大余数法分配。
@@ -126,7 +126,7 @@ Agent Core 新增 `context_usage` 事件，把 Context Usage 交给所有 fronte
   - 空闲且有样本时显示最近 12 个样本做 min-max 归一后的 `▁▂▃▄▅▆▇█`，各点按自己的速度着色，后接着色数值和正常文字色的 ` tps`。样本值相等且非零时显示 `▅`，全零时显示 `▁`。
   - 空闲且还没有样本时显示 dim 的 `N t/s`。
 - **ctx 悬停**：ctx 字段原位变成 `ctx ` + 迷你仪表 + 百分比。迷你仪表宽度等于原先计数部分的字符长度，所以字段总宽度不变。仪表填充色 <80% 为绿、≥80% 为黄、≥95% 为红。
-- **第三行优先级**：hover 明细 > 滚动提示 > 工作中的 `esc 中断` > 空。
+- **第三行优先级**：hover 明细 > 工作中的 `esc 中断` > 空。
 - **hover 明细文案**（标签用 subtle 色，照 dsh）：
   - bar：每段为「色块 + 名称 + 数量」。宽度不够时，分隔符依次从 `·` 降为空格、名称降为简称（sys/pr/ast/th/tl），预算为 `columns - 6`。
   - ctx：`{pct}% · {used}/{window} · free {free} · sys N · pr N · ast N · th N · tl N`
@@ -151,7 +151,9 @@ Agent Core 新增 `context_usage` 事件，把 Context Usage 交给所有 fronte
   - 原有的 Run 内 `input` / `output` / `activityInput` 语义不变，继续供活动行使用。
 - `index.tsx`：
   - 用新的 `StatusLine` 替换旧的单行版本。
-  - 输入框上方原来的滚动提示行删除，改为把提示文案交给 `StatusLine`。
+  - 回到底部按钮使用独立 `ScrollToBottom` 组件，在不跟随底部时显示，位于正文下方、活动行/权限弹窗/输入区域上方。与 dsh-TUI 一样有一行顶部间距、左右各 2 列容器边距、按钮两端各一列内距、粗体深色文字、蓝色背景和悬停背景；用户要求水平居中。
+  - 按钮文案为 `↓ 回到底部（Ctrl+End）`，有新输出时为 `↓ 有新输出 · 回到底部（Ctrl+End）`，沿用 Neant 的快捷键和未读布尔状态。点击和 Ctrl+End 共用回到底部动作，恢复跟随，清除未读，保留草稿，不确认权限；返回底部后按钮消失。
+  - 短窗口同时展示按钮与权限弹窗时，按固定 chrome 高度限制弹窗预算并保留至少一行正文。空间不足时先省略按钮顶部空行，再省略与审批标题重复的等待活动行；保留审批详情、所有选项、底部边距和 StatusLine 提示行。40×12 下也能点击返回并保留 `esc 中断`。
   - 活动行后缀去掉 `· esc 中断`。
 - 小屏（<40×12）时的整行提示保持不变，不渲染 `StatusLine`。
 
@@ -181,7 +183,7 @@ Agent Core 新增 `context_usage` 事件，把 Context Usage 交给所有 fronte
 3. **`apps/neant-tui` headless xterm 终端**：沿用 `tests/helpers/terminal.ts` 和 `tests/e2e/`。断言以下几点：
    - 80、60、40 列下，有 Context Usage 时 footer 三行的屏幕内容，缺少 Context Usage 时字段行直接位于输入框下方且提示行保留占位；
    - 工作中第三行显示 `esc 中断`，结束后清空；
-   - 滚动离开底部时第三行出现滚动提示，并且输入框上方不再多出一行；
+   - 滚动离开底部时正文下方出现居中按钮，普通/未读两种状态的样式和位置正确；点击恢复底部跟随且保留草稿，空闲及权限弹窗期间也可点击，第三行 hover 不遮住按钮；
    - 写入 motion 序列悬停 ctx 和 model 后，第三行显示对应明细，ctx 原位变为迷你仪表，移开后恢复；
    - footer 高度在悬停前后不变；
    - 假 usage 推到 ≥80% 时活动行出现 `⚠ 上下文` 前缀；
@@ -201,7 +203,7 @@ Agent Core 新增 `context_usage` 事件，把 Context Usage 交给所有 fronte
 - `?` 快捷键面板，以及空闲时的 `? 快捷键` 提示。
 - light 主题。
 - resume 时回放历史 usage：Session 累计 token 从 0 开始。
-- 渲染器的 click 和拖选事件，以及悬停提示框（tooltip）。
+- 拖选事件和悬停提示框（tooltip）。用户要求的按钮 click 在本次补充范围内：Box 支持主键同一目标按下/释放触发一次，命中区域沿用真实绘制的裁剪/滚动坐标。
 
 ## Further Notes
 

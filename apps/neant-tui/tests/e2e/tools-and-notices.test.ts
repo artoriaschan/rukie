@@ -58,6 +58,9 @@ test("a tool shows an animated one-line summary then remains once in the scrolla
     expect(app.terminal.buffer.active.baseY).toBe(0);
     app.stdin.write("\x1b[5~");
     await app.waitFor(() => app.screen().includes("❯ write a file"));
+    // The return button takes two rows from the transcript viewport while reading above the bottom.
+    app.stdin.write("\x1b[<65;5;2M");
+    await app.waitFor(() => app.screen().some((line) => line.startsWith("• write ")));
     expect(app.screen().filter((line) => line.startsWith("• write "))).toHaveLength(1);
   } finally {
     permission.resolve("deny");

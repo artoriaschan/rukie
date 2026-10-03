@@ -8,7 +8,7 @@ Status: ready-for-agent
 
 ## Solution
 
-全量移植 `dsh-working-activity`（中文部分）的文案与状态机，按 dsh-TUI `ActivityLine` 的方式渲染：输入框上方一行 `🌔 脑子在冒烟 · 总12s · ↑ 8.1k · ↓ 1.2k tokens`，月相帧 + 扫光文字。`esc 中断` 和滚动提示放在输入框下方 StatusLine 的提示行，该行始终占位；上下文条不展示时不占位，字段行直接位于输入框下方。状态机重写为纯函数，以 Neant 的 `SessionEvent` 为输入；术语沿用 Neant/pi：原包的 turn 一律对应 **Run**。
+全量移植 `dsh-working-activity`（中文部分）的文案与状态机，按 dsh-TUI `ActivityLine` 的方式渲染：输入框上方一行 `🌔 脑子在冒烟 · 总12s · ↑ 8.1k · ↓ 1.2k tokens`，月相帧 + 扫光文字。`esc 中断` 放在输入框下方 StatusLine 的提示行，该行始终占位；回到底部按钮放在正文下方、活动行/权限弹窗/输入区域上方并水平居中，可点击恢复底部跟随。上下文条不展示时不占位，字段行直接位于输入框下方。状态机重写为纯函数，以 Neant 的 `SessionEvent` 为输入；术语沿用 Neant/pi：原包的 turn 一律对应 **Run**。
 
 ## User Stories
 
@@ -71,7 +71,7 @@ Status: ready-for-agent
 - `index.tsx`：
   - 输入框上方渲染 `ActivityLine`。
   - suffix 为 `· ↑ {fmtTokens} · ↓ {fmtTokens} tokens`。
-  - `esc 中断` 放在 StatusLine 第三行；第三行优先级为 hover 明细 > 滚动提示 > 工作中的中断提示 > 空。滚动提示不在输入框上方额外占一行，hover 与滚动都不改变 footer 高度。
+  - `esc 中断` 放在 StatusLine 第三行；第三行优先级为 hover 明细 > 工作中的中断提示 > 空。回到底部按钮在正文下方、活动行/权限弹窗/输入区域上方水平居中显示，使用 dsh-TUI 的按钮样式，单独占两行（含顶部一行间距）；hover 不改变 footer 高度。
   - 仅在 Run 进行中且 phase 非 `idle` 时渲染；成功、失败或打断结束后隐藏，不展示 done 汇总或接梗。状态机保留内部 done 终态。
   - 权限对话框开关时派发 `approval-open` / `approval-close`。
   - Run 进行中按 `render` 返回的 `nextWakeAt` 安排下一次刷新，与 60ms 的扫光动画分开；Run 结束后停止刷新。

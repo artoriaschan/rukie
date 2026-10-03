@@ -191,6 +191,7 @@ export function render(element: ReactNode, options: RenderOptions) {
   );
   terminal.subscribeInput((event) => {
     if (event.type === "move") container.hover.move(event.x, event.y);
+    else if (event.type === "mouse") container.hover[event.action](event.x, event.y, event.button);
   });
   const fail = container.onError;
   const root = reconciler.createContainer(

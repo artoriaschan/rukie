@@ -3,6 +3,81 @@ import { useState } from "react";
 import { Box, ScrollBox, Text, TextInput, render, type ScrollHandle } from "../../src";
 import { createTerminal } from "../helpers/terminal";
 
+test("a primary press and release on the same painted button clicks once without editing input", async () => {
+  const terminal = createTerminal();
+  const clicks: string[] = [];
+  const changes: string[] = [];
+  const app = render(
+    <Box flexDirection="column">
+      <Box width={8} height={1} marginLeft={2} onClick={() => clicks.push("button")}>
+        <Text>回到底部</Text>
+      </Box>
+      <TextInput value="draft" onChange={(value) => changes.push(value)} />
+    </Box>,
+    { ...terminal, fullscreen: true },
+  );
+  try {
+    await terminal.flush();
+    terminal.stdin.write("\x1b[<0;5;1M");
+    expect(clicks).toEqual([]);
+    terminal.stdin.write("\x1b[<0;5;1m");
+    expect(clicks).toEqual(["button"]);
+    terminal.stdin.write("\x1b[<0;5;1m\x1b[<2;5;1M\x1b[<2;5;1m");
+    terminal.stdin.write("\x1b[<0;5;1M\x1b[<0;15;1m");
+    terminal.stdin.write("\x1b[<0;15;1M\x1b[<0;5;1m");
+    expect(clicks).toEqual(["button"]);
+    expect(changes).toEqual([]);
+    expect(terminal.screen()[1]).toBe("draft");
+  } finally {
+    app.unmount();
+    terminal.dispose();
+  }
+});
+
+test("clicks follow scrolled cells, exclude clipped rows, and cancel presses across resize", async () => {
+  const terminal = createTerminal(20, 6);
+  const scroll = { current: null as ScrollHandle | null };
+  const clicks: string[] = [];
+  const app = render(
+    <Box height={6} flexDirection="column">
+      <ScrollBox ref={scroll}>
+        {Array.from({ length: 6 }, (_, index) => (
+          <Box key={index} height={1} onClick={() => clicks.push(String(index))}>
+            <Text>row {index}</Text>
+          </Box>
+        ))}
+      </ScrollBox>
+      <Box height={2} onClick={() => clicks.push("dock")}>
+        <Box width={4} height={1} onClick={() => clicks.push("child")}>
+          <Text>dock</Text>
+        </Box>
+      </Box>
+    </Box>,
+    { ...terminal, fullscreen: true },
+  );
+  try {
+    await terminal.flush();
+    terminal.stdin.write("\x1b[<0;1;1M\x1b[<0;1;1m");
+    expect(clicks).toEqual(["2"]);
+    scroll.current!.scrollBy(-2);
+    await terminal.waitFor(() => terminal.screen()[0] === "row 0");
+    terminal.stdin.write("\x1b[<0;1;1M\x1b[<0;1;1m\x1b[<0;1;5M\x1b[<0;1;5m");
+    expect(clicks).toEqual(["2", "0", "child"]);
+    terminal.stdin.write("\x1b[<0;1;1M");
+    const before = terminal.bytesWritten();
+    terminal.resize(21, 6);
+    await terminal.waitFor(() => terminal.bytesWritten() > before);
+    terminal.stdin.write("\x1b[<0;1;1m");
+    expect(clicks).toEqual(["2", "0", "child"]);
+    app.unmount();
+    terminal.stdin.write("\x1b[<0;1;1M\x1b[<0;1;1m");
+    expect(clicks).toEqual(["2", "0", "child"]);
+  } finally {
+    app.unmount();
+    terminal.dispose();
+  }
+});
+
 test("nested hover follows the painted cells, leaves before entering siblings, and skips the same cell", async () => {
   const terminal = createTerminal();
   const events: string[] = [];

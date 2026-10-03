@@ -163,8 +163,8 @@ test("Chat fills the alternate screen, scrolls its body and clears the UI on exi
     expect(app.screen().at(-1)?.trim()).toBe("esc 中断");
     expect(app.screen().at(-4)).toMatch(/^╰─+╯$/);
     app.stdin.write("\x1b[<64;5;2M");
-    await app.waitFor(() => app.screen().some((line) => line.includes("Ctrl+End 回到底部")));
-    const bodyHeight = app.screen().findIndex((line) => /^[🌑🌒🌓🌔🌕🌖🌗🌘] /u.test(line));
+    await app.waitFor(() => app.screen().some((line) => line.includes("↓ 回到底部（Ctrl+End）")));
+    const bodyHeight = app.screen().findIndex((line) => line.includes("回到底部")) - 1;
     const reading = app.screen().slice(0, bodyHeight);
     app.calls[0]!.delta("\nnew output");
     await app.waitFor(() => app.screen().some((line) => line.includes("有新输出")));

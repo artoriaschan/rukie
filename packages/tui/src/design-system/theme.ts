@@ -2,6 +2,9 @@ export interface Theme {
   text: `#${string}`;
   subtle: `#${string}`;
   accent: `#${string}`;
+  inverseText: `#${string}`;
+  badgeBackground: `#${string}`;
+  badgeHoverBackground: `#${string}`;
   activity: `#${string}`;
   activityFlash: `#${string}`;
   permission: `#${string}`;
@@ -25,6 +28,9 @@ export const dark: Theme = {
   text: "#E8E6E0",
   subtle: "#5E6673",
   accent: "#7DA1DE",
+  inverseText: "#22262E",
+  badgeBackground: "#5E88CC",
+  badgeHoverBackground: "#3B5BDB",
   activity: "#7DA1DE",
   activityFlash: "#C6D8F8",
   permission: "#ABC2EC",

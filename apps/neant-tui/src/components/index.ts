@@ -4,6 +4,7 @@ export { Notice } from "./notice";
 export { PermissionDialog } from "./permission-dialog";
 export { PromptInput } from "./prompt-input";
 export { StatusLine } from "./status-line";
+export { ScrollToBottom } from "./scroll-to-bottom";
 export { ToolCall } from "./tool-call";
 export { Logo } from "./logo";
 export { ActivityLine } from "./activity-line";

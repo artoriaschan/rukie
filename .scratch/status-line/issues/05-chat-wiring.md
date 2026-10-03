@@ -35,3 +35,4 @@ Status: resolved
 - 已同步 `.scratch/working-activity/spec.md` 的后缀、第三行提示优先级和上下文压力描述。
 - 2026-10-03 用户调整：仅提示行始终保留占位。缺少 Context Usage 或内容宽度不足 14 列时，上下文条不展示、不占行，字段行直接位于输入框下方；上下文条可见时仍为三行。组件测试验证隐藏/恢复及提示空行；80/60/40 列终端测试验证启动时字段行紧接输入框、hover 高度稳定，以及收到上下文后的三行布局。已同步两份 spec。
 - 占位调整验证：`rtk bun x tsc -b` 与相关测试通过；`rtk proxy env -u NO_COLOR bun run check` 全绿（361 pass / 0 fail）。Standards 与 Spec 复审均无发现。
+- 2026-10-03 用户调整：回到底部提示改为 dsh-TUI 风格的居中可点击按钮，独立放在正文下方、活动行/权限弹窗/输入框上方。第三行只显示 hover/中断/空占位；短窗口审批 chrome 预算保留所有关键行。实现与验收见 [06-scroll-to-bottom.md](06-scroll-to-bottom.md)，全量检查 490 pass / 0 fail，Standards 与 Spec 复审均无发现。

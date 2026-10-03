@@ -33,7 +33,6 @@ export interface StatusLineProps {
   gitBranch?: string;
   cwd: string;
   working: boolean;
-  scrollHint?: string;
 }
 
 type HoverField = "bar" | "ctx" | "mode" | "model" | "tps" | "cache" | "tokens" | "git" | "cwd";
@@ -353,7 +352,7 @@ export function StatusLine(props: StatusLineProps) {
       <Box height={1} flexShrink={0}>
         {detail ?? (
           <ThemedText color="subtle" wrap="truncate">
-            {props.scrollHint || (props.working ? "esc 中断" : "")}
+            {props.working ? "esc 中断" : ""}
           </ThemedText>
         )}
       </Box>

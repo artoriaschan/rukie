@@ -37,6 +37,8 @@ export interface BoxProps {
   borderStyle?: "single";
   onMouseEnter?(): void;
   onMouseLeave?(): void;
+  /** Primary mouse press and release on this box activate it once. */
+  onClick?(): void;
 }
 
 export interface TextProps extends TextStyle {
