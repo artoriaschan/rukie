@@ -2,7 +2,7 @@ import { Box, ThemedBox, ThemedText, figures } from "@neant/tui";
 
 export function UserMessage({ text }: { text: string }) {
   return (
-    <ThemedBox color="userPromptLabel" backgroundColor="userMessageBackground" paddingRight={1}>
+    <ThemedBox color="userPromptLabel" paddingRight={3}>
       <Box width={2} flexShrink={0}>
         <ThemedText bold>{figures.user}</ThemedText>
       </Box>

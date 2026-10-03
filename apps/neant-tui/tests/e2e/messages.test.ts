@@ -19,10 +19,10 @@ test("streamed and completed replies keep the marker beside the first word and u
     expect(app.screen()[prompt + 1]).toBe("    code");
     const cell = (x: number, y: number) => app.terminal.buffer.active.getLine(y)!.getCell(x)!;
     expect(cell(2, prompt).isBold()).toBeTruthy();
-    expect(cell(2, prompt).getFgColor()).toBe(0x6b5221);
+    expect(cell(2, prompt).getFgColor()).toBe(0xffdf80);
     for (const y of [prompt, prompt + 1]) {
-      expect(cell(0, y).getBgColor()).toBe(0xd8dadd);
-      expect(cell(39, y).getBgColor()).toBe(0xd8dadd);
+      expect(cell(0, y).isBgDefault()).toBe(true);
+      expect(cell(39, y).isBgDefault()).toBe(true);
     }
     expect(cell(0, reply).getFgColor()).toBe(0x7da1de);
     expect(cell(0, reply).isBgDefault()).toBe(true);
@@ -34,7 +34,7 @@ test("streamed and completed replies keep the marker beside the first word and u
     await app.waitFor(() => app.screen().includes(`${figures.assistant} ${"x".repeat(39)}`));
     const resizedPrompt = app.screen().indexOf("❯ prompt 中");
     expect(resizedPrompt).toBeGreaterThanOrEqual(0);
-    expect(cell(59, resizedPrompt).getBgColor()).toBe(0xd8dadd);
+    expect(cell(59, resizedPrompt).isBgDefault()).toBe(true);
     expect(cell(59, resizedPrompt + 2).isBgDefault()).toBe(true);
     expect(app.stderr()).toBe("");
   } finally {

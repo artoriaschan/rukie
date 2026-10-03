@@ -10,7 +10,6 @@ export interface Theme {
   warning: `#${string}`;
   promptBorder: `#${string}`;
   userPromptLabel: `#${string}`;
-  userMessageBackground: `#${string}`;
   logoFrom: `#${string}`;
   logoTo: `#${string}`;
   barSystem: `#${string}`;
@@ -33,8 +32,7 @@ export const dark: Theme = {
   error: "#DA8A93",
   warning: "#D8B270",
   promptBorder: "#55606F",
-  userPromptLabel: "#6B5221",
-  userMessageBackground: "#D8DADD",
+  userPromptLabel: "#FFDF80",
   logoFrom: "#7DA1DE",
   logoTo: "#D7E4FF",
   barSystem: "#22305F",

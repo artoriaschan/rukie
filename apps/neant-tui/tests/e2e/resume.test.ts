@@ -50,8 +50,8 @@ test("resume replays stored text before input and appends the next Run to the sa
     ]);
     const promptCell = app.terminal.buffer.active.getLine(restored)!.getCell(2)!;
     expect(promptCell.isBold()).toBeTruthy();
-    expect(promptCell.getFgColor()).toBe(0x6b5221);
-    expect(app.terminal.buffer.active.getLine(restored)!.getCell(79)!.getBgColor()).toBe(0xd8dadd);
+    expect(promptCell.getFgColor()).toBe(0xffdf80);
+    expect(app.terminal.buffer.active.getLine(restored)!.getCell(79)!.isBgDefault()).toBe(true);
     expect(
       app.terminal.buffer.active
         .getLine(restored + 1)!

@@ -23,3 +23,5 @@
 - 最终执行 `rtk proxy env NO_COLOR= bun run check`，格式、lint、`tsc -b`、Knip 与全仓库测试全绿：235 tests / 1254 assertions，0 failures。执行环境自带 NO_COLOR，普通颜色验证显式清空，原有 NO_COLOR 专项测试保持通过。
 - 手动验收：在 PTY 中通过 neant 的 main 入口 IO seam 固定 80×24，注入受控模型流，执行真实 bash 成功调用和四行失败输出，并显示 MCP notice、流式/保留 assistant、run 错误。ANSI 及终端 cell 读回确认全部目标配色、结果缩进和仅三行错误；Ctrl+D 退出码 0、终端模式恢复。未连接真实模型；临时 runner 与 ANSI 记录保存在 /tmp，未纳入仓库。
 - code-review：以实施前 HEAD `81cdd2e47411fe3334b9001b89dca014fc6626b7` 为基线，对暂存实现分别进行 Standards 与 Spec 独立审查，均为 0 项发现。
+- 2026-10-03 用户再次调整：取消用户消息浅灰背景，颜色对齐本机 dsh-TUI 深色主题 `userPromptLabel=#FFDF80`，前缀与正文均加粗，续行缩进两列并按参考为正文右侧保留三列；删除不再使用的 userMessageBackground token。更新组件、main IO 和 resume 的终端断言，定向 7 tests 全绿，覆盖无底色、金色加粗、多行/缩放及历史回放。
+- 本次最终验收：`rtk proxy env -u NO_COLOR bun run check` 全绿（格式、lint、`tsc -b`、Knip，371 tests / 2250 assertions，0 failures）。40×24 真实 PTY 及 cell 读回确认金色加粗、无背景填充与模型圆点同行，Ctrl+D 正常退出并恢复终端；Standards 与 Spec 独立审查均无发现。
