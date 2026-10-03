@@ -42,6 +42,10 @@ _Avoid_: task, job
 由工具或 Agent Core 维护、随 transcript 持久化、resume 时重建的 session 级状态，如 todo 列表、Goal。每次变化记一份完整快照，取最后一条有效快照为当前状态。只记录 resume 后仍需看到的事实；"当前进程正在做什么"（如 Goal 是否正在续跑）不属于 Tool State。
 _Avoid_: tool data, session state
 
+**Todo List**:
+模型为当前 session 维护的任务清单，是一种 Tool State。每项只有内容和状态（待办 / 进行中 / 已完成），每次整表替换。属于单个 session：子代理有自己的 Todo List，不与父 session 共享。与 Goal 相互独立。
+_Avoid_: task list, plan
+
 **Session Store**:
 transcript 的持久化位置。Headless CLI 和 TUI 存成 JSONL 文件，桌面端存到 SQLite。
 _Avoid_: database, history store

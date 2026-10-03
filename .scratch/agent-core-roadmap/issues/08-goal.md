@@ -15,4 +15,4 @@ charting 中已定（参考 deepseek-harness `packages/goal`）：
 - 简化：不做 revision CAS；不做"连续 3 轮才能 blocked"门槛。
 - Permission Mode 为 `ask` 时不自动提权，设 goal 时提示建议切 `auto-review`。
 
-需定：Agent Core API 形状（`setGoal` / `pauseGoal` …）；模型工具 schema；按地基 B 的事件形态；`/goal` 子命令集合；Headless CLI 入口（flag 形态）；TUI 呈现（状态栏 `goal n/max`、面板）；与 compaction 的交互（compaction 后 objective 如何保留）。
+需定：Agent Core API 形状（`setGoal` / `pauseGoal` …）；模型工具 schema；按地基 B 的事件形态；`/goal` 子命令集合；Headless CLI 入口（flag 形态）；TUI 呈现（状态栏 `goal n/max`、面板；面板已由 todo 工单定为复刻 dsh-TUI `GoalTodoPanel`，Goal 为根行，本工单补根行、`goal 存在` 时 todo 区块常显条件与状态栏 chip）；与 compaction 的交互（compaction 后 objective 如何保留）。

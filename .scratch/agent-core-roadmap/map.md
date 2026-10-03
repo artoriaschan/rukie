@@ -24,6 +24,7 @@ Labels: wayfinder:map
 - [地基 A：Agent Core → frontend 交互通道](issues/01-interaction-channel.md): 每种交互一个回调 + 内部共享 helper；无回调时先去工具、再取安全默认值；交互内拒绝不影响 run，run 中止以取消结束；不进 transcript；子代理经顶层回调转发并带 origin
 - [向用户提问（ask user）](issues/09-ask-user.md): 工具 `ask_user_question`（命名约定：对齐 Claude Code 同名工具、snake_case）+ 回调 `onQuestion`；照 CC 1–4 题 × 2–4 选项、无 preview、自由输入由 frontend 附加；不走审批；纯文本结果，拒绝回答非错误；无超时；TUI 与审批共用槽位、统一 FIFO；transcript 由工具参数 + 结果渲染摘要；子代理是否可用交子代理工单
 - [地基 B：工具状态进 transcript](issues/02-tool-state-in-transcript.md): 术语 Tool State；pi `custom` entry `tool-state/<name>` 存带版本的完整快照，last-wins，坏记录退回上一条并告警；resume 需见的事实才持久（armed 等易失）；反馈渠道各自定，默认复用 ReminderSource，compaction 后立即重注入；frontend 经 `tool_state_changed` 事件 + `toolState(name)`；子代理为独立 session 经 `parentSessionId` 链接，父 tool result `details` 记 `childSessionId`
+- [todo 工具](issues/07-todo.md): 单个 `todo_write` 整表覆盖（不做 CC V2 Task* 四件套：为 swarm 共享任务表而生）；`{content,status}` 三态、不限 in_progress 个数、不自动清空；Tool State `todo` + 有未完成项时的 `todo` reminder，无催促；TUI 复刻 dsh-TUI `GoalTodoPanel`（树形、`ctrl+q`/点击折叠、空闲隐藏已完成），Goal 根行归 Goal 工单；工具卡 `todos ✓ done/total`
 
 ## Not yet specified
 
@@ -37,3 +38,4 @@ Labels: wayfinder:map
 - multi-edit / apply_patch：edit 足够，成瓶颈再议。
 - MCP resources / prompts：极少 server 使用。
 - server 与桌面端。
+- 多 agent 共享任务表（CC V2 `TaskCreate/Get/List/Update`、dsh `agent-team` 任务板）：Neant 子代理各自独立 session，无共享场景；见 [todo 工具](issues/07-todo.md)。
