@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { start } from "../helpers/app";
 import { createTerminal } from "../helpers/terminal";
 import { main } from "../../src/main";
@@ -250,5 +252,28 @@ test("English welcome header localizes configured effort", async () => {
     expect(app.screen().join("\n")).not.toContain("推理强度");
   } finally {
     await app.cleanup();
+  }
+});
+
+test("user locale overrides environment for non-interactive terminal guidance", async () => {
+  const root = await mkdtemp(join(tmpdir(), "neant-locale-terminal-"));
+  const terminal = createTerminal();
+  terminal.stdin.isTTY = false;
+  let stderr = "";
+  try {
+    await Bun.write(join(root, ".neant/settings.json"), '{"locale":"zh"}');
+    expect(
+      await main([], {
+        ...terminal,
+        env: { LANG: "en" },
+        session: { cwd: root, homeDir: root },
+        stderr: (text) => (stderr += text),
+      }),
+    ).toBe(1);
+    expect(stderr).toContain("neant 需要交互式终端");
+    expect(terminal.output()).toBe("");
+  } finally {
+    terminal.dispose();
+    await rm(root, { recursive: true, force: true });
   }
 });

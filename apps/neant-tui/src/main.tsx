@@ -100,16 +100,16 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
   }
   let app: ReturnType<typeof render> | undefined;
   let chat: Awaited<ReturnType<typeof createChat>> | undefined;
-  if (!io.stdin.isTTY || !io.stdout.isTTY || (io.term ?? process.env.TERM) === "dumb") {
-    io.stderr(`${argvT("startup.terminal")}\n`);
-    return 1;
-  }
   try {
     const cwd = io.session?.cwd ?? process.cwd();
     const homeDir = io.session?.homeDir ?? homedir();
     const { settings, warnings } = await loadSettings({ cwd, homeDir });
     const locale = resolveLocale([settings.locale, env.LC_ALL, env.LC_MESSAGES, env.LANG]);
     const t = createTuiI18n(locale);
+    if (!io.stdin.isTTY || !io.stdout.isTTY || (io.term ?? process.env.TERM) === "dumb") {
+      io.stderr(`${t("startup.terminal")}\n`);
+      return 1;
+    }
     for (const warning of warnings) io.stderr(`${t("startup.warning", { warning })}\n`);
     if (values.model) settings.model = values.model;
     if (values.thinking) settings.thinking = values.thinking as ThinkingLevel;
