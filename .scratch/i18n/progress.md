@@ -8,7 +8,7 @@ Starting commit: 9e8f182
 - 02: done; implementation `8634538`, reviewed fix `00663db`; interface copy and startup notices.
 - 03: done; implementation `62d6dec`, reviewed layout fix `39e0f02`; activity phrases and narration.
 - 04: done; implementation `7a6e954`; locale-agnostic Agent Core errors and frontend translation.
-- 05: pending; hardcoded Chinese scan.
+- 05: done; implementation `4d76e2d`; hardcoded Han scan and minimal resume-test idle wait.
 
 Each worker reads /Users/artorias_chan/.agents/skills/implement/SKILL.md,
 uses public-behavior TDD where appropriate, runs the full check, performs
@@ -95,3 +95,41 @@ Standards: 0 findings. Spec: 0 findings. Both independent read-only reviews
 cover implementation `7a6e954`; no repairs required and no unresolved findings.
 Review logs: `/tmp/neant-i18n-issue04-review-standards.md` and
 `/tmp/neant-i18n-issue04-review-spec.md`. 05 remains pending.
+
+## Issue 05 evidence
+
+Completed on 2026-10-03: implementation `4d76e2d` (current branch; no merge/push).
+Scope: recursive Han protection for `apps/neant-tui/src`, `packages/agent/src`
+and the related `packages/tui/src` renderer source. Only exact TUI dictionary
+and activity phrase-pool paths are exempt; sibling/new/same-name files cannot
+bypass the scan. Hidden and non-TS source files are included. Existing source
+has no Han outside those files, so comments deliberately fail too. Regex uses
+JavaScript Unicode `Script=Han`, including supplementary Han code points.
+
+Verification: scanner location and exact-exemption slices red then green;
+five fixture/current-source cases cover CRLF, complete file/line diagnostics,
+strict line/block comments, precise whitelist boundaries and actual repo.
+Regular `rtk proxy bunx tsc -b` passed. Focused scanner+main regression:
+41 pass / 163 assertions. Final `rtk proxy env -u NO_COLOR bun run check`
+passed formatting, lint, tsc, Knip and 619 tests / 4043 assertions (53 files).
+Final log: `/tmp/neant-i18n-issue05-check.log`.
+
+First two full runs failed the same legacy resume test with a 5s timeout,
+while isolated/whole-main/TUI scopes passed. A public SessionStore.close gate
+proved that displayed reply text could precede Run completion, so Ctrl+D was
+ignored while working. Same gate red then green with a public terminal idle
+wait; final maintenance is that one added wait before Ctrl+D. Product behavior,
+timeouts and fixed sleeps were not changed; diagnostic instrumentation removed.
+Failure logs: `/tmp/neant-i18n-issue05-check-{first,second}.log`.
+Deterministic diagnostic: `/tmp/neant-i18n-issue05-resume-gate-{red,green}.log`,
+with source preserved at `/tmp/neant-i18n-issue05-resume-gate-source.ts`.
+Scanner red/green logs: `/tmp/neant-i18n-issue05-{red,green}-{locations,allowlist}.log`.
+Final focused: `/tmp/neant-i18n-issue05-green-regression.log`.
+
+Review fixed point `bbadd8d`, diff `git diff bbadd8d...HEAD`.
+Standards: 0 findings. Spec: 0 findings. Both independent read-only reviews
+cover implementation `4d76e2d`, including renderer coverage and authorized
+minimal test maintenance; no repairs required and no unresolved findings.
+Review logs: `/tmp/neant-i18n-issue05-review-standards.md` and
+`/tmp/neant-i18n-issue05-review-spec.md`. All five issues are now done;
+controller final validation and local main integration remain.
