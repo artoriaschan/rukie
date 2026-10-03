@@ -15,7 +15,7 @@ _Avoid_: engine, backend
 _Avoid_: client, UI
 
 **Headless CLI**:
-非交互的 frontend：读入一条 prompt，执行一个 run，输出文本或 stream-json 后退出。
+非交互的 frontend：读入一条 prompt，执行一个 run，输出文本或 stream-json 后退出。不提供任何 Interaction 回调：依赖交互的工具不暴露给模型，Agent Core 自身发起的交互取各自的安全默认值。
 _Avoid_: CLI（会和 TUI 混淆）
 
 **TUI**:
@@ -101,6 +101,10 @@ _Avoid_: slash command, macro
 **Permission Decision**:
 对单次工具调用在执行前做出的判定：`allow`、`deny` 或 `ask`。`ask` 交给 frontend 询问用户；Headless CLI 没法询问，按 `deny` 处理。
 _Avoid_: approval, consent
+
+**Interaction**:
+Agent Core 在 run 中向 frontend 发起、并挂起等待用户回复的一次请求，如审批 permission decision 的 `ask`、模型向用户提问、plan 批准、MCP OAuth 授权。每种交互一个 frontend 回调；frontend 不提供回调时按该交互的安全默认值处理。用户拒绝单次交互不影响 run；run 中止时挂起的交互以取消结束。交互本身不进 transcript，其结果体现在工具结果里。
+_Avoid_: prompt（会和用户 prompt 混淆）, dialog, request
 
 **Permission Mode**:
 决定 permission decision 如何得出的 session 级开关，三选一：`ask`（只读工具 allow，其余 ask）、`auto-review`（由 permission review 判定，安全的 allow，有风险的 ask）、`full-access`（全部 allow，无任何拦截）。默认 `ask`；运行中可切换，只对当前 session 生效，resume 时回到默认值。

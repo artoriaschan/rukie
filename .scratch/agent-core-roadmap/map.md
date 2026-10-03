@@ -20,10 +20,10 @@ Labels: wayfinder:map
 
 - [子代理参考实现调研](issues/04-research-subagent-prior-art.md): 三者都只回传最终文本、子 transcript 为带 parent 链接的独立 JSONL、进度走事件；分歧在权限（Claude Code 冒泡给用户 vs harness 固定 never 自动拒绝）、嵌套深度（3 vs 1）、定义方式（具名 markdown vs provider 配置）；dsh-TUI 运行时即 harness 包
 - [权限规则 / hooks / checkpoint 参考实现调研](issues/05-research-rules-hooks-checkpoint-prior-art.md): CC/Codex 都是固定顺序 hooks（可改写）→ 规则（deny>ask>allow 取最严、跨层合并、复合命令拆分逐段判）→ 审批 → 执行 → post，hook allow 绕不过规则；DSH 无规则只有 sandbox×approval preset、hooks 不可改写；checkpoint 仅 CC 现存（每 prompt、只跟踪文件工具不含 bash），Codex 整树 ghost 快照已移除，DSH 影子 git 只作 diff
+- [地基 A：Agent Core → frontend 交互通道](issues/01-interaction-channel.md): 每种交互一个回调 + 内部共享 helper；无回调时先去工具、再取安全默认值；交互内拒绝不影响 run，run 中止以取消结束；不进 transcript；子代理经顶层回调转发并带 origin
 
 ## Not yet specified
 
-- 各能力在 Headless CLI 下的统一降级策略：交互通道（Agent Core 发起交互并等待回复）定形后，可能需要一张横跨 ask user / plan mode / 审批的降级工单。
 - 子代理的并发与上下文隔离细节（并行数、取消传播、token 计量归属），等子代理工单定了地基用法后再拆。
 - 最终排序与 handoff：所有能力工单定完后，汇总依赖图、给出实现顺序。
 
