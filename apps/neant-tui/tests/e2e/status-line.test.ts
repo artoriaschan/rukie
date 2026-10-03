@@ -6,10 +6,14 @@ for (const columns of [80, 60, 40]) {
   test(`Chat places fields below input until context is available at ${columns} columns`, async () => {
     const app = await start([], { columns });
     try {
-      await app.waitFor(() => app.stdin.isRaw && app.screen().at(-2)?.includes("0→0") === true);
+      await app.waitFor(
+        () => app.stdin.isRaw && app.screen().at(-2)?.startsWith(" ask ·") === true,
+      );
       expect(app.screen().at(-3)).toMatch(/^╰─+╯$/);
       expect(app.screen().at(-1)).toBe("");
-      app.stdin.write("\x1b[<35;2;23M");
+      const fieldsBeforeRun = app.screen().at(-2)!;
+      const modelX = fieldsBeforeRun.indexOf("·") + 2 + (fieldsBeforeRun.includes(" · ") ? 1 : 0);
+      app.stdin.write(`\x1b[<35;${modelX};23M`);
       await app.waitFor(() => app.screen().at(-1)?.includes("model faux-1") === true);
       expect(app.screen().at(-3)).toMatch(/^╰─+╯$/);
       app.stdin.write("\x1b[<35;80;1M");
@@ -25,7 +29,7 @@ for (const columns of [80, 60, 40]) {
       await app.waitFor(() => !app.isWorking() && app.screen().at(-1) === "");
       const fields = app.screen().at(-2)!;
       expect(fields).toContain("ctx ");
-      if (columns === 80) expect(fields).toContain("1.0k→2.0k");
+      if (columns === 80) expect(fields).toContain("1.0k→2.0");
       app.stdin.write("second\r");
       await app.waitFor(() => app.calls.length === 2 && app.screen().at(-1)?.trim() === "esc 中断");
       if (columns === 80) {
@@ -38,7 +42,7 @@ for (const columns of [80, 60, 40]) {
       }
       app.calls[1]!.finish(2000, 3000);
       await app.waitFor(() => !app.isWorking() && app.screen().at(-1) === "");
-      if (columns === 80) expect(app.screen().at(-2)).toContain("3.0k→5.0k");
+      if (columns === 80) expect(app.screen().at(-2)).toContain("3.0k→5.0");
       expect(app.screen().at(-4)).toMatch(/^╰─+╯$/);
     } finally {
       await app.cleanup();
@@ -90,7 +94,10 @@ test("tps starts after 500ms of decoding and final usage corrects the Run sample
 test("tps includes tool-call deltas and completed Turns while excluding time between Turns", async () => {
   let now = Date.UTC(2026, 9, 2);
   const clock = spyOn(Date, "now").mockImplementation(() => now);
-  const app = await start(["tool decode"], { session: { permissionMode: "full-access" } });
+  const app = await start(["tool decode"], {
+    columns: 120,
+    session: { permissionMode: "full-access" },
+  });
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.toolDelta("x".repeat(800));
@@ -123,7 +130,7 @@ test("tps includes tool-call deltas and completed Turns while excluding time bet
 });
 
 test("Session cache counters accumulate across Runs in hover details", async () => {
-  const app = await start(["first"]);
+  const app = await start(["first"], { columns: 120 });
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.finish(1000, 100, { read: 2000, write: 1000 });
@@ -187,7 +194,7 @@ test("hover details and scroll hints share the third footer row without shrinkin
     expect(app.screen().at(-2)).toContain("ctx ▕");
     expect(app.screen().slice(0, inputTop - 2)).toEqual(body);
     expect(app.screen().findIndex((line) => /^╭─+╮$/.test(line))).toBe(inputTop);
-    app.stdin.write("\x1b[<35;2;23M");
+    app.stdin.write(`\x1b[<35;${app.screen().at(-2)!.indexOf("faux") + 1};23M`);
     await app.waitFor(
       () => app.screen().at(-1)?.includes("model faux-1 · provider faux · ctx 128k") === true,
     );
@@ -201,7 +208,7 @@ test("hover details and scroll hints share the third footer row without shrinkin
     await app.waitFor(() => app.screen().at(-1)?.trim() === "有新输出 · Ctrl+End 回到底部");
     expect(app.screen().slice(0, inputTop - 2)).toEqual(reading);
     expect(app.screen().filter((line) => line.includes("回到底部"))).toHaveLength(1);
-    app.stdin.write("\x1b[<35;2;23M");
+    app.stdin.write(`\x1b[<35;${app.screen().at(-2)!.indexOf("faux") + 1};23M`);
     await app.waitFor(() => app.screen().at(-1)?.startsWith(" model faux-1") === true);
     app.stdin.write("\x1b[<35;80;1M");
     await app.waitFor(() => app.screen().at(-1)?.includes("有新输出") === true);
@@ -218,7 +225,7 @@ for (const [input, pct, color] of [
   [121600, 95, dark.error],
 ] as const) {
   test(`Chat retains context usage and warns at ${pct}% on the next Run`, async () => {
-    const app = await start(["first"]);
+    const app = await start(["first"], { columns: 120 });
     try {
       await app.waitFor(() => app.calls.length === 1);
       app.calls[0]!.finish(input, 10);

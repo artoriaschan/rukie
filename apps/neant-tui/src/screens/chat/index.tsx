@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { createSession, type SessionOptions } from "@neant/agent";
-import type { ThinkingLevel } from "@neant/shared";
+import { createSession, type Session, type SessionOptions } from "@neant/agent";
+import { PERMISSION_MODES, type ThinkingLevel } from "@neant/shared";
 import {
   Box,
   ScrollBox,
@@ -56,6 +56,7 @@ export async function createChat(options: SessionOptions, model: string) {
     Chat({ onExit }: { onExit(): void }) {
       return (
         <Chat
+          session={session}
           conversation={conversation}
           permissions={permissions}
           cwd={options.cwd}
@@ -68,12 +69,14 @@ export async function createChat(options: SessionOptions, model: string) {
 }
 
 function Chat({
+  session,
   conversation,
   permissions,
   cwd,
   thinking,
   onExit,
 }: {
+  session: Session;
   conversation: ReturnType<typeof createConversation>;
   permissions: ReturnType<typeof createPermissions>;
   cwd: string;
@@ -83,6 +86,7 @@ function Chat({
   const state = useSyncExternalStore(conversation.subscribe, conversation.getSnapshot);
   const question = useSyncExternalStore(permissions.subscribe, permissions.getSnapshot);
   const [input, setInput] = useState("");
+  const [mode, setMode] = useState(session.permissionMode);
   const { columns, rows } = useTerminalSize();
   const small = columns < 40 || rows < 12;
   const body = useRef<ScrollHandle>(null);
@@ -162,6 +166,18 @@ function Chat({
     }
     const { key } = event;
     const pending = permissions.getSnapshot();
+    if (key.name === "tab" && key.shift && !key.ctrl && !key.alt) {
+      lastInterrupt.current = undefined;
+      if (!pending && !small) {
+        const next =
+          PERMISSION_MODES[
+            (PERMISSION_MODES.indexOf(session.permissionMode) + 1) % PERMISSION_MODES.length
+          ]!;
+        session.setPermissionMode(next);
+        setMode(next);
+      }
+      return;
+    }
     if (!small && key.ctrl && key.name === "end") {
       body.current?.scrollToBottom();
       lastInterrupt.current = undefined;
@@ -303,6 +319,7 @@ function Chat({
             )}
             <StatusLine
               columns={columns}
+              mode={mode}
               model={state.model.slice(state.model.indexOf("/") + 1)}
               provider={state.model.split("/")[0]!}
               contextUsage={state.contextUsage}

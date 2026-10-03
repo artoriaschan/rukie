@@ -1,8 +1,129 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
+import { createSession, type SessionOptions } from "@neant/agent";
+import { controlledModel } from "../helpers/model";
 import { start } from "../helpers/app";
 
 const assistant = process.platform === "darwin" ? "⏺" : "●";
+
+test.each(["ask", "auto-review"] as const)(
+  "mode switches leave settings and reminders unchanged and resume restores %s",
+  async (defaultMode) => {
+    let root = "";
+    let id = "";
+    const argv: string[] = ["first"];
+    const settings = { permissionMode: defaultMode };
+    const sessionOptions: Partial<SessionOptions> = { settings };
+    const userSettings = JSON.stringify(settings) + "\n";
+    const projectSettings = '{"allowTools":["read"]}\n';
+    const app = await start(argv, {
+      session: sessionOptions,
+      prepare: async (directory) => {
+        root = directory;
+        sessionOptions.homeDir = join(root, "home");
+        await Bun.write(join(root, "home/.neant/settings.json"), userSettings);
+        await Bun.write(join(root, ".neant/settings.json"), projectSettings);
+        const seed = await createSession({
+          cwd: root,
+          homeDir: sessionOptions.homeDir,
+          ...controlledModel(),
+        });
+        id = seed.id;
+        argv.push("--resume", id);
+      },
+    });
+    try {
+      await app.waitFor(() => app.calls.length === 1);
+      expect(app.screen().at(-2)).toStartWith(` ${defaultMode} ·`);
+      const firstContext = app.calls[0]!.context;
+      app.calls[0]!.finish();
+      await app.waitFor(() => !app.isWorking());
+      app.stdin.write(defaultMode === "ask" ? "\x1b[Z\x1b[Z" : "\x1b[Z");
+      await app.waitFor(() => app.screen().at(-2)!.startsWith(" full-access ·"));
+      app.stdin.write("second\r");
+      await app.waitFor(() => app.calls.length === 2);
+      const secondContext = app.calls[1]!.context;
+      expect(secondContext.messages.slice(0, firstContext.messages.length)).toEqual(
+        firstContext.messages,
+      );
+      expect(secondContext.messages.slice(firstContext.messages.length)).toMatchObject([
+        { role: "assistant" },
+        { role: "user", content: [{ type: "text", text: "second" }] },
+      ]);
+      expect(secondContext.messages).toHaveLength(firstContext.messages.length + 2);
+      app.calls[1]!.tool("bash", { command: "printf session-only-mode" });
+      await app.waitFor(() => app.calls.length === 3);
+      expect(app.calls[2]!.context.messages.at(-1)).toMatchObject({ isError: false });
+      app.calls[2]!.finish();
+      await app.waitFor(() => !app.isWorking());
+      expect(settings.permissionMode).toBe(defaultMode);
+      expect(await Bun.file(join(root, "home/.neant/settings.json")).text()).toBe(userSettings);
+      expect(await Bun.file(join(root, ".neant/settings.json")).text()).toBe(projectSettings);
+      const replay = await start(["--resume", id], {
+        session: { cwd: root, homeDir: join(root, "home"), settings },
+      });
+      try {
+        await replay.waitFor(() => replay.screen().at(-2)!.startsWith(` ${defaultMode} ·`));
+        replay.stdin.write("resumed\r");
+        await replay.waitFor(() => replay.calls.length === 1);
+        replay.calls[0]!.tool("bash", { command: "printf must-ask-after-resume" });
+        await replay.waitFor(() => replay.screen().join("\n").includes("权限确认"));
+        expect(replay.calls).toHaveLength(1);
+        expect(await Bun.file(join(root, "home/.neant/settings.json")).text()).toBe(userSettings);
+      } finally {
+        await replay.cleanup();
+      }
+    } finally {
+      await app.cleanup();
+    }
+  },
+);
+
+test("shift+tab cycles modes during a Run and changes the next tool permission immediately", async () => {
+  const app = await start(["switch during run"]);
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    expect(app.screen().at(-2)).toStartWith(" ask ·");
+    app.stdin.write("next draft\x1b[Z");
+    await app.waitFor(() => app.screen().at(-2)!.startsWith(" auto-review ·"));
+    expect(app.screen()).toContain("❯ next draft");
+    app.stdin.write("\x1b[Z");
+    await app.waitFor(() => app.screen().at(-2)!.startsWith(" full-access ·"));
+    app.calls[0]!.tool("bash", { command: "printf switched-permission" });
+    await app.waitFor(() => app.calls.length === 2);
+    expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
+      role: "toolResult",
+      isError: false,
+      content: [{ type: "text", text: "switched-permission" }],
+    });
+    expect(app.screen().join("\n")).not.toContain("权限确认");
+    app.stdin.write("\x1b[Z");
+    await app.waitFor(() => app.screen().at(-2)!.startsWith(" ask ·"));
+    app.calls[1]!.tool("bash", { command: "printf ask-again" });
+    await app.waitFor(() => app.screen().join("\n").includes("权限确认"));
+    const dialog = app.screen().slice(app.screen().findIndex((line) => line.includes("权限确认")));
+    app.stdin.write("\x1b[Z\x1b[Z");
+    await Bun.sleep(30);
+    await app.flush();
+    expect(app.screen().slice(app.screen().findIndex((line) => line.includes("权限确认")))).toEqual(
+      dialog,
+    );
+    expect(app.calls).toHaveLength(2);
+    app.stdin.write("3\r");
+    await app.waitFor(() => app.calls.length === 3);
+    expect(app.calls[2]!.context.messages.at(-1)).toMatchObject({ isError: true });
+    app.calls[2]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    expect(app.screen()).toContain("❯ next draft");
+    // Back-to-back key events must read the current Session mode synchronously.
+    app.stdin.write("\x1b[Z\x1b[Z\x1b[Z");
+    await Bun.sleep(30);
+    await app.flush();
+    expect(app.screen().at(-2)).toStartWith(" ask ·");
+  } finally {
+    await app.cleanup();
+  }
+});
 
 test.each(["default", "ask", "auto-review"])(
   "%s: allow once executes the tool and asks again for its next call",

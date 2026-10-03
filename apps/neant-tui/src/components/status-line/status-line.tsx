@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { basename } from "node:path";
 import { Box, ThemedText, type ThemeColor } from "@neant/tui";
-import type { ContextUsageEvent, RunResult, ThinkingLevel } from "@neant/shared";
+import type { ContextUsageEvent, PermissionMode, RunResult, ThinkingLevel } from "@neant/shared";
 import {
   allocateColumns,
   barWidths,
@@ -20,6 +20,7 @@ export interface TpsSample {
 }
 export interface StatusLineProps {
   columns: number;
+  mode: PermissionMode;
   model: string;
   provider: string;
   contextUsage?: ContextUsageEvent;
@@ -35,7 +36,16 @@ export interface StatusLineProps {
   scrollHint?: string;
 }
 
-type HoverField = "bar" | "ctx" | "model" | "tps" | "cache" | "tokens" | "git" | "cwd";
+type HoverField = "bar" | "ctx" | "mode" | "model" | "tps" | "cache" | "tokens" | "git" | "cwd";
+
+const modeDescriptions: Record<PermissionMode, { full: string; compact: string }> = {
+  ask: { full: "只读工具直接允许，其余请求批准", compact: "非只读需批准" },
+  "auto-review": {
+    full: "自动评审工具调用，有风险或评审失败时请求批准",
+    compact: "评审，有风险询问",
+  },
+  "full-access": { full: "允许所有工具调用，无权限拦截", compact: "全部允许，无拦截" },
+};
 
 function Meter({
   value,
@@ -113,6 +123,7 @@ export function StatusLine(props: StatusLineProps) {
   const totalInput = props.usage.input + props.usage.cacheRead + props.usage.cacheWrite;
   const cacheRate = totalInput > 0 ? (props.usage.cacheRead / totalInput) * 100 : undefined;
   const fields: { id: HoverField | "effort"; content: ReactNode }[] = [
+    { id: "mode", content: props.mode },
     { id: "model", content: props.model },
     { id: "tps", content: speedView },
     ...(props.thinking ? [{ id: "effort" as const, content: props.thinking }] : []),
@@ -123,8 +134,11 @@ export function StatusLine(props: StatusLineProps) {
     ...(props.gitBranch ? [{ id: "git" as const, content: props.gitBranch }] : []),
     { id: "cwd", content: basename(props.cwd) || props.cwd },
   ];
-  const leftWidth = Math.max(0, width - ctx.length - (ctx ? 1 : 0));
-  const separator = leftWidth >= fields.length + (fields.length - 1) * 3 ? " · " : "·";
+  const ctxWidth = Math.min(ctx.length, Math.max(0, width - props.mode.length - (ctx ? 1 : 0)));
+  const leftWidth = Math.max(0, width - ctxWidth - (ctx ? 1 : 0));
+  // Keep the permission policy legible before spending columns on optional fields.
+  while (fields.length > 1 && leftWidth < props.mode.length + (fields.length - 1) * 2) fields.pop();
+  const separator = leftWidth >= props.mode.length + (fields.length - 1) * 4 ? " · " : "·";
   const naturalWidths = fields.map(({ id, content }) =>
     Bun.stringWidth(id === "tps" ? speedText : String(content)),
   );
@@ -134,10 +148,31 @@ export function StatusLine(props: StatusLineProps) {
       ? naturalWidths
       : allocateColumns(
           naturalWidths,
-          fields.map(() => 1),
+          fields.map(({ id }) => (id === "mode" ? props.mode.length : 1)),
           budget,
         );
   let detail: ReactNode;
+  if (hover === "mode") {
+    const description = modeDescriptions[props.mode];
+    const fits =
+      Bun.stringWidth(`mode ${props.mode} · ${description.full} · shift+tab 切换模式`) <= width;
+    detail = (
+      <Details
+        fields={
+          fits
+            ? [
+                ["mode", props.mode],
+                ["", description.full],
+                ["", "shift+tab 切换模式"],
+              ]
+            : [
+                ["", description.compact],
+                ["", "shift+tab 切换"],
+              ]
+        }
+      />
+    );
+  }
   if (hover === "ctx" && usage)
     detail = (
       <Details
@@ -274,7 +309,12 @@ export function StatusLine(props: StatusLineProps) {
                     flexShrink={1}
                     {...(id !== "effort" ? hoverProps(id) : {})}
                   >
-                    <ThemedText wrap="truncate">{content}</ThemedText>
+                    <ThemedText
+                      color={id === "mode" && props.mode === "full-access" ? "error" : undefined}
+                      wrap="truncate"
+                    >
+                      {content}
+                    </ThemedText>
                   </Box>
                 </Box>
               ),
@@ -282,7 +322,7 @@ export function StatusLine(props: StatusLineProps) {
           <Box flexGrow={1} />
         </Box>
         {ctx && <Box width={1} flexShrink={0} />}
-        <Box width={ctx.length} flexShrink={0} {...(usage ? hoverProps("ctx") : {})}>
+        <Box width={ctxWidth} flexShrink={0} {...(usage ? hoverProps("ctx") : {})}>
           <ThemedText wrap="truncate">
             {hover === "ctx" && usage ? (
               <>
