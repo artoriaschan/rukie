@@ -7,7 +7,7 @@ Starting commit: 9e8f182
 - 01: already done at 9e8f182; checked ticket, plan, history and clean working tree.
 - 02: done; implementation `8634538`, reviewed fix `00663db`; interface copy and startup notices.
 - 03: done; implementation `62d6dec`, reviewed layout fix `39e0f02`; activity phrases and narration.
-- 04: pending; locale-agnostic Agent Core errors.
+- 04: done; implementation `7a6e954`; locale-agnostic Agent Core errors and frontend translation.
 - 05: pending; hardcoded Chinese scan.
 
 Each worker reads /Users/artorias_chan/.agents/skills/implement/SKILL.md,
@@ -60,3 +60,38 @@ Review fixed point `07005ba`, diff `git diff 07005ba...HEAD`.
 Standards: 1 P3 test directory layout finding fixed in `39e0f02`; original
 reviewer confirmed 0 remaining and 0 new findings. Spec: 0 findings.
 No unresolved issues. 04/05 remain pending.
+
+## Issue 04 evidence
+
+Completed on 2026-10-03: implementation `7a6e954` (current branch; no merge/push).
+Scope: five code-discriminated shared errors, English Core fallback messages and
+permission refusal reasons, shared zh/en error copy tied to the code union,
+frontend startup/runtime/live-tool/replay translation and original-message
+fallback. Core has no i18n dependency or new locale parameters. Headless CLI
+source stays unchanged; its affected English error assertions were updated.
+The builtin-tool boundary retains coded details for TUI display/replay while
+model/transcript content remains English. No-model copy retains configuration
+examples; missing builtin env names retain usable localized guidance.
+
+Verification: public config/session/tools/permissions and i18n/startup/live-tool
+slices red then green; cross-locale resume keeps transcript English; public
+main/start covers all five codes in zh/en, runtime coded errors, absent/unknown
+codes, malformed params and non-Error fallback. Compile-negative cases prove
+code-bound params and error-key/interpolation constraints. Regular tsc passed;
+focused main/CLI/i18n regression 108 pass / 503 assertions. First full run found
+three legacy localization assertions, fixed and rerun focused plus full. Final
+`rtk proxy env -u NO_COLOR bun run check` passed formatting, lint, tsc, Knip and
+614 tests / 4038 assertions (52 files). Latest full log:
+`/tmp/neant-i18n-issue04-check.log`.
+Core red/green logs use `/tmp/neant-i18n-issue04-{red,green}-{config,unknown,key,session,permissions,tools}.log`.
+Frontend evidence: `/tmp/neant-i18n-issue04-green-startup.log`,
+`/tmp/neant-i18n-issue04-green-live.log`,
+`/tmp/neant-i18n-issue04-green-resume-fallback.log`,
+`/tmp/neant-i18n-issue04-green-key-guidance.log` and
+`/tmp/neant-i18n-issue04-green-regression.log`.
+
+Review fixed point `e453078`, diff `git diff e453078...HEAD`.
+Standards: 0 findings. Spec: 0 findings. Both independent read-only reviews
+cover implementation `7a6e954`; no repairs required and no unresolved findings.
+Review logs: `/tmp/neant-i18n-issue04-review-standards.md` and
+`/tmp/neant-i18n-issue04-review-spec.md`. 05 remains pending.
