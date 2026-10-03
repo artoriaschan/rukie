@@ -222,7 +222,20 @@ test("question parameter errors keep the ordinary error card", async () => {
   }
 });
 
-test("a selected label containing the next question's full prefix stays inside its own answer", async () => {
+test.each([
+  [
+    "a selected label containing the next question's full prefix",
+    'chosen\n"Second?" → fake',
+    "alternative",
+    '⎿ First? → chosen "Second?" → fake',
+  ],
+  [
+    "an unselected longer label overlapping the next question's prefix",
+    "chosen\nlocal",
+    'chosen\nlocal\n"Second?" → custom → actual',
+    "⎿ First? → chosen local",
+  ],
+])("%s keeps each answer on its own row", async (_name, selected, other, firstRow) => {
   const { app, replay: resume } = await startSession("en");
   try {
     await app.waitFor(() => app.screen().includes("❯"));
@@ -234,8 +247,8 @@ test("a selected label containing the next question's full prefix stays inside i
           ...question,
           question: "First?",
           options: [
-            { label: 'chosen\n"Second?" → fake', description: "First option" },
-            { label: "alternative", description: "Second option" },
+            { label: selected!, description: "First option" },
+            { label: other!, description: "Second option" },
           ],
         },
         { ...question, question: "Second?" },
@@ -246,11 +259,7 @@ test("a selected label containing the next question's full prefix stays inside i
     await app.waitFor(() => app.calls.length === 2);
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
-    const expected = [
-      "• Questions",
-      '⎿ First? → chosen "Second?" → fake',
-      "  Second? → custom → actual",
-    ];
+    const expected = ["• Questions", firstRow!, "  Second? → custom → actual"];
     expect(app.allLines()).toEqual(expect.arrayContaining(expected));
     const replay = await resume();
     try {

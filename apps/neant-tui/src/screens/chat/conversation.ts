@@ -70,34 +70,49 @@ function questionSummary(args: unknown, text: string, t: ReturnType<typeof creat
       .map(({ question }) => `${singleLine(question)} → ${t("question.unanswered")}`)
       .join("\n");
 
-  let offset = 0;
-  const lines: string[] = [];
-  for (const [index, { question, options }] of questions.entries()) {
+  const parse = (index: number, offset: number): string[] | undefined => {
+    const { question, options } = questions[index];
     const prefix = `"${question}" → `;
-    if (!text.startsWith(prefix, offset)) return text;
+    if (!text.startsWith(prefix, offset)) return undefined;
     const answerStart = offset + prefix.length;
-    // Consume known labels intact: their newlines can contain a later question's prefix.
-    const labels: string[] = Array.isArray(options)
-      ? options
-          .flatMap((item) => (typeof item?.label === "string" && item.label ? [item.label] : []))
-          .sort((a, b) => b.length - a.length)
-      : [];
-    let searchStart = answerStart;
-    while (true) {
-      const label = labels.find((label) => text.startsWith(label, searchStart));
-      if (!label) break;
-      searchStart += label.length;
-      if (!text.startsWith(", ", searchStart)) break;
-      searchStart += 2;
-    }
     const next = questions[index + 1];
-    const boundary = next ? `\n"${next.question}" → ` : undefined;
-    const end = boundary ? text.indexOf(boundary, searchStart) : text.length;
-    if (end === -1) return text;
-    lines.push(`${singleLine(question)} → ${singleLine(text.slice(answerStart, end))}`);
-    offset = end + 1;
-  }
-  return lines.join("\n");
+    if (!next) return [`${singleLine(question)} → ${singleLine(text.slice(answerStart))}`];
+
+    // Try intact label prefixes, then validate the remaining question sequence.
+    // At most four selections per question keeps overlapping-label candidates bounded.
+    const labels: string[] = Array.isArray(options)
+      ? options.flatMap((item) =>
+          typeof item?.label === "string" && item.label ? [item.label] : [],
+        )
+      : [];
+    const ends = new Set([answerStart]);
+    let starts = [answerStart];
+    for (let count = 0; count < Math.min(labels.length, 4) && starts.length > 0; count++) {
+      const following: number[] = [];
+      for (const start of starts) {
+        for (const label of labels) {
+          if (!text.startsWith(label, start)) continue;
+          const end = start + label.length;
+          ends.add(end);
+          if (text.startsWith(", ", end)) following.push(end + 2);
+        }
+      }
+      starts = following;
+    }
+    const boundary = `\n"${next.question}" → `;
+    for (const searchStart of [...ends].sort((a, b) => b - a)) {
+      const end = text.indexOf(boundary, searchStart);
+      if (end === -1) continue;
+      const remaining = parse(index + 1, end + 1);
+      if (remaining)
+        return [
+          `${singleLine(question)} → ${singleLine(text.slice(answerStart, end))}`,
+          ...remaining,
+        ];
+    }
+    return undefined;
+  };
+  return questions.length > 0 ? (parse(0, 0)?.join("\n") ?? text) : text;
 }
 
 interface ViewState {
