@@ -20,6 +20,95 @@ const sessionId = "activity-test";
 const start = 1_790_942_400_000;
 const random = () => 0;
 
+test("English compaction, review, approval, failure and interruption keep their locale-specific priority copy", () => {
+  let state = reduce(createActivity("en"), { type: "submit" }, start, random);
+  state = reduce(
+    state,
+    { type: "compaction_start", sessionId, tokensBefore: 120_000 },
+    start,
+    random,
+  );
+  expect(render(state, start).line).toMatch(
+    /^(Packing up context…|Tidying the context…) · total 0s$/,
+  );
+  state = reduce(
+    state,
+    { type: "permission_review", sessionId, phase: "start", toolCallId: "a", toolName: "bash" },
+    start,
+    random,
+  );
+  expect(render(state, start).line).toMatch(
+    /^REVIEW · (Checking this call for surprises|Making sure the permission fits|Giving this tool call a once-over) · total 0s$/,
+  );
+  state = reduce(state, { type: "approval-open" }, start, random);
+  expect(render(state, start).line).toMatch(
+    /^(Waiting for your go-ahead|Your call — approval needed|The model is waiting on you) · total 0s$/,
+  );
+  state = reduce(state, { type: "approval-close" }, start, random);
+  state = reduce(
+    state,
+    { type: "permission_review", sessionId, phase: "end", toolCallId: "a", decision: "allow" },
+    start,
+    random,
+  );
+  state = reduce(
+    state,
+    {
+      type: "compaction_end",
+      sessionId,
+      summary: "private",
+      tokensBefore: 120_000,
+      tokensAfter: 18_000,
+    },
+    start,
+    random,
+  );
+  expect(render(state, start).line).toBe("Compacted · 120.0k→18.0k · total 0s");
+  state = reduce(state, toolStart("a"), start + 7000, random);
+  state = reduce(state, toolEnd("a", true), start + 8000, random);
+  expect(render(state, start + 8000).line).toBe("✗ That failed · Reading src/a.ts · 1s · total 8s");
+  state = reduce(state, { type: "interrupt" }, start + 9000, random);
+  expect(render(state, start + 9000).line).toBe("Again! Round two · total 9s");
+  state = reduce(state, result(false), start + 9000, random);
+  expect(render(state, start + 16_000).line).toBe(
+    "That failed · 1 tool · thought 1s worked 1s · 🔥 12.3k",
+  );
+});
+
+test.each([0, 1, 2])(
+  "English summary uses the correct noun for %i tools and shared duration formatting",
+  (count) => {
+    let state = reduce(createActivity("en"), { type: "submit" }, start, random);
+    state = reduce(state, delta(), start, random);
+    for (let index = 0; index < count; index++)
+      state = reduce(state, toolStart(String(index)), start + 65_000, random);
+    state = reduce(state, result(), start + 130_000, random);
+    expect(render(state, start + 130_000).line).toBe(
+      count === 0
+        ? "Done! · 0 tools · thought 2m 10s worked 0s · 🔥 12.3k"
+        : `Done! · ${count} ${count === 1 ? "tool" : "tools"} · thought 1m 05s worked 1m 05s · 🔥 12.3k`,
+    );
+  },
+);
+
+test.each([
+  "ffgrep",
+  "fffind",
+  "search-layer",
+  "get_search_content",
+  "batch_web_fetch",
+  "agent_browser",
+  "chrome_devtools",
+  "unknown-tool",
+])("English tool activity covers Neant's %s alias and tool streaks", (name) => {
+  let state = reduce(createActivity("en"), { type: "submit" }, start, random);
+  state = reduce(state, toolStart("a", name), start + 1000, random);
+  state = reduce(state, toolStart("b", name), start + 2000, random);
+  const line = render(state, start + 66_000).line;
+  expect(line).toContain("1m 04s · tool x2 · total 1m 06s");
+  expect(line).not.toMatch(/\p{Script=Han}/u);
+});
+
 function delta(
   text = "thinking",
   type: "text_delta" | "thinking_delta" = "thinking_delta",

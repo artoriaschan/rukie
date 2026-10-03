@@ -319,6 +319,7 @@ test("--resume continues the existing Session context", async () => {
     await run;
     exit = main(["--resume", session.id, "continuation"], {
       ...terminal,
+      env: { LANG: "zh_CN.UTF-8" },
       stderr: (text) => (stderr += text),
       session: { cwd: root, homeDir: root, ...fake },
     });

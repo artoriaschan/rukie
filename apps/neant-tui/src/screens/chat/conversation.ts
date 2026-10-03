@@ -252,7 +252,7 @@ export function createConversation(session: Session, model: string, locale: Loca
     usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     decode: { tokens: 0, ms: 0 },
     tpsSamples: [],
-    activity: createActivity(),
+    activity: createActivity(locale),
     activityInput: 0,
     streamedChars: 0,
   };

@@ -27,17 +27,17 @@ import { createTuiI18n } from "../../i18n";
 import { createConversation } from "./conversation";
 import { createPermissions } from "./permissions";
 import { permissionChoices } from "../../components/permission-dialog/permission-dialog";
-import { NARRATE_INSTRUCTION } from "./narration";
 import { fmtTokens, render as renderActivity } from "./activity/activity";
 
 /** Bind the Session and private stores to one chat screen for its lifetime. */
 export async function createChat(options: SessionOptions, model: string, locale: Locale = "zh") {
+  const t = createTuiI18n(locale);
   const permissions = createPermissions();
   const session = await createSession({
     ...options,
     reminderSources: [
       ...(options.reminderSources ?? []),
-      { source: "narration", currentContent: () => NARRATE_INSTRUCTION },
+      { source: "narration", currentContent: () => t("narrate-instruction") },
     ],
     onPermissionAsk: options.onPermissionAsk ?? permissions.ask,
   });

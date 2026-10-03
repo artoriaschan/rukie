@@ -1,6 +1,36 @@
 import { expect, test } from "bun:test";
 import { start } from "../helpers/app";
 
+test("English startup locale keeps waiting, thinking and approval activity in English across Runs", async () => {
+  const env = { LANG: "en_US.UTF-8" };
+  const app = await start(["use bash"], { env, columns: 160 });
+  const activity = () => app.screen().find((line) => /^[🌑🌒🌓🌔🌕🌖🌗🌘] /u.test(line)) ?? "";
+  try {
+    await app.waitFor(() => app.calls.length === 1 && activity().includes("total "));
+    expect(activity()).not.toMatch(/\p{Script=Han}/u);
+    app.calls[0]!.thinking("reasoning");
+    await app.waitFor(() => activity().includes("↓ 3 tokens"));
+    expect(activity()).not.toMatch(/\p{Script=Han}/u);
+    app.calls[0]!.tool("bash", { command: "printf English" });
+    await app.waitFor(() => app.screen().some((line) => line.includes("Waiting for approval")));
+    expect(activity()).toMatch(
+      /Waiting for your go-ahead|Your call — approval needed|The model is waiting on you/,
+    );
+    expect(activity()).not.toMatch(/\p{Script=Han}/u);
+    app.stdin.write("1\r");
+    await app.waitFor(() => app.calls.length === 2);
+    app.calls[1]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    env.LANG = "zh_CN.UTF-8";
+    app.stdin.write("again\r");
+    await app.waitFor(() => app.calls.length === 3 && activity().includes("total "));
+    expect(activity()).not.toMatch(/\p{Script=Han}/u);
+    app.calls[2]!.finish();
+  } finally {
+    await app.cleanup();
+  }
+});
+
 test("REVIEW stays visible until all concurrent reviews finish, without counting their tokens", async () => {
   const app = await start(["--permission-mode", "auto-review", "review two writes"], {
     controlReviews: true,

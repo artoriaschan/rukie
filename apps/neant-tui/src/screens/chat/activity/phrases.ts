@@ -28,8 +28,10 @@
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * Adapted from dsh-working-activity/src/phrases.ts, version 0.5.1.
+ * Adapted from dsh-working-activity 0.5.1 (src/phrases.ts).
  */
+
+import type { Locale } from "@neant/i18n";
 
 export function mixSlot(seed: number, slot: number): number {
   let h = (Math.imul(seed | 0, 0x9e3779b1) ^ Math.imul(slot | 0, 0x85ebca6b)) >>> 0;
@@ -145,6 +147,51 @@ export const THINKING_PHRASES: readonly string[] = [
   "嗯…让我偷想一下",
 ];
 
+export const EN_THINKING_PHRASES: readonly string[] = [
+  "Thinking…",
+  "Pondering…",
+  "Mulling it over",
+  "Brain.exe running",
+  "Loading thoughts…",
+  "Deep in thought",
+  "Hmm…",
+  "Cogitating",
+  "Reasoning intensifies",
+  "On it",
+  "Working it out",
+  "Connecting the dots",
+  "Crunching ideas",
+  "Chewing on it",
+  "Neurons firing",
+  "Reticulating splines",
+  "Thinking cap on",
+  "Give me a sec",
+  "Halfway there",
+  "Still thinking",
+  "Turning the crank",
+  "Ideas brewing",
+  "Thoughts loading…",
+  "Calculating life choices",
+  "Let me cook",
+  "Cooking…",
+  "Brain cells: engaged",
+  "Thinking thoughts",
+  "Mmm…",
+  "Processing…",
+  "Almost",
+  "Just vibing with the problem",
+  "Mystery math happening",
+  "Gathering thoughts",
+  "In the zone",
+  "Distracted by a pigeon",
+  "Have you tried thinking harder?",
+  "Summoning wisdom",
+  "rrrr",
+  "um",
+  "ok ok",
+  "wait…",
+];
+
 export const THINKING_TIERS: readonly {
   /** Minimum thinking ms for this tier. */
   readonly atMs: number;
@@ -217,6 +264,59 @@ export const THINKING_TIERS: readonly {
   },
 ];
 
+export const EN_THINKING_TIERS: readonly {
+  readonly atMs: number;
+  readonly pool: readonly string[];
+}[] = [
+  {
+    atMs: 30_000,
+    pool: [
+      "30s in, still thinking",
+      "This one's a thinker",
+      "Deeper than it looks",
+      "Getting warmer…",
+      "Still cooking",
+      "Brain on overtime",
+      "Not done yet",
+      "Almost there…",
+      "The gears are turning",
+      "One more sec",
+      "Loading 99%… again",
+    ],
+  },
+  {
+    atMs: 60_000,
+    pool: [
+      "1m in, still going",
+      "This is a tough one",
+      "Full brain power",
+      "1m, stay with me",
+      "Still grinding",
+      "Brain at full tilt",
+      "Almost…",
+      "Taking the scenic route",
+      "It's a marathon, not a sprint",
+      "The plot thickens",
+    ],
+  },
+  {
+    atMs: 300_000,
+    pool: [
+      "5m in, big brain energy",
+      "This is a marathon",
+      "Seriously deep now",
+      "Meditating on it",
+      "Slow and steady",
+      "Getting there",
+      "Worth the wait",
+      "One song later…",
+      "5 minutes of pure thought",
+      "I've seen things",
+      "Ascending to another plane of thought",
+    ],
+  },
+];
+
 export const WAITING_PHRASES: readonly string[] = [
   "呼叫模型…",
   "模型在路上了",
@@ -261,6 +361,37 @@ export const WAITING_PHRASES: readonly string[] = [
   "模型在数数",
   "等它回神",
   "它终于动了",
+];
+
+export const EN_WAITING_PHRASES: readonly string[] = [
+  "Pinging the model…",
+  "Model inbound…",
+  "Waiting on the muse",
+  "Wake up, model",
+  "It's warming up",
+  "Model: almost there",
+  "Holding for a token…",
+  "Brewing a response…",
+  "Model is stretching",
+  "Just a sec",
+  "One moment, please",
+  "Loading…",
+  "Connecting…",
+  'Model said "be right back"',
+  "It's yawning",
+  "First token incoming…",
+  "Hmm, still waiting",
+  "Model is putting on its glasses",
+  "Tick tock…",
+  "Summoning tokens…",
+  "Patiently waiting",
+  "Model is thinking of a hello",
+  "Booting brain…",
+  "Is it plugged in?",
+  "Gently poking the model",
+  "Waiting for the magic words…",
+  "A wild token appears… soon",
+  "Reticulating the request",
 ];
 
 export const ACTION_MAP: readonly {
@@ -535,6 +666,173 @@ export const ACTION_MAP: readonly {
   { test: /^(todo_write)$/i, actions: ["记个待办", "划个清单", "打个勾"] },
 ];
 
+export const EN_ACTION_MAP: readonly {
+  readonly test: RegExp;
+  readonly actions: readonly string[];
+}[] = [
+  // Neant-specific aliases; the upstream entries below keep their original pools.
+  { test: /^(ffgrep)$/i, actions: ["Hunting through files", "Fast search, sharp eyes"] },
+  { test: /^(fffind)$/i, actions: ["Chasing that file", "Paths, please"] },
+  {
+    test: /^(search-layer)$/i,
+    actions: ["Peeling back the search layers", "Following the web breadcrumbs"],
+  },
+  {
+    test: /^(get_search_content|batch_web_fetch)$/i,
+    actions: ["Gathering the web haul", "Bringing the pages home"],
+  },
+  {
+    test: /^(agent_browser|chrome_devtools)/i,
+    actions: ["Taking the browser for a spin", "Inspecting the pixels"],
+  },
+  {
+    test: /^(read|read_file|cat)$/i,
+    actions: [
+      "Reading",
+      "Peeking at",
+      "Snooping through",
+      "Skimming",
+      "Checking out",
+      "Eyes on",
+      "Giving it a read",
+    ],
+  },
+  {
+    test: /^(write|write_file|create_file)$/i,
+    actions: [
+      "Writing",
+      "Typing it out",
+      "Crafting",
+      "Saving progress",
+      "Pen to paper (virtually)",
+      "Putting words down",
+    ],
+  },
+  {
+    test: /^(edit|edit_file|str_replace|apply_patch|search_replace)$/i,
+    actions: [
+      "Editing",
+      "Patching",
+      "Tweaking",
+      "Polishing",
+      "Fixing a typo (probably)",
+      "Adjusting",
+      "Giving it a touch-up",
+    ],
+  },
+  {
+    test: /^(bash|shell|run|exec|powershell|cmd)$/i,
+    actions: [
+      "Running",
+      "Executing",
+      "Shelling out",
+      "Firing a command",
+      "Terminal time",
+      "Doing terminal things",
+      "Making the computer do stuff",
+    ],
+  },
+  {
+    test: /^(grep|rg|search|search_in_files)$/i,
+    actions: [
+      "Searching",
+      "Grepping",
+      "Hunting for matches",
+      "Looking for a needle",
+      "Sifting through",
+      "Diving into the haystack",
+    ],
+  },
+  {
+    test: /^(find|glob)$/i,
+    actions: ["Finding files", "Looking for files", "File hunt", "Hunting down a path"],
+  },
+  {
+    test: /^(ls|list_dir|list)$/i,
+    actions: ["Listing", "Peeking at the dir", "What's in here?", "Taking inventory"],
+  },
+  {
+    test: /^(web_search|search_web|brave|tavily|exa)$/i,
+    actions: [
+      "Searching the web",
+      "Googling",
+      "Researching",
+      "Web diving (the safe kind)",
+      "Looking it up",
+    ],
+  },
+  {
+    test: /^(web_fetch|fetch|fetch_content)$/i,
+    actions: ["Fetching a page", "Grabbing content", "Pulling the page", "Downloading knowledge"],
+  },
+  {
+    test: /^(mcp)/i,
+    actions: ["Calling MCP", "Hitting a service", "MCP time", "Talking to a server"],
+  },
+  {
+    test: /^(recall)$/i,
+    actions: ["Recalling", "Digging through memory", "Remembering things", "Checking the archives"],
+  },
+  {
+    test: /^(subagent|agent|task)$/i,
+    actions: [
+      "Delegating",
+      "Sending a subagent",
+      "Calling a helper",
+      "Outsourcing",
+      "Drafting a minion",
+    ],
+  },
+  {
+    test: /^(todo|manage_todo_list)$/i,
+    actions: ["Updating todos", "Checking the list", "Todo time", "Adding a checkbox"],
+  },
+  {
+    test: /^(browser|chrome|playwright)/i,
+    actions: ["Driving the browser", "Clicking around", "Browsing", "Puppeteering a browser"],
+  },
+  {
+    test: /^(git|gh|github)/i,
+    actions: [
+      "Git-ing",
+      "Committing",
+      "Version control dance",
+      "Git things",
+      "Saving the timeline",
+    ],
+  },
+  {
+    test: /^(notebook|jupyter)/i,
+    actions: ["Writing a notebook", "Running a cell", "Notebook time", "Jotting it down"],
+  },
+  {
+    test: /^(ctx_execute|ctx_execute_file|ctx_batch_execute)$/i,
+    actions: ["Running context", "Executing in context", "Context ops", "Running a snippet"],
+  },
+  {
+    test: /^(ctx_search|ctx_index|ctx_fetch_and_index)$/i,
+    actions: [
+      "Searching context",
+      "Looking through history",
+      "Indexing notes",
+      "Digging the knowledge base",
+    ],
+  },
+  {
+    test: /^(ctx_stats|ctx_doctor|ctx_upgrade|ctx_purge|ctx_insight)$/i,
+    actions: ["Context stats", "Checking status", "Diagnosing", "Looking at numbers"],
+  },
+  {
+    test: /^(ask_user_question|ask)$/i,
+    actions: ["Asking you", "Checking with you", "Quick question", "Pinging the human"],
+  },
+  {
+    test: /^(goal_complete|goal_blocked)$/i,
+    actions: ["Updating goals", "Tracking progress", "Checking the objective"],
+  },
+  { test: /^(todo_write)$/i, actions: ["Writing todos", "Making a list", "Adding a checkbox"] },
+];
+
 export const FALLBACK_ACTIONS: readonly string[] = [
   "干活",
   "调用",
@@ -543,6 +841,16 @@ export const FALLBACK_ACTIONS: readonly string[] = [
   "动动手",
   "备选方案",
   "换条路",
+];
+
+export const EN_FALLBACK_ACTIONS: readonly string[] = [
+  "Working on it",
+  "Doing a thing",
+  "Handling it",
+  "Taking care of it",
+  "Something productive",
+  "Figuring it out",
+  "Winging it",
 ];
 
 export const FAIL_PHRASES: readonly string[] = [
@@ -587,6 +895,29 @@ export const FAIL_PHRASES: readonly string[] = [
   "回滚重来",
   "换个姿势",
   "重试一次",
+];
+
+export const EN_FAIL_PHRASES: readonly string[] = [
+  "That failed",
+  "Oops",
+  "No dice",
+  "Didn't work",
+  "Broke it (it was already broken)",
+  "It's not a bug, it's a feature",
+  "404: success not found",
+  "Retry?",
+  "Hmm, that's odd",
+  "RIP",
+  "Sigh…",
+  "One more time",
+  "Classic",
+  "Works on my machine",
+  "Have you tried turning it off and on?",
+  "Someone unplugged the internet",
+  "Out of ideas, trying again",
+  "The computer said no",
+  "Error: user error",
+  "So close…",
 ];
 
 export const DONE_PHRASES: readonly string[] = [
@@ -636,6 +967,34 @@ export const DONE_PHRASES: readonly string[] = [
   "在我机器上能跑",
 ];
 
+export const EN_DONE_PHRASES: readonly string[] = [
+  "Done!",
+  "All set",
+  "Finished",
+  "That's that",
+  "Done and dusted",
+  "Mission complete",
+  "Sorted",
+  "Wrapped up",
+  "Ship it!",
+  "Clean run",
+  "Nice",
+  "One and done",
+  "All green",
+  "Knocked out",
+  "Closed out",
+  "Task: destroyed",
+  "EZ",
+  "GG",
+  "Another one bites the dust",
+  "Victory lap",
+  "Boom",
+  "Tada!",
+  "Smooth sailing",
+  "No notes",
+  "Crushed it",
+];
+
 export const NIGHT_PHRASES: readonly string[] = [
   "修仙中…",
   "深夜冒泡",
@@ -654,6 +1013,20 @@ export const NIGHT_PHRASES: readonly string[] = [
   "深夜上线",
   "凌晨部署",
   "通宵了",
+];
+
+export const EN_NIGHT_PHRASES: readonly string[] = [
+  "Night owl shift",
+  "Burning midnight oil",
+  "Past midnight, still going",
+  "The moon's out",
+  "Night grind",
+  "Up late",
+  "Almost dawn",
+  "2AM thoughts",
+  "Red-eye shift",
+  "Who needs sleep anyway?",
+  "The stars are my witness",
 ];
 
 export const RARE_PHRASES: readonly string[] = [
@@ -701,6 +1074,22 @@ export const RARE_PHRASES: readonly string[] = [
   "这波在大气层",
 ];
 
+export const EN_RARE_PHRASES: readonly string[] = [
+  "SSR! Rare egg",
+  "Legendary drop!",
+  "Golden loot",
+  "You found the hidden one",
+  "Secret phrase unlocked",
+  "Rarity MAX",
+  "Wink ~",
+  "You caught me",
+  "GG, shiny!",
+  "This is the easter egg",
+  "Five-star drop",
+  "Ez win",
+  "Gacha gods smiled on you",
+];
+
 export const RARE_CHANCE = 1 / 150;
 
 export const WEEKEND_PHRASES: readonly string[] = [
@@ -723,6 +1112,17 @@ export const WEEKEND_PHRASES: readonly string[] = [
   "周末上线",
 ];
 
+export const EN_WEEKEND_PHRASES: readonly string[] = [
+  "Weekend mode ON",
+  "Working on a weekend?",
+  "Saturday shift",
+  "Sunday grind",
+  "The weekend never sleeps",
+  "Casual Saturday",
+  "Weekend warrior",
+  "Still here, it's the weekend",
+];
+
 export const HOLIDAY_PHRASES: Readonly<Record<string, readonly string[]>> = {
   "01-01": [
     "新年快乐！",
@@ -742,6 +1142,23 @@ export const HOLIDAY_PHRASES: Readonly<Record<string, readonly string[]>> = {
   "12-31": ["跨年夜", "新年倒计时", "今年最后一盘", "🍾 准备跨年", "明年见！"],
 };
 
+export const EN_HOLIDAY_PHRASES: Readonly<Record<string, readonly string[]>> = {
+  "01-01": ["Happy New Year!", "New year, new bugs", "First grind of the year"],
+  "02-14": ["Valentine's at the keyboard", "Code is my true love", "No date tonight?"],
+  "04-01": ["April Fools!", "That bug is fake, right?", "Careful of fake errors"],
+  "05-01": ["Labor Day grind", "Workers of the world", "Still shipping on a holiday"],
+  "06-01": ["Happy Children's Day", "We're all babies inside", "Write cute code today"],
+  "10-31": ["Happy Halloween", "Trick or treat", "🎃 Pumpkins and code"],
+  "12-24": ["Merry Christmas Eve", "Santa's coming", "🎄 Gifts for coders too"],
+  "12-25": [
+    "Merry Christmas",
+    "🎅 Santa grinds too",
+    "Christmas egg unlocked",
+    "🎄 Code under the tree",
+  ],
+  "12-31": ["New Year's Eve", "Countdown time", "Last grind of the year", "🍾 See you next year!"],
+};
+
 export const LUNAR_NEW_YEAR_PHRASES: readonly string[] = [
   "🧧 春节快乐！",
   "过年还在写代码",
@@ -753,6 +1170,14 @@ export const LUNAR_NEW_YEAR_PHRASES: readonly string[] = [
   "🐉 龙年大吉",
   "年夜饭写代码",
   "年味盘起来",
+];
+
+export const EN_LUNAR_NEW_YEAR_PHRASES: readonly string[] = [
+  "🧧 Happy Lunar New Year!",
+  "Coding through the New Year",
+  "Red packets please",
+  "Gong Xi Fa Cai",
+  "New Year grind",
 ];
 
 const LUNAR_NEW_YEAR_DAYS: Readonly<Record<string, true>> = {
@@ -819,7 +1244,24 @@ export const CONTINUE_PHRASES: readonly string[] = [
   "快好了",
 ];
 
+export const EN_CONTINUE_PHRASES: readonly string[] = [
+  "Again! Round two",
+  "Back at it",
+  "Continuing where we left off",
+  "Resuming…",
+  "One more time",
+  "No memory loss here",
+  "Fixing it, fixing it",
+  "Almost there",
+  "Round two: electric boogaloo",
+];
+
 export const COMPACTION_START_PHRASES: readonly string[] = ["收拾一下上下文…", "整理背包中…"];
+
+export const EN_COMPACTION_START_PHRASES: readonly string[] = [
+  "Packing up context…",
+  "Tidying the context…",
+];
 
 export const COMPACT_PHRASES: readonly string[] = [
   "压缩了一下",
@@ -838,16 +1280,40 @@ export const COMPACT_PHRASES: readonly string[] = [
   "释放了一波内存",
 ];
 
+export const EN_COMPACT_PHRASES: readonly string[] = [
+  "Compacted",
+  "Slimmed down",
+  "Made room",
+  "Memory tidied",
+  "Lighter now",
+  "All tidy",
+  "Cleared the cache",
+  "GC'd",
+  "Fresh and clean",
+];
+
 export const REVIEW_PHRASES: readonly string[] = [
   "REVIEW · 看看这次调用的风险",
   "REVIEW · 正在核对授权范围",
   "REVIEW · 工具调用评审中",
 ];
 
+export const EN_REVIEW_PHRASES: readonly string[] = [
+  "REVIEW · Checking this call for surprises",
+  "REVIEW · Making sure the permission fits",
+  "REVIEW · Giving this tool call a once-over",
+];
+
 export const APPROVAL_PHRASES: readonly string[] = [
   "在等你点头",
   "等你批准呢——看一眼？",
   "模型在等你决定",
+];
+
+export const EN_APPROVAL_PHRASES: readonly string[] = [
+  "Waiting for your go-ahead",
+  "Your call — approval needed",
+  "The model is waiting on you",
 ];
 
 export const TOOL_OPENING_PHRASES: readonly string[] = [
@@ -859,15 +1325,49 @@ export const TOOL_OPENING_PHRASES: readonly string[] = [
   "想清楚了，来",
 ];
 
-export function fmtDuration(ms: number): string {
-  if (ms < 1000) return "0s";
-  const total = Math.floor(ms / 1000);
-  if (total < 60) return `${total}s`;
-  const minutes = Math.floor(total / 60);
-  const seconds = total % 60;
-  if (minutes < 60) return `${minutes}m${seconds}s`;
-  const hours = Math.floor(minutes / 60);
-  return `${hours}h${minutes % 60}m`;
+export const EN_TOOL_OPENING_PHRASES: readonly string[] = [
+  "figured it out, hands on",
+  "plan set, going in",
+  "thought it through, off we go",
+  "done mulling, starting",
+  "brainstorm done, hands on",
+];
+
+const phrasePools = {
+  zh: {
+    WAITING_PHRASES,
+    ACTION_MAP,
+    FALLBACK_ACTIONS,
+    FAIL_PHRASES,
+    DONE_PHRASES,
+    RARE_PHRASES,
+    WEEKEND_PHRASES,
+    CONTINUE_PHRASES,
+    COMPACTION_START_PHRASES,
+    COMPACT_PHRASES,
+    REVIEW_PHRASES,
+    APPROVAL_PHRASES,
+    TOOL_OPENING_PHRASES,
+  },
+  en: {
+    WAITING_PHRASES: EN_WAITING_PHRASES,
+    ACTION_MAP: EN_ACTION_MAP,
+    FALLBACK_ACTIONS: EN_FALLBACK_ACTIONS,
+    FAIL_PHRASES: EN_FAIL_PHRASES,
+    DONE_PHRASES: EN_DONE_PHRASES,
+    RARE_PHRASES: EN_RARE_PHRASES,
+    WEEKEND_PHRASES: EN_WEEKEND_PHRASES,
+    CONTINUE_PHRASES: EN_CONTINUE_PHRASES,
+    COMPACTION_START_PHRASES: EN_COMPACTION_START_PHRASES,
+    COMPACT_PHRASES: EN_COMPACT_PHRASES,
+    REVIEW_PHRASES: EN_REVIEW_PHRASES,
+    APPROVAL_PHRASES: EN_APPROVAL_PHRASES,
+    TOOL_OPENING_PHRASES: EN_TOOL_OPENING_PHRASES,
+  },
+};
+
+export function activityPhrases(locale: Locale) {
+  return phrasePools[locale];
 }
 
 /** One deterministic phrase per slot; adjacent slots cannot repeat. */
@@ -885,16 +1385,25 @@ export function thinkingPhrase(
   seed: number,
   slot: number,
   night: boolean,
+  locale: Locale = "zh",
 ): string {
-  const tier = THINKING_TIERS.findLast((tier) => elapsedMs >= tier.atMs);
-  const pool = tier?.pool ?? (night ? [...THINKING_PHRASES, ...NIGHT_PHRASES] : THINKING_PHRASES);
+  const thinking = locale === "en" ? EN_THINKING_PHRASES : THINKING_PHRASES;
+  const tiers = locale === "en" ? EN_THINKING_TIERS : THINKING_TIERS;
+  const nights = locale === "en" ? EN_NIGHT_PHRASES : NIGHT_PHRASES;
+  const tier = tiers.findLast((tier) => elapsedMs >= tier.atMs);
+  const pool = tier?.pool ?? (night ? [...thinking, ...nights] : thinking);
   return pickPhraseAt(pool, seed, slot);
 }
 
-export function holidayPhrase(date: Date, seed: number, slot: number): string | undefined {
+export function holidayPhrase(
+  date: Date,
+  seed: number,
+  slot: number,
+  locale: Locale = "zh",
+): string | undefined {
+  const holidays = locale === "en" ? EN_HOLIDAY_PHRASES : HOLIDAY_PHRASES;
+  const lunar = locale === "en" ? EN_LUNAR_NEW_YEAR_PHRASES : LUNAR_NEW_YEAR_PHRASES;
   const mmdd = `${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-  const pool = LUNAR_NEW_YEAR_DAYS[`${date.getFullYear()}-${mmdd}`]
-    ? LUNAR_NEW_YEAR_PHRASES
-    : HOLIDAY_PHRASES[mmdd];
+  const pool = LUNAR_NEW_YEAR_DAYS[`${date.getFullYear()}-${mmdd}`] ? lunar : holidays[mmdd];
   return pool ? pickPhraseAt(pool, seed, slot) : undefined;
 }

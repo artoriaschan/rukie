@@ -1,20 +1,9 @@
 import type { SessionEvent } from "@neant/agent";
+import { fmtDuration, type Locale } from "@neant/i18n";
+import { createTuiI18n } from "../../../i18n";
 import {
-  ACTION_MAP,
-  APPROVAL_PHRASES,
-  REVIEW_PHRASES,
-  COMPACT_PHRASES,
-  COMPACTION_START_PHRASES,
-  CONTINUE_PHRASES,
-  FAIL_PHRASES,
-  FALLBACK_ACTIONS,
-  TOOL_OPENING_PHRASES,
-  DONE_PHRASES,
-  WAITING_PHRASES,
+  activityPhrases,
   RARE_CHANCE,
-  RARE_PHRASES,
-  WEEKEND_PHRASES,
-  fmtDuration,
   holidayPhrase,
   mixSlot,
   pickPhrase,
@@ -30,6 +19,7 @@ type ActivityEvent =
   | { type: "git-branch"; branch: string };
 
 interface ActivityState {
+  locale: Locale;
   phase: Phase;
   runStartedAt: number;
   phaseStartedAt: number;
@@ -61,8 +51,9 @@ interface ActiveTool {
   startedAt: number;
 }
 
-export function createActivity(): ActivityState {
+export function createActivity(locale: Locale = "zh"): ActivityState {
   return {
+    locale,
     phase: "idle",
     runStartedAt: 0,
     phaseStartedAt: 0,
@@ -99,11 +90,12 @@ export function reduce(
   now: number,
   random = Math.random,
 ): ActivityState {
+  const pools = activityPhrases(state.locale);
   if (event.type === "git-branch")
     return { ...state, gitBranch: sanitizeFragment(event.branch) || undefined };
   if (event.type === "submit")
     return {
-      ...createActivity(),
+      ...createActivity(state.locale),
       phase: "waiting",
       runStartedAt: now,
       phaseStartedAt: now,
@@ -155,7 +147,7 @@ export function reduce(
         interrupted: true,
         reviews: [],
         compactionStartedAt: undefined,
-        pending: { line: pickPhrase(CONTINUE_PHRASES, random), until: now + 6000 },
+        pending: { line: pickPhrase(pools.CONTINUE_PHRASES, random), until: now + 6000 },
       };
     case "compaction_start":
       return { ...state, compactionStartedAt: state.compactionStartedAt ?? now };
@@ -164,15 +156,15 @@ export function reduce(
         ...state,
         compactionStartedAt: undefined,
         pending: {
-          line: `${pickPhrase(COMPACT_PHRASES, random)} · ${fmtTokens(event.tokensBefore)}→${fmtTokens(event.tokensAfter)}`,
+          line: `${pickPhrase(pools.COMPACT_PHRASES, random)} · ${fmtTokens(event.tokensBefore)}→${fmtTokens(event.tokensAfter)}`,
           until: now + 6000,
         },
       };
     case "tool_execution_start": {
       if (state.tools.some((tool) => tool.id === event.toolCallId)) return state;
       const actions =
-        ACTION_MAP.find(({ test }) => test.test(event.toolName.trim()))?.actions ??
-        FALLBACK_ACTIONS;
+        pools.ACTION_MAP.find(({ test }) => test.test(event.toolName.trim()))?.actions ??
+        pools.FALLBACK_ACTIONS;
       const tool = {
         id: event.toolCallId,
         action: pickPhrase(actions, random),
@@ -200,7 +192,7 @@ export function reduce(
         lastTool: {
           ...tool,
           endedAt: now,
-          failure: event.isError ? pickPhrase(FAIL_PHRASES, random) : undefined,
+          failure: event.isError ? pickPhrase(pools.FAIL_PHRASES, random) : undefined,
         },
       };
     }
@@ -212,10 +204,10 @@ export function reduce(
         approvalStartedAt: undefined,
         compactionStartedAt: undefined,
         tokens: event.usage.totalTokens,
-        donePrefix: pickPhrase(event.success ? DONE_PHRASES : FAIL_PHRASES, random),
+        donePrefix: pickPhrase(event.success ? pools.DONE_PHRASES : pools.FAIL_PHRASES, random),
         pending:
           !event.success && state.interrupted
-            ? { line: pickPhrase(CONTINUE_PHRASES, random), until: now + 6000 }
+            ? { line: pickPhrase(pools.CONTINUE_PHRASES, random), until: now + 6000 }
             : undefined,
       };
     default:
@@ -224,12 +216,17 @@ export function reduce(
 }
 
 export function render(state: ActivityState, now: number) {
+  const pools = activityPhrases(state.locale);
+  const t = createTuiI18n(state.locale);
   if (state.phase === "idle") return { phase: state.phase, line: "", nextWakeAt: undefined };
   const pending = state.pending && now < state.pending.until ? state.pending : undefined;
   const git = state.gitBranch ? ` · git ${state.gitBranch}` : "";
   if (state.phase === "done") {
     const tokens = state.tokens > 0 ? ` · 🔥 ${fmtTokens(state.tokens)}` : "";
-    const summary = `${state.donePrefix} · ${state.toolCount} 工具 · 想${fmtDuration(state.thinkingMs)} 干${fmtDuration(state.toolMs)}${tokens}`;
+    const tools = t(state.toolCount === 1 ? "tool-count-one" : "tool-count-many", {
+      count: state.toolCount,
+    });
+    const summary = `${state.donePrefix} · ${t("done-summary", { tools, thinking: fmtDuration(state.thinkingMs, state.locale), tooling: fmtDuration(state.toolMs, state.locale) })}${tokens}`;
     return {
       phase: state.phase,
       line: `${pending ? `${pending.line} · ${summary}` : summary}${git}`,
@@ -245,34 +242,40 @@ export function render(state: ActivityState, now: number) {
   const slot = Math.floor(elapsed / rotation);
   // Freeze both the tier and calendar pool for the complete rotation window.
   const date = new Date(state.phaseStartedAt + slot * rotation);
-  let phrase = pickPhraseAt(WAITING_PHRASES, state.runStartedAt, slot);
+  let phrase = pickPhraseAt(pools.WAITING_PHRASES, state.runStartedAt, slot);
   if (state.phase === "thinking") {
     const holiday =
       state.thinkingPhases === 1 && slot === 0
-        ? holidayPhrase(date, state.runStartedAt, slot)
+        ? holidayPhrase(date, state.runStartedAt, slot, state.locale)
         : undefined;
     phrase =
       holiday ??
       (rare
-        ? pickPhraseAt(RARE_PHRASES, state.runStartedAt, slot)
+        ? pickPhraseAt(pools.RARE_PHRASES, state.runStartedAt, slot)
         : state.thinkingPhases === 1 && slot === 0 && [0, 6].includes(date.getDay())
-          ? pickPhraseAt(WEEKEND_PHRASES, state.runStartedAt, slot)
-          : thinkingPhrase(slot * rotation, state.runStartedAt, slot, date.getHours() < 6));
+          ? pickPhraseAt(pools.WEEKEND_PHRASES, state.runStartedAt, slot)
+          : thinkingPhrase(
+              slot * rotation,
+              state.runStartedAt,
+              slot,
+              date.getHours() < 6,
+              state.locale,
+            ));
   }
   const tool = state.tools.at(-1);
   const openingUntil =
     state.firstToolStartedAt === undefined ? undefined : state.firstToolStartedAt + 2500;
   const opening =
     openingUntil !== undefined && now < openingUntil
-      ? `${pickPhraseAt(TOOL_OPENING_PHRASES, state.runStartedAt, 0)} · `
+      ? `${pickPhraseAt(pools.TOOL_OPENING_PHRASES, state.runStartedAt, 0)} · `
       : "";
-  const combo = state.streak >= 2 ? ` · 工具x${state.streak}` : "";
+  const combo = state.streak >= 2 ? ` · ${t("tool-streak", { count: state.streak })}` : "";
   if (state.phase === "tool" && tool) {
-    phrase = `${opening}${toolFragment(tool)} · ${fmtDuration(now - tool.startedAt)}${combo}`;
+    phrase = `${opening}${toolFragment(tool)} · ${fmtDuration(now - tool.startedAt, state.locale)}${combo}`;
   } else if (state.phase === "thinking" && state.lastTool && now < state.lastTool.endedAt + 2500) {
     const last = state.lastTool;
     const duration = last.endedAt - last.startedAt;
-    phrase = `${last.failure ? `✗ ${last.failure} · ` : "✓ "}${toolFragment(last)} · ${duration < 1000 ? `${duration}ms` : fmtDuration(duration)}${combo}`;
+    phrase = `${last.failure ? `✗ ${last.failure} · ` : "✓ "}${toolFragment(last)} · ${duration < 1000 ? `${duration}ms` : fmtDuration(duration, state.locale)}${combo}`;
   }
   const narrationUntil = state.lastChunkAt === undefined ? undefined : state.lastChunkAt + 5000;
   if (state.narration && narrationUntil !== undefined && now < narrationUntil) {
@@ -281,19 +284,19 @@ export function render(state: ActivityState, now: number) {
   if (pending) phrase = pending.line;
   if (state.compactionStartedAt !== undefined)
     phrase = pickPhraseAt(
-      COMPACTION_START_PHRASES,
+      pools.COMPACTION_START_PHRASES,
       state.runStartedAt + state.compactionStartedAt,
       0,
     );
   const review = state.reviews[0];
   if (review)
     phrase = pickPhraseAt(
-      REVIEW_PHRASES,
+      pools.REVIEW_PHRASES,
       state.runStartedAt + review.startedAt,
       Math.floor(Math.max(0, now - review.startedAt) / 4000),
     );
   if (state.approvalStartedAt !== undefined)
-    phrase = pickPhraseAt(APPROVAL_PHRASES, state.runStartedAt + state.approvalStartedAt, 0);
+    phrase = pickPhraseAt(pools.APPROVAL_PHRASES, state.runStartedAt + state.approvalStartedAt, 0);
   const candidates = [
     nextBoundary(state.runStartedAt, now, 1000),
     state.phase === "tool" && tool ? nextBoundary(tool.startedAt, now, 1000) : undefined,
@@ -306,7 +309,7 @@ export function render(state: ActivityState, now: number) {
   const deadlines = candidates.filter((at): at is number => at !== undefined && at > now);
   return {
     phase: review && state.approvalStartedAt === undefined ? ("review" as const) : state.phase,
-    line: `${phrase} · 总${fmtDuration(now - state.runStartedAt)}${git}`,
+    line: `${phrase} · ${t("line-elapsed", { elapsed: fmtDuration(now - state.runStartedAt, state.locale) })}${git}`,
     nextWakeAt: Math.min(...deadlines),
   };
 }
