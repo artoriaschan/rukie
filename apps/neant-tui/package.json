@@ -7,6 +7,7 @@
   "type": "module",
   "dependencies": {
     "@neant/agent": "workspace:*",
+    "@neant/i18n": "workspace:*",
     "@neant/shared": "workspace:*",
     "@neant/tui": "workspace:*",
     "react": "19.3.0"

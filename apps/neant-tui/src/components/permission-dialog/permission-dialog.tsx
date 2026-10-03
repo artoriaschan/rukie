@@ -10,14 +10,16 @@ import {
 } from "@neant/tui";
 import { useCallback, useState, type Ref } from "react";
 import type { PermissionMode } from "@neant/shared";
-
-const ALLOW_ONCE = { label: "允许（仅本次）", decision: "allow" } as const;
-const ALLOW_TOOL = { label: "本 session 内一直允许这个工具", decision: "allow-tool" } as const;
-const DENY = { label: "拒绝", decision: "deny" } as const;
+import type { Locale } from "@neant/i18n";
+import { createTuiI18n } from "../../i18n";
 
 /** The visible choices also define the keyboard decisions for this request. */
-export function permissionChoices(mode: PermissionMode = "ask") {
-  return mode === "auto-review" ? [ALLOW_ONCE, DENY] : [ALLOW_ONCE, ALLOW_TOOL, DENY];
+export function permissionChoices(mode: PermissionMode = "ask", locale: Locale = "zh") {
+  const t = createTuiI18n(locale);
+  const allowOnce = { label: t("approval.allow-once"), decision: "allow" } as const;
+  const allowTool = { label: t("approval.allow-tool"), decision: "allow-tool" } as const;
+  const deny = { label: t("approval.deny"), decision: "deny" } as const;
+  return mode === "auto-review" ? [allowOnce, deny] : [allowOnce, allowTool, deny];
 }
 
 export function PermissionDialog({
@@ -28,6 +30,7 @@ export function PermissionDialog({
   scrollRef,
   scrollFocused = false,
   mode = "ask",
+  locale = "zh",
   reason,
 }: {
   toolName: string;
@@ -37,10 +40,11 @@ export function PermissionDialog({
   scrollRef?: Ref<ScrollHandle>;
   scrollFocused?: boolean;
   mode?: PermissionMode;
+  locale?: Locale;
   reason?: string;
 }) {
   const { columns } = useTerminalSize();
-  const choices = permissionChoices(mode);
+  const choices = permissionChoices(mode, locale);
   const spacious = maxHeight >= choices.length + 6;
   const showQuestion = maxHeight >= choices.length + 4;
   const [detailHeight, setDetailHeight] = useState(1);

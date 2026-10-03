@@ -2,6 +2,7 @@
 import { homedir } from "node:os";
 import { parseArgs } from "node:util";
 import { loadSettings, type SessionOptions } from "@neant/agent";
+import { resolveLocale } from "@neant/i18n";
 import {
   PERMISSION_MODES,
   THINKING_LEVELS,
@@ -13,6 +14,7 @@ import { createChat } from "./screens/chat";
 
 export interface TuiIo extends RenderOptions {
   term?: string;
+  env?: Record<string, string | undefined>;
   stderr(text: string): void;
   /** Session overrides; in-process tests inject a model and streamFn. */
   session?: Partial<SessionOptions>;
@@ -88,6 +90,8 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
     const cwd = io.session?.cwd ?? process.cwd();
     const homeDir = io.session?.homeDir ?? homedir();
     const { settings, warnings } = await loadSettings({ cwd, homeDir });
+    const env = io.env ?? process.env;
+    const locale = resolveLocale([settings.locale, env.LC_ALL, env.LC_MESSAGES, env.LANG]);
     for (const warning of warnings) io.stderr(`Warning: ${warning}\n`);
     if (values.model) settings.model = values.model;
     if (values.thinking) settings.thinking = values.thinking as ThinkingLevel;
@@ -111,6 +115,7 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
         trustProjectMcp: values["trust-project-mcp"] ?? io.session?.trustProjectMcp,
       },
       model ? `${model.provider}/${model.id}` : settings.model!,
+      locale,
     );
     app = render(
       <ThemeProvider>

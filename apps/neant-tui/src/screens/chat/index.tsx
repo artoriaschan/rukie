@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createSession, type Session, type SessionOptions } from "@neant/agent";
+import type { Locale } from "@neant/i18n";
 import { PERMISSION_MODES, type ThinkingLevel } from "@neant/shared";
 import {
   Box,
@@ -29,7 +30,7 @@ import { NARRATE_INSTRUCTION } from "./narration";
 import { fmtTokens, render as renderActivity } from "./activity/activity";
 
 /** Bind the Session and private stores to one chat screen for its lifetime. */
-export async function createChat(options: SessionOptions, model: string) {
+export async function createChat(options: SessionOptions, model: string, locale: Locale = "zh") {
   const permissions = createPermissions();
   const session = await createSession({
     ...options,
@@ -63,6 +64,7 @@ export async function createChat(options: SessionOptions, model: string) {
           permissions={permissions}
           cwd={options.cwd}
           thinking={options.settings?.thinking}
+          locale={locale}
           onExit={onExit}
         />
       );
@@ -76,6 +78,7 @@ function Chat({
   permissions,
   cwd,
   thinking,
+  locale,
   onExit,
 }: {
   session: Session;
@@ -83,6 +86,7 @@ function Chat({
   permissions: ReturnType<typeof createPermissions>;
   cwd: string;
   thinking?: ThinkingLevel;
+  locale: Locale;
   onExit(): void;
 }) {
   const state = useSyncExternalStore(conversation.subscribe, conversation.getSnapshot);
@@ -326,6 +330,7 @@ function Chat({
             )}
             {question && (
               <PermissionDialog
+                locale={locale}
                 key={question.request.toolCallId}
                 toolName={question.request.toolName}
                 args={question.request.args}
@@ -353,6 +358,7 @@ function Chat({
               />
             )}
             <StatusLine
+              locale={locale}
               columns={columns}
               mode={mode}
               model={state.model.slice(state.model.indexOf("/") + 1)}

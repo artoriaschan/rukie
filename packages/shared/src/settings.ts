@@ -27,6 +27,8 @@ export const SettingsSchema = Type.Object({
   /** `provider/id`. */
   model: Type.Optional(Type.String()),
   reviewModel: Type.Optional(Type.String()),
+  /** Frontend language preference; unsupported tags fall through to environment candidates. */
+  locale: Type.Optional(Type.String()),
   permissionMode: Type.Optional(Type.Enum([...PERMISSION_MODES])),
   thinking: Type.Optional(Type.Enum([...THINKING_LEVELS])),
   providers: Type.Optional(Type.Array(CustomProvider)),

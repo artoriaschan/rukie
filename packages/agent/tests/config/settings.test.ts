@@ -106,6 +106,7 @@ test.each([
   ["permissionMode", "invalid"],
   ["permissionMode", true],
   ["reviewModel", 42],
+  ["locale", 42],
 ])("invalid user setting %s=%s names the file and field", async (field, value) => {
   dirs = await tempDirs();
   const userFile = join(dirs.homeDir, ".neant/settings.json");
@@ -130,3 +131,26 @@ test("missing settings files mean empty settings", async () => {
     warnings: [],
   });
 });
+
+test.each(["zh-CN", "fr", ""])(
+  "user locale %j is preserved without enum validation",
+  async (locale) => {
+    dirs = await tempDirs();
+    await Bun.write(join(dirs.homeDir, ".neant/settings.json"), JSON.stringify({ locale }));
+    expect(await loadSettings(dirs)).toEqual({ settings: { locale }, warnings: [] });
+  },
+);
+
+test.each(["en", { invalid: true }, null])(
+  "project locale %j is ignored with a warning",
+  async (locale) => {
+    dirs = await tempDirs();
+    await Bun.write(join(dirs.homeDir, ".neant/settings.json"), JSON.stringify({ locale: "zh" }));
+    const projectFile = join(dirs.cwd, ".neant/settings.json");
+    await Bun.write(projectFile, JSON.stringify({ locale }));
+    expect(await loadSettings(dirs)).toEqual({
+      settings: { locale: "zh" },
+      warnings: [`${projectFile}: ignoring "locale"; only user settings can define locale.`],
+    });
+  },
+);

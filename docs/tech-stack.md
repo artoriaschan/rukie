@@ -55,7 +55,7 @@
 | Markdown | micromark 解析 + 自研的 mdast→React 渲染 + shiki/katex                                                                                          |
 | 图表     | mermaid                                                                                                                                         |
 | 状态管理 | Zustand 5.0.12 + Immer 10.2.0                                                                                                                   |
-| 国际化   | 自研                                                                                                                                            |
+| 国际化   | 自研 `@neant/i18n`：运行时无关的 zh / en locale 解析、通用文案、字典组合与插值、时长格式化；frontend 读取配置并选择 locale（ADR-0008）          |
 
 ## 终端渲染器（ADR-0005）
 

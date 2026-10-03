@@ -1,0 +1,8 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["bun"],
+    "outDir": "../../node_modules/.cache/tsc/i18n"
+  },
+  "include": ["src", "tests"]
+}

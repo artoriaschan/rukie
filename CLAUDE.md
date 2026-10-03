@@ -15,6 +15,7 @@ apps/
   desktop/      (later) @neant/desktop  src/{main,preload,renderer}
 packages/
   shared/       @neant/shared   runtime-agnostic types, typebox schemas, pure functions
+  i18n/         @neant/i18n     runtime-agnostic locale resolution, common copy, interpolation, durations
   tui/          @neant/tui      React reconciler → TS Yoga → cell grid → ANSI
     src/{components,design-system,hooks,input,terminal,renderer,layout,text,screen,scroll,yoga}/
   agent/        @neant/agent    Agent Core
@@ -29,6 +30,7 @@ Rules:
 - **Tests live in `tests/`** at each package/app root, mirroring `src/` (`tests/reminders/reminders.test.ts`). Cross-concept run tests go in `tests/e2e/`, test utilities (fake `streamFn`, temp dirs) in `tests/helpers/`.
 - **Test runner follows runtime** (ADR-0004): Bun code uses `bun:test`; Electron main and renderer use Vitest.
 - **`@neant/shared` must stay runtime-agnostic**: no `Bun.*`, `node:*` or DOM APIs; the only allowed dependency is `typebox` (added once something uses it). Something goes into shared only if at least two packages use it.
+- **`@neant/i18n` must stay runtime-agnostic**: no `Bun.*`, `node:*` or DOM APIs; only `@neant/shared` may be a dependency. Frontends supply locale candidates and app dictionaries; app keys cannot override common keys. Agent Core stays locale-agnostic (ADR-0008).
 - TypeScript: root `tsconfig.base.json`, each package `extends` it; typecheck all packages with `tsc -b`.
 
 ## Agent skills

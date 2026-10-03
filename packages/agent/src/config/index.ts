@@ -33,13 +33,14 @@ function validate(path: string, data: unknown): Settings {
 /**
  * Loads `~/.neant/settings.json` merged with `<cwd>/.neant/settings.json`.
  * The project file may only override `model`, `reviewModel` and `allowTools`.
- * Its `providers` and `permissionMode` are dropped (unvalidated) with a warning:
+ * Its `providers`, `permissionMode` and `locale` are dropped (unvalidated) with a warning:
  * a project must not redirect credentials or grant itself broader permissions.
+ * Language preferences belong to the user, not the project.
  */
 export async function loadSettings(options: { cwd: string; homeDir: string }) {
   const userFile = join(options.homeDir, ".neant/settings.json");
   const projectFile = join(options.cwd, ".neant/settings.json");
-  const [userData, { providers, permissionMode, ...projectData }] = await Promise.all([
+  const [userData, { providers, permissionMode, locale, ...projectData }] = await Promise.all([
     readJson(userFile),
     readJson(projectFile),
   ]);
@@ -55,6 +56,9 @@ export async function loadSettings(options: { cwd: string; homeDir: string }) {
     );
   }
   const settings: Settings = { ...user };
+  if (locale !== undefined) {
+    warnings.push(`${projectFile}: ignoring "locale"; only user settings can define locale.`);
+  }
   if (project.model !== undefined) settings.model = project.model;
   if (project.reviewModel !== undefined) settings.reviewModel = project.reviewModel;
   if (project.allowTools !== undefined) settings.allowTools = project.allowTools;

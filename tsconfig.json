@@ -2,6 +2,7 @@
   "files": [],
   "references": [
     { "path": "packages/shared" },
+    { "path": "packages/i18n" },
     { "path": "packages/agent" },
     { "path": "packages/tui" },
     { "path": "apps/neant-cli" },

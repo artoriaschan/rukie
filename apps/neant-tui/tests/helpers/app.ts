@@ -14,6 +14,7 @@ export async function start(
     columns?: number;
     rows?: number;
     controlReviews?: boolean;
+    env?: Record<string, string | undefined>;
   } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), "neant-tui-"));
@@ -23,6 +24,7 @@ export async function start(
   let stderr = "";
   const exit = main(argv, {
     ...terminal,
+    env: options.env ?? { LANG: "zh_CN.UTF-8" },
     stderr: (text) => (stderr += text),
     session: { cwd: root, homeDir: root, ...fake, ...options.session },
   });

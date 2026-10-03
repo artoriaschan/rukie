@@ -19,6 +19,7 @@ export interface TpsSample {
   value: number;
 }
 export interface StatusLineProps {
+  locale?: Locale;
   columns: number;
   mode: PermissionMode;
   model: string;
@@ -36,20 +37,6 @@ export interface StatusLineProps {
 }
 
 type HoverField = "bar" | "ctx" | "mode" | "model" | "tps" | "cache" | "tokens" | "git" | "cwd";
-
-const modeDescriptions: Record<PermissionMode, { label: string; full: string; compact: string }> = {
-  ask: { label: "询问", full: "只读工具直接允许，其余请求批准", compact: "非只读需批准" },
-  "auto-review": {
-    label: "自动评审",
-    full: "自动评审工具调用，有风险或评审失败时请求批准",
-    compact: "评审，有风险询问",
-  },
-  "full-access": {
-    label: "完全访问",
-    full: "允许所有工具调用，无权限拦截",
-    compact: "全部允许，无拦截",
-  },
-};
 
 function Meter({
   value,
@@ -92,7 +79,12 @@ export function StatusLine(props: StatusLineProps) {
     onMouseLeave: () => setHover(undefined),
   });
   const width = Math.max(0, props.columns - 2);
-  const description = modeDescriptions[props.mode];
+  const t = createTuiI18n(props.locale ?? "zh");
+  const description = {
+    label: t(`permission-mode.${props.mode}.name`),
+    full: t(`permission-mode.${props.mode}.description`),
+    compact: t(`permission-mode.${props.mode}.compact`),
+  };
   const modeWidth = Bun.stringWidth(description.label);
   const usage = props.contextUsage;
   const showBar = usage !== undefined && width >= 14;
@@ -366,3 +358,5 @@ export function StatusLine(props: StatusLineProps) {
     </Box>
   );
 }
+import type { Locale } from "@neant/i18n";
+import { createTuiI18n } from "../../i18n";
