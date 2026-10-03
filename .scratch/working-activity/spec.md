@@ -8,7 +8,7 @@ Status: ready-for-agent
 
 ## Solution
 
-全量移植 `dsh-working-activity`（中文部分）的文案与状态机，按 dsh-TUI `ActivityLine` 的方式渲染：输入框上方一行 `🌔 脑子在冒烟 · 总12s · ↑ 8.1k · ↓ 1.2k tokens`，月相帧 + 扫光文字。`esc 中断` 和滚动提示放在输入框下方固定三行 StatusLine 的第三行。状态机重写为纯函数，以 Neant 的 `SessionEvent` 为输入；术语沿用 Neant/pi：原包的 turn 一律对应 **Run**。
+全量移植 `dsh-working-activity`（中文部分）的文案与状态机，按 dsh-TUI `ActivityLine` 的方式渲染：输入框上方一行 `🌔 脑子在冒烟 · 总12s · ↑ 8.1k · ↓ 1.2k tokens`，月相帧 + 扫光文字。`esc 中断` 和滚动提示放在输入框下方 StatusLine 的提示行，该行始终占位；上下文条不展示时不占位，字段行直接位于输入框下方。状态机重写为纯函数，以 Neant 的 `SessionEvent` 为输入；术语沿用 Neant/pi：原包的 turn 一律对应 **Run**。
 
 ## User Stories
 
@@ -47,7 +47,7 @@ Status: ready-for-agent
   - `suffix` 为 `subtle` 色。
   - `warnPct` ≥80% 时在帧与文字之间插入 `⚠ 上下文 N% · `，用 warning 色；≥95% 用 error 色。比例取最新 Context Usage 的 used/window，四舍五入为整数百分比。
   - 整行单行截断（`wrap` 关闭，超宽末尾 `…`）。
-- `status-line/`：常驻固定三行（上下文分段条、字段行、提示行），详见 `.scratch/status-line/spec.md`。不显示 `Running` / `Ready` 状态词。
+- `status-line/`：最多三行（上下文分段条、字段行、提示行）；上下文条不展示时不占位，仅提示行始终保留占位，详见 `.scratch/status-line/spec.md`。不显示 `Running` / `Ready` 状态词。
 - `assistant-message/`：渲染前剥掉行首 `⏵` 自述行（流式和回放共用）。
 
 ### ④ 屏幕（`apps/neant-tui/src/screens/chat/`）

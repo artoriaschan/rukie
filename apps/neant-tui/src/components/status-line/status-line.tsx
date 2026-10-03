@@ -79,6 +79,7 @@ export function StatusLine(props: StatusLineProps) {
   });
   const width = Math.max(0, props.columns - 2);
   const usage = props.contextUsage;
+  const showBar = usage !== undefined && width >= 14;
   const pct = usage && usage.window > 0 ? (usage.used / usage.window) * 100 : 0;
   const counts = usage ? `${count(usage.used)}/${count(usage.window)}` : "";
   const ctx = usage ? `ctx ${percentage(pct)}% (${counts})` : "";
@@ -234,9 +235,15 @@ export function StatusLine(props: StatusLineProps) {
     );
   }
   return (
-    <Box width={props.columns} height={3} paddingX={1} flexDirection="column" flexShrink={0}>
-      <Box height={1} flexShrink={0} {...(usage && width >= 14 ? hoverProps("bar") : {})}>
-        {usage && width >= 14 && (
+    <Box
+      width={props.columns}
+      height={showBar ? 3 : 2}
+      paddingX={1}
+      flexDirection="column"
+      flexShrink={0}
+    >
+      {showBar && (
+        <Box height={1} flexShrink={0} {...hoverProps("bar")}>
           <ThemedText preserveWhitespace wrap="truncate">
             {segments.map(({ key, color }, index) => (
               <ThemedText key={key} backgroundColor={color}>
@@ -247,8 +254,8 @@ export function StatusLine(props: StatusLineProps) {
               {" ".repeat(free - readout.length) + readout}
             </ThemedText>
           </ThemedText>
-        )}
-      </Box>
+        </Box>
+      )}
       <Box height={1} flexShrink={0}>
         <Box width={leftWidth} flexShrink={1}>
           {fields.map(

@@ -116,17 +116,24 @@ test.each([
   [82, 12_500, "13k/64k 19.5%"],
   [18, 12_500, "19.5%"],
   [16, 63_360, ""],
-  [15, 12_500, ""],
 ])("bar readout degrades at %s columns with %s used", async (columns, used, readout) => {
   const terminal = await mount({ columns, contextUsage: { ...props.contextUsage!, used } });
   expect(terminal.screen()[0]).toBe(
     readout ? " ".repeat(columns - 1 - readout.length) + readout : "",
   );
   expect(terminal.screen()[3]).toBe("after footer");
-  if (columns === 15) {
-    for (let x = 0; x < columns; x++)
-      expect(terminal.terminal.buffer.active.getLine(0)!.getCell(x)!.getBgColorMode()).toBe(0);
-  }
+});
+
+test("a hidden narrow context bar leaves no row above the fields and keeps the hint row", async () => {
+  const terminal = await mount({ columns: 15 });
+  expect(terminal.screen()[0]?.trimStart()).toStartWith("ctx ");
+  expect(terminal.screen()[1]).toBe(" esc 中断");
+  expect(terminal.screen()[2]).toBe("after footer");
+  for (let x = 0; x < 15; x++)
+    expect(terminal.terminal.buffer.active.getLine(0)!.getCell(x)!.getBgColorMode()).toBe(0);
+  terminal.rerender({ working: false });
+  await terminal.waitFor(() => terminal.screen()[1] === "");
+  expect(terminal.screen()[2]).toBe("after footer");
 });
 
 test.each([
@@ -342,7 +349,7 @@ test("compact counts use lower-case m, small ctx percentages retain decimals, an
   expect(terminal.screen()[0]).toBe("");
 });
 
-test("an empty context paints only free cells and missing context keeps all three rows", async () => {
+test("an empty context paints free cells and missing context removes only the bar row", async () => {
   const terminal = await mount({
     contextUsage: {
       type: "context_usage",
@@ -356,7 +363,14 @@ test("an empty context paints only free cells and missing context keeps all thre
     rgb(dark.barFree),
   );
   terminal.rerender({ contextUsage: undefined });
-  await terminal.waitFor(() => terminal.screen()[0] === "");
-  expect(terminal.screen()[1]).not.toContain("ctx");
+  await terminal.waitFor(() => terminal.screen()[0]?.startsWith(" deepseek-") === true);
+  expect(terminal.screen()[0]).not.toContain("ctx");
+  expect(terminal.screen()[1]).toBe(" esc 中断");
+  expect(terminal.screen()[2]).toBe("after footer");
+  terminal.rerender({ working: false });
+  await terminal.waitFor(() => terminal.screen()[1] === "");
+  expect(terminal.screen()[2]).toBe("after footer");
+  terminal.rerender({ contextUsage: props.contextUsage });
+  await terminal.waitFor(() => terminal.screen()[0]?.endsWith("13k/64k 19.5%") === true);
   expect(terminal.screen()[3]).toBe("after footer");
 });

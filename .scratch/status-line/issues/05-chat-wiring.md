@@ -33,3 +33,5 @@ Status: resolved
 - 验证：`rtk bun x tsc -b` 和相关单文件测试通过；最终 `rtk proxy env -u NO_COLOR bun run check` 全绿，361 pass / 0 fail，格式、lint、类型检查和 Knip 通过。移除 NO_COLOR 以验证实际主题颜色。
 - code-review：Standards 0 findings；Spec 0 findings。Standards 提出的 decode deadline 重复逻辑已收回 conversation；输入预算疑问经原 fullscreen 访谈与实现记录核对后撤回，输入框预算仍独立于活动行/状态栏。
 - 已同步 `.scratch/working-activity/spec.md` 的后缀、第三行提示优先级和上下文压力描述。
+- 2026-10-03 用户调整：仅提示行始终保留占位。缺少 Context Usage 或内容宽度不足 14 列时，上下文条不展示、不占行，字段行直接位于输入框下方；上下文条可见时仍为三行。组件测试验证隐藏/恢复及提示空行；80/60/40 列终端测试验证启动时字段行紧接输入框、hover 高度稳定，以及收到上下文后的三行布局。已同步两份 spec。
+- 占位调整验证：`rtk bun x tsc -b` 与相关测试通过；`rtk proxy env -u NO_COLOR bun run check` 全绿（361 pass / 0 fail）。Standards 与 Spec 复审均无发现。

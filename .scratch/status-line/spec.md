@@ -8,7 +8,7 @@ Status: ready-for-agent
 
 ## Solution
 
-按 dsh-TUI `StatusLine` 的紧凑模式移植，固定三行，常驻显示：
+按 dsh-TUI `StatusLine` 的紧凑模式移植，最多三行。字段行常驻，提示行始终占位；上下文分段条仅在可展示时占一行：
 
 ```
 ████▓▓▓▒▒░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░13k/64k 19.5%
@@ -19,6 +19,7 @@ esc 中断
 - 第 1 行是上下文分段条：system、prompt、assistant、thinking、tools 五段按估算比例着色，剩余部分是空闲段，读数显示在空闲段右端。
 - 第 2 行是字段行，各字段之间用 `·` 分隔，ctx 字段固定在最右边。
 - 第 3 行是提示行，按优先级显示以下内容之一：hover 明细、滚动提示、`esc 中断`。
+- 上下文分段条不展示时不保留空行，字段行直接位于输入框下方，随后仍保留提示行。
 - 鼠标悬停字段时，第 3 行显示该字段的明细；悬停 ctx 时，ctx 字段原位变成小仪表。
 
 Agent Core 新增 `context_usage` 事件，把 Context Usage 交给所有 frontend。活动行在上下文用到 80% 以上时加前缀 `⚠ 上下文 N%`。
@@ -107,12 +108,12 @@ Agent Core 新增 `context_usage` 事件，把 Context Usage 交给所有 fronte
 ### ③ `StatusLine` 组件（只接收 props）
 
 - props 包含 Context Usage、模型名、provider、thinking 级别、tps 当前值和样本、Session 累计 usage（input / output / cacheRead / cacheWrite）、git 分支、cwd、是否在工作、滚动提示文案和终端列数。组件内部只有 hover 状态。
-- 根节点为 `paddingX={1}`、宽度等于终端列数，内容宽度为 `columns - 2`。三行高度固定，第三行即使为空也保留。
+- 根节点为 `paddingX={1}`、宽度等于终端列数，内容宽度为 `columns - 2`。上下文条可见时占三行，隐藏时占两行；仅第三行提示即使为空也保留占位。上下文条隐藏时，字段行直接位于输入框下方。
 - **分段条**：
   - 每个非零的已用段至少占 1 列，其余列（含空闲段）按最大余数法分配。
   - 读数右对齐放在空闲段内，优先显示 `13k/64k 19.5%`，放不下时显示 `19.5%`，仍放不下则不显示。
   - 读数 ≥80% 用 warning 色，≥95% 用 error 色。
-  - 内容宽度 <14 时不显示分段条，此时该行留空，高度不变。
+  - 缺少 Context Usage 或内容宽度 <14 时不显示分段条，不保留该行占位。
 - **字段行（紧凑模式）**：
   - 左侧依次为 model、tps、effort、`缓存 x%`、`in→out`、git、cwd 的 basename，用 subtle 色的 `·` 分隔。每个字段各自 `flexShrink` 并截断。
   - ctx 字段 `ctx {pct}% ({used}/{window})` 放在不收缩的右侧容器里。
@@ -178,7 +179,7 @@ Agent Core 新增 `context_usage` 事件，把 Context Usage 交给所有 fronte
    - wheel 的行为不变。
    - `ThemedText` 的 `backgroundColor` 使用主题 token 时，输出对应的 SGR 48 颜色，可参照现有 background-color 测试。
 3. **`apps/neant-tui` headless xterm 终端**：沿用 `tests/helpers/terminal.ts` 和 `tests/e2e/`。断言以下几点：
-   - 80、60、40 列下 footer 三行的屏幕内容；
+   - 80、60、40 列下，有 Context Usage 时 footer 三行的屏幕内容，缺少 Context Usage 时字段行直接位于输入框下方且提示行保留占位；
    - 工作中第三行显示 `esc 中断`，结束后清空；
    - 滚动离开底部时第三行出现滚动提示，并且输入框上方不再多出一行；
    - 写入 motion 序列悬停 ctx 和 model 后，第三行显示对应明细，ctx 原位变为迷你仪表，移开后恢复；
@@ -188,7 +189,7 @@ Agent Core 新增 `context_usage` 事件，把 Context Usage 交给所有 fronte
 4. **组件冒烟测试**：沿用 `tests/components/`，参照 activity-line 和 logo 的测试，覆盖终端 e2e 难以构造的情况：
    - 分段条在不同比例、宽度下的列分配，包括非零段至少占 1 列；
    - 读数在三档宽度下的降级；
-   - 宽度 <14 时隐藏；
+   - 内容宽度 <14 或缺少 Context Usage 时隐藏分段条且不保留该行，字段行后仍有提示行占位；
    - 80% 和 95% 时的颜色；
    - tps 的仪表、sparkline、无样本三种形态，以及三档速度色；
    - 字段缺失（无分支、无缓存、无 thinking 级别）时不显示对应字段，也不留下多余的分隔符。

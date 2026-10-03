@@ -3,9 +3,18 @@ import { start } from "../helpers/app";
 import { dark } from "@neant/tui";
 
 for (const columns of [80, 60, 40]) {
-  test(`Chat pins a three-row footer at ${columns} columns across two Runs`, async () => {
-    const app = await start(["first"], { columns });
+  test(`Chat places fields below input until context is available at ${columns} columns`, async () => {
+    const app = await start([], { columns });
     try {
+      await app.waitFor(() => app.stdin.isRaw && app.screen().at(-2)?.includes("0→0") === true);
+      expect(app.screen().at(-3)).toMatch(/^╰─+╯$/);
+      expect(app.screen().at(-1)).toBe("");
+      app.stdin.write("\x1b[<35;2;23M");
+      await app.waitFor(() => app.screen().at(-1)?.includes("model faux-1") === true);
+      expect(app.screen().at(-3)).toMatch(/^╰─+╯$/);
+      app.stdin.write("\x1b[<35;80;1M");
+      await app.waitFor(() => app.screen().at(-1) === "");
+      app.stdin.write("first\r");
       await app.waitFor(() => app.calls.length === 1 && app.screen().at(-1)?.trim() === "esc 中断");
       expect(app.screen().at(-2)).toContain("ctx ");
       expect(app.screen().at(-4)).toMatch(/^╰─+╯$/);
