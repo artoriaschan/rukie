@@ -16,6 +16,7 @@ import type { Api, Model } from "@earendil-works/pi-ai";
 import { resolve } from "node:path";
 import type {
   CustomSessionEvent,
+  PermissionMode,
   RunResult,
   SessionEvent as SharedSessionEvent,
   Settings,
@@ -57,8 +58,8 @@ export interface SessionOptions {
   resumeId?: string;
   /** Additional tool-name glob patterns, combined with settings.allowTools. */
   allowTools?: string[];
-  /** Allow every tool. */
-  yolo?: boolean;
+  /** Session permission policy; defaults to ask. */
+  permissionMode?: PermissionMode;
   /** Decide tool calls requiring permission; defaults to deny. */
   onPermissionAsk?: (request: PermissionAskRequest) => Promise<"allow" | "deny">;
   /** Load this project's .mcp.json even when it is not in the user trust list. */
@@ -75,6 +76,9 @@ export type SessionEvent = SharedSessionEvent<AgentEvent>;
 
 export interface Session {
   readonly id: string;
+  readonly permissionMode: PermissionMode;
+  /** Applies to the next tool call; never persisted. */
+  setPermissionMode(mode: PermissionMode): void;
   /** Current restored context in memory, including reminders and any compaction. */
   readonly messages: readonly AgentMessage[];
   run(
@@ -106,6 +110,7 @@ async function askPermission(
 
 export async function createSession(options: SessionOptions): Promise<Session> {
   const settings = options.settings ?? {};
+  let permissionMode = options.permissionMode ?? settings.permissionMode ?? "ask";
   if (options.model && !options.streamFn) throw new Error("`model` requires `streamFn`.");
   const { model, streamFn } = options.model
     ? { model: options.model, streamFn: options.streamFn! }
@@ -144,9 +149,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     streamFn: options.streamFn ?? streamFn,
     convertToLlm,
     beforeToolCall: async ({ toolCall, args }, signal) => {
-      let decision = decidePermission(toolCall.name, {
+      let decision = decidePermission({
+        toolName: toolCall.name,
         allowTools: [...(settings.allowTools ?? []), ...(options.allowTools ?? [])],
-        yolo: options.yolo,
+        mode: permissionMode,
       });
       if (decision === "ask") {
         decision = options.onPermissionAsk
@@ -181,6 +187,12 @@ export async function createSession(options: SessionOptions): Promise<Session> {
   let inputTokens: number | undefined;
   return {
     id: stored.metadata.id,
+    get permissionMode() {
+      return permissionMode;
+    },
+    setPermissionMode(mode) {
+      permissionMode = mode;
+    },
     get messages() {
       return agent.state.messages;
     },

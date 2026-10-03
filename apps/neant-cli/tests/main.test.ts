@@ -39,3 +39,42 @@ test("unknown arguments exit with 2", async () => {
   expect(exitCode).toBe(2);
   expect(stderr).not.toBe("");
 });
+
+for (const flags of [
+  ["--permission-mode", "ask"],
+  ["--permission-mode=auto-review"],
+  ["--permission-mode", "full-access"],
+  ["--yolo", "--permission-mode", "full-access"],
+  ["--permission-mode", "full-access", "--yolo"],
+]) {
+  test(`valid permission flags ${flags.join(" ")} run successfully`, async () => {
+    const { exitCode, stdout, stderr } = await run([...flags, "-p", "hi"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toBe('echo: [{"type":"text","text":"hi"}]\n');
+    expect(stderr).toBe("");
+  });
+}
+
+test.each([
+  [["--permission-mode"], "argument missing"],
+  [["--permission-mode", "invalid"], "--permission-mode must be one of"],
+  [["--permission-mode", ""], "--permission-mode must be one of"],
+  [["--yolo", "--permission-mode", "ask"], "--yolo conflicts with --permission-mode"],
+  [["--permission-mode", "auto-review", "--yolo"], "--yolo conflicts with --permission-mode"],
+] as const)("invalid permission flags %j exit before reading stdin", async (flags, message) => {
+  let read = false;
+  let stderr = "";
+  let stdout = "";
+  const exitCode = await main([...flags], {
+    readStdin: async () => {
+      read = true;
+      return "hi";
+    },
+    stdout: (text) => (stdout += text),
+    stderr: (text) => (stderr += text),
+  });
+  expect(exitCode).toBe(2);
+  expect(stderr).toContain(message);
+  expect(stdout).toBe("");
+  expect(read).toBe(false);
+});

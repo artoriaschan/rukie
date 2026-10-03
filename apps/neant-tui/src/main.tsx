@@ -2,7 +2,12 @@
 import { homedir } from "node:os";
 import { parseArgs } from "node:util";
 import { loadSettings, type SessionOptions } from "@neant/agent";
-import { THINKING_LEVELS, type ThinkingLevel } from "@neant/shared";
+import {
+  PERMISSION_MODES,
+  THINKING_LEVELS,
+  type PermissionMode,
+  type ThinkingLevel,
+} from "@neant/shared";
 import { render, ThemeProvider, type RenderOptions } from "@neant/tui";
 import { createChat } from "./screens/chat";
 
@@ -27,6 +32,7 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
         thinking: { type: "string" },
         resume: { type: "string" },
         "allow-tools": { type: "string", multiple: true },
+        "permission-mode": { type: "string" },
         yolo: { type: "boolean" },
         "trust-project-mcp": { type: "boolean" },
       },
@@ -43,6 +49,19 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
     }
     if (values["allow-tools"]?.some((pattern) => !pattern)) {
       throw new Error("--allow-tools requires non-empty tool patterns");
+    }
+    if (
+      values["permission-mode"] !== undefined &&
+      !PERMISSION_MODES.includes(values["permission-mode"] as PermissionMode)
+    ) {
+      throw new Error(`--permission-mode must be one of ${PERMISSION_MODES.join(", ")}`);
+    }
+    if (
+      values.yolo &&
+      values["permission-mode"] !== undefined &&
+      values["permission-mode"] !== "full-access"
+    ) {
+      throw new Error("--yolo conflicts with --permission-mode; --yolo requires full-access");
     }
     if (values.model !== undefined && !/^[^/]+\/.+/.test(values.model)) {
       throw new Error(`--model must be provider/id, got "${values.model}"`);
@@ -85,7 +104,10 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
         ...io.session,
         resumeId: values.resume,
         allowTools: [...(io.session?.allowTools ?? []), ...(values["allow-tools"] ?? [])],
-        yolo: values.yolo ?? io.session?.yolo,
+        permissionMode: values.yolo
+          ? "full-access"
+          : ((values["permission-mode"] as PermissionMode | undefined) ??
+            io.session?.permissionMode),
         trustProjectMcp: values["trust-project-mcp"] ?? io.session?.trustProjectMcp,
       },
       model ? `${model.provider}/${model.id}` : settings.model!,

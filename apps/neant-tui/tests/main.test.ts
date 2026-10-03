@@ -253,6 +253,11 @@ for (const [argv, message] of [
   [["--thinking", "invalid"], "--thinking must be one of"],
   [["--allow-tools", ""], "--allow-tools requires non-empty tool patterns"],
   [["--model"], "argument missing"],
+  [["--permission-mode"], "argument missing"],
+  [["--permission-mode", "invalid"], "--permission-mode must be one of"],
+  [["--permission-mode", ""], "--permission-mode must be one of"],
+  [["--yolo", "--permission-mode", "ask"], "--yolo conflicts with --permission-mode"],
+  [["--permission-mode", "auto-review", "--yolo"], "--yolo conflicts with --permission-mode"],
 ] as const) {
   test(`invalid arguments ${argv.join(" ")} exit with 2 before entering rendering`, async () => {
     const app = await start([...argv]);
@@ -362,6 +367,11 @@ for (const [mode, argv, session] of [
     { allowTools: ["write"] },
   ],
   ["yolo", ["--yolo", "write a file"], {}],
+  ["full-access", ["--permission-mode", "full-access", "write a file"], {}],
+  ["settings mode", ["write a file"], { settings: { permissionMode: "full-access" } }],
+  ["injected mode", ["write a file"], { permissionMode: "full-access" }],
+  ["matching aliases", ["--yolo", "--permission-mode=full-access", "write a file"], {}],
+  ["matching aliases reversed", ["--permission-mode=full-access", "--yolo", "write a file"], {}],
 ] as const) {
   test(`${mode} is forwarded to the Session and usage totals all Turns`, async () => {
     const app = await start([...argv], {

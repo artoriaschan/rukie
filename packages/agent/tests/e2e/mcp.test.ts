@@ -411,7 +411,12 @@ test.each(["error", "crash"])(
       fauxAssistantMessage("recovered"),
     ]);
     const events: SessionEvent[] = [];
-    const session = await createSession({ ...dirs, ...fake, yolo: true, onWarning: () => {} });
+    const session = await createSession({
+      ...dirs,
+      ...fake,
+      permissionMode: "full-access",
+      onWarning: () => {},
+    });
     expect(
       (
         await session.run("use tool", {

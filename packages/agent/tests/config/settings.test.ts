@@ -6,6 +6,24 @@ import { tempDirs } from "../helpers/temp-dirs.ts";
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
 afterEach(() => dirs?.cleanup());
 
+test("user permission mode is retained while the project can override the review model", async () => {
+  dirs = await tempDirs();
+  await Bun.write(
+    join(dirs.homeDir, ".neant/settings.json"),
+    JSON.stringify({ permissionMode: "auto-review", reviewModel: "user/reviewer" }),
+  );
+  const projectFile = join(dirs.cwd, ".neant/settings.json");
+  await Bun.write(
+    projectFile,
+    JSON.stringify({ permissionMode: "full-access", reviewModel: "project/reviewer" }),
+  );
+  const { settings, warnings } = await loadSettings(dirs);
+  expect(settings).toEqual({ permissionMode: "auto-review", reviewModel: "project/reviewer" });
+  expect(warnings).toEqual([
+    `${projectFile}: ignoring "permissionMode"; only user settings can define permissionMode.`,
+  ]);
+});
+
 const provider = (id: string) => ({
   id,
   api: "openai-completions",
@@ -45,7 +63,7 @@ test("malformed project providers are ignored, not fatal", async () => {
   expect(warnings).toHaveLength(1);
 });
 
-test("project settings override model and allowTools only", async () => {
+test("project settings override model, reviewModel and allowTools only", async () => {
   dirs = await tempDirs();
   await Bun.write(
     join(dirs.homeDir, ".neant/settings.json"),
@@ -59,6 +77,40 @@ test("project settings override model and allowTools only", async () => {
   const { settings } = await loadSettings({ cwd: dirs.cwd, homeDir: dirs.homeDir });
 
   expect(settings).toEqual({ model: "b/y", thinking: "low", allowTools: [] });
+});
+
+test.each(["ask", "auto-review", "full-access"])("user settings accept mode %s", async (mode) => {
+  dirs = await tempDirs();
+  await Bun.write(
+    join(dirs.homeDir, ".neant/settings.json"),
+    JSON.stringify({ permissionMode: mode, reviewModel: "user/reviewer" }),
+  );
+  expect(await loadSettings(dirs)).toEqual({
+    settings: { permissionMode: mode, reviewModel: "user/reviewer" },
+    warnings: [],
+  });
+});
+
+test("malformed project permission mode is ignored without granting permissions", async () => {
+  dirs = await tempDirs();
+  const projectFile = join(dirs.cwd, ".neant/settings.json");
+  await Bun.write(projectFile, JSON.stringify({ permissionMode: { mode: "full-access" } }));
+  const { settings, warnings } = await loadSettings(dirs);
+  expect(settings).toEqual({});
+  expect(warnings).toEqual([
+    `${projectFile}: ignoring "permissionMode"; only user settings can define permissionMode.`,
+  ]);
+});
+
+test.each([
+  ["permissionMode", "invalid"],
+  ["permissionMode", true],
+  ["reviewModel", 42],
+])("invalid user setting %s=%s names the file and field", async (field, value) => {
+  dirs = await tempDirs();
+  const userFile = join(dirs.homeDir, ".neant/settings.json");
+  await Bun.write(userFile, JSON.stringify({ [field!]: value }));
+  await expect(loadSettings(dirs)).rejects.toThrow(`${userFile}: /${field}`);
 });
 
 test("invalid settings name the file and the field", async () => {

@@ -4,42 +4,48 @@ import { start } from "../helpers/app";
 
 const assistant = process.platform === "darwin" ? "⏺" : "●";
 
-test("allow once executes the tool and asks again for its next call", async () => {
-  const app = await start(["use bash"]);
-  try {
-    await app.waitFor(() => app.calls.length === 1);
-    app.calls[0]!.tool("bash", { command: "printf first-permitted" });
-    await app.waitFor(() => app.screen().some((line) => line.includes("权限确认")));
-    const dialog = app.screen().join("\n");
-    expect(dialog).toContain('bash {"command":"printf first-permitted"}');
-    expect(dialog).toContain("1. 允许一次");
-    expect(dialog).toContain("2. 本 session 内一直允许这个工具");
-    expect(dialog).toContain("3. 拒绝");
-    app.stdin.write("1");
-    await Bun.sleep(30);
-    expect(app.calls).toHaveLength(1);
-    app.stdin.write("\r");
-    await app.waitFor(() => app.calls.length === 2);
-    expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
-      role: "toolResult",
-      isError: false,
-      content: [{ type: "text", text: "first-permitted" }],
-    });
-    app.calls[1]!.tool("bash", { command: "printf second-permitted" });
-    await app.waitFor(() => app.screen().join("\n").includes("second-permitted"));
-    expect(app.screen().join("\n")).toContain("权限确认");
-    expect(app.calls).toHaveLength(2);
-    app.stdin.write("1\r");
-    await app.waitFor(() => app.calls.length === 3);
-    app.calls[2]!.delta("finished");
-    app.calls[2]!.finish();
-    await app.waitFor(() => !app.isWorking());
-    expect(app.screen().join("\n")).not.toContain("权限确认");
-    expect(app.allLines().join("\n")).not.toContain("权限确认");
-  } finally {
-    await app.cleanup();
-  }
-});
+test.each(["default", "ask", "auto-review"])(
+  "%s: allow once executes the tool and asks again for its next call",
+  async (mode) => {
+    const app = await start(
+      mode === "default" ? ["use bash"] : ["--permission-mode", mode, "use bash"],
+      mode === "default" ? {} : { session: { settings: { permissionMode: "full-access" } } },
+    );
+    try {
+      await app.waitFor(() => app.calls.length === 1);
+      app.calls[0]!.tool("bash", { command: "printf first-permitted" });
+      await app.waitFor(() => app.screen().some((line) => line.includes("权限确认")));
+      const dialog = app.screen().join("\n");
+      expect(dialog).toContain('bash {"command":"printf first-permitted"}');
+      expect(dialog).toContain("1. 允许一次");
+      expect(dialog).toContain("2. 本 session 内一直允许这个工具");
+      expect(dialog).toContain("3. 拒绝");
+      app.stdin.write("1");
+      await Bun.sleep(30);
+      expect(app.calls).toHaveLength(1);
+      app.stdin.write("\r");
+      await app.waitFor(() => app.calls.length === 2);
+      expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
+        role: "toolResult",
+        isError: false,
+        content: [{ type: "text", text: "first-permitted" }],
+      });
+      app.calls[1]!.tool("bash", { command: "printf second-permitted" });
+      await app.waitFor(() => app.screen().join("\n").includes("second-permitted"));
+      expect(app.screen().join("\n")).toContain("权限确认");
+      expect(app.calls).toHaveLength(2);
+      app.stdin.write("1\r");
+      await app.waitFor(() => app.calls.length === 3);
+      app.calls[2]!.delta("finished");
+      app.calls[2]!.finish();
+      await app.waitFor(() => !app.isWorking());
+      expect(app.screen().join("\n")).not.toContain("权限确认");
+      expect(app.allLines().join("\n")).not.toContain("权限确认");
+    } finally {
+      await app.cleanup();
+    }
+  },
+);
 
 test.each([
   ["number", "3\r"],

@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { PERMISSION_MODES } from "@neant/shared";
 import { join } from "node:path";
 import { createSession, type PermissionAskRequest, type SessionEvent } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
@@ -7,6 +8,112 @@ import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
 afterEach(() => dirs?.cleanup());
+
+test.each([
+  [undefined, "full-access", "full-access"],
+  ["ask", "full-access", "ask"],
+  ["auto-review", "full-access", "auto-review"],
+  ["full-access", "ask", "full-access"],
+] as const)(
+  "session option %s overrides settings mode %s with effective mode %s",
+  async (permissionMode, configuredMode, expectedMode) => {
+    dirs = await tempDirs();
+    const fake = fakeModel([
+      fauxAssistantMessage(fauxToolCall("write", { path: "mode.txt", content: "written" }), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("continued"),
+    ]);
+    const session = await createSession({
+      ...dirs,
+      ...fake,
+      settings: { permissionMode: configuredMode },
+      permissionMode,
+    });
+    expect(session.permissionMode).toBe(expectedMode);
+    expect((await session.run("write")).text).toBe("continued");
+    expect(await Bun.file(join(dirs.cwd, "mode.txt")).exists()).toBe(
+      expectedMode === "full-access",
+    );
+    expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
+      role: "toolResult",
+      isError: expectedMode !== "full-access",
+    });
+  },
+);
+
+test("switching permission mode during a Run applies to the next tool call", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([
+    ...["first", "second", "third", "fourth"].map((name) =>
+      fauxAssistantMessage(
+        fauxToolCall("write", { path: `${name}.txt`, content: name }, { id: name }),
+        { stopReason: "toolUse" },
+      ),
+    ),
+    fauxAssistantMessage("done"),
+  ]);
+  const requests: string[] = [];
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    async onPermissionAsk(request) {
+      requests.push(request.toolCallId);
+      return "deny";
+    },
+  });
+  expect(session.permissionMode).toBe("ask");
+  await session.run("write four files", {
+    onEvent(event) {
+      if (event.type !== "tool_execution_end") return;
+      if (event.toolCallId === "first") session.setPermissionMode("full-access");
+      if (event.toolCallId === "second") session.setPermissionMode("auto-review");
+      if (event.toolCallId === "third") session.setPermissionMode("ask");
+    },
+  });
+  expect(session.permissionMode).toBe("ask");
+  expect(requests).toEqual(["first", "third", "fourth"]);
+  expect(await Bun.file(join(dirs.cwd, "first.txt")).exists()).toBe(false);
+  expect(await Bun.file(join(dirs.cwd, "second.txt")).text()).toBe("second");
+  expect(await Bun.file(join(dirs.cwd, "third.txt")).exists()).toBe(false);
+  expect(await Bun.file(join(dirs.cwd, "fourth.txt")).exists()).toBe(false);
+  expect(
+    fake.contexts.at(-1)!.messages.filter((message) => message.role === "toolResult"),
+  ).toMatchObject([
+    { toolCallId: "first", isError: true },
+    { toolCallId: "second", isError: false },
+    { toolCallId: "third", isError: true },
+    { toolCallId: "fourth", isError: true },
+  ]);
+});
+
+test.each(["ask", "auto-review"] as const)(
+  "a temporary full-access switch is not restored on resume with default %s",
+  async (permissionMode) => {
+    dirs = await tempDirs();
+    const settings = { permissionMode };
+    const session = await createSession({
+      ...dirs,
+      ...fakeModel([fauxAssistantMessage("stored reply")]),
+      settings,
+    });
+    session.setPermissionMode("full-access");
+    await session.run("stored prompt");
+    expect(settings.permissionMode).toBe(permissionMode);
+    const fake = fakeModel([
+      fauxAssistantMessage(fauxToolCall("write", { path: "resumed.txt", content: "blocked" }), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("resumed reply"),
+    ]);
+    const resumed = await createSession({ ...dirs, ...fake, settings, resumeId: session.id });
+    expect(resumed.permissionMode).toBe(permissionMode);
+    await resumed.run("continue");
+    expect(await Bun.file(join(dirs.cwd, "resumed.txt")).exists()).toBe(false);
+    expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({ role: "toolResult", isError: true });
+    expect(JSON.stringify(fake.contexts[0]!.messages)).not.toContain("full-access");
+  },
+);
 
 test("frontend can allow a tool call using its id, name, arguments and signal", async () => {
   dirs = await tempDirs();
@@ -162,77 +269,77 @@ test.each(["pending", "allow", "reject"] as const)(
   },
 );
 
-test.each(["options", "settings", "yolo"] as const)(
-  "tools allowed through %s do not ask the frontend",
-  async (mode) => {
-    dirs = await tempDirs();
-    const fake = fakeModel([
-      fauxAssistantMessage(fauxToolCall("write", { path: "allowed.txt", content: "allowed" }), {
-        stopReason: "toolUse",
-      }),
-      fauxAssistantMessage("done"),
-    ]);
-    const permissions =
-      mode === "options"
-        ? { allowTools: ["wri?e"] }
-        : mode === "settings"
-          ? { settings: { allowTools: ["wri[st]e"] } }
-          : { yolo: true };
-    const requests: PermissionAskRequest[] = [];
-    const session = await createSession({
-      ...dirs,
-      ...fake,
-      ...permissions,
-      async onPermissionAsk(request) {
-        requests.push(request);
-        return "deny";
-      },
-    });
-    await session.run("write");
-    expect(await Bun.file(join(dirs.cwd, "allowed.txt")).text()).toBe("allowed");
-    expect(requests).toEqual([]);
-  },
-);
-
-test("read-only tools do not ask the frontend", async () => {
+test.each(
+  PERMISSION_MODES.flatMap((mode) => ["options", "settings"].map((source) => ({ mode, source }))),
+)("tools allowed through $source in $mode do not ask the frontend", async ({ mode, source }) => {
   dirs = await tempDirs();
-  await Bun.write(join(dirs.cwd, "file.txt"), "visible content");
-  await Bun.write(
-    join(dirs.cwd, ".agents/skills/review/SKILL.md"),
-    "---\nname: review\ndescription: Review changes\n---\nInspect the diff.\n",
-  );
   const fake = fakeModel([
-    fauxAssistantMessage(
-      [
-        fauxToolCall("read", { path: "file.txt" }),
-        fauxToolCall("glob", { pattern: "*.txt" }),
-        fauxToolCall("grep", { pattern: "visible", path: "file.txt" }),
-        fauxToolCall("skill", { name: "review" }),
-      ],
-      { stopReason: "toolUse" },
-    ),
+    fauxAssistantMessage(fauxToolCall("write", { path: "allowed.txt", content: "allowed" }), {
+      stopReason: "toolUse",
+    }),
     fauxAssistantMessage("done"),
   ]);
+  const permissions =
+    source === "options" ? { allowTools: ["wri?e"] } : { settings: { allowTools: ["wri[st]e"] } };
   const requests: PermissionAskRequest[] = [];
   const session = await createSession({
     ...dirs,
     ...fake,
+    ...permissions,
+    permissionMode: mode,
     async onPermissionAsk(request) {
       requests.push(request);
       return "deny";
     },
   });
-  await session.run("inspect");
-  expect(
-    fake.contexts[1]!.messages.filter((message) => message.role === "toolResult"),
-  ).toMatchObject([
-    { toolName: "read", isError: false },
-    { toolName: "glob", isError: false },
-    { toolName: "grep", isError: false },
-    { toolName: "skill", isError: false },
-  ]);
+  await session.run("write");
+  expect(await Bun.file(join(dirs.cwd, "allowed.txt")).text()).toBe("allowed");
   expect(requests).toEqual([]);
 });
+
+test.each([...PERMISSION_MODES])(
+  "read-only tools in %s do not ask the frontend",
+  async (permissionMode) => {
+    dirs = await tempDirs();
+    await Bun.write(join(dirs.cwd, "file.txt"), "visible content");
+    await Bun.write(
+      join(dirs.cwd, ".agents/skills/review/SKILL.md"),
+      "---\nname: review\ndescription: Review changes\n---\nInspect the diff.\n",
+    );
+    const fake = fakeModel([
+      fauxAssistantMessage(
+        [
+          fauxToolCall("read", { path: "file.txt" }),
+          fauxToolCall("glob", { pattern: "*.txt" }),
+          fauxToolCall("grep", { pattern: "visible", path: "file.txt" }),
+          fauxToolCall("skill", { name: "review" }),
+        ],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("done"),
+    ]);
+    const requests: PermissionAskRequest[] = [];
+    const session = await createSession({
+      ...dirs,
+      ...fake,
+      permissionMode,
+      async onPermissionAsk(request) {
+        requests.push(request);
+        return "deny";
+      },
+    });
+    await session.run("inspect");
+    expect(
+      fake.contexts[1]!.messages.filter((message) => message.role === "toolResult"),
+    ).toMatchObject([
+      { toolName: "read", isError: false },
+      { toolName: "glob", isError: false },
+      { toolName: "grep", isError: false },
+      { toolName: "skill", isError: false },
+    ]);
+    expect(requests).toEqual([]);
+  },
+);
 
 test("allowing one call does not authorize later calls to the same tool", async () => {
   dirs = await tempDirs();

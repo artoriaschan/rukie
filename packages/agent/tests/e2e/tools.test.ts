@@ -92,7 +92,7 @@ test("aborting a Run kills bash and its child process and preserves the error in
     ),
     fauxAssistantMessage("unused"),
   ]);
-  const session = await createSession({ ...dirs, ...fake, yolo: true });
+  const session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
   const controller = new AbortController();
   const started = Promise.withResolvers<number[]>();
   const run = session.run("start shell", {
@@ -219,7 +219,7 @@ test("glob finds dotfiles and nested files while respecting nested gitignore rul
   });
 });
 
-test.each(["cli", "settings", "yolo"])(
+test.each(["cli", "settings", "full-access"])(
   "explicit permissions %s allow writes while read supports line ranges",
   async (mode) => {
     const permissions =
@@ -227,7 +227,7 @@ test.each(["cli", "settings", "yolo"])(
         ? { allowTools: ["wri?e"] }
         : mode === "settings"
           ? { settings: { allowTools: ["wri[st]e"] } }
-          : { yolo: true };
+          : { permissionMode: "full-access" as const };
     dirs = await tempDirs();
     const fake = fakeModel([
       fauxAssistantMessage(
@@ -251,7 +251,7 @@ test.each(["cli", "settings", "yolo"])(
   },
 );
 
-test("yolo permits edits and bash; tool exceptions are returned so the model can recover", async () => {
+test("full-access permits edits and bash; tool exceptions are returned so the model can recover", async () => {
   dirs = await tempDirs();
   await Bun.write(join(dirs.cwd, "file.txt"), "original");
   const fake = fakeModel([
@@ -268,7 +268,7 @@ test("yolo permits edits and bash; tool exceptions are returned so the model can
     fauxAssistantMessage(fauxToolCall("read", { path: "missing.txt" }), { stopReason: "toolUse" }),
     fauxAssistantMessage("recovered"),
   ]);
-  const session = await createSession({ ...dirs, ...fake, yolo: true });
+  const session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
   expect((await session.run("edit then inspect")).text).toBe("recovered");
   expect(fake.contexts[2]!.messages.at(-1)).toMatchObject({
     role: "toolResult",

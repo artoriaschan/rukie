@@ -90,7 +90,7 @@ test("tps starts after 500ms of decoding and final usage corrects the Run sample
 test("tps includes tool-call deltas and completed Turns while excluding time between Turns", async () => {
   let now = Date.UTC(2026, 9, 2);
   const clock = spyOn(Date, "now").mockImplementation(() => now);
-  const app = await start(["tool decode"], { session: { yolo: true } });
+  const app = await start(["tool decode"], { session: { permissionMode: "full-access" } });
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.toolDelta("x".repeat(800));

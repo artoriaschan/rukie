@@ -4,7 +4,12 @@ import { addAbortSignal } from "node:stream";
 import { text } from "node:stream/consumers";
 import { parseArgs } from "node:util";
 import { createSession, loadSettings, type SessionOptions } from "@neant/agent";
-import { THINKING_LEVELS, type ThinkingLevel } from "@neant/shared";
+import {
+  PERMISSION_MODES,
+  THINKING_LEVELS,
+  type PermissionMode,
+  type ThinkingLevel,
+} from "@neant/shared";
 
 export interface CliIo {
   /** The process SIGINT signal; forwarded to the active Run. */
@@ -45,6 +50,7 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
         resume: { type: "string" },
         "output-format": { type: "string", default: "text" },
         "allow-tools": { type: "string", multiple: true },
+        "permission-mode": { type: "string" },
         yolo: { type: "boolean" },
         "trust-project-mcp": { type: "boolean" },
       },
@@ -66,6 +72,19 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
     }
     if (values["output-format"] !== "text" && values["output-format"] !== "stream-json") {
       throw new Error("--output-format must be text or stream-json");
+    }
+    if (
+      values["permission-mode"] !== undefined &&
+      !PERMISSION_MODES.includes(values["permission-mode"] as PermissionMode)
+    ) {
+      throw new Error(`--permission-mode must be one of ${PERMISSION_MODES.join(", ")}`);
+    }
+    if (
+      values.yolo &&
+      values["permission-mode"] !== undefined &&
+      values["permission-mode"] !== "full-access"
+    ) {
+      throw new Error("--yolo conflicts with --permission-mode; --yolo requires full-access");
     }
     if (values.model !== undefined && !/^[^/]+\/.+/.test(values.model)) {
       throw new Error(`--model must be provider/id, got "${values.model}"`);
@@ -95,7 +114,9 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
       ...io.session,
       resumeId: values.resume,
       allowTools: [...(io.session?.allowTools ?? []), ...(values["allow-tools"] ?? [])],
-      yolo: values.yolo ?? io.session?.yolo,
+      permissionMode: values.yolo
+        ? "full-access"
+        : ((values["permission-mode"] as PermissionMode | undefined) ?? io.session?.permissionMode),
       trustProjectMcp: values["trust-project-mcp"] ?? io.session?.trustProjectMcp,
     });
     const prompt = values.prompt ?? (await readStdin(io)).trimEnd();

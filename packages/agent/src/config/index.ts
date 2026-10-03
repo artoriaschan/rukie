@@ -32,13 +32,14 @@ function validate(path: string, data: unknown): Settings {
 
 /**
  * Loads `~/.neant/settings.json` merged with `<cwd>/.neant/settings.json`.
- * The project file may only override `model` and `allowTools`: it must not be able to
- * send requests or keys elsewhere, so its `providers` are dropped (unvalidated) with a warning.
+ * The project file may only override `model`, `reviewModel` and `allowTools`.
+ * Its `providers` and `permissionMode` are dropped (unvalidated) with a warning:
+ * a project must not redirect credentials or grant itself broader permissions.
  */
 export async function loadSettings(options: { cwd: string; homeDir: string }) {
   const userFile = join(options.homeDir, ".neant/settings.json");
   const projectFile = join(options.cwd, ".neant/settings.json");
-  const [userData, { providers, ...projectData }] = await Promise.all([
+  const [userData, { providers, permissionMode, ...projectData }] = await Promise.all([
     readJson(userFile),
     readJson(projectFile),
   ]);
@@ -48,8 +49,14 @@ export async function loadSettings(options: { cwd: string; homeDir: string }) {
   if (providers !== undefined) {
     warnings.push(`${projectFile}: ignoring "providers"; only user settings can define providers.`);
   }
+  if (permissionMode !== undefined) {
+    warnings.push(
+      `${projectFile}: ignoring "permissionMode"; only user settings can define permissionMode.`,
+    );
+  }
   const settings: Settings = { ...user };
   if (project.model !== undefined) settings.model = project.model;
+  if (project.reviewModel !== undefined) settings.reviewModel = project.reviewModel;
   if (project.allowTools !== undefined) settings.allowTools = project.allowTools;
   return { settings, warnings };
 }

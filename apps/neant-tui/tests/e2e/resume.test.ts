@@ -148,7 +148,7 @@ test("resume replays each tool's collapsed result and error preview without remi
         homeDir: root,
         model: original.getModel(),
         streamFn: (model, context, options) => original.streamSimple(model, context, options),
-        yolo: true,
+        permissionMode: "full-access",
       });
       await session.run("stored tools");
       argv.push("--resume", session.id);

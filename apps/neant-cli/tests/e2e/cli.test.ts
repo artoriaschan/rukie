@@ -141,46 +141,62 @@ test.each(["text", "stream-json"])(
   },
 );
 
-test.each(["default", "patterns", "repeated", "equals", "yolo", "settings"])(
-  "CLI permissions: %s",
-  async (mode) => {
-    const settings = mode === "settings" ? { allowTools: ["write", "bash"] } : {};
-    const { server, ...dirs } = await setup(settings, {
-      toolCalls: [
-        { name: "write", arguments: { path: "new.txt", content: "written" } },
-        { name: "bash", arguments: { command: "printf executed > bash-ran" } },
-      ],
-    });
-    const flags =
-      mode === "patterns"
-        ? ["--allow-tools", "wri?e", "ba[st]h"]
-        : mode === "repeated"
-          ? ["--allow-tools", "write", "--allow-tools", "bash"]
-          : mode === "equals"
-            ? ["--allow-tools=wri?e", "bash"]
-            : mode === "yolo"
-              ? ["--yolo"]
-              : [];
-    const result = await neant([...flags, "-p", "use tools", "--output-format", "stream-json"], {
-      ...dirs,
-      key: "sk-test",
-    });
-    expect(result.exitCode).toBe(0);
-    const denied = mode === "default";
-    expect(await Bun.file(join(dirs.cwd, "new.txt")).exists()).toBe(!denied);
-    expect(await Bun.file(join(dirs.cwd, "bash-ran")).exists()).toBe(!denied);
-    const events = parseEvents(result.stdout);
-    expect(events.filter((event) => event.type === "permission_denied")).toHaveLength(
-      denied ? 2 : 0,
-    );
-    expect(server.requests).toHaveLength(2);
-    const results = server.requests[1]!.body.messages.filter(
-      (message: { role: string }) => message.role === "tool",
-    );
-    expect(results).toHaveLength(2);
-    if (denied) expect(JSON.stringify(results)).toContain("该工具未获授权");
-  },
-);
+test.each([
+  "default",
+  "patterns",
+  "repeated",
+  "equals",
+  "yolo",
+  "settings",
+  "ask",
+  "auto-review",
+  "full-access",
+  "mode-settings",
+  "override",
+])("CLI permissions: %s", async (mode) => {
+  const settings =
+    mode === "settings"
+      ? { allowTools: ["write", "bash"] }
+      : ["mode-settings", "override"].includes(mode)
+        ? { permissionMode: "full-access" }
+        : {};
+  const { server, ...dirs } = await setup(settings, {
+    toolCalls: [
+      { name: "write", arguments: { path: "new.txt", content: "written" } },
+      { name: "bash", arguments: { command: "printf executed > bash-ran" } },
+    ],
+  });
+  const flags =
+    mode === "patterns"
+      ? ["--allow-tools", "wri?e", "ba[st]h"]
+      : mode === "repeated"
+        ? ["--allow-tools", "write", "--allow-tools", "bash"]
+        : mode === "equals"
+          ? ["--allow-tools=wri?e", "bash"]
+          : mode === "yolo"
+            ? ["--yolo"]
+            : ["ask", "auto-review", "full-access"].includes(mode)
+              ? ["--permission-mode", mode]
+              : mode === "override"
+                ? ["--permission-mode", "ask"]
+                : [];
+  const result = await neant([...flags, "-p", "use tools", "--output-format", "stream-json"], {
+    ...dirs,
+    key: "sk-test",
+  });
+  expect(result.exitCode).toBe(0);
+  const denied = ["default", "ask", "auto-review", "override"].includes(mode);
+  expect(await Bun.file(join(dirs.cwd, "new.txt")).exists()).toBe(!denied);
+  expect(await Bun.file(join(dirs.cwd, "bash-ran")).exists()).toBe(!denied);
+  const events = parseEvents(result.stdout);
+  expect(events.filter((event) => event.type === "permission_denied")).toHaveLength(denied ? 2 : 0);
+  expect(server.requests).toHaveLength(2);
+  const results = server.requests[1]!.body.messages.filter(
+    (message: { role: string }) => message.role === "tool",
+  );
+  expect(results).toHaveLength(2);
+  if (denied) expect(JSON.stringify(results)).toContain("该工具未获授权");
+});
 
 async function neant(
   args: string[],

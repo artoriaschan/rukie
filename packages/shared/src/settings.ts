@@ -3,6 +3,9 @@ import { Type, type Static } from "typebox";
 export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
 
+export const PERMISSION_MODES = ["ask", "auto-review", "full-access"] as const;
+export type PermissionMode = (typeof PERMISSION_MODES)[number];
+
 const CustomModel = Type.Object({
   id: Type.String(),
   reasoning: Type.Optional(Type.Boolean()),
@@ -23,6 +26,8 @@ const CustomProvider = Type.Object({
 export const SettingsSchema = Type.Object({
   /** `provider/id`. */
   model: Type.Optional(Type.String()),
+  reviewModel: Type.Optional(Type.String()),
+  permissionMode: Type.Optional(Type.Enum([...PERMISSION_MODES])),
   thinking: Type.Optional(Type.Enum([...THINKING_LEVELS])),
   providers: Type.Optional(Type.Array(CustomProvider)),
   allowTools: Type.Optional(Type.Array(Type.String())),
