@@ -375,6 +375,7 @@ for (const [mode, argv, session] of [
 ] as const) {
   test(`${mode} is forwarded to the Session and usage totals all Turns`, async () => {
     const app = await start([...argv], {
+      columns: 120,
       session: { ...session, allowTools: "allowTools" in session ? [...session.allowTools] : [] },
     });
     try {

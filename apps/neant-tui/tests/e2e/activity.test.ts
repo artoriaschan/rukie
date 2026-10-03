@@ -149,7 +149,7 @@ test("a tool Run shows live tokens and approval, then hides activity until the n
 });
 
 test("thinking and text estimates are corrected downward to the final usage", async () => {
-  const app = await start(["think"]);
+  const app = await start(["think"], { columns: 120 });
   const screen = () => app.screen().join("\n");
   try {
     await app.waitFor(() => app.calls.length === 1);

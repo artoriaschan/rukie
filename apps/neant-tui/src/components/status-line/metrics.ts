@@ -86,7 +86,11 @@ export function sparkline(samples: readonly { value: number }[]): string {
   const values = samples.slice(-12).map(({ value }) => value);
   const min = Math.min(...values);
   const max = Math.max(...values);
+  const range = max - min;
   return values
-    .map((value) => "▁▂▃▄▅▆▇█"[max === min ? 3 : Math.round(((value - min) / (max - min)) * 7)])
+    .map(
+      (value) =>
+        "▁▂▃▄▅▆▇█"[range < 1e-6 ? (max > 0 ? 4 : 0) : Math.round(((value - min) / range) * 7)],
+    )
     .join("");
 }

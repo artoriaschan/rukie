@@ -29,7 +29,7 @@ for (const columns of [80, 60, 40]) {
       await app.waitFor(() => !app.isWorking() && app.screen().at(-1) === "");
       const fields = app.screen().at(-2)!;
       expect(fields).toContain("ctx ");
-      if (columns === 80) expect(fields).toContain("1.0k→2.0");
+      if (columns === 80) expect(fields).toContain("1.0k→2");
       app.stdin.write("second\r");
       await app.waitFor(() => app.calls.length === 2 && app.screen().at(-1)?.trim() === "esc 中断");
       if (columns === 80) {
@@ -42,7 +42,13 @@ for (const columns of [80, 60, 40]) {
       }
       app.calls[1]!.finish(2000, 3000);
       await app.waitFor(() => !app.isWorking() && app.screen().at(-1) === "");
-      if (columns === 80) expect(app.screen().at(-2)).toContain("3.0k→5.0");
+      if (columns === 80) {
+        const fields = app.screen().at(-2)!;
+        expect(fields).toContain("3.0k→5");
+        const x = Bun.stringWidth(fields.slice(0, fields.indexOf("3.0k→"))) + 1;
+        app.stdin.write(`\x1b[<35;${x};23M`);
+        await app.waitFor(() => app.screen().at(-1)?.includes("in 3,000 · out 5,000") === true);
+      }
       expect(app.screen().at(-4)).toMatch(/^╰─+╯$/);
     } finally {
       await app.cleanup();
@@ -80,7 +86,7 @@ test("tps starts after 500ms of decoding and final usage corrects the Run sample
     app.stdin.write("\x1b[<35;80;1M");
     await app.waitFor(() => app.screen().at(-1) === "");
     const fields = app.screen().at(-2)!;
-    const x = Bun.stringWidth(fields.slice(0, fields.indexOf("▄"))) + 1;
+    const x = Bun.stringWidth(fields.slice(0, fields.indexOf("▅"))) + 1;
     app.stdin.write(`\x1b[<35;${x};23M`);
     await app.waitFor(
       () => app.screen().at(-1)?.includes("tps 50 · avg60 50.0 · mean 50.0 · p95 50.0") === true,
@@ -116,9 +122,9 @@ test("tps includes tool-call deltas and completed Turns while excluding time bet
     await app.waitFor(() => app.screen().at(-2)?.includes("137 tps") === true);
     now += 500;
     app.calls[1]!.finish(21, 95);
-    await app.waitFor(() => !app.isWorking() && app.screen().at(-2)?.includes("▄") === true);
+    await app.waitFor(() => !app.isWorking() && app.screen().at(-2)?.includes("▅ 50 tps") === true);
     const fields = app.screen().at(-2)!;
-    const x = Bun.stringWidth(fields.slice(0, fields.indexOf("▄"))) + 1;
+    const x = Bun.stringWidth(fields.slice(0, fields.indexOf("▅"))) + 1;
     app.stdin.write(`\x1b[<35;${x};23M`);
     await app.waitFor(
       () => app.screen().at(-1)?.includes("tps 50 · avg60 50.0 · mean 50.0 · p95 50.0") === true,
@@ -169,8 +175,8 @@ test("tps statistics retain only the latest 500 Run samples", async () => {
       await app.waitFor(() => !app.isWorking());
     }
     const fields = app.screen().at(-2)!;
-    expect(fields).toMatch(/▄{6,12}/);
-    const x = Bun.stringWidth(fields.slice(0, fields.indexOf("▄"))) + 1;
+    expect(fields).toMatch(/▅{6,12}/);
+    const x = Bun.stringWidth(fields.slice(0, fields.indexOf("▅"))) + 1;
     app.stdin.write(`\x1b[<35;${x};23M`);
     await app.waitFor(
       () => app.screen().at(-1)?.includes("tps 50 · avg60 50.0 · mean 50.0 · p95 50.0") === true,

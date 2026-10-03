@@ -180,19 +180,55 @@ test.each([
   [50, dark.success],
   [20, dark.warning],
   [19, dark.error],
-])("working tps %s paints an eleven-cell gauge and speed color", async (tps, color) => {
-  const terminal = await mount({ columns: 160, tps });
-  const line = terminal.screen()[1]!;
-  expect(line).toContain(
-    tps === 19
-      ? "▕█████▎·····▏ 19 tps"
-      : tps === 20
-        ? "▕█████▌·····▏ 20 tps"
-        : "▕███████████▏ 50 tps",
-  );
-  const x = line.indexOf(`${tps} tps`);
-  expect(terminal.terminal.buffer.active.getLine(1)!.getCell(x)!.getFgColor()).toBe(rgb(color));
-});
+])(
+  "working tps %s without samples colors only the gauge fill and dims the readout",
+  async (tps, color) => {
+    const terminal = await mount({ columns: 160, tps });
+    const line = terminal.screen()[1]!;
+    expect(line).toContain(
+      tps === 19
+        ? "▕█████▎·····▏ 19 tps"
+        : tps === 20
+          ? "▕█████▌·····▏ 20 tps"
+          : "▕███████████▏ 50 tps",
+    );
+    const row = terminal.terminal.buffer.active.getLine(1)!;
+    const start = line.indexOf("▕");
+    expect(row.getCell(start)!.getFgColor()).toBe(rgb(dark.text));
+    expect(row.getCell(start + 1)!.getFgColor()).toBe(rgb(color));
+    expect(row.getCell(start + 12)!.getFgColor()).toBe(rgb(dark.text));
+    expect(row.getCell(start + 12)!.isDim()).toBe(0);
+    if (tps < 40) expect(row.getCell(start + 7)!.isDim()).toBeTruthy();
+    const x = line.indexOf(`${tps} tps`);
+    expect(row.getCell(x)!.getFgColor()).toBe(rgb(dark.text));
+    expect(row.getCell(x)!.isDim()).toBeTruthy();
+    expect(row.getCell(x + String(tps).length + 1)!.isDim()).toBeTruthy();
+  },
+);
+
+test.each([
+  [50, dark.success],
+  [20, dark.warning],
+  [19, dark.error],
+])(
+  "working tps %s with samples scales against the peak and colors only the number",
+  async (tps, color) => {
+    const terminal = await mount({ columns: 160, tps, tpsSamples: [{ at: 0, value: 100 }] });
+    const line = terminal.screen()[1]!;
+    expect(line).toContain(
+      tps === 50
+        ? "▕█████▌·····▏ 50 tps"
+        : tps === 20
+          ? "▕██▎········▏ 20 tps"
+          : "▕██▏········▏ 19 tps",
+    );
+    const row = terminal.terminal.buffer.active.getLine(1)!;
+    const x = line.indexOf(`${tps} tps`);
+    expect(row.getCell(x)!.getFgColor()).toBe(rgb(color));
+    expect(row.getCell(x)!.isDim()).toBe(0);
+    expect(row.getCell(x + String(tps).length + 1)!.getFgColor()).toBe(rgb(dark.text));
+  },
+);
 
 test("idle speed sparkline normalizes only the latest twelve samples", async () => {
   const samples: TpsSample[] = [999, ...Array.from({ length: 12 }, (_, i) => i)].map(
@@ -203,14 +239,38 @@ test("idle speed sparkline normalizes only the latest twelve samples", async () 
     working: false,
     tpsSamples: samples,
   });
-  expect(terminal.screen()[1]).toContain("▁▂▂▃▄▄▅▅▆▇▇█");
+  expect(terminal.screen()[1]).toContain("▁▂▂▃▄▄▅▅▆▇▇█ 42 tps");
   terminal.rerender({
     tpsSamples: [
       { at: 0, value: 42 },
       { at: 1, value: 42 },
     ],
   });
-  await terminal.waitFor(() => terminal.screen()[1]!.includes("▄▄"));
+  await terminal.waitFor(() => terminal.screen()[1]!.includes("▅▅ 42 tps"));
+  terminal.rerender({
+    tps: 0,
+    tpsSamples: [
+      { at: 0, value: 0 },
+      { at: 1, value: 0 },
+    ],
+  });
+  await terminal.waitFor(() => terminal.screen()[1]!.includes("▁▁ 0 tps"));
+});
+
+test("idle sparkline colors each sample independently and keeps the current speed readout", async () => {
+  const terminal = await mount({
+    columns: 160,
+    working: false,
+    tpsSamples: [10, 20, 50].map((value, at) => ({ at, value })),
+  });
+  const line = terminal.screen()[1]!;
+  expect(line).toContain("▁▃█ 42 tps");
+  const row = terminal.terminal.buffer.active.getLine(1)!;
+  const x = line.indexOf("▁▃█");
+  for (const [offset, color] of [dark.error, dark.warning, dark.success].entries())
+    expect(row.getCell(x + offset)!.getFgColor()).toBe(rgb(color));
+  expect(row.getCell(x + 4)!.getFgColor()).toBe(rgb(dark.warning));
+  expect(row.getCell(x + 7)!.getFgColor()).toBe(rgb(dark.text));
 });
 
 async function move(terminal: Awaited<ReturnType<typeof mount>>, x: number, y: number) {
@@ -342,9 +402,8 @@ test("absent cache, effort and git fields produce a clean compact row", async ()
     /^ask · deepseek-chat · 42 t\/s · 0→0 · Neant +ctx 20% \(13k\/64k\)$/,
   );
   const x = terminal.screen()[1]!.indexOf("42 t/s");
-  expect(terminal.terminal.buffer.active.getLine(1)!.getCell(x)!.getFgColor()).toBe(
-    rgb(dark.subtle),
-  );
+  expect(terminal.terminal.buffer.active.getLine(1)!.getCell(x)!.getFgColor()).toBe(rgb(dark.text));
+  expect(terminal.terminal.buffer.active.getLine(1)!.getCell(x)!.isDim()).toBeTruthy();
 });
 
 test("hover details expose provider, full token numbers, speed statistics, branch and path", async () => {

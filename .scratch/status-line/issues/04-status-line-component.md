@@ -33,3 +33,13 @@ chat 当前的单行 footer 保留原样，05 号票据负责接入新 props、�
 - `rtk proxy env -u NO_COLOR bun run check`：格式、lint、类型检查、Knip 通过，全量 348 tests 通过。测试清除环境默认的 `NO_COLOR=1`，验证实际主题颜色。
 
 审查：Standards 发现 tps 测量和渲染文案重复，已合并为共享的彩色文本片段，复审剩余 0 项；Spec 0 项。
+
+## 2026-10-03 TPS 样式同步
+
+按用户要求对照 dsh-TUI 的 `StatusLine.tsx` 和 `StatusMetrics.ts` 更新 TPS 字段。工作中保留 11 格仪表，边框使用文字色，仅填充按速度着色，轨道使用 dim；尚无样本时读数整体 dim，有样本时仅数值着色，单位保持文字色。空闲曲线逐点按样本速度着色，并补上当前 `N tps` 读数；等值正数曲线用 `▅`，全零用 `▁`。空闲无样本显示 dim 的 `N t/s`。
+
+保留 Neant 主题色、TPS 数据采集、hover 明细和各字段的列宽分配。字符宽度测量和渲染继续共用同一组样式片段。
+
+验证：公开渲染测试 41 pass，覆盖实际终端字符、逐点颜色、dim 样式、峰值刻度、等值/全零曲线和原有 hover / 窄屏布局；`bunx tsc -b` 通过。
+
+端到端测试同步新的曲线字符和更长 TPS 字段带来的截断，保留 80/60/40 列布局覆盖，并在 80 列 hover 中验证完整累计用量。全量 `rtk proxy env -u NO_COLOR bun run check` 通过：格式、lint、类型检查、Knip 全绿，480 tests / 2777 assertions / 0 fail。Standards 和 Spec 审查（含端到端测试复审）均为 0 项。

@@ -101,20 +101,35 @@ export function StatusLine(props: StatusLineProps) {
   const speed = Math.max(0, props.tps);
   const peak = Math.max(40, speed, ...props.tpsSamples.map(({ value }) => value));
   const meter = gauge(speed / peak, 11);
-  const speedParts: { text: string; color: ThemeColor }[] = props.working
+  const samples = props.tpsSamples.slice(-12);
+  const speedParts: { text: string; color?: ThemeColor; dimColor?: boolean }[] = props.working
     ? [
-        { text: `▕${meter.fill}`, color: speedColor(speed) },
-        { text: `${meter.track}▏ `, color: "subtle" },
-        { text: `${Math.round(speed)} tps`, color: speedColor(speed) },
+        { text: "▕" },
+        { text: meter.fill, color: speedColor(speed) },
+        { text: meter.track, dimColor: true },
+        { text: "▏ " },
       ]
-    : props.tpsSamples.length
-      ? [{ text: sparkline(props.tpsSamples), color: speedColor(speed) }]
-      : [{ text: `${Math.round(speed)} t/s`, color: "subtle" }];
+    : [...sparkline(samples)].map((text, index) => ({
+        text,
+        color: speedColor(samples[index]!.value),
+      }));
+  if (samples.length) {
+    if (!props.working) speedParts.push({ text: " " });
+    speedParts.push(
+      { text: String(Math.round(speed)), color: speedColor(speed) },
+      { text: " tps" },
+    );
+  } else {
+    speedParts.push({
+      text: `${Math.round(speed)} ${props.working ? "tps" : "t/s"}`,
+      dimColor: true,
+    });
+  }
   const speedText = speedParts.map(({ text }) => text).join("");
   const speedView = (
     <ThemedText>
-      {speedParts.map(({ text, color }, index) => (
-        <ThemedText key={index} color={color}>
+      {speedParts.map(({ text, color, dimColor }, index) => (
+        <ThemedText key={index} color={color} dimColor={dimColor}>
           {text}
         </ThemedText>
       ))}
