@@ -23,10 +23,12 @@ Labels: wayfinder:map
 - [权限规则 / hooks / checkpoint 参考实现调研](issues/05-research-rules-hooks-checkpoint-prior-art.md): CC/Codex 都是固定顺序 hooks（可改写）→ 规则（deny>ask>allow 取最严、跨层合并、复合命令拆分逐段判）→ 审批 → 执行 → post，hook allow 绕不过规则；DSH 无规则只有 sandbox×approval preset、hooks 不可改写；checkpoint 仅 CC 现存（每 prompt、只跟踪文件工具不含 bash），Codex 整树 ghost 快照已移除，DSH 影子 git 只作 diff
 - [地基 A：Agent Core → frontend 交互通道](issues/01-interaction-channel.md): 每种交互一个回调 + 内部共享 helper；无回调时先去工具、再取安全默认值；交互内拒绝不影响 run，run 中止以取消结束；不进 transcript；子代理经顶层回调转发并带 origin
 - [向用户提问（ask user）](issues/09-ask-user.md): 工具 `ask_user_question`（命名约定：对齐 Claude Code 同名工具、snake_case）+ 回调 `onQuestion`；照 CC 1–4 题 × 2–4 选项、无 preview、自由输入由 frontend 附加；不走审批；纯文本结果，拒绝回答非错误；无超时；TUI 与审批共用槽位、统一 FIFO；transcript 由工具参数 + 结果渲染摘要；子代理是否可用交子代理工单
+- [地基 B：工具状态进 transcript](issues/02-tool-state-in-transcript.md): 术语 Tool State；pi `custom` entry `tool-state/<name>` 存带版本的完整快照，last-wins，坏记录退回上一条并告警；resume 需见的事实才持久（armed 等易失）；反馈渠道各自定，默认复用 ReminderSource，compaction 后立即重注入；frontend 经 `tool_state_changed` 事件 + `toolState(name)`；子代理为独立 session 经 `parentSessionId` 链接，父 tool result `details` 记 `childSessionId`
 
 ## Not yet specified
 
 - 子代理的并发与上下文隔离细节（并行数、取消传播、token 计量归属），等子代理工单定了地基用法后再拆。
+- 现有 reminder（skills / mcp 等）以全 transcript 去重，compaction 后不重发：缺陷修复，归入 handoff 时排期。
 - 最终排序与 handoff：所有能力工单定完后，汇总依赖图、给出实现顺序。
 
 ## Out of scope

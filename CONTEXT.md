@@ -27,7 +27,7 @@ _Avoid_: CLI, REPL
 _Avoid_: conversation, thread, chat
 
 **Transcript**:
-一个 session 中按顺序排列的消息，只追加不修改。模型当时看到的内容，原样记录在里面。
+一个 session 中按顺序排列的消息与 Tool State 记录，只追加不修改。模型当时看到的内容，原样记录在里面。
 _Avoid_: history, log
 
 **Turn**:
@@ -37,6 +37,10 @@ _Avoid_: step, round
 **Run**:
 处理一条用户 prompt，直到 agent 停下为止。一个 run 包含一个或多个 turn。
 _Avoid_: task, job
+
+**Tool State**:
+由工具或 Agent Core 维护、随 transcript 持久化、resume 时重建的 session 级状态，如 todo 列表、Goal。每次变化记一份完整快照，取最后一条有效快照为当前状态。只记录 resume 后仍需看到的事实；"当前进程正在做什么"（如 Goal 是否正在续跑）不属于 Tool State。
+_Avoid_: tool data, session state
 
 **Session Store**:
 transcript 的持久化位置。Headless CLI 和 TUI 存成 JSONL 文件，桌面端存到 SQLite。
