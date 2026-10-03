@@ -206,7 +206,7 @@ test.each(["2\r", "\x1b[A\r", "\x1b[B\r", "\x1b"])(
       await app.waitFor(() => app.calls.length === 3);
       expect(app.calls[2]!.context.messages.at(-1)).toMatchObject({
         isError: true,
-        content: [{ type: "text", text: "用户拒绝该工具调用: bash" }],
+        content: [{ type: "text", text: "User denied this tool call: bash" }],
       });
       app.calls[2]!.finish();
       await app.waitFor(() => !app.isWorking());
@@ -256,7 +256,7 @@ test.each([
     expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
       role: "toolResult",
       isError: true,
-      content: [{ type: "text", text: "该工具未获授权: bash" }],
+      content: [{ type: "text", text: "Tool not authorized: bash" }],
     });
     app.calls[1]!.delta("continuing after refusal");
     app.calls[1]!.finish();
@@ -406,7 +406,7 @@ test("concurrent questions are answered individually and dialog keys do not edit
       {
         toolName: "write",
         isError: true,
-        content: [{ type: "text", text: "该工具未获授权: write" }],
+        content: [{ type: "text", text: "Tool not authorized: write" }],
       },
     ]);
     app.calls[1]!.finish();

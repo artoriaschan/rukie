@@ -1,3 +1,8 @@
+import {
+  createUserVisibleError,
+  type UserVisibleErrorCode,
+  type UserVisibleErrorParams,
+} from "@neant/shared";
 import { expect, test } from "bun:test";
 import {
   common,
@@ -112,3 +117,65 @@ test("common and app translations compose and interpolate literal parameter valu
   // @ts-expect-error Missing keys are returned literally, even if they resemble templates.
   expect(t("missing-{{name}}", { name: "world" })).toBe("missing-{{name}}");
 });
+
+test.each([
+  [
+    "zh",
+    "未配置模型。请在 /home/test/.neant/settings.json 中设置 model，或传入 --model provider/id。",
+  ],
+  [
+    "en",
+    'No model configured. Set "model" in /home/test/.neant/settings.json or pass --model provider/id.',
+  ],
+] as const)("%s common errors interpolate the settings path", (locale, expected) => {
+  const t = createI18n(locale, { common, app: { zh: {}, en: {} } });
+  const message = t("error.no-model", { settings: "/home/test/.neant/settings.json" });
+  expect(message).toStartWith(expected);
+  expect(message).toContain("ANTHROPIC_API_KEY");
+  expect(message).toContain('"apiKeyEnv": "LOCAL_API_KEY"');
+});
+
+test.each([
+  [
+    "zh",
+    '未知模型 "missing/model"。',
+    '缺少 provider "local" 的 API key。环境变量：TEST_KEY。',
+    "Session 不存在：missing",
+    "内置 ripgrep 不可用。",
+  ],
+  [
+    "en",
+    'Unknown model "missing/model".',
+    'No API key for provider "local". Environment variable: TEST_KEY.',
+    "Session not found: missing",
+    "Bundled ripgrep is unavailable.",
+  ],
+] as const)(
+  "%s common errors cover the remaining four codes",
+  (locale, model, key, session, grep) => {
+    const t = createI18n(locale, { common, app: { zh: {}, en: {} } });
+    expect(t("error.unknown-model", { model: "missing/model" })).toBe(model);
+    expect(t("error.no-api-key", { provider: "local", env: "TEST_KEY" })).toBe(key);
+    expect(t("error.session-not-found", { id: "missing" })).toBe(session);
+    const message = t("error.ripgrep-unavailable", { cause: "binary unavailable" });
+    expect(message).toStartWith(grep);
+    expect(message).toContain("optionalDependencies");
+    expect(message).toEndWith("binary unavailable");
+  },
+);
+
+function errorTypes() {
+  const t = createI18n("en", { common, app: { zh: {}, en: {} } });
+  // @ts-expect-error Error parameters must match their code.
+  createUserVisibleError("unknown", { code: "unknown-model", params: { id: "missing" } });
+  // @ts-expect-error All no-api-key parameters are required.
+  const keyParams: UserVisibleErrorParams["no-api-key"] = { provider: "local" };
+  void keyParams;
+  // @ts-expect-error Error translations infer their named parameters.
+  t("error.session-not-found", { model: "missing" });
+  const missing: Omit<typeof common.zh, "error.session-not-found"> = common.zh;
+  // @ts-expect-error A common dictionary cannot omit a shared error code.
+  const complete: Record<`error.${UserVisibleErrorCode}`, string> = missing;
+  void complete;
+}
+void errorTypes;

@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, spyOn, test } from "bun:test";
 import {
   fauxAssistantMessage,
   fauxToolCall,
@@ -317,7 +317,7 @@ test("default permissions reject write, edit, and bash with errors and ordered d
   expect(errors).toHaveLength(3);
   for (const error of errors) {
     expect(error.isError).toBe(true);
-    expect(JSON.stringify(error.content)).toContain("该工具未获授权");
+    expect(JSON.stringify(error.content)).toContain("Tool not authorized");
     expect(
       events.findIndex(
         (event) => event.type === "permission_denied" && event.toolCallId === error.toolCallId,
@@ -331,4 +331,45 @@ test("default permissions reject write, edit, and bash with errors and ordered d
   expect(await Bun.file(join(dirs.cwd, "original.txt")).text()).toBe("original");
   expect(await Bun.file(join(dirs.cwd, "new.txt")).exists()).toBe(false);
   expect(await Bun.file(join(dirs.cwd, "bash-ran")).exists()).toBe(false);
+});
+
+test("unavailable bundled ripgrep reports English content and coded UI details", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([
+    fauxAssistantMessage(fauxToolCall("grep", { pattern: "visible" }), { stopReason: "toolUse" }),
+    fauxAssistantMessage("recovered"),
+  ]);
+  const session = await createSession({ ...dirs, ...fake });
+  const spawn = spyOn(Bun, "spawn").mockImplementation(() => {
+    throw new Error("test binary unavailable");
+  });
+  try {
+    const events: SessionEvent[] = [];
+    expect(
+      (
+        await session.run("search", {
+          onEvent: (event) => {
+            events.push(event);
+          },
+        })
+      ).text,
+    ).toBe("recovered");
+    expect(events.find((event) => event.type === "tool_execution_end")).toMatchObject({
+      isError: true,
+      result: {
+        content: [
+          { type: "text", text: expect.stringContaining("Bundled ripgrep is unavailable.") },
+        ],
+        details: { code: "ripgrep-unavailable", params: { cause: "test binary unavailable" } },
+      },
+    });
+    const toolResult = session.messages.find((message) => message.role === "toolResult");
+    expect(toolResult).toMatchObject({
+      isError: true,
+      details: { code: "ripgrep-unavailable", params: { cause: "test binary unavailable" } },
+    });
+    expect(JSON.stringify(fake.contexts)).not.toMatch(/\p{Script=Han}/u);
+  } finally {
+    spawn.mockRestore();
+  }
 });

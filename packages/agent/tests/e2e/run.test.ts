@@ -200,7 +200,11 @@ test("an unknown resume id fails without calling the model", async () => {
       ...fake,
       resumeId: "missing",
     }),
-  ).rejects.toThrow("Session not found: missing");
+  ).rejects.toMatchObject({
+    code: "session-not-found",
+    params: { id: "missing" },
+    message: "Session not found: missing",
+  });
   expect(fake.contexts).toHaveLength(0);
 });
 

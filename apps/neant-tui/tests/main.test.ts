@@ -273,13 +273,13 @@ for (const [argv, message] of [
   });
 }
 
-test("missing model configuration reports the Headless CLI guidance and exits before rendering", async () => {
+test("missing model configuration reports localized guidance and exits before rendering", async () => {
   const app = await start([], { session: { model: undefined, streamFn: undefined } });
   try {
     expect(await app.exit).toBe(1);
-    expect(app.stderr()).toContain('No model configured. Set "model" in ');
-    expect(app.stderr()).toContain("or pass --model provider/id.");
-    expect(app.stderr()).toContain("Example with a custom OpenAI-compatible provider:");
+    expect(app.stderr()).toContain("未配置模型。请在 ");
+    expect(app.stderr()).toContain("或传入 --model provider/id。");
+    expect(app.stderr()).toContain("自定义 OpenAI 兼容 provider 示例：");
     expect(app.output()).toBe("");
     expect(app.stdin.isRaw).toBe(false);
   } finally {
@@ -427,7 +427,7 @@ test("--model overrides settings before model resolution", async () => {
   });
   try {
     expect(await app.exit).toBe(1);
-    expect(app.stderr()).toBe('Unknown model "missing/selected".\n');
+    expect(app.stderr()).toBe('未知模型 "missing/selected"。\n');
     expect(app.output()).toBe("");
   } finally {
     await app.cleanup();

@@ -5,7 +5,7 @@ import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messag
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
-import { SettingsSchema, type Settings } from "@neant/shared";
+import { createUserVisibleError, SettingsSchema, type Settings } from "@neant/shared";
 import { Value } from "typebox/value";
 
 /** Parses one settings file; a missing file is `{}`. */
@@ -104,7 +104,13 @@ export async function resolveModel(
   settings: Settings,
   homeDir: string,
 ): Promise<{ model: Model<Api>; streamFn: StreamFn }> {
-  if (!settings.model) throw new Error(noModelMessage(join(homeDir, ".neant/settings.json")));
+  if (!settings.model) {
+    const settingsPath = join(homeDir, ".neant/settings.json");
+    throw createUserVisibleError(noModelMessage(settingsPath), {
+      code: "no-model",
+      params: { settings: settingsPath },
+    });
+  }
   const models = builtinModels();
   for (const p of settings.providers ?? []) {
     models.setProvider(
@@ -133,10 +139,17 @@ export async function resolveModel(
   const providerId = settings.model.slice(0, slash);
   const model =
     slash > 0 ? models.getModel(providerId, settings.model.slice(slash + 1)) : undefined;
-  if (!model) throw new Error(`Unknown model "${settings.model}".`);
+  if (!model)
+    throw createUserVisibleError(`Unknown model "${settings.model}".`, {
+      code: "unknown-model",
+      params: { model: settings.model },
+    });
   if (!(await models.checkAuth(providerId))) {
     const env = settings.providers?.find((p) => p.id === providerId)?.apiKeyEnv;
-    throw new Error(`No API key for provider "${providerId}"${env ? `: set ${env}` : ""}.`);
+    throw createUserVisibleError(
+      `No API key for provider "${providerId}"${env ? `: set ${env}` : ""}.`,
+      { code: "no-api-key", params: { provider: providerId, env: env ?? "" } },
+    );
   }
   return { model, streamFn: (m, context, options) => models.streamSimple(m, context, options) };
 }

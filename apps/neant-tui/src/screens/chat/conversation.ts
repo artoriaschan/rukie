@@ -1,5 +1,5 @@
 import type { Locale } from "@neant/i18n";
-import { createTuiI18n } from "../../i18n";
+import { createTuiI18n, formatError } from "../../i18n";
 import type { Session, SessionEvent } from "@neant/agent";
 import type { ContextUsageEvent, RunResult } from "@neant/shared";
 import type { TpsSample } from "../../components/status-line";
@@ -33,14 +33,23 @@ function toolSummary(name: string, args: unknown) {
 function toolEntry(
   summary: string,
   isError: boolean,
-  result: Pick<ToolResultMessage, "content">,
+  result: Pick<ToolResultMessage, "content" | "details">,
+  t: ReturnType<typeof createTuiI18n>,
 ): CompletedEntry {
   return {
     type: "tool",
     summary,
     isError,
     result: isError ? undefined : resultText(result),
-    error: isError ? resultText(result) : undefined,
+    error: isError
+      ? formatError(
+          {
+            ...(typeof result.details === "object" && result.details),
+            message: resultText(result),
+          },
+          t,
+        )
+      : undefined,
   };
 }
 
@@ -71,7 +80,10 @@ function messageText(message: Extract<SessionEvent, { type: "message_end" }>["me
         .join("");
 }
 
-function replayMessages(messages: Session["messages"]): CompletedEntry[] {
+function replayMessages(
+  messages: Session["messages"],
+  t: ReturnType<typeof createTuiI18n>,
+): CompletedEntry[] {
   const tools = new Map<string, string>();
   return messages.flatMap((message): CompletedEntry[] => {
     const text = messageText(message);
@@ -86,7 +98,7 @@ function replayMessages(messages: Session["messages"]): CompletedEntry[] {
     if (message.role === "toolResult") {
       const summary = tools.get(message.toolCallId) ?? message.toolName;
       tools.delete(message.toolCallId);
-      return [toolEntry(summary, message.isError, message)];
+      return [toolEntry(summary, message.isError, message, t)];
     }
     return [];
   });
@@ -189,7 +201,7 @@ function reduceEvent(
       return {
         ...state,
         tools: state.tools.filter((tool) => tool.id !== event.toolCallId),
-        completed: [...state.completed, toolEntry(tool.summary, event.isError, event.result)],
+        completed: [...state.completed, toolEntry(tool.summary, event.isError, event.result, t)],
       };
     }
     case "compaction_end":
@@ -242,7 +254,7 @@ function reduceEvent(
 export function createConversation(session: Session, model: string, locale: Locale = "zh") {
   const t = createTuiI18n(locale);
   let state: ViewState = {
-    completed: replayMessages(session.messages),
+    completed: replayMessages(session.messages, t),
     tools: [],
     assistant: "",
     model,
@@ -302,7 +314,7 @@ export function createConversation(session: Session, model: string, locale: Loca
         })
         .catch((error: unknown) => {
           if (!controller.signal.aborted) {
-            update({ ...state, error: error instanceof Error ? error.message : String(error) });
+            update({ ...state, error: formatError(error, t) });
           } else {
             update({ ...state, error: undefined });
           }

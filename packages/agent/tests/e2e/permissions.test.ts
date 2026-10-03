@@ -217,7 +217,7 @@ test("frontend denial blocks the tool, reports the denial and lets the model con
     role: "toolResult",
     toolCallId: "write-denied",
     isError: true,
-    content: [{ type: "text", text: "该工具未获授权: write" }],
+    content: [{ type: "text", text: "Tool not authorized: write" }],
   });
   expect(await Bun.file(join(dirs.cwd, "denied.txt")).exists()).toBe(false);
 });

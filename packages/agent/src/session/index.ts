@@ -19,6 +19,7 @@ import {
   type AssistantMessage,
 } from "@earendil-works/pi-ai";
 import { resolve } from "node:path";
+import { createUserVisibleError } from "@neant/shared";
 import type {
   CustomSessionEvent,
   PermissionMode,
@@ -133,7 +134,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       ? (await store.list({ cwd }, context)).find((item) => item.id === options.resumeId)
       : undefined;
   if (options.resumeId !== undefined && !metadata) {
-    throw new Error(`Session not found: ${options.resumeId}`);
+    throw createUserVisibleError(`Session not found: ${options.resumeId}`, {
+      code: "session-not-found",
+      params: { id: options.resumeId },
+    });
   }
   const stored = metadata
     ? await store.open(metadata, context)
@@ -273,8 +277,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         block: true,
         reason:
           mode === "auto-review"
-            ? `用户拒绝该工具调用: ${toolCall.name}`
-            : `该工具未获授权: ${toolCall.name}`,
+            ? `User denied this tool call: ${toolCall.name}`
+            : `Tool not authorized: ${toolCall.name}`,
       };
     },
     initialState: {

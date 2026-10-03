@@ -26,7 +26,7 @@ test("user permission mode is retained while the project can override the review
 
 const provider = (id: string) => ({
   id,
-  api: "openai-completions",
+  api: "openai-completions" as const,
   baseUrl: "http://127.0.0.1:1/v1",
   apiKeyEnv: "NEANT_TEST_KEY",
   models: [{ id: "m" }],
@@ -154,3 +154,47 @@ test.each(["en", { invalid: true }, null])(
     });
   },
 );
+
+test("missing model exposes a locale-independent code and settings path", async () => {
+  dirs = await tempDirs();
+  await expect(createSession(dirs)).rejects.toMatchObject({
+    code: "no-model",
+    params: { settings: join(dirs.homeDir, ".neant/settings.json") },
+    message: expect.stringContaining("No model configured."),
+  });
+});
+
+test("unknown model exposes the selected model with its code", async () => {
+  dirs = await tempDirs();
+  await expect(
+    createSession({ ...dirs, settings: { model: "missing/model" } }),
+  ).rejects.toMatchObject({
+    code: "unknown-model",
+    params: { model: "missing/model" },
+    message: 'Unknown model "missing/model".',
+  });
+});
+
+test("missing API key exposes the provider and configured environment variable", async () => {
+  dirs = await tempDirs();
+  const env = "NEANT_I18N_TEST_MISSING_KEY";
+  const previous = process.env[env];
+  delete process.env[env];
+  try {
+    await expect(
+      createSession({
+        ...dirs,
+        settings: {
+          model: "local/m",
+          providers: [{ ...provider("local"), apiKeyEnv: env }],
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "no-api-key",
+      params: { provider: "local", env },
+      message: 'No API key for provider "local": set NEANT_I18N_TEST_MISSING_KEY.',
+    });
+  } finally {
+    if (previous !== undefined) process.env[env] = previous;
+  }
+});

@@ -197,7 +197,7 @@ test.each([
   expect(results).toHaveLength(2);
   if (denied)
     expect(JSON.stringify(results)).toContain(
-      mode === "auto-review" ? "用户拒绝" : "该工具未获授权",
+      mode === "auto-review" ? "User denied" : "Tool not authorized",
     );
 });
 
@@ -348,7 +348,7 @@ test("an unavailable bundled ripgrep returns a tool error while read and the Run
     (event) => event.type === "tool_execution_end" && event.toolName === "grep",
   );
   expect(grep).toMatchObject({ isError: true });
-  expect(JSON.stringify(grep.result.content)).toContain("内置 ripgrep 不可用");
+  expect(JSON.stringify(grep.result.content)).toContain("Bundled ripgrep is unavailable");
   expect(JSON.stringify(grep.result.content)).toContain("neant-test-unsupported");
   expect(JSON.stringify(grep.result.content)).not.toContain("brew install ripgrep");
   expect(
@@ -362,7 +362,7 @@ test("an unavailable bundled ripgrep returns a tool error while read and the Run
   const toolResults = server.requests[1]!.body.messages.filter(
     (message: { role: string }) => message.role === "tool",
   );
-  expect(JSON.stringify(toolResults)).toContain("内置 ripgrep 不可用");
+  expect(JSON.stringify(toolResults)).toContain("Bundled ripgrep is unavailable");
   expect(JSON.stringify(toolResults)).toContain("available text");
 });
 

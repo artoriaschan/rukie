@@ -1,4 +1,5 @@
 import { truncateHead, type AgentTool } from "@earendil-works/pi-agent-core";
+import { createUserVisibleError } from "@neant/shared";
 import { Type } from "typebox";
 
 const schema = Type.Object({
@@ -45,8 +46,10 @@ export function createGrepTool(cwd: string): AgentTool<typeof schema> {
         );
       } catch (error) {
         signal?.throwIfAborted();
-        throw new Error(
-          `内置 ripgrep 不可用。请重新安装 Neant 的依赖（包含 optionalDependencies），并检查平台兼容性或二进制执行权限。原因：${error instanceof Error ? error.message : String(error)}`,
+        const cause = error instanceof Error ? error.message : String(error);
+        throw createUserVisibleError(
+          `Bundled ripgrep is unavailable. Reinstall Neant dependencies (including optionalDependencies) and check platform compatibility or binary execution permissions. Cause: ${cause}`,
+          { code: "ripgrep-unavailable", params: { cause } },
           { cause: error },
         );
       }

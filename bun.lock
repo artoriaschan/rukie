@@ -63,6 +63,9 @@
     },
     "packages/i18n": {
       "name": "@neant/i18n",
+      "dependencies": {
+        "@neant/shared": "workspace:*",
+      },
     },
     "packages/shared": {
       "name": "@neant/shared",

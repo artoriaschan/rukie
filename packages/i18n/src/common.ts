@@ -1,3 +1,22 @@
+import type { UserVisibleErrorCode } from "@neant/shared";
+
+const modelExample = `{
+  "model": "local/my-model",
+  "providers": [
+    {
+      "id": "local",
+      "api": "openai-completions",
+      "baseUrl": "http://127.0.0.1:11434/v1",
+      "apiKeyEnv": "LOCAL_API_KEY",
+      "models": [
+        {
+          "id": "my-model"
+        }
+      ]
+    }
+  ]
+}`;
+
 const zh = {
   "permission-mode.ask.name": "询问",
   "permission-mode.ask.description": "只读工具直接允许，其余请求批准",
@@ -11,7 +30,18 @@ const zh = {
   "approval.allow-once": "允许（仅本次）",
   "approval.allow-tool": "本 session 内一直允许这个工具",
   "approval.deny": "拒绝",
-} as const;
+  "api-key.environment-default": "该提供方的标准环境变量",
+  "error.ripgrep-unavailable":
+    "内置 ripgrep 不可用。请重新安装 Neant 的依赖（包含 optionalDependencies），并检查平台兼容性或二进制执行权限。原因：{{cause}}",
+  "error.unknown-model": '未知模型 "{{model}}"。',
+  "error.no-api-key": '缺少 provider "{{provider}}" 的 API key。环境变量：{{env}}。',
+  "error.session-not-found": "Session 不存在：{{id}}",
+
+  "error.no-model": `未配置模型。请在 {{settings}} 中设置 model，或传入 --model provider/id。
+内置 provider 从标准环境变量读取密钥，例如 "model": "anthropic/<id>" 使用 ANTHROPIC_API_KEY。
+自定义 OpenAI 兼容 provider 示例：
+${modelExample}`,
+} as const satisfies Record<`error.${UserVisibleErrorCode}`, string> & Record<string, string>;
 
 const en = {
   "permission-mode.ask.name": "Ask",
@@ -26,6 +56,17 @@ const en = {
   "approval.allow-once": "Allow once",
   "approval.allow-tool": "Always allow this tool for this session",
   "approval.deny": "Deny",
+  "api-key.environment-default": "the provider's standard environment variable",
+  "error.ripgrep-unavailable":
+    "Bundled ripgrep is unavailable. Reinstall Neant dependencies (including optionalDependencies) and check platform compatibility or binary execution permissions. Cause: {{cause}}",
+  "error.unknown-model": 'Unknown model "{{model}}".',
+  "error.no-api-key": 'No API key for provider "{{provider}}". Environment variable: {{env}}.',
+  "error.session-not-found": "Session not found: {{id}}",
+
+  "error.no-model": `No model configured. Set "model" in {{settings}} or pass --model provider/id.
+Built-in providers read their standard env var, e.g. "model": "anthropic/<id>" with ANTHROPIC_API_KEY.
+Example with a custom OpenAI-compatible provider:
+${modelExample}`,
 } satisfies Record<keyof typeof zh, string>;
 
 export const common = { zh, en };

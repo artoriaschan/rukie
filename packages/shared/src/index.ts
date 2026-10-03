@@ -13,3 +13,9 @@ export type {
   RunResult,
   SessionEvent,
 } from "./events/index.ts";
+export {
+  createUserVisibleError,
+  type UserVisibleErrorCode,
+  type UserVisibleErrorParams,
+  type UserVisibleErrorData,
+} from "./errors.ts";

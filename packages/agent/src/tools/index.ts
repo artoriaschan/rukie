@@ -10,6 +10,7 @@ import {
 } from "@earendil-works/pi-agent-core";
 import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
 import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/pi-agent-core/harness/context";
+import type { UserVisibleErrorData } from "@neant/shared";
 import { Type, type TSchema } from "typebox";
 import { createGlobTool } from "./glob.ts";
 import { createGrepTool } from "./grep.ts";
@@ -46,6 +47,28 @@ function adaptTool<T extends TSchema, D>(
   };
 }
 
+/** pi flattens thrown errors; keep coded details for frontend display and replay. */
+function preserveErrorDetails<T extends TSchema>(tool: AgentTool<T>): AgentTool<T> {
+  return {
+    ...tool,
+    async execute(...args) {
+      try {
+        return await tool.execute(...args);
+      } catch (error) {
+        if (error instanceof Error && "code" in error && "params" in error) {
+          const { code, params } = error as Error & UserVisibleErrorData;
+          return {
+            isError: true,
+            content: [{ type: "text", text: error.message }],
+            details: { code, params },
+          };
+        }
+        throw error;
+      }
+    },
+  };
+}
+
 export function createBuiltinTools(
   cwd: string,
   getSkill: (name: string) => Skill | undefined,
@@ -72,7 +95,7 @@ export function createBuiltinTools(
     adaptTool(createEditTool(), env),
     timedBash,
     createGlobTool(cwd),
-    createGrepTool(cwd),
+    preserveErrorDetails(createGrepTool(cwd)),
     createSkillTool(getSkill),
   ];
 }

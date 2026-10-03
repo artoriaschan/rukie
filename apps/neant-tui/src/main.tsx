@@ -11,7 +11,7 @@ import {
 } from "@neant/shared";
 import { render, ThemeProvider, type RenderOptions } from "@neant/tui";
 import { createChat } from "./screens/chat";
-import { createTuiI18n } from "./i18n";
+import { createTuiI18n, formatError } from "./i18n";
 
 export interface TuiIo extends RenderOptions {
   term?: string;
@@ -98,6 +98,7 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
     io.stderr(`${message}\n`);
     return 2;
   }
+  let t = argvT;
   let app: ReturnType<typeof render> | undefined;
   let chat: Awaited<ReturnType<typeof createChat>> | undefined;
   try {
@@ -105,7 +106,7 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
     const homeDir = io.session?.homeDir ?? homedir();
     const { settings, warnings } = await loadSettings({ cwd, homeDir });
     const locale = resolveLocale([settings.locale, env.LC_ALL, env.LC_MESSAGES, env.LANG]);
-    const t = createTuiI18n(locale);
+    t = createTuiI18n(locale);
     if (!io.stdin.isTTY || !io.stdout.isTTY || (io.term ?? process.env.TERM) === "dumb") {
       io.stderr(`${t("startup.terminal")}\n`);
       return 1;
@@ -147,7 +148,7 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
     return 0;
   } catch (error) {
     app?.unmount();
-    io.stderr(`${(error as Error).message}\n`);
+    io.stderr(`${formatError(error, t)}\n`);
     return 1;
   } finally {
     app?.unmount();

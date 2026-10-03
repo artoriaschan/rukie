@@ -419,7 +419,7 @@ test.each(["medium", "high"])(
     expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
       role: "toolResult",
       isError: true,
-      content: [{ type: "text", text: "用户拒绝该工具调用: write" }],
+      content: [{ type: "text", text: "User denied this tool call: write" }],
     });
     expect(JSON.stringify(fake.contexts)).not.toContain(reason);
     expect(await Bun.file(join(dirs.cwd, "reviewed.txt")).exists()).toBe(false);
