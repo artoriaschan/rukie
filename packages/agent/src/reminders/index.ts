@@ -73,6 +73,14 @@ async function git(cwd: string, args: string[]): Promise<string> {
   }
 }
 
+function latestReminderContents(messages: readonly AgentMessage[]): Map<string, string> {
+  const latest = new Map<string, string>();
+  for (const message of messages) {
+    if (message.role === "system-reminder") latest.set(message.source, message.content);
+  }
+  return latest;
+}
+
 export async function collectReminders(options: {
   messages: AgentMessage[];
   cwd: string;
@@ -81,10 +89,7 @@ export async function collectReminders(options: {
   sources: ReminderSource[];
 }): Promise<SystemReminder[]> {
   const { messages, cwd, homeDir, now } = options;
-  const latest = new Map<string, string>();
-  for (const message of messages) {
-    if (message.role === "system-reminder") latest.set(message.source, message.content);
-  }
+  const latest = latestReminderContents(messages);
   const sources: ReminderSource[] = [];
   const firstRun = !messages.some((message) => message.role === "user");
   if (firstRun && !latest.has("environment")) {
@@ -124,6 +129,16 @@ export async function collectReminders(options: {
       });
   }
   sources.push(...options.sources);
+  return collectSourceReminders(messages, sources, now);
+}
+
+/** Compare only the supplied sources against their latest persisted content. */
+export async function collectSourceReminders(
+  messages: readonly AgentMessage[],
+  sources: readonly ReminderSource[],
+  now: Date,
+): Promise<SystemReminder[]> {
+  const latest = latestReminderContents(messages);
   const reminders: SystemReminder[] = [];
   for (const source of sources) {
     const content = await source.currentContent();

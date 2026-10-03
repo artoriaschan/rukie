@@ -25,4 +25,10 @@ export const todoState: ToolStateDefinition = {
     if (!Value.Check(todoSchema, value)) throw new Error("Invalid todo list schema.");
     return value;
   },
+  renderReminder(value) {
+    if (!Value.Check(todoSchema, value) || !value.some((item) => item.status !== "completed"))
+      return undefined;
+    const markers = { pending: "○", in_progress: "●", completed: "✓" };
+    return `Current todo list:\n${value.map((item) => `${markers[item.status]} ${item.content}`).join("\n")}\nUpdate the todo list as needed.`;
+  },
 };

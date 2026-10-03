@@ -32,7 +32,12 @@ import { createJsonlStore, type SessionStore } from "../store/index.ts";
 import { decidePermission } from "../permissions/index.ts";
 import { createBuiltinTools, type QuestionRequest, type QuestionReply } from "../tools/index.ts";
 import { SYSTEM_PROMPT } from "../prompt/index.ts";
-import { collectReminders, convertToLlm, type ReminderSource } from "../reminders/index.ts";
+import {
+  collectReminders,
+  collectSourceReminders,
+  convertToLlm,
+  type ReminderSource,
+} from "../reminders/index.ts";
 import { discoverSkills, skillInvocation, skillsReminder } from "../skills/index.ts";
 import { createMcpConnections } from "../mcp/index.ts";
 import { compactTurn, estimateContextTokens, restoreContext } from "../compaction/index.ts";
@@ -150,6 +155,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
   const transcriptMessages = entries.flatMap((entry) =>
     entry.type === "message" ? [entry.message] : [],
   );
+  let toolStateReminderStart = entries
+    .slice(0, entries.findLastIndex((entry) => entry.type === "compaction") + 1)
+    .filter((entry) => entry.type === "message").length;
+  const toolStateSources = new Set(toolState.reminderSources.map((source) => source.source));
   // Older Sessions did not persist their implicit baseline. Do not append it
   // behind existing conversation messages; pi will seed it when restoring them.
   let baselinePersisted = transcriptMessages.length > 0;
@@ -280,7 +289,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     },
     initialState: {
       model,
-      messages: restoreContext(entries),
+      messages: restoreContext(entries, toolStateSources),
       systemPrompt: SYSTEM_PROMPT,
       tools: createBuiltinTools(cwd, (name) => skills.get(name), setTodo, options.onQuestion),
       ...(settings.thinking && { thinkingLevel: settings.thinking }),
@@ -389,8 +398,24 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 context,
               );
             }, context);
+            toolStateReminderStart = transcriptMessages.length;
+            const stateReminders = await collectSourceReminders(
+              [],
+              toolState.reminderSources,
+              (options.now ?? (() => new Date()))(),
+            );
+            for (const reminder of stateReminders) {
+              await branch.appendMessage(reminder, context);
+              transcriptMessages.push(reminder);
+              await emit({
+                type: "reminder_injected",
+                source: reminder.source,
+                content: reminder.content,
+              });
+            }
             const messages = restoreContext(
               await branch.findEntries({ order: "oldestFirst" }, context),
+              toolStateSources,
             );
             agent.state.messages = messages;
             inputTokens = undefined;
@@ -442,7 +467,12 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           skills = discovered.skills;
           for (const warning of discovered.warnings) (options.onWarning ?? console.warn)(warning);
           const reminders = await collectReminders({
-            messages: transcriptMessages,
+            messages: transcriptMessages.filter(
+              (message, index) =>
+                index >= toolStateReminderStart ||
+                message.role !== "system-reminder" ||
+                !toolStateSources.has(message.source),
+            ),
             cwd,
             homeDir: options.homeDir,
             now: (options.now ?? (() => new Date()))(),
@@ -459,6 +489,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                     : undefined,
               },
               ...(options.reminderSources ?? []),
+              ...toolState.reminderSources,
             ],
           });
           signal?.throwIfAborted();

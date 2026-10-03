@@ -7,6 +7,7 @@ import {
   type JsonValue,
   type Session,
 } from "@earendil-works/pi-agent-core/harness/session";
+import type { ReminderSource } from "../reminders/index.ts";
 
 export { todoSchema, todoState, type TodoItem } from "./todo.ts";
 
@@ -14,6 +15,7 @@ export interface ToolStateDefinition {
   name: string;
   version: number;
   parse(version: number, value: unknown): JsonValue;
+  renderReminder?(value: JsonValue): string | undefined;
 }
 
 export function createToolState(
@@ -45,6 +47,19 @@ export function createToolState(
     }
   }
   return {
+    reminderSources: definitions.flatMap((definition): ReminderSource[] =>
+      definition.renderReminder
+        ? [
+            {
+              source: definition.name,
+              currentContent: () => {
+                const value = values.get(definition.name);
+                return value === undefined ? undefined : definition.renderReminder!(value);
+              },
+            },
+          ]
+        : [],
+    ),
     get(name: string): unknown {
       return values.get(name);
     },

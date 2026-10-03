@@ -20,7 +20,10 @@ import {
 import { convertToLlm } from "../reminders/index.ts";
 
 /** Replay system deltas and project the latest native compaction plus its suffix. */
-export function restoreContext(entries: Entry[]): AgentMessage[] {
+export function restoreContext(
+  entries: Entry[],
+  compactionReminderSources: ReadonlySet<string>,
+): AgentMessage[] {
   const index = entries.findLastIndex((entry) => entry.type === "compaction");
   if (index < 0)
     return entries.flatMap((entry) => (entry.type === "message" ? [entry.message] : []));
@@ -42,9 +45,26 @@ export function restoreContext(entries: Entry[]): AgentMessage[] {
         item.type === "message" && item.message.role === "system" ? [item.message] : [],
       ),
   );
+  const suffix = entries.slice(index + 1);
+  // Reminders appended immediately after compaction re-establish current Tool State
+  // before the retained conversation tail. Later Run reminders retain their order.
+  let reminderCount = 0;
+  while (suffix[reminderCount]?.type === "message") {
+    const item = suffix[reminderCount]!;
+    if (
+      item.type !== "message" ||
+      item.message.role !== "system-reminder" ||
+      !compactionReminderSources.has(item.message.source)
+    )
+      break;
+    reminderCount++;
+  }
   return [
     ...(baseline ? [baseline] : []),
     createCompactionSummaryMessage(entry.summary, entry.tokensBefore, entry.timestamp),
+    ...suffix
+      .slice(0, reminderCount)
+      .flatMap((item) => (item.type === "message" ? [item.message] : [])),
     ...entry.retainedTail
       .filter((message) => message.role !== "system")
       .map((message) =>
@@ -52,7 +72,9 @@ export function restoreContext(entries: Entry[]): AgentMessage[] {
           ? (reminders.get(JSON.stringify([message.timestamp, message.content])) ?? message)
           : message,
       ),
-    ...entries.slice(index + 1).flatMap((item) => (item.type === "message" ? [item.message] : [])),
+    ...suffix
+      .slice(reminderCount)
+      .flatMap((item) => (item.type === "message" ? [item.message] : [])),
   ];
 }
 
