@@ -7,13 +7,19 @@ interface PermissionInteraction {
   selected: number;
 }
 
-interface QuestionInteraction {
-  kind: "question";
-  request: QuestionRequest;
+interface QuestionDraft {
   selected: number;
   checked: number[];
   editing: boolean;
   custom: string;
+  answer?: Exclude<QuestionReply, "declined">["answers"][number];
+}
+
+interface QuestionInteraction {
+  kind: "question";
+  request: QuestionRequest;
+  questionIndex: number;
+  drafts: QuestionDraft[];
 }
 
 type PendingInteraction =
@@ -52,6 +58,16 @@ export function createInteractions() {
       notify();
     });
   };
+  const updateQuestion = (update: (draft: QuestionDraft) => QuestionDraft) => {
+    const item = pending[0];
+    if (item?.kind !== "question") return;
+    const { questionIndex, drafts } = item.interaction;
+    item.interaction = {
+      ...item.interaction,
+      drafts: drafts.map((draft, index) => (index === questionIndex ? update(draft) : draft)),
+    };
+    notify();
+  };
   return {
     getSnapshot: () => pending[0]?.interaction,
     subscribe(listener: () => void) {
@@ -76,67 +92,92 @@ export function createInteractions() {
         interaction: {
           kind: "question",
           request,
-          selected: 0,
-          checked: [],
-          editing: false,
-          custom: "",
+          questionIndex: 0,
+          drafts: request.questions.map(() => ({
+            selected: 0,
+            checked: [],
+            editing: false,
+            custom: "",
+          })),
         },
         finish,
       }));
     },
+    switchQuestion(offset: number) {
+      const item = pending[0];
+      if (item?.kind !== "question") return;
+      const { questionIndex, request } = item.interaction;
+      item.interaction = {
+        ...item.interaction,
+        questionIndex:
+          (questionIndex + offset + request.questions.length) % request.questions.length,
+      };
+      notify();
+    },
     selectQuestion(selected: number) {
       const item = pending[0];
       if (item?.kind !== "question") return;
-      const count = item.interaction.request.questions[0]!.options.length + 1;
-      item.interaction = { ...item.interaction, selected: (selected + count) % count };
-      notify();
+      const count =
+        item.interaction.request.questions[item.interaction.questionIndex]!.options.length + 1;
+      updateQuestion((draft) => ({ ...draft, selected: (selected + count) % count }));
     },
     toggleQuestion() {
       const item = pending[0];
       if (item?.kind !== "question") return;
-      const { selected, checked, request } = item.interaction;
-      if (selected === request.questions[0]!.options.length) {
-        item.interaction = { ...item.interaction, editing: true };
-        notify();
+      const question = item.interaction.request.questions[item.interaction.questionIndex]!;
+      updateQuestion((draft) => {
+        const { selected, checked } = draft;
+        if (selected === question.options.length) return { ...draft, editing: true };
+        return {
+          ...draft,
+          answer: undefined,
+          checked: checked.includes(selected)
+            ? checked.filter((index) => index !== selected)
+            : question.multiSelect
+              ? [...checked, selected]
+              : [selected],
+        };
+      });
+    },
+    changeQuestionCustom(custom: string) {
+      updateQuestion((draft) => ({
+        ...draft,
+        answer: undefined,
+        custom: custom.replace(/[\r\n]+/g, " "),
+      }));
+    },
+    answerQuestion() {
+      const item = pending[0];
+      if (item?.kind !== "question") return;
+      const { request, questionIndex, drafts } = item.interaction;
+      const { selected, checked, editing, custom } = drafts[questionIndex]!;
+      const question = request.questions[questionIndex]!;
+      if (selected === question.options.length && !editing) {
+        updateQuestion((draft) => ({ ...draft, editing: true }));
+        return;
+      }
+      const indices = question.multiSelect || editing ? checked : [selected];
+      const answer = {
+        selected: question.options
+          .filter((_, index) => indices.includes(index))
+          .map(({ label }) => label),
+        ...(custom ? { custom } : {}),
+      };
+      const nextDrafts = drafts.map((draft, index) =>
+        index === questionIndex ? { ...draft, editing: false, checked: indices, answer } : draft,
+      );
+      const unanswered = nextDrafts.findIndex((draft) => !draft.answer);
+      if (questionIndex === request.questions.length - 1 && unanswered === -1) {
+        item.finish({ answers: nextDrafts.map((draft) => draft.answer!) });
         return;
       }
       item.interaction = {
         ...item.interaction,
-        checked: checked.includes(selected)
-          ? checked.filter((index) => index !== selected)
-          : request.questions[0]!.multiSelect
-            ? [...checked, selected]
-            : [selected],
+        drafts: nextDrafts,
+        questionIndex:
+          questionIndex === request.questions.length - 1 ? unanswered : questionIndex + 1,
       };
       notify();
-    },
-    changeQuestionCustom(custom: string) {
-      const item = pending[0];
-      if (item?.kind !== "question") return;
-      item.interaction = { ...item.interaction, custom: custom.replace(/[\r\n]+/g, " ") };
-      notify();
-    },
-    answerQuestion() {
-      const item = pending[0];
-      if (!item || item.kind !== "question") return;
-      const { request, selected, checked, editing, custom } = item.interaction;
-      const question = request.questions[0]!;
-      if (selected === question.options.length && !editing) {
-        item.interaction = { ...item.interaction, editing: true };
-        notify();
-        return;
-      }
-      const indices = question.multiSelect || editing ? checked : [selected];
-      item.finish({
-        answers: [
-          {
-            selected: question.options
-              .filter((_, index) => indices.includes(index))
-              .map(({ label }) => label),
-            ...(custom ? { custom } : {}),
-          },
-        ],
-      });
     },
     declineQuestion() {
       const item = pending[0];

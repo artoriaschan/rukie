@@ -88,6 +88,10 @@ const zh = {
   "status.mean": "均值",
   "status.p95": "p95",
 
+  "question.progress": "第 {{current}} / 共 {{total}} 题",
+  "question.switch": "Tab/←→切题",
+  "question.switch-short": "Tab/←→",
+  "question.select-short": "↑↓/1-9",
   "question.select": "↑↓/1-9选择",
   "question.toggle": "Space勾选",
   "question.other": "其他",
@@ -171,6 +175,10 @@ const en = {
   "status.mean": "mean",
   "status.p95": "p95",
 
+  "question.progress": "Question {{current}} / {{total}}",
+  "question.switch": "Tab/←→ switch",
+  "question.switch-short": "Tab/←→",
+  "question.select-short": "↑↓/1-9",
   "question.select": "↑↓/1-9 select",
   "question.toggle": "Space toggle",
   "question.other": "Other",

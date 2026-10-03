@@ -97,6 +97,7 @@ function Chat({
   const interaction = useSyncExternalStore(interactions.subscribe, interactions.getSnapshot);
   const question = interaction?.kind === "permission" ? interaction : undefined;
   const userQuestion = interaction?.kind === "question" ? interaction : undefined;
+  const currentQuestion = userQuestion?.drafts[userQuestion.questionIndex];
   const [input, setInput] = useState("");
   const [mode, setMode] = useState(session.permissionMode);
   const { columns, rows } = useTerminalSize();
@@ -237,14 +238,25 @@ function Chat({
     if (pendingInteraction?.kind === "question" && !(key.ctrl && key.name === "c")) {
       lastInterrupt.current = undefined;
       if (key.name === "escape") interactions.declineQuestion();
-      else if (!small && !pendingInteraction.editing && !key.ctrl && !key.alt && !key.shift) {
+      else if (!small && !key.ctrl && !key.alt && !key.shift) {
+        const current = pendingInteraction.drafts[pendingInteraction.questionIndex]!;
+        if (
+          pendingInteraction.request.questions.length > 1 &&
+          ["tab", "left", "right"].includes(key.name)
+        ) {
+          interactions.switchQuestion(key.name === "left" ? -1 : 1);
+          return;
+        }
+        if (current.editing) return;
         if (key.name === "enter") interactions.answerQuestion();
         else if (event.input === " ") interactions.toggleQuestion();
-        else if (key.name === "up") interactions.selectQuestion(pendingInteraction.selected - 1);
-        else if (key.name === "down") interactions.selectQuestion(pendingInteraction.selected + 1);
+        else if (key.name === "up") interactions.selectQuestion(current.selected - 1);
+        else if (key.name === "down") interactions.selectQuestion(current.selected + 1);
         else if (
           /^[1-9]$/.test(event.input) &&
-          Number(event.input) <= pendingInteraction.request.questions[0]!.options.length + 1
+          Number(event.input) <=
+            pendingInteraction.request.questions[pendingInteraction.questionIndex]!.options.length +
+              1
         )
           interactions.selectQuestion(Number(event.input) - 1);
       }
@@ -373,13 +385,16 @@ function Chat({
                 scrollFocused={scrollFocus === "details"}
               />
             )}
-            {userQuestion && (
+            {userQuestion && currentQuestion && (
               <QuestionDialog
-                question={userQuestion.request.questions[0]!}
-                selected={userQuestion.selected}
-                checked={userQuestion.checked}
-                editing={userQuestion.editing}
-                custom={userQuestion.custom}
+                key={`${userQuestion.request.toolCallId}-${userQuestion.questionIndex}`}
+                question={userQuestion.request.questions[userQuestion.questionIndex]!}
+                questionIndex={userQuestion.questionIndex}
+                questionCount={userQuestion.request.questions.length}
+                selected={currentQuestion.selected}
+                checked={currentQuestion.checked}
+                editing={currentQuestion.editing}
+                custom={currentQuestion.custom}
                 onCustomChange={interactions.changeQuestionCustom}
                 onCustomSubmit={interactions.answerQuestion}
                 maxHeight={dialogMaxHeight}

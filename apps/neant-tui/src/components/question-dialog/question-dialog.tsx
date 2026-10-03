@@ -7,6 +7,8 @@ const singleLine = (text: string) => text.replace(/[\r\n]+/g, " ");
 
 export function QuestionDialog({
   question,
+  questionIndex,
+  questionCount,
   selected,
   checked,
   editing,
@@ -18,6 +20,8 @@ export function QuestionDialog({
   locale,
 }: {
   question: Question;
+  questionIndex: number;
+  questionCount: number;
   selected: number;
   checked: number[];
   editing: boolean;
@@ -37,7 +41,7 @@ export function QuestionDialog({
   return (
     <Box flexDirection="column" height={height} paddingX={2} marginBottom={1}>
       <ThemedText color="permission" wrap="truncate">
-        {singleLine(question.header)}
+        {`${t("question.progress", { current: questionIndex + 1, total: questionCount })} · ${singleLine(question.header)}`}
       </ThemedText>
       <ThemedText wrap="truncate">{singleLine(question.question)}</ThemedText>
       {options.slice(first, first + visibleCount).map(({ label, description }, index) => (
@@ -68,17 +72,22 @@ export function QuestionDialog({
       ))}
       <HintLine>
         {[
-          ...(!editing
+          ...(!editing && (columns >= 50 || questionCount === 1)
             ? [
-                ...(columns >= 50 ? [t("question.select")] : []),
+                ...(columns >= 50
+                  ? [t(questionCount > 1 ? "question.select-short" : "question.select")]
+                  : []),
                 t(
                   question.multiSelect
                     ? "question.toggle"
-                    : columns < 50
+                    : columns < 50 || questionCount > 1
                       ? "question.keep-short"
                       : "question.keep",
                 ),
               ]
+            : []),
+          ...(questionCount > 1
+            ? [t(columns < 50 ? "question.switch-short" : "question.switch")]
             : []),
           t("dialog.confirm"),
           t("dialog.deny"),

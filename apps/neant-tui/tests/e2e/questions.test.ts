@@ -360,3 +360,185 @@ test("Other remains editable on a 40 by 12 terminal and long custom text stays o
     await app.cleanup();
   }
 });
+
+const themeQuestion = {
+  question: "Which theme?",
+  header: "Theme",
+  multiSelect: false,
+  options: [
+    { label: "Light", description: "Bright interface" },
+    { label: "Dark", description: "Dim interface" },
+  ],
+};
+
+test("confirming each question advances and submits the ordered batch only after the last question", async () => {
+  const app = await start(["ask"]);
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("ask_user_question", { questions: [question, themeQuestion] });
+    await app.waitFor(() => app.screen().some((line) => line.includes("第 1 / 共 2 题")));
+    expect(app.screen().join("\n")).toContain("Storage");
+    app.stdin.write("2\r");
+    await app.waitFor(() => app.screen().some((line) => line.includes("第 2 / 共 2 题")));
+    expect(app.screen().join("\n")).toContain("Theme");
+    expect(app.screen().join("\n")).toContain("Which theme?");
+    expect(app.calls).toHaveLength(1);
+    app.stdin.write("\r");
+    await app.waitFor(() => app.calls.length === 2);
+    expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
+      isError: false,
+      content: [{ type: "text", text: '"Which storage?" → Postgres\n"Which theme?" → Light' }],
+    });
+    app.calls[1]!.finish();
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("switching among four questions preserves and lets users revise choices and Other drafts", async () => {
+  const app = await start(["ask"], {
+    env: { LANG: "en_US.UTF-8" },
+    session: { settings: { locale: "en" } },
+  });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    const features = {
+      ...question,
+      header: "Features",
+      question: "Which features?",
+      multiSelect: true,
+    };
+    const editor = { ...themeQuestion, header: "Editor", question: "Which editor?" };
+    app.calls[0]!.tool("ask_user_question", {
+      questions: [question, features, themeQuestion, editor],
+    });
+    await app.waitFor(() => app.screen().join("\n").includes("Question 1 / 4"));
+    app.stdin.write("2 ");
+    app.stdin.write("3\rcache");
+    await app.waitFor(() => app.screen().join("\n").includes("cache"));
+    app.stdin.write("\t");
+    await app.waitFor(() => app.screen().join("\n").includes("Question 2 / 4"));
+    app.stdin.write("1 2 ");
+    await app.waitFor(() => app.screen().join("\n").includes("[x] Postgres"));
+    app.stdin.write("\x1b[D");
+    await app.waitFor(() => app.screen().join("\n").includes("cache"));
+    app.stdin.write(" first\r");
+    await app.waitFor(() => app.screen().join("\n").includes("Which features?"));
+    expect(app.screen().join("\n")).toContain("[x] SQLite");
+    expect(app.screen().join("\n")).toContain("[x] Postgres");
+    app.stdin.write("1 3\rreplicas\r");
+    await app.waitFor(() => app.screen().join("\n").includes("Question 3 / 4"));
+    app.stdin.write("\x1b[D");
+    await app.waitFor(() => app.screen().join("\n").includes("Question 2 / 4"));
+    app.stdin.write("1 ");
+    await app.waitFor(() => app.screen().join("\n").includes("[x] SQLite"));
+    app.stdin.write("\r");
+    await app.waitFor(() => app.screen().join("\n").includes("Question 3 / 4"));
+    app.stdin.write("2\r");
+    await app.waitFor(() => app.screen().join("\n").includes("Question 4 / 4"));
+    app.stdin.write("\t");
+    await app.waitFor(() => app.screen().join("\n").includes("Question 1 / 4"));
+    app.stdin.write("1\r");
+    await app.waitFor(() => app.screen().join("\n").includes("Question 2 / 4"));
+    app.stdin.write("\x1b[C\x1b[C\r");
+    await app.waitFor(() => app.calls.length === 2);
+    expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
+      isError: false,
+      content: [
+        {
+          type: "text",
+          text: '"Which storage?" → SQLite; cache first\n"Which features?" → SQLite, Postgres; replicas\n"Which theme?" → Dark\n"Which editor?" → Light',
+        },
+      ],
+    });
+    app.calls[1]!.finish();
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test.each([0, 1, 2, 3])(
+  "Esc on question %i declines the entire four-question call",
+  async (index) => {
+    const app = await start(["ask"]);
+    try {
+      await app.waitFor(() => app.calls.length === 1);
+      app.calls[0]!.tool("ask_user_question", {
+        questions: [question, themeQuestion, question, themeQuestion],
+      });
+      await app.waitFor(() => app.screen().join("\n").includes("第 1 / 共 4 题"));
+      app.stdin.write("\t".repeat(index));
+      await app.waitFor(() =>
+        app
+          .screen()
+          .join("\n")
+          .includes(`第 ${index + 1} / 共 4 题`),
+      );
+      app.stdin.write("3\rdiscard this");
+      await app.waitFor(() => app.screen().join("\n").includes("discard this"));
+      app.stdin.write("\x1b");
+      await app.waitFor(() => app.calls.length === 2);
+      expect(app.calls[1]!.signal!.aborted).toBe(false);
+      expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
+        isError: false,
+        content: [{ type: "text", text: expect.stringContaining("The user declined to answer.") }],
+      });
+      app.calls[1]!.finish();
+    } finally {
+      await app.cleanup();
+    }
+  },
+);
+
+test("the last question cannot submit a batch before skipped questions are confirmed", async () => {
+  const app = await start(["ask"]);
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("ask_user_question", { questions: [question, themeQuestion] });
+    await app.waitFor(() => app.screen().join("\n").includes("第 1 / 共 2 题"));
+    app.stdin.write("2\t");
+    await app.waitFor(() => app.screen().join("\n").includes("第 2 / 共 2 题"));
+    app.stdin.write("2\r");
+    await app.waitFor(() => app.screen().join("\n").includes("第 1 / 共 2 题"));
+    expect(app.calls).toHaveLength(1);
+    expect(app.screen().join("\n")).toContain("❯ 2. Postgres");
+    app.stdin.write("\r");
+    await app.waitFor(() => app.screen().join("\n").includes("第 2 / 共 2 题"));
+    app.stdin.write("\r");
+    await app.waitFor(() => app.calls.length === 2);
+    expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
+      content: [{ type: "text", text: '"Which storage?" → Postgres\n"Which theme?" → Dark' }],
+    });
+    app.calls[1]!.finish();
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test.each(["zh", "en"])(
+  "%s progress and switching hints remain usable at 40 by 12",
+  async (locale) => {
+    const app = await start(["ask"], {
+      columns: 40,
+      rows: 12,
+      env: { LANG: locale === "en" ? "en_US.UTF-8" : "zh_CN.UTF-8" },
+    });
+    try {
+      await app.waitFor(() => app.calls.length === 1);
+      app.calls[0]!.tool("ask_user_question", { questions: [question, themeQuestion] });
+      const progress = locale === "en" ? "Question 1 / 2" : "第 1 / 共 2 题";
+      await app.waitFor(() => app.screen().join("\n").includes(progress));
+      expect(app.screen().join("\n")).toContain("Storage");
+      expect(app.screen().join("\n")).toContain("Tab/←→");
+      expect(app.screen().join("\n")).toContain(locale === "en" ? "Enter confirm" : "Enter确认");
+      expect(app.screen().join("\n")).toContain(locale === "en" ? "Esc deny" : "Esc拒绝");
+      if (locale === "en") expect(app.screen().join("\n")).not.toMatch(/\p{Script=Han}/u);
+      expect(app.screen().every((line) => Bun.stringWidth(line) <= 40)).toBe(true);
+      app.stdin.write("\r\r");
+      await app.waitFor(() => app.calls.length === 2);
+      app.calls[1]!.finish();
+    } finally {
+      await app.cleanup();
+    }
+  },
+);
