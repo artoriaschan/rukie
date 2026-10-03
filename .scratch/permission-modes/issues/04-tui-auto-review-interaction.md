@@ -39,3 +39,7 @@ ActivityLine 新增 review 展示状态和 REVIEW 文案池。Chat activity 按 
 2026-10-03 用户反馈修复：面板此前将 maxHeight 用作固定高度，短命令也撑满半屏；焦点选项上的动态 marginTop 会挪动选项行。现按 ScrollBox 实际内容行数收缩，保留半屏上限和详情滚动；留白固定在整个选项组前，方向键只改变指示符与高亮。标题完整对齐 dsh-TUI 的“⏳ 等待审批 · 工具名”和居中分隔线。组件与公开 main/terminal 回归覆盖 ask / auto-review 两种模式的自然高度、上下选项行不动，以及长理由滚动和最小窗口。
 
 本次高度/焦点回归均先 red 后 green：组件测试复现选项一行位移和短内容多余 7–8 行空白；新增公开 main/terminal 测试验证上下键后的实际行位置不变。44 项定向测试通过，Standards / Spec 审查均为 0 项问题；`rtk proxy env -u NO_COLOR bun run check` 通过格式、Lint、类型检查、Knip 和全部 476 项测试（0 fail，2735 assertions）。
+
+2026-10-03 用户跟进：权限面板底部增加一行外边距，与后续输入/状态区域隔开。外边距独立于面板内部的半屏高度预算，保留最小窗口的详情行、选项和快捷键提示。
+
+底部边距跟进验证：15 项定向测试通过；Standards / Spec 均为 0 项问题。`rtk proxy env -u NO_COLOR bun run check` 通过格式、Lint、类型检查、Knip 和全部 476 项测试（0 fail，2738 assertions）。

@@ -65,7 +65,7 @@ export function PermissionDialog({
       ? args
       : Object.fromEntries(Object.entries(args ?? {}).filter(([key]) => key !== "command"));
   return (
-    <Box flexDirection="column" height={height} paddingX={2}>
+    <Box flexDirection="column" height={height} paddingX={2} marginBottom={1}>
       <ThemedText color="permission" wrap="truncate">
         {`${"─".repeat(Math.floor(ruleWidth / 2))}${title}${"─".repeat(Math.ceil(ruleWidth / 2))}`}
       </ThemedText>

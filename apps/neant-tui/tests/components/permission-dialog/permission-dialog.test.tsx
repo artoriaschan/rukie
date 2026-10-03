@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { render } from "@neant/tui";
+import { Box, ThemedText, render } from "@neant/tui";
 import { createRef, useState } from "react";
 import { useInput } from "@neant/tui";
 import type { ScrollHandle } from "@neant/tui";
@@ -9,12 +9,15 @@ import { createTerminal } from "../../helpers/terminal";
 test("permission panel groups a tool heading, command and question above its focused choice", async () => {
   const terminal = createTerminal(80, 13);
   const app = render(
-    <PermissionDialog
-      toolName="bash"
-      args={{ command: "printf hello" }}
-      selected={1}
-      maxHeight={12}
-    />,
+    <Box flexDirection="column">
+      <PermissionDialog
+        toolName="bash"
+        args={{ command: "printf hello" }}
+        selected={1}
+        maxHeight={12}
+      />
+      <ThemedText>next-field</ThemedText>
+    </Box>,
     terminal,
   );
   try {
@@ -47,6 +50,8 @@ test("permission panel groups a tool heading, command and question above its foc
     expect(unfocused.isBold()).toBeFalsy();
     const hint = lines.indexOf("  ↑↓选择 · Enter确认 · Esc拒绝 · Tab详情");
     expect(hint).toBeGreaterThan(selected);
+    expect(lines.indexOf("next-field")).toBe(hint + 2);
+    expect(lines[hint + 1]).toBe("");
     expect(
       buffer
         .getLine(buffer.viewportY + hint)!

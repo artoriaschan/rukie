@@ -277,7 +277,8 @@ test("approval details scroll independently with pinned choices and preserve the
     await app.waitFor(() => app.screen().some((line) => line.trim() === "}"));
     expect(app.screen().map((line) => line.trimStart())).toContain("❯ 1. 允许（仅本次）");
     const divider = app.screen().findIndex((line) => line.includes("等待审批"));
-    expect(app.screen().length - 3 - divider).toBeLessThanOrEqual(6);
+    expect(app.screen().at(-4)).toBe("");
+    expect(app.screen().length - 4 - divider).toBeLessThanOrEqual(6);
     expect(app.screen().at(-2)).toContain("ctx ");
     app.stdin.write("\x1b[<64;5;6M");
     await Bun.sleep(25);
