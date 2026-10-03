@@ -3,11 +3,28 @@ import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { PERMISSION_MODES } from "@neant/shared";
 import { join } from "node:path";
 import { createSession, type PermissionAskRequest, type SessionEvent } from "../../src/index.ts";
-import { fakeModel } from "../helpers/fake-model.ts";
+import { fakeModel as scriptedModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
 afterEach(() => dirs?.cleanup());
+
+// These policy tests ask on review denial; standalone reviews do not consume main replies.
+function fakeModel(responses: Parameters<typeof scriptedModel>[0]) {
+  const fake = scriptedModel(responses);
+  const mainStream = fake.streamFn;
+  fake.streamFn = (model, context, options) =>
+    context.messages.some(
+      (message) => message.role === "system" && JSON.stringify(message).includes("REVIEW_POLICY"),
+    )
+      ? scriptedModel([fauxAssistantMessage('{"risk":"medium","decision":"deny"}')]).streamFn(
+          model,
+          context,
+          options,
+        )
+      : mainStream(model, context, options);
+  return fake;
+}
 
 test.each([
   [undefined, "full-access", "full-access"],
@@ -133,6 +150,7 @@ test("frontend can allow a tool call using its id, name, arguments and signal", 
         toolCallId: "write-ask",
         toolName: "write",
         args,
+        mode: "ask",
         signal: expect.any(AbortSignal),
       });
       expect(request.signal.aborted).toBe(false);

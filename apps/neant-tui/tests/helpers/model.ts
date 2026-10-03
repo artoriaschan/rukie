@@ -25,6 +25,19 @@ export function controlledModel() {
   }[] = [];
   const streamFn: NonNullable<SessionOptions["streamFn"]> = (_model, context, options) => {
     const stream = createAssistantMessageEventStream();
+    // Existing UI permission tests exercise the ask path after review denial.
+    if (
+      context.messages.some(
+        (message) => message.role === "system" && JSON.stringify(message).includes("REVIEW_POLICY"),
+      )
+    ) {
+      const message = fauxAssistantMessage(
+        '{"risk":"medium","decision":"deny","reason":"Test review requires consent"}',
+      );
+      stream.push({ type: "done", reason: "stop", message });
+      stream.end(message);
+      return stream;
+    }
     const partial = fauxAssistantMessage("", { stopReason: "pending" });
     let text = "";
     let thinking = "";

@@ -12,7 +12,12 @@ import {
   setValue,
   type Session as StoredSession,
 } from "@earendil-works/pi-agent-core/harness/session";
-import type { Api, Model } from "@earendil-works/pi-ai";
+import {
+  validateToolArguments,
+  type Api,
+  type Model,
+  type AssistantMessage,
+} from "@earendil-works/pi-ai";
 import { resolve } from "node:path";
 import type {
   CustomSessionEvent,
@@ -31,12 +36,16 @@ import { discoverSkills, skillInvocation, skillsReminder } from "../skills/index
 import { createMcpConnections } from "../mcp/index.ts";
 import { compactTurn, estimateContextTokens, restoreContext } from "../compaction/index.ts";
 import { contextUsage } from "../context-usage/index.ts";
+import { reviewPermission, type ReviewResult } from "../review/index.ts";
 
 export interface PermissionAskRequest {
   toolCallId: string;
   toolName: string;
   /** Validated arguments for this tool call. */
   args: unknown;
+  /** Mode captured when this call entered the permission gate. */
+  mode: PermissionMode;
+  reason?: string;
   /** Aborted when the Run is cancelled; frontends can dismiss their pending question. */
   signal: AbortSignal;
 }
@@ -145,15 +154,100 @@ export async function createSession(options: SessionOptions): Promise<Session> {
   // behind existing conversation messages; pi will seed it when restoring them.
   let baselinePersisted = transcriptMessages.length > 0;
   let skills = new Map<string, Skill>();
+  const reviewBatches = new WeakMap<AssistantMessage, Map<string, Promise<ReviewResult>>>();
+  const activeReviews = new Set<Promise<ReviewResult>>();
   const agent = new Agent({
     streamFn: options.streamFn ?? streamFn,
     convertToLlm,
-    beforeToolCall: async ({ toolCall, args }, signal) => {
+    beforeToolCall: async ({ toolCall, args, assistantMessage }, signal) => {
+      const mode = permissionMode;
+      const callSignal = signal ?? new AbortController().signal;
+      let reason: string | undefined;
       let decision = decidePermission({
         toolName: toolCall.name,
         allowTools: [...(settings.allowTools ?? []), ...(options.allowTools ?? [])],
-        mode: permissionMode,
+        mode,
       });
+      if (decision === "review") {
+        let batch = reviewBatches.get(assistantMessage);
+        if (!batch) {
+          batch = new Map();
+          reviewBatches.set(assistantMessage, batch);
+        }
+        // pi prepares parallel calls sequentially. Start independent reviews here,
+        // while each actual hook still reads the current Permission Mode.
+        for (const call of assistantMessage.content) {
+          if (call.type !== "toolCall" || batch.has(call.id)) continue;
+          if (
+            decidePermission({
+              mode,
+              toolName: call.name,
+              allowTools: [...(settings.allowTools ?? []), ...(options.allowTools ?? [])],
+            }) !== "review"
+          )
+            continue;
+          const tool = agent.state.tools.find((item) => item.name === call.name);
+          if (!tool) continue;
+          let validated: unknown;
+          try {
+            validated =
+              call.id === toolCall.id
+                ? args
+                : validateToolArguments(tool, {
+                    ...call,
+                    arguments: (tool.prepareArguments?.(call.arguments) ??
+                      call.arguments) as typeof call.arguments,
+                  });
+          } catch {
+            // pi returns validation errors without executing or reviewing this call.
+            continue;
+          }
+          const review = (async () => {
+            await emitRunEvent?.({
+              type: "permission_review",
+              phase: "start",
+              toolCallId: call.id,
+              toolName: call.name,
+            });
+            const result = await reviewPermission({
+              cwd,
+              projectInstructions: transcriptMessages.flatMap((message) =>
+                message.role === "system-reminder" &&
+                ["project-instructions", "user-instructions"].includes(message.source)
+                  ? [message.content]
+                  : [],
+              ),
+              messages: agent.state.messages.filter((message) => message !== assistantMessage),
+              tool,
+              args: validated,
+              model: settings.reviewModel
+                ? async () =>
+                    (
+                      await resolveModel(
+                        { ...settings, model: settings.reviewModel },
+                        options.homeDir,
+                      )
+                    ).model
+                : model,
+              streamFn: options.streamFn ?? streamFn,
+              signal: callSignal,
+            });
+            await emitRunEvent?.({
+              type: "permission_review",
+              phase: "end",
+              toolCallId: call.id,
+              ...result,
+            });
+            return result;
+          })();
+          batch.set(call.id, review);
+          activeReviews.add(review);
+          void review.finally(() => activeReviews.delete(review)).catch(() => {});
+        }
+        const review = await batch.get(toolCall.id)!;
+        decision = review.decision;
+        reason = "reason" in review ? review.reason : undefined;
+      }
       if (decision === "ask") {
         decision = options.onPermissionAsk
           ? await askPermission(
@@ -161,7 +255,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 toolCallId: toolCall.id,
                 toolName: toolCall.name,
                 args,
-                signal: signal ?? new AbortController().signal,
+                mode,
+                ...(reason !== undefined && { reason }),
+                signal: callSignal,
               },
               options.onPermissionAsk,
             )
@@ -173,7 +269,13 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         toolCallId: toolCall.id,
         toolName: toolCall.name,
       });
-      return { block: true, reason: `该工具未获授权: ${toolCall.name}` };
+      return {
+        block: true,
+        reason:
+          mode === "auto-review"
+            ? `用户拒绝该工具调用: ${toolCall.name}`
+            : `该工具未获授权: ${toolCall.name}`,
+      };
     },
     initialState: {
       model,
@@ -387,6 +489,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         throw error;
       } finally {
         try {
+          await Promise.allSettled(activeReviews);
           await mcp.close();
           await emitMcpErrors();
           result.durationMs = performance.now() - started;

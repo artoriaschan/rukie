@@ -13,9 +13,9 @@ export function decidePermission({
   mode,
   toolName,
   allowTools,
-}: PermissionOptions): PermissionDecision {
+}: PermissionOptions): PermissionDecision | "review" {
   if (mode === "full-access" || ["read", "glob", "grep", "skill"].includes(toolName))
     return "allow";
-  // auto-review follows ask until Permission Review is wired into the Session.
-  return allowTools?.some((pattern) => new Bun.Glob(pattern).match(toolName)) ? "allow" : "ask";
+  if (allowTools?.some((pattern) => new Bun.Glob(pattern).match(toolName))) return "allow";
+  return mode === "auto-review" ? "review" : "ask";
 }

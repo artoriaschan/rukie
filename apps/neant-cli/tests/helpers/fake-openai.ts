@@ -7,6 +7,8 @@ export interface FakeOpenAIOptions {
   error?: string;
   /** First response requests these tools; subsequent responses return text. */
   toolCalls?: { name: string; arguments: object }[];
+  /** Standalone Permission Review reply; main responses keep their original text. */
+  reviewReply?: string;
 }
 
 export function fakeOpenAI(reply: string, options: FakeOpenAIOptions = {}) {
@@ -60,7 +62,21 @@ export function fakeOpenAI(reply: string, options: FakeOpenAIOptions = {}) {
         );
       }
       const body =
-        chunk({ role: "assistant", content: reply }, null) +
+        chunk(
+          {
+            role: "assistant",
+            content: requests
+              .at(-1)!
+              .body.messages.some(
+                (message: { role: string; content?: string }) =>
+                  ["system", "developer"].includes(message.role) &&
+                  message.content?.includes("REVIEW_POLICY"),
+              )
+              ? (options.reviewReply ?? reply)
+              : reply,
+          },
+          null,
+        ) +
         chunk({}, "stop") +
         `data: ${JSON.stringify({
           id: "chatcmpl-1",

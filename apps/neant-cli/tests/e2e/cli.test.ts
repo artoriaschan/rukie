@@ -190,13 +190,50 @@ test.each([
   expect(await Bun.file(join(dirs.cwd, "bash-ran")).exists()).toBe(!denied);
   const events = parseEvents(result.stdout);
   expect(events.filter((event) => event.type === "permission_denied")).toHaveLength(denied ? 2 : 0);
-  expect(server.requests).toHaveLength(2);
-  const results = server.requests[1]!.body.messages.filter(
-    (message: { role: string }) => message.role === "tool",
-  );
+  expect(server.requests).toHaveLength(mode === "auto-review" ? 4 : 2);
+  const results = server.requests
+    .at(-1)!
+    .body.messages.filter((message: { role: string }) => message.role === "tool");
   expect(results).toHaveLength(2);
-  if (denied) expect(JSON.stringify(results)).toContain("该工具未获授权");
+  if (denied)
+    expect(JSON.stringify(results)).toContain(
+      mode === "auto-review" ? "用户拒绝" : "该工具未获授权",
+    );
 });
+
+test.each([
+  ['{"risk":"low","decision":"allow"}', true, "allow"],
+  ['{"risk":"medium","decision":"deny","reason":"unapproved external target"}', false, "ask"],
+  ["invalid JSON", false, "ask"],
+] as const)(
+  "CLI auto-review %s emits stream-json outcomes and continues after permission decisions",
+  async (reviewReply, allowed, decision) => {
+    const { server, ...dirs } = await setup(
+      {},
+      {
+        toolCalls: [{ name: "write", arguments: { path: "reviewed.txt", content: "safe" } }],
+        reviewReply,
+      },
+    );
+    const result = await neant(
+      ["--permission-mode", "auto-review", "-p", "write", "--output-format", "stream-json"],
+      { ...dirs, key: "sk-test" },
+    );
+    expect(result).toMatchObject({ exitCode: 0, stderr: "" });
+    expect(await Bun.file(join(dirs.cwd, "reviewed.txt")).exists()).toBe(allowed);
+    const events = parseEvents(result.stdout);
+    expect(events.filter((event) => event.type === "permission_review")).toMatchObject([
+      { phase: "start", toolCallId: "call-0", toolName: "write" },
+      { phase: "end", toolCallId: "call-0", decision },
+    ]);
+    expect(events.at(-1)).toMatchObject({ type: "result", success: true, text: "hello from fake" });
+    expect(server.requests).toHaveLength(3);
+    expect(server.requests[1]!.body.temperature).toBe(0);
+    expect(JSON.stringify(server.requests.at(-1)!.body)).not.toContain(
+      "unapproved external target",
+    );
+  },
+);
 
 async function neant(
   args: string[],

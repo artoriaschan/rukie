@@ -35,6 +35,15 @@ export type CustomSessionEvent =
   | ({ type: "result" } & RunResult)
   | { type: "reminder_injected"; source: string; content: string }
   | { type: "permission_denied"; toolCallId: string; toolName: string }
+  | { type: "permission_review"; phase: "start"; toolCallId: string; toolName: string }
+  | {
+      type: "permission_review";
+      phase: "end";
+      toolCallId: string;
+      risk?: "low" | "medium" | "high";
+      decision: "allow" | "ask" | "deny";
+      reason?: string;
+    }
   | { type: "mcp_server_error"; server: string; error: string }
   | { type: "compaction_start"; tokensBefore: number }
   | { type: "compaction_end"; summary: string; tokensBefore: number; tokensAfter: number };
