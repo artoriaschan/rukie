@@ -46,6 +46,14 @@ _Avoid_: database, history store
 frontend 呈现文案所用的语言，由 frontend 自行解析。Agent Core 不感知 locale：它产出的内容和 transcript 与 locale 无关，同一个 session 可以在不同 locale 的 frontend 中恢复。
 _Avoid_: language（会和模型回复语言混淆）, i18n
 
+**Slash Command**:
+用户在 frontend 输入的 `/` 开头的指令，由 frontend 解析并调用 Agent Core 的能力；Agent Core 不感知命令语法。自定义命令是一段 prompt 模板。
+_Avoid_: command（会和 bash 命令混淆）
+
+**Goal**:
+用户为 session 设定的目标。设定后 agent 在每个 run 结束时自动续跑，直到模型判定目标完成或受阻、用户暂停，或达到续跑上限。
+_Avoid_: task, objective
+
 ### 给模型的上下文
 
 **System Prompt**:
