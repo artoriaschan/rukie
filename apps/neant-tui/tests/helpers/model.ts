@@ -9,7 +9,7 @@ import {
 import type { SessionOptions } from "@neant/agent";
 
 /** Model boundary controlled by the test, including streamed text and cancellation. */
-export function controlledModel() {
+export function controlledModel(controlReviews = false) {
   const model = createFauxCore({ api: "faux", provider: "faux" }).getModel();
   const calls: {
     context: TranscriptContext;
@@ -23,14 +23,14 @@ export function controlledModel() {
     tools(tools: { name: string; args: Parameters<typeof fauxToolCall>[1] }[]): void;
     fail(message: string): void;
   }[] = [];
+  const reviews: typeof calls = [];
   const streamFn: NonNullable<SessionOptions["streamFn"]> = (_model, context, options) => {
     const stream = createAssistantMessageEventStream();
-    // Existing UI permission tests exercise the ask path after review denial.
-    if (
-      context.messages.some(
-        (message) => message.role === "system" && JSON.stringify(message).includes("REVIEW_POLICY"),
-      )
-    ) {
+    const isReview = context.messages.some(
+      (message) => message.role === "system" && JSON.stringify(message).includes("REVIEW_POLICY"),
+    );
+    // Most UI tests use immediate review denial; lifecycle tests hold this boundary open.
+    if (isReview && !controlReviews) {
       const message = fauxAssistantMessage(
         '{"risk":"medium","decision":"deny","reason":"Test review requires consent"}',
       );
@@ -85,7 +85,7 @@ export function controlledModel() {
           { stopReason: "toolUse" },
         ),
       );
-    calls.push({
+    (isReview ? reviews : calls).push({
       context: structuredClone(context),
       signal: options?.signal,
       reasoning: options?.reasoning,
@@ -119,5 +119,5 @@ export function controlledModel() {
     if (options?.signal?.aborted) abort();
     return stream;
   };
-  return { model, streamFn, calls };
+  return { model, streamFn, calls, reviews };
 }

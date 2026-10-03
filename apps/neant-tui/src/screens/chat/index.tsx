@@ -23,6 +23,7 @@ import {
 } from "../../components";
 import { createConversation } from "./conversation";
 import { createPermissions } from "./permissions";
+import { permissionChoices } from "../../components/permission-dialog/permission-dialog";
 import { NARRATE_INSTRUCTION } from "./narration";
 import { fmtTokens, render as renderActivity } from "./activity/activity";
 
@@ -206,7 +207,11 @@ function Chat({
         else if (key.name === "up" || key.name === "left") permissions.select(pending.selected - 1);
         else if (key.name === "down" || key.name === "right")
           permissions.select(pending.selected + 1);
-        else if (/^[1-3]$/.test(event.input)) permissions.select(Number(event.input) - 1);
+        else if (
+          /^[1-3]$/.test(event.input) &&
+          Number(event.input) <= permissionChoices(pending.request.mode).length
+        )
+          permissions.select(Number(event.input) - 1);
       }
       return;
     }
@@ -296,6 +301,8 @@ function Chat({
                 key={question.request.toolCallId}
                 toolName={question.request.toolName}
                 args={question.request.args}
+                mode={question.request.mode}
+                reason={question.request.reason}
                 selected={question.selected}
                 maxHeight={Math.floor(rows / 2)}
                 scrollRef={details}

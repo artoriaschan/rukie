@@ -67,7 +67,7 @@ test.each(["ask", "auto-review"] as const)(
         replay.stdin.write("resumed\r");
         await replay.waitFor(() => replay.calls.length === 1);
         replay.calls[0]!.tool("bash", { command: "printf must-ask-after-resume" });
-        await replay.waitFor(() => replay.screen().join("\n").includes("权限确认"));
+        await replay.waitFor(() => replay.screen().some((line) => line.includes("1. 允许一次")));
         expect(replay.calls).toHaveLength(1);
         expect(await Bun.file(join(root, "home/.neant/settings.json")).text()).toBe(userSettings);
       } finally {
@@ -125,7 +125,7 @@ test("shift+tab cycles modes during a Run and changes the next tool permission i
   }
 });
 
-test.each(["default", "ask", "auto-review"])(
+test.each(["default", "ask"])(
   "%s: allow once executes the tool and asks again for its next call",
   async (mode) => {
     const app = await start(
@@ -167,6 +167,72 @@ test.each(["default", "ask", "auto-review"])(
     }
   },
 );
+
+test.each(["2\r", "\x1b[A\r", "\x1b[B\r", "\x1b"])(
+  "auto-review shows the reason, allows once, then rejects via %j",
+  async (reject) => {
+    const app = await start(["--permission-mode", "auto-review", "use bash"]);
+    const reason = "Test review requires consent";
+    try {
+      await app.waitFor(() => app.calls.length === 1);
+      app.calls[0]!.tool("bash", { command: "printf reviewed-once" });
+      await app.waitFor(() => app.screen().some((line) => line.includes("1. 允许一次")));
+      expect(app.screen().join("\n")).toContain(`─ ${reason} ─`);
+      expect(app.screen().join("\n")).toContain("2. 拒绝");
+      expect(app.screen().join("\n")).not.toContain("一直允许");
+      expect(app.screen().join("\n")).not.toContain("3.");
+      app.stdin.write("1\r");
+      await app.waitFor(() => app.calls.length === 2);
+      expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
+        isError: false,
+        content: [{ type: "text", text: "reviewed-once" }],
+      });
+      app.calls[1]!.tool("bash", { command: "printf must-be-refused" });
+      await app.waitFor(() =>
+        app.screen().some((line) => line.includes('"command": "printf must-be-refused"')),
+      );
+      // Invalid digits do not select a hidden option; Shift+Tab cannot change the request.
+      app.stdin.write("3\x1b[Z");
+      await Bun.sleep(30);
+      await app.flush();
+      expect(app.screen()).toContain("❯ 1. 允许一次");
+      app.stdin.write(reject);
+      await app.waitFor(() => app.calls.length === 3);
+      expect(app.calls[2]!.context.messages.at(-1)).toMatchObject({
+        isError: true,
+        content: [{ type: "text", text: "用户拒绝该工具调用: bash" }],
+      });
+      app.calls[2]!.finish();
+      await app.waitFor(() => !app.isWorking());
+      expect(app.screen().join("\n")).not.toContain(reason);
+    } finally {
+      await app.cleanup();
+    }
+  },
+);
+
+test("auto-review still asks after this tool was always allowed in ask mode", async () => {
+  const app = await start(["allow in ask"]);
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("bash", { command: "printf ask-allowed" });
+    await app.waitFor(() => app.screen().some((line) => line.includes("3. 拒绝")));
+    app.stdin.write("2\r");
+    await app.waitFor(() => app.calls.length === 2);
+    app.stdin.write("\x1b[Z");
+    await app.waitFor(() => app.screen().at(-2)!.startsWith(" auto-review ·"));
+    app.calls[1]!.tool("bash", { command: "printf review-must-ask" });
+    await app.waitFor(() => app.screen().some((line) => line.includes("2. 拒绝")));
+    expect(app.screen().join("\n")).toContain("Test review requires consent");
+    expect(app.calls).toHaveLength(2);
+    app.stdin.write("2\r");
+    await app.waitFor(() => app.calls.length === 3);
+    expect(app.calls[2]!.context.messages.at(-1)).toMatchObject({ isError: true });
+    app.calls[2]!.finish();
+  } finally {
+    await app.cleanup();
+  }
+});
 
 test.each([
   ["number", "3\r"],

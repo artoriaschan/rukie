@@ -838,6 +838,12 @@ export const COMPACT_PHRASES: readonly string[] = [
   "释放了一波内存",
 ];
 
+export const REVIEW_PHRASES: readonly string[] = [
+  "REVIEW · 看看这次调用的风险",
+  "REVIEW · 正在核对授权范围",
+  "REVIEW · 工具调用评审中",
+];
+
 export const APPROVAL_PHRASES: readonly string[] = [
   "在等你点头",
   "等你批准呢——看一眼？",

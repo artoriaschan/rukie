@@ -1,6 +1,107 @@
 import { expect, test } from "bun:test";
 import { start } from "../helpers/app";
 
+test("REVIEW stays visible until all concurrent reviews finish, without counting their tokens", async () => {
+  const app = await start(["--permission-mode", "auto-review", "review two writes"], {
+    controlReviews: true,
+  });
+  const screen = () => app.screen().join("\n");
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tools([
+      { name: "write", args: { path: "first.txt", content: "first" } },
+      { name: "write", args: { path: "second.txt", content: "second" } },
+    ]);
+    await app.waitFor(() => app.reviews.length === 2 && screen().includes("REVIEW"));
+    expect(screen()).toContain("REVIEW");
+    expect(screen()).toContain("↑ 11 · ↓ 5 tokens");
+    // Complete in reverse order: the earlier review must remain visible.
+    app.reviews[1]!.delta('{"risk":"low","decision":"allow"}');
+    app.reviews[1]!.finish(9000, 9000);
+    await Bun.sleep(30);
+    await app.flush();
+    expect(screen()).toContain("REVIEW");
+    expect(screen()).toContain("↑ 11 · ↓ 5 tokens");
+    app.reviews[0]!.delta('{"risk":"low","decision":"allow"}');
+    app.reviews[0]!.finish(9000, 9000);
+    await app.waitFor(() => app.calls.length === 2 && !screen().includes("REVIEW"));
+    expect(screen()).not.toContain("REVIEW");
+    expect(
+      app.calls[1]!.context.messages.filter((message) => message.role === "toolResult"),
+    ).toMatchObject([{ isError: false }, { isError: false }]);
+    app.calls[1]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    expect(screen()).not.toContain("REVIEW");
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test.each(["deny", "failure"])(
+  "review %s becomes a reason title and cancellation clears concurrent reviews",
+  async (outcome) => {
+    const app = await start(["--permission-mode", "auto-review", "review and ask"], {
+      controlReviews: true,
+    });
+    const screen = () => app.screen().join("\n");
+    try {
+      await app.waitFor(() => app.calls.length === 1);
+      app.stdin.write("next draft");
+      await app.waitFor(() => screen().includes("❯ next draft"));
+      app.calls[0]!.tools([
+        { name: "bash", args: { command: "printf must-not-run" } },
+        { name: "write", args: { path: "refused.txt", content: "refused" } },
+      ]);
+      await app.waitFor(() => app.reviews.length === 2 && screen().includes("REVIEW"));
+      if (outcome === "deny") {
+        app.reviews[0]!.delta('{"risk":"high","decision":"deny","reason":"需要你确认操作范围"}');
+        app.reviews[0]!.finish();
+      } else app.reviews[0]!.fail("review provider offline");
+      await app.waitFor(() => screen().includes("2. 拒绝"));
+      expect(screen()).not.toContain("REVIEW");
+      expect(screen()).not.toContain("一直允许");
+      expect(screen()).toMatch(
+        outcome === "deny" ? /─ 需要你确认操作范围 ─/ : /─ Permission Review failed/,
+      );
+      // An approval takes priority over the second review, which remains cancellable.
+      app.stdin.write("\x03");
+      await app.waitFor(() => !app.isWorking());
+      expect(app.reviews.every((review) => review.signal!.aborted)).toBe(true);
+      expect(screen()).not.toContain("REVIEW");
+      expect(screen()).not.toContain("2. 拒绝");
+      expect(screen()).toContain("❯ next draft");
+      app.stdin.write("\r");
+      await app.waitFor(() => app.calls.length === 2);
+      expect(screen()).not.toContain("REVIEW");
+      app.calls[1]!.finish();
+    } finally {
+      await app.cleanup();
+    }
+  },
+);
+
+test("Esc cancels in-flight review and the next Run starts without stale REVIEW activity", async () => {
+  const app = await start(["--permission-mode", "auto-review", "cancel review"], {
+    controlReviews: true,
+  });
+  const screen = () => app.screen().join("\n");
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("bash", { command: "printf cancelled-review" });
+    await app.waitFor(() => app.reviews.length === 1 && screen().includes("REVIEW"));
+    app.stdin.write("\x1b");
+    await app.waitFor(() => !app.isWorking());
+    expect(app.reviews[0]!.signal!.aborted).toBe(true);
+    expect(screen()).not.toContain("REVIEW");
+    app.stdin.write("again\r");
+    await app.waitFor(() => app.calls.length === 2);
+    expect(screen()).not.toContain("REVIEW");
+    app.calls[1]!.finish();
+  } finally {
+    await app.cleanup();
+  }
+});
+
 test("a tool Run shows live tokens and approval, then hides activity until the next submit", async () => {
   const app = await start();
   const screen = () => app.screen().join("\n");

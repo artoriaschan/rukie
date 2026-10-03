@@ -42,7 +42,7 @@ export function ActivityLine({
   suffix,
   warnPct = 0,
 }: {
-  phase: "waiting" | "thinking" | "tool" | "done";
+  phase: "waiting" | "thinking" | "tool" | "review" | "done";
   line: string;
   suffix: string;
   warnPct?: number;

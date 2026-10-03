@@ -1,4 +1,5 @@
 import type { PermissionAskRequest } from "@neant/agent";
+import { permissionChoices } from "../../components/permission-dialog/permission-dialog";
 
 interface Question {
   request: PermissionAskRequest;
@@ -21,7 +22,8 @@ export function createPermissions() {
     },
     ask(request: PermissionAskRequest): Promise<"allow" | "deny"> {
       if (request.signal.aborted) return Promise.resolve("deny");
-      if (allowed.has(request.toolName)) return Promise.resolve("allow");
+      if (request.mode !== "auto-review" && allowed.has(request.toolName))
+        return Promise.resolve("allow");
       return new Promise((resolve) => {
         const abort = () => item.finish("deny");
         const item = {
@@ -43,22 +45,26 @@ export function createPermissions() {
     select(selected: number) {
       const item = pending[0];
       if (!item) return;
-      item.question = { ...item.question, selected: (selected + 3) % 3 };
+      const count = permissionChoices(item.question.request.mode).length;
+      item.question = { ...item.question, selected: (selected + count) % count };
       notify();
     },
     confirm() {
       const item = pending[0];
       if (!item) return;
       const { request, selected } = item.question;
-      if (selected === 1 && !request.signal.aborted) {
+      const decision = permissionChoices(request.mode)[selected]!.decision;
+      if (decision === "allow-tool" && !request.signal.aborted) {
         allowed.add(request.toolName);
         // pi can ask for several tool calls concurrently, including the same tool.
         for (const queued of pending.filter(
-          (queued) => queued.question.request.toolName === request.toolName,
+          (queued) =>
+            queued.question.request.mode !== "auto-review" &&
+            queued.question.request.toolName === request.toolName,
         )) {
           queued.finish("allow");
         }
-      } else item.finish(selected === 0 ? "allow" : "deny");
+      } else item.finish(decision === "allow" ? "allow" : "deny");
     },
     deny() {
       pending[0]?.finish("deny");

@@ -2,6 +2,7 @@ import type { SessionEvent } from "@neant/agent";
 import {
   ACTION_MAP,
   APPROVAL_PHRASES,
+  REVIEW_PHRASES,
   COMPACT_PHRASES,
   COMPACTION_START_PHRASES,
   CONTINUE_PHRASES,
@@ -39,6 +40,7 @@ interface ActivityState {
   thinkingPhases: number;
   donePrefix: string;
   tools: readonly ActiveTool[];
+  reviews: readonly { id: string; startedAt: number }[];
   firstToolStartedAt?: number;
   lastTool?: ActiveTool & { endedAt: number; failure?: string };
   streak: number;
@@ -71,6 +73,7 @@ export function createActivity(): ActivityState {
     thinkingPhases: 0,
     donePrefix: "",
     tools: [],
+    reviews: [],
     streak: 0,
     streamLine: "",
     interrupted: false,
@@ -136,10 +139,21 @@ export function reduce(
       return { ...state, approvalStartedAt: state.approvalStartedAt ?? now };
     case "approval-close":
       return { ...state, approvalStartedAt: undefined };
+    case "permission_review":
+      return {
+        ...state,
+        reviews:
+          event.phase === "start"
+            ? state.reviews.some((review) => review.id === event.toolCallId)
+              ? state.reviews
+              : [...state.reviews, { id: event.toolCallId, startedAt: now }]
+            : state.reviews.filter((review) => review.id !== event.toolCallId),
+      };
     case "interrupt":
       return {
         ...state,
         interrupted: true,
+        reviews: [],
         compactionStartedAt: undefined,
         pending: { line: pickPhrase(CONTINUE_PHRASES, random), until: now + 6000 },
       };
@@ -194,6 +208,7 @@ export function reduce(
       return {
         ...transition(state, "done", now),
         tools: [],
+        reviews: [],
         approvalStartedAt: undefined,
         compactionStartedAt: undefined,
         tokens: event.usage.totalTokens,
@@ -270,6 +285,13 @@ export function render(state: ActivityState, now: number) {
       state.runStartedAt + state.compactionStartedAt,
       0,
     );
+  const review = state.reviews[0];
+  if (review)
+    phrase = pickPhraseAt(
+      REVIEW_PHRASES,
+      state.runStartedAt + review.startedAt,
+      Math.floor(Math.max(0, now - review.startedAt) / 4000),
+    );
   if (state.approvalStartedAt !== undefined)
     phrase = pickPhraseAt(APPROVAL_PHRASES, state.runStartedAt + state.approvalStartedAt, 0);
   const candidates = [
@@ -283,7 +305,7 @@ export function render(state: ActivityState, now: number) {
   ];
   const deadlines = candidates.filter((at): at is number => at !== undefined && at > now);
   return {
-    phase: state.phase,
+    phase: review && state.approvalStartedAt === undefined ? ("review" as const) : state.phase,
     line: `${phrase} · 总${fmtDuration(now - state.runStartedAt)}${git}`,
     nextWakeAt: Math.min(...deadlines),
   };

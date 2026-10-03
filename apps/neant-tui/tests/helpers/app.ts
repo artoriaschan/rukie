@@ -13,12 +13,13 @@ export async function start(
     prepare?(root: string): Promise<void>;
     columns?: number;
     rows?: number;
+    controlReviews?: boolean;
   } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), "neant-tui-"));
   await options.prepare?.(root);
   const terminal = createTerminal(options.columns, options.rows);
-  const fake = controlledModel();
+  const fake = controlledModel(options.controlReviews);
   let stderr = "";
   const exit = main(argv, {
     ...terminal,
