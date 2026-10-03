@@ -7,6 +7,8 @@ import { createActivity, reduce } from "./activity/activity";
 
 interface ToolCall {
   id: string;
+  name: string;
+  args: unknown;
   summary: string;
 }
 
@@ -31,16 +33,20 @@ function toolSummary(name: string, args: unknown) {
 }
 
 function toolEntry(
-  summary: string,
+  tool: Pick<ToolCall, "name" | "args" | "summary">,
   isError: boolean,
   result: Pick<ToolResultMessage, "content" | "details">,
   t: ReturnType<typeof createTuiI18n>,
 ): CompletedEntry {
   return {
     type: "tool",
-    summary,
+    summary: tool.name === "ask_user_question" && !isError ? t("question.summary") : tool.summary,
     isError,
-    result: isError ? undefined : resultText(result),
+    result: isError
+      ? undefined
+      : tool.name === "ask_user_question"
+        ? questionSummary(tool.args, resultText(result), t)
+        : resultText(result),
     error: isError
       ? formatError(
           {
@@ -51,6 +57,40 @@ function toolEntry(
         )
       : undefined,
   };
+}
+
+function questionSummary(args: unknown, text: string, t: ReturnType<typeof createTuiI18n>) {
+  if (typeof args !== "object" || args === null || !("questions" in args)) return text;
+  const questions = args.questions;
+  if (!Array.isArray(questions) || !questions.every((item) => typeof item?.question === "string"))
+    return text;
+  const singleLine = (value: string) => value.replace(/[\r\n]+/g, " ");
+  if (text.startsWith("The user declined to answer."))
+    return questions
+      .map(({ question }) => `${singleLine(question)} → ${t("question.unanswered")}`)
+      .join("\n");
+
+  let offset = 0;
+  const lines: string[] = [];
+  for (const [index, { question }] of questions.entries()) {
+    const prefix = `"${question}" → `;
+    if (!text.startsWith(prefix, offset)) return text;
+    const answerStart = offset + prefix.length;
+    const next = questions[index + 1];
+    const boundary = next ? `\n"${next.question}" → ` : undefined;
+    const end = boundary ? text.indexOf(boundary, answerStart) : text.length;
+    // Repeated questions are valid; extra full prefixes inside answers are ambiguous.
+    if (
+      end === -1 ||
+      (boundary &&
+        text.slice(answerStart).split(boundary).length - 1 !==
+          questions.slice(index + 1).filter((item) => item.question === next.question).length)
+    )
+      return text;
+    lines.push(`${singleLine(question)} → ${singleLine(text.slice(answerStart, end))}`);
+    offset = end + 1;
+  }
+  return lines.join("\n");
 }
 
 interface ViewState {
@@ -84,21 +124,30 @@ function replayMessages(
   messages: Session["messages"],
   t: ReturnType<typeof createTuiI18n>,
 ): CompletedEntry[] {
-  const tools = new Map<string, string>();
+  const tools = new Map<string, ToolCall>();
   return messages.flatMap((message): CompletedEntry[] => {
     const text = messageText(message);
     if (message.role === "user") return [{ type: "message", role: "user", text }];
     if (message.role === "assistant") {
       for (const content of message.content) {
         if (content.type === "toolCall")
-          tools.set(content.id, toolSummary(content.name, content.arguments));
+          tools.set(content.id, {
+            id: content.id,
+            name: content.name,
+            args: content.arguments,
+            summary: toolSummary(content.name, content.arguments),
+          });
       }
       return text ? [{ type: "message", role: "assistant", text }] : [];
     }
     if (message.role === "toolResult") {
-      const summary = tools.get(message.toolCallId) ?? message.toolName;
+      const tool = tools.get(message.toolCallId) ?? {
+        name: message.toolName,
+        args: undefined,
+        summary: message.toolName,
+      };
       tools.delete(message.toolCallId);
-      return [toolEntry(summary, message.isError, message, t)];
+      return [toolEntry(tool, message.isError, message, t)];
     }
     return [];
   });
@@ -191,6 +240,8 @@ function reduceEvent(
           ...state.tools,
           {
             id: event.toolCallId,
+            name: event.toolName,
+            args: event.args,
             summary: toolSummary(event.toolName, event.args),
           },
         ],
@@ -201,7 +252,7 @@ function reduceEvent(
       return {
         ...state,
         tools: state.tools.filter((tool) => tool.id !== event.toolCallId),
-        completed: [...state.completed, toolEntry(tool.summary, event.isError, event.result, t)],
+        completed: [...state.completed, toolEntry(tool, event.isError, event.result, t)],
       };
     }
     case "compaction_end":

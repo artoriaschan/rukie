@@ -32,6 +32,8 @@
  */
 
 const zh = {
+  "question.summary": "提问",
+  "question.unanswered": "未回答",
   "narrate-instruction":
     "[状态栏] 你有一个状态栏展示给用户。【必须】在每个步骤/子任务开始时（不只是调用工具前），在回复正文的最前面单独写一行：⏵ 你在做的具体事情（不超过20字），然后换行继续正常回复。整轮回复只写一行 ⏵，不要重复。信息为主——让人一眼知道你在干什么，风格自然、可以带点俏皮。例：⏵ 修复登录页样式、⏵ 查一下报错原因、⏵ 给补丁跑个验证。切换任务时必须更新。",
   "line-elapsed": "总{{elapsed}}",
@@ -119,6 +121,8 @@ const zh = {
 } as const;
 
 const en = {
+  "question.summary": "Questions",
+  "question.unanswered": "Unanswered",
   "narrate-instruction":
     "[Status line] You have a status line visible to the user. [Required] At the start of each step or subtask (not only before tool calls), write exactly one standalone line at the very beginning of your response: ⏵ a concrete description of what you are doing (20 words max), then continue with the normal response on the next line. Write only one ⏵ line per response and do not repeat it. Prioritize information so the user can understand the current work at a glance; keep the style natural and optionally playful. Examples: ⏵ Fixing the login page styles, ⏵ Investigating the error, ⏵ Running validation for the patch. Update it when the task changes.",
   "line-elapsed": "total {{elapsed}}",

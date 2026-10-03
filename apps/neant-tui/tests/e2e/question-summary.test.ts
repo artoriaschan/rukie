@@ -1,0 +1,223 @@
+import { expect, test } from "bun:test";
+import { createFauxCore, fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { createSession } from "@neant/agent";
+import { start } from "../helpers/app";
+
+const question = {
+  question: "Which storage?",
+  header: "Storage",
+  options: [
+    { label: "SQLite", description: "Local" },
+    { label: "Postgres", description: "Remote" },
+  ],
+};
+
+async function startSession(locale: "zh" | "en") {
+  const argv: string[] = [];
+  let root = "";
+  const original = createFauxCore({ api: "faux", provider: "faux" });
+  original.setResponses([fauxAssistantMessage("seed reply")]);
+  const app = await start(argv, {
+    rows: 40,
+    columns: 120,
+    env: { LANG: locale === "zh" ? "zh_CN.UTF-8" : "en_US.UTF-8" },
+    prepare: async (directory) => {
+      root = directory;
+      const session = await createSession({
+        cwd: root,
+        homeDir: root,
+        model: original.getModel(),
+        streamFn: (model, context, options) => original.streamSimple(model, context, options),
+      });
+      await session.run("seed prompt");
+      argv.push("--resume", session.id);
+    },
+  });
+  return {
+    app,
+    replay: () =>
+      start(argv, {
+        rows: 40,
+        columns: 120,
+        session: { cwd: root, homeDir: root },
+        env: { LANG: locale === "zh" ? "zh_CN.UTF-8" : "en_US.UTF-8" },
+      }),
+  };
+}
+
+test.each(["zh", "en"] as const)(
+  "%s answered questions show the same transcript summary live and after resume",
+  async (locale) => {
+    const { app, replay: resume } = await startSession(locale);
+    try {
+      await app.waitFor(() => app.screen().includes("❯"));
+      app.stdin.write("ask\r");
+      await app.waitFor(() => app.calls.length === 1);
+      app.calls[0]!.tool("ask_user_question", { questions: [question] });
+      await app.waitFor(() => app.screen().some((line) => line.trim() === "Which storage?"));
+      app.stdin.write("2\r");
+      await app.waitFor(() => app.calls.length === 2);
+      app.calls[1]!.finish();
+      await app.waitFor(() => !app.isWorking());
+      const expected = [locale === "zh" ? "• 提问" : "• Questions", "⎿ Which storage? → Postgres"];
+      expect(app.allLines()).toEqual(expect.arrayContaining(expected));
+      expect(app.allLines().join("\n")).not.toContain("ask_user_question");
+      const replay = await resume();
+      try {
+        await replay.waitFor(() => replay.screen().includes("❯"));
+        expect(replay.allLines()).toEqual(expect.arrayContaining(expected));
+        expect(replay.allLines().join("\n")).not.toContain("ask_user_question");
+      } finally {
+        await replay.cleanup();
+      }
+    } finally {
+      await app.cleanup();
+    }
+  },
+);
+
+test.each(["zh", "en"] as const)(
+  "%s declined questions remain unanswered live and after resume while the Run continues",
+  async (locale) => {
+    const { app, replay: resume } = await startSession(locale);
+    try {
+      await app.waitFor(() => app.screen().includes("❯"));
+      app.stdin.write("ask\r");
+      await app.waitFor(() => app.calls.length === 1);
+      app.calls[0]!.tool("ask_user_question", {
+        questions: [question, { ...question, question: "Which theme?" }],
+      });
+      await app.waitFor(() => app.screen().some((line) => line.trim() === "Which storage?"));
+      app.stdin.write("\x1b");
+      await app.waitFor(() => app.calls.length === 2);
+      expect(app.calls[1]!.signal!.aborted).toBe(false);
+      expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({ isError: false });
+      app.calls[1]!.finish();
+      await app.waitFor(() => !app.isWorking());
+      const expected =
+        locale === "zh"
+          ? ["• 提问", "⎿ Which storage? → 未回答", "  Which theme? → 未回答"]
+          : ["• Questions", "⎿ Which storage? → Unanswered", "  Which theme? → Unanswered"];
+      expect(app.allLines()).toEqual(expect.arrayContaining(expected));
+      expect(app.allLines().join("\n")).not.toContain("The user declined");
+      const replay = await resume();
+      try {
+        await replay.waitFor(() => replay.screen().includes("❯"));
+        expect(replay.allLines()).toEqual(expect.arrayContaining(expected));
+      } finally {
+        await replay.cleanup();
+      }
+    } finally {
+      await app.cleanup();
+    }
+  },
+);
+
+test("multiline questions and labels, repeated questions, multiple choices and custom text survive live and resume summaries", async () => {
+  const { app, replay: resume } = await startSession("en");
+  const storage = { ...question, question: "Which → storage?\nLocal or remote?" };
+  const features = {
+    ...question,
+    question: "Which features?",
+    multiSelect: true,
+    options: [
+      { label: "Cache → fast\nv3", description: "Cache" },
+      { label: "Replicas", description: "Replicas" },
+    ],
+  };
+  try {
+    await app.waitFor(() => app.screen().includes("❯"));
+    app.stdin.write("ask\r");
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("ask_user_question", { questions: [storage, features, features] });
+    await app.waitFor(() => app.screen().join("\n").includes("Local or remote?"));
+    app.stdin.write("1 3\rnote → first\r");
+    await app.waitFor(() => app.screen().join("\n").includes("Question 2 / 3"));
+    app.stdin.write("1 2 3\rreplicas → second\r");
+    await app.waitFor(() => app.screen().join("\n").includes("Question 3 / 3"));
+    app.stdin.write("2 \r");
+    await app.waitFor(() => app.calls.length === 2);
+    const expectedText =
+      '"Which → storage?\nLocal or remote?" → SQLite; note → first\n"Which features?" → Cache → fast\nv3, Replicas; replicas → second\n"Which features?" → Replicas';
+    expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
+      content: [{ type: "text", text: expectedText }],
+    });
+    app.calls[1]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    const expected = [
+      "• Questions",
+      "⎿ Which → storage? Local or remote? → SQLite; note → first",
+      "  Which features? → Cache → fast v3, Replicas; replicas → second",
+      "  Which features? → Replicas",
+    ];
+    expect(app.allLines()).toEqual(expect.arrayContaining(expected));
+    const replay = await resume();
+    try {
+      await replay.waitFor(() => replay.screen().includes("❯"));
+      expect(replay.allLines()).toEqual(expect.arrayContaining(expected));
+      replay.stdin.write("continue\r");
+      await replay.waitFor(() => replay.calls.length === 1);
+      expect(replay.calls[0]!.context.messages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: "toolResult",
+            content: [{ type: "text", text: expectedText }],
+          }),
+        ]),
+      );
+      replay.calls[0]!.finish();
+    } finally {
+      await replay.cleanup();
+    }
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test.each(["zh", "en"] as const)(
+  "%s interrupted questions keep the ordinary error card live and after resume",
+  async (locale) => {
+    const { app, replay: resume } = await startSession(locale);
+    try {
+      await app.waitFor(() => app.screen().includes("❯"));
+      app.stdin.write("ask\r");
+      await app.waitFor(() => app.calls.length === 1);
+      app.calls[0]!.tool("ask_user_question", { questions: [question] });
+      await app.waitFor(() => app.screen().some((line) => line.trim() === "Which storage?"));
+      app.stdin.write("\x03");
+      await app.waitFor(() => !app.isWorking());
+      const lines = app.allLines();
+      const index = lines.findIndex((line) => line.startsWith("✗ ask_user_question "));
+      expect(index).toBeGreaterThanOrEqual(0);
+      expect(lines[index + 1]).toMatch(/^⎿ .+/);
+      expect(lines).not.toContain(locale === "zh" ? "• 提问" : "• Questions");
+      expect(lines.join("\n")).not.toContain(locale === "zh" ? "未回答" : "Unanswered");
+      const replay = await resume();
+      try {
+        await replay.waitFor(() => replay.screen().includes("❯"));
+        expect(replay.allLines()).toEqual(expect.arrayContaining(lines.slice(index, index + 2)));
+      } finally {
+        await replay.cleanup();
+      }
+    } finally {
+      await app.cleanup();
+    }
+  },
+);
+
+test("question parameter errors keep the ordinary error card", async () => {
+  const app = await start(["ask"], { env: { LANG: "en_US.UTF-8" } });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("ask_user_question", { questions: [] });
+    await app.waitFor(() => app.calls.length === 2);
+    app.calls[1]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    expect(app.allLines()).toContain('✗ ask_user_question {"questions":[]}');
+    expect(app.allLines().join("\n")).toContain("Validation failed");
+    expect(app.allLines()).not.toContain("• Questions");
+    expect(app.allLines().join("\n")).not.toContain("Unanswered");
+  } finally {
+    await app.cleanup();
+  }
+});
