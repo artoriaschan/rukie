@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { render } from "@neant/tui";
-import { createRef } from "react";
+import { createRef, useState } from "react";
+import { useInput } from "@neant/tui";
 import type { ScrollHandle } from "@neant/tui";
 import { PermissionDialog } from "../../../src/components";
 import { createTerminal } from "../../helpers/terminal";
@@ -19,7 +20,9 @@ test("permission panel groups a tool heading, command and question above its foc
   try {
     await terminal.flush();
     const lines = terminal.screen();
-    expect(lines[0]).toMatch(/^  ─ 等待审批 · bash ─+$/);
+    expect(lines[0]).toMatch(/^  ─+ ⏳ 等待审批 · bash ─+$/);
+    const [, left, right] = /^  (─+) ⏳ 等待审批 · bash (─+)$/.exec(lines[0]!)!;
+    expect(Math.abs(left!.length - right!.length)).toBeLessThanOrEqual(1);
     const buffer = terminal.terminal.buffer.active;
     const divider = buffer.getLine(buffer.viewportY)!;
     expect(divider.getCell(77)!.getChars()).toBe("─");
@@ -30,7 +33,7 @@ test("permission panel groups a tool heading, command and question above its foc
     expect(lines).toContain("    1. 允许（仅本次）");
     const selected = lines.indexOf("  ❯ 2. 本 session 内一直允许这个工具");
     expect(selected).toBeGreaterThan(lines.indexOf("  要允许这次操作吗？"));
-    expect(lines[selected - 1]).toBe("");
+    expect(lines[lines.indexOf("    1. 允许（仅本次）") - 1]).toBe("");
     expect(lines).toContain("    3. 拒绝");
     const focused = buffer.getLine(buffer.viewportY + selected)!;
     for (const column of [2, 4, 7]) {
@@ -57,6 +60,56 @@ test("permission panel groups a tool heading, command and question above its foc
   }
 });
 
+test.each(["ask", "auto-review"] as const)(
+  "%s: short approval fits its content and option rows stay fixed when choosing",
+  async (mode) => {
+    const terminal = createTerminal(80, 20);
+    function Panel() {
+      const [selected, select] = useState(0);
+      const count = mode === "ask" ? 3 : 2;
+      useInput((event) => {
+        if (event.type === "key" && event.key.name === "down")
+          select((index) => (index + 1) % count);
+      });
+      return (
+        <PermissionDialog
+          toolName="bash"
+          args={{ command: "printf hello" }}
+          mode={mode}
+          selected={selected}
+          maxHeight={16}
+        />
+      );
+    }
+    const app = render(<Panel />, terminal);
+    const optionRows = () =>
+      terminal.screen().flatMap((line, row) => (/[1-3]\. /.test(line) ? [row] : []));
+    try {
+      await terminal.flush();
+      const baseline = optionRows();
+      terminal.stdin.write("\x1b[B");
+      await terminal.waitFor(() => terminal.screen().some((line) => line.includes("❯ 2.")));
+      expect(optionRows()).toEqual(baseline);
+      terminal.stdin.write("\x1b[B");
+      await terminal.waitFor(() =>
+        terminal.screen().some((line) => line.includes(mode === "ask" ? "❯ 3." : "❯ 1.")),
+      );
+      expect(optionRows()).toEqual(baseline);
+      const lines = terminal.screen();
+      expect(
+        lines.findIndex((line) => line.includes("要允许这次操作吗？")) -
+          lines.findIndex((line) => line.includes("printf hello")),
+      ).toBe(1);
+      expect(lines.findIndex((line) => line.includes("↑↓选择"))).toBeLessThan(10);
+      expect(lines[0]).toMatch(/^  ─+ ⏳ 等待审批 · bash ─+$/);
+    } finally {
+      app.unmount();
+      await app.waitUntilExit();
+      terminal.dispose();
+    }
+  },
+);
+
 test("review reasons wrap and scroll with details while the two decisions stay pinned", async () => {
   const terminal = createTerminal(40, 13);
   const details = createRef<ScrollHandle>();
@@ -78,7 +131,7 @@ test("review reasons wrap and scroll with details while the two decisions stay p
     terminal,
   );
   try {
-    await terminal.flush();
+    await terminal.waitFor(() => terminal.screen().join("\n").includes("需要确认部署目标"));
     const screen = () => terminal.screen().join("\n");
     expect(screen()).toContain("等待审批 · bash");
     expect(screen()).toContain("deploy --target production");

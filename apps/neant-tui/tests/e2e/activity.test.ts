@@ -57,7 +57,9 @@ test.each(["deny", "failure"])(
         app.reviews[0]!.delta('{"risk":"high","decision":"deny","reason":"需要你确认操作范围"}');
         app.reviews[0]!.finish();
       } else app.reviews[0]!.fail("review provider offline");
-      await app.waitFor(() => screen().includes("2. 拒绝"));
+      await app.waitFor(() =>
+        (outcome === "deny" ? /需要你确认操作范围/ : /Permission Review failed/).test(screen()),
+      );
       expect(screen()).not.toContain("REVIEW");
       expect(screen()).not.toContain("一直允许");
       expect(screen()).toMatch(

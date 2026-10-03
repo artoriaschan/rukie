@@ -178,8 +178,8 @@ test.each(["2\r", "\x1b[A\r", "\x1b[B\r", "\x1b"])(
     try {
       await app.waitFor(() => app.calls.length === 1);
       app.calls[0]!.tool("bash", { command: "printf reviewed-once" });
-      await app.waitFor(() => app.screen().some((line) => line.includes("1. 允许（仅本次）")));
-      expect(app.screen().join("\n")).toContain("─ 等待审批 · bash ─");
+      await app.waitFor(() => app.screen().join("\n").includes(reason));
+      expect(app.screen().join("\n")).toContain("⏳ 等待审批 · bash");
       expect(app.screen().join("\n")).toContain(reason);
       expect(app.screen().join("\n")).toContain("2. 拒绝");
       expect(app.screen().join("\n")).not.toContain("一直允许");
@@ -225,7 +225,7 @@ test("auto-review still asks after this tool was always allowed in ask mode", as
     app.stdin.write("\x1b[Z");
     await app.waitFor(() => app.screen().at(-2)!.startsWith(" auto-review ·"));
     app.calls[1]!.tool("bash", { command: "printf review-must-ask" });
-    await app.waitFor(() => app.screen().some((line) => line.includes("2. 拒绝")));
+    await app.waitFor(() => app.screen().join("\n").includes("Test review requires consent"));
     expect(app.screen().join("\n")).toContain("Test review requires consent");
     expect(app.calls).toHaveLength(2);
     app.stdin.write("2\r");

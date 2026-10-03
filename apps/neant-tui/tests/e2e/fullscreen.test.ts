@@ -4,6 +4,42 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { main } from "../../src/main";
 import { start } from "../helpers/app";
+
+test.each(["ask", "auto-review"])(
+  "%s approval uses content height and arrow selection leaves every option on its row",
+  async (mode) => {
+    const app = await start(["--permission-mode", mode, "short request"]);
+    const optionRows = () =>
+      app.screen().flatMap((line, row) => (/[1-3]\. /.test(line) ? [row] : []));
+    try {
+      await app.waitFor(() => app.calls.length === 1);
+      app.calls[0]!.tool("bash", { command: "printf small-dialog" });
+      await app.waitFor(
+        () =>
+          app.screen().some((line) => line.includes("printf small-dialog")) &&
+          app.screen().some((line) => line.includes("要允许这次操作吗？")),
+      );
+      const lines = app.screen();
+      const heading = lines.findIndex((line) => line.includes("⏳ 等待审批 · bash"));
+      expect(heading).toBeGreaterThanOrEqual(0);
+      expect(lines.length - 3 - heading).toBeLessThanOrEqual(10);
+      const baseline = optionRows();
+      app.stdin.write("\x1b[B");
+      await app.waitFor(() => app.screen().some((line) => line.includes("❯ 2.")));
+      expect(optionRows()).toEqual(baseline);
+      app.stdin.write("\x1b[A");
+      await app.waitFor(() => app.screen().some((line) => line.includes("❯ 1.")));
+      expect(optionRows()).toEqual(baseline);
+      expect(app.calls).toHaveLength(1);
+      app.stdin.write("\x1b");
+      await app.waitFor(() => app.calls.length === 2);
+      expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({ isError: true });
+      app.calls[1]!.finish();
+    } finally {
+      await app.cleanup();
+    }
+  },
+);
 import { createTerminal } from "../helpers/terminal";
 import { controlledModel } from "../helpers/model";
 

@@ -1,14 +1,14 @@
 import {
   Box,
-  Divider,
   HintLine,
   ListItem,
   ScrollBox,
   ThemedText,
   useTerminalSize,
   type ScrollHandle,
+  type ScrollSnapshot,
 } from "@neant/tui";
-import type { Ref } from "react";
+import { useCallback, useState, type Ref } from "react";
 import type { PermissionMode } from "@neant/shared";
 
 const ALLOW_ONCE = { label: "允许（仅本次）", decision: "allow" } as const;
@@ -43,6 +43,15 @@ export function PermissionDialog({
   const choices = permissionChoices(mode);
   const spacious = maxHeight >= choices.length + 6;
   const showQuestion = maxHeight >= choices.length + 4;
+  const [detailHeight, setDetailHeight] = useState(1);
+  const measureDetails = useCallback(({ total, width }: ScrollSnapshot) => {
+    if (width > 0) setDetailHeight(total);
+  }, []);
+  // Only details consume the remaining budget; selection never changes the fixed rows.
+  const fixedHeight = choices.length + 2 + Number(showQuestion) + (spacious ? 2 : 0);
+  const height = Math.min(maxHeight, fixedHeight + Math.max(1, detailHeight));
+  const title = ` ⏳ 等待审批 · ${toolName} `;
+  const ruleWidth = Math.max(0, columns - 4 - Bun.stringWidth(title));
   const command =
     toolName === "bash" &&
     args !== null &&
@@ -56,10 +65,12 @@ export function PermissionDialog({
       ? args
       : Object.fromEntries(Object.entries(args ?? {}).filter(([key]) => key !== "command"));
   return (
-    <Box flexDirection="column" height={maxHeight} paddingX={2}>
-      <Divider title={`等待审批 · ${toolName}`} color="permission" />
+    <Box flexDirection="column" height={height} paddingX={2}>
+      <ThemedText color="permission" wrap="truncate">
+        {`${"─".repeat(Math.floor(ruleWidth / 2))}${title}${"─".repeat(Math.ceil(ruleWidth / 2))}`}
+      </ThemedText>
       {spacious && <Box height={1} flexShrink={0} />}
-      <ScrollBox ref={scrollRef} initialFollow={false}>
+      <ScrollBox ref={scrollRef} initialFollow={false} onScroll={measureDetails}>
         {command !== undefined && (
           <Box paddingX={2}>
             <ThemedText dimColor preserveWhitespace>
@@ -81,11 +92,11 @@ export function PermissionDialog({
           要允许这次操作吗？
         </ThemedText>
       )}
-      {choices.map(({ label }, index) => (
-        <Box key={label} marginTop={spacious && selected === index ? 1 : 0} flexShrink={0}>
-          <ListItem focused={selected === index}>{`${index + 1}. ${label}`}</ListItem>
-        </Box>
-      ))}
+      <Box flexDirection="column" marginTop={spacious ? 1 : 0} flexShrink={0}>
+        {choices.map(({ label }, index) => (
+          <ListItem key={label} focused={selected === index}>{`${index + 1}. ${label}`}</ListItem>
+        ))}
+      </Box>
       <HintLine>
         {["↑↓选择", "Enter确认", "Esc拒绝", `Tab${scrollFocused ? "主体" : "详情"}`].join(
           columns < 50 ? " " : " · ",
