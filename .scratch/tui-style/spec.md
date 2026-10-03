@@ -126,6 +126,8 @@ Status: ready-for-agent
 
 ## Further Notes
 
+- 2026-10-03 用户补充：assistant 圆点必须紧邻首行正文，长词换行和开头空行不能使圆点单独成行；流式、完成与 resume 使用同样的两列前缀区，正文后续行缩进两列。正文内部空行保留。
+- 2026-10-03 用户补充：user 消息参照本机安装的 dsh-TUI `UserPromptMessage`，使用 `❯`、加粗文字和两列悬挂缩进，并额外增加铺满消息区域的浅灰色背景（覆盖本 spec 最初对 backgroundColor 的排除）。为保持浅底上的可读性，新增 `userPromptLabel=#6B5221`、`userMessageBackground=#D8DADD` 主题 token；背景填充由 Box 原语负责、ThemedBox 解析 token，③ 层仍只接收 props。参照行为独立实现，不复制 dsh-TUI 源码。
 - 参考源：`/Users/artorias_chan/Workspaces/agent/dsh-TUI`。主题见 `src/theme.ts` 的 darkTheme，字形见 `src/terminal-utils/figures.ts`，权限对话框见 `src/components/approvals/ApprovalPanel.tsx`，工具调用见 `src/components/messages/AssistantToolUseMessage.tsx`。
 - logo 只是占位，之后会替换成正式 logo；替换时只动 `components/logo/`。
 - 拷贝代码的许可风险同 ADR-0005：dsh-TUI 为 MIT，但来源未完全确认；对外分发前需复核。

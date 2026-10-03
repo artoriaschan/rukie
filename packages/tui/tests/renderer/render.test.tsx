@@ -3,6 +3,38 @@ import { useLayoutEffect, useState } from "react";
 import { Box, Text, render } from "../../src";
 import { createTerminal } from "../helpers/terminal";
 
+test("box backgrounds fill padding and empty cells, inherit through text and stay within the box", async () => {
+  const terminal = createTerminal(12, 5);
+  const app = render(
+    <Box flexDirection="column">
+      <Box width={8} height={3} paddingX={1} backgroundColor="#d8dadd">
+        <Text color="#20242b">
+          中<Text backgroundColor="#112233">A</Text>B
+        </Text>
+      </Box>
+      <Text>outside</Text>
+    </Box>,
+    terminal,
+  );
+  try {
+    await terminal.flush();
+    expect(terminal.screen()[0]).toBe(" 中AB");
+    for (let y = 0; y < 3; y++) {
+      for (let x = 0; x < 8; x++) {
+        if (y === 0 && x === 3) continue;
+        expect(terminal.terminal.buffer.active.getLine(y)!.getCell(x)!.getBgColor()).toBe(0xd8dadd);
+      }
+      expect(terminal.terminal.buffer.active.getLine(y)!.getCell(8)!.isBgDefault()).toBe(true);
+    }
+    expect(terminal.terminal.buffer.active.getLine(0)!.getCell(3)!.getBgColor()).toBe(0x112233);
+    expect(terminal.terminal.buffer.active.getLine(3)!.getCell(0)!.isBgDefault()).toBe(true);
+  } finally {
+    app.unmount();
+    await app.waitUntilExit();
+    terminal.dispose();
+  }
+});
+
 test("nested flex boxes place text inside padding and borders", async () => {
   const terminal = createTerminal(16, 8);
   const app = render(

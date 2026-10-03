@@ -122,7 +122,7 @@ test("Chat fills the alternate screen, scrolls its body and clears the UI on exi
     app.calls[0]!.delta(
       Array.from({ length: 50 }, (_, i) => `line-${String(i).padStart(2, "0")}`).join("\n"),
     );
-    await app.waitFor(() => app.screen().includes("line-49"));
+    await app.waitFor(() => app.screen().includes("  line-49"));
     expect(app.terminal.buffer.active.type).toBe("alternate");
     expect(app.screen().at(-1)?.trim()).toBe("esc 中断");
     expect(app.screen().at(-4)).toMatch(/^╰─+╯$/);
@@ -134,7 +134,7 @@ test("Chat fills the alternate screen, scrolls its body and clears the UI on exi
     await app.waitFor(() => app.screen().some((line) => line.includes("有新输出")));
     expect(app.screen().slice(0, bodyHeight)).toEqual(reading);
     app.stdin.write("\x1b[1;5F");
-    await app.waitFor(() => app.screen().includes("new output"));
+    await app.waitFor(() => app.screen().includes("  new output"));
     expect(app.screen().join("\n")).not.toContain("回到底部");
     app.calls[0]!.finish();
     await app.waitFor(() => !app.isWorking());

@@ -46,8 +46,18 @@ test("resume replays stored text before input and appends the next Run to the sa
     expect(lines.slice(restored, restored + 3)).toEqual([
       "❯ stored prompt 中",
       `${assistant} **stored reply** 中`,
-      "second line",
+      "  second line",
     ]);
+    const promptCell = app.terminal.buffer.active.getLine(restored)!.getCell(2)!;
+    expect(promptCell.isBold()).toBeTruthy();
+    expect(promptCell.getFgColor()).toBe(0x6b5221);
+    expect(app.terminal.buffer.active.getLine(restored)!.getCell(79)!.getBgColor()).toBe(0xd8dadd);
+    expect(
+      app.terminal.buffer.active
+        .getLine(restored + 1)!
+        .getCell(79)!
+        .isBgDefault(),
+    ).toBe(true);
     expect(app.screen()).toContain("❯");
     expect(app.allLines().join("\n")).not.toContain("hidden project instructions");
     expect(app.allLines().join("\n")).not.toContain("system-reminder");
@@ -67,7 +77,7 @@ test("resume replays stored text before input and appends the next Run to the sa
       () =>
         app
           .allLines()
-          .filter((line) => line === "resumed reply" || line === `${assistant} resumed reply`)
+          .filter((line) => line === "  resumed reply" || line === `${assistant} resumed reply`)
           .length === 12 && !app.isWorking(),
     );
     expect(app.allLines().filter((line) => line === "❯ stored prompt 中")).toHaveLength(1);

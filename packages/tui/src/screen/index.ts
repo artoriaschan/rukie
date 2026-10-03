@@ -56,9 +56,14 @@ function paintGrid(root: LayoutNode, columns: number, rows: number): Cell[][] {
     Array.from({ length: columns }, () => ({ text: " ", width: 1, style: sgr({}) })),
   );
   let clip = { left: 0, top: 0, right: columns, bottom: rows };
+  let background: TextStyle["backgroundColor"];
   function put(x: number, y: number, text: string, width = 1, style: TextStyle = {}) {
     if (x < clip.left || y < clip.top || y >= clip.bottom || x + width > clip.right) return;
-    const codes = sgr(style);
+    const codes = sgr(
+      background && style.backgroundColor === undefined
+        ? { ...style, backgroundColor: background }
+        : style,
+    );
     grid[y]![x] = { text, width, style: codes };
     if (width === 2) grid[y]![x + 1] = { text: "", width: 0, style: codes };
   }
@@ -67,6 +72,13 @@ function paintGrid(root: LayoutNode, columns: number, rows: number): Cell[][] {
     const y = node.y - Math.max(0, root.height - rows);
     if (y + height <= clip.top || y >= clip.bottom || x + width <= clip.left || x >= clip.right)
       return;
+    const previousBackground = background;
+    background = node.props.backgroundColor ?? background;
+    if (node.type !== "tui-text" && node.props.backgroundColor) {
+      for (let row = Math.max(y, clip.top); row < Math.min(y + height, clip.bottom); row++)
+        for (let col = Math.max(x, clip.left); col < Math.min(x + width, clip.right); col++)
+          put(col, row, " ");
+    }
     if (node.props.borderStyle && width >= 2 && height >= 2) {
       for (let col = 1; col < width - 1; col++) {
         put(x + col, y, "─");
@@ -137,6 +149,7 @@ function paintGrid(root: LayoutNode, columns: number, rows: number): Cell[][] {
     }
     node.children.forEach(paint);
     clip = previousClip;
+    background = previousBackground;
   }
   paint(root);
   return grid;

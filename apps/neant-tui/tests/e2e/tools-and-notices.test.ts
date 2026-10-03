@@ -49,7 +49,9 @@ test("a tool shows an animated one-line summary then remains once in the scrolla
     app.calls[2]!.finish();
     await app.waitFor(
       () =>
-        app.allLines().filter((line) => line === "next reply" || line === `${assistant} next reply`)
+        app
+          .allLines()
+          .filter((line) => line === "  next reply" || line === `${assistant} next reply`)
           .length === 12 && !app.isWorking(),
     );
     expect(app.allLines().filter((line) => line.startsWith("• write "))).toHaveLength(1);
@@ -187,8 +189,9 @@ test("compaction is a warning-colored one-line message notice without exposing t
       () =>
         app
           .allLines()
-          .filter((line) => line === "after compaction" || line === `${assistant} after compaction`)
-          .length === 10 && !app.isWorking(),
+          .filter(
+            (line) => line === "  after compaction" || line === `${assistant} after compaction`,
+          ).length === 10 && !app.isWorking(),
     );
     expect(app.allLines().filter((line) => line.startsWith("Context compacted"))).toHaveLength(1);
     expect(app.allLines().join("\n")).not.toContain("private-compaction-summary");

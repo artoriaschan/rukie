@@ -77,15 +77,17 @@ test("inverse and italic survive nesting and wrapping without leaking to sibling
 
 for (const value of ["1", "", undefined]) {
   for (const color of ["#12ab34", "red"] as const) {
-    test(`NO_COLOR=${JSON.stringify(value)} respects ${color} while retaining emphasis`, async () => {
+    test(`NO_COLOR=${JSON.stringify(value)} respects ${color} in text and box backgrounds while retaining emphasis`, async () => {
       const previous = process.env.NO_COLOR;
       if (value === undefined) delete process.env.NO_COLOR;
       else process.env.NO_COLOR = value;
       const terminal = createTerminal(8, 2);
       const app = render(
-        <Text color={color} bold dimColor inverse italic>
-          A
-        </Text>,
+        <Box width={8} backgroundColor={color}>
+          <Text color={color} bold dimColor inverse italic>
+            A
+          </Text>
+        </Box>,
         terminal,
       );
       try {
@@ -98,6 +100,8 @@ for (const value of ["1", "", undefined]) {
         expect(cell.isItalic()).toBeTruthy();
         if (value) {
           expect(cell.isFgDefault()).toBeTruthy();
+          expect(cell.isBgDefault()).toBeTruthy();
+          expect(terminal.terminal.buffer.active.getLine(0)!.getCell(7)!.isBgDefault()).toBe(true);
           // oxlint-disable-next-line no-control-regex -- inspect SGR bytes at the terminal IO seam
           const codes = [...terminal.output().matchAll(/\x1b\[([\d;]*)m/g)].flatMap((match) =>
             match[1]!.split(";"),
@@ -106,6 +110,10 @@ for (const value of ["1", "", undefined]) {
           expect(codes.every((code) => ["0", "1", "2", "3", "7"].includes(code))).toBe(true);
         } else {
           expect(cell.getFgColor()).toBe(color === "red" ? 1 : 0x12ab34);
+          expect(cell.getBgColor()).toBe(color === "red" ? 1 : 0x12ab34);
+          expect(terminal.terminal.buffer.active.getLine(0)!.getCell(7)!.getBgColor()).toBe(
+            color === "red" ? 1 : 0x12ab34,
+          );
         }
       } finally {
         app.unmount();

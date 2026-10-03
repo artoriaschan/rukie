@@ -3,6 +3,41 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { Box, ScrollBox, Text, render, useInput, type ScrollHandle } from "../../src";
 import { createTerminal } from "../helpers/terminal";
 
+test("background blocks stay clipped to the scroll viewport above a fixed dock", async () => {
+  const terminal = createTerminal(12, 4);
+  const scroll = { current: null as ScrollHandle | null };
+  const app = render(
+    <Box flexDirection="column" flexGrow={1}>
+      <Text>header</Text>
+      <ScrollBox ref={scroll} initialFollow={false}>
+        <Box backgroundColor="#d8dadd">
+          <Text>{"first\nsecond\nthird\nfourth\nfifth"}</Text>
+        </Box>
+      </ScrollBox>
+      <Text>dock</Text>
+    </Box>,
+    { ...terminal, fullscreen: true },
+  );
+  try {
+    await terminal.flush();
+    expect(terminal.screen()).toEqual(["header", "first", "second", "dock"]);
+    const cell = (x: number, y: number) => terminal.terminal.buffer.active.getLine(y)!.getCell(x)!;
+    expect(cell(11, 1).getBgColor()).toBe(0xd8dadd);
+    expect(cell(11, 2).getBgColor()).toBe(0xd8dadd);
+    expect(cell(11, 0).isBgDefault()).toBe(true);
+    expect(cell(11, 3).isBgDefault()).toBe(true);
+    scroll.current!.scrollToBottom();
+    await terminal.waitFor(() => terminal.screen()[2] === "fifth");
+    expect(terminal.screen()).toEqual(["header", "fourth", "fifth", "dock"]);
+    expect(cell(11, 1).getBgColor()).toBe(0xd8dadd);
+    expect(cell(11, 3).isBgDefault()).toBe(true);
+  } finally {
+    app.unmount();
+    await app.waitUntilExit();
+    terminal.dispose();
+  }
+});
+
 test("fullscreen occupies the viewport and restores the original terminal contents and cursor", async () => {
   const terminal = createTerminal(20, 8);
   terminal.stdout.write("shell history\r\nshell> ");

@@ -179,7 +179,7 @@ test("hover details and scroll hints share the third footer row without shrinkin
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.delta(Array.from({ length: 50 }, (_, i) => `line-${i}`).join("\n"));
-    await app.waitFor(() => app.screen().includes("line-49"));
+    await app.waitFor(() => app.screen().includes("  line-49"));
     const inputTop = app.screen().findIndex((line) => /^╭─+╮$/.test(line));
     const body = app.screen().slice(0, inputTop - 2);
     app.stdin.write("\x1b[<35;75;23M");
@@ -206,7 +206,7 @@ test("hover details and scroll hints share the third footer row without shrinkin
     app.stdin.write("\x1b[<35;80;1M");
     await app.waitFor(() => app.screen().at(-1)?.includes("有新输出") === true);
     app.stdin.write("\x1b[1;5F");
-    await app.waitFor(() => app.screen().includes("new output"));
+    await app.waitFor(() => app.screen().includes("  new output"));
     expect(app.screen().at(-1)?.trim()).toBe("esc 中断");
   } finally {
     await app.cleanup();

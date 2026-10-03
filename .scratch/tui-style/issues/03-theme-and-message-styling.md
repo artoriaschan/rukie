@@ -14,6 +14,9 @@
 
 ## Comments
 
+- 2026-10-03 用户补充已实现：assistant 使用固定两列前缀区，长首词独立换行；忽略正文开头空行和纯空白片段，内部段落空行保留。user 对照本机安装的 dsh-TUI，使用加粗文字与两列悬挂缩进，并新增铺满消息区域的浅灰背景和适配浅底的深金色主题 token。Box 提供背景矩形绘制，ThemedBox 解析主题；未复制参考源码。
+- 补充公开 render/headless terminal 回归：圆点与首词同排、空白片段不出圆点、user 多行/CJK/emoji/缩进与整块底色、主题覆盖/resize 清理、ScrollBox 背景裁剪和 NO_COLOR；main IO 验证流式、完成与 resume 的统一样式。真实 40×24 PTY 记录及 cell 读回确认底色、加粗、前景色、圆点同行和背景隔离，Ctrl+D 退出码 0，终端模式恢复。Standards 无发现；Spec 发现的纯空白片段圆点问题已补红绿测试并修复。
+- 2026-10-03 最终验收：`rtk proxy env -u NO_COLOR bun run check` 全绿（格式、lint、`tsc -b`、Knip，371 tests / 2248 assertions，0 failures）；Spec 修复复核无剩余发现。
 - 2026-10-02：新增 `design-system/`，导出唯一 dark 主题及 10 个 token、ThemeProvider/useTheme、ThemedText/ThemedBox、figures 与 StatusIcon。ThemedBox 保持 Box 的布局职责，通过 context 为后代 ThemedText 提供前景色；支持 token、原始颜色和局部覆盖，不修改渲染器原语。
 - 入口包上 ThemeProvider；user 使用 `❯`，流式与完成的 assistant 共用 accent 色平台字形；工具 running 使用 accent 色 `·•●•`，success/error 分别使用 success 色 `•` 与 error 色 `✗`。成功结果与错误以 `⎿` 引出，后续行缩进两格，错误最多三行；实时与 resume 回放均传递工具结果。notice 为 warning 色，run 错误为 error 色，状态栏 subtle 色且 Running 为 accent 色。权限对话框、输入框和 logo 留待票据 04/05。
 - 既定 render + headless terminal seam 完成 token 前景色红绿测试；补充 Provider/useTheme、ThemedBox 颜色继承、原始颜色与兄弟节点隔离验证。更新现有消息、工具、notice 和 resume 断言；运行帧 `•` 与成功点 `•` 通过前景色区分。类型检查在实现过程中重复通过。

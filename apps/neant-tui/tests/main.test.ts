@@ -18,7 +18,7 @@ test("streams verbatim replies and continues two prompts in the same Session", a
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.delta("**literal** 中\nsecond line");
     await app.waitFor(() => app.screen().includes(`${assistant} **literal** 中`));
-    expect(app.screen()).toContain("second line");
+    expect(app.screen()).toContain("  second line");
     app.calls[0]!.finish();
     await app.waitFor(() => !app.isWorking());
     expect(app.screen().join("\n")).toContain("faux/faux");

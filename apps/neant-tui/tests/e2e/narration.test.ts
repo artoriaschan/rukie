@@ -55,11 +55,11 @@ test("streamed narration stays in the activity line while reply text enters scro
     expect(app.screen().filter((line) => line.includes("查一下报错原因"))).toHaveLength(1);
     app.calls[0]!.delta("\n⏵ 给补丁跑个验证\n验证通过");
     await app.waitFor(() => app.screen().some((line) => line.includes("⏵ 给补丁跑个验证")));
-    expect(app.screen()).toContain("验证通过");
+    expect(app.screen()).toContain("  验证通过");
     app.calls[0]!.finish();
     await app.waitFor(() => !app.isWorking());
     expect(app.allLines()).toContain(`${figures.assistant} 找到原因`);
-    expect(app.allLines()).toContain("验证通过");
+    expect(app.allLines()).toContain("  验证通过");
     expect(app.allLines().join("\n")).not.toContain("⏵");
     app.stdin.write("next\r");
     await app.waitFor(() => app.calls.length === 2);
