@@ -3,6 +3,8 @@ import type { Question } from "@neant/agent";
 import type { Locale } from "@neant/i18n";
 import { createTuiI18n } from "../../i18n";
 
+const singleLine = (text: string) => text.replace(/[\r\n]+/g, " ");
+
 export function QuestionDialog({
   question,
   selected,
@@ -24,14 +26,14 @@ export function QuestionDialog({
   return (
     <Box flexDirection="column" height={height} paddingX={2} marginBottom={1}>
       <ThemedText color="permission" wrap="truncate">
-        {question.header}
+        {singleLine(question.header)}
       </ThemedText>
-      <ThemedText wrap="truncate">{question.question}</ThemedText>
+      <ThemedText wrap="truncate">{singleLine(question.question)}</ThemedText>
       {question.options.slice(first, first + visibleCount).map(({ label, description }, index) => (
         <Box key={index} height={1} flexShrink={0}>
           <ListItem focused={selected === first + index}>
-            <ThemedText wrap="truncate">{`${first + index + 1}. ${label}`}</ThemedText>
-            <ThemedText dimColor wrap="truncate">{` · ${description}`}</ThemedText>
+            <ThemedText wrap="truncate">{`${first + index + 1}. ${singleLine(label)}`}</ThemedText>
+            <ThemedText dimColor wrap="truncate">{` · ${singleLine(description)}`}</ThemedText>
           </ListItem>
         </Box>
       ))}

@@ -185,3 +185,39 @@ test("narrow and short terminals keep long options inside the dialog budget", as
     await app.cleanup();
   }
 });
+
+test("multiline model copy cannot displace choices or hints on a short terminal", async () => {
+  const app = await start(["ask"], { columns: 40, rows: 12 });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("ask_user_question", {
+      questions: [
+        {
+          ...question,
+          header: "Storage\nextra header\nlast header",
+          question: "Which storage?\nextra question\nlast question",
+          options: [
+            { label: "SQLite\nExtra label", description: "Local\ndatabase" },
+            { label: "Postgres", description: "Remote\ndatabase" },
+          ],
+        },
+      ],
+    });
+    await app.waitFor(() => app.screen().some((line) => line.includes("Storage")));
+    expect(app.screen().join("\n")).toContain("1. SQLite");
+    expect(app.screen().join("\n")).toContain("2. Postgres");
+    expect(app.screen().join("\n")).toContain("Enter确认");
+    expect(app.screen().at(-1)).toContain("esc");
+    app.stdin.write("2\r");
+    await app.waitFor(() => app.calls.length === 2);
+    expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
+      isError: false,
+      content: [
+        { type: "text", text: '"Which storage?\nextra question\nlast question" → Postgres' },
+      ],
+    });
+    app.calls[1]!.finish();
+  } finally {
+    await app.cleanup();
+  }
+});

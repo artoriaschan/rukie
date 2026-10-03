@@ -27,6 +27,28 @@ export function createInteractions() {
   const pending: PendingInteraction[] = [];
   const listeners = new Set<() => void>();
   const notify = () => listeners.forEach((listener) => listener());
+  const enqueue = <Reply>(
+    signal: AbortSignal,
+    cancelled: Reply,
+    createItem: (finish: (reply: Reply) => void) => PendingInteraction,
+  ): Promise<Reply> => {
+    if (signal.aborted) return Promise.resolve(cancelled);
+    return new Promise((resolve) => {
+      const finish = (reply: Reply) => {
+        signal.removeEventListener("abort", abort);
+        const index = pending.indexOf(item);
+        if (index === -1) return;
+        pending.splice(index, 1);
+        resolve(signal.aborted ? cancelled : reply);
+        notify();
+      };
+      const abort = () => finish(cancelled);
+      const item = createItem(finish);
+      signal.addEventListener("abort", abort, { once: true });
+      pending.push(item);
+      notify();
+    });
+  };
   return {
     getSnapshot: () => pending[0]?.interaction,
     subscribe(listener: () => void) {
@@ -39,45 +61,18 @@ export function createInteractions() {
       if (request.signal.aborted) return Promise.resolve("deny");
       if (request.mode !== "auto-review" && allowed.has(request.toolName))
         return Promise.resolve("allow");
-      return new Promise((resolve) => {
-        const abort = () => item.finish("deny");
-        const item: Extract<PendingInteraction, { kind: "permission" }> = {
-          kind: "permission",
-          interaction: { kind: "permission", request, selected: 0 },
-          finish(decision: "allow" | "deny") {
-            request.signal.removeEventListener("abort", abort);
-            const index = pending.indexOf(item);
-            if (index === -1) return;
-            pending.splice(index, 1);
-            resolve(request.signal.aborted ? "deny" : decision);
-            notify();
-          },
-        };
-        request.signal.addEventListener("abort", abort, { once: true });
-        pending.push(item);
-        notify();
-      });
+      return enqueue<"allow" | "deny">(request.signal, "deny", (finish) => ({
+        kind: "permission",
+        interaction: { kind: "permission", request, selected: 0 },
+        finish,
+      }));
     },
     askQuestion(request: QuestionRequest): Promise<QuestionReply> {
-      if (request.signal.aborted) return Promise.resolve("declined");
-      return new Promise((resolve) => {
-        const abort = () => item.finish("declined");
-        const item: Extract<PendingInteraction, { kind: "question" }> = {
-          kind: "question",
-          interaction: { kind: "question", request, selected: 0 },
-          finish(reply) {
-            request.signal.removeEventListener("abort", abort);
-            const index = pending.indexOf(item);
-            if (index === -1) return;
-            pending.splice(index, 1);
-            resolve(request.signal.aborted ? "declined" : reply);
-            notify();
-          },
-        };
-        request.signal.addEventListener("abort", abort, { once: true });
-        pending.push(item);
-        notify();
-      });
+      return enqueue<QuestionReply>(request.signal, "declined", (finish) => ({
+        kind: "question",
+        interaction: { kind: "question", request, selected: 0 },
+        finish,
+      }));
     },
     selectQuestion(selected: number) {
       const item = pending[0];
