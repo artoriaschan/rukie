@@ -133,3 +133,16 @@ minimal test maintenance; no repairs required and no unresolved findings.
 Review logs: `/tmp/neant-i18n-issue05-review-standards.md` and
 `/tmp/neant-i18n-issue05-review-spec.md`. All five issues are now done;
 controller final validation and local main integration remain.
+
+## Controller final acceptance
+
+All five issue files have `Status: done` and no unchecked acceptance items.
+Issues 02–05 were executed in order by fresh /implement subagents, each with
+public-behavior tests and independent Standards/Spec review. All review
+findings were repaired and rechecked; no unresolved findings remain.
+
+Local `main` fast-forwarded from `9e8f182` to `a483972`. Post-integration
+`rtk proxy env -u NO_COLOR bun run check` exited 0: formatting, lint,
+`tsc -b`, Knip and 619 tests / 4043 assertions (53 files, 91.99s).
+Final log: `/tmp/neant-i18n-final-check.log`. `git diff --check` passed and
+the integrated working tree was clean. No remote push was performed.

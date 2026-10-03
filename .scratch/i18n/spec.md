@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 
 # Spec: 国际化（Locale：zh / en）
 
