@@ -38,6 +38,7 @@ import { createMcpConnections } from "../mcp/index.ts";
 import { compactTurn, estimateContextTokens, restoreContext } from "../compaction/index.ts";
 import { contextUsage } from "../context-usage/index.ts";
 import { reviewPermission, type ReviewResult } from "../review/index.ts";
+import { requestInteraction } from "../interaction/index.ts";
 
 export interface PermissionAskRequest {
   toolCallId: string;
@@ -99,23 +100,6 @@ export interface Session {
       onEvent?: (event: SessionEvent) => void | Promise<void>;
     },
   ): Promise<RunResult>;
-}
-
-async function askPermission(
-  request: PermissionAskRequest,
-  ask: NonNullable<SessionOptions["onPermissionAsk"]>,
-): Promise<"allow" | "deny"> {
-  const { signal } = request;
-  if (signal.aborted) return "deny";
-  const aborted = Promise.withResolvers<"deny">();
-  const abort = () => aborted.resolve("deny");
-  signal.addEventListener("abort", abort, { once: true });
-  try {
-    const decision = await Promise.race([ask(request), aborted.promise]);
-    return signal.aborted ? "deny" : decision;
-  } finally {
-    signal.removeEventListener("abort", abort);
-  }
 }
 
 export async function createSession(options: SessionOptions): Promise<Session> {
@@ -254,7 +238,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       }
       if (decision === "ask") {
         decision = options.onPermissionAsk
-          ? await askPermission(
+          ? await requestInteraction(
               {
                 toolCallId: toolCall.id,
                 toolName: toolCall.name,
@@ -264,6 +248,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 signal: callSignal,
               },
               options.onPermissionAsk,
+              "deny",
             )
           : "deny";
       }

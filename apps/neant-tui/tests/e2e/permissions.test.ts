@@ -476,3 +476,33 @@ test("always allow also releases queued calls of the same tool", async () => {
     await app.cleanup();
   }
 });
+
+test("always allow releases matching approvals while another tool keeps waiting", async () => {
+  const app = await start(["mixed concurrent calls"]);
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tools([
+      { name: "bash", args: { command: "printf first-matching" } },
+      { name: "write", args: { path: "must-wait.txt", content: "requires a decision" } },
+      { name: "bash", args: { command: "printf second-matching" } },
+    ]);
+    await app.waitFor(() => app.screen().some((line) => line.trim() === "printf first-matching"));
+    app.stdin.write("2\r");
+    await app.waitFor(() => app.screen().some((line) => line.includes("⏳ 等待审批 · write")));
+    expect(app.calls).toHaveLength(1);
+    app.stdin.write("3\r");
+    await app.waitFor(() => app.calls.length === 2);
+    expect(
+      app.calls[1]!.context.messages.filter((message) => message.role === "toolResult"),
+    ).toMatchObject([
+      { toolName: "bash", isError: false, content: [{ type: "text", text: "first-matching" }] },
+      { toolName: "write", isError: true },
+      { toolName: "bash", isError: false, content: [{ type: "text", text: "second-matching" }] },
+    ]);
+    app.calls[1]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    expect(app.screen().join("\n")).not.toContain("等待审批");
+  } finally {
+    await app.cleanup();
+  }
+});

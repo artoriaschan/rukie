@@ -25,21 +25,21 @@ import {
 } from "../../components";
 import { createTuiI18n } from "../../i18n";
 import { createConversation } from "./conversation";
-import { createPermissions } from "./permissions";
+import { createInteractions } from "./interactions";
 import { permissionChoices } from "../../components/permission-dialog/permission-dialog";
 import { fmtTokens, render as renderActivity } from "./activity/activity";
 
 /** Bind the Session and private stores to one chat screen for its lifetime. */
 export async function createChat(options: SessionOptions, model: string, locale: Locale = "zh") {
   const t = createTuiI18n(locale);
-  const permissions = createPermissions();
+  const interactions = createInteractions();
   const session = await createSession({
     ...options,
     reminderSources: [
       ...(options.reminderSources ?? []),
       { source: "narration", currentContent: () => t("narrate-instruction") },
     ],
-    onPermissionAsk: options.onPermissionAsk ?? permissions.ask,
+    onPermissionAsk: options.onPermissionAsk ?? interactions.askPermission,
   });
   const conversation = createConversation(session, model, locale);
   try {
@@ -62,7 +62,7 @@ export async function createChat(options: SessionOptions, model: string, locale:
         <Chat
           session={session}
           conversation={conversation}
-          permissions={permissions}
+          interactions={interactions}
           cwd={options.cwd}
           thinking={options.settings?.thinking}
           locale={locale}
@@ -76,7 +76,7 @@ export async function createChat(options: SessionOptions, model: string, locale:
 function Chat({
   session,
   conversation,
-  permissions,
+  interactions,
   cwd,
   thinking,
   locale,
@@ -84,7 +84,7 @@ function Chat({
 }: {
   session: Session;
   conversation: ReturnType<typeof createConversation>;
-  permissions: ReturnType<typeof createPermissions>;
+  interactions: ReturnType<typeof createInteractions>;
   cwd: string;
   thinking?: ThinkingLevel;
   locale: Locale;
@@ -92,7 +92,8 @@ function Chat({
 }) {
   const t = createTuiI18n(locale);
   const state = useSyncExternalStore(conversation.subscribe, conversation.getSnapshot);
-  const question = useSyncExternalStore(permissions.subscribe, permissions.getSnapshot);
+  const interaction = useSyncExternalStore(interactions.subscribe, interactions.getSnapshot);
+  const question = interaction?.kind === "permission" ? interaction : undefined;
   const [input, setInput] = useState("");
   const [mode, setMode] = useState(session.permissionMode);
   const { columns, rows } = useTerminalSize();
@@ -193,7 +194,8 @@ function Chat({
       return;
     }
     const { key } = event;
-    const pending = permissions.getSnapshot();
+    const pendingInteraction = interactions.getSnapshot();
+    const pending = pendingInteraction?.kind === "permission" ? pendingInteraction : undefined;
     if (key.name === "tab" && key.shift && !key.ctrl && !key.alt) {
       lastInterrupt.current = undefined;
       if (!pending && !small) {
@@ -227,17 +229,18 @@ function Chat({
       return;
     if (!small && pending && !(key.ctrl && key.name === "c")) {
       lastInterrupt.current = undefined;
-      if (key.name === "escape") permissions.deny();
+      if (key.name === "escape") interactions.denyPermission();
       else if (!key.ctrl && !key.alt && !key.shift) {
-        if (key.name === "enter") permissions.confirm();
-        else if (key.name === "up" || key.name === "left") permissions.select(pending.selected - 1);
+        if (key.name === "enter") interactions.confirmPermission();
+        else if (key.name === "up" || key.name === "left")
+          interactions.selectPermission(pending.selected - 1);
         else if (key.name === "down" || key.name === "right")
-          permissions.select(pending.selected + 1);
+          interactions.selectPermission(pending.selected + 1);
         else if (
           /^[1-3]$/.test(event.input) &&
           Number(event.input) <= permissionChoices(pending.request.mode).length
         )
-          permissions.select(Number(event.input) - 1);
+          interactions.selectPermission(Number(event.input) - 1);
       }
       return;
     }
