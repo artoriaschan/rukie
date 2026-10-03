@@ -89,6 +89,10 @@ const zh = {
   "status.p95": "p95",
 
   "question.select": "↑↓/1-9选择",
+  "question.toggle": "Space勾选",
+  "question.other": "其他",
+  "question.keep": "Space保留选项+其他附言",
+  "question.keep-short": "Space留选+其他",
   "dialog.title": "等待审批 · {{tool}}",
   "dialog.question": "要允许这次操作吗？",
   "dialog.select": "↑↓选择",
@@ -168,6 +172,10 @@ const en = {
   "status.p95": "p95",
 
   "question.select": "↑↓/1-9 select",
+  "question.toggle": "Space toggle",
+  "question.other": "Other",
+  "question.keep": "Space keep choice + Other",
+  "question.keep-short": "Space + Other",
   "dialog.title": "Waiting for approval · {{tool}}",
   "dialog.question": "Allow this operation?",
   "dialog.select": "↑↓ select",

@@ -237,13 +237,14 @@ function Chat({
     if (pendingInteraction?.kind === "question" && !(key.ctrl && key.name === "c")) {
       lastInterrupt.current = undefined;
       if (key.name === "escape") interactions.declineQuestion();
-      else if (!small && !key.ctrl && !key.alt && !key.shift) {
+      else if (!small && !pendingInteraction.editing && !key.ctrl && !key.alt && !key.shift) {
         if (key.name === "enter") interactions.answerQuestion();
+        else if (event.input === " ") interactions.toggleQuestion();
         else if (key.name === "up") interactions.selectQuestion(pendingInteraction.selected - 1);
         else if (key.name === "down") interactions.selectQuestion(pendingInteraction.selected + 1);
         else if (
           /^[1-9]$/.test(event.input) &&
-          Number(event.input) <= pendingInteraction.request.questions[0]!.options.length
+          Number(event.input) <= pendingInteraction.request.questions[0]!.options.length + 1
         )
           interactions.selectQuestion(Number(event.input) - 1);
       }
@@ -376,6 +377,11 @@ function Chat({
               <QuestionDialog
                 question={userQuestion.request.questions[0]!}
                 selected={userQuestion.selected}
+                checked={userQuestion.checked}
+                editing={userQuestion.editing}
+                custom={userQuestion.custom}
+                onCustomChange={interactions.changeQuestionCustom}
+                onCustomSubmit={interactions.answerQuestion}
                 maxHeight={dialogMaxHeight}
                 columns={columns}
                 locale={locale}

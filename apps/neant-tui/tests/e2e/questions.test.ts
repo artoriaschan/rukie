@@ -38,7 +38,7 @@ test("single-choice questions show options and return the selected label without
 
 test.each([
   ["2\r", "Postgres"],
-  ["\x1b[A\r", "Postgres"],
+  ["\x1b[A\x1b[A\r", "Postgres"],
   ["\x1b[B\x1b[A\r", "SQLite"],
 ])("question selection via %j", async (keys, expected) => {
   const app = await start(["ask"]);
@@ -150,7 +150,9 @@ test("English question hints use the frontend locale", async () => {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.tool("ask_user_question", { questions: [question] });
     await app.waitFor(() => app.screen().some((line) => line.trim() === "Which storage?"));
-    expect(app.screen().join("\n")).toContain("↑↓/1-9 select · Enter confirm · Esc deny");
+    expect(app.screen().join("\n")).toContain(
+      "↑↓/1-9 select · Space keep choice + Other · Enter confirm · Esc deny",
+    );
     expect(app.screen().join("\n")).not.toMatch(/\p{Script=Han}/u);
     app.stdin.write("\r");
     await app.waitFor(() => app.calls.length === 2);
@@ -215,6 +217,143 @@ test("multiline model copy cannot displace choices or hints on a short terminal"
       content: [
         { type: "text", text: '"Which storage?\nextra question\nlast question" → Postgres' },
       ],
+    });
+    app.calls[1]!.finish();
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("multi-select Space toggles choices and Enter returns all checked labels", async () => {
+  const app = await start(["ask"]);
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("ask_user_question", { questions: [{ ...question, multiSelect: true }] });
+    await app.waitFor(() => app.screen().some((line) => line.trim() === "Which storage?"));
+    app.stdin.write(" ");
+    await app.waitFor(() => app.screen().join("\n").includes("[x] SQLite"));
+    app.stdin.write("2  ");
+    await app.waitFor(() => app.screen().join("\n").includes("[ ] Postgres"));
+    app.stdin.write(" \r");
+    await app.waitFor(() => app.calls.length === 2);
+    expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
+      isError: false,
+      content: [{ type: "text", text: '"Which storage?" → SQLite, Postgres' }],
+    });
+    app.calls[1]!.finish();
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("Other opens an inline single-line editor and returns custom text without changing the draft", async () => {
+  const app = await start(["ask"]);
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.stdin.write("next draft");
+    await app.waitFor(() => app.screen().includes("❯ next draft"));
+    app.calls[0]!.tool("ask_user_question", { questions: [question] });
+    await app.waitFor(() => app.screen().some((line) => line.includes("3. 其他")));
+    app.stdin.write("3\r");
+    await app.waitFor(() => app.screen().join("\n").includes("其他:"));
+    app.stdin.write("\x1b[200~Redis\r\nwith cache\x1b[201~");
+    await app.waitFor(() => app.screen().join("\n").includes("Redis with cache"));
+    app.stdin.write("\r");
+    await app.waitFor(() => app.calls.length === 2);
+    expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
+      isError: false,
+      content: [{ type: "text", text: '"Which storage?" → Redis with cache' }],
+    });
+    app.calls[1]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    expect(app.screen()).toContain("❯ next draft");
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test.each([false, true])(
+  "a %s multiSelect question can keep choices and add an Other comment",
+  async (multiSelect) => {
+    const app = await start(["ask"], { env: { LANG: "en_US.UTF-8" } });
+    try {
+      await app.waitFor(() => app.calls.length === 1);
+      app.calls[0]!.tool("ask_user_question", { questions: [{ ...question, multiSelect }] });
+      await app.waitFor(() => app.screen().some((line) => line.includes("3. Other")));
+      expect(app.screen().join("\n")).toContain(
+        multiSelect ? "Space toggle" : "Space keep choice + Other",
+      );
+      expect(app.screen().join("\n")).not.toMatch(/\p{Script=Han}/u);
+      app.stdin.write("2 ");
+      await app.waitFor(() => app.screen().join("\n").includes("[x] Postgres"));
+      app.stdin.write("3\ruse replicas\r");
+      await app.waitFor(() => app.calls.length === 2);
+      expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
+        isError: false,
+        content: [{ type: "text", text: '"Which storage?" → Postgres; use replicas' }],
+      });
+      app.calls[1]!.finish();
+    } finally {
+      await app.cleanup();
+    }
+  },
+);
+
+test.each(["\x1b", "\x03"])(
+  "Other editing handles interruption %j and preserves the prompt draft",
+  async (interrupt) => {
+    const app = await start(["ask"]);
+    try {
+      await app.waitFor(() => app.calls.length === 1);
+      app.stdin.write("next draft");
+      await app.waitFor(() => app.screen().includes("❯ next draft"));
+      app.calls[0]!.tool("ask_user_question", { questions: [question] });
+      await app.waitFor(() => app.screen().some((line) => line.includes("3. 其他")));
+      app.stdin.write("3\rdiscard this");
+      await app.waitFor(() => app.screen().join("\n").includes("discard this"));
+      app.stdin.write(interrupt);
+      if (interrupt === "\x1b") {
+        await app.waitFor(() => app.calls.length === 2);
+        expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
+          isError: false,
+          content: [
+            { type: "text", text: expect.stringContaining("The user declined to answer.") },
+          ],
+        });
+        app.calls[1]!.finish();
+      } else {
+        expect(app.calls[0]!.signal!.aborted).toBe(true);
+      }
+      await app.waitFor(() => !app.isWorking());
+      expect(app.screen()).toContain("❯ next draft");
+    } finally {
+      await app.cleanup();
+    }
+  },
+);
+
+test("Other remains editable on a 40 by 12 terminal and long custom text stays on one row", async () => {
+  const app = await start(["ask"], { columns: 40, rows: 12 });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    const options = ["One", "Two", "Three", "Four"].map((label) => ({
+      label,
+      description: "long description ".repeat(20),
+    }));
+    app.calls[0]!.tool("ask_user_question", { questions: [{ ...question, options }] });
+    await app.waitFor(() => app.screen().some((line) => line.trim() === "Which storage?"));
+    app.stdin.write("5\r");
+    await app.waitFor(() => app.screen().join("\n").includes("其他:"));
+    const custom = "long response ".repeat(20) + "tail";
+    app.stdin.write(`\x1b[200~${custom}\x1b[201~`);
+    await app.waitFor(() => app.screen().join("\n").includes("tail"));
+    expect(app.screen().filter((line) => line.includes("long response"))).toHaveLength(1);
+    expect(app.screen().every((line) => Bun.stringWidth(line) <= 40)).toBe(true);
+    expect(app.screen().join("\n")).toContain("Enter确认");
+    app.stdin.write("\r");
+    await app.waitFor(() => app.calls.length === 2);
+    expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
+      content: [{ type: "text", text: `"Which storage?" → ${custom}` }],
     });
     app.calls[1]!.finish();
   } finally {

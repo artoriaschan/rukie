@@ -11,6 +11,9 @@ interface QuestionInteraction {
   kind: "question";
   request: QuestionRequest;
   selected: number;
+  checked: number[];
+  editing: boolean;
+  custom: string;
 }
 
 type PendingInteraction =
@@ -70,22 +73,70 @@ export function createInteractions() {
     askQuestion(request: QuestionRequest): Promise<QuestionReply> {
       return enqueue<QuestionReply>(request.signal, "declined", (finish) => ({
         kind: "question",
-        interaction: { kind: "question", request, selected: 0 },
+        interaction: {
+          kind: "question",
+          request,
+          selected: 0,
+          checked: [],
+          editing: false,
+          custom: "",
+        },
         finish,
       }));
     },
     selectQuestion(selected: number) {
       const item = pending[0];
       if (item?.kind !== "question") return;
-      const count = item.interaction.request.questions[0]!.options.length;
+      const count = item.interaction.request.questions[0]!.options.length + 1;
       item.interaction = { ...item.interaction, selected: (selected + count) % count };
+      notify();
+    },
+    toggleQuestion() {
+      const item = pending[0];
+      if (item?.kind !== "question") return;
+      const { selected, checked, request } = item.interaction;
+      if (selected === request.questions[0]!.options.length) {
+        item.interaction = { ...item.interaction, editing: true };
+        notify();
+        return;
+      }
+      item.interaction = {
+        ...item.interaction,
+        checked: checked.includes(selected)
+          ? checked.filter((index) => index !== selected)
+          : request.questions[0]!.multiSelect
+            ? [...checked, selected]
+            : [selected],
+      };
+      notify();
+    },
+    changeQuestionCustom(custom: string) {
+      const item = pending[0];
+      if (item?.kind !== "question") return;
+      item.interaction = { ...item.interaction, custom: custom.replace(/[\r\n]+/g, " ") };
       notify();
     },
     answerQuestion() {
       const item = pending[0];
       if (!item || item.kind !== "question") return;
-      const { request, selected } = item.interaction;
-      item.finish({ answers: [{ selected: [request.questions[0]!.options[selected]!.label] }] });
+      const { request, selected, checked, editing, custom } = item.interaction;
+      const question = request.questions[0]!;
+      if (selected === question.options.length && !editing) {
+        item.interaction = { ...item.interaction, editing: true };
+        notify();
+        return;
+      }
+      const indices = question.multiSelect || editing ? checked : [selected];
+      item.finish({
+        answers: [
+          {
+            selected: question.options
+              .filter((_, index) => indices.includes(index))
+              .map(({ label }) => label),
+            ...(custom ? { custom } : {}),
+          },
+        ],
+      });
     },
     declineQuestion() {
       const item = pending[0];
