@@ -14,6 +14,7 @@ Labels: wayfinder:map
 - 地基工单需写明子代理如何使用该地基，作为验证场景。
 - 每个 grilling 工单调用 `grilling` 与 `domain-modeling`；遵守 `CONTEXT.md` 术语与 `docs/adr/`。
 - 已在 charting 中定下（详见各工单 Question 前提）：Slash Command 属 frontend，Agent Core 只暴露能力 API（已入 `CONTEXT.md`）；Goal 续跑归 Agent Core，参考 deepseek-harness `packages/goal`；goal 与 todo 独立。
+- 工具命名：与 Claude Code 同名工具对齐，改 snake_case（如 `ask_user_question`、`web_fetch`）。
 - 参考实现：deepseek-harness（`~/Workspaces/agent/deepseek-harness`）、dsh-TUI（`~/Workspaces/agent/dsh-TUI`）。
 
 ## Decisions so far
@@ -21,6 +22,7 @@ Labels: wayfinder:map
 - [子代理参考实现调研](issues/04-research-subagent-prior-art.md): 三者都只回传最终文本、子 transcript 为带 parent 链接的独立 JSONL、进度走事件；分歧在权限（Claude Code 冒泡给用户 vs harness 固定 never 自动拒绝）、嵌套深度（3 vs 1）、定义方式（具名 markdown vs provider 配置）；dsh-TUI 运行时即 harness 包
 - [权限规则 / hooks / checkpoint 参考实现调研](issues/05-research-rules-hooks-checkpoint-prior-art.md): CC/Codex 都是固定顺序 hooks（可改写）→ 规则（deny>ask>allow 取最严、跨层合并、复合命令拆分逐段判）→ 审批 → 执行 → post，hook allow 绕不过规则；DSH 无规则只有 sandbox×approval preset、hooks 不可改写；checkpoint 仅 CC 现存（每 prompt、只跟踪文件工具不含 bash），Codex 整树 ghost 快照已移除，DSH 影子 git 只作 diff
 - [地基 A：Agent Core → frontend 交互通道](issues/01-interaction-channel.md): 每种交互一个回调 + 内部共享 helper；无回调时先去工具、再取安全默认值；交互内拒绝不影响 run，run 中止以取消结束；不进 transcript；子代理经顶层回调转发并带 origin
+- [向用户提问（ask user）](issues/09-ask-user.md): 工具 `ask_user_question`（命名约定：对齐 Claude Code 同名工具、snake_case）+ 回调 `onQuestion`；照 CC 1–4 题 × 2–4 选项、无 preview、自由输入由 frontend 附加；不走审批；纯文本结果，拒绝回答非错误；无超时；TUI 与审批共用槽位、统一 FIFO；transcript 由工具参数 + 结果渲染摘要；子代理是否可用交子代理工单
 
 ## Not yet specified
 
