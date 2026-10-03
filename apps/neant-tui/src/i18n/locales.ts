@@ -88,6 +88,7 @@ const zh = {
   "status.mean": "均值",
   "status.p95": "p95",
 
+  "question.select": "↑↓/1-9选择",
   "dialog.title": "等待审批 · {{tool}}",
   "dialog.question": "要允许这次操作吗？",
   "dialog.select": "↑↓选择",
@@ -166,6 +167,7 @@ const en = {
   "status.mean": "mean",
   "status.p95": "p95",
 
+  "question.select": "↑↓/1-9 select",
   "dialog.title": "Waiting for approval · {{tool}}",
   "dialog.question": "Allow this operation?",
   "dialog.select": "↑↓ select",

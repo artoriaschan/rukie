@@ -17,6 +17,7 @@ import {
   Logo,
   Notice,
   PermissionDialog,
+  QuestionDialog,
   PromptInput,
   ScrollToBottom,
   StatusLine,
@@ -40,6 +41,7 @@ export async function createChat(options: SessionOptions, model: string, locale:
       { source: "narration", currentContent: () => t("narrate-instruction") },
     ],
     onPermissionAsk: options.onPermissionAsk ?? interactions.askPermission,
+    onQuestion: options.onQuestion ?? interactions.askQuestion,
   });
   const conversation = createConversation(session, model, locale);
   try {
@@ -94,6 +96,7 @@ function Chat({
   const state = useSyncExternalStore(conversation.subscribe, conversation.getSnapshot);
   const interaction = useSyncExternalStore(interactions.subscribe, interactions.getSnapshot);
   const question = interaction?.kind === "permission" ? interaction : undefined;
+  const userQuestion = interaction?.kind === "question" ? interaction : undefined;
   const [input, setInput] = useState("");
   const [mode, setMode] = useState(session.permissionMode);
   const { columns, rows } = useTerminalSize();
@@ -121,13 +124,13 @@ function Chat({
     const timer = setTimeout(() => setNow(Date.now()), Math.max(0, nextWakeAt - Date.now()));
     return () => clearTimeout(timer);
   }, [state.running, nextWakeAt]);
-  const approvalOpen = question !== undefined;
+  const approvalOpen = interaction !== undefined;
   useEffect(() => {
     conversation.dispatchActivity({ type: approvalOpen ? "approval-open" : "approval-close" });
   }, [conversation, approvalOpen]);
   useEffect(() => {
     setScrollFocus("body");
-  }, [question?.request.toolCallId]);
+  }, [interaction?.request.toolCallId]);
   useEffect(() => {
     const previous = previousOutput.current;
     if (bodyScroll?.following) setUnread(false);
@@ -157,15 +160,19 @@ function Chat({
   const showReturn = !!bodyScroll && !bodyScroll.following;
   const statusHeight = state.contextUsage && columns - 2 >= 14 ? 3 : 2;
   const hasActivity = state.running && activity.phase !== "idle";
-  const minimumDialogHeight = question ? permissionChoices(question.request.mode).length + 3 : 0;
+  const minimumDialogHeight = question
+    ? permissionChoices(question.request.mode).length + 3
+    : userQuestion
+      ? 4
+      : 0;
   // Reserve the dialog's bottom gap and at least one transcript row before allocating chrome.
   const permissionSpace = rows - statusHeight - 2;
   const compactReturn =
-    !!question && showReturn && permissionSpace < minimumDialogHeight + Number(hasActivity) + 2;
+    !!interaction && showReturn && permissionSpace < minimumDialogHeight + Number(hasActivity) + 2;
   const returnHeight = showReturn ? (compactReturn ? 1 : 2) : 0;
   // The dialog title already conveys waiting for approval when this duplicate line cannot fit.
   const showActivity =
-    hasActivity && (!question || permissionSpace >= minimumDialogHeight + returnHeight + 1);
+    hasActivity && (!interaction || permissionSpace >= minimumDialogHeight + returnHeight + 1);
   const dialogMaxHeight = Math.max(
     minimumDialogHeight,
     Math.min(Math.floor(rows / 2), permissionSpace - returnHeight - Number(showActivity)),
@@ -198,7 +205,7 @@ function Chat({
     const pending = pendingInteraction?.kind === "permission" ? pendingInteraction : undefined;
     if (key.name === "tab" && key.shift && !key.ctrl && !key.alt) {
       lastInterrupt.current = undefined;
-      if (!pending && !small) {
+      if (!pendingInteraction && !small) {
         const next =
           PERMISSION_MODES[
             (PERMISSION_MODES.indexOf(session.permissionMode) + 1) % PERMISSION_MODES.length
@@ -227,6 +234,21 @@ function Chat({
     }
     if (small && key.name !== "escape" && !(key.ctrl && (key.name === "c" || key.name === "d")))
       return;
+    if (pendingInteraction?.kind === "question" && !(key.ctrl && key.name === "c")) {
+      lastInterrupt.current = undefined;
+      if (key.name === "escape") interactions.declineQuestion();
+      else if (!small && !key.ctrl && !key.alt && !key.shift) {
+        if (key.name === "enter") interactions.answerQuestion();
+        else if (key.name === "up") interactions.selectQuestion(pendingInteraction.selected - 1);
+        else if (key.name === "down") interactions.selectQuestion(pendingInteraction.selected + 1);
+        else if (
+          /^[1-9]$/.test(event.input) &&
+          Number(event.input) <= pendingInteraction.request.questions[0]!.options.length
+        )
+          interactions.selectQuestion(Number(event.input) - 1);
+      }
+      return;
+    }
     if (!small && pending && !(key.ctrl && key.name === "c")) {
       lastInterrupt.current = undefined;
       if (key.name === "escape") interactions.denyPermission();
@@ -350,7 +372,16 @@ function Chat({
                 scrollFocused={scrollFocus === "details"}
               />
             )}
-            {!question && (
+            {userQuestion && (
+              <QuestionDialog
+                question={userQuestion.request.questions[0]!}
+                selected={userQuestion.selected}
+                maxHeight={dialogMaxHeight}
+                columns={columns}
+                locale={locale}
+              />
+            )}
+            {!interaction && (
               <PromptInput
                 maxLines={Math.max(1, Math.min(6, Math.floor(rows / 3)) - 3)}
                 columns={columns}

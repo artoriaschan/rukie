@@ -15,6 +15,8 @@ import { Type, type TSchema } from "typebox";
 import { createGlobTool } from "./glob.ts";
 import { createGrepTool } from "./grep.ts";
 import { createSkillTool } from "./skill.ts";
+import { createQuestionTool, type OnQuestion } from "./question.ts";
+export type { Question, QuestionRequest, QuestionReply } from "./question.ts";
 
 /** pi's built-ins use the harness context; Agent uses an AbortSignal. */
 function adaptTool<T extends TSchema, D>(
@@ -72,6 +74,7 @@ function preserveErrorDetails<T extends TSchema>(tool: AgentTool<T>): AgentTool<
 export function createBuiltinTools(
   cwd: string,
   getSkill: (name: string) => Skill | undefined,
+  onQuestion?: OnQuestion,
 ): AgentTool[] {
   const env = new NodeExecutionEnv({ cwd });
   const bashTool = createBashTool();
@@ -97,5 +100,6 @@ export function createBuiltinTools(
     createGlobTool(cwd),
     preserveErrorDetails(createGrepTool(cwd)),
     createSkillTool(getSkill),
+    ...(onQuestion ? [createQuestionTool(onQuestion)] : []),
   ];
 }

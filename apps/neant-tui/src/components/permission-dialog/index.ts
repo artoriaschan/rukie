@@ -1,1 +1,1 @@
-export { PermissionDialog } from "./permission-dialog";
+export { PermissionDialog, permissionChoices } from "./permission-dialog";

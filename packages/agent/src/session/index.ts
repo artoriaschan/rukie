@@ -30,7 +30,7 @@ import type {
 import { resolveModel } from "../config/index.ts";
 import { createJsonlStore, type SessionStore } from "../store/index.ts";
 import { decidePermission } from "../permissions/index.ts";
-import { createBuiltinTools } from "../tools/index.ts";
+import { createBuiltinTools, type QuestionRequest, type QuestionReply } from "../tools/index.ts";
 import { SYSTEM_PROMPT } from "../prompt/index.ts";
 import { collectReminders, convertToLlm, type ReminderSource } from "../reminders/index.ts";
 import { discoverSkills, skillInvocation, skillsReminder } from "../skills/index.ts";
@@ -73,6 +73,8 @@ export interface SessionOptions {
   permissionMode?: PermissionMode;
   /** Decide tool calls requiring permission; defaults to deny. */
   onPermissionAsk?: (request: PermissionAskRequest) => Promise<"allow" | "deny">;
+  /** Ask structured questions; the tool is absent when this callback is omitted. */
+  onQuestion?: (request: QuestionRequest) => Promise<QuestionReply>;
   /** Load this project's .mcp.json even when it is not in the user trust list. */
   trustProjectMcp?: boolean;
   /** Clock used for reminder dates; defaults to the local current date. */
@@ -270,7 +272,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       model,
       messages: restoreContext(entries),
       systemPrompt: SYSTEM_PROMPT,
-      tools: createBuiltinTools(cwd, (name) => skills.get(name)),
+      tools: createBuiltinTools(cwd, (name) => skills.get(name), options.onQuestion),
       ...(settings.thinking && { thinkingLevel: settings.thinking }),
     },
   });
@@ -323,7 +325,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           });
         } finally {
           agent.state.tools = [
-            ...createBuiltinTools(cwd, (name) => skills.get(name)),
+            ...createBuiltinTools(cwd, (name) => skills.get(name), options.onQuestion),
             ...mcp.tools,
           ];
           await emit({

@@ -65,9 +65,10 @@ test("resume replays stored text before input and appends the next Run to the sa
 
     app.stdin.write("continuation\r");
     await app.waitFor(() => app.calls.length === 1);
-    expect(app.calls[0]!.context.messages.slice(-4)).toMatchObject([
+    expect(app.calls[0]!.context.messages.slice(-5)).toMatchObject([
       { role: "user", content: [{ type: "text", text: "stored prompt 中" }] },
       { role: "assistant", content: [{ type: "text", text: storedReply }] },
+      { role: "system", toolsAdded: [{ name: "ask_user_question" }] },
       { role: "user", content: [{ type: "text", text: expect.stringContaining("[状态栏]") }] },
       { role: "user", content: [{ type: "text", text: "continuation" }] },
     ]);

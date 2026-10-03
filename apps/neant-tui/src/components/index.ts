@@ -8,3 +8,4 @@ export { ScrollToBottom } from "./scroll-to-bottom";
 export { ToolCall } from "./tool-call";
 export { Logo } from "./logo";
 export { ActivityLine } from "./activity-line";
+export { QuestionDialog } from "./question-dialog";
