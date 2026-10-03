@@ -42,6 +42,10 @@ _Avoid_: task, job
 transcript 的持久化位置。Headless CLI 和 TUI 存成 JSONL 文件，桌面端存到 SQLite。
 _Avoid_: database, history store
 
+**Locale**:
+frontend 呈现文案所用的语言，由 frontend 自行解析。Agent Core 不感知 locale：它产出的内容和 transcript 与 locale 无关，同一个 session 可以在不同 locale 的 frontend 中恢复。
+_Avoid_: language（会和模型回复语言混淆）, i18n
+
 ### 给模型的上下文
 
 **System Prompt**:
