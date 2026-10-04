@@ -1,5 +1,6 @@
 import { createUserVisibleError } from "@neant/shared";
 import { analyzeBashCommand, matchesBashPattern } from "./bash.ts";
+import { matchesPermissionPath, resolvePermissionPath } from "./path.ts";
 
 export type PermissionRule = {
   decision: "allow" | "ask" | "deny";
@@ -58,11 +59,13 @@ export function parsePermissionRules(
   return rules;
 }
 
-/** Pure rule seam: only validated arguments and already parsed rules enter here. */
+/** Rule seam: canonicalize file targets once, then match already parsed rules. */
 export function evaluatePermissionRules({
   rules,
   toolName,
   args,
+  cwd,
+  homeDir,
 }: {
   rules: readonly PermissionRule[];
   toolName: string;
@@ -70,6 +73,9 @@ export function evaluatePermissionRules({
   cwd: string;
   homeDir: string;
 }): { decision: "allow" | "ask" | "deny"; rule: string } | undefined {
+  const target = rules.some((rule) => rule.kind === "path" && rule.tool === toolName)
+    ? resolvePermissionPath({ toolName, args, cwd, homeDir })
+    : undefined;
   const bash =
     toolName === "bash" &&
     typeof args === "object" &&
@@ -78,20 +84,20 @@ export function evaluatePermissionRules({
     typeof args.command === "string"
       ? analyzeBashCommand(args.command)
       : undefined;
-  const matchesCommandRule = (rule: PermissionRule, command?: string): boolean =>
+  const matchesRule = (rule: PermissionRule, command?: string): boolean =>
     rule.kind === "tool"
       ? new Bun.Glob(rule.pattern).match(toolName)
       : rule.kind === "bash" && command !== undefined
         ? matchesBashPattern(rule.pattern, command)
-        : false; // Path matching belongs to issue 04.
+        : rule.kind === "path" && rule.tool === toolName && target !== undefined
+          ? matchesPermissionPath(rule.pattern, rule.decision, target, cwd, homeDir)
+          : false;
   for (const decision of ["deny", "ask", "allow"] as const) {
     if (decision === "allow" && bash) {
       if (!bash.allowMatching) return undefined;
       let matched: PermissionRule | undefined;
       for (const segment of bash.segments) {
-        const match = rules.find(
-          (rule) => rule.decision === "allow" && matchesCommandRule(rule, segment),
-        );
+        const match = rules.find((rule) => rule.decision === "allow" && matchesRule(rule, segment));
         if (!match) return undefined;
         matched ??= match;
       }
@@ -100,8 +106,8 @@ export function evaluatePermissionRules({
     for (const rule of rules) {
       if (rule.decision !== decision) continue;
       const matches = bash
-        ? [bash.text, ...bash.segments].some((command) => matchesCommandRule(rule, command))
-        : matchesCommandRule(rule);
+        ? [bash.text, ...bash.segments].some((command) => matchesRule(rule, command))
+        : matchesRule(rule);
       if (matches) return { decision, rule: rule.raw };
     }
   }
