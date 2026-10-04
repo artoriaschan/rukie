@@ -25,11 +25,12 @@ Labels: wayfinder:map
 - [向用户提问（ask user）](issues/09-ask-user.md): 工具 `ask_user_question`（命名约定：对齐 Claude Code 同名工具、snake_case）+ 回调 `onQuestion`；照 CC 1–4 题 × 2–4 选项、无 preview、自由输入由 frontend 附加；不走审批；纯文本结果，拒绝回答非错误；无超时；TUI 与审批共用槽位、统一 FIFO；transcript 由工具参数 + 结果渲染摘要；子代理是否可用交子代理工单
 - [地基 B：工具状态进 transcript](issues/02-tool-state-in-transcript.md): 术语 Tool State；pi `custom` entry `tool-state/<name>` 存带版本的完整快照，last-wins，坏记录退回上一条并告警；resume 需见的事实才持久（armed 等易失）；反馈渠道各自定，默认复用 ReminderSource，compaction 后立即重注入；frontend 经 `tool_state_changed` 事件 + `toolState(name)`；子代理为独立 session 经 `parentSessionId` 链接，父 tool result `details` 记 `childSessionId`
 - [todo 工具](issues/07-todo.md): 单个 `todo_write` 整表覆盖（不做 CC V2 Task* 四件套：为 swarm 共享任务表而生）；`{content,status}` 三态、不限 in_progress 个数、不自动清空；Tool State `todo` + 有未完成项时的 `todo` reminder，无催促；TUI 复刻 dsh-TUI `GoalTodoPanel`（树形、`ctrl+q`/点击折叠、空闲隐藏已完成），Goal 根行归 Goal 工单；工具卡 `todos ✓ done/total`
+- [地基 C：工具调用前后拦截点](issues/03-tool-call-interception.md): 内部固定阶段 hooks（可原地改写参数）→ 规则 → Permission Mode → 交互 → 放行后（供 checkpoint）→ 执行 → after（仅 hooks：替换结果 / 注入 reminder）；取最严、hook allow 越不过规则 deny；full-access 只免询问、不跳规则与 hooks；sandbox 不进链；子代理按引用共享父配置，只可收窄
+- [权限规则与 sandbox](issues/11-permission-rules-and-sandbox.md): `permissions.{allow,ask,deny}` 用 `tool(specifier)`（bash 命令 glob、文件路径 glob、裸名）；复合命令拆段，deny/ask 任一段命中、allow 需每段命中；用户层 + 项目层合并，项目 allow 仅 trusted；删 `allowTools`；ask 规则在 full-access / auto-review 下也问用户；"本 session 允许"生成内存规则（精确命令 / 目录 / 工具名）；realpath 防 symlink；sandbox 不做
 
 ## Not yet specified
 
 - 子代理的并发与上下文隔离细节（并行数、取消传播、token 计量归属），等子代理工单定了地基用法后再拆。
-- 现有 reminder（skills / mcp 等）以全 transcript 去重，compaction 后不重发：缺陷修复，归入 handoff 时排期。
 - 最终排序与 handoff：所有能力工单定完后，汇总依赖图、给出实现顺序。
 
 ## Out of scope
@@ -38,4 +39,5 @@ Labels: wayfinder:map
 - multi-edit / apply_patch：edit 足够，成瓶颈再议。
 - MCP resources / prompts：极少 server 使用。
 - server 与桌面端。
+- sandbox（OS 级写入隔离，macOS `sandbox-exec` / Linux bwrap）：需单独调研，本轮规则已覆盖日常需求；见 [权限规则与 sandbox](issues/11-permission-rules-and-sandbox.md)。
 - 多 agent 共享任务表（CC V2 `TaskCreate/Get/List/Update`、dsh `agent-team` 任务板）：Neant 子代理各自独立 session，无共享场景；见 [todo 工具](issues/07-todo.md)。

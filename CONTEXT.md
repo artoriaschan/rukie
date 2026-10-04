@@ -99,7 +99,7 @@ _Avoid_: plugin, recipe
 _Avoid_: connector, integration
 
 **Trusted Project**:
-用户明确表示信任的项目目录。只有 trusted project，其项目级 `.mcp.json` 才会被加载。项目级配置任何情况下都不能定义 provider。
+用户明确表示信任的项目目录。只有 trusted project，其项目级 `.mcp.json` 与项目级 allow 规则才会被加载。项目级配置任何情况下都不能定义 provider。
 _Avoid_: safe project, whitelisted repo
 
 **Skill Invocation**:
@@ -107,15 +107,19 @@ _Avoid_: safe project, whitelisted repo
 _Avoid_: slash command, macro
 
 **Permission Decision**:
-对单次工具调用在执行前做出的判定：`allow`、`deny` 或 `ask`。`ask` 交给 frontend 询问用户；Headless CLI 没法询问，按 `deny` 处理。
+对单次工具调用在执行前做出的判定：`allow`、`deny` 或 `ask`。`ask` 交给 frontend 询问用户；Headless CLI 没法询问，按 `deny` 处理。由固定顺序的阶段得出：hooks → 权限规则 → Permission Mode → 询问用户；多个阶段有意见时取最严（deny > ask > allow），hook 的 allow 越不过规则的 deny。内置工具、MCP 工具与 skill 工具一律适用。
 _Avoid_: approval, consent
 
 **Interaction**:
 Agent Core 在 run 中向 frontend 发起、并挂起等待用户回复的一次请求，如审批 permission decision 的 `ask`、模型向用户提问、plan 批准、MCP OAuth 授权。每种交互一个 frontend 回调；frontend 不提供回调时按该交互的安全默认值处理。用户拒绝单次交互不影响 run；run 中止时挂起的交互以取消结束。交互本身不进 transcript，其结果体现在工具结果里。
 _Avoid_: prompt（会和用户 prompt 混淆）, dialog, request
 
+**Permission Rule**:
+用户写下的一条 `allow`、`ask` 或 `deny`，按工具名、bash 命令文本或文件路径匹配工具调用。命中的 `deny` / `ask` 在任何 Permission Mode 下都生效，`ask` 规则也不交给 permission review。用户层与项目层合并；项目层的 `allow` 只在 trusted project 生效。审批时"本 session 允许"生成的是只在当前 session 内存中的 allow 规则。规则不是安全边界。
+_Avoid_: policy, whitelist, allowTools
+
 **Permission Mode**:
-决定 permission decision 如何得出的 session 级开关，三选一：`ask`（只读工具 allow，其余 ask）、`auto-review`（由 permission review 判定，安全的 allow，有风险的 ask）、`full-access`（全部 allow，无任何拦截）。默认 `ask`；运行中可切换，只对当前 session 生效，resume 时回到默认值。
+决定 permission decision 如何得出的 session 级开关，三选一：`ask`（只读工具 allow，其余 ask）、`auto-review`（由 permission review 判定，安全的 allow，有风险的 ask）、`full-access`（模式本身不再询问：本该由模式 ask 的都 allow，但用户显式写下的 deny / ask 规则与 hooks 照常生效）。默认 `ask`；运行中可切换，只对当前 session 生效，resume 时回到默认值。
 _Avoid_: yolo（仅作 CLI 别名 `--yolo`）, approval mode, trust level
 
 **Permission Review**:
