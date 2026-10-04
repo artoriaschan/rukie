@@ -34,7 +34,12 @@ test.each([
     { command: "git status" },
     { decision: "ask", rule: "bash(git*)" },
   ],
-  [{ allow: ["read(src/**)"] }, "read", { path: "src/index.ts" }, undefined],
+  [
+    { allow: ["read(src/**)"] },
+    "read",
+    { path: "src/index.ts" },
+    { decision: "allow", rule: "read(src/**)" },
+  ],
   [
     { deny: ["bash(rm -rf *)"] },
     "bash",
@@ -70,7 +75,7 @@ test.each([
   );
 });
 
-test("file specifiers remain structured for the file-matching ticket", () => {
+test("file specifiers retain their original text for denial feedback", () => {
   expect(parsePermissionRules({ deny: ["read(~/.ssh/**)"] })).toEqual([
     { decision: "deny", kind: "path", tool: "read", pattern: "~/.ssh/**", raw: "read(~/.ssh/**)" },
   ]);

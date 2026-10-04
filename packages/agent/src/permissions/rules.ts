@@ -1,4 +1,5 @@
 import { createUserVisibleError } from "@neant/shared";
+import { matchesPermissionPath, resolvePermissionPath } from "./path.ts";
 
 export type PermissionRule = {
   decision: "allow" | "ask" | "deny";
@@ -57,11 +58,13 @@ export function parsePermissionRules(
   return rules;
 }
 
-/** Pure rule seam: only validated arguments and already parsed rules enter here. */
+/** Rule seam: canonicalize file targets once, then match already parsed rules. */
 export function evaluatePermissionRules({
   rules,
   toolName,
   args,
+  cwd,
+  homeDir,
 }: {
   rules: readonly PermissionRule[];
   toolName: string;
@@ -69,6 +72,9 @@ export function evaluatePermissionRules({
   cwd: string;
   homeDir: string;
 }): { decision: "allow" | "ask" | "deny"; rule: string } | undefined {
+  const target = rules.some((rule) => rule.kind === "path" && rule.tool === toolName)
+    ? resolvePermissionPath({ toolName, args, cwd, homeDir })
+    : undefined;
   for (const decision of ["deny", "ask", "allow"] as const) {
     for (const rule of rules) {
       if (rule.decision !== decision) continue;
@@ -85,7 +91,9 @@ export function evaluatePermissionRules({
               new Bun.Glob(rule.pattern.replaceAll("/", "\u0001")).match(
                 args.command.trim().replaceAll("/", "\u0001"),
               )
-            : false; // Path matching belongs to issue 04.
+            : rule.kind === "path" && rule.tool === toolName && target !== undefined
+              ? matchesPermissionPath(rule.pattern, decision, target, cwd, homeDir)
+              : false;
       if (matches) return { decision, rule: rule.raw };
     }
   }
