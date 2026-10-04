@@ -39,9 +39,16 @@ interface PermissionOptions {
 function decidePermission({ mode, toolName }: PermissionOptions): PermissionDecision | "review" {
   if (
     mode === "full-access" ||
-    ["read", "glob", "grep", "skill", "ask_user_question", "todo_write", "subagent"].includes(
-      toolName,
-    )
+    [
+      "read",
+      "glob",
+      "grep",
+      "skill",
+      "ask_user_question",
+      "todo_write",
+      "subagent",
+      "subagent_fork",
+    ].includes(toolName)
   )
     return "allow";
   return mode === "auto-review" ? "review" : "ask";

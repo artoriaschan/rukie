@@ -311,7 +311,8 @@ test.each([
       app.stdin.write("ignored\x1b[200~pasted\x1b[201~\x1b");
       await app.waitFor(() => app.calls.length === 3);
       app.calls[2]!.finish();
-      await app.waitFor(() => !app.isWorking());
+      // A small terminal can hide ActivityLine while the Run is still active.
+      await app.waitFor(() => app.screen().at(-1)?.trim() === "");
       app.stdin.write("\r");
       await app.waitFor(() => app.calls.length === 4);
       expect(app.calls[3]!.context.messages.at(-1)).toMatchObject({
