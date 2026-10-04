@@ -70,5 +70,9 @@ export function formatError(error: unknown, t: ReturnType<typeof createTuiI18n>)
       return t("error.hook-compaction-blocked", data.params);
     case "hook-continuation-limit":
       return t("error.hook-continuation-limit", data.params);
+    case "hook-project-untrusted":
+      return t("error.hook-project-untrusted", data.params);
+    case "hook-config-invalid":
+      return t("error.hook-config-invalid", data.params);
   }
 }
