@@ -45,6 +45,7 @@ function decidePermission({ mode, toolName }: PermissionOptions): PermissionDeci
       "grep",
       "skill",
       "ask_user_question",
+      "exit_plan_mode",
       "todo_write",
       "subagent",
       "subagent_fork",

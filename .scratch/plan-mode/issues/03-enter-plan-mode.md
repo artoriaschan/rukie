@@ -32,3 +32,13 @@
 - `bunx tsc -b`：exit 0。
 - 临时隔离 `HOME` 并移除 `NO_COLOR` 后执行 `bun run check`：格式、lint、类型、knip 与全量测试均通过，exit 0；1141 pass，0 fail，6243 assertions，87 files，123.91s。日志 `/tmp/neant-plan-mode-03-check.log`。
 - `/code-review` 以 `a87684414fa125b629a2a4f47d3bf40323f75041` 为基点，两轴并行审查：Standards 0 findings，Spec 0 findings。Standards reviewer 独立复跑专项测试：19 pass，0 fail。
+
+## Integration verification
+
+在 `codex/plan-mode-03` 工作树合入已完成 issue 02 的 main `9710a864dbeb4e4e1eaefca1f0e285e9535f90a4`。解决同处注册冲突后，父 session 的 `planTools` 同时包含进入与退出工具，initial 和每次 Run 的 MCP 重建均复用同一数组；保留 issue 02 的 `finishTurn` 接手处理、TUI callback、公共类型和评审工具。
+
+新增公共 TUI 完整循环测试 `apps/neant-tui/tests/e2e/enter-plan-mode.test.ts`：分别在 `ask` 和 `auto-review` 下由模型调用进入工具，通用审批允许后显示 plan chip 并向下一次模型调用注入 reminder；模型提交退出工具后显示计划评审，批准后撤下 chip，注入退出提示并执行 todo 与最终回复。整个循环 reviewer 调用为 0，Permission Mode 标签保持原值。
+
+红绿证据：相同测试使用 issue 02 的 main session 实现时 0 pass / 2 fail，公开屏幕报 `Tool enter_plan_mode not found`；恢复合并注册后 2 pass / 0 fail，40 assertions。
+
+集成专项验证（两工具 / Core Plan Mode / TUI Plan Mode 与评审 / Headless 与 main CLI）：94 pass，0 fail，427 assertions，8 files，5.54s。`tsc -b`、`oxlint`、`knip`、`oxfmt --check` 均 exit 0。按父代理集成流程，此工作树不重复全量测试；父代理合入 main 后统一执行完整 `check`。

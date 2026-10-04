@@ -1,3 +1,7 @@
+import { useState } from "react";
+import type { Locale } from "@neant/i18n";
+import { createTuiI18n } from "../../i18n";
+import { Markdown } from "../markdown";
 import { StatusIcon, ThemedBox, ThemedText, figures, type StatusIconProps } from "@neant/tui";
 
 export function ToolCall({
@@ -5,12 +9,33 @@ export function ToolCall({
   status,
   result,
   error,
+  planReview,
+  locale = "zh",
 }: {
   summary: string;
   status: StatusIconProps["status"];
   result?: string;
   error?: string;
+  locale?: Locale;
+  planReview?: { plan: string; kind: "approve" | "revise" | "takeover"; feedback?: string };
 }) {
+  const [expanded, setExpanded] = useState(false);
+  const t = createTuiI18n(locale);
+  if (planReview)
+    return (
+      <ThemedBox flexDirection="column">
+        <ThemedBox onClick={() => setExpanded((value) => !value)}>
+          <ThemedText
+            color="plan"
+            wrap="truncate"
+          >{`${planReview.kind === "approve" ? (expanded ? "▾" : "▸") : "▾"} ${t(planReview.kind === "approve" ? "plan.review.approved" : planReview.kind === "revise" ? "plan.review.revised" : "plan.review.takeover")}${planReview.kind === "approve" ? ` · ${t(expanded ? "plan.review.collapse" : "plan.review.expand")}` : ""}`}</ThemedText>
+        </ThemedBox>
+        {(expanded || planReview.kind !== "approve") && <Markdown text={planReview.plan} />}
+        {planReview.kind === "revise" && (
+          <ThemedText>{`${t("plan.review.feedback")}: ${planReview.feedback ?? ""}`}</ThemedText>
+        )}
+      </ThemedBox>
+    );
   const output = status === "error" ? error?.split(/\r?\n/).slice(0, 3).join("\n") : result;
   return (
     <ThemedBox flexDirection="column">

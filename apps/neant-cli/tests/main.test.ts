@@ -3,6 +3,7 @@ import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-wo
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createSession } from "@neant/agent";
 import { main } from "../src/main.ts";
 import { echoModel } from "./helpers/echo-model.ts";
 
@@ -241,3 +242,51 @@ test.each(["text", "stream-json"])(
     }
   },
 );
+
+test("Headless resume emits a text plan and never registers interactive plan tools", async () => {
+  const root = await mkdtemp(join(tmpdir(), "neant-cli-plan-"));
+  try {
+    const seed = await createSession({ cwd: root, homeDir: root, ...echoModel() });
+    await seed.setPlanMode(true);
+    const faux = createFauxCore({ api: "faux", provider: "faux" });
+    faux.setResponses([
+      (context) => {
+        expect(JSON.stringify(context)).toContain(
+          "give the plan directly as text in your final response",
+        );
+        return fauxAssistantMessage("# Text plan\n\nInspect, implement and verify.");
+      },
+    ]);
+    let stdout = "";
+    expect(
+      await main(["--resume", seed.id, "-p", "continue", "--output-format", "stream-json"], {
+        readStdin: async () => "",
+        stdout: (text) => {
+          stdout += text;
+        },
+        stderr: () => {},
+        session: { cwd: root, homeDir: root, model: faux.getModel(), streamFn: faux.streamSimple },
+      }),
+    ).toBe(0);
+    const events = stdout
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    const start = events.find((event) => event.type === "session_start");
+    expect(start.tools).not.toContain("exit_plan_mode");
+    expect(start.tools).not.toContain("enter_plan_mode");
+    expect(events.at(-1)).toMatchObject({
+      type: "result",
+      text: "# Text plan\n\nInspect, implement and verify.",
+    });
+    const resumed = await createSession({
+      cwd: root,
+      homeDir: root,
+      ...echoModel(),
+      resumeId: seed.id,
+    });
+    expect(resumed.planMode).toBe(true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
