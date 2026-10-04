@@ -14,6 +14,7 @@ export interface UserVisibleErrorParams {
   "hook-command-failed": { cause: string };
   "hook-type-unsupported": { type: string };
   "hook-matcher-invalid": { source: string; matcher: string };
+  "hook-if-nontool": { source: string; event: string };
   "hook-output-ignored": { field: string };
   "hook-compaction-blocked": { reason: string };
   "hook-continuation-limit": { event: string; limit: string };

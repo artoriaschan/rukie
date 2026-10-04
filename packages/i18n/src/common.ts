@@ -47,6 +47,7 @@ const zh = {
   "error.hook-command-failed": "Hook 命令执行失败：{{cause}}",
   "error.hook-type-unsupported": "尚不支持的 hook 类型：{{type}}",
   "error.hook-matcher-invalid": "{{source}}：无效的 hook 正则表达式：{{matcher}}",
+  "error.hook-if-nontool": "{{source}}：if 仅支持工具事件，此 {{event}} hook 永不运行",
   "error.hook-output-ignored": "忽略无效或不支持的 hook 输出字段：{{field}}",
   "error.hook-compaction-blocked": "PreCompact hook 跳过本次压缩：{{reason}}",
   "error.hook-continuation-limit": "{{event}} hook 已达 {{limit}} 次续跑上限，忽略阻断",
@@ -90,6 +91,8 @@ const en = {
   "error.hook-command-failed": "Hook command failed: {{cause}}",
   "error.hook-type-unsupported": "Unsupported hook type: {{type}}",
   "error.hook-matcher-invalid": "{{source}}: invalid hook regular expression: {{matcher}}",
+  "error.hook-if-nontool":
+    "{{source}}: if is only supported on tool events; this {{event}} hook will never run",
   "error.hook-output-ignored": "Ignoring invalid or unsupported hook output field: {{field}}",
   "error.hook-compaction-blocked": "Compaction skipped by PreCompact hook: {{reason}}",
   "error.hook-continuation-limit":

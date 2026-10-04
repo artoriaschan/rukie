@@ -7,6 +7,33 @@ import type { HooksSettings } from "@neant/shared";
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
 afterEach(() => dirs?.cleanup());
 
+test("loading a non-tool event with if warns and preserves distinct filtered handlers", async () => {
+  dirs = await tempDirs();
+  const command = "echo ran";
+  await Bun.write(
+    join(dirs.homeDir, ".neant/settings.json"),
+    JSON.stringify({
+      hooks: {
+        SessionStart: [{ hooks: [{ type: "command", command, if: "bash" }] }],
+        PreToolUse: [
+          {
+            hooks: [
+              { type: "command", command, if: "bash(one *)" },
+              { type: "command", command, if: "bash(two *)" },
+              { type: "command", command, if: "bash(one *)" },
+            ],
+          },
+        ],
+      },
+    }),
+  );
+  const { settings, warnings } = await loadSettings(dirs);
+  expect(warnings).toHaveLength(1);
+  expect(warnings[0]).toContain("/hooks/SessionStart/0/hooks/0/if");
+  expect(warnings[0]).toContain("never run");
+  expect(settings.hooks?.PreToolUse?.[0]?.hooks).toHaveLength(2);
+});
+
 test.each([false, true])(
   "project hooks require trust and identical handlers run once: %s",
   async (trusted) => {

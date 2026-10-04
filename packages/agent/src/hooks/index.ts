@@ -9,7 +9,7 @@ import {
   type UserVisibleErrorData,
 } from "@neant/shared";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
-import { parsePermissionRules } from "../permissions/index.ts";
+import { evaluatePermissionRules, parsePermissionRules } from "../permissions/index.ts";
 import { executeCommand } from "./command.ts";
 
 export interface HookInput {
@@ -78,6 +78,13 @@ const truncate = (text: string) =>
   text.length > 10_000 ? `${text.slice(0, 10_000)}\n[truncated]` : text;
 const object = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+const toolEvents = new Set<HookEvent>([
+  "PreToolUse",
+  "PermissionRequest",
+  "PermissionDenied",
+  "PostToolUse",
+  "PostToolUseFailure",
+]);
 
 function validToolContent(value: unknown): value is ToolResultMessage["content"] {
   return (
@@ -106,13 +113,23 @@ function matches(matcher: string | undefined, query: string): boolean {
 export function createHooks(options: {
   settings?: HooksSettings;
   cwd: string;
+  homeDir: string;
   projectDir: string;
   onWarning(warning: string): void;
   onEvent(event: CustomSessionEvent): void | Promise<void>;
   onAsyncResult?(result: CommonHookResult, rewakeReason?: string): void;
 }) {
-  validateHooks(options.settings, "settings");
+  validateHooks(options.settings, "settings", (warning) => {
+    options.onWarning(warning.message);
+    void Promise.resolve(options.onEvent(warning)).catch(() => {});
+  });
   const settings = mergeHooks(options.settings);
+  const filters = new Map<HookHandler, ReturnType<typeof parsePermissionRules>>();
+  for (const groups of Object.values(settings))
+    for (const group of groups)
+      for (const handler of group.hooks)
+        if (handler.if !== undefined)
+          filters.set(handler, parsePermissionRules({ deny: [handler.if] }));
   const lifetime = new AbortController();
   return {
     /** Cancels Session-owned hook work; SessionEnd has its own shutdown budget. */
@@ -157,6 +174,19 @@ export function createHooks(options: {
             matches(group.matcher, runOptions.matchQuery ?? ""),
         )
         .flatMap((group) => group.hooks)
+        .filter((handler) => {
+          if (handler.if === undefined) return true;
+          if (!toolEvents.has(event) || typeof input.tool_name !== "string") return false;
+          return (
+            evaluatePermissionRules({
+              rules: filters.get(handler)!,
+              toolName: input.tool_name,
+              args: input.tool_input,
+              cwd: options.cwd,
+              homeDir: options.homeDir,
+            }) !== undefined
+          );
+        })
         .filter((handler) => {
           const key = handlerKey(handler);
           if (seen.has(key)) return false;
@@ -538,7 +568,11 @@ export function mergeHooks(...layers: (HooksSettings | undefined)[]): HooksSetti
   return merged;
 }
 
-export function validateHooks(settings: HooksSettings | undefined, source: string): void {
+export function validateHooks(
+  settings: HooksSettings | undefined,
+  source: string,
+  onWarning?: (warning: Extract<CustomSessionEvent, { type: "hook_warning" }>) => void,
+): void {
   for (const event of HOOK_EVENTS)
     for (const [index, group] of (settings?.[event] ?? []).entries()) {
       const path = `${source}: /hooks/${event}/${index}`;
@@ -554,7 +588,17 @@ export function validateHooks(settings: HooksSettings | undefined, source: strin
         }
       }
       for (const [handlerIndex, handler] of group.hooks.entries())
-        if (handler.if !== undefined)
-          parsePermissionRules({ deny: [handler.if] }, `${path}/hooks/${handlerIndex}/if`);
+        if (handler.if !== undefined) {
+          const location = `${path}/hooks/${handlerIndex}/if`;
+          parsePermissionRules({ deny: [handler.if] }, location);
+          if (!toolEvents.has(event))
+            onWarning?.({
+              type: "hook_warning",
+              event,
+              hook: handler.type === "command" ? handler.command : handler.type,
+              message: `${location}: if is only supported on tool events; this ${event} hook will never run.`,
+              error: { code: "hook-if-nontool", params: { source: location, event } },
+            });
+        }
     }
 }

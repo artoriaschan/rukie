@@ -26,7 +26,7 @@ async function readJson(path: string): Promise<Record<string, unknown>> {
   return data as Record<string, unknown>;
 }
 
-function validate(path: string, data: Record<string, unknown>): Settings {
+function validate(path: string, data: Record<string, unknown>, warnings: string[]): Settings {
   if (Object.hasOwn(data, "allowTools")) {
     throw createUserVisibleError(
       `${path}: "allowTools" has been removed; migrate to "permissions.allow".`,
@@ -40,7 +40,7 @@ function validate(path: string, data: Record<string, unknown>): Settings {
   if (first) throw new Error(`${path}: ${first.instancePath || "/"} ${first.message}`);
   const settings = data as Settings;
   parsePermissionRules(settings.permissions, path);
-  validateHooks(settings.hooks, path);
+  validateHooks(settings.hooks, path, (warning) => warnings.push(warning.message));
   return settings;
 }
 
@@ -60,9 +60,9 @@ export async function loadSettings(options: { cwd: string; homeDir: string }) {
     readJson(userFile),
     readJson(projectFile),
   ]);
-  const user = validate(userFile, userData);
-  const project = validate(projectFile, projectData);
   const warnings: string[] = [];
+  const user = validate(userFile, userData, warnings);
+  const project = validate(projectFile, projectData, warnings);
   if (providers !== undefined) {
     warnings.push(`${projectFile}: ignoring "providers"; only user settings can define providers.`);
   }

@@ -334,6 +334,7 @@ async function createSessionInternal(
   const hooks = createHooks({
     settings: hookSettings,
     cwd,
+    homeDir: options.homeDir,
     projectDir: cwd,
     onWarning: options.onWarning ?? console.warn,
     onAsyncResult: (result, reason) => {
@@ -342,8 +343,8 @@ async function createSessionInternal(
       scheduleRewake?.();
     },
     onEvent: (event) => {
-      if (event.type === "hook_warning" && event.event === "SessionEnd")
-        return emitSessionEndEvent?.(event);
+      if (event.type === "hook_warning" && event.event === "SessionEnd" && emitSessionEndEvent)
+        return emitSessionEndEvent(event);
       if (emitRunEvent) return emitRunEvent(event);
       if (emitSessionEndEvent) return emitSessionEndEvent(event);
       pendingHookEvents.push(event);

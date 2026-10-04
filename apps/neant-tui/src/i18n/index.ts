@@ -64,6 +64,8 @@ export function formatError(error: unknown, t: ReturnType<typeof createTuiI18n>)
       return t("error.hook-type-unsupported", data.params);
     case "hook-matcher-invalid":
       return t("error.hook-matcher-invalid", data.params);
+    case "hook-if-nontool":
+      return t("error.hook-if-nontool", data.params);
     case "hook-output-ignored":
       return t("error.hook-output-ignored", data.params);
     case "hook-compaction-blocked":
