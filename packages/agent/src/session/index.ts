@@ -118,6 +118,8 @@ export interface Session {
   toolState(name: string): unknown;
   /** Interrupt a child Run; missing and idle children are a no-op. */
   interruptSubagent(id: string): void;
+  /** Ends the Session once, cancelling its Run and releasing external resources. */
+  dispose(reason?: "exit" | "other"): Promise<void>;
   run(
     prompt: string,
     options?: {
@@ -532,6 +534,9 @@ async function createSessionInternal(
   });
   if (internal.control) internal.control.steer = (message) => agent.steer(message);
   let running = false;
+  let runController: AbortController | undefined;
+  let runMcp: ReturnType<typeof createMcpConnections> | undefined;
+  let disposePromise: Promise<void> | undefined;
   let inputTokens: number | undefined;
   let sessionStartControl: CommonHookResult | undefined = await hooks.run(
     "SessionStart",
@@ -563,9 +568,28 @@ async function createSessionInternal(
         ? { active: plan.getActive() }
         : toolState.get(name),
     interruptSubagent: subagents.interrupt,
+    dispose(reason = "exit") {
+      if (!disposePromise) {
+        // Publish the promise before callbacks or hooks can re-enter dispose.
+        disposePromise = Promise.resolve().then(async () => {
+          const mcp = runMcp;
+          hooks.dispose();
+          runController?.abort();
+          try {
+            await hooks.run("SessionEnd", { ...hookInput(), reason }, { matchQuery: reason });
+          } finally {
+            await mcp?.close();
+          }
+        });
+      }
+      return disposePromise;
+    },
     async run(prompt, { signal, onEvent } = {}) {
+      if (disposePromise) throw new Error("Session has been disposed.");
       if (running) throw new Error("Session already has an active Run.");
       running = true;
+      runController = new AbortController();
+      signal = signal ? AbortSignal.any([signal, runController.signal]) : runController.signal;
       planTakenOver = false;
       hookStopped = false;
       hookStopReason = undefined;
@@ -592,6 +616,7 @@ async function createSessionInternal(
         subagents.abort();
       };
       const mcp = createMcpConnections();
+      runMcp = mcp;
       const emitMcpErrors = async () => {
         for (const event of mcp.errors.splice(0)) {
           (options.onWarning ?? console.warn)(`MCP server ${event.server}: ${event.error}`);
@@ -935,6 +960,8 @@ async function createSessionInternal(
           currentResult = undefined;
           emitRunEvent = undefined;
           running = false;
+          runController = undefined;
+          runMcp = undefined;
         }
       }
       return result;

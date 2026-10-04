@@ -7,6 +7,7 @@ import {
   createSession,
   loadSettings,
   parsePermissionRules,
+  type Session,
   type SessionOptions,
 } from "@neant/agent";
 import {
@@ -102,6 +103,7 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
     io.stderr(`${(error as Error).message}\n`);
     return 2;
   }
+  let session: Session | undefined;
   try {
     const cwd = io.session?.cwd ?? process.cwd();
     const homeDir = io.session?.homeDir ?? homedir();
@@ -109,7 +111,7 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
     for (const warning of warnings) io.stderr(`Warning: ${warning}\n`);
     if (values.model) settings.model = values.model;
     if (values.thinking) settings.thinking = values.thinking as ThinkingLevel;
-    const session = await createSession({
+    session = await createSession({
       cwd,
       homeDir,
       settings,
@@ -147,6 +149,8 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
     }
     io.stderr(`${(error as Error).message}\n`);
     return 1;
+  } finally {
+    await session?.dispose();
   }
 }
 

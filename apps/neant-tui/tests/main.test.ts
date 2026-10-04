@@ -10,6 +10,27 @@ import { start } from "./helpers/app";
 
 const assistant = process.platform === "darwin" ? "⏺" : "●";
 
+test("TUI exit disposes an idle Session and runs SessionEnd once", async () => {
+  const app = await start([], {
+    session: {
+      settings: {
+        hooks: {
+          SessionEnd: [{ matcher: "exit", hooks: [{ type: "command", command: "cat >> ended" }] }],
+        },
+      },
+    },
+  });
+  try {
+    await app.waitFor(() => app.stdin.isRaw);
+    app.stdin.write("\x04");
+    expect(await app.exit).toBe(0);
+    expect((await Bun.file(join(app.root, "ended")).json()).reason).toBe("exit");
+    expect(app.stdin.isRaw).toBe(false);
+  } finally {
+    await app.cleanup();
+  }
+});
+
 test("streams verbatim replies and continues two prompts in the same Session", async () => {
   const app = await start();
   try {

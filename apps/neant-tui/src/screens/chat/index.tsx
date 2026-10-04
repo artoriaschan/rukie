@@ -78,8 +78,12 @@ export async function createChat(options: SessionOptions, model: string, locale:
   return {
     submit,
     async stop() {
-      await conversation.stop();
-      await history.flush();
+      try {
+        await session.dispose();
+        await conversation.stop();
+      } finally {
+        await history.flush();
+      }
     },
     Chat({ onExit }: { onExit(): void }) {
       return (

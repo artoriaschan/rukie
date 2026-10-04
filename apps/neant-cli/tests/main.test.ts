@@ -30,6 +30,33 @@ test("-p prints the final assistant text", async () => {
   expect(stdout).toBe('echo: [{"type":"text","text":"hi"}]\n');
 });
 
+test.each([false, true])("CLI disposes its Session after success or failure: %s", async (fail) => {
+  const root = await mkdtemp(join(tmpdir(), "neant-cli-dispose-"));
+  try {
+    const exitCode = await main(fail ? [] : ["-p", "hi"], {
+      readStdin: async () => {
+        throw new Error("stdin failed");
+      },
+      stdout: () => {},
+      stderr: () => {},
+      session: {
+        cwd: root,
+        homeDir: root,
+        ...echoModel(),
+        settings: {
+          hooks: {
+            SessionEnd: [{ matcher: "exit", hooks: [{ type: "command", command: "cat > ended" }] }],
+          },
+        },
+      },
+    });
+    expect(exitCode).toBe(fail ? 1 : 0);
+    expect((await Bun.file(join(root, "ended")).json()).reason).toBe("exit");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test.each(["text", "stream-json"])(
   "%s exposes hook warnings, headless ask denial, and user messages",
   async (format) => {

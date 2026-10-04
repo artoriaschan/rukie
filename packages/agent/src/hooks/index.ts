@@ -73,7 +73,10 @@ export function createHooks(options: {
 }) {
   validateHooks(options.settings, "settings");
   const settings = mergeHooks(options.settings);
+  const lifetime = new AbortController();
   return {
+    /** Cancels Session-owned hook work; SessionEnd has its own shutdown budget. */
+    dispose: () => lifetime.abort(),
     async run<E extends HookEvent>(
       event: E,
       input: HookInput,
@@ -83,6 +86,12 @@ export function createHooks(options: {
         systemMessages: [],
         additionalContext: [],
       };
+      const shutdown = event === "SessionEnd" ? new AbortController() : undefined;
+      const timer = shutdown ? setTimeout(() => shutdown.abort(), 1500) : undefined;
+      const signal = AbortSignal.any([
+        ...(runOptions.signal ? [runOptions.signal] : []),
+        shutdown?.signal ?? lifetime.signal,
+      ]);
       const snapshot = structuredClone({ ...input, hook_event_name: event });
       const seen = new Set<string>();
       const handlers = (settings[event] ?? [])
@@ -104,7 +113,9 @@ export function createHooks(options: {
           const hook = handler.type === "command" ? handler.command : handler.type;
           const warn = async (warning: string, error: UserVisibleErrorData) => {
             options.onWarning(`${event} hook ${hook}: ${warning}`);
-            await options.onEvent({ type: "hook_warning", event, hook, message: warning, error });
+            // Shutdown may be called by an event observer awaiting dispose itself.
+            if (event !== "SessionEnd")
+              await options.onEvent({ type: "hook_warning", event, hook, message: warning, error });
           };
           try {
             if (handler.type !== "command") {
@@ -117,9 +128,11 @@ export function createHooks(options: {
             const output = await executeCommand(handler, snapshot, {
               cwd: options.cwd,
               projectDir: options.projectDir,
-              signal: runOptions.signal,
+              signal,
               timeout: handler.timeout ?? (event === "UserPromptSubmit" ? 30 : 600),
             });
+            // Shutdown hooks are only for side effects: even valid control output is discarded.
+            if (event === "SessionEnd") return;
             let json: Record<string, unknown> = {};
             const stdout = output.stdout.trim();
             const jsonOutput = stdout.startsWith("{") && stdout.endsWith("}");
@@ -252,7 +265,7 @@ export function createHooks(options: {
               }
             }
           } catch (error) {
-            if (!runOptions.signal?.aborted) {
+            if (!signal.aborted) {
               const data =
                 error instanceof Error && "code" in error && "params" in error
                   ? (error as Error & UserVisibleErrorData)
@@ -264,7 +277,7 @@ export function createHooks(options: {
             }
           }
         }),
-      );
+      ).finally(() => clearTimeout(timer));
       return result as EventResult<E>;
     },
   };
