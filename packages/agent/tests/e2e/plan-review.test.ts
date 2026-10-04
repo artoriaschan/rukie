@@ -219,3 +219,88 @@ test.each(["general-purpose", "explore", "custom", "fork"])(
     expect(childTools).not.toContain("exit_plan_mode");
   },
 );
+
+test.each([false, true])(
+  "takeover stops after the complete tool batch with review last=%s",
+  async (reviewLast) => {
+    dirs = await tempDirs();
+    const calls = [
+      fauxToolCall("exit_plan_mode", { plan }),
+      fauxToolCall("todo_write", {
+        todos: [{ content: "Complete this batch", status: "in_progress" }],
+      }),
+    ];
+    const fake = fakeModel([
+      fauxAssistantMessage(reviewLast ? calls.toReversed() : calls, { stopReason: "toolUse" }),
+      fauxAssistantMessage("UNEXPECTED FOLLOWUP"),
+    ]);
+    const session = await createSession({
+      ...dirs,
+      ...fake,
+      onPlanReview: async () => ({ kind: "takeover" }),
+    });
+    await session.setPlanMode(true);
+    await session.run("review plan");
+    expect(session.toolState("todo")).toEqual([
+      { content: "Complete this batch", status: "in_progress" },
+    ]);
+    expect(session.messages.filter((message) => message.role === "toolResult")).toHaveLength(2);
+    expect(session.planMode).toBe(true);
+    expect(fake.contexts).toHaveLength(1);
+  },
+);
+
+test("takeover settles an active child without continuation and the next user Run remains available", async () => {
+  dirs = await tempDirs();
+  const ready = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  let childSignal: AbortSignal | undefined;
+  const fake = fakeModel([
+    fauxAssistantMessage(
+      [
+        fauxToolCall("subagent", {
+          description: "Active inspection",
+          prompt: "child waiting",
+          run_in_background: true,
+        }),
+        fauxToolCall("exit_plan_mode", { plan }),
+      ],
+      { stopReason: "toolUse" },
+    ),
+    async () => {
+      ready.resolve();
+      await release.promise;
+      return fauxAssistantMessage("child settled");
+    },
+    fauxAssistantMessage("next user prompt handled"),
+  ]);
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    streamFn: (model, context, options) => {
+      if (
+        context.messages.some(
+          (message) =>
+            message.role === "user" && JSON.stringify(message.content).includes("child waiting"),
+        )
+      ) {
+        childSignal = options?.signal;
+        childSignal?.addEventListener("abort", () => release.resolve(), { once: true });
+      }
+      return fake.streamFn(model, context, options);
+    },
+    onPlanReview: async () => {
+      await ready.promise;
+      return { kind: "takeover" };
+    },
+  });
+  await session.setPlanMode(true);
+  await session.run("inspect");
+  expect(childSignal?.aborted).toBe(true);
+  expect(fake.contexts).toHaveLength(2);
+  expect(session.toolState("subagents")).toHaveLength(1);
+  expect(session.messages.filter((message) => message.role === "toolResult")).toHaveLength(2);
+  expect(session.planMode).toBe(true);
+  expect((await session.run("next user prompt")).text).toBe("next user prompt handled");
+  expect(fake.contexts).toHaveLength(3);
+});

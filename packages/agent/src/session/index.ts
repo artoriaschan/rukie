@@ -381,10 +381,28 @@ async function createSessionInternal(
     // Seed pi's initial declaration; Run discovery owns diagnostics and later changes.
     subagents.setTypes(discovered.types);
   }
+  let planTakenOver = false;
   const agent = new Agent({
     streamFn: options.streamFn ?? streamFn,
     convertToLlm,
     beforeToolCall: permissions.beforeToolCall,
+    finishTurn({ toolResults }) {
+      // pi 0.99.2 stops on terminate only when every result in the batch opts in.
+      // A takeover ends the Run after all sibling tools have emitted their results.
+      if (
+        toolResults.some(
+          (result) =>
+            result.toolName === "exit_plan_mode" &&
+            typeof result.details === "object" &&
+            result.details !== null &&
+            "kind" in result.details &&
+            result.details.kind === "takeover",
+        )
+      ) {
+        planTakenOver = true;
+        return { action: "end" };
+      }
+    },
     initialState: {
       model,
       messages: restoreContext(entries),
@@ -428,6 +446,7 @@ async function createSessionInternal(
     async run(prompt, { signal, onEvent } = {}) {
       if (running) throw new Error("Session already has an active Run.");
       running = true;
+      planTakenOver = false;
       const started = performance.now();
       const result: RunResult = {
         text: "",
@@ -695,7 +714,7 @@ async function createSessionInternal(
                   },
                 ]),
           ]);
-          while (subagents.count || subagents.hasNotifications) {
+          while (!planTakenOver && (subagents.count || subagents.hasNotifications)) {
             signal?.throwIfAborted();
             if (subagents.hasNotifications) await agent.continue();
             else {
