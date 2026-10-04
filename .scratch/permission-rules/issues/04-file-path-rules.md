@@ -27,3 +27,6 @@
 - P1 修复：Bun 的 realpathSync（含 native）同样会对该路径提前折叠 `..`，因此真实路径改为逐组件 lstat / readlink 展开软链，再处理 `..`；普通存在组件取 realpath，缺失组件保留最近 canonical 前缀并追加。逻辑 resolvedPath 保持原规则语义。超过 40 次软链展开抛 ELOOP；除 ENOENT / ENOTDIR 外的文件系统错误仍直接抛出。此前 readlink 回退实现已被此逐组件实现替代。
 - 新增验证：系统 writeFile 的真实 home 落点证据，存在 / 尚不存在 leaf、多层缺失祖先、相对 / 绝对软链目标、dangling 链、软链循环；实际 write 工具在 ask / full-access 均收到规则 deny，项目外 leaf 未创建。
 - 修复验证：路径 41 pass / 0 fail；权限 focused 129 pass / 0 fail（6 files、401 expect、31.50s）；`rtk proxy bunx tsc -b` exit 0；源码冻结后 `rtk proxy env -u NO_COLOR bun run check` exit 0，860 pass / 0 fail（67 files、5069 expect、112.19s），fmt / lint / typecheck / knip 全通过。修复 checkpoint 后等待父代理复审 delta，状态仍 claimed。
+
+- 2026-10-04：P1 修复 delta 经双轴复审均 0 findings。随后按父代理补充检查，将 walker 的根目录与分隔符改为 node:path 的 parse / sep；初始路径和绝对软链目标均保留各自平台 root（含 drive / UNC），只对一个普通组件使用 join，软链目标中的 `..` 继续由 walker 顺序处理。Windows native 分隔同时接收斜杠与反斜杠；POSIX 保留文件名中的反斜杠。
+- 平台小修验证：macOS 实际含反斜杠文件名的软链目标 probe 通过；路径 41 pass / 0 fail；权限 focused 129 pass / 0 fail（401 expect、6 files、31.30s）；tsc -b exit 0；源码冻结 full check exit 0，860 pass / 0 fail（5069 expect、67 files、108.72s）。未做 Windows 真机验证。此小 delta 仍待父代理复审，状态保持 claimed。

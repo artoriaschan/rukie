@@ -1,5 +1,5 @@
 import { lstatSync, readlinkSync, realpathSync } from "node:fs";
-import { dirname, isAbsolute, resolve } from "node:path";
+import { dirname, isAbsolute, join, parse, resolve, sep } from "node:path";
 
 export interface PermissionPath {
   resolvedPath: string;
@@ -8,6 +8,11 @@ export interface PermissionPath {
 
 function expandHome(path: string, homeDir: string): string {
   return path.startsWith("~/") ? resolve(homeDir, path.slice(2)) : path;
+}
+
+function pathComponents(path: string): string[] {
+  // Windows accepts both separators; on POSIX a backslash is a filename byte.
+  return sep === "\\" ? path.split(/[\\/]/) : path.split(sep);
 }
 
 /** Filesystem boundary: resolve missing leaves through their nearest existing ancestor. */
@@ -31,8 +36,8 @@ export function resolvePermissionPath({
         : undefined;
   if (path === undefined) return undefined;
   const resolvedPath = resolve(cwd, expandHome(path, homeDir));
-  let realPath = "/";
-  const remaining = resolvedPath.split("/");
+  let realPath = parse(resolvedPath).root;
+  const remaining = pathComponents(resolvedPath.slice(realPath.length));
   let links = 0;
   while (remaining.length > 0) {
     const component = remaining.shift()!;
@@ -41,7 +46,7 @@ export function resolvePermissionPath({
       realPath = dirname(realPath);
       continue;
     }
-    const candidate = `${realPath === "/" ? "" : realPath}/${component}`;
+    const candidate = join(realPath, component);
     try {
       if (lstatSync(candidate).isSymbolicLink()) {
         if (++links > 40)
@@ -52,10 +57,13 @@ export function resolvePermissionPath({
             },
           );
         const destination = readlinkSync(candidate);
-        if (isAbsolute(destination)) realPath = "/";
+        const absolute = isAbsolute(destination);
+        if (absolute) realPath = parse(destination).root;
         // Bun realpath also folds ../ before resolving links. Expand each link
         // ourselves so through/../leaf visits through's real destination first.
-        remaining.unshift(...destination.split("/"));
+        remaining.unshift(
+          ...pathComponents(absolute ? destination.slice(realPath.length) : destination),
+        );
       } else {
         realPath = realpathSync(candidate);
       }
