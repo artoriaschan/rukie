@@ -481,3 +481,73 @@ test.each(["prompt", "agent"] as const)(
     await session.dispose();
   },
 );
+
+test.each(["prompt", "agent"] as const)(
+  "%s hook ignores a late stream error after timeout",
+  async (type) => {
+    dirs = await tempDirs();
+    const late = Promise.withResolvers<never>();
+    const fake = fakeModel([fauxAssistantMessage("parent result")]);
+    let calls = 0;
+    const events: SessionEvent[] = [];
+    const session = await createSession({
+      ...dirs,
+      ...fake,
+      streamFn: (model, context, options) => {
+        if (calls++ === 0) return late.promise;
+        return fake.streamFn(model, context, options);
+      },
+      onWarning() {},
+      settings: {
+        hooks: {
+          UserPromptSubmit: [{ hooks: [{ type, prompt: "check", timeout: 0.02 }] }],
+        },
+      },
+    });
+    expect(
+      await session.run("hello", {
+        onEvent: (event) => {
+          events.push(event);
+        },
+      }),
+    ).toMatchObject({ text: "parent result" });
+    late.reject(new Error("late hook stream failure"));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(events.filter((event) => event.type === "hook_warning")).toHaveLength(1);
+    expect(events.filter((event) => event.type === "hook_warning")).toMatchObject([
+      { error: { code: "hook-timeout" } },
+    ]);
+    expect(session.messages.filter((message) => message.role === "assistant")).toMatchObject([
+      { content: [{ text: "parent result" }] },
+    ]);
+    await session.dispose();
+  },
+);
+
+test.each(["prompt", "agent"] as const)(
+  "user cancellation interrupts a pending %s hook",
+  async (type) => {
+    dirs = await tempDirs();
+    const entered = Promise.withResolvers<AbortSignal>();
+    const fake = fakeModel([]);
+    const session = await createSession({
+      ...dirs,
+      ...fake,
+      streamFn: (_model, _context, options) => {
+        entered.resolve(options!.signal!);
+        return new Promise(() => {});
+      },
+      settings: { hooks: { UserPromptSubmit: [{ hooks: [{ type, prompt: "check" }] }] } },
+    });
+    const controller = new AbortController();
+    const running = session.run("hello", { signal: controller.signal }).catch((error) => error);
+    const signal = await entered.promise;
+    controller.abort();
+    expect(await running).toMatchObject({ name: "AbortError" });
+    expect(signal.aborted).toBe(true);
+    expect(
+      session.messages.some((message) => message.role === "user" || message.role === "assistant"),
+    ).toBe(false);
+    await session.dispose();
+  },
+);
