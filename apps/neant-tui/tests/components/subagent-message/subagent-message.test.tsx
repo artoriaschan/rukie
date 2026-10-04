@@ -115,3 +115,52 @@ for (const [status, color, glyph] of [
     }
   });
 }
+
+for (const [previous, active, previousColor, activeColor] of [
+  ["write", "bash", "#E5C07B", "#56B6C2"],
+  ["bash", "write", "#56B6C2", "#E5C07B"],
+] as const) {
+  test(`running Subagent colors previous ${previous} and active ${active} by tool category`, async () => {
+    const terminal = createTerminal(100, 8);
+    const row: SubagentView = {
+      agentId: "child",
+      childSessionId: "child",
+      description: "Investigate",
+      subagentType: "general-purpose",
+      status: "running",
+      model: "faux/faux-1",
+      startedAt: Date.now(),
+      durationMs: 0,
+      tokens: 12,
+      outputLines: [],
+      toolCalls: [
+        { id: "previous", name: previous, argsPreview: "done", status: "completed" },
+        { id: "active", name: active, argsPreview: "current", status: "running" },
+      ],
+    };
+    const app = render(
+      <ThemeProvider>
+        <SubagentMessage subagent={row} columns={100} />
+      </ThemeProvider>,
+      terminal,
+    );
+    try {
+      await terminal.flush();
+      const text = terminal.screen()[1]!;
+      const line = terminal.terminal.buffer.active.getLine(1)!;
+      const previousX = Bun.stringWidth(text.slice(0, text.indexOf(previous)));
+      const activeX = Bun.stringWidth(text.slice(0, text.indexOf(active)));
+      expect(line.getCell(previousX)!.getFgColor()).toBe(
+        Number.parseInt(previousColor.slice(1), 16),
+      );
+      expect(line.getCell(activeX)!.getFgColor()).toBe(Number.parseInt(activeColor.slice(1), 16));
+      expect(line.getCell(previousX - 1)!.getFgColor()).toBe(
+        Number.parseInt(dark.success.slice(1), 16),
+      );
+    } finally {
+      app.unmount();
+      await app.waitUntilExit();
+      terminal.dispose();
+    }
+  });
+}

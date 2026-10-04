@@ -12,7 +12,7 @@
 
 **Blocked by:** 02
 
-**Status:** claimed
+**Status:** resolved
 
 参考：[spec](../spec.md)「TUI」中的「子代理状态」「消息流卡片」「父代理等待」；dsh-TUI `src/components/Chat/SubagentMessage.tsx`。
 
@@ -29,3 +29,7 @@
 - Public TDD: running/completed/failed snapshots, streamed text/thinking, cross-Turn tail output, fixed height and wide/multiline content at 40/80 columns, terminal cell status/tool/hover colors, click callback, zh/en waiting, parent continuation and Esc cascading abort. Targeted validation: **14 tests / 65 assertions** passed; regular `tsc -b` passed.
 - Final validation: `rtk proxy env -u NO_COLOR bun run check` exited **0**, with **1017 tests / 5548 assertions / 75 files** in 113.74s; formatting, lint, `tsc -b`, Knip and hardcoded-Han checks passed. Log: `/tmp/neant-subagent-06-final-check.log`.
 - Status remains `claimed` pending coordinator-owned independent `/code-review` Standards and Spec axes against `f16ea9e2253ae925f8b6ef3abe36f230e50af7cd`. Dashboard/detail/panel navigation remain owned by 08/09; this component exposes the click prop for that wiring. Main integration and worktree removal are coordinator-owned.
+
+- 2026-10-04 review correction: initial independent Standards review found 0 issues; Spec found one P2 parity issue (previous/current tool names were always accent). Added `toolNameMutate=#E5C07B` and `toolNameExec=#56B6C2`, plus a pure layer ② `toolNameColor` public helper with the reference's case-insensitive category mapping. `SubagentMessage` consumes the helper downward through `@neant/tui`; existing ToolCall behavior is unchanged.
+- Public terminal-cell bash/write regression tests failed with the original accent color, then passed with category colors. Independent Spec re-review confirmed the P2 fixed and found 0 new issues; Standards re-review confirmed 0 documented violations / 0 substantiated smells, including the helper's layer ownership and absence of Agent Core dependencies. Both reviewers independently ran **16 tests / 71 assertions / 0 failures**.
+- Post-fix full validation: `rtk proxy env -u NO_COLOR bun run check` exited **0**, with **1019 tests / 5554 assertions / 75 files** in 113.71s; formatting, lint, `tsc -b`, Knip and hardcoded-Han checks passed. Log: `/tmp/neant-subagent-06-color-fix-check.log`. Ticket 06 is resolved; main integration remains coordinator-owned.

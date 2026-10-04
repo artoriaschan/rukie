@@ -23,6 +23,7 @@ export {
   ThemeProvider,
   useTheme,
   figures,
+  toolNameColor,
   rgb,
   hex,
   interpolateColor,

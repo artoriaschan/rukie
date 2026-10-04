@@ -25,7 +25,7 @@ SOFTWARE.
 */
 import { useState } from "react";
 import type { Locale } from "@neant/i18n";
-import { figures, ThemedBox, ThemedText, useAnimationFrame } from "@neant/tui";
+import { figures, ThemedBox, ThemedText, useAnimationFrame, toolNameColor } from "@neant/tui";
 import { createTuiI18n } from "../../i18n";
 
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
@@ -136,13 +136,13 @@ export function SubagentMessage({
             <>
               <ThemedText dimColor>{"  · "}</ThemedText>
               <ThemedText color="success">✓</ThemedText>
-              <ThemedText color="accent">{previous.name}</ThemedText>
+              <ThemedText color={toolNameColor(previous.name)}>{previous.name}</ThemedText>
             </>
           )}
           {active && (
             <>
               {previous && <ThemedText dimColor>{" · "}</ThemedText>}
-              <ThemedText color="accent">{active.name}</ThemedText>
+              <ThemedText color={toolNameColor(active.name)}>{active.name}</ThemedText>
             </>
           )}
           {latestTool?.argsPreview && (
