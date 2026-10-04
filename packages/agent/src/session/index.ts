@@ -28,6 +28,7 @@ import {
   createPermissionGate,
   parsePermissionRules,
   type PermissionAskRequest,
+  type SessionAllowRule,
 } from "../permissions/index.ts";
 import { createBuiltinTools, type QuestionRequest, type QuestionReply } from "../tools/index.ts";
 import { SYSTEM_PROMPT } from "../prompt/index.ts";
@@ -38,7 +39,7 @@ import { compactTurn, estimateContextTokens, restoreContext } from "../compactio
 import { contextUsage } from "../context-usage/index.ts";
 import { createToolState, todoState, type TodoItem } from "../tool-state/index.ts";
 
-export type { PermissionAskRequest } from "../permissions/index.ts";
+export type { PermissionAskRequest, SessionAllowRule } from "../permissions/index.ts";
 
 export interface SessionOptions {
   /** Project directory the session works in. */
@@ -57,10 +58,12 @@ export interface SessionOptions {
   resumeId?: string;
   /** Session allow rules in settings syntax, supplied by --allow-tools. */
   allowRules?: string[];
+  /** Optional shared memory collection; never loaded from or written to Transcript. */
+  sessionAllowRules?: SessionAllowRule[];
   /** Session permission policy; defaults to ask. */
   permissionMode?: PermissionMode;
   /** Decide tool calls requiring permission; defaults to deny. */
-  onPermissionAsk?: (request: PermissionAskRequest) => Promise<"allow" | "deny">;
+  onPermissionAsk?: (request: PermissionAskRequest) => Promise<"allow" | "deny" | "allow-session">;
   /** Ask structured questions; the tool is absent when this callback is omitted. */
   onQuestion?: (request: QuestionRequest) => Promise<QuestionReply>;
   /** Load this project's .mcp.json even when it is not in the user trust list. */
@@ -152,6 +155,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     cwd,
     homeDir: options.homeDir,
     rules,
+    sessionAllowRules: options.sessionAllowRules,
     getMode: () => permissionMode,
     getAgentState: () => agent.state,
     getProjectInstructions: () =>

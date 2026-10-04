@@ -6,6 +6,7 @@ export {
   type Session,
   type SessionOptions,
   type PermissionAskRequest,
+  type SessionAllowRule,
 } from "./session/index.ts";
 export type { RunResult } from "@neant/shared";
 export type { ReminderSource } from "./reminders/index.ts";

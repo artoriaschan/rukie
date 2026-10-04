@@ -14,16 +14,21 @@ import type { Locale } from "@neant/i18n";
 import { createTuiI18n } from "../../i18n";
 
 /** The visible choices also define the keyboard decisions for this request. */
-export function permissionChoices(mode: PermissionMode = "ask", locale: Locale = "zh") {
+export function permissionChoices(
+  mode: PermissionMode = "ask",
+  locale: Locale = "zh",
+  kind: "command" | "directory" | "tool" = "tool",
+) {
   const t = createTuiI18n(locale);
   const allowOnce = { label: t("approval.allow-once"), decision: "allow" } as const;
-  const allowTool = { label: t("approval.allow-tool"), decision: "allow-tool" } as const;
+  const allowSession = { label: t(`approval.allow-${kind}`), decision: "allow-session" } as const;
   const deny = { label: t("approval.deny"), decision: "deny" } as const;
-  return mode === "auto-review" ? [allowOnce, deny] : [allowOnce, allowTool, deny];
+  return mode === "auto-review" ? [allowOnce, deny] : [allowOnce, allowSession, deny];
 }
 
 export function PermissionDialog({
   toolName,
+  sessionAllow,
   args,
   selected,
   maxHeight,
@@ -34,6 +39,7 @@ export function PermissionDialog({
   reason,
 }: {
   toolName: string;
+  sessionAllow: { kind: "command" | "directory" | "tool"; rule: string };
   args: unknown;
   selected: number;
   maxHeight: number;
@@ -45,7 +51,7 @@ export function PermissionDialog({
 }) {
   const { columns } = useTerminalSize();
   const t = createTuiI18n(locale);
-  const choices = permissionChoices(mode, locale);
+  const choices = permissionChoices(mode, locale, sessionAllow.kind);
   const spacious = maxHeight >= choices.length + 6;
   const showQuestion = maxHeight >= choices.length + 4;
   const [detailHeight, setDetailHeight] = useState(1);

@@ -47,9 +47,7 @@ test.each([
       await app.waitFor(() => app.screen().some((line) => line.includes(`1. ${allow}`)));
       expect(app.screen().join("\n")).toContain(`3. ${deny}`);
       expect(app.screen().join("\n")).toContain(
-        mode === "Ask"
-          ? "2. Always allow this tool for this session"
-          : "2. 本 session 内一直允许这个工具",
+        mode === "Ask" ? "2. Allow this command for this session" : "2. 本 session 允许此命令",
       );
     } finally {
       await app.cleanup();

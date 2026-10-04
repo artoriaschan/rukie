@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { PERMISSION_MODES } from "@neant/shared";
+import { realpathSync } from "node:fs";
 import { join } from "node:path";
 import { createSession, type PermissionAskRequest, type SessionEvent } from "../../src/index.ts";
 import { fakeModel as scriptedModel } from "../helpers/fake-model.ts";
@@ -151,6 +152,7 @@ test("frontend can allow a tool call using its id, name, arguments and signal", 
         toolName: "write",
         args,
         mode: "ask",
+        sessionAllow: { kind: "directory", rule: `write(${join(realpathSync(dirs.cwd), "**")})` },
         signal: expect.any(AbortSignal),
       });
       expect(request.signal.aborted).toBe(false);
@@ -223,7 +225,7 @@ test("frontend denial blocks the tool, reports the denial and lets the model con
   expect(await Bun.file(join(dirs.cwd, "denied.txt")).exists()).toBe(false);
 });
 
-test.each(["pending", "allow", "reject"] as const)(
+test.each(["pending", "allow", "allow-session", "reject"] as const)(
   "aborting a Run denies the pending question when the frontend response is %s",
   async (response) => {
     dirs = await tempDirs();
@@ -241,11 +243,11 @@ test.each(["pending", "allow", "reject"] as const)(
       onPermissionAsk(request) {
         asked.resolve(request);
         if (response === "pending") return answer.promise;
-        return new Promise<"allow" | "deny">((resolve, reject) => {
+        return new Promise<"allow" | "deny" | "allow-session">((resolve, reject) => {
           request.signal.addEventListener(
             "abort",
             () => {
-              if (response === "allow") resolve("allow");
+              if (response === "allow" || response === "allow-session") resolve(response);
               else reject(request.signal.reason);
             },
             { once: true },

@@ -9,6 +9,8 @@ import type { CustomSessionEvent, PermissionMode } from "@neant/shared";
 import { evaluatePermissionRules, type PermissionRule } from "./rules.ts";
 export { parsePermissionRules, evaluatePermissionRules } from "./rules.ts";
 export { resolvePermissionPath } from "./path.ts";
+import { sessionAllowRule, type SessionAllow, type SessionAllowRule } from "./session-rules.ts";
+export type { SessionAllowRule } from "./session-rules.ts";
 import { requestInteraction } from "../interaction/index.ts";
 import { reviewPermission, type ReviewResult } from "../review/index.ts";
 
@@ -20,7 +22,8 @@ export interface PermissionAskRequest {
   /** Mode captured when this call entered the permission gate. */
   mode: PermissionMode;
   reason?: string;
-  /** Aborted when the Run is cancelled; frontends can dismiss their pending question. */
+  sessionAllow: SessionAllow;
+  /** Aborted when cancelled or covered by a new session rule; dismiss the pending question. */
   signal: AbortSignal;
 }
 
@@ -50,12 +53,13 @@ interface PermissionGateOptions {
   cwd: string;
   homeDir: string;
   rules: readonly PermissionRule[];
+  sessionAllowRules?: SessionAllowRule[];
   getMode(): PermissionMode;
   getAgentState(): Pick<Agent["state"], "tools" | "messages">;
   getProjectInstructions(): string[];
   getReviewModel(): Model<Api> | (() => Promise<Model<Api>>);
   streamFn: StreamFn;
-  onPermissionAsk?: (request: PermissionAskRequest) => Promise<"allow" | "deny">;
+  onPermissionAsk?: (request: PermissionAskRequest) => Promise<"allow" | "deny" | "allow-session">;
   onEvent(event: CustomSessionEvent): void | Promise<void>;
 }
 
@@ -64,6 +68,8 @@ type PermissionCall = ToolCallContext & { mode: PermissionMode; signal: AbortSig
 
 /** Owns fixed permission stages and review lifetime; Session supplies current context. */
 export function createPermissionGate(options: PermissionGateOptions) {
+  const sessionRules = options.sessionAllowRules ?? [];
+  const pendingAsks = new Set<{ context: PermissionCall; allow(): void }>();
   const reviewBatches = new WeakMap<AssistantMessage, Map<string, Promise<ReviewResult>>>();
   const activeReviews = new Set<Promise<ReviewResult>>();
   const denialReason = ({ mode, toolCall }: PermissionCall) =>
@@ -73,7 +79,7 @@ export function createPermissionGate(options: PermissionGateOptions) {
 
   function evaluateRuleStage(toolName: string, args: unknown): PermissionStageDecision | undefined {
     const match = evaluatePermissionRules({
-      rules: options.rules,
+      rules: [...options.rules, ...sessionRules],
       toolName,
       args,
       cwd: options.cwd,
@@ -168,31 +174,69 @@ export function createPermissionGate(options: PermissionGateOptions) {
     decision: Extract<PermissionStageDecision, { decision: "ask" }>,
   ): Promise<Exclude<PermissionStageDecision, { decision: "ask" }>> {
     const { toolCall, args, mode, signal } = context;
-    const reply = options.onPermissionAsk
-      ? await requestInteraction(
+    const respond = options.onPermissionAsk;
+    if (!respond) {
+      return {
+        decision: "deny",
+        reason:
+          decision.by === "rule"
+            ? `Denied by permission rule: ${decision.rule}`
+            : denialReason(context),
+        by: decision.by ?? "user",
+        ...(decision.rule !== undefined && { rule: decision.rule }),
+      };
+    }
+    const grant = sessionAllowRule(toolCall.name, args, options.cwd, options.homeDir);
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    if (signal.aborted) controller.abort();
+    else signal.addEventListener("abort", abort, { once: true });
+    const covered = Promise.withResolvers<"allow">();
+    const pending = {
+      context,
+      allow() {
+        // Resolve permission before withdrawing the frontend, whose abort reply is deny.
+        covered.resolve("allow");
+        controller.abort();
+      },
+    };
+    pendingAsks.add(pending);
+    let reply: "allow" | "deny" | "allow-session";
+    try {
+      reply = await Promise.race([
+        requestInteraction(
           {
             toolCallId: toolCall.id,
             toolName: toolCall.name,
             args,
             mode,
+            sessionAllow: grant.description,
             ...(decision.reason !== undefined && { reason: decision.reason }),
-            signal,
+            signal: controller.signal,
           },
-          options.onPermissionAsk,
+          respond,
           "deny",
-        )
-      : "deny";
-    return reply === "allow"
+        ),
+        covered.promise,
+      ]);
+      if (signal.aborted) reply = "deny";
+      if (reply === "allow-session") {
+        sessionRules.push(grant.rule);
+        for (const other of pendingAsks) {
+          if (other === pending || other.context.signal.aborted) continue;
+          if (
+            evaluateRuleStage(other.context.toolCall.name, other.context.args)?.decision === "allow"
+          )
+            other.allow();
+        }
+      }
+    } finally {
+      pendingAsks.delete(pending);
+      signal.removeEventListener("abort", abort);
+    }
+    return reply === "allow" || reply === "allow-session"
       ? { decision: "allow" }
-      : {
-          decision: "deny",
-          reason:
-            !options.onPermissionAsk && decision.by === "rule"
-              ? `Denied by permission rule: ${decision.rule}`
-              : denialReason(context),
-          by: options.onPermissionAsk ? "user" : (decision.by ?? "user"),
-          ...(!options.onPermissionAsk && decision.rule !== undefined && { rule: decision.rule }),
-        };
+      : { decision: "deny", reason: denialReason(context), by: "user" };
   }
 
   const beforeToolCall: NonNullable<AgentOptions["beforeToolCall"]> = async (call, signal) => {

@@ -28,7 +28,9 @@ const zh = {
   "permission-mode.full-access.description": "允许所有工具调用，无权限拦截",
   "permission-mode.full-access.compact": "全部允许，无拦截",
   "approval.allow-once": "允许（仅本次）",
-  "approval.allow-tool": "本 session 内一直允许这个工具",
+  "approval.allow-tool": "本 session 允许此工具",
+  "approval.allow-command": "本 session 允许此命令",
+  "approval.allow-directory": "本 session 允许此目录",
   "approval.deny": "拒绝",
   "api-key.environment-default": "该提供方的标准环境变量",
   "error.ripgrep-unavailable":
@@ -56,7 +58,9 @@ const en = {
   "permission-mode.full-access.description": "Allow all tool calls without permission checks",
   "permission-mode.full-access.compact": "Allow all tools; no checks",
   "approval.allow-once": "Allow once",
-  "approval.allow-tool": "Always allow this tool for this session",
+  "approval.allow-tool": "Allow this tool for this session",
+  "approval.allow-command": "Allow this command for this session",
+  "approval.allow-directory": "Allow this directory for this session",
   "approval.deny": "Deny",
   "api-key.environment-default": "the provider's standard environment variable",
   "error.ripgrep-unavailable":

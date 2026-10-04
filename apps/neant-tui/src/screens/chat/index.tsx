@@ -30,7 +30,7 @@ import { createTuiI18n } from "../../i18n";
 import { createInputHistory } from "../../input-history";
 import { createConversation } from "./conversation";
 import { createInteractions } from "./interactions";
-import { permissionChoices } from "../../components/permission-dialog/permission-dialog";
+import { permissionChoices } from "../../components/permission-dialog";
 import { fmtTokens, render as renderActivity } from "./activity/activity";
 
 /** Bind the Session and private stores to one chat screen for its lifetime. */
@@ -436,6 +436,7 @@ function Chat({
                 locale={locale}
                 key={question.request.toolCallId}
                 toolName={question.request.toolName}
+                sessionAllow={question.request.sessionAllow}
                 args={question.request.args}
                 mode={question.request.mode}
                 reason={question.request.reason}

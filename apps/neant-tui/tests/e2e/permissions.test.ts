@@ -144,7 +144,7 @@ test.each(["default", "ask"])(
       const dialog = app.screen().join("\n");
       expect(dialog).toContain('bash {"command":"printf first-permitted"}');
       expect(dialog).toContain("1. 允许（仅本次）");
-      expect(dialog).toContain("2. 本 session 内一直允许这个工具");
+      expect(dialog).toContain("2. 本 session 允许此命令");
       expect(dialog).toContain("3. 拒绝");
       app.stdin.write("1");
       await Bun.sleep(30);
@@ -185,7 +185,7 @@ test.each(["2\r", "\x1b[A\r", "\x1b[B\r", "\x1b"])(
       expect(app.screen().join("\n")).toContain("⏳ 等待审批 · bash");
       expect(app.screen().join("\n")).toContain(reason);
       expect(app.screen().join("\n")).toContain("2. 拒绝");
-      expect(app.screen().join("\n")).not.toContain("一直允许");
+      expect(app.screen().join("\n")).not.toContain("本 session");
       expect(app.screen().join("\n")).not.toContain("3.");
       app.stdin.write("1\r");
       await app.waitFor(() => app.calls.length === 2);
@@ -217,7 +217,7 @@ test.each(["2\r", "\x1b[A\r", "\x1b[B\r", "\x1b"])(
   },
 );
 
-test("auto-review still asks after this tool was always allowed in ask mode", async () => {
+test("auto-review asks for a different command after a session command grant", async () => {
   const app = await start(["allow in ask"]);
   try {
     await app.waitFor(() => app.calls.length === 1);
@@ -335,7 +335,7 @@ test.each(["flag", "settings", "yolo", "readonly"])(
   },
 );
 
-test("always allow remembers only this tool across Runs and leaves settings unchanged", async () => {
+test("session allow remembers only this command across Runs and leaves settings unchanged", async () => {
   let root = "";
   const settings = '{"permissions":{"allow":["read"]}}\n';
   const app = await start(["use bash"], {
@@ -356,11 +356,11 @@ test("always allow remembers only this tool across Runs and leaves settings unch
     await app.waitFor(() => !app.isWorking());
     app.stdin.write("again\r");
     await app.waitFor(() => app.calls.length === 3);
-    app.calls[2]!.tool("bash", { command: "printf still-allowed" });
+    app.calls[2]!.tool("bash", { command: "printf first-allowed" });
     await app.waitFor(() => app.calls.length === 4);
     expect(app.calls[3]!.context.messages.at(-1)).toMatchObject({
       isError: false,
-      content: [{ type: "text", text: "still-allowed" }],
+      content: [{ type: "text", text: "first-allowed" }],
     });
     expect(app.screen().join("\n")).not.toContain("等待审批");
     app.calls[3]!.tool("write", { path: "other.txt", content: "other tool" });
@@ -438,7 +438,7 @@ test("the question stays visible above a multiline draft and restores the draft 
     const dialog = app.screen().join("\n");
     expect(dialog).toContain('bash {"command":"printf visible-request"}');
     expect(dialog).toContain("1. 允许（仅本次）");
-    expect(dialog).toContain("2. 本 session 内一直允许这个工具");
+    expect(dialog).toContain("2. 本 session 允许此命令");
     expect(dialog).toContain("3. 拒绝");
     app.stdin.write("\x03");
     await app.waitFor(() => !app.screen().join("\n").includes("等待审批"));
@@ -455,13 +455,13 @@ test("the question stays visible above a multiline draft and restores the draft 
   }
 });
 
-test("always allow also releases queued calls of the same tool", async () => {
+test("session command grant permits subsequent matching calls", async () => {
   const app = await start(["two bash calls"]);
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.tools([
       { name: "bash", args: { command: "printf first-parallel" } },
-      { name: "bash", args: { command: "printf second-parallel" } },
+      { name: "bash", args: { command: "printf first-parallel" } },
     ]);
     await app.waitFor(() => app.screen().join("\n").includes("等待审批"));
     app.stdin.write("2\r");
@@ -470,7 +470,7 @@ test("always allow also releases queued calls of the same tool", async () => {
       app.calls[1]!.context.messages.filter((message) => message.role === "toolResult"),
     ).toMatchObject([
       { isError: false, content: [{ type: "text", text: "first-parallel" }] },
-      { isError: false, content: [{ type: "text", text: "second-parallel" }] },
+      { isError: false, content: [{ type: "text", text: "first-parallel" }] },
     ]);
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
@@ -480,14 +480,14 @@ test("always allow also releases queued calls of the same tool", async () => {
   }
 });
 
-test("always allow releases matching approvals while another tool keeps waiting", async () => {
+test("session command grant permits matching calls while another tool keeps waiting", async () => {
   const app = await start(["mixed concurrent calls"]);
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.tools([
       { name: "bash", args: { command: "printf first-matching" } },
       { name: "write", args: { path: "must-wait.txt", content: "requires a decision" } },
-      { name: "bash", args: { command: "printf second-matching" } },
+      { name: "bash", args: { command: "printf first-matching" } },
     ]);
     await app.waitFor(() => app.screen().some((line) => line.trim() === "printf first-matching"));
     app.stdin.write("2\r");
@@ -500,7 +500,7 @@ test("always allow releases matching approvals while another tool keeps waiting"
     ).toMatchObject([
       { toolName: "bash", isError: false, content: [{ type: "text", text: "first-matching" }] },
       { toolName: "write", isError: true },
-      { toolName: "bash", isError: false, content: [{ type: "text", text: "second-matching" }] },
+      { toolName: "bash", isError: false, content: [{ type: "text", text: "first-matching" }] },
     ]);
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());

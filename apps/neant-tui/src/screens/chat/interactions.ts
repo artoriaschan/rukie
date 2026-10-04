@@ -33,13 +33,12 @@ type PendingInteraction =
   | {
       kind: "permission";
       interaction: PermissionInteraction;
-      finish(decision: "allow" | "deny"): void;
+      finish(decision: "allow" | "deny" | "allow-session"): void;
     }
   | { kind: "question"; interaction: QuestionInteraction; finish(reply: QuestionReply): void };
 
 /** Keep the Interaction FIFO outside React so each key sees the latest request. */
 export function createInteractions() {
-  const allowed = new Set<string>();
   const pending: PendingInteraction[] = [];
   const listeners = new Set<() => void>();
   let clipboardBusy: symbol | undefined;
@@ -94,11 +93,9 @@ export function createInteractions() {
         listeners.delete(listener);
       };
     },
-    askPermission(request: PermissionAskRequest): Promise<"allow" | "deny"> {
+    askPermission(request: PermissionAskRequest): Promise<"allow" | "deny" | "allow-session"> {
       if (request.signal.aborted) return Promise.resolve("deny");
-      if (request.mode !== "auto-review" && allowed.has(request.toolName))
-        return Promise.resolve("allow");
-      return enqueue<"allow" | "deny">(request.signal, "deny", (finish) => ({
+      return enqueue<"allow" | "deny" | "allow-session">(request.signal, "deny", (finish) => ({
         kind: "permission",
         interaction: { kind: "permission", request, selected: 0 },
         finish,
@@ -387,18 +384,7 @@ export function createInteractions() {
       if (item?.kind !== "permission") return;
       const { request, selected } = item.interaction;
       const decision = permissionChoices(request.mode)[selected]!.decision;
-      if (decision === "allow-tool" && !request.signal.aborted) {
-        allowed.add(request.toolName);
-        // pi can ask for several tool calls concurrently, including the same tool.
-        for (const queued of pending.filter(
-          (queued) =>
-            queued.kind === "permission" &&
-            queued.interaction.request.mode !== "auto-review" &&
-            queued.interaction.request.toolName === request.toolName,
-        )) {
-          if (queued.kind === "permission") queued.finish("allow");
-        }
-      } else item.finish(decision === "allow" ? "allow" : "deny");
+      item.finish(decision);
     },
     denyPermission() {
       const item = pending[0];

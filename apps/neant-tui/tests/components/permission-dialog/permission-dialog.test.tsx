@@ -12,6 +12,7 @@ test("permission panel groups a tool heading, command and question above its foc
     <Box flexDirection="column">
       <PermissionDialog
         toolName="bash"
+        sessionAllow={{ kind: "command", rule: "bash(printf hello)" }}
         args={{ command: "printf hello" }}
         selected={1}
         maxHeight={12}
@@ -34,7 +35,7 @@ test("permission panel groups a tool heading, command and question above its foc
     expect(lines.join("\n")).not.toContain('"command"');
     expect(lines).toContain("  要允许这次操作吗？");
     expect(lines).toContain("    1. 允许（仅本次）");
-    const selected = lines.indexOf("  ❯ 2. 本 session 内一直允许这个工具");
+    const selected = lines.indexOf("  ❯ 2. 本 session 允许此命令");
     expect(selected).toBeGreaterThan(lines.indexOf("  要允许这次操作吗？"));
     expect(lines[lines.indexOf("    1. 允许（仅本次）") - 1]).toBe("");
     expect(lines).toContain("    3. 拒绝");
@@ -79,6 +80,7 @@ test.each(["ask", "auto-review"] as const)(
       return (
         <PermissionDialog
           toolName="bash"
+          sessionAllow={{ kind: "command", rule: "bash(printf hello)" }}
           args={{ command: "printf hello" }}
           mode={mode}
           selected={selected}
@@ -126,6 +128,7 @@ test("review reasons wrap and scroll with details while the two decisions stay p
   const app = render(
     <PermissionDialog
       toolName="bash"
+      sessionAllow={{ kind: "command", rule: "bash(printf hello)" }}
       args={{ command: "deploy --target production", timeout: 30 }}
       reason={reason}
       mode="auto-review"
@@ -144,7 +147,7 @@ test("review reasons wrap and scroll with details while the two decisions stay p
     expect(screen()).toContain("需要确认部署目标");
     expect(screen()).toContain("要允许这次操作吗？");
     expect(screen()).toContain("❯ 2. 拒绝");
-    expect(screen()).not.toContain("一直允许");
+    expect(screen()).not.toContain("本 session");
     expect(screen()).not.toContain("reason-tail");
     expect(screen()).toContain("↑↓选择 Enter确认 Esc拒绝 Tab详情");
     details.current!.scrollToBottom();
@@ -158,3 +161,60 @@ test("review reasons wrap and scroll with details while the two decisions stay p
     terminal.dispose();
   }
 });
+
+test.each([
+  ["command", "zh", "本 session 允许此命令"],
+  ["directory", "zh", "本 session 允许此目录"],
+  ["tool", "zh", "本 session 允许此工具"],
+  ["command", "en", "Allow this command for this session"],
+  ["directory", "en", "Allow this directory for this session"],
+  ["tool", "en", "Allow this tool for this session"],
+] as const)("session %s label in %s", async (kind, locale, label) => {
+  const terminal = createTerminal(80, 13);
+  const app = render(
+    <PermissionDialog
+      toolName="example"
+      args={{}}
+      sessionAllow={{ kind, rule: "example" }}
+      locale={locale}
+      selected={1}
+      maxHeight={12}
+    />,
+    terminal,
+  );
+  try {
+    await terminal.flush();
+    expect(terminal.screen().join("\n")).toContain(label);
+  } finally {
+    app.unmount();
+    await app.waitUntilExit();
+    terminal.dispose();
+  }
+});
+
+test.each(["command", "directory", "tool"] as const)(
+  "auto-review hides the %s session choice",
+  async (kind) => {
+    const terminal = createTerminal(80, 13);
+    const app = render(
+      <PermissionDialog
+        toolName="tool"
+        args={{}}
+        sessionAllow={{ kind, rule: "tool" }}
+        mode="auto-review"
+        selected={1}
+        maxHeight={12}
+      />,
+      terminal,
+    );
+    try {
+      await terminal.flush();
+      expect(terminal.screen().join("\n")).not.toContain("本 session");
+      expect(terminal.screen().join("\n")).toContain("2. 拒绝");
+    } finally {
+      app.unmount();
+      await app.waitUntilExit();
+      terminal.dispose();
+    }
+  },
+);

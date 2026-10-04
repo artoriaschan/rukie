@@ -81,14 +81,14 @@ test.each(["\x1b", "\x03"])(
   },
 );
 
-test("questions and permission approvals share one FIFO; always allow skips only approvals", async () => {
+test("questions and permission approvals share one FIFO; session grants skip matching commands", async () => {
   const app = await start(["mixed calls"]);
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.tools([
       { name: "bash", args: { command: "printf first-approval" } },
       { name: "ask_user_question", args: { questions: [question] } },
-      { name: "bash", args: { command: "printf matching-approval" } },
+      { name: "bash", args: { command: "printf first-approval" } },
       { name: "write", args: { path: "last-approval.txt", content: "test" } },
     ]);
     await app.waitFor(() => app.screen().some((line) => line.trim() === "printf first-approval"));

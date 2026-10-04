@@ -1,3 +1,4 @@
+import { sep } from "node:path";
 import { createUserVisibleError } from "@neant/shared";
 import { analyzeBashCommand, matchesBashPattern } from "./bash.ts";
 import { matchesPermissionPath, resolvePermissionPath } from "./path.ts";
@@ -6,7 +7,9 @@ export type PermissionRule = {
   decision: "allow" | "ask" | "deny";
   raw: string;
 } & (
-  | { kind: "tool"; pattern: string }
+  | { kind: "tool"; pattern: string; exact?: true }
+  | { kind: "bash-exact"; tool: "bash"; command: string }
+  | { kind: "directory"; tool: "read" | "edit" | "write" | "glob" | "grep"; directory: string }
   | { kind: "bash"; tool: "bash"; pattern: string }
   | { kind: "path"; tool: "read" | "edit" | "write" | "glob" | "grep"; pattern: string }
 );
@@ -73,7 +76,9 @@ export function evaluatePermissionRules({
   cwd: string;
   homeDir: string;
 }): { decision: "allow" | "ask" | "deny"; rule: string } | undefined {
-  const target = rules.some((rule) => rule.kind === "path" && rule.tool === toolName)
+  const target = rules.some(
+    (rule) => (rule.kind === "path" || rule.kind === "directory") && rule.tool === toolName,
+  )
     ? resolvePermissionPath({ toolName, args, cwd, homeDir })
     : undefined;
   const bash =
@@ -86,14 +91,26 @@ export function evaluatePermissionRules({
       : undefined;
   const matchesRule = (rule: PermissionRule, command?: string): boolean =>
     rule.kind === "tool"
-      ? new Bun.Glob(rule.pattern).match(toolName)
+      ? rule.exact
+        ? rule.pattern === toolName
+        : new Bun.Glob(rule.pattern).match(toolName)
       : rule.kind === "bash" && command !== undefined
         ? matchesBashPattern(rule.pattern, command)
-        : rule.kind === "path" && rule.tool === toolName && target !== undefined
-          ? matchesPermissionPath(rule.pattern, rule.decision, target, cwd, homeDir)
-          : false;
+        : rule.kind === "directory" && rule.tool === toolName && target !== undefined
+          ? target.realPath === rule.directory ||
+            target.realPath.startsWith(
+              rule.directory.endsWith(sep) ? rule.directory : `${rule.directory}${sep}`,
+            )
+          : rule.kind === "path" && rule.tool === toolName && target !== undefined
+            ? matchesPermissionPath(rule.pattern, rule.decision, target, cwd, homeDir)
+            : false;
   for (const decision of ["deny", "ask", "allow"] as const) {
     if (decision === "allow" && bash) {
+      const exact = rules.find(
+        (rule) =>
+          rule.decision === "allow" && rule.kind === "bash-exact" && rule.command === bash.text,
+      );
+      if (exact) return { decision, rule: exact.raw };
       if (!bash.allowMatching) return undefined;
       let matched: PermissionRule | undefined;
       for (const segment of bash.segments) {

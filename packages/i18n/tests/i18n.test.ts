@@ -65,13 +65,13 @@ void translationTypes;
 
 test("common permission concepts have translations in both supported locales", () => {
   const labels = {
-    zh: ["询问", "自动评审", "完全访问", "允许（仅本次）", "本 session 内一直允许这个工具", "拒绝"],
+    zh: ["询问", "自动评审", "完全访问", "允许（仅本次）", "本 session 允许此工具", "拒绝"],
     en: [
       "Ask",
       "Auto review",
       "Full access",
       "Allow once",
-      "Always allow this tool for this session",
+      "Allow this tool for this session",
       "Deny",
     ],
   } satisfies Record<Locale, string[]>;
