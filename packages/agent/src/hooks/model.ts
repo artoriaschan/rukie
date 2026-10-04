@@ -44,7 +44,7 @@ export async function executeModelHook(
   try {
     signal.throwIfAborted();
     const model = await Promise.race([options.model.getModel(handler.model), interrupted.promise]);
-    const text = handler.prompt.replaceAll("$ARGUMENTS", JSON.stringify(input));
+    const text = handler.prompt.replaceAll("$ARGUMENTS", () => JSON.stringify(input));
     const run = async () => {
       if (handler.type === "prompt") {
         return (

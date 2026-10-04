@@ -409,3 +409,75 @@ test.each(["prompt", "agent"] as const)(
     await session.dispose();
   },
 );
+
+test.each(["prompt", "agent"] as const)(
+  "%s $ARGUMENTS substitution preserves literal replacement tokens",
+  async (type) => {
+    dirs = await tempDirs();
+    const prompt = "literal $& $' $` $$ test";
+    const fake = fakeModel([
+      async (context) => {
+        const user = context.messages.find((message) => message.role === "user");
+        if (
+          user?.role !== "user" ||
+          typeof user.content === "string" ||
+          user.content[0]?.type !== "text"
+        )
+          throw new Error("Expected review prompt");
+        const input = JSON.parse(user.content[0].text.slice("check ".length));
+        expect(input.prompt).toBe(prompt);
+        return fauxAssistantMessage('{"ok":true}');
+      },
+      fauxAssistantMessage("parent done"),
+    ]);
+    const warnings: string[] = [];
+    const session = await createSession({
+      ...dirs,
+      ...fake,
+      onWarning: (warning) => {
+        warnings.push(warning);
+      },
+      settings: {
+        hooks: {
+          UserPromptSubmit: [{ hooks: [{ type, prompt: "check $ARGUMENTS" }] }],
+        },
+      },
+    });
+    expect(await session.run(prompt)).toMatchObject({ text: "parent done" });
+    expect(warnings).toHaveLength(0);
+    await session.dispose();
+  },
+);
+
+test.each(["prompt", "agent"] as const)(
+  "%s PostToolUse rejection preserves the successful result and adds feedback",
+  async (type) => {
+    dirs = await tempDirs();
+    const fake = fakeModel([
+      fauxAssistantMessage(fauxToolCall("bash", { command: "printf original" }), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage('{"ok":false,"reason":"verify output"}'),
+      fauxAssistantMessage("parent done"),
+    ]);
+    const session = await createSession({
+      ...dirs,
+      ...fake,
+      permissionMode: "full-access",
+      settings: {
+        hooks: {
+          PostToolUse: [{ hooks: [{ type, prompt: "Review $ARGUMENTS" }] }],
+        },
+      },
+    });
+    expect(await session.run("do it")).toMatchObject({ text: "parent done" });
+    const toolResult = fake.contexts
+      .at(-1)
+      ?.messages.find((message) => message.role === "toolResult");
+    expect(toolResult).toMatchObject({ isError: false });
+    expect(JSON.stringify(toolResult)).toContain("original");
+    expect(JSON.stringify(toolResult)).toContain("verify output");
+    expect(JSON.stringify(toolResult)).toContain("<system-reminder>");
+    await session.dispose();
+  },
+);
