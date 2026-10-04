@@ -94,6 +94,8 @@ export interface Session {
   readonly messages: readonly AgentMessage[];
   /** Current Tool State snapshot; undefined before the first write. */
   toolState(name: string): unknown;
+  /** Interrupt a child Run; missing and idle children are a no-op. */
+  interruptSubagent(id: string): void;
   run(
     prompt: string,
     options?: {
@@ -341,6 +343,7 @@ async function createSessionInternal(
       return agent.state.messages;
     },
     toolState: toolState.get,
+    interruptSubagent: subagents.interrupt,
     async run(prompt, { signal, onEvent } = {}) {
       if (running) throw new Error("Session already has an active Run.");
       running = true;

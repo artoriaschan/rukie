@@ -15,9 +15,9 @@ export interface ScrollHandle {
 }
 
 /** Viewport state shared by a ScrollBox and the layout pass. */
-export function createScrollState(initialFollow = true) {
+export function createScrollState(initialFollow = true, initialTop = 0) {
   let snapshot: ScrollSnapshot = {
-    top: 0,
+    top: Math.max(0, initialTop),
     total: 0,
     height: 0,
     x: 0,

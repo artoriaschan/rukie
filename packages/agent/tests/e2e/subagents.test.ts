@@ -466,3 +466,45 @@ test.each([
     expect(events.some((event) => event.type === "subagent_event")).toBe(false);
   },
 );
+
+test("interruptSubagent aborts only the selected child and delivers an aborted notification while the parent continues", async () => {
+  dirs = await tempDirs();
+  const started = Promise.withResolvers<void>();
+  const waiting = Promise.withResolvers<void>();
+  let childId = "";
+  const reply: Parameters<typeof fakeModel>[0][number] = async (context, options) => {
+    if (JSON.stringify(context.messages.at(-1)).includes("child-prompt")) {
+      started.resolve();
+      await new Promise<void>((resolve) =>
+        options!.signal!.addEventListener("abort", () => resolve(), { once: true }),
+      );
+      return fauxAssistantMessage("", { stopReason: "aborted" });
+    }
+    if (context.messages.at(-1)?.role === "user") {
+      expect(JSON.stringify(context.messages.at(-1))).toContain("(Interruptible) aborted.");
+      return fauxAssistantMessage("parent continues");
+    }
+    return fauxAssistantMessage("parent waiting");
+  };
+  const fake = fakeModel([
+    fauxAssistantMessage(
+      fauxToolCall("subagent", { description: "Interruptible", prompt: "child-prompt" }),
+      { stopReason: "toolUse" },
+    ),
+    reply,
+    reply,
+    reply,
+  ]);
+  const session = await createSession({ ...dirs, ...fake });
+  session.interruptSubagent("missing");
+  const run = session.run("delegate", {
+    onEvent(event) {
+      if (event.type === "subagent_event") childId = event.agentId;
+      if (event.type === "subagents_waiting") waiting.resolve();
+    },
+  });
+  await Promise.all([started.promise, waiting.promise]);
+  session.interruptSubagent(childId);
+  expect((await run).text).toBe("parent continues");
+  session.interruptSubagent(childId);
+});

@@ -317,6 +317,9 @@ export function createSubagents(options: SubagentOptions) {
     wait() {
       return changed.promise;
     },
+    interrupt(id: string) {
+      for (const entry of running.values()) if (entry.agentId === id) entry.controller.abort();
+    },
     abort() {
       aborted = true;
       notifications.clear();

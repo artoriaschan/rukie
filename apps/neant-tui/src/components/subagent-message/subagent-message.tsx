@@ -66,6 +66,10 @@ export interface SubagentView {
     name: string;
     argsPreview: string;
     status: "running" | "completed" | "failed";
+    startedAt?: number;
+    durationMs?: number;
+    resultPreview?: string;
+    error?: string;
   }[];
   outputLines: readonly string[];
   error?: string;
