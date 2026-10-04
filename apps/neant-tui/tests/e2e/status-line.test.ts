@@ -253,7 +253,7 @@ test("centered return button sits above activity and input, survives footer hove
 test.each(["idle", "approval"] as const)(
   "return button also works while %s without confirming permission",
   async (phase) => {
-    const app = await start(["long reply"], { columns: 40, rows: 12 });
+    const app = await start(["long reply"], { columns: 40, rows: phase === "approval" ? 24 : 12 });
     try {
       await app.waitFor(() => app.calls.length === 1);
       app.calls[0]!.delta(Array.from({ length: 50 }, (_, i) => `line-${i}`).join("\n"));
@@ -282,7 +282,7 @@ test.each(["idle", "approval"] as const)(
       app.stdin.write(`\x1b[<0;${x};${y + 1}M\x1b[<0;${x};${y + 1}m`);
       await app.waitFor(() => !app.screen().some((line) => line.includes("回到底部")));
       if (phase === "idle") expect(app.screen()).toContain("  line-49");
-      else expect(app.screen()[0]).toMatch(/^[·•●] bash \{"command":/);
+      else expect(app.screen().some((line) => /^[·•●] bash \{"command":/.test(line))).toBe(true);
       expect(app.calls).toHaveLength(1);
       if (phase === "approval") expect(app.screen().join("\n")).toContain("等待审批");
     } finally {

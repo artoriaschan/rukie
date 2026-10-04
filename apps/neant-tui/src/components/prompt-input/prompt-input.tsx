@@ -31,6 +31,7 @@ export function PromptInput({
         </Box>
         <Box flexGrow={1}>
           <ThemedTextInput
+            isActive={!readOnly}
             readOnly={readOnly}
             value={value}
             onChange={onChange}

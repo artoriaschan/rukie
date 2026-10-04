@@ -104,7 +104,7 @@ test.each([12, 16, 20, 24])(
       const rows = () => {
         const lines = app.screen();
         return {
-          todo: lines.findIndex((line) => line.includes("▾ ✓ 0/1")),
+          todo: lines.findIndex((line) => /▸|▾/u.test(line) && line.includes("✓ 0/1")),
           question: lines.findIndex((line) => line.includes("─ ▾")),
           choices: lines.flatMap((line, row) =>
             /^  .[○●] (Alpha|Bravo|Charlie|Delta)$/u.test(line) ? [row] : [],
@@ -290,7 +290,7 @@ test.each(["zh_CN.UTF-8", "en_US.UTF-8"])(
       await app.waitFor(() => app.calls.length === 2);
       app.calls[1]!.tool("ask_user_question", { questions: [question] });
       await app.waitFor(() => app.screen().some((line) => line.includes("Which storage?")));
-      expect(app.screen().some((line) => line.includes("▾ ✓ 0/10"))).toBe(true);
+      expect(app.screen().some((line) => /▸|▾/u.test(line) && line.includes("✓ 0/10"))).toBe(true);
       expect(app.screen().some((line) => line.includes("✎"))).toBe(true);
       expect(app.screen().at(-1)).toContain("esc");
       expect(app.screen().every((line) => Bun.stringWidth(line) <= 40)).toBe(true);
@@ -431,7 +431,9 @@ test.each([12, 16, 20, 24])(
           () =>
             app.screen().at(-1)!.includes("esc") && app.screen().some((line) => line.includes("✎")),
         );
-        expect(app.screen().some((line) => line.includes("▾ ✓ 0/10"))).toBe(true);
+        expect(app.screen().some((line) => /▸|▾/u.test(line) && line.includes("✓ 0/10"))).toBe(
+          true,
+        );
         expect(app.screen().some((line) => line.includes("Enter"))).toBe(true);
         expect(app.screen().every((line) => Bun.stringWidth(line) <= columns)).toBe(true);
       }

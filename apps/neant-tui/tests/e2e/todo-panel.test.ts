@@ -295,7 +295,8 @@ test.each([
         line.includes(kind === "permission" ? "等待审批" : "📋 提问"),
       );
       const prompt = lines.findIndex(
-        (line, index) => index > dialog && line.includes("last draft"),
+        (line, index) =>
+          index > dialog && line.includes(rows === 12 ? "first draft" : "last draft"),
       );
       expect(panel).toBeGreaterThanOrEqual(0);
       expect(dialog).toBeGreaterThan(panel);

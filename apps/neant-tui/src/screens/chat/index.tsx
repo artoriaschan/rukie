@@ -13,6 +13,7 @@ import {
   type ScrollSnapshot,
 } from "@neant/tui";
 import {
+  allocatePanelHeights,
   AssistantMessage,
   ActivityLine,
   GoalTodoPanel,
@@ -31,7 +32,6 @@ import { createInputHistory } from "../../input-history";
 import { createConversation } from "./conversation";
 import { createInteractions } from "./interactions";
 import { permissionChoices } from "../../components/permission-dialog";
-import { allocatePanelHeights } from "../../components/panel-layout";
 import { fmtTokens, render as renderActivity } from "./activity/activity";
 
 /** Bind the Session and private stores to one chat screen for its lifetime. */
