@@ -551,6 +551,15 @@ async function createSessionInternal(
     { matchQuery: options.resumeId ? "resume" : (internal.sessionSource ?? "startup") },
   );
   const pendingSessionContexts = [...sessionStartControl.additionalContext];
+  let userMessageSequence = 0;
+  let sessionContextUserSequence = 0;
+  const consumeSessionContext = () =>
+    pendingSessionContexts.splice(0).map((content) => ({
+      role: "system-reminder" as const,
+      source: "session-start-hook",
+      content,
+      timestamp: Date.now(),
+    }));
   return {
     id: stored.metadata.id,
     get permissionMode() {
@@ -759,6 +768,25 @@ async function createSessionInternal(
             ...toolState.reminderSources,
           ];
           agent.prepareRequest = async ({ context: requestContext }, turnSignal) => {
+            let contextChanged = false;
+            // A compact hook may wait across tool turns. Consume its context only
+            // once pi has emitted the next user, including Stop feedback or child notices.
+            if (pendingSessionContexts.length && userMessageSequence > sessionContextUserSequence) {
+              const reminders = consumeSessionContext();
+              for (const reminder of reminders) {
+                await branch.appendMessage(reminder, context);
+                transcriptMessages.push(reminder);
+                await emit({
+                  type: "reminder_injected",
+                  source: reminder.source,
+                  content: reminder.content,
+                });
+              }
+              const messages = [...requestContext.messages, ...reminders];
+              agent.state.messages = messages;
+              requestContext = { ...requestContext, messages };
+              contextChanged = true;
+            }
             const compacted = await compactTurn({
               messages: requestContext.messages,
               entries: () => branch.findEntries({ order: "oldestFirst" }, context),
@@ -797,7 +825,7 @@ async function createSessionInternal(
                 [planReminder],
                 (options.now ?? (() => new Date()))(),
               );
-              if (!changed.length) return;
+              if (!changed.length) return contextChanged ? { context: requestContext } : undefined;
               for (const reminder of changed) {
                 await branch.appendMessage(reminder, context);
                 transcriptMessages.push(reminder);
@@ -874,6 +902,7 @@ async function createSessionInternal(
             );
             applyHookControl(compactStart);
             pendingSessionContexts.push(...compactStart.additionalContext);
+            sessionContextUserSequence = userMessageSequence;
             turnSignal?.throwIfAborted();
             stopPreparedRequest();
             await emitContextUsage();
@@ -901,6 +930,7 @@ async function createSessionInternal(
             if (event.type === "turn_end")
               completedMessages = structuredClone(agent.state.messages);
             if (event.type === "message_end") {
+              if (event.message.role === "user") userMessageSequence++;
               subagents.delivered(event.message);
               await branch.appendMessage(event.message, context);
               transcriptMessages.push(event.message);
@@ -951,12 +981,7 @@ async function createSessionInternal(
           await agent.prompt([
             ...reminders,
             { role: "user", content: [{ type: "text", text: prompt }], timestamp: Date.now() },
-            ...pendingSessionContexts.splice(0).map((content) => ({
-              role: "system-reminder" as const,
-              source: "session-start-hook",
-              content,
-              timestamp: Date.now(),
-            })),
+            ...consumeSessionContext(),
             ...promptContexts.map((content) => ({
               role: "system-reminder" as const,
               source: "user-prompt-hook",

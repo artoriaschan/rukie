@@ -183,13 +183,15 @@ export function createHooks(options: {
                 code: "hook-output-ignored",
                 params: { field },
               });
+            const supportsBlockingDecision =
+              event === "UserPromptSubmit" || event === "Stop" || event === "PreCompact";
             const commonFields: Record<string, string> = {
               continue: "boolean",
               stopReason: "string",
               systemMessage: "string",
               suppressOutput: "boolean",
               reason: "string",
-              ...((event === "UserPromptSubmit" || event === "Stop" || event === "PreCompact") && {
+              ...(supportsBlockingDecision && {
                 decision: "string",
               }),
             };
@@ -248,7 +250,7 @@ export function createHooks(options: {
               if (output.exitCode === 0 && stdout && !jsonOutput)
                 result.additionalContext.push(truncate(stdout));
             }
-            if (event === "UserPromptSubmit" || event === "Stop" || event === "PreCompact") {
+            if (supportsBlockingDecision) {
               if (json.decision !== undefined && json.decision !== "block")
                 await ignored("decision");
               if (output.exitCode === 2 || json.decision === "block") {

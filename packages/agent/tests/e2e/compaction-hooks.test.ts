@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { join } from "node:path";
 import { createSession, type SessionEvent } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
@@ -207,6 +207,19 @@ test.each(["PreCompact", "PostCompact", "SessionStart"] as const)(
           (message.stopReason === "error" || message.stopReason === "aborted"),
       ),
     ).toHaveLength(0);
+    const input = await Bun.file(join(dirs.cwd, "halt.json")).json();
+    const transcript = await Bun.file(input.transcript_path).text();
+    expect(transcript).not.toContain("Hook request stopped:");
+    expect(transcript).not.toContain('"errorMessage"');
+    expect(
+      events
+        .flatMap((event) => (event.type === "agent_end" ? event.messages : []))
+        .filter(
+          (message) =>
+            message.role === "assistant" &&
+            (message.stopReason === "error" || message.stopReason === "aborted"),
+        ),
+    ).toHaveLength(0);
     expect((await session.run("next prompt")).text).toBe("next answer");
   },
 );
@@ -248,7 +261,7 @@ test.each([
   expect(events.filter((event) => event.type === "compaction_end")).toHaveLength(1);
 });
 
-test("an oversized pending request without history to compress does not trigger PreCompact", async () => {
+test("an oversized pending request without earlier Transcript messages to compact does not trigger PreCompact", async () => {
   dirs = await tempDirs();
   const fake = fakeModel([
     fauxAssistantMessage("old work ".repeat(2500)),
@@ -278,4 +291,110 @@ test("an oversized pending request without history to compress does not trigger 
   const before = await Bun.file(join(dirs.cwd, "inputs.jsonl")).text();
   expect((await session.run("pending ".repeat(2500))).text).toBe("answered");
   expect(await Bun.file(join(dirs.cwd, "inputs.jsonl")).text()).toBe(before);
+});
+
+test("compact SessionStart context attaches to the next Stop feedback user in the same Run", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([
+    fauxAssistantMessage("old work ".repeat(2500)),
+    fauxAssistantMessage("Saved summary."),
+    fauxAssistantMessage("conclusion"),
+    fauxAssistantMessage("verified"),
+  ]);
+  fake.model.contextWindow = 4000;
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    settings: {
+      hooks: {
+        SessionStart: [
+          {
+            matcher: "compact",
+            hooks: [{ type: "command", command: "touch compacted; echo critical-project-state" }],
+          },
+        ],
+        Stop: [
+          {
+            hooks: [
+              {
+                type: "command",
+                command: `if [ -f compacted ] && [ ! -f checked ]; then touch checked; echo '{"decision":"block","reason":"verify feedback"}'; fi`,
+              },
+            ],
+          },
+        ],
+      },
+    },
+  });
+  await session.run("first");
+  expect((await session.run("second")).text).toBe("verified");
+  expect(JSON.stringify(fake.contexts[2])).not.toContain("critical-project-state");
+  expect(fake.contexts[3]!.messages.slice(-2)).toMatchObject([
+    { role: "user", source: "stop_hook", content: [{ text: "verify feedback" }] },
+    {
+      role: "user",
+      content: [{ text: "<system-reminder>\ncritical-project-state\n</system-reminder>" }],
+    },
+  ]);
+  const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
+  expect(resumed.messages).toEqual(session.messages);
+});
+
+test("compact SessionStart context attaches to the next child notification user in the same Run", async () => {
+  dirs = await tempDirs();
+  const childRelease = Promise.withResolvers<void>();
+  const parentWaiting = Promise.withResolvers<void>();
+  const reply: Parameters<typeof fakeModel>[0][number] = async (context) => {
+    const isChild = !context.messages.some(
+      (message) =>
+        message.role === "system" && message.toolsAdded?.some((tool) => tool.name === "subagent"),
+    );
+    if (isChild) {
+      await childRelease.promise;
+      return fauxAssistantMessage("child finished");
+    }
+    return fauxAssistantMessage("parent waiting");
+  };
+  const fake = fakeModel([
+    fauxAssistantMessage("old work ".repeat(2500)),
+    fauxAssistantMessage("Saved summary."),
+    fauxAssistantMessage(
+      fauxToolCall("subagent", { description: "Inspect", prompt: "inspect project" }),
+      { stopReason: "toolUse" },
+    ),
+    reply,
+    reply,
+    fauxAssistantMessage("parent finished"),
+  ]);
+  fake.model.contextWindow = 4000;
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    settings: {
+      hooks: {
+        SessionStart: [
+          {
+            matcher: "compact",
+            hooks: [{ type: "command", command: "echo critical-project-state" }],
+          },
+        ],
+      },
+    },
+  });
+  await session.run("first");
+  const run = session.run("second", {
+    onEvent: (event) => {
+      if (event.type === "subagents_waiting") parentWaiting.resolve();
+    },
+  });
+  await parentWaiting.promise;
+  childRelease.resolve();
+  expect((await run).text).toBe("parent finished");
+  expect(fake.contexts.at(-1)!.messages.slice(-2)).toMatchObject([
+    { role: "user", content: [{ text: expect.stringContaining("child finished") }] },
+    {
+      role: "user",
+      content: [{ text: "<system-reminder>\ncritical-project-state\n</system-reminder>" }],
+    },
+  ]);
 });
