@@ -4,9 +4,7 @@ import { resolvePermissionPath } from "./path.ts";
 import type { PermissionRule } from "./rules.ts";
 
 /** Mutable memory grants; pass the same collection to related permission gates. */
-export type SessionAllowRule =
-  | (Extract<PermissionRule, { kind: "bash-exact" | "directory" }> & { decision: "allow" })
-  | { decision: "allow"; raw: string; kind: "tool"; pattern: string; exact: true };
+export type SessionAllowRule = PermissionRule & { decision: "allow" };
 export interface SessionAllow {
   kind: "command" | "directory" | "tool";
   rule: string;

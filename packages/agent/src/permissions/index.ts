@@ -6,14 +6,18 @@ import {
   type AssistantMessage,
 } from "@earendil-works/pi-ai";
 import type { CustomSessionEvent, PermissionMode } from "@neant/shared";
-import { evaluatePermissionRules, type PermissionRule } from "./rules.ts";
+import { evaluatePermissionRules, parsePermissionRules, type PermissionRule } from "./rules.ts";
 export { parsePermissionRules, evaluatePermissionRules } from "./rules.ts";
 export { resolvePermissionPath } from "./path.ts";
 import { sessionAllowRule, type SessionAllow, type SessionAllowRule } from "./session-rules.ts";
 export type { SessionAllowRule } from "./session-rules.ts";
 import { requestInteraction } from "../interaction/index.ts";
 import { reviewPermission, type ReviewResult } from "../review/index.ts";
-import type { PreToolUseResult } from "../hooks/index.ts";
+import type {
+  PreToolUseResult,
+  PermissionRequestResult,
+  PermissionDeniedResult,
+} from "../hooks/index.ts";
 import { Value } from "typebox/value";
 
 export interface PermissionAskRequest {
@@ -68,6 +72,7 @@ type PermissionStageDecision =
       by: "rule" | "user" | "review" | "hook";
       rule?: string;
       hook?: string;
+      terminate?: true;
     }
   | {
       decision: "ask";
@@ -91,6 +96,19 @@ interface PermissionGateOptions {
   onPermissionAsk?: (request: PermissionAskRequest) => Promise<"allow" | "deny" | "allow-session">;
   onEvent(event: CustomSessionEvent): void | Promise<void>;
   preToolUse?(call: ToolCallContext, signal: AbortSignal): Promise<PreToolUseResult>;
+  permissionRequest?(
+    call: ToolCallContext,
+    suggestions: unknown[],
+    signal: AbortSignal,
+  ): Promise<PermissionRequestResult>;
+  permissionDenied?(
+    call: ToolCallContext,
+    denial: Extract<PermissionStageDecision, { decision: "deny" }>,
+    signal: AbortSignal,
+  ): Promise<PermissionDeniedResult>;
+  setMode?(mode: PermissionMode): void;
+  onHookWarning?(field: string, hook?: string): void | Promise<void>;
+  isRunStopped?(): boolean;
   stopRun?(reason?: string): void;
 }
 
@@ -124,6 +142,30 @@ export function createPermissionGate(options: PermissionGateOptions) {
       by: "rule",
       reason: `${match.decision === "deny" ? "Denied by permission rule" : "Permission rule"}: ${match.rule}`,
     };
+  }
+
+  function rewriteInput(
+    call: ToolCallContext,
+    updatedInput: Record<string, unknown>,
+    hook?: string,
+  ): Extract<PermissionStageDecision, { decision: "deny" }> | undefined {
+    try {
+      const tool = options.getAgentState().tools.find((tool) => tool.name === call.toolCall.name)!;
+      const [invalid] = Value.Errors(tool.parameters, updatedInput);
+      if (invalid) throw new Error(`${invalid.instancePath || "/"} ${invalid.message}`);
+      const updated = validateToolArguments(tool, {
+        ...call.toolCall,
+        arguments: updatedInput as typeof call.toolCall.arguments,
+      });
+      Object.assign(call.args as object, updated);
+    } catch (error) {
+      return {
+        decision: "deny",
+        by: "hook",
+        hook,
+        reason: `Denied by hook: invalid updatedInput: ${(error as Error).message}`,
+      };
+    }
   }
 
   async function evaluateModeStage(context: PermissionCall): Promise<PermissionStageDecision> {
@@ -202,11 +244,111 @@ export function createPermissionGate(options: PermissionGateOptions) {
     return review.decision === "ask" ? { ...review, by: "review" } : review;
   }
 
+  async function updatePermissions(updates: unknown[] | undefined, hook?: string) {
+    for (const [index, value] of (updates ?? []).entries()) {
+      const ignored = () =>
+        options.onHookWarning?.(`hookSpecificOutput.decision.updatedPermissions[${index}]`, hook);
+      if (
+        typeof value !== "object" ||
+        value === null ||
+        !("destination" in value) ||
+        value.destination !== "session" ||
+        !("type" in value)
+      ) {
+        await ignored();
+        continue;
+      }
+      if (
+        value.type === "setMode" &&
+        "mode" in value &&
+        ["ask", "auto-review", "full-access"].includes(String(value.mode))
+      ) {
+        options.setMode?.(value.mode as PermissionMode);
+      } else if (
+        value.type === "addRules" &&
+        "behavior" in value &&
+        value.behavior === "allow" &&
+        "rules" in value &&
+        Array.isArray(value.rules)
+      ) {
+        try {
+          const textRules = value.rules.map((rule: unknown) => {
+            if (typeof rule === "string") return rule;
+            if (
+              typeof rule === "object" &&
+              rule !== null &&
+              "toolName" in rule &&
+              typeof rule.toolName === "string" &&
+              (!("ruleContent" in rule) || typeof rule.ruleContent === "string")
+            )
+              return "ruleContent" in rule && rule.ruleContent
+                ? `${rule.toolName}(${rule.ruleContent})`
+                : rule.toolName;
+            throw new Error("Invalid permission rule");
+          });
+          const parsed = parsePermissionRules({ allow: textRules });
+          sessionRules.push(...parsed.map((rule) => ({ ...rule, decision: "allow" as const })));
+          for (const notify of sessionGrantListeners) notify();
+        } catch {
+          await ignored();
+        }
+      } else await ignored();
+    }
+  }
+
   async function evaluateInteractionStage(
     context: PermissionCall,
     decision: Extract<PermissionStageDecision, { decision: "ask" }>,
   ): Promise<Exclude<PermissionStageDecision, { decision: "ask" }>> {
     const { toolCall, args, mode, signal } = context;
+    let grant = sessionAllowRule(toolCall.name, args, options.cwd, options.homeDir);
+    const hook = await options.permissionRequest?.(
+      context,
+      [
+        {
+          type: "addRules",
+          destination: "session",
+          behavior: "allow",
+          rules: [grant.description.rule],
+        },
+      ],
+      signal,
+    );
+    if (hook?.continue === false) {
+      options.stopRun?.(hook.stopReason);
+      return {
+        decision: "deny",
+        by: "hook",
+        hook: hook.hook,
+        terminate: true,
+        reason: hook.stopReason ?? "Stopped by hook",
+      };
+    }
+    if (hook?.decision?.behavior === "deny") {
+      if (hook.decision.interrupt) options.stopRun?.(hook.decision.message);
+      return {
+        decision: "deny",
+        by: "hook",
+        hook: hook.hook,
+        ...(hook.decision.interrupt && { terminate: true as const }),
+        reason: hook.decision.message ?? "Denied by hook",
+      };
+    }
+    if (hook?.decision?.behavior === "allow") {
+      if (hook.decision.updatedInput !== undefined) {
+        const invalid = rewriteInput(context, hook.decision.updatedInput, hook.hook);
+        if (invalid) return invalid;
+        await updatePermissions(hook.decision.updatedPermissions, hook.hook);
+        const rewrittenRule = evaluateRuleStage(toolCall.name, args);
+        if (rewrittenRule?.decision === "deny") return rewrittenRule;
+        if (rewrittenRule?.decision === "ask") decision = rewrittenRule;
+        else return { decision: "allow" };
+      } else {
+        await updatePermissions(hook.decision.updatedPermissions, hook.hook);
+        return { decision: "allow" };
+      }
+    }
+    grant = sessionAllowRule(toolCall.name, args, options.cwd, options.homeDir);
     const respond = options.onPermissionAsk;
     if (!respond) {
       return {
@@ -220,7 +362,6 @@ export function createPermissionGate(options: PermissionGateOptions) {
         ...(decision.hook !== undefined && { hook: decision.hook }),
       };
     }
-    const grant = sessionAllowRule(toolCall.name, args, options.cwd, options.homeDir);
     const controller = new AbortController();
     const abort = () => controller.abort();
     if (signal.aborted) controller.abort();
@@ -273,6 +414,8 @@ export function createPermissionGate(options: PermissionGateOptions) {
       mode: options.getMode(),
       signal: signal ?? new AbortController().signal,
     };
+    if (options.isRunStopped?.())
+      return { block: true, terminate: true, reason: "Stopped by hook" };
     // deny stops immediately; allow skips Mode; ask skips Mode (including Review)
     // and goes straight to Interaction. Only no opinion falls through to Mode.
     const hook = await options.preToolUse?.(call, context.signal);
@@ -281,27 +424,8 @@ export function createPermissionGate(options: PermissionGateOptions) {
       return { block: true, terminate: true, reason: hook.stopReason ?? "Stopped by hook" };
     }
     let hookDecision: PermissionStageDecision | undefined;
-    if (hook?.updatedInput !== undefined) {
-      try {
-        const tool = options
-          .getAgentState()
-          .tools.find((tool) => tool.name === call.toolCall.name)!;
-        const [invalid] = Value.Errors(tool.parameters, hook.updatedInput);
-        if (invalid) throw new Error(`${invalid.instancePath || "/"} ${invalid.message}`);
-        const updated = validateToolArguments(tool, {
-          ...call.toolCall,
-          arguments: hook.updatedInput as typeof call.toolCall.arguments,
-        });
-        Object.assign(call.args as object, updated);
-      } catch (error) {
-        hookDecision = {
-          decision: "deny",
-          by: "hook",
-          hook: hook.hook,
-          reason: `Denied by hook: invalid updatedInput: ${(error as Error).message}`,
-        };
-      }
-    }
+    if (hook?.updatedInput !== undefined)
+      hookDecision = rewriteInput(call, hook.updatedInput, hook.hook);
     if (!hookDecision && hook?.permissionDecision)
       hookDecision =
         hook.permissionDecision === "deny"
@@ -342,7 +466,13 @@ export function createPermissionGate(options: PermissionGateOptions) {
       ...(decision.hook !== undefined && { hook: decision.hook }),
       ...(decision.by === "hook" && { reason: decision.reason }),
     });
-    return { block: true, reason: decision.reason };
+    const denied = await options.permissionDenied?.(call, decision, context.signal);
+    if (denied?.continue === false) options.stopRun?.(denied.stopReason);
+    return {
+      block: true,
+      ...((decision.terminate || denied?.continue === false) && { terminate: true }),
+      reason: decision.reason,
+    };
   };
 
   return {

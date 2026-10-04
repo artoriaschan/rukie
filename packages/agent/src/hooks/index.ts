@@ -35,6 +35,17 @@ export interface PreToolUseResult extends CommonHookResult {
   hook?: string;
 }
 
+export interface PermissionRequestResult extends CommonHookResult {
+  decision?:
+    | { behavior: "allow"; updatedInput?: Record<string, unknown>; updatedPermissions?: unknown[] }
+    | { behavior: "deny"; message?: string; interrupt?: boolean };
+  hook?: string;
+}
+
+export interface PermissionDeniedResult extends CommonHookResult {
+  retry?: true;
+}
+
 interface StopHookResult extends CommonHookResult {
   decision?: "block";
   reason?: string;
@@ -45,6 +56,8 @@ type SessionStartResult = CommonHookResult;
 
 interface HookResults {
   PreToolUse: PreToolUseResult;
+  PermissionRequest: PermissionRequestResult;
+  PermissionDenied: PermissionDeniedResult;
   UserPromptSubmit: UserPromptSubmitResult;
   SessionStart: SessionStartResult;
   Stop: StopHookResult;
@@ -86,10 +99,15 @@ export function createHooks(options: {
       input: HookInput,
       runOptions: { signal?: AbortSignal; matchQuery?: string } = {},
     ): Promise<EventResult<E>> {
-      const result: PreToolUseResult & UserPromptSubmitResult & StopHookResult = {
+      const result: PreToolUseResult &
+        UserPromptSubmitResult &
+        StopHookResult &
+        PermissionDeniedResult = {
         systemMessages: [],
         additionalContext: [],
       };
+      let requestDecision: PermissionRequestResult["decision"];
+      let requestHook: string | undefined;
       const shutdown = event === "SessionEnd" ? new AbortController() : undefined;
       const timer = shutdown ? setTimeout(() => shutdown.abort(), 1500) : undefined;
       const signal = AbortSignal.any([
@@ -220,15 +238,24 @@ export function createHooks(options: {
                     "updatedInput",
                     "additionalContext",
                   ]
-                : ["hookEventName", "additionalContext"],
+                : event === "PermissionRequest"
+                  ? ["hookEventName", "decision", "additionalContext"]
+                  : event === "PermissionDenied"
+                    ? ["hookEventName", "retry", "additionalContext"]
+                    : ["hookEventName", "additionalContext"],
             );
             for (const [field, value] of Object.entries(specific)) {
               const valid =
                 specificFields.has(field) &&
-                (field === "updatedInput" ||
-                  (field === "permissionDecision"
-                    ? typeof value === "string" && ["allow", "ask", "deny"].includes(value)
-                    : typeof value === "string"));
+                (field === "updatedInput"
+                  ? true
+                  : field === "decision"
+                    ? object(value)
+                    : field === "retry"
+                      ? typeof value === "boolean"
+                      : field === "permissionDecision"
+                        ? typeof value === "string" && ["allow", "ask", "deny"].includes(value)
+                        : typeof value === "string");
               if (!valid) {
                 await ignored(`hookSpecificOutput.${field}`);
                 delete specific[field];
@@ -262,6 +289,76 @@ export function createHooks(options: {
                 const reason = typeof json.reason === "string" ? json.reason : output.stderr.trim();
                 result.reason = [result.reason, reason].filter(Boolean).join("\n") || undefined;
               }
+            }
+            if (
+              (event === "PermissionRequest" || event === "PermissionDenied") &&
+              output.exitCode === 2
+            )
+              return;
+            if (event === "PermissionRequest") {
+              if (object(specific.decision)) {
+                const decision = specific.decision;
+                if (decision.behavior !== "allow" && decision.behavior !== "deny") {
+                  await ignored("hookSpecificOutput.decision.behavior");
+                  return;
+                }
+                const allowed =
+                  decision.behavior === "allow"
+                    ? ["behavior", "updatedInput", "updatedPermissions"]
+                    : ["behavior", "message", "interrupt"];
+                for (const field of Object.keys(decision)) {
+                  const valid =
+                    allowed.includes(field) &&
+                    (field === "behavior" ||
+                      field === "updatedInput" ||
+                      (field === "updatedPermissions"
+                        ? Array.isArray(decision[field])
+                        : field === "interrupt"
+                          ? typeof decision[field] === "boolean"
+                          : typeof decision[field] === "string"));
+                  if (!valid) {
+                    await ignored(`hookSpecificOutput.decision.${field}`);
+                    delete decision[field];
+                  }
+                }
+                if (
+                  decision.behavior === "allow" &&
+                  decision.updatedInput !== undefined &&
+                  !object(decision.updatedInput)
+                ) {
+                  requestDecision = {
+                    behavior: "deny",
+                    message: "Denied by hook: invalid updatedInput: expected an object",
+                  };
+                  requestHook = hook;
+                } else if (
+                  decision.behavior === "deny" ||
+                  !requestDecision ||
+                  requestDecision.behavior === "allow"
+                ) {
+                  if (decision.behavior === "deny") {
+                    const prior =
+                      requestDecision?.behavior === "deny" ? requestDecision : undefined;
+                    requestDecision = {
+                      behavior: "deny",
+                      message:
+                        [
+                          prior?.message,
+                          typeof decision.message === "string" ? decision.message : undefined,
+                        ]
+                          .filter(Boolean)
+                          .join("\n") || undefined,
+                      interrupt: prior?.interrupt || decision.interrupt === true,
+                    };
+                  } else requestDecision = decision as PermissionRequestResult["decision"];
+                  requestHook = hook;
+                }
+              }
+              return;
+            }
+            if (event === "PermissionDenied") {
+              if (specific.retry === true && input.by === "review") result.retry = true;
+              return;
             }
             if (event !== "PreToolUse") return;
             const decision = output.exitCode === 2 ? "deny" : specific.permissionDecision;
@@ -313,7 +410,11 @@ export function createHooks(options: {
           }
         }),
       ).finally(() => clearTimeout(timer));
-      return result as EventResult<E>;
+      return (
+        event === "PermissionRequest"
+          ? { ...result, decision: requestDecision, hook: requestHook }
+          : result
+      ) as EventResult<E>;
     },
   };
 }

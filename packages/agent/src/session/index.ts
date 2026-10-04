@@ -145,6 +145,7 @@ interface InternalSessionOptions {
     sessionAllowRules: SessionAllowRule[];
     sessionGrantListeners: Set<() => void>;
     getMode(): PermissionMode;
+    setMode(mode: PermissionMode): void;
   };
   plan?: { getActive(): boolean; hasEntered(): boolean; setMode(on: boolean): Promise<void> };
   toolNames?: readonly string[];
@@ -171,6 +172,9 @@ async function createSessionInternal(
     sessionAllowRules: options.sessionAllowRules ?? [],
     sessionGrantListeners: new Set<() => void>(),
     getMode: () => permissionMode,
+    setMode: (mode: PermissionMode) => {
+      permissionMode = mode;
+    },
   };
   if (options.model && !options.streamFn) throw new Error("`model` requires `streamFn`.");
   const { model, streamFn } = options.model
@@ -364,6 +368,7 @@ async function createSessionInternal(
     sessionAllowRules: permissionConfiguration.sessionAllowRules,
     sessionGrantListeners: permissionConfiguration.sessionGrantListeners,
     getMode: permissionConfiguration.getMode,
+    setMode: permissionConfiguration.setMode,
     getAgentState: () => agent.state,
     getProjectInstructions: () =>
       transcriptMessages.flatMap((message) =>
@@ -411,6 +416,60 @@ async function createSessionInternal(
         return result;
       },
     }),
+    onHookWarning: async (field, hook = "PermissionRequest") => {
+      const message = `Ignoring invalid or unsupported hook output field: ${field}`;
+      (options.onWarning ?? console.warn)(`PermissionRequest hook ${hook}: ${message}`);
+      await emitRunEvent?.({
+        type: "hook_warning",
+        event: "PermissionRequest",
+        hook,
+        message,
+        error: { code: "hook-output-ignored", params: { field } },
+      });
+    },
+    permissionRequest: async (call, suggestions, signal) => {
+      const result = await hooks.run(
+        "PermissionRequest",
+        {
+          ...hookInput(),
+          tool_name: call.toolCall.name,
+          tool_input: call.args,
+          permission_suggestions: suggestions,
+        },
+        { signal, matchQuery: call.toolCall.name },
+      );
+      toolHookContexts.set(call.toolCall.id, [
+        ...(toolHookContexts.get(call.toolCall.id) ?? []),
+        ...result.additionalContext,
+      ]);
+      applyHookControl(result);
+      return result;
+    },
+    permissionDenied: async (call, denial, signal) => {
+      const result = await hooks.run(
+        "PermissionDenied",
+        {
+          ...hookInput(),
+          tool_name: call.toolCall.name,
+          tool_input: call.args,
+          tool_use_id: call.toolCall.id,
+          by: denial.by,
+          reason: denial.reason,
+          ...(denial.rule && { rule: denial.rule }),
+        },
+        { signal, matchQuery: call.toolCall.name },
+      );
+      toolHookContexts.set(call.toolCall.id, [
+        ...(toolHookContexts.get(call.toolCall.id) ?? []),
+        ...result.additionalContext,
+        ...(result.retry
+          ? ["Permission review denied this call. You may adjust the tool input and retry."]
+          : []),
+      ]);
+      applyHookControl(result);
+      return result;
+    },
+    isRunStopped: () => hookStopped,
     stopRun(reason) {
       applyHookControl({
         continue: false,
@@ -571,7 +630,7 @@ async function createSessionInternal(
       return permissionConfiguration.getMode();
     },
     setPermissionMode(mode) {
-      permissionMode = mode;
+      permissionConfiguration.setMode(mode);
     },
     get planMode() {
       return plan.getActive();
