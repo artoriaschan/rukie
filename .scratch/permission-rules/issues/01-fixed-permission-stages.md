@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** in-progress
+**Status:** resolved
 
 参考：[spec](../spec.md)「固定阶段（地基 C 的本轮落地）」。
 
@@ -15,5 +15,6 @@
 
 ## Comments
 
-- 2026-10-04：实现与验证完成，Standards / Spec 双轴审查待执行。`createPermissionGate` 在 permissions 模块拥有具名规则、模式和交互阶段、review 批量预启动以及收尾；session 只接线。规则阶段按本工单恒无意见，保留现有 `allowTools`、拒绝文案和事件行为，不提前实现规则匹配或会话放行。
+- 2026-10-04：实现与验证完成。`createPermissionGate` 在 permissions 模块拥有具名规则、模式和交互阶段、review 批量预启动以及收尾；session 只接线。规则阶段按本工单恒无意见，保留现有 `allowTools`、拒绝文案和事件行为，不提前实现规则匹配或会话放行。
 - 公共测试接缝：`createSession` + faux model；新增同一 Turn 中回答 review 时切换模式的行为覆盖，既有四组 e2e 的断言未改。focused 验收为 86 pass / 0 fail；`rtk proxy bunx tsc -b` exit 0；`rtk proxy env -u NO_COLOR bun run check` exit 0，764 pass / 0 fail，63 files（含格式、lint、类型与 knip 检查）。本工单为行为不变的重构，先运行既有测试和新增行为特征测试确认基线，再迁移实现。
+- 2026-10-04：父代理按 code-review skill 对固定差异 `ccbadad...33d2ac5` 执行并行双轴审查：Standards 无发现；Spec 无发现，确认规则短路、review 并发、signal、事件、拒绝文案、收尾及既有测试断言均满足本工单。审查后仅更新工单文档，无代码变化，完整验收证据仍对应最终实现。
