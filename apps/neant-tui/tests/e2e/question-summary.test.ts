@@ -55,7 +55,7 @@ test.each(["zh", "en"] as const)(
       await app.waitFor(() => app.calls.length === 1);
       app.calls[0]!.tool("ask_user_question", { questions: [question] });
       await app.waitFor(() => app.screen().some((line) => line.trim() === "Which storage?"));
-      app.stdin.write("2\r");
+      app.stdin.write("\x1b[B\r");
       await app.waitFor(() => app.calls.length === 2);
       app.calls[1]!.finish();
       await app.waitFor(() => !app.isWorking());
@@ -131,11 +131,11 @@ test("multiline questions and labels, repeated questions, multiple choices and c
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.tool("ask_user_question", { questions: [storage, features, features] });
     await app.waitFor(() => app.screen().join("\n").includes("Local or remote?"));
-    app.stdin.write("1 3\rnote → first\r");
-    await app.waitFor(() => app.screen().join("\n").includes("Question 2 / 3"));
-    app.stdin.write("1 2 3\rreplicas → second\r");
-    await app.waitFor(() => app.screen().join("\n").includes("Question 3 / 3"));
-    app.stdin.write("2 \r");
+    app.stdin.write("note → first\r");
+    await app.waitFor(() => app.screen().join("\n").includes("Question 2/3"));
+    app.stdin.write(" \x1b[B \treplicas → second\r");
+    await app.waitFor(() => app.screen().join("\n").includes("Question 3/3"));
+    app.stdin.write("\x1b[B \r");
     await app.waitFor(() => app.calls.length === 2);
     const expectedText =
       '"Which → storage?\nLocal or remote?" → SQLite; note → first\n"Which features?" → Cache → fast\nv3, Replicas; replicas → second\n"Which features?" → Replicas';
@@ -184,7 +184,7 @@ test.each(["zh", "en"] as const)(
       await app.waitFor(() => app.calls.length === 1);
       app.calls[0]!.tool("ask_user_question", { questions: [question] });
       await app.waitFor(() => app.screen().some((line) => line.trim() === "Which storage?"));
-      app.stdin.write("\x03");
+      app.stdin.write("\x03\x03");
       await app.waitFor(() => !app.isWorking());
       const lines = app.allLines();
       const index = lines.findIndex((line) => line.startsWith("✗ ask_user_question "));
@@ -255,7 +255,7 @@ test.each([
       ],
     });
     await app.waitFor(() => app.screen().some((line) => line.trim() === "First?"));
-    app.stdin.write("\r3\rcustom → actual\r");
+    app.stdin.write("\r\tcustom → actual\r");
     await app.waitFor(() => app.calls.length === 2);
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());

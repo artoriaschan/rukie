@@ -179,7 +179,7 @@ test("idle hides completed rows but keeps full counts, and completion or clearin
 });
 
 test.each(["permission", "question"])(
-  "a %s dialog hides the panel until the interaction closes",
+  "a %s dialog applies its own Todo visibility rule",
   async (kind) => {
     const app = await start(["plan"]);
     try {
@@ -206,8 +206,8 @@ test.each(["permission", "question"])(
           .screen()
           .some((line) => line.includes(kind === "permission" ? "等待审批" : "Which option?")),
       );
-      expect(app.screen().some((line) => line.includes("▾ ✓"))).toBe(false);
-      expect(app.screen()).not.toContain("  └─ ○ open");
+      expect(app.screen().some((line) => line.includes("▾ ✓"))).toBe(kind === "question");
+      expect(app.screen().includes("  └─ ○ open")).toBe(kind === "question");
       app.stdin.write("\x1b");
       await app.waitFor(() => app.calls.length === 3 && app.screen().includes("  ▾ ✓ 0/1"));
       expect(app.screen()).toContain("  └─ ○ open");

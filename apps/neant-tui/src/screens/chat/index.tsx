@@ -169,10 +169,20 @@ function Chat({
   const minimumDialogHeight = question
     ? permissionChoices(question.request.mode).length + 3
     : userQuestion
-      ? 4
+      ? userQuestion.collapsed
+        ? 2
+        : 6
       : 0;
   // Reserve the dialog's bottom gap and at least one transcript row before allocating chrome.
-  const permissionSpace = rows - statusHeight - 2;
+  const questionPromptHeight = userQuestion?.collapsed ? promptMaxLines + 3 : 0;
+  const questionTodoHeight =
+    userQuestion && hasTodos
+      ? Math.min(
+          todosCollapsed ? 3 : Math.min(state.todos.length, 8) + 3 + Number(state.todos.length > 8),
+          Math.max(2, Math.floor((rows - statusHeight - questionPromptHeight - 1) / 3)),
+        )
+      : 0;
+  const permissionSpace = rows - statusHeight - 2 - questionTodoHeight - questionPromptHeight;
   const compactReturn =
     showReturn &&
     (interaction
@@ -184,7 +194,12 @@ function Chat({
     hasActivity && (!interaction || permissionSpace >= minimumDialogHeight + returnHeight + 1);
   const dialogMaxHeight = Math.max(
     minimumDialogHeight,
-    Math.min(Math.floor(rows / 2), permissionSpace - returnHeight - Number(showActivity)),
+    userQuestion
+      ? Math.min(
+          userQuestion.collapsed ? 3 : Infinity,
+          permissionSpace + 1 - returnHeight - Number(showActivity),
+        )
+      : Math.min(Math.floor(rows / 2), permissionSpace - returnHeight - Number(showActivity)),
   );
   const todoMaxHeight = Math.max(
     1,
@@ -209,6 +224,10 @@ function Chat({
       lastInterrupt.current = undefined;
       return;
     }
+    if (event.type === "paste" && interactions.getSnapshot()?.kind === "question") {
+      interactions.questionInput(event);
+      return;
+    }
     if (event.type !== "key") {
       lastInterrupt.current = undefined;
       return;
@@ -221,7 +240,13 @@ function Chat({
       lastInterrupt.current = undefined;
       return;
     }
-    if (key.name === "tab" && key.shift && !key.ctrl && !key.alt) {
+    if (
+      key.name === "tab" &&
+      key.shift &&
+      !key.ctrl &&
+      !key.alt &&
+      pendingInteraction?.kind !== "question"
+    ) {
       lastInterrupt.current = undefined;
       if (!pendingInteraction && !small) {
         const next =
@@ -252,31 +277,9 @@ function Chat({
     }
     if (small && key.name !== "escape" && !(key.ctrl && (key.name === "c" || key.name === "d")))
       return;
-    if (pendingInteraction?.kind === "question" && !(key.ctrl && key.name === "c")) {
+    if (pendingInteraction?.kind === "question") {
       lastInterrupt.current = undefined;
-      if (key.name === "escape") interactions.declineQuestion();
-      else if (!small && !key.ctrl && !key.alt && !key.shift) {
-        const current = pendingInteraction.drafts[pendingInteraction.questionIndex]!;
-        if (
-          pendingInteraction.request.questions.length > 1 &&
-          ["tab", "left", "right"].includes(key.name)
-        ) {
-          interactions.switchQuestion(key.name === "left" ? -1 : 1);
-          return;
-        }
-        if (current.editing) return;
-        if (key.name === "enter") interactions.answerQuestion();
-        else if (event.input === " ") interactions.toggleQuestion();
-        else if (key.name === "up") interactions.selectQuestion(current.selected - 1);
-        else if (key.name === "down") interactions.selectQuestion(current.selected + 1);
-        else if (
-          /^[1-9]$/.test(event.input) &&
-          Number(event.input) <=
-            pendingInteraction.request.questions[pendingInteraction.questionIndex]!.options.length +
-              1
-        )
-          interactions.selectQuestion(Number(event.input) - 1);
-      }
+      interactions.questionInput(event);
       return;
     }
     if (!small && pending && !(key.ctrl && key.name === "c")) {
@@ -388,14 +391,14 @@ function Chat({
                 suffix={` · ↑ ${fmtTokens(state.activityInput)} · ↓ ${fmtTokens(state.output + Math.ceil(state.streamedChars / 4))} tokens`}
               />
             )}
-            {!interaction && (
+            {!question && (
               <GoalTodoPanel
                 todos={state.todos}
                 working={state.running}
                 collapsed={todosCollapsed}
                 onToggle={toggleTodos}
                 locale={locale}
-                maxHeight={todoMaxHeight}
+                maxHeight={userQuestion ? questionTodoHeight : todoMaxHeight}
               />
             )}
             {question && (
@@ -420,23 +423,45 @@ function Chat({
                 questionCount={userQuestion.request.questions.length}
                 selected={currentQuestion.selected}
                 checked={currentQuestion.checked}
-                editing={currentQuestion.editing}
+                answeredCount={userQuestion.drafts.filter((draft) => draft.answer).length}
+                collapsed={userQuestion.collapsed}
+                onToggle={interactions.toggleQuestionFold}
+                cursor={currentQuestion.cursor}
+                attached={currentQuestion.attached}
+                error={currentQuestion.error}
+                onSelect={interactions.selectQuestion}
+                onOption={(index) => {
+                  const live = interactions.getSnapshot();
+                  if (
+                    live?.kind !== "question" ||
+                    live.request !== userQuestion.request ||
+                    live.questionIndex !== userQuestion.questionIndex
+                  )
+                    return;
+                  if (userQuestion.request.questions[userQuestion.questionIndex]!.multiSelect)
+                    interactions.toggleQuestion(index);
+                  else interactions.answerQuestion(index);
+                }}
+                onSubmit={interactions.answerQuestion}
                 custom={currentQuestion.custom}
-                onCustomChange={interactions.changeQuestionCustom}
-                onCustomSubmit={interactions.answerQuestion}
                 maxHeight={dialogMaxHeight}
                 columns={columns}
                 locale={locale}
               />
             )}
-            {!interaction && (
+            {(!interaction || userQuestion?.collapsed) && (
               <PromptInput
                 maxLines={promptMaxLines}
                 columns={columns}
                 working={state.running}
                 value={input}
-                onChange={change}
+                onChange={(value) => {
+                  const pending = interactions.getSnapshot();
+                  if (!pending || (pending.kind === "question" && pending.collapsed)) change(value);
+                }}
                 onSubmit={(prompt) => {
+                  const pending = interactions.getSnapshot();
+                  if (pending && (pending.kind !== "question" || !pending.collapsed)) return;
                   if (conversation.submit(prompt)) {
                     body.current?.scrollToBottom();
                     change("");

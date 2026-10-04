@@ -246,3 +246,47 @@ test("Shift+Enter and a backslash at line end insert newlines, while a paste cha
     terminal.dispose();
   }
 });
+
+test("a screen-owned read-only editor paints the supplied grapheme caret without handling stdin", async () => {
+  const terminal = createTerminal(12, 5);
+  const changes: string[] = [];
+  const submissions: string[] = [];
+  let move = () => {};
+  function View() {
+    const [cursor, setCursor] = useState(2);
+    useLayoutEffect(() => {
+      move = () => setCursor(4);
+    }, []);
+    return (
+      <TextInput
+        value="中é👩‍💻A"
+        onChange={(text) => changes.push(text)}
+        onSubmit={(text) => submissions.push(text)}
+        readOnly
+        cursorOffset={cursor}
+        cursorStyle="block"
+      />
+    );
+  }
+  const app = render(<View />, terminal);
+  try {
+    await terminal.flush();
+    // Offset 2 lies inside e + combining accent and must snap before that grapheme.
+    expect(terminal.cursor()).toEqual({ x: 2, y: 0 });
+    const cell = (x: number) => terminal.terminal.buffer.active.getLine(0)!.getCell(x)!;
+    expect(cell(2).isInverse()).toBeTruthy();
+    terminal.stdin.write("ignored\x1b[200~pasted\x1b[201~\x7f\r");
+    await terminal.flush();
+    expect(changes).toEqual([]);
+    expect(submissions).toEqual([]);
+    expect(terminal.screen()[0]).toBe("中é👩‍💻A");
+    move();
+    await terminal.waitFor(() => terminal.cursor().x === 3);
+    expect(cell(3).isInverse()).toBeTruthy();
+    expect(cell(4).isInverse()).toBeTruthy();
+    expect(cell(2).isInverse()).toBeFalsy();
+  } finally {
+    app.unmount();
+    terminal.dispose();
+  }
+});

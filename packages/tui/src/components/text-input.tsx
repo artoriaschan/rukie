@@ -10,6 +10,10 @@ export interface TextInputProps extends TextStyle {
   maxLines?: number;
   columns?: number;
   cursorStyle?: "block";
+  /** Present a screen-owned editor without subscribing to input. */
+  readOnly?: boolean;
+  /** UTF-16 caret offset supplied by the owner of a read-only editor. */
+  cursorOffset?: number;
 }
 
 const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
@@ -29,13 +33,16 @@ export function TextInput({
   maxLines,
   columns,
   cursorStyle,
+  readOnly = false,
+  cursorOffset,
   ...style
 }: TextInputProps) {
   const size = useTerminalSize();
   const width = Math.max(1, columns ?? size.columns);
   const [cursor, setCursor] = useState(value.length);
   const editing = useRef({ value, cursor: value.length });
-  const position = graphemeBoundaries(value).findLast((offset) => offset <= cursor) ?? 0;
+  const position =
+    graphemeBoundaries(value).findLast((offset) => offset <= (cursorOffset ?? cursor)) ?? 0;
   useLayoutEffect(() => {
     editing.current.value = value;
     editing.current.cursor = position;
@@ -99,7 +106,7 @@ export function TextInput({
         else onSubmit?.(current.value);
       } else if (input) replace(current.cursor, current.cursor, input);
     },
-    { isActive },
+    { isActive: isActive && !readOnly },
   );
   return createElement(
     "tui-text",

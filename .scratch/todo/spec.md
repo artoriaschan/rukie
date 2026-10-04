@@ -43,7 +43,7 @@ Agent Core 提供模型工具 `todo_write`：模型每次写入完整的 Todo Li
 25. 作为 TUI 用户，我想点击折叠头来折叠 / 展开，悬停时有背景反馈，以便用鼠标操作。
 26. 作为 TUI 用户，我想在折叠状态下仍看到一项预览（优先进行中项，否则第一个未完成项），以便收起后也知道当前在做什么。
 27. 作为 TUI 用户，我想在展开时看到"Ctrl+Q 折叠"提示，以便发现快捷键。
-28. 作为 TUI 用户，我想让审批框或提问框出现时盖住面板，以便需要我决定的内容紧贴输入框。
+28. 作为 TUI 用户，我想让审批框出现时盖住面板；提问框则与 todo 同时显示，以便回答时也能看到计划。
 29. 作为 TUI 用户，我想看到 transcript 里的 `todo_write` 调用显示为"待办清单"加 `todos ✓ done/total` 和进行中项（最多 4 行），以便回看历史时知道当时的进度，而不是看原始 JSON。
 30. 作为 TUI 用户，我想在 resume 一个旧 session 后立刻看到它的待办面板，以便接着上次的工作。
 31. 作为中文 / 英文用户，我想让面板与工具卡的所有文案按我的 locale 显示，以便界面语言一致。
@@ -92,7 +92,7 @@ Agent Core 提供模型工具 `todo_write`：模型每次写入完整的 Todo Li
   - 折叠头可点击切换，悬停换背景（复用 renderer 现有 hover 能力）。
 - **chat 屏（④ 层）**：
   - 状态来源：订阅 `tool_state_changed`（name 为 `todo`），resume / 启动时用 `session.toolState("todo")` 初始化。
-  - 位置：底部区域、输入框上方，activity-line 之后、notice 之前；审批框 / 提问框出现时不渲染面板（对话框紧贴输入框）。
+  - 位置：底部区域、输入框上方，activity-line 之后、notice 之前；审批框出现时不渲染面板；提问框与 todo 共存，并由 chat 屏统一分配底部高度（2026-10-04 用户修正，见 [提问面板规格](../question-panel/spec.md)）。
   - `ctrl+q` 切换折叠（运行中也有效）；折叠状态为屏幕本地状态，默认展开，不持久化。
 - **transcript 工具卡**：`todo_write` 显示工具名"待办清单"（en: `TodoWrite`），摘要 `todos ✓ done/total`，其后每个 in_progress 项一行 `● content`，整卡最多 4 行；从该次工具调用的参数渲染，不读 Tool State；工具出错时按现有错误卡呈现。不做前后快照 diff。
 - **i18n**：所有新文案（工具名、`… N more`、`todos ✓`、折叠提示）进 TUI 应用字典，中英两份。
@@ -115,7 +115,7 @@ Agent Core 提供模型工具 `todo_write`：模型每次写入完整的 Todo Li
 - **Seam 2：TUI 黑盒**，即 `apps/neant-tui/tests/helpers/app` 的 `start` + faux 模型，放在 `apps/neant-tui/tests/e2e/`。覆盖：
   - 面板树形、图标、计数、8 条上限与 `… N more`、运行中 / 空闲显隐、全部完成后消失。
   - `ctrl+q` 折叠 / 展开与折叠预览；鼠标点击折叠头切换。
-  - 审批 / 提问框出现时面板不显示。
+  - 审批框出现时面板不显示；提问框出现时 todo 仍显示。
   - resume 后面板立即出现。
   - transcript 工具卡摘要与 4 行上限。
   - 中英文案（同时受 `hardcoded-han` 检查约束）。
