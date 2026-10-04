@@ -221,13 +221,15 @@ function Chat({
   }, [interaction?.request.toolCallId]);
   useEffect(() => {
     const previous = previousOutput.current;
-    if (bodyScroll?.following) setUnread(false);
-    else if (
-      previous.completed !== state.completed ||
-      previous.assistant !== state.assistant ||
-      previous.tools !== state.tools ||
-      previous.subagents !== state.subagents ||
-      previous.error !== state.error
+    if (bodyScroll?.following) {
+      if (unread) setUnread(false);
+    } else if (
+      !unread &&
+      (previous.completed !== state.completed ||
+        previous.assistant !== state.assistant ||
+        previous.tools !== state.tools ||
+        previous.subagents !== state.subagents ||
+        previous.error !== state.error)
     )
       setUnread(true);
     previousOutput.current = {
@@ -239,6 +241,7 @@ function Chat({
     };
   }, [
     bodyScroll?.following,
+    unread,
     state.completed,
     state.assistant,
     state.tools,
