@@ -37,7 +37,7 @@ import {
   type PermissionAskRequest,
   type SessionAllowRule,
 } from "../permissions/index.ts";
-import { createBuiltinTools, type QuestionRequest, type QuestionReply } from "../tools/index.ts";
+import { createBuiltinTools, type QuestionRequest, type QuestionReply, type OnPlanReview } from "../tools/index.ts";
 import { SYSTEM_PROMPT } from "../prompt/index.ts";
 import {
   collectReminders,
@@ -80,6 +80,8 @@ export interface SessionOptions {
   onPermissionAsk?: (request: PermissionAskRequest) => Promise<"allow" | "deny" | "allow-session">;
   /** Ask structured questions; the tool is absent when this callback is omitted. */
   onQuestion?: (request: QuestionRequest) => Promise<QuestionReply>;
+  /** Review markdown plans; plan tools are absent when this callback is omitted. */
+  onPlanReview?: OnPlanReview;
   /** Load this project's .mcp.json even when it is not in the user trust list. */
   trustProjectMcp?: boolean;
   /** Clock used for reminder dates; defaults to the local current date. */
