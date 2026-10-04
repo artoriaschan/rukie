@@ -22,6 +22,7 @@ import { createSkillTool } from "./skill.ts";
 import { createQuestionTool, type OnQuestion } from "./question.ts";
 import { createTodoTool } from "./todo.ts";
 import type { TodoItem } from "../tool-state/index.ts";
+export { createExitPlanModeTool } from "./plan-review.ts";
 export type { PlanReviewRequest, PlanReviewResult, OnPlanReview } from "./plan-review.ts";
 export type { Question, QuestionRequest, QuestionReply } from "./question.ts";
 
