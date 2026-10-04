@@ -102,14 +102,22 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
   try {
     const cwd = io.session?.cwd ?? process.cwd();
     const homeDir = io.session?.homeDir ?? homedir();
-    const { settings, warnings } = await loadSettings({ cwd, homeDir });
+    const { settings, warnings, hookWarnings } = await loadSettings({ cwd, homeDir });
     const locale = resolveLocale([settings.locale, env.LC_ALL, env.LC_MESSAGES, env.LANG]);
     t = createTuiI18n(locale);
     if (!io.stdin.isTTY || !io.stdout.isTTY || (io.term ?? process.env.TERM) === "dumb") {
       io.stderr(`${t("startup.terminal")}\n`);
       return 1;
     }
-    for (const warning of warnings) io.stderr(`${t("startup.warning", { warning })}\n`);
+    const hookDiagnostics = new Map(
+      (hookWarnings ?? []).map((warning) => [warning.message, warning]),
+    );
+    for (const warning of warnings) {
+      const diagnostic = hookDiagnostics.get(warning);
+      io.stderr(
+        `${t("startup.warning", { warning: diagnostic?.error ? formatError(diagnostic.error, t) : warning })}\n`,
+      );
+    }
     if (values.model) settings.model = values.model;
     if (values.thinking) settings.thinking = values.thinking as ThinkingLevel;
     const model = io.session?.model;

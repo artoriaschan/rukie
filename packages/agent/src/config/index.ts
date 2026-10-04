@@ -5,7 +5,12 @@ import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messag
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
-import { createUserVisibleError, SettingsSchema, type Settings } from "@neant/shared";
+import {
+  createUserVisibleError,
+  SettingsSchema,
+  type Settings,
+  type CustomSessionEvent,
+} from "@neant/shared";
 import { parsePermissionRules } from "../permissions/index.ts";
 import { mergeHooks, validateHooks } from "../hooks/index.ts";
 import { Value } from "typebox/value";
@@ -26,7 +31,12 @@ async function readJson(path: string): Promise<Record<string, unknown>> {
   return data as Record<string, unknown>;
 }
 
-function validate(path: string, data: Record<string, unknown>, warnings: string[]): Settings {
+function validate(
+  path: string,
+  data: Record<string, unknown>,
+  warnings: string[],
+  hookWarnings: Extract<CustomSessionEvent, { type: "hook_warning" }>[],
+): Settings {
   if (Object.hasOwn(data, "allowTools")) {
     throw createUserVisibleError(
       `${path}: "allowTools" has been removed; migrate to "permissions.allow".`,
@@ -40,7 +50,10 @@ function validate(path: string, data: Record<string, unknown>, warnings: string[
   if (first) throw new Error(`${path}: ${first.instancePath || "/"} ${first.message}`);
   const settings = data as Settings;
   parsePermissionRules(settings.permissions, path);
-  validateHooks(settings.hooks, path, (warning) => warnings.push(warning.message));
+  validateHooks(settings.hooks, path, (warning) => {
+    warnings.push(warning.message);
+    hookWarnings.push(warning);
+  });
   return settings;
 }
 
@@ -61,8 +74,9 @@ export async function loadSettings(options: { cwd: string; homeDir: string }) {
     readJson(projectFile),
   ]);
   const warnings: string[] = [];
-  const user = validate(userFile, userData, warnings);
-  const project = validate(projectFile, projectData, warnings);
+  const hookWarnings: Extract<CustomSessionEvent, { type: "hook_warning" }>[] = [];
+  const user = validate(userFile, userData, warnings, hookWarnings);
+  const project = validate(projectFile, projectData, warnings, hookWarnings);
   if (providers !== undefined) {
     warnings.push(`${projectFile}: ignoring "providers"; only user settings can define providers.`);
   }
@@ -99,7 +113,7 @@ export async function loadSettings(options: { cwd: string; homeDir: string }) {
     }
     settings.permissions = permissions;
   }
-  return { settings, warnings };
+  return { settings, warnings, ...(hookWarnings.length > 0 && { hookWarnings }) };
 }
 
 /** Trust applies to the exact project directory, never to a child or project-supplied list. */

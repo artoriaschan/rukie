@@ -27,10 +27,25 @@ test("loading a non-tool event with if warns and preserves distinct filtered han
       },
     }),
   );
-  const { settings, warnings } = await loadSettings(dirs);
+  const { settings, warnings, hookWarnings } = await loadSettings(dirs);
   expect(warnings).toHaveLength(1);
   expect(warnings[0]).toContain("/hooks/SessionStart/0/hooks/0/if");
   expect(warnings[0]).toContain("never run");
+  expect(hookWarnings).toMatchObject([
+    {
+      type: "hook_warning",
+      event: "SessionStart",
+      hook: command,
+      message: warnings[0],
+      error: {
+        code: "hook-if-nontool",
+        params: {
+          source: `${join(dirs.homeDir, ".neant/settings.json")}: /hooks/SessionStart/0/hooks/0/if`,
+          event: "SessionStart",
+        },
+      },
+    },
+  ]);
   expect(settings.hooks?.PreToolUse?.[0]?.hooks).toHaveLength(2);
 });
 

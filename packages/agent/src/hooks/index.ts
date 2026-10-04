@@ -120,7 +120,7 @@ export function createHooks(options: {
   onAsyncResult?(result: CommonHookResult, rewakeReason?: string): void;
 }) {
   validateHooks(options.settings, "settings", (warning) => {
-    options.onWarning(warning.message);
+    options.onWarning(`${warning.event} hook ${warning.hook}: ${warning.message}`);
     void Promise.resolve(options.onEvent(warning)).catch(() => {});
   });
   const settings = mergeHooks(options.settings);

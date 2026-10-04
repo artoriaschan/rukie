@@ -10,6 +10,47 @@ import { start } from "./helpers/app";
 
 const assistant = process.platform === "darwin" ? "⏺" : "●";
 
+test.each(["zh", "en"] as const)(
+  "settings hook filter warnings use the selected startup locale %s",
+  async (locale) => {
+    const session = { cwd: "", homeDir: "" };
+    const app = await start([], {
+      session,
+      env: { LANG: locale === "zh" ? "en" : "zh_CN.UTF-8" },
+      prepare: async (root) => {
+        session.cwd = join(root, "project");
+        session.homeDir = join(root, "home");
+        await Bun.write(join(session.cwd, ".keep"), "");
+        await Bun.write(
+          join(session.homeDir, ".neant/settings.json"),
+          JSON.stringify({
+            locale,
+            hooks: {
+              SessionStart: [
+                {
+                  hooks: [{ type: "command", command: "echo unexpected > unexpected", if: "bash" }],
+                },
+              ],
+            },
+          }),
+        );
+      },
+    });
+    try {
+      await app.waitFor(() => app.stdin.isRaw);
+      const source = `${session.homeDir}/.neant/settings.json: /hooks/SessionStart/0/hooks/0/if`;
+      expect(app.stderr()).toBe(
+        locale === "zh"
+          ? `警告：${source}：if 仅支持工具事件，此 SessionStart hook 永不运行\n`
+          : `Warning: ${source}: if is only supported on tool events; this SessionStart hook will never run\n`,
+      );
+      expect(await Bun.file(join(session.cwd, "unexpected")).exists()).toBe(false);
+    } finally {
+      await app.cleanup();
+    }
+  },
+);
+
 test("TUI exit disposes an idle Session and runs SessionEnd once", async () => {
   const app = await start([], {
     session: {
