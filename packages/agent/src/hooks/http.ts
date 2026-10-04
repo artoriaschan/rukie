@@ -21,11 +21,14 @@ export async function executeHttp(
     body: JSON.stringify(input),
     signal,
   });
-  if (!response.ok)
+  if (!response.ok) {
+    // Do not drain an arbitrary error stream or leave its connection open.
+    void response.body?.cancel().catch(() => {});
     throw createUserVisibleError(`Hook HTTP response: ${response.status}`, {
       code: "hook-http-status",
       params: { status: String(response.status) },
     });
+  }
   const text = await response.text();
   try {
     const body: unknown = JSON.parse(text);

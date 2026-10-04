@@ -371,3 +371,58 @@ test.each(["cancel", "dispose"] as const)(
     await session.dispose();
   },
 );
+
+test("HTTP non-success streams release their connection before session disposal", async () => {
+  dirs = await tempDirs();
+  const cancelled = Promise.withResolvers<void>();
+  const server = Bun.serve({
+    port: 0,
+    fetch(request) {
+      request.signal.addEventListener("abort", () => cancelled.resolve(), { once: true });
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode("failure"));
+          },
+          cancel() {
+            cancelled.resolve();
+          },
+        }),
+        { status: 503 },
+      );
+    },
+  });
+  servers.push(server);
+  const fake = fakeModel([
+    fauxAssistantMessage(fauxToolCall("bash", { command: "touch marker" }), {
+      stopReason: "toolUse",
+    }),
+    fauxAssistantMessage("done"),
+  ]);
+  const events: SessionEvent[] = [];
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    permissionMode: "full-access",
+    settings: {
+      hooks: { PreToolUse: [{ hooks: [{ type: "http", url: server.url.href, timeout: 0.03 }] }] },
+    },
+  });
+  try {
+    await session.run("try", {
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+    expect(await Bun.file(join(dirs.cwd, "marker")).exists()).toBe(true);
+    expect(events.filter((event) => event.type === "hook_warning")).toMatchObject([
+      { error: { code: "hook-http-status" } },
+    ]);
+    expect(
+      await Promise.race([cancelled.promise.then(() => true), Bun.sleep(100).then(() => false)]),
+    ).toBe(true);
+    expect(server.pendingRequests).toBe(0);
+  } finally {
+    await session.dispose();
+  }
+});
