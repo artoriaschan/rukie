@@ -16,3 +16,4 @@ export {
   type ThemedBoxProps,
   type ThemedTextInputProps,
 } from "./themed";
+export { toolNameColor } from "./tool-name-color";

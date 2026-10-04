@@ -32,6 +32,15 @@
  */
 
 const zh = {
+  "subagent.prefix": "子代理：",
+  "subagent.default-model": "默认",
+  "subagent.status.idle": "空闲",
+  "subagent.status.running": "运行中",
+  "subagent.status.completed": "已完成",
+  "subagent.status.failed": "失败",
+  "subagent.status.aborted": "已中止",
+  "subagent.waiting": "等待 {{count}} 个子代理",
+
   "question.heading": " 📋 提问 · 第 {{current}}/{{total}} 题{{remaining}} ",
   "question.remaining": " · 还剩 {{count}} 题",
   "question.custom": "自定义回答",
@@ -156,6 +165,15 @@ const zh = {
 } as const;
 
 const en = {
+  "subagent.prefix": "Subagent: ",
+  "subagent.default-model": "default",
+  "subagent.status.idle": "idle",
+  "subagent.status.running": "running",
+  "subagent.status.completed": "completed",
+  "subagent.status.failed": "failed",
+  "subagent.status.aborted": "aborted",
+  "subagent.waiting": "waiting for {{count}} subagents",
+
   "question.heading": " 📋 Question {{current}}/{{total}} {{remaining}} ",
   "question.remaining": " · {{count}} left",
   "question.custom": "Custom answer",

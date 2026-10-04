@@ -25,6 +25,7 @@ import {
   ScrollToBottom,
   StatusLine,
   ToolCall,
+  SubagentMessage,
   UserMessage,
 } from "../../components";
 import { createTuiI18n } from "../../i18n";
@@ -143,6 +144,7 @@ function Chat({
     completed: state.completed,
     assistant: state.assistant,
     tools: state.tools,
+    subagents: state.subagents,
     error: state.error,
   });
   const draft = useRef("");
@@ -171,6 +173,7 @@ function Chat({
       previous.completed !== state.completed ||
       previous.assistant !== state.assistant ||
       previous.tools !== state.tools ||
+      previous.subagents !== state.subagents ||
       previous.error !== state.error
     )
       setUnread(true);
@@ -178,9 +181,17 @@ function Chat({
       completed: state.completed,
       assistant: state.assistant,
       tools: state.tools,
+      subagents: state.subagents,
       error: state.error,
     };
-  }, [bodyScroll?.following, state.completed, state.assistant, state.tools, state.error]);
+  }, [
+    bodyScroll?.following,
+    state.completed,
+    state.assistant,
+    state.tools,
+    state.subagents,
+    state.error,
+  ]);
   const change = (value: string) => {
     draft.current = value;
     lastInterrupt.current = undefined;
@@ -192,7 +203,7 @@ function Chat({
   };
   const showReturn = !!bodyScroll && !bodyScroll.following;
   const statusHeight = state.contextUsage && columns - 2 >= 14 ? 3 : 2;
-  const hasActivity = state.running && activity.phase !== "idle";
+  const hasActivity = state.running && (activity.phase !== "idle" || state.waitingSubagents > 0);
   const promptMaxLines = Math.max(1, Math.min(6, Math.floor(rows / 3)) - 3);
   const hasTodos = state.todos.some((todo) => state.running || todo.status !== "completed");
   const minimumDialogHeight = question
@@ -354,13 +365,22 @@ function Chat({
         switch (entry.type) {
           case "tool":
             return (
-              <ToolCall
-                key={index}
-                summary={entry.summary}
-                status={entry.isError ? "error" : "success"}
-                result={entry.result}
-                error={entry.error}
-              />
+              <Box key={index} flexDirection="column">
+                <ToolCall
+                  summary={entry.summary}
+                  status={entry.isError ? "error" : "success"}
+                  result={entry.result}
+                  error={entry.error}
+                />
+                {entry.agentId && state.subagents[entry.agentId] && (
+                  <SubagentMessage
+                    subagent={state.subagents[entry.agentId]!}
+                    columns={columns}
+                    effort={thinking}
+                    locale={locale}
+                  />
+                )}
+              </Box>
             );
           case "notice":
             return <Notice key={index} kind="info" text={entry.text} />;
@@ -372,7 +392,7 @@ function Chat({
             );
         }
       }),
-    [state.completed],
+    [state.completed, state.subagents, columns, thinking, locale],
   );
   return (
     <Box flexDirection="column" height={rows}>
@@ -414,13 +434,21 @@ function Chat({
             {showActivity && (
               <ActivityLine
                 locale={locale}
-                phase={activity.phase}
+                phase={
+                  (state.waitingSubagents > 0 && !approvalOpen) || activity.phase === "idle"
+                    ? "waiting"
+                    : activity.phase
+                }
                 warnPct={
                   state.contextUsage && state.contextUsage.window > 0
                     ? Math.round((state.contextUsage.used / state.contextUsage.window) * 100)
                     : undefined
                 }
-                line={activity.line}
+                line={
+                  state.waitingSubagents > 0 && !approvalOpen
+                    ? t("subagent.waiting", { count: state.waitingSubagents })
+                    : activity.line
+                }
                 suffix={` · ↑ ${fmtTokens(state.activityInput)} · ↓ ${fmtTokens(state.output + Math.ceil(state.streamedChars / 4))} tokens`}
               />
             )}

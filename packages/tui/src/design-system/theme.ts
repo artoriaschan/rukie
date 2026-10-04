@@ -2,6 +2,8 @@ export interface Theme {
   text: `#${string}`;
   subtle: `#${string}`;
   accent: `#${string}`;
+  toolNameMutate: `#${string}`;
+  toolNameExec: `#${string}`;
   inverseText: `#${string}`;
   badgeBackground: `#${string}`;
   badgeHoverBackground: `#${string}`;
@@ -28,6 +30,8 @@ export const dark: Theme = {
   text: "#E8E6E0",
   subtle: "#5E6673",
   accent: "#7DA1DE",
+  toolNameMutate: "#E5C07B",
+  toolNameExec: "#56B6C2",
   inverseText: "#22262E",
   badgeBackground: "#5E88CC",
   badgeHoverBackground: "#3B5BDB",

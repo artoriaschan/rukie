@@ -3,6 +3,7 @@ import { createTuiI18n, formatError } from "../../i18n";
 import type { Session, SessionEvent, TodoItem } from "@neant/agent";
 import type { ContextUsageEvent, RunResult } from "@neant/shared";
 import type { TpsSample } from "../../components/status-line";
+import { reduceSubagent, restoreSubagents, type SubagentState } from "./subagents";
 import { createActivity, reduce } from "./activity/activity";
 
 interface ToolCall {
@@ -15,7 +16,14 @@ interface ToolCall {
 
 type CompletedEntry =
   | { type: "message"; role: "user" | "assistant"; text: string }
-  | { type: "tool"; summary: string; isError: boolean; result?: string; error?: string }
+  | {
+      type: "tool";
+      summary: string;
+      isError: boolean;
+      result?: string;
+      error?: string;
+      agentId?: string;
+    }
   | { type: "notice"; text: string };
 
 type ToolResultMessage = Extract<
@@ -55,6 +63,13 @@ function toolEntry(
           ? t("question.summary")
           : tool.summary,
     isError,
+    agentId:
+      typeof result.details === "object" &&
+      result.details !== null &&
+      "agentId" in result.details &&
+      typeof result.details.agentId === "string"
+        ? result.details.agentId
+        : undefined,
     result: isError
       ? undefined
       : tool.name === "ask_user_question"
@@ -154,6 +169,8 @@ function questionSummary(args: unknown, text: string, t: ReturnType<typeof creat
 }
 
 interface ViewState {
+  waitingSubagents: number;
+  subagents: Readonly<Record<string, SubagentState>>;
   todos: readonly TodoItem[];
   completed: CompletedEntry[];
   tools: ToolCall[];
@@ -233,14 +250,40 @@ function reduceEvent(
   t: ReturnType<typeof createTuiI18n>,
 ): ViewState {
   switch (event.type) {
+    case "subagent_event": {
+      const subagents = {
+        ...state.subagents,
+        [event.agentId]: reduceSubagent(state.subagents[event.agentId], event, now),
+      };
+      return {
+        ...state,
+        subagents,
+        waitingSubagents: state.waitingSubagents
+          ? Object.values(subagents).filter((row) => row.status === "running").length
+          : 0,
+      };
+    }
+    case "subagents_waiting":
+      return { ...state, waitingSubagents: event.count };
+    case "agent_start":
+      return { ...state, waitingSubagents: 0 };
     case "tool_state_changed":
-      return event.name === "todo" ? { ...state, todos: event.value as TodoItem[] } : state;
+      return event.name === "todo"
+        ? { ...state, todos: event.value as TodoItem[] }
+        : event.name === "subagents"
+          ? { ...state, subagents: { ...restoreSubagents(event.value), ...state.subagents } }
+          : state;
     case "session_start":
       return { ...state, model: event.model };
     case "context_usage":
       return { ...state, contextUsage: event };
     case "turn_start":
-      return { ...state, streamedChars: 0, decode: { ...state.decode, step: undefined } };
+      return {
+        ...state,
+        waitingSubagents: 0,
+        streamedChars: 0,
+        decode: { ...state.decode, step: undefined },
+      };
     case "message_update": {
       const delta = event.assistantMessageEvent;
       const streamedChars =
@@ -353,6 +396,7 @@ function reduceEvent(
           : state.completed,
         assistant: "",
         running: false,
+        waitingSubagents: 0,
         input: event.usage.input,
         output: event.usage.output,
         usage: {
@@ -377,6 +421,8 @@ function reduceEvent(
 export function createConversation(session: Session, model: string, locale: Locale = "zh") {
   const t = createTuiI18n(locale);
   let state: ViewState = {
+    waitingSubagents: 0,
+    subagents: restoreSubagents(session.toolState("subagents")),
     todos: (session.toolState("todo") as TodoItem[] | undefined) ?? [],
     completed: replayMessages(session.messages, t),
     tools: [],
@@ -417,6 +463,7 @@ export function createConversation(session: Session, model: string, locale: Loca
       update({
         ...state,
         running: true,
+        waitingSubagents: 0,
         input: 0,
         output: 0,
         error: undefined,
@@ -445,7 +492,7 @@ export function createConversation(session: Session, model: string, locale: Loca
         })
         .finally(() => {
           active = undefined;
-          update({ ...state, running: false });
+          update({ ...state, running: false, waitingSubagents: 0 });
         });
       active = { controller, promise };
       return true;
