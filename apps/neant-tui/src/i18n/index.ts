@@ -66,6 +66,8 @@ export function formatError(error: unknown, t: ReturnType<typeof createTuiI18n>)
       return t("error.hook-crashed", data.params);
     case "hook-execution-failed":
       return t("error.hook-execution-failed", data.params);
+    case "hook-model-failed":
+      return t("error.hook-model-failed", data.params);
     case "hook-command-failed":
       return t("error.hook-command-failed", data.params);
     case "hook-type-unsupported":

@@ -105,6 +105,15 @@ function preserveErrorDetails<T extends TSchema>(tool: AgentTool<T>): AgentTool<
   };
 }
 
+/** Read-only tools for isolated model hook checks. */
+export function createReadonlyTools(cwd: string, homeDir = homedir()): AgentTool[] {
+  return [
+    adaptTool(createReadTool(), new NodeExecutionEnv({ cwd }), homeDir),
+    createGlobTool(cwd),
+    preserveErrorDetails(createGrepTool(cwd)),
+  ];
+}
+
 export function createBuiltinTools(
   cwd: string,
   getSkill: (name: string) => Skill | undefined,

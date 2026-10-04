@@ -337,6 +337,15 @@ async function createSessionInternal(
     cwd,
     homeDir: options.homeDir,
     projectDir: cwd,
+    model: {
+      getModel: async (selected) => {
+        const choice = selected ?? settings.reviewModel;
+        return choice
+          ? (await resolveModel({ ...settings, model: choice }, options.homeDir)).model
+          : model;
+      },
+      streamFn: options.streamFn ?? streamFn,
+    },
     callMcpTool: async (server, tool, input, signal) => {
       if (!runMcp)
         throw createUserVisibleError(`Hook MCP server is not connected: ${server}`, {

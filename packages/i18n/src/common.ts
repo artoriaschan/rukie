@@ -49,6 +49,7 @@ const zh = {
   "error.hook-crashed": "Hook 进程崩溃：{{signal}}",
   "error.hook-execution-failed": "Hook 执行失败：{{cause}}",
   "error.hook-command-failed": "Hook 命令执行失败：{{cause}}",
+  "error.hook-model-failed": "Hook 模型执行失败：{{cause}}",
   "error.hook-type-unsupported": "尚不支持的 hook 类型：{{type}}",
   "error.hook-matcher-invalid": "{{source}}：无效的 hook 正则表达式：{{matcher}}",
   "error.hook-if-nontool": "{{source}}：if 仅支持工具事件，此 {{event}} hook 永不运行",
@@ -97,6 +98,7 @@ const en = {
   "error.hook-crashed": "Hook crashed: {{signal}}",
   "error.hook-execution-failed": "Hook execution failed: {{cause}}",
   "error.hook-command-failed": "Hook command failed: {{cause}}",
+  "error.hook-model-failed": "Hook model failed: {{cause}}",
   "error.hook-type-unsupported": "Unsupported hook type: {{type}}",
   "error.hook-matcher-invalid": "{{source}}: invalid hook regular expression: {{matcher}}",
   "error.hook-if-nontool":

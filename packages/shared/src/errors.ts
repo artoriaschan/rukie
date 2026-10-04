@@ -16,6 +16,7 @@ export interface UserVisibleErrorParams {
   "hook-crashed": { signal: string };
   "hook-execution-failed": { cause: string };
   "hook-command-failed": { cause: string };
+  "hook-model-failed": { cause: string };
   "hook-type-unsupported": { type: string };
   "hook-matcher-invalid": { source: string; matcher: string };
   "hook-if-nontool": { source: string; event: string };

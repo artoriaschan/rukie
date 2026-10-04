@@ -11,6 +11,7 @@ import {
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import { evaluatePermissionRules, parsePermissionRules } from "../permissions/index.ts";
 import { executeCommand } from "./command.ts";
+import { executeModelHook, type HookModelDependencies } from "./model.ts";
 import { executeHttp } from "./http.ts";
 import { executeBounded } from "./bounded.ts";
 import { executeMcpTool, type CallMcpHookTool } from "./mcp-tool.ts";
@@ -119,6 +120,7 @@ export function createHooks(options: {
   homeDir: string;
   projectDir: string;
   callMcpTool?: CallMcpHookTool;
+  model: HookModelDependencies;
   onWarning(warning: string): void;
   onEvent(event: CustomSessionEvent): void | Promise<void>;
   onAsyncResult?(result: CommonHookResult, rewakeReason?: string): void;
@@ -233,7 +235,9 @@ export function createHooks(options: {
               if (
                 handler.type !== "command" &&
                 handler.type !== "http" &&
-                handler.type !== "mcp_tool"
+                handler.type !== "mcp_tool" &&
+                handler.type !== "prompt" &&
+                handler.type !== "agent"
               ) {
                 await warn(`Unsupported hook type: ${handler.type}`, {
                   code: "hook-type-unsupported",
@@ -243,24 +247,33 @@ export function createHooks(options: {
               }
               const timeout = handler.timeout ?? (event === "UserPromptSubmit" ? 30 : 600);
               const output =
-                handler.type === "http"
-                  ? await executeBounded(
-                      (signal) => executeHttp(handler, snapshot, signal),
-                      executionSignal,
-                      timeout,
-                    )
-                  : handler.type === "mcp_tool"
+                handler.type === "prompt" || handler.type === "agent"
+                  ? await executeModelHook(handler, snapshot, {
+                      event,
+                      signal: executionSignal,
+                      model: options.model,
+                      cwd: options.cwd,
+                      homeDir: options.homeDir,
+                    })
+                  : handler.type === "http"
                     ? await executeBounded(
-                        (signal) => executeMcpTool(handler, snapshot, signal, options.callMcpTool),
+                        (signal) => executeHttp(handler, snapshot, signal),
                         executionSignal,
                         timeout,
                       )
-                    : await executeCommand(handler, snapshot, {
-                        cwd: options.cwd,
-                        projectDir: options.projectDir,
-                        signal: executionSignal,
-                        timeout: background ? undefined : timeout,
-                      });
+                    : handler.type === "mcp_tool"
+                      ? await executeBounded(
+                          (signal) =>
+                            executeMcpTool(handler, snapshot, signal, options.callMcpTool),
+                          executionSignal,
+                          timeout,
+                        )
+                      : await executeCommand(handler, snapshot, {
+                          cwd: options.cwd,
+                          projectDir: options.projectDir,
+                          signal: executionSignal,
+                          timeout: background ? undefined : timeout,
+                        });
               if (
                 event !== "Notification" &&
                 handler.type === "command" &&
