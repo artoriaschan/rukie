@@ -10,7 +10,7 @@
 
 **Blocked by:** 06
 
-**Status:** claimed
+**Status:** resolved
 
 参考：[spec](../spec.md)「Session API 与事件」「TUI」中的 dashboard / 详情页 / 屏幕切换；dsh-TUI `SubagentDashboard.tsx`、`SubagentDetailScene.tsx`。
 
@@ -34,3 +34,4 @@
 - 独立双轴评审：Standards 无 hard finding；Spec P2 指出 Tools 页遗漏执行结果、失败原因和耗时。追加公开终端成功 / 失败用例，先 RED（0 pass / 2 fail，缺少结果预览或错误原因），再 GREEN（2 pass / 0 fail / 8 assertions）。screen reducer 保存工具开始时间、耗时和结果 / 错误预览；Tools 页显示状态、工具名、耗时、缩进参数、`⎿` 成功结果及红色失败原因，预览按参考折叠空白并截断至 80 字符。
 - 同次处理 Standards 可选建议：Dashboard / Detail 共享 typed status presentation map；06 消息卡片的动态 glyph 保持原实现。组合视图 / 06 卡片测试 18 pass / 0 fail / 103 assertions；`tsc -b` 通过。
 - 评审修复后完整验证：`rtk proxy env -u NO_COLOR bun run check` exit 0；1074 pass / 0 fail / 5824 assertions / 80 files，120.09s；日志 `/tmp/neant-subagent-08-review-fix-check.log`。保持 `claimed`，等待协调代理复查、整合 07 与 resolve。
+- 2026-10-04：修复提交 `255d6305434e6a1876aaed4f91a3f0ad1e01e26f` 经原独立双轴复核通过：Spec P2 已解决、无新增 finding；Standards 重复展示逻辑建议已解决，0 hard finding / 0 未解决 heuristic。工单更新为 `resolved`；协调代理继续负责合并冲突、主干完整验证与清理。
