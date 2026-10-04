@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 
 # Spec: Plan Mode
 
@@ -188,3 +188,10 @@ Plan Mode 与 Permission Mode 相互独立，只引导模型，不限制工具�
 - 推翻「地基 C」的"plan 只读作为内置 deny"，并修订「地基 A」的 plan 批准安全默认值为"没有回调时不注册工具"，两处都已在原工单的 Comments 里记录。
 - `CONTEXT.md` 新增 **Plan Mode**，**Interaction** 的降级措辞已同步。
 - 子代理工单（含输入框上方面板固定顺序）已全部落地：评审面板直接放进固定顺序里的 PermissionDialog 槽位，子代理相关测试与本 spec 一起写。
+
+## Implementation Record
+
+- 2026-10-04：按 01 → 02 / 03 并行执行，每个 issue 均由子代理使用 implement skill 在独立 worktree 中完成 TDD、Standards / Spec 审查和提交。三个 issue 均已 resolved，全部验收项完成。
+- 集成顺序：01（`ecdf4ba`）→ 02（`9710a86`）→ 03（`2339846`）；最终版本已合入 main。本次三个 worktree 及已合并开发分支均已移除。
+- 审查发现并修复了状态存储失败后的队列恢复，以及混合工具批次中接手后仍调用模型的问题；两轴最终均无未解决发现。新增完整 TUI 进入审批 → Plan Mode → 计划评审 → 退出执行的公共测试，覆盖 ask / auto-review 且 Permission Mode 不变。
+- 最终在 main 上以临时隔离 HOME、清除 NO_COLOR 执行 `bun run check`：exit 0；格式、lint、`tsc -b`、knip 与全量测试通过。1178 pass / 0 fail，6416 assertions，90 files，129.21s；日志 `/tmp/neant-plan-mode-main-final-check.log`。
