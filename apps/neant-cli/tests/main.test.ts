@@ -146,3 +146,98 @@ test.each([
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test.each(["text", "stream-json"])(
+  "%s output keeps child events distinct from the parent closing text",
+  async (format) => {
+    const root = await mkdtemp(join(tmpdir(), "neant-cli-subagent-"));
+    const faux = createFauxCore({ api: "faux", provider: "faux" });
+    const reply: Parameters<typeof faux.setResponses>[0][number] = (context) => {
+      const last = context.messages.at(-1)!;
+      if (last.role === "user" && JSON.stringify(last.content).includes("child-prompt"))
+        return fauxAssistantMessage("child-only text");
+      return fauxAssistantMessage("parent-only text");
+    };
+    faux.setResponses([
+      fauxAssistantMessage(
+        fauxToolCall("subagent", { description: "Inspect", prompt: "child-prompt" }),
+        { stopReason: "toolUse" },
+      ),
+      ...Array.from({ length: 5 }, () => reply),
+    ]);
+    let stdout = "";
+    let stderr = "";
+    try {
+      expect(
+        await main(["-p", "delegate", "--output-format", format], {
+          readStdin: async () => "",
+          stdout: (value) => {
+            stdout += value;
+          },
+          stderr: (value) => {
+            stderr += value;
+          },
+          session: {
+            cwd: root,
+            homeDir: root,
+            model: faux.getModel(),
+            streamFn: faux.streamSimple,
+          },
+        }),
+      ).toBe(0);
+      expect(stderr).toBe("");
+      if (format === "text") expect(stdout).toBe("parent-only text\n");
+      else {
+        const events = stdout
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line));
+        const wrapped = events.filter((event) => event.type === "subagent_event");
+        expect(wrapped.length).toBeGreaterThan(0);
+        expect(
+          wrapped.some(
+            (event) =>
+              event.event.type === "message_end" &&
+              event.event.message.role === "assistant" &&
+              event.event.message.content.some(
+                (block: { type: string; text?: string }) => block.text === "child-only text",
+              ),
+          ),
+        ).toBe(true);
+        expect(
+          wrapped.every(
+            (event) =>
+              event.sessionId !== event.event.sessionId && event.agentId === event.event.sessionId,
+          ),
+        ).toBe(true);
+        expect(events.at(-1)).toMatchObject({ type: "result", text: "parent-only text" });
+      }
+      if (format === "stream-json") {
+        const childId = stdout
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line))
+          .find((event) => event.type === "subagent_event").agentId;
+        let resumeError = "";
+        expect(
+          await main(["-p", "resume", "--resume", childId], {
+            readStdin: async () => "",
+            stdout: () => {},
+            stderr: (value) => {
+              resumeError += value;
+            },
+            session: {
+              cwd: root,
+              homeDir: root,
+              model: faux.getModel(),
+              streamFn: faux.streamSimple,
+            },
+          }),
+        ).toBe(1);
+        expect(resumeError).toContain("Session not found");
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);

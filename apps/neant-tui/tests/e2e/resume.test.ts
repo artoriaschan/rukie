@@ -290,3 +290,40 @@ test("resume hides a skill reminder retained by compaction while preserving user
     await app.cleanup();
   }
 });
+
+test("--resume rejects a child session before requesting a model turn", async () => {
+  const argv: string[] = [];
+  let childId = "";
+  const faux = createFauxCore({ api: "faux", provider: "faux" });
+  faux.setResponses([
+    fauxAssistantMessage(
+      fauxToolCall("subagent", { description: "Child", prompt: "child", run_in_background: false }),
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage("child closing"),
+    fauxAssistantMessage("parent closing"),
+  ]);
+  const app = await start(argv, {
+    prepare: async (root) => {
+      const session = await createSession({
+        cwd: root,
+        homeDir: root,
+        model: faux.getModel(),
+        streamFn: faux.streamSimple,
+      });
+      await session.run("delegate", {
+        onEvent(event) {
+          if (event.type === "subagent_event") childId = event.agentId;
+        },
+      });
+      argv.push("--resume", childId);
+    },
+  });
+  try {
+    expect(await app.exit).toBe(1);
+    expect(app.stderr()).toContain(childId);
+    expect(app.calls).toHaveLength(0);
+  } finally {
+    await app.cleanup();
+  }
+});
