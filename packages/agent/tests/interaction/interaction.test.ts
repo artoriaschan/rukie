@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { requestInteraction } from "../src/interaction/index.ts";
+import { requestInteraction } from "../../src/interaction/index.ts";
 
 test("a notification that synchronously cancels an interaction returns cancellation without requesting a reply", async () => {
   const controller = new AbortController();
