@@ -162,6 +162,8 @@ function Chat({
   const showReturn = !!bodyScroll && !bodyScroll.following;
   const statusHeight = state.contextUsage && columns - 2 >= 14 ? 3 : 2;
   const hasActivity = state.running && activity.phase !== "idle";
+  const promptMaxLines = Math.max(1, Math.min(6, Math.floor(rows / 3)) - 3);
+  const hasTodos = state.todos.some((todo) => state.running || todo.status !== "completed");
   const minimumDialogHeight = question
     ? permissionChoices(question.request.mode).length + 3
     : userQuestion
@@ -170,7 +172,10 @@ function Chat({
   // Reserve the dialog's bottom gap and at least one transcript row before allocating chrome.
   const permissionSpace = rows - statusHeight - 2;
   const compactReturn =
-    !!interaction && showReturn && permissionSpace < minimumDialogHeight + Number(hasActivity) + 2;
+    showReturn &&
+    (interaction
+      ? permissionSpace < minimumDialogHeight + Number(hasActivity) + 2
+      : hasTodos && rows - statusHeight - (promptMaxLines + 3) - Number(hasActivity) - 3 < 2);
   const returnHeight = showReturn ? (compactReturn ? 1 : 2) : 0;
   // The dialog title already conveys waiting for approval when this duplicate line cannot fit.
   const showActivity =
@@ -179,7 +184,6 @@ function Chat({
     minimumDialogHeight,
     Math.min(Math.floor(rows / 2), permissionSpace - returnHeight - Number(showActivity)),
   );
-  const promptMaxLines = Math.max(1, Math.min(6, Math.floor(rows / 3)) - 3);
   const todoMaxHeight = Math.max(
     1,
     rows - statusHeight - (promptMaxLines + 3) - returnHeight - Number(showActivity) - 1,

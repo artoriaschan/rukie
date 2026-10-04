@@ -187,6 +187,12 @@ test("a long Todo List leaves the input and status visible at 40 columns by 12 r
     expect(app.screen()).toContain("❯");
     expect(app.screen().at(-1)).toContain("esc");
     expect(app.screen().some((line) => line.includes("ctx"))).toBe(true);
+    app.stdin.write("\x1b[5~");
+    await app.waitFor(() => app.screen().some((line) => line.includes("回到底部")));
+    expect(app.screen()).toContain("  ▾ ✓ 0/10");
+    expect(app.screen()).toContain("  └─ … 还有 10 项");
+    expect(app.screen()).toContain("❯");
+    expect(app.screen().at(-1)).toContain("esc");
   } finally {
     await app.cleanup();
   }
