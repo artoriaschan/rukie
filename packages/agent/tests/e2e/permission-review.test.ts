@@ -442,6 +442,38 @@ test("the user can allow a call rejected by the reviewer", async () => {
   expect(await Bun.file(join(dirs.cwd, "reviewed.txt")).text()).toBe("safe");
 });
 
+test("switching mode while answering a review applies to the next call in the same Turn", async () => {
+  dirs = await tempDirs();
+  const fake = reviewedModel(fauxAssistantMessage('{"risk":"high","decision":"deny"}'));
+  fake.main.streamFn = fakeModel([
+    fauxAssistantMessage(
+      [
+        fauxToolCall("write", { path: "first.txt", content: "first" }, { id: "first" }),
+        fauxToolCall("write", { path: "second.txt", content: "second" }, { id: "second" }),
+      ],
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage("done"),
+  ]).streamFn;
+  const requests: PermissionAskRequest[] = [];
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    permissionMode: "auto-review",
+    onPermissionAsk: async (request) => {
+      requests.push(request);
+      session.setPermissionMode("full-access");
+      return "deny";
+    },
+  });
+  expect((await session.run("write both files")).text).toBe("done");
+  expect(requests).toMatchObject([
+    { toolCallId: "first", mode: "auto-review", reason: expect.stringContaining("high") },
+  ]);
+  expect(await Bun.file(join(dirs.cwd, "first.txt")).exists()).toBe(false);
+  expect(await Bun.file(join(dirs.cwd, "second.txt")).text()).toBe("second");
+});
+
 test.each([
   "not JSON",
   "[]",

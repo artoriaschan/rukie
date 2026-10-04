@@ -12,12 +12,7 @@ import {
   setValue,
   type Session as StoredSession,
 } from "@earendil-works/pi-agent-core/harness/session";
-import {
-  validateToolArguments,
-  type Api,
-  type Model,
-  type AssistantMessage,
-} from "@earendil-works/pi-ai";
+import type { Api, Model } from "@earendil-works/pi-ai";
 import { resolve } from "node:path";
 import { createUserVisibleError } from "@neant/shared";
 import type {
@@ -29,7 +24,7 @@ import type {
 } from "@neant/shared";
 import { resolveModel } from "../config/index.ts";
 import { createJsonlStore, type SessionStore } from "../store/index.ts";
-import { decidePermission } from "../permissions/index.ts";
+import { createPermissionGate, type PermissionAskRequest } from "../permissions/index.ts";
 import { createBuiltinTools, type QuestionRequest, type QuestionReply } from "../tools/index.ts";
 import { SYSTEM_PROMPT } from "../prompt/index.ts";
 import {
@@ -42,21 +37,9 @@ import { discoverSkills, skillInvocation, skillsReminder } from "../skills/index
 import { createMcpConnections } from "../mcp/index.ts";
 import { compactTurn, estimateContextTokens, restoreContext } from "../compaction/index.ts";
 import { contextUsage } from "../context-usage/index.ts";
-import { reviewPermission, type ReviewResult } from "../review/index.ts";
-import { requestInteraction } from "../interaction/index.ts";
 import { createToolState, todoState, type TodoItem } from "../tool-state/index.ts";
 
-export interface PermissionAskRequest {
-  toolCallId: string;
-  toolName: string;
-  /** Validated arguments for this tool call. */
-  args: unknown;
-  /** Mode captured when this call entered the permission gate. */
-  mode: PermissionMode;
-  reason?: string;
-  /** Aborted when the Run is cancelled; frontends can dismiss their pending question. */
-  signal: AbortSignal;
-}
+export type { PermissionAskRequest } from "../permissions/index.ts";
 
 export interface SessionOptions {
   /** Project directory the session works in. */
@@ -163,130 +146,32 @@ export async function createSession(options: SessionOptions): Promise<Session> {
   // behind existing conversation messages; pi will seed it when restoring them.
   let baselinePersisted = transcriptMessages.length > 0;
   let skills = new Map<string, Skill>();
-  const reviewBatches = new WeakMap<AssistantMessage, Map<string, Promise<ReviewResult>>>();
-  const activeReviews = new Set<Promise<ReviewResult>>();
+  const permissions = createPermissionGate({
+    cwd,
+    getMode: () => permissionMode,
+    getAllowTools: () => [...(settings.allowTools ?? []), ...(options.allowTools ?? [])],
+    getAgentState: () => agent.state,
+    getProjectInstructions: () =>
+      transcriptMessages.flatMap((message) =>
+        message.role === "system-reminder" &&
+        ["project-instructions", "user-instructions"].includes(message.source)
+          ? [message.content]
+          : [],
+      ),
+    getReviewModel: () =>
+      settings.reviewModel
+        ? async () =>
+            (await resolveModel({ ...settings, model: settings.reviewModel }, options.homeDir))
+              .model
+        : model,
+    streamFn: options.streamFn ?? streamFn,
+    onPermissionAsk: options.onPermissionAsk,
+    onEvent: (event) => emitRunEvent?.(event),
+  });
   const agent = new Agent({
     streamFn: options.streamFn ?? streamFn,
     convertToLlm,
-    beforeToolCall: async ({ toolCall, args, assistantMessage }, signal) => {
-      const mode = permissionMode;
-      const callSignal = signal ?? new AbortController().signal;
-      let reason: string | undefined;
-      let decision = decidePermission({
-        toolName: toolCall.name,
-        allowTools: [...(settings.allowTools ?? []), ...(options.allowTools ?? [])],
-        mode,
-      });
-      if (decision === "review") {
-        let batch = reviewBatches.get(assistantMessage);
-        if (!batch) {
-          batch = new Map();
-          reviewBatches.set(assistantMessage, batch);
-        }
-        // pi prepares parallel calls sequentially. Start independent reviews here,
-        // while each actual hook still reads the current Permission Mode.
-        for (const call of assistantMessage.content) {
-          if (call.type !== "toolCall" || batch.has(call.id)) continue;
-          if (
-            decidePermission({
-              mode,
-              toolName: call.name,
-              allowTools: [...(settings.allowTools ?? []), ...(options.allowTools ?? [])],
-            }) !== "review"
-          )
-            continue;
-          const tool = agent.state.tools.find((item) => item.name === call.name);
-          if (!tool) continue;
-          let validated: unknown;
-          try {
-            validated =
-              call.id === toolCall.id
-                ? args
-                : validateToolArguments(tool, {
-                    ...call,
-                    arguments: (tool.prepareArguments?.(call.arguments) ??
-                      call.arguments) as typeof call.arguments,
-                  });
-          } catch {
-            // pi returns validation errors without executing or reviewing this call.
-            continue;
-          }
-          const review = (async () => {
-            await emitRunEvent?.({
-              type: "permission_review",
-              phase: "start",
-              toolCallId: call.id,
-              toolName: call.name,
-            });
-            const result = await reviewPermission({
-              cwd,
-              projectInstructions: transcriptMessages.flatMap((message) =>
-                message.role === "system-reminder" &&
-                ["project-instructions", "user-instructions"].includes(message.source)
-                  ? [message.content]
-                  : [],
-              ),
-              messages: agent.state.messages.filter((message) => message !== assistantMessage),
-              tool,
-              args: validated,
-              model: settings.reviewModel
-                ? async () =>
-                    (
-                      await resolveModel(
-                        { ...settings, model: settings.reviewModel },
-                        options.homeDir,
-                      )
-                    ).model
-                : model,
-              streamFn: options.streamFn ?? streamFn,
-              signal: callSignal,
-            });
-            await emitRunEvent?.({
-              type: "permission_review",
-              phase: "end",
-              toolCallId: call.id,
-              ...result,
-            });
-            return result;
-          })();
-          batch.set(call.id, review);
-          activeReviews.add(review);
-          void review.finally(() => activeReviews.delete(review)).catch(() => {});
-        }
-        const review = await batch.get(toolCall.id)!;
-        decision = review.decision;
-        reason = "reason" in review ? review.reason : undefined;
-      }
-      if (decision === "ask") {
-        decision = options.onPermissionAsk
-          ? await requestInteraction(
-              {
-                toolCallId: toolCall.id,
-                toolName: toolCall.name,
-                args,
-                mode,
-                ...(reason !== undefined && { reason }),
-                signal: callSignal,
-              },
-              options.onPermissionAsk,
-              "deny",
-            )
-          : "deny";
-      }
-      if (decision === "allow") return undefined;
-      await emitRunEvent?.({
-        type: "permission_denied",
-        toolCallId: toolCall.id,
-        toolName: toolCall.name,
-      });
-      return {
-        block: true,
-        reason:
-          mode === "auto-review"
-            ? `User denied this tool call: ${toolCall.name}`
-            : `Tool not authorized: ${toolCall.name}`,
-      };
-    },
+    beforeToolCall: permissions.beforeToolCall,
     initialState: {
       model,
       messages: restoreContext(entries, toolStateSources),
@@ -524,7 +409,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         throw error;
       } finally {
         try {
-          await Promise.allSettled(activeReviews);
+          await permissions.settleReviews();
           await mcp.close();
           await emitMcpErrors();
           result.durationMs = performance.now() - started;
