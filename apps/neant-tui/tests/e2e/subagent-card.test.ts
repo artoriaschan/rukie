@@ -250,3 +250,113 @@ test("the Subagent waterfall includes thinking and keeps it separate from stream
     await app.cleanup();
   }
 });
+
+test("an idle child's continuation card attaches only to its latest send_message tool", async () => {
+  const app = await start(["--permission-mode", "full-access", "delegate"], {
+    columns: 160,
+    rows: 60,
+  });
+  const screen = () => app.screen().join("\n");
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("subagent", {
+      description: "Continue investigation",
+      prompt: "child original",
+      run_in_background: false,
+    });
+    await app.waitFor(() => app.calls.length === 2);
+    app.calls[1]!.delta("original result");
+    app.calls[1]!.finish();
+    await app.waitFor(
+      () => app.calls.length === 3 && screen().includes("子代理：Continue investigation"),
+    );
+    const result = app.calls[2]!.context.messages.findLast(
+      (message) => message.role === "toolResult",
+    )!;
+    if (result.role !== "toolResult") throw new Error("Expected child result");
+    const id = (result.details as { agentId: string }).agentId;
+    app.calls[2]!.tool("send_message", { agent_id: id, message: "follow up" });
+    await app.waitFor(() => app.calls.length === 5);
+    const child = app.calls.find((call) =>
+      call.context.messages.some(
+        (message) =>
+          message.role === "user" && JSON.stringify(message.content).includes("follow up"),
+      ),
+    )!;
+    child.delta("continuation output");
+    await app.waitFor(() => screen().includes("│ continuation output"));
+    const rows = app.screen();
+    const cards = rows
+      .map((row, index) => (row.includes("子代理：Continue investigation") ? index : -1))
+      .filter((index) => index >= 0);
+    expect(cards).toHaveLength(1);
+    expect(rows[cards[0]! - 1]).toContain(`delivered to ${id}`);
+    expect(rows[cards[0]!]).toContain("运行中");
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("parent resume initializes its persisted child card as idle before cold continuation", async () => {
+  const argv: string[] = [];
+  let id = "";
+  const { createFauxCore, fauxAssistantMessage, fauxToolCall } =
+    await import("@earendil-works/pi-ai");
+  const { createSession } = await import("@neant/agent");
+  const original = createFauxCore({ api: "faux", provider: "faux" });
+  original.setResponses([
+    fauxAssistantMessage(
+      fauxToolCall("subagent", {
+        description: "Stored child",
+        prompt: "original child",
+        run_in_background: false,
+      }),
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage("stored answer"),
+    fauxAssistantMessage("parent answer"),
+  ]);
+  const app = await start(argv, {
+    columns: 160,
+    rows: 50,
+    prepare: async (root) => {
+      const session = await createSession({
+        cwd: root,
+        homeDir: root,
+        model: original.getModel(),
+        streamFn: original.streamSimple,
+      });
+      await session.run("delegate", {
+        onEvent(event) {
+          if (event.type === "subagent_event") id = event.agentId;
+        },
+      });
+      argv.push("--resume", session.id);
+    },
+  });
+  try {
+    const screen = () => app.screen().join("\n");
+    await app.waitFor(() => screen().includes("子代理：Stored child"));
+    expect(app.screen().find((row) => row.includes("子代理：Stored child"))).toEndWith("空闲");
+    expect(app.isWorking()).toBe(false);
+    app.stdin.write("continue\r");
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("send_message", { agent_id: id, message: "cold followup" });
+    await app.waitFor(() => app.calls.length === 3);
+    const child = app.calls.find((call) =>
+      call.context.messages.some(
+        (message) =>
+          message.role === "user" && JSON.stringify(message.content).includes("cold followup"),
+      ),
+    )!;
+    expect(JSON.stringify(child.context.messages)).toContain("stored answer");
+    child.delta("cold output");
+    await app.waitFor(() => screen().includes("│ cold output"));
+    const rows = app.screen();
+    const card = rows.findIndex((row) => row.includes("子代理：Stored child"));
+    expect(rows.filter((row) => row.includes("子代理：Stored child"))).toHaveLength(1);
+    expect(rows[card - 1]).toContain(`delivered to ${id}`);
+  } finally {
+    await app.cleanup();
+  }
+});

@@ -409,6 +409,8 @@ test("stream-json emits session metadata, verbatim pi events, and the Run result
       "todo_write",
       "subagent",
       "subagent_fork",
+      "send_message",
+      "list_agents",
     ],
   });
   expect(events.map((event) => event.type)).toEqual([

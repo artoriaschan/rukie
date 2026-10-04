@@ -2,14 +2,48 @@ import type { AgentMessage, AgentTool, AgentToolResult } from "@earendil-works/p
 import type { RunResult } from "@neant/shared";
 import { Type } from "typebox";
 import type { Session, SessionEvent } from "../session/index.ts";
+import type { ToolStateDefinition } from "../tool-state/index.ts";
 import type { SubagentType } from "./types.ts";
 export { discoverSubagentTypes, type SubagentType } from "./types.ts";
+
+export const subagentsState: ToolStateDefinition = {
+  name: "subagents",
+  version: 1,
+  parse(version, value) {
+    if (
+      version !== 1 ||
+      !Array.isArray(value) ||
+      !value.every(
+        (row) =>
+          row &&
+          typeof row.id === "string" &&
+          typeof row.description === "string" &&
+          typeof row.type === "string",
+      )
+    )
+      throw new Error("Invalid subagents snapshot.");
+    return value.map(({ id, description, type }) => ({ id, description, type }));
+  },
+};
 
 export const SUBAGENT_PROMPT =
   "You are a subagent delegated by a parent session. Work on the assigned prompt; your final reply will be delivered to the parent. You cannot expand the parent session permissions or create other subagents.";
 
+export type SubagentIdentity = { id: string; description: string; type: string };
+interface ChildHandle {
+  session: Session;
+  steer(message: AgentMessage): void;
+}
 interface SubagentOptions {
-  createChild(type: SubagentType, description: string, fork?: boolean): Promise<Session>;
+  createChild(
+    type: SubagentType,
+    description: string,
+    fork?: boolean,
+    resumeId?: string,
+  ): Promise<ChildHandle>;
+  restored?: readonly SubagentIdentity[];
+  persist(identities: SubagentIdentity[]): Promise<void>;
+  warn(warning: string): void;
   steer(message: AgentMessage): void;
   emit(
     event: Omit<Extract<SessionEvent, { type: "subagent_event" }>, "sessionId">,
@@ -20,7 +54,15 @@ interface SubagentOptions {
 /** Owns only the current parent's child runs; storage and the agent loop remain Session's. */
 export function createSubagents(options: SubagentOptions) {
   let types = new Map<string, SubagentType>();
-  const running = new Map<symbol, { controller: AbortController; done?: Promise<RunResult> }>();
+  const children = new Map<string, SubagentIdentity & { handle?: ChildHandle }>(
+    (options.restored ?? []).map((row) => [row.id, { ...row }]),
+  );
+  const running = new Map<
+    symbol,
+    { agentId?: string; controller: AbortController; done?: Promise<RunResult> }
+  >();
+  let saving = Promise.resolve();
+  const sending = new Map<string, Promise<void>>();
   const notifications = new Set<AgentMessage>();
   let changed = Promise.withResolvers<void>();
   let aborted = false;
@@ -34,24 +76,45 @@ export function createSubagents(options: SubagentOptions) {
     prompt: string,
     run_in_background: boolean,
     fork = false,
+    existing?: SubagentIdentity & { handle?: ChildHandle },
   ): Promise<AgentToolResult<{ agentId: string; childSessionId: string }>> {
     // ponytail: Fixed concurrency limit; make configurable only when needed.
     if (running.size >= 8) throw new Error("At most 8 subagents can run at once.");
     if (aborted) throw new Error("Parent Run was aborted.");
     const key = Symbol();
     const entry = {
+      agentId: undefined as string | undefined,
       controller: new AbortController(),
       done: undefined as Promise<RunResult> | undefined,
     };
     running.set(key, entry);
-    let session: Session;
+    let handle: ChildHandle;
     try {
-      session = await options.createChild(type, description, fork);
+      handle =
+        existing?.handle ?? (await options.createChild(type, description, fork, existing?.id));
+      entry.agentId = handle.session.id;
+      if (existing) existing.handle = handle;
+      else {
+        children.set(handle.session.id, {
+          id: handle.session.id,
+          description,
+          type: type.name,
+          handle,
+        });
+        const snapshot = [...children.values()].map(({ id, description, type }) => ({
+          id,
+          description,
+          type,
+        }));
+        saving = saving.then(() => options.persist(snapshot));
+        await saving;
+      }
     } catch (error) {
       running.delete(key);
       wake();
       throw error;
     }
+    const { session } = handle;
     const details = { agentId: session.id, childSessionId: session.id };
     entry.done = (async () => {
       let result: RunResult = {
@@ -103,7 +166,15 @@ export function createSubagents(options: SubagentOptions) {
       return result;
     })();
     if (run_in_background)
-      return { content: [{ type: "text", text: `started subagent ${session.id}` }], details };
+      return {
+        content: [
+          {
+            type: "text",
+            text: existing ? `delivered to ${session.id}` : `started subagent ${session.id}`,
+          },
+        ],
+        details,
+      };
     const result = await entry.done;
     return {
       content: [{ type: "text", text: result.text || result.error || "" }],
@@ -156,9 +227,75 @@ export function createSubagents(options: SubagentOptions) {
       );
     },
   };
+  const sendParameters = Type.Object({ agent_id: Type.String(), message: Type.String() });
+  const sendTool: AgentTool<typeof sendParameters> = {
+    name: "send_message",
+    label: "Send Message",
+    description:
+      "Send instructions to one of this session's subagents. Steers an active Run or starts a new background Run for an idle child.",
+    parameters: sendParameters,
+    async execute(_id, { agent_id, message }) {
+      const child = children.get(agent_id);
+      if (!child) throw new Error(`Unknown subagent: ${agent_id}`);
+      const previous = sending.get(agent_id);
+      const delivery = Promise.withResolvers<void>();
+      sending.set(agent_id, delivery.promise);
+      await previous;
+      try {
+        if ([...running.values()].some((entry) => entry.agentId === agent_id)) {
+          child.handle!.steer({
+            role: "user",
+            content: [{ type: "text", text: message }],
+            timestamp: Date.now(),
+          });
+          return { content: [{ type: "text", text: `delivered to ${agent_id}` }], details: {} };
+        }
+        const fork = child.type === "fork";
+        let type = fork
+          ? { name: "fork", description: "Fork of the parent session", prompt: "" }
+          : types.get(child.type);
+        if (!type) {
+          options.warn(
+            `Subagent type "${child.type}" was removed; falling back to general-purpose for ${agent_id}.`,
+          );
+          type = types.get("general-purpose")!;
+        }
+        return await start(type, child.description, message, true, fork, child);
+      } finally {
+        delivery.resolve();
+        if (sending.get(agent_id) === delivery.promise) sending.delete(agent_id);
+      }
+    },
+  };
+  const listTool: AgentTool = {
+    name: "list_agents",
+    label: "List Agents",
+    description: "List this session's subagents, their Run status and descriptions.",
+    parameters: Type.Object({}),
+    async execute() {
+      const active = new Set([...running.values()].map((entry) => entry.agentId));
+      return {
+        content: [
+          {
+            type: "text",
+            text:
+              [...children.values()]
+                .map(
+                  (child) =>
+                    `${child.id} [${active.has(child.id) ? "running" : "idle"}] — ${child.description}`,
+                )
+                .join("\n") || "(no subagents)",
+          },
+        ],
+        details: {},
+      };
+    },
+  };
   return {
     tool,
     forkTool,
+    sendTool,
+    listTool,
     setTypes(available: Map<string, SubagentType>) {
       types = available;
       tool.description =

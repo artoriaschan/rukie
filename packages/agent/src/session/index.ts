@@ -22,7 +22,13 @@ import type {
   SessionEvent as SharedSessionEvent,
   Settings,
 } from "@neant/shared";
-import { createSubagents, discoverSubagentTypes, SUBAGENT_PROMPT } from "../subagents/index.ts";
+import {
+  createSubagents,
+  discoverSubagentTypes,
+  SUBAGENT_PROMPT,
+  subagentsState,
+  type SubagentIdentity,
+} from "../subagents/index.ts";
 import { resolveModel } from "../config/index.ts";
 import { createJsonlStore, type SessionStore } from "../store/index.ts";
 import {
@@ -115,6 +121,7 @@ interface InternalSessionOptions {
   typePrompt?: string;
   initialMessages?: AgentMessage[];
   systemPrompt?: string;
+  control?: { steer?: (message: AgentMessage) => void };
 }
 
 async function createSessionInternal(
@@ -172,7 +179,11 @@ async function createSessionInternal(
     await stored.close(context);
   }
   let emitRunEvent: ((event: CustomSessionEvent<AgentEvent>) => void | Promise<void>) | undefined;
-  const toolState = createToolState([todoState], entries, options.onWarning ?? console.warn);
+  const toolState = createToolState(
+    [todoState, subagentsState],
+    entries,
+    options.onWarning ?? console.warn,
+  );
   let activeStore: StoredSession | undefined;
   const setTodo = async (todos: TodoItem[]) => {
     if (!activeStore) throw new Error("Tool State writes require an active Run.");
@@ -226,21 +237,30 @@ async function createSessionInternal(
   let currentResult: RunResult | undefined;
   let completedMessages = restoreContext(entries);
   const subagents = createSubagents({
-    async createChild(type, description, fork = false) {
+    restored: toolState.get("subagents") as SubagentIdentity[] | undefined,
+    warn: options.onWarning ?? console.warn,
+    async persist(identities) {
+      if (!activeStore) throw new Error("Tool State writes require an active Run.");
+      const value = await toolState.set("subagents", identities, activeStore, context);
+      await emitRunEvent?.({ type: "tool_state_changed", name: "subagents", value });
+    },
+    async createChild(type, description, fork = false, resumeId) {
       const selected = fork ? undefined : (type.model ?? settings.subagentModel);
       const childModel =
         selected === undefined
           ? model
           : (await resolveModel({ ...settings, model: selected }, options.homeDir)).model;
-      return createSessionInternal(
+      const control: NonNullable<InternalSessionOptions["control"]> = {};
+      const session = await createSessionInternal(
         {
           ...options,
-          resumeId: undefined,
+          resumeId,
           store,
           model: childModel,
           streamFn: options.streamFn ?? streamFn,
         },
         {
+          control,
           parentSessionId: stored.metadata.id,
           originDescription: description,
           permissions: permissionConfiguration,
@@ -254,11 +274,12 @@ async function createSessionInternal(
               .map((tool) => tool.name),
           typePrompt: type.prompt,
           ...(fork && {
-            initialMessages: structuredClone(completedMessages),
+            ...(!resumeId && { initialMessages: structuredClone(completedMessages) }),
             systemPrompt: agent.state.systemPrompt,
           }),
         },
       );
+      return { session, steer: (message) => control.steer!(message) };
     },
     steer: (message) => agent.steer(message),
     emit: (event) => emitRunEvent?.(event),
@@ -298,11 +319,14 @@ async function createSessionInternal(
           : SYSTEM_PROMPT),
       tools: [
         ...initialTools,
-        ...(internal.parentSessionId ? [] : [subagents.tool, subagents.forkTool]),
+        ...(internal.parentSessionId
+          ? []
+          : [subagents.tool, subagents.forkTool, subagents.sendTool, subagents.listTool]),
       ].filter((tool) => !internal.toolNames || internal.toolNames.includes(tool.name)),
       ...(settings.thinking && { thinkingLevel: settings.thinking }),
     },
   });
+  if (internal.control) internal.control.steer = (message) => agent.steer(message);
   let running = false;
   let inputTokens: number | undefined;
   return {
@@ -379,7 +403,9 @@ async function createSessionInternal(
           }
           agent.state.tools = [
             ...generalTools,
-            ...(internal.parentSessionId ? [] : [subagents.tool, subagents.forkTool]),
+            ...(internal.parentSessionId
+              ? []
+              : [subagents.tool, subagents.forkTool, subagents.sendTool, subagents.listTool]),
           ].filter((tool) => !internal.toolNames || internal.toolNames.includes(tool.name));
           await emit({
             type: "session_start",

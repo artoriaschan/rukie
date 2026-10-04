@@ -48,6 +48,8 @@ function decidePermission({ mode, toolName }: PermissionOptions): PermissionDeci
       "todo_write",
       "subagent",
       "subagent_fork",
+      "send_message",
+      "list_agents",
     ].includes(toolName)
   )
     return "allow";

@@ -372,14 +372,18 @@ function Chat({
                   result={entry.result}
                   error={entry.error}
                 />
-                {entry.agentId && state.subagents[entry.agentId] && (
-                  <SubagentMessage
-                    subagent={state.subagents[entry.agentId]!}
-                    columns={columns}
-                    effort={thinking}
-                    locale={locale}
-                  />
-                )}
+                {entry.agentId &&
+                  state.subagents[entry.agentId] &&
+                  state.completed.findLastIndex(
+                    (candidate) => candidate.type === "tool" && candidate.agentId === entry.agentId,
+                  ) === index && (
+                    <SubagentMessage
+                      subagent={state.subagents[entry.agentId]!}
+                      columns={columns}
+                      effort={thinking}
+                      locale={locale}
+                    />
+                  )}
               </Box>
             );
           case "notice":

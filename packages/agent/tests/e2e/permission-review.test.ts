@@ -77,7 +77,8 @@ test("auto-review allows a safe call and emits its review outcome without asking
 test("old review history truncates first while keeping current authorization and the pending action", async () => {
   dirs = await tempDirs();
   const fake = reviewedModel();
-  fake.model.contextWindow = 4000;
+  // Keep old history below main compaction but above the half-window review budget.
+  fake.model.contextWindow = 8000;
   const main = fakeModel([
     fauxAssistantMessage("short"),
     fauxAssistantMessage(fauxToolCall("write", { path: "reviewed.txt", content: "safe" }), {
@@ -87,7 +88,7 @@ test("old review history truncates first while keeping current authorization and
   ]);
   fake.main.streamFn = main.streamFn;
   const session = await createSession({ ...dirs, ...fake, permissionMode: "auto-review" });
-  await session.run("OLD_HISTORY ".repeat(500));
+  await session.run("OLD_HISTORY ".repeat(1200));
   await session.run("CURRENT_AUTHORIZATION");
   expect(fake.reviewer.contexts).toHaveLength(1);
   const text = JSON.stringify(fake.reviewer.contexts[0]);
