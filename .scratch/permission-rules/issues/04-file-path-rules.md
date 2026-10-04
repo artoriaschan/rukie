@@ -39,3 +39,8 @@
 - 04 原 symlink 链、dangling ancestor 与平台路径 canonical resolver 保持；真实 Run 测试加入别名 deny、read fallback 外部 symlink、Unicode / percent URL / home / ordinary 执行一致性、NBSP 双文件和 missing/dangling primary 回归。该集成修复同时保证 06 会话目录规则描述与实际工具落点一致。
 - RED→GREEN 与完整 evidence 见 [06](06-session-allow-rules.md) actual file target alignment checkpoint。focused 239 pass / 0 fail，9 files，723 assertions；冻结 full check exit 0，984 pass / 0 fail，71 files，5362 assertions，114.84s，日志 `/tmp/neant-permission-path-alias-check.log`。
 - 04 既有 resolved 状态保持；新增边界修复 delta 在 06 分支，待父代理独立 Standards / Spec 复审后集成。
+
+### 2026-10-04 actual tool target integration reviewed
+
+- 父代理完成最终修复 delta 独立 Standards / Spec 双轴复审，两轴均 0 findings。Spec reviewer 的真实 Session `@` deny、read fallback 外部 symlink deny、NBSP 精确落点探针通过，04 / 06 工具路径边界补齐已验收。
+- 04 resolved 保持；最终冻结运行时完整 check exit 0，984 pass / 0 fail，71 files，5362 assertions，114.84s，日志 `/tmp/neant-permission-path-alias-check.log`。七张工单已全部验收，spec 同步 resolved；后续 main 集成验收由父代理执行。

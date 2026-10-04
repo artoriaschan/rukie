@@ -4,7 +4,7 @@
 
 **Blocked by:** 03, 04, 05
 
-**Status:** in-progress
+**Status:** resolved
 
 参考：[spec](../spec.md)「"本 session 允许"」；User Stories 30–35。
 
@@ -45,3 +45,11 @@
 - focused 最终 exit 0：239 pass / 0 fail，9 files，723 assertions，8.95s；tsc -b、oxlint、knip 独立 exit 0。旧两项 request.args 断言精确更新为公开 prepared absolute 参数，行为断言完整保留。
 - 冻结最终实现完整 `rtk proxy env -u NO_COLOR bun run check` exit 0：984 pass / 0 fail，71 files，5362 assertions，114.84s；oxfmt、oxlint、tsc -b、knip 全通过。日志 `/tmp/neant-permission-path-alias-check.log`；`git diff --check` 通过。
 - 本检查点同时补齐 04 路径规则与 06 会话目录规则的真实文件工具边界，新增修复 delta 待父代理双轴 review；06 继续 in-progress，04 既有 resolved 保留，最终 spec resolved 待全部复审验收后更新。
+
+### 2026-10-04 final review completed
+
+- 父代理对实现 checkpoint 与最终 `df89be19d5f1607c820a2af15fa0a8b0415e9911...3c5ce48560ec7beedb722d0bc6cfa793822f3e15` 修复 delta 完成独立 Standards / Spec 双轴 review。最终两轴均 0 findings；原 Standards P2 测试目录问题已解决。
+- 独立 Spec reviewer 另以真实 Session 探针验证 `@` 路径 deny、read fallback 外部 symlink deny，以及 NBSP 双文件的精确实际落点，均通过。04 / 06 实际文件工具边界集成修复已验收，没有待处理 finding。
+- 06 resolved；权限规则与 compaction reminder 的七张 issue（01–07）全部完成实现、验收与 review，spec 顶层状态同步 resolved。
+- 本次只修改文档，runtime 与测试源码冻结在 `3c5ce48560ec7beedb722d0bc6cfa793822f3e15`，沿用完整 check evidence：exit 0，984 pass / 0 fail，71 files，5362 assertions，114.84s；日志 `/tmp/neant-permission-path-alias-check.log`。文档格式与 diff 检查后提交，不重复执行未变代码的全套测试。
+- 父代理负责随后 main 快进合并、main 集成完整验收与 worktree 归档。

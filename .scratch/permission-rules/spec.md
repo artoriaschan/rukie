@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 
 # Spec: 权限规则（Permission Rule）与 compaction 后 reminder 重发
 
@@ -146,3 +146,12 @@ compaction 时，把全部 reminder source 一起立即重新注入；reminder �
 - 文档（设置示例、`--help`）需写明：bash 规则按文本匹配，不是安全边界。
 - 修掉项目级 `allowTools` 能放宽权限的漏洞，属于安全相关改动；实现时注意不要留下任何项目层可以写入 allow 的旁路。
 - `CONTEXT.md` 已有 Permission Rule、Permission Mode、Trusted Project 条目；实现时如有措辞不一致，以 `CONTEXT.md` 为准。
+
+## Comments
+
+### 2026-10-04 implementation and review completed
+
+- 七张 issue（01–07）全部 resolved，固定权限阶段、规则 parser / matcher、bash 复合命令、文件路径规则、配置层级与 allowTools 退役、会话内存规则、compaction reminder 重发均已验收。
+- 最后一轮独立 Standards / Spec 双轴 delta review 均 0 findings；06 原 Standards P2 测试位置问题已解决。真实 Session 额外探针验证 `@` 别名、read fallback 外部 symlink，以及 percent URL / NBSP 精确落点，04 / 06 实际工具路径集成修复通过。
+- 最终 runtime 冻结提交 `3c5ce48560ec7beedb722d0bc6cfa793822f3e15` 的完整 `rtk proxy env -u NO_COLOR bun run check` exit 0：984 pass / 0 fail，71 files，5362 assertions，114.84s；oxfmt、oxlint、tsc -b、knip 全通过，日志 `/tmp/neant-permission-path-alias-check.log`。
+- 本次收尾只更新验收文档与 resolved 状态，父代理随后负责 main 快进合并、main 集成完整验收与工作树归档。
