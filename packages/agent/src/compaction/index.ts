@@ -20,10 +20,7 @@ import {
 import { convertToLlm } from "../reminders/index.ts";
 
 /** Replay system deltas and project the latest native compaction plus its suffix. */
-export function restoreContext(
-  entries: Entry[],
-  compactionReminderSources: ReadonlySet<string>,
-): AgentMessage[] {
+export function restoreContext(entries: Entry[]): AgentMessage[] {
   const index = entries.findLastIndex((entry) => entry.type === "compaction");
   if (index < 0)
     return entries.flatMap((entry) => (entry.type === "message" ? [entry.message] : []));
@@ -46,17 +43,12 @@ export function restoreContext(
       ),
   );
   const suffix = entries.slice(index + 1);
-  // Reminders appended immediately after compaction re-establish current Tool State
+  // Reminders appended immediately after compaction re-establish current sources
   // before the retained conversation tail. Later Run reminders retain their order.
   let reminderCount = 0;
   while (suffix[reminderCount]?.type === "message") {
     const item = suffix[reminderCount]!;
-    if (
-      item.type !== "message" ||
-      item.message.role !== "system-reminder" ||
-      !compactionReminderSources.has(item.message.source)
-    )
-      break;
+    if (item.type !== "message" || item.message.role !== "system-reminder") break;
     reminderCount++;
   }
   return [

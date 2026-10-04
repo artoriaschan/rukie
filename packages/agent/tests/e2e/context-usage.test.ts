@@ -219,7 +219,11 @@ test("Compaction immediately replaces the segment estimates and invalidates prov
   final.usage = { ...final.usage, input: 50, cacheRead: 20, cacheWrite: 3 };
   const fake = providerModel([first, summary, final]);
   fake.model.contextWindow = 4000;
-  const session = await createSession({ ...dirs, ...fake });
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    now: () => new Date("2026-10-01T12:00:00Z"),
+  });
   const events: SessionEvent[] = [];
   await session.run("read the file", {
     onEvent: async (event) => {
@@ -232,10 +236,25 @@ test("Compaction immediately replaces the segment estimates and invalidates prov
   if (end.type !== "compaction_end") throw new Error("Expected a completed Compaction");
   const usage = events[endIndex + 1]!;
   if (usage.type !== "context_usage") throw new Error("Expected Context Usage after Compaction");
+  expect(
+    fake.contexts
+      .at(-1)!
+      .messages.slice(2)
+      .map((message) => message.content),
+  ).toEqual([
+    [{ type: "text", text: "<system-reminder>\nCurrent date: 2026-10-01\n</system-reminder>" }],
+    [{ type: "text", text: "<system-reminder>\nAvailable skills: none.\n</system-reminder>" }],
+  ]);
   expect(usage).toMatchObject({
     window: 4000,
     sessionId: session.id,
-    segments: { prompt: Math.ceil(end.summary.length / 4), assistant: 0, thinking: 0, tools: 0 },
+    // Compaction restores date and empty skills reminders, six tokens each.
+    segments: {
+      prompt: Math.ceil(end.summary.length / 4) + 12,
+      assistant: 0,
+      thinking: 0,
+      tools: 0,
+    },
   });
   expect(usage.used).toBe(usage.segments.system + usage.segments.prompt);
   expect(usage.used).toBeLessThan(9000);

@@ -27,12 +27,7 @@ import { createJsonlStore, type SessionStore } from "../store/index.ts";
 import { createPermissionGate, type PermissionAskRequest } from "../permissions/index.ts";
 import { createBuiltinTools, type QuestionRequest, type QuestionReply } from "../tools/index.ts";
 import { SYSTEM_PROMPT } from "../prompt/index.ts";
-import {
-  collectReminders,
-  collectSourceReminders,
-  convertToLlm,
-  type ReminderSource,
-} from "../reminders/index.ts";
+import { collectReminders, convertToLlm, type ReminderSource } from "../reminders/index.ts";
 import { discoverSkills, skillInvocation, skillsReminder } from "../skills/index.ts";
 import { createMcpConnections } from "../mcp/index.ts";
 import { compactTurn, estimateContextTokens, restoreContext } from "../compaction/index.ts";
@@ -138,10 +133,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
   const transcriptMessages = entries.flatMap((entry) =>
     entry.type === "message" ? [entry.message] : [],
   );
-  let toolStateReminderStart = entries
+  let reminderStart = entries
     .slice(0, entries.findLastIndex((entry) => entry.type === "compaction") + 1)
     .filter((entry) => entry.type === "message").length;
-  const toolStateSources = new Set(toolState.reminderSources.map((source) => source.source));
   // Older Sessions did not persist their implicit baseline. Do not append it
   // behind existing conversation messages; pi will seed it when restoring them.
   let baselinePersisted = transcriptMessages.length > 0;
@@ -174,7 +168,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     beforeToolCall: permissions.beforeToolCall,
     initialState: {
       model,
-      messages: restoreContext(entries, toolStateSources),
+      messages: restoreContext(entries),
       systemPrompt: SYSTEM_PROMPT,
       tools: createBuiltinTools(cwd, (name) => skills.get(name), setTodo, options.onQuestion),
       ...(settings.thinking && { thinkingLevel: settings.thinking }),
@@ -254,6 +248,21 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             await branch.appendMessage(agent.state.messages[0]!, context);
             baselinePersisted = true;
           }
+          const reminderSources: ReminderSource[] = [
+            { source: "skills", currentContent: () => skillsReminder(skills) },
+            {
+              source: "mcp",
+              currentContent: () =>
+                mcp.hasServers ||
+                transcriptMessages.some(
+                  (message) => message.role === "system-reminder" && message.source === "mcp",
+                )
+                  ? mcp.reminder()
+                  : undefined,
+            },
+            ...(options.reminderSources ?? []),
+            ...toolState.reminderSources,
+          ];
           agent.prepareRequest = async ({ context: requestContext }, turnSignal) => {
             const compacted = await compactTurn({
               messages: requestContext.messages,
@@ -283,13 +292,16 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 context,
               );
             }, context);
-            toolStateReminderStart = transcriptMessages.length;
-            const stateReminders = await collectSourceReminders(
-              [],
-              toolState.reminderSources,
-              (options.now ?? (() => new Date()))(),
-            );
-            for (const reminder of stateReminders) {
+            reminderStart = transcriptMessages.length;
+            const reminders = await collectReminders({
+              messages: [],
+              cwd,
+              homeDir: options.homeDir,
+              now: (options.now ?? (() => new Date()))(),
+              sources: reminderSources,
+              includeEnvironment: false,
+            });
+            for (const reminder of reminders) {
               await branch.appendMessage(reminder, context);
               transcriptMessages.push(reminder);
               await emit({
@@ -300,7 +312,6 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             }
             const messages = restoreContext(
               await branch.findEntries({ order: "oldestFirst" }, context),
-              toolStateSources,
             );
             agent.state.messages = messages;
             inputTokens = undefined;
@@ -352,30 +363,12 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           skills = discovered.skills;
           for (const warning of discovered.warnings) (options.onWarning ?? console.warn)(warning);
           const reminders = await collectReminders({
-            messages: transcriptMessages.filter(
-              (message, index) =>
-                index >= toolStateReminderStart ||
-                message.role !== "system-reminder" ||
-                !toolStateSources.has(message.source),
-            ),
+            messages: transcriptMessages.slice(reminderStart),
             cwd,
             homeDir: options.homeDir,
             now: (options.now ?? (() => new Date()))(),
-            sources: [
-              { source: "skills", currentContent: () => skillsReminder(skills) },
-              {
-                source: "mcp",
-                currentContent: () =>
-                  mcp.hasServers ||
-                  transcriptMessages.some(
-                    (message) => message.role === "system-reminder" && message.source === "mcp",
-                  )
-                    ? mcp.reminder()
-                    : undefined,
-              },
-              ...(options.reminderSources ?? []),
-              ...toolState.reminderSources,
-            ],
+            sources: reminderSources,
+            includeEnvironment: !transcriptMessages.some((message) => message.role === "user"),
           });
           signal?.throwIfAborted();
           const invocation = skillInvocation(prompt, skills);

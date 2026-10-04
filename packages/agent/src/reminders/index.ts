@@ -87,12 +87,14 @@ export async function collectReminders(options: {
   homeDir: string;
   now: Date;
   sources: ReminderSource[];
+  /** Environment is a one-time snapshot, never part of compaction reinjection. */
+  includeEnvironment?: boolean;
 }): Promise<SystemReminder[]> {
   const { messages, cwd, homeDir, now } = options;
   const latest = latestReminderContents(messages);
   const sources: ReminderSource[] = [];
   const firstRun = !messages.some((message) => message.role === "user");
-  if (firstRun && !latest.has("environment")) {
+  if (options.includeEnvironment !== false && firstRun && !latest.has("environment")) {
     sources.push({
       source: "environment",
       currentContent: async () => {
@@ -104,36 +106,32 @@ export async function collectReminders(options: {
   }
   const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   sources.push({ source: "date", currentContent: () => `Current date: ${date}` });
-  if (firstRun) {
-    const userPath = join(homeDir, ".neant/AGENTS.md");
-    if (!latest.has("user-instructions"))
-      sources.push({
-        source: "user-instructions",
-        currentContent: async () => {
-          const text = await optionalText(userPath);
-          return text === undefined ? undefined : `Project Instructions (${userPath}):\n${text}`;
-        },
-      });
-    if (!latest.has("project-instructions"))
-      sources.push({
-        source: "project-instructions",
-        currentContent: async () => {
-          let path = join(cwd, "AGENTS.md");
-          let text = await optionalText(path);
-          if (text === undefined) {
-            path = join(cwd, "CLAUDE.md");
-            text = await optionalText(path);
-          }
-          return text === undefined ? undefined : `Project Instructions (${path}):\n${text}`;
-        },
-      });
-  }
+  const userPath = join(homeDir, ".neant/AGENTS.md");
+  sources.push({
+    source: "user-instructions",
+    currentContent: async () => {
+      const text = await optionalText(userPath);
+      return text === undefined ? undefined : `Project Instructions (${userPath}):\n${text}`;
+    },
+  });
+  sources.push({
+    source: "project-instructions",
+    currentContent: async () => {
+      let path = join(cwd, "AGENTS.md");
+      let text = await optionalText(path);
+      if (text === undefined) {
+        path = join(cwd, "CLAUDE.md");
+        text = await optionalText(path);
+      }
+      return text === undefined ? undefined : `Project Instructions (${path}):\n${text}`;
+    },
+  });
   sources.push(...options.sources);
   return collectSourceReminders(messages, sources, now);
 }
 
 /** Compare only the supplied sources against their latest persisted content. */
-export async function collectSourceReminders(
+async function collectSourceReminders(
   messages: readonly AgentMessage[],
   sources: readonly ReminderSource[],
   now: Date,

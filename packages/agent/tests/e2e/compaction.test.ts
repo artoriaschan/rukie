@@ -12,6 +12,120 @@ import { abortingModel } from "../helpers/aborting-model.ts";
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
 afterEach(() => dirs?.cleanup());
 
+test("Compaction restores current Project Instructions, skills and frontend reminders before the retained request", async () => {
+  dirs = await tempDirs();
+  await Bun.write(join(dirs.homeDir, ".neant/AGENTS.md"), "Use personal conventions.");
+  await Bun.write(join(dirs.cwd, "AGENTS.md"), "Preserve the widget contract.");
+  await Bun.write(
+    join(dirs.cwd, ".agents/skills/review/SKILL.md"),
+    "---\nname: review\ndescription: Review widget changes\n---\nInspect the diff.\n",
+  );
+  const fake = fakeModel([
+    fauxAssistantMessage("old work ".repeat(2500)),
+    fauxAssistantMessage("Summary of old work."),
+    fauxAssistantMessage("continued"),
+  ]);
+  fake.model.contextWindow = 4000;
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    now: () => new Date("2026-10-01T12:00:00Z"),
+    reminderSources: [{ source: "frontend", currentContent: () => "Describe active work." }],
+  });
+  await session.run("start");
+  const events: SessionEvent[] = [];
+  let compactedMessages: (typeof session.messages)[number][] = [];
+  await session.run("continue", {
+    onEvent: (event) => {
+      events.push(event);
+      if (event.type === "compaction_end")
+        compactedMessages = structuredClone([...session.messages]);
+    },
+  });
+
+  const request = JSON.stringify(fake.contexts[2]!.messages);
+  expect(request).toContain("Preserve the widget contract.");
+  expect(request).toContain("Use personal conventions.");
+  expect(request).toContain("Review widget changes");
+  expect(request).toContain("Current date: 2026-10-01");
+  expect(request).toContain("Describe active work.");
+  expect(request).not.toContain("git branch:");
+  expect(
+    events.filter((event) => event.type === "reminder_injected").map((event) => event.source),
+  ).toEqual(["date", "user-instructions", "project-instructions", "skills", "frontend"]);
+  expect(session.messages.slice(2, -2)).toMatchObject([
+    { role: "system-reminder", source: "date" },
+    { role: "system-reminder", source: "user-instructions" },
+    { role: "system-reminder", source: "project-instructions" },
+    { role: "system-reminder", source: "skills" },
+    { role: "system-reminder", source: "frontend" },
+  ]);
+  expect(session.messages.at(-2)).toMatchObject({
+    role: "user",
+    content: [{ type: "text", text: "continue" }],
+  });
+  const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
+  expect(resumed.messages).toEqual(session.messages);
+  expect(resumed.messages.slice(0, -1)).toEqual(compactedMessages);
+});
+
+test("the Run after Compaction skips unchanged reminders and sends changed current content", async () => {
+  dirs = await tempDirs();
+  await Bun.write(join(dirs.cwd, "AGENTS.md"), "Original project conventions.");
+  let frontend = "Describe active work.";
+  let date = new Date("2026-10-01T12:00:00Z");
+  const fake = fakeModel([
+    fauxAssistantMessage("old work ".repeat(2500)),
+    fauxAssistantMessage("Summary of old work."),
+    fauxAssistantMessage("continued"),
+    fauxAssistantMessage("unchanged"),
+    fauxAssistantMessage("updated"),
+  ]);
+  fake.model.contextWindow = 4000;
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    now: () => date,
+    reminderSources: [{ source: "frontend", currentContent: () => frontend }],
+  });
+  await session.run("start");
+  await session.run("compact");
+  const next = fakeModel([]);
+  const resumed = await createSession({ ...dirs, ...next, resumeId: session.id });
+  expect(resumed.messages).toEqual(session.messages);
+  expect(resumed.messages.slice(2, -2)).toMatchObject([
+    { role: "system-reminder", source: "date" },
+    { role: "system-reminder", source: "project-instructions" },
+    { role: "system-reminder", source: "skills" },
+    { role: "system-reminder", source: "frontend" },
+  ]);
+
+  const events: SessionEvent[] = [];
+  const onEvent = (event: SessionEvent) => {
+    events.push(event);
+  };
+  await session.run("unchanged", { onEvent });
+  expect(events.filter((event) => event.type === "reminder_injected")).toEqual([]);
+
+  frontend = "Describe completed work.";
+  date = new Date("2026-10-02T12:00:00Z");
+  await Bun.write(join(dirs.cwd, "AGENTS.md"), "Updated project conventions.");
+  await Bun.write(
+    join(dirs.cwd, ".agents/skills/review/SKILL.md"),
+    "---\nname: review\ndescription: Review widget changes\n---\nInspect the diff.\n",
+  );
+  events.length = 0;
+  await session.run("changed", { onEvent });
+  expect(
+    events.filter((event) => event.type === "reminder_injected").map((event) => event.source),
+  ).toEqual(["date", "project-instructions", "skills", "frontend"]);
+  const request = JSON.stringify(fake.contexts.at(-1)!.messages);
+  expect(request).toContain("Current date: 2026-10-02");
+  expect(request).toContain("Updated project conventions.");
+  expect(request).toContain("Review widget changes");
+  expect(request).toContain("Describe completed work.");
+});
+
 test("only a Turn above the context threshold compacts before answering", async () => {
   dirs = await tempDirs();
   await Bun.write(join(dirs.cwd, "AGENTS.md"), "Preserve the widget contract.");
@@ -229,6 +343,7 @@ test.each(["oversized batch", "split prefix"])(
       fauxAssistantMessage(
         "Updated summary: preserve the public interface and finish the file work.",
       ),
+      ...(split ? [fauxAssistantMessage("Split-turn summary: finish the file work.")] : []),
       fauxAssistantMessage("finished"),
     ]);
     fake.model.contextWindow = split ? 12_000 : 4000;
@@ -245,7 +360,7 @@ test.each(["oversized batch", "split prefix"])(
       ).text,
     ).toBe("finished");
     expect(events.filter((event) => event.type === "compaction_end")).toHaveLength(2);
-    const updatedRequest = fake.contexts.at(-2)!;
+    const updatedRequest = fake.contexts[split ? 4 : 3]!;
     expect(JSON.stringify(updatedRequest)).toContain("CRITICAL PREVIOUS GOAL");
     expect(JSON.stringify(fake.contexts.at(-1))).toContain("Updated summary");
     expect(JSON.stringify(fake.contexts.at(-1))).not.toContain("x".repeat(4000));
@@ -318,7 +433,10 @@ test("an oversized tail keeps the pending user prompt together with its Skill In
 test("compaction preserves effective MCP tool declarations and resume replays that exact context", async () => {
   dirs = await tempDirs();
   const manifest = join(dirs.homeDir, "manifest.json");
-  await Bun.write(manifest, JSON.stringify({ tools: ["old"] }));
+  await Bun.write(
+    manifest,
+    JSON.stringify({ tools: ["old"], instructions: "Inspect widgets through this MCP server." }),
+  );
   await Bun.write(
     join(dirs.homeDir, ".neant/mcp.json"),
     JSON.stringify({
@@ -343,15 +461,39 @@ test("compaction preserves effective MCP tool declarations and resume replays th
   fake.model.contextWindow = 4000;
   const session = await createSession({ ...dirs, ...fake });
   await session.run("first");
-  await Bun.write(manifest, JSON.stringify({ tools: ["current"] }));
-  await session.run("second");
+  await Bun.write(
+    manifest,
+    JSON.stringify({
+      tools: ["current"],
+      instructions: "Inspect widgets through this MCP server.",
+    }),
+  );
+  const events: SessionEvent[] = [];
+  await session.run("second", {
+    onEvent: (event) => {
+      events.push(event);
+    },
+  });
+  expect(
+    events.filter((event) => event.type === "reminder_injected" && event.source === "mcp"),
+  ).toHaveLength(2);
+  expect(JSON.stringify(fake.contexts.at(-1)!.messages)).toContain(
+    "Inspect widgets through this MCP server.",
+  );
   const toolNames = getCurrentTools(fake.contexts.at(-1)!.messages).map((tool) => tool.name);
   expect(toolNames).toContain("mcp__local__current");
   expect(toolNames).not.toContain("mcp__local__old");
   const next = fakeModel([fauxAssistantMessage("resumed")]);
   next.model.contextWindow = 4000;
   const resumed = await createSession({ ...dirs, ...next, resumeId: session.id });
-  await resumed.run("continue");
+  expect(resumed.messages).toEqual(session.messages);
+  const resumedEvents: SessionEvent[] = [];
+  await resumed.run("continue", {
+    onEvent: (event) => {
+      resumedEvents.push(event);
+    },
+  });
+  expect(resumedEvents.filter((event) => event.type === "reminder_injected")).toEqual([]);
   expect(next.contexts[0]!.messages.slice(0, -2)).toEqual(fake.contexts.at(-1)!.messages);
   expect(getCurrentTools(next.contexts[0]!.messages).map((tool) => tool.name)).toEqual(toolNames);
 });

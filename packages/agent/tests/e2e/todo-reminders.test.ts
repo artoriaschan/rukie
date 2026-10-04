@@ -117,8 +117,16 @@ test("Compaction places the current Todo List before the retained conversation t
       if (event.type === "tool_state_changed") fake.model.contextWindow = 4000;
     },
   });
-  expect(fake.contexts.at(-1)!.messages.slice(1, 6)).toMatchObject([
+  expect(fake.contexts.at(-1)!.messages.slice(1, 8)).toMatchObject([
     { role: "user", content: [{ type: "text", text: expect.stringContaining("Summary.") }] },
+    {
+      role: "user",
+      content: [{ type: "text", text: expect.stringContaining("Current date:") }],
+    },
+    {
+      role: "user",
+      content: [{ type: "text", text: expect.stringContaining("Available skills:") }],
+    },
     { role: "user", content: [{ type: "text", text: expect.stringContaining("● Review") }] },
     { role: "assistant", content: [{ type: "text", text: "buffer work ".repeat(260) }] },
     { role: "user", content: [{ type: "text", text: expect.stringContaining("○ Review") }] },
@@ -205,7 +213,13 @@ test("Compaction immediately persists the current Todo List after the summary fo
     onEvent: (event) => {
       events.push(event);
       if (event.type === "compaction_end")
-        expect(structuredClone(session.messages[2])).toMatchObject({
+        expect(
+          structuredClone(
+            session.messages.find(
+              (message) => message.role === "system-reminder" && message.source === "todo",
+            ),
+          ),
+        ).toMatchObject({
           role: "system-reminder",
           source: "todo",
           content: expect.stringContaining("● Review"),
@@ -213,10 +227,18 @@ test("Compaction immediately persists the current Todo List after the summary fo
     },
   });
   expect(events.filter((event) => event.type === "compaction_end")).toHaveLength(1);
-  expect(fake.contexts[4]!.messages.slice(1, 3)).toMatchObject([
+  expect(fake.contexts[4]!.messages.slice(1, 5)).toMatchObject([
     {
       role: "user",
       content: [{ type: "text", text: expect.stringContaining("Summary of old work.") }],
+    },
+    {
+      role: "user",
+      content: [{ type: "text", text: expect.stringContaining("Current date:") }],
+    },
+    {
+      role: "user",
+      content: [{ type: "text", text: expect.stringContaining("Available skills:") }],
     },
     {
       role: "user",
@@ -242,7 +264,7 @@ test("Compaction immediately persists the current Todo List after the summary fo
   ).toBe(false);
 });
 
-test("unchanged Todo List reminders are re-injected after each Compaction without re-injecting Skills", async () => {
+test("unchanged Todo List and skills reminders are re-injected after each Compaction", async () => {
   dirs = await tempDirs();
   const todos = [{ content: "Review", status: "pending" }];
   const work = () =>
@@ -271,9 +293,9 @@ test("unchanged Todo List reminders are re-injected after each Compaction withou
   expect(events.filter((event) => event.type === "compaction_end")).toHaveLength(2);
   expect(
     events.filter((event) => event.type === "reminder_injected").map((event) => event.source),
-  ).toEqual(["todo", "todo", "todo"]);
+  ).toEqual(["todo", "date", "skills", "todo", "date", "skills", "todo"]);
   for (const context of [fake.contexts[4]!, fake.contexts[6]!])
-    expect(context.messages[2]).toMatchObject({
+    expect(context.messages[4]).toMatchObject({
       role: "user",
       content: [
         {
@@ -290,7 +312,7 @@ test("unchanged Todo List reminders are re-injected after each Compaction withou
       resumedEvents.push(event);
     },
   });
-  expect(next.contexts[0]!.messages[2]).toEqual(fake.contexts[6]!.messages[2]);
+  expect(next.contexts[0]!.messages[4]).toEqual(fake.contexts[6]!.messages[4]);
   expect(
     resumedEvents.some((event) => event.type === "reminder_injected" && event.source === "todo"),
   ).toBe(false);
