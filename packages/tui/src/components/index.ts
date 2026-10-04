@@ -8,7 +8,7 @@ import {
 } from "react";
 import type { TextStyle } from "../text";
 import { useAnimationFrame } from "../hooks/animation-frame";
-export { TextInput, type TextInputProps } from "./text-input";
+export { TextInput, createTextInputHistory, type TextInputProps } from "./text-input";
 export { ScrollBox, type ScrollBoxProps } from "./scroll-box";
 
 export interface BoxProps {

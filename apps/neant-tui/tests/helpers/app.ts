@@ -29,6 +29,7 @@ export async function start(
     session: { cwd: root, homeDir: root, ...fake, ...options.session },
   });
   return {
+    root,
     ...terminal,
     ...fake,
     exit,

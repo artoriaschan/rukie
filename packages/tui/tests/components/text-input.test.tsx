@@ -1,7 +1,50 @@
 import { expect, test } from "bun:test";
 import { useLayoutEffect, useState } from "react";
-import { Box, Text, TextInput, render } from "../../src";
+import { Box, Text, TextInput, createTextInputHistory, render } from "../../src";
 import { createTerminal } from "../helpers/terminal";
+
+test("history walks only past the editor edges and restores the draft caret", async () => {
+  const terminal = createTerminal(6, 8);
+  const submissions: string[] = [];
+  const history = createTextInputHistory(["older", "中文👩‍💻"]);
+  function View() {
+    const [value, setValue] = useState("中A\nsecond");
+    return (
+      <TextInput
+        value={value}
+        onChange={setValue}
+        history={history}
+        onSubmit={(text) => submissions.push(text)}
+      />
+    );
+  }
+  const app = render(<View />, terminal);
+  try {
+    await terminal.flush();
+    terminal.stdin.write("\x1b[H\x1b[A");
+    await terminal.waitFor(() => terminal.cursor().y === 0);
+    expect(terminal.screen().slice(0, 2)).toEqual(["中A", "second"]);
+    terminal.stdin.write("\x1b[A");
+    await terminal.waitFor(() => terminal.screen()[0] === "中文👩‍💻");
+    expect(terminal.cursor()).toEqual({ x: 0, y: 1 });
+    // The wrapped caret row still belongs to the recalled input.
+    terminal.stdin.write("\x1b[A");
+    await terminal.waitFor(() => terminal.cursor().y === 0);
+    expect(terminal.screen()[0]).toBe("中文👩‍💻");
+    terminal.stdin.write("\x1b[A");
+    await terminal.waitFor(() => terminal.screen()[0] === "older");
+    terminal.stdin.write("\x1b[B");
+    await terminal.waitFor(() => terminal.screen()[0] === "中文👩‍💻");
+    terminal.stdin.write("\x1b[B");
+    await terminal.waitFor(() => terminal.screen()[1] === "second");
+    expect(terminal.cursor()).toEqual({ x: 0, y: 0 });
+    terminal.stdin.write("!\r");
+    expect(submissions).toEqual(["!中A\nsecond"]);
+  } finally {
+    app.unmount();
+    terminal.dispose();
+  }
+});
 
 test("controlled input edits Chinese text and positions the terminal cursor in display columns", async () => {
   const terminal = createTerminal(12, 6);
