@@ -83,6 +83,7 @@ const zh = {
   "logo.effort.xhigh": "推理强度：极高",
   "logo.effort.max": "推理强度：最高",
 
+  "tool.rule-denied": "被权限规则拒绝：{{rule}}",
   "notice.compaction": "上下文已压缩（{{tokens}} tokens）",
   "notice.mcp-error": "MCP 服务器 {{server}} 出错：{{error}}",
   "scroll.return": "回到底部（Ctrl+End）",
@@ -206,6 +207,7 @@ const en = {
   "logo.effort.xhigh": "Xhigh effort",
   "logo.effort.max": "Max effort",
 
+  "tool.rule-denied": "Denied by permission rule: {{rule}}",
   "notice.compaction": "Context compacted ({{tokens}} tokens)",
   "notice.mcp-error": "MCP server {{server}}: {{error}}",
   "scroll.return": "Back to bottom (Ctrl+End)",

@@ -309,9 +309,27 @@ test("default permissions reject write, edit, and bash with errors and ordered d
   });
   expect(result.text).toBe("recovered");
   expect(events.filter((event) => event.type === "permission_denied")).toEqual([
-    { type: "permission_denied", sessionId: session.id, toolCallId: "write-1", toolName: "write" },
-    { type: "permission_denied", sessionId: session.id, toolCallId: "edit-1", toolName: "edit" },
-    { type: "permission_denied", sessionId: session.id, toolCallId: "bash-1", toolName: "bash" },
+    {
+      type: "permission_denied",
+      by: "user",
+      sessionId: session.id,
+      toolCallId: "write-1",
+      toolName: "write",
+    },
+    {
+      type: "permission_denied",
+      by: "user",
+      sessionId: session.id,
+      toolCallId: "edit-1",
+      toolName: "edit",
+    },
+    {
+      type: "permission_denied",
+      by: "user",
+      sessionId: session.id,
+      toolCallId: "bash-1",
+      toolName: "bash",
+    },
   ]);
   const errors = fake.contexts[1]!.messages.filter((message) => message.role === "toolResult");
   expect(errors).toHaveLength(3);

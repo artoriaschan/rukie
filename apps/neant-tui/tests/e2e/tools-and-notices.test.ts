@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
+import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { createSession } from "@neant/agent";
 import { start } from "../helpers/app";
 
 const assistant = process.platform === "darwin" ? "⏺" : "●";
@@ -221,3 +223,57 @@ test.each([
     }
   },
 );
+
+test.each([
+  ["zh", "被权限规则拒绝：bash(printf forbidden*)"],
+  ["en", "Denied by permission rule: bash(printf forbidden*)"],
+] as const)("%s rule denial displays its original rule on the tool card", async (locale, text) => {
+  const app = await start(["--yolo", "try forbidden"], {
+    env: { LANG: locale },
+    session: { settings: { permissions: { deny: ["bash(printf forbidden*)"] } } },
+  });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("bash", { command: "printf forbidden > marker" });
+    await app.waitFor(() => app.calls.length === 2);
+    app.calls[1]!.delta("done");
+    app.calls[1]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    expect(app.allLines().join("\n")).toContain(text);
+    expect(await Bun.file(join(app.root, "marker")).exists()).toBe(false);
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test.each([
+  ["zh", "被权限规则拒绝：read"],
+  ["en", "Denied by permission rule: read"],
+] as const)("%s resume retains localized rule denial on the tool card", async (locale, text) => {
+  const argv: string[] = [];
+  const original = createFauxCore({ api: "faux", provider: "faux" });
+  original.setResponses([
+    fauxAssistantMessage(fauxToolCall("read", { path: "secret" }), { stopReason: "toolUse" }),
+    fauxAssistantMessage("done"),
+  ]);
+  const app = await start(argv, {
+    env: { LANG: locale },
+    prepare: async (root) => {
+      const session = await createSession({
+        cwd: root,
+        homeDir: root,
+        model: original.getModel(),
+        streamFn: (model, context, options) => original.streamSimple(model, context, options),
+        settings: { permissions: { deny: ["read"] } },
+      });
+      await session.run("try secret");
+      argv.push("--resume", session.id);
+    },
+  });
+  try {
+    await app.waitFor(() => app.screen().includes("❯"));
+    expect(app.allLines().join("\n")).toContain(text);
+  } finally {
+    await app.cleanup();
+  }
+});

@@ -6,6 +6,7 @@ import {
   type AssistantMessage,
 } from "@earendil-works/pi-ai";
 import type { CustomSessionEvent, PermissionMode } from "@neant/shared";
+import { evaluatePermissionRules, type PermissionRule } from "./rules.ts";
 import { requestInteraction } from "../interaction/index.ts";
 import { reviewPermission, type ReviewResult } from "../review/index.ts";
 
@@ -46,17 +47,13 @@ function decidePermission({
 
 type PermissionStageDecision =
   | { decision: "allow" }
-  | { decision: "deny"; reason: string }
-  | { decision: "ask"; reason?: string };
-
-// Permission Rule matching is filled in by the next ticket. No registration API:
-// stages have a fixed order, and an explicit rule bypasses Permission Mode.
-function evaluateRuleStage(): PermissionStageDecision | undefined {
-  return undefined;
-}
+  | { decision: "deny"; reason: string; by: "rule" | "user" | "review"; rule?: string }
+  | { decision: "ask"; reason?: string; by?: "rule" | "review"; rule?: string };
 
 interface PermissionGateOptions {
   cwd: string;
+  homeDir: string;
+  rules: readonly PermissionRule[];
   getMode(): PermissionMode;
   getAllowTools(): readonly string[];
   getAgentState(): Pick<Agent["state"], "tools" | "messages">;
@@ -79,6 +76,24 @@ export function createPermissionGate(options: PermissionGateOptions) {
       ? `User denied this tool call: ${toolCall.name}`
       : `Tool not authorized: ${toolCall.name}`;
 
+  function evaluateRuleStage(toolName: string, args: unknown): PermissionStageDecision | undefined {
+    const match = evaluatePermissionRules({
+      rules: options.rules,
+      toolName,
+      args,
+      cwd: options.cwd,
+      homeDir: options.homeDir,
+    });
+    if (!match) return undefined;
+    if (match.decision === "allow") return { decision: "allow" };
+    return {
+      decision: match.decision,
+      rule: match.rule,
+      by: "rule",
+      reason: `${match.decision === "deny" ? "Denied by permission rule" : "Permission rule"}: ${match.rule}`,
+    };
+  }
+
   async function evaluateModeStage(context: PermissionCall): Promise<PermissionStageDecision> {
     const { toolCall, args, assistantMessage, mode, signal } = context;
     const decision = decidePermission({
@@ -87,7 +102,7 @@ export function createPermissionGate(options: PermissionGateOptions) {
       mode,
     });
     if (decision !== "review") {
-      if (decision === "deny") return { decision, reason: denialReason(context) };
+      if (decision === "deny") return { decision, reason: denialReason(context), by: "user" };
       return { decision };
     }
     let batch = reviewBatches.get(assistantMessage);
@@ -99,7 +114,6 @@ export function createPermissionGate(options: PermissionGateOptions) {
     // while each actual hook still reads the current Permission Mode.
     for (const call of assistantMessage.content) {
       if (call.type !== "toolCall" || batch.has(call.id)) continue;
-      if (evaluateRuleStage() !== undefined) continue;
       if (
         decidePermission({ mode, toolName: call.name, allowTools: options.getAllowTools() }) !==
         "review"
@@ -121,6 +135,7 @@ export function createPermissionGate(options: PermissionGateOptions) {
         // pi returns validation errors without executing or reviewing this call.
         continue;
       }
+      if (evaluateRuleStage(call.name, validated) !== undefined) continue;
       const review = (async () => {
         await options.onEvent({
           type: "permission_review",
@@ -153,8 +168,9 @@ export function createPermissionGate(options: PermissionGateOptions) {
       void review.finally(() => activeReviews.delete(review)).catch(() => {});
     }
     const review = await batch.get(toolCall.id)!;
-    if (review.decision === "deny") return { decision: "deny", reason: denialReason(context) };
-    return review;
+    if (review.decision === "deny")
+      return { decision: "deny", reason: denialReason(context), by: "review" };
+    return review.decision === "ask" ? { ...review, by: "review" } : review;
   }
 
   async function evaluateInteractionStage(
@@ -178,7 +194,15 @@ export function createPermissionGate(options: PermissionGateOptions) {
       : "deny";
     return reply === "allow"
       ? { decision: "allow" }
-      : { decision: "deny", reason: denialReason(context) };
+      : {
+          decision: "deny",
+          reason:
+            !options.onPermissionAsk && decision.by === "rule"
+              ? `Denied by permission rule: ${decision.rule}`
+              : denialReason(context),
+          by: options.onPermissionAsk ? "user" : (decision.by ?? "user"),
+          ...(!options.onPermissionAsk && decision.rule !== undefined && { rule: decision.rule }),
+        };
   }
 
   const beforeToolCall: NonNullable<AgentOptions["beforeToolCall"]> = async (call, signal) => {
@@ -189,13 +213,16 @@ export function createPermissionGate(options: PermissionGateOptions) {
     };
     // deny stops immediately; allow skips Mode; ask skips Mode (including Review)
     // and goes straight to Interaction. Only no opinion falls through to Mode.
-    let decision = evaluateRuleStage() ?? (await evaluateModeStage(context));
+    let decision =
+      evaluateRuleStage(call.toolCall.name, call.args) ?? (await evaluateModeStage(context));
     if (decision.decision === "ask") decision = await evaluateInteractionStage(context, decision);
     if (decision.decision === "allow") return undefined;
     await options.onEvent({
       type: "permission_denied",
       toolCallId: call.toolCall.id,
       toolName: call.toolCall.name,
+      by: decision.by,
+      ...(decision.rule !== undefined && { rule: decision.rule }),
     });
     return { block: true, reason: decision.reason };
   };
