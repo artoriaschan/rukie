@@ -8,6 +8,8 @@ export function PromptInput({
   maxLines,
   working = false,
   history,
+  readOnly = false,
+  compact = false,
 }: {
   value: string;
   onChange(value: string): void;
@@ -16,17 +18,20 @@ export function PromptInput({
   maxLines: number;
   working?: boolean;
   history?: TextInputProps["history"];
+  readOnly?: boolean;
+  compact?: boolean;
 }) {
   const edge = "─".repeat(Math.max(0, columns - 2));
   return (
-    <Box flexDirection="column" marginTop={1}>
-      <ThemedText color="promptBorder" wrap="truncate">{`╭${edge}╮`}</ThemedText>
+    <Box flexDirection="column" marginTop={compact ? 0 : 1}>
+      {!compact && <ThemedText color="promptBorder" wrap="truncate">{`╭${edge}╮`}</ThemedText>}
       <Box paddingRight={1}>
         <Box width={2} flexShrink={0}>
           <ThemedText dimColor={working}>{`${figures.user} `}</ThemedText>
         </Box>
         <Box flexGrow={1}>
           <ThemedTextInput
+            readOnly={readOnly}
             value={value}
             onChange={onChange}
             onSubmit={onSubmit}
@@ -37,7 +42,7 @@ export function PromptInput({
           />
         </Box>
       </Box>
-      <ThemedText color="promptBorder" wrap="truncate">{`╰${edge}╯`}</ThemedText>
+      {!compact && <ThemedText color="promptBorder" wrap="truncate">{`╰${edge}╯`}</ThemedText>}
     </Box>
   );
 }

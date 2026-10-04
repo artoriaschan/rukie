@@ -22,7 +22,9 @@ test.each(["ask", "auto-review"])(
       const lines = app.screen();
       const heading = lines.findIndex((line) => line.includes("⏳ 等待审批 · bash"));
       expect(heading).toBeGreaterThanOrEqual(0);
-      expect(lines.length - 3 - heading).toBeLessThanOrEqual(10);
+      const input = lines.findIndex((line) => line.startsWith("╭"));
+      expect(input).toBeGreaterThan(heading);
+      expect(input - 1 - heading).toBeLessThanOrEqual(10);
       const baseline = optionRows();
       app.stdin.write("\x1b[B");
       await app.waitFor(() => app.screen().some((line) => line.includes("❯ 2.")));
@@ -280,8 +282,8 @@ test("approval details scroll independently with pinned choices and preserve the
     await app.waitFor(() => app.screen().some((line) => line.trim() === "}"));
     expect(app.screen().map((line) => line.trimStart())).toContain("❯ 1. 允许（仅本次）");
     const divider = app.screen().findIndex((line) => line.includes("等待审批"));
-    expect(app.screen().at(-4)).toBe("");
-    expect(app.screen().length - 4 - divider).toBeLessThanOrEqual(6);
+    expect(app.screen().at(-4)).toBe("❯ next draft");
+    expect(app.screen().length - 5 - divider).toBeLessThanOrEqual(6);
     expect(app.screen().at(-2)).toContain("ctx ");
     app.stdin.write("\x1b[<64;5;6M");
     await Bun.sleep(25);

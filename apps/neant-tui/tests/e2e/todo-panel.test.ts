@@ -179,7 +179,7 @@ test("idle hides completed rows but keeps full counts, and completion or clearin
 });
 
 test.each(["permission", "question"])(
-  "a %s dialog applies its own Todo visibility rule",
+  "a %s dialog keeps the Todo List above the dialog and input",
   async (kind) => {
     const app = await start(["plan"]);
     try {
@@ -206,11 +206,117 @@ test.each(["permission", "question"])(
           .screen()
           .some((line) => line.includes(kind === "permission" ? "等待审批" : "Which option?")),
       );
-      expect(app.screen().some((line) => line.includes("▾ ✓"))).toBe(kind === "question");
-      expect(app.screen().includes("  └─ ○ open")).toBe(kind === "question");
+      const lines = app.screen();
+      expect(lines).toContain("  ▾ ✓ 0/1");
+      expect(lines).toContain("  └─ ○ open");
+      const dialog = lines.findIndex((line) =>
+        line.includes(kind === "permission" ? "等待审批" : "📋 提问"),
+      );
+      expect(dialog).toBeGreaterThan(lines.indexOf("  └─ ○ open"));
+      expect(lines.indexOf("❯")).toBeGreaterThan(dialog);
+      expect(lines.at(-1)).toContain("esc");
+      if (kind === "permission") {
+        expect(
+          lines
+            .slice(
+              lines.indexOf("  ▾ ✓ 0/1"),
+              lines.findIndex((line) => line.startsWith("╭")),
+            )
+            .filter((line) => line.trim())
+            .map((line) => (line.includes("等待审批") ? "PermissionDialog" : line.trim())),
+        ).toEqual([
+          "▾ ✓ 0/1",
+          "└─ ○ open",
+          "Ctrl+Q 折叠",
+          "PermissionDialog",
+          "printf approved",
+          "要允许这次操作吗？",
+          "❯ 1. 允许（仅本次）",
+          "2. 本 session 允许此命令",
+          "3. 拒绝",
+          "↑↓选择 · Enter确认 · Esc拒绝 · Tab详情",
+        ]);
+      }
       app.stdin.write("\x1b");
       await app.waitFor(() => app.calls.length === 3 && app.screen().includes("  ▾ ✓ 0/1"));
       expect(app.screen()).toContain("  └─ ○ open");
+    } finally {
+      await app.cleanup();
+    }
+  },
+);
+
+test.each([
+  ["permission", 12],
+  ["question", 12],
+  ["permission", 24],
+  ["question", 24],
+] as const)(
+  "a %s dialog at %i rows preserves a multiline draft and a Todo preview",
+  async (kind, rows) => {
+    const app = await start(["plan"], { columns: 40, rows });
+    const draft = "first draft\nsecond draft\nlast draft";
+    try {
+      await app.waitFor(() => app.calls.length === 1);
+      app.calls[0]!.tool("todo_write", {
+        todos: [
+          { content: "current", status: "in_progress" },
+          { content: "next", status: "pending" },
+        ],
+      });
+      await app.waitFor(() => app.calls.length === 2);
+      app.stdin.write(`\x1b[200~${draft}\x1b[201~`);
+      await app.waitFor(() => app.screen().some((line) => line.includes("last draft")));
+      if (rows === 12) {
+        app.stdin.write("\x1b[5~");
+        await app.waitFor(() => app.screen().some((line) => line.includes("回到底部")));
+      }
+      if (kind === "permission") app.calls[1]!.tool("bash", { command: "printf approved" });
+      else
+        app.calls[1]!.tool("ask_user_question", {
+          questions: [
+            {
+              question: "Choose?",
+              header: "Options",
+              multiSelect: false,
+              options: [
+                { label: "One", description: "First" },
+                { label: "Two", description: "Second" },
+              ],
+            },
+          ],
+        });
+      await app.waitFor(() =>
+        app.screen().some((line) => line.includes(kind === "permission" ? "等待审批" : "Choose?")),
+      );
+      const lines = app.screen();
+      const panel = lines.findIndex((line) => line.includes("✓ 0/2"));
+      const dialog = lines.findIndex((line) =>
+        line.includes(kind === "permission" ? "等待审批" : "📋 提问"),
+      );
+      const prompt = lines.findIndex(
+        (line, index) => index > dialog && line.includes("last draft"),
+      );
+      expect(panel).toBeGreaterThanOrEqual(0);
+      expect(dialog).toBeGreaterThan(panel);
+      expect(prompt).toBeGreaterThan(dialog);
+      expect(lines.at(-1)).toContain("esc");
+      if (rows === 12) {
+        expect(lines[panel]).toBe("  ▸ ✓ 0/2  ● current");
+        expect(lines[panel + 1]).not.toContain("next");
+        expect(lines.some((line) => line.includes("╭"))).toBe(false);
+        if (kind === "permission") expect(lines[dialog + 1]).toBe("    printf approved");
+      }
+      app.stdin.write("ignored\x1b[200~pasted\x1b[201~\x1b");
+      await app.waitFor(() => app.calls.length === 3);
+      app.calls[2]!.finish();
+      await app.waitFor(() => !app.isWorking());
+      app.stdin.write("\r");
+      await app.waitFor(() => app.calls.length === 4);
+      expect(app.calls[3]!.context.messages.at(-1)).toMatchObject({
+        role: "user",
+        content: [{ type: "text", text: draft }],
+      });
     } finally {
       await app.cleanup();
     }
@@ -304,11 +410,12 @@ test("a long Todo List leaves the input and status visible at 40 columns by 12 r
     expect(app.screen()).toContain("    Ctrl+Q 折叠");
     app.stdin.write("\x1b[5~");
     await app.waitFor(() => app.screen().some((line) => line.includes("回到底部")));
-    expect(app.screen()).toContain("  ▾ ✓ 0/10");
-    expect(app.screen()).toContain("  └─ … 还有 10 项  Ctrl+Q 折叠");
+    expect(app.screen()).toContain("  ▸ ✓ 0/10  ○ open-0");
+    expect(app.screen().some((line) => line.includes("还有 10 项"))).toBe(false);
     expect(app.screen()).toContain("❯");
     expect(app.screen().at(-1)).toContain("esc");
     app.stdin.write("\x11");
+    app.resize(40, 24);
     await app.waitFor(() => app.screen().includes("  ▸ ✓ 0/10"));
     expect(app.screen()).toContain("  └─ ○ open-0");
     expect(app.screen()).toContain("❯");

@@ -52,19 +52,17 @@ export function GoalTodoPanel({
   const preview =
     todos.find((todo) => todo.status === "in_progress") ??
     todos.find((todo) => todo.status !== "completed");
+  const compact = maxHeight < 3;
+  const folded = collapsed || compact;
   const paddingTop = maxHeight >= 4 ? 1 : 0;
-  const rowBudget = Math.max(1, maxHeight - paddingTop);
+  const rowBudget = compact ? 1 : Math.max(1, maxHeight - paddingTop);
   // Short viewports share the overflow row with the hint to keep the input visible.
-  const hintHeight = !collapsed && rowBudget >= 3 ? 1 : 0;
+  const hintHeight = !folded && rowBudget >= 3 ? 1 : 0;
   const listBudget = rowBudget - hintHeight;
-  const overflow = !collapsed && (remaining.length > Math.min(8, listBudget - 1) || rowBudget < 3);
+  const overflow = !folded && (remaining.length > Math.min(8, listBudget - 1) || rowBudget < 3);
   const limit = Math.max(0, Math.min(8, listBudget - 1 - Number(overflow)));
-  const visible = collapsed
-    ? preview && rowBudget >= 2
-      ? [preview]
-      : []
-    : remaining.slice(0, limit);
-  const hidden = collapsed ? 0 : remaining.length - visible.length;
+  const visible = folded ? (preview && rowBudget >= 2 ? [preview] : []) : remaining.slice(0, limit);
+  const hidden = folded ? 0 : remaining.length - visible.length;
   return (
     <Box flexDirection="column" paddingX={2} paddingTop={paddingTop}>
       {/* The Todo section hangs below the future Goal root row. */}
@@ -77,8 +75,10 @@ export function GoalTodoPanel({
           backgroundColor={headerHovered ? "badgeHoverBackground" : undefined}
         >
           <ThemedText dimColor wrap="truncate">
-            {`${collapsed ? "▸" : "▾"} ✓ ${done}/${todos.length}`}
-            {!collapsed && rowBudget === 1 ? `  ${t("todo.fold")}` : ""}
+            {`${folded ? "▸" : "▾"} ✓ ${done}/${todos.length}`}
+            {compact && preview
+              ? `  ${preview.status === "in_progress" ? "●" : "○"} ${preview.content.replace(/[\r\n]+/g, " ")}`
+              : ""}
           </ThemedText>
         </ThemedBox>
         {visible.map((todo, index) => (

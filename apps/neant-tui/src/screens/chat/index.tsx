@@ -31,6 +31,7 @@ import { createInputHistory } from "../../input-history";
 import { createConversation } from "./conversation";
 import { createInteractions } from "./interactions";
 import { permissionChoices } from "../../components/permission-dialog";
+import { allocatePanelHeights } from "../../components/panel-layout";
 import { fmtTokens, render as renderActivity } from "./activity/activity";
 
 /** Bind the Session and private stores to one chat screen for its lifetime. */
@@ -201,37 +202,39 @@ function Chat({
         ? 2
         : 6
       : 0;
-  // Reserve the dialog's bottom gap and at least one transcript row before allocating chrome.
-  const questionPromptHeight = userQuestion?.collapsed ? promptMaxLines + 3 : 0;
-  const questionTodoHeight =
-    userQuestion && hasTodos
-      ? Math.min(
-          todosCollapsed ? 3 : Math.min(state.todos.length, 8) + 3 + Number(state.todos.length > 8),
-          Math.max(2, Math.floor((rows - statusHeight - questionPromptHeight - 1) / 3)),
-        )
-      : 0;
-  const permissionSpace = rows - statusHeight - 2 - questionTodoHeight - questionPromptHeight;
+  // Dialogs take priority. Reserve a preview for every visible panel before
+  // deciding whether the prompt needs to use its one-row form.
+  const dialogGap = question ? 1 : 0;
+  const panelCount = Number(hasTodos);
+  const compactPrompt =
+    !!interaction &&
+    rows - statusHeight - minimumDialogHeight - dialogGap - panelCount < promptMaxLines + 3;
+  const promptHeight = compactPrompt ? 1 : promptMaxLines + 3;
+  const transcriptHeight = interaction ? Number(!compactPrompt) : 1;
+  const chromeSpace = rows - statusHeight - promptHeight - transcriptHeight;
+  const showReturnControl =
+    showReturn && chromeSpace - minimumDialogHeight - dialogGap - panelCount >= 1;
   const compactReturn =
-    showReturn &&
-    (interaction
-      ? permissionSpace < minimumDialogHeight + Number(hasActivity) + 2
-      : hasTodos && rows - statusHeight - (promptMaxLines + 3) - Number(hasActivity) - 3 < 2);
-  const returnHeight = showReturn ? (compactReturn ? 1 : 2) : 0;
-  // The dialog title already conveys waiting for approval when this duplicate line cannot fit.
+    showReturnControl &&
+    chromeSpace - minimumDialogHeight - dialogGap - panelCount - Number(hasActivity) < 2;
+  const returnHeight = showReturnControl ? (compactReturn ? 1 : 2) : 0;
   const showActivity =
-    hasActivity && (!interaction || permissionSpace >= minimumDialogHeight + returnHeight + 1);
-  const dialogMaxHeight = Math.max(
-    minimumDialogHeight,
-    userQuestion
-      ? Math.min(
-          userQuestion.collapsed ? 3 : Infinity,
-          permissionSpace + 1 - returnHeight - Number(showActivity),
-        )
-      : Math.min(Math.floor(rows / 2), permissionSpace - returnHeight - Number(showActivity)),
-  );
-  const todoMaxHeight = Math.max(
-    1,
-    rows - statusHeight - (promptMaxLines + 3) - returnHeight - Number(showActivity) - 1,
+    hasActivity && chromeSpace - minimumDialogHeight - dialogGap - panelCount - returnHeight >= 1;
+  const available = chromeSpace - returnHeight - Number(showActivity);
+  const panelReserve =
+    hasTodos && available - dialogGap - minimumDialogHeight >= 3 ? 3 : panelCount;
+  const dialogMaxHeight = interaction
+    ? Math.max(
+        minimumDialogHeight,
+        Math.min(
+          userQuestion?.collapsed ? 3 : Math.floor(rows / 2),
+          available - dialogGap - panelReserve,
+        ),
+      )
+    : 0;
+  const [todoMaxHeight = 1] = allocatePanelHeights(
+    available - dialogMaxHeight - dialogGap,
+    hasTodos ? [3] : [],
   );
   useInput((event) => {
     if (event.type === "move") return;
@@ -399,7 +402,7 @@ function Chat({
           <ThemedText wrap="truncate">{t("window.small")}</ThemedText>
         ) : (
           <>
-            {showReturn && (
+            {showReturnControl && (
               <ScrollToBottom
                 locale={locale}
                 columns={columns}
@@ -421,31 +424,15 @@ function Chat({
                 suffix={` · ↑ ${fmtTokens(state.activityInput)} · ↓ ${fmtTokens(state.output + Math.ceil(state.streamedChars / 4))} tokens`}
               />
             )}
-            {!question && (
-              <GoalTodoPanel
-                todos={state.todos}
-                working={state.running}
-                collapsed={todosCollapsed}
-                onToggle={toggleTodos}
-                locale={locale}
-                maxHeight={userQuestion ? questionTodoHeight : todoMaxHeight}
-              />
-            )}
-            {question && (
-              <PermissionDialog
-                locale={locale}
-                key={question.request.toolCallId}
-                toolName={question.request.toolName}
-                sessionAllow={question.request.sessionAllow}
-                args={question.request.args}
-                mode={question.request.mode}
-                reason={question.request.reason}
-                selected={question.selected}
-                maxHeight={dialogMaxHeight}
-                scrollRef={details}
-                scrollFocused={scrollFocus === "details"}
-              />
-            )}
+            <GoalTodoPanel
+              todos={state.todos}
+              working={state.running}
+              collapsed={todosCollapsed}
+              onToggle={toggleTodos}
+              locale={locale}
+              maxHeight={todoMaxHeight}
+            />
+            {/* SubagentPanel belongs here when ticket 09 wires it. */}
             {userQuestion && currentQuestion && (
               <QuestionDialog
                 key={`${userQuestion.request.toolCallId}-${userQuestion.questionIndex}`}
@@ -480,27 +467,42 @@ function Chat({
                 locale={locale}
               />
             )}
-            {(!interaction || userQuestion?.collapsed) && (
-              <PromptInput
-                maxLines={promptMaxLines}
-                columns={columns}
-                working={state.running}
-                history={history}
-                value={input}
-                onChange={(value) => {
-                  const pending = interactions.getSnapshot();
-                  if (!pending || (pending.kind === "question" && pending.collapsed)) change(value);
-                }}
-                onSubmit={(prompt) => {
-                  const pending = interactions.getSnapshot();
-                  if (pending && (pending.kind !== "question" || !pending.collapsed)) return;
-                  if (submit(prompt)) {
-                    body.current?.scrollToBottom();
-                    change("");
-                  }
-                }}
+            {question && (
+              <PermissionDialog
+                locale={locale}
+                key={question.request.toolCallId}
+                toolName={question.request.toolName}
+                sessionAllow={question.request.sessionAllow}
+                args={question.request.args}
+                mode={question.request.mode}
+                reason={question.request.reason}
+                selected={question.selected}
+                maxHeight={dialogMaxHeight}
+                scrollRef={details}
+                scrollFocused={scrollFocus === "details"}
               />
             )}
+            <PromptInput
+              readOnly={!!interaction && !userQuestion?.collapsed}
+              compact={compactPrompt}
+              maxLines={compactPrompt ? 1 : promptMaxLines}
+              columns={columns}
+              working={state.running}
+              history={history}
+              value={input}
+              onChange={(value) => {
+                const pending = interactions.getSnapshot();
+                if (!pending || (pending.kind === "question" && pending.collapsed)) change(value);
+              }}
+              onSubmit={(prompt) => {
+                const pending = interactions.getSnapshot();
+                if (pending && (pending.kind !== "question" || !pending.collapsed)) return;
+                if (submit(prompt)) {
+                  body.current?.scrollToBottom();
+                  change("");
+                }
+              }}
+            />
             <StatusLine
               locale={locale}
               columns={columns}

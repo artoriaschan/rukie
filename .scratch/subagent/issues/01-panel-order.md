@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 参考：[spec](../spec.md)「TUI」中的「面板顺序」。
 
