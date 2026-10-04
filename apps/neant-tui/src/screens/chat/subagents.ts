@@ -66,6 +66,26 @@ function appendOutput(row: SubagentState, type: "text" | "thinking", text: strin
   };
 }
 
+function toolResultPreview(result: unknown): string | undefined {
+  if (
+    typeof result !== "object" ||
+    result === null ||
+    !("content" in result) ||
+    !Array.isArray(result.content)
+  )
+    return undefined;
+  const text = result.content
+    .flatMap((item: unknown) =>
+      typeof item === "object" && item !== null && "text" in item && typeof item.text === "string"
+        ? [item.text]
+        : [],
+    )
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text ? (text.length > 80 ? text.slice(0, 80) + "…" : text) : undefined;
+}
+
 /** Fold child events separately from the parent transcript and activity. */
 export function reduceSubagent(
   previous: SubagentState | undefined,
@@ -103,20 +123,34 @@ export function reduceSubagent(
         ...row,
         toolCalls: [
           ...row.toolCalls,
-          { id: event.toolCallId, name: event.toolName, argsPreview, status: "running" },
+          {
+            id: event.toolCallId,
+            name: event.toolName,
+            argsPreview,
+            status: "running",
+            startedAt: now,
+          },
         ],
         output: [...row.output, { type: "tool", text: `${event.toolName} ${argsPreview}` }],
       };
     }
-    case "tool_execution_end":
+    case "tool_execution_end": {
+      const preview = toolResultPreview(event.result);
       return {
         ...row,
         toolCalls: row.toolCalls.map((tool) =>
           tool.id === event.toolCallId
-            ? { ...tool, status: event.isError ? "failed" : "completed" }
+            ? {
+                ...tool,
+                status: event.isError ? "failed" : "completed",
+                durationMs: Math.max(0, now - (tool.startedAt ?? now)),
+                resultPreview: event.isError ? undefined : preview,
+                error: event.isError ? preview : undefined,
+              }
             : tool,
         ),
       };
+    }
     case "message_end": {
       if (event.message.role !== "assistant") return row;
       const text = event.message.content

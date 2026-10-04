@@ -2,7 +2,7 @@ import { useState, type Ref } from "react";
 import type { Locale } from "@neant/i18n";
 import { Box, Divider, ScrollBox, ThemedBox, ThemedText, type ScrollHandle } from "@neant/tui";
 import { createTuiI18n } from "../../i18n";
-import type { SubagentView } from "../subagent-message";
+import { SUBAGENT_APPEARANCE, type SubagentView } from "../subagent-message";
 
 export function ExitButton({ onClick }: { onClick(): void }) {
   const [hovered, setHovered] = useState(false);
@@ -117,22 +117,7 @@ function DashboardCard({
 }) {
   const [hovered, setHovered] = useState(false);
   const t = createTuiI18n(locale);
-  const color =
-    subagent.status === "completed"
-      ? "success"
-      : subagent.status === "running"
-        ? "warning"
-        : subagent.status === "idle"
-          ? "subtle"
-          : "error";
-  const glyph =
-    subagent.status === "running"
-      ? "🟡"
-      : subagent.status === "completed"
-        ? "🟢"
-        : subagent.status === "idle"
-          ? "·"
-          : "🔴";
+  const { color, glyph } = SUBAGENT_APPEARANCE[subagent.status];
   return (
     <ThemedBox
       paddingLeft={1}

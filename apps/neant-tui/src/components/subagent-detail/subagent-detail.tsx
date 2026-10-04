@@ -1,10 +1,18 @@
 import type { Ref } from "react";
 import type { Locale } from "@neant/i18n";
-import { Box, ScrollBox, ThemedText, type ScrollHandle } from "@neant/tui";
+import { Box, ScrollBox, ThemedText, toolNameColor, type ScrollHandle } from "@neant/tui";
 import { createTuiI18n } from "../../i18n";
-import type { SubagentView } from "../subagent-message";
+import { SUBAGENT_APPEARANCE, type SubagentView } from "../subagent-message";
 import { Markdown } from "../markdown";
 import { ExitButton } from "../subagent-dashboard";
+
+function formatDuration(elapsed: number) {
+  return elapsed < 1000
+    ? `${Math.floor(elapsed)}ms`
+    : elapsed < 60000
+      ? `${(elapsed / 1000).toFixed(1)}s`
+      : `${Math.floor(elapsed / 60000)}m${Math.floor((elapsed % 60000) / 1000)}s`;
+}
 
 export type DetailPage = "summary" | "output" | "tools";
 interface SubagentDetailView extends SubagentView {
@@ -33,32 +41,12 @@ export function SubagentDetailScene({
   onInterrupt(): void;
 }) {
   const t = createTuiI18n(locale);
-  const color =
-    subagent.status === "completed"
-      ? "success"
-      : subagent.status === "running"
-        ? "warning"
-        : subagent.status === "idle"
-          ? "subtle"
-          : "error";
-  const glyph =
-    subagent.status === "running"
-      ? "🟡"
-      : subagent.status === "completed"
-        ? "🟢"
-        : subagent.status === "idle"
-          ? "·"
-          : "🔴";
+  const { color, glyph } = SUBAGENT_APPEARANCE[subagent.status];
   const elapsed =
     subagent.status === "running"
       ? Math.max(0, Date.now() - subagent.startedAt)
       : subagent.durationMs;
-  const duration =
-    elapsed < 1000
-      ? `${Math.floor(elapsed)}ms`
-      : elapsed < 60000
-        ? `${(elapsed / 1000).toFixed(1)}s`
-        : `${Math.floor(elapsed / 60000)}m${Math.floor((elapsed % 60000) / 1000)}s`;
+  const duration = formatDuration(elapsed);
   const outputBlocks: { type: "text" | "thinking" | "tool"; text: string }[] = [];
   for (const line of subagent.output) {
     const previous = outputBlocks.at(-1);
@@ -185,10 +173,38 @@ export function SubagentDetailScene({
           (subagent.toolCalls.length ? (
             subagent.toolCalls.map((tool) => (
               <Box key={tool.id} flexDirection="column" marginBottom={1}>
-                <ThemedText
-                  color={tool.status === "failed" ? "error" : "accent"}
-                >{`${tool.status === "running" ? "●" : tool.status === "completed" ? "✓" : "×"} ${tool.name}`}</ThemedText>
-                <ThemedText dimColor>{tool.argsPreview}</ThemedText>
+                <ThemedText>
+                  <ThemedText
+                    color={
+                      tool.status === "failed"
+                        ? "error"
+                        : tool.status === "running"
+                          ? "warning"
+                          : "success"
+                    }
+                  >
+                    {tool.status === "running" ? "·" : tool.status === "completed" ? "✓" : "×"}{" "}
+                  </ThemedText>
+                  <ThemedText color={toolNameColor(tool.name)}>{tool.name}</ThemedText>
+                  {tool.durationMs !== undefined && (
+                    <ThemedText dimColor>{` ${formatDuration(tool.durationMs)}`}</ThemedText>
+                  )}
+                </ThemedText>
+                {tool.argsPreview && (
+                  <Box paddingLeft={2}>
+                    <ThemedText dimColor>{tool.argsPreview}</ThemedText>
+                  </Box>
+                )}
+                {tool.resultPreview && (
+                  <Box paddingLeft={2}>
+                    <ThemedText dimColor>{`⎿ ${tool.resultPreview}`}</ThemedText>
+                  </Box>
+                )}
+                {tool.error && (
+                  <Box paddingLeft={2}>
+                    <ThemedText color="error">{tool.error}</ThemedText>
+                  </Box>
+                )}
               </Box>
             ))
           ) : (

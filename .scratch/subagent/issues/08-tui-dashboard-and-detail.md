@@ -31,3 +31,6 @@
 - 完整验证：`rtk proxy env -u NO_COLOR bun run check` exit 0；1072 pass / 0 fail / 5816 assertions / 80 files，117.43s；日志 `/tmp/neant-subagent-08-check.log`。新视图文件单测 8 pass / 0 fail / 59 assertions；fork / subagent / view 定向组合已通过。新区域整理为 `index.ts` 入口后再次通过 tsc、knip、oxlint 与视图测试。
 - 依赖：TUI exact `mdast-util-from-markdown` 2.1.0（micromark / CommonMark），已同步 lockfile 与 `docs/tech-stack.md`。
 - main 合并、07 manager / latest-card 合并协调以及 worktree 移除由协调代理负责。
+- 独立双轴评审：Standards 无 hard finding；Spec P2 指出 Tools 页遗漏执行结果、失败原因和耗时。追加公开终端成功 / 失败用例，先 RED（0 pass / 2 fail，缺少结果预览或错误原因），再 GREEN（2 pass / 0 fail / 8 assertions）。screen reducer 保存工具开始时间、耗时和结果 / 错误预览；Tools 页显示状态、工具名、耗时、缩进参数、`⎿` 成功结果及红色失败原因，预览按参考折叠空白并截断至 80 字符。
+- 同次处理 Standards 可选建议：Dashboard / Detail 共享 typed status presentation map；06 消息卡片的动态 glyph 保持原实现。组合视图 / 06 卡片测试 18 pass / 0 fail / 103 assertions；`tsc -b` 通过。
+- 评审修复后完整验证：`rtk proxy env -u NO_COLOR bun run check` exit 0；1074 pass / 0 fail / 5824 assertions / 80 files，120.09s；日志 `/tmp/neant-subagent-08-review-fix-check.log`。保持 `claimed`，等待协调代理复查、整合 07 与 resolve。

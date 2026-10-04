@@ -311,3 +311,42 @@ test("eight child Runs stream in chat before any Subagent view opens", async () 
     await app.cleanup();
   }
 });
+
+for (const failed of [false, true]) {
+  test(`child Tools page exposes ${failed ? "failure reason" : "result preview"} and elapsed duration`, async () => {
+    const app = await start(["--permission-mode", "full-access", "delegate"], {
+      columns: 120,
+      rows: 40,
+      env: { LANG: "en_US.UTF-8" },
+    });
+    const screen = () => app.screen().join("\n");
+    try {
+      await app.waitFor(() => app.calls.length === 1);
+      app.calls[0]!.tool("subagent", { description: "Tool details", prompt: "child tools review" });
+      await app.waitFor(
+        () => app.calls.length === 3 && screen().includes("Subagent: Tool details"),
+      );
+      const child = app.calls.find((call) =>
+        call.context.messages.some(
+          (message) =>
+            message.role === "user" &&
+            JSON.stringify(message.content).includes("child tools review"),
+        ),
+      )!;
+      if (failed) child.tool("read", { path: "absent-review.txt" });
+      else child.tool("bash", { command: "printf tool-completed-output" });
+      await app.waitFor(() => app.calls.length === 4);
+      click(app, "Subagent: Tool details");
+      await app.waitFor(() => screen().includes("id "));
+      click(app, "Tools");
+      await app.waitFor(
+        () => screen().includes("3/3") && screen().includes(failed ? "× read" : "✓ bash"),
+      );
+      expect(screen()).toContain(failed ? "ENOENT" : "⎿ tool-completed-output");
+      const row = app.screen().find((line) => line.includes(failed ? "× read" : "✓ bash"))!;
+      expect(row).toMatch(/(?:read|bash) \d+(?:\.\d+)?(?:ms|s|m\d+s)$/);
+    } finally {
+      await app.cleanup();
+    }
+  });
+}
