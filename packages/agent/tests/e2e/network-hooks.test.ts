@@ -426,3 +426,26 @@ test("HTTP non-success streams release their connection before session disposal"
     await session.dispose();
   }
 });
+
+test("MCP hook default and explicit budgets permit decisions after the SDK's 30s deadline", async () => {
+  dirs = await tempDirs();
+  await connectMcp(["delayed-json"]);
+  const results = await Promise.all(
+    [undefined, 35].map((timeout) =>
+      runHook({
+        type: "mcp_tool",
+        server: "local",
+        tool: "delayed-json",
+        input: { text: JSON.stringify(denial), delay_ms: 30_100 },
+        timeout,
+      }),
+    ),
+  );
+  for (const result of results) {
+    expect(result.executed).toBe(false);
+    expect(result.events.filter((event) => event.type === "hook_warning")).toHaveLength(0);
+    expect(result.events.filter((event) => event.type === "permission_denied")).toMatchObject([
+      { by: "hook", reason: "Denied by hook: protected" },
+    ]);
+  }
+}, 40_000);

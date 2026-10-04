@@ -119,7 +119,8 @@ export function createMcpConnections() {
           code: "hook-mcp-unconnected",
           params: { server },
         });
-      return client.callTool(tool, input, { signal });
+      // Hook execution owns its timeout; the SDK default would cap every hook at 30s.
+      return client.callTool(tool, input, { signal, timeoutMs: 0 });
     },
     get hasServers() {
       return descriptions.length > 0;
