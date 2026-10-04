@@ -2,6 +2,7 @@ export {
   Box,
   Text,
   TextInput,
+  createTextInputHistory,
   type BoxProps,
   type TextProps,
   type TextInputProps,

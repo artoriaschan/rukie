@@ -14,6 +14,33 @@ export interface TextInputProps extends TextStyle {
   readOnly?: boolean;
   /** UTF-16 caret offset supplied by the owner of a read-only editor. */
   cursorOffset?: number;
+  /** Owner-created history survives temporary editor unmounts. */
+  history?: ReturnType<typeof createTextInputHistory>;
+}
+
+/** Browse oldest-first inputs while retaining the draft and its UTF-16 caret. */
+export function createTextInputHistory(entries: readonly string[]) {
+  let walk: { index: number; value: string; cursor: number } | undefined;
+  return {
+    reset() {
+      walk = undefined;
+    },
+    recall(direction: "up" | "down", value: string, cursor: number) {
+      if (!entries.length) return;
+      if (direction === "up") {
+        walk ??= { index: entries.length, value, cursor };
+        walk.index = Math.max(0, walk.index - 1);
+      } else if (!walk) return;
+      else walk.index += 1;
+      if (walk.index >= entries.length) {
+        const draft = { value: walk.value, cursor: walk.cursor };
+        walk = undefined;
+        return draft;
+      }
+      const recalled = entries[walk.index]!;
+      return { value: recalled, cursor: recalled.length };
+    },
+  };
 }
 
 const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
@@ -35,6 +62,7 @@ export function TextInput({
   cursorStyle,
   readOnly = false,
   cursorOffset,
+  history,
   ...style
 }: TextInputProps) {
   const size = useTerminalSize();
@@ -44,6 +72,8 @@ export function TextInput({
   const position =
     graphemeBoundaries(value).findLast((offset) => offset <= (cursorOffset ?? cursor)) ?? 0;
   useLayoutEffect(() => {
+    // An owner reset (submit, clear, or external fill) ends the history walk.
+    if (editing.current.value !== value) history?.reset();
     editing.current.value = value;
     editing.current.cursor = position;
     if (cursor !== position) setCursor(position);
@@ -92,6 +122,13 @@ export function TextInput({
             x += glyph.width;
           }
           move(Math.min(current.value.length, offset));
+        } else {
+          const recalled = history?.recall(key.name, current.value, current.cursor);
+          if (recalled) {
+            current.value = recalled.value;
+            move(recalled.cursor);
+            onChange(current.value);
+          }
         }
       } else if (key.name === "backspace" && current.cursor > 0)
         replace(before, current.cursor, "");

@@ -1,4 +1,4 @@
-import { Box, ThemedTextInput, ThemedText, figures } from "@neant/tui";
+import { Box, ThemedTextInput, ThemedText, figures, type TextInputProps } from "@neant/tui";
 
 export function PromptInput({
   value,
@@ -7,6 +7,7 @@ export function PromptInput({
   columns,
   maxLines,
   working = false,
+  history,
 }: {
   value: string;
   onChange(value: string): void;
@@ -14,6 +15,7 @@ export function PromptInput({
   columns: number;
   maxLines: number;
   working?: boolean;
+  history?: TextInputProps["history"];
 }) {
   const edge = "─".repeat(Math.max(0, columns - 2));
   return (
@@ -31,6 +33,7 @@ export function PromptInput({
             maxLines={maxLines}
             columns={Math.max(1, columns - 3)}
             cursorStyle="block"
+            history={history}
           />
         </Box>
       </Box>

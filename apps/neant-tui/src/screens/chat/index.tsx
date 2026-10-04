@@ -6,6 +6,7 @@ import {
   Box,
   ScrollBox,
   ThemedText,
+  createTextInputHistory,
   useInput,
   useTerminalSize,
   type ScrollHandle,
@@ -26,6 +27,7 @@ import {
   UserMessage,
 } from "../../components";
 import { createTuiI18n } from "../../i18n";
+import { createInputHistory } from "../../input-history";
 import { createConversation } from "./conversation";
 import { createInteractions } from "./interactions";
 import { permissionChoices } from "../../components/permission-dialog/permission-dialog";
@@ -45,6 +47,14 @@ export async function createChat(options: SessionOptions, model: string, locale:
     onQuestion: options.onQuestion ?? interactions.askQuestion,
   });
   const conversation = createConversation(session, model, locale);
+  const history = await createInputHistory(options.cwd, options.homeDir);
+  const inputHistory = createTextInputHistory(history.entries);
+  const submit = (prompt: string) => {
+    if (!conversation.submit(prompt)) return false;
+    history.remember(prompt);
+    inputHistory.reset();
+    return true;
+  };
   try {
     const git = Bun.spawn(["git", "branch", "--show-current"], {
       cwd: options.cwd,
@@ -58,13 +68,18 @@ export async function createChat(options: SessionOptions, model: string, locale:
     // Missing git or a non-repository cwd simply omits the branch segment.
   }
   return {
-    submit: conversation.submit,
-    stop: conversation.stop,
+    submit,
+    async stop() {
+      await conversation.stop();
+      await history.flush();
+    },
     Chat({ onExit }: { onExit(): void }) {
       return (
         <Chat
           session={session}
           conversation={conversation}
+          history={inputHistory}
+          submit={submit}
           interactions={interactions}
           cwd={options.cwd}
           thinking={options.settings?.thinking}
@@ -79,6 +94,8 @@ export async function createChat(options: SessionOptions, model: string, locale:
 function Chat({
   session,
   conversation,
+  history,
+  submit,
   interactions,
   cwd,
   thinking,
@@ -87,6 +104,8 @@ function Chat({
 }: {
   session: Session;
   conversation: ReturnType<typeof createConversation>;
+  history: ReturnType<typeof createTextInputHistory>;
+  submit(prompt: string): boolean;
   interactions: ReturnType<typeof createInteractions>;
   cwd: string;
   thinking?: ThinkingLevel;
@@ -313,8 +332,10 @@ function Chat({
         conversation.interrupt();
         lastInterrupt.current = undefined;
       } else if (key.ctrl) {
-        if (draft.current) change("");
-        else {
+        if (draft.current) {
+          history.reset();
+          change("");
+        } else {
           const now = performance.now();
           if (lastInterrupt.current !== undefined && now - lastInterrupt.current <= 1000) onExit();
           else lastInterrupt.current = now;
@@ -463,6 +484,7 @@ function Chat({
                 maxLines={promptMaxLines}
                 columns={columns}
                 working={state.running}
+                history={history}
                 value={input}
                 onChange={(value) => {
                   const pending = interactions.getSnapshot();
@@ -471,7 +493,7 @@ function Chat({
                 onSubmit={(prompt) => {
                   const pending = interactions.getSnapshot();
                   if (pending && (pending.kind !== "question" || !pending.collapsed)) return;
-                  if (conversation.submit(prompt)) {
+                  if (submit(prompt)) {
                     body.current?.scrollToBottom();
                     change("");
                   }
