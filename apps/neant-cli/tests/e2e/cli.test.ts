@@ -856,3 +856,27 @@ test.each([
   expect(result.stderr).not.toBe("");
   expect(server.requests).toHaveLength(0);
 });
+
+test.each(["ask", "deny"])(
+  "headless stream-json carries %s rule denial provenance in full-access",
+  async (decision) => {
+    const { server, ...dirs } = await setup(
+      { permissions: { [decision]: ["bash(printf blocked*)"] } },
+      { toolCalls: [{ name: "bash", arguments: { command: "printf blocked > marker" } }] },
+    );
+    const result = await neant(
+      ["--permission-mode", "full-access", "-p", "try", "--output-format", "stream-json"],
+      { ...dirs, key: "sk-test" },
+    );
+    expect(result).toMatchObject({ exitCode: 0, stderr: "" });
+    const events = parseEvents(result.stdout);
+    expect(events.filter((event) => event.type === "permission_denied")).toMatchObject([
+      { toolName: "bash", by: "rule", rule: "bash(printf blocked*)" },
+    ]);
+    expect(events.filter((event) => event.type === "permission_review")).toEqual([]);
+    expect(await Bun.file(join(dirs.cwd, "marker")).exists()).toBe(false);
+    expect(JSON.stringify(server.requests[1]!.body)).toContain(
+      "Denied by permission rule: bash(printf blocked*)",
+    );
+  },
+);

@@ -208,6 +208,7 @@ test("frontend denial blocks the tool, reports the denial and lets the model con
   expect(events.filter((event) => event.type === "permission_denied")).toEqual([
     {
       type: "permission_denied",
+      by: "user",
       sessionId: session.id,
       toolCallId: "write-denied",
       toolName: "write",
@@ -268,6 +269,7 @@ test.each(["pending", "allow", "reject"] as const)(
     expect(events.filter((event) => event.type === "permission_denied")).toEqual([
       {
         type: "permission_denied",
+        by: "user",
         sessionId: session.id,
         toolCallId: "write-abort",
         toolName: "write",

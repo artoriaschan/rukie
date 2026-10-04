@@ -284,3 +284,32 @@ test("user locale overrides environment for non-interactive terminal guidance", 
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test.each([
+  ["zh", "", "无效的权限规则"],
+  ["zh", "bash(echo", "无效的权限规则"],
+  ["zh", "  unknown(pattern)  ", "无效的权限规则"],
+  ["en", "", "invalid permission rule"],
+  ["en", "bash(echo", "invalid permission rule"],
+  ["en", "  unknown(pattern)  ", "invalid permission rule"],
+] as const)(
+  "%s invalid rule %j reports localized feedback with source and original text",
+  async (locale, rule, message) => {
+    let source = "";
+    const app = await start([], {
+      env: { LANG: locale },
+      prepare: async (root) => {
+        source = join(root, ".neant/settings.json");
+        await Bun.write(source, JSON.stringify({ permissions: { allow: [rule] } }));
+      },
+    });
+    try {
+      expect(await app.exit).toBe(1);
+      expect(app.stderr()).toContain(`${source}: ${message} "${rule}"`);
+      expect(app.calls).toHaveLength(0);
+      expect(app.output()).toBe("");
+    } finally {
+      await app.cleanup();
+    }
+  },
+);

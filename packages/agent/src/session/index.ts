@@ -24,7 +24,11 @@ import type {
 } from "@neant/shared";
 import { resolveModel } from "../config/index.ts";
 import { createJsonlStore, type SessionStore } from "../store/index.ts";
-import { createPermissionGate, type PermissionAskRequest } from "../permissions/index.ts";
+import {
+  createPermissionGate,
+  parsePermissionRules,
+  type PermissionAskRequest,
+} from "../permissions/index.ts";
 import { createBuiltinTools, type QuestionRequest, type QuestionReply } from "../tools/index.ts";
 import { SYSTEM_PROMPT } from "../prompt/index.ts";
 import { collectReminders, convertToLlm, type ReminderSource } from "../reminders/index.ts";
@@ -92,6 +96,7 @@ export interface Session {
 
 export async function createSession(options: SessionOptions): Promise<Session> {
   const settings = options.settings ?? {};
+  const rules = parsePermissionRules(settings.permissions);
   let permissionMode = options.permissionMode ?? settings.permissionMode ?? "ask";
   if (options.model && !options.streamFn) throw new Error("`model` requires `streamFn`.");
   const { model, streamFn } = options.model
@@ -142,6 +147,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
   let skills = new Map<string, Skill>();
   const permissions = createPermissionGate({
     cwd,
+    homeDir: options.homeDir,
+    rules,
     getMode: () => permissionMode,
     getAllowTools: () => [...(settings.allowTools ?? []), ...(options.allowTools ?? [])],
     getAgentState: () => agent.state,

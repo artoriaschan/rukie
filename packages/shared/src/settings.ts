@@ -32,6 +32,13 @@ export const SettingsSchema = Type.Object({
   permissionMode: Type.Optional(Type.Enum([...PERMISSION_MODES])),
   thinking: Type.Optional(Type.Enum([...THINKING_LEVELS])),
   providers: Type.Optional(Type.Array(CustomProvider)),
+  permissions: Type.Optional(
+    Type.Object({
+      allow: Type.Optional(Type.Array(Type.String())),
+      ask: Type.Optional(Type.Array(Type.String())),
+      deny: Type.Optional(Type.Array(Type.String())),
+    }),
+  ),
   allowTools: Type.Optional(Type.Array(Type.String())),
   trustedProjects: Type.Optional(Type.Array(Type.String())),
 });

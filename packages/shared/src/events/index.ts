@@ -35,7 +35,13 @@ export type CustomSessionEvent =
   | ({ type: "result" } & RunResult)
   | { type: "reminder_injected"; source: string; content: string }
   | { type: "tool_state_changed"; name: string; value: unknown }
-  | { type: "permission_denied"; toolCallId: string; toolName: string }
+  | {
+      type: "permission_denied";
+      toolCallId: string;
+      toolName: string;
+      by: "rule" | "user" | "review";
+      rule?: string;
+    }
   | { type: "permission_review"; phase: "start"; toolCallId: string; toolName: string }
   | {
       type: "permission_review";

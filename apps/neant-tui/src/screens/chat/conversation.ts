@@ -10,6 +10,7 @@ interface ToolCall {
   name: string;
   args: unknown;
   summary: string;
+  rule?: string;
 }
 
 type CompletedEntry =
@@ -33,11 +34,17 @@ function toolSummary(name: string, args: unknown) {
 }
 
 function toolEntry(
-  tool: Pick<ToolCall, "name" | "args" | "summary">,
+  tool: Pick<ToolCall, "name" | "args" | "summary" | "rule">,
   isError: boolean,
   result: Pick<ToolResultMessage, "content" | "details">,
   t: ReturnType<typeof createTuiI18n>,
 ): CompletedEntry {
+  // Events supply live provenance; persisted tool results retain the rule on replay.
+  const rule =
+    tool.rule ??
+    (isError && resultText(result).startsWith("Denied by permission rule: ")
+      ? resultText(result).slice("Denied by permission rule: ".length)
+      : undefined);
   const todo = tool.name === "todo_write" && !isError ? todoSummary(tool.args, t) : undefined;
   return {
     type: "tool",
@@ -54,13 +61,15 @@ function toolEntry(
         ? questionSummary(tool.args, resultText(result), t)
         : (todo ?? resultText(result)),
     error: isError
-      ? formatError(
-          {
-            ...(typeof result.details === "object" && result.details),
-            message: resultText(result),
-          },
-          t,
-        )
+      ? rule !== undefined
+        ? t("tool.rule-denied", { rule })
+        : formatError(
+            {
+              ...(typeof result.details === "object" && result.details),
+              message: resultText(result),
+            },
+            t,
+          )
       : undefined,
   };
 }
@@ -300,6 +309,15 @@ function reduceEvent(
           },
         ],
       };
+    case "permission_denied":
+      return event.by === "rule" && event.rule !== undefined
+        ? {
+            ...state,
+            tools: state.tools.map((tool) =>
+              tool.id === event.toolCallId ? { ...tool, rule: event.rule } : tool,
+            ),
+          }
+        : state;
     case "tool_execution_end": {
       const tool = state.tools.find((tool) => tool.id === event.toolCallId);
       if (!tool) return state;

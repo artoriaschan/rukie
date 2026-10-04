@@ -198,3 +198,53 @@ test("missing API key exposes the provider and configured environment variable",
     if (previous !== undefined) process.env[env] = previous;
   }
 });
+
+test.each(["", "bash(echo", "unknown(pattern)"])(
+  "invalid permission rule %j reports its settings file",
+  async (rule) => {
+    dirs = await tempDirs();
+    const file = join(dirs.homeDir, ".neant/settings.json");
+    await Bun.write(file, JSON.stringify({ permissions: { deny: [rule] } }));
+    await expect(loadSettings(dirs)).rejects.toThrow(
+      `${file}: invalid permission rule ${JSON.stringify(rule)}`,
+    );
+  },
+);
+
+test("invalid project permission rule reports its project settings source", async () => {
+  dirs = await tempDirs();
+  const file = join(dirs.cwd, ".neant/settings.json");
+  await Bun.write(file, JSON.stringify({ permissions: { ask: ["mcp__x(pattern)"] } }));
+  await expect(loadSettings(dirs)).rejects.toThrow(
+    `${file}: invalid permission rule "mcp__x(pattern)"`,
+  );
+});
+
+test("valid user permission rules survive settings loading", async () => {
+  dirs = await tempDirs();
+  const permissions = {
+    allow: ["mcp__github__*", "bash(git status*)"],
+    ask: ["bash(git push*)"],
+    deny: ["read(~/.ssh/**)"],
+  };
+  await Bun.write(join(dirs.homeDir, ".neant/settings.json"), JSON.stringify({ permissions }));
+  expect((await loadSettings(dirs)).settings.permissions).toEqual(permissions);
+});
+
+test("invalid permission rules carry a typed source and untouched rule", async () => {
+  dirs = await tempDirs();
+  const source = join(dirs.homeDir, ".neant/settings.json");
+  const rule = "  unknown(pattern)  ";
+  await Bun.write(source, JSON.stringify({ permissions: { deny: [rule] } }));
+  await expect(loadSettings(dirs)).rejects.toMatchObject({
+    code: "permission-rule-invalid",
+    params: { source, rule },
+    message: `${source}: invalid permission rule ${JSON.stringify(rule)}`,
+  });
+  await expect(
+    createSession({ ...dirs, settings: { permissions: { ask: [rule] } } }),
+  ).rejects.toMatchObject({
+    code: "permission-rule-invalid",
+    params: { source: "settings.permissions", rule },
+  });
+});

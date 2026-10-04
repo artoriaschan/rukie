@@ -33,6 +33,7 @@ const zh = {
   "api-key.environment-default": "该提供方的标准环境变量",
   "error.ripgrep-unavailable":
     "内置 ripgrep 不可用。请重新安装 Neant 的依赖（包含 optionalDependencies），并检查平台兼容性或二进制执行权限。原因：{{cause}}",
+  "error.permission-rule-invalid": '{{source}}: 无效的权限规则 "{{rule}}"',
   "error.unknown-model": '未知模型 "{{model}}"。',
   "error.no-api-key": '缺少 provider "{{provider}}" 的 API key。环境变量：{{env}}。',
   "error.session-not-found": "Session 不存在：{{id}}",
@@ -59,6 +60,7 @@ const en = {
   "api-key.environment-default": "the provider's standard environment variable",
   "error.ripgrep-unavailable":
     "Bundled ripgrep is unavailable. Reinstall Neant dependencies (including optionalDependencies) and check platform compatibility or binary execution permissions. Cause: {{cause}}",
+  "error.permission-rule-invalid": '{{source}}: invalid permission rule "{{rule}}"',
   "error.unknown-model": 'Unknown model "{{model}}".',
   "error.no-api-key": 'No API key for provider "{{provider}}". Environment variable: {{env}}.',
   "error.session-not-found": "Session not found: {{id}}",
