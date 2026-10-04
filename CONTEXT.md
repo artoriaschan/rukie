@@ -35,8 +35,12 @@ _Avoid_: history, log
 _Avoid_: step, round
 
 **Run**:
-处理一条用户 prompt，直到 agent 停下为止。一个 run 包含一个或多个 turn。
+处理一条 prompt，直到 agent 停下为止。prompt 来自用户，或（对 subagent 而言）来自父代理。一个 run 包含一个或多个 turn；父 run 要等它名下运行中的 subagent 全部结束才算结束。
 _Avoid_: task, job
+
+**Subagent**:
+由父 session 的模型经 `subagent` / `subagent_fork` 创建的子 session，可在父 session 内经 `send_message` 续跑。每个 run 默认在后台进行，父代理继续工作；结束时其最终文本作为一条消息交回父代理。`subagent` 从空历史开始，`subagent_fork` 带着父代理已完成的 turn 开始。判定配置与父 session 共享，只能收窄；不能再创建 subagent。
+_Avoid_: task, worker, child agent
 
 **Tool State**:
 由工具或 Agent Core 维护、随 transcript 持久化、resume 时重建的 session 级状态，如 todo 列表、Goal。每次变化记一份完整快照，取最后一条有效快照为当前状态。只记录 resume 后仍需看到的事实；"当前进程正在做什么"（如 Goal 是否正在续跑）不属于 Tool State。

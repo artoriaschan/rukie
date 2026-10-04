@@ -27,10 +27,10 @@ Labels: wayfinder:map
 - [todo 工具](issues/07-todo.md): 单个 `todo_write` 整表覆盖（不做 CC V2 Task* 四件套：为 swarm 共享任务表而生）；`{content,status}` 三态、不限 in_progress 个数、不自动清空；Tool State `todo` + 有未完成项时的 `todo` reminder，无催促；TUI 复刻 dsh-TUI `GoalTodoPanel`（树形、`ctrl+q`/点击折叠、空闲隐藏已完成），Goal 根行归 Goal 工单；工具卡 `todos ✓ done/total`
 - [地基 C：工具调用前后拦截点](issues/03-tool-call-interception.md): 内部固定阶段 hooks（可原地改写参数）→ 规则 → Permission Mode → 交互 → 放行后（供 checkpoint）→ 执行 → after（仅 hooks：替换结果 / 注入 reminder）；取最严、hook allow 越不过规则 deny；full-access 只免询问、不跳规则与 hooks；sandbox 不进链；子代理按引用共享父配置，只可收窄
 - [权限规则与 sandbox](issues/11-permission-rules-and-sandbox.md): `permissions.{allow,ask,deny}` 用 `tool(specifier)`（bash 命令 glob、文件路径 glob、裸名）；复合命令拆段，deny/ask 任一段命中、allow 需每段命中；用户层 + 项目层合并，项目 allow 仅 trusted；删 `allowTools`；ask 规则在 full-access / auto-review 下也问用户；"本 session 允许"生成内存规则（精确命令 / 目录 / 工具名）；realpath 防 symlink；sandbox 不做
+- [子代理](issues/06-subagent.md): 子 session 可多 run（`subagent` / `subagent_fork` / `send_message` / `list_agents`，对齐 harness）；默认后台，父 run 等子代理全部结束，结束通知 steer 成 user 消息；深度 1、running 上限 8、父中止级联；内置 general-purpose / explore + `agents/*.md` 自定义类型（可配 model）；`subagent_event` 包装转发；TUI 复刻 dsh-TUI 卡片 / dashboard / 详情页，新增子代理面板，输入框上方面板固定顺序且同时显示
 
 ## Not yet specified
 
-- 子代理的并发与上下文隔离细节（并行数、取消传播、token 计量归属），等子代理工单定了地基用法后再拆。
 - 最终排序与 handoff：所有能力工单定完后，汇总依赖图、给出实现顺序。
 
 ## Out of scope
