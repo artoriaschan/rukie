@@ -1,6 +1,6 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type, type Static } from "typebox";
-import { requestInteraction } from "../interaction/index.ts";
+import { requestInteraction, type OnInteractionStart } from "../interaction/index.ts";
 
 const parameters = Type.Object({
   questions: Type.Array(
@@ -27,7 +27,10 @@ export interface QuestionRequest {
 export type QuestionReply = { answers: { selected: string[]; custom?: string }[] } | "declined";
 export type OnQuestion = (request: QuestionRequest) => Promise<QuestionReply>;
 
-export function createQuestionTool(onQuestion: OnQuestion): AgentTool<typeof parameters> {
+export function createQuestionTool(
+  onQuestion: OnQuestion,
+  onInteractionStart?: OnInteractionStart,
+): AgentTool<typeof parameters> {
   return {
     name: "ask_user_question",
     label: "Ask user question",
@@ -39,6 +42,14 @@ export function createQuestionTool(onQuestion: OnQuestion): AgentTool<typeof par
         { toolCallId, questions, signal },
         onQuestion,
         undefined,
+        {
+          notify: onInteractionStart,
+          notification: {
+            notification_type: "question",
+            title: "Question from agent",
+            message: questions.map(({ question }) => question).join("\n"),
+          },
+        },
       );
       signal.throwIfAborted();
       if (reply === undefined) throw new Error("Question cancelled.");

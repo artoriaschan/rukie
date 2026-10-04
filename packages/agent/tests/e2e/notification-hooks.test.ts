@@ -1,0 +1,355 @@
+import { afterEach, expect, test } from "bun:test";
+import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { join } from "node:path";
+import { createSession, type SessionEvent } from "../../src/index.ts";
+import { fakeModel } from "../helpers/fake-model.ts";
+import { tempDirs } from "../helpers/temp-dirs.ts";
+
+let dirs: Awaited<ReturnType<typeof tempDirs>>;
+afterEach(() => dirs?.cleanup());
+
+test.each([0, 2])(
+  "permission notification starts without delaying the interaction and only displays systemMessage (exit %s)",
+  async (exitCode) => {
+    dirs = await tempDirs();
+    await Bun.write(
+      join(dirs.cwd, "notify.sh"),
+      `cat > notification.json
+while [ ! -f replied ]; do sleep 0.01; done
+printf '%s' '{"continue":false,"stopReason":"must not stop","decision":"block","systemMessage":"approval notice","hookSpecificOutput":{"additionalContext":"must not reach model"}}'
+exit ${exitCode}
+`,
+    );
+    const notified = Promise.withResolvers<void>();
+    const events: SessionEvent[] = [];
+    let asks = 0;
+    const fake = fakeModel([
+      fauxAssistantMessage(fauxToolCall("bash", { command: "printf approved" }), {
+        stopReason: "toolUse",
+      }),
+      async () => {
+        await waitForNotification(notified.promise);
+        return fauxAssistantMessage("done");
+      },
+    ]);
+    const session = await createSession({
+      ...dirs,
+      ...fake,
+      permissionMode: "ask",
+      settings: {
+        hooks: {
+          Notification: [
+            { matcher: "permission_prompt", hooks: [{ type: "command", command: "sh notify.sh" }] },
+            { matcher: "question", hooks: [{ type: "command", command: "touch wrong-matcher" }] },
+          ],
+        },
+      },
+      onWarning: () => {},
+      onPermissionAsk: async () => {
+        asks++;
+        await Bun.write(join(dirs.cwd, "replied"), "yes");
+        return "allow";
+      },
+    });
+    try {
+      const result = await session.run("try", {
+        onEvent(event) {
+          events.push(event);
+          if (event.type === "hook_message") notified.resolve();
+        },
+      });
+      expect(result.text).toBe("done");
+      expect(result.stopReason).not.toBe("hook_stopped");
+      expect(asks).toBe(1);
+      expect(await Bun.file(join(dirs.cwd, "wrong-matcher")).exists()).toBe(false);
+      const input = await Bun.file(join(dirs.cwd, "notification.json")).json();
+      expect(input).toMatchObject({
+        hook_event_name: "Notification",
+        notification_type: "permission_prompt",
+        session_id: session.id,
+        permission_mode: "ask",
+      });
+      expect(input.message).toContain("bash");
+      expect(input.title.length).toBeGreaterThan(0);
+      expect(events.filter((event) => event.type === "hook_message")).toMatchObject([
+        { event: "Notification", message: "approval notice" },
+      ]);
+      expect(JSON.stringify(fake.contexts)).not.toContain("must not reach model");
+    } finally {
+      await session.dispose();
+    }
+  },
+);
+
+test("question interaction emits one matching notification with its question text", async () => {
+  dirs = await tempDirs();
+  await Bun.write(
+    join(dirs.cwd, "notify.sh"),
+    `cat > question.json
+printf '%s' '{"systemMessage":"question notice"}'
+`,
+  );
+  const notified = Promise.withResolvers<void>();
+  const questions = [
+    {
+      header: "Choice",
+      question: "Which color?",
+      options: [
+        { label: "Red", description: "Warm" },
+        { label: "Blue", description: "Cool" },
+      ],
+    },
+  ];
+  const fake = fakeModel([
+    fauxAssistantMessage(fauxToolCall("ask_user_question", { questions }), {
+      stopReason: "toolUse",
+    }),
+    async () => {
+      await waitForNotification(notified.promise);
+      return fauxAssistantMessage("answered");
+    },
+  ]);
+  let asks = 0;
+  let notices = 0;
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    permissionMode: "full-access",
+    settings: {
+      hooks: {
+        Notification: [
+          { matcher: "question", hooks: [{ type: "command", command: "sh notify.sh" }] },
+        ],
+      },
+    },
+    onQuestion: async () => {
+      asks++;
+      return { answers: [{ selected: ["Blue"] }] };
+    },
+  });
+  try {
+    expect(
+      (
+        await session.run("ask", {
+          onEvent(event) {
+            if (event.type === "hook_message") {
+              notices++;
+              notified.resolve();
+            }
+          },
+        })
+      ).text,
+    ).toBe("answered");
+    expect(asks).toBe(1);
+    expect(notices).toBe(1);
+    expect(await Bun.file(join(dirs.cwd, "question.json")).json()).toMatchObject({
+      notification_type: "question",
+      message: "Which color?",
+      title: expect.any(String),
+    });
+  } finally {
+    await session.dispose();
+  }
+});
+
+test("plan review notifies with the submitted plan", async () => {
+  dirs = await tempDirs();
+  const notified = Promise.withResolvers<void>();
+  const fake = fakeModel([
+    fauxAssistantMessage(fauxToolCall("exit_plan_mode", { plan: "Implement the feature." }), {
+      stopReason: "toolUse",
+    }),
+    async () => {
+      await waitForNotification(notified.promise);
+      return fauxAssistantMessage("approved");
+    },
+  ]);
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    permissionMode: "full-access",
+    settings: {
+      hooks: {
+        Notification: [
+          {
+            matcher: "plan_review",
+            hooks: [
+              {
+                type: "command",
+                command: `cat > plan.json; echo '{"systemMessage":"plan notice"}'`,
+              },
+            ],
+          },
+        ],
+      },
+    },
+    onPlanReview: async () => ({ kind: "approve" }),
+  });
+  try {
+    await session.setPlanMode(true);
+    expect(
+      (
+        await session.run("plan", {
+          onEvent(event) {
+            if (event.type === "hook_message") notified.resolve();
+          },
+        })
+      ).text,
+    ).toBe("approved");
+    expect(await Bun.file(join(dirs.cwd, "plan.json")).json()).toMatchObject({
+      notification_type: "plan_review",
+      message: "Implement the feature.",
+    });
+  } finally {
+    await session.dispose();
+  }
+});
+
+async function waitForNotification(notification: Promise<void>) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      notification,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error("Notification missing")), 2000);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function until(predicate: () => boolean | Promise<boolean>) {
+  const deadline = Date.now() + 2000;
+  while (!(await predicate())) {
+    if (Date.now() > deadline) throw new Error("Notification process did not reach expected state");
+    await Bun.sleep(5);
+  }
+}
+
+test("child permission notification includes child session identity", async () => {
+  dirs = await tempDirs();
+  const notified = Promise.withResolvers<void>();
+  const fake = fakeModel([
+    fauxAssistantMessage(
+      fauxToolCall("subagent", {
+        description: "child",
+        prompt: "inspect",
+        run_in_background: false,
+      }),
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage(fauxToolCall("bash", { command: "printf child" }), {
+      stopReason: "toolUse",
+    }),
+    async () => {
+      await waitForNotification(notified.promise);
+      return fauxAssistantMessage("child done");
+    },
+    fauxAssistantMessage("parent done"),
+  ]);
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    permissionMode: "ask",
+    settings: {
+      permissions: { allow: ["subagent"] },
+      hooks: {
+        Notification: [
+          {
+            matcher: "permission_prompt",
+            hooks: [
+              {
+                type: "command",
+                command: `cat > child.json; echo '{"systemMessage":"child notice"}'`,
+              },
+            ],
+          },
+        ],
+      },
+    },
+    onPermissionAsk: async () => "allow",
+  });
+  try {
+    expect(
+      (
+        await session.run("delegate", {
+          onEvent(event) {
+            if (event.type === "subagent_event" && event.event.type === "hook_message")
+              notified.resolve();
+          },
+        })
+      ).text,
+    ).toBe("parent done");
+    const input = await Bun.file(join(dirs.cwd, "child.json")).json();
+    expect(input.agent_id).toBe(input.session_id);
+    expect(input.agent_id).not.toBe(session.id);
+    expect(input.agent_type).toBe("general-purpose");
+    expect(input.notification_type).toBe("permission_prompt");
+  } finally {
+    await session.dispose();
+  }
+});
+
+test.each(["cancel", "dispose"])(
+  "%s kills notification process while frontend awaits a reply",
+  async (action) => {
+    dirs = await tempDirs();
+    const controller = new AbortController();
+    const asked = Promise.withResolvers<void>();
+    const session = await createSession({
+      ...dirs,
+      ...fakeModel([
+        fauxAssistantMessage(fauxToolCall("bash", { command: "touch forbidden" }), {
+          stopReason: "toolUse",
+        }),
+      ]),
+      permissionMode: "ask",
+      settings: {
+        hooks: {
+          Notification: [
+            {
+              hooks: [
+                { type: "command", command: "cat > input; echo $$ > pid; sleep 30; touch late" },
+              ],
+            },
+          ],
+        },
+      },
+      onPermissionAsk: async () => {
+        asked.resolve();
+        return new Promise(() => {});
+      },
+    });
+    const run = session.run("try", { signal: controller.signal }).catch((error: unknown) => error);
+    let pid: number | undefined;
+    try {
+      await asked.promise;
+      await until(() => Bun.file(join(dirs.cwd, "pid")).exists());
+      pid = Number(await Bun.file(join(dirs.cwd, "pid")).text());
+      expect(() => process.kill(pid!, 0)).not.toThrow();
+      if (action === "cancel") controller.abort();
+      else await session.dispose();
+      expect(await run).toBeInstanceOf(Error);
+      await until(() => {
+        try {
+          process.kill(pid!, 0);
+          return false;
+        } catch {
+          return true;
+        }
+      });
+      expect(await Bun.file(join(dirs.cwd, "forbidden")).exists()).toBe(false);
+      expect(await Bun.file(join(dirs.cwd, "late")).exists()).toBe(false);
+    } finally {
+      await session.dispose();
+      if (pid) {
+        try {
+          process.kill(pid, "SIGKILL");
+        } catch {
+          /* Closed. */
+        }
+      }
+    }
+  },
+);

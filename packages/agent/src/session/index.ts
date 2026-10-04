@@ -63,6 +63,7 @@ import { contextUsage } from "../context-usage/index.ts";
 import { createToolState, todoState, type TodoItem } from "../tool-state/index.ts";
 
 import { planState, planModeReminder, PLAN_MODE_EXIT } from "../plan-mode/index.ts";
+import type { OnInteractionStart } from "../interaction/index.ts";
 import { createHooks, mergeHooks, type CommonHookResult, type HookInput } from "../hooks/index.ts";
 
 export type { PermissionAskRequest, SessionAllowRule } from "../permissions/index.ts";
@@ -370,6 +371,17 @@ async function createSessionInternal(
       }
     },
   });
+  const onInteractionStart: OnInteractionStart = (notification, signal) =>
+    hooks
+      .run(
+        "Notification",
+        { ...hookInput(), ...notification },
+        {
+          signal,
+          matchQuery: notification.notification_type,
+        },
+      )
+      .then(() => {});
   const toolHookContexts = new Map<string, string[]>();
   const hookDenials = new Map<string, { hook?: string; reason?: string }>();
   let hookStopped = false;
@@ -409,6 +421,7 @@ async function createSessionInternal(
     };
   };
   const permissions = createPermissionGate({
+    onInteractionStart,
     cwd,
     homeDir: options.homeDir,
     rules,
@@ -590,10 +603,20 @@ async function createSessionInternal(
   });
   const planTools =
     options.onPlanReview && !internal.parentSessionId
-      ? [createEnterPlanModeTool(plan), createExitPlanModeTool(plan, options.onPlanReview)]
+      ? [
+          createEnterPlanModeTool(plan),
+          createExitPlanModeTool(plan, options.onPlanReview, onInteractionStart),
+        ]
       : [];
   const initialTools = [
-    ...createBuiltinTools(cwd, (name) => skills.get(name), setTodo, onQuestion, options.homeDir),
+    ...createBuiltinTools(
+      cwd,
+      (name) => skills.get(name),
+      setTodo,
+      onQuestion,
+      options.homeDir,
+      onInteractionStart,
+    ),
     ...planTools,
   ];
   if (!internal.parentSessionId) {
@@ -877,6 +900,7 @@ async function createSessionInternal(
               setTodo,
               onQuestion,
               options.homeDir,
+              onInteractionStart,
             ),
             ...planTools,
             ...mcp.tools,

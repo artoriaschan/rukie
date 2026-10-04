@@ -11,7 +11,7 @@ export { parsePermissionRules, evaluatePermissionRules } from "./rules.ts";
 export { resolvePermissionPath } from "./path.ts";
 import { sessionAllowRule, type SessionAllow, type SessionAllowRule } from "./session-rules.ts";
 export type { SessionAllowRule } from "./session-rules.ts";
-import { requestInteraction } from "../interaction/index.ts";
+import { requestInteraction, type OnInteractionStart } from "../interaction/index.ts";
 import { reviewPermission, type ReviewResult } from "../review/index.ts";
 import type {
   PreToolUseResult,
@@ -95,6 +95,7 @@ interface PermissionGateOptions {
   streamFn: StreamFn;
   onPermissionAsk?: (request: PermissionAskRequest) => Promise<"allow" | "deny" | "allow-session">;
   onEvent(event: CustomSessionEvent): void | Promise<void>;
+  onInteractionStart?: OnInteractionStart;
   preToolUse?(call: ToolCallContext, signal: AbortSignal): Promise<PreToolUseResult>;
   permissionRequest?(
     call: ToolCallContext,
@@ -389,6 +390,14 @@ export function createPermissionGate(options: PermissionGateOptions) {
           },
           respond,
           "deny",
+          {
+            notify: options.onInteractionStart,
+            notification: {
+              notification_type: "permission_prompt",
+              title: "Permission required",
+              message: `Permission required to use ${toolCall.name}`,
+            },
+          },
         ),
         covered.promise,
       ]);

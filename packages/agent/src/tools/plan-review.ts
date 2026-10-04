@@ -1,6 +1,6 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
-import { requestInteraction } from "../interaction/index.ts";
+import { requestInteraction, type OnInteractionStart } from "../interaction/index.ts";
 
 export interface PlanReviewRequest {
   plan: string;
@@ -22,6 +22,7 @@ const parameters = Type.Object({ plan: Type.String({ minLength: 1 }) });
 export function createExitPlanModeTool(
   planMode: { getActive(): boolean; setMode(on: boolean): Promise<void> },
   onPlanReview: OnPlanReview,
+  onInteractionStart?: OnInteractionStart,
 ): AgentTool<typeof parameters> {
   return {
     name: "exit_plan_mode",
@@ -36,6 +37,14 @@ export function createExitPlanModeTool(
         request,
         (request) => onPlanReview(request, signal),
         undefined,
+        {
+          notify: onInteractionStart,
+          notification: {
+            notification_type: "plan_review",
+            title: "Plan review required",
+            message: plan,
+          },
+        },
       );
       signal.throwIfAborted();
       if (!reply) throw new Error("Plan review cancelled.");

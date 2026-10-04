@@ -1,3 +1,4 @@
+import type { OnInteractionStart } from "../interaction/index.ts";
 import {
   createReadTool,
   createWriteTool,
@@ -110,6 +111,7 @@ export function createBuiltinTools(
   setTodo: (todos: TodoItem[]) => Promise<void>,
   onQuestion?: OnQuestion,
   homeDir = homedir(),
+  onInteractionStart?: OnInteractionStart,
 ): AgentTool[] {
   const env = new NodeExecutionEnv({ cwd });
   const bashTool = createBashTool();
@@ -136,6 +138,6 @@ export function createBuiltinTools(
     preserveErrorDetails(createGrepTool(cwd)),
     createSkillTool(getSkill),
     createTodoTool(setTodo),
-    ...(onQuestion ? [createQuestionTool(onQuestion)] : []),
+    ...(onQuestion ? [createQuestionTool(onQuestion, onInteractionStart)] : []),
   ];
 }

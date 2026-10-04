@@ -261,7 +261,7 @@ export function createHooks(options: {
                         signal: executionSignal,
                         timeout: background ? undefined : timeout,
                       });
-              if (handler.type === "command" && handler.asyncRewake && output.exitCode === 2)
+              if (event !== "Notification" && handler.type === "command" && handler.asyncRewake && output.exitCode === 2)
                 rewakeReason = output.stderr.trim();
               const warnExit = async () => {
                 if (output.exitCode !== 0 && output.exitCode !== 2)
@@ -295,6 +295,15 @@ export function createHooks(options: {
                 }
               }
               await warnExit();
+              if (event === "Notification") {
+                // All notifications, including asyncRewake, are display-only side effects.
+                if (typeof json.systemMessage === "string") {
+                  const message = truncate(json.systemMessage);
+                  result.systemMessages.push(message);
+                  await options.onEvent({ type: "hook_message", event, message });
+                }
+                return;
+              }
               const ignored = (field: string) =>
                 warn(`Ignoring invalid or unsupported hook output field: ${field}`, {
                   code: "hook-output-ignored",
