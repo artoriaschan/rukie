@@ -33,6 +33,8 @@
 
 const zh = {
   "subagent.dashboard": "子代理",
+  "subagent.panel": "子代理",
+  "subagent.more": "… 还有 {{count}} 项",
   "subagent.none": "暂无子代理",
   "subagent.empty-hint": "模型委派任务后会显示在这里",
   "subagent.dashboard-hint": "↑/↓ 选择 · Enter 详情 · Esc 关闭",
@@ -186,6 +188,8 @@ const zh = {
 
 const en = {
   "subagent.dashboard": "Subagents",
+  "subagent.panel": "Subagents",
+  "subagent.more": "… {{count}} more",
   "subagent.none": "No subagents yet",
   "subagent.empty-hint": "Delegated work will appear here",
   "subagent.dashboard-hint": "↑/↓ select · Enter detail · Esc close",

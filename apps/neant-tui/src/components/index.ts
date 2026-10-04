@@ -12,6 +12,7 @@ export { QuestionDialog } from "./question-dialog";
 export { GoalTodoPanel } from "./goal-todo-panel";
 export { allocatePanelHeights } from "./panel-layout";
 export { SubagentMessage } from "./subagent-message";
+export { SubagentPanel } from "./subagent-panel";
 
 export { SubagentDashboard } from "./subagent-dashboard";
 export { SubagentDetailScene } from "./subagent-detail";

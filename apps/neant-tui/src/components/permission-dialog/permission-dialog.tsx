@@ -39,6 +39,7 @@ export function PermissionDialog({
   locale = "zh",
   reason,
   origin,
+  bottomGap = 1,
 }: {
   toolName: string;
   sessionAllow: { kind: "command" | "directory" | "tool"; rule: string };
@@ -51,6 +52,7 @@ export function PermissionDialog({
   locale?: Locale;
   reason?: string;
   origin?: PermissionAskRequest["origin"];
+  bottomGap?: 0 | 1;
 }) {
   const { columns } = useTerminalSize();
   const t = createTuiI18n(locale);
@@ -82,7 +84,7 @@ export function PermissionDialog({
       ? args
       : Object.fromEntries(Object.entries(args ?? {}).filter(([key]) => key !== "command"));
   return (
-    <Box flexDirection="column" height={height} paddingX={2} marginBottom={1}>
+    <Box flexDirection="column" height={height} paddingX={2} marginBottom={bottomGap}>
       <ThemedText color="permission" wrap="truncate">
         {`${"─".repeat(Math.floor(ruleWidth / 2))}${title}${"─".repeat(Math.ceil(ruleWidth / 2))}`}
       </ThemedText>

@@ -26,6 +26,7 @@ import {
   StatusLine,
   ToolCall,
   SubagentMessage,
+  SubagentPanel,
   SubagentDashboard,
   SubagentDetailScene,
   UserMessage,
@@ -165,6 +166,7 @@ function Chat({
   };
   const [input, setInput] = useState("");
   const [todosCollapsed, setTodosCollapsed] = useState(false);
+  const [subagentsCollapsed, setSubagentsCollapsed] = useState(false);
   const toggleTodos = () => setTodosCollapsed((collapsed) => !collapsed);
   const [mode, setMode] = useState(session.permissionMode);
   const { columns, rows } = useTerminalSize();
@@ -257,6 +259,10 @@ function Chat({
   const hasActivity = state.running && (activity.phase !== "idle" || state.waitingSubagents > 0);
   const promptMaxLines = Math.max(1, Math.min(6, Math.floor(rows / 3)) - 3);
   const hasTodos = state.todos.some((todo) => state.running || todo.status !== "completed");
+  const subagents = Object.values(state.subagents);
+  const hasSubagents = subagents.some(
+    (agent) => state.running || agent.status === "running" || agent.status === "idle",
+  );
   const minimumDialogHeight = question
     ? permissionChoices(question.request.mode).length + 3
     : userQuestion
@@ -266,8 +272,9 @@ function Chat({
       : 0;
   // Dialogs take priority. Reserve a preview for every visible panel before
   // deciding whether the prompt needs to use its one-row form.
-  const dialogGap = question ? 1 : 0;
-  const panelCount = Number(hasTodos);
+  const panelCount = Number(hasTodos) + Number(hasSubagents);
+  const dialogGap =
+    question && rows - statusHeight - minimumDialogHeight - panelCount - 1 >= 1 ? 1 : 0;
   const compactPrompt =
     !!interaction &&
     rows - statusHeight - minimumDialogHeight - dialogGap - panelCount < promptMaxLines + 3;
@@ -284,7 +291,9 @@ function Chat({
     hasActivity && chromeSpace - minimumDialogHeight - dialogGap - panelCount - returnHeight >= 1;
   const available = chromeSpace - returnHeight - Number(showActivity);
   const panelReserve =
-    hasTodos && available - dialogGap - minimumDialogHeight >= 3 ? 3 : panelCount;
+    panelCount > 0 && available - dialogGap - minimumDialogHeight >= panelCount * 3
+      ? panelCount * 3
+      : panelCount;
   const dialogMaxHeight = interaction
     ? Math.max(
         minimumDialogHeight,
@@ -294,10 +303,12 @@ function Chat({
         ),
       )
     : 0;
-  const [todoMaxHeight = 1] = allocatePanelHeights(
+  const panelHeights = allocatePanelHeights(
     available - dialogMaxHeight - dialogGap,
-    hasTodos ? [3] : [],
+    Array.from({ length: panelCount }, () => 3),
   );
+  const todoMaxHeight = hasTodos ? panelHeights[0]! : 1;
+  const subagentMaxHeight = hasSubagents ? panelHeights[Number(hasTodos)]! : 1;
   useInput((event) => {
     const currentView = viewRef.current;
     if (currentView !== "chat") {
@@ -609,7 +620,15 @@ function Chat({
               locale={locale}
               maxHeight={todoMaxHeight}
             />
-            {/* SubagentPanel belongs here when ticket 09 wires it. */}
+            <SubagentPanel
+              subagents={subagents}
+              working={state.running}
+              collapsed={subagentsCollapsed}
+              onToggle={() => setSubagentsCollapsed((collapsed) => !collapsed)}
+              onOpen={(id) => openDetail(id, "chat")}
+              locale={locale}
+              maxHeight={subagentMaxHeight}
+            />
             {userQuestion && currentQuestion && (
               <QuestionDialog
                 origin={userQuestion.request.origin}
@@ -647,6 +666,7 @@ function Chat({
             )}
             {question && (
               <PermissionDialog
+                bottomGap={dialogGap}
                 origin={question.request.origin}
                 locale={locale}
                 key={question.request.toolCallId}

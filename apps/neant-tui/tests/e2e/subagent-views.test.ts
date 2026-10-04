@@ -286,7 +286,11 @@ test("eight child Runs stream in chat before any Subagent view opens", async () 
       ),
     );
     expect(children).toHaveLength(8);
-    children.forEach((child, index) => child.delta(`streamed child ${index}`));
+    // The dock's child panel leaves only the tail of the fixed three-line card
+    // output visible in this short viewport. Fill those lines to observe updates.
+    children.forEach((child, index) =>
+      child.delta(`first line\nsecond line\nstreamed child ${index}`),
+    );
     await app.waitFor(() => app.screen().some((line) => line.includes("│ streamed child")));
     expect(children.every((child) => !child.signal!.aborted)).toBe(true);
     expect(app.screen().join("\n")).not.toContain("Maximum update depth");

@@ -10,12 +10,31 @@
 
 **Blocked by:** 01, 08
 
-**Status:** ready-for-agent
+**Status:** claimed
+
+Implementing in `codex/subagent-09-panel` at `/Users/artorias_chan/.codex/worktrees/subagent-09-panel/Neant`. Public terminal/model seams follow the approved spec.
 
 参考：[spec](../spec.md)「TUI」中的「子代理面板」「面板顺序」。
 
-- [ ] TUI e2e：有 running 子代理时面板出现在 todo 面板下方
-- [ ] TUI e2e：点 root 折叠 / 展开，todo 面板折叠状态不变；Ctrl+Q 不影响子代理面板
-- [ ] TUI e2e：点节点进入详情页
-- [ ] TUI e2e：空闲时隐藏已结束项；审批框打开时两个面板同时显示；小高度下各自折叠成预览
-- [ ] `tsc -b` 与全量 `bun test` 通过
+- [x] TUI e2e：有 running 子代理时面板出现在 todo 面板下方
+- [x] TUI e2e：点 root 折叠 / 展开，todo 面板折叠状态不变；Ctrl+Q 不影响子代理面板
+- [x] TUI e2e：点节点进入详情页
+- [x] TUI e2e：空闲时隐藏已结束项；审批框打开时两个面板同时显示；小高度下各自折叠成预览
+- [x] `tsc -b` 与全量 `bun test` 通过
+
+## Comments
+
+Implementation uses a props-only `SubagentPanel`, theme-aware Todo panel parts, independent Chat folding state, existing `openDetail(id, chat)` navigation, and the shared remaining-row allocator. Settled children hide only once the parent Run becomes idle; restored idle children remain visible. Compact inline previews retain a separate node click target.
+
+Public-terminal TDD evidence:
+
+- Missing panel header RED: `/tmp/neant-09-red-panel.log` (0 pass, 1 fail).
+- 12-row permission budget RED: `/tmp/neant-09-red-dialog.log` exposes clipped StatusLine; only the permission bottom gap compacts when required, matching the actual row reservation.
+- Compact preview click RED: `/tmp/neant-09-red-preview.log` (detail did not open).
+- Panel GREEN: `/tmp/neant-09-green-complete.log` (14 pass, 0 fail, 124 assertions): independent hover/mouse/Ctrl+Q folding, normal and compact node navigation, settled/idle/resume visibility, equal panel shares and empty-panel capacity, permission/question coexistence at 40/60/80 columns by 12 rows and 60 columns by 24 rows, usable choices, CJK draft round-trip and fixed status.
+- Targeted Todo/panel/subagent views: `/tmp/neant-09-targeted-check.log` (38 pass, 0 fail, 280 assertions). The existing 16-row eight-child streaming fixture now fills the card protocol's three output lines, so its streamed tail stays visible above the new dock panel; parent final reply and all eight completion-notification assertions remain intact.
+- `rtk proxy bunx tsc -b` passed during each implementation slice.
+
+Full acceptance: `rtk proxy env -u NO_COLOR bun run check` exited 0; formatting, lint, `tsc -b`, knip and full tests passed (1101 pass, 0 fail, 6042 assertions, 82 files, 123.83s), `/tmp/neant-09-full-check.log`.
+
+Two-axis review pending; root handles review, resolution, integration and managed-worktree cleanup.
