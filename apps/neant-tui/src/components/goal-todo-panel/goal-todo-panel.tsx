@@ -25,37 +25,62 @@
  */
 import type { TodoItem } from "@neant/agent";
 import type { Locale } from "@neant/i18n";
-import { Box, ThemedText } from "@neant/tui";
+import { useState } from "react";
+import { Box, ThemedBox, ThemedText } from "@neant/tui";
 import { createTuiI18n } from "../../i18n";
 
 export function GoalTodoPanel({
   todos,
   working,
+  collapsed,
+  onToggle,
   locale = "zh",
-  maxHeight = 11,
+  maxHeight = 12,
 }: {
   todos: readonly TodoItem[];
   working: boolean;
+  collapsed: boolean;
+  onToggle(): void;
   locale?: Locale;
   maxHeight?: number;
 }) {
+  const [headerHovered, setHeaderHovered] = useState(false);
   const t = createTuiI18n(locale);
   const remaining = working ? todos : todos.filter((todo) => todo.status !== "completed");
   if (remaining.length === 0) return null;
   const done = todos.filter((todo) => todo.status === "completed").length;
+  const preview =
+    todos.find((todo) => todo.status === "in_progress") ??
+    todos.find((todo) => todo.status !== "completed");
   const paddingTop = maxHeight >= 4 ? 1 : 0;
   const rowBudget = Math.max(1, maxHeight - paddingTop);
-  const overflow = remaining.length > Math.min(8, rowBudget - 1);
-  const limit = Math.max(0, Math.min(8, rowBudget - 1 - Number(overflow)));
-  const visible = remaining.slice(0, limit);
-  const hidden = remaining.length - visible.length;
+  // Short viewports share the overflow row with the hint to keep the input visible.
+  const hintHeight = !collapsed && rowBudget >= 3 ? 1 : 0;
+  const listBudget = rowBudget - hintHeight;
+  const overflow = !collapsed && (remaining.length > Math.min(8, listBudget - 1) || rowBudget < 3);
+  const limit = Math.max(0, Math.min(8, listBudget - 1 - Number(overflow)));
+  const visible = collapsed
+    ? preview && rowBudget >= 2
+      ? [preview]
+      : []
+    : remaining.slice(0, limit);
+  const hidden = collapsed ? 0 : remaining.length - visible.length;
   return (
     <Box flexDirection="column" paddingX={2} paddingTop={paddingTop}>
       {/* The Todo section hangs below the future Goal root row. */}
       <Box flexDirection="column">
-        <Box height={1}>
-          <ThemedText dimColor wrap="truncate">{`▾ ✓ ${done}/${todos.length}`}</ThemedText>
-        </Box>
+        <ThemedBox
+          height={1}
+          onClick={onToggle}
+          onMouseEnter={() => setHeaderHovered(true)}
+          onMouseLeave={() => setHeaderHovered(false)}
+          backgroundColor={headerHovered ? "badgeHoverBackground" : undefined}
+        >
+          <ThemedText dimColor wrap="truncate">
+            {`${collapsed ? "▸" : "▾"} ✓ ${done}/${todos.length}`}
+            {!collapsed && rowBudget === 1 ? `  ${t("todo.fold")}` : ""}
+          </ThemedText>
+        </ThemedBox>
         {visible.map((todo, index) => (
           <Box key={index} height={1}>
             <ThemedText wrap="truncate" dimColor={todo.status === "completed"}>
@@ -76,7 +101,13 @@ export function GoalTodoPanel({
           <Box height={1}>
             <ThemedText dimColor wrap="truncate">
               {`└─ ${t("todo.more", { count: hidden })}`}
+              {hintHeight === 0 ? `  ${t("todo.fold")}` : ""}
             </ThemedText>
+          </Box>
+        )}
+        {hintHeight > 0 && (
+          <Box height={1}>
+            <ThemedText dimColor wrap="truncate">{`  ${t("todo.fold")}`}</ThemedText>
           </Box>
         )}
       </Box>

@@ -100,6 +100,8 @@ function Chat({
   const userQuestion = interaction?.kind === "question" ? interaction : undefined;
   const currentQuestion = userQuestion?.drafts[userQuestion.questionIndex];
   const [input, setInput] = useState("");
+  const [todosCollapsed, setTodosCollapsed] = useState(false);
+  const toggleTodos = () => setTodosCollapsed((collapsed) => !collapsed);
   const [mode, setMode] = useState(session.permissionMode);
   const { columns, rows } = useTerminalSize();
   const small = columns < 40 || rows < 12;
@@ -214,6 +216,11 @@ function Chat({
     const { key } = event;
     const pendingInteraction = interactions.getSnapshot();
     const pending = pendingInteraction?.kind === "permission" ? pendingInteraction : undefined;
+    if (key.ctrl && key.name === "q" && !key.alt && !key.shift) {
+      toggleTodos();
+      lastInterrupt.current = undefined;
+      return;
+    }
     if (key.name === "tab" && key.shift && !key.ctrl && !key.alt) {
       lastInterrupt.current = undefined;
       if (!pendingInteraction && !small) {
@@ -385,6 +392,8 @@ function Chat({
               <GoalTodoPanel
                 todos={state.todos}
                 working={state.running}
+                collapsed={todosCollapsed}
+                onToggle={toggleTodos}
                 locale={locale}
                 maxHeight={todoMaxHeight}
               />

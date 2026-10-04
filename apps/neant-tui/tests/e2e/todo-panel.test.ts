@@ -4,6 +4,100 @@ import { createSession } from "@neant/agent";
 import { dark } from "@neant/tui";
 import { start } from "../helpers/app";
 
+test("Ctrl+Q folds during a Run to the first in-progress row, unfolds, and preserves the idle draft", async () => {
+  const app = await start(["plan"]);
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("todo_write", {
+      todos: [
+        { content: "done", status: "completed" },
+        { content: "next", status: "pending" },
+        { content: "current", status: "in_progress" },
+        { content: "parallel", status: "in_progress" },
+      ],
+    });
+    await app.waitFor(() => app.calls.length === 2 && app.screen().includes("  ▾ ✓ 1/4"));
+    app.stdin.write("\x11");
+    await app.waitFor(() => app.screen().includes("  ▸ ✓ 1/4"));
+    let header = app.screen().indexOf("  ▸ ✓ 1/4");
+    expect(app.screen()[header + 1]).toBe("  └─ ● current");
+    expect(app.screen()[header + 2]).not.toContain("─");
+    expect(app.isWorking()).toBe(true);
+    expect(app.calls[1]!.signal!.aborted).toBe(false);
+    app.stdin.write("\x11");
+    await app.waitFor(() => app.screen().includes("  └─ ● parallel"));
+    expect(app.screen()).toContain("  ├─ ○ next");
+    app.calls[1]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    app.stdin.write("draft\x11");
+    await app.waitFor(() => app.screen().includes("  ▸ ✓ 1/4"));
+    header = app.screen().indexOf("  ▸ ✓ 1/4");
+    expect(app.screen()[header + 1]).toBe("  └─ ● current");
+    expect(app.screen()).toContain("❯ draft");
+    app.stdin.write("\x11\r");
+    await app.waitFor(() => app.calls.length === 3);
+    expect(app.calls[2]!.context.messages.at(-1)).toMatchObject({
+      role: "user",
+      content: [{ type: "text", text: "draft" }],
+    });
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("the fold header reacts to hover and mouse clicks, previewing the first unfinished row", async () => {
+  const app = await start(["plan"]);
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("todo_write", {
+      todos: [
+        { content: "done", status: "completed" },
+        { content: "first", status: "pending" },
+        { content: "second", status: "pending" },
+      ],
+    });
+    await app.waitFor(() => app.calls.length === 2 && app.screen().includes("  ▾ ✓ 1/3"));
+    const header = app.screen().indexOf("  ▾ ✓ 1/3");
+    const cell = () => app.terminal.buffer.active.getLine(header)!.getCell(2)!;
+    const original = cell().getBgColor();
+    app.stdin.write(`\x1b[<35;3;${header + 1}M`);
+    await app.waitFor(() => cell().getBgColor() !== original);
+    expect(cell().getBgColor()).toBe(Number.parseInt(dark.badgeHoverBackground.slice(1), 16));
+    app.stdin.write("\x1b[<35;1;1M");
+    await app.waitFor(() => cell().getBgColor() === original);
+    app.stdin.write(`\x1b[<0;3;${header + 1}M\x1b[<0;3;${header + 1}m`);
+    await app.waitFor(() => app.screen().includes("  ▸ ✓ 1/3"));
+    expect(app.screen()[app.screen().indexOf("  ▸ ✓ 1/3") + 1]).toBe("  └─ ○ first");
+    expect(app.screen()).not.toContain("  └─ ○ second");
+    const foldedHeader = app.screen().indexOf("  ▸ ✓ 1/3");
+    app.stdin.write(`\x1b[<0;3;${foldedHeader + 1}M\x1b[<0;3;${foldedHeader + 1}m`);
+    await app.waitFor(() => app.screen().includes("  └─ ○ second"));
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test.each([
+  ["zh_CN.UTF-8", "Ctrl+Q 折叠"],
+  ["en_US.UTF-8", "Ctrl+Q fold"],
+])("the expanded fold hint follows Locale %s and disappears when folded", async (lang, hint) => {
+  const app = await start(["plan"], { env: { LANG: lang } });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("todo_write", { todos: [{ content: "open", status: "pending" }] });
+    await app.waitFor(() => app.calls.length === 2 && app.screen().includes(`    ${hint}`));
+    const lines = app.screen();
+    expect(lines[lines.indexOf("  └─ ○ open") + 1]).toBe(`    ${hint}`);
+    app.stdin.write("\x11");
+    await app.waitFor(() => app.screen().includes("  ▸ ✓ 0/1"));
+    expect(app.screen().some((line) => line.includes("Ctrl+Q"))).toBe(false);
+    app.stdin.write("\x11");
+    await app.waitFor(() => app.screen().includes(`    ${hint}`));
+  } finally {
+    await app.cleanup();
+  }
+});
+
 test("a running Run shows the Todo List as eight ordered tree rows with full progress and overflow", async () => {
   const app = await start(["plan"], { columns: 60, rows: 30 });
   try {
@@ -123,8 +217,9 @@ test.each(["permission", "question"])(
   },
 );
 
-test("resume shows the English Todo List immediately, counts hidden completed rows, and bounds visible overflow", async () => {
+test("resume shows an expanded English Todo List with full counts and overflow, without persisting folding", async () => {
   const argv: string[] = [];
+  let sessionRoot = "";
   const original = createFauxCore({ api: "faux", provider: "faux" });
   original.setResponses([
     fauxAssistantMessage(
@@ -147,6 +242,7 @@ test("resume shows the English Todo List immediately, counts hidden completed ro
     env: { LANG: "en_US.UTF-8" },
     rows: 30,
     prepare: async (root) => {
+      sessionRoot = root;
       const session = await createSession({
         cwd: root,
         homeDir: root,
@@ -166,6 +262,24 @@ test("resume shows the English Todo List immediately, counts hidden completed ro
     expect(lines[header + 8]).toBe("  ├─ ○ open-7");
     expect(lines[header + 9]).toBe("  └─ … 2 more");
     expect(lines.join("\n")).not.toMatch(/\p{Script=Han}/u);
+    app.stdin.write("\x11");
+    await app.waitFor(() => app.screen().includes("  ▸ ✓ 1/11"));
+    expect(app.screen()).toContain("  └─ ○ open-0");
+    app.stdin.write("\x03\x03");
+    await app.exit;
+    const resumed = await start(argv, {
+      session: { cwd: sessionRoot, homeDir: sessionRoot },
+      env: { LANG: "en_US.UTF-8" },
+      rows: 30,
+    });
+    try {
+      await resumed.waitFor(() => resumed.screen().includes("  ▾ ✓ 1/11"));
+      expect(resumed.calls).toHaveLength(0);
+      expect(resumed.screen()).toContain("  ├─ ○ open-0");
+      expect(resumed.screen()).toContain("    Ctrl+Q fold");
+    } finally {
+      await resumed.cleanup();
+    }
   } finally {
     await app.cleanup();
   }
@@ -187,10 +301,16 @@ test("a long Todo List leaves the input and status visible at 40 columns by 12 r
     expect(app.screen()).toContain("❯");
     expect(app.screen().at(-1)).toContain("esc");
     expect(app.screen().some((line) => line.includes("ctx"))).toBe(true);
+    expect(app.screen()).toContain("    Ctrl+Q 折叠");
     app.stdin.write("\x1b[5~");
     await app.waitFor(() => app.screen().some((line) => line.includes("回到底部")));
     expect(app.screen()).toContain("  ▾ ✓ 0/10");
-    expect(app.screen()).toContain("  └─ … 还有 10 项");
+    expect(app.screen()).toContain("  └─ … 还有 10 项  Ctrl+Q 折叠");
+    expect(app.screen()).toContain("❯");
+    expect(app.screen().at(-1)).toContain("esc");
+    app.stdin.write("\x11");
+    await app.waitFor(() => app.screen().includes("  ▸ ✓ 0/10"));
+    expect(app.screen()).toContain("  └─ ○ open-0");
     expect(app.screen()).toContain("❯");
     expect(app.screen().at(-1)).toContain("esc");
   } finally {

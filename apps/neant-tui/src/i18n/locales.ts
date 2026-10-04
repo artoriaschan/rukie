@@ -32,6 +32,7 @@
  */
 
 const zh = {
+  "todo.fold": "Ctrl+Q 折叠",
   "todo.more": "… 还有 {{count}} 项",
   "question.summary": "提问",
   "question.unanswered": "未回答",
@@ -122,6 +123,7 @@ const zh = {
 } as const;
 
 const en = {
+  "todo.fold": "Ctrl+Q fold",
   "todo.more": "… {{count}} more",
   "question.summary": "Questions",
   "question.unanswered": "Unanswered",
