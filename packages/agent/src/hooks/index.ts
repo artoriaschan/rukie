@@ -143,8 +143,7 @@ export function createHooks(options: {
               signal,
               timeout: handler.timeout ?? (event === "UserPromptSubmit" ? 30 : 600),
             });
-            // Shutdown hooks are only for side effects: even valid control output is discarded.
-            if (event === "SessionEnd") {
+            const warnExit = async () => {
               if (output.exitCode !== 0 && output.exitCode !== 2)
                 await warn(
                   `Hook exited with code ${output.exitCode}${output.stderr.trim() ? `: ${output.stderr.trim()}` : ""}`,
@@ -153,6 +152,10 @@ export function createHooks(options: {
                     params: { exitCode: String(output.exitCode), stderr: output.stderr.trim() },
                   },
                 );
+            };
+            // Shutdown hooks are only for side effects: even valid control output is discarded.
+            if (event === "SessionEnd") {
+              await warnExit();
               return;
             }
             let json: Record<string, unknown> = {};
@@ -171,14 +174,7 @@ export function createHooks(options: {
                 if (output.exitCode !== 2) return;
               }
             }
-            if (output.exitCode !== 0 && output.exitCode !== 2)
-              await warn(
-                `Hook exited with code ${output.exitCode}${output.stderr.trim() ? `: ${output.stderr.trim()}` : ""}`,
-                {
-                  code: "hook-exit",
-                  params: { exitCode: String(output.exitCode), stderr: output.stderr.trim() },
-                },
-              );
+            await warnExit();
             const ignored = (field: string) =>
               warn(`Ignoring invalid or unsupported hook output field: ${field}`, {
                 code: "hook-output-ignored",
