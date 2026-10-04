@@ -2,12 +2,14 @@ import type { AgentMessage, AgentTool } from "@earendil-works/pi-agent-core";
 import type { RunResult } from "@neant/shared";
 import { Type } from "typebox";
 import type { Session, SessionEvent } from "../session/index.ts";
+import type { SubagentType } from "./types.ts";
+export { discoverSubagentTypes, type SubagentType } from "./types.ts";
 
 export const SUBAGENT_PROMPT =
   "You are a subagent delegated by a parent session. Work on the assigned prompt; your final reply will be delivered to the parent. You cannot expand the parent session permissions or create other subagents.";
 
 interface SubagentOptions {
-  createChild(description: string): Promise<Session>;
+  createChild(type: SubagentType, description: string): Promise<Session>;
   steer(message: AgentMessage): void;
   emit(
     event: Omit<Extract<SessionEvent, { type: "subagent_event" }>, "sessionId">,
@@ -17,6 +19,7 @@ interface SubagentOptions {
 
 /** Owns only the current parent's child runs; storage and the agent loop remain Session's. */
 export function createSubagents(options: SubagentOptions) {
+  let types = new Map<string, SubagentType>();
   const running = new Map<symbol, { controller: AbortController; done?: Promise<RunResult> }>();
   const notifications = new Set<AgentMessage>();
   let changed = Promise.withResolvers<void>();
@@ -28,6 +31,7 @@ export function createSubagents(options: SubagentOptions) {
   const parameters = Type.Object({
     description: Type.String({ minLength: 1 }),
     prompt: Type.String({ minLength: 1 }),
+    subagent_type: Type.Optional(Type.String()),
     run_in_background: Type.Optional(Type.Boolean()),
   });
   const tool: AgentTool<typeof parameters> = {
@@ -36,7 +40,15 @@ export function createSubagents(options: SubagentOptions) {
     description:
       "Delegate a prompt to a general-purpose subagent. Runs in the background by default; its closing message is delivered when it finishes.",
     parameters,
-    async execute(_id, { description, prompt, run_in_background = true }) {
+    async execute(
+      _id,
+      { description, prompt, subagent_type = "general-purpose", run_in_background = true },
+    ) {
+      const type = types.get(subagent_type);
+      if (!type)
+        throw new Error(
+          `Unknown subagent type "${subagent_type}". Available types: ${[...types.keys()].join(", ")}.`,
+        );
       // ponytail: Fixed concurrency limit; make configurable only when needed.
       if (running.size >= 8) throw new Error("At most 8 subagents can run at once.");
       if (aborted) throw new Error("Parent Run was aborted.");
@@ -48,7 +60,7 @@ export function createSubagents(options: SubagentOptions) {
       running.set(key, entry);
       let session: Session;
       try {
-        session = await options.createChild(description);
+        session = await options.createChild(type, description);
       } catch (error) {
         running.delete(key);
         wake();
@@ -71,7 +83,7 @@ export function createSubagents(options: SubagentOptions) {
                 type: "subagent_event",
                 agentId: session.id,
                 description,
-                subagentType: "general-purpose",
+                subagentType: type.name,
                 event,
               });
             },
@@ -116,6 +128,12 @@ export function createSubagents(options: SubagentOptions) {
   };
   return {
     tool,
+    setTypes(available: Map<string, SubagentType>) {
+      types = available;
+      tool.description =
+        "Delegate a prompt to a subagent. Runs in the background by default; its closing message is delivered when it finishes. Available types:\n" +
+        [...types.values()].map((type) => `${type.name}: ${type.description}`).join("\n");
+    },
     get count() {
       return running.size;
     },

@@ -44,7 +44,7 @@ function validate(path: string, data: Record<string, unknown>): Settings {
 
 /**
  * Loads `~/.neant/settings.json` merged with `<cwd>/.neant/settings.json`.
- * The project file may override `model` and `reviewModel`.
+ * The project file may override `model`, `reviewModel` and `subagentModel`.
  * Project deny/ask rules append to the user rules; allow rules append only for
  * the exact Trusted Project used by project MCP configuration.
  * Its `providers`, `permissionMode` and `locale` are dropped (unvalidated) with a warning:
@@ -75,6 +75,7 @@ export async function loadSettings(options: { cwd: string; homeDir: string }) {
   }
   if (project.model !== undefined) settings.model = project.model;
   if (project.reviewModel !== undefined) settings.reviewModel = project.reviewModel;
+  if (project.subagentModel !== undefined) settings.subagentModel = project.subagentModel;
   const trusted = isTrustedProject(options.cwd, user);
   if (project.permissions?.allow !== undefined && !trusted) {
     warnings.push(
