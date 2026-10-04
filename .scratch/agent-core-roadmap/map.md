@@ -29,6 +29,8 @@ Labels: wayfinder:map
 - [权限规则与 sandbox](issues/11-permission-rules-and-sandbox.md): `permissions.{allow,ask,deny}` 用 `tool(specifier)`（bash 命令 glob、文件路径 glob、裸名）；复合命令拆段，deny/ask 任一段命中、allow 需每段命中；用户层 + 项目层合并，项目 allow 仅 trusted；删 `allowTools`；ask 规则在 full-access / auto-review 下也问用户；"本 session 允许"生成内存规则（精确命令 / 目录 / 工具名）；realpath 防 symlink；sandbox 不做
 - [子代理](issues/06-subagent.md): 子 session 可多 run（`subagent` / `subagent_fork` / `send_message` / `list_agents`，对齐 harness）；默认后台，父 run 等子代理全部结束，结束通知 steer 成 user 消息；深度 1、running 上限 8、父中止级联；内置 general-purpose / explore + `agents/*.md` 自定义类型（可配 model）；`subagent_event` 包装转发；TUI 复刻 dsh-TUI 卡片 / dashboard / 详情页，新增子代理面板，输入框上方面板固定顺序且同时显示
 
+- [plan mode](issues/10-plan-mode.md): 与 Permission Mode 正交的 session 开关；照 harness 只引导不限制工具（推翻地基 C 的内置 deny）；Tool State `plan` resume 保留；plan reminder 不改 System Prompt；常驻 `enter_plan_mode`（需批准）/ `exit_plan_mode { plan }`；回调 `onPlanReview` 批准 / 继续规划+反馈 / Esc 接手，批准不改 Permission Mode；Headless 无此能力；子代理共享状态、无两工具；TUI 照 dsh-TUI 评审面板 + plan 色边框 + chip
+
 ## Not yet specified
 
 - 最终排序与 handoff：所有能力工单定完后，汇总依赖图、给出实现顺序。

@@ -115,8 +115,12 @@ _Avoid_: slash command, macro
 _Avoid_: approval, consent
 
 **Interaction**:
-Agent Core 在 run 中向 frontend 发起、并挂起等待用户回复的一次请求，如审批 permission decision 的 `ask`、模型向用户提问、plan 批准、MCP OAuth 授权。每种交互一个 frontend 回调；frontend 不提供回调时按该交互的安全默认值处理。用户拒绝单次交互不影响 run；run 中止时挂起的交互以取消结束。交互本身不进 transcript，其结果体现在工具结果里。
+Agent Core 在 run 中向 frontend 发起、并挂起等待用户回复的一次请求，如审批 permission decision 的 `ask`、模型向用户提问、plan 评审、MCP OAuth 授权。每种交互一个 frontend 回调；frontend 不提供回调时，依赖它的工具不暴露给模型，Agent Core 自身发起的交互取安全默认值。用户拒绝单次交互不影响 run；run 中止时挂起的交互以取消结束。交互本身不进 transcript，其结果体现在工具结果里。
 _Avoid_: prompt（会和用户 prompt 混淆）, dialog, request
+
+**Plan Mode**:
+session 级开关，与 Permission Mode 相互独立。打开时模型先探索、再把 markdown 计划交给用户评审，用户批准后才退出。它只引导模型，不限制工具：工具调用照常按 Permission Rule 与 Permission Mode 判定。由用户或模型（需用户批准）打开，随 transcript 持久化，resume 后保留。subagent 与父 session 共用同一个 Plan Mode 状态。
+_Avoid_: plan permission mode, read-only mode
 
 **Permission Rule**:
 用户写下的一条 `allow`、`ask` 或 `deny`，按工具名、bash 命令文本或文件路径匹配工具调用。命中的 `deny` / `ask` 在任何 Permission Mode 下都生效，`ask` 规则也不交给 permission review。用户层与项目层合并；项目层的 `allow` 只在 trusted project 生效。审批时"本 session 允许"生成的是只在当前 session 内存中的 allow 规则。规则不是安全边界。

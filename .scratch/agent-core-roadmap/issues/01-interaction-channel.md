@@ -27,3 +27,7 @@ Agent Core 需要向 frontend 发起一次交互并等待回复的通用机制�
 3. **取消：两级分开。** 交互内用户拒绝（TUI 审批框 `esc` 现为 deny 单个请求，保持）只结束该交互，run 继续，模型收到拒绝 / 用户不回答；run 中止经 `signal` 以取消结束所有挂起交互，frontend 借 `signal` 关闭弹窗（现状 `askPermission` `Promise.race`）。
 4. **不进 transcript。** 交互结果已体现在工具结果中；进程退出即 run 中止，挂起交互按第 3 条以取消结束，resume 无悬空状态。不依赖"地基 B：工具状态进 transcript"。
 5. **子代理转发：** 子代理内的交互由 Agent Core 使用顶层 session 的同一回调转发，请求附 `origin: { subagentId, description }` 供 frontend 标注来源；frontend 不为子代理单独注入回调。子代理（尤其后台子代理）是否直接走降级，由"子代理"工单决定。
+
+## Comments
+
+- 2026-10-04：第 2 条中"plan 批准 → 拒绝并保持只读"已被 [plan mode](10-plan-mode.md) 修订：plan 评审只由模型工具 `exit_plan_mode` 发起，无 `onPlanReview` 回调时工具不注册（先去工具）。

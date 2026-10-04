@@ -30,3 +30,7 @@ Blocked by: None
 6. **挂点：** 在"判定为 allow 之后、执行之前"预留一个只读的放行后阶段，供 checkpoint 选用（被拒的调用不留快照）；checkpoint 最终挂在逐次写前还是 turn 生命周期上，由 checkpoint 工单决定。sandbox 不进链，它属于 bash 工具的执行环境。
 7. **子代理验证场景：** 子代理按引用共享父 session 的判定配置（Permission Mode、规则、hooks），父 session 切换模式时实时生效。子代理类型只能再收窄（工具白名单、追加 deny），不能放宽。ask 按地基 A 经顶层回调转发，并带上 `origin`；Headless 下 fail-closed。
 8. **同链范围：** 内置工具、MCP 工具、`skill` 工具都走这条链（现状已经如此，三者都在 `agent.state.tools`）。用户在 prompt 里写 `/name` 展开的 Skill Invocation 不是工具调用，不经过这条链。
+
+## Comments
+
+- 2026-10-04：第 1 条中"plan mode 的只读限制作为规则阶段里的一组内置 deny"已被 [plan mode](10-plan-mode.md) 推翻：Plan Mode 只引导、不限制工具，权限判定链不变。
