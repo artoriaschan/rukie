@@ -26,3 +26,11 @@
 - 第一轮 full check 842 pass / 1 fail，原因是 fullscreen 非交互终端测试未注入临时 home，读取真实用户旧 allowTools 配置提前触发迁移错误。保留运行时启动顺序，只修复该测试的 cwd/home 隔离；focused 1 fail → 1 pass。
 - 最终冻结代码验收 `rtk proxy env -u NO_COLOR bun run check`: exit 0，843 pass / 0 fail，65 files，5004 assertions，112.17s；oxfmt、oxlint、tsc -b、knip 全部通过。日志 `/tmp/neant-permission-05-check-final.log`。`git diff --check` 通过；src 的 allowTools 残留仅迁移检测与双语迁移文案。
 - 本 checkpoint 实现完成，Standards / Spec 双轴 code review 待父代理安排，工单保持 in-progress。父代理负责串行合并 main、集成验收与 worktree 归档。
+
+### 2026-10-04 review fix checkpoint — delta review pending
+
+- 首轮独立双轴 review：Spec 0 findings；Standards 1 项 P2 hard finding：新增 Trusted Project / MCP 公开 Run 测试放在 config suite，违反 CLAUDE.md 的跨概念 Run 测试目录约定。
+- 仅将这组测试（untrusted、MCP 专用 flag、用户精确信任三个场景）原样移动至 `packages/agent/tests/e2e/permission-rules.test.ts`，整理两文件 import；全部 fixture 与行为断言保持，runtime 实现不变。纯 settings 加载测试保留原位。
+- 修复验证：focused `rtk proxy env -u NO_COLOR bun test packages/agent/tests/config/settings.test.ts packages/agent/tests/e2e/permission-rules.test.ts` exit 0，54 pass / 0 fail，109 assertions；独立 `rtk proxy bunx tsc -b` exit 0。
+- 冻结修复后的完整 `rtk proxy env -u NO_COLOR bun run check` exit 0，843 pass / 0 fail，65 files，5004 assertions，112.44s；oxfmt、oxlint、typecheck、knip 均通过。日志 `/tmp/neant-permission-05-review-fix-check.log`。
+- 修复 checkpoint 待父代理对 delta 执行双轴复审；工单继续 in-progress。

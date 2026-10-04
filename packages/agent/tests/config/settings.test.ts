@@ -1,8 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { join } from "node:path";
-import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { fakeModel } from "../helpers/fake-model.ts";
-import { createSession, loadSettings, type SessionEvent } from "../../src/index.ts";
+import { createSession, loadSettings } from "../../src/index.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
@@ -312,52 +310,5 @@ test.each(["user", "project"])(
       params: { source },
       message: `${source}: "allowTools" has been removed; migrate to "permissions.allow".`,
     });
-  },
-);
-
-test.each([
-  [false, false],
-  [false, true],
-  [true, false],
-])(
-  "project allow and MCP share exact user trust; trusted=%s MCP override=%s",
-  async (trusted, trustProjectMcp) => {
-    dirs = await tempDirs();
-    await Bun.write(
-      join(dirs.homeDir, ".neant/settings.json"),
-      JSON.stringify({ trustedProjects: trusted ? [dirs.cwd] : [] }),
-    );
-    await Bun.write(
-      join(dirs.cwd, ".neant/settings.json"),
-      JSON.stringify({
-        trustedProjects: [dirs.cwd],
-        permissions: { allow: ["bash(printf allowed*)"] },
-      }),
-    );
-    await Bun.write(join(dirs.cwd, ".mcp.json"), JSON.stringify({ mcpServers: { project: {} } }));
-    const { settings } = await loadSettings(dirs);
-    const fake = fakeModel([
-      fauxAssistantMessage(fauxToolCall("bash", { command: "printf allowed > marker" }), {
-        stopReason: "toolUse",
-      }),
-      fauxAssistantMessage("done"),
-    ]);
-    const events: SessionEvent[] = [];
-    const session = await createSession({
-      ...dirs,
-      ...fake,
-      settings,
-      trustProjectMcp,
-      onWarning: () => {},
-    });
-    await session.run("run", {
-      onEvent: (event) => {
-        events.push(event);
-      },
-    });
-    expect(await Bun.file(join(dirs.cwd, "marker")).exists()).toBe(trusted);
-    expect(events.filter((event) => event.type === "mcp_server_error")).toHaveLength(
-      trusted || trustProjectMcp ? 1 : 0,
-    );
   },
 );
