@@ -435,6 +435,7 @@ function Chat({
             {/* SubagentPanel belongs here when ticket 09 wires it. */}
             {userQuestion && currentQuestion && (
               <QuestionDialog
+                origin={userQuestion.request.origin}
                 key={`${userQuestion.request.toolCallId}-${userQuestion.questionIndex}`}
                 question={userQuestion.request.questions[userQuestion.questionIndex]!}
                 questionIndex={userQuestion.questionIndex}
@@ -469,6 +470,7 @@ function Chat({
             )}
             {question && (
               <PermissionDialog
+                origin={question.request.origin}
                 locale={locale}
                 key={question.request.toolCallId}
                 toolName={question.request.toolName}

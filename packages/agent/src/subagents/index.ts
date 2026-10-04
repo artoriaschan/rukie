@@ -7,7 +7,7 @@ export const SUBAGENT_PROMPT =
   "You are a subagent delegated by a parent session. Work on the assigned prompt; your final reply will be delivered to the parent. You cannot expand the parent session permissions or create other subagents.";
 
 interface SubagentOptions {
-  createChild(): Promise<Session>;
+  createChild(description: string): Promise<Session>;
   steer(message: AgentMessage): void;
   emit(
     event: Omit<Extract<SessionEvent, { type: "subagent_event" }>, "sessionId">,
@@ -48,7 +48,7 @@ export function createSubagents(options: SubagentOptions) {
       running.set(key, entry);
       let session: Session;
       try {
-        session = await options.createChild();
+        session = await options.createChild(description);
       } catch (error) {
         running.delete(key);
         wake();

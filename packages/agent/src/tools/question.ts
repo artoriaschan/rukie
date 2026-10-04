@@ -22,7 +22,7 @@ export interface QuestionRequest {
   toolCallId: string;
   questions: Question[];
   signal: AbortSignal;
-  origin?: { subagentId: string; description: string };
+  origin?: { agentId: string; description: string };
 }
 export type QuestionReply = { answers: { selected: string[]; custom?: string }[] } | "declined";
 export type OnQuestion = (request: QuestionRequest) => Promise<QuestionReply>;

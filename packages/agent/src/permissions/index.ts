@@ -23,6 +23,7 @@ export interface PermissionAskRequest {
   mode: PermissionMode;
   reason?: string;
   sessionAllow: SessionAllow;
+  origin?: { agentId: string; description: string };
   /** Aborted when cancelled or covered by a new session rule; dismiss the pending question. */
   signal: AbortSignal;
 }
@@ -56,6 +57,7 @@ interface PermissionGateOptions {
   homeDir: string;
   rules: readonly PermissionRule[];
   sessionAllowRules?: SessionAllowRule[];
+  sessionGrantListeners?: Set<() => void>;
   getMode(): PermissionMode;
   getAgentState(): Pick<Agent["state"], "tools" | "messages">;
   getProjectInstructions(): string[];
@@ -71,7 +73,7 @@ type PermissionCall = ToolCallContext & { mode: PermissionMode; signal: AbortSig
 /** Owns fixed permission stages and review lifetime; Session supplies current context. */
 export function createPermissionGate(options: PermissionGateOptions) {
   const sessionRules = options.sessionAllowRules ?? [];
-  const pendingAsks = new Set<{ context: PermissionCall; allow(): void }>();
+  const sessionGrantListeners = options.sessionGrantListeners ?? new Set<() => void>();
   const reviewBatches = new WeakMap<AssistantMessage, Map<string, Promise<ReviewResult>>>();
   const activeReviews = new Set<Promise<ReviewResult>>();
   const denialReason = ({ mode, toolCall }: PermissionCall) =>
@@ -194,15 +196,13 @@ export function createPermissionGate(options: PermissionGateOptions) {
     if (signal.aborted) controller.abort();
     else signal.addEventListener("abort", abort, { once: true });
     const covered = Promise.withResolvers<"allow">();
-    const pending = {
-      context,
-      allow() {
-        // Resolve permission before withdrawing the frontend, whose abort reply is deny.
-        covered.resolve("allow");
-        controller.abort();
-      },
+    const onSessionGrant = () => {
+      if (signal.aborted || evaluateRuleStage(toolCall.name, args)?.decision !== "allow") return;
+      // Resolve permission before withdrawing the frontend, whose abort reply is deny.
+      covered.resolve("allow");
+      controller.abort();
     };
-    pendingAsks.add(pending);
+    sessionGrantListeners.add(onSessionGrant);
     let reply: "allow" | "deny" | "allow-session";
     try {
       reply = await Promise.race([
@@ -224,16 +224,10 @@ export function createPermissionGate(options: PermissionGateOptions) {
       if (signal.aborted) reply = "deny";
       if (reply === "allow-session") {
         sessionRules.push(grant.rule);
-        for (const other of pendingAsks) {
-          if (other === pending || other.context.signal.aborted) continue;
-          if (
-            evaluateRuleStage(other.context.toolCall.name, other.context.args)?.decision === "allow"
-          )
-            other.allow();
-        }
+        for (const notify of sessionGrantListeners) if (notify !== onSessionGrant) notify();
       }
     } finally {
-      pendingAsks.delete(pending);
+      sessionGrantListeners.delete(onSessionGrant);
       signal.removeEventListener("abort", abort);
     }
     return reply === "allow" || reply === "allow-session"

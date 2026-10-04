@@ -9,6 +9,7 @@ import {
   type ScrollSnapshot,
 } from "@neant/tui";
 import { useCallback, useState, type Ref } from "react";
+import type { PermissionAskRequest } from "@neant/agent";
 import type { PermissionMode } from "@neant/shared";
 import type { Locale } from "@neant/i18n";
 import { createTuiI18n } from "../../i18n";
@@ -37,6 +38,7 @@ export function PermissionDialog({
   mode = "ask",
   locale = "zh",
   reason,
+  origin,
 }: {
   toolName: string;
   sessionAllow: { kind: "command" | "directory" | "tool"; rule: string };
@@ -48,6 +50,7 @@ export function PermissionDialog({
   mode?: PermissionMode;
   locale?: Locale;
   reason?: string;
+  origin?: PermissionAskRequest["origin"];
 }) {
   const { columns } = useTerminalSize();
   const t = createTuiI18n(locale);
@@ -61,7 +64,10 @@ export function PermissionDialog({
   // Only details consume the remaining budget; selection never changes the fixed rows.
   const fixedHeight = choices.length + 2 + Number(showQuestion) + (spacious ? 2 : 0);
   const height = Math.min(maxHeight, fixedHeight + Math.max(1, detailHeight));
-  const title = ` ⏳ ${t("dialog.title", { tool: toolName })} `;
+  const source = origin
+    ? `${t("permissions.origin", { description: origin.description.replace(/[\r\n]+/g, " ") })} · `
+    : "";
+  const title = ` ⏳ ${source}${t("dialog.title", { tool: toolName })} `;
   const ruleWidth = Math.max(0, columns - 4 - Bun.stringWidth(title));
   const command =
     toolName === "bash" &&

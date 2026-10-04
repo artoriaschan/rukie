@@ -104,6 +104,13 @@ export async function createSession(options: SessionOptions): Promise<Session> {
 
 interface InternalSessionOptions {
   parentSessionId?: string;
+  originDescription?: string;
+  permissions?: {
+    rules: ReturnType<typeof parsePermissionRules>;
+    sessionAllowRules: SessionAllowRule[];
+    sessionGrantListeners: Set<() => void>;
+    getMode(): PermissionMode;
+  };
 }
 
 async function createSessionInternal(
@@ -111,11 +118,17 @@ async function createSessionInternal(
   internal: InternalSessionOptions = {},
 ): Promise<Session> {
   const settings = options.settings ?? {};
-  const rules = [
+  const rules = internal.permissions?.rules ?? [
     ...parsePermissionRules(settings.permissions),
     ...parsePermissionRules({ allow: options.allowRules }, "--allow-tools"),
   ];
   let permissionMode = options.permissionMode ?? settings.permissionMode ?? "ask";
+  const permissionConfiguration = internal.permissions ?? {
+    rules,
+    sessionAllowRules: options.sessionAllowRules ?? [],
+    sessionGrantListeners: new Set<() => void>(),
+    getMode: () => permissionMode,
+  };
   if (options.model && !options.streamFn) throw new Error("`model` requires `streamFn`.");
   const { model, streamFn } = options.model
     ? { model: options.model, streamFn: options.streamFn! }
@@ -170,12 +183,20 @@ async function createSessionInternal(
   // behind existing conversation messages; pi will seed it when restoring them.
   let baselinePersisted = transcriptMessages.length > 0;
   let skills = new Map<string, Skill>();
+  const origin =
+    internal.originDescription === undefined
+      ? undefined
+      : { agentId: stored.metadata.id, description: internal.originDescription };
+  const onQuestion = options.onQuestion
+    ? (request: QuestionRequest) => options.onQuestion!({ ...request, ...(origin && { origin }) })
+    : undefined;
   const permissions = createPermissionGate({
     cwd,
     homeDir: options.homeDir,
     rules,
-    sessionAllowRules: options.sessionAllowRules,
-    getMode: () => permissionMode,
+    sessionAllowRules: permissionConfiguration.sessionAllowRules,
+    sessionGrantListeners: permissionConfiguration.sessionGrantListeners,
+    getMode: permissionConfiguration.getMode,
     getAgentState: () => agent.state,
     getProjectInstructions: () =>
       transcriptMessages.flatMap((message) =>
@@ -191,15 +212,21 @@ async function createSessionInternal(
               .model
         : model,
     streamFn: options.streamFn ?? streamFn,
-    onPermissionAsk: options.onPermissionAsk,
+    onPermissionAsk: options.onPermissionAsk
+      ? (request) => options.onPermissionAsk!({ ...request, ...(origin && { origin }) })
+      : undefined,
     onEvent: (event) => emitRunEvent?.(event),
   });
   let currentResult: RunResult | undefined;
   const subagents = createSubagents({
-    createChild: () =>
+    createChild: (description) =>
       createSessionInternal(
         { ...options, resumeId: undefined, store, model, streamFn: options.streamFn ?? streamFn },
-        { parentSessionId: stored.metadata.id },
+        {
+          parentSessionId: stored.metadata.id,
+          originDescription: description,
+          permissions: permissionConfiguration,
+        },
       ),
     steer: (message) => agent.steer(message),
     emit: (event) => emitRunEvent?.(event),
@@ -224,7 +251,7 @@ async function createSessionInternal(
           cwd,
           (name) => skills.get(name),
           setTodo,
-          options.onQuestion,
+          onQuestion,
           options.homeDir,
         ),
         ...(internal.parentSessionId ? [] : [subagents.tool]),
@@ -237,7 +264,7 @@ async function createSessionInternal(
   return {
     id: stored.metadata.id,
     get permissionMode() {
-      return permissionMode;
+      return permissionConfiguration.getMode();
     },
     setPermissionMode(mode) {
       permissionMode = mode;
@@ -292,7 +319,7 @@ async function createSessionInternal(
               cwd,
               (name) => skills.get(name),
               setTodo,
-              options.onQuestion,
+              onQuestion,
               options.homeDir,
             ),
             ...mcp.tools,

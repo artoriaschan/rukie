@@ -25,7 +25,7 @@
  */
 import { useEffect, useState } from "react";
 import { Box, Divider, ThemedBox, ThemedText, ThemedTextInput } from "@neant/tui";
-import type { Question } from "@neant/agent";
+import type { Question, QuestionRequest } from "@neant/agent";
 import type { Locale } from "@neant/i18n";
 import { createTuiI18n } from "../../i18n";
 
@@ -54,6 +54,7 @@ export function QuestionDialog({
   maxHeight,
   columns,
   locale,
+  origin,
 }: {
   question: Question;
   questionIndex: number;
@@ -73,6 +74,7 @@ export function QuestionDialog({
   maxHeight: number;
   columns: number;
   locale: Locale;
+  origin?: QuestionRequest["origin"];
 }) {
   const t = createTuiI18n(locale);
   const [hovered, setHovered] = useState<number>();
@@ -85,6 +87,7 @@ export function QuestionDialog({
   const remaining = questionCount - answeredCount;
   const heading =
     " " +
+    (origin ? `${t("questions.origin", { description: singleLine(origin.description) })} · ` : "") +
     t("question.heading", {
       current: questionIndex + 1,
       total: questionCount,
