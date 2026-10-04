@@ -29,8 +29,16 @@ export interface ContextUsageEvent {
   };
 }
 
-export type CustomSessionEvent =
+export type CustomSessionEvent<PiEvent extends { type: string } = never> =
   | { type: "session_start"; model: string; cwd: string; tools: string[] }
+  | {
+      type: "subagent_event";
+      agentId: string;
+      description: string;
+      subagentType: string;
+      event: SessionEvent<PiEvent>;
+    }
+  | { type: "subagents_waiting"; count: number }
   | ContextUsageEvent
   | ({ type: "result" } & RunResult)
   | { type: "reminder_injected"; source: string; content: string }
@@ -56,6 +64,9 @@ export type CustomSessionEvent =
   | { type: "compaction_end"; summary: string; tokensBefore: number; tokensAfter: number };
 
 /** The caller supplies pi's native AgentEvent without a runtime or type dependency here. */
-export type SessionEvent<PiEvent extends { type: string }> = (PiEvent | CustomSessionEvent) & {
+export type SessionEvent<PiEvent extends { type: string }> = (
+  | PiEvent
+  | CustomSessionEvent<PiEvent>
+) & {
   sessionId: string;
 };

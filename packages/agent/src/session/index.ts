@@ -22,6 +22,7 @@ import type {
   SessionEvent as SharedSessionEvent,
   Settings,
 } from "@neant/shared";
+import { createSubagents, SUBAGENT_PROMPT } from "../subagents/index.ts";
 import { resolveModel } from "../config/index.ts";
 import { createJsonlStore, type SessionStore } from "../store/index.ts";
 import {
@@ -98,6 +99,17 @@ export interface Session {
 }
 
 export async function createSession(options: SessionOptions): Promise<Session> {
+  return createSessionInternal(options);
+}
+
+interface InternalSessionOptions {
+  parentSessionId?: string;
+}
+
+async function createSessionInternal(
+  options: SessionOptions,
+  internal: InternalSessionOptions = {},
+): Promise<Session> {
   const settings = options.settings ?? {};
   const rules = [
     ...parsePermissionRules(settings.permissions),
@@ -114,7 +126,11 @@ export async function createSession(options: SessionOptions): Promise<Session> {
   const context = BACKGROUND_CONTEXT;
   const metadata =
     options.resumeId !== undefined
-      ? (await store.list({ cwd }, context)).find((item) => item.id === options.resumeId)
+      ? (await store.list({ cwd }, context)).find(
+          (item) =>
+            item.id === options.resumeId &&
+            (!item.parentSessionId || internal.parentSessionId === item.parentSessionId),
+        )
       : undefined;
   if (options.resumeId !== undefined && !metadata) {
     throw createUserVisibleError(`Session not found: ${options.resumeId}`, {
@@ -124,7 +140,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
   }
   const stored = metadata
     ? await store.open(metadata, context)
-    : await store.create({ cwd }, context);
+    : await store.create(
+        { cwd, ...(internal.parentSessionId && { parentSessionId: internal.parentSessionId }) },
+        context,
+      );
   let entries;
   try {
     const branch =
@@ -133,7 +152,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
   } finally {
     await stored.close(context);
   }
-  let emitRunEvent: ((event: CustomSessionEvent) => void | Promise<void>) | undefined;
+  let emitRunEvent: ((event: CustomSessionEvent<AgentEvent>) => void | Promise<void>) | undefined;
   const toolState = createToolState([todoState], entries, options.onWarning ?? console.warn);
   let activeStore: StoredSession | undefined;
   const setTodo = async (todos: TodoItem[]) => {
@@ -175,6 +194,21 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     onPermissionAsk: options.onPermissionAsk,
     onEvent: (event) => emitRunEvent?.(event),
   });
+  let currentResult: RunResult | undefined;
+  const subagents = createSubagents({
+    createChild: () =>
+      createSessionInternal(
+        { ...options, resumeId: undefined, store, model, streamFn: options.streamFn ?? streamFn },
+        { parentSessionId: stored.metadata.id },
+      ),
+    steer: (message) => agent.steer(message),
+    emit: (event) => emitRunEvent?.(event),
+    addUsage(usage) {
+      if (currentResult)
+        for (const key of Object.keys(usage) as (keyof typeof usage)[])
+          currentResult.usage[key] += usage[key];
+    },
+  });
   const agent = new Agent({
     streamFn: options.streamFn ?? streamFn,
     convertToLlm,
@@ -182,14 +216,19 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     initialState: {
       model,
       messages: restoreContext(entries),
-      systemPrompt: SYSTEM_PROMPT,
-      tools: createBuiltinTools(
-        cwd,
-        (name) => skills.get(name),
-        setTodo,
-        options.onQuestion,
-        options.homeDir,
-      ),
+      systemPrompt: internal.parentSessionId
+        ? `${SYSTEM_PROMPT}\n\n${SUBAGENT_PROMPT}`
+        : SYSTEM_PROMPT,
+      tools: [
+        ...createBuiltinTools(
+          cwd,
+          (name) => skills.get(name),
+          setTodo,
+          options.onQuestion,
+          options.homeDir,
+        ),
+        ...(internal.parentSessionId ? [] : [subagents.tool]),
+      ],
       ...(settings.thinking && { thinkingLevel: settings.thinking }),
     },
   });
@@ -217,12 +256,18 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 },
         durationMs: 0,
       };
-      const emit = (event: AgentEvent | CustomSessionEvent) =>
+      currentResult = result;
+      subagents.begin();
+      const emit = (event: AgentEvent | CustomSessionEvent<AgentEvent>) =>
         onEvent?.({ ...event, sessionId: stored.metadata.id });
       const emitContextUsage = () =>
         emit(contextUsage(agent.state.messages, model.contextWindow, inputTokens));
       emitRunEvent = emit;
-      const abort = () => agent.abort();
+      const abort = () => {
+        agent.abort();
+        agent.clearSteeringQueue();
+        subagents.abort();
+      };
       const mcp = createMcpConnections();
       const emitMcpErrors = async () => {
         for (const event of mcp.errors.splice(0)) {
@@ -251,6 +296,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               options.homeDir,
             ),
             ...mcp.tools,
+            ...(internal.parentSessionId ? [] : [subagents.tool]),
           ];
           await emit({
             type: "session_start",
@@ -352,6 +398,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           unsubscribe = agent.subscribe(async (event) => {
             await emitMcpErrors();
             if (event.type === "message_end") {
+              subagents.delivered(event.message);
               await branch.appendMessage(event.message, context);
               transcriptMessages.push(event.message);
               if (event.message.role === "system-reminder") {
@@ -363,9 +410,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               }
               if (event.message.role === "assistant") {
                 const message = event.message;
-                result.text = message.content
+                const text = message.content
                   .flatMap((c) => (c.type === "text" ? [c.text] : []))
                   .join("");
+                if (!internal.parentSessionId || text.trim()) result.text = text;
                 result.usage.input += message.usage.input;
                 result.usage.output += message.usage.output;
                 result.usage.cacheRead += message.usage.cacheRead;
@@ -411,7 +459,19 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                   },
                 ]),
           ]);
+          while (subagents.count || subagents.hasNotifications) {
+            signal?.throwIfAborted();
+            if (subagents.hasNotifications) await agent.continue();
+            else {
+              const changed = subagents.wait();
+              await emit({ type: "subagents_waiting", count: subagents.count });
+              await changed;
+            }
+          }
         } finally {
+          subagents.abort();
+          agent.clearSteeringQueue();
+          await subagents.settle();
           signal?.removeEventListener("abort", abort);
           unsubscribe?.();
           agent.prepareRequest = undefined;
@@ -433,6 +493,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           result.durationMs = performance.now() - started;
           await emit({ type: "result", ...result });
         } finally {
+          currentResult = undefined;
           emitRunEvent = undefined;
           running = false;
         }
