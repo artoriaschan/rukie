@@ -14,14 +14,14 @@
 - [x] 最多 8 条，余下 `└─ … N more`
 - [x] 运行中显示全部；空闲隐藏已完成项（计数仍全量）；空闲且无未完成项或为空时不渲染
 - [x] chat 屏订阅 `tool_state_changed`（`todo`），启动 / resume 用 `session.toolState("todo")` 初始化
-- [x] 位于底部区域 activity-line 之后、notice 之前；审批框 / 提问框出现时不渲染
+- [x] 位于底部区域 activity-line 之后、notice 之前；审批框出现时不渲染；提问框与 todo 共存（2026-10-04 用户修正）
 - [x] 所有文案走 TUI 应用字典，中英两份
 
 测试（seam 2：`start` + faux 模型）：
 
 - [x] 树形、图标、计数、8 条上限
 - [x] 运行中 / 空闲显隐与全部完成后消失
-- [x] 审批 / 提问框出现时面板不显示
+- [x] 审批框出现时面板不显示；提问框出现时仍显示 todo（2026-10-04 用户修正）
 - [x] resume 后面板立即出现
 - [x] 中英文案
 
@@ -56,3 +56,7 @@
 审查合计：Standards 0 未解决，Spec 0 未解决。
 
 提交：`ce8f036`（面板）与 `5f55bb2a1c0b9e3db9849dba2c63bc0d7a6ae2d0`（审查发现修复）。代码已提交到 main；本地 Markdown tracker 已更新验收项、done 状态与审查/验证证据。
+
+### 2026-10-04 后续需求修正
+
+用户明确要求 todo 与 ask_user_question 同时存在、不能覆盖。上述验收显隐规则已按最新要求更新，原实现记录保留为当时交付证据；此次修正与验证见 [提问面板规格](../../question-panel/spec.md) 和 [审查记录](../../question-panel/review.md)。

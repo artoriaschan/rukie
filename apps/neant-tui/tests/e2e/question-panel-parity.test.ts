@@ -358,3 +358,186 @@ test("caret arrows edit within an answer; only plain arrows at its boundaries sw
     await app.cleanup();
   }
 });
+
+test("an undersized terminal pauses question paste editing until it is resized back", async () => {
+  const app = await start(["ask"], { columns: 40, rows: 12 });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("ask_user_question", { questions: [question] });
+    await app.waitFor(() => app.screen().some((line) => line.includes("Which storage?")));
+    app.resize(39, 12);
+    await app.waitFor(() => app.screen().some((line) => line.includes("请调整窗口")));
+    app.stdin.write("\x1b[200~hidden draft\x1b[201~");
+    app.resize(40, 12);
+    await app.waitFor(() => app.screen().some((line) => line.includes("Which storage?")));
+    app.stdin.write("\r");
+    await app.waitFor(() => app.calls.length === 2);
+    expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
+      content: [{ type: "text", text: '"Which storage?" → SQLite' }],
+    });
+    app.calls[1]!.finish();
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("a double click on the submit row answers only the question that was painted", async () => {
+  const app = await start(["ask"], { rows: 32 });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("ask_user_question", {
+      questions: [
+        { ...question, multiSelect: true },
+        { ...question, question: "Second?" },
+      ],
+    });
+    await app.waitFor(() => app.screen().some((line) => line.includes("Which storage?")));
+    app.stdin.write(" ");
+    await app.waitFor(() => app.screen().some((line) => line.includes("✓ 提交选择")));
+    const submit = app.screen().findIndex((line) => line.includes("✓ 提交选择"));
+    app.stdin.write(`\x1b[<0;3;${submit + 1}M\x1b[<0;3;${submit + 1}m`.repeat(2));
+    await app.waitFor(() => app.screen().some((line) => line.trim() === "Second?"));
+    expect(app.calls).toHaveLength(1);
+    app.stdin.write("\x1b[B\r");
+    await app.waitFor(() => app.calls.length === 2);
+    expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
+      content: [{ type: "text", text: '"Which storage?" → SQLite\n"Second?" → Postgres' }],
+    });
+    app.calls[1]!.finish();
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("an attached option cannot make a whitespace-only custom row submittable", async () => {
+  const app = await start(["ask"]);
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("ask_user_question", { questions: [question] });
+    await app.waitFor(() => app.screen().some((line) => line.includes("Which storage?")));
+    app.stdin.write(" \t\r");
+    await app.waitFor(() => app.screen().some((line) => line.includes("先输入回答内容")));
+    expect(app.calls).toHaveLength(1);
+    app.stdin.write("with cache\r");
+    await app.waitFor(() => app.calls.length === 2);
+    expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
+      content: [{ type: "text", text: '"Which storage?" → SQLite; with cache' }],
+    });
+    app.calls[1]!.finish();
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("ample terminal height displays every line of a multiline question", async () => {
+  const app = await start(["ask"], { columns: 80, rows: 60 });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("ask_user_question", {
+      questions: [
+        {
+          ...question,
+          question:
+            "Heading?\nconstraint 1\nconstraint 2\nconstraint 3\nconstraint 4\nconstraint 5 SENTINEL",
+        },
+      ],
+    });
+    await app.waitFor(() => app.screen().some((line) => line.includes("─ ▾")));
+    expect(app.screen()).toContain("  constraint 5 SENTINEL");
+    app.stdin.write("\r");
+    await app.waitFor(() => app.calls.length === 2);
+    app.calls[1]!.finish();
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test.skipIf(process.platform !== "darwin").each(["undersized", "input-focus"])(
+  "a pending clipboard read safely handles %s transitions",
+  async (transition) => {
+    const { chmod, mkdir } = await import("node:fs/promises");
+    const { existsSync } = await import("node:fs");
+    const oldPath = process.env.PATH;
+    let fixture = "";
+    const app = await start(["ask"], {
+      columns: 40,
+      rows: 12,
+      prepare: async (root) => {
+        fixture = root;
+        await mkdir(`${root}/bin`);
+        await Bun.write(
+          `${root}/bin/pbpaste`,
+          `#!/bin/sh\ntouch '${root}/ready'\nwhile [ ! -f '${root}/release' ]; do sleep 0.01; done\nprintf 'late-text'\ntouch '${root}/finished'\n`,
+        );
+        await chmod(`${root}/bin/pbpaste`, 0o755);
+        process.env.PATH = `${root}/bin:${oldPath}`;
+      },
+    });
+    try {
+      await app.waitFor(() => app.calls.length === 1);
+      app.calls[0]!.tool("ask_user_question", { questions: [question] });
+      await app.waitFor(() => app.screen().some((line) => line.includes("Which storage?")));
+      app.stdin.write("\x16");
+      await app.waitFor(() => existsSync(`${fixture}/ready`));
+      if (transition === "undersized") {
+        app.resize(39, 12);
+        await app.waitFor(() => app.screen().some((line) => line.includes("请调整窗口")));
+      } else {
+        app.stdin.write("\t");
+        await app.waitFor(() => app.screen().some((line) => line.includes("❯✎")));
+      }
+      await Bun.write(`${fixture}/release`, "ready");
+      await app.waitFor(() => existsSync(`${fixture}/finished`));
+      if (transition === "undersized") {
+        app.resize(40, 12);
+        await app.waitFor(() => app.screen().some((line) => line.includes("Which storage?")));
+      } else {
+        await app.waitFor(() => app.screen().some((line) => line.includes("late-text")));
+      }
+      app.stdin.write("\r");
+      await app.waitFor(() => app.calls.length === 2);
+      expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
+        content: [
+          {
+            type: "text",
+            text:
+              transition === "undersized"
+                ? '"Which storage?" → SQLite'
+                : '"Which storage?" → late-text',
+          },
+        ],
+      });
+      app.calls[1]!.finish();
+    } finally {
+      await Bun.write(`${fixture}/release`, "ready");
+      process.env.PATH = oldPath;
+      await app.cleanup();
+    }
+  },
+);
+
+test("the minimized bar previews only the first question line and keeps its text and pause glyph bright", async () => {
+  const app = await start(["ask"], { rows: 32 });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("ask_user_question", {
+      questions: [{ ...question, question: "Which storage?\nRESTRICTION" }],
+    });
+    await app.waitFor(() => app.screen().some((line) => line.trim() === "RESTRICTION"));
+    app.stdin.write("\x0b");
+    await app.waitFor(() => app.screen().some((line) => line.includes("正在等你回答")));
+    const header = app.screen().findIndex((line) => line.includes("▸") && line.includes("📋"));
+    expect(app.screen()[header]).not.toContain("RESTRICTION");
+    const previewX = Bun.stringWidth(
+      app.screen()[header]!.slice(0, app.screen()[header]!.indexOf("Which storage?")),
+    );
+    expect(app.terminal.buffer.active.getLine(header)!.getCell(previewX)!.isDim()).toBeFalsy();
+    const waiting = app.screen().findIndex((line) => line.includes("正在等你回答"));
+    expect(app.terminal.buffer.active.getLine(waiting)!.getCell(2)!.isDim()).toBeFalsy();
+    const waitingX = app.screen()[waiting]!.indexOf("正在等你回答");
+    await app.waitFor(() => !app.screen()[waiting]!.includes("⏸"));
+    expect(app.screen()[waiting]!.indexOf("正在等你回答")).toBe(waitingX);
+  } finally {
+    await app.cleanup();
+  }
+});

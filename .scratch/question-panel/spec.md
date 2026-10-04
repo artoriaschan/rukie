@@ -1,4 +1,4 @@
-Status: in_progress
+Status: done
 
 # ask_user_question 面板复刻与 Todo 共存
 
@@ -20,3 +20,13 @@ Status: in_progress
 公共 TUI 黑盒 seam：`start` + controlled faux model + headless terminal；断言屏幕文本、颜色、hover、光标、终端尺寸，以及下一次模型 context 的工具结果。TextInput 展示 API 使用公开 `render` + stdin/stdout 验证，不测试内部状态。
 
 最终完整验收：`rtk proxy env -u NO_COLOR caffeinate -is bun run check`。代码审查基线为此次修正前的 `4ecd34ca03375f72361d4daece46899eca9e8781`，按 `code-review` skill 分别检查 Standards 与 Spec。
+
+## Completion
+
+2026-10-04 完成。实现提交 `fde8973`，随后修复双轴审查与主代理核对发现的边界：小窗口直接/异步粘贴、空白自定义提交、旧提交行双击误答下一题、高窗口正文截断、折叠栏首行/亮度与剪贴板返回前焦点变化。
+
+最终完整验收 `rtk proxy env -u NO_COLOR caffeinate -is bun run check`：exit 0；format、lint、typecheck、Knip 全部通过；740 pass / 0 fail，4554 assertions，61 files，103.90 秒。完整输出：`/tmp/neant-question-panel-final-check.log`。
+
+专项 parity 黑盒测试：23 pass / 0 fail，94 assertions；包含 40/60/80 列、12/16/20/24/60 行、双语、颜色、光标、hover、鼠标与键盘、异步剪贴板及 resize。原问题测试、FIFO、transcript/resume 和整个既有测试集一并通过。
+
+独立 Standards 与 Spec 审查及全部复审完成，两个轴均为 0 项未解决；详见 [审查记录](review.md)。todo 旧规格与 03 工单的显隐验收已同步最新用户要求，历史交付记录保留。

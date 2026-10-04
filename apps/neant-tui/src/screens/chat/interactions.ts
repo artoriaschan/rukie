@@ -45,6 +45,7 @@ export function createInteractions() {
   let clipboardBusy: symbol | undefined;
   let clipboardOwner: PendingInteraction | undefined;
   let questionGeneration = 0;
+  let questionEditingEnabled = true;
   const notify = () => listeners.forEach((listener) => listener());
   const enqueue = <Reply>(
     signal: AbortSignal,
@@ -80,6 +81,13 @@ export function createInteractions() {
   };
   return {
     getSnapshot: () => pending[0]?.interaction,
+    setQuestionEditingEnabled(enabled: boolean) {
+      if (questionEditingEnabled && !enabled) {
+        questionGeneration++;
+        clipboardBusy = undefined;
+      }
+      questionEditingEnabled = enabled;
+    },
     subscribe(listener: () => void) {
       listeners.add(listener);
       return () => {
@@ -182,7 +190,7 @@ export function createInteractions() {
             ? []
             : [draft.attached]
           : [focus];
-      if (!indices.length && !custom) {
+      if ((inputFocused && !question.multiSelect && !custom) || (!indices.length && !custom)) {
         updateQuestion((value) => ({
           ...value,
           error: question.multiSelect ? "select" : "custom",
@@ -216,6 +224,7 @@ export function createInteractions() {
     questionInput(event: InputEvent, pasteAtCaret?: boolean) {
       const item = pending[0];
       if (item?.kind !== "question" || (event.type !== "key" && event.type !== "paste")) return;
+      if (event.type === "paste" && !questionEditingEnabled) return;
       const live = item.interaction;
       const current = live.drafts[live.questionIndex]!;
       const question = live.request.questions[live.questionIndex]!;
@@ -359,7 +368,9 @@ export function createInteractions() {
           attached: !custom
             ? undefined
             : !focused && !question.multiSelect && input
-              ? draft.selected
+              ? draft.selected < question.options.length
+                ? draft.selected
+                : undefined
               : draft.attached,
         };
       });

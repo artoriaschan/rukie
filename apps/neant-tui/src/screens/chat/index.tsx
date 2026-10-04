@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useLayoutEffect, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createSession, type Session, type SessionOptions } from "@neant/agent";
 import type { Locale } from "@neant/i18n";
 import { PERMISSION_MODES, type ThinkingLevel } from "@neant/shared";
@@ -99,12 +99,21 @@ function Chat({
   const question = interaction?.kind === "permission" ? interaction : undefined;
   const userQuestion = interaction?.kind === "question" ? interaction : undefined;
   const currentQuestion = userQuestion?.drafts[userQuestion.questionIndex];
+  const isCurrentQuestion = () => {
+    const live = interactions.getSnapshot();
+    return (
+      live?.kind === "question" &&
+      live.request === userQuestion?.request &&
+      live.questionIndex === userQuestion.questionIndex
+    );
+  };
   const [input, setInput] = useState("");
   const [todosCollapsed, setTodosCollapsed] = useState(false);
   const toggleTodos = () => setTodosCollapsed((collapsed) => !collapsed);
   const [mode, setMode] = useState(session.permissionMode);
   const { columns, rows } = useTerminalSize();
   const small = columns < 40 || rows < 12;
+  useLayoutEffect(() => interactions.setQuestionEditingEnabled(!small), [interactions, small]);
   const body = useRef<ScrollHandle>(null);
   const details = useRef<ScrollHandle>(null);
   const [bodyScroll, setBodyScroll] = useState<ScrollSnapshot>();
@@ -225,7 +234,7 @@ function Chat({
       return;
     }
     if (event.type === "paste" && interactions.getSnapshot()?.kind === "question") {
-      interactions.questionInput(event);
+      if (!small) interactions.questionInput(event);
       return;
     }
     if (event.type !== "key") {
@@ -425,24 +434,24 @@ function Chat({
                 checked={currentQuestion.checked}
                 answeredCount={userQuestion.drafts.filter((draft) => draft.answer).length}
                 collapsed={userQuestion.collapsed}
-                onToggle={interactions.toggleQuestionFold}
+                onToggle={() => {
+                  if (isCurrentQuestion()) interactions.toggleQuestionFold();
+                }}
                 cursor={currentQuestion.cursor}
                 attached={currentQuestion.attached}
                 error={currentQuestion.error}
-                onSelect={interactions.selectQuestion}
+                onSelect={(index) => {
+                  if (isCurrentQuestion()) interactions.selectQuestion(index);
+                }}
                 onOption={(index) => {
-                  const live = interactions.getSnapshot();
-                  if (
-                    live?.kind !== "question" ||
-                    live.request !== userQuestion.request ||
-                    live.questionIndex !== userQuestion.questionIndex
-                  )
-                    return;
+                  if (!isCurrentQuestion()) return;
                   if (userQuestion.request.questions[userQuestion.questionIndex]!.multiSelect)
                     interactions.toggleQuestion(index);
                   else interactions.answerQuestion(index);
                 }}
-                onSubmit={interactions.answerQuestion}
+                onSubmit={() => {
+                  if (isCurrentQuestion()) interactions.answerQuestion();
+                }}
                 custom={currentQuestion.custom}
                 maxHeight={dialogMaxHeight}
                 columns={columns}

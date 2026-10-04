@@ -101,15 +101,15 @@ export function QuestionDialog({
           onMouseLeave={() => setHovered(undefined)}
           backgroundColor={hovered === -1 ? "badgeHoverBackground" : undefined}
         >
-          <ThemedText
-            dimColor
-            wrap="truncate"
-          >{`▸${heading} ${singleLine(question.question)}`}</ThemedText>
+          <ThemedText wrap="truncate">
+            <ThemedText dimColor>{`▸ ${heading} `}</ThemedText>
+            {question.question.split("\n")[0]?.replace(/\s+/gu, " ").trim()}
+          </ThemedText>
         </ThemedBox>
-        <ThemedText
-          dimColor
-          wrap="truncate"
-        >{`${blink ? "⏸" : " "} ${t("question.waiting")} — ${t("question.expand")}`}</ThemedText>
+        <ThemedText wrap="truncate">
+          {blink ? "⏸ " : "  "}
+          <ThemedText dimColor>{`${t("question.waiting")} — ${t("question.expand")}`}</ThemedText>
+        </ThemedText>
       </Box>
     );
   const width = Math.max(1, columns - 4);
@@ -137,7 +137,7 @@ export function QuestionDialog({
       : []),
     t("question.hint.fold"),
   ].join(" · ");
-  const fullQuestionHeight = Math.min(3, wrappedRows(question.question, width));
+  const fullQuestionHeight = wrappedRows(question.question, width);
   const fullHintHeight = wrappedRows(fullHints, width);
   const fullReserved =
     1 +
