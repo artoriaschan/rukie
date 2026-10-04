@@ -114,7 +114,7 @@ TUI 完全复刻 dsh-TUI 的子代理呈现：消息流里的实时卡片、Ctrl
 ### 类型
 
 - 内置 `general-purpose`：父代理的全部工具（含 MCP 工具），去掉四个子代理工具。内置 `explore`：`read`、`glob`、`grep`、`skill`、`todo_write`，有 `onQuestion` 时再加 `ask_user_question`。
-- 自定义类型：从 `<root>/{.neant,.claude,.agents}/agents/*.md` 加载，root 为用户主目录和项目目录，遍历方式与 skills 相同。项目层覆盖同名用户层，自定义覆盖同名内置。frontmatter 为 `name`（必填）、`description`（必填）、`tools?: string[]`、`model?: string`；正文为附加系统提示。`tools` 与 general-purpose 工具集取交集，未知工具名告警后忽略。解析失败的文件经 `onWarning` 告警（带路径）后跳过。项目层不要求 trusted。
+- 自定义类型：从 `<root>/{.neant,.claude,.agents}/agents/*.md` 加载，root 为用户主目录和项目目录，遍历方式与 skills 相同。项目层覆盖同名用户层，自定义覆盖同名内置。`fork` 是 `subagent_fork` 的系统保留类型名：同名自定义文件带路径告警后跳过，普通 `subagent_type: "fork"` 按未知类型报错。frontmatter 为 `name`（必填）、`description`（必填）、`tools?: string[]`、`model?: string`；正文为附加系统提示。`tools` 与 general-purpose 工具集取交集，未知工具名告警后忽略。解析失败的文件经 `onWarning` 告警（带路径）后跳过。项目层不要求 trusted。
 - 子代理的系统提示为：父 System Prompt + 一段固定的委派说明（说明自己是子代理、最终回复会交回父代理、不能扩大权限）+ 类型正文。reminder 走子 session 自己的 reminder 机制：Project Instructions、skills、date 照常注入。
 
 ### 模型与配置

@@ -59,6 +59,8 @@ export async function discoverSubagentTypes(
           const [error] = Value.Errors(Metadata, metadata);
           if (error) throw new Error(`${error.instancePath || "/"} ${error.message}`);
           const definition = metadata as Static<typeof Metadata>;
+          if (definition.name === "fork")
+            throw new Error('name "fork" is reserved for subagent_fork.');
           const allowed = definition.tools?.filter((name) => {
             if (tools.includes(name)) return true;
             warnings.push(`${path}: unknown tool "${name}" ignored.`);

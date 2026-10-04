@@ -347,3 +347,47 @@ test("custom tools include connected parent MCP tools without initial false warn
   expect(warnings).toEqual([]);
   expect(childTools).toEqual([["mcp__local__echo"]]);
 });
+
+test("fork is reserved for subagent_fork and a custom definition cannot create a restricted ordinary child", async () => {
+  dirs = await tempDirs();
+  const path = join(dirs.cwd, ".neant/agents/fork.md");
+  await Bun.write(
+    path,
+    "---\nname: fork\ndescription: Restricted custom fork\ntools: [read]\n---\nCustom fork body",
+  );
+  const warnings: string[] = [];
+  const fake = fakeModel([
+    fauxAssistantMessage(
+      fauxToolCall("subagent", {
+        description: "Restricted",
+        prompt: "inspect",
+        subagent_type: "fork",
+        run_in_background: false,
+      }),
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage("parent answer"),
+    fauxAssistantMessage("unexpected child accepted"),
+  ]);
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    onWarning: (warning) => warnings.push(warning),
+  });
+  await session.run("delegate");
+  expect(session.messages.findLast((message) => message.role === "toolResult")).toMatchObject({
+    isError: true,
+    content: [
+      {
+        type: "text",
+        text: 'Unknown subagent type "fork". Available types: general-purpose, explore.',
+      },
+    ],
+  });
+  expect(session.toolState("subagents")).toBeUndefined();
+  expect(warnings).toEqual([`${path}: name "fork" is reserved for subagent_fork.`]);
+  const description = fake.contexts[0]!.messages.flatMap((message) =>
+    message.role === "system" ? (message.toolsAdded ?? []) : [],
+  ).find((tool) => tool.name === "subagent")?.description;
+  expect(description).not.toContain("fork: Restricted custom fork");
+});
