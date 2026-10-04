@@ -4,7 +4,7 @@
 
 **Blocked by:** 02
 
-**Status:** claimed
+**Status:** resolved
 
 参考：[spec](../spec.md)「权限与交互」。
 
@@ -23,3 +23,19 @@
   - TUI 的审批 / 提问标题显示中英文子代理来源，标题占用原有一行。
   - 公开接缝新增 6 个 Agent e2e 与 4 个 TUI e2e；初始 grant / 待审批跨 session grant / 来源标题均观察到 red 后 green。
   - `env -u NO_COLOR bun run check` exit 0：1013 pass / 0 fail / 5500 assertions，75 files（113.09s）。日志：`/tmp/neant-ticket03-check.log`。
+
+## Answer
+
+实现提交：`1a6670b`。父子 session 以引用共享权限判定配置和会话授权通知；子代理权限审批与 question 复用父回调并携带来源。Headless 行为保持安全默认值，TUI 来源标题覆盖 zh / en。
+
+### Standards
+
+独立 reviewer `/root/review03_standards`：0 actionable findings。固定审查基点 `f16ea9e2253ae925f8b6ef3abe36f230e50af7cd` 已验证，diff 非空。
+
+### Spec
+
+协调者独立 Spec 审查：0 findings。权限配置引用、mode / grants 共享、跨 session pending ask 撤回、origin、Headless 和 zh / en 来源标题均满足本工单。
+
+审查汇总：Standards 0 findings；Spec 0 findings。两轴均无待处理问题。
+
+验证沿用实现提交的 `env -u NO_COLOR bun run check`：exit 0，1013 pass / 0 fail / 5500 assertions / 75 files。本次收尾只改本工单文档，不重跑全量测试；主分支集成与 worktree 移除由协调者处理。
