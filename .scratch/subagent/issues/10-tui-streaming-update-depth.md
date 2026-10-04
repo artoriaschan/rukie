@@ -1,6 +1,6 @@
 # 10: TUI 流式输出触发 React 更新深度限制
 
-**Status:** claimed
+**Status:** resolved
 
 **Problem:** 本地验证时，两个子代理正常完成，父代理汇总阶段保存了 `Maximum update depth exceeded` 错误。聊天屏幕必须能够持续接收流式事件，保留滚动阅读位置与未读提示，并在完成后接受下一次输入。
 
@@ -11,7 +11,7 @@
 - [x] 公开 TUI 回归：350 个流式片段可正常结束，最终文本进入下一次模型请求的历史，并可继续输入
 - [x] 公开 TUI 回归：向上阅读时保持位置，显示新输出提示，Ctrl+End 清除提示并跟随尾部
 - [x] 类型、相关测试与完整检查通过
-- [ ] Standards / Spec 双轴评审通过
+- [x] Standards / Spec 双轴评审通过
 
 ## Evidence
 
@@ -21,3 +21,4 @@
 - 独立最小诊断：外部 store 更新单独可完成 350 次；effect 每次重复设置相同布尔值时第 53 次失败；给 setter 加状态变化条件后完成 350 次。诊断文件已移除。
 - 相关组合测试：58 pass / 0 fail / 383 assertions；`tsc -b` 退出 0。
 - 完整 `env -u NO_COLOR bun run check` 退出 0：1103 pass / 0 fail / 6049 assertions / 83 files，124.17 秒；日志 `/tmp/neant-update-depth-full.log`。
+- Standards / Spec 各 0 findings；两位评审者各自独立运行公开回归：2 pass / 0 fail / 7 assertions。
