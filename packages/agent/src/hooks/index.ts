@@ -87,6 +87,7 @@ export function createHooks(options: {
   projectDir: string;
   onWarning(warning: string): void;
   onEvent(event: CustomSessionEvent): void | Promise<void>;
+  onAsyncResult?(result: CommonHookResult, rewakeReason?: string): void;
 }) {
   validateHooks(options.settings, "settings");
   const settings = mergeHooks(options.settings);
@@ -99,7 +100,7 @@ export function createHooks(options: {
       input: HookInput,
       runOptions: { signal?: AbortSignal; matchQuery?: string } = {},
     ): Promise<EventResult<E>> {
-      const result: PreToolUseResult &
+      const mergedResult: PreToolUseResult &
         UserPromptSubmitResult &
         StopHookResult &
         PermissionDeniedResult = {
@@ -139,282 +140,321 @@ export function createHooks(options: {
           seen.add(key);
           return true;
         });
+      const isBackground = (handler: HookHandler) =>
+        event !== "SessionEnd" &&
+        handler.type === "command" &&
+        (handler.async || handler.asyncRewake);
       await Promise.all(
-        handlers.map(async (handler) => {
-          const hook = handler.type === "command" ? handler.command : handler.type;
-          const warn = async (warning: string, error: UserVisibleErrorData) => {
-            options.onWarning(`${event} hook ${hook}: ${warning}`);
-            const notification: CustomSessionEvent = {
-              type: "hook_warning",
-              event,
-              hook,
-              message: warning,
-              error,
+        handlers
+          .map(async (handler) => {
+            const background = isBackground(handler);
+            const result: typeof mergedResult = background
+              ? { systemMessages: [], additionalContext: [] }
+              : mergedResult;
+            let rewakeReason: string | undefined;
+            const executionSignal = background ? lifetime.signal : signal;
+            const hook = handler.type === "command" ? handler.command : handler.type;
+            const warn = async (warning: string, error: UserVisibleErrorData) => {
+              options.onWarning(`${event} hook ${hook}: ${warning}`);
+              const notification: CustomSessionEvent = {
+                type: "hook_warning",
+                event,
+                hook,
+                message: warning,
+                error,
+              };
+              // Shutdown may be called by an event observer awaiting dispose itself.
+              if (event === "SessionEnd") {
+                try {
+                  void Promise.resolve(options.onEvent(notification)).catch(() => {});
+                } catch {
+                  /* Observers cannot hold shutdown open or turn diagnostics into failure. */
+                }
+              } else await options.onEvent(notification);
             };
-            // Shutdown may be called by an event observer awaiting dispose itself.
-            if (event === "SessionEnd") {
-              try {
-                void Promise.resolve(options.onEvent(notification)).catch(() => {});
-              } catch {
-                /* Observers cannot hold shutdown open or turn diagnostics into failure. */
-              }
-            } else await options.onEvent(notification);
-          };
-          try {
-            if (handler.type !== "command") {
-              await warn(`Unsupported hook type: ${handler.type}`, {
-                code: "hook-type-unsupported",
-                params: { type: handler.type },
-              });
-              return;
-            }
-            const output = await executeCommand(handler, snapshot, {
-              cwd: options.cwd,
-              projectDir: options.projectDir,
-              signal,
-              timeout: handler.timeout ?? (event === "UserPromptSubmit" ? 30 : 600),
-            });
-            const warnExit = async () => {
-              if (output.exitCode !== 0 && output.exitCode !== 2)
-                await warn(
-                  `Hook exited with code ${output.exitCode}${output.stderr.trim() ? `: ${output.stderr.trim()}` : ""}`,
-                  {
-                    code: "hook-exit",
-                    params: { exitCode: String(output.exitCode), stderr: output.stderr.trim() },
-                  },
-                );
-            };
-            // Shutdown hooks are only for side effects: even valid control output is discarded.
-            if (event === "SessionEnd") {
-              await warnExit();
-              return;
-            }
-            let json: Record<string, unknown> = {};
-            const stdout = output.stdout.trim();
-            const jsonOutput = stdout.startsWith("{") && stdout.endsWith("}");
-            if (jsonOutput) {
-              try {
-                const parsed: unknown = JSON.parse(stdout);
-                if (!object(parsed)) throw new Error("Hook output must be a JSON object");
-                json = parsed;
-              } catch (error) {
-                await warn(`Invalid hook JSON: ${(error as Error).message}`, {
-                  code: "hook-invalid-json",
-                  params: { cause: (error as Error).message },
+            try {
+              if (handler.type !== "command") {
+                await warn(`Unsupported hook type: ${handler.type}`, {
+                  code: "hook-type-unsupported",
+                  params: { type: handler.type },
                 });
-                if (output.exitCode !== 2) return;
+                return;
               }
-            }
-            await warnExit();
-            const ignored = (field: string) =>
-              warn(`Ignoring invalid or unsupported hook output field: ${field}`, {
-                code: "hook-output-ignored",
-                params: { field },
+              const output = await executeCommand(handler, snapshot, {
+                cwd: options.cwd,
+                projectDir: options.projectDir,
+                signal: executionSignal,
+                timeout: background
+                  ? undefined
+                  : (handler.timeout ?? (event === "UserPromptSubmit" ? 30 : 600)),
               });
-            const supportsBlockingDecision =
-              event === "UserPromptSubmit" ||
-              event === "Stop" ||
-              event === "PreCompact" ||
-              event === "SubagentStop";
-            const commonFields: Record<string, string> = {
-              continue: "boolean",
-              stopReason: "string",
-              systemMessage: "string",
-              suppressOutput: "boolean",
-              reason: "string",
-              ...(supportsBlockingDecision && {
-                decision: "string",
-              }),
-            };
-            for (const [field, value] of Object.entries(json)) {
-              if (field === "hookSpecificOutput") {
-                if (!object(value)) await ignored(field);
-              } else if (
-                !Object.hasOwn(commonFields, field) ||
-                typeof value !== commonFields[field]
-              ) {
-                await ignored(field);
-                delete json[field];
-              }
-            }
-            const specific = object(json.hookSpecificOutput) ? { ...json.hookSpecificOutput } : {};
-            const specificFields = new Set(
-              event === "PreToolUse"
-                ? [
-                    "hookEventName",
-                    "permissionDecision",
-                    "permissionDecisionReason",
-                    "updatedInput",
-                    "additionalContext",
-                  ]
-                : event === "PermissionRequest"
-                  ? ["hookEventName", "decision", "additionalContext"]
-                  : event === "PermissionDenied"
-                    ? ["hookEventName", "retry", "additionalContext"]
-                    : ["hookEventName", "additionalContext"],
-            );
-            for (const [field, value] of Object.entries(specific)) {
-              const valid =
-                specificFields.has(field) &&
-                (field === "updatedInput"
-                  ? true
-                  : field === "decision"
-                    ? object(value)
-                    : field === "retry"
-                      ? typeof value === "boolean"
-                      : field === "permissionDecision"
-                        ? typeof value === "string" && ["allow", "ask", "deny"].includes(value)
-                        : typeof value === "string");
-              if (!valid) {
-                await ignored(`hookSpecificOutput.${field}`);
-                delete specific[field];
-              }
-            }
-            if (specific.hookEventName !== undefined && specific.hookEventName !== event) {
-              await ignored("hookSpecificOutput.hookEventName");
-              for (const field of Object.keys(specific)) delete specific[field];
-            }
-            if (json.continue === false) {
-              result.continue = false;
-              if (typeof json.stopReason === "string")
-                result.stopReason = truncate(json.stopReason);
-            }
-            if (typeof json.systemMessage === "string") {
-              const message = truncate(json.systemMessage);
-              result.systemMessages.push(message);
-              await options.onEvent({ type: "hook_message", event, message });
-            }
-            if (typeof specific.additionalContext === "string")
-              result.additionalContext.push(truncate(specific.additionalContext));
-            if (event === "UserPromptSubmit" || event === "SessionStart") {
-              if (output.exitCode === 0 && stdout && !jsonOutput)
-                result.additionalContext.push(truncate(stdout));
-            }
-            if (supportsBlockingDecision) {
-              if (json.decision !== undefined && json.decision !== "block")
-                await ignored("decision");
-              if (output.exitCode === 2 || json.decision === "block") {
-                result.decision = "block";
-                const reason = typeof json.reason === "string" ? json.reason : output.stderr.trim();
-                result.reason = [result.reason, reason].filter(Boolean).join("\n") || undefined;
-              }
-            }
-            if (
-              (event === "PermissionRequest" || event === "PermissionDenied") &&
-              output.exitCode === 2
-            )
-              return;
-            if (event === "PermissionRequest") {
-              if (object(specific.decision)) {
-                const decision = specific.decision;
-                if (decision.behavior !== "allow" && decision.behavior !== "deny") {
-                  await ignored("hookSpecificOutput.decision.behavior");
-                  return;
-                }
-                const allowed =
-                  decision.behavior === "allow"
-                    ? ["behavior", "updatedInput", "updatedPermissions"]
-                    : ["behavior", "message", "interrupt"];
-                for (const field of Object.keys(decision)) {
-                  const valid =
-                    allowed.includes(field) &&
-                    (field === "behavior" ||
-                      field === "updatedInput" ||
-                      (field === "updatedPermissions"
-                        ? Array.isArray(decision[field])
-                        : field === "interrupt"
-                          ? typeof decision[field] === "boolean"
-                          : typeof decision[field] === "string"));
-                  if (!valid) {
-                    await ignored(`hookSpecificOutput.decision.${field}`);
-                    delete decision[field];
-                  }
-                }
-                if (
-                  decision.behavior === "allow" &&
-                  decision.updatedInput !== undefined &&
-                  !object(decision.updatedInput)
-                ) {
-                  denyRequest(
-                    "Denied by hook: invalid updatedInput: expected an object",
-                    false,
-                    hook,
+              if (handler.asyncRewake && output.exitCode === 2) rewakeReason = output.stderr.trim();
+              const warnExit = async () => {
+                if (output.exitCode !== 0 && output.exitCode !== 2)
+                  await warn(
+                    `Hook exited with code ${output.exitCode}${output.stderr.trim() ? `: ${output.stderr.trim()}` : ""}`,
+                    {
+                      code: "hook-exit",
+                      params: { exitCode: String(output.exitCode), stderr: output.stderr.trim() },
+                    },
                   );
+              };
+              // Shutdown hooks are only for side effects: even valid control output is discarded.
+              if (event === "SessionEnd") {
+                await warnExit();
+                return;
+              }
+              let json: Record<string, unknown> = {};
+              const stdout = output.stdout.trim();
+              const jsonOutput = stdout.startsWith("{") && stdout.endsWith("}");
+              if (jsonOutput) {
+                try {
+                  const parsed: unknown = JSON.parse(stdout);
+                  if (!object(parsed)) throw new Error("Hook output must be a JSON object");
+                  json = parsed;
+                } catch (error) {
+                  await warn(`Invalid hook JSON: ${(error as Error).message}`, {
+                    code: "hook-invalid-json",
+                    params: { cause: (error as Error).message },
+                  });
+                  if (output.exitCode !== 2) return;
+                }
+              }
+              await warnExit();
+              const ignored = (field: string) =>
+                warn(`Ignoring invalid or unsupported hook output field: ${field}`, {
+                  code: "hook-output-ignored",
+                  params: { field },
+                });
+              const supportsBlockingDecision =
+                event === "UserPromptSubmit" ||
+                event === "Stop" ||
+                event === "PreCompact" ||
+                event === "SubagentStop";
+              const commonFields: Record<string, string> = {
+                continue: "boolean",
+                stopReason: "string",
+                systemMessage: "string",
+                suppressOutput: "boolean",
+                reason: "string",
+                ...(supportsBlockingDecision && {
+                  decision: "string",
+                }),
+              };
+              for (const [field, value] of Object.entries(json)) {
+                if (field === "hookSpecificOutput") {
+                  if (!object(value)) await ignored(field);
                 } else if (
-                  decision.behavior === "deny" ||
-                  !requestDecision ||
-                  requestDecision.behavior === "allow"
+                  !Object.hasOwn(commonFields, field) ||
+                  typeof value !== commonFields[field]
                 ) {
-                  if (decision.behavior === "deny") {
+                  await ignored(field);
+                  delete json[field];
+                }
+              }
+              const specific = object(json.hookSpecificOutput)
+                ? { ...json.hookSpecificOutput }
+                : {};
+              const specificFields = new Set(
+                event === "PreToolUse"
+                  ? [
+                      "hookEventName",
+                      "permissionDecision",
+                      "permissionDecisionReason",
+                      "updatedInput",
+                      "additionalContext",
+                    ]
+                  : event === "PermissionRequest"
+                    ? ["hookEventName", "decision", "additionalContext"]
+                    : event === "PermissionDenied"
+                      ? ["hookEventName", "retry", "additionalContext"]
+                      : ["hookEventName", "additionalContext"],
+              );
+              for (const [field, value] of Object.entries(specific)) {
+                const valid =
+                  specificFields.has(field) &&
+                  (field === "updatedInput"
+                    ? true
+                    : field === "decision"
+                      ? object(value)
+                      : field === "retry"
+                        ? typeof value === "boolean"
+                        : field === "permissionDecision"
+                          ? typeof value === "string" && ["allow", "ask", "deny"].includes(value)
+                          : typeof value === "string");
+                if (!valid) {
+                  await ignored(`hookSpecificOutput.${field}`);
+                  delete specific[field];
+                }
+              }
+              if (specific.hookEventName !== undefined && specific.hookEventName !== event) {
+                await ignored("hookSpecificOutput.hookEventName");
+                for (const field of Object.keys(specific)) delete specific[field];
+              }
+              if (!background && json.continue === false) {
+                result.continue = false;
+                if (typeof json.stopReason === "string")
+                  result.stopReason = truncate(json.stopReason);
+              }
+              if (typeof json.systemMessage === "string") {
+                const message = truncate(json.systemMessage);
+                result.systemMessages.push(message);
+              }
+              if (typeof specific.additionalContext === "string")
+                result.additionalContext.push(truncate(specific.additionalContext));
+              if (event === "UserPromptSubmit" || event === "SessionStart") {
+                if (output.exitCode === 0 && stdout && !jsonOutput)
+                  result.additionalContext.push(truncate(stdout));
+              }
+              if (background && !lifetime.signal.aborted)
+                options.onAsyncResult?.(result, rewakeReason);
+              if (typeof json.systemMessage === "string")
+                await options.onEvent({
+                  type: "hook_message",
+                  event,
+                  message: truncate(json.systemMessage),
+                });
+              if (background) return;
+              if (supportsBlockingDecision) {
+                if (json.decision !== undefined && json.decision !== "block")
+                  await ignored("decision");
+                if (output.exitCode === 2 || json.decision === "block") {
+                  result.decision = "block";
+                  const reason =
+                    typeof json.reason === "string" ? json.reason : output.stderr.trim();
+                  result.reason = [result.reason, reason].filter(Boolean).join("\n") || undefined;
+                }
+              }
+              if (
+                (event === "PermissionRequest" || event === "PermissionDenied") &&
+                output.exitCode === 2
+              )
+                return;
+              if (event === "PermissionRequest") {
+                if (object(specific.decision)) {
+                  const decision = specific.decision;
+                  if (decision.behavior !== "allow" && decision.behavior !== "deny") {
+                    await ignored("hookSpecificOutput.decision.behavior");
+                    return;
+                  }
+                  const allowed =
+                    decision.behavior === "allow"
+                      ? ["behavior", "updatedInput", "updatedPermissions"]
+                      : ["behavior", "message", "interrupt"];
+                  for (const field of Object.keys(decision)) {
+                    const valid =
+                      allowed.includes(field) &&
+                      (field === "behavior" ||
+                        field === "updatedInput" ||
+                        (field === "updatedPermissions"
+                          ? Array.isArray(decision[field])
+                          : field === "interrupt"
+                            ? typeof decision[field] === "boolean"
+                            : typeof decision[field] === "string"));
+                    if (!valid) {
+                      await ignored(`hookSpecificOutput.decision.${field}`);
+                      delete decision[field];
+                    }
+                  }
+                  if (
+                    decision.behavior === "allow" &&
+                    decision.updatedInput !== undefined &&
+                    !object(decision.updatedInput)
+                  ) {
                     denyRequest(
-                      typeof decision.message === "string" ? decision.message : undefined,
-                      decision.interrupt === true,
+                      "Denied by hook: invalid updatedInput: expected an object",
+                      false,
                       hook,
                     );
-                  } else requestDecision = decision as PermissionRequestResult["decision"];
-                  requestHook = hook;
+                  } else if (
+                    decision.behavior === "deny" ||
+                    !requestDecision ||
+                    requestDecision.behavior === "allow"
+                  ) {
+                    if (decision.behavior === "deny") {
+                      denyRequest(
+                        typeof decision.message === "string" ? decision.message : undefined,
+                        decision.interrupt === true,
+                        hook,
+                      );
+                    } else requestDecision = decision as PermissionRequestResult["decision"];
+                    requestHook = hook;
+                  }
+                }
+                return;
+              }
+              if (event === "PermissionDenied") {
+                if (specific.retry === true && input.by === "review") result.retry = true;
+                return;
+              }
+              if (event !== "PreToolUse") return;
+              const decision = output.exitCode === 2 ? "deny" : specific.permissionDecision;
+              if (decision === "allow" || decision === "ask" || decision === "deny") {
+                const rank = { allow: 1, ask: 2, deny: 3 };
+                if (
+                  !result.permissionDecision ||
+                  rank[decision] >= rank[result.permissionDecision]
+                ) {
+                  result.permissionDecision = decision;
+                  result.hook = hook;
+                  const reason =
+                    output.exitCode === 2
+                      ? typeof json.reason === "string"
+                        ? json.reason
+                        : output.stderr.trim()
+                      : typeof specific.permissionDecisionReason === "string"
+                        ? specific.permissionDecisionReason
+                        : undefined;
+                  result.permissionDecisionReason =
+                    [result.permissionDecisionReason, reason].filter(Boolean).join("\n") ||
+                    undefined;
                 }
               }
-              return;
-            }
-            if (event === "PermissionDenied") {
-              if (specific.retry === true && input.by === "review") result.retry = true;
-              return;
-            }
-            if (event !== "PreToolUse") return;
-            const decision = output.exitCode === 2 ? "deny" : specific.permissionDecision;
-            if (decision === "allow" || decision === "ask" || decision === "deny") {
-              const rank = { allow: 1, ask: 2, deny: 3 };
-              if (!result.permissionDecision || rank[decision] >= rank[result.permissionDecision]) {
-                result.permissionDecision = decision;
-                result.hook = hook;
-                const reason =
-                  output.exitCode === 2
-                    ? typeof json.reason === "string"
-                      ? json.reason
-                      : output.stderr.trim()
-                    : typeof specific.permissionDecisionReason === "string"
-                      ? specific.permissionDecisionReason
-                      : undefined;
-                result.permissionDecisionReason =
-                  [result.permissionDecisionReason, reason].filter(Boolean).join("\n") || undefined;
+              if (specific.updatedInput !== undefined) {
+                if (!object(specific.updatedInput)) {
+                  result.permissionDecision = "deny";
+                  result.permissionDecisionReason = "Invalid updatedInput: expected an object";
+                  result.hook = hook;
+                } else {
+                  result.updatedInput = specific.updatedInput;
+                  result.hook ??= hook;
+                }
+              }
+            } catch (error) {
+              if (
+                !executionSignal.aborted ||
+                (event === "SessionEnd" && !runOptions.signal?.aborted)
+              ) {
+                const budgetExpired = shutdown?.signal.aborted;
+                const data = budgetExpired
+                  ? { code: "hook-timeout" as const, params: { timeout: "1.5" } }
+                  : error instanceof Error && "code" in error && "params" in error
+                    ? (error as Error & UserVisibleErrorData)
+                    : {
+                        code: "hook-command-failed" as const,
+                        params: { cause: (error as Error).message },
+                      };
+                await warn(
+                  budgetExpired
+                    ? "Hook timed out after 1.5s (SessionEnd budget)"
+                    : (error as Error).message,
+                  data,
+                );
               }
             }
-            if (specific.updatedInput !== undefined) {
-              if (!object(specific.updatedInput)) {
-                result.permissionDecision = "deny";
-                result.permissionDecisionReason = "Invalid updatedInput: expected an object";
-                result.hook = hook;
-              } else {
-                result.updatedInput = specific.updatedInput;
-                result.hook ??= hook;
-              }
+          })
+          .map((completion, index) => {
+            if (isBackground(handlers[index]!)) {
+              void completion.catch(() => {});
+              return;
             }
-          } catch (error) {
-            if (!signal.aborted || (event === "SessionEnd" && !runOptions.signal?.aborted)) {
-              const budgetExpired = shutdown?.signal.aborted;
-              const data = budgetExpired
-                ? { code: "hook-timeout" as const, params: { timeout: "1.5" } }
-                : error instanceof Error && "code" in error && "params" in error
-                  ? (error as Error & UserVisibleErrorData)
-                  : {
-                      code: "hook-command-failed" as const,
-                      params: { cause: (error as Error).message },
-                    };
-              await warn(
-                budgetExpired
-                  ? "Hook timed out after 1.5s (SessionEnd budget)"
-                  : (error as Error).message,
-                data,
-              );
-            }
-          }
-        }),
+            return completion;
+          }),
       ).finally(() => clearTimeout(timer));
       return (
         event === "PermissionRequest"
-          ? { ...result, decision: requestDecision, hook: requestHook }
-          : result
+          ? { ...mergedResult, decision: requestDecision, hook: requestHook }
+          : mergedResult
       ) as EventResult<E>;
     },
   };

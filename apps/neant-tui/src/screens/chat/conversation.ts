@@ -331,7 +331,17 @@ function reduceEvent(
           ? { ...state, subagents: { ...restoreSubagents(event.value), ...state.subagents } }
           : state;
     case "session_start":
-      return { ...state, model: event.model };
+      return {
+        ...state,
+        model: event.model,
+        running: true,
+        error: undefined,
+        input: 0,
+        output: 0,
+        activityInput: 0,
+        streamedChars: 0,
+        decode: { tokens: 0, ms: 0 },
+      };
     case "context_usage":
       return { ...state, contextUsage: event };
     case "turn_start":
@@ -499,7 +509,7 @@ function reduceEvent(
           { at: now, value: decodeMetrics(state, now).value },
         ].slice(-500),
         streamedChars: 0,
-        error: event.success ? undefined : event.error,
+        error: event.success || state.activity.interrupted ? undefined : event.error,
       };
     default:
       return state;
@@ -591,7 +601,7 @@ export function createConversation(session: Session, model: string, locale: Loca
         }
         prompt = instruction;
       }
-      if (active || !prompt.trim()) return false;
+      if (active || session.running || !prompt.trim()) return false;
       const controller = new AbortController();
       update({
         ...state,
@@ -613,7 +623,13 @@ export function createConversation(session: Session, model: string, locale: Loca
             update(
               {
                 ...reduceEvent(state, event, now, t),
-                activity: reduce(state.activity, event, now),
+                activity: reduce(
+                  event.type === "session_start" && !state.running
+                    ? reduce(state.activity, { type: "submit" }, now)
+                    : state.activity,
+                  event,
+                  now,
+                ),
               },
               event.type === "subagent_event",
             );
@@ -628,18 +644,20 @@ export function createConversation(session: Session, model: string, locale: Loca
         })
         .finally(() => {
           active = undefined;
-          update({ ...state, running: false, waitingSubagents: 0 });
+          if (!session.running) update({ ...state, running: false, waitingSubagents: 0 });
         });
       active = { controller, promise };
       return true;
     },
-    isRunning: () => active !== undefined,
+    isRunning: () => active !== undefined || session.running,
     interrupt() {
-      if (!active) return;
+      if (!active && !session.running) return;
       dispatchActivity({ type: "interrupt" });
-      active.controller.abort();
+      session.interruptRun();
+      active?.controller.abort();
     },
     async stop() {
+      session.interruptRun();
       active?.controller.abort();
       await active?.promise;
     },

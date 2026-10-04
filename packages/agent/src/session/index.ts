@@ -106,6 +106,10 @@ export interface SessionOptions {
 export type SessionEvent = SharedSessionEvent<AgentEvent>;
 
 export interface Session {
+  /** Includes runs started internally by asyncRewake hooks. */
+  readonly running: boolean;
+  /** Cancels the current run, including one started without a frontend controller. */
+  interruptRun(): void;
   readonly id: string;
   readonly permissionMode: PermissionMode;
   readonly planMode: boolean;
@@ -310,16 +314,27 @@ async function createSessionInternal(
     }),
   });
   const pendingHookEvents: CustomSessionEvent<AgentEvent>[] = [];
+  const pendingAsyncContexts: string[] = [];
+  const pendingRewakes: string[] = [];
+  const rewakeSteering = new Map<AgentMessage, string>();
+  let rewakeChanged = Promise.withResolvers<void>();
+  let scheduleRewake: (() => void) | undefined;
   let emitSessionEndEvent: typeof emitRunEvent;
   const hooks = createHooks({
     settings: hookSettings,
     cwd,
     projectDir: cwd,
     onWarning: options.onWarning ?? console.warn,
+    onAsyncResult: (result, reason) => {
+      pendingAsyncContexts.push(...result.additionalContext, ...result.systemMessages);
+      if (reason !== undefined) pendingRewakes.push(reason);
+      scheduleRewake?.();
+    },
     onEvent: (event) => {
       if (event.type === "hook_warning" && event.event === "SessionEnd")
         return emitSessionEndEvent?.(event);
       if (emitRunEvent) return emitRunEvent(event);
+      if (emitSessionEndEvent) return emitSessionEndEvent(event);
       pendingHookEvents.push(event);
     },
   });
@@ -479,6 +494,7 @@ async function createSessionInternal(
       });
     },
   });
+  const childSessions = new Set<Session>();
   let currentResult: RunResult | undefined;
   let completedMessages = restoreContext(entries);
   const subagents = createSubagents({
@@ -528,6 +544,8 @@ async function createSessionInternal(
           }),
         },
       );
+      childSessions.add(session);
+      if (disposePromise) await session.dispose();
       return { session, steer: (message) => control.steer!(message) };
     },
     steer: (message) => agent.steer(message),
@@ -624,7 +642,14 @@ async function createSessionInternal(
       content,
       timestamp: Date.now(),
     }));
-  return {
+  let rewakeObserver: ((event: SessionEvent) => void | Promise<void>) | undefined;
+  const session = {
+    get running() {
+      return running;
+    },
+    interruptRun() {
+      runController?.abort();
+    },
     id: stored.metadata.id,
     get permissionMode() {
       return permissionConfiguration.getMode();
@@ -652,7 +677,10 @@ async function createSessionInternal(
           hooks.dispose();
           runController?.abort();
           try {
-            await hooks.run("SessionEnd", { ...hookInput(), reason }, { matchQuery: reason });
+            await Promise.all([
+              hooks.run("SessionEnd", { ...hookInput(), reason }, { matchQuery: reason }),
+              ...[...childSessions].map((child) => child.dispose(reason)),
+            ]);
           } finally {
             await mcp?.close();
           }
@@ -660,10 +688,18 @@ async function createSessionInternal(
       }
       return disposePromise;
     },
-    async run(prompt, { signal, onEvent } = {}) {
+    async run(
+      prompt: string,
+      {
+        signal,
+        onEvent,
+      }: { signal?: AbortSignal; onEvent?: (event: SessionEvent) => void | Promise<void> } = {},
+      fromHook = false,
+    ) {
       if (disposePromise) throw new Error("Session has been disposed.");
       if (running) throw new Error("Session already has an active Run.");
       running = true;
+      rewakeObserver = onEvent;
       runController = new AbortController();
       signal = signal ? AbortSignal.any([signal, runController.signal]) : runController.signal;
       planTakenOver = false;
@@ -783,7 +819,7 @@ async function createSessionInternal(
             result.reason = hookStopReason;
             return result;
           }
-          if (!internal.parentSessionId) {
+          if (!internal.parentSessionId && !fromHook) {
             const promptHook = await hooks.run(
               "UserPromptSubmit",
               { ...hookInput(), prompt },
@@ -798,7 +834,7 @@ async function createSessionInternal(
               return result;
             }
             promptContexts.push(...promptHook.additionalContext);
-          } else {
+          } else if (internal.parentSessionId) {
             const started = await hooks.run("SubagentStart", hookInput(), {
               signal,
               matchQuery: internal.agentType,
@@ -855,6 +891,24 @@ async function createSessionInternal(
             ...(options.reminderSources ?? []),
             ...toolState.reminderSources,
           ];
+          const injectAsyncContexts = async (messages: AgentMessage[]) => {
+            const reminders = pendingAsyncContexts.splice(0).map((content) => ({
+              role: "system-reminder" as const,
+              source: "async-hook",
+              content,
+              timestamp: Date.now(),
+            }));
+            for (const reminder of reminders) {
+              await branch.appendMessage(reminder, context);
+              transcriptMessages.push(reminder);
+              await emit({
+                type: "reminder_injected",
+                source: reminder.source,
+                content: reminder.content,
+              });
+            }
+            return [...messages, ...reminders];
+          };
           agent.prepareRequest = async ({ context: requestContext }, turnSignal) => {
             let contextChanged = false;
             // A compact hook may wait across tool turns. Consume its context only
@@ -913,7 +967,8 @@ async function createSessionInternal(
                 [planReminder],
                 (options.now ?? (() => new Date()))(),
               );
-              if (!changed.length) return contextChanged ? { context: requestContext } : undefined;
+              if (!changed.length && !pendingAsyncContexts.length)
+                return contextChanged ? { context: requestContext } : undefined;
               for (const reminder of changed) {
                 await branch.appendMessage(reminder, context);
                 transcriptMessages.push(reminder);
@@ -923,7 +978,7 @@ async function createSessionInternal(
                   content: reminder.content,
                 });
               }
-              const messages = [...requestContext.messages, ...changed];
+              const messages = await injectAsyncContexts([...requestContext.messages, ...changed]);
               agent.state.messages = messages;
               return { context: { ...requestContext, messages } };
             }
@@ -964,8 +1019,8 @@ async function createSessionInternal(
                 content: reminder.content,
               });
             }
-            const messages = restoreContext(
-              await branch.findEntries({ order: "oldestFirst" }, context),
+            const messages = await injectAsyncContexts(
+              restoreContext(await branch.findEntries({ order: "oldestFirst" }, context)),
             );
             agent.state.messages = messages;
             inputTokens = undefined;
@@ -1019,6 +1074,7 @@ async function createSessionInternal(
               completedMessages = structuredClone(agent.state.messages);
             if (event.type === "message_end") {
               if (event.message.role === "user") userMessageSequence++;
+              rewakeSteering.delete(event.message);
               subagents.delivered(event.message);
               await branch.appendMessage(event.message, context);
               transcriptMessages.push(event.message);
@@ -1089,12 +1145,12 @@ async function createSessionInternal(
           ]);
           while (!planTakenOver && !hookStopped) {
             signal?.throwIfAborted();
-            if (subagents.hasNotifications) {
+            if (rewakeSteering.size || subagents.hasNotifications) {
               await agent.continue();
               continue;
             }
             if (subagents.count) {
-              const changed = subagents.wait();
+              const changed = Promise.race([subagents.wait(), rewakeChanged.promise]);
               await emit({ type: "subagents_waiting", count: subagents.count });
               await changed;
               continue;
@@ -1126,7 +1182,14 @@ async function createSessionInternal(
             );
             applyHookControl(stopped);
             signal?.throwIfAborted();
-            if (hookStopped || stopped.decision !== "block") break;
+            if (hookStopped) break;
+            if (stopped.decision !== "block") {
+              if (rewakeSteering.size) {
+                await agent.continue();
+                continue;
+              }
+              break;
+            }
             if (stopHookContinuations >= 8) {
               const message = `${stopEvent} hook reached the 8 continuation limit; ignoring block`;
               (options.onWarning ?? console.warn)(message);
@@ -1157,6 +1220,8 @@ async function createSessionInternal(
         } finally {
           subagents.abort();
           agent.clearSteeringQueue();
+          pendingRewakes.push(...rewakeSteering.values());
+          rewakeSteering.clear();
           await subagents.settle();
           signal?.removeEventListener("abort", abort);
           unsubscribe?.();
@@ -1193,12 +1258,37 @@ async function createSessionInternal(
         } finally {
           currentResult = undefined;
           emitRunEvent = undefined;
-          running = false;
+          pendingRewakes.push(...rewakeSteering.values());
+          rewakeSteering.clear();
+          agent.clearSteeringQueue();
           runController = undefined;
           runMcp = undefined;
+          running = false;
+          scheduleRewake?.();
         }
       }
       return result;
     },
+  } satisfies Session;
+  scheduleRewake = () => {
+    if (disposePromise) return;
+    if (running) {
+      for (const reason of pendingRewakes.splice(0)) {
+        const message: AgentMessage = {
+          role: "user",
+          content: [{ type: "text", text: reason }],
+          timestamp: Date.now(),
+        };
+        rewakeSteering.set(message, reason);
+        agent.steer(message);
+        rewakeChanged.resolve();
+        rewakeChanged = Promise.withResolvers<void>();
+      }
+    } else if (pendingRewakes.length) {
+      const reason = pendingRewakes.shift()!;
+      void session.run(reason, { onEvent: rewakeObserver }, true).catch(() => {});
+    }
   };
+  scheduleRewake();
+  return session;
 }

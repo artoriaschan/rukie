@@ -11,7 +11,7 @@ export interface CommandOutput {
 export async function executeCommand(
   handler: Extract<HookHandler, { type: "command" }>,
   input: unknown,
-  options: { cwd: string; projectDir: string; signal?: AbortSignal; timeout: number },
+  options: { cwd: string; projectDir: string; signal?: AbortSignal; timeout?: number },
 ): Promise<CommandOutput> {
   options.signal?.throwIfAborted();
   return new Promise((resolve, reject) => {
@@ -39,16 +39,19 @@ export async function executeCommand(
       }
     };
     const abort = () => kill(new Error("Hook cancelled"));
-    const timer = setTimeout(
-      () =>
-        kill(
-          createUserVisibleError(`Hook timed out after ${options.timeout}s`, {
-            code: "hook-timeout",
-            params: { timeout: String(options.timeout) },
-          }),
-        ),
-      options.timeout * 1000,
-    );
+    const timer =
+      options.timeout === undefined
+        ? undefined
+        : setTimeout(
+            () =>
+              kill(
+                createUserVisibleError(`Hook timed out after ${options.timeout}s`, {
+                  code: "hook-timeout",
+                  params: { timeout: String(options.timeout) },
+                }),
+              ),
+            options.timeout * 1000,
+          );
     options.signal?.addEventListener("abort", abort, { once: true });
     const cleanup = () => {
       clearTimeout(timer);
