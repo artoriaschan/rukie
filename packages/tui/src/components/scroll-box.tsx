@@ -15,12 +15,20 @@ export interface ScrollBoxProps extends BoxProps {
   ref?: Ref<ScrollHandle>;
   onScroll?(snapshot: ScrollSnapshot): void;
   initialFollow?: boolean;
+  /** Restore a reading position before the first painted frame. */
+  initialTop?: number;
 }
 
 /** An independently clipped column; content is measured outside the viewport's flex layout. */
-export function ScrollBox({ ref, onScroll, initialFollow = true, ...props }: ScrollBoxProps) {
+export function ScrollBox({
+  ref,
+  onScroll,
+  initialFollow = true,
+  initialTop = 0,
+  ...props
+}: ScrollBoxProps) {
   const terminal = useTerminal();
-  const scroll = useMemo(() => createScrollState(initialFollow), []);
+  const scroll = useMemo(() => createScrollState(initialFollow, initialTop), []);
   const snapshot = useSyncExternalStore(scroll.subscribe, scroll.getSnapshot);
   useImperativeHandle(ref, () => scroll, [scroll]);
   useLayoutEffect(() => scroll.connect(terminal.redraw), [scroll, terminal]);

@@ -32,6 +32,26 @@
  */
 
 const zh = {
+  "subagent.dashboard": "子代理",
+  "subagent.none": "暂无子代理",
+  "subagent.empty-hint": "模型委派任务后会显示在这里",
+  "subagent.dashboard-hint": "↑/↓ 选择 · Enter 详情 · Esc 关闭",
+  "subagent.summary": "摘要",
+  "subagent.output": "输出",
+  "subagent.tools": "工具",
+  "subagent.model": "模型",
+  "subagent.duration": "时长",
+  "subagent.started": "开始",
+  "subagent.ended": "结束",
+  "subagent.status": "状态",
+  "subagent.thinking": "思考",
+  "subagent.conclusion": "结论",
+  "subagent.interrupt": "X 中断",
+  "subagent.detail-hint": "←/→ 换页 · ↑/↓ 滚动 · Esc 返回",
+  "subagent.thinking-hint": "Enter 展开/折叠思考",
+  "subagent.no-output": "暂无输出",
+  "subagent.no-tools": "暂无工具调用",
+
   "subagent.prefix": "子代理：",
   "subagent.default-model": "默认",
   "subagent.status.idle": "空闲",
@@ -165,6 +185,26 @@ const zh = {
 } as const;
 
 const en = {
+  "subagent.dashboard": "Subagents",
+  "subagent.none": "No subagents yet",
+  "subagent.empty-hint": "Delegated work will appear here",
+  "subagent.dashboard-hint": "↑/↓ select · Enter detail · Esc close",
+  "subagent.summary": "Summary",
+  "subagent.output": "Output",
+  "subagent.tools": "Tools",
+  "subagent.model": "Model",
+  "subagent.duration": "Duration",
+  "subagent.started": "Started",
+  "subagent.ended": "Ended",
+  "subagent.status": "Status",
+  "subagent.thinking": "Thinking",
+  "subagent.conclusion": "Conclusion",
+  "subagent.interrupt": "X interrupt",
+  "subagent.detail-hint": "←/→ pages · ↑/↓ scroll · Esc back",
+  "subagent.thinking-hint": "Enter expand/fold thinking",
+  "subagent.no-output": "No output yet",
+  "subagent.no-tools": "No tool calls yet",
+
   "subagent.prefix": "Subagent: ",
   "subagent.default-model": "default",
   "subagent.status.idle": "idle",

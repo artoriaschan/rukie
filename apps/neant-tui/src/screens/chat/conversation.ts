@@ -440,9 +440,22 @@ export function createConversation(session: Session, model: string, locale: Loca
   };
   const listeners = new Set<() => void>();
   let active: { controller: AbortController; promise: Promise<unknown> } | undefined;
-  const update = (next: ViewState) => {
+  let notificationTimer: ReturnType<typeof setTimeout> | undefined;
+  const update = (next: ViewState, deferNotification = false) => {
     state = next;
-    listeners.forEach((listener) => listener());
+    if (!deferNotification) {
+      clearTimeout(notificationTimer);
+      notificationTimer = undefined;
+      listeners.forEach((listener) => listener());
+      return;
+    }
+    if (!listeners.size || notificationTimer !== undefined) return;
+    // Fold every event immediately and in order; only React's notification is
+    // coalesced so eight child Runs cannot nest dozens of sync store renders.
+    notificationTimer = setTimeout(() => {
+      notificationTimer = undefined;
+      listeners.forEach((listener) => listener());
+    }, 0);
   };
   const dispatchActivity = (event: Parameters<typeof reduce>[1]) => {
     update({ ...state, activity: reduce(state.activity, event, Date.now()) });
@@ -455,6 +468,10 @@ export function createConversation(session: Session, model: string, locale: Loca
       listeners.add(listener);
       return () => {
         listeners.delete(listener);
+        if (!listeners.size) {
+          clearTimeout(notificationTimer);
+          notificationTimer = undefined;
+        }
       };
     },
     submit(prompt: string) {
@@ -477,10 +494,13 @@ export function createConversation(session: Session, model: string, locale: Loca
           signal: controller.signal,
           onEvent: (event) => {
             const now = Date.now();
-            update({
-              ...reduceEvent(state, event, now, t),
-              activity: reduce(state.activity, event, now),
-            });
+            update(
+              {
+                ...reduceEvent(state, event, now, t),
+                activity: reduce(state.activity, event, now),
+              },
+              event.type === "subagent_event",
+            );
           },
         })
         .catch((error: unknown) => {

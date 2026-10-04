@@ -26,8 +26,11 @@ import {
   StatusLine,
   ToolCall,
   SubagentMessage,
+  SubagentDashboard,
+  SubagentDetailScene,
   UserMessage,
 } from "../../components";
+import type { DetailPage } from "../../components/subagent-detail";
 import { createTuiI18n } from "../../i18n";
 import { createInputHistory } from "../../input-history";
 import { createConversation } from "./conversation";
@@ -128,6 +131,38 @@ function Chat({
       live.questionIndex === userQuestion.questionIndex
     );
   };
+  type View = "chat" | "dashboard" | { detail: string; from: "chat" | "dashboard" };
+  const [view, setView] = useState<View>("chat");
+  const viewRef = useRef<View>("chat");
+  const switchView = (next: View) => {
+    viewRef.current = next;
+    setView(next);
+  };
+  const [focusIndex, setFocusIndex] = useState(0);
+  const focusRef = useRef(0);
+  const [page, setPage] = useState<DetailPage>("summary");
+  const pageRef = useRef<DetailPage>("summary");
+  const [thinkingOpen, setThinkingOpen] = useState(false);
+  const subagentScroll = useRef<ScrollHandle>(null);
+  const savedChatScroll = useRef<ScrollSnapshot | undefined>(undefined);
+  const savedDashboardScroll = useRef<ScrollSnapshot | undefined>(undefined);
+  const openDetail = (id: string, from: "chat" | "dashboard") => {
+    if (from === "chat") savedChatScroll.current = body.current?.getSnapshot();
+    else savedDashboardScroll.current = subagentScroll.current?.getSnapshot();
+    pageRef.current = "summary";
+    setPage("summary");
+    setThinkingOpen(false);
+    switchView({ detail: id, from });
+  };
+  const closeView = () => {
+    const current = viewRef.current;
+    const next = typeof current === "object" ? current.from : "chat";
+    switchView(next);
+  };
+  const turnPage = (next: DetailPage) => {
+    pageRef.current = next;
+    setPage(next);
+  };
   const [input, setInput] = useState("");
   const [todosCollapsed, setTodosCollapsed] = useState(false);
   const toggleTodos = () => setTodosCollapsed((collapsed) => !collapsed);
@@ -138,6 +173,22 @@ function Chat({
   const body = useRef<ScrollHandle>(null);
   const details = useRef<ScrollHandle>(null);
   const [bodyScroll, setBodyScroll] = useState<ScrollSnapshot>();
+  useEffect(() => {
+    if (view !== "chat" && view !== "dashboard" && page === "output")
+      subagentScroll.current?.scrollBy(-Infinity);
+  }, [thinkingOpen, page]);
+  const selectedSubagent = typeof view === "object" ? state.subagents[view.detail] : undefined;
+  useEffect(() => {
+    if (
+      view === "chat" ||
+      view === "dashboard" ||
+      page !== "output" ||
+      selectedSubagent?.status !== "running"
+    )
+      return;
+    subagentScroll.current?.scrollToBottom();
+  }, [view, page, selectedSubagent?.output, selectedSubagent?.status]);
+
   const [scrollFocus, setScrollFocus] = useState<"body" | "details">("body");
   const [unread, setUnread] = useState(false);
   const previousOutput = useRef({
@@ -248,6 +299,69 @@ function Chat({
     hasTodos ? [3] : [],
   );
   useInput((event) => {
+    const currentView = viewRef.current;
+    if (currentView !== "chat") {
+      if (event.type === "wheel") subagentScroll.current?.scrollBy(event.delta * 3);
+      if (event.type !== "key") return;
+      const { key } = event;
+      if (key.name === "escape" || (key.ctrl && key.name === "c")) {
+        closeView();
+        return;
+      }
+      if (currentView === "dashboard") {
+        const agents = Object.values(conversation.getSnapshot().subagents);
+        if (key.name === "up" || key.name === "down") {
+          focusRef.current = Math.max(
+            0,
+            Math.min(agents.length - 1, focusRef.current + (key.name === "up" ? -1 : 1)),
+          );
+          setFocusIndex(focusRef.current);
+          const viewport = subagentScroll.current?.getSnapshot();
+          const selected = agents[focusRef.current];
+          if (viewport && selected) {
+            const preview = (agent: typeof selected) =>
+              Number(agent.status === "running" && agent.outputLines.length > 0);
+            const top = agents
+              .slice(0, focusRef.current)
+              .reduce((sum, agent) => sum + 3 + preview(agent), 0);
+            const bottom = top + 1 + preview(selected);
+            if (top < viewport.top) subagentScroll.current?.scrollBy(top - viewport.top);
+            else if (bottom > viewport.top + viewport.height)
+              subagentScroll.current?.scrollBy(bottom - viewport.top - viewport.height);
+          }
+        } else if (key.name === "enter" && !key.ctrl && !key.alt && !key.shift) {
+          const selected = agents[focusRef.current];
+          if (selected) openDetail(selected.agentId, "dashboard");
+        }
+      } else {
+        if (key.name === "left" || key.name === "right") {
+          const pages: DetailPage[] = ["summary", "output", "tools"];
+          turnPage(pages[(pages.indexOf(pageRef.current) + (key.name === "left" ? 2 : 1)) % 3]!);
+        } else if (key.name === "up" || key.name === "down")
+          subagentScroll.current?.scrollBy(key.name === "up" ? -3 : 3);
+        else if (!key.ctrl && !key.alt && event.input.toLowerCase() === "x")
+          session.interruptSubagent(currentView.detail);
+        else if (key.name === "enter" && !key.ctrl && !key.alt && !key.shift) {
+          if (pageRef.current === "output") setThinkingOpen((open) => !open);
+          else closeView();
+        }
+      }
+      return;
+    }
+    if (
+      event.type === "key" &&
+      event.key.ctrl &&
+      event.key.name === "a" &&
+      !event.key.alt &&
+      !event.key.shift
+    ) {
+      savedChatScroll.current = body.current?.getSnapshot();
+      savedDashboardScroll.current = undefined;
+      focusRef.current = 0;
+      setFocusIndex(0);
+      switchView("dashboard");
+      return;
+    }
     if (event.type === "move") return;
     if (event.type === "wheel") {
       if (small) return;
@@ -378,6 +492,7 @@ function Chat({
                     columns={columns}
                     effort={thinking}
                     locale={locale}
+                    onClick={() => openDetail(entry.agentId!, "chat")}
                   />
                 )}
               </Box>
@@ -394,11 +509,41 @@ function Chat({
       }),
     [state.completed, state.subagents, columns, thinking, locale],
   );
+  if (view === "dashboard")
+    return (
+      <SubagentDashboard
+        subagents={Object.values(state.subagents)}
+        focusIndex={focusIndex}
+        scrollRef={subagentScroll}
+        rows={rows}
+        columns={columns}
+        locale={locale}
+        onClose={closeView}
+        initialTop={savedDashboardScroll.current?.top ?? 0}
+        onSelect={(id) => openDetail(id, "dashboard")}
+      />
+    );
+  if (typeof view === "object" && selectedSubagent)
+    return (
+      <SubagentDetailScene
+        subagent={selectedSubagent}
+        page={page}
+        thinkingOpen={thinkingOpen}
+        scrollRef={subagentScroll}
+        rows={rows}
+        locale={locale}
+        onBack={closeView}
+        onPage={turnPage}
+        onInterrupt={() => session.interruptSubagent(selectedSubagent.agentId)}
+      />
+    );
   return (
     <Box flexDirection="column" height={rows}>
       <ScrollBox
         ref={body}
         onScroll={setBodyScroll}
+        initialFollow={savedChatScroll.current?.following ?? true}
+        initialTop={savedChatScroll.current?.top ?? 0}
         height={small ? 0 : undefined}
         flexGrow={small ? 0 : 1}
       >
@@ -522,10 +667,12 @@ function Chat({
               value={input}
               onChange={(value) => {
                 const pending = interactions.getSnapshot();
+                if (viewRef.current !== "chat") return;
                 if (!pending || (pending.kind === "question" && pending.collapsed)) change(value);
               }}
               onSubmit={(prompt) => {
                 const pending = interactions.getSnapshot();
+                if (viewRef.current !== "chat") return;
                 if (pending && (pending.kind !== "question" || !pending.collapsed)) return;
                 if (submit(prompt)) {
                   body.current?.scrollToBottom();

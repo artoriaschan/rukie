@@ -20,7 +20,10 @@ interface SubagentOptions {
 /** Owns only the current parent's child runs; storage and the agent loop remain Session's. */
 export function createSubagents(options: SubagentOptions) {
   let types = new Map<string, SubagentType>();
-  const running = new Map<symbol, { controller: AbortController; done?: Promise<RunResult> }>();
+  const running = new Map<
+    symbol,
+    { controller: AbortController; agentId?: string; done?: Promise<RunResult> }
+  >();
   const notifications = new Set<AgentMessage>();
   let changed = Promise.withResolvers<void>();
   let aborted = false;
@@ -41,6 +44,7 @@ export function createSubagents(options: SubagentOptions) {
     const key = Symbol();
     const entry = {
       controller: new AbortController(),
+      agentId: undefined as string | undefined,
       done: undefined as Promise<RunResult> | undefined,
     };
     running.set(key, entry);
@@ -52,6 +56,7 @@ export function createSubagents(options: SubagentOptions) {
       wake();
       throw error;
     }
+    entry.agentId = session.id;
     const details = { agentId: session.id, childSessionId: session.id };
     entry.done = (async () => {
       let result: RunResult = {
@@ -179,6 +184,9 @@ export function createSubagents(options: SubagentOptions) {
     },
     wait() {
       return changed.promise;
+    },
+    interrupt(id: string) {
+      for (const entry of running.values()) if (entry.agentId === id) entry.controller.abort();
     },
     abort() {
       aborted = true;
