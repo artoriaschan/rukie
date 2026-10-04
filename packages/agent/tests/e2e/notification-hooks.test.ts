@@ -600,3 +600,56 @@ test("HTTP notification runs beside permission interaction and warns while disca
     server.stop(true);
   }
 });
+
+test("a notification event observer can cancel a pending session permission interaction", async () => {
+  dirs = await tempDirs();
+  const controller = new AbortController();
+  let asks = 0;
+  let notices = 0;
+  const fake = fakeModel([
+    fauxAssistantMessage(fauxToolCall("bash", { command: "touch forbidden" }), {
+      stopReason: "toolUse",
+    }),
+  ]);
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    permissionMode: "ask",
+    settings: {
+      hooks: {
+        Notification: [
+          {
+            hooks: [
+              {
+                type: "command",
+                command: `cat >/dev/null; echo '{"systemMessage":"cancel this request"}'`,
+              },
+            ],
+          },
+        ],
+      },
+    },
+    onPermissionAsk: async () => {
+      asks++;
+      return new Promise(() => {});
+    },
+  });
+  try {
+    await expect(
+      session.run("try", {
+        signal: controller.signal,
+        onEvent(event) {
+          if (event.type === "hook_message") {
+            notices++;
+            controller.abort();
+          }
+        },
+      }),
+    ).rejects.toThrow();
+    expect(asks).toBe(1);
+    expect(notices).toBe(1);
+    expect(await Bun.file(join(dirs.cwd, "forbidden")).exists()).toBe(false);
+  } finally {
+    await session.dispose();
+  }
+});

@@ -17,16 +17,17 @@ export async function requestInteraction<Request extends { signal: AbortSignal }
 ): Promise<Reply> {
   const { signal } = request;
   if (signal.aborted) return cancelled;
-  // Notifications are side effects and never delay or fail the interaction.
-  try {
-    void Promise.resolve(start?.notify?.(start.notification, signal)).catch(() => {});
-  } catch {
-    /* A synchronous notification failure cannot suppress the frontend request. */
-  }
   const aborted = Promise.withResolvers<Reply>();
   const abort = () => aborted.resolve(cancelled);
   signal.addEventListener("abort", abort, { once: true });
   try {
+    // Notifications are side effects and never delay or fail the interaction.
+    try {
+      void Promise.resolve(start?.notify?.(start.notification, signal)).catch(() => {});
+    } catch {
+      /* A synchronous notification failure cannot suppress the frontend request. */
+    }
+    if (signal.aborted) return cancelled;
     const reply = await Promise.race([respond(request), aborted.promise]);
     return signal.aborted ? cancelled : reply;
   } finally {
