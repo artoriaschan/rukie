@@ -9,7 +9,7 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] e2e：`ask` 下调用触发审批，批准后 `planMode` 为 true，下一次模型调用有 plan reminder
 - [ ] e2e：`auto-review` 下不走 reviewer，直接问用户；`full-access` 下不问直接进入

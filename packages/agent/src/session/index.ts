@@ -37,7 +37,13 @@ import {
   type PermissionAskRequest,
   type SessionAllowRule,
 } from "../permissions/index.ts";
-import { createBuiltinTools, type QuestionRequest, type QuestionReply, type OnPlanReview } from "../tools/index.ts";
+import {
+  createBuiltinTools,
+  createEnterPlanModeTool,
+  type QuestionRequest,
+  type QuestionReply,
+  type OnPlanReview,
+} from "../tools/index.ts";
 import { SYSTEM_PROMPT } from "../prompt/index.ts";
 import {
   collectReminders,
@@ -358,13 +364,12 @@ async function createSessionInternal(
           currentResult.usage[key] += usage[key];
     },
   });
-  const initialTools = createBuiltinTools(
-    cwd,
-    (name) => skills.get(name),
-    setTodo,
-    onQuestion,
-    options.homeDir,
-  );
+  const planTools =
+    options.onPlanReview && !internal.parentSessionId ? [createEnterPlanModeTool(plan)] : [];
+  const initialTools = [
+    ...createBuiltinTools(cwd, (name) => skills.get(name), setTodo, onQuestion, options.homeDir),
+    ...planTools,
+  ];
   if (!internal.parentSessionId) {
     const discovered = await discoverSubagentTypes(
       cwd,
@@ -467,6 +472,7 @@ async function createSessionInternal(
               onQuestion,
               options.homeDir,
             ),
+            ...planTools,
             ...mcp.tools,
           ];
           if (!internal.parentSessionId) {

@@ -24,6 +24,7 @@ import { createTodoTool } from "./todo.ts";
 import type { TodoItem } from "../tool-state/index.ts";
 export type { PlanReviewRequest, PlanReviewResult, OnPlanReview } from "./plan-review.ts";
 export type { Question, QuestionRequest, QuestionReply } from "./question.ts";
+export { createEnterPlanModeTool } from "./enter-plan-mode.ts";
 
 /** pi's built-ins use the harness context; Agent uses an AbortSignal. */
 function adaptTool<T extends TSchema, D>(

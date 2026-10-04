@@ -53,6 +53,7 @@ function decidePermission({ mode, toolName }: PermissionOptions): PermissionDeci
     ].includes(toolName)
   )
     return "allow";
+  if (toolName === "enter_plan_mode") return "ask";
   return mode === "auto-review" ? "review" : "ask";
 }
 
