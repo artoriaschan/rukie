@@ -261,7 +261,12 @@ export function createHooks(options: {
                         signal: executionSignal,
                         timeout: background ? undefined : timeout,
                       });
-              if (event !== "Notification" && handler.type === "command" && handler.asyncRewake && output.exitCode === 2)
+              if (
+                event !== "Notification" &&
+                handler.type === "command" &&
+                handler.asyncRewake &&
+                output.exitCode === 2
+              )
                 rewakeReason = output.stderr.trim();
               const warnExit = async () => {
                 if (output.exitCode !== 0 && output.exitCode !== 2)
@@ -295,8 +300,21 @@ export function createHooks(options: {
                 }
               }
               await warnExit();
+              const ignored = (field: string) =>
+                warn(`Ignoring invalid or unsupported hook output field: ${field}`, {
+                  code: "hook-output-ignored",
+                  params: { field },
+                });
               if (event === "Notification") {
                 // All notifications, including asyncRewake, are display-only side effects.
+                for (const [field, value] of Object.entries(json)) {
+                  if (field === "systemMessage" && typeof value === "string") continue;
+                  if (field === "hookSpecificOutput" && object(value)) {
+                    for (const [name, outputValue] of Object.entries(value))
+                      if (name !== "hookEventName" || outputValue !== event)
+                        await ignored(`hookSpecificOutput.${name}`);
+                  } else await ignored(field);
+                }
                 if (typeof json.systemMessage === "string") {
                   const message = truncate(json.systemMessage);
                   result.systemMessages.push(message);
@@ -304,11 +322,6 @@ export function createHooks(options: {
                 }
                 return;
               }
-              const ignored = (field: string) =>
-                warn(`Ignoring invalid or unsupported hook output field: ${field}`, {
-                  code: "hook-output-ignored",
-                  params: { field },
-                });
               const supportsBlockingDecision =
                 event === "UserPromptSubmit" ||
                 event === "Stop" ||

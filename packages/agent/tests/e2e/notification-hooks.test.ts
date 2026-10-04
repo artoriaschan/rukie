@@ -376,10 +376,12 @@ exit 2
       fauxAssistantMessage("next prompt done"),
     ]);
     let notices = 0;
+    const ignoredFields: string[] = [];
     const session = await createSession({
       ...dirs,
       ...fake,
       permissionMode: "ask",
+      onWarning: () => {},
       settings: {
         hooks: {
           Notification: [
@@ -402,6 +404,8 @@ exit 2
         (
           await session.run("first", {
             onEvent(event) {
+              if (event.type === "hook_warning" && event.error?.code === "hook-output-ignored")
+                ignoredFields.push(event.error.params.field);
               if (event.type === "hook_message") {
                 notices++;
                 noticed.resolve();
@@ -414,6 +418,12 @@ exit 2
       await Bun.write(join(dirs.cwd, "release-notice"), "release");
       await waitForNotification(noticed.promise);
       expect(notices).toBe(1);
+      expect(ignoredFields).toEqual([
+        "continue",
+        "stopReason",
+        "decision",
+        "hookSpecificOutput.additionalContext",
+      ]);
       expect(session.running).toBe(false);
       expect(fake.contexts).toHaveLength(2);
       expect((await session.run("next")).text).toBe("next prompt done");
@@ -492,5 +502,101 @@ test("parent disposal kills completed child async notification processes", async
         /* Closed. */
       }
     }
+  }
+});
+
+test("HTTP notification runs beside permission interaction and warns while discarding control output", async () => {
+  dirs = await tempDirs();
+  const answered = Promise.withResolvers<void>();
+  const noticed = Promise.withResolvers<void>();
+  const inputs: unknown[] = [];
+  const events: SessionEvent[] = [];
+  let requests = 0;
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    async fetch(request) {
+      requests++;
+      inputs.push(await request.json());
+      await answered.promise;
+      return Response.json({
+        continue: false,
+        decision: "block",
+        systemMessage: "HTTP approval notice",
+        hookSpecificOutput: {
+          hookEventName: "Notification",
+          additionalContext: "HTTP forbidden context",
+        },
+      });
+    },
+  });
+  const fake = fakeModel([
+    fauxAssistantMessage(fauxToolCall("bash", { command: "printf approved" }), {
+      stopReason: "toolUse",
+    }),
+    async () => {
+      await waitForNotification(noticed.promise);
+      return fauxAssistantMessage("HTTP done");
+    },
+  ]);
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    permissionMode: "ask",
+    onWarning: () => {},
+    settings: {
+      hooks: {
+        Notification: [
+          { matcher: "permission_prompt", hooks: [{ type: "http", url: server.url.toString() }] },
+          {
+            matcher: "permission_prompt",
+            hooks: [{ type: "http", url: new URL("filtered", server.url).toString(), if: "bash" }],
+          },
+        ],
+      },
+    },
+    onPermissionAsk: async () => {
+      answered.resolve();
+      return "allow";
+    },
+  });
+  try {
+    expect(
+      (
+        await session.run("try", {
+          onEvent(event) {
+            events.push(event);
+            if (event.type === "hook_message") noticed.resolve();
+          },
+        })
+      ).text,
+    ).toBe("HTTP done");
+    expect(requests).toBe(1);
+    expect(inputs).toMatchObject([
+      {
+        hook_event_name: "Notification",
+        notification_type: "permission_prompt",
+        session_id: session.id,
+      },
+    ]);
+    expect(events.filter((event) => event.type === "hook_message")).toMatchObject([
+      { message: "HTTP approval notice" },
+    ]);
+    expect(
+      events.flatMap((event) =>
+        event.type === "hook_warning" && event.error?.code === "hook-output-ignored"
+          ? [event.error.params.field]
+          : [],
+      ),
+    ).toEqual(["continue", "decision", "hookSpecificOutput.additionalContext"]);
+    expect(JSON.stringify(fake.contexts)).not.toContain("HTTP forbidden context");
+    expect(
+      events.some(
+        (event) => event.type === "hook_warning" && event.error?.code === "hook-if-nontool",
+      ),
+    ).toBe(true);
+  } finally {
+    await session.dispose();
+    server.stop(true);
   }
 });
