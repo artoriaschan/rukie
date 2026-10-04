@@ -156,7 +156,7 @@ test.each([
 ])("CLI permissions: %s", async (mode) => {
   const settings =
     mode === "settings"
-      ? { allowTools: ["write", "bash"] }
+      ? { permissions: { allow: ["write", "bash"] } }
       : ["mode-settings", "override"].includes(mode)
         ? { permissionMode: "full-access" }
         : {};

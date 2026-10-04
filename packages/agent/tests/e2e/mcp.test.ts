@@ -210,7 +210,7 @@ test.each(["success", "server-error"])(
         await createSession({
           ...dirs,
           ...fake,
-          allowTools: ["mcp__remote__*"],
+          allowRules: ["mcp__remote__*"],
           onWarning: () => {},
         })
       ).run("use remote", {
@@ -348,7 +348,7 @@ test("bad servers emit errors and warnings while the healthy server and Run rema
   const session = await createSession({
     ...dirs,
     ...fake,
-    allowTools: ["mcp__healthy__*"],
+    allowRules: ["mcp__healthy__*"],
     onWarning: (warning) => {
       warnings.push(warning);
     },
@@ -461,7 +461,7 @@ test.each(["initialize", "model", "tool"])(
     const session = await createSession({
       ...dirs,
       ...fake,
-      allowTools: ["mcp__local__*"],
+      allowRules: ["mcp__local__*"],
       onWarning: () => {},
     });
     const running = session
@@ -501,7 +501,7 @@ test.each([false, true])(
     const session = await createSession({
       ...dirs,
       ...fake,
-      allowTools: allowed ? ["mcp__local__*"] : [],
+      allowRules: allowed ? ["mcp__local__*"] : [],
     });
     expect(
       (

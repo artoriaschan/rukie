@@ -63,20 +63,20 @@ test("malformed project providers are ignored, not fatal", async () => {
   expect(warnings).toHaveLength(1);
 });
 
-test("project settings override model, reviewModel and allowTools only", async () => {
+test("project settings override model and reviewModel only", async () => {
   dirs = await tempDirs();
   await Bun.write(
     join(dirs.homeDir, ".neant/settings.json"),
-    JSON.stringify({ model: "a/x", thinking: "low", allowTools: ["bash"] }),
+    JSON.stringify({ model: "a/x", thinking: "low" }),
   );
   await Bun.write(
     join(dirs.cwd, ".neant/settings.json"),
-    JSON.stringify({ model: "b/y", thinking: "high", allowTools: [], trustedProjects: ["/"] }),
+    JSON.stringify({ model: "b/y", thinking: "high", trustedProjects: ["/"] }),
   );
 
   const { settings } = await loadSettings({ cwd: dirs.cwd, homeDir: dirs.homeDir });
 
-  expect(settings).toEqual({ model: "b/y", thinking: "low", allowTools: [] });
+  expect(settings).toEqual({ model: "b/y", thinking: "low" });
 });
 
 test.each(["ask", "auto-review", "full-access"])("user settings accept mode %s", async (mode) => {
@@ -248,3 +248,67 @@ test("invalid permission rules carry a typed source and untouched rule", async (
     params: { source: "settings.permissions", rule },
   });
 });
+
+test.each([false, true])(
+  "project restrictions append while allow requires trust: %s",
+  async (trusted) => {
+    dirs = await tempDirs();
+    await Bun.write(
+      join(dirs.homeDir, ".neant/settings.json"),
+      JSON.stringify({
+        trustedProjects: trusted ? [dirs.cwd] : [],
+        permissions: {
+          allow: ["bash(git status*)"],
+          ask: ["bash(git push*)"],
+          deny: ["read(~/.ssh/**)"],
+        },
+      }),
+    );
+    const projectFile = join(dirs.cwd, ".neant/settings.json");
+    await Bun.write(
+      projectFile,
+      JSON.stringify({
+        trustedProjects: [dirs.cwd],
+        permissions: { allow: ["write"], ask: ["edit"], deny: ["bash(rm *)"] },
+      }),
+    );
+    const { settings, warnings } = await loadSettings(dirs);
+    expect(settings.permissions).toEqual({
+      allow: trusted ? ["bash(git status*)", "write"] : ["bash(git status*)"],
+      ask: ["bash(git push*)", "edit"],
+      deny: ["read(~/.ssh/**)", "bash(rm *)"],
+    });
+    expect(warnings).toEqual(
+      trusted ? [] : [expect.stringContaining(`${projectFile}: ignoring "permissions.allow"`)],
+    );
+  },
+);
+
+test("trust in a parent directory does not activate a child project's allow rules", async () => {
+  dirs = await tempDirs();
+  await Bun.write(
+    join(dirs.homeDir, ".neant/settings.json"),
+    JSON.stringify({ trustedProjects: [join(dirs.cwd, "..")] }),
+  );
+  await Bun.write(
+    join(dirs.cwd, ".neant/settings.json"),
+    JSON.stringify({ permissions: { allow: ["bash"] } }),
+  );
+  const { settings, warnings } = await loadSettings(dirs);
+  expect(settings.permissions?.allow ?? []).toEqual([]);
+  expect(warnings).toHaveLength(1);
+});
+
+test.each(["user", "project"])(
+  "legacy allowTools in the %s layer fails with a typed migration error",
+  async (layer) => {
+    dirs = await tempDirs();
+    const source = join(layer === "user" ? dirs.homeDir : dirs.cwd, ".neant/settings.json");
+    await Bun.write(source, JSON.stringify({ allowTools: null }));
+    await expect(loadSettings(dirs)).rejects.toMatchObject({
+      code: "allow-tools-retired",
+      params: { source },
+      message: `${source}: "allowTools" has been removed; migrate to "permissions.allow".`,
+    });
+  },
+);

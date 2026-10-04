@@ -25,7 +25,16 @@ async function readJson(path: string): Promise<Record<string, unknown>> {
   return data as Record<string, unknown>;
 }
 
-function validate(path: string, data: unknown): Settings {
+function validate(path: string, data: Record<string, unknown>): Settings {
+  if (Object.hasOwn(data, "allowTools")) {
+    throw createUserVisibleError(
+      `${path}: "allowTools" has been removed; migrate to "permissions.allow".`,
+      {
+        code: "allow-tools-retired",
+        params: { source: path },
+      },
+    );
+  }
   const [first] = Value.Errors(SettingsSchema, data);
   if (first) throw new Error(`${path}: ${first.instancePath || "/"} ${first.message}`);
   const settings = data as Settings;
@@ -35,7 +44,9 @@ function validate(path: string, data: unknown): Settings {
 
 /**
  * Loads `~/.neant/settings.json` merged with `<cwd>/.neant/settings.json`.
- * The project file may only override `model`, `reviewModel` and `allowTools`.
+ * The project file may override `model` and `reviewModel`.
+ * Project deny/ask rules append to the user rules; allow rules append only for
+ * the exact Trusted Project used by project MCP configuration.
  * Its `providers`, `permissionMode` and `locale` are dropped (unvalidated) with a warning:
  * a project must not redirect credentials or grant itself broader permissions.
  * Language preferences belong to the user, not the project.
@@ -64,7 +75,22 @@ export async function loadSettings(options: { cwd: string; homeDir: string }) {
   }
   if (project.model !== undefined) settings.model = project.model;
   if (project.reviewModel !== undefined) settings.reviewModel = project.reviewModel;
-  if (project.allowTools !== undefined) settings.allowTools = project.allowTools;
+  const trusted = isTrustedProject(options.cwd, user);
+  if (project.permissions?.allow !== undefined && !trusted) {
+    warnings.push(
+      `${projectFile}: ignoring "permissions.allow"; only trusted projects can define allow rules.`,
+    );
+  }
+  if (project.permissions !== undefined) {
+    const permissions = { ...user.permissions };
+    for (const decision of ["deny", "ask", "allow"] as const) {
+      const rules = project.permissions[decision];
+      if (rules !== undefined && (decision !== "allow" || trusted)) {
+        permissions[decision] = [...(permissions[decision] ?? []), ...rules];
+      }
+    }
+    settings.permissions = permissions;
+  }
   return { settings, warnings };
 }
 

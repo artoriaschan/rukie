@@ -55,8 +55,8 @@ export interface SessionOptions {
   store?: SessionStore;
   /** Continue an existing Session in this project; never silently creates a new one. */
   resumeId?: string;
-  /** Additional tool-name glob patterns, combined with settings.allowTools. */
-  allowTools?: string[];
+  /** Session allow rules in settings syntax, supplied by --allow-tools. */
+  allowRules?: string[];
   /** Session permission policy; defaults to ask. */
   permissionMode?: PermissionMode;
   /** Decide tool calls requiring permission; defaults to deny. */
@@ -96,7 +96,10 @@ export interface Session {
 
 export async function createSession(options: SessionOptions): Promise<Session> {
   const settings = options.settings ?? {};
-  const rules = parsePermissionRules(settings.permissions);
+  const rules = [
+    ...parsePermissionRules(settings.permissions),
+    ...parsePermissionRules({ allow: options.allowRules }, "--allow-tools"),
+  ];
   let permissionMode = options.permissionMode ?? settings.permissionMode ?? "ask";
   if (options.model && !options.streamFn) throw new Error("`model` requires `streamFn`.");
   const { model, streamFn } = options.model
@@ -150,7 +153,6 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     homeDir: options.homeDir,
     rules,
     getMode: () => permissionMode,
-    getAllowTools: () => [...(settings.allowTools ?? []), ...(options.allowTools ?? [])],
     getAgentState: () => agent.state,
     getProjectInstructions: () =>
       transcriptMessages.flatMap((message) =>

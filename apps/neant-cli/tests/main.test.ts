@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -77,4 +78,71 @@ test.each([
   expect(stderr).toContain(message);
   expect(stdout).toBe("");
   expect(read).toBe(false);
+});
+
+test.each(["", "bash(git status", "unknown(pattern)"])(
+  "invalid --allow-tools rule %j fails before stdin",
+  async (rule) => {
+    let read = false;
+    let stderr = "";
+    let stdout = "";
+    const exitCode = await main(["--allow-tools", rule], {
+      readStdin: async () => {
+        read = true;
+        return "hi";
+      },
+      stdout: (text) => (stdout += text),
+      stderr: (text) => (stderr += text),
+    });
+    expect(exitCode).toBe(2);
+    expect(stderr).toContain(`--allow-tools: invalid permission rule ${JSON.stringify(rule)}`);
+    expect(read).toBe(false);
+    expect(stdout).toBe("");
+  },
+);
+
+test.each([
+  ["bash(git status*)", "git status --short"],
+  ["bash(printf a,b*)", "printf a,b > marker"],
+  ["bash(printf {alpha,beta}*)", "printf alpha > marker"],
+])("--allow-tools %s grants the matching command only", async (rule, command) => {
+  const root = await mkdtemp(join(tmpdir(), "neant-cli-rules-"));
+  const faux = createFauxCore({ api: "faux", provider: "faux" });
+  faux.setResponses([
+    fauxAssistantMessage(
+      [
+        fauxToolCall("bash", { command }, { id: "allowed" }),
+        fauxToolCall("bash", { command: "printf unauthorized > forbidden" }, { id: "denied" }),
+      ],
+      { stopReason: "toolUse" },
+    ),
+    (context) => {
+      expect(context.messages.filter((message) => message.role === "toolResult")).toMatchObject([
+        { toolCallId: "allowed", isError: false },
+        { toolCallId: "denied", isError: true },
+      ]);
+      return fauxAssistantMessage("done");
+    },
+  ]);
+  let stderr = "";
+  try {
+    expect(
+      await Bun.spawn(["git", "init", "--quiet", root], { stdout: "ignore", stderr: "ignore" })
+        .exited,
+    ).toBe(0);
+    expect(
+      await main(["--allow-tools", rule!, "-p", "run"], {
+        readStdin: async () => "",
+        stdout: () => {},
+        stderr: (text) => {
+          stderr += text;
+        },
+        session: { cwd: root, homeDir: root, model: faux.getModel(), streamFn: faux.streamSimple },
+      }),
+    ).toBe(0);
+    expect(stderr).toBe("");
+    expect(await Bun.file(join(root, "forbidden")).exists()).toBe(false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });

@@ -28,21 +28,15 @@ type PermissionDecision = "allow" | "deny" | "ask";
 interface PermissionOptions {
   mode: PermissionMode;
   toolName: string;
-  allowTools?: readonly string[];
 }
 
 /** Pure policy; frontends decide how to handle `ask`. */
-function decidePermission({
-  mode,
-  toolName,
-  allowTools,
-}: PermissionOptions): PermissionDecision | "review" {
+function decidePermission({ mode, toolName }: PermissionOptions): PermissionDecision | "review" {
   if (
     mode === "full-access" ||
     ["read", "glob", "grep", "skill", "ask_user_question", "todo_write"].includes(toolName)
   )
     return "allow";
-  if (allowTools?.some((pattern) => new Bun.Glob(pattern).match(toolName))) return "allow";
   return mode === "auto-review" ? "review" : "ask";
 }
 
@@ -56,7 +50,6 @@ interface PermissionGateOptions {
   homeDir: string;
   rules: readonly PermissionRule[];
   getMode(): PermissionMode;
-  getAllowTools(): readonly string[];
   getAgentState(): Pick<Agent["state"], "tools" | "messages">;
   getProjectInstructions(): string[];
   getReviewModel(): Model<Api> | (() => Promise<Model<Api>>);
@@ -99,7 +92,6 @@ export function createPermissionGate(options: PermissionGateOptions) {
     const { toolCall, args, assistantMessage, mode, signal } = context;
     const decision = decidePermission({
       toolName: toolCall.name,
-      allowTools: options.getAllowTools(),
       mode,
     });
     if (decision !== "review") {
@@ -115,11 +107,7 @@ export function createPermissionGate(options: PermissionGateOptions) {
     // while each actual hook still reads the current Permission Mode.
     for (const call of assistantMessage.content) {
       if (call.type !== "toolCall" || batch.has(call.id)) continue;
-      if (
-        decidePermission({ mode, toolName: call.name, allowTools: options.getAllowTools() }) !==
-        "review"
-      )
-        continue;
+      if (decidePermission({ mode, toolName: call.name }) !== "review") continue;
       const tool = options.getAgentState().tools.find((item) => item.name === call.name);
       if (!tool) continue;
       let validated: unknown;

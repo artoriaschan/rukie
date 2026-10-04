@@ -1,5 +1,6 @@
 /** Parameters are tied to each locale-independent, user-visible error code. */
 export interface UserVisibleErrorParams {
+  "allow-tools-retired": { source: string };
   "permission-rule-invalid": { source: string; rule: string };
   "ripgrep-unavailable": { cause: string };
   "no-model": { settings: string };

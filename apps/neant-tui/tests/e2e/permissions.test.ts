@@ -18,7 +18,7 @@ test.each([
     const settings = { permissionMode: defaultMode };
     const sessionOptions: Partial<SessionOptions> = { settings };
     const userSettings = JSON.stringify(settings) + "\n";
-    const projectSettings = '{"allowTools":["read"]}\n';
+    const projectSettings = '{"permissions":{"allow":["read"]}}\n';
     const app = await start(argv, {
       session: sessionOptions,
       prepare: async (directory) => {
@@ -309,7 +309,10 @@ test.each(["flag", "settings", "yolo", "readonly"])(
       {
         prepare: async (root) => {
           if (mode === "settings") {
-            await Bun.write(join(root, ".neant/settings.json"), '{"allowTools":["ba*"]}');
+            await Bun.write(
+              join(root, ".neant/settings.json"),
+              '{"permissions":{"allow":["ba*"]}}',
+            );
           }
         },
       },
@@ -334,7 +337,7 @@ test.each(["flag", "settings", "yolo", "readonly"])(
 
 test("always allow remembers only this tool across Runs and leaves settings unchanged", async () => {
   let root = "";
-  const settings = '{"allowTools":["read"]}\n';
+  const settings = '{"permissions":{"allow":["read"]}}\n';
   const app = await start(["use bash"], {
     prepare: async (directory) => {
       root = directory;

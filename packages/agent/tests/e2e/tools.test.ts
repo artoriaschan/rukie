@@ -70,7 +70,7 @@ test("bash times out and returns an error without ending the Run", async () => {
     }),
     fauxAssistantMessage("recovered"),
   ]);
-  const session = await createSession({ ...dirs, ...fake, allowTools: ["bash"] });
+  const session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
   expect((await session.run("slow command")).text).toBe("recovered");
   expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
     role: "toolResult",
@@ -224,9 +224,9 @@ test.each(["cli", "settings", "full-access"])(
   async (mode) => {
     const permissions =
       mode === "cli"
-        ? { allowTools: ["wri?e"] }
+        ? { allowRules: ["wri?e"] }
         : mode === "settings"
-          ? { settings: { allowTools: ["wri[st]e"] } }
+          ? { settings: { permissions: { allow: ["wri[st]e"] } } }
           : { permissionMode: "full-access" as const };
     dirs = await tempDirs();
     const fake = fakeModel([

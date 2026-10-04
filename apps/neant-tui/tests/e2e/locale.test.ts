@@ -101,7 +101,7 @@ test.each([
   [["one", "two"], "多余参数：two"],
   [["--model", "invalid"], '--model 必须为 provider/id，收到 "invalid"'],
   [["--thinking", "invalid"], "--thinking 必须为以下值之一"],
-  [["--allow-tools", ""], "--allow-tools 需要非空的工具匹配模式"],
+  [["--allow-tools", ""], "--allow-tools: 无效的权限规则"],
   [["--model"], "选项 --model <value> 缺少参数"],
   [["--yolo=yes"], "选项 --yolo 不接受参数"],
   [["--permission-mode", "invalid"], "--permission-mode 必须为以下值之一"],
@@ -308,6 +308,31 @@ test.each([
       expect(app.stderr()).toContain(`${source}: ${message} "${rule}"`);
       expect(app.calls).toHaveLength(0);
       expect(app.output()).toBe("");
+    } finally {
+      await app.cleanup();
+    }
+  },
+);
+
+test.each([
+  ["zh", "allowTools 已移除，请迁移到 permissions.allow。"],
+  ["en", '"allowTools" has been removed; migrate to "permissions.allow".'],
+] as const)(
+  "%s legacy settings show the localized migration error and source",
+  async (locale, message) => {
+    let source = "";
+    const app = await start([], {
+      env: { LANG: locale },
+      prepare: async (root) => {
+        source = join(root, ".neant/settings.json");
+        await Bun.write(source, JSON.stringify({ allowTools: [] }));
+      },
+    });
+    try {
+      expect(await app.exit).toBe(1);
+      expect(app.stderr()).toBe(`${source}: ${message}\n`);
+      expect(app.output()).toBe("");
+      expect(app.calls).toHaveLength(0);
     } finally {
       await app.cleanup();
     }

@@ -251,7 +251,7 @@ for (const [argv, message] of [
   [["one", "two"], "Unexpected argument: two"],
   [["--model", "invalid"], '--model must be provider/id, got "invalid"'],
   [["--thinking", "invalid"], "--thinking must be one of"],
-  [["--allow-tools", ""], "--allow-tools requires non-empty tool patterns"],
+  [["--allow-tools", ""], "--allow-tools: invalid permission rule"],
   [["--model"], "argument missing"],
   [["--permission-mode"], "argument missing"],
   [["--permission-mode", "invalid"], "--permission-mode must be one of"],
@@ -367,7 +367,7 @@ for (const [mode, argv, session] of [
   [
     "injected allow patterns",
     ["write a file", "--allow-tools", "unrelated"],
-    { allowTools: ["write"] },
+    { allowRules: ["write"] },
   ],
   ["yolo", ["--yolo", "write a file"], {}],
   ["full-access", ["--permission-mode", "full-access", "write a file"], {}],
@@ -379,7 +379,7 @@ for (const [mode, argv, session] of [
   test(`${mode} is forwarded to the Session and usage totals all Turns`, async () => {
     const app = await start([...argv], {
       columns: 120,
-      session: { ...session, allowTools: "allowTools" in session ? [...session.allowTools] : [] },
+      session: { ...session, allowRules: "allowRules" in session ? [...session.allowRules] : [] },
     });
     try {
       await app.waitFor(() => app.calls.length === 1);
@@ -451,6 +451,51 @@ test("--trust-project-mcp loads project configuration", async () => {
     app.calls[0]!.delta("project MCP checked");
     app.calls[0]!.finish();
     await app.waitFor(() => app.allLines().includes(`${assistant} project MCP checked`));
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test.each(["", "bash(git status", "unknown(pattern)"])(
+  "invalid --allow-tools rule %j reports its source before rendering",
+  async (rule) => {
+    const app = await start(["--allow-tools", rule], { env: { LANG: "en" } });
+    try {
+      expect(await app.exit).toBe(2);
+      expect(app.stderr()).toContain(`--allow-tools: invalid permission rule "${rule}"`);
+      expect(app.output()).toBe("");
+      expect(app.calls).toHaveLength(0);
+    } finally {
+      await app.cleanup();
+    }
+  },
+);
+
+test.each([
+  ["bash(git status*)", "git status --short"],
+  ["bash(printf a,b*)", "printf a,b > marker"],
+  ["bash(printf {alpha,beta}*)", "printf alpha > marker"],
+])("--allow-tools %s executes a matching command without a question", async (rule, command) => {
+  const app = await start(["run", "--allow-tools", rule!], {
+    prepare: async (root) => {
+      expect(
+        await Bun.spawn(["git", "init", "--quiet", root], { stdout: "ignore", stderr: "ignore" })
+          .exited,
+      ).toBe(0);
+    },
+  });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("bash", { command });
+    await app.waitFor(() => app.calls.length === 2);
+    expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
+      role: "toolResult",
+      isError: false,
+    });
+    app.calls[1]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    expect(app.stderr()).toBe("");
+    expect(app.allLines().join("\n")).not.toContain("等待审批");
   } finally {
     await app.cleanup();
   }

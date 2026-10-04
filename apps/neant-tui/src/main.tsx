@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { homedir } from "node:os";
 import { parseArgs } from "node:util";
-import { loadSettings, type SessionOptions } from "@neant/agent";
+import { loadSettings, parsePermissionRules, type SessionOptions } from "@neant/agent";
 import { resolveLocale } from "@neant/i18n";
 import {
   PERMISSION_MODES,
@@ -54,9 +54,7 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
         throw new Error(argvT("argv.unexpected", { argument: token.value }));
       else collectingTools = false;
     }
-    if (values["allow-tools"]?.some((pattern) => !pattern)) {
-      throw new Error(argvT("argv.allow-tools"));
-    }
+    parsePermissionRules({ allow: values["allow-tools"] }, "--allow-tools");
     if (
       values["permission-mode"] !== undefined &&
       !PERMISSION_MODES.includes(values["permission-mode"] as PermissionMode)
@@ -94,7 +92,7 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
                   : "argv.invalid-value",
               { option },
             )
-          : failure.message;
+          : formatError(error, argvT);
     io.stderr(`${message}\n`);
     return 2;
   }
@@ -127,7 +125,7 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
         },
         ...io.session,
         resumeId: values.resume,
-        allowTools: [...(io.session?.allowTools ?? []), ...(values["allow-tools"] ?? [])],
+        allowRules: [...(io.session?.allowRules ?? []), ...(values["allow-tools"] ?? [])],
         permissionMode: values.yolo
           ? "full-access"
           : ((values["permission-mode"] as PermissionMode | undefined) ??

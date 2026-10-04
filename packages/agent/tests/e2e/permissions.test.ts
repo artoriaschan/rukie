@@ -189,7 +189,7 @@ test("frontend denial blocks the tool, reports the denial and lets the model con
   const session = await createSession({
     ...dirs,
     ...fake,
-    allowTools: ["bash"],
+    allowRules: ["bash"],
     async onPermissionAsk(request) {
       requests.push(request);
       return "deny";
@@ -300,7 +300,9 @@ test.each(
     fauxAssistantMessage("done"),
   ]);
   const permissions =
-    source === "options" ? { allowTools: ["wri?e"] } : { settings: { allowTools: ["wri[st]e"] } };
+    source === "options"
+      ? { allowRules: ["wri?e"] }
+      : { settings: { permissions: { allow: ["wri[st]e"] } } };
   const requests: PermissionAskRequest[] = [];
   const session = await createSession({
     ...dirs,
