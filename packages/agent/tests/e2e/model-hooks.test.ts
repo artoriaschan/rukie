@@ -374,3 +374,38 @@ test("an unavailable hook model warns without calling it and the parent run proc
   expect(fake.contexts).toHaveLength(1);
   await session.dispose();
 });
+
+test.each(["prompt", "agent"] as const)(
+  "%s PermissionRequest rejection denies headless execution",
+  async (type) => {
+    dirs = await tempDirs();
+    const fake = fakeModel([
+      fauxAssistantMessage(fauxToolCall("bash", { command: "touch marker" }), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage('{"ok":false,"reason":"approval policy"}'),
+      fauxAssistantMessage("parent done"),
+    ]);
+    const events: SessionEvent[] = [];
+    const session = await createSession({
+      ...dirs,
+      ...fake,
+      permissionMode: "ask",
+      settings: {
+        hooks: {
+          PermissionRequest: [{ hooks: [{ type, prompt: "Review $ARGUMENTS" }] }],
+        },
+      },
+    });
+    await session.run("do it", {
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+    expect(await Bun.file(join(dirs.cwd, "marker")).exists()).toBe(false);
+    expect(events.filter((event) => event.type === "permission_denied")).toMatchObject([
+      { by: "hook", reason: "approval policy" },
+    ]);
+    await session.dispose();
+  },
+);
