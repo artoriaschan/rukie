@@ -4,7 +4,7 @@
 
 **Blocked by:** 02
 
-**Status:** in-progress
+**Status:** resolved
 
 参考：[spec](../spec.md)「配置层级与来源」；User Stories 19–23。
 
@@ -34,3 +34,9 @@
 - 修复验证：focused `rtk proxy env -u NO_COLOR bun test packages/agent/tests/config/settings.test.ts packages/agent/tests/e2e/permission-rules.test.ts` exit 0，54 pass / 0 fail，109 assertions；独立 `rtk proxy bunx tsc -b` exit 0。
 - 冻结修复后的完整 `rtk proxy env -u NO_COLOR bun run check` exit 0，843 pass / 0 fail，65 files，5004 assertions，112.44s；oxfmt、oxlint、typecheck、knip 均通过。日志 `/tmp/neant-permission-05-review-fix-check.log`。
 - 修复 checkpoint 待父代理对 delta 执行双轴复审；工单继续 in-progress。
+
+### 2026-10-04 final review completed
+
+- 父代理对 `ebcef172e9cc364b7930c642118270011db719b2...c28b4bc0c264cd54e0bd3bc9e33c8aaf4f5ca96b` 修复 delta 执行独立 Standards / Spec 双轴复审，两轴均 0 findings。
+- 原 Standards P2 已解决：跨概念 Run 测试位于 e2e suite，三个场景的行为断言与 fixture 原样保留；runtime 实现未改。首轮 Spec 与修复复审均确认无待处理问题。
+- issue 05 resolved。本次仅更新票据状态与 review 证据，沿用修复冻结代码的完整验收：exit 0，843 pass / 0 fail，65 files，5004 assertions，112.44s；不重复执行未变代码的验证。父代理负责后续 main 合并、集成验收与 worktree 归档。
