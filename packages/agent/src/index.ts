@@ -12,3 +12,5 @@ export type { ReminderSource } from "./reminders/index.ts";
 export type { TodoItem } from "./tool-state/index.ts";
 
 export type { Question, QuestionRequest, QuestionReply } from "./tools/index.ts";
+
+export { parsePermissionRules } from "./permissions/index.ts";

@@ -81,6 +81,7 @@ test("non-interactive terminals fail before rendering or requesting a model", as
     [true, false, "xterm-256color"],
     [true, true, "dumb"],
   ] as const) {
+    const root = await mkdtemp(join(tmpdir(), "neant-tui-noninteractive-"));
     const terminal = createTerminal();
     terminal.stdin.isTTY = stdin;
     terminal.stdout.isTTY = stdout;
@@ -90,6 +91,7 @@ test("non-interactive terminals fail before rendering or requesting a model", as
         await main(["hello"], {
           ...terminal,
           term,
+          session: { cwd: root, homeDir: root },
           stderr: (text) => {
             stderr += text;
           },
@@ -100,6 +102,7 @@ test("non-interactive terminals fail before rendering or requesting a model", as
       expect(terminal.stdin.isRaw).toBe(false);
     } finally {
       terminal.dispose();
+      await rm(root, { recursive: true, force: true });
     }
   }
 });

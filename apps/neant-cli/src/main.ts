@@ -3,7 +3,12 @@ import { homedir } from "node:os";
 import { addAbortSignal } from "node:stream";
 import { text } from "node:stream/consumers";
 import { parseArgs } from "node:util";
-import { createSession, loadSettings, type SessionOptions } from "@neant/agent";
+import {
+  createSession,
+  loadSettings,
+  parsePermissionRules,
+  type SessionOptions,
+} from "@neant/agent";
 import {
   PERMISSION_MODES,
   THINKING_LEVELS,
@@ -67,9 +72,7 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
         throw new Error(`Unexpected argument: ${token.value}`);
       } else collectingTools = false;
     }
-    if (values["allow-tools"]?.some((pattern) => !pattern)) {
-      throw new Error("--allow-tools requires non-empty tool patterns");
-    }
+    parsePermissionRules({ allow: values["allow-tools"] }, "--allow-tools");
     if (values["output-format"] !== "text" && values["output-format"] !== "stream-json") {
       throw new Error("--output-format must be text or stream-json");
     }
@@ -113,7 +116,7 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
       onWarning: (warning) => io.stderr(`Warning: ${warning}\n`),
       ...io.session,
       resumeId: values.resume,
-      allowTools: [...(io.session?.allowTools ?? []), ...(values["allow-tools"] ?? [])],
+      allowRules: [...(io.session?.allowRules ?? []), ...(values["allow-tools"] ?? [])],
       permissionMode: values.yolo
         ? "full-access"
         : ((values["permission-mode"] as PermissionMode | undefined) ?? io.session?.permissionMode),

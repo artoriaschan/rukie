@@ -10,7 +10,7 @@ let dirs: Awaited<ReturnType<typeof tempDirs>>;
 afterEach(() => dirs?.cleanup());
 
 test.each([...PERMISSION_MODES])(
-  "deny rules override %s, read-only defaults and allowTools",
+  "deny rules override %s, read-only defaults and allowRules",
   async (permissionMode) => {
     dirs = await tempDirs();
     await Bun.write(join(dirs.cwd, "secret.txt"), "secret");
@@ -30,7 +30,7 @@ test.each([...PERMISSION_MODES])(
       ...dirs,
       ...fake,
       permissionMode,
-      allowTools: ["*"],
+      allowRules: ["*"],
       settings: { permissions: { deny: ["read", "bash(printf blocked*)"], allow: ["*"] } },
       onPermissionAsk: async () => {
         asks++;
@@ -274,4 +274,35 @@ test.each([
       .some((event) => event.rule !== undefined),
   ).toBe(false);
   expect(await Bun.file(join(dirs.cwd, "no.txt")).exists()).toBe(false);
+});
+
+test("session allowRules accepts bash specifiers without asking", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([
+    fauxAssistantMessage(fauxToolCall("bash", { command: "printf comma,a > marker" }), {
+      stopReason: "toolUse",
+    }),
+    fauxAssistantMessage("done"),
+  ]);
+  let asks = 0;
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    allowRules: ["bash(printf comma,a*)"],
+    onPermissionAsk: async () => {
+      asks++;
+      return "deny";
+    },
+  });
+  await session.run("do it");
+  expect(asks).toBe(0);
+  expect(await Bun.file(join(dirs.cwd, "marker")).text()).toBe("comma,a");
+});
+
+test("invalid session allowRules fail at startup with the --allow-tools source", async () => {
+  dirs = await tempDirs();
+  await expect(createSession({ ...dirs, allowRules: ["unknown(pattern)"] })).rejects.toMatchObject({
+    code: "permission-rule-invalid",
+    params: { source: "--allow-tools", rule: "unknown(pattern)" },
+  });
 });

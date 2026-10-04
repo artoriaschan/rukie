@@ -578,7 +578,7 @@ test("a batch reviews only valid calls that still require permission", async () 
     ...dirs,
     ...fake,
     permissionMode: "auto-review",
-    allowTools: ["bash"],
+    allowRules: ["bash"],
     onPermissionAsk: async () => {
       throw new Error("must not ask");
     },

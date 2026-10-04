@@ -39,7 +39,6 @@ export const SettingsSchema = Type.Object({
       deny: Type.Optional(Type.Array(Type.String())),
     }),
   ),
-  allowTools: Type.Optional(Type.Array(Type.String())),
   trustedProjects: Type.Optional(Type.Array(Type.String())),
 });
 
