@@ -353,3 +353,144 @@ test.each(["cancel", "dispose"])(
     }
   },
 );
+
+test.each([undefined, "async", "asyncRewake"] as const)(
+  "late notification %s displays after the Run without waking or feeding the model",
+  async (background) => {
+    dirs = await tempDirs();
+    await Bun.write(
+      join(dirs.cwd, "late-notify.sh"),
+      `cat > late-input.json
+while [ ! -f release-notice ]; do sleep 0.01; done
+printf '%s' '{"continue":false,"stopReason":"notification cannot stop","decision":"block","systemMessage":"late user notice","hookSpecificOutput":{"additionalContext":"notification cannot feed model"}}'
+echo 'notification cannot rewake' >&2
+exit 2
+`,
+    );
+    const noticed = Promise.withResolvers<void>();
+    const fake = fakeModel([
+      fauxAssistantMessage(fauxToolCall("bash", { command: "printf approved" }), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("done"),
+      fauxAssistantMessage("next prompt done"),
+    ]);
+    let notices = 0;
+    const session = await createSession({
+      ...dirs,
+      ...fake,
+      permissionMode: "ask",
+      settings: {
+        hooks: {
+          Notification: [
+            {
+              hooks: [
+                {
+                  type: "command",
+                  command: "sh late-notify.sh",
+                  ...(background ? { [background]: true } : {}),
+                },
+              ],
+            },
+          ],
+        },
+      },
+      onPermissionAsk: async () => "allow",
+    });
+    try {
+      expect(
+        (
+          await session.run("first", {
+            onEvent(event) {
+              if (event.type === "hook_message") {
+                notices++;
+                noticed.resolve();
+              }
+            },
+          })
+        ).text,
+      ).toBe("done");
+      expect(notices).toBe(0);
+      await Bun.write(join(dirs.cwd, "release-notice"), "release");
+      await waitForNotification(noticed.promise);
+      expect(notices).toBe(1);
+      expect(session.running).toBe(false);
+      expect(fake.contexts).toHaveLength(2);
+      expect((await session.run("next")).text).toBe("next prompt done");
+      const messages = JSON.stringify(fake.contexts.at(-1)!.messages);
+      expect(messages).not.toContain("late user notice");
+      expect(messages).not.toContain("notification cannot feed model");
+      expect(messages).not.toContain("notification cannot rewake");
+    } finally {
+      await session.dispose();
+    }
+  },
+);
+
+test("parent disposal kills completed child async notification processes", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([
+    fauxAssistantMessage(
+      fauxToolCall("subagent", {
+        description: "child",
+        prompt: "inspect",
+        run_in_background: false,
+      }),
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage(fauxToolCall("bash", { command: "printf child" }), {
+      stopReason: "toolUse",
+    }),
+    fauxAssistantMessage("child done"),
+    fauxAssistantMessage("parent done"),
+  ]);
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    permissionMode: "ask",
+    settings: {
+      permissions: { allow: ["subagent"] },
+      hooks: {
+        Notification: [
+          {
+            matcher: "permission_prompt",
+            hooks: [
+              {
+                type: "command",
+                command: "cat > child-input; echo $$ > child-pid; sleep 30; touch child-late",
+                asyncRewake: true,
+              },
+            ],
+          },
+        ],
+      },
+    },
+    onPermissionAsk: async () => "allow",
+  });
+  let pid: number | undefined;
+  try {
+    expect((await session.run("delegate")).text).toBe("parent done");
+    await until(() => Bun.file(join(dirs.cwd, "child-pid")).exists());
+    pid = Number(await Bun.file(join(dirs.cwd, "child-pid")).text());
+    expect(() => process.kill(pid!, 0)).not.toThrow();
+    await session.dispose();
+    await until(() => {
+      try {
+        process.kill(pid!, 0);
+        return false;
+      } catch {
+        return true;
+      }
+    });
+    expect(await Bun.file(join(dirs.cwd, "child-late")).exists()).toBe(false);
+  } finally {
+    await session.dispose();
+    if (pid) {
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {
+        /* Closed. */
+      }
+    }
+  }
+});
