@@ -90,6 +90,7 @@ export async function compactTurn(options: {
   streamFn: StreamFn;
   thinkingLevel: ThinkingLevel;
   signal?: AbortSignal;
+  beforeCompact?: () => boolean | Promise<boolean>;
   onStart: (tokensBefore: number) => void | Promise<void>;
 }) {
   const { model, signal } = options;
@@ -164,6 +165,8 @@ export async function compactTurn(options: {
   const models = createModels();
   models.completeSimple = async (summaryModel, context, requestOptions) =>
     (await options.streamFn(summaryModel, normalizeContext(context), requestOptions)).result();
+  signal?.throwIfAborted();
+  if ((await options.beforeCompact?.()) === false) return undefined;
   signal?.throwIfAborted();
   await options.onStart(tokensBefore);
   const result = await compact(

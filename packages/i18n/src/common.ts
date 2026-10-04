@@ -48,6 +48,7 @@ const zh = {
   "error.hook-type-unsupported": "尚不支持的 hook 类型：{{type}}",
   "error.hook-matcher-invalid": "{{source}}：无效的 hook 正则表达式：{{matcher}}",
   "error.hook-output-ignored": "忽略无效或不支持的 hook 输出字段：{{field}}",
+  "error.hook-compaction-blocked": "PreCompact hook 跳过本次压缩：{{reason}}",
   "error.hook-continuation-limit": "{{event}} hook 已达 {{limit}} 次续跑上限，忽略阻断",
 
   "error.no-model": `未配置模型。请在 {{settings}} 中设置 model，或传入 --model provider/id。
@@ -88,6 +89,7 @@ const en = {
   "error.hook-type-unsupported": "Unsupported hook type: {{type}}",
   "error.hook-matcher-invalid": "{{source}}: invalid hook regular expression: {{matcher}}",
   "error.hook-output-ignored": "Ignoring invalid or unsupported hook output field: {{field}}",
+  "error.hook-compaction-blocked": "Compaction skipped by PreCompact hook: {{reason}}",
   "error.hook-continuation-limit":
     "{{event}} hook reached the {{limit}} continuation limit; ignoring block",
 

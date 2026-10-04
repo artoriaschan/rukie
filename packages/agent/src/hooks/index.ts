@@ -48,6 +48,7 @@ interface HookResults {
   UserPromptSubmit: UserPromptSubmitResult;
   SessionStart: SessionStartResult;
   Stop: StopHookResult;
+  PreCompact: StopHookResult;
 }
 type EventResult<E extends HookEvent> = E extends keyof HookResults
   ? HookResults[E]
@@ -188,7 +189,9 @@ export function createHooks(options: {
               systemMessage: "string",
               suppressOutput: "boolean",
               reason: "string",
-              ...((event === "UserPromptSubmit" || event === "Stop") && { decision: "string" }),
+              ...((event === "UserPromptSubmit" || event === "Stop" || event === "PreCompact") && {
+                decision: "string",
+              }),
             };
             for (const [field, value] of Object.entries(json)) {
               if (field === "hookSpecificOutput") {
@@ -245,7 +248,7 @@ export function createHooks(options: {
               if (output.exitCode === 0 && stdout && !jsonOutput)
                 result.additionalContext.push(truncate(stdout));
             }
-            if (event === "UserPromptSubmit" || event === "Stop") {
+            if (event === "UserPromptSubmit" || event === "Stop" || event === "PreCompact") {
               if (json.decision !== undefined && json.decision !== "block")
                 await ignored("decision");
               if (output.exitCode === 2 || json.decision === "block") {

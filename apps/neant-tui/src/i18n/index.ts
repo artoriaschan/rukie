@@ -66,6 +66,8 @@ export function formatError(error: unknown, t: ReturnType<typeof createTuiI18n>)
       return t("error.hook-matcher-invalid", data.params);
     case "hook-output-ignored":
       return t("error.hook-output-ignored", data.params);
+    case "hook-compaction-blocked":
+      return t("error.hook-compaction-blocked", data.params);
     case "hook-continuation-limit":
       return t("error.hook-continuation-limit", data.params);
   }

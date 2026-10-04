@@ -599,6 +599,16 @@ async function createSessionInternal(
       toolHookContexts.clear();
       hookDenials.clear();
       let stopHookContinuations = 0;
+      // pi prepareRequest has no end action. A private control exception exits its
+      // loop; the synthetic failure it creates is consumed below, never persisted.
+      const hookRequestStop = new Error(`Hook request stopped: ${crypto.randomUUID()}`);
+      const isHookRequestStop = (message: AgentMessage) =>
+        hookStopped &&
+        message.role === "assistant" &&
+        message.errorMessage === hookRequestStop.message;
+      const stopPreparedRequest = () => {
+        if (hookStopped) throw hookRequestStop;
+      };
       const started = performance.now();
       const result: RunResult = {
         text: "",
@@ -756,6 +766,28 @@ async function createSessionInternal(
               streamFn: options.streamFn ?? streamFn,
               thinkingLevel: agent.state.thinkingLevel,
               signal: turnSignal,
+              beforeCompact: async () => {
+                const result = await hooks.run(
+                  "PreCompact",
+                  { ...hookInput(), trigger: "auto", custom_instructions: null },
+                  { signal: turnSignal, matchQuery: "auto" },
+                );
+                applyHookControl(result);
+                turnSignal?.throwIfAborted();
+                stopPreparedRequest();
+                if (result.decision !== "block") return true;
+                const reason = result.reason || "PreCompact hook blocked compaction.";
+                const message = `Compaction skipped by PreCompact hook: ${reason}`;
+                (options.onWarning ?? console.warn)(message);
+                await emit({
+                  type: "hook_warning",
+                  event: "PreCompact",
+                  hook: "PreCompact",
+                  message,
+                  error: { code: "hook-compaction-blocked", params: { reason } },
+                });
+                return false;
+              },
               onStart: (tokensBefore) => emit({ type: "compaction_start", tokensBefore }),
             });
             if (!compacted) {
@@ -827,10 +859,39 @@ async function createSessionInternal(
               tokensBefore: compacted.tokensBefore,
               tokensAfter: estimateContextTokens(messages),
             });
+            const postCompact = await hooks.run(
+              "PostCompact",
+              { ...hookInput(), trigger: "auto", compact_summary: compacted.summary },
+              { signal: turnSignal, matchQuery: "auto" },
+            );
+            applyHookControl(postCompact);
+            turnSignal?.throwIfAborted();
+            stopPreparedRequest();
+            const compactStart = await hooks.run(
+              "SessionStart",
+              { ...hookInput(), source: "compact", model: `${model.provider}/${model.id}` },
+              { signal: turnSignal, matchQuery: "compact" },
+            );
+            applyHookControl(compactStart);
+            pendingSessionContexts.push(...compactStart.additionalContext);
+            turnSignal?.throwIfAborted();
+            stopPreparedRequest();
             await emitContextUsage();
             return { context: { ...requestContext, messages } };
           };
           unsubscribe = agent.subscribe(async (event) => {
+            if ("message" in event && isHookRequestStop(event.message)) {
+              if (event.type === "message_end")
+                agent.state.messages = agent.state.messages.filter(
+                  (message) => !isHookRequestStop(message),
+                );
+              return;
+            }
+            if (event.type === "agent_end")
+              event = {
+                ...event,
+                messages: event.messages.filter((message) => !isHookRequestStop(message)),
+              };
             // pi skips afterToolCall for blocked/invalid calls. Its end event still
             // precedes creation of the tool-result message and carries the same result.
             if (event.type === "tool_execution_end") {
@@ -994,7 +1055,8 @@ async function createSessionInternal(
         }
         signal?.throwIfAborted();
         if (result.error) throw new Error(result.error);
-        if (agent.state.errorMessage) throw new Error(agent.state.errorMessage);
+        if (agent.state.errorMessage && agent.state.errorMessage !== hookRequestStop.message)
+          throw new Error(agent.state.errorMessage);
         result.success = true;
         if (hookStopped) {
           result.stopReason = "hook_stopped";
