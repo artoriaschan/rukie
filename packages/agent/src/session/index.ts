@@ -113,6 +113,8 @@ interface InternalSessionOptions {
   };
   toolNames?: readonly string[];
   typePrompt?: string;
+  initialMessages?: AgentMessage[];
+  systemPrompt?: string;
 }
 
 async function createSessionInternal(
@@ -163,6 +165,8 @@ async function createSessionInternal(
   try {
     const branch =
       (await stored.branch("main", context)) ?? (await stored.createBranch("main", null, context));
+    for (const message of internal.initialMessages ?? [])
+      await branch.appendMessage(message, context);
     entries = await branch.findEntries({ order: "oldestFirst" }, context);
   } finally {
     await stored.close(context);
@@ -220,9 +224,10 @@ async function createSessionInternal(
     onEvent: (event) => emitRunEvent?.(event),
   });
   let currentResult: RunResult | undefined;
+  let completedMessages = restoreContext(entries);
   const subagents = createSubagents({
-    async createChild(type, description) {
-      const selected = type.model ?? settings.subagentModel;
+    async createChild(type, description, fork = false) {
+      const selected = fork ? undefined : (type.model ?? settings.subagentModel);
       const childModel =
         selected === undefined
           ? model
@@ -248,6 +253,10 @@ async function createSessionInternal(
               )
               .map((tool) => tool.name),
           typePrompt: type.prompt,
+          ...(fork && {
+            initialMessages: structuredClone(completedMessages),
+            systemPrompt: agent.state.systemPrompt,
+          }),
         },
       );
     },
@@ -282,12 +291,15 @@ async function createSessionInternal(
     initialState: {
       model,
       messages: restoreContext(entries),
-      systemPrompt: internal.parentSessionId
-        ? `${SYSTEM_PROMPT}\n\n${SUBAGENT_PROMPT}${internal.typePrompt ? `\n\n${internal.typePrompt}` : ""}`
-        : SYSTEM_PROMPT,
-      tools: [...initialTools, ...(internal.parentSessionId ? [] : [subagents.tool])].filter(
-        (tool) => !internal.toolNames || internal.toolNames.includes(tool.name),
-      ),
+      systemPrompt:
+        internal.systemPrompt ??
+        (internal.parentSessionId
+          ? `${SYSTEM_PROMPT}\n\n${SUBAGENT_PROMPT}${internal.typePrompt ? `\n\n${internal.typePrompt}` : ""}`
+          : SYSTEM_PROMPT),
+      tools: [
+        ...initialTools,
+        ...(internal.parentSessionId ? [] : [subagents.tool, subagents.forkTool]),
+      ].filter((tool) => !internal.toolNames || internal.toolNames.includes(tool.name)),
       ...(settings.thinking && { thinkingLevel: settings.thinking }),
     },
   });
@@ -367,7 +379,7 @@ async function createSessionInternal(
           }
           agent.state.tools = [
             ...generalTools,
-            ...(internal.parentSessionId ? [] : [subagents.tool]),
+            ...(internal.parentSessionId ? [] : [subagents.tool, subagents.forkTool]),
           ].filter((tool) => !internal.toolNames || internal.toolNames.includes(tool.name));
           await emit({
             type: "session_start",
@@ -468,6 +480,8 @@ async function createSessionInternal(
           };
           unsubscribe = agent.subscribe(async (event) => {
             await emitMcpErrors();
+            if (event.type === "turn_end")
+              completedMessages = structuredClone(agent.state.messages);
             if (event.type === "message_end") {
               subagents.delivered(event.message);
               await branch.appendMessage(event.message, context);

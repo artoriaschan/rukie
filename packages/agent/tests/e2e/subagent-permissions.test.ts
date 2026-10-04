@@ -7,9 +7,9 @@ import { tempDirs } from "../helpers/temp-dirs.ts";
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
 afterEach(() => dirs?.cleanup());
 
-const delegate = () =>
+const delegate = (toolName = "subagent") =>
   fauxAssistantMessage(
-    fauxToolCall("subagent", {
+    fauxToolCall(toolName, {
       description: "Inspect permissions",
       prompt: "child",
       run_in_background: false,
@@ -21,42 +21,45 @@ const bash = () =>
     stopReason: "toolUse",
   });
 
-test("child permission origin reaches the parent callback and session grant covers the parent's next call", async () => {
-  dirs = await tempDirs();
-  const asks: PermissionAskRequest[] = [];
-  const fake = fakeModel([
-    delegate(),
-    bash(),
-    fauxAssistantMessage("child done"),
-    bash(),
-    (context) => {
-      expect(structuredClone(context.messages.at(-1))).toMatchObject({
-        isError: false,
-        content: [{ type: "text", text: "shared-grant" }],
-      });
-      return fauxAssistantMessage("parent done");
-    },
-  ]);
-  const session = await createSession({
-    ...dirs,
-    ...fake,
-    onPermissionAsk: async (request) => {
-      asks.push(request);
-      return "allow-session";
-    },
-  });
-  const childIds: string[] = [];
-  await session.run("delegate", {
-    onEvent(event) {
-      if (event.type === "subagent_event" && event.event.type === "session_start")
-        childIds.push(event.agentId);
-    },
-  });
-  expect(asks).toHaveLength(1);
-  expect(asks[0]).toMatchObject({
-    origin: { agentId: childIds[0], description: "Inspect permissions" },
-  });
-});
+test.each(["subagent", "subagent_fork"])(
+  "child permission origin reaches the parent callback and session grant covers the parent's next call (%s)",
+  async (toolName) => {
+    dirs = await tempDirs();
+    const asks: PermissionAskRequest[] = [];
+    const fake = fakeModel([
+      delegate(toolName),
+      bash(),
+      fauxAssistantMessage("child done"),
+      bash(),
+      (context) => {
+        expect(structuredClone(context.messages.at(-1))).toMatchObject({
+          isError: false,
+          content: [{ type: "text", text: "shared-grant" }],
+        });
+        return fauxAssistantMessage("parent done");
+      },
+    ]);
+    const session = await createSession({
+      ...dirs,
+      ...fake,
+      onPermissionAsk: async (request) => {
+        asks.push(request);
+        return "allow-session";
+      },
+    });
+    const childIds: string[] = [];
+    await session.run("delegate", {
+      onEvent(event) {
+        if (event.type === "subagent_event" && event.event.type === "session_start")
+          childIds.push(event.agentId);
+      },
+    });
+    expect(asks).toHaveLength(1);
+    expect(asks[0]).toMatchObject({
+      origin: { agentId: childIds[0], description: "Inspect permissions" },
+    });
+  },
+);
 
 test("a child session grant withdraws a matching parent approval already in the FIFO", async () => {
   dirs = await tempDirs();
@@ -110,61 +113,67 @@ test("a child session grant withdraws a matching parent approval already in the 
   await session.run("delegate");
 });
 
-test("a running child reads parent mode changes on each next tool call", async () => {
-  dirs = await tempDirs();
-  let session: Awaited<ReturnType<typeof createSession>>;
-  let asked = 0;
-  const fake = fakeModel([
-    delegate(),
-    bash(),
-    () => {
-      session.setPermissionMode("full-access");
-      return bash();
-    },
-    (context) => {
-      expect(structuredClone(context.messages.at(-1))).toMatchObject({ isError: false });
-      expect(asked).toBe(1);
-      session.setPermissionMode("ask");
-      return bash();
-    },
-    fauxAssistantMessage("child done"),
-    fauxAssistantMessage("parent done"),
-  ]);
-  session = await createSession({
-    ...dirs,
-    ...fake,
-    onPermissionAsk: async (request) => {
-      expect(request.mode).toBe("ask");
-      asked++;
-      return "allow";
-    },
-  });
-  await session.run("delegate");
-  expect(asked).toBe(2);
-});
+test.each(["subagent", "subagent_fork"])(
+  "a running child reads parent mode changes on each next tool call (%s)",
+  async (toolName) => {
+    dirs = await tempDirs();
+    let session: Awaited<ReturnType<typeof createSession>>;
+    let asked = 0;
+    const fake = fakeModel([
+      delegate(toolName),
+      bash(),
+      () => {
+        session.setPermissionMode("full-access");
+        return bash();
+      },
+      (context) => {
+        expect(structuredClone(context.messages.at(-1))).toMatchObject({ isError: false });
+        expect(asked).toBe(1);
+        session.setPermissionMode("ask");
+        return bash();
+      },
+      fauxAssistantMessage("child done"),
+      fauxAssistantMessage("parent done"),
+    ]);
+    session = await createSession({
+      ...dirs,
+      ...fake,
+      onPermissionAsk: async (request) => {
+        expect(request.mode).toBe("ask");
+        asked++;
+        return "allow";
+      },
+    });
+    await session.run("delegate");
+    expect(asked).toBe(2);
+  },
+);
 
-test("headless child denies asks and has no question tool", async () => {
-  dirs = await tempDirs();
-  const fake = fakeModel([
-    delegate(),
-    (context) => {
-      const tools = context.messages.flatMap((message) =>
-        message.role === "system" ? (message.toolsAdded?.map((tool) => tool.name) ?? []) : [],
-      );
-      expect(tools).not.toContain("ask_user_question");
-      return bash();
-    },
-    (context) => {
-      expect(structuredClone(context.messages.at(-1))).toMatchObject({
-        isError: true,
-        content: [{ type: "text", text: "Tool not authorized: bash" }],
-      });
-      return fauxAssistantMessage("child denied");
-    },
-    fauxAssistantMessage("parent done"),
-  ]);
-  await (await createSession({ ...dirs, ...fake })).run("delegate");
-});
+test.each(["subagent", "subagent_fork"])(
+  "headless child denies asks and has no question tool (%s)",
+  async (toolName) => {
+    dirs = await tempDirs();
+    const fake = fakeModel([
+      delegate(toolName),
+      (context) => {
+        const tools = context.messages.flatMap((message) =>
+          message.role === "system" ? (message.toolsAdded?.map((tool) => tool.name) ?? []) : [],
+        );
+        expect(tools).not.toContain("ask_user_question");
+        return bash();
+      },
+      (context) => {
+        expect(structuredClone(context.messages.at(-1))).toMatchObject({
+          isError: true,
+          content: [{ type: "text", text: "Tool not authorized: bash" }],
+        });
+        return fauxAssistantMessage("child denied");
+      },
+      fauxAssistantMessage("parent done"),
+    ]);
+    await (await createSession({ ...dirs, ...fake })).run("delegate");
+  },
+);
 
 const question = {
   question: "Proceed?",
