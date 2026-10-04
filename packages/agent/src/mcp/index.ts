@@ -9,7 +9,7 @@ import {
 import { join } from "node:path";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import type { CustomSessionEvent, Settings } from "@neant/shared";
+import { createUserVisibleError, type CustomSessionEvent, type Settings } from "@neant/shared";
 import { isTrustedProject } from "../config/index.ts";
 
 const StdioConfig = Type.Object({
@@ -54,6 +54,7 @@ function adaptTool(
 /** Connections belong to a Run, so later Runs rediscover current server capabilities. */
 export function createMcpConnections() {
   const clients: McpClient[] = [];
+  const connected = new Map<string, McpClient>();
   const errors: Extract<CustomSessionEvent, { type: "mcp_server_error" }>[] = [];
   const tools: AgentTool[] = [];
   const descriptions: string[] = [];
@@ -72,6 +73,7 @@ export function createMcpConnections() {
   };
   const close = () => {
     closing = true;
+    connected.clear();
     // Save the first close promise: pi's subsequent close calls can settle before shutdown.
     closePromise ??= Promise.all(
       clients.map(async (client) => {
@@ -105,6 +107,20 @@ export function createMcpConnections() {
   return {
     tools,
     errors,
+    async callHookTool(
+      server: string,
+      tool: string,
+      input: Record<string, unknown>,
+      signal: AbortSignal,
+    ) {
+      const client = connected.get(server);
+      if (!client)
+        throw createUserVisibleError(`Hook MCP server is not connected: ${server}`, {
+          code: "hook-mcp-unconnected",
+          params: { server },
+        });
+      return client.callTool(tool, input, { signal });
+    },
     get hasServers() {
       return descriptions.length > 0;
     },
@@ -142,6 +158,7 @@ export function createMcpConnections() {
           if (!closing) report(server, error);
         });
         client.onClose(() => {
+          connected.delete(server);
           if (ready && !closing) report(server, new Error("MCP connection closed unexpectedly."));
         });
         try {
@@ -165,6 +182,7 @@ export function createMcpConnections() {
             ? await client.listTools({ signal: options.signal })
             : [];
           ready = true;
+          connected.set(server, client);
           const adapted = discovered.map((tool) =>
             adaptTool(server, client, tool, (error) => {
               if (!closing) report(server, error);

@@ -54,10 +54,18 @@ export function formatError(error: unknown, t: ReturnType<typeof createTuiI18n>)
       return t("error.hook-invalid-json", data.params);
     case "hook-exit":
       return t("error.hook-exit", data.params);
+    case "hook-mcp-unconnected":
+      return t("error.hook-mcp-unconnected", data.params);
+    case "hook-mcp-failed":
+      return t("error.hook-mcp-failed", data.params);
+    case "hook-http-status":
+      return t("error.hook-http-status", data.params);
     case "hook-timeout":
       return t("error.hook-timeout", data.params);
     case "hook-crashed":
       return t("error.hook-crashed", data.params);
+    case "hook-execution-failed":
+      return t("error.hook-execution-failed", data.params);
     case "hook-command-failed":
       return t("error.hook-command-failed", data.params);
     case "hook-type-unsupported":

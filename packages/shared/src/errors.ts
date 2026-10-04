@@ -9,8 +9,12 @@ export interface UserVisibleErrorParams {
   "session-not-found": { id: string };
   "hook-invalid-json": { cause: string };
   "hook-exit": { exitCode: string; stderr: string };
+  "hook-mcp-unconnected": { server: string };
+  "hook-mcp-failed": { server: string; tool: string };
+  "hook-http-status": { status: string };
   "hook-timeout": { timeout: string };
   "hook-crashed": { signal: string };
+  "hook-execution-failed": { cause: string };
   "hook-command-failed": { cause: string };
   "hook-type-unsupported": { type: string };
   "hook-matcher-invalid": { source: string; matcher: string };

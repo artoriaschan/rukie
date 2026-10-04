@@ -31,10 +31,20 @@ for await (const line of lines) {
       break;
     case "tools/call":
       appendFileSync(process.env.MCP_CALLS!, `${request.params.name}\n`);
+      if (process.env.MCP_ARGUMENTS)
+        appendFileSync(process.env.MCP_ARGUMENTS, `${JSON.stringify(request.params.arguments)}\n`);
       if (request.params.name === "hang") continue;
       if (request.params.name === "crash") process.exit(1);
       result = {
-        content: [{ type: "text", text: `MCP: ${request.params.arguments.text ?? "called"}` }],
+        content: [
+          {
+            type: "text",
+            text:
+              request.params.name === "json"
+                ? request.params.arguments.text
+                : `MCP: ${request.params.arguments.text ?? "called"}`,
+          },
+        ],
         isError: request.params.name === "error",
       };
       break;

@@ -11,6 +11,9 @@ import {
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import { evaluatePermissionRules, parsePermissionRules } from "../permissions/index.ts";
 import { executeCommand } from "./command.ts";
+import { executeHttp } from "./http.ts";
+import { executeBounded } from "./bounded.ts";
+import { executeMcpTool, type CallMcpHookTool } from "./mcp-tool.ts";
 
 export interface HookInput {
   session_id: string;
@@ -115,6 +118,7 @@ export function createHooks(options: {
   cwd: string;
   homeDir: string;
   projectDir: string;
+  callMcpTool?: CallMcpHookTool;
   onWarning(warning: string): void;
   onEvent(event: CustomSessionEvent): void | Promise<void>;
   onAsyncResult?(result: CommonHookResult, rewakeReason?: string): void;
@@ -226,22 +230,39 @@ export function createHooks(options: {
               } else await options.onEvent(notification);
             };
             try {
-              if (handler.type !== "command") {
+              if (
+                handler.type !== "command" &&
+                handler.type !== "http" &&
+                handler.type !== "mcp_tool"
+              ) {
                 await warn(`Unsupported hook type: ${handler.type}`, {
                   code: "hook-type-unsupported",
                   params: { type: handler.type },
                 });
                 return;
               }
-              const output = await executeCommand(handler, snapshot, {
-                cwd: options.cwd,
-                projectDir: options.projectDir,
-                signal: executionSignal,
-                timeout: background
-                  ? undefined
-                  : (handler.timeout ?? (event === "UserPromptSubmit" ? 30 : 600)),
-              });
-              if (handler.asyncRewake && output.exitCode === 2) rewakeReason = output.stderr.trim();
+              const timeout = handler.timeout ?? (event === "UserPromptSubmit" ? 30 : 600);
+              const output =
+                handler.type === "http"
+                  ? await executeBounded(
+                      (signal) => executeHttp(handler, snapshot, signal),
+                      executionSignal,
+                      timeout,
+                    )
+                  : handler.type === "mcp_tool"
+                    ? await executeBounded(
+                        (signal) => executeMcpTool(handler, snapshot, signal, options.callMcpTool),
+                        executionSignal,
+                        timeout,
+                      )
+                    : await executeCommand(handler, snapshot, {
+                        cwd: options.cwd,
+                        projectDir: options.projectDir,
+                        signal: executionSignal,
+                        timeout: background ? undefined : timeout,
+                      });
+              if (handler.type === "command" && handler.asyncRewake && output.exitCode === 2)
+                rewakeReason = output.stderr.trim();
               const warnExit = async () => {
                 if (output.exitCode !== 0 && output.exitCode !== 2)
                   await warn(
@@ -491,7 +512,10 @@ export function createHooks(options: {
                   : error instanceof Error && "code" in error && "params" in error
                     ? (error as Error & UserVisibleErrorData)
                     : {
-                        code: "hook-command-failed" as const,
+                        code:
+                          handler.type === "command"
+                            ? ("hook-command-failed" as const)
+                            : ("hook-execution-failed" as const),
                         params: { cause: (error as Error).message },
                       };
                 await warn(

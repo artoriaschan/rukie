@@ -336,6 +336,14 @@ async function createSessionInternal(
     cwd,
     homeDir: options.homeDir,
     projectDir: cwd,
+    callMcpTool: async (server, tool, input, signal) => {
+      if (!runMcp)
+        throw createUserVisibleError(`Hook MCP server is not connected: ${server}`, {
+          code: "hook-mcp-unconnected",
+          params: { server },
+        });
+      return runMcp.callHookTool(server, tool, input, signal);
+    },
     onWarning: options.onWarning ?? console.warn,
     onAsyncResult: (result, reason) => {
       pendingAsyncContexts.push(...result.additionalContext, ...result.systemMessages);
