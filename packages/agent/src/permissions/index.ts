@@ -7,6 +7,7 @@ import {
 } from "@earendil-works/pi-ai";
 import type { CustomSessionEvent, PermissionMode } from "@neant/shared";
 import { evaluatePermissionRules, type PermissionRule } from "./rules.ts";
+export { parsePermissionRules, evaluatePermissionRules } from "./rules.ts";
 import { requestInteraction } from "../interaction/index.ts";
 import { reviewPermission, type ReviewResult } from "../review/index.ts";
 

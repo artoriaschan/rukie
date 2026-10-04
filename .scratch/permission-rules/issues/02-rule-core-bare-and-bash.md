@@ -21,3 +21,6 @@
 - 2026-10-04: 实现 checkpoint，待 Standards / Spec 双轴 review 后再 resolved。新增 `permissions.{allow,ask,deny}` 语法解析与纯规则判定接缝；只匹配裸工具名和 bash 整串文本，保留 `allowTools`，路径 specifier 仅解析结构，实际路径匹配及项目规则来源分别归 04 / 05。
 - Red → green：规则纯函数初始缺模块（exit 1）；settings 与 Session 新行为测试 13 fail（exit 1），接线后 36 pass / 0 fail；补充 bash glob 路径分隔符文本匹配 1 fail → 20 pass / 0 fail。批量 review 测试覆盖参数校验转换、缺参，以及 rule allow / ask / deny 不发起 review；review deny / 失败的无人交互与用户拒绝均验证 by 来源。
 - 验收：最终 focused（规则纯函数、Session rules、TUI live/resume）45 pass / 0 fail，exit 0；`rtk proxy env -u NO_COLOR bun run check` 最终 exit 0，810 pass / 0 fail，65 files，4877 assertions。格式 / lint / `tsc -b` / knip 同时通过。Headless stream-json 的显式 ask / deny 带 `by: "rule"` 及原文规则，中英文 TUI 实时与 resume 工具卡均覆盖。
+
+- 2026-10-04 review 修复 checkpoint：Spec 轴 0 findings；Standards 轴两项 hard findings 已修复，待复审修复部分后 resolved。config / session 与规则纯函数测试只从 permissions/index 公共 API 引用；非法权限规则新增 shared typed error `permission-rule-invalid`，参数保留 source 和未经 trim 的 rule 原文，common 中英文及 TUI formatError 同步。不改旧 settings 校验错误。
+- 修复验收：新增公开配置错误与 TUI 中英文启动错误测试 red 60 pass / 4 fail → focused 108 pass / 0 fail（235 assertions / 4 files，exit 0）；独立 `tsc -b` exit 0。冻结修复代码后的 `rtk proxy env -u NO_COLOR bun run check` 最终 exit 0，817 pass / 0 fail，65 files，4904 assertions，112.39s；格式 / lint / typecheck / knip 全部通过。

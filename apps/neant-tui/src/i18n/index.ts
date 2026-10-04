@@ -33,6 +33,8 @@ export function formatError(error: unknown, t: ReturnType<typeof createTuiI18n>)
     return message;
   const data = error as UserVisibleErrorData;
   switch (data.code) {
+    case "permission-rule-invalid":
+      return t("error.permission-rule-invalid", data.params);
     case "no-model":
       return t("error.no-model", data.params);
     case "unknown-model":

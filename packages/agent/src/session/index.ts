@@ -24,8 +24,11 @@ import type {
 } from "@neant/shared";
 import { resolveModel } from "../config/index.ts";
 import { createJsonlStore, type SessionStore } from "../store/index.ts";
-import { parsePermissionRules } from "../permissions/rules.ts";
-import { createPermissionGate, type PermissionAskRequest } from "../permissions/index.ts";
+import {
+  createPermissionGate,
+  parsePermissionRules,
+  type PermissionAskRequest,
+} from "../permissions/index.ts";
 import { createBuiltinTools, type QuestionRequest, type QuestionReply } from "../tools/index.ts";
 import { SYSTEM_PROMPT } from "../prompt/index.ts";
 import {

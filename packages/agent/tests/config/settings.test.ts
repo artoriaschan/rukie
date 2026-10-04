@@ -230,3 +230,21 @@ test("valid user permission rules survive settings loading", async () => {
   await Bun.write(join(dirs.homeDir, ".neant/settings.json"), JSON.stringify({ permissions }));
   expect((await loadSettings(dirs)).settings.permissions).toEqual(permissions);
 });
+
+test("invalid permission rules carry a typed source and untouched rule", async () => {
+  dirs = await tempDirs();
+  const source = join(dirs.homeDir, ".neant/settings.json");
+  const rule = "  unknown(pattern)  ";
+  await Bun.write(source, JSON.stringify({ permissions: { deny: [rule] } }));
+  await expect(loadSettings(dirs)).rejects.toMatchObject({
+    code: "permission-rule-invalid",
+    params: { source, rule },
+    message: `${source}: invalid permission rule ${JSON.stringify(rule)}`,
+  });
+  await expect(
+    createSession({ ...dirs, settings: { permissions: { ask: [rule] } } }),
+  ).rejects.toMatchObject({
+    code: "permission-rule-invalid",
+    params: { source: "settings.permissions", rule },
+  });
+});

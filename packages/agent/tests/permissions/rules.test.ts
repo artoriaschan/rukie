@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { evaluatePermissionRules, parsePermissionRules } from "../../src/permissions/rules.ts";
+import { evaluatePermissionRules, parsePermissionRules } from "../../src/permissions/index.ts";
 
 test.each([
   [

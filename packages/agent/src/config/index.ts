@@ -6,7 +6,7 @@ import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completio
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import { createUserVisibleError, SettingsSchema, type Settings } from "@neant/shared";
-import { parsePermissionRules } from "../permissions/rules.ts";
+import { parsePermissionRules } from "../permissions/index.ts";
 import { Value } from "typebox/value";
 
 /** Parses one settings file; a missing file is `{}`. */

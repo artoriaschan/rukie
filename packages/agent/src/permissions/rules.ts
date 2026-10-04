@@ -1,3 +1,5 @@
+import { createUserVisibleError } from "@neant/shared";
+
 export type PermissionRule = {
   decision: "allow" | "ask" | "deny";
   raw: string;
@@ -19,7 +21,10 @@ export function parsePermissionRules(
     for (const raw of permissions?.[decision] ?? []) {
       const text = raw.trim();
       const fail = () => {
-        throw new Error(`${source}: invalid permission rule ${JSON.stringify(raw)}`);
+        throw createUserVisibleError(`${source}: invalid permission rule ${JSON.stringify(raw)}`, {
+          code: "permission-rule-invalid",
+          params: { source, rule: raw },
+        });
       };
       if (!text) fail();
       if (!/[()]/.test(text)) {
