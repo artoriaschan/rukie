@@ -110,6 +110,8 @@ export interface Session {
   readonly running: boolean;
   /** Cancels the current run, including one started without a frontend controller. */
   interruptRun(): void;
+  /** Observe all runs; the first subscriber also receives events from startup autoruns. */
+  subscribe(onEvent: (event: SessionEvent) => void): () => void;
   readonly id: string;
   readonly permissionMode: PermissionMode;
   readonly planMode: boolean;
@@ -218,6 +220,13 @@ async function createSessionInternal(
   } finally {
     await stored.close(context);
   }
+  const sessionObservers = new Set<(event: SessionEvent) => void>();
+  const startupEvents: SessionEvent[] = [];
+  let bufferingStartup = true;
+  const broadcast = (event: SessionEvent) => {
+    if (bufferingStartup) startupEvents.push(event);
+    for (const observer of sessionObservers) observer(event);
+  };
   let emitRunEvent: ((event: CustomSessionEvent<AgentEvent>) => void | Promise<void>) | undefined;
   const toolState = createToolState(
     [todoState, subagentsState, planState],
@@ -650,6 +659,15 @@ async function createSessionInternal(
     interruptRun() {
       runController?.abort();
     },
+    subscribe(onEvent: (event: SessionEvent) => void) {
+      if (disposePromise) throw new Error("Session has been disposed.");
+      sessionObservers.add(onEvent);
+      bufferingStartup = false;
+      for (const event of startupEvents.splice(0)) onEvent(event);
+      return () => {
+        sessionObservers.delete(onEvent);
+      };
+    },
     id: stored.metadata.id,
     get permissionMode() {
       return permissionConfiguration.getMode();
@@ -683,6 +701,9 @@ async function createSessionInternal(
             ]);
           } finally {
             await mcp?.close();
+            sessionObservers.clear();
+            bufferingStartup = false;
+            startupEvents.length = 0;
           }
         });
       }
@@ -699,6 +720,10 @@ async function createSessionInternal(
       if (disposePromise) throw new Error("Session has been disposed.");
       if (running) throw new Error("Session already has an active Run.");
       running = true;
+      if (!fromHook) {
+        bufferingStartup = false;
+        startupEvents.length = 0;
+      }
       rewakeObserver = onEvent;
       runController = new AbortController();
       signal = signal ? AbortSignal.any([signal, runController.signal]) : runController.signal;
@@ -728,8 +753,11 @@ async function createSessionInternal(
       const promptContexts: string[] = [];
       currentResult = result;
       subagents.begin();
-      const emit = (event: AgentEvent | CustomSessionEvent<AgentEvent>) =>
-        onEvent?.({ ...event, sessionId: stored.metadata.id });
+      const emit = (event: AgentEvent | CustomSessionEvent<AgentEvent>) => {
+        const identified = { ...event, sessionId: stored.metadata.id };
+        broadcast(identified);
+        return onEvent?.(identified);
+      };
       emitSessionEndEvent = emit;
       const emitContextUsage = () =>
         emit(contextUsage(agent.state.messages, model.contextWindow, inputTokens));

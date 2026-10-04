@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { join } from "node:path";
-import { createSession, type Session } from "../../src/index.ts";
+import { createSession, type Session, type SessionEvent } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
@@ -374,4 +374,61 @@ exit 2
   await Bun.write(join(dirs.cwd, "release"), "");
   expect((await run).text).toBe("all done");
   expect(parentCalls).toBe(4);
+});
+
+test("session subscription replays startup autorun events once and can unsubscribe", async () => {
+  dirs = await tempDirs();
+  const firstCall = Promise.withResolvers<void>();
+  const firstReply = Promise.withResolvers<void>();
+  const finished = Promise.withResolvers<void>();
+  const events: SessionEvent[] = [];
+  const fake = fakeModel([
+    async () => {
+      firstCall.resolve();
+      await firstReply.promise;
+      return fauxAssistantMessage("startup done");
+    },
+    fauxAssistantMessage("manual done"),
+    fauxAssistantMessage("after unsubscribe"),
+  ]);
+  session = await createSession({
+    ...dirs,
+    ...fake,
+    settings: {
+      hooks: {
+        SessionStart: [
+          {
+            hooks: [
+              { type: "command", command: "echo startup-failure >&2; exit 2", asyncRewake: true },
+            ],
+          },
+        ],
+      },
+    },
+  });
+  await firstCall.promise;
+  expect(session.running).toBe(true);
+  const unsubscribe = session.subscribe((event) => {
+    events.push(event);
+    if (event.type === "result") finished.resolve();
+  });
+  expect(events.filter((event) => event.type === "session_start")).toHaveLength(1);
+  expect(
+    events.filter((event) => event.type === "message_end" && event.message.role === "user"),
+  ).toHaveLength(1);
+  firstReply.resolve();
+  await finished.promise;
+  // Wait for the public running flag to settle, through the live result boundary.
+  await Promise.resolve();
+  const direct: SessionEvent[] = [];
+  await session.run("manual", {
+    onEvent: (event) => {
+      direct.push(event);
+    },
+  });
+  expect(events.filter((event) => event.type === "result")).toHaveLength(2);
+  expect(direct.filter((event) => event.type === "result")).toHaveLength(1);
+  unsubscribe();
+  await session.run("after unsubscribe");
+  expect(events.filter((event) => event.type === "result")).toHaveLength(2);
 });

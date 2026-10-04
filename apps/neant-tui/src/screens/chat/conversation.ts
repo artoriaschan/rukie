@@ -528,13 +528,15 @@ export function createConversation(session: Session, model: string, locale: Loca
     tools: [],
     assistant: "",
     model,
-    running: false,
+    running: session.running,
     input: 0,
     output: 0,
     usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     decode: { tokens: 0, ms: 0 },
     tpsSamples: [],
-    activity: createActivity(locale),
+    activity: session.running
+      ? reduce(createActivity(locale), { type: "submit" }, Date.now())
+      : createActivity(locale),
     activityInput: 0,
     streamedChars: 0,
   };
@@ -560,6 +562,46 @@ export function createConversation(session: Session, model: string, locale: Loca
   const dispatchActivity = (event: Parameters<typeof reduce>[1]) => {
     update({ ...state, activity: reduce(state.activity, event, Date.now()) });
   };
+  const onEvent = (event: SessionEvent) => {
+    const now = Date.now();
+    update(
+      {
+        ...reduceEvent(state, event, now, t),
+        activity: reduce(
+          event.type === "session_start" && !state.running
+            ? reduce(state.activity, { type: "submit" }, now)
+            : state.activity,
+          event,
+          now,
+        ),
+      },
+      event.type === "subagent_event",
+    );
+  };
+  // Startup hooks can start a run before the chat exists. Remove the already
+  // replayed messages from the snapshot, then fold the buffered events once.
+  const startupEvents: SessionEvent[] = [];
+  let observing = false;
+  const unsubscribe = session.subscribe((event) => {
+    if (observing) onEvent(event);
+    else startupEvents.push(event);
+  });
+  if (startupEvents.length) {
+    const emittedMessages = new Set(
+      startupEvents.flatMap((event) =>
+        event.type === "message_end" ? [JSON.stringify(event.message)] : [],
+      ),
+    );
+    state = {
+      ...state,
+      completed: replayMessages(
+        session.messages.filter((message) => !emittedMessages.has(JSON.stringify(message))),
+        t,
+      ),
+    };
+    for (const event of startupEvents) onEvent(event);
+  }
+  observing = true;
   return {
     dispatchActivity,
     getSnapshot: () => state,
@@ -618,22 +660,6 @@ export function createConversation(session: Session, model: string, locale: Loca
       const promise = session
         .run(prompt, {
           signal: controller.signal,
-          onEvent: (event) => {
-            const now = Date.now();
-            update(
-              {
-                ...reduceEvent(state, event, now, t),
-                activity: reduce(
-                  event.type === "session_start" && !state.running
-                    ? reduce(state.activity, { type: "submit" }, now)
-                    : state.activity,
-                  event,
-                  now,
-                ),
-              },
-              event.type === "subagent_event",
-            );
-          },
         })
         .catch((error: unknown) => {
           if (!controller.signal.aborted) {
@@ -660,6 +686,7 @@ export function createConversation(session: Session, model: string, locale: Loca
       session.interruptRun();
       active?.controller.abort();
       await active?.promise;
+      unsubscribe();
     },
   };
 }
