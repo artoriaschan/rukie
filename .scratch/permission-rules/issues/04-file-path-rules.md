@@ -4,7 +4,7 @@
 
 **Blocked by:** 02
 
-**Status:** claimed
+**Status:** resolved
 
 参考：[spec](../spec.md)「Permission Rule」中的文件工具与目标路径；User Stories 4–6、24–26。
 
@@ -30,3 +30,5 @@
 
 - 2026-10-04：P1 修复 delta 经双轴复审均 0 findings。随后按父代理补充检查，将 walker 的根目录与分隔符改为 node:path 的 parse / sep；初始路径和绝对软链目标均保留各自平台 root（含 drive / UNC），只对一个普通组件使用 join，软链目标中的 `..` 继续由 walker 顺序处理。Windows native 分隔同时接收斜杠与反斜杠；POSIX 保留文件名中的反斜杠。
 - 平台小修验证：macOS 实际含反斜杠文件名的软链目标 probe 通过；路径 41 pass / 0 fail；权限 focused 129 pass / 0 fail（401 expect、6 files、31.30s）；tsc -b exit 0；源码冻结 full check exit 0，860 pass / 0 fail（5069 expect、67 files、108.72s）。未做 Windows 真机验证。此小 delta 仍待父代理复审，状态保持 claimed。
+
+- 2026-10-04 最终审查：P1 修复与 native-root 小 delta 均经双轴复审，Standards 0 findings / Spec 0 findings。路径与软链语义保持，平台 root / sep 抽象无新规范问题；Windows 未做真机验证的限制已明确记录。实现与全部验收完成，Status 改为 resolved；父代理负责随后 main 集成与集成后验收。本次仅工单状态文档提交，源码保持已验证的 `410c1b6` 状态，不重复运行不变代码检查。
