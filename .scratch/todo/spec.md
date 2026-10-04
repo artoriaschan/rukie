@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: done
 
 # Spec: todo 工具（`todo_write`）与 Tool State 地基
 
@@ -139,3 +139,15 @@ Agent Core 提供模型工具 `todo_write`：模型每次写入完整的 Todo Li
 - 与上游的差异：不按 turn 清空清单（上游投影在下一个 `turn/start` 置空）；坏记录跳过而非整体报错；无 `allowParallelInProgress` 配置（固定允许并行）。
 - 建议切片顺序：① Tool State 地基（无工具使用者时用 seam 1 的 todo 用例驱动，可与 ② 同片）→ ② `todo_write` + reminder + compaction 重注入 → ③ TUI 面板与折叠交互 → ④ transcript 工具卡。
 - Goal 工单会在同一面板上加根行；面板组件命名与 props 应为此留余地，但不要提前实现。
+
+## Completion
+
+2026-10-04：按 01 → 05 顺序逐个交给子代理，均使用 `implement` skill、公共 seam 的 TDD 与独立 Standards / Spec 双轴审查。五个 [issue](issues/) 已全部勾选并标记 `done`，实现和各项验收证据已提交到 `main`。
+
+- Tool State、`todo_write`、resume 与坏记录告警：[01](issues/01-todo-write-and-resume.md)。
+- Run reminder 去重与 compaction 后同 Run 重注入：[02](issues/02-todo-reminder-and-compaction.md)。
+- 树形面板、状态显隐、对话框遮挡与短终端布局：[03](issues/03-tui-todo-panel.md)。
+- Ctrl+Q、鼠标点击 / hover、预览与本地折叠状态：[04](issues/04-tui-panel-fold.md)。
+- 双语四行工具卡、各次历史独立、resume 和错误卡：[05](issues/05-transcript-todo-card.md)。
+
+最终完整验收 `rtk proxy env -u NO_COLOR caffeinate -is bun run check`：exit 0；format / lint / typecheck / Knip 均通过，715 pass / 0 fail，4431 assertions，60 files，100.27 秒。完整输出保存于 `/tmp/neant-todo-issue05-final-check.log`；审查合计无未解决问题。主代理逐项核对当前源实现、四个 todo 公共行为测试文件、完整验收输出和五份 issue 的完成证据。
