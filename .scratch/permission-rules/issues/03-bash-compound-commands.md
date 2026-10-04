@@ -4,7 +4,7 @@
 
 **Blocked by:** 02
 
-**Status:** claimed
+**Status:** resolved
 
 参考：[spec](../spec.md)「Permission Rule」中的 bash 复合命令；User Stories 9–13。
 
@@ -20,3 +20,4 @@
 - TDD：危险段识别 19 pass / 7 fail → 26 pass / 0 fail；逐段 allow 0 pass / 7 fail → 33 pass / 0 fail；复杂写法 12 pass / 9 fail → 47 pass / 0 fail。最终 focused 71 pass / 0 fail（3 files），tsc -b exit 0。
 - 代码冻结后 `rtk proxy env -u NO_COLOR bun run check` exit 0：870 pass / 0 fail，5023 assertions，67 files（112.65s）；格式、lint、类型和 knip 均通过。设置示例及文本匹配边界见 docs/permission-rules.md。
 - 2026-10-04 独立双轴 review：Standards 未发现硬违规，指出单规则匹配谓词重复（P3）；Spec 发现解析正则不接受真实换行，整串 newline deny / ask 无法加载（P2）。按 receiving-code-review 核对后，新增公开 parse → evaluate 回归用例 RED 38 pass / 2 fail，再用正则 dotAll 修复；收敛局部匹配谓词，保留 deny / ask 与逐段 allow 聚合语义。复验 focused 88 pass / 0 fail（4 files）、tsc -b exit 0，代码冻结后完整 check exit 0：872 pass / 0 fail，5025 assertions，67 files（110.16s）。修复 checkpoint 等待独立 delta review，状态继续 claimed。
+- 2026-10-04 修复提交 ad7035ccdeeaef8a603cb0bfb3996c0d14eb21ae 的独立双轴 delta review 通过：Spec 原 P2 已修复，0 findings；Standards 原 P3 已处理，0 findings。最终源码完整 check 证据为 872 pass / 0 fail、67 files、exit 0；此后仅更新票据审查记录，无源码变更。issue 03 标记 resolved，合并到 main 后由集成流程再验收。
