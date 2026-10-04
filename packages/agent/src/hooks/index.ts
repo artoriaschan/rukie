@@ -35,7 +35,7 @@ export interface PreToolUseResult extends CommonHookResult {
   hook?: string;
 }
 
-export interface StopHookResult extends CommonHookResult {
+interface StopHookResult extends CommonHookResult {
   decision?: "block";
   reason?: string;
 }
