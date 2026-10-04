@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** in-progress (implementation validated; code review pending)
+**Status:** resolved
 
 参考：[spec](../spec.md)「compaction 后 reminder 重发」；User Stories 38–40。
 
@@ -24,4 +24,11 @@
 - 公开 e2e 覆盖恢复提醒、下一 Run 去重与变更、真实 stdio MCP、连续 compaction、Todo List 与 resume context 一致性。更新旧的“instructions 只在首次 Run 读取”和“compaction 不重发 skills”预期，保持 Transcript 前缀只追加不改写。
 - Context Usage 旧断言只计 summary；现在多计 date 与空 skills 列表的 reminder 文本，各 6 tokens。测试同时断言 faux model 收到两条确切 reminder，并保持 provider usage 重置的原断言。
 - Validation: focused 四文件 35 pass / 0 fail；`rtk proxy env -u NO_COLOR bun run check` exit 0，765 pass / 0 fail，63 files（含格式、lint、`tsc -b`、knip）。
-- Standards / Spec 双轴 code review 待父代理安排；review、最终状态与合并清理完成前不标为 completed。
+- Checkpoint 时 Standards / Spec 双轴 code review 待父代理安排，工单保持 in-progress。
+
+### 2026-10-04 code review completed
+
+- 父代理按 `code-review` skill 并行执行 Standards / Spec 双轴评审，固定点为 `ccbadad148ab76acaad14be91b39eaf034beee85`，实现提交为 `74251b3ef6fc86f7792ebeb5b349631da35500fd`。
+- Standards: 0 findings。Transcript 只追加、原生 pi compaction / Session Store、测试运行时和 Locale 边界均符合仓库规范。
+- Spec: 0 findings。全部 reminder source 重发、environment 一次性快照、统一去重、连续 compaction、内容变更、resume 顺序与一致性、真实 stdio MCP，以及 Context Usage 的公开 reminder 文本断言均满足 issue 07。
+- 两轴均无待修复问题；实现保持不变。本次仅更新工单完成状态，沿用上述完整验收证据；父代理后续负责合并 main、集成验收与工作树清理。
