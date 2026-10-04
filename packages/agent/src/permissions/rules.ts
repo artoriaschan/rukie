@@ -32,7 +32,7 @@ export function parsePermissionRules(
         rules.push({ decision, raw, kind: "tool", pattern: text });
         continue;
       }
-      const match = /^([^()]+)\((.+)\)$/.exec(text);
+      const match = /^([^()]+)\((.+)\)$/s.exec(text);
       if (!match) fail();
       const tool = match![1]!;
       const pattern = match![2]!;
@@ -78,17 +78,19 @@ export function evaluatePermissionRules({
     typeof args.command === "string"
       ? analyzeBashCommand(args.command)
       : undefined;
+  const matchesCommandRule = (rule: PermissionRule, command?: string): boolean =>
+    rule.kind === "tool"
+      ? new Bun.Glob(rule.pattern).match(toolName)
+      : rule.kind === "bash" && command !== undefined
+        ? matchesBashPattern(rule.pattern, command)
+        : false; // Path matching belongs to issue 04.
   for (const decision of ["deny", "ask", "allow"] as const) {
     if (decision === "allow" && bash) {
       if (!bash.allowMatching) return undefined;
       let matched: PermissionRule | undefined;
       for (const segment of bash.segments) {
         const match = rules.find(
-          (rule) =>
-            rule.decision === "allow" &&
-            (rule.kind === "tool"
-              ? new Bun.Glob(rule.pattern).match(toolName)
-              : rule.kind === "bash" && matchesBashPattern(rule.pattern, segment)),
+          (rule) => rule.decision === "allow" && matchesCommandRule(rule, segment),
         );
         if (!match) return undefined;
         matched ??= match;
@@ -97,14 +99,9 @@ export function evaluatePermissionRules({
     }
     for (const rule of rules) {
       if (rule.decision !== decision) continue;
-      const matches =
-        rule.kind === "tool"
-          ? new Bun.Glob(rule.pattern).match(toolName)
-          : rule.kind === "bash" && bash
-            ? (decision === "allow" ? [bash.text] : [bash.text, ...bash.segments]).some((command) =>
-                matchesBashPattern(rule.pattern, command),
-              )
-            : false; // Path matching belongs to issue 04.
+      const matches = bash
+        ? [bash.text, ...bash.segments].some((command) => matchesCommandRule(rule, command))
+        : matchesCommandRule(rule);
       if (matches) return { decision, rule: rule.raw };
     }
   }

@@ -19,3 +19,4 @@
 - 2026-10-04：实现完成，独立 review 待执行，暂不标 resolved。Bash 文本拆分封装在 permissions/bash.ts；规则接缝维持 evaluator，其他工具与路径规则保持 issue 04 所属。普通 allow（含裸 bash / *）对每段匹配；复杂标记或未闭合引号跳过 allow，deny / ask 仍按整串和各段取最严。
 - TDD：危险段识别 19 pass / 7 fail → 26 pass / 0 fail；逐段 allow 0 pass / 7 fail → 33 pass / 0 fail；复杂写法 12 pass / 9 fail → 47 pass / 0 fail。最终 focused 71 pass / 0 fail（3 files），tsc -b exit 0。
 - 代码冻结后 `rtk proxy env -u NO_COLOR bun run check` exit 0：870 pass / 0 fail，5023 assertions，67 files（112.65s）；格式、lint、类型和 knip 均通过。设置示例及文本匹配边界见 docs/permission-rules.md。
+- 2026-10-04 独立双轴 review：Standards 未发现硬违规，指出单规则匹配谓词重复（P3）；Spec 发现解析正则不接受真实换行，整串 newline deny / ask 无法加载（P2）。按 receiving-code-review 核对后，新增公开 parse → evaluate 回归用例 RED 38 pass / 2 fail，再用正则 dotAll 修复；收敛局部匹配谓词，保留 deny / ask 与逐段 allow 聚合语义。复验 focused 88 pass / 0 fail（4 files）、tsc -b exit 0，代码冻结后完整 check exit 0：872 pass / 0 fail，5025 assertions，67 files（110.16s）。修复 checkpoint 等待独立 delta review，状态继续 claimed。

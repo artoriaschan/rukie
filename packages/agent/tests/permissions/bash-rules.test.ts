@@ -103,6 +103,17 @@ test.each(["deny", "ask"] as const)("%s also matches the whole command", (decisi
   });
 });
 
+test.each(["deny", "ask"] as const)(
+  "%s parses and matches a whole rule containing a real newline",
+  (decision) => {
+    const rule = "bash(git status\nrm -rf *)";
+    expect(evaluate("git status\nrm -rf /tmp/cache", { [decision]: [rule] })).toEqual({
+      decision,
+      rule,
+    });
+  },
+);
+
 test("most restrictive match wins across different segments and rule order", () => {
   expect(
     evaluate("git push origin && rm -rf /tmp/cache", {
