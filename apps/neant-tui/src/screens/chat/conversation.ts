@@ -38,15 +38,21 @@ function toolEntry(
   result: Pick<ToolResultMessage, "content" | "details">,
   t: ReturnType<typeof createTuiI18n>,
 ): CompletedEntry {
+  const todo = tool.name === "todo_write" && !isError ? todoSummary(tool.args, t) : undefined;
   return {
     type: "tool",
-    summary: tool.name === "ask_user_question" && !isError ? t("question.summary") : tool.summary,
+    summary:
+      todo !== undefined
+        ? t("todo.summary")
+        : tool.name === "ask_user_question" && !isError
+          ? t("question.summary")
+          : tool.summary,
     isError,
     result: isError
       ? undefined
       : tool.name === "ask_user_question"
         ? questionSummary(tool.args, resultText(result), t)
-        : resultText(result),
+        : (todo ?? resultText(result)),
     error: isError
       ? formatError(
           {
@@ -57,6 +63,29 @@ function toolEntry(
         )
       : undefined,
   };
+}
+
+function todoSummary(args: unknown, t: ReturnType<typeof createTuiI18n>) {
+  if (typeof args !== "object" || args === null || !("todos" in args)) return undefined;
+  const todos = args.todos;
+  if (
+    !Array.isArray(todos) ||
+    !todos.every(
+      (item) =>
+        typeof item?.content === "string" &&
+        ["pending", "in_progress", "completed"].includes(item.status),
+    )
+  )
+    return undefined;
+  const done = todos.filter((todo) => todo.status === "completed").length;
+  // The tool heading and progress row leave two rows within the four-row card budget.
+  return [
+    t("todo.progress", { done, total: todos.length }),
+    ...todos
+      .filter((todo) => todo.status === "in_progress")
+      .slice(0, 2)
+      .map((todo) => `● ${todo.content.trim().replace(/[\r\n]+/g, " ")}`),
+  ].join("\n");
 }
 
 function questionSummary(args: unknown, text: string, t: ReturnType<typeof createTuiI18n>) {

@@ -32,6 +32,8 @@
  */
 
 const zh = {
+  "todo.summary": "待办清单",
+  "todo.progress": "todos ✓ {{done}}/{{total}}",
   "todo.fold": "Ctrl+Q 折叠",
   "todo.more": "… 还有 {{count}} 项",
   "question.summary": "提问",
@@ -123,6 +125,8 @@ const zh = {
 } as const;
 
 const en = {
+  "todo.summary": "TodoWrite",
+  "todo.progress": "todos ✓ {{done}}/{{total}}",
   "todo.fold": "Ctrl+Q fold",
   "todo.more": "… {{count}} more",
   "question.summary": "Questions",
