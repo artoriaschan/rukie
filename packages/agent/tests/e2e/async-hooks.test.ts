@@ -432,3 +432,154 @@ test("session subscription replays startup autorun events once and can unsubscri
   await session.run("after unsubscribe");
   expect(events.filter((event) => event.type === "result")).toHaveLength(2);
 });
+
+test.each(["PostCompact", "SessionStart"] as const)(
+  "async output completed during %s reaches the next actual model request",
+  async (event) => {
+    dirs = await tempDirs();
+    await Bun.write(
+      join(dirs.cwd, "background.sh"),
+      `cat > background-input
+while [ ! -f release ]; do sleep 0.01; done
+echo '{"systemMessage":"late async notice","hookSpecificOutput":{"additionalContext":"late async context"}}'
+`,
+    );
+    await Bun.write(
+      join(dirs.cwd, "compact-hook.sh"),
+      `cat > compact-input
+touch release
+while [ ! -f compact-release ]; do sleep 0.01; done
+`,
+    );
+    const fake = fakeModel([
+      fauxAssistantMessage("old work ".repeat(2500)),
+      fauxAssistantMessage("Saved summary."),
+      fauxAssistantMessage("after compaction"),
+    ]);
+    fake.model.contextWindow = 4000;
+    const hooks = {
+      SessionStart: [
+        {
+          matcher: "startup",
+          hooks: [{ type: "command" as const, command: "sh background.sh", async: true }],
+        },
+      ],
+      [event]: [
+        ...(event === "SessionStart"
+          ? [
+              {
+                matcher: "startup",
+                hooks: [{ type: "command" as const, command: "sh background.sh", async: true }],
+              },
+            ]
+          : []),
+        {
+          matcher: event === "SessionStart" ? "compact" : "auto",
+          hooks: [{ type: "command" as const, command: "sh compact-hook.sh" }],
+        },
+      ],
+    };
+    session = await createSession({ ...dirs, ...fake, settings: { hooks } });
+    await session.run("first");
+    const events: SessionEvent[] = [];
+    await session.run("compact", {
+      onEvent: async (event) => {
+        events.push(event);
+        if (event.type === "hook_message" && event.message === "late async notice")
+          await Bun.write(join(dirs.cwd, "compact-release"), "");
+      },
+    });
+    expect(JSON.stringify(fake.contexts[2]!.messages)).toContain("late async context");
+    expect(JSON.stringify(fake.contexts[2]!.messages)).toContain("late async notice");
+    expect(
+      events.filter((event) => event.type === "reminder_injected" && event.source === "async-hook"),
+    ).toHaveLength(2);
+    const input = await Bun.file(join(dirs.cwd, "background-input")).json();
+    expect(await Bun.file(input.transcript_path).text()).toContain("late async context");
+  },
+);
+
+test.each([false, true])(
+  "a user run waits for an active hook autorun and cancellation does not submit it: %s",
+  async (cancel) => {
+    dirs = await tempDirs();
+    const firstCall = Promise.withResolvers<void>();
+    const firstReply = Promise.withResolvers<void>();
+    const finished = Promise.withResolvers<void>();
+    const fake = fakeModel([
+      async () => {
+        firstCall.resolve();
+        await firstReply.promise;
+        return fauxAssistantMessage("autorun done");
+      },
+      fauxAssistantMessage("human done"),
+    ]);
+    session = await createSession({
+      ...dirs,
+      ...fake,
+      settings: {
+        hooks: {
+          SessionStart: [
+            {
+              hooks: [
+                {
+                  type: "command",
+                  command: "echo background-failure >&2; exit 2",
+                  asyncRewake: true,
+                },
+              ],
+            },
+          ],
+          UserPromptSubmit: [{ hooks: [{ type: "command", command: "cat >> human-prompts" }] }],
+        },
+      },
+    });
+    session.subscribe((event) => {
+      if (event.type === "result") finished.resolve();
+    });
+    await firstCall.promise;
+    const controller = new AbortController();
+    const manual = session.run("actual human task", { signal: controller.signal });
+    if (cancel) {
+      controller.abort();
+      await expect(manual).rejects.toThrow();
+      expect(await Bun.file(join(dirs.cwd, "human-prompts")).exists()).toBe(false);
+      expect(JSON.stringify(session.messages)).not.toContain("actual human task");
+      firstReply.resolve();
+      await finished.promise;
+      expect(fake.contexts).toHaveLength(1);
+    } else {
+      expect(await Bun.file(join(dirs.cwd, "human-prompts")).exists()).toBe(false);
+      firstReply.resolve();
+      expect((await manual).text).toBe("human done");
+      expect(fake.contexts).toHaveLength(2);
+      expect(JSON.stringify(fake.contexts[1]!.messages)).toContain("actual human task");
+      expect(
+        (await Bun.file(join(dirs.cwd, "human-prompts")).text()).match(/hook_event_name/g),
+      ).toHaveLength(1);
+    }
+  },
+);
+
+test("a competing user run is still rejected rather than queued", async () => {
+  dirs = await tempDirs();
+  const called = Promise.withResolvers<void>();
+  const reply = Promise.withResolvers<void>();
+  const fake = fakeModel([
+    async () => {
+      called.resolve();
+      await reply.promise;
+      return fauxAssistantMessage("done");
+    },
+  ]);
+  session = await createSession({ ...dirs, ...fake });
+  const first = session.run("first user task");
+  await called.promise;
+  await expect(session.run("second user task")).rejects.toThrow(
+    "Session already has an active Run",
+  );
+  expect(JSON.stringify(session.messages)).not.toContain("second user task");
+  reply.resolve();
+  await first;
+  expect(fake.contexts).toHaveLength(1);
+});

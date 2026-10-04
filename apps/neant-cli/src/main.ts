@@ -104,6 +104,7 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
     return 2;
   }
   let session: Session | undefined;
+  let unsubscribe: (() => void) | undefined;
   try {
     const cwd = io.session?.cwd ?? process.cwd();
     const homeDir = io.session?.homeDir ?? homedir();
@@ -124,22 +125,20 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
         : ((values["permission-mode"] as PermissionMode | undefined) ?? io.session?.permissionMode),
       trustProjectMcp: values["trust-project-mcp"] ?? io.session?.trustProjectMcp,
     });
-    const prompt = values.prompt ?? (await readStdin(io)).trimEnd();
     const streamJson = values["output-format"] === "stream-json";
-    const { text } = await session.run(prompt, {
-      signal: io.signal,
-      onEvent: (event) => {
-        if (streamJson) io.stdout(`${JSON.stringify(event)}\n`);
-        else if (event.type === "hook_message") io.stderr(`${event.message}\n`);
-        else if (
-          event.type === "result" &&
-          (event.stopReason === "hook_stopped" || event.stopReason === "hook_blocked")
-        )
-          io.stderr(
-            `${event.reason ?? (event.stopReason === "hook_blocked" ? "Prompt blocked by hook" : "Stopped by hook")}\n`,
-          );
-      },
+    unsubscribe = session.subscribe((event) => {
+      if (streamJson) io.stdout(`${JSON.stringify(event)}\n`);
+      else if (event.type === "hook_message") io.stderr(`${event.message}\n`);
+      else if (
+        event.type === "result" &&
+        (event.stopReason === "hook_stopped" || event.stopReason === "hook_blocked")
+      )
+        io.stderr(
+          `${event.reason ?? (event.stopReason === "hook_blocked" ? "Prompt blocked by hook" : "Stopped by hook")}\n`,
+        );
     });
+    const prompt = values.prompt ?? (await readStdin(io)).trimEnd();
+    const { text } = await session.run(prompt, { signal: io.signal });
     if (!streamJson) io.stdout(`${text}\n`);
     return 0;
   } catch (error) {
@@ -150,7 +149,11 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
     io.stderr(`${(error as Error).message}\n`);
     return 1;
   } finally {
-    await session?.dispose();
+    try {
+      await session?.dispose();
+    } finally {
+      unsubscribe?.();
+    }
   }
 }
 

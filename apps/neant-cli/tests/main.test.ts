@@ -443,3 +443,101 @@ test("Headless resume emits a text plan and never registers interactive plan too
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test.each(["prompt", "stdin", "stdin-stream-json"])(
+  "CLI %s retains a user task while a startup hook autorun is active",
+  async (source) => {
+    const root = await mkdtemp(join(tmpdir(), "neant-cli-async-hook-"));
+    const firstCall = Promise.withResolvers<void>();
+    const firstReply = Promise.withResolvers<void>();
+    const contexts: string[] = [];
+    const faux = createFauxCore({ api: "faux", provider: "faux" });
+    faux.setResponses([
+      async (context) => {
+        contexts.push(JSON.stringify(context.messages));
+        firstCall.resolve();
+        await firstReply.promise;
+        return fauxAssistantMessage("autorun done");
+      },
+      (context) => {
+        contexts.push(JSON.stringify(context.messages));
+        return fauxAssistantMessage("human done");
+      },
+    ]);
+    let stdout = "";
+    let stderr = "";
+    try {
+      await Bun.write(
+        join(root, "rewake.sh"),
+        "cat >/dev/null\necho startup-background-failure >&2\ntouch background-exit\nexit 2\n",
+      );
+      const running = main(
+        source === "prompt"
+          ? ["-p", "actual human task"]
+          : source === "stdin-stream-json"
+            ? ["--output-format", "stream-json"]
+            : [],
+        {
+          readStdin: async () => {
+            await firstCall.promise;
+            return "actual human task";
+          },
+          stdout: (text) => {
+            stdout += text;
+          },
+          stderr: (text) => {
+            stderr += text;
+          },
+          session: {
+            cwd: root,
+            homeDir: root,
+            model: faux.getModel(),
+            streamFn: faux.streamSimple,
+            settings: {
+              hooks: {
+                SessionStart: [
+                  {
+                    hooks: [
+                      { type: "command", command: "sh rewake.sh", asyncRewake: true },
+                      {
+                        type: "command",
+                        command: "while [ ! -f background-exit ]; do sleep 0.01; done",
+                      },
+                    ],
+                  },
+                ],
+                UserPromptSubmit: [
+                  { hooks: [{ type: "command", command: "cat >> human-prompts" }] },
+                ],
+              },
+            },
+          },
+        },
+      );
+      await firstCall.promise;
+      expect(contexts[0]).toContain("startup-background-failure");
+      expect(contexts[0]).not.toContain("actual human task");
+      firstReply.resolve();
+      expect(await running).toBe(0);
+      expect(contexts).toHaveLength(2);
+      expect(contexts[1]).toContain("actual human task");
+      expect(
+        (await Bun.file(join(root, "human-prompts")).text()).match(/hook_event_name/g),
+      ).toHaveLength(1);
+      if (source === "stdin-stream-json") {
+        const events = stdout
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line));
+        expect(events.filter((event) => event.type === "result")).toHaveLength(2);
+        expect(
+          events.filter((event) => event.type === "message_end" && event.message.role === "user"),
+        ).toHaveLength(2);
+      } else expect(stdout).toBe("human done\n");
+      expect(stderr).not.toContain("Session already has an active Run");
+    } finally {
+      firstReply.resolve();
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);

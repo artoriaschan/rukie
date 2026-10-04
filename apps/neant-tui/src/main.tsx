@@ -141,7 +141,7 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
       </ThemeProvider>,
       { ...io, fullscreen: true },
     );
-    if (prompt !== undefined) chat.submit(prompt);
+    if (prompt !== undefined) chat.submitInitial(prompt);
     await app.waitUntilExit();
     return 0;
   } catch (error) {

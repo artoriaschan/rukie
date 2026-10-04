@@ -127,6 +127,7 @@ export interface Session {
   interruptSubagent(id: string): void;
   /** Ends the Session once, cancelling its Run and releasing external resources. */
   dispose(reason?: "exit" | "other"): Promise<void>;
+  /** Waits behind a hook autorun; a competing user run is rejected. */
   run(
     prompt: string,
     options?: {
@@ -628,6 +629,9 @@ async function createSessionInternal(
   });
   if (internal.control) internal.control.steer = (message) => agent.steer(message);
   let running = false;
+  let hookRunActive = false;
+  let runSettled: ReturnType<typeof Promise.withResolvers<void>> | undefined;
+  let queuedUserRuns = 0;
   let runController: AbortController | undefined;
   let runMcp: ReturnType<typeof createMcpConnections> | undefined;
   let disposePromise: Promise<void> | undefined;
@@ -717,9 +721,28 @@ async function createSessionInternal(
       }: { signal?: AbortSignal; onEvent?: (event: SessionEvent) => void | Promise<void> } = {},
       fromHook = false,
     ) {
+      // Startup hook feedback can start a run before a frontend submits its user task.
+      if (running && hookRunActive && !fromHook) {
+        queuedUserRuns++;
+        const cancelled = Promise.withResolvers<never>();
+        const abortWaiting = () => cancelled.reject(signal?.reason);
+        try {
+          signal?.throwIfAborted();
+          signal?.addEventListener("abort", abortWaiting, { once: true });
+          await Promise.race([runSettled!.promise, cancelled.promise]);
+          signal?.throwIfAborted();
+        } finally {
+          signal?.removeEventListener("abort", abortWaiting);
+          queuedUserRuns--;
+          if (!running && signal?.aborted) scheduleRewake?.();
+        }
+      }
       if (disposePromise) throw new Error("Session has been disposed.");
       if (running) throw new Error("Session already has an active Run.");
       running = true;
+      hookRunActive = fromHook;
+      const settled = Promise.withResolvers<void>();
+      runSettled = settled;
       if (!fromHook) {
         bufferingStartup = false;
         startupEvents.length = 0;
@@ -919,7 +942,7 @@ async function createSessionInternal(
             ...(options.reminderSources ?? []),
             ...toolState.reminderSources,
           ];
-          const injectAsyncContexts = async (messages: AgentMessage[]) => {
+          const injectAsyncContexts = async (messages: AgentMessage[]): Promise<AgentMessage[]> => {
             const reminders = pendingAsyncContexts.splice(0).map((content) => ({
               role: "system-reminder" as const,
               source: "async-hook",
@@ -935,7 +958,8 @@ async function createSessionInternal(
                 content: reminder.content,
               });
             }
-            return [...messages, ...reminders];
+            const injected = [...messages, ...reminders];
+            return pendingAsyncContexts.length ? injectAsyncContexts(injected) : injected;
           };
           agent.prepareRequest = async ({ context: requestContext }, turnSignal) => {
             let contextChanged = false;
@@ -1047,7 +1071,7 @@ async function createSessionInternal(
                 content: reminder.content,
               });
             }
-            const messages = await injectAsyncContexts(
+            let messages = await injectAsyncContexts(
               restoreContext(await branch.findEntries({ order: "oldestFirst" }, context)),
             );
             agent.state.messages = messages;
@@ -1077,6 +1101,8 @@ async function createSessionInternal(
             turnSignal?.throwIfAborted();
             stopPreparedRequest();
             await emitContextUsage();
+            messages = await injectAsyncContexts(messages);
+            agent.state.messages = messages;
             return { context: { ...requestContext, messages } };
           };
           unsubscribe = agent.subscribe(async (event) => {
@@ -1292,7 +1318,9 @@ async function createSessionInternal(
           runController = undefined;
           runMcp = undefined;
           running = false;
-          scheduleRewake?.();
+          hookRunActive = false;
+          settled.resolve();
+          if (!queuedUserRuns) scheduleRewake?.();
         }
       }
       return result;

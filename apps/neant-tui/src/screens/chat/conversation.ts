@@ -616,7 +616,7 @@ export function createConversation(session: Session, model: string, locale: Loca
         }
       };
     },
-    submit(prompt: string) {
+    submit(prompt: string, initial = false) {
       const command = /^\/plan(?:\s+([\s\S]*))?$/i.exec(prompt.trim());
       if (command) {
         const instruction = command[1]?.trim() ?? "";
@@ -643,20 +643,21 @@ export function createConversation(session: Session, model: string, locale: Loca
         }
         prompt = instruction;
       }
-      if (active || session.running || !prompt.trim()) return false;
+      if (active || (session.running && !initial) || !prompt.trim()) return false;
       const controller = new AbortController();
-      update({
-        ...state,
-        running: true,
-        waitingSubagents: 0,
-        input: 0,
-        output: 0,
-        error: undefined,
-        activityInput: 0,
-        streamedChars: 0,
-        decode: { tokens: 0, ms: 0 },
-        activity: reduce(state.activity, { type: "submit" }, Date.now()),
-      });
+      if (!session.running)
+        update({
+          ...state,
+          running: true,
+          waitingSubagents: 0,
+          input: 0,
+          output: 0,
+          error: undefined,
+          activityInput: 0,
+          streamedChars: 0,
+          decode: { tokens: 0, ms: 0 },
+          activity: reduce(state.activity, { type: "submit" }, Date.now()),
+        });
       const promise = session
         .run(prompt, {
           signal: controller.signal,

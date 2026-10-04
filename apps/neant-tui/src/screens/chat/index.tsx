@@ -57,8 +57,8 @@ export async function createChat(options: SessionOptions, model: string, locale:
   const conversation = createConversation(session, model, locale);
   const history = await createInputHistory(options.cwd, options.homeDir);
   const inputHistory = createTextInputHistory(history.entries);
-  const submit = (prompt: string) => {
-    if (!conversation.submit(prompt)) return false;
+  const submit = (prompt: string, initial = false) => {
+    if (!conversation.submit(prompt, initial)) return false;
     history.remember(prompt);
     inputHistory.reset();
     return true;
@@ -77,6 +77,7 @@ export async function createChat(options: SessionOptions, model: string, locale:
   }
   return {
     submit,
+    submitInitial: (prompt: string) => submit(prompt, true),
     async stop() {
       try {
         await session.dispose();
