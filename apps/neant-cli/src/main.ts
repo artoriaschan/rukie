@@ -126,7 +126,12 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
     const streamJson = values["output-format"] === "stream-json";
     const { text } = await session.run(prompt, {
       signal: io.signal,
-      onEvent: streamJson ? (event) => io.stdout(`${JSON.stringify(event)}\n`) : undefined,
+      onEvent: (event) => {
+        if (streamJson) io.stdout(`${JSON.stringify(event)}\n`);
+        else if (event.type === "hook_message") io.stderr(`${event.message}\n`);
+        else if (event.type === "result" && event.stopReason === "hook_stopped")
+          io.stderr(`${event.reason ?? "Stopped by hook"}\n`);
+      },
     });
     if (!streamJson) io.stdout(`${text}\n`);
     return 0;

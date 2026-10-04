@@ -130,6 +130,9 @@ const zh = {
   "logo.effort.max": "推理强度：最高",
 
   "tool.rule-denied": "被权限规则拒绝：{{rule}}",
+  "tool.hook-denied": "被 hook 拒绝（{{hook}}）：{{reason}}",
+  "notice.hook-warning": "{{event}} hook {{hook}}：{{message}}",
+  "notice.hook-stopped": "Hook 已结束运行：{{reason}}",
   "notice.compaction": "上下文已压缩（{{tokens}} tokens）",
   "notice.mcp-error": "MCP 服务器 {{server}} 出错：{{error}}",
   "scroll.return": "回到底部（Ctrl+End）",
@@ -301,6 +304,9 @@ const en = {
   "logo.effort.max": "Max effort",
 
   "tool.rule-denied": "Denied by permission rule: {{rule}}",
+  "tool.hook-denied": "Denied by hook ({{hook}}): {{reason}}",
+  "notice.hook-warning": "{{event}} hook {{hook}}: {{message}}",
+  "notice.hook-stopped": "Run stopped by hook: {{reason}}",
   "notice.compaction": "Context compacted ({{tokens}} tokens)",
   "notice.mcp-error": "MCP server {{server}}: {{error}}",
   "scroll.return": "Back to bottom (Ctrl+End)",

@@ -6,6 +6,80 @@ import { start } from "../helpers/app";
 
 const assistant = process.platform === "darwin" ? "⏺" : "●";
 
+test.each([
+  ["zh_CN.UTF-8", "Hook 已结束运行"],
+  ["en_US.UTF-8", "Run stopped by hook"],
+])("%s shows the stop reason when a hook terminates the run", async (lang, label) => {
+  const app = await start(["--yolo", "try"], {
+    env: { LANG: lang },
+    session: {
+      settings: {
+        hooks: {
+          PreToolUse: [
+            {
+              hooks: [
+                {
+                  type: "command",
+                  command: `echo '{"continue":false,"stopReason":"hook-stop-reason"}'`,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
+  });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("bash", { command: "touch forbidden" });
+    await app.waitFor(() => !app.isWorking());
+    expect(app.allLines().join("\n")).toContain(label!);
+    expect(app.allLines().join("\n")).toContain("hook-stop-reason");
+    expect(app.calls).toHaveLength(1);
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test.each([
+  ["zh_CN.UTF-8", "被 hook 拒绝"],
+  ["en_US.UTF-8", "Denied by hook"],
+])("%s shows hook denial provenance, warnings and user messages", async (lang, label) => {
+  const sessionOptions = {
+    settings: {
+      hooks: {
+        PreToolUse: [
+          {
+            hooks: [
+              { type: "command" as const, command: "echo '{bad}'" },
+              {
+                type: "command" as const,
+                command: `echo '{"systemMessage":"hook-user-notice","hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":"protected"}}'`,
+              },
+            ],
+          },
+        ],
+      },
+    },
+  };
+  const app = await start(["--yolo", "try"], { env: { LANG: lang }, session: sessionOptions });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("bash", { command: "touch forbidden" });
+    await app.waitFor(() => app.calls.length === 2);
+    app.calls[1]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    expect(app.allLines().join("\n")).toContain(label!);
+    expect(app.allLines().join("\n")).toContain("hook-user-notice");
+    expect(app.allLines().join("\n")).toContain(
+      lang!.startsWith("zh") ? "无效的 hook JSON" : "Invalid hook JSON",
+    );
+    expect(await Bun.file(join(app.root, "forbidden")).exists()).toBe(false);
+  } finally {
+    await app.cleanup();
+  }
+});
+
 function runningTools(app: Awaited<ReturnType<typeof start>>) {
   const buffer = app.terminal.buffer.active;
   return app.screen().filter(

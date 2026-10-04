@@ -2,6 +2,8 @@ import {
   Agent,
   type AgentEvent,
   type AgentMessage,
+  type AgentOptions,
+  type AfterToolCallResult,
   type StreamFn,
   type Skill,
 } from "@earendil-works/pi-agent-core";
@@ -59,6 +61,7 @@ import { contextUsage } from "../context-usage/index.ts";
 import { createToolState, todoState, type TodoItem } from "../tool-state/index.ts";
 
 import { planState, planModeReminder, PLAN_MODE_EXIT } from "../plan-mode/index.ts";
+import { createHooks, type CommonHookResult, type HookInput } from "../hooks/index.ts";
 
 export type { PermissionAskRequest, SessionAllowRule } from "../permissions/index.ts";
 
@@ -132,6 +135,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
 interface InternalSessionOptions {
   parentSessionId?: string;
   originDescription?: string;
+  agentType?: string;
   permissions?: {
     rules: ReturnType<typeof parsePermissionRules>;
     sessionAllowRules: SessionAllowRule[];
@@ -282,6 +286,64 @@ async function createSessionInternal(
   const onQuestion = options.onQuestion
     ? (request: QuestionRequest) => options.onQuestion!({ ...request, ...(origin && { origin }) })
     : undefined;
+  const hookInput = (): HookInput => ({
+    session_id: stored.metadata.id,
+    transcript_path:
+      "path" in stored.metadata && typeof stored.metadata.path === "string"
+        ? stored.metadata.path
+        : "",
+    cwd,
+    permission_mode: permissionConfiguration.getMode(),
+    ...(internal.parentSessionId && {
+      agent_id: stored.metadata.id,
+      agent_type: internal.agentType,
+    }),
+  });
+  const hooks = createHooks({
+    settings: settings.hooks,
+    cwd,
+    projectDir: cwd,
+    onWarning: options.onWarning ?? console.warn,
+    onEvent: (event) => emitRunEvent?.(event),
+  });
+  const toolHookContexts = new Map<string, string[]>();
+  const hookDenials = new Map<string, { hook?: string; reason?: string }>();
+  let hookStopped = false;
+  let hookStopReason: string | undefined;
+  const applyHookControl = (result: CommonHookResult) => {
+    if (result.continue === false) {
+      hookStopped = true;
+      hookStopReason = result.stopReason;
+    }
+  };
+  const consumeToolHookOutput = (
+    id: string,
+    result: Parameters<NonNullable<AgentOptions["afterToolCall"]>>[0]["result"],
+  ): AfterToolCallResult | undefined => {
+    const contexts = toolHookContexts.get(id) ?? [];
+    toolHookContexts.delete(id);
+    const denial = hookDenials.get(id);
+    hookDenials.delete(id);
+    if (!contexts.length && !denial && !hookStopped) return;
+    return {
+      ...(contexts.length && {
+        content: [
+          ...result.content,
+          ...contexts.map((content) => ({
+            type: "text" as const,
+            text: `<system-reminder>\n${content}\n</system-reminder>`,
+          })),
+        ],
+      }),
+      ...(denial && {
+        details: {
+          ...(typeof result.details === "object" && result.details),
+          permissionDenied: { by: "hook", ...denial },
+        },
+      }),
+      ...(hookStopped && { terminate: true }),
+    };
+  };
   const permissions = createPermissionGate({
     cwd,
     homeDir: options.homeDir,
@@ -307,7 +369,43 @@ async function createSessionInternal(
     onPermissionAsk: options.onPermissionAsk
       ? (request) => options.onPermissionAsk!({ ...request, ...(origin && { origin }) })
       : undefined,
-    onEvent: (event) => emitRunEvent?.(event),
+    onEvent: (event) => {
+      if (event.type === "permission_denied" && event.by === "hook")
+        hookDenials.set(event.toolCallId, { hook: event.hook, reason: event.reason });
+      return emitRunEvent?.(event);
+    },
+    ...(settings.hooks?.PreToolUse?.length && {
+      preToolUse: async (call, signal) => {
+        if (hookStopped)
+          return {
+            continue: false as const,
+            stopReason: hookStopReason,
+            systemMessages: [],
+            additionalContext: [],
+          };
+        const result = await hooks.run(
+          "PreToolUse",
+          {
+            ...hookInput(),
+            tool_name: call.toolCall.name,
+            tool_input: call.args,
+            tool_use_id: call.toolCall.id,
+          },
+          { signal, matchQuery: call.toolCall.name },
+        );
+        toolHookContexts.set(call.toolCall.id, result.additionalContext);
+        applyHookControl(result);
+        return result;
+      },
+    }),
+    stopRun(reason) {
+      applyHookControl({
+        continue: false,
+        stopReason: reason,
+        systemMessages: [],
+        additionalContext: [],
+      });
+    },
   });
   let currentResult: RunResult | undefined;
   let completedMessages = restoreContext(entries);
@@ -338,6 +436,7 @@ async function createSessionInternal(
           control,
           parentSessionId: stored.metadata.id,
           originDescription: description,
+          agentType: type.name,
           permissions: permissionConfiguration,
           plan,
           toolNames:
@@ -387,7 +486,11 @@ async function createSessionInternal(
     streamFn: options.streamFn ?? streamFn,
     convertToLlm,
     beforeToolCall: permissions.beforeToolCall,
+    async afterToolCall({ toolCall, result }) {
+      return consumeToolHookOutput(toolCall.id, result);
+    },
     finishTurn({ toolResults }) {
+      if (hookStopped) return { action: "end" };
       // pi 0.99.2 stops on terminate only when every result in the batch opts in.
       // A takeover ends the Run after all sibling tools have emitted their results.
       if (
@@ -448,6 +551,10 @@ async function createSessionInternal(
       if (running) throw new Error("Session already has an active Run.");
       running = true;
       planTakenOver = false;
+      hookStopped = false;
+      hookStopReason = undefined;
+      toolHookContexts.clear();
+      hookDenials.clear();
       const started = performance.now();
       const result: RunResult = {
         text: "",
@@ -650,6 +757,11 @@ async function createSessionInternal(
             return { context: { ...requestContext, messages } };
           };
           unsubscribe = agent.subscribe(async (event) => {
+            // pi skips afterToolCall for blocked/invalid calls. Its end event still
+            // precedes creation of the tool-result message and carries the same result.
+            if (event.type === "tool_execution_end") {
+              Object.assign(event.result, consumeToolHookOutput(event.toolCallId, event.result));
+            }
             await emitMcpErrors();
             if (event.type === "turn_end")
               completedMessages = structuredClone(agent.state.messages);
@@ -715,7 +827,11 @@ async function createSessionInternal(
                   },
                 ]),
           ]);
-          while (!planTakenOver && (subagents.count || subagents.hasNotifications)) {
+          while (
+            !planTakenOver &&
+            !hookStopped &&
+            (subagents.count || subagents.hasNotifications)
+          ) {
             signal?.throwIfAborted();
             if (subagents.hasNotifications) await agent.continue();
             else {
@@ -745,6 +861,10 @@ async function createSessionInternal(
         if (result.error) throw new Error(result.error);
         if (agent.state.errorMessage) throw new Error(agent.state.errorMessage);
         result.success = true;
+        if (hookStopped) {
+          result.stopReason = "hook_stopped";
+          result.reason = hookStopReason;
+        }
       } catch (error) {
         result.error = error instanceof Error ? error.message : String(error);
         throw error;

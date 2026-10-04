@@ -30,6 +30,72 @@ test("-p prints the final assistant text", async () => {
   expect(stdout).toBe('echo: [{"type":"text","text":"hi"}]\n');
 });
 
+test.each(["text", "stream-json"])(
+  "%s exposes hook warnings, headless ask denial, and user messages",
+  async (format) => {
+    const root = await mkdtemp(join(tmpdir(), "neant-cli-hooks-"));
+    const faux = createFauxCore({ api: "faux", provider: "faux" });
+    faux.setResponses([
+      fauxAssistantMessage(fauxToolCall("bash", { command: "touch forbidden" }), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("done"),
+    ]);
+    let stdout = "";
+    let stderr = "";
+    try {
+      const exitCode = await main(["-p", "try", "--yolo", "--output-format", format], {
+        readStdin: async () => "",
+        stdout: (text) => {
+          stdout += text;
+        },
+        stderr: (text) => {
+          stderr += text;
+        },
+        session: {
+          cwd: root,
+          homeDir: root,
+          model: faux.getModel(),
+          streamFn: faux.streamSimple,
+          settings: {
+            hooks: {
+              PreToolUse: [
+                {
+                  hooks: [
+                    { type: "command", command: "echo '{bad}'" },
+                    {
+                      type: "command",
+                      command: `echo '{"systemMessage":"user-notice","hookSpecificOutput":{"permissionDecision":"ask"}}'`,
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      });
+      expect(exitCode).toBe(0);
+      expect(await Bun.file(join(root, "forbidden")).exists()).toBe(false);
+      expect(stderr).toContain("Invalid hook JSON");
+      if (format === "stream-json") {
+        const events = stdout
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line));
+        expect(events.some((event) => event.type === "hook_warning")).toBe(true);
+        expect(
+          events.some((event) => event.type === "permission_denied" && event.by === "hook"),
+        ).toBe(true);
+        expect(
+          events.some((event) => event.type === "hook_message" && event.message === "user-notice"),
+        ).toBe(true);
+      } else expect(stderr).toContain("user-notice");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
+
 test("reads the prompt from stdin when -p is absent", async () => {
   const { exitCode, stdout } = await run([], "from pipe\n");
   expect(exitCode).toBe(0);

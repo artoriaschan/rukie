@@ -7,6 +7,7 @@ import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.l
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import { createUserVisibleError, SettingsSchema, type Settings } from "@neant/shared";
 import { parsePermissionRules } from "../permissions/index.ts";
+import { mergeHooks, validateHooks } from "../hooks/index.ts";
 import { Value } from "typebox/value";
 
 /** Parses one settings file; a missing file is `{}`. */
@@ -39,6 +40,7 @@ function validate(path: string, data: Record<string, unknown>): Settings {
   if (first) throw new Error(`${path}: ${first.instancePath || "/"} ${first.message}`);
   const settings = data as Settings;
   parsePermissionRules(settings.permissions, path);
+  validateHooks(settings.hooks, path);
   return settings;
 }
 
@@ -77,6 +79,11 @@ export async function loadSettings(options: { cwd: string; homeDir: string }) {
   if (project.reviewModel !== undefined) settings.reviewModel = project.reviewModel;
   if (project.subagentModel !== undefined) settings.subagentModel = project.subagentModel;
   const trusted = isTrustedProject(options.cwd, user);
+  if (project.hooks !== undefined && !trusted) {
+    warnings.push(`${projectFile}: ignoring "hooks"; only trusted projects can define hooks.`);
+  }
+  if (user.hooks !== undefined || (trusted && project.hooks !== undefined))
+    settings.hooks = mergeHooks(user.hooks, trusted ? project.hooks : undefined);
   if (project.permissions?.allow !== undefined && !trusted) {
     warnings.push(
       `${projectFile}: ignoring "permissions.allow"; only trusted projects can define allow rules.`,

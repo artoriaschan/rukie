@@ -13,6 +13,8 @@ import { sessionAllowRule, type SessionAllow, type SessionAllowRule } from "./se
 export type { SessionAllowRule } from "./session-rules.ts";
 import { requestInteraction } from "../interaction/index.ts";
 import { reviewPermission, type ReviewResult } from "../review/index.ts";
+import type { PreToolUseResult } from "../hooks/index.ts";
+import { Value } from "typebox/value";
 
 export interface PermissionAskRequest {
   toolCallId: string;
@@ -60,8 +62,20 @@ function decidePermission({ mode, toolName }: PermissionOptions): PermissionDeci
 
 type PermissionStageDecision =
   | { decision: "allow" }
-  | { decision: "deny"; reason: string; by: "rule" | "user" | "review"; rule?: string }
-  | { decision: "ask"; reason?: string; by?: "rule" | "review"; rule?: string };
+  | {
+      decision: "deny";
+      reason: string;
+      by: "rule" | "user" | "review" | "hook";
+      rule?: string;
+      hook?: string;
+    }
+  | {
+      decision: "ask";
+      reason?: string;
+      by?: "rule" | "review" | "hook";
+      rule?: string;
+      hook?: string;
+    };
 
 interface PermissionGateOptions {
   cwd: string;
@@ -76,6 +90,8 @@ interface PermissionGateOptions {
   streamFn: StreamFn;
   onPermissionAsk?: (request: PermissionAskRequest) => Promise<"allow" | "deny" | "allow-session">;
   onEvent(event: CustomSessionEvent): void | Promise<void>;
+  preToolUse?(call: ToolCallContext, signal: AbortSignal): Promise<PreToolUseResult>;
+  stopRun?(reason?: string): void;
 }
 
 type ToolCallContext = Parameters<NonNullable<AgentOptions["beforeToolCall"]>>[0];
@@ -129,6 +145,8 @@ export function createPermissionGate(options: PermissionGateOptions) {
     // while each actual hook still reads the current Permission Mode.
     for (const call of assistantMessage.content) {
       if (call.type !== "toolCall" || batch.has(call.id)) continue;
+      // Each hook must decide before review begins, including later calls in this batch.
+      if (options.preToolUse && call.id !== toolCall.id) continue;
       if (decidePermission({ mode, toolName: call.name }) !== "review") continue;
       const tool = options.getAgentState().tools.find((item) => item.name === call.name);
       if (!tool) continue;
@@ -199,6 +217,7 @@ export function createPermissionGate(options: PermissionGateOptions) {
             : denialReason(context),
         by: decision.by ?? "user",
         ...(decision.rule !== undefined && { rule: decision.rule }),
+        ...(decision.hook !== undefined && { hook: decision.hook }),
       };
     }
     const grant = sessionAllowRule(toolCall.name, args, options.cwd, options.homeDir);
@@ -208,6 +227,8 @@ export function createPermissionGate(options: PermissionGateOptions) {
     else signal.addEventListener("abort", abort, { once: true });
     const covered = Promise.withResolvers<"allow">();
     const onSessionGrant = () => {
+      // Hook ask requires an explicit answer for this call, even after a sibling's grant.
+      if (decision.by === "hook") return;
       if (signal.aborted || evaluateRuleStage(toolCall.name, args)?.decision !== "allow") return;
       // Resolve permission before withdrawing the frontend, whose abort reply is deny.
       covered.resolve("allow");
@@ -254,8 +275,62 @@ export function createPermissionGate(options: PermissionGateOptions) {
     };
     // deny stops immediately; allow skips Mode; ask skips Mode (including Review)
     // and goes straight to Interaction. Only no opinion falls through to Mode.
+    const hook = await options.preToolUse?.(call, context.signal);
+    if (hook?.continue === false) {
+      options.stopRun?.(hook.stopReason);
+      return { block: true, terminate: true, reason: hook.stopReason ?? "Stopped by hook" };
+    }
+    let hookDecision: PermissionStageDecision | undefined;
+    if (hook?.updatedInput !== undefined) {
+      try {
+        const tool = options
+          .getAgentState()
+          .tools.find((tool) => tool.name === call.toolCall.name)!;
+        const [invalid] = Value.Errors(tool.parameters, hook.updatedInput);
+        if (invalid) throw new Error(`${invalid.instancePath || "/"} ${invalid.message}`);
+        const updated = validateToolArguments(tool, {
+          ...call.toolCall,
+          arguments: hook.updatedInput as typeof call.toolCall.arguments,
+        });
+        Object.assign(call.args as object, updated);
+      } catch (error) {
+        hookDecision = {
+          decision: "deny",
+          by: "hook",
+          hook: hook.hook,
+          reason: `Denied by hook: invalid updatedInput: ${(error as Error).message}`,
+        };
+      }
+    }
+    if (!hookDecision && hook?.permissionDecision)
+      hookDecision =
+        hook.permissionDecision === "deny"
+          ? {
+              decision: "deny",
+              by: "hook",
+              hook: hook.hook,
+              reason: `Denied by hook: ${hook.permissionDecisionReason || "Tool call denied"}`,
+            }
+          : hook.permissionDecision === "ask"
+            ? {
+                decision: "ask",
+                by: "hook",
+                hook: hook.hook,
+                reason: hook.permissionDecisionReason,
+              }
+            : { decision: "allow" };
+    const rule =
+      hookDecision?.decision === "deny"
+        ? undefined
+        : evaluateRuleStage(call.toolCall.name, call.args);
     let decision =
-      evaluateRuleStage(call.toolCall.name, call.args) ?? (await evaluateModeStage(context));
+      hookDecision?.decision === "deny"
+        ? hookDecision
+        : rule?.decision === "deny" || rule?.decision === "ask"
+          ? rule
+          : hookDecision?.decision === "ask"
+            ? hookDecision
+            : (hookDecision ?? rule ?? (await evaluateModeStage(context)));
     if (decision.decision === "ask") decision = await evaluateInteractionStage(context, decision);
     if (decision.decision === "allow") return undefined;
     await options.onEvent({
@@ -264,6 +339,8 @@ export function createPermissionGate(options: PermissionGateOptions) {
       toolName: call.toolCall.name,
       by: decision.by,
       ...(decision.rule !== undefined && { rule: decision.rule }),
+      ...(decision.hook !== undefined && { hook: decision.hook }),
+      ...(decision.by === "hook" && { reason: decision.reason }),
     });
     return { block: true, reason: decision.reason };
   };

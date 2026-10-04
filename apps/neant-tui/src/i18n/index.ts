@@ -50,5 +50,21 @@ export function formatError(error: unknown, t: ReturnType<typeof createTuiI18n>)
       return t("error.session-not-found", data.params);
     case "ripgrep-unavailable":
       return t("error.ripgrep-unavailable", data.params);
+    case "hook-invalid-json":
+      return t("error.hook-invalid-json", data.params);
+    case "hook-exit":
+      return t("error.hook-exit", data.params);
+    case "hook-timeout":
+      return t("error.hook-timeout", data.params);
+    case "hook-crashed":
+      return t("error.hook-crashed", data.params);
+    case "hook-command-failed":
+      return t("error.hook-command-failed", data.params);
+    case "hook-type-unsupported":
+      return t("error.hook-type-unsupported", data.params);
+    case "hook-matcher-invalid":
+      return t("error.hook-matcher-invalid", data.params);
+    case "hook-output-ignored":
+      return t("error.hook-output-ignored", data.params);
   }
 }

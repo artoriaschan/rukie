@@ -12,6 +12,7 @@ interface ToolCall {
   args: unknown;
   summary: string;
   rule?: string;
+  hook?: string;
 }
 
 type CompletedEntry =
@@ -43,7 +44,7 @@ function toolSummary(name: string, args: unknown) {
 }
 
 function toolEntry(
-  tool: Pick<ToolCall, "name" | "args" | "summary" | "rule">,
+  tool: Pick<ToolCall, "name" | "args" | "summary" | "rule" | "hook">,
   isError: boolean,
   result: Pick<ToolResultMessage, "content" | "details">,
   t: ReturnType<typeof createTuiI18n>,
@@ -53,6 +54,21 @@ function toolEntry(
     tool.rule ??
     (isError && resultText(result).startsWith("Denied by permission rule: ")
       ? resultText(result).slice("Denied by permission rule: ".length)
+      : undefined);
+  const provenance =
+    typeof result.details === "object" &&
+    result.details !== null &&
+    "permissionDenied" in result.details &&
+    typeof result.details.permissionDenied === "object" &&
+    result.details.permissionDenied !== null
+      ? result.details.permissionDenied
+      : undefined;
+  const hook =
+    tool.hook ??
+    (provenance && "by" in provenance && provenance.by === "hook"
+      ? "hook" in provenance && typeof provenance.hook === "string"
+        ? provenance.hook
+        : "hook"
       : undefined);
   const review =
     tool.name === "exit_plan_mode" &&
@@ -96,15 +112,22 @@ function toolEntry(
         ? questionSummary(tool.args, resultText(result), t)
         : (todo ?? resultText(result)),
     error: isError
-      ? rule !== undefined
-        ? t("tool.rule-denied", { rule })
-        : formatError(
-            {
-              ...(typeof result.details === "object" && result.details),
-              message: resultText(result),
-            },
-            t,
-          )
+      ? hook !== undefined
+        ? t("tool.hook-denied", {
+            hook,
+            reason: resultText(result)
+              .split("\n")[0]!
+              .replace(/^Denied by hook: /, ""),
+          })
+        : rule !== undefined
+          ? t("tool.rule-denied", { rule })
+          : formatError(
+              {
+                ...(typeof result.details === "object" && result.details),
+                message: resultText(result),
+              },
+              t,
+            )
       : undefined,
   };
 }
@@ -376,11 +399,17 @@ function reduceEvent(
         ],
       };
     case "permission_denied":
-      return event.by === "rule" && event.rule !== undefined
+      return (event.by === "rule" && event.rule !== undefined) || event.by === "hook"
         ? {
             ...state,
             tools: state.tools.map((tool) =>
-              tool.id === event.toolCallId ? { ...tool, rule: event.rule } : tool,
+              tool.id === event.toolCallId
+                ? {
+                    ...tool,
+                    rule: event.rule,
+                    ...(event.by === "hook" && { hook: event.hook ?? "hook" }),
+                  }
+                : tool,
             ),
           }
         : state;
@@ -395,6 +424,8 @@ function reduceEvent(
     }
     case "compaction_end":
     case "mcp_server_error":
+    case "hook_warning":
+    case "hook_message":
       return {
         ...state,
         completed: [
@@ -402,21 +433,40 @@ function reduceEvent(
           {
             type: "notice",
             text:
-              event.type === "compaction_end"
-                ? t("notice.compaction", { tokens: event.tokensBefore })
-                : t("notice.mcp-error", { server: event.server, error: event.error }).replace(
-                    /\s+/g,
-                    " ",
-                  ),
+              event.type === "hook_warning"
+                ? t("notice.hook-warning", {
+                    event: event.event,
+                    hook: event.hook,
+                    message: formatError({ ...event.error, message: event.message }, t),
+                  }).replace(/\s+/g, " ")
+                : event.type === "hook_message"
+                  ? event.message
+                  : event.type === "compaction_end"
+                    ? t("notice.compaction", { tokens: event.tokensBefore })
+                    : t("notice.mcp-error", { server: event.server, error: event.error }).replace(
+                        /\s+/g,
+                        " ",
+                      ),
           },
         ],
       };
     case "result":
       return {
         ...state,
-        completed: state.assistant
-          ? [...state.completed, { type: "message", role: "assistant", text: state.assistant }]
-          : state.completed,
+        completed: [
+          ...state.completed,
+          ...(state.assistant
+            ? [{ type: "message" as const, role: "assistant" as const, text: state.assistant }]
+            : []),
+          ...(event.stopReason === "hook_stopped"
+            ? [
+                {
+                  type: "notice" as const,
+                  text: t("notice.hook-stopped", { reason: event.reason ?? "" }),
+                },
+              ]
+            : []),
+        ],
         assistant: "",
         running: false,
         waitingSubagents: 0,

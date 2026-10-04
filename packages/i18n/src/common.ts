@@ -40,6 +40,14 @@ const zh = {
   "error.unknown-model": '未知模型 "{{model}}"。',
   "error.no-api-key": '缺少 provider "{{provider}}" 的 API key。环境变量：{{env}}。',
   "error.session-not-found": "Session 不存在：{{id}}",
+  "error.hook-invalid-json": "无效的 hook JSON：{{cause}}",
+  "error.hook-exit": "Hook 退出码为 {{exitCode}}：{{stderr}}",
+  "error.hook-timeout": "Hook 在 {{timeout}} 秒后超时",
+  "error.hook-crashed": "Hook 进程崩溃：{{signal}}",
+  "error.hook-command-failed": "Hook 命令执行失败：{{cause}}",
+  "error.hook-type-unsupported": "尚不支持的 hook 类型：{{type}}",
+  "error.hook-matcher-invalid": "{{source}}：无效的 hook 正则表达式：{{matcher}}",
+  "error.hook-output-ignored": "忽略无效或不支持的 hook 输出字段：{{field}}",
 
   "error.no-model": `未配置模型。请在 {{settings}} 中设置 model，或传入 --model provider/id。
 内置 provider 从标准环境变量读取密钥，例如 "model": "anthropic/<id>" 使用 ANTHROPIC_API_KEY。
@@ -71,6 +79,14 @@ const en = {
   "error.unknown-model": 'Unknown model "{{model}}".',
   "error.no-api-key": 'No API key for provider "{{provider}}". Environment variable: {{env}}.',
   "error.session-not-found": "Session not found: {{id}}",
+  "error.hook-invalid-json": "Invalid hook JSON: {{cause}}",
+  "error.hook-exit": "Hook exited with code {{exitCode}}: {{stderr}}",
+  "error.hook-timeout": "Hook timed out after {{timeout}}s",
+  "error.hook-crashed": "Hook crashed: {{signal}}",
+  "error.hook-command-failed": "Hook command failed: {{cause}}",
+  "error.hook-type-unsupported": "Unsupported hook type: {{type}}",
+  "error.hook-matcher-invalid": "{{source}}: invalid hook regular expression: {{matcher}}",
+  "error.hook-output-ignored": "Ignoring invalid or unsupported hook output field: {{field}}",
 
   "error.no-model": `No model configured. Set "model" in {{settings}} or pass --model provider/id.
 Built-in providers read their standard env var, e.g. "model": "anthropic/<id>" with ANTHROPIC_API_KEY.

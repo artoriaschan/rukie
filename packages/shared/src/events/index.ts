@@ -1,3 +1,5 @@
+import type { UserVisibleErrorData } from "../errors.ts";
+
 /** Token counts for this Run only, summed across assistant messages. */
 interface TokenUsage {
   input: number;
@@ -13,6 +15,8 @@ export interface RunResult {
   usage: TokenUsage;
   durationMs: number;
   error?: string;
+  stopReason?: "hook_stopped";
+  reason?: string;
 }
 
 /** Provider input usage, with estimates showing the composition of the current context. */
@@ -47,9 +51,19 @@ export type CustomSessionEvent<PiEvent extends { type: string } = never> =
       type: "permission_denied";
       toolCallId: string;
       toolName: string;
-      by: "rule" | "user" | "review";
+      by: "rule" | "user" | "review" | "hook";
       rule?: string;
+      hook?: string;
+      reason?: string;
     }
+  | {
+      type: "hook_warning";
+      event: string;
+      hook: string;
+      message: string;
+      error?: UserVisibleErrorData;
+    }
+  | { type: "hook_message"; event: string; message: string }
   | { type: "permission_review"; phase: "start"; toolCallId: string; toolName: string }
   | {
       type: "permission_review";
