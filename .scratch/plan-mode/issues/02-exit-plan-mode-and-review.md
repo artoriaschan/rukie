@@ -13,7 +13,7 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] e2e：批准后 `planMode` 为 false，工具结果为成功，退出提示注入一次
 - [ ] e2e：继续规划时反馈出现在失败的工具结果里，`planMode` 仍为 true，模型继续下一轮

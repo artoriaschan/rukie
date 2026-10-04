@@ -32,6 +32,17 @@
  */
 
 const zh = {
+  "plan.review.heading": "计划评审",
+  "plan.review.approve": "批准",
+  "plan.review.revise": "继续规划",
+  "plan.review.feedback": "反馈",
+  "plan.review.hint": "↑/↓ 选择 · Enter 提交 · Esc 接手 · PgUp/PgDn 滚动",
+  "plan.review.approved": "已批准计划",
+  "plan.review.revised": "继续规划",
+  "plan.review.takeover": "用户接手",
+  "plan.review.expand": "点击展开计划",
+  "plan.review.collapse": "点击收起计划",
+
   "subagent.dashboard": "子代理",
   "subagent.panel": "子代理",
   "subagent.more": "… 还有 {{count}} 项",
@@ -191,6 +202,17 @@ const zh = {
 } as const;
 
 const en = {
+  "plan.review.heading": "Plan review",
+  "plan.review.approve": "Approve",
+  "plan.review.revise": "Continue planning",
+  "plan.review.feedback": "Feedback",
+  "plan.review.hint": "↑/↓ select · Enter submit · Esc take over · PgUp/PgDn scroll",
+  "plan.review.approved": "Approved plan",
+  "plan.review.revised": "Continue planning",
+  "plan.review.takeover": "User takeover",
+  "plan.review.expand": "Click to expand plan",
+  "plan.review.collapse": "Click to collapse plan",
+
   "subagent.dashboard": "Subagents",
   "subagent.panel": "Subagents",
   "subagent.more": "… {{count}} more",

@@ -1,4 +1,10 @@
-import type { PermissionAskRequest, QuestionRequest, QuestionReply } from "@neant/agent";
+import type {
+  PermissionAskRequest,
+  QuestionRequest,
+  QuestionReply,
+  PlanReviewRequest,
+  PlanReviewResult,
+} from "@neant/agent";
 import { readClipboardText } from "./clipboard";
 import type { InputEvent } from "@neant/tui";
 import { permissionChoices } from "../../components/permission-dialog";
@@ -27,9 +33,18 @@ interface QuestionInteraction {
   collapsed: boolean;
 }
 
+interface PlanInteraction {
+  kind: "plan";
+  request: PlanReviewRequest;
+  selected: number;
+  feedback: string;
+  cursor: number;
+}
+
 const answerSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
 type PendingInteraction =
+  | { kind: "plan"; interaction: PlanInteraction; finish(reply: PlanReviewResult): void }
   | {
       kind: "permission";
       interaction: PermissionInteraction;
@@ -100,6 +115,98 @@ export function createInteractions() {
         interaction: { kind: "permission", request, selected: 0 },
         finish,
       }));
+    },
+    askPlanReview(request: PlanReviewRequest): Promise<PlanReviewResult> {
+      return enqueue<PlanReviewResult>(request.signal, { kind: "takeover" }, (finish) => ({
+        kind: "plan",
+        interaction: { kind: "plan", request, selected: 0, feedback: "", cursor: 0 },
+        finish,
+      }));
+    },
+    selectPlan(selected: number) {
+      const item = pending[0];
+      if (item?.kind !== "plan") return;
+      item.interaction = { ...item.interaction, selected: (selected + 3) % 3 };
+      notify();
+    },
+    confirmPlan(selected?: number) {
+      const item = pending[0];
+      if (item?.kind !== "plan") return;
+      const { feedback } = item.interaction;
+      item.finish(
+        (selected ?? item.interaction.selected) === 0
+          ? { kind: "approve" }
+          : { kind: "revise", feedback },
+      );
+    },
+    planInput(event: InputEvent) {
+      const item = pending[0];
+      if (item?.kind !== "plan" || (event.type !== "key" && event.type !== "paste")) return;
+      const current = item.interaction;
+      if (event.type === "key") {
+        const { key } = event;
+        if (key.name === "escape") {
+          item.finish({ kind: "takeover" });
+          return;
+        }
+        if (key.ctrl || key.alt) return;
+        if (key.name === "enter") {
+          this.confirmPlan();
+          return;
+        }
+        if (key.name === "up" || key.name === "down") {
+          this.selectPlan(current.selected + (key.name === "up" ? -1 : 1));
+          return;
+        }
+        if (key.name === "tab") {
+          this.selectPlan(2);
+          return;
+        }
+        if (!current.feedback && /^[12]$/.test(event.input)) {
+          this.confirmPlan(Number(event.input) - 1);
+          return;
+        }
+      }
+      const boundaries = [
+        0,
+        ...Array.from(
+          answerSegmenter.segment(current.feedback),
+          ({ index, segment }) => index + segment.length,
+        ),
+      ];
+      const before = boundaries.findLast((value) => value < current.cursor) ?? 0;
+      const after = boundaries.find((value) => value > current.cursor) ?? current.feedback.length;
+      if (event.type === "key" && ["left", "right", "home", "end"].includes(event.key.name)) {
+        item.interaction = {
+          ...current,
+          selected: 2,
+          cursor:
+            event.key.name === "home"
+              ? 0
+              : event.key.name === "end"
+                ? current.feedback.length
+                : event.key.name === "left"
+                  ? before
+                  : after,
+        };
+        notify();
+        return;
+      }
+      const input =
+        // oxlint-disable-next-line no-control-regex -- Feedback is a single input row.
+        event.type === "paste" ? event.input.replace(/[\x00-\x1f\x7f]+/g, " ") : event.input;
+      const backspace = event.type === "key" && event.key.name === "backspace";
+      const deletion = event.type === "key" && event.key.name === "delete";
+      if (!input && !backspace && !deletion) return;
+      const start = backspace ? before : current.cursor;
+      const end = deletion ? after : current.cursor;
+      item.interaction = {
+        ...current,
+        selected: 2,
+        feedback: current.feedback.slice(0, start) + input + current.feedback.slice(end),
+        cursor: start + input.length,
+      };
+      notify();
     },
     askQuestion(request: QuestionRequest): Promise<QuestionReply> {
       return enqueue<QuestionReply>(request.signal, "declined", (finish) => ({

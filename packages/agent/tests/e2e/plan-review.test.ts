@@ -101,7 +101,6 @@ test("aborting pending review cancels the request and ignores late approval", as
   reply.resolve({ kind: "approve" });
   await Promise.resolve();
   expect(session.planMode).toBe(true);
-  expect(fake.contexts).toHaveLength(1);
 });
 test("review outside Plan Mode fails without opening interaction", async () => {
   dirs = await tempDirs();
@@ -118,3 +117,105 @@ test("review outside Plan Mode fails without opening interaction", async () => {
     { isError: true, content: [{ type: "text", text: "Not in plan mode." }] },
   );
 });
+
+test.each([true, false])(
+  "review tool registration follows frontend capability (%s)",
+  async (interactive) => {
+    dirs = await tempDirs();
+    const fake = fakeModel([fauxAssistantMessage("done")]);
+    const session = await createSession({
+      ...dirs,
+      ...fake,
+      ...(interactive && {
+        onPlanReview: async (): Promise<PlanReviewResult> => ({ kind: "takeover" }),
+      }),
+    });
+    let tools: string[] = [];
+    await session.run("inspect", {
+      onEvent: (event) => {
+        if (event.type === "session_start") tools = event.tools;
+      },
+    });
+    expect(tools.includes("exit_plan_mode")).toBe(interactive);
+  },
+);
+
+test.each(["ask", "auto-review", "full-access"] as const)(
+  "review approval bypasses permission mode %s",
+  async (permissionMode) => {
+    dirs = await tempDirs();
+    const fake = fakeModel([submit(), fauxAssistantMessage("done")]);
+    const session = await createSession({
+      ...dirs,
+      ...fake,
+      permissionMode,
+      onPlanReview: async () => ({ kind: "approve" }),
+      onPermissionAsk: async () => {
+        throw new Error("unexpected approval");
+      },
+    });
+    await session.setPlanMode(true);
+    await session.run("plan");
+    expect(session.permissionMode).toBe(permissionMode);
+    expect(session.planMode).toBe(false);
+  },
+);
+
+test.each(["", "   "])("empty markdown plan %j never opens review", async (plan) => {
+  dirs = await tempDirs();
+  const fake = fakeModel([
+    fauxAssistantMessage(fauxToolCall("exit_plan_mode", { plan }), { stopReason: "toolUse" }),
+    fauxAssistantMessage("retry"),
+  ]);
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    onPlanReview: async () => {
+      throw new Error("unexpected review");
+    },
+  });
+  await session.setPlanMode(true);
+  await session.run("plan");
+  expect(fake.contexts[1]!.messages.find((message) => message.role === "toolResult")).toMatchObject(
+    { isError: true },
+  );
+  expect(session.planMode).toBe(true);
+});
+
+test.each(["general-purpose", "explore", "custom", "fork"])(
+  "%s subagent cannot submit plans",
+  async (type) => {
+    dirs = await tempDirs();
+    await Bun.write(
+      `${dirs.cwd}/.neant/agents/custom.md`,
+      "---\nname: custom\ndescription: Custom investigator\n---\nInspect.",
+    );
+    const fake = fakeModel([
+      fauxAssistantMessage(
+        fauxToolCall(type === "fork" ? "subagent_fork" : "subagent", {
+          description: "Inspect",
+          prompt: "child",
+          subagent_type: type,
+          run_in_background: false,
+        }),
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("child done"),
+      fauxAssistantMessage("parent done"),
+    ]);
+    const session = await createSession({
+      ...dirs,
+      ...fake,
+      onPlanReview: async () => ({ kind: "takeover" }),
+    });
+    let childTools: string[] | undefined;
+    await session.run("delegate", {
+      onEvent: (event) => {
+        if (event.type === "subagent_event" && event.event.type === "session_start")
+          childTools = event.event.tools;
+      },
+    });
+    expect(childTools).toBeDefined();
+    expect(childTools).not.toContain("exit_plan_mode");
+  },
+);

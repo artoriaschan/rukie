@@ -16,3 +16,5 @@ export { SubagentPanel } from "./subagent-panel";
 
 export { SubagentDashboard } from "./subagent-dashboard";
 export { SubagentDetailScene } from "./subagent-detail";
+
+export { PlanReviewDialog } from "./plan-review";

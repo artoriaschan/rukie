@@ -23,6 +23,7 @@ type CompletedEntry =
       result?: string;
       error?: string;
       agentId?: string;
+      planReview?: { plan: string; kind: "approve" | "revise" | "takeover"; feedback?: string };
     }
   | { type: "notice"; text: string };
 
@@ -53,9 +54,28 @@ function toolEntry(
     (isError && resultText(result).startsWith("Denied by permission rule: ")
       ? resultText(result).slice("Denied by permission rule: ".length)
       : undefined);
+  const review =
+    tool.name === "exit_plan_mode" &&
+    typeof tool.args === "object" &&
+    tool.args !== null &&
+    "plan" in tool.args &&
+    typeof tool.args.plan === "string" &&
+    typeof result.details === "object" &&
+    result.details !== null &&
+    "kind" in result.details &&
+    ["approve", "revise", "takeover"].includes(String(result.details.kind))
+      ? {
+          plan: tool.args.plan,
+          kind: result.details.kind as "approve" | "revise" | "takeover",
+          ...("feedback" in result.details && typeof result.details.feedback === "string"
+            ? { feedback: result.details.feedback }
+            : {}),
+        }
+      : undefined;
   const todo = tool.name === "todo_write" && !isError ? todoSummary(tool.args, t) : undefined;
   return {
     type: "tool",
+    ...(review && { planReview: review }),
     summary:
       todo !== undefined
         ? t("todo.summary")

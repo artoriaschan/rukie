@@ -20,6 +20,7 @@ import {
   Logo,
   Notice,
   PermissionDialog,
+  PlanReviewDialog,
   QuestionDialog,
   PromptInput,
   ScrollToBottom,
@@ -51,6 +52,7 @@ export async function createChat(options: SessionOptions, model: string, locale:
     ],
     onPermissionAsk: options.onPermissionAsk ?? interactions.askPermission,
     onQuestion: options.onQuestion ?? interactions.askQuestion,
+    onPlanReview: options.onPlanReview ?? interactions.askPlanReview,
   });
   const conversation = createConversation(session, model, locale);
   const history = await createInputHistory(options.cwd, options.homeDir);
@@ -122,6 +124,7 @@ function Chat({
   const state = useSyncExternalStore(conversation.subscribe, conversation.getSnapshot);
   const interaction = useSyncExternalStore(interactions.subscribe, interactions.getSnapshot);
   const question = interaction?.kind === "permission" ? interaction : undefined;
+  const planReview = interaction?.kind === "plan" ? interaction : undefined;
   const userQuestion = interaction?.kind === "question" ? interaction : undefined;
   const currentQuestion = userQuestion?.drafts[userQuestion.questionIndex];
   const isCurrentQuestion = () => {
@@ -272,7 +275,9 @@ function Chat({
       ? userQuestion.collapsed
         ? 2
         : 6
-      : 0;
+      : planReview
+        ? 6
+        : 0;
   // Dialogs take priority. Reserve a preview for every visible panel before
   // deciding whether the prompt needs to use its one-row form.
   const panelCount = Number(hasTodos) + Number(hasSubagents);
@@ -381,7 +386,7 @@ function Chat({
       if (small) return;
       const viewport = details.current?.getSnapshot();
       if (
-        question &&
+        (question || planReview) &&
         viewport &&
         event.x >= viewport.x &&
         event.x < viewport.x + viewport.width &&
@@ -392,6 +397,10 @@ function Chat({
       else if (bodyScroll && event.y >= bodyScroll.y && event.y < bodyScroll.y + bodyScroll.height)
         body.current?.scrollBy(event.delta * 3);
       lastInterrupt.current = undefined;
+      return;
+    }
+    if (event.type === "paste" && interactions.getSnapshot()?.kind === "plan") {
+      if (!small) interactions.planInput(event);
       return;
     }
     if (event.type === "paste" && interactions.getSnapshot()?.kind === "question") {
@@ -438,7 +447,10 @@ function Chat({
       return;
     }
     if (!small && (key.name === "pageup" || key.name === "pagedown")) {
-      const viewport = pending && scrollFocus === "details" ? details.current : body.current;
+      const viewport =
+        pendingInteraction?.kind === "plan" || (pending && scrollFocus === "details")
+          ? details.current
+          : body.current;
       viewport?.scrollBy(
         Math.max(1, (viewport.getSnapshot().height ?? 1) - 1) * (key.name === "pageup" ? -1 : 1),
       );
@@ -447,6 +459,11 @@ function Chat({
     }
     if (small && key.name !== "escape" && !(key.ctrl && (key.name === "c" || key.name === "d")))
       return;
+    if (pendingInteraction?.kind === "plan" && !(key.ctrl && key.name === "c")) {
+      lastInterrupt.current = undefined;
+      interactions.planInput(event);
+      return;
+    }
     if (pendingInteraction?.kind === "question") {
       lastInterrupt.current = undefined;
       interactions.questionInput(event);
@@ -495,6 +512,8 @@ function Chat({
             return (
               <Box key={index} flexDirection="column">
                 <ToolCall
+                  planReview={entry.planReview}
+                  locale={locale}
                   summary={entry.summary}
                   status={entry.isError ? "error" : "success"}
                   result={entry.result}
@@ -665,6 +684,27 @@ function Chat({
                 maxHeight={dialogMaxHeight}
                 columns={columns}
                 locale={locale}
+              />
+            )}
+            {planReview && (
+              <PlanReviewDialog
+                key={planReview.request.toolCallId}
+                plan={planReview.request.plan}
+                selected={planReview.selected}
+                feedback={planReview.feedback}
+                cursor={planReview.cursor}
+                columns={columns}
+                locale={locale}
+                maxHeight={dialogMaxHeight}
+                scrollRef={details}
+                onSelect={(index) => {
+                  if (interactions.getSnapshot()?.request === planReview.request)
+                    interactions.selectPlan(index);
+                }}
+                onOption={(index) => {
+                  if (interactions.getSnapshot()?.request === planReview.request)
+                    interactions.confirmPlan(index);
+                }}
               />
             )}
             {question && (
