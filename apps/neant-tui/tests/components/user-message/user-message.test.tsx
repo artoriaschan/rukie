@@ -63,3 +63,25 @@ test("user prompts resolve provider colors and keep indentation when resized", a
     terminal.dispose();
   }
 });
+
+test.each([
+  ["zh", "Stop hook 反馈"],
+  ["en", "Stop hook feedback"],
+] as const)("%s labels Stop feedback next to the injected user message", async (locale, label) => {
+  const terminal = createTerminal(60, 6);
+  const app = render(
+    <ThemeProvider>
+      <UserMessage text="verify tests" source="stop_hook" locale={locale} />
+    </ThemeProvider>,
+    terminal,
+  );
+  try {
+    await terminal.flush();
+    expect(terminal.screen()).toContain(`  ${label}`);
+    expect(terminal.screen()).toContain("❯ verify tests");
+  } finally {
+    app.unmount();
+    await app.waitUntilExit();
+    terminal.dispose();
+  }
+});

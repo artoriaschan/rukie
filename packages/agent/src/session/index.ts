@@ -598,6 +598,7 @@ async function createSessionInternal(
       hookStopReason = undefined;
       toolHookContexts.clear();
       hookDenials.clear();
+      let stopHookContinuations = 0;
       const started = performance.now();
       const result: RunResult = {
         text: "",
@@ -912,18 +913,66 @@ async function createSessionInternal(
                   },
                 ]),
           ]);
-          while (
-            !planTakenOver &&
-            !hookStopped &&
-            (subagents.count || subagents.hasNotifications)
-          ) {
+          while (!planTakenOver && !hookStopped) {
             signal?.throwIfAborted();
-            if (subagents.hasNotifications) await agent.continue();
-            else {
+            if (subagents.hasNotifications) {
+              await agent.continue();
+              continue;
+            }
+            if (subagents.count) {
               const changed = subagents.wait();
               await emit({ type: "subagents_waiting", count: subagents.count });
               await changed;
+              continue;
             }
+            const lastAssistant = agent.state.messages.findLast(
+              (message) => message.role === "assistant",
+            );
+            if (
+              internal.parentSessionId ||
+              !lastAssistant ||
+              lastAssistant.stopReason === "aborted" ||
+              lastAssistant.stopReason === "error"
+            )
+              break;
+            // Stop runs only after pi and all child notifications finish. Future Goal
+            // checks belong after Stop allows completion; hook continuations are not Goal rounds.
+            const stopped = await hooks.run(
+              "Stop",
+              {
+                ...hookInput(),
+                stop_hook_active: stopHookContinuations > 0,
+                last_assistant_message: lastAssistant.content
+                  .flatMap((part) => (part.type === "text" ? [part.text] : []))
+                  .join(""),
+              },
+              { signal },
+            );
+            applyHookControl(stopped);
+            signal?.throwIfAborted();
+            if (hookStopped || stopped.decision !== "block") break;
+            if (stopHookContinuations >= 8) {
+              const message = "Stop hook reached the 8 continuation limit; ignoring block";
+              (options.onWarning ?? console.warn)(message);
+              await emit({
+                type: "hook_warning",
+                event: "Stop",
+                hook: "Stop",
+                message,
+                error: { code: "hook-continuation-limit", params: { event: "Stop", limit: "8" } },
+              });
+              break;
+            }
+            stopHookContinuations++;
+            const reason = stopped.reason || "Stop hook blocked completion.";
+            await emit({ type: "hook_continued", event: "Stop", reason });
+            const feedback = {
+              role: "user" as const,
+              source: "stop_hook",
+              content: [{ type: "text" as const, text: reason }],
+              timestamp: Date.now(),
+            };
+            await agent.prompt(feedback);
           }
         } finally {
           subagents.abort();

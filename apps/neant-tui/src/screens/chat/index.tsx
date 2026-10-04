@@ -542,7 +542,7 @@ function Chat({
             return <Notice key={index} kind="info" text={entry.text} />;
           case "message":
             return entry.role === "user" ? (
-              <UserMessage key={index} text={entry.text} />
+              <UserMessage key={index} text={entry.text} source={entry.source} locale={locale} />
             ) : (
               <AssistantMessage key={index} text={entry.text} />
             );

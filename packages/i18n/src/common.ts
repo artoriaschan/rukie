@@ -48,6 +48,7 @@ const zh = {
   "error.hook-type-unsupported": "尚不支持的 hook 类型：{{type}}",
   "error.hook-matcher-invalid": "{{source}}：无效的 hook 正则表达式：{{matcher}}",
   "error.hook-output-ignored": "忽略无效或不支持的 hook 输出字段：{{field}}",
+  "error.hook-continuation-limit": "{{event}} hook 已达 {{limit}} 次续跑上限，忽略阻断",
 
   "error.no-model": `未配置模型。请在 {{settings}} 中设置 model，或传入 --model provider/id。
 内置 provider 从标准环境变量读取密钥，例如 "model": "anthropic/<id>" 使用 ANTHROPIC_API_KEY。
@@ -87,6 +88,8 @@ const en = {
   "error.hook-type-unsupported": "Unsupported hook type: {{type}}",
   "error.hook-matcher-invalid": "{{source}}: invalid hook regular expression: {{matcher}}",
   "error.hook-output-ignored": "Ignoring invalid or unsupported hook output field: {{field}}",
+  "error.hook-continuation-limit":
+    "{{event}} hook reached the {{limit}} continuation limit; ignoring block",
 
   "error.no-model": `No model configured. Set "model" in {{settings}} or pass --model provider/id.
 Built-in providers read their standard env var, e.g. "model": "anthropic/<id>" with ANTHROPIC_API_KEY.

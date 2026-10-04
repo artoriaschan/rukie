@@ -35,17 +35,19 @@ export interface PreToolUseResult extends CommonHookResult {
   hook?: string;
 }
 
-interface UserPromptSubmitResult extends CommonHookResult {
+export interface StopHookResult extends CommonHookResult {
   decision?: "block";
   reason?: string;
 }
 
+type UserPromptSubmitResult = StopHookResult;
 type SessionStartResult = CommonHookResult;
 
 interface HookResults {
   PreToolUse: PreToolUseResult;
   UserPromptSubmit: UserPromptSubmitResult;
   SessionStart: SessionStartResult;
+  Stop: StopHookResult;
 }
 type EventResult<E extends HookEvent> = E extends keyof HookResults
   ? HookResults[E]
@@ -82,7 +84,7 @@ export function createHooks(options: {
       input: HookInput,
       runOptions: { signal?: AbortSignal; matchQuery?: string } = {},
     ): Promise<EventResult<E>> {
-      const result: PreToolUseResult & UserPromptSubmitResult = {
+      const result: PreToolUseResult & UserPromptSubmitResult & StopHookResult = {
         systemMessages: [],
         additionalContext: [],
       };
@@ -186,7 +188,7 @@ export function createHooks(options: {
               systemMessage: "string",
               suppressOutput: "boolean",
               reason: "string",
-              ...(event === "UserPromptSubmit" && { decision: "string" }),
+              ...((event === "UserPromptSubmit" || event === "Stop") && { decision: "string" }),
             };
             for (const [field, value] of Object.entries(json)) {
               if (field === "hookSpecificOutput") {
@@ -242,15 +244,14 @@ export function createHooks(options: {
             if (event === "UserPromptSubmit" || event === "SessionStart") {
               if (output.exitCode === 0 && stdout && !jsonOutput)
                 result.additionalContext.push(truncate(stdout));
-              if (event === "UserPromptSubmit") {
-                if (json.decision !== undefined && json.decision !== "block")
-                  await ignored("decision");
-                if (output.exitCode === 2 || json.decision === "block") {
-                  result.decision = "block";
-                  const reason =
-                    typeof json.reason === "string" ? json.reason : output.stderr.trim();
-                  result.reason = [result.reason, reason].filter(Boolean).join("\n") || undefined;
-                }
+            }
+            if (event === "UserPromptSubmit" || event === "Stop") {
+              if (json.decision !== undefined && json.decision !== "block")
+                await ignored("decision");
+              if (output.exitCode === 2 || json.decision === "block") {
+                result.decision = "block";
+                const reason = typeof json.reason === "string" ? json.reason : output.stderr.trim();
+                result.reason = [result.reason, reason].filter(Boolean).join("\n") || undefined;
               }
             }
             if (event !== "PreToolUse") return;

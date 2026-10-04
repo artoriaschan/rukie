@@ -64,6 +64,7 @@ export type CustomSessionEvent<PiEvent extends { type: string } = never> =
       error?: UserVisibleErrorData;
     }
   | { type: "hook_message"; event: string; message: string }
+  | { type: "hook_continued"; event: "Stop" | "SubagentStop"; reason: string }
   | { type: "permission_review"; phase: "start"; toolCallId: string; toolName: string }
   | {
       type: "permission_review";

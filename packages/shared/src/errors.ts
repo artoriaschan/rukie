@@ -15,6 +15,7 @@ export interface UserVisibleErrorParams {
   "hook-type-unsupported": { type: string };
   "hook-matcher-invalid": { source: string; matcher: string };
   "hook-output-ignored": { field: string };
+  "hook-continuation-limit": { event: string; limit: string };
 }
 
 export type UserVisibleErrorCode = keyof UserVisibleErrorParams;

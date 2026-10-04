@@ -16,7 +16,7 @@ interface ToolCall {
 }
 
 type CompletedEntry =
-  | { type: "message"; role: "user" | "assistant"; text: string }
+  | { type: "message"; role: "user" | "assistant"; text: string; source?: string }
   | {
       type: "tool";
       summary: string;
@@ -249,7 +249,16 @@ function replayMessages(
   const tools = new Map<string, ToolCall>();
   return messages.flatMap((message): CompletedEntry[] => {
     const text = messageText(message);
-    if (message.role === "user") return [{ type: "message", role: "user", text }];
+    if (message.role === "user")
+      return [
+        {
+          type: "message",
+          role: "user",
+          text,
+          ...("source" in message &&
+            typeof message.source === "string" && { source: message.source }),
+        },
+      ];
     if (message.role === "assistant") {
       for (const content of message.content) {
         if (content.type === "toolCall")
@@ -364,7 +373,16 @@ function reduceEvent(
       if (event.message.role === "user") {
         return {
           ...state,
-          completed: [...state.completed, { type: "message", role: "user", text }],
+          completed: [
+            ...state.completed,
+            {
+              type: "message",
+              role: "user",
+              text,
+              ...("source" in event.message &&
+                typeof event.message.source === "string" && { source: event.message.source }),
+            },
+          ],
         };
       }
       if (event.message.role !== "assistant") return state;
