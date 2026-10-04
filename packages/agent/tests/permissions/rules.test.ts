@@ -41,7 +41,12 @@ test.each([
     { command: "rm -rf /tmp/cache" },
     { decision: "deny", rule: "bash(rm -rf *)" },
   ],
-  [{ deny: ["bash(rm -rf *)"] }, "bash", { command: "echo ok; rm -rf x" }, undefined],
+  [
+    { deny: ["bash(rm -rf *)"] },
+    "bash",
+    { command: "echo ok; rm -rf x" },
+    { decision: "deny", rule: "bash(rm -rf *)" },
+  ],
 ] as const)("permission rule %j matches %s %j", (rules, toolName, args, expected) => {
   expect(
     evaluatePermissionRules({
@@ -53,6 +58,21 @@ test.each([
     }),
   ).toEqual(expected);
 });
+
+test.each(["&&", "||", ";", "|", "&", "\n"])(
+  "bash deny sees a dangerous segment after %j",
+  (separator) => {
+    expect(
+      evaluatePermissionRules({
+        rules: parsePermissionRules({ deny: ["bash(rm -rf *)"], allow: ["bash"] }),
+        toolName: "bash",
+        args: { command: `git status ${separator} rm -rf /tmp/cache` },
+        cwd: "/project",
+        homeDir: "/home",
+      }),
+    ).toEqual({ decision: "deny", rule: "bash(rm -rf *)" });
+  },
+);
 
 test.each([
   "",

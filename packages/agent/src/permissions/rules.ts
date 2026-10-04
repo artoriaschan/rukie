@@ -1,4 +1,5 @@
 import { createUserVisibleError } from "@neant/shared";
+import { analyzeBashCommand, matchesBashPattern } from "./bash.ts";
 
 export type PermissionRule = {
   decision: "allow" | "ask" | "deny";
@@ -69,21 +70,39 @@ export function evaluatePermissionRules({
   cwd: string;
   homeDir: string;
 }): { decision: "allow" | "ask" | "deny"; rule: string } | undefined {
+  const bash =
+    toolName === "bash" &&
+    typeof args === "object" &&
+    args !== null &&
+    "command" in args &&
+    typeof args.command === "string"
+      ? analyzeBashCommand(args.command)
+      : undefined;
   for (const decision of ["deny", "ask", "allow"] as const) {
+    if (decision === "allow" && bash) {
+      if (!bash.allowMatching) return undefined;
+      let matched: PermissionRule | undefined;
+      for (const segment of bash.segments) {
+        const match = rules.find(
+          (rule) =>
+            rule.decision === "allow" &&
+            (rule.kind === "tool"
+              ? new Bun.Glob(rule.pattern).match(toolName)
+              : rule.kind === "bash" && matchesBashPattern(rule.pattern, segment)),
+        );
+        if (!match) return undefined;
+        matched ??= match;
+      }
+      return matched ? { decision, rule: matched.raw } : undefined;
+    }
     for (const rule of rules) {
       if (rule.decision !== decision) continue;
       const matches =
         rule.kind === "tool"
           ? new Bun.Glob(rule.pattern).match(toolName)
-          : rule.kind === "bash" &&
-              toolName === "bash" &&
-              typeof args === "object" &&
-              args !== null &&
-              "command" in args &&
-              typeof args.command === "string"
-            ? // Bash is text: slashes have no directory semantics here.
-              new Bun.Glob(rule.pattern.replaceAll("/", "\u0001")).match(
-                args.command.trim().replaceAll("/", "\u0001"),
+          : rule.kind === "bash" && bash
+            ? (decision === "allow" ? [bash.text] : [bash.text, ...bash.segments]).some((command) =>
+                matchesBashPattern(rule.pattern, command),
               )
             : false; // Path matching belongs to issue 04.
       if (matches) return { decision, rule: rule.raw };
