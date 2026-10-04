@@ -10,7 +10,7 @@
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 参考：[spec](../spec.md)「类型」「模型与配置」。
 
@@ -20,3 +20,10 @@
 - [ ] e2e：模型取值优先级（用不同 faux model 区分）；非法模型报错
 - [ ] settings 测试：`subagentModel` 的解析与非法值报错
 - [ ] `docs/tech-stack.md` 无需变动（无新依赖）；`tsc -b` 与全量 `bun test` 通过
+
+## Comments
+
+- Implemented type discovery, public `subagent_type` selection, tool intersection, type prompts, and model precedence with no new dependencies. Tests use public Session/model requests and `loadSettings`.
+- Validation: `bunx tsc -b` passed; `env -u NO_COLOR bun run check` exited 0 with 1022 pass / 0 fail / 5522 assertions across 74 files (112.36s). Check log: `/tmp/neant-subagent04-check-final.log`.
+- Initial dynamic descriptions now seed pi's first declaration before its baseline is created; subsequent Runs refresh with connected MCP tools. Existing event/transcript/narration checks pass without changing their assertions.
+- Awaiting independent Standards and Spec review against `f16ea9e2253ae925f8b6ef3abe36f230e50af7cd`; ticket remains claimed until both reviews and follow-up are complete.

@@ -27,6 +27,7 @@ export const SettingsSchema = Type.Object({
   /** `provider/id`. */
   model: Type.Optional(Type.String()),
   reviewModel: Type.Optional(Type.String()),
+  subagentModel: Type.Optional(Type.String()),
   /** Frontend language preference; unsupported tags fall through to environment candidates. */
   locale: Type.Optional(Type.String()),
   permissionMode: Type.Optional(Type.Enum([...PERMISSION_MODES])),

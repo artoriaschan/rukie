@@ -22,7 +22,7 @@ import type {
   SessionEvent as SharedSessionEvent,
   Settings,
 } from "@neant/shared";
-import { createSubagents, SUBAGENT_PROMPT } from "../subagents/index.ts";
+import { createSubagents, discoverSubagentTypes, SUBAGENT_PROMPT } from "../subagents/index.ts";
 import { resolveModel } from "../config/index.ts";
 import { createJsonlStore, type SessionStore } from "../store/index.ts";
 import {
@@ -104,6 +104,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
 
 interface InternalSessionOptions {
   parentSessionId?: string;
+  toolNames?: readonly string[];
+  typePrompt?: string;
 }
 
 async function createSessionInternal(
@@ -196,11 +198,34 @@ async function createSessionInternal(
   });
   let currentResult: RunResult | undefined;
   const subagents = createSubagents({
-    createChild: () =>
-      createSessionInternal(
-        { ...options, resumeId: undefined, store, model, streamFn: options.streamFn ?? streamFn },
-        { parentSessionId: stored.metadata.id },
-      ),
+    async createChild(type) {
+      const selected = type.model ?? settings.subagentModel;
+      const childModel =
+        selected === undefined
+          ? model
+          : (await resolveModel({ ...settings, model: selected }, options.homeDir)).model;
+      return createSessionInternal(
+        {
+          ...options,
+          resumeId: undefined,
+          store,
+          model: childModel,
+          streamFn: options.streamFn ?? streamFn,
+        },
+        {
+          parentSessionId: stored.metadata.id,
+          toolNames:
+            type.tools ??
+            agent.state.tools
+              .filter(
+                (tool) =>
+                  !["subagent", "subagent_fork", "send_message", "list_agents"].includes(tool.name),
+              )
+              .map((tool) => tool.name),
+          typePrompt: type.prompt,
+        },
+      );
+    },
     steer: (message) => agent.steer(message),
     emit: (event) => emitRunEvent?.(event),
     addUsage(usage) {
@@ -209,6 +234,22 @@ async function createSessionInternal(
           currentResult.usage[key] += usage[key];
     },
   });
+  const initialTools = createBuiltinTools(
+    cwd,
+    (name) => skills.get(name),
+    setTodo,
+    options.onQuestion,
+    options.homeDir,
+  );
+  if (!internal.parentSessionId) {
+    const discovered = await discoverSubagentTypes(
+      cwd,
+      options.homeDir,
+      initialTools.map((tool) => tool.name),
+    );
+    // Seed pi's initial declaration; Run discovery owns diagnostics and later changes.
+    subagents.setTypes(discovered.types);
+  }
   const agent = new Agent({
     streamFn: options.streamFn ?? streamFn,
     convertToLlm,
@@ -217,18 +258,11 @@ async function createSessionInternal(
       model,
       messages: restoreContext(entries),
       systemPrompt: internal.parentSessionId
-        ? `${SYSTEM_PROMPT}\n\n${SUBAGENT_PROMPT}`
+        ? `${SYSTEM_PROMPT}\n\n${SUBAGENT_PROMPT}${internal.typePrompt ? `\n\n${internal.typePrompt}` : ""}`
         : SYSTEM_PROMPT,
-      tools: [
-        ...createBuiltinTools(
-          cwd,
-          (name) => skills.get(name),
-          setTodo,
-          options.onQuestion,
-          options.homeDir,
-        ),
-        ...(internal.parentSessionId ? [] : [subagents.tool]),
-      ],
+      tools: [...initialTools, ...(internal.parentSessionId ? [] : [subagents.tool])].filter(
+        (tool) => !internal.toolNames || internal.toolNames.includes(tool.name),
+      ),
       ...(settings.thinking && { thinkingLevel: settings.thinking }),
     },
   });
@@ -287,7 +321,7 @@ async function createSessionInternal(
             signal,
           });
         } finally {
-          agent.state.tools = [
+          const generalTools = [
             ...createBuiltinTools(
               cwd,
               (name) => skills.get(name),
@@ -296,8 +330,20 @@ async function createSessionInternal(
               options.homeDir,
             ),
             ...mcp.tools,
-            ...(internal.parentSessionId ? [] : [subagents.tool]),
           ];
+          if (!internal.parentSessionId) {
+            const discovered = await discoverSubagentTypes(
+              cwd,
+              options.homeDir,
+              generalTools.map((tool) => tool.name),
+            );
+            subagents.setTypes(discovered.types);
+            for (const warning of discovered.warnings) (options.onWarning ?? console.warn)(warning);
+          }
+          agent.state.tools = [
+            ...generalTools,
+            ...(internal.parentSessionId ? [] : [subagents.tool]),
+          ].filter((tool) => !internal.toolNames || internal.toolNames.includes(tool.name));
           await emit({
             type: "session_start",
             model: `${model.provider}/${model.id}`,

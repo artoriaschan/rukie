@@ -312,3 +312,29 @@ test.each(["user", "project"])(
     });
   },
 );
+
+test("project subagentModel overrides the user value", async () => {
+  dirs = await tempDirs();
+  await Bun.write(
+    join(dirs.homeDir, ".neant/settings.json"),
+    JSON.stringify({ subagentModel: "user/worker" }),
+  );
+  await Bun.write(
+    join(dirs.cwd, ".neant/settings.json"),
+    JSON.stringify({ subagentModel: "project/worker" }),
+  );
+  expect(await loadSettings(dirs)).toEqual({
+    settings: { subagentModel: "project/worker" },
+    warnings: [],
+  });
+});
+
+test.each(["user", "project"])(
+  "invalid %s subagentModel names its source and field",
+  async (layer) => {
+    dirs = await tempDirs();
+    const source = join(layer === "user" ? dirs.homeDir : dirs.cwd, ".neant/settings.json");
+    await Bun.write(source, JSON.stringify({ subagentModel: 42 }));
+    await expect(loadSettings(dirs)).rejects.toThrow(`${source}: /subagentModel`);
+  },
+);
