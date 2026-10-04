@@ -690,6 +690,7 @@ function Chat({
               maxLines={compactPrompt ? 1 : promptMaxLines}
               columns={columns}
               working={state.running}
+              planMode={state.planMode}
               history={history}
               value={input}
               onChange={(value) => {
@@ -711,6 +712,7 @@ function Chat({
               locale={locale}
               columns={columns}
               mode={mode}
+              planMode={state.planMode}
               model={state.model.slice(state.model.indexOf("/") + 1)}
               provider={state.model.split("/")[0]!}
               contextUsage={state.contextUsage}

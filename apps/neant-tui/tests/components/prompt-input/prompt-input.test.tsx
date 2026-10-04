@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { useLayoutEffect, useState } from "react";
-import { ThemeProvider, dark, render } from "@neant/tui";
+import { ThemeProvider, dark, light, render } from "@neant/tui";
 import { PromptInput } from "../../../src/components/prompt-input/prompt-input";
 import { createTerminal } from "../../helpers/terminal";
 
@@ -52,6 +52,35 @@ test("the prompt matches dsh's rounded edges, gap, themed text and working prefi
     work();
     await terminal.waitFor(() => !!buffer.getLine(2)!.getCell(0)!.isDim());
     expect(buffer.getLine(2)!.getCell(2)!.isDim()).toBeFalsy();
+  } finally {
+    app.unmount();
+    await app.waitUntilExit();
+    terminal.dispose();
+  }
+});
+
+test.each([
+  [dark, 0xb49adc],
+  [light, 0x7856a8],
+] as const)("Plan Mode uses the palette's plan border color", async (theme, expected) => {
+  const terminal = createTerminal(40, 12);
+  const app = render(
+    <ThemeProvider theme={theme}>
+      <PromptInput
+        columns={40}
+        maxLines={1}
+        planMode
+        value=""
+        onChange={() => {}}
+        onSubmit={() => {}}
+      />
+    </ThemeProvider>,
+    terminal,
+  );
+  try {
+    await terminal.flush();
+    expect(terminal.terminal.buffer.active.getLine(1)!.getCell(0)!.getFgColor()).toBe(expected);
+    expect(terminal.terminal.buffer.active.getLine(3)!.getCell(0)!.getFgColor()).toBe(expected);
   } finally {
     app.unmount();
     await app.waitUntilExit();

@@ -131,7 +131,7 @@ export async function collectReminders(options: {
 }
 
 /** Compare only the supplied sources against their latest persisted content. */
-async function collectSourceReminders(
+export async function collectSourceReminders(
   messages: readonly AgentMessage[],
   sources: readonly ReminderSource[],
   now: Date,

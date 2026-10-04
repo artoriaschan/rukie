@@ -39,12 +39,19 @@ import {
 } from "../permissions/index.ts";
 import { createBuiltinTools, type QuestionRequest, type QuestionReply } from "../tools/index.ts";
 import { SYSTEM_PROMPT } from "../prompt/index.ts";
-import { collectReminders, convertToLlm, type ReminderSource } from "../reminders/index.ts";
+import {
+  collectReminders,
+  collectSourceReminders,
+  convertToLlm,
+  type ReminderSource,
+} from "../reminders/index.ts";
 import { discoverSkills, skillInvocation, skillsReminder } from "../skills/index.ts";
 import { createMcpConnections } from "../mcp/index.ts";
 import { compactTurn, estimateContextTokens, restoreContext } from "../compaction/index.ts";
 import { contextUsage } from "../context-usage/index.ts";
 import { createToolState, todoState, type TodoItem } from "../tool-state/index.ts";
+
+import { planState, planModeReminder, PLAN_MODE_EXIT } from "../plan-mode/index.ts";
 
 export type { PermissionAskRequest, SessionAllowRule } from "../permissions/index.ts";
 
@@ -88,6 +95,9 @@ export type SessionEvent = SharedSessionEvent<AgentEvent>;
 export interface Session {
   readonly id: string;
   readonly permissionMode: PermissionMode;
+  readonly planMode: boolean;
+  /** Changes guidance for the next model call and persists the state, also outside a Run. */
+  setPlanMode(on: boolean): Promise<void>;
   /** Applies to the next tool call; never persisted. */
   setPermissionMode(mode: PermissionMode): void;
   /** Current restored context in memory, including reminders and any compaction. */
@@ -119,6 +129,7 @@ interface InternalSessionOptions {
     sessionGrantListeners: Set<() => void>;
     getMode(): PermissionMode;
   };
+  plan?: { getActive(): boolean; hasEntered(): boolean; setMode(on: boolean): Promise<void> };
   toolNames?: readonly string[];
   typePrompt?: string;
   initialMessages?: AgentMessage[];
@@ -182,10 +193,50 @@ async function createSessionInternal(
   }
   let emitRunEvent: ((event: CustomSessionEvent<AgentEvent>) => void | Promise<void>) | undefined;
   const toolState = createToolState(
-    [todoState, subagentsState],
+    [todoState, subagentsState, planState],
     entries,
     options.onWarning ?? console.warn,
   );
+  let planActive = (toolState.get("plan") as { active: boolean } | undefined)?.active ?? false;
+  let planEntered = toolState.get("plan") !== undefined;
+  let planWrites = Promise.resolve();
+  const pendingPlanEvents: CustomSessionEvent<AgentEvent>[] = [];
+  const plan = internal.plan ?? {
+    getActive: () => planActive,
+    hasEntered: () => planEntered,
+    setMode(on: boolean): Promise<void> {
+      if (planActive === on) return planWrites;
+      planActive = on;
+      planEntered = true;
+      const write = planWrites.then(async () => {
+        const ownStore = activeStore ? undefined : await store.open(stored.metadata, context);
+        const target = activeStore ?? ownStore!;
+        try {
+          if (!baselinePersisted) {
+            const branch = await target.branch("main", context);
+            if (!branch) throw new Error("Session has no main branch.");
+            await branch.appendMessage(agent.state.messages[0]!, context);
+            baselinePersisted = true;
+          }
+          return await toolState.set("plan", { active: on }, target, context);
+        } finally {
+          await ownStore?.close(context);
+        }
+      });
+      // Keep frontend callbacks outside the write queue so a callback may
+      // await another state change without waiting on its own notification.
+      planWrites = write.then(() => {});
+      return write.then(async (value) => {
+        const event: CustomSessionEvent<AgentEvent> = {
+          type: "tool_state_changed",
+          name: "plan",
+          value,
+        };
+        if (emitRunEvent) await emitRunEvent(event);
+        else pendingPlanEvents.push(event);
+      });
+    },
+  };
   let activeStore: StoredSession | undefined;
   const setTodo = async (todos: TodoItem[]) => {
     if (!activeStore) throw new Error("Tool State writes require an active Run.");
@@ -266,6 +317,7 @@ async function createSessionInternal(
           parentSessionId: stored.metadata.id,
           originDescription: description,
           permissions: permissionConfiguration,
+          plan,
           toolNames:
             type.tools ??
             agent.state.tools
@@ -339,10 +391,17 @@ async function createSessionInternal(
     setPermissionMode(mode) {
       permissionMode = mode;
     },
+    get planMode() {
+      return plan.getActive();
+    },
+    setPlanMode: plan.setMode,
     get messages() {
       return agent.state.messages;
     },
-    toolState: toolState.get,
+    toolState: (name) =>
+      name === "plan" && (internal.plan || toolState.get("plan") !== undefined)
+        ? { active: plan.getActive() }
+        : toolState.get(name),
     interruptSubagent: subagents.interrupt,
     async run(prompt, { signal, onEvent } = {}) {
       if (running) throw new Error("Session already has an active Run.");
@@ -422,6 +481,8 @@ async function createSessionInternal(
         try {
           signal?.addEventListener("abort", abort);
           signal?.throwIfAborted();
+          await planWrites;
+          for (const event of pendingPlanEvents.splice(0)) await emit(event);
           const runStore = await store.open(stored.metadata, context);
           active = runStore;
           activeStore = runStore;
@@ -431,7 +492,24 @@ async function createSessionInternal(
             await branch.appendMessage(agent.state.messages[0]!, context);
             baselinePersisted = true;
           }
+          const planReminder: ReminderSource = {
+            source: "plan-mode",
+            currentContent: () => {
+              if (plan.getActive())
+                return planModeReminder(
+                  agent.state.tools.some((tool) => tool.name === "exit_plan_mode"),
+                );
+              const previous = transcriptMessages.findLast(
+                (message) => message.role === "system-reminder" && message.source === "plan-mode",
+              );
+              return plan.hasEntered() &&
+                !(previous?.role === "system-reminder" && previous.content === PLAN_MODE_EXIT)
+                ? PLAN_MODE_EXIT
+                : undefined;
+            },
+          };
           const reminderSources: ReminderSource[] = [
+            planReminder,
             { source: "skills", currentContent: () => skillsReminder(skills) },
             {
               source: "mcp",
@@ -456,7 +534,28 @@ async function createSessionInternal(
               signal: turnSignal,
               onStart: (tokensBefore) => emit({ type: "compaction_start", tokensBefore }),
             });
-            if (!compacted) return;
+            if (!compacted) {
+              await planWrites;
+              const changed = await collectSourceReminders(
+                transcriptMessages.slice(reminderStart),
+                [planReminder],
+                (options.now ?? (() => new Date()))(),
+              );
+              if (!changed.length) return;
+              for (const reminder of changed) {
+                await branch.appendMessage(reminder, context);
+                transcriptMessages.push(reminder);
+                await emit({
+                  type: "reminder_injected",
+                  source: reminder.source,
+                  content: reminder.content,
+                });
+              }
+              const messages = [...requestContext.messages, ...changed];
+              agent.state.messages = messages;
+              return { context: { ...requestContext, messages } };
+            }
+
             await runStore.mutate(async (mutator) => {
               const tip = await mutator.getValue(branchTip("main"), context);
               if (!tip) throw new Error("Session has no main branch.");
@@ -589,6 +688,7 @@ async function createSessionInternal(
           signal?.removeEventListener("abort", abort);
           unsubscribe?.();
           agent.prepareRequest = undefined;
+          await planWrites;
           await active?.close(context);
           activeStore = undefined;
         }

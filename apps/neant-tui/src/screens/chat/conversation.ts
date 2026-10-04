@@ -169,6 +169,7 @@ function questionSummary(args: unknown, text: string, t: ReturnType<typeof creat
 }
 
 interface ViewState {
+  planMode: boolean;
   waitingSubagents: number;
   subagents: Readonly<Record<string, SubagentState>>;
   todos: readonly TodoItem[];
@@ -268,6 +269,8 @@ function reduceEvent(
     case "agent_start":
       return { ...state, waitingSubagents: 0 };
     case "tool_state_changed":
+      if (event.name === "plan")
+        return { ...state, planMode: (event.value as { active: boolean }).active };
       return event.name === "todo"
         ? { ...state, todos: event.value as TodoItem[] }
         : event.name === "subagents"
@@ -421,6 +424,7 @@ function reduceEvent(
 export function createConversation(session: Session, model: string, locale: Locale = "zh") {
   const t = createTuiI18n(locale);
   let state: ViewState = {
+    planMode: session.planMode,
     waitingSubagents: 0,
     subagents: restoreSubagents(session.toolState("subagents")),
     todos: (session.toolState("todo") as TodoItem[] | undefined) ?? [],
@@ -475,6 +479,32 @@ export function createConversation(session: Session, model: string, locale: Loca
       };
     },
     submit(prompt: string) {
+      const command = /^\/plan(?:\s+([\s\S]*))?$/i.exec(prompt.trim());
+      if (command) {
+        const instruction = command[1]?.trim() ?? "";
+        const off = instruction.toLowerCase() === "off";
+        const alreadyActive = session.planMode;
+        void session.setPlanMode(!off).catch((error: unknown) => {
+          update({ ...state, error: formatError(error, t) });
+        });
+        update({ ...state, planMode: session.planMode });
+        if (!instruction || off) {
+          update({
+            ...state,
+            completed: [
+              ...state.completed,
+              {
+                type: "notice",
+                text: t(
+                  off ? "plan.disabled" : alreadyActive ? "plan.already-active" : "plan.enabled",
+                ),
+              },
+            ],
+          });
+          return true;
+        }
+        prompt = instruction;
+      }
       if (active || !prompt.trim()) return false;
       const controller = new AbortController();
       update({

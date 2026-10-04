@@ -1,4 +1,4 @@
-export { dark, type Theme } from "./theme";
+export { dark, light, type Theme } from "./theme";
 export { ThemeProvider, useTheme } from "./theme-provider";
 export { figures } from "./figures";
 export { rgb, hex, interpolateColor, type Rgb } from "./color";

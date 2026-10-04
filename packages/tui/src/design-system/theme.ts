@@ -10,6 +10,7 @@ export interface Theme {
   activity: `#${string}`;
   activityFlash: `#${string}`;
   permission: `#${string}`;
+  plan: `#${string}`;
   success: `#${string}`;
   error: `#${string}`;
   warning: `#${string}`;
@@ -38,6 +39,7 @@ export const dark: Theme = {
   activity: "#7DA1DE",
   activityFlash: "#C6D8F8",
   permission: "#ABC2EC",
+  plan: "#B49ADC",
   success: "#82B89D",
   error: "#DA8A93",
   warning: "#D8B270",
@@ -52,4 +54,34 @@ export const dark: Theme = {
   barTools: "#5A7CFF",
   barFree: "#2E3440",
   barFreeText: "#8D95A6",
+};
+
+/** Light surfaces can supply this palette through ThemeProvider. */
+export const light: Theme = {
+  text: "#292C33",
+  subtle: "#6C7280",
+  accent: "#345C9C",
+  toolNameMutate: "#8C6118",
+  toolNameExec: "#257B87",
+  inverseText: "#FFFFFF",
+  badgeBackground: "#4069AD",
+  badgeHoverBackground: "#31539B",
+  activity: "#345C9C",
+  activityFlash: "#5E80BD",
+  permission: "#4569A0",
+  plan: "#7856A8",
+  success: "#397B59",
+  error: "#B74450",
+  warning: "#91631D",
+  promptBorder: "#A4ADB9",
+  userPromptLabel: "#906A16",
+  logoFrom: "#345C9C",
+  logoTo: "#6687BD",
+  barSystem: "#AFBEDD",
+  barPrompt: "#97AED7",
+  barAssistant: "#7897C8",
+  barThinking: "#5675CE",
+  barTools: "#486BBD",
+  barFree: "#E2E6ED",
+  barFreeText: "#535E72",
 };

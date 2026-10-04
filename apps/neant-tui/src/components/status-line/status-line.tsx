@@ -22,6 +22,7 @@ export interface StatusLineProps {
   locale?: Locale;
   columns: number;
   mode: PermissionMode;
+  planMode?: boolean;
   model: string;
   provider: string;
   contextUsage?: ContextUsageEvent;
@@ -91,6 +92,9 @@ export function StatusLine(props: StatusLineProps) {
     compact: t(`permission-mode.${props.mode}.compact`),
   };
   const modeWidth = Bun.stringWidth(description.label);
+  const planLabel = t("plan.chip");
+  const planWidth = props.planMode ? Bun.stringWidth(planLabel) : 0;
+  const requiredWidth = modeWidth + (planWidth ? planWidth + 1 : 0);
   const usage = props.contextUsage;
   const showBar = usage !== undefined && width >= 14;
   const pct = usage && usage.window > 0 ? (usage.used / usage.window) * 100 : 0;
@@ -140,8 +144,9 @@ export function StatusLine(props: StatusLineProps) {
   );
   const totalInput = props.usage.input + props.usage.cacheRead + props.usage.cacheWrite;
   const cacheRate = totalInput > 0 ? (props.usage.cacheRead / totalInput) * 100 : undefined;
-  const fields: { id: HoverField | "effort"; content: ReactNode }[] = [
+  const fields: { id: HoverField | "effort" | "plan"; content: ReactNode }[] = [
     { id: "mode", content: description.label },
+    ...(props.planMode ? [{ id: "plan" as const, content: planLabel }] : []),
     { id: "model", content: props.model },
     { id: "tps", content: speedView },
     ...(props.thinking ? [{ id: "effort" as const, content: props.thinking }] : []),
@@ -157,11 +162,15 @@ export function StatusLine(props: StatusLineProps) {
     ...(props.gitBranch ? [{ id: "git" as const, content: props.gitBranch }] : []),
     { id: "cwd", content: basename(props.cwd) || props.cwd },
   ];
-  const ctxWidth = Math.min(ctx.length, Math.max(0, width - modeWidth - (ctx ? 1 : 0)));
+  const ctxWidth = Math.min(ctx.length, Math.max(0, width - requiredWidth - (ctx ? 1 : 0)));
   const leftWidth = Math.max(0, width - ctxWidth - (ctx ? 1 : 0));
   // Keep the permission policy legible before spending columns on optional fields.
-  while (fields.length > 1 && leftWidth < modeWidth + (fields.length - 1) * 2) fields.pop();
-  const separator = leftWidth >= modeWidth + (fields.length - 1) * 4 ? " · " : "·";
+  while (
+    fields.length > (props.planMode ? 2 : 1) &&
+    leftWidth < requiredWidth + (fields.length - 1) * 2
+  )
+    fields.pop();
+  const separator = leftWidth >= requiredWidth + (fields.length - 1) * 4 ? " · " : "·";
   const naturalWidths = fields.map(({ id, content }) =>
     Bun.stringWidth(id === "tps" ? speedText : String(content)),
   );
@@ -171,7 +180,7 @@ export function StatusLine(props: StatusLineProps) {
       ? naturalWidths
       : allocateColumns(
           naturalWidths,
-          fields.map(({ id }) => (id === "mode" ? modeWidth : 1)),
+          fields.map(({ id }) => (id === "mode" ? modeWidth : id === "plan" ? planWidth : 1)),
           budget,
         );
   let detail: ReactNode;
@@ -331,10 +340,16 @@ export function StatusLine(props: StatusLineProps) {
                   <Box
                     width={fieldWidths[index]}
                     flexShrink={1}
-                    {...(id !== "effort" ? hoverProps(id) : {})}
+                    {...(id !== "effort" && id !== "plan" ? hoverProps(id) : {})}
                   >
                     <ThemedText
-                      color={id === "mode" && props.mode === "full-access" ? "error" : undefined}
+                      color={
+                        id === "plan"
+                          ? "plan"
+                          : id === "mode" && props.mode === "full-access"
+                            ? "error"
+                            : undefined
+                      }
                       wrap="truncate"
                     >
                       {content}

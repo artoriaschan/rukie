@@ -9,7 +9,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] e2e：`setPlanMode(true)` 后下一次模型调用的上下文里有 plan reminder；关闭后有一条退出提示，之后不再注入
 - [ ] e2e：run 进行中调用 `setPlanMode`，从下一次模型调用起生效；重复调用不重复发事件
