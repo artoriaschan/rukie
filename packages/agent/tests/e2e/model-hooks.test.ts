@@ -551,3 +551,92 @@ test.each(["prompt", "agent"] as const)(
     await session.dispose();
   },
 );
+
+test.each(["prompt", "agent"] as const)(
+  "%s Notification rejection never delays approval or enters the parent transcript",
+  async (type) => {
+    dirs = await tempDirs();
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const returned = Promise.withResolvers<void>();
+    let transcriptPath = "";
+    let approved = false;
+    const fake = fakeModel([
+      fauxAssistantMessage(fauxToolCall("bash", { command: "printf original > marker" }), {
+        stopReason: "toolUse",
+      }),
+      async (context) => {
+        const user = context.messages.find((message) => message.role === "user");
+        if (
+          user?.role !== "user" ||
+          typeof user.content === "string" ||
+          user.content[0]?.type !== "text"
+        )
+          throw new Error("Expected notification review prompt");
+        const text = user.content[0].text;
+        expect(text.startsWith("notification guard ")).toBe(true);
+        const input = JSON.parse(text.slice("notification guard ".length));
+        expect(input.hook_event_name).toBe("Notification");
+        transcriptPath = input.transcript_path;
+        entered.resolve();
+        await release.promise;
+        returned.resolve();
+        return fauxAssistantMessage('{"ok":false,"reason":"notification rejection"}');
+      },
+      async () => {
+        expect(approved).toBe(true);
+        release.resolve();
+        await returned.promise;
+        return fauxAssistantMessage("parent result");
+      },
+    ]);
+    const events: SessionEvent[] = [];
+    const session = await createSession({
+      ...dirs,
+      ...fake,
+      permissionMode: "ask",
+      onPermissionAsk: async () => {
+        await entered.promise;
+        approved = true;
+        return "allow";
+      },
+      settings: {
+        hooks: {
+          Notification: [
+            {
+              matcher: "permission_prompt",
+              hooks: [{ type, prompt: "notification guard $ARGUMENTS" }],
+            },
+          ],
+        },
+      },
+    });
+    try {
+      expect(
+        await session.run("do it", {
+          onEvent: (event) => {
+            events.push(event);
+          },
+        }),
+      ).toMatchObject({ text: "parent result" });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(await Bun.file(join(dirs.cwd, "marker")).text()).toBe("original");
+      expect(
+        events.filter(
+          (event) =>
+            event.type === "permission_denied" ||
+            event.type === "hook_continued" ||
+            event.type === "hook_warning",
+        ),
+      ).toHaveLength(0);
+      expect(JSON.stringify(session.messages)).not.toContain("notification rejection");
+      expect(JSON.stringify(session.messages)).not.toContain("notification guard");
+      const transcript = await Bun.file(transcriptPath).text();
+      expect(transcript).not.toContain("notification rejection");
+      expect(transcript).not.toContain("notification guard");
+    } finally {
+      release.resolve();
+      await session.dispose();
+    }
+  },
+);
