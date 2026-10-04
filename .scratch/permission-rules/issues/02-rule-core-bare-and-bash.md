@@ -4,7 +4,7 @@
 
 **Blocked by:** 01
 
-**Status:** in-progress
+**Status:** resolved
 
 参考：[spec](../spec.md)「Permission Rule」「拒绝反馈」；User Stories 1–3、7–8、14–18、27–29、36–37、42。
 
@@ -24,3 +24,5 @@
 
 - 2026-10-04 review 修复 checkpoint：Spec 轴 0 findings；Standards 轴两项 hard findings 已修复，待复审修复部分后 resolved。config / session 与规则纯函数测试只从 permissions/index 公共 API 引用；非法权限规则新增 shared typed error `permission-rule-invalid`，参数保留 source 和未经 trim 的 rule 原文，common 中英文及 TUI formatError 同步。不改旧 settings 校验错误。
 - 修复验收：新增公开配置错误与 TUI 中英文启动错误测试 red 60 pass / 4 fail → focused 108 pass / 0 fail（235 assertions / 4 files，exit 0）；独立 `tsc -b` exit 0。冻结修复代码后的 `rtk proxy env -u NO_COLOR bun run check` 最终 exit 0，817 pass / 0 fail，65 files，4904 assertions，112.39s；格式 / lint / typecheck / knip 全部通过。
+
+- 2026-10-04 最终 review：原 Standards 两项 hard findings（跨概念内层引用、非法规则裸英文错误）均已修复。对 `ebcc619...eeb6e6c` 修复 delta 的独立 Standards / Spec 双轴复审均 0 findings，无新增问题；issue02 resolved。最终代码验收沿用冻结代码后的完整 check：exit 0，817 pass / 0 fail；本次仅更新票据，不改代码。
