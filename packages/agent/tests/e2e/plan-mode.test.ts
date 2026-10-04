@@ -288,3 +288,60 @@ test("frontend can await a second Plan Mode change from its state event", async 
   expect(values).toEqual([{ active: true }, { active: false }]);
   expect(session.planMode).toBe(false);
 }, 1000);
+
+test("a rejected Plan Mode snapshot closes the Run store, rolls back and can be retried", async () => {
+  dirs = await tempDirs();
+  const backing = createJsonlStore(dirs);
+  let rejectWrite = false;
+  let opened = 0;
+  let closed = 0;
+  const store: typeof backing = {
+    create: backing.create.bind(backing),
+    list: backing.list.bind(backing),
+    async open(metadata, context) {
+      const stored = await backing.open(metadata, context);
+      opened++;
+      return new Proxy(stored, {
+        get(target, property) {
+          if (property === "mutate")
+            return (...args: Parameters<typeof stored.mutate>) => {
+              if (rejectWrite) {
+                rejectWrite = false;
+                throw new Error("snapshot unavailable");
+              }
+              return stored.mutate(...args);
+            };
+          if (property === "close")
+            return async (ctx: typeof context) => {
+              await stored.close(ctx);
+              closed++;
+            };
+          const member = Reflect.get(target, property);
+          return typeof member === "function" ? member.bind(target) : member;
+        },
+      });
+    },
+  };
+  const fake = fakeModel([
+    fauxAssistantMessage(fauxToolCall("todo_write", { todos: [] }), { stopReason: "toolUse" }),
+    fauxAssistantMessage("retried"),
+  ]);
+  const session = await createSession({ ...dirs, ...fake, store });
+  await expect(
+    session.run("work", {
+      onEvent: async (event) => {
+        if (event.type === "tool_execution_end") {
+          rejectWrite = true;
+          await session.setPlanMode(true);
+        }
+      },
+    }),
+  ).rejects.toThrow("snapshot unavailable");
+  expect(closed).toBe(opened);
+  expect(session.planMode).toBe(false);
+  await session.setPlanMode(true);
+  expect(session.planMode).toBe(true);
+  expect((await session.run("retry")).success).toBe(true);
+  const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
+  expect(resumed.planMode).toBe(true);
+});

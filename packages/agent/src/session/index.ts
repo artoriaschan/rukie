@@ -200,6 +200,7 @@ async function createSessionInternal(
   let planActive = (toolState.get("plan") as { active: boolean } | undefined)?.active ?? false;
   let planEntered = toolState.get("plan") !== undefined;
   let planWrites = Promise.resolve();
+  let planRevision = 0;
   const pendingPlanEvents: CustomSessionEvent<AgentEvent>[] = [];
   const plan = internal.plan ?? {
     getActive: () => planActive,
@@ -208,6 +209,7 @@ async function createSessionInternal(
       if (planActive === on) return planWrites;
       planActive = on;
       planEntered = true;
+      const revision = ++planRevision;
       const write = planWrites.then(async () => {
         const ownStore = activeStore ? undefined : await store.open(stored.metadata, context);
         const target = activeStore ?? ownStore!;
@@ -225,8 +227,19 @@ async function createSessionInternal(
       });
       // Keep frontend callbacks outside the write queue so a callback may
       // await another state change without waiting on its own notification.
-      planWrites = write.then(() => {});
-      return write.then(async (value) => {
+      const persisted = write.catch((error: unknown) => {
+        if (revision === planRevision) {
+          const snapshot = toolState.get("plan") as { active: boolean } | undefined;
+          planActive = snapshot?.active ?? false;
+          planEntered = snapshot !== undefined;
+        }
+        throw error;
+      });
+      planWrites = persisted.then(
+        () => {},
+        () => {},
+      );
+      return persisted.then(async (value) => {
         const event: CustomSessionEvent<AgentEvent> = {
           type: "tool_state_changed",
           name: "plan",
@@ -688,9 +701,15 @@ async function createSessionInternal(
           signal?.removeEventListener("abort", abort);
           unsubscribe?.();
           agent.prepareRequest = undefined;
-          await planWrites;
-          await active?.close(context);
-          activeStore = undefined;
+          try {
+            await planWrites;
+          } finally {
+            try {
+              await active?.close(context);
+            } finally {
+              activeStore = undefined;
+            }
+          }
         }
         signal?.throwIfAborted();
         if (result.error) throw new Error(result.error);

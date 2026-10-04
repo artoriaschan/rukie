@@ -485,7 +485,7 @@ export function createConversation(session: Session, model: string, locale: Loca
         const off = instruction.toLowerCase() === "off";
         const alreadyActive = session.planMode;
         void session.setPlanMode(!off).catch((error: unknown) => {
-          update({ ...state, error: formatError(error, t) });
+          update({ ...state, planMode: session.planMode, error: formatError(error, t) });
         });
         update({ ...state, planMode: session.planMode });
         if (!instruction || off) {
