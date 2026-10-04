@@ -19,6 +19,7 @@ export { useInput, useTerminalSize, ClockProvider, useAnimationFrame } from "./h
 export type { InputEvent, Key } from "./input";
 export {
   dark,
+  light,
   type Theme,
   ThemeProvider,
   useTheme,
