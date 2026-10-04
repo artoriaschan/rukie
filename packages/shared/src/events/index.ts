@@ -15,7 +15,7 @@ export interface RunResult {
   usage: TokenUsage;
   durationMs: number;
   error?: string;
-  stopReason?: "hook_stopped";
+  stopReason?: "hook_stopped" | "hook_blocked";
   reason?: string;
 }
 

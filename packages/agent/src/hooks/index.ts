@@ -35,8 +35,17 @@ export interface PreToolUseResult extends CommonHookResult {
   hook?: string;
 }
 
+interface UserPromptSubmitResult extends CommonHookResult {
+  decision?: "block";
+  reason?: string;
+}
+
+type SessionStartResult = CommonHookResult;
+
 interface HookResults {
   PreToolUse: PreToolUseResult;
+  UserPromptSubmit: UserPromptSubmitResult;
+  SessionStart: SessionStartResult;
 }
 type EventResult<E extends HookEvent> = E extends keyof HookResults
   ? HookResults[E]
@@ -70,7 +79,10 @@ export function createHooks(options: {
       input: HookInput,
       runOptions: { signal?: AbortSignal; matchQuery?: string } = {},
     ): Promise<EventResult<E>> {
-      const result: PreToolUseResult = { systemMessages: [], additionalContext: [] };
+      const result: PreToolUseResult & UserPromptSubmitResult = {
+        systemMessages: [],
+        additionalContext: [],
+      };
       const snapshot = structuredClone({ ...input, hook_event_name: event });
       const seen = new Set<string>();
       const handlers = (settings[event] ?? [])
@@ -142,6 +154,7 @@ export function createHooks(options: {
               systemMessage: "string",
               suppressOutput: "boolean",
               reason: "string",
+              ...(event === "UserPromptSubmit" && { decision: "string" }),
             };
             for (const [field, value] of Object.entries(json)) {
               if (field === "hookSpecificOutput") {
@@ -194,6 +207,25 @@ export function createHooks(options: {
             }
             if (typeof specific.additionalContext === "string")
               result.additionalContext.push(truncate(specific.additionalContext));
+            if (event === "UserPromptSubmit" || event === "SessionStart") {
+              if (
+                output.exitCode === 0 &&
+                stdout &&
+                !stdout.startsWith("{") &&
+                !stdout.endsWith("}")
+              )
+                result.additionalContext.push(truncate(stdout));
+              if (event === "UserPromptSubmit") {
+                if (json.decision !== undefined && json.decision !== "block")
+                  await ignored("decision");
+                if (output.exitCode === 2 || json.decision === "block") {
+                  result.decision = "block";
+                  const reason =
+                    typeof json.reason === "string" ? json.reason : output.stderr.trim();
+                  result.reason = [result.reason, reason].filter(Boolean).join("\n") || undefined;
+                }
+              }
+            }
             if (event !== "PreToolUse") return;
             const decision = output.exitCode === 2 ? "deny" : specific.permissionDecision;
             if (decision === "allow" || decision === "ask" || decision === "deny") {

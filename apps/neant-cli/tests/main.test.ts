@@ -102,6 +102,66 @@ test("reads the prompt from stdin when -p is absent", async () => {
   expect(stdout).toBe('echo: [{"type":"text","text":"from pipe"}]\n');
 });
 
+test.each(["text", "stream-json"])(
+  "%s reports hook_blocked without invoking the model",
+  async (format) => {
+    const root = await mkdtemp(join(tmpdir(), "neant-cli-prompt-hook-"));
+    let stdout = "";
+    let stderr = "";
+    let modelCalls = 0;
+    const fake = echoModel();
+    try {
+      const exitCode = await main(["-p", "private prompt", "--output-format", format], {
+        readStdin: async () => "",
+        stdout: (text) => {
+          stdout += text;
+        },
+        stderr: (text) => {
+          stderr += text;
+        },
+        session: {
+          cwd: root,
+          homeDir: root,
+          ...fake,
+          streamFn: (...args) => {
+            modelCalls++;
+            return fake.streamFn(...args);
+          },
+          settings: {
+            hooks: {
+              UserPromptSubmit: [
+                {
+                  hooks: [
+                    {
+                      type: "command",
+                      command: `echo '{"decision":"block","reason":"private prompt rejected"}'`,
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      });
+      expect(exitCode).toBe(0);
+      expect(modelCalls).toBe(0);
+      if (format === "stream-json") {
+        const events = stdout
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line));
+        expect(events.at(-1)).toMatchObject({
+          type: "result",
+          stopReason: "hook_blocked",
+          reason: "private prompt rejected",
+        });
+      } else expect(stderr).toContain("private prompt rejected");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
+
 test("unknown arguments exit with 2", async () => {
   const { exitCode, stderr } = await run(["--nope"]);
   expect(exitCode).toBe(2);

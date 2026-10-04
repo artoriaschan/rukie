@@ -458,11 +458,16 @@ function reduceEvent(
           ...(state.assistant
             ? [{ type: "message" as const, role: "assistant" as const, text: state.assistant }]
             : []),
-          ...(event.stopReason === "hook_stopped"
+          ...(event.stopReason === "hook_stopped" || event.stopReason === "hook_blocked"
             ? [
                 {
                   type: "notice" as const,
-                  text: t("notice.hook-stopped", { reason: event.reason ?? "" }),
+                  text: t(
+                    event.stopReason === "hook_blocked"
+                      ? "notice.hook-blocked"
+                      : "notice.hook-stopped",
+                    { reason: event.reason ?? "" },
+                  ),
                 },
               ]
             : []),

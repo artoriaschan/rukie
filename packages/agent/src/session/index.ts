@@ -133,6 +133,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
 }
 
 interface InternalSessionOptions {
+  sessionSource?: "fork";
   parentSessionId?: string;
   originDescription?: string;
   agentType?: string;
@@ -299,12 +300,16 @@ async function createSessionInternal(
       agent_type: internal.agentType,
     }),
   });
+  const pendingHookEvents: CustomSessionEvent<AgentEvent>[] = [];
   const hooks = createHooks({
     settings: settings.hooks,
     cwd,
     projectDir: cwd,
     onWarning: options.onWarning ?? console.warn,
-    onEvent: (event) => emitRunEvent?.(event),
+    onEvent: (event) => {
+      if (emitRunEvent) return emitRunEvent(event);
+      pendingHookEvents.push(event);
+    },
   });
   const toolHookContexts = new Map<string, string[]>();
   const hookDenials = new Map<string, { hook?: string; reason?: string }>();
@@ -449,6 +454,7 @@ async function createSessionInternal(
               .map((tool) => tool.name),
           typePrompt: type.prompt,
           ...(fork && {
+            ...(!resumeId && { sessionSource: "fork" as const }),
             ...(!resumeId && { initialMessages: structuredClone(completedMessages) }),
             systemPrompt: agent.state.systemPrompt,
           }),
@@ -527,6 +533,16 @@ async function createSessionInternal(
   if (internal.control) internal.control.steer = (message) => agent.steer(message);
   let running = false;
   let inputTokens: number | undefined;
+  let sessionStartControl: CommonHookResult | undefined = await hooks.run(
+    "SessionStart",
+    {
+      ...hookInput(),
+      source: options.resumeId ? "resume" : (internal.sessionSource ?? "startup"),
+      model: `${model.provider}/${model.id}`,
+    },
+    { matchQuery: options.resumeId ? "resume" : (internal.sessionSource ?? "startup") },
+  );
+  const pendingSessionContexts = [...sessionStartControl.additionalContext];
   return {
     id: stored.metadata.id,
     get permissionMode() {
@@ -562,6 +578,7 @@ async function createSessionInternal(
         usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 },
         durationMs: 0,
       };
+      const promptContexts: string[] = [];
       currentResult = result;
       subagents.begin();
       const emit = (event: AgentEvent | CustomSessionEvent<AgentEvent>) =>
@@ -633,6 +650,33 @@ async function createSessionInternal(
           signal?.throwIfAborted();
           await planWrites;
           for (const event of pendingPlanEvents.splice(0)) await emit(event);
+          for (const event of pendingHookEvents.splice(0)) await emit(event);
+          if (sessionStartControl) {
+            applyHookControl(sessionStartControl);
+            sessionStartControl = undefined;
+          }
+          if (hookStopped) {
+            result.success = true;
+            result.stopReason = "hook_stopped";
+            result.reason = hookStopReason;
+            return result;
+          }
+          if (!internal.parentSessionId) {
+            const promptHook = await hooks.run(
+              "UserPromptSubmit",
+              { ...hookInput(), prompt },
+              { signal },
+            );
+            applyHookControl(promptHook);
+            signal?.throwIfAborted();
+            if (hookStopped || promptHook.decision === "block") {
+              result.success = hookStopped;
+              result.stopReason = hookStopped ? "hook_stopped" : "hook_blocked";
+              result.reason = hookStopped ? hookStopReason : promptHook.reason;
+              return result;
+            }
+            promptContexts.push(...promptHook.additionalContext);
+          }
           const runStore = await store.open(stored.metadata, context);
           active = runStore;
           activeStore = runStore;
@@ -816,6 +860,18 @@ async function createSessionInternal(
           await agent.prompt([
             ...reminders,
             { role: "user", content: [{ type: "text", text: prompt }], timestamp: Date.now() },
+            ...pendingSessionContexts.splice(0).map((content) => ({
+              role: "system-reminder" as const,
+              source: "session-start-hook",
+              content,
+              timestamp: Date.now(),
+            })),
+            ...promptContexts.map((content) => ({
+              role: "system-reminder" as const,
+              source: "user-prompt-hook",
+              content,
+              timestamp: Date.now(),
+            })),
             ...(invocation === undefined
               ? []
               : [
