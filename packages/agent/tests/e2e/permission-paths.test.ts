@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { join } from "node:path";
-import { realpath, symlink } from "node:fs/promises";
+import { realpath, symlink, mkdir } from "node:fs/promises";
 import { createSession, type SessionEvent } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
@@ -162,3 +162,43 @@ test("path ask sees the project alias even in full-access and does not expose re
   expect(asks).toBe(1);
   expect(JSON.stringify(fake.contexts[1]!.messages)).not.toContain("unapproved-content");
 });
+
+test.each(["ask", "full-access"] as const)(
+  "write cannot borrow a project allow through dangling symlink parent traversal in %s",
+  async (permissionMode) => {
+    dirs = await tempDirs();
+    dirs.cwd = await realpath(dirs.cwd);
+    dirs.homeDir = await realpath(dirs.homeDir);
+    await mkdir(join(dirs.homeDir, "deep"));
+    await symlink(join(dirs.homeDir, "deep"), join(dirs.cwd, "through"));
+    await symlink("through/../leaf", join(dirs.cwd, "linked"));
+    const fake = fakeModel([
+      fauxAssistantMessage(fauxToolCall("write", { path: "linked", content: "unauthorized" }), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("done"),
+    ]);
+    const events: SessionEvent[] = [];
+    const rule = "write(~/leaf)";
+    const session = await createSession({
+      ...dirs,
+      ...fake,
+      permissionMode,
+      settings: { permissions: { allow: ["write(./**)"], deny: [rule] } },
+    });
+    await session.run("write", {
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+    expect(events.filter((event) => event.type === "permission_denied")).toMatchObject([
+      { toolName: "write", by: "rule", rule },
+    ]);
+    expect(await Bun.file(join(dirs.homeDir, "leaf")).exists()).toBe(false);
+    expect(
+      fake.contexts[1]!.messages.filter((message) => message.role === "toolResult"),
+    ).toMatchObject([
+      { isError: true, content: [{ type: "text", text: `Denied by permission rule: ${rule}` }] },
+    ]);
+  },
+);

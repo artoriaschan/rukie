@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { realpath, symlink } from "node:fs/promises";
+import { realpath, symlink, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   evaluatePermissionRules,
@@ -153,4 +153,78 @@ test("a dangling file symlink cannot borrow a project allow for a new outside fi
   expect(
     evaluatePermissionRules({ ...input, rules: parsePermissionRules({ deny: [rule] }) }),
   ).toEqual({ decision: "deny", rule });
+});
+
+test("dangling symlink targets resolve intermediate links before parent segments", async () => {
+  dirs = await tempDirs();
+  const cwd = await realpath(dirs.cwd);
+  const homeDir = await realpath(dirs.homeDir);
+  await mkdir(join(homeDir, "deep"));
+  await symlink(join(homeDir, "deep"), join(cwd, "through"));
+  await symlink("through/../leaf", join(cwd, "linked"));
+  const input = { toolName: "write", args: { path: "linked" }, cwd, homeDir };
+  // Prove which destination the OS writes, then remove it so canonicalization
+  // and rules must handle the original dangling target.
+  await writeFile(join(cwd, "linked"), "kernel-target");
+  expect(await Bun.file(join(homeDir, "leaf")).text()).toBe("kernel-target");
+  await Bun.file(join(homeDir, "leaf")).delete();
+  expect(resolvePermissionPath(input)).toEqual({
+    resolvedPath: join(cwd, "linked"),
+    realPath: join(homeDir, "leaf"),
+  });
+  expect(
+    evaluatePermissionRules({ ...input, rules: parsePermissionRules({ allow: ["write(./**)"] }) }),
+  ).toBeUndefined();
+  const rule = "write(~/leaf)";
+  expect(
+    evaluatePermissionRules({ ...input, rules: parsePermissionRules({ deny: [rule] }) }),
+  ).toEqual({ decision: "deny", rule });
+});
+
+test.each([
+  ["leaf", false, false, false],
+  ["leaf", true, false, false],
+  ["missing/deep/leaf", false, true, false],
+  ["leaf", false, true, true],
+] as const)(
+  "symlink targets preserve traversal for %s: existing=%s chain=%s absolute=%s",
+  async (leaf, existing, chain, absolute) => {
+    dirs = await tempDirs();
+    const cwd = await realpath(dirs.cwd);
+    const homeDir = await realpath(dirs.homeDir);
+    await mkdir(join(homeDir, "deep"));
+    await symlink(join(homeDir, "deep"), join(cwd, "through"));
+    const destination = `through/../${leaf}`;
+    await symlink(absolute ? `${cwd}/${destination}` : destination, join(cwd, "linked"));
+    if (chain) await symlink("linked", join(cwd, "first"));
+    if (existing) await Bun.write(join(homeDir, leaf), "existing");
+    const input = { toolName: "write", args: { path: chain ? "first" : "linked" }, cwd, homeDir };
+    expect(resolvePermissionPath(input)).toEqual({
+      resolvedPath: join(cwd, chain ? "first" : "linked"),
+      realPath: join(homeDir, leaf),
+    });
+    expect(
+      evaluatePermissionRules({
+        ...input,
+        rules: parsePermissionRules({ allow: ["write(./**)"] }),
+      }),
+    ).toBeUndefined();
+    const rule = "write(~/**)";
+    expect(
+      evaluatePermissionRules({ ...input, rules: parsePermissionRules({ deny: [rule] }) }),
+    ).toEqual({ decision: "deny", rule });
+  },
+);
+
+test("cyclic symlink targets fail closed before any project allow", async () => {
+  dirs = await tempDirs();
+  const cwd = await realpath(dirs.cwd);
+  const homeDir = await realpath(dirs.homeDir);
+  await symlink("second", join(cwd, "first"));
+  await symlink("first", join(cwd, "second"));
+  const input = { toolName: "write", args: { path: "first" }, cwd, homeDir };
+  expect(() => resolvePermissionPath(input)).toThrow("ELOOP");
+  expect(() =>
+    evaluatePermissionRules({ ...input, rules: parsePermissionRules({ allow: ["write(./**)"] }) }),
+  ).toThrow("ELOOP");
 });

@@ -1,5 +1,5 @@
-import { readlinkSync, realpathSync } from "node:fs";
-import { basename, dirname, resolve } from "node:path";
+import { lstatSync, readlinkSync, realpathSync } from "node:fs";
+import { dirname, isAbsolute, resolve } from "node:path";
 
 export interface PermissionPath {
   resolvedPath: string;
@@ -31,30 +31,42 @@ export function resolvePermissionPath({
         : undefined;
   if (path === undefined) return undefined;
   const resolvedPath = resolve(cwd, expandHome(path, homeDir));
-  let ancestor = resolvedPath;
-  const remaining: string[] = [];
-  for (;;) {
+  let realPath = "/";
+  const remaining = resolvedPath.split("/");
+  let links = 0;
+  while (remaining.length > 0) {
+    const component = remaining.shift()!;
+    if (!component || component === ".") continue;
+    if (component === "..") {
+      realPath = dirname(realPath);
+      continue;
+    }
+    const candidate = `${realPath === "/" ? "" : realPath}/${component}`;
     try {
-      return { resolvedPath, realPath: resolve(realpathSync(ancestor), ...remaining) };
+      if (lstatSync(candidate).isSymbolicLink()) {
+        if (++links > 40)
+          throw Object.assign(
+            new Error(`ELOOP: too many symbolic links, realpath '${resolvedPath}'`),
+            {
+              code: "ELOOP",
+            },
+          );
+        const destination = readlinkSync(candidate);
+        if (isAbsolute(destination)) realPath = "/";
+        // Bun realpath also folds ../ before resolving links. Expand each link
+        // ourselves so through/../leaf visits through's real destination first.
+        remaining.unshift(...destination.split("/"));
+      } else {
+        realPath = realpathSync(candidate);
+      }
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       if (code !== "ENOENT" && code !== "ENOTDIR") throw error;
-      // A dangling symlink is still an existing path component. Follow its
-      // destination before looking for an ancestor, including write's new leaf.
-      try {
-        ancestor = resolve(dirname(ancestor), readlinkSync(ancestor));
-        continue;
-      } catch (linkError) {
-        const linkCode = (linkError as NodeJS.ErrnoException).code;
-        if (linkCode !== "ENOENT" && linkCode !== "ENOTDIR" && linkCode !== "EINVAL")
-          throw linkError;
-      }
-      const parent = dirname(ancestor);
-      if (parent === ancestor) throw error;
-      remaining.unshift(basename(ancestor));
-      ancestor = parent;
+      // The canonical existing prefix is retained while missing leaves append.
+      realPath = candidate;
     }
   }
+  return { resolvedPath, realPath };
 }
 
 /** Pure matching: restrictions see both spellings; grants see only the real target. */
