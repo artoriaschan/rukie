@@ -8,6 +8,7 @@ import {
   type PermissionMode,
   type UserVisibleErrorData,
 } from "@neant/shared";
+import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import { parsePermissionRules } from "../permissions/index.ts";
 import { executeCommand } from "./command.ts";
 
@@ -51,11 +52,16 @@ interface StopHookResult extends CommonHookResult {
   reason?: string;
 }
 
+interface PostToolUseResult extends StopHookResult {
+  updatedToolOutput?: ToolResultMessage["content"];
+}
+
 type UserPromptSubmitResult = StopHookResult;
 type SessionStartResult = CommonHookResult;
 
 interface HookResults {
   PreToolUse: PreToolUseResult;
+  PostToolUse: PostToolUseResult;
   PermissionRequest: PermissionRequestResult;
   PermissionDenied: PermissionDeniedResult;
   UserPromptSubmit: UserPromptSubmitResult;
@@ -72,6 +78,22 @@ const truncate = (text: string) =>
   text.length > 10_000 ? `${text.slice(0, 10_000)}\n[truncated]` : text;
 const object = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+function validToolContent(value: unknown): value is ToolResultMessage["content"] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (item) =>
+        object(item) &&
+        (item.type === "text"
+          ? typeof item.text === "string" &&
+            (item.textSignature === undefined || typeof item.textSignature === "string")
+          : item.type === "image" &&
+            typeof item.data === "string" &&
+            typeof item.mimeType === "string"),
+    )
+  );
+}
 
 function matches(matcher: string | undefined, query: string): boolean {
   if (!matcher || matcher === "*") return true;
@@ -103,7 +125,8 @@ export function createHooks(options: {
       const mergedResult: PreToolUseResult &
         UserPromptSubmitResult &
         StopHookResult &
-        PermissionDeniedResult = {
+        PermissionDeniedResult &
+        PostToolUseResult = {
         systemMessages: [],
         additionalContext: [],
       };
@@ -230,7 +253,8 @@ export function createHooks(options: {
                 event === "UserPromptSubmit" ||
                 event === "Stop" ||
                 event === "PreCompact" ||
-                event === "SubagentStop";
+                event === "SubagentStop" ||
+                event === "PostToolUse";
               const commonFields: Record<string, string> = {
                 continue: "boolean",
                 stopReason: "string",
@@ -268,20 +292,24 @@ export function createHooks(options: {
                     ? ["hookEventName", "decision", "additionalContext"]
                     : event === "PermissionDenied"
                       ? ["hookEventName", "retry", "additionalContext"]
-                      : ["hookEventName", "additionalContext"],
+                      : event === "PostToolUse"
+                        ? ["hookEventName", "additionalContext", "updatedToolOutput"]
+                        : ["hookEventName", "additionalContext"],
               );
               for (const [field, value] of Object.entries(specific)) {
                 const valid =
                   specificFields.has(field) &&
-                  (field === "updatedInput"
-                    ? true
-                    : field === "decision"
-                      ? object(value)
-                      : field === "retry"
-                        ? typeof value === "boolean"
-                        : field === "permissionDecision"
-                          ? typeof value === "string" && ["allow", "ask", "deny"].includes(value)
-                          : typeof value === "string");
+                  (field === "updatedToolOutput"
+                    ? validToolContent(value)
+                    : field === "updatedInput"
+                      ? true
+                      : field === "decision"
+                        ? object(value)
+                        : field === "retry"
+                          ? typeof value === "boolean"
+                          : field === "permissionDecision"
+                            ? typeof value === "string" && ["allow", "ask", "deny"].includes(value)
+                            : typeof value === "string");
                 if (!valid) {
                   await ignored(`hookSpecificOutput.${field}`);
                   delete specific[field];
@@ -387,6 +415,8 @@ export function createHooks(options: {
                 if (specific.retry === true && input.by === "review") result.retry = true;
                 return;
               }
+              if (event === "PostToolUse" && validToolContent(specific.updatedToolOutput))
+                result.updatedToolOutput = specific.updatedToolOutput;
               if (event !== "PreToolUse") return;
               const decision = output.exitCode === 2 ? "deny" : specific.permissionDecision;
               if (decision === "allow" || decision === "ask" || decision === "deny") {

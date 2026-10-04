@@ -3,6 +3,7 @@ import {
   type AgentEvent,
   type AgentMessage,
   type AgentOptions,
+  type AgentTool,
   type AfterToolCallResult,
   type StreamFn,
   type Skill,
@@ -348,6 +349,18 @@ async function createSessionInternal(
       pendingHookEvents.push(event);
     },
   });
+  const toolDurations = new Map<string, number>();
+  const measureTool = (tool: AgentTool): AgentTool => ({
+    ...tool,
+    async execute(id, ...args) {
+      const started = performance.now();
+      try {
+        return await tool.execute(id, ...args);
+      } finally {
+        toolDurations.set(id, performance.now() - started);
+      }
+    },
+  });
   const toolHookContexts = new Map<string, string[]>();
   const hookDenials = new Map<string, { hook?: string; reason?: string }>();
   let hookStopped = false;
@@ -589,8 +602,44 @@ async function createSessionInternal(
     streamFn: options.streamFn ?? streamFn,
     convertToLlm,
     beforeToolCall: permissions.beforeToolCall,
-    async afterToolCall({ toolCall, result }) {
-      return consumeToolHookOutput(toolCall.id, result);
+    async afterToolCall({ toolCall, args, result, isError }, signal) {
+      const duration = toolDurations.get(toolCall.id) ?? 0;
+      toolDurations.delete(toolCall.id);
+      const output = await hooks.run(
+        isError ? "PostToolUseFailure" : "PostToolUse",
+        {
+          ...hookInput(),
+          tool_name: toolCall.name,
+          tool_input: args,
+          tool_use_id: toolCall.id,
+          duration_ms: duration,
+          ...(isError
+            ? {
+                error: result.content
+                  .filter((item) => item.type === "text")
+                  .map((item) => item.text)
+                  .join("\n"),
+                is_interrupt: signal?.aborted ?? false,
+              }
+            : { tool_response: { content: result.content, details: result.details } }),
+        },
+        {
+          // An interrupted execution still needs its failure hook. Shutdown remains
+          // cancellable through the hook runner's Session lifetime signal.
+          signal: isError && signal?.aborted ? undefined : signal,
+          matchQuery: toolCall.name,
+        },
+      );
+      applyHookControl(output);
+      const contexts = [...(toolHookContexts.get(toolCall.id) ?? []), ...output.additionalContext];
+      if ("reason" in output && output.reason) contexts.push(output.reason);
+      toolHookContexts.set(toolCall.id, contexts);
+      const content = "updatedToolOutput" in output ? output.updatedToolOutput : undefined;
+      const decorated = consumeToolHookOutput(toolCall.id, {
+        ...result,
+        ...(content && { content }),
+      });
+      return { ...(content && { content }), ...decorated };
     },
     finishTurn({ toolResults }) {
       if (hookStopped) return { action: "end" };
@@ -623,7 +672,9 @@ async function createSessionInternal(
         ...(internal.parentSessionId
           ? []
           : [subagents.tool, subagents.forkTool, subagents.sendTool, subagents.listTool]),
-      ].filter((tool) => !internal.toolNames || internal.toolNames.includes(tool.name)),
+      ]
+        .filter((tool) => !internal.toolNames || internal.toolNames.includes(tool.name))
+        .map(measureTool),
       ...(settings.thinking && { thinkingLevel: settings.thinking }),
     },
   });
@@ -844,7 +895,9 @@ async function createSessionInternal(
             ...(internal.parentSessionId
               ? []
               : [subagents.tool, subagents.forkTool, subagents.sendTool, subagents.listTool]),
-          ].filter((tool) => !internal.toolNames || internal.toolNames.includes(tool.name));
+          ]
+            .filter((tool) => !internal.toolNames || internal.toolNames.includes(tool.name))
+            .map(measureTool);
           await emit({
             type: "session_start",
             model: `${model.provider}/${model.id}`,
