@@ -70,7 +70,7 @@ async function transcript() {
   return Bun.file(join(root, file)).text();
 }
 
-test("resume preserves the model and Transcript prefix and appends only a changed date", async () => {
+test("resume preserves the model and Transcript prefix and appends changed date and Project Instructions", async () => {
   dirs = await tempDirs();
   await Bun.write(join(dirs.cwd, "AGENTS.md"), "Original project instructions");
   let date = new Date("2026-10-01T12:00:00Z");
@@ -142,6 +142,15 @@ test("resume preserves the model and Transcript prefix and appends only a change
         { type: "text", text: "<system-reminder>\nCurrent date: 2026-10-02\n</system-reminder>" },
       ],
     },
+    {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: expect.stringContaining("New instructions must not rewrite the prefix"),
+        },
+      ],
+    },
     { role: "user", content: [{ type: "text", text: "continue" }] },
   ]);
   expect(events.filter((event) => event.type === "reminder_injected")).toEqual([
@@ -150,6 +159,12 @@ test("resume preserves the model and Transcript prefix and appends only a change
       sessionId: session.id,
       source: "date",
       content: "Current date: 2026-10-02",
+    },
+    {
+      type: "reminder_injected",
+      sessionId: session.id,
+      source: "project-instructions",
+      content: expect.stringContaining("New instructions must not rewrite the prefix"),
     },
   ]);
   expect(await transcript()).toStartWith(beforeResume);
