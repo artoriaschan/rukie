@@ -449,3 +449,47 @@ test("MCP hook default and explicit budgets permit decisions after the SDK's 30s
     ]);
   }
 }, 40_000);
+
+test.each(["http", "mcp_tool"] as const)(
+  "%s PermissionRequest decisions retain rewritten inputs and session updates",
+  async (type) => {
+    dirs = await tempDirs();
+    const output = {
+      hookSpecificOutput: {
+        hookEventName: "PermissionRequest",
+        decision: {
+          behavior: "allow",
+          updatedInput: { command: "touch changed" },
+          updatedPermissions: [{ type: "setMode", mode: "full-access", destination: "session" }],
+        },
+      },
+    };
+    const server = Bun.serve({ port: 0, fetch: () => Response.json(output) });
+    servers.push(server);
+    await connectMcp();
+    const handler: HookHandler =
+      type === "http"
+        ? { type, url: server.url.href }
+        : { type, server: "local", tool: "json", input: { text: JSON.stringify(output) } };
+    const fake = fakeModel([
+      fauxAssistantMessage(fauxToolCall("bash", { command: "touch marker" }), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("done"),
+    ]);
+    const session = await createSession({
+      ...dirs,
+      ...fake,
+      permissionMode: "ask",
+      settings: { hooks: { PermissionRequest: [{ hooks: [handler] }] } },
+    });
+    try {
+      await session.run("try");
+      expect(await Bun.file(join(dirs.cwd, "changed")).exists()).toBe(true);
+      expect(await Bun.file(join(dirs.cwd, "marker")).exists()).toBe(false);
+      expect(session.permissionMode).toBe("full-access");
+    } finally {
+      await session.dispose();
+    }
+  },
+);
