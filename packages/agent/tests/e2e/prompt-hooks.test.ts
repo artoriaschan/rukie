@@ -8,6 +8,32 @@ import { tempDirs } from "../helpers/temp-dirs.ts";
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
 afterEach(() => dirs?.cleanup());
 
+test.each([
+  ["UserPromptSubmit", "{branch state"],
+  ["UserPromptSubmit", "branch state }"],
+  ["SessionStart", "{branch state"],
+  ["SessionStart", "branch state }"],
+] as const)("%s accepts plain stdout %s with only one JSON boundary", async (event, text) => {
+  dirs = await tempDirs();
+  const warnings: string[] = [];
+  const fake = fakeModel([fauxAssistantMessage("accepted")]);
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    onWarning: (warning) => {
+      warnings.push(warning);
+    },
+    settings: {
+      hooks: { [event]: [{ hooks: [{ type: "command", command: `printf '%s' '${text}'` }] }] },
+    },
+  });
+  await session.run("prompt");
+  expect(warnings).toEqual([]);
+  expect(JSON.stringify(fake.contexts[0]!.messages)).toContain(
+    `<system-reminder>\\n${text}\\n</system-reminder>`,
+  );
+});
+
 test.each(["json", "exit"])(
   "UserPromptSubmit %s blocks without storing or sending the prompt",
   async (kind) => {

@@ -122,7 +122,8 @@ export function createHooks(options: {
             });
             let json: Record<string, unknown> = {};
             const stdout = output.stdout.trim();
-            if (stdout.startsWith("{") || stdout.endsWith("}")) {
+            const jsonOutput = stdout.startsWith("{") && stdout.endsWith("}");
+            if (jsonOutput) {
               try {
                 const parsed: unknown = JSON.parse(stdout);
                 if (!object(parsed)) throw new Error("Hook output must be a JSON object");
@@ -208,12 +209,7 @@ export function createHooks(options: {
             if (typeof specific.additionalContext === "string")
               result.additionalContext.push(truncate(specific.additionalContext));
             if (event === "UserPromptSubmit" || event === "SessionStart") {
-              if (
-                output.exitCode === 0 &&
-                stdout &&
-                !stdout.startsWith("{") &&
-                !stdout.endsWith("}")
-              )
+              if (output.exitCode === 0 && stdout && !jsonOutput)
                 result.additionalContext.push(truncate(stdout));
               if (event === "UserPromptSubmit") {
                 if (json.decision !== undefined && json.decision !== "block")
