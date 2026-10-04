@@ -966,6 +966,7 @@ async function createSessionInternal(
             stopHookContinuations++;
             const reason = stopped.reason || "Stop hook blocked completion.";
             await emit({ type: "hook_continued", event: "Stop", reason });
+            signal?.throwIfAborted();
             const feedback = {
               role: "user" as const,
               source: "stop_hook",

@@ -190,6 +190,35 @@ test.each(["error", "aborted"] as const)(
   },
 );
 
+test("cancellation while receiving Stop feedback prevents the continuation model call", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([fauxAssistantMessage("conclusion")]);
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    settings: {
+      hooks: {
+        Stop: [
+          {
+            hooks: [{ type: "command", command: `echo '{"decision":"block","reason":"verify"}'` }],
+          },
+        ],
+      },
+    },
+  });
+  const controller = new AbortController();
+  await expect(
+    session.run("finish", {
+      signal: controller.signal,
+      onEvent: (event) => {
+        if (event.type === "hook_continued") controller.abort(new Error("cancel feedback"));
+      },
+    }),
+  ).rejects.toThrow("cancel feedback");
+  expect(fake.contexts).toHaveLength(1);
+  expect(session.messages.filter((message) => message.role === "user")).toHaveLength(1);
+});
+
 test("concurrent Stop blocks combine every reason in one feedback message", async () => {
   dirs = await tempDirs();
   for (const [name, reason] of [
