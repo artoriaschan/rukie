@@ -49,6 +49,7 @@ interface HookResults {
   SessionStart: SessionStartResult;
   Stop: StopHookResult;
   PreCompact: StopHookResult;
+  SubagentStop: StopHookResult;
 }
 type EventResult<E extends HookEvent> = E extends keyof HookResults
   ? HookResults[E]
@@ -184,7 +185,10 @@ export function createHooks(options: {
                 params: { field },
               });
             const supportsBlockingDecision =
-              event === "UserPromptSubmit" || event === "Stop" || event === "PreCompact";
+              event === "UserPromptSubmit" ||
+              event === "Stop" ||
+              event === "PreCompact" ||
+              event === "SubagentStop";
             const commonFields: Record<string, string> = {
               continue: "boolean",
               stopReason: "string",

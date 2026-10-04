@@ -23,6 +23,7 @@ import type {
   RunResult,
   SessionEvent as SharedSessionEvent,
   Settings,
+  HooksSettings,
 } from "@neant/shared";
 import {
   createSubagents,
@@ -31,7 +32,7 @@ import {
   subagentsState,
   type SubagentIdentity,
 } from "../subagents/index.ts";
-import { resolveModel } from "../config/index.ts";
+import { isTrustedProject, resolveModel } from "../config/index.ts";
 import { createJsonlStore, type SessionStore } from "../store/index.ts";
 import {
   createPermissionGate,
@@ -61,7 +62,7 @@ import { contextUsage } from "../context-usage/index.ts";
 import { createToolState, todoState, type TodoItem } from "../tool-state/index.ts";
 
 import { planState, planModeReminder, PLAN_MODE_EXIT } from "../plan-mode/index.ts";
-import { createHooks, type CommonHookResult, type HookInput } from "../hooks/index.ts";
+import { createHooks, mergeHooks, type CommonHookResult, type HookInput } from "../hooks/index.ts";
 
 export type { PermissionAskRequest, SessionAllowRule } from "../permissions/index.ts";
 
@@ -148,6 +149,7 @@ interface InternalSessionOptions {
   plan?: { getActive(): boolean; hasEntered(): boolean; setMode(on: boolean): Promise<void> };
   toolNames?: readonly string[];
   typePrompt?: string;
+  typeHooks?: HooksSettings;
   initialMessages?: AgentMessage[];
   systemPrompt?: string;
   control?: { steer?: (message: AgentMessage) => void };
@@ -158,6 +160,7 @@ async function createSessionInternal(
   internal: InternalSessionOptions = {},
 ): Promise<Session> {
   const settings = options.settings ?? {};
+  const hookSettings = mergeHooks(settings.hooks, internal.typeHooks);
   const rules = internal.permissions?.rules ?? [
     ...parsePermissionRules(settings.permissions),
     ...parsePermissionRules({ allow: options.allowRules }, "--allow-tools"),
@@ -305,7 +308,7 @@ async function createSessionInternal(
   const pendingHookEvents: CustomSessionEvent<AgentEvent>[] = [];
   let emitSessionEndEvent: typeof emitRunEvent;
   const hooks = createHooks({
-    settings: settings.hooks,
+    settings: hookSettings,
     cwd,
     projectDir: cwd,
     onWarning: options.onWarning ?? console.warn,
@@ -384,7 +387,7 @@ async function createSessionInternal(
         hookDenials.set(event.toolCallId, { hook: event.hook, reason: event.reason });
       return emitRunEvent?.(event);
     },
-    ...(settings.hooks?.PreToolUse?.length && {
+    ...(hookSettings.PreToolUse?.length && {
       preToolUse: async (call, signal) => {
         if (hookStopped)
           return {
@@ -458,6 +461,7 @@ async function createSessionInternal(
               )
               .map((tool) => tool.name),
           typePrompt: type.prompt,
+          typeHooks: type.hooks,
           ...(fork && {
             ...(!resumeId && { sessionSource: "fork" as const }),
             ...(!resumeId && { initialMessages: structuredClone(completedMessages) }),
@@ -488,6 +492,7 @@ async function createSessionInternal(
       cwd,
       options.homeDir,
       initialTools.map((tool) => tool.name),
+      { trusted: isTrustedProject(cwd, settings) },
     );
     // Seed pi's initial declaration; Run discovery owns diagnostics and later changes.
     subagents.setTypes(discovered.types);
@@ -675,9 +680,18 @@ async function createSessionInternal(
               cwd,
               options.homeDir,
               generalTools.map((tool) => tool.name),
+              { trusted: isTrustedProject(cwd, settings) },
             );
             subagents.setTypes(discovered.types);
             for (const warning of discovered.warnings) (options.onWarning ?? console.warn)(warning);
+            for (const warning of discovered.hookWarnings)
+              await emit({
+                type: "hook_warning",
+                event: "SubagentStart",
+                hook: warning.source,
+                message: warning.message,
+                error: warning.error,
+              });
           }
           agent.state.tools = [
             ...generalTools,
@@ -725,6 +739,14 @@ async function createSessionInternal(
               return result;
             }
             promptContexts.push(...promptHook.additionalContext);
+          } else {
+            const started = await hooks.run("SubagentStart", hookInput(), {
+              signal,
+              matchQuery: internal.agentType,
+            });
+            signal?.throwIfAborted();
+            // Starting a child Run only contributes context; hook control cannot prevent it.
+            promptContexts.push(...started.additionalContext);
           }
           const runStore = await store.open(stored.metadata, context);
           active = runStore;
@@ -984,7 +1006,7 @@ async function createSessionInternal(
             ...consumeSessionContext(),
             ...promptContexts.map((content) => ({
               role: "system-reminder" as const,
-              source: "user-prompt-hook",
+              source: internal.parentSessionId ? "subagent-start-hook" : "user-prompt-hook",
               content,
               timestamp: Date.now(),
             })),
@@ -1015,7 +1037,6 @@ async function createSessionInternal(
               (message) => message.role === "assistant",
             );
             if (
-              internal.parentSessionId ||
               !lastAssistant ||
               lastAssistant.stopReason === "aborted" ||
               lastAssistant.stopReason === "error"
@@ -1023,35 +1044,41 @@ async function createSessionInternal(
               break;
             // Stop runs only after pi and all child notifications finish. Future Goal
             // checks belong after Stop allows completion; hook continuations are not Goal rounds.
+            const stopEvent = internal.parentSessionId ? "SubagentStop" : "Stop";
+            const input = hookInput();
             const stopped = await hooks.run(
-              "Stop",
+              stopEvent,
               {
-                ...hookInput(),
+                ...input,
+                ...(internal.parentSessionId && { agent_transcript_path: input.transcript_path }),
                 stop_hook_active: stopHookContinuations > 0,
                 last_assistant_message: lastAssistant.content
                   .flatMap((part) => (part.type === "text" ? [part.text] : []))
                   .join(""),
               },
-              { signal },
+              { signal, matchQuery: internal.agentType },
             );
             applyHookControl(stopped);
             signal?.throwIfAborted();
             if (hookStopped || stopped.decision !== "block") break;
             if (stopHookContinuations >= 8) {
-              const message = "Stop hook reached the 8 continuation limit; ignoring block";
+              const message = `${stopEvent} hook reached the 8 continuation limit; ignoring block`;
               (options.onWarning ?? console.warn)(message);
               await emit({
                 type: "hook_warning",
-                event: "Stop",
-                hook: "Stop",
+                event: stopEvent,
+                hook: stopEvent,
                 message,
-                error: { code: "hook-continuation-limit", params: { event: "Stop", limit: "8" } },
+                error: {
+                  code: "hook-continuation-limit",
+                  params: { event: stopEvent, limit: "8" },
+                },
               });
               break;
             }
             stopHookContinuations++;
-            const reason = stopped.reason || "Stop hook blocked completion.";
-            await emit({ type: "hook_continued", event: "Stop", reason });
+            const reason = stopped.reason || `${stopEvent} hook blocked completion.`;
+            await emit({ type: "hook_continued", event: stopEvent, reason });
             signal?.throwIfAborted();
             const feedback = {
               role: "user" as const,
