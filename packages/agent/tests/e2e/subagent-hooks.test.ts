@@ -8,6 +8,70 @@ import { tempDirs } from "../helpers/temp-dirs.ts";
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
 afterEach(() => dirs?.cleanup());
 
+test("SubagentStart continue:false ends only the child run without storing its prompt; an idle wakeup can run", async () => {
+  dirs = await tempDirs();
+  await Bun.write(
+    join(dirs.cwd, "halt-start.sh"),
+    `cat > start.json\nif [ ! -f halted ]; then touch halted; echo '{"continue":false,"stopReason":"halt child","decision":"block"}'; fi\n`,
+  );
+  let parentCalls = 0;
+  let childCalls = 0;
+  let childId = "";
+  const reply: Parameters<typeof fakeModel>[0][number] = (context) => {
+    const parent = context.messages.some(
+      (message) =>
+        message.role === "system" && message.toolsAdded?.some((tool) => tool.name === "subagent"),
+    );
+    if (!parent) {
+      childCalls++;
+      expect(JSON.stringify(context.messages)).not.toContain("blocked child prompt");
+      expect(JSON.stringify(context.messages.at(-1))).toContain("wake child");
+      return fauxAssistantMessage("child awake");
+    }
+    if (++parentCalls === 1)
+      return fauxAssistantMessage(
+        fauxToolCall("subagent", {
+          description: "Inspect",
+          prompt: "blocked child prompt",
+          run_in_background: false,
+        }),
+        { stopReason: "toolUse" },
+      );
+    if (parentCalls === 3)
+      return fauxAssistantMessage(
+        fauxToolCall("send_message", { agent_id: childId, message: "wake child" }),
+        { stopReason: "toolUse" },
+      );
+    return fauxAssistantMessage("parent complete");
+  };
+  const fake = fakeModel(Array.from({ length: 12 }, () => reply));
+  const events: SessionEvent[] = [];
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    onWarning() {},
+    settings: {
+      hooks: { SubagentStart: [{ hooks: [{ type: "command", command: "sh halt-start.sh" }] }] },
+    },
+  });
+  expect(
+    await session.run("delegate", {
+      onEvent(event) {
+        events.push(event);
+        if (event.type === "subagent_event") childId = event.agentId;
+      },
+    }),
+  ).toMatchObject({ success: true, text: "parent complete" });
+  expect(childCalls).toBe(0);
+  expect(
+    events.filter((event) => event.type === "subagent_event" && event.event.type === "result"),
+  ).toMatchObject([{ event: { success: true, stopReason: "hook_stopped", reason: "halt child" } }]);
+  const input = await Bun.file(join(dirs.cwd, "start.json")).json();
+  expect(await Bun.file(input.transcript_path).text()).not.toContain("blocked child prompt");
+  expect(await session.run("wake")).toMatchObject({ success: true, text: "parent complete" });
+  expect(childCalls).toBe(1);
+});
+
 test.each([false, true])(
   "project type hooks require session trust and work without parent hooks: %s",
   async (trusted) => {
@@ -102,7 +166,7 @@ test("SubagentStart matches the type on each child run, including idle send_mess
   dirs = await tempDirs();
   await Bun.write(
     join(dirs.cwd, "start.sh"),
-    `cat >> starts.jsonl\necho >> starts.jsonl\necho '{"continue":false,"decision":"block","hookSpecificOutput":{"hookEventName":"SubagentStart","additionalContext":"child instructions"}}'\nexit 2\n`,
+    `cat >> starts.jsonl\necho >> starts.jsonl\necho '{"decision":"block","hookSpecificOutput":{"hookEventName":"SubagentStart","additionalContext":"child instructions"}}'\nexit 2\n`,
   );
   let childId = "";
   const reply: Parameters<typeof fakeModel>[0][number] = (context) => {

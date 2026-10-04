@@ -745,7 +745,14 @@ async function createSessionInternal(
               matchQuery: internal.agentType,
             });
             signal?.throwIfAborted();
-            // Starting a child Run only contributes context; hook control cannot prevent it.
+            applyHookControl(started);
+            if (hookStopped) {
+              result.success = true;
+              result.stopReason = "hook_stopped";
+              result.reason = hookStopReason;
+              return result;
+            }
+            // Ordinary block decisions do not prevent a child Run from starting.
             promptContexts.push(...started.additionalContext);
           }
           const runStore = await store.open(stored.metadata, context);
