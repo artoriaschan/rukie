@@ -629,3 +629,98 @@ test("PermissionRequest accepts Claude-style session rule entries and never over
     tool_input: { command: "touch first" },
   });
 });
+
+test("PermissionRequest allow without a rewrite still honors explicit ask rules", async () => {
+  dirs = await tempDirs();
+  const handler = await script("PermissionRequest", {
+    hookSpecificOutput: { decision: { behavior: "allow" } },
+  });
+  const fake = toolModel();
+  let asks = 0;
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    settings: {
+      permissions: { ask: ["bash"] },
+      hooks: { PermissionRequest: [{ hooks: [handler] }] },
+    },
+    onPermissionAsk: async () => {
+      asks++;
+      return "deny";
+    },
+  });
+  await session.run("try");
+  expect(asks).toBe(1);
+  expect(await Bun.file(join(dirs.cwd, "marker")).exists()).toBe(false);
+});
+
+test("PermissionRequest ignores an array mode update and reports its warning", async () => {
+  dirs = await tempDirs();
+  const handler = await script("PermissionRequest", {
+    hookSpecificOutput: {
+      decision: {
+        behavior: "allow",
+        updatedPermissions: [{ type: "setMode", destination: "session", mode: ["full-access"] }],
+      },
+    },
+  });
+  const fake = toolModel();
+  const events: SessionEvent[] = [];
+  const warnings: string[] = [];
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    onWarning: (warning) => {
+      warnings.push(warning);
+    },
+    settings: { hooks: { PermissionRequest: [{ hooks: [handler] }] } },
+  });
+  await session.run("try", {
+    onEvent: (event) => {
+      events.push(event);
+    },
+  });
+  expect(session.permissionMode).toBe("ask");
+  expect(warnings).toHaveLength(1);
+  expect(events.filter((event) => event.type === "hook_warning")).toMatchObject([
+    { event: "PermissionRequest", error: { code: "hook-output-ignored" } },
+  ]);
+  expect(await Bun.file(join(dirs.cwd, "marker")).exists()).toBe(true);
+});
+
+test("a malformed PermissionRequest rewrite cannot erase an earlier interrupting denial", async () => {
+  dirs = await tempDirs();
+  await Bun.write(
+    join(dirs.cwd, "later.sh"),
+    `cat >/dev/null\nwhile [ ! -f first-decision ]; do sleep 0.01; done\necho '{"hookSpecificOutput":{"decision":{"behavior":"allow","updatedInput":[]}}}'\n`,
+  );
+  const first = await script("PermissionRequest", {
+    systemMessage: "first decision",
+    hookSpecificOutput: { decision: { behavior: "deny", message: "first guard", interrupt: true } },
+  });
+  const fake = toolModel();
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    settings: {
+      hooks: {
+        PermissionRequest: [{ hooks: [first, { type: "command", command: "sh later.sh" }] }],
+      },
+    },
+  });
+  const result = await session.run("try", {
+    onEvent: (event) => {
+      // Release the second real script after the first output's event microtasks
+      // have finished; no elapsed-time assumption decides hook completion order.
+      if (event.type === "hook_message" && event.message === "first decision")
+        setImmediate(() => {
+          void Bun.write(join(dirs.cwd, "first-decision"), "");
+        });
+    },
+  });
+  expect(result).toMatchObject({ stopReason: "hook_stopped" });
+  expect(result.reason).toContain("first guard");
+  expect(result.reason).toContain("invalid updatedInput");
+  expect(fake.contexts).toHaveLength(1);
+  expect(await Bun.file(join(dirs.cwd, "marker")).exists()).toBe(false);
+});

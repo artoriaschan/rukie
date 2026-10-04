@@ -108,6 +108,15 @@ export function createHooks(options: {
       };
       let requestDecision: PermissionRequestResult["decision"];
       let requestHook: string | undefined;
+      const denyRequest = (message: string | undefined, interrupt: boolean, hook: string) => {
+        const prior = requestDecision?.behavior === "deny" ? requestDecision : undefined;
+        requestDecision = {
+          behavior: "deny",
+          message: [prior?.message, message].filter(Boolean).join("\n") || undefined,
+          interrupt: prior?.interrupt || interrupt,
+        };
+        requestHook = hook;
+      };
       const shutdown = event === "SessionEnd" ? new AbortController() : undefined;
       const timer = shutdown ? setTimeout(() => shutdown.abort(), 1500) : undefined;
       const signal = AbortSignal.any([
@@ -326,30 +335,22 @@ export function createHooks(options: {
                   decision.updatedInput !== undefined &&
                   !object(decision.updatedInput)
                 ) {
-                  requestDecision = {
-                    behavior: "deny",
-                    message: "Denied by hook: invalid updatedInput: expected an object",
-                  };
-                  requestHook = hook;
+                  denyRequest(
+                    "Denied by hook: invalid updatedInput: expected an object",
+                    false,
+                    hook,
+                  );
                 } else if (
                   decision.behavior === "deny" ||
                   !requestDecision ||
                   requestDecision.behavior === "allow"
                 ) {
                   if (decision.behavior === "deny") {
-                    const prior =
-                      requestDecision?.behavior === "deny" ? requestDecision : undefined;
-                    requestDecision = {
-                      behavior: "deny",
-                      message:
-                        [
-                          prior?.message,
-                          typeof decision.message === "string" ? decision.message : undefined,
-                        ]
-                          .filter(Boolean)
-                          .join("\n") || undefined,
-                      interrupt: prior?.interrupt || decision.interrupt === true,
-                    };
+                    denyRequest(
+                      typeof decision.message === "string" ? decision.message : undefined,
+                      decision.interrupt === true,
+                      hook,
+                    );
                   } else requestDecision = decision as PermissionRequestResult["decision"];
                   requestHook = hook;
                 }

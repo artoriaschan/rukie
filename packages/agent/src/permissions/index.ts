@@ -261,7 +261,8 @@ export function createPermissionGate(options: PermissionGateOptions) {
       if (
         value.type === "setMode" &&
         "mode" in value &&
-        ["ask", "auto-review", "full-access"].includes(String(value.mode))
+        typeof value.mode === "string" &&
+        ["ask", "auto-review", "full-access"].includes(value.mode)
       ) {
         options.setMode?.(value.mode as PermissionMode);
       } else if (
@@ -338,15 +339,12 @@ export function createPermissionGate(options: PermissionGateOptions) {
       if (hook.decision.updatedInput !== undefined) {
         const invalid = rewriteInput(context, hook.decision.updatedInput, hook.hook);
         if (invalid) return invalid;
-        await updatePermissions(hook.decision.updatedPermissions, hook.hook);
-        const rewrittenRule = evaluateRuleStage(toolCall.name, args);
-        if (rewrittenRule?.decision === "deny") return rewrittenRule;
-        if (rewrittenRule?.decision === "ask") decision = rewrittenRule;
-        else return { decision: "allow" };
-      } else {
-        await updatePermissions(hook.decision.updatedPermissions, hook.hook);
-        return { decision: "allow" };
       }
+      await updatePermissions(hook.decision.updatedPermissions, hook.hook);
+      const requestedRule = evaluateRuleStage(toolCall.name, args);
+      if (requestedRule?.decision === "deny") return requestedRule;
+      if (requestedRule?.decision === "ask") decision = requestedRule;
+      else return { decision: "allow" };
     }
     grant = sessionAllowRule(toolCall.name, args, options.cwd, options.homeDir);
     const respond = options.onPermissionAsk;
