@@ -32,6 +32,7 @@
  */
 
 const zh = {
+  "todo.more": "… 还有 {{count}} 项",
   "question.summary": "提问",
   "question.unanswered": "未回答",
   "narrate-instruction":
@@ -121,6 +122,7 @@ const zh = {
 } as const;
 
 const en = {
+  "todo.more": "… {{count}} more",
   "question.summary": "Questions",
   "question.unanswered": "Unanswered",
   "narrate-instruction":

@@ -9,3 +9,4 @@ export { ToolCall } from "./tool-call";
 export { Logo } from "./logo";
 export { ActivityLine } from "./activity-line";
 export { QuestionDialog } from "./question-dialog";
+export { GoalTodoPanel } from "./goal-todo-panel";

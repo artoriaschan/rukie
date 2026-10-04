@@ -1,6 +1,6 @@
 import type { Locale } from "@neant/i18n";
 import { createTuiI18n, formatError } from "../../i18n";
-import type { Session, SessionEvent } from "@neant/agent";
+import type { Session, SessionEvent, TodoItem } from "@neant/agent";
 import type { ContextUsageEvent, RunResult } from "@neant/shared";
 import type { TpsSample } from "../../components/status-line";
 import { createActivity, reduce } from "./activity/activity";
@@ -116,6 +116,7 @@ function questionSummary(args: unknown, text: string, t: ReturnType<typeof creat
 }
 
 interface ViewState {
+  todos: readonly TodoItem[];
   completed: CompletedEntry[];
   tools: ToolCall[];
   assistant: string;
@@ -194,6 +195,8 @@ function reduceEvent(
   t: ReturnType<typeof createTuiI18n>,
 ): ViewState {
   switch (event.type) {
+    case "tool_state_changed":
+      return event.name === "todo" ? { ...state, todos: event.value as TodoItem[] } : state;
     case "session_start":
       return { ...state, model: event.model };
     case "context_usage":
@@ -327,6 +330,7 @@ function reduceEvent(
 export function createConversation(session: Session, model: string, locale: Locale = "zh") {
   const t = createTuiI18n(locale);
   let state: ViewState = {
+    todos: (session.toolState("todo") as TodoItem[] | undefined) ?? [],
     completed: replayMessages(session.messages, t),
     tools: [],
     assistant: "",

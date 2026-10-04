@@ -14,6 +14,7 @@ import {
 import {
   AssistantMessage,
   ActivityLine,
+  GoalTodoPanel,
   Logo,
   Notice,
   PermissionDialog,
@@ -177,6 +178,11 @@ function Chat({
   const dialogMaxHeight = Math.max(
     minimumDialogHeight,
     Math.min(Math.floor(rows / 2), permissionSpace - returnHeight - Number(showActivity)),
+  );
+  const promptMaxLines = Math.max(1, Math.min(6, Math.floor(rows / 3)) - 3);
+  const todoMaxHeight = Math.max(
+    1,
+    rows - statusHeight - (promptMaxLines + 3) - returnHeight - Number(showActivity) - 1,
   );
   useInput((event) => {
     if (event.type === "move") return;
@@ -371,6 +377,14 @@ function Chat({
                 suffix={` · ↑ ${fmtTokens(state.activityInput)} · ↓ ${fmtTokens(state.output + Math.ceil(state.streamedChars / 4))} tokens`}
               />
             )}
+            {!interaction && (
+              <GoalTodoPanel
+                todos={state.todos}
+                working={state.running}
+                locale={locale}
+                maxHeight={todoMaxHeight}
+              />
+            )}
             {question && (
               <PermissionDialog
                 locale={locale}
@@ -404,7 +418,7 @@ function Chat({
             )}
             {!interaction && (
               <PromptInput
-                maxLines={Math.max(1, Math.min(6, Math.floor(rows / 3)) - 3)}
+                maxLines={promptMaxLines}
                 columns={columns}
                 working={state.running}
                 value={input}
