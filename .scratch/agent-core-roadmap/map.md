@@ -30,6 +30,7 @@ Labels: wayfinder:map
 - [子代理](issues/06-subagent.md): 子 session 可多 run（`subagent` / `subagent_fork` / `send_message` / `list_agents`，对齐 harness）；默认后台，父 run 等子代理全部结束，结束通知 steer 成 user 消息；深度 1、running 上限 8、父中止级联；内置 general-purpose / explore + `agents/*.md` 自定义类型（可配 model）；`subagent_event` 包装转发；TUI 复刻 dsh-TUI 卡片 / dashboard / 详情页，新增子代理面板，输入框上方面板固定顺序且同时显示
 
 - [plan mode](issues/10-plan-mode.md): 与 Permission Mode 正交的 session 开关；照 harness 只引导不限制工具（推翻地基 C 的内置 deny）；Tool State `plan` resume 保留；plan reminder 不改 System Prompt；常驻 `enter_plan_mode`（需批准）/ `exit_plan_mode { plan }`；回调 `onPlanReview` 批准 / 继续规划+反馈 / Esc 接手，批准不改 Permission Mode；Headless 无此能力；子代理共享状态、无两工具；TUI 照 dsh-TUI 评审面板 + plan 色边框 + chip
+- [hooks](issues/12-hooks.md): 对齐 CC——stdin JSON / exit 2 阻断 / `hookSpecificOutput`；14 种事件（工具前后与失败、PermissionRequest/Denied、UserPromptSubmit、Session Start/End、Stop、Subagent Start/Stop、Pre/PostCompact、Notification）；matcher 正则 + `if` 权限规则；五种类型、CC 默认超时、fail-open；并行各拿原始输入，`updatedInput` 最后完成者生效再过规则；Stop/SubagentStop 可 block 续跑（上限 8，先于 Goal）；项目层与 `agents/*.md` hooks 需 Trusted Project；`updatedPermissions` 仅 session
 
 ## Not yet specified
 
@@ -43,3 +44,4 @@ Labels: wayfinder:map
 - server 与桌面端。
 - sandbox（OS 级写入隔离，macOS `sandbox-exec` / Linux bwrap）：需单独调研，本轮规则已覆盖日常需求；见 [权限规则与 sandbox](issues/11-permission-rules-and-sandbox.md)。
 - 多 agent 共享任务表（CC V2 `TaskCreate/Get/List/Update`、dsh `agent-team` 任务板）：Neant 子代理各自独立 session，无共享场景；见 [todo 工具](issues/07-todo.md)。
+- 其余 CC hook 事件（PostToolBatch、StopFailure、FileChanged、Worktree*、Task* 等）：无对应能力或用不上；见 [hooks](issues/12-hooks.md)。

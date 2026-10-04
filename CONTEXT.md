@@ -103,12 +103,16 @@ _Avoid_: plugin, recipe
 _Avoid_: connector, integration
 
 **Trusted Project**:
-用户明确表示信任的项目目录。只有 trusted project，其项目级 `.mcp.json` 与项目级 allow 规则才会被加载。项目级配置任何情况下都不能定义 provider。
+用户明确表示信任的项目目录。只有 trusted project，其项目级 `.mcp.json`、项目级 allow 规则与项目级 hook 才会被加载。项目级配置任何情况下都不能定义 provider。
 _Avoid_: safe project, whitelisted repo
 
 **Skill Invocation**:
 用户在 prompt 开头写 `/name`，主动展开一个 skill。展开的正文以 system reminder 形式附在消息上。
 _Avoid_: slash command, macro
+
+**Hook**:
+用户配置、在 Agent Core 生命周期事件（工具调用前后、权限询问与拒绝、用户提交 prompt、session 开始结束、run 结束、子代理开始结束、compaction 前后、交互开始）上执行的外部程序，协议对齐 Claude Code。可阻断、改写工具参数、向模型注入上下文、让即将结束的 run 继续；改写后的参数仍要经过权限规则，hook 的 allow 越不过规则的 deny。
+_Avoid_: callback, plugin, middleware
 
 **Permission Decision**:
 对单次工具调用在执行前做出的判定：`allow`、`deny` 或 `ask`。`ask` 交给 frontend 询问用户；Headless CLI 没法询问，按 `deny` 处理。由固定顺序的阶段得出：hooks → 权限规则 → Permission Mode → 询问用户；多个阶段有意见时取最严（deny > ask > allow），hook 的 allow 越不过规则的 deny。内置工具、MCP 工具与 skill 工具一律适用。
