@@ -183,7 +183,13 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       model,
       messages: restoreContext(entries),
       systemPrompt: SYSTEM_PROMPT,
-      tools: createBuiltinTools(cwd, (name) => skills.get(name), setTodo, options.onQuestion),
+      tools: createBuiltinTools(
+        cwd,
+        (name) => skills.get(name),
+        setTodo,
+        options.onQuestion,
+        options.homeDir,
+      ),
       ...(settings.thinking && { thinkingLevel: settings.thinking }),
     },
   });
@@ -237,7 +243,13 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           });
         } finally {
           agent.state.tools = [
-            ...createBuiltinTools(cwd, (name) => skills.get(name), setTodo, options.onQuestion),
+            ...createBuiltinTools(
+              cwd,
+              (name) => skills.get(name),
+              setTodo,
+              options.onQuestion,
+              options.homeDir,
+            ),
             ...mcp.tools,
           ];
           await emit({

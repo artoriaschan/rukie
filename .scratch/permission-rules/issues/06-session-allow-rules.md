@@ -34,3 +34,14 @@
 - 将 `apps/neant-tui/tests/e2e/permission-interactions.test.ts` 移至 `apps/neant-tui/tests/screens/chat/interactions.test.ts`，仅调整相对 import，8 个既有行为断言原样保留；runtime 实现未变。
 - focused 新路径 exit 0：1 pass / 0 fail，8 assertions。冻结迁移后完整 `rtk proxy env -u NO_COLOR bun run check` exit 0：966 pass / 0 fail，71 files，5322 assertions，112.95s；oxfmt、oxlint、tsc -b、knip 均通过。日志 `/tmp/neant-permission-06-review-fix-check.log`。
 - 工单继续 in-progress。迁移 delta 待复审；父代理另发现实际文件工具路径 alias 与权限目标可能不一致，正在本轮路径规则范围内调查与验证，尚不 finalize。
+
+### 2026-10-04 actual file target alignment checkpoint — review pending
+
+- 父代理与独立 Spec reviewer 在本批集成检查中发现 issue 04 / 06 实际工具边界偏差：pi read/write/edit 会剥一个前导 `@`、规范 Unicode spaces、展开 home/file URL；read 还选择 NFD / curly quote / AMPM 文件名候选。权限原先只检查原始字符串，可漏掉真实目标的 deny。glob/grep 实际按 cwd 字面 resolve，不展开 `~`，此前权限反而展开它。
+- Neant tools adapter 通过 pi 公开 `prepareArguments` 接缝保留原 edit 准备，并提前将 read/write/edit 的 path 规范成实际绝对目标；Session 的 homeDir 显式传入工具工厂，执行不再偷偷读取 process home。read 候选存在判定对齐安装 pi env.exists 的 lstat 语义：dangling symlink 仍是已有候选，只有 ENOENT 前进；其他错误交回原工具处理。
+- 真实 e2e 又证明绝对 path 交 pi 后重复 Unicode normalization 会改选文件：percent-encoded NBSP URL 的目标与普通空格文件同时存在时，准备阶段选 NBSP、执行却读出普通空格文件。adapter execute 将已准备绝对 path 编码为 file URL 交 pi，再由其 NodeExecutionEnv decode 回同一资源，保留原公开工具、read 候选顺序与 mutation queue，不使用私有深导入或依赖修改。
+- glob/grep 权限 target 按现有 execute 的字面 resolve 语义处理；权限规则 pattern 仍按原语法展开 home，不套用工具 aliases。issue 04 的 symlink / missing ancestor canonical resolver 其余逻辑保持。
+- TDD 证据：真实 Session `read @<absolute>` 规则拒绝缺失 8 pass / 1 fail → 9 pass / 0 fail；glob/grep literal tilde target 9 pass / 2 fail → 11 pass / 0 fail；NBSP 双文件读取错误 0 pass / 1 fail → 1 pass / 0 fail。补充 deny / actual execution 的 @、percent URL、Unicode space、home 与 ordinary 路径，read fallback 外部 symlink deny、NFD/curly/AMPM 候选、read/write NBSP 双文件、missing/dangling primary error 与普通 edit 既有准备回归。所有路径夹具均为临时目录，没有触碰用户设置。
+- focused 最终 exit 0：239 pass / 0 fail，9 files，723 assertions，8.95s；tsc -b、oxlint、knip 独立 exit 0。旧两项 request.args 断言精确更新为公开 prepared absolute 参数，行为断言完整保留。
+- 冻结最终实现完整 `rtk proxy env -u NO_COLOR bun run check` exit 0：984 pass / 0 fail，71 files，5362 assertions，114.84s；oxfmt、oxlint、tsc -b、knip 全通过。日志 `/tmp/neant-permission-path-alias-check.log`；`git diff --check` 通过。
+- 本检查点同时补齐 04 路径规则与 06 会话目录规则的真实文件工具边界，新增修复 delta 待父代理双轴 review；06 继续 in-progress，04 既有 resolved 保留，最终 spec resolved 待全部复审验收后更新。

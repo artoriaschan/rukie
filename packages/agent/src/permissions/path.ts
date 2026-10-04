@@ -35,7 +35,10 @@ export function resolvePermissionPath({
         ? cwd
         : undefined;
   if (path === undefined) return undefined;
-  const resolvedPath = resolve(cwd, expandHome(path, homeDir));
+  const resolvedPath = resolve(
+    cwd,
+    toolName === "glob" || toolName === "grep" ? path : expandHome(path, homeDir),
+  );
   let realPath = parse(resolvedPath).root;
   const remaining = pathComponents(resolvedPath.slice(realPath.length));
   let links = 0;

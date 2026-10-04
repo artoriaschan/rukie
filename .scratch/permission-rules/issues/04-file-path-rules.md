@@ -32,3 +32,10 @@
 - 平台小修验证：macOS 实际含反斜杠文件名的软链目标 probe 通过；路径 41 pass / 0 fail；权限 focused 129 pass / 0 fail（401 expect、6 files、31.30s）；tsc -b exit 0；源码冻结 full check exit 0，860 pass / 0 fail（5069 expect、67 files、108.72s）。未做 Windows 真机验证。此小 delta 仍待父代理复审，状态保持 claimed。
 
 - 2026-10-04 最终审查：P1 修复与 native-root 小 delta 均经双轴复审，Standards 0 findings / Spec 0 findings。路径与软链语义保持，平台 root / sep 抽象无新规范问题；Windows 未做真机验证的限制已明确记录。实现与全部验收完成，Status 改为 resolved；父代理负责随后 main 集成与集成后验收。本次仅工单状态文档提交，源码保持已验证的 `410c1b6` 状态，不重复运行不变代码检查。
+
+### 2026-10-04 actual tool target integration follow-up — review pending
+
+- 父代理完成本批集成检查时发现 read/write/edit 的实际 `@` / Unicode spaces / file URL / read 文件名 fallback 目标与原权限参数存在偏差；06 worktree 在公开工具适配边界统一 prepared absolute path，权限与 execute 同用目标，并为 read/write/edit 的 pi 执行编码 file URL，防止重复 normalization 改选文件。Session homeDir 显式供工具准备；glob/grep 权限 target 保持实际 cwd 字面 resolve 的 `~` 语义，规则 pattern 语义不变。
+- 04 原 symlink 链、dangling ancestor 与平台路径 canonical resolver 保持；真实 Run 测试加入别名 deny、read fallback 外部 symlink、Unicode / percent URL / home / ordinary 执行一致性、NBSP 双文件和 missing/dangling primary 回归。该集成修复同时保证 06 会话目录规则描述与实际工具落点一致。
+- RED→GREEN 与完整 evidence 见 [06](06-session-allow-rules.md) actual file target alignment checkpoint。focused 239 pass / 0 fail，9 files，723 assertions；冻结 full check exit 0，984 pass / 0 fail，71 files，5362 assertions，114.84s，日志 `/tmp/neant-permission-path-alias-check.log`。
+- 04 既有 resolved 状态保持；新增边界修复 delta 在 06 分支，待父代理独立 Standards / Spec 复审后集成。

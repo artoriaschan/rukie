@@ -11,7 +11,11 @@ import {
 import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
 import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/pi-agent-core/harness/context";
 import type { UserVisibleErrorData } from "@neant/shared";
-import { Type, type TSchema } from "typebox";
+import { homedir } from "node:os";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { prepareFileToolPath } from "./path.ts";
+import { Type, type TSchema, type Static } from "typebox";
 import { createGlobTool } from "./glob.ts";
 import { createGrepTool } from "./grep.ts";
 import { createSkillTool } from "./skill.ts";
@@ -24,13 +28,37 @@ export type { Question, QuestionRequest, QuestionReply } from "./question.ts";
 function adaptTool<T extends TSchema, D>(
   tool: AgentHarnessTool<ExecutionToolContext, T, D>,
   env: NodeExecutionEnv,
+  homeDir?: string,
 ): AgentTool<T, D> {
   return {
     ...tool,
+    ...(homeDir !== undefined && {
+      prepareArguments(input: unknown) {
+        const prepared = tool.prepareArguments?.(input) ?? input;
+        if (
+          typeof prepared !== "object" ||
+          prepared === null ||
+          !("path" in prepared) ||
+          typeof prepared.path !== "string"
+        )
+          return prepared as Static<T>;
+        return {
+          ...prepared,
+          path: prepareFileToolPath(prepared.path, tool.name === "read", env.cwd, homeDir),
+        } as Static<T>;
+      },
+    }),
     execute(id, params, signal, onUpdate) {
       return tool.execute(
         id,
-        params,
+        homeDir !== undefined &&
+          typeof params === "object" &&
+          params !== null &&
+          "path" in params &&
+          typeof params.path === "string"
+          ? // The URL preserves the selected filename through pi's second normalization.
+            ({ ...params, path: pathToFileURL(resolve(env.cwd, params.path)).href } as Static<T>)
+          : params,
         onUpdate ?? (() => {}),
         { env },
         {
@@ -78,6 +106,7 @@ export function createBuiltinTools(
   getSkill: (name: string) => Skill | undefined,
   setTodo: (todos: TodoItem[]) => Promise<void>,
   onQuestion?: OnQuestion,
+  homeDir = homedir(),
 ): AgentTool[] {
   const env = new NodeExecutionEnv({ cwd });
   const bashTool = createBashTool();
@@ -96,9 +125,9 @@ export function createBuiltinTools(
       bash.execute(id, { ...params, timeout: params.timeout ?? 120 }, signal, update),
   };
   return [
-    adaptTool(createReadTool(), env),
-    adaptTool(createWriteTool(), env),
-    adaptTool(createEditTool(), env),
+    adaptTool(createReadTool(), env, homeDir),
+    adaptTool(createWriteTool(), env, homeDir),
+    adaptTool(createEditTool(), env, homeDir),
     timedBash,
     createGlobTool(cwd),
     preserveErrorDetails(createGrepTool(cwd)),

@@ -150,7 +150,7 @@ test("frontend can allow a tool call using its id, name, arguments and signal", 
       expect(request).toEqual({
         toolCallId: "write-ask",
         toolName: "write",
-        args,
+        args: { ...args, path: join(dirs.cwd, args.path) },
         mode: "ask",
         sessionAllow: { kind: "directory", rule: `write(${join(realpathSync(dirs.cwd), "**")})` },
         signal: expect.any(AbortSignal),

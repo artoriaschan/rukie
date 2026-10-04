@@ -111,10 +111,10 @@ test("session directory grant follows canonical paths and respects deny and ask"
   });
   await session.run("write");
   expect(requests.map((request) => (request.args as { path: string }).path)).toEqual([
-    "alias/first",
-    "allowed/asked",
-    "allowed/asked",
-    "allowed/escape/last",
+    join(dirs.cwd, "alias/first"),
+    join(dirs.cwd, "allowed/asked"),
+    join(dirs.cwd, "allowed/asked"),
+    join(dirs.cwd, "allowed/escape/last"),
   ]);
   expect(requests[0]!.sessionAllow).toEqual({
     kind: "directory",
