@@ -232,19 +232,6 @@ export function createHooks(options: {
               } else await options.onEvent(notification);
             };
             try {
-              if (
-                handler.type !== "command" &&
-                handler.type !== "http" &&
-                handler.type !== "mcp_tool" &&
-                handler.type !== "prompt" &&
-                handler.type !== "agent"
-              ) {
-                await warn(`Unsupported hook type: ${handler.type}`, {
-                  code: "hook-type-unsupported",
-                  params: { type: handler.type },
-                });
-                return;
-              }
               const timeout = handler.timeout ?? (event === "UserPromptSubmit" ? 30 : 600);
               const output =
                 handler.type === "prompt" || handler.type === "agent"
