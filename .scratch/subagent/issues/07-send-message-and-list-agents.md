@@ -9,7 +9,7 @@
 
 **Blocked by:** 02, 06
 
-**Status:** claimed
+**Status:** resolved
 
 参考：[spec](../spec.md)「模型工具」「Tool State 与 resume」。
 
@@ -31,3 +31,5 @@
 - RED: the new public `createSession` test received a successful child result for the restricted custom `fork` instead of an unknown-type error. GREEN: type, fork and directory suites pass 33 tests / 186 assertions, including real fork cold continuation without duplicate copied history. `tsc -b` exited 0. Final `env -u NO_COLOR bun run check` exited 0 with 1076 pass / 0 fail, 5829 assertions across 80 files. Coordinator re-review remains required and this ticket stays claimed.
 
 - Independent Standards review: 0 documented-standard violations, 0 heuristic findings; 20 public tests / 124 assertions passed. Independent Spec review originally found one P2 (the custom `fork` collision above); its public RED/GREEN fix is ready for the original reviewer to recheck.
+
+- Original Spec reviewer rechecked the reserved `fork` fix: P2 resolved, independent regression test 1 pass / 4 assertions, 0 new findings. Both review axes are complete; ticket resolved. The validated code remains unchanged at `ae990a350ca695ff9e471e0d7a7f4d09c2fb1b7b`; final full check remains 1076 pass / 0 fail. Coordinator owns main integration, its fresh combined check and worktree cleanup.
