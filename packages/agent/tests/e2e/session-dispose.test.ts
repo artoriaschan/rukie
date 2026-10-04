@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { join, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createSession } from "../../src/index.ts";
+import { createSession, type SessionEvent } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { abortingModel } from "../helpers/aborting-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
@@ -167,6 +167,7 @@ test("dispose cancels a slow in-flight tool hook before running SessionEnd", asy
 test("an event observer can await dispose without waiting on its own Run", async () => {
   dirs = await tempDirs();
   const warnings: string[] = [];
+  const events: SessionEvent[] = [];
   const session = await createSession({
     ...dirs,
     ...fakeModel([]),
@@ -182,20 +183,62 @@ test("an event observer can await dispose without waiting on its own Run", async
   const started = performance.now();
   await expect(
     session.run("try", {
-      onEvent: async () => {
+      onEvent: async (event) => {
+        events.push(event);
         await session.dispose();
       },
     }),
   ).rejects.toThrow();
   expect(performance.now() - started).toBeLessThan(1000);
   expect(warnings).toHaveLength(1);
+  expect(events.filter((event) => event.type === "hook_warning")).toMatchObject([
+    { event: "SessionEnd", error: { code: "hook-timeout", params: { timeout: "0.02" } } },
+  ]);
+});
+
+test("SessionEnd exit failures emit diagnostics after the Run while discarding output", async () => {
+  dirs = await tempDirs();
+  const warnings: string[] = [];
+  const events: SessionEvent[] = [];
+  const session = await createSession({
+    ...dirs,
+    ...fakeModel([fauxAssistantMessage("done")]),
+    onWarning: (warning) => {
+      warnings.push(warning);
+    },
+    settings: {
+      hooks: {
+        SessionEnd: [
+          { hooks: [{ type: "command", command: "echo '{bad}'; echo failed >&2; exit 3" }] },
+        ],
+      },
+    },
+  });
+  await session.run("try", {
+    onEvent: (event) => {
+      events.push(event);
+    },
+  });
+  await session.dispose();
+  expect(warnings).toHaveLength(1);
+  expect(events.at(-1)).toMatchObject({
+    type: "hook_warning",
+    sessionId: session.id,
+    event: "SessionEnd",
+    error: { code: "hook-exit", params: { exitCode: "3", stderr: "failed" } },
+  });
 });
 
 test("SessionEnd handlers share a 1.5 second total shutdown budget", async () => {
   dirs = await tempDirs();
+  const warnings: string[] = [];
+  const events: SessionEvent[] = [];
   const session = await createSession({
     ...dirs,
-    ...fakeModel([]),
+    ...fakeModel([fauxAssistantMessage("done")]),
+    onWarning: (warning) => {
+      warnings.push(warning);
+    },
     settings: {
       hooks: {
         SessionEnd: [
@@ -213,9 +256,19 @@ test("SessionEnd handlers share a 1.5 second total shutdown budget", async () =>
       },
     },
   });
+  await session.run("try", {
+    onEvent: (event) => {
+      events.push(event);
+    },
+  });
   const started = performance.now();
   await session.dispose();
   expect(performance.now() - started).toBeLessThan(2500);
+  expect(warnings).toHaveLength(2);
+  expect(events.filter((event) => event.type === "hook_warning")).toMatchObject([
+    { event: "SessionEnd", error: { code: "hook-timeout", params: { timeout: "1.5" } } },
+    { event: "SessionEnd", error: { code: "hook-timeout", params: { timeout: "1.5" } } },
+  ]);
   for (const name of ["first", "second"]) {
     expect((await Bun.file(join(dirs.cwd, name)).json()).hook_event_name).toBe("SessionEnd");
     expect(await Bun.file(join(dirs.cwd, `${name}-late`)).exists()).toBe(false);

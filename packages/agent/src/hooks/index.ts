@@ -113,9 +113,21 @@ export function createHooks(options: {
           const hook = handler.type === "command" ? handler.command : handler.type;
           const warn = async (warning: string, error: UserVisibleErrorData) => {
             options.onWarning(`${event} hook ${hook}: ${warning}`);
+            const notification: CustomSessionEvent = {
+              type: "hook_warning",
+              event,
+              hook,
+              message: warning,
+              error,
+            };
             // Shutdown may be called by an event observer awaiting dispose itself.
-            if (event !== "SessionEnd")
-              await options.onEvent({ type: "hook_warning", event, hook, message: warning, error });
+            if (event === "SessionEnd") {
+              try {
+                void Promise.resolve(options.onEvent(notification)).catch(() => {});
+              } catch {
+                /* Observers cannot hold shutdown open or turn diagnostics into failure. */
+              }
+            } else await options.onEvent(notification);
           };
           try {
             if (handler.type !== "command") {
@@ -132,7 +144,17 @@ export function createHooks(options: {
               timeout: handler.timeout ?? (event === "UserPromptSubmit" ? 30 : 600),
             });
             // Shutdown hooks are only for side effects: even valid control output is discarded.
-            if (event === "SessionEnd") return;
+            if (event === "SessionEnd") {
+              if (output.exitCode !== 0 && output.exitCode !== 2)
+                await warn(
+                  `Hook exited with code ${output.exitCode}${output.stderr.trim() ? `: ${output.stderr.trim()}` : ""}`,
+                  {
+                    code: "hook-exit",
+                    params: { exitCode: String(output.exitCode), stderr: output.stderr.trim() },
+                  },
+                );
+              return;
+            }
             let json: Record<string, unknown> = {};
             const stdout = output.stdout.trim();
             const jsonOutput = stdout.startsWith("{") && stdout.endsWith("}");
@@ -265,15 +287,22 @@ export function createHooks(options: {
               }
             }
           } catch (error) {
-            if (!signal.aborted) {
-              const data =
-                error instanceof Error && "code" in error && "params" in error
+            if (!signal.aborted || (event === "SessionEnd" && !runOptions.signal?.aborted)) {
+              const budgetExpired = shutdown?.signal.aborted;
+              const data = budgetExpired
+                ? { code: "hook-timeout" as const, params: { timeout: "1.5" } }
+                : error instanceof Error && "code" in error && "params" in error
                   ? (error as Error & UserVisibleErrorData)
                   : {
                       code: "hook-command-failed" as const,
                       params: { cause: (error as Error).message },
                     };
-              await warn((error as Error).message, data);
+              await warn(
+                budgetExpired
+                  ? "Hook timed out after 1.5s (SessionEnd budget)"
+                  : (error as Error).message,
+                data,
+              );
             }
           }
         }),

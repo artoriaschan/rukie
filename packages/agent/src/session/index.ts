@@ -124,7 +124,7 @@ export interface Session {
     prompt: string,
     options?: {
       signal?: AbortSignal;
-      /** Ordered events; result is emitted after storage closes, including on failure. */
+      /** Ordered Run events; result follows storage close. Also receives disposal diagnostics without awaiting observers. */
       onEvent?: (event: SessionEvent) => void | Promise<void>;
     },
   ): Promise<RunResult>;
@@ -303,12 +303,15 @@ async function createSessionInternal(
     }),
   });
   const pendingHookEvents: CustomSessionEvent<AgentEvent>[] = [];
+  let emitSessionEndEvent: typeof emitRunEvent;
   const hooks = createHooks({
     settings: settings.hooks,
     cwd,
     projectDir: cwd,
     onWarning: options.onWarning ?? console.warn,
     onEvent: (event) => {
+      if (event.type === "hook_warning" && event.event === "SessionEnd")
+        return emitSessionEndEvent?.(event);
       if (emitRunEvent) return emitRunEvent(event);
       pendingHookEvents.push(event);
     },
@@ -607,6 +610,7 @@ async function createSessionInternal(
       subagents.begin();
       const emit = (event: AgentEvent | CustomSessionEvent<AgentEvent>) =>
         onEvent?.({ ...event, sessionId: stored.metadata.id });
+      emitSessionEndEvent = emit;
       const emitContextUsage = () =>
         emit(contextUsage(agent.state.messages, model.contextWindow, inputTokens));
       emitRunEvent = emit;
