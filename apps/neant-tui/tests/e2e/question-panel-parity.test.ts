@@ -12,6 +12,137 @@ const question = {
   ],
 };
 
+test.each([
+  { columns: 40, lang: "zh_CN.UTF-8", multiSelect: false },
+  { columns: 40, lang: "zh_CN.UTF-8", multiSelect: true },
+  { columns: 40, lang: "en_US.UTF-8", multiSelect: false },
+  { columns: 40, lang: "en_US.UTF-8", multiSelect: true },
+  { columns: 80, lang: "zh_CN.UTF-8", multiSelect: false },
+  { columns: 80, lang: "zh_CN.UTF-8", multiSelect: true },
+  { columns: 80, lang: "en_US.UTF-8", multiSelect: false },
+  { columns: 80, lang: "en_US.UTF-8", multiSelect: true },
+])("question rows stay fixed through up/down focus changes: %j", async (size) => {
+  const app = await start(["ask"], { ...size, rows: 40, env: { LANG: size.lang } });
+  const options = [
+    {
+      label: "Alpha",
+      description: "First choice has a description that wraps in a narrow terminal.",
+    },
+    { label: "Bravo", description: "Second choice." },
+    { label: "Charlie", description: "Third choice has a longer description with several words." },
+  ];
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("ask_user_question", {
+      questions: [{ ...question, options, multiSelect: size.multiSelect }],
+    });
+    await app.waitFor(() =>
+      app.screen().some((line) => line.includes("❯") && line.endsWith("Alpha")),
+    );
+    const rows = () => {
+      const lines = app.screen();
+      return [
+        lines.findIndex((line) => line.includes("─ ▾")),
+        lines.indexOf("  ◈ Storage"),
+        lines.indexOf("  Which storage?"),
+        ...options.map((option) => lines.findIndex((line) => line.endsWith(option.label))),
+        ...["First choice has", "Second choice.", "Third choice has"].map((text) =>
+          lines.findIndex((line) => line.includes(text)),
+        ),
+        lines.findIndex((line) => line.includes("✎")),
+      ];
+    };
+    const initial = rows();
+    expect(initial.every((row) => row >= 0)).toBe(true);
+    for (const [key, label] of [
+      ["\x1b[B", "Bravo"],
+      ["\x1b[B", "Charlie"],
+      ["\x1b[B", "✎"],
+      ["\x1b[A", "Charlie"],
+      ["\x1b[A", "Bravo"],
+      ["\x1b[A", "Alpha"],
+    ]) {
+      app.stdin.write(key!);
+      await app.waitFor(() =>
+        app
+          .screen()
+          .some(
+            (line) =>
+              line.includes("❯") && (label === "✎" ? line.includes("✎") : line.endsWith(label!)),
+          ),
+      );
+      expect(rows()).toEqual(initial);
+      expect(app.screen().at(-1)).toContain("esc");
+    }
+    expect(app.calls).toHaveLength(1);
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test.each([12, 16, 20, 24])(
+  "question focus keeps the option window and todo dock at fixed rows in a 40×%i terminal",
+  async (height) => {
+    const app = await start(["ask"], { columns: 40, rows: height });
+    const options = ["Alpha", "Bravo", "Charlie", "Delta"].map((label) => ({
+      label,
+      description: `${label} description`,
+    }));
+    try {
+      await app.waitFor(() => app.calls.length === 1);
+      app.calls[0]!.tool("todo_write", {
+        todos: [{ content: "Pick storage", status: "in_progress" }],
+      });
+      await app.waitFor(() => app.calls.length === 2);
+      app.calls[1]!.tool("ask_user_question", {
+        questions: [
+          { ...question, options },
+          { ...question, question: "Second?" },
+        ],
+      });
+      await app.waitFor(() => app.screen().some((line) => line.includes("❯● Alpha")));
+      const rows = () => {
+        const lines = app.screen();
+        return {
+          todo: lines.findIndex((line) => line.includes("▾ ✓ 0/1")),
+          question: lines.findIndex((line) => line.includes("─ ▾")),
+          choices: lines.flatMap((line, row) =>
+            /^  .[○●] (Alpha|Bravo|Charlie|Delta)$/u.test(line) ? [row] : [],
+          ),
+          custom: lines.findIndex((line) => line.includes("✎")),
+        };
+      };
+      const initial = rows();
+      expect(initial.todo).toBeGreaterThanOrEqual(0);
+      expect(initial.question).toBeGreaterThan(initial.todo);
+      expect(initial.choices.length).toBeGreaterThan(0);
+      expect(initial.custom).toBeGreaterThan(initial.choices.at(-1)!);
+      for (const [key, label] of [
+        ["\x1b[B", "Bravo"],
+        ["\x1b[B", "Charlie"],
+        ["\x1b[B", "Delta"],
+        ["\x1b[B", "✎"],
+        ["\x1b[A", "Delta"],
+        ["\x1b[A", "Charlie"],
+        ["\x1b[A", "Bravo"],
+        ["\x1b[A", "Alpha"],
+      ]) {
+        app.stdin.write(key!);
+        await app.waitFor(() =>
+          app
+            .screen()
+            .some((line) => (label === "✎" ? line.includes("❯✎") : line.includes(`❯● ${label}`))),
+        );
+        expect(rows()).toEqual(initial);
+        expect(app.screen().at(-1)).toContain("esc");
+      }
+      expect(app.calls).toHaveLength(2);
+    } finally {
+      await app.cleanup();
+    }
+  },
+);
+
 test("questions use the dsh title, chip, two-line choices and permanent custom answer while todos stay visible", async () => {
   const app = await start(["plan"], { rows: 32 });
   try {

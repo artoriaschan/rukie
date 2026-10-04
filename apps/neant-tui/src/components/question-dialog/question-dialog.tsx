@@ -122,23 +122,28 @@ export function QuestionDialog({
       : "") +
     "：";
   const prefixWidth = Math.min(Math.max(1, width - 8), Bun.stringWidth(customLabel));
-  const fullHints = [
-    t(inputFocused ? "question.hint.type" : "question.hint.select"),
-    ...(!inputFocused && question.multiSelect ? [t("question.hint.multi")] : []),
-    t("question.hint.paste"),
-    ...(!inputFocused ? [t("question.hint.attach")] : []),
-    t("question.hint.enter"),
-    ...(inputFocused ? [t("question.hint.back")] : []),
-    t(questionIndex > 0 ? "question.hint.previous" : "question.hint.escape"),
-    ...(questionCount > 1 ? [t(inputFocused ? "question.hint.edge" : "question.hint.switch")] : []),
-    ...(questionIndex > 0 ? [t("question.hint.cancel")] : []),
-    ...(question.multiSelect && checked.length > 0
-      ? [t("question.hint.selected", { count: checked.length })]
-      : []),
-    t("question.hint.fold"),
-  ].join(" · ");
+  const fullHintsFor = (editing: boolean) =>
+    [
+      t(editing ? "question.hint.type" : "question.hint.select"),
+      ...(!editing && question.multiSelect ? [t("question.hint.multi")] : []),
+      t("question.hint.paste"),
+      ...(!editing ? [t("question.hint.attach")] : []),
+      t("question.hint.enter"),
+      ...(editing ? [t("question.hint.back")] : []),
+      t(questionIndex > 0 ? "question.hint.previous" : "question.hint.escape"),
+      ...(questionCount > 1 ? [t(editing ? "question.hint.edge" : "question.hint.switch")] : []),
+      ...(questionIndex > 0 ? [t("question.hint.cancel")] : []),
+      ...(question.multiSelect && checked.length > 0
+        ? [t("question.hint.selected", { count: checked.length })]
+        : []),
+      t("question.hint.fold"),
+    ].join(" · ");
+  const optionHints = fullHintsFor(false);
+  const inputHints = fullHintsFor(true);
+  const fullHints = inputFocused ? inputHints : optionHints;
   const fullQuestionHeight = wrappedRows(question.question, width);
-  const fullHintHeight = wrappedRows(fullHints, width);
+  // Focus changes the hint text, but must not change the panel's height budget.
+  const fullHintHeight = Math.max(wrappedRows(optionHints, width), wrappedRows(inputHints, width));
   const fullReserved =
     1 +
     Number(Boolean(question.header)) +
@@ -147,8 +152,7 @@ export function QuestionDialog({
     fullHintHeight +
     Number(Boolean(error)) * 2 +
     Number(canSubmit) * 2 +
-    4 +
-    Number(inputFocused);
+    4;
   const spacious = maxHeight >= fullReserved + 2;
   const gap = Number(spacious);
   const chipHeight = question.header && (!error || maxHeight > 6) ? 1 : 0;
@@ -160,22 +164,14 @@ export function QuestionDialog({
     ? fullHints
     : t(questionCount > 1 ? "question.hint.compact-batch" : "question.hint.compact");
   const reserved =
-    Number(spacious && inputFocused) +
-    1 +
-    chipHeight +
-    questionHeight +
-    1 +
-    hintHeight +
-    errorHeight +
-    submitHeight +
-    gap * 4;
+    1 + chipHeight + questionHeight + 1 + hintHeight + errorHeight + submitHeight + gap * 4;
   const budget = Math.max(1, maxHeight - reserved);
   const optionHeights = question.options.map(
     (option) =>
       wrappedRows(option.label, width - 3) +
       (option.description ? wrappedRows(option.description, width - 3) : 0),
   );
-  const windowed = !spacious || optionHeights.reduce((sum, height) => sum + height, 0) + 1 > budget;
+  const windowed = !spacious || optionHeights.reduce((sum, height) => sum + height, 0) > budget;
   const rowHeight = budget >= question.options.length * 2 ? 2 : 1;
   const visibleCount = windowed
     ? Math.min(question.options.length, Math.max(1, Math.floor(budget / rowHeight)))
@@ -221,7 +217,6 @@ export function QuestionDialog({
             <ThemedBox
               key={index}
               height={windowed ? rowHeight : optionHeights[index]}
-              marginTop={!windowed && focused ? 1 : 0}
               onClick={() => onOption(index)}
               onMouseEnter={() => setHovered(index)}
               onMouseLeave={() => setHovered(undefined)}
@@ -262,7 +257,6 @@ export function QuestionDialog({
         })}
         <ThemedBox
           height={1}
-          marginTop={spacious && inputFocused ? 1 : 0}
           onClick={() => onSelect(question.options.length)}
           backgroundColor={
             hovered === question.options.length && !inputFocused
