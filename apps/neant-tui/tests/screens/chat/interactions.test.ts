@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { PermissionAskRequest } from "@neant/agent";
-import { createInteractions } from "../../src/screens/chat/interactions";
+import { createInteractions } from "../../../src/screens/chat/interactions";
 
 const request = (
   id: string,

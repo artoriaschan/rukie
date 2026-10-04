@@ -27,3 +27,10 @@
 - 首轮完整 check exit 1，957 pass / 9 fail，966 tests / 71 files；全部为遗漏的旧契约测试：locale 八项仍断言整工具按钮，questions 混合 FIFO fixture 将不同命令当已授权。只迁移其文案及 matching fixture，完整保留问题与拒绝行为断言；该 fixture 的目的为问题 FIFO 与匹配命令共存，不放宽新命令权限。修复 focused 两文件 exit 0，64 pass / 0 fail，184 assertions。另一次完整启动被 locale formatter 阻断，格式化后再冻结运行。
 - 最终冻结实现完整验收 `rtk proxy env -u NO_COLOR bun run check` exit 0：966 pass / 0 fail，71 files，5322 assertions，110.99s；oxfmt、oxlint、tsc -b、knip 全通过。日志 `/tmp/neant-permission-06-check-final.log`。`git diff --check` 通过。base `6c4ebe271f20619cb189058f1f16165500ee7bc0`，独立分支 `codex/permission-06-session-rules`。
 - 本 checkpoint 实现完成，工单保持 in-progress，Standards / Spec 双轴 code review 待父代理安排。父代理负责 main 合并、集成验收与 worktree 归档。
+
+### 2026-10-04 review fix checkpoint — delta review pending
+
+- 首轮独立双轴 review：Spec 0 findings；Standards 1 个 P2：直接调用 `createInteractions` 的队列测试不涉及 Session Run 或 renderer，应该镜像 `src/screens/chat/interactions.ts` 的目录，而不是放在 e2e suite。
+- 将 `apps/neant-tui/tests/e2e/permission-interactions.test.ts` 移至 `apps/neant-tui/tests/screens/chat/interactions.test.ts`，仅调整相对 import，8 个既有行为断言原样保留；runtime 实现未变。
+- focused 新路径 exit 0：1 pass / 0 fail，8 assertions。冻结迁移后完整 `rtk proxy env -u NO_COLOR bun run check` exit 0：966 pass / 0 fail，71 files，5322 assertions，112.95s；oxfmt、oxlint、tsc -b、knip 均通过。日志 `/tmp/neant-permission-06-review-fix-check.log`。
+- 工单继续 in-progress。迁移 delta 待复审；父代理另发现实际文件工具路径 alias 与权限目标可能不一致，正在本轮路径规则范围内调查与验证，尚不 finalize。
