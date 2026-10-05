@@ -36,8 +36,12 @@ Rewind 回归随契约更新：回退到失败报告前的已知基线时，hash
 
 预算补充红灯：近 16K 的手动 Compaction 提醒保存失败后，下一 Run 没有报告（预期 1 条）；实际自动 Compaction 请求消耗第一批报告后，延期文件没有在随后的模型请求前报告（预期 2 批，实际 1 批）。失败事务释放自身预留预算；实际摘要请求完成后重置预算，未发生 Compaction 时不重置。回归验证 90 个文件各报告一次，每批不超过 16K，延期批次已进入下一模型请求。
 
-最终 aggregate check 在 integration branch 执行。
+最终 aggregate check 已在 integration branch 通过，完整结果见 [验收记录](verification.md)。
 
 续审修复绿灯：`rtk proxy bun test packages/agent/tests/e2e/file-changes.test.ts`，58 pass / 0 fail，555 assertions；相关生命周期 e2e 131 pass / 0 fail，997 assertions。
 
 静态检查：`rtk proxy bunx --no -- tsc -b`、`rtk proxy bunx --no -- oxlint`、`rtk proxy bunx --no -- knip`、`rtk proxy bunx --no -- oxfmt --check` 与 `rtk git diff --check` 均通过。
+
+### 测试稳定性：并发读取顺序
+
+续审发现接近 16K 的失败预算回归假定首个文件必定进入第一批，但并发 read 的完成顺序决定跟踪顺序。测试改为检查第一批为非空子集、两批覆盖全部 90 个文件且各报告一次，后续请求静默。重点回归 17 pass / 0 fail，完整文件检测 58 pass / 0 fail，741 assertions；产品代码未改。最终 Standards 与 Spec 审查均为 0 条剩余发现。

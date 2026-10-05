@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 
 # Spec: 文件外部修改检测
 
@@ -110,3 +110,4 @@ Agent Core 记住模型读过和写过的文件。每次请求模型前检查这
 
 - 4K / 16K 上限是初值，按实际使用调整，不做配置项。
 - edit 的过期检查与 pi 自身 `oldText` 匹配是两层：前者保护"内容碰巧仍匹配但上下文已变"的情况，以及 write 整文件覆盖。
+- 2026-10-06：五张实施票按依赖顺序完成并集成到 `codex/file-change-detection`；完整检查、两轴审查和工作区归档证据见 [验收记录](verification.md)。

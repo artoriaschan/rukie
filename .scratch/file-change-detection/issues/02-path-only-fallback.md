@@ -26,3 +26,4 @@
 - 2026-10-06：从 integration `codex/file-change-detection` 的 `6dae60b53a0b0c3b7d1639d2fa8480c6c562a611` 开始，工作分支 `codex/file-changes-02`。依次记录超限、非文本、文件系统失败、批次预算的 failing e2e，再实现并通过对应测试；过期写入保护留给 ticket 03。
 - 2026-10-06：`rtk proxy bun test packages/agent/tests/e2e/file-changes.test.ts`：15 pass、0 fail、174 expect。
 - 2026-10-06：`env -u NO_COLOR bun run check`（经 `rtk proxy sh` 执行）：格式、lint、types、Knip 全部通过；1983 pass、0 fail，145 files、10146 expect，223.45s。`rtk git diff --check` 通过。
+- 2026-10-06：最终集成检查、审查关闭和工作区归档完成，见 [验收记录](../verification.md)。

@@ -23,4 +23,4 @@ Blocked by: None
 7. **子代理 / rewind：** 子代理独立跟踪集；子代理写了父读过的文件，父下次请求前按外部修改报出。rewind 恢复的文件同样按外部修改处理；回退对话时跟踪集随 Tool State last-wins 快照回退，与对话一致。无特殊逻辑。
 8. **frontend：** 不额外呈现，现有 `reminder_injected` 事件足够。Headless CLI 不变。
 
-Spec：[文件外部修改检测 spec](../../file-change-detection/spec.md)（ready-for-agent）。
+Spec：[文件外部修改检测 spec](../../file-change-detection/spec.md)（resolved）；实施与检查结果见 [验收记录](../../file-change-detection/verification.md)。

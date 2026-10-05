@@ -23,3 +23,4 @@
 
 - Spec P2 修复与红绿证据见 [review.md](../review.md)。覆盖删除、diff、只列路径提醒保存失败后同进程重试和 resume，成功报告后不重复；接近 16K 的 prompt 或手动 Compaction 提醒失败释放自身预算，实际 Compaction 请求完成后能继续报告延期文件。UTF-8 BOM 添加与删除均有实际 diff。Tool State version 1 的字段保持原样。
 - 相关文件跟踪、Todo reminder、Session 恢复、Checkpoint、子代理 Checkpoint 和 Compaction e2e：131 pass / 0 fail，997 assertions。integration branch 负责最终 aggregate check。
+- 2026-10-06：最终集成完整检查已通过，所有审查问题关闭，工作区已归档，见 [验收记录](../verification.md)。

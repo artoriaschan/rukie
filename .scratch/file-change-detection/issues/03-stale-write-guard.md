@@ -17,3 +17,4 @@
 - Red：`rtk proxy bun test packages/agent/tests/e2e/file-changes.test.ts -t 'refuses an unreported'` 在依赖安装后得到 0 pass / 2 fail；`write` 和 `edit` 都返回成功并覆盖外部改动。回归保持相同 size 与 mtime，且 edit 的 oldText 仍可匹配，验证执行前必须比较内容。
 - Green：`file-tracking` 包装层对已跟踪的最终路径比较 SHA-256；`stale`、内容变化或无法读取当前文件时抛出规定工具错误，原工具不执行，基线不推进。成功 read 通过原有基线更新清除 stale。通过公共 `createSession` 接缝覆盖路径提醒后的 write/edit 拒绝与重读恢复、已报告 diff 后 edit、不在跟踪集的 write/edit，以及 PreToolUse 改写路径后的保护。
 - 验证：`rtk proxy bun test packages/agent/tests/e2e/file-changes.test.ts`，22 pass / 0 fail / 203 assertions；`rtk proxy bunx --no -- oxfmt --check`、`rtk proxy bunx --no -- oxlint`、`rtk proxy bunx --no -- tsc -b`、`rtk proxy bunx --no -- knip`、`rtk git diff --check` 全部 exit 0。本票不重复运行全仓测试；最终集成分支的 `env -u NO_COLOR bun run check` 由主代理统一验证。
+- 2026-10-06：最终集成完整检查已通过，审查与工作区归档完成，见 [验收记录](../verification.md)。
