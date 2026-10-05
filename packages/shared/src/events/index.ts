@@ -77,8 +77,14 @@ export type CustomSessionEvent<PiEvent extends { type: string } = never> =
       reason?: string;
     }
   | { type: "mcp_server_error"; server: string; error: string }
-  | { type: "compaction_start"; tokensBefore: number }
-  | { type: "compaction_end"; summary: string; tokensBefore: number; tokensAfter: number };
+  | { type: "compaction_start"; trigger: "auto" | "manual"; tokensBefore: number }
+  | {
+      type: "compaction_end";
+      trigger: "auto" | "manual";
+      summary: string;
+      tokensBefore: number;
+      tokensAfter: number;
+    };
 
 /** The caller supplies pi's native AgentEvent without a runtime or type dependency here. */
 export type SessionEvent<PiEvent extends { type: string }> = (
