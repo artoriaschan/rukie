@@ -85,6 +85,7 @@ import {
 import { planState, planModeReminder, PLAN_MODE_EXIT } from "../plan-mode/index.ts";
 import {
   createGoalController,
+  createGoalTools,
   goalState,
   renderGoalRoundPrompt,
   type GoalView,
@@ -811,6 +812,34 @@ async function createSessionInternal(
           createExitPlanModeTool(plan, options.onPlanReview, onInteractionStart),
         ]
       : [];
+  let runDirectHuman = false;
+  let runGoalRound = false;
+  const goalTools = internal.parentSessionId
+    ? []
+    : createGoalTools(
+        // Construction declares tools before Agent/controller initialization; execution occurs after both exist.
+        {
+          view: () => goal.view(),
+          create: (...args) => goal.create(...args),
+          edit: (...args) => goal.edit(...args),
+          pause: () => goal.pause(),
+          resume: (...args) => goal.resume(...args),
+          finish: (...args) => goal.finish(...args),
+        },
+        {
+          directHuman: () => runDirectHuman,
+          goalRound: () => runGoalRound,
+          wrapup(text) {
+            const message = {
+              role: "user" as const,
+              content: [{ type: "text" as const, text }],
+              timestamp: Date.now(),
+              source: "goal",
+            };
+            agent.steer(message);
+          },
+        },
+      );
   const initialTools = [
     ...createBuiltinTools(
       cwd,
@@ -821,6 +850,7 @@ async function createSessionInternal(
       onInteractionStart,
     ),
     ...planTools,
+    ...goalTools,
   ];
   if (!internal.parentSessionId) {
     const discovered = await discoverSubagentTypes(
@@ -1211,6 +1241,7 @@ async function createSessionInternal(
         ...(invocation === undefined ? {} : { skillInvocation: invocation }),
         timestamp: Date.now(),
       };
+      runDirectHuman = true;
       agent.steer(message);
     },
     subscribe(onEvent: (event: SessionEvent) => void) {
@@ -1295,10 +1326,16 @@ async function createSessionInternal(
     get goal() {
       return internal.parentSessionId ? undefined : goal.view();
     },
-    createGoal: goal.create,
-    editGoal: goal.edit,
+    createGoal(objective, options) {
+      return goal.create(objective, options);
+    },
+    editGoal(objective) {
+      return goal.edit(objective);
+    },
     pauseGoal: goal.pause,
-    resumeGoal: goal.resume,
+    resumeGoal() {
+      return goal.resume();
+    },
     clearGoal: goal.clear,
     get planMode() {
       return plan.getActive();
@@ -1582,6 +1619,8 @@ async function createSessionInternal(
           params: {},
         });
       running = true;
+      runDirectHuman = source === "user";
+      runGoalRound = fromGoal;
       hookRunActive = source !== "user";
       const settled = Promise.withResolvers<void>();
       runSettled = settled;
@@ -1696,6 +1735,7 @@ async function createSessionInternal(
               onInteractionStart,
             ),
             ...planTools,
+            ...goalTools,
             ...mcp.tools,
           ];
           if (!internal.parentSessionId) {
