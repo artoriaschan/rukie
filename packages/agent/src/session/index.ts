@@ -89,7 +89,11 @@ import { createHooks, mergeHooks, type CommonHookResult, type HookInput } from "
 export type { PermissionAskRequest, SessionAllowRule } from "../permissions/index.ts";
 import type { OnToolCallAllowed } from "../permissions/index.ts";
 
+import type { WebFetchOptions } from "../web-fetch/index.ts";
+
 export interface SessionOptions {
+  /** Test-only network boundary overrides; production frontends leave this unset. */
+  webFetch?: WebFetchOptions;
   /** Project directory the session works in. */
   cwd: string;
   /** User home; `~/.neant` lives under it. Injectable for tests. */
@@ -791,6 +795,7 @@ async function createSessionInternal(
       onQuestion,
       options.homeDir,
       onInteractionStart,
+      options.webFetch,
     ),
     ...planTools,
   ];
@@ -1610,6 +1615,7 @@ async function createSessionInternal(
               onQuestion,
               options.homeDir,
               onInteractionStart,
+              options.webFetch,
             ),
             ...planTools,
             ...mcp.tools,

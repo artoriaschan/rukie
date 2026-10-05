@@ -47,6 +47,14 @@ function resultText(result: Pick<ToolResultMessage, "content">) {
 }
 
 function toolSummary(name: string, args: unknown) {
+  if (
+    name === "web_fetch" &&
+    typeof args === "object" &&
+    args !== null &&
+    "url" in args &&
+    typeof args.url === "string"
+  )
+    return `web_fetch ${args.url}`;
   return `${name} ${JSON.stringify(args)}`.replace(/\s+/g, " ");
 }
 
@@ -125,7 +133,9 @@ function toolEntry(
       ? undefined
       : tool.name === "ask_user_question"
         ? questionSummary(tool.args, resultText(result), t)
-        : (todo ?? resultText(result)),
+        : tool.name === "web_fetch"
+          ? resultText(result).split(/\r?\n/)[0]
+          : (todo ?? resultText(result)),
     error: isError
       ? hook !== undefined
         ? t("tool.hook-denied", {

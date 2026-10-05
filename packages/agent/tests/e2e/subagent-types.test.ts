@@ -49,6 +49,7 @@ test.each([false, true])(
         "grep",
         "skill",
         "todo_write",
+        "web_fetch",
         ...(questions ? ["ask_user_question"] : []),
       ].sort(),
     );

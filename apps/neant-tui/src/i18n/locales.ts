@@ -205,6 +205,7 @@ const zh = {
   "logo.effort.xhigh": "推理强度：极高",
   "logo.effort.max": "推理强度：最高",
 
+  "tool.web-fetch": "网页抓取",
   "tool.rule-denied": "被权限规则拒绝：{{rule}}",
   "tool.outcome-unknown":
     "结果未知\n无法确认成功、失败或是否执行。\n可能已产生副作用。\n重试前先核对实际状态。",
@@ -459,6 +460,7 @@ const en = {
   "logo.effort.xhigh": "Xhigh effort",
   "logo.effort.max": "Max effort",
 
+  "tool.web-fetch": "WebFetch",
   "tool.rule-denied": "Denied by permission rule: {{rule}}",
   "tool.outcome-unknown":
     "Outcome unknown\nSuccess/failure/execution unconfirmed.\nSide effects may have occurred.\nVerify actual state before retrying.",

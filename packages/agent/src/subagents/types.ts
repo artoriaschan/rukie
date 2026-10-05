@@ -41,9 +41,15 @@ export async function discoverSubagentTypes(
       {
         name: "explore",
         description: "Read-only exploration",
-        tools: ["read", "glob", "grep", "skill", "todo_write", "ask_user_question"].filter((name) =>
-          tools.includes(name),
-        ),
+        tools: [
+          "read",
+          "glob",
+          "grep",
+          "skill",
+          "todo_write",
+          "web_fetch",
+          "ask_user_question",
+        ].filter((name) => tools.includes(name)),
         prompt: "",
       },
     ],
