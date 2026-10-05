@@ -32,6 +32,9 @@
  */
 
 const zh = {
+  "btw.usage": "用法：/btw <问题>",
+  "btw.answering": "正在回答侧问…",
+  "btw.hint": "↑/↓ 滚动 · Esc 关闭 · /btw 追加侧问",
   "resume.title": "恢复会话",
   "resume.hint": "↑/↓ 选择 · Enter 恢复 · Esc 退出",
   "resume.empty": "暂无可恢复的会话",
@@ -268,6 +271,9 @@ const zh = {
 } as const;
 
 const en = {
+  "btw.usage": "Usage: /btw <question>",
+  "btw.answering": "Answering side question…",
+  "btw.hint": "↑/↓ scroll · Esc close · /btw ask again",
   "resume.title": "Resume session",
   "resume.hint": "↑/↓ select · Enter resume · Esc close",
   "resume.empty": "No sessions to resume",

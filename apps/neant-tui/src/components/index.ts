@@ -23,6 +23,7 @@ export { RewindPicker } from "./rewind-picker";
 export { CommandSuggestions } from "./command-suggestions";
 
 export { ModelPicker } from "./model-picker";
+export { SideQuestionPanel } from "./side-question";
 export { SessionPicker } from "./session-picker";
 
 export { ContextVisualization } from "./context-report";
