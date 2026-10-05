@@ -1,4 +1,4 @@
-export { loadSettings } from "./config/index.ts";
+export { loadSettings, listModels } from "./config/index.ts";
 export { createJsonlStore, type SessionStore } from "./store/index.ts";
 export {
   createSession,

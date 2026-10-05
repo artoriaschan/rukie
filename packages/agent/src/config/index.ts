@@ -162,6 +162,27 @@ export async function resolveModel(
       params: { settings: settingsPath },
     });
   }
+  const models = modelRegistry(settings);
+  const slash = settings.model.indexOf("/");
+  const providerId = settings.model.slice(0, slash);
+  const model =
+    slash > 0 ? models.getModel(providerId, settings.model.slice(slash + 1)) : undefined;
+  if (!model)
+    throw createUserVisibleError(`Unknown model "${settings.model}".`, {
+      code: "unknown-model",
+      params: { model: settings.model },
+    });
+  if (!(await models.checkAuth(providerId))) {
+    const env = settings.providers?.find((p) => p.id === providerId)?.apiKeyEnv;
+    throw createUserVisibleError(
+      `No API key for provider "${providerId}"${env ? `: set ${env}` : ""}.`,
+      { code: "no-api-key", params: { provider: providerId, env: env ?? "" } },
+    );
+  }
+  return { model, streamFn: (m, context, options) => models.streamSimple(m, context, options) };
+}
+
+function modelRegistry(settings: Settings) {
   const models = builtinModels();
   for (const p of settings.providers ?? []) {
     models.setProvider(
@@ -186,21 +207,18 @@ export async function resolveModel(
       }),
     );
   }
-  const slash = settings.model.indexOf("/");
-  const providerId = settings.model.slice(0, slash);
-  const model =
-    slash > 0 ? models.getModel(providerId, settings.model.slice(slash + 1)) : undefined;
-  if (!model)
-    throw createUserVisibleError(`Unknown model "${settings.model}".`, {
-      code: "unknown-model",
-      params: { model: settings.model },
-    });
-  if (!(await models.checkAuth(providerId))) {
-    const env = settings.providers?.find((p) => p.id === providerId)?.apiKeyEnv;
-    throw createUserVisibleError(
-      `No API key for provider "${providerId}"${env ? `: set ${env}` : ""}.`,
-      { code: "no-api-key", params: { provider: providerId, env: env ?? "" } },
-    );
-  }
-  return { model, streamFn: (m, context, options) => models.streamSimple(m, context, options) };
+  return models;
+}
+
+export { modelState } from "./model-state.ts";
+
+/** Settings-defined models share the exact registry and precedence used by resolution. */
+export function listModels(settings: Settings = {}): { spec: string; name: string }[] {
+  return modelRegistry(settings)
+    .getModels()
+    .map((model) => ({
+      spec: `${model.provider}/${model.id}`,
+      name: model.name,
+    }))
+    .sort((a, b) => a.spec.localeCompare(b.spec));
 }
