@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SessionOptions } from "@neant/agent";
-import { main } from "../../src/main";
+import { main, type TuiIo } from "../../src/main";
 import { controlledModel } from "./model";
 import { createTerminal } from "./terminal";
 
@@ -16,6 +16,7 @@ export async function start(
     controlReviews?: boolean;
     controlTitles?: boolean;
     env?: Record<string, string | undefined>;
+    host?: TuiIo["host"];
   } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), "neant-tui-"));
@@ -29,6 +30,10 @@ export async function start(
   const exit = main(argv, {
     ...terminal,
     env: options.env ?? { LANG: "zh_CN.UTF-8" },
+    host: options.host ?? {
+      readClipboard: async () => ({ unavailable: true }),
+      openExternal: async () => {},
+    },
     stderr: (text) => (stderr += text),
     session: { cwd: root, homeDir: root, ...fake, ...options.session },
   });

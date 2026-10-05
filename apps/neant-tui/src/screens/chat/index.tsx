@@ -52,6 +52,7 @@ import { rewindLayout, type RewindEntry, type RewindMode } from "../../component
 import { formatError } from "../../i18n";
 import type { DetailPage } from "../../components/subagent-detail";
 import { createTuiI18n } from "../../i18n";
+import type { TuiHost } from "../../host";
 import { createInputHistory } from "../../input-history";
 import { createConversation } from "./conversation";
 import { createInteractions } from "./interactions";
@@ -64,11 +65,12 @@ import { SettingsScreen } from "../settings";
 export async function createChat(
   options: SessionOptions,
   model: string,
+  host: TuiHost,
   locale: Locale = "zh",
   writeTitle?: (title: string) => void,
 ) {
   const t = createTuiI18n(locale);
-  const interactions = createInteractions();
+  const interactions = createInteractions(host);
   const sessionOptions: SessionOptions = {
     ...options,
     reminderSources: [

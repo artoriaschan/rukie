@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import type { ClipboardContent } from "../../src/host";
 import { dark } from "@neant/tui";
 import { start } from "../helpers/app";
 
@@ -337,42 +338,93 @@ test("pastes stay inline, never submit, and reject an oversized paste without lo
   }
 });
 
-test.skipIf(process.platform !== "darwin")(
-  "Ctrl+V and Alt+V read clipboard text at the caret without submitting",
-  async () => {
-    const { chmod, mkdir } = await import("node:fs/promises");
-    const oldPath = process.env.PATH;
+test("Ctrl+V and Alt+V read injected clipboard text at the caret without submitting", async () => {
+  const app = await start(["ask"], {
+    host: {
+      readClipboard: async () => ({ text: "clip\nboard" }),
+      openExternal: async () => {},
+    },
+  });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("ask_user_question", { questions: [question] });
+    await app.waitFor(() => app.screen().some((line) => line.includes("Which storage?")));
+    app.stdin.write("\tend\x1b[H\x16");
+    await app.waitFor(() => app.screen().some((line) => line.includes("clip boardend")));
+    expect(app.calls).toHaveLength(1);
+    app.stdin.write("\x1b[H\x1bv");
+    await app.waitFor(() => app.screen().some((line) => line.includes("clip boardclip boardend")));
+    app.stdin.write("\r");
+    await app.waitFor(() => app.calls.length === 2);
+    expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
+      content: [{ type: "text", text: '"Which storage?" → clip boardclip boardend' }],
+    });
+    app.calls[1]!.finish();
+  } finally {
+    await app.cleanup();
+  }
+});
+
+const nonTextClipboard: ClipboardContent[] = [
+  { files: ["/tmp/image.png"] },
+  { image: { path: "/tmp/image.png" } },
+  { empty: true },
+  { unavailable: true },
+];
+
+test.each(nonTextClipboard)(
+  "questions keep the clipboard error for non-text content: %j",
+  async (content: ClipboardContent) => {
     const app = await start(["ask"], {
-      prepare: async (root) => {
-        await mkdir(`${root}/bin`);
-        await Bun.write(`${root}/bin/pbpaste`, "#!/bin/sh\nprintf 'clip\\nboard'\n");
-        await chmod(`${root}/bin/pbpaste`, 0o755);
-        process.env.PATH = `${root}/bin:${oldPath}`;
+      host: {
+        readClipboard: async () => content,
+        openExternal: async () => {},
       },
     });
     try {
       await app.waitFor(() => app.calls.length === 1);
       app.calls[0]!.tool("ask_user_question", { questions: [question] });
       await app.waitFor(() => app.screen().some((line) => line.includes("Which storage?")));
-      app.stdin.write("\tend\x1b[H\x16");
-      await app.waitFor(() => app.screen().some((line) => line.includes("clip boardend")));
+      app.stdin.write("\x16");
+      await app.waitFor(() => app.screen().some((line) => line.includes("无法读取剪贴板文字")));
       expect(app.calls).toHaveLength(1);
-      app.stdin.write("\x1b[H\x1bv");
-      await app.waitFor(() =>
-        app.screen().some((line) => line.includes("clip boardclip boardend")),
-      );
       app.stdin.write("\r");
       await app.waitFor(() => app.calls.length === 2);
       expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
-        content: [{ type: "text", text: '"Which storage?" → clip boardclip boardend' }],
+        content: [{ type: "text", text: '"Which storage?" → SQLite' }],
       });
       app.calls[1]!.finish();
     } finally {
-      process.env.PATH = oldPath;
       await app.cleanup();
     }
   },
 );
+
+test("a failed injected clipboard read keeps the question editable and shows the clipboard error", async () => {
+  const app = await start(["ask"], {
+    host: {
+      readClipboard: async () => {
+        throw new Error("Clipboard unavailable");
+      },
+      openExternal: async () => {},
+    },
+  });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("ask_user_question", { questions: [question] });
+    await app.waitFor(() => app.screen().some((line) => line.includes("Which storage?")));
+    app.stdin.write("\x16");
+    await app.waitFor(() => app.screen().some((line) => line.includes("无法读取剪贴板文字")));
+    app.stdin.write("\tmanual answer\r");
+    await app.waitFor(() => app.calls.length === 2);
+    expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
+      content: [{ type: "text", text: '"Which storage?" → manual answer' }],
+    });
+    app.calls[1]!.finish();
+  } finally {
+    await app.cleanup();
+  }
+});
 
 test("question IME anchors keep normal text style on option focus and a block caret on input focus", async () => {
   const app = await start(["ask"]);
@@ -585,25 +637,20 @@ test("ample terminal height displays every line of a multiline question", async 
   }
 });
 
-test.skipIf(process.platform !== "darwin").each(["undersized", "input-focus"])(
-  "a pending clipboard read safely handles %s transitions",
+test.each(["undersized", "input-focus"])(
+  "a pending injected clipboard read safely handles %s transitions",
   async (transition) => {
-    const { chmod, mkdir } = await import("node:fs/promises");
-    const { existsSync } = await import("node:fs");
-    const oldPath = process.env.PATH;
-    let fixture = "";
+    const clipboard = Promise.withResolvers<ClipboardContent>();
+    let reading = false;
     const app = await start(["ask"], {
       columns: 40,
       rows: 12,
-      prepare: async (root) => {
-        fixture = root;
-        await mkdir(`${root}/bin`);
-        await Bun.write(
-          `${root}/bin/pbpaste`,
-          `#!/bin/sh\ntouch '${root}/ready'\nwhile [ ! -f '${root}/release' ]; do sleep 0.01; done\nprintf 'late-text'\ntouch '${root}/finished'\n`,
-        );
-        await chmod(`${root}/bin/pbpaste`, 0o755);
-        process.env.PATH = `${root}/bin:${oldPath}`;
+      host: {
+        readClipboard: () => {
+          reading = true;
+          return clipboard.promise;
+        },
+        openExternal: async () => {},
       },
     });
     try {
@@ -611,7 +658,7 @@ test.skipIf(process.platform !== "darwin").each(["undersized", "input-focus"])(
       app.calls[0]!.tool("ask_user_question", { questions: [question] });
       await app.waitFor(() => app.screen().some((line) => line.includes("Which storage?")));
       app.stdin.write("\x16");
-      await app.waitFor(() => existsSync(`${fixture}/ready`));
+      await app.waitFor(() => reading);
       if (transition === "undersized") {
         app.resize(39, 12);
         await app.waitFor(() => app.screen().some((line) => line.includes("请调整窗口")));
@@ -619,8 +666,8 @@ test.skipIf(process.platform !== "darwin").each(["undersized", "input-focus"])(
         app.stdin.write("\t");
         await app.waitFor(() => app.screen().some((line) => line.includes("❯✎")));
       }
-      await Bun.write(`${fixture}/release`, "ready");
-      await app.waitFor(() => existsSync(`${fixture}/finished`));
+      clipboard.resolve({ text: "late-text" });
+      await clipboard.promise;
       if (transition === "undersized") {
         app.resize(40, 12);
         await app.waitFor(() => app.screen().some((line) => line.includes("Which storage?")));
@@ -642,8 +689,7 @@ test.skipIf(process.platform !== "darwin").each(["undersized", "input-focus"])(
       });
       app.calls[1]!.finish();
     } finally {
-      await Bun.write(`${fixture}/release`, "ready");
-      process.env.PATH = oldPath;
+      clipboard.resolve({ empty: true });
       await app.cleanup();
     }
   },
