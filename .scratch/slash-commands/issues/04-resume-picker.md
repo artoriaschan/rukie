@@ -4,7 +4,7 @@
 
 **Blocked by:** 03（Session 标题与 `/rename`）
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] Agent Core 导出 `listSessions({ cwd })`：基于 store `list`，返回非子 session 的 `{ id, title, titleSource, updatedAt, messageCount, model }`，按更新时间倒序
 - [ ] TUI `/resume` 打开选择器（复用现有选择组件）；每行两行：标题（来源 `prompt` 时暗色）/ `时间 · 条数 · model`
