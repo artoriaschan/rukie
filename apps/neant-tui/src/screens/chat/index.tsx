@@ -65,6 +65,19 @@ import { fmtTokens, render as renderActivity } from "./activity/activity";
 import { commandCatalog } from "./commands";
 import { SettingsScreen } from "../settings";
 
+const modelLabelGraphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+function imageWarningModelLabel(model: string, columns: number) {
+  const label = model.replace(/\s/g, " ");
+  const width = Math.max(1, columns - 3);
+  if (Bun.stringWidth(label) <= width) return label;
+  let shortened = "";
+  for (const { segment } of modelLabelGraphemes.segment(label)) {
+    if (Bun.stringWidth(shortened + segment) > width - 1) break;
+    shortened += segment;
+  }
+  return shortened + "…";
+}
+
 /** Bind the Session and private stores to one chat screen for its lifetime. */
 export async function createChat(
   options: SessionOptions,
@@ -241,7 +254,7 @@ function Chat({
     setModelImageNotice(undefined);
     const model = models.find((choice) => choice.spec === session.model);
     if (!model || model.input.includes("image")) return;
-    setModelImageNotice(t("image.model-unsupported", { model: session.model }));
+    setModelImageNotice(session.model);
     modelImageNoticeTimer.current = setTimeout(() => setModelImageNotice(undefined), 5000);
   };
   const notifyPastedImage = (token: string) => {
@@ -578,6 +591,14 @@ function Chat({
     lastInterrupt.current = undefined;
     setInput(value);
   };
+  const stageImage = async (path: string, insert: (text: string) => void, epoch: number) => {
+    if (!pasteOwner.current || epoch !== pasteEpoch.current) return;
+    const image = await composer.read(path);
+    if (!pasteOwner.current || epoch !== pasteEpoch.current) return;
+    const token = composer.bind(image, draft.current);
+    insert(token + " ");
+    notifyPastedImage(token);
+  };
   const pasteClipboard = (insert: (text: string) => void) => {
     const epoch = pasteEpoch.current;
     const owned = () => pasteOwner.current && epoch === pasteEpoch.current;
@@ -587,11 +608,7 @@ function Chat({
           if (owned()) notifyImage(t("image.clipboard-unsupported"), true);
           return;
         }
-        const image = await composer.read(path);
-        if (!owned()) return;
-        const token = composer.bind(image, draft.current);
-        insert(token + " ");
-        notifyPastedImage(token);
+        await stageImage(path, insert, epoch);
       } catch (error) {
         if (owned()) notifyImage(t("image.paste-error", { error: formatError(error, t) }), true);
       }
@@ -859,7 +876,12 @@ function Chat({
     question && rows - statusHeight - minimumDialogHeight - panelMinimum - 1 >= 1 ? 1 : 0;
   const visibleModelNotice = !interaction || userQuestion?.collapsed ? modelImageNotice : undefined;
   const wrappedModelNotice = visibleModelNotice
-    ? Bun.wrapAnsi(visibleModelNotice, Math.max(1, columns - 3))
+    ? Bun.wrapAnsi(
+        t("image.model-unsupported", {
+          model: imageWarningModelLabel(visibleModelNotice, columns),
+        }),
+        Math.max(1, columns - 3),
+      )
     : undefined;
   const modelNoticeHeight = wrappedModelNotice?.split("\n").length ?? 0;
   const compactPrompt =
@@ -1618,23 +1640,15 @@ function Chat({
                   insert(text);
                   return;
                 }
-                void composer
-                  .read(path)
-                  .then((image) => {
-                    if (!pasteOwner.current || epoch !== pasteEpoch.current) return;
-                    const token = composer.bind(image, draft.current);
-                    insert(token + " ");
-                    notifyPastedImage(token);
-                  })
-                  .catch((error: unknown) => {
-                    if (!pasteOwner.current || epoch !== pasteEpoch.current) return;
-                    if (
-                      error instanceof ImageValidationError &&
-                      ["image-too-large", "image-dimensions"].includes(error.code)
-                    )
-                      notifyImage(t("image.paste-error", { error: formatError(error, t) }), true);
-                    else insert(text);
-                  });
+                void stageImage(path, insert, epoch).catch((error: unknown) => {
+                  if (!pasteOwner.current || epoch !== pasteEpoch.current) return;
+                  if (
+                    error instanceof ImageValidationError &&
+                    ["image-too-large", "image-dimensions"].includes(error.code)
+                  )
+                    notifyImage(t("image.paste-error", { error: formatError(error, t) }), true);
+                  else insert(text);
+                });
               }}
               value={input}
               onChange={(value, edit) => {

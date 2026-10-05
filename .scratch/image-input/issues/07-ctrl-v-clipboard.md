@@ -13,6 +13,8 @@
 
 ## Comments
 
+- 2026-10-06 最终 Standards 审查提取：clipboard/path 图片准入共享 chat 的 `stageImage`，保留 clipboard 专属 unsupported/失败提示、文件顺序和 pending 所有权检查。默认 clipboard 与 viewer 复用内部实例资源 owner 管理目录、0700/0600、失败清理与 pending disposal；平台命令和 native 类型选择未改动。本次使用注入宿主公开回归验证，未重复操作真实用户剪贴板；先前 macOS 手动证据继续适用。相关 10 文件 142 pass / 0 fail / 700 assertions 及类型/lint/Knip/格式检查通过，root 负责最终 aggregate。
+
 - 2026-10-06: Ctrl+V 使用现有 `TextInput.filterInput(event, insert)` 的插入 continuation，在光标位置按 files → image → text 处理；图片复用 Composer 的原始字节检查、绑定与发送路径。成功提示复用 `notifyPastedImage`，失败提示保留草稿并同步提供 zh/en 文案。pending read 保留 Session、焦点与卸载的异步所有权检查，question 输入继续使用自己的纯文本分支。
 - 默认宿主改为每次 `main` 创建并负责 dispose 的实例。macOS 用 osascript/JXA 读取原生 pasteboard item 的 `public.file-url` 与实际类型，覆盖真实 Finder 多文件；`furl` 作桥接不可用时的后备，PNGf 导出优先于 TIFF，最后 pbpaste。实测 AppleScript `clipboard info` 会列出可转换 PNG，因此使用原生类型区分 TIFF-only，避免转换。Linux 协商 wl-paste / xclip 的 URI、原始图片与文本类型并保留 xsel 后备，Windows 保留文本。进程有 3 s 超时，私有导出目录 0700、文件 0600；退出先停止 Chat，再等待 pending export，移除本实例目录。
 - TDD 首个公开 Ctrl+V 图片测试在实现前因无 token / 成功提示而失败；实现后 `image-clipboard.test.ts` 11 tests / 43 assertions 通过，覆盖光标插入、PNG/GIF 混合文件顺序、原样文本、empty / unavailable / throw / TIFF / 大图 / 读失败的双语提示，以及 Session 替换和 question 获得焦点时丢弃晚到结果。图片与 question 相关三文件回归先前为 77 tests / 396 assertions 通过（随后新增一个 clipboard question 用例）；`tsc -b`、局部 oxlint、oxfmt 与 diff 检查通过。完整检查由 integration 统一执行。

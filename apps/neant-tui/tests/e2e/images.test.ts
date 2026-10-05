@@ -85,6 +85,59 @@ test("clicking a user image opens a private original export and exit removes it"
   ).toBe(false);
 });
 
+test("exit keeps a private export until its pending external open completes", async () => {
+  let opened = "";
+  let openedBytes: Buffer | undefined;
+  const release = Promise.withResolvers<void>();
+  const app = await start([], {
+    rows: 32,
+    prepare: async (root) => {
+      await Bun.write(`${root}/shot.png`, Buffer.from(png, "base64"));
+    },
+    host: {
+      readClipboard: async () => ({ empty: true }),
+      openExternal: async (path) => {
+        opened = path;
+        await release.promise;
+        openedBytes = await readFile(path);
+      },
+    },
+  });
+  try {
+    await app.waitFor(() => app.screen().includes("❯"));
+    app.stdin.write(paste(`${app.root}/shot.png`));
+    await app.waitFor(() => app.screen().some((line) => line.includes("❯ [Image #1]")));
+    app.stdin.write("\r");
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    const row = app.screen().findIndex((line) => line.includes("[Image · shot.png]"));
+    app.stdin.write(`\x1b[<0;4;${row + 1}M\x1b[<0;4;${row + 1}m`);
+    await app.waitFor(() => !!opened);
+    let exited = false;
+    void app.exit.then(() => {
+      exited = true;
+    });
+    app.stdin.write("\x04");
+    await app.waitFor(() => !app.terminal.modes.bracketedPasteMode);
+    expect(exited).toBe(false);
+    expect((await stat(opened)).mode & 0o777).toBe(0o600);
+    expect((await stat(dirname(opened))).mode & 0o777).toBe(0o700);
+    release.resolve();
+    expect(await app.exit).toBe(0);
+    expect(openedBytes).toEqual(Buffer.from(png, "base64"));
+    expect(
+      await access(dirname(opened)).then(
+        () => true,
+        () => false,
+      ),
+    ).toBe(false);
+  } finally {
+    release.resolve();
+    await app.cleanup();
+  }
+});
+
 test("read images have clickable placeholders live and after resume", async () => {
   let opened = "";
   const host = {
