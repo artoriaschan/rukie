@@ -7,6 +7,8 @@ export interface FakeOpenAIOptions {
   error?: string;
   /** First response requests these tools; subsequent responses return text. */
   toolCalls?: { name: string; arguments: object }[];
+  /** Scripted main responses; title requests do not consume an entry. */
+  responses?: (string | { toolCalls: { name: string; arguments: object }[] })[];
   /** Standalone Permission Review reply; main responses keep their original text. */
   reviewReply?: string;
 }
@@ -49,15 +51,22 @@ export function fakeOpenAI(reply: string, options: FakeOpenAIOptions = {}) {
       }
       requests.push(request);
       received.resolve();
+      const scripted = options.responses?.[requests.length - 1];
       if (options.error) {
         return Response.json({ error: { message: options.error } }, { status: 400 });
       }
-      if (requests.length === 1 && options.toolCalls) {
+      const toolCalls =
+        typeof scripted === "object"
+          ? scripted.toolCalls
+          : requests.length === 1
+            ? options.toolCalls
+            : undefined;
+      if (toolCalls) {
         return new Response(
           chunk(
             {
               role: "assistant",
-              tool_calls: options.toolCalls.map((tool, index) => ({
+              tool_calls: toolCalls.map((tool, index) => ({
                 index,
                 id: `call-${index}`,
                 type: "function",
@@ -95,7 +104,9 @@ export function fakeOpenAI(reply: string, options: FakeOpenAIOptions = {}) {
                   message.content?.includes("REVIEW_POLICY"),
               )
               ? (options.reviewReply ?? reply)
-              : reply,
+              : typeof scripted === "string"
+                ? scripted
+                : reply,
           },
           null,
         ) +

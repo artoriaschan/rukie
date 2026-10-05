@@ -458,10 +458,144 @@ test("Headless resume emits a text plan and never registers interactive plan too
   }
 });
 
-test.each(["prompt", "stdin", "stdin-stream-json"])(
+test.each([false, true])(
+  "Goal output and exit belong to the parent even when a child fails: %s",
+  async (fail) => {
+    const root = await mkdtemp(join(tmpdir(), "neant-cli-goal-child-"));
+    const faux = createFauxCore({ api: "faux", provider: "faux" });
+    let childResponded = false;
+    const reply: Parameters<typeof faux.setResponses>[0][number] = (context) => {
+      const last = context.messages.at(-1);
+      if (last?.role === "user" && JSON.stringify(last.content).includes("child-prompt")) {
+        childResponded = true;
+        return fauxAssistantMessage(
+          "child-only text",
+          fail ? { stopReason: "error", errorMessage: "child failed" } : {},
+        );
+      }
+      if (!JSON.stringify(context.messages).includes("<goal_complete>"))
+        return fauxAssistantMessage(fauxToolCall("update_goal", { action: "complete" }), {
+          stopReason: "toolUse",
+        });
+      return fauxAssistantMessage("parent-only text");
+    };
+    faux.setResponses([
+      fauxAssistantMessage(
+        fauxToolCall("subagent", { description: "Inspect", prompt: "child-prompt" }),
+        { stopReason: "toolUse" },
+      ),
+      ...Array.from({ length: 8 }, () => reply),
+    ]);
+    let stdout = "";
+    let stderr = "";
+    try {
+      const exitCode = await main(["--goal", "delegate and finish"], {
+        readStdin: async () => {
+          throw new Error("Goal must not read stdin");
+        },
+        stdout: (value) => {
+          stdout += value;
+        },
+        stderr: (value) => {
+          stderr += value;
+        },
+        session: {
+          cwd: root,
+          homeDir: root,
+          model: faux.getModel(),
+          streamFn: withAuxiliaryRequests(faux.streamSimple),
+        },
+      });
+      expect({ exitCode, stderr, stdout }).toMatchObject({ exitCode: 0 });
+      expect(stdout).toBe("parent-only text\n");
+      expect(childResponded).toBe(true);
+      expect(stderr).not.toContain("child failed");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
+
+test.each(["error", "length"] as const)(
+  "Goal exits 1 after a Run ends with %s",
+  async (stopReason) => {
+    const root = await mkdtemp(join(tmpdir(), "neant-cli-goal-outcome-"));
+    const faux = createFauxCore({ api: "faux", provider: "faux" });
+    faux.setResponses([
+      fauxAssistantMessage("partial work", {
+        stopReason,
+        ...(stopReason === "error" ? { errorMessage: "Goal failed" } : {}),
+      }),
+    ]);
+    let stdout = "";
+    let stderr = "";
+    try {
+      expect(
+        await main(["--goal", "finish work"], {
+          readStdin: async () => "",
+          stdout: (value) => {
+            stdout += value;
+          },
+          stderr: (value) => {
+            stderr += value;
+          },
+          session: {
+            cwd: root,
+            homeDir: root,
+            model: faux.getModel(),
+            streamFn: withAuxiliaryRequests(faux.streamSimple),
+          },
+        }),
+      ).toBe(1);
+      expect(stdout).toBe("partial work\n");
+      if (stopReason === "error") expect(stderr).toContain("Goal failed");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
+
+test("Goal preserves SIGINT received while creation is still settling", async () => {
+  const root = await mkdtemp(join(tmpdir(), "neant-cli-goal-create-abort-"));
+  const controller = new AbortController();
+  const faux = createFauxCore({ api: "faux", provider: "faux" });
+  let modelCalled = false;
+  faux.setResponses([
+    () => {
+      modelCalled = true;
+      return fauxAssistantMessage("should not start", { stopReason: "length" });
+    },
+  ]);
+  let stderr = "";
+  try {
+    const exitCode = await main(["--goal", "finish work"], {
+      signal: controller.signal,
+      readStdin: async () => "",
+      stdout: () => {},
+      stderr: (value) => {
+        stderr += value;
+        if (value.includes("auto-review")) controller.abort();
+      },
+      session: {
+        cwd: root,
+        homeDir: root,
+        model: faux.getModel(),
+        streamFn: withAuxiliaryRequests(faux.streamSimple),
+      },
+    });
+    expect(exitCode).toBe(130);
+    expect(stderr).toContain("Interrupted");
+    expect(modelCalled).toBe(false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test.each(["prompt", "stdin", "stdin-stream-json", "goal", "goal-interrupted"])(
   "CLI %s retains a user task while a startup hook autorun is active",
   async (source) => {
     const root = await mkdtemp(join(tmpdir(), "neant-cli-async-hook-"));
+    const controller = new AbortController();
     const firstCall = Promise.withResolvers<void>();
     const firstReply = Promise.withResolvers<void>();
     const contexts: string[] = [];
@@ -475,8 +609,13 @@ test.each(["prompt", "stdin", "stdin-stream-json"])(
       },
       (context) => {
         contexts.push(JSON.stringify(context.messages));
+        if (source === "goal")
+          return fauxAssistantMessage(fauxToolCall("update_goal", { action: "complete" }), {
+            stopReason: "toolUse",
+          });
         return fauxAssistantMessage("human done");
       },
+      fauxAssistantMessage("goal wrapup"),
     ]);
     let stdout = "";
     let stderr = "";
@@ -488,10 +627,13 @@ test.each(["prompt", "stdin", "stdin-stream-json"])(
       const running = main(
         source === "prompt"
           ? ["-p", "actual human task"]
-          : source === "stdin-stream-json"
-            ? ["--output-format", "stream-json"]
-            : [],
+          : source.startsWith("goal")
+            ? ["--goal", "actual human task"]
+            : source === "stdin-stream-json"
+              ? ["--output-format", "stream-json"]
+              : [],
         {
+          signal: controller.signal,
           readStdin: async () => {
             await firstCall.promise;
             return "actual human task";
@@ -531,13 +673,25 @@ test.each(["prompt", "stdin", "stdin-stream-json"])(
       await firstCall.promise;
       expect(contexts[0]).toContain("startup-background-failure");
       expect(contexts[0]).not.toContain("actual human task");
+      if (source === "goal-interrupted") {
+        controller.abort();
+        firstReply.resolve();
+        expect(await running).toBe(130);
+        expect(contexts).toHaveLength(1);
+        expect(stderr).toContain("Interrupted");
+        expect(await Bun.file(join(root, "human-prompts")).exists()).toBe(false);
+        return;
+      }
       firstReply.resolve();
       expect(await running).toBe(0);
       expect(contexts).toHaveLength(2);
       expect(contexts[1]).toContain("actual human task");
-      expect(
-        (await Bun.file(join(root, "human-prompts")).text()).match(/hook_event_name/g),
-      ).toHaveLength(1);
+      if (source === "goal")
+        expect(await Bun.file(join(root, "human-prompts")).exists()).toBe(false);
+      else
+        expect(
+          (await Bun.file(join(root, "human-prompts")).text()).match(/hook_event_name/g),
+        ).toHaveLength(1);
       if (source === "stdin-stream-json") {
         const events = stdout
           .trim()
@@ -547,7 +701,8 @@ test.each(["prompt", "stdin", "stdin-stream-json"])(
         expect(
           events.filter((event) => event.type === "message_end" && event.message.role === "user"),
         ).toHaveLength(2);
-      } else expect(stdout).toBe("human done\n");
+      } else
+        expect(stdout).toBe(source === "goal" ? "autorun done\ngoal wrapup\n" : "human done\n");
       expect(stderr).not.toContain("Session already has an active Run");
     } finally {
       firstReply.resolve();
