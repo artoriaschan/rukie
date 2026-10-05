@@ -1,8 +1,11 @@
 import { expect, test } from "bun:test";
+import { isolateProxyEnvironment } from "../helpers/proxy-env.ts";
 import { join } from "node:path";
 import { createSession, type SessionOptions } from "@neant/agent";
 import { controlledModel } from "../helpers/model";
 import { start } from "../helpers/app";
+
+isolateProxyEnvironment();
 
 const assistant = process.platform === "darwin" ? "⏺" : "●";
 

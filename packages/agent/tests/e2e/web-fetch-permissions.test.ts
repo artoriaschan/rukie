@@ -4,6 +4,9 @@ import { join } from "node:path";
 import { createSession, loadSettings, type SessionOptions } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
+import { isolateProxyEnvironment } from "../helpers/proxy-env.ts";
+
+isolateProxyEnvironment();
 
 const resources: (() => void | Promise<void>)[] = [];
 afterEach(async () => {

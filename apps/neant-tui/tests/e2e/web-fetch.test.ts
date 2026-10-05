@@ -1,5 +1,8 @@
 import { expect, test } from "bun:test";
 import { start } from "../helpers/app";
+import { isolateProxyEnvironment } from "../helpers/proxy-env.ts";
+
+isolateProxyEnvironment();
 
 test.each([120, 60])(
   "web_fetch shows URL and the first result line at %s columns",
