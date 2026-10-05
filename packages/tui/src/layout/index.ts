@@ -17,6 +17,7 @@ export type HostProps = BoxProps &
     maxLines?: number;
     cursorOffset?: number;
     cursorStyle?: "block";
+    atomicRanges?: readonly { start: number; end: number }[];
     scroll?: ScrollState;
   };
 
@@ -77,6 +78,7 @@ function measuredText(node: HostNode, width: number) {
     width,
     node.props.wrap !== "truncate",
     node.props.input || node.props.preserveWhitespace,
+    node.props.atomicRanges,
   );
   return (node.textLayout = { width, spans, lines });
 }
@@ -205,7 +207,12 @@ export function calculateTree(root: HostNode, columns: number, rows?: number): L
     }
     const text = node.type === "tui-text" ? measuredText(node, width) : undefined;
     if (text && node.props.input && node.props.maxLines !== undefined) {
-      const caret = textCursor(text.spans, width, node.props.cursorOffset ?? 0);
+      const caret = textCursor(
+        text.spans,
+        width,
+        node.props.cursorOffset ?? 0,
+        node.props.atomicRanges,
+      );
       const previousTop = node.inputTop ?? 0;
       node.inputTop = Math.max(
         0,

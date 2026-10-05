@@ -101,7 +101,7 @@ function paintGrid(root: LayoutNode, columns: number, rows: number): Cell[][] {
       const top = node.textTop ?? 0;
       const caret =
         node.props.cursorStyle === "block" && node.props.cursorOffset !== undefined
-          ? textCursor(node.spans, width, node.props.cursorOffset)
+          ? textCursor(node.spans, width, node.props.cursorOffset, node.props.atomicRanges)
           : undefined;
       const first = Math.max(0, clip.top - y);
       const end = Math.min(height, clip.bottom - y);
@@ -112,6 +112,7 @@ function paintGrid(root: LayoutNode, columns: number, rows: number): Cell[][] {
           width,
           node.props.wrap !== "truncate",
           node.props.input || node.props.preserveWhitespace,
+          node.props.atomicRanges,
         )
       )
         .slice(top + first, top + end)
@@ -267,7 +268,12 @@ export function createScreen(fullscreen = false) {
     let visible = false;
     function findCursor(node: LayoutNode) {
       if (node.props.cursorOffset !== undefined) {
-        const { x, y } = textCursor(node.spans, node.width, node.props.cursorOffset);
+        const { x, y } = textCursor(
+          node.spans,
+          node.width,
+          node.props.cursorOffset,
+          node.props.atomicRanges,
+        );
         cursor = {
           x: node.x + x,
           y: node.y + y - (node.textTop ?? 0) - Math.max(0, root.height - rows),

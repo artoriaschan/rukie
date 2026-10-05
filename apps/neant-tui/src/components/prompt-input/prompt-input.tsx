@@ -10,6 +10,7 @@ export function PromptInput({
   working = false,
   planMode = false,
   history,
+  onHistoryRecall,
   readOnly = false,
   compact = false,
   tip,
@@ -18,15 +19,17 @@ export function PromptInput({
   filterInput,
   onPaste,
   highlightRanges,
+  atomicRanges,
 }: {
   value: string;
-  onChange(value: string): void;
+  onChange: TextInputProps["onChange"];
   onSubmit(prompt: string): void;
   columns: number;
   maxLines: number;
   working?: boolean;
   planMode?: boolean;
   history?: TextInputProps["history"];
+  onHistoryRecall?: TextInputProps["onHistoryRecall"];
   readOnly?: boolean;
   compact?: boolean;
   tip?: string;
@@ -36,6 +39,7 @@ export function PromptInput({
   filterInput?: TextInputProps["filterInput"];
   onPaste?: TextInputProps["onPaste"];
   highlightRanges?: TextInputProps["highlightRanges"];
+  atomicRanges?: TextInputProps["atomicRanges"];
 }) {
   const edge = "─".repeat(Math.max(0, columns - 2));
   return (
@@ -62,9 +66,11 @@ export function PromptInput({
             columns={Math.max(1, columns - 3)}
             cursorStyle="block"
             history={history}
+            onHistoryRecall={onHistoryRecall}
             filterInput={filterInput}
             onPaste={onPaste}
             highlightRanges={highlightRanges}
+            atomicRanges={atomicRanges}
           />
         </Box>
       </Box>
