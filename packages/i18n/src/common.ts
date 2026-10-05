@@ -19,6 +19,7 @@ const modelExample = `{
 
 const zh = {
   "image.pasted": "已粘贴图片 {{token}}",
+  "image.model-unsupported": "{{model}} 不接受图片，发送时会省略图片",
   "image.open-error": "无法打开图片：{{error}}",
   "image.paste-error": "无法粘贴图片：{{error}}",
   "image.too-large": "图片超过 5 MB 限制",
@@ -105,6 +106,7 @@ ${modelExample}`,
 
 const en = {
   "image.pasted": "Pasted image {{token}}",
+  "image.model-unsupported": "{{model}} does not accept images; they will be omitted",
   "image.open-error": "Could not open image: {{error}}",
   "image.paste-error": "Could not paste image: {{error}}",
   "image.too-large": "Image exceeds the 5 MB limit",
