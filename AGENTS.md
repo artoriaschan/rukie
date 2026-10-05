@@ -1,0 +1,104 @@
+# AGENTS.md
+
+Neant is a coding agent. Agent Core owns Session execution; Headless CLI and TUI drive it as frontends. Read [docs/architecture.md](docs/architecture.md) before changing `apps/` or `packages/`, [CONTEXT.md](CONTEXT.md) before changing domain behavior, and the relevant [ADRs](docs/adr/) before changing architecture. Follow [docs/AGENTS.md](docs/AGENTS.md) when writing documentation. Use the glossary's terms in code, tests, issues, and documentation.
+
+## Repository layout
+
+| Path                      | Owns                                                                                                         |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `apps/neant-cli/`         | `@neant/neant-cli`: non-interactive argv/stdin → Agent Core → text or stream-json output                     |
+| `apps/neant-tui/`         | `@neant/neant-tui`: interactive `neant`, fullscreen conversation, input, dialogs, and app state              |
+| `packages/agent/`         | `@neant/agent`: Sessions, tools, permissions, hooks, skills, MCP, context, persistence, and subagents        |
+| `packages/tui/`           | `@neant/tui`: React reconciler, terminal input, layout, cell grid, ANSI rendering, and design system         |
+| `packages/shared/`        | `@neant/shared`: runtime-agnostic types, TypeBox schemas, and pure functions shared by at least two packages |
+| `packages/i18n/`          | `@neant/i18n`: runtime-agnostic locale resolution, common copy, interpolation, and durations                 |
+| `CONTEXT.md`, `docs/adr/` | Domain vocabulary and architectural decisions                                                                |
+| `docs/agents/`            | Issue tracking, triage, and domain-document workflows                                                        |
+| `.scratch/`               | Local feature specs, implementation tickets, and investigation records                                       |
+
+## Commands
+
+Bun manages the `apps/*` and `packages/*` workspaces. Run commands from the repository root. In environments with RTK instructions, prefix shell commands with `rtk`; use `rtk proxy` for commands that need unfiltered output.
+
+```sh
+bun install                                      # install workspace dependencies
+bun apps/neant-cli/src/main.ts -p "task"          # Headless CLI; requires configured provider credentials
+bun apps/neant-tui/src/main.tsx                    # TUI; requires an interactive terminal
+bun test packages/agent/tests                    # focused package tests; select a file for a narrower change
+bun run test                                     # all current Bun tests
+bunx --no -- oxfmt --check                        # formatting
+bunx --no -- oxlint                              # lint
+bunx --no -- tsc -b                               # typecheck all workspaces
+bunx --no -- knip                                # unused files, exports, and dependencies
+env -u NO_COLOR bun run check                     # format → lint → types → Knip → tests
+```
+
+`package.json` owns the executable scripts. `bun run check` is the aggregate validation command; there are no root `build`, `dev`, or `typecheck` scripts. Clear `NO_COLOR` for the aggregate check so terminal color behavior is exercised.
+
+## Code
+
+- Fix the cause in the module that owns the behavior. Deliver the smallest working end-to-end change, then extend it only for requirements in scope.
+- Prefer one representation and one execution path. When changing an internal interface, update all repository consumers and remove obsolete code, configuration, tests, and docs in the same change.
+- Keep compatibility only for a verified external consumer, persisted user data, or a required staged rollout. Isolate it, document the constraint and removal condition, and preserve recoverability for storage migrations.
+- Add abstractions for current use cases. Before adding a helper or dependency, inspect existing packages, their APIs, and types; choose the option that reduces total implementation and maintenance cost.
+- Keep TypeScript strict. Parse untrusted settings, tool/model JSON, files, and process or wire inputs as `unknown`, then validate and narrow them. Trust typed internal calls; use assertions only with a checked or documented invariant, and explain unavoidable `any`.
+- Name the behavior precisely. Comments and JSDoc explain caller obligations, timing, ownership, failure behavior, or a reason the code cannot express. Keep them local and update them with the implementation.
+- Fix lint findings and remove unused code. When a rule conflicts with a required library idiom or vendored code, use a narrow, explained exception in the owning configuration.
+
+## Architecture and package conventions
+
+- **Workspace imports.** Internal packages export `src/index.ts` directly and use `workspace:*`; they do not require a runtime build. Use package names across workspaces. Each package extends `tsconfig.base.json`; `tsc -b` checks the project references.
+- **Agent modules.** Use one directory per domain concept in `packages/agent/src/`, even for a single file. Each directory exposes `index.ts`; other modules consume that entry point. Agent Core owns behavior independently of frontend presentation.
+- **Harness reuse.** Build on the locked pi-agent-core/pi-ai/pi-mcp APIs, following ADR-0002. Inspect their installed source and types before replacing harness capabilities or assuming upstream behavior.
+- **UI layers.** Imports point downward: app screens → app components → design system → renderer primitives. Screens wire Session and own app state; app components receive props. Organize app components by UI area, expose each area's `index.ts`, and collect them in `components/index.ts`. Renderer primitives and design system have no Agent Core dependency.
+- **Shared ownership.** `@neant/shared` has no Bun, Node, or DOM APIs; its only allowed dependency is `typebox`. `@neant/i18n` has the same runtime restriction and may depend only on `@neant/shared`. Place reusable terminal UI in `@neant/tui` according to semantics and dependency direction; Neant-specific adapters stay in the app.
+- **Locale.** Agent Core stays locale-agnostic. Frontends resolve locale and render typed errors and product copy through common and app dictionaries; app keys cannot override common keys. Update both zh and en dictionaries when changing localized copy (ADR-0008).
+- **Terminal behavior.** TUI uses alternate screen, a scrollable message area, and fixed input/interaction areas (ADR-0006). Preserve terminal restoration, reading position, bottom-follow behavior, and small-terminal handling. Read [packages/tui/README.md](packages/tui/README.md) before changing renderer APIs or lifecycle behavior.
+- **Reference code.** dsh-TUI is the design/behavior reference when specified. Yoga is the explicitly vendored exception: only `layout` imports it, and changes follow ADR-0005 and the renderer README. Keep unrelated visual and interaction behavior intact.
+- **Dependencies.** External versions are pinned exactly; update [docs/tech-stack.md](docs/tech-stack.md) and the Bun lockfile with dependency changes. Distinguish installed dependencies from planned stack choices. Keep TypeBox aligned with the locked pi version.
+
+## Sessions, configuration, and interactions
+
+Read [CONTEXT.md](CONTEXT.md) for Session, Run, Turn, Transcript, Tool State, and Interaction semantics. Read ADR-0003 for storage and ADR-0009 before changing subagent resume or Run Outcome behavior. Keep model-visible inputs reconstructable from the Transcript, and verify affected persisted state after resume.
+
+Read [docs/permission-rules.md](docs/permission-rules.md) before changing permission decisions or matching, and [docs/hooks.md](docs/hooks.md) before changing hook execution. Preserve project trust and credential ownership: provider definitions belong to user settings; project hooks, MCP configuration, and allow rules require a Trusted Project. Plan Mode and Permission Mode are independent.
+
+Frontends supply Interaction callbacks. Headless CLI supplies none: dependent tools are hidden and Agent Core requests use their safe defaults. Test cancellation and missing-callback behavior whenever an interaction changes. Keep credentials and real user settings out of commits and test fixtures.
+
+## Tests and verification
+
+- Tests live in each package/app's `tests/`, mirroring `src/`. Cross-concept scenarios live in `tests/e2e/`; reusable fixtures live in `tests/helpers/`.
+- Follow the production runtime (ADR-0004): current Bun code uses `bun:test`; Electron main and renderer will use Vitest when introduced.
+- Test observable behavior through public entry points. For Agent Core, use `createSession` with the existing fake model helpers; for TUI, use the app `start` helper and injected/headless terminals. Prefer explicit model replies, events, idle/completion signals, or terminal predicates over timing guesses.
+- For bug fixes, reproduce the failing public behavior before changing implementation. Cover affected lifecycle, abort, resume, and output paths. Streaming regressions must reproduce the relevant update ordering, including microtask boundaries when they affect the failure.
+- Isolate project directories, `homeDir`, settings, credentials, and locale inputs with existing helpers. Tests must leave the user's real configuration and Sessions untouched.
+- UI changes need terminal assertions for the affected dimensions and interactions, including resize or small-terminal behavior when relevant. Verify coexisting panels, focus, and reading position when their layout or state changes.
+- Run focused checks while developing and `env -u NO_COLOR bun run check` before delivering code changes. For documentation-only changes, verify formatting, referenced paths, and the diff. Report commands actually run and any failures or checks that could not run.
+
+## Documentation and local issues
+
+- **Domain and decisions.** Follow [docs/agents/domain.md](docs/agents/domain.md). Update the glossary when terminology changes; record durable architectural decisions in `docs/adr/`. Surface conflicts with an existing ADR before changing its decision.
+- **Specs and tickets.** Follow [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md): one feature directory, `spec.md`, and one numbered file per implementation ticket. Use [docs/agents/triage-labels.md](docs/agents/triage-labels.md) for triage roles. Update ticket status and append implementation/verification evidence as the work progresses.
+- **Dependency order.** Honor ticket dependencies and requested integration order. Parallel work is suitable only for independent work after its shared baseline is verified and delegation is authorized.
+- **Single source.** Update affected contracts, examples, and docs with behavior changes. Keep version details in `docs/tech-stack.md`, domain definitions in `CONTEXT.md`, and detailed workflows in their linked documents.
+- **Git.** Review the diff and preserve unrelated user changes. When commits are requested, follow Conventional Commits; Husky runs lint-staged and commitlint. Follow the user's requested branch, integration, and worktree-cleanup scope.
+
+## Done
+
+The requested behavior works end to end, affected consumers and documentation agree, and the required checks pass. For ticket work, its status and verification evidence match the delivered result. Report what changed, what was verified, and any remaining limitation; claim completion only from current evidence.
+
+## Editing these instructions
+
+`AGENTS.md` is the authoritative file. Root `CLAUDE.md` is a relative symlink to `AGENTS.md`; edit the target and preserve the link. Keep rules self-contained, disclose detailed reference material through task-specific links, and remove stale or duplicated guidance.
+
+<!-- CODEGRAPH_START -->
+
+## CodeGraph
+
+In repositories indexed by CodeGraph (a `.codegraph/` directory exists at the repo root), reach for it BEFORE grep/find or reading files when you need to understand or locate code:
+
+- **MCP tool** (when available): `codegraph_explore` answers most code questions in one call — the relevant symbols' verbatim source plus the call paths between them, including dynamic-dispatch hops grep can't follow. Name a file or symbol in the query to read its current line-numbered source. If it's listed but deferred, load it by name via tool search.
+- **Shell** (always works): `codegraph explore "<symbol names or question>"` prints the same output.
+
+If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is the user's decision.
+<!-- CODEGRAPH_END -->
