@@ -22,3 +22,5 @@
 TUI ④ 层持有请求与本地回答状态，③ 层 `SideQuestionPanel` 只收 props，展示问题、滚动回答、错误、等待与中英提示；Esc 关闭/中止，再发 `/btw` 替换前一请求并丢弃其晚到更新。pane 不进 transcript；原待答交互保持 FIFO，关闭后恢复。40×12 压缩输入并给侧问、状态与已有 dock 留出空间。`controlledModel.sideQuestions` 独立于 main/review/title 队列，保留标题优先识别。
 
 验证：Core 公共 `createSession` / `sideQuestion` 7 tests / 52 assertions，TUI 公共 `start()` 4 tests / 27 assertions，覆盖快照恢复、工具过滤、hooks/reminder/events/transcript 隔离、取消与 disposal、run 并发、替换、空参数、错误、40×12 与待答面板恢复。受影响回归含 title/model/compaction/main/slash/settings/question parity：145 pass / 0 fail / 844 assertions。`oxfmt --check`、`oxlint`、`tsc -b`、`knip` 通过；完整 spec 的最终整合 full check 由交付阶段完成。
+
+合入最新 context report 整合分支后，包含报告的回归 159 pass / 0 fail / 954 assertions，静态检查再次通过。`CONTEXT.md` 同步批准 spec 中 Side Question、Context Report 与手动 Compaction 的领域定义。
