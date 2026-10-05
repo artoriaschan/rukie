@@ -67,7 +67,7 @@ frontend 呈现文案所用的语言，由 frontend 自行解析。Agent Core �
 _Avoid_: language（会和模型回复语言混淆）, i18n
 
 **Slash Command**:
-用户在 frontend 输入的 `/` 开头的指令，由 frontend 解析并调用 Agent Core 的能力；Agent Core 不感知命令语法。自定义命令是一段 prompt 模板。
+用户在 frontend 输入的 `/` 开头的指令，由 frontend 解析并调用 Agent Core 的能力；Agent Core 不感知命令语法。只有内置命令，没有自定义命令：用户要复用的 prompt 写成 skill，经 Skill Invocation 调用。frontend 匹配不上的 `/` 输入原样交给 Agent Core。
 _Avoid_: command（会和 bash 命令混淆）
 
 **Goal**:
@@ -87,6 +87,10 @@ _Avoid_: hint, injected context, attachment
 **Project Instructions**:
 用户为项目写的说明（`AGENTS.md`，没有时用 `CLAUDE.md`），以 system reminder 的形式交给模型。
 _Avoid_: memory, rules file
+
+**Session Title**:
+session 的显示名，用于恢复时挑选。先取首条 user prompt，再由模型总结一次；用户改名后固定，不再自动覆盖。子代理的 session 用委派描述作标题。
+_Avoid_: session name, label
 
 **Compaction**:
 上下文接近模型上下文窗口时，把较早的 transcript 摘要成一条 entry。之后的 turn 和 resume 都从这条摘要加上它之后的消息继续，原始消息仍保留在 transcript 里。
