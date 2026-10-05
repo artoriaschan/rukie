@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createSession } from "@neant/agent";
@@ -368,6 +368,7 @@ test("invalid settings reports the same configuration error before entering rend
 
 test("--resume continues the existing Session context", async () => {
   const root = await mkdtemp(join(tmpdir(), "neant-tui-resume-"));
+  await mkdir(join(root, ".neant", "file-history"), { recursive: true });
   const terminal = createTerminal();
   const fake = controlledModel();
   let stderr = "";

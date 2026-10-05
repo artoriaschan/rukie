@@ -6,6 +6,8 @@ import { Value } from "typebox/value";
 import type { ToolStateDefinition } from "../tool-state/index.ts";
 import { resolvePermissionPath, type OnToolCallAllowed } from "../permissions/index.ts";
 
+export { cleanupExpiredBackups } from "./cleanup.ts";
+
 const checkpointSchema = Type.Object(
   {
     checkpoints: Type.Array(

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { main } from "../src/main.ts";
@@ -9,6 +9,7 @@ test.each(["ask", "auto-review", "full-access"])(
   "Headless stream-json omits enter_plan_mode in %s",
   async (permissionMode) => {
     const root = await mkdtemp(join(tmpdir(), "neant-cli-plan-"));
+    await mkdir(join(root, ".neant", "file-history"), { recursive: true });
     let stdout = "";
     let stderr = "";
     try {

@@ -126,7 +126,7 @@ test.each(["home", "at", "url"] as const)(
 );
 
 test("denied file tools and bash writes do not leave file records", async () => {
-  dirs = await tempDirs();
+  dirs = await tempDirs({ fileHistory: false });
   await Bun.write(join(dirs.cwd, "existing.txt"), "before");
   const session = await createSession({
     ...dirs,
@@ -229,7 +229,7 @@ test("rewind rejects an active Run without altering files or Checkpoints", async
 });
 
 test("a failed backup prevents file execution and leaves no file record", async () => {
-  dirs = await tempDirs();
+  dirs = await tempDirs({ fileHistory: false });
   await Bun.write(join(dirs.cwd, "file.txt"), "before");
   await Bun.write(join(dirs.homeDir, ".neant/file-history"), "blocked directory");
   const session = await createSession({

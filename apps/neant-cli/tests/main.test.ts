@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createSession } from "@neant/agent";
@@ -9,6 +9,7 @@ import { echoModel } from "./helpers/echo-model.ts";
 
 async function run(argv: string[], stdin = "") {
   const root = await mkdtemp(join(tmpdir(), "neant-main-"));
+  await mkdir(join(root, ".neant", "file-history"), { recursive: true });
   let stdout = "";
   let stderr = "";
   try {
@@ -261,6 +262,7 @@ test.each([
   ["bash(printf {alpha,beta}*)", "printf alpha > marker"],
 ])("--allow-tools %s grants the matching command only", async (rule, command) => {
   const root = await mkdtemp(join(tmpdir(), "neant-cli-rules-"));
+  await mkdir(join(root, ".neant", "file-history"), { recursive: true });
   const faux = createFauxCore({ api: "faux", provider: "faux" });
   faux.setResponses([
     fauxAssistantMessage(
@@ -305,6 +307,7 @@ test.each(["text", "stream-json"])(
   "%s output keeps child events distinct from the parent closing text",
   async (format) => {
     const root = await mkdtemp(join(tmpdir(), "neant-cli-subagent-"));
+    await mkdir(join(root, ".neant", "file-history"), { recursive: true });
     const faux = createFauxCore({ api: "faux", provider: "faux" });
     const reply: Parameters<typeof faux.setResponses>[0][number] = (context) => {
       const last = context.messages.at(-1)!;
