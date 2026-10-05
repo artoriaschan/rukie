@@ -32,6 +32,9 @@
  */
 
 const zh = {
+  "btw.usage": "用法：/btw <问题>",
+  "btw.answering": "正在回答侧问…",
+  "btw.hint": "↑/↓ 滚动 · Esc 关闭 · /btw 追加侧问",
   "settings.title": "设置",
   "settings.empty": "暂无可配置的设置项。",
   "settings.hint": "进入/切换 · Esc 退出",
@@ -251,6 +254,9 @@ const zh = {
 } as const;
 
 const en = {
+  "btw.usage": "Usage: /btw <question>",
+  "btw.answering": "Answering side question…",
+  "btw.hint": "↑/↓ scroll · Esc close · /btw ask again",
   "settings.title": "Settings",
   "settings.empty": "No settings are available yet.",
   "settings.hint": "open/toggle · Esc exit",

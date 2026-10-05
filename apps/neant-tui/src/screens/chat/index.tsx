@@ -42,6 +42,7 @@ import {
   UserMessage,
   CommandSuggestions,
   ModelPicker,
+  SideQuestionPanel,
 } from "../../components";
 import { rewindLayout, type RewindEntry, type RewindMode } from "../../components/rewind-picker";
 import { formatError } from "../../i18n";
@@ -207,7 +208,22 @@ function Chat({
     const timer = setInterval(update, 120);
     return () => clearInterval(timer);
   }, [title, state.running, writeTitle]);
-  const interaction = useSyncExternalStore(interactions.subscribe, interactions.getSnapshot);
+  const [side, setSide] = useState<{
+    question: string;
+    answer: string;
+    error?: string;
+    done: boolean;
+  }>();
+  const sideController = useRef<AbortController | undefined>(undefined);
+  const sideScroll = useRef<ScrollHandle>(null);
+  const closeSide = () => {
+    sideController.current?.abort();
+    sideController.current = undefined;
+    setSide(undefined);
+  };
+  useEffect(() => () => sideController.current?.abort(), [session]);
+  const pendingInteraction = useSyncExternalStore(interactions.subscribe, interactions.getSnapshot);
+  const interaction = side ? undefined : pendingInteraction;
   const question = interaction?.kind === "permission" ? interaction : undefined;
   const planReview = interaction?.kind === "plan" ? interaction : undefined;
   const userQuestion = interaction?.kind === "question" ? interaction : undefined;
@@ -224,6 +240,7 @@ function Chat({
   const [view, setView] = useState<View>("chat");
   const viewRef = useRef<View>("chat");
   const switchView = (next: View) => {
+    if (next !== "chat") closeSide();
     viewRef.current = next;
     setView(next);
   };
@@ -483,6 +500,34 @@ function Chat({
             models.findIndex((model) => model.spec === session.model),
           ),
         );
+    } else if (command.name === "btw") {
+      const question = prompt.slice(parsed![0].length).trim();
+      if (!question) conversation.notice(t("btw.usage"));
+      else {
+        sideController.current?.abort();
+        const controller = new AbortController();
+        sideController.current = controller;
+        setSide({ question, answer: "", done: false });
+        void (async () => {
+          try {
+            for await (const delta of session.sideQuestion(question, {
+              signal: controller.signal,
+            })) {
+              if (sideController.current !== controller) return;
+              setSide((current) =>
+                current ? { ...current, answer: current.answer + delta } : current,
+              );
+            }
+            if (sideController.current === controller)
+              setSide((current) => (current ? { ...current, done: true } : current));
+          } catch (error) {
+            if (!controller.signal.aborted && sideController.current === controller)
+              setSide((current) =>
+                current ? { ...current, done: true, error: formatError(error, t) } : current,
+              );
+          }
+        })();
+      }
     } else if (command.name === "settings") switchView("settings");
     else if (command.name === "compact")
       void conversation
@@ -533,9 +578,16 @@ function Chat({
   // Dialogs take priority. Reserve a preview for every visible panel before
   // deciding whether the prompt needs to use its one-row form.
   const panelCount = Number(hasTodos) + Number(hasSubagents);
+  const sideHeight = side
+    ? Math.min(
+        10,
+        Math.max(3, Math.min(Math.floor(rows / 2), rows - statusHeight - 2 - panelCount)),
+      )
+    : 0;
   const dialogGap =
     question && rows - statusHeight - minimumDialogHeight - panelCount - 1 >= 1 ? 1 : 0;
   const compactPrompt =
+    (!!side && rows < 20) ||
     (!!rewind && rows < 20) ||
     (!!interaction &&
       rows - statusHeight - minimumDialogHeight - dialogGap - panelCount < promptMaxLines + 3);
@@ -557,11 +609,13 @@ function Chat({
               promptHeight -
               transcriptHeight -
               panelCount -
+              sideHeight -
               Number(hasActivity),
           ),
         )
       : 0;
-  const chromeSpace = rows - statusHeight - promptHeight - transcriptHeight - commandMenuHeight;
+  const chromeSpace =
+    rows - statusHeight - promptHeight - transcriptHeight - commandMenuHeight - sideHeight;
   const showReturnControl =
     showReturn && chromeSpace - minimumDialogHeight - dialogGap - panelCount >= 1;
   const compactReturn =
@@ -604,6 +658,25 @@ function Chat({
   const todoMaxHeight = hasTodos ? panelHeights[0]! : 1;
   const subagentMaxHeight = hasSubagents ? panelHeights[Number(hasTodos)]! : 1;
   useInput((event) => {
+    if (sideController.current && event.type === "key") {
+      const { key } = event;
+      if (key.name === "escape" || (key.ctrl && key.name === "c")) {
+        handledInput.current.add(event);
+        closeSide();
+        return;
+      }
+      if (
+        !draft.current &&
+        !key.ctrl &&
+        !key.alt &&
+        !key.shift &&
+        ["up", "down"].includes(key.name)
+      ) {
+        handledInput.current.add(event);
+        sideScroll.current?.scrollBy(key.name === "up" ? -3 : 3);
+        return;
+      }
+    }
     const modelFocus = modelPickerRef.current;
     if (modelFocus !== undefined) {
       if (event.type !== "key") return;
@@ -724,11 +797,19 @@ function Chat({
       lastInterrupt.current = undefined;
       return;
     }
-    if (event.type === "paste" && interactions.getSnapshot()?.kind === "plan") {
+    if (
+      !sideController.current &&
+      event.type === "paste" &&
+      interactions.getSnapshot()?.kind === "plan"
+    ) {
       if (!small) interactions.planInput(event);
       return;
     }
-    if (event.type === "paste" && interactions.getSnapshot()?.kind === "question") {
+    if (
+      !sideController.current &&
+      event.type === "paste" &&
+      interactions.getSnapshot()?.kind === "question"
+    ) {
       if (!small) interactions.questionInput(event);
       return;
     }
@@ -737,7 +818,7 @@ function Chat({
       return;
     }
     const { key } = event;
-    const pendingInteraction = interactions.getSnapshot();
+    const pendingInteraction = sideController.current ? undefined : interactions.getSnapshot();
     const menu = !pendingInteraction && !small ? matches(draft.current) : [];
     if (menu.length && !key.ctrl && !key.alt && !key.shift) {
       if (key.name === "up" || key.name === "down") {
@@ -1129,6 +1210,14 @@ function Chat({
                 }}
               />
             )}
+            {side && (
+              <SideQuestionPanel
+                {...side}
+                height={sideHeight}
+                locale={locale}
+                scrollRef={sideScroll}
+              />
+            )}
             {!!commandMatches.length && !interaction && !rewind && modelPicker === undefined && (
               <CommandSuggestions
                 items={commandMatches}
@@ -1156,19 +1245,19 @@ function Chat({
                   !event.key.ctrl &&
                   !event.key.alt &&
                   !event.key.shift &&
-                  !interactions.getSnapshot() &&
+                  (!interactions.getSnapshot() || !!sideController.current) &&
                   matches(draft.current).length &&
                   ["up", "down", "tab", "enter"].includes(event.key.name)
                 )
               }
               value={input}
               onChange={(value) => {
-                const pending = interactions.getSnapshot();
+                const pending = sideController.current ? undefined : interactions.getSnapshot();
                 if (viewRef.current !== "chat" || rewindRef.current) return;
                 if (!pending || (pending.kind === "question" && pending.collapsed)) change(value);
               }}
               onSubmit={(prompt) => {
-                const pending = interactions.getSnapshot();
+                const pending = sideController.current ? undefined : interactions.getSnapshot();
                 if (viewRef.current !== "chat" || rewindRef.current) return;
                 if (pending && (pending.kind !== "question" || !pending.collapsed)) return;
                 sendInput(prompt);

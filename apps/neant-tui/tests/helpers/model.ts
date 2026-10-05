@@ -26,6 +26,7 @@ export function controlledModel(controlReviews = false, controlTitles = false) {
   }[] = [];
   const reviews: typeof calls = [];
   const titles: typeof calls = [];
+  const sideQuestions: typeof calls = [];
   const streamFn: NonNullable<SessionOptions["streamFn"]> = (_model, context, options) => {
     const stream = createAssistantMessageEventStream();
     const isTitle = isTitleRequest(context);
@@ -35,9 +36,19 @@ export function controlledModel(controlReviews = false, controlTitles = false) {
       stream.end(message);
       return stream;
     }
-    const isReview = context.messages.some(
-      (message) => message.role === "system" && JSON.stringify(message).includes("REVIEW_POLICY"),
-    );
+    const last = context.messages.at(-1);
+    const lastText =
+      last?.role === "user"
+        ? typeof last.content === "string"
+          ? last.content
+          : last.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("")
+        : "";
+    const isSideQuestion = !isTitle && lastText.startsWith("<side-question-context>\n");
+    const isReview =
+      !isSideQuestion &&
+      context.messages.some(
+        (message) => message.role === "system" && JSON.stringify(message).includes("REVIEW_POLICY"),
+      );
     // Most UI tests use immediate review denial; lifecycle tests hold this boundary open.
     if (isReview && !controlReviews) {
       const message = fauxAssistantMessage(
@@ -94,7 +105,7 @@ export function controlledModel(controlReviews = false, controlTitles = false) {
           { stopReason: "toolUse" },
         ),
       );
-    (isTitle ? titles : isReview ? reviews : calls).push({
+    (isTitle ? titles : isSideQuestion ? sideQuestions : isReview ? reviews : calls).push({
       context: structuredClone(context),
       signal: options?.signal,
       reasoning: options?.reasoning,
@@ -128,5 +139,5 @@ export function controlledModel(controlReviews = false, controlTitles = false) {
     if (options?.signal?.aborted) abort();
     return stream;
   };
-  return { model, streamFn, calls, reviews, titles };
+  return { model, streamFn, calls, reviews, titles, sideQuestions };
 }

@@ -61,6 +61,7 @@ import { discoverSkills, skillInvocation, skillsReminder } from "../skills/index
 import { createMcpConnections } from "../mcp/index.ts";
 import { compactTurn, estimateContextTokens, restoreContext } from "../compaction/index.ts";
 import { createSessionTitle, titleSourceState, type TitleSource } from "../session-title/index.ts";
+import { sideQuestion } from "../side-question/index.ts";
 import { contextUsage } from "../context-usage/index.ts";
 import { createToolState, todoState, type TodoItem } from "../tool-state/index.ts";
 import {
@@ -172,6 +173,8 @@ export interface Session {
   setPermissionMode(mode: PermissionMode): void;
   /** Compress completed history while idle; focus only applies to this summary. */
   compact(options?: { instructions?: string }): Promise<void>;
+  /** Answer once from current context without changing this Session or its Run. */
+  sideQuestion(question: string, options?: { signal?: AbortSignal }): AsyncIterable<string>;
   /** Current restored context in memory, including reminders and any compaction. */
   readonly messages: readonly AgentMessage[];
   /** Current Tool State snapshot; undefined before the first write. */
@@ -870,6 +873,8 @@ async function createSessionInternal(
   let runSettled: ReturnType<typeof Promise.withResolvers<void>> | undefined;
   let queuedUserRuns = 0;
   let runController: AbortController | undefined;
+  const sidePendingCalls = new Set<string>();
+  const sideLifetime = new AbortController();
   let runMcp: ReturnType<typeof createMcpConnections> | undefined;
   let disposePromise: Promise<void> | undefined;
   let inputTokens: number | undefined;
@@ -1096,6 +1101,19 @@ async function createSessionInternal(
       };
     },
     id: stored.metadata.id,
+    sideQuestion(question, { signal } = {}) {
+      if (disposePromise) throw new Error("Session has been disposed.");
+      if (!question.trim()) throw new Error("Side question cannot be empty.");
+      return sideQuestion({
+        question,
+        messages: structuredClone(agent.state.messages),
+        systemPrompt: agent.state.systemPrompt,
+        model: agent.state.model,
+        streamFn: options.streamFn ?? streamFn,
+        signal: signal ? AbortSignal.any([signal, sideLifetime.signal]) : sideLifetime.signal,
+        running: new Set(sidePendingCalls),
+      });
+    },
     get title() {
       return sessionTitle.title;
     },
@@ -1293,6 +1311,7 @@ async function createSessionInternal(
       if (!disposePromise) {
         // Publish the promise before callbacks or hooks can re-enter dispose.
         disposePromise = Promise.resolve().then(async () => {
+          sideLifetime.abort();
           const mcp = runMcp;
           hooks.dispose();
           await sessionTitle.dispose();
@@ -1617,12 +1636,18 @@ async function createSessionInternal(
             // pi skips afterToolCall for blocked/invalid calls. Its end event still
             // precedes creation of the tool-result message and carries the same result.
             if (event.type === "tool_execution_end") {
+              sidePendingCalls.delete(event.toolCallId);
               Object.assign(event.result, consumeToolHookOutput(event.toolCallId, event.result));
             }
             await emitMcpErrors();
-            if (event.type === "turn_end")
+            if (event.type === "turn_end") {
+              sidePendingCalls.clear();
               completedMessages = structuredClone(agent.state.messages);
+            }
             if (event.type === "message_end") {
+              if (event.message.role === "assistant")
+                for (const block of event.message.content)
+                  if (block.type === "toolCall") sidePendingCalls.add(block.id);
               if (event.message.role === "user") userMessageSequence++;
               rewakeSteering.delete(event.message);
               subagents.delivered(event.message);
@@ -1818,6 +1843,7 @@ async function createSessionInternal(
           rewakeSteering.clear();
           agent.clearSteeringQueue();
           runController = undefined;
+          sidePendingCalls.clear();
           runMcp = undefined;
           running = false;
           hookRunActive = false;
