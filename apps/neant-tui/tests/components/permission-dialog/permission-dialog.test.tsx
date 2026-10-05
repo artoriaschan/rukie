@@ -166,9 +166,11 @@ test.each([
   ["command", "zh", "本 session 允许此命令"],
   ["directory", "zh", "本 session 允许此目录"],
   ["tool", "zh", "本 session 允许此工具"],
+  ["domain", "zh", "本 session 允许此域名"],
   ["command", "en", "Allow this command for this session"],
   ["directory", "en", "Allow this directory for this session"],
   ["tool", "en", "Allow this tool for this session"],
+  ["domain", "en", "Allow this domain for this session"],
 ] as const)("session %s label in %s", async (kind, locale, label) => {
   const terminal = createTerminal(80, 13);
   const app = render(

@@ -163,7 +163,7 @@ session 级开关，与 Permission Mode 相互独立。打开时模型先探索�
 _Avoid_: plan permission mode, read-only mode
 
 **Permission Rule**:
-用户写下的一条 `allow`、`ask` 或 `deny`，按工具名、bash 命令文本或文件路径匹配工具调用。命中的 `deny` / `ask` 在任何 Permission Mode 下都生效，`ask` 规则也不交给 permission review。用户层与项目层合并；项目层的 `allow` 只在 trusted project 生效。审批时"本 session 允许"生成的是只在当前 session 内存中的 allow 规则。规则不是安全边界。
+用户写下的一条 `allow`、`ask` 或 `deny`，按工具名、bash 命令文本、文件路径或网页域名匹配工具调用。命中的 `deny` / `ask` 在任何 Permission Mode 下都生效，`ask` 规则也不交给 permission review。用户层与项目层合并；项目层的 `allow` 只在 trusted project 生效。审批时"本 session 允许"生成的是只在当前 session 内存中的 allow 规则。规则不是安全边界。
 _Avoid_: policy, whitelist, allowTools
 
 **Permission Mode**:

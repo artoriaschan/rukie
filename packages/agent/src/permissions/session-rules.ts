@@ -1,12 +1,13 @@
 import { statSync } from "node:fs";
 import { dirname, sep } from "node:path";
+import { permissionUrlDomain } from "./domain.ts";
 import { resolvePermissionPath } from "./path.ts";
 import type { PermissionRule } from "./rules.ts";
 
 /** Mutable memory grants; pass the same collection to related permission gates. */
 export type SessionAllowRule = PermissionRule & { decision: "allow" };
 export interface SessionAllow {
-  kind: "command" | "directory" | "tool";
+  kind: "command" | "directory" | "domain" | "tool";
   rule: string;
 }
 
@@ -18,6 +19,22 @@ export function sessionAllowRule(
   cwd: string,
   homeDir: string,
 ): { description: SessionAllow; rule: SessionAllowRule } {
+  if (toolName === "web_fetch") {
+    // Malformed URLs must never turn a session approval into a tool-wide grant.
+    const domain = permissionUrlDomain(args) ?? "";
+    const raw = `web_fetch(domain:${domain})`;
+    return {
+      description: { kind: "domain", rule: raw },
+      rule: {
+        decision: "allow",
+        raw,
+        kind: "domain",
+        tool: "web_fetch",
+        domain,
+        subdomains: false,
+      },
+    };
+  }
   if (
     toolName === "bash" &&
     typeof args === "object" &&

@@ -7,6 +7,45 @@ import { start } from "../helpers/app";
 const assistant = process.platform === "darwin" ? "⏺" : "●";
 
 test.each([
+  [40, 12],
+  [80, 24],
+])("web domain approval remains usable at %sx%s", async (columns, rows) => {
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: () => new Response("Public documentation"),
+  });
+  const url = `http://site.test:${server.port}/docs`;
+  const app = await start(["read docs"], {
+    columns,
+    rows,
+    session: {
+      webFetch: {
+        resolve: async () => [{ address: "127.0.0.1", family: 4 }],
+        allowAddresses: ["127.0.0.1"],
+      },
+    },
+  });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("web_fetch", { url });
+    await app.waitFor(() => app.screen().join("\n").includes("2. 本 session 允许此域名"));
+    expect(app.screen().join("\n")).toContain("3. 拒绝");
+    app.stdin.write("2\r");
+    await app.waitFor(() => app.calls.length === 2);
+    expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({ isError: false });
+    app.calls[1]!.tool("web_fetch", { url: url.replace("/docs", "/next") });
+    await app.waitFor(() => app.calls.length === 3);
+    expect(app.calls[2]!.context.messages.at(-1)).toMatchObject({ isError: false });
+    app.calls[2]!.finish();
+    await app.waitFor(() => !app.isWorking());
+  } finally {
+    await app.cleanup();
+    server.stop(true);
+  }
+});
+
+test.each([
   ["ask", "询问"],
   ["auto-review", "自动评审"],
 ] as const)(

@@ -31,6 +31,7 @@ const zh = {
   "approval.allow-tool": "本 session 允许此工具",
   "approval.allow-command": "本 session 允许此命令",
   "approval.allow-directory": "本 session 允许此目录",
+  "approval.allow-domain": "本 session 允许此域名",
   "approval.deny": "拒绝",
   "api-key.environment-default": "该提供方的标准环境变量",
   "error.ripgrep-unavailable":
@@ -93,6 +94,7 @@ const en = {
   "approval.allow-tool": "Allow this tool for this session",
   "approval.allow-command": "Allow this command for this session",
   "approval.allow-directory": "Allow this directory for this session",
+  "approval.allow-domain": "Allow this domain for this session",
   "approval.deny": "Deny",
   "api-key.environment-default": "the provider's standard environment variable",
   "error.ripgrep-unavailable":

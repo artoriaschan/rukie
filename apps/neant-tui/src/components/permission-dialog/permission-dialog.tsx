@@ -18,7 +18,7 @@ import { createTuiI18n } from "../../i18n";
 export function permissionChoices(
   mode: PermissionMode = "ask",
   locale: Locale = "zh",
-  kind: "command" | "directory" | "tool" = "tool",
+  kind: PermissionAskRequest["sessionAllow"]["kind"] = "tool",
 ) {
   const t = createTuiI18n(locale);
   const allowOnce = { label: t("approval.allow-once"), decision: "allow" } as const;
@@ -42,7 +42,7 @@ export function PermissionDialog({
   bottomGap = 1,
 }: {
   toolName: string;
-  sessionAllow: { kind: "command" | "directory" | "tool"; rule: string };
+  sessionAllow: PermissionAskRequest["sessionAllow"];
   args: unknown;
   selected: number;
   maxHeight: number;
