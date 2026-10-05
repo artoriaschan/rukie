@@ -4,7 +4,8 @@ declare module "@mixmark-io/domino" {
   interface Element {
     nodeName: string;
     innerHTML: string;
-    parentNode: { removeChild(node: Element): void } | null;
+    parentNode: Element | null;
+    removeChild(node: Element): void;
     hasAttribute(name: string): boolean;
     removeAttribute(name: string): void;
     getAttribute(name: string): string | null;

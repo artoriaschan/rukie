@@ -38,3 +38,9 @@
 
 - 最终 `rtk proxy env -u NO_COLOR bun run check` 全部通过：format、lint、types、Knip、1768 tests pass，0 fail，9189 assertions，136 files，exit 0。日志：`/tmp/neant-web-fetch-01-final-check.log`。
 - 交付提交 `d5a769d`；完成前已把当前 `codex/web-fetch-integration` tip 合并回本票分支。`rtk git diff --check` 无错误。本票已关闭；02/03/04/05 的后续范围仍由其票跟踪。
+
+### 2026-10-05 integration review fixes
+
+- Spec 审阅修复：HTTP 非 2xx 附文与成功结果共用 content 模块的不可信内容声明，保留 `HTTP <status> from <url>` 首行与转换后正文前 2K 字符。模型工具为成功、跨源重定向与执行错误的 `details` 添加 `category: "web"`，保留 Run 取消异常及既有 Hook 的成功/失败处理。
+- Session 公共回归先确认 HTTP 错误附文缺少声明、成功/错误缺少类别，再验证修复；跨源重定向类别也通过公开结果验证。HTML 与文本测试共用同包 `tests/helpers/web-fetch.ts` 的 Session、服务器及资源清理 fixture，场景与断言保留。
+- focused Core/TUI/Headless 8 文件在无效外部代理环境下通过：218 pass / 0 fail，870 assertions；随后新增大型简单 HTML 用例并重跑 Core 三文件：80 pass / 0 fail，228 assertions。最终格式、lint、types、Knip、diff whitespace 检查通过。最终集成检查由 integration 分支统一验收。

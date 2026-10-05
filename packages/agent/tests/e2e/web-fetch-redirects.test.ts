@@ -118,7 +118,7 @@ test.each(["host", "port", "scheme"])(
       `Redirected to ${destination}; call web_fetch again with it to continue.`,
     );
     expect(text(result!)).toContain("HTTP 301");
-    expect(result!.details).toMatchObject({ url: `${base}/old`, status: 301 });
+    expect(result!.details).toMatchObject({ category: "web", url: `${base}/old`, status: 301 });
     expect(requests).toEqual([`${base}/old`]);
   },
 );

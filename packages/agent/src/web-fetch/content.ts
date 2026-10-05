@@ -12,12 +12,28 @@ const markdown = new TurndownService({
 });
 markdown.use(gfm);
 
+const CONVERSION_OMITTED = "[HTML content could not be converted to Markdown.]";
+
 function convertHtml(html: string): string {
   try {
+    // Parsing and GFM conversion are synchronous. Bound their node, depth, and table
+    // complexity so an untrusted page cannot monopolize the Run's event loop.
+    // Structurally complex documents use the same omission result as conversion failures.
+    let tags = 0;
+    for (const character of html) {
+      if (character === "<" && ++tags > 10_000) return CONVERSION_OMITTED;
+    }
     // Use turndown's DOM implementation to remove hidden subtrees before GFM
     // rules can preserve a table's outerHTML, including hidden html/body roots.
     const document = createDocument(html);
+    let cells = 0;
     for (const node of Array.from(document.querySelectorAll("*"))) {
+      let depth = 0;
+      for (let parent = node.parentNode; parent; parent = parent.parentNode) {
+        if (++depth > 128) return CONVERSION_OMITTED;
+      }
+      if (["TD", "TH"].includes(node.nodeName.toUpperCase()) && ++cells > 1000)
+        return CONVERSION_OMITTED;
       const hidden =
         ["SCRIPT", "STYLE", "NOSCRIPT", "IFRAME", "TEMPLATE", "SVG"].includes(
           node.nodeName.toUpperCase(),
@@ -38,7 +54,7 @@ function convertHtml(html: string): string {
     }
     return document.body ? markdown.turndown(document.body.innerHTML) : "";
   } catch {
-    return "[HTML content could not be converted to Markdown.]";
+    return CONVERSION_OMITTED;
   }
 }
 
@@ -68,6 +84,10 @@ export function decodeBody(bytes: Uint8Array, contentType: string | null): strin
   }
   const text = decoder.decode(bytes);
   return type === "text/html" || type === "application/xhtml+xml" ? convertHtml(text) : text;
+}
+
+export function renderHttpError(url: URL, status: number, body: string): string {
+  return `HTTP ${status} from ${url.href}\n${NOTICE}\n\n${body.slice(0, 2000)}`;
 }
 
 export function render(url: URL, status: number, body: string, downloadedTruncated: boolean) {
