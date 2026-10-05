@@ -35,6 +35,7 @@ Labels: wayfinder:map
 - [自定义 Slash Command 与手动 compaction](issues/16-slash-commands-and-manual-compaction.md): 不做自定义命令（复用 prompt 写成 skill），frontend 未匹配的 `/` 输入交 Agent Core 试 Skill Invocation；13 个内置命令（含 `/model`、`/resume`、`/context`、`/settings` 占位、`/btw`、`/rename`），dsh 式补全，run 中仅只读类可用；`compact({ instructions })` 仅空闲、`trigger: manual`；新增 `setModel` / `listSessions` / `contextReport` / `sideQuestion` / `rename`；Session 标题 = 首条 prompt fallback + 一次模型生成，手动改名固定；`/context` 复刻 CC 格子图；Headless 只有 Skill Invocation
 - [Goal](issues/08-goal.md): Session `goal` + `createGoal/editGoal/pauseGoal/resumeGoal/clearGoal`；工具 `create_goal` / `update_goal`（无 CAS，故不做 `get_goal`）；`goal` reminder 在 compaction 后重注入以保住 objective；只走 `tool_state_changed`，不加 activation 事件；`/goal` 照 DSH 文法，run 中仅查看 / pause / clear；Headless `--goal` 与 `-p` 互斥，退出码 0/1；TUI 复刻 dsh-TUI 根行 PhaseBadge + statusline chip + 工具卡，round 消息不渲染气泡；子代理不可用；上限 256 不可配
 - [web fetch](issues/15-web-fetch.md): `web_fetch { url }`，不用小模型提炼，turndown 转 markdown，50K 字符截断；5 MB / 30 s / 无缓存；不免询问，规则 `web_fetch(domain:…)`，无预批准域名；同源重定向最多 5 跳，跨源返回文本让模型重新调用；SSRF 照 DSH：只接受公网单播，并用 undici（`undici/index.js` 绕开 Bun stub）钉 IP；代理走 `EnvHttpProxyAgent`；TUI 复刻 dsh 通用卡，另开工单
+- [文件外部修改检测](issues/17-external-file-change-reminder.md): 跟踪 read/write/edit 过的文件（不含 bash），写后更新基线；每次模型请求前比 mtime+size 再比哈希；`file-changes` reminder 附 diff（单文件 4K / 总 16K，超限只列路径），删除报已删除；edit/write 前过期检查，读后被改则报错要求重读；Tool State `file-tracking` 只存元数据+哈希，resume 后只报已变更；compaction 后保留跟踪；子代理写入与 rewind 恢复按外部修改自然处理；frontend 不加呈现
 
 ## Not yet specified
 
@@ -48,4 +49,5 @@ Labels: wayfinder:map
 - server 与桌面端。
 - sandbox（OS 级写入隔离，macOS `sandbox-exec` / Linux bwrap）：需单独调研，本轮规则已覆盖日常需求；见 [权限规则与 sandbox](issues/11-permission-rules-and-sandbox.md)。
 - 多 agent 共享任务表（CC V2 `TaskCreate/Get/List/Update`、dsh `agent-team` 任务板）：Neant 子代理各自独立 session，无共享场景；见 [todo 工具](issues/07-todo.md)。
+- compaction 后重新附上最近读过的文件（CC 做法）：超出外部修改检测范围；见 [文件外部修改检测](issues/17-external-file-change-reminder.md)。
 - 其余 CC hook 事件（PostToolBatch、StopFailure、FileChanged、Worktree*、Task* 等）：无对应能力或用不上；见 [hooks](issues/12-hooks.md)。
