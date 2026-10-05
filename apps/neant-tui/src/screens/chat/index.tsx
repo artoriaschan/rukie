@@ -23,6 +23,7 @@ import {
 import {
   allocatePanelHeights,
   AssistantMessage,
+  ContextVisualization,
   ActivityLine,
   GoalTodoPanel,
   Logo,
@@ -488,6 +489,7 @@ function Chat({
       void conversation
         .compact(prompt.slice(parsed![0].length).trim() || undefined)
         .catch((error: unknown) => conversation.notice(formatError(error, t), true));
+    else if (command.name === "context") conversation.contextReport(session.contextReport());
     else if (command.name === "rewind") openRewind();
     else if (command.name === "clear")
       void replaceSession().catch((error: unknown) =>
@@ -900,6 +902,15 @@ function Chat({
                     />
                   )}
               </Box>
+            );
+          case "context-report":
+            return (
+              <ContextVisualization
+                key={index}
+                report={entry.report}
+                columns={columns}
+                locale={locale}
+              />
             );
           case "notice":
             return <Notice key={index} kind="info" text={entry.text} />;

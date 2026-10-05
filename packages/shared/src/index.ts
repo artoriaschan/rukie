@@ -24,3 +24,5 @@ export {
   type UserVisibleErrorParams,
   type UserVisibleErrorData,
 } from "./errors.ts";
+
+export type { ContextReport, ContextCategory } from "./context-report.ts";
