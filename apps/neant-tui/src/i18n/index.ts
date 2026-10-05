@@ -112,6 +112,36 @@ export function formatError(error: unknown, t: ReturnType<typeof createTuiI18n>)
       return t("error.hook-continuation-limit", data.params);
     case "hook-project-untrusted":
       return t("error.hook-project-untrusted", data.params);
+    case "goal-tool-human-required":
+      return t("error.goal-tool-human-required", data.params);
+    case "goal-tool-completion-authority":
+      return t("error.goal-tool-completion-authority", data.params);
+    case "goal-tool-invalid-argument":
+      return t("error.goal-tool-invalid-argument", data.params);
+    case "goal-tool-required-argument":
+      return t("error.goal-tool-required-argument", data.params);
+    case "goal-tool-resume-paused":
+      return t("error.goal-tool-resume-paused", data.params);
+    case "goal-child-session":
+      return t("error.goal-child-session", data.params);
+    case "goal-busy":
+      return t("error.goal-busy", data.params);
+    case "goal-objective-empty":
+      return t("error.goal-objective-empty", data.params);
+    case "goal-rounds-invalid":
+      return t("error.goal-rounds-invalid", data.params);
+    case "goal-exists":
+      return t("error.goal-exists", data.params);
+    case "goal-missing":
+      return t("error.goal-missing", data.params);
+    case "goal-pause-invalid":
+      return t("error.goal-pause-invalid", data.params);
+    case "goal-complete":
+      return t("error.goal-complete", data.params);
+    case "goal-already-armed":
+      return t("error.goal-already-armed", data.params);
+    case "goal-round-limit":
+      return t("error.goal-round-limit", data.params);
     case "hook-config-invalid":
       return t("error.hook-config-invalid", data.params);
   }

@@ -177,12 +177,19 @@ test("fork inherits the parent model, system prompt and tools despite model sett
       const child = getCurrentSystemMessage(context.messages)!;
       expect(child.content).toEqual(parent.content);
       expect(JSON.stringify(child.content)).not.toContain("Custom fork instructions");
-      const delegation = ["subagent", "subagent_fork", "send_message", "list_agents"];
+      const topLevelOnly = [
+        "subagent",
+        "subagent_fork",
+        "send_message",
+        "list_agents",
+        "create_goal",
+        "update_goal",
+      ];
       const tools = child.toolsAdded!.map((tool) => tool.name);
       expect(tools).toEqual(
-        parent.toolsAdded!.map((tool) => tool.name).filter((name) => !delegation.includes(name)),
+        parent.toolsAdded!.map((tool) => tool.name).filter((name) => !topLevelOnly.includes(name)),
       );
-      expect(delegation.every((name) => !tools.includes(name))).toBe(true);
+      expect(topLevelOnly.every((name) => !tools.includes(name))).toBe(true);
       expect(tools).toContain("write");
       return fauxAssistantMessage("child conclusion");
     },

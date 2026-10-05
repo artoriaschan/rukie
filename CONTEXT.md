@@ -15,7 +15,7 @@ _Avoid_: engine, backend
 _Avoid_: client, UI
 
 **Headless CLI**:
-非交互的 frontend：读入一条 prompt，执行一个 run，输出文本或 stream-json 后退出。不提供任何 Interaction 回调：依赖交互的工具不暴露给模型，Agent Core 自身发起的交互取各自的安全默认值。
+非交互的 frontend：读入一条 prompt 执行一个 run，或设定 Goal 并等待自动续跑结束，输出文本或 stream-json 后退出。不提供任何 Interaction 回调：依赖交互的工具不暴露给模型，Agent Core 自身发起的交互取各自的安全默认值。
 _Avoid_: CLI（会和 TUI 混淆）
 
 **TUI**:

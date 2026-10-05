@@ -163,7 +163,7 @@ test("slash menu lists builtins and invocable skills, filters case-insensitively
   }
 });
 
-test("plan toggles locally, goal explains its placeholder, rewind opens existing picker and clear preserves the old session", async () => {
+test("plan toggles locally, goal shows usage, rewind opens existing picker and clear preserves the old session", async () => {
   const sessionOptions: Partial<SessionOptions> = {};
   const argv: string[] = [];
   const app = await ready(
@@ -192,7 +192,7 @@ test("plan toggles locally, goal explains its placeholder, rewind opens existing
     app.stdin.write("/plan\r");
     await app.waitFor(() => !app.screen().at(-2)!.includes("plan"));
     app.stdin.write("/goal\r");
-    await app.waitFor(() => screen(app).includes("/goal is not supported yet"));
+    await app.waitFor(() => screen(app).includes("No goal is currently set"));
     app.stdin.write("retained question\r");
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.delta("retained answer");

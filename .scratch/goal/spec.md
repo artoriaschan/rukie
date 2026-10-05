@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 
 # Spec: Goal
 
@@ -207,3 +207,19 @@ Status: ready-for-agent
 - round 与收尾提示词原文出自 deepseek-harness `goal-round-driver/src/prompt.ts` 与 `tool-goal/src/wrapup.ts`。实现时保留原英文文本，删掉的句子在注释中注明。
 - `CONTEXT.md` 的 Goal 定义无需修改。
 - 依赖的地基都已在 main 上：Tool State、reminder 与 compaction 重注入、Stop hook、asyncRewake 调度、`GoalTodoPanel` 骨架、Slash Command 框架。
+
+## Answer
+
+四个实现工单均已 resolved，并按依赖顺序集成到 `codex/goal-integration`。Agent Core 的 Goal 生命周期、模型工具、持久化与自动续跑，TUI 的 `/goal`、面板、状态 chip 与工具卡，以及 Headless 的 `--goal`、输出与退出码均已交付。最终代码提交为 `a7e745328503f6206f9b83cb5445efdc1d5a43b1`；架构文档与 Headless 术语定义已同步。
+
+最终验证与审查：
+
+- 在集成分支经 `rtk proxy sh -c` 运行 `env -u NO_COLOR bun run check`：退出码 0；格式、lint、类型、Knip 和全部测试通过；1800 pass / 0 fail / 9496 assertions，138 个测试文件，215.84 秒。日志：`/tmp/goal-integration-final-check.log`。
+- Standards：没有文档规范违规；唯一低优先级重复建议已在 `a7e7453` 中修正，Goal phase 的 glyph、颜色与 dimming 共用前端元数据，复核无新增发现。
+- Spec：没有可操作的遗漏、错误行为或范围扩张；round 与同 Run 收尾提示词已对照本地 DSH 源码核实。
+- `git diff --check` 通过。五个实施工作树均在确认干净且提交已进入集成分支后归档；交付保留在集成分支。
+
+### Main integration
+
+- 按用户要求将 `codex/goal-integration` 的 `3c92dff` 合入 `main`（合并前为 `3f9ae3b`）。保留主分支的 Web Fetch 功能；CLI 工具列表同时包含 `web_fetch`、`create_goal` 和 `update_goal`，TUI 同时保留 Web Fetch 的状态摘要与 Goal 工具卡。
+- 在主仓库对合并结果经 `rtk proxy sh -c` 运行 `env -u NO_COLOR bun run check`：退出码 0；格式、lint、类型、Knip 全通过；1968 pass / 0 fail / 9972 assertions，144 个测试文件，224.43 秒。日志：`/tmp/goal-main-check.log`。

@@ -83,6 +83,13 @@ import {
 } from "../checkpoint/index.ts";
 
 import { planState, planModeReminder, PLAN_MODE_EXIT } from "../plan-mode/index.ts";
+import {
+  createGoalController,
+  createGoalTools,
+  goalState,
+  renderGoalRoundPrompt,
+  type GoalView,
+} from "../goal/index.ts";
 import type { OnInteractionStart } from "../interaction/index.ts";
 import { createHooks, mergeHooks, type CommonHookResult, type HookInput } from "../hooks/index.ts";
 
@@ -154,7 +161,7 @@ function projectBranch(entries: Entry[]) {
     baselinePersisted: transcriptMessages.length > 0,
     promptTexts: new Map(
       entries.flatMap((entry) =>
-        entry.type === "message" && entry.message.role === "user"
+        entry.type === "message" && entry.message.role === "user" && !("source" in entry.message)
           ? [[entry.id, promptText(entry.message)] as const]
           : [],
       ),
@@ -165,7 +172,7 @@ function projectBranch(entries: Entry[]) {
 export interface Session {
   /** Historical child Runs requiring attention on this Session Resume. No Run is started. */
   readonly recovery: SessionRecovery;
-  /** Includes runs started internally by asyncRewake hooks. */
+  /** Includes internal Hook and Goal Runs. */
   readonly running: boolean;
   /** Cancels the current run, including one started without a frontend controller. */
   interruptRun(): void;
@@ -183,6 +190,18 @@ export interface Session {
   setModel(spec: string): Promise<void>;
   readonly permissionMode: PermissionMode;
   readonly planMode: boolean;
+  /** Persisted Goal plus process-local activation; restored Sessions are always disarmed. */
+  readonly goal: GoalView | undefined;
+  /** Idle only. Creates and arms a Goal, immediately starting its first internal Run. */
+  createGoal(objective: string, options?: { maxRounds?: number }): Promise<GoalView>;
+  /** Idle only. Preserves rounds and activation; a complete Goal is replaced with a new one. */
+  editGoal(objective: string): Promise<GoalView>;
+  /** Run-safe. Stops continuation without interrupting the current Run. */
+  pauseGoal(): Promise<GoalView>;
+  /** Idle only. Arms a restored, paused or blocked Goal and starts the next round. */
+  resumeGoal(): Promise<GoalView>;
+  /** Run-safe. Persists a tombstone without interrupting the current Run. */
+  clearGoal(): Promise<void>;
   /** Changes guidance for the next model call and persists the state, also outside a Run. */
   setPlanMode(on: boolean): Promise<void>;
   /** Applies to the next tool call; never persisted. */
@@ -210,7 +229,7 @@ export interface Session {
   dispose(reason?: "exit" | "other"): Promise<void>;
   /** External completion boundary, including Hook autoruns; never await from a Run callback. */
   waitForIdle(): Promise<void>;
-  /** Waits behind a hook autorun; a competing user run is rejected. */
+  /** Waits behind an internal Hook or Goal Run; a competing user Run is rejected. */
   run(
     prompt: string,
     options?: {
@@ -310,7 +329,16 @@ async function createSessionInternal(
   try {
     const branch =
       (await stored.branch("main", context)) ?? (await stored.createBranch("main", null, context));
-    for (const message of internal.initialMessages ?? [])
+    // Fork preserves completed conversation, but a parent's Goal guidance is not
+    // child guidance: children have no Goal state or continuation driver.
+    for (const message of (internal.initialMessages ?? []).filter(
+      (message) =>
+        !(
+          internal.parentSessionId &&
+          message.role === "system-reminder" &&
+          message.source === "goal"
+        ),
+    ))
       await branch.appendMessage(message, context);
     initialTitle = await stored.getName(context);
     entries = await branch.findEntries({ order: "oldestFirst" }, context);
@@ -332,6 +360,7 @@ async function createSessionInternal(
   const toolState = createToolState(
     [
       todoState,
+      ...(internal.parentSessionId ? [] : [goalState]),
       subagentsState(stored.metadata.id),
       subagentRunState,
       planState,
@@ -787,6 +816,34 @@ async function createSessionInternal(
           createExitPlanModeTool(plan, options.onPlanReview, onInteractionStart),
         ]
       : [];
+  let runDirectHuman = false;
+  let runGoalRound = false;
+  const goalTools = internal.parentSessionId
+    ? []
+    : createGoalTools(
+        // Construction declares tools before Agent/controller initialization; execution occurs after both exist.
+        {
+          view: () => goal.view(),
+          create: (...args) => goal.create(...args),
+          edit: (...args) => goal.edit(...args),
+          pause: () => goal.pause(),
+          resume: (...args) => goal.resume(...args),
+          finish: (...args) => goal.finish(...args),
+        },
+        {
+          directHuman: () => runDirectHuman,
+          goalRound: () => runGoalRound,
+          wrapup(text) {
+            const message = {
+              role: "user" as const,
+              content: [{ type: "text" as const, text }],
+              timestamp: Date.now(),
+              source: "goal",
+            };
+            agent.steer(message);
+          },
+        },
+      );
   const initialTools = [
     ...createBuiltinTools(
       cwd,
@@ -798,6 +855,7 @@ async function createSessionInternal(
       options.webFetch,
     ),
     ...planTools,
+    ...goalTools,
   ];
   if (!internal.parentSessionId) {
     const discovered = await discoverSubagentTypes(
@@ -894,7 +952,7 @@ async function createSessionInternal(
   const sessionTitle = createSessionTitle({
     title: initialTitle,
     source: toolState.get("title-source") as TitleSource | undefined,
-    hasPrompt: initialBranch.transcriptMessages.some((message) => message.role === "user"),
+    hasPrompt: initialBranch.promptTexts.size > 0,
     childDescription: internal.originDescription,
     getModel: async () =>
       settings.titleModel
@@ -925,6 +983,45 @@ async function createSessionInternal(
   const sideLifetime = new AbortController();
   let runMcp: ReturnType<typeof createMcpConnections> | undefined;
   let disposePromise: Promise<void> | undefined;
+  const goal = createGoalController({
+    getSnapshot: () => toolState.get("goal"),
+    assertAvailable(idle) {
+      if (internal.parentSessionId)
+        throw createUserVisibleError("Goals are only available in top-level Sessions.", {
+          code: "goal-child-session",
+          params: {},
+        });
+      if (disposePromise) throw new Error("Session has been disposed.");
+      if (rewinding || compacting || changingModel || (idle && (running || queuedUserRuns)))
+        throw createUserVisibleError("Goal operation requires an idle Session.", {
+          code: "goal-busy",
+          params: {},
+        });
+    },
+    async persist(snapshot) {
+      await withStore(async (target) => {
+        if (!baselinePersisted) {
+          const branch = await target.branch("main", context);
+          if (!branch) throw new Error("Session has no main branch.");
+          await branch.appendMessage(agent.state.messages[0]!, context);
+          baselinePersisted = true;
+        }
+        return toolState.set("goal", snapshot, target, context);
+      });
+    },
+    async changed(value) {
+      const event = { type: "tool_state_changed" as const, name: "goal", value };
+      if (emitRunEvent) await emitRunEvent(event);
+      else broadcast({ ...event, sessionId: stored.metadata.id });
+    },
+    warn() {
+      if (permissionConfiguration.getMode() === "ask")
+        (options.onWarning ?? console.warn)(
+          "Goal continuation may wait for permissions in ask mode. Consider switching to auto-review.",
+        );
+    },
+    schedule: () => scheduleRewake?.(),
+  });
   let inputTokens: number | undefined;
   // Preserve context_usage's existing resume estimate while reports can display
   // the last stored provider count until an operation invalidates it.
@@ -1149,6 +1246,7 @@ async function createSessionInternal(
         ...(invocation === undefined ? {} : { skillInvocation: invocation }),
         timestamp: Date.now(),
       };
+      runDirectHuman = true;
       agent.steer(message);
     },
     subscribe(onEvent: (event: SessionEvent) => void) {
@@ -1230,6 +1328,20 @@ async function createSessionInternal(
     setPermissionMode(mode) {
       permissionConfiguration.setMode(mode);
     },
+    get goal() {
+      return internal.parentSessionId ? undefined : goal.view();
+    },
+    createGoal(objective, options) {
+      return goal.create(objective, options);
+    },
+    editGoal(objective) {
+      return goal.edit(objective);
+    },
+    pauseGoal: goal.pause,
+    resumeGoal() {
+      return goal.resume();
+    },
+    clearGoal: goal.clear,
     get planMode() {
       return plan.getActive();
     },
@@ -1395,6 +1507,7 @@ async function createSessionInternal(
           planActive = (toolState.get("plan") as { active: boolean } | undefined)?.active ?? false;
           planEntered = toolState.get("plan") !== undefined;
           pendingPlanEvents.length = 0;
+          goal.disarm();
           // A compact SessionStart hook may be waiting for the next user. Its
           // discarded branch context must not leak into the replacement prompt.
           pendingSessionContexts.length = 0;
@@ -1430,13 +1543,17 @@ async function createSessionInternal(
       }
     },
     interruptSubagent: subagents.interrupt,
-    waitForIdle() {
-      return runSettled?.promise ?? Promise.resolve();
+    async waitForIdle() {
+      while (running) await runSettled?.promise;
+      await goal.settle();
+      if (running) await session.waitForIdle();
     },
     dispose(reason = "exit") {
       if (!disposePromise) {
         // Publish the promise before callbacks or hooks can re-enter dispose.
         disposePromise = Promise.resolve().then(async () => {
+          goal.disarm();
+          await goal.settle();
           sideLifetime.abort();
           const mcp = runMcp;
           hooks.dispose();
@@ -1465,10 +1582,12 @@ async function createSessionInternal(
         signal,
         onEvent,
       }: { signal?: AbortSignal; onEvent?: (event: SessionEvent) => void | Promise<void> } = {},
-      fromHook = false,
+      source: "user" | "hook" | "goal" = "user",
     ) {
-      // Startup hook feedback can start a run before a frontend submits its user task.
-      if (running && hookRunActive && !fromHook) {
+      const fromHook = source === "hook";
+      const fromGoal = source === "goal";
+      // Human input waits behind internal Runs and takes precedence over continuation.
+      if (running && hookRunActive && source === "user") {
         queuedUserRuns++;
         const cancelled = Promise.withResolvers<never>();
         const abortWaiting = () => cancelled.reject(signal?.reason);
@@ -1505,7 +1624,9 @@ async function createSessionInternal(
           params: {},
         });
       running = true;
-      hookRunActive = fromHook;
+      runDirectHuman = source === "user";
+      runGoalRound = fromGoal;
+      hookRunActive = source !== "user";
       const settled = Promise.withResolvers<void>();
       runSettled = settled;
       if (!fromHook) {
@@ -1525,6 +1646,7 @@ async function createSessionInternal(
         role: "user",
         content: [{ type: "text", text: prompt }],
         timestamp: Date.now(),
+        ...(fromGoal && { source: "goal" }),
       };
       // pi prepareRequest has no end action. A private control exception exits its
       // loop; the synthetic failure it creates is consumed below, never persisted.
@@ -1593,6 +1715,7 @@ async function createSessionInternal(
       let active: StoredSession | undefined;
       let unsubscribe;
       try {
+        if (fromGoal) await goal.startRound();
         if (childRun) {
           await persistChildRun(childRun);
           childRunSaved = true;
@@ -1618,6 +1741,7 @@ async function createSessionInternal(
               options.webFetch,
             ),
             ...planTools,
+            ...goalTools,
             ...mcp.tools,
           ];
           if (!internal.parentSessionId) {
@@ -1672,7 +1796,7 @@ async function createSessionInternal(
             result.reason = hookStopReason;
             return result;
           }
-          if (!internal.parentSessionId && !fromHook) {
+          if (!internal.parentSessionId && source === "user") {
             const promptHook = await hooks.run(
               "UserPromptSubmit",
               { ...hookInput(), prompt },
@@ -1829,7 +1953,7 @@ async function createSessionInternal(
                 event.message.source === "session-resume"
               )
                 recoveryPending = false;
-              if (event.message === userPrompt && !fromHook && !internal.parentSessionId) {
+              if (event.message === userPrompt && source === "user" && !internal.parentSessionId) {
                 promptTexts.set(entryId, prompt);
                 await checkpoint?.start(entryId);
                 await sessionTitle.firstPrompt(prompt);
@@ -1888,7 +2012,7 @@ async function createSessionInternal(
           await agent.prompt([
             ...reminders,
             userPrompt,
-            ...(!fromHook && recoveryPending
+            ...(source === "user" && recoveryPending
               ? [
                   {
                     role: "system-reminder" as const,
@@ -2039,6 +2163,7 @@ async function createSessionInternal(
               ...(result.reason && { reason: result.reason }),
             });
           }
+          if (result.error || signal?.aborted || childModelStop) goal.disarm();
           await emit({ type: "result", ...result });
         } finally {
           currentResult = undefined;
@@ -2072,9 +2197,26 @@ async function createSessionInternal(
         rewakeChanged.resolve();
         rewakeChanged = Promise.withResolvers<void>();
       }
+    } else if (queuedUserRuns) {
+      return;
     } else if (pendingRewakes.length) {
       const reason = pendingRewakes.shift()!;
-      void session.run(reason, { onEvent: rewakeObserver }, true).catch(() => {});
+      void session.run(reason, { onEvent: rewakeObserver }, "hook").catch(() => {});
+    } else {
+      const current = goal.view();
+      if (current?.phase === "active" && current.armed) {
+        if (current.roundsStarted >= current.maxRounds)
+          void goal.startRound().catch((error: unknown) => {
+            goal.disarm();
+            (options.onWarning ?? console.warn)(
+              `Goal continuation failed: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          });
+        else
+          void session
+            .run(renderGoalRoundPrompt(current), { onEvent: rewakeObserver }, "goal")
+            .catch(() => {});
+      }
     }
   };
   scheduleRewake();

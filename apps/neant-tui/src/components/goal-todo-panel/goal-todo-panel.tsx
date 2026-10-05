@@ -23,13 +23,15 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import type { TodoItem } from "@neant/agent";
+import type { GoalView, TodoItem } from "@neant/agent";
 import type { Locale } from "@neant/i18n";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Box, ThemedBox, ThemedText } from "@neant/tui";
 import { createTuiI18n } from "../../i18n";
+import { goalPhasePresentation } from "../goal-phase";
 
 export function GoalTodoPanel({
+  goal,
   todos,
   working,
   collapsed,
@@ -37,6 +39,7 @@ export function GoalTodoPanel({
   locale = "zh",
   maxHeight = 12,
 }: {
+  goal?: GoalView;
   todos: readonly TodoItem[];
   working: boolean;
   collapsed: boolean;
@@ -45,17 +48,30 @@ export function GoalTodoPanel({
   maxHeight?: number;
 }) {
   const [headerHovered, setHeaderHovered] = useState(false);
+  const start = useRef<{ id: string; at: number } | undefined>(undefined);
+  if (goal && start.current?.id !== goal.id) start.current = { id: goal.id, at: Date.now() };
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!goal || goal.phase === "complete") return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [goal?.id, goal?.phase]);
+  const seconds = Math.max(0, Math.floor((now - (start.current?.at ?? now)) / 1000));
+  const elapsed = seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m${seconds % 60}s`;
+  const phase = goal && goalPhasePresentation[goal.phase];
   const t = createTuiI18n(locale);
   const remaining = working ? todos : todos.filter((todo) => todo.status !== "completed");
-  if (remaining.length === 0) return null;
+  if (!goal && remaining.length === 0) return null;
   const done = todos.filter((todo) => todo.status === "completed").length;
   const preview =
     todos.find((todo) => todo.status === "in_progress") ??
     todos.find((todo) => todo.status !== "completed");
-  const compact = maxHeight < 3;
+  const rootHeight = goal ? 1 + Number(goal.phase === "blocked") : 0;
+  const todoHeight = Math.max(1, maxHeight - rootHeight);
+  const compact = todoHeight < 3;
   const folded = collapsed || compact;
-  const paddingTop = maxHeight >= 4 ? 1 : 0;
-  const rowBudget = compact ? 1 : Math.max(1, maxHeight - paddingTop);
+  const paddingTop = todoHeight >= 4 ? 1 : 0;
+  const rowBudget = compact ? 1 : Math.max(1, todoHeight - paddingTop);
   // Short viewports share the overflow row with the hint to keep the input visible.
   const hintHeight = !folded && rowBudget >= 3 ? 1 : 0;
   const listBudget = rowBudget - hintHeight;
@@ -65,7 +81,33 @@ export function GoalTodoPanel({
   const hidden = folded ? 0 : remaining.length - visible.length;
   return (
     <Box flexDirection="column" paddingX={2} paddingTop={paddingTop}>
-      {/* The Todo section hangs below the future Goal root row. */}
+      {goal && (
+        <Box flexDirection="column" flexShrink={0}>
+          <Box height={1} flexDirection="row">
+            <Box width={3} flexShrink={0}>
+              <ThemedText color="suggestion">🎯</ThemedText>
+            </Box>
+            <Box flexGrow={1} flexShrink={1}>
+              <ThemedText bold wrap="truncate">
+                {goal.objective.replace(/[\r\n]+/g, " ")}
+              </ThemedText>
+            </Box>
+            <Box marginLeft={1} flexShrink={0}>
+              <ThemedText color={phase?.color} dimColor={phase?.dimColor} wrap="truncate">
+                {`${phase?.glyph} ${goal.phase} · ${goal.roundsStarted}/${goal.maxRounds} · ${elapsed}`}
+              </ThemedText>
+            </Box>
+          </Box>
+          {goal.phase === "blocked" && (
+            <Box height={1}>
+              <ThemedText
+                color="error"
+                wrap="truncate"
+              >{`│ ${goal.blockedReason?.replace(/[\r\n]+/g, " ")}`}</ThemedText>
+            </Box>
+          )}
+        </Box>
+      )}
       <Box flexDirection="column">
         <ThemedBox
           height={1}

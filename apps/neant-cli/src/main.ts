@@ -51,6 +51,8 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
       allowPositionals: true,
       options: {
         prompt: { type: "string", short: "p" },
+        goal: { type: "string" },
+        "max-goal-rounds": { type: "string" },
         model: { type: "string" },
         thinking: { type: "string" },
         resume: { type: "string" },
@@ -74,6 +76,19 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
       } else collectingTools = false;
     }
     parsePermissionRules({ allow: values["allow-tools"] }, "--allow-tools");
+    if (values.goal !== undefined && values.prompt !== undefined)
+      throw new Error("--goal conflicts with -p / --prompt");
+    if (values.goal !== undefined && !values.goal.trim())
+      throw new Error("--goal objective cannot be empty");
+    if (values["max-goal-rounds"] !== undefined) {
+      if (values.goal === undefined) throw new Error("--max-goal-rounds requires --goal");
+      if (
+        !/^\d+$/.test(values["max-goal-rounds"]) ||
+        !Number.isSafeInteger(Number(values["max-goal-rounds"])) ||
+        Number(values["max-goal-rounds"]) < 1
+      )
+        throw new Error("--max-goal-rounds must be a positive integer");
+    }
     if (values["output-format"] !== "text" && values["output-format"] !== "stream-json") {
       throw new Error("--output-format must be text or stream-json");
     }
@@ -105,6 +120,7 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
   }
   let session: Session | undefined;
   let unsubscribe: (() => void) | undefined;
+  let interrupt: (() => void) | undefined;
   try {
     const cwd = io.session?.cwd ?? process.cwd();
     const homeDir = io.session?.homeDir ?? homedir();
@@ -126,6 +142,7 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
       trustProjectMcp: values["trust-project-mcp"] ?? io.session?.trustProjectMcp,
     });
     const streamJson = values["output-format"] === "stream-json";
+    let runFailed = false;
     unsubscribe = session.subscribe((event) => {
       if (streamJson) io.stdout(`${JSON.stringify(event)}\n`);
       else if (event.type === "hook_message") io.stderr(`${event.message}\n`);
@@ -136,7 +153,37 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
         io.stderr(
           `${event.reason ?? (event.stopReason === "hook_blocked" ? "Prompt blocked by hook" : "Stopped by hook")}\n`,
         );
+      if (values.goal !== undefined && event.type === "result") {
+        if (!streamJson && event.text) io.stdout(`${event.text}\n`);
+        if (!event.success) {
+          runFailed = true;
+          if (event.error && !io.signal?.aborted) io.stderr(`${event.error}\n`);
+        }
+      }
     });
+    if (values.goal !== undefined) {
+      if (session.goal && session.goal.phase !== "complete")
+        throw new Error(
+          "An unfinished Goal already exists in this Session. Use the TUI to edit, resume or clear it.",
+        );
+      interrupt = () => session?.interruptRun();
+      io.signal?.addEventListener("abort", interrupt);
+      io.signal?.throwIfAborted();
+      // SessionStart hooks may already have started an internal Run. Preserve the
+      // supplied objective until that Run settles, then use the idle-only API.
+      await session.waitForIdle();
+      io.signal?.throwIfAborted();
+      await session.createGoal(values.goal, {
+        maxRounds:
+          values["max-goal-rounds"] === undefined ? undefined : Number(values["max-goal-rounds"]),
+      });
+      io.signal?.throwIfAborted();
+      do {
+        await session.waitForIdle();
+        io.signal?.throwIfAborted();
+      } while (session.goal?.armed);
+      return !runFailed && session.goal?.phase === "complete" ? 0 : 1;
+    }
     const prompt = values.prompt ?? (await readStdin(io)).trimEnd();
     const { text } = await session.run(prompt, { signal: io.signal });
     if (!streamJson) io.stdout(`${text}\n`);
@@ -151,8 +198,10 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
   } finally {
     try {
       await session?.dispose();
+      if (values.goal !== undefined) await session?.waitForIdle();
     } finally {
       unsubscribe?.();
+      if (interrupt) io.signal?.removeEventListener("abort", interrupt);
     }
   }
 }

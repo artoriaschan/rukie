@@ -504,7 +504,8 @@ test.each(["oversized batch", "split prefix"])(
       ...(split ? [fauxAssistantMessage("Split-turn summary: finish the file work.")] : []),
       fauxAssistantMessage("finished"),
     ]);
-    fake.model.contextWindow = split ? 12_000 : 4000;
+    // Keep the first read batch below the threshold and the last result above it, including builtin tool declarations.
+    fake.model.contextWindow = split ? 14_000 : 4000;
     const session = await createSession({ ...dirs, ...fake });
     await session.run("first");
     const events: SessionEvent[] = [];

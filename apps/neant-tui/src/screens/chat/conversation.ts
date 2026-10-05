@@ -1,6 +1,6 @@
 import type { Locale } from "@neant/i18n";
 import { createTuiI18n, formatError } from "../../i18n";
-import type { Session, SessionEvent, SessionRecovery, TodoItem } from "@neant/agent";
+import type { GoalView, Session, SessionEvent, SessionRecovery, TodoItem } from "@neant/agent";
 import {
   isUnknownToolOutcome,
   type ContextUsageEvent,
@@ -8,6 +8,7 @@ import {
   type ContextReport,
 } from "@neant/shared";
 import type { TpsSample } from "../../components/status-line";
+import { goalPhasePresentation } from "../../components";
 import { reduceSubagent, restoreSubagents, type SubagentState } from "./subagents";
 import { createActivity, reduce } from "./activity/activity";
 
@@ -111,16 +112,22 @@ function toolEntry(
             : {}),
         }
       : undefined;
+  const goal =
+    ["create_goal", "update_goal"].includes(tool.name) && !isError
+      ? goalSummary(resultText(result), t)
+      : undefined;
   const todo = tool.name === "todo_write" && !isError ? todoSummary(tool.args, t) : undefined;
   return {
     type: "tool",
     ...(review && { planReview: review }),
     summary:
-      todo !== undefined
-        ? t("todo.summary")
-        : tool.name === "ask_user_question" && !isError
-          ? t("question.summary")
-          : tool.summary,
+      goal !== undefined
+        ? goal.summary
+        : todo !== undefined
+          ? t("todo.summary")
+          : tool.name === "ask_user_question" && !isError
+            ? t("question.summary")
+            : tool.summary,
     isError,
     agentId:
       typeof result.details === "object" &&
@@ -135,7 +142,7 @@ function toolEntry(
         ? questionSummary(tool.args, resultText(result), t)
         : tool.name === "web_fetch"
           ? resultText(result).split(/\r?\n/)[0]
-          : (todo ?? resultText(result)),
+          : (goal?.result ?? todo ?? resultText(result)),
     error: isError
       ? hook !== undefined
         ? t("tool.hook-denied", {
@@ -154,6 +161,50 @@ function toolEntry(
               t,
             )
       : undefined,
+  };
+}
+
+function goalSummary(text: string, t: ReturnType<typeof createTuiI18n>) {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !("goal" in value) ||
+    !("armed" in value) ||
+    typeof value.armed !== "boolean"
+  )
+    return undefined;
+  const goal = value.goal;
+  if (
+    typeof goal !== "object" ||
+    goal === null ||
+    !("objective" in goal) ||
+    typeof goal.objective !== "string" ||
+    !("phase" in goal) ||
+    typeof goal.phase !== "string" ||
+    !("roundsStarted" in goal) ||
+    typeof goal.roundsStarted !== "number" ||
+    !("maxRounds" in goal) ||
+    typeof goal.maxRounds !== "number"
+  )
+    return undefined;
+  const phase = goal.phase;
+  if (phase !== "active" && phase !== "paused" && phase !== "blocked" && phase !== "complete")
+    return undefined;
+  const presentation = goalPhasePresentation[phase];
+  const singleLine = (text: string) => text.replace(/[\r\n]+/g, " ");
+  return {
+    summary: `🎯 ${singleLine(goal.objective)}`,
+    result:
+      `${presentation.glyph} ${phase} · ${goal.roundsStarted}/${goal.maxRounds} · ${t(value.armed ? "goal.armed" : "goal.disarmed")}` +
+      (goal.phase === "blocked" && "blockedReason" in goal && typeof goal.blockedReason === "string"
+        ? `\n⛔ ${singleLine(goal.blockedReason)}`
+        : ""),
   };
 }
 
@@ -237,6 +288,7 @@ function questionSummary(args: unknown, text: string, t: ReturnType<typeof creat
 }
 
 interface ViewState {
+  goal: GoalView | undefined;
   planMode: boolean;
   waitingSubagents: number;
   subagents: Readonly<Record<string, SubagentState>>;
@@ -285,7 +337,8 @@ function replayMessages(
   const tools = new Map<string, ToolCall>();
   return messages.flatMap((message): CompletedEntry[] => {
     const text = messageText(message);
-    if (message.role === "user") return [userMessageEntry(message)];
+    if (message.role === "user")
+      return "source" in message && message.source === "goal" ? [] : [userMessageEntry(message)];
     if (message.role === "assistant") {
       for (const content of message.content) {
         if (content.type === "toolCall")
@@ -428,6 +481,7 @@ function reduceEvent(
     case "message_end": {
       const text = messageText(event.message);
       if (event.message.role === "user") {
+        if ("source" in event.message && event.message.source === "goal") return state;
         return {
           ...state,
           completed: [...state.completed, userMessageEntry(event.message)],
@@ -565,6 +619,7 @@ function createViewState(session: Session, model: string, locale: Locale): ViewS
   const t = createTuiI18n(locale);
   return {
     planMode: session.planMode,
+    goal: session.goal,
     waitingSubagents: 0,
     subagents: restoreSubagents(session.toolState("subagents"), session.recovery),
     todos: (session.toolState("todo") as TodoItem[] | undefined) ?? [],
@@ -634,6 +689,10 @@ export function createConversation(session: Session, model: string, locale: Loca
             ? session.recovery
             : undefined,
         ),
+        goal:
+          event.type === "result" || (event.type === "tool_state_changed" && event.name === "goal")
+            ? session.goal
+            : state.goal,
         activity: reduce(
           event.type === "session_start" && !state.running
             ? reduce(state.activity, { type: "submit" }, now)

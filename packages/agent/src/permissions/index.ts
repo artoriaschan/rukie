@@ -59,6 +59,8 @@ function decidePermission({ mode, toolName }: PermissionOptions): PermissionDeci
       "ask_user_question",
       "exit_plan_mode",
       "todo_write",
+      "create_goal",
+      "update_goal",
       "subagent",
       "subagent_fork",
       "send_message",

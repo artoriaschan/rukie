@@ -113,7 +113,11 @@ export function PermissionDialog({
       )}
       <Box flexDirection="column" marginTop={spacious ? 1 : 0} flexShrink={0}>
         {choices.map(({ label }, index) => (
-          <ListItem key={label} focused={selected === index}>{`${index + 1}. ${label}`}</ListItem>
+          <ListItem
+            key={label}
+            focused={selected === index}
+            singleLine={maxHeight < 6}
+          >{`${index + 1}. ${label}`}</ListItem>
         ))}
       </Box>
       <HintLine>

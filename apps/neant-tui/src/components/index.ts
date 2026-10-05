@@ -10,6 +10,7 @@ export { Logo } from "./logo";
 export { ActivityLine } from "./activity-line";
 export { QuestionDialog } from "./question-dialog";
 export { GoalTodoPanel } from "./goal-todo-panel";
+export { goalPhasePresentation } from "./goal-phase";
 export { allocatePanelHeights } from "./panel-layout";
 export { SubagentMessage } from "./subagent-message";
 export { SubagentPanel } from "./subagent-panel";

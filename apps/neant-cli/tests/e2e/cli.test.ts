@@ -326,6 +326,194 @@ async function neant(
   return { stdout, stderr, exitCode };
 }
 
+test("--goal prints its round and exits 1 when its round limit blocks continuation", async () => {
+  const { server, ...dirs } = await setup();
+  const result = await neant(["--goal", "finish migration", "--max-goal-rounds", "1"], {
+    ...dirs,
+    key: "sk-test",
+  });
+  expect(result.exitCode).toBe(1);
+  expect(result.stdout).toBe("hello from fake\n");
+  expect(result.stderr).toContain("auto-review");
+  expect(server.requests).toHaveLength(1);
+  expect(JSON.stringify(server.requests[0]!.body.messages)).toContain("finish migration");
+});
+
+test.each(["complete", "blocked"])(
+  "--goal waits for the %s wrapup and streams Goal state through existing events",
+  async (action) => {
+    const { server, ...dirs } = await setup(
+      {},
+      {
+        toolCalls: [
+          {
+            name: "update_goal",
+            arguments: {
+              action,
+              ...(action === "blocked" ? { blocked_reason: "Need repository access" } : {}),
+            },
+          },
+        ],
+      },
+    );
+    const result = await neant(["--goal", "finish migration", "--output-format", "stream-json"], {
+      ...dirs,
+      key: "sk-test",
+    });
+    expect(result.exitCode).toBe(action === "complete" ? 0 : 1);
+    const events = parseEvents(result.stdout);
+    expect(
+      events.filter((event) => event.type === "tool_state_changed" && event.name === "goal"),
+    ).toMatchObject([
+      {
+        value: { objective: "finish migration", phase: "active", roundsStarted: 0, maxRounds: 256 },
+      },
+      { value: { phase: "active", roundsStarted: 1 } },
+      { value: { phase: action } },
+    ]);
+    expect(events.at(-1)).toMatchObject({ type: "result", success: true, text: "hello from fake" });
+    expect(server.requests).toHaveLength(2);
+    expect(JSON.stringify(server.requests[1]!.body.messages)).toContain(`<goal_${action}>`);
+  },
+);
+
+test("--goal prints every round in order, including its final wrapup", async () => {
+  const { server, ...dirs } = await setup(
+    {},
+    {
+      responses: [
+        "first round progress",
+        { toolCalls: [{ name: "update_goal", arguments: { action: "complete" } }] },
+        "verified migration complete",
+      ],
+    },
+  );
+  const result = await neant(["--goal", "finish migration", "--max-goal-rounds", "2"], {
+    ...dirs,
+    key: "sk-test",
+  });
+  expect(result).toMatchObject({
+    exitCode: 0,
+    stdout: "first round progress\nverified migration complete\n",
+  });
+  expect(server.requests).toHaveLength(3);
+  expect(JSON.stringify(server.requests[1]!.body.messages)).toContain("Round: 2/2");
+});
+
+test.each([
+  [["--goal", "objective", "-p", "prompt"], "conflicts"],
+  [["--goal", "objective", "--prompt", ""], "conflicts"],
+  [["--goal", " "], "objective cannot be empty"],
+  [["--max-goal-rounds", "1"], "requires --goal"],
+  ...["0", "-1", "1.5", "NaN", "Infinity", "1e2", "9007199254740992", ""].map(
+    (value) => [["--goal", "objective", `--max-goal-rounds=${value}`], "positive integer"] as const,
+  ),
+] as const)("invalid Goal flags %j exit 2 before model requests", async (flags, message) => {
+  const { server, ...dirs } = await setup();
+  const result = await neant([...flags], { ...dirs, key: "sk-test", input: "unused stdin" });
+  expect(result.exitCode).toBe(2);
+  expect(result.stderr).toContain(message);
+  expect(result.stdout).toBe("");
+  expect(server.requests).toHaveLength(0);
+});
+
+test("--goal exits 1 on a model error and reports the failure", async () => {
+  const { server, ...dirs } = await setup({}, { error: "Goal provider failed" });
+  const result = await neant(["--goal", "finish migration", "--output-format", "stream-json"], {
+    ...dirs,
+    key: "sk-test",
+  });
+  expect(result.exitCode).toBe(1);
+  expect(result.stderr).toContain("Goal provider failed");
+  expect(parseEvents(result.stdout).at(-1)).toMatchObject({ type: "result", success: false });
+  expect(server.requests).toHaveLength(1);
+});
+
+test("--resume --goal rejects an unfinished Goal without invoking the model", async () => {
+  const { server, ...dirs } = await setup();
+  const opts = { ...dirs, key: "sk-test" };
+  const seed = await neant(
+    ["--goal", "old objective", "--max-goal-rounds", "1", "--output-format", "stream-json"],
+    opts,
+  );
+  expect(seed.exitCode).toBe(1);
+  const id = parseEvents(seed.stdout)[0].sessionId;
+  const result = await neant(["--resume", id, "--goal", "new objective"], opts);
+  expect(result.exitCode).toBe(1);
+  expect(result.stderr).toContain("unfinished Goal");
+  expect(result.stderr).toContain("TUI");
+  expect(result.stdout).toBe("");
+  expect(server.requests).toHaveLength(1);
+});
+
+test.each(["none", "complete"])("--resume --goal creates a Goal after %s", async (previous) => {
+  const { server, ...dirs } = await setup(
+    {},
+    {
+      responses: [
+        ...(previous === "complete"
+          ? [
+              { toolCalls: [{ name: "update_goal", arguments: { action: "complete" } }] },
+              "old wrapup",
+            ]
+          : ["old answer"]),
+        { toolCalls: [{ name: "update_goal", arguments: { action: "complete" } }] },
+        "new wrapup",
+      ],
+    },
+  );
+  const opts = { ...dirs, key: "sk-test" };
+  const seed = await neant(
+    [previous === "none" ? "-p" : "--goal", "old objective", "--output-format", "stream-json"],
+    opts,
+  );
+  expect(seed.exitCode).toBe(0);
+  const events = parseEvents(seed.stdout);
+  const oldGoal = events.find(
+    (event) => event.type === "tool_state_changed" && event.name === "goal",
+  )?.value;
+  const result = await neant(
+    ["--resume", events[0].sessionId, "--goal", "new objective", "--output-format", "stream-json"],
+    opts,
+  );
+  expect(result.exitCode).toBe(0);
+  const resumed = parseEvents(result.stdout);
+  const created = resumed.find(
+    (event) => event.type === "tool_state_changed" && event.name === "goal",
+  ).value;
+  expect(created).toMatchObject({ objective: "new objective", phase: "active", roundsStarted: 0 });
+  if (oldGoal) expect(created.id).not.toBe(oldGoal.id);
+  expect(resumed.at(-1)).toMatchObject({ type: "result", text: "new wrapup" });
+  expect(server.requests).toHaveLength(previous === "complete" ? 4 : 3);
+});
+
+test("--goal denies headless interactions and still reaches completion", async () => {
+  const { server, ...dirs } = await setup(
+    {},
+    {
+      responses: [
+        { toolCalls: [{ name: "write", arguments: { path: "forbidden.txt", content: "denied" } }] },
+        { toolCalls: [{ name: "update_goal", arguments: { action: "complete" } }] },
+        "denial handled",
+      ],
+    },
+  );
+  const result = await neant(["--goal", "finish safely", "--output-format", "stream-json"], {
+    ...dirs,
+    key: "sk-test",
+  });
+  expect(result.exitCode).toBe(0);
+  const events = parseEvents(result.stdout);
+  const start = events.find((event) => event.type === "session_start");
+  expect(start.tools).not.toContain("ask_user_question");
+  expect(start.tools).not.toContain("exit_plan_mode");
+  expect(
+    events.some((event) => event.type === "permission_denied" && event.toolName === "write"),
+  ).toBe(true);
+  expect(await Bun.file(join(dirs.cwd, "forbidden.txt")).exists()).toBe(false);
+  expect(JSON.stringify(server.requests[1]!.body.messages)).toContain("Tool not authorized");
+});
+
 test.each(["text", "stream-json"])(
   "%s loads skills while malformed skill warnings go only to stderr",
   async (format) => {
@@ -476,6 +664,8 @@ test("stream-json emits session metadata, verbatim pi events, and the Run result
       "skill",
       "todo_write",
       "web_fetch",
+      "create_goal",
+      "update_goal",
       "subagent",
       "subagent_fork",
       "send_message",
@@ -728,103 +918,148 @@ test("an unknown --resume id exits 1 with a clear error", async () => {
   expect(server.requests).toHaveLength(0);
 });
 
-test("SIGINT exits 130 after saving the interrupted Run's messages", async () => {
-  const { server, ...dirs } = await setup({}, { holdOpen: true });
-  const proc = Bun.spawn(["bun", MAIN, "-p", "interrupted prompt"], {
-    cwd: dirs.cwd,
-    env: { PATH: process.env.PATH, HOME: dirs.home, FAKE_API_KEY: "sk-test" },
-    stdin: "ignore",
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  cleanups.push(() => {
-    if (proc.exitCode === null) proc.kill("SIGKILL");
-  });
-  const output = new Response(proc.stdout).text();
-  const errors = new Response(proc.stderr).text();
-  await server.received;
-  proc.kill("SIGINT");
-  expect(await proc.exited).toBe(130);
-  expect(await output).toBe("");
-  expect(await errors).toContain("Interrupted");
+test.each(["prompt", "goal"])(
+  "SIGINT in %s exits 130 after saving the interrupted Run's messages",
+  async (source) => {
+    const { server, ...dirs } = await setup({}, { holdOpen: true });
+    const proc = Bun.spawn(
+      ["bun", MAIN, source === "goal" ? "--goal" : "-p", "interrupted prompt"],
+      {
+        cwd: dirs.cwd,
+        env: { PATH: process.env.PATH, HOME: dirs.home, FAKE_API_KEY: "sk-test" },
+        stdin: "ignore",
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
+    cleanups.push(() => {
+      if (proc.exitCode === null) proc.kill("SIGKILL");
+    });
+    const output = new Response(proc.stdout).text();
+    const errors = new Response(proc.stderr).text();
+    await server.received;
+    proc.kill("SIGINT");
+    expect(await proc.exited).toBe(130);
+    expect(await output).toBe("");
+    expect(await errors).toContain("Interrupted");
 
-  const root = join(dirs.home, ".neant/sessions");
-  const [slug] = await readdir(root);
-  const directory = join(root, slug!);
-  const [file] = await readdir(directory);
-  const lines = (await Bun.file(join(directory, file!)).text())
-    .trim()
-    .split("\n")
-    .map((line) => JSON.parse(line));
-  const entries = lines
-    .flatMap((line) => (Array.isArray(line) ? line : [line]))
-    .filter((write) => write.kind === "entry" && write.type === "message")
-    .map((write) => write.message);
-  expect(entries).toMatchObject([
-    { role: "system", content: expect.stringContaining("You are Neant") },
-    { role: "system-reminder", source: "environment" },
-    { role: "system-reminder", source: "date" },
-    { role: "system-reminder", source: "skills" },
-    { role: "user", content: [{ type: "text", text: "interrupted prompt" }] },
-    { role: "assistant", stopReason: "aborted" },
-  ]);
-});
+    const root = join(dirs.home, ".neant/sessions");
+    const [slug] = await readdir(root);
+    const directory = join(root, slug!);
+    const [file] = await readdir(directory);
+    const lines = (await Bun.file(join(directory, file!)).text())
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    const entries = lines
+      .flatMap((line) => (Array.isArray(line) ? line : [line]))
+      .filter((write) => write.kind === "entry" && write.type === "message")
+      .map((write) => write.message);
+    expect(entries).toMatchObject([
+      { role: "system", content: expect.stringContaining("You are Neant") },
+      { role: "system-reminder", source: "environment" },
+      { role: "system-reminder", source: "date" },
+      { role: "system-reminder", source: "skills" },
+      ...(source === "goal" ? [{ role: "system-reminder", source: "goal" }] : []),
+      {
+        role: "user",
+        ...(source === "goal"
+          ? {
+              source: "goal",
+              content: [{ type: "text", text: expect.stringContaining("interrupted prompt") }],
+            }
+          : { content: [{ type: "text", text: "interrupted prompt" }] }),
+      },
+      { role: "assistant", stopReason: "aborted" },
+    ]);
+  },
+);
 
-test("stream-json delivers live deltas and ends an interrupted Run with a failure result", async () => {
-  const { server, ...dirs } = await setup({}, { holdOpen: true });
-  const proc = Bun.spawn(["bun", MAIN, "-p", "hi", "--output-format", "stream-json"], {
-    cwd: dirs.cwd,
-    env: { PATH: process.env.PATH, HOME: dirs.home, FAKE_API_KEY: "sk-test" },
-    stdin: "ignore",
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  cleanups.push(() => {
-    if (proc.exitCode === null) proc.kill("SIGKILL");
-  });
-  const errors = new Response(proc.stderr).text();
-  const reader = proc.stdout.getReader();
-  const decoder = new TextDecoder();
-  let output = "";
-  let pending = "";
-  let delta;
-  while (!delta) {
-    const { value, done } = await reader.read();
-    if (done) throw new Error("CLI exited before emitting a live delta");
-    const chunk = decoder.decode(value, { stream: true });
-    output += chunk;
-    pending += chunk;
-    const lines = pending.split("\n");
-    pending = lines.pop()!;
-    delta = lines
-      .map((line) => JSON.parse(line))
-      .find((event) => event.assistantMessageEvent?.type === "text_delta");
-  }
-  expect(delta.assistantMessageEvent.delta).toBe("hello from fake");
-  expect(proc.exitCode).toBeNull();
-  proc.kill("SIGINT");
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    output += decoder.decode(value, { stream: true });
-  }
-  output += decoder.decode();
-  expect(await proc.exited).toBe(130);
-  expect(await errors).toContain("Interrupted");
-  const events = parseEvents(output);
-  expect(events[0].type).toBe("session_start");
-  expect(events.at(-1)).toMatchObject({
-    type: "result",
-    sessionId: events[0].sessionId,
-    success: false,
-    text: "hello from fake",
-    error: expect.any(String),
-    durationMs: expect.any(Number),
-  });
-  expect(events.every((event) => event.sessionId === events[0].sessionId)).toBe(true);
-  expect(events.filter((event) => event.type === "result")).toHaveLength(1);
-  expect(server.requests).toHaveLength(1);
-});
+test.each(["prompt", "goal-wrapup"])(
+  "stream-json delivers live deltas and ends interrupted %s with a failure result",
+  async (source) => {
+    const { server, ...dirs } = await setup(
+      {},
+      {
+        holdOpen: true,
+        ...(source === "goal-wrapup"
+          ? { toolCalls: [{ name: "update_goal", arguments: { action: "complete" } }] }
+          : {}),
+      },
+    );
+    const proc = Bun.spawn(
+      [
+        "bun",
+        MAIN,
+        source === "goal-wrapup" ? "--goal" : "-p",
+        "hi",
+        "--output-format",
+        "stream-json",
+      ],
+      {
+        cwd: dirs.cwd,
+        env: { PATH: process.env.PATH, HOME: dirs.home, FAKE_API_KEY: "sk-test" },
+        stdin: "ignore",
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
+    cleanups.push(() => {
+      if (proc.exitCode === null) proc.kill("SIGKILL");
+    });
+    const errors = new Response(proc.stderr).text();
+    const reader = proc.stdout.getReader();
+    const decoder = new TextDecoder();
+    let output = "";
+    let pending = "";
+    let delta;
+    while (!delta) {
+      const { value, done } = await reader.read();
+      if (done) throw new Error("CLI exited before emitting a live delta");
+      const chunk = decoder.decode(value, { stream: true });
+      output += chunk;
+      pending += chunk;
+      const lines = pending.split("\n");
+      pending = lines.pop()!;
+      delta = lines
+        .map((line) => JSON.parse(line))
+        .find((event) => event.assistantMessageEvent?.type === "text_delta");
+    }
+    expect(delta.assistantMessageEvent.delta).toBe("hello from fake");
+    expect(proc.exitCode).toBeNull();
+    proc.kill("SIGINT");
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      output += decoder.decode(value, { stream: true });
+    }
+    output += decoder.decode();
+    expect(await proc.exited).toBe(130);
+    expect(await errors).toContain("Interrupted");
+    const events = parseEvents(output);
+    expect(events.some((event) => event.type === "session_start")).toBe(true);
+    if (source === "goal-wrapup")
+      expect(
+        events.some(
+          (event) =>
+            event.type === "tool_state_changed" &&
+            event.name === "goal" &&
+            event.value.phase === "complete",
+        ),
+      ).toBe(true);
+    expect(events.at(-1)).toMatchObject({
+      type: "result",
+      sessionId: events[0].sessionId,
+      success: false,
+      text: "hello from fake",
+      error: expect.any(String),
+      durationMs: expect.any(Number),
+    });
+    expect(events.every((event) => event.sessionId === events[0].sessionId)).toBe(true);
+    expect(events.filter((event) => event.type === "result")).toHaveLength(1);
+    expect(server.requests).toHaveLength(source === "goal-wrapup" ? 2 : 1);
+  },
+);
 
 test("SIGINT exits 130 while stdin is still open", async () => {
   const { server, ...dirs } = await setup();

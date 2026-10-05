@@ -1,7 +1,9 @@
+import type { GoalView } from "@neant/agent";
 import { useState, type ReactNode } from "react";
 import { basename } from "node:path";
 import { Box, ThemedText, type ThemeColor } from "@neant/tui";
 import type { ContextUsageEvent, PermissionMode, RunResult, ThinkingLevel } from "@neant/shared";
+import { goalPhasePresentation } from "../goal-phase";
 import {
   allocateColumns,
   barWidths,
@@ -23,6 +25,8 @@ export interface StatusLineProps {
   columns: number;
   mode: PermissionMode;
   planMode?: boolean;
+  goal?: GoalView;
+  showContextBar?: boolean;
   model: string;
   provider: string;
   contextUsage?: ContextUsageEvent;
@@ -94,9 +98,15 @@ export function StatusLine(props: StatusLineProps) {
   const modeWidth = Bun.stringWidth(description.label);
   const planLabel = t("plan.chip");
   const planWidth = props.planMode ? Bun.stringWidth(planLabel) : 0;
-  const requiredWidth = modeWidth + (planWidth ? planWidth + 1 : 0);
+  const goalPhase = props.goal && goalPhasePresentation[props.goal.phase];
+  const goalLabel = props.goal
+    ? `${goalPhase?.glyph} ${props.goal.roundsStarted}/${props.goal.maxRounds}`
+    : "";
+  const goalWidth = Bun.stringWidth(goalLabel);
+  const requiredWidth =
+    modeWidth + (planWidth ? planWidth + 1 : 0) + (goalWidth ? goalWidth + 1 : 0);
   const usage = props.contextUsage;
-  const showBar = usage !== undefined && width >= 14;
+  const showBar = props.showContextBar !== false && usage !== undefined && width >= 14;
   const pct = usage && usage.window > 0 ? (usage.used / usage.window) * 100 : 0;
   const counts = usage ? `${count(usage.used)}/${count(usage.window)}` : "";
   const ctx = usage ? `${t("status.ctx")} ${percentage(pct)}% (${counts})` : "";
@@ -144,7 +154,8 @@ export function StatusLine(props: StatusLineProps) {
   );
   const totalInput = props.usage.input + props.usage.cacheRead + props.usage.cacheWrite;
   const cacheRate = totalInput > 0 ? (props.usage.cacheRead / totalInput) * 100 : undefined;
-  const fields: { id: HoverField | "effort" | "plan"; content: ReactNode }[] = [
+  const fields: { id: HoverField | "effort" | "plan" | "goal"; content: ReactNode }[] = [
+    ...(props.goal ? [{ id: "goal" as const, content: goalLabel }] : []),
     { id: "mode", content: description.label },
     ...(props.planMode ? [{ id: "plan" as const, content: planLabel }] : []),
     { id: "model", content: props.model },
@@ -166,7 +177,7 @@ export function StatusLine(props: StatusLineProps) {
   const leftWidth = Math.max(0, width - ctxWidth - (ctx ? 1 : 0));
   // Keep the permission policy legible before spending columns on optional fields.
   while (
-    fields.length > (props.planMode ? 2 : 1) &&
+    fields.length > 1 + Number(!!props.planMode) + Number(!!props.goal) &&
     leftWidth < requiredWidth + (fields.length - 1) * 2
   )
     fields.pop();
@@ -180,7 +191,9 @@ export function StatusLine(props: StatusLineProps) {
       ? naturalWidths
       : allocateColumns(
           naturalWidths,
-          fields.map(({ id }) => (id === "mode" ? modeWidth : id === "plan" ? planWidth : 1)),
+          fields.map(({ id }) =>
+            id === "mode" ? modeWidth : id === "plan" ? planWidth : id === "goal" ? goalWidth : 1,
+          ),
           budget,
         );
   let detail: ReactNode;
@@ -340,16 +353,19 @@ export function StatusLine(props: StatusLineProps) {
                   <Box
                     width={fieldWidths[index]}
                     flexShrink={1}
-                    {...(id !== "effort" && id !== "plan" ? hoverProps(id) : {})}
+                    {...(id !== "effort" && id !== "plan" && id !== "goal" ? hoverProps(id) : {})}
                   >
                     <ThemedText
                       color={
-                        id === "plan"
-                          ? "plan"
-                          : id === "mode" && props.mode === "full-access"
-                            ? "error"
-                            : undefined
+                        id === "goal"
+                          ? goalPhase?.color
+                          : id === "plan"
+                            ? "plan"
+                            : id === "mode" && props.mode === "full-access"
+                              ? "error"
+                              : undefined
                       }
+                      dimColor={id === "goal" && goalPhase?.dimColor}
                       wrap="truncate"
                     >
                       {content}
