@@ -27,3 +27,12 @@ export type { SubagentIdentity, SubagentRun } from "./subagents/index.ts";
 export { listSkills } from "./skills/index.ts";
 
 export type { GoalView } from "./goal/index.ts";
+export {
+  validateImage,
+  validateImageBytes,
+  inspectImage,
+  ImageValidationError,
+  type PromptImage,
+  type ImageInfo,
+  type ImageValidationCode,
+} from "./images/index.ts";
