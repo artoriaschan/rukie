@@ -5,6 +5,8 @@ import {
   createSession,
   listSkills,
   listModels,
+  listSessions,
+  type SessionSummary,
   type Session,
   type SessionOptions,
 } from "@neant/agent";
@@ -43,6 +45,7 @@ import {
   UserMessage,
   CommandSuggestions,
   ModelPicker,
+  SessionPicker,
 } from "../../components";
 import { rewindLayout, type RewindEntry, type RewindMode } from "../../components/rewind-picker";
 import { formatError } from "../../i18n";
@@ -148,6 +151,7 @@ export async function createChat(
           locale={locale}
           onExit={onExit}
           models={models}
+          sessions={() => listSessions(options)}
           skills={skills}
           replaceSession={replaceSession}
           writeTitle={writeTitle}
@@ -172,6 +176,7 @@ function Chat({
   replaceSession,
   writeTitle,
   models,
+  sessions,
 }: {
   session: Session;
   conversation: ReturnType<typeof createConversation>;
@@ -184,6 +189,7 @@ function Chat({
   locale: Locale;
   onExit(): void;
   models: readonly { spec: string; name: string }[];
+  sessions(): Promise<SessionSummary[]>;
   skills: readonly { name: string; description: string }[];
   replaceSession(resumeId?: string): Promise<void>;
   writeTitle?: (title: string) => void;
@@ -286,6 +292,41 @@ function Chat({
   const showModelPicker = (focus: number | undefined) => {
     modelPickerRef.current = focus;
     setModelPicker(focus);
+  };
+  type ResumePicker = { sessions: readonly SessionSummary[]; focus: number; busy: boolean };
+  const [resumePicker, setResumePicker] = useState<ResumePicker>();
+  const resumePickerRef = useRef<ResumePicker | undefined>(undefined);
+  const showResumePicker = (next: ResumePicker | undefined) => {
+    resumePickerRef.current = next;
+    setResumePicker(next);
+  };
+  const openResumePicker = async () => {
+    const loading: ResumePicker = { sessions: [], focus: 0, busy: true };
+    showResumePicker(loading);
+    try {
+      const previous = (await sessions()).filter((item) => item.id !== session.id);
+      if (resumePickerRef.current !== loading) return;
+      if (previous.length) showResumePicker({ sessions: previous, focus: 0, busy: false });
+      else {
+        showResumePicker(undefined);
+        conversation.notice(t("resume.empty"));
+      }
+    } catch (error) {
+      if (resumePickerRef.current !== loading) return;
+      showResumePicker(undefined);
+      conversation.notice(formatError(error, t), true);
+    }
+  };
+  const resumeSession = async (index: number) => {
+    const picker = resumePickerRef.current;
+    if (!picker || picker.busy) return;
+    showResumePicker({ ...picker, busy: true });
+    try {
+      await replaceSession(picker.sessions[index]!.id);
+    } catch (error) {
+      showResumePicker(undefined);
+      conversation.notice(formatError(error, t), true);
+    }
   };
   const [rewind, setRewind] = useState<Rewind>();
   const rewindRef = useRef<Rewind | undefined>(undefined);
@@ -484,7 +525,8 @@ function Chat({
             models.findIndex((model) => model.spec === session.model),
           ),
         );
-    } else if (command.name === "settings") switchView("settings");
+    } else if (command.name === "resume") void openResumePicker();
+    else if (command.name === "settings") switchView("settings");
     else if (command.name === "compact")
       void conversation
         .compact(prompt.slice(parsed![0].length).trim() || undefined)
@@ -538,7 +580,7 @@ function Chat({
   const dialogGap =
     question && rows - statusHeight - minimumDialogHeight - panelCount - 1 >= 1 ? 1 : 0;
   const compactPrompt =
-    (!!rewind && rows < 20) ||
+    ((!!rewind || !!resumePicker) && rows < 20) ||
     (!!interaction &&
       rows - statusHeight - minimumDialogHeight - dialogGap - panelCount < promptMaxLines + 3);
   const promptHeight = compactPrompt ? 1 : promptMaxLines + 3;
@@ -599,13 +641,33 @@ function Chat({
       ).height
     : 0;
   const modelPickerHeight = modelPicker === undefined ? 0 : Math.min(12, available - panelCount);
+  const resumePickerHeight = resumePicker ? Math.min(14, available - panelCount) : 0;
   const panelHeights = allocatePanelHeights(
-    available - dialogMaxHeight - dialogGap - rewindHeight - modelPickerHeight,
+    available - dialogMaxHeight - dialogGap - rewindHeight - modelPickerHeight - resumePickerHeight,
     Array.from({ length: panelCount }, () => 3),
   );
   const todoMaxHeight = hasTodos ? panelHeights[0]! : 1;
   const subagentMaxHeight = hasSubagents ? panelHeights[Number(hasTodos)]! : 1;
   useInput((event) => {
+    const resume = resumePickerRef.current;
+    if (resume) {
+      if (event.type !== "key") return;
+      handledInput.current.add(event);
+      const { key } = event;
+      if (key.name === "escape" || (key.ctrl && key.name === "c")) {
+        if (!resume.busy || !resume.sessions.length) showResumePicker(undefined);
+      } else if (!resume.busy && !small && !key.ctrl && !key.alt && !key.shift) {
+        if (key.name === "up" || key.name === "down")
+          showResumePicker({
+            ...resume,
+            focus:
+              (resume.focus + (key.name === "up" ? resume.sessions.length - 1 : 1)) %
+              resume.sessions.length,
+          });
+        else if (key.name === "enter") void resumeSession(resume.focus);
+      }
+      return;
+    }
     const modelFocus = modelPickerRef.current;
     if (modelFocus !== undefined) {
       if (event.type !== "key") return;
@@ -1140,17 +1202,35 @@ function Chat({
                 }}
               />
             )}
-            {!!commandMatches.length && !interaction && !rewind && modelPicker === undefined && (
-              <CommandSuggestions
-                items={commandMatches}
-                selected={commandSelection % commandMatches.length}
-                maxHeight={commandMenuHeight}
+            {resumePicker && (
+              <SessionPicker
+                sessions={resumePicker.sessions}
+                focus={resumePicker.focus}
+                maxHeight={resumePickerHeight}
+                locale={locale}
+                onPick={(index) => {
+                  void resumeSession(index);
+                }}
               />
             )}
+            {!!commandMatches.length &&
+              !interaction &&
+              !rewind &&
+              !resumePicker &&
+              modelPicker === undefined && (
+                <CommandSuggestions
+                  items={commandMatches}
+                  selected={commandSelection % commandMatches.length}
+                  maxHeight={commandMenuHeight}
+                />
+              )}
             <PromptInput
               key={promptRevision}
               readOnly={
-                modelPicker !== undefined || !!rewind || (!!interaction && !userQuestion?.collapsed)
+                modelPicker !== undefined ||
+                !!resumePicker ||
+                !!rewind ||
+                (!!interaction && !userQuestion?.collapsed)
               }
               compact={compactPrompt}
               maxLines={compactPrompt ? 1 : promptMaxLines}
@@ -1161,6 +1241,7 @@ function Chat({
               filterInput={(event) =>
                 viewRef.current === "chat" &&
                 modelPickerRef.current === undefined &&
+                resumePickerRef.current === undefined &&
                 !handledInput.current.has(event) &&
                 !(
                   event.type === "key" &&

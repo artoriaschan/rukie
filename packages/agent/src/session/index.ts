@@ -36,7 +36,7 @@ import {
   type SubagentIdentity,
 } from "../subagents/index.ts";
 import { isTrustedProject, resolveModel, modelState } from "../config/index.ts";
-import { createJsonlStore, type SessionStore } from "../store/index.ts";
+import { createJsonlStore, registerSessionReader, type SessionStore } from "../store/index.ts";
 import {
   createPermissionGate,
   parsePermissionRules,
@@ -396,6 +396,7 @@ async function createSessionInternal(
       activeStore = undefined;
       await target?.close(context);
     });
+  const unregisterReader = registerSessionReader(store, stored.metadata.id, withStore);
   const promptTexts = initialBranch.promptTexts;
   const checkpoint =
     internal.checkpoint ??
@@ -1328,6 +1329,7 @@ async function createSessionInternal(
               ...[...childSessions].map((child) => child.dispose(reason)),
             ]);
           } finally {
+            unregisterReader();
             await mcp?.close();
             sessionObservers.clear();
             bufferingStartup = false;

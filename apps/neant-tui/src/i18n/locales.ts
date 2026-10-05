@@ -32,6 +32,10 @@
  */
 
 const zh = {
+  "resume.title": "恢复会话",
+  "resume.hint": "↑/↓ 选择 · Enter 恢复 · Esc 退出",
+  "resume.empty": "暂无可恢复的会话",
+  "resume.messages": "{{count}} 条消息",
   "settings.title": "设置",
   "settings.empty": "暂无可配置的设置项。",
   "settings.hint": "进入/切换 · Esc 退出",
@@ -264,6 +268,10 @@ const zh = {
 } as const;
 
 const en = {
+  "resume.title": "Resume session",
+  "resume.hint": "↑/↓ select · Enter resume · Esc close",
+  "resume.empty": "No sessions to resume",
+  "resume.messages": "{{count}} messages",
   "settings.title": "Settings",
   "settings.empty": "No settings are available yet.",
   "settings.hint": "open/toggle · Esc exit",
