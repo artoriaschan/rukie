@@ -61,8 +61,8 @@ test("changing a Session model affects the next request and survives resume with
 test("available models include custom and built-in provider entries without requiring credentials", () => {
   delete process.env.NEANT_SWITCH_TEST_KEY;
   const choices = listModels(settings);
-  expect(choices).toContainEqual({ spec: "switch/first", name: "first" });
-  expect(choices).toContainEqual({ spec: "switch/second", name: "second" });
+  expect(choices).toContainEqual({ spec: "switch/first", name: "first", input: ["text"] });
+  expect(choices).toContainEqual({ spec: "switch/second", name: "second", input: ["text"] });
   expect(choices.some((choice) => choice.spec.startsWith("anthropic/"))).toBe(true);
 });
 
