@@ -23,3 +23,9 @@
 - 验证：`rtk proxy bun test packages/agent/tests/e2e/web-fetch-html.test.ts packages/agent/tests/e2e/web-fetch.test.ts` → 64 pass / 0 fail；`rtk proxy bunx --no -- oxlint`、`rtk proxy bunx --no -- tsc -b`、`rtk proxy bunx --no -- knip` 通过；新增 13 个 HTML/charset/转换后截断及错误附文用例，PDF/PNG 与原样 JSON/XML 覆盖沿用 01 的公开用例。最终整合分支再运行完整 check。
 
 - 交付前已快进合入 integration `2f52203`（03 重定向）；三份公开 e2e `web-fetch-html` / `web-fetch-redirects` / `web-fetch` 共同验证 78 pass / 0 fail（218 assertions），完整 Oxfmt / Oxlint / TypeScript / Knip / diff whitespace 检查通过。HTML ambient 声明使用 source-path reference 供跨 workspace 源码消费者加载，单行 lint 例外写明不能改成 module augmentation 的原因。
+
+### 2026-10-05 integration review fixes
+
+- Spec 审阅发现 GFM 转换超宽表格同步占用事件循环，超时和中止无法及时执行。公共 Session 的 5000 单元格表格 RED 为 1364 ms；修复后同一用例约 34–57 ms 返回既有转换省略说明，后续抓取可用。
+- HTML 转换限制标签数 10000、DOM 深度 128、单元格总数 1000，复杂输入在进入昂贵的 GFM 转换前省略；不增加设置、生产开关或测试 seam。不设置额外 HTML 字符上限，1.1M 字符的简单 HTML 公共回归仍保留可读标题/正文并按既有 50K 上限截断（RED 省略后 GREEN 约 51 ms）。
+- HTTP 错误附文也包含与成功结果相同的不可信声明，正文仍独立限为 2K 字符。Core/TUI/Headless focused 验证与最终集成验收见 01 的同日审阅记录。

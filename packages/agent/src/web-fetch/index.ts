@@ -1,6 +1,6 @@
 import { resolveAddresses, validateUrl, type WebFetchOptions } from "./addresses.ts";
 import { request } from "./http.ts";
-import { decodeBody, render } from "./content.ts";
+import { decodeBody, render, renderHttpError } from "./content.ts";
 import { proxyFor } from "./proxy.ts";
 export type { WebFetchOptions } from "./addresses.ts";
 
@@ -83,8 +83,7 @@ export async function fetchWeb(
           offset += chunk.length;
         }
         const body = decodeBody(bytes, response.headers.get("content-type"));
-        if (!response.ok)
-          throw new Error(`HTTP ${response.status} from ${url.href}\n${body.slice(0, 2000)}`);
+        if (!response.ok) throw new Error(renderHttpError(url, response.status, body));
         return render(url, response.status, body, truncated);
       } finally {
         await response.body?.cancel().catch(() => {});
