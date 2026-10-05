@@ -145,10 +145,10 @@ test("manual compaction waits for model selection and summarizes through the sel
   ]);
   const requested: string[] = [];
   const primary = fake.streamFn;
-  fake.streamFn = (model, context, options) => {
+  fake.streamFn = withAuxiliaryRequests((model, context, options) => {
     requested.push(`${model.provider}/${model.id}`);
     return primary(model, context, options);
-  };
+  });
   const session = await createSession({ ...dirs, settings, streamFn: fake.streamFn });
   await session.run("first question");
   const switching = session.setModel("switch/second");

@@ -12,6 +12,7 @@ import {
 } from "../../src/index.ts";
 import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
 import { join } from "node:path";
+import { abortingModel } from "../helpers/aborting-model.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
@@ -383,6 +384,105 @@ test("rewinding the conversation preserves a user's fixed title on resume", asyn
     expect(resumed.titleSource).toBe("user");
     await resumed.dispose();
   } finally {
+    await session.dispose();
+    await dirs.cleanup();
+  }
+});
+
+test("an idle rename and model selection can persist concurrently without losing either value", async () => {
+  const dirs = await tempDirs();
+  const fake = fakeModel([fauxAssistantMessage("Done")]);
+  const original = process.env.NEANT_TITLE_CONCURRENT_KEY;
+  process.env.NEANT_TITLE_CONCURRENT_KEY = "test-key";
+  const settings = {
+    providers: [
+      {
+        id: "title-concurrent",
+        api: "openai-completions" as const,
+        baseUrl: "https://invalid.example",
+        apiKeyEnv: "NEANT_TITLE_CONCURRENT_KEY",
+        models: [{ id: "cheap" }],
+      },
+    ],
+  };
+  const session = await createSession({ ...dirs, ...fake, settings });
+  try {
+    await session.run("Initial work");
+    await Promise.all([session.rename("Chosen name"), session.setModel("title-concurrent/cheap")]);
+    await session.dispose();
+    const resumed = await createSession({ ...dirs, ...fake, settings, resumeId: session.id });
+    expect(resumed.title).toBe("Chosen name");
+    expect(resumed.titleSource).toBe("user");
+    expect(resumed.model).toBe("title-concurrent/cheap");
+    await resumed.dispose();
+  } finally {
+    await session.dispose();
+    await dirs.cleanup();
+    if (original === undefined) delete process.env.NEANT_TITLE_CONCURRENT_KEY;
+    else process.env.NEANT_TITLE_CONCURRENT_KEY = original;
+  }
+});
+
+test("interrupting and disposing a Run while renaming preserves the fixed title", async () => {
+  const dirs = await tempDirs();
+  const primary = abortingModel();
+  const title = createAssistantMessageEventStream();
+  const session = await createSession({
+    ...dirs,
+    ...primary,
+    streamFn: withAuxiliaryRequests(primary.streamFn, { titles: () => title }),
+  });
+  try {
+    const run = session.run("Interrupted task").catch((error) => error);
+    await primary.started;
+    const rename = session.rename("Saved through interruption");
+    session.interruptRun();
+    await rename;
+    expect(await run).toBeInstanceOf(Error);
+    await session.dispose();
+    const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
+    expect(resumed.title).toBe("Saved through interruption");
+    expect(resumed.titleSource).toBe("user");
+    await resumed.dispose();
+  } finally {
+    await session.dispose();
+    await dirs.cleanup();
+  }
+});
+
+test("rename persists while a manual summary is pending and survives compacted resume", async () => {
+  const dirs = await tempDirs();
+  const summarizing = Promise.withResolvers<void>();
+  const finish = Promise.withResolvers<void>();
+  const fake = fakeModel([
+    fauxAssistantMessage("Work completed"),
+    async () => {
+      summarizing.resolve();
+      await finish.promise;
+      return fauxAssistantMessage("Summary of the completed work.");
+    },
+  ]);
+  const title = createAssistantMessageEventStream();
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    streamFn: withAuxiliaryRequests(fake.streamFn, { titles: () => title }),
+  });
+  try {
+    await session.run("First task");
+    const compact = session.compact();
+    await summarizing.promise;
+    await session.rename("Work summary");
+    finish.resolve();
+    await compact;
+    await session.dispose();
+    const resumed = await createSession({ ...dirs, ...fake, resumeId: session.id });
+    expect(resumed.title).toBe("Work summary");
+    expect(resumed.titleSource).toBe("user");
+    expect(JSON.stringify(resumed.messages)).toContain("Summary of the completed work.");
+    await resumed.dispose();
+  } finally {
+    finish.resolve();
     await session.dispose();
     await dirs.cleanup();
   }

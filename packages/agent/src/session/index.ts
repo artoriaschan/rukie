@@ -326,9 +326,7 @@ async function createSessionInternal(
       planEntered = true;
       const revision = ++planRevision;
       const write = planWrites.then(async () => {
-        const ownStore = activeStore ? undefined : await store.open(stored.metadata, context);
-        const target = activeStore ?? ownStore!;
-        try {
+        return withStore(async (target) => {
           if (!baselinePersisted) {
             const branch = await target.branch("main", context);
             if (!branch) throw new Error("Session has no main branch.");
@@ -336,9 +334,7 @@ async function createSessionInternal(
             baselinePersisted = true;
           }
           return await toolState.set("plan", { active: on }, target, context);
-        } finally {
-          await ownStore?.close(context);
-        }
+        });
       });
       // Keep frontend callbacks outside the write queue so a callback may
       // await another state change without waiting on its own notification.
@@ -366,8 +362,37 @@ async function createSessionInternal(
     },
   };
   let activeStore: StoredSession | undefined;
-  let openingStore: Promise<StoredSession> | undefined;
-  let closingStore: Promise<void> | undefined;
+  let storeOperations = Promise.resolve();
+  function serializeStore<T>(work: () => Promise<T>): Promise<T> {
+    const operation = storeOperations.then(work);
+    storeOperations = operation.then(
+      () => {},
+      () => {},
+    );
+    return operation;
+  }
+  function withStore<T>(work: (target: StoredSession) => Promise<T>): Promise<T> {
+    return serializeStore(async () => {
+      const current = activeStore;
+      const target = current ?? (await store.open(stored.metadata, context));
+      try {
+        return await work(target);
+      } finally {
+        if (!current) await target.close(context);
+      }
+    });
+  }
+  const openActiveStore = () =>
+    serializeStore(async () => {
+      const target = await store.open(stored.metadata, context);
+      activeStore = target;
+      return target;
+    });
+  const closeActiveStore = (target?: StoredSession) =>
+    serializeStore(async () => {
+      activeStore = undefined;
+      await target?.close(context);
+    });
   const promptTexts = initialBranch.promptTexts;
   const checkpoint =
     internal.checkpoint ??
@@ -825,20 +850,11 @@ async function createSessionInternal(
         ? (await resolveModel({ ...settings, model: settings.titleModel }, options.homeDir)).model
         : agent.state.model,
     streamFn: (...args) => (options.streamFn ?? streamFn)(...args),
-    async persist(title, source) {
-      if (closingStore) await closingStore;
-      const opening = openingStore;
-      const current = activeStore;
-      const owns = !current && !opening;
-      const target =
-        current ?? (opening ? await opening : await store.open(stored.metadata, context));
-      try {
+    persist: (title, source) =>
+      withStore(async (target) => {
         await target.setName(title, context);
         await toolState.set("title-source", source, target, context);
-      } finally {
-        if (owns) await target.close(context);
-      }
-    },
+      }),
     changed: (title, source) =>
       broadcast({ type: "session_title_changed", title, source, sessionId: stored.metadata.id }),
     warning: options.onWarning ?? console.warn,
@@ -1102,12 +1118,7 @@ async function createSessionInternal(
       try {
         const selected = await resolveModel({ ...settings, model: spec }, options.homeDir);
         if (disposePromise) throw new Error("Session has been disposed.");
-        const target = await store.open(stored.metadata, context);
-        try {
-          await toolState.set("model", spec, target, context);
-        } finally {
-          await target.close(context);
-        }
+        await withStore((target) => toolState.set("model", spec, target, context));
         model = selected.model;
         streamFn = selected.streamFn;
         agent.state.model = model;
@@ -1158,8 +1169,7 @@ async function createSessionInternal(
         const discovered = await discoverSkills(cwd, options.homeDir);
         skills = discovered.skills;
         for (const warning of discovered.warnings) (options.onWarning ?? console.warn)(warning);
-        target = await store.open(stored.metadata, context);
-        activeStore = target;
+        target = await openActiveStore();
         await compactContext({
           target,
           messages: agent.state.messages,
@@ -1176,7 +1186,8 @@ async function createSessionInternal(
         await emit(contextUsage(agent.state.messages, model.contextWindow, inputTokens));
       } finally {
         try {
-          await target?.close(context);
+          await sessionTitle.settleWrites();
+          await closeActiveStore(target);
         } finally {
           activeStore = undefined;
           emitRunEvent = undefined;
@@ -1497,10 +1508,7 @@ async function createSessionInternal(
             promptContexts.push(...started.additionalContext);
           }
           await sessionTitle.settleWrites();
-          await closingStore;
-          openingStore = store.open(stored.metadata, context);
-          const runStore = await openingStore;
-          openingStore = undefined;
+          const runStore = await openActiveStore();
           active = runStore;
           activeStore = runStore;
           const branch = await runStore.branch("main", context);
@@ -1773,13 +1781,9 @@ async function createSessionInternal(
           } finally {
             try {
               await sessionTitle.settleWrites();
-              activeStore = undefined;
-              closingStore = active?.close(context);
-              await closingStore;
-              closingStore = undefined;
+              await closeActiveStore(active);
             } finally {
               activeStore = undefined;
-              openingStore = undefined;
             }
           }
         }
