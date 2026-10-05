@@ -115,6 +115,8 @@ Compaction 在请求前自动检查，也可由空闲 Session 手动执行。它
 
 文件跟踪通过 Tool State 保存路径、元数据、内容 hash 与是否需要重读，不保存文件内容。Session Resume 重建跟踪集，之后发现的外部变化仅提示路径并要求重读。检测生成的 diff 在对应 System Reminder 写入 Transcript 后才成为已知内容；快照或提醒保存失败时仍拒绝覆盖未确认的文件，存储错误向调用方传播。
 
+Compaction 保留当前进程的文件跟踪集与已知内容，后续变化仍可生成 diff；已报告的文件变化事件不因压缩重新注入。对话 Rewind 同步恢复文件跟踪的 Tool State，只保留 hash 与恢复快照一致的内存内容；只恢复代码时，保留的对话会在下一次模型请求获知文件变化。每个子 Session 独立跟踪其读写；子代理对父 Session 已跟踪文件的写入，由父 Session 在下一次请求前检测。
+
 Checkpoint 在真实用户 prompt 上建立锚点，记录文件工具首次修改前的原样内容；子代理共用父 Session 的记录器。它不记录 bash 或 MCP 的文件副作用。Rewind 仅在空闲时恢复文件和/或对话：对话恢复保留原分支，再移动 `main` 到锚点之前，并重建上下文与 Tool State。文件恢复可能覆盖之后的修改；定义与使用限制由 `CONTEXT.md` 和 [`checkpoint/`](../packages/agent/src/checkpoint/index.ts)负责。
 
 恢复遇到只有调用而没有确定结果的工具时，将其作为 Unknown Tool Outcome 处理。它既不能证明调用失败，也不能证明尚未执行；恢复不能据此重放可能产生副作用的操作。

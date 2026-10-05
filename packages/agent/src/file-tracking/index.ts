@@ -87,10 +87,12 @@ export function createFileTracking(
 ) {
   const files = new Map<string, TrackedFile>();
   const acknowledgements = new Map<string, Map<string, TrackedFile>>();
+  let requestRemaining = 16000;
   const restore = (snapshot: unknown) => {
     const previous = new Map(files);
     files.clear();
     acknowledgements.clear();
+    requestRemaining = 16000;
     if (!validSnapshot(snapshot)) return;
     for (const file of snapshot.files) {
       const known = previous.get(file.path);
@@ -113,7 +115,6 @@ export function createFileTracking(
         stale,
       })),
     });
-  let requestRemaining = 16000;
   const displayPath = (path: string) => {
     const local = relative(cwd, path);
     return local === ".." || local.startsWith("../") || isAbsolute(local) ? path : local;

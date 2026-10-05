@@ -1080,3 +1080,292 @@ test("changes and deletions above 16,000 characters are batched without losing o
     ).toHaveLength(1);
   }
 });
+
+test("code and conversation rewind restore the known files and discard reads from the abandoned prompt", async () => {
+  dirs = await tempDirs();
+  const path = join(dirs.cwd, "file.txt");
+  const abandoned = join(dirs.cwd, "abandoned.txt");
+  await Bun.write(path, "original\n");
+  await Bun.write(abandoned, "unread\n");
+  const fake = fakeModel([
+    call("read", { path: "file.txt" }),
+    fauxAssistantMessage("read original"),
+    call("write", { path: "file.txt", content: "changed\n" }),
+    call("read", { path: "abandoned.txt" }),
+    fauxAssistantMessage("changed and read"),
+    fauxAssistantMessage("restored"),
+    fauxAssistantMessage("noticed later"),
+  ]);
+  const session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
+  await session.run("read original");
+  await session.run("change and read another file");
+  await session.rewind(session.checkpoints()[1]!.promptEntryId, { code: true, conversation: true });
+  await changeFile(abandoned, "external abandoned change\n");
+  const events: SessionEvent[] = [];
+  await session.run("continue from original", {
+    onEvent: (event) => {
+      events.push(event);
+    },
+  });
+  expect(await Bun.file(path).text()).toBe("original\n");
+  expect(changes(events)).toHaveLength(0);
+  await changeFile(path, "external original change\n");
+  await session.run("notice later", {
+    onEvent: (event) => {
+      events.push(event);
+    },
+  });
+  expect(changes(events)).toMatchObject([
+    { content: expect.stringContaining("Externally modified: file.txt.") },
+  ]);
+  expect(JSON.stringify(changes(events))).not.toContain("abandoned.txt");
+  expect(JSON.stringify(changes(events))).not.toContain("--- file.txt");
+});
+
+test("compaction preserves file diff knowledge without reinjecting an old file change event", async () => {
+  dirs = await tempDirs();
+  const path = join(dirs.cwd, "file.txt");
+  await Bun.write(path, "original\n");
+  const fake = fakeModel([
+    call("read", { path: "file.txt" }),
+    fauxAssistantMessage("read"),
+    fauxAssistantMessage("saw first change"),
+    fauxAssistantMessage("File knowledge summary."),
+    fauxAssistantMessage("saw second change"),
+  ]);
+  const session = await createSession({ ...dirs, ...fake });
+  await session.run("read");
+  await changeFile(path, "first external change\n");
+  await session.run("notice first change");
+  const events: SessionEvent[] = [];
+  session.subscribe((event) => events.push(event));
+  await session.compact();
+  expect(changes(events)).toHaveLength(0);
+  await changeFile(path, "second external change\n");
+  await session.run("notice second change");
+  expect(changes(events)).toMatchObject([
+    { content: expect.stringContaining("-first external change\n+second external change") },
+  ]);
+  expect(JSON.stringify(fake.contexts.at(-1))).toContain("+second external change");
+});
+
+test("code rewind reports restored bytes as an external diff while keeping the conversation", async () => {
+  dirs = await tempDirs();
+  const path = join(dirs.cwd, "file.txt");
+  await Bun.write(path, "original\n");
+  const fake = fakeModel([
+    call("write", { path: "file.txt", content: "agent change\n" }),
+    fauxAssistantMessage("wrote"),
+    fauxAssistantMessage("noticed restore"),
+    fauxAssistantMessage("unchanged"),
+  ]);
+  const session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
+  await session.run("change file");
+  await session.rewind(session.checkpoints()[0]!.promptEntryId, {
+    code: true,
+    conversation: false,
+  });
+  const events: SessionEvent[] = [];
+  await session.run("notice restore", {
+    onEvent: (event) => {
+      events.push(event);
+    },
+  });
+  expect(changes(events)).toMatchObject([
+    { content: expect.stringContaining("-agent change\n+original") },
+  ]);
+  expect(JSON.stringify(fake.contexts.at(-1))).toContain("wrote");
+  events.length = 0;
+  await session.run("unchanged", {
+    onEvent: (event) => {
+      events.push(event);
+    },
+  });
+  expect(changes(events)).toHaveLength(0);
+});
+
+test("conversation rewind retains matching file content and forgets discarded reads", async () => {
+  dirs = await tempDirs();
+  const path = join(dirs.cwd, "file.txt");
+  const abandoned = join(dirs.cwd, "abandoned.txt");
+  await Bun.write(path, "original\n");
+  await Bun.write(abandoned, "unread\n");
+  const session = await createSession({
+    ...dirs,
+    ...fakeModel([
+      call("read", { path: "file.txt" }),
+      fauxAssistantMessage("read original"),
+      call("read", { path: "abandoned.txt" }),
+      fauxAssistantMessage("read another file"),
+      fauxAssistantMessage("noticed retained file"),
+    ]),
+  });
+  await session.run("read original");
+  await session.run("read another file");
+  await session.rewind(session.checkpoints()[1]!.promptEntryId, {
+    code: false,
+    conversation: true,
+  });
+  await changeFile(path, "retained external change\n");
+  await changeFile(abandoned, "discarded external change\n");
+  const events: SessionEvent[] = [];
+  await session.run("notice", {
+    onEvent: (event) => {
+      events.push(event);
+    },
+  });
+  expect(changes(events)).toMatchObject([
+    { content: expect.stringContaining("-original\n+retained external change") },
+  ]);
+  expect(JSON.stringify(changes(events))).not.toContain("abandoned.txt");
+});
+
+test.each(["subagent", "subagent_fork"])(
+  "%s has independent reads and its writes are reported to the parent's next request",
+  async (toolName) => {
+    dirs = await tempDirs();
+    const shared = join(dirs.cwd, "shared.txt");
+    const childOnly = join(dirs.cwd, "child-only.txt");
+    await Bun.write(shared, "parent original\n");
+    await Bun.write(childOnly, "child original\n");
+    const fake = fakeModel([
+      call("read", { path: "shared.txt" }),
+      fauxAssistantMessage("parent read"),
+      call(toolName, {
+        description: "Change shared file",
+        prompt: "write and inspect",
+        run_in_background: false,
+      }),
+      call("write", { path: "shared.txt", content: "child wrote new content\n" }),
+      call("read", { path: "child-only.txt" }),
+      fauxAssistantMessage("child done"),
+      fauxAssistantMessage("parent noticed"),
+      fauxAssistantMessage("parent unchanged"),
+    ]);
+    const session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
+    await session.run("read shared file");
+    const events: SessionEvent[] = [];
+    await session.run("delegate", {
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+    expect(changes(events)).toMatchObject([
+      { content: expect.stringContaining("-parent original\n+child wrote new content") },
+    ]);
+    expect(
+      events.some(
+        (event) =>
+          event.type === "subagent_event" &&
+          event.event.type === "reminder_injected" &&
+          event.event.source === "file-changes",
+      ),
+    ).toBe(false);
+    expect(JSON.stringify(fake.contexts.at(-1))).toContain("+child wrote new content");
+    await changeFile(childOnly, "external child-only change\n");
+    events.length = 0;
+    await session.run("check parent", {
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+    expect(changes(events)).toHaveLength(0);
+  },
+);
+
+test("a PostToolUse formatter change reaches the next request and edit uses the formatted content", async () => {
+  dirs = await tempDirs();
+  const path = join(dirs.cwd, "file.txt");
+  await Bun.write(path, "original\n");
+  await Bun.write(
+    join(dirs.cwd, "formatter.ts"),
+    `import { stat, utimes } from "node:fs/promises";
+const input = JSON.parse(await Bun.stdin.text());
+await Bun.write("formatter-input.json", JSON.stringify(input));
+const metadata = await stat(input.tool_input.path);
+await Bun.write(input.tool_input.path, "formatted content\\n");
+await utimes(input.tool_input.path, metadata.atime, new Date(metadata.mtimeMs + 1000));
+`,
+  );
+  const fake = fakeModel([
+    call("write", { path: "file.txt", content: "unformatted content\n" }),
+    call("edit", {
+      path: "file.txt",
+      edits: [{ oldText: "formatted content", newText: "final content" }],
+    }),
+    fauxAssistantMessage("done"),
+  ]);
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    permissionMode: "full-access",
+    settings: {
+      hooks: {
+        PostToolUse: [
+          { matcher: "write", hooks: [{ type: "command", command: "bun formatter.ts" }] },
+        ],
+      },
+    },
+  });
+  const events: SessionEvent[] = [];
+  await session.run("write and edit formatted file", {
+    onEvent: (event) => {
+      events.push(event);
+    },
+  });
+  expect(await Bun.file(join(dirs.cwd, "formatter-input.json")).json()).toMatchObject({
+    hook_event_name: "PostToolUse",
+    tool_name: "write",
+  });
+  expect(changes(events)).toMatchObject([
+    { content: expect.stringContaining("-unformatted content\n+formatted content") },
+  ]);
+  expect(JSON.stringify(fake.contexts[1])).toContain("+formatted content");
+  expect(
+    session.messages.findLast(
+      (message) => message.role === "toolResult" && message.toolName === "edit",
+    ),
+  ).toMatchObject({ isError: false });
+  expect(await Bun.file(path).text()).toBe("final content\n");
+});
+
+test("conversation rewind after a rejected diff reminder cannot grant permission for unseen file content", async () => {
+  dirs = await tempDirs();
+  const path = join(dirs.cwd, "file.txt");
+  await Bun.write(path, "keep\noriginal\n");
+  const faulty = failingFileTrackingStore();
+  const session = await createSession({
+    ...dirs,
+    store: faulty.store,
+    permissionMode: "full-access",
+    ...fakeModel([
+      call("read", { path: "file.txt" }),
+      fauxAssistantMessage("read"),
+      fauxAssistantMessage("anchor"),
+      call("edit", { path: "file.txt", edits: [{ oldText: "keep", newText: "wrong" }] }),
+      fauxAssistantMessage("refused"),
+    ]),
+  });
+  await session.run("read");
+  await session.run("anchor before external change");
+  const anchor = session.checkpoints()[1]!.promptEntryId;
+  await changeFile(path, "keep\nunseen external change\n");
+  faulty.failNext("reminder");
+  await expect(session.run("notice")).rejects.toThrow("File change reminder storage failed");
+  await session.rewind(anchor, { code: false, conversation: true });
+  const events: SessionEvent[] = [];
+  await session.run("try edit", {
+    onEvent: (event) => {
+      events.push(event);
+    },
+  });
+  expect(changes(events)).toMatchObject([
+    { content: expect.stringContaining("Externally modified: file.txt.") },
+  ]);
+  expect(
+    session.messages.findLast(
+      (message) => message.role === "toolResult" && message.toolName === "edit",
+    ),
+  ).toMatchObject({ isError: true });
+  expect(await Bun.file(path).text()).toBe("keep\nunseen external change\n");
+});

@@ -1512,6 +1512,7 @@ async function createSessionInternal(
             await target.close(context);
           }
           const changes = toolState.restore(restoredEntries);
+          fileTracking.restore(toolState.get("file-tracking"));
           subagents.restore(toolState.get("subagents") as SubagentIdentity[] | undefined);
           recovery = metadata
             ? await reconcileSubagents(
