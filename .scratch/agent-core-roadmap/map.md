@@ -31,6 +31,7 @@ Labels: wayfinder:map
 
 - [plan mode](issues/10-plan-mode.md): 与 Permission Mode 正交的 session 开关；照 harness 只引导不限制工具（推翻地基 C 的内置 deny）；Tool State `plan` resume 保留；plan reminder 不改 System Prompt；常驻 `enter_plan_mode`（需批准）/ `exit_plan_mode { plan }`；回调 `onPlanReview` 批准 / 继续规划+反馈 / Esc 接手，批准不改 Permission Mode；Headless 无此能力；子代理共享状态、无两工具；TUI 照 dsh-TUI 评审面板 + plan 色边框 + chip
 - [hooks](issues/12-hooks.md): 对齐 CC——stdin JSON / exit 2 阻断 / `hookSpecificOutput`；14 种事件（工具前后与失败、PermissionRequest/Denied、UserPromptSubmit、Session Start/End、Stop、Subagent Start/Stop、Pre/PostCompact、Notification）；matcher 正则 + `if` 权限规则；五种类型、CC 默认超时、fail-open；并行各拿原始输入，`updatedInput` 最后完成者生效再过规则；Stop/SubagentStop 可 block 续跑（上限 8，先于 Goal）；项目层与 `agents/*.md` hooks 需 Trusted Project；`updatedPermissions` 仅 session
+- [撤销改动 / checkpoint](issues/13-checkpoint-and-rewind.md): 照 CC file history——地基 C 放行后阶段、文件首次写前存副本（不含 bash），每条 user prompt 一个 Checkpoint，子代理写入归父；副本 `~/.neant/file-history/` 30 天清理，引用作 Tool State `checkpoint`；Rewind 三选一（代码+对话 / 只对话 / 只代码），对话回退移 `branchTip`，代码直接覆盖、新建文件删除；仅空闲可用，可跨 compaction；`/rewind` + 空输入双击 Esc，prompt 填回输入框；Session `checkpoints()` / `rewind()`，Headless 无
 
 ## Not yet specified
 

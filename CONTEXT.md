@@ -50,6 +50,14 @@ _Avoid_: tool data, session state
 模型为当前 session 维护的任务清单，是一种 Tool State。每项只有内容和状态（待办 / 进行中 / 已完成），每次整表替换。属于单个 session：子代理有自己的 Todo List，不与父 session 共享。与 Goal 相互独立。
 _Avoid_: task list, plan
 
+**Checkpoint**:
+某条 user prompt 之前、本 session（含其 subagent）用文件工具写过的文件的内容快照。每条 user prompt 一个；bash 造成的改动不在其中。
+_Avoid_: snapshot, backup, undo point
+
+**Rewind**:
+回到某个 Checkpoint 的动作，可选只回代码、只回对话或两者都回。回对话是把 transcript 分支移回那条 user prompt 之前，原分支仍保留；回代码是把文件还原成 Checkpoint 内容，覆盖之后的任何改动。只在 session 空闲时可用。
+_Avoid_: undo, revert, rollback
+
 **Session Store**:
 transcript 的持久化位置。Headless CLI 和 TUI 存成 JSONL 文件，桌面端存到 SQLite。
 _Avoid_: database, history store

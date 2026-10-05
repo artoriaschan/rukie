@@ -12,3 +12,5 @@ Slash Command 已定属 frontend（`CONTEXT.md`），Agent Core 只暴露能力 
 - 自定义命令：模板文件格式与加载位置（比照 skills 的用户级 / 项目级）、参数占位、由 Agent Core 加载还是 TUI 加载。
 - 手动 compaction：Agent Core `compact()` API，可带用户指令；与自动 compaction 的事件、通知共用。
 - Headless CLI 是否支持 prompt 里写 `/命令`。
+
+已定于他处：`/rewind` 的行为见 [撤销改动 / checkpoint](13-checkpoint-and-rewind.md)，本工单只需把它纳入内置命令清单。
