@@ -4,7 +4,7 @@
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] 只回对话：`messages` 与 `toolState()` 立即反映新分支，发出相应状态事件（如 `tool_state_changed`、plan mode 变化）
 - [ ] 文件不变；回退后继续 run 从新位置接着建 Checkpoint，可反复回退
@@ -13,3 +13,15 @@
 - [ ] hook autorun、Goal 续跑、Stop 续跑、子代理完成通知不开新 Checkpoint，也不出现在 `checkpoints()` 中
 - [ ] 返回值含 prompt 文本
 - [ ] e2e 测试覆盖以上，含 resume 后回对话
+
+## Comments
+
+2026-10-05：实现与验证已准备好，等待统一的 Standards / Spec 两轴独立审查；本工单保持 claimed，审查后再填写 resolved 证据。
+
+- `rewind(..., { conversation: true })` 保留旧 tip 为独立 transcript 分支，并把 main 移到目标 user entry 的 parent。在同一 Session 中重放 messages、已注册 Tool State、todo reminder、Plan Mode、checkpoint、子代理身份与 compaction 状态；Tool State 的动态闭包保留，后续 prompt 写入会从恢复后的 checkpoint 状态继续。
+- 两者都回先恢复文件，备份缺失时对话不动；只回对话不改磁盘。广播变化的 `tool_state_changed`，清除状态用 `value: undefined`，随后广播 runtime-agnostic `conversation_rewound`（含 promptEntryId）及重算的 `context_usage`。事件发出时公开 Session 状态已完整更新，06 可直接从 `session.messages` 重放。CLI 的通用 stream-json 订阅无需额外事件分支。
+- 所有已注册 Tool State 走统一重放；当前仓库未实现 Goal 及其公开续跑 seam，本工单不添加 Goal 功能。真实 prompt 判定复用 02 的对象身份边界，新增公开回归覆盖 autorun、Stop continuation、subagent / subagent_fork 完成通知的排除。旧 child Session 仍由 Session 的 `childSessions` 资源集合持有并负责 dispose。
+- TDD 经 `createSession` / Session 公开 seam：初始 conversation rewind 测试先因 API 未实现失败；子代理 registry 先因旧身份未清除失败；compact SessionStart 待注入上下文先因跨分支泄漏失败，分别修复。跨 compaction 的 live / resume、旧分支保留、todo / Plan Mode 恢复、新位置继续写入并再次回退、组合恢复顺序、三种模式忙态拒绝均有回归。
+- focused：checkpoint 25 pass / 0 fail；checkpoint、plan-mode、subagents、compaction 共 66 pass / 0 fail；最终补充 compact hook 泄漏回归后 checkpoint + compaction-hooks 37 pass / 0 fail，`bunx tsc -b` exit 0。
+- 最终固定源码树完整检查：隔离临时 HOME，`env -u NO_COLOR caffeinate -is bun run check` exit 0，1495 pass / 0 fail，7736 expect，111 files，170.52s；format、lint、typecheck、knip 均通过。日志 `/tmp/neant-checkpoint03-final-check.log`。
+- code-review 固定点：`75f8559509ef5955af64271b4dbffe3292f01aae`；规格为本工单与 `.scratch/checkpoint/spec.md`，标准为 `CLAUDE.md`、`CONTEXT.md`、`docs/agents/domain.md`、`docs/agents/issue-tracker.md` 与 `docs/adr/0003-dual-session-store.md`。独立审查由父代理统一调度，结果待补。

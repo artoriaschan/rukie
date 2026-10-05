@@ -25,28 +25,42 @@ export function createToolState(
 ) {
   const registered = new Map(definitions.map((definition) => [definition.name, definition]));
   const values = new Map<string, JsonValue>();
-  for (const entry of entries) {
-    if (entry.type !== "custom" || !entry.customType.startsWith("tool-state/")) continue;
-    const name = entry.customType.slice("tool-state/".length);
-    const definition = registered.get(name);
-    if (!definition) continue;
-    try {
-      const data = entry.data;
-      if (
-        typeof data !== "object" ||
-        data === null ||
-        Array.isArray(data) ||
-        typeof data.version !== "number"
-      )
-        throw new Error("Invalid Tool State snapshot.");
-      values.set(name, definition.parse(data.version, data.value));
-    } catch (error) {
-      onWarning(
-        `Skipping invalid ${entry.customType} entry ${entry.id}: ${error instanceof Error ? error.message : String(error)}`,
-      );
+  function replay(entries: readonly Entry[]) {
+    values.clear();
+    for (const entry of entries) {
+      if (entry.type !== "custom" || !entry.customType.startsWith("tool-state/")) continue;
+      const name = entry.customType.slice("tool-state/".length);
+      const definition = registered.get(name);
+      if (!definition) continue;
+      try {
+        const data = entry.data;
+        if (
+          typeof data !== "object" ||
+          data === null ||
+          Array.isArray(data) ||
+          typeof data.version !== "number"
+        )
+          throw new Error("Invalid Tool State snapshot.");
+        values.set(name, definition.parse(data.version, data.value));
+      } catch (error) {
+        onWarning(
+          `Skipping invalid ${entry.customType} entry ${entry.id}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
     }
   }
+  replay(entries);
   return {
+    /** Replace the branch projection while preserving live reminder closures. */
+    restore(entries: readonly Entry[]) {
+      const previous = new Map(values);
+      replay(entries);
+      return definitions.flatMap(({ name }) =>
+        JSON.stringify(previous.get(name)) === JSON.stringify(values.get(name))
+          ? []
+          : [{ name, value: values.get(name) }],
+      );
+    },
     reminderSources: definitions.flatMap((definition): ReminderSource[] =>
       definition.renderReminder
         ? [

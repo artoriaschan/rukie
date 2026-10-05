@@ -1,14 +1,112 @@
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
+import { branchTipInventoryPrefix } from "@earendil-works/pi-agent-core/harness/session";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { realpath, rm, symlink } from "node:fs/promises";
-import { createSession } from "../../src/index.ts";
+import { readFileSync } from "node:fs";
+import { createJsonlStore, createSession, type SessionEvent } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
 afterEach(() => dirs?.cleanup());
+
+test("conversation rewind restores live messages and Tool State, keeping code and the old branch", async () => {
+  dirs = await tempDirs();
+  const before = [{ content: "first task", status: "pending" }];
+  const fake = fakeModel([
+    fauxAssistantMessage(fauxToolCall("todo_write", { todos: before }), { stopReason: "toolUse" }),
+    fauxAssistantMessage("first answer"),
+    fauxAssistantMessage(
+      [
+        fauxToolCall("todo_write", { todos: [{ content: "second task", status: "completed" }] }),
+        fauxToolCall("write", { path: "file.txt", content: "changed" }),
+      ],
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage("second answer"),
+    (context) => {
+      expect(JSON.stringify(context)).toContain("first task");
+      expect(JSON.stringify(context)).not.toContain("second task");
+      expect(JSON.stringify(context)).not.toContain("second answer");
+      expect(JSON.stringify(context)).not.toContain("You are in Plan Mode");
+      return fauxAssistantMessage(
+        fauxToolCall("write", { path: "file.txt", content: "replacement" }),
+        { stopReason: "toolUse" },
+      );
+    },
+    fauxAssistantMessage("new answer"),
+  ]);
+  const store = createJsonlStore(dirs);
+  const session = await createSession({ ...dirs, ...fake, store, permissionMode: "full-access" });
+  await session.run("first prompt");
+  // State written after the target prompt is also discarded.
+  await session.run("  second\n prompt  ");
+  await session.setPlanMode(true);
+  const checkpoints = session.checkpoints();
+  const metadata = (await store.list({ cwd: dirs.cwd }, BACKGROUND_CONTEXT))[0]!;
+  const original = await store.open(metadata, BACKGROUND_CONTEXT);
+  const oldTip = await (await original.branch("main", BACKGROUND_CONTEXT))!.getTipId(
+    BACKGROUND_CONTEXT,
+  );
+  const anchor = (await original.getEntry(checkpoints[1]!.promptEntryId, BACKGROUND_CONTEXT))!;
+  await original.close(BACKGROUND_CONTEXT);
+  const events: SessionEvent[] = [];
+  session.subscribe((event) => events.push(structuredClone(event)));
+  const result = await session.rewind(checkpoints[1]!.promptEntryId, {
+    code: false,
+    conversation: true,
+  });
+  expect(result).toEqual({ prompt: "  second\n prompt  ", restored: [], deleted: [] });
+  expect(await Bun.file(join(dirs.cwd, "file.txt")).text()).toBe("changed");
+  expect(JSON.stringify(session.messages)).toContain("first answer");
+  expect(JSON.stringify(session.messages)).not.toContain("second answer");
+  expect(session.toolState("todo")).toEqual(before);
+  expect(session.planMode).toBe(false);
+  expect(session.toolState("plan")).toBeUndefined();
+  expect(session.checkpoints()).toEqual([checkpoints[0]!]);
+  const rewound = await store.open(metadata, BACKGROUND_CONTEXT);
+  expect(
+    await (await rewound.branch("main", BACKGROUND_CONTEXT))!.getTipId(BACKGROUND_CONTEXT),
+  ).toBe(anchor.parentId);
+  const branches = await rewound.scanValues(branchTipInventoryPrefix(), BACKGROUND_CONTEXT);
+  expect(branches.some((branch) => branch.value === oldTip)).toBe(true);
+  expect((await rewound.getEntry(checkpoints[1]!.promptEntryId, BACKGROUND_CONTEXT))!.id).toBe(
+    checkpoints[1]!.promptEntryId,
+  );
+  await rewound.close(BACKGROUND_CONTEXT);
+  expect(events).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ type: "tool_state_changed", name: "todo", value: before }),
+      expect.objectContaining({ type: "tool_state_changed", name: "plan", value: undefined }),
+      expect.objectContaining({
+        type: "conversation_rewound",
+        promptEntryId: checkpoints[1]!.promptEntryId,
+      }),
+    ]),
+  );
+  const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
+  expect(resumed.messages).toEqual(session.messages);
+  expect(resumed.toolState("todo")).toEqual(before);
+  await session.run("replacement prompt");
+  expect(session.checkpoints().map(({ preview }) => preview)).toEqual([
+    "first prompt",
+    "replacement prompt",
+  ]);
+  await session.rewind(session.checkpoints()[1]!.promptEntryId, {
+    code: true,
+    conversation: false,
+  });
+  expect(await Bun.file(join(dirs.cwd, "file.txt")).text()).toBe("changed");
+  await session.rewind(checkpoints[0]!.promptEntryId, { code: false, conversation: true });
+  expect(session.checkpoints()).toEqual([]);
+  expect(session.toolState("todo")).toBeUndefined();
+  expect(
+    session.messages.every((message) => message.role !== "user" && message.role !== "assistant"),
+  ).toBe(true);
+});
 
 test("each user prompt has a chronological Checkpoint with its own file records", async () => {
   dirs = await tempDirs();
@@ -42,6 +140,171 @@ test("each user prompt has a chronological Checkpoint with its own file records"
   const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
   expect(resumed.checkpoints()).toEqual(checkpoints);
 });
+
+test("conversation rewind removes discarded child identities from subsequent model tools", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([
+    fauxAssistantMessage("first answer"),
+    fauxAssistantMessage(
+      fauxToolCall("subagent", {
+        description: "discarded child",
+        prompt: "child",
+        run_in_background: false,
+      }),
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage("child answer"),
+    fauxAssistantMessage("second answer"),
+    fauxAssistantMessage(fauxToolCall("list_agents", {}), { stopReason: "toolUse" }),
+    (context) => {
+      expect(JSON.stringify(context.messages.at(-1))).toContain("(no subagents)");
+      expect(JSON.stringify(context)).not.toContain("discarded child");
+      return fauxAssistantMessage("listed");
+    },
+  ]);
+  const session = await createSession({ ...dirs, ...fake });
+  await session.run("first prompt");
+  await session.run("delegate");
+  expect(session.toolState("subagents")).toHaveLength(1);
+  await session.rewind(session.checkpoints()[1]!.promptEntryId, {
+    code: false,
+    conversation: true,
+  });
+  expect(session.toolState("subagents")).toBeUndefined();
+  await session.run("list children");
+});
+
+test("startup hook autoruns never create a user Checkpoint", async () => {
+  dirs = await tempDirs();
+  const started = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const finished = Promise.withResolvers<void>();
+  const session = await createSession({
+    ...dirs,
+    ...fakeModel([
+      async () => {
+        started.resolve();
+        await release.promise;
+        return fauxAssistantMessage("autorun answer");
+      },
+      fauxAssistantMessage("user answer"),
+    ]),
+    settings: {
+      hooks: {
+        SessionStart: [
+          {
+            matcher: "startup",
+            hooks: [
+              { type: "command", command: "echo hook-feedback >&2; exit 2", asyncRewake: true },
+            ],
+          },
+        ],
+      },
+    },
+  });
+  session.subscribe((event) => {
+    if (event.type === "result") finished.resolve();
+  });
+  await started.promise;
+  expect(session.checkpoints()).toEqual([]);
+  release.resolve();
+  await finished.promise;
+  await session.run("real prompt");
+  expect(session.checkpoints().map(({ preview }) => preview)).toEqual(["real prompt"]);
+  const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
+  expect(resumed.checkpoints()).toEqual(session.checkpoints());
+});
+
+test("Stop hook continuation writes belong to the real prompt Checkpoint", async () => {
+  dirs = await tempDirs();
+  await Bun.write(
+    join(dirs.cwd, "stop.sh"),
+    `input=$(cat)\ncase "$input" in *'"stop_hook_active":false'*) echo '{"decision":"block","reason":"continue from Stop"}' ;; esac\n`,
+  );
+  const session = await createSession({
+    ...dirs,
+    ...fakeModel([
+      fauxAssistantMessage("first answer"),
+      fauxAssistantMessage(
+        fauxToolCall("write", { path: "continued.txt", content: "continuation" }),
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("finished"),
+    ]),
+    permissionMode: "full-access",
+    settings: { hooks: { Stop: [{ hooks: [{ type: "command", command: "sh stop.sh" }] }] } },
+  });
+  await session.run("real prompt");
+  const checkpoints = session.checkpoints();
+  expect(checkpoints).toHaveLength(1);
+  expect(checkpoints[0]).toMatchObject({
+    preview: "real prompt",
+    files: [{ path: join(await realpath(dirs.cwd), "continued.txt"), backup: null }],
+  });
+  expect(JSON.stringify(session.messages)).toContain("continue from Stop");
+  await session.rewind(checkpoints[0]!.promptEntryId, { code: true, conversation: true });
+  expect(await Bun.file(join(dirs.cwd, "continued.txt")).exists()).toBe(false);
+  expect(JSON.stringify(session.messages)).not.toContain("continue from Stop");
+});
+
+test.each(["subagent", "subagent_fork"])(
+  "%s completion notifications do not open Checkpoints",
+  async (toolName) => {
+    dirs = await tempDirs();
+    const child = Promise.withResolvers<void>();
+    const waiting = Promise.withResolvers<void>();
+    const response: Parameters<typeof fakeModel>[0][number] = async (context) => {
+      const parent = context.messages.some(
+        (message) =>
+          message.role === "system" && message.toolsAdded?.some((tool) => tool.name === "subagent"),
+      );
+      if (!parent) {
+        await child.promise;
+        return fauxAssistantMessage("child conclusion");
+      }
+      return fauxAssistantMessage("waiting for child");
+    };
+    const fake = fakeModel([
+      fauxAssistantMessage(fauxToolCall(toolName, { description: "Background", prompt: "child" }), {
+        stopReason: "toolUse",
+      }),
+      response,
+      response,
+      (context) => {
+        expect(JSON.stringify(context.messages.at(-1))).toContain("child conclusion");
+        return fauxAssistantMessage(
+          fauxToolCall("write", { path: "notified.txt", content: "after notification" }),
+          { stopReason: "toolUse" },
+        );
+      },
+      fauxAssistantMessage("parent conclusion"),
+    ]);
+    const session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
+    const run = session.run("real parent prompt", {
+      onEvent(event) {
+        if (event.type === "subagents_waiting") waiting.resolve();
+      },
+    });
+    await waiting.promise;
+    child.resolve();
+    await run;
+    expect(session.messages.filter((message) => message.role === "user")).toHaveLength(2);
+    expect(session.checkpoints()).toMatchObject([
+      {
+        preview: "real parent prompt",
+        files: [{ path: join(await realpath(dirs.cwd), "notified.txt"), backup: null }],
+      },
+    ]);
+    expect(session.checkpoints()).toHaveLength(1);
+    const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
+    expect(resumed.checkpoints()).toEqual(session.checkpoints());
+    await resumed.rewind(resumed.checkpoints()[0]!.promptEntryId, {
+      code: false,
+      conversation: true,
+    });
+    expect(JSON.stringify(resumed.messages)).not.toContain("child conclusion");
+  },
+);
 
 test("rewritten write and edit paths share the canonical target's first backup", async () => {
   dirs = await tempDirs();
@@ -189,7 +452,11 @@ test("rewinding a later prompt preserves earlier edits and returns the original 
   ).rejects.toThrow("requires code or conversation");
 });
 
-test("rewind rejects an active Run without altering files or Checkpoints", async () => {
+test.each([
+  { code: true, conversation: false },
+  { code: false, conversation: true },
+  { code: true, conversation: true },
+])("rewind rejects an active Run without altering files or Checkpoints (%j)", async (mode) => {
   dirs = await tempDirs();
   const entered = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
@@ -214,9 +481,7 @@ test("rewind rejects an active Run without altering files or Checkpoints", async
   await entered.promise;
   const checkpoints = session.checkpoints();
   try {
-    await expect(
-      session.rewind(promptEntryId, { code: true, conversation: false }),
-    ).rejects.toThrow("idle Session");
+    await expect(session.rewind(promptEntryId, mode)).rejects.toThrow("idle Session");
     expect(await Bun.file(join(dirs.cwd, "file.txt")).text()).toBe("first");
     expect(session.checkpoints()).toEqual(checkpoints);
   } finally {
@@ -299,39 +564,129 @@ test("rewind rejects while a background child is running and the parent waits", 
   ).toEqual({ prompt: "delegate", restored: [], deleted: [] });
 });
 
-test("a missing backup fails the whole rewind before restoring or deleting any files", async () => {
+test.each([false, true])(
+  "a missing backup fails rewind before code or conversation changes (conversation=%s)",
+  async (conversation) => {
+    dirs = await tempDirs();
+    await Bun.write(join(dirs.cwd, "first.txt"), "first original");
+    await Bun.write(join(dirs.cwd, "missing.txt"), "missing original");
+    const session = await createSession({
+      ...dirs,
+      ...fakeModel([
+        fauxAssistantMessage(
+          [
+            fauxToolCall("write", { path: "first.txt", content: "first changed" }),
+            fauxToolCall("write", { path: "new.txt", content: "new" }),
+            fauxToolCall("write", { path: "missing.txt", content: "missing changed" }),
+          ],
+          { stopReason: "toolUse" },
+        ),
+        fauxAssistantMessage("done"),
+      ]),
+      permissionMode: "full-access",
+    });
+    await session.run("change all");
+    const checkpoint = session.checkpoints()[0]!;
+    const missing = checkpoint.files.find((file) => file.path.endsWith("/missing.txt"))!;
+    await rm(missing.backup!);
+    const messages = structuredClone(session.messages);
+    await expect(
+      session.rewind(checkpoint.promptEntryId, { code: true, conversation }),
+    ).rejects.toThrow("Checkpoint backup missing");
+    expect(await Bun.file(join(dirs.cwd, "first.txt")).text()).toBe("first changed");
+    expect(await Bun.file(join(dirs.cwd, "new.txt")).text()).toBe("new");
+    expect(await Bun.file(join(dirs.cwd, "missing.txt")).text()).toBe("missing changed");
+    expect(session.messages).toEqual(messages);
+    expect(session.checkpoints()).toEqual([checkpoint]);
+  },
+);
+
+test("combined rewind restores code before publishing the restored conversation", async () => {
   dirs = await tempDirs();
-  await Bun.write(join(dirs.cwd, "first.txt"), "first original");
-  await Bun.write(join(dirs.cwd, "missing.txt"), "missing original");
+  await Bun.write(join(dirs.cwd, "file.txt"), "original");
   const session = await createSession({
     ...dirs,
     ...fakeModel([
-      fauxAssistantMessage(
-        [
-          fauxToolCall("write", { path: "first.txt", content: "first changed" }),
-          fauxToolCall("write", { path: "new.txt", content: "new" }),
-          fauxToolCall("write", { path: "missing.txt", content: "missing changed" }),
-        ],
-        { stopReason: "toolUse" },
-      ),
+      fauxAssistantMessage(fauxToolCall("write", { path: "file.txt", content: "changed" }), {
+        stopReason: "toolUse",
+      }),
       fauxAssistantMessage("done"),
     ]),
     permissionMode: "full-access",
   });
-  await session.run("change all");
+  await session.run("change file");
   const checkpoint = session.checkpoints()[0]!;
-  const missing = checkpoint.files.find((file) => file.path.endsWith("/missing.txt"))!;
-  await rm(missing.backup!);
-  const messages = structuredClone(session.messages);
-  await expect(
-    session.rewind(checkpoint.promptEntryId, { code: true, conversation: false }),
-  ).rejects.toThrow("Checkpoint backup missing");
-  expect(await Bun.file(join(dirs.cwd, "first.txt")).text()).toBe("first changed");
-  expect(await Bun.file(join(dirs.cwd, "new.txt")).text()).toBe("new");
-  expect(await Bun.file(join(dirs.cwd, "missing.txt")).text()).toBe("missing changed");
-  expect(session.messages).toEqual(messages);
-  expect(session.checkpoints()).toEqual([checkpoint]);
+  const observed: string[] = [];
+  session.subscribe((event) => {
+    if (event.type === "conversation_rewound") {
+      expect(session.checkpoints()).toEqual([]);
+      expect(session.messages.some((message) => message.role === "user")).toBe(false);
+      observed.push(readFileSync(join(dirs.cwd, "file.txt"), "utf8"));
+    }
+  });
+  const result = await session.rewind(checkpoint.promptEntryId, { code: true, conversation: true });
+  expect(result).toEqual({
+    prompt: "change file",
+    restored: [await realpath(join(dirs.cwd, "file.txt"))],
+    deleted: [],
+  });
+  expect(observed).toEqual(["original"]);
 });
+
+test.each(["live", "resumed"])(
+  "%s conversation rewind restores pre-compaction context and plan guidance",
+  async (mode) => {
+    dirs = await tempDirs();
+    const fake = fakeModel([
+      fauxAssistantMessage("old transcript ".repeat(2000)),
+      fauxAssistantMessage("compaction summary"),
+      fauxAssistantMessage("second answer"),
+      (context) => {
+        expect(JSON.stringify(context)).toContain("You are in Plan Mode");
+        expect(JSON.stringify(context)).not.toContain("compaction summary");
+        expect(JSON.stringify(context)).not.toContain("second answer");
+        expect(JSON.stringify(context)).not.toContain("discarded compaction context");
+        return fauxAssistantMessage("replacement answer");
+      },
+    ]);
+    fake.model.contextWindow = 4000;
+    const session = await createSession({
+      ...dirs,
+      ...fake,
+      settings: {
+        hooks: {
+          SessionStart: [
+            {
+              matcher: "compact",
+              hooks: [{ type: "command", command: "echo discarded compaction context" }],
+            },
+          ],
+        },
+      },
+    });
+    await session.setPlanMode(true);
+    await session.run("early prompt");
+    await session.setPlanMode(false);
+    const events: SessionEvent[] = [];
+    await session.run("later prompt", {
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+    expect(events.some((event) => event.type === "compaction_end")).toBe(true);
+    const target =
+      mode === "live" ? session : await createSession({ ...dirs, ...fake, resumeId: session.id });
+    const first = target.checkpoints()[0]!;
+    await target.rewind(first.promptEntryId, { code: false, conversation: true });
+    expect(target.planMode).toBe(true);
+    expect(target.toolState("plan")).toEqual({ active: true });
+    expect(target.toolState("checkpoint")).toBeUndefined();
+    expect(JSON.stringify(target.messages)).not.toContain("compaction summary");
+    expect(JSON.stringify(target.messages)).not.toContain("old transcript");
+    await target.run("replacement prompt");
+    expect(target.checkpoints().map(({ preview }) => preview)).toEqual(["replacement prompt"]);
+  },
+);
 
 test("resume retains Checkpoint anchors and code rewind across compaction", async () => {
   dirs = await tempDirs();

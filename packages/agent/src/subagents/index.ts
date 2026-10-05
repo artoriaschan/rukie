@@ -296,6 +296,14 @@ export function createSubagents(options: SubagentOptions) {
     forkTool,
     sendTool,
     listTool,
+    /** Reproject idle child identities after the parent's Transcript branch changes. */
+    restore(identities: readonly SubagentIdentity[] = []) {
+      const retained = new Map(children);
+      children.clear();
+      for (const identity of identities)
+        children.set(identity.id, { ...identity, handle: retained.get(identity.id)?.handle });
+      notifications.clear();
+    },
     setTypes(available: Map<string, SubagentType>) {
       types = available;
       tool.description =

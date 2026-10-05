@@ -142,7 +142,7 @@ export interface Session {
   toolState(name: string): unknown;
   /** Prompt anchors and their file records, in chronological order. */
   checkpoints(): Checkpoint[];
-  /** Restores a prompt's files while idle. At least one option must be true. */
+  /** Restores files and/or the branch before a prompt while idle. */
   rewind(
     promptEntryId: string,
     options: { code: boolean; conversation: boolean },
@@ -827,7 +827,10 @@ async function createSessionInternal(
     get planMode() {
       return plan.getActive();
     },
-    setPlanMode: plan.setMode,
+    async setPlanMode(on) {
+      if (rewinding) throw new Error("Session is rewinding.");
+      return plan.setMode(on);
+    },
     get messages() {
       return agent.state.messages;
     },
@@ -843,13 +846,72 @@ async function createSessionInternal(
       if (internal.parentSessionId || !checkpoint)
         throw new Error("Subagent Sessions cannot rewind.");
       if (!code && !conversation) throw new Error("Rewind requires code or conversation.");
-      if (conversation) throw new Error("Conversation rewind is not available yet.");
       rewinding = true;
       try {
+        await planWrites;
         const prompt = checkpoint.prompt(promptEntryId);
-        return { prompt, ...(await checkpoint.restoreCode(promptEntryId)) };
+        const files = code
+          ? await checkpoint.restoreCode(promptEntryId)
+          : { restored: [], deleted: [] };
+        if (conversation) {
+          const target = await store.open(stored.metadata, context);
+          let restoredEntries;
+          try {
+            const branch = await target.branch("main", context);
+            if (!branch) throw new Error("Session has no main branch.");
+            const branchEntries = await branch.findEntries({ order: "oldestFirst" }, context);
+            const index = branchEntries.findIndex((entry) => entry.id === promptEntryId);
+            const anchor = branchEntries[index];
+            if (!anchor || anchor.type !== "message" || anchor.message.role !== "user")
+              throw new Error("Checkpoint prompt is not on the current branch.");
+            restoredEntries = branchEntries.slice(0, index);
+            const tip = await branch.getTipId(context);
+            await target.createBranch(`rewind-${crypto.randomUUID()}`, tip, context);
+            await target.setValue(branchTip("main"), anchor.parentId, context);
+          } finally {
+            await target.close(context);
+          }
+          const changes = toolState.restore(restoredEntries);
+          subagents.restore(toolState.get("subagents") as SubagentIdentity[] | undefined);
+          planActive = (toolState.get("plan") as { active: boolean } | undefined)?.active ?? false;
+          planEntered = toolState.get("plan") !== undefined;
+          pendingPlanEvents.length = 0;
+          // A compact SessionStart hook may be waiting for the next user. Its
+          // discarded branch context must not leak into the replacement prompt.
+          pendingSessionContexts.length = 0;
+          userMessageSequence = 0;
+          sessionContextUserSequence = 0;
+          transcriptMessages.splice(
+            0,
+            transcriptMessages.length,
+            ...restoredEntries.flatMap((entry) =>
+              entry.type === "message" ? [entry.message] : [],
+            ),
+          );
+          reminderStart = restoredEntries
+            .slice(0, restoredEntries.findLastIndex((entry) => entry.type === "compaction") + 1)
+            .filter((entry) => entry.type === "message").length;
+          baselinePersisted = transcriptMessages.length > 0;
+          promptTexts.clear();
+          for (const entry of restoredEntries)
+            if (entry.type === "message" && entry.message.role === "user")
+              promptTexts.set(entry.id, promptText(entry.message));
+          agent.reset();
+          agent.state.messages = restoreContext(restoredEntries);
+          completedMessages = structuredClone(agent.state.messages);
+          inputTokens = undefined;
+          for (const change of changes)
+            broadcast({ type: "tool_state_changed", ...change, sessionId: session.id });
+          broadcast({ type: "conversation_rewound", promptEntryId, sessionId: session.id });
+          broadcast({
+            ...contextUsage(agent.state.messages, model.contextWindow),
+            sessionId: session.id,
+          });
+        }
+        return { prompt, ...files };
       } finally {
         rewinding = false;
+        scheduleRewake?.();
       }
     },
     interruptSubagent: subagents.interrupt,
@@ -1502,7 +1564,7 @@ async function createSessionInternal(
     },
   } satisfies Session;
   scheduleRewake = () => {
-    if (disposePromise) return;
+    if (disposePromise || rewinding) return;
     if (running) {
       for (const reason of pendingRewakes.splice(0)) {
         const message: AgentMessage = {
