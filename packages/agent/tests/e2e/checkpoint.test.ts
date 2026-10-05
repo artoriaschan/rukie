@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { realpath, rm, symlink } from "node:fs/promises";
 import { createSession } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
@@ -86,6 +87,43 @@ test("rewritten write and edit paths share the canonical target's first backup",
   expect(await Bun.file(join(dirs.cwd, "target.txt")).text()).toBe("original");
   expect(await Bun.file(join(dirs.cwd, "untouched.txt")).text()).toBe("untouched");
 });
+
+test.each(["home", "at", "url"] as const)(
+  "hook rewritten %s paths use the executed target for backup",
+  async (spelling) => {
+    dirs = await tempDirs();
+    const path = join(spelling === "home" ? dirs.homeDir : dirs.cwd, "file.txt");
+    const rewritten =
+      spelling === "home"
+        ? "~/file.txt"
+        : spelling === "at"
+          ? "@file.txt"
+          : pathToFileURL(path).href;
+    await Bun.write(path, "original");
+    await Bun.write(
+      join(dirs.cwd, "rewrite.sh"),
+      `cat >/dev/null\necho '${JSON.stringify({ hookSpecificOutput: { updatedInput: { path: rewritten, content: "changed" }, permissionDecision: "allow" } })}'\n`,
+    );
+    const session = await createSession({
+      ...dirs,
+      ...fakeModel([
+        fauxAssistantMessage(fauxToolCall("write", { path: "other.txt", content: "wrong" }), {
+          stopReason: "toolUse",
+        }),
+        fauxAssistantMessage("done"),
+      ]),
+      settings: {
+        hooks: { PreToolUse: [{ hooks: [{ type: "command", command: "sh rewrite.sh" }] }] },
+      },
+    });
+    await session.run("write");
+    expect(await Bun.file(path).text()).toBe("changed");
+    const checkpoint = session.checkpoints()[0]!;
+    expect(checkpoint.files).toEqual([{ path: await realpath(path), backup: expect.any(String) }]);
+    await session.rewind(checkpoint.promptEntryId, { code: true, conversation: false });
+    expect(await Bun.file(path).text()).toBe("original");
+  },
+);
 
 test("denied file tools and bash writes do not leave file records", async () => {
   dirs = await tempDirs();

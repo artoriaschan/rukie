@@ -159,11 +159,14 @@ export function createPermissionGate(options: PermissionGateOptions) {
   ): Extract<PermissionStageDecision, { decision: "deny" }> | undefined {
     try {
       const tool = options.getAgentState().tools.find((tool) => tool.name === call.toolCall.name)!;
-      const [invalid] = Value.Errors(tool.parameters, updatedInput);
+      // A hook's replacement uses the same preparation as a model call so
+      // permissions, allowed-stage observers and execution share one target.
+      const prepared = tool.prepareArguments?.(updatedInput) ?? updatedInput;
+      const [invalid] = Value.Errors(tool.parameters, prepared);
       if (invalid) throw new Error(`${invalid.instancePath || "/"} ${invalid.message}`);
       const updated = validateToolArguments(tool, {
         ...call.toolCall,
-        arguments: updatedInput as typeof call.toolCall.arguments,
+        arguments: prepared as typeof call.toolCall.arguments,
       });
       Object.assign(call.args as object, updated);
     } catch (error) {

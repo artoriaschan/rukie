@@ -130,7 +130,7 @@ test.each(["PreToolUse", "PermissionRequest"] as const)(
     });
     await session.run("write");
     expect(seen).toEqual([
-      { toolName: "write", args: { path: "rewritten.txt", content: "changed" } },
+      { toolName: "write", args: { path: join(dirs.cwd, "rewritten.txt"), content: "changed" } },
     ]);
     expect(await Bun.file(join(dirs.cwd, "rewritten.txt")).text()).toBe("changed");
     expect(await Bun.file(join(dirs.cwd, "allowed.txt")).exists()).toBe(false);
