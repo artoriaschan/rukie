@@ -129,6 +129,178 @@ test("a rejected detection snapshot propagates its error and retries the unseen 
   });
 });
 
+test.each([{ resume: false }, { resume: true }])(
+  "a deleted file retries a rejected reminder once (resume: $resume)",
+  async ({ resume }) => {
+    dirs = await tempDirs();
+    const path = join(dirs.cwd, "file.txt");
+    await Bun.write(path, "before\n");
+    const faulty = failingFileTrackingStore();
+    let fake = fakeModel([
+      call("read", { path: "file.txt" }),
+      fauxAssistantMessage("read"),
+      fauxAssistantMessage("noticed"),
+      fauxAssistantMessage("done"),
+    ]);
+    const session = await createSession({
+      ...dirs,
+      store: faulty.store,
+      ...fake,
+    });
+    await session.run("read");
+    await rm(path);
+    faulty.failNext("reminder");
+    await expect(session.run("notice")).rejects.toThrow("File change reminder storage failed");
+    if (resume) {
+      await session.dispose();
+      fake = fakeModel([fauxAssistantMessage("noticed"), fauxAssistantMessage("done")]);
+    }
+    const retried = resume
+      ? await createSession({ ...dirs, resumeId: session.id, ...fake })
+      : session;
+    const events: SessionEvent[] = [];
+    await retried.run("retry", {
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+    expect(changes(events)).toMatchObject([
+      { content: expect.stringContaining("Deleted: file.txt") },
+    ]);
+    expect(JSON.stringify(fake.contexts.at(-1))).toContain("Deleted: file.txt");
+    events.length = 0;
+    await retried.run("continue", {
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+    expect(changes(events)).toHaveLength(0);
+  },
+);
+
+test.each([
+  { resume: false, large: false },
+  { resume: true, large: false },
+  { resume: false, large: true },
+  { resume: true, large: true },
+])(
+  "a rejected change reminder retries once and preserves knowledge (resume: $resume, large: $large)",
+  async ({ resume, large }) => {
+    dirs = await tempDirs();
+    const path = join(dirs.cwd, "file.txt");
+    await Bun.write(path, "keep\nbefore\n");
+    const faulty = failingFileTrackingStore();
+    const edit = call("edit", { path: "file.txt", edits: [{ oldText: "keep", newText: "owned" }] });
+    const next = [edit, fauxAssistantMessage("noticed"), fauxAssistantMessage("done")];
+    let fake = fakeModel([
+      call("read", { path: "file.txt" }),
+      fauxAssistantMessage("read"),
+      ...next,
+    ]);
+    const session = await createSession({
+      ...dirs,
+      ...fake,
+      store: faulty.store,
+      permissionMode: "full-access",
+    });
+    await session.run("read");
+    const external = "keep\n" + (large ? "large external change\n".repeat(250) : "external\n");
+    await changeFile(path, external);
+    faulty.failNext("reminder");
+    await expect(session.run("notice")).rejects.toThrow("File change reminder storage failed");
+    if (resume) {
+      await session.dispose();
+      fake = fakeModel(next);
+    }
+    const retried = resume
+      ? await createSession({
+          ...dirs,
+          ...fake,
+          resumeId: session.id,
+          permissionMode: "full-access",
+        })
+      : session;
+    const events: SessionEvent[] = [];
+    await retried.run("retry and edit", {
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+    const pathOnly = resume || large;
+    expect(changes(events)).toMatchObject([
+      {
+        content: expect.stringContaining(
+          pathOnly ? "Externally modified: file.txt." : "-before\n+external",
+        ),
+      },
+    ]);
+    expect(JSON.stringify(fake.contexts.at(-2))).toContain(
+      pathOnly ? "Externally modified: file.txt." : "+external",
+    );
+    expect(
+      retried.messages.findLast(
+        (message) => message.role === "toolResult" && message.toolName === "edit",
+      ),
+    ).toMatchObject({ isError: pathOnly });
+    expect(await Bun.file(path).text()).toBe(pathOnly ? external : "owned\nexternal\n");
+    events.length = 0;
+    await retried.run("continue", {
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+    expect(changes(events)).toHaveLength(0);
+    await retried.dispose();
+    const reopened = await createSession({
+      ...dirs,
+      resumeId: retried.id,
+      ...fakeModel([fauxAssistantMessage("done")]),
+    });
+    await reopened.run("continue after resume", {
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+    expect(changes(events)).toHaveLength(0);
+  },
+);
+
+test("a rejected prompt reminder releases its near-full request budget for the next Run", async () => {
+  dirs = await tempDirs();
+  const names = Array.from({ length: 90 }, (_, index) => `file-${index}-${"x".repeat(160)}.txt`);
+  for (const name of names) await Bun.write(join(dirs.cwd, name), "before\n");
+  const faulty = failingFileTrackingStore();
+  const session = await createSession({
+    ...dirs,
+    store: faulty.store,
+    ...fakeModel([
+      fauxAssistantMessage(
+        names.map((path) => fauxToolCall("read", { path })),
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("read"),
+      fauxAssistantMessage("noticed"),
+    ]),
+  });
+  await session.run("read");
+  for (const name of names)
+    await changeFile(join(dirs.cwd, name), "large external change\n".repeat(250));
+  faulty.failNext("reminder");
+  await expect(session.run("notice")).rejects.toThrow("File change reminder storage failed");
+  const events: SessionEvent[] = [];
+  await session.run("retry", {
+    onEvent: (event) => {
+      events.push(event);
+    },
+  });
+  expect(changes(events)).toHaveLength(1);
+  const reminder = changes(events)[0];
+  if (reminder?.type !== "reminder_injected") throw new Error("Missing file changes reminder");
+  expect(reminder.content).toContain(`Externally modified: ${names[0]}.`);
+  expect(reminder.content.length).toBeGreaterThan(15000);
+  expect(reminder.content.length).toBeLessThanOrEqual(16000);
+});
+
 test("a snapshot saved before a rejected reminder never allows an unseen diff to be overwritten after resume", async () => {
   dirs = await tempDirs();
   const path = join(dirs.cwd, "file.txt");
@@ -1329,22 +1501,23 @@ await utimes(input.tool_input.path, metadata.atime, new Date(metadata.mtimeMs + 
   expect(await Bun.file(path).text()).toBe("final content\n");
 });
 
-test("conversation rewind after a rejected diff reminder cannot grant permission for unseen file content", async () => {
+test("conversation rewind retries a rejected diff before edit uses the known external content", async () => {
   dirs = await tempDirs();
   const path = join(dirs.cwd, "file.txt");
   await Bun.write(path, "keep\noriginal\n");
   const faulty = failingFileTrackingStore();
+  const fake = fakeModel([
+    call("read", { path: "file.txt" }),
+    fauxAssistantMessage("read"),
+    fauxAssistantMessage("anchor"),
+    call("edit", { path: "file.txt", edits: [{ oldText: "keep", newText: "owned" }] }),
+    fauxAssistantMessage("edited"),
+  ]);
   const session = await createSession({
     ...dirs,
     store: faulty.store,
     permissionMode: "full-access",
-    ...fakeModel([
-      call("read", { path: "file.txt" }),
-      fauxAssistantMessage("read"),
-      fauxAssistantMessage("anchor"),
-      call("edit", { path: "file.txt", edits: [{ oldText: "keep", newText: "wrong" }] }),
-      fauxAssistantMessage("refused"),
-    ]),
+    ...fake,
   });
   await session.run("read");
   await session.run("anchor before external change");
@@ -1360,12 +1533,13 @@ test("conversation rewind after a rejected diff reminder cannot grant permission
     },
   });
   expect(changes(events)).toMatchObject([
-    { content: expect.stringContaining("Externally modified: file.txt.") },
+    { content: expect.stringContaining("-original\n+unseen external change") },
   ]);
+  expect(JSON.stringify(fake.contexts[3])).toContain("+unseen external change");
   expect(
     session.messages.findLast(
       (message) => message.role === "toolResult" && message.toolName === "edit",
     ),
-  ).toMatchObject({ isError: true });
-  expect(await Bun.file(path).text()).toBe("keep\nunseen external change\n");
+  ).toMatchObject({ isError: false });
+  expect(await Bun.file(path).text()).toBe("owned\nunseen external change\n");
 });

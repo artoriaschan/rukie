@@ -72,6 +72,7 @@ Agent Core 记住模型读过和写过的文件。每次请求模型前检查这
 - **过期检查**：write / edit 执行前，若目标在跟踪集中且 (`stale` 为真，或当前 hash 与基线不同)，返回工具错误："File has been modified since it was last read. Read it again before editing."，不执行写入。目标不在跟踪集中（从未读写过）时 write 照常；edit 照常交给 pi（pi 自身会因 `oldText` 不匹配报错）。read 清除 `stale` 并重置基线。
 - **差异生成**：直接依赖 `diff`，精确钉 `8.0.4`（与 pi-agent-core 已用版本一致），用其 unified patch 函数，上下文 3 行。更新 `docs/tech-stack.md` 与 lockfile。
 - **持久化：Tool State `file-tracking`**，version 1，值为 `{ files: Array<{ path, mtimeMs, size, hash, stale }> }`，TypeBox 校验，last-wins，坏记录按地基 B 跳过并告警。不存 `content`。基线每次变化（工具执行后、报告后、删除移出）写一份完整快照。不提供 `renderReminder`：reminder 由检测产生，不由快照渲染。
+- **报告保存顺序**：diff、只列路径与删除报告都在对应 reminder 成功写入 Transcript 后才提交新基线或移除跟踪记录。保存前写入旧基线与保守的 `stale: true`，未送达的变化保持可检测；保存失败后同进程重试或 resume 继续报告。工具成功更新基线仍在 PostToolUse 前完成。prompt 收集与请求准备共享的预算在 Run 失败清理时也重置。
 - **resume**：从 Tool State 恢复跟踪集（无 `content`），下一次检测发现的变化走"只列路径 + stale"分支。
 - **compaction**：跟踪集与内存 `content` 都保留，compaction 后照常报 diff。compaction 后的 reminder 重注入不重放 `file-changes`（它反映的是事件，不是状态），实现上：source 无变化即返回 undefined，自然不会重注入。
 - **rewind**：回退对话时，Tool State 按现有 `restore` 投影回退，跟踪集同步；内存 `content` 对不上恢复后的快照时丢弃（hash 不同的条目丢弃 content）。只回退代码时，恢复的文件在下次请求前按外部修改报告。

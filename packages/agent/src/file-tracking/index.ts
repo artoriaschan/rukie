@@ -86,7 +86,10 @@ export function createFileTracking(
   },
 ) {
   const files = new Map<string, TrackedFile>();
-  const acknowledgements = new Map<string, Map<string, TrackedFile>>();
+  const acknowledgements = new Map<
+    string,
+    Map<string, { previous: TrackedFile; current?: TrackedFile }>
+  >();
   let requestRemaining = 16000;
   const restore = (snapshot: unknown) => {
     const previous = new Map(files);
@@ -105,14 +108,14 @@ export function createFileTracking(
   restore(options.initialState);
   // Continue the event identity across resume so equal path-only reports still inject.
   let sequence = Number(options.previousReminder?.match(/^File changes \((\d+)\):/)?.[1] ?? 0);
-  const persist = () =>
+  const persist = (unreported?: ReadonlySet<string>) =>
     options.persist({
       files: Array.from(files.values(), ({ path, mtimeMs, size, hash, stale }) => ({
         path,
         mtimeMs,
         size,
         hash,
-        stale,
+        stale: stale || (unreported?.has(path) ?? false),
       })),
     });
   const displayPath = (path: string) => {
@@ -127,6 +130,7 @@ export function createFileTracking(
       try {
         const pending: Array<{
           path: string;
+          previous: TrackedFile;
           report: string;
           current?: TrackedFile;
           patch?: string;
@@ -154,6 +158,7 @@ export function createFileTracking(
                 : undefined;
             pending.push({
               path,
+              previous,
               report: `Externally modified: ${shown}. Read it again before editing.`,
               current,
               patch: patch !== undefined && patch.length <= 4000 ? patch : undefined,
@@ -165,7 +170,7 @@ export function createFileTracking(
               "code" in error &&
               error.code === "ENOENT"
             ) {
-              pending.push({ path, report: `Deleted: ${displayPath(path)}` });
+              pending.push({ path, previous, report: `Deleted: ${displayPath(path)}` });
             } else if (
               !previous.unavailable ||
               (metadata &&
@@ -174,6 +179,7 @@ export function createFileTracking(
               // No bytes were available to hash. Keep the last hash and any metadata we did observe.
               pending.push({
                 path,
+                previous,
                 report: `Externally modified: ${displayPath(path)}. Read it again before editing.`,
                 current: {
                   ...previous,
@@ -194,25 +200,23 @@ export function createFileTracking(
         const header = `File changes (${sequence + 1}):\nThe following files were modified since you last read or wrote them (by the user, a hook, a command, or another agent):\n\n`;
         const changes: string[] = [];
         const diffs: Array<{ index: number; patch: string; current: TrackedFile }> = [];
-        const known = new Map<string, TrackedFile>();
+        const candidates = new Map<string, { previous: TrackedFile; current?: TrackedFile }>();
         let remaining = requestRemaining - header.length;
-        // Only emitted reports advance a baseline; the next request can still detect deferred files.
-        for (const { path, report, current, patch } of pending) {
+        // Stage only reports that fit; neither reported nor deferred knowledge advances yet.
+        for (const { path, previous, report, current, patch } of pending) {
           const cost = report.length + (changes.length ? 2 : 0);
           if (cost > remaining) break;
           remaining -= cost;
           const index = changes.length;
           changes.push(report);
+          candidates.set(path, { previous, current });
           if (current) {
-            files.set(path, current);
             if (patch !== undefined) {
               diffs.push({ index, patch, current });
             } else {
               current.content = undefined;
               current.stale = true;
             }
-          } else {
-            files.delete(path);
           }
         }
         if (!changes.length) return undefined;
@@ -223,10 +227,6 @@ export function createFileTracking(
           if (!exhausted && extra <= remaining) {
             changes[index] = patch;
             remaining -= extra;
-            known.set(current.path, { ...current });
-            // The diff becomes knowledge only after its reminder reaches the Transcript.
-            current.stale = true;
-            current.content = undefined;
           } else {
             exhausted = true;
             current.content = undefined;
@@ -237,8 +237,10 @@ export function createFileTracking(
         sequence++;
         const content = header + changes.join("\n\n");
         requestRemaining -= content.length;
-        await persist();
-        if (known.size) acknowledgements.set(content, known);
+        // Persist old hashes and paths so failed reminder delivery remains detectable after resume.
+        // The conservative stale flags also protect conversation rewind from unseen diff knowledge.
+        await persist(new Set(candidates.keys()));
+        acknowledgements.set(content, candidates);
         return content;
       } catch (error) {
         files.clear();
@@ -257,8 +259,12 @@ export function createFileTracking(
       const known = acknowledgements.get(content);
       if (!known) return;
       const previous = new Map(files);
-      for (const [path, current] of known)
-        if (files.get(path)?.hash === current.hash) files.set(path, current);
+      for (const [path, { previous: expected, current }] of known) {
+        // A later successful file tool must not be overwritten by an older acknowledgement.
+        if (files.get(path) !== expected) continue;
+        if (current) files.set(path, current);
+        else files.delete(path);
+      }
       try {
         await persist();
         acknowledgements.delete(content);
@@ -271,6 +277,7 @@ export function createFileTracking(
     /** Prompt collection and request preparation share a budget until this request is prepared. */
     finishRequest() {
       requestRemaining = 16000;
+      acknowledgements.clear();
     },
     /** Prepared paths include hook rewrites; reject stale writes before invoking the file tool. */
     wrapTool<T extends TSchema, D>(tool: AgentTool<T, D>): AgentTool<T, D> {

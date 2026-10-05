@@ -2203,6 +2203,8 @@ async function createSessionInternal(
           if (result.error || signal?.aborted || childModelStop) goal.disarm();
           await emit({ type: "result", ...result });
         } finally {
+          // Prompt reminder persistence can fail before request preparation resets this budget.
+          fileTracking.finishRequest();
           currentResult = undefined;
           emitRunEvent = undefined;
           pendingRewakes.push(...rewakeSteering.values());
