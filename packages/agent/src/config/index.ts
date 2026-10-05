@@ -198,7 +198,7 @@ function modelRegistry(settings: Settings) {
           api: p.api,
           provider: p.id,
           baseUrl: p.baseUrl,
-          input: ["text"],
+          input: m.input ?? ["text"],
           cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
           reasoning: m.reasoning ?? false,
           // ponytail: generic defaults; per-model limits come from settings when they matter
@@ -213,13 +213,19 @@ function modelRegistry(settings: Settings) {
 
 export { modelState } from "./model-state.ts";
 
-/** Settings-defined models share the exact registry and precedence used by resolution. */
-export function listModels(settings: Settings = {}): { spec: string; name: string }[] {
+/**
+ * Lists models with their accepted input modalities without requiring credentials.
+ * Uses resolution's registry and precedence; custom models default to text input.
+ */
+export function listModels(
+  settings: Settings = {},
+): { spec: string; name: string; input: ("text" | "image")[] }[] {
   return modelRegistry(settings)
     .getModels()
     .map((model) => ({
       spec: `${model.provider}/${model.id}`,
       name: model.name,
+      input: [...model.input],
     }))
     .sort((a, b) => a.spec.localeCompare(b.spec));
 }
