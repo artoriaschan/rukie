@@ -645,6 +645,7 @@ function Chat({
                   locale={locale}
                   summary={entry.summary}
                   status={entry.isError ? "error" : "success"}
+                  outcomeUnknown={entry.outcomeUnknown}
                   result={entry.result}
                   error={entry.error}
                 />

@@ -7,6 +7,7 @@ import { StatusIcon, ThemedBox, ThemedText, figures, type StatusIconProps } from
 export function ToolCall({
   summary,
   status,
+  outcomeUnknown = false,
   result,
   error,
   planReview,
@@ -14,6 +15,7 @@ export function ToolCall({
 }: {
   summary: string;
   status: StatusIconProps["status"];
+  outcomeUnknown?: boolean;
   result?: string;
   error?: string;
   locale?: Locale;
@@ -40,7 +42,12 @@ export function ToolCall({
   return (
     <ThemedBox flexDirection="column">
       <ThemedText wrap="truncate">
-        <StatusIcon status={status} /> {summary}
+        {outcomeUnknown ? (
+          <ThemedText color="warning">?</ThemedText>
+        ) : (
+          <StatusIcon status={status} />
+        )}{" "}
+        {summary}
       </ThemedText>
       {status !== "running" && output && (
         <ThemedBox color={status === "error" ? "error" : "text"}>

@@ -1,7 +1,7 @@
 import type { Locale } from "@neant/i18n";
 import { createTuiI18n, formatError } from "../../i18n";
 import type { Session, SessionEvent, TodoItem } from "@neant/agent";
-import type { ContextUsageEvent, RunResult } from "@neant/shared";
+import { isUnknownToolOutcome, type ContextUsageEvent, type RunResult } from "@neant/shared";
 import type { TpsSample } from "../../components/status-line";
 import { reduceSubagent, restoreSubagents, type SubagentState } from "./subagents";
 import { createActivity, reduce } from "./activity/activity";
@@ -21,6 +21,7 @@ type CompletedEntry =
       type: "tool";
       summary: string;
       isError: boolean;
+      outcomeUnknown?: boolean;
       result?: string;
       error?: string;
       agentId?: string;
@@ -49,6 +50,14 @@ function toolEntry(
   result: Pick<ToolResultMessage, "content" | "details">,
   t: ReturnType<typeof createTuiI18n>,
 ): CompletedEntry {
+  if (isUnknownToolOutcome(result.details))
+    return {
+      type: "tool",
+      summary: tool.summary,
+      isError: false,
+      outcomeUnknown: true,
+      result: t("tool.outcome-unknown"),
+    };
   // Events supply live provenance; persisted tool results retain the rule on replay.
   const rule =
     tool.rule ??

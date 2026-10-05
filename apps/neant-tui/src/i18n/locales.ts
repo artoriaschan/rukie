@@ -151,6 +151,8 @@ const zh = {
   "logo.effort.max": "推理强度：最高",
 
   "tool.rule-denied": "被权限规则拒绝：{{rule}}",
+  "tool.outcome-unknown":
+    "结果未知\n无法确认成功、失败或是否执行。\n可能已产生副作用。\n重试前先核对实际状态。",
   "tool.hook-denied": "被 hook 拒绝（{{hook}}）：{{reason}}",
   "notice.hook-warning": "{{event}} hook {{hook}}：{{message}}",
   "notice.hook-stopped": "Hook 已结束运行：{{reason}}",
@@ -348,6 +350,8 @@ const en = {
   "logo.effort.max": "Max effort",
 
   "tool.rule-denied": "Denied by permission rule: {{rule}}",
+  "tool.outcome-unknown":
+    "Outcome unknown\nSuccess/failure/execution unconfirmed.\nSide effects may have occurred.\nVerify actual state before retrying.",
   "tool.hook-denied": "Denied by hook ({{hook}}): {{reason}}",
   "notice.hook-warning": "{{event}} hook {{hook}}: {{message}}",
   "notice.hook-stopped": "Run stopped by hook: {{reason}}",

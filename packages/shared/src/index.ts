@@ -1,4 +1,5 @@
 // Runtime-agnostic types and schemas shared across packages.
+export { isUnknownToolOutcome } from "./tool-outcome.ts";
 export {
   THINKING_LEVELS,
   PERMISSION_MODES,
