@@ -1,6 +1,6 @@
 import type { Locale } from "@neant/i18n";
 import { createTuiI18n, formatError } from "../../i18n";
-import type { Session, SessionEvent, SessionRecovery, TodoItem } from "@neant/agent";
+import type { GoalView, Session, SessionEvent, SessionRecovery, TodoItem } from "@neant/agent";
 import {
   isUnknownToolOutcome,
   type ContextUsageEvent,
@@ -227,6 +227,7 @@ function questionSummary(args: unknown, text: string, t: ReturnType<typeof creat
 }
 
 interface ViewState {
+  goal: GoalView | undefined;
   planMode: boolean;
   waitingSubagents: number;
   subagents: Readonly<Record<string, SubagentState>>;
@@ -275,7 +276,8 @@ function replayMessages(
   const tools = new Map<string, ToolCall>();
   return messages.flatMap((message): CompletedEntry[] => {
     const text = messageText(message);
-    if (message.role === "user") return [userMessageEntry(message)];
+    if (message.role === "user")
+      return "source" in message && message.source === "goal" ? [] : [userMessageEntry(message)];
     if (message.role === "assistant") {
       for (const content of message.content) {
         if (content.type === "toolCall")
@@ -418,6 +420,7 @@ function reduceEvent(
     case "message_end": {
       const text = messageText(event.message);
       if (event.message.role === "user") {
+        if ("source" in event.message && event.message.source === "goal") return state;
         return {
           ...state,
           completed: [...state.completed, userMessageEntry(event.message)],
@@ -555,6 +558,7 @@ function createViewState(session: Session, model: string, locale: Locale): ViewS
   const t = createTuiI18n(locale);
   return {
     planMode: session.planMode,
+    goal: session.goal,
     waitingSubagents: 0,
     subagents: restoreSubagents(session.toolState("subagents"), session.recovery),
     todos: (session.toolState("todo") as TodoItem[] | undefined) ?? [],
@@ -624,6 +628,10 @@ export function createConversation(session: Session, model: string, locale: Loca
             ? session.recovery
             : undefined,
         ),
+        goal:
+          event.type === "result" || (event.type === "tool_state_changed" && event.name === "goal")
+            ? session.goal
+            : state.goal,
         activity: reduce(
           event.type === "session_start" && !state.running
             ? reduce(state.activity, { type: "submit" }, now)

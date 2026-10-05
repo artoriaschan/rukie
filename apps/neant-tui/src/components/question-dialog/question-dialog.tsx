@@ -158,7 +158,7 @@ export function QuestionDialog({
     4;
   const spacious = maxHeight >= fullReserved + 2;
   const gap = Number(spacious);
-  const chipHeight = question.header && (!error || maxHeight > 6) ? 1 : 0;
+  const chipHeight = question.header && maxHeight >= 6 && (!error || maxHeight > 6) ? 1 : 0;
   const questionHeight = spacious ? fullQuestionHeight : 1;
   const hintHeight = spacious ? fullHintHeight : 1;
   const errorHeight = error ? 1 + gap : 0;

@@ -136,9 +136,15 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
         homeDir,
         settings,
         onWarning: (warning) => {
+          // Session's Goal ask-mode warning has no typed diagnostic; translate this known copy.
+          const localized =
+            warning ===
+            "Goal continuation may wait for permissions in ask mode. Consider switching to auto-review."
+              ? t("goal.permission-warning")
+              : warning;
           // MCP and hook diagnostics also arrive as inline SessionEvent notices.
           if (!warning.startsWith("MCP server ") && !/^[A-Za-z]+ hook /.test(warning))
-            io.stderr(`${t("startup.warning", { warning })}\n`);
+            io.stderr(`${t("startup.warning", { warning: localized })}\n`);
         },
         ...io.session,
         resumeId: values.resume,

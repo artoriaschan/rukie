@@ -20,6 +20,7 @@ export function commandCatalog(t: ReturnType<typeof createTuiI18n>) {
   ).map((name) => ({
     name,
     description: t(`command.${name}`),
-    duringRun: ["exit", "help", "btw", "context", "rename"].includes(name),
+    parameters: name === "goal" ? "[<objective>|edit <objective>|pause|resume|clear]" : undefined,
+    duringRun: ["exit", "help", "btw", "context", "rename", "goal"].includes(name),
   }));
 }
