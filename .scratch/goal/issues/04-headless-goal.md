@@ -25,4 +25,6 @@ SIGINT 转交内部 Run；创建 Goal 后重新检查信号，防止信号在 Go
 - TDD：首个超限进程回归先因未知 `--goal` 得到 2（预期 1）失败，再通过；多轮输出先得到两次固定回答和退出码 1，再扩展 fake OpenAI 脚本回复后通过；创建中 SIGINT 回归先观察到额外模型请求，再修复信号检查后通过。
 - `rtk proxy bun test apps/neant-cli/tests`：117 pass / 0 fail。覆盖 complete / blocked 收尾、多轮文本、Goal 状态事件、参数校验、resume 三种情况、交互安全默认值、父子输出归属、Run error / length、startup autorun、中止创建与等待，以及进程 SIGINT 消息落盘。
 - `rtk proxy bunx --no -- tsc -b`：exit 0。
-- `rtk proxy env -u NO_COLOR bun run check`：exit 0，1786 pass / 0 fail；完整日志 `/tmp/goal-04-check.log`。合并最新 integration 后继续最终检查。
+- `rtk proxy env -u NO_COLOR bun run check`：exit 0，1786 pass / 0 fail，9395 断言、137 文件（211.01s）。
+- 合入 integration `2f48b96` 后，`rtk proxy env -u NO_COLOR bun test apps/neant-cli/tests packages/agent/tests/e2e/goal.test.ts apps/neant-tui/tests/screens/chat/goal.test.ts`：149 pass / 0 fail；`rtk proxy bunx --no -- tsc -b`：exit 0。初次 focused 命令未清除 NO_COLOR，TUI chip 颜色断言失败；清除后通过。
+- 最终 integration 的完整检查由主代理执行；本工作树额外完整检查日志 `/tmp/goal-04-check.log`。
