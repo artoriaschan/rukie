@@ -11,16 +11,13 @@ test("/plan toggles guidance, border and chip without sending a prompt", async (
   try {
     await app.waitFor(() => app.screen().some((line) => line.startsWith("╭")));
     const ordinaryBorder = border(app);
-    app.stdin.write(" /PLAN \r");
+    app.stdin.write("/plan\r");
     await app.waitFor(() => app.screen().some((line) => line.includes("已进入 Plan Mode")));
     expect(app.calls).toHaveLength(0);
     expect(app.screen().at(-2)).toContain("plan");
     expect(border(app)).toBe(0xb49adc);
     expect(border(app)).not.toBe(ordinaryBorder);
     app.stdin.write("/plan\r");
-    await app.waitFor(() => app.screen().some((line) => line.includes("已处于 Plan Mode")));
-    expect(app.calls).toHaveLength(0);
-    app.stdin.write("/plan off\r");
     await app.waitFor(() => !app.screen().at(-2)!.includes("plan"));
     expect(border(app)).toBe(ordinaryBorder);
     expect(app.calls).toHaveLength(0);
@@ -33,7 +30,7 @@ test.each([
   ["zh", "已进入 Plan Mode"],
   ["en", "Entered Plan Mode"],
 ] as const)(
-  "/plan instruction sends only the instruction and other slash prompts survive in %s",
+  "/plan guidance reaches the next prompt and unknown slash prompts survive in %s",
   async (locale, enabled) => {
     const app = await start([], {
       prepare: async (root) => {
@@ -42,7 +39,9 @@ test.each([
     });
     try {
       await app.waitFor(() => app.screen().some((line) => line.startsWith("╭")));
-      app.stdin.write("/plan inspect layout\r");
+      app.stdin.write("/plan\r");
+      await app.waitFor(() => app.screen().at(-2)!.includes("plan"));
+      app.stdin.write("inspect layout\r");
       await app.waitFor(() => app.calls.length === 1);
       expect(app.calls[0]!.context.messages.at(-1)).toMatchObject({
         role: "user",
@@ -52,14 +51,14 @@ test.each([
       expect(app.screen().at(-2)).toContain("plan");
       app.calls[0]!.finish();
       await app.waitFor(() => !app.isWorking());
-      app.stdin.write("/PLAN inspect again\r");
+      app.stdin.write("inspect again\r");
       await app.waitFor(() => app.calls.length === 2);
       expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
         content: [{ type: "text", text: "inspect again" }],
       });
       app.calls[1]!.finish();
       await app.waitFor(() => !app.isWorking());
-      app.stdin.write("/plan off\r");
+      app.stdin.write("/plan\r");
       await app.waitFor(() => !app.screen().at(-2)!.includes("plan"));
       app.stdin.write("/planner untouched\r");
       await app.waitFor(() => app.calls.length === 3);
@@ -78,33 +77,23 @@ test.each([
 );
 
 test.each([40, 60, 80])(
-  "Plan chip and border stay visible at %i columns while /plan controls an active Run",
+  "Plan chip and border stay visible at %i columns and a running toggle is rejected",
   async (columns) => {
-    const app = await start(["work"], { columns, rows: 24 });
+    const app = await start([], { columns, rows: 24 });
     try {
-      await app.waitFor(() => app.calls.length === 1);
+      await app.waitFor(() => app.screen().some((line) => line.startsWith("╭")));
       app.stdin.write("/plan\r");
       await app.waitFor(() => app.screen().at(-2)!.includes("plan"));
       expect(border(app)).toBe(0xb49adc);
-      expect(app.calls).toHaveLength(1);
-      app.stdin.write("\x1b[Z");
-      await app.waitFor(() => app.screen().at(-2)!.includes("自动评审"));
+      app.stdin.write("work\r");
+      await app.waitFor(() => app.calls.length === 1);
+      app.stdin.write("/plan\r");
+      await app.waitFor(() => app.screen().join("\n").includes("run 结束后再用"));
       expect(app.screen().at(-2)).toContain("plan");
-      app.calls[0]!.tool("todo_write", { todos: [] });
-      await app.waitFor(() => app.calls.length === 2);
-      expect(JSON.stringify(app.calls[1]!.context.messages.at(-1))).toContain(
-        "You are in Plan Mode",
-      );
-      app.stdin.write("/plan off\r");
-      await app.waitFor(() => !app.screen().at(-2)!.includes("plan"));
-      expect(app.screen().at(-2)).toContain("自动评审");
-      app.calls[1]!.tool("todo_write", { todos: [] });
-      await app.waitFor(() => app.calls.length === 3);
-      expect(JSON.stringify(app.calls[2]!.context.messages.at(-1))).toContain(
-        "You have exited Plan Mode",
-      );
-      app.calls[2]!.finish();
+      app.calls[0]!.finish();
       await app.waitFor(() => !app.isWorking());
+      app.stdin.write("/plan\r");
+      await app.waitFor(() => !app.screen().at(-2)!.includes("plan"));
     } finally {
       await app.cleanup();
     }

@@ -629,6 +629,7 @@ export function createConversation(session: Session, model: string, locale: Loca
   return {
     dispatchActivity,
     notice(text: string, error = false) {
+      state = { ...state, planMode: session.planMode };
       update(
         error
           ? { ...state, error: text }
@@ -651,33 +652,12 @@ export function createConversation(session: Session, model: string, locale: Loca
       };
     },
     submit(prompt: string, initial = false) {
-      const command = /^\/plan(?:\s+([\s\S]*))?$/i.exec(prompt.trim());
-      if (command) {
-        const instruction = command[1]?.trim() ?? "";
-        const off = instruction.toLowerCase() === "off";
-        const alreadyActive = session.planMode;
-        void session.setPlanMode(!off).catch((error: unknown) => {
-          update({ ...state, planMode: session.planMode, error: formatError(error, t) });
-        });
-        update({ ...state, planMode: session.planMode });
-        if (!instruction || off) {
-          update({
-            ...state,
-            completed: [
-              ...state.completed,
-              {
-                type: "notice",
-                text: t(
-                  off ? "plan.disabled" : alreadyActive ? "plan.already-active" : "plan.enabled",
-                ),
-              },
-            ],
-          });
-          return true;
-        }
-        prompt = instruction;
+      if (!prompt.trim()) return false;
+      if (active || (session.running && !initial)) {
+        if (!prompt.startsWith("/")) return false;
+        session.steer(prompt);
+        return true;
       }
-      if (active || (session.running && !initial) || !prompt.trim()) return false;
       const controller = new AbortController();
       if (!session.running)
         update({

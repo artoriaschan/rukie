@@ -6,7 +6,9 @@ const plan = "# Storage plan\n\nAdd **SQLite** storage.\n\nValidate public behav
 async function review(options: Parameters<typeof start>[1] = {}, markdown = plan) {
   const app = await start([], options);
   await app.waitFor(() => app.screen().some((line) => line.startsWith("╭")));
-  app.stdin.write("/plan inspect\r");
+  app.stdin.write("/plan\r");
+  await app.waitFor(() => app.screen().at(-2)!.includes("plan"));
+  app.stdin.write("inspect\r");
   await app.waitFor(() => app.calls.length === 1);
   app.calls[0]!.tool("exit_plan_mode", { plan: markdown });
   return app;
@@ -154,7 +156,9 @@ test.each([
     const app = await start([], { columns, rows });
     try {
       await app.waitFor(() => app.screen().some((line) => line.startsWith("╭")));
-      app.stdin.write("/plan inspect\r");
+      app.stdin.write("/plan\r");
+      await app.waitFor(() => app.screen().at(-2)!.includes("plan"));
+      app.stdin.write("inspect\r");
       await app.waitFor(() => app.calls.length === 1);
       app.calls[0]!.tool("todo_write", {
         todos: [{ content: "parent task", status: "in_progress" }],

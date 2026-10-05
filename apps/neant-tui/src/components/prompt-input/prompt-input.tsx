@@ -11,6 +11,7 @@ export function PromptInput({
   history,
   readOnly = false,
   compact = false,
+  filterInput,
 }: {
   value: string;
   onChange(value: string): void;
@@ -22,6 +23,7 @@ export function PromptInput({
   history?: TextInputProps["history"];
   readOnly?: boolean;
   compact?: boolean;
+  filterInput?: TextInputProps["filterInput"];
 }) {
   const edge = "─".repeat(Math.max(0, columns - 2));
   return (
@@ -47,6 +49,7 @@ export function PromptInput({
             columns={Math.max(1, columns - 3)}
             cursorStyle="block"
             history={history}
+            filterInput={filterInput}
           />
         </Box>
       </Box>

@@ -20,3 +20,4 @@ export { SubagentDetailScene } from "./subagent-detail";
 export { PlanReviewDialog } from "./plan-review";
 
 export { RewindPicker } from "./rewind-picker";
+export { CommandSuggestions } from "./command-suggestions";
