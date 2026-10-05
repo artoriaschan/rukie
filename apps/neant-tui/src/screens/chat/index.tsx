@@ -526,7 +526,8 @@ function Chat({
         [
           t("command.help-title"),
           ...suggestions.map(
-            (item) => `/${item.name}${"skill" in item ? " [skill]" : ""}  ${item.description}`,
+            (item) =>
+              `/${item.name}${"parameters" in item && item.parameters ? ` ${item.parameters}` : ""}${"skill" in item ? " [skill]" : ""}  ${item.description}`,
           ),
         ].join("\n"),
       );
@@ -539,6 +540,56 @@ function Chat({
         .setPlanMode(on)
         .then(() => conversation.notice(t(on ? "plan.enabled" : "plan.disabled")))
         .catch((error: unknown) => conversation.notice(formatError(error, t), true));
+    } else if (command.name === "goal") {
+      const input = prompt.slice(parsed![0].length).trim();
+      const control = input.toLowerCase();
+      if (conversation.isRunning() && !["", "pause", "clear"].includes(control)) {
+        conversation.notice(t("command.busy", { name: "goal" }));
+      } else if (!input) {
+        const goal = session.goal;
+        const hint = !goal
+          ? ""
+          : goal.phase === "complete"
+            ? "/goal <objective>, /goal clear"
+            : goal.phase === "active" && goal.armed
+              ? "/goal edit <objective>, /goal pause, /goal clear"
+              : "/goal edit <objective>, /goal resume, /goal clear";
+        conversation.notice(
+          goal
+            ? [
+                t("goal.status", { value: goal.phase }),
+                ...(goal.blockedReason ? [t("goal.blocker", { value: goal.blockedReason })] : []),
+                t("goal.objective", { value: goal.objective }),
+                t("goal.rounds", { value: `${goal.roundsStarted}/${goal.maxRounds}` }),
+                t("goal.activation", { value: t(goal.armed ? "goal.armed" : "goal.disarmed") }),
+                "",
+                t("goal.commands", { value: hint }),
+              ].join("\n")
+            : `${t("goal.empty")}\n${t("goal.usage")}`,
+        );
+      } else if (control === "edit") {
+        conversation.notice(`${t("goal.edit-empty")}\n${t("goal.usage")}`, true);
+      } else if (/^edit(?=\s)/iu.test(input)) {
+        void session
+          .editGoal(input.slice(4).trim())
+          .catch((error: unknown) => conversation.notice(formatError(error, t), true));
+      } else if (control === "resume") {
+        void session
+          .resumeGoal()
+          .catch((error: unknown) => conversation.notice(formatError(error, t), true));
+      } else if (control === "pause") {
+        void session
+          .pauseGoal()
+          .catch((error: unknown) => conversation.notice(formatError(error, t), true));
+      } else if (control === "clear") {
+        void session
+          .clearGoal()
+          .catch((error: unknown) => conversation.notice(formatError(error, t), true));
+      } else if (input) {
+        void session
+          .createGoal(input)
+          .catch((error: unknown) => conversation.notice(formatError(error, t), true));
+      }
     } else if (command.name === "rename") {
       const title = prompt.slice(parsed![0].length).trim();
       if (!title) {
@@ -615,17 +666,19 @@ function Chat({
     body.current?.scrollToBottom();
   };
   const showReturn = !!bodyScroll && !bodyScroll.following;
-  const statusHeight = state.contextUsage && columns - 2 >= 14 ? 3 : 2;
+  const showContextBar = !(state.goal && interaction && rows < 16);
+  const statusHeight = showContextBar && state.contextUsage && columns - 2 >= 14 ? 3 : 2;
   const hasActivity = state.running && (activity.phase !== "idle" || state.waitingSubagents > 0);
   const promptMaxLines = Math.max(1, Math.min(6, Math.floor(rows / 3)) - 3);
-  const hasTodos = state.todos.some((todo) => state.running || todo.status !== "completed");
+  const hasTodos =
+    !!state.goal || state.todos.some((todo) => state.running || todo.status !== "completed");
   const subagents = Object.values(state.subagents);
   // Restored identities belong in the dashboard; only a live child opens the dock.
   const panelSubagents = subagents.some((agent) => agent.status === "running")
     ? subagents.filter((agent) => agent.status !== "idle")
     : [];
   const hasSubagents = panelSubagents.length > 0;
-  const minimumDialogHeight = rewind
+  const preferredDialogHeight = rewind
     ? 6
     : question
       ? permissionChoices(question.request.mode).length + 3
@@ -639,18 +692,24 @@ function Chat({
   // Dialogs take priority. Reserve a preview for every visible panel before
   // deciding whether the prompt needs to use its one-row form.
   const panelCount = Number(hasTodos) + Number(hasSubagents);
+  const goalRows = state.goal ? 1 + Number(state.goal.phase === "blocked") : 0;
+  // Goal root and blocker cannot collapse into a panel's one-row preview.
+  const panelMinimum = panelCount + goalRows;
+  const minimumDialogHeight = state.goal
+    ? Math.min(preferredDialogHeight, Math.max(5, rows - statusHeight - panelMinimum - 1))
+    : preferredDialogHeight;
   const sideHeight = side
     ? Math.min(
         10,
-        Math.max(3, Math.min(Math.floor(rows / 2), rows - statusHeight - 2 - panelCount)),
+        Math.max(3, Math.min(Math.floor(rows / 2), rows - statusHeight - 2 - panelMinimum)),
       )
     : 0;
   const dialogGap =
-    question && rows - statusHeight - minimumDialogHeight - panelCount - 1 >= 1 ? 1 : 0;
+    question && rows - statusHeight - minimumDialogHeight - panelMinimum - 1 >= 1 ? 1 : 0;
   const compactPrompt =
     ((!!side || !!rewind || !!resumePicker) && rows < 20) ||
     (!!interaction &&
-      rows - statusHeight - minimumDialogHeight - dialogGap - panelCount < promptMaxLines + 3);
+      rows - statusHeight - minimumDialogHeight - dialogGap - panelMinimum < promptMaxLines + 3);
   const promptHeight = compactPrompt ? 1 : promptMaxLines + 3;
   const transcriptHeight = rewind
     ? Number(!compactPrompt)
@@ -668,7 +727,7 @@ function Chat({
               statusHeight -
               promptHeight -
               transcriptHeight -
-              panelCount -
+              panelMinimum -
               sideHeight -
               Number(hasActivity),
           ),
@@ -677,18 +736,18 @@ function Chat({
   const chromeSpace =
     rows - statusHeight - promptHeight - transcriptHeight - commandMenuHeight - sideHeight;
   const showReturnControl =
-    showReturn && chromeSpace - minimumDialogHeight - dialogGap - panelCount >= 1;
+    showReturn && chromeSpace - minimumDialogHeight - dialogGap - panelMinimum >= 1;
   const compactReturn =
     showReturnControl &&
-    chromeSpace - minimumDialogHeight - dialogGap - panelCount - Number(hasActivity) < 2;
+    chromeSpace - minimumDialogHeight - dialogGap - panelMinimum - Number(hasActivity) < 2;
   const returnHeight = showReturnControl ? (compactReturn ? 1 : 2) : 0;
   const showActivity =
-    hasActivity && chromeSpace - minimumDialogHeight - dialogGap - panelCount - returnHeight >= 1;
+    hasActivity && chromeSpace - minimumDialogHeight - dialogGap - panelMinimum - returnHeight >= 1;
   const available = chromeSpace - returnHeight - Number(showActivity);
   const panelReserve =
-    panelCount > 0 && available - dialogGap - minimumDialogHeight >= panelCount * 3
-      ? panelCount * 3
-      : panelCount;
+    panelCount > 0 && available - dialogGap - minimumDialogHeight >= panelCount * 3 + goalRows
+      ? panelCount * 3 + goalRows
+      : panelMinimum;
   const dialogMaxHeight = interaction
     ? Math.max(
         minimumDialogHeight,
@@ -700,7 +759,7 @@ function Chat({
     : 0;
   // Six rows keep the focused item, file summary, bash warning and footer visible
   // even at 40×12 with both persistent panels. Activity/return rows yield first.
-  const rewindMaxHeight = rewind ? Math.min(14, available - panelCount) : 0;
+  const rewindMaxHeight = rewind ? Math.min(14, available - panelMinimum) : 0;
   const rewindHeight = rewind
     ? rewindLayout(
         rewind.entries,
@@ -710,13 +769,19 @@ function Chat({
         rewindMaxHeight,
       ).height
     : 0;
-  const modelPickerHeight = modelPicker === undefined ? 0 : Math.min(12, available - panelCount);
-  const resumePickerHeight = resumePicker ? Math.min(14, available - panelCount) : 0;
+  const modelPickerHeight = modelPicker === undefined ? 0 : Math.min(12, available - panelMinimum);
+  const resumePickerHeight = resumePicker ? Math.min(14, available - panelMinimum) : 0;
   const panelHeights = allocatePanelHeights(
-    available - dialogMaxHeight - dialogGap - rewindHeight - modelPickerHeight - resumePickerHeight,
+    available -
+      dialogMaxHeight -
+      dialogGap -
+      rewindHeight -
+      modelPickerHeight -
+      resumePickerHeight -
+      goalRows,
     Array.from({ length: panelCount }, () => 3),
   );
-  const todoMaxHeight = hasTodos ? panelHeights[0]! : 1;
+  const todoMaxHeight = hasTodos ? panelHeights[0]! + goalRows : 1;
   const subagentMaxHeight = hasSubagents ? panelHeights[Number(hasTodos)]! : 1;
   useInput((event) => {
     if (sideController.current && event.type === "key") {
@@ -1173,6 +1238,7 @@ function Chat({
               />
             )}
             <GoalTodoPanel
+              goal={state.goal}
               todos={state.todos}
               working={state.running}
               collapsed={todosCollapsed}
@@ -1373,6 +1439,8 @@ function Chat({
               }}
             />
             <StatusLine
+              showContextBar={showContextBar}
+              goal={state.goal}
               locale={locale}
               columns={columns}
               mode={mode}

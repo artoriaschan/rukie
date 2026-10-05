@@ -5,7 +5,7 @@ export function CommandSuggestions({
   selected,
   maxHeight,
 }: {
-  items: readonly { name: string; description: string; skill?: boolean }[];
+  items: readonly { name: string; description: string; skill?: boolean; parameters?: string }[];
   selected: number;
   maxHeight: number;
 }) {
@@ -18,7 +18,7 @@ export function CommandSuggestions({
           wrap="truncate"
           color={index + start === selected ? "accent" : undefined}
         >
-          {`${index + start === selected ? "❯" : " "} /${item.name}${item.skill ? " [skill]" : ""}  ${item.description}`}
+          {`${index + start === selected ? "❯" : " "} /${item.name}${item.parameters ? ` ${item.parameters}` : ""}${item.skill ? " [skill]" : ""}  ${item.description}`}
         </ThemedText>
       ))}
     </Box>
