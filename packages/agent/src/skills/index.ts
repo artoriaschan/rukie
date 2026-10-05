@@ -15,6 +15,7 @@ export async function discoverSkills(cwd: string, homeDir: string) {
   // pi returns some invalid skills alongside diagnostics; Neant skips them.
   const invalidPaths = new Set(loaded.diagnostics.map((diagnostic) => diagnostic.path));
   const skills = new Map<string, Skill>();
+  const invocable = new Map<string, { name: string; description: string }>();
   for (const skill of loaded.skills) {
     if (invalidPaths.has(skill.filePath)) continue;
     try {
@@ -33,11 +34,19 @@ export async function discoverSkills(cwd: string, homeDir: string) {
         continue;
       }
       skills.set(skill.name, skill);
+      if (!("user-invocable" in metadata) || metadata["user-invocable"] !== false)
+        invocable.set(skill.name, { name: skill.name, description: skill.description });
+      else invocable.delete(skill.name);
     } catch (error) {
       warnings.push(`${skill.filePath}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
-  return { skills, warnings };
+  return { skills, warnings, invocable: [...invocable.values()] };
+}
+
+/** Discover the skill names a frontend may offer for explicit user invocation. */
+export async function listSkills(options: { cwd: string; homeDir: string }) {
+  return (await discoverSkills(options.cwd, options.homeDir)).invocable;
 }
 
 export function skillsReminder(skills: ReadonlyMap<string, Skill>): string {

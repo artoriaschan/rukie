@@ -1,7 +1,7 @@
 import { realpath } from "node:fs/promises";
 import { relative } from "node:path";
 import { useLayoutEffect, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { createSession, type Session, type SessionOptions } from "@neant/agent";
+import { createSession, listSkills, type Session, type SessionOptions } from "@neant/agent";
 import type { Locale } from "@neant/i18n";
 import { PERMISSION_MODES, type ThinkingLevel } from "@neant/shared";
 import {
@@ -34,6 +34,7 @@ import {
   SubagentDashboard,
   SubagentDetailScene,
   UserMessage,
+  CommandSuggestions,
 } from "../../components";
 import { rewindLayout, type RewindEntry, type RewindMode } from "../../components/rewind-picker";
 import { formatError } from "../../i18n";
@@ -44,12 +45,13 @@ import { createConversation } from "./conversation";
 import { createInteractions } from "./interactions";
 import { permissionChoices } from "../../components/permission-dialog";
 import { fmtTokens, render as renderActivity } from "./activity/activity";
+import { commandCatalog } from "./commands";
 
 /** Bind the Session and private stores to one chat screen for its lifetime. */
 export async function createChat(options: SessionOptions, model: string, locale: Locale = "zh") {
   const t = createTuiI18n(locale);
   const interactions = createInteractions();
-  const session = await createSession({
+  const sessionOptions: SessionOptions = {
     ...options,
     reminderSources: [
       ...(options.reminderSources ?? []),
@@ -58,9 +60,13 @@ export async function createChat(options: SessionOptions, model: string, locale:
     onPermissionAsk: options.onPermissionAsk ?? interactions.askPermission,
     onQuestion: options.onQuestion ?? interactions.askQuestion,
     onPlanReview: options.onPlanReview ?? interactions.askPlanReview,
-  });
+  };
+  let session = await createSession(sessionOptions);
   const checkpointCwd = await realpath(options.cwd);
-  const conversation = createConversation(session, model, locale);
+  const skills = await listSkills(options);
+  let conversation = createConversation(session, model, locale);
+  let binding = { session, conversation };
+  const bindingListeners = new Set<() => void>();
   const history = await createInputHistory(options.cwd, options.homeDir);
   const inputHistory = createTextInputHistory(history.entries);
   const submit = (prompt: string, initial = false) => {
@@ -68,6 +74,17 @@ export async function createChat(options: SessionOptions, model: string, locale:
     history.remember(prompt);
     inputHistory.reset();
     return true;
+  };
+  const replaceSession = async (resumeId?: string) => {
+    const branch = conversation.getSnapshot().activity.gitBranch;
+    await session.dispose("other");
+    await conversation.stop();
+    session = await createSession({ ...sessionOptions, resumeId });
+    conversation = createConversation(session, model, locale);
+    if (branch) conversation.dispatchActivity({ type: "git-branch", branch });
+    inputHistory.reset();
+    binding = { session, conversation };
+    bindingListeners.forEach((listener) => listener());
   };
   try {
     const git = Bun.spawn(["git", "branch", "--show-current"], {
@@ -93,10 +110,20 @@ export async function createChat(options: SessionOptions, model: string, locale:
       }
     },
     Chat({ onExit }: { onExit(): void }) {
+      const current = useSyncExternalStore(
+        (listener) => {
+          bindingListeners.add(listener);
+          return () => {
+            bindingListeners.delete(listener);
+          };
+        },
+        () => binding,
+      );
       return (
         <Chat
-          session={session}
-          conversation={conversation}
+          key={current.session.id}
+          session={current.session}
+          conversation={current.conversation}
           history={inputHistory}
           submit={submit}
           interactions={interactions}
@@ -105,6 +132,8 @@ export async function createChat(options: SessionOptions, model: string, locale:
           thinking={options.settings?.thinking}
           locale={locale}
           onExit={onExit}
+          skills={skills}
+          replaceSession={replaceSession}
         />
       );
     },
@@ -122,6 +151,8 @@ function Chat({
   thinking,
   locale,
   onExit,
+  skills,
+  replaceSession,
 }: {
   session: Session;
   conversation: ReturnType<typeof createConversation>;
@@ -133,6 +164,8 @@ function Chat({
   thinking?: ThinkingLevel;
   locale: Locale;
   onExit(): void;
+  skills: readonly { name: string; description: string }[];
+  replaceSession(resumeId?: string): Promise<void>;
 }) {
   const t = createTuiI18n(locale);
   const state = useSyncExternalStore(conversation.subscribe, conversation.getSnapshot);
@@ -182,6 +215,25 @@ function Chat({
     setPage(next);
   };
   const [input, setInput] = useState("");
+  const catalog = commandCatalog(t);
+  const suggestions = [
+    ...catalog,
+    ...skills
+      .filter((skill) => !catalog.some((command) => command.name === skill.name))
+      .map((skill) => ({ ...skill, skill: true })),
+  ];
+  const [commandSelection, setCommandSelection] = useState(0);
+  const commandSelectionRef = useRef(0);
+  const dismissedMenu = useRef<string | undefined>(undefined);
+  const [menuDismissed, setMenuDismissed] = useState(false);
+  const handledInput = useRef(new WeakSet<object>());
+  const matches = (value: string) =>
+    /^\/[a-z0-9-]*$/i.test(value) && dismissedMenu.current !== value
+      ? suggestions.filter((item) =>
+          item.name.toLowerCase().startsWith(value.slice(1).toLowerCase()),
+        )
+      : [];
+  const commandMatches = menuDismissed ? [] : matches(input);
   const [promptRevision, setPromptRevision] = useState(0);
   type Rewind = {
     entries: readonly RewindEntry[];
@@ -320,6 +372,10 @@ function Chat({
     state.error,
   ]);
   const change = (value: string) => {
+    dismissedMenu.current = undefined;
+    setMenuDismissed(false);
+    commandSelectionRef.current = 0;
+    setCommandSelection(0);
     rewindEsc.current = undefined;
     draft.current = value;
     lastInterrupt.current = undefined;
@@ -328,6 +384,52 @@ function Chat({
   const returnToBottom = () => {
     body.current?.scrollToBottom();
     lastInterrupt.current = undefined;
+  };
+  const executeCommand = (prompt: string) => {
+    const parsed = /^\/([a-z0-9-]+)(?:\s|$)/.exec(prompt);
+    const command = catalog.find((entry) => entry.name === parsed?.[1]);
+    if (!command) return submit(prompt);
+    if (conversation.isRunning() && !command.duringRun) {
+      conversation.notice(t("command.busy", { name: command.name }));
+      return true;
+    }
+    if (command.name === "help")
+      conversation.notice(
+        [
+          t("command.help-title"),
+          ...suggestions.map(
+            (item) => `/${item.name}${"skill" in item ? " [skill]" : ""}  ${item.description}`,
+          ),
+        ].join("\n"),
+      );
+    else if (command.name === "exit") {
+      conversation.interrupt();
+      void conversation.stop().then(onExit);
+    } else if (command.name === "plan") {
+      const on = !session.planMode;
+      void session
+        .setPlanMode(on)
+        .then(() => conversation.notice(t(on ? "plan.enabled" : "plan.disabled")))
+        .catch((error: unknown) => conversation.notice(formatError(error, t), true));
+    } else if (command.name === "rewind") openRewind();
+    else if (command.name === "clear")
+      void replaceSession().catch((error: unknown) =>
+        conversation.notice(formatError(error, t), true),
+      );
+    else conversation.notice(t("command.unsupported", { name: command.name }));
+    return true;
+  };
+  const sendInput = (prompt: string) => {
+    if (executeCommand(prompt)) {
+      body.current?.scrollToBottom();
+      change("");
+    }
+  };
+  const openRewind = () => {
+    const entries = session.checkpoints().toReversed();
+    if (!entries.length) conversation.notice(t("rewind.empty"));
+    else showRewind({ entries, focus: 0, confirm: false, mode: 0, busy: false });
+    body.current?.scrollToBottom();
   };
   const showReturn = !!bodyScroll && !bodyScroll.following;
   const statusHeight = state.contextUsage && columns - 2 >= 14 ? 3 : 2;
@@ -366,7 +468,23 @@ function Chat({
     : interaction
       ? Number(!compactPrompt)
       : 1;
-  const chromeSpace = rows - statusHeight - promptHeight - transcriptHeight;
+  const commandMenuHeight =
+    commandMatches.length && !interaction && !rewind
+      ? Math.min(
+          commandMatches.length,
+          14,
+          Math.max(
+            1,
+            rows -
+              statusHeight -
+              promptHeight -
+              transcriptHeight -
+              panelCount -
+              Number(hasActivity),
+          ),
+        )
+      : 0;
+  const chromeSpace = rows - statusHeight - promptHeight - transcriptHeight - commandMenuHeight;
   const showReturnControl =
     showReturn && chromeSpace - minimumDialogHeight - dialogGap - panelCount >= 1;
   const compactReturn =
@@ -523,6 +641,31 @@ function Chat({
     }
     const { key } = event;
     const pendingInteraction = interactions.getSnapshot();
+    const menu = !pendingInteraction && !small ? matches(draft.current) : [];
+    if (menu.length && !key.ctrl && !key.alt && !key.shift) {
+      if (key.name === "up" || key.name === "down") {
+        handledInput.current.add(event);
+        commandSelectionRef.current =
+          (commandSelectionRef.current + (key.name === "up" ? menu.length - 1 : 1)) % menu.length;
+        setCommandSelection(commandSelectionRef.current);
+        return;
+      }
+      if (key.name === "tab" || key.name === "enter") {
+        handledInput.current.add(event);
+        const item = menu[commandSelectionRef.current % menu.length]!;
+        if (key.name === "tab") {
+          history.reset();
+          change(`/${item.name} `);
+          setPromptRevision((revision) => revision + 1);
+        } else sendInput(`/${item.name}`);
+        return;
+      }
+      if (key.name === "escape") {
+        dismissedMenu.current = draft.current;
+        setMenuDismissed(true);
+        return;
+      }
+    }
     if (pendingInteraction || key.name !== "escape") rewindEsc.current = undefined;
     const pending = pendingInteraction?.kind === "permission" ? pendingInteraction : undefined;
     if (key.ctrl && key.name === "q" && !key.alt && !key.shift) {
@@ -610,9 +753,7 @@ function Chat({
           const now = performance.now();
           if (rewindEsc.current !== undefined && now - rewindEsc.current <= 3000) {
             rewindEsc.current = undefined;
-            const entries = session.checkpoints().toReversed();
-            if (!entries.length) conversation.notice(t("rewind.empty"));
-            else showRewind({ entries, focus: 0, confirm: false, mode: 0, busy: false });
+            openRewind();
           } else {
             rewindEsc.current = now;
             conversation.notice(t("rewind.again"));
@@ -877,6 +1018,13 @@ function Chat({
                 }}
               />
             )}
+            {!!commandMatches.length && !interaction && !rewind && (
+              <CommandSuggestions
+                items={commandMatches}
+                selected={commandSelection % commandMatches.length}
+                maxHeight={commandMenuHeight}
+              />
+            )}
             <PromptInput
               key={promptRevision}
               readOnly={!!rewind || (!!interaction && !userQuestion?.collapsed)}
@@ -886,6 +1034,18 @@ function Chat({
               working={state.running}
               planMode={state.planMode}
               history={history}
+              filterInput={(event) =>
+                !handledInput.current.has(event) &&
+                !(
+                  event.type === "key" &&
+                  !event.key.ctrl &&
+                  !event.key.alt &&
+                  !event.key.shift &&
+                  !interactions.getSnapshot() &&
+                  matches(draft.current).length &&
+                  ["up", "down", "tab", "enter"].includes(event.key.name)
+                )
+              }
               value={input}
               onChange={(value) => {
                 const pending = interactions.getSnapshot();
@@ -896,10 +1056,7 @@ function Chat({
                 const pending = interactions.getSnapshot();
                 if (viewRef.current !== "chat" || rewindRef.current) return;
                 if (pending && (pending.kind !== "question" || !pending.collapsed)) return;
-                if (submit(prompt)) {
-                  body.current?.scrollToBottom();
-                  change("");
-                }
+                sendInput(prompt);
               }}
             />
             <StatusLine

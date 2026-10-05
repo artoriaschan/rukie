@@ -17,3 +17,4 @@ export type { PlanReviewRequest, PlanReviewResult } from "./tools/index.ts";
 export type { Question, QuestionRequest, QuestionReply } from "./tools/index.ts";
 
 export { parsePermissionRules } from "./permissions/index.ts";
+export { listSkills } from "./skills/index.ts";

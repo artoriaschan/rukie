@@ -26,6 +26,23 @@ export interface ReminderSource {
 /** Custom messages stay intact in the Transcript and convert only at the model boundary. */
 export function convertToLlm(messages: AgentMessage[]): Message[] {
   return messages.flatMap((message): Message[] => {
+    if (
+      message.role === "user" &&
+      "skillInvocation" in message &&
+      typeof message.skillInvocation === "string"
+    ) {
+      const { skillInvocation, ...prompt } = message;
+      return [
+        prompt,
+        {
+          role: "user",
+          content: [
+            { type: "text", text: `<system-reminder>\n${skillInvocation}\n</system-reminder>` },
+          ],
+          timestamp: message.timestamp,
+        },
+      ];
+    }
     if (message.role === "system-reminder") {
       return [
         {

@@ -1,6 +1,7 @@
 import { createElement, useLayoutEffect, useRef, useState } from "react";
 import { useInput, useTerminalSize } from "../hooks";
 import { textCursor, textLines, type TextStyle } from "../text";
+import type { InputEvent } from "../input";
 
 export interface TextInputProps extends TextStyle {
   value: string;
@@ -16,6 +17,8 @@ export interface TextInputProps extends TextStyle {
   cursorOffset?: number;
   /** Owner-created history survives temporary editor unmounts. */
   history?: ReturnType<typeof createTextInputHistory>;
+  /** Let a screen reserve navigation keys for a completion menu. */
+  filterInput?(event: InputEvent): boolean;
 }
 
 /** Browse oldest-first inputs while retaining the draft and its UTF-16 caret. */
@@ -63,6 +66,7 @@ export function TextInput({
   readOnly = false,
   cursorOffset,
   history,
+  filterInput,
   ...style
 }: TextInputProps) {
   const size = useTerminalSize();
@@ -80,6 +84,7 @@ export function TextInput({
   });
   useInput(
     (event) => {
+      if (filterInput && !filterInput(event)) return;
       if (event.type !== "key" && event.type !== "paste") return;
       const current = editing.current;
       const boundaries = graphemeBoundaries(current.value);

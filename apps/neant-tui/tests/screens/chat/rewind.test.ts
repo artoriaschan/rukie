@@ -566,7 +566,11 @@ test.each(["permission", "question", "plan"] as const)(
       await toolsPrompt(app, "keep todo", [
         { name: "todo_write", args: { todos: [{ content: "parent task", status: "pending" }] } },
       ]);
-      app.stdin.write((kind === "plan" ? "/plan review" : "request") + "\r");
+      if (kind === "plan") {
+        app.stdin.write("/plan\r");
+        await app.waitFor(() => app.screen().at(-2)!.includes("plan"));
+      }
+      app.stdin.write("request\r");
       await app.waitFor(() => app.calls.length === 3);
       const tool: Parameters<(typeof app.calls)[number]["tools"]>[0][number] =
         kind === "permission"

@@ -151,6 +151,8 @@ export interface Session {
   readonly running: boolean;
   /** Cancels the current run, including one started without a frontend controller. */
   interruptRun(): void;
+  /** Queue another user instruction for the current Run, including Skill Invocation. */
+  steer(prompt: string): void;
   /** Observe all runs; the first subscriber also receives events from startup autoruns. */
   subscribe(onEvent: (event: SessionEvent) => void): () => void;
   readonly id: string;
@@ -830,6 +832,21 @@ async function createSessionInternal(
     },
     interruptRun() {
       runController?.abort();
+    },
+    steer(prompt) {
+      if (disposePromise) throw new Error("Session has been disposed.");
+      if (!running) throw new Error("Session is not running.");
+      if (!prompt.trim()) return;
+      const invocation = skillInvocation(prompt, skills);
+      // pi drains one queued message at a time. Keep the instruction and its
+      // expansion together without changing scheduling of child notifications.
+      const message = {
+        role: "user" as const,
+        content: [{ type: "text" as const, text: prompt }],
+        ...(invocation === undefined ? {} : { skillInvocation: invocation }),
+        timestamp: Date.now(),
+      };
+      agent.steer(message);
     },
     subscribe(onEvent: (event: SessionEvent) => void) {
       if (disposePromise) throw new Error("Session has been disposed.");

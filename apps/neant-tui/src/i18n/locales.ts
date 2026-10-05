@@ -32,6 +32,23 @@
  */
 
 const zh = {
+  "command.compact": "压缩上下文",
+  "command.clear": "新建会话",
+  "command.rewind": "回退消息与文件",
+  "command.goal": "目标（尚未支持）",
+  "command.plan": "切换 Plan Mode",
+  "command.help": "查看命令与 skill",
+  "command.exit": "退出",
+  "command.model": "选择模型",
+  "command.resume": "恢复会话",
+  "command.context": "查看上下文占用",
+  "command.settings": "打开设置",
+  "command.btw": "问一个侧问题",
+  "command.rename": "重命名会话",
+  "command.help-title": "Slash Command 与 skill",
+  "command.busy": "run 结束后再用 /{{name}}",
+  "command.unsupported": "/{{name}} 尚未支持",
+
   "rewind.title": "回退",
   "rewind.subtitle": "选择要回退到的消息",
   "rewind.last": "最新消息",
@@ -228,6 +245,23 @@ const zh = {
 } as const;
 
 const en = {
+  "command.compact": "Compact context",
+  "command.clear": "Start a new session",
+  "command.rewind": "Rewind messages and files",
+  "command.goal": "Goal (coming soon)",
+  "command.plan": "Toggle Plan Mode",
+  "command.help": "Show commands and skills",
+  "command.exit": "Exit",
+  "command.model": "Choose a model",
+  "command.resume": "Resume a session",
+  "command.context": "Inspect context usage",
+  "command.settings": "Open settings",
+  "command.btw": "Ask a side question",
+  "command.rename": "Rename this session",
+  "command.help-title": "Slash commands and skills",
+  "command.busy": "Use /{{name}} after the run finishes",
+  "command.unsupported": "/{{name}} is not supported yet",
+
   "rewind.title": "Rewind",
   "rewind.subtitle": "Pick a message to rewind to",
   "rewind.last": "last message",
