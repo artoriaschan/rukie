@@ -1,3 +1,4 @@
+import { Notice } from "../notice";
 import { Box, ThemedTextInput, ThemedText, figures, type TextInputProps } from "@neant/tui";
 
 export function PromptInput({
@@ -12,7 +13,10 @@ export function PromptInput({
   readOnly = false,
   compact = false,
   tip,
+  notice,
   filterInput,
+  onPaste,
+  highlightRanges,
 }: {
   value: string;
   onChange(value: string): void;
@@ -25,7 +29,10 @@ export function PromptInput({
   readOnly?: boolean;
   compact?: boolean;
   tip?: string;
+  notice?: { text: string; warning: boolean };
   filterInput?: TextInputProps["filterInput"];
+  onPaste?: TextInputProps["onPaste"];
+  highlightRanges?: TextInputProps["highlightRanges"];
 }) {
   const edge = "─".repeat(Math.max(0, columns - 2));
   return (
@@ -52,6 +59,8 @@ export function PromptInput({
             cursorStyle="block"
             history={history}
             filterInput={filterInput}
+            onPaste={onPaste}
+            highlightRanges={highlightRanges}
           />
         </Box>
       </Box>
@@ -61,17 +70,21 @@ export function PromptInput({
           wrap="truncate"
         >{`╰${edge}╯`}</ThemedText>
       )}
-      {tip && (
+      {(notice || tip) && (
         <Box
           position="absolute"
           top={-1}
           right={1}
-          width={Math.min(Bun.stringWidth(tip), Math.max(1, columns - 3))}
+          width={Math.min(Bun.stringWidth(notice?.text ?? tip!), Math.max(1, columns - 3))}
           height={1}
         >
-          <ThemedText dimColor wrap="truncate">
-            {tip}
-          </ThemedText>
+          {notice ? (
+            <Notice kind={notice.warning ? "warning" : "success"} text={notice.text} />
+          ) : (
+            <ThemedText dimColor wrap="truncate">
+              {tip}
+            </ThemedText>
+          )}
         </Box>
       )}
     </Box>

@@ -1,3 +1,4 @@
+import { ImageValidationError } from "@neant/agent";
 import { common, createI18n, type Locale } from "@neant/i18n";
 import type { UserVisibleErrorData } from "@neant/shared";
 import { appCopy } from "./locales";
@@ -11,6 +12,18 @@ export function createTuiI18n(
 
 /** Coded errors are frontend copy; unknown failures keep their original information. */
 export function formatError(error: unknown, t: ReturnType<typeof createTuiI18n>): string {
+  if (error instanceof ImageValidationError) {
+    switch (error.code) {
+      case "image-invalid":
+        return t("image.invalid");
+      case "image-too-large":
+        return t("image.too-large");
+      case "image-dimensions":
+        return t("image.dimensions", error.params);
+      case "image-mime-mismatch":
+        return t("image.mime-mismatch", error.params);
+    }
+  }
   const message =
     typeof error === "object" &&
     error !== null &&
