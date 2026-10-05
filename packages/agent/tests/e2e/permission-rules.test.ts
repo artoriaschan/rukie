@@ -1,3 +1,4 @@
+import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { PERMISSION_MODES } from "@neant/shared";
@@ -176,7 +177,7 @@ test("batched reviews skip rule allow, ask, deny and invalid calls", async () =>
   ]);
   const main = fake.streamFn;
   let reviews = 0;
-  fake.streamFn = (model, context, options) => {
+  fake.streamFn = withAuxiliaryRequests((model, context, options) => {
     if (
       context.messages.some(
         (message) => message.role === "system" && JSON.stringify(message).includes("REVIEW_POLICY"),
@@ -190,7 +191,7 @@ test("batched reviews skip rule allow, ask, deny and invalid calls", async () =>
       );
     }
     return main(model, context, options);
-  };
+  });
   const events: SessionEvent[] = [];
   const asks: string[] = [];
   const session = await createSession({
@@ -249,12 +250,13 @@ test.each([
     fauxAssistantMessage("done"),
   ]);
   const main = fake.streamFn;
-  fake.streamFn = (model, context, options) =>
+  fake.streamFn = withAuxiliaryRequests((model, context, options) =>
     context.messages.some(
       (message) => message.role === "system" && JSON.stringify(message).includes("REVIEW_POLICY"),
     )
       ? fakeModel([fauxAssistantMessage(response)]).streamFn(model, context, options)
-      : main(model, context, options);
+      : main(model, context, options),
+  );
   const events: SessionEvent[] = [];
   const session = await createSession({
     ...dirs,

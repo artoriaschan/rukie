@@ -1,3 +1,4 @@
+import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { createSession, type SessionEvent } from "../../src/index.ts";
@@ -178,10 +179,10 @@ test.each([undefined, "override"])(
       const session = await createSession({
         ...dirs,
         ...fake,
-        streamFn: (model, context, options) => {
+        streamFn: withAuxiliaryRequests((model, context, options) => {
           selected.push(model.id);
           return fake.streamFn(model, context, options);
-        },
+        }),
         settings: {
           reviewModel: "hook-review/cheap",
           providers: [
@@ -229,13 +230,13 @@ test.each(["prompt", "agent"] as const)(
     const session = await createSession({
       ...dirs,
       ...fake,
-      streamFn: (model, context, options) => {
+      streamFn: withAuxiliaryRequests((model, context, options) => {
         if (calls++ === 0) {
           entered.resolve(options!.signal!);
           return new Promise(() => {});
         }
         return fake.streamFn(model, context, options);
-      },
+      }),
       onWarning() {},
       settings: {
         hooks: {
@@ -268,11 +269,11 @@ test.each(["prompt", "agent"] as const)(
     const session = await createSession({
       ...dirs,
       ...fake,
-      streamFn: (_model, _context, options) => {
+      streamFn: withAuxiliaryRequests((_model, _context, options) => {
         calls++;
         entered.resolve(options!.signal!);
         return new Promise(() => {});
-      },
+      }),
       settings: {
         hooks: {
           UserPromptSubmit: [{ hooks: [{ type, prompt: "check" }] }],
@@ -493,10 +494,10 @@ test.each(["prompt", "agent"] as const)(
     const session = await createSession({
       ...dirs,
       ...fake,
-      streamFn: (model, context, options) => {
+      streamFn: withAuxiliaryRequests((model, context, options) => {
         if (calls++ === 0) return late.promise;
         return fake.streamFn(model, context, options);
-      },
+      }),
       onWarning() {},
       settings: {
         hooks: {
@@ -533,10 +534,10 @@ test.each(["prompt", "agent"] as const)(
     const session = await createSession({
       ...dirs,
       ...fake,
-      streamFn: (_model, _context, options) => {
+      streamFn: withAuxiliaryRequests((_model, _context, options) => {
         entered.resolve(options!.signal!);
         return new Promise(() => {});
-      },
+      }),
       settings: { hooks: { UserPromptSubmit: [{ hooks: [{ type, prompt: "check" }] }] } },
     });
     const controller = new AbortController();

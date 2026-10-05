@@ -1,3 +1,4 @@
+import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
 import {
   fauxAssistantMessage,
@@ -24,12 +25,13 @@ function reviewedModel(review = fauxAssistantMessage('{"risk":"low","decision":"
     fauxAssistantMessage("done"),
   ]);
   const reviewer = fakeModel([review]);
-  const streamFn: typeof main.streamFn = (model, context, options) =>
+  const streamFn: typeof main.streamFn = withAuxiliaryRequests((model, context, options) =>
     context.messages.some(
       (message) => message.role === "system" && JSON.stringify(message).includes("REVIEW_POLICY"),
     )
       ? reviewer.streamFn(model, context, options)
-      : main.streamFn(model, context, options);
+      : main.streamFn(model, context, options),
+  );
   return { ...main, streamFn, reviewer, main };
 }
 
@@ -140,7 +142,7 @@ test("review tokens and review messages are excluded from Run usage and Context 
     reply.usage = { ...reply.usage, input: 11, output: 5, totalTokens: 16 };
   review.usage = { ...review.usage, input: 40_000, output: 10_000, totalTokens: 50_000 };
   const responses = [first, review, second];
-  const streamFn: typeof fake.streamFn = () => {
+  const streamFn: typeof fake.streamFn = withAuxiliaryRequests(() => {
     const reply = responses.shift()!;
     const stream = createAssistantMessageEventStream();
     stream.push({
@@ -150,7 +152,7 @@ test("review tokens and review messages are excluded from Run usage and Context 
     });
     stream.end(reply);
     return stream;
-  };
+  });
   const events: SessionEvent[] = [];
   const session = await createSession({
     ...dirs,
@@ -178,11 +180,11 @@ test("reviewModel selects a separate model with temperature zero using the Sessi
   let selected: Model<Api> | undefined;
   let temperature: number | undefined;
   const reviewStream = fake.reviewer.streamFn;
-  fake.reviewer.streamFn = (model, context, options) => {
+  fake.reviewer.streamFn = withAuxiliaryRequests((model, context, options) => {
     selected = model;
     temperature = options?.temperature;
     return reviewStream(model, context, options);
-  };
+  });
   const env = "NEANT_PERMISSION_REVIEW_TEST_KEY";
   process.env[env] = "test-key";
   try {
@@ -235,10 +237,10 @@ test("aborting an uncooperative review cancels it and never asks or executes", a
   dirs = await tempDirs();
   const fake = reviewedModel();
   const started = Promise.withResolvers<AbortSignal>();
-  fake.reviewer.streamFn = (_model, _context, options) => {
+  fake.reviewer.streamFn = withAuxiliaryRequests((_model, _context, options) => {
     started.resolve(options!.signal!);
     return new Promise(() => {});
-  };
+  });
   const requests: PermissionAskRequest[] = [];
   const events: SessionEvent[] = [];
   const session = await createSession({
@@ -368,7 +370,7 @@ test("parallel tool calls start their reviews before either review completes", a
   const both = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
   let started = 0;
-  fake.reviewer.streamFn = async (model, context, options) => {
+  fake.reviewer.streamFn = withAuxiliaryRequests(async (model, context, options) => {
     if (++started === 2) both.resolve();
     await release.promise;
     return fakeModel([fauxAssistantMessage('{"risk":"low","decision":"allow"}')]).streamFn(
@@ -376,7 +378,7 @@ test("parallel tool calls start their reviews before either review completes", a
       context,
       options,
     );
-  };
+  });
   const session = await createSession({ ...dirs, ...fake, permissionMode: "auto-review" });
   const controller = new AbortController();
   const run = session.run("create both files", { signal: controller.signal });
@@ -537,10 +539,10 @@ test.each(["throw", "reject"])(
   async (failure) => {
     dirs = await tempDirs();
     const fake = reviewedModel();
-    fake.reviewer.streamFn = () => {
+    fake.reviewer.streamFn = withAuxiliaryRequests(() => {
       if (failure === "throw") throw new Error("provider offline");
       return Promise.reject(new Error("provider offline"));
-    };
+    });
     const requests: PermissionAskRequest[] = [];
     const session = await createSession({
       ...dirs,

@@ -1,3 +1,4 @@
+import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
 import {
   createAssistantMessageEventStream,
@@ -210,7 +211,7 @@ test.each(["subagent", "subagent_fork"])(
     };
     const fake = fakeModel([initial, ...Array.from({ length: 30 }, () => reply)]);
     const originalStream = fake.streamFn;
-    fake.streamFn = (model, context, options) => {
+    fake.streamFn = withAuxiliaryRequests((model, context, options) => {
       const stream = createAssistantMessageEventStream();
       void (async () => {
         const response = await originalStream(model, context, options);
@@ -233,7 +234,7 @@ test.each(["subagent", "subagent_fork"])(
         stream.end(await response.result());
       })();
       return stream;
-    };
+    });
     const session = await createSession({ ...dirs, ...fake });
     const run = session.run("delegate", {
       onEvent(event) {

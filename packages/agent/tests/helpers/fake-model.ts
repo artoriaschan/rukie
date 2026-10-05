@@ -1,3 +1,4 @@
+import { withAuxiliaryRequests } from "./auxiliary-model.ts";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import {
   createFauxCore,
@@ -13,9 +14,9 @@ export function fakeModel(responses: FauxResponseStep[]) {
   const faux = createFauxCore({ api: "faux", provider: "faux" });
   faux.setResponses(responses);
   const contexts: TranscriptContext[] = [];
-  const streamFn: StreamFn = (model, context, options) => {
+  const streamFn: StreamFn = withAuxiliaryRequests((model, context, options) => {
     contexts.push(context);
     return faux.streamSimple(model, context, options);
-  };
+  });
   return { streamFn, model: faux.getModel(), contexts };
 }

@@ -1,3 +1,4 @@
+import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -504,14 +505,15 @@ test("aborting summary generation cancels its provider request without persistin
   const fake = fakeModel([fauxAssistantMessage(original)]);
   const summary = abortingModel();
   const streamFn = fake.streamFn;
-  fake.streamFn = (model, context, options) =>
+  fake.streamFn = withAuxiliaryRequests((model, context, options) =>
     context.messages.some(
       (message) =>
         message.role === "system" &&
         JSON.stringify(message).includes("context summarization assistant"),
     )
       ? summary.streamFn(model, context, options)
-      : streamFn(model, context, options);
+      : streamFn(model, context, options),
+  );
   fake.model.contextWindow = 4000;
   const session = await createSession({ ...dirs, ...fake });
   await session.run("first");

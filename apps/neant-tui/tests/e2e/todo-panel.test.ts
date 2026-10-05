@@ -1,3 +1,4 @@
+import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { createSession } from "@neant/agent";
@@ -355,7 +356,9 @@ test("resume shows an expanded English Todo List with full counts and overflow, 
         cwd: root,
         homeDir: root,
         model: original.getModel(),
-        streamFn: (model, context, options) => original.streamSimple(model, context, options),
+        streamFn: withAuxiliaryRequests((model, context, options) =>
+          original.streamSimple(model, context, options),
+        ),
       });
       await session.run("save plan");
       argv.push("--resume", session.id);

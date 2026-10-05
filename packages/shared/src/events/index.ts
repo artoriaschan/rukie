@@ -46,6 +46,7 @@ export type CustomSessionEvent<PiEvent extends { type: string } = never> =
   | ContextUsageEvent
   | ({ type: "result" } & RunResult)
   | { type: "reminder_injected"; source: string; content: string }
+  | { type: "session_title_changed"; title: string; source: "prompt" | "model" | "user" }
   | { type: "tool_state_changed"; name: string; value: unknown }
   /** The Session's messages and Tool State now project the rewound branch. */
   | { type: "conversation_rewound"; promptEntryId: string }

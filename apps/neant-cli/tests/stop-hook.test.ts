@@ -1,3 +1,4 @@
+import { withAuxiliaryRequests } from "./helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
 import { createFauxCore, fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -33,7 +34,7 @@ test.each(["text", "stream-json"])(
             cwd: root,
             homeDir: root,
             model: faux.getModel(),
-            streamFn: faux.streamSimple,
+            streamFn: withAuxiliaryRequests(faux.streamSimple),
             settings: {
               hooks: { Stop: [{ hooks: [{ type: "command", command: "sh stop.sh" }] }] },
             },

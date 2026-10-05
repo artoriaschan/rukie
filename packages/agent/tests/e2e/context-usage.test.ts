@@ -1,3 +1,4 @@
+import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
 import { join } from "node:path";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
@@ -19,7 +20,7 @@ afterEach(() => dirs?.cleanup());
 // Supply provider counts verbatim: pi's faux provider otherwise estimates its own usage.
 function providerModel(replies: AssistantMessage[]) {
   const fake = fakeModel([]);
-  fake.streamFn = (_model, context) => {
+  fake.streamFn = withAuxiliaryRequests((_model, context) => {
     fake.contexts.push(structuredClone(context));
     const message = replies.shift()!;
     const stream = createAssistantMessageEventStream();
@@ -30,7 +31,7 @@ function providerModel(replies: AssistantMessage[]) {
     });
     stream.end(message);
     return stream;
-  };
+  });
   return fake;
 }
 

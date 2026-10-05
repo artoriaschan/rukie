@@ -4,7 +4,7 @@
 
 **Blocked by:** 01（命令框架与补全菜单）
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] 新概念目录 `session-title`；标题存 pi session name，来源（`prompt` / `model` / `user`）记 Tool State；Session 暴露 `title` / `titleSource`
 - [ ] 首条 user prompt 写入后立即写 fallback：去控制字符与 ANSI、折叠空白、截到 40 个 UTF-8 字节（不切断码点、无省略号）

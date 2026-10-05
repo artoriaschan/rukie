@@ -1,3 +1,4 @@
+import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { expect, spyOn, test } from "bun:test";
 import { join } from "node:path";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
@@ -91,7 +92,9 @@ test.each([
           homeDir: root,
           settings: { locale: originalLocale },
           model: original.getModel(),
-          streamFn: (model, context, options) => original.streamSimple(model, context, options),
+          streamFn: withAuxiliaryRequests((model, context, options) =>
+            original.streamSimple(model, context, options),
+          ),
         });
         const spawn = spyOn(Bun, "spawn").mockImplementation(() => {
           throw new Error("test binary unavailable");

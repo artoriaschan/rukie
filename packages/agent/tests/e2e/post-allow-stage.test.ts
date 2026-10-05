@@ -1,3 +1,4 @@
+import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { join } from "node:path";
@@ -32,7 +33,7 @@ function routePermissionReviews(
   onReview: () => void,
 ) {
   const mainStream = fake.streamFn;
-  fake.streamFn = (model, context, options) => {
+  fake.streamFn = withAuxiliaryRequests((model, context, options) => {
     if (
       context.messages.some(
         (message) => message.role === "system" && JSON.stringify(message).includes("REVIEW_POLICY"),
@@ -42,7 +43,7 @@ function routePermissionReviews(
       return fakeModel([fauxAssistantMessage(response)]).streamFn(model, context, options);
     }
     return mainStream(model, context, options);
-  };
+  });
 }
 
 test("allowed tools wait for the read-only stage after frontend permission", async () => {

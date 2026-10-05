@@ -60,6 +60,7 @@ import {
 import { discoverSkills, skillInvocation, skillsReminder } from "../skills/index.ts";
 import { createMcpConnections } from "../mcp/index.ts";
 import { compactTurn, estimateContextTokens, restoreContext } from "../compaction/index.ts";
+import { createSessionTitle, titleSourceState, type TitleSource } from "../session-title/index.ts";
 import { contextUsage } from "../context-usage/index.ts";
 import { createToolState, todoState, type TodoItem } from "../tool-state/index.ts";
 import {
@@ -156,6 +157,9 @@ export interface Session {
   /** Observe all runs; the first subscriber also receives events from startup autoruns. */
   subscribe(onEvent: (event: SessionEvent) => void): () => void;
   readonly id: string;
+  readonly title: string;
+  readonly titleSource: TitleSource | undefined;
+  rename(title: string): Promise<void>;
   readonly permissionMode: PermissionMode;
   readonly planMode: boolean;
   /** Changes guidance for the next model call and persists the state, also outside a Run. */
@@ -273,11 +277,13 @@ async function createSessionInternal(
         context,
       );
   let entries;
+  let initialTitle: string | undefined;
   try {
     const branch =
       (await stored.branch("main", context)) ?? (await stored.createBranch("main", null, context));
     for (const message of internal.initialMessages ?? [])
       await branch.appendMessage(message, context);
+    initialTitle = await stored.getName(context);
     entries = await branch.findEntries({ order: "oldestFirst" }, context);
   } finally {
     await stored.close(context);
@@ -292,7 +298,7 @@ async function createSessionInternal(
   };
   let emitRunEvent: ((event: CustomSessionEvent<AgentEvent>) => void | Promise<void>) | undefined;
   const toolState = createToolState(
-    [todoState, subagentsState, planState, checkpointState],
+    [todoState, subagentsState, planState, checkpointState, titleSourceState],
     entries,
     options.onWarning ?? console.warn,
   );
@@ -350,6 +356,8 @@ async function createSessionInternal(
     },
   };
   let activeStore: StoredSession | undefined;
+  let openingStore: Promise<StoredSession> | undefined;
+  let closingStore: Promise<void> | undefined;
   const promptTexts = initialBranch.promptTexts;
   const checkpoint =
     internal.checkpoint ??
@@ -796,6 +804,35 @@ async function createSessionInternal(
       ...(settings.thinking && { thinkingLevel: settings.thinking }),
     },
   });
+  const sessionTitle = createSessionTitle({
+    title: initialTitle,
+    source: toolState.get("title-source") as TitleSource | undefined,
+    hasPrompt: initialBranch.transcriptMessages.some((message) => message.role === "user"),
+    childDescription: internal.originDescription,
+    getModel: async () =>
+      settings.titleModel
+        ? (await resolveModel({ ...settings, model: settings.titleModel }, options.homeDir)).model
+        : agent.state.model,
+    streamFn: (...args) => (options.streamFn ?? streamFn)(...args),
+    async persist(title, source) {
+      if (closingStore) await closingStore;
+      const opening = openingStore;
+      const current = activeStore;
+      const owns = !current && !opening;
+      const target =
+        current ?? (opening ? await opening : await store.open(stored.metadata, context));
+      try {
+        await target.setName(title, context);
+        await toolState.set("title-source", source, target, context);
+      } finally {
+        if (owns) await target.close(context);
+      }
+    },
+    changed: (title, source) =>
+      broadcast({ type: "session_title_changed", title, source, sessionId: stored.metadata.id }),
+    warning: options.onWarning ?? console.warn,
+  });
+  await sessionTitle.initializeChild();
   if (internal.control) internal.control.steer = (message) => agent.steer(message);
   let running = false;
   let rewinding = false;
@@ -858,6 +895,17 @@ async function createSessionInternal(
       };
     },
     id: stored.metadata.id,
+    get title() {
+      return sessionTitle.title;
+    },
+    get titleSource() {
+      return sessionTitle.source;
+    },
+    async rename(title: string) {
+      if (disposePromise) throw new Error("Session has been disposed.");
+      if (rewinding) throw new Error("Session is rewinding.");
+      await sessionTitle.rename(title);
+    },
     get permissionMode() {
       return permissionConfiguration.getMode();
     },
@@ -894,6 +942,7 @@ async function createSessionInternal(
           ? await checkpoint.restoreCode(promptEntryId)
           : { restored: [], deleted: [] };
         if (conversation) {
+          await sessionTitle.cancelGeneration();
           const target = await store.open(stored.metadata, context);
           let restoredEntries;
           try {
@@ -908,6 +957,11 @@ async function createSessionInternal(
             const tip = await branch.getTipId(context);
             await target.createBranch(`rewind-${crypto.randomUUID()}`, tip, context);
             await target.setValue(branchTip("main"), anchor.parentId, context);
+            // The native display name is session metadata, independent of conversation rewind.
+            if (sessionTitle.source) {
+              await toolState.set("title-source", sessionTitle.source, target, context);
+              restoredEntries = await branch.findEntries({ order: "oldestFirst" }, context);
+            }
           } finally {
             await target.close(context);
           }
@@ -956,6 +1010,7 @@ async function createSessionInternal(
         disposePromise = Promise.resolve().then(async () => {
           const mcp = runMcp;
           hooks.dispose();
+          await sessionTitle.dispose();
           runController?.abort();
           try {
             await Promise.all([
@@ -1169,7 +1224,11 @@ async function createSessionInternal(
             // Ordinary block decisions do not prevent a child Run from starting.
             promptContexts.push(...started.additionalContext);
           }
-          const runStore = await store.open(stored.metadata, context);
+          await sessionTitle.settleWrites();
+          await closingStore;
+          openingStore = store.open(stored.metadata, context);
+          const runStore = await openingStore;
+          openingStore = undefined;
           active = runStore;
           activeStore = runStore;
           const branch = await runStore.branch("main", context);
@@ -1402,6 +1461,7 @@ async function createSessionInternal(
               if (event.message === userPrompt && !fromHook && !internal.parentSessionId) {
                 promptTexts.set(entryId, prompt);
                 await checkpoint?.start(entryId);
+                await sessionTitle.firstPrompt(prompt);
               }
               transcriptMessages.push(event.message);
               if (event.message.role === "system-reminder") {
@@ -1556,9 +1616,14 @@ async function createSessionInternal(
             await planWrites;
           } finally {
             try {
-              await active?.close(context);
+              await sessionTitle.settleWrites();
+              activeStore = undefined;
+              closingStore = active?.close(context);
+              await closingStore;
+              closingStore = undefined;
             } finally {
               activeStore = undefined;
+              openingStore = undefined;
             }
           }
         }

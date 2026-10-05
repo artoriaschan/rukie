@@ -6,10 +6,11 @@ import {
   type AssistantMessage,
   type TranscriptContext,
 } from "@earendil-works/pi-ai";
+import { isTitleRequest } from "./auxiliary-model.ts";
 import type { SessionOptions } from "@neant/agent";
 
 /** Model boundary controlled by the test, including streamed text and cancellation. */
-export function controlledModel(controlReviews = false) {
+export function controlledModel(controlReviews = false, controlTitles = false) {
   const model = createFauxCore({ api: "faux", provider: "faux" }).getModel();
   const calls: {
     context: TranscriptContext;
@@ -24,8 +25,16 @@ export function controlledModel(controlReviews = false) {
     fail(message: string): void;
   }[] = [];
   const reviews: typeof calls = [];
+  const titles: typeof calls = [];
   const streamFn: NonNullable<SessionOptions["streamFn"]> = (_model, context, options) => {
     const stream = createAssistantMessageEventStream();
+    const isTitle = isTitleRequest(context);
+    if (isTitle && !controlTitles) {
+      const message = fauxAssistantMessage("Test session");
+      stream.push({ type: "done", reason: "stop", message });
+      stream.end(message);
+      return stream;
+    }
     const isReview = context.messages.some(
       (message) => message.role === "system" && JSON.stringify(message).includes("REVIEW_POLICY"),
     );
@@ -85,7 +94,7 @@ export function controlledModel(controlReviews = false) {
           { stopReason: "toolUse" },
         ),
       );
-    (isReview ? reviews : calls).push({
+    (isTitle ? titles : isReview ? reviews : calls).push({
       context: structuredClone(context),
       signal: options?.signal,
       reasoning: options?.reasoning,
@@ -119,5 +128,5 @@ export function controlledModel(controlReviews = false) {
     if (options?.signal?.aborted) abort();
     return stream;
   };
-  return { model, streamFn, calls, reviews };
+  return { model, streamFn, calls, reviews, titles };
 }

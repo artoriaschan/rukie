@@ -1,3 +1,4 @@
+import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { PERMISSION_MODES } from "@neant/shared";
@@ -14,7 +15,7 @@ afterEach(() => dirs?.cleanup());
 function fakeModel(responses: Parameters<typeof scriptedModel>[0]) {
   const fake = scriptedModel(responses);
   const mainStream = fake.streamFn;
-  fake.streamFn = (model, context, options) =>
+  fake.streamFn = withAuxiliaryRequests((model, context, options) =>
     context.messages.some(
       (message) => message.role === "system" && JSON.stringify(message).includes("REVIEW_POLICY"),
     )
@@ -23,7 +24,8 @@ function fakeModel(responses: Parameters<typeof scriptedModel>[0]) {
           context,
           options,
         )
-      : mainStream(model, context, options);
+      : mainStream(model, context, options),
+  );
   return fake;
 }
 

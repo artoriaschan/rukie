@@ -1,3 +1,4 @@
+import { withAuxiliaryRequests } from "./auxiliary-model.ts";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import { createAssistantMessageEventStream, fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { fakeModel } from "./fake-model.ts";
@@ -6,7 +7,7 @@ import { fakeModel } from "./fake-model.ts";
 export function abortingModel() {
   const started = Promise.withResolvers<void>();
   const { model } = fakeModel([]);
-  const streamFn: StreamFn = (_model, _context, options) => {
+  const streamFn: StreamFn = withAuxiliaryRequests((_model, _context, options) => {
     const stream = createAssistantMessageEventStream();
     const partial = fauxAssistantMessage("partial output", { stopReason: "pending" });
     const abort = () => {
@@ -23,6 +24,6 @@ export function abortingModel() {
     stream.push({ type: "text_delta", contentIndex: 0, delta: "partial output", partial });
     started.resolve();
     return stream;
-  };
+  });
   return { model, streamFn, started: started.promise };
 }

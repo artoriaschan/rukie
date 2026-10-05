@@ -1,3 +1,4 @@
+import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
 import { createSession } from "@neant/agent";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
@@ -237,7 +238,7 @@ test("resume renders the persisted approved plan as a collapsible card", async (
         cwd: root,
         homeDir: root,
         model: faux.getModel(),
-        streamFn: faux.streamSimple,
+        streamFn: withAuxiliaryRequests(faux.streamSimple),
         onPlanReview: async () => ({ kind: "approve" }),
       });
       await session.setPlanMode(true);
