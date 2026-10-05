@@ -20,55 +20,81 @@ export async function fetchWeb(
   const timeout = AbortSignal.timeout(options.timeoutMs ?? 30_000);
   const signal = runSignal ? AbortSignal.any([runSignal, timeout]) : timeout;
   try {
-    const url = validateUrl(input);
-    const addresses = await abortable(resolveAddresses(url, options), signal);
-    const { response, close } = await request(url, addresses, signal);
-    try {
-      const maxBytes = options.maxBytes ?? 5 * 1024 * 1024;
-      if (Number(response.headers.get("content-length")) > maxBytes)
-        throw new Error(`Response too large: Content-Length exceeds ${maxBytes} bytes.`);
-      const chunks: Uint8Array[] = [];
-      let size = 0;
-      let truncated = false;
-      const reader = response.body?.getReader();
-      if (reader) {
-        try {
-          while (true) {
-            const { done, value } = await abortable(reader.read(), signal);
-            if (done) break;
-            const remaining = maxBytes - size;
-            chunks.push(value.subarray(0, remaining));
-            size += Math.min(value.length, remaining);
-            if (value.length > remaining) {
-              truncated = true;
-              await reader.cancel();
-              break;
-            }
+    let url = validateUrl(input);
+    let redirects = 0;
+    while (true) {
+      const addresses = await abortable(resolveAddresses(url, options), signal);
+      const { response, close } = await request(url, addresses, signal);
+      try {
+        const location = response.headers.get("location");
+        if (response.status >= 300 && response.status < 400 && location) {
+          let destination: URL;
+          try {
+            destination = new URL(location, url);
+          } catch {
+            throw new Error("Invalid URL: redirect Location cannot be resolved.");
           }
-        } finally {
-          reader.releaseLock();
+          destination = validateUrl(destination.href);
+          if (destination.origin === url.origin) {
+            if (redirects === 5)
+              throw new Error("Too many redirects: exceeded 5 same-origin hops.");
+            redirects++;
+            url = destination;
+            continue;
+          }
+          return render(
+            url,
+            response.status,
+            `Redirected to ${destination.href}; call web_fetch again with it to continue.`,
+            false,
+          );
         }
+        const maxBytes = options.maxBytes ?? 5 * 1024 * 1024;
+        if (Number(response.headers.get("content-length")) > maxBytes)
+          throw new Error(`Response too large: Content-Length exceeds ${maxBytes} bytes.`);
+        const chunks: Uint8Array[] = [];
+        let size = 0;
+        let truncated = false;
+        const reader = response.body?.getReader();
+        if (reader) {
+          try {
+            while (true) {
+              const { done, value } = await abortable(reader.read(), signal);
+              if (done) break;
+              const remaining = maxBytes - size;
+              chunks.push(value.subarray(0, remaining));
+              size += Math.min(value.length, remaining);
+              if (value.length > remaining) {
+                truncated = true;
+                await reader.cancel();
+                break;
+              }
+            }
+          } finally {
+            reader.releaseLock();
+          }
+        }
+        const bytes = new Uint8Array(size);
+        let offset = 0;
+        for (const chunk of chunks) {
+          bytes.set(chunk, offset);
+          offset += chunk.length;
+        }
+        const body = decodeBody(bytes, response.headers.get("content-type"));
+        if (!response.ok)
+          throw new Error(`HTTP ${response.status} from ${url.href}\n${body.slice(0, 2000)}`);
+        return render(url, response.status, body, truncated);
+      } finally {
+        await response.body?.cancel().catch(() => {});
+        await close();
       }
-      const bytes = new Uint8Array(size);
-      let offset = 0;
-      for (const chunk of chunks) {
-        bytes.set(chunk, offset);
-        offset += chunk.length;
-      }
-      const body = decodeBody(bytes, response.headers.get("content-type"));
-      if (!response.ok)
-        throw new Error(`HTTP ${response.status} from ${url.href}\n${body.slice(0, 2000)}`);
-      return render(url, response.status, body, truncated);
-    } finally {
-      await response.body?.cancel().catch(() => {});
-      await close();
     }
   } catch (error) {
     if (runSignal?.aborted) throw new Error("Web fetch aborted: Run cancelled.");
     if (timeout.aborted) throw new Error("Web fetch timeout: request exceeded the total timeout.");
     if (
       error instanceof Error &&
-      /^(Invalid URL|SSRF rejected|Response too large|Unsupported content type|HTTP \d)/.test(
+      /^(Invalid URL|SSRF rejected|Response too large|Unsupported content type|Too many redirects|HTTP \d)/.test(
         error.message,
       )
     )
