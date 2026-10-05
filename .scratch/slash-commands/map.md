@@ -17,6 +17,8 @@ Spec: [slash commands](spec.md). Local Markdown tracker; tickets resolve through
 
 - [07: /btw 侧问](issues/07-side-question.md#answer) — 独立模型/恢复上下文快照、无工具或 Session 副作用、可取消文本迭代；TUI 流式 pane、替换与 Esc 关闭，辅助测试队列保留标题优先路由。
 
+- [06: /context 上下文报告](issues/06-context-report.md#answer) — read-only restored-context accounting and provider totals; local immutable TUI visualization with four grid sizes, themed categories, detailed legends and active-run support.
+
 ## Fog
 
 - Remaining Core capability and TUI handler tickets retain their existing dependency graph.

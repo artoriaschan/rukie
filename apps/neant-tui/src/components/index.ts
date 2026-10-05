@@ -24,3 +24,5 @@ export { CommandSuggestions } from "./command-suggestions";
 
 export { ModelPicker } from "./model-picker";
 export { SideQuestionPanel } from "./side-question";
+
+export { ContextVisualization } from "./context-report";

@@ -57,6 +57,7 @@ export function createMcpConnections() {
   const connected = new Map<string, McpClient>();
   const errors: Extract<CustomSessionEvent, { type: "mcp_server_error" }>[] = [];
   const tools: AgentTool[] = [];
+  const toolServers = new Map<string, string>();
   const descriptions: string[] = [];
   const failed = new Set<string>();
   let closePromise: Promise<void> | undefined;
@@ -106,6 +107,7 @@ export function createMcpConnections() {
   }
   return {
     tools,
+    toolServers,
     errors,
     async callHookTool(
       server: string,
@@ -190,6 +192,7 @@ export function createMcpConnections() {
             }),
           );
           tools.push(...adapted);
+          for (const tool of adapted) toolServers.set(tool.name, server);
           descriptions.push(
             `${server}:\n${client.instructions ?? ""}\nTools: ${adapted.map((tool) => tool.name).join(", ") || "none"}`,
           );
