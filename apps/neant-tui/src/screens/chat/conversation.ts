@@ -559,6 +559,7 @@ export function createConversation(session: Session, model: string, locale: Loca
   const t = createTuiI18n(locale);
   let state = createViewState(session, model, locale);
   const listeners = new Set<() => void>();
+  let compacting = false;
   let active: { controller: AbortController; promise: Promise<unknown> } | undefined;
   let notificationTimer: ReturnType<typeof setTimeout> | undefined;
   const update = (next: ViewState, deferNotification = false) => {
@@ -654,6 +655,7 @@ export function createConversation(session: Session, model: string, locale: Loca
       };
     },
     submit(prompt: string, initial = false) {
+      if (compacting) return false;
       if (!prompt.trim()) return false;
       if (active || (session.running && !initial)) {
         if (!prompt.startsWith("/")) return false;
@@ -691,6 +693,26 @@ export function createConversation(session: Session, model: string, locale: Loca
         });
       active = { controller, promise };
       return true;
+    },
+    compact(instructions?: string) {
+      if (active || session.running)
+        return Promise.reject(new Error("Session already has an active Run."));
+      compacting = true;
+      const controller = new AbortController();
+      const previousActivity = state.activity;
+      update({
+        ...state,
+        running: true,
+        error: undefined,
+        activity: reduce(state.activity, { type: "submit" }, Date.now()),
+      });
+      const promise = session.compact({ instructions }).finally(() => {
+        active = undefined;
+        compacting = false;
+        update({ ...state, running: false, activity: previousActivity });
+      });
+      active = { controller, promise };
+      return promise;
     },
     isRunning: () => active !== undefined || session.running,
     interrupt() {

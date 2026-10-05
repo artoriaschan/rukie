@@ -11,6 +11,48 @@ async function ready(options: Parameters<typeof start>[1] = {}, argv: string[] =
   return app;
 }
 
+test("compact summarizes with focus, shows shared progress and rejects while busy", async () => {
+  const app = await ready({ rows: 48 });
+  try {
+    app.stdin.write("/compact\r");
+    await app.waitFor(() => screen(app).includes("no compactable conversation history"));
+    expect(app.calls).toHaveLength(0);
+    app.stdin.write("inspect widgets\r");
+    await app.waitFor(() => app.calls.length === 1);
+    app.stdin.write("/compact keep API\r");
+    await app.waitFor(() => screen(app).includes("after the run finishes"));
+    expect(app.calls).toHaveLength(1);
+    app.calls[0]!.delta("Widget contract.");
+    app.calls[0]!.finish();
+    await app.waitFor(() => screen(app).includes("Widget contract."));
+    app.stdin.write("/compact keep API\r");
+    await app.waitFor(() => app.calls.length === 2);
+    expect(JSON.stringify(app.calls[1]!.context)).toContain("keep API");
+    await app.waitFor(() => /Packing up context|Tidying the context/.test(screen(app)));
+    app.calls[1]!.delta("Widget summary.");
+    app.calls[1]!.finish();
+    await app.waitFor(() => screen(app).includes("Context compacted"));
+    app.stdin.write("continue\r");
+    await app.waitFor(() => app.calls.length === 3);
+    expect(JSON.stringify(app.calls[2]!.context)).toContain("Widget summary.");
+    expect(JSON.stringify(app.calls[2]!.context)).not.toContain("keep API");
+    app.calls[2]!.finish();
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("compact without history shows its error in the selected locale", async () => {
+  const app = await ready({ env: { LANG: "zh_CN.UTF-8" } });
+  try {
+    app.stdin.write("/compact\r");
+    await app.waitFor(() => screen(app).includes("没有可压缩的对话内容"));
+    expect(app.calls).toHaveLength(0);
+  } finally {
+    await app.cleanup();
+  }
+});
+
 test("local help remains usable while a question is folded and its answer stays pending", async () => {
   const app = await ready({ rows: 48 });
   try {

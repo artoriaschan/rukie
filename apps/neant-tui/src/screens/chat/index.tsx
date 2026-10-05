@@ -446,7 +446,11 @@ function Chat({
             models.findIndex((model) => model.spec === session.model),
           ),
         );
-    } else if (command.name === "rewind") openRewind();
+    } else if (command.name === "compact")
+      void conversation
+        .compact(prompt.slice(parsed![0].length).trim() || undefined)
+        .catch((error: unknown) => conversation.notice(formatError(error, t), true));
+    else if (command.name === "rewind") openRewind();
     else if (command.name === "clear")
       void replaceSession().catch((error: unknown) =>
         conversation.notice(formatError(error, t), true),

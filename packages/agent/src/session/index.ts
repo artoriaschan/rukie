@@ -166,6 +166,8 @@ export interface Session {
   setPlanMode(on: boolean): Promise<void>;
   /** Applies to the next tool call; never persisted. */
   setPermissionMode(mode: PermissionMode): void;
+  /** Compress completed history while idle; focus only applies to this summary. */
+  compact(options?: { instructions?: string }): Promise<void>;
   /** Current restored context in memory, including reminders and any compaction. */
   readonly messages: readonly AgentMessage[];
   /** Current Tool State snapshot; undefined before the first write. */
@@ -809,6 +811,8 @@ async function createSessionInternal(
   let running = false;
   let rewinding = false;
   let changingModel = false;
+  let compacting = false;
+  let compactSettled: ReturnType<typeof Promise.withResolvers<void>> | undefined;
   let hookRunActive = false;
   let runSettled: ReturnType<typeof Promise.withResolvers<void>> | undefined;
   let queuedUserRuns = 0;
@@ -835,6 +839,177 @@ async function createSessionInternal(
       content,
       timestamp: Date.now(),
     }));
+  const planReminder: ReminderSource = {
+    source: "plan-mode",
+    currentContent: () => {
+      if (plan.getActive())
+        return planModeReminder(agent.state.tools.some((tool) => tool.name === "exit_plan_mode"));
+      const previous = transcriptMessages.findLast(
+        (message) => message.role === "system-reminder" && message.source === "plan-mode",
+      );
+      return plan.hasEntered() &&
+        !(previous?.role === "system-reminder" && previous.content === PLAN_MODE_EXIT)
+        ? PLAN_MODE_EXIT
+        : undefined;
+    },
+  };
+  const reminderSources: ReminderSource[] = [
+    planReminder,
+    { source: "skills", currentContent: () => skillsReminder(skills) },
+    {
+      source: "mcp",
+      currentContent: () => {
+        const previous = transcriptMessages.findLast(
+          (message) => message.role === "system-reminder" && message.source === "mcp",
+        );
+        if (runMcp?.hasServers || previous) {
+          if (runMcp) return runMcp.reminder();
+          return previous?.role === "system-reminder" ? previous.content : undefined;
+        }
+        return undefined;
+      },
+    },
+    ...(options.reminderSources ?? []),
+    ...toolState.reminderSources,
+  ];
+  const compactContext = async ({
+    target,
+    messages,
+    trigger,
+    instructions,
+    signal,
+    emit,
+    control,
+    injectAsyncContexts,
+  }: {
+    target: StoredSession;
+    messages: AgentMessage[];
+    trigger: "auto" | "manual";
+    instructions?: string;
+    signal?: AbortSignal;
+    emit: (event: CustomSessionEvent<AgentEvent>) => void | Promise<void>;
+    control: (result: CommonHookResult) => void;
+    injectAsyncContexts: (messages: AgentMessage[]) => Promise<AgentMessage[]>;
+  }) => {
+    const branch = await target.branch("main", context);
+    if (!branch) throw new Error("Session has no main branch.");
+    const compacted = await compactTurn({
+      messages,
+      entries: () => branch.findEntries({ order: "oldestFirst" }, context),
+      model,
+      streamFn: options.streamFn ?? streamFn,
+      thinkingLevel: agent.state.thinkingLevel,
+      signal,
+      trigger,
+      instructions,
+      beforeCompact: async () => {
+        const result = await hooks.run(
+          "PreCompact",
+          {
+            ...hookInput(),
+            trigger,
+            custom_instructions: trigger === "manual" ? (instructions ?? "") : null,
+          },
+          { signal, matchQuery: trigger },
+        );
+        control(result);
+        signal?.throwIfAborted();
+
+        if (result.decision !== "block") return true;
+        const reason = result.reason || "PreCompact hook blocked compaction.";
+        if (trigger === "manual")
+          throw createUserVisibleError(`Compaction blocked by PreCompact hook: ${reason}`, {
+            code: "hook-compaction-blocked",
+            params: { reason },
+          });
+        const message = `Compaction skipped by PreCompact hook: ${reason}`;
+        (options.onWarning ?? console.warn)(message);
+        await emit({
+          type: "hook_warning",
+          event: "PreCompact",
+          hook: "PreCompact",
+          message,
+          error: { code: "hook-compaction-blocked", params: { reason } },
+        });
+        return false;
+      },
+      onStart: (tokensBefore) => emit({ type: "compaction_start", trigger, tokensBefore }),
+    });
+    if (!compacted) return false;
+    await target.mutate(async (mutator) => {
+      const tip = await mutator.getValue(branchTip("main"), context);
+      if (!tip) throw new Error("Session has no main branch.");
+      const id = target.idGenerator.next();
+      await mutator.commit(
+        [
+          insertEntry({
+            ...compacted,
+            id,
+            parentId: tip.value,
+            type: "compaction",
+            fromHook: false,
+          }),
+          setValue(branchTip("main"), id),
+        ],
+        context,
+      );
+    }, context);
+    reminderStart = transcriptMessages.length;
+    const reminders = await collectReminders({
+      messages: [],
+      cwd,
+      homeDir: options.homeDir,
+      now: (options.now ?? (() => new Date()))(),
+      sources: reminderSources,
+      includeEnvironment: false,
+    });
+    for (const reminder of reminders) {
+      await branch.appendMessage(reminder, context);
+      transcriptMessages.push(reminder);
+      await emit({
+        type: "reminder_injected",
+        source: reminder.source,
+        content: reminder.content,
+      });
+    }
+    const restored = await injectAsyncContexts(
+      restoreContext(await branch.findEntries({ order: "oldestFirst" }, context)),
+    );
+    agent.state.messages = restored;
+    if (trigger === "manual") completedMessages = structuredClone(restored);
+    inputTokens = undefined;
+    await emit({
+      type: "compaction_end",
+      trigger,
+      summary: compacted.summary,
+      tokensBefore: compacted.tokensBefore,
+      tokensAfter: estimateContextTokens(restored),
+    });
+    const postCompact = await hooks.run(
+      "PostCompact",
+      {
+        ...hookInput(),
+        trigger,
+        compact_summary: compacted.summary,
+        ...(trigger === "manual" && { custom_instructions: instructions ?? "" }),
+      },
+      { signal, matchQuery: trigger },
+    );
+    control(postCompact);
+    signal?.throwIfAborted();
+
+    const compactStart = await hooks.run(
+      "SessionStart",
+      { ...hookInput(), source: "compact", model: `${model.provider}/${model.id}` },
+      { signal, matchQuery: "compact" },
+    );
+    control(compactStart);
+    pendingSessionContexts.push(...compactStart.additionalContext);
+    sessionContextUserSequence = userMessageSequence;
+    signal?.throwIfAborted();
+
+    return true;
+  };
   let rewakeObserver: ((event: SessionEvent) => void | Promise<void>) | undefined;
   const session = {
     get running() {
@@ -873,7 +1048,7 @@ async function createSessionInternal(
     },
     async setModel(spec) {
       if (disposePromise) throw new Error("Session has been disposed.");
-      if (running || rewinding || changingModel)
+      if (running || rewinding || changingModel || compacting)
         throw new Error("Model switching requires an idle Session.");
       changingModel = true;
       try {
@@ -897,6 +1072,7 @@ async function createSessionInternal(
         });
       } finally {
         changingModel = false;
+        scheduleRewake?.();
       }
     },
     get permissionMode() {
@@ -909,8 +1085,60 @@ async function createSessionInternal(
       return plan.getActive();
     },
     async setPlanMode(on) {
+      if (compacting) throw new Error("Session is compacting.");
       if (rewinding) throw new Error("Session is rewinding.");
       return plan.setMode(on);
+    },
+    async compact({ instructions } = {}) {
+      if (disposePromise) throw new Error("Session has been disposed.");
+      if (running) throw new Error("Session already has an active Run.");
+      if (rewinding) throw new Error("Session is rewinding.");
+      if (compacting) throw new Error("Session is compacting.");
+      if (changingModel) throw new Error("Session is switching models.");
+      compacting = true;
+      const settled = Promise.withResolvers<void>();
+      compactSettled = settled;
+      const controller = new AbortController();
+      runController = controller;
+      const emit = (event: CustomSessionEvent<AgentEvent>) =>
+        broadcast({ ...event, sessionId: stored.metadata.id });
+      emitRunEvent = emit;
+      let target: StoredSession | undefined;
+      try {
+        await planWrites;
+        controller.signal.throwIfAborted();
+        const discovered = await discoverSkills(cwd, options.homeDir);
+        skills = discovered.skills;
+        for (const warning of discovered.warnings) (options.onWarning ?? console.warn)(warning);
+        target = await store.open(stored.metadata, context);
+        activeStore = target;
+        await compactContext({
+          target,
+          messages: agent.state.messages,
+          trigger: "manual",
+          instructions,
+          signal: controller.signal,
+          emit,
+          control: (result) => {
+            if (result.continue === false)
+              throw new Error(result.stopReason || "Compaction stopped by hook.");
+          },
+          injectAsyncContexts: async (messages) => messages,
+        });
+        await emit(contextUsage(agent.state.messages, model.contextWindow, inputTokens));
+      } finally {
+        try {
+          await target?.close(context);
+        } finally {
+          activeStore = undefined;
+          emitRunEvent = undefined;
+          runController = undefined;
+          compacting = false;
+          compactSettled = undefined;
+          settled.resolve();
+          scheduleRewake?.();
+        }
+      }
     },
     get messages() {
       return agent.state.messages;
@@ -922,7 +1150,7 @@ async function createSessionInternal(
     checkpoints: () => (internal.parentSessionId ? [] : (checkpoint?.list() ?? [])),
     async rewind(promptEntryId, { code, conversation }) {
       if (disposePromise) throw new Error("Session has been disposed.");
-      if (running || subagents.count || rewinding || changingModel)
+      if (running || subagents.count || rewinding || changingModel || compacting)
         throw new Error("Rewind requires an idle Session.");
       if (internal.parentSessionId || !checkpoint)
         throw new Error("Subagent Sessions cannot rewind.");
@@ -999,6 +1227,7 @@ async function createSessionInternal(
           hooks.dispose();
           runController?.abort();
           try {
+            await compactSettled?.promise;
             await Promise.all([
               hooks.run("SessionEnd", { ...hookInput(), reason }, { matchQuery: reason }),
               ...[...childSessions].map((child) => child.dispose(reason)),
@@ -1040,6 +1269,7 @@ async function createSessionInternal(
       if (disposePromise) throw new Error("Session has been disposed.");
       if (rewinding) throw new Error("Session is rewinding.");
       if (changingModel) throw new Error("Session is switching models.");
+      if (compacting) throw new Error("Session is compacting.");
       if (running) throw new Error("Session already has an active Run.");
       running = true;
       hookRunActive = fromHook;
@@ -1220,38 +1450,6 @@ async function createSessionInternal(
             await branch.appendMessage(agent.state.messages[0]!, context);
             baselinePersisted = true;
           }
-          const planReminder: ReminderSource = {
-            source: "plan-mode",
-            currentContent: () => {
-              if (plan.getActive())
-                return planModeReminder(
-                  agent.state.tools.some((tool) => tool.name === "exit_plan_mode"),
-                );
-              const previous = transcriptMessages.findLast(
-                (message) => message.role === "system-reminder" && message.source === "plan-mode",
-              );
-              return plan.hasEntered() &&
-                !(previous?.role === "system-reminder" && previous.content === PLAN_MODE_EXIT)
-                ? PLAN_MODE_EXIT
-                : undefined;
-            },
-          };
-          const reminderSources: ReminderSource[] = [
-            planReminder,
-            { source: "skills", currentContent: () => skillsReminder(skills) },
-            {
-              source: "mcp",
-              currentContent: () =>
-                mcp.hasServers ||
-                transcriptMessages.some(
-                  (message) => message.role === "system-reminder" && message.source === "mcp",
-                )
-                  ? mcp.reminder()
-                  : undefined,
-            },
-            ...(options.reminderSources ?? []),
-            ...toolState.reminderSources,
-          ];
           const injectAsyncContexts = async (messages: AgentMessage[]): Promise<AgentMessage[]> => {
             const reminders = pendingAsyncContexts.splice(0).map((content) => ({
               role: "system-reminder" as const,
@@ -1291,36 +1489,17 @@ async function createSessionInternal(
               requestContext = { ...requestContext, messages };
               contextChanged = true;
             }
-            const compacted = await compactTurn({
+            const compacted = await compactContext({
+              target: runStore,
               messages: requestContext.messages,
-              entries: () => branch.findEntries({ order: "oldestFirst" }, context),
-              model,
-              streamFn: options.streamFn ?? streamFn,
-              thinkingLevel: agent.state.thinkingLevel,
+              trigger: "auto",
               signal: turnSignal,
-              beforeCompact: async () => {
-                const result = await hooks.run(
-                  "PreCompact",
-                  { ...hookInput(), trigger: "auto", custom_instructions: null },
-                  { signal: turnSignal, matchQuery: "auto" },
-                );
+              emit,
+              control: (result) => {
                 applyHookControl(result);
-                turnSignal?.throwIfAborted();
                 stopPreparedRequest();
-                if (result.decision !== "block") return true;
-                const reason = result.reason || "PreCompact hook blocked compaction.";
-                const message = `Compaction skipped by PreCompact hook: ${reason}`;
-                (options.onWarning ?? console.warn)(message);
-                await emit({
-                  type: "hook_warning",
-                  event: "PreCompact",
-                  hook: "PreCompact",
-                  message,
-                  error: { code: "hook-compaction-blocked", params: { reason } },
-                });
-                return false;
               },
-              onStart: (tokensBefore) => emit({ type: "compaction_start", tokensBefore }),
+              injectAsyncContexts,
             });
             if (!compacted) {
               await planWrites;
@@ -1345,73 +1524,8 @@ async function createSessionInternal(
               return { context: { ...requestContext, messages } };
             }
 
-            await runStore.mutate(async (mutator) => {
-              const tip = await mutator.getValue(branchTip("main"), context);
-              if (!tip) throw new Error("Session has no main branch.");
-              const id = runStore.idGenerator.next();
-              await mutator.commit(
-                [
-                  insertEntry({
-                    ...compacted,
-                    id,
-                    parentId: tip.value,
-                    type: "compaction",
-                    fromHook: false,
-                  }),
-                  setValue(branchTip("main"), id),
-                ],
-                context,
-              );
-            }, context);
-            reminderStart = transcriptMessages.length;
-            const reminders = await collectReminders({
-              messages: [],
-              cwd,
-              homeDir: options.homeDir,
-              now: (options.now ?? (() => new Date()))(),
-              sources: reminderSources,
-              includeEnvironment: false,
-            });
-            for (const reminder of reminders) {
-              await branch.appendMessage(reminder, context);
-              transcriptMessages.push(reminder);
-              await emit({
-                type: "reminder_injected",
-                source: reminder.source,
-                content: reminder.content,
-              });
-            }
-            let messages = await injectAsyncContexts(
-              restoreContext(await branch.findEntries({ order: "oldestFirst" }, context)),
-            );
-            agent.state.messages = messages;
-            inputTokens = undefined;
-            await emit({
-              type: "compaction_end",
-              summary: compacted.summary,
-              tokensBefore: compacted.tokensBefore,
-              tokensAfter: estimateContextTokens(messages),
-            });
-            const postCompact = await hooks.run(
-              "PostCompact",
-              { ...hookInput(), trigger: "auto", compact_summary: compacted.summary },
-              { signal: turnSignal, matchQuery: "auto" },
-            );
-            applyHookControl(postCompact);
-            turnSignal?.throwIfAborted();
-            stopPreparedRequest();
-            const compactStart = await hooks.run(
-              "SessionStart",
-              { ...hookInput(), source: "compact", model: `${model.provider}/${model.id}` },
-              { signal: turnSignal, matchQuery: "compact" },
-            );
-            applyHookControl(compactStart);
-            pendingSessionContexts.push(...compactStart.additionalContext);
-            sessionContextUserSequence = userMessageSequence;
-            turnSignal?.throwIfAborted();
-            stopPreparedRequest();
             await emitContextUsage();
-            messages = await injectAsyncContexts(messages);
+            const messages = await injectAsyncContexts(agent.state.messages);
             agent.state.messages = messages;
             return { context: { ...requestContext, messages } };
           };
@@ -1641,7 +1755,7 @@ async function createSessionInternal(
     },
   } satisfies Session;
   scheduleRewake = () => {
-    if (disposePromise || rewinding) return;
+    if (disposePromise || rewinding || compacting || changingModel) return;
     if (running) {
       for (const reason of pendingRewakes.splice(0)) {
         const message: AgentMessage = {

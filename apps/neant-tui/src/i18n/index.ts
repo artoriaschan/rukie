@@ -46,6 +46,8 @@ export function formatError(error: unknown, t: ReturnType<typeof createTuiI18n>)
         ...data.params,
         env: data.params.env || t("api-key.environment-default"),
       });
+    case "compaction-no-history":
+      return t("error.compaction-no-history", data.params);
     case "session-not-found":
       return t("error.session-not-found", data.params);
     case "ripgrep-unavailable":

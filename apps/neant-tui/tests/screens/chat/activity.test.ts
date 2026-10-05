@@ -24,7 +24,7 @@ test("English compaction, review, approval, failure and interruption keep their 
   let state = reduce(createActivity("en"), { type: "submit" }, start, random);
   state = reduce(
     state,
-    { type: "compaction_start", sessionId, tokensBefore: 120_000 },
+    { type: "compaction_start", trigger: "auto", sessionId, tokensBefore: 120_000 },
     start,
     random,
   );
@@ -55,6 +55,7 @@ test("English compaction, review, approval, failure and interruption keep their 
     state,
     {
       type: "compaction_end",
+      trigger: "auto",
       sessionId,
       summary: "private",
       tokensBefore: 120_000,
@@ -276,7 +277,7 @@ test("compaction copy stays deterministic above other copy and below approval wi
   state = reduce(state, { type: "interrupt" }, start + 50, random);
   state = reduce(
     state,
-    { type: "compaction_start", sessionId, tokensBefore: 120_000 },
+    { type: "compaction_start", trigger: "auto", sessionId, tokensBefore: 120_000 },
     start + 100,
     random,
   );
@@ -303,7 +304,7 @@ test.each(["waiting", "thinking", "tool"] as const)(
     if (phase === "tool") state = reduce(state, toolStart("a"), start + 50, random);
     state = reduce(
       state,
-      { type: "compaction_start", sessionId, tokensBefore: 120_000 },
+      { type: "compaction_start", trigger: "auto", sessionId, tokensBefore: 120_000 },
       start + 100,
       random,
     );
@@ -317,6 +318,7 @@ test.each(["waiting", "thinking", "tool"] as const)(
 const clearingEvents: Parameters<typeof reduce>[1][] = [
   {
     type: "compaction_end",
+    trigger: "auto",
     sessionId,
     summary: "private summary",
     tokensBefore: 120_000,
@@ -330,7 +332,7 @@ test.each(clearingEvents)("$type clears compaction waiting copy", (event) => {
   let state = reduce(createActivity(), { type: "submit" }, start, random);
   state = reduce(
     state,
-    { type: "compaction_start", sessionId, tokensBefore: 120_000 },
+    { type: "compaction_start", trigger: "auto", sessionId, tokensBefore: 120_000 },
     start + 100,
     random,
   );
@@ -346,7 +348,7 @@ test("compaction completion reports formatted before and after tokens for exactl
   let state = reduce(createActivity(), { type: "submit" }, start, random);
   state = reduce(
     state,
-    { type: "compaction_start", sessionId, tokensBefore: 120_000 },
+    { type: "compaction_start", trigger: "auto", sessionId, tokensBefore: 120_000 },
     start + 100,
     random,
   );
@@ -369,7 +371,14 @@ test("approval overrides narration and compaction; a closed dialog restores fres
   state = reduce(state, delta("⏵ 在查问题", "text_delta"), start, random);
   state = reduce(
     state,
-    { type: "compaction_end", sessionId, summary: "", tokensBefore: 1, tokensAfter: 0 },
+    {
+      type: "compaction_end",
+      trigger: "auto",
+      sessionId,
+      summary: "",
+      tokensBefore: 1,
+      tokensAfter: 0,
+    },
     start + 100,
     random,
   );
