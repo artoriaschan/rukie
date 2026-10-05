@@ -26,6 +26,7 @@ import type {
   SessionEvent as SharedSessionEvent,
   Settings,
   HooksSettings,
+  ContextReport,
 } from "@neant/shared";
 import {
   createSubagents,
@@ -61,7 +62,7 @@ import { discoverSkills, skillInvocation, skillsReminder } from "../skills/index
 import { createMcpConnections } from "../mcp/index.ts";
 import { compactTurn, estimateContextTokens, restoreContext } from "../compaction/index.ts";
 import { createSessionTitle, titleSourceState, type TitleSource } from "../session-title/index.ts";
-import { contextUsage } from "../context-usage/index.ts";
+import { contextUsage, contextReport } from "../context-usage/index.ts";
 import { createToolState, todoState, type TodoItem } from "../tool-state/index.ts";
 import {
   createCheckpoints,
@@ -170,6 +171,8 @@ export interface Session {
   setPlanMode(on: boolean): Promise<void>;
   /** Applies to the next tool call; never persisted. */
   setPermissionMode(mode: PermissionMode): void;
+  /** Snapshot the restored context; usable while idle or running. */
+  contextReport(): ContextReport;
   /** Compress completed history while idle; focus only applies to this summary. */
   compact(options?: { instructions?: string }): Promise<void>;
   /** Current restored context in memory, including reminders and any compaction. */
@@ -421,6 +424,7 @@ async function createSessionInternal(
   // behind existing conversation messages; pi will seed it when restoring them.
   let baselinePersisted = initialBranch.baselinePersisted;
   let skills = new Map<string, Skill>();
+  let mcpToolServers = new Map<string, string>();
   const origin =
     internal.originDescription === undefined
       ? undefined
@@ -874,6 +878,14 @@ async function createSessionInternal(
   let runMcp: ReturnType<typeof createMcpConnections> | undefined;
   let disposePromise: Promise<void> | undefined;
   let inputTokens: number | undefined;
+  // Preserve context_usage's existing resume estimate while reports can display
+  // the last stored provider count until an operation invalidates it.
+  const lastResponse = initialBranch.messages.findLast((message) => message.role === "assistant");
+  let reportInputTokens =
+    lastResponse?.role === "assistant"
+      ? lastResponse.usage.input + lastResponse.usage.cacheRead + lastResponse.usage.cacheWrite ||
+        undefined
+      : undefined;
   let sessionStartControl: CommonHookResult | undefined = await hooks.run(
     "SessionStart",
     {
@@ -1032,6 +1044,7 @@ async function createSessionInternal(
     agent.state.messages = restored;
     if (trigger === "manual") completedMessages = structuredClone(restored);
     inputTokens = undefined;
+    reportInputTokens = undefined;
     await emit({
       type: "compaction_end",
       trigger,
@@ -1124,6 +1137,7 @@ async function createSessionInternal(
         streamFn = selected.streamFn;
         agent.state.model = model;
         inputTokens = undefined;
+        reportInputTokens = undefined;
         broadcast({
           type: "tool_state_changed",
           name: "model",
@@ -1200,6 +1214,15 @@ async function createSessionInternal(
         }
       }
     },
+    contextReport() {
+      return contextReport({
+        messages: agent.state.messages,
+        model: `${model.provider}/${model.id}`,
+        window: model.contextWindow,
+        inputTokens: inputTokens ?? reportInputTokens,
+        mcpServers: mcpToolServers,
+      });
+    },
     get messages() {
       return agent.state.messages;
     },
@@ -1275,6 +1298,7 @@ async function createSessionInternal(
           agent.state.messages = restoredBranch.messages;
           completedMessages = structuredClone(agent.state.messages);
           inputTokens = undefined;
+          reportInputTokens = undefined;
           for (const change of changes)
             broadcast({ type: "tool_state_changed", ...change, sessionId: session.id });
           broadcast({ type: "conversation_rewound", promptEntryId, sessionId: session.id });
@@ -1450,6 +1474,7 @@ async function createSessionInternal(
                 error: warning.error,
               });
           }
+          mcpToolServers = mcp.toolServers;
           agent.state.tools = [
             ...generalTools,
             ...(internal.parentSessionId
@@ -1658,12 +1683,14 @@ async function createSessionInternal(
                 }
               }
             }
-            await emit(event);
             if (event.type === "message_end" && event.message.role === "assistant") {
               const { input, cacheRead, cacheWrite } = event.message.usage;
               inputTokens = input + cacheRead + cacheWrite || undefined;
-              await emitContextUsage();
+              reportInputTokens = inputTokens;
             }
+            await emit(event);
+            if (event.type === "message_end" && event.message.role === "assistant")
+              await emitContextUsage();
           });
           signal?.throwIfAborted();
           const discovered = await discoverSkills(cwd, options.homeDir);

@@ -1,7 +1,7 @@
 import type { Locale } from "@neant/i18n";
 import { createTuiI18n, formatError } from "../../i18n";
 import type { Session, SessionEvent, TodoItem } from "@neant/agent";
-import type { ContextUsageEvent, RunResult } from "@neant/shared";
+import type { ContextUsageEvent, RunResult, ContextReport } from "@neant/shared";
 import type { TpsSample } from "../../components/status-line";
 import { reduceSubagent, restoreSubagents, type SubagentState } from "./subagents";
 import { createActivity, reduce } from "./activity/activity";
@@ -26,7 +26,8 @@ type CompletedEntry =
       agentId?: string;
       planReview?: { plan: string; kind: "approve" | "revise" | "takeover"; feedback?: string };
     }
-  | { type: "notice"; text: string };
+  | { type: "notice"; text: string }
+  | { type: "context-report"; report: ContextReport };
 
 type ToolResultMessage = Extract<
   Extract<SessionEvent, { type: "message_end" }>["message"],
@@ -641,6 +642,15 @@ export function createConversation(session: Session, model: string, locale: Loca
               completed: [...state.completed, { type: "notice", text }],
             },
       );
+    },
+    contextReport(report: ContextReport) {
+      update({
+        ...state,
+        completed: [
+          ...state.completed,
+          { type: "context-report", report: structuredClone(report) },
+        ],
+      });
     },
     getSnapshot: () => state,
     getTpsMetrics: (now: number) => decodeMetrics(state, now),

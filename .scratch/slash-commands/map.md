@@ -15,6 +15,8 @@ Spec: [slash commands](spec.md). Local Markdown tracker; tickets resolve through
 
 - [03: Session 标题与改名](issues/03-session-title-and-rename.md#answer) — 一次异步标题、专用模型、手动固定与取消、子/fork 描述、Headless、TUI 预填和 OSC spinner；辅助模型边界隔离及 Session 存储竞争已覆盖，回退保留手动来源且普通锚点不变。
 
+- [06: /context 上下文报告](issues/06-context-report.md#answer) — read-only restored-context accounting and provider totals; local immutable TUI visualization with four grid sizes, themed categories, detailed legends and active-run support.
+
 ## Fog
 
 - Remaining Core capability and TUI handler tickets retain their existing dependency graph.

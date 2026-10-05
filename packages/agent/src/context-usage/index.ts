@@ -1,6 +1,8 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import { getCurrentSystemMessage } from "@earendil-works/pi-ai";
-import type { ContextUsageEvent } from "@neant/shared";
+import { getCurrentSystemMessage, getCurrentTools, toToolDeclaration } from "@earendil-works/pi-ai";
+import type { ContextUsageEvent, ContextReport, ContextCategory } from "@neant/shared";
+
+import { convertToLlm } from "../reminders/index.ts";
 
 const tokens = (text: string) => Math.ceil(text.length / 4);
 
@@ -48,5 +50,122 @@ export function contextUsage(
     used: inputTokens ?? Object.values(segments).reduce((total, count) => total + count, 0),
     window,
     segments,
+  };
+}
+
+/** Attribute the current restored model context without mutating it or making a request. */
+export function contextReport(options: {
+  messages: readonly AgentMessage[];
+  model: string;
+  window: number;
+  inputTokens?: number;
+  mcpServers: ReadonlyMap<string, string>;
+}): ContextReport {
+  const { messages, window } = options;
+  const category: Record<ContextCategory, number> = {
+    "system-prompt": 0,
+    "memory-files": 0,
+    "system-tools": 0,
+    "mcp-tools": 0,
+    skills: 0,
+    messages: 0,
+    "compaction-reserve": Math.floor(window * 0.2),
+    "free-space": 0,
+  };
+  const memoryFiles: ContextReport["memoryFiles"] = [];
+  const skills: ContextReport["skills"] = [];
+  const mcpTools: ContextReport["mcpTools"] = [];
+  const agentTypes: ContextReport["agentTypes"] = [];
+  const latest = new Map<string, Extract<AgentMessage, { role: "system-reminder" }>>();
+  for (const message of messages)
+    if (message.role === "system-reminder") latest.set(message.source, message);
+  const attributed = new Set<AgentMessage>();
+  for (const source of ["user-instructions", "project-instructions"]) {
+    const message = latest.get(source);
+    if (!message) continue;
+    const path = /^Project Instructions \(([^\n]+)\):\n/.exec(message.content)?.[1];
+    if (!path) continue;
+    const count = tokens(message.content);
+    memoryFiles.push({ path, tokens: count });
+    category["memory-files"] += count;
+    attributed.add(message);
+  }
+  const catalog = latest.get("skills");
+  if (catalog) {
+    category.skills = tokens(catalog.content);
+    attributed.add(catalog);
+    for (const match of catalog.content.matchAll(/^- ([a-z0-9-]+): (.*)$/gm))
+      skills.push({ name: match[1]!, tokens: tokens(match[0]) });
+  }
+  // Preserve exact identities from MCP discovery; persisted reminder headers
+  // recover server names on resume, including names containing separators.
+  const serverNames = [...(latest.get("mcp")?.content.matchAll(/^(.+):$/gm) ?? [])]
+    .map((match) => match[1]!)
+    .sort((a, b) => b.length - a.length);
+  const system = getCurrentSystemMessage(messages);
+  if (system) {
+    const text =
+      typeof system.content === "string"
+        ? system.content
+        : system.content.map((block) => block.text).join("");
+    category["system-prompt"] =
+      tokens(text) +
+      Object.values(system.sections ?? {}).reduce(
+        (sum, section) => sum + (section ? tokens(section) : 0),
+        0,
+      );
+  }
+  for (const tool of getCurrentTools(messages)) {
+    const count = tokens(JSON.stringify(toToolDeclaration(tool)));
+    if (tool.name.startsWith("mcp__")) {
+      const server =
+        options.mcpServers.get(tool.name) ??
+        serverNames.find((name) => tool.name.startsWith(`mcp__${name}__`)) ??
+        /^mcp__(.*?)__/.exec(tool.name)?.[1] ??
+        "unknown";
+      mcpTools.push({ server, name: tool.name.slice(`mcp__${server}__`.length), tokens: count });
+      category["mcp-tools"] += count;
+    } else {
+      category["system-tools"] += count;
+      if (tool.name === "subagent") {
+        const list = tool.description.split("Available types:\n")[1];
+        for (const match of list?.matchAll(/^([^:\n]+): (.*)$/gm) ?? [])
+          agentTypes.push({ name: match[1]!, tokens: tokens(match[0]) });
+      }
+    }
+  }
+  // Superseded file/catalog snapshots still occupy model context. Only their
+  // current, separately attributed snapshots are removed from Messages.
+  const remainder = messages.filter(
+    (message) => message.role !== "system" && !attributed.has(message),
+  );
+  const visible = remainder.flatMap((message): AgentMessage[] =>
+    message.role === "user" && "skillInvocation" in message ? convertToLlm([message]) : [message],
+  );
+  category.messages = Object.values(contextUsage(visible, window).segments).reduce(
+    (sum, count) => sum + count,
+    0,
+  );
+  const estimate =
+    category["system-prompt"] +
+    category["memory-files"] +
+    category["system-tools"] +
+    category["mcp-tools"] +
+    category.skills +
+    category.messages;
+  const used = options.inputTokens ?? estimate;
+  category["free-space"] = Math.max(0, window - used - category["compaction-reserve"]);
+  return {
+    model: options.model,
+    window,
+    used,
+    categories: Object.entries(category).map(([name, count]) => ({
+      name: name as ContextCategory,
+      tokens: count,
+    })),
+    memoryFiles,
+    mcpTools,
+    skills,
+    agentTypes,
   };
 }
