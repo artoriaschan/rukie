@@ -32,3 +32,9 @@ Verification:
 - `rtk proxy env -u NO_COLOR bun run check`: exit 0; 1744 pass / 0 fail / 9266 assertions across 136 files. Log: `/tmp/goal-03-check.log`. Includes existing Todo, question, subagent, streaming burst/reading and statusline regressions.
 - Initial red tracers reproduced unsupported `/goal`, missing state notice, clipped chip in the short dock, and untranslated Chinese Goal permission warning; each passed after implementation.
 - Goal tool cards remain ticket 02 ownership; this ticket does not duplicate their implementation/tests.
+
+Post-integration verification:
+
+- Merged integration tip `9413a2b` (ticket 02) into `codex/goal-03`; removed duplicate bilingual activation dictionary keys from the automatic merge. Added a public live-completion tracer proving Goal state refresh, hidden wrapup input, visible assistant conclusion and disarmed status. Goal screen suite now has 13 tests / 88 assertions.
+- `rtk proxy env -u NO_COLOR bun test` over Goal screen, Goal tool cards, Todo/question/subagent composition, streaming burst/reading and statusline files: exit 0; 129 pass / 0 fail / 856 assertions across 7 files. Log: `/tmp/goal-03-postmerge-tests.log`.
+- `rtk proxy bunx --no -- tsc -b`: exit 0 after integration. Formatting and `git diff --check` also pass. Root owns the final combined aggregate check and Standards/Spec review.

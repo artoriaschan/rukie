@@ -53,6 +53,32 @@ test("goal starts a round, shows its root and first status chip, and hides the i
   }
 });
 
+test("model completion updates the live Goal and hides wrapup input while keeping the assistant conclusion", async () => {
+  const app = await ready({ rows: 36, session: { permissionMode: "full-access" } });
+  try {
+    app.stdin.write("/goal verify release\r");
+    await app.waitFor(() => app.calls.length === 1 && screen(app).includes("● active · 1/256"));
+    app.calls[0]!.tool("update_goal", { action: "complete" });
+    await app.waitFor(() => app.calls.length === 2 && screen(app).includes("✓ complete · 1/256"));
+    expect(JSON.stringify(app.calls[1]!.context.messages)).toContain("<goal_complete>");
+    expect(screen(app)).not.toContain("<goal_complete>");
+    expect(screen(app)).not.toContain("<goal_round>");
+    app.calls[1]!.delta("Release verified with all tests passing.");
+    app.calls[1]!.finish();
+    await app.waitFor(
+      () => screen(app).includes("Release verified with all tests passing.") && !app.isWorking(),
+    );
+    expect(app.calls).toHaveLength(2);
+    app.stdin.write("/goal\r");
+    await app.waitFor(
+      () =>
+        screen(app).includes("Status: complete") && screen(app).includes("Activation: disarmed"),
+    );
+  } finally {
+    await app.cleanup();
+  }
+});
+
 test("goal chip preserves permission and plan labels in a 40-column status line", async () => {
   const app = await ready({ columns: 40, rows: 12 });
   try {
