@@ -156,6 +156,7 @@ export async function createChat(
           conversation={current.conversation}
           history={inputHistory}
           imageViewer={imageViewer}
+          host={host}
           submit={submit}
           interactions={interactions}
           homeDir={options.homeDir}
@@ -180,6 +181,7 @@ function Chat({
   conversation,
   history,
   imageViewer,
+  host,
   submit,
   interactions,
   cwd,
@@ -198,6 +200,7 @@ function Chat({
   conversation: ReturnType<typeof createConversation>;
   history: ReturnType<typeof createTextInputHistory>;
   imageViewer: ReturnType<typeof createImageViewer>;
+  host: TuiHost;
   submit(prompt: string, initial?: boolean, images?: PromptImage[]): boolean;
   interactions: ReturnType<typeof createInteractions>;
   cwd: string;
@@ -230,6 +233,7 @@ function Chat({
     setImageNotice({ text, warning });
     imageNoticeTimer.current = setTimeout(() => setImageNotice(undefined), warning ? 5000 : 2500);
   };
+  const notifyPastedImage = (token: string) => notifyImage(t("image.pasted", { token }));
   useEffect(() => () => clearTimeout(imageNoticeTimer.current), []);
   const openImage = (image: PromptImage) => {
     void imageViewer.open(image).catch((error: unknown) => {
@@ -554,6 +558,46 @@ function Chat({
     draft.current = value;
     lastInterrupt.current = undefined;
     setInput(value);
+  };
+  const pasteClipboard = (insert: (text: string) => void) => {
+    const epoch = pasteEpoch.current;
+    const owned = () => pasteOwner.current && epoch === pasteEpoch.current;
+    const stage = async (path: string) => {
+      try {
+        if (/\.(tiff?|bmp)$/i.test(path)) {
+          if (owned()) notifyImage(t("image.clipboard-unsupported"), true);
+          return;
+        }
+        const image = await composer.read(path);
+        if (!owned()) return;
+        const token = composer.bind(image, draft.current);
+        insert(token + " ");
+        notifyPastedImage(token);
+      } catch (error) {
+        if (owned()) notifyImage(t("image.paste-error", { error: formatError(error, t) }), true);
+      }
+    };
+    void host
+      .readClipboard()
+      .then(async (content) => {
+        if (!owned()) return;
+        if ("files" in content) {
+          for (const path of content.files) {
+            if (!owned()) return;
+            if (/\.(png|jpe?g|gif|webp)$/i.test(path)) await stage(path);
+            else insert(path + " ");
+          }
+        } else if ("image" in content) await stage(content.image.path);
+        else if ("text" in content) insert(content.text);
+        else
+          notifyImage(
+            t("empty" in content ? "image.clipboard-empty" : "image.clipboard-unavailable"),
+            true,
+          );
+      })
+      .catch(() => {
+        if (owned()) notifyImage(t("image.clipboard-error"), true);
+      });
   };
   const returnToBottom = () => {
     body.current?.scrollToBottom();
@@ -1475,21 +1519,35 @@ function Chat({
               working={state.running}
               planMode={state.planMode}
               history={history}
-              filterInput={(event) =>
-                viewRef.current === "chat" &&
-                modelPickerRef.current === undefined &&
-                resumePickerRef.current === undefined &&
-                !handledInput.current.has(event) &&
-                !(
+              filterInput={(event, insert) => {
+                if (
                   event.type === "key" &&
-                  !event.key.ctrl &&
-                  !event.key.alt &&
-                  !event.key.shift &&
-                  (!interactions.getSnapshot() || !!sideController.current) &&
-                  matches(draft.current).length &&
-                  ["up", "down", "tab", "enter"].includes(event.key.name)
-                )
-              }
+                  event.key.ctrl &&
+                  event.key.name === "v" &&
+                  viewRef.current === "chat" &&
+                  modelPickerRef.current === undefined &&
+                  resumePickerRef.current === undefined &&
+                  !handledInput.current.has(event)
+                ) {
+                  pasteClipboard(insert);
+                  return false;
+                }
+                return (
+                  viewRef.current === "chat" &&
+                  modelPickerRef.current === undefined &&
+                  resumePickerRef.current === undefined &&
+                  !handledInput.current.has(event) &&
+                  !(
+                    event.type === "key" &&
+                    !event.key.ctrl &&
+                    !event.key.alt &&
+                    !event.key.shift &&
+                    (!interactions.getSnapshot() || !!sideController.current) &&
+                    matches(draft.current).length &&
+                    ["up", "down", "tab", "enter"].includes(event.key.name)
+                  )
+                );
+              }}
               highlightRanges={composer
                 .ranges(input)
                 .map((range) => ({ ...range, color: theme.suggestion }))}
@@ -1506,7 +1564,7 @@ function Chat({
                     if (!pasteOwner.current || epoch !== pasteEpoch.current) return;
                     const token = composer.bind(image, draft.current);
                     insert(token + " ");
-                    notifyImage(t("image.pasted", { token }));
+                    notifyPastedImage(token);
                   })
                   .catch((error: unknown) => {
                     if (!pasteOwner.current || epoch !== pasteEpoch.current) return;
