@@ -183,6 +183,8 @@ const zh = {
   "question.hint.compact": "↑↓ Enter 提交 Esc Ctrl+K",
   "question.hint.compact-batch": "↑↓ ←→ Enter 提交 Esc Ctrl+K",
 
+  "goal.armed": "已启用",
+  "goal.disarmed": "已停用",
   "todo.summary": "待办清单",
   "todo.progress": "todos ✓ {{done}}/{{total}}",
   "todo.fold": "Ctrl+Q 折叠",
@@ -437,6 +439,8 @@ const en = {
   "question.hint.compact": "↑↓ Enter submit Esc Ctrl+K",
   "question.hint.compact-batch": "↑↓ ←→ Enter submit Esc Ctrl+K",
 
+  "goal.armed": "armed",
+  "goal.disarmed": "disarmed",
   "todo.summary": "TodoWrite",
   "todo.progress": "todos ✓ {{done}}/{{total}}",
   "todo.fold": "Ctrl+Q fold",

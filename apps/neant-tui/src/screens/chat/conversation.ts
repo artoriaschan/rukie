@@ -103,16 +103,22 @@ function toolEntry(
             : {}),
         }
       : undefined;
+  const goal =
+    ["create_goal", "update_goal"].includes(tool.name) && !isError
+      ? goalSummary(resultText(result), t)
+      : undefined;
   const todo = tool.name === "todo_write" && !isError ? todoSummary(tool.args, t) : undefined;
   return {
     type: "tool",
     ...(review && { planReview: review }),
     summary:
-      todo !== undefined
-        ? t("todo.summary")
-        : tool.name === "ask_user_question" && !isError
-          ? t("question.summary")
-          : tool.summary,
+      goal !== undefined
+        ? goal.summary
+        : todo !== undefined
+          ? t("todo.summary")
+          : tool.name === "ask_user_question" && !isError
+            ? t("question.summary")
+            : tool.summary,
     isError,
     agentId:
       typeof result.details === "object" &&
@@ -125,7 +131,7 @@ function toolEntry(
       ? undefined
       : tool.name === "ask_user_question"
         ? questionSummary(tool.args, resultText(result), t)
-        : (todo ?? resultText(result)),
+        : (goal?.result ?? todo ?? resultText(result)),
     error: isError
       ? hook !== undefined
         ? t("tool.hook-denied", {
@@ -144,6 +150,53 @@ function toolEntry(
               t,
             )
       : undefined,
+  };
+}
+
+function goalSummary(text: string, t: ReturnType<typeof createTuiI18n>) {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !("goal" in value) ||
+    !("armed" in value) ||
+    typeof value.armed !== "boolean"
+  )
+    return undefined;
+  const goal = value.goal;
+  if (
+    typeof goal !== "object" ||
+    goal === null ||
+    !("objective" in goal) ||
+    typeof goal.objective !== "string" ||
+    !("phase" in goal) ||
+    typeof goal.phase !== "string" ||
+    !("roundsStarted" in goal) ||
+    typeof goal.roundsStarted !== "number" ||
+    !("maxRounds" in goal) ||
+    typeof goal.maxRounds !== "number"
+  )
+    return undefined;
+  const labels: Record<string, string> = {
+    active: "● active",
+    paused: "⏸ paused",
+    blocked: "⛔ blocked",
+    complete: "✓ complete",
+  };
+  if (!labels[goal.phase]) return undefined;
+  const singleLine = (text: string) => text.replace(/[\r\n]+/g, " ");
+  return {
+    summary: `🎯 ${singleLine(goal.objective)}`,
+    result:
+      `${labels[goal.phase]} · ${goal.roundsStarted}/${goal.maxRounds} · ${t(value.armed ? "goal.armed" : "goal.disarmed")}` +
+      (goal.phase === "blocked" && "blockedReason" in goal && typeof goal.blockedReason === "string"
+        ? `\n⛔ ${singleLine(goal.blockedReason)}`
+        : ""),
   };
 }
 

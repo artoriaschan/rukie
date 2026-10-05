@@ -408,6 +408,8 @@ test("stream-json emits session metadata, verbatim pi events, and the Run result
       "grep",
       "skill",
       "todo_write",
+      "create_goal",
+      "update_goal",
       "subagent",
       "subagent_fork",
       "send_message",

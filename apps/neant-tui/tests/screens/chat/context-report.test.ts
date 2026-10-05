@@ -119,16 +119,16 @@ test("context visualization paints full, partial, free and reserved cells with t
     session: {
       model: {
         ...createFauxCore({ api: "faux", provider: "faux" }).getModel(),
-        contextWindow: 10000,
+        contextWindow: 11000,
       },
     },
   });
   try {
     await app.waitFor(() => screen(app).includes("╭"));
     app.stdin.write("/context\r");
-    await app.waitFor(() => screen(app).includes("/10,000 tokens"));
+    await app.waitFor(() => screen(app).includes("/11,000 tokens"));
     for (const symbol of ["⛁", "⛀", "⛶", "⛝"]) expect(screen(app)).toContain(symbol);
-    expect(screen(app)).toContain("Compaction reserve: 2,000 tokens (20.0%)");
+    expect(screen(app)).toContain("Compaction reserve: 2,200 tokens (20.0%)");
     expect(screen(app)).toContain("Messages: 0 tokens (0.0%)");
     expect(app.calls).toHaveLength(0);
   } finally {

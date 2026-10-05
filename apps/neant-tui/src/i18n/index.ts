@@ -112,6 +112,16 @@ export function formatError(error: unknown, t: ReturnType<typeof createTuiI18n>)
       return t("error.hook-continuation-limit", data.params);
     case "hook-project-untrusted":
       return t("error.hook-project-untrusted", data.params);
+    case "goal-tool-human-required":
+      return t("error.goal-tool-human-required", data.params);
+    case "goal-tool-completion-authority":
+      return t("error.goal-tool-completion-authority", data.params);
+    case "goal-tool-invalid-argument":
+      return t("error.goal-tool-invalid-argument", data.params);
+    case "goal-tool-required-argument":
+      return t("error.goal-tool-required-argument", data.params);
+    case "goal-tool-resume-paused":
+      return t("error.goal-tool-resume-paused", data.params);
     case "goal-child-session":
       return t("error.goal-child-session", data.params);
     case "goal-busy":

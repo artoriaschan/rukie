@@ -18,6 +18,11 @@ const modelExample = `{
 }`;
 
 const zh = {
+  "error.goal-tool-human-required": "操作 Goal 需要当前 Run 的直接人类输入。",
+  "error.goal-tool-completion-authority": "确认 Goal 完成或阻塞需要直接人类输入或当前 Goal 轮次。",
+  "error.goal-tool-invalid-argument": "{{field}} 仅可用于 {{action}} 操作。",
+  "error.goal-tool-required-argument": "{{action}} 操作必须提供非空 {{field}}。",
+  "error.goal-tool-resume-paused": "模型无法恢复已暂停的 Goal，请由用户恢复。",
   "error.goal-child-session": "仅顶层会话可使用 Goal。",
   "error.goal-busy": "请在会话空闲时操作 Goal。",
   "error.goal-objective-empty": "Goal 目标不能为空。",
@@ -91,6 +96,13 @@ ${modelExample}`,
 } as const satisfies Record<`error.${UserVisibleErrorCode}`, string> & Record<string, string>;
 
 const en = {
+  "error.goal-tool-human-required": "Goal control requires direct human input in the current Run.",
+  "error.goal-tool-completion-authority":
+    "Goal completion requires direct human input or the current Goal round.",
+  "error.goal-tool-invalid-argument": "{{field}} is valid only with action {{action}}.",
+  "error.goal-tool-required-argument": "{{field}} is required with action {{action}}.",
+  "error.goal-tool-resume-paused":
+    "The model cannot resume a paused Goal; the user must resume it.",
   "error.goal-child-session": "Goals are only available in top-level Sessions.",
   "error.goal-busy": "Goal operation requires an idle Session.",
   "error.goal-objective-empty": "Goal objective cannot be empty.",

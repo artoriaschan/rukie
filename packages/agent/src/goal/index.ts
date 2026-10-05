@@ -1,6 +1,8 @@
+import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { createUserVisibleError, type UserVisibleErrorCode } from "@neant/shared";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
+import { preserveErrorDetails } from "../tools/index.ts";
 import type { ToolStateDefinition } from "../tool-state/index.ts";
 
 const goalSchema = Type.Object(
@@ -80,8 +82,10 @@ export function createGoalController(options: {
     const value = options.getSnapshot();
     return Value.Check(goalSchema, value) ? { ...value, armed } : undefined;
   };
-  const error = (code: Extract<UserVisibleErrorCode, `goal-${string}`>, message: string) =>
-    createUserVisibleError(message, { code, params: {} });
+  const error = (
+    code: Exclude<Extract<UserVisibleErrorCode, `goal-${string}`>, `goal-tool-${string}`>,
+    message: string,
+  ) => createUserVisibleError(message, { code, params: {} });
   const change = (work: () => Promise<GoalSnapshot | null | undefined>) => {
     const operation = writes.then(work);
     writes = operation.then(
@@ -116,13 +120,13 @@ export function createGoalController(options: {
     settle() {
       return writes;
     },
-    async create(objective: string, { maxRounds = 256 }: { maxRounds?: number } = {}) {
-      options.assertAvailable(true);
+    async create(objective: string, { maxRounds = 256 }: { maxRounds?: number } = {}, idle = true) {
+      options.assertAvailable(idle);
       if (!objective.trim()) throw error("goal-objective-empty", "Goal objective cannot be empty.");
       if (!Number.isSafeInteger(maxRounds) || maxRounds < 1)
         throw error("goal-rounds-invalid", "Goal maxRounds must be a positive integer.");
       await change(async () => {
-        options.assertAvailable(true);
+        options.assertAvailable(idle);
         if (view() && view()!.phase !== "complete")
           throw error("goal-exists", "An unfinished Goal already exists. Use edit or clear first.");
         return persist(
@@ -141,12 +145,12 @@ export function createGoalController(options: {
       options.schedule();
       return created;
     },
-    async edit(objective: string): Promise<GoalView> {
-      options.assertAvailable(true);
+    async edit(objective: string, idle = true): Promise<GoalView> {
+      options.assertAvailable(idle);
       if (!objective.trim()) throw error("goal-objective-empty", "Goal objective cannot be empty.");
-      if (requireGoal().phase === "complete") return controller.create(objective);
+      if (requireGoal().phase === "complete") return controller.create(objective, {}, idle);
       await change(async () => {
-        options.assertAvailable(true);
+        options.assertAvailable(idle);
         const { armed: _armed, ...snapshot } = requireGoal();
         return persist({ ...snapshot, objective: objective.trim() });
       });
@@ -163,11 +167,16 @@ export function createGoalController(options: {
       });
       return view()!;
     },
-    async resume(): Promise<GoalView> {
-      options.assertAvailable(true);
+    async resume(idle = true, allowPaused = true): Promise<GoalView> {
+      options.assertAvailable(idle);
       await change(async () => {
-        options.assertAvailable(true);
+        options.assertAvailable(idle);
         const current = requireGoal();
+        if (!allowPaused && current.phase === "paused")
+          throw createUserVisibleError(
+            "The model cannot resume a paused Goal; the user must resume it.",
+            { code: "goal-tool-resume-paused", params: {} },
+          );
         if (current.phase === "complete")
           throw error("goal-complete", "A complete Goal cannot be resumed. Create a new Goal.");
         if (current.armed) throw error("goal-already-armed", "Goal continuation is already armed.");
@@ -191,6 +200,18 @@ export function createGoalController(options: {
         if (view()) return persist(null, false);
       });
     },
+    async finish(phase: "complete" | "blocked", blockedReason?: string): Promise<GoalView> {
+      options.assertAvailable(false);
+      await change(async () => {
+        options.assertAvailable(false);
+        const { armed: _armed, blockedReason: _reason, ...snapshot } = requireGoal();
+        return persist(
+          { ...snapshot, phase, ...(phase === "blocked" && { blockedReason }) },
+          false,
+        );
+      });
+      return view()!;
+    },
     async startRound() {
       await change(async () => {
         const current = view();
@@ -212,4 +233,162 @@ export function createGoalController(options: {
     },
   };
   return controller;
+}
+
+/** Guidance adapted from DSH tool-goal: no get_goal, revision/CAS or blocked-round threshold. */
+const guidance =
+  "create_goal may infer goal intent from a direct human request in any language. " +
+  "After Session Resume or fork, an active Goal is disarmed: when a human asks to continue " +
+  "or resume in any wording or language, use update_goal action resume to rearm it. " +
+  "Create, edit, pause and resume require direct human input in the current Run. " +
+  "The model cannot resume a paused Goal; the user must resume it. " +
+  "Mark complete only when the objective is actually achieved and verified. Mark blocked only " +
+  "when a concrete condition prevents progress, and report that condition in blocked_reason; " +
+  "difficulty, uncertainty, or useful remaining work is not blocked.";
+
+const createParameters = Type.Object(
+  {
+    objective: Type.String({ minLength: 1 }),
+    max_goal_rounds: Type.Optional(Type.Integer({ minimum: 1 })),
+  },
+  { additionalProperties: false },
+);
+const updateParameters = Type.Object(
+  {
+    action: Type.Union([
+      Type.Literal("edit"),
+      Type.Literal("pause"),
+      Type.Literal("resume"),
+      Type.Literal("complete"),
+      Type.Literal("blocked"),
+    ]),
+    objective: Type.Optional(Type.String()),
+    blocked_reason: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);
+
+function argumentError(
+  code: "goal-tool-invalid-argument" | "goal-tool-required-argument",
+  field: string,
+  action: string,
+) {
+  return createUserVisibleError(
+    `${field} ${code === "goal-tool-invalid-argument" ? "is valid only" : "is required"} with action ${action}.`,
+    { code, params: { field, action } },
+  );
+}
+
+/** Model controls share the controller's serialized mutations but operate inside the current Run. */
+export function createGoalTools(
+  goal: Pick<
+    ReturnType<typeof createGoalController>,
+    "view" | "create" | "edit" | "pause" | "resume" | "finish"
+  >,
+  execution: { directHuman(): boolean; goalRound(): boolean; wrapup(text: string): void },
+): AgentTool[] {
+  const requireHuman = () => {
+    if (!execution.directHuman())
+      throw createUserVisibleError("Goal control requires direct human input in the current Run.", {
+        code: "goal-tool-human-required",
+        params: {},
+      });
+  };
+  const result = () => {
+    const current = goal.view();
+    const value = {
+      goal: current
+        ? {
+            objective: current.objective,
+            phase: current.phase,
+            roundsStarted: current.roundsStarted,
+            maxRounds: current.maxRounds,
+            ...(current.blockedReason !== undefined && { blockedReason: current.blockedReason }),
+          }
+        : null,
+      armed: current?.armed ?? false,
+    };
+    return { content: [{ type: "text" as const, text: JSON.stringify(value) }], details: value };
+  };
+  const create: AgentTool<typeof createParameters> = {
+    name: "create_goal",
+    label: "Create Goal",
+    description:
+      "Create a persisted Goal that keeps this Session working across automatic continuation rounds. Use it when the direct human request is a long-running objective, even if the user did not say goal; not for single-turn work. " +
+      guidance,
+    parameters: createParameters,
+    async execute(_id, args, signal) {
+      signal?.throwIfAborted();
+      requireHuman();
+      await goal.create(args.objective, { maxRounds: args.max_goal_rounds }, false);
+      return result();
+    },
+  };
+  const update: AgentTool<typeof updateParameters> = {
+    name: "update_goal",
+    label: "Update Goal",
+    description:
+      "Update the current Goal. complete and blocked are also allowed during its automatic continuation round. " +
+      guidance,
+    parameters: updateParameters,
+    async execute(_id, args, signal) {
+      signal?.throwIfAborted();
+      if (args.action === "edit" || args.action === "pause" || args.action === "resume")
+        requireHuman();
+      else if (!execution.directHuman() && !execution.goalRound())
+        throw createUserVisibleError(
+          "Goal completion requires direct human input or the current Goal round.",
+          { code: "goal-tool-completion-authority", params: {} },
+        );
+      if (args.objective !== undefined && args.action !== "edit")
+        throw argumentError("goal-tool-invalid-argument", "objective", "edit");
+      if (args.blocked_reason !== undefined && args.action !== "blocked")
+        throw argumentError("goal-tool-invalid-argument", "blocked_reason", "blocked");
+      if (args.action === "edit") {
+        if (!args.objective?.trim())
+          throw argumentError("goal-tool-required-argument", "objective", "edit");
+        await goal.edit(args.objective, false);
+      } else if (args.action === "pause") await goal.pause();
+      else if (args.action === "resume") {
+        await goal.resume(false, false);
+      } else {
+        if (args.action === "blocked" && !args.blocked_reason?.trim())
+          throw argumentError("goal-tool-required-argument", "blocked_reason", "blocked");
+        const finished = await goal.finish(args.action, args.blocked_reason?.trim());
+        if (execution.goalRound())
+          execution.wrapup(renderWrapupContext(finished.objective, finished.blockedReason));
+      }
+      return result();
+    },
+  };
+  return [preserveErrorDetails(create), preserveErrorDetails(update)];
+}
+
+/** DSH tool-goal/src/wrapup.ts verbatim text; Neant uses one text user message with source goal. */
+function renderWrapupContext(objective: string, blockedReason?: string): string {
+  const heading = `Objective: ${JSON.stringify(objective)}\n`;
+  const grounding =
+    "Report only what earlier rounds and tool results in this session actually establish; " +
+    "when a detail is not in the session, say so instead of inventing it. ";
+  return blockedReason === undefined
+    ? "<goal_complete>\n" +
+        heading +
+        "The goal is marked complete and this autonomous run is ending. Write the closing " +
+        "message to the user now: state the outcome, summarize what was done and how it was " +
+        "verified, and point to the concrete results (files, commits, or other artifacts). " +
+        grounding +
+        "Note anything the user should review or do next. Address the user directly. Do not " +
+        "call any more tools in this run; further work waits for the user's next instruction.\n" +
+        "</goal_complete>"
+    : "<goal_blocked>\n" +
+        heading +
+        `Blocked: ${JSON.stringify(blockedReason)}\n` +
+        "The goal is marked blocked and this autonomous run is ending. Write the closing " +
+        "message to the user now: state what has been completed so far, describe the concrete " +
+        "blocking condition and what you tried, and say exactly what you need from the user to " +
+        "continue. " +
+        grounding +
+        "Address the user directly. Do not call any more tools in this run; further work " +
+        "waits for the user's next instruction.\n" +
+        "</goal_blocked>";
 }

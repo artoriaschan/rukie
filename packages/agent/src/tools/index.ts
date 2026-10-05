@@ -84,7 +84,7 @@ function adaptTool<T extends TSchema, D>(
 }
 
 /** pi flattens thrown errors; keep coded details for frontend display and replay. */
-function preserveErrorDetails<T extends TSchema>(tool: AgentTool<T>): AgentTool<T> {
+export function preserveErrorDetails<T extends TSchema>(tool: AgentTool<T>): AgentTool<T> {
   return {
     ...tool,
     async execute(...args) {
