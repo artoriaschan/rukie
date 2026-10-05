@@ -42,6 +42,22 @@ _Avoid_: task, job
 由父 session 的模型经 `subagent` / `subagent_fork` 创建的子 session，可在父 session 内经 `send_message` 续跑。每个 run 默认在后台进行，父代理继续工作；结束时其最终文本作为一条消息交回父代理。`subagent` 从空历史开始，`subagent_fork` 带着父代理已完成的 turn 开始。判定配置与父 session 共享，只能收窄；不能再创建 subagent。
 _Avoid_: task, worker, child agent
 
+**Subagent Activity**:
+子代理当前是否正在处理 Run。没有运行中的 Run 只表示当前不在工作，不能据此判断委派任务已经完成。
+_Avoid_: task completion, Run Outcome
+
+**Run Outcome**:
+某次 Run 的结束原因。正常结束只表示这次 Run 停下，整个委派任务是否完成仍由父代理判断；没有足够的历史记录时，结束原因是未知的。
+_Avoid_: task completion, Subagent Activity
+
+**Session Resume**:
+使用原 Session 的身份和 Transcript 恢复对话。恢复本身不执行新的 Run，也不自动续跑它的 Subagent。
+_Avoid_: restart task, automatic continuation
+
+**Unknown Tool Outcome**:
+Transcript 中存在 Tool 调用，但没有可确认的结果。不能据此判定调用成功、失败或尚未执行，也不能据此认定没有产生副作用。
+_Avoid_: tool failure, unexecuted tool
+
 **Tool State**:
 由工具或 Agent Core 维护、随 transcript 持久化、resume 时重建的 session 级状态，如 todo 列表、Goal。每次变化记一份完整快照，取最后一条有效快照为当前状态。只记录 resume 后仍需看到的事实；"当前进程正在做什么"（如 Goal 是否正在续跑）不属于 Tool State。
 _Avoid_: tool data, session state
