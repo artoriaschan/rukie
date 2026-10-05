@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { join } from "node:path";
-import { createSession, loadSettings } from "../../src/index.ts";
+import { createSession, listModels, loadSettings } from "../../src/index.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
@@ -338,3 +338,65 @@ test.each(["user", "project"])(
     await expect(loadSettings(dirs)).rejects.toThrow(`${source}: /subagentModel`);
   },
 );
+
+test("a custom model input without text reports its settings field", async () => {
+  dirs = await tempDirs();
+  const file = join(dirs.homeDir, ".neant/settings.json");
+  await Bun.write(
+    file,
+    JSON.stringify({
+      providers: [{ ...provider("vision"), models: [{ id: "m", input: ["image"] }] }],
+    }),
+  );
+  await expect(loadSettings(dirs)).rejects.toThrow(`${file}: /providers/0/models/0/input`);
+});
+
+test.each([[], ["audio"], ["text", "video"], "text", null].map((input) => [input]))(
+  "invalid custom model input %j names its settings field",
+  async (input) => {
+    dirs = await tempDirs();
+    const file = join(dirs.homeDir, ".neant/settings.json");
+    await Bun.write(
+      file,
+      JSON.stringify({
+        providers: [{ ...provider("vision"), models: [{ id: "m", input }] }],
+      }),
+    );
+    await expect(loadSettings(dirs)).rejects.toThrow(`${file}: /providers/0/models/0/input`);
+  },
+);
+
+test.each(
+  ([["text"], ["text", "image"], ["image", "text"]] satisfies ("text" | "image")[][]).map(
+    (input) => [input],
+  ),
+)("custom model input %j is retained and exposed to frontends", async (input) => {
+  dirs = await tempDirs();
+  await Bun.write(
+    join(dirs.homeDir, ".neant/settings.json"),
+    JSON.stringify({
+      providers: [{ ...provider("vision"), models: [{ id: "m", input }] }],
+    }),
+  );
+  const { settings } = await loadSettings(dirs);
+  expect(settings.providers?.[0]?.models[0]).toEqual({ id: "m", input });
+  expect(listModels(settings)).toContainEqual({ spec: "vision/m", name: "m", input });
+});
+
+test("custom models without input default to text while built-in vision models keep their modalities", async () => {
+  dirs = await tempDirs();
+  await Bun.write(
+    join(dirs.homeDir, ".neant/settings.json"),
+    JSON.stringify({
+      providers: [provider("legacy")],
+    }),
+  );
+  const { settings } = await loadSettings(dirs);
+  const choices = listModels(settings);
+  expect(choices).toContainEqual({ spec: "legacy/m", name: "m", input: ["text"] });
+  expect(choices).toContainEqual({
+    spec: "anthropic/claude-sonnet-4-5-20250929",
+    name: "Claude Sonnet 4.5",
+    input: ["text", "image"],
+  });
+});

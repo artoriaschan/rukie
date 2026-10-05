@@ -104,6 +104,10 @@ export type HooksSettings = Partial<
 
 const CustomModel = Type.Object({
   id: Type.String(),
+  /** Accepted modalities; omitted input means text only. Text must always be included. */
+  input: Type.Optional(
+    Type.Array(Type.Enum(["text", "image"]), { minItems: 1, contains: Type.Literal("text") }),
+  ),
   reasoning: Type.Optional(Type.Boolean()),
   contextWindow: Type.Optional(Type.Integer({ minimum: 1 })),
   maxTokens: Type.Optional(Type.Integer({ minimum: 1 })),
