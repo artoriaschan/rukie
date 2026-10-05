@@ -32,6 +32,9 @@
  */
 
 const zh = {
+  "settings.title": "设置",
+  "settings.empty": "暂无可配置的设置项。",
+  "settings.hint": "进入/切换 · Esc 退出",
   "model.title": "选择模型",
   "model.hint": "↑/↓ 选择 · Enter 确认 · Esc 退出",
   "model.changed": "已切换模型：{{model}}",
@@ -248,6 +251,9 @@ const zh = {
 } as const;
 
 const en = {
+  "settings.title": "Settings",
+  "settings.empty": "No settings are available yet.",
+  "settings.hint": "open/toggle · Esc exit",
   "model.title": "Select model",
   "model.hint": "↑/↓ select · Enter confirm · Esc close",
   "model.changed": "Model changed to {{model}}",

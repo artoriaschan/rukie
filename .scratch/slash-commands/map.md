@@ -10,6 +10,8 @@ Spec: [slash commands](spec.md). Local Markdown tracker; tickets resolve through
 
 - [05: /model 切换](issues/05-model-switch.md#answer) — registry 清单、空闲切换与持久化恢复、当前模型 getter / Tool State 事件、窄终端焦点窗口 picker；继承子代理只对新建者生效。
 
+- [08: /settings 占位页](issues/08-settings-placeholder.md#answer) — 全屏 ④ 层设置框架与本地字段接口，空分区中英文案、稳定页脚与 Esc 返回；不写回设置，run 中拒绝。
+
 ## Fog
 
 - Remaining Core capability and TUI handler tickets retain their existing dependency graph.
