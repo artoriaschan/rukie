@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** claimed
+**Status:** resolved
 
 - [x] 注册 `web_fetch { url }`，description 照 spec 写
 - [x] URL 校验：长度不超过 2048，只允许 http/https，不得带凭证，必须有 host
@@ -33,3 +33,8 @@
 - RED：首个 `createSession` 公共测试返回工具不存在，TUI 60/120 列的 URL 摘要测试最初返回 JSON 摘要；实现后通过。地址分类覆盖 IPv4、IPv6、映射/兼容写法、文档/benchmark/保留网段和混合 DNS；所有测试目标均本地服务或拒绝地址。
 - 已运行 focused Core/TUI/subagent checks：69 pass，0 fail（包含 48 Core、4 TUI、17 subagent 类型用例）；CLI stream-json metadata 单测：1 pass，0 fail。新增保留网段用例随后纳入最终检查。
 - 初次完整 `rtk proxy env -u NO_COLOR bun run check`：1762 pass，1 fail；唯一失败是 CLI `session_start.tools` 预期未包含新增工具，已修复并通过 focused 回归。最终完整检查正在运行；完成后追加结果并关闭本票。
+
+### 2026-10-05 final verification
+
+- 最终 `rtk proxy env -u NO_COLOR bun run check` 全部通过：format、lint、types、Knip、1768 tests pass，0 fail，9189 assertions，136 files，exit 0。日志：`/tmp/neant-web-fetch-01-final-check.log`。
+- 交付提交 `d5a769d`；完成前已把当前 `codex/web-fetch-integration` tip 合并回本票分支。`rtk git diff --check` 无错误。本票已关闭；02/03/04/05 的后续范围仍由其票跟踪。
