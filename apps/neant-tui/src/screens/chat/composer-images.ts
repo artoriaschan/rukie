@@ -53,7 +53,8 @@ export function pastedImagePath(text: string, homeDir: string): string | undefin
 
 /** Draft-only image bindings. Visible token order determines model image order. */
 export function createComposerImages() {
-  const bound = new Map<string, PromptImage>();
+  const bound = new Map<string, { image: PromptImage; start?: number }>();
+  let previous = "";
   let next = 1;
   return {
     async read(path: string): Promise<PromptImage> {
@@ -66,21 +67,23 @@ export function createComposerImages() {
       do {
         token = `[Image #${next++}]`;
       } while (draft.includes(token));
-      bound.set(token, image);
+      bound.set(token, { image });
       return token;
     },
     ranges(text: string) {
       return [...text.matchAll(/\[Image #\d+\]/g)].flatMap((match) =>
-        bound.has(match[0]) ? [{ start: match.index, end: match.index + match[0].length }] : [],
+        bound.get(match[0])?.start === match.index
+          ? [{ start: match.index, end: match.index + match[0].length }]
+          : [],
       );
     },
     ordered(text: string) {
       const images: PromptImage[] = [];
       const seen = new Set<string>();
       for (const match of text.matchAll(/\[Image #\d+\]/g)) {
-        const image = bound.get(match[0]);
-        if (image && !seen.has(match[0])) {
-          images.push(image);
+        const binding = bound.get(match[0]);
+        if (binding?.start === match.index && !seen.has(match[0])) {
+          images.push(binding.image);
           seen.add(match[0]);
         }
       }
@@ -88,6 +91,41 @@ export function createComposerImages() {
     },
     clear() {
       bound.clear();
+    },
+    prune(text: string, edit?: { start: number; end: number; text: string }) {
+      // Follow the original occurrence through edits. Typing the same label
+      // elsewhere cannot move or recreate its capability.
+      let start = 0;
+      while (start < previous.length && start < text.length && previous[start] === text[start])
+        start++;
+      let oldEnd = previous.length;
+      let newEnd = text.length;
+      while (oldEnd > start && newEnd > start && previous[oldEnd - 1] === text[newEnd - 1]) {
+        oldEnd--;
+        newEnd--;
+      }
+      if (edit) {
+        start = edit.start;
+        oldEnd = edit.end;
+        newEnd = edit.start + edit.text.length;
+      }
+      for (const [token, binding] of bound) {
+        if (binding.start === undefined) {
+          const position = text.indexOf(token);
+          if (position < 0) bound.delete(token);
+          else binding.start = position;
+        } else {
+          const end = binding.start + token.length;
+          if (end <= start) continue;
+          if (binding.start < oldEnd) bound.delete(token);
+          else binding.start += newEnd - oldEnd;
+        }
+      }
+      previous = text;
+    },
+    reset() {
+      bound.clear();
+      next = 1;
     },
   };
 }

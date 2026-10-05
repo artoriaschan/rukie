@@ -228,3 +228,62 @@ test("a pending Ctrl+V image cannot take focus from an active question", async (
     await app.cleanup();
   }
 });
+
+test("Ctrl+V on a text-only model keeps image success and the separate model warning", async () => {
+  const key = "NEANT_CLIPBOARD_MODEL_KEY";
+  const previousKey = process.env[key];
+  process.env[key] = "test-key";
+  let path = "";
+  let app: Awaited<ReturnType<typeof start>> | undefined;
+  try {
+    app = await start([], {
+      columns: 100,
+      env: { LANG: "en_US.UTF-8" },
+      session: { model: undefined },
+      prepare: async (root) => {
+        path = `${root}/clipboard.png`;
+        await Bun.write(path, Buffer.from(png, "base64"));
+        await Bun.write(
+          `${root}/.neant/settings.json`,
+          JSON.stringify({
+            model: "img/text",
+            providers: [
+              {
+                id: "img",
+                api: "openai-completions",
+                baseUrl: "http://127.0.0.1:1/v1",
+                apiKeyEnv: key,
+                models: [{ id: "text" }],
+              },
+            ],
+          }),
+        );
+      },
+      host: { readClipboard: async () => ({ image: { path } }), openExternal: async () => {} },
+    });
+    const current = app;
+    await current.waitFor(() => current.screen().includes("❯"));
+    current.stdin.write("\x16");
+    await current.waitFor(() =>
+      current.screen().join("\n").includes("img/text does not accept images"),
+    );
+    const screen = current.screen().join("\n");
+    expect(screen).toContain("Pasted image [Image #1]");
+    expect(screen.match(/does not accept images/g)).toHaveLength(1);
+    current.stdin.write("inspect\r");
+    await current.waitFor(() => current.calls.length === 1);
+    expect(
+      current.calls[0]!.context.messages.findLast((message) => message.role === "user"),
+    ).toMatchObject({
+      content: [
+        { type: "text", text: "[Image #1] inspect" },
+        { type: "image", data: png, mimeType: "image/png" },
+      ],
+    });
+    current.calls[0]!.finish();
+  } finally {
+    await app?.cleanup();
+    if (previousKey === undefined) delete process.env[key];
+    else process.env[key] = previousKey;
+  }
+});

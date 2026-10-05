@@ -10,33 +10,41 @@ export function PromptInput({
   working = false,
   planMode = false,
   history,
+  onHistoryRecall,
   readOnly = false,
   compact = false,
   tip,
   notice,
+  warning,
   filterInput,
   onPaste,
   highlightRanges,
+  atomicRanges,
 }: {
   value: string;
-  onChange(value: string): void;
+  onChange: TextInputProps["onChange"];
   onSubmit(prompt: string): void;
   columns: number;
   maxLines: number;
   working?: boolean;
   planMode?: boolean;
   history?: TextInputProps["history"];
+  onHistoryRecall?: TextInputProps["onHistoryRecall"];
   readOnly?: boolean;
   compact?: boolean;
   tip?: string;
   notice?: { text: string; warning: boolean };
+  /** Pre-wrapped additional warning occupies its own rows above the editor. */
+  warning?: string;
   filterInput?: TextInputProps["filterInput"];
   onPaste?: TextInputProps["onPaste"];
   highlightRanges?: TextInputProps["highlightRanges"];
+  atomicRanges?: TextInputProps["atomicRanges"];
 }) {
   const edge = "─".repeat(Math.max(0, columns - 2));
   return (
-    <Box flexDirection="column" marginTop={compact ? 0 : 1}>
+    <Box flexDirection="column" marginTop={compact && !notice ? 0 : 1}>
+      {warning && <ThemedText color="warning">{warning}</ThemedText>}
       {!compact && (
         <ThemedText
           color={planMode ? "plan" : "promptBorder"}
@@ -58,9 +66,11 @@ export function PromptInput({
             columns={Math.max(1, columns - 3)}
             cursorStyle="block"
             history={history}
+            onHistoryRecall={onHistoryRecall}
             filterInput={filterInput}
             onPaste={onPaste}
             highlightRanges={highlightRanges}
+            atomicRanges={atomicRanges}
           />
         </Box>
       </Box>
