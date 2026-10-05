@@ -60,6 +60,7 @@ import {
   type QuestionReply,
   type OnPlanReview,
 } from "../tools/index.ts";
+import { createFileTracking } from "../file-tracking/index.ts";
 import { SYSTEM_PROMPT } from "../prompt/index.ts";
 import {
   collectReminders,
@@ -844,6 +845,7 @@ async function createSessionInternal(
           },
         },
       );
+  const fileTracking = createFileTracking(cwd);
   const initialTools = [
     ...createBuiltinTools(
       cwd,
@@ -853,6 +855,7 @@ async function createSessionInternal(
       options.homeDir,
       onInteractionStart,
       options.webFetch,
+      fileTracking,
     ),
     ...planTools,
     ...goalTools,
@@ -1066,6 +1069,7 @@ async function createSessionInternal(
   };
   const reminderSources: ReminderSource[] = [
     planReminder,
+    fileTracking.reminderSource,
     { source: "skills", currentContent: () => skillsReminder(skills) },
     {
       source: "mcp",
@@ -1739,6 +1743,7 @@ async function createSessionInternal(
               options.homeDir,
               onInteractionStart,
               options.webFetch,
+              fileTracking,
             ),
             ...planTools,
             ...goalTools,
@@ -1892,7 +1897,7 @@ async function createSessionInternal(
               await planWrites;
               const changed = await collectSourceReminders(
                 transcriptMessages.slice(reminderStart),
-                [planReminder],
+                [planReminder, fileTracking.reminderSource],
                 (options.now ?? (() => new Date()))(),
               );
               if (!changed.length && !pendingAsyncContexts.length)

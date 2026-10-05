@@ -1,3 +1,4 @@
+import type { createFileTracking } from "../file-tracking/index.ts";
 import { createWebFetchTool } from "./web-fetch.ts";
 import type { WebFetchOptions } from "../web-fetch/index.ts";
 import type { OnInteractionStart } from "../interaction/index.ts";
@@ -124,8 +125,11 @@ export function createBuiltinTools(
   homeDir = homedir(),
   onInteractionStart?: OnInteractionStart,
   webFetch?: WebFetchOptions,
+  fileTracking?: ReturnType<typeof createFileTracking>,
 ): AgentTool[] {
   const env = new NodeExecutionEnv({ cwd });
+  const track = <T extends TSchema, D>(tool: AgentTool<T, D>): AgentTool<T, D> =>
+    fileTracking ? fileTracking.wrapTool(tool) : tool;
   const bashTool = createBashTool();
   const bash = adaptTool<typeof bashTool.parameters, unknown>(bashTool, env);
   const timedBash: typeof bash = {
@@ -142,9 +146,9 @@ export function createBuiltinTools(
       bash.execute(id, { ...params, timeout: params.timeout ?? 120 }, signal, update),
   };
   return [
-    adaptTool(createReadTool(), env, homeDir),
-    adaptTool(createWriteTool(), env, homeDir),
-    adaptTool(createEditTool(), env, homeDir),
+    track(adaptTool(createReadTool(), env, homeDir)),
+    track(adaptTool(createWriteTool(), env, homeDir)),
+    track(adaptTool(createEditTool(), env, homeDir)),
     timedBash,
     createGlobTool(cwd),
     preserveErrorDetails(createGrepTool(cwd)),
