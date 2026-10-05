@@ -3,10 +3,22 @@ import { getCurrentSystemMessage, getCurrentTools, toToolDeclaration } from "@ea
 import type { ContextUsageEvent, ContextReport, ContextCategory } from "@neant/shared";
 
 import { convertToLlm } from "../reminders/index.ts";
+import { inspectImage } from "../images/index.ts";
 
 const tokens = (text: string) => Math.ceil(text.length / 4);
 
-/** Recompute from restored context; historical provider counts are never summed here. */
+const imageTokens = (data: string) => {
+  const info = inspectImage(Buffer.from(data, "base64"));
+  return info && info.width > 0 && info.height > 0
+    ? Math.min(1600, Math.ceil((info.width * info.height) / 750))
+    : 1600;
+};
+
+/**
+ * Recompute from restored context; historical provider counts are never summed here.
+ * Images use ceil(width × height / 750), capped at 1600; unreadable headers use that cap.
+ * Provider input tokens override only the total, retaining estimates for attribution.
+ */
 export function contextUsage(
   messages: readonly AgentMessage[],
   window: number,
@@ -33,6 +45,7 @@ export function contextUsage(
       else
         for (const block of message.content) {
           if (block.type === "text") segments[segment] += tokens(block.text);
+          else if (block.type === "image") segments[segment] += imageTokens(block.data);
         }
     } else if (message.role === "assistant") {
       for (const block of message.content) {
