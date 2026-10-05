@@ -36,3 +36,7 @@
 - isolated HOME 完整检查 `/tmp/neant-slash01-check-final.log`：1571 pass / 1 fail / 8145 assertions。唯一失败是运行过程中新增的 folded-question `/help` 回归测试，该进程此前已载入修正前的 chat 模块；上述修正后定向检查通过。最终整合分支仍须对精确合并 HEAD 运行完整检查。
 
 后续工单负责 `/compact`、`/model`、`/resume`、`/context`、`/settings`、`/btw`、`/rename` 的实际处理器；目前这些清单入口给出尚未支持通知。
+
+最终 review 纠正：`/exit` 在手动摘要待完成时也会先中止 provider、等待操作 settle，再完成 app shutdown。公开 `start()` 回归先复现未处理的 `CompactionError: Request was aborted`，修正后 `app.exit` 正常完成；原 `compact()` promise 的失败仍保留给调用者。
+
+Review fixes validation: 109 pass / 0 fail / 776 assertions across 10 affected public Core, TUI and i18n suites; oxfmt, oxlint, tsc -b, knip and git diff --check passed. Full final integration check remains owned by root.

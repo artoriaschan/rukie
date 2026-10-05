@@ -54,6 +54,53 @@ test("compact without history shows its error in the selected locale", async () 
   }
 });
 
+test("exit cancels a held manual summary and completes app shutdown", async () => {
+  const app = await ready({ rows: 48 });
+  try {
+    app.stdin.write("completed work\r");
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.delta("Done.");
+    app.calls[0]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    app.stdin.write("/compact\r");
+    await app.waitFor(() => app.calls.length === 2);
+    app.stdin.write("/exit\r");
+    await app.waitFor(() => app.calls[1]!.signal!.aborted);
+    let exited = false;
+    void app.exit.then(() => {
+      exited = true;
+    });
+    await app.waitFor(() => exited);
+    expect(app.calls[1]!.signal!.aborted).toBe(true);
+    expect(app.calls).toHaveLength(2);
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("a genuine manual summary failure stays visible and leaves the conversation usable", async () => {
+  const app = await ready({ rows: 48 });
+  try {
+    app.stdin.write("recoverable work\r");
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.delta("Original work.");
+    app.calls[0]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    app.stdin.write("/compact\r");
+    await app.waitFor(() => app.calls.length === 2);
+    app.calls[1]!.fail("Summary provider unavailable");
+    await app.waitFor(() => screen(app).includes("Summary provider unavailable"));
+    expect(app.calls[1]!.signal!.aborted).toBe(false);
+    await app.waitFor(() => !app.isWorking());
+    app.stdin.write("continue\r");
+    await app.waitFor(() => app.calls.length === 3);
+    expect(JSON.stringify(app.calls[2]!.context)).toContain("Original work.");
+    app.calls[2]!.finish();
+  } finally {
+    await app.cleanup();
+  }
+});
+
 test("local help remains usable while a question is folded and its answer stays pending", async () => {
   const app = await ready({ rows: 48 });
   try {

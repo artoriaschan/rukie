@@ -1,6 +1,26 @@
 import { expect, test } from "bun:test";
 import { start } from "../../helpers/app";
 
+for (const [lang, error] of [
+  ["zh_CN.UTF-8", "会话标题不能为空"],
+  ["en_US.UTF-8", "Session Title cannot be empty."],
+] as const)
+  test(`a control-only rename uses ${lang} and preserves the title`, async () => {
+    const app = await start([], { env: { LANG: lang } });
+    try {
+      await app.waitFor(() => app.screen().some((line) => line.startsWith("╭")));
+      app.stdin.write("/rename Chosen title\r");
+      await app.waitFor(() => app.output().includes("\x1b]0;✦ Chosen title\x07"));
+      app.stdin.write("/rename \u009f\r");
+      await app.waitFor(() => app.screen().some((line) => line.includes(error)));
+      expect(app.calls).toHaveLength(0);
+      app.stdin.write("/rename\r");
+      await app.waitFor(() => app.screen().some((line) => line.includes("/rename Chosen title")));
+    } finally {
+      await app.cleanup();
+    }
+  });
+
 test("rename pre-fills the current title and changes it during a Run without another prompt", async () => {
   const app = await start(["Repair login"]);
   try {

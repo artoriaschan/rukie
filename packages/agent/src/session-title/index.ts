@@ -1,5 +1,6 @@
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import { normalizeContext, type Api, type Model } from "@earendil-works/pi-ai";
+import { createUserVisibleError } from "@neant/shared";
 import type { ToolStateDefinition } from "../tool-state/index.ts";
 
 export type TitleSource = "prompt" | "model" | "user";
@@ -167,7 +168,11 @@ export function createSessionTitle(options: {
     },
     rename(next: string) {
       const normalized = clean(next);
-      if (!normalized) throw new Error("Session Title cannot be empty.");
+      if (!normalized)
+        throw createUserVisibleError("Session Title cannot be empty.", {
+          code: "session-title-empty",
+          params: {},
+        });
       revision++;
       request?.abort();
       attempted = true;

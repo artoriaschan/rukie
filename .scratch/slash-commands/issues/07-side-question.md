@@ -26,3 +26,7 @@ TUI ④ 层持有请求与本地回答状态，③ 层 `SideQuestionPanel` 只�
 合入最新 context report 整合分支后，包含报告的回归 159 pass / 0 fail / 954 assertions，静态检查再次通过。`CONTEXT.md` 同步批准 spec 中 Side Question、Context Report 与手动 Compaction 的领域定义。
 
 合入 session list / resume picker 的最新整合分支后，保留 live reader 注册和 disposal 注销，同时保留独立 side lifetime。新增第 5 个 TUI 用例验证 40×12 中 `/resume` 关闭/取消侧问再恢复原 session，侧问内容不进入恢复后的上下文。组合 side/list/run/resume 回归 36 pass / 0 fail / 213 assertions，格式、lint、types、knip 再次通过。
+
+最终 review 纠正：Core 自己定义的空问题、空回答和失败回退均使用 shared 错误码；provider 失败原因保留在参数中，由通用中英字典渲染。公开 `start()` 测试先复现中文界面的英文空回答，再验证中英空回答、无原因失败与带 provider 原因的失败；所有侧问仍不消耗主调用队列。
+
+Review fixes validation: 109 pass / 0 fail / 776 assertions across 10 affected public Core, TUI and i18n suites; oxfmt, oxlint, tsc -b, knip and git diff --check passed. Full final integration check remains owned by root.

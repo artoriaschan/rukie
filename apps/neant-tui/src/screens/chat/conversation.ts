@@ -732,9 +732,14 @@ export function createConversation(session: Session, model: string, locale: Loca
       active?.controller.abort();
     },
     async stop() {
+      const pending = active;
       session.interruptRun();
-      active?.controller.abort();
-      await active?.promise;
+      pending?.controller.abort();
+      try {
+        await pending?.promise;
+      } catch (error) {
+        if (!pending?.controller.signal.aborted) throw error;
+      }
       unsubscribe();
     },
   };

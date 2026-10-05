@@ -22,3 +22,7 @@
 验证：公开 createSession/Session 与 TUI start 边界新增 7 tests / 0 failures / 26 assertions；含切换下一次请求、失效 settings 的 resume、无效/缺凭据/忙碌、settings 原文不变、既有与新子代理模型、直接命令、窄终端 picker、恢复初始状态。相关 main、slash、question parity、子代理与 fork/type 回归合计 132 tests / 0 failures / 745 assertions；另 settings + 新测试 44 tests / 0 failures / 73 assertions。oxfmt --check、oxlint、tsc -b、knip 与 git diff --check 通过。
 
 后续整合注意：02 的 compacting 与本票 changingModel 需要互斥；03 标题辅助调用须由测试辅助请求分流包在模型请求计数器外层。完整 spec 的精确整合 HEAD full check 由最终交付执行。
+
+最终 review 纠正：`setModel()` 的空闲互斥错误返回 shared `model-switch-busy`，通用中英字典负责显示；压缩、切换、回退和 active Run 守卫也使用结构化错误码。Core 公开测试验证 pending compaction 拒绝切换时的错误码和参数，原模型与互斥行为保留。
+
+Review fixes validation: 109 pass / 0 fail / 776 assertions across 10 affected public Core, TUI and i18n suites; oxfmt, oxlint, tsc -b, knip and git diff --check passed. Full final integration check remains owned by root.
