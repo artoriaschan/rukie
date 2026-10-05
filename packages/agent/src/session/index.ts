@@ -34,7 +34,7 @@ import {
   subagentsState,
   type SubagentIdentity,
 } from "../subagents/index.ts";
-import { isTrustedProject, resolveModel } from "../config/index.ts";
+import { isTrustedProject, resolveModel, modelState } from "../config/index.ts";
 import { createJsonlStore, type SessionStore } from "../store/index.ts";
 import {
   createPermissionGate,
@@ -160,6 +160,10 @@ export interface Session {
   readonly title: string;
   readonly titleSource: TitleSource | undefined;
   rename(title: string): Promise<void>;
+  /** Current model identity, including a restored session selection. */
+  readonly model: string;
+  /** Persist a model selection for subsequent requests; requires idle state. */
+  setModel(spec: string): Promise<void>;
   readonly permissionMode: PermissionMode;
   readonly planMode: boolean;
   /** Changes guidance for the next model call and persists the state, also outside a Run. */
@@ -249,9 +253,6 @@ async function createSessionInternal(
     },
   };
   if (options.model && !options.streamFn) throw new Error("`model` requires `streamFn`.");
-  const { model, streamFn } = options.model
-    ? { model: options.model, streamFn: options.streamFn! }
-    : await resolveModel(settings, options.homeDir);
   const cwd = resolve(options.cwd);
   const store = options.store ?? createJsonlStore({ cwd, homeDir: options.homeDir });
   // Storage must finish even when the Run's signal is aborted.
@@ -298,10 +299,17 @@ async function createSessionInternal(
   };
   let emitRunEvent: ((event: CustomSessionEvent<AgentEvent>) => void | Promise<void>) | undefined;
   const toolState = createToolState(
-    [todoState, subagentsState, planState, checkpointState, titleSourceState],
+    [todoState, subagentsState, planState, checkpointState, titleSourceState, modelState],
     entries,
     options.onWarning ?? console.warn,
   );
+  const restoredModel = toolState.get("model");
+  let { model, streamFn } =
+    typeof restoredModel === "string"
+      ? await resolveModel({ ...settings, model: restoredModel }, options.homeDir)
+      : options.model
+        ? { model: options.model, streamFn: options.streamFn! }
+        : await resolveModel(settings, options.homeDir);
   let planActive = (toolState.get("plan") as { active: boolean } | undefined)?.active ?? false;
   let planEntered = toolState.get("plan") !== undefined;
   let planWrites = Promise.resolve();
@@ -725,7 +733,8 @@ async function createSessionInternal(
   }
   let planTakenOver = false;
   const agent = new Agent({
-    streamFn: options.streamFn ?? streamFn,
+    streamFn: (selected, request, requestOptions) =>
+      (options.streamFn ?? streamFn)(selected, request, requestOptions),
     convertToLlm,
     beforeToolCall: permissions.beforeToolCall,
     async afterToolCall({ toolCall, args, result, isError }, signal) {
@@ -836,6 +845,7 @@ async function createSessionInternal(
   if (internal.control) internal.control.steer = (message) => agent.steer(message);
   let running = false;
   let rewinding = false;
+  let changingModel = false;
   let hookRunActive = false;
   let runSettled: ReturnType<typeof Promise.withResolvers<void>> | undefined;
   let queuedUserRuns = 0;
@@ -906,6 +916,37 @@ async function createSessionInternal(
       if (rewinding) throw new Error("Session is rewinding.");
       await sessionTitle.rename(title);
     },
+    get model() {
+      return `${model.provider}/${model.id}`;
+    },
+    async setModel(spec) {
+      if (disposePromise) throw new Error("Session has been disposed.");
+      if (running || rewinding || changingModel)
+        throw new Error("Model switching requires an idle Session.");
+      changingModel = true;
+      try {
+        const selected = await resolveModel({ ...settings, model: spec }, options.homeDir);
+        if (disposePromise) throw new Error("Session has been disposed.");
+        const target = await store.open(stored.metadata, context);
+        try {
+          await toolState.set("model", spec, target, context);
+        } finally {
+          await target.close(context);
+        }
+        model = selected.model;
+        streamFn = selected.streamFn;
+        agent.state.model = model;
+        inputTokens = undefined;
+        broadcast({
+          type: "tool_state_changed",
+          name: "model",
+          value: spec,
+          sessionId: stored.metadata.id,
+        });
+      } finally {
+        changingModel = false;
+      }
+    },
     get permissionMode() {
       return permissionConfiguration.getMode();
     },
@@ -929,7 +970,7 @@ async function createSessionInternal(
     checkpoints: () => (internal.parentSessionId ? [] : (checkpoint?.list() ?? [])),
     async rewind(promptEntryId, { code, conversation }) {
       if (disposePromise) throw new Error("Session has been disposed.");
-      if (running || subagents.count || rewinding)
+      if (running || subagents.count || rewinding || changingModel)
         throw new Error("Rewind requires an idle Session.");
       if (internal.parentSessionId || !checkpoint)
         throw new Error("Subagent Sessions cannot rewind.");
@@ -1053,6 +1094,7 @@ async function createSessionInternal(
       }
       if (disposePromise) throw new Error("Session has been disposed.");
       if (rewinding) throw new Error("Session is rewinding.");
+      if (changingModel) throw new Error("Session is switching models.");
       if (running) throw new Error("Session already has an active Run.");
       running = true;
       hookRunActive = fromHook;
