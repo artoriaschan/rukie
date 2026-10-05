@@ -10,10 +10,13 @@ import {
   type ThinkingLevel,
 } from "@neant/shared";
 import { render, ThemeProvider, type RenderOptions } from "@neant/tui";
+import { defaultHost, type TuiHost } from "./host";
 import { createChat } from "./screens/chat";
 import { createTuiI18n, formatError } from "./i18n";
 
 export interface TuiIo extends RenderOptions {
+  /** Host capabilities; defaults to the platform clipboard and external viewer. */
+  host?: TuiHost;
   term?: string;
   env?: Record<string, string | undefined>;
   stderr(text: string): void;
@@ -156,6 +159,7 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
         trustProjectMcp: values["trust-project-mcp"] ?? io.session?.trustProjectMcp,
       },
       model ? `${model.provider}/${model.id}` : settings.model!,
+      io.host ?? defaultHost,
       locale,
       (title) => io.stdout.write(`\x1b]0;${title}\x07`),
     );
