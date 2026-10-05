@@ -12,15 +12,18 @@
 
 ## Agent
 
-| 用途                   | 选型                                            |
-| ---------------------- | ----------------------------------------------- |
-| 模型调用               | @earendil-works/pi-ai 0.99.2                    |
-| 公网 HTTP 请求         | undici 8.11.2                                   |
-| Agent loop 和 harness  | @earendil-works/pi-agent-core 0.99.2            |
-| glob 的 gitignore 匹配 | ignore 7.0.8                                    |
-| grep 的内置二进制      | @vscode/ripgrep 1.18.0                          |
-| MCP                    | @earendil-works/pi-mcp 0.99.2                   |
-| 支持的协议             | Chat Completions、Responses、Anthropic Messages |
+| 用途                   | 选型                                                                        |
+| ---------------------- | --------------------------------------------------------------------------- |
+| 模型调用               | @earendil-works/pi-ai 0.99.2                                                |
+| HTML → Markdown        | turndown 7.2.4 + @joplin/turndown-plugin-gfm 1.0.68                         |
+| HTML 内容过滤          | @mixmark-io/domino 2.2.0（复用 turndown 的 DOM，在 GFM 转换前删除隐藏子树） |
+| HTML 转换类型          | @types/turndown 5.0.6（仅 devDependency）                                   |
+| 公网 HTTP 请求         | undici 8.11.2                                                               |
+| Agent loop 和 harness  | @earendil-works/pi-agent-core 0.99.2                                        |
+| glob 的 gitignore 匹配 | ignore 7.0.8                                                                |
+| grep 的内置二进制      | @vscode/ripgrep 1.18.0                                                      |
+| MCP                    | @earendil-works/pi-mcp 0.99.2                                               |
+| 支持的协议             | Chat Completions、Responses、Anthropic Messages                             |
 
 ## 服务端
 
