@@ -1,3 +1,4 @@
+import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
 import { dark } from "@neant/tui";
 import { createSession } from "@neant/agent";
@@ -91,7 +92,9 @@ async function resumeWithChild(checkpoint = false) {
         cwd: root,
         homeDir: root,
         model: original.getModel(),
-        streamFn: (model, context, options) => original.streamSimple(model, context, options),
+        streamFn: withAuxiliaryRequests((model, context, options) =>
+          original.streamSimple(model, context, options),
+        ),
       });
       await session.run("save child");
       if (checkpoint) await session.run("later parent");

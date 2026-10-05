@@ -13,6 +13,8 @@ Spec: [slash commands](spec.md). Local Markdown tracker; tickets resolve through
 
 - [08: /settings 占位页](issues/08-settings-placeholder.md#answer) — 全屏 ④ 层设置框架与本地字段接口，空分区中英文案、稳定页脚与 Esc 返回；不写回设置，run 中拒绝。
 
+- [03: Session 标题与改名](issues/03-session-title-and-rename.md#answer) — 一次异步标题、专用模型、手动固定与取消、子/fork 描述、Headless、TUI 预填和 OSC spinner；辅助模型边界隔离及 Session 存储竞争已覆盖，回退保留手动来源且普通锚点不变。
+
 ## Fog
 
 - Remaining Core capability and TUI handler tickets retain their existing dependency graph.

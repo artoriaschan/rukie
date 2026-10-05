@@ -1,3 +1,4 @@
+import { withAuxiliaryRequests } from "../../helpers/auxiliary-model.ts";
 import { expect, spyOn, test } from "bun:test";
 import { createSession } from "@neant/agent";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
@@ -424,7 +425,7 @@ test("preview collapses whitespace, caps at 80 characters, and mouse only moves 
         cwd: root,
         homeDir: root,
         model: faux.getModel(),
-        streamFn: faux.streamSimple,
+        streamFn: withAuxiliaryRequests(faux.streamSimple),
       });
       await seed.run("old  \n  question");
       await seed.run("x".repeat(90));
@@ -660,7 +661,7 @@ test.each([true, false])(
           cwd: root,
           homeDir: root,
           model: faux.getModel(),
-          streamFn: faux.streamSimple,
+          streamFn: withAuxiliaryRequests(faux.streamSimple),
         });
         await seed.run("prior prompt");
         await seed.run("discarded prompt");
@@ -749,7 +750,7 @@ test("40×12 rewind preserves Todo and historical children without reopening the
         cwd: root,
         homeDir: root,
         model: faux.getModel(),
-        streamFn: faux.streamSimple,
+        streamFn: withAuxiliaryRequests(faux.streamSimple),
         permissionMode: "full-access",
       });
       await seed.run("prior prompt");

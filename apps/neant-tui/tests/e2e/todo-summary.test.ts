@@ -1,3 +1,4 @@
+import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
 import { createFauxCore, fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { createSession } from "@neant/agent";
@@ -63,7 +64,9 @@ async function startSession(locale: "zh" | "en") {
         cwd: root,
         homeDir: root,
         model: original.getModel(),
-        streamFn: (model, context, options) => original.streamSimple(model, context, options),
+        streamFn: withAuxiliaryRequests((model, context, options) =>
+          original.streamSimple(model, context, options),
+        ),
       });
       await session.run("seed prompt");
       argv.push("--resume", session.id);

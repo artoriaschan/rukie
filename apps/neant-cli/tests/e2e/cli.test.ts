@@ -414,7 +414,9 @@ test("stream-json emits session metadata, verbatim pi events, and the Run result
       "list_agents",
     ],
   });
-  expect(events.map((event) => event.type)).toEqual([
+  expect(
+    events.filter((event) => event.type !== "session_title_changed").map((event) => event.type),
+  ).toEqual([
     "session_start",
     "context_usage",
     "agent_start",
@@ -558,7 +560,9 @@ test("a failed stream-json Run emits a failure result and exits 1", async () => 
   expect(result.stderr).toContain("model unavailable");
   const events = parseEvents(result.stdout);
   expect(events[0].type).toBe("session_start");
-  expect(events.at(-2).type).toBe("agent_end");
+  expect(events.filter((event) => event.type !== "session_title_changed").at(-2).type).toBe(
+    "agent_end",
+  );
   expect(events.at(-1)).toMatchObject({
     type: "result",
     sessionId: events[0].sessionId,

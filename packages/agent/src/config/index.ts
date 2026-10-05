@@ -90,6 +90,7 @@ export async function loadSettings(options: { cwd: string; homeDir: string }) {
     warnings.push(`${projectFile}: ignoring "locale"; only user settings can define locale.`);
   }
   if (project.model !== undefined) settings.model = project.model;
+  if (project.titleModel !== undefined) settings.titleModel = project.titleModel;
   if (project.reviewModel !== undefined) settings.reviewModel = project.reviewModel;
   if (project.subagentModel !== undefined) settings.subagentModel = project.subagentModel;
   const trusted = isTrustedProject(options.cwd, user);

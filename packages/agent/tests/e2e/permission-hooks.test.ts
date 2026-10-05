@@ -1,3 +1,4 @@
+import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { join } from "node:path";
@@ -231,14 +232,15 @@ test.each(["rule", "hook", "mode", "review"] as const)(
     const fake = toolModel();
     if (source === "review") {
       const main = fake.streamFn;
-      fake.streamFn = (model, context, options) =>
+      fake.streamFn = withAuxiliaryRequests((model, context, options) =>
         JSON.stringify(context).includes("REVIEW_POLICY")
           ? fakeModel([fauxAssistantMessage('{"risk":"high","decision":"deny"}')]).streamFn(
               model,
               context,
               options,
             )
-          : main(model, context, options);
+          : main(model, context, options),
+      );
     }
     let asks = 0;
     const events: SessionEvent[] = [];
@@ -320,14 +322,15 @@ test.each(["rule", "hook", "user", "review"] as const)(
     const fake = toolModel();
     if (by === "review") {
       const main = fake.streamFn;
-      fake.streamFn = (model, context, options) =>
+      fake.streamFn = withAuxiliaryRequests((model, context, options) =>
         JSON.stringify(context).includes("REVIEW_POLICY")
           ? fakeModel([fauxAssistantMessage('{"risk":"high","decision":"deny"}')]).streamFn(
               model,
               context,
               options,
             )
-          : main(model, context, options);
+          : main(model, context, options),
+      );
     }
     const session = await createSession({
       ...dirs,
@@ -432,14 +435,15 @@ test("PermissionDenied exit 2 ignores JSON retry after review denial", async () 
   const handler = await script("PermissionDenied", { hookSpecificOutput: { retry: true } }, 2);
   const fake = toolModel();
   const main = fake.streamFn;
-  fake.streamFn = (model, context, options) =>
+  fake.streamFn = withAuxiliaryRequests((model, context, options) =>
     JSON.stringify(context).includes("REVIEW_POLICY")
       ? fakeModel([fauxAssistantMessage('{"risk":"high","decision":"deny"}')]).streamFn(
           model,
           context,
           options,
         )
-      : main(model, context, options);
+      : main(model, context, options),
+  );
   const session = await createSession({
     ...dirs,
     ...fake,

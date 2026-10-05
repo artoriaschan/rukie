@@ -1,3 +1,4 @@
+import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
 import {
   createAssistantMessageEventStream,
@@ -61,7 +62,7 @@ test("the Run result totals every Turn and forwards tool events without changing
   // pi's faux provider estimates usage itself; this boundary supplies known provider counts.
   const fake = fakeModel([]);
   const replies = [first, second];
-  fake.streamFn = (_model, context) => {
+  fake.streamFn = withAuxiliaryRequests((_model, context) => {
     fake.contexts.push(context);
     const stream = createAssistantMessageEventStream();
     const message = replies.shift()!;
@@ -72,7 +73,7 @@ test("the Run result totals every Turn and forwards tool events without changing
     });
     stream.end(message);
     return stream;
-  };
+  });
   const session = await createSession({ cwd: dirs.cwd, homeDir: dirs.homeDir, ...fake });
   const events: SessionEvent[] = [];
   const result = await session.run("hi", {

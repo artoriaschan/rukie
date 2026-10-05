@@ -1,3 +1,4 @@
+import { withAuxiliaryRequests } from "../../helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { start } from "../../helpers/app";
@@ -128,7 +129,7 @@ test("plan toggles locally, goal explains its placeholder, rewind opens existing
           cwd: root,
           homeDir: root,
           model: faux.getModel(),
-          streamFn: faux.streamSimple,
+          streamFn: withAuxiliaryRequests(faux.streamSimple),
         });
         sessionOptions.resumeId = seed.id;
         argv.push("--resume", seed.id);
@@ -193,7 +194,7 @@ test("busy commands reject, help stays local, skill invocation steers and exit a
           cwd: root,
           homeDir: root,
           model: faux.getModel(),
-          streamFn: faux.streamSimple,
+          streamFn: withAuxiliaryRequests(faux.streamSimple),
         });
         id = seed.id;
         argv.push("--resume", id);

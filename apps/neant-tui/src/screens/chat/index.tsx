@@ -56,7 +56,12 @@ import { commandCatalog } from "./commands";
 import { SettingsScreen } from "../settings";
 
 /** Bind the Session and private stores to one chat screen for its lifetime. */
-export async function createChat(options: SessionOptions, model: string, locale: Locale = "zh") {
+export async function createChat(
+  options: SessionOptions,
+  model: string,
+  locale: Locale = "zh",
+  writeTitle?: (title: string) => void,
+) {
   const t = createTuiI18n(locale);
   const interactions = createInteractions();
   const sessionOptions: SessionOptions = {
@@ -144,6 +149,7 @@ export async function createChat(options: SessionOptions, model: string, locale:
           models={models}
           skills={skills}
           replaceSession={replaceSession}
+          writeTitle={writeTitle}
         />
       );
     },
@@ -163,6 +169,7 @@ function Chat({
   onExit,
   skills,
   replaceSession,
+  writeTitle,
   models,
 }: {
   session: Session;
@@ -178,9 +185,28 @@ function Chat({
   models: readonly { spec: string; name: string }[];
   skills: readonly { name: string; description: string }[];
   replaceSession(resumeId?: string): Promise<void>;
+  writeTitle?: (title: string) => void;
 }) {
   const t = createTuiI18n(locale);
   const state = useSyncExternalStore(conversation.subscribe, conversation.getSnapshot);
+  const [title, setTitle] = useState(session.title);
+  useEffect(
+    () =>
+      session.subscribe((event) => {
+        if (event.type === "session_title_changed") setTitle(event.title);
+      }),
+    [session],
+  );
+  useEffect(() => {
+    const frames = ["🌑", "🌒", "🌓", "🌔", "🌕", "🌖", "🌗", "🌘"];
+    let frame = 0;
+    const update = () =>
+      writeTitle?.(`${state.running ? frames[frame++ % frames.length] : "✦"} ${title || "Neant"}`);
+    update();
+    if (!state.running || !writeTitle) return;
+    const timer = setInterval(update, 120);
+    return () => clearInterval(timer);
+  }, [title, state.running, writeTitle]);
   const interaction = useSyncExternalStore(interactions.subscribe, interactions.getSnapshot);
   const question = interaction?.kind === "permission" ? interaction : undefined;
   const planReview = interaction?.kind === "plan" ? interaction : undefined;
@@ -436,6 +462,16 @@ function Chat({
       void session
         .setPlanMode(on)
         .then(() => conversation.notice(t(on ? "plan.enabled" : "plan.disabled")))
+        .catch((error: unknown) => conversation.notice(formatError(error, t), true));
+    } else if (command.name === "rename") {
+      const title = prompt.slice(parsed![0].length).trim();
+      if (!title) {
+        change(`/rename ${session.title}`);
+        setPromptRevision((revision) => revision + 1);
+        return false;
+      }
+      void session
+        .rename(title)
         .catch((error: unknown) => conversation.notice(formatError(error, t), true));
     } else if (command.name === "model") {
       const spec = prompt.slice(parsed![0].length).trim();

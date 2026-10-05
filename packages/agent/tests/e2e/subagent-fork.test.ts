@@ -1,3 +1,4 @@
+import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall, getCurrentSystemMessage } from "@earendil-works/pi-ai";
 import { join } from "node:path";
@@ -200,11 +201,11 @@ test("fork inherits the parent model, system prompt and tools despite model sett
     ...dirs,
     ...fake,
     settings: { subagentModel: "missing/settings", thinking: "low" },
-    streamFn(model, context, options) {
+    streamFn: withAuxiliaryRequests((model, context, options) => {
       models.push(`${model.provider}/${model.id}`);
       expect(options?.reasoning).toBe("low");
       return fake.streamFn(model, context, options);
-    },
+    }),
   });
   await session.run("completed prompt");
   await session.run("fork now");

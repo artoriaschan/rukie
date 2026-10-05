@@ -1,3 +1,4 @@
+import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
@@ -21,7 +22,9 @@ test("resume replays stored text before input and appends the next Run to the sa
         cwd: root,
         homeDir: root,
         model: original.getModel(),
-        streamFn: (model, context, options) => original.streamSimple(model, context, options),
+        streamFn: withAuxiliaryRequests((model, context, options) =>
+          original.streamSimple(model, context, options),
+        ),
       });
       await session.run("stored prompt 中");
       id = session.id;
@@ -154,7 +157,9 @@ test("resume replays each tool's collapsed result and error preview without remi
         cwd: root,
         homeDir: root,
         model: original.getModel(),
-        streamFn: (model, context, options) => original.streamSimple(model, context, options),
+        streamFn: withAuxiliaryRequests((model, context, options) =>
+          original.streamSimple(model, context, options),
+        ),
         permissionMode: "full-access",
       });
       await session.run("stored tools");
@@ -221,7 +226,9 @@ test("resume replays the restored compaction suffix without exposing its summary
         cwd: root,
         homeDir: root,
         model,
-        streamFn: (model, context, options) => original.streamSimple(model, context, options),
+        streamFn: withAuxiliaryRequests((model, context, options) =>
+          original.streamSimple(model, context, options),
+        ),
       });
       await session.run("old prompt");
       await session.run("retained prompt");
@@ -269,7 +276,9 @@ test("resume hides a skill reminder retained by compaction while preserving user
         cwd: root,
         homeDir: root,
         model,
-        streamFn: (model, context, options) => original.streamSimple(model, context, options),
+        streamFn: withAuxiliaryRequests((model, context, options) =>
+          original.streamSimple(model, context, options),
+        ),
       });
       await session.run("first");
       await session.run("/plan task");
@@ -315,7 +324,7 @@ test("--resume rejects a child session before requesting a model turn", async ()
         cwd: root,
         homeDir: root,
         model: faux.getModel(),
-        streamFn: faux.streamSimple,
+        streamFn: withAuxiliaryRequests(faux.streamSimple),
       });
       await session.run("delegate", {
         onEvent(event) {

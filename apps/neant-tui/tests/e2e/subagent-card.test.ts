@@ -1,3 +1,4 @@
+import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
 import { start } from "../helpers/app";
 
@@ -324,7 +325,7 @@ test("parent resume initializes its persisted child card as idle before cold con
         cwd: root,
         homeDir: root,
         model: original.getModel(),
-        streamFn: original.streamSimple,
+        streamFn: withAuxiliaryRequests(original.streamSimple),
       });
       await session.run("delegate", {
         onEvent(event) {
