@@ -1,3 +1,5 @@
+import { realpath } from "node:fs/promises";
+import { relative } from "node:path";
 import { useLayoutEffect, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createSession, type Session, type SessionOptions } from "@neant/agent";
 import type { Locale } from "@neant/i18n";
@@ -23,6 +25,7 @@ import {
   PlanReviewDialog,
   QuestionDialog,
   PromptInput,
+  RewindPicker,
   ScrollToBottom,
   StatusLine,
   ToolCall,
@@ -32,6 +35,8 @@ import {
   SubagentDetailScene,
   UserMessage,
 } from "../../components";
+import type { RewindEntry, RewindMode } from "../../components/rewind-picker";
+import { formatError } from "../../i18n";
 import type { DetailPage } from "../../components/subagent-detail";
 import { createTuiI18n } from "../../i18n";
 import { createInputHistory } from "../../input-history";
@@ -54,6 +59,7 @@ export async function createChat(options: SessionOptions, model: string, locale:
     onQuestion: options.onQuestion ?? interactions.askQuestion,
     onPlanReview: options.onPlanReview ?? interactions.askPlanReview,
   });
+  const checkpointCwd = await realpath(options.cwd);
   const conversation = createConversation(session, model, locale);
   const history = await createInputHistory(options.cwd, options.homeDir);
   const inputHistory = createTextInputHistory(history.entries);
@@ -95,6 +101,7 @@ export async function createChat(options: SessionOptions, model: string, locale:
           submit={submit}
           interactions={interactions}
           cwd={options.cwd}
+          checkpointCwd={checkpointCwd}
           thinking={options.settings?.thinking}
           locale={locale}
           onExit={onExit}
@@ -111,6 +118,7 @@ function Chat({
   submit,
   interactions,
   cwd,
+  checkpointCwd,
   thinking,
   locale,
   onExit,
@@ -121,6 +129,7 @@ function Chat({
   submit(prompt: string): boolean;
   interactions: ReturnType<typeof createInteractions>;
   cwd: string;
+  checkpointCwd: string;
   thinking?: ThinkingLevel;
   locale: Locale;
   onExit(): void;
@@ -173,6 +182,59 @@ function Chat({
     setPage(next);
   };
   const [input, setInput] = useState("");
+  const [promptRevision, setPromptRevision] = useState(0);
+  type Rewind = {
+    entries: readonly RewindEntry[];
+    focus: number;
+    confirm: boolean;
+    mode: number;
+    busy: boolean;
+  };
+  const [rewind, setRewind] = useState<Rewind>();
+  const rewindRef = useRef<Rewind | undefined>(undefined);
+  const showRewind = (next: Rewind | undefined) => {
+    rewindRef.current = next;
+    setRewind(next);
+  };
+  const rewindFiles = (picker: Rewind) => {
+    const files = new Map<string, { path: string; backup: string | null }>();
+    // Entries are newest first; earliest record after the target wins per path.
+    for (const entry of picker.entries.slice(0, picker.focus + 1).toReversed())
+      for (const file of entry.files) if (!files.has(file.path)) files.set(file.path, file);
+    return [...files.values()];
+  };
+  const rewindModes = (picker: Rewind): readonly RewindMode[] =>
+    rewindFiles(picker).length
+      ? [
+          { code: true, conversation: true },
+          { code: false, conversation: true },
+          { code: true, conversation: false },
+        ]
+      : [{ code: false, conversation: true }];
+  const executeRewind = async (picker: Rewind) => {
+    showRewind({ ...picker, busy: true });
+    try {
+      const choice = rewindModes(picker)[picker.mode]!;
+      const result = await session.rewind(picker.entries[picker.focus]!.promptEntryId, choice);
+      if (choice.conversation) {
+        history.reset();
+        change(result.prompt);
+        setPromptRevision((revision) => revision + 1);
+        setUnread(false);
+        savedChatScroll.current = undefined;
+        savedDashboardScroll.current = undefined;
+        conversation.notice(t("rewind.done"));
+      } else
+        conversation.notice(
+          t("rewind.restored", { count: result.restored.length + result.deleted.length }),
+        );
+    } catch (error) {
+      conversation.notice(formatError(error, t), true);
+    } finally {
+      showRewind(undefined);
+      body.current?.scrollToBottom();
+    }
+  };
   const [todosCollapsed, setTodosCollapsed] = useState(false);
   const [subagentsCollapsed, setSubagentsCollapsed] = useState(false);
   const toggleTodos = () => setTodosCollapsed((collapsed) => !collapsed);
@@ -210,6 +272,7 @@ function Chat({
   });
   const draft = useRef("");
   const lastInterrupt = useRef<number | undefined>(undefined);
+  const rewindEsc = useRef<number | undefined>(undefined);
   const [now, setNow] = useState(Date.now);
   const currentTime = Math.max(now, Date.now());
   const activity = renderActivity(state.activity, currentTime);
@@ -257,6 +320,7 @@ function Chat({
     state.error,
   ]);
   const change = (value: string) => {
+    rewindEsc.current = undefined;
     draft.current = value;
     lastInterrupt.current = undefined;
     setInput(value);
@@ -289,10 +353,11 @@ function Chat({
   const dialogGap =
     question && rows - statusHeight - minimumDialogHeight - panelCount - 1 >= 1 ? 1 : 0;
   const compactPrompt =
-    !!interaction &&
-    rows - statusHeight - minimumDialogHeight - dialogGap - panelCount < promptMaxLines + 3;
+    !!rewind ||
+    (!!interaction &&
+      rows - statusHeight - minimumDialogHeight - dialogGap - panelCount < promptMaxLines + 3);
   const promptHeight = compactPrompt ? 1 : promptMaxLines + 3;
-  const transcriptHeight = interaction ? Number(!compactPrompt) : 1;
+  const transcriptHeight = rewind ? 0 : interaction ? Number(!compactPrompt) : 1;
   const chromeSpace = rows - statusHeight - promptHeight - transcriptHeight;
   const showReturnControl =
     showReturn && chromeSpace - minimumDialogHeight - dialogGap - panelCount >= 1;
@@ -316,8 +381,11 @@ function Chat({
         ),
       )
     : 0;
+  const rewindHeight = rewind
+    ? Math.max(4, Math.min(Math.floor(rows / 2), available - panelCount))
+    : 0;
   const panelHeights = allocatePanelHeights(
-    available - dialogMaxHeight - dialogGap,
+    available - dialogMaxHeight - dialogGap - rewindHeight,
     Array.from({ length: panelCount }, () => 3),
   );
   const todoMaxHeight = hasTodos ? panelHeights[0]! : 1;
@@ -372,6 +440,25 @@ function Chat({
       }
       return;
     }
+    const picker = rewindRef.current;
+    if (picker && !interactions.getSnapshot()) {
+      if (event.type !== "key" || picker.busy) return;
+      const { key } = event;
+      if (key.name === "escape" || (key.ctrl && key.name === "c")) {
+        showRewind(picker.confirm && !key.ctrl ? { ...picker, confirm: false } : undefined);
+      } else if (key.name === "up" || key.name === "down") {
+        const count = picker.confirm ? rewindModes(picker).length : picker.entries.length;
+        const field = picker.confirm ? "mode" : "focus";
+        showRewind({
+          ...picker,
+          [field]: (picker[field] + (key.name === "up" ? count - 1 : 1)) % count,
+        });
+      } else if (key.name === "enter" && !key.ctrl && !key.alt && !key.shift) {
+        if (picker.confirm) void executeRewind(picker);
+        else showRewind({ ...picker, confirm: true, mode: 0 });
+      }
+      return;
+    }
     if (
       event.type === "key" &&
       event.key.ctrl &&
@@ -418,6 +505,7 @@ function Chat({
     }
     const { key } = event;
     const pendingInteraction = interactions.getSnapshot();
+    if (pendingInteraction || key.name !== "escape") rewindEsc.current = undefined;
     const pending = pendingInteraction?.kind === "permission" ? pendingInteraction : undefined;
     if (key.ctrl && key.name === "q" && !key.alt && !key.shift) {
       toggleTodos();
@@ -493,8 +581,26 @@ function Chat({
     }
     if (key.name === "escape" || (key.ctrl && key.name === "c")) {
       if (conversation.isRunning()) {
+        rewindEsc.current = undefined;
         conversation.interrupt();
         lastInterrupt.current = undefined;
+      } else if (!key.ctrl) {
+        if (draft.current) {
+          history.reset();
+          change("");
+        } else if (!small) {
+          const now = performance.now();
+          if (rewindEsc.current !== undefined && now - rewindEsc.current <= 3000) {
+            rewindEsc.current = undefined;
+            const entries = session.checkpoints().toReversed();
+            if (!entries.length) conversation.notice(t("rewind.empty"));
+            else showRewind({ entries, focus: 0, confirm: false, mode: 0, busy: false });
+          } else {
+            rewindEsc.current = now;
+            conversation.notice(t("rewind.again"));
+          }
+          body.current?.scrollToBottom();
+        }
       } else if (key.ctrl) {
         if (draft.current) {
           history.reset();
@@ -730,7 +836,8 @@ function Chat({
               />
             )}
             <PromptInput
-              readOnly={!!interaction && !userQuestion?.collapsed}
+              key={promptRevision}
+              readOnly={!!rewind || (!!interaction && !userQuestion?.collapsed)}
               compact={compactPrompt}
               maxLines={compactPrompt ? 1 : promptMaxLines}
               columns={columns}
@@ -740,12 +847,12 @@ function Chat({
               value={input}
               onChange={(value) => {
                 const pending = interactions.getSnapshot();
-                if (viewRef.current !== "chat") return;
+                if (viewRef.current !== "chat" || rewindRef.current) return;
                 if (!pending || (pending.kind === "question" && pending.collapsed)) change(value);
               }}
               onSubmit={(prompt) => {
                 const pending = interactions.getSnapshot();
-                if (viewRef.current !== "chat") return;
+                if (viewRef.current !== "chat" || rewindRef.current) return;
                 if (pending && (pending.kind !== "question" || !pending.collapsed)) return;
                 if (submit(prompt)) {
                   body.current?.scrollToBottom();
@@ -753,6 +860,31 @@ function Chat({
                 }
               }}
             />
+            {rewind && (
+              <RewindPicker
+                entries={rewind.entries}
+                focus={rewind.focus}
+                confirm={rewind.confirm}
+                mode={rewind.mode}
+                modes={rewindModes(rewind)}
+                files={rewindFiles(rewind).map((file) => ({
+                  ...file,
+                  path: relative(checkpointCwd, file.path),
+                }))}
+                busy={rewind.busy}
+                maxHeight={rewindHeight}
+                columns={columns}
+                locale={locale}
+                onFocus={(focus) => {
+                  const picker = rewindRef.current;
+                  if (picker && !picker.busy) showRewind({ ...picker, focus });
+                }}
+                onMode={(mode) => {
+                  const picker = rewindRef.current;
+                  if (picker && !picker.busy) showRewind({ ...picker, mode });
+                }}
+              />
+            )}
             <StatusLine
               locale={locale}
               columns={columns}

@@ -324,11 +324,22 @@ function reduceEvent(
       return { ...state, waitingSubagents: 0 };
     case "tool_state_changed":
       if (event.name === "plan")
-        return { ...state, planMode: (event.value as { active: boolean }).active };
+        return {
+          ...state,
+          planMode: (event.value as { active: boolean } | undefined)?.active ?? false,
+        };
       return event.name === "todo"
-        ? { ...state, todos: event.value as TodoItem[] }
+        ? { ...state, todos: (event.value as TodoItem[] | undefined) ?? [] }
         : event.name === "subagents"
-          ? { ...state, subagents: { ...restoreSubagents(event.value), ...state.subagents } }
+          ? {
+              ...state,
+              subagents: Object.fromEntries(
+                Object.entries(restoreSubagents(event.value)).map(([id, row]) => [
+                  id,
+                  state.subagents[id] ?? row,
+                ]),
+              ),
+            }
           : state;
     case "session_start":
       return {
@@ -564,6 +575,29 @@ export function createConversation(session: Session, model: string, locale: Loca
   };
   const onEvent = (event: SessionEvent) => {
     const now = Date.now();
+    if (event.type === "conversation_rewound") {
+      update({
+        ...state,
+        completed: replayMessages(session.messages, t),
+        assistant: "",
+        tools: [],
+        error: undefined,
+        todos: (session.toolState("todo") as TodoItem[] | undefined) ?? [],
+        planMode: session.planMode,
+        subagents: restoreSubagents(session.toolState("subagents")),
+        waitingSubagents: 0,
+        contextUsage: undefined,
+        input: 0,
+        output: 0,
+        activityInput: 0,
+        streamedChars: 0,
+        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        decode: { tokens: 0, ms: 0 },
+        tpsSamples: [],
+        activity: { ...createActivity(locale), gitBranch: state.activity.gitBranch },
+      });
+      return;
+    }
     update(
       {
         ...reduceEvent(state, event, now, t),
@@ -604,6 +638,16 @@ export function createConversation(session: Session, model: string, locale: Loca
   observing = true;
   return {
     dispatchActivity,
+    notice(text: string, error = false) {
+      update(
+        error
+          ? { ...state, error: text }
+          : {
+              ...state,
+              completed: [...state.completed, { type: "notice", text }],
+            },
+      );
+    },
     getSnapshot: () => state,
     getTpsMetrics: (now: number) => decodeMetrics(state, now),
     subscribe(listener: () => void) {

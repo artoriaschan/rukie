@@ -18,3 +18,5 @@ export { SubagentDashboard } from "./subagent-dashboard";
 export { SubagentDetailScene } from "./subagent-detail";
 
 export { PlanReviewDialog } from "./plan-review";
+
+export { RewindPicker } from "./rewind-picker";

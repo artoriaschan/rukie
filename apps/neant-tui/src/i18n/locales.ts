@@ -32,6 +32,26 @@
  */
 
 const zh = {
+  "rewind.title": "回退",
+  "rewind.subtitle": "选择要回退到的消息",
+  "rewind.last": "最新消息",
+  "rewind.changed": "{{count}} 个文件有改动",
+  "rewind.hint": "Enter 选择 · Esc 退出",
+  "rewind.confirm": "回退到这条消息？",
+  "rewind.both": "还原代码和对话",
+  "rewind.conversation": "还原对话",
+  "rewind.code": "还原代码",
+  "rewind.restore": "还原 {{path}}",
+  "rewind.delete": "删除 {{path}}",
+  "rewind.more": "+{{count}} 项",
+  "rewind.bash": "bash 造成的改动不会还原",
+  "rewind.confirm-hint": "Enter 回退 · Esc 返回",
+  "rewind.done": "已回退 — 修改后按 Enter 重新发送",
+  "rewind.restored": "已还原 {{count}} 个文件",
+
+  "rewind.again": "再按一次 Esc 回退",
+  "rewind.empty": "暂无可回退的消息",
+
   "plan.review.heading": "计划评审",
   "plan.review.approve": "批准",
   "plan.review.revise": "继续规划",
@@ -207,6 +227,26 @@ const zh = {
 } as const;
 
 const en = {
+  "rewind.title": "Rewind",
+  "rewind.subtitle": "Pick a message to rewind to",
+  "rewind.last": "last message",
+  "rewind.changed": "{{count}} files changed",
+  "rewind.hint": "Enter to select · Esc to exit",
+  "rewind.confirm": "Rewind to this message?",
+  "rewind.both": "Restore code and conversation",
+  "rewind.conversation": "Restore conversation",
+  "rewind.code": "Restore code",
+  "rewind.restore": "Restore {{path}}",
+  "rewind.delete": "Delete {{path}}",
+  "rewind.more": "+{{count}} more",
+  "rewind.bash": "Changes made by bash are not restored",
+  "rewind.confirm-hint": "Enter to rewind · Esc to back",
+  "rewind.done": "Rewound — edit and press Enter to resend",
+  "rewind.restored": "Restored {{count}} files",
+
+  "rewind.again": "Press Esc again to rewind",
+  "rewind.empty": "Nothing to rewind yet",
+
   "plan.review.heading": "Plan review",
   "plan.review.approve": "Approve",
   "plan.review.revise": "Continue planning",
