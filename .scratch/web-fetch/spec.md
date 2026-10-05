@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 
 # Spec: web fetch
 
@@ -172,3 +172,12 @@ Agent Core 提供模型工具 `web_fetch { url }`：
 - DSH `web-fetch-http` 的 `await import('undici')` 在 Bun 下会拿到 stub，并不能钉住 IP；本 spec 的导入方式是在本地实测（Bun 1.4.2 + undici 8.11.2）后定的。实现完成后，用 e2e 中的"钉 IP"用例防止回退。
 - 本地网络可能有 fake-IP / TUN 代理（实测 `example.com` 被解析到 `198.18.0.17`，属于 benchmark 网段，会被拒绝）。在这类环境下应设置 `HTTP(S)_PROXY`，让请求走代理分支；写进工具错误信息的提示里。
 - `CONTEXT.md` 不需要新术语。
+
+## Delivery
+
+2026-10-05：01–05 全部 resolved，交付在 `codex/web-fetch-integration`。实现与修复均已合入；最终代码合并点为 `53858cf`。
+
+- 提供公开网页抓取、DNS 校验与 IP 钉定、限时和限量、HTML/GFM 转换、同源重定向、跨源重新审批、域名权限、环境代理与 fake-IP 提示。Headless、子代理、hooks 与现有 TUI 呈现均已接入；结果元数据包含 `category: "web"`。
+- Standards 审查 2 项、Spec 审查 3 项均已修复并复核，剩余可操作问题为 0。复杂 HTML 的节点数、深度与表格单元数受内部转换预算约束，超出时返回转换失败说明；简单大页面仍正常转换并在 50K 字符内截断。
+- 最终运行 `rtk proxy env -u NO_COLOR bun run check`：exit 0，1881 pass / 0 fail，140 个测试文件，9536 次断言；format、lint、types、Knip 均通过。测试通过公共 Session、权限规则、Headless CLI 和注入终端验证，网络目标使用本地服务器。
+- 六个票据实现及审查修复工作树在确认 clean、已合入后归档；集成分支保留交付。

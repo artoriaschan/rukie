@@ -41,3 +41,7 @@ rtk proxy bunx --no -- knip
 
 - Standards 审阅修正文档与模型工具 description 的地址检查边界：直接请求校验全部 DNS 地址并钉 IP；环境代理路径由代理解析域名并约束目标，不由 Agent Core 校验其解析结果；两条路径仍拒绝非公网 IP 字面量，`NO_PROXY` 返回直接检查。代理行为保持 spec 的既定决策。
 - focused 8 文件在无效外部代理环境下 218 pass / 0 fail；代理环境 fixture 保留各 workspace 自有实现，以满足 TypeScript 工程边界。静态检查通过；最终集成验收由 integration 分支统一执行。
+
+### 最终集成验证
+
+实现及审查修复已合入 `codex/web-fetch-integration`；全量检查与双轴复核证据见 [Spec Delivery](../spec.md#delivery)。

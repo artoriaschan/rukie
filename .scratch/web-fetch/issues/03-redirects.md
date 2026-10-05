@@ -21,3 +21,7 @@
 - 跨源主机、端口、协议变化返回成功工具结果，保留原 URL 与 HTTP 状态、新绝对 URL，并要求重新调用；http→https 也交回模型。第 6 次同源跳转报 `Too many redirects:`。非法 Location 报 `Invalid URL:`。
 - 公开测试入口为已批准的 `createSession` + `fakeModel` + 本地 HTTP 服务；先确认同源跳转、跳数上限、跨源结果、非法 Location 回归失败，再逐项实现。额外覆盖重定向正文永不结束的取消、同源第二次 DNS 改为私网的拒绝、整链总超时，以及新域名重新审批。
 - `rtk proxy bun test packages/agent/tests/e2e/web-fetch-redirects.test.ts packages/agent/tests/e2e/web-fetch.test.ts`：65 pass、0 fail，167 assertions；本票新增 14 个用例。`rtk proxy bunx --no -- oxfmt --check`、`oxlint`、`tsc -b`、`knip` 全部 exit 0。集成分支最终 aggregate check 由集成流程统一运行并记录。
+
+### 最终集成验证
+
+实现及审查修复已合入 `codex/web-fetch-integration`；全量检查与双轴复核证据见 [Spec Delivery](../spec.md#delivery)。

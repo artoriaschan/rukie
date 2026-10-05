@@ -27,3 +27,7 @@
 - TDD：新增规则测试先得到 8 个非法规则失败，再加入解析和匹配；Session 授权测试先观察到全工具授权，再改为域名授权；IPv6 主机归一化也先复现匹配失败。
 - 验证：`env -u NO_COLOR bun test packages/agent/tests/permissions packages/agent/tests/e2e/permission-rules.test.ts packages/agent/tests/e2e/subagent-permissions.test.ts packages/agent/tests/e2e/web-fetch-permissions.test.ts apps/neant-cli/tests/e2e/cli.test.ts apps/neant-tui/tests/components/permission-dialog/permission-dialog.test.tsx apps/neant-tui/tests/e2e/permissions.test.ts` 通过 253 个测试；随后 IPv6 规则新增测试通过。
 - 格式、oxlint、tsc -b、Knip 均通过；全部通过的最终集成检查由集成分支记录。初次组合测试未清除 NO_COLOR 导致现有终端颜色断言失败，按仓库要求清除后通过。
+
+### 最终集成验证
+
+实现及审查修复已合入 `codex/web-fetch-integration`；全量检查与双轴复核证据见 [Spec Delivery](../spec.md#delivery)。
