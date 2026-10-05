@@ -51,7 +51,7 @@ _Avoid_: tool data, session state
 _Avoid_: task list, plan
 
 **Checkpoint**:
-某条 user prompt 之前、本 session（含其 subagent）用文件工具写过的文件的内容快照。每条 user prompt 一个；bash 造成的改动不在其中。
+某条真实 user prompt 之前、文件工具 `write` / `edit` 首次写入每个文件前的原样内容。每条真实 user prompt 一个；内部续跑与通知不另建。以 prompt 的 transcript entry id 为锚点，文件路径经权限相同的 realpath 规范化，引用作为 Tool State `checkpoint` 持久化。备份存放在 Session 的 homeDir 下 `~/.neant/file-history/<sessionId>/`；bash 与 MCP 工具造成的改动不在其中。子代理写入归父 Checkpoint。
 _Avoid_: snapshot, backup, undo point
 
 **Rewind**:

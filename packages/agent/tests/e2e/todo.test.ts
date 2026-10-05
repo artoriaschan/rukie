@@ -56,7 +56,9 @@ test.each(["ask", "auto-review", "full-access"] as const)(
       { content: "Ship", status: "pending" },
     ];
     expect(session.toolState("todo")).toEqual(expected);
-    expect(events.filter((event) => event.type === "tool_state_changed")).toEqual([
+    expect(
+      events.filter((event) => event.type === "tool_state_changed" && event.name === "todo"),
+    ).toEqual([
       { type: "tool_state_changed", sessionId: session.id, name: "todo", value: expected },
     ]);
     expect(
@@ -109,7 +111,9 @@ test.each([
       content: [{ type: "text", text: expect.stringContaining(message) }],
     });
     expect(session.toolState("todo")).toEqual(todos);
-    expect(events.some((event) => event.type === "tool_state_changed")).toBe(false);
+    expect(
+      events.some((event) => event.type === "tool_state_changed" && event.name === "todo"),
+    ).toBe(false);
   },
 );
 
@@ -151,9 +155,9 @@ test("the latest complete snapshot survives resume and an empty list clears it",
     content: [{ type: "text", text: "Updated todo list: 0 pending, 0 in progress, 0 completed." }],
   });
   expect(resumed.toolState("todo")).toEqual([]);
-  expect(events.filter((event) => event.type === "tool_state_changed")).toEqual([
-    { type: "tool_state_changed", sessionId: session.id, name: "todo", value: [] },
-  ]);
+  expect(
+    events.filter((event) => event.type === "tool_state_changed" && event.name === "todo"),
+  ).toEqual([{ type: "tool_state_changed", sessionId: session.id, name: "todo", value: [] }]);
   const reopened = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
   expect(reopened.toolState("todo")).toEqual([]);
 });

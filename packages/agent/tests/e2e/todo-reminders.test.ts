@@ -114,7 +114,8 @@ test("Compaction places the current Todo List before the retained conversation t
   await session.run("buffer");
   await session.run("update", {
     onEvent: (event) => {
-      if (event.type === "tool_state_changed") fake.model.contextWindow = 4000;
+      if (event.type === "tool_state_changed" && event.name === "todo")
+        fake.model.contextWindow = 4000;
     },
   });
   expect(fake.contexts.at(-1)!.messages.slice(1, 8)).toMatchObject([

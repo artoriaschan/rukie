@@ -61,6 +61,12 @@ import { createMcpConnections } from "../mcp/index.ts";
 import { compactTurn, estimateContextTokens, restoreContext } from "../compaction/index.ts";
 import { contextUsage } from "../context-usage/index.ts";
 import { createToolState, todoState, type TodoItem } from "../tool-state/index.ts";
+import {
+  createCheckpoints,
+  checkpointState,
+  type Checkpoint,
+  type RewindResult,
+} from "../checkpoint/index.ts";
 
 import { planState, planModeReminder, PLAN_MODE_EXIT } from "../plan-mode/index.ts";
 import type { OnInteractionStart } from "../interaction/index.ts";
@@ -110,6 +116,12 @@ export interface SessionOptions {
 
 export type SessionEvent = SharedSessionEvent<AgentEvent>;
 
+function promptText(message: Extract<AgentMessage, { role: "user" }>): string {
+  return typeof message.content === "string"
+    ? message.content
+    : message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
+}
+
 export interface Session {
   /** Includes runs started internally by asyncRewake hooks. */
   readonly running: boolean;
@@ -128,6 +140,13 @@ export interface Session {
   readonly messages: readonly AgentMessage[];
   /** Current Tool State snapshot; undefined before the first write. */
   toolState(name: string): unknown;
+  /** Prompt anchors and their file records, in chronological order. */
+  checkpoints(): Checkpoint[];
+  /** Restores a prompt's files while idle. At least one option must be true. */
+  rewind(
+    promptEntryId: string,
+    options: { code: boolean; conversation: boolean },
+  ): Promise<RewindResult>;
   /** Interrupt a child Run; missing and idle children are a no-op. */
   interruptSubagent(id: string): void;
   /** Ends the Session once, cancelling its Run and releasing external resources. */
@@ -167,6 +186,8 @@ interface InternalSessionOptions {
   initialMessages?: AgentMessage[];
   systemPrompt?: string;
   control?: { steer?: (message: AgentMessage) => void };
+  /** Parent-owned recorder; children never open their own Checkpoint. */
+  checkpoint?: ReturnType<typeof createCheckpoints>;
 }
 
 async function createSessionInternal(
@@ -237,7 +258,7 @@ async function createSessionInternal(
   };
   let emitRunEvent: ((event: CustomSessionEvent<AgentEvent>) => void | Promise<void>) | undefined;
   const toolState = createToolState(
-    [todoState, subagentsState, planState],
+    [todoState, subagentsState, planState, checkpointState],
     entries,
     options.onWarning ?? console.warn,
   );
@@ -295,6 +316,28 @@ async function createSessionInternal(
     },
   };
   let activeStore: StoredSession | undefined;
+  const promptTexts = new Map(
+    entries.flatMap((entry) =>
+      entry.type === "message" && entry.message.role === "user"
+        ? [[entry.id, promptText(entry.message)] as const]
+        : [],
+    ),
+  );
+  const checkpoint =
+    internal.checkpoint ??
+    (internal.parentSessionId
+      ? undefined
+      : createCheckpoints({
+          homeDir: options.homeDir,
+          sessionId: stored.metadata.id,
+          getState: () => toolState.get("checkpoint"),
+          getPrompt: (id) => promptTexts.get(id),
+          async persist(state) {
+            if (!activeStore) throw new Error("Checkpoint writes require an active Run.");
+            const value = await toolState.set("checkpoint", state, activeStore, context);
+            await emitRunEvent?.({ type: "tool_state_changed", name: "checkpoint", value });
+          },
+        }));
   const setTodo = async (todos: TodoItem[]) => {
     if (!activeStore) throw new Error("Tool State writes require an active Run.");
     const value = await toolState.set("todo", todos, activeStore, context);
@@ -441,7 +484,10 @@ async function createSessionInternal(
     rules,
     sessionAllowRules: permissionConfiguration.sessionAllowRules,
     sessionGrantListeners: permissionConfiguration.sessionGrantListeners,
-    onToolCallAllowed: permissionConfiguration.onToolCallAllowed,
+    async onToolCallAllowed(call) {
+      await permissionConfiguration.onToolCallAllowed?.(structuredClone(call));
+      await checkpoint?.record(call, cwd, options.homeDir);
+    },
     getMode: permissionConfiguration.getMode,
     setMode: permissionConfiguration.setMode,
     getAgentState: () => agent.state,
@@ -727,6 +773,7 @@ async function createSessionInternal(
   });
   if (internal.control) internal.control.steer = (message) => agent.steer(message);
   let running = false;
+  let rewinding = false;
   let hookRunActive = false;
   let runSettled: ReturnType<typeof Promise.withResolvers<void>> | undefined;
   let queuedUserRuns = 0;
@@ -788,6 +835,23 @@ async function createSessionInternal(
       name === "plan" && (internal.plan || toolState.get("plan") !== undefined)
         ? { active: plan.getActive() }
         : toolState.get(name),
+    checkpoints: () => (internal.parentSessionId ? [] : (checkpoint?.list() ?? [])),
+    async rewind(promptEntryId, { code, conversation }) {
+      if (disposePromise) throw new Error("Session has been disposed.");
+      if (running || subagents.count || rewinding)
+        throw new Error("Rewind requires an idle Session.");
+      if (internal.parentSessionId || !checkpoint)
+        throw new Error("Subagent Sessions cannot rewind.");
+      if (!code && !conversation) throw new Error("Rewind requires code or conversation.");
+      if (conversation) throw new Error("Conversation rewind is not available yet.");
+      rewinding = true;
+      try {
+        const prompt = checkpoint.prompt(promptEntryId);
+        return { prompt, ...(await checkpoint.restoreCode(promptEntryId)) };
+      } finally {
+        rewinding = false;
+      }
+    },
     interruptSubagent: subagents.interrupt,
     dispose(reason = "exit") {
       if (!disposePromise) {
@@ -836,6 +900,7 @@ async function createSessionInternal(
         }
       }
       if (disposePromise) throw new Error("Session has been disposed.");
+      if (rewinding) throw new Error("Session is rewinding.");
       if (running) throw new Error("Session already has an active Run.");
       running = true;
       hookRunActive = fromHook;
@@ -854,6 +919,11 @@ async function createSessionInternal(
       toolHookContexts.clear();
       hookDenials.clear();
       let stopHookContinuations = 0;
+      const userPrompt: AgentMessage = {
+        role: "user",
+        content: [{ type: "text", text: prompt }],
+        timestamp: Date.now(),
+      };
       // pi prepareRequest has no end action. A private control exception exits its
       // loop; the synthetic failure it creates is consumed below, never persisted.
       const hookRequestStop = new Error(`Hook request stopped: ${crypto.randomUUID()}`);
@@ -1231,7 +1301,11 @@ async function createSessionInternal(
               if (event.message.role === "user") userMessageSequence++;
               rewakeSteering.delete(event.message);
               subagents.delivered(event.message);
-              await branch.appendMessage(event.message, context);
+              const entryId = await branch.appendMessage(event.message, context);
+              if (event.message === userPrompt && !fromHook && !internal.parentSessionId) {
+                promptTexts.set(entryId, prompt);
+                await checkpoint?.start(entryId);
+              }
               transcriptMessages.push(event.message);
               if (event.message.role === "system-reminder") {
                 await emit({
@@ -1279,7 +1353,7 @@ async function createSessionInternal(
           const invocation = skillInvocation(prompt, skills);
           await agent.prompt([
             ...reminders,
-            { role: "user", content: [{ type: "text", text: prompt }], timestamp: Date.now() },
+            userPrompt,
             ...consumeSessionContext(),
             ...promptContexts.map((content) => ({
               role: "system-reminder" as const,

@@ -96,7 +96,9 @@ export async function compactTurn(options: {
   const { model, signal } = options;
   const tokensBefore = estimateContextTokens(options.messages);
   if (tokensBefore <= model.contextWindow * 0.8) return undefined;
-  const entries = await options.entries();
+  // Tool State has no model-visible content. In particular, a Checkpoint entry
+  // between a user prompt and its reminders must not become pi's turn cut point.
+  const entries = (await options.entries()).filter((entry) => entry.type !== "custom");
   const latestUserIndex = entries.findLastIndex(
     (entry) => entry.type === "message" && entry.message.role === "user",
   );

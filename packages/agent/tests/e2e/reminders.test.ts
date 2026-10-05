@@ -94,7 +94,7 @@ test("resume preserves the model and Transcript prefix and appends changed date 
       const writes = JSON.parse(line);
       return Array.isArray(writes) ? writes : [writes];
     })
-    .filter((write) => write.kind === "entry")
+    .filter((write) => write.kind === "entry" && write.type === "message")
     .map((write) => write.message);
   expect(storedMessages[0]).toEqual(fake.contexts[0]!.messages[0]);
   expect(storedMessages.filter((message) => message.role === "system-reminder")).toMatchObject([

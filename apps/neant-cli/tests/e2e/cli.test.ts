@@ -428,6 +428,7 @@ test("stream-json emits session metadata, verbatim pi events, and the Run result
     "reminder_injected",
     "message_end",
     "message_start",
+    "tool_state_changed",
     "message_end",
     "message_start",
     "message_update",
@@ -678,7 +679,7 @@ test("SIGINT exits 130 after saving the interrupted Run's messages", async () =>
     .map((line) => JSON.parse(line));
   const entries = lines
     .flatMap((line) => (Array.isArray(line) ? line : [line]))
-    .filter((write) => write.kind === "entry")
+    .filter((write) => write.kind === "entry" && write.type === "message")
     .map((write) => write.message);
   expect(entries).toMatchObject([
     { role: "system", content: expect.stringContaining("You are Neant") },
