@@ -7,7 +7,7 @@ import {
   type TextSpan,
   type TextStyle,
 } from "../text";
-import { Node, Direction, Edge, FlexDirection, Gutter, MeasureMode } from "../yoga";
+import { Node, Direction, Edge, FlexDirection, Gutter, MeasureMode, PositionType } from "../yoga";
 import type { ScrollState } from "../scroll";
 
 export type HostType = "tui-box" | "tui-text" | "tui-static" | "tui-scroll";
@@ -117,6 +117,13 @@ export function updateNode(node: HostNode, props: HostProps) {
   node.props = props;
   node.initialized = true;
   const yoga = node.yoga;
+  yoga.setPositionType(
+    props.position === "absolute" ? PositionType.Absolute : PositionType.Relative,
+  );
+  yoga.setPosition(Edge.Top, props.top);
+  yoga.setPosition(Edge.Right, props.right);
+  yoga.setPosition(Edge.Bottom, props.bottom);
+  yoga.setPosition(Edge.Left, props.left);
   yoga.setFlexDirection(
     props.flexDirection === "column" ? FlexDirection.Column : FlexDirection.Row,
   );

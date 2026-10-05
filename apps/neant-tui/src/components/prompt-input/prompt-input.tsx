@@ -11,6 +11,7 @@ export function PromptInput({
   history,
   readOnly = false,
   compact = false,
+  tip,
 }: {
   value: string;
   onChange(value: string): void;
@@ -22,6 +23,7 @@ export function PromptInput({
   history?: TextInputProps["history"];
   readOnly?: boolean;
   compact?: boolean;
+  tip?: string;
 }) {
   const edge = "─".repeat(Math.max(0, columns - 2));
   return (
@@ -55,6 +57,19 @@ export function PromptInput({
           color={planMode ? "plan" : "promptBorder"}
           wrap="truncate"
         >{`╰${edge}╯`}</ThemedText>
+      )}
+      {tip && (
+        <Box
+          position="absolute"
+          top={-1}
+          right={1}
+          width={Math.min(Bun.stringWidth(tip), Math.max(1, columns - 3))}
+          height={1}
+        >
+          <ThemedText dimColor wrap="truncate">
+            {tip}
+          </ThemedText>
+        </Box>
       )}
     </Box>
   );

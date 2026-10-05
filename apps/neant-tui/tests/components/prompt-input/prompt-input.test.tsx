@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { useLayoutEffect, useState } from "react";
-import { ThemeProvider, dark, light, render } from "@neant/tui";
+import { Box, Text, ThemeProvider, dark, light, render } from "@neant/tui";
 import { PromptInput } from "../../../src/components/prompt-input/prompt-input";
 import { createTerminal } from "../../helpers/terminal";
 
@@ -87,3 +87,51 @@ test.each([
     terminal.dispose();
   }
 });
+
+test.each([false, true])(
+  "temporary tip floats above the prompt without moving it (compact=%s)",
+  async (compact) => {
+    const terminal = createTerminal(40, 12);
+    let dismiss = () => {};
+    function View() {
+      const [tip, setTip] = useState<string | undefined>("再按一次 Esc 回退");
+      useLayoutEffect(() => {
+        dismiss = () => setTip(undefined);
+      }, []);
+      return (
+        <Box flexDirection="column">
+          <Text>{"P".repeat(40)}</Text>
+          <PromptInput
+            compact={compact}
+            columns={40}
+            maxLines={1}
+            value="中文 draft"
+            onChange={() => {}}
+            onSubmit={() => {}}
+            tip={tip}
+          />
+        </Box>
+      );
+    }
+    const app = render(<View />, terminal);
+    try {
+      await terminal.flush();
+      const row = compact ? 0 : 1;
+      const prefix = compact ? "P".repeat(22) : " ".repeat(22);
+      expect(terminal.screen()[row]).toBe(prefix + "再按一次 Esc 回退" + (compact ? "P" : ""));
+      const buffer = terminal.terminal.buffer.active;
+      const cursor = [buffer.cursorX, buffer.cursorY];
+      const input = terminal.screen().findIndex((line) => line.includes("❯ 中文 draft"));
+      dismiss();
+      await terminal.waitFor(() => !terminal.screen().some((line) => line.includes("再按一次")));
+      expect(terminal.screen()[0]).toBe("P".repeat(40));
+      expect(terminal.screen().findIndex((line) => line.includes("❯ 中文 draft"))).toBe(input);
+      expect([buffer.cursorX, buffer.cursorY]).toEqual(cursor);
+      expect(terminal.screen().every((line) => Bun.stringWidth(line) <= 40)).toBe(true);
+    } finally {
+      app.unmount();
+      await app.waitUntilExit();
+      terminal.dispose();
+    }
+  },
+);
