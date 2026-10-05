@@ -1,14 +1,20 @@
 import { Box, ThemedBox, ThemedText, figures } from "@neant/tui";
+import type { PromptImage } from "@neant/agent";
 import type { Locale } from "@neant/i18n";
+import { ImagePlaceholder } from "../image-placeholder";
 import { createTuiI18n } from "../../i18n";
 
 export function UserMessage({
   text,
   source,
+  images,
+  onImageOpen,
   locale = "zh",
 }: {
   text: string;
   source?: string;
+  images?: PromptImage[];
+  onImageOpen?(image: PromptImage): void;
   locale?: Locale;
 }) {
   const t = createTuiI18n(locale);
@@ -29,6 +35,9 @@ export function UserMessage({
           </ThemedText>
         </Box>
       </ThemedBox>
+      {images?.map((image, index) => (
+        <ImagePlaceholder key={index} image={image} onOpen={onImageOpen} />
+      ))}
     </Box>
   );
 }

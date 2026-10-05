@@ -1,6 +1,14 @@
+import { basename } from "node:path";
 import type { Locale } from "@neant/i18n";
 import { createTuiI18n, formatError } from "../../i18n";
-import type { GoalView, Session, SessionEvent, SessionRecovery, TodoItem } from "@neant/agent";
+import type {
+  PromptImage,
+  GoalView,
+  Session,
+  SessionEvent,
+  SessionRecovery,
+  TodoItem,
+} from "@neant/agent";
 import {
   isUnknownToolOutcome,
   type ContextUsageEvent,
@@ -22,13 +30,20 @@ interface ToolCall {
 }
 
 type CompletedEntry =
-  | { type: "message"; role: "user" | "assistant"; text: string; source?: string }
+  | {
+      type: "message";
+      role: "user" | "assistant";
+      text: string;
+      source?: string;
+      images?: PromptImage[];
+    }
   | {
       type: "tool";
       summary: string;
       isError: boolean;
       outcomeUnknown?: boolean;
       result?: string;
+      images?: PromptImage[];
       error?: string;
       agentId?: string;
       planReview?: { plan: string; kind: "approve" | "revise" | "takeover"; feedback?: string };
@@ -119,6 +134,19 @@ function toolEntry(
   const todo = tool.name === "todo_write" && !isError ? todoSummary(tool.args, t) : undefined;
   return {
     type: "tool",
+    images: result.content
+      .filter((block) => block.type === "image")
+      .map((image) => ({
+        data: image.data,
+        mimeType: image.mimeType,
+        ...(tool.name === "read" &&
+        typeof tool.args === "object" &&
+        tool.args !== null &&
+        "path" in tool.args &&
+        typeof tool.args.path === "string"
+          ? { name: basename(tool.args.path) }
+          : {}),
+      })),
     ...(review && { planReview: review }),
     summary:
       goal !== undefined
@@ -326,6 +354,16 @@ function userMessageEntry(
     type: "message",
     role: "user",
     text: messageText(message),
+    images:
+      typeof message.content === "string"
+        ? []
+        : message.content
+            .filter((block) => block.type === "image")
+            .map((image, index) => ({
+              data: image.data,
+              mimeType: image.mimeType,
+              ...(message.imageNames?.[index] ? { name: message.imageNames[index]! } : {}),
+            })),
     ...("source" in message && typeof message.source === "string" && { source: message.source }),
   };
 }
@@ -783,12 +821,12 @@ export function createConversation(session: Session, model: string, locale: Loca
         }
       };
     },
-    submit(prompt: string, initial = false) {
+    submit(prompt: string, initial = false, images: PromptImage[] = []) {
       if (compacting) return false;
       if (!prompt.trim()) return false;
       if (active || (session.running && !initial)) {
-        if (!prompt.startsWith("/")) return false;
-        session.steer(prompt);
+        if (!images.length && !prompt.startsWith("/")) return false;
+        session.steer(prompt, { images });
         return true;
       }
       const controller = new AbortController();
@@ -808,6 +846,7 @@ export function createConversation(session: Session, model: string, locale: Loca
       const promise = session
         .run(prompt, {
           signal: controller.signal,
+          images,
         })
         .catch((error: unknown) => {
           if (!controller.signal.aborted) {

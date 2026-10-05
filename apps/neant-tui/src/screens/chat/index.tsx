@@ -7,6 +7,8 @@ import {
   listModels,
   listSessions,
   type SessionSummary,
+  type PromptImage,
+  ImageValidationError,
   type Session,
   type SessionOptions,
 } from "@neant/agent";
@@ -19,6 +21,7 @@ import {
   createTextInputHistory,
   useInput,
   useTerminalSize,
+  useTheme,
   type ScrollHandle,
   type ScrollSnapshot,
 } from "@neant/tui";
@@ -52,8 +55,9 @@ import { rewindLayout, type RewindEntry, type RewindMode } from "../../component
 import { formatError } from "../../i18n";
 import type { DetailPage } from "../../components/subagent-detail";
 import { createTuiI18n } from "../../i18n";
-import type { TuiHost } from "../../host";
+import { createImageViewer, type TuiHost } from "../../host";
 import { createInputHistory } from "../../input-history";
+import { createComposerImages, pastedImagePath } from "./composer-images";
 import { createConversation } from "./conversation";
 import { createInteractions } from "./interactions";
 import { permissionChoices } from "../../components/permission-dialog";
@@ -90,8 +94,9 @@ export async function createChat(
   const bindingListeners = new Set<() => void>();
   const history = await createInputHistory(options.cwd, options.homeDir);
   const inputHistory = createTextInputHistory(history.entries);
-  const submit = (prompt: string, initial = false) => {
-    if (!conversation.submit(prompt, initial)) return false;
+  const imageViewer = createImageViewer(host);
+  const submit = (prompt: string, initial = false, images?: PromptImage[]) => {
+    if (!conversation.submit(prompt, initial, images)) return false;
     history.remember(prompt);
     inputHistory.reset();
     return true;
@@ -127,7 +132,11 @@ export async function createChat(
         await session.dispose();
         await conversation.stop();
       } finally {
-        await history.flush();
+        try {
+          await history.flush();
+        } finally {
+          await imageViewer.dispose();
+        }
       }
     },
     Chat({ onExit }: { onExit(): void }) {
@@ -146,8 +155,10 @@ export async function createChat(
           session={current.session}
           conversation={current.conversation}
           history={inputHistory}
+          imageViewer={imageViewer}
           submit={submit}
           interactions={interactions}
+          homeDir={options.homeDir}
           cwd={options.cwd}
           checkpointCwd={checkpointCwd}
           thinking={options.settings?.thinking}
@@ -168,9 +179,11 @@ function Chat({
   session,
   conversation,
   history,
+  imageViewer,
   submit,
   interactions,
   cwd,
+  homeDir,
   checkpointCwd,
   thinking,
   locale,
@@ -184,9 +197,11 @@ function Chat({
   session: Session;
   conversation: ReturnType<typeof createConversation>;
   history: ReturnType<typeof createTextInputHistory>;
-  submit(prompt: string): boolean;
+  imageViewer: ReturnType<typeof createImageViewer>;
+  submit(prompt: string, initial?: boolean, images?: PromptImage[]): boolean;
   interactions: ReturnType<typeof createInteractions>;
   cwd: string;
+  homeDir?: string;
   checkpointCwd: string;
   thinking?: ThinkingLevel;
   locale: Locale;
@@ -198,6 +213,30 @@ function Chat({
   writeTitle?: (title: string) => void;
 }) {
   const t = createTuiI18n(locale);
+  const theme = useTheme();
+  const composer = useMemo(createComposerImages, [session]);
+  const pasteOwner = useRef(true);
+  const pasteEpoch = useRef(0);
+  useLayoutEffect(
+    () => () => {
+      pasteOwner.current = false;
+    },
+    [],
+  );
+  const [imageNotice, setImageNotice] = useState<{ text: string; warning: boolean }>();
+  const imageNoticeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const notifyImage = (text: string, warning = false) => {
+    clearTimeout(imageNoticeTimer.current);
+    setImageNotice({ text, warning });
+    imageNoticeTimer.current = setTimeout(() => setImageNotice(undefined), warning ? 5000 : 2500);
+  };
+  useEffect(() => () => clearTimeout(imageNoticeTimer.current), []);
+  const openImage = (image: PromptImage) => {
+    void imageViewer.open(image).catch((error: unknown) => {
+      if (pasteOwner.current)
+        notifyImage(t("image.open-error", { error: formatError(error, t) }), true);
+    });
+  };
   const state = useSyncExternalStore(conversation.subscribe, conversation.getSnapshot);
   const [title, setTitle] = useState(session.title);
   useEffect(
@@ -400,6 +439,18 @@ function Chat({
   const { columns, rows } = useTerminalSize();
   const small = columns < 40 || rows < 12;
   useLayoutEffect(() => interactions.setQuestionEditingEnabled(!small), [interactions, small]);
+  useLayoutEffect(() => {
+    pasteEpoch.current++;
+  }, [
+    small,
+    view,
+    modelPicker,
+    resumePicker,
+    rewind,
+    promptRevision,
+    interaction?.request,
+    userQuestion?.collapsed,
+  ]);
   const body = useRef<ScrollHandle>(null);
   const details = useRef<ScrollHandle>(null);
   const [bodyScroll, setBodyScroll] = useState<ScrollSnapshot>();
@@ -494,6 +545,7 @@ function Chat({
     state.error,
   ]);
   const change = (value: string) => {
+    if (!value && draft.current) pasteEpoch.current++;
     armRewind();
     dismissedMenu.current = undefined;
     setMenuDismissed(false);
@@ -518,7 +570,7 @@ function Chat({
   const executeCommand = (prompt: string) => {
     const parsed = /^\/([a-z0-9-]+)(?:\s|$)/.exec(prompt);
     const command = catalog.find((entry) => entry.name === parsed?.[1]);
-    if (!command) return submit(prompt);
+    if (!command) return submit(prompt, false, composer.ordered(prompt));
     if (conversation.isRunning() && !command.duringRun) {
       conversation.notice(t("command.busy", { name: command.name }));
       return true;
@@ -659,6 +711,7 @@ function Chat({
     if (executeCommand(prompt)) {
       body.current?.scrollToBottom();
       change("");
+      composer.clear();
     }
   };
   const openRewind = () => {
@@ -1112,6 +1165,8 @@ function Chat({
                   status={entry.isError ? "error" : "success"}
                   outcomeUnknown={entry.outcomeUnknown}
                   result={entry.result}
+                  images={entry.images}
+                  onImageOpen={openImage}
                   error={entry.error}
                 />
                 {entry.agentId &&
@@ -1142,7 +1197,14 @@ function Chat({
             return <Notice key={index} kind="info" text={entry.text} />;
           case "message":
             return entry.role === "user" ? (
-              <UserMessage key={index} text={entry.text} source={entry.source} locale={locale} />
+              <UserMessage
+                key={index}
+                text={entry.text}
+                source={entry.source}
+                locale={locale}
+                images={entry.images}
+                onImageOpen={openImage}
+              />
             ) : (
               <AssistantMessage key={index} text={entry.text} />
             );
@@ -1398,6 +1460,7 @@ function Chat({
                 />
               )}
             <PromptInput
+              notice={imageNotice}
               tip={rewindArmedAt === undefined ? undefined : t("rewind.again")}
               key={promptRevision}
               readOnly={
@@ -1427,6 +1490,34 @@ function Chat({
                   ["up", "down", "tab", "enter"].includes(event.key.name)
                 )
               }
+              highlightRanges={composer
+                .ranges(input)
+                .map((range) => ({ ...range, color: theme.suggestion }))}
+              onPaste={(text, insert) => {
+                const epoch = pasteEpoch.current;
+                const path = pastedImagePath(text, homeDir ?? "");
+                if (!path) {
+                  insert(text);
+                  return;
+                }
+                void composer
+                  .read(path)
+                  .then((image) => {
+                    if (!pasteOwner.current || epoch !== pasteEpoch.current) return;
+                    const token = composer.bind(image, draft.current);
+                    insert(token + " ");
+                    notifyImage(t("image.pasted", { token }));
+                  })
+                  .catch((error: unknown) => {
+                    if (!pasteOwner.current || epoch !== pasteEpoch.current) return;
+                    if (
+                      error instanceof ImageValidationError &&
+                      ["image-too-large", "image-dimensions"].includes(error.code)
+                    )
+                      notifyImage(t("image.paste-error", { error: formatError(error, t) }), true);
+                    else insert(text);
+                  });
+              }}
               value={input}
               onChange={(value) => {
                 const pending = sideController.current ? undefined : interactions.getSnapshot();

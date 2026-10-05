@@ -1,4 +1,6 @@
 import { useState } from "react";
+import type { PromptImage } from "@neant/agent";
+import { ImagePlaceholder } from "../image-placeholder";
 import type { Locale } from "@neant/i18n";
 import { createTuiI18n } from "../../i18n";
 import { Markdown } from "../markdown";
@@ -9,6 +11,8 @@ export function ToolCall({
   status,
   outcomeUnknown = false,
   result,
+  images,
+  onImageOpen,
   error,
   planReview,
   locale = "zh",
@@ -17,6 +21,8 @@ export function ToolCall({
   status: StatusIconProps["status"];
   outcomeUnknown?: boolean;
   result?: string;
+  images?: PromptImage[];
+  onImageOpen?(image: PromptImage): void;
   error?: string;
   locale?: Locale;
   planReview?: { plan: string; kind: "approve" | "revise" | "takeover"; feedback?: string };
@@ -57,6 +63,9 @@ export function ToolCall({
           <ThemedText wrap="truncate">{output}</ThemedText>
         </ThemedBox>
       )}
+      {images?.map((image, index) => (
+        <ImagePlaceholder key={index} image={image} onOpen={onImageOpen} />
+      ))}
     </ThemedBox>
   );
 }
