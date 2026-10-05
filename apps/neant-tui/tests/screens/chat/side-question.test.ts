@@ -1,7 +1,55 @@
 import { expect, test } from "bun:test";
+import { createSession } from "@neant/agent";
+import { createFauxCore, fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { withAuxiliaryRequests } from "../../helpers/auxiliary-model.ts";
 import { start } from "../../helpers/app";
 
 const screen = (app: Awaited<ReturnType<typeof start>>) => app.screen().join("\n");
+
+test("opening resume cancels the side overlay and restores the selected session without its answer", async () => {
+  const app = await start([], {
+    env: { LANG: "en_US.UTF-8" },
+    columns: 40,
+    rows: 12,
+    prepare: async (root) => {
+      const faux = createFauxCore({ api: "faux", provider: "faux" });
+      faux.setResponses([fauxAssistantMessage("Prior stored answer.")]);
+      const seed = await createSession({
+        cwd: root,
+        homeDir: root,
+        model: faux.getModel(),
+        streamFn: withAuxiliaryRequests(faux.streamSimple),
+      });
+      await seed.run("Previous main task");
+      await seed.rename("Previous session");
+      await seed.dispose();
+    },
+  });
+  try {
+    await app.waitFor(() => app.screen().some((line) => line.startsWith("╭")));
+    app.stdin.write("/btw side before resume\r");
+    await app.waitFor(() => app.sideQuestions.length === 1);
+    const side = app.sideQuestions[0]!;
+    side.delta("Temporary side answer.");
+    await app.waitFor(() => screen(app).includes("Temporary side answer."));
+    app.stdin.write("/resume\r");
+    await app.waitFor(() => screen(app).includes("Previous session"));
+    expect(side.signal!.aborted).toBe(true);
+    expect(screen(app)).not.toContain("Temporary side answer.");
+    expect(screen(app)).toContain("Resume session");
+    app.stdin.write("\r");
+    await app.waitFor(() => screen(app).includes("Prior stored answer."));
+    app.stdin.write("continue previous task\r");
+    await app.waitFor(() => app.calls.length === 1);
+    expect(JSON.stringify(app.calls[0]!.context)).toContain("Previous main task");
+    expect(JSON.stringify(app.calls[0]!.context)).not.toContain("side before resume");
+    expect(JSON.stringify(app.calls[0]!.context)).not.toContain("Temporary side answer.");
+    app.calls[0]!.finish();
+    await app.waitFor(() => !app.isWorking());
+  } finally {
+    await app.cleanup();
+  }
+});
 
 test("/btw streams in a separate overlay during the main Run and Escape aborts only the side request", async () => {
   const app = await start([], { env: { LANG: "en_US.UTF-8" } });

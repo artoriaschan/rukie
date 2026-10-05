@@ -24,3 +24,5 @@ TUI ④ 层持有请求与本地回答状态，③ 层 `SideQuestionPanel` 只�
 验证：Core 公共 `createSession` / `sideQuestion` 7 tests / 52 assertions，TUI 公共 `start()` 4 tests / 27 assertions，覆盖快照恢复、工具过滤、hooks/reminder/events/transcript 隔离、取消与 disposal、run 并发、替换、空参数、错误、40×12 与待答面板恢复。受影响回归含 title/model/compaction/main/slash/settings/question parity：145 pass / 0 fail / 844 assertions。`oxfmt --check`、`oxlint`、`tsc -b`、`knip` 通过；完整 spec 的最终整合 full check 由交付阶段完成。
 
 合入最新 context report 整合分支后，包含报告的回归 159 pass / 0 fail / 954 assertions，静态检查再次通过。`CONTEXT.md` 同步批准 spec 中 Side Question、Context Report 与手动 Compaction 的领域定义。
+
+合入 session list / resume picker 的最新整合分支后，保留 live reader 注册和 disposal 注销，同时保留独立 side lifetime。新增第 5 个 TUI 用例验证 40×12 中 `/resume` 关闭/取消侧问再恢复原 session，侧问内容不进入恢复后的上下文。组合 side/list/run/resume 回归 36 pass / 0 fail / 213 assertions，格式、lint、types、knip 再次通过。

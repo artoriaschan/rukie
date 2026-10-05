@@ -19,6 +19,8 @@ Spec: [slash commands](spec.md). Local Markdown tracker; tickets resolve through
 
 - [06: /context 上下文报告](issues/06-context-report.md#answer) — read-only restored-context accounting and provider totals; local immutable TUI visualization with four grid sizes, themed categories, detailed legends and active-run support.
 
+- [04: /resume 选择器](issues/04-resume-picker.md#answer) — 原生会话摘要和 live store lease 借用，排除子/旧版子会话、保存模型优先；两行有界暗色 fallback picker、Esc、空/忙提示与标题/模型/对话重建已覆盖。
+
 ## Fog
 
 - Remaining Core capability and TUI handler tickets retain their existing dependency graph.
