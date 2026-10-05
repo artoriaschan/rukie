@@ -1,6 +1,6 @@
 import type { Locale } from "@neant/i18n";
 import { createTuiI18n, formatError } from "../../i18n";
-import type { Session, SessionEvent, TodoItem } from "@neant/agent";
+import type { Session, SessionEvent, SessionRecovery, TodoItem } from "@neant/agent";
 import { isUnknownToolOutcome, type ContextUsageEvent, type RunResult } from "@neant/shared";
 import type { TpsSample } from "../../components/status-line";
 import { reduceSubagent, restoreSubagents, type SubagentState } from "./subagents";
@@ -312,6 +312,7 @@ function reduceEvent(
   event: SessionEvent,
   now: number,
   t: ReturnType<typeof createTuiI18n>,
+  recovery?: SessionRecovery,
 ): ViewState {
   switch (event.type) {
     case "subagent_event": {
@@ -343,7 +344,7 @@ function reduceEvent(
           ? {
               ...state,
               subagents: Object.fromEntries(
-                Object.entries(restoreSubagents(event.value)).map(([id, row]) => [
+                Object.entries(restoreSubagents(event.value, recovery)).map(([id, row]) => [
                   id,
                   state.subagents[id]
                     ? {
@@ -605,7 +606,15 @@ export function createConversation(session: Session, model: string, locale: Loca
     }
     update(
       {
-        ...reduceEvent(state, event, now, t),
+        ...reduceEvent(
+          state,
+          event,
+          now,
+          t,
+          event.type === "tool_state_changed" && event.name === "subagents"
+            ? session.recovery
+            : undefined,
+        ),
         activity: reduce(
           event.type === "session_start" && !state.running
             ? reduce(state.activity, { type: "submit" }, now)

@@ -293,6 +293,21 @@ test("Subagent panel follows Todo, has independent mouse folding and opens child
       { name: "subagent", args: { description: "Second child", prompt: "second" } },
     ]);
     await app.waitFor(() => app.calls.length === 5);
+    const children = app.calls.filter((call) =>
+      call.context.messages.some(
+        (message) =>
+          message.role === "user" &&
+          typeof message.content !== "string" &&
+          message.content.some(
+            (part) => part.type === "text" && (part.text === "first" || part.text === "second"),
+          ),
+      ),
+    );
+    expect(children).toHaveLength(2);
+    expect(children.every((call) => !call.signal!.aborted)).toBe(true);
+    // Child model requests can precede React's coalesced session_start render.
+    // Assert the panel only when its two live Runs are actually visible.
+    await app.waitFor(() => app.screen().includes("  ▾ 子代理 2/2"));
     expect(app.screen()).toContain("  ▾ 子代理 2/2");
     const header = app.screen().indexOf("  ▾ 子代理 2/2");
     expect(header).toBeGreaterThan(app.screen().indexOf("  └─ ● parent work"));
