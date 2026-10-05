@@ -5,6 +5,7 @@ export {
   type SessionEvent,
   type Session,
   type SessionOptions,
+  type SessionRecovery,
   type PermissionAskRequest,
   type SessionAllowRule,
 } from "./session/index.ts";

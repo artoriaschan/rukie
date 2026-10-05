@@ -239,6 +239,7 @@ export function createSubagents(options: SubagentOptions) {
         } catch (error) {
           result.success = false;
           result.error = error instanceof Error ? error.message : String(error);
+          options.warn(`Could not save subagent Run summary for ${session.id}: ${result.error}`);
         }
         options.addUsage(result.usage);
         if (run_in_background && !aborted) {

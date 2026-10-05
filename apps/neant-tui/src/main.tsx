@@ -99,6 +99,15 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
   let t = argvT;
   let app: ReturnType<typeof render> | undefined;
   let chat: Awaited<ReturnType<typeof createChat>> | undefined;
+  let closing = false;
+  const close = () => {
+    closing = true;
+    app?.unmount();
+  };
+  // Own process signals until Agent Core's parent and child Runs have settled.
+  // Terminal restoration alone must not terminate the process before saving.
+  process.on("SIGINT", close);
+  process.on("SIGTERM", close);
   try {
     const cwd = io.session?.cwd ?? process.cwd();
     const homeDir = io.session?.homeDir ?? homedir();
@@ -149,7 +158,8 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
       </ThemeProvider>,
       { ...io, fullscreen: true },
     );
-    if (prompt !== undefined) chat.submitInitial(prompt);
+    if (closing) app.unmount();
+    else if (prompt !== undefined) chat.submitInitial(prompt);
     await app.waitUntilExit();
     return 0;
   } catch (error) {
@@ -158,7 +168,12 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
     return 1;
   } finally {
     app?.unmount();
-    await chat?.stop();
+    try {
+      await chat?.stop();
+    } finally {
+      process.off("SIGINT", close);
+      process.off("SIGTERM", close);
+    }
   }
 }
 

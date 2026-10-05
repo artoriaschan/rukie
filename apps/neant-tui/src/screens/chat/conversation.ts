@@ -641,6 +641,26 @@ export function createConversation(session: Session, model: string, locale: Loca
     for (const event of startupEvents) onEvent(event);
   }
   observing = true;
+  const recovered = session.recovery.subagents;
+  if (recovered.length) {
+    state = {
+      ...state,
+      completed: [
+        ...state.completed,
+        {
+          type: "notice",
+          text: [
+            t("resume.subagents", { count: recovered.length }),
+            ...recovered.map(
+              (child) => `${t(`subagent.outcome.${child.outcome}`)}: ${child.description}`,
+            ),
+            t("resume.no-automatic-continuation"),
+            t("resume.continue-guidance"),
+          ].join("\n"),
+        },
+      ],
+    };
+  }
   return {
     dispatchActivity,
     notice(text: string, error = false) {
@@ -736,6 +756,7 @@ export function createConversation(session: Session, model: string, locale: Loca
       session.interruptRun();
       active?.controller.abort();
       await active?.promise;
+      await session.waitForIdle();
       unsubscribe();
     },
   };

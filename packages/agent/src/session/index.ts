@@ -120,6 +120,51 @@ export interface SessionOptions {
 
 export type SessionEvent = SharedSessionEvent<AgentEvent>;
 
+export interface SessionRecovery {
+  readonly subagents: readonly {
+    id: string;
+    description: string;
+    type: string;
+    runId?: string;
+    outcome: NonNullable<SubagentRun["outcome"]> | "unknown" | "interrupted";
+    reason?: string;
+    diagnostic?: "unconfirmed";
+  }[];
+}
+
+function recoverSubagentSummaries(identities: readonly SubagentIdentity[] = []): SessionRecovery {
+  return {
+    subagents: identities.flatMap((child) =>
+      child.latestRun?.outcome === "completed"
+        ? []
+        : [
+            {
+              id: child.id,
+              description: child.description,
+              type: child.type,
+              ...(child.latestRun && { runId: child.latestRun.id }),
+              outcome: child.latestRun?.outcome ?? "unknown",
+              ...((child.latestRun?.reason ?? child.latestRun?.error) && {
+                reason: child.latestRun?.reason ?? child.latestRun?.error,
+              }),
+            },
+          ],
+    ),
+  };
+}
+
+function recoverySummary(recovery: SessionRecovery): string {
+  return (
+    "Session Resume: these historical subagent Runs need attention. They were not automatically resumed. An ended Run does not mean the delegated task is completed. Check the saved work and actual state; use send_message with the original subagent id if you decide to continue.\n" +
+    recovery.subagents
+      .map(
+        (child) =>
+          `${child.id} (${child.description}): ${child.outcome}${child.reason ? ` — ${child.reason}` : ""}`,
+      )
+      .join("\n")
+  );
+}
+
 function promptText(message: Extract<AgentMessage, { role: "user" }>): string {
   return typeof message.content === "string"
     ? message.content
@@ -149,6 +194,8 @@ function projectBranch(entries: Entry[]) {
 }
 
 export interface Session {
+  /** Historical child Runs requiring attention on this Session Resume. No Run is started. */
+  readonly recovery: SessionRecovery;
   /** Includes runs started internally by asyncRewake hooks. */
   readonly running: boolean;
   /** Cancels the current run, including one started without a frontend controller. */
@@ -177,6 +224,8 @@ export interface Session {
   interruptSubagent(id: string): void;
   /** Ends the Session once, cancelling its Run and releasing external resources. */
   dispose(reason?: "exit" | "other"): Promise<void>;
+  /** External completion boundary, including Hook autoruns; never await from a Run callback. */
+  waitForIdle(): Promise<void>;
   /** Waits behind a hook autorun; a competing user run is rejected. */
   run(
     prompt: string,
@@ -337,6 +386,11 @@ async function createSessionInternal(
     entries,
     options.onWarning ?? console.warn,
   );
+  let recovery =
+    metadata && !internal.parentSessionId
+      ? recoverSubagentSummaries(toolState.get("subagents") as SubagentIdentity[] | undefined)
+      : { subagents: [] };
+  let recoveryPending = recovery.subagents.length > 0;
   let planActive = (toolState.get("plan") as { active: boolean } | undefined)?.active ?? false;
   let planEntered = toolState.get("plan") !== undefined;
   let planWrites = Promise.resolve();
@@ -872,6 +926,9 @@ async function createSessionInternal(
     get running() {
       return running;
     },
+    get recovery() {
+      return structuredClone(recovery);
+    },
     interruptRun() {
       runController?.abort();
     },
@@ -940,6 +997,10 @@ async function createSessionInternal(
           }
           const changes = toolState.restore(restoredEntries);
           subagents.restore(toolState.get("subagents") as SubagentIdentity[] | undefined);
+          recovery = metadata
+            ? recoverSubagentSummaries(toolState.get("subagents") as SubagentIdentity[] | undefined)
+            : { subagents: [] };
+          recoveryPending = false;
           planActive = (toolState.get("plan") as { active: boolean } | undefined)?.active ?? false;
           planEntered = toolState.get("plan") !== undefined;
           pendingPlanEvents.length = 0;
@@ -977,6 +1038,9 @@ async function createSessionInternal(
       }
     },
     interruptSubagent: subagents.interrupt,
+    waitForIdle() {
+      return runSettled?.promise ?? Promise.resolve();
+    },
     dispose(reason = "exit") {
       if (!disposePromise) {
         // Publish the promise before callbacks or hooks can re-enter dispose.
@@ -1101,11 +1165,18 @@ async function createSessionInternal(
       let childRunSaved = false;
       let childModelStop: "aborted" | "length" | undefined;
       async function persistChildRun(run: SubagentRun) {
-        const target = await store.open(stored.metadata, context);
         try {
-          await toolState.set("subagent-run", { ...run }, target, context);
-        } finally {
-          await target.close(context);
+          const target = await store.open(stored.metadata, context);
+          try {
+            await toolState.set("subagent-run", { ...run }, target, context);
+          } finally {
+            await target.close(context);
+          }
+        } catch (error) {
+          (options.onWarning ?? console.warn)(
+            `Could not save subagent Run fact for ${stored.metadata.id}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+          throw error;
         }
       }
       let active: StoredSession | undefined;
@@ -1449,6 +1520,11 @@ async function createSessionInternal(
               rewakeSteering.delete(event.message);
               subagents.delivered(event.message);
               const entryId = await branch.appendMessage(event.message, context);
+              if (
+                event.message.role === "system-reminder" &&
+                event.message.source === "session-resume"
+              )
+                recoveryPending = false;
               if (event.message === userPrompt && !fromHook && !internal.parentSessionId) {
                 promptTexts.set(entryId, prompt);
                 await checkpoint?.start(entryId);
@@ -1505,6 +1581,16 @@ async function createSessionInternal(
           await agent.prompt([
             ...reminders,
             userPrompt,
+            ...(!fromHook && recoveryPending
+              ? [
+                  {
+                    role: "system-reminder" as const,
+                    source: "session-resume",
+                    content: recoverySummary(recovery),
+                    timestamp: Date.now(),
+                  },
+                ]
+              : []),
             ...consumeSessionContext(),
             ...promptContexts.map((content) => ({
               role: "system-reminder" as const,
