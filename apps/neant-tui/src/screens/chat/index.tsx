@@ -335,9 +335,11 @@ function Chat({
   const promptMaxLines = Math.max(1, Math.min(6, Math.floor(rows / 3)) - 3);
   const hasTodos = state.todos.some((todo) => state.running || todo.status !== "completed");
   const subagents = Object.values(state.subagents);
-  const hasSubagents = subagents.some(
-    (agent) => state.running || agent.status === "running" || agent.status === "idle",
-  );
+  // Restored identities belong in the dashboard; only a live child opens the dock.
+  const panelSubagents = subagents.some((agent) => agent.status === "running")
+    ? subagents.filter((agent) => agent.status !== "idle")
+    : [];
+  const hasSubagents = panelSubagents.length > 0;
   const minimumDialogHeight = rewind
     ? 6
     : question
@@ -770,8 +772,7 @@ function Chat({
               maxHeight={todoMaxHeight}
             />
             <SubagentPanel
-              subagents={subagents}
-              working={state.running}
+              subagents={panelSubagents}
               collapsed={subagentsCollapsed}
               onToggle={() => setSubagentsCollapsed((collapsed) => !collapsed)}
               onOpen={(id) => openDetail(id, "chat")}

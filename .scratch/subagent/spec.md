@@ -69,7 +69,7 @@ TUI 完全复刻 dsh-TUI 的子代理呈现：消息流里的实时卡片、Ctrl
 41. 作为 TUI 用户，我想在输入框上方看到子代理面板，root 行为 `▾ 子代理 running/total`，每个节点一行显示状态符号、`[type]`、description，这样不翻消息流也知道谁在跑。
 42. 作为 TUI 用户，我想点子代理面板的 root 行切换折叠，折叠状态与 todo 面板相互独立，这样两个面板可以分别收起。
 43. 作为 TUI 用户，我想点子代理面板的节点直接进入该子代理的详情页。
-44. 作为 TUI 用户，我想在空闲时子代理面板隐藏已结束的子代理，与 todo 面板隐藏已完成项一致。
+44. 作为 TUI 用户，我想在全部子代理结束后立即隐藏自动列表，即使父代理仍在工作；resume 的历史身份仍可在 dashboard 查看，继续运行时再展示。
 45. 作为 TUI 用户，我想在审批框或提问框打开时，todo 面板和子代理面板仍然显示，审批框始终紧贴输入框，这样批准时还能看到上下文。
 46. 作为 TUI 用户，我想在终端高度不够时让 todo 面板和子代理面板各自折叠成 1 行预览而不是消失，这样小窗口里也不会丢信息。
 47. 作为 TUI 用户，我想在父代理等待子代理时看到状态行显示 `waiting for N subagents`，并能用 Esc 中止整个 run。
@@ -153,7 +153,7 @@ TUI 完全复刻 dsh-TUI 的子代理呈现：消息流里的实时卡片、Ctrl
 
 ### TUI
 
-- **子代理状态**：chat 屏幕从 `subagent_event` 折叠出每个子代理的视图模型（状态、description、type、model、开始 / 结束时间、tok、工具调用数、当前工具、输出行、工具列表、错误）。这是纯函数，放在 `screens/chat/` 下，与现有 `conversation.ts` / activity 并列。父 session resume 时从 `subagents` Tool State 初始化为 idle 条目。
+- **子代理状态**：chat 屏幕从 `subagent_event` 折叠出每个子代理的视图模型（状态、description、type、model、开始 / 结束时间、tok、工具调用数、当前工具、输出行、工具列表、错误）。这是纯函数，放在 `screens/chat/` 下，与现有 `conversation.ts` / activity 并列。父 session resume 时从 `subagents` Tool State 初始化为 idle 条目，保留在 Ctrl+A dashboard / 详情页，不据此展示自动子代理面板。
 - **消息流卡片**：新增 ③ 层组件 `subagent-message`，props only，完全复刻 dsh-TUI `SubagentMessage`：
   - 无边框，`paddingLeft=2`。
   - 头行依次为：spinner（`/activity` 预设，120ms）或 🟢/🔴；粗体 `子代理：` + description；然后各项之间用 dim `·` 分隔：`provider/model`、effort（父 thinking 级别，没有则省略）、时长、`N tok`、`N tools`、彩色状态。
@@ -174,7 +174,7 @@ TUI 完全复刻 dsh-TUI 的子代理呈现：消息流里的实时卡片、Ctrl
 - **子代理面板**：新增 ③ 层组件 `subagent-panel`，复用 todo 面板的结构和 design-system 部件：
   - root 行 `▸/▾ 子代理 running/total`，hover 背景同 todo；点 root 切换折叠，折叠状态是 chat 屏幕里独立的 state。
   - 节点每行：状态符号、`[type]`、description；点节点进入详情。
-  - 空闲时隐藏已结束的节点，全部隐藏时面板不渲染。
+  - 只有至少一个实际 running 子代理时展示面板；恢复出的 idle 身份不进入面板。其余已结束节点可作为运行上下文保留；全部子代理完成、失败或中止后立即收起，即使父 Run 仍在工作。没有可见面板时不预留高度，Todo 使用剩余空间。父代理普通请求或 `list_agents` 不重新展示历史列表；`send_message` 真正开启子 Run 后才重新展示。
   - 折叠时只显示第一个 running 节点作预览。
   - 高度预算逻辑与 todo 面板一致。可抽出两者共用的预算函数。
 - **面板顺序**：chat 屏幕在一处声明输入框上方区域的固定顺序：ScrollToBottom → ActivityLine → TodoPanel → SubagentPanel → QuestionDialog → PermissionDialog → PromptInput → StatusLine。去掉"有审批框时隐藏 todo 面板"。高度分配：先满足 PermissionDialog 和 QuestionDialog 的需要，剩余行数由 TodoPanel 与 SubagentPanel 平分（一方为空时另一方用全部）；某个面板分到的行数小于其最小展开高度时，以折叠预览（1 行）显示。
@@ -202,7 +202,7 @@ TUI 完全复刻 dsh-TUI 的子代理呈现：消息流里的实时卡片、Ctrl
 - **TUI e2e：`tests/helpers/app` 的 `start()` + 屏幕快照**（prior art 为 `tests/e2e/todo-panel.test.ts`、`permissions.test.ts`、`questions.test.ts`）：
   - 卡片在运行中 / 完成 / 失败三种状态下的渲染。
   - 点击卡片进入详情；Ctrl+A 打开 dashboard，↑/↓、Enter、Esc 可用；详情页 ←/→ 切页、`x` 中断、Esc 返回进入前的位置。
-  - 子代理面板：点 root 折叠、点节点进入详情、空闲时隐藏已结束项、与 todo 折叠互不影响。
+  - 子代理面板：点 root 折叠、点节点进入详情、全部子代理结束即收起、与 todo 折叠互不影响。resume / Rewind 仅保留历史 dashboard 和详情；普通父请求与 `list_agents` 不展示历史 dock，`send_message` 真实运行时恢复面板；隐藏面板不占 Todo 高度。
   - 面板顺序：审批框打开时 todo 面板和子代理面板仍在，审批框紧贴输入框；小高度下两者折叠成预览。
   - 审批框 / 提问框显示 `origin`；`waiting for N subagents` 文案。
 - **CLI**（prior art 为 `apps/neant-cli/tests/main.test.ts`）：stream-json 输出 `subagent_event`；text 模式只输出父代理的最终文本。
@@ -223,3 +223,5 @@ TUI 完全复刻 dsh-TUI 的子代理呈现：消息流里的实时卡片、Ctrl
 - 依赖 pi 0.99.2 的 `Agent.steer` 与 `toolExecution: "parallel"` 默认值，以及 `SessionCreateOptions.parentSessionId`。升级 pi 时用 e2e 测试钉住这几处行为。
 - 面板顺序重排和"有审批框时不隐藏 todo 面板"会改动现有 TUI 布局与现有测试，适合单独拆成一张工单，且先于子代理面板落地。
 - `CONTEXT.md` 的 Subagent、Run 条目已在 grilling 中同步。
+
+2026-10-05 展示纠偏：依据用户“子代理都完成后，就无需展示列表了”，自动 dock 只由真实子 Run 驱动。当前本地 dsh-TUI 的 `src/dsh-adapter/channel/subagent-projection.ts` 将历史身份保留在 dashboard，并用 live discovery / running 证据控制实时卡片；`src/screens/Chat.tsx` 只经显式 dashboard 开关呈现历史列表，没有 Neant 同名 dock。此处 dock 是 Neant 扩展，沿用历史身份与活跃呈现分离的规则。

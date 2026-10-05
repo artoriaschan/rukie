@@ -4,7 +4,7 @@
 
 - root 行 `▸/▾ 子代理 running/total`，hover 背景同 todo；点 root 切换折叠，折叠状态独立于 todo，不和 Ctrl+Q 共用。
 - 节点每行：状态符号、`[type]`、description；点节点进入详情页。
-- 空闲时隐藏已结束的节点，全部隐藏时面板不渲染。
+- 只有真实 running 子代理时展示面板；恢复出的 idle 身份只保留在 dashboard / 详情。全部子代理结束即收起，即使父 Run 仍在工作；隐藏时不预留高度。
 - 折叠时只显示第一个 running 节点作预览。
 - 与 todo 面板平分剩余高度，一方为空时另一方用全部；空间不够时折叠成 1 行预览。审批框 / 提问框打开时仍显示。
 
@@ -19,12 +19,12 @@ Implementing in `codex/subagent-09-panel` at `/Users/artorias_chan/.codex/worktr
 - [x] TUI e2e：有 running 子代理时面板出现在 todo 面板下方
 - [x] TUI e2e：点 root 折叠 / 展开，todo 面板折叠状态不变；Ctrl+Q 不影响子代理面板
 - [x] TUI e2e：点节点进入详情页
-- [x] TUI e2e：空闲时隐藏已结束项；审批框打开时两个面板同时显示；小高度下各自折叠成预览
+- [x] TUI e2e：全部子代理结束即收起；resume 历史不占 dock 高度，dashboard / 继续运行保留；审批框打开时两个活跃面板同时显示；小高度下各自折叠成预览
 - [x] `tsc -b` 与全量 `bun test` 通过
 
 ## Comments
 
-Implementation uses a props-only `SubagentPanel`, theme-aware Todo panel parts, independent Chat folding state, existing `openDetail(id, chat)` navigation, and the shared remaining-row allocator. Settled children hide only once the parent Run becomes idle; restored idle children remain visible. Compact inline previews retain a separate node click target.
+Historical 09 implementation (visibility superseded by the 2026-10-05 correction below): uses a props-only `SubagentPanel`, theme-aware Todo panel parts, independent Chat folding state, existing `openDetail(id, chat)` navigation, and the shared remaining-row allocator. Settled children hide only once the parent Run becomes idle; restored idle children remain visible. Compact inline previews retain a separate node click target.
 
 Public-terminal TDD evidence:
 
@@ -42,3 +42,7 @@ Two-axis review passed against `c08058e1595ff0fb9b4f0464bfb5a2e92702c6e1...bf178
 ## Answer
 
 Delivered the independent, clickable Subagent panel below Todo, with shared height budgeting and complete public-terminal acceptance. See the implementation and verification evidence above.
+
+### 2026-10-05 resume visibility correction
+
+User clarified that the automatic list should disappear after all children finish. Chat now derives one panel list from actual running child evidence for both rendering and height allocation. Restored idle identities stay in the dashboard and Core list_agents / send_message; parent work alone cannot reopen the dock. Completed, failed and aborted final children close it immediately, while a running sibling retains settled context. Public resume and Rewind tests replace the superseded historical-idle dock expectations.

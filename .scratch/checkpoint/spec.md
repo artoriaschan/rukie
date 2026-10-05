@@ -93,7 +93,7 @@ agent 改坏了文件、或者我想换个说法重问时，只能手动 `git ch
   - 只回代码时，Tool State `checkpoint` 不变。
 - **回对话**：
   - 把 `branchTip("main")` 设到目标 user 消息 entry 的 parent，原分支保留。
-  - 随后在内存中按新分支重建 messages、Tool State（todo、plan、goal、checkpoint 等）与 compaction 状态，发出对应状态事件，等价于对该点做一次 resume，但不新建 Session。
+  - 随后在内存中按新分支重建 messages、Tool State（todo、plan、goal、checkpoint 等）与 compaction 状态，发出对应状态事件，等价于对该点做一次 resume，但不新建 Session。恢复出的历史子代理身份保留在 dashboard / 详情，不据此重开自动 dock 或占用 Rewind / Todo 高度。
   - 目标在 compaction 之前也可回，新分支上不含之后的摘要。
   - 两者都回时，先回代码再回对话：代码失败则对话不动。
 - **清理**：`createSession` 启动时删除 `~/.neant/file-history/` 下 mtime 超过 30 天的 session 目录。备份目录尚不存在（`ENOENT`）时静默跳过，不为清理创建目录；其他读取或删除失败只发 warning。
@@ -105,7 +105,7 @@ agent 改坏了文件、或者我想换个说法重问时，只能手动 `git ch
     - 每行是单行预览：空白折叠，截断到 80 字符加 "…"。
     - 首行描述为 "last message"；描述用 inactive 色，有文件改动的行另附 "N files changed"（与 dsh-TUI 的差异：dsh 无代码回滚）。
     - 选中行前缀 `❯`，用 design-system `ListItem` 的 picker 样式：suggestion 色、不额外加粗，原生终端光标停在左侧 `❯`；可点击行悬停背景与 dsh 一致。
-    - 整个回退区域（含顶部 gap、Divider、标题、列表、提示）最多 14 行，并受输入框、statusline 与 Todo / child 预览之后的实际空间约束。短列表按内容自然撑高，不填满上限；充足空间时单 prompt 9 行、两 prompt 10 行，超出后窗口化。列表按实际行成本向两侧平衡扩展，焦点大致居中。边缘非焦点行的左侧 gutter 显示 ↑/↓；焦点 `❯` 优先，不另加右侧箭头。模式内移动焦点时输入框与页脚位置稳定；不同列表 / 确认页按各自自然尺寸。
+    - 整个回退区域（含顶部 gap、Divider、标题、列表、提示）最多 14 行，并受输入框、statusline 与 Todo 预览之后的实际空间约束（历史子代理只保留在 dashboard）。短列表按内容自然撑高，不填满上限；充足空间时单 prompt 9 行、两 prompt 10 行，超出后窗口化。列表按实际行成本向两侧平衡扩展，焦点大致居中。边缘非焦点行的左侧 gutter 显示 ↑/↓；焦点 `❯` 优先，不另加右侧箭头。模式内移动焦点时输入框与页脚位置稳定；不同列表 / 确认页按各自自然尺寸。
     - 底部 dim italic 提示 "Enter to select · Esc to exit"。
   - **按键**：↑/↓ 移动，首尾循环；Enter 进入确认；Esc 关闭面板；消息列表鼠标点击只移动焦点，Enter 才进入确认；确认页点击直接执行当前点击的模式（与 Enter 同路径）。不做 j/k 和搜索。
   - **确认步**：
@@ -114,7 +114,7 @@ agent 改坏了文件、或者我想换个说法重问时，只能手动 `git ch
     - 涉及回代码的选项获得焦点时，下方列出将还原、将删除的文件（超出可见行数时折叠为 "+N more"），并固定 dim 提示 "Changes made by bash are not restored"。
     - 提示 "Enter to rewind · Esc to back"；Esc 回到列表。文件区按三种模式的最大实际内容预留，切换为只回对话时保留区域高度，避免抖动。
   - **完成后**：面板关闭。回对话时把返回的 prompt 文本填进输入框，并显示 notice "Rewound — edit and press Enter to resend"；只回代码时显示 "Restored N files"。失败时显示错误 notice，面板关闭、状态不变。
-  - **窄屏**：40×12 起支持编辑；小屏去掉顶部 gap 与标题下 gap，列表保留标题 / 副标题，确认保留单行标题 / 预览。最低 6 行预算先于 activity / return control 分配，保留焦点、文件摘要、bash 提示、footer 与 Todo / child 各一行预览。小于 40×12 时遵循既有 resize 提示，隐藏面板并暂停 Enter / 方向键，恢复到支持尺寸后保留焦点；Esc / Ctrl+C 仍可取消。
+  - **窄屏**：40×12 起支持编辑；小屏去掉顶部 gap 与标题下 gap，列表保留标题 / 副标题，确认保留单行标题 / 预览。最低 6 行预算先于 activity / return control 分配，保留焦点、文件摘要、bash 提示、footer 与 Todo 一行预览；历史子代理不占自动 dock 高度。小于 40×12 时遵循既有 resize 提示，隐藏面板并暂停 Enter / 方向键，恢复到支持尺寸后保留焦点；Esc / Ctrl+C 仍可取消。
   - 所有文案进 neant-tui i18n 字典，上面引号内为 en 原文。
   - 不做 dsh 的 `/tree` 分支视图，也不做 `tui/rewind-prompt` 插件钩子。
 - **`/rewind`**：等 Slash Command 框架（[自定义 Slash Command 与手动 compaction](../agent-core-roadmap/issues/16-slash-commands-and-manual-compaction.md)）落地后，接入同一个 `rewind-picker`。本 spec 不交付这个命令。

@@ -711,7 +711,7 @@ test("Chinese rewind title, choices and completion use frontend copy", async () 
   }
 });
 
-test("40×12 rewind preserves Todo and resumed child panels while confirmation focus changes", async () => {
+test("40×12 rewind preserves Todo and historical children without reopening their dock", async () => {
   const argv: string[] = [];
   const app = await start(argv, {
     columns: 40,
@@ -755,10 +755,10 @@ test("40×12 rewind preserves Todo and resumed child panels while confirmation f
     },
   });
   try {
-    await app.waitFor(() => text(app).includes("Subagents 0/1"));
+    await app.waitFor(() => text(app).includes("retained task"));
     await open(app);
     expect(text(app)).toContain("✓ 0/1");
-    expect(text(app)).toContain("Subagents 0/1");
+    expect(text(app)).not.toMatch(/[▸▾] Subagents/);
     app.stdin.write("\r");
     await app.waitFor(() => text(app).includes("Rewind to this message?"));
     const inputRow = app.screen().findIndex((line) => line === "❯");
@@ -768,7 +768,7 @@ test("40×12 rewind preserves Todo and resumed child panels while confirmation f
     app.stdin.write("\x1b[B\x1b[B");
     await app.waitFor(() => text(app).includes("❯ Restore code"));
     expect(text(app)).toContain("✓ 0/1");
-    expect(text(app)).toContain("Subagents 0/1");
+    expect(text(app)).not.toMatch(/[▸▾] Subagents/);
     expect(app.screen().findIndex((line) => line === "❯")).toBe(inputRow);
     expect(app.screen().findIndex((line) => line.includes("Enter to rewind"))).toBe(footerRow);
     expect(app.screen().every((line) => Bun.stringWidth(line) <= 40)).toBe(true);
@@ -776,7 +776,12 @@ test("40×12 rewind preserves Todo and resumed child panels while confirmation f
     await app.waitFor(() => text(app).includes("Restored 1 files"));
     expect(await Bun.file(join(app.root, "new.txt")).exists()).toBe(false);
     expect(text(app)).toContain("retained task");
-    expect(text(app)).toContain("Subagents 0/1");
+    expect(text(app)).not.toMatch(/[▸▾] Subagents/);
+    app.stdin.write("\x01");
+    await app.waitFor(() => text(app).includes("Subagent: retained child"));
+    app.stdin.write("\r");
+    await app.waitFor(() => text(app).includes("id "));
+    expect(text(app)).toContain("idle");
   } finally {
     await app.cleanup();
   }

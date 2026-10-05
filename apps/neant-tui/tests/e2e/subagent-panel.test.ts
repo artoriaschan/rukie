@@ -12,13 +12,13 @@ function click(app: Awaited<ReturnType<typeof start>>, text: string) {
 }
 
 test.each(["completed", "failed", "aborted"] as const)(
-  "the %s child remains visible during the parent Run and disappears when idle",
+  "the %s child closes the panel while the parent Run is still working",
   async (outcome) => {
     const app = await start(["delegate"], { columns: 80, rows: 30 });
     try {
       await app.waitFor(() => app.calls.length === 1);
       app.calls[0]!.tool("subagent", { description: "Settled child", prompt: "child settled" });
-      await app.waitFor(() => app.calls.length === 3);
+      await app.waitFor(() => app.calls.length === 3 && app.screen().includes("  ▾ 子代理 1/1"));
       const child = app.calls.find((call) =>
         call.context.messages.some(
           (message) =>
@@ -34,17 +34,22 @@ test.each(["completed", "failed", "aborted"] as const)(
         app.stdin.write("x");
         await app.waitFor(() => child.signal!.aborted);
         app.stdin.write("\x1b");
+        await app.waitFor(() => !app.screen().some((line) => line.includes("id ")));
       }
-      await app.waitFor(() => app.screen().includes("  ▾ 子代理 0/1"));
-      expect(app.screen().some((line) => line.includes("[general-purpose] Settled child"))).toBe(
-        true,
+      await app.waitFor(() => !app.screen().some((line) => /[▸▾] 子代理/.test(line)));
+      expect(app.calls).toHaveLength(3);
+      expect(parent.signal!.aborted).toBe(false);
+      app.stdin.write("\x01");
+      await app.waitFor(() => app.screen().some((line) => line.includes("─ 子代理 ")));
+      app.stdin.write("\r");
+      await app.waitFor(() => app.screen().some((line) => line.includes("id ")));
+      expect(app.screen().join("\n")).toContain(
+        outcome === "completed" ? "已完成" : outcome === "failed" ? "失败" : "已中止",
       );
-      click(app, "▾ 子代理 0/1");
-      await app.waitFor(() => app.screen().includes("  ▸ 子代理 0/1"));
-      // Folding only previews running children.
-      expect(app.screen().some((line) => line.includes("[general-purpose] Settled child"))).toBe(
-        false,
-      );
+      app.stdin.write("\x1b");
+      await app.waitFor(() => app.screen().some((line) => line.includes("─ 子代理 ")));
+      app.stdin.write("\x1b");
+      await app.waitFor(() => app.screen().includes("❯"));
       parent.finish();
       await app.waitFor(() => app.calls.length === 4);
       app.calls[3]!.finish();
@@ -56,19 +61,28 @@ test.each(["completed", "failed", "aborted"] as const)(
   },
 );
 
-test("resume keeps restored idle children visible with English copy and opens their detail", async () => {
+async function resumeWithChild(checkpoint = false) {
   const argv: string[] = [];
   const original = createFauxCore({ api: "faux", provider: "faux" });
   original.setResponses([
     fauxAssistantMessage(
-      [fauxToolCall("subagent", { description: "Restored", prompt: "saved child" })],
+      [
+        fauxToolCall("subagent", { description: "Restored", prompt: "saved child" }),
+        fauxToolCall("todo_write", {
+          todos: Array.from({ length: 10 }, (_, index) => ({
+            content: `saved todo ${index}`,
+            status: "pending",
+          })),
+        }),
+      ],
       { stopReason: "toolUse" },
     ),
     fauxAssistantMessage("done"),
     fauxAssistantMessage("done"),
     fauxAssistantMessage("done"),
+    fauxAssistantMessage("done"),
   ]);
-  const app = await start(argv, {
+  return start(argv, {
     columns: 80,
     rows: 24,
     env: { LANG: "en_US.UTF-8" },
@@ -80,17 +94,135 @@ test("resume keeps restored idle children visible with English copy and opens th
         streamFn: (model, context, options) => original.streamSimple(model, context, options),
       });
       await session.run("save child");
+      if (checkpoint) await session.run("later parent");
       argv.push("--resume", session.id);
     },
   });
+}
+
+test("resume hides the automatic panel but keeps historical children in the English dashboard", async () => {
+  const app = await resumeWithChild();
   try {
-    await app.waitFor(() => app.screen().includes("  ▾ Subagents 0/1"));
+    await app.waitFor(() => app.screen().includes("❯"));
     expect(app.calls).toHaveLength(0);
-    expect(app.screen()).toContain("  └─ · [general-purpose] Restored");
-    click(app, "[general-purpose] Restored");
+    expect(app.screen().some((line) => /[▸▾] Subagents/.test(line))).toBe(false);
+    expect(app.screen().filter((line) => line.includes("○ saved todo"))).toHaveLength(8);
+    expect(app.screen().join("\n")).toContain("2 more");
+    app.stdin.write("\x01");
+    await app.waitFor(() => app.screen().some((line) => line.includes("Subagent: Restored")));
+    app.stdin.write("\r");
     await app.waitFor(() => app.screen().some((line) => line.includes("id ")));
     expect(app.screen().join("\n")).toContain("idle");
     expect(app.screen().join("\n")).not.toMatch(/\p{Script=Han}/u);
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("resumed history stays hidden through a parent prompt and list_agents, then send_message opens the live panel", async () => {
+  const app = await resumeWithChild();
+  const hasPanel = () => app.screen().some((line) => /[▸▾] Subagents/.test(line));
+  try {
+    await app.waitFor(() => app.screen().includes("❯"));
+    app.stdin.write("continue parent work\r");
+    await app.waitFor(() => app.calls.length === 1 && app.isWorking());
+    expect(hasPanel()).toBe(false);
+    app.calls[0]!.tool("list_agents", {});
+    await app.waitFor(() => app.calls.length === 2);
+    const result = app.calls[1]!.context.messages.at(-1)!;
+    expect(result).toMatchObject({ role: "toolResult", toolName: "list_agents", isError: false });
+    const agentId = JSON.stringify(result).match(/([\da-f-]{36}) \[idle\] — Restored/)?.[1];
+    expect(agentId).toBeDefined();
+    expect(hasPanel()).toBe(false);
+    app.calls[1]!.tool("send_message", { agent_id: agentId!, message: "resume saved child" });
+    await app.waitFor(() => app.calls.length === 4 && hasPanel());
+    expect(app.screen()).toContain("  ▾ Subagents 1/1");
+    expect(app.screen()).toContain("  └─ 🟡 [general-purpose] Restored");
+    const child = app.calls.find((call) =>
+      call.context.messages.some(
+        (message) =>
+          message.role === "user" && JSON.stringify(message.content).includes("resume saved child"),
+      ),
+    )!;
+    const parent = app.calls.find((call, index) => index > 1 && call !== child)!;
+    child.finish();
+    await app.waitFor(() => !hasPanel());
+    expect(app.calls).toHaveLength(4);
+    expect(parent.signal!.aborted).toBe(false);
+    expect(app.screen().filter((line) => line.includes("○ saved todo"))).toHaveLength(8);
+    parent.finish();
+    await app.waitFor(() => app.calls.length === 5);
+    app.calls[4]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    expect(hasPanel()).toBe(false);
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("conversation rewind retains a historical child without reopening the automatic panel", async () => {
+  const app = await resumeWithChild(true);
+  try {
+    await app.waitFor(() => app.screen().includes("❯"));
+    app.stdin.write("\x1b");
+    await app.waitFor(() => app.screen().join("\n").includes("Press Esc again to rewind"));
+    app.stdin.write("\x1b");
+    await app.waitFor(() => app.screen().join("\n").includes("Pick a message to rewind to"));
+    app.stdin.write("\r");
+    await app.waitFor(() => app.screen().join("\n").includes("Rewind to this message?"));
+    app.stdin.write("\r");
+    await app.waitFor(() => app.screen().join("\n").includes("Rewound — edit"));
+    expect(app.screen().some((line) => /[▸▾] Subagents/.test(line))).toBe(false);
+    expect(app.screen().filter((line) => line.includes("○ saved todo"))).toHaveLength(8);
+    app.stdin.write("\x01");
+    await app.waitFor(() => app.screen().some((line) => line.includes("Subagent: Restored")));
+    app.stdin.write("\r");
+    await app.waitFor(() => app.screen().some((line) => line.includes("id ")));
+    expect(app.screen().join("\n")).toContain("idle");
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("the panel keeps settled context while another child runs and stays visible while the parent waits", async () => {
+  const app = await start(["delegate"], { columns: 100, rows: 30 });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tools([
+      { name: "subagent", args: { description: "Finished sibling", prompt: "sibling finished" } },
+      { name: "subagent", args: { description: "Live sibling", prompt: "sibling live" } },
+    ]);
+    await app.waitFor(() => app.calls.length === 4 && app.screen().includes("  ▾ 子代理 2/2"));
+    const children = app.calls.filter((call) =>
+      call.context.messages.some(
+        (message) =>
+          message.role === "user" && JSON.stringify(message.content).includes("sibling "),
+      ),
+    );
+    const finished = children.find((call) =>
+      JSON.stringify(call.context.messages).includes("sibling finished"),
+    )!;
+    const live = children.find((call) => call !== finished)!;
+    const parent = app.calls.find((call, index) => index > 0 && !children.includes(call))!;
+    finished.finish();
+    await app.waitFor(() => app.screen().includes("  ▾ 子代理 1/2"));
+    expect(
+      app.screen().some((line) => line.includes("🟢 [general-purpose] Finished sibling")),
+    ).toBe(true);
+    expect(app.screen().some((line) => line.includes("🟡 [general-purpose] Live sibling"))).toBe(
+      true,
+    );
+    parent.finish();
+    await app.waitFor(() => app.calls.length === 5);
+    app.calls[4]!.finish();
+    await app.waitFor(() => app.screen().some((line) => line.includes("等待 1 个子代理")));
+    expect(app.screen()).toContain("  ▾ 子代理 1/2");
+    live.finish();
+    await app.waitFor(() => app.calls.length === 6);
+    await app.waitFor(() => !app.screen().some((line) => /[▸▾] 子代理/.test(line)));
+    expect(app.calls[5]!.signal!.aborted).toBe(false);
+    app.calls[5]!.finish();
+    await app.waitFor(() => !app.isWorking());
   } finally {
     await app.cleanup();
   }

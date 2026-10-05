@@ -54,3 +54,5 @@
 - 父代理独立核对 24 行单 prompt、100 行 20 prompts、40×12 与 80×24 确认页真实屏幕 dump 及标题 / 焦点 / 描述 cells 和 cursor，未发现额外问题。诊断证据保留在 `/tmp/rewind-parity-*.txt`、`/tmp/rewind-parity-cells.json`；完整检查日志 `/tmp/rewind-parity-fullcheck.log`。
 
 实现与验证相对基线 `f2cc546`；代码提交 `928af8d`。本次修正原视觉交付的差距，不将原交付描述为全部 parity。main 集成与最终 main 检查由父代理统一处理。
+
+2026-10-05 子代理展示契约更新：40×12 Rewind 仍保留 Todo、文件与 footer / prompt 的固定位置；恢复出的历史 idle 子代理保留在 Ctrl+A dashboard / 详情，不展示自动 dock 或预留高度。真实 conversation Rewind 保留目标分支的历史身份时也不生成活跃面板。

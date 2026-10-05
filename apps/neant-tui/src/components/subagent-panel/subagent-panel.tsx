@@ -6,7 +6,6 @@ import { SUBAGENT_APPEARANCE, type SubagentView } from "../subagent-message";
 
 export function SubagentPanel({
   subagents,
-  working,
   collapsed,
   onToggle,
   onOpen,
@@ -14,7 +13,6 @@ export function SubagentPanel({
   maxHeight,
 }: {
   subagents: readonly SubagentView[];
-  working: boolean;
   collapsed: boolean;
   onToggle(): void;
   onOpen(id: string): void;
@@ -23,20 +21,17 @@ export function SubagentPanel({
 }) {
   const [headerHovered, setHeaderHovered] = useState(false);
   const t = createTuiI18n(locale);
-  const remaining = working
-    ? subagents
-    : subagents.filter((agent) => agent.status === "running" || agent.status === "idle");
-  if (remaining.length === 0) return null;
+  if (subagents.length === 0) return null;
   const running = subagents.filter((agent) => agent.status === "running").length;
   const preview = subagents.find((agent) => agent.status === "running");
   const compact = maxHeight < 3;
   const folded = collapsed || compact;
   const paddingTop = maxHeight >= 4 ? 1 : 0;
   const rowBudget = compact ? 1 : Math.max(1, maxHeight - paddingTop);
-  const overflow = !folded && remaining.length > Math.min(8, rowBudget - 1);
+  const overflow = !folded && subagents.length > Math.min(8, rowBudget - 1);
   const limit = Math.max(0, Math.min(8, rowBudget - 1 - Number(overflow)));
-  const visible = folded ? (preview && rowBudget >= 2 ? [preview] : []) : remaining.slice(0, limit);
-  const hidden = folded ? 0 : remaining.length - visible.length;
+  const visible = folded ? (preview && rowBudget >= 2 ? [preview] : []) : subagents.slice(0, limit);
+  const hidden = folded ? 0 : subagents.length - visible.length;
   const nodeLabel = (agent: SubagentView) =>
     `${SUBAGENT_APPEARANCE[agent.status].glyph} [${agent.subagentType}] ${agent.description.replace(/[\r\n]+/g, " ")}`;
   return (
