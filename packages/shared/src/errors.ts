@@ -7,6 +7,7 @@ export interface UserVisibleErrorParams {
   "unknown-model": { model: string };
   "no-api-key": { provider: string; env: string };
   "session-not-found": { id: string };
+  "compaction-no-history": Record<string, never>;
   "hook-invalid-json": { cause: string };
   "hook-exit": { exitCode: string; stderr: string };
   "hook-mcp-unconnected": { server: string };
