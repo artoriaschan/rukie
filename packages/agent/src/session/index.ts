@@ -97,6 +97,7 @@ export type { PermissionAskRequest, SessionAllowRule } from "../permissions/inde
 import type { OnToolCallAllowed } from "../permissions/index.ts";
 
 import type { WebFetchOptions } from "../web-fetch/index.ts";
+import { validateImage, type PromptImage } from "../images/index.ts";
 
 export interface SessionOptions {
   /** Test-only network boundary overrides; production frontends leave this unset. */
@@ -177,7 +178,7 @@ export interface Session {
   /** Cancels the current run, including one started without a frontend controller. */
   interruptRun(): void;
   /** Queue another user instruction for the current Run, including Skill Invocation. */
-  steer(prompt: string): void;
+  steer(prompt: string, options?: { images?: PromptImage[] }): void;
   /** Observe all runs; the first subscriber also receives events from startup autoruns. */
   subscribe(onEvent: (event: SessionEvent) => void): () => void;
   readonly id: string;
@@ -233,6 +234,7 @@ export interface Session {
   run(
     prompt: string,
     options?: {
+      images?: PromptImage[];
       signal?: AbortSignal;
       /** Ordered Run events; result follows storage close. Also receives disposal diagnostics without awaiting observers. */
       onEvent?: (event: SessionEvent) => void | Promise<void>;
@@ -1233,16 +1235,21 @@ async function createSessionInternal(
     interruptRun() {
       runController?.abort();
     },
-    steer(prompt) {
+    steer(prompt, { images = [] } = {}) {
       if (disposePromise) throw new Error("Session has been disposed.");
       if (!running) throw new Error("Session is not running.");
-      if (!prompt.trim()) return;
+      for (const image of images) validateImage(image);
+      if (!prompt.trim() && !images.length) return;
       const invocation = skillInvocation(prompt, skills);
       // pi drains one queued message at a time. Keep the instruction and its
       // expansion together without changing scheduling of child notifications.
       const message = {
         role: "user" as const,
-        content: [{ type: "text" as const, text: prompt }],
+        content: [
+          { type: "text" as const, text: prompt },
+          ...images.map(({ data, mimeType }) => ({ type: "image" as const, data, mimeType })),
+        ],
+        ...(images.length && { imageNames: images.map((image) => image.name ?? null) }),
         ...(invocation === undefined ? {} : { skillInvocation: invocation }),
         timestamp: Date.now(),
       };
@@ -1581,9 +1588,15 @@ async function createSessionInternal(
       {
         signal,
         onEvent,
-      }: { signal?: AbortSignal; onEvent?: (event: SessionEvent) => void | Promise<void> } = {},
+        images = [],
+      }: {
+        signal?: AbortSignal;
+        onEvent?: (event: SessionEvent) => void | Promise<void>;
+        images?: PromptImage[];
+      } = {},
       source: "user" | "hook" | "goal" = "user",
     ) {
+      for (const image of images) validateImage(image);
       const fromHook = source === "hook";
       const fromGoal = source === "goal";
       // Human input waits behind internal Runs and takes precedence over continuation.
@@ -1644,7 +1657,11 @@ async function createSessionInternal(
       let stopHookContinuations = 0;
       const userPrompt: AgentMessage = {
         role: "user",
-        content: [{ type: "text", text: prompt }],
+        content: [
+          { type: "text", text: prompt },
+          ...images.map(({ data, mimeType }) => ({ type: "image" as const, data, mimeType })),
+        ],
+        ...(images.length && { imageNames: images.map((image) => image.name ?? null) }),
         timestamp: Date.now(),
         ...(fromGoal && { source: "goal" }),
       };
