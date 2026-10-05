@@ -49,3 +49,5 @@ export const defaultHost: TuiHost = {
     if (exitCode !== 0) throw new Error(`External viewer exited with code ${exitCode}`);
   },
 };
+
+export { createImageViewer } from "./image-viewer";

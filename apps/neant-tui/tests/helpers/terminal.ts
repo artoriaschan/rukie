@@ -58,8 +58,8 @@ export function createTerminal(columns = 80, rows = 24) {
         buffer.getLine(y)!.translateToString(true).trimEnd(),
       ).concat(screen());
     },
-    async waitFor(predicate: () => boolean) {
-      const deadline = performance.now() + 2000;
+    async waitFor(predicate: () => boolean, timeoutMs = 2000) {
+      const deadline = performance.now() + timeoutMs;
       do {
         await flush();
         if (predicate()) return;

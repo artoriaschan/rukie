@@ -17,8 +17,12 @@ export interface TextInputProps extends TextStyle {
   cursorOffset?: number;
   /** Owner-created history survives temporary editor unmounts. */
   history?: ReturnType<typeof createTextInputHistory>;
+  /** Intercept a paste; call insert to place accepted text at the live caret. */
+  onPaste?(text: string, insert: (text: string) => void): void;
+  /** Ordered, non-overlapping UTF-16 ranges to paint with a distinct foreground. */
+  highlightRanges?: readonly { start: number; end: number; color: TextStyle["color"] }[];
   /** Let a screen reserve navigation keys for a completion menu. */
-  filterInput?(event: InputEvent): boolean;
+  filterInput?(event: InputEvent, insert: (text: string) => void): boolean;
 }
 
 /** Browse oldest-first inputs while retaining the draft and its UTF-16 caret. */
@@ -67,6 +71,8 @@ export function TextInput({
   cursorOffset,
   history,
   filterInput,
+  onPaste,
+  highlightRanges,
   ...style
 }: TextInputProps) {
   const size = useTerminalSize();
@@ -84,8 +90,6 @@ export function TextInput({
   });
   useInput(
     (event) => {
-      if (filterInput && !filterInput(event)) return;
-      if (event.type !== "key" && event.type !== "paste") return;
       const current = editing.current;
       const boundaries = graphemeBoundaries(current.value);
       const before = boundaries.findLast((offset) => offset < current.cursor) ?? 0;
@@ -99,8 +103,13 @@ export function TextInput({
         move(start + text.length);
         onChange(current.value);
       };
+      const insert = (text: string) =>
+        replace(current.cursor, current.cursor, text.replace(/\r\n?/g, "\n"));
+      if (filterInput && !filterInput(event, insert)) return;
+      if (event.type !== "key" && event.type !== "paste") return;
       if (event.type === "paste") {
-        replace(current.cursor, current.cursor, event.input.replace(/\r\n?/g, "\n"));
+        if (onPaste) onPaste(event.input, insert);
+        else insert(event.input);
         return;
       }
       const { key, input } = event;
@@ -150,6 +159,20 @@ export function TextInput({
     },
     { isActive: isActive && !readOnly },
   );
+  const children = [];
+  let offset = 0;
+  for (const range of highlightRanges ?? []) {
+    children.push(value.slice(offset, range.start));
+    children.push(
+      createElement(
+        "tui-text",
+        { key: range.start, color: range.color },
+        value.slice(range.start, range.end),
+      ),
+    );
+    offset = range.end;
+  }
+  children.push(value.slice(offset) + " ");
   return createElement(
     "tui-text",
     {
@@ -160,6 +183,6 @@ export function TextInput({
       cursorStyle,
       cursorOffset: isActive ? position : undefined,
     },
-    value + " ",
+    ...children,
   );
 }
