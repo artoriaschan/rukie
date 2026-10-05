@@ -175,9 +175,13 @@ Agent Core 提供模型工具 `web_fetch { url }`：
 
 ## Delivery
 
-2026-10-05：01–05 全部 resolved，交付在 `codex/web-fetch-integration`。实现与修复均已合入；最终代码合并点为 `53858cf`。
+2026-10-05：01–05 全部 resolved，交付已合入 `main`。实现时使用 `codex/web-fetch-integration`；最终代码合并点为 `53858cf`。
 
 - 提供公开网页抓取、DNS 校验与 IP 钉定、限时和限量、HTML/GFM 转换、同源重定向、跨源重新审批、域名权限、环境代理与 fake-IP 提示。Headless、子代理、hooks 与现有 TUI 呈现均已接入；结果元数据包含 `category: "web"`。
 - Standards 审查 2 项、Spec 审查 3 项均已修复并复核，剩余可操作问题为 0。复杂 HTML 的节点数、深度与表格单元数受内部转换预算约束，超出时返回转换失败说明；简单大页面仍正常转换并在 50K 字符内截断。
 - 最终运行 `rtk proxy env -u NO_COLOR bun run check`：exit 0，1881 pass / 0 fail，140 个测试文件，9536 次断言；format、lint、types、Knip 均通过。测试通过公共 Session、权限规则、Headless CLI 和注入终端验证，网络目标使用本地服务器。
-- 六个票据实现及审查修复工作树在确认 clean、已合入后归档；集成分支保留交付。
+- 六个票据实现及审查修复工作树在确认 clean、已合入后归档；集成工作树也已删除，本次七个已合并分支均已清理。
+
+## Main Integration
+
+2026-10-05：`main` 快进合入 `6fef8ff`。在主仓库安装锁定依赖后运行 `env -u NO_COLOR bun run check`，exit 0，1881 pass / 0 fail，140 个测试文件，9536 次断言，format、lint、types、Knip 均通过。合并后的主仓库干净；删除工作树及分支前已确认提交全部包含在 `main`。
