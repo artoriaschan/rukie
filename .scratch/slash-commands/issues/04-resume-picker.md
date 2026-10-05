@@ -23,3 +23,7 @@ Agent Core 的 `listSessions({ cwd, homeDir?, store?, settings? })` 读取原生
 TUI 复用 ListItem / HintLine 和既有 replaceSession：两行有界焦点窗口，prompt 来源暗色，中英文提示，40×12 使用紧凑输入。Esc 仅关闭列表；选中后重新绑定并恢复对话、标题和模型，无额外模型请求，后续 prompt 使用恢复的上下文。空列表提示，运行中拒绝。
 
 验证：公开入口 `session-list.test.ts` 与 `resume-picker.test.ts` 共 9 项通过。合入工单 06 的整合 tip `604e0ef` 后，列表、标题、模型、手动/自动 compaction、hooks、上下文报告及既有 TUI resume / slash / settings 共 **98 pass / 0 fail / 593 assertions**（`env -u NO_COLOR bun test`，13 files）；oxfmt / oxlint / tsc -b / knip 全通过。未运行单工单全量，整个 spec 的精确整合 HEAD full check 由 root 完成交付。
+
+最终完整检查的关联同步纠正：旧的 picker 暂态失败发生在第二次 `/resume` 后，只等 `Resume session` loading 标题便发送 Enter；读取未完成时 `busy` 守卫按设计忽略 Enter。公开 `start()` 测试通过注入的 SessionStore 暂停第二次 list，确定复现旧顺序即使之后列表完成仍不切换。测试改为等待可选择的 `❯ Stored session` 行再发 Enter，窄终端首次打开也等待真实焦点行。生产行为和超时未改。Red/green 日志：`/tmp/neant-slash-resume-readiness-red.log` / `/tmp/neant-slash-resume-readiness-green.log`。
+
+同步纠正验证：title、context、resume、side-question 和 Core session-list 共 5 个受影响文件连续 5 次均为 27 pass / 0 fail / 160 assertions（合计 135 pass / 0 fail / 800 assertions），日志 `/tmp/neant-slash-readiness-repeat-{1..5}.log`；oxfmt、oxlint、tsc -b、knip 和 git diff --check 通过。整个 integration 的 final full check 由 root 执行。

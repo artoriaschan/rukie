@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { createSession } from "@neant/agent";
+import { createSession, createJsonlStore, type SessionOptions } from "@neant/agent";
 import {
   createAssistantMessageEventStream,
   createFauxCore,
@@ -47,7 +47,7 @@ test("a 40 by 12 picker scrolls two-row entries and dims a prompt fallback", asy
   try {
     await app.waitFor(() => app.screen().some((line) => line.startsWith("╭")));
     app.stdin.write("/resume\r");
-    await app.waitFor(() => screen(app).includes("Resume session"));
+    await app.waitFor(() => screen(app).includes("❯ Latest session"));
     expect(screen(app)).toContain("Latest session");
     expect(screen(app)).toContain("Ask");
     expect(screen(app)).toContain("❯");
@@ -110,9 +110,12 @@ const screen = (app: Awaited<ReturnType<typeof start>>) => app.screen().join("\n
 
 test("/resume displays two-row session metadata, Escape preserves the current chat, and selection restores title, model and conversation", async () => {
   process.env.NEANT_RESUME_TUI_KEY = "test-key";
+  const listing = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const sessionOptions: Partial<SessionOptions> = { model: undefined };
   const app = await start([], {
     env: { LANG: "en_US.UTF-8" },
-    session: { model: undefined },
+    session: sessionOptions,
     prepare: async (root) => {
       await Bun.write(`${root}/.neant/settings.json`, JSON.stringify(settings));
       const faux = createFauxCore({ api: "faux", provider: "faux" });
@@ -127,6 +130,19 @@ test("/resume displays two-row session metadata, Escape preserves the current ch
       await seed.run("Stored prompt");
       await seed.setModel("resume-test/second");
       await seed.dispose();
+      const store = createJsonlStore({ cwd: root, homeDir: root });
+      let lists = 0;
+      sessionOptions.store = {
+        create: (...args) => store.create(...args),
+        open: (...args) => store.open(...args),
+        async list(...args) {
+          if (++lists === 2) {
+            listing.resolve();
+            await release.promise;
+          }
+          return store.list(...args);
+        },
+      };
     },
   });
   try {
@@ -139,7 +155,7 @@ test("/resume displays two-row session metadata, Escape preserves the current ch
     app.calls[0]!.finish();
     await app.waitFor(() => !app.isWorking());
     app.stdin.write("/resume\r");
-    await app.waitFor(() => screen(app).includes("Resume session"));
+    await app.waitFor(() => screen(app).includes("❯ Stored session"));
     const row = app.screen().findIndex((line) => line.includes("Stored session"));
     expect(row).toBeGreaterThanOrEqual(0);
     expect(app.screen()[row + 1]).toContain("6 messages · resume-test/second");
@@ -150,7 +166,12 @@ test("/resume displays two-row session metadata, Escape preserves the current ch
     expect(screen(app)).toContain("Current answer");
     expect(screen(app)).toContain("resume-test/first");
     app.stdin.write("/resume\r");
+    await listing.promise;
     await app.waitFor(() => screen(app).includes("Resume session"));
+    // The loading heading is visible before a selectable row is ready.
+    expect(screen(app)).not.toContain("❯ Stored session");
+    release.resolve();
+    await app.waitFor(() => screen(app).includes("❯ Stored session"));
     app.stdin.write("\r");
     await app.waitFor(
       () => title(app) === "✦ Stored session" && screen(app).includes("Stored answer"),
@@ -166,6 +187,7 @@ test("/resume displays two-row session metadata, Escape preserves the current ch
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
   } finally {
+    release.resolve();
     await app.cleanup();
   }
 });
