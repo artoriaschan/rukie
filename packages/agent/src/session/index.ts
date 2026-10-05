@@ -13,6 +13,7 @@ import {
   branchTip,
   insertEntry,
   setValue,
+  type Entry,
   type Session as StoredSession,
 } from "@earendil-works/pi-agent-core/harness/session";
 import type { Api, Model } from "@earendil-works/pi-ai";
@@ -120,6 +121,28 @@ function promptText(message: Extract<AgentMessage, { role: "user" }>): string {
   return typeof message.content === "string"
     ? message.content
     : message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
+}
+
+/** Project the same Transcript branch for startup/resume and in-place Rewind. */
+function projectBranch(entries: Entry[]) {
+  const transcriptMessages = entries.flatMap((entry) =>
+    entry.type === "message" ? [entry.message] : [],
+  );
+  return {
+    messages: restoreContext(entries),
+    transcriptMessages,
+    reminderStart: entries
+      .slice(0, entries.findLastIndex((entry) => entry.type === "compaction") + 1)
+      .filter((entry) => entry.type === "message").length,
+    baselinePersisted: transcriptMessages.length > 0,
+    promptTexts: new Map(
+      entries.flatMap((entry) =>
+        entry.type === "message" && entry.message.role === "user"
+          ? [[entry.id, promptText(entry.message)] as const]
+          : [],
+      ),
+    ),
+  };
 }
 
 export interface Session {
@@ -249,6 +272,7 @@ async function createSessionInternal(
   } finally {
     await stored.close(context);
   }
+  const initialBranch = projectBranch(entries);
   const sessionObservers = new Set<(event: SessionEvent) => void>();
   const startupEvents: SessionEvent[] = [];
   let bufferingStartup = true;
@@ -316,13 +340,7 @@ async function createSessionInternal(
     },
   };
   let activeStore: StoredSession | undefined;
-  const promptTexts = new Map(
-    entries.flatMap((entry) =>
-      entry.type === "message" && entry.message.role === "user"
-        ? [[entry.id, promptText(entry.message)] as const]
-        : [],
-    ),
-  );
+  const promptTexts = initialBranch.promptTexts;
   const checkpoint =
     internal.checkpoint ??
     (internal.parentSessionId
@@ -343,15 +361,11 @@ async function createSessionInternal(
     const value = await toolState.set("todo", todos, activeStore, context);
     await emitRunEvent?.({ type: "tool_state_changed", name: "todo", value });
   };
-  const transcriptMessages = entries.flatMap((entry) =>
-    entry.type === "message" ? [entry.message] : [],
-  );
-  let reminderStart = entries
-    .slice(0, entries.findLastIndex((entry) => entry.type === "compaction") + 1)
-    .filter((entry) => entry.type === "message").length;
+  const transcriptMessages = initialBranch.transcriptMessages;
+  let reminderStart = initialBranch.reminderStart;
   // Older Sessions did not persist their implicit baseline. Do not append it
   // behind existing conversation messages; pi will seed it when restoring them.
-  let baselinePersisted = transcriptMessages.length > 0;
+  let baselinePersisted = initialBranch.baselinePersisted;
   let skills = new Map<string, Skill>();
   const origin =
     internal.originDescription === undefined
@@ -602,7 +616,7 @@ async function createSessionInternal(
   });
   const childSessions = new Set<Session>();
   let currentResult: RunResult | undefined;
-  let completedMessages = restoreContext(entries);
+  let completedMessages = initialBranch.messages;
   const subagents = createSubagents({
     restored: toolState.get("subagents") as SubagentIdentity[] | undefined,
     warn: options.onWarning ?? console.warn,
@@ -754,7 +768,7 @@ async function createSessionInternal(
     },
     initialState: {
       model,
-      messages: restoreContext(entries),
+      messages: initialBranch.messages,
       systemPrompt:
         internal.systemPrompt ??
         (internal.parentSessionId
@@ -881,23 +895,18 @@ async function createSessionInternal(
           pendingSessionContexts.length = 0;
           userMessageSequence = 0;
           sessionContextUserSequence = 0;
+          const restoredBranch = projectBranch(restoredEntries);
           transcriptMessages.splice(
             0,
             transcriptMessages.length,
-            ...restoredEntries.flatMap((entry) =>
-              entry.type === "message" ? [entry.message] : [],
-            ),
+            ...restoredBranch.transcriptMessages,
           );
-          reminderStart = restoredEntries
-            .slice(0, restoredEntries.findLastIndex((entry) => entry.type === "compaction") + 1)
-            .filter((entry) => entry.type === "message").length;
-          baselinePersisted = transcriptMessages.length > 0;
+          reminderStart = restoredBranch.reminderStart;
+          baselinePersisted = restoredBranch.baselinePersisted;
           promptTexts.clear();
-          for (const entry of restoredEntries)
-            if (entry.type === "message" && entry.message.role === "user")
-              promptTexts.set(entry.id, promptText(entry.message));
+          for (const [id, text] of restoredBranch.promptTexts) promptTexts.set(id, text);
           agent.reset();
-          agent.state.messages = restoreContext(restoredEntries);
+          agent.state.messages = restoredBranch.messages;
           completedMessages = structuredClone(agent.state.messages);
           inputTokens = undefined;
           for (const change of changes)
