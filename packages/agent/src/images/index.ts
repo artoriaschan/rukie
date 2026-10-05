@@ -29,6 +29,39 @@ export class ImageValidationError extends Error {
   }
 }
 
+/**
+ * Match pi read's PNG/JPEG/GIF/WebP admission independently of dimension parsing.
+ * APNG and JPEG-LS stay on pi's text path; BMP stays on its processor-omission path.
+ */
+export function detectReadImageMimeType(data: Uint8Array): ImageInfo["mimeType"] | undefined {
+  const bytes = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff)
+    return bytes[3] === 0xf7 ? undefined : "image/jpeg";
+  if (["GIF87a", "GIF89a"].includes(bytes.toString("latin1", 0, 6))) return "image/gif";
+  if (
+    bytes.length >= 12 &&
+    bytes.toString("latin1", 0, 4) === "RIFF" &&
+    bytes.toString("latin1", 8, 12) === "WEBP"
+  )
+    return "image/webp";
+  if (
+    bytes.length < 16 ||
+    !bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) ||
+    bytes.readUInt32BE(8) !== 13 ||
+    bytes.toString("latin1", 12, 16) !== "IHDR"
+  )
+    return undefined;
+  for (let offset = 8; offset + 8 <= bytes.length;) {
+    const chunk = bytes.toString("latin1", offset + 4, offset + 8);
+    if (chunk === "acTL") return undefined;
+    if (chunk === "IDAT") break;
+    const next = offset + 12 + bytes.readUInt32BE(offset);
+    if (next > bytes.length) break;
+    offset = next;
+  }
+  return "image/png";
+}
+
 /** Header metadata only; no image decoding, resizing, or size-limit enforcement. */
 export function inspectImage(data: Uint8Array): ImageInfo | undefined {
   const bytes = Buffer.from(data.buffer, data.byteOffset, data.byteLength);

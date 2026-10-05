@@ -25,7 +25,7 @@ import { createSkillTool } from "./skill.ts";
 import { createQuestionTool, type OnQuestion } from "./question.ts";
 import { createTodoTool } from "./todo.ts";
 import type { TodoItem } from "../tool-state/index.ts";
-import { inspectImage, validateImageBytes } from "../images/index.ts";
+import { detectReadImageMimeType, validateImageBytes } from "../images/index.ts";
 export { createExitPlanModeTool } from "./plan-review.ts";
 export type { PlanReviewRequest, PlanReviewResult, OnPlanReview } from "./plan-review.ts";
 export type { Question, QuestionRequest, QuestionReply } from "./question.ts";
@@ -35,7 +35,7 @@ export { createEnterPlanModeTool } from "./enter-plan-mode.ts";
 class ImageReadEnv extends NodeExecutionEnv {
   override async readBinaryFile(...args: Parameters<NodeExecutionEnv["readBinaryFile"]>) {
     const result = await super.readBinaryFile(...args);
-    if (result.ok && inspectImage(result.value)) validateImageBytes(result.value);
+    if (result.ok && detectReadImageMimeType(result.value)) validateImageBytes(result.value);
     return result;
   }
 }

@@ -13,6 +13,10 @@
 
 ## Comments
 
+- 2026-10-06 review 修复：公开 read 复现确认 5 MiB + 1 byte、只有 JPEG 签名且无可读宽高的文件仍进入 image result。原因是 guard 错把 `inspectImage` 的维度解析成功当作 pi 的 MIME 接纳条件。共享 images 模块现在用独立 `detectReadImageMimeType` 对齐 pi 的 PNG/JPEG/GIF/WebP 接纳规则，再无条件执行 `validateImageBytes`；保留单次文件读取，无新依赖。
+- 新增回归先 red（畸形超限 JPEG 的 `isError: false`、image result）后 green（工具错误且无图片）。同时覆盖小型畸形 JPEG/WebP/GIF/PNG、超限畸形 WebP，以及 pi 仍走文本的 APNG、JPEG-LS、仅 PNG signature；既有 BMP omission 与正常四格式保持通过。相同复现脚本改用本分支源码后输出 `isError: true` 且只有 text result。
+- 修复验证：相邻 6 个 e2e 文件 85 pass / 0 fail / 340 assertions，新文件共 26 tests；`env -u NO_COLOR` 下 `tsc -b`、修改文件 `oxlint`、`oxfmt --check` 与 `git diff --check` 通过。基线同步 integration `ef0a1fa`；最终 aggregate check 由 integration 完成。
+
 - 2026-10-06：基于 integration `codex/image-input` 的 `5f20b485`，在独立分支 `codex/image-input-02` 完成。原生 read 的 `NodeExecutionEnv.readBinaryFile` 包装先对原始字节调用共享 `inspectImage` / `validateImageBytes`，再由 pi 编码结果；只读取一次文件，保持 pi 的路径规范化、取消和工具错误流程，不注入 imageProcessor。内置和只读 hook 工具组装都使用该边界，主 Session 与 Subagent 共用。
 - Guard 按文件头识别 PNG/JPEG/GIF/WebP，检查 byte 上限、两侧维度与零维度；无图片扩展名的超限 PNG 也拒绝。BMP 不进入该 guard，仍返回 pi 的 imageProcessor omission 文本。四种受支持格式保持原始 base64 和 MIME 的原生 image result。
 - Context Usage 的 prompt / tools image 块分别计入原类别，按 `ceil(width * height / 750)`、上限 1600；无法解析或零维度的历史图片回退 1600。Context Report 复用同一计量，不新增分类或状态。provider input + cacheRead + cacheWrite 继续优先作为 used 总量，segment / category 保留估算归因。

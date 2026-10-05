@@ -15,6 +15,101 @@ import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 const png =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aSf8AAAAASUVORK5CYII=";
 
+test("read rejects oversized JPEG bytes even when its header cannot provide dimensions", async () => {
+  const dirs = await tempDirs();
+  const bytes = Buffer.alloc(5 * 1024 * 1024 + 1);
+  bytes.set([0xff, 0xd8, 0xff, 0xe0]);
+  await Bun.write(`${dirs.cwd}/broken.jpg`, bytes);
+  const fake = fakeModel([
+    fauxAssistantMessage(fauxToolCall("read", { path: "broken.jpg" }), { stopReason: "toolUse" }),
+    fauxAssistantMessage("recovered"),
+  ]);
+  const session = await createSession({ ...dirs, ...fake });
+  try {
+    await session.run("read the broken JPEG");
+    const result = session.messages.find((message) => message.role === "toolResult");
+    expect(result).toMatchObject({
+      isError: true,
+      content: [{ type: "text", text: expect.stringContaining("5 MB") }],
+    });
+    expect(JSON.stringify(fake.contexts[1])).not.toContain('"type":"image"');
+  } finally {
+    await session.dispose();
+    await dirs.cleanup();
+  }
+});
+
+test.each([
+  ["JPEG", Buffer.from("ffd8ffe00000", "hex"), false],
+  ["WebP", Buffer.from("52494646ffffffff57454250", "hex"), false],
+  ["oversized WebP", Buffer.from("52494646ffffffff57454250", "hex"), true],
+  ["GIF", Buffer.from("GIF89a"), false],
+  ["PNG", Buffer.from(png, "base64").subarray(0, 16), false],
+] as const)(
+  "read validates native-supported %s signatures with unparseable dimensions",
+  async (_format, header, oversized) => {
+    const dirs = await tempDirs();
+    const bytes = oversized ? Buffer.alloc(5 * 1024 * 1024 + 1) : Buffer.from(header);
+    header.copy(bytes);
+    await Bun.write(`${dirs.cwd}/broken.data`, bytes);
+    const fake = fakeModel([
+      fauxAssistantMessage(fauxToolCall("read", { path: "broken.data" }), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("recovered"),
+    ]);
+    const session = await createSession({ ...dirs, ...fake });
+    try {
+      await session.run("read the broken image");
+      expect(session.messages.find((message) => message.role === "toolResult")).toMatchObject({
+        isError: true,
+        content: [{ type: "text", text: expect.stringContaining(oversized ? "5 MB" : "Invalid") }],
+      });
+      expect(JSON.stringify(fake.contexts[1])).not.toContain('"type":"image"');
+    } finally {
+      await session.dispose();
+      await dirs.cleanup();
+    }
+  },
+);
+
+test.each(["APNG", "JPEG-LS", "PNG signature only"])(
+  "read retains pi's text behavior for %s",
+  async (format) => {
+    const dirs = await tempDirs();
+    const pngBytes = Buffer.from(png, "base64");
+    pngBytes.writeUInt32BE(8001, 16);
+    const bytes =
+      format === "APNG"
+        ? Buffer.concat([
+            pngBytes.subarray(0, 33),
+            Buffer.from("000000086163544c000000010000000000000000", "hex"),
+            pngBytes.subarray(33),
+          ])
+        : format === "JPEG-LS"
+          ? Buffer.from("ffd8fff70000", "hex")
+          : pngBytes.subarray(0, 8);
+    await Bun.write(`${dirs.cwd}/native-text.data`, bytes);
+    const fake = fakeModel([
+      fauxAssistantMessage(fauxToolCall("read", { path: "native-text.data" }), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("read text"),
+    ]);
+    const session = await createSession({ ...dirs, ...fake });
+    try {
+      await session.run("read the file");
+      expect(session.messages.find((message) => message.role === "toolResult")).toMatchObject({
+        isError: false,
+      });
+      expect(JSON.stringify(fake.contexts[1])).not.toContain('"type":"image"');
+    } finally {
+      await session.dispose();
+      await dirs.cleanup();
+    }
+  },
+);
+
 async function seed(messages: AgentMessage[]) {
   const store = new MemorySessionRepo();
   const stored = await store.create({}, BACKGROUND_CONTEXT);
