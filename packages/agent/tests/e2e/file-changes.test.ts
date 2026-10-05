@@ -495,6 +495,8 @@ test.each([{ during: "prompt" }, { during: "manual compaction" }])(
           ? [fauxAssistantMessage("File knowledge summary.")]
           : []),
         fauxAssistantMessage("noticed"),
+        fauxAssistantMessage("noticed deferred files"),
+        fauxAssistantMessage("done"),
       ]),
     });
     await session.run("read");
@@ -513,9 +515,36 @@ test.each([{ during: "prompt" }, { during: "manual compaction" }])(
     expect(changes(events)).toHaveLength(1);
     const reminder = changes(events)[0];
     if (reminder?.type !== "reminder_injected") throw new Error("Missing file changes reminder");
-    expect(reminder.content).toContain(`Externally modified: ${names[0]}.`);
+    const firstBatch = names.filter((name) =>
+      reminder.content.includes(`Externally modified: ${name}.`),
+    );
+    expect(firstBatch.length).toBeGreaterThan(0);
+    expect(firstBatch.length).toBeLessThan(names.length);
     expect(reminder.content.length).toBeGreaterThan(15000);
     expect(reminder.content.length).toBeLessThanOrEqual(16000);
+    await session.run("notice deferred files", {
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+    const batches = changes(events);
+    expect(batches).toHaveLength(2);
+    for (const name of names) {
+      expect(
+        batches.filter(
+          (event) =>
+            event.type === "reminder_injected" &&
+            event.content.includes(`Externally modified: ${name}.`),
+        ),
+      ).toHaveLength(1);
+    }
+    events.length = 0;
+    await session.run("continue", {
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+    expect(changes(events)).toHaveLength(0);
   },
 );
 
