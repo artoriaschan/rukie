@@ -53,6 +53,7 @@ import { createInteractions } from "./interactions";
 import { permissionChoices } from "../../components/permission-dialog";
 import { fmtTokens, render as renderActivity } from "./activity/activity";
 import { commandCatalog } from "./commands";
+import { SettingsScreen } from "../settings";
 
 /** Bind the Session and private stores to one chat screen for its lifetime. */
 export async function createChat(options: SessionOptions, model: string, locale: Locale = "zh") {
@@ -193,7 +194,7 @@ function Chat({
       live.questionIndex === userQuestion.questionIndex
     );
   };
-  type View = "chat" | "dashboard" | { detail: string; from: "chat" | "dashboard" };
+  type View = "chat" | "dashboard" | "settings" | { detail: string; from: "chat" | "dashboard" };
   const [view, setView] = useState<View>("chat");
   const viewRef = useRef<View>("chat");
   const switchView = (next: View) => {
@@ -446,7 +447,8 @@ function Chat({
             models.findIndex((model) => model.spec === session.model),
           ),
         );
-    } else if (command.name === "compact")
+    } else if (command.name === "settings") switchView("settings");
+    else if (command.name === "compact")
       void conversation
         .compact(prompt.slice(parsed![0].length).trim() || undefined)
         .catch((error: unknown) => conversation.notice(formatError(error, t), true));
@@ -585,6 +587,7 @@ function Chat({
       return;
     }
     const currentView = viewRef.current;
+    if (currentView === "settings") return;
     if (currentView !== "chat") {
       if (event.type === "wheel") subagentScroll.current?.scrollBy(event.delta * 3);
       if (event.type !== "key") return;
@@ -874,6 +877,7 @@ function Chat({
       }),
     [state.completed, state.subagents, columns, thinking, locale],
   );
+  if (view === "settings") return <SettingsScreen locale={locale} onClose={closeView} />;
   if (view === "dashboard")
     return (
       <SubagentDashboard
@@ -1108,6 +1112,7 @@ function Chat({
               planMode={state.planMode}
               history={history}
               filterInput={(event) =>
+                viewRef.current === "chat" &&
                 modelPickerRef.current === undefined &&
                 !handledInput.current.has(event) &&
                 !(
