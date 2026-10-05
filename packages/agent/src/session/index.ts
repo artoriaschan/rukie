@@ -60,7 +60,7 @@ import {
   type QuestionReply,
   type OnPlanReview,
 } from "../tools/index.ts";
-import { createFileTracking } from "../file-tracking/index.ts";
+import { createFileTracking, fileTrackingState } from "../file-tracking/index.ts";
 import { SYSTEM_PROMPT } from "../prompt/index.ts";
 import {
   collectReminders,
@@ -361,6 +361,7 @@ async function createSessionInternal(
   const toolState = createToolState(
     [
       todoState,
+      fileTrackingState,
       ...(internal.parentSessionId ? [] : [goalState]),
       subagentsState(stored.metadata.id),
       subagentRunState,
@@ -845,7 +846,18 @@ async function createSessionInternal(
           },
         },
       );
-  const fileTracking = createFileTracking(cwd);
+  const fileTracking = createFileTracking(cwd, {
+    initialState: toolState.get("file-tracking"),
+    previousReminder: initialBranch.transcriptMessages.findLast(
+      (message): message is Extract<AgentMessage, { role: "system-reminder" }> =>
+        message.role === "system-reminder" && message.source === "file-changes",
+    )?.content,
+    async persist(snapshot) {
+      if (!activeStore) throw new Error("Tool State writes require an active Run.");
+      const value = await toolState.set("file-tracking", snapshot, activeStore, context);
+      await emitRunEvent?.({ type: "tool_state_changed", name: "file-tracking", value });
+    },
+  });
   const initialTools = [
     ...createBuiltinTools(
       cwd,
@@ -1180,6 +1192,8 @@ async function createSessionInternal(
     });
     for (const reminder of reminders) {
       await branch.appendMessage(reminder, context);
+      if (reminder.source === "file-changes")
+        await fileTracking.acknowledgeReminder(reminder.content);
       transcriptMessages.push(reminder);
       await emit({
         type: "reminder_injected",
@@ -1908,6 +1922,8 @@ async function createSessionInternal(
                   return contextChanged ? { context: requestContext } : undefined;
                 for (const reminder of changed) {
                   await branch.appendMessage(reminder, context);
+                  if (reminder.source === "file-changes")
+                    await fileTracking.acknowledgeReminder(reminder.content);
                   transcriptMessages.push(reminder);
                   await emit({
                     type: "reminder_injected",
@@ -1963,6 +1979,11 @@ async function createSessionInternal(
               rewakeSteering.delete(event.message);
               subagents.delivered(event.message);
               const entryId = await branch.appendMessage(event.message, context);
+              if (
+                event.message.role === "system-reminder" &&
+                event.message.source === "file-changes"
+              )
+                await fileTracking.acknowledgeReminder(event.message.content);
               if (
                 event.message.role === "system-reminder" &&
                 event.message.source === "session-resume"

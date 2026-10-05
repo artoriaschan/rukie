@@ -3,8 +3,46 @@ import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 import { createTwoFilesPatch } from "diff";
-import type { TSchema } from "typebox";
+import { Type, type Static, type TSchema } from "typebox";
+import { Value } from "typebox/value";
 import type { ReminderSource } from "../reminders/index.ts";
+import type { ToolStateDefinition } from "../tool-state/index.ts";
+
+const trackingSchema = Type.Object(
+  {
+    files: Type.Array(
+      Type.Object(
+        {
+          path: Type.String({ minLength: 1 }),
+          mtimeMs: Type.Number(),
+          size: Type.Integer({ minimum: 0 }),
+          hash: Type.String({ pattern: "^[a-fA-F0-9]{64}$" }),
+          stale: Type.Boolean(),
+        },
+        { additionalProperties: false },
+      ),
+    ),
+  },
+  { additionalProperties: false },
+);
+type TrackingSnapshot = Static<typeof trackingSchema>;
+
+function validSnapshot(value: unknown): value is TrackingSnapshot {
+  return (
+    Value.Check(trackingSchema, value) &&
+    value.files.every((file) => isAbsolute(file.path) && Number.isFinite(file.mtimeMs))
+  );
+}
+
+export const fileTrackingState: ToolStateDefinition = {
+  name: "file-tracking",
+  version: 1,
+  parse(version, value) {
+    if (version !== 1) throw new Error(`Unsupported file-tracking version: ${version}`);
+    if (!validSnapshot(value)) throw new Error("Invalid file-tracking schema.");
+    return value;
+  },
+};
 
 interface TrackedFile {
   path: string;
@@ -39,9 +77,42 @@ async function baseline(path: string): Promise<TrackedFile> {
 }
 
 /** Each Session owns the last file contents its model learned through file tools or diffs. */
-export function createFileTracking(cwd: string) {
+export function createFileTracking(
+  cwd: string,
+  options: {
+    initialState?: unknown;
+    previousReminder?: string;
+    persist: (snapshot: TrackingSnapshot) => Promise<void>;
+  },
+) {
   const files = new Map<string, TrackedFile>();
-  let sequence = 0;
+  const acknowledgements = new Map<string, Map<string, TrackedFile>>();
+  const restore = (snapshot: unknown) => {
+    const previous = new Map(files);
+    files.clear();
+    acknowledgements.clear();
+    if (!validSnapshot(snapshot)) return;
+    for (const file of snapshot.files) {
+      const known = previous.get(file.path);
+      files.set(file.path, {
+        ...file,
+        ...(known?.hash === file.hash && { content: known.content }),
+      });
+    }
+  };
+  restore(options.initialState);
+  // Continue the event identity across resume so equal path-only reports still inject.
+  let sequence = Number(options.previousReminder?.match(/^File changes \((\d+)\):/)?.[1] ?? 0);
+  const persist = () =>
+    options.persist({
+      files: Array.from(files.values(), ({ path, mtimeMs, size, hash, stale }) => ({
+        path,
+        mtimeMs,
+        size,
+        hash,
+        stale,
+      })),
+    });
   let requestRemaining = 16000;
   const displayPath = (path: string) => {
     const local = relative(cwd, path);
@@ -50,112 +121,152 @@ export function createFileTracking(cwd: string) {
   const reminderSource: ReminderSource = {
     source: "file-changes",
     async currentContent() {
-      const pending: Array<{
-        path: string;
-        report: string;
-        current?: TrackedFile;
-        patch?: string;
-      }> = [];
-      for (const [path, previous] of files) {
-        let metadata: { mtimeMs: number; size: number } | undefined;
-        try {
-          metadata = await stat(path);
-          if (metadata.mtimeMs === previous.mtimeMs && metadata.size === previous.size) continue;
-          const current = await baseline(path);
-          current.stale = previous.stale;
-          if (current.hash === previous.hash) {
-            current.content = previous.content;
-            files.set(path, current);
-            continue;
-          }
-          const shown = displayPath(path);
-          const patch =
-            previous.content !== undefined && current.content !== undefined
-              ? createTwoFilesPatch(shown, shown, previous.content, current.content, "", "", {
-                  context: 3,
-                })
-              : undefined;
-          pending.push({
-            path,
-            report: `Externally modified: ${shown}. Read it again before editing.`,
-            current,
-            patch: patch !== undefined && patch.length <= 4000 ? patch : undefined,
-          });
-        } catch (error) {
-          if (
-            typeof error === "object" &&
-            error !== null &&
-            "code" in error &&
-            error.code === "ENOENT"
-          ) {
-            pending.push({ path, report: `Deleted: ${displayPath(path)}` });
-          } else if (
-            !previous.unavailable ||
-            (metadata && (metadata.mtimeMs !== previous.mtimeMs || metadata.size !== previous.size))
-          ) {
-            // No bytes were available to hash. Keep the last hash and any metadata we did observe.
+      const previousFiles = new Map(files);
+      const previousRemaining = requestRemaining;
+      try {
+        const pending: Array<{
+          path: string;
+          report: string;
+          current?: TrackedFile;
+          patch?: string;
+        }> = [];
+        for (const [path, previous] of files) {
+          let metadata: { mtimeMs: number; size: number } | undefined;
+          let refreshed = false;
+          try {
+            metadata = await stat(path);
+            if (metadata.mtimeMs === previous.mtimeMs && metadata.size === previous.size) continue;
+            const current = await baseline(path);
+            current.stale = previous.stale;
+            if (current.hash === previous.hash) {
+              current.content = previous.content;
+              files.set(path, current);
+              refreshed = true;
+              continue;
+            }
+            const shown = displayPath(path);
+            const patch =
+              previous.content !== undefined && current.content !== undefined
+                ? createTwoFilesPatch(shown, shown, previous.content, current.content, "", "", {
+                    context: 3,
+                  })
+                : undefined;
             pending.push({
               path,
-              report: `Externally modified: ${displayPath(path)}. Read it again before editing.`,
-              current: {
-                ...previous,
-                mtimeMs: metadata?.mtimeMs ?? previous.mtimeMs,
-                size: metadata?.size ?? previous.size,
-                content: undefined,
-                stale: true,
-                unavailable: true,
-              },
+              report: `Externally modified: ${shown}. Read it again before editing.`,
+              current,
+              patch: patch !== undefined && patch.length <= 4000 ? patch : undefined,
             });
+          } catch (error) {
+            if (
+              typeof error === "object" &&
+              error !== null &&
+              "code" in error &&
+              error.code === "ENOENT"
+            ) {
+              pending.push({ path, report: `Deleted: ${displayPath(path)}` });
+            } else if (
+              !previous.unavailable ||
+              (metadata &&
+                (metadata.mtimeMs !== previous.mtimeMs || metadata.size !== previous.size))
+            ) {
+              // No bytes were available to hash. Keep the last hash and any metadata we did observe.
+              pending.push({
+                path,
+                report: `Externally modified: ${displayPath(path)}. Read it again before editing.`,
+                current: {
+                  ...previous,
+                  mtimeMs: metadata?.mtimeMs ?? previous.mtimeMs,
+                  size: metadata?.size ?? previous.size,
+                  content: undefined,
+                  stale: true,
+                  unavailable: true,
+                },
+              });
+            }
+          } finally {
+            // Storage failures are not filesystem failures and must reach the caller.
+            if (refreshed) await persist();
           }
         }
-      }
-      if (!pending.length) return undefined;
-      const header = `File changes (${sequence + 1}):\nThe following files were modified since you last read or wrote them (by the user, a hook, a command, or another agent):\n\n`;
-      const changes: string[] = [];
-      const diffs: Array<{ index: number; patch: string; current: TrackedFile }> = [];
-      let remaining = requestRemaining - header.length;
-      // Only emitted reports advance a baseline; the next request can still detect deferred files.
-      for (const { path, report, current, patch } of pending) {
-        const cost = report.length + (changes.length ? 2 : 0);
-        if (cost > remaining) break;
-        remaining -= cost;
-        const index = changes.length;
-        changes.push(report);
-        if (current) {
-          files.set(path, current);
-          if (patch !== undefined) {
-            diffs.push({ index, patch, current });
+        if (!pending.length) return undefined;
+        const header = `File changes (${sequence + 1}):\nThe following files were modified since you last read or wrote them (by the user, a hook, a command, or another agent):\n\n`;
+        const changes: string[] = [];
+        const diffs: Array<{ index: number; patch: string; current: TrackedFile }> = [];
+        const known = new Map<string, TrackedFile>();
+        let remaining = requestRemaining - header.length;
+        // Only emitted reports advance a baseline; the next request can still detect deferred files.
+        for (const { path, report, current, patch } of pending) {
+          const cost = report.length + (changes.length ? 2 : 0);
+          if (cost > remaining) break;
+          remaining -= cost;
+          const index = changes.length;
+          changes.push(report);
+          if (current) {
+            files.set(path, current);
+            if (patch !== undefined) {
+              diffs.push({ index, patch, current });
+            } else {
+              current.content = undefined;
+              current.stale = true;
+            }
           } else {
+            files.delete(path);
+          }
+        }
+        if (!changes.length) return undefined;
+        // Reserve path-only reports, separators, and the header before spending context on diffs.
+        let exhausted = false;
+        for (const { index, patch, current } of diffs) {
+          const extra = patch.length - changes[index]!.length;
+          if (!exhausted && extra <= remaining) {
+            changes[index] = patch;
+            remaining -= extra;
+            known.set(current.path, { ...current });
+            // The diff becomes knowledge only after its reminder reaches the Transcript.
+            current.stale = true;
+            current.content = undefined;
+          } else {
+            exhausted = true;
             current.content = undefined;
             current.stale = true;
           }
-        } else {
-          files.delete(path);
         }
+        // Event reminders can repeat the same diff after another successful file tool operation.
+        sequence++;
+        const content = header + changes.join("\n\n");
+        requestRemaining -= content.length;
+        await persist();
+        if (known.size) acknowledgements.set(content, known);
+        return content;
+      } catch (error) {
+        files.clear();
+        for (const [path, file] of previousFiles) files.set(path, file);
+        requestRemaining = previousRemaining;
+        throw error;
       }
-      if (!changes.length) return undefined;
-      // Reserve path-only reports, separators, and the header before spending context on diffs.
-      let exhausted = false;
-      for (const { index, patch, current } of diffs) {
-        const extra = patch.length - changes[index]!.length;
-        if (!exhausted && extra <= remaining) {
-          changes[index] = patch;
-          remaining -= extra;
-        } else {
-          exhausted = true;
-          current.content = undefined;
-          current.stale = true;
-        }
-      }
-      // Event reminders can repeat the same diff after another successful file tool operation.
-      sequence++;
-      const content = header + changes.join("\n\n");
-      requestRemaining -= content.length;
-      return content;
     },
   };
   return {
     reminderSource,
+    /** Replace a Tool State projection; retain bytes only when their hash still matches. */
+    restore,
+    /** Called only after the corresponding reminder is durable in the Transcript. */
+    async acknowledgeReminder(content: string) {
+      const known = acknowledgements.get(content);
+      if (!known) return;
+      const previous = new Map(files);
+      for (const [path, current] of known)
+        if (files.get(path)?.hash === current.hash) files.set(path, current);
+      try {
+        await persist();
+        acknowledgements.delete(content);
+      } catch (error) {
+        files.clear();
+        for (const [path, file] of previous) files.set(path, file);
+        throw error;
+      }
+    },
     /** Prompt collection and request preparation share a budget until this request is prepared. */
     finishRequest() {
       requestRemaining = 16000;
@@ -194,10 +305,22 @@ export function createFileTracking(cwd: string) {
           }
           const result = await tool.execute(...args);
           if (!result.isError && path) {
+            let current: TrackedFile | undefined;
             try {
-              files.set(path, await baseline(path));
+              current = await baseline(path);
             } catch {
               // A successful tool result remains successful when its file disappears before tracking.
+            }
+            if (current) {
+              const previous = files.get(path);
+              files.set(path, current);
+              try {
+                await persist();
+              } catch (error) {
+                // Failed knowledge persistence cannot grant permission to overwrite unknown bytes.
+                files.set(path, previous ?? { ...current, content: undefined, stale: true });
+                throw error;
+              }
             }
           }
           return result;

@@ -52,6 +52,7 @@ Session 对 frontend 暴露运行、事件订阅、中断、steer、Goal、上�
 | `permissions/`、`review/`、`hooks/`、`interaction/`       | 决定执行是否允许，运行生命周期扩展，并协调可取消的用户交互      |
 | `reminders/`、`compaction/`、`context-usage/`             | 注入有来源的上下文、压缩模型历史、报告上下文占用                |
 | `store/`、`tool-state/`、`checkpoint/`                    | 持久化 Transcript、重建工具状态、保存和恢复文件修改前的内容     |
+| `file-tracking/`                                          | 跟踪文件工具的内容基线、检测外部变化、拒绝未经重读的过期写入    |
 | `subagents/`、`session-resume/`、`unknown-tool-outcomes/` | 管理子 Session 与 Run，核对恢复事实，处理缺少确定结果的工具调用 |
 | `session-title/`、`plan-mode/`、`side-question/`          | 管理标题、计划引导与独立侧问                                    |
 | `goal/`                                                   | 管理 Goal 快照、模型工具授权与续跑提示，Session 协调自动续跑    |
@@ -111,6 +112,8 @@ Compaction 在请求前自动检查，也可由空闲 Session 手动执行。它
 [`store/`](../packages/agent/src/store/index.ts)把 pi 的原生 JSONL repo 接入 SessionStore，提供创建、打开和枚举，并支持定向查询及只读观察。存储格式与选型见 [ADR-0003](adr/0003-dual-session-store.md)。存储位置、项目 slug 与文件命名由这个实现及 pi 管理，架构不维护第二份命名规则。
 
 当前分支包含消息、compaction 和自定义 Tool State 记录。Tool State 按名称与版本校验完整快照，重放时取该分支最后一条有效值；无效记录告警并跳过。Todo、Goal、计划状态、模型选择和子代理身份等通过这条路径恢复，Permission Mode 与临时 session allow 规则保留在内存中。Goal 是否正在自动续跑只保留在内存中；Session Resume 与对话 Rewind 恢复目标和轮次但不会自动开跑。未完成 Goal 通过 Tool State reminder 进入模型上下文，Compaction 后重新注入。
+
+文件跟踪通过 Tool State 保存路径、元数据、内容 hash 与是否需要重读，不保存文件内容。Session Resume 重建跟踪集，之后发现的外部变化仅提示路径并要求重读。检测生成的 diff 在对应 System Reminder 写入 Transcript 后才成为已知内容；快照或提醒保存失败时仍拒绝覆盖未确认的文件，存储错误向调用方传播。
 
 Checkpoint 在真实用户 prompt 上建立锚点，记录文件工具首次修改前的原样内容；子代理共用父 Session 的记录器。它不记录 bash 或 MCP 的文件副作用。Rewind 仅在空闲时恢复文件和/或对话：对话恢复保留原分支，再移动 `main` 到锚点之前，并重建上下文与 Tool State。文件恢复可能覆盖之后的修改；定义与使用限制由 `CONTEXT.md` 和 [`checkpoint/`](../packages/agent/src/checkpoint/index.ts)负责。
 
