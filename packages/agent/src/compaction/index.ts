@@ -18,6 +18,7 @@ import {
   type Model,
 } from "@earendil-works/pi-ai";
 import { convertToLlm } from "../reminders/index.ts";
+import { isUnknownToolOutcome } from "@neant/shared";
 
 /** Replay system deltas and project the latest native compaction plus its suffix. */
 export function restoreContext(entries: Entry[]): AgentMessage[] {
@@ -51,7 +52,7 @@ export function restoreContext(entries: Entry[]): AgentMessage[] {
     if (item.type !== "message" || item.message.role !== "system-reminder") break;
     reminderCount++;
   }
-  return [
+  const messages: AgentMessage[] = [
     ...(baseline ? [baseline] : []),
     createCompactionSummaryMessage(entry.summary, entry.tokensBefore, entry.timestamp),
     ...suffix
@@ -68,6 +69,21 @@ export function restoreContext(entries: Entry[]): AgentMessage[] {
       .slice(reminderCount)
       .flatMap((item) => (item.type === "message" ? [item.message] : [])),
   ];
+  const visibleCalls = new Set(
+    messages.flatMap((message) =>
+      message.role === "assistant"
+        ? message.content.flatMap((part) => (part.type === "toolCall" ? [part.id] : []))
+        : [],
+    ),
+  );
+  // Repairs for compacted calls remain durable facts in the Transcript. Do not
+  // send an orphan result to the provider or resurrect the compacted call.
+  return messages.filter(
+    (message) =>
+      message.role !== "toolResult" ||
+      !isUnknownToolOutcome(message.details) ||
+      visibleCalls.has(message.toolCallId),
+  );
 }
 
 /** Estimate the model-visible context consistently before and after compaction. */
