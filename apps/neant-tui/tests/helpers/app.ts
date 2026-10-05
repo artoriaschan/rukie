@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SessionOptions } from "@neant/agent";
@@ -19,6 +19,9 @@ export async function start(
 ) {
   const root = await mkdtemp(join(tmpdir(), "neant-tui-"));
   await options.prepare?.(root);
+  await mkdir(join(options.session?.homeDir ?? root, ".neant", "file-history"), {
+    recursive: true,
+  });
   const terminal = createTerminal(options.columns, options.rows);
   const fake = controlledModel(options.controlReviews);
   let stderr = "";

@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtemp, rm, readdir, realpath } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, readdir, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,6 +28,7 @@ async function setup(settings: object = {}, options: FakeOpenAIOptions = {}) {
   cleanups.push(server.stop, () => rm(root, { recursive: true, force: true }));
   const home = join(root, "home");
   const cwd = join(root, "project");
+  await mkdir(join(home, ".neant", "file-history"), { recursive: true });
   await Bun.write(join(cwd, ".keep"), "");
   await Bun.write(
     join(home, ".neant/settings.json"),

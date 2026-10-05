@@ -65,6 +65,7 @@ import { createToolState, todoState, type TodoItem } from "../tool-state/index.t
 import {
   createCheckpoints,
   checkpointState,
+  cleanupExpiredBackups,
   type Checkpoint,
   type RewindResult,
 } from "../checkpoint/index.ts";
@@ -107,11 +108,11 @@ export interface SessionOptions {
   onPlanReview?: OnPlanReview;
   /** Load this project's .mcp.json even when it is not in the user trust list. */
   trustProjectMcp?: boolean;
-  /** Clock used for reminder dates; defaults to the local current date. */
+  /** Clock used for reminder dates and backup retention; defaults to the local current date. */
   now?: () => Date;
   /** Additional content sources, compared with the latest persisted reminder per source. */
   reminderSources?: ReminderSource[];
-  /** Discovery diagnostics; defaults to stderr via console.warn. */
+  /** Startup and discovery diagnostics; defaults to stderr via console.warn. */
   onWarning?: (warning: string) => void;
 }
 
@@ -186,7 +187,14 @@ export interface Session {
 }
 
 export async function createSession(options: SessionOptions): Promise<Session> {
-  return createSessionInternal(options);
+  const session = await createSessionInternal(options);
+  await cleanupExpiredBackups({
+    homeDir: options.homeDir,
+    sessionId: session.id,
+    now: options.now?.() ?? new Date(),
+    onWarning: options.onWarning ?? console.warn,
+  });
+  return session;
 }
 
 interface InternalSessionOptions {

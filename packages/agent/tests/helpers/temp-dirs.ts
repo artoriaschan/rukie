@@ -1,12 +1,13 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-/** Fresh `cwd` and `homeDir` under the OS temp dir; call `cleanup` in `afterEach`. */
-export async function tempDirs() {
+/** Fresh project and home with valid backup storage; opt out to exercise missing or invalid storage. */
+export async function tempDirs({ fileHistory = true }: { fileHistory?: boolean } = {}) {
   const root = await mkdtemp(join(tmpdir(), "neant-test-"));
   const cwd = join(root, "project");
   const homeDir = join(root, "home");
   await Promise.all([Bun.write(join(cwd, ".keep"), ""), Bun.write(join(homeDir, ".keep"), "")]);
+  if (fileHistory) await mkdir(join(homeDir, ".neant", "file-history"), { recursive: true });
   return { cwd, homeDir, cleanup: () => rm(root, { recursive: true, force: true }) };
 }
