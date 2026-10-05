@@ -527,10 +527,9 @@ function reduceEvent(
   }
 }
 
-/** Own the active Run outside React so back-to-back input events cannot submit twice. */
-export function createConversation(session: Session, model: string, locale: Locale = "zh") {
+function createViewState(session: Session, model: string, locale: Locale): ViewState {
   const t = createTuiI18n(locale);
-  let state: ViewState = {
+  return {
     planMode: session.planMode,
     waitingSubagents: 0,
     subagents: restoreSubagents(session.toolState("subagents")),
@@ -551,6 +550,12 @@ export function createConversation(session: Session, model: string, locale: Loca
     activityInput: 0,
     streamedChars: 0,
   };
+}
+
+/** Own the active Run outside React so back-to-back input events cannot submit twice. */
+export function createConversation(session: Session, model: string, locale: Locale = "zh") {
+  const t = createTuiI18n(locale);
+  let state = createViewState(session, model, locale);
   const listeners = new Set<() => void>();
   let active: { controller: AbortController; promise: Promise<unknown> } | undefined;
   let notificationTimer: ReturnType<typeof setTimeout> | undefined;
@@ -576,25 +581,10 @@ export function createConversation(session: Session, model: string, locale: Loca
   const onEvent = (event: SessionEvent) => {
     const now = Date.now();
     if (event.type === "conversation_rewound") {
+      const restored = createViewState(session, state.model, locale);
       update({
-        ...state,
-        completed: replayMessages(session.messages, t),
-        assistant: "",
-        tools: [],
-        error: undefined,
-        todos: (session.toolState("todo") as TodoItem[] | undefined) ?? [],
-        planMode: session.planMode,
-        subagents: restoreSubagents(session.toolState("subagents")),
-        waitingSubagents: 0,
-        contextUsage: undefined,
-        input: 0,
-        output: 0,
-        activityInput: 0,
-        streamedChars: 0,
-        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-        decode: { tokens: 0, ms: 0 },
-        tpsSamples: [],
-        activity: { ...createActivity(locale), gitBranch: state.activity.gitBranch },
+        ...restored,
+        activity: { ...restored.activity, gitBranch: state.activity.gitBranch },
       });
       return;
     }

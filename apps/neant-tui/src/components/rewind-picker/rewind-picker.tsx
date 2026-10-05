@@ -54,6 +54,7 @@ export function RewindPicker({
         ? [t("rewind.changed", { count: entries[index]!.files.length })]
         : []),
     ].join(" · ");
+  const contentWidth = columns - (maxHeight < 9 ? 2 : 4);
   const hasFiles = files.length > 0;
   const inlinePreview = confirm && maxHeight < 7;
   const frameRows = inlinePreview ? 3 : 4;
@@ -109,7 +110,7 @@ export function RewindPicker({
                     }}
                   >
                     <ListItem
-                      width={columns - (maxHeight < 9 ? 2 : 4)}
+                      width={contentWidth}
                       focused={absolute === mode}
                       singleLine
                       showScrollUp={absolute === start && start > 0}
@@ -135,7 +136,7 @@ export function RewindPicker({
                     onClick={() => onFocus(absolute)}
                   >
                     <ListItem
-                      width={columns - (maxHeight < 9 ? 2 : 4)}
+                      width={contentWidth}
                       focused={absolute === focus}
                       singleLine
                       showScrollUp={absolute === start && start > 0}
@@ -159,14 +160,28 @@ export function RewindPicker({
             {showFiles && (
               <>
                 {shownFiles.map((file) => (
-                  <ThemedText key={file.path} dimColor wrap="truncate">
-                    {t(file.backup === null ? "rewind.delete" : "rewind.restore", {
-                      path: file.path,
-                    })}
-                    {fileRows === 1 && files.length > 1
-                      ? ` · ${t("rewind.more", { count: files.length - 1 })}`
-                      : ""}
-                  </ThemedText>
+                  <Box key={file.path} height={1}>
+                    <Box
+                      width={
+                        contentWidth -
+                        (fileRows === 1 && files.length > 1
+                          ? Bun.stringWidth(` · ${t("rewind.more", { count: files.length - 1 })}`)
+                          : 0)
+                      }
+                    >
+                      <ThemedText dimColor wrap="truncate">
+                        {t(file.backup === null ? "rewind.delete" : "rewind.restore", {
+                          path: file.path,
+                        })}
+                      </ThemedText>
+                    </Box>
+                    {fileRows === 1 && files.length > 1 && (
+                      <ThemedText
+                        dimColor
+                        wrap="truncate"
+                      >{` · ${t("rewind.more", { count: files.length - 1 })}`}</ThemedText>
+                    )}
+                  </Box>
                 ))}
                 {fileRows > 1 && files.length > shownFiles.length && (
                   <ThemedText dimColor wrap="truncate">

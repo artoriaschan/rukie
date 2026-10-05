@@ -601,3 +601,26 @@ test("40×12 rewind preserves Todo and resumed child panels while confirmation f
     await app.cleanup();
   }
 });
+
+test("40×12 confirmation keeps +N more visible beside long CJK file paths", async () => {
+  const app = await ready({ columns: 40, rows: 12, session: { permissionMode: "full-access" } });
+  try {
+    await toolsPrompt(
+      app,
+      "target",
+      ["甲", "乙", "丙"].map((label) => ({
+        name: "write",
+        args: { path: label.repeat(30) + ".txt", content: "created" },
+      })),
+    );
+    await open(app);
+    app.stdin.write("\r");
+    await app.waitFor(() => text(app).includes("Rewind to this message?"));
+    expect(text(app)).toContain("+2 more");
+    expect(text(app)).toContain("Delete 甲");
+    expect(text(app)).toContain("Changes made by bash are not restored");
+    expect(app.screen().every((line) => Bun.stringWidth(line) <= 40)).toBe(true);
+  } finally {
+    await app.cleanup();
+  }
+});

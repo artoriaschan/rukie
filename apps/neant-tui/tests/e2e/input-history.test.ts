@@ -12,9 +12,14 @@ async function send(app: Awaited<ReturnType<typeof start>>, text: string) {
   const count = app.calls.length;
   app.stdin.write(`${text}\r`);
   await app.waitFor(() => app.calls.length === count + 1);
-  app.calls.at(-1)!.delta("done");
+  const answer = `done ${count + 1}`;
+  app.calls.at(-1)!.delta(answer);
   app.calls.at(-1)!.finish();
-  await app.waitFor(() => !app.isWorking() && app.allLines().some((line) => line.includes("done")));
+  // The activity spinner can disappear before the Run settles. Wait for this
+  // answer and the idle footer, rather than a previous Run's painted output.
+  await app.waitFor(
+    () => app.screen().at(-1) === "" && app.screen().some((line) => line.includes(answer)),
+  );
 }
 
 test("arrows recall accepted inputs, preserve the draft and submit edited recall at its end", async () => {
@@ -33,9 +38,13 @@ test("arrows recall accepted inputs, preserve the draft and submit edited recall
     await app.waitFor(() => app.calls.length === 3);
     const user = app.calls[2]!.context.messages.findLast((message) => message.role === "user");
     expect(user?.content).toEqual([{ type: "text", text: "第二条👩‍💻 edited" }]);
-    app.calls[2]!.delta("done");
+    app.calls[2]!.delta("third answer complete");
     app.calls[2]!.finish();
-    await app.waitFor(() => !app.isWorking());
+    await app.waitFor(
+      () =>
+        app.screen().at(-1) === "" &&
+        app.screen().some((line) => line.includes("third answer complete")),
+    );
     app.stdin.write("fresh draft\x1b[A\x1b[B");
     await app.waitFor(() => prompt(app) === "❯ fresh draft");
     app.stdin.write("\x1b[A\x03new draft\x1b[A\x1b[B");
