@@ -529,9 +529,15 @@ test("stream-json reports compaction start and end around a large tool result", 
     (event) => event.type === "compaction_start" || event.type === "compaction_end",
   );
   expect(compactions).toEqual([
-    { type: "compaction_start", sessionId: events[0].sessionId, tokensBefore: expect.any(Number) },
+    {
+      type: "compaction_start",
+      trigger: "auto",
+      sessionId: events[0].sessionId,
+      tokensBefore: expect.any(Number),
+    },
     {
       type: "compaction_end",
+      trigger: "auto",
       sessionId: events[0].sessionId,
       summary: expect.stringContaining("hello from fake"),
       tokensBefore: compactions[0].tokensBefore,

@@ -135,3 +135,27 @@ test("new inherited children use the switched model while retained children keep
   expect(childModels).toEqual(["switch/first", "switch/first", "switch/second"]);
   await session.dispose();
 });
+
+test("manual compaction waits for model selection and summarizes through the selected model", async () => {
+  dirs = await tempDirs();
+  process.env.NEANT_SWITCH_TEST_KEY = "test-key";
+  const fake = fakeModel([
+    fauxAssistantMessage("first reply"),
+    fauxAssistantMessage("Selected model summary."),
+  ]);
+  const requested: string[] = [];
+  const primary = fake.streamFn;
+  fake.streamFn = (model, context, options) => {
+    requested.push(`${model.provider}/${model.id}`);
+    return primary(model, context, options);
+  };
+  const session = await createSession({ ...dirs, settings, streamFn: fake.streamFn });
+  await session.run("first question");
+  const switching = session.setModel("switch/second");
+  await expect(session.compact()).rejects.toThrow("switching models");
+  await switching;
+  await session.compact();
+  expect(requested).toEqual(["switch/first", "switch/second"]);
+  expect(JSON.stringify(session.messages)).toContain("Selected model summary.");
+  await session.dispose();
+});

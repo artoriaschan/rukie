@@ -54,6 +54,7 @@ const zh = {
   "error.hook-matcher-invalid": "{{source}}：无效的 hook 正则表达式：{{matcher}}",
   "error.hook-if-nontool": "{{source}}：if 仅支持工具事件，此 {{event}} hook 永不运行",
   "error.hook-output-ignored": "忽略无效或不支持的 hook 输出字段：{{field}}",
+  "error.compaction-no-history": "没有可压缩的对话内容。",
   "error.hook-compaction-blocked": "PreCompact hook 跳过本次压缩：{{reason}}",
   "error.hook-continuation-limit": "{{event}} hook 已达 {{limit}} 次续跑上限，忽略阻断",
   "error.hook-project-untrusted": "{{source}}：忽略 hooks，只有受信任的项目可以定义 hooks",
@@ -104,6 +105,7 @@ const en = {
   "error.hook-if-nontool":
     "{{source}}: if is only supported on tool events; this {{event}} hook will never run",
   "error.hook-output-ignored": "Ignoring invalid or unsupported hook output field: {{field}}",
+  "error.compaction-no-history": "Session has no compactable conversation history.",
   "error.hook-compaction-blocked": "Compaction skipped by PreCompact hook: {{reason}}",
   "error.hook-continuation-limit":
     "{{event}} hook reached the {{limit}} continuation limit; ignoring block",
