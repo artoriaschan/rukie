@@ -153,8 +153,7 @@ export function createSessionTitle(options: {
       return source;
     },
     async initializeChild() {
-      if (options.childDescription && !title)
-        await set(truncate(clean(options.childDescription), 80), "prompt");
+      if (options.childDescription && !title) await set(clean(options.childDescription), "prompt");
     },
     async firstPrompt(prompt: string) {
       if (attempted || source === "user") return;
@@ -167,7 +166,7 @@ export function createSessionTitle(options: {
       generation = generate(prompt, controller, revision);
     },
     rename(next: string) {
-      const normalized = truncate(clean(next), 80);
+      const normalized = clean(next);
       if (!normalized) throw new Error("Session Title cannot be empty.");
       revision++;
       request?.abort();

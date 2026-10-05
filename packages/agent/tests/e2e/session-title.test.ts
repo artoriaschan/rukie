@@ -316,7 +316,8 @@ test("delegated and forked child sessions use the description without another ti
   const fake = fakeModel([
     fauxAssistantMessage(
       fauxToolCall("subagent", {
-        description: "Inspect authentication",
+        description:
+          "Inspect authentication, permission decisions, interrupted requests and restored conversation behavior",
         prompt: "inspect",
         run_in_background: false,
       }),
@@ -360,7 +361,10 @@ test("delegated and forked child sessions use the description without another ti
       names.push(await child.getName(BACKGROUND_CONTEXT));
       await child.close(BACKGROUND_CONTEXT);
     }
-    expect(names.sort()).toEqual(["Check test coverage", "Inspect authentication"]);
+    expect(names.sort()).toEqual([
+      "Check test coverage",
+      "Inspect authentication, permission decisions, interrupted requests and restored conversation behavior",
+    ]);
   } finally {
     await session.dispose();
     await dirs.cleanup();
@@ -483,6 +487,24 @@ test("rename persists while a manual summary is pending and survives compacted r
     await resumed.dispose();
   } finally {
     finish.resolve();
+    await session.dispose();
+    await dirs.cleanup();
+  }
+});
+
+test("a user can keep a meaningful manual title longer than the automatic model title limit", async () => {
+  const dirs = await tempDirs();
+  const session = await createSession({ ...dirs, ...fakeModel([]) });
+  const name =
+    "Investigate authentication, permission state, interrupted requests and restored conversation behavior";
+  try {
+    await session.rename(name);
+    expect(session.title).toBe(name);
+    await session.dispose();
+    const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
+    expect(resumed.title).toBe(name);
+    await resumed.dispose();
+  } finally {
     await session.dispose();
     await dirs.cleanup();
   }
