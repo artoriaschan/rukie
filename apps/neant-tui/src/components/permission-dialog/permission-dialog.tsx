@@ -69,7 +69,7 @@ export function PermissionDialog({
   const source = origin
     ? `${t("permissions.origin", { description: origin.description.replace(/[\r\n]+/g, " ") })} · `
     : "";
-  const title = ` ⏳ ${source}${t("dialog.title", { tool: toolName })} `;
+  const title = ` ⏳ ${source}${t("dialog.title", { tool: toolName === "web_fetch" ? t("tool.web-fetch") : toolName })} `;
   const ruleWidth = Math.max(0, columns - 4 - Bun.stringWidth(title));
   const command =
     toolName === "bash" &&

@@ -1,3 +1,5 @@
+import { createWebFetchTool } from "./web-fetch.ts";
+import type { WebFetchOptions } from "../web-fetch/index.ts";
 import type { OnInteractionStart } from "../interaction/index.ts";
 import {
   createReadTool,
@@ -121,6 +123,7 @@ export function createBuiltinTools(
   onQuestion?: OnQuestion,
   homeDir = homedir(),
   onInteractionStart?: OnInteractionStart,
+  webFetch?: WebFetchOptions,
 ): AgentTool[] {
   const env = new NodeExecutionEnv({ cwd });
   const bashTool = createBashTool();
@@ -147,6 +150,7 @@ export function createBuiltinTools(
     preserveErrorDetails(createGrepTool(cwd)),
     createSkillTool(getSkill),
     createTodoTool(setTodo),
+    createWebFetchTool(webFetch),
     ...(onQuestion ? [createQuestionTool(onQuestion, onInteractionStart)] : []),
   ];
 }
