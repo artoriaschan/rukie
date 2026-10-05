@@ -97,7 +97,7 @@ Interaction 由 Agent Core 发起，frontend 提供响应回调。[`interaction/
 
 ## 模型上下文
 
-System Prompt 提供固定行为指令；System Reminder 承载日期、项目说明、Skill 目录或正文、MCP 描述以及其他有来源的上下文。项目说明优先读取 `AGENTS.md`，缺失时读取 `CLAUDE.md`。[`reminders/`](../packages/agent/src/reminders/index.ts)按来源与最近持久化内容比较，仅追加需要更新的提醒，并在模型调用处转换自定义消息。
+System Prompt 提供固定行为指令；System Reminder 承载日期、项目说明、Skill 目录或正文、MCP 描述以及其他有来源的上下文。用户说明读取 `~/.neant/AGENTS.md`；项目说明优先读取项目根的 `AGENTS.md`，缺失时读取 `CLAUDE.md`。[`reminders/`](../packages/agent/src/reminders/index.ts)按来源与最近持久化内容比较，仅追加需要更新的提醒，并在模型调用处转换自定义消息。
 
 Compaction 在请求前自动检查，也可由空闲 Session 手动执行。它追加原生 compaction 记录，模型上下文由 System Prompt、摘要、保留尾部与之后的消息重建；原始 Transcript 仍保留。压缩后重新建立当前提醒来源，后续请求和恢复走相同的上下文投影。
 
@@ -123,7 +123,7 @@ Session Resume 通过只读观察核对子 Run 与父子归属，不自动恢复
 
 ## TUI 与本地化
 
-TUI 的 screens 连接 Session 与应用状态，components 接收 props 并呈现 Neant 语义；design system 和 renderer primitives 不依赖 Agent Core。Slash Command 由 frontend 解析，未匹配输入交回 Agent Core；命令语法不进入 Session 的领域接口。
+TUI 按四层组织，导入只向下：screens（`apps/neant-tui/src/screens/`）连接 Session 并拥有应用状态；app components（`apps/neant-tui/src/components/<area>/`）只接收 props，按 UI 区域分目录，各区域经 `index.ts` 暴露并汇总到 `components/index.ts`；design system（`packages/tui/src/design-system/`）提供主题及主题感知部件；renderer primitives（`packages/tui/src/components/`）提供终端原语。后两层不依赖 Agent Core；可复用的终端 UI 按语义放入 `@neant/tui`，Neant 专用适配留在应用内。Slash Command 由 frontend 解析，未匹配输入交回 Agent Core；命令语法不进入 Session 的领域接口。
 
 终端管线是 React reconciler → 纯 TypeScript Yoga 布局 → cell 网格 → 帧差分 → ANSI。只有 layout 使用 vendored Yoga；渲染器支持注入 stdin/stdout。通用终端 API、绘制、输入与清理语义由 [renderer README](../packages/tui/README.md)维护，来源与复用决定见 [ADR-0005](adr/0005-own-tui-renderer.md)。
 
