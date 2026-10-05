@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 
 # Spec: Slash Command 与手动 compaction
 
@@ -251,3 +251,13 @@ TUI 提供一组内置 Slash Command，输入 `/` 弹出补全菜单，列出内
 - `/rewind` 的行为已在 [Checkpoint 与 Rewind spec](../checkpoint/spec.md) 定义，这里只负责把它接进命令表。
 - 标题生成、侧问与 review 一样属于辅助模型调用，不计入主 run 的 usage 事件，也不经过 hooks。
 - dsh-TUI 中，TUI 直接追加的 rename 记录不会取消进行中的生成，可能被晚到的模型标题覆盖。本 spec 明确由 `rename()` 取消生成，并在生成完成时检查来源，避免这个竞争。
+
+## Answer
+
+01–08 全部实现并 resolved，交付分支为 `codex/slash-commands-integration`。完成命令框架与补全、手动 compaction、自动标题与改名、会话恢复、模型切换、上下文报告、侧问，以及设置占位页；工单验收与局部验证记录见 [implementation map](map.md)。
+
+最终代码与测试整合提交：`efd8f67d81773da2e0c02cd1406fa0f28022287a`。在隔离临时 HOME、清除 NO_COLOR、使用 caffeinate 的环境下执行 `bun run check`，退出 0：**1655 pass、0 fail、8615 assertions、127 files，194.92s**。oxfmt、oxlint、TypeScript project build、knip 均通过。日志：[最终完整检查](/tmp/neant-slash-final-check.log)。
+
+[双轴审查](review.md)：Standards 与 Spec 各发现并解决 1 项，原审查代理分别复核，均无剩余问题。修复包括压缩中 `/exit` 的取消收尾，以及 Core 新增可见错误的错误码与双语文案。最终验证还通过受控公共 hook / store 入口复现并修正两处测试就绪时序，五轮聚焦重复验证均通过，生产行为保持规格定义。
+
+八个实现工作树与一个审查修复工作树均已通过 managed worktree 工具归档，临时分支已删除，保留上述整合分支。当前本地 Markdown tracker 已完成关闭。

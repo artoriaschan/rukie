@@ -23,4 +23,10 @@ Spec: [slash commands](spec.md). Local Markdown tracker; tickets resolve through
 
 ## Fog
 
-- Remaining Core capability and TUI handler tickets retain their existing dependency graph.
+- None. 01–08 全部 resolved；双轴审查与最终全量验证完成，详见 [spec Answer](spec.md#answer) 与 [review](review.md)。
+
+## Final delivery
+
+- Branch: `codex/slash-commands-integration`；最终代码与测试整合提交 `efd8f67d81773da2e0c02cd1406fa0f28022287a`。
+- Full check: 1655 pass、0 fail、8615 assertions、127 files；静态检查全部通过。
+- Standards / Spec 各解决 1 项，均无剩余发现；九个 managed worktrees 已归档，临时分支已删除。
