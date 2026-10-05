@@ -1,3 +1,4 @@
+import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { createSession, type PermissionAskRequest, type SessionEvent } from "../../src/index.ts";
@@ -100,7 +101,7 @@ test("auto-review batches review ordinary tools while asking the user about ente
   ]);
   const mainStream = fake.streamFn;
   let reviews = 0;
-  fake.streamFn = (model, context, options) => {
+  fake.streamFn = withAuxiliaryRequests((model, context, options) => {
     if (
       context.messages.some(
         (message) => message.role === "system" && JSON.stringify(message).includes("REVIEW_POLICY"),
@@ -114,7 +115,7 @@ test("auto-review batches review ordinary tools while asking the user about ente
       );
     }
     return mainStream(model, context, options);
-  };
+  });
   const requests: PermissionAskRequest[] = [];
   const events: SessionEvent[] = [];
   const session = await createSession({

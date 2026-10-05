@@ -1,3 +1,4 @@
+import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { join } from "node:path";
@@ -214,10 +215,10 @@ test.each(["parent", "settings", "type"])(
           ],
           thinking: "low",
         },
-        streamFn(model, context, options) {
+        streamFn: withAuxiliaryRequests((model, context, options) => {
           models.push(`${model.provider}/${model.id}`);
           return fake.streamFn(fake.model, context, options);
-        },
+        }),
       });
       await session.run("delegate");
       expect(models).toEqual([

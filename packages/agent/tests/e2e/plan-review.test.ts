@@ -1,3 +1,4 @@
+import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { createSession, type PlanReviewRequest, type PlanReviewResult } from "../../src/index.ts";
@@ -277,7 +278,7 @@ test("takeover settles an active child without continuation and the next user Ru
   const session = await createSession({
     ...dirs,
     ...fake,
-    streamFn: (model, context, options) => {
+    streamFn: withAuxiliaryRequests((model, context, options) => {
       if (
         context.messages.some(
           (message) =>
@@ -288,7 +289,7 @@ test("takeover settles an active child without continuation and the next user Ru
         childSignal?.addEventListener("abort", () => release.resolve(), { once: true });
       }
       return fake.streamFn(model, context, options);
-    },
+    }),
     onPlanReview: async () => {
       await ready.promise;
       return { kind: "takeover" };

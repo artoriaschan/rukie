@@ -26,6 +26,7 @@ import type {
   SessionEvent as SharedSessionEvent,
   Settings,
   HooksSettings,
+  ContextReport,
 } from "@neant/shared";
 import {
   createSubagents,
@@ -36,8 +37,8 @@ import {
   type SubagentRun,
   type SubagentIdentity,
 } from "../subagents/index.ts";
-import { isTrustedProject, resolveModel } from "../config/index.ts";
-import { createJsonlStore, type SessionStore } from "../store/index.ts";
+import { isTrustedProject, resolveModel, modelState } from "../config/index.ts";
+import { createJsonlStore, registerSessionReader, type SessionStore } from "../store/index.ts";
 import {
   reconcileSubagents,
   recoverySummary,
@@ -69,7 +70,9 @@ import {
 import { discoverSkills, skillInvocation, skillsReminder } from "../skills/index.ts";
 import { createMcpConnections } from "../mcp/index.ts";
 import { compactTurn, estimateContextTokens, restoreContext } from "../compaction/index.ts";
-import { contextUsage } from "../context-usage/index.ts";
+import { createSessionTitle, titleSourceState, type TitleSource } from "../session-title/index.ts";
+import { sideQuestion } from "../side-question/index.ts";
+import { contextUsage, contextReport } from "../context-usage/index.ts";
 import { createToolState, todoState, type TodoItem } from "../tool-state/index.ts";
 import {
   createCheckpoints,
@@ -162,15 +165,30 @@ export interface Session {
   readonly running: boolean;
   /** Cancels the current run, including one started without a frontend controller. */
   interruptRun(): void;
+  /** Queue another user instruction for the current Run, including Skill Invocation. */
+  steer(prompt: string): void;
   /** Observe all runs; the first subscriber also receives events from startup autoruns. */
   subscribe(onEvent: (event: SessionEvent) => void): () => void;
   readonly id: string;
+  readonly title: string;
+  readonly titleSource: TitleSource | undefined;
+  rename(title: string): Promise<void>;
+  /** Current model identity, including a restored session selection. */
+  readonly model: string;
+  /** Persist a model selection for subsequent requests; requires idle state. */
+  setModel(spec: string): Promise<void>;
   readonly permissionMode: PermissionMode;
   readonly planMode: boolean;
   /** Changes guidance for the next model call and persists the state, also outside a Run. */
   setPlanMode(on: boolean): Promise<void>;
   /** Applies to the next tool call; never persisted. */
   setPermissionMode(mode: PermissionMode): void;
+  /** Snapshot the restored context; usable while idle or running. */
+  contextReport(): ContextReport;
+  /** Compress completed history while idle; focus only applies to this summary. */
+  compact(options?: { instructions?: string }): Promise<void>;
+  /** Answer once from current context without changing this Session or its Run. */
+  sideQuestion(question: string, options?: { signal?: AbortSignal }): AsyncIterable<string>;
   /** Current restored context in memory, including reminders and any compaction. */
   readonly messages: readonly AgentMessage[];
   /** Current Tool State snapshot; undefined before the first write. */
@@ -257,9 +275,6 @@ async function createSessionInternal(
     },
   };
   if (options.model && !options.streamFn) throw new Error("`model` requires `streamFn`.");
-  const { model, streamFn } = options.model
-    ? { model: options.model, streamFn: options.streamFn! }
-    : await resolveModel(settings, options.homeDir);
   const cwd = resolve(options.cwd);
   const store = options.store ?? createJsonlStore({ cwd, homeDir: options.homeDir });
   // Storage must finish even when the Run's signal is aborted.
@@ -287,11 +302,13 @@ async function createSessionInternal(
         context,
       );
   let entries;
+  let initialTitle: string | undefined;
   try {
     const branch =
       (await stored.branch("main", context)) ?? (await stored.createBranch("main", null, context));
     for (const message of internal.initialMessages ?? [])
       await branch.appendMessage(message, context);
+    initialTitle = await stored.getName(context);
     entries = await branch.findEntries({ order: "oldestFirst" }, context);
     if (metadata) {
       entries = await repairUnknownToolOutcomes(branch, entries, context);
@@ -309,7 +326,15 @@ async function createSessionInternal(
   };
   let emitRunEvent: ((event: CustomSessionEvent<AgentEvent>) => void | Promise<void>) | undefined;
   const toolState = createToolState(
-    [todoState, subagentsState(stored.metadata.id), subagentRunState, planState, checkpointState],
+    [
+      todoState,
+      subagentsState(stored.metadata.id),
+      subagentRunState,
+      planState,
+      checkpointState,
+      titleSourceState,
+      modelState,
+    ],
     entries,
     options.onWarning ?? console.warn,
   );
@@ -323,6 +348,13 @@ async function createSessionInternal(
         )
       : { subagents: [] };
   let recoveryPending = recovery.subagents.length > 0;
+  const restoredModel = toolState.get("model");
+  let { model, streamFn } =
+    typeof restoredModel === "string"
+      ? await resolveModel({ ...settings, model: restoredModel }, options.homeDir)
+      : options.model
+        ? { model: options.model, streamFn: options.streamFn! }
+        : await resolveModel(settings, options.homeDir);
   let planActive = (toolState.get("plan") as { active: boolean } | undefined)?.active ?? false;
   let planEntered = toolState.get("plan") !== undefined;
   let planWrites = Promise.resolve();
@@ -337,9 +369,7 @@ async function createSessionInternal(
       planEntered = true;
       const revision = ++planRevision;
       const write = planWrites.then(async () => {
-        const ownStore = activeStore ? undefined : await store.open(stored.metadata, context);
-        const target = activeStore ?? ownStore!;
-        try {
+        return withStore(async (target) => {
           if (!baselinePersisted) {
             const branch = await target.branch("main", context);
             if (!branch) throw new Error("Session has no main branch.");
@@ -347,9 +377,7 @@ async function createSessionInternal(
             baselinePersisted = true;
           }
           return await toolState.set("plan", { active: on }, target, context);
-        } finally {
-          await ownStore?.close(context);
-        }
+        });
       });
       // Keep frontend callbacks outside the write queue so a callback may
       // await another state change without waiting on its own notification.
@@ -377,6 +405,38 @@ async function createSessionInternal(
     },
   };
   let activeStore: StoredSession | undefined;
+  let storeOperations = Promise.resolve();
+  function serializeStore<T>(work: () => Promise<T>): Promise<T> {
+    const operation = storeOperations.then(work);
+    storeOperations = operation.then(
+      () => {},
+      () => {},
+    );
+    return operation;
+  }
+  function withStore<T>(work: (target: StoredSession) => Promise<T>): Promise<T> {
+    return serializeStore(async () => {
+      const current = activeStore;
+      const target = current ?? (await store.open(stored.metadata, context));
+      try {
+        return await work(target);
+      } finally {
+        if (!current) await target.close(context);
+      }
+    });
+  }
+  const openActiveStore = () =>
+    serializeStore(async () => {
+      const target = await store.open(stored.metadata, context);
+      activeStore = target;
+      return target;
+    });
+  const closeActiveStore = (target?: StoredSession) =>
+    serializeStore(async () => {
+      activeStore = undefined;
+      await target?.close(context);
+    });
+  const unregisterReader = registerSessionReader(store, stored.metadata.id, withStore);
   const promptTexts = initialBranch.promptTexts;
   const checkpoint =
     internal.checkpoint ??
@@ -404,6 +464,7 @@ async function createSessionInternal(
   // behind existing conversation messages; pi will seed it when restoring them.
   let baselinePersisted = initialBranch.baselinePersisted;
   let skills = new Map<string, Skill>();
+  let mcpToolServers = new Map<string, string>();
   const origin =
     internal.originDescription === undefined
       ? undefined
@@ -745,7 +806,8 @@ async function createSessionInternal(
   }
   let planTakenOver = false;
   const agent = new Agent({
-    streamFn: options.streamFn ?? streamFn,
+    streamFn: (selected, request, requestOptions) =>
+      (options.streamFn ?? streamFn)(selected, request, requestOptions),
     convertToLlm,
     beforeToolCall: permissions.beforeToolCall,
     async afterToolCall({ toolCall, args, result, isError }, signal) {
@@ -824,16 +886,49 @@ async function createSessionInternal(
       ...(settings.thinking && { thinkingLevel: settings.thinking }),
     },
   });
+  const sessionTitle = createSessionTitle({
+    title: initialTitle,
+    source: toolState.get("title-source") as TitleSource | undefined,
+    hasPrompt: initialBranch.transcriptMessages.some((message) => message.role === "user"),
+    childDescription: internal.originDescription,
+    getModel: async () =>
+      settings.titleModel
+        ? (await resolveModel({ ...settings, model: settings.titleModel }, options.homeDir)).model
+        : agent.state.model,
+    streamFn: (...args) => (options.streamFn ?? streamFn)(...args),
+    persist: (title, source) =>
+      withStore(async (target) => {
+        await target.setName(title, context);
+        await toolState.set("title-source", source, target, context);
+      }),
+    changed: (title, source) =>
+      broadcast({ type: "session_title_changed", title, source, sessionId: stored.metadata.id }),
+    warning: options.onWarning ?? console.warn,
+  });
+  await sessionTitle.initializeChild();
   if (internal.control) internal.control.steer = (message) => agent.steer(message);
   let running = false;
   let rewinding = false;
+  let changingModel = false;
+  let compacting = false;
+  let compactSettled: ReturnType<typeof Promise.withResolvers<void>> | undefined;
   let hookRunActive = false;
   let runSettled: ReturnType<typeof Promise.withResolvers<void>> | undefined;
   let queuedUserRuns = 0;
   let runController: AbortController | undefined;
+  const sidePendingCalls = new Set<string>();
+  const sideLifetime = new AbortController();
   let runMcp: ReturnType<typeof createMcpConnections> | undefined;
   let disposePromise: Promise<void> | undefined;
   let inputTokens: number | undefined;
+  // Preserve context_usage's existing resume estimate while reports can display
+  // the last stored provider count until an operation invalidates it.
+  const lastResponse = initialBranch.messages.findLast((message) => message.role === "assistant");
+  let reportInputTokens =
+    lastResponse?.role === "assistant"
+      ? lastResponse.usage.input + lastResponse.usage.cacheRead + lastResponse.usage.cacheWrite ||
+        undefined
+      : undefined;
   let sessionStartControl: CommonHookResult | undefined = await hooks.run(
     "SessionStart",
     {
@@ -853,6 +948,178 @@ async function createSessionInternal(
       content,
       timestamp: Date.now(),
     }));
+  const planReminder: ReminderSource = {
+    source: "plan-mode",
+    currentContent: () => {
+      if (plan.getActive())
+        return planModeReminder(agent.state.tools.some((tool) => tool.name === "exit_plan_mode"));
+      const previous = transcriptMessages.findLast(
+        (message) => message.role === "system-reminder" && message.source === "plan-mode",
+      );
+      return plan.hasEntered() &&
+        !(previous?.role === "system-reminder" && previous.content === PLAN_MODE_EXIT)
+        ? PLAN_MODE_EXIT
+        : undefined;
+    },
+  };
+  const reminderSources: ReminderSource[] = [
+    planReminder,
+    { source: "skills", currentContent: () => skillsReminder(skills) },
+    {
+      source: "mcp",
+      currentContent: () => {
+        const previous = transcriptMessages.findLast(
+          (message) => message.role === "system-reminder" && message.source === "mcp",
+        );
+        if (runMcp?.hasServers || previous) {
+          if (runMcp) return runMcp.reminder();
+          return previous?.role === "system-reminder" ? previous.content : undefined;
+        }
+        return undefined;
+      },
+    },
+    ...(options.reminderSources ?? []),
+    ...toolState.reminderSources,
+  ];
+  const compactContext = async ({
+    target,
+    messages,
+    trigger,
+    instructions,
+    signal,
+    emit,
+    control,
+    injectAsyncContexts,
+  }: {
+    target: StoredSession;
+    messages: AgentMessage[];
+    trigger: "auto" | "manual";
+    instructions?: string;
+    signal?: AbortSignal;
+    emit: (event: CustomSessionEvent<AgentEvent>) => void | Promise<void>;
+    control: (result: CommonHookResult) => void;
+    injectAsyncContexts: (messages: AgentMessage[]) => Promise<AgentMessage[]>;
+  }) => {
+    const branch = await target.branch("main", context);
+    if (!branch) throw new Error("Session has no main branch.");
+    const compacted = await compactTurn({
+      messages,
+      entries: () => branch.findEntries({ order: "oldestFirst" }, context),
+      model,
+      streamFn: options.streamFn ?? streamFn,
+      thinkingLevel: agent.state.thinkingLevel,
+      signal,
+      trigger,
+      instructions,
+      beforeCompact: async () => {
+        const result = await hooks.run(
+          "PreCompact",
+          {
+            ...hookInput(),
+            trigger,
+            custom_instructions: trigger === "manual" ? (instructions ?? "") : null,
+          },
+          { signal, matchQuery: trigger },
+        );
+        control(result);
+        signal?.throwIfAborted();
+
+        if (result.decision !== "block") return true;
+        const reason = result.reason || "PreCompact hook blocked compaction.";
+        if (trigger === "manual")
+          throw createUserVisibleError(`Compaction blocked by PreCompact hook: ${reason}`, {
+            code: "hook-compaction-blocked",
+            params: { reason },
+          });
+        const message = `Compaction skipped by PreCompact hook: ${reason}`;
+        (options.onWarning ?? console.warn)(message);
+        await emit({
+          type: "hook_warning",
+          event: "PreCompact",
+          hook: "PreCompact",
+          message,
+          error: { code: "hook-compaction-blocked", params: { reason } },
+        });
+        return false;
+      },
+      onStart: (tokensBefore) => emit({ type: "compaction_start", trigger, tokensBefore }),
+    });
+    if (!compacted) return false;
+    await target.mutate(async (mutator) => {
+      const tip = await mutator.getValue(branchTip("main"), context);
+      if (!tip) throw new Error("Session has no main branch.");
+      const id = target.idGenerator.next();
+      await mutator.commit(
+        [
+          insertEntry({
+            ...compacted,
+            id,
+            parentId: tip.value,
+            type: "compaction",
+            fromHook: false,
+          }),
+          setValue(branchTip("main"), id),
+        ],
+        context,
+      );
+    }, context);
+    reminderStart = transcriptMessages.length;
+    const reminders = await collectReminders({
+      messages: [],
+      cwd,
+      homeDir: options.homeDir,
+      now: (options.now ?? (() => new Date()))(),
+      sources: reminderSources,
+      includeEnvironment: false,
+    });
+    for (const reminder of reminders) {
+      await branch.appendMessage(reminder, context);
+      transcriptMessages.push(reminder);
+      await emit({
+        type: "reminder_injected",
+        source: reminder.source,
+        content: reminder.content,
+      });
+    }
+    const restored = await injectAsyncContexts(
+      restoreContext(await branch.findEntries({ order: "oldestFirst" }, context)),
+    );
+    agent.state.messages = restored;
+    if (trigger === "manual") completedMessages = structuredClone(restored);
+    inputTokens = undefined;
+    reportInputTokens = undefined;
+    await emit({
+      type: "compaction_end",
+      trigger,
+      summary: compacted.summary,
+      tokensBefore: compacted.tokensBefore,
+      tokensAfter: estimateContextTokens(restored),
+    });
+    const postCompact = await hooks.run(
+      "PostCompact",
+      {
+        ...hookInput(),
+        trigger,
+        compact_summary: compacted.summary,
+        ...(trigger === "manual" && { custom_instructions: instructions ?? "" }),
+      },
+      { signal, matchQuery: trigger },
+    );
+    control(postCompact);
+    signal?.throwIfAborted();
+
+    const compactStart = await hooks.run(
+      "SessionStart",
+      { ...hookInput(), source: "compact", model: `${model.provider}/${model.id}` },
+      { signal, matchQuery: "compact" },
+    );
+    control(compactStart);
+    pendingSessionContexts.push(...compactStart.additionalContext);
+    sessionContextUserSequence = userMessageSequence;
+    signal?.throwIfAborted();
+
+    return true;
+  };
   let rewakeObserver: ((event: SessionEvent) => void | Promise<void>) | undefined;
   const session = {
     get running() {
@@ -864,6 +1131,21 @@ async function createSessionInternal(
     interruptRun() {
       runController?.abort();
     },
+    steer(prompt) {
+      if (disposePromise) throw new Error("Session has been disposed.");
+      if (!running) throw new Error("Session is not running.");
+      if (!prompt.trim()) return;
+      const invocation = skillInvocation(prompt, skills);
+      // pi drains one queued message at a time. Keep the instruction and its
+      // expansion together without changing scheduling of child notifications.
+      const message = {
+        role: "user" as const,
+        content: [{ type: "text" as const, text: prompt }],
+        ...(invocation === undefined ? {} : { skillInvocation: invocation }),
+        timestamp: Date.now(),
+      };
+      agent.steer(message);
+    },
     subscribe(onEvent: (event: SessionEvent) => void) {
       if (disposePromise) throw new Error("Session has been disposed.");
       sessionObservers.add(onEvent);
@@ -874,6 +1156,69 @@ async function createSessionInternal(
       };
     },
     id: stored.metadata.id,
+    sideQuestion(question, { signal } = {}) {
+      if (disposePromise) throw new Error("Session has been disposed.");
+      if (!question.trim())
+        throw createUserVisibleError("Side question cannot be empty.", {
+          code: "side-question-empty",
+          params: {},
+        });
+      return sideQuestion({
+        question,
+        messages: structuredClone(agent.state.messages),
+        systemPrompt: agent.state.systemPrompt,
+        model: agent.state.model,
+        streamFn: options.streamFn ?? streamFn,
+        signal: signal ? AbortSignal.any([signal, sideLifetime.signal]) : sideLifetime.signal,
+        running: new Set(sidePendingCalls),
+      });
+    },
+    get title() {
+      return sessionTitle.title;
+    },
+    get titleSource() {
+      return sessionTitle.source;
+    },
+    async rename(title: string) {
+      if (disposePromise) throw new Error("Session has been disposed.");
+      if (rewinding)
+        throw createUserVisibleError("Session is rewinding.", {
+          code: "session-rewinding",
+          params: {},
+        });
+      await sessionTitle.rename(title);
+    },
+    get model() {
+      return `${model.provider}/${model.id}`;
+    },
+    async setModel(spec) {
+      if (disposePromise) throw new Error("Session has been disposed.");
+      if (running || rewinding || changingModel || compacting)
+        throw createUserVisibleError("Model switching requires an idle Session.", {
+          code: "model-switch-busy",
+          params: {},
+        });
+      changingModel = true;
+      try {
+        const selected = await resolveModel({ ...settings, model: spec }, options.homeDir);
+        if (disposePromise) throw new Error("Session has been disposed.");
+        await withStore((target) => toolState.set("model", spec, target, context));
+        model = selected.model;
+        streamFn = selected.streamFn;
+        agent.state.model = model;
+        inputTokens = undefined;
+        reportInputTokens = undefined;
+        broadcast({
+          type: "tool_state_changed",
+          name: "model",
+          value: spec,
+          sessionId: stored.metadata.id,
+        });
+      } finally {
+        changingModel = false;
+        scheduleRewake?.();
+      }
+    },
     get permissionMode() {
       return permissionConfiguration.getMode();
     },
@@ -884,8 +1229,101 @@ async function createSessionInternal(
       return plan.getActive();
     },
     async setPlanMode(on) {
-      if (rewinding) throw new Error("Session is rewinding.");
+      if (compacting)
+        throw createUserVisibleError("Session is compacting.", {
+          code: "session-compacting",
+          params: {},
+        });
+      if (rewinding)
+        throw createUserVisibleError("Session is rewinding.", {
+          code: "session-rewinding",
+          params: {},
+        });
       return plan.setMode(on);
+    },
+    async compact({ instructions } = {}) {
+      if (disposePromise) throw new Error("Session has been disposed.");
+      if (running)
+        throw createUserVisibleError("Session already has an active Run.", {
+          code: "session-run-active",
+          params: {},
+        });
+      if (rewinding)
+        throw createUserVisibleError("Session is rewinding.", {
+          code: "session-rewinding",
+          params: {},
+        });
+      if (compacting)
+        throw createUserVisibleError("Session is compacting.", {
+          code: "session-compacting",
+          params: {},
+        });
+      if (changingModel)
+        throw createUserVisibleError("Session is switching models.", {
+          code: "session-switching-models",
+          params: {},
+        });
+      compacting = true;
+      const settled = Promise.withResolvers<void>();
+      compactSettled = settled;
+      const controller = new AbortController();
+      runController = controller;
+      const emit = (event: CustomSessionEvent<AgentEvent>) =>
+        broadcast({ ...event, sessionId: stored.metadata.id });
+      emitRunEvent = emit;
+      let target: StoredSession | undefined;
+      try {
+        await planWrites;
+        controller.signal.throwIfAborted();
+        const discovered = await discoverSkills(cwd, options.homeDir);
+        skills = discovered.skills;
+        for (const warning of discovered.warnings) (options.onWarning ?? console.warn)(warning);
+        target = await openActiveStore();
+        await compactContext({
+          target,
+          messages: agent.state.messages,
+          trigger: "manual",
+          instructions,
+          signal: controller.signal,
+          emit,
+          control: (result) => {
+            if (result.continue === false)
+              throw result.stopReason
+                ? createUserVisibleError(result.stopReason, {
+                    code: "compaction-hook-stopped-reason",
+                    params: { reason: result.stopReason },
+                  })
+                : createUserVisibleError("Compaction stopped by hook.", {
+                    code: "compaction-hook-stopped",
+                    params: {},
+                  });
+          },
+          injectAsyncContexts: async (messages) => messages,
+        });
+        await emit(contextUsage(agent.state.messages, model.contextWindow, inputTokens));
+      } finally {
+        try {
+          await sessionTitle.settleWrites();
+          await closeActiveStore(target);
+        } finally {
+          activeStore = undefined;
+          emitRunEvent = undefined;
+          runController = undefined;
+          compacting = false;
+          compactSettled = undefined;
+          settled.resolve();
+          scheduleRewake?.();
+        }
+      }
+    },
+    contextReport() {
+      return contextReport({
+        messages: agent.state.messages,
+        model: `${model.provider}/${model.id}`,
+        window: model.contextWindow,
+        inputTokens: inputTokens ?? reportInputTokens,
+        mcpServers: mcpToolServers,
+      });
     },
     get messages() {
       return agent.state.messages;
@@ -897,7 +1335,7 @@ async function createSessionInternal(
     checkpoints: () => (internal.parentSessionId ? [] : (checkpoint?.list() ?? [])),
     async rewind(promptEntryId, { code, conversation }) {
       if (disposePromise) throw new Error("Session has been disposed.");
-      if (running || subagents.count || rewinding)
+      if (running || subagents.count || rewinding || changingModel || compacting)
         throw new Error("Rewind requires an idle Session.");
       if (internal.parentSessionId || !checkpoint)
         throw new Error("Subagent Sessions cannot rewind.");
@@ -910,6 +1348,7 @@ async function createSessionInternal(
           ? await checkpoint.restoreCode(promptEntryId)
           : { restored: [], deleted: [] };
         if (conversation) {
+          await sessionTitle.cancelGeneration();
           const target = await store.open(stored.metadata, context);
           let restoredEntries;
           try {
@@ -924,6 +1363,16 @@ async function createSessionInternal(
             const tip = await branch.getTipId(context);
             await target.createBranch(`rewind-${crypto.randomUUID()}`, tip, context);
             await target.setValue(branchTip("main"), anchor.parentId, context);
+            // The native display name is session metadata, independent of conversation rewind.
+            const restoredSource = createToolState(
+              [titleSourceState],
+              restoredEntries,
+              () => {},
+            ).get("title-source");
+            if (sessionTitle.source && sessionTitle.source !== restoredSource) {
+              await toolState.set("title-source", sessionTitle.source, target, context);
+              restoredEntries = await branch.findEntries({ order: "oldestFirst" }, context);
+            }
           } finally {
             await target.close(context);
           }
@@ -960,6 +1409,7 @@ async function createSessionInternal(
           agent.state.messages = restoredBranch.messages;
           completedMessages = structuredClone(agent.state.messages);
           inputTokens = undefined;
+          reportInputTokens = undefined;
           for (const change of changes)
             broadcast({ type: "tool_state_changed", ...change, sessionId: session.id });
           broadcast({ type: "conversation_rewound", promptEntryId, sessionId: session.id });
@@ -982,15 +1432,19 @@ async function createSessionInternal(
       if (!disposePromise) {
         // Publish the promise before callbacks or hooks can re-enter dispose.
         disposePromise = Promise.resolve().then(async () => {
+          sideLifetime.abort();
           const mcp = runMcp;
           hooks.dispose();
+          await sessionTitle.dispose();
           runController?.abort();
           try {
+            await compactSettled?.promise;
             await Promise.all([
               hooks.run("SessionEnd", { ...hookInput(), reason }, { matchQuery: reason }),
               ...[...childSessions].map((child) => child.dispose(reason)),
             ]);
           } finally {
+            unregisterReader();
             await mcp?.close();
             sessionObservers.clear();
             bufferingStartup = false;
@@ -1025,8 +1479,26 @@ async function createSessionInternal(
         }
       }
       if (disposePromise) throw new Error("Session has been disposed.");
-      if (rewinding) throw new Error("Session is rewinding.");
-      if (running) throw new Error("Session already has an active Run.");
+      if (rewinding)
+        throw createUserVisibleError("Session is rewinding.", {
+          code: "session-rewinding",
+          params: {},
+        });
+      if (changingModel)
+        throw createUserVisibleError("Session is switching models.", {
+          code: "session-switching-models",
+          params: {},
+        });
+      if (compacting)
+        throw createUserVisibleError("Session is compacting.", {
+          code: "session-compacting",
+          params: {},
+        });
+      if (running)
+        throw createUserVisibleError("Session already has an active Run.", {
+          code: "session-run-active",
+          params: {},
+        });
       running = true;
       hookRunActive = fromHook;
       const settled = Promise.withResolvers<void>();
@@ -1103,12 +1575,9 @@ async function createSessionInternal(
       let childModelStop: "aborted" | "length" | undefined;
       async function persistChildRun(run: SubagentRun) {
         try {
-          const target = await store.open(stored.metadata, context);
-          try {
+          await withStore(async (target) => {
             await toolState.set("subagent-run", { ...run }, target, context);
-          } finally {
-            await target.close(context);
-          }
+          });
         } catch (error) {
           (options.onWarning ?? console.warn)(
             `Could not save subagent Run fact for ${stored.metadata.id}: ${error instanceof Error ? error.message : String(error)}`,
@@ -1163,6 +1632,7 @@ async function createSessionInternal(
                 error: warning.error,
               });
           }
+          mcpToolServers = mcp.toolServers;
           agent.state.tools = [
             ...generalTools,
             ...(internal.parentSessionId
@@ -1227,7 +1697,8 @@ async function createSessionInternal(
             // Ordinary block decisions do not prevent a child Run from starting.
             promptContexts.push(...started.additionalContext);
           }
-          const runStore = await store.open(stored.metadata, context);
+          await sessionTitle.settleWrites();
+          const runStore = await openActiveStore();
           active = runStore;
           activeStore = runStore;
           const branch = await runStore.branch("main", context);
@@ -1236,38 +1707,6 @@ async function createSessionInternal(
             await branch.appendMessage(agent.state.messages[0]!, context);
             baselinePersisted = true;
           }
-          const planReminder: ReminderSource = {
-            source: "plan-mode",
-            currentContent: () => {
-              if (plan.getActive())
-                return planModeReminder(
-                  agent.state.tools.some((tool) => tool.name === "exit_plan_mode"),
-                );
-              const previous = transcriptMessages.findLast(
-                (message) => message.role === "system-reminder" && message.source === "plan-mode",
-              );
-              return plan.hasEntered() &&
-                !(previous?.role === "system-reminder" && previous.content === PLAN_MODE_EXIT)
-                ? PLAN_MODE_EXIT
-                : undefined;
-            },
-          };
-          const reminderSources: ReminderSource[] = [
-            planReminder,
-            { source: "skills", currentContent: () => skillsReminder(skills) },
-            {
-              source: "mcp",
-              currentContent: () =>
-                mcp.hasServers ||
-                transcriptMessages.some(
-                  (message) => message.role === "system-reminder" && message.source === "mcp",
-                )
-                  ? mcp.reminder()
-                  : undefined,
-            },
-            ...(options.reminderSources ?? []),
-            ...toolState.reminderSources,
-          ];
           const injectAsyncContexts = async (messages: AgentMessage[]): Promise<AgentMessage[]> => {
             const reminders = pendingAsyncContexts.splice(0).map((content) => ({
               role: "system-reminder" as const,
@@ -1307,36 +1746,17 @@ async function createSessionInternal(
               requestContext = { ...requestContext, messages };
               contextChanged = true;
             }
-            const compacted = await compactTurn({
+            const compacted = await compactContext({
+              target: runStore,
               messages: requestContext.messages,
-              entries: () => branch.findEntries({ order: "oldestFirst" }, context),
-              model,
-              streamFn: options.streamFn ?? streamFn,
-              thinkingLevel: agent.state.thinkingLevel,
+              trigger: "auto",
               signal: turnSignal,
-              beforeCompact: async () => {
-                const result = await hooks.run(
-                  "PreCompact",
-                  { ...hookInput(), trigger: "auto", custom_instructions: null },
-                  { signal: turnSignal, matchQuery: "auto" },
-                );
+              emit,
+              control: (result) => {
                 applyHookControl(result);
-                turnSignal?.throwIfAborted();
                 stopPreparedRequest();
-                if (result.decision !== "block") return true;
-                const reason = result.reason || "PreCompact hook blocked compaction.";
-                const message = `Compaction skipped by PreCompact hook: ${reason}`;
-                (options.onWarning ?? console.warn)(message);
-                await emit({
-                  type: "hook_warning",
-                  event: "PreCompact",
-                  hook: "PreCompact",
-                  message,
-                  error: { code: "hook-compaction-blocked", params: { reason } },
-                });
-                return false;
               },
-              onStart: (tokensBefore) => emit({ type: "compaction_start", tokensBefore }),
+              injectAsyncContexts,
             });
             if (!compacted) {
               await planWrites;
@@ -1361,73 +1781,8 @@ async function createSessionInternal(
               return { context: { ...requestContext, messages } };
             }
 
-            await runStore.mutate(async (mutator) => {
-              const tip = await mutator.getValue(branchTip("main"), context);
-              if (!tip) throw new Error("Session has no main branch.");
-              const id = runStore.idGenerator.next();
-              await mutator.commit(
-                [
-                  insertEntry({
-                    ...compacted,
-                    id,
-                    parentId: tip.value,
-                    type: "compaction",
-                    fromHook: false,
-                  }),
-                  setValue(branchTip("main"), id),
-                ],
-                context,
-              );
-            }, context);
-            reminderStart = transcriptMessages.length;
-            const reminders = await collectReminders({
-              messages: [],
-              cwd,
-              homeDir: options.homeDir,
-              now: (options.now ?? (() => new Date()))(),
-              sources: reminderSources,
-              includeEnvironment: false,
-            });
-            for (const reminder of reminders) {
-              await branch.appendMessage(reminder, context);
-              transcriptMessages.push(reminder);
-              await emit({
-                type: "reminder_injected",
-                source: reminder.source,
-                content: reminder.content,
-              });
-            }
-            let messages = await injectAsyncContexts(
-              restoreContext(await branch.findEntries({ order: "oldestFirst" }, context)),
-            );
-            agent.state.messages = messages;
-            inputTokens = undefined;
-            await emit({
-              type: "compaction_end",
-              summary: compacted.summary,
-              tokensBefore: compacted.tokensBefore,
-              tokensAfter: estimateContextTokens(messages),
-            });
-            const postCompact = await hooks.run(
-              "PostCompact",
-              { ...hookInput(), trigger: "auto", compact_summary: compacted.summary },
-              { signal: turnSignal, matchQuery: "auto" },
-            );
-            applyHookControl(postCompact);
-            turnSignal?.throwIfAborted();
-            stopPreparedRequest();
-            const compactStart = await hooks.run(
-              "SessionStart",
-              { ...hookInput(), source: "compact", model: `${model.provider}/${model.id}` },
-              { signal: turnSignal, matchQuery: "compact" },
-            );
-            applyHookControl(compactStart);
-            pendingSessionContexts.push(...compactStart.additionalContext);
-            sessionContextUserSequence = userMessageSequence;
-            turnSignal?.throwIfAborted();
-            stopPreparedRequest();
             await emitContextUsage();
-            messages = await injectAsyncContexts(messages);
+            const messages = await injectAsyncContexts(agent.state.messages);
             agent.state.messages = messages;
             return { context: { ...requestContext, messages } };
           };
@@ -1447,12 +1802,18 @@ async function createSessionInternal(
             // pi skips afterToolCall for blocked/invalid calls. Its end event still
             // precedes creation of the tool-result message and carries the same result.
             if (event.type === "tool_execution_end") {
+              sidePendingCalls.delete(event.toolCallId);
               Object.assign(event.result, consumeToolHookOutput(event.toolCallId, event.result));
             }
             await emitMcpErrors();
-            if (event.type === "turn_end")
+            if (event.type === "turn_end") {
+              sidePendingCalls.clear();
               completedMessages = structuredClone(agent.state.messages);
+            }
             if (event.type === "message_end") {
+              if (event.message.role === "assistant")
+                for (const block of event.message.content)
+                  if (block.type === "toolCall") sidePendingCalls.add(block.id);
               if (event.message.role === "user") userMessageSequence++;
               rewakeSteering.delete(event.message);
               subagents.delivered(event.message);
@@ -1465,6 +1826,7 @@ async function createSessionInternal(
               if (event.message === userPrompt && !fromHook && !internal.parentSessionId) {
                 promptTexts.set(entryId, prompt);
                 await checkpoint?.start(entryId);
+                await sessionTitle.firstPrompt(prompt);
               }
               transcriptMessages.push(event.message);
               if (event.message.role === "system-reminder") {
@@ -1494,12 +1856,14 @@ async function createSessionInternal(
                 }
               }
             }
-            await emit(event);
             if (event.type === "message_end" && event.message.role === "assistant") {
               const { input, cacheRead, cacheWrite } = event.message.usage;
               inputTokens = input + cacheRead + cacheWrite || undefined;
-              await emitContextUsage();
+              reportInputTokens = inputTokens;
             }
+            await emit(event);
+            if (event.type === "message_end" && event.message.role === "assistant")
+              await emitContextUsage();
           });
           signal?.throwIfAborted();
           const discovered = await discoverSkills(cwd, options.homeDir);
@@ -1633,7 +1997,8 @@ async function createSessionInternal(
             await planWrites;
           } finally {
             try {
-              await active?.close(context);
+              await sessionTitle.settleWrites();
+              await closeActiveStore(active);
             } finally {
               activeStore = undefined;
             }
@@ -1676,6 +2041,7 @@ async function createSessionInternal(
           rewakeSteering.clear();
           agent.clearSteeringQueue();
           runController = undefined;
+          sidePendingCalls.clear();
           runMcp = undefined;
           running = false;
           hookRunActive = false;
@@ -1687,7 +2053,7 @@ async function createSessionInternal(
     },
   } satisfies Session;
   scheduleRewake = () => {
-    if (disposePromise || rewinding) return;
+    if (disposePromise || rewinding || compacting || changingModel) return;
     if (running) {
       for (const reason of pendingRewakes.splice(0)) {
         const message: AgentMessage = {

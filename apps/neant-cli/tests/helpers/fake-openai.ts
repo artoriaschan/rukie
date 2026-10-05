@@ -14,6 +14,7 @@ export interface FakeOpenAIOptions {
 export function fakeOpenAI(reply: string, options: FakeOpenAIOptions = {}) {
   const received = Promise.withResolvers<void>();
   const requests: { body: any; authorization: string | null }[] = [];
+  const titleRequests: typeof requests = [];
   const chunk = (delta: object, finish: string | null) =>
     `data: ${JSON.stringify({
       id: "chatcmpl-1",
@@ -25,7 +26,28 @@ export function fakeOpenAI(reply: string, options: FakeOpenAIOptions = {}) {
   const server = Bun.serve({
     port: 0,
     async fetch(req) {
-      requests.push({ body: await req.json(), authorization: req.headers.get("authorization") });
+      const request: (typeof requests)[number] = {
+        body: await req.json(),
+        authorization: req.headers.get("authorization"),
+      };
+      if (
+        request.body.messages.some(
+          (message: { role: string; content?: string }) =>
+            ["system", "developer"].includes(message.role) &&
+            message.content?.startsWith(
+              "Create a concise title for an AI coding-assistant session from the supplied human messages.",
+            ),
+        )
+      ) {
+        titleRequests.push(request);
+        return new Response(
+          chunk({ role: "assistant", content: "Test session" }, null) +
+            chunk({}, "stop") +
+            "data: [DONE]\n\n",
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      }
+      requests.push(request);
       received.resolve();
       if (options.error) {
         return Response.json({ error: { message: options.error } }, { status: 400 });
@@ -98,6 +120,7 @@ export function fakeOpenAI(reply: string, options: FakeOpenAIOptions = {}) {
   return {
     baseUrl: `${server.url.origin}/v1`,
     requests,
+    titleRequests,
     received: received.promise,
     stop: () => server.stop(true),
   };

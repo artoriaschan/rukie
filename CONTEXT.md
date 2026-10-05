@@ -90,6 +90,10 @@ _Avoid_: command（会和 bash 命令混淆）
 用户为 session 设定的目标。设定后 agent 在每个 run 结束时自动续跑，直到模型判定目标完成或受阻、用户暂停，或达到续跑上限。
 _Avoid_: task, objective
 
+**Side Question**:
+基于 session 当前上下文的一次单轮简短回答。主 run 独立继续，侧问不带工具，问题与回答都不进入 transcript。
+_Avoid_: steer, follow-up turn
+
 ### 给模型的上下文
 
 **System Prompt**:
@@ -109,12 +113,16 @@ session 的显示名，用于恢复时挑选。先取首条 user prompt，再由
 _Avoid_: session name, label
 
 **Compaction**:
-上下文接近模型上下文窗口时，把较早的 transcript 摘要成一条 entry。之后的 turn 和 resume 都从这条摘要加上它之后的消息继续，原始消息仍保留在 transcript 里。
+上下文接近模型上下文窗口时自动触发，或由用户手动发起的上下文压缩，把较早的消息摘要成可继续对话的上下文。之后的 turn 和 resume 都从摘要加上它之后的消息继续，原始消息仍保留在 transcript 里。
 _Avoid_: summarization, context pruning
 
 **Context Usage**:
 当前 transcript 发给模型时占用的 token 数，相对于模型的上下文窗口。总量以 provider 报告为准；按 system / prompt / assistant / thinking / tools 分段只是估算，用来表示占比。
 _Avoid_: context size, token count
+
+**Context Report**:
+供 frontend 呈现的当前模型上下文占用快照，按类别和来源给出估算，并结合可用的实际使用总量。报告不进入 transcript，也不成为模型上下文的一部分。
+_Avoid_: usage event, transcript statistics
 
 ### 能力
 

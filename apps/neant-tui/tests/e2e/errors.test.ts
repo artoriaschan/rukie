@@ -1,9 +1,54 @@
+import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { expect, spyOn, test } from "bun:test";
 import { join } from "node:path";
+import { appendFile } from "node:fs/promises";
+import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { createJsonlStore, createSession, type SessionOptions } from "@neant/agent";
 import { createUserVisibleError } from "@neant/shared";
 import { start } from "../helpers/app";
+
+test.each([
+  ["zh", "会话记录需要修复，无法以只读方式查看。"],
+  ["en", "Session history requires repair and cannot be viewed read-only."],
+] as const)("%s resume list localizes refused storage repair", async (locale, expected) => {
+  let path = "";
+  let before: Uint8Array<ArrayBuffer>;
+  const app = await start([], {
+    columns: 160,
+    env: { LANG: locale },
+    prepare: async (root) => {
+      const store = createJsonlStore({ cwd: root, homeDir: root });
+      const fake = createFauxCore({ api: "faux", provider: "faux" });
+      const session = await createSession({
+        cwd: root,
+        homeDir: root,
+        store,
+        model: fake.getModel(),
+        streamFn: withAuxiliaryRequests((model, context, options) =>
+          fake.streamSimple(model, context, options),
+        ),
+      });
+      await session.dispose();
+      const metadata = (await store.list({ cwd: root }, BACKGROUND_CONTEXT))[0]!;
+      const nativePath = Reflect.get(metadata, "path");
+      if (typeof nativePath !== "string") throw new Error("Native Session path missing.");
+      path = nativePath;
+      await appendFile(path, '{"torn":');
+      before = await Bun.file(path).bytes();
+    },
+  });
+  try {
+    await app.waitFor(() => app.screen().join("\n").includes("❯"));
+    app.stdin.write("/resume\r");
+    await app.waitFor(() => app.screen().join("\n").includes(expected));
+    expect(app.screen().join("\n")).not.toContain("Session observation is read-only.");
+    expect(await Bun.file(path).bytes()).toEqual(before!);
+    expect(app.calls).toHaveLength(0);
+  } finally {
+    await app.cleanup();
+  }
+});
 
 test.each([
   ["zh", "未配置模型。", "en"],
@@ -91,7 +136,9 @@ test.each([
           homeDir: root,
           settings: { locale: originalLocale },
           model: original.getModel(),
-          streamFn: (model, context, options) => original.streamSimple(model, context, options),
+          streamFn: withAuxiliaryRequests((model, context, options) =>
+            original.streamSimple(model, context, options),
+          ),
         });
         const spawn = spyOn(Bun, "spawn").mockImplementation(() => {
           throw new Error("test binary unavailable");

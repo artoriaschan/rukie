@@ -14,6 +14,7 @@ export async function start(
     columns?: number;
     rows?: number;
     controlReviews?: boolean;
+    controlTitles?: boolean;
     env?: Record<string, string | undefined>;
   } = {},
 ) {
@@ -23,7 +24,7 @@ export async function start(
     recursive: true,
   });
   const terminal = createTerminal(options.columns, options.rows);
-  const fake = controlledModel(options.controlReviews);
+  const fake = controlledModel(options.controlReviews, options.controlTitles);
   let stderr = "";
   const exit = main(argv, {
     ...terminal,

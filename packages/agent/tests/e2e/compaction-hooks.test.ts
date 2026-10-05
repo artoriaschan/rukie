@@ -8,6 +8,123 @@ import { tempDirs } from "../helpers/temp-dirs.ts";
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
 afterEach(() => dirs?.cleanup());
 
+test.each([undefined, "keep API details"])(
+  "manual compaction hooks receive focus %s and reinject current reminders for the next user",
+  async (instructions) => {
+    dirs = await tempDirs();
+    await Bun.write(join(dirs.cwd, "AGENTS.md"), "Current project contract.");
+    await Bun.write(join(dirs.cwd, "pre.sh"), "cat > pre.json\n");
+    await Bun.write(join(dirs.cwd, "post.sh"), "cat > post.json\n");
+    await Bun.write(join(dirs.cwd, "start.sh"), "cat > start.json\necho manual-compact-context\n");
+    const fake = fakeModel([
+      fauxAssistantMessage("old work"),
+      fauxAssistantMessage("Manual summary."),
+      fauxAssistantMessage("next answer"),
+    ]);
+    const session = await createSession({
+      ...dirs,
+      ...fake,
+      settings: {
+        hooks: {
+          PreCompact: [{ matcher: "manual", hooks: [{ type: "command", command: "sh pre.sh" }] }],
+          PostCompact: [{ matcher: "manual", hooks: [{ type: "command", command: "sh post.sh" }] }],
+          SessionStart: [
+            { matcher: "compact", hooks: [{ type: "command", command: "sh start.sh" }] },
+          ],
+        },
+      },
+    });
+    await session.run("first");
+    const events: SessionEvent[] = [];
+    session.subscribe((event) => events.push(event));
+    await session.compact({ instructions });
+    expect(await Bun.file(join(dirs.cwd, "pre.json")).json()).toMatchObject({
+      trigger: "manual",
+      custom_instructions: instructions ?? "",
+    });
+    expect(await Bun.file(join(dirs.cwd, "post.json")).json()).toMatchObject({
+      trigger: "manual",
+      custom_instructions: instructions ?? "",
+      compact_summary: "Manual summary.",
+    });
+    expect(await Bun.file(join(dirs.cwd, "start.json")).json()).toMatchObject({
+      source: "compact",
+    });
+    expect(events.filter((event) => event.type === "reminder_injected")).toMatchObject([
+      { source: "date" },
+      {
+        source: "project-instructions",
+        content: expect.stringContaining("Current project contract."),
+      },
+      { source: "skills" },
+    ]);
+    expect(JSON.stringify(session.messages)).not.toContain("manual-compact-context");
+    await session.run("next user");
+    expect(fake.contexts[2]!.messages.slice(-2)).toMatchObject([
+      { role: "user", content: [{ text: "next user" }] },
+      { role: "user", content: [{ text: expect.stringContaining("manual-compact-context") }] },
+    ]);
+  },
+);
+
+test.each(["block", "stop"])(
+  "manual PreCompact %s throws its reason and a later run still works",
+  async (kind) => {
+    dirs = await tempDirs();
+    await Bun.write(
+      join(dirs.cwd, "pre.sh"),
+      `cat > pre.json\necho '${kind === "block" ? '{"decision":"block","reason":"preserve review evidence"}' : '{"continue":false,"stopReason":"preserve review evidence"}'}'\n`,
+    );
+    const fake = fakeModel([fauxAssistantMessage("old work"), fauxAssistantMessage("next answer")]);
+    const session = await createSession({
+      ...dirs,
+      ...fake,
+      settings: {
+        hooks: {
+          PreCompact: [{ matcher: "manual", hooks: [{ type: "command", command: "sh pre.sh" }] }],
+        },
+      },
+    });
+    await session.run("first");
+    const before = structuredClone(session.messages);
+    const events: SessionEvent[] = [];
+    session.subscribe((event) => events.push(event));
+    await expect(session.compact()).rejects.toMatchObject({
+      code: kind === "block" ? "hook-compaction-blocked" : "compaction-hook-stopped-reason",
+      params: { reason: "preserve review evidence" },
+    });
+    expect(session.messages).toEqual(before);
+    expect(events.filter((event) => event.type.startsWith("compaction_"))).toHaveLength(0);
+    expect((await session.run("next prompt")).text).toBe("next answer");
+  },
+);
+
+test("manual compaction stopped without a hook reason returns a locale-independent failure", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([fauxAssistantMessage("old work")]);
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    settings: {
+      hooks: {
+        PreCompact: [{ hooks: [{ type: "command", command: "echo '{\"continue\":false}'" }] }],
+      },
+    },
+  });
+  try {
+    await session.run("first");
+    const before = structuredClone(session.messages);
+    await expect(session.compact()).rejects.toMatchObject({
+      code: "compaction-hook-stopped",
+      params: {},
+    });
+    expect(session.messages).toEqual(before);
+    expect(fake.contexts).toHaveLength(1);
+  } finally {
+    await session.dispose();
+  }
+});
+
 test.each(["json", "exit"])(
   "PreCompact %s skips once and retries at the next threshold",
   async (kind) => {

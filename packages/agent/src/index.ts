@@ -1,5 +1,10 @@
-export { loadSettings } from "./config/index.ts";
-export { createJsonlStore, type SessionStore } from "./store/index.ts";
+export { loadSettings, listModels } from "./config/index.ts";
+export {
+  createJsonlStore,
+  listSessions,
+  type SessionStore,
+  type SessionSummary,
+} from "./store/index.ts";
 export {
   createSession,
   type SessionEvent,
@@ -18,5 +23,5 @@ export type { PlanReviewRequest, PlanReviewResult } from "./tools/index.ts";
 export type { Question, QuestionRequest, QuestionReply } from "./tools/index.ts";
 
 export { parsePermissionRules } from "./permissions/index.ts";
-
 export type { SubagentIdentity, SubagentRun } from "./subagents/index.ts";
+export { listSkills } from "./skills/index.ts";

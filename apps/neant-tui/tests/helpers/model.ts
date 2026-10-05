@@ -6,10 +6,11 @@ import {
   type AssistantMessage,
   type TranscriptContext,
 } from "@earendil-works/pi-ai";
+import { isTitleRequest } from "./auxiliary-model.ts";
 import type { SessionOptions } from "@neant/agent";
 
 /** Model boundary controlled by the test, including streamed text and cancellation. */
-export function controlledModel(controlReviews = false) {
+export function controlledModel(controlReviews = false, controlTitles = false) {
   const model = createFauxCore({ api: "faux", provider: "faux" }).getModel();
   const calls: {
     context: TranscriptContext;
@@ -24,11 +25,30 @@ export function controlledModel(controlReviews = false) {
     fail(message: string): void;
   }[] = [];
   const reviews: typeof calls = [];
+  const titles: typeof calls = [];
+  const sideQuestions: typeof calls = [];
   const streamFn: NonNullable<SessionOptions["streamFn"]> = (_model, context, options) => {
     const stream = createAssistantMessageEventStream();
-    const isReview = context.messages.some(
-      (message) => message.role === "system" && JSON.stringify(message).includes("REVIEW_POLICY"),
-    );
+    const isTitle = isTitleRequest(context);
+    if (isTitle && !controlTitles) {
+      const message = fauxAssistantMessage("Test session");
+      stream.push({ type: "done", reason: "stop", message });
+      stream.end(message);
+      return stream;
+    }
+    const last = context.messages.at(-1);
+    const lastText =
+      last?.role === "user"
+        ? typeof last.content === "string"
+          ? last.content
+          : last.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("")
+        : "";
+    const isSideQuestion = !isTitle && lastText.startsWith("<side-question-context>\n");
+    const isReview =
+      !isSideQuestion &&
+      context.messages.some(
+        (message) => message.role === "system" && JSON.stringify(message).includes("REVIEW_POLICY"),
+      );
     // Most UI tests use immediate review denial; lifecycle tests hold this boundary open.
     if (isReview && !controlReviews) {
       const message = fauxAssistantMessage(
@@ -85,7 +105,7 @@ export function controlledModel(controlReviews = false) {
           { stopReason: "toolUse" },
         ),
       );
-    (isReview ? reviews : calls).push({
+    (isTitle ? titles : isSideQuestion ? sideQuestions : isReview ? reviews : calls).push({
       context: structuredClone(context),
       signal: options?.signal,
       reasoning: options?.reasoning,
@@ -119,5 +139,5 @@ export function controlledModel(controlReviews = false) {
     if (options?.signal?.aborted) abort();
     return stream;
   };
-  return { model, streamFn, calls, reviews };
+  return { model, streamFn, calls, reviews, titles, sideQuestions };
 }

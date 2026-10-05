@@ -1,3 +1,4 @@
+import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -11,6 +12,157 @@ import { abortingModel } from "../helpers/aborting-model.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
 afterEach(() => dirs?.cleanup());
+
+test("manual compaction summarizes small idle conversations and keeps focus out of the transcript", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([
+    fauxAssistantMessage("Widget behavior to preserve."),
+    fauxAssistantMessage("Focused widget summary."),
+    fauxAssistantMessage("continued"),
+  ]);
+  const session = await createSession({ ...dirs, ...fake });
+  await session.run("inspect widgets");
+  const events: SessionEvent[] = [];
+  session.subscribe((event) => events.push(event));
+  await session.compact({ instructions: "FOCUS_KEEP_WIDGET_CONTRACT" });
+  expect(JSON.stringify(fake.contexts[1])).toContain("FOCUS_KEEP_WIDGET_CONTRACT");
+  expect(JSON.stringify(session.messages)).toContain("Focused widget summary.");
+  expect(await transcript()).not.toContain("FOCUS_KEEP_WIDGET_CONTRACT");
+  expect(events.filter((event) => event.type.startsWith("compaction_"))).toMatchObject([
+    { type: "compaction_start", trigger: "manual" },
+    { type: "compaction_end", trigger: "manual" },
+  ]);
+  const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
+  expect(resumed.messages).toEqual(session.messages);
+  await session.run("continue");
+  expect(JSON.stringify(fake.contexts[2])).toContain("Focused widget summary.");
+});
+
+test("manual compaction rejects empty history and an active Run without changing messages", async () => {
+  dirs = await tempDirs();
+  const fake = abortingModel();
+  const session = await createSession({ ...dirs, ...fake });
+  await expect(session.compact()).rejects.toThrow("no compactable conversation history");
+  const run = session.run("pending work");
+  await fake.started;
+  const before = structuredClone(session.messages);
+  await expect(session.compact()).rejects.toMatchObject({ code: "session-run-active", params: {} });
+  expect(session.messages).toEqual(before);
+  session.interruptRun();
+  await expect(run).rejects.toThrow();
+});
+
+test("manual compaction owns its idle operation and interruption leaves history resumable", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([fauxAssistantMessage("original conversation")]);
+  const summary = abortingModel();
+  const primary = fake.streamFn;
+  fake.streamFn = (model, context, options) =>
+    context.messages.some(
+      (message) =>
+        message.role === "system" &&
+        JSON.stringify(message).includes("context summarization assistant"),
+    )
+      ? summary.streamFn(model, context, options)
+      : primary(model, context, options);
+  const session = await createSession({ ...dirs, ...fake });
+  await session.run("work");
+  const before = structuredClone(session.messages);
+  const compact = session.compact();
+  void compact.catch(() => {});
+  await summary.started;
+  await expect(session.run("competing prompt")).rejects.toMatchObject({
+    code: "session-compacting",
+    params: {},
+  });
+  await expect(session.compact()).rejects.toMatchObject({ code: "session-compacting", params: {} });
+  await expect(session.setModel("missing/model")).rejects.toMatchObject({
+    code: "model-switch-busy",
+    params: {},
+  });
+  await expect(session.setPlanMode(true)).rejects.toMatchObject({
+    code: "session-compacting",
+    params: {},
+  });
+  session.interruptRun();
+  await expect(compact).rejects.toThrow();
+  expect(session.messages).toEqual(before);
+  expect(await transcript()).not.toContain('"type":"compaction"');
+  const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
+  expect(resumed.messages).toEqual(before);
+});
+
+test("disposing during manual summary cancels it before the session finishes disposing", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([fauxAssistantMessage("original conversation")]);
+  const summary = abortingModel();
+  const primary = fake.streamFn;
+  fake.streamFn = (model, context, options) =>
+    context.messages.some(
+      (message) =>
+        message.role === "system" &&
+        JSON.stringify(message).includes("context summarization assistant"),
+    )
+      ? summary.streamFn(model, context, options)
+      : primary(model, context, options);
+  const session = await createSession({ ...dirs, ...fake });
+  await session.run("work");
+  let settled = false;
+  const compact = session.compact().finally(() => {
+    settled = true;
+  });
+  void compact.catch(() => {});
+  await summary.started;
+  await session.dispose();
+  expect(settled).toBe(true);
+  await expect(compact).rejects.toThrow();
+  expect(await transcript()).not.toContain('"type":"compaction"');
+});
+
+test("manual compaction immediately after resume refreshes project, skill, plan and frontend reminders", async () => {
+  dirs = await tempDirs();
+  await Bun.write(join(dirs.cwd, "AGENTS.md"), "Original project contract.");
+  const original = await createSession({
+    ...dirs,
+    ...fakeModel([fauxAssistantMessage("old work")]),
+  });
+  await original.run("first");
+  await original.setPlanMode(true);
+  await Bun.write(join(dirs.cwd, "AGENTS.md"), "Updated project contract.");
+  await Bun.write(
+    join(dirs.cwd, ".agents/skills/new-skill/SKILL.md"),
+    "---\nname: new-skill\ndescription: New review skill\n---\nReview widgets.\n",
+  );
+  const fake = fakeModel([
+    fauxAssistantMessage("Refreshed summary."),
+    fauxAssistantMessage("continued"),
+  ]);
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    resumeId: original.id,
+    reminderSources: [{ source: "frontend", currentContent: () => "Current frontend state." }],
+  });
+  const events: SessionEvent[] = [];
+  session.subscribe((event) => events.push(event));
+  await session.compact();
+  const context = JSON.stringify(session.messages);
+  expect(context).toContain("Updated project contract.");
+  expect(context).toContain("New review skill");
+  expect(context).toContain("Current frontend state.");
+  expect(
+    session.messages.some(
+      (message) => message.role === "system-reminder" && message.source === "plan-mode",
+    ),
+  ).toBe(true);
+  expect(context).not.toContain("git branch:");
+  await expect(session.compact()).rejects.toThrow("no compactable conversation history");
+  events.length = 0;
+  await session.run("continue");
+  expect(events.filter((event) => event.type === "reminder_injected")).toHaveLength(0);
+  const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
+  expect(resumed.messages).toEqual(session.messages);
+});
 
 test("Compaction restores current Project Instructions, skills and frontend reminders before the retained request", async () => {
   dirs = await tempDirs();
@@ -155,9 +307,15 @@ test("only a Turn above the context threshold compacts before answering", async 
     (event) => event.type === "compaction_start" || event.type === "compaction_end",
   );
   expect(compactions).toEqual([
-    { type: "compaction_start", sessionId: session.id, tokensBefore: expect.any(Number) },
+    {
+      type: "compaction_start",
+      trigger: "auto",
+      sessionId: session.id,
+      tokensBefore: expect.any(Number),
+    },
     {
       type: "compaction_end",
+      trigger: "auto",
       sessionId: session.id,
       summary: expect.stringContaining("Summary of old work."),
       tokensBefore: expect.any(Number),
@@ -391,7 +549,12 @@ test("failed summarization preserves the Transcript for a later resume", async (
     }),
   ).rejects.toThrow("summary unavailable");
   expect(events.filter((event) => event.type === "compaction_start")).toEqual([
-    { type: "compaction_start", sessionId: session.id, tokensBefore: expect.any(Number) },
+    {
+      type: "compaction_start",
+      trigger: "auto",
+      sessionId: session.id,
+      tokensBefore: expect.any(Number),
+    },
   ]);
   expect(events.filter((event) => event.type === "compaction_end")).toEqual([]);
   expect(events.at(-1)).toMatchObject({ type: "result", success: false });
@@ -504,14 +667,15 @@ test("aborting summary generation cancels its provider request without persistin
   const fake = fakeModel([fauxAssistantMessage(original)]);
   const summary = abortingModel();
   const streamFn = fake.streamFn;
-  fake.streamFn = (model, context, options) =>
+  fake.streamFn = withAuxiliaryRequests((model, context, options) =>
     context.messages.some(
       (message) =>
         message.role === "system" &&
         JSON.stringify(message).includes("context summarization assistant"),
     )
       ? summary.streamFn(model, context, options)
-      : streamFn(model, context, options);
+      : streamFn(model, context, options),
+  );
   fake.model.contextWindow = 4000;
   const session = await createSession({ ...dirs, ...fake });
   await session.run("first");
@@ -530,7 +694,12 @@ test("aborting summary generation cancels its provider request without persistin
   await expect(run).rejects.toThrow("cancel summary");
   expect(events.at(-1)).toMatchObject({ type: "result", success: false });
   expect(events.filter((event) => event.type === "compaction_start")).toEqual([
-    { type: "compaction_start", sessionId: session.id, tokensBefore: expect.any(Number) },
+    {
+      type: "compaction_start",
+      trigger: "auto",
+      sessionId: session.id,
+      tokensBefore: expect.any(Number),
+    },
   ]);
   expect(events.filter((event) => event.type === "compaction_end")).toEqual([]);
   expect(await transcript()).not.toContain('"type":"compaction"');

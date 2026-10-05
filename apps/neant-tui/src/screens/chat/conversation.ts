@@ -1,7 +1,12 @@
 import type { Locale } from "@neant/i18n";
 import { createTuiI18n, formatError } from "../../i18n";
 import type { Session, SessionEvent, SessionRecovery, TodoItem } from "@neant/agent";
-import { isUnknownToolOutcome, type ContextUsageEvent, type RunResult } from "@neant/shared";
+import {
+  isUnknownToolOutcome,
+  type ContextUsageEvent,
+  type RunResult,
+  type ContextReport,
+} from "@neant/shared";
 import type { TpsSample } from "../../components/status-line";
 import { reduceSubagent, restoreSubagents, type SubagentState } from "./subagents";
 import { createActivity, reduce } from "./activity/activity";
@@ -27,7 +32,8 @@ type CompletedEntry =
       agentId?: string;
       planReview?: { plan: string; kind: "approve" | "revise" | "takeover"; feedback?: string };
     }
-  | { type: "notice"; text: string };
+  | { type: "notice"; text: string }
+  | { type: "context-report"; report: ContextReport };
 
 type ToolResultMessage = Extract<
   Extract<SessionEvent, { type: "message_end" }>["message"],
@@ -333,6 +339,8 @@ function reduceEvent(
     case "agent_start":
       return { ...state, waitingSubagents: 0 };
     case "tool_state_changed":
+      if (event.name === "model" && typeof event.value === "string")
+        return { ...state, model: event.value, contextUsage: undefined };
       if (event.name === "plan")
         return {
           ...state,
@@ -553,7 +561,7 @@ function createViewState(session: Session, model: string, locale: Locale): ViewS
     completed: replayMessages(session.messages, t),
     tools: [],
     assistant: "",
-    model,
+    model: session.model ?? model,
     running: session.running,
     input: 0,
     output: 0,
@@ -573,6 +581,7 @@ export function createConversation(session: Session, model: string, locale: Loca
   const t = createTuiI18n(locale);
   let state = createViewState(session, model, locale);
   const listeners = new Set<() => void>();
+  let compacting = false;
   let active: { controller: AbortController; promise: Promise<unknown> } | undefined;
   let notificationTimer: ReturnType<typeof setTimeout> | undefined;
   const update = (next: ViewState, deferNotification = false) => {
@@ -674,6 +683,7 @@ export function createConversation(session: Session, model: string, locale: Loca
   return {
     dispatchActivity,
     notice(text: string, error = false) {
+      state = { ...state, planMode: session.planMode };
       update(
         error
           ? { ...state, error: text }
@@ -682,6 +692,15 @@ export function createConversation(session: Session, model: string, locale: Loca
               completed: [...state.completed, { type: "notice", text }],
             },
       );
+    },
+    contextReport(report: ContextReport) {
+      update({
+        ...state,
+        completed: [
+          ...state.completed,
+          { type: "context-report", report: structuredClone(report) },
+        ],
+      });
     },
     getSnapshot: () => state,
     getTpsMetrics: (now: number) => decodeMetrics(state, now),
@@ -696,33 +715,13 @@ export function createConversation(session: Session, model: string, locale: Loca
       };
     },
     submit(prompt: string, initial = false) {
-      const command = /^\/plan(?:\s+([\s\S]*))?$/i.exec(prompt.trim());
-      if (command) {
-        const instruction = command[1]?.trim() ?? "";
-        const off = instruction.toLowerCase() === "off";
-        const alreadyActive = session.planMode;
-        void session.setPlanMode(!off).catch((error: unknown) => {
-          update({ ...state, planMode: session.planMode, error: formatError(error, t) });
-        });
-        update({ ...state, planMode: session.planMode });
-        if (!instruction || off) {
-          update({
-            ...state,
-            completed: [
-              ...state.completed,
-              {
-                type: "notice",
-                text: t(
-                  off ? "plan.disabled" : alreadyActive ? "plan.already-active" : "plan.enabled",
-                ),
-              },
-            ],
-          });
-          return true;
-        }
-        prompt = instruction;
+      if (compacting) return false;
+      if (!prompt.trim()) return false;
+      if (active || (session.running && !initial)) {
+        if (!prompt.startsWith("/")) return false;
+        session.steer(prompt);
+        return true;
       }
-      if (active || (session.running && !initial) || !prompt.trim()) return false;
       const controller = new AbortController();
       if (!session.running)
         update({
@@ -755,6 +754,26 @@ export function createConversation(session: Session, model: string, locale: Loca
       active = { controller, promise };
       return true;
     },
+    compact(instructions?: string) {
+      if (active || session.running)
+        return Promise.reject(new Error("Session already has an active Run."));
+      compacting = true;
+      const controller = new AbortController();
+      const previousActivity = state.activity;
+      update({
+        ...state,
+        running: true,
+        error: undefined,
+        activity: reduce(state.activity, { type: "submit" }, Date.now()),
+      });
+      const promise = session.compact({ instructions }).finally(() => {
+        active = undefined;
+        compacting = false;
+        update({ ...state, running: false, activity: previousActivity });
+      });
+      active = { controller, promise };
+      return promise;
+    },
     isRunning: () => active !== undefined || session.running,
     interrupt() {
       if (!active && !session.running) return;
@@ -763,9 +782,14 @@ export function createConversation(session: Session, model: string, locale: Loca
       active?.controller.abort();
     },
     async stop() {
+      const pending = active;
       session.interruptRun();
-      active?.controller.abort();
-      await active?.promise;
+      pending?.controller.abort();
+      try {
+        await pending?.promise;
+      } catch (error) {
+        if (!pending?.controller.signal.aborted) throw error;
+      }
       await session.waitForIdle();
       unsubscribe();
     },

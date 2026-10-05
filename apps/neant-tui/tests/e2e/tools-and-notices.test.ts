@@ -1,3 +1,4 @@
+import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
@@ -337,7 +338,9 @@ test.each([
         cwd: root,
         homeDir: root,
         model: original.getModel(),
-        streamFn: (model, context, options) => original.streamSimple(model, context, options),
+        streamFn: withAuxiliaryRequests((model, context, options) =>
+          original.streamSimple(model, context, options),
+        ),
         settings: { permissions: { deny: ["read"] } },
       });
       await session.run("try secret");

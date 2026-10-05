@@ -1,3 +1,4 @@
+import { withAuxiliaryRequests } from "./helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
@@ -84,7 +85,7 @@ test.each(["text", "stream-json"])(
           cwd: root,
           homeDir: root,
           model: faux.getModel(),
-          streamFn: faux.streamSimple,
+          streamFn: withAuxiliaryRequests(faux.streamSimple),
           settings: {
             hooks: {
               PreToolUse: [
@@ -151,10 +152,10 @@ test.each(["text", "stream-json"])(
           cwd: root,
           homeDir: root,
           ...fake,
-          streamFn: (...args) => {
+          streamFn: withAuxiliaryRequests((...args) => {
             modelCalls++;
             return fake.streamFn(...args);
-          },
+          }),
           settings: {
             hooks: {
               UserPromptSubmit: [
@@ -293,7 +294,12 @@ test.each([
         stderr: (text) => {
           stderr += text;
         },
-        session: { cwd: root, homeDir: root, model: faux.getModel(), streamFn: faux.streamSimple },
+        session: {
+          cwd: root,
+          homeDir: root,
+          model: faux.getModel(),
+          streamFn: withAuxiliaryRequests(faux.streamSimple),
+        },
       }),
     ).toBe(0);
     expect(stderr).toBe("");
@@ -338,7 +344,7 @@ test.each(["text", "stream-json"])(
             cwd: root,
             homeDir: root,
             model: faux.getModel(),
-            streamFn: faux.streamSimple,
+            streamFn: withAuxiliaryRequests(faux.streamSimple),
           },
         }),
       ).toBe(0);
@@ -387,7 +393,7 @@ test.each(["text", "stream-json"])(
               cwd: root,
               homeDir: root,
               model: faux.getModel(),
-              streamFn: faux.streamSimple,
+              streamFn: withAuxiliaryRequests(faux.streamSimple),
             },
           }),
         ).toBe(1);
@@ -421,7 +427,12 @@ test("Headless resume emits a text plan and never registers interactive plan too
           stdout += text;
         },
         stderr: () => {},
-        session: { cwd: root, homeDir: root, model: faux.getModel(), streamFn: faux.streamSimple },
+        session: {
+          cwd: root,
+          homeDir: root,
+          model: faux.getModel(),
+          streamFn: withAuxiliaryRequests(faux.streamSimple),
+        },
       }),
     ).toBe(0);
     const events = stdout
@@ -495,7 +506,7 @@ test.each(["prompt", "stdin", "stdin-stream-json"])(
             cwd: root,
             homeDir: root,
             model: faux.getModel(),
-            streamFn: faux.streamSimple,
+            streamFn: withAuxiliaryRequests(faux.streamSimple),
             settings: {
               hooks: {
                 SessionStart: [

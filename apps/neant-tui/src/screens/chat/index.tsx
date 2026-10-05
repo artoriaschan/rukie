@@ -1,7 +1,15 @@
 import { realpath } from "node:fs/promises";
 import { relative } from "node:path";
 import { useLayoutEffect, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { createSession, type Session, type SessionOptions } from "@neant/agent";
+import {
+  createSession,
+  listSkills,
+  listModels,
+  listSessions,
+  type SessionSummary,
+  type Session,
+  type SessionOptions,
+} from "@neant/agent";
 import type { Locale } from "@neant/i18n";
 import { PERMISSION_MODES, type ThinkingLevel } from "@neant/shared";
 import {
@@ -17,6 +25,7 @@ import {
 import {
   allocatePanelHeights,
   AssistantMessage,
+  ContextVisualization,
   ActivityLine,
   GoalTodoPanel,
   Logo,
@@ -34,6 +43,10 @@ import {
   SubagentDashboard,
   SubagentDetailScene,
   UserMessage,
+  CommandSuggestions,
+  ModelPicker,
+  SideQuestionPanel,
+  SessionPicker,
 } from "../../components";
 import { rewindLayout, type RewindEntry, type RewindMode } from "../../components/rewind-picker";
 import { formatError } from "../../i18n";
@@ -44,12 +57,19 @@ import { createConversation } from "./conversation";
 import { createInteractions } from "./interactions";
 import { permissionChoices } from "../../components/permission-dialog";
 import { fmtTokens, render as renderActivity } from "./activity/activity";
+import { commandCatalog } from "./commands";
+import { SettingsScreen } from "../settings";
 
 /** Bind the Session and private stores to one chat screen for its lifetime. */
-export async function createChat(options: SessionOptions, model: string, locale: Locale = "zh") {
+export async function createChat(
+  options: SessionOptions,
+  model: string,
+  locale: Locale = "zh",
+  writeTitle?: (title: string) => void,
+) {
   const t = createTuiI18n(locale);
   const interactions = createInteractions();
-  const session = await createSession({
+  const sessionOptions: SessionOptions = {
     ...options,
     reminderSources: [
       ...(options.reminderSources ?? []),
@@ -58,9 +78,14 @@ export async function createChat(options: SessionOptions, model: string, locale:
     onPermissionAsk: options.onPermissionAsk ?? interactions.askPermission,
     onQuestion: options.onQuestion ?? interactions.askQuestion,
     onPlanReview: options.onPlanReview ?? interactions.askPlanReview,
-  });
+  };
+  let session = await createSession(sessionOptions);
   const checkpointCwd = await realpath(options.cwd);
-  const conversation = createConversation(session, model, locale);
+  const skills = await listSkills(options);
+  const models = listModels(options.settings);
+  let conversation = createConversation(session, model, locale);
+  let binding = { session, conversation };
+  const bindingListeners = new Set<() => void>();
   const history = await createInputHistory(options.cwd, options.homeDir);
   const inputHistory = createTextInputHistory(history.entries);
   const submit = (prompt: string, initial = false) => {
@@ -68,6 +93,17 @@ export async function createChat(options: SessionOptions, model: string, locale:
     history.remember(prompt);
     inputHistory.reset();
     return true;
+  };
+  const replaceSession = async (resumeId?: string) => {
+    const branch = conversation.getSnapshot().activity.gitBranch;
+    await session.dispose("other");
+    await conversation.stop();
+    session = await createSession({ ...sessionOptions, resumeId });
+    conversation = createConversation(session, model, locale);
+    if (branch) conversation.dispatchActivity({ type: "git-branch", branch });
+    inputHistory.reset();
+    binding = { session, conversation };
+    bindingListeners.forEach((listener) => listener());
   };
   try {
     const git = Bun.spawn(["git", "branch", "--show-current"], {
@@ -93,10 +129,20 @@ export async function createChat(options: SessionOptions, model: string, locale:
       }
     },
     Chat({ onExit }: { onExit(): void }) {
+      const current = useSyncExternalStore(
+        (listener) => {
+          bindingListeners.add(listener);
+          return () => {
+            bindingListeners.delete(listener);
+          };
+        },
+        () => binding,
+      );
       return (
         <Chat
-          session={session}
-          conversation={conversation}
+          key={current.session.id}
+          session={current.session}
+          conversation={current.conversation}
           history={inputHistory}
           submit={submit}
           interactions={interactions}
@@ -105,6 +151,11 @@ export async function createChat(options: SessionOptions, model: string, locale:
           thinking={options.settings?.thinking}
           locale={locale}
           onExit={onExit}
+          models={models}
+          sessions={() => listSessions(options)}
+          skills={skills}
+          replaceSession={replaceSession}
+          writeTitle={writeTitle}
         />
       );
     },
@@ -122,6 +173,11 @@ function Chat({
   thinking,
   locale,
   onExit,
+  skills,
+  replaceSession,
+  writeTitle,
+  models,
+  sessions,
 }: {
   session: Session;
   conversation: ReturnType<typeof createConversation>;
@@ -133,10 +189,48 @@ function Chat({
   thinking?: ThinkingLevel;
   locale: Locale;
   onExit(): void;
+  models: readonly { spec: string; name: string }[];
+  sessions(): Promise<SessionSummary[]>;
+  skills: readonly { name: string; description: string }[];
+  replaceSession(resumeId?: string): Promise<void>;
+  writeTitle?: (title: string) => void;
 }) {
   const t = createTuiI18n(locale);
   const state = useSyncExternalStore(conversation.subscribe, conversation.getSnapshot);
-  const interaction = useSyncExternalStore(interactions.subscribe, interactions.getSnapshot);
+  const [title, setTitle] = useState(session.title);
+  useEffect(
+    () =>
+      session.subscribe((event) => {
+        if (event.type === "session_title_changed") setTitle(event.title);
+      }),
+    [session],
+  );
+  useEffect(() => {
+    const frames = ["🌑", "🌒", "🌓", "🌔", "🌕", "🌖", "🌗", "🌘"];
+    let frame = 0;
+    const update = () =>
+      writeTitle?.(`${state.running ? frames[frame++ % frames.length] : "✦"} ${title || "Neant"}`);
+    update();
+    if (!state.running || !writeTitle) return;
+    const timer = setInterval(update, 120);
+    return () => clearInterval(timer);
+  }, [title, state.running, writeTitle]);
+  const [side, setSide] = useState<{
+    question: string;
+    answer: string;
+    error?: string;
+    done: boolean;
+  }>();
+  const sideController = useRef<AbortController | undefined>(undefined);
+  const sideScroll = useRef<ScrollHandle>(null);
+  const closeSide = () => {
+    sideController.current?.abort();
+    sideController.current = undefined;
+    setSide(undefined);
+  };
+  useEffect(() => () => sideController.current?.abort(), [session]);
+  const pendingInteraction = useSyncExternalStore(interactions.subscribe, interactions.getSnapshot);
+  const interaction = side ? undefined : pendingInteraction;
   const question = interaction?.kind === "permission" ? interaction : undefined;
   const planReview = interaction?.kind === "plan" ? interaction : undefined;
   const userQuestion = interaction?.kind === "question" ? interaction : undefined;
@@ -149,10 +243,11 @@ function Chat({
       live.questionIndex === userQuestion.questionIndex
     );
   };
-  type View = "chat" | "dashboard" | { detail: string; from: "chat" | "dashboard" };
+  type View = "chat" | "dashboard" | "settings" | { detail: string; from: "chat" | "dashboard" };
   const [view, setView] = useState<View>("chat");
   const viewRef = useRef<View>("chat");
   const switchView = (next: View) => {
+    if (next !== "chat") closeSide();
     viewRef.current = next;
     setView(next);
   };
@@ -182,6 +277,25 @@ function Chat({
     setPage(next);
   };
   const [input, setInput] = useState("");
+  const catalog = commandCatalog(t);
+  const suggestions = [
+    ...catalog,
+    ...skills
+      .filter((skill) => !catalog.some((command) => command.name === skill.name))
+      .map((skill) => ({ ...skill, skill: true })),
+  ];
+  const [commandSelection, setCommandSelection] = useState(0);
+  const commandSelectionRef = useRef(0);
+  const dismissedMenu = useRef<string | undefined>(undefined);
+  const [menuDismissed, setMenuDismissed] = useState(false);
+  const handledInput = useRef(new WeakSet<object>());
+  const matches = (value: string) =>
+    /^\/[a-z0-9-]*$/i.test(value) && dismissedMenu.current !== value
+      ? suggestions.filter((item) =>
+          item.name.toLowerCase().startsWith(value.slice(1).toLowerCase()),
+        )
+      : [];
+  const commandMatches = menuDismissed ? [] : matches(input);
   const [promptRevision, setPromptRevision] = useState(0);
   type Rewind = {
     entries: readonly RewindEntry[];
@@ -189,6 +303,48 @@ function Chat({
     confirm: boolean;
     mode: number;
     busy: boolean;
+  };
+  const [modelPicker, setModelPicker] = useState<number>();
+  const modelPickerRef = useRef<number | undefined>(undefined);
+  const showModelPicker = (focus: number | undefined) => {
+    modelPickerRef.current = focus;
+    setModelPicker(focus);
+  };
+  type ResumePicker = { sessions: readonly SessionSummary[]; focus: number; busy: boolean };
+  const [resumePicker, setResumePicker] = useState<ResumePicker>();
+  const resumePickerRef = useRef<ResumePicker | undefined>(undefined);
+  const showResumePicker = (next: ResumePicker | undefined) => {
+    resumePickerRef.current = next;
+    setResumePicker(next);
+  };
+  const openResumePicker = async () => {
+    closeSide();
+    const loading: ResumePicker = { sessions: [], focus: 0, busy: true };
+    showResumePicker(loading);
+    try {
+      const previous = (await sessions()).filter((item) => item.id !== session.id);
+      if (resumePickerRef.current !== loading) return;
+      if (previous.length) showResumePicker({ sessions: previous, focus: 0, busy: false });
+      else {
+        showResumePicker(undefined);
+        conversation.notice(t("resume.empty"));
+      }
+    } catch (error) {
+      if (resumePickerRef.current !== loading) return;
+      showResumePicker(undefined);
+      conversation.notice(formatError(error, t), true);
+    }
+  };
+  const resumeSession = async (index: number) => {
+    const picker = resumePickerRef.current;
+    if (!picker || picker.busy) return;
+    showResumePicker({ ...picker, busy: true });
+    try {
+      await replaceSession(picker.sessions[index]!.id);
+    } catch (error) {
+      showResumePicker(undefined);
+      conversation.notice(formatError(error, t), true);
+    }
   };
   const [rewind, setRewind] = useState<Rewind>();
   const rewindRef = useRef<Rewind | undefined>(undefined);
@@ -337,6 +493,10 @@ function Chat({
   ]);
   const change = (value: string) => {
     armRewind();
+    dismissedMenu.current = undefined;
+    setMenuDismissed(false);
+    commandSelectionRef.current = 0;
+    setCommandSelection(0);
     draft.current = value;
     lastInterrupt.current = undefined;
     setInput(value);
@@ -344,6 +504,115 @@ function Chat({
   const returnToBottom = () => {
     body.current?.scrollToBottom();
     lastInterrupt.current = undefined;
+  };
+  const switchModel = async (spec: string) => {
+    try {
+      await session.setModel(spec);
+      conversation.notice(t("model.changed", { model: session.model }));
+    } catch (error) {
+      conversation.notice(formatError(error, t), true);
+    }
+  };
+  const executeCommand = (prompt: string) => {
+    const parsed = /^\/([a-z0-9-]+)(?:\s|$)/.exec(prompt);
+    const command = catalog.find((entry) => entry.name === parsed?.[1]);
+    if (!command) return submit(prompt);
+    if (conversation.isRunning() && !command.duringRun) {
+      conversation.notice(t("command.busy", { name: command.name }));
+      return true;
+    }
+    if (command.name === "help")
+      conversation.notice(
+        [
+          t("command.help-title"),
+          ...suggestions.map(
+            (item) => `/${item.name}${"skill" in item ? " [skill]" : ""}  ${item.description}`,
+          ),
+        ].join("\n"),
+      );
+    else if (command.name === "exit") {
+      conversation.interrupt();
+      void conversation.stop().then(onExit);
+    } else if (command.name === "plan") {
+      const on = !session.planMode;
+      void session
+        .setPlanMode(on)
+        .then(() => conversation.notice(t(on ? "plan.enabled" : "plan.disabled")))
+        .catch((error: unknown) => conversation.notice(formatError(error, t), true));
+    } else if (command.name === "rename") {
+      const title = prompt.slice(parsed![0].length).trim();
+      if (!title) {
+        change(`/rename ${session.title}`);
+        setPromptRevision((revision) => revision + 1);
+        return false;
+      }
+      void session
+        .rename(title)
+        .catch((error: unknown) => conversation.notice(formatError(error, t), true));
+    } else if (command.name === "model") {
+      const spec = prompt.slice(parsed![0].length).trim();
+      if (spec) void switchModel(spec);
+      else
+        showModelPicker(
+          Math.max(
+            0,
+            models.findIndex((model) => model.spec === session.model),
+          ),
+        );
+    } else if (command.name === "btw") {
+      const question = prompt.slice(parsed![0].length).trim();
+      if (!question) conversation.notice(t("btw.usage"));
+      else {
+        sideController.current?.abort();
+        const controller = new AbortController();
+        sideController.current = controller;
+        setSide({ question, answer: "", done: false });
+        void (async () => {
+          try {
+            for await (const delta of session.sideQuestion(question, {
+              signal: controller.signal,
+            })) {
+              if (sideController.current !== controller) return;
+              setSide((current) =>
+                current ? { ...current, answer: current.answer + delta } : current,
+              );
+            }
+            if (sideController.current === controller)
+              setSide((current) => (current ? { ...current, done: true } : current));
+          } catch (error) {
+            if (!controller.signal.aborted && sideController.current === controller)
+              setSide((current) =>
+                current ? { ...current, done: true, error: formatError(error, t) } : current,
+              );
+          }
+        })();
+      }
+    } else if (command.name === "resume") void openResumePicker();
+    else if (command.name === "settings") switchView("settings");
+    else if (command.name === "compact")
+      void conversation
+        .compact(prompt.slice(parsed![0].length).trim() || undefined)
+        .catch((error: unknown) => conversation.notice(formatError(error, t), true));
+    else if (command.name === "context") conversation.contextReport(session.contextReport());
+    else if (command.name === "rewind") openRewind();
+    else if (command.name === "clear")
+      void replaceSession().catch((error: unknown) =>
+        conversation.notice(formatError(error, t), true),
+      );
+    else conversation.notice(t("command.unsupported", { name: command.name }));
+    return true;
+  };
+  const sendInput = (prompt: string) => {
+    if (executeCommand(prompt)) {
+      body.current?.scrollToBottom();
+      change("");
+    }
+  };
+  const openRewind = () => {
+    const entries = session.checkpoints().toReversed();
+    if (!entries.length) conversation.notice(t("rewind.empty"));
+    else showRewind({ entries, focus: 0, confirm: false, mode: 0, busy: false });
+    body.current?.scrollToBottom();
   };
   const showReturn = !!bodyScroll && !bodyScroll.following;
   const statusHeight = state.contextUsage && columns - 2 >= 14 ? 3 : 2;
@@ -370,10 +639,16 @@ function Chat({
   // Dialogs take priority. Reserve a preview for every visible panel before
   // deciding whether the prompt needs to use its one-row form.
   const panelCount = Number(hasTodos) + Number(hasSubagents);
+  const sideHeight = side
+    ? Math.min(
+        10,
+        Math.max(3, Math.min(Math.floor(rows / 2), rows - statusHeight - 2 - panelCount)),
+      )
+    : 0;
   const dialogGap =
     question && rows - statusHeight - minimumDialogHeight - panelCount - 1 >= 1 ? 1 : 0;
   const compactPrompt =
-    (!!rewind && rows < 20) ||
+    ((!!side || !!rewind || !!resumePicker) && rows < 20) ||
     (!!interaction &&
       rows - statusHeight - minimumDialogHeight - dialogGap - panelCount < promptMaxLines + 3);
   const promptHeight = compactPrompt ? 1 : promptMaxLines + 3;
@@ -382,7 +657,25 @@ function Chat({
     : interaction
       ? Number(!compactPrompt)
       : 1;
-  const chromeSpace = rows - statusHeight - promptHeight - transcriptHeight;
+  const commandMenuHeight =
+    commandMatches.length && !interaction && !rewind
+      ? Math.min(
+          commandMatches.length,
+          14,
+          Math.max(
+            1,
+            rows -
+              statusHeight -
+              promptHeight -
+              transcriptHeight -
+              panelCount -
+              sideHeight -
+              Number(hasActivity),
+          ),
+        )
+      : 0;
+  const chromeSpace =
+    rows - statusHeight - promptHeight - transcriptHeight - commandMenuHeight - sideHeight;
   const showReturnControl =
     showReturn && chromeSpace - minimumDialogHeight - dialogGap - panelCount >= 1;
   const compactReturn =
@@ -417,14 +710,73 @@ function Chat({
         rewindMaxHeight,
       ).height
     : 0;
+  const modelPickerHeight = modelPicker === undefined ? 0 : Math.min(12, available - panelCount);
+  const resumePickerHeight = resumePicker ? Math.min(14, available - panelCount) : 0;
   const panelHeights = allocatePanelHeights(
-    available - dialogMaxHeight - dialogGap - rewindHeight,
+    available - dialogMaxHeight - dialogGap - rewindHeight - modelPickerHeight - resumePickerHeight,
     Array.from({ length: panelCount }, () => 3),
   );
   const todoMaxHeight = hasTodos ? panelHeights[0]! : 1;
   const subagentMaxHeight = hasSubagents ? panelHeights[Number(hasTodos)]! : 1;
   useInput((event) => {
+    if (sideController.current && event.type === "key") {
+      const { key } = event;
+      if (key.name === "escape" || (key.ctrl && key.name === "c")) {
+        handledInput.current.add(event);
+        closeSide();
+        return;
+      }
+      if (
+        !draft.current &&
+        !key.ctrl &&
+        !key.alt &&
+        !key.shift &&
+        ["up", "down"].includes(key.name)
+      ) {
+        handledInput.current.add(event);
+        sideScroll.current?.scrollBy(key.name === "up" ? -3 : 3);
+        return;
+      }
+    }
+    const resume = resumePickerRef.current;
+    if (resume) {
+      if (event.type !== "key") return;
+      handledInput.current.add(event);
+      const { key } = event;
+      if (key.name === "escape" || (key.ctrl && key.name === "c")) {
+        if (!resume.busy || !resume.sessions.length) showResumePicker(undefined);
+      } else if (!resume.busy && !small && !key.ctrl && !key.alt && !key.shift) {
+        if (key.name === "up" || key.name === "down")
+          showResumePicker({
+            ...resume,
+            focus:
+              (resume.focus + (key.name === "up" ? resume.sessions.length - 1 : 1)) %
+              resume.sessions.length,
+          });
+        else if (key.name === "enter") void resumeSession(resume.focus);
+      }
+      return;
+    }
+    const modelFocus = modelPickerRef.current;
+    if (modelFocus !== undefined) {
+      if (event.type !== "key") return;
+      handledInput.current.add(event);
+      const { key } = event;
+      if (key.name === "escape" || (key.ctrl && key.name === "c")) showModelPicker(undefined);
+      else if (!small && !key.ctrl && !key.alt && !key.shift) {
+        if (key.name === "up" || key.name === "down")
+          showModelPicker(
+            (modelFocus + (key.name === "up" ? models.length - 1 : 1)) % models.length,
+          );
+        else if (key.name === "enter") {
+          showModelPicker(undefined);
+          void switchModel(models[modelFocus]!.spec);
+        }
+      }
+      return;
+    }
     const currentView = viewRef.current;
+    if (currentView === "settings") return;
     if (currentView !== "chat") {
       if (event.type === "wheel") subagentScroll.current?.scrollBy(event.delta * 3);
       if (event.type !== "key") return;
@@ -525,11 +877,19 @@ function Chat({
       lastInterrupt.current = undefined;
       return;
     }
-    if (event.type === "paste" && interactions.getSnapshot()?.kind === "plan") {
+    if (
+      !sideController.current &&
+      event.type === "paste" &&
+      interactions.getSnapshot()?.kind === "plan"
+    ) {
       if (!small) interactions.planInput(event);
       return;
     }
-    if (event.type === "paste" && interactions.getSnapshot()?.kind === "question") {
+    if (
+      !sideController.current &&
+      event.type === "paste" &&
+      interactions.getSnapshot()?.kind === "question"
+    ) {
       if (!small) interactions.questionInput(event);
       return;
     }
@@ -538,8 +898,33 @@ function Chat({
       return;
     }
     const { key } = event;
-    const pendingInteraction = interactions.getSnapshot();
+    const pendingInteraction = sideController.current ? undefined : interactions.getSnapshot();
     if (pendingInteraction || key.name !== "escape") armRewind();
+    const menu = !pendingInteraction && !small ? matches(draft.current) : [];
+    if (menu.length && !key.ctrl && !key.alt && !key.shift) {
+      if (key.name === "up" || key.name === "down") {
+        handledInput.current.add(event);
+        commandSelectionRef.current =
+          (commandSelectionRef.current + (key.name === "up" ? menu.length - 1 : 1)) % menu.length;
+        setCommandSelection(commandSelectionRef.current);
+        return;
+      }
+      if (key.name === "tab" || key.name === "enter") {
+        handledInput.current.add(event);
+        const item = menu[commandSelectionRef.current % menu.length]!;
+        if (key.name === "tab") {
+          history.reset();
+          change(`/${item.name} `);
+          setPromptRevision((revision) => revision + 1);
+        } else sendInput(`/${item.name}`);
+        return;
+      }
+      if (key.name === "escape") {
+        dismissedMenu.current = draft.current;
+        setMenuDismissed(true);
+        return;
+      }
+    }
     const pending = pendingInteraction?.kind === "permission" ? pendingInteraction : undefined;
     if (key.ctrl && key.name === "q" && !key.alt && !key.shift) {
       toggleTodos();
@@ -626,9 +1011,7 @@ function Chat({
           const now = performance.now();
           if (rewindEsc.current !== undefined && now - rewindEsc.current <= 3000) {
             armRewind();
-            const entries = session.checkpoints().toReversed();
-            if (!entries.length) conversation.notice(t("rewind.empty"));
-            else showRewind({ entries, focus: 0, confirm: false, mode: 0, busy: false });
+            openRewind();
           } else {
             armRewind(now);
           }
@@ -679,6 +1062,15 @@ function Chat({
                   )}
               </Box>
             );
+          case "context-report":
+            return (
+              <ContextVisualization
+                key={index}
+                report={entry.report}
+                columns={columns}
+                locale={locale}
+              />
+            );
           case "notice":
             return <Notice key={index} kind="info" text={entry.text} />;
           case "message":
@@ -691,6 +1083,7 @@ function Chat({
       }),
     [state.completed, state.subagents, columns, thinking, locale],
   );
+  if (view === "settings") return <SettingsScreen locale={locale} onClose={closeView} />;
   if (view === "dashboard")
     return (
       <SubagentDashboard
@@ -893,30 +1286,90 @@ function Chat({
                 }}
               />
             )}
+            {modelPicker !== undefined && (
+              <ModelPicker
+                models={models}
+                focus={modelPicker}
+                current={session.model}
+                maxHeight={modelPickerHeight}
+                locale={locale}
+                onPick={(index) => {
+                  showModelPicker(undefined);
+                  void switchModel(models[index]!.spec);
+                }}
+              />
+            )}
+            {side && (
+              <SideQuestionPanel
+                {...side}
+                height={sideHeight}
+                locale={locale}
+                scrollRef={sideScroll}
+              />
+            )}
+            {resumePicker && (
+              <SessionPicker
+                sessions={resumePicker.sessions}
+                focus={resumePicker.focus}
+                maxHeight={resumePickerHeight}
+                locale={locale}
+                onPick={(index) => {
+                  void resumeSession(index);
+                }}
+              />
+            )}
+            {!!commandMatches.length &&
+              !interaction &&
+              !rewind &&
+              !resumePicker &&
+              modelPicker === undefined && (
+                <CommandSuggestions
+                  items={commandMatches}
+                  selected={commandSelection % commandMatches.length}
+                  maxHeight={commandMenuHeight}
+                />
+              )}
             <PromptInput
               tip={rewindArmedAt === undefined ? undefined : t("rewind.again")}
               key={promptRevision}
-              readOnly={!!rewind || (!!interaction && !userQuestion?.collapsed)}
+              readOnly={
+                modelPicker !== undefined ||
+                !!resumePicker ||
+                !!rewind ||
+                (!!interaction && !userQuestion?.collapsed)
+              }
               compact={compactPrompt}
               maxLines={compactPrompt ? 1 : promptMaxLines}
               columns={columns}
               working={state.running}
               planMode={state.planMode}
               history={history}
+              filterInput={(event) =>
+                viewRef.current === "chat" &&
+                modelPickerRef.current === undefined &&
+                resumePickerRef.current === undefined &&
+                !handledInput.current.has(event) &&
+                !(
+                  event.type === "key" &&
+                  !event.key.ctrl &&
+                  !event.key.alt &&
+                  !event.key.shift &&
+                  (!interactions.getSnapshot() || !!sideController.current) &&
+                  matches(draft.current).length &&
+                  ["up", "down", "tab", "enter"].includes(event.key.name)
+                )
+              }
               value={input}
               onChange={(value) => {
-                const pending = interactions.getSnapshot();
+                const pending = sideController.current ? undefined : interactions.getSnapshot();
                 if (viewRef.current !== "chat" || rewindRef.current) return;
                 if (!pending || (pending.kind === "question" && pending.collapsed)) change(value);
               }}
               onSubmit={(prompt) => {
-                const pending = interactions.getSnapshot();
+                const pending = sideController.current ? undefined : interactions.getSnapshot();
                 if (viewRef.current !== "chat" || rewindRef.current) return;
                 if (pending && (pending.kind !== "question" || !pending.collapsed)) return;
-                if (submit(prompt)) {
-                  body.current?.scrollToBottom();
-                  change("");
-                }
+                sendInput(prompt);
               }}
             />
             <StatusLine

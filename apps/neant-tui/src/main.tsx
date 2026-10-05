@@ -151,6 +151,7 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
       },
       model ? `${model.provider}/${model.id}` : settings.model!,
       locale,
+      (title) => io.stdout.write(`\x1b]0;${title}\x07`),
     );
     app = render(
       <ThemeProvider>

@@ -17,6 +17,7 @@ import {
   type Api,
   type Model,
 } from "@earendil-works/pi-ai";
+import { createUserVisibleError } from "@neant/shared";
 import { convertToLlm } from "../reminders/index.ts";
 import { isUnknownToolOutcome } from "@neant/shared";
 
@@ -106,12 +107,25 @@ export async function compactTurn(options: {
   streamFn: StreamFn;
   thinkingLevel: ThinkingLevel;
   signal?: AbortSignal;
+  trigger: "auto" | "manual";
+  instructions?: string;
   beforeCompact?: () => boolean | Promise<boolean>;
   onStart: (tokensBefore: number) => void | Promise<void>;
 }) {
   const { model, signal } = options;
   const tokensBefore = estimateContextTokens(options.messages);
-  if (tokensBefore <= model.contextWindow * 0.8) return undefined;
+  const manual = options.trigger === "manual";
+  if (!manual && tokensBefore <= model.contextWindow * 0.8) return undefined;
+  if (
+    manual &&
+    !options.messages.some(
+      (message) => message.role === "assistant" || message.role === "toolResult",
+    )
+  )
+    throw createUserVisibleError("Session has no compactable conversation history.", {
+      code: "compaction-no-history",
+      params: {},
+    });
   // Tool State has no model-visible content. In particular, a Checkpoint entry
   // between a user prompt and its reminders must not become pi's turn cut point.
   const entries = (await options.entries()).filter((entry) => entry.type !== "custom");
@@ -122,6 +136,7 @@ export async function compactTurn(options: {
   // Compress earlier work without allowing pi to split that request at a reminder.
   const pendingEntries = latestUserIndex < 0 ? [] : entries.slice(latestUserIndex);
   const hasPendingRequest =
+    !manual &&
     pendingEntries.length > 0 &&
     pendingEntries.every(
       (entry) =>
@@ -144,8 +159,27 @@ export async function compactTurn(options: {
     },
   );
   if (!preparation.ok) throw preparation.error;
-  if (!preparation.value) return undefined;
+  if (!preparation.value) {
+    if (manual)
+      throw createUserVisibleError("Session has no compactable conversation history.", {
+        code: "compaction-no-history",
+        params: {},
+      });
+    return undefined;
+  }
   preparation.value.tokensBefore = tokensBefore;
+  // An idle manual request summarizes all completed work, including short
+  // conversations that pi would otherwise retain in their entirety.
+  if (manual) {
+    preparation.value.messagesToSummarize.push(
+      ...preparation.value.turnPrefixMessages,
+      ...preparation.value.retainedTail,
+    );
+    preparation.value.turnPrefixMessages = [];
+    preparation.value.retainedTail = [];
+    preparation.value.isSplitTurn = false;
+    preparation.value.fileOps = prepareBranchEntries(compactableEntries).fileOps;
+  }
   // A single oversized message can make pi's recent tail exceed the entire budget.
   // Summarize that tail too; a pending request is appended separately below.
   if (
@@ -191,7 +225,7 @@ export async function compactTurn(options: {
     preparation.value,
     models,
     model,
-    undefined,
+    options.instructions,
     options.thinkingLevel,
     undefined,
     undefined,
