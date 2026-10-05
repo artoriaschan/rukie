@@ -32,4 +32,16 @@ Standards 与 Spec 由两位独立代理并行审查，再由同一位实现代�
 - `a5fd79d` 完整检查出现 1 个测试同步失败：1654 pass、1 fail。测试把 usage 更新误当作 run 已结束；此前恢复选择器的偶发超时也来自加载标题早于可选行。受控公开 Stop hook 与 store.list 分别稳定复现旧顺序失败，修正后等待实际 idle / 可见焦点行，五轮聚焦验证每轮 27 pass、0 fail、160 assertions。两位审查代理复核该增量无新增发现，生产代码未改。
 - 最终整合 `efd8f67`：完整 `bun run check` 退出 0；**1655 pass、0 fail、8615 assertions、127 files，194.92s**。oxfmt、oxlint、tsc、knip 均通过。日志：[完整检查](/tmp/neant-slash-final-check.log)；交付记录见 [spec Answer](spec.md#answer)。全量检查使用隔离临时 HOME、清除 NO_COLOR，并通过 caffeinate 防止空闲休眠。
 
-八张工单及审查修复的 managed worktrees 均已归档，临时分支已删除；保留整合分支。
+八张工单及审查修复的 managed worktrees 均已归档，九个目录均已移除；全部本任务临时分支（包括整合分支）已删除。
+
+## Main integration
+
+本地主分支合并提交：`48f74550a2062c8cea9458c3052a4c9daaadcfc4`，父提交为 `cc8286ed9f845a7073f8264c5239be845b9968f0` 与交付分支 `dd6ff77c8d9b5b6ce900ad4ddd7c89bc39875f18`。
+
+手工冲突解决保留 main 的子 Run 状态、恢复及未知结果修复、关闭等待和浮动回退提示，同时接入命令框架、标题、模型及上下文接口。子 Run 持久化共用序列化存储；列表优先只读打开并拒绝 torn-tail 修复。首次合并全量发现两处辅助标题请求夹具与一处侧问未知结果交互失败，已修正：夹具区分辅助请求，侧问过滤未完成协议对并保留未知结果文本。公开聚焦回归 27 pass、0 fail、207 assertions。
+
+Standards 复审另发现 1 项 ADR-0008 违反：`/resume` 的只读修复拒绝显示裸英文。已通过私有 FileError marker 识别本 adapter 拒绝，输出 shared 稳定错误码与双语通用文案；原原因保留，其他 I/O 错误原样传播。公开 Core 与双语 TUI 回归确认原文件字节不变、零模型调用。原 Standards 审查代理复核：0 项剩余违反、0 项可操作异味。详见 [Standards 报告](/tmp/neant-slash-main-standards.md)。
+
+Spec 复审同时覆盖 slash commands 与 subagent-resume 两份规格：0 项剩余问题，独立聚焦验证 58 pass、0 fail、361 assertions；本地化增量再验证 31 pass、0 fail、65 assertions。详见 [Spec 报告](/tmp/neant-slash-main-spec-review.md)。
+
+最终完整 `bun run check` 退出 0：**1713 pass、0 fail、9060 assertions、134 files，209.96s**；oxfmt、oxlint、tsc、knip 全部通过。日志：[主分支最终完整检查](/tmp/neant-slash-main-final-check.log)。合并后只补充 Markdown 交付记录。

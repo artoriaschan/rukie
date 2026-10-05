@@ -27,6 +27,6 @@ Spec: [slash commands](spec.md). Local Markdown tracker; tickets resolve through
 
 ## Final delivery
 
-- Branch: `codex/slash-commands-integration`；最终代码与测试整合提交 `efd8f67d81773da2e0c02cd1406fa0f28022287a`。
-- Full check: 1655 pass、0 fail、8615 assertions、127 files；静态检查全部通过。
-- Standards / Spec 各解决 1 项，均无剩余发现；九个 managed worktrees 已归档，临时分支已删除。
+- Branch: `main`；合并提交 `48f74550a2062c8cea9458c3052a4c9daaadcfc4`，包含原最终整合 `efd8f67d81773da2e0c02cd1406fa0f28022287a`。
+- Main full check: 1713 pass、0 fail、9060 assertions、134 files；静态检查全部通过。
+- 原 Standards / Spec 各解决 1 项，主分支合并复审另解决 1 项本地化问题，两轴无剩余发现；九个 managed worktrees 已归档并移除，全部本任务临时分支已删除。

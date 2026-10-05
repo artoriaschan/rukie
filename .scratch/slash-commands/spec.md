@@ -254,10 +254,14 @@ TUI 提供一组内置 Slash Command，输入 `/` 弹出补全菜单，列出内
 
 ## Answer
 
-01–08 全部实现并 resolved，交付分支为 `codex/slash-commands-integration`。完成命令框架与补全、手动 compaction、自动标题与改名、会话恢复、模型切换、上下文报告、侧问，以及设置占位页；工单验收与局部验证记录见 [implementation map](map.md)。
+01–08 全部实现并 resolved，已合并到本地主分支 `main`，合并提交为 `48f74550a2062c8cea9458c3052a4c9daaadcfc4`。完成命令框架与补全、手动 compaction、自动标题与改名、会话恢复、模型切换、上下文报告、侧问，以及设置占位页；工单验收与局部验证记录见 [implementation map](map.md)。
 
 最终代码与测试整合提交：`efd8f67d81773da2e0c02cd1406fa0f28022287a`。在隔离临时 HOME、清除 NO_COLOR、使用 caffeinate 的环境下执行 `bun run check`，退出 0：**1655 pass、0 fail、8615 assertions、127 files，194.92s**。oxfmt、oxlint、TypeScript project build、knip 均通过。日志：[最终完整检查](/tmp/neant-slash-final-check.log)。
 
 [双轴审查](review.md)：Standards 与 Spec 各发现并解决 1 项，原审查代理分别复核，均无剩余问题。修复包括压缩中 `/exit` 的取消收尾，以及 Core 新增可见错误的错误码与双语文案。最终验证还通过受控公共 hook / store 入口复现并修正两处测试就绪时序，五轮聚焦重复验证均通过，生产行为保持规格定义。
 
-八个实现工作树与一个审查修复工作树均已通过 managed worktree 工具归档，临时分支已删除，保留上述整合分支。当前本地 Markdown tracker 已完成关闭。
+主分支合并兼容了后续子代理恢复、只读观察与回退提示：保留子 Run 状态及关闭完成边界；子 Run 持久化共用序列化存储；会话列表使用只读打开，损坏记录拒绝修复并输出双语错误；侧问移除未完成工具协议对，同时保留未知结果说明。两轴再次独立复核，无剩余问题。
+
+合并提交代码的最终完整检查退出 0：**1713 pass、0 fail、9060 assertions、134 files，209.96s**；oxfmt、oxlint、TypeScript project build、knip 全部通过。日志：[主分支最终完整检查](/tmp/neant-slash-main-final-check.log)。验证采用上述隔离环境。
+
+八个实现工作树与一个审查修复工作树均已通过 managed worktree 工具归档，九个目录均已移除；全部本任务临时分支（包括 `codex/slash-commands-integration`）已删除。当前本地 Markdown tracker 已完成关闭。
