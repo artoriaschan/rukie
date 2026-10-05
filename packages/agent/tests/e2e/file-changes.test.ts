@@ -20,6 +20,196 @@ const call = (name: string, args: Parameters<typeof fauxToolCall>[1]) =>
 const changes = (events: SessionEvent[]) =>
   events.filter((event) => event.type === "reminder_injected" && event.source === "file-changes");
 
+test.each(["write", "edit"])(
+  "%s refuses an unreported external change even when size and timestamp are unchanged",
+  async (name) => {
+    dirs = await tempDirs();
+    const path = join(dirs.cwd, "file.txt");
+    await Bun.write(path, "keep\nbefore\n");
+    const timestamp = new Date("2026-01-01T00:00:00Z");
+    await utimes(path, timestamp, timestamp);
+    const fake = fakeModel([
+      call("read", { path: "file.txt" }),
+      async () => {
+        await Bun.write(path, "keep\neditor\n");
+        await utimes(path, timestamp, timestamp);
+        return call(
+          name,
+          name === "write"
+            ? { path: "file.txt", content: "owned\n" }
+            : { path: "file.txt", edits: [{ oldText: "keep", newText: "owned" }] },
+        );
+      },
+      fauxAssistantMessage("refused"),
+    ]);
+    const session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
+    await session.run("read then change");
+    expect(
+      session.messages.find(
+        (message) => message.role === "toolResult" && message.toolName === name,
+      ),
+    ).toMatchObject({
+      isError: true,
+      content: [
+        {
+          type: "text",
+          text: "File has been modified since it was last read. Read it again before editing.",
+        },
+      ],
+    });
+    expect(await Bun.file(path).text()).toBe("keep\neditor\n");
+  },
+);
+
+test.each(["write", "edit"])(
+  "%s stays blocked after a path-only reminder and succeeds after a fresh read",
+  async (name) => {
+    dirs = await tempDirs();
+    const path = join(dirs.cwd, "large.txt");
+    await Bun.write(path, "keep\nbefore\n");
+    const external = "keep\n" + "large external change\n".repeat(250);
+    const args: Parameters<typeof fauxToolCall>[1] =
+      name === "write"
+        ? { path: "large.txt", content: "owned\n" }
+        : { path: "large.txt", edits: [{ oldText: "keep", newText: "owned" }] };
+    const fake = fakeModel([
+      call("read", { path: "large.txt" }),
+      fauxAssistantMessage("read"),
+      call(name, args),
+      async () => {
+        expect(await Bun.file(path).text()).toBe(external);
+        return call("read", { path: "large.txt" });
+      },
+      call(name, args),
+      fauxAssistantMessage("recovered"),
+    ]);
+    const session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
+    await session.run("read");
+    await changeFile(path, external);
+    const events: SessionEvent[] = [];
+    await session.run("change", {
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+    const results = session.messages.filter(
+      (message) => message.role === "toolResult" && message.toolName === name,
+    );
+    expect(results[0]).toMatchObject({
+      isError: true,
+      content: [
+        {
+          text: "File has been modified since it was last read. Read it again before editing.",
+        },
+      ],
+    });
+    expect(results[1]).toMatchObject({ isError: false });
+    expect(await Bun.file(path).text()).toBe(
+      name === "write" ? "owned\n" : "owned\n" + "large external change\n".repeat(250),
+    );
+    expect(changes(events)).toHaveLength(1);
+    expect(changes(events)[0]).toMatchObject({
+      content: expect.stringContaining("Externally modified: large.txt."),
+    });
+  },
+);
+
+test("a reported diff lets edit preserve the known external change", async () => {
+  dirs = await tempDirs();
+  const path = join(dirs.cwd, "file.txt");
+  await Bun.write(path, "keep\nbefore\n");
+  const fake = fakeModel([
+    call("read", { path: "file.txt" }),
+    fauxAssistantMessage("read"),
+    call("edit", { path: "file.txt", edits: [{ oldText: "keep", newText: "owned" }] }),
+    fauxAssistantMessage("edited"),
+  ]);
+  const session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
+  await session.run("read");
+  await changeFile(path, "keep\neditor\n");
+  const events: SessionEvent[] = [];
+  await session.run("edit", {
+    onEvent: (event) => {
+      events.push(event);
+    },
+  });
+  expect(changes(events)).toHaveLength(1);
+  expect(changes(events)[0]).toMatchObject({
+    content: expect.stringContaining("-before\n+editor"),
+  });
+  expect(
+    session.messages.find(
+      (message) => message.role === "toolResult" && message.toolName === "edit",
+    ),
+  ).toMatchObject({ isError: false });
+  expect(await Bun.file(path).text()).toBe("owned\neditor\n");
+});
+
+test("write creates an untracked file and edit keeps its original matching behavior", async () => {
+  dirs = await tempDirs();
+  const path = join(dirs.cwd, "new.txt");
+  const existing = join(dirs.cwd, "existing.txt");
+  await Bun.write(existing, "before\n");
+  const fake = fakeModel([
+    call("edit", { path: "existing.txt", edits: [{ oldText: "missing", newText: "wrong" }] }),
+    call("edit", { path: "existing.txt", edits: [{ oldText: "before", newText: "edited" }] }),
+    call("write", { path: "new.txt", content: "created\n" }),
+    fauxAssistantMessage("done"),
+  ]);
+  const session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
+  await session.run("create and edit");
+  const results = session.messages.filter((message) => message.role === "toolResult");
+  expect(results[0]).toMatchObject({ isError: true });
+  expect(JSON.stringify(results[0])).not.toContain("File has been modified since");
+  expect(results[1]).toMatchObject({ isError: false });
+  expect(results[2]).toMatchObject({ isError: false });
+  expect(await Bun.file(existing).text()).toBe("edited\n");
+  expect(await Bun.file(path).text()).toBe("created\n");
+});
+
+test("a hook-rewritten write checks the final target before overwriting it", async () => {
+  dirs = await tempDirs();
+  const path = join(dirs.cwd, "file.txt");
+  await Bun.write(path, "before\n");
+  await Bun.write(
+    join(dirs.cwd, "rewrite.sh"),
+    `cat > /dev/null\nprintf '%s' '{"hookSpecificOutput":{"updatedInput":{"path":"file.txt","content":"wrong\\n"}}}'\n`,
+  );
+  const fake = fakeModel([
+    call("read", { path: "file.txt" }),
+    async () => {
+      await changeFile(path, "external\n");
+      return call("write", { path: "other.txt", content: "wrong\n" });
+    },
+    fauxAssistantMessage("refused"),
+  ]);
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    permissionMode: "full-access",
+    settings: {
+      hooks: {
+        PreToolUse: [{ matcher: "write", hooks: [{ type: "command", command: "sh rewrite.sh" }] }],
+      },
+    },
+  });
+  await session.run("read then write");
+  expect(
+    session.messages.find(
+      (message) => message.role === "toolResult" && message.toolName === "write",
+    ),
+  ).toMatchObject({
+    isError: true,
+    content: [
+      {
+        text: "File has been modified since it was last read. Read it again before editing.",
+      },
+    ],
+  });
+  expect(await Bun.file(path).text()).toBe("external\n");
+  expect(await Bun.file(join(dirs.cwd, "other.txt")).exists()).toBe(false);
+});
+
 test("external changes to a read file reach the next model request once as a diff", async () => {
   dirs = await tempDirs();
   const path = join(dirs.cwd, "file.txt");

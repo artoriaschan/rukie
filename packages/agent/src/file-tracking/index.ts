@@ -160,20 +160,40 @@ export function createFileTracking(cwd: string) {
     finishRequest() {
       requestRemaining = 16000;
     },
+    /** Prepared paths include hook rewrites; reject stale writes before invoking the file tool. */
     wrapTool<T extends TSchema, D>(tool: AgentTool<T, D>): AgentTool<T, D> {
       return {
         ...tool,
         async execute(...args) {
-          const result = await tool.execute(...args);
           const params = args[1];
-          if (
-            !result.isError &&
+          const path =
             typeof params === "object" &&
             params !== null &&
             "path" in params &&
             typeof params.path === "string"
-          ) {
-            const path = resolve(cwd, params.path);
+              ? resolve(cwd, params.path)
+              : undefined;
+          if (path && (tool.name === "write" || tool.name === "edit")) {
+            const previous = files.get(path);
+            if (previous) {
+              let changed = previous.stale;
+              if (!changed) {
+                try {
+                  // Execution must compare bytes even when metadata did not change.
+                  const bytes = await readFile(path);
+                  changed = createHash("sha256").update(bytes).digest("hex") !== previous.hash;
+                } catch {
+                  changed = true;
+                }
+              }
+              if (changed)
+                throw new Error(
+                  "File has been modified since it was last read. Read it again before editing.",
+                );
+            }
+          }
+          const result = await tool.execute(...args);
+          if (!result.isError && path) {
             try {
               files.set(path, await baseline(path));
             } catch {
