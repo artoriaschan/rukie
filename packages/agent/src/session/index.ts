@@ -1238,7 +1238,12 @@ async function createSessionInternal(
             await target.createBranch(`rewind-${crypto.randomUUID()}`, tip, context);
             await target.setValue(branchTip("main"), anchor.parentId, context);
             // The native display name is session metadata, independent of conversation rewind.
-            if (sessionTitle.source) {
+            const restoredSource = createToolState(
+              [titleSourceState],
+              restoredEntries,
+              () => {},
+            ).get("title-source");
+            if (sessionTitle.source && sessionTitle.source !== restoredSource) {
               await toolState.set("title-source", sessionTitle.source, target, context);
               restoredEntries = await branch.findEntries({ order: "oldestFirst" }, context);
             }
