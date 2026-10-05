@@ -273,6 +273,22 @@ function Chat({
   const draft = useRef("");
   const lastInterrupt = useRef<number | undefined>(undefined);
   const rewindEsc = useRef<number | undefined>(undefined);
+  const [rewindArmedAt, setRewindArmedAt] = useState<number>();
+  const armRewind = (at?: number) => {
+    rewindEsc.current = at;
+    setRewindArmedAt(at);
+  };
+  useEffect(() => {
+    if (rewindArmedAt === undefined) return;
+    const timer = setTimeout(
+      () => {
+        rewindEsc.current = undefined;
+        setRewindArmedAt(undefined);
+      },
+      Math.max(0, 3000 - (performance.now() - rewindArmedAt)),
+    );
+    return () => clearTimeout(timer);
+  }, [rewindArmedAt]);
   const [now, setNow] = useState(Date.now);
   const currentTime = Math.max(now, Date.now());
   const activity = renderActivity(state.activity, currentTime);
@@ -320,7 +336,7 @@ function Chat({
     state.error,
   ]);
   const change = (value: string) => {
-    rewindEsc.current = undefined;
+    armRewind();
     draft.current = value;
     lastInterrupt.current = undefined;
     setInput(value);
@@ -523,7 +539,7 @@ function Chat({
     }
     const { key } = event;
     const pendingInteraction = interactions.getSnapshot();
-    if (pendingInteraction || key.name !== "escape") rewindEsc.current = undefined;
+    if (pendingInteraction || key.name !== "escape") armRewind();
     const pending = pendingInteraction?.kind === "permission" ? pendingInteraction : undefined;
     if (key.ctrl && key.name === "q" && !key.alt && !key.shift) {
       toggleTodos();
@@ -599,7 +615,7 @@ function Chat({
     }
     if (key.name === "escape" || (key.ctrl && key.name === "c")) {
       if (conversation.isRunning()) {
-        rewindEsc.current = undefined;
+        armRewind();
         conversation.interrupt();
         lastInterrupt.current = undefined;
       } else if (!key.ctrl) {
@@ -609,13 +625,12 @@ function Chat({
         } else if (!small) {
           const now = performance.now();
           if (rewindEsc.current !== undefined && now - rewindEsc.current <= 3000) {
-            rewindEsc.current = undefined;
+            armRewind();
             const entries = session.checkpoints().toReversed();
             if (!entries.length) conversation.notice(t("rewind.empty"));
             else showRewind({ entries, focus: 0, confirm: false, mode: 0, busy: false });
           } else {
-            rewindEsc.current = now;
-            conversation.notice(t("rewind.again"));
+            armRewind(now);
           }
           body.current?.scrollToBottom();
         }
@@ -879,6 +894,7 @@ function Chat({
               />
             )}
             <PromptInput
+              tip={rewindArmedAt === undefined ? undefined : t("rewind.again")}
               key={promptRevision}
               readOnly={!!rewind || (!!interaction && !userQuestion?.collapsed)}
               compact={compactPrompt}

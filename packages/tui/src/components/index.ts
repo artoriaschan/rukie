@@ -13,6 +13,11 @@ export { ScrollBox, type ScrollBoxProps } from "./scroll-box";
 
 export interface BoxProps {
   children?: ReactNode;
+  position?: "relative" | "absolute";
+  top?: number;
+  right?: number;
+  bottom?: number;
+  left?: number;
   backgroundColor?: TextStyle["backgroundColor"];
   flexDirection?: "row" | "column";
   width?: number;

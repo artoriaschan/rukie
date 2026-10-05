@@ -21,6 +21,7 @@ test("empty idle input asks for a second Escape and an empty session never opens
     await app.waitFor(() => text(app).includes("Press Esc again to rewind"));
     app.stdin.write(esc);
     await app.waitFor(() => text(app).includes("Nothing to rewind yet"));
+    expect(text(app)).not.toContain("Press Esc again to rewind");
     expect(text(app)).not.toContain("Pick a message to rewind to");
   } finally {
     await app.cleanup();
@@ -46,6 +47,7 @@ async function open(app: Awaited<ReturnType<typeof start>>) {
   await app.waitFor(() => text(app).includes("Press Esc again to rewind"));
   app.stdin.write(esc);
   await app.waitFor(() => text(app).includes("Pick a message to rewind to"));
+  expect(text(app)).not.toContain("Press Esc again to rewind");
 }
 
 test.each([24, 48, 100].flatMap((rows) => [1, 2, 20].map((count) => [rows, count] as const)))(
@@ -130,9 +132,11 @@ test("expired Escape window restarts, content Escape clears and running Escape a
     app.stdin.write(esc);
     await app.waitFor(() => text(app).includes("Press Esc again to rewind"));
     advance = 3100;
+    const frame = app.output().length;
     app.stdin.write(esc);
-    await app.waitFor(
-      () => app.screen().filter((line) => line.includes("Press Esc again to rewind")).length === 2,
+    await app.waitFor(() => app.output().length > frame);
+    expect(app.screen().filter((line) => line.includes("Press Esc again to rewind"))).toHaveLength(
+      1,
     );
     expect(text(app)).not.toContain("Pick a message to rewind to");
     app.stdin.write("draft");
@@ -141,7 +145,7 @@ test("expired Escape window restarts, content Escape clears and running Escape a
     await app.waitFor(() => !app.screen().includes("❯ draft"));
     app.stdin.write(esc);
     await app.waitFor(
-      () => app.screen().filter((line) => line.includes("Press Esc again to rewind")).length === 3,
+      () => app.screen().filter((line) => line.includes("Press Esc again to rewind")).length === 1,
     );
     app.stdin.write("running\r");
     await app.waitFor(() => app.calls.length === 2);
@@ -839,3 +843,59 @@ test.each([8, 10])(
     }
   },
 );
+
+test.each([
+  [40, 12, "zh_CN.UTF-8", "再按一次 Esc 回退"],
+  [80, 24, "en_US.UTF-8", "Press Esc again to rewind"],
+] as const)(
+  "rewind hint stays above the prompt at %i×%i in %s without entering history",
+  async (columns, rows, lang, hint) => {
+    const app = await ready({ columns, rows, env: { LANG: lang } });
+    try {
+      await prompt(app, "checkpoint");
+      const promptRow = app.screen().findIndex((line) => line.startsWith("╭"));
+      app.stdin.write(esc);
+      await app.waitFor(() => text(app).includes(hint));
+      expect(app.screen()[promptRow - 1]).toBe(
+        " ".repeat(columns - 1 - Bun.stringWidth(hint)) + hint,
+      );
+      expect(app.screen().findIndex((line) => line.startsWith("╭"))).toBe(promptRow);
+      app.stdin.write("draft");
+      await app.waitFor(() => app.screen().includes("❯ draft"));
+      expect(app.allLines().join("\n")).not.toContain(hint);
+      app.stdin.write(esc);
+      await app.waitFor(() => app.screen().includes("❯"));
+      for (let index = 0; index < 3; index++) {
+        app.stdin.write(esc);
+        await app.waitFor(() => text(app).includes(hint));
+        app.stdin.write(esc);
+        await app.waitFor(() => /Pick a message to rewind|选择要回退到的消息/.test(text(app)));
+        expect(text(app)).not.toContain(hint);
+        app.stdin.write(esc);
+        await app.waitFor(() => !/Pick a message to rewind|选择要回退到的消息/.test(text(app)));
+      }
+      app.stdin.write("\x1b[5~".repeat(10));
+      await app.waitFor(() => text(app).includes("checkpoint"));
+      expect(app.allLines().join("\n")).not.toContain(hint);
+    } finally {
+      await app.cleanup();
+    }
+  },
+);
+
+test("armed rewind tip expires without leaving a transcript entry", async () => {
+  const app = await ready();
+  try {
+    app.stdin.write(esc);
+    await app.waitFor(() => text(app).includes("Press Esc again to rewind"));
+    // The three-second Escape window is wall-clock behavior.
+    await Bun.sleep(3050);
+    await app.waitFor(() => !text(app).includes("Press Esc again to rewind"));
+    expect(app.allLines().join("\n")).not.toContain("Press Esc again to rewind");
+    app.stdin.write(esc);
+    await app.waitFor(() => text(app).includes("Press Esc again to rewind"));
+    expect(text(app)).not.toContain("Nothing to rewind yet");
+  } finally {
+    await app.cleanup();
+  }
+});
