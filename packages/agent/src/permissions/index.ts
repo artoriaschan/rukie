@@ -34,6 +34,12 @@ export interface PermissionAskRequest {
   signal: AbortSignal;
 }
 
+/** Internal read-only stage after authorization and before tool execution. */
+export type OnToolCallAllowed = (call: {
+  readonly toolName: string;
+  readonly args: Readonly<Record<string, unknown>>;
+}) => void | Promise<void>;
+
 type PermissionDecision = "allow" | "deny" | "ask";
 
 interface PermissionOptions {
@@ -94,6 +100,7 @@ interface PermissionGateOptions {
   getReviewModel(): Model<Api> | (() => Promise<Model<Api>>);
   streamFn: StreamFn;
   onPermissionAsk?: (request: PermissionAskRequest) => Promise<"allow" | "deny" | "allow-session">;
+  onToolCallAllowed?: OnToolCallAllowed;
   onEvent(event: CustomSessionEvent): void | Promise<void>;
   onInteractionStart?: OnInteractionStart;
   preToolUse?(call: ToolCallContext, signal: AbortSignal): Promise<PreToolUseResult>;
@@ -463,7 +470,17 @@ export function createPermissionGate(options: PermissionGateOptions) {
             ? hookDecision
             : (hookDecision ?? rule ?? (await evaluateModeStage(context)));
     if (decision.decision === "ask") decision = await evaluateInteractionStage(context, decision);
-    if (decision.decision === "allow") return undefined;
+    if (decision.decision === "allow") {
+      if (options.onToolCallAllowed) {
+        context.signal.throwIfAborted();
+        // A private copy prevents observers from changing the validated execution input.
+        await options.onToolCallAllowed({
+          toolName: call.toolCall.name,
+          args: structuredClone(call.args) as Readonly<Record<string, unknown>>,
+        });
+      }
+      return undefined;
+    }
     await options.onEvent({
       type: "permission_denied",
       toolCallId: call.toolCall.id,

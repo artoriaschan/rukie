@@ -67,6 +67,7 @@ import type { OnInteractionStart } from "../interaction/index.ts";
 import { createHooks, mergeHooks, type CommonHookResult, type HookInput } from "../hooks/index.ts";
 
 export type { PermissionAskRequest, SessionAllowRule } from "../permissions/index.ts";
+import type { OnToolCallAllowed } from "../permissions/index.ts";
 
 export interface SessionOptions {
   /** Project directory the session works in. */
@@ -91,6 +92,8 @@ export interface SessionOptions {
   permissionMode?: PermissionMode;
   /** Decide tool calls requiring permission; defaults to deny. */
   onPermissionAsk?: (request: PermissionAskRequest) => Promise<"allow" | "deny" | "allow-session">;
+  /** @internal Observe final allowed input without rewriting it or changing the decision. */
+  onToolCallAllowed?: OnToolCallAllowed;
   /** Ask structured questions; the tool is absent when this callback is omitted. */
   onQuestion?: (request: QuestionRequest) => Promise<QuestionReply>;
   /** Review markdown plans; plan tools are absent when this callback is omitted. */
@@ -153,6 +156,7 @@ interface InternalSessionOptions {
     rules: ReturnType<typeof parsePermissionRules>;
     sessionAllowRules: SessionAllowRule[];
     sessionGrantListeners: Set<() => void>;
+    onToolCallAllowed?: OnToolCallAllowed;
     getMode(): PermissionMode;
     setMode(mode: PermissionMode): void;
   };
@@ -180,6 +184,7 @@ async function createSessionInternal(
     rules,
     sessionAllowRules: options.sessionAllowRules ?? [],
     sessionGrantListeners: new Set<() => void>(),
+    onToolCallAllowed: options.onToolCallAllowed,
     getMode: () => permissionMode,
     setMode: (mode: PermissionMode) => {
       permissionMode = mode;
@@ -436,6 +441,7 @@ async function createSessionInternal(
     rules,
     sessionAllowRules: permissionConfiguration.sessionAllowRules,
     sessionGrantListeners: permissionConfiguration.sessionGrantListeners,
+    onToolCallAllowed: permissionConfiguration.onToolCallAllowed,
     getMode: permissionConfiguration.getMode,
     setMode: permissionConfiguration.setMode,
     getAgentState: () => agent.state,
