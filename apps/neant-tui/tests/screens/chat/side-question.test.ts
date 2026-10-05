@@ -6,6 +6,38 @@ import { start } from "../../helpers/app";
 
 const screen = (app: Awaited<ReturnType<typeof start>>) => app.screen().join("\n");
 
+for (const [lang, empty, failed, provider] of [
+  ["zh_CN.UTF-8", "未收到回答。", "侧问失败。", "侧问失败：Side provider unavailable"],
+  [
+    "en_US.UTF-8",
+    "No response received.",
+    "Side question failed.",
+    "Side question failed: Side provider unavailable",
+  ],
+] as const)
+  test(`side question failures use ${lang} and preserve the provider reason`, async () => {
+    const app = await start([], { env: { LANG: lang } });
+    try {
+      await app.waitFor(() => app.screen().some((line) => line.startsWith("╭")));
+      app.stdin.write("/btw empty response\r");
+      await app.waitFor(() => app.sideQuestions.length === 1);
+      app.sideQuestions[0]!.finish();
+      await app.waitFor(() => screen(app).includes(empty));
+      expect(app.calls).toHaveLength(0);
+      app.stdin.write("/btw retry\r");
+      await app.waitFor(() => app.sideQuestions.length === 2);
+      app.sideQuestions[1]!.fail("");
+      await app.waitFor(() => screen(app).includes(failed));
+      app.stdin.write("/btw retry provider\r");
+      await app.waitFor(() => app.sideQuestions.length === 3);
+      app.sideQuestions[2]!.fail("Side provider unavailable");
+      await app.waitFor(() => screen(app).includes(provider));
+      expect(app.calls).toHaveLength(0);
+    } finally {
+      await app.cleanup();
+    }
+  });
+
 test("opening resume cancels the side overlay and restores the selected session without its answer", async () => {
   const app = await start([], {
     env: { LANG: "en_US.UTF-8" },

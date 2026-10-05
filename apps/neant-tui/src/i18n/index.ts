@@ -48,6 +48,30 @@ export function formatError(error: unknown, t: ReturnType<typeof createTuiI18n>)
       });
     case "compaction-no-history":
       return t("error.compaction-no-history", data.params);
+    case "side-question-empty":
+      return t("error.side-question-empty", data.params);
+    case "side-question-failed":
+      return t("error.side-question-failed", data.params);
+    case "side-question-provider-failed":
+      return t("error.side-question-provider-failed", data.params);
+    case "side-question-no-response":
+      return t("error.side-question-no-response", data.params);
+    case "session-title-empty":
+      return t("error.session-title-empty", data.params);
+    case "model-switch-busy":
+      return t("error.model-switch-busy", data.params);
+    case "session-run-active":
+      return t("error.session-run-active", data.params);
+    case "session-rewinding":
+      return t("error.session-rewinding", data.params);
+    case "session-compacting":
+      return t("error.session-compacting", data.params);
+    case "session-switching-models":
+      return t("error.session-switching-models", data.params);
+    case "compaction-hook-stopped":
+      return t("error.compaction-hook-stopped", data.params);
+    case "compaction-hook-stopped-reason":
+      return t("error.compaction-hook-stopped-reason", data.params);
     case "session-not-found":
       return t("error.session-not-found", data.params);
     case "ripgrep-unavailable":

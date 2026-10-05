@@ -37,3 +37,7 @@
 - `8a49d57` 上执行完整 `env -u NO_COLOR bun run check`：静态检查通过，1608 pass / 1 fail；唯一失败为既有回退锚点断言，已在 `3c68f87` 修复。
 - 08 合并后重新验证标题、checkpoint、Run、model、compaction/hooks、TUI title/model/settings/slash、Headless：106 pass / 0 fail，566 assertions；`oxfmt --check`、`oxlint`、`tsc -b`、`knip` 全部通过。
 - 整个 spec 的最终 integration HEAD 完整检查由整合交付执行。
+
+最终 review 纠正：控制字符清洗后为空的手动改名现在返回 shared `session-title-empty`，通用中英字典负责显示。公开 `start()` 测试先复现中文界面的英文错误，修复后验证中英错误文案，并通过 `/rename` 预填确认原标题未改变。
+
+Review fixes validation: 109 pass / 0 fail / 776 assertions across 10 affected public Core, TUI and i18n suites; oxfmt, oxlint, tsc -b, knip and git diff --check passed. Full final integration check remains owned by root.

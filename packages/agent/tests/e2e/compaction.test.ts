@@ -46,7 +46,7 @@ test("manual compaction rejects empty history and an active Run without changing
   const run = session.run("pending work");
   await fake.started;
   const before = structuredClone(session.messages);
-  await expect(session.compact()).rejects.toThrow("active Run");
+  await expect(session.compact()).rejects.toMatchObject({ code: "session-run-active", params: {} });
   expect(session.messages).toEqual(before);
   session.interruptRun();
   await expect(run).rejects.toThrow();
@@ -71,10 +71,19 @@ test("manual compaction owns its idle operation and interruption leaves history 
   const compact = session.compact();
   void compact.catch(() => {});
   await summary.started;
-  await expect(session.run("competing prompt")).rejects.toThrow("compacting");
-  await expect(session.compact()).rejects.toThrow("compacting");
-  await expect(session.setModel("missing/model")).rejects.toThrow("idle");
-  await expect(session.setPlanMode(true)).rejects.toThrow("compacting");
+  await expect(session.run("competing prompt")).rejects.toMatchObject({
+    code: "session-compacting",
+    params: {},
+  });
+  await expect(session.compact()).rejects.toMatchObject({ code: "session-compacting", params: {} });
+  await expect(session.setModel("missing/model")).rejects.toMatchObject({
+    code: "model-switch-busy",
+    params: {},
+  });
+  await expect(session.setPlanMode(true)).rejects.toMatchObject({
+    code: "session-compacting",
+    params: {},
+  });
   session.interruptRun();
   await expect(compact).rejects.toThrow();
   expect(session.messages).toEqual(before);

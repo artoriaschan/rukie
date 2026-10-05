@@ -89,12 +89,41 @@ test.each(["block", "stop"])(
     const before = structuredClone(session.messages);
     const events: SessionEvent[] = [];
     session.subscribe((event) => events.push(event));
-    await expect(session.compact()).rejects.toThrow("preserve review evidence");
+    await expect(session.compact()).rejects.toMatchObject({
+      code: kind === "block" ? "hook-compaction-blocked" : "compaction-hook-stopped-reason",
+      params: { reason: "preserve review evidence" },
+    });
     expect(session.messages).toEqual(before);
     expect(events.filter((event) => event.type.startsWith("compaction_"))).toHaveLength(0);
     expect((await session.run("next prompt")).text).toBe("next answer");
   },
 );
+
+test("manual compaction stopped without a hook reason returns a locale-independent failure", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([fauxAssistantMessage("old work")]);
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    settings: {
+      hooks: {
+        PreCompact: [{ hooks: [{ type: "command", command: "echo '{\"continue\":false}'" }] }],
+      },
+    },
+  });
+  try {
+    await session.run("first");
+    const before = structuredClone(session.messages);
+    await expect(session.compact()).rejects.toMatchObject({
+      code: "compaction-hook-stopped",
+      params: {},
+    });
+    expect(session.messages).toEqual(before);
+    expect(fake.contexts).toHaveLength(1);
+  } finally {
+    await session.dispose();
+  }
+});
 
 test.each(["json", "exit"])(
   "PreCompact %s skips once and retries at the next threshold",

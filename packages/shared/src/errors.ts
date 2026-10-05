@@ -8,6 +8,18 @@ export interface UserVisibleErrorParams {
   "no-api-key": { provider: string; env: string };
   "session-not-found": { id: string };
   "compaction-no-history": Record<string, never>;
+  "side-question-empty": Record<string, never>;
+  "side-question-failed": Record<string, never>;
+  "side-question-provider-failed": { cause: string };
+  "side-question-no-response": Record<string, never>;
+  "session-title-empty": Record<string, never>;
+  "model-switch-busy": Record<string, never>;
+  "session-run-active": Record<string, never>;
+  "session-rewinding": Record<string, never>;
+  "session-compacting": Record<string, never>;
+  "session-switching-models": Record<string, never>;
+  "compaction-hook-stopped": Record<string, never>;
+  "compaction-hook-stopped-reason": { reason: string };
   "hook-invalid-json": { cause: string };
   "hook-exit": { exitCode: string; stderr: string };
   "hook-mcp-unconnected": { server: string };

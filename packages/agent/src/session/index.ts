@@ -1117,7 +1117,11 @@ async function createSessionInternal(
     id: stored.metadata.id,
     sideQuestion(question, { signal } = {}) {
       if (disposePromise) throw new Error("Session has been disposed.");
-      if (!question.trim()) throw new Error("Side question cannot be empty.");
+      if (!question.trim())
+        throw createUserVisibleError("Side question cannot be empty.", {
+          code: "side-question-empty",
+          params: {},
+        });
       return sideQuestion({
         question,
         messages: structuredClone(agent.state.messages),
@@ -1136,7 +1140,11 @@ async function createSessionInternal(
     },
     async rename(title: string) {
       if (disposePromise) throw new Error("Session has been disposed.");
-      if (rewinding) throw new Error("Session is rewinding.");
+      if (rewinding)
+        throw createUserVisibleError("Session is rewinding.", {
+          code: "session-rewinding",
+          params: {},
+        });
       await sessionTitle.rename(title);
     },
     get model() {
@@ -1145,7 +1153,10 @@ async function createSessionInternal(
     async setModel(spec) {
       if (disposePromise) throw new Error("Session has been disposed.");
       if (running || rewinding || changingModel || compacting)
-        throw new Error("Model switching requires an idle Session.");
+        throw createUserVisibleError("Model switching requires an idle Session.", {
+          code: "model-switch-busy",
+          params: {},
+        });
       changingModel = true;
       try {
         const selected = await resolveModel({ ...settings, model: spec }, options.homeDir);
@@ -1177,16 +1188,40 @@ async function createSessionInternal(
       return plan.getActive();
     },
     async setPlanMode(on) {
-      if (compacting) throw new Error("Session is compacting.");
-      if (rewinding) throw new Error("Session is rewinding.");
+      if (compacting)
+        throw createUserVisibleError("Session is compacting.", {
+          code: "session-compacting",
+          params: {},
+        });
+      if (rewinding)
+        throw createUserVisibleError("Session is rewinding.", {
+          code: "session-rewinding",
+          params: {},
+        });
       return plan.setMode(on);
     },
     async compact({ instructions } = {}) {
       if (disposePromise) throw new Error("Session has been disposed.");
-      if (running) throw new Error("Session already has an active Run.");
-      if (rewinding) throw new Error("Session is rewinding.");
-      if (compacting) throw new Error("Session is compacting.");
-      if (changingModel) throw new Error("Session is switching models.");
+      if (running)
+        throw createUserVisibleError("Session already has an active Run.", {
+          code: "session-run-active",
+          params: {},
+        });
+      if (rewinding)
+        throw createUserVisibleError("Session is rewinding.", {
+          code: "session-rewinding",
+          params: {},
+        });
+      if (compacting)
+        throw createUserVisibleError("Session is compacting.", {
+          code: "session-compacting",
+          params: {},
+        });
+      if (changingModel)
+        throw createUserVisibleError("Session is switching models.", {
+          code: "session-switching-models",
+          params: {},
+        });
       compacting = true;
       const settled = Promise.withResolvers<void>();
       compactSettled = settled;
@@ -1212,7 +1247,15 @@ async function createSessionInternal(
           emit,
           control: (result) => {
             if (result.continue === false)
-              throw new Error(result.stopReason || "Compaction stopped by hook.");
+              throw result.stopReason
+                ? createUserVisibleError(result.stopReason, {
+                    code: "compaction-hook-stopped-reason",
+                    params: { reason: result.stopReason },
+                  })
+                : createUserVisibleError("Compaction stopped by hook.", {
+                    code: "compaction-hook-stopped",
+                    params: {},
+                  });
           },
           injectAsyncContexts: async (messages) => messages,
         });
@@ -1383,10 +1426,26 @@ async function createSessionInternal(
         }
       }
       if (disposePromise) throw new Error("Session has been disposed.");
-      if (rewinding) throw new Error("Session is rewinding.");
-      if (changingModel) throw new Error("Session is switching models.");
-      if (compacting) throw new Error("Session is compacting.");
-      if (running) throw new Error("Session already has an active Run.");
+      if (rewinding)
+        throw createUserVisibleError("Session is rewinding.", {
+          code: "session-rewinding",
+          params: {},
+        });
+      if (changingModel)
+        throw createUserVisibleError("Session is switching models.", {
+          code: "session-switching-models",
+          params: {},
+        });
+      if (compacting)
+        throw createUserVisibleError("Session is compacting.", {
+          code: "session-compacting",
+          params: {},
+        });
+      if (running)
+        throw createUserVisibleError("Session already has an active Run.", {
+          code: "session-run-active",
+          params: {},
+        });
       running = true;
       hookRunActive = fromHook;
       const settled = Promise.withResolvers<void>();

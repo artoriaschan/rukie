@@ -7,6 +7,13 @@ import {
   type AssistantMessage,
 } from "@earendil-works/pi-ai";
 import { convertToLlm } from "../reminders/index.ts";
+import { createUserVisibleError } from "@neant/shared";
+
+function failed(cause?: string) {
+  return cause
+    ? createUserVisibleError(cause, { code: "side-question-provider-failed", params: { cause } })
+    : createUserVisibleError("Side question failed.", { code: "side-question-failed", params: {} });
+}
 
 function wrapQuestion(question: string, pending: readonly ToolCall[]) {
   const running =
@@ -107,17 +114,20 @@ export async function* sideQuestion(options: {
         emitted += event.delta;
         yield event.delta;
       } else if (event.type === "done") final = event.message;
-      else if (event.type === "error")
-        throw new Error(event.error.errorMessage ?? "Side question failed.");
+      else if (event.type === "error") throw failed(event.error.errorMessage);
     }
     final ??= await cancellable(stream.result(), signal);
     signal.throwIfAborted();
     if (final.stopReason === "error" || final.stopReason === "aborted")
-      throw new Error(final.errorMessage ?? "Side question failed.");
+      throw failed(final.errorMessage);
     const text = final.content
       .flatMap((block) => (block.type === "text" ? [block.text] : []))
       .join("");
-    if (!text.trim()) throw new Error("No response received.");
+    if (!text.trim())
+      throw createUserVisibleError("No response received.", {
+        code: "side-question-no-response",
+        params: {},
+      });
     if (text.startsWith(emitted) && text.length > emitted.length) yield text.slice(emitted.length);
     complete = true;
   } finally {
