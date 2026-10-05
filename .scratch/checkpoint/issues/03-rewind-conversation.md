@@ -4,15 +4,26 @@
 
 **Blocked by:** 02
 
-**Status:** claimed
+**Status:** resolved
 
-- [ ] 只回对话：`messages` 与 `toolState()` 立即反映新分支，发出相应状态事件（如 `tool_state_changed`、plan mode 变化）
-- [ ] 文件不变；回退后继续 run 从新位置接着建 Checkpoint，可反复回退
-- [ ] 两者都回：代码与对话同时回到目标；回代码失败时对话不变
-- [ ] 目标在 compaction 之前也可回，新分支不含之后的摘要
-- [ ] hook autorun、Goal 续跑、Stop 续跑、子代理完成通知不开新 Checkpoint，也不出现在 `checkpoints()` 中
-- [ ] 返回值含 prompt 文本
-- [ ] e2e 测试覆盖以上，含 resume 后回对话
+- [x] 只回对话：`messages` 与 `toolState()` 立即反映新分支，发出相应状态事件（如 `tool_state_changed`、plan mode 变化）
+- [x] 文件不变；回退后继续 run 从新位置接着建 Checkpoint，可反复回退
+- [x] 两者都回：代码与对话同时回到目标；回代码失败时对话不变
+- [x] 目标在 compaction 之前也可回，新分支不含之后的摘要
+- [x] hook autorun、Goal 续跑、Stop 续跑、子代理完成通知不开新 Checkpoint，也不出现在 `checkpoints()` 中
+- [x] 返回值含 prompt 文本
+- [x] e2e 测试覆盖以上，含 resume 后回对话
+
+## Answer
+
+已完成回对话及两者都回。`rewind(promptEntryId, { code, conversation })` 返回 `{ prompt, restored, deleted }`；回对话把 main 移到目标真实 user entry 的 parent，同时保存原 tip 为独立 transcript 分支。初始化 / resume 与原地 rewind 共用模块内纯 `projectBranch`，重建消息、prompt 索引、reminder 起点与 baseline；重放已注册 Tool State 后，todo reminder、Plan Mode、checkpoint 与子代理身份的内存投影立即一致，原 Map / 数组闭包保留。回代码与对话时先验证并恢复文件，代码失败不移动分支。
+
+恢复时清除旧分支的待广播 Plan 事件，以及 compact SessionStart 等待下一条 user 的待注入上下文，重置 context usage 的 provider 计数。订阅者收到变化的 `tool_state_changed`（清除为 `value: undefined`）、`conversation_rewound` 与重算 `context_usage`；06 在事件边界读取 `session.messages` 即可重放。旧 child Session 仍保存在 Session 的资源集合中，最终由 dispose 关闭。Goal 当前尚无实现及公开续跑 seam，本工单保持真实 prompt 的身份判定及通用 Tool State 重放，不新增 Goal 功能。
+
+- 实现提交：`0e55577`；审查后共享投影重构：`64746e4`。
+- focused checkpoint / compaction / compaction-hooks / hooks / async-hooks / plan-mode / subagents：124 pass / 0 fail，635 expect，7 files；`bunx tsc -b` exit 0。
+- 最终固定源码树全套：隔离临时 HOME，`env -u NO_COLOR caffeinate -is bun run check` exit 0；1495 pass / 0 fail，7737 expect，111 files，170.13s；format、lint、typecheck、knip 全通过。日志 `/tmp/neant-checkpoint03-review-check.log`。
+- code-review 固定点 `75f8559509ef5955af64271b4dbffe3292f01aae`：初次 Standards 0 hard violation、1 possible 低优先级 Duplicated Code，Spec 0 findings；抽取共享纯分支投影后 Standards 0 remaining findings，Spec 0 missing / scope / incorrect findings。Spec 独立 checkpoint / compaction-hooks / subagent-fork 验证 43 pass / 0 fail，284 expect，并核实 pi 初始化复制 messages 数组，无 alias 回归。
 
 ## Comments
 
