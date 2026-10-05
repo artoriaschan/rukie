@@ -1862,64 +1862,74 @@ async function createSessionInternal(
             return pendingAsyncContexts.length ? injectAsyncContexts(injected) : injected;
           };
           agent.prepareRequest = async ({ context: requestContext }, turnSignal) => {
-            let contextChanged = false;
-            // A compact hook may wait across tool turns. Consume its context only
-            // once pi has emitted the next user, including Stop feedback or child notices.
-            if (pendingSessionContexts.length && userMessageSequence > sessionContextUserSequence) {
-              const reminders = consumeSessionContext();
-              for (const reminder of reminders) {
-                await branch.appendMessage(reminder, context);
-                transcriptMessages.push(reminder);
-                await emit({
-                  type: "reminder_injected",
-                  source: reminder.source,
-                  content: reminder.content,
-                });
+            try {
+              let contextChanged = false;
+              // A compact hook may wait across tool turns. Consume its context only
+              // once pi has emitted the next user, including Stop feedback or child notices.
+              if (
+                pendingSessionContexts.length &&
+                userMessageSequence > sessionContextUserSequence
+              ) {
+                const reminders = consumeSessionContext();
+                for (const reminder of reminders) {
+                  await branch.appendMessage(reminder, context);
+                  transcriptMessages.push(reminder);
+                  await emit({
+                    type: "reminder_injected",
+                    source: reminder.source,
+                    content: reminder.content,
+                  });
+                }
+                const messages = [...requestContext.messages, ...reminders];
+                agent.state.messages = messages;
+                requestContext = { ...requestContext, messages };
+                contextChanged = true;
               }
-              const messages = [...requestContext.messages, ...reminders];
-              agent.state.messages = messages;
-              requestContext = { ...requestContext, messages };
-              contextChanged = true;
-            }
-            const compacted = await compactContext({
-              target: runStore,
-              messages: requestContext.messages,
-              trigger: "auto",
-              signal: turnSignal,
-              emit,
-              control: (result) => {
-                applyHookControl(result);
-                stopPreparedRequest();
-              },
-              injectAsyncContexts,
-            });
-            if (!compacted) {
-              await planWrites;
-              const changed = await collectSourceReminders(
-                transcriptMessages.slice(reminderStart),
-                [planReminder, fileTracking.reminderSource],
-                (options.now ?? (() => new Date()))(),
-              );
-              if (!changed.length && !pendingAsyncContexts.length)
-                return contextChanged ? { context: requestContext } : undefined;
-              for (const reminder of changed) {
-                await branch.appendMessage(reminder, context);
-                transcriptMessages.push(reminder);
-                await emit({
-                  type: "reminder_injected",
-                  source: reminder.source,
-                  content: reminder.content,
-                });
+              const compacted = await compactContext({
+                target: runStore,
+                messages: requestContext.messages,
+                trigger: "auto",
+                signal: turnSignal,
+                emit,
+                control: (result) => {
+                  applyHookControl(result);
+                  stopPreparedRequest();
+                },
+                injectAsyncContexts,
+              });
+              if (!compacted) {
+                await planWrites;
+                const changed = await collectSourceReminders(
+                  transcriptMessages.slice(reminderStart),
+                  [planReminder, fileTracking.reminderSource],
+                  (options.now ?? (() => new Date()))(),
+                );
+                if (!changed.length && !pendingAsyncContexts.length)
+                  return contextChanged ? { context: requestContext } : undefined;
+                for (const reminder of changed) {
+                  await branch.appendMessage(reminder, context);
+                  transcriptMessages.push(reminder);
+                  await emit({
+                    type: "reminder_injected",
+                    source: reminder.source,
+                    content: reminder.content,
+                  });
+                }
+                const messages = await injectAsyncContexts([
+                  ...requestContext.messages,
+                  ...changed,
+                ]);
+                agent.state.messages = messages;
+                return { context: { ...requestContext, messages } };
               }
-              const messages = await injectAsyncContexts([...requestContext.messages, ...changed]);
+
+              await emitContextUsage();
+              const messages = await injectAsyncContexts(agent.state.messages);
               agent.state.messages = messages;
               return { context: { ...requestContext, messages } };
+            } finally {
+              fileTracking.finishRequest();
             }
-
-            await emitContextUsage();
-            const messages = await injectAsyncContexts(agent.state.messages);
-            agent.state.messages = messages;
-            return { context: { ...requestContext, messages } };
           };
           unsubscribe = agent.subscribe(async (event) => {
             if ("message" in event && isHookRequestStop(event.message)) {
