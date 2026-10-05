@@ -21,26 +21,26 @@ flowchart TD
   Renderer --> React[React reconciler]
 ```
 
-| 包                 | 在运行组合中的责任                                                              |
-| ------------------ | ------------------------------------------------------------------------------- |
-| `@neant/neant-cli` | 解析非交互输入，驱动一次用户 Run，输出文本或 Session 事件的 stream-json 表示    |
-| `@neant/neant-tui` | 连接 Session、交互回调和终端界面，管理呈现状态、Slash Command、输入历史与本地化 |
-| `@neant/agent`     | 执行 frontend 无关的 Session 行为，协调模型、工具、Transcript 与 Run 资源       |
-| `@neant/tui`       | 处理终端输入、React 宿主树、布局、绘制、滚动及终端恢复                          |
-| `@neant/shared`    | 提供运行时无关的公共类型、schema 与纯函数；不依赖 Agent Core 或 frontend        |
-| `@neant/i18n`      | 提供运行时无关的通用文案与 locale 能力，只依赖 shared；frontend 提供自己的字典  |
+| 包                 | 在运行组合中的责任                                                                    |
+| ------------------ | ------------------------------------------------------------------------------------- |
+| `@neant/neant-cli` | 解析非交互输入，驱动用户 Run 或 Goal 续跑，输出文本或 Session 事件的 stream-json 表示 |
+| `@neant/neant-tui` | 连接 Session、交互回调和终端界面，管理呈现状态、Slash Command、输入历史与本地化       |
+| `@neant/agent`     | 执行 frontend 无关的 Session 行为，协调模型、工具、Transcript 与 Run 资源             |
+| `@neant/tui`       | 处理终端输入、React 宿主树、布局、绘制、滚动及终端恢复                                |
+| `@neant/shared`    | 提供运行时无关的公共类型、schema 与纯函数；不依赖 Agent Core 或 frontend              |
+| `@neant/i18n`      | 提供运行时无关的通用文案与 locale 能力，只依赖 shared；frontend 提供自己的字典        |
 
 内部包直接导出 TypeScript 源码，消费者通过工作区包名导入。具体依赖与脚本由各包 `package.json` 定义；技术版本由 [tech-stack.md](tech-stack.md) 维护。
 
 ## 应用启动与 Session
 
-Headless CLI 从[入口](../apps/neant-cli/src/main.ts)解析 argv 或 stdin，读取合并设置、创建或恢复 Session，调用 `Session.run`，再输出结果并释放 Session。它不提供 Interaction 回调：依赖回调的工具不进入模型工具集；权限询问等 Agent Core 请求采用安全默认值。
+Headless CLI 从[入口](../apps/neant-cli/src/main.ts)解析 argv 或 stdin，读取合并设置、创建或恢复 Session。普通 prompt 调用 `Session.run`；`--goal "<objective>"` 调用 `Session.createGoal`，等待自动续跑和收尾完成，再释放 Session。`--max-goal-rounds N` 限制 Goal 轮次；`--goal` 与 `-p` 互斥。Goal 完成退出 0，受阻或达到轮次上限退出 1；恢复到已有未完成 Goal 的 Session 时拒绝覆盖，用户通过 TUI 处理。它不提供 Interaction 回调：依赖回调的工具不进入模型工具集；权限询问等 Agent Core 请求采用安全默认值。
 
 TUI 从[入口](../apps/neant-tui/src/main.tsx)解析参数与 locale，建立[聊天界面](../apps/neant-tui/src/screens/chat/index.tsx)，为 Session 提供权限、问题与计划评审回调。界面在同一 Session 中接收多次输入；切换 Session 时释放旧的绑定，重建对话呈现，项目输入历史独立保留。
 
 [`createSession`](../packages/agent/src/session/index.ts)解析工作目录、创建或打开存储、投影当前分支，并恢复模型选择、Plan Mode、Tool State 与对话上下文。指定的恢复目标不存在或父子归属不符时失败，不改为新建 Session。Session Resume 重建已保存的事实，本身不续跑历史 Subagent。
 
-Session 对 frontend 暴露运行、事件订阅、中断、steer、上下文查询、compaction、Rewind 等能力；完整接口由源码定义。`run` 的 `onEvent` 接收该次 Run 的有序事件，`subscribe` 观察 Session 中包括 Hook 内部续跑在内的事件；TUI 通过订阅跟踪持续变化。
+Session 对 frontend 暴露运行、事件订阅、中断、steer、Goal、上下文查询、compaction、Rewind 等能力；完整接口由源码定义。`run` 的 `onEvent` 接收该次 Run 的有序事件，`subscribe` 观察 Session 中包括 Hook 与 Goal 内部续跑在内的事件；TUI 通过订阅跟踪持续变化。
 
 ## Agent Core 的职责分配
 
@@ -54,6 +54,7 @@ Session 对 frontend 暴露运行、事件订阅、中断、steer、上下文查
 | `store/`、`tool-state/`、`checkpoint/`                    | 持久化 Transcript、重建工具状态、保存和恢复文件修改前的内容     |
 | `subagents/`、`session-resume/`、`unknown-tool-outcomes/` | 管理子 Session 与 Run，核对恢复事实，处理缺少确定结果的工具调用 |
 | `session-title/`、`plan-mode/`、`side-question/`          | 管理标题、计划引导与独立侧问                                    |
+| `goal/`                                                   | 管理 Goal 快照、模型工具授权与续跑提示，Session 协调自动续跑    |
 
 模块之间通过各自 `index.ts` 协作；frontend 使用包级公开入口，不读取 Agent Core 的私有运行状态。
 
@@ -62,7 +63,7 @@ Session 对 frontend 暴露运行、事件订阅、中断、steer、上下文查
 Run 处理一条 prompt，包含一次或多次 Turn；每个 Turn 是一次模型调用及其返回的工具调用。这个划分沿用 Neant 领域定义。一个 Session 同时只有一个执行中的 Run；用户输入与 Hook 内部 Run 的竞争由 Session 协调。
 
 ```text
-frontend prompt / Hook 内部输入
+frontend prompt / Hook 内部输入 / Goal round
   → 接入取消信号，建立本次 Run 的资源和事件通道
   → 连接 MCP，发现当前工具、Skill 与 Subagent 类型
   → 执行输入相关 Hook，打开存储，收集 System Reminder
@@ -84,6 +85,8 @@ Session 在 pi 的请求准备、工具前后回调和消息事件上接入这�
 中断通过 AbortSignal 传播到模型、工具与挂起的 Interaction。清理在成功、失败和取消路径上执行；已完成的消息与状态写入使用独立的存储上下文，不因 Run 已取消而跳过。`result` 位于本次资源清理之后。`dispose` 释放 Session 资源，但不能一律等待调用它的 Run；frontend 关闭时还要从 Run 回调之外等待运行收束，使用 `waitForIdle` 或已有的 Run Promise，避免等待自己的回调。
 
 Hooks 可以向下一次请求提供上下文、阻止工具或结束 Run，也可以在停止阶段要求继续。异步 Hook 的 `asyncRewake` 能向进行中的 Run steer，或在空闲时启动内部 Run；所以 frontend 不能仅以自己调用过的 `run` 判断 Session 是否正在执行。完整 Hook 协议与限制见 [hooks.md](hooks.md)。
+
+Goal 只属于顶层 Session。用户通过 TUI `/goal`、Headless `--goal` 或模型工具 `create_goal` 设定目标；Session 在 Stop Hook 放行、子代理结束及待处理的异步 Hook 和用户输入完成后启动下一轮。只有带 Goal 来源的内部输入计入轮次，内部 round 与收尾消息不创建 Checkpoint、不用于标题，也不呈现为用户气泡。`update_goal` 完成或受阻会停止自动续跑，并在 Goal round 内向模型提供同一 Run 的收尾指令；出错、中止或 token 超限只停止自动续跑，保留 Goal 供用户恢复。Goal 不改变 Permission Mode。
 
 ## 工具、权限与交互
 
@@ -107,7 +110,7 @@ Compaction 在请求前自动检查，也可由空闲 Session 手动执行。它
 
 [`store/`](../packages/agent/src/store/index.ts)把 pi 的原生 JSONL repo 接入 SessionStore，提供创建、打开和枚举，并支持定向查询及只读观察。存储格式与选型见 [ADR-0003](adr/0003-dual-session-store.md)。存储位置、项目 slug 与文件命名由这个实现及 pi 管理，架构不维护第二份命名规则。
 
-当前分支包含消息、compaction 和自定义 Tool State 记录。Tool State 按名称与版本校验完整快照，重放时取该分支最后一条有效值；无效记录告警并跳过。Todo、计划状态、模型选择和子代理身份等通过这条路径恢复，Permission Mode 与临时 session allow 规则保留在内存中。
+当前分支包含消息、compaction 和自定义 Tool State 记录。Tool State 按名称与版本校验完整快照，重放时取该分支最后一条有效值；无效记录告警并跳过。Todo、Goal、计划状态、模型选择和子代理身份等通过这条路径恢复，Permission Mode 与临时 session allow 规则保留在内存中。Goal 是否正在自动续跑只保留在内存中；Session Resume 与对话 Rewind 恢复目标和轮次但不会自动开跑。未完成 Goal 通过 Tool State reminder 进入模型上下文，Compaction 后重新注入。
 
 Checkpoint 在真实用户 prompt 上建立锚点，记录文件工具首次修改前的原样内容；子代理共用父 Session 的记录器。它不记录 bash 或 MCP 的文件副作用。Rewind 仅在空闲时恢复文件和/或对话：对话恢复保留原分支，再移动 `main` 到锚点之前，并重建上下文与 Tool State。文件恢复可能覆盖之后的修改；定义与使用限制由 `CONTEXT.md` 和 [`checkpoint/`](../packages/agent/src/checkpoint/index.ts)负责。
 
