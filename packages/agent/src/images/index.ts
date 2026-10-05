@@ -1,3 +1,5 @@
+import type { UserVisibleErrorCode, UserVisibleErrorParams } from "@neant/shared";
+
 /** Base64 image supplied by a frontend; names are Transcript metadata only. */
 export interface PromptImage {
   data: string;
@@ -11,18 +13,16 @@ export interface ImageInfo {
   height: number;
 }
 
-export type ImageValidationCode =
-  | "image-invalid"
-  | "image-too-large"
-  | "image-dimensions"
-  | "image-mime-mismatch";
+export type ImageValidationCode = Extract<UserVisibleErrorCode, `image-${string}`>;
 
 /** Structured reasons let frontends localize failures without parsing English text. */
-export class ImageValidationError extends Error {
+export class ImageValidationError<
+  Code extends ImageValidationCode = ImageValidationCode,
+> extends Error {
   constructor(
     message: string,
-    readonly code: ImageValidationCode,
-    readonly params: Record<string, string | number> = {},
+    readonly code: Code,
+    readonly params: UserVisibleErrorParams[Code],
   ) {
     super(message);
     this.name = "ImageValidationError";
@@ -148,6 +148,7 @@ export function validateImageBytes(data: Uint8Array): ImageInfo {
     throw new ImageValidationError(
       "Invalid or unsupported image; use PNG, JPEG, WebP, or GIF.",
       "image-invalid",
+      {},
     );
   if (info.width > 8000 || info.height > 8000)
     throw new ImageValidationError(
@@ -164,7 +165,7 @@ export function validateImage(image: Pick<PromptImage, "data" | "mimeType">): Im
     !image.data ||
     !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(image.data)
   )
-    throw new ImageValidationError("Invalid image base64 data.", "image-invalid");
+    throw new ImageValidationError("Invalid image base64 data.", "image-invalid", {});
   const info = validateImageBytes(Buffer.from(image.data, "base64"));
   if (image.mimeType !== info.mimeType)
     throw new ImageValidationError(

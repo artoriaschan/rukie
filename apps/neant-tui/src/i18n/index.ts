@@ -1,4 +1,3 @@
-import { ImageValidationError } from "@neant/agent";
 import { common, createI18n, type Locale } from "@neant/i18n";
 import type { UserVisibleErrorData } from "@neant/shared";
 import { appCopy } from "./locales";
@@ -12,18 +11,6 @@ export function createTuiI18n(
 
 /** Coded errors are frontend copy; unknown failures keep their original information. */
 export function formatError(error: unknown, t: ReturnType<typeof createTuiI18n>): string {
-  if (error instanceof ImageValidationError) {
-    switch (error.code) {
-      case "image-invalid":
-        return t("image.invalid");
-      case "image-too-large":
-        return t("image.too-large");
-      case "image-dimensions":
-        return t("image.dimensions", error.params);
-      case "image-mime-mismatch":
-        return t("image.mime-mismatch", error.params);
-    }
-  }
   const message =
     typeof error === "object" &&
     error !== null &&
@@ -39,13 +26,22 @@ export function formatError(error: unknown, t: ReturnType<typeof createTuiI18n>)
   const template = common.zh[key as keyof typeof common.zh];
   const params = error.params;
   if (
-    [...template.matchAll(/\{\{([^{}]+)\}\}/g)].some(
-      (match) => typeof (params as Record<string, unknown>)[match[1]!] !== "string",
-    )
+    [...template.matchAll(/\{\{([^{}]+)\}\}/g)].some((match) => {
+      const value = (params as Record<string, unknown>)[match[1]!];
+      return typeof value !== "string" && !(typeof value === "number" && Number.isFinite(value));
+    })
   )
     return message;
   const data = error as UserVisibleErrorData;
   switch (data.code) {
+    case "image-invalid":
+      return t("error.image-invalid", data.params);
+    case "image-too-large":
+      return t("error.image-too-large", data.params);
+    case "image-dimensions":
+      return t("error.image-dimensions", data.params);
+    case "image-mime-mismatch":
+      return t("error.image-mime-mismatch", data.params);
     case "allow-tools-retired":
       return t("error.allow-tools-retired", data.params);
     case "permission-rule-invalid":

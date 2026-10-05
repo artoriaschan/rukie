@@ -120,7 +120,7 @@ export function preserveErrorDetails<T extends TSchema>(tool: AgentTool<T>): Age
 /** Read-only tools for isolated model hook checks. */
 export function createReadonlyTools(cwd: string, homeDir = homedir()): AgentTool[] {
   return [
-    adaptTool(createReadTool(), new ImageReadEnv({ cwd }), homeDir),
+    preserveErrorDetails(adaptTool(createReadTool(), new ImageReadEnv({ cwd }), homeDir)),
     createGlobTool(cwd),
     preserveErrorDetails(createGrepTool(cwd)),
   ];
@@ -152,7 +152,7 @@ export function createBuiltinTools(
       bash.execute(id, { ...params, timeout: params.timeout ?? 120 }, signal, update),
   };
   return [
-    adaptTool(createReadTool(), new ImageReadEnv({ cwd }), homeDir),
+    preserveErrorDetails(adaptTool(createReadTool(), new ImageReadEnv({ cwd }), homeDir)),
     adaptTool(createWriteTool(), env, homeDir),
     adaptTool(createEditTool(), env, homeDir),
     timedBash,

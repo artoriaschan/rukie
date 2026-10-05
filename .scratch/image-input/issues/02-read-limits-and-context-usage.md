@@ -13,6 +13,9 @@
 
 ## Comments
 
+- 2026-10-06 最终 Standards 审查修复：图片错误码与各自参数归入 `@neant/shared` 的 `UserVisibleErrorData`；Agent Core 仍校验并抛出英文错误。内置和只读 read 经既有 `preserveErrorDetails` 保留 code/params，TUI 删除 class-specific 翻译分支，沿通用错误文案路径处理。公开 `start` 回归先因 read details 为空而 red，随后 zh/en 工具卡及 resume 均 green；下一次模型请求保留原英文 tool content 和精确尺寸参数。
+- 最终修复集中验证：10 个相关文件（TUI 图片、路径、token、clipboard、notice、错误恢复及两层 i18n，Agent 图片与 read/usage）142 pass / 0 fail / 700 assertions；`tsc -b`、`oxlint`、`knip`、`oxfmt --check`、`git diff --check` 通过。最终 aggregate 由 root 在集成后运行。
+
 - 2026-10-06 review 修复：公开 read 复现确认 5 MiB + 1 byte、只有 JPEG 签名且无可读宽高的文件仍进入 image result。原因是 guard 错把 `inspectImage` 的维度解析成功当作 pi 的 MIME 接纳条件。共享 images 模块现在用独立 `detectReadImageMimeType` 对齐 pi 的 PNG/JPEG/GIF/WebP 接纳规则，再无条件执行 `validateImageBytes`；保留单次文件读取，无新依赖。
 - 新增回归先 red（畸形超限 JPEG 的 `isError: false`、image result）后 green（工具错误且无图片）。同时覆盖小型畸形 JPEG/WebP/GIF/PNG、超限畸形 WebP，以及 pi 仍走文本的 APNG、JPEG-LS、仅 PNG signature；既有 BMP omission 与正常四格式保持通过。相同复现脚本改用本分支源码后输出 `isError: true` 且只有 text result。
 - 修复验证：相邻 6 个 e2e 文件 85 pass / 0 fail / 340 assertions，新文件共 26 tests；`env -u NO_COLOR` 下 `tsc -b`、修改文件 `oxlint`、`oxfmt --check` 与 `git diff --check` 通过。基线同步 integration `ef0a1fa`；最终 aggregate check 由 integration 完成。

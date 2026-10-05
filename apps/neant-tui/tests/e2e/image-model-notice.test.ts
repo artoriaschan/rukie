@@ -73,6 +73,62 @@ test("text-only model paste keeps the token and success notice while adding one 
   }
 });
 
+test("a long valid model ID keeps image warning, editor and status usable at 40×12 and after resize", async () => {
+  const id = "custom-" + "m".repeat(300);
+  process.env[key] = "test-key";
+  const app = await start([], {
+    columns: 40,
+    rows: 12,
+    env: { LANG: "en_US.UTF-8" },
+    session: { model: undefined },
+    prepare: async (root) => {
+      await Bun.write(`${root}/shot.png`, Buffer.from(png, "base64"));
+      await Bun.write(
+        `${root}/.neant/settings.json`,
+        JSON.stringify({
+          ...settings,
+          model: `img/${id}`,
+          providers: [{ ...settings.providers[0], models: [{ id }] }],
+        }),
+      );
+    },
+  });
+  try {
+    await app.waitFor(() => app.screen().includes("❯"));
+    app.stdin.write(paste(`${app.root}/shot.png`));
+    await app.waitFor(() => app.screen().join("\n").includes("does not accept images"));
+    expect(app.screen().join("\n")).toContain("❯ [Image #1]");
+    expect(app.screen().join("\n")).toContain("Pasted image [Image #1]");
+    expect(app.screen().join(" ")).toContain("will be omitted");
+    expect(app.screen().at(-2)).toContain("Ask");
+    app.resize(80, 24);
+    await app.waitFor(() =>
+      app.screen().some((line) => line.startsWith("╭") && line.length === 80),
+    );
+    app.resize(40, 12);
+    await app.waitFor(
+      () =>
+        app.screen().some((line) => line.startsWith("╭") && line.length === 40) &&
+        app.screen().at(-2)!.includes("Ask"),
+    );
+    expect(app.screen().join("\n")).toContain("❯ [Image #1]");
+    app.stdin.write("inspect\r");
+    await app.waitFor(() => app.calls.length === 1);
+    expect(
+      app.calls[0]!.context.messages.findLast((message) => message.role === "user"),
+    ).toMatchObject({
+      content: [
+        { type: "text", text: "[Image #1] inspect" },
+        { type: "image", data: png },
+      ],
+    });
+    expect(app.screen().at(-2)).toContain("Ask");
+    app.calls[0]!.finish();
+  } finally {
+    await app.cleanup();
+  }
+});
+
 test("switching a Session with transcript images to a text model warns once and keeps its images", async () => {
   const app = await startImages("vision");
   try {

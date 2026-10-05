@@ -1,8 +1,6 @@
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { randomUUID } from "node:crypto";
+import { createPrivateExports } from "./private-exports";
 import type { ClipboardContent } from "./index";
 
 const macClipboard = `ObjC.import('AppKit');
@@ -36,12 +34,9 @@ end run`;
 
 /** Per-main clipboard exports outlive staging and are reclaimed after pending reads settle. */
 export function createClipboard() {
-  let closed = false;
-  let directory: Promise<string> | undefined;
-  let ownedDirectory: string | undefined;
-  const pending = new Set<Promise<ClipboardContent>>();
+  const exports = createPrivateExports("neant-clipboard-");
   const run = async (command: string[]) => {
-    if (closed) return;
+    if (exports.closed) return;
     try {
       const child = Bun.spawn(command, { stdout: "pipe", stderr: "ignore" });
       const timeout = setTimeout(() => child.kill(), 3000);
@@ -57,34 +52,8 @@ export function createClipboard() {
   };
   const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
   const exportImage = async (extension: string, write: (path: string) => Promise<void>) => {
-    if (closed) return { unavailable: true } as const;
-    directory ??= mkdtemp(join(tmpdir(), "neant-clipboard-"))
-      .then(async (path) => {
-        try {
-          await chmod(path, 0o700);
-        } catch (error) {
-          await rm(path, { recursive: true, force: true });
-          throw error;
-        }
-        ownedDirectory = path;
-        return path;
-      })
-      .catch((error: unknown) => {
-        directory = undefined;
-        throw error;
-      });
-    const root = await directory;
-    if (closed) return { unavailable: true } as const;
-    const path = join(root, `${randomUUID()}.${extension}`);
-    await writeFile(path, new Uint8Array(), { flag: "wx", mode: 0o600 });
-    try {
-      await write(path);
-      await chmod(path, 0o600);
-      return { image: { path } };
-    } catch (error) {
-      await rm(path, { force: true });
-      throw error;
-    }
+    const path = await exports.write(extension, write);
+    return path ? { image: { path } } : ({ unavailable: true } as const);
   };
   const readMac = async (): Promise<ClipboardContent> => {
     const metadata = await run(["osascript", "-l", "JavaScript", "-e", macClipboard]);
@@ -180,7 +149,7 @@ export function createClipboard() {
   };
   return {
     read(): Promise<ClipboardContent> {
-      if (closed) return Promise.resolve({ unavailable: true });
+      if (exports.closed) return Promise.resolve({ unavailable: true });
       const operation =
         process.platform === "darwin"
           ? readMac()
@@ -194,18 +163,8 @@ export function createClipboard() {
                     : { unavailable: true },
               )
             : readLinux();
-      pending.add(operation);
-      void operation.then(
-        () => pending.delete(operation),
-        () => pending.delete(operation),
-      );
-      return operation;
+      return exports.track(operation);
     },
-    async dispose() {
-      closed = true;
-      await Promise.allSettled(pending);
-      await directory?.catch(() => undefined);
-      if (ownedDirectory) await rm(ownedDirectory, { recursive: true, force: true });
-    },
+    dispose: exports.dispose,
   };
 }

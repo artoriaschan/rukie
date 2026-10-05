@@ -15,6 +15,9 @@
 
 ## Comments
 
+- 2026-10-06 最终 Standards 审查提取：路径与 clipboard 只共享 read → 所有权检查 → bind → 光标插入 → success/model notice；路径无效/不可读照插原文，clipboard 失败保持草稿并警告。原有退出、Session/焦点转移、rewind/model reset 的 pending 丢弃回归保持通过。viewer 与默认 clipboard 的目录创建、权限、pending 等待和清理复用内部 `createPrivateExports`，各 TUI 资源实例仍分别拥有目录。新增公开 exit + pending external open 测试验证终端先恢复、导出保留 0700/0600 和原字节、open 完成后删除目录。
+- 最终修复集中验证 142 pass / 0 fail / 700 assertions，另将 pending-open 字节断言移到公开退出结果后再次单独验证 1 pass / 0 fail / 6 assertions，避免错误被 UI 捕获时掩盖测试失败；静态检查及架构文档同步通过，root 负责最终 aggregate。
+
 - 2026-10-06：在托管 worktree `image-input-05`、分支 `codex/image-input-05`，从已验证的集成基线 `5f20b48` 开始。先通过公开 `start` / headless terminal 重现图片路径仍为原文、占位不可点击及 read 图片无占位，再逐个实现至绿色。
 - 路径识别与 draft 绑定由 chat 拥有，共享 `validateImageBytes` 做字节和尺寸检查。run / steer 接收 token 文本顺序的图片；普通 Run 中提交规则保留。缺失、无效、过长和含多段内容的路径照插原文，超限不插入并显示带精确参数的 warning。
 - user / read 占位从 Transcript 投影，resume 保持名称、原图与交互；名称按 grapheme 限制 80 列。每个 TUI 的 viewer 独占 0700 目录与 0600 原始字节文件，退出等待自身 pending opens 后清理。

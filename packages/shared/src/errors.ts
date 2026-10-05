@@ -1,5 +1,9 @@
 /** Parameters are tied to each locale-independent, user-visible error code. */
 export interface UserVisibleErrorParams {
+  "image-invalid": Record<string, never>;
+  "image-too-large": { maxBytes: number };
+  "image-dimensions": { width: number; height: number; maxPixels: number };
+  "image-mime-mismatch": { mimeType: string };
   "allow-tools-retired": { source: string };
   "permission-rule-invalid": { source: string; rule: string };
   "ripgrep-unavailable": { cause: string };
