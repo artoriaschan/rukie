@@ -31,8 +31,14 @@ async function prompt(app: Awaited<ReturnType<typeof start>>, value: string) {
   const index = app.calls.length;
   app.stdin.write(value + "\r");
   await app.waitFor(() => app.calls.length === index + 1);
+  app.calls[index]!.delta(`answer ${index}`);
   app.calls[index]!.finish();
-  await app.waitFor(() => !app.isWorking());
+  await app.waitFor(
+    () =>
+      text(app).includes(`answer ${index}`) &&
+      !app.isWorking() &&
+      !/esc (interrupt|中断)/.test(text(app)),
+  );
 }
 
 async function open(app: Awaited<ReturnType<typeof start>>) {
@@ -42,6 +48,30 @@ async function open(app: Awaited<ReturnType<typeof start>>) {
   await app.waitFor(() => text(app).includes("Pick a message to rewind to"));
 }
 
+test.each([24, 48, 100].flatMap((rows) => [1, 2, 20].map((count) => [rows, count] as const)))(
+  "rewind at %i rows with %i prompts grows naturally and stops at fourteen rows",
+  async (rows, count) => {
+    const app = await ready({ rows });
+    try {
+      for (let index = 0; index < count; index++) await prompt(app, `prompt ${index}`);
+      await open(app);
+      const lines = app.screen();
+      const input = lines.findIndex((line) => line === "❯");
+      const footer = lines.findIndex((line) => line.includes("Enter to select"));
+      const divider = lines.findIndex((line, index) => index < footer && /^─+$/.test(line));
+      expect(footer - divider + 3).toBe(count === 1 ? 9 : count === 2 ? 10 : 14);
+      expect(input - footer).toBe(3);
+      expect(
+        lines
+          .slice(lines.findIndex((line) => line.includes("last message")) + 1, footer)
+          .filter((line) => !line.trim()),
+      ).toHaveLength(0);
+    } finally {
+      await app.cleanup();
+    }
+  },
+);
+
 test("picker shows recent prompts first, cycles, confirms conversation and refills the input", async () => {
   const app = await ready();
   try {
@@ -49,17 +79,21 @@ test("picker shows recent prompts first, cycles, confirms conversation and refil
     await prompt(app, "latest question");
     await open(app);
     let lines = app.screen();
-    expect(lines.findIndex((line) => line.includes("❯ latest question"))).toBeGreaterThan(
-      lines.findIndex((line) => line.startsWith("╰")),
+    expect(lines.findIndex((line) => line.includes("❯ latest question"))).toBeLessThan(
+      lines.findIndex((line) => line.startsWith("╭")),
     );
     expect(text(app)).toContain("last message");
     app.stdin.write("\x1b[A");
-    await app.waitFor(() => text(app).includes("❯ old question"));
+    await app.waitFor(() =>
+      app
+        .screen()
+        .some((line) => line.startsWith("  ❯ old question") || line.startsWith(" ❯ old question")),
+    );
     app.stdin.write("\x1b[B");
     await app.waitFor(() => text(app).includes("❯ latest question"));
     app.stdin.write("\r");
     await app.waitFor(() => text(app).includes("Rewind to this message?"));
-    expect(text(app)).toContain("Restore conversation");
+    expect(text(app)).toContain("conversation restarts here");
     expect(text(app)).not.toContain("Restore code");
     app.stdin.write(esc);
     await app.waitFor(() => text(app).includes("Pick a message to rewind to"));
@@ -201,6 +235,148 @@ function click(app: Awaited<ReturnType<typeof start>>, row: number, column = 4) 
   app.stdin.write(`\x1b[<0;${column};${row + 1}M\x1b[<0;${column};${row + 1}m`);
 }
 
+function cell(app: Awaited<ReturnType<typeof start>>, row: number, column: number) {
+  return app.terminal.buffer.active.getLine(row)!.getCell(column)!;
+}
+
+test("picker cells match dsh title, focus, description, hover and native cursor", async () => {
+  const app = await ready();
+  try {
+    await prompt(app, "old question");
+    await prompt(app, "latest question");
+    await open(app);
+    const lines = app.screen();
+    const title = lines.findIndex((line) => line.trim() === "Rewind");
+    const subtitle = lines.findIndex((line) => line.includes("Pick a message"));
+    const focus = lines.findIndex((line) => line.startsWith("  ❯ latest question"));
+    const description = lines.findIndex((line) => line.includes("last message"));
+    expect(title + 1).toBe(subtitle);
+    expect(focus - subtitle).toBe(2);
+    expect(lines[focus]).toBe("  ❯ latest question");
+    expect(cell(app, title, 2).getFgColor()).toBe(0xabc2ec);
+    expect(cell(app, title, 2).isBold()).toBeTruthy();
+    expect(cell(app, focus, 4).getFgColor()).toBe(0xabc2ec);
+    expect(cell(app, focus, 4).isBold()).toBeFalsy();
+    expect(cell(app, description, 4).getFgColor()).toBe(0x8d95a6);
+    expect(cell(app, description, 4).isDim()).toBeFalsy();
+    expect(app.terminal.buffer.active.cursorY).toBe(focus);
+    expect(app.terminal.buffer.active.cursorX).toBe(2);
+
+    const old = lines.findIndex((line) => line === "    old question");
+    app.stdin.write(`\x1b[<35;5;${old + 1}M`);
+    await app.waitFor(() => cell(app, old, 4).getBgColor() === 0x3b5bdb);
+    expect(text(app)).toContain("❯ latest question");
+    app.stdin.write("\x1b[<35;1;1M");
+    await app.waitFor(() => cell(app, old, 4).getBgColor() !== 0x3b5bdb);
+    click(app, old);
+    await app.waitFor(() =>
+      app
+        .screen()
+        .some((line) => line.startsWith("  ❯ old question") || line.startsWith(" ❯ old question")),
+    );
+    expect(app.terminal.buffer.active.cursorY).toBe(old);
+    expect(text(app)).not.toContain("Rewind to this message?");
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("focus-centered window balances both sides and puts scroll indicators in the left gutter", async () => {
+  const app = await ready({ rows: 48 });
+  try {
+    for (let index = 0; index < 20; index++) await prompt(app, `window ${index}`);
+    await open(app);
+    app.stdin.write("\x1b[B".repeat(10));
+    await app.waitFor(() => app.screen().some((line) => line.startsWith("  ❯ window 9")));
+    const lines = app.screen();
+    const first = lines.findIndex((line) => line.includes("↑ window 12"));
+    const focus = lines.findIndex((line) => line.startsWith("  ❯ window 9"));
+    const last = lines.findIndex((line) => line.includes("↓ window 6"));
+    expect(focus - first).toBe(3);
+    expect(last - focus).toBe(3);
+    expect(lines[focus]).toBe("  ❯ window 9");
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("conversation-only confirmation uses dsh plain shape and a click executes it", async () => {
+  const app = await ready();
+  try {
+    await prompt(app, "plain target");
+    await open(app);
+    app.stdin.write("\r");
+    await app.waitFor(() => text(app).includes("Rewind to this message?"));
+    const lines = app.screen();
+    const title = lines.findIndex((line) => line.includes("Rewind to this message?"));
+    expect(lines[title]).toBe("  Rewind to this message?");
+    expect(lines[title + 1]).toBe("");
+    expect(lines[title + 2]).toBe("    plain target");
+    expect(lines[title + 3]).toBe("    conversation restarts here");
+    click(app, title + 2);
+    await app.waitFor(() => text(app).includes("Rewound — edit"));
+    expect(app.screen()).toContain("❯ plain target");
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test.each([0, 1, 2])("confirmation mouse click executes real rewind mode %i", async (mode) => {
+  const app = await ready({ session: { permissionMode: "full-access" } });
+  try {
+    await toolsPrompt(
+      app,
+      "mouse target",
+      [{ name: "write", args: { path: "mouse.txt", content: "new" } }],
+      "mouse answer",
+    );
+    await open(app);
+    app.stdin.write("\r");
+    await app.waitFor(() => text(app).includes("Rewind to this message?"));
+    const label = ["❯ Restore code and conversation", "Restore conversation", "    Restore code"][
+      mode
+    ]!;
+    const row = app.screen().findIndex((line) => line.includes(label));
+    expect(row).toBeGreaterThan(0);
+    click(app, row);
+    await app.waitFor(() => text(app).includes(mode === 2 ? "Restored 1 files" : "Rewound — edit"));
+    expect(await Bun.file(join(app.root, "mouse.txt")).exists()).toBe(mode === 1);
+    expect(text(app).includes("mouse answer")).toBe(mode === 2);
+    if (mode !== 2) expect(app.screen()).toContain("❯ mouse target");
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test.each([24, 48, 100].flatMap((rows) => [0, 1, 10].map((files) => [rows, files] as const)))(
+  "confirmation at %i rows with %i files has its own natural height and fourteen-row cap",
+  async (rows, files) => {
+    const app = await ready({ rows, session: { permissionMode: "full-access" } });
+    try {
+      if (files)
+        await toolsPrompt(
+          app,
+          "sized target",
+          Array.from({ length: files }, (_, index) => ({
+            name: "write",
+            args: { path: `${index}.txt`, content: "new" },
+          })),
+        );
+      else await prompt(app, "sized target");
+      await open(app);
+      app.stdin.write("\r");
+      await app.waitFor(() => text(app).includes("Rewind to this message?"));
+      const lines = app.screen();
+      const footer = lines.findIndex((line) => line.includes("Enter to rewind"));
+      const divider = lines.findIndex((line, index) => index < footer && /^─+$/.test(line));
+      expect(footer - divider + 3).toBe(files === 0 ? 8 : files === 1 ? 11 : 14);
+      expect(lines.findIndex((line) => line === "❯") - footer).toBe(3);
+    } finally {
+      await app.cleanup();
+    }
+  },
+);
+
 test.each([
   [40, 12],
   [60, 24],
@@ -217,7 +393,7 @@ test.each([
       const inputRow = app.screen().findIndex((line) => line === "❯");
       const footerRow = app.screen().findIndex((line) => line.includes("Enter to select"));
       expect(inputRow).toBeGreaterThanOrEqual(0);
-      expect(footerRow).toBeGreaterThan(inputRow);
+      expect(footerRow).toBeLessThan(inputRow);
       app.stdin.write("\x1b[A");
       await app.waitFor(() => text(app).includes("❯ 消息0"));
       expect(text(app)).toContain("↑");
@@ -262,7 +438,11 @@ test("preview collapses whitespace, caps at 80 characters, and mouse only moves 
     expect(app.screen()).toContain("  ❯ " + "x".repeat(80) + "…");
     const oldRow = app.screen().findIndex((line) => line.includes("old question"));
     click(app, oldRow);
-    await app.waitFor(() => text(app).includes("❯ old question"));
+    await app.waitFor(() =>
+      app
+        .screen()
+        .some((line) => line.startsWith("  ❯ old question") || line.startsWith(" ❯ old question")),
+    );
     expect(text(app)).not.toContain("Rewind to this message?");
     app.stdin.write("\r");
     await app.waitFor(() => text(app).includes("Rewind to this message?"));
@@ -522,7 +702,7 @@ test("Chinese rewind title, choices and completion use frontend copy", async () 
     expect(text(app)).toContain("最新消息");
     app.stdin.write("\r");
     await app.waitFor(() => text(app).includes("回退到这条消息？"));
-    expect(text(app)).toContain("还原对话");
+    expect(text(app)).toContain("对话从此处重新开始");
     app.stdin.write("\r");
     await app.waitFor(() => text(app).includes("已回退 — 修改后按 Enter 重新发送"));
     expect(app.screen()).toContain("❯ inspect");
@@ -624,3 +804,33 @@ test("40×12 confirmation keeps +N more visible beside long CJK file paths", asy
     await app.cleanup();
   }
 });
+
+test.each([8, 10])(
+  "resize to 40×%i suspends rewind editing and restores focus at supported size",
+  async (rows) => {
+    const app = await ready({ columns: 40, rows: 12 });
+    try {
+      await prompt(app, "resize 中文 target");
+      await open(app);
+      app.resize(40, rows);
+      await app.waitFor(() => text(app).includes("Resize to at least 40 columns"));
+      expect(text(app)).not.toContain("Enter to select");
+      app.stdin.write("\r");
+      await app.flush();
+      expect(app.calls).toHaveLength(1);
+      app.resize(80, 48);
+      await app.waitFor(() => text(app).includes("Pick a message to rewind to"));
+      expect(app.screen()).toContain("  ❯ resize 中文 target");
+      app.stdin.write("\r");
+      await app.waitFor(() => text(app).includes("Rewind to this message?"));
+      app.resize(40, 12);
+      await app.waitFor(() => app.screen().some((line) => line.includes("Enter to rewind")));
+      expect(text(app)).toContain("resize 中文 target");
+      expect(app.screen().findIndex((line) => line.includes("Enter to rewind"))).toBeLessThan(
+        app.screen().findIndex((line) => line === "❯"),
+      );
+    } finally {
+      await app.cleanup();
+    }
+  },
+);

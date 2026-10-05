@@ -2,6 +2,9 @@ export interface Theme {
   text: `#${string}`;
   subtle: `#${string}`;
   accent: `#${string}`;
+  remember: `#${string}`;
+  suggestion: `#${string}`;
+  inactive: `#${string}`;
   toolNameMutate: `#${string}`;
   toolNameExec: `#${string}`;
   inverseText: `#${string}`;
@@ -31,6 +34,9 @@ export const dark: Theme = {
   text: "#E8E6E0",
   subtle: "#5E6673",
   accent: "#7DA1DE",
+  remember: "#ABC2EC",
+  suggestion: "#ABC2EC",
+  inactive: "#8D95A6",
   toolNameMutate: "#E5C07B",
   toolNameExec: "#56B6C2",
   inverseText: "#22262E",
@@ -61,6 +67,9 @@ export const light: Theme = {
   text: "#292C33",
   subtle: "#6C7280",
   accent: "#345C9C",
+  remember: "#27478C",
+  suggestion: "#3F6CC4",
+  inactive: "#8991A0",
   toolNameMutate: "#8C6118",
   toolNameExec: "#257B87",
   inverseText: "#FFFFFF",

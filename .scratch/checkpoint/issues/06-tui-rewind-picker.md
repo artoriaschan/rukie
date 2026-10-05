@@ -32,3 +32,17 @@
 2026-10-05：TDD 的首个双 Esc 空 Session 测试先失败，最小实现后通过；真实回填改写测试揭露光标停留在开头，修复后验证末尾追加与 Enter 重发。审查补充 40×12 长 CJK 文件路径回归，先验证计数确实消失，再保留尾部计数列修复。
 
 首次固定树完整检查为 1534 pass / 1 fail：既有 input-history 测试仅用 spinner 消失等待收尾，误认 Run 空闲。诊断在 80 轮中复现 1 次；临时边界探针在 240 轮中复现 2 次，失败 Ctrl+C 时 `isRunning` 与视图 `running` 均为 true，editor 的 current / value 一致。日志顺序确认新 rewind 时钟测试在该失败之后执行，排除时钟污染。改用本次唯一答案可见且底部中断提示消失的公开屏幕完成条件，产品输入行为保持一致；修正后 160 轮 stress 为 160 pass / 0 fail，40.56s。探针和临时压力测试文件均已移除。
+
+### 2026-10-05：用户反馈后的真实 dsh parity 与高度纠偏
+
+原交付的视觉与交互并未完全对齐 dsh：半屏 budget 与强制 flexGrow 导致少量列表填满空白；高终端回退区无限增长，标题 / 焦点 / 描述颜色、上优先窗口、额外右箭头、确认形状、确认鼠标路由与实际 dsh 有差异。本次以用户最新反馈覆盖此前高度预留策略。
+
+亲读 dsh-TUI `RewindPicker`、`Pane`、`ListItem`、`listWindow`、`OverlayAbove`、`PromptInput` 以及 `Chat.tsx` 的真实挂载与键鼠处理：实际挂载方向是输入框上方（OverlayAbove）；Neant 采用上方 flow 槽位并保留 Todo / child 预览，未引入 overlay renderer 框架。dsh 本身按实际空间钳高，没有绝对 cap；本次明确整个回退区域封顶 14 行，含所有 gap、Divider、标题、列表与 footer。
+
+- 充足空间列表自然高 `7 + Σ(1 + description 行)`，单 prompt 9、两 prompt 10、长列表最大 14；只预扣实际内容高。焦点窗口平衡两侧行成本，左 gutter 的焦点指针优先于滚动箭头。
+- 标题 remember、焦点 suggestion 非 bold、描述 inactive 非 dim、clickable hover 背景与 native cursor 停靠均按真实 cells 验证；公共 ListItem 用可选 picker prop，其他调用方视觉契约保留。
+- 有文件的确认标题与 preview 同行；无文件确认采用 plain preview + conversation restarts here 描述。消息列表点击仅 focus；两种确认形状点击直接执行真实模式。保留三模式、还原 / 删除计划、bash 警告与 prompt 回填。
+- 支持尺寸最低 6 行 rewind 预算先于 activity / return；40×12 保留 Todo / child。40×8 / 10 resize 暂停不可见 picker 的 Enter / 方向键，支持尺寸恢复原 focus（新增 red 发现隐藏 picker 的 Enter 仍会进入确认，已修复）。
+- 公开 seam `start` + headless terminal：高度反馈最初在 24 / 48 / 100 行、1 prompt 得到 12 / 24 / 50 行稳定 red；最终 1 / 2 / 20 prompts × 三高度均为 9 / 10 / 14。新增样式、居中窗口、plain shape、三模式确认鼠标在 f2cc546 基线重放为 6 fail / 0 pass，在修复树全部 green。测试不依赖内部组件，idle 同步用本次唯一模型 reply 与底部 interrupt hint 消失。
+
+验证与独立 Standards / Spec 审查结果待固定源码后补记。

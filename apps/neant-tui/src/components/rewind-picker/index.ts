@@ -1,1 +1,1 @@
-export { RewindPicker, type RewindEntry, type RewindMode } from "./rewind-picker";
+export { RewindPicker, rewindLayout, type RewindEntry, type RewindMode } from "./rewind-picker";

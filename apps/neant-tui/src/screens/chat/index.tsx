@@ -35,7 +35,7 @@ import {
   SubagentDetailScene,
   UserMessage,
 } from "../../components";
-import type { RewindEntry, RewindMode } from "../../components/rewind-picker";
+import { rewindLayout, type RewindEntry, type RewindMode } from "../../components/rewind-picker";
 import { formatError } from "../../i18n";
 import type { DetailPage } from "../../components/subagent-detail";
 import { createTuiI18n } from "../../i18n";
@@ -338,26 +338,32 @@ function Chat({
   const hasSubagents = subagents.some(
     (agent) => state.running || agent.status === "running" || agent.status === "idle",
   );
-  const minimumDialogHeight = question
-    ? permissionChoices(question.request.mode).length + 3
-    : userQuestion
-      ? userQuestion.collapsed
-        ? 2
-        : 6
-      : planReview
-        ? 6
-        : 0;
+  const minimumDialogHeight = rewind
+    ? 6
+    : question
+      ? permissionChoices(question.request.mode).length + 3
+      : userQuestion
+        ? userQuestion.collapsed
+          ? 2
+          : 6
+        : planReview
+          ? 6
+          : 0;
   // Dialogs take priority. Reserve a preview for every visible panel before
   // deciding whether the prompt needs to use its one-row form.
   const panelCount = Number(hasTodos) + Number(hasSubagents);
   const dialogGap =
     question && rows - statusHeight - minimumDialogHeight - panelCount - 1 >= 1 ? 1 : 0;
   const compactPrompt =
-    !!rewind ||
+    (!!rewind && rows < 20) ||
     (!!interaction &&
       rows - statusHeight - minimumDialogHeight - dialogGap - panelCount < promptMaxLines + 3);
   const promptHeight = compactPrompt ? 1 : promptMaxLines + 3;
-  const transcriptHeight = rewind ? 0 : interaction ? Number(!compactPrompt) : 1;
+  const transcriptHeight = rewind
+    ? Number(!compactPrompt)
+    : interaction
+      ? Number(!compactPrompt)
+      : 1;
   const chromeSpace = rows - statusHeight - promptHeight - transcriptHeight;
   const showReturnControl =
     showReturn && chromeSpace - minimumDialogHeight - dialogGap - panelCount >= 1;
@@ -381,8 +387,17 @@ function Chat({
         ),
       )
     : 0;
+  // Six rows keep the focused item, file summary, bash warning and footer visible
+  // even at 40×12 with both persistent panels. Activity/return rows yield first.
+  const rewindMaxHeight = rewind ? Math.min(14, available - panelCount) : 0;
   const rewindHeight = rewind
-    ? Math.max(4, Math.min(Math.floor(rows / 2), available - panelCount))
+    ? rewindLayout(
+        rewind.entries,
+        rewind.confirm,
+        rewindModes(rewind).length,
+        rewindFiles(rewind).length,
+        rewindMaxHeight,
+      ).height
     : 0;
   const panelHeights = allocatePanelHeights(
     available - dialogMaxHeight - dialogGap - rewindHeight,
@@ -444,6 +459,7 @@ function Chat({
     if (picker && !interactions.getSnapshot()) {
       if (event.type !== "key" || picker.busy) return;
       const { key } = event;
+      if (small && key.name !== "escape" && !(key.ctrl && key.name === "c")) return;
       if (key.name === "escape" || (key.ctrl && key.name === "c")) {
         showRewind(picker.confirm && !key.ctrl ? { ...picker, confirm: false } : undefined);
       } else if (key.name === "up" || key.name === "down") {
@@ -835,6 +851,31 @@ function Chat({
                 scrollFocused={scrollFocus === "details"}
               />
             )}
+            {rewind && (
+              <RewindPicker
+                entries={rewind.entries}
+                focus={rewind.focus}
+                confirm={rewind.confirm}
+                mode={rewind.mode}
+                modes={rewindModes(rewind)}
+                files={rewindFiles(rewind).map((file) => ({
+                  ...file,
+                  path: relative(checkpointCwd, file.path),
+                }))}
+                busy={rewind.busy}
+                maxHeight={rewindMaxHeight}
+                columns={columns}
+                locale={locale}
+                onFocus={(focus) => {
+                  const picker = rewindRef.current;
+                  if (picker && !picker.busy) showRewind({ ...picker, focus });
+                }}
+                onMode={(mode) => {
+                  const picker = rewindRef.current;
+                  if (picker && !picker.busy) void executeRewind({ ...picker, mode });
+                }}
+              />
+            )}
             <PromptInput
               key={promptRevision}
               readOnly={!!rewind || (!!interaction && !userQuestion?.collapsed)}
@@ -860,31 +901,6 @@ function Chat({
                 }
               }}
             />
-            {rewind && (
-              <RewindPicker
-                entries={rewind.entries}
-                focus={rewind.focus}
-                confirm={rewind.confirm}
-                mode={rewind.mode}
-                modes={rewindModes(rewind)}
-                files={rewindFiles(rewind).map((file) => ({
-                  ...file,
-                  path: relative(checkpointCwd, file.path),
-                }))}
-                busy={rewind.busy}
-                maxHeight={rewindHeight}
-                columns={columns}
-                locale={locale}
-                onFocus={(focus) => {
-                  const picker = rewindRef.current;
-                  if (picker && !picker.busy) showRewind({ ...picker, focus });
-                }}
-                onMode={(mode) => {
-                  const picker = rewindRef.current;
-                  if (picker && !picker.busy) showRewind({ ...picker, mode });
-                }}
-              />
-            )}
             <StatusLine
               locale={locale}
               columns={columns}

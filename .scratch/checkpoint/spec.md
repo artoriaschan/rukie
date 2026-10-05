@@ -52,7 +52,7 @@ agent 改坏了文件、或者我想换个说法重问时，只能手动 `git ch
 36. 作为 Neant 维护者，我希望 Checkpoint 引用作为 Tool State `checkpoint` 记入 transcript，这样复用已有持久化与 last-wins 恢复。
 37. 作为 Neant 维护者，我希望快照挂在地基 C 的放行后阶段，这样不另开拦截路径。
 38. 作为 Neant 维护者，我希望 `write` 与 `edit` 都经同一快照路径，这样新增文件工具只需接入一处。
-39. 作为 TUI 用户，我希望 Rewind 面板的外观和按键与 dsh-TUI 一致（停靠输入框下方、`❯` 选中、↑/↓ 循环、Enter 确认、Esc 返回），这样两个工具间切换无需重新学习。
+39. 作为 TUI 用户，我希望 Rewind 面板的外观和按键与 dsh-TUI 一致（停靠输入框上方、`❯` 选中、↑/↓ 循环、Enter 确认、Esc 返回），这样两个工具间切换无需重新学习。
 40. 作为 TUI 用户，我希望没有可回退的 prompt 时双击 Esc 只给提示，这样不会弹出空面板。
 41. 作为 TUI 用户，我希望回退完成后有 notice 告诉我结果与下一步，这样知道已生效。
 
@@ -99,21 +99,22 @@ agent 改坏了文件、或者我想换个说法重问时，只能手动 `git ch
 - **清理**：`createSession` 启动时删除 `~/.neant/file-history/` 下 mtime 超过 30 天的 session 目录。失败只发 warning。
 - **TUI（照 dsh-TUI `RewindPicker`，界面、样式、交互均参照之）**：
   - **触发**：仅 session 空闲、输入框为空时生效。第一次 Esc 开 3000ms 窗口，并显示 notice "Press Esc again to rewind"（i18n）；窗口内第二次 Esc 打开面板。没有可回退的 prompt 时，只提示 "Nothing to rewind yet"。输入框有内容时 Esc 照旧清空；run 中 Esc 照旧中止。有挂起交互（审批、提问、plan 评审）时不触发。
-  - **布局**：新增 app 组件 `rewind-picker`（③层，props only），停靠在输入框下方的面板槽位，不全屏。外框用 design-system 的 `Divider` 顶线，取 permission 色。标题 "Rewind" 加粗；副标题 dim，文案 "Pick a message to rewind to"。
+  - **布局**：新增 app 组件 `rewind-picker`（③层，props only），停靠在输入框上方的面板槽位，不全屏；与 dsh-TUI 的实际 OverlayAbove 挂载方向一致，Neant 用 flow 布局保持 Todo / child 面板共存。外框用 design-system 的 `Divider` 顶线，取 permission 色。标题 "Rewind" 用 remember 色加粗；副标题 dim，文案 "Pick a message to rewind to"。
   - **列表**：
     - 本 session 的 user prompt 按新到旧排列，只含真实用户输入，不含 hook / Goal / 子代理通知 steer 进来的消息。
     - 每行是单行预览：空白折叠，截断到 80 字符加 "…"。
-    - 首行描述为 "last message"；有文件改动的行另附 dim 的 "N files changed"（与 dsh-TUI 的差异：dsh 无代码回滚）。
-    - 选中行前缀 `❯`，用 design-system `ListItem`。
-    - 行数按输入框上方剩余空间计算，焦点行始终可见，边缘行显示 ↑/↓ 滚动箭头。
+    - 首行描述为 "last message"；描述用 inactive 色，有文件改动的行另附 "N files changed"（与 dsh-TUI 的差异：dsh 无代码回滚）。
+    - 选中行前缀 `❯`，用 design-system `ListItem` 的 picker 样式：suggestion 色、不额外加粗，原生终端光标停在左侧 `❯`；可点击行悬停背景与 dsh 一致。
+    - 整个回退区域（含顶部 gap、Divider、标题、列表、提示）最多 14 行，并受输入框、statusline 与 Todo / child 预览之后的实际空间约束。短列表按内容自然撑高，不填满上限；充足空间时单 prompt 9 行、两 prompt 10 行，超出后窗口化。列表按实际行成本向两侧平衡扩展，焦点大致居中。边缘非焦点行的左侧 gutter 显示 ↑/↓；焦点 `❯` 优先，不另加右侧箭头。模式内移动焦点时输入框与页脚位置稳定；不同列表 / 确认页按各自自然尺寸。
     - 底部 dim italic 提示 "Enter to select · Esc to exit"。
-  - **按键**：↑/↓ 移动，首尾循环；Enter 进入确认；Esc 关闭面板；鼠标点击只移动焦点。不做 j/k 和搜索。
+  - **按键**：↑/↓ 移动，首尾循环；Enter 进入确认；Esc 关闭面板；消息列表鼠标点击只移动焦点，Enter 才进入确认；确认页点击直接执行当前点击的模式（与 Enter 同路径）。不做 j/k 和搜索。
   - **确认步**：
-    - 原地替换列表内容，标题为 "Rewind to this message?"，下方显示该 prompt 预览。
-    - 选项照 dsh 插件模式列表，↑/↓ + Enter 选择："Restore code and conversation" / "Restore conversation" / "Restore code"。该 Checkpoint 起无文件改动时只给 "Restore conversation"。
+    - 原地替换列表内容。存在文件改动时，标题 "Rewind to this message?" 与 dim prompt 预览在同一行，标题下留一行 gap 再展示模式。无文件改动时用 dsh 的 plain 确认形状：标题、gap、无焦点指针的 prompt 行及 inactive 描述 "conversation restarts here"，点击该行或 Enter 直接回对话。
+    - 选项照 dsh 插件模式列表，↑/↓ + Enter 选择："Restore code and conversation" / "Restore conversation" / "Restore code"。该 Checkpoint 起无文件改动时仅提供 plain 回对话确认。
     - 涉及回代码的选项获得焦点时，下方列出将还原、将删除的文件（超出可见行数时折叠为 "+N more"），并固定 dim 提示 "Changes made by bash are not restored"。
-    - 提示 "Enter to rewind · Esc to back"；Esc 回到列表。
+    - 提示 "Enter to rewind · Esc to back"；Esc 回到列表。文件区按三种模式的最大实际内容预留，切换为只回对话时保留区域高度，避免抖动。
   - **完成后**：面板关闭。回对话时把返回的 prompt 文本填进输入框，并显示 notice "Rewound — edit and press Enter to resend"；只回代码时显示 "Restored N files"。失败时显示错误 notice，面板关闭、状态不变。
+  - **窄屏**：40×12 起支持编辑；小屏去掉顶部 gap 与标题下 gap，列表保留标题 / 副标题，确认保留单行标题 / 预览。最低 6 行预算先于 activity / return control 分配，保留焦点、文件摘要、bash 提示、footer 与 Todo / child 各一行预览。小于 40×12 时遵循既有 resize 提示，隐藏面板并暂停 Enter / 方向键，恢复到支持尺寸后保留焦点；Esc / Ctrl+C 仍可取消。
   - 所有文案进 neant-tui i18n 字典，上面引号内为 en 原文。
   - 不做 dsh 的 `/tree` 分支视图，也不做 `tui/rewind-prompt` 插件钩子。
 - **`/rewind`**：等 Slash Command 框架（[自定义 Slash Command 与手动 compaction](../agent-core-roadmap/issues/16-slash-commands-and-manual-compaction.md)）落地后，接入同一个 `rewind-picker`。本 spec 不交付这个命令。
