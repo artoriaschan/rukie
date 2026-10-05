@@ -45,4 +45,12 @@
 - 支持尺寸最低 6 行 rewind 预算先于 activity / return；40×12 保留 Todo / child。40×8 / 10 resize 暂停不可见 picker 的 Enter / 方向键，支持尺寸恢复原 focus（新增 red 发现隐藏 picker 的 Enter 仍会进入确认，已修复）。
 - 公开 seam `start` + headless terminal：高度反馈最初在 24 / 48 / 100 行、1 prompt 得到 12 / 24 / 50 行稳定 red；最终 1 / 2 / 20 prompts × 三高度均为 9 / 10 / 14。新增样式、居中窗口、plain shape、三模式确认鼠标在 f2cc546 基线重放为 6 fail / 0 pass，在修复树全部 green。测试不依赖内部组件，idle 同步用本次唯一模型 reply 与底部 interrupt hint 消失。
 
-验证与独立 Standards / Spec 审查结果待固定源码后补记。
+本次固定源码验证（`928af8d`）：
+
+- focused rewind + input-history：54 pass / 0 fail，240 expect，2 files，18.31s；`bunx tsc -b` exit 0。回退屏幕本身 49 个测试。
+- 确认页自然高度直接断言：0 / 1 / 10 files × 24 / 48 / 100 rows，结果均为 8 / 11 / 14 行；与列表页分别按真实内容撑高。文件区域的高度只跨模式保留，避免焦点切换抖动。
+- 独立 Standards：`f2cc546...928af8d` 全 diff 对照 CLAUDE、CONTEXT、ADR-0005/0006/0008 与 Fowler baseline，0 actionable findings。独立 Spec：亲读真实 dsh 组件与 Chat 路由，对照最新 spec / 用户反馈，0 actionable findings；独立复跑 rewind 49 pass / 0 fail，236 expect，17.45s，exit 0。
+- 隔离临时 HOME、移除 NO_COLOR、`caffeinate -is bun run check`：格式 / lint / typecheck / knip / full tests 全部通过，1562 pass / 0 fail，8084 expect，114 files，189.18s，exit 0。临时 HOME 已清理，诊断写入不在提交内。
+- 父代理独立核对 24 行单 prompt、100 行 20 prompts、40×12 与 80×24 确认页真实屏幕 dump 及标题 / 焦点 / 描述 cells 和 cursor，未发现额外问题。诊断证据保留在 `/tmp/rewind-parity-*.txt`、`/tmp/rewind-parity-cells.json`；完整检查日志 `/tmp/rewind-parity-fullcheck.log`。
+
+实现与验证相对基线 `f2cc546`；代码提交 `928af8d`。本次修正原视觉交付的差距，不将原交付描述为全部 parity。main 集成与最终 main 检查由父代理统一处理。
