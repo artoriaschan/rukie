@@ -20,3 +20,7 @@ Status: resolved
 - 最终类型检查：`bunx tsc -b` exit 0，日志 `/tmp/neant-subagent-resume-review-fixes-types-final.log`。Knip exit 0，日志 `/tmp/neant-subagent-resume-review-fixes-knip.log`。
 - 完整检查：`env -u NO_COLOR caffeinate -is bun run check` exit 0，1622 pass / 0 fail，8542 expects，121 files，202.92s；日志 `/tmp/neant-subagent-resume-review-fixes-check-final.log`。完整检查后仅补强新 Run error 结束的测试断言，生产实现无变化；最终 focused 与类型检查覆盖该补强，不重复完整检查。
 - 最新 integration 仍为固定点 `24a6c41a10dca49b3ae331e2d9becdf299e706cd`；同步结果 already up to date。三个发现的实现修复完成，提交 SHA 和 clean / ancestry 结果在交付时报告主线程。此处 resolved 仅指修复工作完成，Standards / Spec 独立复审仍待集成后执行，规范状态不提前关闭。
+
+## 独立复审结果
+
+2026-10-05：修复提交 a3291604a1b294ba412eb2177184ce478e558a7b 已快进集成。Standards 复核 0 项标准违反、0 项新增 smell；Spec 复核 0 项剩余发现，并独立重跑公共历史回归 2 pass / 0 fail / 24 assertions。全部原发现已解决，最终证据见 [verification.md](verification.md)。

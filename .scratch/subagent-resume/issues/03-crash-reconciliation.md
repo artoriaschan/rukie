@@ -44,3 +44,7 @@
 - 类型检查：`bunx tsc -b` exit 0，日志 `/tmp/neant-resume-03-types-final.log`。完整检查：`env -u NO_COLOR caffeinate -is bun run check` exit 0，1615 pass / 0 fail，8449 expects，120 files，200.72s；日志 `/tmp/neant-resume-03-check-final.log`。
 - 自查已核对公开行为、只读及概念 index 导入边界。**Standards / Spec 独立双轴审查：整批集成后待主线程执行**，此处不声称已通过独立审查。
 - 实现提交：`59a1ca0c0726ca94c72920c8f7a1198a08e376cd`（`feat(agent): reconcile interrupted subagent runs`）。提交 hooks 通过；提交后 `git status --short` 无输出，`git diff --stat` 为空，最新 integration `d5c5ccf868bd88d356d37af33f31fed6e1144826` 仍为 HEAD 的 ancestor（exit 0）。本次仅追加提交证据，主线程负责集成 main、独立审查和清理工作树。
+
+### 2026-10-05 — 整批集成验收
+
+四张工单及审查修复已集成；最终完整检查 1622 pass / 0 fail，最终相关回归 97 pass / 0 fail。独立 Standards / Spec 复核均 0 项剩余问题，验收通过。详细证据见 [verification.md](../verification.md)。

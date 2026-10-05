@@ -41,3 +41,9 @@
 - 首轮全检查有中文 dashboard 5 秒超时（1597 pass / 1 fail），保留 `/tmp/neant-subagent-resume-02-check-first.log`；正确 NO_COLOR 环境单例与整文件复现分别通过 1 与 10 测试，日志 `/tmp/neant-subagent-resume-02-dashboard-reproduce.log`、`/tmp/neant-subagent-resume-02-dashboard-file.log`。该用例是非恢复新 Session；最终全检查同用例通过，未修改原测试或延长超时。
 - 已同步集成分支 `codex/subagent-resume-design` 的 `19e9bc6`（含 main 文档同步）；本票无依赖变更，不实施 03 的子 Transcript 只读核对。
 - **Standards / Spec 整批集成两轴审查待完成**：由主线程统一组织并回填审查与修复证据；本票不声称已完成审查。
+
+## Comments
+
+### 2026-10-05 — 整批集成验收
+
+四张工单及审查修复已集成；最终完整检查 1622 pass / 0 fail，最终相关回归 97 pass / 0 fail。独立 Standards / Spec 复核均 0 项剩余问题，验收通过。详细证据见 [verification.md](../verification.md)。

@@ -1,4 +1,4 @@
-Status: claimed
+Status: resolved
 
 # Spec: Subagent 的 Run Outcome 与 Session Resume
 
@@ -156,5 +156,5 @@ TUI 每次恢复给出一次说明，自动子代理列表继续依据实际运�
 ## Further Notes
 
 - 设计来自本次对 deepseek-harness 的只读调查及 Q1–Q8，已记录在 [ADR-0009](../../docs/adr/0009-subagent-resume-outcomes.md)，术语沿用 [CONTEXT](../../CONTEXT.md)。采用恢复语义，不迁移整个运行架构。
-- 规范位于 `codex/subagent-resume-design` worktree。用户已确认 Q1–Q8 的设计及 Core、TUI 两个公共测试边界，Status 为 `ready-for-agent`。
-- 本轮只生成规范，不生成实施工单或修改运行代码。下一阶段 `/to-tickets` 应产出带阻塞依赖的独立工单；实施延续子代理使用 implement skill、独立 worktree、集成验证、合并 main 和清理工作树的交付要求。
+- 用户已确认 Q1–Q8 的设计及 Core、TUI 两个公共测试边界。实施工单 01–04 已完成，状态均为 `resolved`。
+- 实现由子代理使用 implement / tdd 在独立受管 worktree 完成，经集成检查与独立 Standards / Spec 复审验收。交付采用合并 main 后清理开发工作树的方式；最终代码验证与复审证据见 [verification.md](verification.md)。

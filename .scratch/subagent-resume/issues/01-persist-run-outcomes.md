@@ -44,3 +44,7 @@
 - 最终完整检查：`rtk proxy env -u NO_COLOR caffeinate -is bun run check`，exit 0；format、lint、tsc、knip 均通过，1588 pass / 0 fail，8262 expect，117 files，191.26s；日志 `/tmp/neant-resume-01-check-final.log`。
 - 实现提交 `7a95f74`；合入集成分支后的开发 merge tip `2c455c1`。实现者已按 code-review 的 Standards / Spec 材料自查；主线程调整交付安排，独立 Standards / Spec 双轴审查由整批集成阶段完成，当前待完成，不声称已通过独立审查。
 - 01 不实现 02 的 Frontend 关闭收束/恢复摘要，也不实现 03 的子 Transcript 只读核对/中断分类。03 之前，新 Run 开始但未结算仅呈现未知。main、集成目录及其他工单的用户改动未在本开发 worktree 外编辑。
+
+### 2026-10-05 — 整批集成验收
+
+四张工单及审查修复已集成；最终完整检查 1622 pass / 0 fail，最终相关回归 97 pass / 0 fail。独立 Standards / Spec 复核均 0 项剩余问题，验收通过。详细证据见 [verification.md](../verification.md)。

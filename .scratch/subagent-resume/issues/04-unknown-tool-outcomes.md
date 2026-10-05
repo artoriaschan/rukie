@@ -46,3 +46,7 @@
 - 完整检查：`env -u NO_COLOR bun run check` 退出码 0；format、lint、`tsc -b`、knip 通过，全套 1576 pass / 0 fail，8205 assertions，116 files。日志 `/tmp/neant-subagent-resume-04-check.log`。开发期间也多次独立执行 `bunx tsc -b`，最后一次通过。
 - TUI 新增 `@earendil-works/pi-agent-core` 0.99.2 直接 devDependency，仅用于原生 Session Store 的合法孤立调用夹具与 BACKGROUND_CONTEXT；不通过跨包 node_modules 路径导入。版本与 Agent Core 既有锁定版本一致，运行时依赖未变。
 - 已同步集成 tip `c27b1e6`。主线程安排在整批集成后统一进行 Standards / Spec 双轴并行审核；当前两轴审核待完成，未声明审查通过。
+
+### 2026-10-05 — 整批集成验收
+
+四张工单及审查修复已集成；最终完整检查 1622 pass / 0 fail，最终相关回归 97 pass / 0 fail。独立 Standards / Spec 复核均 0 项剩余问题，验收通过。详细证据见 [verification.md](../verification.md)。
