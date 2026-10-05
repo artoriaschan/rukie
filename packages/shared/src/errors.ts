@@ -38,6 +38,16 @@ export interface UserVisibleErrorParams {
   "hook-compaction-blocked": { reason: string };
   "hook-continuation-limit": { event: string; limit: string };
   "hook-project-untrusted": { source: string };
+  "goal-child-session": Record<string, never>;
+  "goal-busy": Record<string, never>;
+  "goal-objective-empty": Record<string, never>;
+  "goal-rounds-invalid": Record<string, never>;
+  "goal-exists": Record<string, never>;
+  "goal-missing": Record<string, never>;
+  "goal-pause-invalid": Record<string, never>;
+  "goal-complete": Record<string, never>;
+  "goal-already-armed": Record<string, never>;
+  "goal-round-limit": Record<string, never>;
   "hook-config-invalid": { source: string; cause: string };
 }
 

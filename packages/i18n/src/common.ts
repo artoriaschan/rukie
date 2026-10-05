@@ -18,6 +18,17 @@ const modelExample = `{
 }`;
 
 const zh = {
+  "error.goal-child-session": "仅顶层会话可使用 Goal。",
+  "error.goal-busy": "请在会话空闲时操作 Goal。",
+  "error.goal-objective-empty": "Goal 目标不能为空。",
+  "error.goal-rounds-invalid": "Goal 轮次上限必须为正整数。",
+  "error.goal-exists": "已有未完成的 Goal，请先 edit 或 clear。",
+  "error.goal-missing": "当前会话没有 Goal。",
+  "error.goal-pause-invalid": "只有 active Goal 可以暂停。",
+  "error.goal-complete": "已完成的 Goal 无法恢复，请新建 Goal。",
+  "error.goal-already-armed": "Goal 已在自动续跑。",
+  "error.goal-round-limit": "Goal 已达轮次上限，请 edit 或新建 Goal。",
+
   "permission-mode.ask.name": "询问",
   "permission-mode.ask.description": "只读工具直接允许，其余请求批准",
   "permission-mode.ask.compact": "非只读需批准",
@@ -80,6 +91,17 @@ ${modelExample}`,
 } as const satisfies Record<`error.${UserVisibleErrorCode}`, string> & Record<string, string>;
 
 const en = {
+  "error.goal-child-session": "Goals are only available in top-level Sessions.",
+  "error.goal-busy": "Goal operation requires an idle Session.",
+  "error.goal-objective-empty": "Goal objective cannot be empty.",
+  "error.goal-rounds-invalid": "Goal maxRounds must be a positive integer.",
+  "error.goal-exists": "An unfinished Goal already exists. Use edit or clear first.",
+  "error.goal-missing": "No Goal exists in this Session.",
+  "error.goal-pause-invalid": "Only an active Goal can be paused.",
+  "error.goal-complete": "A complete Goal cannot be resumed. Create a new Goal.",
+  "error.goal-already-armed": "Goal continuation is already armed.",
+  "error.goal-round-limit": "Goal has reached its round limit. Edit or create a new Goal.",
+
   "permission-mode.ask.name": "Ask",
   "permission-mode.ask.description": "Read-only tools are allowed; other tools require approval",
   "permission-mode.ask.compact": "Other tools need approval",
