@@ -37,4 +37,5 @@
 - 用户实际启动时遇到 `file-history` 尚未创建触发的 `ENOENT` warning。此前“缺失目录也告警”的验收与实现记录由本次更正取代：从未产生备份的新建和恢复 Session 均应静默跳过，不提前创建备份目录。
 - 产品改动仅在顶层 `readdir` 的 catch 中忽略 `ENOENT`；`ENOTDIR` 等真实读取失败和删除失败仍经 `onWarning` 告警。30 天边界、当前 Session 保护及其他目录清理行为不变。
 - 公开 `createSession` + `fakeModel` 回归先更新原缺目录用例取得 red：4 pass / 1 fail，失败包含用户所见的同一 `ENOENT` warning；加入最小修复后 5 pass / 0 fail。再补充 resume 无备份和真实 `ENOTDIR`，清理 e2e 最终 7 pass / 0 fail，26 expect；`bunx tsc -b` exit 0。
-- 独立 Standards / Spec 审查与最终完整检查证据将在完成后补充。
+- 实现提交 `ff0cd38d89eded66018fd279b5d6a85a5127ef65`，固定审查点 `26f353c3afd773c96a43383acfe06681ba5cb560`；两个独立审查代理分别执行 Standards / Spec 轴。Standards：0 hard violations / 0 actionable possible smells，公开入口测试、概念模块边界及追加工单历史符合仓库约定；Spec：0 missing / 0 scope creep / 0 incorrect，确认顶层 `ENOENT` 静默、无目录创建、其他失败 warning 和既有保留规则完整。
+- 对该实现提交执行一次完整检查：隔离临时 HOME 下 `env -u NO_COLOR caffeinate -is bun run check` exit 0，1564 pass / 0 fail、8092 expect、114 files；日志 `/tmp/neant-cleanup-enoent-fullcheck.log`。检查后仅追加本条审查与验证证据，产品源码和测试未再改动。
