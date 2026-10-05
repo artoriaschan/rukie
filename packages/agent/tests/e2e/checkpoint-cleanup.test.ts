@@ -78,7 +78,7 @@ test("resuming an expired Session preserves its backups and can still rewind its
   expect(warnings).toEqual([]);
 });
 
-test("a missing backup directory emits a warning and the Session can still run", async () => {
+test("a new Session without backups starts silently and does not create backup storage", async () => {
   dirs = await tempDirs({ fileHistory: false });
   const warnings: string[] = [];
   const session = await createSession({
@@ -87,11 +87,63 @@ test("a missing backup directory emits a warning and the Session can still run",
     onWarning: (warning) => warnings.push(warning),
   });
   sessions.push(session);
+  expect(warnings).toEqual([]);
+  await expect(access(join(dirs.homeDir, ".neant", "file-history"))).rejects.toMatchObject({
+    code: "ENOENT",
+  });
+  await session.run("hello");
+  expect(session.messages.at(-1)).toMatchObject({ role: "assistant" });
+  await expect(access(join(dirs.homeDir, ".neant", "file-history"))).rejects.toMatchObject({
+    code: "ENOENT",
+  });
+});
+
+test("resuming a Session without backups starts silently and does not create backup storage", async () => {
+  dirs = await tempDirs({ fileHistory: false });
+  const original = await createSession({
+    ...dirs,
+    ...fakeModel([fauxAssistantMessage("ready")]),
+    onWarning() {},
+  });
+  sessions.push(original);
+  await original.run("hello");
+  await original.dispose();
+  sessions.pop();
+  const warnings: string[] = [];
+  const resumed = await createSession({
+    ...dirs,
+    ...fakeModel([fauxAssistantMessage("resumed")]),
+    resumeId: original.id,
+    onWarning: (warning) => warnings.push(warning),
+  });
+  sessions.push(resumed);
+  expect(resumed.id).toBe(original.id);
+  expect(warnings).toEqual([]);
+  await expect(access(join(dirs.homeDir, ".neant", "file-history"))).rejects.toMatchObject({
+    code: "ENOENT",
+  });
+  await resumed.run("continue");
+  expect(resumed.messages.at(-1)).toMatchObject({ role: "assistant" });
+  await expect(access(join(dirs.homeDir, ".neant", "file-history"))).rejects.toMatchObject({
+    code: "ENOENT",
+  });
+});
+
+test("an invalid backup directory warns without preventing the Session from running", async () => {
+  dirs = await tempDirs({ fileHistory: false });
+  const history = join(dirs.homeDir, ".neant", "file-history");
+  await Bun.write(history, "not a directory");
+  const warnings: string[] = [];
+  const session = await createSession({
+    ...dirs,
+    ...fakeModel([fauxAssistantMessage("ready")]),
+    onWarning: (warning) => warnings.push(warning),
+  });
+  sessions.push(session);
   expect(warnings).toEqual([
-    expect.stringContaining(
-      `Checkpoint backup cleanup failed for ${join(dirs.homeDir, ".neant", "file-history")}`,
-    ),
+    expect.stringContaining(`Checkpoint backup cleanup failed for ${history}: Error: ENOTDIR`),
   ]);
+  expect(await Bun.file(history).text()).toBe("not a directory");
   await session.run("hello");
   expect(session.messages.at(-1)).toMatchObject({ role: "assistant" });
 });

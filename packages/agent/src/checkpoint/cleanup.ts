@@ -19,6 +19,7 @@ export async function cleanupExpiredBackups({
   try {
     entries = await readdir(history, { withFileTypes: true });
   } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
     onWarning(`Checkpoint backup cleanup failed for ${history}: ${error}`);
     return;
   }

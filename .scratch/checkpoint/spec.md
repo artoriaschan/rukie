@@ -96,7 +96,7 @@ agent 改坏了文件、或者我想换个说法重问时，只能手动 `git ch
   - 随后在内存中按新分支重建 messages、Tool State（todo、plan、goal、checkpoint 等）与 compaction 状态，发出对应状态事件，等价于对该点做一次 resume，但不新建 Session。
   - 目标在 compaction 之前也可回，新分支上不含之后的摘要。
   - 两者都回时，先回代码再回对话：代码失败则对话不动。
-- **清理**：`createSession` 启动时删除 `~/.neant/file-history/` 下 mtime 超过 30 天的 session 目录。失败只发 warning。
+- **清理**：`createSession` 启动时删除 `~/.neant/file-history/` 下 mtime 超过 30 天的 session 目录。备份目录尚不存在（`ENOENT`）时静默跳过，不为清理创建目录；其他读取或删除失败只发 warning。
 - **TUI（照 dsh-TUI `RewindPicker`，界面、样式、交互均参照之）**：
   - **触发**：仅 session 空闲、输入框为空时生效。第一次 Esc 开 3000ms 窗口，并显示 notice "Press Esc again to rewind"（i18n）；窗口内第二次 Esc 打开面板。没有可回退的 prompt 时，只提示 "Nothing to rewind yet"。输入框有内容时 Esc 照旧清空；run 中 Esc 照旧中止。有挂起交互（审批、提问、plan 评审）时不触发。
   - **布局**：新增 app 组件 `rewind-picker`（③层，props only），停靠在输入框上方的面板槽位，不全屏；与 dsh-TUI 的实际 OverlayAbove 挂载方向一致，Neant 用 flow 布局保持 Todo / child 面板共存。外框用 design-system 的 `Divider` 顶线，取 permission 色。标题 "Rewind" 用 remember 色加粗；副标题 dim，文案 "Pick a message to rewind to"。

@@ -7,7 +7,7 @@
 **Status:** resolved
 
 - [x] 超过 30 天的目录被删，30 天内的保留，当前 session 目录不受影响
-- [x] 目录不存在或删除失败时只经 `onWarning` 告警
+- [x] 备份目录尚不存在时静默跳过、不创建目录；其他读取或删除失败只经 `onWarning` 告警
 - [x] 清理不阻塞会话创建的正确性（可异步，但测试可等待其完成）
 - [x] e2e 测试：预置旧 mtime 目录验证
 
@@ -31,3 +31,10 @@
 - Spec 审查代理独立重跑清理 e2e：5 pass / 0 fail，16 expect。
 - 实现后的最终完整检查为 1488 pass / 0 fail，7664 expect，112 files，exit 0；本次收尾仅更新工单状态和审查证据，未修改实现。
 - 工单验收项全部完成，状态置为 resolved；分支集成与 worktree 清理由父代理统一执行。
+
+### Missing backup directory correction — 2026-10-05
+
+- 用户实际启动时遇到 `file-history` 尚未创建触发的 `ENOENT` warning。此前“缺失目录也告警”的验收与实现记录由本次更正取代：从未产生备份的新建和恢复 Session 均应静默跳过，不提前创建备份目录。
+- 产品改动仅在顶层 `readdir` 的 catch 中忽略 `ENOENT`；`ENOTDIR` 等真实读取失败和删除失败仍经 `onWarning` 告警。30 天边界、当前 Session 保护及其他目录清理行为不变。
+- 公开 `createSession` + `fakeModel` 回归先更新原缺目录用例取得 red：4 pass / 1 fail，失败包含用户所见的同一 `ENOENT` warning；加入最小修复后 5 pass / 0 fail。再补充 resume 无备份和真实 `ENOTDIR`，清理 e2e 最终 7 pass / 0 fail，26 expect；`bunx tsc -b` exit 0。
+- 独立 Standards / Spec 审查与最终完整检查证据将在完成后补充。
