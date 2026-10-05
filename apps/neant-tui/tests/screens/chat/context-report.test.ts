@@ -58,13 +58,36 @@ for (const [columns, window, gridColumns, gridRows] of [
 }
 
 test("context reports during a Run stay local and keep their original provider totals after later responses", async () => {
-  const app = await start([], { rows: 60, env: { LANG: "en_US.UTF-8" } });
+  const stopping = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<Response>();
+  let held = true;
+  const server = Bun.serve({
+    port: 0,
+    fetch: () => {
+      if (!held) return Response.json({});
+      held = false;
+      stopping.resolve();
+      return release.promise;
+    },
+  });
+  const app = await start([], {
+    rows: 60,
+    env: { LANG: "en_US.UTF-8" },
+    session: {
+      settings: { hooks: { Stop: [{ hooks: [{ type: "http", url: server.url.href }] }] } },
+    },
+  });
   try {
     await app.waitFor(() => screen(app).includes("╭"));
     app.stdin.write("first question\r");
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.finish(700, 2, { read: 30, write: 20 });
+    await stopping.promise;
     await app.waitFor(() => screen(app).includes("0.6%"));
+    // Provider totals are already visible while Stop still owns the Run.
+    expect(app.isWorking()).toBe(true);
+    release.resolve(Response.json({}));
+    await app.waitFor(() => !app.isWorking());
     app.stdin.write("second question\r");
     await app.waitFor(() => app.calls.length === 2);
     app.stdin.write("/context\r");
@@ -72,6 +95,7 @@ test("context reports during a Run stay local and keep their original provider t
     expect(app.calls).toHaveLength(2);
     app.calls[1]!.finish(1200, 2);
     await app.waitFor(() => screen(app).includes("0.9%"));
+    await app.waitFor(() => !app.isWorking());
     expect(screen(app)).toContain("750/128,000 tokens");
     app.stdin.write("/context\r");
     await app.waitFor(() => screen(app).includes("1,200/128,000 tokens"));
@@ -82,7 +106,9 @@ test("context reports during a Run stay local and keep their original provider t
     expect(JSON.stringify(app.calls[2]!.context)).not.toContain("750/128,000");
     app.calls[2]!.finish();
   } finally {
+    release.resolve(Response.json({}));
     await app.cleanup();
+    server.stop(true);
   }
 });
 
