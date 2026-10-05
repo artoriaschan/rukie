@@ -647,6 +647,7 @@ async function createSessionInternal(
           agentType: type.name,
           permissions: permissionConfiguration,
           plan,
+          checkpoint,
           toolNames:
             type.tools ??
             agent.state.tools
