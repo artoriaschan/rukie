@@ -30,4 +30,4 @@ Blocked by: None
 
 Out of scope：`@路径` 文件提及；sixel 与 iTerm2 协议；sharp 缩放与非 PNG 缩略图；Headless `--image`；Windows 剪贴板。
 
-Spec：[图片输入 spec](../../image-input/spec.md)（ready-for-agent）。
+Spec：[图片输入 spec](../../image-input/spec.md)（resolved）。2026-10-06：01–08 全部实现于 `codex/image-input`；[双轴审查与最终验收](../../image-input/review.md)记录修复、2095 tests / 0 fail 和 macOS 剪贴板证据。
