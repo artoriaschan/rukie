@@ -852,9 +852,9 @@ async function createSessionInternal(
       (message): message is Extract<AgentMessage, { role: "system-reminder" }> =>
         message.role === "system-reminder" && message.source === "file-changes",
     )?.content,
-    async persist(snapshot) {
+    async persist(snapshot, reminder) {
       if (!activeStore) throw new Error("Tool State writes require an active Run.");
-      const value = await toolState.set("file-tracking", snapshot, activeStore, context);
+      const value = await toolState.set("file-tracking", snapshot, activeStore, context, reminder);
       await emitRunEvent?.({ type: "tool_state_changed", name: "file-tracking", value });
     },
   });
@@ -1163,6 +1163,8 @@ async function createSessionInternal(
       onStart: (tokensBefore) => emit({ type: "compaction_start", trigger, tokensBefore }),
     });
     if (!compacted) return false;
+    // The summary request consumed the prior batch; post-compaction reports belong to the next request.
+    fileTracking.finishRequest();
     await target.mutate(async (mutator) => {
       const tip = await mutator.getValue(branchTip("main"), context);
       if (!tip) throw new Error("Session has no main branch.");
@@ -1191,9 +1193,8 @@ async function createSessionInternal(
       includeEnvironment: false,
     });
     for (const reminder of reminders) {
-      await branch.appendMessage(reminder, context);
-      if (reminder.source === "file-changes")
-        await fileTracking.acknowledgeReminder(reminder.content);
+      if (reminder.source === "file-changes") await fileTracking.persistReminder(reminder);
+      else await branch.appendMessage(reminder, context);
       transcriptMessages.push(reminder);
       await emit({
         type: "reminder_injected",
@@ -1922,9 +1923,9 @@ async function createSessionInternal(
                 if (!changed.length && !pendingAsyncContexts.length)
                   return contextChanged ? { context: requestContext } : undefined;
                 for (const reminder of changed) {
-                  await branch.appendMessage(reminder, context);
                   if (reminder.source === "file-changes")
-                    await fileTracking.acknowledgeReminder(reminder.content);
+                    await fileTracking.persistReminder(reminder);
+                  else await branch.appendMessage(reminder, context);
                   transcriptMessages.push(reminder);
                   await emit({
                     type: "reminder_injected",
@@ -1979,22 +1980,36 @@ async function createSessionInternal(
               if (event.message.role === "user") userMessageSequence++;
               rewakeSteering.delete(event.message);
               subagents.delivered(event.message);
-              const entryId = await branch.appendMessage(event.message, context);
               if (
                 event.message.role === "system-reminder" &&
                 event.message.source === "file-changes"
-              )
-                await fileTracking.acknowledgeReminder(event.message.content);
+              ) {
+                try {
+                  await fileTracking.persistReminder(event.message);
+                } catch (error) {
+                  // pi reduces message_end before listeners; undurable input must not survive a retry.
+                  agent.state.messages = agent.state.messages.filter(
+                    (message) => message !== event.message,
+                  );
+                  throw error;
+                }
+              } else {
+                const entryId = await branch.appendMessage(event.message, context);
+                if (
+                  event.message === userPrompt &&
+                  source === "user" &&
+                  !internal.parentSessionId
+                ) {
+                  promptTexts.set(entryId, prompt);
+                  await checkpoint?.start(entryId);
+                  await sessionTitle.firstPrompt(prompt);
+                }
+              }
               if (
                 event.message.role === "system-reminder" &&
                 event.message.source === "session-resume"
               )
                 recoveryPending = false;
-              if (event.message === userPrompt && source === "user" && !internal.parentSessionId) {
-                promptTexts.set(entryId, prompt);
-                await checkpoint?.start(entryId);
-                await sessionTitle.firstPrompt(prompt);
-              }
               transcriptMessages.push(event.message);
               if (event.message.role === "system-reminder") {
                 await emit({

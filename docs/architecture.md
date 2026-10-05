@@ -113,7 +113,7 @@ Compaction 在请求前自动检查，也可由空闲 Session 手动执行。它
 
 当前分支包含消息、compaction 和自定义 Tool State 记录。Tool State 按名称与版本校验完整快照，重放时取该分支最后一条有效值；无效记录告警并跳过。Todo、Goal、计划状态、模型选择和子代理身份等通过这条路径恢复，Permission Mode 与临时 session allow 规则保留在内存中。Goal 是否正在自动续跑只保留在内存中；Session Resume 与对话 Rewind 恢复目标和轮次但不会自动开跑。未完成 Goal 通过 Tool State reminder 进入模型上下文，Compaction 后重新注入。
 
-文件跟踪通过 Tool State 保存路径、元数据、内容 hash 与是否需要重读，不保存文件内容。Session Resume 重建跟踪集，之后发现的外部变化仅提示路径并要求重读。外部变化的 System Reminder 写入 Transcript 后才提交对应的新基线或删除记录；此前保存旧基线与保守的过期标记。快照或提醒保存失败时仍拒绝覆盖未确认的文件，未送达的变化可在同进程重试或 Session Resume 后再次检测，存储错误向调用方传播。
+文件跟踪通过 Tool State 保存路径、元数据、内容 hash 与是否需要重读，不保存文件内容。Session Resume 重建跟踪集，之后发现的外部变化仅提示路径并要求重读。外部变化的 System Reminder 与对应的最终基线或删除记录，在同一次原生存储事务中提交；此前保存旧基线与保守的过期标记。事务失败时保留未送达的变化用于重试，清除 pi 内存中未落盘的提醒并释放其预算；存储错误向调用方传播，仍拒绝覆盖未确认的文件。请求预算在实际 Compaction 模型请求完成后重置，未发生压缩时不重置。
 
 Compaction 保留当前进程的文件跟踪集与已知内容，后续变化仍可生成 diff；已报告的文件变化事件不因压缩重新注入。对话 Rewind 同步恢复文件跟踪的 Tool State，只保留 hash 与恢复快照一致的内存内容；只恢复代码时，保留的对话会在下一次模型请求获知文件变化。每个子 Session 独立跟踪其读写；子代理对父 Session 已跟踪文件的写入，由父 Session 在下一次请求前检测。
 

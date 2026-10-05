@@ -30,6 +30,7 @@ const changes = (events: SessionEvent[]) =>
 function failingFileTrackingStore() {
   const base = createJsonlStore(dirs);
   let failure: "snapshot" | "reminder" | undefined;
+  let skip = 0;
   const store: SessionStore = {
     ...base,
     async open(...args) {
@@ -37,6 +38,19 @@ function failingFileTrackingStore() {
       const mutate: typeof saved.mutate = (work, context) =>
         saved.mutate((mutation) => {
           const commit: typeof mutation.commit = (writes, context) => {
+            if (
+              failure === "reminder" &&
+              writes.some(
+                (write) =>
+                  write.kind === "entry" &&
+                  write.entry.type === "message" &&
+                  write.entry.message.role === "system-reminder" &&
+                  write.entry.message.source === "file-changes",
+              )
+            ) {
+              failure = undefined;
+              throw new Error("File change reminder storage failed");
+            }
             if (
               failure === "snapshot" &&
               writes.some(
@@ -46,6 +60,7 @@ function failingFileTrackingStore() {
                   write.entry.customType === "tool-state/file-tracking",
               )
             ) {
+              if (skip-- > 0) return mutation.commit(writes, context);
               failure = undefined;
               throw new Error("File tracking snapshot storage failed");
             }
@@ -62,32 +77,9 @@ function failingFileTrackingStore() {
             context,
           );
         }, context);
-      const branch: typeof saved.branch = async (...args) => {
-        const branch = await saved.branch(...args);
-        if (!branch) return branch;
-        const appendMessage: typeof branch.appendMessage = (message, context) => {
-          if (
-            failure === "reminder" &&
-            message.role === "system-reminder" &&
-            message.source === "file-changes"
-          ) {
-            failure = undefined;
-            throw new Error("File change reminder storage failed");
-          }
-          return branch.appendMessage(message, context);
-        };
-        return new Proxy(branch, {
-          get(target, key) {
-            if (key === "appendMessage") return appendMessage;
-            const value = Reflect.get(target, key);
-            return typeof value === "function" ? value.bind(target) : value;
-          },
-        });
-      };
       return new Proxy(saved, {
         get(target, key) {
           if (key === "mutate") return mutate;
-          if (key === "branch") return branch;
           const value = Reflect.get(target, key);
           return typeof value === "function" ? value.bind(target) : value;
         },
@@ -96,11 +88,221 @@ function failingFileTrackingStore() {
   };
   return {
     store,
-    failNext: (kind: typeof failure) => {
+    failNext: (kind: typeof failure, skipCount = 0) => {
       failure = kind;
+      skip = skipCount;
     },
   };
 }
+
+test.each([{ add: true }, { add: false }])(
+  "a UTF-8 BOM-only change appears in the diff (add: $add)",
+  async ({ add }) => {
+    dirs = await tempDirs();
+    const path = join(dirs.cwd, "file.txt");
+    await Bun.write(path, add ? "text\n" : "\ufefftext\n");
+    const fake = fakeModel([
+      call("read", { path: "file.txt" }),
+      fauxAssistantMessage("read"),
+      fauxAssistantMessage("noticed"),
+    ]);
+    const session = await createSession({ ...dirs, ...fake });
+    await session.run("read");
+    await changeFile(path, add ? "\ufefftext\n" : "text\n");
+    const events: SessionEvent[] = [];
+    await session.run("notice", {
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+    expect(changes(events)).toMatchObject([
+      {
+        content: expect.stringContaining(add ? "-text\n+\ufefftext\n" : "-\ufefftext\n+text\n"),
+      },
+    ]);
+    expect(JSON.stringify(fake.contexts.at(-1))).toContain(add ? "+\ufefftext" : "-\ufefftext");
+  },
+);
+
+test.each([
+  { kind: "diff", resume: false },
+  { kind: "diff", resume: true },
+  { kind: "path-only", resume: false },
+  { kind: "path-only", resume: true },
+  { kind: "deletion", resume: false },
+  { kind: "deletion", resume: true },
+])(
+  "a final snapshot failure cannot duplicate a $kind reminder (resume: $resume)",
+  async ({ kind, resume }) => {
+    dirs = await tempDirs();
+    const path = join(dirs.cwd, "file.txt");
+    await Bun.write(path, "before\n");
+    const faulty = failingFileTrackingStore();
+    let fake = fakeModel([
+      call("read", { path: "file.txt" }),
+      fauxAssistantMessage("read"),
+      fauxAssistantMessage("noticed"),
+      fauxAssistantMessage("done"),
+    ]);
+    const session = await createSession({ ...dirs, store: faulty.store, ...fake });
+    await session.run("read");
+    if (kind === "deletion") await rm(path);
+    else
+      await changeFile(
+        path,
+        kind === "path-only" ? "large external change\n".repeat(250) : "external\n",
+      );
+    faulty.failNext("snapshot", 1);
+    await expect(session.run("notice")).rejects.toThrow("File tracking snapshot storage failed");
+    if (resume) {
+      await session.dispose();
+      fake = fakeModel([fauxAssistantMessage("noticed"), fauxAssistantMessage("done")]);
+    }
+    const retried = resume
+      ? await createSession({ ...dirs, ...fake, resumeId: session.id })
+      : session;
+    const events: SessionEvent[] = [];
+    await retried.run("retry", {
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+    const firstContext = JSON.stringify(fake.contexts.at(-1));
+    expect(firstContext.split("The following files were modified since").length - 1).toBe(1);
+    expect(firstContext).toContain("file.txt");
+    const report =
+      kind === "deletion"
+        ? "Deleted: file.txt"
+        : kind === "diff" && !resume
+          ? "-before\n+external"
+          : "Externally modified: file.txt.";
+    expect(changes(events)).toMatchObject([{ content: expect.stringContaining(report) }]);
+    events.length = 0;
+    await retried.run("continue", {
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+    expect(changes(events)).toHaveLength(0);
+  },
+);
+
+test.each([{ during: "request preparation" }, { during: "compaction" }])(
+  "a final snapshot rejected during $during resumes with one report",
+  async ({ during }) => {
+    dirs = await tempDirs();
+    const path = join(dirs.cwd, "file.txt");
+    await Bun.write(path, "before\n");
+    const faulty = failingFileTrackingStore();
+    const fake = fakeModel([
+      call("read", { path: "file.txt" }),
+      during === "compaction"
+        ? fauxAssistantMessage("read")
+        : async () => {
+            await changeFile(path, "external\n");
+            faulty.failNext("snapshot", 1);
+            return call("bash", { command: "true" });
+          },
+      fauxAssistantMessage("summary"),
+    ]);
+    const session = await createSession({
+      ...dirs,
+      ...fake,
+      store: faulty.store,
+      permissionMode: "full-access",
+    });
+    const failedEvents: SessionEvent[] = [];
+    if (during === "compaction") {
+      await session.run("read");
+      await changeFile(path, "external\n");
+      faulty.failNext("snapshot", 1);
+      const unsubscribe = session.subscribe((event) => {
+        failedEvents.push(event);
+      });
+      await expect(session.compact()).rejects.toThrow("File tracking snapshot storage failed");
+      unsubscribe();
+    } else {
+      await expect(
+        session.run("read then notice", {
+          onEvent: (event) => {
+            failedEvents.push(event);
+          },
+        }),
+      ).rejects.toThrow("File tracking snapshot storage failed");
+    }
+    expect(changes(failedEvents)).toHaveLength(0);
+    await session.dispose();
+    const next = fakeModel([fauxAssistantMessage("noticed"), fauxAssistantMessage("done")]);
+    const resumed = await createSession({ ...dirs, ...next, resumeId: session.id });
+    const events: SessionEvent[] = [];
+    await resumed.run("retry", {
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+    expect(changes(events)).toMatchObject([
+      { content: expect.stringContaining("Externally modified: file.txt.") },
+    ]);
+    expect(
+      JSON.stringify(next.contexts[0]).split("The following files were modified since").length - 1,
+    ).toBe(1);
+    events.length = 0;
+    await resumed.run("continue", {
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+    expect(changes(events)).toHaveLength(0);
+  },
+);
+
+test("a completed compaction request releases the file budget before reporting deferred changes", async () => {
+  dirs = await tempDirs();
+  const names = Array.from({ length: 90 }, (_, index) => `file-${index}-${"x".repeat(160)}.txt`);
+  for (const name of names) await Bun.write(join(dirs.cwd, name), "before\n");
+  const fake = fakeModel([
+    fauxAssistantMessage(
+      names.map((path) => fauxToolCall("read", { path })),
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage("read"),
+    fauxAssistantMessage("File knowledge summary."),
+    fauxAssistantMessage("noticed"),
+  ]);
+  const session = await createSession({ ...dirs, ...fake });
+  await session.run("read");
+  for (const name of names)
+    await changeFile(join(dirs.cwd, name), "large external change\n".repeat(250));
+  fake.model.contextWindow = 6000;
+  const events: SessionEvent[] = [];
+  await session.run("notice", {
+    onEvent: (event) => {
+      events.push(event);
+    },
+  });
+  expect(events.some((event) => event.type === "compaction_end")).toBe(true);
+  const reports = changes(events);
+  expect(reports).toHaveLength(2);
+  for (const name of names) {
+    expect(
+      reports.filter(
+        (event) =>
+          event.type === "reminder_injected" &&
+          event.content.includes(`Externally modified: ${name}.`),
+      ),
+    ).toHaveLength(1);
+  }
+  for (const event of reports) {
+    if (event.type !== "reminder_injected") throw new Error("Missing file changes reminder");
+    expect(event.content.length).toBeLessThanOrEqual(16000);
+  }
+  const deferred = reports[1];
+  if (deferred?.type !== "reminder_injected")
+    throw new Error("Missing deferred file changes reminder");
+  expect(JSON.stringify(fake.contexts.at(-1))).toContain(
+    JSON.stringify(deferred.content).slice(1, -1),
+  );
+});
 
 test("a rejected detection snapshot propagates its error and retries the unseen change", async () => {
   dirs = await tempDirs();
@@ -168,6 +370,10 @@ test.each([{ resume: false }, { resume: true }])(
       { content: expect.stringContaining("Deleted: file.txt") },
     ]);
     expect(JSON.stringify(fake.contexts.at(-1))).toContain("Deleted: file.txt");
+    expect(
+      JSON.stringify(fake.contexts.at(-1)).split("The following files were modified since").length -
+        1,
+    ).toBe(1);
     events.length = 0;
     await retried.run("continue", {
       onEvent: (event) => {
@@ -238,6 +444,10 @@ test.each([
       pathOnly ? "Externally modified: file.txt." : "+external",
     );
     expect(
+      JSON.stringify(fake.contexts.at(-2)).split("The following files were modified since").length -
+        1,
+    ).toBe(1);
+    expect(
       retried.messages.findLast(
         (message) => message.role === "toolResult" && message.toolName === "edit",
       ),
@@ -265,41 +475,49 @@ test.each([
   },
 );
 
-test("a rejected prompt reminder releases its near-full request budget for the next Run", async () => {
-  dirs = await tempDirs();
-  const names = Array.from({ length: 90 }, (_, index) => `file-${index}-${"x".repeat(160)}.txt`);
-  for (const name of names) await Bun.write(join(dirs.cwd, name), "before\n");
-  const faulty = failingFileTrackingStore();
-  const session = await createSession({
-    ...dirs,
-    store: faulty.store,
-    ...fakeModel([
-      fauxAssistantMessage(
-        names.map((path) => fauxToolCall("read", { path })),
-        { stopReason: "toolUse" },
-      ),
-      fauxAssistantMessage("read"),
-      fauxAssistantMessage("noticed"),
-    ]),
-  });
-  await session.run("read");
-  for (const name of names)
-    await changeFile(join(dirs.cwd, name), "large external change\n".repeat(250));
-  faulty.failNext("reminder");
-  await expect(session.run("notice")).rejects.toThrow("File change reminder storage failed");
-  const events: SessionEvent[] = [];
-  await session.run("retry", {
-    onEvent: (event) => {
-      events.push(event);
-    },
-  });
-  expect(changes(events)).toHaveLength(1);
-  const reminder = changes(events)[0];
-  if (reminder?.type !== "reminder_injected") throw new Error("Missing file changes reminder");
-  expect(reminder.content).toContain(`Externally modified: ${names[0]}.`);
-  expect(reminder.content.length).toBeGreaterThan(15000);
-  expect(reminder.content.length).toBeLessThanOrEqual(16000);
-});
+test.each([{ during: "prompt" }, { during: "manual compaction" }])(
+  "a reminder rejected during $during releases its near-full budget for the next Run",
+  async ({ during }) => {
+    dirs = await tempDirs();
+    const names = Array.from({ length: 90 }, (_, index) => `file-${index}-${"x".repeat(160)}.txt`);
+    for (const name of names) await Bun.write(join(dirs.cwd, name), "before\n");
+    const faulty = failingFileTrackingStore();
+    const session = await createSession({
+      ...dirs,
+      store: faulty.store,
+      ...fakeModel([
+        fauxAssistantMessage(
+          names.map((path) => fauxToolCall("read", { path })),
+          { stopReason: "toolUse" },
+        ),
+        fauxAssistantMessage("read"),
+        ...(during === "manual compaction"
+          ? [fauxAssistantMessage("File knowledge summary.")]
+          : []),
+        fauxAssistantMessage("noticed"),
+      ]),
+    });
+    await session.run("read");
+    for (const name of names)
+      await changeFile(join(dirs.cwd, name), "large external change\n".repeat(250));
+    faulty.failNext("reminder");
+    await expect(during === "prompt" ? session.run("notice") : session.compact()).rejects.toThrow(
+      "File change reminder storage failed",
+    );
+    const events: SessionEvent[] = [];
+    await session.run("retry", {
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+    expect(changes(events)).toHaveLength(1);
+    const reminder = changes(events)[0];
+    if (reminder?.type !== "reminder_injected") throw new Error("Missing file changes reminder");
+    expect(reminder.content).toContain(`Externally modified: ${names[0]}.`);
+    expect(reminder.content.length).toBeGreaterThan(15000);
+    expect(reminder.content.length).toBeLessThanOrEqual(16000);
+  },
+);
 
 test("a snapshot saved before a rejected reminder never allows an unseen diff to be overwritten after resume", async () => {
   dirs = await tempDirs();

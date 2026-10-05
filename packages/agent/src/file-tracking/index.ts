@@ -1,4 +1,4 @@
-import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { AgentMessage, AgentTool } from "@earendil-works/pi-agent-core";
 import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
@@ -57,7 +57,7 @@ interface TrackedFile {
 function textContent(bytes: Uint8Array): string | undefined {
   if (bytes.includes(0)) return undefined;
   try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
   } catch {
     return undefined;
   }
@@ -82,11 +82,14 @@ export function createFileTracking(
   options: {
     initialState?: unknown;
     previousReminder?: string;
-    persist: (snapshot: TrackingSnapshot) => Promise<void>;
+    persist: (
+      snapshot: TrackingSnapshot,
+      reminder?: Extract<AgentMessage, { role: "system-reminder" }>,
+    ) => Promise<void>;
   },
 ) {
   const files = new Map<string, TrackedFile>();
-  const acknowledgements = new Map<
+  const pendingReminders = new Map<
     string,
     Map<string, { previous: TrackedFile; current?: TrackedFile }>
   >();
@@ -94,7 +97,7 @@ export function createFileTracking(
   const restore = (snapshot: unknown) => {
     const previous = new Map(files);
     files.clear();
-    acknowledgements.clear();
+    pendingReminders.clear();
     requestRemaining = 16000;
     if (!validSnapshot(snapshot)) return;
     for (const file of snapshot.files) {
@@ -108,16 +111,22 @@ export function createFileTracking(
   restore(options.initialState);
   // Continue the event identity across resume so equal path-only reports still inject.
   let sequence = Number(options.previousReminder?.match(/^File changes \((\d+)\):/)?.[1] ?? 0);
-  const persist = (unreported?: ReadonlySet<string>) =>
-    options.persist({
-      files: Array.from(files.values(), ({ path, mtimeMs, size, hash, stale }) => ({
-        path,
-        mtimeMs,
-        size,
-        hash,
-        stale: stale || (unreported?.has(path) ?? false),
-      })),
-    });
+  const persist = (
+    unreported?: ReadonlySet<string>,
+    reminder?: Extract<AgentMessage, { role: "system-reminder" }>,
+  ) =>
+    options.persist(
+      {
+        files: Array.from(files.values(), ({ path, mtimeMs, size, hash, stale }) => ({
+          path,
+          mtimeMs,
+          size,
+          hash,
+          stale: stale || (unreported?.has(path) ?? false),
+        })),
+      },
+      reminder,
+    );
   const displayPath = (path: string) => {
     const local = relative(cwd, path);
     return local === ".." || local.startsWith("../") || isAbsolute(local) ? path : local;
@@ -240,7 +249,7 @@ export function createFileTracking(
         // Persist old hashes and paths so failed reminder delivery remains detectable after resume.
         // The conservative stale flags also protect conversation rewind from unseen diff knowledge.
         await persist(new Set(candidates.keys()));
-        acknowledgements.set(content, candidates);
+        pendingReminders.set(content, candidates);
         return content;
       } catch (error) {
         files.clear();
@@ -254,30 +263,33 @@ export function createFileTracking(
     reminderSource,
     /** Replace a Tool State projection; retain bytes only when their hash still matches. */
     restore,
-    /** Called only after the corresponding reminder is durable in the Transcript. */
-    async acknowledgeReminder(content: string) {
-      const known = acknowledgements.get(content);
-      if (!known) return;
+    /** Commit the staged knowledge and its reminder together; failures leave both undelivered. */
+    async persistReminder(reminder: Extract<AgentMessage, { role: "system-reminder" }>) {
+      const known = pendingReminders.get(reminder.content);
       const previous = new Map(files);
-      for (const [path, { previous: expected, current }] of known) {
-        // A later successful file tool must not be overwritten by an older acknowledgement.
+      for (const [path, { previous: expected, current }] of known ?? []) {
+        // A later successful file tool must not be overwritten by an older report.
         if (files.get(path) !== expected) continue;
         if (current) files.set(path, current);
         else files.delete(path);
       }
       try {
-        await persist();
-        acknowledgements.delete(content);
+        await persist(undefined, reminder);
+        pendingReminders.delete(reminder.content);
       } catch (error) {
         files.clear();
         for (const [path, file] of previous) files.set(path, file);
+        if (known) {
+          requestRemaining += reminder.content.length;
+          pendingReminders.delete(reminder.content);
+        }
         throw error;
       }
     },
     /** Prompt collection and request preparation share a budget until this request is prepared. */
     finishRequest() {
       requestRemaining = 16000;
-      acknowledgements.clear();
+      pendingReminders.clear();
     },
     /** Prepared paths include hook rewrites; reject stale writes before invoking the file tool. */
     wrapTool<T extends TSchema, D>(tool: AgentTool<T, D>): AgentTool<T, D> {

@@ -1,4 +1,5 @@
 import type { Context } from "@earendil-works/pi-agent-core/harness/context";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import {
   branchTip,
   insertEntry,
@@ -6,6 +7,7 @@ import {
   type Entry,
   type JsonValue,
   type Session,
+  type Write,
 } from "@earendil-works/pi-agent-core/harness/session";
 import type { ReminderSource } from "../reminders/index.ts";
 
@@ -77,7 +79,14 @@ export function createToolState(
     get(name: string): unknown {
       return values.get(name);
     },
-    async set(name: string, value: JsonValue, session: Session, context: Context) {
+    /** An accompanying reminder and its state become durable in one branch transaction. */
+    async set(
+      name: string,
+      value: JsonValue,
+      session: Session,
+      context: Context,
+      reminder?: Extract<AgentMessage, { role: "system-reminder" }>,
+    ) {
       const definition = registered.get(name);
       if (!definition) throw new Error(`Unknown Tool State: ${name}`);
       const parsed = definition.parse(definition.version, value);
@@ -85,19 +94,24 @@ export function createToolState(
         const tip = await mutator.getValue(branchTip("main"), context);
         if (!tip) throw new Error("Session has no main branch.");
         const id = session.idGenerator.next();
-        await mutator.commit(
-          [
-            insertEntry({
-              id,
-              parentId: tip.value,
-              type: "custom",
-              customType: `tool-state/${name}`,
-              data: { version: definition.version, value: parsed },
-            }),
-            setValue(branchTip("main"), id),
-          ],
-          context,
-        );
+        const writes: Write[] = [
+          insertEntry({
+            id,
+            parentId: tip.value,
+            type: "custom",
+            customType: `tool-state/${name}`,
+            data: { version: definition.version, value: parsed },
+          }),
+        ];
+        let finalTip = id;
+        if (reminder) {
+          finalTip = session.idGenerator.next();
+          writes.push(
+            insertEntry({ id: finalTip, parentId: id, type: "message", message: reminder }),
+          );
+        }
+        writes.push(setValue(branchTip("main"), finalTip));
+        await mutator.commit(writes, context);
       }, context);
       values.set(name, parsed);
       return parsed;
