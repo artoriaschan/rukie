@@ -8,6 +8,7 @@ import {
   type ContextReport,
 } from "@neant/shared";
 import type { TpsSample } from "../../components/status-line";
+import { goalPhasePresentation } from "../../components";
 import { reduceSubagent, restoreSubagents, type SubagentState } from "./subagents";
 import { createActivity, reduce } from "./activity/activity";
 
@@ -182,18 +183,15 @@ function goalSummary(text: string, t: ReturnType<typeof createTuiI18n>) {
     typeof goal.maxRounds !== "number"
   )
     return undefined;
-  const labels: Record<string, string> = {
-    active: "● active",
-    paused: "⏸ paused",
-    blocked: "⛔ blocked",
-    complete: "✓ complete",
-  };
-  if (!labels[goal.phase]) return undefined;
+  const phase = goal.phase;
+  if (phase !== "active" && phase !== "paused" && phase !== "blocked" && phase !== "complete")
+    return undefined;
+  const presentation = goalPhasePresentation[phase];
   const singleLine = (text: string) => text.replace(/[\r\n]+/g, " ");
   return {
     summary: `🎯 ${singleLine(goal.objective)}`,
     result:
-      `${labels[goal.phase]} · ${goal.roundsStarted}/${goal.maxRounds} · ${t(value.armed ? "goal.armed" : "goal.disarmed")}` +
+      `${presentation.glyph} ${phase} · ${goal.roundsStarted}/${goal.maxRounds} · ${t(value.armed ? "goal.armed" : "goal.disarmed")}` +
       (goal.phase === "blocked" && "blockedReason" in goal && typeof goal.blockedReason === "string"
         ? `\n⛔ ${singleLine(goal.blockedReason)}`
         : ""),

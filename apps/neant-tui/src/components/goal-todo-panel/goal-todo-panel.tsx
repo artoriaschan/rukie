@@ -28,6 +28,7 @@ import type { Locale } from "@neant/i18n";
 import { useEffect, useRef, useState } from "react";
 import { Box, ThemedBox, ThemedText } from "@neant/tui";
 import { createTuiI18n } from "../../i18n";
+import { goalPhasePresentation } from "../goal-phase";
 
 export function GoalTodoPanel({
   goal,
@@ -57,15 +58,7 @@ export function GoalTodoPanel({
   }, [goal?.id, goal?.phase]);
   const seconds = Math.max(0, Math.floor((now - (start.current?.at ?? now)) / 1000));
   const elapsed = seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m${seconds % 60}s`;
-  const color =
-    goal?.phase === "active"
-      ? "success"
-      : goal?.phase === "paused"
-        ? "warning"
-        : goal?.phase === "blocked"
-          ? "error"
-          : undefined;
-  const glyph = goal && { active: "●", paused: "⏸", blocked: "⛔", complete: "✓" }[goal.phase];
+  const phase = goal && goalPhasePresentation[goal.phase];
   const t = createTuiI18n(locale);
   const remaining = working ? todos : todos.filter((todo) => todo.status !== "completed");
   if (!goal && remaining.length === 0) return null;
@@ -100,8 +93,8 @@ export function GoalTodoPanel({
               </ThemedText>
             </Box>
             <Box marginLeft={1} flexShrink={0}>
-              <ThemedText color={color} dimColor={goal.phase === "complete"} wrap="truncate">
-                {`${glyph} ${goal.phase} · ${goal.roundsStarted}/${goal.maxRounds} · ${elapsed}`}
+              <ThemedText color={phase?.color} dimColor={phase?.dimColor} wrap="truncate">
+                {`${phase?.glyph} ${goal.phase} · ${goal.roundsStarted}/${goal.maxRounds} · ${elapsed}`}
               </ThemedText>
             </Box>
           </Box>

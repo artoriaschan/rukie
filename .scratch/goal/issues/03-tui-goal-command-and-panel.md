@@ -38,3 +38,9 @@ Post-integration verification:
 - Merged integration tip `9413a2b` (ticket 02) into `codex/goal-03`; removed duplicate bilingual activation dictionary keys from the automatic merge. Added a public live-completion tracer proving Goal state refresh, hidden wrapup input, visible assistant conclusion and disarmed status. Goal screen suite now has 13 tests / 88 assertions.
 - `rtk proxy env -u NO_COLOR bun test` over Goal screen, Goal tool cards, Todo/question/subagent composition, streaming burst/reading and statusline files: exit 0; 129 pass / 0 fail / 856 assertions across 7 files. Log: `/tmp/goal-03-postmerge-tests.log`.
 - `rtk proxy bunx --no -- tsc -b`: exit 0 after integration. Formatting and `git diff --check` also pass. Root owns the final combined aggregate check and Standards/Spec review.
+
+Review verification:
+
+- Resolved the Standards review's phase presentation duplication with one frontend-owned metadata map shared by the Goal panel, status chip and tool cards. Icons, colors, dimming and displayed text retain their existing behavior.
+- `rtk proxy env -u NO_COLOR bun test` over Goal screen, Goal tool cards, Interaction composition and both statusline suites: exit 0; 71 pass / 0 fail / 396 assertions across 5 files. Log: `/tmp/goal-review-fixes-tests.log`.
+- `rtk proxy bunx --no -- oxfmt --check`, `oxlint`, `tsc -b`, `knip` and `git diff --check`: exit 0. Root owns the final aggregate check after integration of this refactor.

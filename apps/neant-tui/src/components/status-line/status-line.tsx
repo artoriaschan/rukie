@@ -3,6 +3,7 @@ import { useState, type ReactNode } from "react";
 import { basename } from "node:path";
 import { Box, ThemedText, type ThemeColor } from "@neant/tui";
 import type { ContextUsageEvent, PermissionMode, RunResult, ThinkingLevel } from "@neant/shared";
+import { goalPhasePresentation } from "../goal-phase";
 import {
   allocateColumns,
   barWidths,
@@ -97,10 +98,9 @@ export function StatusLine(props: StatusLineProps) {
   const modeWidth = Bun.stringWidth(description.label);
   const planLabel = t("plan.chip");
   const planWidth = props.planMode ? Bun.stringWidth(planLabel) : 0;
-  const goalGlyph =
-    props.goal && { active: "●", paused: "⏸", blocked: "⛔", complete: "✓" }[props.goal.phase];
+  const goalPhase = props.goal && goalPhasePresentation[props.goal.phase];
   const goalLabel = props.goal
-    ? `${goalGlyph} ${props.goal.roundsStarted}/${props.goal.maxRounds}`
+    ? `${goalPhase?.glyph} ${props.goal.roundsStarted}/${props.goal.maxRounds}`
     : "";
   const goalWidth = Bun.stringWidth(goalLabel);
   const requiredWidth =
@@ -358,20 +358,14 @@ export function StatusLine(props: StatusLineProps) {
                     <ThemedText
                       color={
                         id === "goal"
-                          ? props.goal?.phase === "active"
-                            ? "success"
-                            : props.goal?.phase === "paused"
-                              ? "warning"
-                              : props.goal?.phase === "blocked"
-                                ? "error"
-                                : undefined
+                          ? goalPhase?.color
                           : id === "plan"
                             ? "plan"
                             : id === "mode" && props.mode === "full-access"
                               ? "error"
                               : undefined
                       }
-                      dimColor={id === "goal" && props.goal?.phase === "complete"}
+                      dimColor={id === "goal" && goalPhase?.dimColor}
                       wrap="truncate"
                     >
                       {content}
