@@ -547,7 +547,7 @@ function createViewState(session: Session, model: string, locale: Locale): ViewS
   return {
     planMode: session.planMode,
     waitingSubagents: 0,
-    subagents: restoreSubagents(session.toolState("subagents")),
+    subagents: restoreSubagents(session.toolState("subagents"), session.recovery),
     todos: (session.toolState("todo") as TodoItem[] | undefined) ?? [],
     completed: replayMessages(session.messages, t),
     tools: [],
@@ -651,9 +651,10 @@ export function createConversation(session: Session, model: string, locale: Loca
           type: "notice",
           text: [
             t("resume.subagents", { count: recovered.length }),
-            ...recovered.map(
-              (child) => `${t(`subagent.outcome.${child.outcome}`)}: ${child.description}`,
-            ),
+            ...recovered.flatMap((child) => [
+              `${t(`subagent.outcome.${child.outcome}`)}: ${child.description}`,
+              ...(child.diagnostic ? [t("resume.unconfirmed")] : []),
+            ]),
             t("resume.no-automatic-continuation"),
             t("resume.continue-guidance"),
           ].join("\n"),

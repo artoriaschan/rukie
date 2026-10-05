@@ -1,4 +1,4 @@
-import type { SessionEvent, SubagentIdentity } from "@neant/agent";
+import type { SessionEvent, SessionRecovery, SubagentIdentity } from "@neant/agent";
 import type { SubagentView } from "../../components/subagent-message";
 
 export interface SubagentState extends SubagentView {
@@ -29,8 +29,11 @@ function createRow(
   };
 }
 
-/** Durable history never creates a current Run. Unsettled and old records stay unknown. */
-export function restoreSubagents(value: unknown): Readonly<Record<string, SubagentState>> {
+/** Read-only recovery refines durable history without creating a current Run. */
+export function restoreSubagents(
+  value: unknown,
+  recovery?: SessionRecovery,
+): Readonly<Record<string, SubagentState>> {
   if (!Array.isArray(value)) return {};
   return Object.fromEntries(
     value.flatMap((row) => {
@@ -42,6 +45,9 @@ export function restoreSubagents(value: unknown): Readonly<Record<string, Subage
       )
         return [];
       const run = (row as SubagentIdentity).latestRun;
+      const observed = recovery?.history?.find(
+        (child) => child.id === row.id && child.runId === run?.id,
+      );
       return [
         [
           row.id,
@@ -49,8 +55,8 @@ export function restoreSubagents(value: unknown): Readonly<Record<string, Subage
             ...createRow(row.id, row.description, row.type, run?.startedAt ?? 0),
             completedAt: run?.endedAt,
             durationMs: run?.endedAt ? Math.max(0, run.endedAt - run.startedAt) : 0,
-            runOutcome: run?.outcome ?? "unknown",
-            runReason: run?.reason ?? run?.error,
+            runOutcome: observed?.outcome ?? run?.outcome ?? "unknown",
+            runReason: observed?.reason ?? run?.reason ?? run?.error,
           },
         ],
       ];
