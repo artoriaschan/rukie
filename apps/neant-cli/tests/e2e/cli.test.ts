@@ -6,6 +6,9 @@ import { fileURLToPath } from "node:url";
 import { SettingsSchema } from "@neant/shared";
 import { Value } from "typebox/value";
 import { fakeOpenAI, type FakeOpenAIOptions } from "../helpers/fake-openai.ts";
+import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { main } from "../../src/main.ts";
+import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 
 const MAIN = join(import.meta.dir, "../../src/main.ts");
 const cleanups: (() => unknown)[] = [];
@@ -19,6 +22,67 @@ function parseEvents(stdout: string) {
 
 afterEach(async () => {
   await Promise.all(cleanups.splice(0).map((f) => f()));
+});
+
+test.each([
+  [[], false],
+  [["--allow-tools", "web_fetch(domain:site.test)"], true],
+  [["--permission-mode", "full-access"], true],
+] as const)("Headless web_fetch permission flags %j: allowed=%s", async (flags, allowed) => {
+  const root = await mkdtemp(join(tmpdir(), "neant-cli-web-"));
+  cleanups.push(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, ".neant", "file-history"), { recursive: true });
+  const requests: string[] = [];
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch(request) {
+      requests.push(request.url);
+      return new Response("Public documentation");
+    },
+  });
+  cleanups.push(() => server.stop(true));
+  const url = `http://site.test:${server.port}/docs`;
+  const faux = createFauxCore({ api: "faux", provider: "faux" });
+  let observed = false;
+  faux.setResponses([
+    fauxAssistantMessage(fauxToolCall("web_fetch", { url }), { stopReason: "toolUse" }),
+    (context) => {
+      const result = context.messages.at(-1)!;
+      expect(result).toMatchObject({
+        role: "toolResult",
+        toolName: "web_fetch",
+        isError: !allowed,
+      });
+      expect(JSON.stringify(result)).toContain(
+        allowed ? "Public documentation" : "Tool not authorized: web_fetch",
+      );
+      observed = true;
+      return fauxAssistantMessage("done");
+    },
+  ]);
+  let stderr = "";
+  const exitCode = await main([...flags, "-p", "read docs"], {
+    readStdin: async () => "",
+    stdout: () => {},
+    stderr: (text) => {
+      stderr += text;
+    },
+    session: {
+      cwd: root,
+      homeDir: root,
+      model: faux.getModel(),
+      streamFn: withAuxiliaryRequests(faux.streamSimple),
+      webFetch: {
+        resolve: async () => [{ address: "127.0.0.1", family: 4 }],
+        allowAddresses: ["127.0.0.1"],
+      },
+    },
+  });
+  expect(exitCode).toBe(0);
+  expect(stderr).toBe("");
+  expect(observed).toBe(true);
+  expect(requests).toEqual(allowed ? [url] : []);
 });
 
 /** Temp home whose user settings point a custom provider `fake` at a fake server. */

@@ -1,6 +1,7 @@
 import { sep } from "node:path";
 import { createUserVisibleError } from "@neant/shared";
 import { analyzeBashCommand, matchesBashPattern } from "./bash.ts";
+import { parsePermissionDomain, permissionUrlDomain } from "./domain.ts";
 import { matchesPermissionPath, resolvePermissionPath } from "./path.ts";
 
 export type PermissionRule = {
@@ -11,6 +12,7 @@ export type PermissionRule = {
   | { kind: "bash-exact"; tool: "bash"; command: string }
   | { kind: "directory"; tool: "read" | "edit" | "write" | "glob" | "grep"; directory: string }
   | { kind: "bash"; tool: "bash"; pattern: string }
+  | { kind: "domain"; tool: "web_fetch"; domain: string; subdomains: boolean }
   | { kind: "path"; tool: "read" | "edit" | "write" | "glob" | "grep"; pattern: string }
 );
 
@@ -48,7 +50,13 @@ export function parsePermissionRules(
       }
       if (depth !== 0 || !pattern.trim()) fail();
       if (tool === "bash") rules.push({ decision, raw, kind: "bash", tool, pattern });
-      else if (
+      else if (tool === "web_fetch") {
+        const domain = pattern.startsWith("domain:")
+          ? parsePermissionDomain(pattern.slice("domain:".length))
+          : undefined;
+        if (!domain) fail();
+        rules.push({ decision, raw, kind: "domain", tool, ...domain! });
+      } else if (
         tool === "read" ||
         tool === "edit" ||
         tool === "write" ||
@@ -62,7 +70,7 @@ export function parsePermissionRules(
   return rules;
 }
 
-/** Rule seam: canonicalize file targets once, then match already parsed rules. */
+/** Rule seam: normalize execution targets once, then match already parsed rules. */
 export function evaluatePermissionRules({
   rules,
   toolName,
@@ -89,6 +97,7 @@ export function evaluatePermissionRules({
     typeof args.command === "string"
       ? analyzeBashCommand(args.command)
       : undefined;
+  const domain = toolName === "web_fetch" ? permissionUrlDomain(args) : undefined;
   const matchesRule = (rule: PermissionRule, command?: string): boolean =>
     rule.kind === "tool"
       ? rule.exact
@@ -96,14 +105,18 @@ export function evaluatePermissionRules({
         : new Bun.Glob(rule.pattern).match(toolName)
       : rule.kind === "bash" && command !== undefined
         ? matchesBashPattern(rule.pattern, command)
-        : rule.kind === "directory" && rule.tool === toolName && target !== undefined
-          ? target.realPath === rule.directory ||
-            target.realPath.startsWith(
-              rule.directory.endsWith(sep) ? rule.directory : `${rule.directory}${sep}`,
-            )
-          : rule.kind === "path" && rule.tool === toolName && target !== undefined
-            ? matchesPermissionPath(rule.pattern, rule.decision, target, cwd, homeDir)
-            : false;
+        : rule.kind === "domain" && toolName === rule.tool && domain !== undefined
+          ? rule.subdomains
+            ? domain.endsWith(`.${rule.domain}`)
+            : domain === rule.domain
+          : rule.kind === "directory" && rule.tool === toolName && target !== undefined
+            ? target.realPath === rule.directory ||
+              target.realPath.startsWith(
+                rule.directory.endsWith(sep) ? rule.directory : `${rule.directory}${sep}`,
+              )
+            : rule.kind === "path" && rule.tool === toolName && target !== undefined
+              ? matchesPermissionPath(rule.pattern, rule.decision, target, cwd, homeDir)
+              : false;
   for (const decision of ["deny", "ask", "allow"] as const) {
     if (decision === "allow" && bash) {
       const exact = rules.find(

@@ -100,3 +100,41 @@ test("file specifiers retain their original text for denial feedback", () => {
     { decision: "deny", kind: "path", tool: "read", pattern: "~/.ssh/**", raw: "read(~/.ssh/**)" },
   ]);
 });
+
+test.each([
+  ["web_fetch(domain:docs.python.org)", "https://docs.python.org/3/", true],
+  ["web_fetch(domain:DOCS.PYTHON.ORG.)", "https://Docs.Python.Org./3/", true],
+  ["web_fetch(domain:docs.python.org)", "https://sub.docs.python.org/", false],
+  ["web_fetch(domain:*.b)", "https://a.b/page", true],
+  ["web_fetch(domain:*.B.)", "https://A.C.B./page", true],
+  ["web_fetch(domain:*.b)", "https://b/page", false],
+  ["web_fetch(domain:*.b)", "https://notb/page", false],
+  ["web_fetch(domain:*.b)", "https://a.b.evil/page", false],
+  ["web_fetch(domain:[2606:4700:4700:0000::1111])", "https://[2606:4700:4700::1111]/", true],
+  ["web_fetch", "https://any.test/page", true],
+] as const)("web rule %s matches %s: %s", (rule, url, matches) => {
+  expect(
+    evaluatePermissionRules({
+      rules: parsePermissionRules({ allow: [rule] }),
+      toolName: "web_fetch",
+      args: { url },
+      cwd: "/project",
+      homeDir: "/home",
+    }),
+  ).toEqual(matches ? { decision: "allow", rule } : undefined);
+});
+
+test.each([
+  "web_fetch(https://site.test)",
+  "web_fetch(site.test)",
+  "web_fetch(domain:)",
+  "web_fetch(domain:*)",
+  "web_fetch(domain:foo*.test)",
+  "web_fetch(domain:site.test/path)",
+  "web_fetch(domain:site.test:80)",
+  "web_fetch(domain:user@site.test)",
+  "web_fetch(domain:site..test)",
+  "web_fetch(domain: site.test)",
+])("invalid web specifier %s fails at startup", (rule) => {
+  expect(() => parsePermissionRules({ allow: [rule] })).toThrow("invalid permission rule");
+});
