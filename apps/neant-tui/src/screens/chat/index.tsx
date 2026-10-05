@@ -206,7 +206,7 @@ function Chat({
   thinking?: ThinkingLevel;
   locale: Locale;
   onExit(): void;
-  models: readonly { spec: string; name: string }[];
+  models: Readonly<ReturnType<typeof listModels>>;
   sessions(): Promise<SessionSummary[]>;
   skills: readonly { name: string; description: string }[];
   replaceSession(resumeId?: string): Promise<void>;
@@ -231,6 +231,21 @@ function Chat({
     imageNoticeTimer.current = setTimeout(() => setImageNotice(undefined), warning ? 5000 : 2500);
   };
   useEffect(() => () => clearTimeout(imageNoticeTimer.current), []);
+  const [modelImageNotice, setModelImageNotice] = useState<string>();
+  const modelImageNoticeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const notifyModelImages = () => {
+    clearTimeout(modelImageNoticeTimer.current);
+    setModelImageNotice(undefined);
+    const model = models.find((choice) => choice.spec === session.model);
+    if (!model || model.input.includes("image")) return;
+    setModelImageNotice(t("image.model-unsupported", { model: session.model }));
+    modelImageNoticeTimer.current = setTimeout(() => setModelImageNotice(undefined), 5000);
+  };
+  const notifyPastedImage = (token: string) => {
+    notifyImage(t("image.pasted", { token }));
+    notifyModelImages();
+  };
+  useEffect(() => () => clearTimeout(modelImageNoticeTimer.current), []);
   const openImage = (image: PromptImage) => {
     void imageViewer.open(image).catch((error: unknown) => {
       if (pasteOwner.current)
@@ -347,8 +362,10 @@ function Chat({
   };
   const [modelPicker, setModelPicker] = useState<number>();
   const modelPickerRef = useRef<number | undefined>(undefined);
+  const modelPickerDraftImages = useRef(false);
   const showModelPicker = (focus: number | undefined) => {
     modelPickerRef.current = focus;
+    if (focus === undefined) modelPickerDraftImages.current = false;
     setModelPicker(focus);
   };
   type ResumePicker = { sessions: readonly SessionSummary[]; focus: number; busy: boolean };
@@ -559,13 +576,29 @@ function Chat({
     body.current?.scrollToBottom();
     lastInterrupt.current = undefined;
   };
-  const switchModel = async (spec: string) => {
+  const switchModel = async (spec: string, hadDraftImages = false) => {
+    const hadImages =
+      hadDraftImages ||
+      composer.ordered(draft.current).length > 0 ||
+      conversation
+        .getSnapshot()
+        .completed.some(
+          (entry) => (entry.type === "message" || entry.type === "tool") && !!entry.images?.length,
+        );
     try {
       await session.setModel(spec);
       conversation.notice(t("model.changed", { model: session.model }));
+      clearTimeout(modelImageNoticeTimer.current);
+      setModelImageNotice(undefined);
+      if (hadImages) notifyModelImages();
     } catch (error) {
       conversation.notice(formatError(error, t), true);
     }
+  };
+  const selectModel = (index: number) => {
+    const hadDraftImages = modelPickerDraftImages.current;
+    showModelPicker(undefined);
+    void switchModel(models[index]!.spec, hadDraftImages);
   };
   const executeCommand = (prompt: string) => {
     const parsed = /^\/([a-z0-9-]+)(?:\s|$)/.exec(prompt);
@@ -655,15 +688,28 @@ function Chat({
         .rename(title)
         .catch((error: unknown) => conversation.notice(formatError(error, t), true));
     } else if (command.name === "model") {
-      const spec = prompt.slice(parsed![0].length).trim();
-      if (spec) void switchModel(spec);
-      else
-        showModelPicker(
-          Math.max(
-            0,
-            models.findIndex((model) => model.spec === session.model),
+      const hadDraftImages = composer.ordered(prompt).length > 0;
+      // Bound attachments are not model arguments; literal token text remains
+      // an argument. Capture their presence before submit or model reset clears them.
+      const commandText = composer
+        .ranges(prompt)
+        .toReversed()
+        .reduce((text, range) => text.slice(0, range.start) + text.slice(range.end), prompt);
+      const spec = commandText.slice(parsed![0].length).trim();
+      if (spec) void switchModel(spec, hadDraftImages);
+      else {
+        modelPickerDraftImages.current = hadDraftImages;
+        // Submit can run before Chat handles the same Enter event. Open after
+        // that event finishes so it cannot also pick the current model.
+        queueMicrotask(() =>
+          showModelPicker(
+            Math.max(
+              0,
+              models.findIndex((model) => model.spec === session.model),
+            ),
           ),
         );
+      }
     } else if (command.name === "btw") {
       const question = prompt.slice(parsed![0].length).trim();
       if (!question) conversation.notice(t("btw.usage"));
@@ -761,11 +807,19 @@ function Chat({
     : 0;
   const dialogGap =
     question && rows - statusHeight - minimumDialogHeight - panelMinimum - 1 >= 1 ? 1 : 0;
+  const visibleModelNotice = !interaction || userQuestion?.collapsed ? modelImageNotice : undefined;
+  const wrappedModelNotice = visibleModelNotice
+    ? Bun.wrapAnsi(visibleModelNotice, Math.max(1, columns - 3))
+    : undefined;
+  const modelNoticeHeight = wrappedModelNotice?.split("\n").length ?? 0;
   const compactPrompt =
+    (modelNoticeHeight > 0 &&
+      rows - statusHeight - panelMinimum - 1 < promptMaxLines + 3 + modelNoticeHeight) ||
     ((!!side || !!rewind || !!resumePicker) && rows < 20) ||
     (!!interaction &&
       rows - statusHeight - minimumDialogHeight - dialogGap - panelMinimum < promptMaxLines + 3);
-  const promptHeight = compactPrompt ? 1 : promptMaxLines + 3;
+  const promptHeight =
+    (compactPrompt ? 1 + Number(!!imageNotice) : promptMaxLines + 3) + modelNoticeHeight;
   const transcriptHeight = rewind
     ? Number(!compactPrompt)
     : interaction
@@ -888,10 +942,7 @@ function Chat({
           showModelPicker(
             (modelFocus + (key.name === "up" ? models.length - 1 : 1)) % models.length,
           );
-        else if (key.name === "enter") {
-          showModelPicker(undefined);
-          void switchModel(models[modelFocus]!.spec);
-        }
+        else if (key.name === "enter") selectModel(modelFocus);
       }
       return;
     }
@@ -1423,10 +1474,7 @@ function Chat({
                 current={session.model}
                 maxHeight={modelPickerHeight}
                 locale={locale}
-                onPick={(index) => {
-                  showModelPicker(undefined);
-                  void switchModel(models[index]!.spec);
-                }}
+                onPick={selectModel}
               />
             )}
             {side && (
@@ -1461,6 +1509,7 @@ function Chat({
               )}
             <PromptInput
               notice={imageNotice}
+              warning={wrappedModelNotice}
               tip={rewindArmedAt === undefined ? undefined : t("rewind.again")}
               key={promptRevision}
               readOnly={
@@ -1506,7 +1555,7 @@ function Chat({
                     if (!pasteOwner.current || epoch !== pasteEpoch.current) return;
                     const token = composer.bind(image, draft.current);
                     insert(token + " ");
-                    notifyImage(t("image.pasted", { token }));
+                    notifyPastedImage(token);
                   })
                   .catch((error: unknown) => {
                     if (!pasteOwner.current || epoch !== pasteEpoch.current) return;
