@@ -32,6 +32,9 @@
  */
 
 const zh = {
+  "model.title": "选择模型",
+  "model.hint": "↑/↓ 选择 · Enter 确认 · Esc 退出",
+  "model.changed": "已切换模型：{{model}}",
   "command.compact": "压缩上下文",
   "command.clear": "新建会话",
   "command.rewind": "回退消息与文件",
@@ -245,6 +248,9 @@ const zh = {
 } as const;
 
 const en = {
+  "model.title": "Select model",
+  "model.hint": "↑/↓ select · Enter confirm · Esc close",
+  "model.changed": "Model changed to {{model}}",
   "command.compact": "Compact context",
   "command.clear": "Start a new session",
   "command.rewind": "Rewind messages and files",

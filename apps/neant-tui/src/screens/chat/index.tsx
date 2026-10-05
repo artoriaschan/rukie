@@ -1,7 +1,13 @@
 import { realpath } from "node:fs/promises";
 import { relative } from "node:path";
 import { useLayoutEffect, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { createSession, listSkills, type Session, type SessionOptions } from "@neant/agent";
+import {
+  createSession,
+  listSkills,
+  listModels,
+  type Session,
+  type SessionOptions,
+} from "@neant/agent";
 import type { Locale } from "@neant/i18n";
 import { PERMISSION_MODES, type ThinkingLevel } from "@neant/shared";
 import {
@@ -35,6 +41,7 @@ import {
   SubagentDetailScene,
   UserMessage,
   CommandSuggestions,
+  ModelPicker,
 } from "../../components";
 import { rewindLayout, type RewindEntry, type RewindMode } from "../../components/rewind-picker";
 import { formatError } from "../../i18n";
@@ -64,6 +71,7 @@ export async function createChat(options: SessionOptions, model: string, locale:
   let session = await createSession(sessionOptions);
   const checkpointCwd = await realpath(options.cwd);
   const skills = await listSkills(options);
+  const models = listModels(options.settings);
   let conversation = createConversation(session, model, locale);
   let binding = { session, conversation };
   const bindingListeners = new Set<() => void>();
@@ -132,6 +140,7 @@ export async function createChat(options: SessionOptions, model: string, locale:
           thinking={options.settings?.thinking}
           locale={locale}
           onExit={onExit}
+          models={models}
           skills={skills}
           replaceSession={replaceSession}
         />
@@ -153,6 +162,7 @@ function Chat({
   onExit,
   skills,
   replaceSession,
+  models,
 }: {
   session: Session;
   conversation: ReturnType<typeof createConversation>;
@@ -164,6 +174,7 @@ function Chat({
   thinking?: ThinkingLevel;
   locale: Locale;
   onExit(): void;
+  models: readonly { spec: string; name: string }[];
   skills: readonly { name: string; description: string }[];
   replaceSession(resumeId?: string): Promise<void>;
 }) {
@@ -241,6 +252,12 @@ function Chat({
     confirm: boolean;
     mode: number;
     busy: boolean;
+  };
+  const [modelPicker, setModelPicker] = useState<number>();
+  const modelPickerRef = useRef<number | undefined>(undefined);
+  const showModelPicker = (focus: number | undefined) => {
+    modelPickerRef.current = focus;
+    setModelPicker(focus);
   };
   const [rewind, setRewind] = useState<Rewind>();
   const rewindRef = useRef<Rewind | undefined>(undefined);
@@ -385,6 +402,14 @@ function Chat({
     body.current?.scrollToBottom();
     lastInterrupt.current = undefined;
   };
+  const switchModel = async (spec: string) => {
+    try {
+      await session.setModel(spec);
+      conversation.notice(t("model.changed", { model: session.model }));
+    } catch (error) {
+      conversation.notice(formatError(error, t), true);
+    }
+  };
   const executeCommand = (prompt: string) => {
     const parsed = /^\/([a-z0-9-]+)(?:\s|$)/.exec(prompt);
     const command = catalog.find((entry) => entry.name === parsed?.[1]);
@@ -411,6 +436,16 @@ function Chat({
         .setPlanMode(on)
         .then(() => conversation.notice(t(on ? "plan.enabled" : "plan.disabled")))
         .catch((error: unknown) => conversation.notice(formatError(error, t), true));
+    } else if (command.name === "model") {
+      const spec = prompt.slice(parsed![0].length).trim();
+      if (spec) void switchModel(spec);
+      else
+        showModelPicker(
+          Math.max(
+            0,
+            models.findIndex((model) => model.spec === session.model),
+          ),
+        );
     } else if (command.name === "rewind") openRewind();
     else if (command.name === "clear")
       void replaceSession().catch((error: unknown) =>
@@ -519,13 +554,32 @@ function Chat({
         rewindMaxHeight,
       ).height
     : 0;
+  const modelPickerHeight = modelPicker === undefined ? 0 : Math.min(12, available - panelCount);
   const panelHeights = allocatePanelHeights(
-    available - dialogMaxHeight - dialogGap - rewindHeight,
+    available - dialogMaxHeight - dialogGap - rewindHeight - modelPickerHeight,
     Array.from({ length: panelCount }, () => 3),
   );
   const todoMaxHeight = hasTodos ? panelHeights[0]! : 1;
   const subagentMaxHeight = hasSubagents ? panelHeights[Number(hasTodos)]! : 1;
   useInput((event) => {
+    const modelFocus = modelPickerRef.current;
+    if (modelFocus !== undefined) {
+      if (event.type !== "key") return;
+      handledInput.current.add(event);
+      const { key } = event;
+      if (key.name === "escape" || (key.ctrl && key.name === "c")) showModelPicker(undefined);
+      else if (!small && !key.ctrl && !key.alt && !key.shift) {
+        if (key.name === "up" || key.name === "down")
+          showModelPicker(
+            (modelFocus + (key.name === "up" ? models.length - 1 : 1)) % models.length,
+          );
+        else if (key.name === "enter") {
+          showModelPicker(undefined);
+          void switchModel(models[modelFocus]!.spec);
+        }
+      }
+      return;
+    }
     const currentView = viewRef.current;
     if (currentView !== "chat") {
       if (event.type === "wheel") subagentScroll.current?.scrollBy(event.delta * 3);
@@ -1018,7 +1072,20 @@ function Chat({
                 }}
               />
             )}
-            {!!commandMatches.length && !interaction && !rewind && (
+            {modelPicker !== undefined && (
+              <ModelPicker
+                models={models}
+                focus={modelPicker}
+                current={session.model}
+                maxHeight={modelPickerHeight}
+                locale={locale}
+                onPick={(index) => {
+                  showModelPicker(undefined);
+                  void switchModel(models[index]!.spec);
+                }}
+              />
+            )}
+            {!!commandMatches.length && !interaction && !rewind && modelPicker === undefined && (
               <CommandSuggestions
                 items={commandMatches}
                 selected={commandSelection % commandMatches.length}
@@ -1027,7 +1094,9 @@ function Chat({
             )}
             <PromptInput
               key={promptRevision}
-              readOnly={!!rewind || (!!interaction && !userQuestion?.collapsed)}
+              readOnly={
+                modelPicker !== undefined || !!rewind || (!!interaction && !userQuestion?.collapsed)
+              }
               compact={compactPrompt}
               maxLines={compactPrompt ? 1 : promptMaxLines}
               columns={columns}
@@ -1035,6 +1104,7 @@ function Chat({
               planMode={state.planMode}
               history={history}
               filterInput={(event) =>
+                modelPickerRef.current === undefined &&
                 !handledInput.current.has(event) &&
                 !(
                   event.type === "key" &&

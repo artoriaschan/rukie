@@ -323,6 +323,8 @@ function reduceEvent(
     case "agent_start":
       return { ...state, waitingSubagents: 0 };
     case "tool_state_changed":
+      if (event.name === "model" && typeof event.value === "string")
+        return { ...state, model: event.value, contextUsage: undefined };
       if (event.name === "plan")
         return {
           ...state,
@@ -537,7 +539,7 @@ function createViewState(session: Session, model: string, locale: Locale): ViewS
     completed: replayMessages(session.messages, t),
     tools: [],
     assistant: "",
-    model,
+    model: session.model ?? model,
     running: session.running,
     input: 0,
     output: 0,
