@@ -85,17 +85,27 @@ function publicAddress(address: string) {
   );
 }
 
-export async function resolveAddresses(url: URL, options: WebFetchOptions): Promise<Address[]> {
+export async function resolveAddresses(
+  url: URL,
+  options: WebFetchOptions,
+  proxied = false,
+): Promise<Address[]> {
   const host = url.hostname.replace(/^\[|\]$/g, "");
   const family = isIP(host);
+  if (proxied && !family) return [];
   const addresses = family
     ? [{ address: host, family }]
     : await (options.resolve ?? ((name) => lookup(name, { all: true })))(host);
   if (!addresses.length) throw new Error(`SSRF rejected: no addresses for ${host}.`);
   for (const { address } of addresses) {
     if (options.allowAddresses?.includes(address)) continue;
-    if (!publicAddress(address))
-      throw new Error(`SSRF rejected: ${host} resolves to non-public address ${address}.`);
+    if (!publicAddress(address)) {
+      const hint =
+        !family && isIP(address) === 4 && inRange(ipv4(address), "198.18.0.0", 15)
+          ? " Local DNS may be managed by a fake-IP / TUN proxy. Set HTTPS_PROXY / HTTP_PROXY to that proxy and retry."
+          : "";
+      throw new Error(`SSRF rejected: ${host} resolves to non-public address ${address}.${hint}`);
+    }
   }
   return addresses;
 }

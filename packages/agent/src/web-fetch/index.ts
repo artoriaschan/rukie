@@ -1,6 +1,7 @@
 import { resolveAddresses, validateUrl, type WebFetchOptions } from "./addresses.ts";
 import { request } from "./http.ts";
 import { decodeBody, render } from "./content.ts";
+import { proxyFor } from "./proxy.ts";
 export type { WebFetchOptions } from "./addresses.ts";
 
 function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
@@ -23,8 +24,9 @@ export async function fetchWeb(
     let url = validateUrl(input);
     let redirects = 0;
     while (true) {
-      const addresses = await abortable(resolveAddresses(url, options), signal);
-      const { response, close } = await request(url, addresses, signal);
+      const proxy = proxyFor(url);
+      const addresses = await abortable(resolveAddresses(url, options, !!proxy), signal);
+      const { response, close } = await request(url, addresses, signal, proxy);
       try {
         const location = response.headers.get("location");
         if (response.status >= 300 && response.status < 400 && location) {

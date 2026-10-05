@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
+import { isolateProxyEnvironment } from "../helpers/proxy-env.ts";
 import { mkdir, mkdtemp, rm, readdir, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,6 +10,8 @@ import { fakeOpenAI, type FakeOpenAIOptions } from "../helpers/fake-openai.ts";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { main } from "../../src/main.ts";
 import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
+
+isolateProxyEnvironment();
 
 const MAIN = join(import.meta.dir, "../../src/main.ts");
 const cleanups: (() => unknown)[] = [];
