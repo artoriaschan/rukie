@@ -19,6 +19,10 @@ const modelExample = `{
 
 const zh = {
   "image.pasted": "已粘贴图片 {{token}}",
+  "image.clipboard-empty": "剪贴板为空",
+  "image.clipboard-error": "读取剪贴板失败",
+  "image.clipboard-unavailable": "剪贴板不可用",
+  "image.clipboard-unsupported": "剪贴板图片格式不支持；请使用 PNG、JPEG、WebP 或 GIF",
   "image.model-unsupported": "{{model}} 不接受图片，发送时会省略图片",
   "image.open-error": "无法打开图片：{{error}}",
   "image.paste-error": "无法粘贴图片：{{error}}",
@@ -106,6 +110,11 @@ ${modelExample}`,
 
 const en = {
   "image.pasted": "Pasted image {{token}}",
+  "image.clipboard-empty": "Clipboard is empty",
+  "image.clipboard-error": "Failed to read the clipboard",
+  "image.clipboard-unavailable": "Clipboard is unavailable",
+  "image.clipboard-unsupported":
+    "Clipboard image format is unsupported; use PNG, JPEG, WebP, or GIF",
   "image.model-unsupported": "{{model}} does not accept images; they will be omitted",
   "image.open-error": "Could not open image: {{error}}",
   "image.paste-error": "Could not paste image: {{error}}",
