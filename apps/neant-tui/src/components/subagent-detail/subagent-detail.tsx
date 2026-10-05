@@ -2,7 +2,7 @@ import type { Ref } from "react";
 import type { Locale } from "@neant/i18n";
 import { Box, ScrollBox, ThemedText, toolNameColor, type ScrollHandle } from "@neant/tui";
 import { createTuiI18n } from "../../i18n";
-import { SUBAGENT_APPEARANCE, type SubagentView } from "../subagent-message";
+import { SUBAGENT_APPEARANCE, subagentStatusKey, type SubagentView } from "../subagent-message";
 import { Markdown } from "../markdown";
 import { ExitButton } from "../subagent-dashboard";
 
@@ -47,6 +47,7 @@ export function SubagentDetailScene({
       ? Math.max(0, Date.now() - subagent.startedAt)
       : subagent.durationMs;
   const duration = formatDuration(elapsed);
+  const reason = subagent.runReason ?? subagent.error;
   const outputBlocks: { type: "text" | "thinking" | "tool"; text: string }[] = [];
   for (const line of subagent.output) {
     const previous = outputBlocks.at(-1);
@@ -71,7 +72,7 @@ export function SubagentDetailScene({
             {subagent.description}
           </ThemedText>
           <ThemedText dimColor> · </ThemedText>
-          <ThemedText color={color}>{t(`subagent.status.${subagent.status}`)}</ThemedText>
+          <ThemedText color={color}>{t(subagentStatusKey(subagent))}</ThemedText>
         </ThemedText>
         <Box flexGrow={1} />
         <ExitButton onClick={onBack} />
@@ -85,8 +86,8 @@ export function SubagentDetailScene({
       <ThemedText
         dimColor
         wrap="truncate"
-      >{`${t("subagent.started")} ${timestamp(subagent.startedAt)}${subagent.completedAt ? ` · ${t("subagent.ended")} ${timestamp(subagent.completedAt)}` : ""} · id ${subagent.agentId.slice(0, 8)}`}</ThemedText>
-      {subagent.error && <ThemedText color="error">{subagent.error}</ThemedText>}
+      >{`id ${subagent.agentId.slice(0, 8)} · ${t("subagent.started")} ${timestamp(subagent.startedAt)}${subagent.completedAt ? ` · ${t("subagent.ended")} ${timestamp(subagent.completedAt)}` : ""}`}</ThemedText>
+      {reason && <ThemedText color="error">{reason}</ThemedText>}
       <Box marginTop={1} flexShrink={0}>
         {(["summary", "output", "tools"] as const).map((tab, index) => (
           <Box key={tab}>
@@ -118,7 +119,7 @@ export function SubagentDetailScene({
         {page === "summary" && (
           <Box flexDirection="column">
             {[
-              [t("subagent.status"), t(`subagent.status.${subagent.status}`)],
+              [t("subagent.status"), t(subagentStatusKey(subagent))],
               [t("subagent.model"), subagent.model ?? t("subagent.default-model")],
               [t("subagent.duration"), duration],
               ["tokens", `${subagent.tokens}`],

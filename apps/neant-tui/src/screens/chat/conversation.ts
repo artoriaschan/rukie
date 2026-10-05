@@ -336,7 +336,13 @@ function reduceEvent(
               subagents: Object.fromEntries(
                 Object.entries(restoreSubagents(event.value)).map(([id, row]) => [
                   id,
-                  state.subagents[id] ?? row,
+                  state.subagents[id]
+                    ? {
+                        ...state.subagents[id]!,
+                        runOutcome: row.runOutcome,
+                        runReason: row.runReason,
+                      }
+                    : row,
                 ]),
               ),
             }

@@ -2,7 +2,7 @@ import { useState, type Ref } from "react";
 import type { Locale } from "@neant/i18n";
 import { Box, Divider, ScrollBox, ThemedBox, ThemedText, type ScrollHandle } from "@neant/tui";
 import { createTuiI18n } from "../../i18n";
-import { SUBAGENT_APPEARANCE, type SubagentView } from "../subagent-message";
+import { SUBAGENT_APPEARANCE, subagentStatusKey, type SubagentView } from "../subagent-message";
 
 export function ExitButton({ onClick }: { onClick(): void }) {
   const [hovered, setHovered] = useState(false);
@@ -54,7 +54,12 @@ export function SubagentDashboard({
         </ThemedText>
         <ThemedText>
           <ThemedText color="success">
-            {subagents.filter((row) => row.status === "completed").length}
+            {
+              subagents.filter(
+                (row) =>
+                  row.runOutcome === "completed" || (row.status === "completed" && !row.runOutcome),
+              ).length
+            }
           </ThemedText>
           <ThemedText dimColor> {t("subagent.status.completed")}</ThemedText>
         </ThemedText>
@@ -134,6 +139,9 @@ function DashboardCard({
           {t("subagent.prefix")}
           {subagent.description}
         </ThemedText>
+        {subagent.status !== "running" && (
+          <ThemedText dimColor>{` · ${t(subagentStatusKey(subagent))}`}</ThemedText>
+        )}
         <ThemedText
           dimColor
         >{` · ${subagent.model ?? t("subagent.default-model")} · ${Math.floor((subagent.status === "running" ? Date.now() - subagent.startedAt : subagent.durationMs) / 1000)}s · ${subagent.tokens} tok · ${subagent.toolCalls.length} tools`}</ThemedText>

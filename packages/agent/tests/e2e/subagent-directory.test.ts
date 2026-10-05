@@ -74,7 +74,7 @@ test("idle children keep their own history and todos when send_message starts a 
   fake.model.contextWindow = 100_000;
   const session = await createSession({ ...dirs, ...fake });
   await session.run("delegate");
-  expect(session.toolState("subagents")).toEqual([
+  expect(session.toolState("subagents")).toMatchObject([
     { id, description: "Investigate", type: "general-purpose" },
   ]);
   expect(session.toolState("todo")).toBeUndefined();
@@ -177,7 +177,7 @@ test.each(["explore", "custom", "deleted", "fork"])(
       resumeId: parent.id,
       onWarning: (warning) => warnings.push(warning),
     });
-    expect(resumed.toolState("subagents")).toEqual([
+    expect(resumed.toolState("subagents")).toMatchObject([
       {
         id,
         description: "Restore",

@@ -781,7 +781,7 @@ test("40×12 rewind preserves Todo and historical children without reopening the
     await app.waitFor(() => text(app).includes("Subagent: retained child"));
     app.stdin.write("\r");
     await app.waitFor(() => text(app).includes("id "));
-    expect(text(app)).toContain("idle");
+    expect(text(app)).toContain("Run ended normally");
   } finally {
     await app.cleanup();
   }

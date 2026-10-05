@@ -32,6 +32,8 @@ import {
   discoverSubagentTypes,
   SUBAGENT_PROMPT,
   subagentsState,
+  subagentRunState,
+  type SubagentRun,
   type SubagentIdentity,
 } from "../subagents/index.ts";
 import { isTrustedProject, resolveModel } from "../config/index.ts";
@@ -200,6 +202,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
 interface InternalSessionOptions {
   sessionSource?: "fork";
   parentSessionId?: string;
+  onSubagentRunStarted?: (run: SubagentRun) => Promise<void>;
   originDescription?: string;
   agentType?: string;
   permissions?: {
@@ -290,7 +293,7 @@ async function createSessionInternal(
   };
   let emitRunEvent: ((event: CustomSessionEvent<AgentEvent>) => void | Promise<void>) | undefined;
   const toolState = createToolState(
-    [todoState, subagentsState, planState, checkpointState],
+    [todoState, subagentsState(stored.metadata.id), subagentRunState, planState, checkpointState],
     entries,
     options.onWarning ?? console.warn,
   );
@@ -633,7 +636,7 @@ async function createSessionInternal(
       const value = await toolState.set("subagents", identities, activeStore, context);
       await emitRunEvent?.({ type: "tool_state_changed", name: "subagents", value });
     },
-    async createChild(type, description, fork = false, resumeId) {
+    async createChild(type, description, fork = false, resumeId, onSubagentRunStarted) {
       const selected = fork ? undefined : (type.model ?? settings.subagentModel);
       const childModel =
         selected === undefined
@@ -651,6 +654,7 @@ async function createSessionInternal(
         {
           control,
           parentSessionId: stored.metadata.id,
+          onSubagentRunStarted,
           originDescription: description,
           agentType: type.name,
           permissions: permissionConfiguration,
@@ -1046,9 +1050,32 @@ async function createSessionInternal(
           await emit(event);
         }
       };
+      const childRun: SubagentRun | undefined = internal.parentSessionId
+        ? {
+            id: crypto.randomUUID(),
+            sessionId: stored.metadata.id,
+            parentSessionId: internal.parentSessionId,
+            startedAt: Date.now(),
+          }
+        : undefined;
+      let childRunSaved = false;
+      let childModelStop: "aborted" | "length" | undefined;
+      async function persistChildRun(run: SubagentRun) {
+        const target = await store.open(stored.metadata, context);
+        try {
+          await toolState.set("subagent-run", { ...run }, target, context);
+        } finally {
+          await target.close(context);
+        }
+      }
       let active: StoredSession | undefined;
       let unsubscribe;
       try {
+        if (childRun) {
+          await persistChildRun(childRun);
+          childRunSaved = true;
+          await internal.onSubagentRunStarted?.(childRun);
+        }
         try {
           await mcp.connect({
             cwd,
@@ -1405,6 +1432,10 @@ async function createSessionInternal(
                 result.usage.cacheRead += message.usage.cacheRead;
                 result.usage.cacheWrite += message.usage.cacheWrite;
                 result.usage.totalTokens += message.usage.totalTokens;
+                childModelStop =
+                  message.stopReason === "aborted" || message.stopReason === "length"
+                    ? message.stopReason
+                    : undefined;
                 if (message.stopReason === "error" || message.stopReason === "aborted") {
                   result.error = message.errorMessage ?? `Model stopped: ${message.stopReason}`;
                 }
@@ -1563,6 +1594,17 @@ async function createSessionInternal(
           await mcp.close();
           await emitMcpErrors();
           result.durationMs = performance.now() - started;
+          if (childRun && childRunSaved) {
+            await persistChildRun({
+              ...childRun,
+              endedAt: Date.now(),
+              outcome: signal?.aborted
+                ? "aborted"
+                : (result.stopReason ?? childModelStop ?? (result.success ? "completed" : "error")),
+              ...(result.error && { error: result.error }),
+              ...(result.reason && { reason: result.reason }),
+            });
+          }
           await emit({ type: "result", ...result });
         } finally {
           currentResult = undefined;

@@ -44,7 +44,7 @@ test.each(["completed", "failed", "aborted"] as const)(
       app.stdin.write("\r");
       await app.waitFor(() => app.screen().some((line) => line.includes("id ")));
       expect(app.screen().join("\n")).toContain(
-        outcome === "completed" ? "已完成" : outcome === "failed" ? "失败" : "已中止",
+        outcome === "completed" ? "Run 正常结束" : outcome === "failed" ? "Run 错误结束" : "已中止",
       );
       app.stdin.write("\x1b");
       await app.waitFor(() => app.screen().some((line) => line.includes("─ 子代理 ")));
@@ -112,7 +112,7 @@ test("resume hides the automatic panel but keeps historical children in the Engl
     await app.waitFor(() => app.screen().some((line) => line.includes("Subagent: Restored")));
     app.stdin.write("\r");
     await app.waitFor(() => app.screen().some((line) => line.includes("id ")));
-    expect(app.screen().join("\n")).toContain("idle");
+    expect(app.screen().join("\n")).toContain("Run ended normally");
     expect(app.screen().join("\n")).not.toMatch(/\p{Script=Han}/u);
   } finally {
     await app.cleanup();
@@ -178,7 +178,7 @@ test("conversation rewind retains a historical child without reopening the autom
     await app.waitFor(() => app.screen().some((line) => line.includes("Subagent: Restored")));
     app.stdin.write("\r");
     await app.waitFor(() => app.screen().some((line) => line.includes("id ")));
-    expect(app.screen().join("\n")).toContain("idle");
+    expect(app.screen().join("\n")).toContain("Run ended normally");
   } finally {
     await app.cleanup();
   }
@@ -444,3 +444,140 @@ for (const kind of ["permission", "question"] as const) {
     });
   }
 }
+
+for (const [lang, label, completed, unknown, error] of [
+  ["en_US.UTF-8", "Subagents", "Run ended normally", "Run outcome unknown", "Run ended with error"],
+  ["zh_CN.UTF-8", "子代理", "Run 正常结束", "Run 结束原因未知", "Run 错误结束"],
+] as const) {
+  test(`${lang} restored Run outcomes remain readable in a 40x12 history view without activity`, async () => {
+    const argv: string[] = [];
+    const app = await start(argv, {
+      columns: 40,
+      rows: 12,
+      env: { LANG: lang },
+      prepare: async (root) => {
+        const fake = createFauxCore({ api: "faux", provider: "faux" });
+        fake.setResponses([
+          fauxAssistantMessage(
+            fauxToolCall("subagent", {
+              description: "Normal",
+              prompt: "child",
+              run_in_background: false,
+            }),
+            { stopReason: "toolUse" },
+          ),
+          fauxAssistantMessage("done"),
+          fauxAssistantMessage(
+            fauxToolCall("subagent", {
+              description: "Error",
+              prompt: "failed child",
+              run_in_background: false,
+            }),
+            { stopReason: "toolUse" },
+          ),
+          fauxAssistantMessage("partial", { stopReason: "error", errorMessage: "saved failure" }),
+          fauxAssistantMessage("parent done"),
+        ]);
+        const parent = await createSession({
+          cwd: root,
+          homeDir: root,
+          model: fake.getModel(),
+          streamFn: (model, context, options) => fake.streamSimple(model, context, options),
+        });
+        await parent.run("delegate");
+        await parent.dispose();
+        // Native JSONL fixture: append an old identity to the latest saved parent snapshot.
+        for await (const path of new Bun.Glob(`**/*_${parent.id}.jsonl`).scan({
+          cwd: `${root}/.neant/sessions`,
+          absolute: true,
+        })) {
+          const records = (await Bun.file(path).text())
+            .trimEnd()
+            .split("\n")
+            .map((line) => JSON.parse(line));
+          const snapshots = records
+            .flatMap((record) => (Array.isArray(record) ? record : [record]))
+            .filter((entry) => entry.customType === "tool-state/subagents");
+          snapshots.at(-1).data.value.push({
+            id: "legacy-child",
+            description: "Legacy",
+            type: "general-purpose",
+          });
+          await Bun.write(path, records.map((record) => JSON.stringify(record)).join("\n") + "\n");
+        }
+        argv.push("--resume", parent.id);
+      },
+    });
+    const screen = () => app.screen().join("\n");
+    try {
+      await app.waitFor(() => screen().includes("❯"));
+      expect(app.calls).toHaveLength(0);
+      expect(screen()).not.toMatch(/[▸▾] (Subagents|子代理)/);
+      app.stdin.write("\x01");
+      await app.waitFor(() => screen().includes(`─ ${label} `));
+      app.stdin.write("\r");
+      await app.waitFor(() => !screen().includes(`─ ${label} `) && screen().includes(completed));
+      for (const [description, outcome] of [
+        ["Error", error],
+        ["Legacy", unknown],
+      ]) {
+        app.stdin.write("\x1b");
+        await app.waitFor(() => screen().includes(`─ ${label} `));
+        app.stdin.write("\x1b[B");
+        await app.waitFor(() => screen().includes(description!));
+        app.stdin.write("\r");
+        await app.waitFor(() => !screen().includes(`─ ${label} `) && screen().includes(outcome!));
+      }
+      app.stdin.write("\x1b");
+      await app.waitFor(() => screen().includes(`─ ${label} `));
+      app.stdin.write("\x1b");
+      await app.waitFor(() => screen().includes("❯") && !screen().includes(`─ ${label} `));
+      expect(app.calls).toHaveLength(0);
+    } finally {
+      await app.cleanup();
+    }
+  });
+}
+
+test("the manual history view distinguishes a Hook-stopped Run while the parent remains active", async () => {
+  const app = await start(["delegate"], {
+    columns: 80,
+    rows: 24,
+    env: { LANG: "en_US.UTF-8" },
+    session: {
+      settings: {
+        hooks: {
+          SubagentStart: [
+            {
+              hooks: [
+                {
+                  type: "command",
+                  command: `echo '{"continue":false,"stopReason":"human review required"}'`,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
+  });
+  const screen = () => app.screen().join("\n");
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("subagent", {
+      description: "Hook stopped",
+      prompt: "child",
+      run_in_background: false,
+    });
+    await app.waitFor(() => app.calls.length === 2);
+    app.stdin.write("\x01");
+    await app.waitFor(() => screen().includes("─ Subagents "));
+    app.stdin.write("\r");
+    await app.waitFor(() => screen().includes("id "));
+    expect(screen()).toContain("Run stopped by Hook");
+    expect(screen().match(/human review required/g)).toHaveLength(1);
+    expect(app.calls).toHaveLength(2);
+  } finally {
+    await app.cleanup();
+  }
+});

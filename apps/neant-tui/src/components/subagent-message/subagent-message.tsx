@@ -56,6 +56,15 @@ export interface SubagentView {
   description: string;
   subagentType: string;
   status: "idle" | "running" | "completed" | "failed" | "aborted";
+  runOutcome?:
+    | "completed"
+    | "aborted"
+    | "error"
+    | "length"
+    | "hook_stopped"
+    | "hook_blocked"
+    | "unknown";
+  runReason?: string;
   model?: string;
   startedAt: number;
   completedAt?: number;

@@ -1,4 +1,4 @@
-import type { SessionEvent } from "@neant/agent";
+import type { SessionEvent, SubagentIdentity } from "@neant/agent";
 import type { SubagentView } from "../../components/subagent-message";
 
 export interface SubagentState extends SubagentView {
@@ -29,7 +29,7 @@ function createRow(
   };
 }
 
-/** Persisted Tool State has identities only; a resumed child has no active Run. */
+/** Durable history never creates a current Run. Unsettled and old records stay unknown. */
 export function restoreSubagents(value: unknown): Readonly<Record<string, SubagentState>> {
   if (!Array.isArray(value)) return {};
   return Object.fromEntries(
@@ -41,7 +41,19 @@ export function restoreSubagents(value: unknown): Readonly<Record<string, Subage
         typeof row.type !== "string"
       )
         return [];
-      return [[row.id, createRow(row.id, row.description, row.type, 0)]];
+      const run = (row as SubagentIdentity).latestRun;
+      return [
+        [
+          row.id,
+          {
+            ...createRow(row.id, row.description, row.type, run?.startedAt ?? 0),
+            completedAt: run?.endedAt,
+            durationMs: run?.endedAt ? Math.max(0, run.endedAt - run.startedAt) : 0,
+            runOutcome: run?.outcome ?? "unknown",
+            runReason: run?.reason ?? run?.error,
+          },
+        ],
+      ];
     }),
   );
 }

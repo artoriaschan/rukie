@@ -6,30 +6,108 @@ import type { ToolStateDefinition } from "../tool-state/index.ts";
 import type { SubagentType } from "./types.ts";
 export { discoverSubagentTypes, type SubagentType } from "./types.ts";
 
-export const subagentsState: ToolStateDefinition = {
-  name: "subagents",
+/** Durable facts for one child Run; an absent outcome has not been settled. */
+export type SubagentRun = {
+  id: string;
+  sessionId: string;
+  parentSessionId: string;
+  startedAt: number;
+  endedAt?: number;
+  outcome?: "completed" | "aborted" | "error" | "length" | "hook_stopped" | "hook_blocked";
+  error?: string;
+  reason?: string;
+};
+
+function parseRun(value: unknown): SubagentRun {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !("id" in value) ||
+    typeof value.id !== "string" ||
+    !("sessionId" in value) ||
+    typeof value.sessionId !== "string" ||
+    !("parentSessionId" in value) ||
+    typeof value.parentSessionId !== "string" ||
+    !("startedAt" in value) ||
+    typeof value.startedAt !== "number" ||
+    !Number.isFinite(value.startedAt)
+  )
+    throw new Error("Invalid subagent Run fact.");
+  const run: SubagentRun = {
+    id: value.id,
+    sessionId: value.sessionId,
+    parentSessionId: value.parentSessionId,
+    startedAt: value.startedAt,
+  };
+  if ("outcome" in value && value.outcome !== undefined) {
+    if (
+      typeof value.outcome !== "string" ||
+      !["completed", "aborted", "error", "length", "hook_stopped", "hook_blocked"].includes(
+        String(value.outcome),
+      ) ||
+      !("endedAt" in value) ||
+      typeof value.endedAt !== "number" ||
+      !Number.isFinite(value.endedAt)
+    )
+      throw new Error("Invalid subagent Run outcome.");
+    run.outcome = value.outcome as SubagentRun["outcome"];
+    run.endedAt = value.endedAt;
+  }
+  for (const key of ["error", "reason"] as const) {
+    const reason = Reflect.get(value, key);
+    if (reason !== undefined) {
+      if (typeof reason !== "string") throw new Error("Invalid subagent Run reason.");
+      run[key] = reason;
+    }
+  }
+  return run;
+}
+
+export const subagentRunState: ToolStateDefinition = {
+  name: "subagent-run",
   version: 1,
   parse(version, value) {
-    if (
-      version !== 1 ||
-      !Array.isArray(value) ||
-      !value.every(
-        (row) =>
-          row &&
-          typeof row.id === "string" &&
-          typeof row.description === "string" &&
-          typeof row.type === "string",
-      )
-    )
-      throw new Error("Invalid subagents snapshot.");
-    return value.map(({ id, description, type }) => ({ id, description, type }));
+    if (version !== 1) throw new Error("Invalid subagent Run version.");
+    return { ...parseRun(value) };
   },
 };
+
+export function subagentsState(parentSessionId: string): ToolStateDefinition {
+  return {
+    name: "subagents",
+    version: 2,
+    parse(version, value) {
+      if ((version !== 1 && version !== 2) || !Array.isArray(value))
+        throw new Error("Invalid subagents snapshot.");
+      return value.map((row) => {
+        if (
+          !row ||
+          typeof row.id !== "string" ||
+          typeof row.description !== "string" ||
+          typeof row.type !== "string"
+        )
+          throw new Error("Invalid subagents snapshot.");
+        const identity = { id: row.id, description: row.description, type: row.type };
+        if (version === 1 || row.latestRun === undefined) return identity;
+        const run = parseRun(row.latestRun);
+        if (run.sessionId !== row.id) throw new Error("Subagent Run belongs to another Session.");
+        return run.parentSessionId === parentSessionId
+          ? { ...identity, latestRun: { ...run } }
+          : identity;
+      });
+    },
+  };
+}
 
 export const SUBAGENT_PROMPT =
   "You are a subagent delegated by a parent session. Work on the assigned prompt; your final reply will be delivered to the parent. You cannot expand the parent session permissions or create other subagents.";
 
-export type SubagentIdentity = { id: string; description: string; type: string };
+export type SubagentIdentity = {
+  id: string;
+  description: string;
+  type: string;
+  latestRun?: SubagentRun;
+};
 interface ChildHandle {
   session: Session;
   steer(message: AgentMessage): void;
@@ -40,6 +118,7 @@ interface SubagentOptions {
     description: string,
     fork?: boolean,
     resumeId?: string,
+    onRunStarted?: (run: SubagentRun) => Promise<void>,
   ): Promise<ChildHandle>;
   restored?: readonly SubagentIdentity[];
   persist(identities: SubagentIdentity[]): Promise<void>;
@@ -70,6 +149,17 @@ export function createSubagents(options: SubagentOptions) {
     changed.resolve();
     changed = Promise.withResolvers<void>();
   };
+  function persist() {
+    const snapshot = [...children.values()].map(({ id, description, type, latestRun }) => ({
+      id,
+      description,
+      type,
+      ...(latestRun && { latestRun }),
+    }));
+    const write = saving.then(() => options.persist(snapshot));
+    saving = write.catch(() => {});
+    return write;
+  }
   async function start(
     type: SubagentType,
     description: string,
@@ -91,7 +181,13 @@ export function createSubagents(options: SubagentOptions) {
     let handle: ChildHandle;
     try {
       handle =
-        existing?.handle ?? (await options.createChild(type, description, fork, existing?.id));
+        existing?.handle ??
+        (await options.createChild(type, description, fork, existing?.id, async (run) => {
+          const child = children.get(run.sessionId);
+          if (!child) throw new Error("Subagent identity is missing.");
+          child.latestRun = run;
+          await persist();
+        }));
       entry.agentId = handle.session.id;
       if (existing) existing.handle = handle;
       else {
@@ -101,13 +197,7 @@ export function createSubagents(options: SubagentOptions) {
           type: type.name,
           handle,
         });
-        const snapshot = [...children.values()].map(({ id, description, type }) => ({
-          id,
-          description,
-          type,
-        }));
-        saving = saving.then(() => options.persist(snapshot));
-        await saving;
+        await persist();
       }
     } catch (error) {
       running.delete(key);
@@ -140,6 +230,16 @@ export function createSubagents(options: SubagentOptions) {
       } catch (error) {
         result.error = error instanceof Error ? error.message : String(error);
       } finally {
+        try {
+          const run = session.toolState("subagent-run") as SubagentRun | undefined;
+          if (run?.sessionId === session.id && run.outcome) {
+            children.get(session.id)!.latestRun = run;
+            await persist();
+          }
+        } catch (error) {
+          result.success = false;
+          result.error = error instanceof Error ? error.message : String(error);
+        }
         options.addUsage(result.usage);
         if (run_in_background && !aborted) {
           const status = entry.controller.signal.aborted
