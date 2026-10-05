@@ -1,11 +1,12 @@
-import { createElement, useLayoutEffect, useRef, useState } from "react";
+import { createElement, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useInput, useTerminalSize } from "../hooks";
 import { textCursor, textLines, type TextStyle } from "../text";
 import type { InputEvent } from "../input";
 
 export interface TextInputProps extends TextStyle {
   value: string;
-  onChange(value: string): void;
+  /** Edits report the replaced UTF-16 range before the new value is applied. */
+  onChange(value: string, edit?: { start: number; end: number; text: string }): void;
   onSubmit?(value: string): void;
   isActive?: boolean;
   maxLines?: number;
@@ -17,10 +18,14 @@ export interface TextInputProps extends TextStyle {
   cursorOffset?: number;
   /** Owner-created history survives temporary editor unmounts. */
   history?: ReturnType<typeof createTextInputHistory>;
+  /** Notify the owner before a text-only history replacement. */
+  onHistoryRecall?(): void;
   /** Intercept a paste; call insert to place accepted text at the live caret. */
   onPaste?(text: string, insert: (text: string) => void): void;
   /** Ordered, non-overlapping UTF-16 ranges to paint with a distinct foreground. */
   highlightRanges?: readonly { start: number; end: number; color: TextStyle["color"] }[];
+  /** Ordered UTF-16 ranges that form indivisible editing and wrapping units. */
+  atomicRanges?: readonly { start: number; end: number }[];
   /** Let a screen reserve navigation keys for a completion menu. */
   filterInput?(event: InputEvent, insert: (text: string) => void): boolean;
 }
@@ -70,21 +75,48 @@ export function TextInput({
   readOnly = false,
   cursorOffset,
   history,
+  onHistoryRecall,
   filterInput,
   onPaste,
   highlightRanges,
+  atomicRanges = [],
   ...style
 }: TextInputProps) {
   const size = useTerminalSize();
   const width = Math.max(1, columns ?? size.columns);
   const [cursor, setCursor] = useState(value.length);
-  const editing = useRef({ value, cursor: value.length });
-  const position =
-    graphemeBoundaries(value).findLast((offset) => offset <= (cursorOffset ?? cursor)) ?? 0;
+  const editing = useRef<{
+    value: string;
+    cursor: number;
+    anchor?: number;
+    ranges: readonly { start: number; end: number }[];
+  }>({
+    value,
+    cursor: value.length,
+    ranges: atomicRanges,
+  });
+  const [anchor, setAnchor] = useState<number>();
+  const snap = (offset: number, direction = 0, ranges = editing.current.ranges) => {
+    const range = ranges.find((range) => range.start < offset && offset < range.end);
+    if (!range) return offset;
+    return direction < 0 || (direction === 0 && offset - range.start < range.end - offset)
+      ? range.start
+      : range.end;
+  };
+  const position = snap(
+    graphemeBoundaries(value).findLast((offset) => offset <= (cursorOffset ?? cursor)) ?? 0,
+    0,
+    atomicRanges,
+  );
   useLayoutEffect(() => {
     // An owner reset (submit, clear, or external fill) ends the history walk.
-    if (editing.current.value !== value) history?.reset();
+    if (editing.current.value !== value) {
+      history?.reset();
+      editing.current.anchor = undefined;
+      setAnchor(undefined);
+    }
     editing.current.value = value;
+    editing.current.ranges = atomicRanges;
     editing.current.cursor = position;
     if (cursor !== position) setCursor(position);
   });
@@ -94,14 +126,29 @@ export function TextInput({
       const boundaries = graphemeBoundaries(current.value);
       const before = boundaries.findLast((offset) => offset < current.cursor) ?? 0;
       const after = boundaries.find((offset) => offset > current.cursor) ?? current.value.length;
-      const move = (offset: number) => {
+      const move = (offset: number, select = false) => {
+        offset = snap(offset, Math.sign(offset - current.cursor));
+        current.anchor = select ? (current.anchor ?? current.cursor) : undefined;
+        setAnchor(current.anchor);
         current.cursor = offset;
         setCursor(offset);
       };
       const replace = (start: number, end: number, text: string) => {
+        if (current.anchor !== undefined) {
+          start = Math.min(current.anchor, current.cursor);
+          end = Math.max(current.anchor, current.cursor);
+        }
+        start = snap(start, -1);
+        end = snap(end, 1);
+        current.ranges = current.ranges.flatMap((range) => {
+          if (range.end <= start) return [range];
+          if (range.start < end) return [];
+          const shift = text.length - (end - start);
+          return [{ start: range.start + shift, end: range.end + shift }];
+        });
         current.value = current.value.slice(0, start) + text + current.value.slice(end);
         move(start + text.length);
-        onChange(current.value);
+        onChange(current.value, { start, end, text });
       };
       const insert = (text: string) =>
         replace(current.cursor, current.cursor, text.replace(/\r\n?/g, "\n"));
@@ -114,17 +161,32 @@ export function TextInput({
       }
       const { key, input } = event;
       if (key.ctrl || key.alt) return;
-      if (key.name === "left") move(before);
-      else if (key.name === "right") move(after);
+      if (key.name === "left")
+        move(
+          !key.shift && current.anchor !== undefined
+            ? Math.min(current.anchor, current.cursor)
+            : before,
+          key.shift,
+        );
+      else if (key.name === "right")
+        move(
+          !key.shift && current.anchor !== undefined
+            ? Math.max(current.anchor, current.cursor)
+            : after,
+          key.shift,
+        );
       else if (key.name === "home")
-        move(current.cursor === 0 ? 0 : current.value.lastIndexOf("\n", current.cursor - 1) + 1);
+        move(
+          current.cursor === 0 ? 0 : current.value.lastIndexOf("\n", current.cursor - 1) + 1,
+          key.shift,
+        );
       else if (key.name === "end") {
         const end = current.value.indexOf("\n", current.cursor);
-        move(end < 0 ? current.value.length : end);
+        move(end < 0 ? current.value.length : end, key.shift);
       } else if (key.name === "up" || key.name === "down") {
         const spans = [{ text: current.value + " ", style: {} }];
-        const caret = textCursor(spans, width, current.cursor);
-        const lines = textLines(spans, width, true, true);
+        const caret = textCursor(spans, width, current.cursor, current.ranges);
+        const lines = textLines(spans, width, true, true, current.ranges);
         const row = caret.y + (key.name === "up" ? -1 : 1);
         const line = lines[row];
         if (line) {
@@ -135,18 +197,23 @@ export function TextInput({
             offset = glyph.offset;
             x += glyph.width;
           }
-          move(Math.min(current.value.length, offset));
+          move(Math.min(current.value.length, offset), key.shift);
         } else {
           const recalled = history?.recall(key.name, current.value, current.cursor);
           if (recalled) {
+            onHistoryRecall?.();
             current.value = recalled.value;
+            current.ranges = [];
             move(recalled.cursor);
             onChange(current.value);
           }
         }
-      } else if (key.name === "backspace" && current.cursor > 0)
+      } else if (key.name === "backspace" && (current.cursor > 0 || current.anchor !== undefined))
         replace(before, current.cursor, "");
-      else if (key.name === "delete" && current.cursor < current.value.length)
+      else if (
+        key.name === "delete" &&
+        (current.cursor < current.value.length || current.anchor !== undefined)
+      )
         replace(current.cursor, after, "");
       else if (key.name === "enter") {
         const atLineEnd =
@@ -159,20 +226,37 @@ export function TextInput({
     },
     { isActive: isActive && !readOnly },
   );
-  const children = [];
-  let offset = 0;
-  for (const range of highlightRanges ?? []) {
-    children.push(value.slice(offset, range.start));
-    children.push(
-      createElement(
-        "tui-text",
-        { key: range.start, color: range.color },
-        value.slice(range.start, range.end),
-      ),
+  const selection =
+    anchor === undefined
+      ? undefined
+      : {
+          start: snap(Math.min(anchor, position), -1),
+          end: snap(Math.max(anchor, position), 1),
+        };
+  const edges = [
+    ...new Set([
+      0,
+      value.length,
+      ...(highlightRanges ?? []).flatMap(({ start, end }) => [start, end]),
+      ...(selection ? [selection.start, selection.end] : []),
+    ]),
+  ].sort((a, b) => a - b);
+  const children: ReactNode[] = edges.slice(0, -1).map((start, index) => {
+    const end = edges[index + 1]!;
+    const color = highlightRanges?.find(
+      (range) => range.start <= start && start < range.end,
+    )?.color;
+    return createElement(
+      "tui-text",
+      {
+        key: start,
+        color,
+        inverse: selection && selection.start <= start && start < selection.end ? true : undefined,
+      },
+      value.slice(start, end),
     );
-    offset = range.end;
-  }
-  children.push(value.slice(offset) + " ");
+  });
+  children.push(createElement("tui-text", { key: "caret" }, " "));
   return createElement(
     "tui-text",
     {
@@ -181,6 +265,7 @@ export function TextInput({
       width: columns,
       maxLines,
       cursorStyle,
+      atomicRanges,
       cursorOffset: isActive ? position : undefined,
     },
     ...children,

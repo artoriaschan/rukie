@@ -413,6 +413,8 @@ function Chat({
     try {
       const choice = rewindModes(picker)[picker.mode]!;
       const result = await session.rewind(picker.entries[picker.focus]!.promptEntryId, choice);
+      composer.reset();
+      pasteEpoch.current++;
       if (choice.conversation) {
         history.reset();
         change(result.prompt);
@@ -544,7 +546,8 @@ function Chat({
     state.subagents,
     state.error,
   ]);
-  const change = (value: string) => {
+  const change = (value: string, edit?: { start: number; end: number; text: string }) => {
+    composer.prune(value, edit);
     if (!value && draft.current) pasteEpoch.current++;
     armRewind();
     dismissedMenu.current = undefined;
@@ -562,6 +565,8 @@ function Chat({
   const switchModel = async (spec: string) => {
     try {
       await session.setModel(spec);
+      composer.reset();
+      pasteEpoch.current++;
       conversation.notice(t("model.changed", { model: session.model }));
     } catch (error) {
       conversation.notice(formatError(error, t), true);
@@ -569,7 +574,9 @@ function Chat({
   };
   const executeCommand = (prompt: string) => {
     const parsed = /^\/([a-z0-9-]+)(?:\s|$)/.exec(prompt);
-    const command = catalog.find((entry) => entry.name === parsed?.[1]);
+    // /new is the image-input contract's alias for the existing /clear action.
+    const name = parsed?.[1] === "new" ? "clear" : parsed?.[1];
+    const command = catalog.find((entry) => entry.name === name);
     if (!command) return submit(prompt, false, composer.ordered(prompt));
     if (conversation.isRunning() && !command.duringRun) {
       conversation.notice(t("command.busy", { name: command.name }));
@@ -1475,6 +1482,10 @@ function Chat({
               working={state.running}
               planMode={state.planMode}
               history={history}
+              onHistoryRecall={() => {
+                composer.clear();
+                pasteEpoch.current++;
+              }}
               filterInput={(event) =>
                 viewRef.current === "chat" &&
                 modelPickerRef.current === undefined &&
@@ -1493,6 +1504,7 @@ function Chat({
               highlightRanges={composer
                 .ranges(input)
                 .map((range) => ({ ...range, color: theme.suggestion }))}
+              atomicRanges={composer.ranges(input)}
               onPaste={(text, insert) => {
                 const epoch = pasteEpoch.current;
                 const path = pastedImagePath(text, homeDir ?? "");
@@ -1519,10 +1531,11 @@ function Chat({
                   });
               }}
               value={input}
-              onChange={(value) => {
+              onChange={(value, edit) => {
                 const pending = sideController.current ? undefined : interactions.getSnapshot();
                 if (viewRef.current !== "chat" || rewindRef.current) return;
-                if (!pending || (pending.kind === "question" && pending.collapsed)) change(value);
+                if (!pending || (pending.kind === "question" && pending.collapsed))
+                  change(value, edit);
               }}
               onSubmit={(prompt) => {
                 const pending = sideController.current ? undefined : interactions.getSnapshot();
