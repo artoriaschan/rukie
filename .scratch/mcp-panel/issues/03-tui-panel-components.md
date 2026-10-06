@@ -28,3 +28,5 @@
 2026-10-06：四层纯 props `McpPanel`、身份选择与实际 flow 高度 API 已完成；沿用 permission Divider、remember 标题、ListItem/StatusIcon/warning、HintLine 和 ScrollBox。zh/en 同步；文件诊断固定重试、busy 仅禁用管理、鼠标直达与独立正文阅读均有终端证据。`ScrollBox` 的短内容到长内容更新在公开渲染边界复现 top 0→25；新增默认行为不变的 mount-time `followOnReachBottom`，MCP 阅读页选择 false，以仅限制有效 top 而不启用跟随。包 README 记录该公共契约。
 
 2026-10-06：开发 red→green 记录包括缺失组件、无界列表、加载/诊断缺失和同一工具正文增长跳到末尾。新增 MCP 与 ScrollBox 公开终端测试共 24 pass、0 fail、107 assertions（2 files）；覆盖 project/user、协议身份、hover/click、滚轮、body/actions、忙时浏览/返回、schema/resize/恢复/内容收缩、0–14 行预算与 40×12 的 MCP+Goal/Todo/Subagent+prompt。whole-repo format/lint/types/Knip 与 diff check 当前通过；完整 aggregate 和最终合入最新集成基线的验证尚待，状态保留 claimed。
+
+2026-10-06：首次合并 02 `25e0c198` 后完整检查为2353 pass、1 fail、12067 assertions、168 files、344.02s，唯一失败为既有 permissions 用例取消审批后立即提交多行草稿的等待超时。原用例在03和未改的02共同基线分别独立复现同一 :490 失败；审批面板消失不代表取消的 Run 已结束。按仓库公开完成同步规则，仅在原测试的 panel-hidden 谓词之后补 `!app.isWorking()` 等待，保留草稿与后续模型输入断言，不改超时或生产 UI。该精确用例从 red 转为 green；日志 `/tmp/neant-mcp-panel-03-question-{rerun,baseline,fixed}.log`，原 aggregate 日志另保留 `-check-first.log`。

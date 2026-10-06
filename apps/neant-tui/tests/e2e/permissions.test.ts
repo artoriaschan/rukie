@@ -484,6 +484,7 @@ test("the question stays visible above a multiline draft and restores the draft 
     expect(dialog).toContain("3. 拒绝");
     app.stdin.write("\x03");
     await app.waitFor(() => !app.screen().join("\n").includes("等待审批"));
+    await app.waitFor(() => !app.isWorking());
     expect(app.screen().some((line) => line.trim() === "draft-line-9")).toBe(true);
     const nextCall = app.calls.length;
     app.stdin.write("\r");
