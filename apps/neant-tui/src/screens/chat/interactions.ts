@@ -4,10 +4,14 @@ import type {
   QuestionReply,
   PlanReviewRequest,
   PlanReviewResult,
+  McpAuthRequest,
+  McpAuthReply,
 } from "@neant/agent";
 import type { TuiHost } from "../../host";
 import type { InputEvent } from "@neant/tui";
 import { permissionChoices } from "../../components/permission-dialog";
+import { createTuiI18n } from "../../i18n";
+import type { Locale } from "@neant/i18n";
 
 interface PermissionInteraction {
   kind: "permission";
@@ -31,6 +35,14 @@ interface QuestionInteraction {
   questionIndex: number;
   drafts: QuestionDraft[];
   collapsed: boolean;
+  oauth?: {
+    server: string;
+    authorizationUrl: string;
+    activated: boolean;
+    opened: boolean;
+    busy?: boolean;
+    note?: string;
+  };
 }
 
 interface PlanInteraction {
@@ -53,14 +65,35 @@ type PendingInteraction =
   | { kind: "question"; interaction: QuestionInteraction; finish(reply: QuestionReply): void };
 
 /** Keep the Interaction FIFO outside React so each key sees the latest request. */
-export function createInteractions(host: Pick<TuiHost, "readClipboard">) {
+export function createInteractions(
+  host: Pick<TuiHost, "readClipboard" | "writeClipboard" | "openExternal">,
+  locale: Locale = "zh",
+) {
+  const t = createTuiI18n(locale);
   const pending: PendingInteraction[] = [];
   const listeners = new Set<() => void>();
   let clipboardBusy: symbol | undefined;
   let clipboardOwner: PendingInteraction | undefined;
   let questionGeneration = 0;
   let questionEditingEnabled = true;
-  const notify = () => listeners.forEach((listener) => listener());
+  const notify = () => {
+    const item = pending[0];
+    const oauth = item?.kind === "question" ? item.interaction.oauth : undefined;
+    if (item?.kind === "question" && oauth && !oauth.activated) {
+      oauth.activated = true;
+      void Promise.resolve()
+        .then(() =>
+          pending[0] === item ? host.openExternal(oauth.authorizationUrl).then(() => true) : false,
+        )
+        .catch(() => false)
+        .then((opened) => {
+          if (pending[0] !== item || !item.interaction.oauth) return;
+          item.interaction = { ...item.interaction, oauth: { ...item.interaction.oauth, opened } };
+          notify();
+        });
+    }
+    listeners.forEach((listener) => listener());
+  };
   const enqueue = <Reply>(
     signal: AbortSignal,
     cancelled: Reply,
@@ -226,6 +259,42 @@ export function createInteractions(host: Pick<TuiHost, "readClipboard">) {
         finish,
       }));
     },
+    askMcpAuth(request: McpAuthRequest): Promise<McpAuthReply> {
+      return enqueue<McpAuthReply>(request.signal, { type: "cancelled" }, (finish) => ({
+        kind: "question",
+        interaction: {
+          kind: "question",
+          request: {
+            ...request,
+            toolCallId: crypto.randomUUID(),
+            questions: [
+              {
+                header: request.server,
+                question: t("mcp.auth.question", { name: request.server }),
+                options: [t("mcp.auth.copy"), t("mcp.auth.reopen"), t("mcp.auth.cancel")].map(
+                  (label) => ({ label, description: "" }),
+                ),
+              },
+            ],
+          },
+          questionIndex: 0,
+          drafts: [{ selected: 0, checked: [], cursor: 0, custom: "" }],
+          collapsed: false,
+          oauth: {
+            server: request.server,
+            authorizationUrl: request.authorizationUrl,
+            activated: false,
+            opened: false,
+          },
+        },
+        finish: (reply) =>
+          finish(
+            reply === "declined"
+              ? { type: "cancelled" }
+              : { type: "callback-url", url: reply.answers[0]?.custom ?? "" },
+          ),
+      }));
+    },
     switchQuestion(offset: number) {
       const item = pending[0];
       if (item?.kind !== "question") return;
@@ -246,6 +315,7 @@ export function createInteractions(host: Pick<TuiHost, "readClipboard">) {
     toggleQuestionFold() {
       const item = pending[0];
       if (item?.kind !== "question") return;
+      if (item.interaction.oauth) return;
       item.interaction = { ...item.interaction, collapsed: !item.interaction.collapsed };
       notify();
     },
@@ -286,6 +356,53 @@ export function createInteractions(host: Pick<TuiHost, "readClipboard">) {
       const focus = selected ?? draft.selected;
       const question = request.questions[questionIndex]!;
       const custom = draft.custom.trim();
+      const oauth = item.interaction.oauth;
+      if (oauth) {
+        if (custom) {
+          item.finish({ answers: [{ selected: [], custom }] });
+          return;
+        }
+        if (focus === 2) {
+          item.finish("declined");
+          return;
+        }
+        if (focus > 2 || oauth.busy) return;
+        item.interaction = { ...item.interaction, oauth: { ...oauth, busy: true } };
+        notify();
+        const action =
+          focus === 0
+            ? Promise.resolve().then(() =>
+                pending[0] === item ? host.writeClipboard(oauth.authorizationUrl) : false,
+              )
+            : Promise.resolve().then(() =>
+                pending[0] === item
+                  ? host.openExternal(oauth.authorizationUrl).then(() => true)
+                  : false,
+              );
+        void action
+          .catch(() => false)
+          .then((success) => {
+            if (pending[0] !== item || !item.interaction.oauth) return;
+            item.interaction = {
+              ...item.interaction,
+              oauth: {
+                ...item.interaction.oauth,
+                busy: false,
+                note: t(
+                  focus === 0
+                    ? success
+                      ? "mcp.auth.copied"
+                      : "mcp.auth.copy-failed"
+                    : success
+                      ? "mcp.auth.reopened"
+                      : "mcp.auth.open-failed",
+                ),
+              },
+            };
+            notify();
+          });
+        return;
+      }
       const inputFocused = focus === question.options.length;
       const indices = question.multiSelect
         ? draft.checked

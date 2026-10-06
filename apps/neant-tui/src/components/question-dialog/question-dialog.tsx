@@ -23,8 +23,16 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import { useEffect, useState } from "react";
-import { Box, Divider, ThemedBox, ThemedText, ThemedTextInput } from "@neant/tui";
+import { useEffect, useState, type Ref } from "react";
+import {
+  Box,
+  Divider,
+  ScrollBox,
+  ThemedBox,
+  ThemedText,
+  ThemedTextInput,
+  type ScrollHandle,
+} from "@neant/tui";
 import type { Question, QuestionRequest } from "@neant/agent";
 import type { Locale } from "@neant/i18n";
 import { createTuiI18n } from "../../i18n";
@@ -55,6 +63,7 @@ export function QuestionDialog({
   columns,
   locale,
   origin,
+  auth,
 }: {
   question: Question;
   questionIndex: number;
@@ -75,6 +84,8 @@ export function QuestionDialog({
   columns: number;
   locale: Locale;
   origin?: QuestionRequest["origin"];
+  /** Frontend OAuth uses the same choice/editor surface with a scrollable URL body. */
+  auth?: { detail: string; scrollRef: Ref<ScrollHandle> };
 }) {
   const t = createTuiI18n(locale);
   const [hovered, setHovered] = useState<number>();
@@ -88,11 +99,13 @@ export function QuestionDialog({
   const heading =
     " " +
     (origin ? `${t("questions.origin", { description: singleLine(origin.description) })} · ` : "") +
-    t("question.heading", {
-      current: questionIndex + 1,
-      total: questionCount,
-      remaining: remaining > 1 ? t("question.remaining", { count: remaining }) : "",
-    }) +
+    (auth
+      ? t("mcp.auth.heading")
+      : t("question.heading", {
+          current: questionIndex + 1,
+          total: questionCount,
+          remaining: remaining > 1 ? t("question.remaining", { count: remaining }) : "",
+        })) +
     " ";
   if (collapsed)
     return (
@@ -119,28 +132,32 @@ export function QuestionDialog({
   const inputFocused = selected === question.options.length;
   const canSubmit = question.multiSelect && (checked.length > 0 || custom.trim().length > 0);
   const customLabel =
-    t("question.custom") +
+    t(auth ? "mcp.auth.custom" : "question.custom") +
     (!question.multiSelect && attached !== undefined
       ? t("question.attached", { label: singleLine(question.options[attached]!.label) })
       : "") +
     "：";
   const prefixWidth = Math.min(Math.max(1, width - 8), Bun.stringWidth(customLabel));
   const fullHintsFor = (editing: boolean) =>
-    [
-      t(editing ? "question.hint.type" : "question.hint.select"),
-      ...(!editing && question.multiSelect ? [t("question.hint.multi")] : []),
-      t("question.hint.paste"),
-      ...(!editing ? [t("question.hint.attach")] : []),
-      t("question.hint.enter"),
-      ...(editing ? [t("question.hint.back")] : []),
-      t(questionIndex > 0 ? "question.hint.previous" : "question.hint.escape"),
-      ...(questionCount > 1 ? [t(editing ? "question.hint.edge" : "question.hint.switch")] : []),
-      ...(questionIndex > 0 ? [t("question.hint.cancel")] : []),
-      ...(question.multiSelect && checked.length > 0
-        ? [t("question.hint.selected", { count: checked.length })]
-        : []),
-      t("question.hint.fold"),
-    ].join(" · ");
+    auth
+      ? t("mcp.auth.hint")
+      : [
+          t(editing ? "question.hint.type" : "question.hint.select"),
+          ...(!editing && question.multiSelect ? [t("question.hint.multi")] : []),
+          t("question.hint.paste"),
+          ...(!editing ? [t("question.hint.attach")] : []),
+          t("question.hint.enter"),
+          ...(editing ? [t("question.hint.back")] : []),
+          t(questionIndex > 0 ? "question.hint.previous" : "question.hint.escape"),
+          ...(questionCount > 1
+            ? [t(editing ? "question.hint.edge" : "question.hint.switch")]
+            : []),
+          ...(questionIndex > 0 ? [t("question.hint.cancel")] : []),
+          ...(question.multiSelect && checked.length > 0
+            ? [t("question.hint.selected", { count: checked.length })]
+            : []),
+          t("question.hint.fold"),
+        ].join(" · ");
   const optionHints = fullHintsFor(false);
   const inputHints = fullHintsFor(true);
   const fullHints = inputFocused ? inputHints : optionHints;
@@ -156,19 +173,23 @@ export function QuestionDialog({
     Number(Boolean(error)) * 2 +
     Number(canSubmit) * 2 +
     4;
-  const spacious = maxHeight >= fullReserved + 2;
+  const fullDetailHeight = auth ? wrappedRows(auth.detail, width) : 0;
+  const spacious = maxHeight >= fullReserved + fullDetailHeight + 2;
   const gap = Number(spacious);
   const chipHeight = question.header && maxHeight >= 6 && (!error || maxHeight > 6) ? 1 : 0;
-  const questionHeight = spacious ? fullQuestionHeight : 1;
+  const questionHeight = spacious || auth ? fullQuestionHeight : 1;
   const hintHeight = spacious ? fullHintHeight : 1;
   const errorHeight = error ? 1 + gap : 0;
   const submitHeight = spacious && canSubmit ? 1 + gap : 0;
   const hints = spacious
     ? fullHints
-    : t(questionCount > 1 ? "question.hint.compact-batch" : "question.hint.compact");
+    : auth
+      ? t("mcp.auth.hint")
+      : t(questionCount > 1 ? "question.hint.compact-batch" : "question.hint.compact");
   const reserved =
     1 + chipHeight + questionHeight + 1 + hintHeight + errorHeight + submitHeight + gap * 4;
-  const budget = Math.max(1, maxHeight - reserved);
+  const detailHeight = auth ? Math.min(fullDetailHeight, Math.max(1, maxHeight - reserved - 1)) : 0;
+  const budget = Math.max(1, maxHeight - reserved - detailHeight);
   const optionHeights = question.options.map(
     (option) =>
       wrappedRows(option.label, width - 3) +
@@ -193,24 +214,36 @@ export function QuestionDialog({
         onMouseLeave={() => setHovered(undefined)}
         backgroundColor={hovered === -1 ? "badgeHoverBackground" : undefined}
       >
-        <Divider title={`▾${heading}`} color="permission" />
+        <Divider
+          title={auth ? heading : `▾${heading}`}
+          color={auth ? "suggestion" : "permission"}
+        />
       </ThemedBox>
       <Box flexDirection="column" marginTop={gap}>
         {chipHeight > 0 && (
           <Box height={1}>
             <ThemedText
               bold
-              color="permission"
+              color={auth ? "suggestion" : "permission"}
               wrap="truncate"
             >{`◈ ${singleLine(question.header)}`}</ThemedText>
           </Box>
         )}
         <Box height={questionHeight}>
-          <ThemedText bold wrap={spacious ? "wrap" : "truncate"}>
-            {spacious ? question.question : singleLine(question.question)}
+          <ThemedText bold wrap={spacious || auth ? "wrap" : "truncate"}>
+            {spacious || auth ? question.question : singleLine(question.question)}
           </ThemedText>
         </Box>
       </Box>
+      {auth && (
+        <Box height={detailHeight} flexShrink={0}>
+          <ScrollBox ref={auth.scrollRef} initialFollow={false}>
+            <ThemedText dimColor wrap="wrap">
+              {auth.detail}
+            </ThemedText>
+          </ScrollBox>
+        </Box>
+      )}
       <Box flexDirection="column" marginTop={gap}>
         {question.options.slice(first, first + visibleCount).map((option, offset) => {
           const index = first + offset;
@@ -280,7 +313,7 @@ export function QuestionDialog({
           <Box marginLeft={1} width={prefixWidth} flexShrink={0}>
             <ThemedText wrap="truncate">
               <ThemedText bold={inputFocused} color={inputFocused ? "accent" : "permission"}>
-                {t("question.custom")}
+                {t(auth ? "mcp.auth.custom" : "question.custom")}
               </ThemedText>
               {!question.multiSelect && attached !== undefined && (
                 <ThemedText color="permission">
@@ -301,7 +334,7 @@ export function QuestionDialog({
                 maxLines={1}
               />
               <ThemedText dimColor wrap="truncate">
-                {t("question.placeholder")}
+                {t(auth ? "mcp.auth.placeholder" : "question.placeholder")}
               </ThemedText>
             </>
           ) : (

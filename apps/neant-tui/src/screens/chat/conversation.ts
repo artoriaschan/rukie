@@ -19,6 +19,7 @@ import type { TpsSample } from "../../components/status-line";
 import { goalPhasePresentation } from "../../components";
 import { reduceSubagent, restoreSubagents, type SubagentState } from "./subagents";
 import { createActivity, reduce } from "./activity/activity";
+import type { NoticeKind } from "../../components/notice";
 
 interface ToolCall {
   id: string;
@@ -316,6 +317,7 @@ function questionSummary(args: unknown, text: string, t: ReturnType<typeof creat
 }
 
 interface ViewState {
+  notification?: { text: string; kind: NoticeKind };
   goal: GoalView | undefined;
   planMode: boolean;
   waitingSubagents: number;
@@ -687,6 +689,8 @@ export function createConversation(session: Session, model: string, locale: Loca
   let compacting = false;
   let active: { controller: AbortController; promise: Promise<unknown> } | undefined;
   let notificationTimer: ReturnType<typeof setTimeout> | undefined;
+  let noticeTimer: ReturnType<typeof setTimeout> | undefined;
+  const authRequired = new Set<string>();
   const update = (next: ViewState, deferNotification = false) => {
     state = next;
     if (!deferNotification) {
@@ -706,7 +710,44 @@ export function createConversation(session: Session, model: string, locale: Loca
   const dispatchActivity = (event: Parameters<typeof reduce>[1]) => {
     update({ ...state, activity: reduce(state.activity, event, Date.now()) });
   };
+  const notify = (text: string, kind: NoticeKind, durationMs = 4000) => {
+    clearTimeout(noticeTimer);
+    update({ ...state, notification: { text, kind } });
+    noticeTimer = setTimeout(() => update({ ...state, notification: undefined }), durationMs);
+  };
+  const mcpNotice = (event: SessionEvent) => {
+    if (event.type === "subagent_event") {
+      mcpNotice(event.event);
+      return;
+    }
+    if (event.type === "mcp_auth_required") {
+      if (!authRequired.has(event.server)) {
+        authRequired.add(event.server);
+        notify(t("mcp.auth.required", { name: event.server }), "warning");
+      }
+    }
+    if (event.type !== "tool_execution_end") return;
+    const server = [...authRequired].find(
+      (name) => event.toolName === `mcp__${name}__authenticate`,
+    );
+    if (!server) return;
+    const details: unknown = event.result.details;
+    if (event.isError)
+      notify(t("mcp.auth.failure", { err: resultText(event.result) }), "error", 8000);
+    else if (
+      typeof details === "object" &&
+      details !== null &&
+      "type" in details &&
+      "server" in details &&
+      details.server === server
+    ) {
+      if (details.type === "authenticated")
+        notify(t("mcp.auth.success", { name: server }), "success");
+      else if (details.type === "cancelled") notify(t("mcp.auth.cancelled"), "dim");
+    }
+  };
   const onEvent = (event: SessionEvent) => {
+    mcpNotice(event);
     const now = Date.now();
     if (event.type === "conversation_rewound") {
       const restored = createViewState(session, state.model, locale);
@@ -789,6 +830,7 @@ export function createConversation(session: Session, model: string, locale: Loca
   }
   return {
     dispatchActivity,
+    notify,
     notice(text: string, error = false) {
       state = { ...state, planMode: session.planMode };
       update(
@@ -900,6 +942,7 @@ export function createConversation(session: Session, model: string, locale: Loca
       }
       await session.waitForIdle();
       unsubscribe();
+      clearTimeout(noticeTimer);
     },
   };
 }

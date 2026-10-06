@@ -18,6 +18,8 @@ const request = (
 test("session permission replies to Core and withdrawn requests leave the FIFO without allowing a different command", async () => {
   const interactions = createInteractions({
     readClipboard: async () => ({ unavailable: true }),
+    writeClipboard: async () => false,
+    openExternal: async () => {},
   });
   const first = new AbortController();
   const covered = new AbortController();
