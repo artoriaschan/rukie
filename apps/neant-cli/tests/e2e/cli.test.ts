@@ -677,6 +677,7 @@ test("stream-json emits session metadata, verbatim pi events, and the Run result
   ).toEqual([
     "session_start",
     "context_usage",
+    "mcp_servers_changed",
     "agent_start",
     "turn_start",
     "message_start",
@@ -700,6 +701,9 @@ test("stream-json emits session metadata, verbatim pi events, and the Run result
     "turn_end",
     "agent_end",
     "result",
+  ]);
+  expect(events.filter((event) => event.type === "mcp_servers_changed")).toEqual([
+    { type: "mcp_servers_changed", sessionId },
   ]);
   const usage = events.filter((event) => event.type === "context_usage");
   expect(usage).toHaveLength(2);

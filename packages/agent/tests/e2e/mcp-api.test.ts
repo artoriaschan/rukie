@@ -105,6 +105,10 @@ test("Session login returns its outcome, updates status and makes tools availabl
       },
     });
     try {
+      const reads: ReturnType<typeof session.mcpServers>[] = [];
+      session.subscribe((event) => {
+        if (event.type === "mcp_servers_changed") reads.push(session.mcpServers());
+      });
       expect(await session.authenticateMcp("srv")).toEqual({
         type: "authenticated",
         server: "srv",
@@ -112,6 +116,8 @@ test("Session login returns its outcome, updates status and makes tools availabl
       expect((await session.mcpServers()).servers).toMatchObject([
         { name: "srv", transport: "http", status: "connected", toolCount: 1, auth: "oauth" },
       ]);
+      expect(reads).toHaveLength(1);
+      expect((await reads[0])?.servers[0]?.status).toBe("connected");
       expect(fake.contexts).toEqual([]);
       await session.run("use MCP");
       expect(JSON.stringify(fake.contexts[0]!.messages)).toContain("mcp__srv__echo");
@@ -247,6 +253,10 @@ test("a delayed status probe adopts a newer Run snapshot", async () => {
       onWarning: () => {},
     });
     try {
+      const reads: ReturnType<typeof session.mcpServers>[] = [];
+      session.subscribe((event) => {
+        if (event.type === "mcp_servers_changed") reads.push(session.mcpServers());
+      });
       const probe = session.mcpServers();
       await started.promise;
       await configure(dirs, { latest: { url: latest.url } });
@@ -258,6 +268,8 @@ test("a delayed status probe adopts a newer Run snapshot", async () => {
       release.resolve();
       expect((await probe).servers).toMatchObject(expected);
       expect((await session.mcpServers()).servers).toMatchObject(expected);
+      expect(reads).toHaveLength(1);
+      expect((await reads[0])?.servers).toMatchObject(expected);
     } finally {
       release.resolve();
       await session.dispose();
@@ -285,6 +297,7 @@ test("MCP management rejects during a Run while recorded status remains readable
         () => session.authenticateMcp("srv"),
         () => session.clearMcpAuth("srv"),
         () => session.reconnectMcp("srv"),
+        () => session.mcpServers({ refresh: true }),
       ])
         await expect(operation()).rejects.toMatchObject({ code: "session-run-active" });
       expect((await session.mcpServers()).servers).toMatchObject([
@@ -390,8 +403,12 @@ test("cancelled manual login keeps the cached needs-auth status", async () => {
     });
     try {
       const before = await session.mcpServers();
+      const events: string[] = [];
+      session.subscribe((event) => events.push(event.type));
+      events.length = 0;
       expect(await session.authenticateMcp("srv")).toEqual({ type: "cancelled", server: "srv" });
       expect(await session.mcpServers()).toEqual(before);
+      expect(events).not.toContain("mcp_servers_changed");
     } finally {
       await session.dispose();
     }
@@ -808,6 +825,322 @@ test("MCP tool details preserve nested JSON Schema and an absent description ind
     }
   } finally {
     await server.stop();
+    await dirs.cleanup();
+  }
+});
+
+test("MCP change events expose the committed snapshot and cached reads never loop or reconnect", async () => {
+  const dirs = await tempDirs();
+  const server = mcpOAuthServer({ authentication: false });
+  try {
+    await configure(dirs, { srv: { url: server.url } });
+    const session = await createSession({ ...dirs, ...fakeModel([fauxAssistantMessage("done")]) });
+    try {
+      const reads: ReturnType<typeof session.mcpServers>[] = [];
+      const stop = session.subscribe((event) => {
+        if (event.type === "mcp_servers_changed") {
+          expect(Object.keys(event).sort()).toEqual(["sessionId", "type"]);
+          reads.push(session.mcpServers());
+        }
+      });
+      const snapshot = await session.mcpServers();
+      await Promise.resolve();
+      expect(reads).toHaveLength(1);
+      expect(await reads[0]).toEqual(snapshot);
+      const requests = server.requests.length;
+      await session.mcpServers();
+      await Promise.resolve();
+      expect(reads).toHaveLength(1);
+      expect(server.requests).toHaveLength(requests);
+      await session.run("same configuration");
+      expect(reads).toHaveLength(1);
+      stop();
+    } finally {
+      await session.dispose();
+    }
+  } finally {
+    await server.stop();
+    await dirs.cleanup();
+  }
+});
+
+test("explicit MCP refresh repairs configuration diagnostics and replaces the complete cached snapshot", async () => {
+  const dirs = await tempDirs();
+  const server = mcpOAuthServer({ authentication: false });
+  try {
+    await Bun.write(join(dirs.homeDir, ".neant/mcp.json"), "{");
+    const session = await createSession({ ...dirs, ...fakeModel([]), onWarning: () => {} });
+    try {
+      const reads: ReturnType<typeof session.mcpServers>[] = [];
+      session.subscribe((event) => {
+        if (event.type === "mcp_servers_changed") reads.push(session.mcpServers());
+      });
+      const broken = await session.mcpServers();
+      expect(broken.configErrors).toHaveLength(1);
+      await configure(dirs, { srv: { url: server.url } });
+      expect(await session.mcpServers()).toEqual(broken);
+      const repaired = await session.mcpServers({ refresh: true });
+      expect(repaired.configErrors).toEqual([]);
+      expect(repaired.servers).toMatchObject([{ name: "srv", status: "connected", toolCount: 1 }]);
+      expect(await Promise.all(reads)).toEqual([broken, repaired]);
+      const requests = server.requests.length;
+      await session.mcpServers();
+      expect(server.requests).toHaveLength(requests);
+      await session.mcpServers({ refresh: true });
+      expect(reads).toHaveLength(2);
+      await configure(dirs, {});
+      expect(await session.mcpServers({ refresh: true })).toEqual({
+        servers: [],
+        configErrors: [],
+      });
+      expect(reads).toHaveLength(3);
+    } finally {
+      await session.dispose();
+    }
+  } finally {
+    await server.stop();
+    await dirs.cleanup();
+  }
+});
+
+test("management before the first MCP read publishes a complete snapshot with the selected result", async () => {
+  const dirs = await tempDirs();
+  const server = mcpOAuthServer();
+  const other = mcpOAuthServer({ authentication: false });
+  try {
+    await configure(dirs, { srv: { url: server.url }, other: { url: other.url } });
+    const session = await createSession({
+      ...dirs,
+      ...fakeModel([]),
+      onMcpAuth: async () => ({ type: "cancelled" }),
+    });
+    try {
+      const reads: ReturnType<typeof session.mcpServers>[] = [];
+      session.subscribe((event) => {
+        if (event.type === "mcp_servers_changed") reads.push(session.mcpServers());
+      });
+      expect(await session.authenticateMcp("srv")).toEqual({ type: "cancelled", server: "srv" });
+      expect(reads).toHaveLength(1);
+      expect((await reads[0])?.servers).toMatchObject([
+        { name: "other", status: "connected", toolCount: 1 },
+        { name: "srv", status: "needs-auth", toolCount: 0 },
+      ]);
+      const requests = other.requests.length;
+      expect(await reads[0]).toEqual(await session.mcpServers());
+      expect(other.requests).toHaveLength(requests);
+    } finally {
+      await session.dispose();
+    }
+  } finally {
+    await server.stop();
+    await other.stop();
+    await dirs.cleanup();
+  }
+});
+
+test("concurrent MCP refresh shares one probe, excludes management and cleans up on dispose", async () => {
+  const dirs = await tempDirs();
+  const started = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const server = mcpOAuthServer({
+    authentication: false,
+    beforeInitialize: async () => {
+      started.resolve();
+      await release.promise;
+    },
+  });
+  try {
+    await configure(dirs, { srv: { url: server.url } });
+    const session = await createSession({ ...dirs, ...fakeModel([]) });
+    try {
+      const reads: ReturnType<typeof session.mcpServers>[] = [];
+      session.subscribe((event) => {
+        if (event.type === "mcp_servers_changed") reads.push(session.mcpServers());
+      });
+      const refresh = session.mcpServers({ refresh: true });
+      await started.promise;
+      const concurrent = session.mcpServers({ refresh: true });
+      const ordinary = session.mcpServers();
+      await expect(session.run("busy")).rejects.toMatchObject({ code: "session-mcp-busy" });
+      await expect(session.reconnectMcp("srv")).rejects.toMatchObject({ code: "session-mcp-busy" });
+      release.resolve();
+      const results = await Promise.all([refresh, concurrent, ordinary]);
+      expect(results[1]).toEqual(results[0]);
+      expect(results[2]).toEqual(results[0]);
+      expect(reads).toHaveLength(1);
+      expect(
+        server.requests.filter(
+          (request) =>
+            request.body &&
+            typeof request.body === "object" &&
+            "method" in request.body &&
+            request.body.method === "initialize",
+        ),
+      ).toHaveLength(1);
+      await session.dispose();
+      await expect(session.mcpServers({ refresh: true })).rejects.toThrow("disposed");
+    } finally {
+      release.resolve();
+      await session.dispose();
+    }
+  } finally {
+    await server.stop();
+    await dirs.cleanup();
+  }
+});
+
+test("management commits changed file diagnostics while preserving other cached servers", async () => {
+  const dirs = await tempDirs();
+  const server = mcpOAuthServer({ authentication: false });
+  try {
+    await configure(dirs, { srv: { url: server.url } });
+    await Bun.write(join(dirs.cwd, ".mcp.json"), "{");
+    const session = await createSession({ ...dirs, ...fakeModel([]), trustProjectMcp: true });
+    try {
+      expect((await session.mcpServers()).configErrors).toHaveLength(1);
+      await Bun.write(join(dirs.cwd, ".mcp.json"), JSON.stringify({ mcpServers: {} }));
+      const reads: ReturnType<typeof session.mcpServers>[] = [];
+      session.subscribe((event) => {
+        if (event.type === "mcp_servers_changed") reads.push(session.mcpServers());
+      });
+      reads.length = 0;
+      await session.reconnectMcp("srv");
+      expect(reads).toHaveLength(1);
+      expect((await reads[0])?.configErrors).toEqual([]);
+      expect((await reads[0])?.servers).toMatchObject([{ name: "srv", status: "connected" }]);
+    } finally {
+      await session.dispose();
+    }
+  } finally {
+    await server.stop();
+    await dirs.cleanup();
+  }
+});
+
+test("dispose cancels a pending explicit MCP refresh without a late change event", async () => {
+  const dirs = await tempDirs();
+  const started = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const server = mcpOAuthServer({
+    authentication: false,
+    beforeInitialize: async () => {
+      started.resolve();
+      await release.promise;
+    },
+  });
+  try {
+    await configure(dirs, { srv: { url: server.url } });
+    const session = await createSession({ ...dirs, ...fakeModel([]) });
+    try {
+      const changed: string[] = [];
+      session.subscribe((event) => {
+        if (event.type === "mcp_servers_changed") changed.push(event.type);
+      });
+      const refresh = session.mcpServers({ refresh: true }).then(
+        () => false,
+        () => true,
+      );
+      await started.promise;
+      await session.dispose();
+      expect(await refresh).toBe(true);
+      release.resolve();
+      await Promise.resolve();
+      expect(changed).toEqual([]);
+    } finally {
+      release.resolve();
+      await session.dispose();
+    }
+  } finally {
+    await server.stop();
+    await dirs.cleanup();
+  }
+});
+
+test("first-management and initial-read race retain all servers and publish after completion", async () => {
+  const dirs = await tempDirs();
+  const started = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const server = mcpOAuthServer();
+  const other = mcpOAuthServer({
+    authentication: false,
+    beforeInitialize: async () => {
+      started.resolve();
+      await release.promise;
+    },
+  });
+  try {
+    await configure(dirs, { srv: { url: server.url }, other: { url: other.url } });
+    const session = await createSession({
+      ...dirs,
+      ...fakeModel([]),
+      onMcpAuth: async () => ({ type: "cancelled" }),
+    });
+    try {
+      const reads: ReturnType<typeof session.mcpServers>[] = [];
+      session.subscribe((event) => {
+        if (event.type === "mcp_servers_changed") reads.push(session.mcpServers());
+      });
+      const login = session.authenticateMcp("srv");
+      await started.promise;
+      const initial = session.mcpServers();
+      expect(reads).toEqual([]);
+      release.resolve();
+      await login;
+      const snapshot = await initial;
+      expect(snapshot.servers).toMatchObject([
+        { name: "other", status: "connected" },
+        { name: "srv", status: "needs-auth" },
+      ]);
+      expect(await Promise.all(reads)).toEqual([snapshot]);
+    } finally {
+      release.resolve();
+      await session.dispose();
+    }
+  } finally {
+    await server.stop();
+    await other.stop();
+    await dirs.cleanup();
+  }
+});
+
+test("dispose during first-management completion preserves the cancelled login outcome", async () => {
+  const dirs = await tempDirs();
+  const started = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const server = mcpOAuthServer();
+  const other = mcpOAuthServer({
+    authentication: false,
+    beforeInitialize: async () => {
+      started.resolve();
+      await release.promise;
+    },
+  });
+  try {
+    await configure(dirs, { srv: { url: server.url }, other: { url: other.url } });
+    const session = await createSession({
+      ...dirs,
+      ...fakeModel([]),
+      onMcpAuth: async () => ({ type: "cancelled" }),
+    });
+    try {
+      const events: string[] = [];
+      session.subscribe((event) => events.push(event.type));
+      const login = session.authenticateMcp("srv");
+      const outcome = login.then(
+        (result) => result,
+        (error: unknown) => error,
+      );
+      await started.promise;
+      await session.dispose();
+      expect(await outcome).toEqual({ type: "cancelled", server: "srv" });
+      expect(events).not.toContain("mcp_servers_changed");
+    } finally {
+      release.resolve();
+      await session.dispose();
+    }
+  } finally {
+    await server.stop();
+    await other.stop();
     await dirs.cleanup();
   }
 });
