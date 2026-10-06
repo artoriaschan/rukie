@@ -8,8 +8,8 @@
 
 - [x] Session 新增 `contextReport()`（只读，空闲与 run 中都可用）：`model`、`window`、`used`（优先最近一次 response 的 input tokens，否则估算总和）、`categories[]`、`memoryFiles[]`、`mcpTools[]`、`skills[]`、`agentTypes[]`
 - [x] 类别：System prompt（仅系统提示词）、Memory files（`user-instructions` / `project-instructions` reminder 当前内容，按路径）、System tools（含子代理类型）、MCP tools、Skills（列表 reminder）、Messages（其余，不重复计）、Compaction 预留（窗口 20%）、Free space（≥0）；细分用 chars/4；现有 `context_usage` 不变
-- [x] TUI 组件复刻 Claude Code `ContextVisualization`：左格子右图例；10×10，窗口 ≥1M 为 20×10，终端 <80 列缩为 5×5（1M 为 5×10）；`⛁` 满格、`⛀` 不足 70%、`⛶` 空闲、`⛝` 预留；每类配色映射 Neant 主题 token
-- [x] 图例：`model · used/window tokens (pct%)`、`Estimated usage by category`、逐类 `⛁ 类别: N tokens (p%)`；明细区 MCP tools / Memory files / Skills / 子代理类型，`└ name: N tokens`
+- [x] TUI 组件复刻 Claude Code `ContextVisualization`：宽屏左格子右图例，窄屏或空间不足时上下排列；10×10，窗口 ≥1M 为 20×10，终端 <80 列缩为 5×5（1M 为 5×10）；`⛁` 满格、`⛀` 不足 70%、`⛶` 空闲、`⛝` 预留；报告内使用截图参考配色，每个非空类别至少占一格
+- [x] 图例：模型名称与窗口、模型 ID、`used/window tokens (pct%)` 三行，斜体 `Estimated usage by category`，只显示非零类别，符号着色、数值灰色、k/m 缩写；下方显示 MCP tools / 子代理类型 / Memory files / Skills 的数量与 token 摘要，`/context all` 展开 `└ name: N tokens` 明细
 - [x] 渲染为对话区本地静态条目，不进 Agent Core transcript；run 中可用
 - [x] Agent Core e2e（Memory files 不重复计入 Messages、明细、预留、真实 usage 优先）与 TUI 测试（符号、图例、窄终端）覆盖以上行为
 
@@ -26,3 +26,9 @@ Validation on latest integration base including 03/08: 97 affected Core/TUI/i18n
 最终完整检查的同步纠正：provider usage 在 assistant message 结束时已发出，但 Stop hook、存储关闭和 Run 收尾仍可待完成；只等 `0.6%` / `0.9%` 不能代表允许下一条普通 prompt。原测试在此窗口提交时输入按 busy 规则保留草稿。公开 `start()` 测试加入受控 Stop HTTP hook，确定复现 usage 可见而 spinner 仍在、旧顺序第二请求不出现；修复测试为释放 hook 并等待终端 `!app.isWorking()`，两次 response 后均观察 idle 再提交。生产行为和超时未改。Red/green 日志：`/tmp/neant-slash-context-readiness-red.log` / `/tmp/neant-slash-context-readiness-green.log`。
 
 同步纠正验证：title、context、resume、side-question 和 Core session-list 共 5 个受影响文件连续 5 次均为 27 pass / 0 fail / 160 assertions（合计 135 pass / 0 fail / 800 assertions），日志 `/tmp/neant-slash-readiness-repeat-{1..5}.log`；oxfmt、oxlint、tsc -b、knip 和 git diff --check 通过。整个 integration 的 final full check 由 root 执行。
+
+### 2026-10-06 截图样式复刻
+
+按用户提供的 Claude Code 截图调整命令背景、缩进标题、带空格的容量网格、三行模型信息、图例的颜色与斜体、下方资源摘要和 `/context all` 展开提示。保留 Neant 分类与 20% 压缩预留；子代理类型仍计入 System tools，避免为展示重复计数。两种命令仍仅追加本地不可变快照。
+
+公开终端测试覆盖四种网格、provider 快照保持、Run 中展开、中文文案、实际 RGB cell 颜色与加粗/斜体，以及从 120 列缩到 60/40 列后的上下布局。聚焦验证：`env -u NO_COLOR bun test apps/neant-tui/tests/screens/chat/context-report.test.ts apps/neant-tui/tests/screens/chat/slash-menu-parity.test.ts`，15 pass、0 fail、135 assertions。初次颜色检查受到宿主 NO_COLOR 影响；清除后原命令菜单与新报告颜色均通过。完整检查：在隔离临时 HOME、清除 NO_COLOR 并使用 caffeinate 的环境下执行 `bun run check`，退出 0；oxfmt、oxlint、tsc -b、Knip 全部通过，2189 pass、0 fail、11283 assertions、156 files，253.35s。日志：`/tmp/neant-context-style-check.log`。补充文档格式检查和 `git diff --check` 均通过。

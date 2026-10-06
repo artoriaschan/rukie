@@ -49,7 +49,7 @@ type CompletedEntry =
       planReview?: { plan: string; kind: "approve" | "revise" | "takeover"; feedback?: string };
     }
   | { type: "notice"; text: string }
-  | { type: "context-report"; report: ContextReport };
+  | { type: "context-report"; report: ContextReport; expanded: boolean; modelName?: string };
 
 type ToolResultMessage = Extract<
   Extract<SessionEvent, { type: "message_end" }>["message"],
@@ -800,12 +800,12 @@ export function createConversation(session: Session, model: string, locale: Loca
             },
       );
     },
-    contextReport(report: ContextReport) {
+    contextReport(report: ContextReport, expanded = false, modelName?: string) {
       update({
         ...state,
         completed: [
           ...state.completed,
-          { type: "context-report", report: structuredClone(report) },
+          { type: "context-report", report: structuredClone(report), expanded, modelName },
         ],
       });
     },

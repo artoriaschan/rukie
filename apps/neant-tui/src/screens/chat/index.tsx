@@ -850,7 +850,12 @@ function Chat({
       void conversation
         .compact(prompt.slice(parsed![0].length).trim() || undefined)
         .catch((error: unknown) => conversation.notice(formatError(error, t), true));
-    else if (command.name === "context") conversation.contextReport(session.contextReport());
+    else if (command.name === "context")
+      conversation.contextReport(
+        session.contextReport(),
+        prompt.slice(parsed![0].length).trim() === "all",
+        models.find((choice) => choice.spec === session.model)?.name,
+      );
     else if (command.name === "rewind") openRewind();
     else if (command.name === "clear")
       void replaceSession().catch((error: unknown) =>
@@ -1362,6 +1367,8 @@ function Chat({
               <ContextVisualization
                 key={index}
                 report={entry.report}
+                expanded={entry.expanded}
+                modelName={entry.modelName}
                 columns={columns}
                 locale={locale}
               />
