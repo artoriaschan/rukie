@@ -73,6 +73,9 @@ Status: ready-for-agent
 - Plan Mode 的状态、controller、提醒与 Enter/Exit 工具适配同属 Plan Mode 能力目录。controller 拥有 active、hasEntered、revision、写入队列、失败回退、恢复投影和等待写入的接口。hasEntered 依据是否存在状态快照，不从 active 推导。父子 Session 共用同一 controller，子 Session 不新增状态快照。
 - Session 注入 Plan Mode 状态读取与持久化回调，继续协调 baseline、Session Store、状态事件、Run 外缓存和 Run 开始交付。状态写入队列不等待事件通知；原调用仍等待自己的通知完成，回调再次切换状态不会自等待。Rewind 和关闭保持原有等待位置及恢复顺序。
 - Session 仅抽取内部工具组装协作，保留 Run 调度、恢复流程、事件和资源生命周期。工具组装不持有第二份 Session 状态，不引入一个接收全部能力的大工厂。
+- MCP 连接、授权、配置诊断和 Session 快照协调继续归 Session/MCP，包含 McpSnapshot、McpToolView、McpConfigError 公开类型与 mcpServers({ refresh })、authenticateMcp、clearMcpAuth、reconnectMcp 接口。快照是 Agent Core 状态事实；面板选择、焦点和输入仍归 Frontend。工具组装不接管快照缓存、revision、独立 probe 或管理互斥状态。
+- 保留 MCP 快照的独立副本、配置来源、URL 脱敏和原始工具 schema；缓存读取不重连，显式刷新替换完整快照且共享并发 probe。先提交再发送 mcp_servers_changed，相同快照不重复通知，较旧 probe 不覆盖较新 Run 状态，单 server 管理不抹去其他 server，dispose 中止操作并关闭资源且不发布迟到事件。
+- 子 Session 继续传递 MCP OAuth Interaction 的 child origin，授权后按原继承范围刷新真实工具并共享现有凭据归属；显式 type.tools 保持精确白名单，包含 authenticate-only 类型，Headless 子 Session 不暴露授权工具。子 Session 构造与授权回调协调仍归 Session。
 - 保留启动、Run 前和 Turn 准备时不同的工具刷新范围与顺序。Question、Plan Mode、Goal、Subagent 的可用性、子类型过滤、fork 工具继承、继承 MCP server 与动态类型描述均按当前行为构造。
 - Permission Review 作为权限模块中的独立模型评审实现，保留失败转 ask、取消、安全默认与显式规则约束。Plan Mode 与 Permission Mode 继续独立。
 - 当前实际共用的 pi 适配与错误包装从工具组装入口分离。MCP 可消费错误包装，Hook 可消费独立只读工具集；Session 可直接调用能力入口提供的 controller、registry 与状态接口。
@@ -89,6 +92,7 @@ Status: ready-for-agent
 - 结果、事件、错误码、持久化、权限、Hooks、取消和资源清理由已有公开测试保护，避免重复创建全量结果快照。测试先于对应实现变动通过；不得修改原断言迁就重构。
 - Plan Mode 重点保护乐观内存状态、串行写入、最新 revision 回退、失败后重试、队列与通知边界、同值等待、父子共享、Compaction、Rewind 及关闭等待。核查并补齐多个待写 revision 的失败组合，以及父 Rewind 后已有子 Session 继续 send_message 的状态共享。
 - Subagent 重点保护前后台结果、创建前名额预留、迟到创建的取消收束、发送串行、类型变化、错误与通知、fork、恢复、Run Outcome 和使用量结算。
+- MCP 快照、刷新、事件提交顺序、管理互斥、probe 与 Run 竞态、副本隔离、配置诊断及 dispose 复用 mcp-api.test.ts；配置与 OAuth 生命周期复用 mcp-config.test.ts、mcp-oauth.test.ts 和 mcp-oauth-lifecycle.test.ts。普通/fork 子 Session 的 child origin、授权后工具刷新、凭据共享、取消及精确白名单复用 subagent-mcp-oauth.test.ts。先验证既有用例，仅为真实缺口增加测试。
 - Bash、Background Job、Web Fetch、Todo、Goal、Permission Review、MCP 和 Hook 沿用现有公开场景，覆盖生命周期和执行协议而非目录或私有状态结构。
 - 测试 prior art 包括 tools、Plan Mode、Plan Review、Enter Plan Mode、Todo 与提醒、Goal 工具、Subagent 与 fork、类型和恢复、Background Job 与 Session Job API、通知与子 Jobs，以及 Web Fetch 的请求、重定向、代理、转换和权限套件。
 - 每票运行受影响公开测试、格式、lint 与类型检查。最终以隔离配置、清除 NO_COLOR 运行完整 bun run check，覆盖全部包、CLI/TUI 和 Knip；按仓库规则报告真实命令、退出码、测试结果和局限。
@@ -106,6 +110,8 @@ Status: ready-for-agent
 用户以 to-spec 确认将 Q1–Q11 和完整设计转为正式规范，随后明确调整 tools 的含义，将 Goal、Jobs、Subagent、Plan Mode 的关联能力一并聚合到 tools。最新调整覆盖此前要求外层领域目录与工具入口分离的目录决策，保留内部职责和公开契约。状态 ready-for-agent 表示已具备实施信息，依赖仍须按票遵守。当前仅发布文档，代码与 lint 规则尚未迁移。
 
 实施严格按 01 → 02 → 03 → 04 → 05 → 06 → 07 → 08。每票更新当时的所有消费者与相关当前文档，保持可运行，不留待下票修复的破坏。
+
+2026-10-07 重新审计代码基线 182d278；审计时的规划提交 55db4ca 与该基线之间无 apps/、packages/ 代码差异。MCP 快照与子 Session OAuth 的既有契约纳入本次兼容验收，不改变 tools 的能力聚合决策。审计运行 `rtk proxy bun test packages/agent/tests/e2e/mcp-api.test.ts packages/agent/tests/e2e/mcp-config.test.ts packages/agent/tests/e2e/mcp-oauth.test.ts packages/agent/tests/e2e/mcp-oauth-lifecycle.test.ts packages/agent/tests/e2e/subagent-mcp-oauth.test.ts packages/agent/tests/e2e/job-api.test.ts packages/agent/tests/e2e/subagent-jobs.test.ts`，退出码 0，7 个文件、112 项通过、0 失败、654 次断言。该证据属于迁移前专项审计，不表示实施票已完成或全量检查已通过。
 
 - [01：公开协议与时序基线](issues/01-public-contract-baseline.md)
 - [02：工具适配与基础工厂](issues/02-tool-runtime-and-factories.md)

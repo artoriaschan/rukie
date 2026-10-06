@@ -18,6 +18,7 @@ packages/agent/src/tools/index.ts 及 tools/runtime.ts、tools/builtin.ts；更�
 - [ ] tools/index.ts 保留工具工厂/交互类型入口，实际共享 pi context/AbortSignal 适配和 preserveErrorDetails 独立维护。
 - [ ] 保留 read 原始字节图片准入、home/path 参数准备、pi 二次规范化、错误码与 params 结果，以及取消行为。
 - [ ] MCP 直接消费实际所需的错误包装，Hook 消费独立只读工具集；均不为了 helper 加载整个工具组装入口。
+- [ ] 保留 MCP authenticate 工具使用 preserveErrorDetails 的错误路径与原始 MCP 工具的适配路径；不将错误包装无差别增加到所有 MCP 工具。复用 OAuth、配置错误与生命周期公开套件验证迁移。
 - [ ] 基础工具集与 Hook 只读工具集具有独立工厂，原工具名称、参数、顺序和隐藏条件保持。
 - [ ] 保留 tools/path.ts 现有职责，当前没有跨领域消费者，不为假设复用另建抽象。
 - [ ] 更新当前消费者与包类型转导出，删除搬迁后废弃实现；不留下临时破坏等待下一票。

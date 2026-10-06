@@ -17,6 +17,7 @@ packages/agent/tests/e2e/ 与现有 tests/helpers/。复用 createSession、fake
 
 - [ ] 通过模型调用上下文断言名称、description、完整 parameters schema 与工具顺序；覆盖顶层默认及提供交互回调的工具集。
 - [ ] 覆盖普通/fork 子 Session、子类型过滤、父 MCP server 继承与确定性动态类型描述；确认 Run 前和 Turn 准备时各自的刷新契约。
+- [ ] 在迁移前验证 spec 列出的 MCP 快照/API 与 Subagent OAuth 既有公开套件，保留原断言；记录公开类型、刷新、事件、child origin 和工具继承契约，只有真实缺口才新增测试。
 - [ ] 缺少 onQuestion/onPlanReview 等回调的工具可用性由公开行为断言，保持 Headless 安全默认。
 - [ ] 核查 Plan Mode 多个待写 revisions 的较早失败/较晚成功及较早成功/较晚失败组合，验证最新状态、失败传播和后续可写。
 - [ ] 覆盖父 Rewind 后同一已有 child handle 经 send_message 继续运行时的 Plan Mode 投影、提醒与无独立子 snapshot。

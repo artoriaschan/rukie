@@ -17,6 +17,7 @@ Blocked by: [07](07-session-assembly-and-boundaries.md)
 
 - [ ] Standards审查模块入口、依赖、严格类型、冗余实现、旧内部路径和无用途抽象；Spec审查Q1–Q11与每票验收。
 - [ ] 验证内置协议、结果/错误细节、事件、动态刷新、Transcript与包公开导出兼容，CLI/TUI消费者保持。
+- [ ] 对照 182d278 基线与 Spec 的 MCP 验收，复核快照公开类型、刷新/管理/通知/取消契约，以及普通/fork 子 Session OAuth origin、凭据共享和精确工具继承；确认复用了相应公开套件，Frontend 面板状态没有进入 Agent Core。
 - [ ] 核对Plan Mode和Subagent的并发、存储失败、父子共享、恢复与取消完成边界，以及Bash/Job进程资源清理。
 - [ ] 运行隔离配置且清除NO_COLOR的完整bun run check，记录实际退出码、通过/失败计数与日志。
 - [ ] 复查工程规则、架构、ADR迁移状态、源码及文档链接一致，根CLAUDE.md软链接保留。
