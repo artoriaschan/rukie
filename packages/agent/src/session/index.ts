@@ -1083,7 +1083,7 @@ async function createSessionInternal(
         trustProjectMcp: options.trustProjectMcp,
         signal: controller.signal,
         interactive: !!options.onMcpAuth,
-        onMcpAuth: options.onMcpAuth,
+        onMcpAuth,
         onInteractionStart,
         onWarning: options.onWarning,
         onlyServer: name,
@@ -1128,7 +1128,7 @@ async function createSessionInternal(
         trustProjectMcp: options.trustProjectMcp,
         signal: controller.signal,
         interactive: !!options.onMcpAuth,
-        onMcpAuth: options.onMcpAuth,
+        onMcpAuth,
         onInteractionStart,
         onWarning: options.onWarning,
       });
