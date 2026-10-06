@@ -30,12 +30,19 @@ test("clipboard tip expires after ten seconds despite polling and editing, and a
     const afterExpiry = probes;
     await app.waitFor(() => probes > afterExpiry);
     expect(app.screen().join("\n")).not.toContain(english);
+    app.stdin.write("\x7f".repeat("preserved draft".length));
+    await app.waitFor(() => app.screen().includes("❯"));
+    app.stdin.write("/mod");
+    await app.waitFor(() => app.screen().join("\n").includes("commands ·"));
+    app.stdin.write("\t");
+    await app.waitFor(() => app.screen().includes("❯ /model"));
+    expect(app.screen().join("\n")).not.toContain(english);
     image = false;
     const beforeClear = probes;
     await app.waitFor(() => probes > beforeClear);
     image = true;
     await app.waitFor(() => app.screen().join("\n").includes(english));
-    expect(app.screen()).toContain("❯ preserved draft");
+    expect(app.screen()).toContain("❯ /model");
     expect(app.calls).toHaveLength(0);
     expect(app.stderr()).toBe("");
   } finally {

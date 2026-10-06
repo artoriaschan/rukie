@@ -12,6 +12,7 @@ export function PromptInput({
   planMode = false,
   history,
   onHistoryRecall,
+  inputRevision,
   readOnly = false,
   compact = false,
   tip,
@@ -32,6 +33,8 @@ export function PromptInput({
   planMode?: boolean;
   history?: TextInputProps["history"];
   onHistoryRecall?: TextInputProps["onHistoryRecall"];
+  /** Remounts the editor after programmatic replacement while retaining the Tips lifetime. */
+  inputRevision?: number;
   readOnly?: boolean;
   compact?: boolean;
   /** Expires after ten seconds; changing or clearing the content starts a new lifecycle. */
@@ -70,6 +73,7 @@ export function PromptInput({
         </Box>
         <Box flexGrow={1}>
           <ThemedTextInput
+            key={inputRevision}
             isActive={!readOnly}
             readOnly={readOnly}
             value={value}
