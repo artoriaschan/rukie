@@ -377,3 +377,42 @@ test("idle MCP commands authorize in the shared panel, then logout and reconnect
     await server.stop();
   }
 });
+
+test.each(["zh_CN.UTF-8", "en_US.UTF-8"])(
+  "known MCP probe failures are localized in Run and management notices (%s)",
+  async (lang) => {
+    const zh = lang.startsWith("zh");
+    const reason = zh
+      ? "MCP 配置中的 OAuth 授权元数据必须使用有效的 HTTPS URL。"
+      : "Invalid MCP configuration: /oauth/authServerMetadataUrl must be an HTTPS URL.";
+    const app = await start(["work"], {
+      columns: 160,
+      rows: 40,
+      env: { LANG: lang },
+      prepare: (root) =>
+        Bun.write(
+          join(root, ".neant/mcp.json"),
+          JSON.stringify({
+            mcpServers: {
+              notion: {
+                url: "http://127.0.0.1:1/mcp",
+                oauth: { authServerMetadataUrl: "http://127.0.0.1:1/metadata" },
+              },
+            },
+          }),
+        ).then(() => {}),
+    });
+    try {
+      await app.waitFor(() => app.calls.length === 1 && screen(app).includes(reason));
+      if (zh) expect(screen(app)).not.toContain("Invalid MCP configuration:");
+      app.calls[0]!.finish();
+      await app.waitFor(() => !app.isWorking());
+      app.stdin.write("/mcp login notion\r");
+      await app.waitFor(() => screen(app).includes(zh ? "mcp 失败" : "mcp failed"));
+      expect(screen(app)).toContain(reason);
+      expect(app.calls).toHaveLength(1);
+    } finally {
+      await app.cleanup();
+    }
+  },
+);

@@ -23,9 +23,11 @@ import {
   type CustomSessionEvent,
   type Settings,
   type McpServerView,
+  type UserVisibleErrorData,
 } from "@neant/shared";
 import { isTrustedProject } from "../config/index.ts";
 import { requestInteraction, type OnInteractionStart } from "../interaction/index.ts";
+import { preserveErrorDetails } from "../tools/index.ts";
 import { credentialKey, credentialStore } from "./credentials.ts";
 import { configureOAuthMetadata, createOAuthProvider } from "./oauth.ts";
 
@@ -69,7 +71,10 @@ function expandEnvironment(value: string): string {
       const environment = process.env[name];
       if (fallback !== undefined && !environment) return fallback;
       if (environment !== undefined) return environment;
-      throw new Error(`Missing MCP environment variable: ${name}`);
+      throw createUserVisibleError(`Missing MCP environment variable: ${name}`, {
+        code: "mcp-env-missing",
+        params: { name },
+      });
     },
   );
 }
@@ -147,6 +152,14 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
   const report = (server: string, error: unknown) => {
     if (failed.has(server)) return;
     failed.add(server);
+    // Neant creates coded Errors through createUserVisibleError, matching preserveErrorDetails.
+    const errorData =
+      error instanceof Error && "code" in error && "params" in error
+        ? ({
+            code: (error as Error & UserVisibleErrorData).code,
+            params: (error as Error & UserVisibleErrorData).params,
+          } as UserVisibleErrorData)
+        : undefined;
     const view = views.get(server);
     if (view)
       views.set(server, {
@@ -154,11 +167,13 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
         status: "failed",
         toolCount: 0,
         error: error instanceof Error ? error.message : String(error),
+        ...(errorData && { errorData }),
       });
     errors.push({
       type: "mcp_server_error",
       server,
       error: error instanceof Error ? error.message : String(error),
+      ...(errorData && { errorData }),
     });
   };
   const close = () => {
@@ -186,7 +201,10 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
       if (
         !Value.Check(Type.Object({ mcpServers: Type.Record(Type.String(), Type.Unknown()) }), data)
       ) {
-        throw new Error("Expected an object containing mcpServers.");
+        throw createUserVisibleError("Expected an object containing mcpServers.", {
+          code: "mcp-config-file-invalid",
+          params: { source: path },
+        });
       }
       return data.mcpServers;
     } catch (error) {
@@ -200,15 +218,23 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
     errors,
     authRequired,
     authTools,
-    servers: () => [...views.values()].map((view) => ({ ...view })),
+    servers: () => structuredClone([...views.values()]),
     clearAuth(server: string) {
       const clear = clearServerAuth.get(server);
-      if (!clear) throw new Error(`MCP authentication requires an HTTP server: ${server}`);
+      if (!clear)
+        throw createUserVisibleError(`MCP authentication requires an HTTP server: ${server}`, {
+          code: "mcp-auth-http-required",
+          params: { server },
+        });
       return clear();
     },
     authenticate(server: string, signal?: AbortSignal) {
       const authenticate = authenticateServer.get(server);
-      if (!authenticate) throw new Error(`MCP server cannot authenticate: ${server}`);
+      if (!authenticate)
+        throw createUserVisibleError(`MCP server cannot authenticate: ${server}`, {
+          code: "mcp-auth-http-required",
+          params: { server },
+        });
       return authenticate(signal);
     },
     async callHookTool(
@@ -285,13 +311,24 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
         });
         client.onClose(() => {
           connected.delete(server);
-          if (ready && !closing) report(server, new Error("MCP connection closed unexpectedly."));
+          if (ready && !closing)
+            report(
+              server,
+              createUserVisibleError("MCP connection closed unexpectedly.", {
+                code: "mcp-connection-lost",
+                params: {},
+              }),
+            );
         });
         try {
           const [invalid] = Value.Errors(ServerConfig, value);
           if (invalid)
-            throw new Error(
+            throw createUserVisibleError(
               `Invalid MCP configuration: ${invalid.instancePath || "/"} ${invalid.message}`,
+              {
+                code: "mcp-config-invalid",
+                params: { path: invalid.instancePath || "/", cause: invalid.message },
+              },
             );
           const parsed = Value.Parse(ServerConfig, value);
           if ("url" in parsed && parsed.oauth?.authServerMetadataUrl !== undefined) {
@@ -302,8 +339,9 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
               // Invalid URLs are configuration errors, before any connection is attempted.
             }
             if (!valid)
-              throw new Error(
+              throw createUserVisibleError(
                 "Invalid MCP configuration: /oauth/authServerMetadataUrl must be an HTTPS URL.",
+                { code: "mcp-config-metadata-https", params: {} },
               );
           }
           const entry =
@@ -328,6 +366,14 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
                     : "none"
                 : "none",
           });
+          const setNeedsAuthView = () =>
+            views.set(server, {
+              name: server,
+              transport: "url" in entry ? "http" : "stdio",
+              status: "needs-auth",
+              toolCount: 0,
+              auth: "oauth",
+            });
           const key = "url" in entry ? credentialKey(server, entry) : undefined;
           if (options.reconnect && key) {
             authState.needsAuth.delete(key);
@@ -352,6 +398,11 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
                 })
               : undefined;
           let rejectedToken = (await store?.load())?.tokens?.access_token;
+          const recordAuthorizationChallenge = async (url: URL) => {
+            rejectedToken = (await store?.load())?.tokens?.access_token;
+            const scope = url.searchParams.get("scope");
+            if (key && scope) authState.authorizationScopes.set(key, scope);
+          };
           const replaceTools = (adapted: AgentTool[]) => {
             for (let i = tools.length - 1; i >= 0; i--) {
               if (toolServers.get(tools[i]!.name) !== server) continue;
@@ -367,7 +418,11 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
               ? await activeClient.listTools({ signal: options.signal })
               : [];
             options.signal?.throwIfAborted();
-            if (closing) throw new Error("MCP connections are closed.");
+            if (closing)
+              throw createUserVisibleError("MCP connections are closed.", {
+                code: "mcp-connection-closed",
+                params: {},
+              });
             ready = true;
             connected.set(server, activeClient);
             if (key) authState.needsAuth.delete(key);
@@ -396,7 +451,10 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
             const onMcpAuth = options.onMcpAuth;
             if (!key || !("url" in entry) || !store || !onMcpAuth)
               return Promise.reject(
-                new Error("MCP authentication requires an interactive HTTP server."),
+                createUserVisibleError("MCP authentication requires an interactive HTTP server.", {
+                  code: "mcp-auth-unavailable",
+                  params: { server },
+                }),
               );
             const shared = authState.inFlight.get(key);
             if (shared) return shared;
@@ -406,7 +464,11 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
                 : (toolSignal ?? options.signal);
             const guard = () => {
               signal?.throwIfAborted();
-              if (closing) throw new Error("MCP connections are closed.");
+              if (closing)
+                throw createUserVisibleError("MCP connections are closed.", {
+                  code: "mcp-connection-closed",
+                  params: {},
+                });
             };
             const flow = async (): Promise<McpAuthOutcome> => {
               let callback: OAuthCallbackServer | undefined;
@@ -438,7 +500,8 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
                   clientId: entry.oauth?.clientId,
                   clientSecret: entry.oauth?.clientSecret,
                   store,
-                  onRedirect: (url) => {
+                  onRedirect: async (url) => {
+                    await recordAuthorizationChallenge(url);
                     authorizationUrl = url.href;
                   },
                 });
@@ -463,7 +526,10 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
                 });
                 guard();
                 if (!authorizationUrl)
-                  throw new Error("OAuth server did not provide an authorization URL.");
+                  throw createUserVisibleError(
+                    "OAuth server did not provide an authorization URL.",
+                    { code: "mcp-auth-url-missing", params: {} },
+                  );
                 const state = await provider.state();
                 const callbackReply = callback
                   .waitForCallback(state)
@@ -494,14 +560,28 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
                 let code: string;
                 if (reply.type === "code") code = reply.code;
                 else {
-                  const url = new URL(reply.url);
+                  let url: URL;
+                  try {
+                    url = new URL(reply.url);
+                  } catch {
+                    throw createUserVisibleError("Invalid OAuth callback URL.", {
+                      code: "mcp-auth-callback-invalid",
+                      params: {},
+                    });
+                  }
                   if (url.searchParams.get("state") !== state)
-                    throw new Error("OAuth callback state does not match.");
+                    throw createUserVisibleError("OAuth callback state does not match.", {
+                      code: "mcp-auth-state-mismatch",
+                      params: {},
+                    });
                   const error = url.searchParams.get("error");
                   if (error) throw new Error(url.searchParams.get("error_description") ?? error);
                   const pasted = url.searchParams.get("code");
                   if (!pasted)
-                    throw new Error("OAuth callback did not include an authorization code.");
+                    throw createUserVisibleError(
+                      "OAuth callback did not include an authorization code.",
+                      { code: "mcp-auth-code-missing", params: {} },
+                    );
                   code = pasted;
                 }
                 guard();
@@ -546,14 +626,7 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
             };
             const pending = flow()
               .then((outcome) => {
-                if (outcome.type === "cancelled")
-                  views.set(server, {
-                    name: server,
-                    transport: "http",
-                    status: "needs-auth",
-                    toolCount: 0,
-                    auth: "oauth",
-                  });
+                if (outcome.type === "cancelled") setNeedsAuthView();
                 return outcome;
               })
               .finally(() => {
@@ -574,14 +647,7 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
               authState.rejectedTokens.delete(key);
               authState.authorizationScopes.delete(key);
               replaceTools([]);
-              if (usedOAuth)
-                views.set(server, {
-                  name: server,
-                  transport: "http",
-                  status: "needs-auth",
-                  toolCount: 0,
-                  auth: "oauth",
-                });
+              if (usedOAuth) setNeedsAuthView();
             });
           requireAuth = () => {
             ready = false;
@@ -590,13 +656,7 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
               authState.needsAuth.add(key);
               authState.rejectedTokens.set(key, rejectedToken);
             }
-            views.set(server, {
-              name: server,
-              transport: "url" in entry ? "http" : "stdio",
-              status: "needs-auth",
-              toolCount: 0,
-              auth: "oauth",
-            });
+            setNeedsAuthView();
             if (!reportedAuth.has(server)) {
               reportedAuth.add(server);
               authRequired.push({ type: "mcp_auth_required", server });
@@ -608,7 +668,7 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
             }
             const name = `mcp__${server}__authenticate`;
             replaceTools([
-              {
+              preserveErrorDetails({
                 name,
                 label: name,
                 description: `The ${server} MCP server is installed but requires authentication. Call this tool to start the OAuth flow; the user completes it in their browser and the server's real tools become available in your next turn.`,
@@ -629,7 +689,7 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
                     isError: false,
                   };
                 },
-              },
+              }),
             ]);
             authTools.add(name);
             toolServers.set(name, server);
@@ -654,11 +714,7 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
               clientSecret: entry.oauth?.clientSecret,
               store,
               // Discovery may produce a URL, but only an explicit Interaction opens it.
-              onRedirect: async (url) => {
-                rejectedToken = (await store?.load())?.tokens?.access_token;
-                const scope = url.searchParams.get("scope");
-                if (scope) authState.authorizationScopes.set(key, scope);
-              },
+              onRedirect: recordAuthorizationChallenge,
             });
             configureOAuthMetadata(provider, entry.oauth?.authServerMetadataUrl, (target, init) =>
               fetch(target, { ...init, signal: options.signal }),

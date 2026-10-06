@@ -6,6 +6,7 @@ import {
 } from "@earendil-works/pi-mcp/oauth";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
+import { createUserVisibleError } from "@neant/shared";
 
 const Strings = Type.Array(Type.String());
 export const OAuthMetadata = Type.Object({
@@ -47,10 +48,16 @@ export function configureOAuthMetadata(
     if (discovery) return discovery;
     const response = await fetchMetadata(metadataUrl);
     if (!response.ok)
-      throw new Error(`OAuth authorization metadata failed with status ${response.status}.`);
+      throw createUserVisibleError(
+        `OAuth authorization metadata failed with status ${response.status}.`,
+        { code: "mcp-auth-metadata-status", params: { status: response.status } },
+      );
     const metadata: unknown = await response.json();
     if (!Value.Check(OAuthMetadata, metadata))
-      throw new Error("Invalid OAuth authorization server metadata.");
+      throw createUserVisibleError("Invalid OAuth authorization server metadata.", {
+        code: "mcp-auth-metadata-invalid",
+        params: {},
+      });
     for (const endpoint of [
       metadata.issuer,
       metadata.authorization_endpoint,
@@ -58,9 +65,18 @@ export function configureOAuthMetadata(
       metadata.registration_endpoint,
     ]) {
       if (endpoint === undefined) continue;
-      const url = new URL(endpoint);
-      if (url.protocol !== "https:" && url.protocol !== "http:")
-        throw new Error("Invalid OAuth authorization server endpoint.");
+      let valid = false;
+      try {
+        const url = new URL(endpoint);
+        valid = url.protocol === "https:" || url.protocol === "http:";
+      } catch {
+        /* Metadata endpoints must be absolute HTTP URLs. */
+      }
+      if (!valid)
+        throw createUserVisibleError("Invalid OAuth authorization server endpoint.", {
+          code: "mcp-auth-endpoint-invalid",
+          params: {},
+        });
     }
     discovery = { authorizationServerUrl: metadata.issuer, authorizationServerMetadata: metadata };
     return discovery;

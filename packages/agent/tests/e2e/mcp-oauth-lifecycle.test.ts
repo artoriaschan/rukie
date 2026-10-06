@@ -532,3 +532,47 @@ test("untrusted project OAuth servers do not send any discovery or authorization
     await dirs.cleanup();
   }
 });
+
+test("scope step-up immediately after the first OAuth login in the same Run restores real tools", async () => {
+  const dirs = await tempDirs();
+  const server = mcpOAuthServer();
+  const scopes: (string | null)[] = [];
+  try {
+    await configure(dirs, { srv: { url: server.url } });
+    const fake = fakeModel([
+      fauxAssistantMessage(fauxToolCall("mcp__srv__authenticate", {}), { stopReason: "toolUse" }),
+      () => {
+        server.requireMoreScopes();
+        return fauxAssistantMessage(fauxToolCall("mcp__srv__echo", {}), { stopReason: "toolUse" });
+      },
+      fauxAssistantMessage(fauxToolCall("mcp__srv__authenticate", {}), { stopReason: "toolUse" }),
+      fauxAssistantMessage(fauxToolCall("mcp__srv__echo", {}), { stopReason: "toolUse" }),
+      fauxAssistantMessage("done"),
+    ]);
+    const session = await createSession({
+      ...dirs,
+      ...fake,
+      permissionMode: "full-access",
+      onMcpAuth: async (request) => {
+        scopes.push(new URL(request.authorizationUrl).searchParams.get("scope"));
+        return paste(request);
+      },
+    });
+    try {
+      await session.run("login and use expanded capabilities");
+      expect(scopes).toEqual(["tools", "tools tools:write"]);
+      expect(
+        fake.contexts[2]!.messages.findLast((message) => message.role === "toolResult"),
+      ).toMatchObject({ isError: true });
+      expect(
+        fake.contexts[4]!.messages.findLast((message) => message.role === "toolResult"),
+      ).toMatchObject({ isError: false, content: [{ type: "text", text: "OAuth MCP: called" }] });
+      expect((await session.mcpServers())[0]?.status).toBe("connected");
+    } finally {
+      await session.dispose();
+    }
+  } finally {
+    await server.stop();
+    await dirs.cleanup();
+  }
+});

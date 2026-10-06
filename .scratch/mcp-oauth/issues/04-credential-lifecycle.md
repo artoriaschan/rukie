@@ -24,3 +24,9 @@
 - Focused: `rtk proxy bun test packages/agent/tests/e2e/mcp.test.ts packages/agent/tests/e2e/mcp-config.test.ts packages/agent/tests/e2e/mcp-oauth.test.ts packages/agent/tests/e2e/mcp-oauth-lifecycle.test.ts packages/agent/tests/e2e/notification-hooks.test.ts apps/neant-cli/tests/main.test.ts` — exit 0, 127 pass, 0 fail, 554 assertions; log `/tmp/neant-mcp-oauth-04-focused.log`.
 - Aggregate: isolated HOME with `env -u NO_COLOR bun run check` — exit 0; formatting, lint, TypeScript, Knip and 2255 tests passed, 0 failed, 11572 assertions across 162 files; log `/tmp/neant-mcp-oauth-04-check.log`. Fresh final TypeScript and diff checks also passed.
 - HTTPS metadata testing substitutes only one exact external network endpoint; authorization, token exchange and MCP requests use the real local HTTP fixture. No provider credentials, real user settings or hosted account were used.
+
+## Comments
+
+2026-10-06 review fixes: Both explicit-flow and passive providers now record the requested challenge scope and rejected token through the same callback. A public same-Run regression first authenticates, encounters insufficient_scope, requests tools tools:write, invokes the real tool successfully, and observes connected status. One local needs-auth view helper preserves cancellation, logout and authorization-failure side effects.
+
+Final focused MCP/API/lifecycle/TUI/question verification: 198 pass / 0 fail (861 assertions); existing tools-and-notices file: 14 pass / 0 fail (72 assertions). Fresh isolated HOME, env -u NO_COLOR caffeinate -is bun run check: exit 0, 2309 pass / 0 fail, 11818 assertions across 166 files (308.73s), format/lint/types/Knip passed. Final log: /tmp/neant-mcp-oauth-review-check.log. Initial full had only the obsolete Chinese expected-English prefix failure (2308/1); preserved /tmp/neant-mcp-oauth-review-check-before-localized-expectation.log. Both review axes confirm all findings resolved.

@@ -29,3 +29,9 @@
 - Final isolated aggregate on corrected source: `env -u NO_COLOR HOME=<temporary HOME> caffeinate -is bun run check` exited 0, 2268 pass / 0 fail across 163 files in 298.23s. Log: `/tmp/neant-mcp-oauth-06-check.log`. Temporary HOME was removed; real settings and credentials were never used.
 
 - After the aggregate, merged latest integration `456987187a5ee2238718939824beed58444fd38f` (ticket 05) and routed independent API/probe connections through the same callback-origin wrapper as Run connections. Post-merge MCP/config/OAuth/lifecycle/API/subagent/Headless suite: 133 pass / 0 fail across 7 files in 3.97s. Typecheck, lint, Knip and repository formatting passed. Root will run the final combined aggregate on the integrated feature graph; by coordination, no third individual aggregate was required for this wrapper adoption.
+
+## Comments
+
+2026-10-06 review fixes: Known MCP management/configuration failures now carry shared codes/parameters. Optional errorData on McpServerView and mcp_server_error preserves frontend localization after cached-view rethrows; error stays a string and ordinary external errors retain the existing shape. Public tests verify typed missing-callback/server/transport errors, no unsupported network requests, and probe-to-management metadata propagation.
+
+Final focused MCP/API/lifecycle/TUI/question verification: 198 pass / 0 fail (861 assertions); existing tools-and-notices file: 14 pass / 0 fail (72 assertions). Fresh isolated HOME, env -u NO_COLOR caffeinate -is bun run check: exit 0, 2309 pass / 0 fail, 11818 assertions across 166 files (308.73s), format/lint/types/Knip passed. Final log: /tmp/neant-mcp-oauth-review-check.log. Initial full had only the obsolete Chinese expected-English prefix failure (2308/1); preserved /tmp/neant-mcp-oauth-review-check-before-localized-expectation.log. Both review axes confirm all findings resolved.

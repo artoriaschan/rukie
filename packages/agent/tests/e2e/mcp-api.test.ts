@@ -268,7 +268,10 @@ test("unsupported authentication and unknown server operations fail without prob
     await configure(dirs, { srv: { url: server.url }, local: { command: "missing" } });
     const unsupported = await createSession({ ...dirs, ...fakeModel([]) });
     try {
-      await expect(unsupported.authenticateMcp("srv")).rejects.toThrow("onMcpAuth");
+      await expect(unsupported.authenticateMcp("srv")).rejects.toMatchObject({
+        code: "mcp-auth-callback-required",
+        params: {},
+      });
       expect(server.requests).toEqual([]);
     } finally {
       await unsupported.dispose();
@@ -279,8 +282,14 @@ test("unsupported authentication and unknown server operations fail without prob
       onMcpAuth: async () => ({ type: "cancelled" }),
     });
     try {
-      await expect(interactive.authenticateMcp("local")).rejects.toThrow("HTTP server");
-      await expect(interactive.authenticateMcp("missing")).rejects.toThrow("Unknown MCP server");
+      await expect(interactive.authenticateMcp("local")).rejects.toMatchObject({
+        code: "mcp-auth-http-required",
+        params: { server: "local" },
+      });
+      await expect(interactive.authenticateMcp("missing")).rejects.toMatchObject({
+        code: "mcp-unknown-server",
+        params: { server: "missing" },
+      });
       await expect(interactive.clearMcpAuth("missing")).rejects.toThrow("Unknown MCP server");
       await expect(interactive.reconnectMcp("missing")).rejects.toThrow("Unknown MCP server");
       expect(server.requests).toEqual([]);
@@ -441,6 +450,41 @@ test("clearing absent OAuth credentials preserves a connected server using confi
       await session.clearMcpAuth("srv");
       expect(await session.mcpServers()).toEqual(before);
       expect(server.requests).toHaveLength(requests);
+    } finally {
+      await session.dispose();
+    }
+  } finally {
+    await server.stop();
+    await dirs.cleanup();
+  }
+});
+
+test("known MCP configuration errors retain typed metadata through a probe and management operation", async () => {
+  const dirs = await tempDirs();
+  const server = mcpOAuthServer();
+  try {
+    await configure(dirs, {
+      srv: {
+        url: server.url,
+        oauth: { authServerMetadataUrl: "http://authorization.example/metadata" },
+      },
+    });
+    const session = await createSession({
+      ...dirs,
+      ...fakeModel([]),
+      onMcpAuth: async () => ({ type: "cancelled" }),
+      onWarning: () => {},
+    });
+    try {
+      expect((await session.mcpServers())[0]).toMatchObject({
+        status: "failed",
+        errorData: { code: "mcp-config-metadata-https", params: {} },
+      });
+      await expect(session.authenticateMcp("srv")).rejects.toMatchObject({
+        code: "mcp-config-metadata-https",
+        params: {},
+      });
+      expect(server.requests).toEqual([]);
     } finally {
       await session.dispose();
     }

@@ -358,8 +358,9 @@ export function createInteractions(
       const custom = draft.custom.trim();
       const oauth = item.interaction.oauth;
       if (oauth) {
-        if (custom) {
-          item.finish({ answers: [{ selected: [], custom }] });
+        if (focus === question.options.length) {
+          if (custom) item.finish({ answers: [{ selected: [], custom }] });
+          else updateQuestion((value) => ({ ...value, error: "custom" }));
           return;
         }
         if (focus === 2) {
@@ -596,6 +597,7 @@ export function createInteractions(
                 ? draft.selected
                 : undefined
               : draft.attached,
+          ...(live.oauth && { selected: question.options.length, attached: undefined }),
         };
       });
     },
