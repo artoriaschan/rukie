@@ -46,6 +46,8 @@ Session 持有自己的 Background Job registry。bash 使用同一条进程组�
 
 ## Agent Core 的职责分配
 
+下表描述当前代码的落点。[ADR-0011](adr/0011-agent-module-ownership.md) 将 `tools/` 定义为内置工具及其关联能力的集合：按能力聚合协议适配、执行、状态与资源管理，Session 可以直接调用能力接口；当前顶层 Goal、Jobs、Subagent、Plan Mode 等落点按该决定逐步迁移，表中目录尚未全部迁移。
+
 | 模块                                                      | 责任                                                            |
 | --------------------------------------------------------- | --------------------------------------------------------------- |
 | `session/`                                                | 组合能力、协调 Run、事件、取消、存储操作与 frontend 接口        |
@@ -162,16 +164,16 @@ MCP 用户配置始终参与发现；项目 `.mcp.json` 在项目受信任或用
 
 ## 新行为的落点
 
-| 需求                       | 所有者与接入方式                                                                |
-| -------------------------- | ------------------------------------------------------------------------------- |
-| 增加模型或 provider 配置   | `config/` 的模型解析与 pi-ai 调用；同步配置 schema 和对应错误文案               |
-| 增加模型工具               | 所属能力模块和 `tools/` 或 Session 工具组装；接入统一权限、取消和结果持久化     |
-| 注入模型上下文             | `ReminderSource` 与 `reminders/`；需要长期保留的状态经 Tool State 生成提醒      |
-| 增加持久化状态             | 所属模块声明 Tool State，`tool-state/` 校验与重放，Session 连接写入和事件       |
-| 调整权限或生命周期 Hook    | `permissions/`、`hooks/`；保持相应专项文档同步                                  |
-| 增加交互                   | Agent Core 声明回调与取消行为，frontend 连接交互呈现，并覆盖无回调场景          |
-| 增加 frontend 或存储后端   | 消费公开 Session 接口或实现 SessionStore；运行与存储约束参照 ADR-0001、ADR-0003 |
-| 增加 TUI 命令或 Neant 面板 | `apps/neant-tui` 的命令、screen 与 components；复用通用终端原语                 |
-| 增加通用终端能力           | `packages/tui`，保持 Agent Core 无关，并更新 renderer README                    |
+| 需求                       | 所有者与接入方式                                                                                                                                                           |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 增加模型或 provider 配置   | `config/` 的模型解析与 pi-ai 调用；同步配置 schema 和对应错误文案                                                                                                          |
+| 增加模型工具               | 内置工具与关联能力归 `tools/` 的能力模块，内部区分协议适配与执行接口；遵循 [ADR-0011](adr/0011-agent-module-ownership.md)，由 Session 组装并接入统一权限、取消和结果持久化 |
+| 注入模型上下文             | `ReminderSource` 与 `reminders/`；需要长期保留的状态经 Tool State 生成提醒                                                                                                 |
+| 增加持久化状态             | 所属模块声明 Tool State，`tool-state/` 校验与重放，Session 连接写入和事件                                                                                                  |
+| 调整权限或生命周期 Hook    | `permissions/`、`hooks/`；保持相应专项文档同步                                                                                                                             |
+| 增加交互                   | Agent Core 声明回调与取消行为，frontend 连接交互呈现，并覆盖无回调场景                                                                                                     |
+| 增加 frontend 或存储后端   | 消费公开 Session 接口或实现 SessionStore；运行与存储约束参照 ADR-0001、ADR-0003                                                                                            |
+| 增加 TUI 命令或 Neant 面板 | `apps/neant-tui` 的命令、screen 与 components；复用通用终端原语                                                                                                            |
+| 增加通用终端能力           | `packages/tui`，保持 Agent Core 无关，并更新 renderer README                                                                                                               |
 
 接口声明留在源码，局部能力细节留在所属文档。改变运行组合、Run 完成条件、持久化投影或跨包职责时，同步更新本图谱及相关 ADR；验证入口和测试约定见[根 AGENTS.md](../AGENTS.md)。
