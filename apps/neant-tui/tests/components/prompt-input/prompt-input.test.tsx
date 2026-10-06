@@ -135,3 +135,60 @@ test.each([false, true])(
     }
   },
 );
+
+test("replacing a tip starts a fresh lifetime without an old timeout hiding it or moving the editor", async () => {
+  const terminal = createTerminal(40, 12);
+  let replace = (_tip?: string) => {};
+  let notify = (_notice?: { text: string; warning: boolean }) => {};
+  function View() {
+    const [tip, setTip] = useState<string | undefined>("First tip");
+    const [notice, setNotice] = useState<{ text: string; warning: boolean }>();
+    useLayoutEffect(() => {
+      replace = setTip;
+      notify = setNotice;
+    }, []);
+    return (
+      <Box flexDirection="column">
+        <Text>{"P".repeat(40)}</Text>
+        <PromptInput
+          compact
+          columns={40}
+          maxLines={1}
+          value="中文 draft"
+          onChange={() => {}}
+          onSubmit={() => {}}
+          tip={tip}
+          notice={notice}
+        />
+      </Box>
+    );
+  }
+  const app = render(<View />, terminal);
+  try {
+    await terminal.waitFor(() => terminal.screen()[0]!.includes("First tip"));
+    const shownAt = performance.now();
+    const buffer = terminal.terminal.buffer.active;
+    const cursor = [buffer.cursorX, buffer.cursorY];
+    const inputRow = terminal.screen().indexOf("❯ 中文 draft");
+    await terminal.waitFor(() => performance.now() - shownAt >= 9000, 9500);
+    replace("Replacement tip");
+    await terminal.waitFor(() => terminal.screen()[0]!.includes("Replacement tip"));
+    await terminal.waitFor(() => performance.now() - shownAt >= 10500, 2000);
+    expect(terminal.screen()[0]).toContain("Replacement tip");
+    expect(terminal.screen().indexOf("❯ 中文 draft")).toBe(inputRow);
+    expect([buffer.cursorX, buffer.cursorY]).toEqual(cursor);
+    notify({ text: "Persistent notice", warning: false });
+    await terminal.waitFor(() => terminal.screen().join("\n").includes("Persistent notice"));
+    expect(terminal.screen().join("\n")).not.toContain("Replacement tip");
+    replace(undefined);
+    notify(undefined);
+    await terminal.waitFor(() => terminal.screen()[0] === "P".repeat(40));
+    replace("Replacement tip");
+    await terminal.waitFor(() => terminal.screen()[0]!.includes("Replacement tip"));
+    expect(terminal.screen().every((line) => Bun.stringWidth(line) <= 40)).toBe(true);
+  } finally {
+    app.unmount();
+    await app.waitUntilExit();
+    terminal.dispose();
+  }
+}, 15000);

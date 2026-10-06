@@ -1702,6 +1702,7 @@ function Chat({
                 !resumePicker &&
                 modelPicker === undefined ? (
                   <CommandSuggestions
+                    key={promptRevision}
                     items={commandMatches}
                     selected={commandSelection % commandMatches.length}
                     maxHeight={commandMenuHeight}
@@ -1733,7 +1734,7 @@ function Chat({
                     ? t("image.clipboard-tip")
                     : undefined
               }
-              key={promptRevision}
+              inputRevision={promptRevision}
               readOnly={promptReadOnly}
               compact={compactPrompt}
               maxLines={compactPrompt ? 1 : promptMaxLines}
