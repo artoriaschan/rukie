@@ -244,3 +244,4 @@ Status: ready-for-human
 - 合并验证：集成 `HEAD` 与完整测试提交的 Git tree 完全相同（`c1adfded797e110ba728c9067eff771e86a1f5d4`）；集成工作区另跑 212 pass、0 fail、933 assertions 的公开组合测试及 format、lint、types、Knip，全部通过。日志 `/tmp/neant-mcp-oauth-review-integration.log`。后续交付记录与使用说明只修改 Markdown，单独验证格式与引用。
 - 清理：8 个工单 worktree 和 1 个审查修复 worktree 均先核对干净、提交已集成，再通过 Codex 归档；9 个归档附件已确认，集成工作区保留，其他功能 worktree 未改动。
 - 真实 Notion 尝试已验证 `/mcp` 的 needs-auth 报告、无模型调用、授权面板及系统浏览器打开；未完成账号授权，也未收到成功回调，临时 HOME、项目和凭据已清除。真实登录后的凭据复用、logout / reconnect 链路仍待用户完成账号操作，详见 [08 的验收记录](issues/08-tui-mcp-command.md)。01–07 resolved，08 和本 spec 保留 ready-for-human；没有把真实账号验收记为通过。
+- 2026-10-06：按用户要求将 `codex/mcp-oauth` 快进合并到 `main`（`942bfd0`）。在主检出目录的隔离 HOME 下重新运行 `env -u NO_COLOR bun run check`，exit 0，2309 pass、0 fail、11818 assertions，166 files（315.56 s），format、lint、types、Knip 全通过；日志 `/tmp/neant-mcp-oauth-main-check.log`。08 的真实账号验收仍为 ready-for-human。
