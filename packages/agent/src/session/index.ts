@@ -1,3 +1,4 @@
+import { createJobs } from "../jobs/index.ts";
 import {
   Agent,
   type AgentEvent,
@@ -860,9 +861,11 @@ async function createSessionInternal(
       await emitRunEvent?.({ type: "tool_state_changed", name: "file-tracking", value });
     },
   });
+  const jobs = createJobs();
   const initialTools = [
     ...createBuiltinTools(
       cwd,
+      jobs,
       (name) => skills.get(name),
       setTodo,
       onQuestion,
@@ -1584,11 +1587,13 @@ async function createSessionInternal(
           sideLifetime.abort();
           const mcp = runMcp;
           hooks.dispose();
+          const jobsDisposed = jobs.dispose();
           await sessionTitle.dispose();
           runController?.abort();
           try {
             await compactSettled?.promise;
             await Promise.all([
+              jobsDisposed,
               hooks.run("SessionEnd", { ...hookInput(), reason }, { matchQuery: reason }),
               ...[...childSessions].map((child) => child.dispose(reason)),
             ]);
@@ -1770,6 +1775,7 @@ async function createSessionInternal(
           const generalTools = [
             ...createBuiltinTools(
               cwd,
+              jobs,
               (name) => skills.get(name),
               setTodo,
               onQuestion,

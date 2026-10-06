@@ -49,7 +49,8 @@ Session 对 frontend 暴露运行、事件订阅、中断、steer、Goal、上�
 | `session/`                                                | 组合能力、协调 Run、事件、取消、存储操作与 frontend 接口        |
 | `config/`、`prompt/`                                      | 合并设置、解析模型与凭据，建立 System Prompt                    |
 | `tools/`、`skills/`、`mcp/`                               | 构造模型工具集、加载 Skill 内容、连接外部工具                   |
-| [`bash/`](../packages/agent/src/bash/index.ts)            | 执行 Bash 命令、管理前台进程组、复用 pi 输出采集与截断          |
+| [`bash/`](../packages/agent/src/bash/index.ts)            | 适配 Bash 调用、复用 pi 前台输出采集与截断                      |
+| [`jobs/`](../packages/agent/README.md)                    | 持有 Session 的 Bash 进程组、输出与模型游标，提供后台任务工具   |
 | [`images/`](../packages/agent/src/images/index.ts)        | 为 Session 与 read 共享图片准入校验，读取 header metadata       |
 | `permissions/`、`review/`、`hooks/`、`interaction/`       | 决定执行是否允许，运行生命周期扩展，并协调可取消的用户交互      |
 | `reminders/`、`compaction/`、`context-usage/`             | 注入有来源的上下文、压缩模型历史、报告上下文占用                |
@@ -93,7 +94,7 @@ Goal 只属于顶层 Session。用户通过 TUI `/goal`、Headless `--goal` 或�
 
 ## 工具、权限与交互
 
-read/write/edit 经适配连接 pi 的执行环境与 Neant 的 AbortSignal；bash 由 Agent Core 启动独立进程组，取消与超时先发 SIGTERM，3 秒后升级为 SIGKILL。Skill 加载工具、结构化提问、Todo、计划评审与 Subagent 工具在各自模块组装。MCP 发现的工具也转换为同一种 AgentTool，再进入共同的授权流程。完整工具声明以构造模块和当前运行发现结果为准。
+read/write/edit 经适配连接 pi 的执行环境与 Neant 的 AbortSignal；bash 由 Session 的 job registry 启动独立进程组；前台调用等待完成，显式后台调用立即返回 id。Run 结束或取消保留后台任务，Session dispose 清理进程组与输出；终止先发 SIGTERM，3 秒后升级为 SIGKILL。后台工具的读取与生命周期见 [`jobs/`](../packages/agent/README.md)。Skill 加载工具、结构化提问、Todo、计划评审与 Subagent 工具在各自模块组装。MCP 发现的工具也转换为同一种 AgentTool，再进入共同的授权流程。完整工具声明以构造模块和当前运行发现结果为准。
 
 权限执行入口是 pi 的 `beforeToolCall`。它协调 Hook、显式规则、Permission Mode 和必要的 frontend 询问；Hook 改写的输入重新校验，路径匹配与实际执行使用同一规范化目标。显式 deny/ask 不被 full-access 或 Hook allow 越过。规则语法、顺序及限制由 [permission-rules.md](permission-rules.md) 维护。
 

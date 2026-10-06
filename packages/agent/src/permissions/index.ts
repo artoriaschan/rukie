@@ -65,6 +65,9 @@ function decidePermission({ mode, toolName }: PermissionOptions): PermissionDeci
       "subagent_fork",
       "send_message",
       "list_agents",
+      "job_output",
+      "job_list",
+      "job_kill",
     ].includes(toolName)
   )
     return "allow";

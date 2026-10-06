@@ -19,6 +19,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { prepareFileToolPath } from "./path.ts";
 import { type TSchema, type Static } from "typebox";
+import { createJobTools, type Jobs } from "../jobs/index.ts";
 import { createBashTool } from "../bash/index.ts";
 import { createGlobTool } from "./glob.ts";
 import { createGrepTool } from "./grep.ts";
@@ -129,6 +130,7 @@ export function createReadonlyTools(cwd: string, homeDir = homedir()): AgentTool
 
 export function createBuiltinTools(
   cwd: string,
+  jobs: Jobs,
   getSkill: (name: string) => Skill | undefined,
   setTodo: (todos: TodoItem[]) => Promise<void>,
   onQuestion?: OnQuestion,
@@ -144,7 +146,8 @@ export function createBuiltinTools(
     track(preserveErrorDetails(adaptTool(createReadTool(), new ImageReadEnv({ cwd }), homeDir))),
     track(adaptTool(createWriteTool(), env, homeDir)),
     track(adaptTool(createEditTool(), env, homeDir)),
-    createBashTool(cwd),
+    preserveErrorDetails(createBashTool(cwd, jobs)),
+    ...createJobTools(jobs),
     createGlobTool(cwd),
     preserveErrorDetails(createGrepTool(cwd)),
     createSkillTool(getSkill),
