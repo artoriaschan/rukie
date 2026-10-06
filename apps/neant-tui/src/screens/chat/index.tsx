@@ -65,6 +65,7 @@ import { createInteractions } from "./interactions";
 import { permissionChoices } from "../../components/permission-dialog";
 import { fmtTokens, render as renderActivity } from "./activity/activity";
 import { commandCatalog } from "./commands";
+import { createMcpCommands } from "./mcp-commands";
 import { SettingsScreen } from "../settings";
 
 const modelLabelGraphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
@@ -437,6 +438,12 @@ function Chat({
   };
   const [input, setInput] = useState("");
   const catalog = commandCatalog(t);
+  const mcpCommands = useMemo(
+    () => createMcpCommands(session, conversation, t),
+    [session, conversation, locale],
+  );
+  useEffect(() => () => mcpCommands.stop(), [mcpCommands]);
+  useSyncExternalStore(mcpCommands.subscribe, mcpCommands.getSnapshot);
   const suggestions = [
     ...catalog,
     ...skills
@@ -448,12 +455,22 @@ function Chat({
   const dismissedMenu = useRef<string | undefined>(undefined);
   const [menuDismissed, setMenuDismissed] = useState(false);
   const handledInput = useRef(new WeakSet<object>());
-  const matches = (value: string) =>
+  const matches = (
+    value: string,
+  ): {
+    name: string;
+    description: string;
+    skill?: boolean;
+    completion?: string;
+    needsArgument?: boolean;
+  }[] =>
     /^\/[a-z0-9-]*$/i.test(value) && dismissedMenu.current !== value
       ? suggestions.filter((item) =>
           item.name.toLowerCase().startsWith(value.slice(1).toLowerCase()),
         )
-      : [];
+      : dismissedMenu.current !== value
+        ? mcpCommands.complete(value)
+        : [];
   const commandMatches = menuDismissed ? [] : matches(input);
   const [promptRevision, setPromptRevision] = useState(0);
   type Rewind = {
@@ -887,7 +904,8 @@ function Chat({
           }
         })();
       }
-    } else if (command.name === "resume") void openResumePicker();
+    } else if (command.name === "mcp") mcpCommands.execute(prompt.slice(parsed![0].length));
+    else if (command.name === "resume") void openResumePicker();
     else if (command.name === "settings") switchView("settings");
     else if (command.name === "compact")
       void conversation
@@ -914,6 +932,14 @@ function Chat({
       change("");
       composer.clear();
     }
+  };
+  const pickCommand = (item: ReturnType<typeof matches>[number], submitCommand: boolean) => {
+    const value = item.completion ?? `/${item.name}`;
+    if (!submitCommand || (item.needsArgument && draft.current.trim() !== value)) {
+      history.reset();
+      change(`${value} `);
+      setPromptRevision((revision) => revision + 1);
+    } else sendInput(value);
   };
   const openRewind = () => {
     const entries = session.checkpoints().toReversed();
@@ -1254,11 +1280,7 @@ function Chat({
       if (key.name === "tab" || key.name === "enter") {
         handledInput.current.add(event);
         const item = menu[commandSelectionRef.current % menu.length]!;
-        if (key.name === "tab") {
-          history.reset();
-          change(`/${item.name} `);
-          setPromptRevision((revision) => revision + 1);
-        } else sendInput(`/${item.name}`);
+        pickCommand(item, key.name === "enter");
         return;
       }
       if (key.name === "escape") {
@@ -1421,7 +1443,7 @@ function Chat({
               />
             );
           case "notice":
-            return <Notice key={index} kind="info" text={entry.text} />;
+            return <Notice key={index} kind="info" text={entry.text} report={entry.report} />;
           case "message":
             return entry.role === "user" ? (
               <UserMessage
@@ -1751,7 +1773,7 @@ function Chat({
                     query={input}
                     locale={locale}
                     planMode={state.planMode}
-                    onPick={(index) => sendInput(`/${commandMatches[index]!.name}`)}
+                    onPick={(index) => pickCommand(commandMatches[index]!, true)}
                     onWheel={(event) => {
                       handledInput.current.add(event);
                       commandSelectionRef.current = Math.max(

@@ -14,6 +14,7 @@ export function commandCatalog(t: ReturnType<typeof createTuiI18n>) {
       "resume",
       "context",
       "settings",
+      "mcp",
       "btw",
       "rename",
     ] as const
@@ -25,7 +26,9 @@ export function commandCatalog(t: ReturnType<typeof createTuiI18n>) {
         ? "[<objective>|edit <objective>|pause|resume|clear]"
         : name === "context"
           ? "[all]"
-          : undefined,
-    duringRun: ["exit", "help", "btw", "context", "rename", "goal"].includes(name),
+          : name === "mcp"
+            ? "[login|logout|reconnect <server>]"
+            : undefined,
+    duringRun: ["exit", "help", "btw", "context", "rename", "goal", "mcp"].includes(name),
   }));
 }

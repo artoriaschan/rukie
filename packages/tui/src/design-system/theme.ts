@@ -18,6 +18,7 @@ export interface Theme {
   error: `#${string}`;
   warning: `#${string}`;
   promptBorder: `#${string}`;
+  bashBorder: `#${string}`;
   userPromptLabel: `#${string}`;
   logoFrom: `#${string}`;
   logoTo: `#${string}`;
@@ -50,6 +51,7 @@ export const dark: Theme = {
   error: "#DA8A93",
   warning: "#D8B270",
   promptBorder: "#55606F",
+  bashBorder: "#D194AE",
   userPromptLabel: "#FFDF80",
   logoFrom: "#7DA1DE",
   logoTo: "#D7E4FF",
@@ -83,6 +85,7 @@ export const light: Theme = {
   error: "#B74450",
   warning: "#91631D",
   promptBorder: "#A4ADB9",
+  bashBorder: "#C07A93",
   userPromptLabel: "#906A16",
   logoFrom: "#345C9C",
   logoTo: "#6687BD",
