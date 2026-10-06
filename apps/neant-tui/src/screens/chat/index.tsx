@@ -1,5 +1,6 @@
 import { realpath } from "node:fs/promises";
-import { relative } from "node:path";
+import { relative, join } from "node:path";
+import { homedir } from "node:os";
 import { useLayoutEffect, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   createSession,
@@ -50,6 +51,7 @@ import {
   UserMessage,
   CommandSuggestions,
   ModelPicker,
+  McpPanel,
   SideQuestionPanel,
   SessionPicker,
 } from "../../components";
@@ -66,6 +68,8 @@ import { permissionChoices } from "../../components/permission-dialog";
 import { fmtTokens, render as renderActivity } from "./activity/activity";
 import { commandCatalog } from "./commands";
 import { createMcpCommands } from "./mcp-commands";
+import { createMcpPanel } from "./mcp-panel";
+import { mcpPanelHeight } from "../../components/mcp-panel";
 import { SettingsScreen } from "../settings";
 
 const modelLabelGraphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
@@ -329,6 +333,7 @@ function Chat({
       interactions.getSnapshot() ||
       viewRef.current !== "chat" ||
       rewindRef.current ||
+      mcpPanel.getSnapshot() ||
       modelPickerRef.current !== undefined ||
       resumePickerRef.current
     )
@@ -419,7 +424,7 @@ function Chat({
   const savedChatScroll = useRef<ScrollSnapshot | undefined>(undefined);
   const savedDashboardScroll = useRef<ScrollSnapshot | undefined>(undefined);
   const openDetail = (id: string, from: "chat" | "dashboard") => {
-    if (previewRef.current) return;
+    if (previewRef.current || mcpPanel.getSnapshot()) return;
     if (from === "chat") savedChatScroll.current = body.current?.getSnapshot();
     else savedDashboardScroll.current = subagentScroll.current?.getSnapshot();
     pageRef.current = "summary";
@@ -444,6 +449,25 @@ function Chat({
   );
   useEffect(() => () => mcpCommands.stop(), [mcpCommands]);
   useSyncExternalStore(mcpCommands.subscribe, mcpCommands.getSnapshot);
+  const mcpPanel = useMemo(
+    () =>
+      createMcpPanel(
+        mcpCommands,
+        {
+          user: join(homeDir ?? homedir(), ".neant/mcp.json"),
+          project: join(cwd, ".mcp.json"),
+        },
+        t,
+      ),
+    [mcpCommands, cwd, homeDir, locale],
+  );
+  const mcp = useSyncExternalStore(mcpPanel.subscribe, mcpPanel.getSnapshot);
+  const mcpBody = useRef<ScrollHandle>(null);
+  const mcpOpening = useRef(false);
+  useLayoutEffect(() => () => mcpPanel.stop(), [mcpPanel]);
+  const mcpCanInteract = () =>
+    !!mcpPanel.getSnapshot() && !interactions.getSnapshot() && !small && viewRef.current === "chat";
+
   const suggestions = [
     ...catalog,
     ...skills
@@ -575,7 +599,8 @@ function Chat({
   const [todosCollapsed, setTodosCollapsed] = useState(false);
   const [subagentsCollapsed, setSubagentsCollapsed] = useState(false);
   const toggleTodos = () => {
-    if (!previewRef.current) setTodosCollapsed((collapsed) => !collapsed);
+    if (!previewRef.current && !mcpPanel.getSnapshot())
+      setTodosCollapsed((collapsed) => !collapsed);
   };
   const [mode, setMode] = useState(session.permissionMode);
   const { columns, rows } = useTerminalSize();
@@ -904,8 +929,29 @@ function Chat({
           }
         })();
       }
-    } else if (command.name === "mcp") mcpCommands.execute(prompt.slice(parsed![0].length));
-    else if (command.name === "resume") void openResumePicker();
+    } else if (command.name === "mcp") {
+      const args = prompt.slice(parsed![0].length).trim();
+      if (args) mcpCommands.execute(args);
+      else {
+        if (
+          interactions.getSnapshot() ||
+          previewRef.current ||
+          rewindRef.current ||
+          modelPickerRef.current !== undefined ||
+          resumePickerRef.current ||
+          sideController.current ||
+          viewRef.current !== "chat"
+        )
+          return false;
+        // Invalidate pending host/image reads synchronously, including same-batch close.
+        pasteEpoch.current++;
+        mcpOpening.current = true;
+        mcpPanel.open();
+        queueMicrotask(() => {
+          mcpOpening.current = false;
+        });
+      }
+    } else if (command.name === "resume") void openResumePicker();
     else if (command.name === "settings") switchView("settings");
     else if (command.name === "compact")
       void conversation
@@ -928,7 +974,7 @@ function Chat({
   const sendInput = (prompt: string) => {
     if (previewRef.current) return;
     if (executeCommand(prompt)) {
-      body.current?.scrollToBottom();
+      if (!mcpPanel.getSnapshot()) body.current?.scrollToBottom();
       change("");
       composer.clear();
     }
@@ -948,7 +994,8 @@ function Chat({
     body.current?.scrollToBottom();
   };
   const showReturn = !!bodyScroll && !bodyScroll.following;
-  const showContextBar = !(state.goal && interaction && rows < 16);
+  const mcpVisible = !!mcp && !interaction;
+  const showContextBar = !(state.goal && interaction && rows < 16) && !(mcpVisible && rows < 20);
   const statusHeight = showContextBar && state.contextUsage && columns - 2 >= 14 ? 3 : 2;
   const hasActivity = state.running && (activity.phase !== "idle" || state.waitingSubagents > 0);
   const promptMaxLines = Math.max(1, Math.min(6, Math.floor(rows / 3)) - 3);
@@ -1001,7 +1048,7 @@ function Chat({
   const compactPrompt =
     (modelNoticeHeight > 0 &&
       rows - statusHeight - panelMinimum - 1 < promptMaxLines + 3 + modelNoticeHeight) ||
-    ((!!side || !!rewind || !!resumePicker) && rows < 20) ||
+    ((!!side || !!rewind || !!resumePicker || mcpVisible) && rows < 20) ||
     (!!interaction &&
       rows - statusHeight - minimumDialogHeight - dialogGap - panelMinimum < promptMaxLines + 3);
   const promptHeight =
@@ -1014,13 +1061,14 @@ function Chat({
   const commandMenuHeight = Math.min(8, Math.max(0, rows - statusHeight - 3 - modelNoticeHeight));
   const chromeSpace = rows - statusHeight - promptHeight - transcriptHeight - sideHeight;
   const showReturnControl =
-    showReturn && chromeSpace - minimumDialogHeight - dialogGap - panelMinimum >= 1;
+    !mcpVisible && showReturn && chromeSpace - minimumDialogHeight - dialogGap - panelMinimum >= 1;
   const compactReturn =
     showReturnControl &&
     chromeSpace - minimumDialogHeight - dialogGap - panelMinimum - Number(hasActivity) < 2;
   const returnHeight = showReturnControl ? (compactReturn ? 1 : 2) : 0;
   const showActivity =
     hasActivity &&
+    !mcpVisible &&
     !userQuestion?.oauth &&
     chromeSpace - minimumDialogHeight - dialogGap - panelMinimum - returnHeight >= 1;
   const available = chromeSpace - returnHeight - Number(showActivity);
@@ -1051,6 +1099,19 @@ function Chat({
     : 0;
   const modelPickerHeight = modelPicker === undefined ? 0 : Math.min(12, available - panelMinimum);
   const resumePickerHeight = resumePicker ? Math.min(14, available - panelMinimum) : 0;
+  const mcpMaxHeight = mcpVisible ? Math.max(0, Math.min(14, available - panelMinimum)) : 0;
+  const mcpHeight = mcpVisible
+    ? mcpPanelHeight({
+        page: mcp!.page,
+        selected: mcp!.selected,
+        columns,
+        maxHeight: mcpMaxHeight,
+        locale,
+        busy: mcp!.busy,
+        result: mcp!.result,
+        onActivate: mcpPanel.activate,
+      })
+    : 0;
   const panelHeights = allocatePanelHeights(
     available -
       dialogMaxHeight -
@@ -1058,12 +1119,45 @@ function Chat({
       rewindHeight -
       modelPickerHeight -
       resumePickerHeight -
+      mcpHeight -
       goalRows,
     Array.from({ length: panelCount }, () => 3),
   );
   const todoMaxHeight = hasTodos ? panelHeights[0]! + goalRows : 1;
   const subagentMaxHeight = hasSubagents ? panelHeights[Number(hasTodos)]! : 1;
   useInput((event) => {
+    const currentMcp = mcpPanel.getSnapshot();
+    if (currentMcp && !interactions.getSnapshot()) {
+      handledInput.current.add(event);
+      if (event.type !== "key") return;
+      const { key } = event;
+      if (mcpOpening.current && key.name === "enter") return;
+      if (key.ctrl && key.name === "c") {
+        if (conversation.isRunning()) conversation.interrupt();
+        mcpPanel.close();
+      } else if (key.ctrl && key.name === "d" && !conversation.isRunning()) {
+        mcpPanel.close();
+        onExit();
+      } else if (key.name === "escape") mcpPanel.back();
+      else if (!small && !key.ctrl && !key.alt && !key.shift) {
+        if (key.name === "tab" && currentMcp.page.kind === "server") mcpPanel.focus();
+        else if (key.name === "pageup" || key.name === "pagedown")
+          mcpBody.current?.scrollBy(
+            Math.max(1, (mcpBody.current.getSnapshot().height ?? 1) - 1) *
+              (key.name === "pageup" ? -1 : 1),
+          );
+        else if (key.name === "up" || key.name === "down") {
+          if (currentMcp.page.kind === "tool" || currentMcp.focus === "body")
+            mcpBody.current?.scrollBy(key.name === "up" ? -1 : 1);
+          else mcpPanel.move(key.name === "up" ? -1 : 1);
+        } else if (
+          key.name === "enter" &&
+          (currentMcp.page.kind !== "server" || currentMcp.focus === "actions")
+        )
+          mcpPanel.activate(currentMcp.selected);
+      }
+      return;
+    }
     if (previewRef.current && !interactions.getSnapshot()) {
       handledInput.current.add(event);
       if (event.type === "key") {
@@ -1211,6 +1305,7 @@ function Chat({
       event.type === "key" &&
       event.key.ctrl &&
       event.key.name === "a" &&
+      !interactions.getSnapshot() &&
       !event.key.alt &&
       !event.key.shift
     ) {
@@ -1502,6 +1597,7 @@ function Chat({
       />
     );
   const promptReadOnly =
+    !!mcp ||
     !!preview ||
     modelPicker !== undefined ||
     !!resumePicker ||
@@ -1569,7 +1665,7 @@ function Chat({
                 columns={columns}
                 unread={unread}
                 onClick={() => {
-                  if (!previewRef.current) returnToBottom();
+                  if (!previewRef.current && !mcpPanel.getSnapshot()) returnToBottom();
                 }}
                 compact={compactReturn}
               />
@@ -1608,7 +1704,8 @@ function Chat({
               subagents={panelSubagents}
               collapsed={subagentsCollapsed}
               onToggle={() => {
-                if (!previewRef.current) setSubagentsCollapsed((collapsed) => !collapsed);
+                if (!previewRef.current && !mcpPanel.getSnapshot())
+                  setSubagentsCollapsed((collapsed) => !collapsed);
               }}
               onOpen={(id) => openDetail(id, "chat")}
               locale={locale}
@@ -1756,9 +1853,41 @@ function Chat({
                 }}
               />
             )}
+            {mcpVisible && mcp && (
+              <McpPanel
+                page={mcp.page}
+                selected={mcp.selected}
+                focus={mcp.focus}
+                result={mcp.result}
+                busy={mcp.busy}
+                columns={columns}
+                maxHeight={mcpMaxHeight}
+                locale={locale}
+                interactive={!small && !interaction}
+                scrollRef={mcpBody}
+                initialTop={mcpPanel.top()}
+                onScroll={(snapshot) => mcpPanel.scroll(snapshot.top)}
+                onActivate={(key) => {
+                  if (mcpCanInteract()) mcpPanel.activate(key);
+                }}
+                onListWheel={(delta) => {
+                  if (mcpCanInteract()) mcpPanel.move(delta > 0 ? 1 : -1);
+                }}
+                onBodyFocus={() => {
+                  if (mcpCanInteract()) mcpPanel.focus(true);
+                }}
+                onBodyWheel={(delta) => {
+                  if (mcpCanInteract()) {
+                    mcpPanel.focus(true);
+                    mcpBody.current?.scrollBy(delta * 3);
+                  }
+                }}
+              />
+            )}
             <PromptInput
               suggestions={
                 !!commandMatches.length &&
+                !mcp &&
                 !preview &&
                 !interaction &&
                 !rewind &&
@@ -1808,11 +1937,13 @@ function Chat({
               planMode={state.planMode}
               history={history}
               onHistoryRecall={() => {
+                if (mcpPanel.getSnapshot()) return;
                 composer.clear();
                 pasteEpoch.current++;
               }}
               filterInput={(event, insert) => {
-                if (previewRef.current || handledInput.current.has(event)) return false;
+                if (mcpPanel.getSnapshot() || previewRef.current || handledInput.current.has(event))
+                  return false;
                 if (
                   event.type === "key" &&
                   !event.key.ctrl &&
@@ -1864,7 +1995,7 @@ function Chat({
                 .map((range) => ({ ...range, color: theme.suggestion }))}
               atomicRanges={composer.ranges(input)}
               onPaste={(text, insert) => {
-                if (previewRef.current) return;
+                if (mcpPanel.getSnapshot() || previewRef.current) return;
                 const epoch = pasteEpoch.current;
                 const path = pastedImagePath(text, homeDir ?? "");
                 if (!path) {
@@ -1884,13 +2015,25 @@ function Chat({
               value={input}
               onChange={(value, edit) => {
                 const pending = sideController.current ? undefined : interactions.getSnapshot();
-                if (viewRef.current !== "chat" || rewindRef.current || previewRef.current) return;
+                if (
+                  mcpPanel.getSnapshot() ||
+                  viewRef.current !== "chat" ||
+                  rewindRef.current ||
+                  previewRef.current
+                )
+                  return;
                 if (!pending || (pending.kind === "question" && pending.collapsed))
                   change(value, edit);
               }}
               onSubmit={(prompt) => {
                 const pending = sideController.current ? undefined : interactions.getSnapshot();
-                if (viewRef.current !== "chat" || rewindRef.current || previewRef.current) return;
+                if (
+                  mcpPanel.getSnapshot() ||
+                  viewRef.current !== "chat" ||
+                  rewindRef.current ||
+                  previewRef.current
+                )
+                  return;
                 if (pending && (pending.kind !== "question" || !pending.collapsed)) return;
                 sendInput(prompt);
               }}

@@ -119,7 +119,7 @@ function presentation(
     rows.push(
       ...errors.map((error, index) => ({
         key: `diagnostic:${index}`,
-        label: `${error.path}: ${errorText(error.error, error.errorData, t)}`,
+        label: `${errorText(error.error, error.errorData, t)} · ${error.path}`,
         selectable: false,
       })),
     );
