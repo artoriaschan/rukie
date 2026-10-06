@@ -148,3 +148,5 @@ Status: resolved
 2026-10-06 后续 [剪贴板图片 Tips](issues/09-clipboard-image-tip.md) 已合入 main `4277f5c`。右下角按 locale 显示图片可粘贴提示，剪贴板变化后自动更新；不导出图片，不改变既有粘贴入口与通知优先级。main aggregate 2193 pass / 0 fail，双轴审查及清理见 [后续验收](review.md#剪贴板图片提示后续验收)。
 
 2026-10-06 后续 [Tips 通用自动隐藏](issues/10-tip-auto-hide.md) 已按用户确认的 10 秒默认值交付并合入 main `1d72bf6`。main aggregate 2197 pass / 0 fail，审查发现的编辑器重挂载问题已修复，工作树及分支已清理。运行契约归 [输入提示](../../apps/neant-tui/README.md#输入提示)，公开测试及双轴验收见 [review](review.md#tips-通用自动隐藏后续验收)。
+
+2026-10-06 后续 [Ctrl+C 再次退出 Tips](issues/11-ctrl-c-exit-tip.md) 将退出准备接入现有右下角提示与 zh/en 文案，保持原有中断、草稿清除与 1 秒连续双按规则。运行契约归 [输入提示](../../apps/neant-tui/README.md#输入提示)。
