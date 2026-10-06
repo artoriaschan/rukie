@@ -20,7 +20,7 @@ packages/agent/src/subagents/ 整体迁至 tools/subagents/，按 controller.ts�
 - [x] 运行名额和 AbortController 在 await 创建子 Session 前预留；创建失败释放并唤醒；迟到创建使用已中止的 signal。
 - [x] 每 child 只有领域持有的一条发送队列，轮到执行时重新判断 active；finally 释放自己的队列节点，不在工具包装另建队列。
 - [x] 保留子 Run Outcome 写父摘要、usage 结算、后台通知、取消压制与 running/wake 的原先顺序。
-- [x] settle 覆盖尚未产生 done promise 的创建项；restore 保留同 id 的现有 handle，并保留通知清理。
+- [ ] settle 覆盖尚未产生 done promise 的创建项；restore 保留同 id 的现有 handle，并保留通知清理。（`settle` 子句保留但**不可独立区分**：公开行为无法与"settle 只等待已有 done"区分；`restore` 与通知清理子句成立，由 `subagent-outcomes.test.ts` Rewind 用例与 `subagent-directory.test.ts` 恢复用例覆盖，见评论）
 - [x] Session 继续拥有子 Session 构造、资源和父子协调；不引入通用 controller 框架或新的运行单位。
 - [x] 普通/fork 子 Session 的 MCP OAuth 保留 child origin、授权后真实工具刷新与父子凭据共享；默认类型仅继承父 Session 已可用 server，显式 type.tools 含 authenticate-only 限制仍是精确白名单。缺失回调时隐藏授权工具，取消授权保持原非错误结果。
 - [x] 从 controller 移出工具对象与模型结果包装到同目录协议适配；删除顶层 subagents/ 旧归属，保持包公开 Subagent 类型、事件和恢复协议，全部消费者使用能力入口。
@@ -57,7 +57,7 @@ packages/agent/src/subagents/ 整体迁至 tools/subagents/，按 controller.ts�
   其他覆盖：MCP OAuth（child origin、授权后真实工具刷新、父子凭据共享、取消授权保持原非错误结果、authenticate-only 精确白名单、默认类型仅继承父已可用 server）由 `subagent-mcp-oauth.test.ts` 4 项通过；类型默认值/未知类型/已删除类型 fallback/fork 特殊类型由 `subagent-types.test.ts`、`subagent-directory.test.ts` 通过；动态 description 内容、顺序与逐 Run 刷新由 `tool-declarations.test.ts` 基线用例通过；Run Outcome 写父摘要、usage 结算、后台通知与取消压制由 `subagent-outcomes.test.ts`、`subagents.test.ts` 通过；`restore` 保留同 id handle 与通知清理由 `subagent-outcomes.test.ts` Rewind 用例与 `subagent-directory.test.ts` 恢复用例通过；Session 仍持有子 Session 构造（`createChild`）、`childSessions`/dispose 资源与 `begin/abort/settle/restore/delivered/count/hasNotifications/wait/interrupt` 协调。
 
   未能验证/限制：
-  - `settle()` 对「尚无 done promise 的创建项」的等待分支按原样保留，但用公开行为无法与「settle 只等待已有 done」区分：父 Run 必须等 `execute` 返回（即创建完成并已挂上 done）才能结束，变异该分支后新测试仍通过；仅能确认该分支代码路径保留、且失败释放路径下的唤醒为必要（上述变异 A）。
+  - `settle()` 对「尚无 done promise 的创建项」的等待分支按原样保留，但用公开行为无法与「settle 只等待已有 done」区分：父 Run 必须等 `execute` 返回（即创建完成并已挂上 done）才能结束，变异该分支后新测试仍通过；仅能确认该分支代码路径保留、且失败释放路径下的唤醒为必要（上述变异 A）。AC 第 6 项据此取消勾选（保留删除线原文），`Status` 仍为 `resolved`，表示交付完成、该子句未被证据区分。
   - 本票未改动 `docs/architecture.md`（其中 `subagents/` 归属描述仍为迁移前状态），按实施请求归票 07 同步。
   - 未运行 `bun run check` 聚合检查（按实施请求保留给最终票）。
 

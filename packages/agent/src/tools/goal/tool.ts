@@ -48,13 +48,23 @@ function argumentError(
   );
 }
 
+/** The Goal controller operations the model tools may call; Session supplies its lazy facade. */
+export type GoalToolController = Pick<
+  ReturnType<typeof createGoalController>,
+  "view" | "create" | "edit" | "pause" | "resume" | "finish"
+>;
+
+/** Run-scoped authorization facts a Goal mutation reads before it changes state. */
+export type GoalToolExecution = {
+  directHuman(): boolean;
+  goalRound(): boolean;
+  wrapup(text: string): void;
+};
+
 /** Model controls share the controller's serialized mutations but operate inside the current Run. */
 export function createGoalTools(
-  goal: Pick<
-    ReturnType<typeof createGoalController>,
-    "view" | "create" | "edit" | "pause" | "resume" | "finish"
-  >,
-  execution: { directHuman(): boolean; goalRound(): boolean; wrapup(text: string): void },
+  goal: GoalToolController,
+  execution: GoalToolExecution,
 ): AgentTool[] {
   const requireHuman = () => {
     if (!execution.directHuman())

@@ -90,6 +90,7 @@ Blocked by: [07](07-session-assembly-and-boundaries.md)
   未解决项（当时的唯一原因，已由下一条评论关闭）：`env -u NO_COLOR bun run check` 由执行请求保留给编排者在 `ba200b7` 并行运行，本票未运行、也未收到结果，故 AC 第 5 项保持未勾选。注意本票为修复 Oxlint 缺陷改动了 `.oxlintrc.json`，因此 `ba200b7` 上的聚合结果不再覆盖最终提交；追加该证据时必须针对最终提交重跑（或由本票在收到指示后运行），并在本评论后追加实际退出码、通过/失败计数与日志。已在本票内针对该改动重跑全部静态检查与受影响套件（见上），但这不是同一次聚合运行。
 
   其他未能验证/限制：
+  - **Hook 只读工具集只是独立工厂（由[票 02](02-tool-runtime-and-factories.md) AC-3 升级记录）**：`hooks/model.ts` 只导入 `tools/builtin.ts`，不加载当时的组装入口 `tools/index.ts`，也不加载今天的 `session/tools.ts`；但该文件同时是内置工具工厂模块，因此模型 Hook 路径仍传递加载 `bash`、`jobs`、`todo`、`web-fetch`、`question`、`skill`。spec 的"Hook 可消费独立只读工具集"（Implementation Decisions）只在"独立工厂 `createReadonlyTools`"层面成立，未实现为独立模块；`tools/builtin.ts` 因此同时服务 Session 组装与 Hook 只读工具集（Divergent Change 倾向），本次评审不重构，仅记录。
   - 预迁移审计的"654 次断言"不可复现为稳定计数：同一组 7 个 MCP/Job 套件连续运行得到 654/656/657/658 次 `expect()`（含时序条件断言）。通过/失败与退出码稳定（112/0，exit 0），文件 blob 与 `5c730be` 逐一相同，故以 blob 相同 + 112/0 作为断言未变的证据。
   - 票 05 的"`subagent-mcp-oauth.test.ts` 4 项"实际为 6 项，已在票 05 更正。
   - 各实施票的变异验证（票 05 的名额释放、票 06 的同值等待与通知队列）未由本票重放：重放需要在生产代码上制造临时变异，超出最终审查票范围；本票只确认相关代码路径与断言存在且通过，并保持各票原有的"未独立区分"披露。
@@ -111,3 +112,34 @@ Blocked by: [07](07-session-assembly-and-boundaries.md)
   - 完整日志 5449 行（按仓库惯例 `.scratch/` 只提交 Markdown，故未提交日志文件）；可核对的锚点：第 5–8 行为 oxfmt/oxlint 结果，第 5445–5449 行为 `2497 pass` / `0 fail` / `14040 expect() calls` / `Ran 2497 tests across 179 files. [60.37s]` / `EXIT=0`。
 
   本票此后的改动仅为 `.scratch/` 下的文档（本评论、各票状态与 spec 状态行）：按根 `AGENTS.md`"仅文档变化时验证格式、引用路径与 diff，不运行测试"执行——对改动的 Markdown 运行 `bunx --no -- oxfmt --check <files>`、`git diff --check`，并重新逐条核对相对链接与锚点。代码、配置与依赖自聚合检查后未再变化。
+
+- 2026-10-07（评审整改：两轴代码审查的 FIX/RECORD 处理，base `e86c0e5`，worktree `agent-module-refactor-review`）：只处理审查结论，公共行为不变，未修改任何既有测试断言。以下命令均在本 worktree 实际运行。
+
+  **FIX 1（已修，配置）**：`.oxlintrc.json` 的能力执行模块限制遗漏共享工具运行时适配层。原 group 覆盖自身协议适配（`./tools.ts`、goal 的 `./tool.ts`）与全局组装入口（`../builtin.ts`、`../../tools/builtin.ts`、`../../session/tools.ts` 等），但 `tools/runtime.ts` 未受限；该模块只做 pi 协议适配（`adaptTool`、`preserveErrorDetails`、`createImageReadEnv`），执行模块导入它会绕过"执行模块不反向依赖协议适配"的方向约定。修复：group 追加 `"../runtime.ts"` 与 `"../../tools/runtime.ts"` 并按三组语义重排数组；message 改为 `A capability execution module must not import its own protocol adapter, the shared tool-runtime adaptation layer, or the global tools entry.`
+
+  受控验证（与票 07/08 同一方法：先证缺口、再证命中、再证合法例外、最后清理）：
+  - 加规则前：临时 `packages/agent/src/tools/zzprobe/{controller,tools,index}.ts`（`controller.ts:1` 导入 `../runtime.ts`、`:2` 导入 `../../tools/runtime.ts`；`tools.ts` 导入 `./controller.ts` 与 `../jobs/index.ts`；`index.ts` 转导出两者）→ `bunx --no -- oxlint` = `Found 0 warnings and 0 errors.`（exit 0，401 文件），缺口成立，同一次运行也证明适配文件与能力入口消费本来就不被标记。
+  - 加规则后：同一批输入 → `Found 0 warnings and 2 errors.`（exit 1，401 文件），两条命中分别落在 `zzprobe/controller.ts:1`（`../runtime.ts`）与 `:2`（`../../tools/runtime.ts`），`tools.ts` 与 `index.ts` 在同一次运行中未被标记（兄弟适配器与跨能力入口例外仍放行）。
+  - 合法例外回归（删除临时文件后整仓运行）：`bunx --no -- oxlint` = `Found 0 warnings and 0 errors.`（exit 0，398 文件），覆盖 `tools/goal/tool.ts`（适配器合法导入 `../runtime.ts`）、`tools/builtin.ts`（导入 `./runtime.ts`）、`mcp/index.ts`（导入 `../tools/runtime.ts`）与全部 `tools/*/tools.ts` 适配器；另对 9 个显式列出的合法消费者定向运行 → 0/0（exit 0）。
+  - 清理：校验绝对路径后 `rm -rf` 删除临时目录；`git status --porcelain` 只余本次真实改动，`find packages -name 'tmp-*' -o -name 'zzprobe*'` 无结果。
+
+  文档同步：ADR-0011 迁移状态的枚举补为"自身协议适配、共享工具运行时适配层（`tools/runtime.ts`）或全局组装入口"；根 `AGENTS.md` 只链接该约束、不枚举模式，经核对无需改动。
+
+  **FIX 2（已修，纯重构）**：`tools/plan-mode/controller.ts` 的三处两行投影（初始化、最新 revision 失败回退、`restore()`）收敛为一个 `project(value)` 辅助函数并三处调用；`packages/agent/tests/e2e/plan-mode.test.ts` 零改动（`git diff` 对该文件为空）。
+
+  **FIX 3（已修，纯类型重构）**：`tools/goal/tool.ts` 导出 `GoalToolController`（`Pick<ReturnType<typeof createGoalController>, "view" | "create" | "edit" | "pause" | "resume" | "finish">`）与 `GoalToolExecution`（`{ directHuman(): boolean; goalRound(): boolean; wrapup(text: string): void }`），`createGoalTools` 签名改用两者，`session/tools.ts` 的 `Parameters<typeof createGoalTools>[0]`/`[1]` 改为具名类型；类型经 `tools/goal/index.ts` 能力入口消费（`knip` 认可），运行时无变化。`session/tools.ts` 内 `Parameters<typeof createSubagentCapabilityTools>[0]` 同类写法未在本次审查范围内，保留原样。
+
+  **FIX 4（有意保留，未改代码）**：`session/index.ts:844` 的四个 Subagent 工具名过滤未改为从 `subagentTools` 派生。理由：(1) 派生只在可达状态下等价——子 Session 的 `createSubagentTools` 返回 `[]`，被排除集合在该状态从 4 个名字变为 0 个；子 Session 不暴露 Subagent 工具，`createChild` 因此不可达（`subagents.delegate/fork/send` 只在 `tools/subagents/tools.ts` 命中），等价性依赖可达性论证而非结构。(2) 派生会让 `createChild` 闭包读取同一函数体内更晚声明（第 962 行）的 `const subagentTools`，形成无编译期与测试期保护的 TDZ 顺序耦合。(3) 让能力导出名字清单属于新增能力 API 面，超出整改范围。保留原字面量的行为不变。
+
+  **FIX 5（两项判断，均记录不改代码）**：`tools/subagents/tools.ts` 的 `sendResult` 保留——`steered` 分支返回 `details: {}`，`started` 分支委托 `delegationResult`（details 为 `{agentId, childSessionId}`，文本还依赖 `fact.reused` 在 `delivered to`/`started subagent` 间选择），两分支结果形状本就不同，"合并"只能提取一个 20 字符的文本模板，换来第三个名字并掩盖 fact→result 映射，故不合并。`tools/builtin.ts` 同时服务 Session 组装与 `createReadonlyTools`（Divergent Change 倾向）不重构，与"其他未能验证/限制"新增的 Hook 条目同源，仅记录。
+
+  **RECORD 1（票面更正，未把任何披露升级为"已达成"）**：01 AC-8、02 AC-1、03 AC-7、05 AC-6 取消勾选并保留删除线原文，就地标注"未独立验证"/"由票 07 取代"/"不可恢复"/"不可独立区分"；票 02 AC-3 的 Hook 传递加载限制升级到本票"其他未能验证/限制"与 spec 交付说明；spec 的 Plan Mode 与 Subagent 测试决定各补一句不可独立区分的边界；各票 `Status` 保持 `resolved`，指交付完成、证据边界随框披露，不代表待办。
+
+  **RECORD 2（越界标准问题，只记录不修）**：三处测试文件的 `AGENTS.md` 违背逐条核对来源——
+  - `apps/neant-tui/tests/screens/chat/conversation.test.ts`：`for (let run = 0; run < 501; run++)`（第 33 行）所在的「conversation retains the latest 500 TPS samples across real Session Runs」在本 worktree 实跑 **3047.90ms**（1005 expect）。该文件全部行由 `git blame` 指向 main 的 `3200d15 perf(test): reduce waits and add focused development checks`，经 `619e797`（`Merge branch 'main' into agent-module-refactor`，父提交 `0c5dc22` 与 `3200d15`）进入本分支；该提交未记录 `AGENTS.md` "Performance evidence"要求的 before/after 计时。属 main 的既有状态，不在本分支范围。
+  - `apps/neant-tui/tests/e2e/clipboard-image-tip.test.ts`（`beforeEach(() => jest.useFakeTimers())` 与本地 `advanceTimers` 包装在第 4–8 行）与 `apps/neant-tui/tests/e2e/status-line.test.ts`（第 164 行内联 `jest.useFakeTimers()`、第 167 行 `advanceTimers`）：两文件的这些行均由 `git blame` 指向 main 的 `3200d15`（文件本身更早，分别由 `34cf2e9`、`692a63c` 创建）；`apps/neant-tui/tests/helpers/clock-app.ts` 的 `startWithClock` 同样由该提交新增，即"未复用 helper"与"helper 存在"同日落地。属 main 的既有状态，不在本分支范围。
+  - `packages/agent/tests/e2e/plan-mode.test.ts:573` 的 `await new Promise((resolve) => setTimeout(resolve, 0))`：由本分支票 06 的 `bc88d33` 引入，属本分支代码。判断为**保留**：该等待是 0ms 宏任务屏障，用于在断言"同值调用尚未 settle"这个否定命题前排空任意深度的微任务链，不校验时长契约，也不是等待并发工作完成的固定睡眠；改用 `Promise.withResolvers`/单次微任务 hop 会削弱区分能力。变异证据：同值分支改为返回已 settle 的 promise → 用例在 `expect(repeated).toBe(false)` 失败（`Received: true`）；改为"两次微任务后才 settle"的更深变异 → 0ms 排空仍在同一断言失败，而把排空换成 `await Promise.resolve()` 时该断言通过（只在后续断言暴露）。既有断言未改，临时变异与临时测试改动均已还原（测试文件 `git diff` 为空）。
+
+  行为与静态验证（本 worktree，`env -u NO_COLOR`）：`plan-mode.test.ts`、`goal-tools.test.ts`、`goal.test.ts`、`tool-declarations.test.ts` 合跑 → 68 pass / 0 fail，270 expect，exit 0；`subagents.test.ts`、`mcp-api.test.ts`、`mcp.test.ts`、`hooks.test.ts`、`model-hooks.test.ts` 与上述四套件合跑 → 203 pass / 0 fail，912 expect，9 文件，exit 0；`bunx --no -- tsc -b` exit 0；`bunx --no -- oxlint` exit 0（398 文件，0/0）；`bunx --no -- oxfmt --check` exit 0（694 文件）；`bunx --no -- knip` exit 0；`git diff --check` exit 0。
+
+  聚合检查：`env -u NO_COLOR bun run check`（= `oxfmt --check && oxlint && tsc -b && knip && bun test --parallel=4`），运行于包含本次全部代码/配置改动与该评论之前全部文档改动的状态；退出码 **0**：`oxfmt --check` 694 文件、`oxlint` 398 文件 0/0、`tsc -b`、`knip` 均通过，`bun test --parallel=4` → **2497 pass / 0 fail**，14042 expect，179 文件，60.44s。expect 计数与票 08 前次记录的 14040 差 2，属已披露的时序条件断言波动（见票 01/08 的断言计数说明），通过/失败数与文件数不变。合并与提交后复跑见末条评论。

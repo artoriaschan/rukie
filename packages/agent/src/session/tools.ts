@@ -1,7 +1,11 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { OnInteractionStart } from "../interaction/index.ts";
 import { createBuiltinTools, type BuiltinToolsOptions } from "../tools/builtin.ts";
-import { createGoalTools } from "../tools/goal/index.ts";
+import {
+  createGoalTools,
+  type GoalToolController,
+  type GoalToolExecution,
+} from "../tools/goal/index.ts";
 import {
   createEnterPlanModeTool,
   createExitPlanModeTool,
@@ -34,8 +38,8 @@ export interface BaseToolsInput {
   };
   goal: {
     /** The Goal controller is created after the Agent, so callers pass its lazy facade. */
-    controller: Parameters<typeof createGoalTools>[0];
-    execution: Parameters<typeof createGoalTools>[1];
+    controller: GoalToolController;
+    execution: GoalToolExecution;
   };
 }
 

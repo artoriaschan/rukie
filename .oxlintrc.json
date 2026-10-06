@@ -74,13 +74,15 @@
                 "group": [
                   "./tools.ts",
                   "./tool.ts",
+                  "../runtime.ts",
+                  "../../tools/runtime.ts",
                   "../index.ts",
                   "../../tools/index.ts",
                   "../builtin.ts",
                   "../../tools/builtin.ts",
                   "../../session/tools.ts"
                 ],
-                "message": "A capability execution module must not import its own protocol adapter or the global tools entry."
+                "message": "A capability execution module must not import its own protocol adapter, the shared tool-runtime adaptation layer, or the global tools entry."
               }
             ]
           }

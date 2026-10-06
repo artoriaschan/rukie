@@ -28,9 +28,14 @@ export function createPlanModeController(options: {
   changed(value: PlanSnapshot): void | Promise<void>;
 }): PlanModeController {
   const snapshot = () => options.getSnapshot() as PlanSnapshot | undefined;
-  const initial = snapshot();
-  let active = initial?.active ?? false;
-  let entered = initial !== undefined;
+  let active = false;
+  let entered = false;
+  /** The only projection of a persisted snapshot onto `active`/`entered`. */
+  const project = (value: PlanSnapshot | undefined) => {
+    active = value?.active ?? false;
+    entered = value !== undefined;
+  };
+  project(snapshot());
   let writes = Promise.resolve();
   let revision = 0;
   return {
@@ -47,11 +52,7 @@ export function createPlanModeController(options: {
       const persisted = write.catch((error: unknown) => {
         // Only the latest revision restores the projection, from the snapshot that
         // actually persisted, so an earlier failure cannot undo a later switch.
-        if (current === revision) {
-          const value = snapshot();
-          active = value?.active ?? false;
-          entered = value !== undefined;
-        }
+        if (current === revision) project(snapshot());
         throw error;
       });
       // The queue swallows failures so later switches still run; the caller still sees them.
@@ -65,9 +66,7 @@ export function createPlanModeController(options: {
     settleWrites: () => writes,
     /** Re-derive the projection after Tool State replay, mutating this shared instance. */
     restore() {
-      const value = snapshot();
-      active = value?.active ?? false;
-      entered = value !== undefined;
+      project(snapshot());
     },
   };
 }

@@ -15,9 +15,9 @@ packages/agent/src/tools/index.ts 及 tools/runtime.ts、tools/builtin.ts；更�
 
 ## Acceptance Criteria
 
-- [x] tools/index.ts 保留工具工厂/交互类型入口，实际共享 pi context/AbortSignal 适配和 preserveErrorDetails 独立维护。
+- [ ] ~~tools/index.ts 保留工具工厂/交互类型入口~~（由[票 07](07-session-assembly-and-boundaries.md)取代：字面标准未在最终树上存活，`tools/index.ts` 已删除；实质要求仍成立，见评论）。实际共享 pi context/AbortSignal 适配和 preserveErrorDetails 独立维护。
 - [x] 保留 read 原始字节图片准入、home/path 参数准备、pi 二次规范化、错误码与 params 结果，以及取消行为。
-- [x] MCP 直接消费实际所需的错误包装，Hook 消费独立只读工具集；均不为了 helper 加载整个工具组装入口。
+- [x] MCP 直接消费实际所需的错误包装，Hook 消费独立只读工具集；均不为了 helper 加载整个工具组装入口。（Hook 侧的限制：独立只读工具集只是独立工厂，`hooks/model.ts` 仍经 `tools/builtin.ts` 传递加载 bash/jobs/todo/web-fetch/question/skill；已升级记录到[票 08](08-final-review-and-verification.md)与 [spec](../spec.md) 交付说明）
 - [x] 保留 MCP authenticate 工具使用 preserveErrorDetails 的错误路径与原始 MCP 工具的适配路径；不将错误包装无差别增加到所有 MCP 工具。复用 OAuth、配置错误与生命周期公开套件验证迁移。
 - [x] 基础工具集与 Hook 只读工具集具有独立工厂，原工具名称、参数、顺序和隐藏条件保持。
 - [x] 保留 tools/path.ts 现有职责，当前没有跨领域消费者，不为假设复用另建抽象。
@@ -53,7 +53,7 @@ packages/agent/src/tools/index.ts 及 tools/runtime.ts、tools/builtin.ts；更�
   错误码与 Transcript：`tools.test.ts:377`「unavailable bundled ripgrep reports English content and coded UI details」同时断言工具结果 `details: { code: "ripgrep-unavailable", params: { cause: "test binary unavailable" } }`、`session.messages` 中同一条 toolResult 的 `isError` 与 `details`，并断言 `JSON.stringify(fake.contexts)` 不含汉字（Agent Core 保持 locale 无关）；`tools.test.ts:95`「aborting a Run kills bash and its child process and preserves the error in the Transcript」覆盖取消与 Transcript 保留。
 
   未能验证/限制：
-  - AC 第一句"tools/index.ts 保留工具工厂/交互类型入口"在最终树上**已不成立**：`tools/index.ts` 由票 07（`340aa1a`）删除。该条按票 07 的验收被取代——交互类型入口现为 `tools/question.ts` 与各能力 `index.ts`，共享适配与错误包装现为 `tools/runtime.ts`，工厂现为 `tools/builtin.ts` 与各能力工厂。本条的实质要求（工厂与交互类型有入口、共享 pi 适配与 `preserveErrorDetails` 独立维护）仍满足。
+  - AC 第一句"tools/index.ts 保留工具工厂/交互类型入口"在最终树上**已不成立**：`tools/index.ts` 由票 07（`340aa1a`）删除。该条按票 07 的验收被取代——交互类型入口现为 `tools/question.ts` 与各能力 `index.ts`，共享适配与错误包装现为 `tools/runtime.ts`，工厂现为 `tools/builtin.ts` 与各能力工厂。本条的实质要求（工厂与交互类型有入口、共享 pi 适配与 `preserveErrorDetails` 独立维护）仍满足。AC 第 1 项据此取消勾选并标注由票 07 取代（`Status` 仍为 `resolved`，表示交付完成、字面标准未存活）；AC 第 3 项的 Hook 传递加载限制升级记录到票 08 的未解决项/限制与 spec 交付说明。
   - AC 第三句"均不为了 helper 加载整个工具组装入口"按**组装入口**（`tools/index.ts`、今天的 `session/tools.ts`）成立；但 `hooks/model.ts` 导入的 `tools/builtin.ts` 同时是内置工具工厂模块，因此 Hook 仍会传递加载 `jobs`/`bash`/`todo`/`web-fetch`/`question`/`skill`/`glob`/`grep`/`file-tracking`/`interaction` 模块。本票只要求"独立只读工具集"这一条由 `createReadonlyTools` 与 `createBuiltinTools` 两个独立函数满足；"只读工厂单独成文件"不在本票要求内，票 08 未改动该落点。
   - MCP authenticate 的错误路径与原始工具适配路径本票未改代码，`mcp-oauth.test.ts` / `mcp-oauth-lifecycle.test.ts` / `mcp.test.ts` 全绿且四个文件 blob 与 `5c730be` 相同；这是既有套件保护，不是本票可独立区分的证据。
   - 未运行 `bun run check` 聚合检查（按 Spec 留给票 08）。

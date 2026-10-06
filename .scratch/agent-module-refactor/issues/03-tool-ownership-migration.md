@@ -21,7 +21,7 @@ Blocked by: [02](02-tool-runtime-and-factories.md)
 - [x] 包级 TodoItem 及现有 SessionOptions 的 WebFetchOptions 行为保持兼容，所有内部引用更新。
 - [x] tools/jobs/ 同时提供 registry 与工具工厂，内部区分资源、输出和游标管理与 job_output/job_list/job_kill 协议包装；Session 和 Bash 经该能力入口直接消费 registry。
 - [x] Permission Review 保留独立模型调用、失败转 ask、取消及权限规则，不改变 locale 或输出约定。
-- [x] 更新本票涉及的当前架构/源码链接，删除旧目录、旧文件和废弃内部转导出，镜像的内部测试路径按现有规则迁移；跨概念 e2e 不为对称而搬动。
+- [ ] ~~更新本票涉及的当前架构/源码链接~~（不可恢复：本票更新了哪些当前文档链接无法归因，`docs/architecture.md` 在本区间的改动只来自票 07；删除旧目录、旧文件和废弃内部转导出，镜像的内部测试路径迁移，以及跨概念 e2e 未为对称而搬动，均有证据，见评论）
 
 ## Verification
 
@@ -63,6 +63,6 @@ Blocked by: [02](02-tool-runtime-and-factories.md)
   - `packages/agent/tests/e2e/todo-reminders.test.ts` 只有 1 行导入路径改动（`type TodoItem` 来源），断言未改；`permission-review.test.ts` 本区间只有来自 main `3200d15` 的 fake-timer 改造（同一批断言，改为 `jest.advanceTimersByTime(29_999/1)`），非本票改动。
 
   未能验证/限制：
-  - 本票没有留下自己的实施证据评论。`docs/architecture.md` 中 bash/jobs/web-fetch/todo 相关行的更新无法归因到本票：该文件在区间内只被票 07（`340aa1a`）改动，票 05/06 的证据明确把 `architecture.md` 的同步推给票 07。最终状态正确（见票 07、票 08 的文档核对），但"本票更新了哪些当前文档链接"不可恢复。
+  - 本票没有留下自己的实施证据评论。`docs/architecture.md` 中 bash/jobs/web-fetch/todo 相关行的更新无法归因到本票：该文件在区间内只被票 07（`340aa1a`）改动，票 05/06 的证据明确把 `architecture.md` 的同步推给票 07。最终状态正确（见票 07、票 08 的文档核对），但"本票更新了哪些当前文档链接"不可恢复。AC 第 7 项因此取消勾选并保留删除线原文：该条的文档子句不可核实，删除与迁移子句有证据。
   - Permission Review 的失败转 ask、取消与显式规则行为由既有 `permission-review.test.ts`（31 项）与 `permissions/` 套件保护，文件 blob 与 `5c730be` 相同；这是既有覆盖，不是本票可独立区分的证据。
   - 未运行 `bun run check` 聚合检查（按 Spec 留给票 08）。
