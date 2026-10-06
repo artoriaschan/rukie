@@ -73,3 +73,21 @@ Standards：2 项规范违约、2 项判断项，最高为 P1，全部关闭。S
 合并前重新执行全测试：2095 pass / 0 fail / 10324 assertions / 152 files（255.81 s）。合并后在 main checkout 执行 `rtk proxy caffeinate -is env -u NO_COLOR bun run check`，exit 0：**2153 pass / 0 fail / 11065 assertions / 153 files**（255.18 s）；格式、lint、类型与 Knip 全部通过。`bun install --frozen-lockfile` 未修改依赖；架构/spec/review 共核对 40 个相对路径，无缺失。
 
 删除前确认 main 与集成工作树均无未提交或未跟踪文件，`main..codex/image-input` 为 0；十个图片输入分支的 HEAD 均为 main 祖先。Codex managed archive 拒绝移除当前聊天的 primary checkout，因此按用户明确授权，从 main checkout 使用不带 `--force` 的 `git worktree remove` 删除 700c 集成工作树，再用 `git branch -d` 删除已合并的十个图片输入分支。目录、Git worktree 注册及分支引用均已核对清理；原九个 implementer 归档保留。
+
+## 剪贴板图片提示后续验收
+
+2026-10-06：[09](issues/09-clipboard-image-tip.md) 实现右下角 locale 感知的剪贴板图片 Tips。审查基线 `84deb4a090829c9108ff77e3fd034befb25a63d2`，diff `git diff 84deb4a...34cf2e9`。
+
+### Standards
+
+0 项规范违约、0 项判断项。元数据探测和资源清理由 frontend host 拥有，Chat 串行轮询并管理 Tips 优先级及输入焦点；各 host 消费者只声明所需方法。中英字典、公开入口测试及运行文档同步。
+
+### Spec
+
+0 项缺失/部分要求、0 项范围扩张、0 项错误行为。文案、右对齐位置、剪贴板变化更新、元数据读取、notice/rewind 优先、只读状态隐藏和退出清理符合工单。Spec reviewer 独立验证 6 pass / 0 fail / 47 assertions。
+
+### 集成与清理
+
+实现 `34cf2e9` 已通过 `4277f5c` 合入 main，focused 40 pass / 0 fail / 217 assertions / 6 files。main 上 `rtk proxy caffeinate -is env -u NO_COLOR bun run check` exit 0：format、lint、types、Knip 和 2193 tests / 0 fail / 11299 assertions / 158 files，261.18 s。默认 macOS 元数据 helper 替身验证七种输入及关闭后的行为；真实 macOS 只读探测成功，当前无图片，未更改用户剪贴板。Linux helper 路径未在真实图形桌面手测，Windows 沿用仅文本能力。
+
+确认工作树 clean、分支已包含于 main 后，删除 `clipboard-image-tip` 工作树和 `codex/clipboard-image-tip` 分支，保留其他任务工作树。用户 14-background-bash.md 的未提交内容 hash 保持一致，未编辑或暂存。
