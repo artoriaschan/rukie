@@ -4,18 +4,7 @@ import { constants, tmpdir } from "node:os";
 import { StringDecoder } from "node:string_decoder";
 import { join } from "node:path";
 import { createUserVisibleError } from "@neant/shared";
-
-export interface JobView {
-  id: string;
-  kind: "bash";
-  label: string;
-  command: string;
-  status: "running" | "stopping" | "completed" | "failed" | "killed";
-  exitCode?: number;
-  startedAt: number;
-  endedAt?: number;
-  spillPath?: string;
-}
+import type { JobView, JobOutput, JobEvent } from "@neant/shared";
 
 interface OutputChunk {
   offset: number;
@@ -42,8 +31,14 @@ export function jobStatus(job: JobView) {
 }
 
 /** Session-owned processes. Foreground entries become visible only when promoted. */
-export function createJobs(options: { onNotify?(job: JobView): void } = {}) {
-  let sequence = 0;
+export function createJobs(
+  options: {
+    initialSequence?: number;
+    onNotify?(job: JobView): void;
+    onEvent?(event: JobEvent): void;
+  } = {},
+) {
+  let sequence = options.initialSequence ?? 0;
   let spillDir: string | undefined;
   let disposed = false;
   const ownedGroups = new Set<number>();
@@ -94,6 +89,18 @@ export function createJobs(options: { onNotify?(job: JobView): void } = {}) {
     let offset = 0;
     let modelOffset = 0;
     let retained = 0;
+    let outputTimer: ReturnType<typeof setTimeout> | undefined;
+    let outputPending = false;
+    const emit = (kind: JobEvent["kind"]) => {
+      if (visible) options.onEvent?.({ type: "job_event", kind, job: { ...view } });
+    };
+    const flushOutput = () => {
+      clearTimeout(outputTimer);
+      outputTimer = undefined;
+      if (!outputPending) return;
+      outputPending = false;
+      emit("output");
+    };
     const rings: Record<OutputChunk["stream"], OutputChunk[]> = { stdout: [], stderr: [] };
     const waiters = new Set<() => void>();
     let killTimer: ReturnType<typeof setTimeout> | undefined;
@@ -134,6 +141,13 @@ export function createJobs(options: { onNotify?(job: JobView): void } = {}) {
       retained += bytes.length;
       trim(256 * 1024);
       notify();
+      if (visible) {
+        outputPending = true;
+        if (outputTimer === undefined) {
+          outputTimer = setTimeout(flushOutput, 150);
+          outputTimer.unref();
+        }
+      }
     };
     const receive = (stream: OutputChunk["stream"], bytes: Buffer) => {
       try {
@@ -211,7 +225,7 @@ export function createJobs(options: { onNotify?(job: JobView): void } = {}) {
       }
       notify();
     }
-    function read(from: number) {
+    function read(from: number): JobOutput {
       const stdout: Buffer[] = [];
       const stderr: Buffer[] = [];
       const firstOffset = Math.min(
@@ -308,15 +322,20 @@ export function createJobs(options: { onNotify?(job: JobView): void } = {}) {
         }
       },
       promote() {
+        if (visible) return;
         visible = true;
         onOutput = undefined;
+        emit("started");
       },
     };
     records.set(id, job);
     // Collectors released by close commit their suppression before this callback.
     void completed.then(() => {
+      flushOutput();
+      emit("settled");
       if (job.visible && !job.suppressed && !disposed) options.onNotify?.(job.view);
     });
+    if (visible) emit("started");
     return job;
   }
   function list() {

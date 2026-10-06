@@ -42,6 +42,8 @@ TUI 从[入口](../apps/neant-tui/src/main.tsx)解析参数与 locale，建立[�
 
 Session 对 frontend 暴露运行、事件订阅、中断、steer、Goal、上下文查询、compaction、Rewind 等能力；完整接口由源码定义。`run` 的 `onEvent` 接收该次 Run 的有序事件，`subscribe` 观察 Session 中包括 Hook 与 Goal 内部续跑在内的事件；TUI 通过订阅跟踪持续变化。
 
+Session 持有自己的 Background Job registry。bash 使用同一条进程组执行路径，显式后台启动或超时转后台后才进入 Frontend 的任务视图和 `job_event`；`jobs` 负责输出、模型游标、停止和清理，Session 将结束通知交给 rewake。Frontend 通过独立绝对偏移读取输出，用户停止在当前 Run 中成为 steer 输入，空闲时随下一条人类 prompt 交给模型。Run 结束不清理普通 Session 的任务；Session dispose 终止任务，Headless CLI 在 prompt 或 Goal 结束时执行 dispose。任务不持久化，Session Resume 的 registry 为空；已保存的普通 bash 调用与结果只用于继续编号，避免历史工具卡关联到新任务。公开 API、事件观察和进程资源的完整约定见 [Agent README](../packages/agent/README.md)。
+
 ## Agent Core 的职责分配
 
 | 模块                                                      | 责任                                                            |
@@ -49,7 +51,7 @@ Session 对 frontend 暴露运行、事件订阅、中断、steer、Goal、上�
 | `session/`                                                | 组合能力、协调 Run、事件、取消、存储操作与 frontend 接口        |
 | `config/`、`prompt/`                                      | 合并设置、解析模型与凭据，建立 System Prompt                    |
 | `tools/`、`skills/`、`mcp/`                               | 构造模型工具集、加载 Skill 内容、连接外部工具                   |
-| [`bash/`](../packages/agent/src/bash/index.ts)            | 适配 Bash 调用、复用 pi 前台输出采集与截断                      |
+| [`bash/`](../packages/agent/src/bash/index.ts)            | 执行 Bash 调用、后台启动与超时提升，复用 pi 输出采集与截断      |
 | [`jobs/`](../packages/agent/README.md)                    | 持有 Session 的 Bash 进程组、输出与模型游标，提供后台任务工具   |
 | [`images/`](../packages/agent/src/images/index.ts)        | 为 Session 与 read 共享图片准入校验，读取 header metadata       |
 | `permissions/`、`review/`、`hooks/`、`interaction/`       | 决定执行是否允许，运行生命周期扩展，并协调可取消的用户交互      |
