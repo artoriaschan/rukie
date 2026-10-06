@@ -65,11 +65,14 @@ test("aborting a job_output wait leaves the background process alive for the nex
   const pid = Number(await waitFile("pid"));
   const controller = new AbortController();
   const waiting = Promise.withResolvers<void>();
+  const collected = Promise.withResolvers<void>();
+  let collecting = false;
   const run = session.run("wait", {
     signal: controller.signal,
     onEvent(event) {
       if (event.type === "tool_execution_start" && event.toolName === "job_output")
         waiting.resolve();
+      if (event.type === "result" && collecting) collected.resolve();
     },
   });
   void run.catch(() => {});
@@ -77,12 +80,13 @@ test("aborting a job_output wait leaves the background process alive for the nex
   controller.abort(new Error("stop waiting"));
   await expect(run).rejects.toThrow("stop waiting");
   expect(() => process.kill(pid, 0)).not.toThrow();
-  await Bun.write(join(dirs.cwd, "go"), "");
   fake = fakeModel([
     call("job_output", { job_id: "bash-1", wait: true }),
     fauxAssistantMessage("read"),
   ]);
-  await session.run("collect final output");
+  collecting = true;
+  await Bun.write(join(dirs.cwd, "go"), "");
+  await collected.promise;
   expect(resultText(session.messages)).toContain("final");
 });
 
@@ -350,12 +354,18 @@ test("a settled job retains only a 16 KiB tail but spills its complete stdout an
     fauxAssistantMessage("collected"),
   ]);
   session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
-  await session.run("start");
+  const collected = Promise.withResolvers<void>();
+  let results = 0;
+  await session.run("start", {
+    onEvent(event) {
+      if (event.type === "result" && ++results === 2) collected.resolve();
+    },
+  });
   const pid = Number(await waitFile("pid"));
   await waitFile("ready");
   await Bun.write(join(dirs.cwd, "go"), "");
   await expectDead(pid);
-  await session.run("collect settled job");
+  await collected.promise;
   const text = resultText(session.messages)!;
   expect(text).toContain("[stderr]\nerror");
   expect(text).toEndWith("[status: completed, exit code: 0]");

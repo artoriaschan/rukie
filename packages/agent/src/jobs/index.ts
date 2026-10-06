@@ -42,7 +42,7 @@ export function jobStatus(job: JobView) {
 }
 
 /** Session-owned processes. Foreground entries become visible only when promoted. */
-export function createJobs() {
+export function createJobs(options: { onNotify?(job: JobView): void } = {}) {
   let sequence = 0;
   let spillDir: string | undefined;
   let disposed = false;
@@ -313,6 +313,10 @@ export function createJobs() {
       },
     };
     records.set(id, job);
+    // Collectors released by close commit their suppression before this callback.
+    void completed.then(() => {
+      if (job.visible && !job.suppressed && !disposed) options.onNotify?.(job.view);
+    });
     return job;
   }
   function list() {

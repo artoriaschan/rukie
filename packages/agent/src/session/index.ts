@@ -1,4 +1,4 @@
-import { createJobs } from "../jobs/index.ts";
+import { createJobs, jobStatus } from "../jobs/index.ts";
 import {
   Agent,
   type AgentEvent,
@@ -861,7 +861,14 @@ async function createSessionInternal(
       await emitRunEvent?.({ type: "tool_state_changed", name: "file-tracking", value });
     },
   });
-  const jobs = createJobs();
+  const jobs = createJobs({
+    onNotify(job) {
+      pendingRewakes.push(
+        `background job ${job.id} (bash: ${job.label}) finished ${jobStatus(job)}. Read its output with job_output.`,
+      );
+      scheduleRewake?.();
+    },
+  });
   const initialTools = [
     ...createBuiltinTools(
       cwd,
