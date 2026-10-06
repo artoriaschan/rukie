@@ -6,7 +6,6 @@ import {
   createReadTool,
   createWriteTool,
   createEditTool,
-  createBashTool,
   type AgentHarnessTool,
   type AgentTool,
   type ExecutionToolContext,
@@ -19,7 +18,8 @@ import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { prepareFileToolPath } from "./path.ts";
-import { Type, type TSchema, type Static } from "typebox";
+import { type TSchema, type Static } from "typebox";
+import { createBashTool } from "../bash/index.ts";
 import { createGlobTool } from "./glob.ts";
 import { createGrepTool } from "./grep.ts";
 import { createSkillTool } from "./skill.ts";
@@ -140,26 +140,11 @@ export function createBuiltinTools(
   const env = new NodeExecutionEnv({ cwd });
   const track = <T extends TSchema, D>(tool: AgentTool<T, D>): AgentTool<T, D> =>
     fileTracking ? fileTracking.wrapTool(tool) : tool;
-  const bashTool = createBashTool();
-  const bash = adaptTool<typeof bashTool.parameters, unknown>(bashTool, env);
-  const timedBash: typeof bash = {
-    ...bash,
-    description: `${bash.description} Timeout defaults to 120 seconds.`,
-    parameters: {
-      ...bash.parameters,
-      properties: {
-        ...bash.parameters.properties,
-        timeout: Type.Optional(Type.Number({ description: "Timeout in seconds (default: 120)." })),
-      },
-    },
-    execute: (id, params, signal, update) =>
-      bash.execute(id, { ...params, timeout: params.timeout ?? 120 }, signal, update),
-  };
   return [
     track(preserveErrorDetails(adaptTool(createReadTool(), new ImageReadEnv({ cwd }), homeDir))),
     track(adaptTool(createWriteTool(), env, homeDir)),
     track(adaptTool(createEditTool(), env, homeDir)),
-    timedBash,
+    createBashTool(cwd),
     createGlobTool(cwd),
     preserveErrorDetails(createGrepTool(cwd)),
     createSkillTool(getSkill),

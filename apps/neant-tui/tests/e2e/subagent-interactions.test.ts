@@ -18,7 +18,8 @@ test.each([
       run_in_background: false,
     });
     await app.waitFor(() => app.calls.length === 2);
-    if (tool === "bash") app.calls[1]!.tool("bash", { command: "printf origin" });
+    if (tool === "bash")
+      app.calls[1]!.tool("bash", { command: "printf origin", description: "Run test command" });
     else
       app.calls[1]!.tool("ask_user_question", {
         questions: [

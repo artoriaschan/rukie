@@ -22,7 +22,10 @@ async function scriptedHook(
   return { type: "command", command: `sh ${name}` };
 }
 
-function toolModel(name = "bash", args = { command: "touch marker" }) {
+function toolModel(
+  name = "bash",
+  args = { description: "Run test command", command: "touch marker" },
+) {
   return fakeModel([
     fauxAssistantMessage(fauxToolCall(name, args, { id: "call" }), { stopReason: "toolUse" }),
     fauxAssistantMessage("done"),
@@ -102,7 +105,7 @@ test("valid updatedInput changes executed arguments and rules inspect the change
   const handler = await scriptedHook({
     hookSpecificOutput: {
       permissionDecision: "allow",
-      updatedInput: { command: "printf changed > changed" },
+      updatedInput: { description: "Run rewritten command", command: "printf changed > changed" },
     },
   });
   for (const denied of [false, true]) {
@@ -132,7 +135,10 @@ test("invalid updatedInput denies execution and context is attached to its tool 
   dirs = await tempDirs();
   const fake = toolModel();
   const handler = await scriptedHook({
-    hookSpecificOutput: { updatedInput: { command: 3 }, additionalContext: "x".repeat(10_001) },
+    hookSpecificOutput: {
+      updatedInput: { description: "Run rewritten command", command: 3 },
+      additionalContext: "x".repeat(10_001),
+    },
   });
   const session = await createSession({
     ...dirs,
@@ -165,9 +171,16 @@ test("command hooks read the protocol and deny tools before execution", async ()
     'cat > input.json\nprintf "%s" "$NEANT_PROJECT_DIR" > project-root\necho protected >&2\nexit 2\n',
   );
   const fake = fakeModel([
-    fauxAssistantMessage(fauxToolCall("bash", { command: "touch marker" }, { id: "call" }), {
-      stopReason: "toolUse",
-    }),
+    fauxAssistantMessage(
+      fauxToolCall(
+        "bash",
+        { description: "Run test command", command: "touch marker" },
+        { id: "call" },
+      ),
+      {
+        stopReason: "toolUse",
+      },
+    ),
     fauxAssistantMessage("done"),
   ]);
   const events: SessionEvent[] = [];
@@ -313,7 +326,7 @@ test("multiple hooks read original input and combine the strictest decisions and
       {
         hookSpecificOutput: {
           permissionDecision: "allow",
-          updatedInput: { command: "touch changed" },
+          updatedInput: { description: "Run rewritten command", command: "touch changed" },
         },
       },
       "allow.sh",
@@ -357,6 +370,7 @@ test("multiple hooks read original input and combine the strictest decisions and
   expect(await Bun.file(join(dirs.cwd, "changed")).exists()).toBe(false);
   for (const file of ["allow.sh", "ask.sh", "deny-one.sh", "deny-two.sh"]) {
     expect((await Bun.file(join(dirs.cwd, `${file}.input`)).json()).tool_input).toEqual({
+      description: "Run test command",
       command: "touch marker",
     });
   }
@@ -421,7 +435,7 @@ test("a stopping hook also prevents sibling tools in the same batch", async () =
   const fake = fakeModel([
     fauxAssistantMessage(
       [
-        fauxToolCall("bash", { command: "touch marker" }),
+        fauxToolCall("bash", { description: "Run test command", command: "touch marker" }),
         fauxToolCall("write", { path: "sibling", content: "must not write" }),
       ],
       { stopReason: "toolUse" },
@@ -447,9 +461,12 @@ test("inherited hooks see child identity and deny subagent tools", async () => {
       fauxToolCall("subagent", { description: "child", prompt: "try", run_in_background: false }),
       { stopReason: "toolUse" },
     ),
-    fauxAssistantMessage(fauxToolCall("bash", { command: "touch child-marker" }), {
-      stopReason: "toolUse",
-    }),
+    fauxAssistantMessage(
+      fauxToolCall("bash", { description: "Run test command", command: "touch child-marker" }),
+      {
+        stopReason: "toolUse",
+      },
+    ),
     fauxAssistantMessage("child done"),
     fauxAssistantMessage("parent done"),
   ]);
@@ -573,15 +590,21 @@ test("a child session grant cannot approve a parent's pending hook ask", async (
     );
     if (parent)
       return parentCalls++ === 0
-        ? fauxAssistantMessage(fauxToolCall("bash", { command: "printf shared" }), {
-            stopReason: "toolUse",
-          })
+        ? fauxAssistantMessage(
+            fauxToolCall("bash", { description: "Run test command", command: "printf shared" }),
+            {
+              stopReason: "toolUse",
+            },
+          )
         : fauxAssistantMessage("parent done");
     if (childCalls++ === 0) {
       await parentAsked.promise;
-      return fauxAssistantMessage(fauxToolCall("bash", { command: "printf shared" }), {
-        stopReason: "toolUse",
-      });
+      return fauxAssistantMessage(
+        fauxToolCall("bash", { description: "Run test command", command: "printf shared" }),
+        {
+          stopReason: "toolUse",
+        },
+      );
     }
     wasAutoApproved = parentSignal!.aborted;
     parentReply.resolve("deny");

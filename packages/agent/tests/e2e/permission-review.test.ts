@@ -567,7 +567,11 @@ test("a batch reviews only valid calls that still require permission", async () 
     fauxAssistantMessage(
       [
         fauxToolCall("read", { path: "file.txt" }, { id: "read" }),
-        fauxToolCall("bash", { command: "printf allowed" }, { id: "allowed" }),
+        fauxToolCall(
+          "bash",
+          { description: "Run test command", command: "printf allowed" },
+          { id: "allowed" },
+        ),
         fauxToolCall("write", { path: "invalid.txt" }, { id: "invalid" }),
         fauxToolCall("write", { path: "reviewed.txt", content: "safe" }, { id: "reviewed" }),
       ],

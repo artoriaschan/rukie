@@ -555,7 +555,7 @@ test.each([
   });
   try {
     await app.waitFor(() => app.calls.length === 1);
-    app.calls[0]!.tool("bash", { command });
+    app.calls[0]!.tool("bash", { command, description: "Run test command" });
     await app.waitFor(() => app.calls.length === 2);
     expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
       role: "toolResult",

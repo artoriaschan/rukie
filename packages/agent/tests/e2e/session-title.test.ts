@@ -148,7 +148,10 @@ test("rename cancels a held generation during the primary Run and fixes the titl
 for (const [label, response] of [
   [
     "tool output",
-    fauxAssistantMessage(fauxToolCall("bash", { command: "echo bad" }), { stopReason: "toolUse" }),
+    fauxAssistantMessage(
+      fauxToolCall("bash", { description: "Run test command", command: "echo bad" }),
+      { stopReason: "toolUse" },
+    ),
   ],
   ["empty output", fauxAssistantMessage("   ")],
   [

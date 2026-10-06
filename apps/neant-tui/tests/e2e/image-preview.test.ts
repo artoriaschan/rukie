@@ -115,7 +115,10 @@ test("preview closes for approval and the approval owns Enter", async () => {
     );
     click(app, "[Image · shot.png]");
     await app.waitFor(() => app.screen().join("\n").includes("Open original"));
-    app.calls[0]!.tool("bash", { command: "printf preview-approval" });
+    app.calls[0]!.tool("bash", {
+      command: "printf preview-approval",
+      description: "Run test command",
+    });
     await app.waitFor(() => app.screen().join("\n").includes("Waiting for approval"));
     expect(app.screen().join("\n")).not.toContain("Open original");
     app.stdin.write("\r");

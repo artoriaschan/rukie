@@ -24,9 +24,12 @@ async function hook(output: unknown, name = "post.sh", exitCode = 0) {
 
 function toolModel(command = "printf original") {
   return fakeModel([
-    fauxAssistantMessage(fauxToolCall("bash", { command }, { id: "call" }), {
-      stopReason: "toolUse",
-    }),
+    fauxAssistantMessage(
+      fauxToolCall("bash", { description: "Run test command", command }, { id: "call" }),
+      {
+        stopReason: "toolUse",
+      },
+    ),
     fauxAssistantMessage("done"),
   ]);
 }
@@ -196,7 +199,10 @@ test.each(["invalid", "rule", "hook", "user"] as const)(
     dirs = await tempDirs();
     const fake = fakeModel([
       fauxAssistantMessage(
-        fauxToolCall("bash", kind === "invalid" ? {} : { command: "touch marker" }),
+        fauxToolCall(
+          "bash",
+          kind === "invalid" ? {} : { description: "Run test command", command: "touch marker" },
+        ),
         { stopReason: "toolUse" },
       ),
       fauxAssistantMessage("done"),
@@ -340,7 +346,7 @@ test("replacement retains PreToolUse context and child hooks include child ident
     {
       hookSpecificOutput: {
         additionalContext: "before context",
-        updatedInput: { command: "printf rewritten" },
+        updatedInput: { description: "Run rewritten command", command: "printf rewritten" },
       },
     },
     "before.sh",
@@ -354,7 +360,11 @@ test("replacement retains PreToolUse context and child hooks include child ident
       { stopReason: "toolUse" },
     ),
     fauxAssistantMessage(
-      fauxToolCall("bash", { command: "printf original" }, { id: "child-call" }),
+      fauxToolCall(
+        "bash",
+        { description: "Run test command", command: "printf original" },
+        { id: "child-call" },
+      ),
       { stopReason: "toolUse" },
     ),
     fauxAssistantMessage("child done"),

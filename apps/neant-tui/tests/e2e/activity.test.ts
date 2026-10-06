@@ -11,7 +11,7 @@ test("English startup locale keeps waiting, thinking and approval activity in En
     app.calls[0]!.thinking("reasoning");
     await app.waitFor(() => activity().includes("↓ 3 tokens"));
     expect(activity()).not.toMatch(/\p{Script=Han}/u);
-    app.calls[0]!.tool("bash", { command: "printf English" });
+    app.calls[0]!.tool("bash", { command: "printf English", description: "Run test command" });
     await app.waitFor(() => app.screen().some((line) => line.includes("Waiting for approval")));
     expect(activity()).toMatch(
       /Waiting for your go-ahead|Your call — approval needed|The model is waiting on you/,
@@ -79,7 +79,7 @@ test.each(["deny", "failure"])(
       app.stdin.write("next draft");
       await app.waitFor(() => screen().includes("❯ next draft"));
       app.calls[0]!.tools([
-        { name: "bash", args: { command: "printf must-not-run" } },
+        { name: "bash", args: { command: "printf must-not-run", description: "Run test command" } },
         { name: "write", args: { path: "refused.txt", content: "refused" } },
       ]);
       await app.waitFor(() => app.reviews.length === 2 && screen().includes("REVIEW"));
@@ -119,7 +119,10 @@ test("Esc cancels in-flight review and the next Run starts without stale REVIEW 
   const screen = () => app.screen().join("\n");
   try {
     await app.waitFor(() => app.calls.length === 1);
-    app.calls[0]!.tool("bash", { command: "printf cancelled-review" });
+    app.calls[0]!.tool("bash", {
+      command: "printf cancelled-review",
+      description: "Run test command",
+    });
     await app.waitFor(() => app.reviews.length === 1 && screen().includes("REVIEW"));
     app.stdin.write("\x1b");
     await app.waitFor(() => !app.isWorking());
@@ -150,7 +153,10 @@ test("a tool Run shows live tokens and approval, then hides activity until the n
     await app.waitFor(() => screen().includes("↓ 2 tokens"));
     app.calls[0]!.delta("ijklmnop");
     await app.waitFor(() => screen().includes("↓ 4 tokens"));
-    app.calls[0]!.tool("bash", { command: "printf activity-tool" });
+    app.calls[0]!.tool("bash", {
+      command: "printf activity-tool",
+      description: "Run test command",
+    });
     await app.waitFor(() => screen().includes("等待审批"));
     expect(screen()).toContain("↑ 11 · ↓ 5 tokens");
     const approval = /在等你点头|等你批准呢——看一眼？|模型在等你决定/;
