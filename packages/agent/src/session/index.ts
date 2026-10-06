@@ -102,7 +102,7 @@ import {
   goalState,
   renderGoalRoundPrompt,
   type GoalView,
-} from "../goal/index.ts";
+} from "../tools/goal/index.ts";
 import type { OnInteractionStart } from "../interaction/index.ts";
 import { createHooks, mergeHooks, type CommonHookResult, type HookInput } from "../hooks/index.ts";
 
