@@ -1,3 +1,11 @@
+/** Stable content identity and text position captured by a ScrollBox layout. */
+export interface ScrollAnchor {
+  id: string;
+  path: readonly number[];
+  offset: number;
+  inset: number;
+}
+
 export interface ScrollSnapshot {
   top: number;
   total: number;
@@ -6,6 +14,7 @@ export interface ScrollSnapshot {
   y: number;
   width: number;
   following: boolean;
+  anchor?: ScrollAnchor;
 }
 
 export interface ScrollHandle {
@@ -14,10 +23,24 @@ export interface ScrollHandle {
   getSnapshot(): ScrollSnapshot;
 }
 
+function sameAnchor(first?: ScrollAnchor, second?: ScrollAnchor) {
+  return (
+    first === second ||
+    (!!first &&
+      !!second &&
+      first.id === second.id &&
+      first.offset === second.offset &&
+      first.inset === second.inset &&
+      first.path.length === second.path.length &&
+      first.path.every((value, index) => value === second.path[index]))
+  );
+}
+
 /** Viewport state shared by a ScrollBox and the layout pass. */
 export function createScrollState(
   initialFollow = true,
   initialTop = 0,
+  initialAnchor?: ScrollAnchor,
   followOnReachBottom = true,
 ) {
   let snapshot: ScrollSnapshot = {
@@ -29,6 +52,7 @@ export function createScrollState(
     width: 0,
     following: initialFollow,
   };
+  let pendingAnchor = initialAnchor;
   const listeners = new Set<() => void>();
   let redraw = () => {};
   let scheduled = false;
@@ -42,8 +66,10 @@ export function createScrollState(
   };
   const set = (next: ScrollSnapshot) => {
     if (
-      Object.keys(next).every(
-        (key) => next[key as keyof ScrollSnapshot] === snapshot[key as keyof ScrollSnapshot],
+      Object.keys(next).every((key) =>
+        key === "anchor"
+          ? sameAnchor(next.anchor, snapshot.anchor)
+          : next[key as keyof ScrollSnapshot] === snapshot[key as keyof ScrollSnapshot],
       )
     )
       return;
@@ -81,7 +107,15 @@ export function createScrollState(
         redraw = () => {};
       };
     },
-    layout(viewport: Omit<ScrollSnapshot, "top" | "following">, anchoredTop?: number) {
+    takeInitialAnchor() {
+      const anchor = pendingAnchor;
+      pendingAnchor = undefined;
+      return anchor;
+    },
+    setAnchor(anchor?: ScrollAnchor) {
+      set({ ...snapshot, anchor });
+    },
+    layout(viewport: Omit<ScrollSnapshot, "top" | "following" | "anchor">, anchoredTop?: number) {
       const max = Math.max(0, viewport.total - viewport.height);
       const top = snapshot.following
         ? max
@@ -90,6 +124,7 @@ export function createScrollState(
         ...viewport,
         top,
         following: snapshot.following || (followOnReachBottom && top === max),
+        anchor: snapshot.anchor,
       });
       return top;
     },

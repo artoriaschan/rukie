@@ -96,7 +96,10 @@ test.each([
         { role: "user", content: [{ type: "text", text: "second" }] },
       ]);
       expect(secondContext.messages).toHaveLength(firstContext.messages.length + 2);
-      app.calls[1]!.tool("bash", { command: "printf session-only-mode" });
+      app.calls[1]!.tool("bash", {
+        command: "printf session-only-mode",
+        description: "Run test command",
+      });
       await app.waitFor(() => app.calls.length === 3);
       expect(app.calls[2]!.context.messages.at(-1)).toMatchObject({ isError: false });
       app.calls[2]!.finish();
@@ -111,7 +114,10 @@ test.each([
         await replay.waitFor(() => replay.screen().at(-2)!.startsWith(` ${label} ·`));
         replay.stdin.write("resumed\r");
         await replay.waitFor(() => replay.calls.length === 1);
-        replay.calls[0]!.tool("bash", { command: "printf must-ask-after-resume" });
+        replay.calls[0]!.tool("bash", {
+          command: "printf must-ask-after-resume",
+          description: "Run test command",
+        });
         await replay.waitFor(() =>
           replay.screen().some((line) => line.includes("1. 允许（仅本次）")),
         );
@@ -136,7 +142,10 @@ test("shift+tab cycles modes during a Run and changes the next tool permission i
     expect(app.screen()).toContain("❯ next draft");
     app.stdin.write("\x1b[Z");
     await app.waitFor(() => app.screen().at(-2)!.startsWith(" 完全访问 ·"));
-    app.calls[0]!.tool("bash", { command: "printf switched-permission" });
+    app.calls[0]!.tool("bash", {
+      command: "printf switched-permission",
+      description: "Run test command",
+    });
     await app.waitFor(() => app.calls.length === 2);
     expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
       role: "toolResult",
@@ -146,7 +155,7 @@ test("shift+tab cycles modes during a Run and changes the next tool permission i
     expect(app.screen().join("\n")).not.toContain("等待审批");
     app.stdin.write("\x1b[Z");
     await app.waitFor(() => app.screen().at(-2)!.startsWith(" 询问 ·"));
-    app.calls[1]!.tool("bash", { command: "printf ask-again" });
+    app.calls[1]!.tool("bash", { command: "printf ask-again", description: "Run test command" });
     await app.waitFor(() => app.screen().join("\n").includes("等待审批"));
     const dialog = app.screen().slice(app.screen().findIndex((line) => line.includes("等待审批")));
     app.stdin.write("\x1b[Z\x1b[Z");
@@ -181,10 +190,15 @@ test.each(["default", "ask"])(
     );
     try {
       await app.waitFor(() => app.calls.length === 1);
-      app.calls[0]!.tool("bash", { command: "printf first-permitted" });
+      app.calls[0]!.tool("bash", {
+        command: "printf first-permitted",
+        description: "Run test command",
+      });
       await app.waitFor(() => app.screen().some((line) => line.includes("等待审批")));
       const dialog = app.screen().join("\n");
-      expect(dialog).toContain('bash {"command":"printf first-permitted"}');
+      expect(dialog).toContain(
+        'bash {"command":"printf first-permitted","description":"Run test command"}',
+      );
       expect(dialog).toContain("1. 允许（仅本次）");
       expect(dialog).toContain("2. 本 session 允许此命令");
       expect(dialog).toContain("3. 拒绝");
@@ -198,7 +212,10 @@ test.each(["default", "ask"])(
         isError: false,
         content: [{ type: "text", text: "first-permitted" }],
       });
-      app.calls[1]!.tool("bash", { command: "printf second-permitted" });
+      app.calls[1]!.tool("bash", {
+        command: "printf second-permitted",
+        description: "Run test command",
+      });
       await app.waitFor(() => app.screen().join("\n").includes("second-permitted"));
       expect(app.screen().join("\n")).toContain("等待审批");
       expect(app.calls).toHaveLength(2);
@@ -222,7 +239,10 @@ test.each(["2\r", "\x1b[A\r", "\x1b[B\r", "\x1b"])(
     const reason = "Test review requires consent";
     try {
       await app.waitFor(() => app.calls.length === 1);
-      app.calls[0]!.tool("bash", { command: "printf reviewed-once" });
+      app.calls[0]!.tool("bash", {
+        command: "printf reviewed-once",
+        description: "Run test command",
+      });
       await app.waitFor(() => app.screen().join("\n").includes(reason));
       expect(app.screen().join("\n")).toContain("⏳ 等待审批 · bash");
       expect(app.screen().join("\n")).toContain(reason);
@@ -235,7 +255,10 @@ test.each(["2\r", "\x1b[A\r", "\x1b[B\r", "\x1b"])(
         isError: false,
         content: [{ type: "text", text: "reviewed-once" }],
       });
-      app.calls[1]!.tool("bash", { command: "printf must-be-refused" });
+      app.calls[1]!.tool("bash", {
+        command: "printf must-be-refused",
+        description: "Run test command",
+      });
       await app.waitFor(() =>
         app.screen().some((line) => line.trim() === "printf must-be-refused"),
       );
@@ -263,13 +286,16 @@ test("auto-review asks for a different command after a session command grant", a
   const app = await start(["allow in ask"]);
   try {
     await app.waitFor(() => app.calls.length === 1);
-    app.calls[0]!.tool("bash", { command: "printf ask-allowed" });
+    app.calls[0]!.tool("bash", { command: "printf ask-allowed", description: "Run test command" });
     await app.waitFor(() => app.screen().some((line) => line.includes("3. 拒绝")));
     app.stdin.write("2\r");
     await app.waitFor(() => app.calls.length === 2);
     app.stdin.write("\x1b[Z");
     await app.waitFor(() => app.screen().at(-2)!.startsWith(" 自动评审 ·"));
-    app.calls[1]!.tool("bash", { command: "printf review-must-ask" });
+    app.calls[1]!.tool("bash", {
+      command: "printf review-must-ask",
+      description: "Run test command",
+    });
     await app.waitFor(() => app.screen().join("\n").includes("Test review requires consent"));
     expect(app.screen().join("\n")).toContain("Test review requires consent");
     expect(app.calls).toHaveLength(2);
@@ -290,7 +316,7 @@ test.each([
   const app = await start(["try bash"]);
   try {
     await app.waitFor(() => app.calls.length === 1);
-    app.calls[0]!.tool("bash", { command: "printf must-not-run" });
+    app.calls[0]!.tool("bash", { command: "printf must-not-run", description: "Run test command" });
     await app.waitFor(() => app.screen().join("\n").includes("等待审批"));
     app.stdin.write(key!);
     await app.waitFor(() => app.calls.length === 2);
@@ -316,7 +342,7 @@ test("Ctrl+C closes the question, cancels the Run and preserves the draft withou
     await app.waitFor(() => app.calls.length === 1);
     app.stdin.write("next draft");
     await app.waitFor(() => app.screen().includes("❯ next draft"));
-    app.calls[0]!.tool("bash", { command: "printf cancelled" });
+    app.calls[0]!.tool("bash", { command: "printf cancelled", description: "Run test command" });
     await app.waitFor(() => app.screen().join("\n").includes("等待审批"));
     app.stdin.write("2");
     await app.waitFor(() => app.screen().some((line) => line.trimStart().startsWith("❯ 2.")));
@@ -332,7 +358,10 @@ test("Ctrl+C closes the question, cancels the Run and preserves the draft withou
       role: "user",
       content: [{ type: "text", text: "next draft" }],
     });
-    app.calls[nextCall]!.tool("bash", { command: "printf still-needs-permission" });
+    app.calls[nextCall]!.tool("bash", {
+      command: "printf still-needs-permission",
+      description: "Run test command",
+    });
     await app.waitFor(() => app.screen().join("\n").includes("等待审批"));
     expect(app.screen().join("\n")).toContain("still-needs-permission");
   } finally {
@@ -363,7 +392,9 @@ test.each(["flag", "settings", "yolo", "readonly"])(
       await app.waitFor(() => app.calls.length === 1);
       app.calls[0]!.tool(
         mode === "readonly" ? "glob" : "bash",
-        mode === "readonly" ? { pattern: "*" } : { command: "printf pre-approved" },
+        mode === "readonly"
+          ? { pattern: "*" }
+          : { command: "printf pre-approved", description: "Run test command" },
       );
       await app.waitFor(() => app.calls.length === 2);
       expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({ isError: false });
@@ -388,7 +419,10 @@ test("session allow remembers only this command across Runs and leaves settings 
   });
   try {
     await app.waitFor(() => app.calls.length === 1);
-    app.calls[0]!.tool("bash", { command: "printf first-allowed" });
+    app.calls[0]!.tool("bash", {
+      command: "printf first-allowed",
+      description: "Run test command",
+    });
     await app.waitFor(() => app.screen().join("\n").includes("等待审批"));
     app.stdin.write("\x1b[B\r");
     await app.waitFor(() => app.calls.length === 2);
@@ -398,7 +432,10 @@ test("session allow remembers only this command across Runs and leaves settings 
     await app.waitFor(() => !app.isWorking());
     app.stdin.write("again\r");
     await app.waitFor(() => app.calls.length === 3);
-    app.calls[2]!.tool("bash", { command: "printf first-allowed" });
+    app.calls[2]!.tool("bash", {
+      command: "printf first-allowed",
+      description: "Run test command",
+    });
     await app.waitFor(() => app.calls.length === 4);
     expect(app.calls[3]!.context.messages.at(-1)).toMatchObject({
       isError: false,
@@ -420,7 +457,10 @@ test("session allow remembers only this command across Runs and leaves settings 
   const next = await start(["new Session"]);
   try {
     await next.waitFor(() => next.calls.length === 1);
-    next.calls[0]!.tool("bash", { command: "printf needs-permission" });
+    next.calls[0]!.tool("bash", {
+      command: "printf needs-permission",
+      description: "Run test command",
+    });
     await next.waitFor(() => next.screen().join("\n").includes("等待审批"));
   } finally {
     await next.cleanup();
@@ -434,7 +474,10 @@ test("concurrent questions are answered individually and dialog keys do not edit
     app.stdin.write("next draft");
     await app.waitFor(() => app.screen().includes("❯ next draft"));
     app.calls[0]!.tools([
-      { name: "bash", args: { command: "printf allowed-parallel" } },
+      {
+        name: "bash",
+        args: { command: "printf allowed-parallel", description: "Run test command" },
+      },
       { name: "write", args: { path: "refused.txt", content: "refused" } },
     ]);
     await app.waitFor(() => app.screen().join("\n").includes("等待审批"));
@@ -475,10 +518,15 @@ test("the question stays visible above a multiline draft and restores the draft 
     await app.waitFor(() => app.calls.length === 1);
     app.stdin.write(`\x1b[200~${draft}\x1b[201~`);
     await app.waitFor(() => app.screen().some((line) => line.trim() === "draft-line-9"));
-    app.calls[0]!.tool("bash", { command: "printf visible-request" });
+    app.calls[0]!.tool("bash", {
+      command: "printf visible-request",
+      description: "Run test command",
+    });
     await app.waitFor(() => app.screen().join("\n").includes("等待审批"));
     const dialog = app.screen().join("\n");
-    expect(dialog).toContain('bash {"command":"printf visible-request"}');
+    expect(dialog).toContain(
+      'bash {"command":"printf visible-request","description":"Run test command"}',
+    );
     expect(dialog).toContain("1. 允许（仅本次）");
     expect(dialog).toContain("2. 本 session 允许此命令");
     expect(dialog).toContain("3. 拒绝");
@@ -503,8 +551,8 @@ test("session command grant permits subsequent matching calls", async () => {
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.tools([
-      { name: "bash", args: { command: "printf first-parallel" } },
-      { name: "bash", args: { command: "printf first-parallel" } },
+      { name: "bash", args: { command: "printf first-parallel", description: "Run test command" } },
+      { name: "bash", args: { command: "printf first-parallel", description: "Run test command" } },
     ]);
     await app.waitFor(() => app.screen().join("\n").includes("等待审批"));
     app.stdin.write("2\r");
@@ -528,9 +576,9 @@ test("session command grant permits matching calls while another tool keeps wait
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.tools([
-      { name: "bash", args: { command: "printf first-matching" } },
+      { name: "bash", args: { command: "printf first-matching", description: "Run test command" } },
       { name: "write", args: { path: "must-wait.txt", content: "requires a decision" } },
-      { name: "bash", args: { command: "printf first-matching" } },
+      { name: "bash", args: { command: "printf first-matching", description: "Run test command" } },
     ]);
     await app.waitFor(() => app.screen().some((line) => line.trim() === "printf first-matching"));
     app.stdin.write("2\r");

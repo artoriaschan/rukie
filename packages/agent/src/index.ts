@@ -20,6 +20,9 @@ export type {
   McpToolView,
   McpConfigError,
   McpSnapshot,
+  JobView,
+  JobOutput,
+  JobEvent,
 } from "@neant/shared";
 export type { McpAuthRequest, McpAuthReply, McpAuthOutcome, OnMcpAuth } from "./mcp/index.ts";
 export type { ReminderSource } from "./reminders/index.ts";

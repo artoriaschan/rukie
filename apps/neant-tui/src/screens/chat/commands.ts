@@ -17,6 +17,7 @@ export function commandCatalog(t: ReturnType<typeof createTuiI18n>) {
       "mcp",
       "btw",
       "rename",
+      "jobs",
     ] as const
   ).map((name) => ({
     name,
@@ -29,6 +30,6 @@ export function commandCatalog(t: ReturnType<typeof createTuiI18n>) {
           : name === "mcp"
             ? "[login|logout|reconnect <server>]"
             : undefined,
-    duringRun: ["exit", "help", "btw", "context", "rename", "goal", "mcp"].includes(name),
+    duringRun: ["exit", "help", "btw", "context", "rename", "goal", "mcp", "jobs"].includes(name),
   }));
 }

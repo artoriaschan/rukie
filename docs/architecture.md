@@ -42,6 +42,8 @@ TUI 从[入口](../apps/neant-tui/src/main.tsx)解析参数与 locale，建立[�
 
 Session 对 frontend 暴露运行、事件订阅、中断、steer、Goal、上下文查询、compaction、Rewind 等能力；完整接口由源码定义。`run` 的 `onEvent` 接收该次 Run 的有序事件，`subscribe` 观察 Session 中包括 Hook 与 Goal 内部续跑在内的事件；TUI 通过订阅跟踪持续变化。
 
+Session 持有自己的 Background Job registry。bash 使用同一条进程组执行路径，显式后台启动或超时转后台后才进入 Frontend 的任务视图和 `job_event`；`jobs` 负责输出、模型游标、停止和清理，Session 将结束通知交给 rewake。Frontend 通过独立绝对偏移读取输出，用户停止在当前 Run 中成为 steer 输入，空闲时随下一条人类 prompt 交给模型。Run 结束不清理普通 Session 的任务；Session dispose 终止任务，Headless CLI 在 prompt 或 Goal 结束时执行 dispose。任务不持久化，Session Resume 的 registry 为空；已保存的普通 bash 调用与结果只用于继续编号，避免历史工具卡关联到新任务。公开 API、事件观察和进程资源的完整约定见 [Agent README](../packages/agent/README.md)。
+
 ## Agent Core 的职责分配
 
 | 模块                                                      | 责任                                                            |
@@ -49,6 +51,8 @@ Session 对 frontend 暴露运行、事件订阅、中断、steer、Goal、上�
 | `session/`                                                | 组合能力、协调 Run、事件、取消、存储操作与 frontend 接口        |
 | `config/`、`prompt/`                                      | 合并设置、解析模型与凭据，建立 System Prompt                    |
 | `tools/`、`skills/`、`mcp/`                               | 构造模型工具集、加载 Skill 内容、连接外部工具                   |
+| [`bash/`](../packages/agent/src/bash/index.ts)            | 执行 Bash 调用、后台启动与超时提升，复用 pi 输出采集与截断      |
+| [`jobs/`](../packages/agent/README.md)                    | 持有 Session 的 Bash 进程组、输出与模型游标，提供后台任务工具   |
 | [`images/`](../packages/agent/src/images/index.ts)        | 为 Session 与 read 共享图片准入校验，读取 header metadata       |
 | `permissions/`、`review/`、`hooks/`、`interaction/`       | 决定执行是否允许，运行生命周期扩展，并协调可取消的用户交互      |
 | `reminders/`、`compaction/`、`context-usage/`             | 注入有来源的上下文、压缩模型历史、报告上下文占用                |
@@ -92,7 +96,7 @@ Goal 只属于顶层 Session。用户通过 TUI `/goal`、Headless `--goal` 或�
 
 ## 工具、权限与交互
 
-内置工具经适配连接 pi 的执行环境与 Neant 的 AbortSignal；Skill 加载工具、结构化提问、Todo、计划评审与 Subagent 工具在各自模块组装。MCP 发现的工具也转换为同一种 AgentTool，再进入共同的授权流程。完整工具声明以构造模块和当前运行发现结果为准。
+read/write/edit 经适配连接 pi 的执行环境与 Neant 的 AbortSignal；bash 由 Session 的 job registry 启动独立进程组；前台调用等待完成，显式后台调用立即返回 id。Run 结束或取消保留后台任务，Session dispose 清理进程组与输出；终止先发 SIGTERM，3 秒后升级为 SIGKILL。后台工具的读取与生命周期见 [`jobs/`](../packages/agent/README.md)。Skill 加载工具、结构化提问、Todo、计划评审与 Subagent 工具在各自模块组装。MCP 发现的工具也转换为同一种 AgentTool，再进入共同的授权流程。完整工具声明以构造模块和当前运行发现结果为准。
 
 权限执行入口是 pi 的 `beforeToolCall`。它协调 Hook、显式规则、Permission Mode 和必要的 frontend 询问；Hook 改写的输入重新校验，路径匹配与实际执行使用同一规范化目标。显式 deny/ask 不被 full-access 或 Hook allow 越过。规则语法、顺序及限制由 [permission-rules.md](permission-rules.md) 维护。
 
@@ -128,7 +132,7 @@ Checkpoint 在真实用户 prompt 上建立锚点，记录文件工具首次修�
 
 父 Session 创建子 Session 来执行委派输入：`subagent` 从空历史开始，`subagent_fork` 带入父代理已完成的 Turn，`send_message` 可以续跑同一子 Session。子代理共享父级权限与 Plan Mode，类型配置只能收窄能力，子代理不能再创建子代理。
 
-子 Run 默认后台执行，事件带子代理身份转给父级观察者；结束通知作为消息交回父模型。父 Run 在子代理仍运行时等待，收到通知后继续。子 Run 的结束原因是持久化事实，委派任务是否完成仍需父代理根据工作结果判断。
+子 Run 默认后台执行，事件带子代理身份转给父级观察者；结束通知作为消息交回父模型。子 Session 的 Background Job 独立归属，任务事件沿同一包装转发；子 Run 发布结果前清理自己的任务与输出，保留可由 `send_message` 续跑的 Session。父 Run 在子代理仍运行时等待，收到通知后继续。子 Run 的结束原因是持久化事实，委派任务是否完成仍需父代理根据工作结果判断。
 
 Session Resume 通过只读观察核对子 Run 与父子归属，不自动恢复运行。缺少足够证据时报告未知，而不是把进程不活跃解释成任务完成。恢复摘要在后续输入中提供给模型，父代理可以决定用原 id 续跑。完整恢复决定见 [ADR-0009](adr/0009-subagent-resume-outcomes.md)。
 

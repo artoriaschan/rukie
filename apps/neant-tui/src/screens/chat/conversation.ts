@@ -1,5 +1,5 @@
 import { basename } from "node:path";
-import type { Locale } from "@neant/i18n";
+import { fmtDuration, type Locale } from "@neant/i18n";
 import { createTuiI18n, formatError } from "../../i18n";
 import type {
   PromptImage,
@@ -14,6 +14,7 @@ import {
   type ContextUsageEvent,
   type RunResult,
   type ContextReport,
+  type JobView,
 } from "@neant/shared";
 import type { TpsSample } from "../../components/status-line";
 import { goalPhasePresentation } from "../../components";
@@ -30,7 +31,7 @@ interface ToolCall {
   hook?: string;
 }
 
-type CompletedEntry =
+type CompletedEntry = { anchorId?: string } & (
   | {
       type: "message";
       role: "user" | "assistant";
@@ -40,6 +41,7 @@ type CompletedEntry =
     }
   | {
       type: "tool";
+      jobId?: string;
       summary: string;
       isError: boolean;
       outcomeUnknown?: boolean;
@@ -50,7 +52,8 @@ type CompletedEntry =
       planReview?: { plan: string; kind: "approve" | "revise" | "takeover"; feedback?: string };
     }
   | { type: "notice"; text: string; report?: string }
-  | { type: "context-report"; report: ContextReport; expanded: boolean; modelName?: string };
+  | { type: "context-report"; report: ContextReport; expanded: boolean; modelName?: string }
+);
 
 type ToolResultMessage = Extract<
   Extract<SessionEvent, { type: "message_end" }>["message"],
@@ -76,7 +79,7 @@ function toolSummary(name: string, args: unknown) {
 }
 
 function toolEntry(
-  tool: Pick<ToolCall, "name" | "args" | "summary" | "rule" | "hook">,
+  tool: Pick<ToolCall, "id" | "name" | "args" | "summary" | "rule" | "hook">,
   isError: boolean,
   result: Pick<ToolResultMessage, "content" | "details">,
   t: ReturnType<typeof createTuiI18n>,
@@ -135,6 +138,16 @@ function toolEntry(
   const todo = tool.name === "todo_write" && !isError ? todoSummary(tool.args, t) : undefined;
   return {
     type: "tool",
+    jobId:
+      tool.name === "bash" &&
+      !isError &&
+      typeof result.details === "object" &&
+      result.details !== null &&
+      "jobId" in result.details &&
+      typeof result.details.jobId === "string" &&
+      /^bash-[1-9]\d*$/.test(result.details.jobId)
+        ? result.details.jobId
+        : undefined,
     images: result.content
       .filter((block) => block.type === "image")
       .map((image) => ({
@@ -316,8 +329,36 @@ function questionSummary(args: unknown, text: string, t: ReturnType<typeof creat
   return questions.length > 0 ? (parse(0, 0)?.join("\n") ?? text) : text;
 }
 
+export interface JobRow extends JobView {
+  /** First frontend observation of background visibility, including timeout promotion. */
+  backgroundedAt: number;
+  promotedAt?: number;
+  output: string;
+  offset: number;
+  dropped: boolean;
+}
+
+function readJobRow(session: Session, job: JobView, previous?: JobRow): JobRow {
+  const output = session.readJob(job.id, previous?.offset ?? 0);
+  return {
+    ...job,
+    backgroundedAt: previous?.backgroundedAt ?? Date.now(),
+    promotedAt: previous?.promotedAt,
+    // The card needs a tail, not an unbounded second copy of the spill file.
+    output: (
+      (output.dropped ? "" : (previous?.output ?? "")) +
+      output.stdout +
+      output.stderr
+    ).slice(-16384),
+    offset: output.nextOffset,
+    dropped: output.dropped || (previous?.dropped ?? false),
+  };
+}
+
 interface ViewState {
   notification?: { text: string; kind: NoticeKind };
+  jobs: Readonly<Record<string, JobRow>>;
+  jobNotice?: { id: string; text: string; kind: "success" | "error" | "warning" };
   goal: GoalView | undefined;
   planMode: boolean;
   waitingSubagents: number;
@@ -326,6 +367,7 @@ interface ViewState {
   completed: CompletedEntry[];
   tools: ToolCall[];
   assistant: string;
+  assistantAnchor: string;
   model: string;
   running: boolean;
   input: number;
@@ -393,6 +435,7 @@ function replayMessages(
     }
     if (message.role === "toolResult") {
       const tool = tools.get(message.toolCallId) ?? {
+        id: message.toolCallId,
         name: message.toolName,
         args: undefined,
         summary: message.toolName,
@@ -516,7 +559,7 @@ function reduceEvent(
     }
     case "message_start":
       return event.message.role === "assistant"
-        ? { ...state, assistant: messageText(event.message) }
+        ? { ...state, assistant: messageText(event.message), assistantAnchor: crypto.randomUUID() }
         : state;
     case "message_end": {
       const text = messageText(event.message);
@@ -532,9 +575,13 @@ function reduceEvent(
       return {
         ...state,
         completed: text
-          ? [...state.completed, { type: "message", role: "assistant", text }]
+          ? [
+              ...state.completed,
+              { type: "message", role: "assistant", text, anchorId: state.assistantAnchor },
+            ]
           : state.completed,
         assistant: "",
+        assistantAnchor: crypto.randomUUID(),
         input: state.input + event.message.usage.input,
         output: state.output + event.message.usage.output,
         activityInput: event.message.usage.input,
@@ -576,10 +623,21 @@ function reduceEvent(
     case "tool_execution_end": {
       const tool = state.tools.find((tool) => tool.id === event.toolCallId);
       if (!tool) return state;
+      const entry = toolEntry(tool, event.isError, event.result, t);
+      const job = entry.type === "tool" && entry.jobId ? state.jobs[entry.jobId] : undefined;
+      const explicit =
+        tool.args !== null &&
+        typeof tool.args === "object" &&
+        "run_in_background" in tool.args &&
+        tool.args.run_in_background === true;
       return {
         ...state,
+        jobs:
+          job && tool.name === "bash" && !explicit
+            ? { ...state.jobs, [job.id]: { ...job, promotedAt: job.backgroundedAt } }
+            : state.jobs,
         tools: state.tools.filter((tool) => tool.id !== event.toolCallId),
-        completed: [...state.completed, toolEntry(tool, event.isError, event.result, t)],
+        completed: [...state.completed, entry],
       };
     }
     case "compaction_end":
@@ -616,7 +674,14 @@ function reduceEvent(
         completed: [
           ...state.completed,
           ...(state.assistant
-            ? [{ type: "message" as const, role: "assistant" as const, text: state.assistant }]
+            ? [
+                {
+                  type: "message" as const,
+                  role: "assistant" as const,
+                  text: state.assistant,
+                  anchorId: state.assistantAnchor,
+                },
+              ]
             : []),
           ...(event.stopReason === "hook_stopped" || event.stopReason === "hook_blocked"
             ? [
@@ -658,14 +723,20 @@ function reduceEvent(
 function createViewState(session: Session, model: string, locale: Locale): ViewState {
   const t = createTuiI18n(locale);
   return {
+    jobs: Object.fromEntries(session.jobs().map((job) => [job.id, readJobRow(session, job)])),
+    jobNotice: undefined,
     planMode: session.planMode,
     goal: session.goal,
     waitingSubagents: 0,
     subagents: restoreSubagents(session.toolState("subagents"), session.recovery),
     todos: (session.toolState("todo") as TodoItem[] | undefined) ?? [],
-    completed: replayMessages(session.messages, t),
+    completed: replayMessages(session.messages, t).map((entry) => ({
+      ...entry,
+      anchorId: crypto.randomUUID(),
+    })),
     tools: [],
     assistant: "",
+    assistantAnchor: crypto.randomUUID(),
     model: session.model ?? model,
     running: session.running,
     input: 0,
@@ -688,11 +759,20 @@ export function createConversation(session: Session, model: string, locale: Loca
   const listeners = new Set<() => void>();
   let compacting = false;
   let active: { controller: AbortController; promise: Promise<unknown> } | undefined;
+  let jobNoticeTimer: ReturnType<typeof setTimeout> | undefined;
   let notificationTimer: ReturnType<typeof setTimeout> | undefined;
   let noticeTimer: ReturnType<typeof setTimeout> | undefined;
   const authRequired = new Set<string>();
   const update = (next: ViewState, deferNotification = false) => {
-    state = next;
+    state =
+      next.completed !== state.completed && next.completed.some((entry) => !entry.anchorId)
+        ? {
+            ...next,
+            completed: next.completed.map((entry) =>
+              entry.anchorId ? entry : { ...entry, anchorId: crypto.randomUUID() },
+            ),
+          }
+        : next;
     if (!deferNotification) {
       clearTimeout(notificationTimer);
       notificationTimer = undefined;
@@ -755,16 +835,64 @@ export function createConversation(session: Session, model: string, locale: Loca
       else if (details.type === "cancelled") notify(t("mcp.auth.cancelled"), "dim");
     }
   };
+  // Model stop results and frontend stop actions must reconcile this snapshot:
+  // stopping can change without a new output event from a quiet process.
+  const refreshJobs = () =>
+    update(
+      {
+        ...state,
+        jobs: Object.fromEntries(
+          session.jobs().map((job) => [job.id, readJobRow(session, job, state.jobs[job.id])]),
+        ),
+      },
+      true,
+    );
   const onEvent = (event: SessionEvent) => {
     mcpNotice(event);
     const now = Date.now();
+    if (event.type === "job_event") {
+      const previous = state.jobs[event.job.id];
+      const job = readJobRow(session, event.job, previous);
+      const settled = event.kind === "settled";
+      let jobNotice = state.jobNotice;
+      if (
+        settled &&
+        (job.status === "completed" || job.status === "failed" || job.status === "killed")
+      ) {
+        const duration = fmtDuration(Math.max(0, (job.endedAt ?? now) - job.startedAt), locale);
+        jobNotice = {
+          id: job.id,
+          text: t(`jobs.notice.${job.status}`, {
+            label: Bun.stripANSI(job.label).replace(/\s+/g, " "),
+            id: job.id,
+            duration,
+          }),
+          kind:
+            job.status === "completed" ? "success" : job.status === "failed" ? "error" : "warning",
+        };
+        clearTimeout(jobNoticeTimer);
+        jobNoticeTimer = setTimeout(() => {
+          jobNoticeTimer = undefined;
+          update({ ...state, jobNotice: undefined }, true);
+        }, 6000);
+      }
+      update({ ...state, jobs: { ...state.jobs, [job.id]: job }, jobNotice }, true);
+      return;
+    }
     if (event.type === "conversation_rewound") {
       const restored = createViewState(session, state.model, locale);
       update({
         ...restored,
+        jobs: state.jobs,
+        jobNotice: state.jobNotice,
         activity: { ...restored.activity, gitBranch: state.activity.gitBranch },
       });
       return;
+    }
+    if (event.type === "tool_execution_end" && event.toolName === "job_kill") {
+      // Stop requests change the registry synchronously; a quiet process may
+      // emit no output before settlement. Reconcile at the tool boundary.
+      refreshJobs();
     }
     update(
       {
@@ -846,6 +974,7 @@ export function createConversation(session: Session, model: string, locale: Loca
         completed: [...state.completed, { type: "notice", text, report: title }],
       });
     },
+    refreshJobs,
     notice(text: string, error = false) {
       state = { ...state, planMode: session.planMode };
       update(
@@ -958,6 +1087,8 @@ export function createConversation(session: Session, model: string, locale: Loca
       await session.waitForIdle();
       unsubscribe();
       clearTimeout(noticeTimer);
+      clearTimeout(jobNoticeTimer);
+      clearTimeout(notificationTimer);
     },
   };
 }

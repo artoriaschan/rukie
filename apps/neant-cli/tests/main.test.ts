@@ -34,6 +34,85 @@ async function run(argv: string[], stdin = "") {
   }
 }
 
+test.each([
+  ["prompt", "text"],
+  ["prompt", "stream-json"],
+  ["goal", "text"],
+  ["goal", "stream-json"],
+])("CLI %s %s observes jobs and terminates them at completion", async (source, format) => {
+  const root = await mkdtemp(join(tmpdir(), "neant-cli-jobs-"));
+  await mkdir(join(root, ".neant", "file-history"), { recursive: true });
+  const faux = createFauxCore({ api: "faux", provider: "faux" });
+  faux.setResponses([
+    fauxAssistantMessage(
+      fauxToolCall("bash", {
+        command:
+          "printf '%s' $$ > pid; printf background-only; touch ready; while [ ! -e go ]; do sleep 0.01; done",
+        description: "Keep controlled background process",
+        run_in_background: true,
+      }),
+      { stopReason: "toolUse" },
+    ),
+    async () => {
+      const deadline = Date.now() + 2000;
+      while (!(await Bun.file(join(root, "ready")).exists())) {
+        if (Date.now() > deadline) throw new Error("Background process did not start");
+        await Bun.sleep(5);
+      }
+      return source === "goal"
+        ? fauxAssistantMessage(fauxToolCall("update_goal", { action: "complete" }), {
+            stopReason: "toolUse",
+          })
+        : fauxAssistantMessage("parent-only final");
+    },
+    fauxAssistantMessage("parent-only final"),
+  ]);
+  let stdout = "";
+  let stderr = "";
+  try {
+    const exitCode = await main(
+      [source === "goal" ? "--goal" : "-p", "start background task", "--output-format", format!],
+      {
+        readStdin: async () => "",
+        stdout: (text) => {
+          stdout += text;
+        },
+        stderr: (text) => {
+          stderr += text;
+        },
+        session: {
+          cwd: root,
+          homeDir: root,
+          model: faux.getModel(),
+          streamFn: withAuxiliaryRequests(faux.streamSimple),
+          allowRules: ["bash"],
+        },
+      },
+    );
+    expect(exitCode).toBe(0);
+    expect(stderr).not.toContain("Background process did not start");
+    const pid = Number(await Bun.file(join(root, "pid")).text());
+    expect(() => process.kill(pid, 0)).toThrow();
+    if (format === "text") expect(stdout).toBe("parent-only final\n");
+    else {
+      const events = stdout
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line));
+      const jobs = events.filter((event) => event.type === "job_event");
+      expect(jobs[0]).toMatchObject({ kind: "started", job: { id: "bash-1", status: "running" } });
+      expect(jobs.at(-1)).toMatchObject({
+        kind: "settled",
+        job: { id: "bash-1", status: "killed" },
+      });
+      expect(jobs.every((event) => event.sessionId === jobs[0].sessionId)).toBe(true);
+      expect(events.filter((event) => event.type === "session_start")).toHaveLength(1);
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("-p prints the final assistant text", async () => {
   const { exitCode, stdout } = await run(["-p", "hi"]);
   expect(exitCode).toBe(0);
@@ -73,9 +152,12 @@ test.each(["text", "stream-json"])(
     const root = await mkdtemp(join(tmpdir(), "neant-cli-hooks-"));
     const faux = createFauxCore({ api: "faux", provider: "faux" });
     faux.setResponses([
-      fauxAssistantMessage(fauxToolCall("bash", { command: "touch forbidden" }), {
-        stopReason: "toolUse",
-      }),
+      fauxAssistantMessage(
+        fauxToolCall("bash", { description: "Run test command", command: "touch forbidden" }),
+        {
+          stopReason: "toolUse",
+        },
+      ),
       fauxAssistantMessage("done"),
     ]);
     let stdout = "";
@@ -276,8 +358,12 @@ test.each([
   faux.setResponses([
     fauxAssistantMessage(
       [
-        fauxToolCall("bash", { command }, { id: "allowed" }),
-        fauxToolCall("bash", { command: "printf unauthorized > forbidden" }, { id: "denied" }),
+        fauxToolCall("bash", { description: "Run test command", command }, { id: "allowed" }),
+        fauxToolCall(
+          "bash",
+          { description: "Run test command", command: "printf unauthorized > forbidden" },
+          { id: "denied" },
+        ),
       ],
       { stopReason: "toolUse" },
     ),

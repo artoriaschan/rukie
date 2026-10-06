@@ -92,7 +92,11 @@ test("auto-review batches review ordinary tools while asking the user about ente
   const fake = fakeModel([
     fauxAssistantMessage(
       [
-        fauxToolCall("bash", { command: "printf checked" }, { id: "bash" }),
+        fauxToolCall(
+          "bash",
+          { description: "Run test command", command: "printf checked" },
+          { id: "bash" },
+        ),
         fauxToolCall("enter_plan_mode", {}, { id: "enter" }),
       ],
       { stopReason: "toolUse" },

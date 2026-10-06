@@ -24,9 +24,12 @@ exit ${exitCode}
     const events: SessionEvent[] = [];
     let asks = 0;
     const fake = fakeModel([
-      fauxAssistantMessage(fauxToolCall("bash", { command: "printf approved" }), {
-        stopReason: "toolUse",
-      }),
+      fauxAssistantMessage(
+        fauxToolCall("bash", { description: "Run test command", command: "printf approved" }),
+        {
+          stopReason: "toolUse",
+        },
+      ),
       async () => {
         await waitForNotification(notified.promise);
         return fauxAssistantMessage("done");
@@ -239,9 +242,12 @@ test("child permission notification includes child session identity", async () =
       }),
       { stopReason: "toolUse" },
     ),
-    fauxAssistantMessage(fauxToolCall("bash", { command: "printf child" }), {
-      stopReason: "toolUse",
-    }),
+    fauxAssistantMessage(
+      fauxToolCall("bash", { description: "Run test command", command: "printf child" }),
+      {
+        stopReason: "toolUse",
+      },
+    ),
     async () => {
       await waitForNotification(notified.promise);
       return fauxAssistantMessage("child done");
@@ -300,9 +306,12 @@ test.each(["cancel", "dispose"])(
     const session = await createSession({
       ...dirs,
       ...fakeModel([
-        fauxAssistantMessage(fauxToolCall("bash", { command: "touch forbidden" }), {
-          stopReason: "toolUse",
-        }),
+        fauxAssistantMessage(
+          fauxToolCall("bash", { description: "Run test command", command: "touch forbidden" }),
+          {
+            stopReason: "toolUse",
+          },
+        ),
       ]),
       permissionMode: "ask",
       settings: {
@@ -369,9 +378,12 @@ exit 2
     );
     const noticed = Promise.withResolvers<void>();
     const fake = fakeModel([
-      fauxAssistantMessage(fauxToolCall("bash", { command: "printf approved" }), {
-        stopReason: "toolUse",
-      }),
+      fauxAssistantMessage(
+        fauxToolCall("bash", { description: "Run test command", command: "printf approved" }),
+        {
+          stopReason: "toolUse",
+        },
+      ),
       fauxAssistantMessage("done"),
       fauxAssistantMessage("next prompt done"),
     ]);
@@ -448,9 +460,12 @@ test("parent disposal kills completed child async notification processes", async
       }),
       { stopReason: "toolUse" },
     ),
-    fauxAssistantMessage(fauxToolCall("bash", { command: "printf child" }), {
-      stopReason: "toolUse",
-    }),
+    fauxAssistantMessage(
+      fauxToolCall("bash", { description: "Run test command", command: "printf child" }),
+      {
+        stopReason: "toolUse",
+      },
+    ),
     fauxAssistantMessage("child done"),
     fauxAssistantMessage("parent done"),
   ]);
@@ -531,9 +546,12 @@ test("HTTP notification runs beside permission interaction and warns while disca
     },
   });
   const fake = fakeModel([
-    fauxAssistantMessage(fauxToolCall("bash", { command: "printf approved" }), {
-      stopReason: "toolUse",
-    }),
+    fauxAssistantMessage(
+      fauxToolCall("bash", { description: "Run test command", command: "printf approved" }),
+      {
+        stopReason: "toolUse",
+      },
+    ),
     async () => {
       await waitForNotification(noticed.promise);
       return fauxAssistantMessage("HTTP done");
@@ -607,9 +625,12 @@ test("a notification event observer can cancel a pending session permission inte
   let asks = 0;
   let notices = 0;
   const fake = fakeModel([
-    fauxAssistantMessage(fauxToolCall("bash", { command: "touch forbidden" }), {
-      stopReason: "toolUse",
-    }),
+    fauxAssistantMessage(
+      fauxToolCall("bash", { description: "Run test command", command: "touch forbidden" }),
+      {
+        stopReason: "toolUse",
+      },
+    ),
   ]);
   const session = await createSession({
     ...dirs,

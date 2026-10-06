@@ -18,7 +18,7 @@ test.each([...PERMISSION_MODES])(
       fauxAssistantMessage(
         fauxToolCall(
           "bash",
-          { command: "printf ran > marker && rm -rf victim" },
+          { description: "Run test command", command: "printf ran > marker && rm -rf victim" },
           { id: "compound" },
         ),
         { stopReason: "toolUse" },
@@ -65,9 +65,15 @@ test.each([false, true])(
   async (covered) => {
     dirs = await tempDirs();
     const fake = fakeModel([
-      fauxAssistantMessage(fauxToolCall("bash", { command: "printf approved | cat > marker" }), {
-        stopReason: "toolUse",
-      }),
+      fauxAssistantMessage(
+        fauxToolCall("bash", {
+          description: "Run test command",
+          command: "printf approved | cat > marker",
+        }),
+        {
+          stopReason: "toolUse",
+        },
+      ),
       fauxAssistantMessage("done"),
     ]);
     let asks = 0;
@@ -98,7 +104,10 @@ test.each(["ask", "full-access"] as const)(
     dirs = await tempDirs();
     const fake = fakeModel([
       fauxAssistantMessage(
-        fauxToolCall("bash", { command: "printf $(printf approved) > marker" }),
+        fauxToolCall("bash", {
+          description: "Run test command",
+          command: "printf $(printf approved) > marker",
+        }),
         {
           stopReason: "toolUse",
         },

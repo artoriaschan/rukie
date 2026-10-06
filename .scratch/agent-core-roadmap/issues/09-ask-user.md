@@ -22,3 +22,7 @@ Blocked by: 01
 6. **transcript 呈现：** TUI 对 `ask_user_question` 工具卡片特殊渲染为"问题 → 回答"摘要，直接由 transcript 中的工具参数 + 结果生成，resume 后天然可见，无需额外存储（与地基 A"交互不进 transcript"一致）。
 7. **Headless CLI：** 无 `onQuestion`，工具不注册（地基 A 规则）。
 8. **子代理：** 工具规则仅为"所在 session 拿得到 `onQuestion` 才注册"；子代理能否拿到交给子代理工单。供其参考的事实：Claude Code 子代理禁用 `AskUserQuestion`；harness 只允许根代理调用，子代理收 `DELEGATED_CALLER` 并被提示把问题写进最终结果。若允许，按地基 A 带 `origin` 转发，提问框标题显示来源。
+
+## Comments
+
+2026-10-06：[TUI 工具卡](20-tui-tool-card.md) 修订 transcript 呈现——`ask_user_question` 不出调用行，改由结果投影出「已回答记录」行（照 dsh）。

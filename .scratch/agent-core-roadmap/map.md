@@ -39,10 +39,12 @@ Labels: wayfinder:map
 - [图片输入](issues/18-image-input.md): TUI Ctrl+V（文件 → 图片 → 文本）+ 粘贴图片路径识别，插入 dsh 式原子 `[Image #N]` token；base64 内联存 transcript，不缩放、超 5 MB / 8000 px 拒绝；自定义模型加 `input`，非视觉模型只 notice、降级交 pi-ai；`run/steer(prompt, { images })`；Context Usage `w*h/750` 上限 1,600；Headless 靠 read；无图形能力时 `[Image · name]` 占位 + 系统查看器；缩略图 / 预览浮层另开工单
 - [后台 bash](issues/14-background-bash.md): 照 harness——`bash` 加 `run_in_background`，前台超时 120 s 自动转后台 job，`job_output`（增量 + wait）/ `job_list` / `job_kill`；自研 bash 替换 pi（ADR-0010）；stdout/stderr 分开、ring + spill；结束才通知（走 rewake），父 run 不等；session dispose 整组杀、不持久化；每 owner 10 个；job 只管 bash，子代理名下 job 在子 run 结束时取消；`job_event` + `jobs/readJob/killJob`；TUI 复刻 dsh chip / `/jobs` 面板 / JobCard；Headless run 结束即杀
 - [MCP 远程传输与 OAuth](issues/19-mcp-remote-and-oauth.md): 照 CC——401 标 needs-auth、换 `mcp__<server>__authenticate` 伪工具（挂起等交互），不自动开浏览器；OAuth 协议复用 pi-mcp，Neant 补文件 credential 存储（`~/.neant/credentials.json` 0600，按 name+url+headers 键）、重连与 `onMcpAuth` 交互（回调 / 粘贴竞速、5 min）；配置加 `oauth` 字段与 `${VAR}` 展开；不做 SSE / headersHelper / keychain；Headless 只报错；Session `mcpServers/authenticateMcp/clearMcpAuth/reconnectMcp`；TUI 复刻 dsh：`/mcp` 本地报告 + `login/logout/reconnect` 子命令、授权复用提问面板、needs-auth notice
+- [TUI 工具卡复刻 dsh-TUI](issues/20-tui-tool-card.md): 新术语 Tool View——工具声明 `presentCall/presentResult`、契约（TypeBox）在 `@neant/shared`（Web 端也要用），view 不持久化、resume 由 Transcript 重算，只含 `displayKey` 与事实不含文案；类别收敛为单一 `kind` 派生点色与名色，删 `toolNameColor` 启发式；dsh 卡片全量复刻（含 split diff、语法高亮、smooth reveal、tooltip、点击路径 FileActionsPanel、transcript 搜索）；`ctrl+o` 改全局展开并吞掉 `jobsExpanded`，点击切单卡；照 dsh 建卡前分流——todo / ask user / plan / 子代理不出工具行（推翻 todo 工单的工具卡），前台 bash 走 terminal 卡、后台仍 generic + job 行；Agent Core 补 bash `exitCode/signal` 与 write 旧内容；设置加 `diffLayout` / `foldTerminalCommand`
+- [终端图形协议（kitty 缩略图与预览）](issues/21-terminal-graphics.md): 消息流部分已合入 main `9e895a2`；剩余的输入框 `[Image #N]` 预览照 dsh 由光标触发（不是悬停）——非模态、键盘留在输入框，Esc 只关当前卡，复用 `ImagePreview` 被动模式，`TextInput` 加光标回调；不做点击，小终端与交互期间不显示
 
 ## Not yet specified
 
-- 最终排序与 handoff：所有能力工单定完后，汇总依赖图、给出实现顺序。
+（无：最后一片 fog 已转成 [最终排序与 handoff](issues/22-final-ordering-and-handoff.md)。）
 
 ## Out of scope
 

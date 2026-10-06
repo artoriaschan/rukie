@@ -8,7 +8,12 @@ import {
   type Ref,
 } from "react";
 import { useTerminal } from "../terminal";
-import { createScrollState, type ScrollHandle, type ScrollSnapshot } from "../scroll";
+import {
+  createScrollState,
+  type ScrollHandle,
+  type ScrollSnapshot,
+  type ScrollAnchor,
+} from "../scroll";
 import type { BoxProps } from ".";
 
 export interface ScrollBoxProps extends BoxProps {
@@ -19,6 +24,8 @@ export interface ScrollBoxProps extends BoxProps {
   initialTop?: number;
   /** Mount-time policy: false keeps a reader's top anchored when fitting content or bottom reading later grows. */
   followOnReachBottom?: boolean;
+  /** Restore captured content; unmatched IDs/paths fall back to initialTop. */
+  initialAnchor?: ScrollAnchor;
 }
 
 /** An independently clipped column; content is measured outside the viewport's flex layout. */
@@ -28,11 +35,12 @@ export function ScrollBox({
   initialFollow = true,
   initialTop = 0,
   followOnReachBottom = true,
+  initialAnchor,
   ...props
 }: ScrollBoxProps) {
   const terminal = useTerminal();
   const scroll = useMemo(
-    () => createScrollState(initialFollow, initialTop, followOnReachBottom),
+    () => createScrollState(initialFollow, initialTop, initialAnchor, followOnReachBottom),
     [],
   );
   const snapshot = useSyncExternalStore(scroll.subscribe, scroll.getSnapshot);

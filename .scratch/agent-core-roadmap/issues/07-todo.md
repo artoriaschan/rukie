@@ -31,3 +31,7 @@ Blocked by: 02
 8. **transcript 工具卡：** 摘要 `todos ✓ done/total`，下列每个 in_progress 项 `● content`，共最多 4 行；不做前后快照 diff；工具名本地化为"待办清单"。由工具参数渲染，不读 Tool State（回看历史时每张卡显示当时那一版）。
 9. **Headless CLI：** stream-json 自动带 `tool_state_changed`；text 模式不输出 todo，不加 flag。
 10. **子代理：** 按地基 B，子代理 Todo List 记在自己 transcript，与父互不影响。
+
+## Comments
+
+2026-10-06：[TUI 工具卡](20-tui-tool-card.md) 推翻本票的工具卡 `todos ✓ done/total`——照 dsh 在建卡前分流，`todo_write` 不出工具行，只更新 `GoalTodoPanel`；仅失败时出错误卡。

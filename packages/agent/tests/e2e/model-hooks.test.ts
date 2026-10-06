@@ -136,9 +136,12 @@ test.each(["prompt", "agent"] as const)(
   async (type) => {
     dirs = await tempDirs();
     const fake = fakeModel([
-      fauxAssistantMessage(fauxToolCall("bash", { command: "touch marker" }), {
-        stopReason: "toolUse",
-      }),
+      fauxAssistantMessage(
+        fauxToolCall("bash", { description: "Run test command", command: "touch marker" }),
+        {
+          stopReason: "toolUse",
+        },
+      ),
       fauxAssistantMessage('{"ok":false,"reason":"protected tool"}'),
       fauxAssistantMessage("parent done"),
     ]);
@@ -381,9 +384,12 @@ test.each(["prompt", "agent"] as const)(
   async (type) => {
     dirs = await tempDirs();
     const fake = fakeModel([
-      fauxAssistantMessage(fauxToolCall("bash", { command: "touch marker" }), {
-        stopReason: "toolUse",
-      }),
+      fauxAssistantMessage(
+        fauxToolCall("bash", { description: "Run test command", command: "touch marker" }),
+        {
+          stopReason: "toolUse",
+        },
+      ),
       fauxAssistantMessage('{"ok":false,"reason":"approval policy"}'),
       fauxAssistantMessage("parent done"),
     ]);
@@ -455,9 +461,12 @@ test.each(["prompt", "agent"] as const)(
   async (type) => {
     dirs = await tempDirs();
     const fake = fakeModel([
-      fauxAssistantMessage(fauxToolCall("bash", { command: "printf original" }), {
-        stopReason: "toolUse",
-      }),
+      fauxAssistantMessage(
+        fauxToolCall("bash", { description: "Run test command", command: "printf original" }),
+        {
+          stopReason: "toolUse",
+        },
+      ),
       fauxAssistantMessage('{"ok":false,"reason":"verify output"}'),
       fauxAssistantMessage("parent done"),
     ]);
@@ -563,9 +572,15 @@ test.each(["prompt", "agent"] as const)(
     let transcriptPath = "";
     let approved = false;
     const fake = fakeModel([
-      fauxAssistantMessage(fauxToolCall("bash", { command: "printf original > marker" }), {
-        stopReason: "toolUse",
-      }),
+      fauxAssistantMessage(
+        fauxToolCall("bash", {
+          description: "Run test command",
+          command: "printf original > marker",
+        }),
+        {
+          stopReason: "toolUse",
+        },
+      ),
       async (context) => {
         const user = context.messages.find((message) => message.role === "user");
         if (

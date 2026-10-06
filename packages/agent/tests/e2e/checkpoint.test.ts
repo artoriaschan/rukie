@@ -398,7 +398,10 @@ test("denied file tools and bash writes do not leave file records", async () => 
         [
           fauxToolCall("write", { path: "denied.txt", content: "denied" }),
           fauxToolCall("edit", { path: "existing.txt", oldText: "before", newText: "denied" }),
-          fauxToolCall("bash", { command: "printf bash > bash.txt" }),
+          fauxToolCall("bash", {
+            description: "Run test command",
+            command: "printf bash > bash.txt",
+          }),
         ],
         { stopReason: "toolUse" },
       ),

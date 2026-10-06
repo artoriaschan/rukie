@@ -7,12 +7,14 @@ export function Notice({
   text,
   color,
   report,
+  truncate = false,
 }: {
   kind: NoticeKind;
   text: string;
   color?: "success";
   /** Frontend-local report: command heading and indented multiline output. */
   report?: string;
+  truncate?: boolean;
 }) {
   if (report)
     return (
@@ -38,7 +40,7 @@ export function Notice({
               : "warning")
       }
       dimColor={kind === "dim"}
-      wrap={kind === "error" ? "wrap" : "truncate"}
+      wrap={kind === "error" && !truncate ? "wrap" : "truncate"}
     >
       {text}
     </ThemedText>

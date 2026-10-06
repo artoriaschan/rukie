@@ -32,7 +32,7 @@ test.each([
   });
   try {
     await app.waitFor(() => app.calls.length === 1);
-    app.calls[0]!.tool("bash", { command: "touch forbidden" });
+    app.calls[0]!.tool("bash", { command: "touch forbidden", description: "Run test command" });
     await app.waitFor(() => !app.isWorking());
     expect(app.allLines().join("\n")).toContain(label!);
     expect(app.allLines().join("\n")).toContain("hook-stop-reason");
@@ -66,7 +66,7 @@ test.each([
   const app = await start(["--yolo", "try"], { env: { LANG: lang }, session: sessionOptions });
   try {
     await app.waitFor(() => app.calls.length === 1);
-    app.calls[0]!.tool("bash", { command: "touch forbidden" });
+    app.calls[0]!.tool("bash", { command: "touch forbidden", description: "Run test command" });
     await app.waitFor(() => app.calls.length === 2);
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
@@ -159,6 +159,7 @@ test("parallel calls of the same tool finish independently and show only the fir
         name: "bash",
         args: {
           command: "while [ ! -f first.release ]; do sleep 0.01; done; echo hidden-success-output",
+          description: "Run test command",
         },
       },
       {
@@ -166,6 +167,7 @@ test("parallel calls of the same tool finish independently and show only the fir
         args: {
           command:
             "while [ ! -f second.release ]; do sleep 0.01; done; printf 'first failure\\nsecond failure\\nthird failure\\nfourth-hidden\\n'; exit 1",
+          description: "Run test command",
         },
       },
     ]);
@@ -259,7 +261,8 @@ test.each([
         await Bun.write(join(root, "large.txt"), "tool output ".repeat(2500));
       },
     });
-    app.model.contextWindow = 4000;
+    // Keep tool declarations below the trigger; the large read starts compaction.
+    app.model.contextWindow = 5000;
     try {
       await app.waitFor(() => app.calls.length === 1);
       app.calls[0]!.tool("read", { path: "large.txt" });
@@ -311,7 +314,10 @@ test.each([
   });
   try {
     await app.waitFor(() => app.calls.length === 1);
-    app.calls[0]!.tool("bash", { command: "printf forbidden > marker" });
+    app.calls[0]!.tool("bash", {
+      command: "printf forbidden > marker",
+      description: "Run test command",
+    });
     await app.waitFor(() => app.calls.length === 2);
     app.calls[1]!.delta("done");
     app.calls[1]!.finish();

@@ -231,7 +231,10 @@ test.each([
   const { server, ...dirs } = await setup(settings, {
     toolCalls: [
       { name: "write", arguments: { path: "new.txt", content: "written" } },
-      { name: "bash", arguments: { command: "printf executed > bash-ran" } },
+      {
+        name: "bash",
+        arguments: { command: "printf executed > bash-ran", description: "Run test command" },
+      },
     ],
   });
   const flags =
@@ -659,6 +662,9 @@ test("stream-json emits session metadata, verbatim pi events, and the Run result
       "write",
       "edit",
       "bash",
+      "job_output",
+      "job_list",
+      "job_kill",
       "glob",
       "grep",
       "skill",
@@ -1194,7 +1200,14 @@ test.each(["ask", "deny"])(
   async (decision) => {
     const { server, ...dirs } = await setup(
       { permissions: { [decision]: ["bash(printf blocked*)"] } },
-      { toolCalls: [{ name: "bash", arguments: { command: "printf blocked > marker" } }] },
+      {
+        toolCalls: [
+          {
+            name: "bash",
+            arguments: { command: "printf blocked > marker", description: "Run test command" },
+          },
+        ],
+      },
     );
     const result = await neant(
       ["--permission-mode", "full-access", "-p", "try", "--output-format", "stream-json"],

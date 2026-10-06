@@ -15,7 +15,7 @@ export {
   type SpinnerProps,
   type StaticProps,
 } from "./components";
-export type { ScrollHandle, ScrollSnapshot } from "./scroll";
+export type { ScrollHandle, ScrollSnapshot, ScrollAnchor } from "./scroll";
 export { render, type RenderOptions } from "./renderer";
 export {
   useInput,

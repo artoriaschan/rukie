@@ -144,7 +144,11 @@ test("resumed history keeps answered calls but drops stale unresolved calls and 
   await branch.appendMessage(
     fauxAssistantMessage([
       fauxToolCall("read", { path: "known.txt" }, { id: "answered" }),
-      fauxToolCall("bash", { command: "stale work" }, { id: "stale" }),
+      fauxToolCall(
+        "bash",
+        { description: "Run test command", command: "stale work" },
+        { id: "stale" },
+      ),
     ]),
     BACKGROUND_CONTEXT,
   );
@@ -288,7 +292,10 @@ test("cancelling a side request settles even while its asynchronous provider set
 
 test("an active side question removes unresolved calls and names the independently running tools", async () => {
   dirs = await tempDirs();
-  const args = { command: "x".repeat(385) + "😀😀😀😀😀\n do later" };
+  const args = {
+    description: "Run test command",
+    command: "x".repeat(385) + "😀😀😀😀😀\n do later",
+  };
   const fake = fakeModel([
     fauxAssistantMessage(
       [

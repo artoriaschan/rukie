@@ -124,7 +124,7 @@ test("permission dialog arrows leave the history walk and its draft intact", asy
     await app.waitFor(() => app.calls.length === 1);
     app.stdin.write("preserved draft\x1b[A");
     await app.waitFor(() => prompt(app) === "❯ running");
-    app.calls[0]!.tool("bash", { command: "printf permitted" });
+    app.calls[0]!.tool("bash", { command: "printf permitted", description: "Run test command" });
     await app.waitFor(() => app.screen().join("\n").includes("等待审批"));
     app.stdin.write("\x1b[B\x1b[A\r");
     await app.waitFor(() => app.calls.length === 2 && prompt(app) === "❯ running");

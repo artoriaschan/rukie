@@ -172,7 +172,10 @@ test("permission, questions and OAuth take FIFO ownership while a scrolled MCP r
     const readerLines = app.screen().filter((line) => line.includes("Stable reader"));
     const listRequests = discoveries(server);
     app.calls[0]!.tools([
-      { name: "bash", args: { command: "printf mixed-permission" } },
+      {
+        name: "bash",
+        args: { command: "printf mixed-permission", description: "Verify mixed permission FIFO" },
+      },
       {
         name: "ask_user_question",
         args: {

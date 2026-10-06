@@ -82,7 +82,9 @@ export function PermissionDialog({
   const parameters =
     command === undefined
       ? args
-      : Object.fromEntries(Object.entries(args ?? {}).filter(([key]) => key !== "command"));
+      : Object.fromEntries(
+          Object.entries(args ?? {}).filter(([key]) => key !== "command" && key !== "description"),
+        );
   return (
     <Box flexDirection="column" height={height} paddingX={2} marginBottom={bottomGap}>
       <ThemedText color="permission" wrap="truncate">

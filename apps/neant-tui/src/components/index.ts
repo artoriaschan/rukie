@@ -32,3 +32,7 @@ export { ContextVisualization } from "./context-report";
 export { ImageGallery } from "./image-gallery";
 export { ImagePreview } from "./image-preview";
 export { McpPanel } from "./mcp-panel";
+
+export { JobCard, JobGroupHeader } from "./job-card";
+
+export { JobsPanel } from "./jobs-panel";
