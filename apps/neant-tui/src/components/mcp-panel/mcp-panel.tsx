@@ -215,9 +215,15 @@ function layout(props: McpPanelProps, view: ReturnType<typeof presentation>) {
   const top = limit >= 9 ? 2 : 0;
   const padding = limit >= 9 ? 2 : 1;
   const width = Math.max(1, props.columns - padding * 2);
-  const resultRows = Math.min(Number(!!props.result || !!props.busy), Math.max(0, limit - top - 3));
-  const space = Math.max(0, limit - top - 3 - resultRows);
-  const actionRows = Math.min(view.actions.length, Math.min(3, Math.max(0, space - 1)));
+  const contentSpace = Math.max(0, limit - top - 3);
+  // At five rows, feedback shares the divider so body and selected action remain usable.
+  const dividerResult =
+    (!!props.result || !!props.busy) && !!view.actions.length && contentSpace < 3;
+  const resultRows = dividerResult
+    ? 0
+    : Math.min(Number(!!props.result || !!props.busy), contentSpace);
+  const space = contentSpace - resultRows;
+  const actionRows = Math.min(view.actions.length, 3, Math.max(0, space - Number(space > 1)));
   const naturalBody = view.rows.length
     ? rowCost(view.rows, 0, view.rows.length)
     : view.body
@@ -231,6 +237,7 @@ function layout(props: McpPanelProps, view: ReturnType<typeof presentation>) {
     bodyRows,
     actionRows,
     resultRows,
+    dividerResult,
     height: limit < 3 ? limit : top + 3 + bodyRows + actionRows + resultRows,
   };
 }
@@ -244,7 +251,11 @@ export function McpPanel(props: McpPanelProps) {
   const { page, selected, onActivate, interactive = true } = props;
   const t = createTuiI18n(props.locale);
   const view = presentation(page, t);
-  const { top, padding, width, bodyRows, actionRows, resultRows, height } = layout(props, view);
+  const { top, padding, width, bodyRows, actionRows, resultRows, dividerResult, height } = layout(
+    props,
+    view,
+  );
+  const result = props.busy ? t("mcp.panel.working") : singleLine(props.result ?? "");
   const window = focusWindow(view.rows, selected, bodyRows);
   const actionCopy: Record<Action, string> = {
     tools: t("mcp.panel.action.tools"),
@@ -289,7 +300,7 @@ export function McpPanel(props: McpPanelProps) {
       : undefined;
   return (
     <Box flexDirection="column" flexShrink={0} height={height} paddingTop={top}>
-      <Divider color="permission" />
+      <Divider color="permission" title={dividerResult ? result : undefined} />
       <Box flexDirection="column" paddingX={padding}>
         <ThemedText color="remember" bold wrap="truncate">
           {singleLine(view.title)}
@@ -415,7 +426,7 @@ export function McpPanel(props: McpPanelProps) {
         )}
         {resultRows > 0 && (
           <ThemedText color={props.busy ? "warning" : "inactive"} wrap="truncate">
-            {props.busy ? t("mcp.panel.working") : singleLine(props.result ?? "")}
+            {result}
           </ThemedText>
         )}
         <HintLine>{boundary + hint}</HintLine>

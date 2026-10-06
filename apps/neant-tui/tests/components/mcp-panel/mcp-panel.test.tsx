@@ -399,7 +399,7 @@ test("body wheel uses the reader rectangle, saved top restores on return, and pa
   expect(terminal.activated).toEqual([]);
 });
 
-test.each([0, 1, 2, 3, 4, 6, 14, 30])(
+test.each([0, 1, 2, 3, 4, 5, 6, 14, 30])(
   "screen budget %s is authoritative even with result feedback",
   async (budget) => {
     const props: McpPanelProps = {
@@ -415,6 +415,71 @@ test.each([0, 1, 2, 3, 4, 6, 14, 30])(
     const actual = terminal.screen().findIndex((line) => line.includes("next-field"));
     expect(actual).toBeLessThanOrEqual(Math.min(14, budget));
     expect(actual).toBe(mcpPanelHeight(props));
+  },
+);
+
+test.each([
+  { busy: true, result: undefined, feedback: "Working…" },
+  { busy: false, result: "Operation succeeded", feedback: "Operation succeeded" },
+  { busy: false, result: "Operation failed", feedback: "Operation failed" },
+  { busy: false, result: "Operation cancelled", feedback: "Operation cancelled" },
+])(
+  "five rows retain reading and mouse actions with $feedback",
+  async ({ busy, result, feedback }) => {
+    const scrollRef = createRef<ScrollHandle>();
+    const terminal = await mount(
+      {
+        page: {
+          kind: "server",
+          server: {
+            ...server("local"),
+            tools: [{ name: "read", description: "", inputSchema: {} }],
+            toolCount: 1,
+          },
+        },
+        maxHeight: 5,
+        selected: "tools",
+        scrollRef,
+        busy,
+        result,
+      },
+      40,
+      12,
+    );
+    const screen = () => terminal.screen().join("\n");
+    const click = (label: string) => {
+      const y = terminal.screen().findIndex((line) => line.includes(label));
+      expect(y).toBeGreaterThanOrEqual(0);
+      terminal.stdin.write(`\x1b[<0;5;${y + 1}M\x1b[<0;5;${y + 1}m`);
+    };
+    expect(screen()).toContain(feedback);
+    expect(screen()).toContain("Status: connected");
+    expect(screen()).toContain("❯ View tools");
+    expect(terminal.screen().findIndex((line) => line.includes("next-field"))).toBe(5);
+    click("View tools");
+    await terminal.waitFor(() => terminal.activated.length === 1);
+    expect(terminal.activated).toEqual(["tools"]);
+    terminal.update({ focus: "body" });
+    await terminal.waitFor(() => screen().includes("Tab Actions"));
+    expect(screen()).not.toContain("❯ View tools");
+    scrollRef.current!.scrollBy(1);
+    await terminal.waitFor(() => screen().includes("Transport: stdio"));
+    expect(screen()).toContain(feedback);
+    terminal.resize(60, 18);
+    terminal.update({ columns: 60, maxHeight: 8 });
+    await terminal.waitFor(() => scrollRef.current!.getSnapshot().width === 58);
+    expect(scrollRef.current!.getSnapshot().top).toBe(1);
+    terminal.resize(40, 12);
+    terminal.update({ columns: 40, maxHeight: 5, focus: "actions" });
+    await terminal.waitFor(() => screen().includes("❯ View tools"));
+    expect(screen()).toContain("Transport: stdio");
+    terminal.stdin.write("\x1b[A");
+    await terminal.waitFor(() => screen().includes("❯ Back"));
+    expect(screen()).toContain(feedback);
+    click("Back");
+    await terminal.waitFor(() => terminal.activated.length === 2);
+    expect(terminal.activated).toEqual(["tools", "back"]);
+    expect(terminal.screen().findIndex((line) => line.includes("next-field"))).toBe(5);
   },
 );
 

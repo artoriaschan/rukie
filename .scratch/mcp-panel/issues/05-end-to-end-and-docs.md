@@ -35,3 +35,10 @@
 - 首轮红灯来自测试就绪谓词误匹配工具列表简介、精确 UI 文案/焦点假设及 xterm 未 flush 的退出观察；分别以 reader 专用 footer、实际文案/删除身份不自动另选、exit 后 IO flush 修正。没有发现需修改产品行为的缺陷，临时诊断代码均已移除。
 
 - 交付前已 `rtk git merge codex/mcp-panel`：Already up to date，最新集成仍为 `e92f713a5bb66ddcad8fb0d0a7b0e2b68592e26c`，无源码差异。最终修改收紧审批就绪谓词后，验收文件重跑仍为5 pass、0 fail、57 assertions；format/lint/types/Knip全部再次exit0。功能提交以该起点为固定 worker diff，root 最终两轴审查基线仍为 `97b570739d28b5e0ba637aac7fa46ca609cbb16f`。最终 aggregate、审查及票状态收束由root集成完成。
+
+2026-10-07：固定集成 `b0fb6057b6910d2ba6724c1101c28d84f7c52cfd` 的独立审查为 Standards 0 findings、Spec 1个P2。40×12 且真实 Goal、Todo、运行中 Subagent 共存时，MCP 只有5行预算；管理 busy 结果原先优先占用正文外的一行，导致全部操作行和鼠标目标消失。修复在受管理 worktree `mcp-panel-review-fix/Neant`、分支 `codex/mcp-panel-review-fix` 完成，范围限于 owning MCP 组件和相关终端回归。
+
+- 反馈与操作共存但剩余内容不足3行时，反馈使用现有 Divider 的标题槽位；5行保留正文阅读、所选操作、反馈及固定标题/提示，不增加 screen 预算，也不隐藏结果。只有一行内容空间时优先保留操作；足够空间继续使用原独立结果行。未改 Core、screen 的导航、其他持久面板预算或 renderer。
+- 扩展公开 `start` 的实际40×12共存用例，确认 busy 后所选 Reconnect、反馈和三个持久预览同时可见，键盘选择及鼠标工具浏览/返回可用，正文/操作焦点和 resize 后继续可用。原实现为0 pass、1 fail、6 assertions，失败精确为缺少 `❯ Reconnect`；修复后1 pass、0 fail、19 assertions。日志 `/tmp/neant-mcp-panel-review-fix-{red,green}.log`。新 worktree 缺少依赖导致的初始模块加载失败已通过 `bun install --frozen-lockfile` 解决，不计为行为红灯。
+- 组件终端回归增加实际5行预算及 busy/成功/失败/取消反馈矩阵：正文 reader、所选操作、鼠标 View tools/Back、body/actions 焦点、resize 阅读 top 和实际 flow 高度均有断言。相关五文件 `rtk proxy env -u NO_COLOR bun test apps/neant-tui/tests/components/mcp-panel/mcp-panel.test.tsx apps/neant-tui/tests/e2e/mcp-panel.test.ts apps/neant-tui/tests/e2e/mcp-panel-acceptance.test.ts apps/neant-tui/tests/e2e/mcp-command.test.ts apps/neant-tui/tests/e2e/mcp-auth.test.ts`：76 pass、0 fail、373 assertions、23.20s；测试 helper 隔离 project/home。日志 `/tmp/neant-mcp-panel-review-fix-focused.log`。
+- `rtk proxy bunx --no -- oxfmt --check`、`oxlint`、`tsc -b`、`knip` 和 `rtk git diff --check` 全部exit0，静态日志 `/tmp/neant-mcp-panel-review-fix-{format,lint,types,knip}.log`。交付前 `rtk git merge codex/mcp-panel` 为 Already up to date，基线仍为 `b0fb6057b6910d2ba6724c1101c28d84f7c52cfd`。本 worker 未运行 aggregate；原 reviewers 独立复核、修正后集成完整检查和最终状态收束仍待 root，Status 保持 claimed。
