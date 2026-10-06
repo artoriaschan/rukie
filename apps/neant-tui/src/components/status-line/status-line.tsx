@@ -2,7 +2,13 @@ import type { GoalView } from "@neant/agent";
 import { useState, type ReactNode } from "react";
 import { basename } from "node:path";
 import { Box, ThemedText, type ThemeColor } from "@neant/tui";
-import type { ContextUsageEvent, PermissionMode, RunResult, ThinkingLevel } from "@neant/shared";
+import type {
+  JobView,
+  ContextUsageEvent,
+  PermissionMode,
+  RunResult,
+  ThinkingLevel,
+} from "@neant/shared";
 import { goalPhasePresentation } from "../goal-phase";
 import {
   allocateColumns,
@@ -25,6 +31,7 @@ export interface StatusLineProps {
   columns: number;
   mode: PermissionMode;
   planMode?: boolean;
+  jobs?: readonly JobView[];
   goal?: GoalView;
   showContextBar?: boolean;
   model: string;
@@ -41,7 +48,17 @@ export interface StatusLineProps {
   working: boolean;
 }
 
-type HoverField = "bar" | "ctx" | "mode" | "model" | "tps" | "cache" | "tokens" | "git" | "cwd";
+type HoverField =
+  | "jobs"
+  | "bar"
+  | "ctx"
+  | "mode"
+  | "model"
+  | "tps"
+  | "cache"
+  | "tokens"
+  | "git"
+  | "cwd";
 
 function Meter({
   value,
@@ -103,8 +120,15 @@ export function StatusLine(props: StatusLineProps) {
     ? `${goalPhase?.glyph} ${props.goal.roundsStarted}/${props.goal.maxRounds}`
     : "";
   const goalWidth = Bun.stringWidth(goalLabel);
+  const liveJobs =
+    props.jobs?.filter((job) => job.status === "running" || job.status === "stopping") ?? [];
+  const jobsLabel = liveJobs.length ? `● ${liveJobs.length}` : "";
+  const jobsWidth = Bun.stringWidth(jobsLabel);
   const requiredWidth =
-    modeWidth + (planWidth ? planWidth + 1 : 0) + (goalWidth ? goalWidth + 1 : 0);
+    modeWidth +
+    (jobsWidth ? jobsWidth + 1 : 0) +
+    (planWidth ? planWidth + 1 : 0) +
+    (goalWidth ? goalWidth + 1 : 0);
   const usage = props.contextUsage;
   const showBar = props.showContextBar !== false && usage !== undefined && width >= 14;
   const pct = usage && usage.window > 0 ? (usage.used / usage.window) * 100 : 0;
@@ -157,6 +181,7 @@ export function StatusLine(props: StatusLineProps) {
   const fields: { id: HoverField | "effort" | "plan" | "goal"; content: ReactNode }[] = [
     ...(props.goal ? [{ id: "goal" as const, content: goalLabel }] : []),
     { id: "mode", content: description.label },
+    ...(jobsWidth ? [{ id: "jobs" as const, content: jobsLabel }] : []),
     ...(props.planMode ? [{ id: "plan" as const, content: planLabel }] : []),
     { id: "model", content: props.model },
     { id: "tps", content: speedView },
@@ -175,9 +200,9 @@ export function StatusLine(props: StatusLineProps) {
   ];
   const ctxWidth = Math.min(ctx.length, Math.max(0, width - requiredWidth - (ctx ? 1 : 0)));
   const leftWidth = Math.max(0, width - ctxWidth - (ctx ? 1 : 0));
-  // Keep the permission policy legible before spending columns on optional fields.
+  // Keep permission policy and live job/plan/goal chips before optional fields.
   while (
-    fields.length > 1 + Number(!!props.planMode) + Number(!!props.goal) &&
+    fields.length > 1 + Number(!!props.planMode) + Number(!!props.goal) + Number(!!jobsWidth) &&
     leftWidth < requiredWidth + (fields.length - 1) * 2
   )
     fields.pop();
@@ -192,11 +217,28 @@ export function StatusLine(props: StatusLineProps) {
       : allocateColumns(
           naturalWidths,
           fields.map(({ id }) =>
-            id === "mode" ? modeWidth : id === "plan" ? planWidth : id === "goal" ? goalWidth : 1,
+            id === "jobs"
+              ? jobsWidth
+              : id === "mode"
+                ? modeWidth
+                : id === "plan"
+                  ? planWidth
+                  : id === "goal"
+                    ? goalWidth
+                    : 1,
           ),
           budget,
         );
   let detail: ReactNode;
+  if (hover === "jobs" && liveJobs.length)
+    detail = (
+      <Details
+        fields={liveJobs.map((job) => [
+          "",
+          `${Bun.stripANSI(job.label).replace(/\s+/g, " ")} ${fmtDuration(Math.max(0, props.now - job.startedAt), props.locale ?? "zh")}`,
+        ])}
+      />
+    );
   if (hover === "mode") {
     const fits =
       Bun.stringWidth(
@@ -357,13 +399,15 @@ export function StatusLine(props: StatusLineProps) {
                   >
                     <ThemedText
                       color={
-                        id === "goal"
-                          ? goalPhase?.color
-                          : id === "plan"
-                            ? "plan"
-                            : id === "mode" && props.mode === "full-access"
-                              ? "error"
-                              : undefined
+                        id === "jobs"
+                          ? "warning"
+                          : id === "goal"
+                            ? goalPhase?.color
+                            : id === "plan"
+                              ? "plan"
+                              : id === "mode" && props.mode === "full-access"
+                                ? "error"
+                                : undefined
                       }
                       dimColor={id === "goal" && goalPhase?.dimColor}
                       wrap="truncate"
@@ -401,5 +445,5 @@ export function StatusLine(props: StatusLineProps) {
     </Box>
   );
 }
-import type { Locale } from "@neant/i18n";
+import { fmtDuration, type Locale } from "@neant/i18n";
 import { createTuiI18n } from "../../i18n";

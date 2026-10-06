@@ -1,5 +1,5 @@
 import { basename } from "node:path";
-import type { Locale } from "@neant/i18n";
+import { fmtDuration, type Locale } from "@neant/i18n";
 import { createTuiI18n, formatError } from "../../i18n";
 import type {
   PromptImage,
@@ -14,6 +14,7 @@ import {
   type ContextUsageEvent,
   type RunResult,
   type ContextReport,
+  type JobView,
 } from "@neant/shared";
 import type { TpsSample } from "../../components/status-line";
 import { goalPhasePresentation } from "../../components";
@@ -39,6 +40,10 @@ type CompletedEntry =
     }
   | {
       type: "tool";
+      toolCallId: string;
+      name: string;
+      args: unknown;
+      jobId?: string;
       summary: string;
       isError: boolean;
       outcomeUnknown?: boolean;
@@ -75,7 +80,7 @@ function toolSummary(name: string, args: unknown) {
 }
 
 function toolEntry(
-  tool: Pick<ToolCall, "name" | "args" | "summary" | "rule" | "hook">,
+  tool: Pick<ToolCall, "id" | "name" | "args" | "summary" | "rule" | "hook">,
   isError: boolean,
   result: Pick<ToolResultMessage, "content" | "details">,
   t: ReturnType<typeof createTuiI18n>,
@@ -83,6 +88,9 @@ function toolEntry(
   if (isUnknownToolOutcome(result.details))
     return {
       type: "tool",
+      toolCallId: tool.id,
+      name: tool.name,
+      args: tool.args,
       summary: tool.summary,
       isError: false,
       outcomeUnknown: true,
@@ -134,6 +142,19 @@ function toolEntry(
   const todo = tool.name === "todo_write" && !isError ? todoSummary(tool.args, t) : undefined;
   return {
     type: "tool",
+    toolCallId: tool.id,
+    name: tool.name,
+    args: tool.args,
+    jobId:
+      tool.name === "bash" &&
+      !isError &&
+      typeof result.details === "object" &&
+      result.details !== null &&
+      "jobId" in result.details &&
+      typeof result.details.jobId === "string" &&
+      /^bash-[1-9]\d*$/.test(result.details.jobId)
+        ? result.details.jobId
+        : undefined,
     images: result.content
       .filter((block) => block.type === "image")
       .map((image) => ({
@@ -315,7 +336,30 @@ function questionSummary(args: unknown, text: string, t: ReturnType<typeof creat
   return questions.length > 0 ? (parse(0, 0)?.join("\n") ?? text) : text;
 }
 
+export interface JobRow extends JobView {
+  output: string;
+  offset: number;
+  dropped: boolean;
+}
+
+function readJobRow(session: Session, job: JobView, previous?: JobRow): JobRow {
+  const output = session.readJob(job.id, previous?.offset ?? 0);
+  return {
+    ...job,
+    // The card needs a tail, not an unbounded second copy of the spill file.
+    output: (
+      (output.dropped ? "" : (previous?.output ?? "")) +
+      output.stdout +
+      output.stderr
+    ).slice(-16384),
+    offset: output.nextOffset,
+    dropped: output.dropped || (previous?.dropped ?? false),
+  };
+}
+
 interface ViewState {
+  jobs: Readonly<Record<string, JobRow>>;
+  jobNotice?: { id: string; text: string; kind: "success" | "error" | "warning" };
   goal: GoalView | undefined;
   planMode: boolean;
   waitingSubagents: number;
@@ -391,6 +435,7 @@ function replayMessages(
     }
     if (message.role === "toolResult") {
       const tool = tools.get(message.toolCallId) ?? {
+        id: message.toolCallId,
         name: message.toolName,
         args: undefined,
         summary: message.toolName,
@@ -656,6 +701,8 @@ function reduceEvent(
 function createViewState(session: Session, model: string, locale: Locale): ViewState {
   const t = createTuiI18n(locale);
   return {
+    jobs: Object.fromEntries(session.jobs().map((job) => [job.id, readJobRow(session, job)])),
+    jobNotice: undefined,
     planMode: session.planMode,
     goal: session.goal,
     waitingSubagents: 0,
@@ -686,6 +733,7 @@ export function createConversation(session: Session, model: string, locale: Loca
   const listeners = new Set<() => void>();
   let compacting = false;
   let active: { controller: AbortController; promise: Promise<unknown> } | undefined;
+  let jobNoticeTimer: ReturnType<typeof setTimeout> | undefined;
   let notificationTimer: ReturnType<typeof setTimeout> | undefined;
   const update = (next: ViewState, deferNotification = false) => {
     state = next;
@@ -706,15 +754,63 @@ export function createConversation(session: Session, model: string, locale: Loca
   const dispatchActivity = (event: Parameters<typeof reduce>[1]) => {
     update({ ...state, activity: reduce(state.activity, event, Date.now()) });
   };
+  // Model stop results and frontend stop actions must reconcile this snapshot:
+  // stopping can change without a new output event from a quiet process.
+  const refreshJobs = () =>
+    update(
+      {
+        ...state,
+        jobs: Object.fromEntries(
+          session.jobs().map((job) => [job.id, readJobRow(session, job, state.jobs[job.id])]),
+        ),
+      },
+      true,
+    );
   const onEvent = (event: SessionEvent) => {
     const now = Date.now();
+    if (event.type === "job_event") {
+      const previous = state.jobs[event.job.id];
+      const job = readJobRow(session, event.job, previous);
+      const settled = event.kind === "settled";
+      let jobNotice = state.jobNotice;
+      if (
+        settled &&
+        (job.status === "completed" || job.status === "failed" || job.status === "killed")
+      ) {
+        const duration = fmtDuration(Math.max(0, (job.endedAt ?? now) - job.startedAt), locale);
+        jobNotice = {
+          id: job.id,
+          text: t(`jobs.notice.${job.status}`, {
+            label: Bun.stripANSI(job.label).replace(/\s+/g, " "),
+            id: job.id,
+            duration,
+          }),
+          kind:
+            job.status === "completed" ? "success" : job.status === "failed" ? "error" : "warning",
+        };
+        clearTimeout(jobNoticeTimer);
+        jobNoticeTimer = setTimeout(() => {
+          jobNoticeTimer = undefined;
+          update({ ...state, jobNotice: undefined }, true);
+        }, 6000);
+      }
+      update({ ...state, jobs: { ...state.jobs, [job.id]: job }, jobNotice }, true);
+      return;
+    }
     if (event.type === "conversation_rewound") {
       const restored = createViewState(session, state.model, locale);
       update({
         ...restored,
+        jobs: state.jobs,
+        jobNotice: state.jobNotice,
         activity: { ...restored.activity, gitBranch: state.activity.gitBranch },
       });
       return;
+    }
+    if (event.type === "tool_execution_end" && event.toolName === "job_kill") {
+      // Stop requests change the registry synchronously; a quiet process may
+      // emit no output before settlement. Reconcile at the tool boundary.
+      refreshJobs();
     }
     update(
       {
@@ -789,6 +885,7 @@ export function createConversation(session: Session, model: string, locale: Loca
   }
   return {
     dispatchActivity,
+    refreshJobs,
     notice(text: string, error = false) {
       state = { ...state, planMode: session.planMode };
       update(
@@ -900,6 +997,8 @@ export function createConversation(session: Session, model: string, locale: Loca
       }
       await session.waitForIdle();
       unsubscribe();
+      clearTimeout(jobNoticeTimer);
+      clearTimeout(notificationTimer);
     },
   };
 }
