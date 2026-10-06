@@ -40,13 +40,27 @@ export interface BoxProps {
   marginTop?: number;
   marginBottom?: number;
   gap?: number;
-  borderStyle?: "single";
+  borderStyle?: "single" | "round";
   onMouseEnter?(): void;
   onMouseLeave?(): void;
   /** Primary mouse press and release on this box activate it once. */
   onClick?(): void;
   /** Wheel input on this box or its descendants uses the last painted bounds. */
   onWheel?(event: Extract<InputEvent, { type: "wheel" }>): void;
+}
+
+export interface ImageProps extends Omit<BoxProps, "children"> {
+  /** Original PNG bytes encoded as base64. Other media types reserve geometry only. */
+  data: string;
+  mimeType: string;
+  sourceWidth: number;
+  sourceHeight: number;
+  /** Original source pixel rectangle, before terminal cell scaling and viewport clipping. */
+  crop?: { x: number; y: number; width: number; height: number };
+}
+
+export function Image(props: ImageProps) {
+  return createElement("tui-image", props);
 }
 
 export interface TextProps extends TextStyle {

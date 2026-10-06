@@ -32,6 +32,13 @@
  */
 
 const zh = {
+  "image.label": "图片",
+  "image.preview-title": "图片 #{{index}}",
+  "image.fit": "适应",
+  "image.open-original": "打开原图",
+  "image.opening": "正在打开原图…",
+  "image.preview-fallback": "终端无法预览此图片",
+  "image.preview-close": "Esc / Ctrl+C / Enter 关闭 · ←→ 切换图片",
   "command.menu-title": "命令",
   "command.menu-count": "共 {{count}} 项",
   "btw.usage": "用法：/btw <问题>",
@@ -300,6 +307,13 @@ const zh = {
 } as const;
 
 const en = {
+  "image.label": "Image",
+  "image.preview-title": "Image #{{index}}",
+  "image.fit": "Fit",
+  "image.open-original": "Open original",
+  "image.opening": "Opening original…",
+  "image.preview-fallback": "Image preview unavailable in this terminal",
+  "image.preview-close": "Esc / Ctrl+C / Enter close · ←→ switch images",
   "command.menu-title": "commands",
   "command.menu-count": "{{count}} items",
   "btw.usage": "Usage: /btw <question>",

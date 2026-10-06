@@ -27,6 +27,8 @@ import {
 } from "@neant/tui";
 import {
   allocatePanelHeights,
+  ImageGallery,
+  ImagePreview,
   AssistantMessage,
   ContextVisualization,
   ActivityLine,
@@ -262,18 +264,45 @@ function Chat({
     notifyModelImages();
   };
   useEffect(() => () => clearTimeout(modelImageNoticeTimer.current), []);
-  const openImage = (image: PromptImage) => {
-    void imageViewer.open(image).catch((error: unknown) => {
-      if (pasteOwner.current)
-        notifyImage(t("image.open-error", { error: formatError(error, t) }), true);
-    });
-  };
   const state = useSyncExternalStore(conversation.subscribe, conversation.getSnapshot);
+  type Preview = { images: readonly PromptImage[]; index: number };
+  const [preview, setPreview] = useState<Preview>();
+  const previewRef = useRef<Preview | undefined>(undefined);
+  const showPreview = (next: Preview | undefined) => {
+    pasteEpoch.current++;
+    previewRef.current = next;
+    setPreview(next);
+  };
+  const openImage = (entryIndex: number, imageIndex: number) => {
+    if (
+      interactions.getSnapshot() ||
+      viewRef.current !== "chat" ||
+      rewindRef.current ||
+      modelPickerRef.current !== undefined ||
+      resumePickerRef.current
+    )
+      return;
+    const entries = conversation.getSnapshot().completed;
+    const images = entries.flatMap((entry) => ("images" in entry ? (entry.images ?? []) : []));
+    const before = entries
+      .slice(0, entryIndex)
+      .reduce((count, entry) => count + ("images" in entry ? (entry.images?.length ?? 0) : 0), 0);
+    if (images[before + imageIndex]) showPreview({ images, index: before + imageIndex });
+  };
+  const stepImage = (delta: number) => {
+    const current = previewRef.current;
+    if (current)
+      showPreview({
+        ...current,
+        index: Math.max(0, Math.min(current.images.length - 1, current.index + delta)),
+      });
+  };
   const [title, setTitle] = useState(session.title);
   useEffect(
     () =>
       session.subscribe((event) => {
         if (event.type === "session_title_changed") setTitle(event.title);
+        if (event.type === "conversation_rewound") showPreview(undefined);
       }),
     [session],
   );
@@ -302,6 +331,9 @@ function Chat({
   };
   useEffect(() => () => sideController.current?.abort(), [session]);
   const pendingInteraction = useSyncExternalStore(interactions.subscribe, interactions.getSnapshot);
+  useLayoutEffect(() => {
+    if (pendingInteraction) showPreview(undefined);
+  }, [pendingInteraction?.request]);
   const interaction = side ? undefined : pendingInteraction;
   const question = interaction?.kind === "permission" ? interaction : undefined;
   const planReview = interaction?.kind === "plan" ? interaction : undefined;
@@ -319,7 +351,10 @@ function Chat({
   const [view, setView] = useState<View>("chat");
   const viewRef = useRef<View>("chat");
   const switchView = (next: View) => {
-    if (next !== "chat") closeSide();
+    if (next !== "chat") {
+      closeSide();
+      showPreview(undefined);
+    }
     viewRef.current = next;
     setView(next);
   };
@@ -332,6 +367,7 @@ function Chat({
   const savedChatScroll = useRef<ScrollSnapshot | undefined>(undefined);
   const savedDashboardScroll = useRef<ScrollSnapshot | undefined>(undefined);
   const openDetail = (id: string, from: "chat" | "dashboard") => {
+    if (previewRef.current) return;
     if (from === "chat") savedChatScroll.current = body.current?.getSnapshot();
     else savedDashboardScroll.current = subagentScroll.current?.getSnapshot();
     pageRef.current = "summary";
@@ -423,6 +459,7 @@ function Chat({
   const [rewind, setRewind] = useState<Rewind>();
   const rewindRef = useRef<Rewind | undefined>(undefined);
   const showRewind = (next: Rewind | undefined) => {
+    if (next) showPreview(undefined);
     rewindRef.current = next;
     setRewind(next);
   };
@@ -469,7 +506,9 @@ function Chat({
   };
   const [todosCollapsed, setTodosCollapsed] = useState(false);
   const [subagentsCollapsed, setSubagentsCollapsed] = useState(false);
-  const toggleTodos = () => setTodosCollapsed((collapsed) => !collapsed);
+  const toggleTodos = () => {
+    if (!previewRef.current) setTodosCollapsed((collapsed) => !collapsed);
+  };
   const [mode, setMode] = useState(session.permissionMode);
   const { columns, rows } = useTerminalSize();
   const small = columns < 40 || rows < 12;
@@ -821,6 +860,7 @@ function Chat({
     return true;
   };
   const sendInput = (prompt: string) => {
+    if (previewRef.current) return;
     if (executeCommand(prompt)) {
       body.current?.scrollToBottom();
       change("");
@@ -948,6 +988,26 @@ function Chat({
   const todoMaxHeight = hasTodos ? panelHeights[0]! + goalRows : 1;
   const subagentMaxHeight = hasSubagents ? panelHeights[Number(hasTodos)]! : 1;
   useInput((event) => {
+    if (previewRef.current && !interactions.getSnapshot()) {
+      handledInput.current.add(event);
+      if (event.type === "key") {
+        const { key } = event;
+        if (
+          key.name === "escape" ||
+          (key.ctrl && key.name === "c") ||
+          (!key.ctrl && !key.alt && !key.shift && key.name === "enter")
+        )
+          showPreview(undefined);
+        else if (
+          !key.ctrl &&
+          !key.alt &&
+          !key.shift &&
+          (key.name === "left" || key.name === "right")
+        )
+          stepImage(key.name === "left" ? -1 : 1);
+      }
+      return;
+    }
     if (sideController.current && event.type === "key") {
       const { key } = event;
       if (key.name === "escape" || (key.ctrl && key.name === "c")) {
@@ -1278,7 +1338,8 @@ function Chat({
                   outcomeUnknown={entry.outcomeUnknown}
                   result={entry.result}
                   images={entry.images}
-                  onImageOpen={openImage}
+                  onImageOpen={(imageIndex) => openImage(index, imageIndex)}
+                  imagesSuspended={!!preview}
                   error={entry.error}
                 />
                 {entry.agentId &&
@@ -1315,14 +1376,25 @@ function Chat({
                 source={entry.source}
                 locale={locale}
                 images={entry.images}
-                onImageOpen={openImage}
+                onImageOpen={(imageIndex) => openImage(index, imageIndex)}
+                imagesSuspended={!!preview}
               />
             ) : (
-              <AssistantMessage key={index} text={entry.text} />
+              <Box key={index} flexDirection="column">
+                <AssistantMessage text={entry.text} />
+                {!!entry.images?.length && (
+                  <ImageGallery
+                    images={entry.images}
+                    locale={locale}
+                    suspended={!!preview}
+                    onOpen={(imageIndex) => openImage(index, imageIndex)}
+                  />
+                )}
+              </Box>
             );
         }
       }),
-    [state.completed, state.subagents, columns, thinking, locale],
+    [state.completed, state.subagents, columns, thinking, locale, !!preview],
   );
   if (view === "settings") return <SettingsScreen locale={locale} onClose={closeView} />;
   if (view === "dashboard")
@@ -1360,8 +1432,8 @@ function Chat({
         onScroll={setBodyScroll}
         initialFollow={savedChatScroll.current?.following ?? true}
         initialTop={savedChatScroll.current?.top ?? 0}
-        height={small ? 0 : undefined}
-        flexGrow={small ? 0 : 1}
+        height={small && !preview ? 0 : undefined}
+        flexGrow={small && !preview ? 0 : 1}
       >
         <Logo
           locale={locale}
@@ -1378,6 +1450,32 @@ function Chat({
         ))}
         {state.error && <Notice kind="error" text={state.error} />}
       </ScrollBox>
+      {preview && (
+        <ImagePreview
+          key={preview.index}
+          image={preview.images[preview.index]!}
+          index={preview.index}
+          total={preview.images.length}
+          width={columns}
+          height={
+            small
+              ? Math.max(1, rows - 1)
+              : (bodyScroll?.height ?? Math.max(1, rows - promptHeight - statusHeight))
+          }
+          locale={locale}
+          onClose={() => showPreview(undefined)}
+          onStep={stepImage}
+          onOriginal={async (image) => {
+            try {
+              await imageViewer.open(image);
+            } catch (error) {
+              if (pasteOwner.current)
+                notifyImage(t("image.open-error", { error: formatError(error, t) }), true);
+              throw error;
+            }
+          }}
+        />
+      )}
       <Box flexDirection="column" flexShrink={0}>
         {small ? (
           <ThemedText wrap="truncate">{t("window.small")}</ThemedText>
@@ -1388,7 +1486,9 @@ function Chat({
                 locale={locale}
                 columns={columns}
                 unread={unread}
-                onClick={returnToBottom}
+                onClick={() => {
+                  if (!previewRef.current) returnToBottom();
+                }}
                 compact={compactReturn}
               />
             )}
@@ -1425,7 +1525,9 @@ function Chat({
             <SubagentPanel
               subagents={panelSubagents}
               collapsed={subagentsCollapsed}
-              onToggle={() => setSubagentsCollapsed((collapsed) => !collapsed)}
+              onToggle={() => {
+                if (!previewRef.current) setSubagentsCollapsed((collapsed) => !collapsed);
+              }}
               onOpen={(id) => openDetail(id, "chat")}
               locale={locale}
               maxHeight={subagentMaxHeight}
@@ -1560,6 +1662,7 @@ function Chat({
             <PromptInput
               suggestions={
                 !!commandMatches.length &&
+                !preview &&
                 !interaction &&
                 !rewind &&
                 !resumePicker &&
@@ -1592,6 +1695,7 @@ function Chat({
               tip={rewindArmedAt === undefined ? undefined : t("rewind.again")}
               key={promptRevision}
               readOnly={
+                !!preview ||
                 modelPicker !== undefined ||
                 !!resumePicker ||
                 !!rewind ||
@@ -1608,6 +1712,7 @@ function Chat({
                 pasteEpoch.current++;
               }}
               filterInput={(event, insert) => {
+                if (previewRef.current || handledInput.current.has(event)) return false;
                 if (
                   event.type === "key" &&
                   !event.key.ctrl &&
@@ -1659,6 +1764,7 @@ function Chat({
                 .map((range) => ({ ...range, color: theme.suggestion }))}
               atomicRanges={composer.ranges(input)}
               onPaste={(text, insert) => {
+                if (previewRef.current) return;
                 const epoch = pasteEpoch.current;
                 const path = pastedImagePath(text, homeDir ?? "");
                 if (!path) {
@@ -1678,13 +1784,13 @@ function Chat({
               value={input}
               onChange={(value, edit) => {
                 const pending = sideController.current ? undefined : interactions.getSnapshot();
-                if (viewRef.current !== "chat" || rewindRef.current) return;
+                if (viewRef.current !== "chat" || rewindRef.current || previewRef.current) return;
                 if (!pending || (pending.kind === "question" && pending.collapsed))
                   change(value, edit);
               }}
               onSubmit={(prompt) => {
                 const pending = sideController.current ? undefined : interactions.getSnapshot();
-                if (viewRef.current !== "chat" || rewindRef.current) return;
+                if (viewRef.current !== "chat" || rewindRef.current || previewRef.current) return;
                 if (pending && (pending.kind !== "question" || !pending.collapsed)) return;
                 sendInput(prompt);
               }}

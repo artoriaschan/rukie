@@ -35,6 +35,7 @@ function sgr(style: TextStyle): string {
   if (style.bold) codes.push("1");
   if (style.dimColor) codes.push("2");
   if (style.italic) codes.push("3");
+  if (style.underline) codes.push("4");
   if (style.inverse) codes.push("7");
   if (!process.env.NO_COLOR) {
     const foreground = colorCode(style.color);
@@ -92,10 +93,11 @@ function paintGrid(root: LayoutNode, columns: number, rows: number): Cell[][] {
         put(x, y + row, "│");
         put(x + width - 1, y + row, "│");
       }
-      put(x, y, "┌");
-      put(x + width - 1, y, "┐");
-      put(x, y + height - 1, "└");
-      put(x + width - 1, y + height - 1, "┘");
+      const round = node.props.borderStyle === "round";
+      put(x, y, round ? "╭" : "┌");
+      put(x + width - 1, y, round ? "╮" : "┐");
+      put(x, y + height - 1, round ? "╰" : "└");
+      put(x + width - 1, y + height - 1, round ? "╯" : "┘");
     }
     if (node.type === "tui-text") {
       const top = node.textTop ?? 0;

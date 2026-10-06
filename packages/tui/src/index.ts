@@ -1,5 +1,7 @@
 export {
   Box,
+  Image,
+  type ImageProps,
   Text,
   TextInput,
   createTextInputHistory,
@@ -15,7 +17,13 @@ export {
 } from "./components";
 export type { ScrollHandle, ScrollSnapshot } from "./scroll";
 export { render, type RenderOptions } from "./renderer";
-export { useInput, useTerminalSize, ClockProvider, useAnimationFrame } from "./hooks";
+export {
+  useInput,
+  useTerminalSize,
+  useTerminalGraphics,
+  ClockProvider,
+  useAnimationFrame,
+} from "./hooks";
 export type { InputEvent, Key } from "./input";
 export {
   dark,
@@ -46,3 +54,5 @@ export {
   type ThemedBoxProps,
   type ThemedTextInputProps,
 } from "./design-system";
+
+export type { TerminalGraphics } from "./terminal";

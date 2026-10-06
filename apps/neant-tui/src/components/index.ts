@@ -28,3 +28,6 @@ export { SideQuestionPanel } from "./side-question";
 export { SessionPicker } from "./session-picker";
 
 export { ContextVisualization } from "./context-report";
+
+export { ImageGallery } from "./image-gallery";
+export { ImagePreview } from "./image-preview";

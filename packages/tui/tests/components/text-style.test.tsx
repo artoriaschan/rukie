@@ -3,7 +3,7 @@ import { useLayoutEffect, useState } from "react";
 import { Box, Text, render } from "../../src";
 import { createTerminal } from "../helpers/terminal";
 
-for (const style of ["inverse", "italic"] as const) {
+for (const style of ["inverse", "italic", "underline"] as const) {
   test(`Text repaints an unchanged character when ${style} is enabled or disabled`, async () => {
     const terminal = createTerminal(8, 2);
     let update = (_enabled: boolean) => {};
@@ -15,7 +15,12 @@ for (const style of ["inverse", "italic"] as const) {
       return <Text {...{ [style]: enabled }}>A</Text>;
     }
     const cell = () => terminal.terminal.buffer.active.getLine(0)!.getCell(0)!;
-    const enabled = () => (style === "inverse" ? cell().isInverse() : cell().isItalic());
+    const enabled = () =>
+      style === "inverse"
+        ? cell().isInverse()
+        : style === "italic"
+          ? cell().isItalic()
+          : cell().isUnderline();
     const app = render(<View />, terminal);
     try {
       await terminal.flush();
@@ -34,13 +39,13 @@ for (const style of ["inverse", "italic"] as const) {
   });
 }
 
-test("inverse and italic survive nesting and wrapping without leaking to siblings", async () => {
+test("inverse, italic and underline survive nesting and wrapping without leaking to siblings", async () => {
   const terminal = createTerminal(8, 4);
   const app = render(
     <Box flexDirection="column" width={3}>
-      <Text inverse italic>
+      <Text inverse italic underline>
         A
-        <Text inverse={false} italic={false}>
+        <Text inverse={false} italic={false} underline={false}>
           B
         </Text>
         CD
@@ -60,6 +65,7 @@ test("inverse and italic survive nesting and wrapping without leaking to sibling
     ] as const) {
       expect(cell(x, y).isInverse()).toBeTruthy();
       expect(cell(x, y).isItalic()).toBeTruthy();
+      expect(cell(x, y).isUnderline()).toBeTruthy();
     }
     for (const [x, y] of [
       [1, 0],
@@ -67,6 +73,7 @@ test("inverse and italic survive nesting and wrapping without leaking to sibling
     ] as const) {
       expect(cell(x, y).isInverse()).toBeFalsy();
       expect(cell(x, y).isItalic()).toBeFalsy();
+      expect(cell(x, y).isUnderline()).toBeFalsy();
     }
   } finally {
     app.unmount();
@@ -125,3 +132,20 @@ for (const value of ["1", "", undefined]) {
     });
   }
 }
+
+test("round borders preserve box layout while drawing rounded corner glyphs", async () => {
+  const terminal = createTerminal(6, 3);
+  const app = render(
+    <Box width={6} height={3} borderStyle="round">
+      <Text>card</Text>
+    </Box>,
+    terminal,
+  );
+  try {
+    await terminal.flush();
+    expect(terminal.screen()).toEqual(["╭────╮", "│card│", "╰────╯"]);
+  } finally {
+    app.unmount();
+    terminal.dispose();
+  }
+});

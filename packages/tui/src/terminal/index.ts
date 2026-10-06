@@ -2,7 +2,14 @@ import { createContext, useContext } from "react";
 import type { Readable } from "node:stream";
 import { listenInput, type InputEvent } from "../input";
 
+export interface TerminalGraphics {
+  supported: boolean;
+  cellWidth: number | undefined;
+  cellHeight: number | undefined;
+}
+
 export interface TerminalIO {
+  env?: Record<string, string | undefined>;
   stdin: Readable & { isTTY?: boolean; isRaw?: boolean; setRawMode?(raw: boolean): unknown };
   stdout: {
     isTTY?: boolean;
@@ -28,7 +35,7 @@ function terminate() {
 }
 
 export function createTerminalSession(
-  { stdin, stdout }: TerminalIO,
+  { stdin, stdout, env = process.env }: TerminalIO,
   redraw: () => void,
   onDispose: () => void,
   dispatchInput: (notify: () => void) => void,
@@ -36,6 +43,32 @@ export function createTerminalSession(
 ) {
   const inputs = new Set<(event: InputEvent) => void>();
   const sizes = new Set<() => void>();
+  const graphicsListeners = new Set<() => void>();
+  const graphicsEnabled =
+    fullscreen && !env.TMUX && !env.STY && !/^(screen|tmux)/.test(env.TERM ?? "");
+  let graphics: TerminalGraphics = {
+    supported: false,
+    cellWidth: undefined,
+    cellHeight: undefined,
+  };
+  function control(sequence: string) {
+    if (!graphicsEnabled) return;
+    let next = graphics;
+    if (sequence === "\x1b_Gi=2147483647;OK\x1b\\") next = { ...graphics, supported: true };
+    // oxlint-disable-next-line no-control-regex -- terminal cell-size report
+    const metrics = /^\x1b\[6;(\d+);(\d+)t$/.exec(sequence);
+    if (metrics) {
+      const height = Number(metrics[1]);
+      const width = Number(metrics[2]);
+      if (height > 0 && width > 0 && height <= 1000 && width <= 1000)
+        next = { ...next, cellWidth: width, cellHeight: height };
+    }
+    if (next !== graphics) {
+      graphics = next;
+      dispatchInput(() => graphicsListeners.forEach((listener) => listener()));
+      redraw();
+    }
+  }
   let size = { columns: stdout.columns, rows: stdout.rows };
   let disposed = false;
   const raw = stdin.isRaw ?? false;
@@ -43,6 +76,7 @@ export function createTerminalSession(
   const resize = () => {
     size = { columns: stdout.columns, rows: stdout.rows };
     sizes.forEach((listener) => listener());
+    if (graphicsEnabled && graphics.supported) stdout.write("\x1b[16t");
     redraw();
   };
   let stopInput = () => {};
@@ -53,6 +87,7 @@ export function createTerminalSession(
     stopInput();
     inputs.clear();
     sizes.clear();
+    graphicsListeners.clear();
     stdout.off?.("resize", resize);
     sessions.delete(dispose);
     if (sessions.size === 0) {
@@ -74,9 +109,12 @@ export function createTerminalSession(
       (fullscreen ? "\x1b[?1049h\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1006h" : "") +
         "\x1b[?25l\x1b[?2004h",
     );
-    stopInput = listenInput(stdin, (event) =>
-      dispatchInput(() => inputs.forEach((listener) => listener(event))),
+    stopInput = listenInput(
+      stdin,
+      (event) => dispatchInput(() => inputs.forEach((listener) => listener(event))),
+      control,
     );
+    if (graphicsEnabled) stdout.write("\x1b_Gi=2147483647,a=q,t=d,f=24,s=1,v=1;AAAA\x1b\\\x1b[16t");
     stdout.on?.("resize", resize);
     if (sessions.size === 0) {
       process.on("exit", restoreAll);
@@ -93,6 +131,13 @@ export function createTerminalSession(
     dispose,
     redraw,
     getSize: () => size,
+    getGraphics: () => graphics,
+    subscribeGraphics(listener: () => void) {
+      graphicsListeners.add(listener);
+      return () => {
+        graphicsListeners.delete(listener);
+      };
+    },
     subscribeSize(listener: () => void) {
       sizes.add(listener);
       return () => {

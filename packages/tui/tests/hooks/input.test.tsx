@@ -18,6 +18,7 @@ test("fragmented SGR motion delivers cell coordinates while buttons and wheel re
     expect(events).toEqual([
       { type: "move", x: 3, y: 1 },
       { type: "move", x: 4, y: 2 },
+      { type: "move", x: 3, y: 1, button: 0 },
       { type: "mouse", action: "press", button: 0, x: 3, y: 1 },
       { type: "mouse", action: "release", button: 0, x: 3, y: 1 },
       { type: "wheel", input: "", x: 3, y: 1, delta: -1 },

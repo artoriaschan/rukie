@@ -11,6 +11,19 @@ const png =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jV2UAAAAASUVORK5CYII=";
 const paste = (text: string) => `\x1b[200~${text}\x1b[201~`;
 
+async function openOriginal(app: Awaited<ReturnType<typeof start>>) {
+  await app.waitFor(() =>
+    app.screen().some((line) => line.includes("打开原图") || line.includes("Open original")),
+  );
+  const row = app
+    .screen()
+    .findIndex((line) => line.includes("打开原图") || line.includes("Open original"));
+  const line = app.screen()[row]!;
+  const column = Math.max(line.indexOf("打开原图"), line.indexOf("Open original")) + 1;
+  app.stdin.write(`\x1b[<0;${column};${row + 1}M\x1b[<0;${column};${row + 1}m`);
+  app.stdin.write("\r");
+}
+
 test("a pasted image path becomes a colored token and reaches the model with its prompt", async () => {
   const app = await start([], {
     env: { LANG: "en_US.UTF-8" },
@@ -43,7 +56,7 @@ test("a pasted image path becomes a colored token and reaches the model with its
   }
 });
 
-test("clicking a user image opens a private original export and exit removes it", async () => {
+test("explicitly opening a user image original creates a private export and exit removes it", async () => {
   let opened = "";
   const app = await start([], {
     rows: 32,
@@ -68,6 +81,7 @@ test("clicking a user image opens a private original export and exit removes it"
     );
     const row = app.screen().findIndex((line) => line.includes("[Image · shot.png]"));
     app.stdin.write(`\x1b[<0;4;${row + 1}M\x1b[<0;4;${row + 1}m`);
+    await openOriginal(app);
     await app.waitFor(() => !!opened);
     expect(await readFile(opened)).toEqual(Buffer.from(png, "base64"));
     expect((await stat(opened)).mode & 0o777).toBe(0o600);
@@ -113,6 +127,7 @@ test("exit keeps a private export until its pending external open completes", as
     await app.waitFor(() => !app.isWorking());
     const row = app.screen().findIndex((line) => line.includes("[Image · shot.png]"));
     app.stdin.write(`\x1b[<0;4;${row + 1}M\x1b[<0;4;${row + 1}m`);
+    await openOriginal(app);
     await app.waitFor(() => !!opened);
     let exited = false;
     void app.exit.then(() => {
@@ -138,7 +153,7 @@ test("exit keeps a private export until its pending external open completes", as
   }
 });
 
-test("read images have clickable placeholders live and after resume", async () => {
+test("read images open a preview then explicit original live and after resume", async () => {
   let opened = "";
   const host = {
     readClipboard: async () => ({ empty: true as const }),
@@ -163,6 +178,7 @@ test("read images have clickable placeholders live and after resume", async () =
     );
     const row = app.screen().findIndex((line) => line.includes("[Image · read-shot.png]"));
     app.stdin.write(`\x1b[<0;4;${row + 1}M\x1b[<0;4;${row + 1}m`);
+    await openOriginal(app);
     await app.waitFor(() => !!opened);
     expect(await readFile(opened)).toEqual(Buffer.from(png, "base64"));
     app.calls[1]!.finish();
@@ -183,6 +199,7 @@ test("read images have clickable placeholders live and after resume", async () =
         .screen()
         .findIndex((line) => line.includes("[Image · read-shot.png]"));
       resumed.stdin.write(`\x1b[<0;4;${replayRow + 1}M\x1b[<0;4;${replayRow + 1}m`);
+      await openOriginal(resumed);
       await resumed.waitFor(() => !!opened);
       expect(await readFile(opened)).toEqual(Buffer.from(png, "base64"));
     } finally {
@@ -410,6 +427,7 @@ test("a user image placeholder remains visible and clickable after resume", asyn
       );
       const row = resumed.screen().findIndex((line) => line.includes("[Image · shot.png]"));
       resumed.stdin.write(`\x1b[<0;4;${row + 1}M\x1b[<0;4;${row + 1}m`);
+      await openOriginal(resumed);
       await resumed.waitFor(() => !!opened);
       expect(await readFile(opened)).toEqual(Buffer.from(png, "base64"));
     } finally {
@@ -451,6 +469,7 @@ test("an external viewer failure shows a warning and leaves the composer usable"
     );
     const row = app.screen().findIndex((line) => line.includes("[Image · shot.png]"));
     app.stdin.write(`\x1b[<0;4;${row + 1}M\x1b[<0;4;${row + 1}m`);
+    await openOriginal(app);
     await app.waitFor(() =>
       app.screen().some((line) => line.includes("Could not open image: viewer failed")),
     );
@@ -582,7 +601,7 @@ test("an image notice remains visible while reading history without moving the r
   }
 });
 
-test("restored image labels use a dim fallback and cap names at 80 columns", async () => {
+test("restored image galleries use localized dim labels within their thumbnail slots", async () => {
   const argv: string[] = [];
   const app = await start(argv, {
     columns: 120,
@@ -607,10 +626,11 @@ test("restored image labels use a dim fallback and cap names at 80 columns", asy
     },
   });
   try {
-    await app.waitFor(() => app.screen().some((line) => line.includes("[Image · Image]")));
-    expect(app.screen().join("\n")).toContain(`[Image · ${"中".repeat(40)}]`);
-    expect(app.screen().join("\n")).not.toContain("中".repeat(41));
-    const row = app.screen().findIndex((line) => line.includes("[Image · Image]"));
+    await app.waitFor(() => app.screen().some((line) => line.includes("[Image ·")));
+    expect(app.screen().join("\n")).toContain("图片");
+    expect(app.screen().join("\n")).toContain("中".repeat(5));
+    expect(app.screen().join("\n")).not.toContain("中".repeat(6));
+    const row = app.screen().findIndex((line) => line.includes("[Image ·"));
     expect(app.terminal.buffer.active.getLine(row)!.getCell(2)!.isDim()).toBeTruthy();
   } finally {
     await app.cleanup();
