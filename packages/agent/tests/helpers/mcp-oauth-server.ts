@@ -17,6 +17,7 @@ export function mcpOAuthServer(
     authorizationError?: string;
     authentication?: boolean;
     beforeTokenResponse?: () => Promise<void>;
+    tokenEndpointAuthMethods?: string[];
   } = {},
 ) {
   const requests: {
@@ -28,11 +29,15 @@ export function mcpOAuthServer(
   const clients = new Map<string, { redirects: string[]; secret?: string }>();
   if (options.clientId)
     clients.set(options.clientId, { redirects: [], secret: options.clientSecret });
-  const codes = new Map<string, { client: string; redirect: string; challenge: string }>();
+  const codes = new Map<
+    string,
+    { client: string; redirect: string; challenge: string; scope: string }
+  >();
   const accessTokens = new Set<string>();
   const refreshTokens = new Set<string>();
   let sequence = 0;
   let rejectRefresh = false;
+  let needsMoreScope = false;
   const oauthError = (error: string) => Response.json({ error }, { status: 400 });
   const server = Bun.serve({
     port: 0,
@@ -71,7 +76,10 @@ export function mcpOAuthServer(
             response_types_supported: ["code"],
             grant_types_supported: ["authorization_code", "refresh_token"],
             code_challenge_methods_supported: ["S256"],
-            token_endpoint_auth_methods_supported: ["none", "client_secret_post"],
+            token_endpoint_auth_methods_supported: options.tokenEndpointAuthMethods ?? [
+              "none",
+              "client_secret_post",
+            ],
           });
         case "/register": {
           if (options.registration === false) return new Response(null, { status: 404 });
@@ -105,7 +113,7 @@ export function mcpOAuthServer(
             callback.searchParams.set("error", options.authorizationError);
           else {
             const code = `code-${++sequence}`;
-            codes.set(code, { client, redirect, challenge });
+            codes.set(code, { client, redirect, challenge, scope: query.get("scope") ?? "" });
             callback.searchParams.set("code", code);
           }
           return Response.redirect(callback.href, 302);
@@ -129,6 +137,7 @@ export function mcpOAuthServer(
             )
               return oauthError("invalid_grant");
             codes.delete(body.code!);
+            if (code.scope.split(" ").includes("tools:write")) needsMoreScope = false;
           } else if (body.grant_type === "refresh_token") {
             if (rejectRefresh || !refreshTokens.delete(body.refresh_token ?? ""))
               return oauthError("invalid_grant");
@@ -147,6 +156,13 @@ export function mcpOAuthServer(
         }
         case "/mcp": {
           const authorization = request.headers.get("authorization") ?? "";
+          if (needsMoreScope && Value.Check(Rpc, body) && body.method === "tools/call")
+            return new Response("Additional authorization required", {
+              status: 403,
+              headers: {
+                "WWW-Authenticate": `Bearer error="insufficient_scope", scope="tools tools:write", resource_metadata="${origin}/.well-known/oauth-protected-resource"`,
+              },
+            });
           if (
             options.authentication !== false &&
             !accessTokens.has(authorization.replace(/^Bearer /, ""))
@@ -197,6 +213,9 @@ export function mcpOAuthServer(
     },
     rejectRefresh() {
       rejectRefresh = true;
+    },
+    requireMoreScopes() {
+      needsMoreScope = true;
     },
     stop: () => server.stop(true),
   };
