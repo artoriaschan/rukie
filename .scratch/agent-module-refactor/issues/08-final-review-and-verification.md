@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 Blocked by: [07](07-session-assembly-and-boundaries.md)
 
 # 08：最终 Standards/Spec 审查与完整验证
@@ -19,7 +19,7 @@ Blocked by: [07](07-session-assembly-and-boundaries.md)
 - [x] 验证内置协议、结果/错误细节、事件、动态刷新、Transcript与包公开导出兼容，CLI/TUI消费者保持。
 - [x] 对照 182d278 基线与 Spec 的 MCP 验收，复核快照公开类型、刷新/管理/通知/取消契约，以及普通/fork 子 Session OAuth origin、凭据共享和精确工具继承；确认复用了相应公开套件，Frontend 面板状态没有进入 Agent Core。
 - [x] 核对Plan Mode和Subagent的并发、存储失败、父子共享、恢复与取消完成边界，以及Bash/Job进程资源清理。
-- [ ] 运行隔离配置且清除NO_COLOR的完整bun run check，记录实际退出码、通过/失败计数与日志。
+- [x] 运行隔离配置且清除NO_COLOR的完整bun run check，记录实际退出码、通过/失败计数与日志。
 - [x] 复查工程规则、架构、ADR迁移状态、源码及文档链接一致，根CLAUDE.md软链接保留。
 - [x] 核对顶层 bash/web-fetch/goal/jobs/subagents/plan-mode/review 旧落点、散落的 Plan 工具、tool-state Todo 定义及废弃转导出均已删除；能力内部协议/执行分工和全部消费者没有遗漏。
 - [x] 将各票状态与真实完成结果对齐，追加实施和验证证据；未解决检查或范围内问题不能标为resolved。
@@ -87,7 +87,7 @@ Blocked by: [07](07-session-assembly-and-boundaries.md)
   - 事件与动态刷新：`tool-declarations.test.ts` 的 `deltas()` 直接断言 system 消息 `toolsAdded`/`toolsRemoved` 的提交顺序（启动 seed → Run 开始追加 MCP → Turn 准备不重复；后续 Run 只重建 `subagent` 声明）。
   - CLI/TUI 消费者：`test:cli` 127/0 与 `test:tui` 956/0 全绿，含 Plan Mode、jobs panel、subagent card、rewind、MCP panel/auth 等消费者套件。
 
-  未解决项（本票不标 resolved 的唯一原因）：`env -u NO_COLOR bun run check` 由执行请求保留给编排者在 `ba200b7` 并行运行，本票未运行、也未收到结果，故 AC 第 5 项保持未勾选。注意本票为修复 Oxlint 缺陷改动了 `.oxlintrc.json`，因此 `ba200b7` 上的聚合结果不再覆盖最终提交；追加该证据时必须针对最终提交重跑（或由本票在收到指示后运行），并在本评论后追加实际退出码、通过/失败计数与日志。已在本票内针对该改动重跑全部静态检查与受影响套件（见上），但这不是同一次聚合运行。
+  未解决项（当时的唯一原因，已由下一条评论关闭）：`env -u NO_COLOR bun run check` 由执行请求保留给编排者在 `ba200b7` 并行运行，本票未运行、也未收到结果，故 AC 第 5 项保持未勾选。注意本票为修复 Oxlint 缺陷改动了 `.oxlintrc.json`，因此 `ba200b7` 上的聚合结果不再覆盖最终提交；追加该证据时必须针对最终提交重跑（或由本票在收到指示后运行），并在本评论后追加实际退出码、通过/失败计数与日志。已在本票内针对该改动重跑全部静态检查与受影响套件（见上），但这不是同一次聚合运行。
 
   其他未能验证/限制：
   - 预迁移审计的"654 次断言"不可复现为稳定计数：同一组 7 个 MCP/Job 套件连续运行得到 654/656/657/658 次 `expect()`（含时序条件断言）。通过/失败与退出码稳定（112/0，exit 0），文件 blob 与 `5c730be` 逐一相同，故以 blob 相同 + 112/0 作为断言未变的证据。
@@ -95,3 +95,19 @@ Blocked by: [07](07-session-assembly-and-boundaries.md)
   - 各实施票的变异验证（票 05 的名额释放、票 06 的同值等待与通知队列）未由本票重放：重放需要在生产代码上制造临时变异，超出最终审查票范围；本票只确认相关代码路径与断言存在且通过，并保持各票原有的"未独立区分"披露。
   - 本票未运行 web-fetch 的真实网络专项之外的任何新场景；Web Fetch 的地址/DNS pinning/代理/重定向行为由 blob 与 `5c730be` 相同的既有套件（`web-fetch*` 共 5 个文件）覆盖，不是本票可独立区分的证据。
   - 未验证 worktree 清理（本票不扩大 Git 范围）。
+
+- 2026-10-07：AC 第 5 项完成，本票转 `resolved`。编排者确认本票的 `.oxlintrc.json` 修复正确（独立复现：临时 `tools/zzprobe/controller.ts` 导入 `../builtin.ts` + `../../session/tools.ts` → `Found 0 warnings and 2 errors`，两条命中该两行；`zzprobe/tools.ts`、`zzprobe/index.ts` 不被标记；前端规则与组装入口规则在同一 override 内共存，`@neant/tui` + `../builtin.ts` → 2 errors；探针已删除、无残留），并指示由本票在合并结果上运行聚合检查、自行记录。
+
+  Git 状态：`587457a`（HEAD，`docs(agent): align ticket status and evidence with the delivered refactor`）→ `5f98cd8`（`fix(agent): restrict capability modules from importing the tools entry`）→ `ba200b7`（集成点）。`git merge agent-module-refactor --no-edit` → `Already up to date.`（exit 0）：集成分支尖端 `ba200b7af52b26f9132283b9255737ae66a3d9b9` 已是本分支祖先（`git merge-base --is-ancestor agent-module-refactor HEAD` = YES），因此没有合并提交；合并结果即 HEAD `587457aa3a75cb4792493b82dafe79e73cff5045`，合并后工作树干净（`git status --porcelain` 为空）。未做 worktree 清理。
+
+  聚合检查（在合并结果 `587457a` 上运行，命令与逐步结果来自同一次调用的完整日志）：
+  - 命令：`env -u NO_COLOR bun run check`（= `oxfmt --check && oxlint && tsc -b && knip && bun test --parallel=4`）；退出码 **0**。
+  - `oxfmt --check`：`All matched files use the correct format.` / `Finished in 682ms on 694 files`（exit 0）。
+  - `oxlint`：`Found 0 warnings and 0 errors.` / `Finished in 13ms on 398 files with 98 rules`（exit 0）。
+  - `tsc -b`：无输出（exit 0，后续步骤得以继续）。
+  - `knip`：无输出（exit 0）。
+  - `bun test --parallel=4`：**2497 pass / 0 fail**，14040 expect，179 文件，60.37s，exit 0。
+  - 计数与分项运行完全自洽：179 文件 = `test:agent` 79 + `test:tui` 94 + `test:cli` 5 + `packages/i18n/tests` 1；2497 pass = 1390 + 956 + 127 + 24。这同时证明根 `bun test --parallel=4` 的发现范围与三个 `test:*` 脚本加 i18n 的并集一致，没有遗漏测试根目录。
+  - 完整日志 5449 行（按仓库惯例 `.scratch/` 只提交 Markdown，故未提交日志文件）；可核对的锚点：第 5–8 行为 oxfmt/oxlint 结果，第 5445–5449 行为 `2497 pass` / `0 fail` / `14040 expect() calls` / `Ran 2497 tests across 179 files. [60.37s]` / `EXIT=0`。
+
+  本票此后的改动仅为 `.scratch/` 下的文档（本评论、各票状态与 spec 状态行）：按根 `AGENTS.md`"仅文档变化时验证格式、引用路径与 diff，不运行测试"执行——对改动的 Markdown 运行 `bunx --no -- oxfmt --check <files>`、`git diff --check`，并重新逐条核对相对链接与锚点。代码、配置与依赖自聚合检查后未再变化。
