@@ -71,7 +71,15 @@
                 "message": "Agent Core must not depend on Frontend screens, components, or command parsing."
               },
               {
-                "group": ["./tools.ts", "./tool.ts", "../index.ts", "../../tools/index.ts"],
+                "group": [
+                  "./tools.ts",
+                  "./tool.ts",
+                  "../index.ts",
+                  "../../tools/index.ts",
+                  "../builtin.ts",
+                  "../../tools/builtin.ts",
+                  "../../session/tools.ts"
+                ],
                 "message": "A capability execution module must not import its own protocol adapter or the global tools entry."
               }
             ]
