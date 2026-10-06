@@ -59,6 +59,7 @@ function content(node: HostNode, inherited: TextStyle = {}): TextSpan[] {
     dimColor: node.props.dimColor ?? inherited.dimColor,
     inverse: node.props.inverse ?? inherited.inverse,
     italic: node.props.italic ?? inherited.italic,
+    underline: node.props.underline ?? inherited.underline,
   };
   return node.children.flatMap((child) => content(child, style));
 }
