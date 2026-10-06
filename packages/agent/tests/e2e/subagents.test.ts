@@ -594,9 +594,6 @@ test("parent cancellation during child creation settles the late child without a
   expect(await rejected).toBeInstanceOf(Error);
   // The reserved AbortController was already aborted, so the late child Run
   // never reaches the model and the aborted parent sends no notification.
-  expect(await rejected).toBeInstanceOf(Error);
-  // The reserved AbortController was already aborted, so the late child Run
-  // never reaches the model and the aborted parent sends no notification.
   expect(
     fake.contexts.filter((context) =>
       JSON.stringify(context.messages).includes("You are a subagent"),
