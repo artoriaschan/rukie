@@ -31,7 +31,7 @@ http 的可选 `oauth` 配置接受 `clientId`、`clientSecret`、`callbackPort`
 
 ## 登录与连接
 
-TUI 中使用 `/mcp` 查看状态及工具数，使用 `/mcp login <server>` 登录、`/mcp logout <server>` 删除本地 MCP Credential、`/mcp reconnect <server>` 重试连接。报告可在 Run 中查看，三个子命令只能在空闲时执行。
+TUI 中使用 `/mcp` 查看状态及工具数，使用 `/mcp login <server>` 登录、`/mcp logout <server>` 删除本地 MCP Credential、`/mcp reconnect <server>` 重试连接。报告可在 Run 中查看，三个子命令只能在空闲时执行。首次探测尚未完成时显示 loading，稍后再次执行 `/mcp` 查看报告。
 
 需要 OAuth 的 server 被标为 `needs-auth`，TUI 每个 Session 提示一次登录命令。连接本身不会打开浏览器；用户执行登录命令或模型调用 `mcp__<server>__authenticate` 后才开始授权。这个工具默认允许执行，仍经过 hooks 和显式 Permission Rule。成功后，它在当前 Run 的下一 Turn 被真实工具替换。
 
@@ -49,6 +49,6 @@ MCP Credential 存在 Session 的 `homeDir` 下的 `.neant/credentials.json`，�
 
 ## Frontend 接口
 
-Session 暴露 `mcpServers()`、`authenticateMcp(name)`、`clearMcpAuth(name)`、`reconnectMcp(name)`；类型与取消契约以[公共 Session 声明](../packages/agent/src/session/index.ts)和[共享类型](../packages/shared/src/index.ts)为准。
+Session 暴露 `mcpServers()`、`authenticateMcp(name)`、`clearMcpAuth(name)`、`reconnectMcp(name)`；类型与取消契约以[公共 Session 声明](../packages/agent/src/session/index.ts)和[共享状态类型](../packages/shared/src/mcp.ts)为准。状态中的 `error` 保留原始英文消息；已知 Agent Core 错误另带 `errorData`，Frontend 用它按 locale 呈现。
 
 `mcpServers()` 返回上一次 Run 的状态；没有记录时独立连接、发现工具并关闭，不写 Transcript 或注入 reminder。后三个方法在 Run 中返回 busy 错误。Frontend 提供 `onMcpAuth` 以显示交互；没有回调时主动登录被拒绝，模型也看不到登录工具。交互、状态报告和登录 UI 不进入 Agent Core Transcript。

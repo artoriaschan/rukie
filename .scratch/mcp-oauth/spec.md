@@ -1,4 +1,4 @@
-Status: claimed
+Status: ready-for-human
 
 # Spec: MCP OAuth 授权
 
@@ -238,3 +238,9 @@ Status: claimed
 
 - 2026-10-06：在 `codex/mcp-oauth` 集成分支实施，起点 `696e488`。按依赖图为每张票创建独立受管理 worktree，由实现子代理完成后集成。公共测试边界沿用本 spec 的 Testing Decisions。
 - 基线验证：按锁文件安装依赖；临时 HOME 下运行 `env -u NO_COLOR bun run check`，exit 0，2201 pass、0 fail（159 个文件）。最初未安装依赖时检查因找不到 oxfmt 退出；实际 HOME 下的首轮测试已停止，以上通过结果来自隔离后的完整重跑。
+- 2026-10-06：01–08 的代码实现已进入 `codex/mcp-oauth`；审查修复集成提交 `ca35ecd3d25c4eeea9b815d4066cda801161363e`。08 的真实账户完整授权验收仍单独记录，不以模拟 server 的通过替代。
+- 两轴独立审查以 `696e488` 为固定起点：Standards 发现一项已知错误本地化问题及一项重复 needs-auth 状态构造的判断性建议；Spec 发现回调草稿覆盖所选操作、同一 Run 登录后的追加 scopes 丢失。一个实现代理在 `41cd0ff` 统一修复，两个原审查代理复核均确认全部解决，无新增问题；Spec 独立回归 12 pass、0 fail。
+- 最终完整验证：修复 worktree 的隔离 HOME 下运行 `env -u NO_COLOR bun run check`，exit 0，2309 pass、0 fail、11818 assertions，166 files（308.73 s），format、lint、types、Knip 全通过。初次修复检查只有一个原有中文测试仍期望英文前缀失败；仅同步该文案断言，保留通知颜色、单行、次数和 Transcript 断言后完整重跑。日志 `/tmp/neant-mcp-oauth-review-check.log`，旧日志 `/tmp/neant-mcp-oauth-review-check-before-localized-expectation.log`。
+- 合并验证：集成 `HEAD` 与完整测试提交的 Git tree 完全相同（`c1adfded797e110ba728c9067eff771e86a1f5d4`）；集成工作区另跑 212 pass、0 fail、933 assertions 的公开组合测试及 format、lint、types、Knip，全部通过。日志 `/tmp/neant-mcp-oauth-review-integration.log`。后续交付记录与使用说明只修改 Markdown，单独验证格式与引用。
+- 清理：8 个工单 worktree 和 1 个审查修复 worktree 均先核对干净、提交已集成，再通过 Codex 归档；9 个归档附件已确认，集成工作区保留，其他功能 worktree 未改动。
+- 真实 Notion 尝试已验证 `/mcp` 的 needs-auth 报告、无模型调用、授权面板及系统浏览器打开；未完成账号授权，也未收到成功回调，临时 HOME、项目和凭据已清除。真实登录后的凭据复用、logout / reconnect 链路仍待用户完成账号操作，详见 [08 的验收记录](issues/08-tui-mcp-command.md)。01–07 resolved，08 和本 spec 保留 ready-for-human；没有把真实账号验收记为通过。
