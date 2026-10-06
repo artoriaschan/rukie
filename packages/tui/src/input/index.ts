@@ -35,7 +35,11 @@ const names: Record<string, string> = {
 };
 
 /** Decode a stream, retaining incomplete UTF-8, escape sequences and bracketed paste. */
-export function listenInput(stdin: Readable, emit: (event: InputEvent) => void) {
+export function listenInput(
+  stdin: Readable,
+  emit: (event: InputEvent) => void,
+  control?: (sequence: string) => void,
+) {
   const decoder = new StringDecoder("utf8");
   let buffer = "";
   let paste: string | undefined;
@@ -66,12 +70,28 @@ export function listenInput(stdin: Readable, emit: (event: InputEvent) => void) 
       }
       if (buffer[0] === "\x1b") {
         if (buffer.length === 1) return;
+        if (buffer[1] === "_") {
+          const end = buffer.indexOf("\x1b\\", 2);
+          if (end < 0) {
+            // Bound malformed control strings without exposing their payload as keys.
+            if (buffer.length > 4096) buffer = "\x1b_";
+            return;
+          }
+          const sequence = buffer.slice(0, end + 2);
+          buffer = buffer.slice(end + 2);
+          control?.(sequence);
+          continue;
+        }
         if (buffer[1] === "[" || buffer[1] === "O") {
           // oxlint-disable-next-line no-control-regex -- ANSI key sequences start with a literal ESC byte
           const sequence = /^\x1b(?:\[|O)([0-?]*)([ -/]*)([@-~])/.exec(buffer);
           if (!sequence) return;
           buffer = buffer.slice(sequence[0].length);
           const [, parameters = "", , final = ""] = sequence;
+          if (final === "t") {
+            control?.(sequence[0]);
+            continue;
+          }
           if (parameters.startsWith("<")) {
             const [button, column, row] = parameters.slice(1).split(";").map(Number);
             if (

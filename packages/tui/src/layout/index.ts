@@ -1,4 +1,4 @@
-import type { BoxProps, TextProps } from "../components";
+import type { BoxProps, TextProps, ImageProps } from "../components";
 import {
   lineWidth,
   textCursor,
@@ -10,8 +10,9 @@ import {
 import { Node, Direction, Edge, FlexDirection, Gutter, MeasureMode, PositionType } from "../yoga";
 import type { ScrollState } from "../scroll";
 
-export type HostType = "tui-box" | "tui-text" | "tui-static" | "tui-scroll";
+export type HostType = "tui-box" | "tui-text" | "tui-static" | "tui-scroll" | "tui-image";
 export type HostProps = BoxProps &
+  Partial<ImageProps> &
   TextProps & {
     input?: boolean;
     maxLines?: number;
@@ -224,7 +225,10 @@ export function calculateTree(root: HostNode, columns: number, rows?: number): L
     }
     return {
       source: node,
-      type: node.type === "tui-text" || node.type === "tui-scroll" ? node.type : "tui-box",
+      type:
+        node.type === "tui-text" || node.type === "tui-scroll" || node.type === "tui-image"
+          ? node.type
+          : "tui-box",
       props: node.props,
       spans: text?.spans ?? [],
       lines: text?.lines,

@@ -18,3 +18,8 @@ export function useTerminalSize() {
   const terminal = useTerminal();
   return useSyncExternalStore(terminal.subscribeSize, terminal.getSize);
 }
+
+export function useTerminalGraphics() {
+  const terminal = useTerminal();
+  return useSyncExternalStore(terminal.subscribeGraphics, terminal.getGraphics);
+}

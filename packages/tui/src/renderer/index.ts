@@ -17,6 +17,7 @@ import {
 } from "../layout";
 import { createScreen } from "../screen";
 import { ClockProvider } from "../hooks/animation-frame";
+import { createGraphics } from "../graphics";
 import { createHover } from "./hover";
 
 export interface RenderOptions extends TerminalIO {
@@ -29,6 +30,8 @@ interface Container {
   active: boolean;
   screen: ReturnType<typeof createScreen>;
   hover: ReturnType<typeof createHover>;
+  graphics: ReturnType<typeof createGraphics>;
+  graphicsSupported(): boolean;
   completed: WeakSet<HostNode>;
   pending: LayoutNode[];
   timer?: ReturnType<typeof setTimeout>;
@@ -46,6 +49,7 @@ function paint(container: Container) {
       container.options.fullscreen ? stdout.rows : undefined,
     );
     stdout.write(container.screen(layout, stdout.columns, stdout.rows, container.pending));
+    container.graphics.paint(layout, stdout.columns, stdout.rows, container.graphicsSupported());
     container.hover.record(layout, stdout.columns, stdout.rows);
     container.pending = [];
   } catch (error) {
@@ -159,6 +163,8 @@ export function render(element: ReactNode, options: RenderOptions) {
     active: true,
     screen: createScreen(options.fullscreen),
     hover: createHover(),
+    graphics: createGraphics((text) => options.stdout.write(text)),
+    graphicsSupported: () => Boolean(options.fullscreen && terminal.getGraphics().supported),
     completed: new WeakSet(),
     pending: [],
     onError(error) {
@@ -175,10 +181,12 @@ export function render(element: ReactNode, options: RenderOptions) {
       if (!container.active) return;
       container.hover.clear();
       container.screen.invalidate();
+      container.graphics.clear();
       schedulePaint(container);
     },
     () => {
       container.active = false;
+      container.graphics.clear();
       clearTimeout(container.timer);
       container.pending = [];
       if (container.error !== undefined) exit.reject(container.error);
