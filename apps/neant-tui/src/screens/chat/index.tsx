@@ -232,6 +232,27 @@ function Chat({
 }) {
   const t = createTuiI18n(locale);
   const theme = useTheme();
+  const [clipboardImage, setClipboardImage] = useState(false);
+  useEffect(() => {
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const check = async () => {
+      let image = false;
+      try {
+        image = await host.hasClipboardImage();
+      } catch {
+        // Unavailable clipboard offers remove the passive hint without notifying the user.
+      }
+      if (!active) return;
+      setClipboardImage(image);
+      timer = setTimeout(() => void check(), 1000);
+    };
+    void check();
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [host]);
   const composer = useMemo(createComposerImages, [session]);
   const pasteOwner = useRef(true);
   const pasteEpoch = useRef(0);
@@ -1425,6 +1446,12 @@ function Chat({
         onInterrupt={() => session.interruptSubagent(selectedSubagent.agentId)}
       />
     );
+  const promptReadOnly =
+    !!preview ||
+    modelPicker !== undefined ||
+    !!resumePicker ||
+    !!rewind ||
+    (!!interaction && !userQuestion?.collapsed);
   return (
     <Box flexDirection="column" height={rows}>
       <ScrollBox
@@ -1692,15 +1719,15 @@ function Chat({
               }
               notice={imageNotice}
               warning={wrappedModelNotice}
-              tip={rewindArmedAt === undefined ? undefined : t("rewind.again")}
-              key={promptRevision}
-              readOnly={
-                !!preview ||
-                modelPicker !== undefined ||
-                !!resumePicker ||
-                !!rewind ||
-                (!!interaction && !userQuestion?.collapsed)
+              tip={
+                rewindArmedAt !== undefined
+                  ? t("rewind.again")
+                  : clipboardImage && !promptReadOnly
+                    ? t("image.clipboard-tip")
+                    : undefined
               }
+              key={promptRevision}
+              readOnly={promptReadOnly}
               compact={compactPrompt}
               maxLines={compactPrompt ? 1 : promptMaxLines}
               columns={columns}

@@ -4,7 +4,7 @@ import type { TuiHost } from "./index";
 import { createPrivateExports } from "./private-exports";
 
 /** One TUI owns its private exports and waits for pending opens before cleanup. */
-export function createImageViewer(host: TuiHost) {
+export function createImageViewer(host: Pick<TuiHost, "openExternal">) {
   const exports = createPrivateExports("neant-images-");
   return {
     open(image: PromptImage) {

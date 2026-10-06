@@ -8,6 +8,8 @@ export type ClipboardContent =
   | { unavailable: true };
 
 export interface TuiHost {
+  /** Probe clipboard offers without exporting or decoding image bytes. */
+  hasClipboardImage(): Promise<boolean>;
   readClipboard(): Promise<ClipboardContent>;
   openExternal(path: string): Promise<void>;
 }
@@ -16,6 +18,7 @@ export interface TuiHost {
 export function createDefaultHost() {
   const clipboard = createClipboard();
   const host: TuiHost = {
+    hasClipboardImage: clipboard.hasImage,
     readClipboard: clipboard.read,
     async openExternal(path) {
       const command =
