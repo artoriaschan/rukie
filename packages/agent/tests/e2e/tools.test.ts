@@ -62,7 +62,7 @@ test("glob scoped to a subdirectory still honors parent gitignore rules", async 
   });
 });
 
-test("bash times out and returns an error without ending the Run", async () => {
+test("bash times out and moves to a background job without ending the Run", async () => {
   dirs = await tempDirs();
   const fake = fakeModel([
     fauxAssistantMessage(
@@ -74,12 +74,22 @@ test("bash times out and returns an error without ending the Run", async () => {
     fauxAssistantMessage("recovered"),
   ]);
   const session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
-  expect((await session.run("slow command")).text).toBe("recovered");
-  expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
-    role: "toolResult",
-    isError: true,
-    content: [{ type: "text", text: "Command timed out after 0.05 seconds" }],
-  });
+  try {
+    expect((await session.run("slow command")).text).toBe("recovered");
+    expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
+      role: "toolResult",
+      isError: false,
+      content: [
+        {
+          type: "text",
+          text: "[still running after 0.05s; moved to background job bash-1]\nThe command keeps running in the background. You will be notified when it finishes; read newer output with job_output, stop it with job_kill.",
+        },
+      ],
+      details: { jobId: "bash-1" },
+    });
+  } finally {
+    await session.dispose();
+  }
 });
 
 test("aborting a Run kills bash and its child process and preserves the error in the Transcript", async () => {

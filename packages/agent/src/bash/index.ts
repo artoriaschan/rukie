@@ -16,7 +16,10 @@ const schema = Type.Object({
   command: Type.String({ description: "Bash command to execute." }),
   description: Type.String({ description: "Short description in 3–10 words." }),
   timeout: Type.Optional(
-    Type.Number({ description: "Timeout in seconds (default: 120; maximum: 600)." }),
+    Type.Number({
+      description:
+        "Foreground timeout in seconds (default: 120; maximum: 600); still-running commands move to background jobs.",
+    }),
   ),
   run_in_background: Type.Optional(
     Type.Boolean({ description: "Start a background job and return immediately." }),
@@ -30,7 +33,7 @@ export function createBashTool(cwd: string, jobs: Jobs): AgentTool<typeof schema
   return {
     name: "bash",
     label: "bash",
-    description: `Execute a bash command. Returns combined stdout and stderr, truncated to the last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB. If truncated, full output is saved to a temp file. Timeout defaults to 120 seconds (maximum: 600). Set run_in_background to start a job without a timeout; use job_output, job_list, and job_kill to manage it.`,
+    description: `Execute a bash command. Returns combined stdout and stderr, truncated to the last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB. If truncated, full output is saved to a temp file. Timeout defaults to 120 seconds (maximum: 600); commands still running at the timeout move to background jobs. Set run_in_background to start a job without a timeout; use job_output, job_list, and job_kill to manage it.`,
     parameters: schema,
     async execute(
       _id,
@@ -93,19 +96,29 @@ export function createBashTool(cwd: string, jobs: Jobs): AgentTool<typeof schema
           if (capture.truncated) capture.setSpillPath(job!.view.spillPath!);
         },
       });
+      let promoted = false;
       const abort = () => {
+        if (promoted) return;
         status ??= "Command aborted";
         terminate();
       };
-      const timer = setTimeout(() => {
-        status ??= `Command timed out after ${timeout} seconds`;
-        terminate();
-      }, timeout * 1000);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const deadline = new Promise<undefined>((done) => {
+        timer = setTimeout(() => {
+          if (status) return;
+          promoted = true;
+          job!.promote();
+          signal?.removeEventListener("abort", abort);
+          done(undefined);
+        }, timeout * 1000);
+      });
       try {
         onUpdate?.({ content: [], details: undefined });
         signal?.addEventListener("abort", abort, { once: true });
         if (signal?.aborted) abort();
-        const code = await job.completed;
+        const code = await Promise.race([job.completed, deadline]);
+        // The promotion result hands over output already shown by foreground capture.
+        if (promoted) await job.collect(false, 0);
         failure ??= job.failure;
         capture.finish();
         capture.flush();
@@ -123,6 +136,13 @@ export function createBashTool(cwd: string, jobs: Jobs): AgentTool<typeof schema
           else
             text += `\n\n[Showing lines ${start}-${end} of ${end} (${formatSize(DEFAULT_MAX_BYTES)} limit). Full output: ${output.spillPath}]`;
         }
+        if (promoted) {
+          text += `${text ? "\n" : ""}[still running after ${timeout}s; moved to background job ${job.view.id}]\nThe command keeps running in the background. You will be notified when it finishes; read newer output with job_output, stop it with job_kill.`;
+          return {
+            content: [{ type: "text", text }],
+            details: { ...details, jobId: job.view.id },
+          };
+        }
         status ??=
           failure instanceof Error ? failure.message : failure ? String(failure) : undefined;
         status ??= code !== 0 ? `Command exited with code ${code}` : undefined;
@@ -135,7 +155,7 @@ export function createBashTool(cwd: string, jobs: Jobs): AgentTool<typeof schema
         clearTimeout(timer);
         signal?.removeEventListener("abort", abort);
         capture.dispose();
-        jobs.forget(job.view.id);
+        if (!promoted) jobs.forget(job.view.id);
       }
     },
   };
