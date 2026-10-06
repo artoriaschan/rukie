@@ -53,7 +53,7 @@ type PendingInteraction =
   | { kind: "question"; interaction: QuestionInteraction; finish(reply: QuestionReply): void };
 
 /** Keep the Interaction FIFO outside React so each key sees the latest request. */
-export function createInteractions(host: TuiHost) {
+export function createInteractions(host: Pick<TuiHost, "readClipboard">) {
   const pending: PendingInteraction[] = [];
   const listeners = new Set<() => void>();
   let clipboardBusy: symbol | undefined;

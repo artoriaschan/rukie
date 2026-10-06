@@ -32,6 +32,7 @@
  */
 
 const zh = {
+  "image.clipboard-tip": "剪贴板中有图片 · ctrl+v 粘贴",
   "image.label": "图片",
   "image.preview-title": "图片 #{{index}}",
   "image.fit": "适应",
@@ -307,6 +308,7 @@ const zh = {
 } as const;
 
 const en = {
+  "image.clipboard-tip": "Image in clipboard · ctrl+v to paste",
   "image.label": "Image",
   "image.preview-title": "Image #{{index}}",
   "image.fit": "Fit",

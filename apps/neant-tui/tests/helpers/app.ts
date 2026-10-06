@@ -16,7 +16,7 @@ export async function start(
     controlReviews?: boolean;
     controlTitles?: boolean;
     env?: Record<string, string | undefined>;
-    host?: TuiIo["host"];
+    host?: Partial<NonNullable<TuiIo["host"]>>;
   } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), "neant-tui-"));
@@ -30,9 +30,11 @@ export async function start(
   const exit = main(argv, {
     ...terminal,
     env: options.env ?? { LANG: "zh_CN.UTF-8" },
-    host: options.host ?? {
+    host: {
+      hasClipboardImage: async () => false,
       readClipboard: async () => ({ unavailable: true }),
       openExternal: async () => {},
+      ...options.host,
     },
     stderr: (text) => (stderr += text),
     session: { cwd: root, homeDir: root, ...fake, ...options.session },

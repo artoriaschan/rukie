@@ -32,6 +32,25 @@ error messageText number errorNumber
 end try
 end run`;
 
+const imageTypes = [
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+  "image/tiff",
+  "image/bmp",
+];
+const hasImageExtension = (path: string) => /\.(png|jpe?g|gif|webp)$/i.test(path);
+const uriFiles = (value: string) =>
+  value.split(/\r?\n/).flatMap((line) => {
+    if (!line.startsWith("file://")) return [];
+    try {
+      return [fileURLToPath(line)];
+    } catch {
+      return [];
+    }
+  });
+
 /** Per-main clipboard exports outlive staging and are reclaimed after pending reads settle. */
 export function createClipboard() {
   const exports = createPrivateExports("neant-clipboard-");
@@ -55,9 +74,8 @@ export function createClipboard() {
     const path = await exports.write(extension, write);
     return path ? { image: { path } } : ({ unavailable: true } as const);
   };
-  const readMac = async (): Promise<ClipboardContent> => {
+  const macMetadata = async () => {
     const metadata = await run(["osascript", "-l", "JavaScript", "-e", macClipboard]);
-    let extension: string | undefined;
     if (metadata) {
       const value: unknown = JSON.parse(text(metadata));
       if (!value || typeof value !== "object" || !("files" in value) || !("types" in value))
@@ -70,6 +88,14 @@ export function createClipboard() {
         !types.every((type) => typeof type === "string")
       )
         throw new Error("Invalid clipboard metadata");
+      return { files, types };
+    }
+  };
+  const readMac = async (): Promise<ClipboardContent> => {
+    const metadata = await macMetadata();
+    let extension: string | undefined;
+    if (metadata) {
+      const { files, types } = metadata;
       if (files.length) return { files };
       // AppleScript clipboard info includes convertible formats; inspect native types to avoid conversion.
       extension = types.includes("public.png")
@@ -89,46 +115,37 @@ export function createClipboard() {
     const value = await run(["pbpaste"]);
     return value ? (value.length ? { text: text(value) } : { empty: true }) : { unavailable: true };
   };
+  const linuxRead = (backend: "wayland" | "x11", type: string) =>
+    run(
+      backend === "wayland"
+        ? ["wl-paste", "--no-newline", "--type", type]
+        : ["xclip", "-selection", "clipboard", "-o", "-t", type],
+    );
+  const linuxTypes = async (backend: "wayland" | "x11") => {
+    const advertised = await run(
+      backend === "wayland"
+        ? ["wl-paste", "--list-types"]
+        : ["xclip", "-selection", "clipboard", "-o", "-t", "TARGETS"],
+    );
+    return (
+      advertised &&
+      text(advertised)
+        .split(/\r?\n/)
+        .map((type) => type.trim())
+    );
+  };
   const readLinux = async (): Promise<ClipboardContent> => {
     for (const backend of ["wayland", "x11"] as const) {
-      const advertised = await run(
-        backend === "wayland"
-          ? ["wl-paste", "--list-types"]
-          : ["xclip", "-selection", "clipboard", "-o", "-t", "TARGETS"],
-      );
-      if (!advertised) continue;
-      const types = text(advertised)
-        .split(/\r?\n/)
-        .map((type) => type.trim());
-      const read = (type: string) =>
-        run(
-          backend === "wayland"
-            ? ["wl-paste", "--no-newline", "--type", type]
-            : ["xclip", "-selection", "clipboard", "-o", "-t", type],
-        );
+      const types = await linuxTypes(backend);
+      if (!types) continue;
+      const read = (type: string) => linuxRead(backend, type);
       if (types.includes("text/uri-list")) {
         const uris = await read("text/uri-list");
         if (!uris) continue;
-        const files = text(uris)
-          .split(/\r?\n/)
-          .flatMap((line) => {
-            if (!line || line.startsWith("#") || !line.startsWith("file://")) return [];
-            try {
-              return [fileURLToPath(line)];
-            } catch {
-              return [];
-            }
-          });
+        const files = uriFiles(text(uris));
         if (files.length) return { files };
       }
-      const imageType = [
-        "image/png",
-        "image/jpeg",
-        "image/gif",
-        "image/webp",
-        "image/tiff",
-        "image/bmp",
-      ].find((type) => types.includes(type));
+      const imageType = imageTypes.find((type) => types.includes(type));
       if (imageType) {
         const bytes = await read(imageType);
         if (!bytes) continue;
@@ -147,7 +164,31 @@ export function createClipboard() {
     const value = await run(["xsel", "--clipboard", "--output"]);
     return value ? (value.length ? { text: text(value) } : { empty: true }) : { unavailable: true };
   };
+  const hasImage = async () => {
+    if (process.platform === "darwin") {
+      const metadata = await macMetadata();
+      if (!metadata) return false;
+      return metadata.files.length
+        ? metadata.files.some(hasImageExtension)
+        : metadata.types.includes("public.png") || metadata.types.includes("public.tiff");
+    }
+    if (process.platform === "win32") return false;
+    for (const backend of ["wayland", "x11"] as const) {
+      const types = await linuxTypes(backend);
+      if (!types) continue;
+      if (types.includes("text/uri-list")) {
+        const uris = await linuxRead(backend, "text/uri-list");
+        const files = uris && uriFiles(text(uris));
+        if (files?.length) return files.some(hasImageExtension);
+      }
+      return imageTypes.some((type) => types.includes(type));
+    }
+    return false;
+  };
   return {
+    hasImage(): Promise<boolean> {
+      return exports.closed ? Promise.resolve(false) : exports.track(hasImage());
+    },
     read(): Promise<ClipboardContent> {
       if (exports.closed) return Promise.resolve({ unavailable: true });
       const operation =
