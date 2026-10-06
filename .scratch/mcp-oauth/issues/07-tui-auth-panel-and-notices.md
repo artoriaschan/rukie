@@ -4,7 +4,7 @@
 
 **Blocked by:** 03
 
-**Status:** done
+**Status:** resolved
 
 - [x] host 新增 `writeClipboard(text): Promise<boolean>`（依次尝试 pbcopy、wl-copy、xclip、xsel、clip.exe）；`openExternal` 接受 URL，文件路径保持现有行为；测试 helper 提供默认 stub
 - [x] `onMcpAuth` 复用 question 面板，和审批、提问共用同一个槽位与 FIFO 队列；布局为 `◈ <server>`、问题、detail（动作结果、引导语、完整 URL）、复制授权链接 / 重新打开浏览器 / 取消登录、粘贴回调 URL 的自定义回答栏
