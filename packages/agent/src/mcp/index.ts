@@ -33,13 +33,42 @@ const StdioConfig = Type.Object({
   command: Type.String({ minLength: 1 }),
   args: Type.Optional(Type.Array(Type.String())),
   env: Type.Optional(Type.Record(Type.String(), Type.String())),
+  oauth: Type.Optional(Type.Never()),
+});
+const OAuthConfig = Type.Object({
+  clientId: Type.Optional(Type.String()),
+  clientSecret: Type.Optional(Type.String()),
+  callbackPort: Type.Optional(Type.Integer({ minimum: 1, maximum: 65535 })),
+  authServerMetadataUrl: Type.Optional(Type.String()),
 });
 const HttpConfig = Type.Object({
   type: Type.Optional(Type.Enum(["http", "streamable-http"])),
   url: Type.String({ minLength: 1 }),
   headers: Type.Optional(Type.Record(Type.String(), Type.String())),
+  oauth: Type.Optional(OAuthConfig),
 });
 const ServerConfig = Type.Union([StdioConfig, HttpConfig]);
+
+function expandEnvironment(value: string): string {
+  return value.replace(
+    /\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^{}]*))?\}/g,
+    (_match, name: string, fallback: string | undefined) => {
+      const environment = process.env[name];
+      if (fallback !== undefined && !environment) return fallback;
+      if (environment !== undefined) return environment;
+      throw new Error(`Missing MCP environment variable: ${name}`);
+    },
+  );
+}
+
+function expandValues(values: Record<string, string> | undefined) {
+  return (
+    values &&
+    Object.fromEntries(
+      Object.entries(values).map(([key, value]) => [key, expandEnvironment(value)]),
+    )
+  );
+}
 
 function adaptTool(
   server: string,
@@ -201,7 +230,27 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
             throw new Error(
               `Invalid MCP configuration: ${invalid.instancePath || "/"} ${invalid.message}`,
             );
-          const entry = Value.Parse(ServerConfig, value);
+          const parsed = Value.Parse(ServerConfig, value);
+          if ("url" in parsed && parsed.oauth?.authServerMetadataUrl !== undefined) {
+            let valid = false;
+            try {
+              valid = new URL(parsed.oauth.authServerMetadataUrl).protocol === "https:";
+            } catch {
+              // Invalid URLs are configuration errors, before any connection is attempted.
+            }
+            if (!valid)
+              throw new Error(
+                "Invalid MCP configuration: /oauth/authServerMetadataUrl must be an HTTPS URL.",
+              );
+          }
+          const entry =
+            "url" in parsed
+              ? {
+                  ...parsed,
+                  url: expandEnvironment(parsed.url),
+                  headers: expandValues(parsed.headers),
+                }
+              : { ...parsed, env: expandValues(parsed.env) };
           const key =
             "url" in entry ? JSON.stringify([server, entry.url, entry.headers]) : undefined;
           requireAuth = () => {

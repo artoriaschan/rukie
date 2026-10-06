@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** claimed
+**Status:** resolved
 
 - [x] 新增 fake OAuth + MCP fixture（`Bun.serve`），端点：资源元数据、AS 元数据、DCR、`/authorize`、`/token`（authorization_code + refresh）、MCP 端点（没有 token 或 token 失效时返回 401 并带 `WWW-Authenticate`）；测试可以让 token 失效，并读到请求记录
 - [x] http server 一律带上由 pi `McpOAuthProvider` 经 `adaptOAuthProvider` 得到的 authProvider；先用内存存储，文件存储在 03 实现
@@ -21,3 +21,10 @@
 - `McpAuthRequest`, `McpAuthReply`, and `OnMcpAuth` live in Agent Core and are exported from `@neant/agent`, alongside existing callback types. Shared's runtime-agnostic `ESNext`/`types: []` configuration does not define `AbortSignal`; the `mcp_auth_required` event remains in `@neant/shared`.
 - Reusable fixture: `packages/agent/tests/helpers/mcp-oauth-server.ts` supplies protected resource/AS metadata, DCR or preconfigured clients, PKCE validation and one-use authorization codes, rotating refresh tokens, access invalidation, `invalid_grant`, callback errors, and observable HTTP request records. Headless tests load this owned fixture via a runtime URL with an explicit minimal type because their composite TypeScript project excludes Agent Core test sources. An initial static import raised TS6059/TS6307 and emitted an untracked declaration; that generated artifact was removed.
 - Focused checks: `rtk bun test packages/agent/tests/e2e/mcp-oauth.test.ts packages/agent/tests/e2e/mcp.test.ts apps/neant-cli/tests/main.test.ts` → 67 pass / 0 fail; `rtk bunx --no -- tsc -b`, `rtk bunx --no -- oxlint`, and `rtk bunx --no -- knip` → exit 0.
+
+- Required aggregate check, isolated temporary HOME with `.neant/file-history` and `NO_COLOR` unset: `bun run check` → exit 0, 2208 pass / 0 fail, 11422 assertions, 160 files, 289.85 s. Log: `/tmp/neant-mcp-oauth-02-check.log` (local evidence). This checked the ticket 02 branch before ticket 01 integration.
+- Merged integration `d0169a0` containing ticket 01. Conflict resolution preserves OAuth validation and expands parsed config once before authorization identity, pi provider, and transport construction. Combined focused MCP/OAuth/config/CLI suite → 87 pass / 0 fail; formatting, lint, types, and Knip → exit 0. Root integration's final aggregate check owns full combined verification.
+
+## Answer
+
+Needs-auth detection and Headless reporting are implemented. Ticket 03 replaces the deliberate authentication stub and in-memory state with full OAuth interaction and durable credentials. The strict fixture validates registered redirect URIs: initial discovery uses a placeholder redirect URI, so ticket 03 must replace discovery-only client registration before the explicit callback flow.
