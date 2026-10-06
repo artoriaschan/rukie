@@ -229,7 +229,9 @@ test.each([
         .getLine(app.terminal.buffer.active.viewportY + row)!
         .getCell(0)!;
       expect(cell.getFgColor()).toBe(0xd8b270);
-      expect(app.screen()[row]).toContain("Invalid MCP configuration:");
+      expect(app.screen()[row]).toContain(
+        locale === "zh" ? "MCP 配置无效：" : "Invalid MCP configuration:",
+      );
       expect(app.allLines().filter((line) => line.startsWith(prefix))).toHaveLength(1);
       expect(app.stderr()).toBe("");
       app.calls[0]!.delta("MCP checked");

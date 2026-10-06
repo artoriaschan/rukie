@@ -603,10 +603,10 @@ function reduceEvent(
                   ? event.message
                   : event.type === "compaction_end"
                     ? t("notice.compaction", { tokens: event.tokensBefore })
-                    : t("notice.mcp-error", { server: event.server, error: event.error }).replace(
-                        /\s+/g,
-                        " ",
-                      ),
+                    : t("notice.mcp-error", {
+                        server: event.server,
+                        error: formatError({ ...event.errorData, message: event.error }, t),
+                      }).replace(/\s+/g, " "),
           },
         ],
       };
@@ -733,7 +733,16 @@ export function createConversation(session: Session, model: string, locale: Loca
     if (!server) return;
     const details: unknown = event.result.details;
     if (event.isError)
-      notify(t("mcp.auth.failure", { err: resultText(event.result) }), "error", 8000);
+      notify(
+        t("mcp.auth.failure", {
+          err: formatError(
+            { ...(typeof details === "object" && details), message: resultText(event.result) },
+            t,
+          ),
+        }),
+        "error",
+        8000,
+      );
     else if (
       typeof details === "object" &&
       details !== null &&

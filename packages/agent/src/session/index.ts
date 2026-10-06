@@ -1073,7 +1073,10 @@ async function createSessionInternal(
     const connections = createMcpConnections(mcpAuthState);
     try {
       if (management.requireCallback && !options.onMcpAuth)
-        throw new Error("MCP authentication requires an onMcpAuth callback.");
+        throw createUserVisibleError("MCP authentication requires an onMcpAuth callback.", {
+          code: "mcp-auth-callback-required",
+          params: {},
+        });
       await mcpProbe;
       controller.signal.throwIfAborted();
       await connections.connect({
@@ -1091,7 +1094,11 @@ async function createSessionInternal(
         reconnect: management.reconnect,
       });
       const view = connections.servers().find((entry) => entry.name === name);
-      if (!view) throw new Error(`Unknown MCP server: ${name}`);
+      if (!view)
+        throw createUserVisibleError(`Unknown MCP server: ${name}`, {
+          code: "mcp-unknown-server",
+          params: { server: name },
+        });
       const result = await action(connections, controller.signal, view);
       return result;
     } finally {
@@ -1621,7 +1628,7 @@ async function createSessionInternal(
       if (disposePromise) throw new Error("Session has been disposed.");
       if (managingMcp && !mcpViews) await mcpManagementSettled?.promise;
       if (disposePromise) throw new Error("Session has been disposed.");
-      if (mcpViews) return mcpViews.map((view) => ({ ...view }));
+      if (mcpViews) return structuredClone(mcpViews);
       if (!mcpProbe) {
         const revision = mcpViewRevision;
         // A read-only probe may overlap a Run; the newer recorded snapshot wins.
@@ -1634,15 +1641,21 @@ async function createSessionInternal(
             mcpProbe = undefined;
           });
       }
-      return (await mcpProbe).map((view) => ({ ...view }));
+      return structuredClone(await mcpProbe);
     },
     authenticateMcp(name) {
       return manageMcp(
         name,
         async (connections, signal, view) => {
           if (view.transport !== "http")
-            throw new Error(`MCP authentication requires an HTTP server: ${name}`);
-          if (view.error) throw new Error(view.error);
+            throw createUserVisibleError(`MCP authentication requires an HTTP server: ${name}`, {
+              code: "mcp-auth-http-required",
+              params: { server: name },
+            });
+          if (view.error)
+            throw view.errorData
+              ? createUserVisibleError(view.error, view.errorData)
+              : new Error(view.error);
           return connections.authenticate(name, signal);
         },
         { requireCallback: true },
@@ -1650,7 +1663,10 @@ async function createSessionInternal(
     },
     clearMcpAuth(name) {
       return manageMcp(name, async (connections, _signal, view) => {
-        if (view.error) throw new Error(view.error);
+        if (view.error)
+          throw view.errorData
+            ? createUserVisibleError(view.error, view.errorData)
+            : new Error(view.error);
         await connections.clearAuth(name);
       });
     },
@@ -1658,7 +1674,10 @@ async function createSessionInternal(
       return manageMcp(
         name,
         async (_connections, _signal, view) => {
-          if (view.error) throw new Error(view.error);
+          if (view.error)
+            throw view.errorData
+              ? createUserVisibleError(view.error, view.errorData)
+              : new Error(view.error);
         },
         { reconnect: true },
       );

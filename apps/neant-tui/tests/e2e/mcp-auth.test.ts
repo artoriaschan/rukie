@@ -417,3 +417,133 @@ test.each([
   },
   12000,
 );
+
+test.each(["copy", "reopen", "cancel"])(
+  "a callback draft respects selected OAuth action %s",
+  async (action) => {
+    const server = mcpOAuthServer();
+    const opened: string[] = [];
+    const copied: string[] = [];
+    const app = await start(["login"], {
+      rows: 40,
+      prepare: (root) =>
+        Bun.write(
+          join(root, ".neant/mcp.json"),
+          JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
+        ).then(() => {}),
+      host: {
+        openExternal: async (url) => {
+          opened.push(url);
+        },
+        writeClipboard: async (text) => {
+          copied.push(text);
+          return true;
+        },
+      },
+    });
+    try {
+      await app.waitFor(() => app.calls.length === 1);
+      app.calls[0]!.tool("mcp__srv__authenticate", {});
+      await app.waitFor(
+        () => opened.length === 1 && app.screen().join("\n").includes("复制授权链接"),
+      );
+      const response = await fetch(opened[0]!, { redirect: "manual" });
+      const callback = response.headers.get("location")!;
+      app.stdin.write(`\x1b[200~${callback}\x1b[201~\t`);
+      await app.flush();
+      app.stdin.write(
+        action === "cancel" ? "\x1b[A\r" : action === "copy" ? "\x1b[B\r" : "\x1b[B\x1b[B\r",
+      );
+      if (action === "cancel") {
+        await app.waitFor(
+          () => app.calls.length === 2 && app.screen().join("\n").includes("已取消 MCP 授权"),
+        );
+        expect(
+          app.calls[1]!.context.messages.findLast((message) => message.role === "toolResult"),
+        ).toMatchObject({ isError: false, details: { type: "cancelled", server: "srv" } });
+        expect(app.screen().join("\n")).toContain("已取消 MCP 授权");
+        app.calls[1]!.finish();
+      } else {
+        await app.waitFor(() => (action === "copy" ? copied.length === 1 : opened.length === 2));
+        expect(app.calls).toHaveLength(1);
+        expect(app.screen().join("\n")).toContain("复制授权链接");
+        expect(copied).toEqual(action === "copy" ? [opened[0]!] : []);
+        app.stdin.write("\t\r");
+        await app.waitFor(() => app.calls.length === 2);
+        expect(
+          app.calls[1]!.context.messages.findLast((message) => message.role === "toolResult"),
+        ).toMatchObject({ isError: false, details: { type: "authenticated", server: "srv" } });
+        app.calls[1]!.finish();
+      }
+    } finally {
+      await app.cleanup();
+      await server.stop();
+    }
+  },
+);
+
+test.each([
+  { lang: "zh_CN.UTF-8", entry: "model", reason: "OAuth 回调的 state 不匹配。" },
+  { lang: "en_US.UTF-8", entry: "model", reason: "OAuth callback state does not match." },
+  { lang: "zh_CN.UTF-8", entry: "idle", reason: "OAuth 回调的 state 不匹配。" },
+  { lang: "en_US.UTF-8", entry: "idle", reason: "OAuth callback state does not match." },
+])(
+  "$entry OAuth errors localize the $lang notice while preserving English model results",
+  async ({ lang, entry, reason }) => {
+    const server = mcpOAuthServer();
+    const app = await start(entry === "model" ? ["login"] : [], {
+      rows: 40,
+      env: { LANG: lang },
+      prepare: (root) =>
+        Bun.write(
+          join(root, ".neant/mcp.json"),
+          JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
+        ).then(() => {}),
+    });
+    try {
+      if (entry === "model") {
+        await app.waitFor(() => app.calls.length === 1);
+        app.calls[0]!.tool("mcp__srv__authenticate", {});
+      } else {
+        await app.waitFor(() => app.screen().some((line) => line.startsWith("╭")));
+        app.stdin.write("/mcp login srv\r");
+      }
+      await app.waitFor(() =>
+        app
+          .screen()
+          .join("\n")
+          .includes(lang.startsWith("zh") ? "复制授权链接" : "Copy authorization link"),
+      );
+      app.stdin.write("\x1b[200~http://localhost/callback?code=bad&state=wrong\x1b[201~\r");
+      await app.waitFor(() =>
+        app
+          .screen()
+          .join("\n")
+          .includes(
+            lang.startsWith("zh")
+              ? entry === "model"
+                ? "OAuth 登录失败"
+                : "mcp 失败"
+              : entry === "model"
+                ? "OAuth sign-in failed"
+                : "mcp failed",
+          ),
+      );
+      expect(app.screen().join("\n")).toContain(reason);
+      if (entry === "model") {
+        await app.waitFor(() => app.calls.length === 2);
+        expect(
+          app.calls[1]!.context.messages.findLast((message) => message.role === "toolResult"),
+        ).toMatchObject({
+          isError: true,
+          content: [{ type: "text", text: "OAuth callback state does not match." }],
+          details: { code: "mcp-auth-state-mismatch", params: {} },
+        });
+        app.calls[1]!.finish();
+      } else expect(app.calls).toHaveLength(0);
+    } finally {
+      await app.cleanup();
+      await server.stop();
+    }
+  },
+);

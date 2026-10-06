@@ -25,3 +25,9 @@
 - macOS 默认 host 手动验收由 root 执行：`writeClipboard(marker)` 返回 true，`readClipboard()` 读回精确文本；默认 `openExternal(http://127.0.0.1:<port>/mcp-oauth-host-smoke)` exit 0，系统浏览器 GET 到达 Bun server。保存并恢复原 NSPasteboard 多格式内容，changeCount guard 避免覆盖更新的用户复制。验收脚本 exit 0；未验证真实托管账户，后续命令与 live-account 验收属于 08。
 - Standards / Spec 自审：包依赖方向、两种 locale、普通问题与图片生命周期保持现有契约；Agent Core 拥有 OAuth，Frontend 只呈现 Interaction 和结果；TUI README 已同步。
 - 集成前已合并最新 `codex/mcp-oauth`：先 04 的 `7a65a12`，再 05 的 `4569871`；均无冲突，无需改动 07 实现。04 合并后 TUI 五组、Core MCP/config/OAuth/lifecycle、CLI main 共 219 pass / 0 fail（1023 assertions）；05 合并后 TUI 五组、Core OAuth/subagent OAuth 共 129 pass / 0 fail（650 assertions）。每次合并后 format、lint、types、Knip 全通过；剩余全量组合检查由 root 执行。
+
+## Comments
+
+2026-10-06 review fixes: OAuth typing/paste focuses the callback input; explicit Copy/Reopen/Cancel selection wins over a retained draft. Public terminal regressions exercise all three actions with a valid callback; the existing paste-and-Enter path and ordinary Question parity pass unchanged. Known OAuth and MCP failures use formatError in zh/en notices while English model results remain intact. The old Chinese configuration-prefix expectation was updated without changing notice color, one-line, once-only or hidden-reminder assertions.
+
+Final focused MCP/API/lifecycle/TUI/question verification: 198 pass / 0 fail (861 assertions); existing tools-and-notices file: 14 pass / 0 fail (72 assertions). Fresh isolated HOME, env -u NO_COLOR caffeinate -is bun run check: exit 0, 2309 pass / 0 fail, 11818 assertions across 166 files (308.73s), format/lint/types/Knip passed. Final log: /tmp/neant-mcp-oauth-review-check.log. Initial full had only the obsolete Chinese expected-English prefix failure (2308/1); preserved /tmp/neant-mcp-oauth-review-check-before-localized-expectation.log. Both review axes confirm all findings resolved.

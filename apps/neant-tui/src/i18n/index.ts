@@ -77,6 +77,40 @@ export function formatError(error: unknown, t: ReturnType<typeof createTuiI18n>)
       return t("error.session-compacting", data.params);
     case "session-switching-models":
       return t("error.session-switching-models", data.params);
+    case "mcp-unknown-server":
+      return t("error.mcp-unknown-server", data.params);
+    case "mcp-auth-http-required":
+      return t("error.mcp-auth-http-required", data.params);
+    case "mcp-auth-callback-required":
+      return t("error.mcp-auth-callback-required", data.params);
+    case "mcp-auth-unavailable":
+      return t("error.mcp-auth-unavailable", data.params);
+    case "mcp-connection-closed":
+      return t("error.mcp-connection-closed", data.params);
+    case "mcp-connection-lost":
+      return t("error.mcp-connection-lost", data.params);
+    case "mcp-auth-url-missing":
+      return t("error.mcp-auth-url-missing", data.params);
+    case "mcp-auth-callback-invalid":
+      return t("error.mcp-auth-callback-invalid", data.params);
+    case "mcp-auth-code-missing":
+      return t("error.mcp-auth-code-missing", data.params);
+    case "mcp-auth-metadata-status":
+      return t("error.mcp-auth-metadata-status", data.params);
+    case "mcp-auth-metadata-invalid":
+      return t("error.mcp-auth-metadata-invalid", data.params);
+    case "mcp-auth-endpoint-invalid":
+      return t("error.mcp-auth-endpoint-invalid", data.params);
+    case "mcp-env-missing":
+      return t("error.mcp-env-missing", data.params);
+    case "mcp-config-invalid":
+      return t("error.mcp-config-invalid", data.params);
+    case "mcp-config-metadata-https":
+      return t("error.mcp-config-metadata-https", data.params);
+    case "mcp-config-file-invalid":
+      return t("error.mcp-config-file-invalid", data.params);
+    case "mcp-auth-state-mismatch":
+      return t("error.mcp-auth-state-mismatch", data.params);
     case "session-mcp-busy":
       return t("error.session-mcp-busy", data.params);
     case "compaction-hook-stopped":
