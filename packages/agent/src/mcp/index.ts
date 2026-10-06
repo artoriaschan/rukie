@@ -306,6 +306,7 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
       onInteractionStart?: OnInteractionStart;
       onWarning?: (message: string) => void;
       onlyServer?: string;
+      skipServer?: string;
       loadOnly?: boolean;
       reconnect?: boolean;
     }) {
@@ -331,6 +332,7 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
         a.localeCompare(b),
       )) {
         if (options.onlyServer !== undefined && server !== options.onlyServer) continue;
+        if (server === options.skipServer) continue;
         options.signal?.throwIfAborted();
         const metadata = {
           name: server,

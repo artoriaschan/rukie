@@ -575,7 +575,30 @@ test("scope step-up immediately after the first OAuth login in the same Run rest
       },
     });
     try {
+      const reads: ReturnType<typeof session.mcpServers>[] = [];
+      session.subscribe((event) => {
+        if (event.type === "mcp_servers_changed") reads.push(session.mcpServers());
+      });
       await session.run("login and use expanded capabilities");
+      const snapshots = await Promise.all(reads);
+      expect(snapshots.map((snapshot) => snapshot.servers[0]?.status)).toEqual([
+        "needs-auth",
+        "connected",
+        "needs-auth",
+        "connected",
+      ]);
+      for (const snapshot of snapshots)
+        expect(snapshot.servers[0]).toMatchObject({
+          scope: "user",
+          configPath: join(dirs.homeDir, ".neant/mcp.json"),
+          url: server.url,
+          tools: snapshot.servers[0]?.status === "connected" ? [{ name: "echo" }] : [],
+        });
+      const requests = server.requests.length;
+      await session.mcpServers();
+      await Promise.resolve();
+      expect(reads).toHaveLength(4);
+      expect(server.requests).toHaveLength(requests);
       expect(scopes).toEqual(["tools", "tools tools:write"]);
       expect(
         fake.contexts[2]!.messages.findLast((message) => message.role === "toolResult"),

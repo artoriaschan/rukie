@@ -18,6 +18,7 @@ import {
 } from "@earendil-works/pi-agent-core/harness/session";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { resolve } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { createUserVisibleError } from "@neant/shared";
 import type {
   CustomSessionEvent,
@@ -219,8 +220,8 @@ export interface Session {
   setPermissionMode(mode: PermissionMode): void;
   /** Snapshot the restored context; usable while idle or running. */
   contextReport(): ContextReport;
-  /** Recorded Run status, or an independent first probe without Transcript writes. */
-  mcpServers(): Promise<McpSnapshot>;
+  /** Cached snapshot or shared first probe. Explicit refresh requires idle state; no Transcript writes. */
+  mcpServers(options?: { refresh?: boolean }): Promise<McpSnapshot>;
   /** Idle only; resolves to authenticated or cancelled without writing Transcript. */
   authenticateMcp(name: string): Promise<McpAuthOutcome>;
   /** Idle only; removes this server identity's credential and remembered authorization failure. */
@@ -1042,7 +1043,18 @@ async function createSessionInternal(
   let mcpViews: McpSnapshot | undefined;
   let mcpViewRevision = 0;
   let mcpProbe: Promise<McpSnapshot> | undefined;
+  const commitMcpSnapshot = async (snapshot: McpSnapshot) => {
+    if (disposePromise) return;
+    // Even an identical newer Run must invalidate an older independent probe.
+    mcpViewRevision++;
+    if (mcpViews && isDeepStrictEqual(mcpViews, snapshot)) return;
+    mcpViews = snapshot;
+    const event = { type: "mcp_servers_changed" as const };
+    if (emitRunEvent) await emitRunEvent(event);
+    else broadcast({ ...event, sessionId: stored.metadata.id });
+  };
   let managingMcp = false;
+  let refreshingMcp = false;
   let mcpManagementSettled: ReturnType<typeof Promise.withResolvers<void>> | undefined;
   const mcpControllers = new Set<AbortController>();
   const mcpBusy = () =>
@@ -1072,6 +1084,7 @@ async function createSessionInternal(
     const controller = new AbortController();
     mcpControllers.add(controller);
     const connections = createMcpConnections(mcpAuthState);
+    let loaded = false;
     try {
       if (management.requireCallback && !options.onMcpAuth)
         throw createUserVisibleError("MCP authentication requires an onMcpAuth callback.", {
@@ -1094,6 +1107,7 @@ async function createSessionInternal(
         loadOnly: !management.reconnect,
         reconnect: management.reconnect,
       });
+      loaded = true;
       const view = connections.snapshot().servers.find((entry) => entry.name === name);
       if (!view)
         throw createUserVisibleError(`Unknown MCP server: ${name}`, {
@@ -1103,31 +1117,52 @@ async function createSessionInternal(
       const result = await action(connections, controller.signal, view);
       return result;
     } finally {
-      // Loading configuration alone does not replace a recorded connection status.
-      const recorded = connections
-        .snapshot()
-        .servers.filter((view) => view.status !== "failed" || view.error !== undefined);
-      if (mcpViews && recorded.length) {
-        mcpViewRevision++;
-        mcpViews = {
-          ...mcpViews,
-          servers: [...mcpViews.servers.filter((entry) => entry.name !== name), ...recorded].sort(
-            (a, b) => a.name.localeCompare(b.name),
-          ),
-        };
-      }
       try {
-        await connections.close();
+        // Loading configuration alone does not replace a recorded connection status.
+        const snapshot = connections.snapshot();
+        const recorded = snapshot.servers.filter(
+          (view) => view.status !== "failed" || view.error !== undefined,
+        );
+        if (
+          loaded &&
+          !disposePromise &&
+          (recorded.length || snapshot.configErrors.length || mcpViews)
+        ) {
+          // First management needs a complete base before publishing its selected result.
+          const base =
+            mcpViews ??
+            (await probeMcp(name).catch((error: unknown) => {
+              // Disposal suppresses publication without replacing an already completed action's outcome.
+              if (disposePromise) return undefined;
+              throw error;
+            }));
+          if (base && !disposePromise) {
+            controller.signal.throwIfAborted();
+            await commitMcpSnapshot({
+              configErrors: snapshot.configErrors,
+              servers: [
+                ...base.servers.filter(
+                  (entry) => !recorded.some((view) => view.name === entry.name),
+                ),
+                ...recorded,
+              ].sort((a, b) => a.name.localeCompare(b.name)),
+            });
+          }
+        }
       } finally {
-        mcpControllers.delete(controller);
-        managingMcp = false;
-        mcpManagementSettled = undefined;
-        settled.resolve();
-        scheduleRewake?.();
+        try {
+          await connections.close();
+        } finally {
+          mcpControllers.delete(controller);
+          managingMcp = false;
+          mcpManagementSettled = undefined;
+          settled.resolve();
+          scheduleRewake?.();
+        }
       }
     }
   };
-  const probeMcp = async () => {
+  const probeMcp = async (skipServer?: string) => {
     const controller = new AbortController();
     mcpControllers.add(controller);
     const connections = createMcpConnections(mcpAuthState);
@@ -1142,6 +1177,7 @@ async function createSessionInternal(
         onMcpAuth,
         onInteractionStart,
         onWarning: options.onWarning,
+        skipServer,
       });
     } finally {
       try {
@@ -1628,24 +1664,52 @@ async function createSessionInternal(
         mcpServers: mcpToolServers,
       });
     },
-    async mcpServers() {
+    async mcpServers({ refresh = false } = {}) {
       if (disposePromise) throw new Error("Session has been disposed.");
-      if (managingMcp && !mcpViews) await mcpManagementSettled?.promise;
+      if (refresh && running)
+        throw createUserVisibleError("Session already has an active Run.", {
+          code: "session-run-active",
+          params: {},
+        });
+      if (
+        refresh &&
+        !refreshingMcp &&
+        (managingMcp || rewinding || changingModel || compacting || queuedUserRuns)
+      )
+        throw mcpBusy();
+      if (managingMcp && !refreshingMcp && !mcpViews) await mcpManagementSettled?.promise;
       if (disposePromise) throw new Error("Session has been disposed.");
-      if (mcpViews) return structuredClone(mcpViews);
-      if (!mcpProbe) {
-        const revision = mcpViewRevision;
-        // A read-only probe may overlap a Run; the newer recorded snapshot wins.
-        mcpProbe = probeMcp()
-          .then((views) => {
-            if (revision === mcpViewRevision) mcpViews = views;
-            return mcpViews ?? views;
-          })
-          .finally(() => {
-            mcpProbe = undefined;
-          });
+      if (!refresh && mcpViews) return structuredClone(mcpViews);
+      const ownsRefresh = refresh && !refreshingMcp;
+      if (ownsRefresh) {
+        refreshingMcp = true;
+        managingMcp = true;
+        mcpManagementSettled = Promise.withResolvers<void>();
       }
-      return structuredClone(await mcpProbe);
+      try {
+        if (!mcpProbe) {
+          const revision = mcpViewRevision;
+          // A read-only probe may overlap a Run; the newer recorded snapshot wins.
+          mcpProbe = probeMcp()
+            .then(async (views) => {
+              if (disposePromise) throw new Error("Session has been disposed.");
+              if (revision === mcpViewRevision) await commitMcpSnapshot(views);
+              return mcpViews ?? views;
+            })
+            .finally(() => {
+              mcpProbe = undefined;
+            });
+        }
+        return structuredClone(await mcpProbe);
+      } finally {
+        if (ownsRefresh) {
+          refreshingMcp = false;
+          managingMcp = false;
+          mcpManagementSettled?.resolve();
+          mcpManagementSettled = undefined;
+          scheduleRewake?.();
+        }
+      }
     },
     authenticateMcp(name) {
       return manageMcp(
@@ -1945,8 +2009,7 @@ async function createSessionInternal(
       const mcp = createMcpConnections(mcpAuthState);
       runMcp = mcp;
       const emitMcpErrors = async () => {
-        mcpViewRevision++;
-        mcpViews = mcp.snapshot();
+        await commitMcpSnapshot(mcp.snapshot());
         for (const event of mcp.authRequired.splice(0)) {
           await emit(event);
           if (!options.onMcpAuth)
