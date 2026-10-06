@@ -21,6 +21,14 @@
 
 ## Answer
 
+### 2026-10-06：dsh-TUI 命令列表 UI 与交互对齐
+
+命令列表采用 dsh-TUI `CommandSuggestions` / `SuggestionCard` 的圆角浮层、5 项居中窗口、匹配计数、滚动计数、名称与说明列、suggestion / inactive 色和匹配前缀高亮；保留 MIT 来源说明。浮层紧贴输入框且不占消息区布局，支持点击执行、可见行悬停、滚轮首尾停止和菜单内 Shift+Tab。已开始的历史浏览优先处理方向键，恢复 slash 草稿的同一事件不再移动菜单选择。命令表与执行路径沿用 Neant。
+
+公开 `start()` 终端回归新增 6 个测试，覆盖消息位置、样式单元格、居中窗口、Tab / Enter、鼠标、历史草稿恢复、Plan Mode、中文说明和长名称、40×12 与 resize；renderer 公共 `render()` 回归覆盖浮层滚轮命中和清理。独立审查发现的历史事件重复处理与滚动后 hover 行漂移均已复现、修复并复核。
+
+最终隔离 HOME、清除 NO_COLOR 并使用 caffeinate 执行 `env -u NO_COLOR bun run check`，退出 0：2160 pass、0 fail、11108 assertions、154 files，255.10s；format、lint、TypeScript 与 Knip 均通过。日志：`/tmp/neant-slash-parity-final-check.log`。本次改动保留在当前工作树，未提交或整合。
+
 已交付 frontend 命令识别与完整清单、props-only 补全菜单、运行中可用性判断，以及 `/help`、`/exit`、`/clear`、`/plan`、`/rewind`、`/goal`。未知 slash 与路径保持原样；多行输入不打开菜单。`/plan` 依新 spec 改为切换，并在运行中拒绝；旧 plan/review/rewind 公共测试同步迁移。
 
 扩展入口：`apps/neant-tui/src/screens/chat/commands.ts` 的清单与 chat 屏幕的 `executeCommand` 负责后续处理器接入；`replaceSession(resumeId?)` 支持 clear 与后续 resume。菜单通过 Agent Core 的 `listSkills()` 复用发现规则，过滤 `user-invocable: false`，内置命令覆盖同名 skill。

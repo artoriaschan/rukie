@@ -34,6 +34,9 @@ export interface TextInputProps extends TextStyle {
 export function createTextInputHistory(entries: readonly string[]) {
   let walk: { index: number; value: string; cursor: number } | undefined;
   return {
+    isBrowsing() {
+      return walk !== undefined;
+    },
     reset() {
       walk = undefined;
     },
