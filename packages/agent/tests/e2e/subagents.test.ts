@@ -509,3 +509,103 @@ test("interruptSubagent aborts only the selected child and delivers an aborted n
   expect((await run).text).toBe("parent continues");
   session.interruptSubagent(childId);
 });
+
+test("a failed child creation releases its run slot and wakes the waiting parent", async () => {
+  dirs = await tempDirs();
+  await Bun.write(
+    `${dirs.cwd}/.neant/agents/broken.md`,
+    "---\nname: broken\ndescription: Broken\nmodel: missing/type\n---\nBroken instructions",
+  );
+  const fake = fakeModel([
+    fauxAssistantMessage(
+      Array.from({ length: 8 }, () =>
+        fauxToolCall("subagent", {
+          description: "Broken",
+          prompt: "child",
+          subagent_type: "broken",
+        }),
+      ),
+      { stopReason: "toolUse" },
+    ),
+    (context) => {
+      const results = context.messages.filter((message) => message.role === "toolResult");
+      expect(results).toHaveLength(8);
+      for (const result of results)
+        expect(structuredClone(result)).toMatchObject({
+          isError: true,
+          content: [{ type: "text", text: 'Unknown model "missing/type".' }],
+        });
+      return fauxAssistantMessage(
+        fauxToolCall("subagent", {
+          description: "Working",
+          prompt: "second child",
+          run_in_background: false,
+        }),
+        { stopReason: "toolUse" },
+      );
+    },
+    fauxAssistantMessage("second child answer"),
+    (context) => {
+      expect(structuredClone(context.messages.at(-1))).toMatchObject({
+        role: "toolResult",
+        isError: false,
+        content: [{ type: "text", text: "second child answer" }],
+      });
+      return fauxAssistantMessage("parent final");
+    },
+  ]);
+  const session = await createSession({ ...dirs, ...fake });
+  expect((await session.run("delegate")).text).toBe("parent final");
+  expect(session.toolState("subagents")).toMatchObject([
+    { description: "Working", type: "general-purpose" },
+  ]);
+});
+
+test("parent cancellation during child creation settles the late child without a model request", async () => {
+  dirs = await tempDirs();
+  const store = createJsonlStore(dirs);
+  const creating = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  let gated = false;
+  const gatedStore = {
+    create(...args: Parameters<typeof store.create>) {
+      if (!gated) return store.create(...args);
+      gated = false;
+      creating.resolve();
+      return release.promise.then(() => store.create(...args));
+    },
+    open: store.open,
+    list: store.list,
+  };
+  const fake = fakeModel([
+    fauxAssistantMessage(fauxToolCall("subagent", { description: "Late", prompt: "child" }), {
+      stopReason: "toolUse",
+    }),
+    fauxAssistantMessage("child answer"),
+    fauxAssistantMessage("parent answer"),
+  ]);
+  const session = await createSession({ ...dirs, ...fake, store: gatedStore });
+  gated = true;
+  const signal = new AbortController();
+  const rejected = session.run("delegate", { signal: signal.signal }).catch((error) => error);
+  await creating.promise;
+  signal.abort();
+  release.resolve();
+  expect(await rejected).toBeInstanceOf(Error);
+  // The reserved AbortController was already aborted, so the late child Run
+  // never reaches the model and the aborted parent sends no notification.
+  expect(await rejected).toBeInstanceOf(Error);
+  // The reserved AbortController was already aborted, so the late child Run
+  // never reaches the model and the aborted parent sends no notification.
+  expect(
+    fake.contexts.filter((context) =>
+      JSON.stringify(context.messages).includes("You are a subagent"),
+    ),
+  ).toHaveLength(0);
+  expect(session.toolState("subagents")).toMatchObject([
+    { description: "Late", type: "general-purpose" },
+  ]);
+  expect(session.messages.filter((message) => message.role === "user")).toHaveLength(1);
+  const stored = await store.list({ cwd: dirs.cwd }, BACKGROUND_CONTEXT);
+  expect(stored.filter((item) => item.parentSessionId === session.id)).toHaveLength(1);
+});
