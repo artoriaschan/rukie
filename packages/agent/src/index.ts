@@ -36,7 +36,7 @@ export { parsePermissionRules } from "./permissions/index.ts";
 export type { SubagentIdentity, SubagentRun } from "./subagents/index.ts";
 export { listSkills } from "./skills/index.ts";
 
-export type { GoalView } from "./goal/index.ts";
+export type { GoalView } from "./tools/goal/index.ts";
 export {
   validateImage,
   validateImageBytes,
