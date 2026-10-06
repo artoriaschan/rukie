@@ -181,7 +181,6 @@ export function render(element: ReactNode, options: RenderOptions) {
       if (!container.active) return;
       container.hover.clear();
       container.screen.invalidate();
-      container.graphics.clear();
       schedulePaint(container);
     },
     () => {

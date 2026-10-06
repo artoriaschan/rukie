@@ -76,7 +76,7 @@ export function createTerminalSession(
   const resize = () => {
     size = { columns: stdout.columns, rows: stdout.rows };
     sizes.forEach((listener) => listener());
-    if (graphicsEnabled) stdout.write("\x1b[16t");
+    if (graphicsEnabled && graphics.supported) stdout.write("\x1b[16t");
     redraw();
   };
   let stopInput = () => {};

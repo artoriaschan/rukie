@@ -4,7 +4,7 @@ import type { HostNode, LayoutNode } from "../layout";
 const command = (controls: string, data = "") => `\x1b_G${controls};${data}\x1b\\`;
 const MAX_IMAGES = 32;
 const MAX_BYTES = 32 * 1024 * 1024;
-const MAX_PIXELS = 32 * 1024 * 1024;
+const MAX_PIXELS = 64 * 1024 * 1024;
 
 interface Resource {
   id: number;
@@ -23,6 +23,7 @@ interface Placement {
 export function createGraphics(write: (text: string) => unknown) {
   const resources = new Map<string, Resource>();
   let placements = new Map<HostNode, Placement>();
+  let viewport = { columns: 0, rows: 0 };
 
   function clear() {
     for (const resource of resources.values()) {
@@ -40,6 +41,8 @@ export function createGraphics(write: (text: string) => unknown) {
   return {
     clear,
     paint(root: LayoutNode, columns: number, rows: number, supported: boolean) {
+      if (viewport.columns !== columns || viewport.rows !== rows) clear();
+      viewport = { columns, rows };
       const candidates: {
         node: LayoutNode;
         left: number;
@@ -79,6 +82,7 @@ export function createGraphics(write: (text: string) => unknown) {
           sourceWidth <= 0 ||
           sourceHeight <= 0 ||
           data.length > (MAX_BYTES * 4) / 3 ||
+          data.length % 4 !== 0 ||
           !/^[A-Za-z0-9+/]+={0,2}$/.test(data)
         )
           continue;

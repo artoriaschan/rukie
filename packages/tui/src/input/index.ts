@@ -11,7 +11,7 @@ export interface Key {
 export type InputEvent =
   | { type: "key"; input: string; key: Key }
   | { type: "wheel"; input: ""; x: number; y: number; delta: number }
-  | { type: "move"; x: number; y: number }
+  | { type: "move"; x: number; y: number; button?: number }
   | { type: "mouse"; action: "press" | "release"; button: number; x: number; y: number }
   | { type: "paste"; input: string };
 
@@ -111,11 +111,16 @@ export function listenInput(
               final === "M" &&
               button !== undefined &&
               (button & 0x20) !== 0 &&
-              (button & 0xc3) === 3 &&
+              (button & 0xc0) === 0 &&
               column !== undefined &&
               row !== undefined
             ) {
-              emit({ type: "move", x: column - 1, y: row - 1 });
+              emit({
+                type: "move",
+                x: column - 1,
+                y: row - 1,
+                ...((button & 3) < 3 ? { button: button & 3 } : {}),
+              });
             } else if (
               (final === "M" || final === "m") &&
               button !== undefined &&
