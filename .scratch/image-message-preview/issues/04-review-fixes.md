@@ -18,3 +18,5 @@ Blocked by: 02, 03
 最终 focused：`rtk proxy env -u NO_COLOR bun test apps/neant-tui/tests/e2e/image-preview.test.ts apps/neant-tui/tests/e2e/images.test.ts apps/neant-tui/tests/screens/chat/model-switch.test.ts apps/neant-tui/tests/screens/chat/rewind.test.ts`，98 pass / 0 fail / 458 assertions / 4 files。布局与共存回归：fullscreen、streaming-burst、question-panel-parity、subagent-panel，73 pass / 0 fail / 527 assertions / 4 files。oxfmt、oxlint、tsc -b、git diff --check 通过。
 
 Standards/Spec 独立复核均无遗留项。Spec reviewer 独立运行两条新增鼠标隔离回归，2 pass / 0 fail / 16 assertions。最终 main aggregate 和集成清理见 [review](../review.md)。
+
+2026-10-06：集成期间 main 新增 `bd64049` 命令菜单。公开回归复现 slash 草稿的菜单盖住图片预览、遮挡原图按钮；red 1 fail。预览期间暂停菜单并守卫 sendInput，关闭后恢复原 slash 草稿及菜单，不新增模型调用。图片预览、slash-menu-parity、slash-commands 共 31 pass / 0 fail / 173 assertions；文案合并保留双方 zh/en 键。

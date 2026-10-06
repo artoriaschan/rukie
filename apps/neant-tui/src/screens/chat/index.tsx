@@ -860,6 +860,7 @@ function Chat({
     return true;
   };
   const sendInput = (prompt: string) => {
+    if (previewRef.current) return;
     if (executeCommand(prompt)) {
       body.current?.scrollToBottom();
       change("");
@@ -1661,6 +1662,7 @@ function Chat({
             <PromptInput
               suggestions={
                 !!commandMatches.length &&
+                !preview &&
                 !interaction &&
                 !rewind &&
                 !resumePicker &&

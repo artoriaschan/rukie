@@ -532,3 +532,35 @@ test("an active model picker retains mouse ownership when a transcript image is 
     await app.cleanup();
   }
 });
+
+test("preview suspends the command menu and restores its slash draft after closing", async () => {
+  const app = await start([], {
+    rows: 48,
+    env: { LANG: "en_US.UTF-8" },
+    prepare: async (root) => {
+      await Bun.write(`${root}/shot.png`, Buffer.from(png, "base64"));
+    },
+  });
+  try {
+    await app.waitFor(() => app.screen().includes("❯"));
+    app.stdin.write(paste(`${app.root}/shot.png`));
+    await app.waitFor(() => app.screen().some((line) => line.includes("❯ [Image #1]")));
+    app.stdin.write("\r");
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    app.stdin.write("/");
+    await app.waitFor(() => app.screen().join("\n").includes("commands ·"));
+    click(app, "[Image · shot.png]");
+    await app.waitFor(() => app.screen().join("\n").includes("Open original"));
+    expect(app.screen().join("\n")).not.toContain("commands ·");
+    expect(app.screen().join("\n")).toContain("❯ /");
+    app.stdin.write("\r");
+    await app.waitFor(() => !app.screen().join("\n").includes("Open original"));
+    await app.waitFor(() => app.screen().join("\n").includes("commands ·"));
+    expect(app.screen().join("\n")).toContain("❯ /");
+    expect(app.calls).toHaveLength(1);
+  } finally {
+    await app.cleanup();
+  }
+});
