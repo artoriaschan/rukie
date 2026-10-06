@@ -1,0 +1,464 @@
+import { afterEach, expect, test } from "bun:test";
+import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { dirname, join } from "node:path";
+import { stat } from "node:fs/promises";
+import { createSession, type Session } from "../../src/index.ts";
+import { fakeModel } from "../helpers/fake-model.ts";
+import { tempDirs } from "../helpers/temp-dirs.ts";
+
+let dirs: Awaited<ReturnType<typeof tempDirs>>;
+let session: Session | undefined;
+afterEach(async () => {
+  await session?.dispose();
+  session = undefined;
+  await dirs?.cleanup();
+});
+
+const call = (name: string, args: Parameters<typeof fauxToolCall>[1] = {}) =>
+  fauxAssistantMessage(fauxToolCall(name, args), { stopReason: "toolUse" });
+function resultText(messages: Session["messages"]) {
+  const result = messages.findLast((message) => message.role === "toolResult");
+  return result?.content.map((item) => (item.type === "text" ? item.text : "")).join("");
+}
+
+async function waitFile(name: string) {
+  const path = join(dirs.cwd, name);
+  const deadline = Date.now() + 2000;
+  while (!(await Bun.file(path).exists())) {
+    if (Date.now() > deadline) throw new Error(`Missing command marker ${name}`);
+    await Bun.sleep(5);
+  }
+  return Bun.file(path).text();
+}
+
+async function expectDead(pid: number) {
+  const deadline = Date.now() + 1000;
+  while (true) {
+    try {
+      process.kill(pid, 0);
+    } catch {
+      return;
+    }
+    if (Date.now() > deadline) throw new Error(`Process ${pid} survived termination`);
+    await Bun.sleep(5);
+  }
+}
+
+test("aborting a job_output wait leaves the background process alive for the next Run", async () => {
+  dirs = await tempDirs();
+  let fake = fakeModel([
+    call("bash", {
+      command: "printf '%s' $$ > pid; while [ ! -e go ]; do sleep 0.01; done; printf final",
+      description: "Wait for final output",
+      run_in_background: true,
+    }),
+    fauxAssistantMessage("started"),
+    call("job_output", { job_id: "bash-1", wait: true }),
+  ]);
+  session = await createSession({
+    ...dirs,
+    model: fake.model,
+    streamFn: (model, context, options) => fake.streamFn(model, context, options),
+    allowRules: ["bash"],
+  });
+  await session.run("start");
+  const pid = Number(await waitFile("pid"));
+  const controller = new AbortController();
+  const waiting = Promise.withResolvers<void>();
+  const run = session.run("wait", {
+    signal: controller.signal,
+    onEvent(event) {
+      if (event.type === "tool_execution_start" && event.toolName === "job_output")
+        waiting.resolve();
+    },
+  });
+  void run.catch(() => {});
+  await waiting.promise;
+  controller.abort(new Error("stop waiting"));
+  await expect(run).rejects.toThrow("stop waiting");
+  expect(() => process.kill(pid, 0)).not.toThrow();
+  await Bun.write(join(dirs.cwd, "go"), "");
+  fake = fakeModel([
+    call("job_output", { job_id: "bash-1", wait: true }),
+    fauxAssistantMessage("read"),
+  ]);
+  await session.run("collect final output");
+  expect(resultText(session.messages)).toContain("final");
+});
+
+test.each(["job_kill", "dispose"])(
+  "%s terminates a shell, child, and grandchild",
+  async (action) => {
+    dirs = await tempDirs();
+    const fake = fakeModel([
+      call("bash", {
+        command: `printf '%s' "$$" > parent; bash -c 'printf "%s" "$$" > child; sleep 30 & printf "%s" "$!" > grandchild; wait' & wait`,
+        description: "Start nested background processes",
+        run_in_background: true,
+      }),
+      fauxAssistantMessage("started"),
+      call("job_kill", { job_id: "bash-1", reason: "test cleanup" }),
+      call("job_output", { job_id: "bash-1", wait: true }),
+      fauxAssistantMessage("killed"),
+    ]);
+    session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
+    await session.run("start tree");
+    const pids = await Promise.all(
+      ["parent", "child", "grandchild"].map(async (name) => Number(await waitFile(name))),
+    );
+    for (const pid of pids) expect(() => process.kill(pid, 0)).not.toThrow();
+    if (action === "dispose") await session.dispose();
+    else {
+      await session.run("kill tree");
+      expect(resultText(session.messages)).toBe("(no new output)\n[status: killed]");
+    }
+    await Promise.all(pids.map(expectDead));
+  },
+);
+
+test("the eleventh running background job fails with a coded limit while foreground stays invisible", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([
+    ...Array.from({ length: 11 }, () =>
+      call("bash", {
+        command: "while [ ! -e go ]; do sleep 0.01; done",
+        description: "Wait for capacity release",
+        run_in_background: true,
+      }),
+    ),
+    call("bash", { command: "true", description: "Complete foreground command" }),
+    call("job_list"),
+    fauxAssistantMessage("done"),
+  ]);
+  session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
+  await session.run("start eleven jobs");
+  const limited = fake.contexts[11]!.messages.at(-1);
+  expect(limited).toMatchObject({
+    role: "toolResult",
+    isError: true,
+    details: { code: "background-job-limit", params: { limit: 10 } },
+  });
+  expect(JSON.stringify(limited)).toContain(
+    "background job limit reached for this owner (limit: 10)",
+  );
+  expect(resultText(session.messages)!.split("\n")).toHaveLength(10);
+  expect(resultText(session.messages)).not.toContain("Complete foreground command");
+});
+
+test("Session Resume starts with no jobs and explains an old job id", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([
+    call("bash", {
+      command: "while [ ! -e go ]; do sleep 0.01; done",
+      description: "Start original session process",
+      run_in_background: true,
+    }),
+    fauxAssistantMessage("started"),
+  ]);
+  session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
+  await session.run("start");
+  const id = session.id;
+  await session.dispose();
+  const resumed = fakeModel([
+    call("job_list"),
+    call("job_output", { job_id: "bash-1" }),
+    fauxAssistantMessage("done"),
+  ]);
+  session = await createSession({ ...dirs, ...resumed, resumeId: id });
+  await session.run("recover");
+  expect(resumed.contexts[1]!.messages.at(-1)).toMatchObject({
+    content: [{ type: "text", text: "(no background jobs)" }],
+  });
+  expect(resultText(session.messages)).toBe(
+    "unknown job bash-1; background jobs do not survive a session restart",
+  );
+});
+
+test("dispose cleans a foreground descendant even after its shell closes its output", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([
+    call("bash", {
+      command: "sleep 30 >/dev/null 2>&1 & printf '%s' $! > child",
+      description: "Launch child with closed output",
+    }),
+    call("job_list"),
+    fauxAssistantMessage("done"),
+  ]);
+  session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
+  await session.run("start foreground");
+  const pid = Number(await waitFile("child"));
+  try {
+    expect(resultText(session.messages)).toBe("(no background jobs)");
+    await session.dispose();
+    await expectDead(pid);
+  } finally {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      /* Already terminated. */
+    }
+  }
+});
+
+test.each(["ask", "auto-review", "full-access"] as const)(
+  "job tools bypass Permission Mode %s while their hooks still execute",
+  async (permissionMode) => {
+    dirs = await tempDirs();
+    const fake = fakeModel([
+      call("bash", {
+        command: "while [ ! -e go ]; do sleep 0.01; done",
+        description: "Run permitted background process",
+        run_in_background: true,
+      }),
+      call("job_list"),
+      call("job_output", { job_id: "bash-1" }),
+      call("job_kill", { job_id: "bash-1" }),
+      fauxAssistantMessage("done"),
+    ]);
+    let asks = 0;
+    session = await createSession({
+      ...dirs,
+      ...fake,
+      permissionMode,
+      allowRules: ["bash"],
+      onPermissionAsk: async () => {
+        asks++;
+        return "deny";
+      },
+      settings: {
+        hooks: {
+          PreToolUse: [
+            {
+              hooks: [
+                { type: "command", command: "cat >> hook-inputs; printf '\\n' >> hook-inputs" },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    await session.setPlanMode(true);
+    await session.run("manage process");
+    expect(asks).toBe(0);
+    const inputs = (await Bun.file(join(dirs.cwd, "hook-inputs")).text())
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    expect(inputs.map((input) => input.tool_name)).toEqual([
+      "bash",
+      "job_list",
+      "job_output",
+      "job_kill",
+    ]);
+    expect(inputs[0].tool_input.run_in_background).toBe(true);
+    expect(resultText(session.messages)).toBe("requested cancellation of job bash-1");
+    expect(JSON.stringify(fake.contexts[0]!.messages)).toContain(
+      "Track every background job id you start.",
+    );
+  },
+);
+
+test("bash deny rules and job hook denials still block background operations", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([
+    call("bash", {
+      command: "touch denied",
+      description: "Attempt denied background command",
+      run_in_background: true,
+    }),
+    call("job_list"),
+    fauxAssistantMessage("done"),
+  ]);
+  session = await createSession({
+    ...dirs,
+    ...fake,
+    permissionMode: "full-access",
+    settings: {
+      permissions: { deny: ["bash"] },
+      hooks: {
+        PreToolUse: [
+          {
+            matcher: "job_list",
+            hooks: [
+              {
+                type: "command",
+                command:
+                  'printf \'%s\' \'{"hookSpecificOutput":{"permissionDecision":"deny","permissionDecisionReason":"protected roster"}}\'',
+              },
+            ],
+          },
+        ],
+      },
+    },
+  });
+  await session.run("try denied operations");
+  expect(JSON.stringify(fake.contexts[1]!.messages.at(-1))).toContain(
+    "Denied by permission rule: bash",
+  );
+  expect(resultText(session.messages)).toContain("Denied by hook: protected roster");
+  expect(await Bun.file(join(dirs.cwd, "denied")).exists()).toBe(false);
+});
+
+test("dispose bounds output draining when a descendant leaves the process group", async () => {
+  dirs = await tempDirs();
+  await Bun.write(
+    join(dirs.cwd, "escape.ts"),
+    `import { spawn } from "node:child_process";
+spawn("bash", ["-c", "printf '%s' $$ > escaped; while [ ! -e go ]; do sleep 0.01; done"], {
+  detached: true, stdio: ["ignore", "inherit", "inherit"],
+}).unref();
+`,
+  );
+  const fake = fakeModel([
+    call("bash", {
+      command: `${process.execPath} escape.ts`,
+      description: "Start escaped process group",
+      run_in_background: true,
+    }),
+    fauxAssistantMessage("started"),
+  ]);
+  session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
+  await session.run("start");
+  const pid = Number(await waitFile("escaped"));
+  try {
+    const start = Date.now();
+    await session.dispose();
+    expect(Date.now() - start).toBeLessThan(4500);
+    // Detached groups are outside Neant's process-group termination contract.
+    expect(() => process.kill(pid, 0)).not.toThrow();
+  } finally {
+    try {
+      process.kill(-pid, "SIGKILL");
+    } catch {
+      /* Already terminated. */
+    }
+    await expectDead(pid);
+  }
+});
+
+test("a settled job retains only a 16 KiB tail but spills its complete stdout and stderr", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([
+    call("bash", {
+      command:
+        "printf '%s' $$ > pid; for ((i=0; i<20000; i++)); do printf o; done; printf error >&2; touch ready; while [ ! -e go ]; do sleep 0.01; done",
+      description: "Print output before completion",
+      run_in_background: true,
+    }),
+    fauxAssistantMessage("started"),
+    call("job_output", { job_id: "bash-1", wait: true }),
+    fauxAssistantMessage("collected"),
+  ]);
+  session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
+  await session.run("start");
+  const pid = Number(await waitFile("pid"));
+  await waitFile("ready");
+  await Bun.write(join(dirs.cwd, "go"), "");
+  await expectDead(pid);
+  await session.run("collect settled job");
+  const text = resultText(session.messages)!;
+  expect(text).toContain("[stderr]\nerror");
+  expect(text).toEndWith("[status: completed, exit code: 0]");
+  expect(text.split("\n")[0]!.length).toBe(16379);
+  const spill = /full output: (.+)\]/.exec(text)?.[1];
+  if (!spill) throw new Error("Missing full output path");
+  expect(await Bun.file(spill).text()).toBe("o".repeat(20000) + "error");
+});
+
+test("large background output keeps a valid UTF-8 tail and its full private spill", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([
+    call("bash", {
+      command: `for ((i=0; i<100000; i++)); do printf 前; done; touch ready; while [ ! -e go ]; do sleep 0.01; done`,
+      description: "Print large Unicode output",
+      run_in_background: true,
+    }),
+    fauxAssistantMessage("started"),
+    call("job_output", { job_id: "bash-1", wait: true, timeout_ms: 100 }),
+    fauxAssistantMessage("read"),
+  ]);
+  session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
+  await session.run("start");
+  await waitFile("ready");
+  await session.run("read");
+  const text = resultText(session.messages)!;
+  expect(text).not.toContain("�");
+  expect(text).toContain("some output was dropped from memory");
+  const spill = /full output: (.+)\]/.exec(text)?.[1];
+  if (!spill) throw new Error("Missing spill path");
+  expect(await Bun.file(spill).text()).toBe("前".repeat(100000));
+  expect((await stat(dirname(spill))).mode & 0o777).toBe(0o700);
+  await session.dispose();
+  expect(await Bun.file(spill).exists()).toBe(false);
+});
+
+test("background bash returns immediately and remains listed after its Run", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([
+    call("bash", {
+      command: "while [ ! -e go ]; do sleep 0.01; done",
+      description: "Wait for release file",
+      run_in_background: true,
+      timeout: 0.001,
+    }),
+    call("job_list"),
+    fauxAssistantMessage("done"),
+    call("job_list"),
+    call("job_kill", { job_id: "bash-1" }),
+    fauxAssistantMessage("stopped"),
+  ]);
+  session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
+  expect((await session.run("start job")).text).toBe("done");
+  expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
+    role: "toolResult",
+    isError: false,
+    content: [{ type: "text", text: "started background job bash-1" }],
+    details: { jobId: "bash-1" },
+  });
+  expect(resultText(session.messages)).toBe("bash-1 [bash] running — Wait for release file");
+  await session.run("stop job");
+  expect(resultText(session.messages)).toBe("requested cancellation of job bash-1");
+  expect(await Bun.file(join(dirs.cwd, "go")).exists()).toBe(false);
+});
+
+test("job_output consumes stdout and stderr once, waits for completion, and reports empty reads", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([
+    call("bash", {
+      command:
+        "printf first; touch ready; while [ ! -e next ]; do sleep 0.01; done; printf second >&2; touch second-ready; while [ ! -e go ]; do sleep 0.01; done; exit 7",
+      description: "Produce controlled output phases",
+      run_in_background: true,
+    }),
+    fauxAssistantMessage("started"),
+    call("job_output", { job_id: "bash-1", wait: true }),
+    fauxAssistantMessage("first"),
+    call("job_output", { job_id: "bash-1", wait: true, timeout_ms: 10 }),
+    fauxAssistantMessage("quiet"),
+    call("job_output", { job_id: "bash-1", wait: true }),
+    fauxAssistantMessage("second"),
+    call("job_output", { job_id: "bash-1", wait: true }),
+    fauxAssistantMessage("finished"),
+    call("job_kill", { job_id: "bash-1" }),
+    fauxAssistantMessage("collected"),
+  ]);
+  session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
+  await session.run("start");
+  await waitFile("ready");
+  await session.run("read first");
+  expect(resultText(session.messages)).toBe("first\n[status: running]");
+  await session.run("wait briefly");
+  expect(resultText(session.messages)).toBe("(no new output)\n[status: running]");
+  await Bun.write(join(dirs.cwd, "next"), "");
+  await waitFile("second-ready");
+  await session.run("read second");
+  expect(resultText(session.messages)).toBe("[stderr]\nsecond\n[status: running]");
+  await Bun.write(join(dirs.cwd, "go"), "");
+  await session.run("collect");
+  expect(resultText(session.messages)).toBe("(no new output)\n[status: failed, exit code: 7]");
+  await session.run("kill finished");
+  expect(resultText(session.messages)).toBe(
+    "job bash-1 had already finished [status: failed, exit code: 7]",
+  );
+  expect(fake.contexts).toHaveLength(12);
+});

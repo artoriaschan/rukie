@@ -7,10 +7,8 @@ import {
   type ShellOutputView,
 } from "@earendil-works/pi-agent-core";
 import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
-import { spawn } from "node:child_process";
-import { closeSync, mkdtempSync, openSync, writeSync } from "node:fs";
-import { constants, tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
+import type { Jobs } from "../jobs/index.ts";
 import { Type } from "typebox";
 import { OutputCapture } from "./output-capture.ts";
 
@@ -20,18 +18,26 @@ const schema = Type.Object({
   timeout: Type.Optional(
     Type.Number({ description: "Timeout in seconds (default: 120; maximum: 600)." }),
   ),
+  run_in_background: Type.Optional(
+    Type.Boolean({ description: "Start a background job and return immediately." }),
+  ),
   workdir: Type.Optional(
     Type.String({ description: "Working directory relative to Session cwd." }),
   ),
 });
 
-export function createBashTool(cwd: string): AgentTool<typeof schema> {
+export function createBashTool(cwd: string, jobs: Jobs): AgentTool<typeof schema> {
   return {
     name: "bash",
     label: "bash",
-    description: `Execute a bash command. Returns combined stdout and stderr, truncated to the last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB. If truncated, full output is saved to a temp file. Timeout defaults to 120 seconds (maximum: 600).`,
+    description: `Execute a bash command. Returns combined stdout and stderr, truncated to the last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB. If truncated, full output is saved to a temp file. Timeout defaults to 120 seconds (maximum: 600). Set run_in_background to start a job without a timeout; use job_output, job_list, and job_kill to manage it.`,
     parameters: schema,
-    async execute(_id, { command, timeout = 120, workdir }, signal, onUpdate) {
+    async execute(
+      _id,
+      { command, description, timeout = 120, workdir, run_in_background = false },
+      signal,
+      onUpdate,
+    ) {
       if (!Number.isFinite(timeout) || timeout <= 0)
         throw new Error("Invalid timeout: must be a finite number of seconds");
       if (timeout > 600) throw new Error("Invalid timeout: maximum is 600 seconds");
@@ -40,34 +46,20 @@ export function createBashTool(cwd: string): AgentTool<typeof schema> {
       let view: ShellOutputView | undefined;
       let failure: unknown;
       let status: string | undefined;
-      let spillFd: number | undefined;
-      const pending: Uint8Array[] = [];
-      const proc = spawn("bash", ["-c", command], {
-        cwd: resolve(cwd, workdir ?? "."),
-        detached: true,
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-      let killTimer: ReturnType<typeof setTimeout> | undefined;
-      const killGroup = (sig: NodeJS.Signals) => {
-        if (proc.pid === undefined) return;
-        try {
-          process.kill(-proc.pid, sig);
-        } catch (error) {
-          if (!(error instanceof Error && "code" in error && error.code === "ESRCH"))
-            failure ??= error;
-        }
-      };
-      const terminate = () => {
-        if (killTimer !== undefined) return;
-        killGroup("SIGTERM");
-        killTimer = setTimeout(() => killGroup("SIGKILL"), 3000);
-        killTimer.unref();
-      };
-      proc.once("exit", () => {
-        // A shell can fork between the first group signal and its own exit.
-        // Signal again after that boundary so the new child gets SIGTERM too.
-        if (killTimer !== undefined) killGroup("SIGTERM");
-      });
+      if (run_in_background) {
+        const job = jobs.start({
+          command,
+          label: description,
+          cwd: resolve(cwd, workdir ?? "."),
+          background: true,
+        });
+        return {
+          content: [{ type: "text", text: `started background job ${job.view.id}` }],
+          details: { jobId: job.view.id },
+        };
+      }
+      let job: ReturnType<Jobs["start"]> | undefined;
+      const terminate = () => job?.kill("foreground");
       const capture = new OutputCapture(
         {
           limits: { maxBytes: DEFAULT_MAX_BYTES, maxLines: DEFAULT_MAX_LINES, retain: "tail" },
@@ -91,25 +83,16 @@ export function createBashTool(cwd: string): AgentTool<typeof schema> {
           },
         },
       );
-      const accept = (chunk: Uint8Array) => {
-        try {
+      job = jobs.start({
+        command,
+        label: description,
+        cwd: resolve(cwd, workdir ?? "."),
+        background: false,
+        onOutput(chunk) {
           capture.push(chunk);
-          if (spillFd !== undefined) writeSync(spillFd, chunk);
-          else {
-            pending.push(chunk);
-            if (capture.truncated) {
-              const path = join(mkdtempSync(join(tmpdir(), "neant-bash-")), "output.log");
-              spillFd = openSync(path, "wx", 0o600);
-              for (const initial of pending) writeSync(spillFd, initial);
-              pending.length = 0;
-              capture.setSpillPath(path);
-            }
-          }
-        } catch (error) {
-          failure ??= error;
-          terminate();
-        }
-      };
+          if (capture.truncated) capture.setSpillPath(job!.view.spillPath!);
+        },
+      });
       const abort = () => {
         status ??= "Command aborted";
         terminate();
@@ -120,18 +103,10 @@ export function createBashTool(cwd: string): AgentTool<typeof schema> {
       }, timeout * 1000);
       try {
         onUpdate?.({ content: [], details: undefined });
-        proc.stdout.on("data", accept);
-        proc.stderr.on("data", accept);
         signal?.addEventListener("abort", abort, { once: true });
         if (signal?.aborted) abort();
-        const code = await new Promise<number>((done) => {
-          proc.once("error", (error) => {
-            failure ??= error;
-          });
-          proc.once("close", (code, exitSignal) =>
-            done(code ?? (exitSignal ? 128 + (constants.signals[exitSignal] ?? 0) : 1)),
-          );
-        });
+        const code = await job.completed;
+        failure ??= job.failure;
         capture.finish();
         capture.flush();
         const output = capture.snapshot();
@@ -160,16 +135,7 @@ export function createBashTool(cwd: string): AgentTool<typeof schema> {
         clearTimeout(timer);
         signal?.removeEventListener("abort", abort);
         capture.dispose();
-        if (spillFd !== undefined) closeSync(spillFd);
-        // Keep escalation armed if a descendant outlived the shell and closed
-        // its inherited output streams; its process group still needs killing.
-        if (killTimer !== undefined && proc.pid !== undefined) {
-          try {
-            process.kill(-proc.pid, 0);
-          } catch {
-            clearTimeout(killTimer);
-          }
-        }
+        jobs.forget(job.view.id);
       }
     },
   };

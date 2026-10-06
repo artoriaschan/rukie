@@ -259,7 +259,8 @@ test.each([
         await Bun.write(join(root, "large.txt"), "tool output ".repeat(2500));
       },
     });
-    app.model.contextWindow = 4000;
+    // Keep tool declarations below the trigger; the large read starts compaction.
+    app.model.contextWindow = 5000;
     try {
       await app.waitFor(() => app.calls.length === 1);
       app.calls[0]!.tool("read", { path: "large.txt" });
