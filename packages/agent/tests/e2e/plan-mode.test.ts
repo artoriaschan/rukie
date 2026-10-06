@@ -1,13 +1,47 @@
 import { afterEach, expect, test } from "bun:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
 import { branchTip } from "@earendil-works/pi-agent-core/harness/session";
-import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { createJsonlStore, createSession, type SessionEvent } from "../../src/index.ts";
+import {
+  fauxAssistantMessage,
+  fauxToolCall,
+  getCurrentTools,
+  type TranscriptContext,
+} from "@earendil-works/pi-ai";
+import {
+  createJsonlStore,
+  createSession,
+  type Session,
+  type SessionEvent,
+  type SessionStore,
+} from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
 afterEach(() => dirs?.cleanup());
+
+/** Store that fails the selected `mutate` calls, to exercise Plan Mode write recovery. */
+function failingPlanWrites(backing: SessionStore, fail: (index: number) => boolean): SessionStore {
+  let mutates = 0;
+  return {
+    create: backing.create.bind(backing),
+    list: backing.list.bind(backing),
+    async open(metadata, context) {
+      const stored = await backing.open(metadata, context);
+      return new Proxy(stored, {
+        get(target, property) {
+          if (property === "mutate")
+            return (...args: Parameters<typeof stored.mutate>) => {
+              if (fail(mutates++)) throw new Error("snapshot unavailable");
+              return stored.mutate(...args);
+            };
+          const member = Reflect.get(target, property);
+          return typeof member === "function" ? member.bind(target) : member;
+        },
+      });
+    },
+  };
+}
 
 test("Plan Mode persists outside a Run and injects changed guidance once", async () => {
   dirs = await tempDirs();
@@ -344,4 +378,160 @@ test("a rejected Plan Mode snapshot closes the Run store, rolls back and can be 
   expect((await session.run("retry")).success).toBe(true);
   const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
   expect(resumed.planMode).toBe(true);
+});
+
+test("pending Plan Mode revisions keep the latest state, report their own failure and stay writable", async () => {
+  /** Both revisions are queued before either write settles, so the queue holds two. */
+  const withFailures = async (
+    fail: (index: number) => boolean,
+    scenario: (session: Session) => Promise<void>,
+  ) => {
+    dirs = await tempDirs();
+    const store = failingPlanWrites(createJsonlStore(dirs), fail);
+    const session = await createSession({
+      ...dirs,
+      ...fakeModel([fauxAssistantMessage("done")]),
+      store,
+    });
+    try {
+      await scenario(session);
+    } finally {
+      await session.dispose();
+    }
+  };
+  /** Plan Mode guidance the next Run injects, which follows the entered/exited history. */
+  const planGuidance = async (session: Session) => {
+    const events: SessionEvent[] = [];
+    await session.run("continue", {
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+    return events.flatMap((event) =>
+      event.type === "reminder_injected" && event.source === "plan-mode" ? [event.content] : [],
+    );
+  };
+  // Earlier failure, later success: the failing revision reports its own error and does
+  // not roll back the revision that replaced it.
+  await withFailures(
+    (index) => index === 0,
+    async (session) => {
+      const failed = session.setPlanMode(true);
+      const succeeded = session.setPlanMode(false);
+      await expect(failed).rejects.toThrow("snapshot unavailable");
+      await succeeded;
+      expect(session.planMode).toBe(false);
+      expect(await planGuidance(session)).toEqual([
+        expect.stringContaining("You have exited Plan Mode"),
+      ]);
+      const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
+      expect(resumed.planMode).toBe(false);
+    },
+  );
+  // Earlier success, later failure: the failed revision rolls back to the state the
+  // earlier write persisted, and the Session still accepts the next change.
+  await withFailures(
+    (index) => index === 1,
+    async (session) => {
+      const succeeded = session.setPlanMode(true);
+      const failed = session.setPlanMode(false);
+      await succeeded;
+      await expect(failed).rejects.toThrow("snapshot unavailable");
+      expect(session.planMode).toBe(true);
+      expect(await planGuidance(session)).toEqual([
+        expect.stringContaining("You are in Plan Mode"),
+      ]);
+      await session.setPlanMode(false);
+      expect(session.planMode).toBe(false);
+      const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
+      expect(resumed.planMode).toBe(false);
+    },
+  );
+});
+
+test("a child continued after a parent rewind reads the projected Plan Mode without its own snapshot", async () => {
+  dirs = await tempDirs();
+  let childId = "";
+  let childContext: unknown;
+  const childPlanEvents: SessionEvent[] = [];
+  const childResult = Promise.withResolvers<void>();
+  /** Only the parent declares the subagent tools, so a request identifies its Session. */
+  const isChildRequest = (context: TranscriptContext) =>
+    !getCurrentTools(context.messages).some((tool) => tool.name === "subagent");
+  // The parent's closing answer waits for the child's result event, so the parent Run
+  // stays active and the child's completion is observed instead of guessed.
+  const continued = async (context: TranscriptContext) => {
+    if (isChildRequest(context)) {
+      childContext = structuredClone(context.messages);
+      return fauxAssistantMessage("second child answer");
+    }
+    await childResult.promise;
+    return fauxAssistantMessage("parent finished");
+  };
+  const fake = fakeModel([
+    fauxAssistantMessage(
+      fauxToolCall("subagent", {
+        description: "Inspect",
+        prompt: "child",
+        run_in_background: false,
+      }),
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage("first child answer"),
+    fauxAssistantMessage("first done"),
+    fauxAssistantMessage("second done"),
+    (context: TranscriptContext) =>
+      isChildRequest(context)
+        ? fauxAssistantMessage("second child answer")
+        : fauxAssistantMessage(
+            fauxToolCall("send_message", { agent_id: childId, message: "continue the inspection" }),
+            { stopReason: "toolUse" },
+          ),
+    continued,
+    continued,
+    continued,
+  ]);
+  const session = await createSession({ ...dirs, ...fake });
+  const childIds = new Set<string>();
+  const onEvent = (event: SessionEvent) => {
+    if (event.type !== "subagent_event") return;
+    if (event.event.type === "session_start") childIds.add((childId = event.agentId));
+    if (event.event.type === "result") childResult.resolve();
+    if (event.event.type === "tool_state_changed" && event.event.name === "plan")
+      childPlanEvents.push(event.event);
+  };
+  await session.run("first", { onEvent });
+  // Entering Plan Mode after the child exists and leaving it again makes the rewind
+  // change the state a continued child has to project.
+  await session.setPlanMode(true);
+  await session.run("second", { onEvent });
+  await session.setPlanMode(false);
+  await session.rewind(session.checkpoints()[1]!.promptEntryId, {
+    code: false,
+    conversation: true,
+  });
+  // The rewind restored the Plan Mode snapshot recorded before the second prompt.
+  expect(session.planMode).toBe(true);
+  expect(session.toolState("subagents")).toMatchObject([
+    { id: childId, description: "Inspect", type: "general-purpose" },
+  ]);
+  await session.run("continue the child", { onEvent });
+  // The parent addressed the child Session that already existed, not a new one.
+  expect([...childIds]).toEqual([childId]);
+  expect(
+    session.messages.findLast(
+      (message) => message.role === "toolResult" && message.toolName === "send_message",
+    ),
+  ).toMatchObject({
+    isError: false,
+    content: [{ type: "text", text: `delivered to ${childId}` }],
+  });
+  expect(childContext).toBeDefined();
+  expect(JSON.stringify(childContext)).toContain("You are in Plan Mode");
+  expect(JSON.stringify(childContext)).toContain(
+    "give the plan directly as text in your final response",
+  );
+  expect(JSON.stringify(childContext)).not.toContain("You have exited Plan Mode");
+  // The child only reads the parent's controller: it never writes its own snapshot.
+  expect(childPlanEvents).toEqual([]);
 });
