@@ -1,5 +1,5 @@
 import type { Session } from "@neant/agent";
-import type { McpServerView } from "@neant/shared";
+import type { McpServerView, McpConfigError } from "@neant/shared";
 import { formatError, type createTuiI18n } from "../../i18n";
 import type { createConversation } from "./conversation";
 
@@ -11,6 +11,7 @@ export function createMcpCommands(
 ) {
   let active = true;
   let servers: McpServerView[] | undefined;
+  let configErrors: McpConfigError[] = [];
   let reading: { promise: Promise<void>; settled: boolean } | undefined;
   let managing = false;
   const listeners = new Set<() => void>();
@@ -23,7 +24,8 @@ export function createMcpCommands(
       .then((views) => {
         next.settled = true;
         if (active) {
-          servers = views;
+          servers = views.servers;
+          configErrors = views.configErrors;
           listeners.forEach((listener) => listener());
         }
       })
@@ -123,7 +125,9 @@ export function createMcpCommands(
           if (!active || needsRerun || !servers) return;
           const lines =
             servers.length === 0
-              ? [t("mcp.empty"), t("mcp.config")]
+              ? configErrors.length
+                ? []
+                : [t("mcp.empty"), t("mcp.config")]
               : [
                   t("mcp.heading", { count: servers.length }),
                   ...servers.map(
@@ -134,6 +138,12 @@ export function createMcpCommands(
                     ? [t("mcp.needs-auth")]
                     : []),
                 ];
+          lines.push(
+            ...configErrors.map(
+              (diagnostic) =>
+                `${diagnostic.path}: ${formatError(diagnostic.errorData ? { message: diagnostic.error, ...diagnostic.errorData } : diagnostic.error, t)}`,
+            ),
+          );
           output.report("/mcp", lines.join("\n"));
         })
         .catch((error: unknown) => {

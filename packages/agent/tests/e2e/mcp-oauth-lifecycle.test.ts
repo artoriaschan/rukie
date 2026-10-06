@@ -84,6 +84,14 @@ test.each([false, true])(
           ),
         ).toHaveLength(1);
         expect(events.filter((event) => event.type === "mcp_server_error")).toEqual([]);
+        expect((await session.mcpServers()).servers[0]).toMatchObject({
+          status: revoked ? "needs-auth" : "connected",
+          scope: "user",
+          configPath: join(dirs.homeDir, ".neant/mcp.json"),
+          url: server.url,
+          tools: revoked ? [] : [{ name: "echo" }],
+          toolCount: revoked ? 0 : 1,
+        });
         expect(events.filter((event) => event.type === "mcp_auth_required")).toHaveLength(
           Number(revoked),
         );
@@ -149,6 +157,14 @@ test.each([false, true])(
             .map((tool) => tool.name),
         ).toEqual(interactive ? ["mcp__srv__authenticate"] : []);
         expect(events.filter((event) => event.type === "mcp_auth_required")).toHaveLength(1);
+        expect((await session.mcpServers()).servers[0]).toMatchObject({
+          status: "needs-auth",
+          scope: "user",
+          configPath: join(dirs.homeDir, ".neant/mcp.json"),
+          url: server.url,
+          tools: [],
+          toolCount: 0,
+        });
       } finally {
         await session.dispose();
       }
@@ -567,7 +583,20 @@ test("scope step-up immediately after the first OAuth login in the same Run rest
       expect(
         fake.contexts[4]!.messages.findLast((message) => message.role === "toolResult"),
       ).toMatchObject({ isError: false, content: [{ type: "text", text: "OAuth MCP: called" }] });
-      expect((await session.mcpServers())[0]?.status).toBe("connected");
+      expect((await session.mcpServers()).servers[0]).toMatchObject({
+        status: "connected",
+        scope: "user",
+        configPath: join(dirs.homeDir, ".neant/mcp.json"),
+        url: server.url,
+        tools: [
+          {
+            name: "echo",
+            description: "Echo an authorized message",
+            inputSchema: { type: "object", properties: { text: { type: "string" } } },
+          },
+        ],
+        toolCount: 1,
+      });
     } finally {
       await session.dispose();
     }

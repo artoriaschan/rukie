@@ -28,6 +28,7 @@ import type {
   HooksSettings,
   ContextReport,
   McpServerView,
+  McpSnapshot,
 } from "@neant/shared";
 import {
   createSubagents,
@@ -219,7 +220,7 @@ export interface Session {
   /** Snapshot the restored context; usable while idle or running. */
   contextReport(): ContextReport;
   /** Recorded Run status, or an independent first probe without Transcript writes. */
-  mcpServers(): Promise<McpServerView[]>;
+  mcpServers(): Promise<McpSnapshot>;
   /** Idle only; resolves to authenticated or cancelled without writing Transcript. */
   authenticateMcp(name: string): Promise<McpAuthOutcome>;
   /** Idle only; removes this server identity's credential and remembered authorization failure. */
@@ -1038,9 +1039,9 @@ async function createSessionInternal(
   const sideLifetime = new AbortController();
   const mcpAuthState = createMcpAuthState();
   let runMcp: ReturnType<typeof createMcpConnections> | undefined;
-  let mcpViews: McpServerView[] | undefined;
+  let mcpViews: McpSnapshot | undefined;
   let mcpViewRevision = 0;
-  let mcpProbe: Promise<McpServerView[]> | undefined;
+  let mcpProbe: Promise<McpSnapshot> | undefined;
   let managingMcp = false;
   let mcpManagementSettled: ReturnType<typeof Promise.withResolvers<void>> | undefined;
   const mcpControllers = new Set<AbortController>();
@@ -1093,7 +1094,7 @@ async function createSessionInternal(
         loadOnly: !management.reconnect,
         reconnect: management.reconnect,
       });
-      const view = connections.servers().find((entry) => entry.name === name);
+      const view = connections.snapshot().servers.find((entry) => entry.name === name);
       if (!view)
         throw createUserVisibleError(`Unknown MCP server: ${name}`, {
           code: "mcp-unknown-server",
@@ -1104,13 +1105,16 @@ async function createSessionInternal(
     } finally {
       // Loading configuration alone does not replace a recorded connection status.
       const recorded = connections
-        .servers()
-        .filter((view) => view.status !== "failed" || view.error !== undefined);
+        .snapshot()
+        .servers.filter((view) => view.status !== "failed" || view.error !== undefined);
       if (mcpViews && recorded.length) {
         mcpViewRevision++;
-        mcpViews = [...mcpViews.filter((entry) => entry.name !== name), ...recorded].sort((a, b) =>
-          a.name.localeCompare(b.name),
-        );
+        mcpViews = {
+          ...mcpViews,
+          servers: [...mcpViews.servers.filter((entry) => entry.name !== name), ...recorded].sort(
+            (a, b) => a.name.localeCompare(b.name),
+          ),
+        };
       }
       try {
         await connections.close();
@@ -1146,7 +1150,7 @@ async function createSessionInternal(
         mcpControllers.delete(controller);
       }
     }
-    return connections.servers();
+    return connections.snapshot();
   };
   let disposePromise: Promise<void> | undefined;
   const goal = createGoalController({
@@ -1942,7 +1946,7 @@ async function createSessionInternal(
       runMcp = mcp;
       const emitMcpErrors = async () => {
         mcpViewRevision++;
-        mcpViews = mcp.servers();
+        mcpViews = mcp.snapshot();
         for (const event of mcp.authRequired.splice(0)) {
           await emit(event);
           if (!options.onMcpAuth)

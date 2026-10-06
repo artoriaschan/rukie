@@ -23,6 +23,7 @@ import {
   type CustomSessionEvent,
   type Settings,
   type McpServerView,
+  type McpConfigError,
   type UserVisibleErrorData,
 } from "@neant/shared";
 import { isTrustedProject } from "../config/index.ts";
@@ -88,6 +89,29 @@ function expandValues(values: Record<string, string> | undefined) {
   );
 }
 
+/** Redact literal URL secrets without expanding configuration expressions. */
+function displayUrl(value: string): string {
+  const expressions: string[] = [];
+  let marker = "NEANTEXPRESSION";
+  while (value.includes(marker)) marker += "_";
+  const protectedValue = value.replace(
+    /\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^{}]*))?\}/g,
+    (expression, name: string, fallback: string | undefined) => {
+      expressions.push(
+        fallback === undefined ? expression : "${" + name + ":-" + displayUrl(fallback) + "}",
+      );
+      return `${marker}${expressions.length - 1}`;
+    },
+  );
+  return protectedValue
+    .split(/[?#]/, 1)[0]!
+    .replace(/^(.*?:\/\/)[^/]*@/, "$1")
+    .replace(
+      new RegExp(`${marker}(\\d+)`, "g"),
+      (_match, index: string) => expressions[Number(index)]!,
+    );
+}
+
 function adaptTool(
   server: string,
   client: McpClient,
@@ -136,6 +160,7 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
   const clients: McpClient[] = [];
   const connected = new Map<string, McpClient>();
   const views = new Map<string, McpServerView>();
+  const configErrors: McpConfigError[] = [];
   const clearServerAuth = new Map<string, () => Promise<void>>();
   const authenticateServer = new Map<string, (signal?: AbortSignal) => Promise<McpAuthOutcome>>();
   const errors: Extract<CustomSessionEvent, { type: "mcp_server_error" }>[] = [];
@@ -166,6 +191,7 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
         ...view,
         status: "failed",
         toolCount: 0,
+        tools: [],
         error: error instanceof Error ? error.message : String(error),
         ...(errorData && { errorData }),
       });
@@ -193,7 +219,10 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
     });
     return closePromise;
   };
-  async function readConfig(path: string): Promise<Record<string, unknown>> {
+  async function readConfig(
+    path: string,
+    scope: "user" | "project",
+  ): Promise<Record<string, unknown>> {
     try {
       const file = Bun.file(path);
       if (!(await file.exists())) return {};
@@ -209,6 +238,13 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
       return data.mcpServers;
     } catch (error) {
       report(path, error);
+      const recorded = errors.at(-1)!;
+      configErrors.push({
+        scope,
+        path,
+        error: recorded.error,
+        ...(recorded.errorData && { errorData: recorded.errorData }),
+      });
       return {};
     }
   }
@@ -218,7 +254,7 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
     errors,
     authRequired,
     authTools,
-    servers: () => structuredClone([...views.values()]),
+    snapshot: () => structuredClone({ servers: [...views.values()], configErrors }),
     clearAuth(server: string) {
       const clear = clearServerAuth.get(server);
       if (!clear)
@@ -273,9 +309,17 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
       loadOnly?: boolean;
       reconnect?: boolean;
     }) {
-      const servers = await readConfig(join(options.homeDir, ".neant/mcp.json"));
+      const userPath = join(options.homeDir, ".neant/mcp.json");
+      const projectPath = join(options.cwd, ".mcp.json");
+      const servers = new Map<
+        string,
+        { value: unknown; scope: "user" | "project"; configPath: string }
+      >();
+      for (const [name, value] of Object.entries(await readConfig(userPath, "user")))
+        servers.set(name, { value, scope: "user", configPath: userPath });
       if (options.trustProjectMcp || isTrustedProject(options.cwd, options.settings)) {
-        Object.assign(servers, await readConfig(join(options.cwd, ".mcp.json")));
+        for (const [name, value] of Object.entries(await readConfig(projectPath, "project")))
+          servers.set(name, { value, scope: "project", configPath: projectPath });
       }
       options.signal?.throwIfAborted();
       const abort = () => {
@@ -283,13 +327,25 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
       };
       options.signal?.addEventListener("abort", abort, { once: true });
       removeAbortListener = () => options.signal?.removeEventListener("abort", abort);
-      for (const [server, value] of Object.entries(servers).sort(([a], [b]) =>
+      for (const [server, { value, scope, configPath }] of [...servers.entries()].sort(([a], [b]) =>
         a.localeCompare(b),
       )) {
         if (options.onlyServer !== undefined && server !== options.onlyServer) continue;
         options.signal?.throwIfAborted();
-        views.set(server, {
+        const metadata = {
           name: server,
+          scope,
+          configPath,
+          ...(Value.Check(Type.Object({ url: Type.String() }), value)
+            ? { url: displayUrl(value.url) }
+            : {}),
+          ...(Value.Check(Type.Object({ command: Type.String() }), value)
+            ? { command: value.command }
+            : {}),
+        };
+        views.set(server, {
+          ...metadata,
+          tools: [],
           transport: Value.Check(Type.Object({ url: Type.String() }), value) ? "http" : "stdio",
           status: "failed",
           toolCount: 0,
@@ -353,7 +409,8 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
                 }
               : { ...parsed, env: expandValues(parsed.env) };
           views.set(server, {
-            name: server,
+            ...metadata,
+            tools: [],
             transport: "url" in entry ? "http" : "stdio",
             status: "failed",
             toolCount: 0,
@@ -368,7 +425,8 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
           });
           const setNeedsAuthView = () =>
             views.set(server, {
-              name: server,
+              ...metadata,
+              tools: [],
               transport: "url" in entry ? "http" : "stdio",
               status: "needs-auth",
               toolCount: 0,
@@ -427,7 +485,14 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
             connected.set(server, activeClient);
             if (key) authState.needsAuth.delete(key);
             views.set(server, {
-              name: server,
+              ...metadata,
+              tools: structuredClone(
+                discovered.map((tool) => ({
+                  name: tool.name,
+                  description: tool.description ?? "",
+                  inputSchema: tool.inputSchema,
+                })),
+              ),
               transport: "url" in entry ? "http" : "stdio",
               status: "connected",
               toolCount: discovered.length,

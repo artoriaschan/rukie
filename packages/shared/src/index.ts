@@ -27,4 +27,4 @@ export {
 } from "./errors.ts";
 
 export type { ContextReport, ContextCategory } from "./context-report.ts";
-export type { McpServerView } from "./mcp.ts";
+export type { McpServerView, McpToolView, McpConfigError, McpSnapshot } from "./mcp.ts";

@@ -416,3 +416,22 @@ test.each(["zh_CN.UTF-8", "en_US.UTF-8"])(
     }
   },
 );
+
+test("/mcp exposes malformed file diagnostics instead of reporting an empty configuration", async () => {
+  const app = await start([], {
+    rows: 32,
+    prepare: (root) => Bun.write(join(root, ".neant/mcp.json"), '{"other":{}}').then(() => {}),
+  });
+  try {
+    await app.waitFor(() => app.screen().some((line) => line.startsWith("╭")));
+    app.stdin.write("/mcp\r");
+    await app.waitFor(() => screen(app).includes("正在读取 MCP 状态"));
+    app.stdin.write("/mcp\r");
+    await app.waitFor(() => screen(app).includes("MCP 配置文件"));
+    expect(screen(app)).not.toContain("没有配置 MCP 服务器");
+    expect(screen(app)).toContain("MCP 配置文件");
+    expect(app.calls).toHaveLength(0);
+  } finally {
+    await app.cleanup();
+  }
+});

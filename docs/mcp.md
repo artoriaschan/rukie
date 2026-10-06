@@ -51,4 +51,6 @@ MCP Credential 存在 Session 的 `homeDir` 下的 `.neant/credentials.json`，�
 
 Session 暴露 `mcpServers()`、`authenticateMcp(name)`、`clearMcpAuth(name)`、`reconnectMcp(name)`；类型与取消契约以[公共 Session 声明](../packages/agent/src/session/index.ts)和[共享状态类型](../packages/shared/src/mcp.ts)为准。状态中的 `error` 保留原始英文消息；已知 Agent Core 错误另带 `errorData`，Frontend 用它按 locale 呈现。
 
-`mcpServers()` 返回上一次 Run 的状态；没有记录时独立连接、发现工具并关闭，不写 Transcript 或注入 reminder。后三个方法在 Run 中返回 busy 错误。Frontend 提供 `onMcpAuth` 以显示交互；没有回调时主动登录被拒绝，模型也看不到登录工具。交互、状态报告和登录 UI 不进入 Agent Core Transcript。
+`mcpServers()` 返回独立副本 `McpSnapshot`，包含 `servers` 与配置文件级 `configErrors`。服务器记录提供生效配置的 `scope`、`configPath`、HTTP `url` 或 stdio `command`，以及真实 MCP 工具的协议名称、完整描述和原始输入 JSON Schema。URL 保留环境变量配置表达式，移除 userinfo、query 和 fragment；快照不包含 headers、env、args、clientSecret 或 MCP Credential。failed/needs-auth 的工具数组为空，`toolCount` 与真实工具数组一致。损坏文件记录来源、路径和错误；缺失文件不算错误，其他合法来源仍可使用，Run 保持 fail-open 和现有警告行为。
+
+快照返回上一次 Run 的状态；没有记录时复用一次独立连接、发现工具并关闭，不写 Transcript 或注入 reminder。已有快照的读取不会重新连接或请求工具；调用方修改返回值不会改变 Session 或模型工具声明。后三个方法在 Run 中返回 busy 错误。Frontend 提供 `onMcpAuth` 以显示交互；没有回调时主动登录被拒绝，模型也看不到登录工具。交互、状态报告和登录 UI 不进入 Agent Core Transcript。

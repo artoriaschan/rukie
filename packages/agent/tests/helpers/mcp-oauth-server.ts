@@ -11,6 +11,7 @@ const Rpc = Type.Object({
 /** Real OAuth/HTTP boundary shared by Agent Core, Headless CLI and TUI tests. */
 export function mcpOAuthServer(
   options: {
+    tools?: { name: string; description?: string; inputSchema: Record<string, unknown> }[];
     registration?: boolean;
     clientId?: string;
     clientSecret?: string;
@@ -188,7 +189,7 @@ export function mcpOAuthServer(
                 }
               : body.method === "tools/list"
                 ? {
-                    tools: [
+                    tools: options.tools ?? [
                       {
                         name: "echo",
                         description: "Echo an authorized message",
