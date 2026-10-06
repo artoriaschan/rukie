@@ -15,19 +15,78 @@ async function ready(options: Parameters<typeof start>[1] = {}) {
   return app;
 }
 
-test("empty idle input asks for a second Escape and an empty session never opens a picker", async () => {
-  const app = await ready();
+test.each(
+  (
+    [
+      [40, 12, "zh_CN.UTF-8", "再按一次 Esc 回退", "还没有可回退的消息"],
+      [80, 24, "en_US.UTF-8", "Press Esc again to rewind", "Nothing to rewind yet"],
+    ] as const
+  ).flatMap(([columns, rows, lang, armedHint, emptyHint]) =>
+    ["escape", "command"].map((trigger) => ({
+      columns,
+      rows,
+      lang,
+      armedHint,
+      emptyHint,
+      trigger,
+    })),
+  ),
+)("empty rewind uses right-side Tips: %j", async (options) => {
+  const { columns, rows, lang, armedHint, emptyHint, trigger } = options;
+  const app = await ready({ columns, rows, env: { LANG: lang } });
   try {
-    app.stdin.write(esc);
-    await app.waitFor(() => text(app).includes("Press Esc again to rewind"));
-    app.stdin.write(esc);
-    await app.waitFor(() => text(app).includes("Nothing to rewind yet"));
-    expect(text(app)).not.toContain("Press Esc again to rewind");
-    expect(text(app)).not.toContain("Pick a message to rewind to");
+    const promptRow = app.screen().findIndex((line) => line.startsWith("╭"));
+    if (trigger === "escape") {
+      app.stdin.write(esc);
+      await app.waitFor(() => text(app).includes(armedHint));
+      expect(text(app)).not.toContain(emptyHint);
+      app.stdin.write(esc);
+    } else app.stdin.write("/rewind\r");
+    await app.waitFor(() => text(app).includes(emptyHint));
+    expect(app.screen()[promptRow - 1]).toBe(
+      " ".repeat(columns - 1 - Bun.stringWidth(emptyHint)) + emptyHint,
+    );
+    expect(app.screen().findIndex((line) => line.startsWith("╭"))).toBe(promptRow);
+    expect(text(app)).not.toContain(armedHint);
+    expect(text(app)).not.toMatch(/Pick a message to rewind|选择要回退到的消息/);
+    expect(app.calls).toHaveLength(0);
+    app.resize(60, 24);
+    await app.waitFor(() => app.screen().includes("╭" + "─".repeat(58) + "╮"));
+    const resizedPromptRow = app.screen().findIndex((line) => line.startsWith("╭"));
+    expect(app.screen()[resizedPromptRow - 1]).toBe(
+      " ".repeat(59 - Bun.stringWidth(emptyHint)) + emptyHint,
+    );
+    await prompt(app, "first checkpoint");
+    expect(app.allLines().join("\n")).not.toContain(emptyHint);
   } finally {
     await app.cleanup();
   }
 });
+
+test("empty rewind Tips expire after ten seconds despite editing and repeating the command", async () => {
+  const app = await ready();
+  try {
+    app.stdin.write("/rewind\r");
+    await app.waitFor(() => text(app).includes("Nothing to rewind yet"));
+    const shownAt = performance.now();
+    app.stdin.write("draft");
+    await app.waitFor(() => app.screen().includes("❯ draft"));
+    expect(text(app)).toContain("Nothing to rewind yet");
+    await app.waitFor(() => performance.now() - shownAt >= 9000, 9500);
+    app.stdin.write(esc);
+    await app.waitFor(() => app.screen().includes("❯"));
+    app.stdin.write("/rewind\r");
+    await app.waitFor(() => app.screen().includes("❯"));
+    expect(text(app)).toContain("Nothing to rewind yet");
+    await app.waitFor(() => !text(app).includes("Nothing to rewind yet"), 2000);
+    expect(performance.now() - shownAt).toBeLessThan(11500);
+    app.stdin.write("/rewind\r");
+    await app.flush();
+    expect(app.allLines().join("\n")).not.toContain("Nothing to rewind yet");
+  } finally {
+    await app.cleanup();
+  }
+}, 15000);
 
 async function prompt(app: Awaited<ReturnType<typeof start>>, value: string) {
   const index = app.calls.length;

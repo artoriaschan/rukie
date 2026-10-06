@@ -169,7 +169,7 @@ const zh = {
 
   "rewind.again": "再按一次 Esc 回退",
   "exit.again": "再次按 Ctrl+C 退出",
-  "rewind.empty": "暂无可回退的消息",
+  "rewind.empty": "还没有可回退的消息",
 
   "plan.review.heading": "计划评审",
   "plan.review.approve": "批准",

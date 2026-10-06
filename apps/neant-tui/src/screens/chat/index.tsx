@@ -691,6 +691,7 @@ function Chat({
     arm: armRewind,
     isWithinWindow: isRewindArmed,
   } = useDoublePressWindow(3000);
+  const [rewindEmpty, setRewindEmpty] = useState(false);
   const [now, setNow] = useState(Date.now);
   const currentTime = Math.max(now, Date.now());
   const activity = renderActivity(state.activity, currentTime);
@@ -838,7 +839,11 @@ function Chat({
     // /new is the image-input contract's alias for the existing /clear action.
     const name = parsed?.[1] === "new" ? "clear" : parsed?.[1];
     const command = catalog.find((entry) => entry.name === name);
-    if (!command) return submit(prompt, false, composer.ordered(prompt));
+    if (!command) {
+      const accepted = submit(prompt, false, composer.ordered(prompt));
+      if (accepted) setRewindEmpty(false);
+      return accepted;
+    }
     if (conversation.isRunning() && !command.duringRun) {
       conversation.notice(t("command.busy", { name: command.name }));
       return true;
@@ -1013,8 +1018,9 @@ function Chat({
   };
   const openRewind = () => {
     const entries = session.checkpoints().toReversed();
-    if (!entries.length) conversation.notice(t("rewind.empty"));
-    else showRewind({ entries, focus: 0, confirm: false, mode: 0, busy: false });
+    setRewindEmpty(!entries.length);
+    if (!entries.length) return;
+    showRewind({ entries, focus: 0, confirm: false, mode: 0, busy: false });
     body.current?.scrollToBottom();
   };
   const showReturn = !!bodyScroll && !bodyScroll.following;
@@ -2034,9 +2040,11 @@ function Chat({
                   ? t("exit.again")
                   : rewindArmedAt !== undefined
                     ? t("rewind.again")
-                    : clipboardImage && !promptReadOnly
-                      ? t("image.clipboard-tip")
-                      : undefined
+                    : rewindEmpty
+                      ? t("rewind.empty")
+                      : clipboardImage && !promptReadOnly
+                        ? t("image.clipboard-tip")
+                        : undefined
               }
               inputRevision={promptRevision}
               readOnly={promptReadOnly}
