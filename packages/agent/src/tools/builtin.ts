@@ -30,17 +30,24 @@ export function createReadonlyTools(cwd: string, homeDir = homedir()): AgentTool
   ];
 }
 
-export function createBuiltinTools(
-  cwd: string,
-  jobs: Jobs,
-  getSkill: (name: string) => Skill | undefined,
-  setTodo: (todos: TodoItem[]) => Promise<void>,
-  onQuestion?: OnQuestion,
-  homeDir = homedir(),
-  onInteractionStart?: OnInteractionStart,
-  webFetch?: WebFetchOptions,
-  fileTracking?: ReturnType<typeof createFileTracking>,
-): AgentTool[] {
+export interface BuiltinToolsOptions {
+  cwd: string;
+  jobs: Jobs;
+  getSkill: (name: string) => Skill | undefined;
+  setTodo: (todos: TodoItem[]) => Promise<void>;
+  /** The `ask_user_question` tool is absent when this callback is omitted. */
+  onQuestion?: OnQuestion;
+  /** Defaults to the process home; tests inject an isolated one. */
+  homeDir?: string;
+  onInteractionStart?: OnInteractionStart;
+  webFetch?: WebFetchOptions;
+  fileTracking?: ReturnType<typeof createFileTracking>;
+}
+
+export function createBuiltinTools(options: BuiltinToolsOptions): AgentTool[] {
+  const { cwd, jobs, getSkill, setTodo, onQuestion, onInteractionStart, webFetch, fileTracking } =
+    options;
+  const homeDir = options.homeDir ?? homedir();
   const env = new NodeExecutionEnv({ cwd });
   const track = <T extends TSchema, D>(tool: AgentTool<T, D>): AgentTool<T, D> =>
     fileTracking ? fileTracking.wrapTool(tool) : tool;

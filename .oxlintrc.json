@@ -31,6 +31,73 @@
           "sessionStorage"
         ]
       }
+    },
+    {
+      "files": ["packages/agent/src/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@neant/tui", "@neant/neant-cli", "@neant/neant-tui", "**/apps/**"],
+                "message": "Agent Core must not depend on Frontend screens, components, or command parsing."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "packages/agent/src/tools/*/controller.ts",
+        "packages/agent/src/tools/*/registry.ts",
+        "packages/agent/src/tools/*/state.ts",
+        "packages/agent/src/tools/*/types.ts",
+        "packages/agent/src/tools/*/fetch.ts",
+        "packages/agent/src/tools/*/http.ts",
+        "packages/agent/src/tools/*/content.ts",
+        "packages/agent/src/tools/*/proxy.ts",
+        "packages/agent/src/tools/*/addresses.ts",
+        "packages/agent/src/tools/*/output-capture.ts"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@neant/tui", "@neant/neant-cli", "@neant/neant-tui", "**/apps/**"],
+                "message": "Agent Core must not depend on Frontend screens, components, or command parsing."
+              },
+              {
+                "group": ["./tools.ts", "./tool.ts", "../index.ts", "../../tools/index.ts"],
+                "message": "A capability execution module must not import its own protocol adapter or the global tools entry."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/agent/src/tool-state/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@neant/tui", "@neant/neant-cli", "@neant/neant-tui", "**/apps/**"],
+                "message": "Agent Core must not depend on Frontend screens, components, or command parsing."
+              },
+              {
+                "group": ["**/tools/**"],
+                "message": "Generic Tool State accepts registered definitions and must not depend on a concrete tool capability."
+              }
+            ]
+          }
+        ]
+      }
     }
   ]
 }

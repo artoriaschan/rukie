@@ -22,4 +22,6 @@ Bash、Web Fetch、Todo、Goal、Jobs、Subagent、Plan Mode 分别归 tools 内
 
 ## 迁移状态
 
-2026-10-07 发布 [实施规范](../../.scratch/agent-module-refactor/spec.md) 后，用户明确将 tools 从模型协议层调整为工具及其关联能力的集合；本文和规范已按最新决定更新。当前代码仍有顶层能力和混合工具落点；按编号工单逐步迁移，现行架构文档继续描述真实实现。完成迁移后更新此状态和相关职责描述，移除旧位置及废弃内部转导出。
+2026-10-07 发布 [实施规范](../../.scratch/agent-module-refactor/spec.md) 后，本决定已在代码中落地：Bash、Web Fetch、Todo、Goal、Jobs、Subagent 与 Plan Mode 的能力模块都位于 [`tools/`](../../packages/agent/src/tools/)，同名顶层目录、`tool-state/todo.ts` 与 `tools/index.ts` 已删除，各消费者直接使用所属能力的 `index.ts`。
+
+[`session/tools.ts`](../../packages/agent/src/session/tools.ts) 按能力工厂组装启动、Run 前与 Turn 准备的工具集，Session 继续持有身份、子类型、MCP 快照与调度状态。[`.oxlintrc.json`](../../.oxlintrc.json) 拒绝能力执行模块导入自身协议适配或全局组装入口、通用 Tool State 导入具体状态定义，以及 Agent Core 导入 Frontend 实现；规则匹配配置的导入路径与名称，不校验完整传递依赖图。

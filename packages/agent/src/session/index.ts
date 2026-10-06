@@ -36,8 +36,6 @@ import type {
 } from "@neant/shared";
 import {
   createSubagentController,
-  createSubagentTools,
-  discoverSubagentTypes,
   SUBAGENT_PROMPT,
   subagentsState,
   subagentRunState,
@@ -59,7 +57,7 @@ import {
   type PermissionAskRequest,
   type SessionAllowRule,
 } from "../permissions/index.ts";
-import { createBuiltinTools, type QuestionRequest, type QuestionReply } from "../tools/index.ts";
+import type { QuestionReply, QuestionRequest } from "../tools/question.ts";
 import { createFileTracking, fileTrackingState } from "../file-tracking/index.ts";
 import { SYSTEM_PROMPT } from "../prompt/index.ts";
 import {
@@ -90,8 +88,6 @@ import {
 } from "../checkpoint/index.ts";
 
 import {
-  createEnterPlanModeTool,
-  createExitPlanModeTool,
   createPlanModeController,
   planModeReminder,
   planState,
@@ -101,13 +97,21 @@ import {
 } from "../tools/plan-mode/index.ts";
 import {
   createGoalController,
-  createGoalTools,
   goalState,
   renderGoalRoundPrompt,
   type GoalView,
 } from "../tools/goal/index.ts";
 import type { OnInteractionStart } from "../interaction/index.ts";
 import { createHooks, mergeHooks, type CommonHookResult, type HookInput } from "../hooks/index.ts";
+import {
+  createBaseTools,
+  createSubagentTools,
+  createTurnTools,
+  refreshSubagentTypes,
+  selectTools,
+  type BaseToolsInput,
+  type ToolGate,
+} from "./tools.ts";
 
 export type { PermissionAskRequest, SessionAllowRule } from "../permissions/index.ts";
 import type { OnToolCallAllowed } from "../permissions/index.ts";
@@ -873,42 +877,8 @@ async function createSessionInternal(
           currentResult.usage[key] += usage[key];
     },
   });
-  const subagentTools = createSubagentTools(subagents);
-  const planTools =
-    options.onPlanReview && !internal.parentSessionId
-      ? [
-          createEnterPlanModeTool(plan),
-          createExitPlanModeTool(plan, options.onPlanReview, onInteractionStart),
-        ]
-      : [];
   let runDirectHuman = false;
   let runGoalRound = false;
-  const goalTools = internal.parentSessionId
-    ? []
-    : createGoalTools(
-        // Construction declares tools before Agent/controller initialization; execution occurs after both exist.
-        {
-          view: () => goal.view(),
-          create: (...args) => goal.create(...args),
-          edit: (...args) => goal.edit(...args),
-          pause: () => goal.pause(),
-          resume: (...args) => goal.resume(...args),
-          finish: (...args) => goal.finish(...args),
-        },
-        {
-          directHuman: () => runDirectHuman,
-          goalRound: () => runGoalRound,
-          wrapup(text) {
-            const message = {
-              role: "user" as const,
-              content: [{ type: "text" as const, text }],
-              timestamp: Date.now(),
-              source: "goal",
-            };
-            agent.steer(message);
-          },
-        },
-      );
   const fileTracking = createFileTracking(cwd, {
     initialState: toolState.get("file-tracking"),
     previousReminder: initialBranch.transcriptMessages.findLast(
@@ -943,30 +913,62 @@ async function createSessionInternal(
       scheduleRewake?.();
     },
   });
-  const initialTools = [
-    ...createBuiltinTools(
+  const isChild = Boolean(internal.parentSessionId);
+  const toolGate: ToolGate = { allowsTool, measureTool };
+  const toolOptions: BaseToolsInput = {
+    isChild,
+    builtin: {
       cwd,
       jobs,
-      (name) => skills.get(name),
+      getSkill: (name) => skills.get(name),
       setTodo,
       onQuestion,
-      options.homeDir,
+      homeDir: options.homeDir,
       onInteractionStart,
-      options.webFetch,
+      webFetch: options.webFetch,
       fileTracking,
-    ),
-    ...planTools,
-    ...goalTools,
-  ];
-  if (!internal.parentSessionId) {
-    const discovered = await discoverSubagentTypes(
-      cwd,
-      options.homeDir,
-      initialTools.map((tool) => tool.name),
-      { trusted: isTrustedProject(cwd, settings) },
-    );
+    },
+    planMode: {
+      controller: plan,
+      onPlanReview: options.onPlanReview,
+      onInteractionStart,
+    },
+    goal: {
+      // Construction declares tools before the Goal controller exists; execution occurs after both.
+      controller: {
+        view: () => goal.view(),
+        create: (...args) => goal.create(...args),
+        edit: (...args) => goal.edit(...args),
+        pause: () => goal.pause(),
+        resume: (...args) => goal.resume(...args),
+        finish: (...args) => goal.finish(...args),
+      },
+      execution: {
+        directHuman: () => runDirectHuman,
+        goalRound: () => runGoalRound,
+        wrapup(text) {
+          const message = {
+            role: "user" as const,
+            content: [{ type: "text" as const, text }],
+            timestamp: Date.now(),
+            source: "goal",
+          };
+          agent.steer(message);
+        },
+      },
+    },
+  };
+  const initialTools = createBaseTools(toolOptions);
+  const subagentTools = createSubagentTools({ isChild, controller: subagents });
+  if (!isChild) {
     // Seed pi's initial declaration; Run discovery owns diagnostics and later changes.
-    subagents.setTypes(discovered.types);
+    await refreshSubagentTypes({
+      cwd,
+      homeDir: options.homeDir,
+      trusted: isTrustedProject(cwd, settings),
+      tools: initialTools,
+      controller: subagents,
+    });
   }
   let planTakenOver = false;
   const agent = new Agent({
@@ -1039,14 +1041,7 @@ async function createSessionInternal(
         (internal.parentSessionId
           ? `${SYSTEM_PROMPT}\n\n${SUBAGENT_PROMPT}${internal.typePrompt ? `\n\n${internal.typePrompt}` : ""}`
           : SYSTEM_PROMPT),
-      tools: [
-        ...initialTools,
-        ...(internal.parentSessionId
-          ? []
-          : [subagentTools.delegate, subagentTools.fork, subagentTools.send, subagentTools.list]),
-      ]
-        .filter(allowsTool)
-        .map(measureTool),
+      tools: selectTools([...initialTools, ...subagentTools], toolGate),
       ...(settings.thinking && { thinkingLevel: settings.thinking }),
     },
   });
@@ -2140,57 +2135,37 @@ async function createSessionInternal(
             onWarning: options.onWarning,
           });
         } finally {
-          const generalTools = [
-            ...createBuiltinTools(
+          const generalTools = [...createBaseTools(toolOptions), ...mcp.tools];
+          if (!isChild) {
+            await refreshSubagentTypes({
               cwd,
-              jobs,
-              (name) => skills.get(name),
-              setTodo,
-              onQuestion,
-              options.homeDir,
-              onInteractionStart,
-              options.webFetch,
-              fileTracking,
-            ),
-            ...planTools,
-            ...goalTools,
-            ...mcp.tools,
-          ];
-          if (!internal.parentSessionId) {
-            const discovered = await discoverSubagentTypes(
-              cwd,
-              options.homeDir,
-              generalTools.map((tool) => tool.name),
-              { trusted: isTrustedProject(cwd, settings) },
-            );
-            subagents.setTypes(discovered.types);
-            for (const warning of discovered.warnings) (options.onWarning ?? console.warn)(warning);
-            for (const warning of discovered.hookWarnings)
-              await emit({
-                type: "hook_warning",
-                event: "SubagentStart",
-                hook: warning.source,
-                message: warning.message,
-                error: warning.error,
-              });
+              homeDir: options.homeDir,
+              trusted: isTrustedProject(cwd, settings),
+              tools: generalTools,
+              controller: subagents,
+              async report(discovered) {
+                for (const warning of discovered.warnings)
+                  (options.onWarning ?? console.warn)(warning);
+                for (const warning of discovered.hookWarnings)
+                  await emit({
+                    type: "hook_warning",
+                    event: "SubagentStart",
+                    hook: warning.source,
+                    message: warning.message,
+                    error: warning.error,
+                  });
+              },
+            });
           }
           mcpToolServers = mcp.toolServers;
-          agent.state.tools = [
-            ...generalTools,
-            ...(internal.parentSessionId
-              ? []
-              : [
-                  subagentTools.delegate,
-                  subagentTools.fork,
-                  subagentTools.send,
-                  subagentTools.list,
-                ]),
-          ]
-            .filter(allowsTool)
-            .map(measureTool);
+          agent.state.tools = selectTools([...generalTools, ...subagentTools], toolGate);
           const nonMcpTools = agent.state.tools.filter((tool) => !mcp.toolServers.has(tool.name));
           agent.prepareNextTurnWithContext = ({ context: turnContext }) => {
-            agent.state.tools = [...nonMcpTools, ...mcp.tools.filter(allowsTool).map(measureTool)];
+            agent.state.tools = createTurnTools({
+              nonMcpTools,
+              mcpTools: mcp.tools,
+              gate: toolGate,
+            });
             return { context: { ...turnContext, tools: agent.state.tools } };
           };
           await emit({
