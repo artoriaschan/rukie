@@ -1668,7 +1668,7 @@ async function createSessionInternal(
           sideLifetime.abort();
           const mcp = runMcp;
           hooks.dispose();
-          const jobsDisposed = jobs.dispose();
+          const jobsDisposed = jobs.dispose(Boolean(internal.parentSessionId));
           await sessionTitle.dispose();
           runController?.abort();
           try {
@@ -2320,6 +2320,7 @@ async function createSessionInternal(
         throw error;
       } finally {
         try {
+          if (internal.parentSessionId) await jobs.clear();
           await permissions.settleReviews();
           await mcp.close();
           await emitMcpErrors();

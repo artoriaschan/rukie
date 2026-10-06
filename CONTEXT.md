@@ -55,7 +55,7 @@ _Avoid_: task completion, Subagent Activity
 _Avoid_: restart task, automatic continuation
 
 **Background Job**:
-由 `bash` 启动、在这次工具调用返回后仍继续运行的进程：模型显式要求后台运行，或前台命令超时后转入后台。归启动它的 session 所有，结束时通知该 session 的模型；run 结束不影响它，session 结束时被终止。不持久化，Session Resume 后不存在。Subagent 不是 Background Job。
+由 `bash` 启动、在这次工具调用返回后仍继续运行的进程：模型显式要求后台运行，或前台命令超时后转入后台。归启动它的 session 所有，结束时通知该 session 的模型；顶层 run 结束不影响它，session 结束时被终止。子 session 的 Background Job 在子 run 结束时被清理，不通知或唤醒子模型。不持久化，Session Resume 后不存在。Subagent 不是 Background Job。
 _Avoid_: task, background shell, background command
 
 **Unknown Tool Outcome**:
