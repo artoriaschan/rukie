@@ -274,7 +274,14 @@ function Chat({
     setPreview(next);
   };
   const openImage = (entryIndex: number, imageIndex: number) => {
-    if (interactions.getSnapshot() || viewRef.current !== "chat" || rewindRef.current) return;
+    if (
+      interactions.getSnapshot() ||
+      viewRef.current !== "chat" ||
+      rewindRef.current ||
+      modelPickerRef.current !== undefined ||
+      resumePickerRef.current
+    )
+      return;
     const entries = conversation.getSnapshot().completed;
     const images = entries.flatMap((entry) => ("images" in entry ? (entry.images ?? []) : []));
     const before = entries
@@ -360,6 +367,7 @@ function Chat({
   const savedChatScroll = useRef<ScrollSnapshot | undefined>(undefined);
   const savedDashboardScroll = useRef<ScrollSnapshot | undefined>(undefined);
   const openDetail = (id: string, from: "chat" | "dashboard") => {
+    if (previewRef.current) return;
     if (from === "chat") savedChatScroll.current = body.current?.getSnapshot();
     else savedDashboardScroll.current = subagentScroll.current?.getSnapshot();
     pageRef.current = "summary";
@@ -1429,62 +1437,55 @@ function Chat({
     );
   return (
     <Box flexDirection="column" height={rows}>
-      <Box
-        position="relative"
-        flexDirection="column"
-        flexGrow={small && !preview ? 0 : 1}
+      <ScrollBox
+        ref={body}
+        onScroll={setBodyScroll}
+        initialFollow={savedChatScroll.current?.following ?? true}
+        initialTop={savedChatScroll.current?.top ?? 0}
         height={small && !preview ? 0 : undefined}
+        flexGrow={small && !preview ? 0 : 1}
       >
-        <ScrollBox
-          ref={body}
-          onScroll={setBodyScroll}
-          initialFollow={savedChatScroll.current?.following ?? true}
-          initialTop={savedChatScroll.current?.top ?? 0}
-          height={small ? 0 : undefined}
-          flexGrow={small ? 0 : 1}
-        >
-          <Logo
-            locale={locale}
-            key="startup-logo"
-            model={state.model}
-            cwd={cwd}
-            thinking={thinking}
-            working={state.running}
-          />
-          {completed}
-          {state.assistant && <AssistantMessage text={state.assistant} />}
-          {state.tools.map((tool) => (
-            <ToolCall key={tool.id} summary={tool.summary} status="running" />
-          ))}
-          {state.error && <Notice kind="error" text={state.error} />}
-        </ScrollBox>
-        {preview && (
-          <ImagePreview
-            key={preview.index}
-            image={preview.images[preview.index]!}
-            index={preview.index}
-            total={preview.images.length}
-            width={columns}
-            height={
-              small
-                ? Math.max(1, rows - 1)
-                : (bodyScroll?.height ?? Math.max(1, rows - promptHeight - statusHeight))
+        <Logo
+          locale={locale}
+          key="startup-logo"
+          model={state.model}
+          cwd={cwd}
+          thinking={thinking}
+          working={state.running}
+        />
+        {completed}
+        {state.assistant && <AssistantMessage text={state.assistant} />}
+        {state.tools.map((tool) => (
+          <ToolCall key={tool.id} summary={tool.summary} status="running" />
+        ))}
+        {state.error && <Notice kind="error" text={state.error} />}
+      </ScrollBox>
+      {preview && (
+        <ImagePreview
+          key={preview.index}
+          image={preview.images[preview.index]!}
+          index={preview.index}
+          total={preview.images.length}
+          width={columns}
+          height={
+            small
+              ? Math.max(1, rows - 1)
+              : (bodyScroll?.height ?? Math.max(1, rows - promptHeight - statusHeight))
+          }
+          locale={locale}
+          onClose={() => showPreview(undefined)}
+          onStep={stepImage}
+          onOriginal={async (image) => {
+            try {
+              await imageViewer.open(image);
+            } catch (error) {
+              if (pasteOwner.current)
+                notifyImage(t("image.open-error", { error: formatError(error, t) }), true);
+              throw error;
             }
-            locale={locale}
-            onClose={() => showPreview(undefined)}
-            onStep={stepImage}
-            onOriginal={async (image) => {
-              try {
-                await imageViewer.open(image);
-              } catch (error) {
-                if (pasteOwner.current)
-                  notifyImage(t("image.open-error", { error: formatError(error, t) }), true);
-                throw error;
-              }
-            }}
-          />
-        )}
-      </Box>
+          }}
+        />
+      )}
       <Box flexDirection="column" flexShrink={0}>
         {small ? (
           <ThemedText wrap="truncate">{t("window.small")}</ThemedText>
@@ -1534,7 +1535,9 @@ function Chat({
             <SubagentPanel
               subagents={panelSubagents}
               collapsed={subagentsCollapsed}
-              onToggle={() => setSubagentsCollapsed((collapsed) => !collapsed)}
+              onToggle={() => {
+                if (!previewRef.current) setSubagentsCollapsed((collapsed) => !collapsed);
+              }}
               onOpen={(id) => openDetail(id, "chat")}
               locale={locale}
               maxHeight={subagentMaxHeight}

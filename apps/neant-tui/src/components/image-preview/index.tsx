@@ -61,25 +61,40 @@ export function ImagePreview({
   const sourceHeight = metadata.height ?? 1;
   const cellWidth = graphics.cellWidth ?? 10;
   const cellHeight = graphics.cellHeight ?? 20;
-  const ratio = ((sourceWidth / sourceHeight) * cellHeight) / cellWidth;
-  const fitHeight = Math.min(maxHeight, Math.max(1, Math.round(maxWidth / ratio)));
-  const fitWidth = Math.min(maxWidth, Math.max(1, Math.round(fitHeight * ratio)));
-  const imageWidth = !drawable
-    ? 0
-    : activeZoom
-      ? Math.min(maxWidth, Math.max(1, Math.ceil((sourceWidth * activeZoom) / cellWidth)))
-      : fitWidth;
-  const imageHeight = !drawable
-    ? 0
-    : activeZoom
-      ? Math.min(maxHeight, Math.max(1, Math.ceil((sourceHeight * activeZoom) / cellHeight)))
-      : fitHeight;
-  const cropWidth = activeZoom
-    ? Math.min(sourceWidth, Math.max(1, Math.round((imageWidth * cellWidth) / activeZoom)))
-    : sourceWidth;
-  const cropHeight = activeZoom
-    ? Math.min(sourceHeight, Math.max(1, Math.round((imageHeight * cellHeight) / activeZoom)))
-    : sourceHeight;
+  // One calculation keeps rendered crop geometry and zoom-center preservation aligned.
+  const geometry = (value: number) => {
+    if (value === 0) {
+      const ratio = ((sourceWidth / sourceHeight) * cellHeight) / cellWidth;
+      const imageHeight = Math.min(maxHeight, Math.max(1, Math.round(maxWidth / ratio)));
+      return {
+        imageWidth: Math.min(maxWidth, Math.max(1, Math.round(imageHeight * ratio))),
+        imageHeight,
+        cropWidth: sourceWidth,
+        cropHeight: sourceHeight,
+      };
+    }
+    const imageWidth = Math.min(
+      maxWidth,
+      Math.max(1, Math.ceil((sourceWidth * value) / cellWidth)),
+    );
+    const imageHeight = Math.min(
+      maxHeight,
+      Math.max(1, Math.ceil((sourceHeight * value) / cellHeight)),
+    );
+    return {
+      imageWidth,
+      imageHeight,
+      cropWidth: Math.min(sourceWidth, Math.max(1, Math.round((imageWidth * cellWidth) / value))),
+      cropHeight: Math.min(
+        sourceHeight,
+        Math.max(1, Math.round((imageHeight * cellHeight) / value)),
+      ),
+    };
+  };
+  const currentGeometry = geometry(activeZoom);
+  const imageWidth = drawable ? currentGeometry.imageWidth : 0;
+  const imageHeight = drawable ? currentGeometry.imageHeight : 0;
+  const { cropWidth, cropHeight } = currentGeometry;
   const x = Math.max(0, Math.min(sourceWidth - cropWidth, Math.round(pan.x)));
   const y = Math.max(0, Math.min(sourceHeight - cropHeight, Math.round(pan.y)));
   const title = `${t("image.preview-title", { index: index + 1 })} · ${image.mimeType.replace("image/", "").toUpperCase()} · ${metadata.width ?? "?"}×${metadata.height ?? "?"} · ${metadata.bytes < 1024 ? `${metadata.bytes} B` : `${(metadata.bytes / 1024).toFixed(1)} KB`}${activeZoom ? ` · ${activeZoom * 100}%` : ""} · ${imageName(image, t("image.label"))}`;
@@ -121,30 +136,21 @@ export function ImagePreview({
     }
   });
   const changeZoom = (value: number) => {
-    const nextWidth = Math.min(
-      sourceWidth,
-      Math.max(
-        1,
-        Math.round(
-          (Math.min(maxWidth, Math.ceil((sourceWidth * value) / cellWidth)) * cellWidth) /
-            Math.max(1, value),
-        ),
-      ),
-    );
-    const nextHeight = Math.min(
-      sourceHeight,
-      Math.max(
-        1,
-        Math.round(
-          (Math.min(maxHeight, Math.ceil((sourceHeight * value) / cellHeight)) * cellHeight) /
-            Math.max(1, value),
-        ),
-      ),
-    );
     setZoom(value);
+    if (value === 0) {
+      setPan({ x: 0, y: 0 });
+      return;
+    }
+    const next = geometry(value);
     setPan({
-      x: Math.max(0, Math.min(sourceWidth - nextWidth, x + cropWidth / 2 - nextWidth / 2)),
-      y: Math.max(0, Math.min(sourceHeight - nextHeight, y + cropHeight / 2 - nextHeight / 2)),
+      x: Math.max(
+        0,
+        Math.min(sourceWidth - next.cropWidth, x + cropWidth / 2 - next.cropWidth / 2),
+      ),
+      y: Math.max(
+        0,
+        Math.min(sourceHeight - next.cropHeight, y + cropHeight / 2 - next.cropHeight / 2),
+      ),
     });
   };
 

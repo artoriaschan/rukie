@@ -431,3 +431,104 @@ test("a pending question takes focus from preview and receives its answer withou
     await app.cleanup();
   }
 });
+
+test("preview owns mouse input while live SubagentPanel fold and child-detail controls remain visible", async () => {
+  const app = await start([], {
+    rows: 48,
+    env: { LANG: "en_US.UTF-8" },
+    prepare: async (root) => {
+      await Bun.write(`${root}/shot.png`, Buffer.from(png, "base64"));
+    },
+  });
+  try {
+    await app.waitFor(() => app.screen().includes("❯"));
+    app.stdin.write(paste(`${app.root}/shot.png`));
+    await app.waitFor(() => app.screen().some((line) => line.includes("❯ [Image #1]")));
+    app.stdin.write("\r");
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("subagent", { description: "Review child", prompt: "child review" });
+    await app.waitFor(
+      () => app.calls.length === 3 && app.screen().join("\n").includes("▾ Subagents"),
+    );
+    const child = app.calls.find((call) =>
+      call.context.messages.some(
+        (message) =>
+          message.role === "user" && JSON.stringify(message.content).includes("child review"),
+      ),
+    )!;
+    const parent = app.calls.find((call, index) => index > 0 && call !== child)!;
+    app.stdin.write("preserved draft");
+    await app.waitFor(() => app.screen().join("\n").includes("❯ preserved draft"));
+    click(app, "[Image · shot.png]");
+    await app.waitFor(() => app.screen().join("\n").includes("Open original"));
+    click(app, "▾ Subagents");
+    app.resize(app.terminal.cols + 1, 48);
+    await app.waitFor(() =>
+      app
+        .screen()
+        .some((line) => line.startsWith("╭") && Bun.stringWidth(line) === app.terminal.cols),
+    );
+    expect(app.screen().join("\n")).toContain("▾ Subagents");
+    expect(app.screen().join("\n")).not.toContain("▸ Subagents");
+    click(app, "[general-purpose] Review child");
+    app.resize(app.terminal.cols + 1, 48);
+    await app.waitFor(() =>
+      app
+        .screen()
+        .some((line) => line.startsWith("╭") && Bun.stringWidth(line) === app.terminal.cols),
+    );
+    expect(app.screen().join("\n")).toContain("Open original");
+    expect(app.screen().join("\n")).not.toContain("id ");
+    expect(parent.signal!.aborted).toBe(false);
+    expect(child.signal!.aborted).toBe(false);
+    app.stdin.write("\r");
+    await app.waitFor(() => !app.screen().join("\n").includes("Open original"));
+    expect(app.screen().join("\n")).toContain("❯ preserved draft");
+    click(app, "▾ Subagents");
+    await app.waitFor(() => app.screen().join("\n").includes("▸ Subagents"));
+    click(app, "[general-purpose] Review child");
+    await app.waitFor(() => app.screen().join("\n").includes("id "));
+    app.stdin.write("\x1b");
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("an active model picker retains mouse ownership when a transcript image is clicked", async () => {
+  const app = await start([], {
+    rows: 48,
+    env: { LANG: "en_US.UTF-8" },
+    prepare: async (root) => {
+      await Bun.write(`${root}/shot.png`, Buffer.from(png, "base64"));
+    },
+  });
+  try {
+    await app.waitFor(() => app.screen().includes("❯"));
+    app.stdin.write(paste(`${app.root}/shot.png`));
+    await app.waitFor(() => app.screen().some((line) => line.includes("❯ [Image #1]")));
+    app.stdin.write("\r");
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    app.stdin.write("/model\r");
+    await app.waitFor(
+      () =>
+        app.screen().join("\n").includes("Select model") &&
+        app.screen().join("\n").includes("[Image · shot.png]"),
+    );
+    click(app, "[Image · shot.png]");
+    app.resize(81, 48);
+    await app.waitFor(() =>
+      app.screen().some((line) => line.startsWith("╭") && Bun.stringWidth(line) === 81),
+    );
+    expect(app.screen().join("\n")).toContain("Select model");
+    expect(app.screen().join("\n")).not.toContain("Open original");
+    app.stdin.write("\x1b");
+    await app.waitFor(() => !app.screen().join("\n").includes("Select model"));
+    click(app, "[Image · shot.png]");
+    await app.waitFor(() => app.screen().join("\n").includes("Open original"));
+    app.stdin.write("\r");
+  } finally {
+    await app.cleanup();
+  }
+});
