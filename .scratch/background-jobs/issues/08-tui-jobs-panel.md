@@ -37,3 +37,11 @@
 ## Answer
 
 08 已交付；所有勾选项有公共终端回归和完整检查证据。此次未修改 Agent Core、没有合并 integration/main 或归档 worktree。可恢复锚点要求调用方保持稳定 ID 与 host 子树路径；内容已移除或结构不匹配时按文档回退绝对阅读位置。
+
+## Final review fixes
+
+2026-10-06：最终 Standards review 修复 JobsPanel 退出码中的硬编码英文，新增 zh/en `jobs.panel.exit-code` 插值文案；通过 `start` 与 headless terminal 启动真实后台命令并观察失败退出码 7。两个 locale 回归先因目标文案不存在而失败，修复后 2 pass / 0 fail。CompletedEntry 删除无消费者的 `toolCallId`、`name`、`args`，保留已消费的 `jobId` 与活动 tool metadata。
+
+聚焦验证 117 pass / 0 fail，814 assertions（完整命令见 [02](02-background-start-and-job-tools.md#final-review-fixes)）：任务面板、后台任务、Subagent 任务与 Rewind 的公共回归全部通过，包含转后台时间线跨 Rewind、阅读位置、40×12、resize 和共存 Interaction。修改文件 oxfmt、lint、types 与 `git diff --check` 通过。上方历史验证计数保持不变。
+
+最终冻结源码与测试的完整检查通过：隔离 HOME + `caffeinate -is env -u NO_COLOR bun run check` exit 0，2300 pass / 0 fail，12077 assertions，166 files；日志 `/tmp/neant-background-jobs-review-final-check.log`。具体完整验证证据见 [02](02-background-start-and-job-tools.md#final-review-fixes)。

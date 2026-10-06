@@ -2,6 +2,42 @@ import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { start } from "../helpers/app";
 
+for (const [lang, exitCode] of [
+  ["zh_CN.UTF-8", "退出码：7"],
+  ["en_US.UTF-8", "exit code: 7"],
+] as const) {
+  test(`settled job details localize the exit code for ${lang}`, async () => {
+    const app = await start(["--permission-mode", "full-access", "launch"], {
+      env: { LANG: lang },
+      columns: 100,
+      rows: 28,
+    });
+    const screen = () => app.screen().join("\n");
+    try {
+      await app.waitFor(() => app.calls.length === 1);
+      app.calls[0]!.tool("bash", {
+        command: "while [ ! -e go ]; do sleep 0.01; done; exit 7",
+        description: "Exit status fixture",
+        run_in_background: true,
+      });
+      await app.waitFor(() => app.calls.length === 2);
+      app.stdin.write("/jobs\r");
+      await app.waitFor(() => screen().includes("❯ bash-1"));
+      app.stdin.write("e");
+      await Bun.write(join(app.root, "go"), "");
+      await app.waitFor(() => screen().includes(exitCode));
+      expect(screen()).toContain(exitCode);
+      app.calls[1]!.finish();
+      await app.waitFor(() => app.calls.length === 3);
+      app.calls[2]!.finish();
+      await app.waitFor(() => !app.isWorking());
+      expect(app.stderr()).toBe("");
+    } finally {
+      await app.cleanup();
+    }
+  });
+}
+
 test("/jobs opens an empty fullscreen panel during a Run and returns without interrupting", async () => {
   const app = await start(["working"], { env: { LANG: "en_US.UTF-8" }, columns: 40, rows: 12 });
   const screen = () => app.screen().join("\n");

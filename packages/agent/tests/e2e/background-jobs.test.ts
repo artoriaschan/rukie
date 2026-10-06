@@ -60,6 +60,22 @@ test("aborting a job_output wait leaves the background process alive for the nex
     model: fake.model,
     streamFn: (model, context, options) => fake.streamFn(model, context, options),
     allowRules: ["bash"],
+    settings: {
+      permissions: { ask: ["job_output"] },
+      hooks: {
+        PreToolUse: [
+          {
+            matcher: "job_output",
+            hooks: [
+              {
+                type: "command",
+                command: `printf '%s' '{"hookSpecificOutput":{"permissionDecision":"ask"}}'`,
+              },
+            ],
+          },
+        ],
+      },
+    },
   });
   await session.run("start");
   const pid = Number(await waitFile("pid"));
@@ -244,17 +260,16 @@ test.each(["ask", "auto-review", "full-access"] as const)(
     await session.setPlanMode(true);
     await session.run("manage process");
     expect(asks).toBe(0);
-    const inputs = (await Bun.file(join(dirs.cwd, "hook-inputs")).text())
+    const inputs: unknown[] = (await Bun.file(join(dirs.cwd, "hook-inputs")).text())
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line));
-    expect(inputs.map((input) => input.tool_name)).toEqual([
-      "bash",
-      "job_list",
-      "job_output",
-      "job_kill",
+    expect(inputs).toMatchObject([
+      { tool_name: "bash", tool_input: { run_in_background: true } },
+      { tool_name: "job_list" },
+      { tool_name: "job_output" },
+      { tool_name: "job_kill" },
     ]);
-    expect(inputs[0].tool_input.run_in_background).toBe(true);
     expect(resultText(session.messages)).toBe("requested cancellation of job bash-1");
     expect(JSON.stringify(fake.contexts[0]!.messages)).toContain(
       "Track every background job id you start.",
@@ -300,6 +315,203 @@ test("bash deny rules and job hook denials still block background operations", a
     "Denied by permission rule: bash",
   );
   expect(resultText(session.messages)).toContain("Denied by hook: protected roster");
+  expect(await Bun.file(join(dirs.cwd, "denied")).exists()).toBe(false);
+});
+
+for (const source of ["rule", "hook"] as const) {
+  for (const permissionMode of ["ask", "auto-review", "full-access"] as const) {
+    for (const callback of [true, false]) {
+      test(`job tools skip ${source} approval in ${permissionMode} with callback ${callback}`, async () => {
+        dirs = await tempDirs();
+        const fake = fakeModel([
+          call("bash", {
+            command: "while [ ! -e go ]; do sleep 0.01; done",
+            description: "Run permitted background process",
+            run_in_background: true,
+          }),
+          call("job_list"),
+          call("job_output", { job_id: "bash-1" }),
+          call("job_kill", { job_id: "bash-1" }),
+          fauxAssistantMessage("done"),
+        ]);
+        const asks: string[] = [];
+        session = await createSession({
+          ...dirs,
+          ...fake,
+          permissionMode,
+          allowRules: ["bash"],
+          ...(callback && {
+            onPermissionAsk: async (request) => {
+              asks.push(request.toolName);
+              return "deny" as const;
+            },
+          }),
+          settings: {
+            permissions: source === "rule" ? { ask: ["job_list", "job_output", "job_kill"] } : {},
+            hooks: {
+              PreToolUse: [
+                {
+                  matcher: "job_.*",
+                  hooks: [
+                    {
+                      type: "command",
+                      command: `cat >> pre-inputs; printf '\\n' >> pre-inputs; printf '%s' '${JSON.stringify({ hookSpecificOutput: { ...(source === "hook" && { permissionDecision: "ask" }) } })}'`,
+                    },
+                  ],
+                },
+              ],
+              PostToolUse: [
+                {
+                  matcher: "job_.*",
+                  hooks: [
+                    { type: "command", command: "cat >> post-inputs; printf '\\n' >> post-inputs" },
+                  ],
+                },
+              ],
+              PermissionRequest: [
+                {
+                  matcher: "job_.*",
+                  hooks: [{ type: "command", command: "touch requested; exit 2" }],
+                },
+              ],
+              Notification: [{ hooks: [{ type: "command", command: "touch notified" }] }],
+            },
+          },
+        });
+        await session.setPlanMode(true);
+        await session.run("manage process without approval");
+        expect(asks).toEqual([]);
+        const results = session.messages.filter(
+          (message) => message.role === "toolResult" && message.toolName.startsWith("job_"),
+        );
+        expect(results).toHaveLength(3);
+        expect(results.every((message) => message.role === "toolResult" && !message.isError)).toBe(
+          true,
+        );
+        expect(resultText(session.messages)).toBe("requested cancellation of job bash-1");
+        for (const name of ["pre-inputs", "post-inputs"]) {
+          const inputs: unknown[] = (await Bun.file(join(dirs.cwd, name)).text())
+            .trim()
+            .split("\n")
+            .map((line) => JSON.parse(line));
+          expect(inputs).toMatchObject([
+            { tool_name: "job_list" },
+            { tool_name: "job_output" },
+            { tool_name: "job_kill" },
+          ]);
+        }
+        expect(await Bun.file(join(dirs.cwd, "requested")).exists()).toBe(false);
+        expect(await Bun.file(join(dirs.cwd, "notified")).exists()).toBe(false);
+      });
+    }
+  }
+}
+
+test.each(["rewrite", "invalid", "deny", "exit2", "stop"] as const)(
+  "job approval exception retains PreToolUse %s behavior",
+  async (behavior) => {
+    dirs = await tempDirs();
+    const fake = fakeModel([
+      call("bash", {
+        command: "while :; do sleep 0.01; done",
+        description: "First job",
+        run_in_background: true,
+      }),
+      call("bash", {
+        command: "while :; do sleep 0.01; done",
+        description: "Second job",
+        run_in_background: true,
+      }),
+      call("job_kill", { job_id: "bash-1" }),
+      fauxAssistantMessage("done"),
+    ]);
+    const payload =
+      behavior === "stop"
+        ? { continue: false, stopReason: "Keep both jobs" }
+        : {
+            hookSpecificOutput: {
+              permissionDecision: behavior === "deny" ? "deny" : "ask",
+              permissionDecisionReason: "Keep both jobs",
+              ...(behavior === "rewrite" && { updatedInput: { job_id: "bash-2" } }),
+              ...(behavior === "invalid" && { updatedInput: { job_id: 2 } }),
+            },
+            reason: "Keep both jobs",
+          };
+    session = await createSession({
+      ...dirs,
+      ...fake,
+      allowRules: ["bash"],
+      settings: {
+        permissions: { ask: ["job_kill"] },
+        hooks: {
+          PreToolUse: [
+            {
+              matcher: "job_kill",
+              hooks: [
+                {
+                  type: "command",
+                  command: `printf '%s' '${JSON.stringify(payload)}'${behavior === "exit2" ? "; exit 2" : ""}`,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    const outcome = await session.run("manage jobs with a hook");
+    const jobs = session.jobs();
+    expect(jobs[0]!.status).toBe("running");
+    if (behavior === "rewrite") {
+      expect(resultText(session.messages)).toBe("requested cancellation of job bash-2");
+      expect(["stopping", "killed"]).toContain(jobs[1]!.status);
+    } else {
+      expect(jobs[1]!.status).toBe("running");
+      if (behavior === "stop") expect(outcome.stopReason).toBe("hook_stopped");
+      else
+        expect(session.messages.findLast((message) => message.role === "toolResult")).toMatchObject(
+          { isError: true },
+        );
+    }
+  },
+);
+
+test("explicit job deny rules and background bash ask remain effective", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([
+    call("job_list"),
+    call("job_output", { job_id: "bash-1" }),
+    call("job_kill", { job_id: "bash-1" }),
+    call("bash", {
+      command: "touch denied",
+      description: "Ask for background launch",
+      run_in_background: true,
+    }),
+    fauxAssistantMessage("done"),
+  ]);
+  const asks: string[] = [];
+  session = await createSession({
+    ...dirs,
+    ...fake,
+    permissionMode: "full-access",
+    settings: { permissions: { deny: ["job_list", "job_output", "job_kill"], ask: ["bash"] } },
+    onPermissionAsk: async (request) => {
+      asks.push(request.toolName);
+      return "deny";
+    },
+  });
+  await session.run("try blocked operations");
+  expect(asks).toEqual(["bash"]);
+  for (const toolName of ["job_list", "job_output", "job_kill"]) {
+    expect(
+      session.messages.find(
+        (message) => message.role === "toolResult" && message.toolName === toolName,
+      ),
+    ).toMatchObject({
+      isError: true,
+      content: [{ type: "text", text: `Denied by permission rule: ${toolName}` }],
+    });
+  }
+  expect(session.jobs()).toEqual([]);
   expect(await Bun.file(join(dirs.cwd, "denied")).exists()).toBe(false);
 });
 

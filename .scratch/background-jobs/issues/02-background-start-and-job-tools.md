@@ -37,3 +37,19 @@ Session 持有 `jobs` registry，所有 bash 复用一条 detached spawn 路径�
 - `rtk proxy git merge --no-edit codex/background-jobs`：Already up to date，集成基线仍为 `a2c9fa0`。
 
 2026-10-06: resolved。全部验收项与最终完整检查通过；实现与引用文档已对齐，已核对 diff 与最新集成基线。
+
+## Final review fixes
+
+2026-10-06：最终 Spec review 复现显式规则或 PreToolUse `ask` 让三个 job 工具请求审批。权限 gate 保留 PreToolUse、参数改写校验、规则/Hook 拒绝与停止行为，仅将三个精确工具名的最终 `ask` 判定转为 `allow`，不进入 PermissionRequest、审批 Notification 或 Frontend Interaction。`bash` 后台启动仍遵循完整审批流程；权限与 Hook 文档同步记录例外。Standards review 的进程组探测重复分支合并为一次 try/catch，仍只在进程组已不存在时清理 escalation timer 与 ownership。
+
+验证证据（保留上方历史计数）：
+
+- TDD：显式 ask 的公共 `createSession` 回归先失败，观察到 `job_list`、`job_output`、`job_kill` 三次审批。修复后 12 个组合覆盖三个 Permission Mode、Plan Mode、规则/Hook ask、有/无审批回调；全部三个工具成功执行，PreToolUse/PostToolUse 仍执行，审批事件不触发。
+- 公共回归覆盖合法改写到另一 job、非法改写、Hook deny、exit 2、`continue: false`、三个工具的显式 deny 和 bash ask；既有取消等待测试新增规则与 Hook ask，取消后后台进程和下一次 Run 读取保持正确。上述聚焦测试 20 pass / 0 fail，123 assertions。
+- `rtk proxy env -u NO_COLOR bun test packages/agent/tests/e2e/background-jobs.test.ts packages/agent/tests/e2e/subagent-jobs.test.ts apps/neant-tui/tests/e2e/jobs-panel.test.ts apps/neant-tui/tests/e2e/background-jobs.test.ts apps/neant-tui/tests/screens/chat/rewind.test.ts`：117 pass / 0 fail，814 assertions。
+- `rtk proxy env -u NO_COLOR bun test packages/agent/tests/e2e/permission-hooks.test.ts packages/agent/tests/e2e/permission-rules.test.ts packages/agent/tests/e2e/permissions.test.ts packages/agent/tests/e2e/hooks.test.ts packages/agent/tests/e2e/bash-permission-rules.test.ts`：116 pass / 0 fail，413 assertions。
+- `rtk proxy bunx --no -- oxlint`、`rtk proxy bunx --no -- tsc -b` 与修改文件 oxfmt 检查通过；`rtk git diff --check` 通过。测试联合类型访问曾被类型检查拒绝，已补充 role 收窄并重验成功。`rtk git merge --no-edit codex/background-jobs`：Already up to date，集成基线为 `08746c50959f2f01fa5b214f230fe9689878e7f0`。
+
+快速复核后，将 Hook 协议 JSON 按 `unknown[]` 接收，使用公共结果的 `toMatchObject` 断言，移除未验证的字段访问；权限阶段注释明确普通工具进入 Interaction、job 工具跳过审批。重新运行相关权限/Hook/取消聚焦测试：23 pass / 0 fail，135 assertions；types 与 oxfmt 通过。源码与测试随后冻结，完整检查另附实际结果。
+
+最终冻结源码与测试上，以隔离临时 HOME 运行 `caffeinate -is env -u NO_COLOR bun run check`：exit 0，format / lint / types / Knip 成功，2300 pass / 0 fail，12077 assertions，166 files；测试 328.26 s，完整命令 330.61 s。日志 `/tmp/neant-background-jobs-review-final-check.log`；临时 HOME 已清理。完整检查期间未修改源码与测试，之后只追加票据验证记录。

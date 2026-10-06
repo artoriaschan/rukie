@@ -40,9 +40,6 @@ type CompletedEntry = { anchorId?: string } & (
     }
   | {
       type: "tool";
-      toolCallId: string;
-      name: string;
-      args: unknown;
       jobId?: string;
       summary: string;
       isError: boolean;
@@ -89,9 +86,6 @@ function toolEntry(
   if (isUnknownToolOutcome(result.details))
     return {
       type: "tool",
-      toolCallId: tool.id,
-      name: tool.name,
-      args: tool.args,
       summary: tool.summary,
       isError: false,
       outcomeUnknown: true,
@@ -143,9 +137,6 @@ function toolEntry(
   const todo = tool.name === "todo_write" && !isError ? todoSummary(tool.args, t) : undefined;
   return {
     type: "tool",
-    toolCallId: tool.id,
-    name: tool.name,
-    args: tool.args,
     jobId:
       tool.name === "bash" &&
       !isError &&

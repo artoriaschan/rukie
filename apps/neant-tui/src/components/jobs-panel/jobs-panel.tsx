@@ -43,7 +43,7 @@ export function JobsPanel({
     ...(job.promotedAt ? [`${t("jobs.panel.promoted")} · ${time(job.promotedAt)}`] : []),
     ...(job.endedAt
       ? [
-          `${t("jobs.panel.settled")} · ${time(job.endedAt)}${job.exitCode === undefined ? "" : ` · exit ${job.exitCode}`}`,
+          `${t("jobs.panel.settled")} · ${time(job.endedAt)}${job.exitCode === undefined ? "" : ` · ${t("jobs.panel.exit-code", { code: job.exitCode })}`}`,
         ]
       : []),
     ...(job.spillPath
