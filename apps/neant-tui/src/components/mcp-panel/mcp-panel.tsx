@@ -28,7 +28,8 @@ export type McpPanelPage =
 
 export interface McpPanelProps {
   page: McpPanelPage;
-  /** Server/tool keys are prefixed protocol names; action keys are literal action names. */
+  /** Keys preserve raw names after server:/tool:; decode by removing only that fixed prefix.
+   * The screen remembers the selected key separately for each server/tool page. */
   selected: string;
   columns: number;
   /** Total space supplied by the screen after persistent panels and input reservation. */
@@ -38,13 +39,16 @@ export interface McpPanelProps {
   busy?: boolean;
   /** The screen pauses callbacks and the picker cursor during Interaction or small-terminal takeover. */
   interactive?: boolean;
+  /** Already localized operation outcome or page-change notice. */
   result?: string;
   scrollRef?: Ref<ScrollHandle>;
+  /** Mount-time restoration; save the handle's top before leaving a reading page. */
   initialTop?: number;
   onScroll?(snapshot: ScrollSnapshot): void;
   onActivate(key: string): void;
   onListWheel?(delta: number): void;
   onBodyFocus?(): void;
+  /** Routed body wheel: scroll the exposed handle here and avoid a second global wheel handler. */
   onBodyWheel?(delta: number): void;
 }
 
