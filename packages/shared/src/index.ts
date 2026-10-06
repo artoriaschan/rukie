@@ -1,4 +1,5 @@
 // Runtime-agnostic types and schemas shared across packages.
+export type { JobView, JobOutput, JobEvent } from "./jobs.ts";
 export { isUnknownToolOutcome } from "./tool-outcome.ts";
 export {
   THINKING_LEVELS,

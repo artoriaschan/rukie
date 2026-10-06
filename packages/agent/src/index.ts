@@ -14,7 +14,7 @@ export {
   type PermissionAskRequest,
   type SessionAllowRule,
 } from "./session/index.ts";
-export type { RunResult } from "@neant/shared";
+export type { RunResult, JobView, JobOutput, JobEvent } from "@neant/shared";
 export type { McpAuthRequest, McpAuthReply, McpAuthOutcome, OnMcpAuth } from "./mcp/index.ts";
 export type { ReminderSource } from "./reminders/index.ts";
 export type { TodoItem } from "./tool-state/index.ts";

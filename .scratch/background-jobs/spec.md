@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 
 # Spec: 后台 bash（Background Job）
 
@@ -175,3 +175,31 @@ bash 命令可以在后台运行，成为 Background Job：模型用 `run_in_bac
 - 各项数值（256 KiB / 16 KiB ring、10 个 job、30 s wait、120 / 600 s 超时）都取自 harness 的默认值，后续按需要调整，不暴露成配置。
 - 结束通知走 rewake 通道，所以会和 asyncRewake、Goal 续跑排同一个队，与它们的先后关系沿用现有的 `scheduleRewake` 顺序。
 - JobCard 的样式以后可以并入 [TUI 工具卡](../agent-core-roadmap/issues/20-tui-tool-card.md) 的 terminal 卡统一。
+
+## Answer
+
+2026-10-06：全部实现集成到 `codex/background-jobs`，8 张工单均为 resolved：[01](issues/01-own-bash-tool.md)、[02](issues/02-background-start-and-job-tools.md)、[03](issues/03-foreground-timeout-promotion.md)、[04](issues/04-settle-notification.md)、[05](issues/05-session-api-events-headless.md)、[06](issues/06-subagent-jobs.md)、[07](issues/07-tui-chip-jobcard-notice.md)、[08](issues/08-tui-jobs-panel.md)。当前能力和调用方义务见 [Agent Core README](../../packages/agent/README.md)、[TUI README](../../apps/neant-tui/README.md) 与 [renderer README](../../packages/tui/README.md)。
+
+交付覆盖自研 bash 的显式后台启动和前台超时转后台、owner 隔离与增量输出、结束通知和用户停止、Session 与子 Run 清理、Headless 事件与退出清理，以及 TUI 的 chip、JobCard、分组、notice 和 `/jobs` 面板。面板返回通过稳定阅读锚点保留阅读位置，并覆盖任务组折叠、Rewind、窄终端和 resize。
+
+### Standards
+
+双语退出码标签、未消费的完成记录字段、重复进程组清理分支均已修复；复核发现的 Hook JSON 输入收窄也已补齐。最终复核无剩余问题。
+
+### Spec
+
+初次审查公开复现了显式规则或 PreToolUse ask 仍触发 job 工具审批的问题。三个精确 job 工具现跳过审批交互，保留规则与 Hook deny、参数改写与校验、取消和停止；后台 bash 的审批流程不变。权限与 Hook 文档已同步，公开复现和相关回归通过，最终复核无剩余问题。
+
+### Verification
+
+最终修复源提交为 `54538f547248bfdaa6429629d058419698ab6a51`，最后一次实现集成为 `57e839985a32555a14410e19336fb5a1e43d33ea`。两者 Git tree 均为 `de7318c4766c8d8ca59089e192b9cb7ab99f3890`；合入后 `git diff --check` 通过，工作树干净。
+
+冻结源码与测试，以隔离临时 HOME 运行 `caffeinate -is env -u NO_COLOR bun run check`，实际 exit 0：format、lint、types、Knip 成功，2300 pass / 0 fail，12077 assertions，166 files，测试用时 328.26 s。日志为 `/tmp/neant-background-jobs-review-final-check.log`；提交后的源码与测试指纹仍与完整检查输入一致。合入后的 Agent Core 后台任务与 TUI 面板重点回归为 48 pass / 0 fail，229 assertions，18.23 s。各阶段的红绿回归、进程 exit 手动验证和历史完整检查证据保留在对应工单中。
+
+### Main integration
+
+2026-10-06：按用户要求合入 `main`。主分支基线为 `c53bd5c0361fd41963e2704178212b21ea760eef`，后台任务分支为 `c4a0aef18111dafa2ef3ba280a3f14358c884f9b`。8 个冲突文件保留了主分支 MCP OAuth 与后台任务的两套现有行为，包括公共导出、Session 清理、notice 的 report / truncate、两种通知、`/mcp` 与 `/jobs` 命令及双语文案。
+
+首次组合回归 238 pass / 6 fail：5 项为新增两个命令后的旧目录数量与导航预期，1 项为 MCP 审批 fixture 缺少 bash 必填 description。测试输入和预期已按合并后的公开契约更新，新增公开 TUI 场景验证 MCP 报告、任务卡片、面板返回、完成 notice 和 40×12 resize 共存；相关 45 个测试通过，强化实际输出断言后的共存场景也通过。失败日志保留在 `/tmp/neant-background-jobs-main-focused-before-expectations.log`。
+
+合并候选源码冻结后，以隔离临时 HOME、清除 NO_COLOR 并启用 caffeinate 运行 `bun run check`，实际 exit 0：format、lint、types、Knip 成功，2409 pass / 0 fail，12503 assertions，173 files，363.68 s。日志 `/tmp/neant-background-jobs-main-full.log`。完整检查前后的 414 个源码、测试和文档文件指纹一致；其后仅追加本节验证记录，Markdown 格式与 diff 检查通过。

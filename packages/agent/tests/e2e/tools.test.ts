@@ -62,21 +62,34 @@ test("glob scoped to a subdirectory still honors parent gitignore rules", async 
   });
 });
 
-test("bash times out and returns an error without ending the Run", async () => {
+test("bash times out and moves to a background job without ending the Run", async () => {
   dirs = await tempDirs();
   const fake = fakeModel([
-    fauxAssistantMessage(fauxToolCall("bash", { command: "sleep 10", timeout: 0.05 }), {
-      stopReason: "toolUse",
-    }),
+    fauxAssistantMessage(
+      fauxToolCall("bash", { description: "Run test command", command: "sleep 10", timeout: 0.05 }),
+      {
+        stopReason: "toolUse",
+      },
+    ),
     fauxAssistantMessage("recovered"),
   ]);
   const session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
-  expect((await session.run("slow command")).text).toBe("recovered");
-  expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
-    role: "toolResult",
-    isError: true,
-    content: [{ type: "text", text: "Command timed out after 0.05 seconds" }],
-  });
+  try {
+    expect((await session.run("slow command")).text).toBe("recovered");
+    expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
+      role: "toolResult",
+      isError: false,
+      content: [
+        {
+          type: "text",
+          text: "[still running after 0.05s; moved to background job bash-1]\nThe command keeps running in the background. You will be notified when it finishes; read newer output with job_output, stop it with job_kill.",
+        },
+      ],
+      details: { jobId: "bash-1" },
+    });
+  } finally {
+    await session.dispose();
+  }
 });
 
 test("aborting a Run kills bash and its child process and preserves the error in the Transcript", async () => {
@@ -85,7 +98,10 @@ test("aborting a Run kills bash and its child process and preserves the error in
     fauxAssistantMessage(
       fauxToolCall(
         "bash",
-        { command: 'sleep 30 & child=$!; printf \'%s %s\\n\' "$$" "$child"; wait' },
+        {
+          description: "Run test command",
+          command: 'sleep 30 & child=$!; printf \'%s %s\\n\' "$$" "$child"; wait',
+        },
         { id: "bash-abort" },
       ),
       { stopReason: "toolUse" },
@@ -262,9 +278,12 @@ test("full-access permits edits and bash; tool exceptions are returned so the mo
       }),
       { stopReason: "toolUse" },
     ),
-    fauxAssistantMessage(fauxToolCall("bash", { command: "cat file.txt" }), {
-      stopReason: "toolUse",
-    }),
+    fauxAssistantMessage(
+      fauxToolCall("bash", { description: "Run test command", command: "cat file.txt" }),
+      {
+        stopReason: "toolUse",
+      },
+    ),
     fauxAssistantMessage(fauxToolCall("read", { path: "missing.txt" }), { stopReason: "toolUse" }),
     fauxAssistantMessage("recovered"),
   ]);
@@ -294,7 +313,11 @@ test("default permissions reject write, edit, and bash with errors and ordered d
           { path: "original.txt", edits: [{ oldText: "original", newText: "changed" }] },
           { id: "edit-1" },
         ),
-        fauxToolCall("bash", { command: "touch bash-ran" }, { id: "bash-1" }),
+        fauxToolCall(
+          "bash",
+          { description: "Run test command", command: "touch bash-ran" },
+          { id: "bash-1" },
+        ),
       ],
       { stopReason: "toolUse" },
     ),

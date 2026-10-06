@@ -141,6 +141,7 @@ test("resume replays each tool's collapsed result and error preview without remi
           {
             command:
               "printf 'first failure\\nsecond failure\\nthird failure\\nfourth-hidden\\n'; exit 1",
+            description: "Run test command",
           },
           { id: "failed-bash" },
         ),

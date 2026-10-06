@@ -14,6 +14,8 @@ export { ScrollBox, type ScrollBoxProps } from "./scroll-box";
 
 export interface BoxProps {
   children?: ReactNode;
+  /** Unique identity within a ScrollBox; keep descendant structure stable when restoring. */
+  scrollAnchorId?: string;
   position?: "relative" | "absolute";
   top?: number;
   right?: number;

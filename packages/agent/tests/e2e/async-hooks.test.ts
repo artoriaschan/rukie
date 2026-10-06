@@ -33,9 +33,12 @@ echo '{"continue":false,"systemMessage":"background notice","hookSpecificOutput"
   const completed = Promise.withResolvers<void>();
   const warnings: string[] = [];
   const fake = fakeModel([
-    fauxAssistantMessage(fauxToolCall("bash", { command: "touch release" }), {
-      stopReason: "toolUse",
-    }),
+    fauxAssistantMessage(
+      fauxToolCall("bash", { description: "Run test command", command: "touch release" }),
+      {
+        stopReason: "toolUse",
+      },
+    ),
     fauxAssistantMessage("first done"),
     fauxAssistantMessage("second done"),
   ]);
@@ -89,9 +92,12 @@ exit 2
   );
   const completed = Promise.withResolvers<void>();
   const fake = fakeModel([
-    fauxAssistantMessage(fauxToolCall("bash", { command: "touch release" }), {
-      stopReason: "toolUse",
-    }),
+    fauxAssistantMessage(
+      fauxToolCall("bash", { description: "Run test command", command: "touch release" }),
+      {
+        stopReason: "toolUse",
+      },
+    ),
     fauxAssistantMessage("repaired"),
   ]);
   session = await createSession({
@@ -189,7 +195,10 @@ touch forbidden-after-dispose
   );
   const fake = fakeModel([
     fauxAssistantMessage(
-      fauxToolCall("bash", { command: "while [ ! -f hook.pid ]; do sleep 0.01; done" }),
+      fauxToolCall("bash", {
+        description: "Run test command",
+        command: "while [ ! -f hook.pid ]; do sleep 0.01; done",
+      }),
       { stopReason: "toolUse" },
     ),
     fauxAssistantMessage("done"),
@@ -232,7 +241,10 @@ touch forbidden-after-dispose
       { stopReason: "toolUse" },
     ),
     fauxAssistantMessage(
-      fauxToolCall("bash", { command: "while [ ! -f hook.pid ]; do sleep 0.01; done" }),
+      fauxToolCall("bash", {
+        description: "Run test command",
+        command: "while [ ! -f hook.pid ]; do sleep 0.01; done",
+      }),
       { stopReason: "toolUse" },
     ),
     fauxAssistantMessage("child done"),

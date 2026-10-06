@@ -287,7 +287,7 @@ test.each(["question", "permission"])(
             },
           ],
         });
-      else parent.tool("bash", { command: "printf approved" });
+      else parent.tool("bash", { command: "printf approved", description: "Run test command" });
       await app.waitFor(() =>
         screen(app).includes(kind === "question" ? "Which storage?" : "Waiting"),
       );
@@ -423,7 +423,7 @@ test.each(["question", "permission"])(
             },
           ],
         });
-      else parent.tool("bash", { command: "printf approved" });
+      else parent.tool("bash", { command: "printf approved", description: "Run test command" });
       await app.waitFor(() =>
         screen(app).includes(kind === "question" ? "Which storage?" : "Waiting"),
       );

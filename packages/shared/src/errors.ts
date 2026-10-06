@@ -6,6 +6,7 @@ export interface UserVisibleErrorParams {
   "image-mime-mismatch": { mimeType: string };
   "allow-tools-retired": { source: string };
   "permission-rule-invalid": { source: string; rule: string };
+  "background-job-limit": { limit: number };
   "ripgrep-unavailable": { cause: string };
   "no-model": { settings: string };
   "unknown-model": { model: string };

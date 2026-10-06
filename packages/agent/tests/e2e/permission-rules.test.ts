@@ -19,7 +19,11 @@ test.each([...PERMISSION_MODES])(
       fauxAssistantMessage(
         [
           fauxToolCall("read", { path: "secret.txt" }, { id: "read" }),
-          fauxToolCall("bash", { command: "printf blocked > marker" }, { id: "bash" }),
+          fauxToolCall(
+            "bash",
+            { description: "Run test command", command: "printf blocked > marker" },
+            { id: "bash" },
+          ),
         ],
         { stopReason: "toolUse" },
       ),
@@ -101,9 +105,15 @@ test.each(["ask", "auto-review"] as const)(
   async (permissionMode) => {
     dirs = await tempDirs();
     const fake = fakeModel([
-      fauxAssistantMessage(fauxToolCall("bash", { command: " printf approved > marker " }), {
-        stopReason: "toolUse",
-      }),
+      fauxAssistantMessage(
+        fauxToolCall("bash", {
+          description: "Run test command",
+          command: " printf approved > marker ",
+        }),
+        {
+          stopReason: "toolUse",
+        },
+      ),
       fauxAssistantMessage("done"),
     ]);
     const events: SessionEvent[] = [];
@@ -165,11 +175,23 @@ test("batched reviews skip rule allow, ask, deny and invalid calls", async () =>
     fauxAssistantMessage(
       [
         fauxToolCall("write", { path: "reviewed.txt", content: "reviewed" }, { id: "reviewed" }),
-        fauxToolCall("bash", { command: "printf allowed > allowed" }, { id: "allowed" }),
-        fauxToolCall("bash", { command: "printf asked > asked" }, { id: "asked" }),
-        fauxToolCall("bash", { command: "printf denied > denied" }, { id: "denied" }),
+        fauxToolCall(
+          "bash",
+          { description: "Run test command", command: "printf allowed > allowed" },
+          { id: "allowed" },
+        ),
+        fauxToolCall(
+          "bash",
+          { description: "Run test command", command: "printf asked > asked" },
+          { id: "asked" },
+        ),
+        fauxToolCall(
+          "bash",
+          { description: "Run test command", command: "printf denied > denied" },
+          { id: "denied" },
+        ),
         fauxToolCall("bash", {}, { id: "invalid" }),
-        fauxToolCall("bash", { command: 42 }, { id: "coerced" }),
+        fauxToolCall("bash", { description: "Run test command", command: 42 }, { id: "coerced" }),
       ],
       { stopReason: "toolUse" },
     ),
@@ -281,9 +303,12 @@ test.each([
 test("session allowRules accepts bash specifiers without asking", async () => {
   dirs = await tempDirs();
   const fake = fakeModel([
-    fauxAssistantMessage(fauxToolCall("bash", { command: "printf comma,a > marker" }), {
-      stopReason: "toolUse",
-    }),
+    fauxAssistantMessage(
+      fauxToolCall("bash", { description: "Run test command", command: "printf comma,a > marker" }),
+      {
+        stopReason: "toolUse",
+      },
+    ),
     fauxAssistantMessage("done"),
   ]);
   let asks = 0;
@@ -331,9 +356,15 @@ test.each([
     await Bun.write(join(dirs.cwd, ".mcp.json"), JSON.stringify({ mcpServers: { project: {} } }));
     const { settings } = await loadSettings(dirs);
     const fake = fakeModel([
-      fauxAssistantMessage(fauxToolCall("bash", { command: "printf allowed > marker" }), {
-        stopReason: "toolUse",
-      }),
+      fauxAssistantMessage(
+        fauxToolCall("bash", {
+          description: "Run test command",
+          command: "printf allowed > marker",
+        }),
+        {
+          stopReason: "toolUse",
+        },
+      ),
       fauxAssistantMessage("done"),
     ]);
     const events: SessionEvent[] = [];

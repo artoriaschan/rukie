@@ -2,6 +2,8 @@
 
 Permission Rule 按 `deny` → `ask` → `allow` 的顺序匹配。显式 `deny` / `ask` 在所有 Permission Mode 下生效；`full-access` 不会越过它们，显式 `ask` 也不交给 Permission Review。规则判断使用 Hook 改写后的参数。用户层与项目层合并，项目层 `allow` 只有在用户声明的 Trusted Project 中生效。
 
+`job_list`、`job_output`、`job_kill` 只管理当前 owner 的 Background Job，不请求审批：显式 `ask` 与 PreToolUse 的 `ask` 不进入 PermissionRequest 或 Frontend Interaction。显式 `deny`、Hook 拒绝与参数校验仍生效；普通工具 hooks 照常执行。`bash`（包括后台启动）仍按完整权限流程判定。
+
 ## Web fetch 域名规则
 
 在 settings 中允许常用文档站、询问特定站点或拒绝某个域名：

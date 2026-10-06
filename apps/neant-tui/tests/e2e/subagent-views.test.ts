@@ -338,7 +338,11 @@ for (const failed of [false, true]) {
         ),
       )!;
       if (failed) child.tool("read", { path: "absent-review.txt" });
-      else child.tool("bash", { command: "printf tool-completed-output" });
+      else
+        child.tool("bash", {
+          command: "printf tool-completed-output",
+          description: "Run test command",
+        });
       await app.waitFor(() => app.calls.length === 4);
       click(app, "Subagent: Tool details");
       await app.waitFor(() => screen().includes("id "));

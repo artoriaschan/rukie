@@ -18,7 +18,9 @@ test.each([
 ])("handler if selects bash command %s", async (command, matched) => {
   dirs = await tempDirs();
   const fake = fakeModel([
-    fauxAssistantMessage(fauxToolCall("bash", { command }), { stopReason: "toolUse" }),
+    fauxAssistantMessage(fauxToolCall("bash", { description: "Run test command", command }), {
+      stopReason: "toolUse",
+    }),
     fauxAssistantMessage("done"),
   ]);
   const session = await createSession({
@@ -78,9 +80,12 @@ test("the same command with distinct if rules runs separately while exact repeat
   const command = "echo ran >> count";
   const handler = { type: "command" as const, command, if: "bash(printf *)" };
   const fake = fakeModel([
-    fauxAssistantMessage(fauxToolCall("bash", { command: "printf guarded" }), {
-      stopReason: "toolUse",
-    }),
+    fauxAssistantMessage(
+      fauxToolCall("bash", { description: "Run test command", command: "printf guarded" }),
+      {
+        stopReason: "toolUse",
+      },
+    ),
     fauxAssistantMessage("done"),
   ]);
   const session = await createSession({

@@ -1,4 +1,5 @@
 import type { UserVisibleErrorData } from "../errors.ts";
+import type { JobEvent } from "../jobs.ts";
 
 /** Token counts for this Run only, summed across assistant messages. */
 interface TokenUsage {
@@ -34,6 +35,7 @@ export interface ContextUsageEvent {
 }
 
 export type CustomSessionEvent<PiEvent extends { type: string } = never> =
+  | JobEvent
   | { type: "session_start"; model: string; cwd: string; tools: string[] }
   | {
       type: "subagent_event";

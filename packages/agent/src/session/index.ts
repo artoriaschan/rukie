@@ -1,3 +1,4 @@
+import { createJobs, jobStatus } from "../jobs/index.ts";
 import {
   Agent,
   type AgentEvent,
@@ -28,6 +29,8 @@ import type {
   HooksSettings,
   ContextReport,
   McpServerView,
+  JobView,
+  JobOutput,
 } from "@neant/shared";
 import {
   createSubagents,
@@ -190,6 +193,12 @@ export interface Session {
   steer(prompt: string, options?: { images?: PromptImage[] }): void;
   /** Observe all runs; the first subscriber also receives events from startup autoruns. */
   subscribe(onEvent: (event: SessionEvent) => void): () => void;
+  /** Current Session's background jobs, including settled records; excludes foreground work. */
+  jobs(): JobView[];
+  /** Read from an absolute UTF-8 byte offset without moving the model's job_output cursor. */
+  readJob(id: string, offset: number): JobOutput;
+  /** Stop a job; inform the active Run or queue input for the next human prompt while idle. */
+  killJob(id: string): Promise<void>;
   readonly id: string;
   readonly title: string;
   readonly titleSource: TitleSource | undefined;
@@ -346,6 +355,7 @@ async function createSessionInternal(
       );
   let entries;
   let initialTitle: string | undefined;
+  let jobSequence = 0;
   try {
     const branch =
       (await stored.branch("main", context)) ?? (await stored.createBranch("main", null, context));
@@ -364,6 +374,28 @@ async function createSessionInternal(
     entries = await branch.findEntries({ order: "oldestFirst" }, context);
     if (metadata) {
       entries = await repairUnknownToolOutcomes(branch, entries, context);
+      // Scan normal messages in storage order across all branches, including
+      // rewound/compacted history. Calls after a known id also reserve a number
+      // when their result was lost; denied calls create harmless gaps.
+      for (const entry of await stored.findEntries({ type: "message", order: "asc" }, context)) {
+        if (entry.type !== "message") continue;
+        if (entry.message.role === "assistant")
+          jobSequence += entry.message.content.filter(
+            (block) => block.type === "toolCall" && block.name === "bash",
+          ).length;
+        if (entry.message.role !== "toolResult" || entry.message.toolName !== "bash") continue;
+        const details = entry.message.details;
+        if (
+          typeof details !== "object" ||
+          details === null ||
+          !("jobId" in details) ||
+          typeof details.jobId !== "string"
+        )
+          continue;
+        const suffix = /^bash-(\d+)$/.exec(details.jobId)?.[1];
+        const sequence = suffix === undefined ? 0 : Number(suffix);
+        if (Number.isSafeInteger(sequence)) jobSequence = Math.max(jobSequence, sequence);
+      }
     }
   } finally {
     await stored.close(context);
@@ -551,6 +583,8 @@ async function createSessionInternal(
   const pendingAsyncContexts: string[] = [];
   const pendingRewakes: string[] = [];
   const rewakeSteering = new Map<AgentMessage, string>();
+  const pendingJobStops: string[] = [];
+  const jobStopSteering = new Map<AgentMessage, string>();
   let rewakeChanged = Promise.withResolvers<void>();
   let scheduleRewake: (() => void) | undefined;
   let emitSessionEndEvent: typeof emitRunEvent;
@@ -898,9 +932,32 @@ async function createSessionInternal(
       await emitRunEvent?.({ type: "tool_state_changed", name: "file-tracking", value });
     },
   });
+  const jobs = createJobs({
+    initialSequence: jobSequence,
+    onEvent(event) {
+      // Process observers must never block output drain or await their own disposal.
+      try {
+        const delivered = emitRunEvent
+          ? emitRunEvent(event)
+          : broadcast({ ...event, sessionId: stored.metadata.id });
+        void Promise.resolve(delivered).catch((error: unknown) => {
+          (options.onWarning ?? console.warn)(`Job observer failed: ${String(error)}`);
+        });
+      } catch (error) {
+        (options.onWarning ?? console.warn)(`Job observer failed: ${String(error)}`);
+      }
+    },
+    onNotify(job) {
+      pendingRewakes.push(
+        `background job ${job.id} (bash: ${job.label}) finished ${jobStatus(job)}. Read its output with job_output.`,
+      );
+      scheduleRewake?.();
+    },
+  });
   const initialTools = [
     ...createBuiltinTools(
       cwd,
+      jobs,
       (name) => skills.get(name),
       setTodo,
       onQuestion,
@@ -1439,6 +1496,33 @@ async function createSessionInternal(
         sessionObservers.delete(onEvent);
       };
     },
+    jobs: jobs.list,
+    readJob(id, offset) {
+      if (!Number.isSafeInteger(offset) || offset < 0)
+        throw new Error("Job output offset must be a non-negative safe integer.");
+      return jobs.get(id).read(offset);
+    },
+    async killJob(id) {
+      if (disposePromise) throw new Error("Session has been disposed.");
+      const job = jobs.get(id);
+      const view = job.view;
+      if (view.status !== "running") return;
+      // Suppress settlement before signalling the process group.
+      job.kill("user");
+      const text = `User stopped background job ${id} (${view.label}).`;
+      if (!running) pendingJobStops.push(text);
+      else {
+        const message: AgentMessage = {
+          role: "user",
+          content: [{ type: "text", text }],
+          timestamp: Date.now(),
+        };
+        jobStopSteering.set(message, text);
+        agent.steer(message);
+        rewakeChanged.resolve();
+        rewakeChanged = Promise.withResolvers<void>();
+      }
+    },
     id: stored.metadata.id,
     sideQuestion(question, { signal } = {}) {
       if (disposePromise) throw new Error("Session has been disposed.");
@@ -1800,6 +1884,7 @@ async function createSessionInternal(
           sideLifetime.abort();
           const mcp = runMcp;
           hooks.dispose();
+          const jobsDisposed = jobs.dispose(Boolean(internal.parentSessionId));
           await sessionTitle.dispose();
           runController?.abort();
           try {
@@ -1807,6 +1892,7 @@ async function createSessionInternal(
             await mcpManagementSettled?.promise;
             await compactSettled?.promise;
             await Promise.all([
+              jobsDisposed,
               hooks.run("SessionEnd", { ...hookInput(), reason }, { matchQuery: reason }),
               ...[...childSessions].map((child) => child.dispose(reason)),
             ]);
@@ -2004,6 +2090,7 @@ async function createSessionInternal(
           const generalTools = [
             ...createBuiltinTools(
               cwd,
+              jobs,
               (name) => skills.get(name),
               setTodo,
               onQuestion,
@@ -2235,6 +2322,7 @@ async function createSessionInternal(
                   if (block.type === "toolCall") sidePendingCalls.add(block.id);
               if (event.message.role === "user") userMessageSequence++;
               rewakeSteering.delete(event.message);
+              jobStopSteering.delete(event.message);
               subagents.delivered(event.message);
               if (
                 event.message.role === "system-reminder" &&
@@ -2317,8 +2405,21 @@ async function createSessionInternal(
           });
           signal?.throwIfAborted();
           const invocation = skillInvocation(prompt, skills);
+          const stoppedJobs: AgentMessage[] =
+            source === "user"
+              ? pendingJobStops.splice(0).map((text) => {
+                  const message: AgentMessage = {
+                    role: "user",
+                    content: [{ type: "text", text }],
+                    timestamp: Date.now(),
+                  };
+                  jobStopSteering.set(message, text);
+                  return message;
+                })
+              : [];
           await agent.prompt([
             ...reminders,
+            ...stoppedJobs,
             userPrompt,
             ...(source === "user" && recoveryPending
               ? [
@@ -2350,7 +2451,7 @@ async function createSessionInternal(
           ]);
           while (!planTakenOver && !hookStopped) {
             signal?.throwIfAborted();
-            if (rewakeSteering.size || subagents.hasNotifications) {
+            if (rewakeSteering.size || jobStopSteering.size || subagents.hasNotifications) {
               await agent.continue();
               continue;
             }
@@ -2389,7 +2490,7 @@ async function createSessionInternal(
             signal?.throwIfAborted();
             if (hookStopped) break;
             if (stopped.decision !== "block") {
-              if (rewakeSteering.size) {
+              if (rewakeSteering.size || jobStopSteering.size) {
                 await agent.continue();
                 continue;
               }
@@ -2427,6 +2528,8 @@ async function createSessionInternal(
           agent.clearSteeringQueue();
           pendingRewakes.push(...rewakeSteering.values());
           rewakeSteering.clear();
+          pendingJobStops.push(...jobStopSteering.values());
+          jobStopSteering.clear();
           await subagents.settle();
           signal?.removeEventListener("abort", abort);
           unsubscribe?.();
@@ -2457,6 +2560,7 @@ async function createSessionInternal(
         throw error;
       } finally {
         try {
+          if (internal.parentSessionId) await jobs.clear();
           await permissions.settleReviews();
           await mcp.close();
           await emitMcpErrors();
@@ -2481,6 +2585,8 @@ async function createSessionInternal(
           emitRunEvent = undefined;
           pendingRewakes.push(...rewakeSteering.values());
           rewakeSteering.clear();
+          pendingJobStops.push(...jobStopSteering.values());
+          jobStopSteering.clear();
           agent.clearSteeringQueue();
           runController = undefined;
           sidePendingCalls.clear();

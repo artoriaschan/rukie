@@ -17,9 +17,12 @@ const delegate = (toolName = "subagent") =>
     { stopReason: "toolUse" },
   );
 const bash = () =>
-  fauxAssistantMessage(fauxToolCall("bash", { command: "printf shared-grant" }), {
-    stopReason: "toolUse",
-  });
+  fauxAssistantMessage(
+    fauxToolCall("bash", { description: "Run test command", command: "printf shared-grant" }),
+    {
+      stopReason: "toolUse",
+    },
+  );
 
 test.each(["subagent", "subagent_fork"])(
   "child permission origin reaches the parent callback and session grant covers the parent's next call (%s)",

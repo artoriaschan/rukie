@@ -62,6 +62,7 @@ const zh = {
   "approval.allow-domain": "本 session 允许此域名",
   "approval.deny": "拒绝",
   "api-key.environment-default": "该提供方的标准环境变量",
+  "error.background-job-limit": "后台任务数量已达上限（{{limit}}）；请先停止已有任务。",
   "error.ripgrep-unavailable":
     "内置 ripgrep 不可用。请重新安装 Neant 的依赖（包含 optionalDependencies），并检查平台兼容性或二进制执行权限。原因：{{cause}}",
   "error.allow-tools-retired": "{{source}}: allowTools 已移除，请迁移到 permissions.allow。",
@@ -175,6 +176,8 @@ const en = {
   "approval.allow-domain": "Allow this domain for this session",
   "approval.deny": "Deny",
   "api-key.environment-default": "the provider's standard environment variable",
+  "error.background-job-limit":
+    "Background job limit reached ({{limit}}); stop an existing job first.",
   "error.ripgrep-unavailable":
     "Bundled ripgrep is unavailable. Reinstall Neant dependencies (including optionalDependencies) and check platform compatibility or binary execution permissions. Cause: {{cause}}",
   "error.allow-tools-retired":

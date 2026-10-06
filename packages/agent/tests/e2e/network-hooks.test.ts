@@ -16,9 +16,16 @@ afterEach(async () => {
 
 async function runHook(handler: HookHandler) {
   const fake = fakeModel([
-    fauxAssistantMessage(fauxToolCall("bash", { command: "touch marker" }, { id: "call" }), {
-      stopReason: "toolUse",
-    }),
+    fauxAssistantMessage(
+      fauxToolCall(
+        "bash",
+        { description: "Run test command", command: "touch marker" },
+        { id: "call" },
+      ),
+      {
+        stopReason: "toolUse",
+      },
+    ),
     fauxAssistantMessage("done"),
   ]);
   const events: SessionEvent[] = [];
@@ -238,9 +245,12 @@ test.each(["cancel", "dispose"] as const)(
     });
     servers.push(server);
     const fake = fakeModel([
-      fauxAssistantMessage(fauxToolCall("bash", { command: "touch marker" }), {
-        stopReason: "toolUse",
-      }),
+      fauxAssistantMessage(
+        fauxToolCall("bash", { description: "Run test command", command: "touch marker" }),
+        {
+          stopReason: "toolUse",
+        },
+      ),
       fauxAssistantMessage("done"),
     ]);
     const session = await createSession({
@@ -296,9 +306,12 @@ test.each(["http", "mcp_tool"] as const)(
         ? { type, url: server.url.href }
         : { type, server: "local", tool: "json", input: { text: "{}" } };
     const fake = fakeModel([
-      fauxAssistantMessage(fauxToolCall("bash", { command: "touch marker" }), {
-        stopReason: "toolUse",
-      }),
+      fauxAssistantMessage(
+        fauxToolCall("bash", { description: "Run test command", command: "touch marker" }),
+        {
+          stopReason: "toolUse",
+        },
+      ),
       fauxAssistantMessage("done"),
     ]);
     const session = await createSession({
@@ -341,9 +354,12 @@ test.each(["cancel", "dispose"] as const)(
     dirs = await tempDirs();
     await connectMcp();
     const fake = fakeModel([
-      fauxAssistantMessage(fauxToolCall("bash", { command: "touch marker" }), {
-        stopReason: "toolUse",
-      }),
+      fauxAssistantMessage(
+        fauxToolCall("bash", { description: "Run test command", command: "touch marker" }),
+        {
+          stopReason: "toolUse",
+        },
+      ),
       fauxAssistantMessage("done"),
     ]);
     const session = await createSession({
@@ -394,9 +410,12 @@ test("HTTP non-success streams release their connection before session disposal"
   });
   servers.push(server);
   const fake = fakeModel([
-    fauxAssistantMessage(fauxToolCall("bash", { command: "touch marker" }), {
-      stopReason: "toolUse",
-    }),
+    fauxAssistantMessage(
+      fauxToolCall("bash", { description: "Run test command", command: "touch marker" }),
+      {
+        stopReason: "toolUse",
+      },
+    ),
     fauxAssistantMessage("done"),
   ]);
   const events: SessionEvent[] = [];
@@ -459,7 +478,7 @@ test.each(["http", "mcp_tool"] as const)(
         hookEventName: "PermissionRequest",
         decision: {
           behavior: "allow",
-          updatedInput: { command: "touch changed" },
+          updatedInput: { description: "Run rewritten command", command: "touch changed" },
           updatedPermissions: [{ type: "setMode", mode: "full-access", destination: "session" }],
         },
       },
@@ -472,9 +491,12 @@ test.each(["http", "mcp_tool"] as const)(
         ? { type, url: server.url.href }
         : { type, server: "local", tool: "json", input: { text: JSON.stringify(output) } };
     const fake = fakeModel([
-      fauxAssistantMessage(fauxToolCall("bash", { command: "touch marker" }), {
-        stopReason: "toolUse",
-      }),
+      fauxAssistantMessage(
+        fauxToolCall("bash", { description: "Run test command", command: "touch marker" }),
+        {
+          stopReason: "toolUse",
+        },
+      ),
       fauxAssistantMessage("done"),
     ]);
     const session = await createSession({

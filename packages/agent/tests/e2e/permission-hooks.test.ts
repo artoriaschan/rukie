@@ -20,9 +20,16 @@ async function script(event: HookEvent, output: unknown, exitCode = 0): Promise<
 }
 function toolModel() {
   return fakeModel([
-    fauxAssistantMessage(fauxToolCall("bash", { command: "touch marker" }, { id: "call" }), {
-      stopReason: "toolUse",
-    }),
+    fauxAssistantMessage(
+      fauxToolCall(
+        "bash",
+        { description: "Run test command", command: "touch marker" },
+        { id: "call" },
+      ),
+      {
+        stopReason: "toolUse",
+      },
+    ),
     fauxAssistantMessage("done"),
   ]);
 }
@@ -62,7 +69,10 @@ test.each(["deny", "ask", "none"] as const)(
     dirs = await tempDirs();
     const handler = await script("PermissionRequest", {
       hookSpecificOutput: {
-        decision: { behavior: "allow", updatedInput: { command: "touch rewritten" } },
+        decision: {
+          behavior: "allow",
+          updatedInput: { description: "Run rewritten command", command: "touch rewritten" },
+        },
       },
     });
     const fake = toolModel();
@@ -79,7 +89,10 @@ test.each(["deny", "ask", "none"] as const)(
       },
       onPermissionAsk: async (request) => {
         asks++;
-        expect(request.args).toEqual({ command: "touch rewritten" });
+        expect(request.args).toEqual({
+          description: "Run rewritten command",
+          command: "touch rewritten",
+        });
         return "allow";
       },
     });
@@ -93,7 +106,12 @@ test.each(["deny", "ask", "none"] as const)(
 test("invalid PermissionRequest rewritten input denies without running the tool", async () => {
   dirs = await tempDirs();
   const handler = await script("PermissionRequest", {
-    hookSpecificOutput: { decision: { behavior: "allow", updatedInput: { command: 2 } } },
+    hookSpecificOutput: {
+      decision: {
+        behavior: "allow",
+        updatedInput: { description: "Run rewritten command", command: 2 },
+      },
+    },
   });
   const fake = toolModel();
   const session = await createSession({
@@ -119,12 +137,18 @@ test("PermissionRequest session allow rules cover later calls without persisting
     },
   });
   const fake = fakeModel([
-    fauxAssistantMessage(fauxToolCall("bash", { command: "touch first" }), {
-      stopReason: "toolUse",
-    }),
-    fauxAssistantMessage(fauxToolCall("bash", { command: "touch second" }), {
-      stopReason: "toolUse",
-    }),
+    fauxAssistantMessage(
+      fauxToolCall("bash", { description: "Run test command", command: "touch first" }),
+      {
+        stopReason: "toolUse",
+      },
+    ),
+    fauxAssistantMessage(
+      fauxToolCall("bash", { description: "Run test command", command: "touch second" }),
+      {
+        stopReason: "toolUse",
+      },
+    ),
     fauxAssistantMessage("done"),
   ]);
   const session = await createSession({
@@ -197,13 +221,19 @@ test("child PermissionRequest session setMode changes the parent's shared permis
       fauxToolCall("subagent", { description: "child", prompt: "try", run_in_background: false }),
       { stopReason: "toolUse" },
     ),
-    fauxAssistantMessage(fauxToolCall("bash", { command: "touch child-marker" }), {
-      stopReason: "toolUse",
-    }),
+    fauxAssistantMessage(
+      fauxToolCall("bash", { description: "Run test command", command: "touch child-marker" }),
+      {
+        stopReason: "toolUse",
+      },
+    ),
     fauxAssistantMessage("child done"),
-    fauxAssistantMessage(fauxToolCall("bash", { command: "touch parent-marker" }), {
-      stopReason: "toolUse",
-    }),
+    fauxAssistantMessage(
+      fauxToolCall("bash", { description: "Run test command", command: "touch parent-marker" }),
+      {
+        stopReason: "toolUse",
+      },
+    ),
     fauxAssistantMessage("parent done"),
   ]);
   const session = await createSession({
@@ -285,7 +315,7 @@ test("interrupting PermissionRequest denial stops the run and all sibling tools"
   const fake = fakeModel([
     fauxAssistantMessage(
       [
-        fauxToolCall("bash", { command: "touch marker" }),
+        fauxToolCall("bash", { description: "Run test command", command: "touch marker" }),
         fauxToolCall("write", { path: "sibling", content: "must not write" }),
       ],
       { stopReason: "toolUse" },
@@ -399,7 +429,10 @@ test.each(["allow", "deny"] as const)(
             behavior,
             ...(behavior === "allow"
               ? {
-                  updatedInput: { command: "touch rewritten" },
+                  updatedInput: {
+                    description: "Run rewritten command",
+                    command: "touch rewritten",
+                  },
                   updatedPermissions: [
                     { type: "setMode", destination: "session", mode: "full-access" },
                   ],
@@ -418,7 +451,7 @@ test.each(["allow", "deny"] as const)(
       settings: { hooks: { PermissionRequest: [{ hooks: [handler] }] } },
       onPermissionAsk: async (request) => {
         asks++;
-        expect(request.args).toEqual({ command: "touch marker" });
+        expect(request.args).toEqual({ description: "Run test command", command: "touch marker" });
         return "allow";
       },
     });
@@ -499,7 +532,7 @@ test.each(["PermissionRequest", "PermissionDenied"] as const)(
     const fake = fakeModel([
       fauxAssistantMessage(
         [
-          fauxToolCall("bash", { command: "touch marker" }),
+          fauxToolCall("bash", { description: "Run test command", command: "touch marker" }),
           fauxToolCall("write", { path: "sibling", content: "must not write" }),
         ],
         { stopReason: "toolUse" },
@@ -606,15 +639,24 @@ test("PermissionRequest accepts Claude-style session rule entries and never over
     },
   });
   const fake = fakeModel([
-    fauxAssistantMessage(fauxToolCall("bash", { command: "touch first" }), {
-      stopReason: "toolUse",
-    }),
-    fauxAssistantMessage(fauxToolCall("bash", { command: "touch denied" }), {
-      stopReason: "toolUse",
-    }),
-    fauxAssistantMessage(fauxToolCall("bash", { command: "touch last" }), {
-      stopReason: "toolUse",
-    }),
+    fauxAssistantMessage(
+      fauxToolCall("bash", { description: "Run test command", command: "touch first" }),
+      {
+        stopReason: "toolUse",
+      },
+    ),
+    fauxAssistantMessage(
+      fauxToolCall("bash", { description: "Run test command", command: "touch denied" }),
+      {
+        stopReason: "toolUse",
+      },
+    ),
+    fauxAssistantMessage(
+      fauxToolCall("bash", { description: "Run test command", command: "touch last" }),
+      {
+        stopReason: "toolUse",
+      },
+    ),
     fauxAssistantMessage("done"),
   ]);
   const session = await createSession({

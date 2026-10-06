@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { runToolCall, type AgentContext } from "@earendil-works/pi-agent-core";
 import { createPermissionGate, parsePermissionRules } from "../../src/permissions/index.ts";
+import { createJobs } from "../../src/jobs/index.ts";
 import { createBuiltinTools } from "../../src/tools/index.ts";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { mkdir, symlink } from "node:fs/promises";
@@ -15,9 +16,16 @@ import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
-afterEach(() => dirs?.cleanup());
+let toolJobs: ReturnType<typeof createJobs> | undefined;
+afterEach(async () => {
+  await toolJobs?.dispose();
+  toolJobs = undefined;
+  await dirs?.cleanup();
+});
 const commandTurn = (command: string) =>
-  fauxAssistantMessage(fauxToolCall("bash", { command }), { stopReason: "toolUse" });
+  fauxAssistantMessage(fauxToolCall("bash", { description: "Run test command", command }), {
+    stopReason: "toolUse",
+  });
 
 test("session command grant allows the same literal command and still asks for another", async () => {
   dirs = await tempDirs();
@@ -38,8 +46,8 @@ test("session command grant allows the same literal command and still asks for a
   });
   await session.run("run commands");
   expect(requests.map((request) => request.args)).toEqual([
-    { command: "printf 'literal*'" },
-    { command: "printf 'literal-wide'" },
+    { description: "Run test command", command: "printf 'literal*'" },
+    { description: "Run test command", command: "printf 'literal-wide'" },
   ]);
   expect(requests[0]!.sessionAllow).toEqual({ kind: "command", rule: "bash(printf 'literal\\*')" });
   expect(
@@ -74,7 +82,10 @@ test.each([
     },
   });
   await session.run("run");
-  expect(asked).toEqual([{ command }, { command: other }]);
+  expect(asked).toEqual([
+    { description: "Run test command", command },
+    { description: "Run test command", command: other },
+  ]);
   expect(
     fake.contexts[3]!.messages.filter((message) => message.role === "toolResult"),
   ).toMatchObject([{ isError: false }, { isError: false }, { isError: true }]);
@@ -156,17 +167,31 @@ test.each(["command", "directory"] as const)(
   async (kind) => {
     dirs = await tempDirs();
     const fake = fakeModel([]);
+    toolJobs = createJobs();
     const tools = createBuiltinTools(
       dirs.cwd,
+      toolJobs,
       () => undefined,
       async () => {},
     );
     const calls =
       kind === "command"
         ? [
-            fauxToolCall("bash", { command: "printf shared" }, { id: "first" }),
-            fauxToolCall("bash", { command: "printf shared" }, { id: "covered" }),
-            fauxToolCall("bash", { command: "printf different" }, { id: "different" }),
+            fauxToolCall(
+              "bash",
+              { description: "Run test command", command: "printf shared" },
+              { id: "first" },
+            ),
+            fauxToolCall(
+              "bash",
+              { description: "Run test command", command: "printf shared" },
+              { id: "covered" },
+            ),
+            fauxToolCall(
+              "bash",
+              { description: "Run test command", command: "printf different" },
+              { id: "different" },
+            ),
           ]
         : [
             fauxToolCall("write", { path: "same/first", content: "ok" }, { id: "first" }),
@@ -349,8 +374,10 @@ test("directory name glob characters cannot grant adjacent directories or anothe
 test("other tools receive an exact bare tool session grant", async () => {
   dirs = await tempDirs();
   const fake = fakeModel([]);
+  toolJobs = createJobs();
   const tools = createBuiltinTools(
     dirs.cwd,
+    toolJobs,
     () => undefined,
     async () => {},
   )

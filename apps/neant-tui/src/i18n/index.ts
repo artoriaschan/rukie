@@ -121,6 +121,8 @@ export function formatError(error: unknown, t: ReturnType<typeof createTuiI18n>)
       return t("error.session-not-found", data.params);
     case "session-observation-readonly":
       return t("error.session-observation-readonly", data.params);
+    case "background-job-limit":
+      return t("error.background-job-limit", data.params);
     case "ripgrep-unavailable":
       return t("error.ripgrep-unavailable", data.params);
     case "hook-invalid-json":

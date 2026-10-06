@@ -265,7 +265,10 @@ test("OAuth and permission approvals share the FIFO without overlapping panels",
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.tools([
-      { name: "bash", args: { command: "printf approval-first" } },
+      {
+        name: "bash",
+        args: { command: "printf approval-first", description: "Print after user approval" },
+      },
       { name: "mcp__srv__authenticate", args: {} },
     ]);
     await app.waitFor(() => app.screen().some((line) => line.trim() === "printf approval-first"));
