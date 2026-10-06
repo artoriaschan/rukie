@@ -12,3 +12,5 @@ Blocked by: 10
 2026-10-06：基线 main `9e290a3`，工作树及分支 `codex/ctrl-c-exit-tip`。公开 seam 为 TUI start + injected host/headless terminal；先覆盖 zh/en 首按提示、到期、编辑取消、再次退出及运行中/非空草稿行为。
 
 公开回归先 red 3 fail（首按没有提示），实现后 green 3 pass / 25 assertions。focused main、ctrl-c-exit-tip、rewind 为 100 pass / 0 fail / 512 assertions / 3 files（31.18 s）；追加同一 input chunk 双按退出/终端恢复测试 1 pass / 6 assertions。覆盖 40×12 中英布局与光标、剪贴板提示优先级、窗口过期、编辑取消、中断/草稿清除及原连续双按退出语义。oxlint、tsc -b、Knip 通过；等待双轴审查和 main aggregate 后关闭。
+
+初轮审查：Spec 0 项发现，独立新增测试 4 pass / 31 assertions；Standards 0 项规范违约，1 项 P3 判断项（退出与回退重复的 ref/state/deadline 清理）。同一 Chat 内的两个操作窗口共用 useDoublePressWindow，保留独立 1 秒/3 秒窗口、即时按键 ref 和各自 Tips。收拢后退出提示及完整 rewind 为 56 pass / 0 fail / 329 assertions / 2 files（25.71 s），lint、tsc -b 通过。

@@ -191,7 +191,32 @@ export async function createChat(
   };
 }
 
-const EXIT_WINDOW_MS = 1000;
+/** arm(undefined) cancels; the ref also handles consecutive keys in the same input chunk. */
+function useDoublePressWindow(durationMs: number) {
+  const startedAt = useRef<number | undefined>(undefined);
+  const [armedAt, setArmedAt] = useState<number>();
+  const arm = (at?: number) => {
+    startedAt.current = at;
+    setArmedAt(at);
+  };
+  useEffect(() => {
+    if (armedAt === undefined) return;
+    const timer = setTimeout(
+      () => {
+        startedAt.current = undefined;
+        setArmedAt(undefined);
+      },
+      Math.max(0, durationMs - (performance.now() - armedAt)),
+    );
+    return () => clearTimeout(timer);
+  }, [armedAt, durationMs]);
+  return {
+    armedAt,
+    arm,
+    isWithinWindow: (now: number) =>
+      startedAt.current !== undefined && now - startedAt.current <= durationMs,
+  };
+}
 
 function Chat({
   session,
@@ -577,40 +602,16 @@ function Chat({
     error: state.error,
   });
   const draft = useRef("");
-  const lastInterrupt = useRef<number | undefined>(undefined);
-  const [exitArmedAt, setExitArmedAt] = useState<number>();
-  const armExit = (at?: number) => {
-    lastInterrupt.current = at;
-    setExitArmedAt(at);
-  };
-  useEffect(() => {
-    if (exitArmedAt === undefined) return;
-    const timer = setTimeout(
-      () => {
-        lastInterrupt.current = undefined;
-        setExitArmedAt(undefined);
-      },
-      Math.max(0, EXIT_WINDOW_MS - (performance.now() - exitArmedAt)),
-    );
-    return () => clearTimeout(timer);
-  }, [exitArmedAt]);
-  const rewindEsc = useRef<number | undefined>(undefined);
-  const [rewindArmedAt, setRewindArmedAt] = useState<number>();
-  const armRewind = (at?: number) => {
-    rewindEsc.current = at;
-    setRewindArmedAt(at);
-  };
-  useEffect(() => {
-    if (rewindArmedAt === undefined) return;
-    const timer = setTimeout(
-      () => {
-        rewindEsc.current = undefined;
-        setRewindArmedAt(undefined);
-      },
-      Math.max(0, 3000 - (performance.now() - rewindArmedAt)),
-    );
-    return () => clearTimeout(timer);
-  }, [rewindArmedAt]);
+  const {
+    armedAt: exitArmedAt,
+    arm: armExit,
+    isWithinWindow: isExitArmed,
+  } = useDoublePressWindow(1000);
+  const {
+    armedAt: rewindArmedAt,
+    arm: armRewind,
+    isWithinWindow: isRewindArmed,
+  } = useDoublePressWindow(3000);
   const [now, setNow] = useState(Date.now);
   const currentTime = Math.max(now, Date.now());
   const activity = renderActivity(state.activity, currentTime);
@@ -1345,7 +1346,7 @@ function Chat({
           change("");
         } else if (!small) {
           const now = performance.now();
-          if (rewindEsc.current !== undefined && now - rewindEsc.current <= 3000) {
+          if (isRewindArmed(now)) {
             armRewind();
             openRewind();
           } else {
@@ -1359,8 +1360,7 @@ function Chat({
           change("");
         } else {
           const now = performance.now();
-          if (lastInterrupt.current !== undefined && now - lastInterrupt.current <= EXIT_WINDOW_MS)
-            onExit();
+          if (isExitArmed(now)) onExit();
           else armExit(now);
         }
       }
