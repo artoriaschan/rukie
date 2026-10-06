@@ -109,3 +109,21 @@ Standards：2 项规范违约、2 项判断项，最高为 P1，全部关闭。S
 main 合并 `1d72bf6` 保留同期 `/context` 消息样式修复。初轮 focused 64 pass / 0 fail / 359 assertions；生命周期修复后的 clipboard、slash commands、history、images 为 48 pass / 0 fail / 143 assertions。main `rtk proxy caffeinate -is env -u NO_COLOR bun run check` exit 0：format、lint、types、Knip 和 2197 tests / 0 fail / 11365 assertions / 158 files，294.56 s。检查期间 main 新增 `beb8de6`，仅后台任务文档变化，无产品源或测试变化。
 
 本次分支为 main 祖先、工作树 clean 后，经非 force worktree remove 和 branch -d 清理；目录、Git 工作树注册和分支均已删除，其他任务工作树保留。规格和工单已关闭，当前契约见 [输入提示](../../apps/neant-tui/README.md#输入提示)。
+
+## Ctrl+C 退出提示后续验收
+
+2026-10-06：[11](issues/11-ctrl-c-exit-tip.md) 为首次空闲、空输入的 Ctrl+C 展示本地化退出 Tips。审查基线 `9e290a3`，实现 `1157d47`，最终 diff `git diff 9e290a3...f83de05`。中断 Run、清空草稿和关闭浮层的原有行为保留，提示仅在 1 秒退出窗口内有效。
+
+### Standards
+
+0 项规范违约。初轮 1 项 P3 判断项（退出与回退窗口的重复计时）已通过 `f83de05` 收拢到同一屏幕的 useDoublePressWindow；1 秒退出和 3 秒回退仍独立，即时 ref 保留同包按键语义。最终 0 项待处理判断项，文档归属、双语言文案和公开测试符合规范。
+
+### Spec
+
+0 项需求缺失、范围扩张或错误行为。提示按 locale 显示「再次按 Ctrl+C 退出」或「Press Ctrl+C again to exit」，退出准备取消或到期时清除。原 notice 优先级和连续双按退出规则保留。审查者独立运行新增公开测试 4 pass / 0 fail / 31 assertions；最终收拢后复核无新增问题。
+
+### 集成与清理
+
+main 合并提交 `80d3b13`。新增中英公开测试先 red 3 fail 后 green 3 pass；focused main、退出和 rewind 100 pass / 0 fail / 512 assertions，追加同包双按退出 1 pass / 6 assertions。收拢计时后退出及完整 rewind 56 pass / 0 fail / 329 assertions。main `rtk proxy caffeinate -is env -u NO_COLOR bun run check` exit 0：format、lint、types、Knip 与 2201 tests / 0 fail / 11397 assertions / 159 files，296.88 s。
+
+本次工作树及分支经 clean/merged 核对后非 force 删除，其他工作树及 MCP 工单的未提交修改保留。工单已 resolved，当前契约见 [输入提示](../../apps/neant-tui/README.md#输入提示)。
