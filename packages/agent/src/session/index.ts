@@ -272,6 +272,7 @@ interface InternalSessionOptions {
   };
   plan?: { getActive(): boolean; hasEntered(): boolean; setMode(on: boolean): Promise<void> };
   toolNames?: readonly string[];
+  inheritedMcpServers?: readonly string[];
   typePrompt?: string;
   typeHooks?: HooksSettings;
   initialMessages?: AgentMessage[];
@@ -504,12 +505,20 @@ async function createSessionInternal(
   let baselinePersisted = initialBranch.baselinePersisted;
   let skills = new Map<string, Skill>();
   let mcpToolServers = new Map<string, string>();
+  const allowsTool = (tool: AgentTool) => {
+    if (!internal.toolNames || internal.toolNames.includes(tool.name)) return true;
+    const server = mcpToolServers.get(tool.name);
+    return server !== undefined && (internal.inheritedMcpServers?.includes(server) ?? false);
+  };
   const origin =
     internal.originDescription === undefined
       ? undefined
       : { agentId: stored.metadata.id, description: internal.originDescription };
   const onQuestion = options.onQuestion
     ? (request: QuestionRequest) => options.onQuestion!({ ...request, ...(origin && { origin }) })
+    : undefined;
+  const onMcpAuth: OnMcpAuth | undefined = options.onMcpAuth
+    ? (request) => options.onMcpAuth!({ ...request, ...(origin && { origin }) })
     : undefined;
   const hookInput = (): HookInput => ({
     session_id: stored.metadata.id,
@@ -795,6 +804,18 @@ async function createSessionInternal(
                   !["subagent", "subagent_fork", "send_message", "list_agents"].includes(tool.name),
               )
               .map((tool) => tool.name),
+          // Default types inherit future tools only from MCP servers already available to the parent.
+          // Explicit type.tools remains an exact allowlist, including an authenticate-only restriction.
+          ...(!type.tools && {
+            inheritedMcpServers: [
+              ...new Set(
+                agent.state.tools.flatMap((tool) => {
+                  const server = mcpToolServers.get(tool.name);
+                  return server === undefined ? [] : [server];
+                }),
+              ),
+            ],
+          }),
           typePrompt: type.prompt,
           typeHooks: type.hooks,
           ...(fork && {
@@ -964,7 +985,7 @@ async function createSessionInternal(
           ? []
           : [subagents.tool, subagents.forkTool, subagents.sendTool, subagents.listTool]),
       ]
-        .filter((tool) => !internal.toolNames || internal.toolNames.includes(tool.name))
+        .filter(allowsTool)
         .map(measureTool),
       ...(settings.thinking && { thinkingLevel: settings.thinking }),
     },
@@ -1779,7 +1800,7 @@ async function createSessionInternal(
             trustProjectMcp: options.trustProjectMcp,
             signal,
             interactive: !!options.onMcpAuth,
-            onMcpAuth: options.onMcpAuth,
+            onMcpAuth,
             onInteractionStart,
             onWarning: options.onWarning,
           });
@@ -1824,16 +1845,11 @@ async function createSessionInternal(
               ? []
               : [subagents.tool, subagents.forkTool, subagents.sendTool, subagents.listTool]),
           ]
-            .filter((tool) => !internal.toolNames || internal.toolNames.includes(tool.name))
+            .filter(allowsTool)
             .map(measureTool);
           const nonMcpTools = agent.state.tools.filter((tool) => !mcp.toolServers.has(tool.name));
           agent.prepareNextTurnWithContext = ({ context: turnContext }) => {
-            agent.state.tools = [
-              ...nonMcpTools,
-              ...mcp.tools
-                .filter((tool) => !internal.toolNames || internal.toolNames.includes(tool.name))
-                .map(measureTool),
-            ];
+            agent.state.tools = [...nonMcpTools, ...mcp.tools.filter(allowsTool).map(measureTool)];
             return { context: { ...turnContext, tools: agent.state.tools } };
           };
           await emit({
