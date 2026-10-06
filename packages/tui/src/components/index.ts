@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import type { TextStyle } from "../text";
+import type { InputEvent } from "../input";
 import { useAnimationFrame } from "../hooks/animation-frame";
 export { TextInput, createTextInputHistory, type TextInputProps } from "./text-input";
 export { ScrollBox, type ScrollBoxProps } from "./scroll-box";
@@ -44,6 +45,8 @@ export interface BoxProps {
   onMouseLeave?(): void;
   /** Primary mouse press and release on this box activate it once. */
   onClick?(): void;
+  /** Wheel input on this box or its descendants uses the last painted bounds. */
+  onWheel?(event: Extract<InputEvent, { type: "wheel" }>): void;
 }
 
 export interface TextProps extends TextStyle {

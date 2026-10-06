@@ -32,6 +32,8 @@
  */
 
 const zh = {
+  "command.menu-title": "命令",
+  "command.menu-count": "共 {{count}} 项",
   "btw.usage": "用法：/btw <问题>",
   "btw.answering": "正在回答侧问…",
   "btw.hint": "↑/↓ 滚动 · Esc 关闭 · /btw 追加侧问",
@@ -298,6 +300,8 @@ const zh = {
 } as const;
 
 const en = {
+  "command.menu-title": "commands",
+  "command.menu-count": "{{count}} items",
   "btw.usage": "Usage: /btw <question>",
   "btw.answering": "Answering side question…",
   "btw.hint": "↑/↓ scroll · Esc close · /btw ask again",

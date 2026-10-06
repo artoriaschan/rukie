@@ -897,25 +897,8 @@ function Chat({
     : interaction
       ? Number(!compactPrompt)
       : 1;
-  const commandMenuHeight =
-    commandMatches.length && !interaction && !rewind
-      ? Math.min(
-          commandMatches.length,
-          14,
-          Math.max(
-            1,
-            rows -
-              statusHeight -
-              promptHeight -
-              transcriptHeight -
-              panelMinimum -
-              sideHeight -
-              Number(hasActivity),
-          ),
-        )
-      : 0;
-  const chromeSpace =
-    rows - statusHeight - promptHeight - transcriptHeight - commandMenuHeight - sideHeight;
+  const commandMenuHeight = Math.min(8, Math.max(0, rows - statusHeight - 3 - modelNoticeHeight));
+  const chromeSpace = rows - statusHeight - promptHeight - transcriptHeight - sideHeight;
   const showReturnControl =
     showReturn && chromeSpace - minimumDialogHeight - dialogGap - panelMinimum >= 1;
   const compactReturn =
@@ -1104,6 +1087,7 @@ function Chat({
     }
     if (event.type === "move") return;
     if (event.type === "wheel") {
+      if (handledInput.current.has(event)) return;
       if (small) return;
       const viewport = details.current?.getSnapshot();
       if (
@@ -1140,12 +1124,17 @@ function Chat({
       lastInterrupt.current = undefined;
       return;
     }
+    if (handledInput.current.has(event)) return;
     const { key } = event;
     const pendingInteraction = sideController.current ? undefined : interactions.getSnapshot();
     if (pendingInteraction || key.name !== "escape") armRewind();
     const menu = !pendingInteraction && !small ? matches(draft.current) : [];
+    if (menu.length && key.name === "tab" && key.shift && !key.ctrl && !key.alt) {
+      handledInput.current.add(event);
+      return;
+    }
     if (menu.length && !key.ctrl && !key.alt && !key.shift) {
-      if (key.name === "up" || key.name === "down") {
+      if ((key.name === "up" || key.name === "down") && !history.isBrowsing()) {
         handledInput.current.add(event);
         commandSelectionRef.current =
           (commandSelectionRef.current + (key.name === "up" ? menu.length - 1 : 1)) % menu.length;
@@ -1568,18 +1557,36 @@ function Chat({
                 }}
               />
             )}
-            {!!commandMatches.length &&
-              !interaction &&
-              !rewind &&
-              !resumePicker &&
-              modelPicker === undefined && (
-                <CommandSuggestions
-                  items={commandMatches}
-                  selected={commandSelection % commandMatches.length}
-                  maxHeight={commandMenuHeight}
-                />
-              )}
             <PromptInput
+              suggestions={
+                !!commandMatches.length &&
+                !interaction &&
+                !rewind &&
+                !resumePicker &&
+                modelPicker === undefined ? (
+                  <CommandSuggestions
+                    items={commandMatches}
+                    selected={commandSelection % commandMatches.length}
+                    maxHeight={commandMenuHeight}
+                    columns={columns}
+                    query={input}
+                    locale={locale}
+                    planMode={state.planMode}
+                    onPick={(index) => sendInput(`/${commandMatches[index]!.name}`)}
+                    onWheel={(event) => {
+                      handledInput.current.add(event);
+                      commandSelectionRef.current = Math.max(
+                        0,
+                        Math.min(
+                          commandMatches.length - 1,
+                          commandSelectionRef.current + (event.delta > 0 ? 1 : -1),
+                        ),
+                      );
+                      setCommandSelection(commandSelectionRef.current);
+                    }}
+                  />
+                ) : undefined
+              }
               notice={imageNotice}
               warning={wrappedModelNotice}
               tip={rewindArmedAt === undefined ? undefined : t("rewind.again")}
@@ -1601,6 +1608,23 @@ function Chat({
                 pasteEpoch.current++;
               }}
               filterInput={(event, insert) => {
+                if (
+                  event.type === "key" &&
+                  !event.key.ctrl &&
+                  !event.key.alt &&
+                  !event.key.shift &&
+                  ["up", "down"].includes(event.key.name) &&
+                  history.isBrowsing() &&
+                  viewRef.current === "chat" &&
+                  modelPickerRef.current === undefined &&
+                  resumePickerRef.current === undefined &&
+                  !handledInput.current.has(event)
+                ) {
+                  // History may restore a slash draft and end its walk during this key.
+                  // Let the editor consume it without navigating the newly opened menu.
+                  handledInput.current.add(event);
+                  return true;
+                }
                 if (
                   event.type === "key" &&
                   event.key.ctrl &&
@@ -1625,7 +1649,8 @@ function Chat({
                     !event.key.shift &&
                     (!interactions.getSnapshot() || !!sideController.current) &&
                     matches(draft.current).length &&
-                    ["up", "down", "tab", "enter"].includes(event.key.name)
+                    (["tab", "enter"].includes(event.key.name) ||
+                      (!history.isBrowsing() && ["up", "down"].includes(event.key.name)))
                   )
                 );
               }}

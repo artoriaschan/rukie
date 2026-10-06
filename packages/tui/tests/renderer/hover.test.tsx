@@ -1,7 +1,53 @@
 import { expect, test } from "bun:test";
 import { useState } from "react";
-import { Box, ScrollBox, Text, TextInput, render, type ScrollHandle } from "../../src";
+import {
+  Box,
+  ScrollBox,
+  Text,
+  TextInput,
+  render,
+  type ScrollHandle,
+  type InputEvent,
+} from "../../src";
 import { createTerminal } from "../helpers/terminal";
+
+test("wheel targets the topmost painted overlay and its nearest wheel handler", async () => {
+  const terminal = createTerminal(20, 8);
+  const events: string[] = [];
+  const wheel = (name: string) => (event: Extract<InputEvent, { type: "wheel" }>) =>
+    events.push(`${name} ${event.delta}`);
+  const app = render(
+    <Box height={8} flexDirection="column" onWheel={wheel("body")}>
+      <Text>transcript</Text>
+      <Box
+        position="absolute"
+        top={2}
+        width={20}
+        height={3}
+        flexDirection="column"
+        onWheel={wheel("menu")}
+      >
+        <Text>menu title</Text>
+        <Box height={1} onClick={() => {}}>
+          <Text>menu row</Text>
+        </Box>
+        <Text>menu footer</Text>
+      </Box>
+    </Box>,
+    { ...terminal, fullscreen: true },
+  );
+  try {
+    await terminal.flush();
+    terminal.stdin.write("\x1b[<65;4;4M\x1b[<64;4;3M\x1b[<65;4;1M\x1b[<65;30;4M");
+    expect(events).toEqual(["menu 1", "menu -1", "body 1"]);
+    app.unmount();
+    terminal.stdin.write("\x1b[<65;4;4M");
+    expect(events).toHaveLength(3);
+  } finally {
+    app.unmount();
+    terminal.dispose();
+  }
+});
 
 test("a primary press and release on the same painted button clicks once without editing input", async () => {
   const terminal = createTerminal();

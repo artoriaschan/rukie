@@ -1,4 +1,5 @@
 import type { HostNode, LayoutNode } from "../layout";
+import type { InputEvent } from "../input";
 
 /** Hit-test the last painted viewport, including ScrollBox clipping and offsets. */
 export function createHover() {
@@ -40,7 +41,10 @@ export function createHover() {
         ancestors: HostNode[],
       ) {
         const chain =
-          node.props.onMouseEnter || node.props.onMouseLeave || node.props.onClick
+          node.props.onMouseEnter ||
+          node.props.onMouseLeave ||
+          node.props.onClick ||
+          node.props.onWheel
             ? [node.source, ...ancestors]
             : ancestors;
         const rectangle = {
@@ -62,6 +66,11 @@ export function createHover() {
       if (position?.x === x && position.y === y) return;
       position = { x, y };
       dispatch(new Set(hit(x, y)?.ancestors));
+    },
+    wheel(event: Extract<InputEvent, { type: "wheel" }>) {
+      hit(event.x, event.y)
+        ?.ancestors.find((node) => node.props.onWheel)
+        ?.props.onWheel?.(event);
     },
     press(x: number, y: number, button: number) {
       pressed = button === 0 ? hit(x, y)?.ancestors.find((node) => node.props.onClick) : undefined;
