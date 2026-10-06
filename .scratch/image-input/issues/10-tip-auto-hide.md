@@ -1,4 +1,4 @@
-Status: claimed
+Status: resolved
 Blocked by: 09
 
 # 10: Tips 通用自动隐藏
@@ -16,3 +16,9 @@ Blocked by: 09
 Focused `rtk proxy env -u NO_COLOR bun test`：prompt-input、clipboard-image-tip、rewind 共 64 pass / 0 fail / 359 assertions / 3 files（56.15 s）。首轮漏清环境 `NO_COLOR=1` 导致既有颜色断言 4 fail；清除后单例与全部 focused 均通过。oxfmt、oxlint、tsc -b、Knip 与 diff check 通过。待双轴审查、main aggregate 及 clean/merged 工作树清理后关闭。
 
 双轴审查初轮：Standards 0 项；Spec 发现 1 项 P2，Tab 补全递增 promptRevision 后重挂载整个 PromptInput，使已过期且来源未变的提示复现。已用公开回归复现 red（1 fail），将 revision key 收窄到编辑器及命令建议，Tips 生命周期保留在稳定的 PromptInput。修复后 clipboard-image-tip、slash-commands、input-history、images 共 48 pass / 0 fail / 143 assertions / 4 files（37.25 s），包含 Tab 补全后不重新显示提示；lint、tsc -b 通过。
+
+实现 `dc71603`、生命周期修复 `611c601` 经双轴复审通过：Standards 0 项规范违约 / 0 项判断项；Spec 的 1 项 P2 已关闭，0 项未解决问题。Spec reviewer 独立重跑原公开复现，确认剪贴板来源未变时 Tab 补全不使过期提示重现。
+
+main 合并提交 `1d72bf6`，保留同时进入 main 的 `/context` 消息样式修复。合并后 `rtk proxy caffeinate -is env -u NO_COLOR bun run check` exit 0：格式、lint、types、Knip 与 2197 pass / 0 fail / 11365 assertions / 158 files（294.56 s）。检查期间另一任务提交 `beb8de6`，仅涉及后台任务规格、领域与 ADR 文档，产品源及测试未变化。
+
+已确认本次工作树 clean、分支为 main 祖先，使用非 force worktree remove 与 branch -d 删除 `tips-auto-hide` 工作树和 `codex/tips-auto-hide` 分支；其他任务工作树保留。使用契约见 [输入提示](../../../apps/neant-tui/README.md#输入提示)，双轴验收见 [review](../review.md#tips-通用自动隐藏后续验收)。

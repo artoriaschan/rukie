@@ -91,3 +91,21 @@ Standards：2 项规范违约、2 项判断项，最高为 P1，全部关闭。S
 实现 `34cf2e9` 已通过 `4277f5c` 合入 main，focused 40 pass / 0 fail / 217 assertions / 6 files。main 上 `rtk proxy caffeinate -is env -u NO_COLOR bun run check` exit 0：format、lint、types、Knip 和 2193 tests / 0 fail / 11299 assertions / 158 files，261.18 s。默认 macOS 元数据 helper 替身验证七种输入及关闭后的行为；真实 macOS 只读探测成功，当前无图片，未更改用户剪贴板。Linux helper 路径未在真实图形桌面手测，Windows 沿用仅文本能力。
 
 确认工作树 clean、分支已包含于 main 后，删除 `clipboard-image-tip` 工作树和 `codex/clipboard-image-tip` 分支，保留其他任务工作树。用户 14-background-bash.md 的未提交内容 hash 保持一致，未编辑或暂存。
+
+## Tips 通用自动隐藏后续验收
+
+2026-10-06：[10](issues/10-tip-auto-hide.md) 为 PromptInput 的所有 Tips 增加通用 10 秒自动隐藏。审查基线 `283a4ed`，最终 diff `git diff 283a4ed...611c601`；实现 `dc71603`，修复 `611c601`。
+
+### Standards
+
+0 项规范违约、0 项判断项。PromptInput 拥有统一计时器，内容变化或卸载清理旧计时；notice 保持优先级与独立时长。inputRevision 仅重置编辑器，命令建议保留原有重置行为。运行说明归 TUI README，规格及工单保留实施证据。
+
+### Spec
+
+初轮 1 项 P2：Tab 补全重挂载整个 PromptInput，导致相同剪贴板提示到期后复现。公开测试先 red 后 green，revision key 收窄到编辑器及命令建议后关闭。审查者独立重跑原复现，确认提示到期后 `/mod` + Tab 不使其重现；最终 0 项未解决问题，没有新增范围扩张。
+
+### 集成与清理
+
+main 合并 `1d72bf6` 保留同期 `/context` 消息样式修复。初轮 focused 64 pass / 0 fail / 359 assertions；生命周期修复后的 clipboard、slash commands、history、images 为 48 pass / 0 fail / 143 assertions。main `rtk proxy caffeinate -is env -u NO_COLOR bun run check` exit 0：format、lint、types、Knip 和 2197 tests / 0 fail / 11365 assertions / 158 files，294.56 s。检查期间 main 新增 `beb8de6`，仅后台任务文档变化，无产品源或测试变化。
+
+本次分支为 main 祖先、工作树 clean 后，经非 force worktree remove 和 branch -d 清理；目录、Git 工作树注册和分支均已删除，其他任务工作树保留。规格和工单已关闭，当前契约见 [输入提示](../../apps/neant-tui/README.md#输入提示)。
