@@ -26,13 +26,22 @@ export function formatError(error: unknown, t: ReturnType<typeof createTuiI18n>)
   const template = common.zh[key as keyof typeof common.zh];
   const params = error.params;
   if (
-    [...template.matchAll(/\{\{([^{}]+)\}\}/g)].some(
-      (match) => typeof (params as Record<string, unknown>)[match[1]!] !== "string",
-    )
+    [...template.matchAll(/\{\{([^{}]+)\}\}/g)].some((match) => {
+      const value = (params as Record<string, unknown>)[match[1]!];
+      return typeof value !== "string" && !(typeof value === "number" && Number.isFinite(value));
+    })
   )
     return message;
   const data = error as UserVisibleErrorData;
   switch (data.code) {
+    case "image-invalid":
+      return t("error.image-invalid", data.params);
+    case "image-too-large":
+      return t("error.image-too-large", data.params);
+    case "image-dimensions":
+      return t("error.image-dimensions", data.params);
+    case "image-mime-mismatch":
+      return t("error.image-mime-mismatch", data.params);
     case "allow-tools-retired":
       return t("error.allow-tools-retired", data.params);
     case "permission-rule-invalid":

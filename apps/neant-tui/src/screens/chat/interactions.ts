@@ -5,7 +5,7 @@ import type {
   PlanReviewRequest,
   PlanReviewResult,
 } from "@neant/agent";
-import { readClipboardText } from "./clipboard";
+import type { TuiHost } from "../../host";
 import type { InputEvent } from "@neant/tui";
 import { permissionChoices } from "../../components/permission-dialog";
 
@@ -53,7 +53,7 @@ type PendingInteraction =
   | { kind: "question"; interaction: QuestionInteraction; finish(reply: QuestionReply): void };
 
 /** Keep the Interaction FIFO outside React so each key sees the latest request. */
-export function createInteractions() {
+export function createInteractions(host: TuiHost) {
   const pending: PendingInteraction[] = [];
   const listeners = new Set<() => void>();
   let clipboardBusy: symbol | undefined;
@@ -360,14 +360,17 @@ export function createInteractions() {
           const generation = questionGeneration;
           // Ignore results after answering, switching question or folding the panel.
           const questionIndex = live.questionIndex;
-          void readClipboardText()
-            .then((text) => {
+          void host
+            .readClipboard()
+            .catch(() => ({ unavailable: true }))
+            .then((content) => {
               if (
                 pending[0] !== item ||
                 item.interaction.questionIndex !== questionIndex ||
                 generation !== questionGeneration
               )
                 return;
+              const text = "text" in content ? content.text : undefined;
               if (!text?.trim()) updateQuestion((draft) => ({ ...draft, error: "clipboard" }));
               else this.questionInput({ type: "paste", input: text }, atCaret);
             })

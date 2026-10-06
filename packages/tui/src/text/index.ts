@@ -31,6 +31,7 @@ export interface Glyph {
   offset: number;
   cursorMarker?: boolean;
   lineBreak?: boolean;
+  atomic?: number;
 }
 
 const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
@@ -40,8 +41,14 @@ function fitLine(glyphs: Glyph[], columns: number, wrap: boolean): Glyph[][] {
   let width = 0;
   for (const [index, glyph] of glyphs.entries()) {
     // A caret uses the next visible glyph's cell, or a blank cell at line end.
-    const requiredWidth = glyph.cursorMarker ? glyphs[index + 1]?.width || 1 : glyph.width;
-    if (width + requiredWidth > columns) {
+    const groupStart = glyph.atomic !== undefined && glyphs[index - 1]?.atomic !== glyph.atomic;
+    let requiredWidth = glyph.cursorMarker ? glyphs[index + 1]?.width || 1 : glyph.width;
+    if (groupStart) {
+      requiredWidth = 0;
+      for (let next = index; glyphs[next]?.atomic === glyph.atomic; next++)
+        requiredWidth += glyphs[next]!.width;
+    }
+    if (width + requiredWidth > columns && (glyph.atomic === undefined || groupStart)) {
       if (!wrap) break;
       lines.push([]);
       width = 0;
@@ -63,9 +70,15 @@ function layoutText(
   wrap = true,
   preserveWhitespace = false,
   cursorOffset?: number,
+  atomicRanges: readonly { start: number; end: number }[] = [],
 ): Glyph[][] {
   // Terminal commands and other control characters are never emitted as text.
   const explicit: Glyph[][] = [[]];
+  const original = spans.map((span) => span.text).join("");
+  const sanitizedRanges = atomicRanges.map(({ start, end }) => ({
+    start: sanitizeText(original.slice(0, start)).length,
+    end: sanitizeText(original.slice(0, end)).length,
+  }));
   const sanitized = spans.map((span) => ({
     ...span,
     text: sanitizeText(span.text),
@@ -84,6 +97,9 @@ function layoutText(
   // Segment the complete text: React child boundaries can split a single grapheme.
   // A terminal glyph has one style, inherited from its first code point.
   for (const { segment, index } of segmenter.segment(sanitized.map((span) => span.text).join(""))) {
+    const atomic = sanitizedRanges.find(
+      (range) => range.start <= index && index < range.end,
+    )?.start;
     if (cursorIndex !== undefined && index >= cursorIndex) {
       explicit[explicit.length - 1]!.push({
         text: "",
@@ -91,6 +107,7 @@ function layoutText(
         style: {},
         offset: index,
         cursorMarker: true,
+        atomic,
       });
       cursorIndex = undefined;
     }
@@ -103,6 +120,7 @@ function layoutText(
         width: 0,
         style: {},
         offset: index,
+        atomic,
         lineBreak: true,
       });
       explicit.push([]);
@@ -112,6 +130,7 @@ function layoutText(
         width: Bun.stringWidth(segment),
         style: sanitized[spanIndex]!.style,
         offset: index,
+        atomic,
       });
     }
   }
@@ -170,13 +189,19 @@ export function textLines(
   columns = Infinity,
   wrap = true,
   preserveWhitespace = false,
+  atomicRanges: readonly { start: number; end: number }[] = [],
 ): Glyph[][] {
-  return layoutText(spans, columns, wrap, preserveWhitespace);
+  return layoutText(spans, columns, wrap, preserveWhitespace, undefined, atomicRanges);
 }
 
 /** Use the same sanitization, wide-glyph filtering and hard wrapping as input painting. */
-export function textCursor(spans: TextSpan[], columns: number, cursorOffset: number) {
-  const lines = layoutText(spans, columns, true, true, cursorOffset);
+export function textCursor(
+  spans: TextSpan[],
+  columns: number,
+  cursorOffset: number,
+  atomicRanges: readonly { start: number; end: number }[] = [],
+) {
+  const lines = layoutText(spans, columns, true, true, cursorOffset, atomicRanges);
   for (const [y, line] of lines.entries()) {
     let x = 0;
     for (const glyph of line) {

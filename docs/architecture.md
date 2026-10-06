@@ -49,6 +49,7 @@ Session 对 frontend 暴露运行、事件订阅、中断、steer、Goal、上�
 | `session/`                                                | 组合能力、协调 Run、事件、取消、存储操作与 frontend 接口        |
 | `config/`、`prompt/`                                      | 合并设置、解析模型与凭据，建立 System Prompt                    |
 | `tools/`、`skills/`、`mcp/`                               | 构造模型工具集、加载 Skill 内容、连接外部工具                   |
+| [`images/`](../packages/agent/src/images/index.ts)        | 为 Session 与 read 共享图片准入校验，读取 header metadata       |
 | `permissions/`、`review/`、`hooks/`、`interaction/`       | 决定执行是否允许，运行生命周期扩展，并协调可取消的用户交互      |
 | `reminders/`、`compaction/`、`context-usage/`             | 注入有来源的上下文、压缩模型历史、报告上下文占用                |
 | `store/`、`tool-state/`、`checkpoint/`                    | 持久化 Transcript、重建工具状态、保存和恢复文件修改前的内容     |
@@ -117,6 +118,8 @@ Compaction 在请求前自动检查，也可由空闲 Session 手动执行。它
 
 Compaction 保留当前进程的文件跟踪集与已知内容，后续变化仍可生成 diff；已报告的文件变化事件不因压缩重新注入。对话 Rewind 同步恢复文件跟踪的 Tool State，只保留 hash 与恢复快照一致的内存内容；只恢复代码时，保留的对话会在下一次模型请求获知文件变化。每个子 Session 独立跟踪其读写；子代理对父 Session 已跟踪文件的写入，由父 Session 在下一次请求前检测。
 
+Session 的 run 和 steer 接收 [`PromptImage`](../packages/agent/src/images/index.ts)，校验后将原生 inline image blocks 保存到用户消息；read 的图片结果也保留在 Transcript 中，恢复后可继续作为模型输入。图片名称仅供 frontend 展示，作为消息 metadata 保存，并在模型边界剥离。
+
 Checkpoint 在真实用户 prompt 上建立锚点，记录文件工具首次修改前的原样内容；子代理共用父 Session 的记录器。它不记录 bash 或 MCP 的文件副作用。Rewind 仅在空闲时恢复文件和/或对话：对话恢复保留原分支，再移动 `main` 到锚点之前，并重建上下文与 Tool State。文件恢复可能覆盖之后的修改；定义与使用限制由 `CONTEXT.md` 和 [`checkpoint/`](../packages/agent/src/checkpoint/index.ts)负责。
 
 恢复遇到只有调用而没有确定结果的工具时，将其作为 Unknown Tool Outcome 处理。它既不能证明调用失败，也不能证明尚未执行；恢复不能据此重放可能产生副作用的操作。
@@ -137,11 +140,15 @@ TUI 按四层组织，导入只向下：screens（`apps/neant-tui/src/screens/`�
 
 TUI 使用 alternate screen，消息区独立滚动，输入与交互区固定底部；应用管理阅读位置、跟随和面板组合，渲染器负责终端模式与光标恢复。全屏行为和项目输入历史见 [ADR-0006](adr/0006-fullscreen-tui.md)。输入历史不属于模型上下文或 Transcript。
 
+TUI 通过可注入的 [`host`](../apps/neant-tui/src/host/index.ts) 读取剪贴板并打开外部查看器。每个 TUI 实例拥有剪贴板和图片查看器的 private exports，限制目录及文件权限，关闭时等待进行中的读取或打开操作后清理；Agent Core 不拥有这些 frontend 临时文件。
+
 Agent Core 不读取 locale，它构造的模型工具文本固定英文，面向用户的错误以类型化错误码与参数交给 frontend。frontend 选择 locale，组合 i18n 通用字典和自己的文案，并渲染错误及交互选项；TUI 注入的 narration 提醒属于 frontend 文案。Transcript 保留当时原文，恢复时不重新翻译。通用 key 不被应用覆盖，责任分界见 [ADR-0008](adr/0008-locale-agnostic-agent-core.md)。
 
 ## 配置与信任
 
 用户设置与项目设置由 [`config/`](../packages/agent/src/config/index.ts)合并并校验；模型解析和凭据读取也由它负责。项目不能定义 provider、覆盖用户 locale 或默认 Permission Mode，也不能声明自身受信任。项目 allow 规则与 hooks 只在用户声明的 Trusted Project 中加载。
+
+自定义模型通过 input 声明文本或图片输入能力，未声明时默认为 text。模型能力由 [`config/`](../packages/agent/src/config/index.ts)交给 pi；text-only 模型沿用 pi 的图片降级路径，Transcript 仍保留原始图片，TUI 提示当前模型会省略图片。
 
 MCP 用户配置始终参与发现；项目 `.mcp.json` 在项目受信任或用户明确授权该 MCP 配置时加载。MCP 连接属于一次 Run：每次重新发现当前能力，结束时关闭；这个单独的 MCP 授权不放开项目 hooks 或项目 allow 规则。
 

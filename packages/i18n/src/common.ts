@@ -18,6 +18,18 @@ const modelExample = `{
 }`;
 
 const zh = {
+  "image.pasted": "已粘贴图片 {{token}}",
+  "image.clipboard-empty": "剪贴板为空",
+  "image.clipboard-error": "读取剪贴板失败",
+  "image.clipboard-unavailable": "剪贴板不可用",
+  "image.clipboard-unsupported": "剪贴板图片格式不支持；请使用 PNG、JPEG、WebP 或 GIF",
+  "image.model-unsupported": "{{model}} 不接受图片，发送时会省略图片",
+  "image.open-error": "无法打开图片：{{error}}",
+  "image.paste-error": "无法粘贴图片：{{error}}",
+  "error.image-too-large": "图片超过 5 MB 限制",
+  "error.image-invalid": "图片无效或格式不支持；请使用 PNG、JPEG、WebP 或 GIF",
+  "error.image-mime-mismatch": "图片格式与文件头不一致（实际为 {{mimeType}}）",
+  "error.image-dimensions": "图片尺寸 {{width}}×{{height}} 超过 {{maxPixels}} px 限制",
   "error.goal-tool-human-required": "操作 Goal 需要当前 Run 的直接人类输入。",
   "error.goal-tool-completion-authority": "确认 Goal 完成或阻塞需要直接人类输入或当前 Goal 轮次。",
   "error.goal-tool-invalid-argument": "{{field}} 仅可用于 {{action}} 操作。",
@@ -97,6 +109,20 @@ ${modelExample}`,
 } as const satisfies Record<`error.${UserVisibleErrorCode}`, string> & Record<string, string>;
 
 const en = {
+  "image.pasted": "Pasted image {{token}}",
+  "image.clipboard-empty": "Clipboard is empty",
+  "image.clipboard-error": "Failed to read the clipboard",
+  "image.clipboard-unavailable": "Clipboard is unavailable",
+  "image.clipboard-unsupported":
+    "Clipboard image format is unsupported; use PNG, JPEG, WebP, or GIF",
+  "image.model-unsupported": "{{model}} does not accept images; they will be omitted",
+  "image.open-error": "Could not open image: {{error}}",
+  "image.paste-error": "Could not paste image: {{error}}",
+  "error.image-too-large": "Image exceeds the 5 MB limit",
+  "error.image-invalid": "Invalid or unsupported image; use PNG, JPEG, WebP, or GIF",
+  "error.image-mime-mismatch": "Image MIME type does not match its file header ({{mimeType}})",
+  "error.image-dimensions":
+    "Image dimensions {{width}}×{{height}} exceed the {{maxPixels}} px limit",
   "error.goal-tool-human-required": "Goal control requires direct human input in the current Run.",
   "error.goal-tool-completion-authority":
     "Goal completion requires direct human input or the current Goal round.",

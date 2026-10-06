@@ -10,10 +10,13 @@ import {
   type ThinkingLevel,
 } from "@neant/shared";
 import { render, ThemeProvider, type RenderOptions } from "@neant/tui";
+import { createDefaultHost, type TuiHost } from "./host";
 import { createChat } from "./screens/chat";
 import { createTuiI18n, formatError } from "./i18n";
 
 export interface TuiIo extends RenderOptions {
+  /** Host capabilities; defaults to the platform clipboard and external viewer. */
+  host?: TuiHost;
   term?: string;
   env?: Record<string, string | undefined>;
   stderr(text: string): void;
@@ -99,6 +102,7 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
   let t = argvT;
   let app: ReturnType<typeof render> | undefined;
   let chat: Awaited<ReturnType<typeof createChat>> | undefined;
+  const defaultHost = io.host ? undefined : createDefaultHost();
   let closing = false;
   const close = () => {
     closing = true;
@@ -156,6 +160,7 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
         trustProjectMcp: values["trust-project-mcp"] ?? io.session?.trustProjectMcp,
       },
       model ? `${model.provider}/${model.id}` : settings.model!,
+      io.host ?? defaultHost!.host,
       locale,
       (title) => io.stdout.write(`\x1b]0;${title}\x07`),
     );
@@ -178,8 +183,12 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
     try {
       await chat?.stop();
     } finally {
-      process.off("SIGINT", close);
-      process.off("SIGTERM", close);
+      try {
+        await defaultHost?.dispose();
+      } finally {
+        process.off("SIGINT", close);
+        process.off("SIGTERM", close);
+      }
     }
   }
 }

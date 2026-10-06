@@ -7,6 +7,8 @@ import {
   listModels,
   listSessions,
   type SessionSummary,
+  type PromptImage,
+  ImageValidationError,
   type Session,
   type SessionOptions,
 } from "@neant/agent";
@@ -19,6 +21,7 @@ import {
   createTextInputHistory,
   useInput,
   useTerminalSize,
+  useTheme,
   type ScrollHandle,
   type ScrollSnapshot,
 } from "@neant/tui";
@@ -52,7 +55,9 @@ import { rewindLayout, type RewindEntry, type RewindMode } from "../../component
 import { formatError } from "../../i18n";
 import type { DetailPage } from "../../components/subagent-detail";
 import { createTuiI18n } from "../../i18n";
+import { createImageViewer, type TuiHost } from "../../host";
 import { createInputHistory } from "../../input-history";
+import { createComposerImages, pastedImagePath } from "./composer-images";
 import { createConversation } from "./conversation";
 import { createInteractions } from "./interactions";
 import { permissionChoices } from "../../components/permission-dialog";
@@ -60,15 +65,29 @@ import { fmtTokens, render as renderActivity } from "./activity/activity";
 import { commandCatalog } from "./commands";
 import { SettingsScreen } from "../settings";
 
+const modelLabelGraphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+function imageWarningModelLabel(model: string, columns: number) {
+  const label = model.replace(/\s/g, " ");
+  const width = Math.max(1, columns - 3);
+  if (Bun.stringWidth(label) <= width) return label;
+  let shortened = "";
+  for (const { segment } of modelLabelGraphemes.segment(label)) {
+    if (Bun.stringWidth(shortened + segment) > width - 1) break;
+    shortened += segment;
+  }
+  return shortened + "…";
+}
+
 /** Bind the Session and private stores to one chat screen for its lifetime. */
 export async function createChat(
   options: SessionOptions,
   model: string,
+  host: TuiHost,
   locale: Locale = "zh",
   writeTitle?: (title: string) => void,
 ) {
   const t = createTuiI18n(locale);
-  const interactions = createInteractions();
+  const interactions = createInteractions(host);
   const sessionOptions: SessionOptions = {
     ...options,
     reminderSources: [
@@ -88,8 +107,9 @@ export async function createChat(
   const bindingListeners = new Set<() => void>();
   const history = await createInputHistory(options.cwd, options.homeDir);
   const inputHistory = createTextInputHistory(history.entries);
-  const submit = (prompt: string, initial = false) => {
-    if (!conversation.submit(prompt, initial)) return false;
+  const imageViewer = createImageViewer(host);
+  const submit = (prompt: string, initial = false, images?: PromptImage[]) => {
+    if (!conversation.submit(prompt, initial, images)) return false;
     history.remember(prompt);
     inputHistory.reset();
     return true;
@@ -125,7 +145,11 @@ export async function createChat(
         await session.dispose();
         await conversation.stop();
       } finally {
-        await history.flush();
+        try {
+          await history.flush();
+        } finally {
+          await imageViewer.dispose();
+        }
       }
     },
     Chat({ onExit }: { onExit(): void }) {
@@ -144,8 +168,11 @@ export async function createChat(
           session={current.session}
           conversation={current.conversation}
           history={inputHistory}
+          imageViewer={imageViewer}
+          host={host}
           submit={submit}
           interactions={interactions}
+          homeDir={options.homeDir}
           cwd={options.cwd}
           checkpointCwd={checkpointCwd}
           thinking={options.settings?.thinking}
@@ -166,9 +193,12 @@ function Chat({
   session,
   conversation,
   history,
+  imageViewer,
+  host,
   submit,
   interactions,
   cwd,
+  homeDir,
   checkpointCwd,
   thinking,
   locale,
@@ -182,20 +212,62 @@ function Chat({
   session: Session;
   conversation: ReturnType<typeof createConversation>;
   history: ReturnType<typeof createTextInputHistory>;
-  submit(prompt: string): boolean;
+  imageViewer: ReturnType<typeof createImageViewer>;
+  host: TuiHost;
+  submit(prompt: string, initial?: boolean, images?: PromptImage[]): boolean;
   interactions: ReturnType<typeof createInteractions>;
   cwd: string;
+  homeDir?: string;
   checkpointCwd: string;
   thinking?: ThinkingLevel;
   locale: Locale;
   onExit(): void;
-  models: readonly { spec: string; name: string }[];
+  models: Readonly<ReturnType<typeof listModels>>;
   sessions(): Promise<SessionSummary[]>;
   skills: readonly { name: string; description: string }[];
   replaceSession(resumeId?: string): Promise<void>;
   writeTitle?: (title: string) => void;
 }) {
   const t = createTuiI18n(locale);
+  const theme = useTheme();
+  const composer = useMemo(createComposerImages, [session]);
+  const pasteOwner = useRef(true);
+  const pasteEpoch = useRef(0);
+  useLayoutEffect(
+    () => () => {
+      pasteOwner.current = false;
+    },
+    [],
+  );
+  const [imageNotice, setImageNotice] = useState<{ text: string; warning: boolean }>();
+  const imageNoticeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const notifyImage = (text: string, warning = false) => {
+    clearTimeout(imageNoticeTimer.current);
+    setImageNotice({ text, warning });
+    imageNoticeTimer.current = setTimeout(() => setImageNotice(undefined), warning ? 5000 : 2500);
+  };
+  useEffect(() => () => clearTimeout(imageNoticeTimer.current), []);
+  const [modelImageNotice, setModelImageNotice] = useState<string>();
+  const modelImageNoticeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const notifyModelImages = () => {
+    clearTimeout(modelImageNoticeTimer.current);
+    setModelImageNotice(undefined);
+    const model = models.find((choice) => choice.spec === session.model);
+    if (!model || model.input.includes("image")) return;
+    setModelImageNotice(session.model);
+    modelImageNoticeTimer.current = setTimeout(() => setModelImageNotice(undefined), 5000);
+  };
+  const notifyPastedImage = (token: string) => {
+    notifyImage(t("image.pasted", { token }));
+    notifyModelImages();
+  };
+  useEffect(() => () => clearTimeout(modelImageNoticeTimer.current), []);
+  const openImage = (image: PromptImage) => {
+    void imageViewer.open(image).catch((error: unknown) => {
+      if (pasteOwner.current)
+        notifyImage(t("image.open-error", { error: formatError(error, t) }), true);
+    });
+  };
   const state = useSyncExternalStore(conversation.subscribe, conversation.getSnapshot);
   const [title, setTitle] = useState(session.title);
   useEffect(
@@ -306,8 +378,10 @@ function Chat({
   };
   const [modelPicker, setModelPicker] = useState<number>();
   const modelPickerRef = useRef<number | undefined>(undefined);
+  const modelPickerDraftImages = useRef(false);
   const showModelPicker = (focus: number | undefined) => {
     modelPickerRef.current = focus;
+    if (focus === undefined) modelPickerDraftImages.current = false;
     setModelPicker(focus);
   };
   type ResumePicker = { sessions: readonly SessionSummary[]; focus: number; busy: boolean };
@@ -372,6 +446,8 @@ function Chat({
     try {
       const choice = rewindModes(picker)[picker.mode]!;
       const result = await session.rewind(picker.entries[picker.focus]!.promptEntryId, choice);
+      composer.reset();
+      pasteEpoch.current++;
       if (choice.conversation) {
         history.reset();
         change(result.prompt);
@@ -398,6 +474,18 @@ function Chat({
   const { columns, rows } = useTerminalSize();
   const small = columns < 40 || rows < 12;
   useLayoutEffect(() => interactions.setQuestionEditingEnabled(!small), [interactions, small]);
+  useLayoutEffect(() => {
+    pasteEpoch.current++;
+  }, [
+    small,
+    view,
+    modelPicker,
+    resumePicker,
+    rewind,
+    promptRevision,
+    interaction?.request,
+    userQuestion?.collapsed,
+  ]);
   const body = useRef<ScrollHandle>(null);
   const details = useRef<ScrollHandle>(null);
   const [bodyScroll, setBodyScroll] = useState<ScrollSnapshot>();
@@ -491,7 +579,9 @@ function Chat({
     state.subagents,
     state.error,
   ]);
-  const change = (value: string) => {
+  const change = (value: string, edit?: { start: number; end: number; text: string }) => {
+    composer.prune(value, edit);
+    if (!value && draft.current) pasteEpoch.current++;
     armRewind();
     dismissedMenu.current = undefined;
     setMenuDismissed(false);
@@ -501,22 +591,86 @@ function Chat({
     lastInterrupt.current = undefined;
     setInput(value);
   };
+  const stageImage = async (path: string, insert: (text: string) => void, epoch: number) => {
+    if (!pasteOwner.current || epoch !== pasteEpoch.current) return;
+    const image = await composer.read(path);
+    if (!pasteOwner.current || epoch !== pasteEpoch.current) return;
+    const token = composer.bind(image, draft.current);
+    insert(token + " ");
+    notifyPastedImage(token);
+  };
+  const pasteClipboard = (insert: (text: string) => void) => {
+    const epoch = pasteEpoch.current;
+    const owned = () => pasteOwner.current && epoch === pasteEpoch.current;
+    const stage = async (path: string) => {
+      try {
+        if (/\.(tiff?|bmp)$/i.test(path)) {
+          if (owned()) notifyImage(t("image.clipboard-unsupported"), true);
+          return;
+        }
+        await stageImage(path, insert, epoch);
+      } catch (error) {
+        if (owned()) notifyImage(t("image.paste-error", { error: formatError(error, t) }), true);
+      }
+    };
+    void host
+      .readClipboard()
+      .then(async (content) => {
+        if (!owned()) return;
+        if ("files" in content) {
+          for (const path of content.files) {
+            if (!owned()) return;
+            if (/\.(png|jpe?g|gif|webp)$/i.test(path)) await stage(path);
+            else insert(path + " ");
+          }
+        } else if ("image" in content) await stage(content.image.path);
+        else if ("text" in content) insert(content.text);
+        else
+          notifyImage(
+            t("empty" in content ? "image.clipboard-empty" : "image.clipboard-unavailable"),
+            true,
+          );
+      })
+      .catch(() => {
+        if (owned()) notifyImage(t("image.clipboard-error"), true);
+      });
+  };
   const returnToBottom = () => {
     body.current?.scrollToBottom();
     lastInterrupt.current = undefined;
   };
-  const switchModel = async (spec: string) => {
+  const switchModel = async (spec: string, hadDraftImages = false) => {
+    const hadImages =
+      hadDraftImages ||
+      composer.ordered(draft.current).length > 0 ||
+      conversation
+        .getSnapshot()
+        .completed.some(
+          (entry) => (entry.type === "message" || entry.type === "tool") && !!entry.images?.length,
+        );
     try {
       await session.setModel(spec);
+      composer.reset();
+      pasteEpoch.current++;
       conversation.notice(t("model.changed", { model: session.model }));
+      clearTimeout(modelImageNoticeTimer.current);
+      setModelImageNotice(undefined);
+      if (hadImages) notifyModelImages();
     } catch (error) {
       conversation.notice(formatError(error, t), true);
     }
   };
+  const selectModel = (index: number) => {
+    const hadDraftImages = modelPickerDraftImages.current;
+    showModelPicker(undefined);
+    void switchModel(models[index]!.spec, hadDraftImages);
+  };
   const executeCommand = (prompt: string) => {
     const parsed = /^\/([a-z0-9-]+)(?:\s|$)/.exec(prompt);
-    const command = catalog.find((entry) => entry.name === parsed?.[1]);
-    if (!command) return submit(prompt);
+    // /new is the image-input contract's alias for the existing /clear action.
+    const name = parsed?.[1] === "new" ? "clear" : parsed?.[1];
+    const command = catalog.find((entry) => entry.name === name);
+    if (!command) return submit(prompt, false, composer.ordered(prompt));
     if (conversation.isRunning() && !command.duringRun) {
       conversation.notice(t("command.busy", { name: command.name }));
       return true;
@@ -601,15 +755,28 @@ function Chat({
         .rename(title)
         .catch((error: unknown) => conversation.notice(formatError(error, t), true));
     } else if (command.name === "model") {
-      const spec = prompt.slice(parsed![0].length).trim();
-      if (spec) void switchModel(spec);
-      else
-        showModelPicker(
-          Math.max(
-            0,
-            models.findIndex((model) => model.spec === session.model),
+      const hadDraftImages = composer.ordered(prompt).length > 0;
+      // Bound attachments are not model arguments; literal token text remains
+      // an argument. Capture their presence before submit or model reset clears them.
+      const commandText = composer
+        .ranges(prompt)
+        .toReversed()
+        .reduce((text, range) => text.slice(0, range.start) + text.slice(range.end), prompt);
+      const spec = commandText.slice(parsed![0].length).trim();
+      if (spec) void switchModel(spec, hadDraftImages);
+      else {
+        modelPickerDraftImages.current = hadDraftImages;
+        // Submit can run before Chat handles the same Enter event. Open after
+        // that event finishes so it cannot also pick the current model.
+        queueMicrotask(() =>
+          showModelPicker(
+            Math.max(
+              0,
+              models.findIndex((model) => model.spec === session.model),
+            ),
           ),
         );
+      }
     } else if (command.name === "btw") {
       const question = prompt.slice(parsed![0].length).trim();
       if (!question) conversation.notice(t("btw.usage"));
@@ -657,6 +824,7 @@ function Chat({
     if (executeCommand(prompt)) {
       body.current?.scrollToBottom();
       change("");
+      composer.clear();
     }
   };
   const openRewind = () => {
@@ -706,11 +874,24 @@ function Chat({
     : 0;
   const dialogGap =
     question && rows - statusHeight - minimumDialogHeight - panelMinimum - 1 >= 1 ? 1 : 0;
+  const visibleModelNotice = !interaction || userQuestion?.collapsed ? modelImageNotice : undefined;
+  const wrappedModelNotice = visibleModelNotice
+    ? Bun.wrapAnsi(
+        t("image.model-unsupported", {
+          model: imageWarningModelLabel(visibleModelNotice, columns),
+        }),
+        Math.max(1, columns - 3),
+      )
+    : undefined;
+  const modelNoticeHeight = wrappedModelNotice?.split("\n").length ?? 0;
   const compactPrompt =
+    (modelNoticeHeight > 0 &&
+      rows - statusHeight - panelMinimum - 1 < promptMaxLines + 3 + modelNoticeHeight) ||
     ((!!side || !!rewind || !!resumePicker) && rows < 20) ||
     (!!interaction &&
       rows - statusHeight - minimumDialogHeight - dialogGap - panelMinimum < promptMaxLines + 3);
-  const promptHeight = compactPrompt ? 1 : promptMaxLines + 3;
+  const promptHeight =
+    (compactPrompt ? 1 + Number(!!imageNotice) : promptMaxLines + 3) + modelNoticeHeight;
   const transcriptHeight = rewind
     ? Number(!compactPrompt)
     : interaction
@@ -833,10 +1014,7 @@ function Chat({
           showModelPicker(
             (modelFocus + (key.name === "up" ? models.length - 1 : 1)) % models.length,
           );
-        else if (key.name === "enter") {
-          showModelPicker(undefined);
-          void switchModel(models[modelFocus]!.spec);
-        }
+        else if (key.name === "enter") selectModel(modelFocus);
       }
       return;
     }
@@ -1110,6 +1288,8 @@ function Chat({
                   status={entry.isError ? "error" : "success"}
                   outcomeUnknown={entry.outcomeUnknown}
                   result={entry.result}
+                  images={entry.images}
+                  onImageOpen={openImage}
                   error={entry.error}
                 />
                 {entry.agentId &&
@@ -1140,7 +1320,14 @@ function Chat({
             return <Notice key={index} kind="info" text={entry.text} />;
           case "message":
             return entry.role === "user" ? (
-              <UserMessage key={index} text={entry.text} source={entry.source} locale={locale} />
+              <UserMessage
+                key={index}
+                text={entry.text}
+                source={entry.source}
+                locale={locale}
+                images={entry.images}
+                onImageOpen={openImage}
+              />
             ) : (
               <AssistantMessage key={index} text={entry.text} />
             );
@@ -1359,10 +1546,7 @@ function Chat({
                 current={session.model}
                 maxHeight={modelPickerHeight}
                 locale={locale}
-                onPick={(index) => {
-                  showModelPicker(undefined);
-                  void switchModel(models[index]!.spec);
-                }}
+                onPick={selectModel}
               />
             )}
             {side && (
@@ -1396,6 +1580,8 @@ function Chat({
                 />
               )}
             <PromptInput
+              notice={imageNotice}
+              warning={wrappedModelNotice}
               tip={rewindArmedAt === undefined ? undefined : t("rewind.again")}
               key={promptRevision}
               readOnly={
@@ -1410,26 +1596,66 @@ function Chat({
               working={state.running}
               planMode={state.planMode}
               history={history}
-              filterInput={(event) =>
-                viewRef.current === "chat" &&
-                modelPickerRef.current === undefined &&
-                resumePickerRef.current === undefined &&
-                !handledInput.current.has(event) &&
-                !(
+              onHistoryRecall={() => {
+                composer.clear();
+                pasteEpoch.current++;
+              }}
+              filterInput={(event, insert) => {
+                if (
                   event.type === "key" &&
-                  !event.key.ctrl &&
-                  !event.key.alt &&
-                  !event.key.shift &&
-                  (!interactions.getSnapshot() || !!sideController.current) &&
-                  matches(draft.current).length &&
-                  ["up", "down", "tab", "enter"].includes(event.key.name)
-                )
-              }
+                  event.key.ctrl &&
+                  event.key.name === "v" &&
+                  viewRef.current === "chat" &&
+                  modelPickerRef.current === undefined &&
+                  resumePickerRef.current === undefined &&
+                  !handledInput.current.has(event)
+                ) {
+                  pasteClipboard(insert);
+                  return false;
+                }
+                return (
+                  viewRef.current === "chat" &&
+                  modelPickerRef.current === undefined &&
+                  resumePickerRef.current === undefined &&
+                  !handledInput.current.has(event) &&
+                  !(
+                    event.type === "key" &&
+                    !event.key.ctrl &&
+                    !event.key.alt &&
+                    !event.key.shift &&
+                    (!interactions.getSnapshot() || !!sideController.current) &&
+                    matches(draft.current).length &&
+                    ["up", "down", "tab", "enter"].includes(event.key.name)
+                  )
+                );
+              }}
+              highlightRanges={composer
+                .ranges(input)
+                .map((range) => ({ ...range, color: theme.suggestion }))}
+              atomicRanges={composer.ranges(input)}
+              onPaste={(text, insert) => {
+                const epoch = pasteEpoch.current;
+                const path = pastedImagePath(text, homeDir ?? "");
+                if (!path) {
+                  insert(text);
+                  return;
+                }
+                void stageImage(path, insert, epoch).catch((error: unknown) => {
+                  if (!pasteOwner.current || epoch !== pasteEpoch.current) return;
+                  if (
+                    error instanceof ImageValidationError &&
+                    ["image-too-large", "image-dimensions"].includes(error.code)
+                  )
+                    notifyImage(t("image.paste-error", { error: formatError(error, t) }), true);
+                  else insert(text);
+                });
+              }}
               value={input}
-              onChange={(value) => {
+              onChange={(value, edit) => {
                 const pending = sideController.current ? undefined : interactions.getSnapshot();
                 if (viewRef.current !== "chat" || rewindRef.current) return;
-                if (!pending || (pending.kind === "question" && pending.collapsed)) change(value);
+                if (!pending || (pending.kind === "question" && pending.collapsed))
+                  change(value, edit);
               }}
               onSubmit={(prompt) => {
                 const pending = sideController.current ? undefined : interactions.getSnapshot();

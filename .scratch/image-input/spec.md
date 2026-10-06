@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 
 # Spec: 图片输入
 
@@ -130,3 +130,13 @@ Status: ready-for-agent
 
 - 5 MB / 8000 px 取自 Anthropic 的单图上限，是所有 provider 里较宽的一档；其他 provider 更严时由其返回错误，届时再按模型的 `inputLimits` 细化。
 - base64 内联会让 session 文件增大（每张截图约 1–4 MB）；若成为问题，换成内容寻址附件只改存储层，Session API 不变。
+
+## Implementation Evidence
+
+2026-10-06：01–08 已按依赖关系实现并合入 `codex/image-input`；最终代码集成提交 `2977ae3144bb642444e877cd326f9002d0663538`。Session/run/steer、read 限额、Context Usage、自定义模型能力、TUI host、路径与剪贴板粘贴、原子 token、图片占位与系统查看器、非视觉提示完成。Headless CLI 沿用模型 read 入口。
+
+[双轴审查与修复验收](review.md)：Standards 的 2 项规范违约与 2 项判断项全部修复；Spec 的长模型名布局问题已修复，未发现额外缺口或范围扩张。用户提示使用 shared 错误契约，模型工具文本保留英文。
+
+最终 `rtk proxy caffeinate -is env -u NO_COLOR bun run check` exit 0：格式、lint、类型、Knip 与 **2095 tests / 0 fail / 10324 assertions / 152 files** 全部通过（244.39 s）。macOS 真实剪贴板验证及恢复证据见 [07](issues/07-ctrl-v-clipboard.md)。各票保留 focused、red→green 与实施证据。
+
+01–08 与最终审查修复工作树全部按 clean/merged 校验后归档；集成分支保留。规格与各票均为 resolved。

@@ -26,10 +26,20 @@ import { createSkillTool } from "./skill.ts";
 import { createQuestionTool, type OnQuestion } from "./question.ts";
 import { createTodoTool } from "./todo.ts";
 import type { TodoItem } from "../tool-state/index.ts";
+import { detectReadImageMimeType, validateImageBytes } from "../images/index.ts";
 export { createExitPlanModeTool } from "./plan-review.ts";
 export type { PlanReviewRequest, PlanReviewResult, OnPlanReview } from "./plan-review.ts";
 export type { Question, QuestionRequest, QuestionReply } from "./question.ts";
 export { createEnterPlanModeTool } from "./enter-plan-mode.ts";
+
+/** Validate the original read bytes before pi encodes them, without a second file read. */
+class ImageReadEnv extends NodeExecutionEnv {
+  override async readBinaryFile(...args: Parameters<NodeExecutionEnv["readBinaryFile"]>) {
+    const result = await super.readBinaryFile(...args);
+    if (result.ok && detectReadImageMimeType(result.value)) validateImageBytes(result.value);
+    return result;
+  }
+}
 
 /** pi's built-ins use the harness context; Agent uses an AbortSignal. */
 function adaptTool<T extends TSchema, D>(
@@ -111,7 +121,7 @@ export function preserveErrorDetails<T extends TSchema>(tool: AgentTool<T>): Age
 /** Read-only tools for isolated model hook checks. */
 export function createReadonlyTools(cwd: string, homeDir = homedir()): AgentTool[] {
   return [
-    adaptTool(createReadTool(), new NodeExecutionEnv({ cwd }), homeDir),
+    preserveErrorDetails(adaptTool(createReadTool(), new ImageReadEnv({ cwd }), homeDir)),
     createGlobTool(cwd),
     preserveErrorDetails(createGrepTool(cwd)),
   ];
@@ -146,7 +156,7 @@ export function createBuiltinTools(
       bash.execute(id, { ...params, timeout: params.timeout ?? 120 }, signal, update),
   };
   return [
-    track(adaptTool(createReadTool(), env, homeDir)),
+    track(preserveErrorDetails(adaptTool(createReadTool(), new ImageReadEnv({ cwd }), homeDir))),
     track(adaptTool(createWriteTool(), env, homeDir)),
     track(adaptTool(createEditTool(), env, homeDir)),
     timedBash,
