@@ -1,10 +1,501 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
+import { stat } from "node:fs/promises";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { createSession, type SessionEvent } from "../../src/index.ts";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
+import {
+  createSession,
+  type SessionEvent,
+  type McpAuthRequest,
+  type McpAuthReply,
+} from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 import { mcpOAuthServer } from "../helpers/mcp-oauth-server.ts";
+
+async function browser({ authorizationUrl, signal }: McpAuthRequest): Promise<McpAuthReply> {
+  await fetch(authorizationUrl);
+  if (!signal.aborted)
+    await new Promise<void>((resolve) =>
+      signal.addEventListener("abort", () => resolve(), { once: true }),
+    );
+  return { type: "cancelled" };
+}
+
+async function paste({ authorizationUrl }: McpAuthRequest): Promise<McpAuthReply> {
+  const response = await fetch(authorizationUrl, { redirect: "manual" });
+  const url = response.headers.get("location");
+  if (!url) throw new Error("Authorization fixture did not provide a callback.");
+  return { type: "callback-url", url };
+}
+
+async function configure(dirs: Awaited<ReturnType<typeof tempDirs>>, servers: object) {
+  await Bun.write(join(dirs.homeDir, ".neant/mcp.json"), JSON.stringify({ mcpServers: servers }));
+}
+
+test.each(["paste", "wrong-state", "cancel", "oauth-error"])(
+  "authorization handles %s through the frontend without disturbing the Run",
+  async (path) => {
+    const dirs = await tempDirs();
+    const server = mcpOAuthServer(
+      path === "oauth-error" ? { authorizationError: "access_denied" } : {},
+    );
+    try {
+      await configure(dirs, { srv: { url: server.url } });
+      const fake = fakeModel([
+        fauxAssistantMessage(fauxToolCall("mcp__srv__authenticate", {}), { stopReason: "toolUse" }),
+        fauxAssistantMessage("continued"),
+      ]);
+      const session = await createSession({
+        ...dirs,
+        ...fake,
+        onMcpAuth: async (request) => {
+          if (path === "cancel") return { type: "cancelled" };
+          const reply = await paste(request);
+          if (path === "wrong-state" && reply.type === "callback-url") {
+            const url = new URL(reply.url);
+            url.searchParams.set("state", "wrong");
+            return { type: "callback-url", url: url.href };
+          }
+          return reply;
+        },
+      });
+      try {
+        expect((await session.run("login")).text).toBe("continued");
+        const result = fake.contexts[1]!.messages.findLast(
+          (message) => message.role === "toolResult",
+        );
+        const error = path === "wrong-state" || path === "oauth-error";
+        expect(result).toMatchObject({ isError: error });
+        expect(JSON.stringify(result?.content)).toContain(
+          path === "paste"
+            ? "Authenticated srv"
+            : path === "cancel"
+              ? "User did not complete authentication"
+              : path === "wrong-state"
+                ? "state does not match"
+                : "access_denied",
+        );
+        if (!error)
+          expect(result?.details).toEqual({
+            type: path === "paste" ? "authenticated" : "cancelled",
+            server: "srv",
+          });
+      } finally {
+        await session.dispose();
+      }
+    } finally {
+      await server.stop();
+      await dirs.cleanup();
+    }
+  },
+);
+
+test("a new Session reuses the credential without requesting authentication", async () => {
+  const dirs = await tempDirs();
+  const server = mcpOAuthServer();
+  try {
+    await configure(dirs, { srv: { url: server.url } });
+    const first = await createSession({
+      ...dirs,
+      ...fakeModel([
+        fauxAssistantMessage(fauxToolCall("mcp__srv__authenticate", {}), { stopReason: "toolUse" }),
+        fauxAssistantMessage("authorized"),
+      ]),
+      onMcpAuth: paste,
+    });
+    await first.run("login");
+    await first.dispose();
+    const fake = fakeModel([
+      fauxAssistantMessage(fauxToolCall("mcp__srv__echo", { text: "reused" }), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("reused"),
+    ]);
+    let asks = 0;
+    const next = await createSession({
+      ...dirs,
+      ...fake,
+      permissionMode: "full-access",
+      onMcpAuth: async () => {
+        asks++;
+        return { type: "cancelled" };
+      },
+    });
+    try {
+      expect((await next.run("use MCP")).text).toBe("reused");
+      expect(
+        fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+      ).toMatchObject({ isError: false, content: [{ type: "text", text: "OAuth MCP: called" }] });
+      expect(asks).toBe(0);
+    } finally {
+      await next.dispose();
+    }
+  } finally {
+    await server.stop();
+    await dirs.cleanup();
+  }
+});
+
+test("two concurrent authentication calls share one interaction and outcome", async () => {
+  const dirs = await tempDirs();
+  const server = mcpOAuthServer();
+  try {
+    await configure(dirs, { srv: { url: server.url } });
+    const fake = fakeModel([
+      fauxAssistantMessage(
+        [fauxToolCall("mcp__srv__authenticate", {}), fauxToolCall("mcp__srv__authenticate", {})],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("done"),
+    ]);
+    let asks = 0;
+    const session = await createSession({
+      ...dirs,
+      ...fake,
+      onMcpAuth: async (request) => {
+        asks++;
+        return paste(request);
+      },
+    });
+    try {
+      await session.run("login twice");
+      const results = fake.contexts[1]!.messages.filter((message) => message.role === "toolResult");
+      expect(results).toHaveLength(2);
+      expect(results.map((result) => result.details)).toEqual([
+        { type: "authenticated", server: "srv" },
+        { type: "authenticated", server: "srv" },
+      ]);
+      expect(asks).toBe(1);
+    } finally {
+      await session.dispose();
+    }
+  } finally {
+    await server.stop();
+    await dirs.cleanup();
+  }
+});
+
+test("Run abort closes the pending frontend and callback and records a non-error declined tool result", async () => {
+  const dirs = await tempDirs();
+  const server = mcpOAuthServer();
+  const controller = new AbortController();
+  const requested = Promise.withResolvers<McpAuthRequest>();
+  try {
+    await configure(dirs, { srv: { url: server.url } });
+    const session = await createSession({
+      ...dirs,
+      ...fakeModel([
+        fauxAssistantMessage(fauxToolCall("mcp__srv__authenticate", {}), { stopReason: "toolUse" }),
+      ]),
+      onMcpAuth: async (request) => {
+        requested.resolve(request);
+        return new Promise(() => {});
+      },
+    });
+    try {
+      const running = session
+        .run("login", { signal: controller.signal })
+        .catch((error: unknown) => error);
+      const request = await requested.promise;
+      const callback = new URL(new URL(request.authorizationUrl).searchParams.get("redirect_uri")!);
+      controller.abort();
+      expect(await running).toBeInstanceOf(Error);
+      expect(request.signal.aborted).toBe(true);
+      expect(session.messages.findLast((message) => message.role === "toolResult")).toMatchObject({
+        isError: false,
+        details: { type: "cancelled", server: "srv" },
+      });
+      await expect(fetch(callback)).rejects.toThrow();
+      expect(await Bun.file(join(dirs.homeDir, ".neant/credentials.json")).text()).not.toContain(
+        "access_token",
+      );
+    } finally {
+      await session.dispose();
+    }
+  } finally {
+    await server.stop();
+    await dirs.cleanup();
+  }
+});
+
+test("abort during code exchange prevents token persistence and late tool promotion", async () => {
+  const dirs = await tempDirs();
+  const exchanging = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const server = mcpOAuthServer({
+    beforeTokenResponse: async () => {
+      exchanging.resolve();
+      await release.promise;
+    },
+  });
+  const controller = new AbortController();
+  try {
+    await configure(dirs, { srv: { url: server.url } });
+    const session = await createSession({
+      ...dirs,
+      ...fakeModel([
+        fauxAssistantMessage(fauxToolCall("mcp__srv__authenticate", {}), { stopReason: "toolUse" }),
+      ]),
+      onMcpAuth: paste,
+    });
+    try {
+      const running = session
+        .run("login", { signal: controller.signal })
+        .catch((error: unknown) => error);
+      await exchanging.promise;
+      controller.abort();
+      release.resolve();
+      expect(await running).toBeInstanceOf(Error);
+      expect(session.messages.findLast((message) => message.role === "toolResult")).toMatchObject({
+        isError: false,
+        details: { type: "cancelled", server: "srv" },
+      });
+      expect(await Bun.file(join(dirs.homeDir, ".neant/credentials.json")).text()).not.toContain(
+        "access_token",
+      );
+      expect(JSON.stringify(session.messages)).not.toContain('"name":"mcp__srv__echo"');
+    } finally {
+      release.resolve();
+      await session.dispose();
+    }
+  } finally {
+    await server.stop();
+    await dirs.cleanup();
+  }
+});
+
+test("concurrent servers preserve both credentials in the shared atomic file", async () => {
+  const dirs = await tempDirs();
+  const first = mcpOAuthServer();
+  const second = mcpOAuthServer();
+  try {
+    await configure(dirs, { first: { url: first.url }, second: { url: second.url } });
+    const fake = fakeModel([
+      fauxAssistantMessage(
+        [
+          fauxToolCall("mcp__first__authenticate", {}),
+          fauxToolCall("mcp__second__authenticate", {}),
+        ],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("done"),
+    ]);
+    const session = await createSession({ ...dirs, ...fake, onMcpAuth: paste });
+    try {
+      await session.run("login both");
+      const data: unknown = await Bun.file(join(dirs.homeDir, ".neant/credentials.json")).json();
+      const schema = Type.Object({
+        mcp: Type.Record(
+          Type.String(),
+          Type.Object({
+            serverName: Type.String(),
+            state: Type.Object({ tokens: Type.Object({ access_token: Type.String() }) }),
+          }),
+        ),
+      });
+      if (!Value.Check(schema, data))
+        throw new Error("Credential fixture did not contain valid tokens.");
+      expect(
+        Object.values(data.mcp)
+          .map((credential) => credential.serverName)
+          .sort(),
+      ).toEqual(["first", "second"]);
+      expect(
+        fake.contexts[1]!.messages.filter((message) => message.role === "toolResult").map(
+          (result) => result.isError,
+        ),
+      ).toEqual([false, false]);
+    } finally {
+      await session.dispose();
+    }
+  } finally {
+    await first.stop();
+    await second.stop();
+    await dirs.cleanup();
+  }
+});
+
+test.each(["bad-json", "bad-state"])(
+  "invalid credential %s warns once and is preserved until a successful write",
+  async (corruption) => {
+    const dirs = await tempDirs();
+    const server = mcpOAuthServer({ authentication: false });
+    try {
+      await configure(dirs, { srv: { url: server.url } });
+      const raw =
+        corruption === "bad-json"
+          ? "{broken json"
+          : JSON.stringify({
+              version: 1,
+              mcp: {
+                broken: {
+                  serverName: "srv",
+                  serverUrl: server.url,
+                  state: {
+                    serverUrl: server.url,
+                    tokens: { access_token: 42, token_type: "Bearer" },
+                  },
+                },
+              },
+            });
+      const path = join(dirs.homeDir, ".neant/credentials.json");
+      await Bun.write(path, raw);
+      const warnings: string[] = [];
+      const session = await createSession({
+        ...dirs,
+        ...fakeModel([fauxAssistantMessage("first"), fauxAssistantMessage("second")]),
+        onWarning: (warning) => {
+          warnings.push(warning);
+        },
+      });
+      try {
+        await session.run("first");
+        await session.run("second");
+        expect(warnings).toEqual(["MCP credentials file is invalid; ignoring its contents."]);
+        expect(await Bun.file(path).text()).toBe(raw);
+      } finally {
+        await session.dispose();
+      }
+    } finally {
+      await server.stop();
+      await dirs.cleanup();
+    }
+  },
+);
+
+test("authentication emits an MCP Notification hook with the authorization message", async () => {
+  const dirs = await tempDirs();
+  const server = mcpOAuthServer();
+  const notified = Promise.withResolvers<unknown>();
+  const hook = Bun.serve({
+    port: 0,
+    async fetch(request) {
+      notified.resolve(await request.json());
+      return Response.json({});
+    },
+  });
+  try {
+    await configure(dirs, { srv: { url: server.url } });
+    const fake = fakeModel([
+      fauxAssistantMessage(fauxToolCall("mcp__srv__authenticate", {}), { stopReason: "toolUse" }),
+      async () => {
+        await notified.promise;
+        return fauxAssistantMessage("done");
+      },
+    ]);
+    const session = await createSession({
+      ...dirs,
+      ...fake,
+      onMcpAuth: paste,
+      settings: {
+        hooks: {
+          Notification: [{ matcher: "mcp_auth", hooks: [{ type: "http", url: hook.url.href }] }],
+        },
+      },
+    });
+    try {
+      await session.run("login");
+      expect(await notified.promise).toMatchObject({
+        hook_event_name: "Notification",
+        notification_type: "mcp_auth",
+        message: "MCP server srv needs authorization",
+        session_id: session.id,
+      });
+    } finally {
+      await session.dispose();
+    }
+  } finally {
+    await hook.stop(true);
+    await server.stop();
+    await dirs.cleanup();
+  }
+});
+
+test("model authorization replaces authentication with executable tools in the next Turn and persists a private credential", async () => {
+  const dirs = await tempDirs();
+  const server = mcpOAuthServer();
+  let interactions = 0;
+  let callbackClosed = false;
+  try {
+    await Bun.write(
+      join(dirs.homeDir, ".neant/mcp.json"),
+      JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
+    );
+    const fake = fakeModel([
+      fauxAssistantMessage(fauxToolCall("mcp__srv__authenticate", {}), { stopReason: "toolUse" }),
+      fauxAssistantMessage(fauxToolCall("mcp__srv__echo", { text: "authorized" }), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("done"),
+    ]);
+    const session = await createSession({
+      ...dirs,
+      ...fake,
+      permissionMode: "full-access",
+      onMcpAuth: async (request) => {
+        interactions++;
+        const reply = await browser(request);
+        callbackClosed = true;
+        return reply;
+      },
+    });
+    try {
+      expect((await session.run("authorize and use MCP")).text).toBe("done");
+      const authResult = fake.contexts[1]!.messages.findLast(
+        (message) => message.role === "toolResult",
+      );
+      expect(authResult).toMatchObject({
+        isError: false,
+        content: [{ type: "text", text: "Authenticated srv; its tools are now available." }],
+      });
+      const changes = fake.contexts[1]!.messages.filter((message) => message.role === "system").at(
+        -1,
+      );
+      expect(changes).toMatchObject({
+        toolsAdded: [expect.objectContaining({ name: "mcp__srv__echo" })],
+        toolsRemoved: [expect.objectContaining({ name: "mcp__srv__authenticate" })],
+      });
+      expect(
+        fake.contexts[2]!.messages.findLast((message) => message.role === "toolResult"),
+      ).toMatchObject({ isError: false, content: [{ type: "text", text: "OAuth MCP: called" }] });
+      expect(interactions).toBe(1);
+      expect(callbackClosed).toBe(true);
+      const credentialPath = join(dirs.homeDir, ".neant/credentials.json");
+      const credential: unknown = await Bun.file(credentialPath).json();
+      expect(JSON.stringify(credential)).toContain('"access_token":"access-');
+      expect(credential).toMatchObject({ version: 1, mcp: expect.any(Object) });
+      expect((await stat(credentialPath)).mode & 0o777).toBe(0o600);
+      await session.dispose();
+      const resumedFake = fakeModel([fauxAssistantMessage("resumed")]);
+      const resumed = await createSession({
+        ...dirs,
+        ...resumedFake,
+        resumeId: session.id,
+        onMcpAuth: browser,
+      });
+      try {
+        await resumed.run("continue");
+        const tools = new Set<string>();
+        for (const message of resumedFake.contexts[0]!.messages) {
+          if (message.role !== "system") continue;
+          for (const tool of message.toolsRemoved ?? []) tools.delete(tool.name);
+          for (const tool of message.toolsAdded ?? [])
+            if (tool.name.startsWith("mcp__")) tools.add(tool.name);
+        }
+        expect([...tools]).toEqual(["mcp__srv__echo"]);
+      } finally {
+        await resumed.dispose();
+      }
+    } finally {
+      await session.dispose();
+    }
+  } finally {
+    await server.stop();
+    await dirs.cleanup();
+  }
+});
 
 test("OAuth servers require authentication without opening an interaction and are remembered across Runs", async () => {
   const dirs = await tempDirs();
@@ -55,7 +546,7 @@ test("OAuth servers require authentication without opening an interaction and ar
   }
 });
 
-test("authentication stub is allowed without an approval and still passes through hooks", async () => {
+test("authentication is allowed without an approval and still passes through hooks", async () => {
   const dirs = await tempDirs();
   const server = mcpOAuthServer();
   try {
@@ -90,8 +581,9 @@ test("authentication stub is allowed without an approval and still passes throug
     await session.run("login");
     expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
       role: "toolResult",
-      isError: true,
-      content: [{ type: "text", text: "MCP OAuth authentication is not implemented yet." }],
+      isError: false,
+      content: [{ type: "text", text: "User did not complete authentication for srv." }],
+      details: { type: "cancelled", server: "srv" },
     });
     expect(approvals).toBe(0);
     expect((await Bun.file(join(dirs.cwd, "auth-hook")).json()).tool_name).toBe(

@@ -1779,6 +1779,9 @@ async function createSessionInternal(
             trustProjectMcp: options.trustProjectMcp,
             signal,
             interactive: !!options.onMcpAuth,
+            onMcpAuth: options.onMcpAuth,
+            onInteractionStart,
+            onWarning: options.onWarning,
           });
         } finally {
           const generalTools = [
@@ -1823,6 +1826,16 @@ async function createSessionInternal(
           ]
             .filter((tool) => !internal.toolNames || internal.toolNames.includes(tool.name))
             .map(measureTool);
+          const nonMcpTools = agent.state.tools.filter((tool) => !mcp.toolServers.has(tool.name));
+          agent.prepareNextTurnWithContext = ({ context: turnContext }) => {
+            agent.state.tools = [
+              ...nonMcpTools,
+              ...mcp.tools
+                .filter((tool) => !internal.toolNames || internal.toolNames.includes(tool.name))
+                .map(measureTool),
+            ];
+            return { context: { ...turnContext, tools: agent.state.tools } };
+          };
           await emit({
             type: "session_start",
             model: `${model.provider}/${model.id}`,
@@ -2206,6 +2219,7 @@ async function createSessionInternal(
           signal?.removeEventListener("abort", abort);
           unsubscribe?.();
           agent.prepareRequest = undefined;
+          agent.prepareNextTurnWithContext = undefined;
           try {
             await planWrites;
           } finally {
