@@ -131,7 +131,7 @@ PermissionDenied 不推翻拒绝。`hookSpecificOutput.retry: true` 只在 `by: 
 
 command 的 `async: true` 立即返回，不参与决定，也不受 hook timeout 约束；完成后的上下文和系统消息在下一次模型调用前注入。`asyncRewake: true` 同样在后台运行，exit 2 时以 stderr 唤醒：空闲 session 起新 run，活跃 run 接收 steer。等待 Stop 检查或子代理时完成的唤醒也会交付。
 
-Notification 输入含 `message`、`title`、`notification_type`，类型为 permission_prompt / question / plan_review / mcp_auth。它不等待 hook，所有执行器都只接受 `systemMessage`；即使是 async / asyncRewake command，也不能停止、注入模型或唤醒。当前 MCP 没有授权交互入口，mcp_auth 类型供共享交互通道使用。
+Notification 输入含 `message`、`title`、`notification_type`，类型为 permission_prompt / question / plan_review / mcp_auth。它不等待 hook，所有执行器都只接受 `systemMessage`；即使是 async / asyncRewake command，也不能停止、注入模型或唤醒。MCP OAuth 授权交互开始时触发 mcp_auth，message 为 `MCP server <name> needs authorization`，流程见 [MCP 配置与授权](mcp.md)。
 
 ## 子代理类型与 session 收尾
 
