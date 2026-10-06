@@ -15,7 +15,11 @@ export interface ScrollHandle {
 }
 
 /** Viewport state shared by a ScrollBox and the layout pass. */
-export function createScrollState(initialFollow = true, initialTop = 0) {
+export function createScrollState(
+  initialFollow = true,
+  initialTop = 0,
+  followOnReachBottom = true,
+) {
   let snapshot: ScrollSnapshot = {
     top: Math.max(0, initialTop),
     total: 0,
@@ -51,11 +55,15 @@ export function createScrollState(initialFollow = true, initialTop = 0) {
     scrollBy(lines) {
       const max = Math.max(0, snapshot.total - snapshot.height);
       const top = Math.max(0, Math.min(max, snapshot.top + lines));
-      set({ ...snapshot, top, following: top === max });
+      set({ ...snapshot, top, following: followOnReachBottom && top === max });
       redraw();
     },
     scrollToBottom() {
-      set({ ...snapshot, top: Math.max(0, snapshot.total - snapshot.height), following: true });
+      set({
+        ...snapshot,
+        top: Math.max(0, snapshot.total - snapshot.height),
+        following: followOnReachBottom,
+      });
       redraw();
     },
   };
@@ -78,7 +86,11 @@ export function createScrollState(initialFollow = true, initialTop = 0) {
       const top = snapshot.following
         ? max
         : Math.max(0, Math.min(max, anchoredTop ?? snapshot.top));
-      set({ ...viewport, top, following: snapshot.following || top === max });
+      set({
+        ...viewport,
+        top,
+        following: snapshot.following || (followOnReachBottom && top === max),
+      });
       return top;
     },
   };

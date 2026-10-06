@@ -40,6 +40,8 @@ Mouse input also delivers `{ type: "move", x, y }` for motion with no button hel
 
 `Box.onWheel(event)` routes wheel input to the nearest handler on the topmost painted box or its ancestors, using the same bounds and scroll clipping as clicks. Routing runs before `useInput` subscribers; those subscribers still receive the event, so frontends that also scroll in `useInput` must avoid handling a routed event twice.
 
+`ScrollBox` clips an independent reading column. `initialFollow` and `initialTop` set its position at mount; its `ScrollHandle` exposes `scrollBy(lines)`, `scrollToBottom()` and `getSnapshot()`, while `onScroll` observes painted viewport updates. By default, fitting content and scrolling to the bottom enable following future output. The follow policy is chosen at mount. Readers can combine `initialFollow={false}` with `followOnReachBottom={false}` to keep the current top when content grows, including after an explicit `scrollToBottom()`. Resize or shrinking content still clamps that position into the valid range. Save the handle's current top before unmount and pass it as `initialTop` when returning to a page.
+
 `createTextInputHistory(entries)` retains the draft and caret during recall; `isBrowsing()` lets a completion menu leave arrow keys with an active history walk. `reset()` ends that walk when the owner submits, clears, or externally replaces the input.
 
 ```tsx

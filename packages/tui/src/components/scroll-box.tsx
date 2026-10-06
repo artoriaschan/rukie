@@ -17,6 +17,8 @@ export interface ScrollBoxProps extends BoxProps {
   initialFollow?: boolean;
   /** Restore a reading position before the first painted frame. */
   initialTop?: number;
+  /** Mount-time policy: false keeps a reader's top anchored when fitting content or bottom reading later grows. */
+  followOnReachBottom?: boolean;
 }
 
 /** An independently clipped column; content is measured outside the viewport's flex layout. */
@@ -25,10 +27,14 @@ export function ScrollBox({
   onScroll,
   initialFollow = true,
   initialTop = 0,
+  followOnReachBottom = true,
   ...props
 }: ScrollBoxProps) {
   const terminal = useTerminal();
-  const scroll = useMemo(() => createScrollState(initialFollow, initialTop), []);
+  const scroll = useMemo(
+    () => createScrollState(initialFollow, initialTop, followOnReachBottom),
+    [],
+  );
   const snapshot = useSyncExternalStore(scroll.subscribe, scroll.getSnapshot);
   useImperativeHandle(ref, () => scroll, [scroll]);
   useLayoutEffect(() => scroll.connect(terminal.redraw), [scroll, terminal]);
