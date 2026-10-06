@@ -1,4 +1,4 @@
-Status: open
+Status: ready-for-agent
 Blocked by: 01
 
 # 02: 消息流画廊与预览浮层
