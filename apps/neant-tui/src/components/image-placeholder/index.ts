@@ -1,1 +1,0 @@
-export { ImagePlaceholder } from "./image-placeholder";
