@@ -1,3 +1,4 @@
+import { startWithClock } from "../helpers/clock-app";
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { start } from "../helpers/app";
@@ -400,7 +401,7 @@ test("a promoted job shows the last visual output rows at 40×12 and after resiz
 });
 
 test("a failed job notice stays one row at 40×12 and expires without removing other notices", async () => {
-  const app = await start(["--permission-mode", "full-access", "launch"], {
+  const app = await startWithClock(["--permission-mode", "full-access", "launch"], {
     columns: 40,
     rows: 12,
   });

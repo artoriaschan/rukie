@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, jest, test } from "bun:test";
 import { useLayoutEffect, useState } from "react";
 import { Box, Text, ThemeProvider, dark, light, render } from "@neant/tui";
 import { PromptInput } from "../../../src/components/prompt-input/prompt-input";
@@ -137,7 +137,8 @@ test.each([false, true])(
 );
 
 test("replacing a tip starts a fresh lifetime without an old timeout hiding it or moving the editor", async () => {
-  const terminal = createTerminal(40, 12);
+  jest.useFakeTimers();
+  const terminal = createTerminal(40, 12, (ms) => jest.advanceTimersByTime(ms));
   let replace = (_tip?: string) => {};
   let notify = (_notice?: { text: string; warning: boolean }) => {};
   function View() {
@@ -190,5 +191,6 @@ test("replacing a tip starts a fresh lifetime without an old timeout hiding it o
     app.unmount();
     await app.waitUntilExit();
     terminal.dispose();
+    jest.useRealTimers();
   }
 }, 15000);

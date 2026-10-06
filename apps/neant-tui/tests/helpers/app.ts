@@ -17,6 +17,8 @@ export async function start(
     controlTitles?: boolean;
     env?: Record<string, string | undefined>;
     host?: Partial<NonNullable<TuiIo["host"]>>;
+    /** Drive timer-based UI scenarios without waiting for wall-clock deadlines. */
+    advanceTimers?: (ms: number) => void;
   } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), "neant-tui-"));
@@ -24,7 +26,7 @@ export async function start(
   await mkdir(join(options.session?.homeDir ?? root, ".neant", "file-history"), {
     recursive: true,
   });
-  const terminal = createTerminal(options.columns, options.rows);
+  const terminal = createTerminal(options.columns, options.rows, options.advanceTimers);
   const fake = controlledModel(options.controlReviews, options.controlTitles);
   let stderr = "";
   const exit = main(argv, {
@@ -40,6 +42,10 @@ export async function start(
     stderr: (text) => (stderr += text),
     session: { cwd: root, homeDir: root, ...fake, ...options.session },
   });
+  let exited = false;
+  void exit.then(() => {
+    exited = true;
+  });
   return {
     root,
     ...terminal,
@@ -47,13 +53,19 @@ export async function start(
     exit,
     stderr: () => stderr,
     async cleanup() {
-      // Folded questions expand, then decline; the final key interrupts the Run.
-      terminal.stdin.write("\x03\x03\x03");
-      await terminal.waitFor(
-        () => !fake.calls.at(-1) || fake.calls.at(-1)!.signal!.aborted || !terminal.isWorking(),
-      );
-      await Bun.sleep(40);
-      terminal.stdin.write("\x03\x03\x03");
+      await terminal.waitFor(() => exited || terminal.stdin.isRaw);
+      // Close views, decline interactions and interrupt Runs through terminal input.
+      // Wait for each painted response: views can hide activity while children settle.
+      while (!exited && terminal.stdin.isRaw) {
+        const beforeInterrupt = terminal.output();
+        terminal.stdin.write("\x03\x03\x03");
+        await terminal.waitFor(
+          () => exited || !terminal.stdin.isRaw || terminal.output() !== beforeInterrupt,
+        );
+      }
+      // Terminal restoration can precede Session disposal and process escalation.
+      // Keep driving virtual timers until main's completion signal settles.
+      await terminal.waitFor(() => exited, 5000);
       await exit;
       terminal.dispose();
       await rm(root, { recursive: true, force: true });

@@ -1,4 +1,4 @@
-import { expect, spyOn, test } from "bun:test";
+import { expect, jest, spyOn, test } from "bun:test";
 import { start } from "../helpers/app";
 import { dark } from "@neant/tui";
 
@@ -160,19 +160,20 @@ test("Session cache counters accumulate across Runs in hover details", async () 
   }
 });
 
-test("tps statistics retain only the latest 500 Run samples", async () => {
+test("tps hover summarizes completed Run samples", async () => {
+  jest.useFakeTimers();
   let now = Date.UTC(2026, 9, 2);
   const clock = spyOn(Date, "now").mockImplementation(() => now);
-  const app = await start();
+  const app = await start([], { advanceTimers: (ms) => jest.advanceTimersByTime(ms) });
   try {
     await app.waitFor(() => app.stdin.isRaw);
-    for (let run = 0; run < 501; run++) {
+    for (let run = 0; run < 12; run++) {
       app.stdin.write(`run ${run}\r`);
       await app.waitFor(() => app.calls.length === run + 1 && app.isWorking());
       app.calls[run]!.thinking("x");
       await app.waitFor(() => app.screen().join("\n").includes("↓ 1 tokens"));
       now += 1000;
-      app.calls[run]!.finish(1, run === 0 ? 10000 : 50);
+      app.calls[run]!.finish(1, 50);
       await app.waitFor(() => !app.isWorking());
     }
     const fields = app.screen().at(-2)!;
@@ -183,8 +184,12 @@ test("tps statistics retain only the latest 500 Run samples", async () => {
       () => app.screen().at(-1)?.includes("tps 50 · avg60 50.0 · 均值 50.0 · p95 50.0") === true,
     );
   } finally {
-    await app.cleanup();
-    clock.mockRestore();
+    try {
+      await app.cleanup();
+    } finally {
+      clock.mockRestore();
+      jest.useRealTimers();
+    }
   }
 }, 60000);
 

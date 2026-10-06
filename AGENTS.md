@@ -22,9 +22,14 @@ Bun manages the `apps/*` and `packages/*` workspaces. Run commands from the repo
 
 ```sh
 bun install                                      # install workspace dependencies
-bun apps/neant-cli/src/main.ts -p "task"          # Headless CLI; requires configured provider credentials
-bun apps/neant-tui/src/main.tsx                    # TUI; requires an interactive terminal
-bun test packages/agent/tests                    # focused package tests; select a file for a narrower change
+bun run dev                                      # TUI; requires an interactive terminal and provider credentials
+bun run dev:tui                                  # explicit TUI entry; same as dev
+bun run dev:cli -p "task"                         # Headless CLI; requires configured provider credentials
+bun run test:agent                               # Agent Core tests
+bun run test:tui                                 # TUI app and renderer tests
+bun run test:cli                                 # Headless CLI tests
+bun test <file-or-directory>                     # narrower tests for the affected behavior
+bun run check:dev                                # format → lint → types → Knip; no tests
 bun run test                                     # all current Bun tests
 bunx --no -- oxfmt --check                        # formatting
 bunx --no -- oxlint                              # lint
@@ -33,7 +38,7 @@ bunx --no -- knip                                # unused files, exports, and de
 env -u NO_COLOR bun run check                     # format → lint → types → Knip → tests
 ```
 
-`package.json` owns the executable scripts. `bun run check` is the aggregate validation command; there are no root `build`, `dev`, or `typecheck` scripts. Clear `NO_COLOR` for the aggregate check so terminal color behavior is exercised.
+`package.json` owns the executable scripts. `bun run check:dev` runs static development checks without tests. Use `test:agent`, `test:tui`, or `test:cli` for the affected area; these scripts clear `NO_COLOR` and run with four workers. Select a narrower case or file with `bun test <file-or-directory>` and clear `NO_COLOR` for terminal color assertions. `bun run check` is the aggregate validation command; there are no root `build` or `typecheck` scripts. Clear `NO_COLOR` for the aggregate check so terminal color behavior is exercised.
 
 ## Code
 
@@ -71,10 +76,16 @@ Frontends supply Interaction callbacks. Headless CLI supplies none: dependent to
 - Tests live in each package/app's `tests/`, mirroring `src/`. Cross-concept scenarios live in `tests/e2e/`; reusable fixtures live in `tests/helpers/`.
 - Follow the production runtime (ADR-0004): current Bun code uses `bun:test`; Electron main and renderer will use Vitest when introduced.
 - Test observable behavior through public entry points. For Agent Core, use `createSession` with the existing fake model helpers; for TUI, use the app `start` helper and injected/headless terminals. Prefer explicit model replies, events, idle/completion signals, or terminal predicates over timing guesses.
+- **Time and cleanup.** New or modified timer tests use a virtual clock when the relevant timers share the test process; assert behavior immediately before and at the deadline. Use `startWithClock` for TUI app timer scenarios and restore clocks in `finally`. Synchronize asynchronous work and cleanup on completion promises, events, terminal predicates, or process exit; fixed sleeps are not synchronization. Bound waits so failures terminate with useful diagnostics.
+- **Real-time coverage.** Keep real time only when it verifies an actual process, transport, SDK, or runtime timing contract that a virtual clock cannot cover. State that reason beside the wait and use the smallest duration that preserves the contract. A parent-process virtual clock does not advance child-process timers. Keep mocked clocks and global state isolated; do not mark such tests concurrent unless they have independent runtimes.
+- **Coverage cost.** Verify large sample counts, retention limits, and state transitions through the owning module's observable interface; use a small representative end-to-end scenario to verify wiring and presentation. Preserve public behavior coverage, using actual Session Runs where required. Parameterize cases only when they exercise distinct behavior; avoid repeating expensive setup for equivalent assertions.
+- **Performance evidence.** Inspect focused Bun timings for new or modified tests. For a case taking more than one second, check real waits, repeated rendering, process startup, and fixture cleanup before delivery; optimize avoidable costs or document the required integration cost in delivery evidence. Record before/after timings when optimizing an existing slow test. A larger timeout is a failure bound, not a speed optimization.
 - For bug fixes, reproduce the failing public behavior before changing implementation. Cover affected lifecycle, abort, resume, and output paths. Streaming regressions must reproduce the relevant update ordering, including microtask boundaries when they affect the failure.
 - Isolate project directories, `homeDir`, settings, credentials, and locale inputs with existing helpers. Tests must leave the user's real configuration and Sessions untouched.
 - UI changes need terminal assertions for the affected dimensions and interactions, including resize or small-terminal behavior when relevant. Verify coexisting panels, focus, and reading position when their layout or state changes.
-- Run focused checks while developing and `env -u NO_COLOR bun run check` before delivering code changes. For documentation-only changes, verify formatting, referenced paths, and the diff. Report commands actually run and any failures or checks that could not run.
+- During development, run the smallest affected test set: a test case or file first, then related files or a package when the change crosses those boundaries. Measure performance with a focused reproducer; use a full-suite baseline only when needed to locate or compare suite-wide costs.
+- For code delivery, run `env -u NO_COLOR bun run check` once after the final changes and focused checks pass. It already includes all tests; use that result for review, commit, and delivery of the same code state. Repeat full verification only when later code, configuration, dependency, or integration changes invalidate it, or an unresolved failure requires suite-wide reproduction; state the reason before rerunning. Investigate full-suite failures with focused tests before returning to the delivery gate.
+- For documentation-only changes, verify formatting, referenced paths, and the diff without running tests. Report commands actually run and any failures or checks that could not run.
 
 ## Agent skills
 

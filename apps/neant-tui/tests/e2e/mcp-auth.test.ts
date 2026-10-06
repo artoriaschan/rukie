@@ -1,3 +1,4 @@
+import { startWithClock } from "../helpers/clock-app";
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { start } from "../helpers/app";
@@ -386,7 +387,7 @@ test.each([
   async ({ mode, duration }) => {
     const server = mcpOAuthServer();
     let authorizationUrl = "";
-    const app = await start(["login"], {
+    const app = await startWithClock(["login"], {
       rows: 32,
       prepare: (root) =>
         Bun.write(
@@ -414,8 +415,11 @@ test.each([
       expect(performance.now() - startedAt).toBeGreaterThanOrEqual(duration - 100);
       app.calls[1]!.finish();
     } finally {
-      await app.cleanup();
-      await server.stop();
+      try {
+        await app.cleanup();
+      } finally {
+        await server.stop();
+      }
     }
   },
   12000,
