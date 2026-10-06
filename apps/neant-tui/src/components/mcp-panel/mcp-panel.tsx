@@ -78,7 +78,7 @@ export function mcpPanelChoices(page: McpPanelPage): string[] {
     ];
   }
   if (page.kind === "tools")
-    return [...page.server.tools].sort(compareName).map((tool) => `tool:${tool.name}`);
+    return [...[...page.server.tools].sort(compareName).map((tool) => `tool:${tool.name}`), "back"];
   if (page.kind === "tool") return ["back"];
   return serverActions(page.server);
 }
@@ -150,7 +150,7 @@ function presentation(
         description: tool.description.replace(/\s+/g, " ").trim(),
       })),
       body: page.server.tools.length ? "" : t("mcp.panel.no-tools"),
-      actions: [],
+      actions: ["back"],
     };
   if (page.kind === "tool")
     return {

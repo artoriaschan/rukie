@@ -303,11 +303,26 @@ test("the tool list follows protocol identities, wraps keyboard focus and render
       .getFgColor(),
   ).toBe(Number.parseInt(dark.inactive.slice(1), 16));
   terminal.stdin.write("\x1b[B");
+  await terminal.waitFor(() => terminal.screen().join("\n").includes("❯ Back"));
+  terminal.stdin.write("\x1b[B");
   await terminal.waitFor(() => terminal.screen().join("\n").includes("❯ a:tool"));
   const y = terminal.screen().findIndex((line) => line.includes("❯ a:tool"));
   terminal.stdin.write(`\x1b[<0;5;${y + 1}M\x1b[<0;5;${y + 1}m`);
   await terminal.waitFor(() => terminal.activated.length > 0);
   expect(terminal.activated).toEqual(["tool:a:tool"]);
+});
+
+test("the tool list provides mouse return to its server even when no tools remain", async () => {
+  const terminal = await mount({
+    page: { kind: "tools", server: server("local") },
+    selected: "back",
+  });
+  expect(terminal.screen().join("\n")).toContain("No tools available");
+  const y = terminal.screen().findIndex((line) => line.includes("Back") && !line.includes("Esc"));
+  expect(y).toBeGreaterThan(0);
+  terminal.stdin.write(`\x1b[<0;5;${y + 1}M\x1b[<0;5;${y + 1}m`);
+  await terminal.waitFor(() => terminal.activated.length > 0);
+  expect(terminal.activated).toEqual(["back"]);
 });
 
 test("busy management cannot repeat while tool browsing and mouse back remain available", async () => {
