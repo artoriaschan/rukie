@@ -4,20 +4,9 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
+import { OAuthMetadata } from "./oauth.ts";
 
 const Strings = Type.Array(Type.String());
-const Metadata = Type.Object({
-  issuer: Type.String(),
-  authorization_endpoint: Type.String(),
-  token_endpoint: Type.String(),
-  response_types_supported: Strings,
-  registration_endpoint: Type.Optional(Type.String()),
-  scopes_supported: Type.Optional(Strings),
-  grant_types_supported: Type.Optional(Strings),
-  token_endpoint_auth_methods_supported: Type.Optional(Strings),
-  code_challenge_methods_supported: Type.Optional(Strings),
-  client_id_metadata_document_supported: Type.Optional(Type.Boolean()),
-});
 const State = Type.Object({
   serverUrl: Type.String(),
   tokens: Type.Optional(
@@ -46,7 +35,7 @@ const State = Type.Object({
   discovery: Type.Optional(
     Type.Object({
       authorizationServerUrl: Type.String(),
-      authorizationServerMetadata: Type.Optional(Metadata),
+      authorizationServerMetadata: Type.Optional(OAuthMetadata),
       resourceMetadataUrl: Type.Optional(Type.String()),
       resourceMetadata: Type.Optional(
         Type.Object({
