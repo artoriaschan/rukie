@@ -89,10 +89,10 @@ TUI 提供一组内置 Slash Command，输入 `/` 弹出补全菜单，列出内
 **上下文报告 `/context`**
 
 58. As a TUI 用户, I want `/context` 显示一张 token 格子图, so that 一眼看出上下文被什么占满。
-59. As a TUI 用户, I want 图例第一行是 `model · 已用/总量 tokens (百分比)`, so that 我知道整体占用。
+59. As a TUI 用户, I want 图例先显示模型名称、模型 ID、`已用/总量 tokens (百分比)` 三行, so that 我知道整体占用。
 60. As a TUI 用户, I want 按类别（System prompt、Memory files、System tools、MCP tools、Skills、Messages、Free space、Compaction 预留）列出 token 数和占比, so that 我能定位大头。
 61. As a TUI 用户, I want Project Instructions 文件作为 Memory files 单独列出、按路径给 token 数, so that 我能看出哪个 `AGENTS.md` 太大。
-62. As a TUI 用户, I want MCP tools、Skills、子代理类型的明细, so that 我能决定关掉哪个 server 或 skill。
+62. As a TUI 用户, I want `/context` 显示 MCP tools、Skills、子代理类型摘要，并用 `/context all` 展开明细, so that 我能决定关掉哪个 server 或 skill。
 63. As a TUI 用户, I want Compaction 预留显示为窗口的 20%, so that 我明白什么时候会触发自动压缩。
 64. As a TUI 用户, I want 窄终端（<80 列）时格子图缩小, so that 布局不会折乱。
 65. As a TUI 用户, I want 1M 窗口的模型用 20×10 的格子, so that 细节不被压没。
@@ -190,10 +190,10 @@ TUI 提供一组内置 Slash Command，输入 `/` 弹出补全菜单，列出内
 - 模型选择器、session 选择器：复用现有的面板与选择组件，形态参照 dsh-TUI 的选择器。session 行有两行，第一行是标题（来源 `prompt` 时暗色），第二行是 `时间 · 条数 · model`。
 - `/resume`：选中后 dispose 当前 session，以 `resumeId` 重建并重新渲染对话。
 - `/context`：③ 层组件，复刻 Claude Code `ContextVisualization`。
-  - 布局：左侧格子图，右侧图例。格子默认 10×10；窗口 ≥1M 时 20×10；终端 <80 列时缩到 5×5（1M 为 5×10）。
+  - 布局：命令行与缩进标题，左侧格子图，右侧图例；窄终端或图例空间不足时上下排列，资源摘要放在两者下方。格子默认 10×10；窗口 ≥1M 时 20×10；终端 <80 列时缩到 5×5（1M 为 5×10）。
   - 格子符号：`⛁` 满格、`⛀` 不足 70% 的格、`⛶` 空闲、`⛝` 预留。
-  - 图例：第一行 `model · used/window tokens (pct%)`，接着是 `Estimated usage by category` 和逐类别行，再是明细区（`└ name: N tokens`）。
-  - 每个类别的颜色映射到 Neant 主题 token，渲染成对话区里的一条本地静态条目，不进 Agent Core transcript。
+  - 图例：模型名称与窗口、模型 ID、`used/window tokens (pct%)` 三行；空一行后显示斜体 `Estimated usage by category` 与非零类别。token 数缩写为 k/m，类别仅符号着色，数字灰色。下方默认显示各资源数量和 token 摘要，`/context all` 展开 `└ name: N tokens` 明细。
+  - 使用截图参考配色，作用域限于报告组件。每个非空类别至少占一格。渲染成对话区里的一条本地静态条目，不进 Agent Core transcript。
 - `/settings`：新增 ④ 层设置屏幕，复刻 dsh-TUI `Settings` 的框架。
   - 外观：全屏，标题行带 `1/N` 计数；圆角分区卡片；`❯` 指针加选中底色；布尔与枚举的取值样式。
   - 页脚：分隔线、通知行、按键提示。
