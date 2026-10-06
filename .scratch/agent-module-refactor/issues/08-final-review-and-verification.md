@@ -143,3 +143,9 @@ Blocked by: [07](07-session-assembly-and-boundaries.md)
   行为与静态验证（本 worktree，`env -u NO_COLOR`）：`plan-mode.test.ts`、`goal-tools.test.ts`、`goal.test.ts`、`tool-declarations.test.ts` 合跑 → 68 pass / 0 fail，270 expect，exit 0；`subagents.test.ts`、`mcp-api.test.ts`、`mcp.test.ts`、`hooks.test.ts`、`model-hooks.test.ts` 与上述四套件合跑 → 203 pass / 0 fail，912 expect，9 文件，exit 0；`bunx --no -- tsc -b` exit 0；`bunx --no -- oxlint` exit 0（398 文件，0/0）；`bunx --no -- oxfmt --check` exit 0（694 文件）；`bunx --no -- knip` exit 0；`git diff --check` exit 0。
 
   聚合检查：`env -u NO_COLOR bun run check`（= `oxfmt --check && oxlint && tsc -b && knip && bun test --parallel=4`），运行于包含本次全部代码/配置改动与该评论之前全部文档改动的状态；退出码 **0**：`oxfmt --check` 694 文件、`oxlint` 398 文件 0/0、`tsc -b`、`knip` 均通过，`bun test --parallel=4` → **2497 pass / 0 fail**，14042 expect，179 文件，60.44s。expect 计数与票 08 前次记录的 14040 差 2，属已披露的时序条件断言波动（见票 01/08 的断言计数说明），通过/失败数与文件数不变。合并与提交后复跑见末条评论。
+
+- 2026-10-07（评审整改的结果记录）：提交 `5940d46`（`fix(agent): guard the shared tool-runtime import boundary`，父提交 `e86c0e5`）；`git merge agent-module-refactor --no-edit` → `Already up to date.`（exit 0，集成分支尖端 `e86c0e5` 已是本分支祖先，无合并提交），合并结果即 `5940d46`，工作树干净。
+
+  合并结果上的复跑：`env -u NO_COLOR bun run check` 退出码 **0**；`oxfmt --check` 694 文件、`oxlint` 398 文件 0/0、`tsc -b`、`knip` 通过，`bun test --parallel=4` → **2497 pass / 0 fail**，14043 expect，179 文件，60.50s；日志 5436 行。通过/失败数与文件数与上一条评论的 2497/0/179 相同，expect 计数在上次 14042 与该次 14043 之间波动，与票 01/08 已披露的时序条件断言波动一致。
+
+  本条评论为 Markdown-only 改动，按根 `AGENTS.md` 的仅文档变化要求验证：对改动的 Markdown 运行 `bunx --no -- oxfmt --check`、`git diff --check`，不重跑测试；代码、配置与依赖自上述聚合检查后未再变化。
