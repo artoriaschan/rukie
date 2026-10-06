@@ -3,6 +3,46 @@ import { start } from "../helpers/app";
 
 const english = "Image in clipboard · ctrl+v to paste";
 
+test("clipboard tip expires after ten seconds despite polling and editing, and a new image availability rearms it", async () => {
+  let image = true;
+  let probes = 0;
+  const app = await start([], {
+    env: { LANG: "en_US.UTF-8" },
+    host: {
+      hasClipboardImage: async () => {
+        probes++;
+        return image;
+      },
+    },
+  });
+  try {
+    await app.waitFor(() => app.screen().join("\n").includes(english));
+    const shownAt = performance.now();
+    await app.waitFor(() => performance.now() - shownAt >= 9000, 9500);
+    expect(app.screen().join("\n")).toContain(english);
+    expect(probes).toBeGreaterThanOrEqual(9);
+    app.stdin.write("preserved draft");
+    await app.waitFor(() => app.screen().includes("❯ preserved draft"));
+    const inputRow = app.screen().indexOf("❯ preserved draft");
+    await app.waitFor(() => !app.screen().join("\n").includes(english), 2500);
+    expect(performance.now() - shownAt).toBeGreaterThanOrEqual(9500);
+    expect(app.screen().indexOf("❯ preserved draft")).toBe(inputRow);
+    const afterExpiry = probes;
+    await app.waitFor(() => probes > afterExpiry);
+    expect(app.screen().join("\n")).not.toContain(english);
+    image = false;
+    const beforeClear = probes;
+    await app.waitFor(() => probes > beforeClear);
+    image = true;
+    await app.waitFor(() => app.screen().join("\n").includes(english));
+    expect(app.screen()).toContain("❯ preserved draft");
+    expect(app.calls).toHaveLength(0);
+    expect(app.stderr()).toBe("");
+  } finally {
+    await app.cleanup();
+  }
+}, 20000);
+
 test.each([
   ["en_US.UTF-8", "Image in clipboard · ctrl+v to paste"],
   ["zh_CN.UTF-8", "剪贴板中有图片 · ctrl+v 粘贴"],

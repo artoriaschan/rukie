@@ -1,5 +1,5 @@
 import { Notice } from "../notice";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Box, ThemedTextInput, ThemedText, figures, type TextInputProps } from "@neant/tui";
 
 export function PromptInput({
@@ -34,6 +34,7 @@ export function PromptInput({
   onHistoryRecall?: TextInputProps["onHistoryRecall"];
   readOnly?: boolean;
   compact?: boolean;
+  /** Expires after ten seconds; changing or clearing the content starts a new lifecycle. */
   tip?: string;
   notice?: { text: string; warning: boolean };
   /** Pre-wrapped additional warning occupies its own rows above the editor. */
@@ -44,6 +45,14 @@ export function PromptInput({
   atomicRanges?: TextInputProps["atomicRanges"];
   suggestions?: ReactNode;
 }) {
+  const [visibleTip, setVisibleTip] = useState(tip);
+  useEffect(() => {
+    setVisibleTip(tip);
+    if (!tip) return;
+    const timer = setTimeout(() => setVisibleTip(undefined), 10000);
+    return () => clearTimeout(timer);
+  }, [tip]);
+  const activeTip = visibleTip === tip ? visibleTip : undefined;
   const edge = "─".repeat(Math.max(0, columns - 2));
   return (
     <Box flexDirection="column" marginTop={compact && !notice ? 0 : 1}>
@@ -84,19 +93,19 @@ export function PromptInput({
           wrap="truncate"
         >{`╰${edge}╯`}</ThemedText>
       )}
-      {(notice || tip) && (
+      {(notice || activeTip) && (
         <Box
           position="absolute"
           top={-1}
           right={1}
-          width={Math.min(Bun.stringWidth(notice?.text ?? tip!), Math.max(1, columns - 3))}
+          width={Math.min(Bun.stringWidth(notice?.text ?? activeTip!), Math.max(1, columns - 3))}
           height={1}
         >
           {notice ? (
             <Notice kind={notice.warning ? "warning" : "success"} text={notice.text} />
           ) : (
             <ThemedText dimColor wrap="truncate">
-              {tip}
+              {activeTip}
             </ThemedText>
           )}
         </Box>

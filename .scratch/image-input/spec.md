@@ -146,3 +146,5 @@ Status: resolved
 2026-10-06 后续 [消息流图片预览](../image-message-preview/spec.md) 已交付并合入 main `9e895a2`。消息图片点击现在打开 TUI 内部预览，只有卡片中的“打开原图”启动系统查看器；当前使用契约见 [Neant TUI README](../../apps/neant-tui/README.md)。Kitty PNG 缩略图、画廊、缩放/平移和消息区预览由此次后续规格拥有；输入 token 悬停预览仍归路线图 21。
 
 2026-10-06 后续 [剪贴板图片 Tips](issues/09-clipboard-image-tip.md) 已合入 main `4277f5c`。右下角按 locale 显示图片可粘贴提示，剪贴板变化后自动更新；不导出图片，不改变既有粘贴入口与通知优先级。main aggregate 2193 pass / 0 fail，双轴审查及清理见 [后续验收](review.md#剪贴板图片提示后续验收)。
+
+2026-10-06 后续 [Tips 通用自动隐藏](issues/10-tip-auto-hide.md) 按用户确认的 10 秒默认值实施。运行契约归 [输入提示](../../apps/neant-tui/README.md#输入提示)，工单记录公开测试、审查及集成证据。
