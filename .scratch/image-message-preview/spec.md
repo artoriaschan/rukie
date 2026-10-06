@@ -17,7 +17,7 @@ Status: claimed
 
 ## 工单与验证
 
-01 renderer 公开接口与 PNG 渲染基线 → 02 画廊与预览交互、03 renderer 生命周期（共享基线验证后独立实现）。以仓库既定公开 seam 验证：`@neant/tui` render + 注入终端，TUI start + headless terminal + 注入 host。逐片 red→green，覆盖分块探测回复不进入草稿、缩略图、滚动裁剪/离屏删除、去重、resize/关闭/异常恢复、无图形降级、画廊、预览模式与平移、输入隔离、阅读位置、resume/read 与原图导出。最终 Standards/Spec 双轴审查及 `env -u NO_COLOR bun run check`。
+01 renderer 公开接口与 PNG 渲染基线 → 02 画廊与预览交互、03 renderer 生命周期（共享基线验证后独立实现）→ 04 双轴审查修复。以仓库既定公开 seam 验证：`@neant/tui` render + 注入终端，TUI start + headless terminal + 注入 host。逐片 red→green，覆盖分块探测回复不进入草稿、缩略图、滚动裁剪/离屏删除、去重、resize/关闭/异常恢复、无图形降级、画廊、预览模式与平移、输入隔离、阅读位置、resume/read 与原图导出。最终 Standards/Spec 双轴审查及 `env -u NO_COLOR bun run check`。
 
 ## 参考
 
