@@ -21,4 +21,10 @@ Agent Core 跟踪成功 read、write、edit 后的完整文件，在每次模型
 
 Standards 与 Spec 最终审查均为 0 条剩余发现。初审与续审问题全部由同一修复代理解决；提醒与最终基线在原生事务中原子提交，失败重试保持一次交付，BOM 增删保留实际 diff，Compaction 及失败提醒正确释放请求预算。红绿证据见 [审查记录](review.md)。并发读取顺序的测试假设已修正，覆盖跨批次全部文件且不重复。
 
-五个实施工作区与一个审查修复工作区，归档前均为 clean 且 HEAD 已包含在集成分支；通过 Codex managed worktree 归档保存可恢复快照。附件列表确认六项均为 archived_worktree，Git 工作区列表确认六个 checkout 已移除。集成工作区保留，main 仍为起点提交。
+五个实施工作区与一个审查修复工作区，归档前均为 clean 且 HEAD 已包含在集成分支；通过 Codex managed worktree 归档保存可恢复快照。附件列表确认六项均为 archived_worktree，Git 工作区列表确认六个 checkout 已移除。首次集成验收时，集成工作区保留，main 仍为起点提交。
+
+## Main 合并验收
+
+2026-10-06：按用户要求将 `codex/file-change-detection` 快进合并到 main，合并提交为 `a1eb6920384a07a3a93a1984b800b83f9e7b3596`。main 首次类型检查缺少新增的直接依赖 `diff`；运行 `rtk proxy bun install --frozen-lockfile` 同步工作区依赖后，`rtk proxy env -u NO_COLOR bun run check` 完整通过：exit 0，2026 pass / 0 fail，10713 assertions，145 files，230.03s。同步依赖没有修改锁文件或其他已跟踪文件。
+
+当前集成 worktree 的提交全部在 main 中，且工作区干净。Codex 的 `archive_worktree` 拒绝移除该聊天的主工作区，返回 `The task's primary checkout cannot be removed.`；Computer Use 也禁止操作 Codex 应用。当前集成 worktree 与其分支因此保留，需先通过应用将聊天移出该 worktree，再执行清理。六个实施与修复 worktree 已在此前归档并移除。
