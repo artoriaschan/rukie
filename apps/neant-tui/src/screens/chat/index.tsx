@@ -42,6 +42,8 @@ import {
   RewindPicker,
   ScrollToBottom,
   StatusLine,
+  JobCard,
+  JobGroupHeader,
   ToolCall,
   SubagentMessage,
   SubagentPanel,
@@ -594,11 +596,13 @@ function Chat({
 
   const [scrollFocus, setScrollFocus] = useState<"body" | "details">("body");
   const [unread, setUnread] = useState(false);
+  const [jobsExpanded, setJobsExpanded] = useState(false);
   const previousOutput = useRef({
     completed: state.completed,
     assistant: state.assistant,
     tools: state.tools,
     subagents: state.subagents,
+    jobs: state.jobs,
     error: state.error,
   });
   const draft = useRef("");
@@ -616,12 +620,19 @@ function Chat({
   const currentTime = Math.max(now, Date.now());
   const activity = renderActivity(state.activity, currentTime);
   const speed = conversation.getTpsMetrics(currentTime);
-  const nextWakeAt = Math.min(activity.nextWakeAt ?? Infinity, speed.nextWakeAt ?? Infinity);
+  const jobsAlive = Object.values(state.jobs).some(
+    (job) => job.status === "running" || job.status === "stopping",
+  );
+  const nextWakeAt = Math.min(
+    state.running ? (activity.nextWakeAt ?? Infinity) : Infinity,
+    state.running ? (speed.nextWakeAt ?? Infinity) : Infinity,
+    jobsAlive ? now + 1000 : Infinity,
+  );
   useEffect(() => {
-    if (!state.running || !Number.isFinite(nextWakeAt)) return;
+    if (!Number.isFinite(nextWakeAt)) return;
     const timer = setTimeout(() => setNow(Date.now()), Math.max(0, nextWakeAt - Date.now()));
     return () => clearTimeout(timer);
-  }, [state.running, nextWakeAt]);
+  }, [nextWakeAt]);
   const approvalOpen = interaction !== undefined;
   useEffect(() => {
     conversation.dispatchActivity({ type: approvalOpen ? "approval-open" : "approval-close" });
@@ -639,6 +650,7 @@ function Chat({
         previous.assistant !== state.assistant ||
         previous.tools !== state.tools ||
         previous.subagents !== state.subagents ||
+        previous.jobs !== state.jobs ||
         previous.error !== state.error)
     )
       setUnread(true);
@@ -647,6 +659,7 @@ function Chat({
       assistant: state.assistant,
       tools: state.tools,
       subagents: state.subagents,
+      jobs: state.jobs,
       error: state.error,
     };
   }, [
@@ -656,6 +669,7 @@ function Chat({
     state.assistant,
     state.tools,
     state.subagents,
+    state.jobs,
     state.error,
   ]);
   const change = (value: string, edit?: { start: number; end: number; text: string }) => {
@@ -942,6 +956,7 @@ function Chat({
         : planReview
           ? 6
           : 0;
+  const footerHeight = statusHeight + Number(!small && !!state.jobNotice);
   // Dialogs take priority. Reserve a preview for every visible panel before
   // deciding whether the prompt needs to use its one-row form.
   const panelCount = Number(hasTodos) + Number(hasSubagents);
@@ -949,16 +964,16 @@ function Chat({
   // Goal root and blocker cannot collapse into a panel's one-row preview.
   const panelMinimum = panelCount + goalRows;
   const minimumDialogHeight = state.goal
-    ? Math.min(preferredDialogHeight, Math.max(5, rows - statusHeight - panelMinimum - 1))
+    ? Math.min(preferredDialogHeight, Math.max(5, rows - footerHeight - panelMinimum - 1))
     : preferredDialogHeight;
   const sideHeight = side
     ? Math.min(
         10,
-        Math.max(3, Math.min(Math.floor(rows / 2), rows - statusHeight - 2 - panelMinimum)),
+        Math.max(3, Math.min(Math.floor(rows / 2), rows - footerHeight - 2 - panelMinimum)),
       )
     : 0;
   const dialogGap =
-    question && rows - statusHeight - minimumDialogHeight - panelMinimum - 1 >= 1 ? 1 : 0;
+    question && rows - footerHeight - minimumDialogHeight - panelMinimum - 1 >= 1 ? 1 : 0;
   const visibleModelNotice = !interaction || userQuestion?.collapsed ? modelImageNotice : undefined;
   const wrappedModelNotice = visibleModelNotice
     ? Bun.wrapAnsi(
@@ -971,10 +986,10 @@ function Chat({
   const modelNoticeHeight = wrappedModelNotice?.split("\n").length ?? 0;
   const compactPrompt =
     (modelNoticeHeight > 0 &&
-      rows - statusHeight - panelMinimum - 1 < promptMaxLines + 3 + modelNoticeHeight) ||
+      rows - footerHeight - panelMinimum - 1 < promptMaxLines + 3 + modelNoticeHeight) ||
     ((!!side || !!rewind || !!resumePicker) && rows < 20) ||
     (!!interaction &&
-      rows - statusHeight - minimumDialogHeight - dialogGap - panelMinimum < promptMaxLines + 3);
+      rows - footerHeight - minimumDialogHeight - dialogGap - panelMinimum < promptMaxLines + 3);
   const promptHeight =
     (compactPrompt ? 1 + Number(!!imageNotice) : promptMaxLines + 3) + modelNoticeHeight;
   const transcriptHeight = rewind
@@ -982,8 +997,8 @@ function Chat({
     : interaction
       ? Number(!compactPrompt)
       : 1;
-  const commandMenuHeight = Math.min(8, Math.max(0, rows - statusHeight - 3 - modelNoticeHeight));
-  const chromeSpace = rows - statusHeight - promptHeight - transcriptHeight - sideHeight;
+  const commandMenuHeight = Math.min(8, Math.max(0, rows - footerHeight - 3 - modelNoticeHeight));
+  const chromeSpace = rows - footerHeight - promptHeight - transcriptHeight - sideHeight;
   const showReturnControl =
     showReturn && chromeSpace - minimumDialogHeight - dialogGap - panelMinimum >= 1;
   const compactReturn =
@@ -1174,6 +1189,21 @@ function Chat({
         if (picker.confirm) void executeRewind(picker);
         else showRewind({ ...picker, confirm: true, mode: 0 });
       }
+      return;
+    }
+    if (
+      event.type === "key" &&
+      event.key.ctrl &&
+      event.key.name === "o" &&
+      !event.key.alt &&
+      !event.key.shift &&
+      !small &&
+      !interactions.getSnapshot() &&
+      !sideController.current &&
+      !previewRef.current
+    ) {
+      handledInput.current.add(event);
+      setJobsExpanded((expanded) => !expanded);
       return;
     }
     if (
@@ -1371,6 +1401,46 @@ function Chat({
   const completed = useMemo(
     () =>
       state.completed.map((entry, index) => {
+        const hasJob = (candidate: typeof entry | undefined) =>
+          candidate?.type === "tool" && candidate.jobId && state.jobs[candidate.jobId];
+        if (hasJob(entry)) {
+          if (hasJob(state.completed[index - 1])) return null;
+          const group = [];
+          for (let at = index; at < state.completed.length; at++) {
+            const candidate = state.completed[at];
+            if (candidate?.type !== "tool" || !candidate.jobId || !state.jobs[candidate.jobId])
+              break;
+            group.push({ entry: candidate, job: state.jobs[candidate.jobId]!, index: at });
+          }
+          if (group.length >= 2) {
+            const folded =
+              !jobsExpanded &&
+              group.every(({ job }) => job.status !== "running" && job.status !== "stopping");
+            return (
+              <Box key={index} flexDirection="column">
+                <JobGroupHeader
+                  jobs={group.map(({ job }) => job)}
+                  folded={folded}
+                  columns={columns}
+                  locale={locale}
+                  onToggle={() => setJobsExpanded((expanded) => !expanded)}
+                />
+                {!folded &&
+                  group.map(({ entry: member, job, index: at }) => (
+                    <Box key={at} flexDirection="column">
+                      <ToolCall
+                        locale={locale}
+                        summary={member.summary}
+                        status="success"
+                        result={member.result}
+                      />
+                      <JobCard job={job} output={job.output} columns={columns} locale={locale} />
+                    </Box>
+                  ))}
+              </Box>
+            );
+          }
+        }
         switch (entry.type) {
           case "tool":
             return (
@@ -1387,6 +1457,14 @@ function Chat({
                   imagesSuspended={!!preview}
                   error={entry.error}
                 />
+                {entry.jobId && state.jobs[entry.jobId] && (
+                  <JobCard
+                    job={state.jobs[entry.jobId]!}
+                    output={state.jobs[entry.jobId]!.output}
+                    columns={columns}
+                    locale={locale}
+                  />
+                )}
                 {entry.agentId &&
                   state.subagents[entry.agentId] &&
                   state.completed.findLastIndex(
@@ -1441,7 +1519,16 @@ function Chat({
             );
         }
       }),
-    [state.completed, state.subagents, columns, thinking, locale, !!preview],
+    [
+      state.completed,
+      state.subagents,
+      state.jobs,
+      jobsExpanded,
+      columns,
+      thinking,
+      locale,
+      !!preview,
+    ],
   );
   if (view === "settings") return <SettingsScreen locale={locale} onClose={closeView} />;
   if (view === "dashboard")
@@ -1513,7 +1600,7 @@ function Chat({
           height={
             small
               ? Math.max(1, rows - 1)
-              : (bodyScroll?.height ?? Math.max(1, rows - promptHeight - statusHeight))
+              : (bodyScroll?.height ?? Math.max(1, rows - promptHeight - footerHeight))
           }
           locale={locale}
           onClose={() => showPreview(undefined)}
@@ -1530,6 +1617,9 @@ function Chat({
         />
       )}
       <Box flexDirection="column" flexShrink={0}>
+        {!small && state.jobNotice && (
+          <Notice kind={state.jobNotice.kind} text={state.jobNotice.text} truncate />
+        )}
         {small ? (
           <ThemedText wrap="truncate">{t("window.small")}</ThemedText>
         ) : (
@@ -1852,6 +1942,7 @@ function Chat({
               }}
             />
             <StatusLine
+              jobs={Object.values(state.jobs)}
               showContextBar={showContextBar}
               goal={state.goal}
               locale={locale}
