@@ -77,7 +77,7 @@ export type CustomSessionEvent<PiEvent extends { type: string } = never> =
       decision: "allow" | "ask" | "deny";
       reason?: string;
     }
-  /** The MCP snapshot is committed; mcpServers() reads it without a new probe. */
+  /** Committed MCP snapshot or diagnostics changed. Read mcpServers() without refresh; cache reads do not re-emit. */
   | { type: "mcp_servers_changed" }
   | { type: "mcp_server_error"; server: string; error: string; errorData?: UserVisibleErrorData }
   | { type: "mcp_auth_required"; server: string }

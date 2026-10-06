@@ -220,7 +220,13 @@ export interface Session {
   setPermissionMode(mode: PermissionMode): void;
   /** Snapshot the restored context; usable while idle or running. */
   contextReport(): ContextReport;
-  /** Cached snapshot or shared first probe. Explicit refresh requires idle state; no Transcript writes. */
+  /**
+   * Returns an independent copy of the latest committed snapshot; cached reads never reconnect.
+   * Concurrent first reads share a probe that closes its connections before resolving.
+   * Explicit refresh rereads complete configuration and shares concurrent probes while idle;
+   * a Run rejects it as busy. Refresh never starts OAuth or writes Transcript or Tool State.
+   * Subscribe to mcp_servers_changed, then read without refresh to observe committed changes.
+   */
   mcpServers(options?: { refresh?: boolean }): Promise<McpSnapshot>;
   /** Idle only; resolves to authenticated or cancelled without writing Transcript. */
   authenticateMcp(name: string): Promise<McpAuthOutcome>;
