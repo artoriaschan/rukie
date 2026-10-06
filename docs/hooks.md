@@ -53,6 +53,8 @@ command 默认经 `sh -c` 执行；`shell: "bash"` 改用 Bash。提供 `args` �
 
 `deny` 阻止工具执行并把原因交回模型；`ask` 在 full-access 下仍需询问，Headless CLI 会拒绝；`allow` 跳过 Permission Mode 的询问和 auto-review，但不能越过权限规则的 deny 或 ask。`updatedInput` 可替换参数，先按工具 schema 校验，再以改写后的参数检查规则；非法改写被拒绝。多个 hook 并行读取原始输入，判定取最严：deny > ask > allow，所有拒绝原因与附加上下文合并。
 
+`job_list`、`job_output`、`job_kill` 是审批例外：PreToolUse 的 `ask` 不请求审批，也不触发 PermissionRequest 或审批 Notification。PreToolUse、PostToolUse 和 PostToolUseFailure 仍按普通工具执行；`deny`、exit 2、`continue: false`、取消与经过 schema 校验的 `updatedInput` 保持生效。权限规则的显式 `deny` 仍可阻止这些工具；`bash` 不属于此例外。
+
 PreToolUse 的退出码 2 始终拒绝，原因取 stdout JSON 的 `reason`，否则用 stderr；其他事件的退出码 2 行为见下表。退出码 0 时，stdout 首尾为 `{}` 才解析 JSON；纯文本仅 UserPromptSubmit 和 SessionStart 用作上下文。其他退出码产生非阻断告警，合法 JSON 仍可给出决定。超时、进程崩溃、坏 JSON 和被忽略的字段产生 `hook_warning` 事件并走 `onWarning`，失败放行。
 
 PreToolUse 的 `additionalContext` 附在本次工具结果的 `<system-reminder>` 中，包括失败和权限拒绝。单条上下文、纯文本 stdout 及 `systemMessage` 限 10,000 字符，超出部分截断并标记。`systemMessage` 显示给用户；通用 `continue: false` 优先结束整个 run，`stopReason` 在 CLI stderr 或 TUI 结束处呈现。Notification 只接受显示消息，SessionEnd 丢弃输出，后台 command 不参与决定。`suppressOutput` 可提供，但不改变呈现。

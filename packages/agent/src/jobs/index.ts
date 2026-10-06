@@ -189,21 +189,12 @@ export function createJobs(
         trim(16 * 1024);
         if (proc.pid !== undefined) {
           // Escalation remains armed for descendants that closed inherited pipes.
-          if (killTimer !== undefined) {
-            try {
-              process.kill(-proc.pid, 0);
-            } catch {
-              clearTimeout(killTimer);
-              liveGroups.delete(proc.pid);
-              ownedGroups.delete(proc.pid);
-            }
-          } else {
-            try {
-              process.kill(-proc.pid, 0);
-            } catch {
-              liveGroups.delete(proc.pid);
-              ownedGroups.delete(proc.pid);
-            }
+          try {
+            process.kill(-proc.pid, 0);
+          } catch {
+            if (killTimer !== undefined) clearTimeout(killTimer);
+            liveGroups.delete(proc.pid);
+            ownedGroups.delete(proc.pid);
           }
         }
         // Wake collectors before resolving completion: their successful cursor

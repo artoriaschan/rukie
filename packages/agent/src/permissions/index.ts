@@ -438,8 +438,9 @@ export function createPermissionGate(options: PermissionGateOptions) {
     };
     if (options.isRunStopped?.())
       return { block: true, terminate: true, reason: "Stopped by hook" };
-    // deny stops immediately; allow skips Mode; ask skips Mode (including Review)
-    // and goes straight to Interaction. Only no opinion falls through to Mode.
+    // deny stops immediately; allow skips Mode; ask skips Mode (including Review).
+    // Ordinary tools then enter Interaction; owner-scoped job tools skip approval.
+    // Only no opinion falls through to Mode.
     const hook = await options.preToolUse?.(call, context.signal);
     if (hook?.continue === false) {
       options.stopRun?.(hook.stopReason);
@@ -477,7 +478,13 @@ export function createPermissionGate(options: PermissionGateOptions) {
           : hookDecision?.decision === "ask"
             ? hookDecision
             : (hookDecision ?? rule ?? (await evaluateModeStage(context)));
-    if (decision.decision === "ask") decision = await evaluateInteractionStage(context, decision);
+    if (decision.decision === "ask") {
+      // Owner-scoped job tools retain rule/hook denials and input validation,
+      // but never enter approval hooks or frontend interactions.
+      decision = ["job_output", "job_list", "job_kill"].includes(call.toolCall.name)
+        ? { decision: "allow" }
+        : await evaluateInteractionStage(context, decision);
+    }
     if (decision.decision === "allow") {
       if (options.onToolCallAllowed) {
         context.signal.throwIfAborted();
