@@ -136,9 +136,11 @@ Session Resume 通过只读观察核对子 Run 与父子归属，不自动恢复
 
 TUI 按四层组织，导入只向下：screens（`apps/neant-tui/src/screens/`）连接 Session 并拥有应用状态；app components（`apps/neant-tui/src/components/<area>/`）只接收 props，按 UI 区域分目录，各区域经 `index.ts` 暴露并汇总到 `components/index.ts`；design system（`packages/tui/src/design-system/`）提供主题及主题感知部件；renderer primitives（`packages/tui/src/components/`）提供终端原语。后两层不依赖 Agent Core；可复用的终端 UI 按语义放入 `@neant/tui`，Neant 专用适配留在应用内。Slash Command 由 frontend 解析，未匹配输入交回 Agent Core；命令语法不进入 Session 的领域接口。
 
-终端管线是 React reconciler → 纯 TypeScript Yoga 布局 → cell 网格 → 帧差分 → ANSI。只有 layout 使用 vendored Yoga；渲染器支持注入 stdin/stdout。通用终端 API、绘制、输入与清理语义由 [renderer README](../packages/tui/README.md)维护，来源与复用决定见 [ADR-0005](adr/0005-own-tui-renderer.md)。
+终端管线是 React reconciler → 纯 TypeScript Yoga 布局 → cell 网格 → 帧差分 → ANSI。只有 layout 使用 vendored Yoga；渲染器支持注入 stdin/stdout，并负责 Kitty PNG 图形能力协商、图片 placement、视口裁剪及资源清理。通用终端 API、绘制、输入与清理语义由 [renderer README](../packages/tui/README.md)维护，来源与复用决定见 [ADR-0005](adr/0005-own-tui-renderer.md)。
 
 TUI 使用 alternate screen，消息区独立滚动，输入与交互区固定底部；应用管理阅读位置、跟随和面板组合，渲染器负责终端模式与光标恢复。全屏行为和项目输入历史见 [ADR-0006](adr/0006-fullscreen-tui.md)。输入历史不属于模型上下文或 Transcript。
+
+应用拥有 Transcript 图片画廊及消息区内的预览浮层，元数据、缩放、平移和原图入口的使用方式见 [TUI README](../apps/neant-tui/README.md)。图片协议与终端资源由 renderer 管理，不进入 Session 的运行或持久化接口。
 
 TUI 通过可注入的 [`host`](../apps/neant-tui/src/host/index.ts) 读取剪贴板并打开外部查看器。每个 TUI 实例拥有剪贴板和图片查看器的 private exports，限制目录及文件权限，关闭时等待进行中的读取或打开操作后清理；Agent Core 不拥有这些 frontend 临时文件。
 
