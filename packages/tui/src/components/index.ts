@@ -46,6 +46,20 @@ export interface BoxProps {
   onClick?(): void;
 }
 
+export interface ImageProps extends Omit<BoxProps, "children"> {
+  /** Original PNG bytes encoded as base64. Other media types reserve geometry only. */
+  data: string;
+  mimeType: string;
+  sourceWidth: number;
+  sourceHeight: number;
+  /** Original source pixel rectangle, before terminal cell scaling and viewport clipping. */
+  crop?: { x: number; y: number; width: number; height: number };
+}
+
+export function Image(props: ImageProps) {
+  return createElement("tui-image", props);
+}
+
 export interface TextProps extends TextStyle {
   children?: ReactNode;
   /** Word wrap, splitting long words by display columns, or clip each explicit line. */
