@@ -9,17 +9,16 @@ import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
 import { homedir } from "node:os";
 import { type TSchema } from "typebox";
 import type { createFileTracking } from "../file-tracking/index.ts";
-import type { WebFetchOptions } from "../web-fetch/index.ts";
+import type { WebFetchOptions } from "./web-fetch/index.ts";
 import type { OnInteractionStart } from "../interaction/index.ts";
-import { createJobTools, type Jobs } from "../jobs/index.ts";
-import { createBashTool } from "../bash/index.ts";
+import { createJobTools, type Jobs } from "./jobs/index.ts";
+import { createBashTool } from "./bash/index.ts";
 import { createGlobTool } from "./glob.ts";
 import { createGrepTool } from "./grep.ts";
 import { createSkillTool } from "./skill.ts";
 import { createQuestionTool, type OnQuestion } from "./question.ts";
-import { createTodoTool } from "./todo.ts";
-import type { TodoItem } from "../tool-state/index.ts";
-import { createWebFetchTool } from "./web-fetch.ts";
+import { createTodoTool, type TodoItem } from "./todo/index.ts";
+import { createWebFetchTool } from "./web-fetch/index.ts";
 import { adaptTool, createImageReadEnv, preserveErrorDetails } from "./runtime.ts";
 
 /** Read-only tools for isolated model hook checks. */

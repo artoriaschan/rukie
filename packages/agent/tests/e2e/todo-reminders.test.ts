@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { createSession, type SessionEvent } from "../../src/index.ts";
-import type { TodoItem } from "../../src/tool-state/index.ts";
+import type { TodoItem } from "../../src/tools/todo/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 

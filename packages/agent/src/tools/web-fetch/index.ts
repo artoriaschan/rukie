@@ -1,6 +1,7 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
-import { fetchWeb, type WebFetchOptions } from "../web-fetch/index.ts";
+import { fetchWeb, type WebFetchOptions } from "./fetch.ts";
+export type { WebFetchOptions } from "./fetch.ts";
 const parameters = Type.Object(
   { url: Type.String({ minLength: 1 }) },
   { additionalProperties: false },

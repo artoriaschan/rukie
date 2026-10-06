@@ -46,23 +46,23 @@ Session 持有自己的 Background Job registry。bash 使用同一条进程组�
 
 ## Agent Core 的职责分配
 
-下表描述当前代码的落点。[ADR-0011](adr/0011-agent-module-ownership.md) 将 `tools/` 定义为内置工具及其关联能力的集合：按能力聚合协议适配、执行、状态与资源管理，Session 可以直接调用能力接口；当前顶层 Goal、Jobs、Subagent、Plan Mode 等落点按该决定逐步迁移，表中目录尚未全部迁移。
+下表描述当前代码的落点。[ADR-0011](adr/0011-agent-module-ownership.md) 将 `tools/` 定义为内置工具及其关联能力的集合：按能力聚合协议适配、执行、状态与资源管理，Session 可以直接调用能力接口；当前顶层 Goal、Subagent、Plan Mode 等落点按该决定逐步迁移，表中目录尚未全部迁移。
 
-| 模块                                                      | 责任                                                            |
-| --------------------------------------------------------- | --------------------------------------------------------------- |
-| `session/`                                                | 组合能力、协调 Run、事件、取消、存储操作与 frontend 接口        |
-| `config/`、`prompt/`                                      | 合并设置、解析模型与凭据，建立 System Prompt                    |
-| `tools/`、`skills/`、`mcp/`                               | 构造模型工具集、加载 Skill 内容、连接外部工具                   |
-| [`bash/`](../packages/agent/src/bash/index.ts)            | 执行 Bash 调用、后台启动与超时提升，复用 pi 输出采集与截断      |
-| [`jobs/`](../packages/agent/README.md)                    | 持有 Session 的 Bash 进程组、输出与模型游标，提供后台任务工具   |
-| [`images/`](../packages/agent/src/images/index.ts)        | 为 Session 与 read 共享图片准入校验，读取 header metadata       |
-| `permissions/`、`review/`、`hooks/`、`interaction/`       | 决定执行是否允许，运行生命周期扩展，并协调可取消的用户交互      |
-| `reminders/`、`compaction/`、`context-usage/`             | 注入有来源的上下文、压缩模型历史、报告上下文占用                |
-| `store/`、`tool-state/`、`checkpoint/`                    | 持久化 Transcript、重建工具状态、保存和恢复文件修改前的内容     |
-| `file-tracking/`                                          | 跟踪文件工具的内容基线、检测外部变化、拒绝未经重读的过期写入    |
-| `subagents/`、`session-resume/`、`unknown-tool-outcomes/` | 管理子 Session 与 Run，核对恢复事实，处理缺少确定结果的工具调用 |
-| `session-title/`、`plan-mode/`、`side-question/`          | 管理标题、计划引导与独立侧问                                    |
-| `goal/`                                                   | 管理 Goal 快照、模型工具授权与续跑提示，Session 协调自动续跑    |
+| 模块                                                       | 责任                                                                         |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `session/`                                                 | 组合能力、协调 Run、事件、取消、存储操作与 frontend 接口                     |
+| `config/`、`prompt/`                                       | 合并设置、解析模型与凭据，建立 System Prompt                                 |
+| `tools/`、`skills/`、`mcp/`                                | 构造模型工具集、加载 Skill 内容、连接外部工具                                |
+| [`tools/bash/`](../packages/agent/src/tools/bash/index.ts) | 执行 Bash 调用、后台启动与超时提升，复用 pi 输出采集与截断                   |
+| [`tools/jobs/`](../packages/agent/src/tools/jobs/index.ts) | 持有 Session 的 Bash 进程组、输出与模型游标，提供后台任务工具                |
+| [`images/`](../packages/agent/src/images/index.ts)         | 为 Session 与 read 共享图片准入校验，读取 header metadata                    |
+| `permissions/`、`hooks/`、`interaction/`                   | 决定执行是否允许（含独立模型评审），运行生命周期扩展，并协调可取消的用户交互 |
+| `reminders/`、`compaction/`、`context-usage/`              | 注入有来源的上下文、压缩模型历史、报告上下文占用                             |
+| `store/`、`tool-state/`、`checkpoint/`                     | 持久化 Transcript、重建工具状态、保存和恢复文件修改前的内容                  |
+| `file-tracking/`                                           | 跟踪文件工具的内容基线、检测外部变化、拒绝未经重读的过期写入                 |
+| `subagents/`、`session-resume/`、`unknown-tool-outcomes/`  | 管理子 Session 与 Run，核对恢复事实，处理缺少确定结果的工具调用              |
+| `session-title/`、`plan-mode/`、`side-question/`           | 管理标题、计划引导与独立侧问                                                 |
+| `goal/`                                                    | 管理 Goal 快照、模型工具授权与续跑提示，Session 协调自动续跑                 |
 
 模块之间通过各自 `index.ts` 协作；frontend 使用包级公开入口，不读取 Agent Core 的私有运行状态。
 
@@ -98,7 +98,7 @@ Goal 只属于顶层 Session。用户通过 TUI `/goal`、Headless `--goal` 或�
 
 ## 工具、权限与交互
 
-read/write/edit 经适配连接 pi 的执行环境与 Neant 的 AbortSignal；bash 由 Session 的 job registry 启动独立进程组；前台调用等待完成，显式后台调用立即返回 id。Run 结束或取消保留后台任务，Session dispose 清理进程组与输出；终止先发 SIGTERM，3 秒后升级为 SIGKILL。后台工具的读取与生命周期见 [`jobs/`](../packages/agent/README.md)。Skill 加载工具、结构化提问、Todo、计划评审与 Subagent 工具在各自模块组装。MCP 发现的工具也转换为同一种 AgentTool，再进入共同的授权流程。完整工具声明以构造模块和当前运行发现结果为准。
+read/write/edit 经适配连接 pi 的执行环境与 Neant 的 AbortSignal；bash 由 Session 的 job registry 启动独立进程组；前台调用等待完成，显式后台调用立即返回 id。Run 结束或取消保留后台任务，Session dispose 清理进程组与输出；终止先发 SIGTERM，3 秒后升级为 SIGKILL。后台工具的读取与生命周期见 [`tools/jobs/`](../packages/agent/README.md)。Skill 加载工具、结构化提问、Todo、计划评审与 Subagent 工具在各自模块组装。MCP 发现的工具也转换为同一种 AgentTool，再进入共同的授权流程。完整工具声明以构造模块和当前运行发现结果为准。
 
 权限执行入口是 pi 的 `beforeToolCall`。它协调 Hook、显式规则、Permission Mode 和必要的 frontend 询问；Hook 改写的输入重新校验，路径匹配与实际执行使用同一规范化目标。显式 deny/ask 不被 full-access 或 Hook allow 越过。规则语法、顺序及限制由 [permission-rules.md](permission-rules.md) 维护。
 
