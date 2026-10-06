@@ -1,9 +1,10 @@
 import { PassThrough, Writable } from "node:stream";
+import { setImmediate } from "node:timers/promises";
 import xterm from "@xterm/headless";
 import unicode11 from "@xterm/addon-unicode11";
 
 /** Interpret the frontend's ANSI output at its terminal IO seam. */
-export function createTerminal(columns = 80, rows = 24) {
+export function createTerminal(columns = 80, rows = 24, advanceTimers?: (ms: number) => void) {
   const terminal = new xterm.Terminal({ cols: columns, rows, allowProposedApi: true });
   // xterm defaults to Unicode 6, where moon emoji occupy one column.
   terminal.loadAddon(new unicode11.Unicode11Addon());
@@ -26,7 +27,23 @@ export function createTerminal(columns = 80, rows = 24) {
     }),
     { columns, rows, isTTY: true },
   );
-  const flush = () => new Promise<void>((resolve) => stdout.write("", () => resolve()));
+  const flush = async () => {
+    let parsed = false;
+    const flushed = new Promise<void>((resolve) =>
+      stdout.write("", () => {
+        parsed = true;
+        resolve();
+      }),
+    );
+    // xterm schedules parsing with a zero-delay timer, including under a virtual clock.
+    if (advanceTimers) {
+      while (!parsed) {
+        advanceTimers(0);
+        await setImmediate();
+      }
+    }
+    return flushed;
+  };
   function screen() {
     const buffer = terminal.buffer.active;
     return Array.from({ length: rows }, (_, y) =>
@@ -60,11 +77,15 @@ export function createTerminal(columns = 80, rows = 24) {
     },
     async waitFor(predicate: () => boolean, timeoutMs = 2000) {
       const deadline = performance.now() + timeoutMs;
+      // Virtual clocks also replace performance.now; bound I/O yields separately.
+      let remainingYields = timeoutMs * 100;
       do {
         await flush();
         if (predicate()) return;
-        await Bun.sleep(1);
-      } while (performance.now() < deadline);
+        advanceTimers?.(16);
+        if (advanceTimers) await setImmediate();
+        else await Bun.sleep(1);
+      } while (advanceTimers ? --remainingYields > 0 : performance.now() < deadline);
       throw new Error(`Terminal did not reach expected state:\n${screen().join("\n")}`);
     },
     dispose() {

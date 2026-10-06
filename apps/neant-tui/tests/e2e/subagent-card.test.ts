@@ -118,7 +118,9 @@ test("running cards retain exactly three single output rows through streaming, t
     expect(waterfall()).toHaveLength(3);
     app.resize(160, 40);
     child.tool("read", { path: "missing.txt" });
-    await app.waitFor(() => app.calls.length === 4 && screen().includes("1 tools"));
+    await app.waitFor(
+      () => app.calls.length === 4 && screen().includes("1 tools") && screen().includes("✓read"),
+    );
     const card = app.screen().findIndex((line) => line.includes("子代理：Read files"));
     expect(app.screen()[card]).toContain("16 tok");
     expect(app.screen()[card + 1]).toContain("✓read");

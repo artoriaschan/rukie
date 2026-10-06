@@ -1,5 +1,5 @@
 import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, jest, test } from "bun:test";
 import {
   fauxAssistantMessage,
   fauxToolCall,
@@ -288,9 +288,23 @@ test("a review still pending at 30s cancels its request and asks the user", asyn
       return "deny";
     },
   });
-  expect((await session.run("write")).text).toBe("done");
-  expect(requests[0]?.reason).toContain("30s timeout");
-  expect(await Bun.file(join(dirs.cwd, "reviewed.txt")).exists()).toBe(false);
+  jest.useFakeTimers();
+  try {
+    const run = session.run("write");
+    await slow.started;
+    jest.advanceTimersByTime(29_999);
+    expect(requests).toHaveLength(0);
+    jest.advanceTimersByTime(1);
+    expect((await run).text).toBe("done");
+    expect(requests[0]?.reason).toContain("30s timeout");
+    expect(await Bun.file(join(dirs.cwd, "reviewed.txt")).exists()).toBe(false);
+  } finally {
+    try {
+      await session.dispose();
+    } finally {
+      jest.useRealTimers();
+    }
+  }
 }, 35_000);
 
 test("review uses project instructions and user/call history without assistant text, thinking or results", async () => {

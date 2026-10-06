@@ -482,7 +482,8 @@ test("parent disposal kills completed child async notification processes", async
             hooks: [
               {
                 type: "command",
-                command: "cat > child-input; echo $$ > child-pid; sleep 30; touch child-late",
+                command:
+                  "cat > child-input; : > child-pid; sleep 0.05; echo $$ > child-pid; sleep 30; touch child-late",
                 asyncRewake: true,
               },
             ],
@@ -495,8 +496,16 @@ test("parent disposal kills completed child async notification processes", async
   let pid: number | undefined;
   try {
     expect((await session.run("delegate")).text).toBe("parent done");
-    await until(() => Bun.file(join(dirs.cwd, "child-pid")).exists());
-    pid = Number(await Bun.file(join(dirs.cwd, "child-pid")).text());
+    // Shell redirection creates the file before echo writes it. Empty text parses
+    // as PID 0, whose signal probe checks our process group instead of the hook.
+    await until(async () => {
+      const file = Bun.file(join(dirs.cwd, "child-pid"));
+      if (!(await file.exists())) return false;
+      const candidate = Number(await file.text());
+      if (!Number.isSafeInteger(candidate) || candidate <= 0) return false;
+      pid = candidate;
+      return true;
+    });
     expect(() => process.kill(pid!, 0)).not.toThrow();
     await session.dispose();
     await until(() => {

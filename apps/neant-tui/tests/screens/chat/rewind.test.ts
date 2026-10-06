@@ -1,5 +1,6 @@
+import { startWithClock } from "../../helpers/clock-app";
 import { withAuxiliaryRequests } from "../../helpers/auxiliary-model.ts";
-import { expect, spyOn, test } from "bun:test";
+import { expect, jest, spyOn, test } from "bun:test";
 import { createSession } from "@neant/agent";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { join } from "node:path";
@@ -9,8 +10,11 @@ import { start } from "../../helpers/app";
 const esc = "\x1b";
 const text = (app: Awaited<ReturnType<typeof start>>) => app.screen().join("\n");
 
-async function ready(options: Parameters<typeof start>[1] = {}) {
-  const app = await start([], { env: { LANG: "en_US.UTF-8" }, ...options });
+async function ready(options: Parameters<typeof start>[1] = {}, virtualTime = false) {
+  const app = await (virtualTime ? startWithClock : start)([], {
+    env: { LANG: "en_US.UTF-8" },
+    ...options,
+  });
   await app.waitFor(() => app.screen().some((line) => line.startsWith("╭")));
   return app;
 }
@@ -64,7 +68,7 @@ test.each(
 });
 
 test("empty rewind Tips expire after ten seconds despite editing and repeating the command", async () => {
-  const app = await ready();
+  const app = await ready({}, true);
   try {
     app.stdin.write("/rewind\r");
     await app.waitFor(() => text(app).includes("Nothing to rewind yet"));
@@ -948,12 +952,11 @@ test.each([
 );
 
 test("armed rewind tip expires without leaving a transcript entry", async () => {
-  const app = await ready();
+  const app = await ready({}, true);
   try {
     app.stdin.write(esc);
     await app.waitFor(() => text(app).includes("Press Esc again to rewind"));
-    // The three-second Escape window is wall-clock behavior.
-    await Bun.sleep(3050);
+    jest.advanceTimersByTime(3050);
     await app.waitFor(() => !text(app).includes("Press Esc again to rewind"));
     expect(app.allLines().join("\n")).not.toContain("Press Esc again to rewind");
     app.stdin.write(esc);

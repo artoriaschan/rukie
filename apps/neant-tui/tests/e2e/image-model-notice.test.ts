@@ -1,3 +1,4 @@
+import { startWithClock } from "../helpers/clock-app";
 import { afterEach, expect, test } from "bun:test";
 import { dark } from "@neant/tui";
 import { start } from "../helpers/app";
@@ -23,9 +24,15 @@ const settings = {
     },
   ],
 };
-async function startImages(model = "text", lang = "en_US.UTF-8", columns = 80, rows = 24) {
+async function startImages(
+  model = "text",
+  lang = "en_US.UTF-8",
+  columns = 80,
+  rows = 24,
+  virtualTime = false,
+) {
   process.env[key] = "test-key";
-  return start([], {
+  return (virtualTime ? startWithClock : start)([], {
     env: { LANG: lang },
     columns,
     rows,
@@ -213,7 +220,7 @@ test("a hand-typed image token stays a model argument and does not imply attache
 });
 
 test("Chinese paste copy and independent notice timers survive draft rerenders", async () => {
-  const app = await startImages("text", "zh_CN.UTF-8");
+  const app = await startImages("text", "zh_CN.UTF-8", 80, 24, true);
   try {
     await app.waitFor(() => app.screen().includes("❯"));
     app.stdin.write(paste(`${app.root}/shot.png`));

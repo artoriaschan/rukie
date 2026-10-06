@@ -1,3 +1,4 @@
+import { startWithClock } from "../helpers/clock-app";
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { start } from "../helpers/app";
@@ -125,7 +126,7 @@ test("/jobs opens an empty fullscreen panel during a Run and returns without int
 });
 
 test("panel navigation disarms stop, confirmation expires, and idle stop waits for the next human prompt", async () => {
-  const app = await start(["--permission-mode", "full-access", "launch"], {
+  const app = await startWithClock(["--permission-mode", "full-access", "launch"], {
     env: { LANG: "en_US.UTF-8" },
     columns: 100,
     rows: 28,

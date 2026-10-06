@@ -1,5 +1,11 @@
-import { expect, test } from "bun:test";
-import { start } from "../helpers/app";
+import { afterEach, beforeEach, expect, jest, test } from "bun:test";
+import { start as startApp } from "../helpers/app";
+
+beforeEach(() => jest.useFakeTimers());
+afterEach(() => jest.useRealTimers());
+
+const start: typeof startApp = (argv, options) =>
+  startApp(argv, { ...options, advanceTimers: (ms) => jest.advanceTimersByTime(ms) });
 
 const english = "Image in clipboard · ctrl+v to paste";
 
@@ -17,15 +23,15 @@ test("clipboard tip expires after ten seconds despite polling and editing, and a
   });
   try {
     await app.waitFor(() => app.screen().join("\n").includes(english));
-    const shownAt = performance.now();
-    await app.waitFor(() => performance.now() - shownAt >= 9000, 9500);
+    const shownAt = Date.now();
+    await app.waitFor(() => Date.now() - shownAt >= 9000);
     expect(app.screen().join("\n")).toContain(english);
     expect(probes).toBeGreaterThanOrEqual(9);
     app.stdin.write("preserved draft");
     await app.waitFor(() => app.screen().includes("❯ preserved draft"));
     const inputRow = app.screen().indexOf("❯ preserved draft");
     await app.waitFor(() => !app.screen().join("\n").includes(english), 2500);
-    expect(performance.now() - shownAt).toBeGreaterThanOrEqual(9500);
+    expect(Date.now() - shownAt).toBeGreaterThanOrEqual(9500);
     expect(app.screen().indexOf("❯ preserved draft")).toBe(inputRow);
     const afterExpiry = probes;
     await app.waitFor(() => probes > afterExpiry);
