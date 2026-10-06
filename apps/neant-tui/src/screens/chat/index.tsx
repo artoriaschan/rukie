@@ -89,7 +89,7 @@ export async function createChat(
   writeTitle?: (title: string) => void,
 ) {
   const t = createTuiI18n(locale);
-  const interactions = createInteractions(host);
+  const interactions = createInteractions(host, locale);
   const sessionOptions: SessionOptions = {
     ...options,
     reminderSources: [
@@ -99,6 +99,7 @@ export async function createChat(
     onPermissionAsk: options.onPermissionAsk ?? interactions.askPermission,
     onQuestion: options.onQuestion ?? interactions.askQuestion,
     onPlanReview: options.onPlanReview ?? interactions.askPlanReview,
+    onMcpAuth: options.onMcpAuth ?? interactions.askMcpAuth,
   };
   let session = await createSession(sessionOptions);
   const checkpointCwd = await realpath(options.cwd);
@@ -313,6 +314,7 @@ function Chat({
   };
   useEffect(() => () => clearTimeout(modelImageNoticeTimer.current), []);
   const state = useSyncExternalStore(conversation.subscribe, conversation.getSnapshot);
+  const promptNotice = imageNotice ?? state.notification;
   type Preview = { images: readonly PromptImage[]; index: number };
   const [preview, setPreview] = useState<Preview>();
   const previewRef = useRef<Preview | undefined>(undefined);
@@ -387,6 +389,7 @@ function Chat({
   const planReview = interaction?.kind === "plan" ? interaction : undefined;
   const userQuestion = interaction?.kind === "question" ? interaction : undefined;
   const currentQuestion = userQuestion?.drafts[userQuestion.questionIndex];
+  const authDetails = useRef<ScrollHandle>(null);
   const isCurrentQuestion = () => {
     const live = interactions.getSnapshot();
     return (
@@ -976,7 +979,7 @@ function Chat({
     (!!interaction &&
       rows - statusHeight - minimumDialogHeight - dialogGap - panelMinimum < promptMaxLines + 3);
   const promptHeight =
-    (compactPrompt ? 1 + Number(!!imageNotice) : promptMaxLines + 3) + modelNoticeHeight;
+    (compactPrompt ? 1 + Number(!!promptNotice) : promptMaxLines + 3) + modelNoticeHeight;
   const transcriptHeight = rewind
     ? Number(!compactPrompt)
     : interaction
@@ -991,7 +994,9 @@ function Chat({
     chromeSpace - minimumDialogHeight - dialogGap - panelMinimum - Number(hasActivity) < 2;
   const returnHeight = showReturnControl ? (compactReturn ? 1 : 2) : 0;
   const showActivity =
-    hasActivity && chromeSpace - minimumDialogHeight - dialogGap - panelMinimum - returnHeight >= 1;
+    hasActivity &&
+    !userQuestion?.oauth &&
+    chromeSpace - minimumDialogHeight - dialogGap - panelMinimum - returnHeight >= 1;
   const available = chromeSpace - returnHeight - Number(showActivity);
   const panelReserve =
     panelCount > 0 && available - dialogGap - minimumDialogHeight >= panelCount * 3 + goalRows
@@ -1001,7 +1006,7 @@ function Chat({
     ? Math.max(
         minimumDialogHeight,
         Math.min(
-          userQuestion?.collapsed ? 3 : Math.floor(rows / 2),
+          userQuestion?.collapsed ? 3 : userQuestion?.oauth ? available : Math.floor(rows / 2),
           available - dialogGap - panelReserve,
         ),
       )
@@ -1297,9 +1302,11 @@ function Chat({
     }
     if (!small && (key.name === "pageup" || key.name === "pagedown")) {
       const viewport =
-        pendingInteraction?.kind === "plan" || (pending && scrollFocus === "details")
-          ? details.current
-          : body.current;
+        pendingInteraction?.kind === "question" && pendingInteraction.oauth
+          ? authDetails.current
+          : pendingInteraction?.kind === "plan" || (pending && scrollFocus === "details")
+            ? details.current
+            : body.current;
       viewport?.scrollBy(
         Math.max(1, (viewport.getSnapshot().height ?? 1) - 1) * (key.name === "pageup" ? -1 : 1),
       );
@@ -1587,6 +1594,21 @@ function Chat({
             />
             {userQuestion && currentQuestion && (
               <QuestionDialog
+                auth={
+                  userQuestion.oauth
+                    ? {
+                        scrollRef: authDetails,
+                        detail: [
+                          userQuestion.oauth.note,
+                          t(userQuestion.oauth.opened ? "mcp.auth.opened" : "mcp.auth.manual"),
+                          t(userQuestion.oauth.opened ? "mcp.auth.fallback" : "mcp.auth.copy-hint"),
+                          userQuestion.oauth.authorizationUrl,
+                        ]
+                          .filter(Boolean)
+                          .join("\n"),
+                      }
+                    : undefined
+                }
                 origin={userQuestion.request.origin}
                 key={`${userQuestion.request.toolCallId}-${userQuestion.questionIndex}`}
                 question={userQuestion.request.questions[userQuestion.questionIndex]!}
@@ -1744,7 +1766,7 @@ function Chat({
                   />
                 ) : undefined
               }
-              notice={imageNotice}
+              notice={promptNotice}
               warning={wrappedModelNotice}
               tip={
                 exitArmedAt !== undefined

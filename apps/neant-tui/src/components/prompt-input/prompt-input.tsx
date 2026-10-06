@@ -1,4 +1,4 @@
-import { Notice } from "../notice";
+import { Notice, type NoticeKind } from "../notice";
 import { useEffect, useState, type ReactNode } from "react";
 import { Box, ThemedTextInput, ThemedText, figures, type TextInputProps } from "@neant/tui";
 
@@ -39,7 +39,7 @@ export function PromptInput({
   compact?: boolean;
   /** Expires after ten seconds; changing or clearing the content starts a new lifecycle. */
   tip?: string;
-  notice?: { text: string; warning: boolean };
+  notice?: { text: string; warning?: boolean; kind?: NoticeKind };
   /** Pre-wrapped additional warning occupies its own rows above the editor. */
   warning?: string;
   filterInput?: TextInputProps["filterInput"];
@@ -106,7 +106,11 @@ export function PromptInput({
           height={1}
         >
           {notice ? (
-            <Notice kind={notice.warning ? "warning" : "success"} text={notice.text} />
+            <Notice
+              kind={notice.kind ?? (notice.warning ? "warning" : "success")}
+              color={notice.kind === "success" ? "success" : undefined}
+              text={notice.text}
+            />
           ) : (
             <ThemedText dimColor wrap="truncate">
               {activeTip}

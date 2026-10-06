@@ -33,6 +33,7 @@ export async function start(
     host: {
       hasClipboardImage: async () => false,
       readClipboard: async () => ({ unavailable: true }),
+      writeClipboard: async () => false,
       openExternal: async () => {},
       ...options.host,
     },
