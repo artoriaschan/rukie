@@ -1,6 +1,6 @@
 # 复用 pi-agent-core 的 harness 组件，不用 pi-coding-agent，也不完全自研
 
-在 `@earendil-works/pi-agent-core` 0.99.2 的基础上构建：直接复用其中的 `Agent` loop、hooks、`loadSkills`、read/write/edit/bash 工具、compaction 和 session repo；MCP 用 `@earendil-works/pi-mcp`。自己实现的部分包括：System Prompt、System Reminder 注入、权限判定（挂在 `beforeToolCall` 上）、grep/glob 工具和 CLI。
+在 `@earendil-works/pi-agent-core` 0.99.2 的基础上构建：直接复用其中的 `Agent` loop、hooks、`loadSkills`、read/write/edit/bash 工具（bash 已由 ADR-0010 改为自研）、compaction 和 session repo；MCP 用 `@earendil-works/pi-mcp`。自己实现的部分包括：System Prompt、System Reminder 注入、权限判定（挂在 `beforeToolCall` 上）、grep/glob 工具和 CLI。
 
 ## Considered Options
 

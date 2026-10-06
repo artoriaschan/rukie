@@ -36,11 +36,11 @@ _Avoid_: step, round
 
 **Run**:
 处理一条 prompt，直到 agent 停下为止。prompt 来自用户，或（对 subagent 而言）来自父代理。一个 run 包含一个或多个 turn；父 run 要等它名下运行中的 subagent 全部结束才算结束。
-_Avoid_: task, job
+_Avoid_: task, job（job 专指 Background Job）
 
 **Subagent**:
 由父 session 的模型经 `subagent` / `subagent_fork` 创建的子 session，可在父 session 内经 `send_message` 续跑。每个 run 默认在后台进行，父代理继续工作；结束时其最终文本作为一条消息交回父代理。`subagent` 从空历史开始，`subagent_fork` 带着父代理已完成的 turn 开始。判定配置与父 session 共享，只能收窄；不能再创建 subagent。
-_Avoid_: task, worker, child agent
+_Avoid_: task, worker, child agent, job（job 专指 Background Job）
 
 **Subagent Activity**:
 子代理当前是否正在处理 Run。没有运行中的 Run 只表示当前不在工作，不能据此判断委派任务已经完成。
@@ -53,6 +53,10 @@ _Avoid_: task completion, Subagent Activity
 **Session Resume**:
 使用原 Session 的身份和 Transcript 恢复对话。恢复本身不执行新的 Run，也不自动续跑它的 Subagent。
 _Avoid_: restart task, automatic continuation
+
+**Background Job**:
+由 `bash` 启动、在这次工具调用返回后仍继续运行的进程：模型显式要求后台运行，或前台命令超时后转入后台。归启动它的 session 所有，结束时通知该 session 的模型；run 结束不影响它，session 结束时被终止。不持久化，Session Resume 后不存在。Subagent 不是 Background Job。
+_Avoid_: task, background shell, background command
 
 **Unknown Tool Outcome**:
 Transcript 中存在 Tool 调用，但没有可确认的结果。不能据此判定调用成功、失败或尚未执行，也不能据此认定没有产生副作用。

@@ -37,6 +37,7 @@ Labels: wayfinder:map
 - [web fetch](issues/15-web-fetch.md): `web_fetch { url }`，不用小模型提炼，turndown 转 markdown，50K 字符截断；5 MB / 30 s / 无缓存；不免询问，规则 `web_fetch(domain:…)`，无预批准域名；同源重定向最多 5 跳，跨源返回文本让模型重新调用；SSRF 照 DSH：只接受公网单播，并用 undici（`undici/index.js` 绕开 Bun stub）钉 IP；代理走 `EnvHttpProxyAgent`；TUI 复刻 dsh 通用卡，另开工单
 - [文件外部修改检测](issues/17-external-file-change-reminder.md): 跟踪 read/write/edit 过的文件（不含 bash），写后更新基线；每次模型请求前比 mtime+size 再比哈希；`file-changes` reminder 附 diff（单文件 4K / 总 16K，超限只列路径），删除报已删除；edit/write 前过期检查，读后被改则报错要求重读；Tool State `file-tracking` 只存元数据+哈希，resume 后只报已变更；compaction 后保留跟踪；子代理写入与 rewind 恢复按外部修改自然处理；frontend 不加呈现
 - [图片输入](issues/18-image-input.md): TUI Ctrl+V（文件 → 图片 → 文本）+ 粘贴图片路径识别，插入 dsh 式原子 `[Image #N]` token；base64 内联存 transcript，不缩放、超 5 MB / 8000 px 拒绝；自定义模型加 `input`，非视觉模型只 notice、降级交 pi-ai；`run/steer(prompt, { images })`；Context Usage `w*h/750` 上限 1,600；Headless 靠 read；无图形能力时 `[Image · name]` 占位 + 系统查看器；缩略图 / 预览浮层另开工单
+- [后台 bash](issues/14-background-bash.md): 照 harness——`bash` 加 `run_in_background`，前台超时 120 s 自动转后台 job，`job_output`（增量 + wait）/ `job_list` / `job_kill`；自研 bash 替换 pi（ADR-0010）；stdout/stderr 分开、ring + spill；结束才通知（走 rewake），父 run 不等；session dispose 整组杀、不持久化；每 owner 10 个；job 只管 bash，子代理名下 job 在子 run 结束时取消；`job_event` + `jobs/readJob/killJob`；TUI 复刻 dsh chip / `/jobs` 面板 / JobCard；Headless run 结束即杀
 
 ## Not yet specified
 
@@ -52,4 +53,5 @@ Labels: wayfinder:map
 - 多 agent 共享任务表（CC V2 `TaskCreate/Get/List/Update`、dsh `agent-team` 任务板）：Neant 子代理各自独立 session，无共享场景；见 [todo 工具](issues/07-todo.md)。
 - compaction 后重新附上最近读过的文件（CC 做法）：超出外部修改检测范围；见 [文件外部修改检测](issues/17-external-file-change-reminder.md)。
 - `@路径` 文件提及、sixel / iTerm2 图形协议、sharp 缩放与非 PNG 缩略图、Headless `--image`、Windows 剪贴板：本轮不做；见 [图片输入](issues/18-image-input.md)。
+- Ctrl+B 前台转后台、卡顿检测、one-shot 后台子代理作 job：本轮不做；见 [后台 bash](issues/14-background-bash.md)。
 - 其余 CC hook 事件（PostToolBatch、StopFailure、FileChanged、Worktree*、Task* 等）：无对应能力或用不上；见 [hooks](issues/12-hooks.md)。
