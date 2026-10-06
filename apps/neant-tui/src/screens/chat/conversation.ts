@@ -49,7 +49,7 @@ type CompletedEntry =
       agentId?: string;
       planReview?: { plan: string; kind: "approve" | "revise" | "takeover"; feedback?: string };
     }
-  | { type: "notice"; text: string }
+  | { type: "notice"; text: string; report?: string }
   | { type: "context-report"; report: ContextReport; expanded: boolean; modelName?: string };
 
 type ToolResultMessage = Extract<
@@ -831,6 +831,12 @@ export function createConversation(session: Session, model: string, locale: Loca
   return {
     dispatchActivity,
     notify,
+    report(title: string, text: string) {
+      update({
+        ...state,
+        completed: [...state.completed, { type: "notice", text, report: title }],
+      });
+    },
     notice(text: string, error = false) {
       state = { ...state, planMode: session.planMode };
       update(

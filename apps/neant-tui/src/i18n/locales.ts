@@ -32,6 +32,21 @@
  */
 
 const zh = {
+  "command.mcp": "查看 MCP 服务器状态或管理授权",
+  "mcp.loading": "正在读取 MCP 状态，稍后再运行 /mcp",
+  "mcp.empty": "没有配置 MCP 服务器",
+  "mcp.config": "在 ~/.neant/mcp.json 或 .mcp.json 中配置 MCP 服务器",
+  "mcp.heading": "MCP 服务器（{{count}}）",
+  "mcp.tools": " · {{count}} 个工具",
+  "mcp.needs-auth": "需要授权的服务器请运行 /mcp login <服务器>",
+  "mcp.failure": "mcp 失败 · {{err}}",
+  "mcp.usage": "用法：/mcp login|logout|reconnect <服务器>",
+  "mcp.logout": "已登出 MCP 服务器 {{name}}",
+  "mcp.reconnect": "已重新连接 MCP 服务器 {{name}}",
+  "mcp.complete.login": "登录 MCP 服务器",
+  "mcp.complete.logout": "登出 MCP 服务器",
+  "mcp.complete.reconnect": "重新连接 MCP 服务器",
+  "mcp.complete.server": "MCP 服务器",
   "image.clipboard-tip": "剪贴板中有图片 · ctrl+v 粘贴",
   "image.label": "图片",
   "image.preview-title": "图片 #{{index}}",
@@ -342,6 +357,21 @@ const zh = {
 } as const;
 
 const en = {
+  "command.mcp": "Show MCP server status or manage authorization",
+  "mcp.loading": "Reading MCP status; run /mcp again in a moment",
+  "mcp.empty": "No MCP servers configured",
+  "mcp.config": "Configure MCP servers in ~/.neant/mcp.json or .mcp.json",
+  "mcp.heading": "MCP servers ({{count}})",
+  "mcp.tools": " · {{count}} tools",
+  "mcp.needs-auth": "For servers that need auth, run /mcp login <server>",
+  "mcp.failure": "mcp failed · {{err}}",
+  "mcp.usage": "Usage: /mcp login|logout|reconnect <server>",
+  "mcp.logout": "Signed out of MCP server {{name}}",
+  "mcp.reconnect": "Reconnected the MCP server {{name}}",
+  "mcp.complete.login": "Sign in to an MCP server",
+  "mcp.complete.logout": "Sign out of an MCP server",
+  "mcp.complete.reconnect": "Reconnect an MCP server",
+  "mcp.complete.server": "MCP server",
   "image.clipboard-tip": "Image in clipboard · ctrl+v to paste",
   "image.label": "Image",
   "image.preview-title": "Image #{{index}}",

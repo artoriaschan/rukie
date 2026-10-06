@@ -143,7 +143,7 @@ test("slash menu lists builtins and invocable skills, filters case-insensitively
   });
   try {
     app.stdin.write("/");
-    await app.waitFor(() => screen(app).includes("commands · 14 items"));
+    await app.waitFor(() => screen(app).includes("commands · 15 items"));
     expect(screen(app)).toContain("❯ compact");
     app.stdin.write("\x1b[A");
     await app.waitFor(() => screen(app).includes("❯ hello"));
