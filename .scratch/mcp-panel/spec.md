@@ -1,6 +1,6 @@
 # MCP 列表与详情面板
 
-Status: claimed
+Status: resolved
 
 ## Problem
 
@@ -119,3 +119,4 @@ Frontend 在打开面板、管理操作完成及状态事件到来时刷新；�
 - 2026-10-06：用户调用 implement-spec，开始在 `codex/mcp-panel` 集成实施；固定审查起点 `97b570739d28b5e0ba637aac7fa46ca609cbb16f`。01 先行，验证并集成后 02 与 03 并行，04、05 依次推进，每票使用独立受管理 worktree。
 - 起点代码与已验证的 `main` `c53bd5c` 完全一致（apps、packages、锁文件与脚本无差异）；该代码的隔离 HOME 完整检查为2309 pass、0 fail，11818 assertions，166 files，315.56s，format/lint/types/Knip全部通过，日志 `/tmp/neant-mcp-oauth-main-check.log`。本次变更仍需新的 focused、集成完整检查与两轴审查。
 - 2026-10-06：用户调整验证安排：修正后先跑相关公开回归，focused 与静态检查通过后推进独立接线；完整检查集中在最终集成节点，不再作为每票交接门槛或在每次合并后重复。保留当前失败与修复证据，最终交付仍需完整检查和两轴审查通过。
+- 2026-10-07：五张票已全部交付到 `codex/mcp-panel`。修正后集成源码 `0b6eeab600cb8b8d0bc41b00d8b30b23b6a30ce4`（tree `8318d87fccefea9db1a81e8e8e4626d81029779e`）在临时 HOME、unset NO_COLOR 下执行完整 `bun run check`，exit0：2373 pass、0 fail、12238 assertions、170 files、323.78s，format/lint/types/Knip 全部通过，日志 `/tmp/neant-mcp-panel-integration-check.log`。Standards 独立审查0 findings；Spec 原1个P2经单一实施者修复并由原审查者独立验证，当前0 findings。固定全功能审查基线仍为 `97b570739d28b5e0ba637aac7fa46ca609cbb16f`，报告 `/tmp/neant-mcp-panel-{standards,spec}-review.md`。详细回归、此前全量超时及最终交付证据见 [05](issues/05-end-to-end-and-docs.md)；原 OAuth08 真实账号验收保持 ready-for-human。

@@ -4,15 +4,15 @@
 
 **Blocked by:** 04
 
-**Status:** claimed
+**Status:** resolved
 
 - [x] 公开 Core/TUI 组合回归验证实际状态事件、同一 Run 授权/失效与工具浏览更新、Interaction 暂停/恢复、管理结果与选择消失退回，包含相关微任务排序。
 - [x] zh/en、40×12、resize、小于下限暂停/恢复、鼠标/键盘/长 schema 与 Todo/Subagent/Goal 共存不溢出，阅读锚点与焦点稳定。
 - [x] 主输入锁覆盖普通字符、Enter、历史、Tab 补全、文本/图片粘贴、开启前在途 clipboard/image 结果；OAuth 自定义输入保持可用，关闭后主输入恢复。
 - [x] 关闭、Resume、换 Session、取消和退出无面板持久化、Transcript 注入、晚到更新、残留订阅/回调或终端模式。保留 Headless、普通问题、审批与其他 picker 的行为。
 - [x] 更新 [MCP 文档](../../../docs/mcp.md)与 [TUI README](../../../apps/neant-tui/README.md)，写明四层导航、输入锁、按键/鼠标、busy、实时快照与回退；公开 Core API/事件契约在其源码 JSDoc 与文档一致。
-- [ ] 临时 HOME、unset NO_COLOR 下运行完整 `bun run check`，记录实际命令、退出结果、测试数与限制；检查文档格式、引用及diff。
-- [ ] 提交最终集成 diff、验证记录与固定基线，供集成流程在所有票完成后进行 Standards/Spec 两轴审查；所有票状态与证据符合交付。原 MCP OAuth08真实账户待办保持独立，不能用本票模拟验收关闭。
+- [x] 临时 HOME、unset NO_COLOR 下运行完整 `bun run check`，记录实际命令、退出结果、测试数与限制；检查文档格式、引用及diff。
+- [x] 提交最终集成 diff、验证记录与固定基线，供集成流程在所有票完成后进行 Standards/Spec 两轴审查；所有票状态与证据符合交付。原 MCP OAuth08真实账户待办保持独立，不能用本票模拟验收关闭。
 
 ## Context pointers
 
@@ -42,3 +42,11 @@
 - 扩展公开 `start` 的实际40×12共存用例，确认 busy 后所选 Reconnect、反馈和三个持久预览同时可见，键盘选择及鼠标工具浏览/返回可用，正文/操作焦点和 resize 后继续可用。原实现为0 pass、1 fail、6 assertions，失败精确为缺少 `❯ Reconnect`；修复后1 pass、0 fail、19 assertions。日志 `/tmp/neant-mcp-panel-review-fix-{red,green}.log`。新 worktree 缺少依赖导致的初始模块加载失败已通过 `bun install --frozen-lockfile` 解决，不计为行为红灯。
 - 组件终端回归增加实际5行预算及 busy/成功/失败/取消反馈矩阵：正文 reader、所选操作、鼠标 View tools/Back、body/actions 焦点、resize 阅读 top 和实际 flow 高度均有断言。相关五文件 `rtk proxy env -u NO_COLOR bun test apps/neant-tui/tests/components/mcp-panel/mcp-panel.test.tsx apps/neant-tui/tests/e2e/mcp-panel.test.ts apps/neant-tui/tests/e2e/mcp-panel-acceptance.test.ts apps/neant-tui/tests/e2e/mcp-command.test.ts apps/neant-tui/tests/e2e/mcp-auth.test.ts`：76 pass、0 fail、373 assertions、23.20s；测试 helper 隔离 project/home。日志 `/tmp/neant-mcp-panel-review-fix-focused.log`。
 - `rtk proxy bunx --no -- oxfmt --check`、`oxlint`、`tsc -b`、`knip` 和 `rtk git diff --check` 全部exit0，静态日志 `/tmp/neant-mcp-panel-review-fix-{format,lint,types,knip}.log`。交付前 `rtk git merge codex/mcp-panel` 为 Already up to date，基线仍为 `b0fb6057b6910d2ba6724c1101c28d84f7c52cfd`。本 worker 未运行 aggregate；原 reviewers 独立复核、修正后集成完整检查和最终状态收束仍待 root，Status 保持 claimed。
+
+2026-10-07：修复已集成到 `codex/mcp-panel` `0b6eeab600cb8b8d0bc41b00d8b30b23b6a30ce4`，tree `8318d87fccefea9db1a81e8e8e4626d81029779e` 与修复 worker 完全相同；集成时工作区干净，touched format 与 diff 检查exit0。最终状态为 resolved。
+
+- 集成完整检查使用 `rtk proxy caffeinate -is env -u NO_COLOR HOME="$neant_mcp_panel_check_home" bun run check`，其中 HOME 由 `rtk proxy mktemp -d` 创建并在退出时清理。实际exit0，2373 pass、0 fail、12238 assertions、170 files、323.78s；format/lint/types/Knip 均通过。完整日志 `/tmp/neant-mcp-panel-integration-check.log`。修正后 focused 通过即集成，原 reviewers 复核与最终 aggregate 在冻结源码上并行执行，遵循用户调整的验证安排。
+- 修复前集成 `b0fb605` 全量为2367 pass、1 fail：既有 `session-dispose.test.ts` 的 “dispose cancels a slow in-flight tool hook before running SessionEnd” 超时5002ms。该精确公开用例隔离 HOME 单独复跑1 pass、0 fail、5 assertions、45.61ms；未修改 Core 或增加超时。原失败日志保留为 `/tmp/neant-mcp-panel-integration-pre-repair-check.log`，精确回归日志 `/tmp/neant-mcp-panel-dispose-focused.log`；修正后当前全量没有失败。
+- 固定全功能审查基线 `97b570739d28b5e0ba637aac7fa46ca609cbb16f`。Standards 原审查者复核修复 diff，当前0 findings；Spec 原审查者重跑实际共存复现并独立运行两个窄回归，共5 pass、0 fail、75 assertions，原P2已解决，当前0 findings。报告 `/tmp/neant-mcp-panel-standards-review.md` 与 `/tmp/neant-mcp-panel-spec-review.md`。使用文档引用已核对；最终收束仅更新 tracker，产品源码保持完整检查的版本。
+- 本票的本地 MCP/OAuth fixture 不替代真实托管账号验收，原 [OAuth08](../../mcp-oauth/issues/08-tui-mcp-command.md) 仍为 ready-for-human。交付在集成分支完成。
+- 清理前逐一确认六个实施 worktree（01–05 与 review-fix）工作区干净、HEAD 均为集成分支祖先；ignored 文件仅安装依赖与生成 Husky 文件。已通过 Codex archive_worktree 归档，并由附件列表确认六项均为 archived_worktree；集成 checkout 保留。
