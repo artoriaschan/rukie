@@ -472,3 +472,195 @@ test("job_output consumes stdout and stderr once, waits for completion, and repo
   );
   expect(fake.contexts).toHaveLength(12);
 });
+
+test("timeout promotion hands off newer output and job_kill terminates the continuing process", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([
+    call("bash", {
+      command:
+        "printf '%s' $$ > pid; printf before; while [ ! -e next ]; do sleep 0.01; done; printf after; printf error >&2; touch ready; while [ ! -e go ]; do sleep 0.01; done",
+      description: "Produce output across timeout",
+      timeout: 0.2,
+    }),
+    call("job_list"),
+    fauxAssistantMessage("promoted"),
+    call("job_output", { job_id: "bash-1", wait: true }),
+    call("job_kill", { job_id: "bash-1" }),
+    call("job_output", { job_id: "bash-1", wait: true }),
+    fauxAssistantMessage("stopped"),
+  ]);
+  session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
+  await session.run("start slow command");
+  expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
+    isError: false,
+    details: { jobId: "bash-1" },
+  });
+  expect(resultText(fake.contexts[1]!.messages)).toStartWith(
+    "before\n[still running after 0.2s; moved to background job bash-1]",
+  );
+  expect(resultText(session.messages)).toBe(
+    "bash-1 [bash] running — Produce output across timeout",
+  );
+  const pid = Number(await waitFile("pid"));
+  expect(() => process.kill(pid, 0)).not.toThrow();
+  await Bun.write(join(dirs.cwd, "next"), "");
+  await waitFile("ready");
+  await session.run("read newer output and stop");
+  expect(resultText(fake.contexts[4]!.messages)).toBe("after\n[stderr]\nerror\n[status: running]");
+  expect(resultText(session.messages)).toBe("(no new output)\n[status: killed]");
+  await expectDead(pid);
+});
+
+test("timeout promotion exceeds ten running background jobs without applying the explicit-start limit", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([
+    ...Array.from({ length: 10 }, () =>
+      call("bash", {
+        command: "while [ ! -e go ]; do sleep 0.01; done",
+        description: "Keep explicit job running",
+        run_in_background: true,
+      }),
+    ),
+    call("bash", {
+      command: "while [ ! -e go ]; do sleep 0.01; done",
+      description: "Promote beyond background limit",
+      timeout: 0.05,
+    }),
+    call("job_list"),
+    fauxAssistantMessage("done"),
+  ]);
+  session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
+  await session.run("start full quota then foreground command");
+  expect(fake.contexts[11]!.messages.at(-1)).toMatchObject({
+    isError: false,
+    details: { jobId: "bash-11" },
+  });
+  expect(resultText(session.messages)!.split("\n")).toHaveLength(11);
+  expect(resultText(session.messages)).toContain(
+    "bash-11 [bash] running — Promote beyond background limit",
+  );
+});
+
+test("aborting the Run after timeout promotion leaves the job available to the next Run", async () => {
+  dirs = await tempDirs();
+  let fake = fakeModel([
+    call("bash", {
+      command: "printf '%s' $$ > pid; while [ ! -e go ]; do sleep 0.01; done",
+      description: "Continue after Run interruption",
+      timeout: 0.05,
+    }),
+    call("job_output", { job_id: "bash-1", wait: true }),
+  ]);
+  session = await createSession({
+    ...dirs,
+    model: fake.model,
+    streamFn: (model, context, options) => fake.streamFn(model, context, options),
+    allowRules: ["bash"],
+  });
+  const controller = new AbortController();
+  const waiting = Promise.withResolvers<void>();
+  const run = session.run("start then wait", {
+    signal: controller.signal,
+    onEvent(event) {
+      if (event.type === "tool_execution_start" && event.toolName === "job_output")
+        waiting.resolve();
+    },
+  });
+  void run.catch(() => {});
+  await waiting.promise;
+  const pid = Number(await waitFile("pid"));
+  controller.abort(new Error("interrupt promoted Run"));
+  await expect(run).rejects.toThrow("interrupt promoted Run");
+  expect(() => process.kill(pid, 0)).not.toThrow();
+  fake = fakeModel([
+    call("job_list"),
+    call("job_kill", { job_id: "bash-1" }),
+    call("job_output", { job_id: "bash-1", wait: true }),
+    fauxAssistantMessage("stopped"),
+  ]);
+  await session.run("stop surviving job");
+  expect(
+    session.messages.findLast(
+      (message) => message.role === "toolResult" && message.toolName === "job_list",
+    ),
+  ).toMatchObject({
+    content: [{ type: "text", text: "bash-1 [bash] running — Continue after Run interruption" }],
+  });
+  expect(resultText(session.messages)).toBe("(no new output)\n[status: killed]");
+  await expectDead(pid);
+});
+
+test("foreground bash stays absent from job_list while running and after finishing before timeout", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([
+    fauxAssistantMessage(
+      [
+        fauxToolCall("bash", {
+          command: "while [ ! -e go ]; do sleep 0.01; done; printf complete",
+          description: "Finish controlled foreground command",
+        }),
+        fauxToolCall("job_list", {}),
+      ],
+      { stopReason: "toolUse" },
+    ),
+    call("job_list"),
+    fauxAssistantMessage("done"),
+  ]);
+  session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
+  await session.run("inspect foreground visibility", {
+    async onEvent(event) {
+      if (event.type === "tool_execution_end" && event.toolName === "job_list")
+        await Bun.write(join(dirs.cwd, "go"), "");
+    },
+  });
+  const first = fake.contexts[1]!.messages.filter((message) => message.role === "toolResult");
+  expect(first.find((message) => message.toolName === "bash")).toMatchObject({
+    isError: false,
+    content: [{ type: "text", text: "complete" }],
+  });
+  expect(first.find((message) => message.toolName === "job_list")).toMatchObject({
+    content: [{ type: "text", text: "(no background jobs)" }],
+  });
+  expect(resultText(session.messages)).toBe("(no background jobs)");
+});
+
+test("a timeout-promoted job completing while idle notifies a new Run and preserves its final output", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([
+    call("bash", {
+      command: "printf '%s' $$ > pid; while [ ! -e go ]; do sleep 0.01; done; printf final",
+      description: "Finish timeout promoted command",
+      timeout: 0.05,
+    }),
+    fauxAssistantMessage("promoted"),
+    call("job_output", { job_id: "bash-1", wait: true }),
+    fauxAssistantMessage("completion handled"),
+  ]);
+  session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
+  const notified = Promise.withResolvers<void>();
+  let results = 0;
+  await session.run("start slow command", {
+    onEvent(event) {
+      if (event.type === "result" && ++results === 2) notified.resolve();
+    },
+  });
+  expect(results).toBe(1);
+  const pid = Number(await waitFile("pid"));
+  expect(() => process.kill(pid, 0)).not.toThrow();
+  await Bun.write(join(dirs.cwd, "go"), "");
+  await notified.promise;
+  await session.waitForIdle();
+  expect(fake.contexts).toHaveLength(4);
+  expect(fake.contexts[2]!.messages.at(-1)).toMatchObject({
+    role: "user",
+    content: [
+      {
+        type: "text",
+        text: "background job bash-1 (bash: Finish timeout promoted command) finished [status: completed, exit code: 0]. Read its output with job_output.",
+      },
+    ],
+  });
+  expect(resultText(session.messages)).toBe("final\n[status: completed, exit code: 0]");
+  expect(results).toBe(2);
+  await expectDead(pid);
+});

@@ -1,6 +1,6 @@
 # Background Job
 
-Session 持有一个 registry；所有 bash 使用同一条进程组启动路径。前台记录对模型不可见，完成后移除；`run_in_background: true` 返回 `started background job bash-N`，工具结果的 `details.jobId` 保留关联。每个 Session 最多同时运行 10 个显式后台任务；Run 结束或取消保留它们，Session Resume 创建空 registry。
+Session 持有一个 registry；所有 bash 使用同一条进程组启动路径。前台记录对模型不可见，在超时前完成后移除；`run_in_background: true` 返回 `started background job bash-N`，工具结果的 `details.jobId` 保留关联。前台超时返回 `[still running after <s>s; moved to background job bash-N]` 和后台操作说明，同样带 `details.jobId`，进程继续运行；此前已显示的输出不在后续 `job_output` 中重复。每个 Session 的后台任务处于 running 或 stopping 的数量达到 10 时，拒绝新的显式后台启动；超时转后台不受该上限限制。前台调用被取消会终止进程，后台任务在 Run 结束或取消后继续运行；Session Resume 创建空 registry。
 
 `job_list` 列出当前 Session 的后台任务。`job_output { job_id, wait?, timeout_ms? }` 消费模型游标之后的 stdout，再返回独立的 `[stderr]` 段与状态行；没有新输出时显示 `(no new output)`。`wait` 等待新输出或完成，默认 30 秒，最长 10 分钟；取消等待不杀进程、不移动游标。完成后的 `wait` 收集和模型 `job_kill` 会标记结束通知已被抑制。未知 id 的错误说明后台任务不跨 Session 重启。这三个工具直接通过 Permission Mode，仍经过权限规则与 hooks；bash 的后台参数沿用普通 bash 的授权路径。
 
