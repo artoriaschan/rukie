@@ -169,11 +169,34 @@ test("context shows resource summaries below the grid and expands details locall
     expect(screen(app)).toContain("Custom agents · .agents/agents/");
     expect(screen(app)).not.toContain("└ review:");
     const lines = app.screen();
+    const userY = lines.findIndex((line) => line === "❯ inspect widgets");
+    const userCell = app.terminal.buffer.active.getLine(userY)!.getCell(2)!;
+    const userStyle = { foreground: userCell.getFgColor(), bold: userCell.isBold() };
+    const commandY = lines.findIndex((line) => line === "❯ /context");
+    const commandLine = app.terminal.buffer.active.getLine(commandY)!;
+    for (const x of [0, 2, 9, 10]) {
+      const cell = commandLine.getCell(x)!;
+      expect(cell.isBgDefault()).toBe(true);
+      if (x < 10) {
+        expect(cell.getFgColor()).toBe(userStyle.foreground);
+        expect(cell.isBold()).toBe(userStyle.bold);
+      }
+    }
     expect(lines.findIndex((line) => line.includes("Memory files ·"))).toBeGreaterThan(
       lines.findLastIndex((line) => /^     [⛁⛀⛶⛝]( [⛁⛀⛶⛝]){4}/.test(line)),
     );
     app.stdin.write("/context all\r");
     await app.waitFor(() => screen(app).includes("└ review:"));
+    const expandedY = app.screen().findIndex((line) => line === "❯ /context all");
+    const expandedLine = app.terminal.buffer.active.getLine(expandedY)!;
+    for (const x of [0, 2, 13, 14]) {
+      const cell = expandedLine.getCell(x)!;
+      expect(cell.isBgDefault()).toBe(true);
+      if (x < 14) {
+        expect(cell.getFgColor()).toBe(userStyle.foreground);
+        expect(cell.isBold()).toBe(userStyle.bold);
+      }
+    }
     expect(screen(app)).toContain(`└ ${join(app.root, "AGENTS.md")}:`);
     expect(screen(app)).toContain(`└ ${join(app.root, ".neant/AGENTS.md")}:`);
     expect(screen(app)).toContain("└ review:");

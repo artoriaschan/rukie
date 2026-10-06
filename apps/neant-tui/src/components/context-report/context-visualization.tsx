@@ -2,6 +2,7 @@ import { Box, ThemedText, type ThemeColor } from "@neant/tui";
 import type { ContextCategory, ContextReport } from "@neant/shared";
 import type { Locale } from "@neant/i18n";
 import { createTuiI18n } from "../../i18n";
+import { UserMessage } from "../user-message";
 
 // Local reference palette: /context does not recolor the rest of the TUI.
 const text = "#999999";
@@ -130,9 +131,7 @@ export function ContextVisualization({
   const modelId = report.model.slice(report.model.indexOf("/") + 1);
   return (
     <Box flexDirection="column" flexShrink={0}>
-      <ThemedText color={text} bold>
-        <ThemedText backgroundColor="#2B2B2B">{`❯ /context${expanded ? " all" : ""}`}</ThemedText>
-      </ThemedText>
+      <UserMessage text={expanded ? "/context all" : "/context"} locale={locale} />
       <Box paddingLeft={2}>
         <ThemedText color={text} bold>{`└ ${t("context.title")}`}</ThemedText>
       </Box>

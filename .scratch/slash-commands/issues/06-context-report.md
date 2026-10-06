@@ -38,3 +38,9 @@ Validation on latest integration base including 03/08: 97 affected Core/TUI/i18n
 实现提交 `6b286b694dc417e9c139e3fe05f6840ba35271ec` 已合入本地 `main`，合并提交为 `10f30715c6a3e07f448971d535915c2fcaa651e3`。在主工作目录、隔离临时 HOME、清除 NO_COLOR 并使用 caffeinate 的环境下执行 `bun run check`，退出 0：oxfmt、oxlint、tsc -b、Knip 全部通过，2195 pass、0 fail、11331 assertions、158 files，268.07s。日志：`/tmp/neant-context-style-main-check.log`。
 
 清理前确认本任务工作树 `928d/Neant` 无未提交或非忽略的未跟踪文件，`main..HEAD` 为 0；已用 `git worktree remove` 移除，目录不存在且 Git 工作树列表不再包含它。应用归档接口拒绝归档聊天的主工作树，因此本次通过 Git 直接移除，提交由 main 保留。其他工作树及 main 上独立进行的文档修改均保留。本任务使用 detached HEAD，未创建临时分支。
+
+### 2026-10-06 命令行改用用户消息样式
+
+按用户补充要求，`/context` 和 `/context all` 的命令行复用现有 `UserMessage`，采用相同主题色、加粗、两列悬挂缩进并移除背景色；报告主体的网格、分类配色、图例和资源摘要保持。公开终端测试对比普通用户消息与两种命令的前景色和加粗，确认文字、前缀及尾部空白均无背景填充。原实现先在 `isBgDefault()` 断言处失败，复用后通过。
+
+验证：清除 NO_COLOR 后运行 context-report 与 UserMessage 两个文件，13 pass、0 fail、180 assertions。隔离 HOME、清除 NO_COLOR 并使用 caffeinate 运行完整 `bun run check`：格式、lint、类型检查、Knip 通过；2194 pass、1 fail、11350 assertions、158 files，280.58s，退出 1。失败项为权限测试 `the question stays visible above a multiline draft and restores the draft after cancellation`（取消后提交草稿的时序），单独重跑仍失败；使用修改前 HEAD 的隔离副本重跑同项也失败，确认属于原有 main 问题。完整日志 `/tmp/neant-context-user-style-check.log`，基线复现日志 `/tmp/neant-context-user-style-baseline.log`。
