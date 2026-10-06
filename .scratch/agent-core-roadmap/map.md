@@ -38,6 +38,7 @@ Labels: wayfinder:map
 - [文件外部修改检测](issues/17-external-file-change-reminder.md): 跟踪 read/write/edit 过的文件（不含 bash），写后更新基线；每次模型请求前比 mtime+size 再比哈希；`file-changes` reminder 附 diff（单文件 4K / 总 16K，超限只列路径），删除报已删除；edit/write 前过期检查，读后被改则报错要求重读；Tool State `file-tracking` 只存元数据+哈希，resume 后只报已变更；compaction 后保留跟踪；子代理写入与 rewind 恢复按外部修改自然处理；frontend 不加呈现
 - [图片输入](issues/18-image-input.md): TUI Ctrl+V（文件 → 图片 → 文本）+ 粘贴图片路径识别，插入 dsh 式原子 `[Image #N]` token；base64 内联存 transcript，不缩放、超 5 MB / 8000 px 拒绝；自定义模型加 `input`，非视觉模型只 notice、降级交 pi-ai；`run/steer(prompt, { images })`；Context Usage `w*h/750` 上限 1,600；Headless 靠 read；无图形能力时 `[Image · name]` 占位 + 系统查看器；缩略图 / 预览浮层另开工单
 - [后台 bash](issues/14-background-bash.md): 照 harness——`bash` 加 `run_in_background`，前台超时 120 s 自动转后台 job，`job_output`（增量 + wait）/ `job_list` / `job_kill`；自研 bash 替换 pi（ADR-0010）；stdout/stderr 分开、ring + spill；结束才通知（走 rewake），父 run 不等；session dispose 整组杀、不持久化；每 owner 10 个；job 只管 bash，子代理名下 job 在子 run 结束时取消；`job_event` + `jobs/readJob/killJob`；TUI 复刻 dsh chip / `/jobs` 面板 / JobCard；Headless run 结束即杀
+- [MCP 远程传输与 OAuth](issues/19-mcp-remote-and-oauth.md): 照 CC——401 标 needs-auth、换 `mcp__<server>__authenticate` 伪工具（挂起等交互），不自动开浏览器；OAuth 协议复用 pi-mcp，Neant 补文件 credential 存储（`~/.neant/credentials.json` 0600，按 name+url+headers 键）、重连与 `onMcpAuth` 交互（回调 / 粘贴竞速、5 min）；配置加 `oauth` 字段与 `${VAR}` 展开；不做 SSE / headersHelper / keychain；Headless 只报错；Session `mcpServers/authenticateMcp/clearMcpAuth/reconnectMcp`；TUI 复刻 dsh：`/mcp` 本地报告 + `login/logout/reconnect` 子命令、授权复用提问面板、needs-auth notice
 
 ## Not yet specified
 
@@ -54,4 +55,5 @@ Labels: wayfinder:map
 - compaction 后重新附上最近读过的文件（CC 做法）：超出外部修改检测范围；见 [文件外部修改检测](issues/17-external-file-change-reminder.md)。
 - `@路径` 文件提及、sixel / iTerm2 图形协议、sharp 缩放与非 PNG 缩略图、Headless `--image`、Windows 剪贴板：本轮不做；见 [图片输入](issues/18-image-input.md)。
 - Ctrl+B 前台转后台、卡顿检测、one-shot 后台子代理作 job：本轮不做；见 [后台 bash](issues/14-background-bash.md)。
+- legacy SSE / WebSocket MCP 传输、`headersHelper`、MCP OAuth 设备码与 keychain 存储：本轮不做；见 [MCP 远程传输与 OAuth](issues/19-mcp-remote-and-oauth.md)。
 - 其余 CC hook 事件（PostToolBatch、StopFailure、FileChanged、Worktree*、Task* 等）：无对应能力或用不上；见 [hooks](issues/12-hooks.md)。

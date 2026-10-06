@@ -139,8 +139,12 @@ _Avoid_: function, command
 _Avoid_: plugin, recipe
 
 **MCP Server**:
-通过 Model Context Protocol 提供工具的外部进程或 endpoint。它的工具命名为 `mcp__<server>__<tool>`。
+通过 Model Context Protocol 提供工具的外部进程或 endpoint。它的工具命名为 `mcp__<server>__<tool>`。远程 server 可能要求 OAuth 授权：未授权时它的真实工具不可用，只暴露一个 `authenticate` 工具供模型发起授权。
 _Avoid_: connector, integration
+
+**MCP Credential**:
+用户为某个 MCP Server 完成 OAuth 授权后得到的凭据。属于用户，所有 session 与项目共用；按 server 名、url 与 headers 识别，同名但指向别处的 server 拿不到它，项目配置因此不能借用户身份连到别的地址。
+_Avoid_: token, auth, session
 
 **Trusted Project**:
 用户明确表示信任的项目目录。只有 trusted project，其项目级 `.mcp.json`、项目级 allow 规则与项目级 hook 才会被加载。项目级配置任何情况下都不能定义 provider。
