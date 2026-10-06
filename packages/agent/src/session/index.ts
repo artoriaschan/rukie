@@ -59,14 +59,7 @@ import {
   type PermissionAskRequest,
   type SessionAllowRule,
 } from "../permissions/index.ts";
-import {
-  createBuiltinTools,
-  createEnterPlanModeTool,
-  createExitPlanModeTool,
-  type QuestionRequest,
-  type QuestionReply,
-  type OnPlanReview,
-} from "../tools/index.ts";
+import { createBuiltinTools, type QuestionRequest, type QuestionReply } from "../tools/index.ts";
 import { createFileTracking, fileTrackingState } from "../file-tracking/index.ts";
 import { SYSTEM_PROMPT } from "../prompt/index.ts";
 import {
@@ -96,7 +89,16 @@ import {
   type RewindResult,
 } from "../checkpoint/index.ts";
 
-import { planState, planModeReminder, PLAN_MODE_EXIT } from "../plan-mode/index.ts";
+import {
+  createEnterPlanModeTool,
+  createExitPlanModeTool,
+  createPlanModeController,
+  planModeReminder,
+  planState,
+  PLAN_MODE_EXIT,
+  type OnPlanReview,
+  type PlanModeController,
+} from "../tools/plan-mode/index.ts";
 import {
   createGoalController,
   createGoalTools,
@@ -303,7 +305,7 @@ interface InternalSessionOptions {
     getMode(): PermissionMode;
     setMode(mode: PermissionMode): void;
   };
-  plan?: { getActive(): boolean; hasEntered(): boolean; setMode(on: boolean): Promise<void> };
+  plan?: PlanModeController;
   toolNames?: readonly string[];
   inheritedMcpServers?: readonly string[];
   typePrompt?: string;
@@ -451,45 +453,22 @@ async function createSessionInternal(
       : options.model
         ? { model: options.model, streamFn: options.streamFn! }
         : await resolveModel(settings, options.homeDir);
-  let planActive = (toolState.get("plan") as { active: boolean } | undefined)?.active ?? false;
-  let planEntered = toolState.get("plan") !== undefined;
-  let planWrites = Promise.resolve();
-  let planRevision = 0;
   const pendingPlanEvents: CustomSessionEvent<AgentEvent>[] = [];
-  const plan = internal.plan ?? {
-    getActive: () => planActive,
-    hasEntered: () => planEntered,
-    setMode(on: boolean): Promise<void> {
-      if (planActive === on) return planWrites;
-      planActive = on;
-      planEntered = true;
-      const revision = ++planRevision;
-      const write = planWrites.then(async () => {
-        return withStore(async (target) => {
+  const plan =
+    internal.plan ??
+    createPlanModeController({
+      getSnapshot: () => toolState.get("plan"),
+      persist: (on) =>
+        withStore(async (target) => {
           if (!baselinePersisted) {
             const branch = await target.branch("main", context);
             if (!branch) throw new Error("Session has no main branch.");
             await branch.appendMessage(agent.state.messages[0]!, context);
             baselinePersisted = true;
           }
-          return await toolState.set("plan", { active: on }, target, context);
-        });
-      });
-      // Keep frontend callbacks outside the write queue so a callback may
-      // await another state change without waiting on its own notification.
-      const persisted = write.catch((error: unknown) => {
-        if (revision === planRevision) {
-          const snapshot = toolState.get("plan") as { active: boolean } | undefined;
-          planActive = snapshot?.active ?? false;
-          planEntered = snapshot !== undefined;
-        }
-        throw error;
-      });
-      planWrites = persisted.then(
-        () => {},
-        () => {},
-      );
-      return persisted.then(async (value) => {
+          await toolState.set("plan", { active: on }, target, context);
+        }),
+      async changed(value) {
         const event: CustomSessionEvent<AgentEvent> = {
           type: "tool_state_changed",
           name: "plan",
@@ -497,9 +476,8 @@ async function createSessionInternal(
         };
         if (emitRunEvent) await emitRunEvent(event);
         else pendingPlanEvents.push(event);
-      });
-    },
-  };
+      },
+    });
   let activeStore: StoredSession | undefined;
   let storeOperations = Promise.resolve();
   function serializeStore<T>(work: () => Promise<T>): Promise<T> {
@@ -1705,7 +1683,7 @@ async function createSessionInternal(
       emitRunEvent = emit;
       let target: StoredSession | undefined;
       try {
-        await planWrites;
+        await plan.settleWrites();
         controller.signal.throwIfAborted();
         const discovered = await discoverSkills(cwd, options.homeDir);
         skills = discovered.skills;
@@ -1860,7 +1838,7 @@ async function createSessionInternal(
       if (!code && !conversation) throw new Error("Rewind requires code or conversation.");
       rewinding = true;
       try {
-        await planWrites;
+        await plan.settleWrites();
         const prompt = checkpoint.prompt(promptEntryId);
         const files = code
           ? await checkpoint.restoreCode(promptEntryId)
@@ -1906,8 +1884,7 @@ async function createSessionInternal(
               )
             : { subagents: [] };
           recoveryPending = false;
-          planActive = (toolState.get("plan") as { active: boolean } | undefined)?.active ?? false;
-          planEntered = toolState.get("plan") !== undefined;
+          plan.restore();
           pendingPlanEvents.length = 0;
           goal.disarm();
           // A compact SessionStart hook may be waiting for the next user. Its
@@ -2228,7 +2205,7 @@ async function createSessionInternal(
         try {
           signal?.addEventListener("abort", abort);
           signal?.throwIfAborted();
-          await planWrites;
+          await plan.settleWrites();
           for (const event of pendingPlanEvents.splice(0)) await emit(event);
           for (const event of pendingHookEvents.splice(0)) await emit(event);
           if (sessionStartControl) {
@@ -2338,7 +2315,7 @@ async function createSessionInternal(
                 injectAsyncContexts,
               });
               if (!compacted) {
-                await planWrites;
+                await plan.settleWrites();
                 const changed = await collectSourceReminders(
                   transcriptMessages.slice(reminderStart),
                   [planReminder, fileTracking.reminderSource],
@@ -2617,7 +2594,7 @@ async function createSessionInternal(
           agent.prepareRequest = undefined;
           agent.prepareNextTurnWithContext = undefined;
           try {
-            await planWrites;
+            await plan.settleWrites();
           } finally {
             try {
               await sessionTitle.settleWrites();

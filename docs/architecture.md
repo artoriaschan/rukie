@@ -46,23 +46,24 @@ Session 持有自己的 Background Job registry。bash 使用同一条进程组�
 
 ## Agent Core 的职责分配
 
-下表描述当前代码的落点。[ADR-0011](adr/0011-agent-module-ownership.md) 将 `tools/` 定义为内置工具及其关联能力的集合：按能力聚合协议适配、执行、状态与资源管理，Session 可以直接调用能力接口；当前顶层 Subagent、Plan Mode 等落点按该决定逐步迁移，表中目录尚未全部迁移。
+下表描述当前代码的落点。[ADR-0011](adr/0011-agent-module-ownership.md) 将 `tools/` 定义为内置工具及其关联能力的集合：按能力聚合协议适配、执行、状态与资源管理，Session 可以直接调用能力接口；当前顶层 Subagent 等落点按该决定逐步迁移，表中目录尚未全部迁移。
 
-| 模块                                                       | 责任                                                                         |
-| ---------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `session/`                                                 | 组合能力、协调 Run、事件、取消、存储操作与 frontend 接口                     |
-| `config/`、`prompt/`                                       | 合并设置、解析模型与凭据，建立 System Prompt                                 |
-| `tools/`、`skills/`、`mcp/`                                | 构造模型工具集、加载 Skill 内容、连接外部工具                                |
-| [`tools/bash/`](../packages/agent/src/tools/bash/index.ts) | 执行 Bash 调用、后台启动与超时提升，复用 pi 输出采集与截断                   |
-| [`tools/jobs/`](../packages/agent/src/tools/jobs/index.ts) | 持有 Session 的 Bash 进程组、输出与模型游标，提供后台任务工具                |
-| [`images/`](../packages/agent/src/images/index.ts)         | 为 Session 与 read 共享图片准入校验，读取 header metadata                    |
-| `permissions/`、`hooks/`、`interaction/`                   | 决定执行是否允许（含独立模型评审），运行生命周期扩展，并协调可取消的用户交互 |
-| `reminders/`、`compaction/`、`context-usage/`              | 注入有来源的上下文、压缩模型历史、报告上下文占用                             |
-| `store/`、`tool-state/`、`checkpoint/`                     | 持久化 Transcript、重建工具状态、保存和恢复文件修改前的内容                  |
-| `file-tracking/`                                           | 跟踪文件工具的内容基线、检测外部变化、拒绝未经重读的过期写入                 |
-| `subagents/`、`session-resume/`、`unknown-tool-outcomes/`  | 管理子 Session 与 Run，核对恢复事实，处理缺少确定结果的工具调用              |
-| `session-title/`、`plan-mode/`、`side-question/`           | 管理标题、计划引导与独立侧问                                                 |
-| [`tools/goal/`](../packages/agent/src/tools/goal/index.ts) | 管理 Goal 快照、模型工具授权与续跑提示，Session 协调自动续跑                 |
+| 模块                                                                 | 责任                                                                         |
+| -------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `session/`                                                           | 组合能力、协调 Run、事件、取消、存储操作与 frontend 接口                     |
+| `config/`、`prompt/`                                                 | 合并设置、解析模型与凭据，建立 System Prompt                                 |
+| `tools/`、`skills/`、`mcp/`                                          | 构造模型工具集、加载 Skill 内容、连接外部工具                                |
+| [`tools/bash/`](../packages/agent/src/tools/bash/index.ts)           | 执行 Bash 调用、后台启动与超时提升，复用 pi 输出采集与截断                   |
+| [`tools/jobs/`](../packages/agent/src/tools/jobs/index.ts)           | 持有 Session 的 Bash 进程组、输出与模型游标，提供后台任务工具                |
+| [`images/`](../packages/agent/src/images/index.ts)                   | 为 Session 与 read 共享图片准入校验，读取 header metadata                    |
+| `permissions/`、`hooks/`、`interaction/`                             | 决定执行是否允许（含独立模型评审），运行生命周期扩展，并协调可取消的用户交互 |
+| `reminders/`、`compaction/`、`context-usage/`                        | 注入有来源的上下文、压缩模型历史、报告上下文占用                             |
+| `store/`、`tool-state/`、`checkpoint/`                               | 持久化 Transcript、重建工具状态、保存和恢复文件修改前的内容                  |
+| `file-tracking/`                                                     | 跟踪文件工具的内容基线、检测外部变化、拒绝未经重读的过期写入                 |
+| `subagents/`、`session-resume/`、`unknown-tool-outcomes/`            | 管理子 Session 与 Run，核对恢复事实，处理缺少确定结果的工具调用              |
+| `session-title/`、`side-question/`                                   | 管理标题与独立侧问                                                           |
+| [`tools/plan-mode/`](../packages/agent/src/tools/plan-mode/index.ts) | 管理 Plan Mode 快照、引导与 Enter/Exit 工具，Session 协调存储与状态事件      |
+| [`tools/goal/`](../packages/agent/src/tools/goal/index.ts)           | 管理 Goal 快照、模型工具授权与续跑提示，Session 协调自动续跑                 |
 
 模块之间通过各自 `index.ts` 协作；frontend 使用包级公开入口，不读取 Agent Core 的私有运行状态。
 
