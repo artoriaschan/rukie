@@ -38,3 +38,7 @@ Blocked by: 01, 03
     - 评审面板复用审批框槽位，计划用 markdown 渲染，可滚动。按键：`1`/`2` 选择，打字进入反馈输入行，`Enter` 提交，`Esc` 接手，鼠标可点选。
     - Plan Mode 下输入框边框换成 plan 色，StatusLine 显示 `plan` chip。
     - `exit_plan_mode` 的工具卡在获批后显示折叠的计划。
+
+## Comments
+
+2026-10-06：[TUI 工具卡](20-tui-tool-card.md) 修订 transcript 呈现——`enter_plan_mode` / `exit_plan_mode` 不出工具行；原嵌在 `ToolCall` 内的 `▸/▾` plan Markdown 提为独立的 plan review 行。

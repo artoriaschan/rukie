@@ -64,3 +64,5 @@ Blocked by: 01, 02, 03, 04
 ## Comments
 
 - 2026-10-04：[hooks](12-hooks.md) 定子代理类型 frontmatter 可声明 hooks（仅该子代理运行时生效，项目层需 Trusted Project），并有 SubagentStart / SubagentStop 事件。
+
+- 2026-10-06：[TUI 工具卡](20-tui-tool-card.md) 修订 transcript 呈现——`subagent` 系列不出工具行，只保留 `SubagentMessage` 行；子代理详情页的卡片复用同一 Tool View（`subagent_event` 转发的事件已带 view）。
