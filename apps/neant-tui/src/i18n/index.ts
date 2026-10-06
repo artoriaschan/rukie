@@ -77,6 +77,8 @@ export function formatError(error: unknown, t: ReturnType<typeof createTuiI18n>)
       return t("error.session-compacting", data.params);
     case "session-switching-models":
       return t("error.session-switching-models", data.params);
+    case "session-mcp-busy":
+      return t("error.session-mcp-busy", data.params);
     case "compaction-hook-stopped":
       return t("error.compaction-hook-stopped", data.params);
     case "compaction-hook-stopped-reason":

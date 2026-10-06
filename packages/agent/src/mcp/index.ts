@@ -18,7 +18,12 @@ import {
 import { join } from "node:path";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { createUserVisibleError, type CustomSessionEvent, type Settings } from "@neant/shared";
+import {
+  createUserVisibleError,
+  type CustomSessionEvent,
+  type Settings,
+  type McpServerView,
+} from "@neant/shared";
 import { isTrustedProject } from "../config/index.ts";
 import { requestInteraction, type OnInteractionStart } from "../interaction/index.ts";
 import { credentialKey, credentialStore } from "./credentials.ts";
@@ -125,6 +130,8 @@ export function createMcpAuthState() {
 export function createMcpConnections(authState: ReturnType<typeof createMcpAuthState>) {
   const clients: McpClient[] = [];
   const connected = new Map<string, McpClient>();
+  const views = new Map<string, McpServerView>();
+  const clearServerAuth = new Map<string, () => Promise<void>>();
   const authenticateServer = new Map<string, (signal?: AbortSignal) => Promise<McpAuthOutcome>>();
   const errors: Extract<CustomSessionEvent, { type: "mcp_server_error" }>[] = [];
   const authRequired: Extract<CustomSessionEvent, { type: "mcp_auth_required" }>[] = [];
@@ -140,6 +147,14 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
   const report = (server: string, error: unknown) => {
     if (failed.has(server)) return;
     failed.add(server);
+    const view = views.get(server);
+    if (view)
+      views.set(server, {
+        ...view,
+        status: "failed",
+        toolCount: 0,
+        error: error instanceof Error ? error.message : String(error),
+      });
     errors.push({
       type: "mcp_server_error",
       server,
@@ -185,6 +200,12 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
     errors,
     authRequired,
     authTools,
+    servers: () => [...views.values()].map((view) => ({ ...view })),
+    clearAuth(server: string) {
+      const clear = clearServerAuth.get(server);
+      if (!clear) throw new Error(`MCP authentication requires an HTTP server: ${server}`);
+      return clear();
+    },
     authenticate(server: string, signal?: AbortSignal) {
       const authenticate = authenticateServer.get(server);
       if (!authenticate) throw new Error(`MCP server cannot authenticate: ${server}`);
@@ -222,6 +243,9 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
       onMcpAuth?: OnMcpAuth;
       onInteractionStart?: OnInteractionStart;
       onWarning?: (message: string) => void;
+      onlyServer?: string;
+      loadOnly?: boolean;
+      reconnect?: boolean;
     }) {
       const servers = await readConfig(join(options.homeDir, ".neant/mcp.json"));
       if (options.trustProjectMcp || isTrustedProject(options.cwd, options.settings)) {
@@ -236,7 +260,15 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
       for (const [server, value] of Object.entries(servers).sort(([a], [b]) =>
         a.localeCompare(b),
       )) {
+        if (options.onlyServer !== undefined && server !== options.onlyServer) continue;
         options.signal?.throwIfAborted();
+        views.set(server, {
+          name: server,
+          transport: Value.Check(Type.Object({ url: Type.String() }), value) ? "http" : "stdio",
+          status: "failed",
+          toolCount: 0,
+          auth: "none",
+        });
         const client = new McpClient({
           name: "neant",
           title: server,
@@ -282,7 +314,26 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
                   headers: expandValues(parsed.headers),
                 }
               : { ...parsed, env: expandValues(parsed.env) };
+          views.set(server, {
+            name: server,
+            transport: "url" in entry ? "http" : "stdio",
+            status: "failed",
+            toolCount: 0,
+            auth:
+              "url" in entry
+                ? entry.oauth
+                  ? "oauth"
+                  : Object.keys(entry.headers ?? {}).length
+                    ? "headers"
+                    : "none"
+                : "none",
+          });
           const key = "url" in entry ? credentialKey(server, entry) : undefined;
+          if (options.reconnect && key) {
+            authState.needsAuth.delete(key);
+            authState.rejectedTokens.delete(key);
+            authState.authorizationScopes.delete(key);
+          }
           const store =
             key && "url" in entry
               ? credentialStore({
@@ -320,6 +371,13 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
             ready = true;
             connected.set(server, activeClient);
             if (key) authState.needsAuth.delete(key);
+            views.set(server, {
+              name: server,
+              transport: "url" in entry ? "http" : "stdio",
+              status: "connected",
+              toolCount: discovered.length,
+              auth: (await store?.load())?.tokens ? "oauth" : (views.get(server)?.auth ?? "none"),
+            });
             const adapted = discovered.map((tool) =>
               adaptTool(server, activeClient, tool, (error) => {
                 if (!closing) {
@@ -486,13 +544,45 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
                 await callback?.close();
               }
             };
-            const pending = flow().finally(() => {
-              if (authState.inFlight.get(key) === pending) authState.inFlight.delete(key);
-            });
+            const pending = flow()
+              .then((outcome) => {
+                if (outcome.type === "cancelled")
+                  views.set(server, {
+                    name: server,
+                    transport: "http",
+                    status: "needs-auth",
+                    toolCount: 0,
+                    auth: "oauth",
+                  });
+                return outcome;
+              })
+              .finally(() => {
+                if (authState.inFlight.get(key) === pending) authState.inFlight.delete(key);
+              });
             authState.inFlight.set(key, pending);
             return pending;
           };
           if ("url" in entry) authenticateServer.set(server, authenticate);
+          if (key && store)
+            clearServerAuth.set(server, async () => {
+              const usedOAuth =
+                (await store.load())?.tokens !== undefined ||
+                authState.needsAuth.has(key) ||
+                ("url" in entry && entry.oauth !== undefined);
+              await store.clear();
+              authState.needsAuth.delete(key);
+              authState.rejectedTokens.delete(key);
+              authState.authorizationScopes.delete(key);
+              replaceTools([]);
+              if (usedOAuth)
+                views.set(server, {
+                  name: server,
+                  transport: "http",
+                  status: "needs-auth",
+                  toolCount: 0,
+                  auth: "oauth",
+                });
+            });
           requireAuth = () => {
             ready = false;
             connected.delete(server);
@@ -500,6 +590,13 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
               authState.needsAuth.add(key);
               authState.rejectedTokens.set(key, rejectedToken);
             }
+            views.set(server, {
+              name: server,
+              transport: "url" in entry ? "http" : "stdio",
+              status: "needs-auth",
+              toolCount: 0,
+              auth: "oauth",
+            });
             if (!reportedAuth.has(server)) {
               reportedAuth.add(server);
               authRequired.push({ type: "mcp_auth_required", server });
@@ -538,6 +635,7 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
             toolServers.set(name, server);
             descriptions.set(server, `${server}: requires authentication. Tools: ${name}`);
           };
+          if (options.loadOnly) continue;
           if (
             key &&
             authState.needsAuth.has(key) &&

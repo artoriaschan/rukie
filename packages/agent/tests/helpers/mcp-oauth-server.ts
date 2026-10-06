@@ -18,6 +18,7 @@ export function mcpOAuthServer(
     authentication?: boolean;
     beforeTokenResponse?: () => Promise<void>;
     tokenEndpointAuthMethods?: string[];
+    beforeInitialize?: () => Promise<void>;
   } = {},
 ) {
   const requests: {
@@ -177,6 +178,7 @@ export function mcpOAuthServer(
           if (request.method === "DELETE") return new Response(null, { status: 204 });
           if (!Value.Check(Rpc, body)) return new Response(null, { status: 400 });
           if (body.id === undefined) return new Response(null, { status: 202 });
+          if (body.method === "initialize") await options.beforeInitialize?.();
           const result =
             body.method === "initialize"
               ? {
