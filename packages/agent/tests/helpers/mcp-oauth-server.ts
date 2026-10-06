@@ -15,6 +15,8 @@ export function mcpOAuthServer(
     clientId?: string;
     clientSecret?: string;
     authorizationError?: string;
+    authentication?: boolean;
+    beforeTokenResponse?: () => Promise<void>;
   } = {},
 ) {
   const requests: {
@@ -131,6 +133,7 @@ export function mcpOAuthServer(
             if (rejectRefresh || !refreshTokens.delete(body.refresh_token ?? ""))
               return oauthError("invalid_grant");
           } else return oauthError("unsupported_grant_type");
+          await options.beforeTokenResponse?.();
           const access = `access-${++sequence}`;
           const refresh = `refresh-${sequence}`;
           accessTokens.add(access);
@@ -144,7 +147,10 @@ export function mcpOAuthServer(
         }
         case "/mcp": {
           const authorization = request.headers.get("authorization") ?? "";
-          if (!accessTokens.has(authorization.replace(/^Bearer /, "")))
+          if (
+            options.authentication !== false &&
+            !accessTokens.has(authorization.replace(/^Bearer /, ""))
+          )
             return new Response("Authentication required", {
               status: 401,
               headers: {
