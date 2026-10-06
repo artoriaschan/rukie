@@ -39,4 +39,4 @@
 
 验证：新组件与 ScrollBox 的实际终端回归25 pass、0 fail、110 assertions（2 files）；此前扩展 renderer/组件/Rewind 集为273 pass、0 fail、1466 assertions（31 files），日志 `/tmp/neant-mcp-panel-03-focused.log`。鼠标返回修复已 red→green；取消后草稿提交用例在03和未改02分别 red，再通过公开 idle 谓词 green（1 pass、0 fail、6 assertions，262.88ms，日志 `/tmp/neant-mcp-panel-03-question-fixed.log`）。已合并当前集成 `25e0c19853f5a8c86ec2054f1cdb05c08aeb3c88`，完整项目 format/lint/types/Knip 在合并后的 aggregate 前置阶段通过。
 
-2026-10-06：用户明确将验证策略改为相关回归通过后推进独立接线，完整检查集中在集成节点。03 因此以以上公开回归与静态证据 resolved，04 可以开始。第一次 worker aggregate 的既有取消用例失败及差分/修正证据保留于 Comments；已启动的第二次 aggregate 仍在后台运行，日志 `/tmp/neant-mcp-panel-03-check.log`，它只是额外证据，不阻塞本票、不重复启动 full。最终完整检查由集成收尾执行。
+2026-10-06：用户明确将验证策略改为相关回归通过后推进独立接线，完整检查集中在集成节点。03 因此以以上公开回归与静态证据 resolved，04 可以开始。第一次 worker aggregate 的既有取消用例失败及差分/修正证据保留于 Comments；已启动的第二次 aggregate 在工单交付期间完成：2354 pass、0 fail、12068 assertions、168 files、330.98s，format/lint/types/Knip 全部通过，日志 `/tmp/neant-mcp-panel-03-check.log`。它是额外证据，不作为阻塞本票的前置条件，不再重复启动 full。最终完整检查由集成收尾执行。
