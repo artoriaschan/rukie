@@ -32,3 +32,9 @@ Validation on latest integration base including 03/08: 97 affected Core/TUI/i18n
 按用户提供的 Claude Code 截图调整命令背景、缩进标题、带空格的容量网格、三行模型信息、图例的颜色与斜体、下方资源摘要和 `/context all` 展开提示。保留 Neant 分类与 20% 压缩预留；子代理类型仍计入 System tools，避免为展示重复计数。两种命令仍仅追加本地不可变快照。
 
 公开终端测试覆盖四种网格、provider 快照保持、Run 中展开、中文文案、实际 RGB cell 颜色与加粗/斜体，以及从 120 列缩到 60/40 列后的上下布局。聚焦验证：`env -u NO_COLOR bun test apps/neant-tui/tests/screens/chat/context-report.test.ts apps/neant-tui/tests/screens/chat/slash-menu-parity.test.ts`，15 pass、0 fail、135 assertions。初次颜色检查受到宿主 NO_COLOR 影响；清除后原命令菜单与新报告颜色均通过。完整检查：在隔离临时 HOME、清除 NO_COLOR 并使用 caffeinate 的环境下执行 `bun run check`，退出 0；oxfmt、oxlint、tsc -b、Knip 全部通过，2189 pass、0 fail、11283 assertions、156 files，253.35s。日志：`/tmp/neant-context-style-check.log`。补充文档格式检查和 `git diff --check` 均通过。
+
+### 2026-10-06 主分支整合与清理
+
+实现提交 `6b286b694dc417e9c139e3fe05f6840ba35271ec` 已合入本地 `main`，合并提交为 `10f30715c6a3e07f448971d535915c2fcaa651e3`。在主工作目录、隔离临时 HOME、清除 NO_COLOR 并使用 caffeinate 的环境下执行 `bun run check`，退出 0：oxfmt、oxlint、tsc -b、Knip 全部通过，2195 pass、0 fail、11331 assertions、158 files，268.07s。日志：`/tmp/neant-context-style-main-check.log`。
+
+清理前确认本任务工作树 `928d/Neant` 无未提交或非忽略的未跟踪文件，`main..HEAD` 为 0；已用 `git worktree remove` 移除，目录不存在且 Git 工作树列表不再包含它。应用归档接口拒绝归档聊天的主工作树，因此本次通过 Git 直接移除，提交由 main 保留。其他工作树及 main 上独立进行的文档修改均保留。本任务使用 detached HEAD，未创建临时分支。
