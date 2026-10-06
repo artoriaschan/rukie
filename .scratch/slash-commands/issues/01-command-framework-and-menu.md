@@ -31,6 +31,8 @@
 
 代码提交 `bd640499defeb53e4b4352d7eb92808e76d54d71` 已于 2026-10-06 fast-forward 合入本地 main。main checkout 采用上述隔离环境重新执行完整 `bun run check`，退出 0：2160 pass、0 fail、11108 assertions、154 files，262.31s；format、lint、TypeScript 与 Knip 均通过。日志：`/tmp/neant-slash-parity-main-check.log`。main 原有的后台 bash 工单未提交改动保留，内容哈希与整合前一致。
 
+main 同期整合图片预览功能后，在提交 `6661c631ecb5a9269f1925b346c495c931648017` 上重新执行隔离 HOME 的完整检查，退出 0：2187 pass、0 fail、11251 assertions、156 files，265.39s；format、lint、TypeScript 与 Knip 均通过。日志：`/tmp/neant-slash-parity-latest-main-check.log`。检查后的 `0756b37` 仅更新文档，`apps/` 与 `packages/` 源码和已验证提交一致。
+
 已交付 frontend 命令识别与完整清单、props-only 补全菜单、运行中可用性判断，以及 `/help`、`/exit`、`/clear`、`/plan`、`/rewind`、`/goal`。未知 slash 与路径保持原样；多行输入不打开菜单。`/plan` 依新 spec 改为切换，并在运行中拒绝；旧 plan/review/rewind 公共测试同步迁移。
 
 扩展入口：`apps/neant-tui/src/screens/chat/commands.ts` 的清单与 chat 屏幕的 `executeCommand` 负责后续处理器接入；`replaceSession(resumeId?)` 支持 clear 与后续 resume。菜单通过 Agent Core 的 `listSkills()` 复用发现规则，过滤 `user-invocable: false`，内置命令覆盖同名 skill。
