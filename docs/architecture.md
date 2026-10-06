@@ -152,7 +152,7 @@ Agent Core 不读取 locale，它构造的模型工具文本固定英文，面�
 
 自定义模型通过 input 声明文本或图片输入能力，未声明时默认为 text。模型能力由 [`config/`](../packages/agent/src/config/index.ts)交给 pi；text-only 模型沿用 pi 的图片降级路径，Transcript 仍保留原始图片，TUI 提示当前模型会省略图片。
 
-MCP 用户配置始终参与发现；项目 `.mcp.json` 在项目受信任或用户明确授权该 MCP 配置时加载。MCP 连接属于一次 Run：每次重新发现当前能力，结束时关闭；这个单独的 MCP 授权不放开项目 hooks 或项目 allow 规则。
+MCP 用户配置始终参与发现；项目 `.mcp.json` 在项目受信任或用户明确授权该 MCP 配置时加载。MCP 连接属于一次 Run：每次重新发现当前能力，结束时关闭；这个单独的 MCP 授权不放开项目 hooks 或项目 allow 规则。Agent Core 的 `mcp/` 模块复用 pi-mcp OAuth，拥有 MCP Credential 存储、needs-auth 状态、授权与重连；Frontend 提供可取消的授权交互。配置、凭据共享、Headless 行为及管理接口见 [MCP 配置与授权](mcp.md)。
 
 这些规则控制配置来源和工具授权，不提供进程或文件系统沙箱。所有 frontend 与工具扩展都要保持凭据来源、显式拒绝、取消及执行目标的一致性。
 
