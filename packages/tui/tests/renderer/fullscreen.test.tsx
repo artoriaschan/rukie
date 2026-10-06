@@ -1,6 +1,14 @@
 import { expect, test } from "bun:test";
 import { useLayoutEffect, useRef, useState } from "react";
-import { Box, ScrollBox, Text, render, useInput, type ScrollHandle } from "../../src";
+import {
+  Box,
+  ScrollBox,
+  Text,
+  render,
+  useInput,
+  type ScrollHandle,
+  type ScrollSnapshot,
+} from "../../src";
 import { createTerminal } from "../helpers/terminal";
 
 test("background blocks stay clipped to the scroll viewport above a fixed dock", async () => {
@@ -255,6 +263,92 @@ test("fullscreen cleanup restores the original screen for paint failures and pro
     expect(terminal.stdin.isRaw).toBe(false);
     expect(terminal.terminal.modes.mouseTrackingMode).toBe("none");
   } finally {
+    terminal.dispose();
+  }
+});
+
+test("portable reading anchors restore exact duplicate content after remount and reflow, with top fallback and follow mode", async () => {
+  const terminal = createTerminal(20, 4);
+  let saved: ScrollSnapshot | undefined;
+  const duplicate = "AA BB CC DD EE FF GG HH II JJ KK LL MM NN OO PP QQ RR SS TT UU VV WW XX YY ZZ";
+  function View() {
+    const [hidden, setHidden] = useState(false);
+    const [omitFirst, setOmitFirst] = useState(false);
+    const [omitSecond, setOmitSecond] = useState(false);
+    const scroll = useRef<ScrollHandle>(null);
+    useInput((event) => {
+      if (event.type !== "key") return;
+      if (event.input === "h") {
+        saved = scroll.current?.getSnapshot();
+        setHidden(true);
+      }
+      if (event.input === "r") setHidden(false);
+      if (event.input === "d") {
+        setOmitFirst(true);
+        setHidden(false);
+      }
+      if (event.input === "m") {
+        setOmitSecond(true);
+        setHidden(false);
+      }
+      if (event.key.name === "up") scroll.current?.scrollBy(-2);
+    });
+    if (hidden) return <Text>panel</Text>;
+    return (
+      <Box flexDirection="column" height={4}>
+        <ScrollBox
+          ref={scroll}
+          initialTop={saved?.top}
+          initialFollow={saved?.following}
+          initialAnchor={saved?.anchor}
+        >
+          {!omitFirst && (
+            <Box scrollAnchorId="first">
+              <Text>{duplicate}</Text>
+            </Box>
+          )}
+          {!omitSecond && (
+            <Box scrollAnchorId="second">
+              <Box width={2}>
+                <Text>❯</Text>
+              </Box>
+              <Box flexGrow={1}>
+                <Text>{duplicate}</Text>
+              </Box>
+            </Box>
+          )}
+          <Text>{"end-1\nend-2\nend-3\nend-4\nend-5\nend-6\nend-7\nend-8"}</Text>
+        </ScrollBox>
+        <Text>dock</Text>
+      </Box>
+    );
+  }
+  const app = render(<View />, { ...terminal, fullscreen: true });
+  try {
+    await terminal.flush();
+    expect(terminal.screen()[2]).toBe("end-8");
+    terminal.stdin.write("h");
+    await terminal.waitFor(() => terminal.screen()[0] === "panel");
+    terminal.stdin.write("r");
+    await terminal.waitFor(() => terminal.screen()[2] === "end-8");
+    expect(saved?.following).toBe(true);
+    terminal.stdin.write("\x1b[A".repeat(4));
+    await terminal.waitFor(() => terminal.screen()[0] === "  HH II JJ KK LL MM");
+    terminal.stdin.write("h");
+    await terminal.waitFor(() => terminal.screen()[0] === "panel");
+    expect(saved?.anchor?.id).toBe("second");
+    terminal.resize(14, 4);
+    terminal.stdin.write("d");
+    await terminal.waitFor(() => terminal.screen()[0] === "  FF GG HH II");
+    expect(saved?.following).toBe(false);
+    terminal.stdin.write("h");
+    await terminal.waitFor(() => terminal.screen()[0] === "panel");
+    const fallback = saved!.top;
+    terminal.stdin.write("m");
+    await terminal.waitFor(() => terminal.screen()[0]?.startsWith("end-") === true);
+    expect(terminal.screen()[0]).toBe(`end-${fallback + 1}`);
+  } finally {
+    app.unmount();
     terminal.dispose();
   }
 });

@@ -25,7 +25,7 @@ test("slash card floats above the composer without moving the transcript and cen
     await app.waitFor(() => !app.isWorking() && text(app).includes("line 44"));
     const before = app.screen();
     app.stdin.write("/");
-    await app.waitFor(() => text(app).includes("╭─ commands · 13 items "));
+    await app.waitFor(() => text(app).includes("╭─ commands · 14 items "));
     const top = app.screen().findIndex((row) => row.startsWith("╭─ commands"));
     expect(app.screen().slice(0, top)).toEqual(before.slice(0, top));
     expect(
@@ -34,7 +34,7 @@ test("slash card floats above the composer without moving the transcript and cen
         .slice(top + 1, top + 6)
         .map((row) => /^│ (?:❯ |  )(\S+)/u.exec(row)?.[1]),
     ).toEqual(["compact", "clear", "rewind", "goal", "plan"]);
-    expect(app.screen()[top + 6]).toMatch(/^│ ↓8\s+│$/);
+    expect(app.screen()[top + 6]).toMatch(/^│ ↓9\s+│$/);
     expect(app.screen()[top + 7]).toBe(`╰${"─".repeat(78)}╯`);
     expect(app.screen()[top + 8]).toBe(`╭${"─".repeat(78)}╮`);
     expect(selected(app, "compact")).toBe(true);
@@ -49,7 +49,7 @@ test("slash card floats above the composer without moving the transcript and cen
     await app.waitFor(() => selected(app, "goal"));
     expect(app.screen()[top + 1]).toMatch(/^│   clear /);
     expect(app.screen()[top + 3]).toMatch(/^│ ❯ goal /);
-    expect(app.screen()[top + 6]).toMatch(/^│ ↑1 · ↓7\s+│$/);
+    expect(app.screen()[top + 6]).toMatch(/^│ ↑1 · ↓8\s+│$/);
     app.stdin.write("\x1b");
     await app.waitFor(() => !text(app).includes("commands ·"));
     expect(app.screen()).toEqual(before.map((row) => (row === "❯" ? "❯ /" : row)));
@@ -99,13 +99,13 @@ test("a recalled slash input keeps arrows in history until the saved draft is re
     await app.waitFor(() => app.screen().includes("❯ saved draft"));
     expect(text(app)).not.toContain("commands ·");
     app.stdin.write("\x03/");
-    await app.waitFor(() => text(app).includes("commands · 14 items"));
+    await app.waitFor(() => text(app).includes("commands · 15 items"));
     app.stdin.write("\x1b");
     await app.waitFor(() => !text(app).includes("commands ·"));
     app.stdin.write("\x1b[A");
     await app.waitFor(() => selected(app, "check"));
     app.stdin.write("\x1b[B");
-    await app.waitFor(() => text(app).includes("commands · 14 items"));
+    await app.waitFor(() => text(app).includes("commands · 15 items"));
     expect(selected(app, "compact")).toBe(true);
   } finally {
     await app.cleanup();
@@ -124,8 +124,8 @@ test("mouse wheel clamps selection and hover/click use the visible window's abso
     await app.flush();
     expect(selected(app, "compact")).toBe(true);
     wheel(true, 40);
-    await app.waitFor(() => selected(app, "rename"));
-    wheel(false, 7);
+    await app.waitFor(() => selected(app, "jobs"));
+    wheel(false, 8);
     await app.waitFor(() => selected(app, "help"));
     const y = app.screen().findIndex((row) => row.startsWith("│   exit "));
     app.stdin.write(`\x1b[<35;8;${y + 1}M`);
@@ -179,7 +179,7 @@ test("Chinese titles, long skill names and descriptions stay inside the card at 
   });
   try {
     app.stdin.write("/");
-    await app.waitFor(() => text(app).includes("╭─ 命令 · 共 14 项 "));
+    await app.waitFor(() => text(app).includes("╭─ 命令 · 共 15 项 "));
     app.stdin.write("\x1b[A");
     await app.waitFor(() => text(app).includes("❯ very-long"));
     const card = app.screen().filter((row) => /^[╭╰│]/u.test(row));
@@ -202,7 +202,7 @@ test("Chinese titles, long skill names and descriptions stay inside the card at 
     expect(text(app)).toContain("[skill]");
     expect(text(app)).toContain("…");
     app.resize(39, 11);
-    await app.waitFor(() => !text(app).includes("共 14 项"));
+    await app.waitFor(() => !text(app).includes("共 15 项"));
   } finally {
     await app.cleanup();
   }

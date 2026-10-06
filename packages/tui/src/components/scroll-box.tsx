@@ -8,7 +8,12 @@ import {
   type Ref,
 } from "react";
 import { useTerminal } from "../terminal";
-import { createScrollState, type ScrollHandle, type ScrollSnapshot } from "../scroll";
+import {
+  createScrollState,
+  type ScrollHandle,
+  type ScrollSnapshot,
+  type ScrollAnchor,
+} from "../scroll";
 import type { BoxProps } from ".";
 
 export interface ScrollBoxProps extends BoxProps {
@@ -17,6 +22,8 @@ export interface ScrollBoxProps extends BoxProps {
   initialFollow?: boolean;
   /** Restore a reading position before the first painted frame. */
   initialTop?: number;
+  /** Restore captured content; unmatched IDs/paths fall back to initialTop. */
+  initialAnchor?: ScrollAnchor;
 }
 
 /** An independently clipped column; content is measured outside the viewport's flex layout. */
@@ -25,10 +32,11 @@ export function ScrollBox({
   onScroll,
   initialFollow = true,
   initialTop = 0,
+  initialAnchor,
   ...props
 }: ScrollBoxProps) {
   const terminal = useTerminal();
-  const scroll = useMemo(() => createScrollState(initialFollow, initialTop), []);
+  const scroll = useMemo(() => createScrollState(initialFollow, initialTop, initialAnchor), []);
   const snapshot = useSyncExternalStore(scroll.subscribe, scroll.getSnapshot);
   useImperativeHandle(ref, () => scroll, [scroll]);
   useLayoutEffect(() => scroll.connect(terminal.redraw), [scroll, terminal]);

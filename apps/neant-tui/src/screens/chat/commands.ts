@@ -16,6 +16,7 @@ export function commandCatalog(t: ReturnType<typeof createTuiI18n>) {
       "settings",
       "btw",
       "rename",
+      "jobs",
     ] as const
   ).map((name) => ({
     name,
@@ -26,6 +27,6 @@ export function commandCatalog(t: ReturnType<typeof createTuiI18n>) {
         : name === "context"
           ? "[all]"
           : undefined,
-    duringRun: ["exit", "help", "btw", "context", "rename", "goal"].includes(name),
+    duringRun: ["exit", "help", "btw", "context", "rename", "jobs", "goal"].includes(name),
   }));
 }

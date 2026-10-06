@@ -1,6 +1,14 @@
 import { realpath } from "node:fs/promises";
 import { relative } from "node:path";
-import { useLayoutEffect, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import {
+  Fragment,
+  useLayoutEffect,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   createSession,
   listSkills,
@@ -43,6 +51,7 @@ import {
   ScrollToBottom,
   StatusLine,
   JobCard,
+  JobsPanel,
   JobGroupHeader,
   ToolCall,
   SubagentMessage,
@@ -397,7 +406,12 @@ function Chat({
       live.questionIndex === userQuestion.questionIndex
     );
   };
-  type View = "chat" | "dashboard" | "settings" | { detail: string; from: "chat" | "dashboard" };
+  type View =
+    | "chat"
+    | "dashboard"
+    | "settings"
+    | "jobs"
+    | { detail: string; from: "chat" | "dashboard" };
   const [view, setView] = useState<View>("chat");
   const viewRef = useRef<View>("chat");
   const switchView = (next: View) => {
@@ -416,6 +430,46 @@ function Chat({
   const subagentScroll = useRef<ScrollHandle>(null);
   const savedChatScroll = useRef<ScrollSnapshot | undefined>(undefined);
   const savedDashboardScroll = useRef<ScrollSnapshot | undefined>(undefined);
+  const [jobFocus, setJobFocus] = useState(0);
+  const jobFocusRef = useRef(0);
+  const [jobDetails, setJobDetails] = useState<ReadonlySet<string>>(new Set());
+  const [killArmed, setKillArmed] = useState<{ id: string; until: number }>();
+  const killArmRef = useRef<{ id: string; until: number } | undefined>(undefined);
+  const jobsScroll = useRef<ScrollHandle>(null);
+  const disarmKill = () => {
+    killArmRef.current = undefined;
+    setKillArmed(undefined);
+  };
+  useEffect(() => {
+    if (!killArmed) return;
+    const timer = setTimeout(disarmKill, 4000);
+    return () => clearTimeout(timer);
+  }, [killArmed]);
+  useEffect(() => {
+    if (
+      killArmed &&
+      state.jobs[killArmed.id]?.status !== "running" &&
+      state.jobs[killArmed.id]?.status !== "stopping"
+    )
+      disarmKill();
+  }, [state.jobs, killArmed]);
+  const selectJob = (index: number) => {
+    disarmKill();
+    jobFocusRef.current = index;
+    setJobFocus(index);
+  };
+  const openJobs = (id?: string) => {
+    if (previewRef.current) return;
+    selectJob(
+      Math.max(
+        0,
+        Object.values(conversation.getSnapshot().jobs).findIndex((job) => job.id === id),
+      ),
+    );
+    setJobDetails(new Set());
+    savedChatScroll.current = body.current?.getSnapshot();
+    switchView("jobs");
+  };
   const openDetail = (id: string, from: "chat" | "dashboard") => {
     if (previewRef.current) return;
     if (from === "chat") savedChatScroll.current = body.current?.getSnapshot();
@@ -428,6 +482,7 @@ function Chat({
   const closeView = () => {
     const current = viewRef.current;
     const next = typeof current === "object" ? current.from : "chat";
+    disarmKill();
     switchView(next);
   };
   const turnPage = (next: DetailPage) => {
@@ -899,6 +954,7 @@ function Chat({
         })();
       }
     } else if (command.name === "resume") void openResumePicker();
+    else if (command.name === "jobs") openJobs();
     else if (command.name === "settings") switchView("settings");
     else if (command.name === "compact")
       void conversation
@@ -921,7 +977,7 @@ function Chat({
   const sendInput = (prompt: string) => {
     if (previewRef.current) return;
     if (executeCommand(prompt)) {
-      body.current?.scrollToBottom();
+      if (viewRef.current !== "jobs") body.current?.scrollToBottom();
       change("");
       composer.clear();
     }
@@ -1122,6 +1178,62 @@ function Chat({
       return;
     }
     const currentView = viewRef.current;
+    if (currentView === "jobs") {
+      handledInput.current.add(event);
+      if (event.type === "wheel") {
+        disarmKill();
+        jobsScroll.current?.scrollBy(event.delta * 3);
+      }
+      if (event.type !== "key") return;
+      const { key } = event;
+      if (key.name === "escape" || (key.ctrl && key.name === "c")) closeView();
+      else if (key.name === "up" || key.name === "down") {
+        const jobs = Object.values(conversation.getSnapshot().jobs);
+        selectJob(
+          Math.max(
+            0,
+            Math.min(jobs.length - 1, jobFocusRef.current + (key.name === "up" ? -1 : 1)),
+          ),
+        );
+      } else if (key.name === "pageup" || key.name === "pagedown") {
+        disarmKill();
+        jobsScroll.current?.scrollBy(
+          (jobsScroll.current.getSnapshot().height - 1) * (key.name === "pageup" ? -1 : 1),
+        );
+      } else if (!key.ctrl && !key.alt && !key.shift) {
+        const selected = Object.values(conversation.getSnapshot().jobs)[jobFocusRef.current];
+        if (
+          event.input === "k" &&
+          selected &&
+          (selected.status === "running" || selected.status === "stopping")
+        ) {
+          if (
+            killArmRef.current?.id === selected.id &&
+            performance.now() < killArmRef.current.until
+          ) {
+            disarmKill();
+            const stopping = session.killJob(selected.id);
+            conversation.refreshJobs();
+            void stopping.catch((error: unknown) =>
+              conversation.notice(formatError(error, t), true),
+            );
+          } else {
+            killArmRef.current = { id: selected.id, until: performance.now() + 4000 };
+            setKillArmed(killArmRef.current);
+          }
+        } else {
+          disarmKill();
+          if (event.input === "e" && selected)
+            setJobDetails((previous) => {
+              const next = new Set(previous);
+              if (next.has(selected.id)) next.delete(selected.id);
+              else next.add(selected.id);
+              return next;
+            });
+        }
+      } else disarmKill();
+      return;
+    }
     if (currentView === "settings") return;
     if (currentView !== "chat") {
       if (event.type === "wheel") subagentScroll.current?.scrollBy(event.delta * 3);
@@ -1434,7 +1546,13 @@ function Chat({
                         status="success"
                         result={member.result}
                       />
-                      <JobCard job={job} output={job.output} columns={columns} locale={locale} />
+                      <JobCard
+                        job={job}
+                        output={job.output}
+                        columns={columns}
+                        locale={locale}
+                        onOpen={openJobs}
+                      />
                     </Box>
                   ))}
               </Box>
@@ -1461,6 +1579,7 @@ function Chat({
                   <JobCard
                     job={state.jobs[entry.jobId]!}
                     output={state.jobs[entry.jobId]!.output}
+                    onOpen={openJobs}
                     columns={columns}
                     locale={locale}
                   />
@@ -1505,7 +1624,7 @@ function Chat({
                 imagesSuspended={!!preview}
               />
             ) : (
-              <Box key={index} flexDirection="column">
+              <Fragment key={index}>
                 <AssistantMessage text={entry.text} />
                 {!!entry.images?.length && (
                   <ImageGallery
@@ -1515,7 +1634,7 @@ function Chat({
                     onOpen={(imageIndex) => openImage(index, imageIndex)}
                   />
                 )}
-              </Box>
+              </Fragment>
             );
         }
       }),
@@ -1530,6 +1649,20 @@ function Chat({
       !!preview,
     ],
   );
+  if (view === "jobs")
+    return (
+      <JobsPanel
+        rows={rows}
+        columns={columns}
+        locale={locale}
+        jobs={Object.values(state.jobs)}
+        focusIndex={jobFocus}
+        expanded={jobDetails}
+        armed={killArmed?.id}
+        scrollRef={jobsScroll}
+        onSelect={selectJob}
+      />
+    );
   if (view === "settings") return <SettingsScreen locale={locale} onClose={closeView} />;
   if (view === "dashboard")
     return (
@@ -1572,6 +1705,7 @@ function Chat({
         onScroll={setBodyScroll}
         initialFollow={savedChatScroll.current?.following ?? true}
         initialTop={savedChatScroll.current?.top ?? 0}
+        initialAnchor={savedChatScroll.current?.anchor}
         height={small && !preview ? 0 : undefined}
         flexGrow={small && !preview ? 0 : 1}
       >
@@ -1583,8 +1717,23 @@ function Chat({
           thinking={thinking}
           working={state.running}
         />
-        {completed}
-        {state.assistant && <AssistantMessage text={state.assistant} />}
+        {completed.map(
+          (entry, index) =>
+            entry && (
+              <Box
+                key={index}
+                scrollAnchorId={state.completed[index]?.anchorId}
+                flexDirection="column"
+              >
+                {entry}
+              </Box>
+            ),
+        )}
+        {state.assistant && (
+          <Box scrollAnchorId={state.assistantAnchor} flexDirection="column">
+            <AssistantMessage text={state.assistant} />
+          </Box>
+        )}
         {state.tools.map((tool) => (
           <ToolCall key={tool.id} summary={tool.summary} status="running" />
         ))}

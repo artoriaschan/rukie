@@ -33,3 +33,5 @@ export { ImageGallery } from "./image-gallery";
 export { ImagePreview } from "./image-preview";
 
 export { JobCard, JobGroupHeader } from "./job-card";
+
+export { JobsPanel } from "./jobs-panel";
