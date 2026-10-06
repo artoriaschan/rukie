@@ -1,6 +1,6 @@
 # MCP 列表与详情面板
 
-Status: ready-for-agent
+Status: claimed
 
 ## Problem
 
@@ -116,3 +116,5 @@ Frontend 在打开面板、管理操作完成及状态事件到来时刷新；�
 - 2026-10-06：用户逐轮接受 Q1–Q9 推荐，补充主输入框禁用要求，并确认最终共享理解。访谈转为 resolved；本 spec 与五张票为 ready-for-agent，尚未实施。
 - 现有术语与包职责足以表达本功能，未新增 glossary 概念或改变现有 ADR；可逆界面约定留在本 spec。实施分支起点为已交付的 `main` `c53bd5c`。
 - 只读事实复核补齐技术契约：配置文件损坏不能混为空配置，用户重试需要 Core 显式刷新；首次管理不能丢其他服务器，首次 probe 提交通知与缓存读取不通知分别明确。未开始产品代码实施。
+- 2026-10-06：用户调用 implement-spec，开始在 `codex/mcp-panel` 集成实施；固定审查起点 `97b570739d28b5e0ba637aac7fa46ca609cbb16f`。01 先行，验证并集成后 02 与 03 并行，04、05 依次推进，每票使用独立受管理 worktree。
+- 起点代码与已验证的 `main` `c53bd5c` 完全一致（apps、packages、锁文件与脚本无差异）；该代码的隔离 HOME 完整检查为2309 pass、0 fail，11818 assertions，166 files，315.56s，format/lint/types/Knip全部通过，日志 `/tmp/neant-mcp-oauth-main-check.log`。本次变更仍需新的 focused、集成完整检查与两轴审查。
