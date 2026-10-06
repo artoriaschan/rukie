@@ -167,7 +167,7 @@ test.each(["ask", "auto-review", "full-access"] as const)(
     const fake = fakeModel([
       fauxAssistantMessage(
         [
-          fauxToolCall("bash", { command: "printf allowed" }),
+          fauxToolCall("bash", { description: "Run test command", command: "printf allowed" }),
           fauxToolCall("edit", {
             path: "file.txt",
             edits: [{ oldText: "before", newText: "after" }],

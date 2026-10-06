@@ -393,7 +393,8 @@ for (const kind of ["permission", "question"] as const) {
         const parent = app.calls.find((call, index) => index > 1 && call !== child)!;
         app.stdin.write(`\x1b[200~${draft}\x1b[201~`);
         await app.waitFor(() => app.screen().some((line) => line.includes("草稿三")));
-        if (kind === "permission") parent.tool("bash", { command: "printf approved" });
+        if (kind === "permission")
+          parent.tool("bash", { command: "printf approved", description: "Run test command" });
         else
           parent.tool("ask_user_question", {
             questions: [

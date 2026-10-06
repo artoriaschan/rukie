@@ -43,7 +43,10 @@ test.each([
             .at(-1)
             ?.includes(mode === "Ask" ? "Read-only tools" : "只读工具") === true,
       );
-      app.calls[0]!.tool("bash", { command: "printf locale-test" });
+      app.calls[0]!.tool("bash", {
+        command: "printf locale-test",
+        description: "Run test command",
+      });
       await app.waitFor(() => app.screen().some((line) => line.includes(`1. ${allow}`)));
       expect(app.screen().join("\n")).toContain(`3. ${deny}`);
       expect(app.screen().join("\n")).toContain(
@@ -169,7 +172,7 @@ test("English approval dialog shows translated title, question and keyboard hint
   const app = await start(["permission"], { columns: 120, rows: 40, env: { LANG: "en" } });
   try {
     await app.waitFor(() => app.calls.length === 1);
-    app.calls[0]!.tool("bash", { command: "printf consent" });
+    app.calls[0]!.tool("bash", { command: "printf consent", description: "Run test command" });
     await app.waitFor(() => app.screen().some((line) => line.includes("1. Allow once")));
     const screen = app.screen().join("\n");
     expect(screen).toContain("Waiting for approval · bash");

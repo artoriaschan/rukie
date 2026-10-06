@@ -65,9 +65,12 @@ test.each(["text", "stream-json"])(
     const root = await mkdtemp(join(tmpdir(), "neant-cli-hooks-"));
     const faux = createFauxCore({ api: "faux", provider: "faux" });
     faux.setResponses([
-      fauxAssistantMessage(fauxToolCall("bash", { command: "touch forbidden" }), {
-        stopReason: "toolUse",
-      }),
+      fauxAssistantMessage(
+        fauxToolCall("bash", { description: "Run test command", command: "touch forbidden" }),
+        {
+          stopReason: "toolUse",
+        },
+      ),
       fauxAssistantMessage("done"),
     ]);
     let stdout = "";
@@ -268,8 +271,12 @@ test.each([
   faux.setResponses([
     fauxAssistantMessage(
       [
-        fauxToolCall("bash", { command }, { id: "allowed" }),
-        fauxToolCall("bash", { command: "printf unauthorized > forbidden" }, { id: "denied" }),
+        fauxToolCall("bash", { description: "Run test command", command }, { id: "allowed" }),
+        fauxToolCall(
+          "bash",
+          { description: "Run test command", command: "printf unauthorized > forbidden" },
+          { id: "denied" },
+        ),
       ],
       { stopReason: "toolUse" },
     ),

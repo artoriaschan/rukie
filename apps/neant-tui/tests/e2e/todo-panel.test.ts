@@ -187,7 +187,8 @@ test.each(["permission", "question"])(
       await app.waitFor(() => app.calls.length === 1);
       app.calls[0]!.tool("todo_write", { todos: [{ content: "open", status: "pending" }] });
       await app.waitFor(() => app.calls.length === 2 && app.screen().includes("  ▾ ✓ 0/1"));
-      if (kind === "permission") app.calls[1]!.tool("bash", { command: "printf approved" });
+      if (kind === "permission")
+        app.calls[1]!.tool("bash", { command: "printf approved", description: "Run test command" });
       else
         app.calls[1]!.tool("ask_user_question", {
           questions: [
@@ -272,7 +273,8 @@ test.each([
         app.stdin.write("\x1b[5~");
         await app.waitFor(() => app.screen().some((line) => line.includes("回到底部")));
       }
-      if (kind === "permission") app.calls[1]!.tool("bash", { command: "printf approved" });
+      if (kind === "permission")
+        app.calls[1]!.tool("bash", { command: "printf approved", description: "Run test command" });
       else
         app.calls[1]!.tool("ask_user_question", {
           questions: [

@@ -86,9 +86,9 @@ test("questions and permission approvals share one FIFO; session grants skip mat
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.tools([
-      { name: "bash", args: { command: "printf first-approval" } },
+      { name: "bash", args: { command: "printf first-approval", description: "Run test command" } },
       { name: "ask_user_question", args: { questions: [question] } },
-      { name: "bash", args: { command: "printf first-approval" } },
+      { name: "bash", args: { command: "printf first-approval", description: "Run test command" } },
       { name: "write", args: { path: "last-approval.txt", content: "test" } },
     ]);
     await app.waitFor(() => app.screen().some((line) => line.trim() === "printf first-approval"));

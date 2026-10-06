@@ -201,7 +201,7 @@ test.each([{ during: "request preparation" }, { during: "compaction" }])(
         : async () => {
             await changeFile(path, "external\n");
             faulty.failNext("snapshot", 1);
-            return call("bash", { command: "true" });
+            return call("bash", { description: "Run test command", command: "true" });
           },
       fauxAssistantMessage("summary"),
     ]);
@@ -1113,7 +1113,10 @@ test("bash changes to a read file are reported within the same Run", async () =>
   await Bun.write(join(dirs.cwd, "file.txt"), "before\n");
   const fake = fakeModel([
     call("read", { path: "file.txt" }),
-    call("bash", { command: "printf 'after-command\n' > file.txt" }),
+    call("bash", {
+      description: "Run test command",
+      command: "printf 'after-command\n' > file.txt",
+    }),
     fauxAssistantMessage("noticed"),
   ]);
   const session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });

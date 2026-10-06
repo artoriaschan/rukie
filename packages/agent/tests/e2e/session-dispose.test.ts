@@ -133,9 +133,12 @@ test("dispose cancels a slow in-flight tool hook before running SessionEnd", asy
   const session = await createSession({
     ...dirs,
     ...fakeModel([
-      fauxAssistantMessage(fauxToolCall("bash", { command: "touch forbidden" }), {
-        stopReason: "toolUse",
-      }),
+      fauxAssistantMessage(
+        fauxToolCall("bash", { description: "Run test command", command: "touch forbidden" }),
+        {
+          stopReason: "toolUse",
+        },
+      ),
     ]),
     permissionMode: "full-access",
     settings: {

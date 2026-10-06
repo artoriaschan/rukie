@@ -113,7 +113,7 @@ test("tps includes tool-call deltas and completed Turns while excluding time bet
     app.calls[0]!.toolDelta("abcd");
     await app.waitFor(() => app.screen().at(-2)?.includes("402 tps") === true);
     now += 500;
-    app.calls[0]!.tool("bash", { command: "printf ok" });
+    app.calls[0]!.tool("bash", { command: "printf ok", description: "Run test command" });
     await app.waitFor(() => app.calls.length === 2);
     now += 10000;
     app.calls[1]!.delta("x".repeat(800));
@@ -262,7 +262,10 @@ test.each(["idle", "approval"] as const)(
         app.calls[0]!.finish();
         await app.waitFor(() => !app.isWorking());
       } else {
-        app.calls[0]!.tool("bash", { command: "printf must-wait-for-permission" });
+        app.calls[0]!.tool("bash", {
+          command: "printf must-wait-for-permission",
+          description: "Run test command",
+        });
         await app.waitFor(() => app.screen().some((line) => line.includes("等待审批")));
       }
       app.stdin.write("\x1b[<64;5;1M");

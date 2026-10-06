@@ -13,7 +13,10 @@ test.each(["ask", "auto-review"])(
       app.screen().flatMap((line, row) => (/[1-3]\. /.test(line) ? [row] : []));
     try {
       await app.waitFor(() => app.calls.length === 1);
-      app.calls[0]!.tool("bash", { command: "printf small-dialog" });
+      app.calls[0]!.tool("bash", {
+        command: "printf small-dialog",
+        description: "Run test command",
+      });
       await app.waitFor(
         () =>
           app.screen().some((line) => line.includes("printf small-dialog")) &&
