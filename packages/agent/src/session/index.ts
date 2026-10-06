@@ -35,14 +35,15 @@ import type {
   JobOutput,
 } from "@neant/shared";
 import {
-  createSubagents,
+  createSubagentController,
+  createSubagentTools,
   discoverSubagentTypes,
   SUBAGENT_PROMPT,
   subagentsState,
   subagentRunState,
   type SubagentRun,
   type SubagentIdentity,
-} from "../subagents/index.ts";
+} from "../tools/subagents/index.ts";
 import { isTrustedProject, resolveModel, modelState } from "../config/index.ts";
 import { createJsonlStore, registerSessionReader, type SessionStore } from "../store/index.ts";
 import {
@@ -821,7 +822,7 @@ async function createSessionInternal(
   const childSessions = new Set<Session>();
   let currentResult: RunResult | undefined;
   let completedMessages = initialBranch.messages;
-  const subagents = createSubagents({
+  const subagents = createSubagentController({
     restored: toolState.get("subagents") as SubagentIdentity[] | undefined,
     warn: options.onWarning ?? console.warn,
     async persist(identities) {
@@ -894,6 +895,7 @@ async function createSessionInternal(
           currentResult.usage[key] += usage[key];
     },
   });
+  const subagentTools = createSubagentTools(subagents);
   const planTools =
     options.onPlanReview && !internal.parentSessionId
       ? [
@@ -1063,7 +1065,7 @@ async function createSessionInternal(
         ...initialTools,
         ...(internal.parentSessionId
           ? []
-          : [subagents.tool, subagents.forkTool, subagents.sendTool, subagents.listTool]),
+          : [subagentTools.delegate, subagentTools.fork, subagentTools.send, subagentTools.list]),
       ]
         .filter(allowsTool)
         .map(measureTool),
@@ -2200,7 +2202,12 @@ async function createSessionInternal(
             ...generalTools,
             ...(internal.parentSessionId
               ? []
-              : [subagents.tool, subagents.forkTool, subagents.sendTool, subagents.listTool]),
+              : [
+                  subagentTools.delegate,
+                  subagentTools.fork,
+                  subagentTools.send,
+                  subagentTools.list,
+                ]),
           ]
             .filter(allowsTool)
             .map(measureTool);

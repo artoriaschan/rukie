@@ -1,7 +1,11 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
 import type { SessionStore } from "../store/index.ts";
 import { createToolState } from "../tool-state/index.ts";
-import { subagentRunState, type SubagentIdentity, type SubagentRun } from "../subagents/index.ts";
+import {
+  subagentRunState,
+  type SubagentIdentity,
+  type SubagentRun,
+} from "../tools/subagents/index.ts";
 
 interface RecoveredSubagent {
   id: string;

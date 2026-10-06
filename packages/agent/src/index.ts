@@ -33,7 +33,7 @@ export type { PlanReviewRequest, PlanReviewResult } from "./tools/index.ts";
 export type { Question, QuestionRequest, QuestionReply } from "./tools/index.ts";
 
 export { parsePermissionRules } from "./permissions/index.ts";
-export type { SubagentIdentity, SubagentRun } from "./subagents/index.ts";
+export type { SubagentIdentity, SubagentRun } from "./tools/subagents/index.ts";
 export { listSkills } from "./skills/index.ts";
 
 export type { GoalView } from "./tools/goal/index.ts";

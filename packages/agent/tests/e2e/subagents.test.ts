@@ -603,7 +603,12 @@ test("parent cancellation during child creation settles the late child without a
     ),
   ).toHaveLength(0);
   expect(session.toolState("subagents")).toMatchObject([
-    { description: "Late", type: "general-purpose" },
+    {
+      description: "Late",
+      type: "general-purpose",
+      // The parent Run settled only after the late child Run closed as aborted.
+      latestRun: { outcome: "aborted" },
+    },
   ]);
   expect(session.messages.filter((message) => message.role === "user")).toHaveLength(1);
   const stored = await store.list({ cwd: dirs.cwd }, BACKGROUND_CONTEXT);

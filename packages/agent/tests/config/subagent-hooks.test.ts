@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { join } from "node:path";
-import { discoverSubagentTypes } from "../../src/subagents/index.ts";
+import { discoverSubagentTypes } from "../../src/tools/subagents/index.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
