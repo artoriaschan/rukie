@@ -107,7 +107,9 @@ Status: ready-for-agent
 
 ## Further Notes
 
-用户以 to-spec 确认将 Q1–Q11 和完整设计转为正式规范，随后明确调整 tools 的含义，将 Goal、Jobs、Subagent、Plan Mode 的关联能力一并聚合到 tools。最新调整覆盖此前要求外层领域目录与工具入口分离的目录决策，保留内部职责和公开契约。状态 ready-for-agent 表示已具备实施信息，依赖仍须按票遵守。当前仅发布文档，代码与 lint 规则尚未迁移。
+用户以 to-spec 确认将 Q1–Q11 和完整设计转为正式规范，随后明确调整 tools 的含义，将 Goal、Jobs、Subagent、Plan Mode 的关联能力一并聚合到 tools。最新调整覆盖此前要求外层领域目录与工具入口分离的目录决策，保留内部职责和公开契约。
+
+2026-10-07：01–07 已实施并集成（集成点 `ba200b7`），08 已完成 Standards/Spec 审查、契约兼容核对、MCP 验收、边界核对、删除审计与文档核对，并修复了 Oxlint 的"全局工具组装入口"约束指向已删除路径的缺陷（[票 08](issues/08-final-review-and-verification.md)）。状态保持 `ready-for-agent` 而非 `resolved` 的唯一原因：验收要求的完整 `env -u NO_COLOR bun run check` 由执行请求保留给编排者在 `ba200b7` 运行，本票未运行也未收到结果；且该缺陷修复改动了 `.oxlintrc.json`，因此 `ba200b7` 上的聚合结果不覆盖最终提交，该证据必须在最终提交上重跑后追加至票 08。
 
 实施严格按 01 → 02 → 03 → 04 → 05 → 06 → 07 → 08。每票更新当时的所有消费者与相关当前文档，保持可运行，不留待下票修复的破坏。
 

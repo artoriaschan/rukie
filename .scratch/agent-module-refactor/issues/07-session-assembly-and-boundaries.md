@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 Blocked by: [06](06-plan-mode-controller.md)
 
 # 07：Session 工具组装整理与导入方向约束
@@ -69,3 +69,23 @@ MCP 快照与刷新验收复用 packages/agent/tests/e2e/mcp-api.test.ts，授�
   - `createBaseTools` 在 Run 前重建 Plan/Goal 工具对象（改动前复用启动时对象）。两者都是对同一 controller 的无状态闭包，公开测试（工具声明、plan-mode、goal-tools、reminders）未区分，也未观察到行为差异。
   - 静态规则只覆盖配置的导入路径与名称：传递依赖（controller → helper → 自身适配）实测不报，`packages/agent/tests/**` 不适用 Frontend 规则（仅 `src/**`），以免限制跨包集成测试。
   - 工具集的"刷新范围与顺序保持"由 `tool-declarations.test.ts` 的模型可见声明基线与 MCP/子类型套件回归保护；本票未新增针对组装函数内部的单元测试（无内部接缝测试接口）。
+
+- 2026-10-07（票 08 复核，集成点 `ba200b7`，worktree `agent-module-refactor-08`）：本票 AC 全部成立，但**发现并修复一处缺陷**——本票声称的 Oxlint"全局工具组装入口"约束在提交时已经指向被同一次提交删除的路径，实际不生效。
+
+  缺陷与修复：`.oxlintrc.json` 的能力执行模块 override 用 `"../index.ts"` 与 `"../../tools/index.ts"` 表示"全局工具组装入口"，两者都解析到 `packages/agent/src/tools/index.ts`，而该文件正是本票 `340aa1a` 删除的；本票删除它之后，真正的全局组装入口变成 `packages/agent/src/tools/builtin.ts`（内置工厂）与 `packages/agent/src/session/tools.ts`（Session 组装），二者都不在限制内。因此 AC"Oxlint 拒绝能力内部 controller/registry/state 反向导入…全局工具组装入口"当时只对"自身协议适配"一半有效，对"全局组装入口"一半是空规则；ADR-0011 迁移状态与 `AGENTS.md` 的同一表述因此不成立。修复（票 08，`.oxlintrc.json`）：在原有 group 中追加 `"../builtin.ts"`、`"../../tools/builtin.ts"`、`"../../session/tools.ts"`，保留原有三个模式（它们仍防止重新引入旧入口）。
+
+  受控验证（先证缺口、再证命中、再证合法例外，最后清理）：
+  - 加规则前：临时 `packages/agent/src/tools/tmp-boundary/controller.ts` 同时 `import { createBuiltinTools } from "../builtin.ts"` 与 `import { createBaseTools } from "../../session/tools.ts"` → `bunx --no -- oxlint` = `Found 0 warnings and 0 errors.`，exit 0（400 文件），缺口成立。
+  - 加规则后：同一输入 → `Found 0 warnings and 2 errors.`，exit 1，两条命中分别落在 `tmp-boundary/controller.ts:1`（`../builtin.ts`）与 `:2`（`../../session/tools.ts`），消息为本票既有文案。
+  - 合法例外：同目录的适配文件 `tmp-boundary/tools.ts`（`import { leaked } from "./controller.ts"` 与 `import { createJobs } from "../jobs/index.ts"`）在同一次运行中未被标记，说明协议适配与跨能力入口消费仍然放行。
+  - 清理与回归：`rm -rf` 校验绝对路径后删除临时目录，`git status --porcelain` 只余 ` M .oxlintrc.json`，`find packages -name 'tmp-*'` 无结果；干净树 `bunx --no -- oxlint` = `Found 0 warnings and 0 errors.`（398 文件，exit 0）、`bunx --no -- oxfmt --check` exit 0（694 文件）、`bunx --no -- tsc -b` exit 0、`bunx --no -- knip` exit 0、`git diff --check` exit 0。
+  - 规则上限不变：本票已记录"只匹配配置文件里的导入说明符，不校验完整传递依赖图"；票 08 未改变这一点，也未新增任何检查框架或依赖。
+
+  其余 AC 复核：`session/tools.ts` 只导出 `createBaseTools`、`createSubagentTools`、`refreshSubagentTypes`、`selectTools`、`createTurnTools` 与两个输入类型，通过 `ToolGate` 闭包接收 `allowsTool`/`measureTool`，不持有 Session 状态；三个组装点的范围与顺序（seed 不报诊断 → `initialState.tools` 过滤计量 → Run `finally` 重建基础工具 + MCP、发现并报告 warnings/hook warnings、`createTurnTools` 在 Turn 前重算）与 `agent.prepareNextTurnWithContext` 的替换位置由 `tool-declarations.test.ts` 第 ⑨ 项（启动 seed、Run 开始追加 MCP 声明、Turn 准备不重复声明）与第 ⑩ 项（后续 Run 重建动态 `subagent` description）覆盖。`createBaseTools` 在 Run 前重建 Plan/Goal 工具对象这一差异仍按本票原文披露（未观察到行为差异，公开测试不区分）。
+
+  命令与结果（worktree `agent-module-refactor-08`，`ba200b7`，修复后）：
+  - `env -u NO_COLOR bun test packages/agent/tests/e2e/tool-declarations.test.ts packages/agent/tests/e2e/mcp-api.test.ts packages/agent/tests/e2e/mcp-config.test.ts packages/agent/tests/e2e/mcp-oauth.test.ts packages/agent/tests/e2e/mcp-oauth-lifecycle.test.ts packages/agent/tests/e2e/subagent-mcp-oauth.test.ts packages/agent/tests/e2e/job-api.test.ts packages/agent/tests/e2e/subagent-jobs.test.ts` → 122 pass / 0 fail，8 文件，exit 0。
+  - `env -u NO_COLOR bun test packages/agent/tests` → 1390 pass / 0 fail，79 文件，exit 0；`env -u NO_COLOR bun run test:tui` → 956 pass / 0 fail，94 文件，exit 0；`env -u NO_COLOR bun run test:cli` → 127 pass / 0 fail，5 文件，exit 0。
+  - 文档：`docs/architecture.md` 的"尚未全部迁移"句已删除、`tools/bash/`、`tools/jobs/`、`tools/subagents/`、`tools/plan-mode/`、`tools/goal/` 行均链接到实际存在的 `index.ts`（票 08 逐条核对相对链接与锚点，0 断链）；`docs/adr/0011-agent-module-ownership.md` 迁移状态与当前事实一致（追加规则后"拒绝…全局组装入口"一句成立）；`CONTEXT.md` 无模块路径引用、未改；`AGENTS.md` Tools capabilities 条与 `session/tools.ts` 落点一致；`ls -l CLAUDE.md` = `CLAUDE.md -> AGENTS.md`（相对软链接，`git ls-files -s` 为 mode `120000`，未被写成普通文件）。
+
+  观察（非缺陷，不作为本票遗留）：`tools/` 自身不再有 `index.ts`，`hooks/model.ts`、`mcp/index.ts`、`session/tools.ts` 与测试直接导入 `tools/builtin.ts`、`tools/runtime.ts`、`tools/question.ts`。这是本票"删除 `tools/index.ts` 以免绕过能力入口"的决定结果；AGENTS.md 的"每个能力暴露 index.ts"针对能力目录，扁平内置工具文件不属于能力目录。未为此新增入口。

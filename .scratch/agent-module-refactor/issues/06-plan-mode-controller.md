@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 Blocked by: [05](05-subagent-tool-separation.md)
 
 # 06：Plan Mode 状态控制从 Session 提取
@@ -57,3 +57,18 @@ Blocked by: [05](05-subagent-tool-separation.md)
   - 关闭等待（上述第 3 项）为回归保护而非可变异区分的证据：`plan.settleWrites()` 在 teardown 的位置按原样保留并断言了可观察顺序（两次提交均落在 Run store 上、`store-closed` 最后、`opened === closed` 语义），但移动该等待或让 `settleWrites()` 立即 resolve 都不会让该用例失败，因为 Session `serializeStore` 的 FIFO 与 harness 的 mutation line 已保证同一顺序。
   - `docs/architecture.md` 表格中的 `subagents/` 行仍为迁移前描述，按票 05 证据中的约定归票 07 同步；本票只改 Plan Mode 行与句中的 Plan Mode 名。
   - 未运行 `bun run check` 聚合检查（按实施请求保留给票 08）。
+
+- 2026-10-07（票 08 复核，集成点 `ba200b7`，worktree `agent-module-refactor-08`）：逐条独立核对本票证据，结论为**成立**；本票已披露的限制保持披露，未被票 08 消除。
+
+  内容保持核对：`tools/plan-mode/state.ts`（blob `dcb6970c…`）相对 `5c730be:packages/agent/src/plan-mode/index.ts`（blob `105fec9e…`）只有两处差异——导入路径 `../tool-state/index.ts` → `../../tool-state/index.ts`，以及新增 `export type PlanSnapshot = { active: boolean };`；`planState` 的严格版本 1 解析、`PLAN_MODE_EXIT`、`planModeReminder(canSubmit)` 三处逐字未改。`tools/plan-mode/tools.ts`（blob `e081abb5…`）是 `tools/plan-review.ts`（`324c374f…`）与 `tools/enter-plan-mode.ts`（`c97e3141…`）的合并：`createEnterPlanModeTool` 逐字搬入，原文件里名为 `parameters` 的 `exit` schema 与 `enter` 的空 schema 分别改名为 `reviewParameters`/`enterParameters` 以避免同名冲突，两个 schema 内容与所有 description、结果文本、`details`、`isError`、`terminate` 标记不变。`PlanSnapshot` 只在同目录 `controller.ts` 使用，能力入口不转导出（与票内"改为不转导出后 Knip 通过"一致）。
+
+  controller 语义复核（`tools/plan-mode/controller.ts:39-71`）：`setMode` 同值先 `return writes`（既有队列，且不接收其失败）；异值先改内存投影 `active`/`entered` 再 `++revision`，`write = writes.then(() => options.persist(on))`；`persisted` 的 catch 仅在 `current === revision` 时用 `snapshot()`（= `toolState.get("plan")`）重算投影并重新抛出；`writes = persisted.then(noop, noop)` 吞掉失败；通知 `options.changed(...)` 只挂在 `return persisted.then(...)` 上，不在 `writes` 链内。`settleWrites()` 返回 `writes`，`restore()` 从快照重算且不重建实例、不重置 revision。Session 侧 5 个等待点全部为 `await plan.settleWrites()`（Run 开始、`compact()`、`rewind()`、`prepareRequest`、Run teardown），`rewind()` 在 `toolState.restore(...)` 之后调用 `plan.restore()` 再清空 `pendingPlanEvents`；`session/index.ts` 已无 `planActive|planEntered|planWrites|planRevision`（`git grep` 无命中），即 Session 中不再存在第二份 plan 状态规则。
+
+  命令与结果（worktree `agent-module-refactor-08`，`ba200b7`）：
+  - `env -u NO_COLOR bun test packages/agent/tests/e2e/plan-mode.test.ts` → 18 pass / 0 fail，exit 0。本票声称新增的 5 项用例名逐一命中：`a repeated Plan Mode change waits on the pending write`、`a pending Plan Mode notification does not hold the write queue`、`dispose keeps the Run store open until queued Plan Mode writes settle`、`an unsupported or malformed Plan Mode snapshot is ignored on resume`、`the first Plan Mode write saves the Session baseline before the snapshot`；另 2 项（多 revision 失败组合、父 Rewind 后 child 继续）属票 01。
+  - `env -u NO_COLOR bun test packages/agent/tests` → 1390 pass / 0 fail，79 文件，exit 0；`env -u NO_COLOR bun test apps/neant-tui/tests/e2e/plan-mode.test.ts apps/neant-tui/tests/e2e/plan-review.test.ts apps/neant-tui/tests/e2e/enter-plan-mode.test.ts apps/neant-tui/tests/screens/chat/rewind.test.ts apps/neant-cli/tests/plan-mode.test.ts apps/neant-cli/tests/main.test.ts` 属 TUI/CLI 全量套件的一部分（`env -u NO_COLOR bun run test:tui` → 956 pass / 0 fail，exit 0；`env -u NO_COLOR bun run test:cli` → 127 pass / 0 fail，exit 0）。
+  - `git log --oneline 5c730be..ba200b7 -- packages/agent/tests/e2e/plan-mode.test.ts` → `bc88d33`（能力迁移）与 `8a6d5b7`（基线）；`git diff 5c730be..ba200b7 -- packages/agent/tests/e2e/plan-mode.test.ts` 的删除行只有 2 行 import，原断言零改动。
+
+  仍保留的限制（本票已披露，票 08 未使其可独立区分）：
+  - teardown 的 `await plan.settleWrites()` 位置用公开 Store 接缝无法独立区分（把它移到 `closeActiveStore` 之后或让 `settleWrites()` 立即 resolve，本票的 dispose 用例仍通过）；`serializeStore` 的 FIFO 与在途 mutation 已保证同一顺序。票 08 只确认等待点与断言存在，不宣称该位置被变异验证区分。
+  - 本票记录的两项变异验证（同值分支改回已 settled promise → 用例失败；把通知链放进 `writes` → 用例 5002ms 超时失败）未由票 08 重放：重放需要在生产代码上制造临时变异，超出最终审查票的范围。这两项属本票自证。

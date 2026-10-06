@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 Blocked by: [04](04-goal-tool-separation.md)
 
 # 05：Subagent 能力聚合与四个工具适配
@@ -60,3 +60,17 @@ packages/agent/src/subagents/ 整体迁至 tools/subagents/，按 controller.ts�
   - `settle()` 对「尚无 done promise 的创建项」的等待分支按原样保留，但用公开行为无法与「settle 只等待已有 done」区分：父 Run 必须等 `execute` 返回（即创建完成并已挂上 done）才能结束，变异该分支后新测试仍通过；仅能确认该分支代码路径保留、且失败释放路径下的唤醒为必要（上述变异 A）。
   - 本票未改动 `docs/architecture.md`（其中 `subagents/` 归属描述仍为迁移前状态），按实施请求归票 07 同步。
   - 未运行 `bun run check` 聚合检查（按实施请求保留给最终票）。
+
+- 2026-10-07（票 08 复核，集成点 `ba200b7`，worktree `agent-module-refactor-08`）：逐条独立核对本票证据，结论为**证据成立，但有一处数字需要更正**。
+
+  内容保持核对：把 `git show 5c730be:packages/agent/src/subagents/index.ts` 按区间切开与新文件 `diff`，`parseRun` + `subagentRunState` + `subagentsState` 区间 81 行逐字节相同（`SubagentRun` 与 `SubagentIdentity` 只是位置从 `SUBAGENT_PROMPT` 前后移到文件首尾，声明内容不变）；`tools/subagents/types.ts` 相对 `subagents/types.ts` 只有 1 行导入路径改动（`../hooks/index.ts` → `../../hooks/index.ts`，blob `dd7c54a` → `718c78a`）。`tools/subagents/tools.ts` 的四个工具 name/label/description/parameters 与原文逐字相同，`delegate` 的 description 由原来的 `setTypes` 赋值改为 getter（`get description()` 读 `subagents.types()`），声明内容与刷新时机由冻结基线 `tool-declarations.test.ts` 第 ⑦⑩ 项覆盖（该文件 blob `7e7ccb33…` 自 `8a6d5b7` 起未改）。
+
+  数字更正：本票原文写"由 `subagent-mcp-oauth.test.ts` 4 项通过"。该文件在 `ba200b7` 实跑为 **6 项**：`test.each(["subagent","subagent_fork"])` 两组各展开 2 项（child origin + 授权后真实工具 + 父子凭据共享 / Headless 无授权工具），加 `a child's cancelled OAuth interaction remains non-error…` 与 `an authenticate-only type keeps its exact restriction after logging in` 两项。命令：`env -u NO_COLOR bun test packages/agent/tests/e2e/subagent-mcp-oauth.test.ts` → 6 pass / 0 fail，exit 0；文件 blob 在 `5c730be` 与 `ba200b7` 均为 `904b5e72c407ee9a3ef70b8c0f91b3fbe57318c4`（断言零改动）。该文件覆盖 AC 中的 child origin / 授权后刷新 / 凭据共享 / 取消非错误 / authenticate-only 白名单；"默认类型仅继承父已可用 server"与"显式白名单排除继承 MCP 工具"由冻结基线 `tool-declarations.test.ts` 第 ⑦⑧ 项覆盖，不是同一个文件。
+
+  本票声称的 5 个用例名逐一存在：`git grep -F` 命中 `a failed child creation releases its run slot and wakes the waiting parent`、`parent cancellation during child creation settles the late child without a model request`、`parallel messages to an idle cold child start one Run and steer the following message`、`send_message steers the active child before its next model request and list_agents reports running`、`an idle continuation is rejected at eight running children while active steering remains available`（分别在 `subagents.test.ts`、`subagent-directory.test.ts`）。
+
+  `a4b16f4`「remove duplicated assertions in the late child cancellation case」只删除本票**新增**用例中重复粘贴的 3 行（同一 `expect(await rejected).toBeInstanceOf(Error)` 与同一注释各出现两次），未触碰任何既有断言：`git show a4b16f4 --stat` = 1 file changed, 3 deletions(-)。
+
+  复核运行的命令与结果：`env -u NO_COLOR bun test packages/agent/tests` → 1390 pass / 0 fail，6046 expect，79 文件，exit 0（本票基点记录为 1385 pass / 6027 expect / 79 文件；差值来自票 06 新增的 5 项 Plan Mode 用例，非本票行为变化）。`bunx --no -- oxlint` exit 0（398 文件，0/0）、`bunx --no -- tsc -b` exit 0、`bunx --no -- knip` exit 0、`bunx --no -- oxfmt --check` exit 0（694 文件）——这些由票 08 在集成点重跑，与票内记录一致。
+
+  仍保留的限制（本票已披露，票 08 未使其可独立区分）：`settle()` 的"尚无 done promise 的创建项"分支仍只能证明代码路径保留，用公开行为无法与"settle 只等待已有 done"区分；创建失败释放名额与唤醒这一半由变异验证（删除 `running.delete(key)` → 用例 5002ms 超时失败）区分，该变异结论未在票 08 重放，属于本票自证。
