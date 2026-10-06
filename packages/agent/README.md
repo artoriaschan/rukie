@@ -14,4 +14,6 @@ Frontend 使用 `session.jobs()` 获取本 Session 的后台任务快照，包�
 
 stdout 与 stderr 分别保存在带绝对字节偏移的内存 ring，合计保留 256 KiB；任务结束后合计保留 16 KiB，始终在 UTF-8 字符边界截断。完整原始输出写入 Session 专属的 0700 临时目录，日志权限为 0600。发生内存丢弃时，模型输出附带完整日志路径。
 
-`clear()` 终止任务、移除输出记录与目录，registry 可继续用于子 Run；`dispose()` 永久关闭 registry。清理先向拥有的进程组发 SIGTERM，3 秒后升级 SIGKILL，输出 drain 最长 3.1 秒。进程 `exit` 回调同步向所有仍活跃的进程组发 SIGKILL；自行脱离进程组的后代不在终止范围内，清理会断开它继承的输出管道以避免挂起。前台 shell 已完成但仍活跃的同组后代也保留清理归属。
+子 Session 拥有独立 registry 与 10 个后台任务名额，`job_*` 只操作自己的任务，完成通知只交给子模型；`job_event` 沿现有 `subagent_event` 转给父观察者，父 `jobs()` 与 `job_list` 不含子任务。子 Run 成功、失败或中止时，在发布 `result` 与解除运行占用前清理自己的任务；父任务继续运行。清理不发送任务事件、结束通知或唤醒输入，`send_message` 续跑同一子 Session 时旧任务 id 已不存在，新编号继续递增。
+
+`clear()` 终止任务、移除输出记录与目录，registry 可继续用于子 Run；`dispose()` 永久关闭 registry。清理先抑制全部任务的结束通知，子 Session 清理还关闭输出与事件回调；普通 Session dispose 保留任务结束事件。随后向拥有的进程组发 SIGTERM，3 秒后升级 SIGKILL，输出 drain 最长 3.1 秒；并发清理共用一次收束。进程 `exit` 回调同步向所有仍活跃的进程组发 SIGKILL；自行脱离进程组的后代不在终止范围内，清理会断开它继承的输出管道以避免挂起。前台 shell 已完成但仍活跃的同组后代也保留清理归属。

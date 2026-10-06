@@ -41,6 +41,7 @@ export function createJobs(
   let sequence = options.initialSequence ?? 0;
   let spillDir: string | undefined;
   let disposed = false;
+  let clearing: Promise<void> | undefined;
   const ownedGroups = new Set<number>();
   const records = new Map<string, ReturnType<typeof start>>();
   function start(input: {
@@ -85,6 +86,7 @@ export function createJobs(
     let visible = input.background;
     let onOutput = input.onOutput;
     let suppressed = false;
+    let silenced = false;
     let failure: unknown;
     let offset = 0;
     let modelOffset = 0;
@@ -92,7 +94,7 @@ export function createJobs(
     let outputTimer: ReturnType<typeof setTimeout> | undefined;
     let outputPending = false;
     const emit = (kind: JobEvent["kind"]) => {
-      if (visible) options.onEvent?.({ type: "job_event", kind, job: { ...view } });
+      if (visible && !silenced) options.onEvent?.({ type: "job_event", kind, job: { ...view } });
     };
     const flushOutput = () => {
       clearTimeout(outputTimer);
@@ -134,6 +136,7 @@ export function createJobs(
       }
     }
     const retain = (stream: OutputChunk["stream"], text: string) => {
+      if (silenced) return;
       const bytes = Buffer.from(text);
       if (!bytes.length) return;
       rings[stream].push({ stream, bytes, offset });
@@ -301,6 +304,18 @@ export function createJobs(
       read,
       collect,
       kill,
+      prepareCleanup(silent: boolean) {
+        suppressed = true;
+        if (!silent) return;
+        silenced = true;
+        onOutput = undefined;
+        clearTimeout(outputTimer);
+        outputTimer = undefined;
+        outputPending = false;
+        rings.stdout.length = 0;
+        rings.stderr.length = 0;
+        retained = 0;
+      },
       async cleanup() {
         kill("teardown");
         let timer: ReturnType<typeof setTimeout> | undefined;
@@ -348,7 +363,19 @@ export function createJobs(
     return job;
   }
   /** Reusable cleanup for a child Run; dispose permanently closes the registry. */
-  async function clear() {
+  async function clear(silent = true) {
+    // Suppress notifications for every record before any group signal. Child
+    // teardown also closes event/output callbacks, including overlapping dispose.
+    for (const job of records.values()) job.prepareCleanup(silent);
+    if (clearing) return clearing;
+    clearing = clearRecords();
+    try {
+      await clearing;
+    } finally {
+      clearing = undefined;
+    }
+  }
+  async function clearRecords() {
     // A completed foreground shell can leave a descendant with closed pipes.
     // Keep group ownership after its invisible output record is forgotten.
     for (const pid of ownedGroups) signalGroup(pid, "SIGTERM");
@@ -388,9 +415,9 @@ export function createJobs(
       records.delete(id);
     },
     clear,
-    async dispose() {
+    async dispose(silent = false) {
       disposed = true;
-      await clear();
+      await clear(silent);
     },
   };
 }
