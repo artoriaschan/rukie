@@ -130,10 +130,10 @@ test("source crop follows scroll clipping without reupload, deletes offscreen an
   );
   try {
     terminal.stdin.write(reply);
-    await terminal.waitFor(() => terminal.output().includes("x=20,y=16,w=60,h=24,c=10,r=4"));
-    expect(terminal.output()).toContain("\x1b[2;1H\x1b_Ga=p");
+    await terminal.waitFor(() => terminal.output().includes("x=20,y=16,w=60,h=24,c=10,r=2"));
+    expect(terminal.output()).toContain("\x1b[4;1H\x1b_Ga=p");
     scroll.current!.scrollBy(2);
-    await terminal.waitFor(() => terminal.output().includes("x=20,y=28,w=60,h=24,c=10,r=4"));
+    await terminal.waitFor(() => terminal.output().includes("x=20,y=16,w=60,h=48,c=10,r=4"));
     expect(terminal.output().match(/a=t,/g)?.length).toBe(1);
     scroll.current!.scrollToBottom();
     await terminal.waitFor(() => terminal.output().includes("a=d,d=I"));
@@ -344,6 +344,45 @@ test("late terminal responses and DA never become text and graphics are deleted 
     expect(terminal.output()).toContain("a=d,d=I");
     expect(terminal.terminal.buffer.active.type).toBe("normal");
     expect(terminal.stdin.isRaw).toBe(false);
+  } finally {
+    app.unmount();
+    terminal.dispose();
+  }
+});
+
+test("scroll clipping removes fitted image padding before source pixels", async () => {
+  const terminal = createTerminal(40, 12);
+  const square = Buffer.from(
+    await Bun.file(new URL("../fixtures/100x100.png", import.meta.url)).arrayBuffer(),
+  ).toString("base64");
+  const scroll = { current: null as ScrollHandle | null };
+  const app = render(
+    <Box height={3}>
+      <ScrollBox ref={scroll} height={3} initialFollow={false}>
+        <Image
+          data={square}
+          mimeType="image/png"
+          sourceWidth={100}
+          sourceHeight={100}
+          width={4}
+          height={4}
+        />
+        <Text>{"tail\ntail\ntail"}</Text>
+      </ScrollBox>
+    </Box>,
+    { ...terminal, fullscreen: true, env: {} },
+  );
+  try {
+    terminal.stdin.write("\x1b_Gi=2147483647;OK\x1b\\\x1b[6;16;8t");
+    await terminal.waitFor(() => terminal.output().includes("a=p"));
+    expect(terminal.output()).toContain("x=0,y=0,w=100,h=100,c=4,r=2");
+    expect(terminal.output()).toContain("\x1b[2;1H\x1b_Ga=p");
+    scroll.current!.scrollBy(1);
+    await terminal.waitFor(() => terminal.output().includes("\x1b[1;1H\x1b_Ga=p"));
+    expect(terminal.output().match(/x=0,y=0,w=100,h=100,c=4,r=2/g)).toHaveLength(2);
+    scroll.current!.scrollBy(1);
+    await terminal.waitFor(() => terminal.output().includes("x=0,y=50,w=100,h=50,c=4,r=1"));
+    expect(terminal.output().match(/a=t,/g)).toHaveLength(1);
   } finally {
     app.unmount();
     terminal.dispose();

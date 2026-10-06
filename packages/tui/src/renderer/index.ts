@@ -31,7 +31,7 @@ interface Container {
   screen: ReturnType<typeof createScreen>;
   hover: ReturnType<typeof createHover>;
   graphics: ReturnType<typeof createGraphics>;
-  graphicsSupported(): boolean;
+  graphicsState(): ReturnType<ReturnType<typeof createTerminalSession>["getGraphics"]>;
   completed: WeakSet<HostNode>;
   pending: LayoutNode[];
   timer?: ReturnType<typeof setTimeout>;
@@ -49,7 +49,7 @@ function paint(container: Container) {
       container.options.fullscreen ? stdout.rows : undefined,
     );
     stdout.write(container.screen(layout, stdout.columns, stdout.rows, container.pending));
-    container.graphics.paint(layout, stdout.columns, stdout.rows, container.graphicsSupported());
+    container.graphics.paint(layout, stdout.columns, stdout.rows, container.graphicsState());
     container.hover.record(layout, stdout.columns, stdout.rows);
     container.pending = [];
   } catch (error) {
@@ -164,7 +164,7 @@ export function render(element: ReactNode, options: RenderOptions) {
     screen: createScreen(options.fullscreen),
     hover: createHover(),
     graphics: createGraphics((text) => options.stdout.write(text)),
-    graphicsSupported: () => Boolean(options.fullscreen && terminal.getGraphics().supported),
+    graphicsState: () => terminal.getGraphics(),
     completed: new WeakSet(),
     pending: [],
     onError(error) {

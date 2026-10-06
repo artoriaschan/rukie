@@ -14,3 +14,7 @@ Blocked by: 01
 公开 seam 的 red→green：缺少 Image/hook 导出、拖动 motion、滚动重复上传三个行为先失败后通过。graphics.test.tsx 8 项覆盖 literal crop/placement、chunk payload、去重/预算、真实 8000×8000 PNG、晚到分块回复/DA 与相邻键、resize/offscreen、paint failure/raw-mode 恢复。首轮颜色相关旧测试受 NO_COLOR 影响；按仓库要求清除后通过。全 renderer 运行发现 resize 查询造成旧 hover 等待条件过早；只在已确认 Kitty 时刷新 cell metrics 后，89 pass / 0 fail / 519 assertions / 18 files，2.43s。
 
 验证：`env -u NO_COLOR bun test packages/tui/tests`；`bunx --no -- oxfmt --check packages/tui`；`bunx --no -- oxlint packages/tui`；`bunx --no -- tsc -b packages/tui`；`bunx --no -- knip` 全部退出 0。集成后的全仓 `env -u NO_COLOR bun run check` 由集成 agent 执行。
+
+2026-10-06：复审前修正 Kitty letterbox 裁剪根因。协议 c/r 等比例绘制，原实现把整个预留 node 当作图像矩形，导致 scroll 裁掉留白时误删原像素。先用公共 render red 测试复现 square100×100/4×4cells/8×16metrics/3rowsviewport 被错裁为 h75；renderer 现按实际 cell metrics（缺失则 1:2）等比拟合、整 cell 向下取整并居中，先 clip 拟合矩形再换算源像素。slot/layout 保持原尺寸，公共 Image/hook API 未变。回归验证 padding-scroll1 保持完整 h100，scroll2 才裁 y50/h50，上传仍只有一次。先前 crop regression 调整为实际物理比例正确的 literal placements。README 明示整 cell 取整和 Kitty 最终子 cell 留白。
+
+本次补充验证：`env -u NO_COLOR bun test packages/tui/tests/renderer/graphics.test.tsx packages/tui/tests/renderer/fullscreen.test.tsx` 16 pass / 0 fail / 83 assertions / 2 files，578ms；`oxfmt --check packages/tui`、`oxlint packages/tui`、`tsc -b packages/tui` 退出 0。

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { HostNode, LayoutNode } from "../layout";
+import type { TerminalGraphics } from "../terminal";
 
 const command = (controls: string, data = "") => `\x1b_G${controls};${data}\x1b\\`;
 const MAX_IMAGES = 32;
@@ -40,7 +41,7 @@ export function createGraphics(write: (text: string) => unknown) {
 
   return {
     clear,
-    paint(root: LayoutNode, columns: number, rows: number, supported: boolean) {
+    paint(root: LayoutNode, columns: number, rows: number, graphics: TerminalGraphics) {
       if (viewport.columns !== columns || viewport.rows !== rows) clear();
       viewport = { columns, rows };
       const candidates: {
@@ -64,13 +65,15 @@ export function createGraphics(write: (text: string) => unknown) {
         if (node.type === "tui-image") candidates.push({ node, ...rect });
         for (const child of node.children) visit(child, node.type === "tui-scroll" ? rect : clip);
       }
-      if (supported) visit(root, { left: 0, top: 0, right: columns, bottom: rows });
+      if (graphics.supported) visit(root, { left: 0, top: 0, right: columns, bottom: rows });
       const used = new Set<string>();
       const next = new Map<HostNode, Placement>();
       let bytes = 0;
       let pixels = 0;
       let output = "";
-      for (const { node, left, top, right, bottom } of candidates) {
+      for (const candidate of candidates) {
+        const { node } = candidate;
+        let { left, top, right, bottom } = candidate;
         const { data, mimeType, sourceWidth, sourceHeight, crop } = node.props;
         if (
           !data ||
@@ -102,6 +105,29 @@ export function createGraphics(write: (text: string) => unknown) {
           source.height <= 0
         )
           continue;
+        // Kitty c/r preserves aspect rather than stretching. Fit before clipping so
+        // scroll offsets crossing padding do not discard pixels from the source.
+        const cellWidth = graphics.cellWidth ?? 1;
+        const cellHeight = graphics.cellHeight ?? 2;
+        const scale = Math.min(
+          (node.width * cellWidth) / source.width,
+          (node.height * cellHeight) / source.height,
+        );
+        const fittedWidth = Math.max(
+          1,
+          Math.min(node.width, Math.floor((source.width * scale) / cellWidth)),
+        );
+        const fittedHeight = Math.max(
+          1,
+          Math.min(node.height, Math.floor((source.height * scale) / cellHeight)),
+        );
+        const fittedX = node.x + Math.floor((node.width - fittedWidth) / 2);
+        const fittedY = node.y + Math.floor((node.height - fittedHeight) / 2);
+        left = Math.max(left, fittedX);
+        top = Math.max(top, fittedY);
+        right = Math.min(right, fittedX + fittedWidth);
+        bottom = Math.min(bottom, fittedY + fittedHeight);
+        if (left >= right || top >= bottom) continue;
         const imageBytes =
           (data.length * 3) / 4 - (data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0);
         const imagePixels = sourceWidth * sourceHeight;
@@ -136,23 +162,23 @@ export function createGraphics(write: (text: string) => unknown) {
           0,
           Math.min(
             sourceWidth - 1,
-            Math.floor(source.x + ((left - node.x) * source.width) / node.width),
+            Math.floor(source.x + ((left - fittedX) * source.width) / fittedWidth),
           ),
         );
         const y = Math.max(
           0,
           Math.min(
             sourceHeight - 1,
-            Math.floor(source.y + ((top - node.y) * source.height) / node.height),
+            Math.floor(source.y + ((top - fittedY) * source.height) / fittedHeight),
           ),
         );
         const width = Math.max(
           1,
-          Math.min(sourceWidth - x, Math.ceil(((right - left) * source.width) / node.width)),
+          Math.min(sourceWidth - x, Math.ceil(((right - left) * source.width) / fittedWidth)),
         );
         const height = Math.max(
           1,
-          Math.min(sourceHeight - y, Math.ceil(((bottom - top) * source.height) / node.height)),
+          Math.min(sourceHeight - y, Math.ceil(((bottom - top) * source.height) / fittedHeight)),
         );
         const signature = `${resource.id}:${left}:${top}:${right}:${bottom}:${x}:${y}:${width}:${height}`;
         const previous = placements.get(node.source);
