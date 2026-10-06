@@ -1,16 +1,32 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import {
   McpClient,
+  McpAuthRequiredError,
   StdioTransport,
   StreamableHttpTransport,
   toLlmContent,
   type Tool,
 } from "@earendil-works/pi-mcp";
+import {
+  McpOAuthProvider,
+  McpOAuthAuthorizationRequiredError,
+  MemoryOAuthStateStore,
+  adaptOAuthProvider,
+} from "@earendil-works/pi-mcp/oauth";
 import { join } from "node:path";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { createUserVisibleError, type CustomSessionEvent, type Settings } from "@neant/shared";
 import { isTrustedProject } from "../config/index.ts";
+
+export interface McpAuthRequest {
+  server: string;
+  authorizationUrl: string;
+  origin?: { agentId: string; description: string };
+  signal: AbortSignal;
+}
+export type McpAuthReply = { type: "callback-url"; url: string } | { type: "cancelled" };
+export type OnMcpAuth = (request: McpAuthRequest) => Promise<McpAuthReply>;
 
 const StdioConfig = Type.Object({
   type: Type.Optional(Type.Literal("stdio")),
@@ -51,11 +67,22 @@ function adaptTool(
   return adapted;
 }
 
+/** Authorization state belongs to the Session; connections still belong to each Run. */
+export function createMcpAuthState() {
+  return {
+    needsAuth: new Set<string>(),
+    stores: new Map<string, MemoryOAuthStateStore>(),
+  };
+}
+
 /** Connections belong to a Run, so later Runs rediscover current server capabilities. */
-export function createMcpConnections() {
+export function createMcpConnections(authState: ReturnType<typeof createMcpAuthState>) {
   const clients: McpClient[] = [];
   const connected = new Map<string, McpClient>();
   const errors: Extract<CustomSessionEvent, { type: "mcp_server_error" }>[] = [];
+  const authRequired: Extract<CustomSessionEvent, { type: "mcp_auth_required" }>[] = [];
+  const authTools = new Set<string>();
+  const reportedAuth = new Set<string>();
   const tools: AgentTool[] = [];
   const toolServers = new Map<string, string>();
   const descriptions: string[] = [];
@@ -109,6 +136,8 @@ export function createMcpConnections() {
     tools,
     toolServers,
     errors,
+    authRequired,
+    authTools,
     async callHookTool(
       server: string,
       tool: string,
@@ -135,6 +164,7 @@ export function createMcpConnections() {
       settings: Settings;
       trustProjectMcp?: boolean;
       signal?: AbortSignal;
+      interactive?: boolean;
     }) {
       const servers = await readConfig(join(options.homeDir, ".neant/mcp.json"));
       if (options.trustProjectMcp || isTrustedProject(options.cwd, options.settings)) {
@@ -156,6 +186,7 @@ export function createMcpConnections() {
           version: "0.1.0",
         });
         let ready = false;
+        let requireAuth: (() => void) | undefined;
         clients.push(client);
         client.onError((error) => {
           if (!closing) report(server, error);
@@ -171,9 +202,62 @@ export function createMcpConnections() {
               `Invalid MCP configuration: ${invalid.instancePath || "/"} ${invalid.message}`,
             );
           const entry = Value.Parse(ServerConfig, value);
+          const key =
+            "url" in entry ? JSON.stringify([server, entry.url, entry.headers]) : undefined;
+          requireAuth = () => {
+            if (key) authState.needsAuth.add(key);
+            if (!reportedAuth.has(server)) {
+              reportedAuth.add(server);
+              authRequired.push({ type: "mcp_auth_required", server });
+            }
+            if (!options.interactive) return;
+            const name = `mcp__${server}__authenticate`;
+            authTools.add(name);
+            tools.push({
+              name,
+              label: name,
+              description: `The ${server} MCP server is installed but requires authentication. Call this tool to start the OAuth flow; the user completes it in their browser and the server's real tools become available in your next turn.`,
+              parameters: Type.Object({}),
+              async execute() {
+                return {
+                  content: [
+                    { type: "text", text: "MCP OAuth authentication is not implemented yet." },
+                  ],
+                  details: {},
+                  isError: true,
+                };
+              },
+            });
+            toolServers.set(name, server);
+            descriptions.push(`${server}: requires authentication. Tools: ${name}`);
+          };
+          if (key && authState.needsAuth.has(key)) {
+            requireAuth();
+            continue;
+          }
+          let provider: McpOAuthProvider | undefined;
+          if ("url" in entry && key) {
+            let store = authState.stores.get(key);
+            if (!store) {
+              store = new MemoryOAuthStateStore();
+              authState.stores.set(key, store);
+            }
+            provider = new McpOAuthProvider({
+              serverUrl: entry.url,
+              redirectUrl: "http://localhost/callback",
+              clientMetadata: { client_name: "Neant" },
+              store,
+              // Discovery may produce a URL, but only an explicit Interaction opens it.
+              onRedirect: () => {},
+            });
+          }
           const transport =
             "url" in entry
-              ? new StreamableHttpTransport({ url: entry.url, headers: entry.headers })
+              ? new StreamableHttpTransport({
+                  url: entry.url,
+                  headers: entry.headers,
+                  authProvider: provider && adaptOAuthProvider(provider),
+                })
               : new StdioTransport({
                   command: entry.command,
                   args: entry.args,
@@ -199,7 +283,13 @@ export function createMcpConnections() {
         } catch (error) {
           await client.close();
           options.signal?.throwIfAborted();
-          report(server, error);
+          if (
+            requireAuth &&
+            (error instanceof McpAuthRequiredError ||
+              error instanceof McpOAuthAuthorizationRequiredError)
+          )
+            requireAuth();
+          else report(server, error);
         }
       }
     },

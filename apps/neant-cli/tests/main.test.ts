@@ -6,6 +6,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createSession } from "@neant/agent";
 import { main } from "../src/main.ts";
+// Load the owned HTTP fixture at runtime: CLI's composite TypeScript project excludes agent tests.
+const {
+  mcpOAuthServer,
+}: {
+  mcpOAuthServer: () => { url: string; stop: () => Promise<void> };
+} = await import(
+  new URL("../../../packages/agent/tests/helpers/mcp-oauth-server.ts", import.meta.url).href
+);
 import { echoModel } from "./helpers/echo-model.ts";
 
 async function run(argv: string[], stdin = "") {
@@ -706,6 +714,65 @@ test.each(["prompt", "stdin", "stdin-stream-json", "goal", "goal-interrupted"])(
       expect(stderr).not.toContain("Session already has an active Run");
     } finally {
       firstReply.resolve();
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
+
+test.each(["text", "stream-json"])(
+  "Headless %s reports OAuth login requirements and completes without auth tools",
+  async (format) => {
+    const root = await mkdtemp(join(tmpdir(), "neant-cli-mcp-oauth-"));
+    const server = mcpOAuthServer();
+    let stdout = "";
+    let stderr = "";
+    try {
+      await Bun.write(
+        join(root, ".neant/mcp.json"),
+        JSON.stringify({ mcpServers: { srv: { type: "http", url: server.url } } }),
+      );
+      const exitCode = await main(["-p", "continue", "--output-format", format], {
+        readStdin: async () => "",
+        stdout: (text) => {
+          stdout += text;
+        },
+        stderr: (text) => {
+          stderr += text;
+        },
+        session: { cwd: root, homeDir: root, ...echoModel() },
+      });
+      expect(exitCode).toBe(0);
+      expect(stderr).toContain("needs authentication; run /mcp login srv in the TUI");
+      if (format === "stream-json") {
+        const events: unknown[] = stdout
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line));
+        expect(
+          events.filter(
+            (event) =>
+              typeof event === "object" &&
+              event !== null &&
+              "type" in event &&
+              event.type === "mcp_auth_required",
+          ),
+        ).toMatchObject([{ server: "srv" }]);
+        expect(
+          events.filter(
+            (event) =>
+              typeof event === "object" &&
+              event !== null &&
+              "type" in event &&
+              event.type === "mcp_server_error",
+          ),
+        ).toMatchObject([
+          { server: "srv", error: "needs authentication; run /mcp login srv in the TUI" },
+        ]);
+        expect(stdout).not.toContain("mcp__srv__authenticate");
+        expect(events.at(-1)).toMatchObject({ type: "result", success: true });
+      } else expect(stdout).toContain("echo:");
+    } finally {
+      await server.stop();
       await rm(root, { recursive: true, force: true });
     }
   },

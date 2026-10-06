@@ -119,6 +119,8 @@ interface PermissionGateOptions {
   setMode?(mode: PermissionMode): void;
   onHookWarning?(field: string, hook?: string): void | Promise<void>;
   isRunStopped?(): boolean;
+  /** Only Session-generated authentication tools get the interaction-tool default. */
+  isMcpAuthTool?(name: string): boolean;
   stopRun?(reason?: string): void;
 }
 
@@ -183,10 +185,12 @@ export function createPermissionGate(options: PermissionGateOptions) {
 
   async function evaluateModeStage(context: PermissionCall): Promise<PermissionStageDecision> {
     const { toolCall, args, assistantMessage, mode, signal } = context;
-    const decision = decidePermission({
-      toolName: toolCall.name,
-      mode,
-    });
+    const decision = options.isMcpAuthTool?.(toolCall.name)
+      ? "allow"
+      : decidePermission({
+          toolName: toolCall.name,
+          mode,
+        });
     if (decision !== "review") {
       if (decision === "deny") return { decision, reason: denialReason(context), by: "user" };
       return { decision };
@@ -202,7 +206,11 @@ export function createPermissionGate(options: PermissionGateOptions) {
       if (call.type !== "toolCall" || batch.has(call.id)) continue;
       // Each hook must decide before review begins, including later calls in this batch.
       if (options.preToolUse && call.id !== toolCall.id) continue;
-      if (decidePermission({ mode, toolName: call.name }) !== "review") continue;
+      if (
+        options.isMcpAuthTool?.(call.name) ||
+        decidePermission({ mode, toolName: call.name }) !== "review"
+      )
+        continue;
       const tool = options.getAgentState().tools.find((item) => item.name === call.name);
       if (!tool) continue;
       let validated: unknown;

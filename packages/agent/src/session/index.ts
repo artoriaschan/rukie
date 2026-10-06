@@ -69,7 +69,7 @@ import {
   type ReminderSource,
 } from "../reminders/index.ts";
 import { discoverSkills, skillInvocation, skillsReminder } from "../skills/index.ts";
-import { createMcpConnections } from "../mcp/index.ts";
+import { createMcpConnections, createMcpAuthState, type OnMcpAuth } from "../mcp/index.ts";
 import { compactTurn, estimateContextTokens, restoreContext } from "../compaction/index.ts";
 import { createSessionTitle, titleSourceState, type TitleSource } from "../session-title/index.ts";
 import { sideQuestion } from "../side-question/index.ts";
@@ -131,6 +131,8 @@ export interface SessionOptions {
   onQuestion?: (request: QuestionRequest) => Promise<QuestionReply>;
   /** Review markdown plans; plan tools are absent when this callback is omitted. */
   onPlanReview?: OnPlanReview;
+  /** Present MCP OAuth authorization; authentication tools are absent without this callback. */
+  onMcpAuth?: OnMcpAuth;
   /** Load this project's .mcp.json even when it is not in the user trust list. */
   trustProjectMcp?: boolean;
   /** Clock used for reminder dates and backup retention; defaults to the local current date. */
@@ -640,6 +642,7 @@ async function createSessionInternal(
     getMode: permissionConfiguration.getMode,
     setMode: permissionConfiguration.setMode,
     getAgentState: () => agent.state,
+    isMcpAuthTool: (name) => runMcp?.authTools.has(name) ?? false,
     getProjectInstructions: () =>
       transcriptMessages.flatMap((message) =>
         message.role === "system-reminder" &&
@@ -998,6 +1001,7 @@ async function createSessionInternal(
   let runController: AbortController | undefined;
   const sidePendingCalls = new Set<string>();
   const sideLifetime = new AbortController();
+  const mcpAuthState = createMcpAuthState();
   let runMcp: ReturnType<typeof createMcpConnections> | undefined;
   let disposePromise: Promise<void> | undefined;
   const goal = createGoalController({
@@ -1719,9 +1723,18 @@ async function createSessionInternal(
         agent.clearSteeringQueue();
         subagents.abort();
       };
-      const mcp = createMcpConnections();
+      const mcp = createMcpConnections(mcpAuthState);
       runMcp = mcp;
       const emitMcpErrors = async () => {
+        for (const event of mcp.authRequired.splice(0)) {
+          await emit(event);
+          if (!options.onMcpAuth)
+            mcp.errors.push({
+              type: "mcp_server_error",
+              server: event.server,
+              error: `needs authentication; run /mcp login ${event.server} in the TUI`,
+            });
+        }
         for (const event of mcp.errors.splice(0)) {
           (options.onWarning ?? console.warn)(`MCP server ${event.server}: ${event.error}`);
           await emit(event);
@@ -1765,6 +1778,7 @@ async function createSessionInternal(
             settings,
             trustProjectMcp: options.trustProjectMcp,
             signal,
+            interactive: !!options.onMcpAuth,
           });
         } finally {
           const generalTools = [

@@ -78,6 +78,7 @@ export type CustomSessionEvent<PiEvent extends { type: string } = never> =
       reason?: string;
     }
   | { type: "mcp_server_error"; server: string; error: string }
+  | { type: "mcp_auth_required"; server: string }
   | { type: "compaction_start"; trigger: "auto" | "manual"; tokensBefore: number }
   | {
       type: "compaction_end";

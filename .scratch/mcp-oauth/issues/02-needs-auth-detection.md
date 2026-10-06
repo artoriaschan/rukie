@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] 新增 fake OAuth + MCP fixture（`Bun.serve`），端点：资源元数据、AS 元数据、DCR、`/authorize`、`/token`（authorization_code + refresh）、MCP 端点（没有 token 或 token 失效时返回 401 并带 `WWW-Authenticate`）；测试可以让 token 失效，并读到请求记录
 - [ ] http server 一律带上由 pi `McpOAuthProvider` 经 `adaptOAuthProvider` 得到的 authProvider；先用内存存储，文件存储在 03 实现
