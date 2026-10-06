@@ -139,4 +139,6 @@ Status: resolved
 
 最终 `rtk proxy caffeinate -is env -u NO_COLOR bun run check` exit 0：格式、lint、类型、Knip 与 **2095 tests / 0 fail / 10324 assertions / 152 files** 全部通过（244.39 s）。macOS 真实剪贴板验证及恢复证据见 [07](issues/07-ctrl-v-clipboard.md)。各票保留 focused、red→green 与实施证据。
 
-01–08 与最终审查修复工作树全部按 clean/merged 校验后归档；集成分支保留。规格与各票均为 resolved。
+01–08 与最终审查修复工作树全部按 clean/merged 校验后归档。后续已按用户要求合入 main，并删除集成工作树及已合并分支；规格与各票均为 resolved。
+
+2026-10-06 main 集成提交 `9e7c599b87d2b32cc35df3af713912eb0f9aec91`；合并后全量检查 exit 0，**2153 tests / 0 fail / 11065 assertions / 153 files**。冲突处理、两项功能共存与清理证据见 [main 集成验收](review.md#main-集成与清理)。

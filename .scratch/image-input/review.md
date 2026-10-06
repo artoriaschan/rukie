@@ -62,4 +62,14 @@ Standards：2 项规范违约、2 项判断项，最高为 P1，全部关闭。S
 
 ## 收尾
 
-九个 implementer 工作树（01–08 与 review-fixes）已确认干净、HEAD 属于最终集成历史后通过 managed archive 归档；artifact 列表显示九个 `archived_worktree`，本地目录与 Git worktree 注册均已移除。集成工作树保留在 `codex/image-input`。
+九个 implementer 工作树（01–08 与 review-fixes）已确认干净、HEAD 属于最终集成历史后通过 managed archive 归档；artifact 列表显示九个 `archived_worktree`，本地目录与 Git worktree 注册均已移除。该阶段保留集成工作树用于后续 main 合并。
+
+## main 集成与清理
+
+2026-10-06：按用户“合并到 main，删除 worktree”的要求，将 `9d3808990f8520a94f85de1047a97d9b64892229` 合入已包含文件变更检测的 main；合并提交为 `9e7c599b87d2b32cc35df3af713912eb0f9aec91`，另一父提交为 `6bf269d424be64427c0840f0abfc303190dfe8da`。
+
+两处冲突已保留双方意图：架构文档同时保留文件跟踪的存储/恢复说明与 inline 图片说明；read 使用 `track(preserveErrorDetails(adaptTool(...ImageReadEnv...)))`，write/edit 继续由原文件跟踪包装，readonly read 保留图片检查与错误详情。Session 自动合并，图片 TUI、shared、i18n、config 与 Usage 部分和原集成分支一致。
+
+合并前重新执行全测试：2095 pass / 0 fail / 10324 assertions / 152 files（255.81 s）。合并后在 main checkout 执行 `rtk proxy caffeinate -is env -u NO_COLOR bun run check`，exit 0：**2153 pass / 0 fail / 11065 assertions / 153 files**（255.18 s）；格式、lint、类型与 Knip 全部通过。`bun install --frozen-lockfile` 未修改依赖；架构/spec/review 共核对 40 个相对路径，无缺失。
+
+删除前确认 main 与集成工作树均无未提交或未跟踪文件，`main..codex/image-input` 为 0；十个图片输入分支的 HEAD 均为 main 祖先。Codex managed archive 拒绝移除当前聊天的 primary checkout，因此按用户明确授权，从 main checkout 使用不带 `--force` 的 `git worktree remove` 删除 700c 集成工作树，再用 `git branch -d` 删除已合并的十个图片输入分支。目录、Git worktree 注册及分支引用均已核对清理；原九个 implementer 归档保留。
