@@ -26,7 +26,7 @@ export type {
 } from "@neant/shared";
 export type { McpAuthRequest, McpAuthReply, McpAuthOutcome, OnMcpAuth } from "./mcp/index.ts";
 export type { ReminderSource } from "./reminders/index.ts";
-export type { TodoItem } from "./tool-state/index.ts";
+export type { TodoItem } from "./tools/todo/index.ts";
 export type { Checkpoint, RewindResult } from "./checkpoint/index.ts";
 
 export type { PlanReviewRequest, PlanReviewResult } from "./tools/index.ts";

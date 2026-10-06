@@ -1,4 +1,4 @@
-import { createJobs, jobStatus } from "../jobs/index.ts";
+import { createJobs, jobStatus } from "../tools/jobs/index.ts";
 import {
   Agent,
   type AgentEvent,
@@ -85,7 +85,8 @@ import { compactTurn, estimateContextTokens, restoreContext } from "../compactio
 import { createSessionTitle, titleSourceState, type TitleSource } from "../session-title/index.ts";
 import { sideQuestion } from "../side-question/index.ts";
 import { contextUsage, contextReport } from "../context-usage/index.ts";
-import { createToolState, todoState, type TodoItem } from "../tool-state/index.ts";
+import { createToolState } from "../tool-state/index.ts";
+import { todoState, type TodoItem } from "../tools/todo/index.ts";
 import {
   createCheckpoints,
   checkpointState,
@@ -108,7 +109,7 @@ import { createHooks, mergeHooks, type CommonHookResult, type HookInput } from "
 export type { PermissionAskRequest, SessionAllowRule } from "../permissions/index.ts";
 import type { OnToolCallAllowed } from "../permissions/index.ts";
 
-import type { WebFetchOptions } from "../web-fetch/index.ts";
+import type { WebFetchOptions } from "../tools/web-fetch/index.ts";
 import { validateImage, type PromptImage } from "../images/index.ts";
 
 export interface SessionOptions {

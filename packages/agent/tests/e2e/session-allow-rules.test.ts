@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { runToolCall, type AgentContext } from "@earendil-works/pi-agent-core";
 import { createPermissionGate, parsePermissionRules } from "../../src/permissions/index.ts";
-import { createJobs } from "../../src/jobs/index.ts";
+import { createJobs } from "../../src/tools/jobs/index.ts";
 import { createBuiltinTools } from "../../src/tools/index.ts";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { mkdir, symlink } from "node:fs/promises";

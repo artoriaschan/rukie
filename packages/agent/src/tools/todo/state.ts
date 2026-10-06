@@ -1,6 +1,6 @@
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
-import type { ToolStateDefinition } from "./index.ts";
+import type { ToolStateDefinition } from "../../tool-state/index.ts";
 
 export const todoSchema = Type.Array(
   Type.Object(
