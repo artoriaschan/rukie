@@ -50,3 +50,8 @@
 - 固定全功能审查基线 `97b570739d28b5e0ba637aac7fa46ca609cbb16f`。Standards 原审查者复核修复 diff，当前0 findings；Spec 原审查者重跑实际共存复现并独立运行两个窄回归，共5 pass、0 fail、75 assertions，原P2已解决，当前0 findings。报告 `/tmp/neant-mcp-panel-standards-review.md` 与 `/tmp/neant-mcp-panel-spec-review.md`。使用文档引用已核对；最终收束仅更新 tracker，产品源码保持完整检查的版本。
 - 本票的本地 MCP/OAuth fixture 不替代真实托管账号验收，原 [OAuth08](../../mcp-oauth/issues/08-tui-mcp-command.md) 仍为 ready-for-human。交付在集成分支完成。
 - 清理前逐一确认六个实施 worktree（01–05 与 review-fix）工作区干净、HEAD 均为集成分支祖先；ignored 文件仅安装依赖与生成 Husky 文件。已通过 Codex archive_worktree 归档，并由附件列表确认六项均为 archived_worktree；集成 checkout 保留。
+
+2026-10-07：用户要求合并到 main。先将当前 main `7b20c0cd85da489e0971a9a799730f1ee0e94def` 合入集成分支，保留后台任务、JobsPanel 与阅读锚点行为；解决六处冲突并生成合并提交 `1f99e0e`。ScrollBox 同时保留 initialAnchor 和 followOnReachBottom；命令接线同时保留 MCP 四层面板与 `/jobs`，两种界面都不强制阅读区跟随。
+
+- 相关九文件首次回归150 pass、2 fail，精确暴露 main 新版 bash 的必填 description 与旧 MCP 文本报告预期。更新这两处测试契约，增强真实后台任务与 MCP 面板共存验收：JobCard 点击和 `/jobs` 输入不能抢占 MCP 的输入所有权，关闭 MCP 后 JobsPanel 可用，任务完成通知在40×12仍可见。修正后两文件16 pass、0 fail、106 assertions；日志 `/tmp/neant-mcp-panel-main-focused{,-repair}.log`。移除 openJobs 的 MCP guard 时新公开用例0 pass、1 fail，恢复后1 pass、0 fail、13 assertions，日志 `/tmp/neant-mcp-panel-main-focus-{red,green}.log`。
+- 冻结合并源码 `1f99e0e` 后，使用临时 HOME、unset NO_COLOR 和 caffeinate 运行完整 `bun run check`，exit0：2477 pass、0 fail、12966 assertions、177 files、388.58s；format/lint/types/Knip全部通过。日志 `/tmp/neant-mcp-panel-main-check.log`。收束记录仅更新 tracker，main 接收与本次检查一致的产品源码。
