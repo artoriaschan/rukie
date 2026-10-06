@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: claimed
 
 # Spec: MCP OAuth 授权
 
@@ -233,3 +233,8 @@ Status: ready-for-agent
 - `redirect_uri` 用 `localhost`、回调 server 绑定 `127.0.0.1`，照 Claude Code 的做法。如果某个授权服务器只接受 `127.0.0.1` 写法，再考虑加配置。
 - 连接属于 Run，所以每个 run 开始时都会读 credentials 文件，token 也会在 run 开始时按需刷新；needs-auth 记在内存里，避免每个 run 都重复发一次 401 请求。
 - 本 spec 没有修改 ADR-0002：OAuth 协议复用 pi-mcp，Neant 只实现 pi 明确留给调用方的部分（浏览器、存储、重连）。
+
+## Comments
+
+- 2026-10-06：在 `codex/mcp-oauth` 集成分支实施，起点 `696e488`。按依赖图为每张票创建独立受管理 worktree，由实现子代理完成后集成。公共测试边界沿用本 spec 的 Testing Decisions。
+- 基线验证：按锁文件安装依赖；临时 HOME 下运行 `env -u NO_COLOR bun run check`，exit 0，2201 pass、0 fail（159 个文件）。最初未安装依赖时检查因找不到 oxfmt 退出；实际 HOME 下的首轮测试已停止，以上通过结果来自隔离后的完整重跑。
