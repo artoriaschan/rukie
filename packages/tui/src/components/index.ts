@@ -39,7 +39,7 @@ export interface BoxProps {
   marginTop?: number;
   marginBottom?: number;
   gap?: number;
-  borderStyle?: "single";
+  borderStyle?: "single" | "round";
   onMouseEnter?(): void;
   onMouseLeave?(): void;
   /** Primary mouse press and release on this box activate it once. */

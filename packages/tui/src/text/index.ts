@@ -17,6 +17,7 @@ export interface TextStyle {
   dimColor?: boolean;
   inverse?: boolean;
   italic?: boolean;
+  underline?: boolean;
 }
 
 export interface TextSpan {

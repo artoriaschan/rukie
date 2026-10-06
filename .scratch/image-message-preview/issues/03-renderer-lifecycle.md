@@ -18,3 +18,7 @@ Blocked by: 01
 2026-10-06：复审前修正 Kitty letterbox 裁剪根因。协议 c/r 等比例绘制，原实现把整个预留 node 当作图像矩形，导致 scroll 裁掉留白时误删原像素。先用公共 render red 测试复现 square100×100/4×4cells/8×16metrics/3rowsviewport 被错裁为 h75；renderer 现按实际 cell metrics（缺失则 1:2）等比拟合、整 cell 向下取整并居中，先 clip 拟合矩形再换算源像素。slot/layout 保持原尺寸，公共 Image/hook API 未变。回归验证 padding-scroll1 保持完整 h100，scroll2 才裁 y50/h50，上传仍只有一次。先前 crop regression 调整为实际物理比例正确的 literal placements。README 明示整 cell 取整和 Kitty 最终子 cell 留白。
 
 本次补充验证：`env -u NO_COLOR bun test packages/tui/tests/renderer/graphics.test.tsx packages/tui/tests/renderer/fullscreen.test.tsx` 16 pass / 0 fail / 83 assertions / 2 files，578ms；`oxfmt --check packages/tui`、`oxlint packages/tui`、`tsc -b packages/tui` 退出 0。
+
+2026-10-06：补充 dsh modal 的通用视觉 API：TextStyle/TextProps underline?: boolean（嵌套继承，false 关闭，SGR4）；BoxProps borderStyle 新增 round，沿用 1cell border 布局绘制 ╭╮╰╯。ThemedText/ThemedBox 直接继承该 API，应用无需输出 ANSI。公共 render red→green 验证同字符 underline 开关重画、嵌套/换行/false 与兄弟不泄漏，以及 rounded card 的 literal corner glyphs。未新增依赖或复制参考源码。
+
+视觉 API 验证：`env -u NO_COLOR bun test packages/tui/tests/components/text-style.test.tsx packages/tui/tests/renderer/render.test.tsx packages/tui/tests/renderer/frame-diff.test.tsx` 24 pass / 0 fail / 180 assertions / 3 files，790ms；`oxfmt --check packages/tui`、`oxlint packages/tui`、`tsc -b packages/tui` 退出 0。
