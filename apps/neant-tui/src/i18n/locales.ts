@@ -129,6 +129,7 @@ const zh = {
   "rewind.restored": "已还原 {{count}} 个文件",
 
   "rewind.again": "再按一次 Esc 回退",
+  "exit.again": "再次按 Ctrl+C 退出",
   "rewind.empty": "暂无可回退的消息",
 
   "plan.review.heading": "计划评审",
@@ -419,6 +420,7 @@ const en = {
   "rewind.restored": "Restored {{count}} files",
 
   "rewind.again": "Press Esc again to rewind",
+  "exit.again": "Press Ctrl+C again to exit",
   "rewind.empty": "Nothing to rewind yet",
 
   "plan.review.heading": "Plan review",

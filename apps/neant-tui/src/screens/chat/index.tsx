@@ -191,6 +191,8 @@ export async function createChat(
   };
 }
 
+const EXIT_WINDOW_MS = 1000;
+
 function Chat({
   session,
   conversation,
@@ -576,6 +578,22 @@ function Chat({
   });
   const draft = useRef("");
   const lastInterrupt = useRef<number | undefined>(undefined);
+  const [exitArmedAt, setExitArmedAt] = useState<number>();
+  const armExit = (at?: number) => {
+    lastInterrupt.current = at;
+    setExitArmedAt(at);
+  };
+  useEffect(() => {
+    if (exitArmedAt === undefined) return;
+    const timer = setTimeout(
+      () => {
+        lastInterrupt.current = undefined;
+        setExitArmedAt(undefined);
+      },
+      Math.max(0, EXIT_WINDOW_MS - (performance.now() - exitArmedAt)),
+    );
+    return () => clearTimeout(timer);
+  }, [exitArmedAt]);
   const rewindEsc = useRef<number | undefined>(undefined);
   const [rewindArmedAt, setRewindArmedAt] = useState<number>();
   const armRewind = (at?: number) => {
@@ -648,7 +666,7 @@ function Chat({
     commandSelectionRef.current = 0;
     setCommandSelection(0);
     draft.current = value;
-    lastInterrupt.current = undefined;
+    armExit();
     setInput(value);
   };
   const stageImage = async (path: string, insert: (text: string) => void, epoch: number) => {
@@ -697,7 +715,7 @@ function Chat({
   };
   const returnToBottom = () => {
     body.current?.scrollToBottom();
-    lastInterrupt.current = undefined;
+    armExit();
   };
   const switchModel = async (spec: string, hadDraftImages = false) => {
     const hadImages =
@@ -1187,7 +1205,7 @@ function Chat({
         details.current?.scrollBy(event.delta * 3);
       else if (bodyScroll && event.y >= bodyScroll.y && event.y < bodyScroll.y + bodyScroll.height)
         body.current?.scrollBy(event.delta * 3);
-      lastInterrupt.current = undefined;
+      armExit();
       return;
     }
     if (
@@ -1207,7 +1225,7 @@ function Chat({
       return;
     }
     if (event.type !== "key") {
-      lastInterrupt.current = undefined;
+      armExit();
       return;
     }
     if (handledInput.current.has(event)) return;
@@ -1246,7 +1264,7 @@ function Chat({
     const pending = pendingInteraction?.kind === "permission" ? pendingInteraction : undefined;
     if (key.ctrl && key.name === "q" && !key.alt && !key.shift) {
       toggleTodos();
-      lastInterrupt.current = undefined;
+      armExit();
       return;
     }
     if (
@@ -1256,7 +1274,7 @@ function Chat({
       !key.alt &&
       pendingInteraction?.kind !== "question"
     ) {
-      lastInterrupt.current = undefined;
+      armExit();
       if (!pendingInteraction && !small) {
         const next =
           PERMISSION_MODES[
@@ -1273,7 +1291,7 @@ function Chat({
     }
     if (!small && pending && key.name === "tab") {
       setScrollFocus((focus) => (focus === "body" ? "details" : "body"));
-      lastInterrupt.current = undefined;
+      armExit();
       return;
     }
     if (!small && (key.name === "pageup" || key.name === "pagedown")) {
@@ -1284,23 +1302,23 @@ function Chat({
       viewport?.scrollBy(
         Math.max(1, (viewport.getSnapshot().height ?? 1) - 1) * (key.name === "pageup" ? -1 : 1),
       );
-      lastInterrupt.current = undefined;
+      armExit();
       return;
     }
     if (small && key.name !== "escape" && !(key.ctrl && (key.name === "c" || key.name === "d")))
       return;
     if (pendingInteraction?.kind === "plan" && !(key.ctrl && key.name === "c")) {
-      lastInterrupt.current = undefined;
+      armExit();
       interactions.planInput(event);
       return;
     }
     if (pendingInteraction?.kind === "question") {
-      lastInterrupt.current = undefined;
+      armExit();
       interactions.questionInput(event);
       return;
     }
     if (!small && pending && !(key.ctrl && key.name === "c")) {
-      lastInterrupt.current = undefined;
+      armExit();
       if (key.name === "escape") interactions.denyPermission();
       else if (!key.ctrl && !key.alt && !key.shift) {
         if (key.name === "enter") interactions.confirmPermission();
@@ -1320,7 +1338,7 @@ function Chat({
       if (conversation.isRunning()) {
         armRewind();
         conversation.interrupt();
-        lastInterrupt.current = undefined;
+        armExit();
       } else if (!key.ctrl) {
         if (draft.current) {
           history.reset();
@@ -1341,13 +1359,14 @@ function Chat({
           change("");
         } else {
           const now = performance.now();
-          if (lastInterrupt.current !== undefined && now - lastInterrupt.current <= 1000) onExit();
-          else lastInterrupt.current = now;
+          if (lastInterrupt.current !== undefined && now - lastInterrupt.current <= EXIT_WINDOW_MS)
+            onExit();
+          else armExit(now);
         }
       }
     } else if (key.ctrl && key.name === "d" && !draft.current) {
       if (!conversation.isRunning()) onExit();
-    } else lastInterrupt.current = undefined;
+    } else armExit();
   });
   const completed = useMemo(
     () =>
@@ -1728,11 +1747,13 @@ function Chat({
               notice={imageNotice}
               warning={wrappedModelNotice}
               tip={
-                rewindArmedAt !== undefined
-                  ? t("rewind.again")
-                  : clipboardImage && !promptReadOnly
-                    ? t("image.clipboard-tip")
-                    : undefined
+                exitArmedAt !== undefined
+                  ? t("exit.again")
+                  : rewindArmedAt !== undefined
+                    ? t("rewind.again")
+                    : clipboardImage && !promptReadOnly
+                      ? t("image.clipboard-tip")
+                      : undefined
               }
               inputRevision={promptRevision}
               readOnly={promptReadOnly}
