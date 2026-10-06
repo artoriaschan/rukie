@@ -143,7 +143,7 @@ test("slash menu lists builtins and invocable skills, filters case-insensitively
   });
   try {
     app.stdin.write("/");
-    await app.waitFor(() => screen(app).includes("commands · 14 items"));
+    await app.waitFor(() => screen(app).includes("commands · 15 items"));
     expect(screen(app)).toContain("❯ compact");
     app.stdin.write("\x1b[A");
     await app.waitFor(() => screen(app).includes("❯ hello"));
@@ -299,7 +299,7 @@ test("menu navigation cycles, Escape keeps the draft, and unknown/path/multiline
     app.stdin.write("/");
     await app.waitFor(() => screen(app).includes("❯ compact"));
     app.stdin.write("\x1b[A");
-    await app.waitFor(() => screen(app).includes("❯ rename"));
+    await app.waitFor(() => screen(app).includes("❯ jobs"));
     app.stdin.write("\x1b[B");
     await app.waitFor(() => screen(app).includes("❯ compact"));
     app.stdin.write("\x1b");
@@ -324,7 +324,7 @@ test("menu navigation cycles, Escape keeps the draft, and unknown/path/multiline
     app.stdin.write("/");
     await app.waitFor(() => screen(app).includes("❯ compact"));
     app.stdin.write("\x1b[A");
-    await app.waitFor(() => screen(app).includes("❯ rename"));
+    await app.waitFor(() => screen(app).includes("❯ jobs"));
     expect(app.screen()).toContain("❯ /");
     expect(app.screen().every((line) => Bun.stringWidth(line) <= 40)).toBe(true);
   } finally {

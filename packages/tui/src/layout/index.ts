@@ -8,7 +8,7 @@ import {
   type TextStyle,
 } from "../text";
 import { Node, Direction, Edge, FlexDirection, Gutter, MeasureMode, PositionType } from "../yoga";
-import type { ScrollState } from "../scroll";
+import type { ScrollState, ScrollAnchor } from "../scroll";
 
 export type HostType = "tui-box" | "tui-text" | "tui-static" | "tui-scroll" | "tui-image";
 export type HostProps = BoxProps &
@@ -195,11 +195,17 @@ export function calculateTree(root: HostNode, columns: number, rows?: number): L
         node.scrollContent && width !== node.scrollContent.width
           ? readingAnchor(node.scrollContent.children, top)
           : undefined;
-      const anchoredTop = anchor ? resolveAnchor(local, anchor) : undefined;
+      const restored = node.props.scroll.takeInitialAnchor();
+      const anchoredTop = restored
+        ? resolvePortableAnchor(local, restored)
+        : anchor
+          ? resolveAnchor(local, anchor)
+          : undefined;
       offset = node.props.scroll.layout(
         { x, y, width, height, total: Math.round(node.contentYoga.getComputedHeight()) },
         anchoredTop,
       );
+      node.props.scroll.setAnchor(portableAnchor(local, offset));
       node.scrollContent = { width, children: local };
       children = local.map((child) => translate(child, x, y - offset));
     } else if (node.type === "tui-box") {
@@ -264,6 +270,7 @@ function readingAnchor(nodes: LayoutNode[], top: number): ReadingAnchor | undefi
     if (node.y + node.height <= top) continue;
     if (node.type === "tui-text") {
       const row = Math.max(0, top - node.y);
+      if (!node.lines?.[row]) continue;
       return {
         source: node.source,
         offset: node.lines?.[row]?.[0]?.offset ?? 0,
@@ -285,6 +292,50 @@ function resolveAnchor(nodes: LayoutNode[], anchor: ReadingAnchor): number | und
     }
     const top = resolveAnchor(node.children, anchor);
     if (top !== undefined) return top;
+  }
+  return undefined;
+}
+
+/** Portable anchors use caller-provided identity, never rendered text matching. */
+function portableAnchor(
+  nodes: LayoutNode[],
+  top: number,
+  id?: string,
+  path: number[] = [],
+): ScrollAnchor | undefined {
+  for (let index = 0; index < nodes.length; index++) {
+    const node = nodes[index]!;
+    if (node.y + node.height <= top) continue;
+    const identity = node.props.scrollAnchorId ?? id;
+    const nextPath = node.props.scrollAnchorId ? [] : [...path, index];
+    if (node.type === "tui-text" && identity) {
+      const row = Math.max(0, top - node.y);
+      if (!node.lines?.[row]) continue;
+      return {
+        id: identity,
+        path: nextPath,
+        offset: node.lines?.[row]?.[0]?.offset ?? 0,
+        inset: Math.min(0, top - node.y),
+      };
+    }
+    const found = portableAnchor(node.children, top, identity, nextPath);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+function resolvePortableAnchor(nodes: LayoutNode[], anchor: ScrollAnchor): number | undefined {
+  for (const node of nodes) {
+    if (node.props.scrollAnchorId === anchor.id) {
+      let target: LayoutNode | undefined = node;
+      for (const index of anchor.path) target = target?.children[index];
+      if (!target || target.type !== "tui-text") return undefined;
+      const row =
+        target.lines?.findLastIndex((line) => (line[0]?.offset ?? Infinity) <= anchor.offset) ?? 0;
+      return target.y + Math.max(0, row) + anchor.inset;
+    }
+    const found = resolvePortableAnchor(node.children, anchor);
+    if (found !== undefined) return found;
   }
   return undefined;
 }

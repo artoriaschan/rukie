@@ -32,6 +32,17 @@
  */
 
 const zh = {
+  "command.jobs": "查看和停止后台任务",
+  "jobs.panel.title": "后台任务",
+  "jobs.panel.empty": "暂无后台任务",
+  "jobs.panel.hint": "↑/↓ 选择 · e 详情 · k 停止 · Esc 返回",
+  "jobs.panel.confirm": "4 秒内再按 k 停止 {{id}}",
+  "jobs.panel.output": "输出尾部",
+  "jobs.panel.started": "启动",
+  "jobs.panel.promoted": "转入后台",
+  "jobs.panel.settled": "结束",
+  "jobs.panel.spill": "输出文件：{{path}}",
+  "jobs.panel.dropped": "早期输出已丢弃，请查看输出文件",
   "jobs.status.running": "运行中",
   "jobs.status.stopping": "停止中",
   "jobs.status.completed": "已完成",
@@ -334,6 +345,17 @@ const zh = {
 } as const;
 
 const en = {
+  "command.jobs": "View and stop background jobs",
+  "jobs.panel.title": "Background jobs",
+  "jobs.panel.empty": "No background jobs",
+  "jobs.panel.hint": "↑/↓ select · e details · k stop · Esc back",
+  "jobs.panel.confirm": "k again within 4s: stop {{id}}",
+  "jobs.panel.output": "Output tail",
+  "jobs.panel.started": "Started",
+  "jobs.panel.promoted": "Promoted",
+  "jobs.panel.settled": "Settled",
+  "jobs.panel.spill": "Output file: {{path}}",
+  "jobs.panel.dropped": "Earlier output dropped; see output file",
   "jobs.status.running": "running",
   "jobs.status.stopping": "stopping",
   "jobs.status.completed": "completed",

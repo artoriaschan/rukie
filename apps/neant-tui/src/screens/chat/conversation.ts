@@ -30,7 +30,7 @@ interface ToolCall {
   hook?: string;
 }
 
-type CompletedEntry =
+type CompletedEntry = { anchorId?: string } & (
   | {
       type: "message";
       role: "user" | "assistant";
@@ -54,7 +54,8 @@ type CompletedEntry =
       planReview?: { plan: string; kind: "approve" | "revise" | "takeover"; feedback?: string };
     }
   | { type: "notice"; text: string }
-  | { type: "context-report"; report: ContextReport; expanded: boolean; modelName?: string };
+  | { type: "context-report"; report: ContextReport; expanded: boolean; modelName?: string }
+);
 
 type ToolResultMessage = Extract<
   Extract<SessionEvent, { type: "message_end" }>["message"],
@@ -337,6 +338,9 @@ function questionSummary(args: unknown, text: string, t: ReturnType<typeof creat
 }
 
 export interface JobRow extends JobView {
+  /** First frontend observation of background visibility, including timeout promotion. */
+  backgroundedAt: number;
+  promotedAt?: number;
   output: string;
   offset: number;
   dropped: boolean;
@@ -346,6 +350,8 @@ function readJobRow(session: Session, job: JobView, previous?: JobRow): JobRow {
   const output = session.readJob(job.id, previous?.offset ?? 0);
   return {
     ...job,
+    backgroundedAt: previous?.backgroundedAt ?? Date.now(),
+    promotedAt: previous?.promotedAt,
     // The card needs a tail, not an unbounded second copy of the spill file.
     output: (
       (output.dropped ? "" : (previous?.output ?? "")) +
@@ -368,6 +374,7 @@ interface ViewState {
   completed: CompletedEntry[];
   tools: ToolCall[];
   assistant: string;
+  assistantAnchor: string;
   model: string;
   running: boolean;
   input: number;
@@ -559,7 +566,7 @@ function reduceEvent(
     }
     case "message_start":
       return event.message.role === "assistant"
-        ? { ...state, assistant: messageText(event.message) }
+        ? { ...state, assistant: messageText(event.message), assistantAnchor: crypto.randomUUID() }
         : state;
     case "message_end": {
       const text = messageText(event.message);
@@ -575,9 +582,13 @@ function reduceEvent(
       return {
         ...state,
         completed: text
-          ? [...state.completed, { type: "message", role: "assistant", text }]
+          ? [
+              ...state.completed,
+              { type: "message", role: "assistant", text, anchorId: state.assistantAnchor },
+            ]
           : state.completed,
         assistant: "",
+        assistantAnchor: crypto.randomUUID(),
         input: state.input + event.message.usage.input,
         output: state.output + event.message.usage.output,
         activityInput: event.message.usage.input,
@@ -619,10 +630,21 @@ function reduceEvent(
     case "tool_execution_end": {
       const tool = state.tools.find((tool) => tool.id === event.toolCallId);
       if (!tool) return state;
+      const entry = toolEntry(tool, event.isError, event.result, t);
+      const job = entry.type === "tool" && entry.jobId ? state.jobs[entry.jobId] : undefined;
+      const explicit =
+        tool.args !== null &&
+        typeof tool.args === "object" &&
+        "run_in_background" in tool.args &&
+        tool.args.run_in_background === true;
       return {
         ...state,
+        jobs:
+          job && tool.name === "bash" && !explicit
+            ? { ...state.jobs, [job.id]: { ...job, promotedAt: job.backgroundedAt } }
+            : state.jobs,
         tools: state.tools.filter((tool) => tool.id !== event.toolCallId),
-        completed: [...state.completed, toolEntry(tool, event.isError, event.result, t)],
+        completed: [...state.completed, entry],
       };
     }
     case "compaction_end":
@@ -659,7 +681,14 @@ function reduceEvent(
         completed: [
           ...state.completed,
           ...(state.assistant
-            ? [{ type: "message" as const, role: "assistant" as const, text: state.assistant }]
+            ? [
+                {
+                  type: "message" as const,
+                  role: "assistant" as const,
+                  text: state.assistant,
+                  anchorId: state.assistantAnchor,
+                },
+              ]
             : []),
           ...(event.stopReason === "hook_stopped" || event.stopReason === "hook_blocked"
             ? [
@@ -708,9 +737,13 @@ function createViewState(session: Session, model: string, locale: Locale): ViewS
     waitingSubagents: 0,
     subagents: restoreSubagents(session.toolState("subagents"), session.recovery),
     todos: (session.toolState("todo") as TodoItem[] | undefined) ?? [],
-    completed: replayMessages(session.messages, t),
+    completed: replayMessages(session.messages, t).map((entry) => ({
+      ...entry,
+      anchorId: crypto.randomUUID(),
+    })),
     tools: [],
     assistant: "",
+    assistantAnchor: crypto.randomUUID(),
     model: session.model ?? model,
     running: session.running,
     input: 0,
@@ -736,7 +769,15 @@ export function createConversation(session: Session, model: string, locale: Loca
   let jobNoticeTimer: ReturnType<typeof setTimeout> | undefined;
   let notificationTimer: ReturnType<typeof setTimeout> | undefined;
   const update = (next: ViewState, deferNotification = false) => {
-    state = next;
+    state =
+      next.completed !== state.completed && next.completed.some((entry) => !entry.anchorId)
+        ? {
+            ...next,
+            completed: next.completed.map((entry) =>
+              entry.anchorId ? entry : { ...entry, anchorId: crypto.randomUUID() },
+            ),
+          }
+        : next;
     if (!deferNotification) {
       clearTimeout(notificationTimer);
       notificationTimer = undefined;
