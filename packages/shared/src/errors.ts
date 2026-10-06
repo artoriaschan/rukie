@@ -23,6 +23,7 @@ export interface UserVisibleErrorParams {
   "session-rewinding": Record<string, never>;
   "session-compacting": Record<string, never>;
   "session-switching-models": Record<string, never>;
+  "session-mcp-busy": Record<string, never>;
   "compaction-hook-stopped": Record<string, never>;
   "compaction-hook-stopped-reason": { reason: string };
   "hook-invalid-json": { cause: string };

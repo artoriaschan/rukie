@@ -777,3 +777,62 @@ test.each(["text", "stream-json"])(
     }
   },
 );
+
+test("Headless calls real MCP tools using credentials written by an earlier Session login", async () => {
+  const root = await mkdtemp(join(tmpdir(), "neant-cli-mcp-credentials-"));
+  const server = mcpOAuthServer();
+  try {
+    await Bun.write(
+      join(root, ".neant/mcp.json"),
+      JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
+    );
+    const seed = await createSession({
+      cwd: root,
+      homeDir: root,
+      ...echoModel(),
+      onMcpAuth: async ({ authorizationUrl }) => {
+        const response = await fetch(authorizationUrl, { redirect: "manual" });
+        const url = response.headers.get("location");
+        if (!url) throw new Error("Missing callback");
+        return { type: "callback-url", url };
+      },
+    });
+    try {
+      await seed.authenticateMcp("srv");
+    } finally {
+      await seed.dispose();
+    }
+    expect(await Bun.file(join(root, ".neant/credentials.json")).exists()).toBe(true);
+    const faux = createFauxCore({ api: "faux", provider: "faux" });
+    faux.setResponses([
+      fauxAssistantMessage(fauxToolCall("mcp__srv__echo", { text: "hello" }), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("authorized"),
+    ]);
+    let stdout = "";
+    let stderr = "";
+    const exitCode = await main(["-p", "call MCP", "--yolo", "--output-format", "stream-json"], {
+      readStdin: async () => "",
+      stdout: (text) => {
+        stdout += text;
+      },
+      stderr: (text) => {
+        stderr += text;
+      },
+      session: {
+        cwd: root,
+        homeDir: root,
+        model: faux.getModel(),
+        streamFn: withAuxiliaryRequests(faux.streamSimple),
+      },
+    });
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("OAuth MCP: called");
+    expect(stdout).not.toContain("mcp__srv__authenticate");
+    expect(stderr).toBe("");
+  } finally {
+    await server.stop();
+    await rm(root, { recursive: true, force: true });
+  }
+});

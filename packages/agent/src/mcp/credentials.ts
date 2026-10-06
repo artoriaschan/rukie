@@ -75,7 +75,7 @@ export function credentialStore(options: {
   serverUrl: string;
   warning: () => void;
   signal?: AbortSignal;
-}): McpOAuthStateStore {
+}): McpOAuthStateStore & { clear(): Promise<void> } {
   const directory = join(options.homeDir, ".neant");
   const path = join(directory, "credentials.json");
   const read = async () => {
@@ -90,38 +90,51 @@ export function credentialStore(options: {
       return empty;
     }
   };
+  const update = async (change: (data: Static<typeof Credentials>) => boolean) => {
+    const operation = (writes.get(path) ?? Promise.resolve())
+      .catch(() => {})
+      .then(async () => {
+        options.signal?.throwIfAborted();
+        const data = await read();
+        if (!change(data)) return;
+        await mkdir(directory, { recursive: true, mode: 0o700 });
+        const temporary = `${path}.${randomUUID()}.tmp`;
+        try {
+          await writeFile(temporary, JSON.stringify(data), { mode: 0o600, flag: "wx" });
+          options.signal?.throwIfAborted();
+          await rename(temporary, path);
+        } finally {
+          await rm(temporary, { force: true });
+        }
+      });
+    writes.set(path, operation);
+    try {
+      await operation;
+    } finally {
+      if (writes.get(path) === operation) writes.delete(path);
+    }
+  };
   return {
     async load() {
       await writes.get(path);
       return (await read()).mcp[options.key]?.state;
     },
-    async save(state) {
-      const operation = (writes.get(path) ?? Promise.resolve())
-        .catch(() => {})
-        .then(async () => {
-          options.signal?.throwIfAborted();
-          const data = await read();
-          data.mcp[options.key] = {
-            serverName: options.serverName,
-            serverUrl: options.serverUrl,
-            state,
-          };
-          await mkdir(directory, { recursive: true, mode: 0o700 });
-          const temporary = `${path}.${randomUUID()}.tmp`;
-          try {
-            await writeFile(temporary, JSON.stringify(data), { mode: 0o600, flag: "wx" });
-            options.signal?.throwIfAborted();
-            await rename(temporary, path);
-          } finally {
-            await rm(temporary, { force: true });
-          }
-        });
-      writes.set(path, operation);
-      try {
-        await operation;
-      } finally {
-        if (writes.get(path) === operation) writes.delete(path);
-      }
+    save(state) {
+      return update((data) => {
+        data.mcp[options.key] = {
+          serverName: options.serverName,
+          serverUrl: options.serverUrl,
+          state,
+        };
+        return true;
+      });
+    },
+    clear() {
+      return update((data) => {
+        if (!(options.key in data.mcp)) return false;
+        delete data.mcp[options.key];
+        return true;
+      });
     },
   };
 }
