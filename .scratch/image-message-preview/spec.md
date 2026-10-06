@@ -1,4 +1,4 @@
-Status: claimed
+Status: resolved
 
 # Spec: 消息流图片预览
 
@@ -22,3 +22,9 @@ Status: claimed
 ## 参考
 
 dsh-TUI `src/components/messages/TranscriptImages.tsx`、`src/components/ImagePreviewOverlay.tsx`、`src/ink/kitty-graphics.ts`、`src/ink/terminal-querier.ts`、`src/ink/terminal-image.ts`。探索证据保存在 `/tmp/neant-image-message-reference.md`，实施票记录可复查源码指针。
+
+## Implementation Evidence
+
+2026-10-06：01–04 已完成，运行说明见 [Neant TUI README](../../apps/neant-tui/README.md)，公开图形 API 与生命周期见 [renderer README](../../packages/tui/README.md)。Standards/Spec 各项发现均已修复并独立复核，详见 [审查与集成验收](review.md)。
+
+main 集成提交 `9e895a2`；与并行的命令菜单更新保留双方功能，并通过公开回归验证预览期间菜单暂停、关闭后 slash 草稿和菜单恢复。main 全量检查 exit 0：2187 pass / 0 fail / 11251 assertions / 156 files，271.10 s。三个本次工作树及其已合并分支均已删除。PNG 的真实 Kitty raster 未人工实测；headless 验证协议、布局与交互。

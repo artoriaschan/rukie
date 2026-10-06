@@ -142,3 +142,5 @@ Status: resolved
 01–08 与最终审查修复工作树全部按 clean/merged 校验后归档。后续已按用户要求合入 main，并删除集成工作树及已合并分支；规格与各票均为 resolved。
 
 2026-10-06 main 集成提交 `9e7c599b87d2b32cc35df3af713912eb0f9aec91`；合并后全量检查 exit 0，**2153 tests / 0 fail / 11065 assertions / 153 files**。冲突处理、两项功能共存与清理证据见 [main 集成验收](review.md#main-集成与清理)。
+
+2026-10-06 后续 [消息流图片预览](../image-message-preview/spec.md) 已交付并合入 main `9e895a2`。消息图片点击现在打开 TUI 内部预览，只有卡片中的“打开原图”启动系统查看器；当前使用契约见 [Neant TUI README](../../apps/neant-tui/README.md)。Kitty PNG 缩略图、画廊、缩放/平移和消息区预览由此次后续规格拥有；输入 token 悬停预览仍归路线图 21。
