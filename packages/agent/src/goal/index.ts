@@ -2,7 +2,7 @@ import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { createUserVisibleError, type UserVisibleErrorCode } from "@neant/shared";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
-import { preserveErrorDetails } from "../tools/index.ts";
+import { preserveErrorDetails } from "../tools/runtime.ts";
 import type { ToolStateDefinition } from "../tool-state/index.ts";
 
 const goalSchema = Type.Object(

@@ -28,7 +28,7 @@ import {
 } from "@neant/shared";
 import { isTrustedProject } from "../config/index.ts";
 import { requestInteraction, type OnInteractionStart } from "../interaction/index.ts";
-import { preserveErrorDetails } from "../tools/index.ts";
+import { preserveErrorDetails } from "../tools/runtime.ts";
 import { credentialKey, credentialStore } from "./credentials.ts";
 import { configureOAuthMetadata, createOAuthProvider } from "./oauth.ts";
 
