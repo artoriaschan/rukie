@@ -176,7 +176,8 @@ TUI 提供一组内置 Slash Command，输入 `/` 弹出补全菜单，列出内
 - 内置命令表（名字、说明、run 中是否可用、处理器）由 ④ 层 chat 屏幕持有；文案进 i18n。
 - 清单：`compact`、`clear`、`rewind`、`goal`、`plan`、`help`、`exit`、`model`、`resume`、`context`、`settings`、`btw`、`rename`。
 - run 中可用：`exit`（先中止 run）、`help`、`btw`、`context`、`rename`；其余命令显示“run 结束后再用”的通知。
-- 补全菜单（③ 层组件，只收 props）：单行且以 `/` 开头、有匹配项时显示；名字前缀匹配、不区分大小写；来源是内置命令加用户可调用的 skill，同名时内置优先，skill 行带 `[skill]`；Up/Down 循环；Tab 填为 `/name `；Enter 执行选中项；Esc 关闭菜单。不做参数补全。菜单打开时 Up/Down 归菜单，不归输入历史。
+- 补全菜单（③ 层组件，只收 props）：单行且以 `/` 开头、有匹配项时显示；名字前缀匹配、不区分大小写；来源是内置命令加用户可调用的 skill，同名时内置优先，skill 行带 `[skill]`；Up/Down 循环；Tab 填为 `/name `；Enter 执行选中项；Esc 关闭菜单。不做参数补全。菜单打开时 Up/Down 归菜单；已开始的输入历史浏览继续拥有方向键，恢复 slash 草稿的同一次按键不再移动菜单选择。Shift+Tab 由菜单消费，不切换 Permission Mode。
+- 命令列表复刻 dsh-TUI `CommandSuggestions` / `SuggestionCard`：圆角浮层紧贴输入框顶边，不占消息区布局；标题包含匹配总数，最多显示 5 项并围绕选中项居中，小终端按可用行数缩小窗口。选中项以 suggestion 色的 `❯` 与粗体名字呈现，其他项变暗，匹配前缀保持正常亮度；名称和说明按显示列对齐，说明截断，裁剪时显示 `↑n · ↓n`。边框跟随输入框的 Plan Mode 色；点击执行，悬停高亮鼠标所在可见行，滚轮逐项移动并在首尾停止。
 - `/goal`：在 Goal 落地之前提示“尚未支持”。
 - `/clear`：dispose 当前 session，用相同 options 新建一个，清空对话区。
 - `/plan`：调用 `setPlanMode(!planMode)`。

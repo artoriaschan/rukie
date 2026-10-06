@@ -1,4 +1,5 @@
 import { Notice } from "../notice";
+import type { ReactNode } from "react";
 import { Box, ThemedTextInput, ThemedText, figures, type TextInputProps } from "@neant/tui";
 
 export function PromptInput({
@@ -20,6 +21,7 @@ export function PromptInput({
   onPaste,
   highlightRanges,
   atomicRanges,
+  suggestions,
 }: {
   value: string;
   onChange: TextInputProps["onChange"];
@@ -40,10 +42,12 @@ export function PromptInput({
   onPaste?: TextInputProps["onPaste"];
   highlightRanges?: TextInputProps["highlightRanges"];
   atomicRanges?: TextInputProps["atomicRanges"];
+  suggestions?: ReactNode;
 }) {
   const edge = "─".repeat(Math.max(0, columns - 2));
   return (
     <Box flexDirection="column" marginTop={compact && !notice ? 0 : 1}>
+      {suggestions}
       {warning && <ThemedText color="warning">{warning}</ThemedText>}
       {!compact && (
         <ThemedText

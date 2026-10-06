@@ -143,14 +143,17 @@ test("slash menu lists builtins and invocable skills, filters case-insensitively
   });
   try {
     app.stdin.write("/");
-    await app.waitFor(() => screen(app).includes("[skill]"));
-    expect(screen(app)).toContain("/compact");
-    expect(screen(app)).toContain("/rename");
+    await app.waitFor(() => screen(app).includes("commands · 14 items"));
+    expect(screen(app)).toContain("❯ compact");
+    app.stdin.write("\x1b[A");
+    await app.waitFor(() => screen(app).includes("❯ hello"));
+    expect(screen(app)).toContain("[skill]");
+    expect(screen(app)).toContain("rename");
     expect(screen(app)).not.toContain("hidden skill description");
     expect(screen(app)).not.toContain("help skill description");
     app.stdin.write("HE");
-    await app.waitFor(() => screen(app).includes("❯ /help"));
-    expect(screen(app)).not.toContain("/compact");
+    await app.waitFor(() => screen(app).includes("❯ help"));
+    expect(screen(app)).not.toContain("Compact context");
     app.stdin.write("\t");
     await app.waitFor(() => app.screen().includes("❯ /help"));
     expect(screen(app)).not.toContain("[skill]");
@@ -294,13 +297,13 @@ test("menu navigation cycles, Escape keeps the draft, and unknown/path/multiline
   const app = await ready({ rows: 48 });
   try {
     app.stdin.write("/");
-    await app.waitFor(() => screen(app).includes("❯ /compact"));
+    await app.waitFor(() => screen(app).includes("❯ compact"));
     app.stdin.write("\x1b[A");
-    await app.waitFor(() => screen(app).includes("❯ /rename"));
+    await app.waitFor(() => screen(app).includes("❯ rename"));
     app.stdin.write("\x1b[B");
-    await app.waitFor(() => screen(app).includes("❯ /compact"));
+    await app.waitFor(() => screen(app).includes("❯ compact"));
     app.stdin.write("\x1b");
-    await app.waitFor(() => !screen(app).includes("/compact"));
+    await app.waitFor(() => !screen(app).includes("commands ·"));
     expect(app.screen()).toContain("❯ /");
     app.stdin.write("\x03");
     await app.waitFor(() => app.screen().includes("❯"));
@@ -319,9 +322,9 @@ test("menu navigation cycles, Escape keeps the draft, and unknown/path/multiline
     }
     app.resize(40, 12);
     app.stdin.write("/");
-    await app.waitFor(() => screen(app).includes("❯ /compact"));
+    await app.waitFor(() => screen(app).includes("❯ compact"));
     app.stdin.write("\x1b[A");
-    await app.waitFor(() => screen(app).includes("❯ /rename"));
+    await app.waitFor(() => screen(app).includes("❯ rename"));
     expect(app.screen()).toContain("❯ /");
     expect(app.screen().every((line) => Bun.stringWidth(line) <= 40)).toBe(true);
   } finally {

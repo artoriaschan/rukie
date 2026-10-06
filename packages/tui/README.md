@@ -38,6 +38,10 @@ Rendering starts at the current terminal line on the main screen, preserving out
 
 Mouse input also delivers `{ type: "move", x, y }` for motion with no button held, and `{ type: "wheel", input: "", x, y, delta }` for wheel scrolling (`delta` is -1 up or 1 down). Coordinates are zero-based screen cells. Input handlers should narrow by `type` before reading keyboard or paste fields; `TextInput` ignores mouse events.
 
+`Box.onWheel(event)` routes wheel input to the nearest handler on the topmost painted box or its ancestors, using the same bounds and scroll clipping as clicks. Routing runs before `useInput` subscribers; those subscribers still receive the event, so frontends that also scroll in `useInput` must avoid handling a routed event twice.
+
+`createTextInputHistory(entries)` retains the draft and caret during recall; `isBrowsing()` lets a completion menu leave arrow keys with an active history walk. `reset()` ends that walk when the owner submits, clears, or externally replaces the input.
+
 ```tsx
 import { TextInput, render, useInput, useTerminalSize } from "@neant/tui";
 import { useState } from "react";
