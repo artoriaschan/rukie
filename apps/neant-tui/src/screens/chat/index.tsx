@@ -1573,6 +1573,10 @@ function Chat({
     }
     if (currentView === "settings") return;
     if (currentView !== "chat") {
+      if (!small && typeof currentView === "object" && toolWindows?.handle(event)) {
+        handledInput.current.add(event);
+        return;
+      }
       if (event.type === "wheel") subagentScroll.current?.scrollBy(event.delta * 3);
       if (event.type !== "key") return;
       const { key } = event;

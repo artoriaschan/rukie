@@ -203,13 +203,17 @@ export function reduceSubagent(
               ]
             : [],
       );
-      const content = blocks.filter((block) => block.type !== "tool").map((block) => block.text);
+      const output = [
+        ...row.output.slice(0, row.messageOutputStart ?? row.output.length),
+        ...blocks,
+      ];
       return {
         ...row,
-        output: [...row.output.slice(0, row.messageOutputStart ?? row.output.length), ...blocks],
-        outputLines: row.streamedKind
-          ? row.outputLines
-          : [...row.outputLines, ...content.flatMap((text) => text.split(/\r?\n/))],
+        output,
+        outputLines: output
+          .filter((block) => block.type === "text" || block.type === "thinking")
+          .flatMap((block) => block.text.split(/\r?\n/)),
+        streamedKind: undefined,
         tokens: (row.tokens ?? 0) + event.message.usage.totalTokens,
         status: event.message.stopReason === "aborted" ? "aborted" : row.status,
         error: event.message.errorMessage ?? row.error,

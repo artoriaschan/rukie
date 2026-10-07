@@ -67,3 +67,48 @@ test("Subagent card omits unobserved usage, ignores blank cells and exposes an i
     await app.cleanup();
   }
 });
+
+test("read-only Agent View retains ToolCall window pointer and keyboard ownership", async () => {
+  const app = await startWithClock(["--yolo", "delegate"], {
+    columns: 120,
+    rows: 450,
+    env: { LANG: "en" },
+  });
+  const screen = () => app.screen().join("\n");
+  const press = (label: string) => {
+    const y = app.screen().findIndex((line) => line.includes(label));
+    expect(y).toBeGreaterThanOrEqual(0);
+    click(app, Bun.stringWidth(app.screen()[y]!.split(label)[0]!), y);
+  };
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("subagent", { description: "Long reader", prompt: "child long" });
+    await app.waitFor(() => app.calls.length === 3);
+    const child = app.calls.find((call) =>
+      call.context.messages.some(
+        (message) =>
+          message.role === "user" && JSON.stringify(message.content).includes("child long"),
+      ),
+    )!;
+    child.tool("bash", { command: "seq 1 805", description: "Child output" });
+    await app.waitFor(() => app.calls.length === 4);
+    app.calls[3]!.finish();
+    await app.waitFor(() => screen().includes("Run ended normally"));
+    press("⤢");
+    await app.waitFor(() => screen().includes("Agent View") && screen().includes("seq 1 805"));
+    press("seq 1 805");
+    await app.waitFor(() => screen().includes("Showing lines 1–400 of 805"));
+    press("Next 400");
+    await app.waitFor(() => screen().includes("Showing lines 401–800 of 805"));
+    app.stdin.write("\x1b[6~");
+    await app.waitFor(() => screen().includes("Showing lines 801–805 of 805"));
+    app.stdin.write("\x1b");
+    await app.waitFor(
+      () => screen().includes("Agent View") && !screen().includes("Window focused"),
+    );
+    app.stdin.write("\x1b");
+    await app.waitFor(() => !screen().includes("Agent View"));
+  } finally {
+    await app.cleanup();
+  }
+});

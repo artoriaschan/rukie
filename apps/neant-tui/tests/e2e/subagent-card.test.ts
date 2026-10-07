@@ -127,6 +127,8 @@ test("running cards retain exactly three single output rows through streaming, t
     await app.waitFor(
       () => app.calls.length === 4 && screen().includes("1 tools") && screen().includes("✗read"),
     );
+    expect(screen()).not.toContain("│ three");
+    expect(waterfall()).toEqual(["    │", "    │", "    │"]);
     const card = app.screen().findIndex((line) => line.includes("子代理：Read files"));
     expect(app.screen()[card]).toContain("16 tok");
     expect(app.screen()[card + 1]).toContain("✗read");
@@ -138,9 +140,7 @@ test("running cards retain exactly three single output rows through streaming, t
     ).toBe(true);
     app.calls[3]!.delta("next message");
     await app.waitFor(() => screen().includes("│ next message"));
-    expect(waterfall()[0]).toBe("    │ three");
-    expect(waterfall()[1]).toEndWith("…");
-    expect(waterfall()[2]).toBe("    │ next message");
+    expect(waterfall()).toEqual(["    │ next message", "    │", "    │"]);
   } finally {
     await app.cleanup();
   }
