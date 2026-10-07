@@ -170,8 +170,13 @@ test("frontend reads use absolute offsets without consuming the model output", a
   await waitUntil(() => Bun.file(join(dirs.cwd, "ready")).exists());
   expect(session.jobs()).toMatchObject([{ id: "bash-1", status: "running", kind: "bash" }]);
   const output = session.readJob("bash-1", 0);
-  expect(output).toEqual({ stdout: "alpha", stderr: "error", nextOffset: 10, dropped: false });
-  expect(session.readJob("bash-1", output.nextOffset)).toEqual({
+  expect(output).toMatchObject({
+    stdout: "alpha",
+    stderr: "error",
+    nextOffset: 10,
+    dropped: false,
+  });
+  expect(session.readJob("bash-1", output.nextOffset)).toMatchObject({
     stdout: "",
     stderr: "",
     nextOffset: 10,
@@ -272,7 +277,7 @@ test("a job observer can await Session disposal without blocking process drain",
   void running.catch(() => {});
   await disposed.promise;
   await running.catch(() => {});
-  await session.waitForIdle();
+  await expect(session.waitForIdle()).rejects.toThrow("Harness is closed");
   expect(session.jobs()).toEqual([]);
   expect(fake.contexts.length).toBeLessThanOrEqual(2);
 });
