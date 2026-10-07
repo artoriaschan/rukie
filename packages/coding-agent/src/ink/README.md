@@ -22,10 +22,10 @@ SplitDiffView 的 `onSourceMount(id, DOMElement | null)` 将稳定源行身份�
 
 ## 本地差异
 
-- 支持依赖搬入 ink 内部：`utils/`、`bootstrap/state.ts`、`handoffAck.ts`、`dsh-adapter/sharp.ts`。所有原来越出 ink 的 imports 缩短一个目录层级；`utils/sliceAnsi.ts` 的 `../ink/stringWidth.js` 改为 `../stringWidth.js`。Yoga 搬入 `native-ts/yoga-layout/`，layout import 同样改为 ink 内部路径。
+- 支持依赖搬入 ink 内部：`utils/`、`bootstrap/state.ts`、`handoffAck.ts`。所有原来越出 ink 的 imports 缩短一个目录层级；`utils/sliceAnsi.ts` 的 `../ink/stringWidth.js` 改为 `../stringWidth.js`。Yoga 搬入 `native-ts/yoga-layout/`，layout import 同样改为 ink 内部路径。
 - 独立 utility 原样保留：env、envUtils、intl、sliceAnsi、execFileNoThrow。semver 的固定长度 tuple 读取添加非空断言，循环范围限定在三个版本段内。
 - 最小桩：bootstrap 仅保留 scroll activity 所需状态；handoffAck 禁用 dsh 进程交接；debug/log/crashDetail/earlyInput/fullscreen 不加载 dsh 产品图谱或写用户日志。clipboard utility 仍调用真实进程；应用复制完成语义由产品 host 负责。
-- sharp loader 返回真实固定版本 sharp；sixel-worker 仍使用真实 node:worker_threads，Bun 支持 .js URL 解析到 .ts 源文件。
+- sharp 的按需加载与加载失败处理由唯一消费者 `sixel-codec.ts` 直接拥有，不保留独立 adapter 目录；使用真实固定版本 sharp。sixel-worker 仍使用真实 node:worker_threads，Bun 支持 .js URL 解析到 .ts 源文件。
 - ink.tsx：stdout 恢复不回退 fd=1；退出保存完成状态与 Error，修复首次 late wait；将 renderer 传给 App。
 - App.tsx/AppContext.ts：提供根自己的 stdout 和 renderer。use-selection/use-search-highlight/AlternateScreen 不使用 process.stdout 全局或单根 fallback。
 - render-node-to-output.ts/renderer.ts/hit-test.ts：绝对覆盖层的绘制区域、命中列表和 image occlusion 历史属于各自根；另一根绘制不会改变当前根的点击目标或覆盖层修复判断。output.ts 的绝对区域 clear 只排除其之前的旧区域 blit，之后绘制的当前子树 border、header、首 glyph 和 prompt 保留。

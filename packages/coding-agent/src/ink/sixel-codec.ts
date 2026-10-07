@@ -1,5 +1,4 @@
 import { FINALIZER, fromRGBA8888, introducer, PALETTE_ANSI_256, sixelEncode } from 'sixel'
-import { loadSharp } from './dsh-adapter/sharp.js'
 import { isTerminalImageSource, TERMINAL_IMAGE_MAX_EDGE, TERMINAL_IMAGE_MAX_BYTES,
   TERMINAL_IMAGE_PREVIEW_MAX_EDGE, TERMINAL_IMAGE_PREVIEW_MAX_BYTES,
   SIXEL_MAX_ENCODED_BYTES, SIXEL_CACHE_BYTES, SIXEL_CACHE_ENTRIES } from './terminal-image.js'
@@ -124,7 +123,7 @@ async function prepareSixel(request: SixelEncodeRequest): Promise<PreparedSixel>
   const { source, width, height, background } = request
   validateRasterBounds(request)
   if (!isTerminalImageSource(source, request.presentation)) throw new Error('Invalid Sixel source')
-  const sharp = await loadSharp()
+  const sharp = await import('sharp').then(module => module.default).catch(() => undefined)
   if (sharp === undefined) throw new Error('Image decoder unavailable')
   // An ink mask is emitted transparent; every other raster composites onto a
   // colour first, because Sixel cannot express partial alpha and blending is
