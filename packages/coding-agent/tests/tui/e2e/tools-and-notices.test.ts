@@ -128,13 +128,30 @@ test("a tool animates its localized header then remains once in the scrollable b
               .trimEnd(),
           )
           .filter((line) => line === "  next reply" || line === `${assistant} next reply`)
-          .length === 12 && !app.isWorking(),
+          .length === 12 &&
+        !app.isWorking() &&
+        app.screen().findLastIndex((line) => line.includes("✻ 执行了")) >
+          app.screen().findLastIndex((line) => line.trim() === "next reply"),
     );
     app.stdin.write("\x1b[5~");
     await app.waitFor(() => app.allLines().some((line) => line.startsWith("• 写入 ")));
     expect(app.allLines().filter((line) => line.startsWith("• 写入 "))).toHaveLength(1);
     expect(app.terminal.buffer.active.baseY).toBe(0);
-    app.stdin.write("\x1b[5~");
+    // Run summaries add real transcript rows; page until the welcome source
+    // is painted instead of assuming that exactly two pages reach it.
+    for (
+      let pages = 0;
+      pages < 4 && !app.screen().some((line) => line.includes("Rukie"));
+      pages++
+    ) {
+      const before = app.screen().slice(0, 3).join("\n");
+      app.stdin.write("\x1b[5~");
+      await app.waitFor(
+        () =>
+          app.screen().some((line) => line.includes("Rukie")) ||
+          app.screen().slice(0, 3).join("\n") !== before,
+      );
+    }
     await app.waitFor(() => app.screen().some((line) => line.includes("Rukie")));
     // Page down from the welcome header to the settled tool in the transcript.
     app.stdin.write("\x1b[6~");

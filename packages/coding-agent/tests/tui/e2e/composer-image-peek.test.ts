@@ -28,7 +28,18 @@ test("caret previews a bound image without taking editing or submission", async 
     app.stdin.write("\x1b[D");
     await app.waitFor(() => screen().includes("Image #1 · PNG"));
     app.stdin.write("look ");
-    await app.waitFor(() => screen().includes("❯ look [Image #1]"));
+    await app.waitFor(
+      () =>
+        screen().includes("❯ look [Image #1]") &&
+        app.terminal.buffer.active.cursorX === 7 &&
+        screen().includes("Image #1 · PNG"),
+    );
+    // Inserting the prefix leaves the caret at the atomic token's start.
+    // Exit that boundary, then enter it again through a completed caret frame.
+    app.stdin.write("\x1b[D");
+    await app.waitFor(
+      () => app.terminal.buffer.active.cursorX === 6 && !screen().includes("Image #1 · PNG"),
+    );
     app.stdin.write("\x1b[C");
     await app.waitFor(() => screen().includes("Image #1 · PNG"));
     app.stdin.write("\r");

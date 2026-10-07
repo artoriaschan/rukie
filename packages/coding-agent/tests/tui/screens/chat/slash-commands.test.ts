@@ -329,7 +329,11 @@ test("menu navigation cycles, Escape keeps the draft, and unknown/path/multiline
         content: [{ type: "text", text: value }],
       });
       app.calls[index]!.finish();
-      await app.waitFor(() => !app.isWorking());
+      await app.waitFor(
+        () =>
+          !app.isWorking() &&
+          app.screen().filter((line) => line.includes("✻ Baked for")).length === index + 1,
+      );
     }
     app.resize(40, 12);
     app.stdin.write("/");

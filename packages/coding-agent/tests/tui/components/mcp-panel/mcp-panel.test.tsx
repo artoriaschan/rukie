@@ -599,7 +599,12 @@ test("a growing tool schema retains its reading position after a previously fitt
       },
     },
   });
-  await terminal.waitFor(() => scrollRef.current!.getScrollHeight() > 30);
+  // Layout commits before xterm finishes consuming the updated frame.
+  await terminal.waitFor(
+    () =>
+      scrollRef.current!.getScrollHeight() > 30 &&
+      terminal.screen().join("\n").includes("expanded-0"),
+  );
   expect(scrollRef.current!.getScrollTop()).toBe(0);
   expect(terminal.screen().join("\n")).toContain("expanded-0");
 });
