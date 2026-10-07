@@ -1,3 +1,4 @@
+import { readSessionNotice, sessionNoticeFromHook, type SessionNotice } from "@neant/agent";
 import { assistantThinkingDuration } from "@neant/agent";
 import { basename } from "node:path";
 import { fmtDuration, type Locale } from "@neant/i18n";
@@ -72,6 +73,7 @@ type CompletedEntry = { anchorId?: string } & (
     }
   | { type: "subagent"; agentId: string }
   | { type: "thinking"; text: string; durationMs?: number }
+  | { type: "session-notice"; notice: SessionNotice; assistantTimestamp?: number }
   | { type: "notice"; text: string; report?: string }
   | { type: "context-report"; report: ContextReport; expanded: boolean; modelName?: string }
 );
@@ -393,13 +395,27 @@ function userMessageEntry(
   };
 }
 
+function messageNotice(message: Session["messages"][number]): SessionNotice | undefined {
+  if (message.role === "assistant") {
+    if (message.stopReason === "aborted") return { kind: "interrupted" };
+    if (message.stopReason === "error")
+      return { kind: "error", reason: message.errorMessage ?? "Model stopped: error" };
+  }
+  return readSessionNotice(message);
+}
+
 function replayMessages(
   messages: Session["messages"],
   t: ReturnType<typeof createTuiI18n>,
 ): CompletedEntry[] {
   const tools = new Map<string, ToolCall>();
-  return messages.flatMap((message): CompletedEntry[] => {
+  const replayed = messages.flatMap((message): CompletedEntry[] => {
     const text = messageText(message);
+    if (message.role === "compactionSummary")
+      return [{ type: "notice", text: t("notice.compaction", { tokens: message.tokensBefore }) }];
+    const outcome = messageNotice(message);
+    if (message.role === "session-notice")
+      return outcome ? [{ type: "session-notice", notice: outcome }] : [];
     if (message.role === "user")
       return "source" in message && message.source === "goal" ? [] : [userMessageEntry(message)];
     if (message.role === "assistant") {
@@ -426,6 +442,15 @@ function replayMessages(
             ]
           : []),
         ...(text ? [{ type: "message" as const, role: "assistant" as const, text }] : []),
+        ...(outcome
+          ? [
+              {
+                type: "session-notice" as const,
+                notice: outcome,
+                assistantTimestamp: message.timestamp,
+              },
+            ]
+          : []),
       ];
     }
     if (message.role === "toolResult") {
@@ -441,6 +466,24 @@ function replayMessages(
     }
     return [];
   });
+  return replayed.reduce<CompletedEntry[]>((entries, entry) => {
+    if (
+      entry.type === "session-notice" &&
+      entry.notice.kind === "interrupted" &&
+      entries.at(-1)?.type === "session-notice"
+    ) {
+      const prior = entries.at(-1)!;
+      if (
+        prior.type === "session-notice" &&
+        prior.notice.kind === "error" &&
+        entry.notice.assistantTimestamp !== undefined &&
+        prior.assistantTimestamp === entry.notice.assistantTimestamp
+      )
+        entries.pop();
+    }
+    entries.push(entry);
+    return entries;
+  }, []);
 }
 
 /** Snapshot text at the event boundary: pi mutates partial messages while streaming. */
@@ -573,6 +616,20 @@ function reduceEvent(
         : state;
     case "message_end": {
       const text = messageText(event.message);
+      const outcome = messageNotice(event.message);
+      if (event.message.role === "session-notice") {
+        if (!outcome) return state;
+        const last = state.completed.at(-1);
+        const completed =
+          outcome.kind === "interrupted" &&
+          last?.type === "session-notice" &&
+          last.notice.kind === "error" &&
+          outcome.assistantTimestamp !== undefined &&
+          last.assistantTimestamp === outcome.assistantTimestamp
+            ? state.completed.slice(0, -1)
+            : state.completed;
+        return { ...state, completed: [...completed, { type: "session-notice", notice: outcome }] };
+      }
       if (event.message.role === "user") {
         if ("source" in event.message && event.message.source === "goal") return state;
         return {
@@ -615,6 +672,15 @@ function reduceEvent(
                   text,
                   anchorId: state.assistantAnchor,
                   fresh: true,
+                },
+              ]
+            : []),
+          ...(outcome
+            ? [
+                {
+                  type: "session-notice" as const,
+                  notice: outcome,
+                  assistantTimestamp: event.message.timestamp,
                 },
               ]
             : []),
@@ -683,10 +749,19 @@ function reduceEvent(
         completed: [...state.completed, ...(entry ? [entry] : [])],
       };
     }
-    case "compaction_end":
-    case "mcp_server_error":
     case "hook_warning":
     case "hook_message":
+      return event.event === "SessionEnd"
+        ? {
+            ...state,
+            completed: [
+              ...state.completed,
+              { type: "session-notice", notice: sessionNoticeFromHook(event) },
+            ],
+          }
+        : state;
+    case "compaction_end":
+    case "mcp_server_error":
       return {
         ...state,
         completed: [
@@ -694,62 +769,19 @@ function reduceEvent(
           {
             type: "notice",
             text:
-              event.type === "hook_warning"
-                ? t("notice.hook-warning", {
-                    event: event.event,
-                    hook: event.hook,
-                    message: formatError({ ...event.error, message: event.message }, t),
-                  }).replace(/\s+/g, " ")
-                : event.type === "hook_message"
-                  ? event.message
-                  : event.type === "compaction_end"
-                    ? t("notice.compaction", { tokens: event.tokensBefore })
-                    : t("notice.mcp-error", {
-                        server: event.server,
-                        error: formatError({ ...event.errorData, message: event.error }, t),
-                      }).replace(/\s+/g, " "),
+              event.type === "compaction_end"
+                ? t("notice.compaction", { tokens: event.tokensBefore })
+                : t("notice.mcp-error", {
+                    server: event.server,
+                    error: formatError({ ...event.errorData, message: event.error }, t),
+                  }).replace(/\s+/g, " "),
           },
         ],
       };
     case "result":
       return {
         ...state,
-        completed: [
-          ...state.completed,
-          ...(state.reasoning
-            ? [
-                {
-                  type: "thinking" as const,
-                  text: state.reasoning,
-                  anchorId: `${state.assistantAnchor}-thinking`,
-                },
-              ]
-            : []),
-          ...(state.assistant
-            ? [
-                {
-                  type: "message" as const,
-                  role: "assistant" as const,
-                  text: state.assistant,
-                  anchorId: state.assistantAnchor,
-                  fresh: true,
-                },
-              ]
-            : []),
-          ...(event.stopReason === "hook_stopped" || event.stopReason === "hook_blocked"
-            ? [
-                {
-                  type: "notice" as const,
-                  text: t(
-                    event.stopReason === "hook_blocked"
-                      ? "notice.hook-blocked"
-                      : "notice.hook-stopped",
-                    { reason: event.reason ?? "" },
-                  ),
-                },
-              ]
-            : []),
-        ],
+        completed: state.completed,
         assistant: "",
         reasoning: "",
         running: false,
@@ -767,7 +799,7 @@ function reduceEvent(
           { at: now, value: decodeMetrics(state, now).value },
         ].slice(-500),
         streamedChars: 0,
-        error: event.success || state.activity.interrupted ? undefined : event.error,
+        error: undefined,
       };
     default:
       return state;
@@ -934,7 +966,7 @@ export function createConversation(session: Session, model: string, locale: Loca
       update({ ...state, jobs: { ...state.jobs, [job.id]: job }, jobNotice }, true);
       return;
     }
-    if (event.type === "conversation_rewound") {
+    if (event.type === "conversation_rewound" || event.type === "conversation_reconciled") {
       const restored = createViewState(session, state.model, locale);
       update({
         ...restored,
@@ -1090,10 +1122,21 @@ export function createConversation(session: Session, model: string, locale: Loca
           images,
         })
         .catch((error: unknown) => {
-          if (!controller.signal.aborted) {
-            update({ ...state, error: formatError(error, t) });
+          const last = state.completed.at(-1);
+          const recordedEnding =
+            last?.type === "session-notice" &&
+            last.notice.kind !== "hook_message" &&
+            last.notice.kind !== "hook_warning";
+          if (!controller.signal.aborted && !recordedEnding) {
+            update({
+              ...state,
+              assistant: "",
+              reasoning: "",
+              tools: [],
+              error: formatError(error, t),
+            });
           } else {
-            update({ ...state, error: undefined });
+            update({ ...state, assistant: "", reasoning: "", tools: [], error: undefined });
           }
         })
         .finally(() => {

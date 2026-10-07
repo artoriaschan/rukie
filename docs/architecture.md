@@ -95,6 +95,8 @@ Tool View 的 schema 由 `@neant/shared` 定义，工具在自身模块声明纯
 
 Session 在 pi 的请求准备、工具前后回调和消息事件上接入这些行为。模型流式增量用于实时呈现，完成消息用于 Transcript 追加；frontend 收到的所有运行事件并不都作为持久化条目保存。
 
+无法从原生消息重建的 Run 结束原因和 Hook 用户提示由 [`session/session-notice.ts`](../packages/agent/src/session/session-notice.ts) 定义为 locale-agnostic 辅助事实，保存为原生 custom message，模型输入投影剥离它们。Frontend 校验后以当前 Locale 呈现；原生 assistant 错误／中断消息与 compaction 记录直接重建对应提示。失败 Run 从已保存分支恢复 Session 消息，保留已提交的部分输出；保存失败的流式尾部不成为历史。消息保存失败时，Agent Core 对已保存但缺少结果的工具调用写入 Unknown Tool Outcome，发出 `conversation_reconciled`；Frontend 读取已提交的 `Session.messages` 替换乐观呈现。恢复不执行工具，不推断副作用或成败。持久化不可用时，Frontend 显示实际保存错误，不制造已保存的结束提示。SessionEnd 诊断与 MCP 连接状态提示仅属于当前 Frontend 生命周期。
+
 中断通过 AbortSignal 传播到模型、工具与挂起的 Interaction。清理在成功、失败和取消路径上执行；已完成的消息与状态写入使用独立的存储上下文，不因 Run 已取消而跳过。`result` 位于本次资源清理之后。`dispose` 释放 Session 资源，但不能一律等待调用它的 Run；frontend 关闭时还要从 Run 回调之外等待运行收束，使用 `waitForIdle` 或已有的 Run Promise，避免等待自己的回调。
 
 Hooks 可以向下一次请求提供上下文、阻止工具或结束 Run，也可以在停止阶段要求继续。异步 Hook 的 `asyncRewake` 能向进行中的 Run steer，或在空闲时启动内部 Run；所以 frontend 不能仅以自己调用过的 `run` 判断 Session 是否正在执行。完整 Hook 协议与限制见 [hooks.md](hooks.md)。

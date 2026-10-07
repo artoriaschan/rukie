@@ -12,7 +12,12 @@ export interface SplitDiffLine {
 interface WordRun extends SyntaxRun {
   changed?: boolean;
 }
-export type SplitDiffRow = { scrollAnchorId?: string } & (
+export type SplitDiffRow = {
+  scrollAnchorId?: string;
+  /** The paired new source row has a separate identity at the same visual position. */
+  alternateScrollAnchorId?: string;
+  /** Source row identities survive unified/split layout changes. */ sourceLines?: readonly number[];
+} & (
   | { text: string; path?: string }
   | { old?: WordRun[]; new?: WordRun[]; oldChanged?: boolean; newChanged?: boolean }
 );
@@ -53,16 +58,17 @@ function changedRuns(runs: SyntaxRun[], words: { text: string; changed: boolean 
 /** Align replacement blocks into panes while retaining paths and hunk gaps. */
 export function alignSplitDiff(lines: readonly SplitDiffLine[]): SplitDiffRow[] {
   const rows: SplitDiffRow[] = [];
+  const sourceIndices = new Map(lines.map((line, index) => [line, index]));
   for (let index = 0; index < lines.length;) {
     const line = lines[index]!;
     if (line.tone === "path" || line.tone === "dim") {
-      rows.push({ text: line.text, path: line.path });
+      rows.push({ text: line.text, path: line.path, sourceLines: [index] });
       index++;
       continue;
     }
     if (line.tone === "plain") {
       const runs = sourceRuns(line);
-      rows.push({ old: runs, new: runs });
+      rows.push({ old: runs, new: runs, sourceLines: [index] });
       index++;
       continue;
     }
@@ -95,6 +101,7 @@ export function alignSplitDiff(lines: readonly SplitDiffLine[]): SplitDiffRow[] 
       if (old && next) {
         const parts = diffWordsWithSpace(oldLine!.text.slice(1), newLine!.text.slice(1));
         rows.push({
+          sourceLines: [sourceIndices.get(oldLine!)!, sourceIndices.get(newLine!)!],
           old: changedRuns(
             old,
             parts
@@ -110,7 +117,16 @@ export function alignSplitDiff(lines: readonly SplitDiffLine[]): SplitDiffRow[] 
           oldChanged: true,
           newChanged: true,
         });
-      } else rows.push({ old, new: next, oldChanged: !!old, newChanged: !!next });
+      } else
+        rows.push({
+          old,
+          new: next,
+          oldChanged: !!old,
+          newChanged: !!next,
+          sourceLines: [oldLine, newLine].flatMap((line) =>
+            line ? [sourceIndices.get(line)!] : [],
+          ),
+        });
     };
     let oldIndex = 0,
       newIndex = 0;
@@ -178,12 +194,12 @@ export function SplitDiffView({
                 <Pane runs={row.old} side="old" changed={row.oldChanged} />
               </ThemedBox>
             </ThemedBox>
-            <ThemedBox width={Math.min(3, width)}>
+            <ThemedBox selectable={false} width={Math.min(3, width)}>
               <ThemedText dimColor preserveWhitespace>
                 {width >= 3 ? " │ " : ""}
               </ThemedText>
             </ThemedBox>
-            <ThemedBox width={right}>
+            <ThemedBox width={right} scrollAnchorId={row.alternateScrollAnchorId}>
               <ThemedBox width={hitWidth(row.new, right)} onClick={row.new ? onToggle : undefined}>
                 <Pane runs={row.new} side="new" changed={row.newChanged} />
               </ThemedBox>

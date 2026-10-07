@@ -1,4 +1,4 @@
-import { Box, ThemedText } from "@neant/tui";
+import { Box, Divider, ThemedText } from "@neant/tui";
 
 export type NoticeKind = "info" | "error" | "success" | "warning" | "dim";
 
@@ -8,6 +8,7 @@ export function Notice({
   color,
   report,
   truncate = false,
+  divider = false,
 }: {
   kind: NoticeKind;
   text: string;
@@ -15,6 +16,8 @@ export function Notice({
   /** Frontend-local report: command heading and indented multiline output. */
   report?: string;
   truncate?: boolean;
+  /** Transcript-level auxiliary row, distinct from transient status notices. */
+  divider?: boolean;
 }) {
   if (report)
     return (
@@ -25,6 +28,12 @@ export function Notice({
             {text}
           </ThemedText>
         </Box>
+      </Box>
+    );
+  if (divider)
+    return (
+      <Box marginTop={1}>
+        <Divider title={text} />
       </Box>
     );
   return (

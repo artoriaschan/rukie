@@ -145,6 +145,8 @@ Notification 输入含 `message`、`title`、`notification_type`，类型为 per
 
 hook_warning、hook_message、hook_continued 进入 stream-json。TUI 按所选语言显示结构化告警、hook 拒绝来源和 Stop 反馈；text CLI 将告警、系统消息和停止原因写入 stderr。
 
+Run 期间显示的 `hook_message` 和 `hook_warning` 作为不进入模型输入的辅助事实保存，TUI Resume 按当前 Locale 恢复结构化文案并保留实际 Hook 原文。Hook 停止或拒绝原因采用相同持久化路径；SessionEnd 诊断随 Frontend 结束，仅在当前生命周期显示。事实保存失败会使 Run 暴露实际持久化错误，不静默丢失已显示提示。事实归属见[运行架构](architecture.md)。
+
 ## 工具执行后的 hook
 
 工具成功执行后触发 `PostToolUse`，输入包含 `tool_input`、`tool_response`（`content` 和 `details`）、`tool_use_id` 和真实工具执行的 `duration_ms`。`decision: "block"` 加 `reason` 或 exit 2 的原因都作为 system reminder 附在结果后，保留原结果；exit 2 优先取 stdout JSON 的 `reason`，不存在时才取 stderr。`hookSpecificOutput.additionalContext` 同样附加为 reminder。`hookSpecificOutput.updatedToolOutput` 可替换结果的 content 数组，只接受文本（`type: "text", text: string`）与图片（`type: "image", data: string, mimeType: string`）内容，非法替换会告警并保留原结果。工具的 details 与成功状态保持原值。

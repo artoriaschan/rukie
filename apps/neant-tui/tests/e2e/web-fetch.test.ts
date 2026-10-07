@@ -29,7 +29,7 @@ test.each([120, 60])("web_fetch shows its URL and Markdown body at %s columns", 
     await app.waitFor(
       () => !app.isWorking() && app.allLines().join("\n").includes("public page body"),
     );
-    expect(app.allLines().some((line) => line.startsWith(`• 获取网页(${url})`))).toBe(true);
+    expect(app.allLines().some((line) => line.startsWith(`• 获取网页 ${url}`))).toBe(true);
     expect(app.allLines().join("\n")).not.toContain(`Fetched ${url}`);
     expect(app.allLines().join("\n")).toContain("public page body");
     expect(app.screen().every((line) => Bun.stringWidth(line) <= columns)).toBe(true);

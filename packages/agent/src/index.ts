@@ -50,3 +50,9 @@ export {
 export type { PresentedTool } from "./tools/presentation.ts";
 
 export { assistantThinkingDuration } from "./session/thinking.ts";
+
+export {
+  readSessionNotice,
+  sessionNoticeFromHook,
+  type SessionNotice,
+} from "./session/session-notice.ts";
