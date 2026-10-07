@@ -171,10 +171,18 @@ test.each(["abort", "close"] as const)(
     );
     const session = await createSession({ ...dirs, ...fake });
     await seedHistory(session);
+    const started = Promise.withResolvers<SessionEvent>();
+    const events: SessionEvent[] = [];
+    session.subscribe((event) => {
+      events.push(event);
+      if (event.type === "compaction_start") started.resolve(event);
+    });
     const before = structuredClone(session.messages);
     const compact = session.compact();
     const rejected = compact.catch((error: unknown) => error);
     await summary.started;
+    expect(await started.promise).toMatchObject({ type: "compaction_start", reason: "manual" });
+    expect(events.filter((event) => event.type === "compaction_end")).toHaveLength(0);
     await expect(session.run("competing prompt")).rejects.toThrow();
     await expect(session.compact()).rejects.toThrow();
     await expect(session.setModel("missing/model")).rejects.toThrow();
@@ -237,10 +245,11 @@ test("manual Compaction after cold reopen refreshes current project, skill, Plan
     "plan-mode",
   ])
     expect(messages).toContain(text);
-  expect(messages).not.toContain("git branch:");
+  expect(messages).toContain("git branch:"); // Historical Transcript facts remain readable.
   const events: SessionEvent[] = [];
   session.subscribe((event) => events.push(event));
   await session.run("continue");
+  expect(JSON.stringify(fake.contexts.at(-1))).not.toContain("git branch:");
   expect(publishedReminders(events)).toEqual([]);
   frontend = "Updated frontend state.";
   await Bun.write(join(dirs.cwd, "AGENTS.md"), "Latest project contract.");
@@ -263,7 +272,14 @@ test("native Compaction is appended without deleting historical evidence and col
   const session = await createSession({ ...dirs, ...fake });
   await seedHistory(session);
   const before = await nativeJournal();
+  const previousTranscript = structuredClone(session.messages);
   await session.compact();
+  expect(session.messages.slice(0, previousTranscript.length)).toEqual([...previousTranscript]);
+  const divider = session.messages.findIndex(
+    (message) => message.role === "session-notice" && message.notice.kind === "compaction",
+  );
+  expect(divider).toBeGreaterThanOrEqual(previousTranscript.length);
+  expect(JSON.stringify(session.messages)).toContain("OLD_EVIDENCE widget contract OLD_EVIDENCE");
   await session.run("next prompt");
   const after = await nativeJournal();
   expect(after).toStartWith(before);

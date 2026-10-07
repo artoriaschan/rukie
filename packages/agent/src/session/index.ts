@@ -36,7 +36,12 @@ import {
   type JobOutput,
 } from "@rukie/shared";
 import type { SessionEvent } from "./events.ts";
-import { modelContextMessages, transcriptMessages, type TranscriptMessage } from "./messages.ts";
+import {
+  permissionDenialFacts,
+  modelContextMessages,
+  transcriptMessages,
+  type TranscriptMessage,
+} from "./messages.ts";
 const entryData = (entry: EntryRecord | undefined) => {
   const value = entry?.data;
   return value && typeof value === "object" && !Array.isArray(value) ? value : undefined;
@@ -52,6 +57,7 @@ import {
 import { createToolState } from "../tool-state/index.ts";
 import {
   createPermissionGate,
+  createPermissionBatch,
   parsePermissionRules,
   type PermissionAskRequest,
   type SessionAllowRule,
@@ -495,25 +501,6 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     let permissionMode = options.permissionMode ?? settings.permissionMode ?? "ask";
     const sessionAllowRules = options.sessionAllowRules ?? [];
     const sessionGrantListeners = new Set<() => void>();
-    const permissionChecks = new Map<number, Promise<void>>();
-    const serializePermissionChecks =
-      (
-        check: ReturnType<typeof createPermissionGate>["beforeTool"],
-        conversationId: number,
-      ): typeof check =>
-      (...args) => {
-        const checked = (permissionChecks.get(conversationId) ?? Promise.resolve()).then(() =>
-          check(...args),
-        );
-        permissionChecks.set(
-          conversationId,
-          checked.then(
-            () => {},
-            () => {},
-          ),
-        );
-        return checked;
-      };
     let observation: Awaited<ReturnType<typeof createConversationObservation>>;
     let storageFailure: unknown;
     const storageFault = Promise.withResolvers<never>();
@@ -559,7 +546,14 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
       context,
     );
-    failedCleanup.push(() => harness.close(context));
+    const permissionBatch = createPermissionBatch(harness);
+    failedCleanup.push(async () => {
+      try {
+        await harness.close(context);
+      } finally {
+        permissionBatch.close();
+      }
+    });
     let conversation = await harness.root(context, {
       agent: {
         model: { provider: model.provider, modelId: model.id },
@@ -1012,6 +1006,23 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     };
     let skills = await loadSkills();
     let tools: ToolRegistration[] = [];
+    async function persistDenial(
+      owner: typeof conversation,
+      event: Parameters<typeof permissionDenialFacts>[1],
+    ) {
+      const live = await harness.snapshot(LiveDoc, owner.id, context);
+      const slot = live?.tools?.find((tool) => tool.callId === event.toolCallId);
+      if (slot?.taskId === undefined)
+        throw new Error("Permission denial has no committed native tool task.");
+      await owner.commit(
+        (tx) =>
+          tx.appendEntry(owner.id, {
+            kind: "rukie.message-facts",
+            data: permissionDenialFacts(slot.taskId!, event),
+          }),
+        context,
+      );
+    }
     const gate = createPermissionGate({
       cwd,
       homeDir: options.homeDir,
@@ -1060,7 +1071,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         await checkpoints.record(call, cwd, options.homeDir);
         await options.onToolCallAllowed?.(call);
       },
-      onEvent: (event) => custom(event),
+      onEvent: async (event) => {
+        if (event.type === "permission_denied") await persistDenial(conversation, event);
+        custom(event);
+      },
       setMode: (value) => {
         permissionMode = value;
       },
@@ -1439,14 +1453,16 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             await checkpoints.record(call, cwd, options.homeDir);
             await options.onToolCallAllowed?.(call);
           },
-          onEvent: (event) =>
+          onEvent: async (event) => {
+            if (event.type === "permission_denied") await persistDenial(child, event);
             custom({
               type: "subagent_event",
               agentId: childId,
               description,
               subagentType: type.name,
               event: { ...event, sessionId: childId },
-            }),
+            });
+          },
           setMode: (value) => {
             permissionMode = value;
           },
@@ -1620,7 +1636,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           tools: childTools,
           hooks: [
             hook(ToolTask, {
-              beforeTool: serializePermissionChecks(childGate.beforeTool, Number(child.id)),
+              beforeTool: permissionBatch.wrap(childGate.beforeTool, () =>
+                childStopped ? (childStopReason ?? "Stopped by hook.") : undefined,
+              ),
               afterTool: async (call, result, _api, ctx) => {
                 const changed = await childHooks.run(
                   result.isError ? "PostToolUseFailure" : "PostToolUse",
@@ -1859,6 +1877,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             harness,
             conversation: child,
             sessionId: childId,
+            history: () => fullHistory(child.id),
             tools: () => childTools,
             adopt: (publication) => {
               childState.adopt(publication);
@@ -2142,6 +2161,45 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           },
         },
       });
+      await refreshSubagentTypes({
+        cwd,
+        homeDir: options.homeDir,
+        trusted: isTrustedProject(cwd, settings),
+        tools: [...base, ...mcp.tools].filter(
+          (tool) =>
+            ![
+              "subagent",
+              "subagent_fork",
+              "send_message",
+              "list_agents",
+              "goal",
+              "enter_plan_mode",
+              "exit_plan_mode",
+            ].includes(tool.name),
+        ),
+        controller: subagents,
+        report: reportDiscovery
+          ? async (discovery) => {
+              for (const warning of discovery.warnings) warn(warning);
+              for (const warning of discovery.hookWarnings) {
+                await appendNotice({
+                  kind: "hook_warning",
+                  event: "SubagentStart",
+                  hook: warning.source,
+                  message: warning.message,
+                  error: warning.error,
+                });
+                custom({
+                  type: "hook_warning",
+                  event: "SubagentStart",
+                  hook: warning.source,
+                  message: warning.message,
+                  error: warning.error,
+                });
+              }
+            }
+          : undefined,
+      });
       tools = [
         ...base,
         ...createSubagentTools({ isChild: false, controller: subagents }),
@@ -2217,7 +2275,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             },
           }),
           hook(ToolTask, {
-            beforeTool: serializePermissionChecks(gate.beforeTool, Number(conversation.id)),
+            beforeTool: permissionBatch.wrap(gate.beforeTool, () =>
+              stopped ? (hookStopReason ?? "Stopped by hook.") : undefined,
+            ),
             afterTool: async (call, result, api, ctx) => {
               const changed = await hooks.run(
                 result.isError ? "PostToolUseFailure" : "PostToolUse",
@@ -2404,6 +2464,29 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             },
             afterResponse: async (message, api, ctx) => {
               tracking.finishRequest();
+              const inputTokens =
+                message.usage.input + message.usage.cacheRead + message.usage.cacheWrite;
+              // Stop hooks can remain pending before the native assistant entry is appended.
+              // Persist provider measurements first so observers never see uncommitted usage.
+              if (Number.isFinite(inputTokens) && inputTokens >= 0) {
+                await conversation.commit(
+                  (tx) =>
+                    tx.appendEntry(conversation.id, {
+                      kind: "rukie.message-facts",
+                      data: {
+                        taskId: Number(api.taskId),
+                        provider: message.provider,
+                        model: message.model,
+                        inputTokens,
+                      },
+                    }),
+                  ctx,
+                );
+                await observation.flush();
+                custom(
+                  contextUsage(contextMessages, model.contextWindow, inputTokens || undefined),
+                );
+              }
               if (message.stopReason === "error" || message.stopReason === "aborted") {
                 goal.disarm();
                 await conversation.commit(async (tx) => {
@@ -2627,45 +2710,6 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       };
       registry.install(subagents.extension);
       registry.install(extension);
-      await refreshSubagentTypes({
-        cwd,
-        homeDir: options.homeDir,
-        trusted: isTrustedProject(cwd, settings),
-        tools: tools.filter(
-          (tool) =>
-            ![
-              "subagent",
-              "subagent_fork",
-              "send_message",
-              "list_agents",
-              "goal",
-              "enter_plan_mode",
-              "exit_plan_mode",
-            ].includes(tool.name),
-        ),
-        controller: subagents,
-        report: reportDiscovery
-          ? async (discovery) => {
-              for (const warning of discovery.warnings) warn(warning);
-              for (const warning of discovery.hookWarnings) {
-                await appendNotice({
-                  kind: "hook_warning",
-                  event: "SubagentStart",
-                  hook: warning.source,
-                  message: warning.message,
-                  error: warning.error,
-                });
-                custom({
-                  type: "hook_warning",
-                  event: "SubagentStart",
-                  hook: warning.source,
-                  message: warning.message,
-                  error: warning.error,
-                });
-              }
-            }
-          : undefined,
-      });
       await conversation.configure(
         { extensions: [extension, subagents.extension], tools },
         context,
@@ -2677,6 +2721,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       harness,
       conversation,
       sessionId: lease.id,
+      history: () => fullHistory(),
       tools: () => tools,
       liveAssistantFacts: () =>
         thinking.duration() !== undefined ? { rukieThinkingDurationMs: thinking.duration() } : {},
@@ -3067,6 +3112,21 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           .filter((entry) => entry.kind === "pi.compaction")
           .map((entry) => Number(entry.id)),
       );
+      const measurement = entries.findLast((entry) => {
+        const data = entry.data;
+        return (
+          Number(entry.id) > compacted &&
+          entry.kind === "rukie.message-facts" &&
+          data !== null &&
+          typeof data === "object" &&
+          !Array.isArray(data) &&
+          data.provider === model.provider &&
+          data.model === model.id &&
+          typeof data.inputTokens === "number" &&
+          Number.isFinite(data.inputTokens) &&
+          data.inputTokens >= 0
+        );
+      });
       const last = entries
         .filter((entry) => Number(entry.id) > compacted)
         .flatMap((entry) => entry.model ?? [])
@@ -3076,9 +3136,15 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             message.provider === model.provider &&
             message.model === model.id,
         );
-      return last?.role === "assistant"
-        ? last.usage.input + last.usage.cacheRead + last.usage.cacheWrite || undefined
-        : undefined;
+      const measuredData = measurement?.data;
+      return measuredData !== null &&
+        typeof measuredData === "object" &&
+        !Array.isArray(measuredData) &&
+        typeof measuredData.inputTokens === "number"
+        ? measuredData.inputTokens || undefined
+        : last?.role === "assistant"
+          ? last.usage.input + last.usage.cacheRead + last.usage.cacheWrite || undefined
+          : undefined;
     }
     async function causalRequestForTask(
       task: import("@earendil-works/pi-durable").TaskRecord<JsonValue, JsonValue, JsonValue>,
@@ -3204,7 +3270,11 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
       toolState: (name) => state.get(name),
       runSummaries: () => structuredClone(runSummaries),
-      contextUsage: () => contextUsage(modelMessages(), model.contextWindow, latestInputTokens()),
+      contextUsage: () =>
+        contextUsage(modelMessages(), model.contextWindow, latestInputTokens(), {
+          instructions: SYSTEM_PROMPT,
+          tools,
+        }),
       contextReport: () =>
         contextReport({
           messages: modelMessages(),
@@ -3213,6 +3283,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           model: `${model.provider}/${model.id}`,
           window: model.contextWindow,
           mcpServers: mcp.toolServers,
+          configured: { instructions: SYSTEM_PROMPT, tools },
         }),
       sideQuestion(question, input) {
         assertAvailable();
@@ -3392,6 +3463,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             harness,
             conversation,
             sessionId: lease.id,
+            history: () => fullHistory(),
             tools: () => tools,
             liveAssistantFacts: () =>
               thinking.duration() !== undefined
@@ -3787,6 +3859,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           });
           await release(() => plan.settleWrites());
           await release(() => harness.close(context));
+          permissionBatch.close();
           await release(() => observation.close());
           subagents.close();
           for (const owner of childHookOwners.values()) owner.dispose();

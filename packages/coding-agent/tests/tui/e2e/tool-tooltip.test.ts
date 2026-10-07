@@ -102,6 +102,8 @@ test("width-hidden Unicode title tooltip fits a small viewport and clears on foc
     await app.waitFor(() => app.calls.length === 2);
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
+    app.stdin.write("\x1b[5~");
+    await app.waitFor(() => app.screen().some((line) => line.includes("Unknown_tool(")));
     hover(app, "Unknown_tool(");
     testClock.advanceTimersByTime(600);
     await app.waitFor(() => app.screen().some((line) => line.includes("Started:")));

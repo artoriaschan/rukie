@@ -554,3 +554,4 @@ export function createPermissionGate(options: PermissionGateOptions) {
     },
   };
 }
+export { createPermissionBatch } from "./batch.ts";
