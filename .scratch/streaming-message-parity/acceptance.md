@@ -1,10 +1,10 @@
 # 流式会话参考验收
 
-当前验收基线包含 tickets01–11 和 Interaction 接管修复 `e0642205775e135d35ee6046d07835734835ec7e`。固定参考为 dsh-TUI `3c89ea516e4f7d2777efe979200016528722a0b4`。本记录区分前置票据已执行的公开测试、ticket12 新执行的组合场景，以及尚未执行的最终集成 gate 和手工 smoke。父规范和 ticket12 在 gate 完成前保持 claimed。
+最终验收代码基线为 `5dd090458f8d04333236c21bdb68324b74060298`，集成分支 `codex/streaming-message-parity`；固定参考为 dsh-TUI `3c89ea516e4f7d2777efe979200016528722a0b4`。tickets01–12 与父规范均已 resolved。本文区分所属票据证据、最终完整检查结果及未执行的手工 smoke，并保留首轮失败与修复历史。
 
 ## 61 项覆盖矩阵
 
-下表的既有结果来自 [tickets01–12](issues/) 的执行记录，不表示本工单重新运行每项场景。所有测试通过公开 start/startWithClock、createSession、renderer 或所属公开组件边界观察行为；最终集成 gate 将再次验证完整代码状态。表中的参考简称对应下一节的固定版本路径。
+下表的既有结果来自 [tickets01–12](issues/) 的执行记录，不表示本工单重新运行每项场景。所有测试通过公开 start/startWithClock、createSession、renderer 或所属公开组件边界观察行为；最终集成 gate 已验证完整代码状态，结果见下节。表中的参考简称对应下一节的固定版本路径。
 
 | 故事                                 | 固定参考与 Neant 所有者                       | 可复核的公开覆盖                                                                                                                                                                                                                                                                                                            |
 | ------------------------------------ | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -104,7 +104,7 @@
 
 - 已运行：`rtk env -u NO_COLOR bun test apps/neant-tui/tests/e2e/concurrent-parity.test.ts`：1 pass、27断言、1.27s（整条命令1.48s）；`rtk bun run check:dev` 的 format/lint/types/Knip/scratch 通过。61矩阵行与全部相对 Markdown 引用已检查；详情见 [ticket12](issues/12-concurrent-streaming-and-parity-acceptance.md)。
 - 前置证据：ticket11 真实保存/恢复混合链4用例174断言1.53s；ticket10 集成导航21用例60断言2.67s；Interaction 接管修复拥有6用例42断言及其集成复核。更完整的各类证据在所属工单，不重复宣称为本票新执行结果。
-- 待主代理执行：最终 Standards/Spec 审阅后的 `rtk proxy env -u NO_COLOR bun run check`，这是单次完整交付 gate；本文件和 ticket12 不预先宣称通过。
+- 最终完整检查：代码 `5dd090458f8d04333236c21bdb68324b74060298` 执行 `rtk proxy caffeinate -is env -u NO_COLOR bun run check`，退出码0；format/lint/types/Knip/scratch 通过，2732 pass、0 fail、15330断言、2732 tests /220 files、108.09s。首轮失败后修复代码并通过 focused／独立审阅才重新执行；最终 Standards／Spec 未解决项均为0。
 - 手工 smoke 未执行，真实 provider、OS/native 剪贴板和真实交互终端可用性不由 fake-model/headless 场景证明。平台/SSH/tmux/OSC 的自动化证据使用隔离 helper 与 terminal transport。
 - 已发生的验证事故：ticket09 初始红 fixture 曾误写真实 macOS 剪贴板为 `hi`，没有读取或恢复原剪贴板；最终相关 fixture 使用隔离 host。本票没有原生剪贴板写入。
 
@@ -112,7 +112,7 @@
 
 最终 Standards 审阅无发现；Spec 审阅以公开 RED 确认两项缺口：实际子 Session 保存失败后打开的 Agent View 保留未提交尾部，以及 Job 边框／分组轨进入复制文字。修复读取子 Session 已提交分支替换正文及工具状态，保持已保存部分和 Unknown Tool Outcome；后续子 Run、父会话重建和关闭使旧请求失效。Job 仅排除装饰边框和分组轨，输出符号、状态及 Unicode 原文保留。
 
-[subagent-save-reconciliation.test.ts](../../apps/neant-tui/tests/e2e/subagent-save-reconciliation.test.ts) 经公开 startWithClock、真实 JSONL store 与实际子 Session 验证 assistant/toolResult 两类保存失败、已提交思考和 read、已发生的 write 副作用与未知结果、实时和冷恢复相同以及同一子 Session 的新 Run。[job-selection.test.ts](../../apps/neant-tui/tests/e2e/job-selection.test.ts) 通过隔离 fake host 验证单卡及分组卡的 Unicode 命令／输出复制，不含边框和轨道。公开 RED 分别267ms、236ms，未访问原生剪贴板。最终 focused 命令 `rtk proxy env -u NO_COLOR bun test apps/neant-tui/tests/e2e/subagent-save-reconciliation.test.ts apps/neant-tui/tests/e2e/job-selection.test.ts apps/neant-tui/tests/e2e/subagent-history-boundary.test.ts apps/neant-tui/tests/e2e/mixed-session-resume.test.ts apps/neant-tui/tests/e2e/background-jobs.test.ts apps/neant-tui/tests/e2e/text-selection.test.ts`：35 pass、367断言、13.58s；新增4用例237/184/260/242ms，均小于1s。既有 Background Job 进程启动／真实停止升级／更新resize成本为2.17/3.28/2.49s，沿用所属工单的必要进程契约。本次 `rtk proxy bun run check:dev` 和 `git diff --check` 通过。独立集成复核发现瞬时 `failed` 可在绘制前被已提交的 `Run ended with error` 替换，fixture 改为等待持久 Run Outcome 和尾部移除；未知工具结果不改写为失败。完整 gate 仍待主代理执行。
+[subagent-save-reconciliation.test.ts](../../apps/neant-tui/tests/e2e/subagent-save-reconciliation.test.ts) 经公开 startWithClock、真实 JSONL store 与实际子 Session 验证 assistant/toolResult 两类保存失败、已提交思考和 read、已发生的 write 副作用与未知结果、实时和冷恢复相同以及同一子 Session 的新 Run。[job-selection.test.ts](../../apps/neant-tui/tests/e2e/job-selection.test.ts) 通过隔离 fake host 验证单卡及分组卡的 Unicode 命令／输出复制，不含边框和轨道。公开 RED 分别267ms、236ms，未访问原生剪贴板。最终 focused 命令 `rtk proxy env -u NO_COLOR bun test apps/neant-tui/tests/e2e/subagent-save-reconciliation.test.ts apps/neant-tui/tests/e2e/job-selection.test.ts apps/neant-tui/tests/e2e/subagent-history-boundary.test.ts apps/neant-tui/tests/e2e/mixed-session-resume.test.ts apps/neant-tui/tests/e2e/background-jobs.test.ts apps/neant-tui/tests/e2e/text-selection.test.ts`：35 pass、367断言、13.58s；新增4用例237/184/260/242ms，均小于1s。既有 Background Job 进程启动／真实停止升级／更新resize成本为2.17/3.28/2.49s，沿用所属工单的必要进程契约。本次 `rtk proxy bun run check:dev` 和 `git diff --check` 通过。独立集成复核发现瞬时 `failed` 可在绘制前被已提交的 `Run ended with error` 替换，fixture 改为等待持久 Run Outcome 和尾部移除；未知工具结果不改写为失败。该修复阶段未运行完整 gate；最终结果见上述验证状态。
 
 ## 完整 gate 失败后的修复证据
 
@@ -120,11 +120,11 @@
 
 其余失败迁移至已批准呈现：Markdown正文保留原始模型上下文；思考显示最新三行；通用工具为accent、Goal标题空格分隔；MCP/compaction为安静 divider 且私有摘要保持隐藏。恢复、回退、modal返回和最后正文使用最终绘制谓词；Jobs被父问题临时接管后恢复同一任务。Run store与失败恢复读取的两个句柄分别验证关闭顺序，未删掉排队写入必须先完成的义务。
 
-最终 focused 两批：所属六文件94 pass /576断言 /17.84s；迁移及Agent13文件144 pass /1746断言 /18.52s。回退受影响四用例4 pass /39断言 /1.67s；新增40×12阅读斜杠菜单用例通过。TPS精确500样本淘汰通过消费者公开订阅边界验证，保留一次真实Session Run接线；1005断言，原>5000ms超时降至33.64ms。Jobs流式modal由真实计时1263ms降至虚拟计时271ms。Jobs真实两进程文件轮询／输出／持久化场景仍1.69s，是子进程时钟与IO的必要契约；未放宽超时或增加固定sleep。新增布局4用例各<2ms，交互welcome无残留用例131ms。后续完整 gate、独立审阅及tracker关闭仍由主代理负责，本工单继续claimed。
+最终 focused 两批：所属六文件94 pass /576断言 /17.84s；迁移及Agent13文件144 pass /1746断言 /18.52s。回退受影响四用例4 pass /39断言 /1.67s；新增40×12阅读斜杠菜单用例通过。TPS精确500样本淘汰通过消费者公开订阅边界验证，保留一次真实Session Run接线；1005断言，原>5000ms超时降至33.64ms。Jobs流式modal由真实计时1263ms降至虚拟计时271ms。Jobs真实两进程文件轮询／输出／持久化场景仍1.69s，是子进程时钟与IO的必要契约；未放宽超时或增加固定sleep。新增布局4用例各<2ms，交互welcome无残留用例131ms。该修复阶段保持claimed；之后独立 Standards／Spec 复核均无未解决项，最终完整检查通过并关闭 tracker，见上述验证状态。
 
 ## 可复制的本地 smoke
 
-先在仓库根目录运行自动化入口；focused 命令仅验证组合场景，完整 gate 由本次交付的主代理执行一次。
+先在仓库根目录运行自动化入口；focused 命令仅验证组合场景，完整 gate 已由主代理执行；下面是操作者之后重新验证的入口。
 
 ```sh
 rtk proxy env -u NO_COLOR bun test apps/neant-tui/tests/e2e/concurrent-parity.test.ts
@@ -151,3 +151,7 @@ env -u NO_COLOR LANG=en_US.UTF-8 bun "$TASK_REPO/apps/neant-tui/src/main.tsx" --
 记录实际观察结果与 provider/终端环境；未运行的步骤保持未运行，不从源码推断通过。Session 保存/恢复语义由 [Agent Core README](../../packages/agent/README.md)、交互规则由 [TUI README](../../apps/neant-tui/README.md) 维护。
 
 - Final allocation consistency recheck: message-navigation/Todo/question/MCP79 pass,508 assertions,14.53s; `rtk proxy bun run check:dev` and `rtk proxy git diff --check` passed. Integration baseline matches `bb01805099b2cb55c6d8fa42e29c05fa6fdae804`. No aggregate check or native clipboard action was performed in this worktree.
+
+## 最终交付
+
+2026-10-07：最终代码 `5dd090458f8d04333236c21bdb68324b74060298` 的完整检查通过（2732 pass、0 fail、15330断言、2732 tests /220 files、108.09s，退出码0），Standards／Spec 剩余问题均为0；父规范与12张工单全部 resolved。本次收束提交仅修改验收和 tracker 文档，保留已验证代码状态。18个实现 worktree 已检查干净且均为集成分支祖先，按 implement-spec 清理；集成工作区和 main 保留。手工 smoke 与原生平台验证的限制，以及 ticket09 历史剪贴板事故，保持如上披露。

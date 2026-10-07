@@ -1,6 +1,6 @@
 # dsh-TUI 流式会话消息与交互复刻
 
-Status: claimed
+Status: resolved
 
 ## Problem Statement
 
@@ -144,3 +144,5 @@ Neant 的会话区已经具备部分工具、Background Job 和 Subagent 呈现�
 ## Comments
 
 - 2026-10-07：按 implement-spec 开始实施，集成分支 `codex/streaming-message-parity`，基线 `b48c548`；按票据依赖调度独立 worktree，最终进行 Standards／Spec 审阅和完整验证。
+
+- 2026-10-07：最终代码 `5dd090458f8d04333236c21bdb68324b74060298` 通过 `rtk proxy caffeinate -is env -u NO_COLOR bun run check`，退出码0；format、lint、types、Knip、scratch 和全量测试通过，2732 pass、0 fail、15330断言、2732 tests /220 files、108.09s。第一次完整检查失败后已定向排查并修复，再次运行有实际代码与验证变化依据。最终 Standards 和 Spec 未解决项均为0；Spec原两项以及交付门槛发现的输入／布局问题已修复并独立复核。详见 [验收记录](acceptance.md)。本次仅收束文档，不改变已验证代码；父规范与最后工单同一提交关闭，12/12 resolved。真实 provider／原生剪贴板／交互终端手工 smoke 未执行，保持限制与历史剪贴板事故披露。

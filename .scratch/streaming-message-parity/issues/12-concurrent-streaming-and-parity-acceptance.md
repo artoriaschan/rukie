@@ -1,6 +1,6 @@
 # 12: 并发流式会话与完整参考验收
 
-Status: claimed
+Status: resolved
 Blocked by: 11
 
 **What to build:** 用户在高频正文、工具和多个后台活动同时更新时仍能稳定阅读、导航和复制；固定参考范围完成逐项核对并留下准确的交付证据。
@@ -18,7 +18,7 @@ Blocked by: 11
 - [x] 形成可复核的参考差异清单，仅包含规范确认的品牌、本地化、领域／生命周期、数据缺失、小终端及持久化中断内容等差异；未覆盖范围不得默默降低。
 - [x] 依据 61 条用户故事核对前置测试证据，补充跨类型缺口并修复实际集成问题；不重复所有昂贵场景或以静态截图代替交互验证。
 - [x] 定时测试使用虚拟时钟、异步清理使用完成信号；检查超过一秒的用例成本并记录必要真实进程契约，避免任意固定 sleep。
-- [ ] 最终代码状态通过清除 NO_COLOR 的完整 bun run check；记录实际验证命令、结果、限制及手工 smoke 步骤，工单与父规范状态按 tracker 规则准确收束。
+- [x] 最终代码状态通过清除 NO_COLOR 的完整 bun run check；记录实际验证命令、结果、限制及手工 smoke 步骤，工单与父规范状态按 tracker 规则准确收束。
 
 ## Implementation progress
 
@@ -48,3 +48,7 @@ Blocked by: 11
 - Final focused batches:94 pass/576 assertions/17.84s in six owning files;144 pass/1746 assertions/18.52s in thirteen migration/Agent files; affected rewind cases4 pass/39 assertions/1.67s. TPS500 retention preserves1005 assertions through the consumer's public Session subscription boundary plus one actual Run; >5000ms timeout becomes33.64ms. Virtual-clock Jobs streaming modal1263ms→271ms. Real two-process Job file polling/output case1.69s is required process IO; clocks cannot advance child processes. Details and first-gate failure remain in acceptance.md; aggregate revalidation and independent final review are pending. Keep claimed and final-gate checkbox unchecked.
 
 - Final allocation consistency recheck: message-navigation/Todo/question/MCP79 pass,508 assertions,14.53s; `rtk proxy bun run check:dev` and `rtk proxy git diff --check` passed. Integration baseline matches `bb01805099b2cb55c6d8fa42e29c05fa6fdae804`. No aggregate check or native clipboard action was performed in this worktree.
+
+## Comments
+
+- 2026-10-07：最终代码 `5dd090458f8d04333236c21bdb68324b74060298` 通过 `rtk proxy caffeinate -is env -u NO_COLOR bun run check`，退出码0；format、lint、types、Knip、scratch 和全量测试通过，2732 pass、0 fail、15330断言、2732 tests /220 files、108.09s。第一次完整检查失败后已定向排查并修复，再次运行有实际代码与验证变化依据。最终 Standards 和 Spec 未解决项均为0；Spec原两项以及交付门槛发现的输入／布局问题已修复并独立复核。详见 [验收记录](../acceptance.md)。本次仅收束文档，不改变已验证代码；父规范与最后工单同一提交关闭，12/12 resolved。真实 provider／原生剪贴板／交互终端手工 smoke 未执行，保持限制与历史剪贴板事故披露。
