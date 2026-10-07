@@ -15,6 +15,7 @@ import {
   LiveDoc,
   InboxDoc,
   type SubmissionId,
+  type TaskId,
   type ToolRegistration,
   type EntryDraft,
   type Storage,
@@ -466,6 +467,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     let startupStopReason: string | undefined;
     let selectingModel = false;
     let foregroundAdmission = false;
+    let manualCompaction = false;
+    let manualCompactionTask: TaskId | undefined;
     let goalRound = false;
     const steeringAdmissions = new Set<Promise<void>>();
     let wrapup: string | undefined;
@@ -605,7 +608,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           params: {},
         });
       if (idle && selectingModel) throw new Error("Session is switching models.");
-      if (idle && (foregroundAdmission || observation?.running()))
+      if (idle && (foregroundAdmission || manualCompaction || observation?.running()))
         throw new Error("Session is busy; it must be idle.");
     };
     let asyncAdmissions = Promise.resolve();
@@ -1886,6 +1889,12 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       includeHookContext = true,
       afterCompactionId?: number,
     ) {
+      const lastPlanReminder =
+        !plan.getActive() && plan.hasEntered()
+          ? (await fullHistory()).findLast(
+              (entry) => entry.kind === "rukie.reminder" && entry.data?.source === "plan-mode",
+            )
+          : undefined;
       if (includeHookContext)
         await conversation.commit(async (tx) => {
           const owned = await tx.doc(CompactHookContextDoc, conversation.id);
@@ -1922,7 +1931,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             plan.getActive()
               ? planModeReminder(!!options.onPlanReview)
               : plan.hasEntered()
-                ? "You have exited Plan Mode."
+                ? lastPlanReminder?.data?.content === "You have exited Plan Mode."
+                  ? undefined
+                  : "You have exited Plan Mode."
                 : undefined,
         },
         ...state.reminderSources,
@@ -2101,6 +2112,36 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                   )
                 )
                   goalRound = false;
+                const humanInput = placed.findLast(
+                  (record) =>
+                    record?.requestId?.startsWith("human:") && record.entry === latestInput?.id,
+                );
+                if (
+                  humanInput &&
+                  latestInput?.model?.some(
+                    (message) => message.role === "user" && textOf(message).startsWith("/"),
+                  )
+                ) {
+                  const facts = (await fullHistory()).findLast(
+                    (entry) =>
+                      entry.kind === "rukie.message-facts" &&
+                      entry.data?.entryId === Number(humanInput.entry),
+                  );
+                  const invocation = facts?.data?.skillInvocation;
+                  if (
+                    typeof invocation === "string" &&
+                    !current.messages.some((message) => textOf(message).includes(invocation))
+                  )
+                    await appendReminder(
+                      {
+                        role: "system-reminder",
+                        source: "skill-invocation",
+                        content: invocation,
+                        timestamp: Date.now(),
+                      },
+                      ctx,
+                    );
+                }
                 for (const record of placed)
                   if (record?.requestId) {
                     let requestId = record.requestId;
@@ -2875,7 +2916,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     }
     const session: Session = {
       get running() {
-        return !closed && storageFailure === undefined && observation.running();
+        return (
+          !closed && storageFailure === undefined && (manualCompaction || observation.running())
+        );
       },
       get currentRequestId() {
         return currentRequestId;
@@ -3051,32 +3094,50 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
       async compact(input) {
         assertAvailable(true);
-        const pre = await hooks.run(
-          "PreCompact",
-          hookInput({ trigger: "manual", custom_instructions: input?.instructions ?? "" }),
-          { matchQuery: "manual" },
-        );
-        if (pre.continue === false)
-          throw pre.stopReason
-            ? createUserVisibleError(pre.stopReason, {
-                code: "compaction-hook-stopped-reason",
-                params: { reason: pre.stopReason },
-              })
-            : createUserVisibleError("Compaction stopped by hook.", {
-                code: "compaction-hook-stopped",
-                params: {},
-              });
-        if (pre.decision === "block")
-          throw createUserVisibleError(pre.reason ?? "Compaction blocked by hook.", {
-            code: "hook-compaction-blocked",
-            params: { reason: pre.reason ?? "" },
-          });
-        const id = await conversation.compact(input?.instructions, context);
-        compactFocus.set(Number(id), input?.instructions ?? "");
-        await harness.waitForTask(id, context);
-        await processCompactionHooks();
-        contextMessages = (await conversation.context(context)).messages;
-        await observation.flush();
+        manualCompaction = true;
+        try {
+          const pre = await hooks.run(
+            "PreCompact",
+            hookInput({ trigger: "manual", custom_instructions: input?.instructions ?? "" }),
+            { matchQuery: "manual" },
+          );
+          if (pre.continue === false)
+            throw pre.stopReason
+              ? createUserVisibleError(pre.stopReason, {
+                  code: "compaction-hook-stopped-reason",
+                  params: { reason: pre.stopReason },
+                })
+              : createUserVisibleError("Compaction stopped by hook.", {
+                  code: "compaction-hook-stopped",
+                  params: {},
+                });
+          if (pre.decision === "block")
+            throw createUserVisibleError(pre.reason ?? "Compaction blocked by hook.", {
+              code: "hook-compaction-blocked",
+              params: { reason: pre.reason ?? "" },
+            });
+          const id = await conversation.compact(input?.instructions, context);
+          manualCompactionTask = id;
+          compactFocus.set(Number(id), input?.instructions ?? "");
+          const settled = await Promise.race([
+            harness.waitForTask(id, context),
+            storageFault.promise,
+          ]);
+          if (settled.state.status !== "terminal") throw new Error("Compaction did not settle.");
+          const outcome = settled.state.outcome;
+          if (outcome.status !== "completed")
+            throw new Error(
+              outcome.status === "failed" || outcome.status === "faulted"
+                ? outcome.error.message
+                : (outcome.reason ?? "Compaction aborted."),
+            );
+          await processCompactionHooks();
+          contextMessages = (await conversation.context(context)).messages;
+          await observation.flush();
+        } finally {
+          manualCompactionTask = undefined;
+          manualCompaction = false;
+        }
       },
       checkpoints: () => checkpoints.list(),
       async rewind(id, input) {
@@ -3279,6 +3340,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         notificationLifetime = new AbortController();
         stopped = true;
         goal.disarm();
+        if (manualCompactionTask) await harness.abortTask(manualCompactionTask, context);
         await conversation.abort(context);
         await observation.flush();
       },
@@ -3498,6 +3560,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             await applyHookResult(result, "hook:SessionEnd");
           });
           hooks.dispose();
+          await release(() => plan.settleWrites());
           await release(() => harness.close(context));
           await release(() => observation.close());
           subagents.close();
