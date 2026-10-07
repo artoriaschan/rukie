@@ -20,3 +20,5 @@
 - `env -u NO_COLOR bun test apps/neant-tui/tests/e2e/split-diff.test.ts apps/neant-tui/tests/e2e/file-diff.test.ts apps/neant-tui/tests/e2e/tool-syntax.test.ts apps/neant-tui/tests/e2e/tool-expansion.test.ts`: 17 passed, 60 assertions, 2.42s. New scenarios took 4–244ms; no new fixed waits or scenario over one second.
 - `bun run check:dev` and `git diff --check` passed. The integration owner runs the final aggregate check once after all tickets merge.
 - Updated renderer/API README, TUI settings usage, exact pinned diff dependency and Bun lockfile. Ticket09 can pass its path callback directly to SplitDiffView; path click takes precedence over card toggle.
+
+- Synced integration `3f716e9` (ticket03), preserving dedicated rows and frontend provider inheritance for child ToolCalls. Post-sync `check:dev` passed; focused split/plan/subagent tests: 32 passed, 141 assertions, 4.93s. The merge changed only import placement where overlapping; no presentation behavior was discarded.

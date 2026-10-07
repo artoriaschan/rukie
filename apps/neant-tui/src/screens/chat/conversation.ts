@@ -19,7 +19,6 @@ import {
   type ToolResultView,
 } from "@neant/shared";
 import type { TpsSample } from "../../components/status-line";
-import { goalPhasePresentation } from "../../components";
 import { reduceSubagent, restoreSubagents, type SubagentState } from "./subagents";
 import { createActivity, reduce } from "./activity/activity";
 import type { NoticeKind } from "../../components/notice";
@@ -60,9 +59,16 @@ type CompletedEntry = { anchorId?: string } & (
       result?: string;
       images?: PromptImage[];
       error?: string;
-      agentId?: string;
-      planReview?: { plan: string; kind: "approve" | "revise" | "takeover"; feedback?: string };
     }
+  | { type: "question"; text: string }
+  | {
+      type: "plan-review";
+      id: string;
+      plan: string;
+      kind: "approve" | "revise" | "takeover";
+      feedback?: string;
+    }
+  | { type: "subagent"; agentId: string }
   | { type: "thinking"; text: string }
   | { type: "notice"; text: string; report?: string }
   | { type: "context-report"; report: ContextReport; expanded: boolean; modelName?: string }
@@ -79,15 +85,20 @@ function resultText(result: Pick<ToolResultMessage, "content">) {
     .join("\n");
 }
 
+export function showsToolCard(name: string) {
+  return ![
+    "todo_write",
+    "ask_user_question",
+    "enter_plan_mode",
+    "exit_plan_mode",
+    "subagent",
+    "subagent_fork",
+    "send_message",
+    "list_agents",
+  ].includes(name);
+}
+
 function toolSummary(name: string, args: unknown) {
-  if (
-    name === "web_fetch" &&
-    typeof args === "object" &&
-    args !== null &&
-    "url" in args &&
-    typeof args.url === "string"
-  )
-    return `web_fetch ${args.url}`;
   return `${name} ${JSON.stringify(args)}`.replace(/\s+/g, " ");
 }
 
@@ -102,7 +113,9 @@ function toolEntry(
     timestamp?: number;
   },
   t: ReturnType<typeof createTuiI18n>,
-): Extract<CompletedEntry, { type: "tool" }> {
+): CompletedEntry | undefined {
+  if (isUnknownToolOutcome(result.details) && !showsToolCard(tool.name))
+    return { type: "notice", text: t("tool.outcome-unknown") };
   if (isUnknownToolOutcome(result.details))
     return {
       type: "tool",
@@ -150,18 +163,31 @@ function toolEntry(
             : {}),
         }
       : undefined;
-  const goal =
-    ["create_goal", "update_goal"].includes(tool.name) && !isError
-      ? goalSummary(resultText(result), t)
+  if (review) return { type: "plan-review", id: tool.id, ...review };
+  if (tool.name === "ask_user_question")
+    return { type: "question", text: questionSummary(tool.args, resultText(result), t) };
+  if (["subagent", "subagent_fork", "send_message", "list_agents"].includes(tool.name)) {
+    const details = result.details;
+    if (
+      typeof details === "object" &&
+      details !== null &&
+      "agentId" in details &&
+      typeof details.agentId === "string"
+    )
+      return { type: "subagent", agentId: details.agentId };
+    return isError
+      ? { type: "notice", text: `✗ ${formatError({ message: resultText(result) }, t)}` }
       : undefined;
-  const todo = tool.name === "todo_write" && !isError ? todoSummary(tool.args, t) : undefined;
+  }
+  if (["enter_plan_mode", "exit_plan_mode"].includes(tool.name))
+    return isError
+      ? { type: "notice", text: `✗ ${formatError({ message: resultText(result) }, t)}` }
+      : undefined;
+  if (tool.name === "todo_write" && !isError) return undefined;
   return {
     type: "tool",
     id: tool.id,
-    name:
-      goal !== undefined || todo !== undefined || (tool.name === "ask_user_question" && !isError)
-        ? undefined
-        : tool.name,
+    name: tool.name,
     args: tool.args,
     callView: tool.callView,
     resultView: result.view,
@@ -190,30 +216,9 @@ function toolEntry(
           ? { name: basename(tool.args.path) }
           : {}),
       })),
-    ...(review && { planReview: review }),
-    summary:
-      goal !== undefined
-        ? goal.summary
-        : todo !== undefined
-          ? t("todo.summary")
-          : tool.name === "ask_user_question" && !isError
-            ? t("question.summary")
-            : tool.summary,
+    summary: tool.summary,
     isError,
-    agentId:
-      typeof result.details === "object" &&
-      result.details !== null &&
-      "agentId" in result.details &&
-      typeof result.details.agentId === "string"
-        ? result.details.agentId
-        : undefined,
-    result: isError
-      ? undefined
-      : tool.name === "ask_user_question"
-        ? questionSummary(tool.args, resultText(result), t)
-        : tool.name === "web_fetch"
-          ? resultText(result).split(/\r?\n/)[0]
-          : (goal?.result ?? todo ?? resultText(result)),
+    result: isError ? undefined : resultText(result),
     error: isError
       ? hook !== undefined
         ? t("tool.hook-denied", {
@@ -233,73 +238,6 @@ function toolEntry(
             )
       : undefined,
   };
-}
-
-function goalSummary(text: string, t: ReturnType<typeof createTuiI18n>) {
-  let value: unknown;
-  try {
-    value = JSON.parse(text);
-  } catch {
-    return undefined;
-  }
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    !("goal" in value) ||
-    !("armed" in value) ||
-    typeof value.armed !== "boolean"
-  )
-    return undefined;
-  const goal = value.goal;
-  if (
-    typeof goal !== "object" ||
-    goal === null ||
-    !("objective" in goal) ||
-    typeof goal.objective !== "string" ||
-    !("phase" in goal) ||
-    typeof goal.phase !== "string" ||
-    !("roundsStarted" in goal) ||
-    typeof goal.roundsStarted !== "number" ||
-    !("maxRounds" in goal) ||
-    typeof goal.maxRounds !== "number"
-  )
-    return undefined;
-  const phase = goal.phase;
-  if (phase !== "active" && phase !== "paused" && phase !== "blocked" && phase !== "complete")
-    return undefined;
-  const presentation = goalPhasePresentation[phase];
-  const singleLine = (text: string) => text.replace(/[\r\n]+/g, " ");
-  return {
-    summary: `🎯 ${singleLine(goal.objective)}`,
-    result:
-      `${presentation.glyph} ${phase} · ${goal.roundsStarted}/${goal.maxRounds} · ${t(value.armed ? "goal.armed" : "goal.disarmed")}` +
-      (goal.phase === "blocked" && "blockedReason" in goal && typeof goal.blockedReason === "string"
-        ? `\n⛔ ${singleLine(goal.blockedReason)}`
-        : ""),
-  };
-}
-
-function todoSummary(args: unknown, t: ReturnType<typeof createTuiI18n>) {
-  if (typeof args !== "object" || args === null || !("todos" in args)) return undefined;
-  const todos = args.todos;
-  if (
-    !Array.isArray(todos) ||
-    !todos.every(
-      (item) =>
-        typeof item?.content === "string" &&
-        ["pending", "in_progress", "completed"].includes(item.status),
-    )
-  )
-    return undefined;
-  const done = todos.filter((todo) => todo.status === "completed").length;
-  // The tool heading and progress row leave two rows within the four-row card budget.
-  return [
-    t("todo.progress", { done, total: todos.length }),
-    ...todos
-      .filter((todo) => todo.status === "in_progress")
-      .slice(0, 2)
-      .map((todo) => `● ${todo.content.trim().replace(/[\r\n]+/g, " ")}`),
-  ].join("\n");
 }
 
 function questionSummary(args: unknown, text: string, t: ReturnType<typeof createTuiI18n>) {
@@ -486,7 +424,8 @@ function replayMessages(
         summary: message.toolName,
       };
       tools.delete(message.toolCallId);
-      return [{ ...toolEntry(tool, message.isError, message, t), replayed: true }];
+      const entry = toolEntry(tool, message.isError, message, t);
+      return entry ? [{ ...entry, ...(entry.type === "tool" ? { replayed: true } : {}) }] : [];
     }
     return [];
   });
@@ -706,7 +645,7 @@ function reduceEvent(
       const tool = state.tools.find((tool) => tool.id === event.toolCallId);
       if (!tool) return state;
       const entry = toolEntry(tool, event.isError, { ...event.result, view: event.view }, t);
-      const job = entry.type === "tool" && entry.jobId ? state.jobs[entry.jobId] : undefined;
+      const job = entry?.type === "tool" && entry.jobId ? state.jobs[entry.jobId] : undefined;
       const explicit =
         tool.args !== null &&
         typeof tool.args === "object" &&
@@ -719,7 +658,7 @@ function reduceEvent(
             ? { ...state.jobs, [job.id]: { ...job, promotedAt: job.backgroundedAt } }
             : state.jobs,
         tools: state.tools.filter((tool) => tool.id !== event.toolCallId),
-        completed: [...state.completed, entry],
+        completed: [...state.completed, ...(entry ? [entry] : [])],
       };
     }
     case "compaction_end":

@@ -98,18 +98,20 @@ test("a tool animates its localized header then remains once in the scrollable b
       content: "first line\n" + "long content ".repeat(30) + "hidden tail",
     });
     await app.waitFor(() => runningTools(app).some((line) => line.includes("写入(")));
-    const first = app.screen().find((line) => line.includes("写入({"))!;
-    expect(first).toContain('"path":"written.txt"');
-    expect(app.screen().filter((line) => line.includes("写入({"))).toHaveLength(1);
+    const first = app.screen().find((line) => line.includes("写入(written.txt)"))!;
+    expect(first).toContain("written.txt");
+    expect(app.screen().filter((line) => line.includes("写入(written.txt)"))).toHaveLength(1);
     expect(app.screen().join("\n")).not.toContain("hidden tail");
-    await app.waitFor(() => app.screen().some((line) => line.includes("写入({") && line !== first));
+    await app.waitFor(() =>
+      app.screen().some((line) => line.includes("写入(written.txt)") && line !== first),
+    );
     permission.resolve("allow");
     await app.waitFor(() => app.calls.length === 2);
     app.calls[1]!.delta("file written");
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
     expect(app.allLines().filter((line) => line.startsWith("• 写入("))).toHaveLength(1);
-    expect(app.allLines().join("\n")).toContain("⎿ Successfully wrote");
+    expect(app.allLines().join("\n")).toContain("+first line");
     expect(runningTools(app).some((line) => line.includes("写入("))).toBe(false);
     app.stdin.write("next\r");
     await app.waitFor(() => app.calls.length === 3);
@@ -122,6 +124,8 @@ test("a tool animates its localized header then remains once in the scrollable b
           .filter((line) => line === "  next reply" || line === `${assistant} next reply`)
           .length === 12 && !app.isWorking(),
     );
+    app.stdin.write("\x1b[5~");
+    await app.waitFor(() => app.allLines().some((line) => line.startsWith("• 写入(")));
     expect(app.allLines().filter((line) => line.startsWith("• 写入("))).toHaveLength(1);
     expect(app.terminal.buffer.active.baseY).toBe(0);
     app.stdin.write("\x1b[5~");

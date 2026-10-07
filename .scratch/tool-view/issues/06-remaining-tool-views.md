@@ -4,14 +4,14 @@
 
 **Blocked by:** 01
 
-**Status:** claimed
+**Status:** resolved
 
 - [x] read 出 read view，标题为路径，正文为文本内容
 - [x] grep 出 search `matches` 形态（按文件分组 + `n: line`），glob 出 `paths` 形态；截断时显示总数
 - [x] web_fetch 出 web view，标题为 URL，正文以 Markdown 渲染并受折叠规则约束
 - [x] MCP 工具出 generic view，`kind: other`，标题由 frontend 拼成 `server › tool`
 - [x] goal 工具出 generic 摘要卡；job 工具有 view；后台 bash 为 generic 卡 + JobCard 行，JobGroupHeader 保留
-- [ ] 现有 TUI 中按工具名零散拼摘要的特例（web_fetch 首行等）删除，统一走 view
+- [x] 现有 TUI 中按工具名零散拼摘要的特例（web_fetch 首行等）删除，统一走 view
 - [x] Agent Core e2e 断言各工具 view；TUI e2e 覆盖各卡片渲染
 
 ## Implementation evidence
@@ -23,3 +23,5 @@
 - Remaining heuristic-removal checkbox is coordinated with ticket03, which owns conversation routing. Pointer: screens/chat/conversation.ts toolSummary web_fetch special-case, toolEntry goalSummary/name suppression and web_fetch first-line result. Card rendering already uses resultView over those obsolete strings.
 
 - Integration sync: merged integration `2af2dc9` (tickets02/04), preserved unified diff tones/eight-line folding and all single/global expansion behavior. Reinstalled locked dependencies for the newly integrated TUI diff dependency. Post-merge: 9 new public Session/TUI tests passed (733ms); 25 related diff/expansion/background-job/web tests passed (8.67s), plus check:dev. Two unchanged background-job lifecycle tests take 2.12s/3.27s due their existing real process cancellation contracts; no new or modified06 scenario exceeds one second. Root runs the final aggregate gate after all tickets integrate.
+
+- Ticket03 integration completed the deferred conversation heuristic removal: tool summaries no longer special-case web_fetch; goal/todo name suppression and frontend JSON parsers are gone; raw result text remains available while resultView owns presentation. Goal-tool-card live/resume and remaining-view tests validate the presenter result. Ticket06 is resolved after that coordinated change.
