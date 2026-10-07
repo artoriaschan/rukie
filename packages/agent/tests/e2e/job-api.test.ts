@@ -1,6 +1,10 @@
+import {
+  createSession as createNativeSession,
+  ROOT_CONVERSATION_ID,
+} from "@earendil-works/pi-durable";
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { join } from "node:path";
 import { createSession, createJsonlStore, type Session, type JobEvent } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
@@ -9,7 +13,7 @@ import { tempDirs } from "../helpers/temp-dirs.ts";
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
 let session: Session | undefined;
 afterEach(async () => {
-  await session?.dispose();
+  await session?.close();
   session = undefined;
   await dirs?.cleanup();
 });
@@ -79,7 +83,7 @@ async function waitUntil(predicate: () => boolean | Promise<boolean>) {
   const deadline = Date.now() + 2000;
   while (!(await predicate())) {
     if (Date.now() > deadline) throw new Error("Job condition did not become observable");
-    await Bun.sleep(5);
+    await new Promise<void>((resolve) => setImmediate(resolve));
   }
 }
 
@@ -155,7 +159,9 @@ test("frontend reads use absolute offsets without consuming the model output", a
     fauxAssistantMessage("started"),
     call("job_output", { job_id: "bash-1" }),
     (context) => {
-      expect(JSON.stringify(context.messages.at(-1))).toContain("alpha\\n[stderr]\\nerror");
+      expect(
+        JSON.stringify(context.messages.findLast((message) => message.role === "toolResult")),
+      ).toContain("alpha\\n[stderr]\\nerror");
       return fauxAssistantMessage("read");
     },
   ]);
@@ -196,7 +202,7 @@ test.each([false, true])(
         code: false,
         conversation: true,
       });
-    await session.dispose();
+    await session.close();
     session = await createSession({
       ...dirs,
       ...fakeModel([launch, fauxAssistantMessage("restarted")]),
@@ -258,7 +264,7 @@ test("a job observer can await Session disposal without blocking process drain",
   const running = session.run("start", {
     async onEvent(event) {
       if (event.type === "job_event" && event.kind === "started") {
-        await session!.dispose();
+        await session!.close();
         disposed.resolve();
       }
     },
@@ -292,46 +298,94 @@ test("frontend read reports dropped output and points to the complete spill file
   expect(await Bun.file(session.jobs()[0]!.spillPath!).text()).toBe("x".repeat(300000));
 });
 
-test("a restored high job id followed by a lost bash result reserves the observed start", async () => {
+test("a restored high job id and an uncertain native bash effect reserve retired cursors", async () => {
   dirs = await tempDirs();
   const store = createJsonlStore(dirs);
   const seed = await createSession({ ...dirs, ...fakeModel([]), store });
-  await seed.dispose();
-  const metadata = (await store.list({ cwd: dirs.cwd }, BACKGROUND_CONTEXT))[0]!;
-  const stored = await store.open(metadata, BACKGROUND_CONTEXT);
-  const branch = (await stored.branch("main", BACKGROUND_CONTEXT))!;
+  await seed.close();
   const args = {
     command: "while [ ! -e go ]; do sleep 0.01; done",
     description: "Recover without old process",
     run_in_background: true,
   };
-  await branch.appendMessage(
-    fauxAssistantMessage(fauxToolCall("bash", args, { id: "known" }), { stopReason: "toolUse" }),
-    BACKGROUND_CONTEXT,
-  );
-  await branch.appendMessage(
-    {
-      role: "toolResult",
-      toolCallId: "known",
-      toolName: "bash",
-      content: [{ type: "text", text: "started background job bash-10" }],
-      details: { jobId: "bash-10" },
-      isError: false,
-      timestamp: Date.now(),
+  const lease = await store.open({ id: seed.id }, BACKGROUND_CONTEXT);
+  const kernel = createNativeSession(lease.storage);
+  try {
+    await kernel.commit(
+      (tx) =>
+        tx.appendEntry(ROOT_CONVERSATION_ID, {
+          kind: "test.historical-job",
+          data: {},
+          model: [
+            fauxAssistantMessage(fauxToolCall("bash", args, { id: "known" }), {
+              stopReason: "toolUse",
+            }),
+            {
+              role: "toolResult",
+              toolCallId: "known",
+              toolName: "bash",
+              content: [{ type: "text", text: "started background job bash-10" }],
+              details: { jobId: "bash-10" },
+              isError: false,
+              timestamp: Date.now(),
+            },
+          ],
+        }),
+      BACKGROUND_CONTEXT,
+    );
+  } finally {
+    await kernel.close(BACKGROUND_CONTEXT);
+    await lease.release();
+  }
+  let rejected = false;
+  const faultStore: typeof store = {
+    ...store,
+    async open(options, context) {
+      const owned = await store.open(options, context);
+      const commit = owned.storage.commit.bind(owned.storage);
+      owned.storage.commit = async (writes, commitContext) => {
+        if (
+          !rejected &&
+          writes.some(
+            (write) =>
+              write.type === "entry" &&
+              write.value.model?.some(
+                (message) => message.role === "toolResult" && message.toolCallId === "lost",
+              ),
+          )
+        ) {
+          rejected = true;
+          throw new Error("lost bash receipt");
+        }
+        return commit(writes, commitContext);
+      };
+      return owned;
     },
-    BACKGROUND_CONTEXT,
-  );
-  await branch.appendMessage(
-    fauxAssistantMessage(fauxToolCall("bash", args, { id: "lost" }), { stopReason: "toolUse" }),
-    BACKGROUND_CONTEXT,
-  );
-  await stored.close(BACKGROUND_CONTEXT);
+  };
   session = await createSession({
     ...dirs,
-    ...fakeModel([call("bash", args), fauxAssistantMessage("new work")]),
+    ...fakeModel([
+      fauxAssistantMessage(fauxToolCall("bash", args, { id: "lost" }), { stopReason: "toolUse" }),
+    ]),
+    store: faultStore,
     resumeId: seed.id,
     allowRules: ["bash"],
   });
+  await expect(session.run("start uncertain job")).rejects.toThrow("lost bash receipt");
+  expect(rejected).toBe(true);
+  await session.close();
+  session = await createSession({
+    ...dirs,
+    ...fakeModel([
+      fauxAssistantMessage("recovered prior request"),
+      call("bash", args),
+      fauxAssistantMessage("new work"),
+    ]),
+    store,
+    resumeId: seed.id,
+    allowRules: ["bash"],
+  });
+  await session.waitForIdle();
   await session.run("new work");
   expect(session.jobs()[0]?.id).toBe("bash-12");
   expect(() => session!.readJob("bash-11", 0)).toThrow("unknown job bash-11");
@@ -339,7 +393,7 @@ test("a restored high job id followed by a lost bash result reserves the observe
     session.messages.find(
       (message) => message.role === "toolResult" && message.toolCallId === "lost",
     ),
-  ).toMatchObject({ details: { recovery: { type: "unknown-tool-outcome" } } });
+  ).toMatchObject({ outcomeUnknown: true });
 });
 
 test("foreground timeout publishes a started event with the originating bash result id", async () => {
