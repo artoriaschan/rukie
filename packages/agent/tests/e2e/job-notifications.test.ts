@@ -1,3 +1,4 @@
+import { withModelStream, modelStream } from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { join } from "node:path";
@@ -8,7 +9,7 @@ import { tempDirs } from "../helpers/temp-dirs.ts";
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
 let session: Session | undefined;
 afterEach(async () => {
-  await session?.dispose();
+  await session?.close();
   session = undefined;
   await dirs?.cleanup();
 });
@@ -22,7 +23,7 @@ async function waitFor(check: () => boolean | Promise<boolean>, description: str
   const deadline = Date.now() + 2000;
   while (!(await check())) {
     if (Date.now() > deadline) throw new Error(`Timed out waiting for ${description}`);
-    await Bun.sleep(5);
+    await new Promise<void>((resolve) => setImmediate(resolve));
   }
 }
 
@@ -48,17 +49,16 @@ test("an idle Background Job completion starts a Run and retains its observer", 
       },
     },
   });
-  await session.run("start", {
-    onEvent(event) {
-      if (event.type === "result") results++;
-    },
+  session.subscribe((event) => {
+    if (event.type === "result") results++;
   });
+  await session.run("start");
   expect(results).toBe(1);
   expect(session.running).toBe(false);
   await Bun.write(join(dirs.cwd, "go"), "");
   await waitFor(() => results === 2, "completion Run");
   expect(fake.contexts).toHaveLength(3);
-  expect(fake.contexts[2]!.messages.at(-1)).toMatchObject({
+  expect(fake.contexts[2]!.messages.findLast((message) => message.role === "user")).toMatchObject({
     role: "user",
     content: [{ type: "text", text: notification }],
   });
@@ -128,7 +128,9 @@ test("a completion collected by a pending wait is not notified", async () => {
   await session.waitForIdle();
   expect(results).toBe(1);
   expect(fake.contexts).toHaveLength(3);
-  expect(fake.contexts[2]!.messages.at(-1)).toMatchObject({
+  expect(
+    fake.contexts[2]!.messages.findLast((message) => message.role === "toolResult"),
+  ).toMatchObject({
     role: "toolResult",
     content: [{ type: "text", text: "(no new output)\n[status: completed, exit code: 0]" }],
   });
@@ -158,7 +160,9 @@ test("model job_kill suppresses completion without requiring a wait collection",
   await session.run("cancel background job");
   await session.waitForIdle();
   expect(fake.contexts).toHaveLength(5);
-  expect(fake.contexts[4]!.messages.at(-1)).toMatchObject({
+  expect(
+    fake.contexts[4]!.messages.findLast((message) => message.role === "toolResult"),
+  ).toMatchObject({
     content: [{ type: "text", text: "bash-1 [bash] killed — Wait for job release" }],
   });
   expect(session.messages.filter((message) => message.role === "user")).toHaveLength(1);
@@ -183,7 +187,7 @@ test("Session teardown stops a Background Job without waking its observer", asyn
   });
   await waitFor(() => Bun.file(join(dirs.cwd, "pid")).exists(), "job pid");
   const pid = Number(await Bun.file(join(dirs.cwd, "pid")).text());
-  await session.dispose();
+  await session.close();
   expect(() => process.kill(pid, 0)).toThrow();
   expect(fake.contexts).toHaveLength(2);
   expect(results).toBe(1);
@@ -209,7 +213,9 @@ test("new output does not wake an idle Session", async () => {
   expect(session.running).toBe(false);
   await session.run("inspect output");
   expect(fake.contexts).toHaveLength(4);
-  expect(fake.contexts[3]!.messages.at(-1)).toMatchObject({
+  expect(
+    fake.contexts[3]!.messages.findLast((message) => message.role === "toolResult"),
+  ).toMatchObject({
     content: [{ type: "text", text: "partial\n[status: running]" }],
   });
   expect(session.messages.filter((message) => message.role === "user")).toHaveLength(2);
@@ -234,16 +240,20 @@ test("an aborted job_output wait remains eligible for a completion notification"
   session = await createSession({
     ...dirs,
     model: fake.model,
-    streamFn: (model, context, options) => fake.streamFn(model, context, options),
+    models: withModelStream(fake.models, (model, context, options) =>
+      modelStream(fake.models)(model, context, options),
+    ),
     allowRules: ["bash"],
   });
   await session.run("start");
+  session.subscribe((event) => {
+    if (event.type === "result" && released) rewoken++;
+  });
   const run = session.run("wait", {
     signal: controller.signal,
     onEvent(event) {
       if (event.type === "tool_execution_start" && event.toolName === "job_output")
         waiting.resolve();
-      if (event.type === "result" && released) rewoken++;
     },
   });
   void run.catch(() => {});
@@ -264,7 +274,9 @@ test("an aborted job_output wait remains eligible for a completion notification"
       content: [{ type: "text", text: notification }],
     }),
   );
-  expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
+  expect(
+    fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+  ).toMatchObject({
     content: [{ type: "text", text: "final\n[status: completed, exit code: 0]" }],
   });
 });
