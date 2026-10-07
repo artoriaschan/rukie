@@ -1,3 +1,4 @@
+import { startWithClock } from "../../helpers/clock-app";
 import { afterEach, expect, test } from "bun:test";
 import { createSession, createJsonlStore, type SessionOptions } from "@neant/agent";
 import {
@@ -113,7 +114,7 @@ test("/resume displays two-row session metadata, Escape preserves the current ch
   const listing = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
   const sessionOptions: Partial<SessionOptions> = { model: undefined };
-  const app = await start([], {
+  const app = await startWithClock([], {
     env: { LANG: "en_US.UTF-8" },
     session: sessionOptions,
     prepare: async (root) => {
@@ -153,7 +154,7 @@ test("/resume displays two-row session metadata, Escape preserves the current ch
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.delta("Current answer");
     app.calls[0]!.finish();
-    await app.waitFor(() => !app.isWorking());
+    await app.waitFor(() => !app.isWorking() && screen(app).includes("Current answer"));
     app.stdin.write("/resume\r");
     await app.waitFor(() => screen(app).includes("❯ Stored session"));
     const row = app.screen().findIndex((line) => line.includes("Stored session"));

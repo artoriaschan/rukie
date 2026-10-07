@@ -1,3 +1,4 @@
+import { startWithClock } from "./helpers/clock-app";
 import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -72,14 +73,15 @@ test("TUI exit disposes an idle Session and runs SessionEnd once", async () => {
   }
 });
 
-test("streams verbatim replies and continues two prompts in the same Session", async () => {
-  const app = await start();
+test("renders Markdown replies and continues two prompts in the same Session", async () => {
+  const app = await startWithClock();
   try {
     await app.waitFor(() => app.stdin.isRaw);
     app.stdin.write("first prompt\r");
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.delta("**literal** 中\nsecond line");
-    await app.waitFor(() => app.screen().includes(`${assistant} **literal** 中`));
+    await app.waitFor(() => app.screen().includes(`${assistant} literal 中`));
+    await app.waitFor(() => app.screen().includes("  second line"));
     expect(app.screen()).toContain("  second line");
     app.calls[0]!.finish();
     await app.waitFor(() => !app.isWorking());
@@ -96,8 +98,9 @@ test("streams verbatim replies and continues two prompts in the same Session", a
     app.calls[1]!.finish(7, 2);
     await app.waitFor(() => app.screen().at(-2)?.includes("18→7") === true);
     expect(app.allLines().filter((line) => line === "❯ first prompt")).toHaveLength(1);
-    expect(app.allLines().filter((line) => line === `${assistant} **literal** 中`)).toHaveLength(1);
+    expect(app.allLines().filter((line) => line === `${assistant} literal 中`)).toHaveLength(1);
     expect(app.allLines()).toContain("❯ second prompt");
+    await app.waitFor(() => app.allLines().includes(`${assistant} final reply`));
     expect(app.allLines()).toContain(`${assistant} final reply`);
     expect(app.allLines().join("\n")).not.toContain("system-reminder");
     app.stdin.write("\x04");
@@ -266,7 +269,7 @@ test("Ctrl+D exits only on idle empty input", async () => {
 });
 
 test("a positional prompt is submitted automatically", async () => {
-  const app = await start(["auto prompt"]);
+  const app = await startWithClock(["auto prompt"]);
   try {
     await app.waitFor(() => app.calls.length === 1);
     expect(app.calls[0]!.context.messages.at(-1)).toMatchObject({
@@ -277,6 +280,7 @@ test("a positional prompt is submitted automatically", async () => {
     app.calls[0]!.finish();
     await app.waitFor(() => !app.isWorking());
     expect(app.allLines()).toContain("❯ auto prompt");
+    await app.waitFor(() => app.allLines().includes(`${assistant} automatic reply`));
     expect(app.allLines()).toContain(`${assistant} automatic reply`);
   } finally {
     await app.cleanup();
@@ -284,12 +288,16 @@ test("a positional prompt is submitted automatically", async () => {
 });
 
 test("a model failure preserves partial output and permits the next prompt", async () => {
-  const app = await start(["fail first"]);
+  const app = await startWithClock(["fail first"]);
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.delta("partial before failure");
     app.calls[0]!.fail("provider unavailable");
-    await app.waitFor(() => app.screen().includes("provider unavailable"));
+    await app.waitFor(
+      () =>
+        app.screen().some((line) => line.includes("provider unavailable")) &&
+        app.allLines().includes(`${assistant} partial before failure`),
+    );
     expect(app.isWorking()).toBe(false);
     expect(app.screen().join("\n")).not.toContain("tokens");
     expect(app.screen().join("\n")).not.toContain(" 工具 · 想");
@@ -301,7 +309,7 @@ test("a model failure preserves partial output and permits the next prompt", asy
     await app.waitFor(
       () => app.allLines().includes(`${assistant} retry succeeded`) && !app.isWorking(),
     );
-    expect(app.screen()).not.toContain("provider unavailable");
+    expect(app.allLines().filter((line) => line.includes("provider unavailable"))).toHaveLength(1);
     expect(app.allLines()).toContain(`${assistant} retry succeeded`);
   } finally {
     await app.cleanup();
@@ -322,7 +330,7 @@ for (const [argv, message] of [
   [["--permission-mode", "auto-review", "--yolo"], "--yolo conflicts with --permission-mode"],
 ] as const) {
   test(`invalid arguments ${argv.join(" ")} exit with 2 before entering rendering`, async () => {
-    const app = await start([...argv], { env: { LANG: "en" } });
+    const app = await startWithClock([...argv], { env: { LANG: "en" } });
     try {
       expect(await app.exit).toBe(2);
       expect(app.stderr()).toContain(message);
@@ -446,7 +454,7 @@ for (const [mode, argv, session] of [
   ["matching aliases reversed", ["--permission-mode=full-access", "--yolo", "write a file"], {}],
 ] as const) {
   test(`${mode} is forwarded to the Session and usage totals all Turns`, async () => {
-    const app = await start([...argv], {
+    const app = await startWithClock([...argv], {
       columns: 120,
       session: { ...session, allowRules: "allowRules" in session ? [...session.allowRules] : [] },
     });
@@ -466,6 +474,7 @@ for (const [mode, argv, session] of [
       app.calls[1]!.delta("file written");
       app.calls[1]!.finish(13, 3);
       await app.waitFor(() => app.screen().at(-2)?.includes("24→8") === true);
+      await app.waitFor(() => app.allLines().includes(`${assistant} file written`));
       expect(app.allLines()).toContain(`${assistant} file written`);
     } finally {
       await app.cleanup();
@@ -506,7 +515,7 @@ test("--model overrides settings before model resolution", async () => {
 });
 
 test("--trust-project-mcp loads project configuration", async () => {
-  const app = await start(["--trust-project-mcp", "hi"], {
+  const app = await startWithClock(["--trust-project-mcp", "hi"], {
     prepare: async (root) => {
       await Bun.write(join(root, ".mcp.json"), JSON.stringify({ mcpServers: { broken: {} } }));
     },
@@ -514,7 +523,7 @@ test("--trust-project-mcp loads project configuration", async () => {
   try {
     await app.waitFor(() => app.calls.length === 1);
     await app.waitFor(() =>
-      app.allLines().some((line) => line.startsWith("MCP 服务器 broken 出错：")),
+      app.allLines().some((line) => line.startsWith("─ MCP 服务器 broken 出错：")),
     );
     expect(app.stderr()).toBe("");
     app.calls[0]!.delta("project MCP checked");
@@ -528,7 +537,7 @@ test("--trust-project-mcp loads project configuration", async () => {
 test.each(["", "bash(git status", "unknown(pattern)"])(
   "invalid --allow-tools rule %j reports its source before rendering",
   async (rule) => {
-    const app = await start(["--allow-tools", rule], { env: { LANG: "en" } });
+    const app = await startWithClock(["--allow-tools", rule], { env: { LANG: "en" } });
     try {
       expect(await app.exit).toBe(2);
       expect(app.stderr()).toContain(`--allow-tools: invalid permission rule "${rule}"`);
@@ -545,7 +554,7 @@ test.each([
   ["bash(printf a,b*)", "printf a,b > marker"],
   ["bash(printf {alpha,beta}*)", "printf alpha > marker"],
 ])("--allow-tools %s executes a matching command without a question", async (rule, command) => {
-  const app = await start(["run", "--allow-tools", rule!], {
+  const app = await startWithClock(["run", "--allow-tools", rule!], {
     prepare: async (root) => {
       expect(
         await Bun.spawn(["git", "init", "--quiet", root], { stdout: "ignore", stderr: "ignore" })

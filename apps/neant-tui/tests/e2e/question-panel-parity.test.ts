@@ -1,3 +1,4 @@
+import { startWithClock } from "../helpers/clock-app";
 import { expect, test } from "bun:test";
 import type { ClipboardContent } from "../../src/host";
 import { dark } from "@neant/tui";
@@ -244,7 +245,7 @@ test("folding preserves question drafts, permits composing, and Esc expands with
 });
 
 test("hover and clicks fold the header and submit a single choice with attached text", async () => {
-  const app = await start(["ask"]);
+  const app = await startWithClock(["ask"]);
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.tool("ask_user_question", { questions: [question] });
@@ -265,6 +266,8 @@ test("hover and clicks fold the header and submit a single choice with attached 
     app.stdin.write("with replicas");
     await app.waitFor(() => app.screen().some((line) => line.includes("with replicas")));
     const row = app.screen().findIndex((line) => line.includes("○ Postgres"));
+    expect(row).toBeGreaterThan(header);
+    expect(app.screen().slice(header).join("\n")).not.toMatch(/[▄▀]/u);
     app.stdin.write(`\x1b[<0;6;${row + 1}M\x1b[<0;6;${row + 1}m`);
     await app.waitFor(() => app.calls.length === 2);
     expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({

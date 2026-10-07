@@ -1,3 +1,4 @@
+import { startWithClock } from "../helpers/clock-app";
 import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
@@ -256,7 +257,7 @@ test.each([
 ] as const)(
   "a %s dialog at %i rows preserves a multiline draft and a Todo preview",
   async (kind, rows) => {
-    const app = await start(["plan"], { columns: 40, rows });
+    const app = await startWithClock(["plan"], { columns: 40, rows });
     const draft = "first draft\nsecond draft\nlast draft";
     try {
       await app.waitFor(() => app.calls.length === 1);

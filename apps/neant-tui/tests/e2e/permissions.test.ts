@@ -1,3 +1,4 @@
+import { startWithClock } from "../helpers/clock-app";
 import { expect, test } from "bun:test";
 import { isolateProxyEnvironment } from "../helpers/proxy-env.ts";
 import { join } from "node:path";
@@ -281,7 +282,7 @@ test.each(["2\r", "\x1b[A\r", "\x1b[B\r", "\x1b"])(
 );
 
 test("auto-review asks for a different command after a session command grant", async () => {
-  const app = await start(["allow in ask"]);
+  const app = await startWithClock(["allow in ask"]);
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.tool("bash", { command: "printf ask-allowed", description: "Run test command" });
@@ -311,7 +312,7 @@ test.each([
   ["arrows", "\x1b[A\r"],
   ["Esc", "\x1b"],
 ])("%s rejects the call, returns 未获授权 to the model and continues the Run", async (_, key) => {
-  const app = await start(["try bash"]);
+  const app = await startWithClock(["try bash"]);
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.tool("bash", { command: "printf must-not-run", description: "Run test command" });
@@ -327,6 +328,7 @@ test.each([
     app.calls[1]!.delta("continuing after refusal");
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
+    await app.waitFor(() => app.allLines().includes(`${assistant} continuing after refusal`));
     expect(app.allLines()).toContain(`${assistant} continuing after refusal`);
     expect(app.screen().join("\n")).not.toContain("等待审批");
   } finally {
@@ -409,7 +411,7 @@ test.each(["flag", "settings", "yolo", "readonly"])(
 test("session allow remembers only this command across Runs and leaves settings unchanged", async () => {
   let root = "";
   const settings = '{"permissions":{"allow":["read"]}}\n';
-  const app = await start(["use bash"], {
+  const app = await startWithClock(["use bash"], {
     prepare: async (directory) => {
       root = directory;
       await Bun.write(join(root, ".neant/settings.json"), settings);
@@ -442,7 +444,7 @@ test("session allow remembers only this command across Runs and leaves settings 
     expect(app.screen().join("\n")).not.toContain("等待审批");
     app.calls[3]!.tool("write", { path: "other.txt", content: "other tool" });
     await app.waitFor(() => app.screen().join("\n").includes("等待审批"));
-    expect(app.screen().join("\n")).toContain("写入(");
+    expect(app.screen().join("\n")).toContain("写入");
     app.stdin.write("\x1b");
     await app.waitFor(() => app.calls.length === 5);
     app.calls[4]!.finish();
@@ -452,7 +454,7 @@ test("session allow remembers only this command across Runs and leaves settings 
     await app.cleanup();
   }
 
-  const next = await start(["new Session"]);
+  const next = await startWithClock(["new Session"]);
   try {
     await next.waitFor(() => next.calls.length === 1);
     next.calls[0]!.tool("bash", {

@@ -235,7 +235,7 @@ async function toolsPrompt(
   await app.waitFor(() => app.calls.length === index + 2);
   if (answer) app.calls[index + 1]!.delta(answer);
   app.calls[index + 1]!.finish();
-  await app.waitFor(() => !app.isWorking());
+  await app.waitFor(() => !app.isWorking() && (!answer || text(app).includes(answer)));
 }
 
 test.each([
@@ -245,12 +245,15 @@ test.each([
 ] as const)(
   "mode %i restores real files=%s and conversation=%s",
   async (mode, code, conversation) => {
-    const app = await ready({
-      session: { permissionMode: "full-access" },
-      prepare: async (root) => {
-        await Bun.write(join(root, "existing.txt"), "original");
+    const app = await ready(
+      {
+        session: { permissionMode: "full-access" },
+        prepare: async (root) => {
+          await Bun.write(join(root, "existing.txt"), "original");
+        },
       },
-    });
+      true,
+    );
     try {
       await prompt(app, "keep this prompt");
       await toolsPrompt(
@@ -594,12 +597,15 @@ test("a target with no own file changes still offers code modes for later checkp
 });
 
 test("missing backup closes the picker with an error and preserves files and conversation", async () => {
-  const app = await ready({
-    session: { permissionMode: "full-access" },
-    prepare: async (root) => {
-      await Bun.write(join(root, "existing.txt"), "original");
+  const app = await ready(
+    {
+      session: { permissionMode: "full-access" },
+      prepare: async (root) => {
+        await Bun.write(join(root, "existing.txt"), "original");
+      },
     },
-  });
+    true,
+  );
   try {
     await toolsPrompt(
       app,

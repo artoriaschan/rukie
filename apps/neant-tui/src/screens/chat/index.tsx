@@ -1319,6 +1319,18 @@ function Chat({
     showRewind({ entries, focus: 0, confirm: false, mode: 0, busy: false });
     body.current?.scrollToBottom();
   };
+  const inputPositions = new Map(bodyScroll?.anchors?.map((anchor) => [anchor.id, anchor.top]));
+  const timelineInputs = state.completed.flatMap((entry, index) => {
+    if (entry.type !== "message" || entry.role !== "user" || entry.source) return [];
+    const id = entry.anchorId ?? `row-${index}`;
+    const top = inputPositions.get(id);
+    return top !== undefined ? [{ id, text: entry.text, top }] : [];
+  });
+  const activeInput =
+    timelineInputs.findLast((input) => input.top <= (bodyScroll?.top ?? 0)) ?? timelineInputs[0];
+  const pinnedInput =
+    activeInput && activeInput.top < (bodyScroll?.top ?? 0) ? activeInput : undefined;
+  const pinnedHeight = Number(!small && !!bodyScroll && !bodyScroll.following && !!activeInput);
   const showReturn = !!bodyScroll && !bodyScroll.following;
   const mcpVisible = !!mcp && !interaction;
   const showContextBar = !(state.goal && interaction && rows < 16) && !(mcpVisible && rows < 20);
@@ -1352,16 +1364,24 @@ function Chat({
   // Goal root and blocker cannot collapse into a panel's one-row preview.
   const panelMinimum = panelCount + goalRows;
   const minimumDialogHeight = state.goal
-    ? Math.min(preferredDialogHeight, Math.max(5, rows - footerHeight - panelMinimum - 1))
+    ? Math.min(
+        preferredDialogHeight,
+        Math.max(5, rows - pinnedHeight - footerHeight - panelMinimum - 1),
+      )
     : preferredDialogHeight;
   const sideHeight = side
     ? Math.min(
         10,
-        Math.max(3, Math.min(Math.floor(rows / 2), rows - footerHeight - 2 - panelMinimum)),
+        Math.max(
+          3,
+          Math.min(Math.floor(rows / 2), rows - pinnedHeight - footerHeight - 2 - panelMinimum),
+        ),
       )
     : 0;
   const dialogGap =
-    question && rows - footerHeight - minimumDialogHeight - panelMinimum - 1 >= 1 ? 1 : 0;
+    question && rows - pinnedHeight - footerHeight - minimumDialogHeight - panelMinimum - 1 >= 1
+      ? 1
+      : 0;
   const visibleModelNotice = !interaction || userQuestion?.collapsed ? modelImageNotice : undefined;
   const wrappedModelNotice = visibleModelNotice
     ? Bun.wrapAnsi(
@@ -1374,10 +1394,12 @@ function Chat({
   const modelNoticeHeight = wrappedModelNotice?.split("\n").length ?? 0;
   const compactPrompt =
     (modelNoticeHeight > 0 &&
-      rows - footerHeight - panelMinimum - 1 < promptMaxLines + 3 + modelNoticeHeight) ||
+      rows - pinnedHeight - footerHeight - panelMinimum - 1 <
+        promptMaxLines + 3 + modelNoticeHeight) ||
     ((!!side || !!rewind || !!resumePicker || mcpVisible) && rows < 20) ||
     (!!interaction &&
-      rows - footerHeight - minimumDialogHeight - dialogGap - panelMinimum < promptMaxLines + 3);
+      rows - pinnedHeight - footerHeight - minimumDialogHeight - dialogGap - panelMinimum <
+        promptMaxLines + 3);
   const promptHeight =
     Number(expanded) * (transcriptSearch.editing ? 2 : 1) +
     (compactPrompt ? 1 + Number(!!promptNotice) : promptMaxLines + 3) +
@@ -1387,8 +1409,12 @@ function Chat({
     : interaction
       ? Number(!compactPrompt)
       : 1;
-  const commandMenuHeight = Math.min(8, Math.max(0, rows - footerHeight - 3 - modelNoticeHeight));
-  const chromeSpace = rows - footerHeight - promptHeight - transcriptHeight - sideHeight;
+  const commandMenuHeight = Math.min(
+    8,
+    Math.max(0, rows - pinnedHeight - footerHeight - 3 - modelNoticeHeight),
+  );
+  const chromeSpace =
+    rows - footerHeight - promptHeight - transcriptHeight - sideHeight - pinnedHeight;
   const showReturnControl =
     !mcpVisible && showReturn && chromeSpace - minimumDialogHeight - dialogGap - panelMinimum >= 1;
   const compactReturn =
@@ -1916,13 +1942,16 @@ function Chat({
       !key.ctrl &&
       !key.alt &&
       !key.shift &&
-      (key.name === "enter" || key.name === "end") &&
+      (key.name === "end" || (key.name === "enter" && !matches(draft.current).length)) &&
       body.current &&
       !body.current.getSnapshot().following
     ) {
-      handledInput.current.add(event);
       returnToBottom();
-      return;
+      // Return also reaches the editor/menu, as in the fixed reference.
+      if (key.name === "end") {
+        handledInput.current.add(event);
+        return;
+      }
     }
     if (pendingInteraction || key.name !== "escape") armRewind();
     const menu = !pendingInteraction && !small ? matches(draft.current) : [];
@@ -2441,17 +2470,6 @@ function Chat({
         )}
       </Box>
     );
-  const inputPositions = new Map(bodyScroll?.anchors?.map((anchor) => [anchor.id, anchor.top]));
-  const timelineInputs = state.completed.flatMap((entry, index) => {
-    if (entry.type !== "message" || entry.role !== "user" || entry.source) return [];
-    const id = entry.anchorId ?? `row-${index}`;
-    const top = inputPositions.get(id);
-    return top !== undefined ? [{ id, text: entry.text, top }] : [];
-  });
-  const activeInput =
-    timelineInputs.findLast((input) => input.top <= (bodyScroll?.top ?? 0)) ?? timelineInputs[0];
-  const pinnedInput =
-    activeInput && activeInput.top < (bodyScroll?.top ?? 0) ? activeInput : undefined;
   const railVisible =
     !small &&
     columns >= 60 &&
@@ -2486,7 +2504,7 @@ function Chat({
     (!!interaction && !userQuestion?.collapsed);
   return (
     <Box flexDirection="column" height={rows}>
-      {!small && bodyScroll && !bodyScroll.following && !!activeInput && (
+      {pinnedHeight > 0 && (
         <Box
           height={1}
           flexShrink={0}
@@ -2958,7 +2976,7 @@ function Chat({
                   !event.key.ctrl &&
                   !event.key.alt &&
                   !event.key.shift &&
-                  (event.key.name === "enter" || event.key.name === "end") &&
+                  event.key.name === "end" &&
                   body.current &&
                   !body.current.getSnapshot().following
                 )

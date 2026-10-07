@@ -1,3 +1,4 @@
+import { startWithClock } from "../helpers/clock-app";
 import { expect, test } from "bun:test";
 import { start } from "../helpers/app";
 
@@ -185,13 +186,14 @@ test("a tool Run shows live tokens and approval, then hides activity until the n
 });
 
 test("thinking and text estimates are corrected downward to the final usage", async () => {
-  const app = await start(["think"], { columns: 120 });
+  const app = await startWithClock(["think"], { columns: 120 });
   const screen = () => app.screen().join("\n");
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.thinking("abcdefgh");
     await app.waitFor(() => screen().includes("↓ 2 tokens"));
-    expect(screen()).not.toContain("abcdefgh");
+    await app.waitFor(() => screen().includes("abcdefgh"));
+    expect(screen()).toContain("│ abcdefgh");
     app.calls[0]!.delta("ijklmnop");
     await app.waitFor(() => screen().includes("↓ 4 tokens"));
     app.calls[0]!.finish(8000, 1);

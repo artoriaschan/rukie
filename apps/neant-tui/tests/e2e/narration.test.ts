@@ -1,3 +1,4 @@
+import { startWithClock } from "../helpers/clock-app";
 import { expect, test } from "bun:test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -8,7 +9,7 @@ test.each(["environment", "settings"])(
   "%s English locale injects the English narration contract once and renders streamed narration",
   async (source) => {
     const env = { LANG: source === "environment" ? "en_US.UTF-8" : "zh_CN.UTF-8" };
-    const app = await start(["investigate"], {
+    const app = await startWithClock(["investigate"], {
       env,
       columns: 160,
       prepare:
@@ -44,6 +45,7 @@ test.each(["environment", "settings"])(
       expect(app.screen().filter((line) => line.includes("Investigating the error"))).toHaveLength(
         1,
       );
+      await app.waitFor(() => app.screen().includes(`${figures.assistant} Found the cause`));
       expect(app.screen()).toContain(`${figures.assistant} Found the cause`);
       app.calls[0]!.finish();
       await app.waitFor(() => !app.isWorking());

@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { createSession } from "@neant/agent";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { withAuxiliaryRequests } from "../../helpers/auxiliary-model";
-import { start } from "../../helpers/app";
+import { startWithClock as start } from "../../helpers/clock-app";
 
 let app: Awaited<ReturnType<typeof start>>;
 afterEach(async () => {
@@ -18,14 +18,14 @@ test("Goal tools retain generic summary cards from their presenter", async () =>
   await app.waitFor(
     () =>
       app.calls.length === 2 &&
-      app.screen().join("\n").includes("• Create goal(Release verification)"),
+      app.screen().join("\n").includes("• Create goal Release verification"),
   );
   expect(app.screen().join("\n")).toContain("🎯 Release verification");
   expect(app.screen().join("\n")).toContain("⎿ Release verification");
   expect(app.screen().join("\n")).not.toContain('"roundsStarted"');
   app.calls[1]!.tool("update_goal", { action: "blocked", blocked_reason: "Missing credential" });
   await app.waitFor(
-    () => app.calls.length === 3 && app.screen().join("\n").includes("• Update goal(blocked)"),
+    () => app.calls.length === 3 && app.screen().join("\n").includes("• Update goal blocked"),
   );
   expect(app.screen().join("\n")).not.toContain('"blockedReason"');
   app.calls[2]!.delta("Need the credential to continue");
@@ -83,7 +83,7 @@ test("resume replays Goal summaries and coded errors in the frontend locale", as
   await app.waitFor(() => app.screen().join("\n").includes("Credential unavailable"));
   const screen = app.screen().join("\n");
   expect(screen).toContain("🎯 Replay result");
-  expect(screen).toContain("• 更新目标(blocked)");
+  expect(screen).toContain("• 更新目标 blocked");
   expect(screen).toContain("⎿ Replay result");
   expect(screen).toContain("blocked 操作必须提供非空 blocked_reason。");
   expect(screen).not.toContain('"roundsStarted"');

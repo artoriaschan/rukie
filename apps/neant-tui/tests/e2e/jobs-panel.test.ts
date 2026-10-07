@@ -253,6 +253,7 @@ test("card clicks focus exact jobs and expanded promoted details show bounded ou
 }, 15000);
 
 test("reading position and follow state survive settlement and group folding above the viewport while jobs is open", async () => {
+  // Real time covers the fixture child process polling files and producing job output.
   const app = await start(["--permission-mode", "full-access", "launch"], {
     env: { LANG: "en_US.UTF-8" },
     columns: 100,
@@ -291,7 +292,11 @@ test("reading position and follow state survive settlement and group folding abo
     app.calls[1]!.finish();
     await app.waitFor(() => app.calls.length === 3);
     app.stdin.write("\x1b");
-    await app.waitFor(() => screen().includes("Back to bottom"));
+    await app.waitFor(
+      () =>
+        screen().includes("Back to bottom") &&
+        JSON.stringify(app.screen().slice(0, 5)) === JSON.stringify(before),
+    );
     const restored = app.screen().slice(0, 5);
     expect(screen()).toContain("New output");
     app.stdin.write("\x1b[1;5F");
@@ -319,7 +324,7 @@ test("reading position and follow state survive settlement and group folding abo
 }, 15000);
 
 test("a streaming message keeps its reading anchor when it completes while the panel is open and resizes", async () => {
-  const app = await start(["working"], {
+  const app = await startWithClock(["working"], {
     env: { LANG: "en_US.UTF-8" },
     columns: 100,
     rows: 24,
@@ -342,7 +347,12 @@ test("a streaming message keeps its reading anchor when it completes while the p
     app.resize(80, 24);
     await app.waitFor(() => app.screen()[0]?.includes("Background jobs") === true);
     app.stdin.write("\x1b");
-    await app.waitFor(() => screen().includes("Back to bottom") && !app.isWorking());
+    await app.waitFor(
+      () =>
+        screen().includes("Back to bottom") &&
+        !app.isWorking() &&
+        JSON.stringify(app.screen().slice(0, 5)) === JSON.stringify(before),
+    );
     expect(app.screen().slice(0, 5)).toEqual(before);
     expect(app.stderr()).toBe("");
   } finally {
@@ -351,6 +361,7 @@ test("a streaming message keeps its reading anchor when it completes while the p
 });
 
 test("Chinese command completion and single job details fit 40×12 through resize and preserve a pending question", async () => {
+  // The background fixture has its own process clock and must emit actual job output.
   const app = await start(["--permission-mode", "full-access", "launch"], {
     columns: 40,
     rows: 12,
@@ -386,7 +397,10 @@ test("Chinese command completion and single job details fit 40×12 through resiz
         },
       ],
     });
-    await app.waitFor(() => screen().includes("启动"));
+    await app.waitFor(() => screen().includes("Choose fixture"));
+    expect(screen()).not.toContain("启动");
+    app.stdin.write("\r");
+    await app.waitFor(() => app.calls.length === 3 && screen().includes("启动"));
     app.stdin.write("\x1b[6~");
     await app.waitFor(() => screen().includes("SAFE-TAIL"));
     expect(app.screen().find((line) => line.trimStart().startsWith("│ "))).not.toContain("[31m");
@@ -395,9 +409,7 @@ test("Chinese command completion and single job details fit 40×12 through resiz
     app.resize(80, 24);
     await app.waitFor(() => screen().includes("SAFE-TAIL") && screen().includes("启动"));
     app.stdin.write("\x1b");
-    await app.waitFor(() => screen().includes("Choose fixture"));
-    app.stdin.write("\r");
-    await app.waitFor(() => app.calls.length === 3);
+    await app.waitFor(() => !screen().includes("启动"));
     app.calls[2]!.finish();
     await app.waitFor(() => !app.isWorking());
     expect(app.stderr()).toBe("");
