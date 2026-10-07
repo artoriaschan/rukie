@@ -1,14 +1,27 @@
 import { runRequest } from "../helpers/crashed-subagents.ts";
 import { afterEach, expect, test } from "bun:test";
-import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxToolCall, getCurrentSystemMessage } from "@earendil-works/pi-ai";
 import { realpath, symlink } from "node:fs/promises";
 import { join } from "node:path";
-import { createSession, type SessionEvent } from "../../src/index.ts";
+import {
+  createSession as createSessionImpl,
+  type Session,
+  type SessionEvent,
+} from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
-afterEach(() => dirs?.cleanup());
+const sessions: Session[] = [];
+async function createSession(options: Parameters<typeof createSessionImpl>[0]) {
+  const session = await createSessionImpl(options);
+  sessions.push(session);
+  return session;
+}
+afterEach(async () => {
+  await Promise.all(sessions.splice(0).map((session) => session.close()));
+  await dirs?.cleanup();
+});
 
 test.each(["subagent", "subagent_fork"])(
   "%s file writes belong to the parent's Checkpoint and code rewind",
@@ -159,9 +172,11 @@ test.each(["subagent", "subagent_fork"])(
     const waiting = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
     const response: Parameters<typeof fakeModel>[0][number] = async (context) => {
-      const last = context.messages.at(-1);
-      const isParent = last?.role === "toolResult" && last.toolName === toolName;
+      const isParent = getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
+        (tool) => tool.name === "subagent",
+      );
       if (isParent) return fauxAssistantMessage("parent waiting");
+      waiting.resolve();
       await release.promise;
       return fauxAssistantMessage(fauxToolCall("write", { path: "late.txt", content: "child" }), {
         stopReason: "toolUse",
@@ -186,11 +201,8 @@ test.each(["subagent", "subagent_fork"])(
     });
     await runRequest(session, "inspect");
     let settled = false;
-    const run = runRequest(session, "delegate late write", {
-      onEvent(event) {
-        if (event.type === "run_end") waiting.resolve();
-      },
-    }).then((result) => {
+    await session.run("delegate late write");
+    const run = session.waitForRequest(session.currentRequestId!).then((result) => {
       settled = true;
       return result;
     });
