@@ -62,3 +62,13 @@ Standards 审查的两项说明问题与一项 helper 重复判断、Spec 审查
 最终 focused 修复验证 42/456 与 AlternateScreen/lifecycle/runtime 18/154 均通过。最终完整负载中 coding-agent 唯一超过 1s 的通过用例为真实子进程 TERM→KILL 的 stopping jobs（3228ms）；父虚拟时钟不能推进该进程契约。可避免的前端等待均已改为虚拟截止时间或完成信号，原样本数与微任务顺序保留。
 
 本任务全部实现 worktrees 已归档；最后三个 clean、已合入分支在确认 ancestry 后归档，四个剩余辅助分支已删除。集成分支 `codex/dsh-ink` 与无关 main/streaming-message-parity/rukie-theme-color 工作树保留。06 与 spec 在同一提交 resolved；此次关闭仅改状态与验证记录，不改变已通过 gate 的代码。
+
+## Merged-main verification
+
+按用户要求与当前 main `e8628b33` 整合，合并提交 `e467944a` 保留主分支新增的 prompt 选择/鼠标 caret、Escape 输入边界、Run 完成摘要、context usage 与自动 ADR 索引。主工作树原有 pi-durable 未提交文档未纳入提交；20 个非重叠文件逐一核对 SHA-256 不变，ADR 索引采用三方合并保留原有修改。
+
+整合后的聚焦验证保留原行为断言；完整负载先后暴露并修复了测试同步与视口假设：MCP 布局高度先于终端绘制、图片 atomic caret 边界、新增摘要后的工具/Jobs 卡片定位、空回复 Run 的命令/Plan Mode 完成信号、Agent View 持久 Run Outcome、Ctrl+C 的绝对 999/1000ms 截止边界，以及真实失败 hook 的父子进程就绪/失败清理。上述验收修复仅修改测试与测试辅助函数，未扩大超时或删除原行为断言；每次完整复验均由未解决失败及其修复触发。
+
+最终合并代码状态 `b4b216a7` 在主工作树通过 `env -u NO_COLOR bun run check`（exit 0）：格式、lint、types、Knip、scratch、45 个 Markdown 文档、ink boundaries 与全部测试通过；2922 pass、0 fail、16694 assertions、258 files，测试耗时 74.44s。日志 `/tmp/dsh-ink-main-final-check-r6.log`。相关聚焦结果：五个前端文件 67/346、保存失败/Resume 2/25、Plan Mode 6/24、main/Ctrl+C 49/248、图片计时器控制 3/19、hook 取消与相邻 hooks 51/173 全部通过。真实 hook 用例修改后 86.49ms；进程就绪通过原子文件与 fs 事件同步，无固定 sleep 轮询。
+
+本节仅补充已通过合并状态的交付证据，不改变实现或测试。集成工作树及用户已有的 streaming-message-parity/rukie-theme-color 工作树继续保留。
