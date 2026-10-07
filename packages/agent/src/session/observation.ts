@@ -403,6 +403,8 @@ export async function createConversationObservation(options: ConversationObserva
       const first = projected[0];
       if (!entry.model?.length) {
         emit({ type: "entry_appended", entry });
+        if (projected.length)
+          emit({ type: "message_end", entry, entryId: String(entry.id), messages: projected });
         continue;
       }
       const streamed = first?.role === "assistant" && partialBefore && !assistantAppended;
