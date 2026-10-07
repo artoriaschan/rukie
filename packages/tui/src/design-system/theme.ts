@@ -11,6 +11,7 @@ export interface Theme {
   toolDotWeb: `#${string}`;
   toolDotTask: `#${string}`;
   toolCardBackground: `#${string}`;
+  messageActionsBackground: `#${string}`;
   inverseText: `#${string}`;
   badgeBackground: `#${string}`;
   badgeHoverBackground: `#${string}`;
@@ -48,6 +49,7 @@ export const dark: Theme = {
   toolDotWeb: "#82B89D",
   toolDotTask: "#B49ADC",
   toolCardBackground: "#2E3440",
+  messageActionsBackground: "#2E333D",
   inverseText: "#22262E",
   badgeBackground: "#5E88CC",
   badgeHoverBackground: "#3B5BDB",
@@ -86,6 +88,7 @@ export const light: Theme = {
   toolDotWeb: "#397B59",
   toolDotTask: "#7856A8",
   toolCardBackground: "#E2E6ED",
+  messageActionsBackground: "#E4D9E5",
   inverseText: "#FFFFFF",
   badgeBackground: "#4069AD",
   badgeHoverBackground: "#31539B",

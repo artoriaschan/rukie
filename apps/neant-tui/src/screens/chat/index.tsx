@@ -76,6 +76,7 @@ import {
   SubagentDashboard,
   SubagentDetailScene,
   UserMessage,
+  TimelineRail,
   CommandSuggestions,
   ModelPicker,
   McpPanel,
@@ -863,6 +864,69 @@ function Chat({
       else next.add(id);
       return next;
     });
+  const [selectedMessage, setSelectedMessage] = useState<string>();
+  const selectedMessageRef = useRef<string | undefined>(undefined);
+  const selectMessage = (id?: string) => {
+    selectedMessageRef.current = id;
+    setSelectedMessage(id);
+  };
+  const messageRows = [
+    ...state.completed.flatMap((entry, index) => {
+      if (
+        !completedEntryVisible(state, index) ||
+        entry.type === "subagent" ||
+        (entry.type === "tool" && entry.jobId)
+      )
+        return [];
+      const anchorId = entry.anchorId ?? `row-${index}`;
+      return [
+        {
+          anchorId: entry.type === "tool" && entry.id ? `tool-${entry.id}-header` : anchorId,
+          expansionId:
+            entry.type === "tool"
+              ? (entry.id ?? `row-${index}`)
+              : entry.type === "plan-review"
+                ? entry.id
+                : entry.type === "thinking"
+                  ? anchorId
+                  : undefined,
+          liveThinking: false,
+        },
+      ];
+    }),
+    ...(state.reasoning
+      ? [
+          {
+            anchorId: `${state.assistantAnchor}-thinking`,
+            expansionId: `${state.assistantAnchor}-thinking`,
+            liveThinking: true,
+          },
+        ]
+      : []),
+    ...(state.assistant
+      ? [{ anchorId: state.assistantAnchor, expansionId: undefined, liveThinking: false }]
+      : []),
+    ...state.tools
+      .filter((tool) => showsToolCard(tool.name))
+      .map((tool) => ({
+        anchorId: `tool-${tool.id}-header`,
+        expansionId: tool.id,
+        liveThinking: false,
+      })),
+  ];
+  useEffect(() => {
+    if (small || view !== "chat") selectMessage(undefined);
+    else if (selectedMessage && !messageRows.some((row) => row.anchorId === selectedMessage))
+      selectMessage(messageRows.at(-1)?.anchorId);
+  }, [
+    small,
+    view,
+    selectedMessage,
+    state.completed,
+    state.reasoning,
+    state.assistant,
+    state.tools,
+  ]);
   const previousOutput = useRef({
     completed: state.completed,
     assistant: state.assistant,
@@ -1672,6 +1736,43 @@ function Chat({
       return;
     }
     if (
+      !small &&
+      !interactions.getSnapshot() &&
+      !sideController.current &&
+      !previewRef.current &&
+      !searchRef.current.editing &&
+      viewRef.current === "chat" &&
+      event.type === "key"
+    ) {
+      const { key } = event;
+      const selectedMessage = selectedMessageRef.current;
+      if (!key.ctrl && !key.alt && ((key.shift && key.name === "up") || selectedMessage)) {
+        const index = messageRows.findIndex((row) => row.anchorId === selectedMessage);
+        const row = selectedMessage ? messageRows[index] : messageRows.at(-1);
+        if (key.name === "escape") selectMessage(undefined);
+        else if (key.name === "enter" && row?.expansionId) {
+          if (row.liveThinking) toggleStreamThinking(row.expansionId);
+          else toggleRow(row.expansionId);
+        } else if (["up", "down", "left", "right"].includes(key.name)) {
+          const next = selectedMessage
+            ? messageRows[
+                Math.max(
+                  0,
+                  Math.min(
+                    messageRows.length - 1,
+                    index + (key.name === "up" || key.name === "left" ? -1 : 1),
+                  ),
+                )
+              ]
+            : row;
+          selectMessage(next?.anchorId);
+          if (next) body.current?.scrollToAnchor(next.anchorId);
+        } else if (key.name !== "enter") return;
+        handledInput.current.add(event);
+        return;
+      }
+    }
+    if (
       event.type === "key" &&
       event.key.ctrl &&
       event.key.name === "o" &&
@@ -1683,6 +1784,7 @@ function Chat({
       !previewRef.current
     ) {
       handledInput.current.add(event);
+      selectMessage(undefined);
       if (expandedRef.current) closeTranscript();
       else {
         expandedRef.current = true;
@@ -1784,6 +1886,20 @@ function Chat({
     if (handledInput.current.has(event)) return;
     const { key } = event;
     const pendingInteraction = sideController.current ? undefined : interactions.getSnapshot();
+    if (
+      !small &&
+      !pendingInteraction &&
+      !key.ctrl &&
+      !key.alt &&
+      !key.shift &&
+      (key.name === "enter" || key.name === "end") &&
+      body.current &&
+      !body.current.getSnapshot().following
+    ) {
+      handledInput.current.add(event);
+      returnToBottom();
+      return;
+    }
     if (pendingInteraction || key.name !== "escape") armRewind();
     const menu = !pendingInteraction && !small ? matches(draft.current) : [];
     if (menu.length && key.name === "tab" && key.shift && !key.ctrl && !key.alt) {
@@ -2201,7 +2317,41 @@ function Chat({
         )}
       </Box>
     );
+  const inputPositions = new Map(bodyScroll?.anchors?.map((anchor) => [anchor.id, anchor.top]));
+  const timelineInputs = state.completed.flatMap((entry, index) => {
+    if (entry.type !== "message" || entry.role !== "user" || entry.source) return [];
+    const id = entry.anchorId ?? `row-${index}`;
+    const top = inputPositions.get(id);
+    return top !== undefined ? [{ id, text: entry.text, top }] : [];
+  });
+  const activeInput =
+    timelineInputs.findLast((input) => input.top <= (bodyScroll?.top ?? 0)) ?? timelineInputs[0];
+  const pinnedInput =
+    activeInput && activeInput.top < (bodyScroll?.top ?? 0) ? activeInput : undefined;
+  const railVisible =
+    !small &&
+    columns >= 60 &&
+    timelineInputs.length >= 2 &&
+    !!bodyScroll &&
+    bodyScroll.height >= 3 &&
+    bodyScroll.total > bodyScroll.height;
+  const navigationEnabled =
+    !interaction &&
+    !side &&
+    !preview &&
+    !fileActions &&
+    !mcp &&
+    modelPicker === undefined &&
+    !resumePicker &&
+    !rewind;
+  const seekInput = (id: string) => {
+    if (!navigationEnabled) return;
+    selectMessage(undefined);
+    toolWindows?.clear();
+    body.current?.scrollToAnchor(id);
+  };
   const promptReadOnly =
+    !!selectedMessage ||
     transcriptSearch.editing ||
     !!mcp ||
     !!fileActions ||
@@ -2212,109 +2362,173 @@ function Chat({
     (!!interaction && !userQuestion?.collapsed);
   return (
     <Box flexDirection="column" height={rows}>
-      <ScrollBox
-        textSelection={
-          small || pendingInteraction || preview || imagePreviewBlocked()
-            ? false
-            : {
-                key: session.id,
-                backgroundColor: theme.badgeBackground,
-                onCopy: (text) => host.writeClipboard(text),
-                onResult: (result) => {
-                  if (pasteOwner.current)
-                    notifyImage(
-                      t(`selection.${result}`),
-                      result === "unavailable" || result === "stale",
-                    );
-                },
-              }
-        }
-        textSearch={
-          expanded && transcriptSearch.query
-            ? {
-                query: transcriptSearch.query,
-                color: theme.inverseText,
-                backgroundColor: theme.badgeBackground,
-              }
-            : undefined
-        }
-        ref={body}
-        onScroll={setBodyScroll}
-        initialFollow={savedChatScroll.current?.following ?? true}
-        initialTop={savedChatScroll.current?.top ?? 0}
-        initialAnchor={savedChatScroll.current?.anchor}
-        height={small && !preview ? 0 : undefined}
+      {!small && bodyScroll && !bodyScroll.following && !!activeInput && (
+        <Box
+          height={1}
+          flexShrink={0}
+          selectable={false}
+          onClick={pinnedInput && navigationEnabled ? () => seekInput(pinnedInput.id) : undefined}
+        >
+          <ThemedText color="userPromptLabel" bold wrap="truncate">
+            {pinnedInput ? `❯ ${pinnedInput.text.replace(/\s+/gu, " ").trim()}` : " "}
+          </ThemedText>
+        </Box>
+      )}
+      <Box
         flexGrow={small && !preview ? 0 : 1}
+        flexShrink={1}
+        height={small && !preview ? 0 : undefined}
       >
-        <Logo
-          locale={locale}
-          key="startup-logo"
-          model={state.model}
-          cwd={cwd}
-          thinking={thinking}
-          working={state.running}
-        />
-        {completed.map(
-          (entry, index) =>
-            entry && (
-              <Box
-                key={index}
-                scrollAnchorId={state.completed[index]?.anchorId ?? `row-${index}`}
-                flexDirection="column"
-              >
-                {entry}
-              </Box>
-            ),
-        )}
-        {state.reasoning && (
-          <Box scrollAnchorId={`${state.assistantAnchor}-thinking`} flexDirection="column">
-            <ThinkingRow
-              text={state.reasoning}
-              durationMs={state.reasoningDurationMs}
-              streaming={!state.reasoningSettled}
-              preview={!state.reasoningSettled}
-              revealKey={`${state.assistantAnchor}-thinking`}
-              locale={locale}
-              expanded={expanded || streamThinkingRows.has(`${state.assistantAnchor}-thinking`)}
-              onToggle={() => toggleStreamThinking(`${state.assistantAnchor}-thinking`)}
-            />
-          </Box>
-        )}
-        {state.assistant && (
-          <Box scrollAnchorId={state.assistantAnchor} flexDirection="column">
-            <AssistantMessage text={state.assistant} revealKey={state.assistantAnchor} streaming />
-          </Box>
-        )}
-        {state.tools
-          .filter((tool) => showsToolCard(tool.name))
-          .map((tool) => (
-            <ToolCall
-              foldTerminalCommand={foldTerminalCommand}
-              key={tool.id}
-              onPathClick={openFileActions}
-              expanded={expanded || expandedRows.has(tool.id)}
-              onToggle={() => toggleRow(tool.id)}
-              id={tool.id}
-              searchLocation={
-                currentMatch?.toolId === tool.id
-                  ? {
-                      part: currentMatch.part!,
-                      line: currentMatch.line,
-                      offset: currentMatch.offset,
-                    }
+        <ScrollBox
+          textSelection={
+            small || pendingInteraction || preview || imagePreviewBlocked()
+              ? false
+              : {
+                  key: session.id,
+                  backgroundColor: theme.badgeBackground,
+                  onCopy: (text) => host.writeClipboard(text),
+                  onResult: (result) => {
+                    if (pasteOwner.current)
+                      notifyImage(
+                        t(`selection.${result}`),
+                        result === "unavailable" || result === "stale",
+                      );
+                  },
+                }
+          }
+          textSearch={
+            expanded && transcriptSearch.query
+              ? {
+                  query: transcriptSearch.query,
+                  color: theme.inverseText,
+                  backgroundColor: theme.badgeBackground,
+                }
+              : undefined
+          }
+          ref={body}
+          onScroll={setBodyScroll}
+          initialFollow={savedChatScroll.current?.following ?? true}
+          initialTop={savedChatScroll.current?.top ?? 0}
+          initialAnchor={savedChatScroll.current?.anchor}
+          height={small && !preview ? 0 : undefined}
+          flexGrow={small && !preview ? 0 : 1}
+        >
+          <Logo
+            locale={locale}
+            key="startup-logo"
+            model={state.model}
+            cwd={cwd}
+            thinking={thinking}
+            working={state.running}
+          />
+          {completed.map(
+            (entry, index) =>
+              entry && (
+                <Box
+                  key={index}
+                  backgroundColor={
+                    selectedMessage ===
+                    (state.completed[index]?.type === "tool" && state.completed[index].id
+                      ? `tool-${state.completed[index].id}-header`
+                      : (state.completed[index]?.anchorId ?? `row-${index}`))
+                      ? theme.messageActionsBackground
+                      : undefined
+                  }
+                  scrollAnchorId={state.completed[index]?.anchorId ?? `row-${index}`}
+                  flexDirection="column"
+                >
+                  {entry}
+                </Box>
+              ),
+          )}
+          {state.reasoning && (
+            <Box
+              backgroundColor={
+                selectedMessage === `${state.assistantAnchor}-thinking`
+                  ? theme.messageActionsBackground
                   : undefined
               }
-              name={tool.name}
-              args={tool.args}
-              callView={tool.callView}
-              startedAt={tool.startedAt}
-              locale={locale}
-              summary={tool.summary}
-              status="running"
-            />
-          ))}
-        {state.error && <Notice kind="error" text={state.error} />}
-      </ScrollBox>
+              scrollAnchorId={`${state.assistantAnchor}-thinking`}
+              flexDirection="column"
+            >
+              <ThinkingRow
+                text={state.reasoning}
+                durationMs={state.reasoningDurationMs}
+                streaming={!state.reasoningSettled}
+                preview={!state.reasoningSettled}
+                revealKey={`${state.assistantAnchor}-thinking`}
+                locale={locale}
+                expanded={expanded || streamThinkingRows.has(`${state.assistantAnchor}-thinking`)}
+                onToggle={() => toggleStreamThinking(`${state.assistantAnchor}-thinking`)}
+              />
+            </Box>
+          )}
+          {state.assistant && (
+            <Box
+              backgroundColor={
+                selectedMessage === state.assistantAnchor
+                  ? theme.messageActionsBackground
+                  : undefined
+              }
+              scrollAnchorId={state.assistantAnchor}
+              flexDirection="column"
+            >
+              <AssistantMessage
+                text={state.assistant}
+                revealKey={state.assistantAnchor}
+                streaming
+              />
+            </Box>
+          )}
+          {state.tools
+            .filter((tool) => showsToolCard(tool.name))
+            .map((tool) => (
+              <Box
+                key={tool.id}
+                backgroundColor={
+                  selectedMessage === `tool-${tool.id}-header`
+                    ? theme.messageActionsBackground
+                    : undefined
+                }
+                flexDirection="column"
+              >
+                <ToolCall
+                  foldTerminalCommand={foldTerminalCommand}
+                  key={tool.id}
+                  onPathClick={openFileActions}
+                  expanded={expanded || expandedRows.has(tool.id)}
+                  onToggle={() => toggleRow(tool.id)}
+                  id={tool.id}
+                  searchLocation={
+                    currentMatch?.toolId === tool.id
+                      ? {
+                          part: currentMatch.part!,
+                          line: currentMatch.line,
+                          offset: currentMatch.offset,
+                        }
+                      : undefined
+                  }
+                  name={tool.name}
+                  args={tool.args}
+                  callView={tool.callView}
+                  startedAt={tool.startedAt}
+                  locale={locale}
+                  summary={tool.summary}
+                  status="running"
+                />
+              </Box>
+            ))}
+          {state.error && <Notice kind="error" text={state.error} />}
+        </ScrollBox>
+        {railVisible && bodyScroll && (
+          <TimelineRail
+            inputs={timelineInputs}
+            snapshot={bodyScroll}
+            enabled={navigationEnabled}
+            onSeek={seekInput}
+          />
+        )}
+      </Box>
       {composerPreview && (
         <ImagePreview
           key={`composer-${composerPreview.token}-${composerPreview.start}`}
@@ -2679,6 +2893,17 @@ function Chat({
               }}
               filterInput={(event, insert) => {
                 if (
+                  selectedMessageRef.current ||
+                  (event.type === "key" &&
+                    event.key.shift &&
+                    !event.key.ctrl &&
+                    !event.key.alt &&
+                    event.key.name === "up" &&
+                    !interactions.getSnapshot() &&
+                    !small)
+                )
+                  return false;
+                if (
                   expandedRef.current &&
                   event.type === "key" &&
                   !event.key.ctrl &&
@@ -2689,6 +2914,18 @@ function Chat({
                 )
                   return false;
                 if (searchRef.current.editing) return false;
+                if (
+                  !interactions.getSnapshot() &&
+                  !small &&
+                  event.type === "key" &&
+                  !event.key.ctrl &&
+                  !event.key.alt &&
+                  !event.key.shift &&
+                  (event.key.name === "enter" || event.key.name === "end") &&
+                  body.current &&
+                  !body.current.getSnapshot().following
+                )
+                  return false;
                 if (
                   fileActionsRef.current ||
                   mcpPanel.getSnapshot() ||

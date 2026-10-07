@@ -1,9 +1,10 @@
 import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
-import { expect, test } from "bun:test";
+import { expect, test, jest } from "bun:test";
 import { join } from "node:path";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { createSession } from "@neant/agent";
 import { start } from "../helpers/app";
+import { startWithClock } from "../helpers/clock-app";
 
 const assistant = process.platform === "darwin" ? "⏺" : "●";
 
@@ -14,7 +15,7 @@ test("resume replays stored text before input and appends the next Run to the sa
   const original = createFauxCore({ api: "faux", provider: "faux" });
   const storedReply = "⏵ 查一下报错原因\n**stored reply** 中\n⏵ 给补丁跑个验证\nsecond line";
   original.setResponses([fauxAssistantMessage(storedReply)]);
-  const app = await start(argv, {
+  const app = await startWithClock(argv, {
     prepare: async (directory) => {
       root = directory;
       await Bun.write(join(root, "AGENTS.md"), "hidden project instructions");
@@ -85,10 +86,10 @@ test("resume replays stored text before input and appends the next Run to the sa
     app.calls[0]!.finish();
     await app.waitFor(
       () =>
-        app
-          .allLines()
-          .filter((line) => line === "  resumed reply" || line === `${assistant} resumed reply`)
-          .length === 12 && !app.isWorking(),
+        app.allLines().filter((line) => {
+          const body = line.slice(0, 78).trimEnd();
+          return body === "  resumed reply" || body === `${assistant} resumed reply`;
+        }).length === 12 && !app.isWorking(),
     );
     expect(app.allLines().filter((line) => line === "❯ stored prompt 中")).toHaveLength(1);
     expect(app.allLines().filter((line) => line === `${assistant} stored reply 中`)).toHaveLength(
@@ -96,8 +97,8 @@ test("resume replays stored text before input and appends the next Run to the sa
     );
     expect(app.terminal.buffer.active.baseY).toBe(0);
     app.stdin.write("\x1b[5~");
-    await app.waitFor(() => app.screen()[3]?.slice(42) === logoTop);
-    expect(app.allLines()[0]).toBe(lines[0]);
+    await app.waitFor(() => app.screen()[4]?.slice(42) === logoTop);
+    expect(app.allLines()[1]).toBe(lines[0]);
     expect(app.allLines().filter((line) => line.slice(42) === logoTop)).toHaveLength(1);
     const resumed = await createSession({ cwd: root, homeDir: root, ...app, resumeId: id });
     expect(resumed.id).toBe(id);
@@ -105,7 +106,10 @@ test("resume replays stored text before input and appends the next Run to the sa
       { role: "user", content: [{ type: "text", text: "continuation" }] },
       { role: "assistant", content: [{ type: "text", text: "resumed reply\n".repeat(12) }] },
     ]);
-    const replay = await start(["--resume", id], { session: { cwd: root, homeDir: root } });
+    const replay = await start(["--resume", id], {
+      session: { cwd: root, homeDir: root },
+      advanceTimers: (ms) => jest.advanceTimersByTime(ms),
+    });
     try {
       await replay.waitFor(() => replay.screen().includes("❯"));
       expect(replay.allLines().join("\n")).not.toContain("⏵");

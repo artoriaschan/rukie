@@ -195,10 +195,12 @@ export function calculateTree(root: HostNode, columns: number, rows?: number): L
       node.contentYoga.calculateLayout(width, undefined, Direction.LTR);
       const local = node.children.map((child) => snapshot(child));
       const top = node.props.scroll.getSnapshot().top;
-      const anchor =
-        node.scrollContent && width !== node.scrollContent.width
-          ? readingAnchor(node.scrollContent.children, top)
-          : undefined;
+      const anchor = node.scrollContent
+        ? readingAnchor(node.scrollContent.children, top)
+        : undefined;
+      const portable = node.scrollContent
+        ? portableAnchor(node.scrollContent.children, top)
+        : undefined;
       const restored = node.props.scroll.takeInitialAnchor();
       const target = node.props.scroll.takeTextTarget();
       const targetTop = target ? resolveTextTarget(local, target) : undefined;
@@ -207,10 +209,19 @@ export function calculateTree(root: HostNode, columns: number, rows?: number): L
         (restored
           ? resolvePortableAnchor(local, restored)
           : anchor
-            ? resolveAnchor(local, anchor)
+            ? (resolveAnchor(local, anchor) ??
+              (portable ? resolvePortableAnchor(local, portable) : undefined) ??
+              resolveContainingAnchor(local, anchor))
             : undefined);
       offset = node.props.scroll.layout(
-        { x, y, width, height, total: Math.round(node.contentYoga.getComputedHeight()) },
+        {
+          x,
+          y,
+          width,
+          height,
+          total: Math.round(node.contentYoga.getComputedHeight()),
+          anchors: measuredAnchors(local),
+        },
         anchoredTop,
       );
       node.props.scroll.setAnchor(portableAnchor(local, offset));
@@ -271,6 +282,7 @@ interface ReadingAnchor {
   source: HostNode;
   offset: number;
   inset: number;
+  containers: string[];
 }
 
 function readingAnchor(nodes: LayoutNode[], top: number): ReadingAnchor | undefined {
@@ -281,12 +293,29 @@ function readingAnchor(nodes: LayoutNode[], top: number): ReadingAnchor | undefi
       if (!node.lines?.[row]) continue;
       return {
         source: node.source,
+        containers: [],
         offset: node.lines?.[row]?.[0]?.offset ?? 0,
         inset: Math.min(0, top - node.y),
       };
     }
     const anchor = readingAnchor(node.children, top);
-    if (anchor) return anchor;
+    if (anchor) {
+      if (node.props.scrollAnchorId) anchor.containers.unshift(node.props.scrollAnchorId);
+      return anchor;
+    }
+  }
+  return undefined;
+}
+
+/** A removed detail returns to its nearest surviving card instead of unrelated following text. */
+function resolveContainingAnchor(nodes: LayoutNode[], anchor: ReadingAnchor): number | undefined {
+  for (let index = anchor.containers.length - 1; index >= 0; index--) {
+    const top = resolveTextTarget(nodes, {
+      id: anchor.containers[index]!,
+      query: "",
+      occurrence: 0,
+    });
+    if (top !== undefined) return top;
   }
   return undefined;
 }
@@ -391,4 +420,15 @@ function resolveTextTarget(
     }
   }
   return find(nodes);
+}
+
+function measuredAnchors(
+  nodes: readonly LayoutNode[],
+): { id: string; top: number; height: number }[] {
+  return nodes.flatMap((node) => [
+    ...(node.props.scrollAnchorId
+      ? [{ id: node.props.scrollAnchorId, top: node.y, height: node.height }]
+      : []),
+    ...measuredAnchors(node.children),
+  ]);
 }

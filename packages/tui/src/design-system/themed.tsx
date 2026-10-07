@@ -28,6 +28,7 @@ function useColor(color?: ThemeColor) {
 export interface ThemedTextProps extends Omit<TextProps, "color" | "backgroundColor"> {
   color?: ThemeColor;
   backgroundColor?: ThemeColor;
+  borderColor?: ThemeColor;
 }
 
 export function ThemedText({ color, backgroundColor, ...props }: ThemedTextProps) {
@@ -49,19 +50,20 @@ export function ThemedTextInput({ color, ...props }: ThemedTextInputProps) {
   return <TextInput {...props} color={useColor(color)} />;
 }
 
-export interface ThemedBoxProps extends Omit<BoxProps, "backgroundColor"> {
+export interface ThemedBoxProps extends Omit<BoxProps, "backgroundColor" | "borderColor"> {
   color?: ThemeColor;
   backgroundColor?: ThemeColor;
+  borderColor?: ThemeColor;
 }
 
 /** Resolve a box's theme background and scope the foreground for descendant themed text. */
-export function ThemedBox({ color, backgroundColor, ...props }: ThemedBoxProps) {
+export function ThemedBox({ color, backgroundColor, borderColor, ...props }: ThemedBoxProps) {
   const resolved = useColor(color);
   const theme = useTheme();
   const background = resolveColor(theme, backgroundColor);
   return (
     <ColorContext.Provider value={resolved}>
-      <Box {...props} backgroundColor={background} />
+      <Box {...props} backgroundColor={background} borderColor={resolveColor(theme, borderColor)} />
     </ColorContext.Provider>
   );
 }

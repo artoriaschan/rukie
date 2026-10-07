@@ -15,11 +15,15 @@ export interface ScrollSnapshot {
   width: number;
   following: boolean;
   anchor?: ScrollAnchor;
+  /** Stable boxes measured in content coordinates by the last layout. */
+  anchors?: readonly { id: string; top: number; height: number }[];
 }
 
 export interface ScrollHandle {
   scrollBy(lines: number): void;
   scrollToBottom(): void;
+  /** Seek the current measured start of a stable box on the next layout. */
+  scrollToAnchor(id: string): void;
   /** Find a literal occurrence inside a stable content box on the next layout. */
   scrollToText(id: string, query: string, occurrence?: number): void;
   getSnapshot(): ScrollSnapshot;
@@ -70,9 +74,17 @@ export function createScrollState(
   const set = (next: ScrollSnapshot) => {
     if (
       Object.keys(next).every((key) =>
-        key === "anchor"
-          ? sameAnchor(next.anchor, snapshot.anchor)
-          : next[key as keyof ScrollSnapshot] === snapshot[key as keyof ScrollSnapshot],
+        key === "anchors"
+          ? next.anchors?.length === snapshot.anchors?.length &&
+            next.anchors?.every((anchor, i) => {
+              const old = snapshot.anchors?.[i];
+              return (
+                anchor.id === old?.id && anchor.top === old.top && anchor.height === old.height
+              );
+            })
+          : key === "anchor"
+            ? sameAnchor(next.anchor, snapshot.anchor)
+            : next[key as keyof ScrollSnapshot] === snapshot[key as keyof ScrollSnapshot],
       )
     )
       return;
@@ -85,6 +97,11 @@ export function createScrollState(
       const max = Math.max(0, snapshot.total - snapshot.height);
       const top = Math.max(0, Math.min(max, snapshot.top + lines));
       set({ ...snapshot, top, following: followOnReachBottom && top === max });
+      redraw();
+    },
+    scrollToAnchor(id) {
+      pendingText = { id, query: "", occurrence: 0 };
+      set({ ...snapshot, following: false });
       redraw();
     },
     scrollToText(id, query, occurrence = 0) {
