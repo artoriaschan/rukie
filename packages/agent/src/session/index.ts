@@ -254,7 +254,7 @@ export interface Session {
   >;
   /** Interrupt a child Run; missing and idle children are a no-op. */
   interruptSubagent(id: string): void;
-  /** Ends the Session once, cancelling its Run and releasing external resources. */
+  /** Closes the owner once; pending native work remains resumable while host resources are released. */
   close(reason?: "exit" | "other"): Promise<void>;
   /** External completion boundary, including Hook autoruns; never await from a Run callback. */
   waitForIdle(): Promise<void>;
@@ -264,7 +264,7 @@ export interface Session {
     options?: {
       images?: PromptImage[];
       signal?: AbortSignal;
-      /** Ordered Run events; result follows storage close. Also receives disposal diagnostics without awaiting observers. */
+      /** Observes committed Session events until this parent Run settles; observer promises do not delay execution. */
       onEvent?: (event: SessionEvent) => void | Promise<void>;
     },
   ): Promise<RequestResult>;
