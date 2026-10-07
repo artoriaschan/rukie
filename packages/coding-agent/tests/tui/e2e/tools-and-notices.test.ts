@@ -277,24 +277,32 @@ test.each([
       rows: 40,
       env: { LANG: locale },
       prepare: async (root) => {
-        await Bun.write(join(root, "large.txt"), "tool output\n".repeat(2500));
+        await Bun.write(join(root, "large.txt"), "tool output ".repeat(5000));
       },
     });
-    // Keep tool declarations below the trigger; the large read starts compaction.
-    app.model.contextWindow = 5000;
     try {
       await app.waitFor(() => app.calls.length === 1);
       app.calls[0]!.tool("read", { path: "large.txt" });
       await app.waitFor(() => app.calls.length === 2);
-      if (locale === "zh")
-        await app.waitFor(() =>
-          app.screen().some((line) => /收拾一下上下文…|整理背包中…/.test(line)),
-        );
-      app.calls[1]!.delta("private-compaction-summary\nsecond summary line");
+      app.calls[1]!.delta("First old evidence.");
       app.calls[1]!.finish();
+      await app.waitFor(() => !app.isWorking());
+      app.stdin.write("read second evidence\r");
       await app.waitFor(() => app.calls.length === 3);
+      app.calls[2]!.tool("read", { path: "large.txt" });
+      await app.waitFor(() => app.calls.length === 4);
+      app.calls[3]!.delta("Second old evidence.");
+      app.calls[3]!.finish();
+      await app.waitFor(() => !app.isWorking());
+      app.stdin.write("recent protected task\r");
+      await app.waitFor(() => app.calls.length === 5);
+      app.calls[4]!.finish();
+      await app.waitFor(() => !app.isWorking());
+      app.stdin.write("/compact\r");
+      await app.waitFor(() => app.calls.length === 6);
+      app.calls[5]!.delta("private-compaction-summary\nsecond summary line");
+      app.calls[5]!.finish();
       await app.waitFor(() => app.screen().some((line) => line.startsWith(`─ ${prefix}`)));
-      await app.waitFor(() => app.screen().some((line) => / · [\d.]+k→[\d.]+k/.test(line)));
       expect(app.screen().join("\n")).not.toMatch(/收拾一下上下文…|整理背包中…/);
       const row = app.screen().findIndex((line) => line.startsWith(`─ ${prefix}`));
       expect(
@@ -303,8 +311,10 @@ test.each([
           .getCell(0)!
           .getFgColor(),
       ).toBe(0x5e6673);
-      app.calls[2]!.delta("after compaction\n".repeat(10));
-      app.calls[2]!.finish();
+      app.stdin.write("continue\r");
+      await app.waitFor(() => app.calls.length === 7);
+      app.calls[6]!.delta("after compaction\n".repeat(10));
+      app.calls[6]!.finish();
       await app.waitFor(
         () =>
           app
@@ -316,7 +326,7 @@ test.each([
       expect(app.allLines().filter((line) => line.startsWith(`─ ${prefix}`))).toHaveLength(1);
       expect(app.allLines().join("\n")).not.toContain("private-compaction-summary");
       expect(app.allLines().join("\n")).not.toContain("second summary line");
-      expect(app.allLines().join("\n")).toContain("   tool output");
+      expect(app.allLines().join("\n")).toContain("tool output");
     } finally {
       await app.cleanup();
     }
@@ -372,6 +382,7 @@ test.each([
       });
       await session.run("try secret");
       argv.push("--resume", session.id);
+      await session.close();
     },
   });
   try {

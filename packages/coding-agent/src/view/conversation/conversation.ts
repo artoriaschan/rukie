@@ -950,21 +950,22 @@ function reduceEvent(
       }
       return next;
     }
-    case "tool_execution_start":
+    case "tool_execution_start": {
+      const started: ToolCall = {
+        id: event.toolCallId,
+        name: event.toolName,
+        args: event.args,
+        summary: toolSummary(event.toolName, event.args),
+        callView: event.view,
+        startedAt: state.assistantTimestamp,
+      };
       return {
         ...state,
-        tools: [
-          ...state.tools.filter((tool) => tool.id !== event.toolCallId),
-          {
-            id: event.toolCallId,
-            name: event.toolName,
-            args: event.args,
-            summary: toolSummary(event.toolName, event.args),
-            callView: event.view,
-            startedAt: state.assistantTimestamp,
-          },
-        ],
+        tools: state.tools.some((tool) => tool.id === event.toolCallId)
+          ? state.tools.map((tool) => (tool.id === event.toolCallId ? started : tool))
+          : [...state.tools, started],
       };
+    }
     case "permission_denied": {
       if (!((event.by === "rule" && event.rule !== undefined) || event.by === "hook")) return state;
       const annotate = (tool: ToolCall): ToolCall =>
@@ -1132,7 +1133,7 @@ export function createConversation(
   let state = createViewState(session, model, locale, facts);
   const listeners = new Set<() => void>();
   let compacting = false;
-  let active: { promise: Promise<unknown> } | undefined;
+  let active: { promise: Promise<unknown>; input?: AbortController } | undefined;
   let pendingResult: { event: Extract<SessionEvent, { type: "result" }>; at: number } | undefined;
   let jobNoticeTimer: ReturnType<typeof setTimeout> | undefined;
   let notificationTimer: ReturnType<typeof setTimeout> | undefined;
@@ -1356,14 +1357,15 @@ export function createConversation(
     submit(prompt: string, initial = false, images: PromptImage[] = []) {
       if (compacting) return false;
       if (!prompt.trim()) return false;
-      if (active || (session.running && !initial)) {
+      const awaitIdle = !active && !state.running && session.running && !initial;
+      if (active || (session.running && !initial && !awaitIdle)) {
         if (!images.length && !prompt.startsWith("/")) return false;
         void session.steer(prompt, { images }).catch((error: unknown) => {
           if (!stopped) notify(formatError(error, t), "error");
         });
         return true;
       }
-      if (!session.running)
+      if (!session.running || awaitIdle)
         update({
           ...state,
           running: true,
@@ -1376,10 +1378,12 @@ export function createConversation(
           decode: { tokens: 0, ms: 0 },
           activity: reduce(state.activity, { type: "submit" }, Date.now()),
         });
-      const promise = session
-        .run(prompt, {
-          images,
-        })
+      const input = new AbortController();
+      const promise = (async () => {
+        if (awaitIdle) await session.waitForIdle();
+        if (stopped || input.signal.aborted) return;
+        return session.run(prompt, { images, signal: input.signal });
+      })()
         .catch((error: unknown) => {
           if (stopped) return;
           const last = state.completed.findLast((entry) => entry.type !== "run-summary");
@@ -1432,7 +1436,7 @@ export function createConversation(
             });
           pendingResult = undefined;
         });
-      active = { promise };
+      active = { promise, input };
       return true;
     },
     compact(instructions?: string) {
@@ -1474,12 +1478,14 @@ export function createConversation(
     interrupt() {
       if (!active && !session.running) return;
       dispatchActivity({ type: "interrupt" });
+      active?.input?.abort();
       void session.abort().catch((error: unknown) => {
         if (!stopped) notify(formatError(error, t), "error");
       });
     },
     async stop() {
       stopped = true;
+      active?.input?.abort();
       unsubscribe();
       clearTimeout(noticeTimer);
       clearTimeout(jobNoticeTimer);

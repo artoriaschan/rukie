@@ -147,11 +147,11 @@ test("running cards retain exactly three single output rows through streaming, t
   }
 });
 
-for (const [locale, waiting, aborted] of [
-  ["en_US.UTF-8", "waiting for 2 subagents", "aborted"],
-  ["zh_CN.UTF-8", "等待 2 个子代理", "已中止"],
+for (const [locale, waiting] of [
+  ["en_US.UTF-8", "background tasks: 2 subagents"],
+  ["zh_CN.UTF-8", "后台任务：2 个子代理"],
 ] as const) {
-  test(`${locale} waits only while the parent is idle and Esc aborts every running Subagent`, async () => {
+  test(`${locale} exposes background children while the parent is idle and Esc preserves their work`, async () => {
     const app = await start(["--permission-mode", "full-access", "delegate"], {
       columns: 160,
       rows: 40,
@@ -176,15 +176,11 @@ for (const [locale, waiting, aborted] of [
       expect(screen()).not.toContain(waiting);
       parent.finish();
       await app.waitFor(() => screen().includes(waiting));
-      expect(app.isWorking()).toBe(true);
-      expect(screen()).toContain(locale.startsWith("en") ? "esc interrupt" : "esc 中断");
+      expect(screen()).not.toContain(locale.startsWith("en") ? "esc interrupt" : "esc 中断");
       app.stdin.write("\x1b");
-      await app.waitFor(() => !app.isWorking() && !screen().includes(waiting));
-      expect(children.every((child) => child.signal!.aborted)).toBe(true);
-      expect(
-        app.screen().filter((line) => line.includes("🔴") && line.includes(aborted)),
-      ).toHaveLength(2);
-      expect(screen()).not.toContain("    │");
+      await app.flush();
+      expect(children.every((child) => !child.signal!.aborted)).toBe(true);
+      expect(screen()).toContain(waiting);
       app.stdin.write("again\r");
       await app.waitFor(() => app.calls.length === 5);
       expect(screen()).not.toContain(waiting);
@@ -216,14 +212,14 @@ test("a child completion clears waiting while the parent resumes and then counts
       ),
     );
     app.calls.find((call, index) => index > 0 && !children.includes(call))!.finish();
-    await app.waitFor(() => screen().includes("waiting for 2 subagents"));
+    await app.waitFor(() => screen().includes("background tasks: 2 subagents"));
     children[0]!.finish();
-    await app.waitFor(() => app.calls.length === 5 && !screen().includes("waiting for"));
+    await app.waitFor(() => app.calls.length === 5 && !screen().includes("background tasks:"));
     expect(app.isWorking()).toBe(true);
     app.calls[4]!.finish();
-    await app.waitFor(() => screen().includes("waiting for 1 subagents"));
+    await app.waitFor(() => screen().includes("background tasks: 1 subagents"));
     children[1]!.finish();
-    await app.waitFor(() => app.calls.length === 6 && !screen().includes("waiting for"));
+    await app.waitFor(() => app.calls.length === 6 && !screen().includes("background tasks:"));
     app.calls[5]!.finish();
     await app.waitFor(() => !app.isWorking());
   } finally {
@@ -457,6 +453,7 @@ test("fork, agent listing and failed messaging use dedicated rows live and after
     app.calls[4]!.finish();
     await app.waitFor(() => !app.isWorking());
     assertRows(app);
+    await app.shutdown();
     const replay = await (
       await import("../helpers/app")
     ).start(argv, {
