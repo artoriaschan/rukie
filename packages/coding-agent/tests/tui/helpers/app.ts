@@ -50,18 +50,21 @@ export async function start(
   void exit.then(() => {
     exited = true;
   });
+  const shutdown = async () => {
+    lifetime.abort();
+    await terminal.waitFor(() => exited, 5000);
+    await exit;
+  };
   return {
     root,
     ...terminal,
     ...fake,
     exit,
+    shutdown,
     stderr: () => stderr,
     async cleanup() {
       // Process shutdown closes the durable owner even after a failed storage invocation.
-      lifetime.abort();
-      // Terminal restoration can precede Session close; drive timers until main settles.
-      await terminal.waitFor(() => exited, 5000);
-      await exit;
+      await shutdown();
       terminal.dispose();
       await rm(root, { recursive: true, force: true });
     },

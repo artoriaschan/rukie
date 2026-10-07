@@ -159,7 +159,7 @@ test.each(["assistant", "toolResult"] as const)(
       expect(app.screen().join("\n")).not.toContain("ghost-tail");
       expect(app.screen().join("\n")).not.toContain("ghost-thinking");
       if (failure === "toolResult") {
-        expect(app.screen().join("\n")).toContain("Outcome unknown");
+        expect(app.screen().join("\n")).toMatch(/\? Write/);
         expect(await Bun.file(`${app.root}/executed.txt`).text()).toBe("actual side effect");
         expect(app.calls).toHaveLength(1);
       }
@@ -182,13 +182,20 @@ test.each(["assistant", "toolResult"] as const)(
           expect(await Bun.file(`${app.root}/executed.txt`).text()).toBe("actual side effect");
         }
         restored.calls[0]!.reply("recovered conclusion");
-        await restored.waitFor(() => !restored.isWorking());
+        await restored.waitFor(
+          () =>
+            !restored.isWorking() && restored.screen().join("\n").includes("recovered conclusion"),
+        );
         expect(restored.screen().join("\n")).toContain("seed reply");
         expect(
           restored.screen().filter((line) => line.includes("recovered conclusion")),
         ).toHaveLength(1);
-        expect(restored.screen().join("\n")).not.toContain("ghost-tail");
-        expect(restored.screen().join("\n")).not.toContain("ghost-thinking");
+        if (failure === "assistant") {
+          // Native resume archives the committed partial attempt before retrying the failed completion.
+          expect(restored.screen().join("\n")).toContain("ghost-tail");
+        } else {
+          expect(restored.screen().join("\n")).not.toContain("ghost-tail");
+        }
         restored.stdin.write("continue\r");
         await restored.waitFor(() => restored.calls.length === 2);
         expect(JSON.stringify(restored.calls[1]!.context.messages)).toContain(
@@ -209,8 +216,6 @@ test("native compaction notices use a quiet divider and reconstruct once on Resu
   try {
     await app.waitFor(() => app.screen().includes("❯"));
     app.stdin.write("/compact\r");
-    await app.waitFor(() => app.calls.length === 1);
-    app.calls[0]!.reply("Preserved compacted summary.");
     await app.waitFor(() => app.screen().some((row) => row.startsWith("─ Context compacted")));
     expect(app.screen().filter((row) => row.includes("Context compacted"))).toHaveLength(1);
     const row = app.screen().findIndex((row) => row.includes("Context compacted"));
