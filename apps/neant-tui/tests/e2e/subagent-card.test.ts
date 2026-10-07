@@ -2,7 +2,7 @@ import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
 import { start } from "../helpers/app";
 
-test("a delegated Subagent renders its running card under the initiating tool", async () => {
+test("a delegated Subagent renders only its dedicated running row", async () => {
   const app = await start(["--permission-mode", "full-access", "--thinking", "high", "delegate"], {
     columns: 160,
     rows: 40,
@@ -254,7 +254,7 @@ test("the Subagent waterfall includes thinking and keeps it separate from stream
   }
 });
 
-test("an idle child's continuation card attaches only to its latest send_message tool", async () => {
+test("an idle child's continuation retains exactly one dedicated row", async () => {
   const app = await start(["--permission-mode", "full-access", "delegate"], {
     columns: 160,
     rows: 60,

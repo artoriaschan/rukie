@@ -84,7 +84,7 @@ function appendOutput(row: SubagentState, type: "text" | "thinking", text: strin
   };
 }
 
-function toolResultPreview(result: unknown): string | undefined {
+function toolResultText(result: unknown): string | undefined {
   if (
     typeof result !== "object" ||
     result === null ||
@@ -154,7 +154,7 @@ export function reduceSubagent(
       };
     }
     case "tool_execution_end": {
-      const preview = toolResultPreview(event.result);
+      const preview = toolResultText(event.result);
       return {
         ...row,
         toolCalls: row.toolCalls.map((tool) =>
