@@ -353,7 +353,7 @@ export function projectSubagent(
         const text = toolResultText(message);
         tools[index] = {
           ...tools[index]!,
-          status: message.isError ? "failed" : "completed",
+          status: message.outcomeUnknown ? "unknown" : message.isError ? "failed" : "completed",
           resultView: message.view,
           result: message.isError ? undefined : text,
           error: message.isError ? text : undefined,
