@@ -235,13 +235,16 @@ function withTimestamps(source: ReturnType<typeof createModels>, timestamp: numb
       streamSimple(m, c, o) {
         const target = createAssistantMessageEventStream();
         void (async () => {
-          for await (const event of original.streamSimple(m, c, o)) {
+          const source = original.streamSimple(m, c, o);
+          for await (const event of source) {
             if ("partial" in event) event.partial.timestamp = timestamp;
             if ("message" in event) event.message.timestamp = timestamp;
             if ("error" in event) event.error.timestamp = timestamp;
             target.push(event);
           }
-          target.end();
+          const reply = await source.result();
+          reply.timestamp = timestamp;
+          target.end(reply);
         })();
         return target;
       },

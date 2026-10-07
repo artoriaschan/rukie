@@ -197,6 +197,7 @@ export async function createConversationObservation(options: ConversationObserva
   let current = state.value;
   const unknownOutcomes = await readUnknownOutcomes(current.entries, harness, BACKGROUND_CONTEXT);
   let projectedEntries: readonly EntryRecord[] | undefined;
+  let messagesByEntry = new Map<string, TranscriptMessage[]>();
   let messages: readonly TranscriptMessage[] = [];
   let callArgs = new Map<string, { name: string; args: unknown }>();
   let facts = structuredClone(options.facts());
@@ -247,9 +248,16 @@ export async function createConversationObservation(options: ConversationObserva
       }
     }
     messages = raw.map(enrich);
+    messagesByEntry = new Map();
+    for (const message of messages) {
+      if (!message.entryId) continue;
+      const group = messagesByEntry.get(message.entryId) ?? [];
+      group.push(message);
+      messagesByEntry.set(message.entryId, group);
+    }
   }
   function entryMessages(entry: EntryRecord) {
-    return transcriptMessages([entry]).map(enrich);
+    return messagesByEntry.get(String(entry.id)) ?? [];
   }
   function capture(view: ConversationView): Snapshot {
     const { live, inbox, agent, usage } = parts(view);

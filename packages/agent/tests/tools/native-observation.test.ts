@@ -9,6 +9,8 @@ import {
   defineDoc,
   hook,
   CompactionTask,
+  GenerationTask,
+  type Conversation,
 } from "@earendil-works/pi-durable";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
 import { Type } from "typebox";
@@ -523,6 +525,79 @@ test("blocking native compaction publishes its committed summary and one termina
     expect(delivered.filter((event) => event.type === "compaction_start")).toHaveLength(1);
     expect(delivered.filter((event) => event.type === "compaction_end")).toHaveLength(1);
     expect(observation.snapshot().compactions).toEqual([]);
+    await observation.close();
+  } finally {
+    await harness.close(context);
+  }
+});
+
+test("incremental native continuation keeps its committed owner metadata", async () => {
+  const context = withAbortSignal(AbortSignal.timeout(3000), BACKGROUND_CONTEXT);
+  const fake = fakeModel([fauxAssistantMessage("first"), fauxAssistantMessage("done")]);
+  const registry = createRegistry();
+  let continued = false;
+  let owner: Conversation;
+  registry.install({
+    name: "continuation",
+    hooks: [
+      hook(GenerationTask, {
+        onYield: async (_answer, api, ctx) => {
+          if (continued) return;
+          continued = true;
+          await owner.commit(
+            (tx) =>
+              tx.appendEntry(owner.id, {
+                kind: "rukie.message-facts",
+                data: {
+                  taskId: Number(api.taskId),
+                  content: "owner continuation",
+                  source: "stop_hook",
+                },
+              }),
+            ctx,
+          );
+          return { continue: "owner continuation" };
+        },
+      }),
+    ],
+  });
+  const harness = await Harness.open(
+    new MemoryStorage(),
+    { models: fake.models, registry },
+    context,
+  );
+  try {
+    const conversation = await harness.root(context, {
+      agent: { model: { provider: fake.model.provider, modelId: fake.model.id } },
+    });
+    owner = conversation;
+    const events: SessionEvent[] = [];
+    const observation = await createConversationObservation({
+      harness,
+      conversation,
+      sessionId: "product",
+      tools: () => [],
+      adopt: () => {},
+      facts: () => ({
+        toolStates: {},
+        runSummaries: [],
+        model: "faux",
+        planMode: false,
+        background: [],
+      }),
+      publish: (batch) => events.push(...batch),
+    });
+    await (await conversation.submit({ type: "input", content: "start" }, context)).wait(context);
+    await conversation.waitForIdle(context);
+    await observation.flush();
+    const committed = observation
+      .messages()
+      .find((message) => message.role === "user" && message.source === "stop_hook");
+    expect(committed).toBeDefined();
+    const incremental = events
+      .flatMap((event) => (event.type === "message_end" ? event.messages : []))
+      .find((message) => message.entryId === committed?.entryId);
+    expect(incremental).toEqual(committed);
     await observation.close();
   } finally {
     await harness.close(context);
