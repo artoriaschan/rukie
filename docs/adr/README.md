@@ -51,5 +51,6 @@ ADR 保存长期架构决定、真实备选方案和代价。当前运行行为�
 - [0020 文件变更基线表示模型已知内容，与提醒在同一事务中推进](0020-file-tracking-baseline-transactions.md) — `accepted`
 - [0021 图片输入保存原生内容块，Frontend 管理附件交互与终端资源](0021-native-image-input-persistence.md) — `accepted`
 - [0022 WebFetch 在执行层限制公网请求，跨源跳转重新授权](0022-public-web-fetch-network-boundary.md) — `accepted`
+- [0023 coding-agent 通过 npm 分发 Bun 可执行文件，以 Release PR 控制发布](0023-npm-cli-distribution.md) — `accepted`
 
 <!-- ADR_INDEX_END -->
