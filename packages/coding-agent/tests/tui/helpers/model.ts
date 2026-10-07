@@ -64,6 +64,7 @@ export function controlledModel(controlReviews = false, controlTitles = false) {
     const partial = fauxAssistantMessage("", { stopReason: "pending" });
     let text = "";
     let thinking = "";
+    let toolArguments = "";
     let ended = false;
     const fail = (reason: "aborted" | "error", errorMessage: string) => {
       if (ended) return;
@@ -132,9 +133,10 @@ export function controlledModel(controlReviews = false, controlTitles = false) {
         stream.push({ type: "thinking_delta", contentIndex: 0, delta, partial });
       },
       toolDelta(delta) {
+        toolArguments += delta;
         partial.content = [
           ...(thinking ? [{ type: "thinking" as const, thinking }] : []),
-          fauxToolCall("bash", {}, { id: "partial-tool" }),
+          fauxToolCall("bash", { command: toolArguments }, { id: "partial-tool" }),
         ];
         stream.push({ type: "toolcall_delta", contentIndex: 0, delta, partial });
       },
