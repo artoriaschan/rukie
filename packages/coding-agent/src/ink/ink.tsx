@@ -204,6 +204,7 @@ export default class Ink {
   // LF-induced scroll when screen.height === terminalRows) and gates
   // alt-screen-aware SIGCONT/resize/unmount handling.
   private altScreenActive = false;
+  private pointerContextGeneration = 0;
   // Set alongside altScreenActive so SIGCONT resume knows whether to
   // re-enable mouse tracking (not all <AlternateScreen> uses want it).
   private altScreenMouseTracking = false;
@@ -1370,11 +1371,19 @@ export default class Ink {
    */
   setAltScreenActive(active: boolean, mouseTracking = false): void {
     if (this.altScreenActive === active) return;
+    const generation = ++this.pointerContextGeneration;
     const resetOldPointerContext = (): void => {
       // Fire leave handlers before dropping the set — a bare clear strands
       // old rows with hovered=true. resetPointerState also emits dragend for
       // a captured drag before its geometry disappears.
-      clearHovered(this.hoveredNodes);
+      clearHovered(this.hoveredNodes, -1, -1, (node, notify) => {
+        // AlternateScreen switches during an insertion effect: clear ownership now,
+        // then notify retained React owners after commit. A new hover lease wins.
+        queueMicrotask(() => {
+          if (this.isUnmounted || generation !== this.pointerContextGeneration || !node.parentNode || this.hoveredNodes.has(node)) return;
+          notify();
+        });
+      });
       this.app?.resetPointerState();
       invalidateNoInterestRect();
     };

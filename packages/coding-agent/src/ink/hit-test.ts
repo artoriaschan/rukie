@@ -326,6 +326,7 @@ export function clearHovered(
   hovered: Set<DOMElement>,
   col = -1,
   row = -1,
+  notify: (node: DOMElement, callback: () => void) => void = (_node, callback) => callback(),
 ): void {
   for (const node of hovered) {
     hovered.delete(node)
@@ -335,13 +336,13 @@ export function clearHovered(
     if (!node.parentNode) continue
     const handler = (node._eventHandlers as EventHandlerProps | undefined)
       ?.onMouseLeave
-    if (handler) {
+    if (handler) notify(node, () => {
       try {
         handler(new PointerEvent('hover', col, row, { action: 'move' }))
       } catch (error) {
         logError(error)
       }
-    }
+    })
   }
 }
 
