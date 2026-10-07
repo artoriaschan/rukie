@@ -129,15 +129,10 @@ function toolEntry(
     view?: ToolResultView;
     timestamp?: number;
     outcomeUnknown?: boolean;
+    permissionDenial?: Extract<TranscriptMessage, { role: "toolResult" }>["permissionDenial"];
   },
   t: ReturnType<typeof createTuiI18n>,
 ): CompletedEntry | undefined {
-  // Events supply live provenance; persisted tool results retain the rule on replay.
-  const rule =
-    tool.rule ??
-    (isError && resultText(result).startsWith("Denied by permission rule: ")
-      ? resultText(result).slice("Denied by permission rule: ".length)
-      : undefined);
   const provenance =
     typeof result.details === "object" &&
     result.details !== null &&
@@ -146,8 +141,15 @@ function toolEntry(
     result.details.permissionDenied !== null
       ? result.details.permissionDenied
       : undefined;
+  // Live events and committed decision facts preserve the same localized provenance.
+  const rule =
+    tool.rule ??
+    (result.permissionDenial?.by === "rule" ? result.permissionDenial.rule : undefined);
   const hook =
     tool.hook ??
+    (result.permissionDenial?.by === "hook"
+      ? (result.permissionDenial.hook ?? "hook")
+      : undefined) ??
     (provenance && "by" in provenance && provenance.by === "hook"
       ? "hook" in provenance && typeof provenance.hook === "string"
         ? provenance.hook
