@@ -205,6 +205,20 @@ export function restoreSourcePosition(
     handle.scrollToElement(element, offset);
     return true;
   }
+  // A folded-away source can still belong to a surviving card. Its saved
+  // bounds identify that enclosing source independently of the new layout.
+  const containing = position.anchors?.findLast(
+    (source) =>
+      source.id !== position.anchor?.id &&
+      source.top <= position.top &&
+      source.top + source.height > position.top &&
+      sources.elements.has(source.id),
+  );
+  const parent = containing ? sources.elements.get(containing.id) : undefined;
+  if (parent) {
+    handle.scrollToElement(parent);
+    return true;
+  }
   handle.scrollTo(position.top);
   return true;
 }
