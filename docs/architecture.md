@@ -1,6 +1,6 @@
 # Neant 架构
 
-本文是当前运行架构的参考：先说明组合与依赖，再说明 Session、Run、持久化和扩展位置。修改 `apps/` 或 `packages/` 前阅读本文；领域定义以 [CONTEXT.md](../CONTEXT.md) 为准，决策与取舍见 [ADRs](adr/)，编写规则见 [AGENTS.md](AGENTS.md)。
+本文是当前运行架构的参考：先说明组合与依赖，再说明 Session、Run、持久化和扩展位置。修改 `packages/` 前阅读本文；领域定义以 [CONTEXT.md](../CONTEXT.md) 为准，决策与取舍见 [ADRs](adr/)，编写规则见 [AGENTS.md](AGENTS.md)。
 
 ## 运行组成
 
@@ -21,22 +21,20 @@ flowchart TD
   Renderer --> React[React reconciler]
 ```
 
-| 包                 | 在运行组合中的责任                                                                    |
-| ------------------ | ------------------------------------------------------------------------------------- |
-| `@neant/neant-cli` | 解析非交互输入，驱动用户 Run 或 Goal 续跑，输出文本或 Session 事件的 stream-json 表示 |
-| `@neant/neant-tui` | 连接 Session、交互回调和终端界面，管理呈现状态、Slash Command、输入历史与本地化       |
-| `@neant/agent`     | 执行 frontend 无关的 Session 行为，协调模型、工具、Transcript 与 Run 资源             |
-| `@neant/tui`       | 处理终端输入、React 宿主树、布局、绘制、滚动及终端恢复                                |
-| `@neant/shared`    | 提供运行时无关的公共类型、schema 与纯函数；不依赖 Agent Core 或 frontend              |
-| `@neant/i18n`      | 提供运行时无关的通用文案与 locale 能力，只依赖 shared；frontend 提供自己的字典        |
+| 包                    | 在运行组合中的责任                                                             |
+| --------------------- | ------------------------------------------------------------------------------ |
+| `@neant/coding-agent` | `headless/` 驱动非交互 Run 与 Goal，`tui/` 管理交互与呈现，`ink/` 负责终端渲染 |
+| `@neant/agent`        | 执行 frontend 无关的 Session 行为，协调模型、工具、Transcript 与 Run 资源      |
+| `@neant/shared`       | 提供运行时无关的公共类型、schema 与纯函数                                      |
+| `@neant/i18n`         | 提供运行时无关的通用文案与 locale 能力，只依赖 shared                          |
 
-内部包直接导出 TypeScript 源码，消费者通过工作区包名导入。具体依赖与脚本由各包 `package.json` 定义；技术版本由 [tech-stack.md](tech-stack.md) 维护。
+公共内部包直接导出 TypeScript 源码，跨包消费者通过工作区包名导入；coding-agent 包内使用相对路径，TUI 只经 `ink/index.ts` 使用终端能力。具体依赖与脚本由各包 `package.json` 定义；技术版本由 [tech-stack.md](tech-stack.md) 维护。
 
 ## 应用启动与 Session
 
-Headless CLI 从[入口](../apps/neant-cli/src/main.ts)解析 argv 或 stdin，读取合并设置、创建或恢复 Session。普通 prompt 调用 `Session.run`；`--goal "<objective>"` 调用 `Session.createGoal`，等待自动续跑和收尾完成，再释放 Session。`--max-goal-rounds N` 限制 Goal 轮次；`--goal` 与 `-p` 互斥。Goal 完成退出 0，受阻或达到轮次上限退出 1；恢复到已有未完成 Goal 的 Session 时拒绝覆盖，用户通过 TUI 处理。它不提供 Interaction 回调：依赖回调的工具不进入模型工具集；权限询问等 Agent Core 请求采用安全默认值。
+Headless CLI 从[入口](../packages/coding-agent/src/headless/main.ts)解析 argv 或 stdin，读取合并设置、创建或恢复 Session。普通 prompt 调用 `Session.run`；`--goal "<objective>"` 调用 `Session.createGoal`，等待自动续跑和收尾完成，再释放 Session。`--max-goal-rounds N` 限制 Goal 轮次；`--goal` 与 `-p` 互斥。Goal 完成退出 0，受阻或达到轮次上限退出 1；恢复到已有未完成 Goal 的 Session 时拒绝覆盖，用户通过 TUI 处理。它不提供 Interaction 回调：依赖回调的工具不进入模型工具集；权限询问等 Agent Core 请求采用安全默认值。
 
-TUI 从[入口](../apps/neant-tui/src/main.tsx)解析参数与 locale，建立[聊天界面](../apps/neant-tui/src/screens/chat/index.tsx)，为 Session 提供权限、问题与计划评审回调。界面在同一 Session 中接收多次输入；切换 Session 时释放旧的绑定，重建对话呈现，项目输入历史独立保留。
+TUI 从[入口](../packages/coding-agent/src/tui/main.tsx)解析参数与 locale，建立[聊天界面](../packages/coding-agent/src/tui/screens/chat/index.tsx)，为 Session 提供权限、问题与计划评审回调。界面在同一 Session 中接收多次输入；切换 Session 时释放旧的绑定，重建对话呈现，项目输入历史独立保留。
 
 [`createSession`](../packages/agent/src/session/index.ts)解析工作目录、创建或打开存储、投影当前分支，并恢复模型选择、Plan Mode、Tool State 与对话上下文。指定的恢复目标不存在或父子归属不符时失败，不改为新建 Session。Session Resume 重建已保存的事实，本身不续跑历史 Subagent。
 
@@ -147,15 +145,15 @@ Session Resume 通过只读观察核对子 Run 与父子归属，不自动恢复
 
 ## TUI 与本地化
 
-TUI 按四层组织，导入只向下：screens（`apps/neant-tui/src/screens/`）连接 Session 并拥有应用状态；app components（`apps/neant-tui/src/components/<area>/`）只接收 props，按 UI 区域分目录，各区域经 `index.ts` 暴露并汇总到 `components/index.ts`；design system（`packages/tui/src/design-system/`）提供主题及主题感知部件；renderer primitives（`packages/tui/src/components/`）提供终端原语。后两层不依赖 Agent Core；可复用的终端 UI 按语义放入 `@neant/tui`，Neant 专用适配留在应用内。Slash Command 由 frontend 解析，未匹配输入交回 Agent Core；命令语法不进入 Session 的领域接口。
+TUI 按四层组织，导入只向下：screens（`packages/coding-agent/src/tui/screens/`）连接 Session 并拥有应用状态；app components（`packages/coding-agent/src/tui/components/<area>/`）只接收 props，按 UI 区域分目录，各区域经 `index.ts` 暴露并汇总到 `components/index.ts`；design system（`packages/coding-agent/src/ink/design-system/`）提供主题及主题感知部件；renderer primitives（`packages/coding-agent/src/ink/primitives/`）提供终端原语。后两层不依赖 Agent Core；可复用的终端 UI 按语义放入 `ink/`，Neant 专用适配留在应用内。Slash Command 由 frontend 解析，未匹配输入交回 Agent Core；命令语法不进入 Session 的领域接口。
 
-终端管线是 React reconciler → 纯 TypeScript Yoga 布局 → cell 网格 → 帧差分 → ANSI。只有 layout 使用 vendored Yoga；渲染器支持注入 stdin/stdout，并负责 Kitty PNG 图形能力协商、图片 placement、视口裁剪及资源清理。通用终端 API、绘制、输入与清理语义由 [renderer README](../packages/tui/README.md)维护，来源与复用决定见 [ADR-0005](adr/0005-own-tui-renderer.md)。
+终端管线是 React reconciler → 纯 TypeScript Yoga 布局 → cell 网格 → 帧差分 → ANSI。只有 layout 使用 vendored Yoga；渲染器支持注入 stdin/stdout，并负责 Kitty PNG 图形能力协商、图片 placement、视口裁剪及资源清理。通用终端 API、绘制、输入与清理语义由 [renderer README](../packages/coding-agent/src/ink/README.md)维护，来源与复用决定见 [ADR-0005](adr/0005-own-tui-renderer.md)。
 
 TUI 使用 alternate screen，消息区独立滚动，输入与交互区固定底部；应用管理阅读位置、跟随和面板组合，渲染器负责终端模式与光标恢复。全屏行为和项目输入历史见 [ADR-0006](adr/0006-fullscreen-tui.md)。输入历史不属于模型上下文或 Transcript。
 
-应用拥有 Transcript 图片画廊及消息区内的预览浮层，元数据、缩放、平移和原图入口的使用方式见 [TUI README](../apps/neant-tui/README.md)。图片协议与终端资源由 renderer 管理，不进入 Session 的运行或持久化接口。
+应用拥有 Transcript 图片画廊及消息区内的预览浮层，元数据、缩放、平移和原图入口的使用方式见 [TUI README](../packages/coding-agent/src/tui/README.md)。图片协议与终端资源由 renderer 管理，不进入 Session 的运行或持久化接口。
 
-TUI 通过可注入的 [`host`](../apps/neant-tui/src/host/index.ts) 读取剪贴板并打开外部查看器。每个 TUI 实例拥有剪贴板和图片查看器的 private exports，限制目录及文件权限，关闭时等待进行中的读取或打开操作后清理；Agent Core 不拥有这些 frontend 临时文件。
+TUI 通过可注入的 [`host`](../packages/coding-agent/src/tui/host/index.ts) 读取剪贴板并打开外部查看器。每个 TUI 实例拥有剪贴板和图片查看器的 private exports，限制目录及文件权限，关闭时等待进行中的读取或打开操作后清理；Agent Core 不拥有这些 frontend 临时文件。
 
 Agent Core 不读取 locale，它构造的模型工具文本固定英文，面向用户的错误以类型化错误码与参数交给 frontend。frontend 选择 locale，组合 i18n 通用字典和自己的文案，并渲染错误及交互选项；TUI 注入的 narration 提醒属于 frontend 文案。Transcript 保留当时原文，恢复时不重新翻译。通用 key 不被应用覆盖，责任分界见 [ADR-0008](adr/0008-locale-agnostic-agent-core.md)。
 
@@ -182,7 +180,7 @@ Agent Core 在 assistant 流式事件中测量已观察到的思考阶段：从�
 | 调整权限或生命周期 Hook    | `permissions/`、`hooks/`；保持相应专项文档同步                                                                                                                                                                                              |
 | 增加交互                   | Agent Core 声明回调与取消行为，frontend 连接交互呈现，并覆盖无回调场景                                                                                                                                                                      |
 | 增加 frontend 或存储后端   | 消费公开 Session 接口或实现 SessionStore；运行与存储约束参照 ADR-0001、ADR-0003                                                                                                                                                             |
-| 增加 TUI 命令或 Neant 面板 | `apps/neant-tui` 的命令、screen 与 components；复用通用终端原语                                                                                                                                                                             |
-| 增加通用终端能力           | `packages/tui`，保持 Agent Core 无关，并更新 renderer README                                                                                                                                                                                |
+| 增加 TUI 命令或 Neant 面板 | `packages/coding-agent/src/tui/` 的命令、screen 与 components；复用通用终端原语                                                                                                                                                             |
+| 增加通用终端能力           | `packages/coding-agent/src/ink/`，保持 Agent Core 无关，并更新 renderer README                                                                                                                                                              |
 
 接口声明留在源码，局部能力细节留在所属文档。改变运行组合、Run 完成条件、持久化投影或跨包职责时，同步更新本图谱及相关 ADR；验证入口和测试约定见[根 AGENTS.md](../AGENTS.md)。

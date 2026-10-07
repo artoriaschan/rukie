@@ -31,7 +31,7 @@ http 的可选 `oauth` 配置接受 `clientId`、`clientSecret`、`callbackPort`
 
 ## 登录与连接
 
-TUI 中使用 `/mcp` 打开服务器列表，逐层进入服务器详情、工具列表和工具详情，查看生效配置来源、连接状态、描述与输入 JSON Schema。首次读取显示 loading，完成后自动展示列表；配置文件读取失败与合法服务器同时保留，可在空闲时选择重试。键盘、鼠标、正文阅读和输入锁的用法见 [TUI README](../apps/neant-tui/README.md#mcp-管理与授权)。浏览可在 Run 中使用；详情中的登录、登出、重连及配置重试只在空闲时执行，Run 中显示 busy。动作结束后保留详情并显示成功、失败或取消结果。已有 `/mcp login <server>`、`/mcp logout <server>`、`/mcp reconnect <server>` 子命令继续提供相同管理操作。
+TUI 中使用 `/mcp` 打开服务器列表，逐层进入服务器详情、工具列表和工具详情，查看生效配置来源、连接状态、描述与输入 JSON Schema。首次读取显示 loading，完成后自动展示列表；配置文件读取失败与合法服务器同时保留，可在空闲时选择重试。键盘、鼠标、正文阅读和输入锁的用法见 [TUI README](../packages/coding-agent/src/tui/README.md#mcp-管理与授权)。浏览可在 Run 中使用；详情中的登录、登出、重连及配置重试只在空闲时执行，Run 中显示 busy。动作结束后保留详情并显示成功、失败或取消结果。已有 `/mcp login <server>`、`/mcp logout <server>`、`/mcp reconnect <server>` 子命令继续提供相同管理操作。
 
 需要 OAuth 的 server 被标为 `needs-auth`，TUI 每个 Session 提示一次登录命令。连接本身不会打开浏览器；用户执行登录命令或模型调用 `mcp__<server>__authenticate` 后才开始授权。这个工具默认允许执行，仍经过 hooks 和显式 Permission Rule。成功后，它在当前 Run 的下一 Turn 被真实工具替换。
 

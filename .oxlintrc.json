@@ -1,10 +1,15 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "categories": { "correctness": "error" },
+  "categories": {
+    "correctness": "error"
+  },
   "overrides": [
     {
-      "files": ["packages/tui/src/yoga/**"],
-      "rules": { "no-unused-vars": "off", "unicorn/no-new-array": "off" }
+      "files": ["packages/coding-agent/src/ink/yoga/**"],
+      "rules": {
+        "no-unused-vars": "off",
+        "unicorn/no-new-array": "off"
+      }
     },
     {
       "files": ["packages/shared/**"],
@@ -22,7 +27,10 @@
         ],
         "no-restricted-globals": [
           "error",
-          { "name": "Bun", "message": "@neant/shared must stay runtime-agnostic." },
+          {
+            "name": "Bun",
+            "message": "@neant/shared must stay runtime-agnostic."
+          },
           "window",
           "document",
           "navigator",
@@ -40,7 +48,7 @@
           {
             "patterns": [
               {
-                "group": ["@neant/tui", "@neant/neant-cli", "@neant/neant-tui", "**/apps/**"],
+                "group": ["@neant/coding-agent", "@neant/coding-agent/**", "**/coding-agent/**"],
                 "message": "Agent Core must not depend on Frontend screens, components, or command parsing."
               }
             ]
@@ -67,7 +75,7 @@
           {
             "patterns": [
               {
-                "group": ["@neant/tui", "@neant/neant-cli", "@neant/neant-tui", "**/apps/**"],
+                "group": ["@neant/coding-agent", "@neant/coding-agent/**", "**/coding-agent/**"],
                 "message": "Agent Core must not depend on Frontend screens, components, or command parsing."
               },
               {
@@ -99,12 +107,171 @@
           {
             "patterns": [
               {
-                "group": ["@neant/tui", "@neant/neant-cli", "@neant/neant-tui", "**/apps/**"],
+                "group": ["@neant/coding-agent", "@neant/coding-agent/**", "**/coding-agent/**"],
                 "message": "Agent Core must not depend on Frontend screens, components, or command parsing."
               },
               {
                 "group": ["**/tools/**"],
                 "message": "Generic Tool State accepts registered definitions and must not depend on a concrete tool capability."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/coding-agent/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@neant/coding-agent", "@neant/coding-agent/**"],
+                "message": "Use relative imports inside coding-agent."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/coding-agent/src/tui/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@neant/coding-agent", "@neant/coding-agent/**"],
+                "message": "Use relative imports inside coding-agent."
+              },
+              {
+                "message": "TUI must use ink/index.ts.",
+                "group": ["**/ink", "**/ink/**", "!**/ink/index.ts"]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/coding-agent/src/ink/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@neant/coding-agent", "@neant/coding-agent/**"],
+                "message": "Use relative imports inside coding-agent."
+              },
+              {
+                "group": ["@neant/agent", "@neant/agent/**", "@neant/i18n", "@neant/i18n/**"],
+                "message": "ink must not depend on Agent Core or locale."
+              },
+              {
+                "message": "ink must not depend on upper layers.",
+                "group": [
+                  "**/headless",
+                  "**/headless/**",
+                  "**/tui",
+                  "**/tui/**",
+                  "**/cli",
+                  "**/cli/**",
+                  "**/view",
+                  "**/view/**"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/coding-agent/src/ink/*.{ts,tsx}"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@neant/coding-agent", "@neant/coding-agent/**"],
+                "message": "Use relative imports inside coding-agent."
+              },
+              {
+                "group": ["@neant/agent", "@neant/agent/**", "@neant/i18n", "@neant/i18n/**"],
+                "message": "ink must not depend on Agent Core or locale."
+              },
+              {
+                "message": "ink must not depend on upper layers.",
+                "group": [
+                  "../**",
+                  "**/coding-agent/src/headless/**",
+                  "**/coding-agent/src/tui/**",
+                  "**/coding-agent/src/cli/**",
+                  "**/coding-agent/src/view/**"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/coding-agent/src/ink/*/*.{ts,tsx}"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@neant/coding-agent", "@neant/coding-agent/**"],
+                "message": "Use relative imports inside coding-agent."
+              },
+              {
+                "group": ["@neant/agent", "@neant/agent/**", "@neant/i18n", "@neant/i18n/**"],
+                "message": "ink must not depend on Agent Core or locale."
+              },
+              {
+                "message": "ink must not depend on upper layers.",
+                "group": [
+                  "../../**",
+                  "**/coding-agent/src/headless/**",
+                  "**/coding-agent/src/tui/**",
+                  "**/coding-agent/src/cli/**",
+                  "**/coding-agent/src/view/**"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/coding-agent/src/ink/*/*/*.{ts,tsx}"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@neant/coding-agent", "@neant/coding-agent/**"],
+                "message": "Use relative imports inside coding-agent."
+              },
+              {
+                "group": ["@neant/agent", "@neant/agent/**", "@neant/i18n", "@neant/i18n/**"],
+                "message": "ink must not depend on Agent Core or locale."
+              },
+              {
+                "message": "ink must not depend on upper layers.",
+                "group": [
+                  "../../../**",
+                  "**/coding-agent/src/headless/**",
+                  "**/coding-agent/src/tui/**",
+                  "**/coding-agent/src/cli/**",
+                  "**/coding-agent/src/view/**"
+                ]
               }
             ]
           }

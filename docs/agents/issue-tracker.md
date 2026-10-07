@@ -12,6 +12,8 @@ Issues and specs for this repo live as markdown files in `.scratch/`.
 - `bun run check:scratch` enforces these rules and runs in `check:dev`; `bun scripts/check-scratch.ts --report` prints per-feature progress and open tickets, so use it instead of grepping `.scratch/` for status
 - Comments and conversation history append to the bottom of the file under a `## Comments` heading
 
+resolved 记录中的路径以当时的提交为准。
+
 ## When a skill says "publish to the issue tracker"
 
 Create a new file under `.scratch/<feature-slug>/` (creating the directory if needed).

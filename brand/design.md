@@ -25,7 +25,7 @@
 - `standard.png`：从同一像素网格直接生成的放大静态对照图；不是终端渲染依赖。
 - `render.py`：素材生成脚本，只使用 Python 标准库；不依赖或修改 Neant 产品代码。
 
-产品实现位于 `apps/neant-tui/src/components/logo/`。`spirit-frames.ts` 保存与 `frames.json` 相同的色板和网格，`spirit.tsx` 负责半块渲染与动画，`logo.tsx` 负责名称及信息布局。
+产品实现位于 `packages/coding-agent/src/tui/components/logo/`。`spirit-frames.ts` 保存与 `frames.json` 相同的色板和网格，`spirit.tsx` 负责半块渲染与动画，`logo.tsx` 负责名称及信息布局。
 
 终端预览：
 

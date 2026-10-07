@@ -16,41 +16,6 @@
         "typescript": "6.0.3",
       },
     },
-    "apps/neant-cli": {
-      "name": "@neant/neant-cli",
-      "bin": {
-        "neant-cli": "./src/main.ts",
-      },
-      "dependencies": {
-        "@neant/agent": "workspace:*",
-        "@neant/shared": "workspace:*",
-      },
-      "devDependencies": {
-        "@earendil-works/pi-ai": "0.99.2",
-        "typebox": "1.3.27",
-      },
-    },
-    "apps/neant-tui": {
-      "name": "@neant/neant-tui",
-      "bin": {
-        "neant": "./src/main.tsx",
-      },
-      "dependencies": {
-        "@neant/agent": "workspace:*",
-        "@neant/i18n": "workspace:*",
-        "@neant/shared": "workspace:*",
-        "@neant/tui": "workspace:*",
-        "diff": "8.0.4",
-        "react": "19.3.0",
-      },
-      "devDependencies": {
-        "@earendil-works/pi-agent-core": "0.99.2",
-        "@earendil-works/pi-ai": "0.99.2",
-        "@types/react": "19.3.0",
-        "@xterm/addon-unicode11": "0.9.0",
-        "@xterm/headless": "6.0.0",
-      },
-    },
     "packages/agent": {
       "name": "@neant/agent",
       "version": "0.0.0",
@@ -72,21 +37,15 @@
         "@types/turndown": "5.0.6",
       },
     },
-    "packages/i18n": {
-      "name": "@neant/i18n",
-      "dependencies": {
-        "@neant/shared": "workspace:*",
+    "packages/coding-agent": {
+      "name": "@neant/coding-agent",
+      "bin": {
+        "neant": "./src/tui/main.tsx",
+        "neant-cli": "./src/headless/main.ts",
       },
-    },
-    "packages/shared": {
-      "name": "@neant/shared",
       "dependencies": {
-        "typebox": "1.3.27",
-      },
-    },
-    "packages/tui": {
-      "name": "@neant/tui",
-      "dependencies": {
+        "@neant/agent": "workspace:*",
+        "@neant/i18n": "workspace:*",
         "@neant/shared": "workspace:*",
         "diff": "8.0.4",
         "highlight.js": "11.12.0",
@@ -100,9 +59,25 @@
         "react-reconciler": "0.34.0",
       },
       "devDependencies": {
+        "@earendil-works/pi-agent-core": "0.99.2",
+        "@earendil-works/pi-ai": "0.99.2",
         "@types/react": "19.3.0",
         "@types/react-reconciler": "0.33.1",
+        "@xterm/addon-unicode11": "0.9.0",
         "@xterm/headless": "6.0.0",
+        "typebox": "1.3.27",
+      },
+    },
+    "packages/i18n": {
+      "name": "@neant/i18n",
+      "dependencies": {
+        "@neant/shared": "workspace:*",
+      },
+    },
+    "packages/shared": {
+      "name": "@neant/shared",
+      "dependencies": {
+        "typebox": "1.3.27",
       },
     },
   },
@@ -269,15 +244,11 @@
 
     "@neant/agent": ["@neant/agent@workspace:packages/agent"],
 
+    "@neant/coding-agent": ["@neant/coding-agent@workspace:packages/coding-agent"],
+
     "@neant/i18n": ["@neant/i18n@workspace:packages/i18n"],
 
-    "@neant/neant-cli": ["@neant/neant-cli@workspace:apps/neant-cli"],
-
-    "@neant/neant-tui": ["@neant/neant-tui@workspace:apps/neant-tui"],
-
     "@neant/shared": ["@neant/shared@workspace:packages/shared"],
-
-    "@neant/tui": ["@neant/tui@workspace:packages/tui"],
 
     "@oxc-parser/binding-android-arm-eabi": ["@oxc-parser/binding-android-arm-eabi@0.150.0", "https://registry.npmmirror.com/@oxc-parser/binding-android-arm-eabi/-/binding-android-arm-eabi-0.150.0.tgz", { "os": "android", "cpu": "arm" }, "sha512-oQef2Zu4Prz1KLKznz3HqZzU9uVoA5PMoDZuuLmqms7hKmKSAPzlaMnLllJq3t+rgKmfJJ2siPrpZfFrW06btw=="],
 
