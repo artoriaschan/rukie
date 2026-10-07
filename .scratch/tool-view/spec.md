@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 
 # Spec: Tool View 与工具卡
 
@@ -228,6 +228,8 @@ Neant TUI 的工具卡只有一行 `name + JSON.stringify(args)` 摘要和 `⎿`
 - Tool View 持久化与版本迁移。
 
 ## Further Notes
+
+- 2026-10-07：11 张实施票全部 resolved，集成分支 `codex/tool-view`；双轴审查与完整验证见[交付记录](implementation.md)。
 
 - 本 spec 推翻已定工单的部分呈现：[todo 工具](../agent-core-roadmap/issues/07-todo.md) 的工具卡 `todos ✓ done/total`、[向用户提问](../agent-core-roadmap/issues/09-ask-user.md) 与 [plan mode](../agent-core-roadmap/issues/10-plan-mode.md) 的调用行、[子代理](../agent-core-roadmap/issues/06-subagent.md) 的工具行；各工单已追加修订说明。
 - dsh 有三套并行类别映射（点色按 id、名色按 `category`、`kind` 未用），本 spec 有意收敛为单一 `kind`。
