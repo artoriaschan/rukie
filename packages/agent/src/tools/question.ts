@@ -45,11 +45,12 @@ export function createQuestionTool(
       displayKey: "tool.ask_user_question",
       text,
     }),
-    label: "Ask user question",
     description:
       "Ask the user 1–4 questions with 2–4 choices each. The frontend automatically adds an Other choice for free text; do not add it yourself.",
     parameters,
-    async execute(toolCallId, { questions }, signal = new AbortController().signal) {
+    async execute({ questions }, api, context) {
+      const toolCallId = api.callId;
+      const signal = context.abortSignal ?? new AbortController().signal;
       const reply = await requestInteraction<QuestionRequest, QuestionReply | undefined>(
         { toolCallId, questions, signal },
         onQuestion,

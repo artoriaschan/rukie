@@ -1,4 +1,4 @@
-import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { ToolRegistration } from "@earendil-works/pi-durable";
 import type { PresentedTool } from "../presentation.ts";
 import { Value } from "typebox/value";
 import { createUserVisibleError } from "@rukie/shared";
@@ -67,7 +67,7 @@ export type GoalToolExecution = {
 export function createGoalTools(
   goal: GoalToolController,
   execution: GoalToolExecution,
-): AgentTool[] {
+): ToolRegistration[] {
   const requireHuman = () => {
     if (!execution.directHuman())
       throw createUserVisibleError("Goal control requires direct human input in the current Run.", {
@@ -93,7 +93,6 @@ export function createGoalTools(
   };
   const create: PresentedTool<typeof createParameters> = {
     name: "create_goal",
-    label: "Create Goal",
     description:
       "Create a persisted Goal that keeps this Session working across automatic continuation rounds. Use it when the direct human request is a long-running objective, even if the user did not say goal; not for single-turn work. " +
       guidance,
@@ -110,7 +109,8 @@ export function createGoalTools(
       displayKey: "tool.create_goal",
       text: goalSummary(details) ?? text,
     }),
-    async execute(_id, args, signal) {
+    async execute(args, _api, context) {
+      const signal = context.abortSignal;
       signal?.throwIfAborted();
       requireHuman();
       await goal.create(args.objective, { maxRounds: args.max_goal_rounds }, false);
@@ -119,7 +119,6 @@ export function createGoalTools(
   };
   const update: PresentedTool<typeof updateParameters> = {
     name: "update_goal",
-    label: "Update Goal",
     description:
       "Update the current Goal. complete and blocked are also allowed during its automatic continuation round. " +
       guidance,
@@ -136,7 +135,8 @@ export function createGoalTools(
       displayKey: "tool.update_goal",
       text: goalSummary(details) ?? text,
     }),
-    async execute(_id, args, signal) {
+    async execute(args, _api, context) {
+      const signal = context.abortSignal;
       signal?.throwIfAborted();
       if (args.action === "edit" || args.action === "pause" || args.action === "resume")
         requireHuman();

@@ -1,4 +1,4 @@
-import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { ToolRegistration } from "@earendil-works/pi-durable";
 import { Type } from "typebox";
 import type { PresentedTool } from "../presentation.ts";
 import { jobStatus, type Jobs } from "./registry.ts";
@@ -10,10 +10,9 @@ const outputSchema = Type.Object({
 });
 const killSchema = Type.Object({ job_id: Type.String(), reason: Type.Optional(Type.String()) });
 
-export function createJobTools(jobs: Jobs): AgentTool[] {
+export function createJobTools(jobs: Jobs): ToolRegistration[] {
   const output: PresentedTool<typeof outputSchema> = {
     name: "job_output",
-    label: "job output",
     description:
       "Read new background job output. Set wait only when blocked on output or completion (default 30000ms, maximum 600000ms).",
     parameters: outputSchema,
@@ -29,7 +28,8 @@ export function createJobTools(jobs: Jobs): AgentTool[] {
       displayKey: "tool.job_output",
       text,
     }),
-    async execute(_id, { job_id, wait = false, timeout_ms = 30_000 }, signal) {
+    async execute({ job_id, wait = false, timeout_ms = 30_000 }, _api, context) {
+      const signal = context.abortSignal;
       const job = jobs.get(job_id);
       const result = await job.collect(wait, timeout_ms, signal);
       let text = result.stdout;
@@ -43,7 +43,6 @@ export function createJobTools(jobs: Jobs): AgentTool[] {
   };
   const kill: PresentedTool<typeof killSchema> = {
     name: "job_kill",
-    label: "job kill",
     description:
       "Stop a background job and its process group. Finished jobs keep their final status.",
     parameters: killSchema,
@@ -59,7 +58,7 @@ export function createJobTools(jobs: Jobs): AgentTool[] {
       displayKey: "tool.job_kill",
       text,
     }),
-    async execute(_id, { job_id }) {
+    async execute({ job_id }) {
       const job = jobs.get(job_id);
       if (!["running", "stopping"].includes(job.view.status))
         return {
@@ -77,7 +76,6 @@ export function createJobTools(jobs: Jobs): AgentTool[] {
   };
   const list: PresentedTool = {
     name: "job_list",
-    label: "job list",
     description: "List every background job owned by this Session.",
     parameters: Type.Object({}),
     presentCall: () => ({ card: "generic", kind: "execute", displayKey: "tool.job_list" }),

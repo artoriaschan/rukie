@@ -1,46 +1,14 @@
-import { AsyncLocalStorage } from "node:async_hooks";
-import {
-  createEditTool,
-  createWriteTool,
-  type EditToolDetails,
-} from "@earendil-works/pi-agent-core";
-import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
+import { createEditTool, createWriteTool } from "@earendil-works/pi-durable/tools";
 import { createTwoFilesPatch } from "diff";
-import { adaptTool } from "./runtime.ts";
+import { normalizeFileTool } from "./runtime.ts";
 import type { PresentedTool } from "./presentation.ts";
 import type { ToolResultView } from "@rukie/shared";
-
-/** Store full before/after text only below the harness's 50 KiB output budget. */
 const DIFF_TEXT_LIMIT = 50 * 1024;
 type WriteFacts = { path: string } & (
   | { oldText: string | null; newText: string }
   | { patch: string }
 );
 
-/** The interception runs inside pi's mutation queue, immediately before its actual write. */
-class DiffWriteEnv extends NodeExecutionEnv {
-  readonly capture = new AsyncLocalStorage<{ facts?: WriteFacts }>();
-  override async writeFile(...args: Parameters<NodeExecutionEnv["writeFile"]>) {
-    const [path, content, context] = args;
-    const capture = this.capture.getStore();
-    if (capture && typeof content === "string") {
-      const previous = await super.readTextFile(path, context);
-      const oldText = previous.ok
-        ? previous.value
-        : previous.error.code === "not_found"
-          ? null
-          : undefined;
-      if (oldText !== undefined) {
-        capture.facts =
-          Buffer.byteLength(oldText ?? "") > DIFF_TEXT_LIMIT ||
-          Buffer.byteLength(content) > DIFF_TEXT_LIMIT
-            ? { path, patch: createTwoFilesPatch(path, path, oldText ?? "", content) }
-            : { path, oldText, newText: content };
-      }
-    }
-    return super.writeFile(...args);
-  }
-}
 function diffResult(
   details: unknown,
   path: string,
@@ -68,16 +36,39 @@ function diffResult(
       diffs: [{ path: actualPath, oldText: details.oldText, newText: details.newText }],
     };
 }
-function createPresentedWrite(env: DiffWriteEnv, homeDir: string) {
-  const tool = adaptTool(createWriteTool(), env, homeDir);
-  const presented: PresentedTool<typeof tool.parameters, WriteFacts | undefined> = {
+function createPresentedWrite(cwd: string, homeDir: string) {
+  const tool = normalizeFileTool(createWriteTool(), cwd, homeDir);
+  const presented: PresentedTool<typeof tool.parameters, WriteFacts> = {
     ...tool,
-    async execute(...args) {
-      const capture: { facts?: WriteFacts } = {};
-      return env.capture.run(capture, async () => {
-        const result = await tool.execute(...args);
-        return { ...result, details: capture.facts };
+    async execute(args, api, context) {
+      if (!api.env) throw new Error("write requires an execution environment");
+      let facts: WriteFacts | undefined;
+      const env = new Proxy(api.env, {
+        get(target, property) {
+          if (property === "writeFile")
+            return async (path: string, content: string | Uint8Array, ctx: typeof context) => {
+              if (typeof content === "string") {
+                const previous = await target.readTextFile(path, ctx);
+                const oldText = previous.ok
+                  ? previous.value
+                  : previous.error.code === "not_found"
+                    ? null
+                    : undefined;
+                if (oldText !== undefined)
+                  facts =
+                    Buffer.byteLength(oldText ?? "") > DIFF_TEXT_LIMIT ||
+                    Buffer.byteLength(content) > DIFF_TEXT_LIMIT
+                      ? { path, patch: createTwoFilesPatch(path, path, oldText ?? "", content) }
+                      : { path, oldText, newText: content };
+              }
+              return target.writeFile(path, content, ctx);
+            };
+          const value = Reflect.get(target, property);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
       });
+      const result = await tool.execute(args, { ...api, env }, context);
+      return { ...result, details: facts };
     },
     presentCall(args) {
       return { card: "generic", kind: "edit", displayKey: "tool.write", title: args.path };
@@ -88,15 +79,20 @@ function createPresentedWrite(env: DiffWriteEnv, homeDir: string) {
   };
   return presented;
 }
-function createPresentedEdit(env: DiffWriteEnv, homeDir: string) {
-  const tool = adaptTool(createEditTool(), env, homeDir);
-  const presented: PresentedTool<typeof tool.parameters, EditToolDetails | undefined> = {
+function createPresentedEdit(cwd: string, homeDir: string) {
+  const tool = normalizeFileTool(createEditTool(), cwd, homeDir);
+  const presented: PresentedTool<
+    typeof tool.parameters,
+    { diff: string; patch: string; firstChangedLine?: number; path: string }
+  > = {
     ...tool,
-    async execute(...args) {
-      const result = await tool.execute(...args);
+    async execute(args, api, context) {
+      const result = await tool.execute(args, api, context);
       return {
         ...result,
-        details: result.details ? { ...result.details, path: args[1].path } : undefined,
+        details: result.details
+          ? { ...result.details, path: tool.prepareArguments!(args).path }
+          : undefined,
       };
     },
     presentCall(args) {
@@ -115,6 +111,5 @@ function createPresentedEdit(env: DiffWriteEnv, homeDir: string) {
 }
 
 export function createPresentedFileTools(cwd: string, homeDir: string) {
-  const env = new DiffWriteEnv({ cwd });
-  return [createPresentedWrite(env, homeDir), createPresentedEdit(env, homeDir)] as const;
+  return [createPresentedWrite(cwd, homeDir), createPresentedEdit(cwd, homeDir)] as const;
 }

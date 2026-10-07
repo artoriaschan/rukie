@@ -1,4 +1,7 @@
-import { createReadTool, type AgentTool, type Skill } from "@earendil-works/pi-agent-core";
+import type { JsonValue } from "@earendil-works/chord";
+import type { ToolRegistration } from "@earendil-works/pi-durable";
+import type { Skill } from "../skills/index.ts";
+import { createImageReadTool } from "./read.ts";
 import { createPresentedFileTools } from "./file-diffs.ts";
 import { homedir } from "node:os";
 import { type TSchema } from "typebox";
@@ -14,7 +17,7 @@ import { createSkillTool } from "./skill.ts";
 import { createQuestionTool, type OnQuestion } from "./question.ts";
 import { createTodoTool, type TodoItem } from "./todo/index.ts";
 import { createWebFetchTool } from "./web-fetch/index.ts";
-import { adaptTool, createImageReadEnv, preserveErrorDetails } from "./runtime.ts";
+import { preserveErrorDetails } from "./runtime.ts";
 
 export interface BuiltinToolsOptions {
   cwd: string;
@@ -30,19 +33,16 @@ export interface BuiltinToolsOptions {
   fileTracking?: ReturnType<typeof createFileTracking>;
 }
 
-export function createBuiltinTools(options: BuiltinToolsOptions): AgentTool[] {
+export function createBuiltinTools(options: BuiltinToolsOptions): ToolRegistration[] {
   const { cwd, jobs, getSkill, setTodo, onQuestion, onInteractionStart, webFetch, fileTracking } =
     options;
   const homeDir = options.homeDir ?? homedir();
-  const track = <T extends TSchema, D>(tool: AgentTool<T, D>): AgentTool<T, D> =>
-    fileTracking ? fileTracking.wrapTool(tool) : tool;
+  const track = <T extends TSchema, D extends JsonValue>(
+    tool: ToolRegistration<T, D>,
+  ): ToolRegistration<T, D> => (fileTracking ? fileTracking.wrapTool(tool) : tool);
   const [write, edit] = createPresentedFileTools(cwd, homeDir);
   return [
-    track(
-      withReadView(
-        preserveErrorDetails(adaptTool(createReadTool(), createImageReadEnv(cwd), homeDir)),
-      ),
-    ),
+    track(withReadView(preserveErrorDetails(createImageReadTool(cwd, homeDir)))),
     track(write),
     track(edit),
     preserveErrorDetails(createBashTool(cwd, jobs)),
