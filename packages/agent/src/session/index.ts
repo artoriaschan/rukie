@@ -13,6 +13,7 @@ import {
   CompactionTask,
   ToolTask,
   LiveDoc,
+  InboxDoc,
   type SubmissionId,
   type ToolRegistration,
   type EntryDraft,
@@ -466,6 +467,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     let selectingModel = false;
     let foregroundAdmission = false;
     let goalRound = false;
+    const steeringAdmissions = new Set<Promise<void>>();
     let wrapup: string | undefined;
     let permissionMode = options.permissionMode ?? settings.permissionMode ?? "ask";
     const sessionAllowRules = options.sessionAllowRules ?? [];
@@ -2086,6 +2088,19 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 const placed = await Promise.all(
                   live.run.inputs.map((id) => lease.storage.submission(id, ctx)),
                 );
+                const current = await conversation.context(ctx);
+                const latestInput = current.entries.findLast(
+                  (entry) =>
+                    entry.kind !== "rukie.reminder" &&
+                    (entry.model ?? []).some((message) => message.role === "user"),
+                );
+                if (
+                  placed.some(
+                    (record) =>
+                      record?.requestId?.startsWith("human:") && record.entry === latestInput?.id,
+                  )
+                )
+                  goalRound = false;
                 for (const record of placed)
                   if (record?.requestId) {
                     let requestId = record.requestId;
@@ -2259,6 +2274,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 await rebuildTools();
             },
             onYield: async (_answer, api, ctx) => {
+              // A caller may start steering before releasing an in-flight model.
+              // Complete host admission before the native final boundary selects its inbox.
+              await Promise.allSettled(steeringAdmissions);
               if (_answer.stopReason !== "stop") {
                 goal.disarm();
                 await conversation.commit(async (tx) => {
@@ -2355,6 +2373,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               }
               const active = goal.view();
               if (active?.armed && active.phase === "active" && !stopped) {
+                // Native final-boundary placement takes precedence over onYield continuations.
+                // Do not consume a Goal round that the queued human input will replace.
+                const inbox = await harness.snapshot(InboxDoc, conversation.id, ctx);
+                if (inbox?.items.some((item) => item.mode !== "write")) return undefined;
                 const content = renderGoalRoundPrompt(active);
                 await goal.startRound();
                 if (goal.view()?.phase === "active") {
@@ -2736,7 +2758,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         throw new PromptHookBlocked(result);
       }
       await prepareReminders();
-      await title.firstPrompt(prompt);
+      if (requestId.startsWith("human:")) await title.firstPrompt(prompt);
       const invocation = skillInvocation(prompt, skills);
       if (invocation)
         await appendReminder({
@@ -3262,8 +3284,16 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
       async steer(prompt, input) {
         const parentRequestId = currentRequestId;
-        const submitted = await submit(prompt, input?.images, "steer");
-        if (parentRequestId) await registerSubmission(parentRequestId, submitted.id);
+        const admission = (async () => {
+          const submitted = await submit(prompt, input?.images, "steer");
+          if (parentRequestId) await registerSubmission(parentRequestId, submitted.id);
+        })();
+        steeringAdmissions.add(admission);
+        try {
+          await admission;
+        } finally {
+          steeringAdmissions.delete(admission);
+        }
       },
       async run(prompt, input = {}) {
         input.signal?.throwIfAborted();
