@@ -123,7 +123,7 @@ test("replacement of selected streaming text refuses copy while updates outside 
   }
 });
 
-test("resize, wheel and Escape discard gestures without copying or interrupting the Run", async () => {
+test("resize and Escape discard gestures while a clamped wheel keeps selection without interrupting the Run", async () => {
   const copied: string[] = [];
   const app = await startWithClock(["explain"], {
     columns: 80,
@@ -154,6 +154,8 @@ test("resize, wheel and Escape discard gestures without copying or interrupting 
     await app.waitFor(() => !app.terminal.buffer.active.getLine(at.y)!.getCell(2)!.isBgDefault());
     app.stdin.write(`\x1b[<64;5;${at.y + 1}M`);
     release(app, { ...at, x: 9 });
+    await app.waitFor(() => copied.length === 1);
+    expect(copied).toEqual(["selected"]);
     at = position();
     gesture(app, at, { ...at, x: 9 });
     await app.waitFor(() => !app.terminal.buffer.active.getLine(at.y)!.getCell(2)!.isBgDefault());
@@ -162,7 +164,7 @@ test("resize, wheel and Escape discard gestures without copying or interrupting 
     await app.flush();
     await app.waitFor(() => app.terminal.buffer.active.getLine(at.y)!.getCell(2)!.isBgDefault());
     release(app, { ...at, x: 9 });
-    expect(copied).toEqual([]);
+    expect(copied).toEqual(["selected"]);
     expect(app.calls[0]!.signal!.aborted).toBe(false);
     app.calls[0]!.finish();
     await app.waitFor(() => !app.isWorking());
@@ -320,6 +322,46 @@ test("thinking header and preview drags exclude spinner and rails without toggli
     expect(copied[1]).toBe("Thinking");
     expect(app.screen().some((line) => line.includes("│ first secret"))).toBe(true);
     app.calls[0]!.finish();
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("held transcript selection follows wheel text and copies its original source after scrolling", async () => {
+  const copied: string[] = [];
+  const app = await startWithClock(["explain"], {
+    columns: 80,
+    rows: 24,
+    env: { LANG: "en" },
+    host: {
+      writeClipboard: async (text) => {
+        copied.push(text);
+        return true;
+      },
+    },
+  });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.delta(Array.from({ length: 45 }, (_, i) => `copy-row-${i}`).join("\n"));
+    app.calls[0]!.finish();
+    await app.waitFor(
+      () => !app.isWorking() && app.screen().some((line) => line.includes("copy-row-44")),
+    );
+    const y = app.screen().findIndex((line) => line.includes("copy-row-35"));
+    expect(y).toBeGreaterThanOrEqual(0);
+    gesture(app, { x: 2, y }, { x: 12, y: y + 1 });
+    await app.waitFor(() => !app.terminal.buffer.active.getLine(y)!.getCell(2)!.isBgDefault());
+    app.stdin.write(`\x1b[<64;5;${y + 1}M`);
+    await app.waitFor(
+      () =>
+        app.screen().join("\n").includes("Back to bottom") &&
+        app.screen().findIndex((line) => line.includes("copy-row-35")) > y,
+    );
+    release(app, { x: 12, y: y + 1 });
+    await app.waitFor(() => copied.length === 1);
+    expect(copied).toEqual(["copy-row-35\ncopy-row-36"]);
+    expect(app.screen().join("\n")).not.toContain("changed during selection");
+    expect(app.stderr()).toBe("");
   } finally {
     await app.cleanup();
   }
