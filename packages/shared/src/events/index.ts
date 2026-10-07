@@ -53,6 +53,8 @@ export type CustomSessionEvent<PiEvent extends { type: string } = never> =
   | { type: "tool_state_changed"; name: string; value: unknown }
   /** The Session's messages and Tool State now project the rewound branch. */
   | { type: "conversation_rewound"; promptEntryId: string }
+  /** A failed message save was reconciled; read Session.messages for committed history and unknown Tool outcomes. */
+  | { type: "conversation_reconciled" }
   | {
       type: "permission_denied";
       toolCallId: string;

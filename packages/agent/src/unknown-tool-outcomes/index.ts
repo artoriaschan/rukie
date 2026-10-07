@@ -1,7 +1,7 @@
 import type { Context } from "@earendil-works/pi-agent-core/harness/context";
 import type { Branch, Entry } from "@earendil-works/pi-agent-core/harness/session";
 
-/** Repair the opened Session's current branch before any real model request. */
+/** Repair persisted calls on Resume or after a failed message save, without executing tools. */
 export async function repairUnknownToolOutcomes(
   branch: Branch,
   entries: Entry[],
@@ -31,7 +31,7 @@ export async function repairUnknownToolOutcomes(
           content: [
             {
               type: "text",
-              text: "Tool outcome unknown: this call was saved, but no result was saved before Session Resume. This recovery placeholder is not a real Tool result and does not establish success, failure, or that the tool was not executed. It does not establish the absence of side effects. Verify the actual state before deciding whether to retry; the recovery process has not replayed the call.",
+              text: "Tool outcome unknown: this call was saved, but no result was saved before Session reconciliation. This recovery placeholder is not a real Tool result and does not establish success, failure, or that the tool was not executed. It does not establish the absence of side effects. Verify the actual state before deciding whether to retry; the recovery process has not replayed the call.",
             },
           ],
           // Unknown is neither an execution error nor confirmed success.
