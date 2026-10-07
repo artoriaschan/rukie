@@ -1,11 +1,5 @@
-import {
-  createReadTool,
-  createWriteTool,
-  createEditTool,
-  type AgentTool,
-  type Skill,
-} from "@earendil-works/pi-agent-core";
-import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
+import { createReadTool, type AgentTool, type Skill } from "@earendil-works/pi-agent-core";
+import { createPresentedFileTools } from "./file-diffs.ts";
 import { homedir } from "node:os";
 import { type TSchema } from "typebox";
 import type { createFileTracking } from "../file-tracking/index.ts";
@@ -40,17 +34,17 @@ export function createBuiltinTools(options: BuiltinToolsOptions): AgentTool[] {
   const { cwd, jobs, getSkill, setTodo, onQuestion, onInteractionStart, webFetch, fileTracking } =
     options;
   const homeDir = options.homeDir ?? homedir();
-  const env = new NodeExecutionEnv({ cwd });
   const track = <T extends TSchema, D>(tool: AgentTool<T, D>): AgentTool<T, D> =>
     fileTracking ? fileTracking.wrapTool(tool) : tool;
+  const [write, edit] = createPresentedFileTools(cwd, homeDir);
   return [
     track(
       withReadView(
         preserveErrorDetails(adaptTool(createReadTool(), createImageReadEnv(cwd), homeDir)),
       ),
     ),
-    track(adaptTool(createWriteTool(), env, homeDir)),
-    track(adaptTool(createEditTool(), env, homeDir)),
+    track(write),
+    track(edit),
     preserveErrorDetails(createBashTool(cwd, jobs)),
     ...createJobTools(jobs),
     createGlobTool(cwd),
