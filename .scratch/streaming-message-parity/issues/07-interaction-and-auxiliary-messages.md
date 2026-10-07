@@ -1,6 +1,6 @@
 # 07: 特殊交互与辅助消息
 
-Status: claimed
+Status: resolved
 Blocked by: 01
 
 **What to build:** 用户在会话中清晰阅读问题回答、计划评审、Todo 和辅助提示，特殊工具不重复显示，正文与交互面板保持正确顺序和焦点。
@@ -29,3 +29,5 @@ Blocked by: 01
 - Message save failure restores durable branch messages. Existing Unknown Tool Outcome repair reconciles saved calls without saved results, without replay or inferred success/failure. Public `conversation_reconciled` tells Frontends to read `Session.messages`; TUI replaces optimistic cards. Actual-write failure test proves side effects remain, previous Turn remains, live/Resume agree, and the next model context contains unknown outcome but no auxiliary facts. Recovery-write failure retains the restored branch and surfaces the actual persistence error.
 - Public new regressions: `auxiliary-messages.test.ts` (virtual clock, en/zh partial error/abort, rejected assistant/ToolResult save, native compaction, real Hook commands/resume); `session-notices.test.ts` (actual pending question cancellation and blocked Hook prompt/resume/model invisibility). Todo tests synchronize on visible smooth reveal completion instead of idle alone.
 - Verification: 114 question/plan/Todo/Interaction tests passed (12.43s), 105 auxiliary/Hook/unknown-outcome tests passed (5.52s), focused save failures 2 passed (0.657s). No new test exceeds one second; command Hook process completion is synchronized by real events. `bun run check:dev` passes. Aggregate check is owned by the integration task after all tickets merge.
+
+- Integration verification: merged current integration `5d5a28a` via `3850020`; only conflict was the same Todo reveal-completion predicate, retaining the integration platform-independent variant. Post-merge `bun run check:dev` passes; auxiliary/Todo/unknown-outcome/core notice 21 tests pass (3.55s, 152 assertions). Implementation commit `2ef4e2a`.
