@@ -5,9 +5,10 @@
   "type": "module",
   "exports": "./src/index.ts",
   "dependencies": {
-    "@earendil-works/pi-agent-core": "0.99.2",
-    "@earendil-works/pi-ai": "0.99.2",
-    "@earendil-works/pi-mcp": "0.99.2",
+    "@earendil-works/chord": "1.0.4",
+    "@earendil-works/pi-ai": "1.0.4",
+    "@earendil-works/pi-durable": "1.0.4",
+    "@earendil-works/pi-mcp": "1.0.4",
     "@joplin/turndown-plugin-gfm": "1.0.68",
     "@mixmark-io/domino": "2.2.0",
     "@rukie/shared": "workspace:*",

@@ -1,6 +1,6 @@
 # 02: durable 运行基座、目标依赖与公开接口
 
-Status: ready-for-agent
+Status: claimed
 Blocked by: 01
 
 ## What to build
@@ -31,3 +31,5 @@ Blocked by: 01
 2026-10-07：从已确认的 grill-with-docs 决策生成；用户已确认测试入口。依赖票未 resolved 前不开展生产迁移。
 
 2026-10-07 基线刷新：Frontend 消费已合并 dsh ink 的公开 API；Session 接口迁移不得恢复旧 renderer options、primitives 或 input event union。当前 Agent Core 和 Headless 生产路径尚未迁移。
+
+2026-10-08：02 基于集成 5f7f63e5 在 codex/pi-durable-02 开始实施；采用 tdd 的公开 Session 与 Frontend seams，原生 Models/ToolRegistration/committed events 作为唯一新契约。

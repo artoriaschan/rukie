@@ -1,9 +1,18 @@
-import type { StreamFn } from "@earendil-works/pi-agent-core";
 import {
   createAssistantMessageEventStream,
   fauxAssistantMessage,
   type TranscriptContext,
+  type Model,
+  type Api,
+  type SimpleStreamOptions,
+  type AssistantMessageEventStream,
 } from "@earendil-works/pi-ai";
+
+export type ModelStream = (
+  model: Model<Api>,
+  context: TranscriptContext,
+  request?: SimpleStreamOptions,
+) => AssistantMessageEventStream;
 
 /** Identify this isolated operation by its policy, never by user content or missing tools. */
 function isTitleRequest(context: TranscriptContext) {
@@ -21,9 +30,9 @@ function isTitleRequest(context: TranscriptContext) {
 
 /** Auxiliary requests must not consume the main conversation's scripted responses. */
 export function withAuxiliaryRequests(
-  primary: StreamFn,
-  options: { titles?: StreamFn } = {},
-): StreamFn {
+  primary: ModelStream,
+  options: { titles?: ModelStream } = {},
+): ModelStream {
   return (model, context, request) => {
     if (!isTitleRequest(context)) return primary(model, context, request);
     if (options.titles) return options.titles(model, context, request);
