@@ -16,6 +16,7 @@ export type TranscriptAssistantMessage = Omit<AssistantMessage, "content"> & {
 };
 export type TranscriptToolResult = ToolResultMessage & {
   view?: ToolResultView;
+  /** The native tool task was interrupted after execution may have started. */
   outcomeUnknown?: boolean;
 };
 
