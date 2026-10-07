@@ -86,3 +86,41 @@ test("caret switches bound tokens and never previews typed labels or deleted ima
     await app.cleanup();
   }
 });
+
+test.each([80, 40])("caret fallback stays visible above the composer at %s×12", async (columns) => {
+  const app = await start([], {
+    columns,
+    rows: 12,
+    env: { LANG: "en_US.UTF-8" },
+    prepare: async (root) => {
+      await Bun.write(`${root}/shot.png`, Buffer.from(png, "base64"));
+    },
+  });
+  const screen = () => app.screen().join("\n");
+  try {
+    await app.waitFor(() => app.screen().includes("❯"));
+    app.stdin.write(paste(`${app.root}/shot.png`));
+    await app.waitFor(() => screen().includes("❯ [Image #1]"));
+    app.stdin.write("\x1b[H");
+    await app.waitFor(() => screen().includes("Image #1 · PNG"));
+    expect(screen()).toContain(
+      columns === 80 ? "Image preview unavailable in this terminal" : "Image preview unavailable",
+    );
+    const promptRow = app.screen().findIndex((line) => line.includes("❯ [Image #1]"));
+    const fallbackRow = app
+      .screen()
+      .findIndex((line) => line.includes("Image preview unavailable"));
+    expect(fallbackRow).toBeLessThan(promptRow);
+    expect(
+      app
+        .screen()
+        .slice(promptRow + 1)
+        .join("\n"),
+    ).toContain("faux");
+    app.resize(80, 40);
+    await app.waitFor(() => screen().includes("Image preview unavailable in this terminal"));
+    expect(screen()).toContain("Image #1 · PNG · 1×1 · 68 B · shot.png");
+  } finally {
+    await app.cleanup();
+  }
+});
