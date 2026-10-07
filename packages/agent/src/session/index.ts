@@ -409,6 +409,11 @@ export async function createSession(options: SessionOptions): Promise<Session> {
   const settings = options.settings ?? {};
   const cwd = resolve(options.cwd);
   const warn = options.onWarning ?? console.warn;
+  if (options.allowRules) parsePermissionRules({ allow: options.allowRules }, "--allow-tools");
+  const permissionRules = parsePermissionRules({
+    ...settings.permissions,
+    allow: [...(settings.permissions?.allow ?? []), ...(options.allowRules ?? [])],
+  });
   const resolved =
     options.model && options.models
       ? { model: options.model, models: options.models }
@@ -964,10 +969,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     const gate = createPermissionGate({
       cwd,
       homeDir: options.homeDir,
-      rules: parsePermissionRules({
-        ...settings.permissions,
-        allow: [...(settings.permissions?.allow ?? []), ...(options.allowRules ?? [])],
-      }),
+      rules: permissionRules,
       sessionAllowRules,
       sessionGrantListeners,
       getMode: () => permissionMode,
@@ -1016,7 +1018,18 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       setMode: (value) => {
         permissionMode = value;
       },
-      onHookWarning: warn,
+      onHookWarning: async (field, hook = "permission") => {
+        const warning = {
+          kind: "hook_warning" as const,
+          event: "PermissionRequest" as const,
+          hook,
+          message: `Ignoring invalid or unsupported hook output field: ${field}`,
+          error: { code: "hook-output-ignored" as const, params: { field } },
+        };
+        warn(warning.message);
+        await appendNotice(warning);
+        custom({ ...warning, type: "hook_warning" });
+      },
       isRunStopped: () => stopped,
       stopRun: (reason) => {
         stopped = true;
@@ -1046,16 +1059,22 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           }),
           { signal, matchQuery: call.toolCall.name },
         ),
-      permissionDenied: (call, denial, signal) =>
-        hooks.run(
+      permissionDenied: async (call, denial, signal) => {
+        const result = await hooks.run(
           "PermissionDenied",
           hookInput({
             tool_name: call.toolCall.name,
             tool_input: call.args,
-            permission_denial: denial,
+            tool_use_id: call.toolCall.id,
+            by: denial.by,
+            reason: denial.reason,
+            ...(denial.rule ? { rule: denial.rule } : {}),
           }),
           { signal, matchQuery: call.toolCall.name },
-        ),
+        );
+        await applyHookResult(result, "hook:PermissionDenied");
+        return result;
+      },
     });
     const childHookOwners = new Map<number, ReturnType<typeof createHooks>>();
     const childHookStarted = new Set<number>();
@@ -1378,7 +1397,31 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           setMode: (value) => {
             permissionMode = value;
           },
-          onHookWarning: warn,
+          onHookWarning: async (field, hook = "permission") => {
+            const warning = {
+              kind: "hook_warning" as const,
+              event: "PermissionRequest" as const,
+              hook,
+              message: `Ignoring invalid or unsupported hook output field: ${field}`,
+              error: { code: "hook-output-ignored" as const, params: { field } },
+            };
+            warn(warning.message);
+            await child.commit(
+              (tx) =>
+                tx.appendEntry(child.id, {
+                  kind: "rukie.notice",
+                  data: { role: "session-notice", notice: warning, timestamp: Date.now() },
+                }),
+              context,
+            );
+            custom({
+              type: "subagent_event",
+              agentId: childId,
+              description,
+              subagentType: type.name,
+              event: { ...warning, type: "hook_warning", sessionId: childId },
+            });
+          },
           isRunStopped: () => childStopped,
           stopRun: (reason) => {
             childStopped = true;
@@ -1425,8 +1468,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               }),
               { signal, matchQuery: call.toolCall.name },
             ),
-          permissionDenied: (call, denial, signal) =>
-            childHooks.run(
+          permissionDenied: async (call, denial, signal) => {
+            const result = await childHooks.run(
               "PermissionDenied",
               childInput({
                 agent_id: childId,
@@ -1439,7 +1482,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 ...(denial.rule ? { rule: denial.rule } : {}),
               }),
               { signal, matchQuery: call.toolCall.name },
-            ),
+            );
+            await applyChildHook(result, "hook:PermissionDenied");
+            return result;
+          },
         });
         const beforeInput = await child.context(context);
         for (const reminder of await collectReminders({
