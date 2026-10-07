@@ -311,7 +311,13 @@ test.each(["zh_CN.UTF-8", "en_US.UTF-8"])(
       expect(app.screen().every((line) => Bun.stringWidth(line) <= 30)).toBe(true);
       expect(placements(app.output())).toEqual([]);
       app.resize(80, 40);
-      await app.waitFor(() => app.screen().join("\n").includes("GIF · 1×1 · 42 B"));
+      // The restored large preview must commit its lower controls before clicking.
+      await app.waitFor(
+        () =>
+          app.screen().join("\n").includes("GIF · 1×1 · 42 B") &&
+          app.screen().findIndex((line) => line.includes(original)) >=
+            Math.floor(app.terminal.rows / 2),
+      );
       click(app, original);
       await app.waitFor(() => opened.length === 1);
       expect(await Bun.file(opened[0]!).bytes()).toEqual(Buffer.from(gif, "base64"));

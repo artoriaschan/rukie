@@ -1177,6 +1177,15 @@ function Chat({
     body.current?.scrollToBottom();
     armExit();
   };
+  const pageReader = (viewport: ScrollBoxHandle | null, up: boolean) => {
+    if (!viewport) return;
+    viewport.scrollTo(
+      Math.max(
+        0,
+        viewport.getScrollTop() + Math.max(1, viewport.getViewportHeight() - 1) * (up ? -1 : 1),
+      ),
+    );
+  };
   const switchModel = async (spec: string, hadDraftImages = false) => {
     const hadImages =
       hadDraftImages ||
@@ -1673,10 +1682,7 @@ function Chat({
         else if (!small && !key.ctrl && !key.meta && !key.shift) {
           if (event.keypress.name === "tab" && currentMcp.page.kind === "server") mcpPanel.focus();
           else if (event.keypress.name === "pageup" || event.keypress.name === "pagedown")
-            mcpBody.current?.scrollBy(
-              Math.max(1, (readPosition(mcpBody.current, columns)!.height ?? 1) - 1) *
-                (event.keypress.name === "pageup" ? -1 : 1),
-            );
+            pageReader(mcpBody.current, event.keypress.name === "pageup");
           else if (event.keypress.name === "up" || event.keypress.name === "down") {
             if (currentMcp.page.kind === "tool" || currentMcp.focus === "body")
               mcpBody.current?.scrollBy(event.keypress.name === "up" ? -1 : 1);
@@ -1784,10 +1790,7 @@ function Chat({
           );
         } else if (event.keypress.name === "pageup" || event.keypress.name === "pagedown") {
           disarmKill();
-          jobsScroll.current?.scrollBy(
-            (readPosition(jobsScroll.current, columns)!.height - 1) *
-              (event.keypress.name === "pageup" ? -1 : 1),
-          );
+          pageReader(jobsScroll.current, event.keypress.name === "pageup");
         } else if (!key.ctrl && !key.meta && !key.shift) {
           const selected = Object.values(conversation.getSnapshot().jobs)[jobFocusRef.current];
           if (
@@ -1876,10 +1879,7 @@ function Chat({
           } else if (event.keypress.name === "up" || event.keypress.name === "down")
             subagentScroll.current?.scrollBy(event.keypress.name === "up" ? -3 : 3);
           else if (event.keypress.name === "pageup" || event.keypress.name === "pagedown")
-            subagentScroll.current?.scrollBy(
-              (readPosition(subagentScroll.current, columns)!.height - 1) *
-                (event.keypress.name === "pageup" ? -1 : 1),
-            );
+            pageReader(subagentScroll.current, event.keypress.name === "pageup");
           else if (event.keypress.name === "home" || event.keypress.name === "end")
             subagentScroll.current?.scrollBy(event.keypress.name === "home" ? -Infinity : Infinity);
           else if (
@@ -2176,10 +2176,7 @@ function Chat({
                 (pending && scrollFocusRef.current === "details")
               ? details.current
               : body.current;
-        viewport?.scrollBy(
-          Math.max(1, (viewport.getViewportHeight() ?? 1) - 1) *
-            (event.keypress.name === "pageup" ? -1 : 1),
-        );
+        pageReader(viewport, event.keypress.name === "pageup");
         armExit();
         return;
       }
