@@ -199,7 +199,7 @@ const beforeRunToolsWithMcp = [
 const BASELINE: Record<string, BaselineEntry> = {
   read: {
     description:
-      "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+      "Read the contents of a file. Supports text files and image attachments (jpg, png, gif, webp). BMP images return an omission notice without an attachment. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
     parameters: {
       type: "object",
       required: ["path"],
@@ -654,6 +654,20 @@ const BASELINE: Record<string, BaselineEntry> = {
     },
   },
 };
+
+test("read declares supported image attachments and BMP omission to the model", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([fauxAssistantMessage("done")]);
+  const session = await createSession({ ...dirs, ...fake });
+  try {
+    await session.run("hello");
+    expect(declared(fake.contexts[0]!).find((tool) => tool.name === "read")).toEqual(
+      expected(["read"])[0],
+    );
+  } finally {
+    await session.close();
+  }
+});
 
 test("top-level declarations freeze tool names, descriptions, schemas and order", async () => {
   dirs = await tempDirs();

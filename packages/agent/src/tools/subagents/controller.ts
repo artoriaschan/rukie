@@ -125,7 +125,8 @@ type Phase =
 
 /** Native tasks own child execution and the durable reporter; the directory is only committed identity/state. */
 export function createSubagentController(options: SubagentControllerOptions) {
-  const { harness, parent, parentSessionId, state } = options;
+  const { harness, parentSessionId, state } = options;
+  let parent = options.parent;
   let types = new Map<string, SubagentType>();
   let identities = [...(options.restored ?? [])];
   const typeFor = (name: string) =>
@@ -671,6 +672,16 @@ export function createSubagentController(options: SubagentControllerOptions) {
   return {
     extension,
     adopt,
+    /** Caller must settle related native work before changing the parent branch. */
+    async rebindParent(next: Conversation, context: Context) {
+      const raw = await harness.snapshot(state.document, next.id, context);
+      const nextIdentities =
+        raw?.value === undefined || raw.value === null
+          ? []
+          : parseSubagentIdentities(raw.value, parentSessionId);
+      parent = next;
+      identities = nextIdentities;
+    },
     types: () => [...types.values()],
     setTypes(available: Map<string, SubagentType>) {
       types = available;
