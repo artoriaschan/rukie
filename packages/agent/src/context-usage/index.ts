@@ -1,11 +1,13 @@
 import type { EntryRecord } from "@earendil-works/pi-durable";
-import type { Message } from "@earendil-works/pi-ai";
+import type { Message, Tool } from "@earendil-works/pi-ai";
 import { getCurrentSystemMessage, getCurrentTools, toToolDeclaration } from "@earendil-works/pi-ai";
 import type { ContextUsageEvent, ContextReport, ContextCategory } from "@rukie/shared";
 
 import { inspectImage } from "../images/index.ts";
 
 const tokens = (text: string) => Math.ceil(text.length / 4);
+
+type ConfiguredContext = { instructions: string; tools: readonly Tool[] };
 
 const imageTokens = (data: string) => {
   const info = inspectImage(Buffer.from(data, "base64"));
@@ -24,6 +26,7 @@ export function contextUsage(
   messages: readonly Message[],
   window: number,
   inputTokens?: number,
+  configured?: ConfiguredContext,
 ): ContextUsageEvent {
   const segments = { system: 0, prompt: 0, assistant: 0, thinking: 0, tools: 0 };
   const system = getCurrentSystemMessage(messages.filter((message) => message.role === "system"));
@@ -36,8 +39,10 @@ export function contextUsage(
     for (const section of Object.values(system.sections ?? {})) {
       if (section) segments.system += tokens(section);
     }
-  }
-  for (const tool of getCurrentTools(messages))
+  } else if (configured) segments.system = tokens(configured.instructions);
+  for (const tool of system
+    ? getCurrentTools(messages)
+    : (configured?.tools ?? getCurrentTools(messages)))
     segments.tools += tokens(JSON.stringify(toToolDeclaration(tool)));
   for (const message of messages) {
     if (message.role === "user" || message.role === "toolResult") {
@@ -73,6 +78,8 @@ export function contextReport(options: {
   window: number;
   inputTokens?: number;
   mcpServers: ReadonlyMap<string, string>;
+  /** Committed agent configuration before the native generation has materialized its first system entry. */
+  configured?: ConfiguredContext;
 }): ContextReport {
   const { messages, window } = options;
   const category: Record<ContextCategory, number> = {
@@ -143,8 +150,12 @@ export function contextReport(options: {
         (sum, section) => sum + (section ? tokens(section) : 0),
         0,
       );
+  } else if (options.configured) {
+    category["system-prompt"] = tokens(options.configured.instructions);
   }
-  for (const tool of getCurrentTools(messages)) {
+  for (const tool of system
+    ? getCurrentTools(messages)
+    : (options.configured?.tools ?? getCurrentTools(messages))) {
     const count = tokens(JSON.stringify(toToolDeclaration(tool)));
     if (tool.name.startsWith("mcp__")) {
       const server =

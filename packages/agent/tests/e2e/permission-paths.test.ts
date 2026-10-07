@@ -542,3 +542,34 @@ test("missing reads and dangling primary symlinks keep errors instead of selecti
   ).toMatchObject([{ isError: true }, { isError: true }]);
   expect(JSON.stringify(fake.contexts[1]!.messages)).not.toContain("must-not-use-fallback");
 });
+
+test("file URL knowledge rejects a stale write to the literal Unicode target", async () => {
+  dirs = await tempDirs();
+  const path = join(dirs.cwd, "name\u00A0key");
+  const url = pathToFileURL(path).href;
+  await Bun.write(path, "original");
+  const ready = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const fake = fakeModel([
+    fauxAssistantMessage(fauxToolCall("read", { path: url }), { stopReason: "toolUse" }),
+    async () => {
+      ready.resolve();
+      await release.promise;
+      return fauxAssistantMessage(
+        fauxToolCall("write", { path: url, content: "wrong overwrite" }),
+        { stopReason: "toolUse" },
+      );
+    },
+    fauxAssistantMessage("stale write rejected"),
+  ]);
+  const session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
+  const running = session.run("read then change");
+  await ready.promise;
+  await Bun.write(path, "external change");
+  release.resolve();
+  await running;
+  expect(
+    fake.contexts.at(-1)!.messages.findLast((message) => message.role === "toolResult"),
+  ).toMatchObject({ toolName: "write", isError: true });
+  expect(await Bun.file(path).text()).toBe("external change");
+});

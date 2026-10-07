@@ -15,6 +15,23 @@ import { tempDirs } from "../helpers/temp-dirs.ts";
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
 afterEach(() => dirs?.cleanup());
 
+test("idle context reports configured instructions and tools without scheduling a model", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([]);
+  const session = await createSession({ ...dirs, ...fake });
+  try {
+    const report = session.contextReport();
+    const category = (name: string) => report.categories.find((item) => item.name === name)?.tokens;
+    expect(category("system-prompt")).toBeGreaterThan(0);
+    expect(category("system-tools")).toBeGreaterThan(0);
+    expect(session.contextUsage().used).toBe(report.used);
+    expect(fake.contexts).toHaveLength(0);
+    expect(session.messages).toHaveLength(0);
+  } finally {
+    await session.close();
+  }
+});
+
 async function memoryAndSkills() {
   await Bun.write(join(dirs.cwd, "AGENTS.md"), "Project policy");
   await Bun.write(join(dirs.homeDir, ".rukie/AGENTS.md"), "User policy");

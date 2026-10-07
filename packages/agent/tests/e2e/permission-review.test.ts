@@ -733,7 +733,11 @@ test("permission requests publish the owner call view before tool execution star
       return "deny";
     },
   });
-  await session.run("inspect", { onEvent: (event) => events.push(event) });
+  await session.run("inspect", {
+    onEvent: (event) => {
+      events.push(event);
+    },
+  });
   expect(asked).toBe(true);
   expect(session.messages.findLast((message) => message.role === "toolResult")).toMatchObject({
     isError: true,
