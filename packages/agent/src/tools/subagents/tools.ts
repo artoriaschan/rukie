@@ -54,6 +54,7 @@ function sendResult(
 export function createSubagentTools(subagents: ReturnType<typeof createSubagentController>) {
   const delegate: PresentedTool<typeof delegateParameters> = {
     name: "subagent",
+    replay: "safe",
     presentCall: (args) => ({
       card: "generic",
       kind: "task",
@@ -77,24 +78,28 @@ export function createSubagentTools(subagents: ReturnType<typeof createSubagentC
       );
     },
     parameters: delegateParameters,
-    async execute({
-      description,
-      prompt,
-      subagent_type = "general-purpose",
-      run_in_background = true,
-    }) {
+    async execute(
+      { description, prompt, subagent_type = "general-purpose", run_in_background = true },
+      api,
+      context,
+    ) {
       return delegationResult(
-        await subagents.delegate({
-          type: subagent_type,
-          description,
-          prompt,
-          background: run_in_background,
-        }),
+        await subagents.delegate(
+          {
+            type: subagent_type,
+            description,
+            prompt,
+            background: run_in_background,
+          },
+          api,
+          context,
+        ),
       );
     },
   };
   const fork: PresentedTool<typeof forkParameters> = {
     name: "subagent_fork",
+    replay: "safe",
     presentCall: (args) => ({
       card: "generic",
       kind: "task",
@@ -110,9 +115,9 @@ export function createSubagentTools(subagents: ReturnType<typeof createSubagentC
     description:
       "Delegate a prompt to a fork of this session through its last completed Turn, excluding the current Turn. Inherits the parent model and tools; runs in the background by default.",
     parameters: forkParameters,
-    async execute({ description, prompt, run_in_background = true }) {
+    async execute({ description, prompt, run_in_background = true }, api, context) {
       return delegationResult(
-        await subagents.fork({ description, prompt, background: run_in_background }),
+        await subagents.fork({ description, prompt, background: run_in_background }, api, context),
       );
     },
   };
@@ -133,8 +138,8 @@ export function createSubagentTools(subagents: ReturnType<typeof createSubagentC
     description:
       "Send instructions to one of this session's subagents. Steers an active Run or starts a new background Run for an idle child.",
     parameters: sendParameters,
-    async execute({ agent_id, message }) {
-      return sendResult(await subagents.send(agent_id, message));
+    async execute({ agent_id, message }, api, context) {
+      return sendResult(await subagents.send(agent_id, message, api, context));
     },
   };
   const list: PresentedTool = {

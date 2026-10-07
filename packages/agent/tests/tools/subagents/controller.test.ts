@@ -1,41 +1,363 @@
 import { expect, test } from "bun:test";
-import { setImmediate } from "node:timers/promises";
-import { createSubagentController } from "../../../src/tools/subagents/index.ts";
+import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
+import { awaitWithContext } from "@earendil-works/chord/context";
+import { Type } from "typebox";
+import { Harness, MemoryStorage, createRegistry } from "@earendil-works/pi-durable";
+import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
+import { createSubagentController } from "../../../src/tools/subagents/controller.ts";
+import { createSubagentTools } from "../../../src/tools/subagents/tools.ts";
+import { subagentsState } from "../../../src/tools/subagents/state.ts";
+import { fakeModel } from "../../helpers/fake-model.ts";
 
-test("settle waits for a reserved child creation slot before a Run promise exists", async () => {
-  const creation = Promise.withResolvers<never>();
-  const entered = Promise.withResolvers<void>();
-  const controller = createSubagentController({
-    createChild: () => {
-      entered.resolve();
-      return creation.promise;
-    },
-    persist: async () => {},
-    warn: () => {},
-    steer: () => {},
-    emit: () => {},
-    addUsage: () => {},
-  });
-  const delegated = controller
-    .fork({ description: "pending", prompt: "work", background: true })
-    .catch((error: unknown) => error);
-  await entered.promise;
-  controller.abort();
-  let settled = false;
-  const settling = controller.settle().then(() => {
-    settled = true;
-  });
+test("foreground delegation executes a native owned child and retains an idle directory identity", async () => {
+  const context = withAbortSignal(AbortSignal.timeout(3000), BACKGROUND_CONTEXT);
+  const fake = fakeModel([
+    fauxAssistantMessage(
+      fauxToolCall("subagent", {
+        description: "Inspect file",
+        prompt: "child work",
+        run_in_background: false,
+      }),
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage("child answer"),
+    fauxAssistantMessage("parent answer"),
+  ]);
+  const registry = createRegistry();
+  const harness = await Harness.open(
+    new MemoryStorage(),
+    { models: fake.models, registry },
+    context,
+  );
   try {
-    // A macrotask boundary drains the promise chain; no clock duration is required.
-    await setImmediate();
-    expect(controller.count).toBe(1);
-    expect(settled).toBe(false);
+    const parent = await harness.root(context, {
+      agent: { model: { provider: fake.model.provider, modelId: fake.model.id } },
+    });
+    const controller = createSubagentController({
+      harness,
+      parent,
+      parentSessionId: "product",
+      state: subagentsState("product"),
+      forkAt: () => undefined,
+      childAgent: async () => ({
+        model: { provider: fake.model.provider, modelId: fake.model.id },
+        extensions: [],
+        tools: [],
+      }),
+    });
+    controller.setTypes(
+      new Map([
+        ["general-purpose", { name: "general-purpose", description: "General", prompt: "" }],
+      ]),
+    );
+    registry.install(controller.extension);
+    const tools = createSubagentTools(controller);
+    registry.install({ name: "subagent-tools", tools: Object.values(tools) });
+    const request = await parent.submit({ type: "input", content: "delegate" }, context);
+    expect((await request.wait(context)).status).toBe("done");
+    await parent.waitForIdle(context);
+    const rows = controller.list();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      description: "Inspect file",
+      active: false,
+      latestRun: { outcome: "completed", parentSessionId: "product" },
+    });
+    expect(controller.count).toBe(0);
+    const child = await controller.readChild(rows[0]!.id, context);
+    expect(child?.messages.at(-1)).toMatchObject({
+      role: "assistant",
+      content: [{ type: "text", text: "child answer" }],
+    });
+    expect(
+      (await parent.context(context)).messages.find((message) => message.role === "toolResult"),
+    ).toMatchObject({ isError: false, content: [{ type: "text", text: "child answer" }] });
+    expect((await harness.inspect(context)).tasks).toHaveLength(0);
+    controller.close();
   } finally {
-    creation.reject(new Error("creation rejected"));
-    expect(await delegated).toMatchObject({ message: "creation rejected" });
-    await settling;
+    await harness.close(context);
   }
-  expect(settled).toBe(true);
-  expect(controller.count).toBe(0);
-  expect(controller.hasNotifications).toBe(false);
+});
+
+test("interrupt explicitly aborts a native background child and commits its outcome", async () => {
+  const context = withAbortSignal(AbortSignal.timeout(3000), BACKGROUND_CONTEXT);
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  let parentCalls = 0;
+  const response: Parameters<typeof fakeModel>[0][number] = (request) => {
+    const last = request.messages.findLast((message) => message.role === "user");
+    const text =
+      last?.role === "user"
+        ? typeof last.content === "string"
+          ? last.content
+          : last.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("")
+        : "";
+    if (text === "hold child")
+      return fauxAssistantMessage(fauxToolCall("hold", {}), { stopReason: "toolUse" });
+    parentCalls++;
+    return parentCalls === 1
+      ? fauxAssistantMessage(
+          fauxToolCall("subagent", { description: "Held child", prompt: "hold child" }),
+          { stopReason: "toolUse" },
+        )
+      : fauxAssistantMessage("parent idle");
+  };
+  const fake = fakeModel([response, response, response, response]);
+  const registry = createRegistry();
+  const hold = {
+    name: "hold",
+    description: "Wait for release",
+    parameters: Type.Object({}),
+    async execute(_args: unknown, _api: unknown, ctx: Parameters<typeof awaitWithContext>[1]) {
+      entered.resolve();
+      await awaitWithContext(release.promise, ctx);
+      return { content: [{ type: "text" as const, text: "released" }] };
+    },
+  };
+  registry.install({ name: "hold-tool", tools: [hold] });
+  const harness = await Harness.open(
+    new MemoryStorage(),
+    { models: fake.models, registry },
+    context,
+  );
+  try {
+    const parent = await harness.root(context, {
+      agent: { model: { provider: fake.model.provider, modelId: fake.model.id } },
+    });
+    const controller = createSubagentController({
+      harness,
+      parent,
+      parentSessionId: "product",
+      state: subagentsState("product"),
+      forkAt: () => undefined,
+      childAgent: async () => ({
+        model: { provider: fake.model.provider, modelId: fake.model.id },
+        extensions: [{ name: "hold-tool", tools: [hold] }],
+        tools: [hold],
+      }),
+    });
+    controller.setTypes(
+      new Map([
+        ["general-purpose", { name: "general-purpose", description: "General", prompt: "" }],
+      ]),
+    );
+    registry.install(controller.extension);
+    registry.install({ name: "tools", tools: Object.values(createSubagentTools(controller)) });
+    await (await parent.submit({ type: "input", content: "delegate" }, context)).wait(context);
+    await parent.waitForIdle(context);
+    await entered.promise;
+    const row = controller.list()[0]!;
+    const driver = (await harness.inspect(context)).tasks.find(
+      (task) => task.record.kind === "rukie.subagent-driver",
+    );
+    if (!driver) throw new Error("Native driver is missing.");
+    await controller.interrupt(row.id, context);
+    await harness.waitForTask(driver.record.id, context);
+    expect(controller.list()[0]).toMatchObject({
+      active: false,
+      latestRun: { outcome: "aborted" },
+    });
+    expect(controller.count).toBe(0);
+    expect((await harness.inspect(context)).tasks).toHaveLength(0);
+    controller.close();
+  } finally {
+    release.resolve();
+    await harness.close(context);
+  }
+});
+
+test("idle send keeps logical identity and runs an owned native fork with prior history", async () => {
+  const context = withAbortSignal(AbortSignal.timeout(3000), BACKGROUND_CONTEXT);
+  let agentId = "";
+  let parentCalls = 0;
+  const response: Parameters<typeof fakeModel>[0][number] = (request) => {
+    const last = request.messages.findLast((message) => message.role === "user");
+    const text =
+      last?.role === "user"
+        ? typeof last.content === "string"
+          ? last.content
+          : last.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("")
+        : "";
+    if (text === "child work") return fauxAssistantMessage("first child answer");
+    if (text === "more child") return fauxAssistantMessage("second child answer");
+    if (text.startsWith("Subagent ")) return fauxAssistantMessage("report handled");
+    parentCalls++;
+    if (parentCalls === 1)
+      return fauxAssistantMessage(
+        fauxToolCall("subagent", {
+          description: "Child",
+          prompt: "child work",
+          run_in_background: false,
+        }),
+        { stopReason: "toolUse" },
+      );
+    if (parentCalls === 3)
+      return fauxAssistantMessage(
+        fauxToolCall("send_message", { agent_id: agentId, message: "more child" }),
+        { stopReason: "toolUse" },
+      );
+    return fauxAssistantMessage("parent idle");
+  };
+  const fake = fakeModel([response, response, response, response, response, response, response]);
+  const registry = createRegistry();
+  const harness = await Harness.open(
+    new MemoryStorage(),
+    { models: fake.models, registry },
+    context,
+  );
+  try {
+    const parent = await harness.root(context, {
+      agent: { model: { provider: fake.model.provider, modelId: fake.model.id } },
+    });
+    const controller = createSubagentController({
+      harness,
+      parent,
+      parentSessionId: "product",
+      state: subagentsState("product"),
+      forkAt: () => undefined,
+      childAgent: async () => ({
+        model: { provider: fake.model.provider, modelId: fake.model.id },
+        extensions: [],
+        tools: [],
+      }),
+    });
+    controller.setTypes(
+      new Map([
+        ["general-purpose", { name: "general-purpose", description: "General", prompt: "" }],
+      ]),
+    );
+    registry.install(controller.extension);
+    registry.install({ name: "tools", tools: Object.values(createSubagentTools(controller)) });
+    await (await parent.submit({ type: "input", content: "delegate" }, context)).wait(context);
+    await parent.waitForIdle(context);
+    const first = controller.list()[0]!;
+    agentId = first.id;
+    await (
+      await parent.submit({ type: "input", content: "continue child" }, context)
+    ).wait(context);
+    const tasks = (await harness.inspect(context)).tasks;
+    for (const task of tasks)
+      if (task.record.kind === "rukie.subagent-driver")
+        await harness.waitForTask(task.record.id, context);
+    await parent.waitForIdle(context);
+    const row = controller.list()[0]!;
+    expect(row.id).toBe(first.id);
+    expect(row.conversationId).not.toBe(first.conversationId);
+    expect(row.active).toBe(false);
+    const child = await controller.readChild(agentId, context);
+    expect(
+      child?.messages
+        .filter((message) => message.role === "assistant")
+        .map((message) => message.content),
+    ).toEqual([
+      [{ type: "text", text: "first child answer" }],
+      [{ type: "text", text: "second child answer" }],
+    ]);
+    expect(child?.run?.outcome).toBe("completed");
+    expect(
+      child?.historyMessages
+        .filter((message) => message.role === "assistant")
+        .map((message) => message.content),
+    ).toEqual([[{ type: "text", text: "first child answer" }]]);
+    controller.close();
+  } finally {
+    await harness.close(context);
+  }
+});
+
+test("background native child survives ordinary parent abort and its durable reporter settles", async () => {
+  const context = withAbortSignal(AbortSignal.timeout(3000), BACKGROUND_CONTEXT);
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  let parentCalls = 0;
+  const response: Parameters<typeof fakeModel>[0][number] = async (request) => {
+    const last = request.messages.findLast((message) => message.role === "user");
+    const text =
+      last?.role === "user"
+        ? typeof last.content === "string"
+          ? last.content
+          : last.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("")
+        : "";
+    if (text === "slow child") {
+      entered.resolve();
+      await release.promise;
+      return fauxAssistantMessage("child completed");
+    }
+    if (text.startsWith("Subagent ")) return fauxAssistantMessage("report handled");
+    parentCalls++;
+    return parentCalls === 1
+      ? fauxAssistantMessage(
+          fauxToolCall("subagent", { description: "Background work", prompt: "slow child" }),
+          { stopReason: "toolUse" },
+        )
+      : fauxAssistantMessage("parent idle");
+  };
+  const fake = fakeModel([response, response, response, response]);
+  const registry = createRegistry();
+  const harness = await Harness.open(
+    new MemoryStorage(),
+    { models: fake.models, registry },
+    context,
+  );
+  try {
+    const parent = await harness.root(context, {
+      agent: { model: { provider: fake.model.provider, modelId: fake.model.id } },
+    });
+    const controller = createSubagentController({
+      harness,
+      parent,
+      parentSessionId: "product",
+      state: subagentsState("product"),
+      forkAt: () => undefined,
+      childAgent: async () => ({
+        model: { provider: fake.model.provider, modelId: fake.model.id },
+        extensions: [],
+        tools: [],
+      }),
+    });
+    controller.setTypes(
+      new Map([
+        ["general-purpose", { name: "general-purpose", description: "General", prompt: "" }],
+      ]),
+    );
+    registry.install(controller.extension);
+    registry.install({
+      name: "subagent-tools",
+      tools: Object.values(createSubagentTools(controller)),
+    });
+    const request = await parent.submit({ type: "input", content: "delegate" }, context);
+    await request.wait(context);
+    await parent.waitForIdle(context);
+    await entered.promise;
+    expect(controller.count).toBe(1);
+    await parent.abort(context);
+    expect(controller.count).toBe(1);
+    const driver = (await harness.inspect(context)).tasks.find(
+      (task) => task.record.kind === "rukie.subagent-driver" && task.record.background,
+    );
+    expect(driver).toBeDefined();
+    if (!driver) throw new Error("Native background driver missing.");
+    release.resolve();
+    const settled = await harness.waitForTask(driver.record.id, context);
+    expect(settled.state).toMatchObject({
+      outcome: {
+        result: { parentSubmissionId: expect.any(Number), parentAnswer: expect.any(Number) },
+      },
+    });
+    await parent.waitForIdle(context);
+    expect(controller.list()[0]).toMatchObject({
+      active: false,
+      latestRun: { outcome: "completed" },
+    });
+    const users = (await parent.context(context)).messages.filter(
+      (message) => message.role === "user",
+    );
+    expect(users).toHaveLength(2);
+    expect(users[1]).toMatchObject({ content: expect.stringContaining("child completed") });
+    expect((await harness.inspect(context)).tasks).toHaveLength(0);
+    controller.close();
+  } finally {
+    release.resolve();
+    await harness.close(context);
+  }
 });
