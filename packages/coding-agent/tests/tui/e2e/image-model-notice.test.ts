@@ -319,7 +319,7 @@ test.each([12, 24])(
 );
 
 test("adding an image warning preserves the history reading position and return control", async () => {
-  const app = await startImages("text", "en_US.UTF-8", 40, 24);
+  const app = await startImages("text", "en_US.UTF-8", 40, 24, true);
   try {
     await app.waitFor(() => app.screen().includes("❯"));
     app.stdin.write("long reply\r");

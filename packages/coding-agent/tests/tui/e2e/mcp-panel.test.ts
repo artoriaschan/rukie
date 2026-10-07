@@ -3,6 +3,7 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { dark } from "../../../src/ink/index.ts";
 import { start } from "../helpers/app";
+import { startWithClock } from "../helpers/clock-app";
 
 const screen = (app: Awaited<ReturnType<typeof start>>) => app.screen().join("\n");
 
@@ -633,7 +634,7 @@ test.skipIf(process.platform === "win32")(
 );
 
 test("opening and closing MCP preserves the Transcript reading anchor", async () => {
-  const app = await start(["history"], { rows: 32 });
+  const app = await startWithClock(["history"], { rows: 32 });
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.delta(

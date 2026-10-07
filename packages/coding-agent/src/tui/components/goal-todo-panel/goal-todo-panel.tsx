@@ -87,8 +87,8 @@ export function GoalTodoPanel({
             <Box width={3} flexShrink={0}>
               <ThemedText color="suggestion">🎯</ThemedText>
             </Box>
-            <Box flexGrow={1} flexShrink={1}>
-              <ThemedText bold wrap="truncate">
+            <Box flexGrow={1} flexShrink={1} overflow="hidden">
+              <ThemedText bold wrap="end">
                 {goal.objective.replace(/[\r\n]+/g, " ")}
               </ThemedText>
             </Box>
