@@ -5,8 +5,11 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Context } from "@earendil-works/chord";
-import { createModels } from "@earendil-works/pi-ai";
-import { Harness, createRegistry, defineDoc, type Storage } from "@earendil-works/pi-durable";
+import {
+  createSession as createNativeSession,
+  defineDoc,
+  type Storage,
+} from "@earendil-works/pi-durable";
 import { JsonlStorage } from "@earendil-works/pi-durable/storage/jsonl";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { err, ok, FileError, type FileSystem } from "@earendil-works/pi-durable/env";
@@ -187,13 +190,11 @@ export function createJsonlStore(options: { cwd: string; homeDir: string }): Ses
         if (!(await Bun.file(join(key(directory.name), "main.jsonl")).exists())) continue;
         const files = new NodeExecutionEnv({ cwd });
         const storage = await JsonlStorage.open(key(directory.name), readonlyFiles(files), context);
-        const harness = await Harness.open(
-          storage,
-          { models: createModels(), registry: createRegistry() },
-          context,
-        );
+        // The storage kernel reads committed documents without Harness recovery,
+        // which may append retry/uncertainty facts for unfinished native work.
+        const nativeSession = createNativeSession(storage);
         try {
-          const metadata = await harness.snapshot(SessionMetadataDoc, context);
+          const metadata = await nativeSession.snapshot(SessionMetadataDoc, context);
           if (!metadata || metadata.cwd !== cwd || metadata.id !== directory.name) continue;
           results.push({
             id: metadata.id,
@@ -204,7 +205,7 @@ export function createJsonlStore(options: { cwd: string; homeDir: string }): Ses
             messageCount: metadata.messageCount,
           });
         } finally {
-          await harness.close(BACKGROUND_CONTEXT);
+          await nativeSession.close(BACKGROUND_CONTEXT);
           await files.cleanup(BACKGROUND_CONTEXT);
         }
       }

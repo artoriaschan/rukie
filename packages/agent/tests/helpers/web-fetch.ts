@@ -36,9 +36,9 @@ export function webFetchFixture() {
       },
       ...options,
     });
-    resources.push(() => session.dispose());
+    resources.push(() => session.close());
     await session.run("fetch this page");
-    const result = fake.contexts[1]!.messages.at(-1)!;
+    const result = fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult")!;
     if (result.role !== "toolResult") throw new Error("Expected tool result");
     return result;
   }

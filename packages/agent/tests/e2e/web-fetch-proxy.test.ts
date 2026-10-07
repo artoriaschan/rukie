@@ -50,9 +50,9 @@ async function fetchPage(
     permissionMode: "full-access",
     webFetch,
   });
-  resources.push(() => session.dispose());
+  resources.push(() => session.close());
   await session.run("read this public URL");
-  const result = fake.contexts[1]!.messages.at(-1)!;
+  const result = fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult")!;
   if (result.role !== "toolResult") throw new Error("Expected tool result");
   const text = result.content
     .flatMap((part) => (part.type === "text" ? [part.text] : []))
