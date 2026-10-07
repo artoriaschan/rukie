@@ -1,5 +1,5 @@
-import { useMemo } from "react";
-import { inspectImage, type PromptImage } from "@neant/agent";
+import type { PromptImage } from "@neant/agent";
+import type { PresentedImage } from "../../../view/transcript/images";
 import type { Locale } from "@neant/i18n";
 import {
   Box,
@@ -24,18 +24,13 @@ export function imageName(image: PromptImage, fallback: string) {
   return label;
 }
 
-export function imageMetadata(image: PromptImage) {
-  const bytes = Buffer.from(image.data, "base64");
-  return { ...inspectImage(bytes), bytes: bytes.length };
-}
-
 export function ImageGallery({
   images,
   onOpen,
   suspended = false,
   locale = "zh",
 }: {
-  images: readonly PromptImage[];
+  images: readonly PresentedImage[];
   onOpen?(index: number): void;
   suspended?: boolean;
   locale?: Locale;
@@ -80,14 +75,14 @@ function Thumbnail({
   onOpen,
   fallback,
 }: {
-  image: PromptImage;
+  image: PresentedImage;
   multiple: boolean;
   available: number;
   graphics: boolean;
   onOpen?: () => void;
   fallback: string;
 }) {
-  const metadata = useMemo(() => imageMetadata(image), [image]);
+  const metadata = image.metadata;
   const ratio = Math.max(0.25, Math.min(4, (metadata.width ?? 1) / (metadata.height ?? 1)));
   const width = Math.min(multiple ? 10 : 24, available);
   const height = multiple

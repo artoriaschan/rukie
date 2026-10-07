@@ -1,4 +1,3 @@
-import { highlightSyntax, type SyntaxRun } from "../../../ink/index.ts";
 import type { ToolCallView, ToolResultView } from "@neant/shared";
 import { createTwoFilesPatch, parsePatch } from "diff";
 
@@ -7,10 +6,14 @@ export interface DiffLine {
   text: string;
   tone: "path" | "add" | "del" | "dim" | "plain";
   path?: string;
-  runs?: SyntaxRun[];
+  runs?: { text: string }[];
 }
 /** Keep file boundaries and hunk gaps, omitting unified-patch protocol headers. */
-export function unifiedDiffLines(view: DiffView): DiffLine[] {
+export function unifiedDiffLines(
+  view: DiffView,
+  highlight: (source: string, options: { path: string }) => { text: string }[][] = (source) =>
+    source.split("\n").map((text) => [{ text }]),
+): DiffLine[] {
   return view.diffs.flatMap((file) => {
     const rows: DiffLine[] = [{ text: file.path, tone: "path", path: file.path }];
     const patch =
@@ -38,8 +41,8 @@ export function unifiedDiffLines(view: DiffView): DiffLine[] {
                   .map((line) => line.slice(1)),
               )
               .join("\n");
-      const oldRuns = highlightSyntax(oldSource, { path: file.path });
-      const newRuns = highlightSyntax(newSource, { path: file.path });
+      const oldRuns = highlight(oldSource, { path: file.path });
+      const newRuns = highlight(newSource, { path: file.path });
       let patchOld = 0;
       let patchNew = 0;
       parsed.hunks.forEach((hunk, index) => {

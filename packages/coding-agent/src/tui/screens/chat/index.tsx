@@ -1,6 +1,10 @@
+import { createImagePresentation } from "./image-metadata";
+import { alignSplitDiff } from "../../../ink/index.ts";
+import { readSessionNotice, sessionNoticeFromHook, assistantThinkingDuration } from "@neant/agent";
+const conversationFacts = { readSessionNotice, sessionNoticeFromHook, assistantThinkingDuration };
 import { SessionNoticeRow } from "../../components/notice";
-import { completedEntryVisible } from "./completed-visibility";
-import { transcriptMatches } from "./transcript-search";
+import { completedEntryVisible } from "../../../view/conversation/completed-visibility";
+import { transcriptMatches } from "../../../view/transcript/transcript-search";
 import { TextInput } from "../../../ink/index.ts";
 import { DiffLayoutProvider, useDiffLayout } from "../../components/tool-call/diff-layout";
 import { SmoothRevealProvider } from "../../../ink/index.ts";
@@ -10,7 +14,7 @@ import {
 } from "../../components/tool-call/window-navigation";
 import { FileActionsPanel } from "../../components/file-actions-panel";
 import { PlanReviewRow } from "../../components/plan-review/plan-review-row";
-import { showsToolCard } from "./conversation";
+import { showsToolCard } from "../../../view/conversation/conversation";
 import { ThinkingRow } from "../../components/thinking-row";
 import { realpath } from "node:fs/promises";
 import { statSync } from "node:fs";
@@ -90,11 +94,11 @@ import { createTuiI18n } from "../../../view/i18n";
 import { createImageViewer, type TuiHost } from "../../host";
 import { createInputHistory } from "../../input-history";
 import { createComposerImages, pastedImagePath } from "./composer-images";
-import { createConversation } from "./conversation";
+import { createConversation } from "../../../view/conversation/conversation";
 import { createInteractions } from "./interactions";
 import { permissionChoices } from "../../components/permission-dialog";
-import { fmtTokens, render as renderActivity } from "./activity/activity";
-import { commandCatalog } from "./commands";
+import { fmtTokens, render as renderActivity } from "../../../view/conversation/activity/activity";
+import { commandCatalog } from "../../../view/commands/commands";
 import { createMcpCommands } from "./mcp-commands";
 import { createMcpPanel } from "./mcp-panel";
 import { mcpPanelHeight } from "../../components/mcp-panel";
@@ -138,7 +142,7 @@ export async function createChat(
   const checkpointCwd = await realpath(options.cwd);
   const skills = await listSkills(options);
   const models = listModels(options.settings);
-  let conversation = createConversation(session, model, locale);
+  let conversation = createConversation(session, model, conversationFacts, locale);
   let binding = { session, conversation };
   const bindingListeners = new Set<() => void>();
   const history = await createInputHistory(options.cwd, options.homeDir);
@@ -155,7 +159,7 @@ export async function createChat(
     await session.dispose("other");
     await conversation.stop();
     session = await createSession({ ...sessionOptions, resumeId });
-    conversation = createConversation(session, model, locale);
+    conversation = createConversation(session, model, conversationFacts, locale);
     if (branch) conversation.dispatchActivity({ type: "git-branch", branch });
     inputHistory.reset();
     binding = { session, conversation };
@@ -324,6 +328,7 @@ function Chat({
     };
   }, [host]);
   const composer = useMemo(createComposerImages, [session]);
+  const presentImage = useMemo(createImagePresentation, [session]);
   const [composerCursor, setComposerCursor] = useState(0);
   const composerCursorRef = useRef(0);
   const dismissedComposerImage = useRef<{ token: string; start: number }>(undefined);
@@ -835,7 +840,15 @@ function Chat({
   expandedRef.current = expanded;
   const diffSearchLayout = useDiffLayout();
   const searchMatches = useMemo(
-    () => transcriptMatches(state, transcriptSearch.query, columns, diffSearchLayout, locale),
+    () =>
+      transcriptMatches(
+        state,
+        transcriptSearch.query,
+        columns,
+        diffSearchLayout,
+        locale,
+        alignSplitDiff,
+      ),
     [state, transcriptSearch.query, columns, diffSearchLayout, locale],
   );
   const currentMatch = searchMatches[transcriptSearch.index % Math.max(1, searchMatches.length)];
@@ -2192,7 +2205,7 @@ function Chat({
                   status={entry.isError ? "error" : "success"}
                   outcomeUnknown={entry.outcomeUnknown}
                   result={entry.result}
-                  images={entry.images}
+                  images={entry.images?.map(presentImage)}
                   onImageOpen={(imageIndex) => openImage(index, imageIndex)}
                   imagesSuspended={!!preview}
                   error={entry.error}
@@ -2273,7 +2286,7 @@ function Chat({
                 text={entry.text}
                 source={entry.source}
                 locale={locale}
-                images={entry.images}
+                images={entry.images?.map(presentImage)}
                 onImageOpen={(imageIndex) => openImage(index, imageIndex)}
                 imagesSuspended={!!preview}
               />
@@ -2286,7 +2299,7 @@ function Chat({
                 />
                 {!!entry.images?.length && (
                   <ImageGallery
-                    images={entry.images}
+                    images={entry.images?.map(presentImage)}
                     locale={locale}
                     suspended={!!preview}
                     onOpen={(imageIndex) => openImage(index, imageIndex)}
@@ -2677,7 +2690,7 @@ function Chat({
         <ImagePreview
           key={`composer-${composerPreview.token}-${composerPreview.start}`}
           passive
-          image={composerPreview.image}
+          image={presentImage(composerPreview.image)}
           index={composerPreview.index}
           total={1}
           width={columns}
@@ -2688,7 +2701,7 @@ function Chat({
       {preview && (
         <ImagePreview
           key={preview.index}
-          image={preview.images[preview.index]!}
+          image={presentImage(preview.images[preview.index]!)}
           index={preview.index}
           total={preview.images.length}
           width={columns}

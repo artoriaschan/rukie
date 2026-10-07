@@ -297,6 +297,304 @@
           }
         ]
       }
+    },
+    {
+      "files": ["packages/coding-agent/src/headless/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@neant/coding-agent", "@neant/coding-agent/**"],
+                "message": "Use relative imports inside coding-agent."
+              },
+              {
+                "group": ["**/tui", "**/tui/**", "**/ink", "**/ink/**", "react", "react/**"],
+                "message": "Headless must not load terminal rendering."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/coding-agent/src/tui/components/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@neant/coding-agent", "@neant/coding-agent/**"],
+                "message": "Use relative imports inside coding-agent."
+              },
+              {
+                "group": ["**/ink", "**/ink/**", "!**/ink/index.ts"],
+                "message": "TUI must use ink/index.ts."
+              },
+              {
+                "group": ["@neant/agent", "@neant/agent/**", "**/agent", "**/agent/**"],
+                "allowTypeImports": true,
+                "message": "Presentation layers may import only Agent Core types."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/coding-agent/src/view/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@neant/coding-agent", "@neant/coding-agent/**"],
+                "message": "Use relative imports inside coding-agent."
+              },
+              {
+                "group": ["@neant/agent", "@neant/agent/**", "**/agent", "**/agent/**"],
+                "allowTypeImports": true,
+                "message": "Presentation layers may import only Agent Core types."
+              },
+              {
+                "group": [
+                  "react",
+                  "react/**",
+                  "**/ink",
+                  "**/ink/**",
+                  "**/tui",
+                  "**/tui/**",
+                  "node:*",
+                  "bun",
+                  "bun:*",
+                  "_http_agent",
+                  "_http_agent/**",
+                  "_http_client",
+                  "_http_client/**",
+                  "_http_common",
+                  "_http_common/**",
+                  "_http_incoming",
+                  "_http_incoming/**",
+                  "_http_outgoing",
+                  "_http_outgoing/**",
+                  "_http_server",
+                  "_http_server/**",
+                  "_stream_duplex",
+                  "_stream_duplex/**",
+                  "_stream_passthrough",
+                  "_stream_passthrough/**",
+                  "_stream_readable",
+                  "_stream_readable/**",
+                  "_stream_transform",
+                  "_stream_transform/**",
+                  "_stream_wrap",
+                  "_stream_wrap/**",
+                  "_stream_writable",
+                  "_stream_writable/**",
+                  "_tls_common",
+                  "_tls_common/**",
+                  "_tls_wrap",
+                  "_tls_wrap/**",
+                  "assert",
+                  "assert/**",
+                  "assert/strict",
+                  "assert/strict/**",
+                  "async_hooks",
+                  "async_hooks/**",
+                  "buffer",
+                  "buffer/**",
+                  "bun",
+                  "bun/**",
+                  "bun:ffi",
+                  "bun:ffi/**",
+                  "bun:jsc",
+                  "bun:jsc/**",
+                  "bun:sqlite",
+                  "bun:sqlite/**",
+                  "bun:test",
+                  "bun:test/**",
+                  "child_process",
+                  "child_process/**",
+                  "cluster",
+                  "cluster/**",
+                  "console",
+                  "console/**",
+                  "constants",
+                  "constants/**",
+                  "crypto",
+                  "crypto/**",
+                  "dgram",
+                  "dgram/**",
+                  "diagnostics_channel",
+                  "diagnostics_channel/**",
+                  "dns",
+                  "dns/**",
+                  "dns/promises",
+                  "dns/promises/**",
+                  "domain",
+                  "domain/**",
+                  "events",
+                  "events/**",
+                  "fs",
+                  "fs/**",
+                  "fs/promises",
+                  "fs/promises/**",
+                  "http",
+                  "http/**",
+                  "http2",
+                  "http2/**",
+                  "https",
+                  "https/**",
+                  "inspector",
+                  "inspector/**",
+                  "inspector/promises",
+                  "inspector/promises/**",
+                  "module",
+                  "module/**",
+                  "net",
+                  "net/**",
+                  "os",
+                  "os/**",
+                  "path",
+                  "path/**",
+                  "path/posix",
+                  "path/posix/**",
+                  "path/win32",
+                  "path/win32/**",
+                  "perf_hooks",
+                  "perf_hooks/**",
+                  "process",
+                  "process/**",
+                  "punycode",
+                  "punycode/**",
+                  "querystring",
+                  "querystring/**",
+                  "readline",
+                  "readline/**",
+                  "readline/promises",
+                  "readline/promises/**",
+                  "repl",
+                  "repl/**",
+                  "stream",
+                  "stream/**",
+                  "stream/consumers",
+                  "stream/consumers/**",
+                  "stream/promises",
+                  "stream/promises/**",
+                  "stream/web",
+                  "stream/web/**",
+                  "string_decoder",
+                  "string_decoder/**",
+                  "sys",
+                  "sys/**",
+                  "timers",
+                  "timers/**",
+                  "timers/promises",
+                  "timers/promises/**",
+                  "tls",
+                  "tls/**",
+                  "trace_events",
+                  "trace_events/**",
+                  "tty",
+                  "tty/**",
+                  "undici",
+                  "undici/**",
+                  "url",
+                  "url/**",
+                  "util",
+                  "util/**",
+                  "util/types",
+                  "util/types/**",
+                  "v8",
+                  "v8/**",
+                  "vm",
+                  "vm/**",
+                  "wasi",
+                  "wasi/**",
+                  "worker_threads",
+                  "worker_threads/**",
+                  "ws",
+                  "ws/**",
+                  "zlib",
+                  "zlib/**"
+                ],
+                "message": "View must remain independent of React, terminals, and Node APIs."
+              }
+            ]
+          }
+        ],
+        "no-restricted-globals": [
+          "error",
+          "Buffer",
+          "process",
+          "__dirname",
+          "__filename",
+          "require"
+        ]
+      }
+    },
+    {
+      "files": ["packages/coding-agent/src/ink/*/*/*/*.{ts,tsx}"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@neant/coding-agent", "@neant/coding-agent/**"],
+                "message": "Use relative imports inside coding-agent."
+              },
+              {
+                "group": ["@neant/agent", "@neant/agent/**", "@neant/i18n", "@neant/i18n/**"],
+                "message": "ink must not depend on Agent Core or locale."
+              },
+              {
+                "message": "ink must not depend on upper layers.",
+                "group": [
+                  "../../../../**",
+                  "**/coding-agent/src/headless/**",
+                  "**/coding-agent/src/tui/**",
+                  "**/coding-agent/src/cli/**",
+                  "**/coding-agent/src/view/**"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/coding-agent/src/ink/*/*/*/*/*.{ts,tsx}"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@neant/coding-agent", "@neant/coding-agent/**"],
+                "message": "Use relative imports inside coding-agent."
+              },
+              {
+                "group": ["@neant/agent", "@neant/agent/**", "@neant/i18n", "@neant/i18n/**"],
+                "message": "ink must not depend on Agent Core or locale."
+              },
+              {
+                "message": "ink must not depend on upper layers.",
+                "group": [
+                  "../../../../../**",
+                  "**/coding-agent/src/headless/**",
+                  "**/coding-agent/src/tui/**",
+                  "**/coding-agent/src/cli/**",
+                  "**/coding-agent/src/view/**"
+                ]
+              }
+            ]
+          }
+        ]
+      }
     }
   ]
 }

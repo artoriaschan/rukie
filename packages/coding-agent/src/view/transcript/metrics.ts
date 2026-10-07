@@ -1,3 +1,7 @@
+export interface TpsSample {
+  at: number;
+  value: number;
+}
 import type { ContextUsageEvent } from "@neant/shared";
 
 export const segments = [

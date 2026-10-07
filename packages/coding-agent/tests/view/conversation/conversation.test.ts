@@ -1,10 +1,12 @@
+import { readSessionNotice, sessionNoticeFromHook, assistantThinkingDuration } from "@neant/agent";
+const conversationFacts = { readSessionNotice, sessionNoticeFromHook, assistantThinkingDuration };
 import { expect, spyOn, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createSession, type Session, type SessionEvent, type SessionOptions } from "@neant/agent";
-import { createConversation } from "../../../../src/tui/screens/chat/conversation";
-import { controlledModel } from "../../helpers/model";
+import { createConversation } from "../../../src/view/conversation/conversation";
+import { controlledModel } from "../../tui/helpers/model";
 
 test("conversation retains the latest 500 observed TPS samples and wires an actual Session Run", async () => {
   const root = await mkdtemp(join(tmpdir(), "neant-tps-"));
@@ -37,7 +39,7 @@ test("conversation retains the latest 500 observed TPS samples and wires an actu
         return typeof value === "function" ? value.bind(target) : value;
       },
     });
-    conversation = createConversation(source, "faux/faux-1");
+    conversation = createConversation(source, "faux/faux-1", conversationFacts);
     const events: SessionEvent[] = [];
     session.subscribe((event) => {
       events.push(event);

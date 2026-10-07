@@ -1,5 +1,4 @@
-import type { ThemeColor } from "../../../ink/index.ts";
-import type { SubagentView } from "./subagent-message";
+import type { SubagentView } from "../conversation/subagents";
 
 /** Settled/dashboard identity; the message card keeps its own animated glyph. */
 export const SUBAGENT_APPEARANCE = {
@@ -8,7 +7,7 @@ export const SUBAGENT_APPEARANCE = {
   completed: { color: "success", glyph: "🟢" },
   failed: { color: "error", glyph: "🔴" },
   aborted: { color: "error", glyph: "🔴" },
-} satisfies Record<SubagentView["status"], { color: ThemeColor; glyph: string }>;
+} as const satisfies Record<SubagentView["status"], { color: string; glyph: string }>;
 
 /** Activity stays live; settled views prefer the durable reason for this Run. */
 export function subagentStatusKey(row: SubagentView) {

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import * as phrases from "../../../../../src/tui/screens/chat/activity/phrases";
+import * as phrases from "../../../../src/view/conversation/activity/phrases";
 
 // The ticket deliberately preserves the upstream single-file pool contract.
 const chinesePools = Object.entries(phrases).filter(

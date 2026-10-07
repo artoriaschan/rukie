@@ -1,8 +1,11 @@
-import { readSessionNotice, sessionNoticeFromHook, type SessionNotice } from "@neant/agent";
-import { assistantThinkingDuration } from "@neant/agent";
-import { basename } from "node:path";
+import type {
+  SessionNotice,
+  readSessionNotice,
+  sessionNoticeFromHook,
+  assistantThinkingDuration,
+} from "@neant/agent";
 import { fmtDuration, type Locale } from "@neant/i18n";
-import { createTuiI18n, formatError } from "../../../view/i18n";
+import { createTuiI18n, formatError } from "../i18n";
 import type {
   PromptImage,
   GoalView,
@@ -20,10 +23,16 @@ import {
   type ToolCallView,
   type ToolResultView,
 } from "@neant/shared";
-import type { TpsSample } from "../../components/status-line";
+import type { TpsSample } from "../transcript/metrics";
 import { reduceSubagent, restoreSubagents, projectSubagent, type SubagentState } from "./subagents";
 import { createActivity, reduce } from "./activity/activity";
-import type { NoticeKind } from "../../components/notice";
+export type NoticeKind = "info" | "error" | "success" | "warning" | "dim";
+
+export interface ConversationFacts {
+  readSessionNotice: typeof readSessionNotice;
+  sessionNoticeFromHook: typeof sessionNoticeFromHook;
+  assistantThinkingDuration: typeof assistantThinkingDuration;
+}
 
 interface ToolCall {
   id: string;
@@ -223,7 +232,8 @@ function toolEntry(
         tool.args !== null &&
         "path" in tool.args &&
         typeof tool.args.path === "string"
-          ? { name: basename(tool.args.path) }
+          ? // ponytail: POSIX paths only; Windows separators are not handled.
+            { name: tool.args.path.slice(tool.args.path.lastIndexOf("/") + 1) }
           : {}),
       })),
     summary: tool.summary,
@@ -401,17 +411,21 @@ function userMessageEntry(
   };
 }
 
-function messageNotice(message: Session["messages"][number]): SessionNotice | undefined {
+function messageNotice(
+  message: Session["messages"][number],
+  facts: ConversationFacts,
+): SessionNotice | undefined {
   if (message.role === "assistant") {
     if (message.stopReason === "aborted") return { kind: "interrupted" };
     if (message.stopReason === "error")
       return { kind: "error", reason: message.errorMessage ?? "Model stopped: error" };
   }
-  return readSessionNotice(message);
+  return facts.readSessionNotice(message);
 }
 
 function replayMessages(
   messages: Session["messages"],
+  facts: ConversationFacts,
   t: ReturnType<typeof createTuiI18n>,
 ): CompletedEntry[] {
   const tools = new Map<string, ToolCall>();
@@ -419,7 +433,7 @@ function replayMessages(
     const text = messageText(message);
     if (message.role === "compactionSummary")
       return [{ type: "notice", text: t("notice.compaction", { tokens: message.tokensBefore }) }];
-    const outcome = messageNotice(message);
+    const outcome = messageNotice(message, facts);
     if (message.role === "session-notice")
       return outcome ? [{ type: "session-notice", notice: outcome }] : [];
     if (message.role === "user")
@@ -443,7 +457,7 @@ function replayMessages(
               {
                 type: "thinking" as const,
                 text: reasoning,
-                durationMs: assistantThinkingDuration(message),
+                durationMs: facts.assistantThinkingDuration(message),
               },
             ]
           : []),
@@ -509,6 +523,7 @@ function reduceEvent(
   event: SessionEvent,
   now: number,
   t: ReturnType<typeof createTuiI18n>,
+  facts: ConversationFacts,
   recovery?: SessionRecovery,
 ): ViewState {
   switch (event.type) {
@@ -593,7 +608,7 @@ function reduceEvent(
         ...state,
         assistant: messageText(event.message),
         reasoning: messageThinking(event.message),
-        reasoningDurationMs: assistantThinkingDuration(event.message),
+        reasoningDurationMs: facts.assistantThinkingDuration(event.message),
         reasoningSettled:
           state.reasoningSettled ||
           !!messageText(event.message) ||
@@ -622,7 +637,7 @@ function reduceEvent(
         : state;
     case "message_end": {
       const text = messageText(event.message);
-      const outcome = messageNotice(event.message);
+      const outcome = messageNotice(event.message, facts);
       if (event.message.role === "session-notice") {
         if (!outcome) return state;
         const last = state.completed.at(-1);
@@ -666,7 +681,7 @@ function reduceEvent(
                   type: "thinking" as const,
                   text: messageThinking(event.message),
                   thinkingOpen: true,
-                  durationMs: assistantThinkingDuration(event.message),
+                  durationMs: facts.assistantThinkingDuration(event.message),
                   anchorId: `${state.assistantAnchor}-thinking`,
                 },
               ]
@@ -763,7 +778,7 @@ function reduceEvent(
             ...state,
             completed: [
               ...state.completed,
-              { type: "session-notice", notice: sessionNoticeFromHook(event) },
+              { type: "session-notice", notice: facts.sessionNoticeFromHook(event) },
             ],
           }
         : state;
@@ -813,7 +828,12 @@ function reduceEvent(
   }
 }
 
-function createViewState(session: Session, model: string, locale: Locale): ViewState {
+function createViewState(
+  session: Session,
+  model: string,
+  locale: Locale,
+  facts: ConversationFacts,
+): ViewState {
   const t = createTuiI18n(locale);
   return {
     jobs: Object.fromEntries(session.jobs().map((job) => [job.id, readJobRow(session, job)])),
@@ -823,7 +843,7 @@ function createViewState(session: Session, model: string, locale: Locale): ViewS
     waitingSubagents: 0,
     subagents: restoreSubagents(session.toolState("subagents"), session.recovery),
     todos: (session.toolState("todo") as TodoItem[] | undefined) ?? [],
-    completed: replayMessages(session.messages, t).map((entry) => ({
+    completed: replayMessages(session.messages, facts, t).map((entry) => ({
       ...entry,
       anchorId: crypto.randomUUID(),
     })),
@@ -847,9 +867,14 @@ function createViewState(session: Session, model: string, locale: Locale): ViewS
 }
 
 /** Own the active Run outside React so back-to-back input events cannot submit twice. */
-export function createConversation(session: Session, model: string, locale: Locale = "zh") {
+export function createConversation(
+  session: Session,
+  model: string,
+  facts: ConversationFacts,
+  locale: Locale = "zh",
+) {
   const t = createTuiI18n(locale);
-  let state = createViewState(session, model, locale);
+  let state = createViewState(session, model, locale, facts);
   const listeners = new Set<() => void>();
   let compacting = false;
   let active: { controller: AbortController; promise: Promise<unknown> } | undefined;
@@ -1014,7 +1039,7 @@ export function createConversation(session: Session, model: string, locale: Loca
     }
     if (event.type === "conversation_rewound" || event.type === "conversation_reconciled") {
       childReconciliations.clear();
-      const restored = createViewState(session, state.model, locale);
+      const restored = createViewState(session, state.model, locale, facts);
       update({
         ...restored,
         jobs: state.jobs,
@@ -1035,6 +1060,7 @@ export function createConversation(session: Session, model: string, locale: Loca
           event,
           now,
           t,
+          facts,
           event.type === "tool_state_changed" && event.name === "subagents"
             ? session.recovery
             : undefined,
@@ -1072,6 +1098,7 @@ export function createConversation(session: Session, model: string, locale: Loca
       ...state,
       completed: replayMessages(
         session.messages.filter((message) => !emittedMessages.has(JSON.stringify(message))),
+        facts,
         t,
       ),
     };

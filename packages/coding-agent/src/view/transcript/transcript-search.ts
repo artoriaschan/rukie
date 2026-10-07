@@ -1,7 +1,7 @@
-import { completedEntryVisible } from "./completed-visibility";
+import { completedEntryVisible } from "../conversation/completed-visibility";
 import type { Locale } from "@neant/i18n";
-import { createTuiI18n } from "../../../view/i18n";
-import type { createConversation } from "./conversation";
+import { createTuiI18n } from "../i18n";
+import type { createConversation } from "../conversation/conversation";
 import {
   toolCardTitle,
   toolCardBody,
@@ -9,12 +9,11 @@ import {
   toolCardNotices,
   toolCardDiff,
   type ToolCardSource,
-} from "../../components/tool-call/presentation";
-import { unifiedDiffLines } from "../../components/tool-call/diff-lines";
-import { alignSplitDiff } from "../../../ink/index.ts";
-import { markdownText, markdownProjection } from "../../../ink/index.ts";
-import { contextText } from "../../components/context-report/context-visualization";
-import { jobCardRows } from "../../components/job-card/job-card";
+} from "./tool-presentation";
+import { unifiedDiffLines } from "./diff-lines";
+import { markdownText, markdownProjection } from "./markdown";
+import { contextText } from "./context";
+import { jobCardRows } from "./job-card";
 import type { Settings } from "@neant/shared";
 
 export interface TranscriptMatch {
@@ -33,6 +32,9 @@ export function transcriptMatches(
   columns: number,
   layout: Settings["diffLayout"],
   locale: Locale,
+  alignSplitDiff: (
+    lines: readonly import("./diff-lines").DiffLine[],
+  ) => ({ text: string } | { old?: { text: string }[]; new?: { text: string }[] })[],
 ): TranscriptMatch[] {
   const matches: TranscriptMatch[] = [];
   if (!query) return matches;

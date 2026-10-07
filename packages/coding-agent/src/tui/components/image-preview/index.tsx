@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState, useEffect } from "react";
+import type { PresentedImage } from "../../../view/transcript/images";
+import { useRef, useState, useEffect } from "react";
 import type { PromptImage } from "@neant/agent";
 import type { Locale } from "@neant/i18n";
 import {
@@ -10,7 +11,7 @@ import {
   useTheme,
 } from "../../../ink/index.ts";
 import { createTuiI18n, formatError } from "../../../view/i18n";
-import { imageMetadata, imageName } from "../image-gallery";
+import { imageName } from "../image-gallery";
 
 /** Card lives only in the message viewport; controls never execute Session actions. */
 export function ImagePreview({
@@ -25,7 +26,7 @@ export function ImagePreview({
   onStep,
   onOriginal,
 }: {
-  image: PromptImage;
+  image: PresentedImage;
   index: number;
   total: number;
   width: number;
@@ -39,7 +40,7 @@ export function ImagePreview({
   const t = createTuiI18n(locale);
   const theme = useTheme();
   const graphics = useTerminalGraphics();
-  const metadata = useMemo(() => imageMetadata(image), [image]);
+  const metadata = image.metadata;
   const [zoom, setZoom] = useState(0);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [original, setOriginal] = useState<string>();

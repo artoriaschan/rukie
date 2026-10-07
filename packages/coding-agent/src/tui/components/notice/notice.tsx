@@ -1,6 +1,7 @@
 import { Box, Divider, ThemedText } from "../../../ink/index.ts";
 
-export type NoticeKind = "info" | "error" | "success" | "warning" | "dim";
+import type { NoticeKind } from "../../../view/conversation/conversation";
+export type { NoticeKind } from "../../../view/conversation/conversation";
 
 export function Notice({
   kind,

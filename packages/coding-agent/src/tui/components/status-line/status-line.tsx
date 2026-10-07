@@ -20,12 +20,10 @@ import {
   segments as contextSegments,
   sparkline,
   speedColor,
-} from "./metrics";
+} from "../../../view/transcript/metrics";
 
-export interface TpsSample {
-  at: number;
-  value: number;
-}
+import type { TpsSample } from "../../../view/transcript/metrics";
+export type { TpsSample } from "../../../view/transcript/metrics";
 export interface StatusLineProps {
   locale?: Locale;
   columns: number;

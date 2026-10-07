@@ -21,12 +21,12 @@ flowchart TD
   Renderer --> React[React reconciler]
 ```
 
-| 包                    | 在运行组合中的责任                                                             |
-| --------------------- | ------------------------------------------------------------------------------ |
-| `@neant/coding-agent` | `headless/` 驱动非交互 Run 与 Goal，`tui/` 管理交互与呈现，`ink/` 负责终端渲染 |
-| `@neant/agent`        | 执行 frontend 无关的 Session 行为，协调模型、工具、Transcript 与 Run 资源      |
-| `@neant/shared`       | 提供运行时无关的公共类型、schema 与纯函数                                      |
-| `@neant/i18n`         | 提供运行时无关的通用文案与 locale 能力，只依赖 shared                          |
+| 包                    | 在运行组合中的责任                                                                                             |
+| --------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `@neant/coding-agent` | `headless/` 驱动非交互 Run 与 Goal，`tui/` 管理交互与呈现，`view/` 负责终端无关的呈现投影，`ink/` 负责终端渲染 |
+| `@neant/agent`        | 执行 frontend 无关的 Session 行为，协调模型、工具、Transcript 与 Run 资源                                      |
+| `@neant/shared`       | 提供运行时无关的公共类型、schema 与纯函数                                                                      |
+| `@neant/i18n`         | 提供运行时无关的通用文案与 locale 能力，只依赖 shared                                                          |
 
 公共内部包直接导出 TypeScript 源码，跨包消费者通过工作区包名导入；coding-agent 包内使用相对路径，TUI 只经 `ink/index.ts` 使用终端能力。具体依赖与脚本由各包 `package.json` 定义；技术版本由 [tech-stack.md](tech-stack.md) 维护。
 
@@ -147,7 +147,9 @@ Session Resume 通过只读观察核对子 Run 与父子归属，不自动恢复
 
 ## TUI 与本地化
 
-TUI 按四层组织，导入只向下：screens（`packages/coding-agent/src/tui/screens/`）连接 Session 并拥有应用状态；app components（`packages/coding-agent/src/tui/components/<area>/`）只接收 props，按 UI 区域分目录，各区域经 `index.ts` 暴露并汇总到 `components/index.ts`；design system（`packages/coding-agent/src/ink/design-system/`）提供主题及主题感知部件；renderer primitives（`packages/coding-agent/src/ink/primitives/`）提供终端原语。后两层不依赖 Agent Core；可复用的终端 UI 按语义放入 `ink/`，Neant 专用适配留在应用内。Slash Command 由 frontend 解析，未匹配输入交回 Agent Core；命令语法不进入 Session 的领域接口。
+coding-agent 的 screens（`src/tui/screens/`）连接 Session、提供 Interaction 回调并读取图片 metadata；components（`src/tui/components/<area>/`）接收 props，对 Agent Core 只导入类型。终端无关的对话状态、活动、Slash Command、Transcript 搜索、Markdown 文本投影、工具与任务呈现位于 `src/view/`，供 Frontend 使用；view 对 Agent Core 只导入类型，不依赖 React、终端层或 Node API。持久化 Session Notice 与思考时长仍由 Agent Core 的同一组 decoder 读取，screen 将这些 helper 传给 conversation。
+
+终端 UI 通过 `src/ink/index.ts` 使用 design system（`src/ink/design-system/`）和 renderer primitives（`src/ink/primitives/`）；ink 不依赖 Agent Core、本地化或上层目录。Markdown 的 React 部件由 TUI components 拥有，解析与源行投影由 view 拥有。Oxlint 强制这些依赖方向，Headless 不导入 TUI、ink 或 React。各 UI 区域经 `index.ts` 暴露并汇总到 `components/index.ts`。Slash Command 由 frontend 解析，未匹配输入交回 Agent Core；命令语法不进入 Session 的领域接口。
 
 终端管线是 React reconciler → 纯 TypeScript Yoga 布局 → cell 网格 → 帧差分 → ANSI。只有 layout 使用 vendored Yoga；渲染器支持注入 stdin/stdout，并负责 Kitty PNG 图形能力协商、图片 placement、视口裁剪及资源清理。通用终端 API、绘制、输入与清理语义由 [renderer README](../packages/coding-agent/src/ink/README.md)维护，来源与复用决定见 [ADR-0005](adr/0005-own-tui-renderer.md)。
 

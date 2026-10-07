@@ -2,7 +2,7 @@ import { join } from "node:path";
 
 const localizedFiles = new Set([
   "packages/coding-agent/src/view/i18n/locales.ts",
-  "packages/coding-agent/src/tui/screens/chat/activity/phrases.ts",
+  "packages/coding-agent/src/view/conversation/activity/phrases.ts",
 ]);
 
 export async function assertNoHardcodedHan(root: string): Promise<void> {

@@ -1,6 +1,6 @@
 import { common, createI18n, type Locale } from "@neant/i18n";
 import type { UserVisibleErrorData } from "@neant/shared";
-import { appCopy } from "../../view/i18n/locales";
+import { appCopy } from "./locales";
 
 /** Each frontend instance owns its fixed startup locale. */
 export function createTuiI18n(

@@ -1,5 +1,5 @@
 import { Box, ThemedBox, ThemedText, figures } from "../../../ink/index.ts";
-import type { PromptImage } from "@neant/agent";
+import type { PresentedImage } from "../../../view/transcript/images";
 import type { Locale } from "@neant/i18n";
 import { ImageGallery } from "../image-gallery";
 import { createTuiI18n } from "../../../view/i18n";
@@ -14,7 +14,7 @@ export function UserMessage({
 }: {
   text: string;
   source?: string;
-  images?: PromptImage[];
+  images?: PresentedImage[];
   onImageOpen?(index: number): void;
   imagesSuspended?: boolean;
   locale?: Locale;

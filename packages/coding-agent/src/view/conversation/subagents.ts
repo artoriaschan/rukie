@@ -1,6 +1,51 @@
+import type { ToolCallView, ToolResultView } from "@neant/shared";
+export interface SubagentOutput {
+  type: "user" | "text" | "thinking" | "tool";
+  text: string;
+  toolId?: string;
+}
+export interface SubagentView {
+  agentId: string;
+  childSessionId: string;
+  description: string;
+  subagentType: string;
+  status: "idle" | "running" | "completed" | "failed" | "aborted";
+  runOutcome?:
+    | "completed"
+    | "aborted"
+    | "error"
+    | "length"
+    | "hook_stopped"
+    | "hook_blocked"
+    | "interrupted"
+    | "unknown";
+  runReason?: string;
+  model?: string;
+  startedAt?: number;
+  completedAt?: number;
+  durationMs?: number;
+  tokens?: number;
+  toolCalls: readonly {
+    id: string;
+    name: string;
+    argsPreview: string;
+    view?: ToolCallView;
+    args?: unknown;
+    resultView?: ToolResultView;
+    result?: string;
+    endedAt?: number;
+    status: "running" | "completed" | "failed" | "unknown";
+    startedAt?: number;
+    durationMs?: number;
+    resultPreview?: string;
+    error?: string;
+  }[];
+  outputLines: readonly string[];
+  error?: string;
+}
+
 import type { Session, SessionEvent, SessionRecovery, SubagentIdentity } from "@neant/agent";
 import { isUnknownToolOutcome } from "@neant/shared";
-import type { SubagentView, SubagentOutput } from "../../components/subagent-message";
 
 export interface SubagentState extends SubagentView {
   output: readonly { type: "user" | "text" | "thinking" | "tool"; text: string; toolId?: string }[];

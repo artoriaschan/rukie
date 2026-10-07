@@ -1,7 +1,7 @@
 import type { Session } from "@neant/agent";
 import type { McpSnapshot } from "@neant/shared";
 import { formatError, type createTuiI18n } from "../../../view/i18n";
-import type { createConversation } from "./conversation";
+import type { createConversation } from "../../../view/conversation/conversation";
 
 /** Own the cached public MCP snapshot for one mounted Session. */
 export function createMcpCommands(

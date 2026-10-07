@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { assertNoHardcodedHan } from "../helpers/hardcoded-han";
+import { assertNoHardcodedHan } from "../../tui/helpers/hardcoded-han";
 
 const fixtures: string[] = [];
 
@@ -46,7 +46,7 @@ test("hardcoded Han in TUI and Agent Core fails with every file and one-based li
 test("only the exact TUI dictionary and activity phrase pool may contain Han", async () => {
   const root = await sourceTree({
     "packages/coding-agent/src/view/i18n/locales.ts": 'export const zh = { ready: "准备好了" };\n',
-    "packages/coding-agent/src/tui/screens/chat/activity/phrases.ts":
+    "packages/coding-agent/src/view/conversation/activity/phrases.ts":
       'export const phrases = ["在想了"];\n',
     "packages/coding-agent/tests/tui/example.test.ts": 'const fixture = "测试";\n',
     "packages/agent/tests/example.test.ts": 'const fixture = "测试";\n',
@@ -57,7 +57,7 @@ test("only the exact TUI dictionary and activity phrase pool may contain Han", a
 test("new files beside dictionaries and phrase pools cannot bypass the scan", async () => {
   const root = await sourceTree({
     "packages/coding-agent/src/view/i18n/extra.ts": 'export const label = "中文";\n',
-    "packages/coding-agent/src/tui/screens/chat/activity/extra.ts":
+    "packages/coding-agent/src/view/conversation/activity/extra.ts":
       'export const label = "中文";\n',
     "packages/coding-agent/src/tui/components/phrases.ts": 'export const label = "中文";\n',
     "packages/agent/src/i18n/locales.ts": 'export const label = "中文";\n',
@@ -66,7 +66,7 @@ test("new files beside dictionaries and phrase pools cannot bypass the scan", as
   await expect(assertNoHardcodedHan(root)).rejects.toThrow(
     "Hardcoded Han found (including comments):\n" +
       "packages/coding-agent/src/tui/components/phrases.ts:1\n" +
-      "packages/coding-agent/src/tui/screens/chat/activity/extra.ts:1\n" +
+      "packages/coding-agent/src/view/conversation/activity/extra.ts:1\n" +
       "packages/coding-agent/src/view/i18n/extra.ts:1\n" +
       "packages/agent/src/i18n/locales.ts:1\n" +
       "packages/coding-agent/src/ink/.copy.json:1",

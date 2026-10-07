@@ -1,7 +1,11 @@
 import { expect, test } from "bun:test";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import type { SessionEvent } from "@neant/agent";
-import { createActivity, reduce, render } from "../../../../src/tui/screens/chat/activity/activity";
+import {
+  createActivity,
+  reduce,
+  render,
+} from "../../../../src/view/conversation/activity/activity";
 import {
   APPROVAL_PHRASES,
   COMPACT_PHRASES,
@@ -14,7 +18,7 @@ import {
   THINKING_PHRASES,
   THINKING_TIERS,
   WEEKEND_PHRASES,
-} from "../../../../src/tui/screens/chat/activity/phrases";
+} from "../../../../src/view/conversation/activity/phrases";
 
 const sessionId = "activity-test";
 const start = 1_790_942_400_000;

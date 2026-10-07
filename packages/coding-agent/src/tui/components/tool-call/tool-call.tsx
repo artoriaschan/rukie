@@ -4,17 +4,17 @@ import {
   toolCardName,
   toolCardNotices,
   toolCardDiff,
-} from "./presentation";
+} from "../../../view/transcript/tool-presentation";
 import { useSmoothReveal } from "../../../ink/index.ts";
 import { useDiffLayout } from "./diff-layout";
 import { Markdown } from "../markdown";
 import { toolLinePreview, previewSyntax } from "./line-preview";
-import { unifiedDiffLines } from "./diff-lines";
+import { unifiedDiffLines } from "../../../view/transcript/diff-lines";
 import { useToolWindowNavigation, type WindowMove } from "./window-navigation";
 import type { ToolCallView, ToolResultView } from "@neant/shared";
 import { fmtDuration } from "@neant/i18n";
 import { useId, useState, useMemo, useLayoutEffect, useRef } from "react";
-import type { PromptImage } from "@neant/agent";
+import type { PresentedImage } from "../../../view/transcript/images";
 import { ImageGallery } from "../image-gallery";
 import type { Locale } from "@neant/i18n";
 import { createTuiI18n } from "../../../view/i18n";
@@ -75,7 +75,7 @@ export function ToolCall({
   status: StatusIconProps["status"];
   outcomeUnknown?: boolean;
   result?: string;
-  images?: PromptImage[];
+  images?: PresentedImage[];
   onImageOpen?(index: number): void;
   imagesSuspended?: boolean;
   error?: string;
@@ -203,7 +203,10 @@ export function ToolCall({
     isError: status === "error",
     isRunning: status === "running",
   });
-  const diffLines = useMemo(() => (diffView ? unifiedDiffLines(diffView) : undefined), [diffView]);
+  const diffLines = useMemo(
+    () => (diffView ? unifiedDiffLines(diffView, highlightSyntax) : undefined),
+    [diffView],
+  );
   const splitRows = useMemo(
     () =>
       diffLines && (diffLayout === "split" || (diffLayout === "auto" && columns >= 110))

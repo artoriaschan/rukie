@@ -1,4 +1,3 @@
-import type { ToolCallView, ToolResultView } from "@neant/shared";
 // Presentation adapted from dsh-TUI src/components/Chat/SubagentMessage.tsx (MIT).
 // https://github.com/ccch1mneyyy/dsh-TUI
 /*
@@ -35,7 +34,11 @@ import {
   toolKindColor,
 } from "../../../ink/index.ts";
 import { createTuiI18n } from "../../../view/i18n";
-import { subagentStatusKey, subagentElapsed, subagentAppearance } from "./presentation";
+import {
+  subagentStatusKey,
+  subagentElapsed,
+  subagentAppearance,
+} from "../../../view/transcript/subagent-presentation";
 
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 function singleLine(text: string) {
@@ -59,50 +62,8 @@ function clip(text: string, width: number) {
   return width > 0 ? result + "…" : "";
 }
 
-export interface SubagentOutput {
-  type: "user" | "text" | "thinking" | "tool";
-  text: string;
-  toolId?: string;
-}
-export interface SubagentView {
-  agentId: string;
-  childSessionId: string;
-  description: string;
-  subagentType: string;
-  status: "idle" | "running" | "completed" | "failed" | "aborted";
-  runOutcome?:
-    | "completed"
-    | "aborted"
-    | "error"
-    | "length"
-    | "hook_stopped"
-    | "hook_blocked"
-    | "interrupted"
-    | "unknown";
-  runReason?: string;
-  model?: string;
-  startedAt?: number;
-  completedAt?: number;
-  durationMs?: number;
-  tokens?: number;
-  toolCalls: readonly {
-    id: string;
-    name: string;
-    argsPreview: string;
-    view?: ToolCallView;
-    args?: unknown;
-    resultView?: ToolResultView;
-    result?: string;
-    endedAt?: number;
-    status: "running" | "completed" | "failed" | "unknown";
-    startedAt?: number;
-    durationMs?: number;
-    resultPreview?: string;
-    error?: string;
-  }[];
-  outputLines: readonly string[];
-  error?: string;
-}
+import type { SubagentView } from "../../../view/conversation/subagents";
+export type { SubagentOutput, SubagentView } from "../../../view/conversation/subagents";
 
 export function SubagentMessage({
   subagent,

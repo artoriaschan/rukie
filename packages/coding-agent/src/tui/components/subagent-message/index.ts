@@ -4,4 +4,4 @@ export {
   subagentStatusKey,
   subagentElapsed,
   subagentAppearance,
-} from "./presentation";
+} from "../../../view/transcript/subagent-presentation";
