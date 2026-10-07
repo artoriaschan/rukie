@@ -24,7 +24,7 @@ test("conversation retains the latest 500 observed TPS samples and wires an actu
   let conversation: ReturnType<typeof createConversation> | undefined;
   const stream: Provider["streamSimple"] = (...args) => {
     const before = fake.calls.length;
-    const stream = fake.models.streamSimple(...args);
+    const stream = fake.provider.streamSimple(...args);
     if (fake.calls.length > before) {
       const call = fake.calls.at(-1)!;
       call.thinking("x");
