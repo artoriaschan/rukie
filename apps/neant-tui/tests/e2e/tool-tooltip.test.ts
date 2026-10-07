@@ -228,7 +228,14 @@ test("collapsed terminal titles disclose clipped UTF-16 characters and expansion
     expect(app.screen().join("\n")).not.toContain("TAIL");
     expect(app.screen().join("\n")).not.toContain("�");
     app.stdin.write("\x0f");
-    await app.waitFor(() => app.screen().join("\n").includes("😀TAIL"));
+    // The fixed metadata slots may wrap the emoji and suffix onto separate rows.
+    await app.waitFor(() =>
+      app
+        .screen()
+        .map((line) => line.trim())
+        .join("")
+        .includes("😀TAIL"),
+    );
     expect(app.screen().join("\n")).not.toContain("+6 characters");
   } finally {
     await app.cleanup();

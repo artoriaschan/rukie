@@ -167,3 +167,9 @@ env -u NO_COLOR LANG=en_US.UTF-8 bun "$TASK_REPO/apps/neant-tui/src/main.tsx" --
 会话列表中的相邻消息卡片之间增加一行空白；已完成历史、实时思考、正文与工具使用同一个带间距的纵向容器，卡片内部布局保留。`message-spacing.test.ts` 验证实时、完成与 40 列 resize 后的间隔；恢复快照按新行距更新，历史内容检查先滚动到对应视口，必要的完整内容测试分配足够窗口高度。
 
 验证：最初 TUI 检查暴露 6 项旧行号或视口容量断言，首次完整检查另暴露 1 项两轮对话的窗口容量断言，均经针对性复现与修正；启动与恢复的 50 项测试通过。最终 `env -u NO_COLOR bun run check` 通过：2733 pass / 0 fail，15373 assertions，221 files，107.75s。
+
+## 2026-10-07 长标题耗时布局
+
+工具标题按可见宽度为状态标记、耗时与折叠箭头预留固定列；非悬停时箭头槽位保留空白，标题使用剩余宽度，路径点击范围避开耗时和箭头。长 read 路径与 bash 命令的 80/40 列回归覆盖悬停进入、离开及 resize，核对耗时始终可见且列位置稳定。超长 emoji 后缀允许自然换行，验证展开后内容完整。
+
+验证：`tool-header-layout`、`tool-tooltip`、`tool-expansion` 与 `text-selection` 共 25 pass / 0 fail，123 assertions，3.68s；`bun run check:dev` 通过。按用户本次要求未运行全量测试。

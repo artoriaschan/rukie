@@ -174,7 +174,7 @@ export function ToolCall({
           0,
           Math.min(
             Bun.stringWidth(path),
-            columns - pathLeft - Bun.stringWidth(duration) - (hovered ? 2 : 0),
+            columns - pathLeft - Bun.stringWidth(duration) - 2,
             480 - (pathOffset - titleStart),
           ),
         )
@@ -188,6 +188,8 @@ export function ToolCall({
   const header = displayName
     ? `${displayName}${parenthesized ? "(" : " "}${clippedTitle}${parenthesized ? ")" : ""}${titleHint}`
     : summary;
+  const headerWidth = hitWidth(`• ${header}${duration} ▾`);
+  const titleWidth = Math.max(0, headerWidth - 4 - Bun.stringWidth(duration));
   const fullHeader = displayName
     ? `${displayName}${parenthesized ? "(" : " "}${title}${parenthesized ? ")" : ""}`
     : summary;
@@ -310,10 +312,10 @@ export function ToolCall({
         scrollAnchorId={id ? `tool-${id}-header` : undefined}
         content={titleHidden ? `${fullHeader}\n${metadata}` : undefined}
         disabled={imagesSuspended}
-        width={hitWidth(`• ${header}${duration}${hovered ? " ▾" : ""}`)}
+        width={headerWidth}
         onClick={toggle}
       >
-        <ThemedBox flexGrow={1}>
+        <ThemedBox width={headerWidth}>
           <ThemedBox selectable={false} width={2} flexShrink={0}>
             <ThemedText
               preserveWhitespace
@@ -332,7 +334,7 @@ export function ToolCall({
                     : "•"}{" "}
             </ThemedText>
           </ThemedBox>
-          <ThemedBox flexGrow={1} flexShrink={1}>
+          <ThemedBox width={titleWidth} flexShrink={1}>
             <ThemedText wrap={titleView?.card === "terminal" ? "wrap" : "truncate"}>
               <ThemedText bold color={color}>
                 {displayName ?? header}
@@ -366,13 +368,11 @@ export function ToolCall({
               </ThemedText>
             </ThemedBox>
           )}
-          {hovered && (
-            <ThemedBox selectable={false} width={2} flexShrink={0}>
-              <ThemedText preserveWhitespace dimColor>
-                {expanded ? " ▴" : " ▾"}
-              </ThemedText>
-            </ThemedBox>
-          )}
+          <ThemedBox selectable={false} width={2} flexShrink={0}>
+            <ThemedText preserveWhitespace dimColor>
+              {hovered ? (expanded ? " ▴" : " ▾") : "  "}
+            </ThemedText>
+          </ThemedBox>
         </ThemedBox>
         {onPathClick && path && pathWidth > 0 && (
           <ThemedBox
