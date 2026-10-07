@@ -1,63 +1,123 @@
-import { BACKGROUND_CONTEXT as context } from "@earendil-works/pi-agent-core/harness/context";
-import { createJsonlStore, type SubagentRun, type SubagentIdentity } from "../../src/index.ts";
+import {
+  awaitWithContext,
+  BACKGROUND_CONTEXT,
+  withAbortSignal,
+} from "@earendil-works/chord/context";
+import { fauxAssistantMessage, fauxToolCall, getCurrentSystemMessage } from "@earendil-works/pi-ai";
+import {
+  createSession,
+  createJsonlStore,
+  type SubagentRun,
+  type SubagentIdentity,
+} from "../../src/index.ts";
+import { fakeModel } from "./fake-model.ts";
 
-/** Legal durable records at a crash window, independent of Session disposal. */
+/** Real native driver checkpoints; close suspends them without inventing child records. */
 export async function crashedSubagents(dirs: { cwd: string; homeDir: string }) {
-  const store = createJsonlStore(dirs);
-  const parent = await store.create({ cwd: dirs.cwd }, context);
-  const branch = await parent.createBranch("main", null, context);
-  const identities: SubagentIdentity[] = [];
-  return {
-    store,
-    parentId: parent.metadata.id,
-    async child(description: string, outcome?: SubagentRun["outcome"]) {
-      const child = await store.create(
-        { cwd: dirs.cwd, parentSessionId: parent.metadata.id },
-        context,
-      );
-      const childBranch = await child.createBranch("main", null, context);
-      const run: SubagentRun = {
-        id: crypto.randomUUID(),
-        sessionId: child.metadata.id,
-        parentSessionId: parent.metadata.id,
-        startedAt: 10,
-      };
-      await childBranch.appendCustomEntry(
-        "tool-state/subagent-run",
-        { version: 1, value: run },
-        context,
-      );
-      if (outcome)
-        await childBranch.appendCustomEntry(
-          "tool-state/subagent-run",
-          {
-            version: 1,
-            value: {
-              ...run,
-              endedAt: 20,
-              outcome,
-              ...(outcome === "error" && { error: "durable failure" }),
-            },
-          },
-          context,
+  const plans = new Map<
+    string,
+    {
+      outcome?: SubagentRun["outcome"];
+      entered: ReturnType<typeof Promise.withResolvers<void>>;
+      release: ReturnType<typeof Promise.withResolvers<void>>;
+    }
+  >();
+  const spawned = new Set<string>();
+  const response: Parameters<typeof fakeModel>[0][number] = async (context, options) => {
+    const isParent = getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
+      (tool) => tool.name === "subagent",
+    );
+    const last = context.messages.findLast((message) => message.role === "user");
+    const text =
+      last?.role === "user"
+        ? typeof last.content === "string"
+          ? last.content
+          : last.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("")
+        : "";
+    if (isParent) {
+      if (text.startsWith("fixture:") && !spawned.has(text)) {
+        spawned.add(text);
+        const description = text.slice(8);
+        return fauxAssistantMessage(
+          fauxToolCall("subagent", {
+            description,
+            prompt: `child:${description}`,
+            run_in_background: plans.get(description)?.outcome === undefined,
+          }),
+          { stopReason: "toolUse" },
         );
-      identities.push({
-        id: child.metadata.id,
-        description,
-        type: "general-purpose",
-        latestRun: run,
-      });
-      await child.close(context);
-      return { metadata: child.metadata, run };
-    },
-    async save() {
-      await branch.appendCustomEntry(
-        "tool-state/subagents",
-        { version: 2, value: identities },
-        context,
+      }
+      return fauxAssistantMessage("parent idle");
+    }
+    const plan = plans.get(text.slice(6));
+    if (!plan) throw new Error(`Unknown child fixture input: ${text}`);
+    plan.entered.resolve();
+    if (plan.outcome === undefined)
+      await awaitWithContext(
+        plan.release.promise,
+        options?.signal ? withAbortSignal(options.signal, BACKGROUND_CONTEXT) : BACKGROUND_CONTEXT,
       );
-      await parent.close(context);
-    },
-    identities,
+    return fauxAssistantMessage(
+      "saved child answer",
+      plan.outcome === "error"
+        ? { stopReason: "error", errorMessage: "durable failure" }
+        : plan.outcome === "aborted"
+          ? { stopReason: "aborted" }
+          : undefined,
+    );
   };
+  const fake = fakeModel(Array.from({ length: 200 }, () => response));
+  const parent = await createSession({ ...dirs, ...fake });
+  const requests: string[] = [];
+  return {
+    store: createJsonlStore(dirs),
+    parentId: parent.id,
+    get identities() {
+      return parent.toolState("subagents") as SubagentIdentity[];
+    },
+    async child(description: string, outcome?: SubagentRun["outcome"]) {
+      const plan = {
+        outcome,
+        entered: Promise.withResolvers<void>(),
+        release: Promise.withResolvers<void>(),
+      };
+      plans.set(description, plan);
+      await parent.run(`fixture:${description}`);
+      await plan.entered.promise;
+      const requestId = parent.currentRequestId;
+      if (!requestId) throw new Error("Fixture request identity missing.");
+      requests.push(requestId);
+      const row = (parent.toolState("subagents") as SubagentIdentity[]).find(
+        (row) => row.description === description,
+      );
+      if (!row?.latestRun) throw new Error("Fixture child identity missing.");
+      return { metadata: { id: row.id }, run: row.latestRun, requestId };
+    },
+    requests,
+    async save() {
+      await parent.close();
+      for (const plan of plans.values()) plan.release.resolve();
+    },
+  };
+}
+
+/** Preserve observation across the root receipt and the separately owned causal work. */
+export async function runRequest(
+  session: Awaited<ReturnType<typeof createSession>>,
+  prompt: string,
+  input: Parameters<Awaited<ReturnType<typeof createSession>>["run"]>[1] = {},
+) {
+  const off = input.onEvent
+    ? session.subscribe((event) => {
+        void input.onEvent!(event);
+      })
+    : () => {};
+  try {
+    await session.run(prompt, { ...input, onEvent: undefined });
+    const id = session.currentRequestId;
+    if (!id) throw new Error("Native request identity missing.");
+    return await session.waitForRequest(id);
+  } finally {
+    off();
+  }
 }
