@@ -2,7 +2,7 @@ import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
 import { start } from "../helpers/app";
 
-test("a delegated Subagent renders its running card under the initiating tool", async () => {
+test("a delegated Subagent renders only its dedicated running row", async () => {
   const app = await start(["--permission-mode", "full-access", "--thinking", "high", "delegate"], {
     columns: 160,
     rows: 40,
@@ -31,7 +31,7 @@ test("a delegated Subagent renders its running card under the initiating tool", 
     const rows = app.screen();
     const card = rows.findIndex((line) => line.includes("子代理：Investigate renderer"));
     expect(rows[card]).toMatch(/faux\/faux-1.*high.*0 tok.*0 tools.*运行中/);
-    expect(rows[card - 1]).toContain("started subagent");
+    expect(rows.join("\n")).not.toContain("started subagent");
     expect(rows.slice(card + 1, card + 5)).toEqual([
       "",
       "    │ first output",
@@ -254,7 +254,7 @@ test("the Subagent waterfall includes thinking and keeps it separate from stream
   }
 });
 
-test("an idle child's continuation card attaches only to its latest send_message tool", async () => {
+test("an idle child's continuation retains exactly one dedicated row", async () => {
   const app = await start(["--permission-mode", "full-access", "delegate"], {
     columns: 160,
     rows: 60,
@@ -293,7 +293,7 @@ test("an idle child's continuation card attaches only to its latest send_message
       .map((row, index) => (row.includes("子代理：Continue investigation") ? index : -1))
       .filter((index) => index >= 0);
     expect(cards).toHaveLength(1);
-    expect(rows[cards[0]! - 1]).toContain(`delivered to ${id}`);
+    expect(rows.join("\n")).not.toContain(`delivered to ${id}`);
     expect(rows[cards[0]!]).toContain("运行中");
   } finally {
     await app.cleanup();
@@ -356,9 +356,78 @@ test("parent resume initializes its persisted child card as idle before cold con
     child.delta("cold output");
     await app.waitFor(() => screen().includes("│ cold output"));
     const rows = app.screen();
-    const card = rows.findIndex((row) => row.includes("子代理：Stored child"));
     expect(rows.filter((row) => row.includes("子代理：Stored child"))).toHaveLength(1);
-    expect(rows[card - 1]).toContain(`delivered to ${id}`);
+    expect(rows.join("\n")).not.toContain(`delivered to ${id}`);
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("fork, agent listing and failed messaging use dedicated rows live and after resume", async () => {
+  const { createFauxCore, fauxAssistantMessage } = await import("@earendil-works/pi-ai");
+  const { createSession } = await import("@neant/agent");
+  const argv: string[] = ["--permission-mode", "full-access"];
+  let root = "";
+  const app = await start(argv, {
+    columns: 160,
+    rows: 50,
+    env: { LANG: "en_US.UTF-8" },
+    async prepare(directory) {
+      root = directory;
+      const faux = createFauxCore({ api: "faux", provider: "faux" });
+      faux.setResponses([fauxAssistantMessage("seed reply")]);
+      const session = await createSession({
+        cwd: root,
+        homeDir: root,
+        model: faux.getModel(),
+        streamFn: withAuxiliaryRequests(faux.streamSimple),
+      });
+      await session.run("seed prompt");
+      argv.push("--resume", session.id);
+      await session.dispose();
+    },
+  });
+  const assertRows = (view: typeof app) => {
+    const text = view.allLines().join("\n");
+    expect(text).toContain("Subagent: Forked reader");
+    expect(text).not.toContain("Fork subagent(");
+    expect(text).not.toContain("List agents(");
+    expect(text).not.toContain("Send message(");
+    expect(text).not.toContain("started subagent");
+    expect(text).toContain("not-found-child");
+  };
+  try {
+    await app.waitFor(() => app.screen().includes("❯"));
+    app.stdin.write("fork reader\r");
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("subagent_fork", {
+      description: "Forked reader",
+      prompt: "inspect fork",
+      run_in_background: false,
+    });
+    await app.waitFor(() => app.calls.length === 2);
+    app.calls[1]!.delta("fork conclusion");
+    app.calls[1]!.finish();
+    await app.waitFor(() => app.calls.length === 3);
+    app.calls[2]!.tool("list_agents", {});
+    await app.waitFor(() => app.calls.length === 4);
+    app.calls[3]!.tool("send_message", { agent_id: "not-found-child", message: "inspect more" });
+    await app.waitFor(() => app.calls.length === 5);
+    app.calls[4]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    assertRows(app);
+    const replay = await start(argv, {
+      columns: 160,
+      rows: 50,
+      env: { LANG: "en_US.UTF-8" },
+      session: { cwd: root, homeDir: root },
+    });
+    try {
+      await replay.waitFor(() => replay.screen().includes("❯"));
+      assertRows(replay);
+    } finally {
+      await replay.cleanup();
+    }
   } finally {
     await app.cleanup();
   }

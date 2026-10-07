@@ -91,7 +91,7 @@ test("message card opens detail; tabs, thinking fold, Markdown, tool rows and co
       () => screen().includes("── Conclusion ──") && screen().includes("Final answer"),
     );
     app.stdin.write("\x1b");
-    await app.waitFor(() => screen().includes("started subagent") && !screen().includes("id "));
+    await app.waitFor(() => screen().includes("Subagent: ") && !screen().includes("id "));
     expect(
       app.calls.find((call, index) => index > 0 && call !== child && call !== app.calls[3])!.signal!
         .aborted,
@@ -182,14 +182,12 @@ test("dashboard cards, tabs, interrupt and close buttons work with the mouse and
     click(app, "✕");
     await app.waitFor(() => screen().includes("─ Subagents "));
     click(app, "✕");
-    await app.waitFor(
-      () => screen().includes("started subagent") && !screen().includes("─ Subagents "),
-    );
+    await app.waitFor(() => screen().includes("Subagent: ") && !screen().includes("─ Subagents "));
     const before = app.screen().filter((line) => line.includes("started subagent"));
     click(app, "Subagent: Clickable");
     await app.waitFor(() => screen().includes("id "));
     app.stdin.write("\x03");
-    await app.waitFor(() => !screen().includes("id ") && screen().includes("started subagent"));
+    await app.waitFor(() => !screen().includes("id ") && screen().includes("Subagent: "));
     expect(app.screen().filter((line) => line.includes("started subagent"))).toEqual(before);
   } finally {
     await app.cleanup();
@@ -348,11 +346,11 @@ for (const failed of [false, true]) {
       await app.waitFor(() => screen().includes("id "));
       click(app, "Tools");
       await app.waitFor(
-        () => screen().includes("3/3") && screen().includes(failed ? "× read" : "✓ bash"),
+        () => screen().includes("3/3") && screen().includes(failed ? "✗ Read(" : "• Bash("),
       );
       expect(screen()).toContain(failed ? "ENOENT" : "⎿ tool-completed-output");
-      const row = app.screen().find((line) => line.includes(failed ? "× read" : "✓ bash"))!;
-      expect(row).toMatch(/(?:read|bash) \d+(?:\.\d+)?(?:ms|s|m\d+s)$/);
+      const row = app.screen().find((line) => line.includes(failed ? "✗ Read(" : "• Bash("))!;
+      expect(row).toMatch(/ · \d+(?:\.\d+)?(?:ms|s|m\d+s)$/);
     } finally {
       await app.cleanup();
     }

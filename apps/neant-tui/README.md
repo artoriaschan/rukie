@@ -63,3 +63,7 @@ Esc、Ctrl+C、Enter 或点击消息区域中卡片外的位置关闭预览，�
 工具参数 JSON 最多显示 480 个字符。多行前台命令默认显示首行和 `+N 行`；用户 `~/.neant/settings.json` 中的 `foldTerminalCommand: false` 保留所有命令行。该设置只控制标题，不改变执行内容或正文折叠。
 
 标题确有隐藏内容（参数裁剪、脚本折叠或终端宽度裁剪）时，悬停 600 ms 显示完整标题、开始 / 结束时刻，以及可用的退出码 / 信号；tooltip 不重复耗时。移开、按键、点击、滚轮、失焦、resize、打开交互或切换页面会清除 tooltip。小终端按可用空间换行与裁剪，浮层不会改变 Transcript 阅读位置。
+
+## 工具 diff 布局
+
+用户在 `~/.neant/settings.json` 设置 `diffLayout` 为 `auto`、`unified` 或 `split`。默认 `auto` 在终端宽度至少 110 列时使用左右分栏，窄于 110 列时使用 unified，resize 后即时切换。显式值固定布局，包括小终端上的 `split`；分栏长行截断，两栏保持逐行对齐。diff 默认折叠到 8 个呈现行，点击单卡或 Ctrl+O 展开；展开最多显示 400 行。设置由启动时加载，Session Resume 与子代理详情使用同一布局选择。

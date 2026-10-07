@@ -173,14 +173,13 @@ test("resume replays each tool's collapsed result and error preview without remi
     const lines = app.allLines();
     const restored = lines.indexOf("❯ stored tools");
     expect(restored).toBeGreaterThanOrEqual(0);
-    expect(lines.slice(restored, restored + 2)).toEqual([
+    expect(lines.slice(restored, restored + 3)).toEqual([
       "❯ stored tools",
+      "▾ 思考",
       `${assistant} before tools`,
     ]);
-    expect(lines.filter((line) => line.startsWith('• 读取({"path":"first.txt"})'))).toHaveLength(1);
-    expect(lines.filter((line) => line.startsWith('• 读取({"path":"second.txt"})'))).toHaveLength(
-      1,
-    );
+    expect(lines.filter((line) => line.startsWith("• 读取(first.txt)"))).toHaveLength(1);
+    expect(lines.filter((line) => line.startsWith("• 读取(second.txt)"))).toHaveLength(1);
     expect(lines.filter((line) => line.startsWith("✗ 执行("))).toHaveLength(1);
     expect(lines).toContain("⎿ first failure");
     expect(lines).toContain("⎿ hidden first output");

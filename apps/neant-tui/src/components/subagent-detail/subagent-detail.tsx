@@ -1,8 +1,9 @@
 import type { Ref } from "react";
 import type { Locale } from "@neant/i18n";
-import { Box, ScrollBox, ThemedText, toolKindColor, type ScrollHandle } from "@neant/tui";
+import { Box, ScrollBox, ThemedText, type ScrollHandle } from "@neant/tui";
 import { createTuiI18n } from "../../i18n";
 import { SUBAGENT_APPEARANCE, subagentStatusKey, type SubagentView } from "../subagent-message";
+import { ToolCall } from "../tool-call";
 import { Markdown } from "../markdown";
 import { ExitButton } from "../subagent-dashboard";
 
@@ -23,6 +24,8 @@ export function SubagentDetailScene({
   subagent,
   page,
   thinkingOpen,
+  expanded = false,
+  foldTerminalCommand = true,
   scrollRef,
   rows,
   locale,
@@ -33,6 +36,8 @@ export function SubagentDetailScene({
   subagent: SubagentDetailView;
   page: DetailPage;
   thinkingOpen: boolean;
+  expanded?: boolean;
+  foldTerminalCommand?: boolean;
   scrollRef: Ref<ScrollHandle>;
   rows: number;
   locale: Locale;
@@ -173,40 +178,29 @@ export function SubagentDetailScene({
         {page === "tools" &&
           (subagent.toolCalls.length ? (
             subagent.toolCalls.map((tool) => (
-              <Box key={tool.id} flexDirection="column" marginBottom={1}>
-                <ThemedText>
-                  <ThemedText
-                    color={
-                      tool.status === "failed"
-                        ? "error"
-                        : tool.status === "running"
-                          ? "warning"
-                          : "success"
-                    }
-                  >
-                    {tool.status === "running" ? "·" : tool.status === "completed" ? "✓" : "×"}{" "}
-                  </ThemedText>
-                  <ThemedText color={toolKindColor(tool.view?.kind)}>{tool.name}</ThemedText>
-                  {tool.durationMs !== undefined && (
-                    <ThemedText dimColor>{` ${formatDuration(tool.durationMs)}`}</ThemedText>
-                  )}
-                </ThemedText>
-                {tool.argsPreview && (
-                  <Box paddingLeft={2}>
-                    <ThemedText dimColor>{tool.argsPreview}</ThemedText>
-                  </Box>
-                )}
-                {tool.resultPreview && (
-                  <Box paddingLeft={2}>
-                    <ThemedText dimColor>{`⎿ ${tool.resultPreview}`}</ThemedText>
-                  </Box>
-                )}
-                {tool.error && (
-                  <Box paddingLeft={2}>
-                    <ThemedText color="error">{tool.error}</ThemedText>
-                  </Box>
-                )}
-              </Box>
+              <ToolCall
+                foldTerminalCommand={foldTerminalCommand}
+                key={tool.id}
+                id={tool.id}
+                name={tool.name}
+                args={tool.args}
+                summary={`${tool.name} ${tool.argsPreview}`}
+                callView={tool.view}
+                resultView={tool.resultView}
+                startedAt={tool.startedAt}
+                endedAt={tool.endedAt}
+                expanded={expanded}
+                status={
+                  tool.status === "running"
+                    ? "running"
+                    : tool.status === "failed"
+                      ? "error"
+                      : "success"
+                }
+                result={tool.result ?? tool.resultPreview}
+                error={tool.error}
+                locale={locale}
+              />
             ))
           ) : (
             <ThemedText dimColor>{t("subagent.no-tools")}</ThemedText>

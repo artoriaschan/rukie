@@ -1,3 +1,5 @@
+import { useDiffLayout } from "./diff-layout";
+import { Markdown } from "../markdown";
 import { unifiedDiffLines } from "./diff-lines";
 import type { ToolCallView, ToolResultView } from "@neant/shared";
 import { fmtDuration } from "@neant/i18n";
@@ -7,8 +9,9 @@ import type { PromptImage } from "@neant/agent";
 import { ImageGallery } from "../image-gallery";
 import type { Locale } from "@neant/i18n";
 import { createTuiI18n } from "../../i18n";
-import { Markdown } from "../markdown";
 import {
+  SplitDiffView,
+  alignSplitDiff,
   toolKindColor,
   Tooltip,
   SyntaxHighlightedText,
@@ -37,7 +40,6 @@ export function ToolCall({
   onImageOpen,
   imagesSuspended,
   error,
-  planReview,
   expanded: globalExpanded = false,
   onToggle,
   foldTerminalCommand = true,
@@ -63,13 +65,13 @@ export function ToolCall({
   imagesSuspended?: boolean;
   error?: string;
   locale?: Locale;
-  planReview?: { plan: string; kind: "approve" | "revise" | "takeover"; feedback?: string };
 }) {
   const [localExpanded, setExpanded] = useState(false);
   const expanded = globalExpanded || localExpanded;
   const toggle = onToggle ?? (() => setExpanded((value) => !value));
   const [hovered, setHovered] = useState(false);
   const { columns } = useTerminalSize();
+  const diffLayout = useDiffLayout();
   const hitWidth = (text: string) => Math.min(columns, Math.max(1, Bun.stringWidth(text)));
   const t = createTuiI18n(locale);
   const focused = useTerminalFocus();
@@ -111,21 +113,6 @@ export function ToolCall({
 
   const seconds = Math.max(0, Math.floor((Date.now() - (startedAt ?? Date.now())) / 1000));
   const terminal = resultView?.card === "terminal" ? resultView : undefined;
-  if (planReview)
-    return (
-      <ThemedBox flexDirection="column">
-        <ThemedBox onClick={() => setExpanded((value) => !value)}>
-          <ThemedText
-            color="plan"
-            wrap="truncate"
-          >{`${planReview.kind === "approve" ? (expanded ? "▾" : "▸") : "▾"} ${t(planReview.kind === "approve" ? "plan.review.approved" : planReview.kind === "revise" ? "plan.review.revised" : "plan.review.takeover")}${planReview.kind === "approve" ? ` · ${t(expanded ? "plan.review.collapse" : "plan.review.expand")}` : ""}`}</ThemedText>
-        </ThemedBox>
-        {(expanded || planReview.kind !== "approve") && <Markdown text={planReview.plan} />}
-        {planReview.kind === "revise" && (
-          <ThemedText>{`${t("plan.review.feedback")}: ${planReview.feedback ?? ""}`}</ThemedText>
-        )}
-      </ThemedBox>
-    );
   const body =
     resultView?.card === "read"
       ? resultView.content
@@ -146,7 +133,15 @@ export function ToolCall({
           : undefined
       : undefined;
   const diffLines = diffView ? unifiedDiffLines(diffView) : undefined;
-  const lines = diffLines?.map((line) => line.text) ?? output?.split(/\r?\n/) ?? [];
+  const splitRows =
+    diffLines && (diffLayout === "split" || (diffLayout === "auto" && columns >= 110))
+      ? alignSplitDiff(diffLines)
+      : undefined;
+  const lines =
+    splitRows?.map((row) => ("text" in row ? row.text : "")) ??
+    diffLines?.map((line) => line.text) ??
+    output?.split(/\r?\n/) ??
+    [];
   const highlightedLines =
     resultView?.card === "read" && status !== "error"
       ? highlightSyntax(resultView.content, { path: resultView.path })
@@ -237,7 +232,22 @@ export function ToolCall({
       </Tooltip>
       {(output || diffView || status === "running") && (
         <ThemedBox flexDirection="column" color={status === "error" ? "error" : "text"}>
-          {resultView?.card === "web" && status !== "error" ? (
+          {splitRows ? (
+            <ThemedBox>
+              <ThemedText preserveWhitespace>{`${figures.result} `}</ThemedText>
+              <SplitDiffView
+                rows={
+                  expanded
+                    ? splitRows.slice(0, 400)
+                    : folded
+                      ? splitRows.slice(0, limit)
+                      : splitRows
+                }
+                width={Math.max(0, columns - 3)}
+                onToggle={toggle}
+              />
+            </ThemedBox>
+          ) : resultView?.card === "web" && status !== "error" ? (
             <ThemedBox>
               <ThemedText>{`${figures.result} `}</ThemedText>
               <ThemedBox flexDirection="column" flexGrow={1}>
