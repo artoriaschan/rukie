@@ -1,5 +1,4 @@
 import { expect, spyOn, test } from "bun:test";
-import { inflateSync } from "node:zlib";
 import { useState, type ReactNode } from "react";
 import {
   AlternateScreen,
@@ -95,7 +94,7 @@ function uploads(output: string) {
     if (packet.fields.m === "0") {
       result.push({
         ...pending,
-        pixels: inflateSync(Buffer.from(pending.chunks.join(""), "base64")),
+        pixels: Buffer.from(pending.chunks.join(""), "base64"),
       });
       pending = undefined;
     }
@@ -148,7 +147,7 @@ test("RGBA placements share one upload and delete their resources on unmount", a
     const sent = uploads(terminal.output());
     expect(sent).toHaveLength(1);
     expect(sent[0]!.fields.f).toBe("32");
-    expect(sent[0]!.fields.o).toBe("z");
+    expect(sent[0]!.fields.o).toBeUndefined();
     expect(sent[0]!.pixels).toEqual(rgba.data);
     const first = placements(terminal)[0]!.fields;
     const second = placements(terminal)[1]!.fields;

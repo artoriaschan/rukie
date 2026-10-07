@@ -1,5 +1,4 @@
 import { createHash, randomInt } from 'node:crypto'
-import { deflateSync } from 'node:zlib'
 import type { DOMElement } from './dom.js'
 import {
   DEFAULT_TERMINAL_CELL_SIZE,
@@ -21,7 +20,7 @@ const IMAGE_Z_INDEX = -0x80000000
 /**
  * Retention for uploaded images that no node places this frame. Leaving the
  * viewport deletes only the placement (`d=i`), so scrolling back re-places
- * the terminal-side data with one `a=p` instead of re-fitting, re-compressing
+ * the terminal-side data with one `a=p` instead of re-fitting, re-encoding
  * and re-sending the whole raster — the protocol's intended use, and what
  * mature terminal UIs do. Dormant images are evicted least-recently-used past
  * either bound. The byte bound counts decoded RGBA (what the terminal keeps)
@@ -39,16 +38,10 @@ const RETAINED_MAX_BYTES = 64 * 1024 * 1024
  */
 const REUPLOAD_FAILURE_WINDOW_MS = 5000
 
-type PreparedKittyRgba = {
-  readonly data: Uint8Array
-  readonly width: number
-  readonly height: number
-}
-
 type ImageState = {
   /** Replaced on every re-upload, so replies to older placements miss it. */
   imageId: number
-  readonly payload: PreparedKittyRgba
+  readonly payload: TerminalImageSource
   /** Decoded RGBA bytes the terminal stores for this image. */
   readonly retainedBytes: number
   /** Cell geometry the raster was fitted for; other geometries never reuse it. */
@@ -192,7 +185,7 @@ export class KittyGraphicsManager {
       }
 
       if (!image.uploaded) {
-        output.push(transmitPreparedKittyRgba(image.imageId, image.payload))
+        output.push(transmitKittyRgba(image.imageId, image.payload))
         image.uploaded = true
       }
 
@@ -377,7 +370,7 @@ export class KittyGraphicsManager {
     )
     const image: ImageState = {
       imageId: this.allocateImageId(),
-      payload: prepareKittyRgba(fitted),
+      payload: fitted,
       retainedBytes: fitted.width * fitted.height * 4,
       cellSize: this.cellSize,
       uploaded: false,
@@ -423,7 +416,7 @@ export class KittyGraphicsManager {
  */
 function visiblePlacement(
   placement: TerminalImagePlacement,
-  payload: PreparedKittyRgba,
+  payload: TerminalImageSource,
 ): { x: number; y: number; columns: number; rows: number; source?: KittySourceRect } {
   const clip = placement.clip
   if (
@@ -453,25 +446,10 @@ function visiblePlacement(
   }
 }
 
-/** Zlib-compressed direct RGBA split into protocol-compliant base64 chunks. */
+/** Direct RGBA avoids Ghostty 1.3.1 crashes in its zlib decoder. */
 export function transmitKittyRgba(
   imageId: number,
-  source: TerminalImageSource,
-): string {
-  return transmitPreparedKittyRgba(imageId, prepareKittyRgba(source))
-}
-
-function prepareKittyRgba(source: TerminalImageSource): PreparedKittyRgba {
-  return {
-    data: deflateSync(source.data, { level: 1 }),
-    width: source.width,
-    height: source.height,
-  }
-}
-
-function transmitPreparedKittyRgba(
-  imageId: number,
-  payload: PreparedKittyRgba,
+  payload: TerminalImageSource,
 ): string {
   const encoded = Buffer.from(
     payload.data.buffer,
@@ -488,7 +466,7 @@ function transmitPreparedKittyRgba(
       const more = index + 1 < chunks.length ? 1 : 0
       const control =
         index === 0
-          ? `a=t,t=d,f=32,s=${payload.width},v=${payload.height},i=${imageId},o=z,q=2,m=${more}`
+          ? `a=t,t=d,f=32,s=${payload.width},v=${payload.height},i=${imageId},q=2,m=${more}`
           : `m=${more},q=2`
       return kittyCommand(control, chunk)
     })

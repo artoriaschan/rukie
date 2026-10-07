@@ -40,7 +40,7 @@ SplitDiffView 的 `onSourceMount(id, DOMElement | null)` 将稳定源行身份�
 
 ### 图片消费者的绘制观察
 
-应用通过 `useTerminalImages(requested)` 按需求协商图形、`useTerminalImageCellSize()` 读取实测 cell 像素、`Image source/presentation` 提交 immutable RGBA。图片解码、缩放和裁切由 TUI 的 [image-source](../tui/components/image-source.ts) 拥有；renderer 不接受原图 base64 或 crop 参数。
+应用通过 `useTerminalImages(requested)` 按需求协商图形、`useTerminalImageCellSize()` 读取实测 cell 像素、`Image source/presentation` 提交 immutable RGBA。图片解码、缩放和裁切由 TUI 的 [image-source](../tui/components/image-source.ts) 拥有；renderer 不接受原图 base64 或 crop 参数。 Kitty 上传使用未压缩 RGBA，并保持每个 base64 分片不超过 4096 字符，避开 Ghostty 1.3.1 的 zlib 解码崩溃；上传后的图片仍按资源预算重用和释放。
 
 新增 `usePaintedViewport()` 返回 Box ref 与响应式可见性，首次绘制前为 false；绘制后读取 Yoga 的最新布局、祖先 scrollTop 和 hidden/scroll 裁剪，仅在布尔值变化时更新组件。`useApp().renderer.subscribeFrame(listener)` 在帧提交后通知，返回取消订阅函数，unmount 清除剩余订阅；此最小 renderer 扩展使滚轮导致的原生滚动能释放不可见图片，不需要持续 React 重绘。可见性观察不判断后绘制浮层遮挡；应用打开预览时通过 suspended 显式释放底层画廊需求，renderer 仍拥有 placement 遮挡、裁剪与帧预算。
 
