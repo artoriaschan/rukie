@@ -153,7 +153,7 @@ test.each([
         try {
           await previous.run("previous session");
         } finally {
-          await previous.dispose();
+          await previous.close();
         }
       },
     });

@@ -1,3 +1,4 @@
+import { auxiliaryModels } from "../../helpers/auxiliary-model";
 import { afterEach, expect, test } from "bun:test";
 import { createSession } from "@rukie/agent";
 import { fauxProvider } from "@earendil-works/pi-ai";
@@ -96,7 +97,7 @@ test("a resumed session displays its persisted model before sending another prom
         cwd: root,
         homeDir: root,
         settings,
-        streamFn: faux.provider.streamSimple,
+        models: auxiliaryModels(faux.provider.streamSimple),
       });
       await seed.setModel("test-model/second");
       await seed.close();

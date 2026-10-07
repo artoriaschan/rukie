@@ -1,3 +1,4 @@
+import { auxiliaryModels } from "../helpers/auxiliary-model";
 import { expect, test } from "bun:test";
 import { start } from "../helpers/app";
 import { createSession } from "@rukie/agent";
@@ -235,10 +236,10 @@ test.each(["new", "resume", "rewind"])(
           cwd: root,
           homeDir: root,
           model: faux.getModel(),
-          streamFn: faux.provider.streamSimple,
+          models: auxiliaryModels(faux.provider.streamSimple),
         });
         await previous.rename("Previous context");
-        await previous.dispose();
+        await previous.close();
       },
     });
     try {

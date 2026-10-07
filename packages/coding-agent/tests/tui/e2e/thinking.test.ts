@@ -152,15 +152,14 @@ test("resumed thinking paints its full Markdown immediately with saved duration 
         }),
       });
       try {
-        await session.run("saved prompt", {
-          onEvent(event) {
-            if (event.type !== "message_update") return;
-            clock = 3500;
-            const final = { ...partial, stopReason: "stop" as const };
-            stream.push({ type: "done", reason: "stop", message: final });
-            stream.end(final);
-          },
+        session.subscribe((event) => {
+          if (event.type !== "message_update") return;
+          clock = 3500;
+          const final = { ...partial, stopReason: "stop" as const };
+          stream.push({ type: "done", reason: "stop", message: final });
+          stream.end(final);
         });
+        await session.run("saved prompt");
         argv.push("--resume", session.id);
       } finally {
         await session.close();

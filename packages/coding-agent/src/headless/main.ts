@@ -93,11 +93,15 @@ export async function runHeadless(options: CliOptions, io: PrintIo): Promise<num
     };
     io.signal?.addEventListener("abort", interrupt);
     io.signal?.throwIfAborted();
-    const admitted = await session.run(prompt);
-    const result = await session.waitForRequest(admitted.requestId);
+    const requestId =
+      !prompt && session.currentRequestId
+        ? session.currentRequestId
+        : (await session.run(prompt)).requestId;
+    const result = await session.waitForRequest(requestId);
     io.signal?.throwIfAborted();
     const { text } = result;
     if (!streamJson) io.stdout(`${text}\n`);
+    if (!result.success && result.error) io.stderr(`${result.error}\n`);
     return result.success ? 0 : 1;
   } catch (error) {
     if (io.signal?.aborted) {

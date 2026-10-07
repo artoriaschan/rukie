@@ -1,3 +1,4 @@
+import { failingStorage } from "../../helpers/native-storage-failure";
 import { testClock } from "../helpers/test-clock";
 import { expect, test } from "bun:test";
 import { fauxProvider, fauxAssistantMessage } from "@earendil-works/pi-ai";
@@ -94,16 +95,13 @@ for (const locale of ["en", "zh"] as const) {
 test.each(["assistant", "toolResult"] as const)(
   "a %s persistence failure reconciles committed history live and after Resume",
   async (failure) => {
-    const { createJsonlStore } = await import("@rukie/agent");
     const argv: string[] = [];
-    let store: ReturnType<typeof createJsonlStore>;
     let rejected = false;
     const options: NonNullable<Parameters<typeof startWithClock>[1]> = {
       rows: 40,
       env: { LANG: "en" },
       session: { permissionMode: "full-access" },
       prepare: async (root) => {
-        store = createJsonlStore({ cwd: root, homeDir: root });
         const model = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
         model.setResponses([fauxAssistantMessage("seed reply")]);
         const seed = await createSession({
@@ -118,48 +116,27 @@ test.each(["assistant", "toolResult"] as const)(
         } finally {
           await seed.close();
         }
-        options.session!.store = {
-          ...store,
-          async open(...args) {
-            const stored = await store.open(...args);
-            return new Proxy(stored, {
-              get(target, key) {
-                if (key === "branch")
-                  return async (...branchArgs: Parameters<typeof stored.branch>) => {
-                    const branch = await target.branch(...branchArgs);
-                    if (!branch) return branch;
-                    return new Proxy(branch, {
-                      get(owner, method) {
-                        if (method === "appendMessage")
-                          return async (
-                            ...messageArgs: Parameters<typeof branch.appendMessage>
-                          ) => {
-                            const message = messageArgs[0];
-                            if (
-                              !rejected &&
-                              ((failure === "assistant" &&
-                                message.role === "assistant" &&
-                                JSON.stringify(message).includes("ghost-tail")) ||
-                                (failure === "toolResult" &&
-                                  message.role === "toolResult" &&
-                                  message.toolName === "write"))
-                            ) {
-                              rejected = true;
-                              throw new Error(`${failure} save failed`);
-                            }
-                            return owner.appendMessage(...messageArgs);
-                          };
-                        const value = Reflect.get(owner, method);
-                        return typeof value === "function" ? value.bind(owner) : value;
-                      },
-                    });
-                  };
-                const value = Reflect.get(target, key);
-                return typeof value === "function" ? value.bind(target) : value;
-              },
-            });
-          },
-        };
+        options.session!.store = failingStorage(root, (writes) => {
+          if (
+            rejected ||
+            !writes.some(
+              (write) =>
+                write.type === "entry" &&
+                write.value.model?.some(
+                  (message) =>
+                    (failure === "assistant" &&
+                      message.role === "assistant" &&
+                      JSON.stringify(message).includes("ghost-tail")) ||
+                    (failure === "toolResult" &&
+                      message.role === "toolResult" &&
+                      message.toolName === "write"),
+                ),
+            )
+          )
+            return;
+          rejected = true;
+          return new Error(`${failure} save failed`);
+        });
       },
     };
     const app = await startWithClock(argv, options);

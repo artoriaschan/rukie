@@ -462,9 +462,15 @@ test.each(["text", "stream-json"])(
           wrapped.some(
             (event) =>
               event.event.type === "message_end" &&
-              event.event.message.role === "assistant" &&
-              event.event.message.content.some(
-                (block: { type: string; text?: string }) => block.text === "child-only text",
+              event.event.messages.some(
+                (message: { role: string }) => message.role === "assistant",
+              ) &&
+              event.event.messages.some(
+                (message: { role: string; content: { type: string; text?: string }[] }) =>
+                  message.role === "assistant" &&
+                  message.content.some(
+                    (block: { type: string; text?: string }) => block.text === "child-only text",
+                  ),
               ),
           ),
         ).toBe(true);
@@ -800,7 +806,11 @@ test.each(["prompt", "stdin", "stdin-stream-json", "goal", "goal-interrupted"])(
           .map((line) => JSON.parse(line));
         expect(events.filter((event) => event.type === "result")).toHaveLength(2);
         expect(
-          events.filter((event) => event.type === "message_end" && event.message.role === "user"),
+          events.filter(
+            (event) =>
+              event.type === "message_end" &&
+              event.messages.some((message: { role: string }) => message.role === "user"),
+          ),
         ).toHaveLength(2);
       } else
         expect(stdout).toBe(source === "goal" ? "autorun done\ngoal wrapup\n" : "human done\n");

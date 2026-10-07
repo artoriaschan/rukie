@@ -65,7 +65,9 @@ test.each(["text", "stream-json"])(
         });
         expect(
           events.filter(
-            (event) => event.type === "message_end" && event.message.source === "stop_hook",
+            (event) =>
+              event.type === "message_end" &&
+              event.messages.some((message: { source?: string }) => message.source === "stop_hook"),
           ),
         ).toHaveLength(8);
         expect(events.filter((event) => event.type === "hook_warning")).toMatchObject([

@@ -2,7 +2,6 @@ import { auxiliaryModels } from "../helpers/auxiliary-model.ts";
 import { expect, spyOn, test } from "bun:test";
 import { join } from "node:path";
 import { appendFile } from "node:fs/promises";
-import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
 import { fauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { createJsonlStore, createSession, type SessionOptions } from "@rukie/agent";
 import { createUserVisibleError } from "@rukie/shared";
@@ -30,10 +29,7 @@ test.each([
         ),
       });
       await session.close();
-      const metadata = (await store.list({ cwd: root }, BACKGROUND_CONTEXT))[0]!;
-      const nativePath = Reflect.get(metadata, "path");
-      if (typeof nativePath !== "string") throw new Error("Native Session path missing.");
-      path = nativePath;
+      path = join(store.key(session.id), "main.jsonl");
       await appendFile(path, '{"torn":');
       before = await Bun.file(path).bytes();
     },
@@ -201,7 +197,7 @@ test.each([
     prepare: async (root) => {
       const store = createJsonlStore({ cwd: root, homeDir: root });
       session.store = {
-        create: store.create.bind(store),
+        key: store.key.bind(store),
         list: store.list.bind(store),
         async open() {
           throw error;
@@ -285,7 +281,7 @@ test.each(["zh", "en"] as const)("%s runtime coded error is translated", async (
     prepare: async (root) => {
       const store = createJsonlStore({ cwd: root, homeDir: root });
       session.store = {
-        create: store.create.bind(store),
+        key: store.key.bind(store),
         list: store.list.bind(store),
         async open() {
           throw error;
@@ -323,7 +319,7 @@ test.each([
       prepare: async (root) => {
         const store = createJsonlStore({ cwd: root, homeDir: root });
         session.store = {
-          create: store.create.bind(store),
+          key: store.key.bind(store),
           list: store.list.bind(store),
           async open() {
             throw error;

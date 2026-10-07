@@ -353,11 +353,10 @@ test("parent resume initializes its persisted child card as idle before cold con
         model: original.getModel(),
         models: auxiliaryModels(original.provider.streamSimple),
       });
-      await session.run("delegate", {
-        onEvent(event) {
-          if (event.type === "subagent_event") id = event.agentId;
-        },
+      session.subscribe((event) => {
+        if (event.type === "subagent_event") id = event.agentId;
       });
+      await session.run("delegate");
       argv.push("--resume", session.id);
       await session.close();
     },

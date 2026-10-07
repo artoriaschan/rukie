@@ -1,8 +1,9 @@
+import { failingStorage } from "../../helpers/native-storage-failure";
 import { testClock } from "../helpers/test-clock";
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { fauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { createJsonlStore, createSession } from "@rukie/agent";
+import { createSession } from "@rukie/agent";
 import { isUnknownToolOutcome } from "@rukie/shared";
 import { start } from "../helpers/app";
 import { startWithClock } from "../helpers/clock-app";
@@ -59,11 +60,10 @@ async function saveMixedSession(root: string) {
     onQuestion: async () => ({ answers: [{ selected: ["Keep"] }] }),
   });
   try {
-    await session.run("mixed saved prompt", {
-      onEvent(event) {
-        if (event.type === "subagent_event") childId = event.agentId;
-      },
+    session.subscribe((event) => {
+      if (event.type === "subagent_event") childId = event.agentId;
     });
+    await session.run("mixed saved prompt");
     expect(childId).not.toBe("");
     expect(session.toolState("todo")).toEqual(todos);
     expect((await session.readSubagent(childId))!.run?.outcome).toBe("completed");
@@ -157,7 +157,7 @@ test.each([
         expect(JSON.stringify(child!.messages)).toContain("actual mixed child input");
         expect(JSON.stringify(child!.messages)).toContain("saved child answer");
       } finally {
-        await saved.dispose();
+        await saved.close();
       }
 
       app.stdin.write("\x0f");
@@ -246,43 +246,21 @@ test("a failed write result keeps earlier mixed facts and an honest unknown outc
       const saved = await saveMixedSession(root);
       childId = saved.childId;
       argv.push("--resume", saved.id);
-      const store = createJsonlStore({ cwd: root, homeDir: root });
-      options.session!.store = {
-        ...store,
-        async open(...args) {
-          const stored = await store.open(...args);
-          return new Proxy(stored, {
-            get(target, key) {
-              if (key === "branch")
-                return async (...args: Parameters<typeof stored.branch>) => {
-                  const branch = await target.branch(...args);
-                  if (!branch) return branch;
-                  return new Proxy(branch, {
-                    get(owner, method) {
-                      if (method === "appendMessage")
-                        return async (...args: Parameters<typeof branch.appendMessage>) => {
-                          const message = args[0];
-                          if (
-                            !rejected &&
-                            message.role === "toolResult" &&
-                            message.toolName === "write"
-                          ) {
-                            rejected = true;
-                            throw new Error("mixed write save failed");
-                          }
-                          return owner.appendMessage(...args);
-                        };
-                      const value = Reflect.get(owner, method);
-                      return typeof value === "function" ? value.bind(owner) : value;
-                    },
-                  });
-                };
-              const value = Reflect.get(target, key);
-              return typeof value === "function" ? value.bind(target) : value;
-            },
-          });
-        },
-      };
+      options.session!.store = failingStorage(root, (writes) => {
+        if (
+          rejected ||
+          !writes.some(
+            (write) =>
+              write.type === "entry" &&
+              write.value.model?.some(
+                (message) => message.role === "toolResult" && message.toolName === "write",
+              ),
+          )
+        )
+          return;
+        rejected = true;
+        return new Error("mixed write save failed");
+      });
     },
   };
   const app = await startWithClock(argv, options);
@@ -332,7 +310,7 @@ test("a failed write result keeps earlier mixed facts and an honest unknown outc
       expect((await saved.readSubagent(childId))!.run!.outcome).toBe("completed");
       expect(JSON.stringify(saved.messages)).toContain("committed write reasoning");
     } finally {
-      await saved.dispose();
+      await saved.close();
     }
     const replay = await start(argv, {
       rows: 60,
