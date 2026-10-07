@@ -777,6 +777,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         );
       },
     });
+    await tracking.restoreCommitted(initialHistory);
     const plan = createPlanModeController({
       getSnapshot: () => state.get("plan"),
       persist: async (active) => {
@@ -919,7 +920,17 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       await mcp.close();
       hooks.dispose();
     });
-    let skills = (await discoverSkills(cwd, options.homeDir)).skills;
+    const reportedSkillWarnings = new Set<string>();
+    const loadSkills = async () => {
+      const discovered = await discoverSkills(cwd, options.homeDir);
+      for (const warning of discovered.warnings) {
+        if (reportedSkillWarnings.has(warning)) continue;
+        reportedSkillWarnings.add(warning);
+        warn(warning);
+      }
+      return discovered.skills;
+    };
+    let skills = await loadSkills();
     let tools: ToolRegistration[] = [];
     const gate = createPermissionGate({
       cwd,
@@ -1262,6 +1273,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             );
           },
         });
+        await childTracking.restoreCommitted(await fullHistory(child.id));
         let childTools: ToolRegistration[] = [];
         let childStopped = false;
         let childStopReason: string | undefined;
@@ -1502,8 +1514,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                       (tx) => tx.appendEntry(child.id, reminderEntry(reminder)),
                       ctx,
                     );
-                childTracking.finishRequest();
                 return { messages: (await child.context(ctx)).messages };
+              },
+              afterResponse: async () => {
+                childTracking.finishRequest();
               },
               onYield: async (answer, api, ctx) => {
                 if (answer.stopReason !== "stop") return undefined;
@@ -1596,14 +1610,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                   results.map((id) => lease.storage.entry(id, ctx)),
                 );
                 await childTracking.commitResults(
-                  committed.flatMap(
-                    (value) =>
-                      value?.entry.model?.flatMap((message) =>
-                        message.role === "toolResult" && !message.isError
-                          ? [message.toolCallId]
-                          : [],
-                      ) ?? [],
-                  ),
+                  committed.flatMap((value) => (value ? [value.entry] : [])),
                 );
                 if (childStopped) {
                   await child.commit(
@@ -1730,6 +1737,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               context.pending.push(...result.additionalContext);
             }, context);
           }
+          tracking.finishRequest();
           await prepareReminders(context, false);
         }
       });
@@ -1791,10 +1799,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       for (const reminder of reminders)
         if (reminder.source === "file-changes") await tracking.persistReminder(reminder);
         else await appendReminder(reminder, ctx);
-      tracking.finishRequest();
     }
     const rebuildTools = async (reportDiscovery = false) => {
-      skills = (await discoverSkills(cwd, options.homeDir)).skills;
+      skills = await loadSkills();
       const base = createBaseTools({
         isChild: false,
         builtin: {
@@ -2000,6 +2007,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               return { messages: contextMessages };
             },
             afterResponse: async (message, api, ctx) => {
+              tracking.finishRequest();
               if (message.stopReason === "error" || message.stopReason === "aborted") {
                 goal.disarm();
                 await conversation.commit(async (tx) => {
@@ -2033,12 +2041,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 results.map((id) => lease.storage.entry(id, ctx)),
               );
               await tracking.commitResults(
-                committed.flatMap(
-                  (value) =>
-                    value?.entry.model?.flatMap((message) =>
-                      message.role === "toolResult" && !message.isError ? [message.toolCallId] : [],
-                    ) ?? [],
-                ),
+                committed.flatMap((value) => (value ? [value.entry] : [])),
               );
               mcpManager.adopt(mcp.snapshot());
               const takeover = committed.some((value) =>
@@ -2900,6 +2903,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           await subagents.rebindParent(conversation, context);
           plan.restore();
           tracking.restore(state.get("file-tracking"));
+          await tracking.restoreCommitted(await fullHistory());
           goal.disarm();
           await rebuildTools();
           const rewindEvents: SessionEvent[] = [];
