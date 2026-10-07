@@ -108,7 +108,7 @@ export function hitTestWithOverlays(
   row: number,
 ): DOMElement | null {
   hitTestWithOverlaysCount++
-  const overlays = getAbsoluteHitList()
+  const overlays = getAbsoluteHitList(root)
   for (let i = overlays.length - 1; i >= 0; i--) {
     const { node, rect } = overlays[i]!
     if (
@@ -483,8 +483,8 @@ function overlappingSiblingHasHoverInterest(hit: DOMElement, rect: NoInterestRec
 }
 
 /** Whether a hover-interested absolute layer overlaps a candidate inert rect. */
-function overlappingAbsoluteHasHoverInterest(rect: NoInterestRect): boolean {
-  for (const entry of getAbsoluteHitList()) {
+function overlappingAbsoluteHasHoverInterest(root: DOMElement, rect: NoInterestRect): boolean {
+  for (const entry of getAbsoluteHitList(root)) {
     const overlay = entry.rect
     if (!rectsOverlap(rect, overlay)) continue
     if (subtreeHasHoverInterest(entry.node)) return true
@@ -567,7 +567,7 @@ export function dispatchHover(
         rect.height > 0 &&
         !hasElementChildren(hit) &&
         !overlappingSiblingHasHoverInterest(hit, rect) &&
-        !overlappingAbsoluteHasHoverInterest(rect)
+        !overlappingAbsoluteHasHoverInterest(root, rect)
       ) {
         // Copy the fields — nodeCache entries are replaced per frame and
         // the cache dies at the frame boundary anyway, but never alias.

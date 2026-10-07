@@ -1,7 +1,7 @@
 import type { GoalView } from "@rukie/agent";
 import { useState, type ReactNode } from "react";
 import { basename } from "node:path";
-import { Box, ThemedText, type ThemeColor } from "../../../ink/index.ts";
+import { Box, ThemedText, textLines, type ThemeColor } from "../../../ink/index.ts";
 import type {
   JobView,
   ContextUsageEvent,
@@ -410,7 +410,16 @@ export function StatusLine(props: StatusLineProps) {
                       dim={id === "goal" && goalPhase?.dimColor}
                       wrap="truncate"
                     >
-                      {content}
+                      {typeof content === "string"
+                        ? textLines(
+                            [{ text: content, style: {} }],
+                            fieldWidths[index],
+                            false,
+                            true,
+                          )[0]
+                            ?.map((glyph) => glyph.text)
+                            .join("")
+                        : content}
                     </ThemedText>
                   </Box>
                 </Box>

@@ -1081,10 +1081,12 @@ export default class Output {
     // pushed AFTER those siblings' clean-subtree blits (DOM order). The
     // blit copies the absolute node's own stale paint from prevScreen,
     // and since clear is damage-only, the ghost survives diff. Normal-
+    // Only earlier blits are stale: clean descendants painted after their
+    // absolute parent's clear still belong to the current overlay.
     // flow clears don't need this — a normal-flow node's old position
     // can't have been painted on top of a sibling's current position.
-    const absoluteClears: Rectangle[] = []
-    for (const operation of this.operations) {
+    const absoluteClears: Array<Rectangle & { operationIndex: number }> = []
+    for (const [operationIndex, operation] of this.operations.entries()) {
       if (operation.type !== 'clear') continue
       const { x, y, width, height } = operation.region
       const startX = Math.max(0, x)
@@ -1099,12 +1101,12 @@ export default class Output {
         height: maxY - startY,
       }
       screen.damage = screen.damage ? unionRect(screen.damage, rect) : rect
-      if (operation.fromAbsolute) absoluteClears.push(rect)
+      if (operation.fromAbsolute) absoluteClears.push({ ...rect, operationIndex })
     }
 
     const clips: Clip[] = []
 
-    for (const operation of this.operations) {
+    for (const [operationIndex, operation] of this.operations.entries()) {
       switch (operation.type) {
         case 'clear':
           // handled in pass 1
@@ -1171,6 +1173,7 @@ export default class Output {
               row < maxY &&
               absoluteClears.some(
                 r =>
+                  r.operationIndex > operationIndex &&
                   row >= r.y &&
                   row < r.y + r.height &&
                   startX >= r.x &&

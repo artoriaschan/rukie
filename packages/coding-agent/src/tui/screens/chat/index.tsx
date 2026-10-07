@@ -2105,7 +2105,12 @@ function Chat({
         handledInput.current.add(event);
         return;
       }
-      if (menu.length && !key.ctrl && !key.meta && !key.shift) {
+      if (
+        menu.length &&
+        !key.ctrl &&
+        (!key.meta || (key.escape && !event.keypress.meta && !event.keypress.option)) &&
+        !key.shift
+      ) {
         if (
           (event.keypress.name === "up" || event.keypress.name === "down") &&
           !history.isBrowsing()
@@ -2124,6 +2129,7 @@ function Chat({
           return;
         }
         if (event.keypress.name === "escape") {
+          handledInput.current.add(event);
           dismissedMenu.current = draft.current;
           setMenuDismissed(true);
           return;

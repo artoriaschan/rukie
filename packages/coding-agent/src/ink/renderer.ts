@@ -157,7 +157,7 @@ export default function createRenderer(
     }
 
     resetLayoutShifted()
-    resetScrollHint()
+    resetScrollHint(node)
     resetScrollDrainNode()
 
     // prevFrameContaminated: selection overlay mutated the returned screen

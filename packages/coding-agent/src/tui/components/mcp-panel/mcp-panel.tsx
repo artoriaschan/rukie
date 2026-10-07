@@ -401,7 +401,6 @@ export function McpPanel(props: McpPanelProps) {
             <Box
               flexShrink={0}
               onClick={interactive ? props.onBodyFocus : undefined}
-              onWheel={interactive ? (event) => props.onBodyWheel?.(event.deltaY) : undefined}
               flexDirection="column"
             >
               <ScrollBox
@@ -418,7 +417,10 @@ export function McpPanel(props: McpPanelProps) {
                 stickyScroll={false}
                 wheelEnabled={interactive}
               >
-                <Box flexShrink={0}>
+                <Box
+                  flexShrink={0}
+                  onWheel={interactive ? (event) => props.onBodyWheel?.(event.deltaY) : undefined}
+                >
                   <ThemedText>{view.body}</ThemedText>
                 </Box>
               </ScrollBox>

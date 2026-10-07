@@ -181,7 +181,10 @@ test("replacing a tip starts a fresh lifetime without an old timeout hiding it o
     expect(terminal.screen().indexOf("❯ 中文 draft")).toBe(inputRow);
     expect([buffer.cursorX, buffer.cursorY]).toEqual(cursor);
     notify({ text: "Persistent notice", warning: false });
-    await terminal.waitFor(() => terminal.screen().join("\n").includes("Persistent notice"));
+    await terminal.waitFor(() => {
+      const painted = terminal.screen().join("\n");
+      return painted.includes("Persistent notice") && !painted.includes("Replacement tip");
+    });
     expect(terminal.screen().join("\n")).not.toContain("Replacement tip");
     replace(undefined);
     notify(undefined);

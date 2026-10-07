@@ -125,23 +125,35 @@ export type OcclusionSurface = {
 }
 let occlusionSurfacesPrev: OcclusionSurface[] = []
 let occlusionSurfacesCur: OcclusionSurface[] = []
+type RootPaintHistory = {
+  rects: CachedLayout[]
+  hits: AbsoluteHitEntry[]
+  occlusion: OcclusionSurface[]
+}
+const rootPaintHistory = new WeakMap<DOMElement, RootPaintHistory>()
 
 /**
  * The current frame's absolute-positioned nodes in paint order.
  * @returns read-only list; reverse-iterate for topmost-first hit-testing.
  */
-export function getAbsoluteHitList(): readonly AbsoluteHitEntry[] {
-  return absoluteHitList
+export function getAbsoluteHitList(root: DOMElement): readonly AbsoluteHitEntry[] {
+  return rootPaintHistory.get(root)?.hits ?? []
 }
 
 /** Reset the scroll hint for the next frame and rotate the per-frame buffers. */
-export function resetScrollHint(): void {
+export function resetScrollHint(root: DOMElement): void {
   scrollHint = null
-  absoluteRectsPrev = absoluteRectsCur
+  const previous = rootPaintHistory.get(root)
+  absoluteRectsPrev = previous?.rects ?? []
   absoluteRectsCur = []
   absoluteHitList = []
-  occlusionSurfacesPrev = occlusionSurfacesCur
+  occlusionSurfacesPrev = previous?.occlusion ?? []
   occlusionSurfacesCur = []
+  rootPaintHistory.set(root, {
+    rects: absoluteRectsCur,
+    hits: absoluteHitList,
+    occlusion: occlusionSurfacesCur,
+  })
 }
 
 /** A node fills every cell of its rect when it has its own background or
