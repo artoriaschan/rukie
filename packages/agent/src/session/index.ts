@@ -589,6 +589,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         throw new Error(`Unknown restored model: ${savedModel.provider}/${savedModel.modelId}`);
       model = restored;
     }
+    modelFact = `${model.provider}/${model.id}`;
     const subagentsDefinition = subagentsState(lease.id);
     const definitions = [
       todoState,
