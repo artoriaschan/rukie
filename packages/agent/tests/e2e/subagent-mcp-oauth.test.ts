@@ -1,3 +1,4 @@
+import { runRequest } from "../helpers/crashed-subagents.ts";
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { fauxAssistantMessage, fauxToolCall, getCurrentTools } from "@earendil-works/pi-ai";
@@ -61,7 +62,7 @@ test.each(["subagent", "subagent_fork"])(
       try {
         expect(
           (
-            await session.run("delegate authorization", {
+            await runRequest(session, "delegate authorization", {
               onEvent(event) {
                 if (event.type === "subagent_event") childId = event.agentId;
               },
@@ -83,7 +84,7 @@ test.each(["subagent", "subagent_fork"])(
         ).toEqual(["mcp__srv__echo"]);
         expect(requests).toHaveLength(1);
         expect(requests[0]?.origin).toEqual({ agentId: childId!, description: "Authorize MCP" });
-        expect((await session.run("use child credential")).text).toBe("parent reused");
+        expect((await runRequest(session, "use child credential")).text).toBe("parent reused");
         expect(
           getCurrentTools(fake.contexts[5]!.messages)
             .filter((item) => item.name.startsWith("mcp__"))
@@ -94,7 +95,7 @@ test.each(["subagent", "subagent_fork"])(
         ).toMatchObject({ isError: false, content: [{ type: "text", text: "OAuth MCP: called" }] });
         expect(requests).toHaveLength(1);
       } finally {
-        await session.dispose();
+        await session.close();
       }
     } finally {
       await server.stop();
@@ -120,7 +121,7 @@ test.each(["subagent", "subagent_fork"])(
       ]);
       const session = await createSession({ ...dirs, ...fake, onWarning: () => {} });
       try {
-        expect((await session.run("delegate")).text).toBe("parent done");
+        expect((await runRequest(session, "delegate")).text).toBe("parent done");
         expect(
           getCurrentTools(fake.contexts[1]!.messages).filter((item) =>
             item.name.startsWith("mcp__"),
@@ -128,7 +129,7 @@ test.each(["subagent", "subagent_fork"])(
         ).toEqual([]);
         expect(server.requests.filter((request) => request.path === "/authorize")).toEqual([]);
       } finally {
-        await session.dispose();
+        await session.close();
       }
     } finally {
       await server.stop();
@@ -162,13 +163,13 @@ test("a child's cancelled OAuth interaction remains non-error and leaves the par
       },
     });
     try {
-      expect((await session.run("delegate")).text).toBe("parent continued");
+      expect((await runRequest(session, "delegate")).text).toBe("parent continued");
       expect(
         fake.contexts[2]!.messages.findLast((message) => message.role === "toolResult"),
       ).toMatchObject({ isError: false, details: { type: "cancelled", server: "srv" } });
       expect(requests[0]?.origin?.description).toBe("Authorize MCP");
       const before = server.requests.filter((request) => request.path === "/mcp").length;
-      await session.run("check again");
+      await runRequest(session, "check again");
       expect(
         getCurrentTools(fake.contexts[4]!.messages)
           .filter((item) => item.name.startsWith("mcp__"))
@@ -177,7 +178,7 @@ test("a child's cancelled OAuth interaction remains non-error and leaves the par
       expect(server.requests.filter((request) => request.path === "/mcp")).toHaveLength(before);
       expect(requests).toHaveLength(1);
     } finally {
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await server.stop();
@@ -212,7 +213,7 @@ test("an authenticate-only type keeps its exact restriction after logging in", a
       onMcpAuth: paste,
     });
     try {
-      expect((await session.run("delegate")).text).toBe("parent done");
+      expect((await runRequest(session, "delegate")).text).toBe("parent done");
       expect(getCurrentTools(fake.contexts[1]!.messages).map((item) => item.name)).toEqual([
         "mcp__srv__authenticate",
       ]);
@@ -221,7 +222,12 @@ test("an authenticate-only type keeps its exact restriction after logging in", a
         fake.contexts[3]!.messages.findLast((message) => message.role === "toolResult"),
       ).toMatchObject({
         isError: true,
-        content: [{ type: "text", text: "Tool mcp__srv__echo not found" }],
+        content: [
+          {
+            type: "text",
+            text: "<harness>\n[error] Tool mcp__srv__echo is not available\n</harness>",
+          },
+        ],
       });
       expect(
         server.requests.filter((request) =>
@@ -230,7 +236,7 @@ test("an authenticate-only type keeps its exact restriction after logging in", a
       ).toEqual([]);
       expect(other.requests.filter((request) => request.path === "/authorize")).toEqual([]);
     } finally {
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await server.stop();
