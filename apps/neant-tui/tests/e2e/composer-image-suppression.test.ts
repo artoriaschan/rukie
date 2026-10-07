@@ -1,4 +1,7 @@
 import { expect, test } from "bun:test";
+import { createFauxCore, fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { createSession } from "@neant/agent";
+import { withAuxiliaryRequests } from "../helpers/auxiliary-model";
 import { start } from "../helpers/app";
 
 const png =
@@ -124,3 +127,51 @@ test("a modal thumbnail preview takes priority and closing restores the caret pr
     await app.cleanup();
   }
 });
+
+test.each([
+  ["model", "Select model"],
+  ["resume", "Resume session"],
+  ["rewind", "Rewind to this message?"],
+])(
+  "/%s replaces the image draft with its panel and closes to an empty composer",
+  async (command, title) => {
+    const app = await start(["checkpoint"], {
+      ...options,
+      prepare: async (root) => {
+        await options.prepare(root);
+        const faux = createFauxCore({ api: "faux", provider: "faux" });
+        faux.setResponses([fauxAssistantMessage("stored response")]);
+        const previous = await createSession({
+          cwd: root,
+          homeDir: root,
+          model: faux.getModel(),
+          streamFn: withAuxiliaryRequests(faux.streamSimple),
+        });
+        try {
+          await previous.run("previous session");
+        } finally {
+          await previous.dispose();
+        }
+      },
+    });
+    const screen = () => app.screen().join("\n");
+    try {
+      await app.waitFor(() => app.calls.length === 1);
+      app.calls[0]!.finish();
+      await app.waitFor(() => !app.isWorking());
+      await draftImage(app);
+      app.stdin.write(`/${command} `);
+      await app.waitFor(() => screen().includes(`❯ /${command} [Image #1]`));
+      app.stdin.write("\r");
+      await app.waitFor(() => screen().includes(title!));
+      expect(screen()).not.toContain("Image #1 · PNG");
+      app.stdin.write(command === "rewind" ? "\x03" : "\x1b");
+      await app.waitFor(() => !screen().includes(title!) && app.screen().includes("❯"));
+      expect(screen()).not.toContain("❯ /" + command);
+      expect(screen()).not.toContain("Image #1 · PNG");
+      expect(app.calls).toHaveLength(1);
+    } finally {
+      await app.cleanup();
+    }
+  },
+);
