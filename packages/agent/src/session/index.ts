@@ -314,6 +314,14 @@ const CompactHookContextDoc = defineDoc<{ pending: string[] }>({
   fork: "asOf",
   initial: () => ({ pending: [] }),
 });
+const HookYieldDoc = defineDoc<{ runAnchor: number | null; pending: string[] }>({
+  kind: "rukie.hook-yield",
+  version: 1,
+  scope: "conversation",
+  history: "rewindable",
+  fork: "initial",
+  initial: () => ({ runAnchor: null, pending: [] }),
+});
 const PlanTakeoverDoc = defineDoc<{ requests: Record<string, true> }>({
   kind: "rukie.plan-takeovers",
   version: 1,
@@ -475,6 +483,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     let manualCompactionTask: TaskId | undefined;
     let goalRound = false;
     const steeringAdmissions = new Set<Promise<void>>();
+    let checkingStop: number | undefined;
     let wrapup: string | undefined;
     let permissionMode = options.permissionMode ?? settings.permissionMode ?? "ask";
     const sessionAllowRules = options.sessionAllowRules ?? [];
@@ -655,6 +664,14 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               });
             if (!reason) return;
             const live = await harness.snapshot(LiveDoc, conversation.id, context);
+            if (live?.run && checkingStop === Number(live.run.inputs[0])) {
+              await conversation.commit(async (tx) => {
+                const pending = await tx.doc(HookYieldDoc, conversation.id);
+                pending.runAnchor = checkingStop!;
+                pending.pending.push(reason);
+              }, context);
+              return;
+            }
             const parentRequestId = live?.run ? currentRequestId : undefined;
             const requestId = `hook:${randomUUID()}`;
             const submitted = await conversation.submit(
@@ -2158,6 +2175,19 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                     entry.kind !== "rukie.reminder" &&
                     (entry.model ?? []).some((message) => message.role === "user"),
                 );
+                const repairs = await harness.snapshot(HookYieldDoc, conversation.id, ctx);
+                if (
+                  repairs?.pending.length &&
+                  latestInput?.model?.some(
+                    (message) =>
+                      message.role === "user" && textOf(message) === repairs.pending.join("\n\n"),
+                  )
+                )
+                  await conversation.commit(async (tx) => {
+                    const pending = await tx.doc(HookYieldDoc, conversation.id);
+                    pending.pending = [];
+                    pending.runAnchor = null;
+                  }, ctx);
                 if (
                   placed.some(
                     (record) =>
@@ -2401,13 +2431,22 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               const live = await harness.snapshot(LiveDoc, conversation.id, ctx);
               const runAnchor = Number(live?.run?.inputs[0]);
               const count = hookState?.taskId === runAnchor ? hookState.count : 0;
-              const result = await hooks.run(
-                "Stop",
-                hookInput({ stop_hook_active: count > 0, last_assistant_message: textOf(_answer) }),
-                {
-                  signal: ctx.abortSignal,
-                },
-              );
+              checkingStop = runAnchor;
+              const result = await hooks
+                .run(
+                  "Stop",
+                  hookInput({
+                    stop_hook_active: count > 0,
+                    last_assistant_message: textOf(_answer),
+                  }),
+                  {
+                    signal: ctx.abortSignal,
+                  },
+                )
+                .finally(async () => {
+                  await asyncAdmissions;
+                  checkingStop = undefined;
+                });
               await applyHookResult(result, "hook:Stop", ctx);
               if (result.continue === false) {
                 const input =
@@ -2429,6 +2468,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 }, ctx);
                 return undefined;
               }
+              const repairs = await harness.snapshot(HookYieldDoc, conversation.id, ctx);
+              if (repairs?.runAnchor === runAnchor && repairs.pending.length)
+                return continuation(repairs.pending.join("\n\n"), "async-hook");
               if (result.decision === "block" && result.reason) {
                 if (count >= 8) {
                   warn("Stop hook reached the 8 continuation limit");
