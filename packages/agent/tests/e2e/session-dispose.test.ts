@@ -241,12 +241,15 @@ test("SessionEnd exit failures emit diagnostics after the Run while discarding o
   await session.run("try");
   await session.close();
   expect(warnings).toHaveLength(1);
-  expect(events.at(-1)).toMatchObject({
-    type: "hook_warning",
-    sessionId: session.id,
-    event: "SessionEnd",
-    error: { code: "hook-exit", params: { exitCode: "3", stderr: "failed" } },
-  });
+  // Native notice commits also publish structural entry events during shutdown.
+  expect(events.filter((event) => event.type === "hook_warning")).toMatchObject([
+    {
+      type: "hook_warning",
+      sessionId: session.id,
+      event: "SessionEnd",
+      error: { code: "hook-exit", params: { exitCode: "3", stderr: "failed" } },
+    },
+  ]);
 });
 
 // A real Hook process owns the 1.5s budget; a virtual parent clock cannot drive its shutdown.
