@@ -22,13 +22,8 @@ test("pending edit call rows reveal in frames and completing the result snaps ev
     app.calls[0]!.tool("edit", { path: "code.txt", edits: [{ oldText, newText }] });
     await app.waitFor(() => app.screen().some((row) => row.includes("Edit ")));
     expect(app.screen().join("\n")).not.toContain("+after-2");
-    testClock.advanceTimersByTime(32);
-    await app.flush();
-    expect(app.screen().join("\n")).not.toContain("-before-0");
-    testClock.advanceTimersByTime(2);
-    await app.flush();
-    testClock.advanceTimersByTime(16);
-    await app.flush();
+    // Exact 32/33ms cadence is covered at the composed card mount boundary.
+    await app.waitFor(() => app.screen().some((row) => row.includes("before-1")));
     expect(app.screen().filter((row) => /^ ⎿|^   [-+]/.test(row))).toHaveLength(3);
     expect(app.screen().join("\n")).toContain("before-1");
     expect(app.screen().join("\n")).not.toContain("+after-2");
@@ -156,18 +151,12 @@ test("split pending rows reveal together and resize never restarts a caught-up c
     app.calls[0]!.tool("edit", { path: "code.txt", edits: [{ oldText, newText }] });
     await app.waitFor(() => app.screen().some((row) => row.includes("Edit ")));
     expect(app.screen().join("\n")).not.toContain("+after-2");
-    testClock.advanceTimersByTime(34);
-    await app.flush();
-    testClock.advanceTimersByTime(16);
-    await app.flush();
+    await app.waitFor(() => app.screen().some((row) => row.includes("before-1")));
     expect(app.screen().some((row) => row.includes("-before-1") && row.includes("+after-1"))).toBe(
       true,
     );
     expect(app.screen().join("\n")).not.toContain("+after-2");
-    testClock.advanceTimersByTime(34);
-    await app.flush();
-    testClock.advanceTimersByTime(16);
-    await app.flush();
+    await app.waitFor(() => app.screen().some((row) => row.includes("+after-2")));
     expect(app.screen().some((row) => row.includes("-before-2") && row.includes("+after-2"))).toBe(
       true,
     );

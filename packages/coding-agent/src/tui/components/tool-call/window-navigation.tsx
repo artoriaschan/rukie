@@ -1,5 +1,13 @@
-import { createContext, useContext, useMemo, useRef, useState, type ReactNode } from "react";
-import type { InputEvent } from "../../../ink/index.ts";
+import {
+  createContext,
+  useContext,
+  useMemo,
+  useRef,
+  useState,
+  useEffect,
+  type ReactNode,
+} from "react";
+import { useSelection, type InputEvent } from "../../../ink/index.ts";
 
 export type WindowMove = number | "first" | "last";
 interface WindowOwner {
@@ -29,6 +37,19 @@ export function ToolWindowProvider({ children }: { children: ReactNode }) {
   const [active, setActive] = useState<string>();
   const suspended = useRef(false);
   const preserved = useRef(new Map<string, WindowPresentation>());
+  const selection = useSelection();
+  useEffect(
+    () =>
+      selection.subscribe(() => {
+        // A new terminal selection releases keyboard ownership. Paging controls
+        // refocus on their completed click, after the press notification.
+        if (selection.getState()?.isDragging && owner.current) {
+          owner.current = undefined;
+          setActive(undefined);
+        }
+      }),
+    [selection],
+  );
   const navigation = useMemo<WindowNavigation>(
     () => ({
       active,
