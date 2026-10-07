@@ -146,6 +146,7 @@ test.each([
         }
         id = session.id;
         expect(JSON.stringify(session.messages)).not.toContain("内置 ripgrep 不可用。");
+        await session.close();
         argv.push("--resume", id);
       },
     });
@@ -207,7 +208,8 @@ test.each([
   });
   try {
     const expected = error instanceof Error ? error.message : error;
-    await app.waitFor(() => app.screen().join("\n").includes(expected));
+    expect(await app.exit).toBe(1);
+    expect(app.stderr()).toContain(expected);
   } finally {
     await app.cleanup();
   }
@@ -292,7 +294,8 @@ test.each(["zh", "en"] as const)("%s runtime coded error is translated", async (
   try {
     const expected =
       locale === "zh" ? "Session 不存在：runtime-missing" : "Session not found: runtime-missing";
-    await app.waitFor(() => app.screen().join("\n").includes(expected));
+    expect(await app.exit).toBe(1);
+    expect(app.stderr()).toContain(expected);
   } finally {
     await app.cleanup();
   }
@@ -328,7 +331,8 @@ test.each([
       },
     });
     try {
-      await app.waitFor(() => app.screen().join("\n").includes(expected));
+      expect(await app.exit).toBe(1);
+      expect(app.stderr()).toContain(expected);
     } finally {
       await app.cleanup();
     }
