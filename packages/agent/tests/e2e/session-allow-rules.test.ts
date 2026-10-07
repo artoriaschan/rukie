@@ -1,5 +1,20 @@
 import { afterEach, expect, test } from "bun:test";
-import { runToolCall, type AgentContext } from "@earendil-works/pi-agent-core";
+import {
+  Harness,
+  MemoryStorage,
+  createRegistry,
+  hook,
+  ToolTask,
+  type ToolRegistration,
+} from "@earendil-works/pi-durable";
+import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
+import {
+  BACKGROUND_CONTEXT,
+  withAbortSignal,
+  awaitWithContext,
+} from "@earendil-works/chord/context";
+import type { Context } from "@earendil-works/chord";
+import type { ToolCall } from "@earendil-works/pi-ai";
 import { createPermissionGate, parsePermissionRules } from "../../src/permissions/index.ts";
 import { createJobs } from "../../src/tools/jobs/index.ts";
 import { createBuiltinTools } from "../../src/tools/builtin.ts";
@@ -11,17 +26,62 @@ import {
   createSession,
   type PermissionAskRequest,
   type SessionAllowRule,
+  type Session,
 } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
 let toolJobs: ReturnType<typeof createJobs> | undefined;
+const sessions: Session[] = [];
+async function openSession(options: Parameters<typeof createSession>[0]) {
+  const session = await createSession(options);
+  sessions.push(session);
+  return session;
+}
 afterEach(async () => {
-  await toolJobs?.dispose();
+  await Promise.all(sessions.splice(0).map((session) => session.close()));
+  await toolJobs?.clear(true);
   toolJobs = undefined;
   await dirs?.cleanup();
 });
+/** Execute an actual native ToolTask, including the gate's beforeTool hook. */
+async function runNativeCall(
+  call: ToolCall,
+  tools: ToolRegistration[],
+  gate: ReturnType<typeof createPermissionGate>,
+  context: Context,
+) {
+  const fake = fakeModel([
+    fauxAssistantMessage(call, { stopReason: "toolUse" }),
+    fauxAssistantMessage("done"),
+  ]);
+  const registry = createRegistry();
+  registry.install({
+    name: "permission-tools",
+    tools,
+    hooks: [hook(ToolTask, { beforeTool: gate.beforeTool })],
+  });
+  const harness = await Harness.open(
+    new MemoryStorage(),
+    { models: fake.models, registry, env: () => new NodeExecutionEnv({ cwd: dirs.cwd }) },
+    context,
+  );
+  try {
+    const conversation = await harness.root(context, {
+      agent: { model: { provider: fake.model.provider, modelId: fake.model.id } },
+    });
+    const request = await conversation.submit({ type: "input", content: "execute" }, context);
+    expect((await request.wait(context)).status).toBe("done");
+    const result = (await conversation.context(context)).messages.findLast(
+      (message) => message.role === "toolResult",
+    );
+    if (!result || result.role !== "toolResult") throw new Error("Native tool receipt missing.");
+    return result;
+  } finally {
+    await harness.close(BACKGROUND_CONTEXT);
+  }
+}
 const commandTurn = (command: string) =>
   fauxAssistantMessage(fauxToolCall("bash", { description: "Run test command", command }), {
     stopReason: "toolUse",
@@ -36,7 +96,7 @@ test("session command grant allows the same literal command and still asks for a
     fauxAssistantMessage("done"),
   ]);
   const requests: PermissionAskRequest[] = [];
-  const session = await createSession({
+  const session = await openSession({
     ...dirs,
     ...fake,
     onPermissionAsk: async (request) => {
@@ -73,7 +133,7 @@ test.each([
     fauxAssistantMessage("done"),
   ]);
   const asked: unknown[] = [];
-  const session = await createSession({
+  const session = await openSession({
     ...dirs,
     ...fake,
     onPermissionAsk: async (request) => {
@@ -111,7 +171,7 @@ test("session directory grant follows canonical paths and respects deny and ask"
     fauxAssistantMessage("done"),
   ]);
   const requests: PermissionAskRequest[] = [];
-  const session = await createSession({
+  const session = await openSession({
     ...dirs,
     ...fake,
     settings: { permissions: { deny: ["write(allowed/blocked)"], ask: ["write(allowed/asked)"] } },
@@ -139,16 +199,17 @@ test("session directory grant follows canonical paths and respects deny and ask"
 test("session command grants are absent from transcript and expire on resume", async () => {
   dirs = await tempDirs();
   const fake = fakeModel([commandTurn("printf approved"), fauxAssistantMessage("done")]);
-  const session = await createSession({
+  const session = await openSession({
     ...dirs,
     ...fake,
     onPermissionAsk: async () => "allow-session",
   });
   await session.run("run");
   expect(JSON.stringify(session.messages)).not.toContain("bash(printf approved)");
+  await session.close();
   const resumedFake = fakeModel([commandTurn("printf approved"), fauxAssistantMessage("done")]);
   let asked = 0;
-  const resumed = await createSession({
+  const resumed = await openSession({
     ...dirs,
     ...resumedFake,
     resumeId: session.id,
@@ -159,7 +220,9 @@ test("session command grants are absent from transcript and expire on resume", a
   });
   await resumed.run("again");
   expect(asked).toBe(1);
-  expect(resumedFake.contexts[1]!.messages.at(-1)).toMatchObject({ isError: true });
+  expect(
+    resumedFake.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+  ).toMatchObject({ isError: true });
 });
 
 test.each(["command", "directory"] as const)(
@@ -170,6 +233,7 @@ test.each(["command", "directory"] as const)(
     toolJobs = createJobs();
     const tools = createBuiltinTools({
       cwd: dirs.cwd,
+      homeDir: dirs.homeDir,
       jobs: toolJobs,
       getSkill: () => undefined,
       setTodo: async () => {},
@@ -200,8 +264,6 @@ test.each(["command", "directory"] as const)(
             fauxToolCall("write", { path: "same/ask", content: "no" }, { id: "ask" }),
             fauxToolCall("write", { path: "same/deny", content: "no" }, { id: "deny" }),
           ];
-    const assistantMessage = fauxAssistantMessage(calls, { stopReason: "toolUse" });
-    const context: AgentContext = { tools, messages: [assistantMessage] };
     const replies = new Map<
       string,
       ReturnType<typeof Promise.withResolvers<"allow" | "deny" | "allow-session">>
@@ -213,7 +275,8 @@ test.each(["command", "directory"] as const)(
       ...fake,
       rules: parsePermissionRules({ ask: ["write(same/ask)"], deny: ["write(same/deny)"] }),
       getMode: () => "ask",
-      getAgentState: () => ({ tools, messages: context.messages }),
+      getTools: () => tools,
+      getMessages: async () => [],
       getProjectInstructions: () => [],
       getReviewModel: () => fake.model,
       onEvent: () => {},
@@ -225,26 +288,22 @@ test.each(["command", "directory"] as const)(
         return reply.promise;
       },
     });
-    // Unlike pi's ordinary sequential preparation, independent runToolCall invocations
-    // genuinely enter this one Session gate concurrently, including validation and execution.
+    // Separate native conversations enter the same gate concurrently; each native task
+    // validates and executes its registered tool through the public Harness boundary.
     const abort = new AbortController();
-    const running = calls.map((call) =>
-      runToolCall(call, {
-        tools,
-        assistantMessage,
-        context,
-        signal: abort.signal,
-        beforeToolCall: gate.beforeToolCall,
-      }),
+    const context = withAbortSignal(
+      AbortSignal.any([abort.signal, AbortSignal.timeout(3000)]),
+      BACKGROUND_CONTEXT,
     );
+    const running = calls.map((call) => runNativeCall(call, tools, gate, context));
     try {
-      await asked.promise;
+      await awaitWithContext(asked.promise, context);
       const withdrawn = Promise.withResolvers<void>();
       requests
         .get("covered")!
         .signal.addEventListener("abort", () => withdrawn.resolve(), { once: true });
       replies.get("first")!.resolve("allow-session");
-      await withdrawn.promise;
+      await awaitWithContext(withdrawn.promise, context);
       expect((await running[0]!).isError).toBe(false);
       expect((await running[1]!).isError).toBe(false);
       expect(requests.get("different")!.signal.aborted).toBe(false);
@@ -282,7 +341,7 @@ test.each(["glob", "grep"] as const)(
       fauxAssistantMessage("done"),
     ]);
     const requests: PermissionAskRequest[] = [];
-    const session = await createSession({
+    const session = await openSession({
       ...dirs,
       ...fake,
       settings: { permissions: { ask: [tool] } },
@@ -307,14 +366,14 @@ test("related Sessions share memory grants by reference and ordinary rules do no
   const fakeA = fakeModel([commandTurn(command), fauxAssistantMessage("done")]);
   const fakeB = fakeModel([commandTurn(command), fauxAssistantMessage("done")]);
   let asksB = 0;
-  const a = await createSession({
+  const a = await openSession({
     ...dirs,
     ...fakeA,
     sessionAllowRules: shared,
     onPermissionAsk: async () => "allow-session",
   });
   // Construct B before A appends: a startup copy would miss the grant.
-  const b = await createSession({
+  const b = await openSession({
     ...dirs,
     ...fakeB,
     sessionAllowRules: shared,
@@ -326,10 +385,12 @@ test("related Sessions share memory grants by reference and ordinary rules do no
   await a.run("grant");
   await b.run("repeat");
   expect(asksB).toBe(0);
-  expect(fakeB.contexts[1]!.messages.at(-1)).toMatchObject({ isError: false });
+  expect(
+    fakeB.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+  ).toMatchObject({ isError: false });
   const configured = fakeModel([commandTurn(command), fauxAssistantMessage("done")]);
   let asksConfigured = 0;
-  const c = await createSession({
+  const c = await openSession({
     ...dirs,
     ...configured,
     allowRules: [`bash(${command})`],
@@ -349,13 +410,16 @@ test("directory name glob characters cannot grant adjacent directories or anothe
     writeTurn("group[ab]/nested/second"),
     writeTurn("groupa/other"),
     fauxAssistantMessage(
-      fauxToolCall("edit", { path: "group[ab]/first", oldText: "written", newText: "changed" }),
+      fauxToolCall("edit", {
+        path: "group[ab]/first",
+        edits: [{ oldText: "written", newText: "changed" }],
+      }),
       { stopReason: "toolUse" },
     ),
     fauxAssistantMessage("done"),
   ]);
   const requests: PermissionAskRequest[] = [];
-  const session = await createSession({
+  const session = await openSession({
     ...dirs,
     ...fake,
     onPermissionAsk: async (request) => {
@@ -377,6 +441,7 @@ test("other tools receive an exact bare tool session grant", async () => {
   toolJobs = createJobs();
   const tools = createBuiltinTools({
     cwd: dirs.cwd,
+    homeDir: dirs.homeDir,
     jobs: toolJobs,
     getSkill: () => undefined,
     setTodo: async () => {},
@@ -384,15 +449,14 @@ test("other tools receive an exact bare tool session grant", async () => {
     .filter((tool) => tool.name === "write")
     .map((tool) => ({ ...tool, name: "mcp__example__store" }));
   const call = fauxToolCall("mcp__example__store", { path: "first", content: "ok" });
-  const assistantMessage = fauxAssistantMessage(call, { stopReason: "toolUse" });
-  const context: AgentContext = { tools, messages: [assistantMessage] };
   const requests: PermissionAskRequest[] = [];
   const gate = createPermissionGate({
     ...dirs,
     ...fake,
     rules: [],
     getMode: () => "ask",
-    getAgentState: () => ({ tools, messages: context.messages }),
+    getTools: () => tools,
+    getMessages: async () => [],
     getProjectInstructions: () => [],
     getReviewModel: () => fake.model,
     onEvent: () => {},
@@ -401,11 +465,17 @@ test("other tools receive an exact bare tool session grant", async () => {
       return "allow-session";
     },
   });
-  const options = { tools, assistantMessage, context, beforeToolCall: gate.beforeToolCall };
-  expect((await runToolCall(call, options)).isError).toBe(false);
+  const context = withAbortSignal(AbortSignal.timeout(3000), BACKGROUND_CONTEXT);
+  expect((await runNativeCall(call, tools, gate, context)).isError).toBe(false);
   expect(
-    (await runToolCall(fauxToolCall(call.name, { path: "second", content: "ok" }), options))
-      .isError,
+    (
+      await runNativeCall(
+        fauxToolCall(call.name, { path: "second", content: "ok" }),
+        tools,
+        gate,
+        context,
+      )
+    ).isError,
   ).toBe(false);
   expect(requests).toHaveLength(1);
   expect(requests[0]!.sessionAllow).toEqual({ kind: "tool", rule: "mcp__example__store" });
