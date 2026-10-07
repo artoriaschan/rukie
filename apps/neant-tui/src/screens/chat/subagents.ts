@@ -1,4 +1,5 @@
 import type { Session, SessionEvent, SessionRecovery, SubagentIdentity } from "@neant/agent";
+import { isUnknownToolOutcome } from "@neant/shared";
 import type { SubagentView, SubagentOutput } from "../../components/subagent-message";
 
 export interface SubagentState extends SubagentView {
@@ -108,6 +109,19 @@ function toolResultText(result: unknown): string | undefined {
   return text || undefined;
 }
 
+function userOutput(
+  message: Extract<SessionEvent, { type: "message_end" }>["message"],
+): SubagentOutput | undefined {
+  if (message.role !== "user" || "source" in message) return undefined;
+  return {
+    type: "user",
+    text:
+      typeof message.content === "string"
+        ? message.content
+        : message.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join(""),
+  };
+}
+
 /** Fold child events separately from the parent transcript and activity. */
 export function reduceSubagent(
   previous: SubagentState | undefined,
@@ -189,6 +203,8 @@ export function reduceSubagent(
       };
     }
     case "message_end": {
+      const user = userOutput(event.message);
+      if (user) return { ...row, output: [...row.output, user] };
       if (event.message.role !== "assistant") return row;
       const blocks = event.message.content.flatMap<SubagentOutput>((block) =>
         block.type === "text" || block.type === "thinking"
@@ -241,16 +257,8 @@ export function projectSubagent(
   const output: SubagentState["output"][number][] = [];
   const tools: SubagentView["toolCalls"][number][] = [];
   for (const message of snapshot.messages) {
-    if (message.role === "user" && !("source" in message))
-      output.push({
-        type: "user",
-        text:
-          typeof message.content === "string"
-            ? message.content
-            : message.content
-                .flatMap((block) => (block.type === "text" ? [block.text] : []))
-                .join(""),
-      });
+    const user = userOutput(message);
+    if (user) output.push(user);
     if (message.role === "assistant")
       for (const block of message.content) {
         if (block.type === "text") output.push({ type: "text", text: block.text });
@@ -275,12 +283,13 @@ export function projectSubagent(
       const index = tools.findIndex((tool) => tool.id === message.toolCallId);
       if (index >= 0) {
         const text = toolResultText(message);
+        const unknown = isUnknownToolOutcome(message.details);
         tools[index] = {
           ...tools[index]!,
-          status: message.isError ? "failed" : "completed",
+          status: unknown ? "unknown" : message.isError ? "failed" : "completed",
           resultView: message.view,
-          result: message.isError ? undefined : text,
-          error: message.isError ? text : undefined,
+          result: unknown || message.isError ? undefined : text,
+          error: !unknown && message.isError ? text : undefined,
         };
       }
     }

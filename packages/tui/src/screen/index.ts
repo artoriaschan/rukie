@@ -1,4 +1,4 @@
-import type { createSelection, SelectionMetadata } from "../selection";
+import type { createSelection, SelectionMetadata, SelectionViewport } from "../selection";
 import type { LayoutNode } from "../layout";
 import { textCursor, textLines, sanitizeText, type TextStyle } from "../text";
 
@@ -69,6 +69,7 @@ function paintGrid(root: LayoutNode, columns: number, rows: number): Cell[][] {
       }
     | undefined;
   let selectable = true;
+  let viewport: SelectionViewport | undefined;
   let textSearch: LayoutNode["props"]["textSearch"];
   function put(
     x: number,
@@ -90,7 +91,9 @@ function paintGrid(root: LayoutNode, columns: number, rows: number): Cell[][] {
         : style;
     const metadata =
       selection ??
-      (region ? { region: region.source, options: region.options, selectable: false } : undefined);
+      (region
+        ? { region: region.source, options: region.options, selectable: false, viewport }
+        : undefined);
     grid[y]![x] = { text, width, style: codes, paintStyle, selection: metadata };
     if (width === 2)
       grid[y]![x + 1] = { text: "", width: 0, style: codes, paintStyle, selection: metadata };
@@ -101,7 +104,17 @@ function paintGrid(root: LayoutNode, columns: number, rows: number): Cell[][] {
     if (y + height <= clip.top || y >= clip.bottom || x + width <= clip.left || x >= clip.right)
       return;
     const previousRegion = region,
-      previousSelectable = selectable;
+      previousSelectable = selectable,
+      previousViewport = viewport;
+    if (node.type === "tui-scroll" && node.props.scroll)
+      viewport = {
+        owner: node.source,
+        top: Math.max(clip.top, y),
+        bottom: Math.min(clip.bottom, y + height),
+        left: Math.max(clip.left, x),
+        right: Math.min(clip.right, x + width),
+        scrollTop: node.props.scroll.getSnapshot().top,
+      };
     if (node.props.textSelection !== undefined)
       region =
         node.props.textSelection === false
@@ -116,6 +129,7 @@ function paintGrid(root: LayoutNode, columns: number, rows: number): Cell[][] {
                 region: region.source,
                 options: region.options,
                 selectable: false,
+                viewport,
               }
             : undefined;
     const previousSearch = textSearch;
@@ -223,6 +237,7 @@ function paintGrid(root: LayoutNode, columns: number, rows: number): Cell[][] {
                     source: sourceText,
                     offset: glyph.offset,
                     softWrap,
+                    viewport,
                   }
                 : undefined,
             );
@@ -251,6 +266,7 @@ function paintGrid(root: LayoutNode, columns: number, rows: number): Cell[][] {
     textSearch = previousSearch;
     region = previousRegion;
     selectable = previousSelectable;
+    viewport = previousViewport;
   }
   paint(root);
   return grid;

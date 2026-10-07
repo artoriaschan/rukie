@@ -1,8 +1,9 @@
+import { setImmediate } from "node:timers/promises";
 import { PassThrough, Writable } from "node:stream";
 import xterm from "@xterm/headless";
 
 /** Real ANSI interpretation at the renderer's IO boundary, with deterministic dimensions. */
-export function createTerminal(columns = 20, rows = 8) {
+export function createTerminal(columns = 20, rows = 8, advanceTimers?: (ms: number) => void) {
   const terminal = new xterm.Terminal({ cols: columns, rows, allowProposedApi: true });
   const stdin = Object.assign(new PassThrough(), {
     isTTY: true,
@@ -27,7 +28,19 @@ export function createTerminal(columns = 20, rows = 8) {
     { columns, rows },
   );
   async function flush() {
-    await new Promise<void>((resolve) => stdout.write("", () => resolve()));
+    let parsed = false;
+    const flushed = new Promise<void>((resolve) =>
+      stdout.write("", () => {
+        parsed = true;
+        resolve();
+      }),
+    );
+    if (advanceTimers)
+      while (!parsed) {
+        advanceTimers(0);
+        await setImmediate();
+      }
+    await flushed;
   }
   return {
     stdin,
@@ -39,11 +52,15 @@ export function createTerminal(columns = 20, rows = 8) {
     flush,
     async waitFor(predicate: () => boolean) {
       const deadline = performance.now() + 1000;
+      let remainingYields = 10000;
       do {
         await flush();
         if (predicate()) return;
-        await Bun.sleep(1);
-      } while (performance.now() < deadline);
+        if (advanceTimers) {
+          advanceTimers(16);
+          await setImmediate();
+        } else await Bun.sleep(1);
+      } while (advanceTimers ? --remainingYields > 0 : performance.now() < deadline);
       throw new Error("Terminal did not reach the expected state within 1 second");
     },
     screen() {

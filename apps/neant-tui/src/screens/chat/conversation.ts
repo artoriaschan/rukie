@@ -1192,13 +1192,11 @@ export function createConversation(session: Session, model: string, locale: Loca
       const row = state.subagents[id];
       if (!snapshot || !row || row.historyLoaded || row.startedAt !== owner.startedAt) return;
       if (row.status === "running") {
-        if (!snapshot.run || snapshot.run.endedAt !== undefined) return;
-        const startedAt = snapshot.run.startedAt;
+        if (!snapshot.run || snapshot.run.endedAt !== undefined || !snapshot.historyMessages)
+          return;
         const history = projectSubagent(row, {
           ...snapshot,
-          messages: snapshot.messages.filter(
-            (message) => message.timestamp < startedAt || message.role === "user",
-          ),
+          messages: snapshot.historyMessages,
         });
         update({
           ...state,
