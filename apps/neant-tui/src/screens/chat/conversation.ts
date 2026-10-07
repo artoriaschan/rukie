@@ -1,3 +1,4 @@
+import { assistantThinkingDuration } from "@neant/agent";
 import { basename } from "node:path";
 import { fmtDuration, type Locale } from "@neant/i18n";
 import { createTuiI18n, formatError } from "../../i18n";
@@ -70,7 +71,7 @@ type CompletedEntry = { anchorId?: string } & (
       feedback?: string;
     }
   | { type: "subagent"; agentId: string }
-  | { type: "thinking"; text: string }
+  | { type: "thinking"; text: string; durationMs?: number }
   | { type: "notice"; text: string; report?: string }
   | { type: "context-report"; report: ContextReport; expanded: boolean; modelName?: string }
 );
@@ -336,6 +337,8 @@ interface ViewState {
   tools: ToolCall[];
   assistant: string;
   reasoning: string;
+  reasoningSettled?: boolean;
+  reasoningDurationMs?: number;
   assistantAnchor: string;
   assistantTimestamp?: number;
   model: string;
@@ -413,7 +416,15 @@ function replayMessages(
       }
       const reasoning = messageThinking(message);
       return [
-        ...(reasoning ? [{ type: "thinking" as const, text: reasoning }] : []),
+        ...(reasoning
+          ? [
+              {
+                type: "thinking" as const,
+                text: reasoning,
+                durationMs: assistantThinkingDuration(message),
+              },
+            ]
+          : []),
         ...(text ? [{ type: "message" as const, role: "assistant" as const, text }] : []),
       ];
     }
@@ -533,6 +544,12 @@ function reduceEvent(
         ...state,
         assistant: messageText(event.message),
         reasoning: messageThinking(event.message),
+        reasoningDurationMs: assistantThinkingDuration(event.message),
+        reasoningSettled:
+          state.reasoningSettled ||
+          !!messageText(event.message) ||
+          (event.message.role === "assistant" &&
+            event.message.content.some((block) => block.type === "toolCall")),
         streamedChars,
         decode:
           chars > 0
@@ -549,6 +566,8 @@ function reduceEvent(
             ...state,
             assistant: messageText(event.message),
             reasoning: messageThinking(event.message),
+            reasoningSettled: false,
+            reasoningDurationMs: undefined,
             assistantAnchor: crypto.randomUUID(),
           }
         : state;
@@ -583,6 +602,7 @@ function reduceEvent(
                 {
                   type: "thinking" as const,
                   text: messageThinking(event.message),
+                  durationMs: assistantThinkingDuration(event.message),
                   anchorId: `${state.assistantAnchor}-thinking`,
                 },
               ]

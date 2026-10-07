@@ -821,6 +821,13 @@ function Chat({
   ]);
   const [jobGroupFolds, setJobGroupFolds] = useState<ReadonlyMap<string, boolean>>(new Map());
   const [expandedRows, setExpandedRows] = useState<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    if (state.running) return;
+    setExpandedRows((rows) => {
+      const next = new Set(Array.from(rows).filter((id) => !id.endsWith("-thinking")));
+      return next.size === rows.size ? rows : next;
+    });
+  }, [state.running]);
   const toggleRow = (id: string) =>
     setExpandedRows((rows) => {
       const next = new Set(rows);
@@ -2007,6 +2014,8 @@ function Chat({
               <ThinkingRow
                 key={index}
                 text={entry.text}
+                durationMs={entry.durationMs}
+                revealKey={entry.anchorId ?? `thinking-${index}`}
                 locale={locale}
                 expanded={expanded || expandedRows.has(entry.anchorId ?? `thinking-${index}`)}
                 onToggle={() => toggleRow(entry.anchorId ?? `thinking-${index}`)}
@@ -2169,6 +2178,10 @@ function Chat({
           <Box scrollAnchorId={`${state.assistantAnchor}-thinking`} flexDirection="column">
             <ThinkingRow
               text={state.reasoning}
+              durationMs={state.reasoningDurationMs}
+              streaming={!state.reasoningSettled}
+              preview={!state.reasoningSettled}
+              revealKey={`${state.assistantAnchor}-thinking`}
               locale={locale}
               expanded={expanded || expandedRows.has(`${state.assistantAnchor}-thinking`)}
               onToggle={() => toggleRow(`${state.assistantAnchor}-thinking`)}
