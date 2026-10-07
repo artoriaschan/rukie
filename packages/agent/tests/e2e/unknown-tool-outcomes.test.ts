@@ -132,15 +132,44 @@ test("mixed real success, real failure and recovery results survive repeated Ses
   await original.dispose();
   const first = await createSession({ ...dirs, ...fakeModel([]), resumeId: original.id });
   const results = first.messages.filter((message) => message.role === "toolResult");
-  expect(results.slice(0, 3)).toEqual(real);
+  // Session.messages adds ephemeral Tool Views; every native result fact stays unchanged.
+  const nativeResults = results.map(({ view: _view, ...facts }) => facts);
+  expect(nativeResults.slice(0, 3)).toEqual(real);
+  for (const [index, result] of results.slice(0, 3).entries())
+    expect(result.view).toMatchObject({
+      card: "read",
+      kind: "read",
+      displayKey: "tool.read",
+      path: `${real[index]!.toolCallId}.txt`,
+      content: real[index]!.content[0]!.text,
+    });
   expect(results).toHaveLength(4);
   expect(results.at(-1)).toMatchObject({
     toolCallId: "missing",
     details: { recovery: { type: "unknown-tool-outcome" } },
   });
+  const repairedStore = await store.open(metadata, BACKGROUND_CONTEXT);
+  const persisted = await (await repairedStore.branch("main", BACKGROUND_CONTEXT))!.findEntries(
+    { order: "oldestFirst" },
+    BACKGROUND_CONTEXT,
+  );
+  const persistedResults = persisted.flatMap((entry) =>
+    entry.type === "message" && entry.message.role === "toolResult" ? [entry.message] : [],
+  );
+  expect(persistedResults).toEqual(nativeResults);
+  for (const result of persistedResults) expect(Object.hasOwn(result, "view")).toBe(false);
+  await repairedStore.close(BACKGROUND_CONTEXT);
   await first.dispose();
   const again = await createSession({ ...dirs, ...fakeModel([]), resumeId: original.id });
   expect(again.messages.filter((message) => message.role === "toolResult")).toEqual(results);
+  const finalStore = await store.open(metadata, BACKGROUND_CONTEXT);
+  expect(
+    await (await finalStore.branch("main", BACKGROUND_CONTEXT))!.findEntries(
+      { order: "oldestFirst" },
+      BACKGROUND_CONTEXT,
+    ),
+  ).toEqual(persisted);
+  await finalStore.close(BACKGROUND_CONTEXT);
   await again.dispose();
 });
 
