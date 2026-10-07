@@ -157,8 +157,8 @@ export function parseSubagentIdentities(
 
 export function subagentsState(parentSessionId: string): ToolStateDefinition {
   return defineToolState({
-    history: "latest",
-    fork: "initial",
+    history: "rewindable",
+    fork: "asOf",
     name: "subagents",
     version: 3,
     parse(version, value) {

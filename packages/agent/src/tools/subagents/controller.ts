@@ -666,6 +666,9 @@ export function createSubagentController(options: SubagentControllerOptions) {
       const child = forkAt
         ? await tx.forkConversation(source, forkAt, { ownership: { kind: "task", taskId } })
         : await tx.createConversation({ ownership: { kind: "task", taskId } });
+      // A child inherits model history, but owns no parent delegation directory.
+      // Root conversation rewind uses the same native fork with its directory intact.
+      if (forkAt !== undefined) (await tx.doc(state.document, child.id)).value = [];
       const id = existing?.id ?? String(child.id);
       const row: SubagentIdentity = {
         id,
