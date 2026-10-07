@@ -304,7 +304,7 @@ test("job output and streaming bursts preserve reading position, draft, and unre
   }
 });
 
-test("consecutive duplicate commands group, fold after settlement, and Ctrl+O respects a question", async () => {
+test("consecutive jobs share transcript expansion and Ctrl+O respects an active question", async () => {
   const app = await start(["--permission-mode", "full-access", "launch"], {
     columns: 120,
     rows: 40,
