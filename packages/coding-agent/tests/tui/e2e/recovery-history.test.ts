@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test";
-import { BACKGROUND_CONTEXT as context } from "@earendil-works/pi-agent-core/harness/context";
-import { createJsonlStore } from "@rukie/agent";
+import { crashedSubagents } from "../../../../agent/tests/helpers/crashed-subagents";
 import { getCurrentSystemMessage } from "@earendil-works/pi-ai";
 import { start } from "../helpers/app";
 
@@ -8,56 +7,20 @@ for (const outcome of ["completed", "interrupted"] as const)
   test(`unrelated subagent updates preserve the observed ${outcome} history, but a new Run of that child starts fresh`, async () => {
     const argv: string[] = [];
     let childId = "";
-    const savedLabel = outcome === "completed" ? "Run ended normally" : "Run interrupted";
+    const savedLabel = outcome === "completed" ? "Run ended normally" : "Run aborted";
     const app = await start(argv, {
       columns: 100,
       rows: 30,
       env: { LANG: "en_US.UTF-8" },
       async prepare(root) {
-        const store = createJsonlStore({ cwd: root, homeDir: root });
-        const parent = await store.create({ cwd: root }, context);
-        const branch = await parent.createBranch("main", null, context);
-        const child = await store.create(
-          { cwd: root, parentSessionId: parent.metadata.id },
-          context,
+        const saved = await crashedSubagents({ cwd: root, homeDir: root });
+        const child = await saved.child(
+          "Confirmed old child",
+          outcome === "completed" ? "completed" : "aborted",
         );
         childId = child.metadata.id;
-        const childBranch = await child.createBranch("main", null, context);
-        const run = {
-          id: "saved-run",
-          sessionId: childId,
-          parentSessionId: parent.metadata.id,
-          startedAt: 10,
-        };
-        await childBranch.appendCustomEntry(
-          "tool-state/subagent-run",
-          { version: 1, value: run },
-          context,
-        );
-        if (outcome === "completed")
-          await childBranch.appendCustomEntry(
-            "tool-state/subagent-run",
-            { version: 1, value: { ...run, endedAt: 20, outcome } },
-            context,
-          );
-        await child.close(context);
-        await branch.appendCustomEntry(
-          "tool-state/subagents",
-          {
-            version: 2,
-            value: [
-              {
-                id: childId,
-                description: "Confirmed old child",
-                type: "general-purpose",
-                latestRun: run,
-              },
-            ],
-          },
-          context,
-        );
-        await parent.close(context);
-        argv.push("--resume", parent.metadata.id);
+        await saved.save();
+        argv.push("--resume", saved.parentId);
       },
     });
     const screen = () => app.screen().join("\n");

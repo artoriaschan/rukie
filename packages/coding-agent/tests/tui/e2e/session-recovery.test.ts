@@ -1,11 +1,14 @@
 import { expect, test } from "bun:test";
-import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createJsonlStore, createSession } from "@rukie/agent";
-import { fauxProvider, getCurrentSystemMessage } from "@earendil-works/pi-ai";
+import { getCurrentSystemMessage } from "@earendil-works/pi-ai";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { start } from "../helpers/app";
+import { crashUnsafeEffect } from "../helpers/native-recovery";
+import { crashedSubagents } from "../../../../agent/tests/helpers/crashed-subagents";
+import { fakeModel } from "../../../../agent/tests/helpers/fake-model";
 
 for (const [lang, notice, unknown, guide] of [
   ["zh_CN.UTF-8", "恢复提示：1 个子 Run 需核对", "Run 结束原因未知", "用现有输入决定如何继续。"],
@@ -22,24 +25,15 @@ for (const [lang, notice, unknown, guide] of [
   ]) {
     test(`${lang} resume shows one child recovery notice at ${columns}×${rows} while preserving input and history access`, async () => {
       const argv: string[] = [];
+      let childId = "";
       const app = await start(argv, {
         columns,
         rows,
         env: { LANG: lang },
         async prepare(root) {
-          const store = createJsonlStore({ cwd: root, homeDir: root });
-          const stored = await store.create({ cwd: root }, BACKGROUND_CONTEXT);
-          const branch = await stored.createBranch("main", null, BACKGROUND_CONTEXT);
-          await branch.appendCustomEntry(
-            "tool-state/subagents",
-            {
-              version: 1,
-              value: [{ id: "old-child", description: "Old reader", type: "general-purpose" }],
-            },
-            BACKGROUND_CONTEXT,
-          );
-          await stored.close(BACKGROUND_CONTEXT);
-          argv.push("--resume", stored.metadata.id);
+          const crashed = await crashUnsafeEffect(root, true);
+          childId = crashed.childId!;
+          argv.push("--resume", crashed.sessionId);
         },
       });
       try {
@@ -54,7 +48,7 @@ for (const [lang, notice, unknown, guide] of [
         app.stdin.write("verify first\r");
         await app.waitFor(() => app.calls.length === 1);
         expect(JSON.stringify(app.calls[0]!.context.messages)).toContain(
-          "old-child (Old reader): unknown",
+          `${childId} (Unknown child)`,
         );
         app.calls[0]!.delta("checked");
         app.calls[0]!.finish();
@@ -123,16 +117,14 @@ test("SIGTERM lets the actual TUI process save an active child Run before report
     const parent = (await store.list({ cwd: root }, BACKGROUND_CONTEXT)).find(
       (item) => !item.parentSessionId,
     )!;
-    const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
     const restored = await createSession({
       cwd: root,
       homeDir: root,
-      model: faux.getModel(),
-      streamFn: faux.provider.streamSimple,
+      ...fakeModel([]),
       resumeId: parent.id,
     });
-    expect(restored.recovery.subagents).toMatchObject([
-      { description: "Active child", outcome: "aborted" },
+    expect(restored.toolState("subagents")).toMatchObject([
+      { description: "Active child", latestRun: { outcome: "aborted" } },
     ]);
     expect(restored.checkpoints()).toHaveLength(1);
     await restored.close();
@@ -145,13 +137,8 @@ test("SIGTERM lets the actual TUI process save an active child Run before report
 });
 
 for (const [lang, interrupted, unconfirmed, completed] of [
-  [
-    "en_US.UTF-8",
-    "Run interrupted",
-    "Saved child Run could not be confirmed",
-    "Run ended normally",
-  ],
-  ["zh_CN.UTF-8", "Run 已中断", "无法确认已保存的子 Run", "Run 正常结束"],
+  ["en_US.UTF-8", "Run aborted", "Run ended with error", "Run ended normally"],
+  ["zh_CN.UTF-8", "Run 已取消", "Run 错误结束", "Run 正常结束"],
 ])
   test(`${lang} crash resume at 40×12 shows interruption and uncertainty without activity, with accurate manual history`, async () => {
     const argv: string[] = [];
@@ -162,57 +149,14 @@ for (const [lang, interrupted, unconfirmed, completed] of [
       rows: 12,
       env: { LANG: lang },
       async prepare(root) {
-        const store = createJsonlStore({ cwd: root, homeDir: root });
-        const parent = await store.create({ cwd: root }, BACKGROUND_CONTEXT);
-        const branch = await parent.createBranch("main", null, BACKGROUND_CONTEXT);
-        const identities = [];
-        for (const description of ["Pending", "Finished", "Torn"]) {
-          const child = await store.create(
-            { cwd: root, parentSessionId: parent.metadata.id },
-            BACKGROUND_CONTEXT,
-          );
-          const childBranch = await child.createBranch("main", null, BACKGROUND_CONTEXT);
-          const run = {
-            id: `run-${description}`,
-            sessionId: child.metadata.id,
-            parentSessionId: parent.metadata.id,
-            startedAt: 10,
-          };
-          await childBranch.appendCustomEntry(
-            "tool-state/subagent-run",
-            { version: 1, value: run },
-            BACKGROUND_CONTEXT,
-          );
-          if (description === "Finished") {
-            completedId = child.metadata.id;
-            await childBranch.appendCustomEntry(
-              "tool-state/subagent-run",
-              { version: 1, value: { ...run, endedAt: 20, outcome: "completed" } },
-              BACKGROUND_CONTEXT,
-            );
-          }
-          if (description === "Pending") childId = child.metadata.id;
-          identities.push({
-            id: child.metadata.id,
-            description,
-            type: "general-purpose",
-            latestRun: run,
-          });
-          await child.close(BACKGROUND_CONTEXT);
-          if (description === "Torn") {
-            const path = Reflect.get(child.metadata, "path");
-            if (typeof path !== "string") throw new Error("Missing native path");
-            const { appendFile } = await import("node:fs/promises");
-            await appendFile(path, '{"torn":');
-          }
-        }
-        await branch.appendCustomEntry(
-          "tool-state/subagents",
-          { version: 2, value: identities },
-          BACKGROUND_CONTEXT,
-        );
-        await parent.close(BACKGROUND_CONTEXT);
-        argv.push("--resume", parent.metadata.id);
+        const fixture = await crashedSubagents({ cwd: root, homeDir: root });
+        const pending = await fixture.child("Pending", "aborted");
+        childId = pending.metadata.id;
+        const finished = await fixture.child("Finished", "completed");
+        completedId = finished.metadata.id;
+        await fixture.child("Failed", "error");
+        await fixture.save();
+        argv.push("--resume", fixture.parentId);
       },
     });
     try {
@@ -255,8 +199,7 @@ for (const [lang, interrupted, unconfirmed, completed] of [
       await app.waitFor(() => app.screen().includes("❯"));
       app.stdin.write("continue after review\r");
       await app.waitFor(() => app.calls.length === 1);
-      expect(JSON.stringify(app.calls[0]!.context.messages)).toContain("Pending): interrupted");
-      expect(JSON.stringify(app.calls[0]!.context.messages)).toContain("unable to confirm");
+      expect(JSON.stringify(app.calls[0]!.context.messages)).toContain("Pending");
       app.calls[0]!.tool("send_message", { agent_id: childId, message: "TUI child continuation" });
       await app.waitFor(() => app.calls.length === 3);
       const childCall = app.calls

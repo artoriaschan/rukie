@@ -3,10 +3,12 @@ import { expect, test } from "bun:test";
 import { startWithClock } from "../helpers/clock-app";
 import { start } from "../helpers/app";
 import { controlledModel } from "../helpers/model";
-import { createSession, createJsonlStore } from "@rukie/agent";
-import { BACKGROUND_CONTEXT as context } from "@earendil-works/pi-agent-core/harness/context";
+import { createSession } from "@rukie/agent";
+import { fakeModel } from "../../../../agent/tests/helpers/fake-model";
+import { crashUnsafeEffect } from "../helpers/native-recovery";
 import {
   createAssistantMessageEventStream,
+  createModels,
   fauxAssistantMessage,
   fauxToolCall,
 } from "@earendil-works/pi-ai";
@@ -18,90 +20,54 @@ test.each(["future", "past"] as const)(
     let childId = "";
     const fake = controlledModel();
     const timestamp = mode === "future" ? Date.now() + 10_000_000 : 123456;
-    const streamFn: typeof fake.streamFn = (m, c, o) => {
-      const target = createAssistantMessageEventStream();
-      void (async () => {
-        for await (const event of await fake.streamFn(m, c, o)) {
-          if ("partial" in event) event.partial.timestamp = timestamp;
-          if ("message" in event) event.message.timestamp = timestamp;
-          if ("error" in event) event.error.timestamp = timestamp;
-          target.push(event);
-        }
-        target.end();
-      })();
-      return target;
-    };
+    const models = withTimestamps(fake.models, timestamp);
     const app = await startWithClock(argv, {
       columns: 100,
       rows: 40,
       env: { LANG: "en" },
-      session: { model: fake.model, streamFn },
+      session: { model: fake.model, models },
       async prepare(root) {
-        const store = createJsonlStore({ cwd: root, homeDir: root });
-        const parent = await store.create({ cwd: root }, context);
-        const branch = await parent.createBranch("main", null, context);
-        const child = await store.create(
-          { cwd: root, parentSessionId: parent.metadata.id },
-          context,
+        const preparation = fakeModel(
+          Array.from({ length: 20 }, () => (context) => {
+            const lastUser = context.messages.findLast((message) => message.role === "user");
+            if (JSON.stringify(lastUser).includes("old child prompt"))
+              return fauxAssistantMessage("saved prior child marker");
+            if (
+              !context.messages.some(
+                (message) => message.role === "toolResult" && message.toolName === "subagent",
+              )
+            )
+              return fauxAssistantMessage(
+                fauxToolCall("subagent", {
+                  description: "Same clock child",
+                  prompt: "old child prompt",
+                }),
+                { stopReason: "toolUse" },
+              );
+            return fauxAssistantMessage("parent idle");
+          }),
         );
-        childId = child.metadata.id;
-        const childBranch = await child.createBranch("main", null, context);
-        await childBranch.appendMessage(
-          { role: "user", content: [{ type: "text", text: "old child prompt" }], timestamp },
-          context,
-        );
-        await childBranch.appendMessage(
-          fauxAssistantMessage("saved prior child marker", { timestamp }),
-          context,
-        );
-        const run = {
-          id: "saved-child-run",
-          sessionId: childId,
-          parentSessionId: parent.metadata.id,
-          startedAt: Date.now() - 100,
-          endedAt: Date.now() - 50,
-          outcome: "completed",
-        };
-        await childBranch.appendCustomEntry(
-          "tool-state/subagent-run",
-          { version: 1, value: run },
-          context,
-        );
-        await branch.appendCustomEntry(
-          "tool-state/subagents",
-          {
-            version: 2,
-            value: [
-              {
-                id: childId,
-                description: "Same clock child",
-                type: "general-purpose",
-                latestRun: run,
-              },
-            ],
-          },
-          context,
-        );
-        await child.close(context);
-        await parent.close(context);
-        argv.push("--resume", parent.metadata.id);
-        const observed = await createSession({
+        const fixture = await createSession({
           cwd: root,
           homeDir: root,
-          resumeId: parent.metadata.id,
-          model: fake.model,
-          streamFn: () => {
-            throw new Error("history observation must not run model");
-          },
+          ...preparation,
+          models: withTimestamps(preparation.models, timestamp),
         });
         try {
-          const snapshot = await observed.readSubagent(childId);
+          await fixture.run("delegate saved child");
+          await fixture.waitForRequest(fixture.currentRequestId!);
+          const state = fixture.toolState("subagents");
+          if (!Array.isArray(state) || !state[0] || typeof state[0].id !== "string")
+            throw new Error("Native child fixture identity missing");
+          childId = state[0].id;
+          const snapshot = await fixture.readSubagent(childId);
           expect(
             snapshot!.messages.find((message) => message.role === "assistant")!.timestamp,
           ).toBe(timestamp);
           expect(JSON.stringify(snapshot!.messages)).toContain("saved prior child marker");
+          argv.push("--resume", fixture.id);
         } finally {
-          await observed.dispose();
+          await fixture.close();
         }
       },
     });
@@ -160,14 +126,13 @@ test.each(["future", "past"] as const)(
           )
         );
       });
+      app.stdin.write("\x1b\x1b/exit\r");
+      await app.exit;
       const restored = await createSession({
         cwd: app.root,
         homeDir: app.root,
         resumeId: argv[1],
-        model: fake.model,
-        streamFn: () => {
-          throw new Error("verification must not run model");
-        },
+        ...fakeModel([]),
       });
       try {
         const snapshot = await restored.readSubagent(childId);
@@ -233,67 +198,8 @@ test("read-only child history retains an unknown Tool outcome without success, f
     rows: 40,
     env: { LANG: "en" },
     async prepare(root) {
-      const store = createJsonlStore({ cwd: root, homeDir: root });
-      const parent = await store.create({ cwd: root }, context);
-      const branch = await parent.createBranch("main", null, context);
-      const child = await store.create({ cwd: root, parentSessionId: parent.metadata.id }, context);
-      const childBranch = await child.createBranch("main", null, context);
-      await childBranch.appendMessage(
-        fauxAssistantMessage(
-          fauxToolCall(
-            "write",
-            { path: "unexecuted-write.txt", content: "payload" },
-            { id: "lost-child-write" },
-          ),
-          { stopReason: "toolUse" },
-        ),
-        context,
-      );
-      await childBranch.appendMessage(
-        {
-          role: "toolResult",
-          toolCallId: "lost-child-write",
-          toolName: "write",
-          content: [
-            { type: "text", text: "Outcome unknown: saved call without confirmed result." },
-          ],
-          isError: false,
-          details: { recovery: { type: "unknown-tool-outcome", version: 1 } },
-          timestamp: Date.now(),
-        },
-        context,
-      );
-      const run = {
-        id: "saved-unknown-run",
-        sessionId: child.metadata.id,
-        parentSessionId: parent.metadata.id,
-        startedAt: 10,
-        endedAt: 20,
-        outcome: "completed",
-      };
-      await childBranch.appendCustomEntry(
-        "tool-state/subagent-run",
-        { version: 1, value: run },
-        context,
-      );
-      await branch.appendCustomEntry(
-        "tool-state/subagents",
-        {
-          version: 2,
-          value: [
-            {
-              id: child.metadata.id,
-              description: "Unknown child",
-              type: "general-purpose",
-              latestRun: run,
-            },
-          ],
-        },
-        context,
-      );
-      await child.close(context);
-      await parent.close(context);
-      argv.push("--resume", parent.metadata.id);
+      const { sessionId } = await crashUnsafeEffect(root, true);
+      argv.push("--resume", sessionId);
     },
   });
   try {
@@ -304,7 +210,7 @@ test("read-only child history retains an unknown Tool outcome without success, f
     await app.waitFor(
       () =>
         app.screen().join("\n").includes("3/3") &&
-        app.screen().join("\n").includes("unexecuted-write.txt"),
+        app.screen().join("\n").includes("uncertain-effect.txt"),
     );
     const tools = app.screen().join("\n");
     expect(tools).toContain("? Write");
@@ -312,8 +218,30 @@ test("read-only child history retains an unknown Tool outcome without success, f
     expect(tools).not.toContain("• Write");
     expect(tools).not.toContain("✗ Write");
     expect(app.calls).toHaveLength(0);
-    expect(await Bun.file(`${app.root}/unexecuted-write.txt`).exists()).toBe(false);
+    expect(await Bun.file(`${app.root}/uncertain-effect.txt`).text()).toBe("saved effect");
   } finally {
     await app.cleanup();
   }
 });
+
+function withTimestamps(source: ReturnType<typeof createModels>, timestamp: number) {
+  const models = createModels();
+  for (const original of source.getProviders())
+    models.setProvider({
+      ...original,
+      streamSimple(m, c, o) {
+        const target = createAssistantMessageEventStream();
+        void (async () => {
+          for await (const event of original.streamSimple(m, c, o)) {
+            if ("partial" in event) event.partial.timestamp = timestamp;
+            if ("message" in event) event.message.timestamp = timestamp;
+            if ("error" in event) event.error.timestamp = timestamp;
+            target.push(event);
+          }
+          target.end();
+        })();
+        return target;
+      },
+    });
+  return models;
+}
