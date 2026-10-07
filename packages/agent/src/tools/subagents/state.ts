@@ -1,4 +1,4 @@
-import type { ToolStateDefinition } from "../../tool-state/index.ts";
+import { defineToolState, type ToolStateDefinition } from "../../tool-state/index.ts";
 
 /** Durable facts for one child Run; an absent outcome has not been settled. */
 export type SubagentRun = {
@@ -73,17 +73,21 @@ function parseRun(value: unknown): SubagentRun {
   return run;
 }
 
-export const subagentRunState: ToolStateDefinition = {
+export const subagentRunState: ToolStateDefinition = defineToolState({
+  history: "rewindable",
+  fork: "asOf",
   name: "subagent-run",
   version: 1,
   parse(version, value) {
     if (version !== 1) throw new Error("Invalid subagent Run version.");
     return { ...parseRun(value) };
   },
-};
+});
 
 export function subagentsState(parentSessionId: string): ToolStateDefinition {
-  return {
+  return defineToolState({
+    history: "latest",
+    fork: "initial",
     name: "subagents",
     version: 2,
     parse(version, value) {
@@ -106,7 +110,7 @@ export function subagentsState(parentSessionId: string): ToolStateDefinition {
           : identity;
       });
     },
-  };
+  });
 }
 
 export type SubagentIdentity = {

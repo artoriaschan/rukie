@@ -11,15 +11,10 @@ export type SessionNotice =
     }
   | { kind: "hook_message"; message: string }
   | { kind: "hook_warning"; event: string; hook: string; message: string; error?: NoticeError };
-interface SessionNoticeMessage {
+export interface SessionNoticeMessage {
   role: "session-notice";
   notice: SessionNotice;
   timestamp: number;
-}
-declare module "@earendil-works/pi-agent-core" {
-  interface CustomAgentMessages {
-    "session-notice": SessionNoticeMessage;
-  }
 }
 
 export function sessionNoticeFromHook(

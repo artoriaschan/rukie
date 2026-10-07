@@ -1,4 +1,6 @@
-import type { AgentMessage, AgentTool } from "@earendil-works/pi-agent-core";
+import type { ToolRegistration } from "@earendil-works/pi-durable";
+import type { JsonValue } from "@earendil-works/chord";
+import type { TranscriptMessage } from "../session/messages.ts";
 import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
@@ -6,7 +8,7 @@ import { createTwoFilesPatch } from "diff";
 import { Type, type Static, type TSchema } from "typebox";
 import { Value } from "typebox/value";
 import type { ReminderSource } from "../reminders/index.ts";
-import type { ToolStateDefinition } from "../tool-state/index.ts";
+import { defineToolState, type ToolStateDefinition } from "../tool-state/index.ts";
 
 const trackingSchema = Type.Object(
   {
@@ -34,7 +36,9 @@ function validSnapshot(value: unknown): value is TrackingSnapshot {
   );
 }
 
-export const fileTrackingState: ToolStateDefinition = {
+export const fileTrackingState: ToolStateDefinition = defineToolState({
+  history: "rewindable",
+  fork: "asOf",
   name: "file-tracking",
   version: 1,
   parse(version, value) {
@@ -42,7 +46,7 @@ export const fileTrackingState: ToolStateDefinition = {
     if (!validSnapshot(value)) throw new Error("Invalid file-tracking schema.");
     return value;
   },
-};
+});
 
 interface TrackedFile {
   path: string;
@@ -84,7 +88,7 @@ export function createFileTracking(
     previousReminder?: string;
     persist: (
       snapshot: TrackingSnapshot,
-      reminder?: Extract<AgentMessage, { role: "system-reminder" }>,
+      reminder?: Extract<TranscriptMessage, { role: "system-reminder" }>,
     ) => Promise<void>;
   },
 ) {
@@ -113,7 +117,7 @@ export function createFileTracking(
   let sequence = Number(options.previousReminder?.match(/^File changes \((\d+)\):/)?.[1] ?? 0);
   const persist = (
     unreported?: ReadonlySet<string>,
-    reminder?: Extract<AgentMessage, { role: "system-reminder" }>,
+    reminder?: Extract<TranscriptMessage, { role: "system-reminder" }>,
   ) =>
     options.persist(
       {
@@ -264,7 +268,7 @@ export function createFileTracking(
     /** Replace a Tool State projection; retain bytes only when their hash still matches. */
     restore,
     /** Commit the staged knowledge and its reminder together; failures leave both undelivered. */
-    async persistReminder(reminder: Extract<AgentMessage, { role: "system-reminder" }>) {
+    async persistReminder(reminder: Extract<TranscriptMessage, { role: "system-reminder" }>) {
       const known = pendingReminders.get(reminder.content);
       const previous = new Map(files);
       for (const [path, { previous: expected, current }] of known ?? []) {
@@ -292,11 +296,13 @@ export function createFileTracking(
       pendingReminders.clear();
     },
     /** Prepared paths include hook rewrites; reject stale writes before invoking the file tool. */
-    wrapTool<T extends TSchema, D>(tool: AgentTool<T, D>): AgentTool<T, D> {
+    wrapTool<T extends TSchema, D extends JsonValue>(
+      tool: ToolRegistration<T, D>,
+    ): ToolRegistration<T, D> {
       return {
         ...tool,
         async execute(...args) {
-          const params = args[1];
+          const params = args[0];
           const path =
             typeof params === "object" &&
             params !== null &&

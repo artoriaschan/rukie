@@ -1,6 +1,6 @@
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
-import type { ToolStateDefinition } from "../../tool-state/index.ts";
+import { defineToolState, type ToolStateDefinition } from "../../tool-state/index.ts";
 
 export const goalSchema = Type.Object(
   {
@@ -24,7 +24,9 @@ export interface GoalView extends GoalSnapshot {
   armed: boolean;
 }
 
-export const goalState: ToolStateDefinition = {
+export const goalState: ToolStateDefinition = defineToolState({
+  history: "rewindable",
+  fork: "asOf",
   name: "goal",
   version: 1,
   parse(version, value) {
@@ -46,4 +48,4 @@ export const goalState: ToolStateDefinition = {
       (value.blockedReason ? `\nBlocked reason: ${value.blockedReason}` : "")
     );
   },
-};
+});
