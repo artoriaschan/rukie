@@ -291,7 +291,9 @@ export function createFileTracking(
     const next = new Map(files);
     let nextResultEntryId = lastResultEntryId;
     const learned: string[] = [];
-    for (const entry of entries) {
+    // Native append IDs order committed entries; afterTools results may instead
+    // arrive in the assistant's call order when independent tools overlap.
+    for (const entry of entries.toSorted((left, right) => Number(left.id) - Number(right.id))) {
       if (entry.kind === "rukie.file-baseline") {
         if (
           !Value.Check(candidateSchema, entry.data) ||
