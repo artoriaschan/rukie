@@ -23,6 +23,7 @@ export function PromptInput({
   highlightRanges,
   atomicRanges,
   onCursorChange,
+  onAtomicRangeClick,
   initialCursorOffset,
   suggestions,
 }: {
@@ -49,6 +50,7 @@ export function PromptInput({
   highlightRanges?: TextInputProps["highlightRanges"];
   atomicRanges?: TextInputProps["atomicRanges"];
   onCursorChange?: TextInputProps["onCursorChange"];
+  onAtomicRangeClick?: TextInputProps["onAtomicRangeClick"];
   /** Restores the caret when a view or small terminal remounts the composer. */
   initialCursorOffset?: number;
   suggestions?: ReactNode;
@@ -94,6 +96,7 @@ export function PromptInput({
             onPaste={onPaste}
             highlightRanges={highlightRanges}
             atomicRanges={atomicRanges}
+            onAtomicRangeClick={onAtomicRangeClick}
             cursorOffset={restoredCursor}
             onCursorChange={(offset) => {
               setRestoredCursor(undefined);

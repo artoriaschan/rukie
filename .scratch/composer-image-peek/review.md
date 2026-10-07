@@ -27,3 +27,9 @@
 ## Main integration
 
 2026-10-07：main 从 `3e8c2a1` 快进到 `585cb2d`；功能代码与全量门禁 `3950234` 完全一致。main checkout 独立执行三个 composer image e2e 文件：13 pass / 0 fail，48 assertions，2.58s。仅交付 Markdown 后续更新，按文档规则验证格式与 diff，无需重复全量测试。确认 feature 相对 main 无未合并提交且 worktree 干净后，清理本次集成 worktree 与分支，保留其他并行工作。
+
+## Click preview supplement
+
+2026-10-07 用户补充点击及高亮要求，04 已 resolved。TextInput 的可选 atomic 点击接口按绘制 glyph 与裁剪命中，同 unit 主键按下/释放后定位起点；Chat 重用被动预览和反色状态，同 token 点击可解除 Esc 关闭记录。普通文字/字面 token、待处理 Interaction 保持原行为。代码与规格/README 差异复核未发现遗漏。
+
+公共接缝先复现原点击不预览；新增 3 个 app start/headless terminal 用例覆盖点击高亮、同 token 重开、输入/图片发送、多图切换、中文/emoji、换行/resize、字面 token 与折叠提问。相关 7 文件 50 pass / 0 fail，6.55s；新增用例均低于 300ms。最终 `env -u NO_COLOR bun run check` 退出 0：格式、lint、类型、Knip、scratch 状态检查与 2604 tests 全通过，14503 assertions，200 files，测试阶段 76.44s。最终门禁后仅补充 Markdown 验收记录并验证格式、tracker 与 diff。未进行真实 Kitty 终端人工验收。

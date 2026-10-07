@@ -2637,6 +2637,21 @@ function Chat({
                 );
               }}
               onCursorChange={updateComposerCursor}
+              onAtomicRangeClick={
+                !expanded && !small && !preview && !imagePreviewBlocked()
+                  ? (offset) => {
+                      if (
+                        previewRef.current ||
+                        imagePreviewBlocked() ||
+                        !composer.atCursor(draft.current, offset)
+                      )
+                        return;
+                      dismissedComposerImage.current = undefined;
+                      setComposerDismissed(false);
+                      updateComposerCursor(offset);
+                    }
+                  : undefined
+              }
               highlightRanges={composer.ranges(input).map((range) => ({
                 ...range,
                 color: theme.suggestion,

@@ -10,7 +10,7 @@ Status: resolved
 
 ## Solution
 
-光标停在已绑定的 `[Image #N]` token 上时，消息区上方显示该图的预览卡，token 反色。光标离开，卡消失。预览不抢键盘：用户照常打字、移动光标、发送。Esc 只关掉当前这张卡，光标离开再回来会重新显示。
+点击已绑定的 `[Image #N]` token，或将光标移到 token 起始位置时，消息区上方显示该图的预览卡，token 反色。光标离开，卡消失。预览不抢键盘：用户照常打字、移动光标、发送。Esc 只关掉当前这张卡，再次点击或光标离开再回来会重新显示。
 
 ## User Stories
 
@@ -41,6 +41,7 @@ Status: resolved
 
 - **renderer `TextInput` 加光标回调**：新增可选 `onCursorChange(offset)`，报告吸附 atomic range 之后的 UTF-16 光标位置，光标变化时触发（含 owner 重置 value 导致的变化）。`TextInput` 不感知图片；`@neant/tui` 不依赖 Agent Core。更新 renderer README 的 `TextInput` 契约。
 - **命中判定归 Chat**：Chat 用 composer 的 `ranges(draft)`（只含仍绑定的 token 原位置）判断光标是否等于某个 range 的 `start`。光标在 token 的 `start` 才算命中，`end` 不算。命中时通过 composer 取该 token 绑定的 `PromptImage`；composer 需新增按光标位置返回绑定图片的读取接口，复用现有绑定表，不另建状态。
+- **点击绑定 token**：TextInput 的可选 `onAtomicRangeClick(offset)` 启用 atomic unit 点击，按最后绘制的 glyph 与可见裁剪范围命中；同一 unit 上主键按下与释放后，光标移到 unit 起点并通知 owner，包括光标未变化的重击。Chat 只为可预览的绑定图片启用回调，点击清除当前关闭记录。普通文字点击不定位光标；renderer 不感知图片。
 - **token 反色**：命中的 token 反色显示。现有 `highlightRanges` 只带 color；优先扩展它支持 `inverse`，不另加渲染通道。
 - **派生状态，非模态**：光标预览是由「光标位置 + 草稿 + 屏幕拦截条件」派生的显示状态，不写入模态预览的 `previewRef`，不走模态预览的按键分支。键盘始终归输入框；←/→、Enter、打字行为不变。
 - **Esc 关闭**：光标预览显示时，Chat 的 Esc 链最先处理：记下被关闭的 token（按 token 文本 + 位置区分），消费这次按键，不触发中止 Run 等后续 Esc 行为。光标离开该 token 时清除记录。双击 Esc 打开 Rewind 只在空草稿时成立，与此不冲突。
@@ -59,14 +60,14 @@ Status: resolved
 
 ## Out of Scope
 
-- 鼠标点击 token 打开预览，以及 `TextInput` 的鼠标定位光标能力。
+- 普通文本的鼠标定位光标、拖动选区，以及点击未绑定的字面 token。
 - 鼠标悬停触发预览。
 - 贴着输入框的小卡、输入框内缩略图。
 - 光标预览里的翻页、缩放、打开原图。
 
 ## Further Notes
 
-- dsh-TUI 允许点击 token 强制重新显示；本 spec 不做点击，由「光标离开再回来」承担同样作用。
+- 2026-10-07 用户补充要求点击图片 token 预览并高亮，授权点击绑定 token 定位起点与重开预览；见 [04](issues/04-click-preview.md)。
 - 完成后在 [终端图形协议](../agent-core-roadmap/issues/21-terminal-graphics.md) 追加实施证据。
 
 ## Delivery

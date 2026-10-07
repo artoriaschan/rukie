@@ -1,10 +1,12 @@
 import type { HostNode, LayoutNode } from "../layout";
 import type { InputEvent } from "../input";
+import { sanitizeText } from "../text";
 
 /** Hit-test the last painted viewport, including ScrollBox clipping and offsets. */
 export function createHover() {
   let rectangles: {
     ancestors: HostNode[];
+    atomic?: number;
     left: number;
     top: number;
     right: number;
@@ -12,12 +14,22 @@ export function createHover() {
   }[] = [];
   let hovered = new Set<HostNode>();
   let position: { x: number; y: number } | undefined;
-  let pressed: HostNode | undefined;
+  let pressed: { node: HostNode; atomic?: number } | undefined;
 
   function hit(x: number, y: number) {
     return rectangles.findLast(
       (rect) => x >= rect.left && x < rect.right && y >= rect.top && y < rect.bottom,
     );
+  }
+
+  function clickTarget(x: number, y: number) {
+    const rect = hit(x, y);
+    const node = rect?.ancestors.find(
+      (node) => node.props.onClick || (rect.atomic !== undefined && node.props.onAtomicRangeClick),
+    );
+    return node
+      ? { node, atomic: node.props.onAtomicRangeClick ? rect?.atomic : undefined }
+      : undefined;
   }
 
   function dispatch(next: Set<HostNode>) {
@@ -56,16 +68,28 @@ export function createHover() {
         };
         if (rectangle.left >= rectangle.right || rectangle.top >= rectangle.bottom) return;
         rectangles.push(rectangle);
-        if (node.type === "tui-text" && node.props.onClick) {
+        if (node.type === "tui-text" && (node.props.onClick || node.props.onAtomicRangeClick)) {
+          const text = node.spans.map((span) => span.text).join("");
+          // Glyph offsets are sanitized; callbacks retain the original UTF-16 range start.
+          const atomicStarts = new Map(
+            node.props.onAtomicRangeClick
+              ? node.props.atomicRanges?.map(({ start }) => [
+                  sanitizeText(text.slice(0, start)).length,
+                  start,
+                ])
+              : [],
+          );
           for (const [row, line] of (node.lines ?? []).entries()) {
             let column = 0;
             for (const glyph of line) {
+              const atomic =
+                glyph.atomic === undefined ? undefined : atomicStarts.get(glyph.atomic);
               // The painter omits an entire glyph when any of its cells cross the clip.
               const left = node.x + column;
               const right = left + glyph.width;
               const top = node.y - offset + row - (node.textTop ?? 0);
               if (
-                glyph.text.trim() &&
+                (glyph.text.trim() || atomic !== undefined) &&
                 glyph.width > 0 &&
                 left >= rectangle.left &&
                 right <= rectangle.right &&
@@ -78,6 +102,7 @@ export function createHover() {
                   top,
                   bottom: top + 1,
                   ancestors: [node.source, ...chain],
+                  atomic,
                 });
               column += glyph.width;
             }
@@ -101,17 +126,21 @@ export function createHover() {
         ?.props.onWheel?.(event);
     },
     press(x: number, y: number, button: number) {
-      pressed = button === 0 ? hit(x, y)?.ancestors.find((node) => node.props.onClick) : undefined;
+      pressed = button === 0 ? clickTarget(x, y) : undefined;
     },
     release(x: number, y: number, button: number) {
       const target = pressed;
       pressed = undefined;
+      const released = clickTarget(x, y);
       if (
-        button === 0 &&
-        target &&
-        hit(x, y)?.ancestors.find((node) => node.props.onClick) === target
+        button !== 0 ||
+        !target ||
+        target.node !== released?.node ||
+        target.atomic !== released.atomic
       )
-        target.props.onClick?.();
+        return;
+      if (target.atomic !== undefined) target.node.props.onAtomicRangeClick?.(target.atomic);
+      else target.node.props.onClick?.();
     },
     clear() {
       rectangles = [];

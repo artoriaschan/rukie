@@ -20,6 +20,7 @@ export type HostProps = BoxProps &
     cursorOffset?: number;
     cursorStyle?: "block";
     atomicRanges?: readonly { start: number; end: number }[];
+    onAtomicRangeClick?(offset: number): void;
     scroll?: ScrollState;
   };
 

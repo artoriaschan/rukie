@@ -10,6 +10,8 @@ export interface TextInputProps extends TextStyle {
   onSubmit?(value: string): void;
   /** Reports the snapped UTF-16 caret offset when it changes, including owner resets. */
   onCursorChange?(offset: number): void;
+  /** Opt in to primary clicks on atomic glyphs: move to the unit start and notify, even at the same caret. */
+  onAtomicRangeClick?(offset: number): void;
   isActive?: boolean;
   maxLines?: number;
   columns?: number;
@@ -79,6 +81,7 @@ export function TextInput({
   onChange,
   onSubmit,
   onCursorChange,
+  onAtomicRangeClick,
   isActive = true,
   maxLines,
   columns,
@@ -137,19 +140,20 @@ export function TextInput({
     reportedCursor.current = position;
     onCursorChange?.(position);
   }, [position, onCursorChange]);
+  const move = (offset: number, select = false) => {
+    const current = editing.current;
+    offset = snap(offset, Math.sign(offset - current.cursor));
+    current.anchor = select ? (current.anchor ?? current.cursor) : undefined;
+    setAnchor(current.anchor);
+    current.cursor = offset;
+    setCursor(offset);
+  };
   useInput(
     (event) => {
       const current = editing.current;
       const boundaries = graphemeBoundaries(current.value);
       const before = boundaries.findLast((offset) => offset < current.cursor) ?? 0;
       const after = boundaries.find((offset) => offset > current.cursor) ?? current.value.length;
-      const move = (offset: number, select = false) => {
-        offset = snap(offset, Math.sign(offset - current.cursor));
-        current.anchor = select ? (current.anchor ?? current.cursor) : undefined;
-        setAnchor(current.anchor);
-        current.cursor = offset;
-        setCursor(offset);
-      };
       const replace = (start: number, end: number, text: string) => {
         if (current.anchor !== undefined) {
           start = Math.min(current.anchor, current.cursor);
@@ -284,6 +288,15 @@ export function TextInput({
       maxLines,
       cursorStyle,
       atomicRanges,
+      onAtomicRangeClick:
+        onAtomicRangeClick && isActive && !readOnly
+          ? (offset: number) => {
+              if (!editing.current.ranges.some((range) => range.start === offset)) return;
+              history?.reset();
+              move(offset);
+              onAtomicRangeClick(offset);
+            }
+          : undefined,
       cursorOffset: isActive ? position : undefined,
     },
     ...children,
