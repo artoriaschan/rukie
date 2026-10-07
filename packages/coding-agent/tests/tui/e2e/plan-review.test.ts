@@ -28,7 +28,9 @@ test("approval leaves a plan card toggled from header whitespace", async () => {
       app.calls[1]!.context.messages.find((message) => message.role === "toolResult"),
     ).toMatchObject({ isError: false });
     app.calls[1]!.finish();
-    await app.waitFor(() => app.screen().some((line) => line.includes("已批准计划")));
+    await app.waitFor(
+      () => app.screen().at(-1) === "" && app.screen().some((line) => line.includes("已批准计划")),
+    );
     expect(app.screen().join("\n")).not.toContain("Add SQLite storage.");
     const row = app.screen().findIndex((line) => line.includes("已批准计划"));
     click(app, row, 79);

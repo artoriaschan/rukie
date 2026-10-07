@@ -72,9 +72,10 @@ export function ThinkingRow({
   const lines = text.split("\n");
   const rows = lines.slice(-3);
   return (
-    <Box flexShrink={0} flexDirection="column" gap={expanded ? 1 : 0}>
+    <Box width="100%" flexShrink={0} flexDirection="column" gap={expanded ? 1 : 0}>
       <Box
         flexShrink={0}
+        width="100%"
         onClick={onToggle}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
