@@ -6,6 +6,7 @@ import {
   type ImageContent,
 } from "@earendil-works/pi-ai";
 import { join } from "node:path";
+import { watch } from "node:fs";
 import { createSession, type SessionEvent } from "../../src/index.ts";
 import type { HookHandler } from "@rukie/shared";
 import { fakeModel } from "../helpers/fake-model.ts";
@@ -301,7 +302,7 @@ test("dispose cancels a failure hook running after tool interruption", async () 
   dirs = await tempDirs();
   await Bun.write(
     join(dirs.cwd, "failure.sh"),
-    "cat > failure.input\necho $$ > failure.pid\nsleep 30\ntouch late-hook\n",
+    "cat > failure.input\nsleep 30 &\nchild=$!\nprintf '%s %s\\n' $$ $child > failure.pid.tmp\nmv failure.pid.tmp failure.pid\nwait $child\ntouch late-hook\n",
   );
   const fake = toolModel("echo ready; sleep 30");
   const controller = new AbortController();
@@ -313,6 +314,30 @@ test("dispose cancels a failure hook running after tool interruption", async () 
       hooks: { PostToolUseFailure: [{ hooks: [{ type: "command", command: "sh failure.sh" }] }] },
     },
   });
+  const ready = Promise.withResolvers<number[]>();
+  let readyPids: number[] = [];
+  const pidPath = join(dirs.cwd, "failure.pid");
+  // Observe the atomic ready-file rename before starting the Run. The fixture
+  // publishes both PIDs only after its real shell and sleeping child exist.
+  const watcher = watch(dirs.cwd, (_event, filename) => {
+    if (filename !== "failure.pid") return;
+    void Bun.file(pidPath)
+      .text()
+      .then((text) => {
+        const pids = text.trim().split(/\s+/u).map(Number);
+        if (pids.length !== 2 || pids.some((pid) => !Number.isSafeInteger(pid) || pid <= 0))
+          throw new Error(`Invalid failure-hook ready PIDs: ${text}`);
+        readyPids = pids;
+        ready.resolve(pids);
+      })
+      .catch(ready.reject);
+  });
+  watcher.on("error", ready.reject);
+  // Real process startup and filesystem notification cannot use frontend time.
+  const readyTimeout = setTimeout(
+    () => ready.reject(new Error("Failure hook did not publish ready PIDs")),
+    1000,
+  );
   const run = session.run("try", {
     signal: controller.signal,
     onEvent: (event) => {
@@ -326,18 +351,53 @@ test("dispose cancels a failure hook running after tool interruption", async () 
     },
   });
   void run.catch(() => {});
-  const deadline = Date.now() + 1000;
-  const pidPath = join(dirs.cwd, "failure.pid");
-  while (!(await Bun.file(pidPath).exists()) && Date.now() < deadline) await Bun.sleep(5);
-  expect(await Bun.file(pidPath).exists()).toBe(true);
-  const pid = Number(await Bun.file(pidPath).text());
-  expect(await Bun.file(join(dirs.cwd, "failure.input")).json()).toMatchObject({
-    is_interrupt: true,
-  });
-  await session.dispose();
-  await expect(run).rejects.toThrow("cancel test");
-  expect(() => process.kill(pid, 0)).toThrow();
-  expect(await Bun.file(join(dirs.cwd, "late-hook")).exists()).toBe(false);
+  let settlementTimeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const pids = await ready.promise;
+    clearTimeout(readyTimeout);
+    expect(await Bun.file(pidPath).exists()).toBe(true);
+    expect(await Bun.file(join(dirs.cwd, "failure.input")).json()).toMatchObject({
+      is_interrupt: true,
+    });
+    await Promise.race([
+      Promise.all([session.dispose(), expect(run).rejects.toThrow("cancel test")]),
+      new Promise<never>((_resolve, reject) => {
+        settlementTimeout = setTimeout(
+          () => reject(new Error("Disposed failure hook did not settle its Run")),
+          1000,
+        );
+      }),
+    ]);
+    for (const pid of pids) expect(() => process.kill(pid, 0)).toThrow();
+    expect(await Bun.file(join(dirs.cwd, "late-hook")).exists()).toBe(false);
+  } finally {
+    clearTimeout(readyTimeout);
+    clearTimeout(settlementTimeout);
+    watcher.close();
+    // Failed assertions must not leave a 30-second fixture or let afterEach
+    // remove storage while its Run is still writing. These are our own PIDs.
+    for (const pid of readyPids.toReversed()) {
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {
+        /* Already exited. */
+      }
+    }
+    let cleanupTimeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        Promise.all([session.dispose(), run.catch(() => {})]),
+        new Promise<never>((_resolve, reject) => {
+          cleanupTimeout = setTimeout(
+            () => reject(new Error("Failure-hook fixture cleanup did not settle")),
+            1000,
+          );
+        }),
+      ]);
+    } finally {
+      clearTimeout(cleanupTimeout);
+    }
+  }
 });
 
 test("replacement retains PreToolUse context and child hooks include child identity", async () => {
