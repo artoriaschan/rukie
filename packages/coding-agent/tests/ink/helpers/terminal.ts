@@ -88,8 +88,7 @@ export function createTerminal(columns = 20, rows = 8, advanceTimers?: (ms: numb
     writes,
     flush,
     async waitFor(predicate: () => boolean) {
-      const deadline = performance.now() + 1000;
-      let remainingYields = 10000;
+      const deadline = process.hrtime.bigint() + 1_000_000_000n;
       do {
         await flush();
         if (predicate()) return;
@@ -97,7 +96,7 @@ export function createTerminal(columns = 20, rows = 8, advanceTimers?: (ms: numb
           advanceTimers(16);
           await setImmediate();
         } else await setImmediate();
-      } while (advanceTimers ? --remainingYields > 0 : performance.now() < deadline);
+      } while (process.hrtime.bigint() < deadline);
       throw new Error(
         `Terminal did not reach expected state: cursor=${terminal.buffer.active.cursorX},${terminal.buffer.active.cursorY}; screen=${Array.from({ length: rows }, (_, y) => terminal.buffer.active.getLine(y)?.translateToString(true)).join("|")}`,
       );
