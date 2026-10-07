@@ -46,7 +46,11 @@ test.each([true, false])(
           : ["header", "line 0", "line 1", "footer"],
       );
       update(11);
-      await terminal.waitFor(() => scroll.current!.getScrollHeight() === 11);
+      await terminal.waitFor(
+        () =>
+          scroll.current!.getScrollHeight() === 11 &&
+          (!stickyScroll || terminal.screen()[2] === "line 10"),
+      );
       expect(terminal.screen()).toEqual(
         stickyScroll
           ? ["header", "line 9", "line 10", "footer"]
@@ -55,7 +59,9 @@ test.each([true, false])(
       scroll.current!.scrollToBottom();
       await terminal.waitFor(() => terminal.screen()[2] === "line 10");
       update(12);
-      await terminal.waitFor(() => scroll.current!.getScrollHeight() === 12);
+      await terminal.waitFor(
+        () => scroll.current!.getScrollHeight() === 12 && terminal.screen()[2] === "line 11",
+      );
       expect(terminal.screen()).toEqual(["header", "line 10", "line 11", "footer"]);
       expect(scroll.current!.isSticky()).toBe(true);
       update(1);
