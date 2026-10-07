@@ -31,3 +31,5 @@ Blocked by: None (can start immediately)
 验证：`env -u NO_COLOR bun test apps/neant-tui/tests/e2e/messages.test.ts` 8 个场景通过，单个新增场景约 80–220ms；messages/tool-reveal/fullscreen/streaming-burst 相关场景通过。共享消费者的 plan-review/subagent-views/transcript-search focused 检查发现两处旧测试需要以当前公开显示同步：计划末尾不再存在空行，八个 child 的父回复在 Run idle 后仍需追赶。修正后对应 40/80 列长计划及八 child 场景通过。已有 streaming-burst 两个大场景约 2–3s，保留其 microtask、真实 Session 和阅读压力覆盖；本票动画场景全部使用虚拟时钟。
 
 `bun run check:dev` 通过（格式、lint、类型、Knip、scratch tracker），`git diff --check` 通过。完整 `env -u NO_COLOR bun run check` 由 integration 在最终代码状态统一运行；本票不重复全量 gate。
+
+合入 integration `1bd5980` 后重新验证：`env -u NO_COLOR bun test apps/neant-tui/tests/e2e/messages.test.ts apps/neant-tui/tests/e2e/tool-reveal.test.ts apps/neant-tui/tests/e2e/transcript-search.test.ts apps/neant-tui/tests/e2e/plan-review.test.ts apps/neant-tui/tests/e2e/subagent-views.test.ts` 全部 47 个测试通过（225 assertions，10.32s），保留 05 的任务样式与搜索投影。合入后的 `bun run check:dev` 通过，工作区干净。
