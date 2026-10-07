@@ -1,4 +1,4 @@
-import { truncateHead } from "./bash/output-capture.ts";
+import { truncateHead } from "./runtime.ts";
 import { Value } from "typebox/value";
 import type { PresentedTool } from "./presentation.ts";
 import { lstat } from "node:fs/promises";

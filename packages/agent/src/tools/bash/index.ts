@@ -1,4 +1,5 @@
-import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize } from "./output-capture.ts";
+import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES } from "../runtime.ts";
+import { formatSize } from "./output-capture.ts";
 import { resolve } from "node:path";
 import type { Jobs } from "../jobs/index.ts";
 import { Type } from "typebox";

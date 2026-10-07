@@ -1,4 +1,4 @@
-import { truncateHead } from "./bash/output-capture.ts";
+import { truncateHead } from "./runtime.ts";
 import { createUserVisibleError } from "@rukie/shared";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
