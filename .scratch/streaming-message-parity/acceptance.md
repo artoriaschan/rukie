@@ -191,3 +191,9 @@ env -u NO_COLOR LANG=en_US.UTF-8 bun "$TASK_REPO/apps/neant-tui/src/main.tsx" --
 代码框在首轮已经绘制，第二轮输入使右侧 Turn 时间轴出现后，Markdown 根容器未参与横向收缩，保留旧宽度，导致代码框右边被裁掉。Markdown 根容器改为随实际父容器伸缩；原有代码框会在时间轴出现及 resize 时重新适配。修正前新增端到端用例的右上角断言失败；修正后在 60/80/81/120/121/240/241/256 列窗口验证右上角、右下角和每行右边框（Unicode 行按终端单元格检查）。
 
 验证：代码框、助手 Markdown、思考、web Markdown 与原文选择共 6 个文件，33 pass / 0 fail，245 assertions，3.76s；`bun run check:dev` 通过。按用户要求未运行全量测试。
+
+## 2026-10-07 后续全量验证
+
+用户要求运行全量测试并修复失败。首次 `env -u NO_COLOR bun run test`：2740 pass / 1 fail，225 files，106.07s。唯一失败是旧 edit 记录恢复用例要求 80 列标题容纳完整 JSON；耗时与折叠箭头固定槽位导致标题正常截断，原始结果仍正常显示。将该回退语义用例设置为 100 列，保留既有窄窗口标题、Tooltip 和箭头行为覆盖。相关 3 个文件 9 pass / 0 fail，57 assertions，1.20s。
+
+最终 `env -u NO_COLOR bun run check` 退出码 0：静态检查全部通过，2741 pass / 0 fail，15535 assertions，225 files，全量测试 99.91s。测试代码验证后未再修改；本节仅记录实际结果。

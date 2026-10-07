@@ -101,6 +101,8 @@ import { readdir } from "node:fs/promises";
 test("resumed missing edit facts falls back to raw result", async () => {
   const argv: string[] = [];
   const app = await start(argv, {
+    // This case checks legacy source fallback; leave room for JSON and header metadata.
+    columns: 100,
     rows: 40,
     env: { LANG: "en_US.UTF-8" },
     prepare: async (root) => {
