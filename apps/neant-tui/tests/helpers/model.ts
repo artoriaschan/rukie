@@ -100,9 +100,12 @@ export function controlledModel(controlReviews = false, controlTitles = false) {
     const tools = (tools: { name: string; args: Parameters<typeof fauxToolCall>[1] }[]) =>
       complete(
         fauxAssistantMessage(
-          tools.map(({ name, args }, index) =>
-            fauxToolCall(name, args, { id: `call-${calls.length}-${index}` }),
-          ),
+          [
+            ...(thinking ? [{ type: "thinking" as const, thinking }] : []),
+            ...tools.map(({ name, args }, index) =>
+              fauxToolCall(name, args, { id: `call-${calls.length}-${index}` }),
+            ),
+          ],
           { stopReason: "toolUse" },
         ),
       );
@@ -127,7 +130,10 @@ export function controlledModel(controlReviews = false, controlTitles = false) {
         stream.push({ type: "thinking_delta", contentIndex: 0, delta, partial });
       },
       toolDelta(delta) {
-        partial.content = [fauxToolCall("bash", {}, { id: "partial-tool" })];
+        partial.content = [
+          ...(thinking ? [{ type: "thinking" as const, thinking }] : []),
+          fauxToolCall("bash", {}, { id: "partial-tool" }),
+        ];
         stream.push({ type: "toolcall_delta", contentIndex: 0, delta, partial });
       },
       reply: (text) => complete(fauxAssistantMessage(text)),
