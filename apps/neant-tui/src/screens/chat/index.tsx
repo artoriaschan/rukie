@@ -542,7 +542,7 @@ function Chat({
         Object.values(conversation.getSnapshot().jobs).findIndex((job) => job.id === id),
       ),
     );
-    setJobDetails(new Set());
+    setJobDetails(new Set(id ? [id] : []));
     savedChatScroll.current = body.current?.getSnapshot();
     switchView("jobs");
   };
@@ -819,6 +819,7 @@ function Chat({
     transcriptSearch.query,
     transcriptSearch.editing,
   ]);
+  const [jobGroupFolds, setJobGroupFolds] = useState<ReadonlyMap<string, boolean>>(new Map());
   const [expandedRows, setExpandedRows] = useState<ReadonlySet<string>>(new Set());
   const toggleRow = (id: string) =>
     setExpandedRows((rows) => {
@@ -1871,9 +1872,12 @@ function Chat({
             group.push({ entry: candidate, job: state.jobs[candidate.jobId]!, index: at });
           }
           if (group.length >= 2) {
+            const groupId = group[0]!.job.id;
             const folded =
               !expanded &&
-              group.every(({ job }) => job.status !== "running" && job.status !== "stopping");
+              (jobGroupFolds.get(groupId) ??
+                (group.length >= 3 &&
+                  group.every(({ job }) => job.status !== "running" && job.status !== "stopping")));
             return (
               <Box key={index} flexDirection="column">
                 <JobGroupHeader
@@ -1881,52 +1885,53 @@ function Chat({
                   folded={folded}
                   columns={columns}
                   locale={locale}
-                  onToggle={() => setExpanded((expanded) => !expanded)}
+                  onToggle={() =>
+                    setJobGroupFolds((previous) => new Map(previous).set(groupId, !folded))
+                  }
                 />
-                {!folded &&
-                  group.map(({ entry: member, job, index: at }) => (
-                    <Box key={at} flexDirection="column">
-                      <ToolCall
-                        id={member.id ?? `row-${at}`}
-                        searchLocation={
-                          currentMatch?.toolId === (member.id ?? `row-${at}`)
-                            ? {
-                                part: currentMatch.part!,
-                                line: currentMatch.line,
-                                offset: currentMatch.offset,
-                              }
-                            : undefined
-                        }
-                        onPathClick={openFileActions}
-                        foldTerminalCommand={foldTerminalCommand}
-                        expanded={expanded || expandedRows.has(member.id ?? `row-${at}`)}
-                        onToggle={() => toggleRow(member.id ?? `row-${at}`)}
-                        locale={locale}
-                        summary={member.summary}
-                        name={member.name}
-                        args={member.args}
-                        callView={member.callView}
-                        resultView={member.resultView}
-                        startedAt={member.startedAt}
-                        endedAt={member.endedAt}
-                        status="success"
-                        result={member.result}
-                      />
-                      <JobCard
-                        job={job}
-                        output={job.output}
-                        columns={columns}
-                        locale={locale}
-                        onOpen={openJobs}
-                      />
-                    </Box>
-                  ))}
+                {!folded && (
+                  <Box flexDirection="column">
+                    {group.map(({ job, index: at }, position) => (
+                      <Box key={at} flexDirection="column">
+                        <JobCard
+                          job={job}
+                          output={job.output}
+                          groupPosition={
+                            position === 0
+                              ? "first"
+                              : position === group.length - 1
+                                ? "last"
+                                : "middle"
+                          }
+                          dropped={job.dropped}
+                          expanded={expanded}
+                          columns={columns}
+                          locale={locale}
+                          onOpen={openJobs}
+                        />
+                      </Box>
+                    ))}
+                  </Box>
+                )}
               </Box>
             );
           }
         }
         switch (entry.type) {
           case "tool":
+            if (entry.jobId && state.jobs[entry.jobId])
+              return (
+                <JobCard
+                  key={index}
+                  job={state.jobs[entry.jobId]!}
+                  output={state.jobs[entry.jobId]!.output}
+                  dropped={state.jobs[entry.jobId]!.dropped}
+                  expanded={expanded}
+                  onOpen={openJobs}
+                  columns={columns}
+                  locale={locale}
+                />
+              );
             return (
               <Box key={index} flexDirection="column">
                 <ToolCall
@@ -1961,15 +1966,6 @@ function Chat({
                   imagesSuspended={!!preview}
                   error={entry.error}
                 />
-                {entry.jobId && state.jobs[entry.jobId] && (
-                  <JobCard
-                    job={state.jobs[entry.jobId]!}
-                    output={state.jobs[entry.jobId]!.output}
-                    onOpen={openJobs}
-                    columns={columns}
-                    locale={locale}
-                  />
-                )}
               </Box>
             );
           case "question":
@@ -2050,6 +2046,7 @@ function Chat({
       state.jobs,
       expanded,
       expandedRows,
+      jobGroupFolds,
       columns,
       thinking,
       foldTerminalCommand,

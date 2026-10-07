@@ -46,6 +46,7 @@ export function JobsPanel({
           `${t("jobs.panel.settled")} · ${time(job.endedAt)}${job.exitCode === undefined ? "" : ` · ${t("jobs.panel.exit-code", { code: job.exitCode })}`}`,
         ]
       : []),
+    ...(job.signal ? [t("jobs.panel.signal", { signal: cleanJobText(job.signal) })] : []),
     ...(job.spillPath
       ? jobOutputRows(t("jobs.panel.spill", { path: cleanJobText(job.spillPath) }), width, Infinity)
       : []),
@@ -74,14 +75,15 @@ export function JobsPanel({
   }, [focusIndex, expanded, focusedTop, rows, columns]);
   const live = jobs.filter((job) => job.status === "running" || job.status === "stopping").length;
   const complete = jobs.filter((job) => job.status === "completed").length;
-  const failed = jobs.length - live - complete;
+  const failed = jobs.filter((job) => job.status === "failed").length;
+  const killed = jobs.filter((job) => job.status === "killed").length;
   return (
     <Box height={rows} flexDirection="column" paddingX={1}>
       <Divider title={t("jobs.panel.title")} />
       <ThemedText
         dimColor
         wrap="truncate"
-      >{`${live} ${t("jobs.status.running")} · ${complete} ${t("jobs.status.completed")} · ${failed} ${t("jobs.status.failed")}`}</ThemedText>
+      >{`${live} ${t("jobs.status.running")} · ${complete} ${t("jobs.status.completed")} · ${failed} ${t("jobs.status.failed")} · ${killed} ${t("jobs.status.killed")}`}</ThemedText>
       <ScrollBox
         key={[...expanded].join(",")}
         ref={scrollRef}
