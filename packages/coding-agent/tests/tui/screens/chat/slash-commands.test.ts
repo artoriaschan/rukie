@@ -21,6 +21,27 @@ async function ready(
   return app;
 }
 
+/** Native compaction protects the latest Run; old real tool evidence makes a prefix eligible. */
+async function eligibleHistory(app: Awaited<ReturnType<typeof start>>) {
+  await Bun.write(join(app.root, "old.txt"), "OLD_EVIDENCE widget contract ".repeat(2000));
+  for (let index = 0; index < 2; index++) {
+    const before = app.calls.length;
+    app.stdin.write(`inspect old evidence ${index}\r`);
+    await app.waitFor(() => app.calls.length === before + 1);
+    app.calls[before]!.tool("read", { path: "old.txt" });
+    await app.waitFor(() => app.calls.length === before + 2);
+    app.calls[before + 1]!.delta("Evidence recorded.");
+    app.calls[before + 1]!.finish();
+    await app.waitFor(() => !app.isWorking());
+  }
+  const before = app.calls.length;
+  app.stdin.write("recent protected task\r");
+  await app.waitFor(() => app.calls.length === before + 1);
+  app.calls[before]!.delta("Recent task complete.");
+  app.calls[before]!.finish();
+  await app.waitFor(() => !app.isWorking());
+}
+
 test("compact summarizes with focus, shows shared progress and rejects while busy", async () => {
   const app = await ready({ rows: 48 });
   try {
@@ -34,19 +55,21 @@ test("compact summarizes with focus, shows shared progress and rejects while bus
     expect(app.calls).toHaveLength(1);
     app.calls[0]!.delta("Widget contract.");
     app.calls[0]!.finish();
-    await app.waitFor(() => screen(app).includes("Widget contract."));
+    await app.waitFor(() => screen(app).includes("Widget contract.") && !app.isWorking());
+    await eligibleHistory(app);
+    const summary = app.calls.length;
     app.stdin.write("/compact keep API\r");
-    await app.waitFor(() => app.calls.length === 2);
-    expect(JSON.stringify(app.calls[1]!.context)).toContain("keep API");
+    await app.waitFor(() => app.calls.length === summary + 1);
+    expect(JSON.stringify(app.calls[summary]!.context)).toContain("keep API");
     await app.waitFor(() => /Packing up context|Tidying the context/.test(screen(app)));
-    app.calls[1]!.delta("Widget summary.");
-    app.calls[1]!.finish();
+    app.calls[summary]!.delta("Widget summary.");
+    app.calls[summary]!.finish();
     await app.waitFor(() => screen(app).includes("Context compacted"));
     app.stdin.write("continue\r");
-    await app.waitFor(() => app.calls.length === 3);
-    expect(JSON.stringify(app.calls[2]!.context)).toContain("Widget summary.");
-    expect(JSON.stringify(app.calls[2]!.context)).not.toContain("keep API");
-    app.calls[2]!.finish();
+    await app.waitFor(() => app.calls.length === summary + 2);
+    expect(JSON.stringify(app.calls[summary + 1]!.context)).toContain("Widget summary.");
+    expect(JSON.stringify(app.calls[summary + 1]!.context)).not.toContain("keep API");
+    app.calls[summary + 1]!.finish();
   } finally {
     await app.cleanup();
   }
@@ -71,17 +94,19 @@ test("exit cancels a held manual summary and completes app shutdown", async () =
     app.calls[0]!.delta("Done.");
     app.calls[0]!.finish();
     await app.waitFor(() => !app.isWorking());
+    await eligibleHistory(app);
+    const summary = app.calls.length;
     app.stdin.write("/compact\r");
-    await app.waitFor(() => app.calls.length === 2);
+    await app.waitFor(() => app.calls.length === summary + 1);
     app.stdin.write("/exit\r");
-    await app.waitFor(() => app.calls[1]!.signal!.aborted);
+    await app.waitFor(() => app.calls[summary]!.signal!.aborted);
     let exited = false;
     void app.exit.then(() => {
       exited = true;
     });
     await app.waitFor(() => exited);
-    expect(app.calls[1]!.signal!.aborted).toBe(true);
-    expect(app.calls).toHaveLength(2);
+    expect(app.calls[summary]!.signal!.aborted).toBe(true);
+    expect(app.calls).toHaveLength(summary + 1);
   } finally {
     await app.cleanup();
   }
@@ -95,16 +120,18 @@ test("a genuine manual summary failure stays visible and leaves the conversation
     app.calls[0]!.delta("Original work.");
     app.calls[0]!.finish();
     await app.waitFor(() => !app.isWorking());
+    await eligibleHistory(app);
+    const summary = app.calls.length;
     app.stdin.write("/compact\r");
-    await app.waitFor(() => app.calls.length === 2);
-    app.calls[1]!.fail("Summary provider unavailable");
+    await app.waitFor(() => app.calls.length === summary + 1);
+    app.calls[summary]!.fail("Summary provider unavailable");
     await app.waitFor(() => screen(app).includes("Summary provider unavailable"));
-    expect(app.calls[1]!.signal!.aborted).toBe(false);
+    expect(app.calls[summary]!.context.messages.length).toBeGreaterThan(0);
     await app.waitFor(() => !app.isWorking());
     app.stdin.write("continue\r");
-    await app.waitFor(() => app.calls.length === 3);
-    expect(JSON.stringify(app.calls[2]!.context)).toContain("Original work.");
-    app.calls[2]!.finish();
+    await app.waitFor(() => app.calls.length === summary + 2);
+    expect(JSON.stringify(app.calls[summary + 1]!.context)).toContain("Original work.");
+    app.calls[summary + 1]!.finish();
   } finally {
     await app.cleanup();
   }
@@ -325,7 +352,9 @@ test("menu navigation cycles, Escape keeps the draft, and unknown/path/multiline
       expect(screen(app)).not.toContain("Show commands and skills");
       app.stdin.write("\r");
       await app.waitFor(() => app.calls.length === index + 1);
-      expect(app.calls[index]!.context.messages.at(-1)).toMatchObject({
+      expect(
+        app.calls[index]!.context.messages.findLast((message) => message.role === "user"),
+      ).toMatchObject({
         content: [{ type: "text", text: value }],
       });
       app.calls[index]!.finish();

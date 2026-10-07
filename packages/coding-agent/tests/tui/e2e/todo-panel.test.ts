@@ -365,6 +365,7 @@ test("resume shows an expanded English Todo List with full counts and overflow, 
       });
       await session.run("save plan");
       argv.push("--resume", session.id);
+      await session.close();
     },
   });
   try {
