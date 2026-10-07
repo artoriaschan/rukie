@@ -73,6 +73,8 @@ export function Image(props: ImageProps) {
 }
 
 export interface TextProps extends TextStyle {
+  /** Primary click on a painted non-whitespace glyph; blank cells do not activate text. */
+  onClick?(): void;
   children?: ReactNode;
   /** Word wrap, splitting long words by display columns, or clip each explicit line. */
   wrap?: "wrap" | "truncate";

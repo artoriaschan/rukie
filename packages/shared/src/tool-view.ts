@@ -33,6 +33,8 @@ export const ToolCallViewSchema = Type.Union([
   Type.Object({ ...common, card: Type.Literal("terminal"), command: Type.String() }),
   Type.Object({ ...common, card: Type.Literal("diff"), diffs }),
 ]);
+/** Output notices are facts separate from body text: frontends keep them visible outside folds.
+ * Read continuation offsets come from upstream truncation metadata; recovery paths may expire. */
 export const ToolResultViewSchema = Type.Union([
   Type.Object({ ...common, card: Type.Literal("generic"), text: Type.String() }),
   Type.Object({
@@ -42,6 +44,7 @@ export const ToolResultViewSchema = Type.Union([
     exitCode: Type.Optional(Type.Number()),
     signal: Type.Optional(Type.String()),
     outputUnavailable: Type.Optional(Type.Boolean()),
+    fullOutputPath: Type.Optional(Type.String()),
   }),
   Type.Object({ ...common, card: Type.Literal("diff"), diffs }),
   Type.Object({
@@ -66,6 +69,8 @@ export const ToolResultViewSchema = Type.Union([
     path: Type.String(),
     offset: Type.Optional(Type.Number()),
     totalLines: Type.Optional(Type.Number()),
+    outputUnavailable: Type.Optional(Type.Boolean()),
+    nextOffset: Type.Optional(Type.Number()),
     content: Type.String(),
   }),
   Type.Object({

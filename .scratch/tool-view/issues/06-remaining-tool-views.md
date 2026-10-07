@@ -25,3 +25,8 @@
 - Integration sync: merged integration `2af2dc9` (tickets02/04), preserved unified diff tones/eight-line folding and all single/global expansion behavior. Reinstalled locked dependencies for the newly integrated TUI diff dependency. Post-merge: 9 new public Session/TUI tests passed (733ms); 25 related diff/expansion/background-job/web tests passed (8.67s), plus check:dev. Two unchanged background-job lifecycle tests take 2.12s/3.27s due their existing real process cancellation contracts; no new or modified06 scenario exceeds one second. Root runs the final aggregate gate after all tickets integrate.
 
 - Ticket03 integration completed the deferred conversation heuristic removal: tool summaries no longer special-case web_fetch; goal/todo name suppression and frontend JSON parsers are gone; raw result text remains available while resultView owns presentation. Goal-tool-card live/resume and remaining-view tests validate the presenter result. Ticket06 is resolved after that coordinated change.
+
+### Review 修复验证（2026-10-07）
+
+- read 的截断/继续读取 offset 从 pi 的实际 details 验证推导，不解析正文猜测、不重新读取文件；bash 完整输出路径从持久化 details 重算。提示不受折叠/400 行窗口影响。public live/resume 和 notice-like 正文回归通过。
+- `bun run check:dev` 通过；最终 aggregate 在 integration branch 统一执行，结果由 spec 验证记录补充。
