@@ -38,6 +38,10 @@ import {
 import type { SessionEvent } from "./events.ts";
 import { modelContextMessages, transcriptMessages, type TranscriptMessage } from "./messages.ts";
 export type { SessionEvent } from "./events.ts";
+const entryData = (entry: EntryRecord | undefined) => {
+  const value = entry?.data;
+  return value && typeof value === "object" && !Array.isArray(value) ? value : undefined;
+};
 import { createJobs } from "../tools/jobs/index.ts";
 import { resolveModel, isTrustedProject, modelState } from "../config/index.ts";
 import {
@@ -1892,7 +1896,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       const lastPlanReminder =
         !plan.getActive() && plan.hasEntered()
           ? (await fullHistory()).findLast(
-              (entry) => entry.kind === "rukie.reminder" && entry.data?.source === "plan-mode",
+              (entry) =>
+                entry.kind === "rukie.reminder" && entryData(entry)?.source === "plan-mode",
             )
           : undefined;
       if (includeHookContext)
@@ -1931,7 +1936,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             plan.getActive()
               ? planModeReminder(!!options.onPlanReview)
               : plan.hasEntered()
-                ? lastPlanReminder?.data?.content === "You have exited Plan Mode."
+                ? entryData(lastPlanReminder)?.content === "You have exited Plan Mode."
                   ? undefined
                   : "You have exited Plan Mode."
                 : undefined,
@@ -2125,9 +2130,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                   const facts = (await fullHistory()).findLast(
                     (entry) =>
                       entry.kind === "rukie.message-facts" &&
-                      entry.data?.entryId === Number(humanInput.entry),
+                      entryData(entry)?.entryId === Number(humanInput.entry),
                   );
-                  const invocation = facts?.data?.skillInvocation;
+                  const invocation = entryData(facts)?.skillInvocation;
                   if (
                     typeof invocation === "string" &&
                     !current.messages.some((message) => textOf(message).includes(invocation))
