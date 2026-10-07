@@ -20,7 +20,9 @@ test("MCP panels retain input ownership beside background cards, jobs and comple
     });
     await app.waitFor(() => app.calls.length === 2 && screen().includes("worker ready"));
     app.stdin.write("/mcp\r");
-    await app.waitFor(() => screen().includes("No MCP servers configured"));
+    await app.waitFor(
+      () => screen().includes("No MCP servers configured") && screen().includes("● job: bash-1"),
+    );
     expect(screen()).toContain("Manage MCP servers (0)");
     expect(screen()).toContain("● 1");
     expect(app.calls).toHaveLength(2);
@@ -238,7 +240,9 @@ test("card clicks focus exact jobs and expanded promoted details show bounded ou
     app.stdin.write("\x1b");
     await app.waitFor(() => screen().includes("saved draft"));
     app.stdin.write("\x0f");
-    await app.waitFor(() => screen().includes("✓ job: bash-1"));
+    await app.waitFor(
+      () => screen().includes("Transcript ·") && screen().includes("✓ job: bash-1"),
+    );
     const first = app.screen().findIndex((line) => line.includes("✓ job: bash-1"));
     app.stdin.write(`\x1b[<0;4;${first + 1}M\x1b[<0;4;${first + 1}m`);
     await app.waitFor(() => screen().includes("❯ bash-1"));
@@ -253,8 +257,8 @@ test("card clicks focus exact jobs and expanded promoted details show bounded ou
 }, 15000);
 
 test("reading position and follow state survive settlement and group folding above the viewport while jobs is open", async () => {
-  // Real time covers the fixture child process polling files and producing job output.
-  const app = await start(["--permission-mode", "full-access", "launch"], {
+  // Frontend reveal is virtual; file barriers and output still observe real child completion.
+  const app = await startWithClock(["--permission-mode", "full-access", "launch"], {
     env: { LANG: "en_US.UTF-8" },
     columns: 100,
     rows: 24,

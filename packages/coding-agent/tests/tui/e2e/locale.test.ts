@@ -1,3 +1,4 @@
+import { startWithClock } from "../helpers/clock-app";
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -213,7 +214,7 @@ test("English status chrome and hover labels render through the startup locale",
 });
 
 test("English return badge, context warning and small-window hint", async () => {
-  const app = await start(["long reply"], { columns: 120, env: { LANG: "en" } });
+  const app = await startWithClock(["long reply"], { columns: 120, env: { LANG: "en" } });
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.delta(Array.from({ length: 50 }, (_, i) => `line-${i}`).join("\n"));

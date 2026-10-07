@@ -1,3 +1,6 @@
+import { startWithClock } from "../helpers/clock-app";
+import { testClock } from "../helpers/test-clock";
+import { observeTimeoutDeadline } from "../helpers/timeout-deadline";
 import { expect, test } from "bun:test";
 import { start } from "../helpers/app";
 
@@ -7,17 +10,23 @@ test.each([
 ])(
   "%s exit tip follows the one-second exit window without moving the editor",
   async (lang, tip, clipboardTip) => {
-    const app = await start([], {
+    let advance = true;
+    const app = await startWithClock([], {
+      advanceTimers: (ms) => {
+        if (advance) testClock.advanceTimersByTime(ms);
+      },
       columns: 40,
       rows: 12,
       env: { LANG: lang },
       host: { hasClipboardImage: async () => true },
     });
+    let deadline: ReturnType<typeof observeTimeoutDeadline> | undefined;
     try {
       await app.waitFor(() => app.screen().join("\n").includes(clipboardTip));
       const inputRow = app.screen().indexOf("❯");
       const buffer = app.terminal.buffer.active;
       const cursor = [buffer.cursorX, buffer.cursorY];
+      deadline = observeTimeoutDeadline(1000);
       app.stdin.write("\x03");
       await app.waitFor(() => app.screen().join("\n").includes(tip));
       expect(app.screen().join("\n")).not.toContain(clipboardTip);
@@ -25,6 +34,13 @@ test.each([
       expect([buffer.cursorX, buffer.cursorY]).toEqual(cursor);
       expect(app.screen().every((line) => Bun.stringWidth(line) <= 40)).toBe(true);
       expect(app.stdin.isRaw).toBe(true);
+      advance = false;
+      deadline.beforeExpiry();
+      await app.flush();
+      expect(app.screen().join("\n")).toContain(tip);
+      expect(app.stdin.isRaw).toBe(true);
+      deadline.expire();
+      advance = true;
       await app.waitFor(() => !app.screen().join("\n").includes(tip));
       await app.waitFor(() => app.screen().join("\n").includes(clipboardTip));
       app.stdin.write("\x03");
@@ -42,6 +58,7 @@ test.each([
       expect(app.stdin.isRaw).toBe(false);
       expect(app.calls).toHaveLength(0);
     } finally {
+      deadline?.restore();
       await app.cleanup();
     }
   },

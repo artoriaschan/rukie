@@ -281,12 +281,35 @@ test("Kitty header uploads the full-resolution portrait and removes it on resize
     expect(terminal.screen()[10]?.slice(42)).toBe("/project");
     const buffer = terminal.terminal.buffer.active;
     expect(buffer.getLine(7)!.getCell(15)!.isBgDefault()).toBe(true);
+    const placements = () =>
+      // oxlint-disable-next-line no-control-regex -- Parse actual native Kitty placement headers.
+      Array.from(terminal.output().matchAll(/\x1b_G(a=p,[^;]*);/g), (match) =>
+        Object.fromEntries(match[1]!.split(",").map((field) => field.split("="))),
+      );
+    const original = placements().at(-1)!;
+    const beforeResize = placements().length;
     terminal.resize(40, 24);
     await terminal.waitFor(() => terminal.screen()[7] === "local/model");
     expect(terminal.output()).toContain("a=d");
     expect(terminal.screen()[8]).toBe("/project");
+    const returnOffset = terminal.output().length;
     terminal.resize(80, 24);
-    await terminal.waitFor(() => (terminal.output().match(/a=t,/g)?.length ?? 0) === 2);
+    await terminal.waitFor(() => placements().length > beforeResize);
+    const restored = placements().at(-1)!;
+    // Resize invalidates terminal-side pixels; the same resource gets a fresh placement.
+    expect(restored.i).toBe(original.i);
+    expect(restored.p).not.toBe(original.p);
+    expect([restored.c, restored.r]).toEqual([original.c, original.r]);
+    const uploadHeaders = Array.from(
+      terminal
+        .output()
+        .slice(returnOffset)
+        // oxlint-disable-next-line no-control-regex -- Observe real Kitty headers for the restored resource.
+        .matchAll(/\x1b_G(a=t,[^;]*);/g),
+    );
+    expect(
+      uploadHeaders.filter((match) => match[1]!.split(",").includes(`i=${restored.i}`)),
+    ).toHaveLength(1);
     app.unmount();
     await app.waitUntilExit();
     await terminal.flush();

@@ -40,3 +40,11 @@ Leaf follow-up: gallery captions bound product names to actual slot cell width b
 在集成提交 `a9fa9509`，六组图片产品回归全部通过：`image-preview`、`images`、`composer-image-click`、`composer-image-peek`、`image-clipboard`、`image-tokens`，76 pass / 0 fail / 265 assertions，20.24s。原图片 notice 阅读位置、预览关闭恢复、窄屏 Original 操作、五个 CJK caption 与像素裁切断言均保留并通过。PNG167 场景已在本票改接真实原生 Kitty f32 RGBA：逐查询回复、动态 ID、解压原像素与 resize 后 completed placement 同步；不再留给06。
 
 本次重跑原因是上次75/1组合在 resize 后只等待 metrics/control ready，先于异步 RGBA publish；修复完成信号后在最新共同集成上验证。部分旧用例的真实 notice/reveal 等待由05后续虚拟时钟成本优化保留原断言；最终完整 gate 与旧 graphics suite 迁移仍属于06。
+
+## Combined TUI follow-up
+
+最新集成 `70aaea0b` 全部 TUI 产品区域（122 files）取得1024 pass / 9 fail / 5555 assertions，52.96s。六组图片76场景的成功仍有效；额外发现 Logo Kitty header case 289 未完成，图片与 Goal 共存40×12/24标题字数断言失败。04重开，由图片 owner 分别确认真实原生协议与叶布局原因；05保留其余6项的产品修复责任。06依赖继续等待04/05。
+
+## Additional frontier resolved
+
+图片 owner `651abe97` 的 Logo/Goal/image-model-notice 完整聚焦33 pass / 202 assertions；独立 merger `d10a6805` 再验 Logo Kitty、40×12/24共存、history warning4/39与Goal13/87、MCP阅读锚1/3，全部通过。最新父 `5207677e` 仅随后整合 Jobs clock 测试。Goal 使用原生wrap=end与自身overflowhidden保留可用全部标题列，原 `Release verif` 断言未删；Logo resize 使用实际资源ID/placementID/几何与原生重传规则，移除错误的全局累计upload=2假设。04再次resolved，06仍等待05的剩余共享输入/Jobs/退出修复及最终gate。

@@ -1,3 +1,4 @@
+import { startWithClock } from "../helpers/clock-app";
 import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -160,7 +161,7 @@ test("a fatal paint IO error restores the terminal before stderr and aborts the 
 });
 
 test("Chat fills the alternate screen, scrolls its body and clears the UI on exit", async () => {
-  const app = await start(["long reply"]);
+  const app = await startWithClock(["long reply"]);
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.delta(
