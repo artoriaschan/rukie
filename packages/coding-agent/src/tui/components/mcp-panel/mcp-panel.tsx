@@ -435,7 +435,8 @@ export function McpPanel(props: McpPanelProps) {
           >
             {actions.slice(actionWindow.start, actionWindow.end).map((row, index) => (
               <ListItem
-                key={row.key}
+                // Returning changes the action's owner even when its label and rectangle match.
+                key={`${page.kind}:${row.key}`}
                 picker
                 singleLine
                 width={width}
