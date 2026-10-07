@@ -27,6 +27,7 @@ test("web_fetch returns public text through the validated IP while preserving th
     status: 200,
     truncated: false,
     chars: 20,
+    markdown: "Public documentation",
   });
   expect(received[0]!.get("host")).toBe(new URL(base).host);
   expect(received[0]!.get("user-agent")).toBe("Neant/0.0.0");

@@ -7,6 +7,7 @@ import type { WebFetchOptions } from "./web-fetch/index.ts";
 import type { OnInteractionStart } from "../interaction/index.ts";
 import { createJobTools, type Jobs } from "./jobs/index.ts";
 import { createBashTool } from "./bash/index.ts";
+import { withReadView } from "./read.ts";
 import { createGlobTool } from "./glob.ts";
 import { createGrepTool } from "./grep.ts";
 import { createSkillTool } from "./skill.ts";
@@ -37,7 +38,11 @@ export function createBuiltinTools(options: BuiltinToolsOptions): AgentTool[] {
     fileTracking ? fileTracking.wrapTool(tool) : tool;
   const [write, edit] = createPresentedFileTools(cwd, homeDir);
   return [
-    track(preserveErrorDetails(adaptTool(createReadTool(), createImageReadEnv(cwd), homeDir))),
+    track(
+      withReadView(
+        preserveErrorDetails(adaptTool(createReadTool(), createImageReadEnv(cwd), homeDir)),
+      ),
+    ),
     track(write),
     track(edit),
     preserveErrorDetails(createBashTool(cwd, jobs)),
