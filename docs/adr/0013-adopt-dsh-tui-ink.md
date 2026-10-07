@@ -1,4 +1,4 @@
-Status: proposed
+Status: accepted
 
 # 终端渲染栈改用 dsh-TUI 的 ink
 
@@ -14,7 +14,7 @@ Status: proposed
 - 新增的约 30 个 npm 依赖按精确版本固定，登记在 `docs/tech-stack.md`。
 - 保留 Rukie 的 design-system，改接 dsh ink 的原语；不引入 dsh-TUI 的主题与偏好体系。
 
-保持 proposed，直到 spike 证明它能在 Bun 下运行、并能注入 xterm headless 终端测试。spike 通过后本 ADR 改为 accepted，ADR-0005 标记为 superseded。
+2026-10-07 的 [spike](../../.scratch/dsh-ink/spike-notes.md) 在 Bun 1.4.2 下验证了注入 xterm headless 的全屏原语、键盘输入、退出完成、默认 process 流，以及真实 sixel worker 和 sharp 缩放。本决定据此 accepted，并替代 [ADR-0005](0005-own-tui-renderer.md) 的渲染管线与代码复用边界；正式应用迁移由关联工单完成。
 
 ## Considered Options
 
