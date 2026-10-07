@@ -44,6 +44,7 @@ test("side questions stream visible text from a snapshot without tools or Sessio
       },
     ],
   });
+  await session.rename("Side isolation");
   await session.run("inspect widgets");
   const before = structuredClone(session.messages);
   const reads = reminderReads;
@@ -238,7 +239,7 @@ test("cancelling a side request settles while its provider stream ignores abort 
     const message = fauxAssistantMessage("unused");
     stalled.push({ type: "done", reason: "stop", message });
     stalled.end(message);
-    session.interruptRun();
+    await session.abort();
     await run.catch(() => {});
     await session.close();
   }
