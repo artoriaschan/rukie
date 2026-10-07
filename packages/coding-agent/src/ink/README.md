@@ -6,6 +6,8 @@
 
 `index.ts` 提供 dsh 的公开组件与 hooks。`renderSync(node, options)` 同步返回 Instance；`await render(node, options)` 保留首次 mount 前的 microtask；`createRoot(options)` 创建可复用 root。全屏由 `AlternateScreen` 子树管理。组件 props、ScrollBoxHandle、原生 InputEvent/Key 与 DOMElement 以源码类型为准，应用通过该入口消费。没有旧 renderer 的 fullscreen/env/scroll snapshot/event union API。
 
+`selectionIncludeNoSelectCells` 是每个 root 生命周期内固定的选择策略，默认为 true，保留 dsh 的侧栏起点语义：从 noSelect 区域开始的 char/word/line 手势仅选择该列区域。设为 false 后 noSelect 始终排除，允许从装饰 gutter 开始跨到正文的 Unicode 选区；不改变其他根的策略或状态。产品复制仍应读取选择后由自己的 host 完成 transport，策略选项本身不调用剪贴板。
+
 调用方注入 stdout/stdin/stderr，关闭时 `unmount()`，等待 `waitUntilExit()`，再 `cleanup()`。在卸载前或卸载后订阅退出都完成；运行错误让两种订阅均 reject。注入 stdout 没有 fd 时恢复序列通过其 write 输出，有 fd 时保留上游同步恢复。selection/search/AlternateScreen 使用 AppContext 的 renderer，多个根独立管理状态与输出。
 
 ## 产品组件
@@ -25,6 +27,7 @@ SplitDiffView 的 `onSourceMount(id, DOMElement | null)` 将稳定源行身份�
 - ink.tsx：stdout 恢复不回退 fd=1；退出保存完成状态与 Error，修复首次 late wait；将 renderer 传给 App。
 - App.tsx/AppContext.ts：提供根自己的 stdout 和 renderer。use-selection/use-search-highlight/AlternateScreen 不使用 process.stdout 全局或单根 fallback。
 - App.tsx/ink.tsx/hit-test.ts/events/click-event.ts：click 事件携带 press 的屏幕和目标局部坐标；通用 click 路由语义不变，产品编辑器校验 press/release 位于同一原子单位。
+- root.ts/ink.tsx/selection.ts：selectionIncludeNoSelectCells 每根可选择原始区域 fence 或严格装饰排除，char/word/line 由同一起点策略初始化；默认保持 dsh 行为。
 - parse-keypress.ts：普通 text token 的 C0/DEL 按顺序拆成独立 key，保留同一 stdin read 中 printable + Enter/清空/删除；bracketed paste 保持一次原始 payload。
 - log-update.ts：右边界完整可容纳的双列 grapheme（包括 ZWJ emoji）照常绘制，避免完整 emoji 比 CJK 多丢一列。
 - reconciler.ts：所有环境沿用 commit 后 microtask paint；移除 test 环境 layout effect 前的同步 paint，使公开注入测试与产品 caret/IME 时序一致。
@@ -63,6 +66,7 @@ SplitDiffView 的 `onSourceMount(id, DOMElement | null)` 将稳定源行身份�
 - `src/ink/render-to-screen.ts`
 - `src/ink/renderer.ts`
 - `src/ink/root.ts`
+- `src/ink/selection.ts`
 - `src/ink/sixel-codec.ts`
 - `src/ink/stringWidth.ts`
 - `src/ink/terminal.ts`

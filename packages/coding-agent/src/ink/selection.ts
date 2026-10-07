@@ -175,12 +175,15 @@ export function createSelectionState(): SelectionState {
  * anchor cell's noSelect bit seeds includeNoSelectCells (the direction
  * fence — see SelectionState). Omitted by tests that drive the state
  * directly against a hand-built screen; the flag then stays false.
+ * @param includeNoSelectCells - whether a noSelect-origin gesture may select
+ * its region. False excludes decorations for char, word and line gestures.
  */
 export function startSelection(
   s: SelectionState,
   col: number,
   row: number,
   screen?: Screen,
+  includeNoSelectCells = true,
 ): void {
   s.anchor = { col, row }
   // Direction fence: anchoring ON a noSelect cell means this gesture is
@@ -189,6 +192,7 @@ export function startSelection(
   // Anchoring elsewhere keeps the exclusion (§4.6: a chat-origin drag never
   // captures panel glyphs).
   s.includeNoSelectCells =
+    includeNoSelectCells &&
     screen !== undefined &&
     row >= 0 &&
     row < screen.height &&

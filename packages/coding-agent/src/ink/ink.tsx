@@ -86,6 +86,7 @@ export type Options = {
   exitOnCtrlC: boolean;
   patchConsole: boolean;
   terminalImages?: boolean;
+  selectionIncludeNoSelectCells?: boolean;
   waitUntilExit?: () => Promise<void>;
   onFrame?: (event: FrameEvent) => void;
 };
@@ -2510,7 +2511,7 @@ export default class Ink {
     // word/line scan finds nothing selectable. The screen seeds the
     // direction fence: a multi-click anchored on a noSelect cell (the
     // side-panel column) selects that region's text.
-    startSelection(this.selection, col, row, screen);
+    startSelection(this.selection, col, row, screen, this.options.selectionIncludeNoSelectCells);
     if (count === 2) selectWordAt(this.selection, screen, col, row);else selectLineAt(this.selection, screen, row);
     // Ensure hasSelection is true so release doesn't re-dispatch onClickAt.
     // selectWordAt no-ops on noSelect; selectLineAt no-ops out-of-bounds.
@@ -2529,7 +2530,7 @@ export default class Ink {
    */
   handleSelectionStart(col: number, row: number): void {
     if (!this.altScreenActive) return;
-    startSelection(this.selection, col, row, this.frontFrame.screen);
+    startSelection(this.selection, col, row, this.frontFrame.screen, this.options.selectionIncludeNoSelectCells);
     this.notifySelectionChange();
   }
 

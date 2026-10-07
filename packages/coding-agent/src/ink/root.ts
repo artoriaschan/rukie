@@ -42,6 +42,13 @@ export type RenderOptions = {
   terminalImages?: boolean
 
   /**
+   * Let gestures anchored on noSelect cells select and stay within that region.
+   * False keeps decoration excluded even when a drag starts on it.
+   * Fixed for this root's lifetime; defaults to true.
+   */
+  selectionIncludeNoSelectCells?: boolean
+
+  /**
    * Called after each frame render with timing and flicker information.
    */
   onFrame?: (event: FrameEvent) => void
@@ -173,6 +180,7 @@ export async function createRoot(
     exitOnCtrlC = true,
     patchConsole = true,
     terminalImages = true,
+    selectionIncludeNoSelectCells = true,
     onFrame,
   } = options
   // See wrappedRender — preserve microtask boundary from the old WASM await.
@@ -184,6 +192,7 @@ export async function createRoot(
     exitOnCtrlC,
     patchConsole,
     terminalImages,
+    selectionIncludeNoSelectCells,
     onFrame,
   })
 
