@@ -197,7 +197,9 @@ test("transcript search and file actions retain focus over a caret image draft",
     app.calls[0]!.tool("read", { path: "review.txt" });
     await app.waitFor(() => app.calls.length === 2);
     app.calls[1]!.finish();
-    await app.waitFor(() => !app.isWorking());
+    // The empty reply has no spinner; wait for its persisted result before
+    // capturing the searched card's physical coordinates in the transcript.
+    await app.waitFor(() => !app.isWorking() && screen().includes("✻ Baked for"));
     await draftImage(app);
     app.stdin.write("\x0f");
     await app.waitFor(() => !screen().includes("Image #1 · PNG"));

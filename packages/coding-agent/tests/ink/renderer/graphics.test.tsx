@@ -368,7 +368,9 @@ test("visible decoded sources obey the 16MiB frame and 64 placement budgets", as
   );
   try {
     await negotiate(terminal);
-    await terminal.waitFor(() => placements(terminal).length === 4);
+    await terminal.waitFor(
+      () => placements(terminal).length === 4 && terminal.screen()[0]!.includes("over-4"),
+    );
     expect(placements(terminal)).toHaveLength(4);
     expect(terminal.screen()[0]).toContain("over-4");
     app.rerender(
@@ -392,7 +394,10 @@ test("visible decoded sources obey the 16MiB frame and 64 placement budgets", as
         </Box>,
       ),
     );
-    await terminal.waitFor(() => placements(terminal).length >= count + 64);
+    // Graphics reports can arrive before xterm consumes the fallback text.
+    await terminal.waitFor(
+      () => placements(terminal).length >= count + 64 && terminal.screen()[0]?.[64] === "X",
+    );
     expect(placements(terminal).slice(count)).toHaveLength(64);
     expect(terminal.screen()[0]![64]).toBe("X");
   } finally {
