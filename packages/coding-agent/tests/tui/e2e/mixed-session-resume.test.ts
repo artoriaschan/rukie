@@ -4,7 +4,6 @@ import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { fauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { createSession } from "@rukie/agent";
-import { isUnknownToolOutcome } from "@rukie/shared";
 import { start } from "../helpers/app";
 import { startWithClock } from "../helpers/clock-app";
 import { auxiliaryModels } from "../helpers/auxiliary-model";
@@ -130,14 +129,16 @@ test.each([
         expect(text).not.toContain("system-reminder");
       };
       checkOrder(app.screen().join("\n"));
+      app.stdin.write("/exit\r");
+      await app.exit;
       const saved = await createSession({
         cwd: app.root,
         homeDir: app.root,
         resumeId: argv[1],
         model: app.model,
-        streamFn: () => {
+        models: auxiliaryModels(() => {
           throw new Error("observation cannot request a model");
-        },
+        }),
       });
       try {
         expect(saved.toolState("todo")).toEqual(todos);
@@ -279,32 +280,34 @@ test("a failed write result keeps earlier mixed facts and an honest unknown outc
         "Mixed choice? → Keep",
         "Mixed saved child",
         "saved mixed conclusion",
-        "Outcome unknown",
-        "✗ mixed write save failed",
       ])
         expect(text.split(marker), marker).toHaveLength(2);
       expect(text).not.toContain("Wrote 1 lines");
       expect(text).not.toContain("running");
     };
     assertHistory(app.screen().join("\n"));
+    expect(app.screen().join("\n")).toContain("Outcome unknown");
     expect(app.calls).toHaveLength(1);
     expect(await Bun.file(join(app.root, "effect.txt")).text()).toBe("side effect ran once");
+    app.stdin.write("/exit\r");
+    await app.exit;
+    const recovered = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+    recovered.setResponses([fauxAssistantMessage("recovered mixed conclusion")]);
     const saved = await createSession({
       cwd: app.root,
       homeDir: app.root,
       resumeId: argv[1],
-      model: app.model,
-      streamFn: () => {
-        throw new Error("Resume must not replay a tool or child");
-      },
+      model: recovered.getModel(),
+      models: auxiliaryModels(recovered.provider.streamSimple),
     });
     try {
+      await saved.waitForIdle();
       const writeResult = saved.messages.findLast(
         (message) => message.role === "toolResult" && message.toolName === "write",
       );
-      expect(writeResult?.role === "toolResult" && isUnknownToolOutcome(writeResult.details)).toBe(
-        true,
-      );
+      expect(writeResult?.role === "toolResult" && writeResult.isError).toBe(true);
+      expect(JSON.stringify(writeResult)).toContain("may have partially run");
+      expect(JSON.stringify(writeResult)).not.toContain("unknown-tool-outcome");
       expect(saved.toolState("todo")).toEqual(todos);
       expect(saved.jobs()).toEqual([]);
       expect((await saved.readSubagent(childId))!.run!.outcome).toBe("completed");
@@ -320,13 +323,13 @@ test("a failed write result keeps earlier mixed facts and an honest unknown outc
       advanceTimers: (ms) => testClock.advanceTimersByTime(ms),
     });
     try {
-      await replay.waitFor(() => replay.screen().join("\n").includes("mixed write save failed"));
+      await replay.waitFor(() => replay.screen().join("\n").includes("recovered mixed conclusion"));
       assertHistory(replay.screen().join("\n"));
       expect(replay.calls).toHaveLength(0);
       expect(await Bun.file(join(app.root, "effect.txt")).text()).toBe("side effect ran once");
       replay.stdin.write("continue explicitly\r");
       await replay.waitFor(() => replay.calls.length === 1);
-      expect(JSON.stringify(replay.calls[0]!.context.messages)).toContain("unknown-tool-outcome");
+      expect(JSON.stringify(replay.calls[0]!.context.messages)).toContain("may have partially run");
       expect(JSON.stringify(replay.calls[0]!.context.messages)).toContain("saved mixed conclusion");
       expect(JSON.stringify(replay.calls[0]!.context.messages)).not.toContain("session-notice");
       replay.calls[0]!.finish();
