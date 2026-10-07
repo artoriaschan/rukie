@@ -97,10 +97,17 @@ export async function runHeadless(options: CliOptions, io: PrintIo): Promise<num
       await session.waitForIdle();
       io.signal?.throwIfAborted();
     }
-    const requestId =
-      !prompt && session.currentRequestId
-        ? session.currentRequestId
-        : (await session.run(prompt)).requestId;
+    let requestId = !prompt ? session.currentRequestId : undefined;
+    if (!requestId) {
+      try {
+        requestId = (await session.run(prompt)).requestId;
+      } catch (error) {
+        // A committed failed Run still has a causal request to settle. Storage
+        // faults and host shutdown keep their original failure semantics.
+        if (io.signal?.aborted || !session.currentRequestId) throw error;
+        requestId = session.currentRequestId;
+      }
+    }
     const result = await session.waitForRequest(requestId);
     io.signal?.throwIfAborted();
     const { text } = result;

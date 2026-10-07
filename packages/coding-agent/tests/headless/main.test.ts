@@ -571,8 +571,8 @@ test("Headless resume emits a text plan and never registers interactive plan too
       .split("\n")
       .map((line) => JSON.parse(line));
     const start = events.find((event) => event.type === "snapshot");
-    expect(start.tools.map((tool: { name: string }) => tool.name)).not.toContain("exit_plan_mode");
-    expect(start.tools.map((tool: { name: string }) => tool.name)).not.toContain("enter_plan_mode");
+    expect(start.agent.tools).not.toContain("exit_plan_mode");
+    expect(start.agent.tools).not.toContain("enter_plan_mode");
     expect(events.findLast((event) => event.type === "request_settled")).toMatchObject({
       type: "request_settled",
       text: "# Text plan\n\nInspect, implement and verify.",

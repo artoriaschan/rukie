@@ -370,7 +370,7 @@ export function projectSubagent(
     }
   }
   const committedOutputLength = output.length;
-  for (const block of snapshot.generation?.message.content ?? []) {
+  for (const block of snapshot.generation?.message?.content ?? []) {
     if (block.type === "text") output.push({ type: "text", text: block.text });
     if (block.type === "thinking") output.push({ type: "thinking", text: block.thinking });
   }
