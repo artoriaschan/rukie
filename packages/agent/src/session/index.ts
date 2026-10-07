@@ -279,10 +279,15 @@ export interface Session {
     options: { code: boolean; conversation: boolean },
   ): Promise<RewindResult>;
   /** Read a known child's current Transcript and Run facts without starting or repairing it. */
-  readSubagent(
-    id: string,
-  ): Promise<
-    { messages: readonly PresentedMessage[]; model?: string; run?: SubagentRun } | undefined
+  readSubagent(id: string): Promise<
+    | {
+        messages: readonly PresentedMessage[];
+        /** Committed context before the latest Run's native start entry; excludes its current Turns. */
+        historyMessages?: readonly PresentedMessage[];
+        model?: string;
+        run?: SubagentRun;
+      }
+    | undefined
   >;
   /** Interrupt a child Run; missing and idle children are a no-op. */
   interruptSubagent(id: string): void;
@@ -334,7 +339,7 @@ interface InternalSessionOptions {
   typeHooks?: HooksSettings;
   initialMessages?: AgentMessage[];
   systemPrompt?: string;
-  control?: { steer?: (message: AgentMessage) => void };
+  control?: { steer?: (message: AgentMessage) => void; readEntries?: () => Promise<Entry[]> };
   /** Parent-owned recorder; children never open their own Checkpoint. */
   checkpoint?: ReturnType<typeof createCheckpoints>;
 }
@@ -830,7 +835,7 @@ async function createSessionInternal(
       });
     },
   });
-  const childSessions = new Set<Session>();
+  const childSessions = new Map<Session, NonNullable<InternalSessionOptions["control"]>>();
   let currentResult: RunResult | undefined;
   let completedMessages = initialBranch.messages;
   const subagents = createSubagentController({
@@ -894,7 +899,7 @@ async function createSessionInternal(
           }),
         },
       );
-      childSessions.add(session);
+      childSessions.set(session, control);
       if (disposePromise) await session.dispose();
       return { session, steer: (message) => control.steer!(message) };
     },
@@ -1094,7 +1099,22 @@ async function createSessionInternal(
     warning: options.onWarning ?? console.warn,
   });
   await sessionTitle.initializeChild();
-  if (internal.control) internal.control.steer = (message) => agent.steer(message);
+  if (internal.control) {
+    internal.control.steer = (message) => agent.steer(message);
+    internal.control.readEntries = () =>
+      serializeStore(async () => {
+        const current = activeStore;
+        if (!current && !store.openReadonly)
+          throw new Error("Store has no read-only observation capability.");
+        const target = current ?? (await store.openReadonly!(stored.metadata, context));
+        try {
+          const branch = await target.branch("main", context);
+          return (await branch?.findEntries({ order: "oldestFirst" }, context)) ?? [];
+        } finally {
+          if (!current) await target.close(context);
+        }
+      });
+  }
   let running = false;
   let rewinding = false;
   let changingModel = false;
@@ -1882,13 +1902,46 @@ async function createSessionInternal(
     },
     async readSubagent(id: string) {
       if (!subagents.list().some((child) => child.id === id)) return undefined;
-      const live = [...childSessions].find((child) => child.id === id);
-      if (live)
+      const project = (entries: Entry[]) => {
+        const facts = createToolState([subagentRunState, modelState], entries, (warning) => {
+          throw new Error(warning);
+        });
+        const run = facts.get("subagent-run") as SubagentRun | undefined;
+        if (run && (run.sessionId !== id || run.parentSessionId !== stored.metadata.id))
+          return undefined;
+        // Tool State decoding above validates these entries. Native branch order, not provider
+        // clocks, identifies the committed history before this Run's first start fact.
+        const boundary = run
+          ? entries.findIndex((entry) => {
+              if (entry.type !== "custom" || entry.customType !== "tool-state/subagent-run")
+                return false;
+              const data = entry.data;
+              if (!data || typeof data !== "object" || Array.isArray(data)) return false;
+              const value = data.value;
+              return (
+                !!value &&
+                typeof value === "object" &&
+                !Array.isArray(value) &&
+                value.id === run.id &&
+                value.endedAt === undefined
+              );
+            })
+          : -1;
+        const messages = presentMessages(projectBranch(entries).messages);
+        const last = messages.findLast((message) => message.role === "assistant");
         return {
-          messages: live.messages,
-          model: live.model,
-          run: live.toolState("subagent-run") as SubagentRun | undefined,
+          messages,
+          ...(boundary >= 0 && {
+            historyMessages: presentMessages(projectBranch(entries.slice(0, boundary)).messages),
+          }),
+          model:
+            (facts.get("model") as string | undefined) ??
+            (last?.role === "assistant" ? `${last.provider}/${last.model}` : undefined),
+          run,
         };
+      };
+      const live = [...childSessions].find(([child]) => child.id === id);
+      if (live) return project(await live[1].readEntries!());
       if (!store.find || !store.openReadonly)
         throw new Error("Store has no read-only observation capability.");
       const metadata = await store.find(id, { cwd }, BACKGROUND_CONTEXT);
@@ -1899,21 +1952,7 @@ async function createSessionInternal(
         const branch = await observed.branch("main", BACKGROUND_CONTEXT);
         if (!branch) return undefined;
         const entries = await branch.findEntries({ order: "oldestFirst" }, BACKGROUND_CONTEXT);
-        const facts = createToolState([subagentRunState, modelState], entries, (warning) => {
-          throw new Error(warning);
-        });
-        const run = facts.get("subagent-run") as SubagentRun | undefined;
-        if (run && (run.sessionId !== id || run.parentSessionId !== stored.metadata.id))
-          return undefined;
-        const messages = presentMessages(projectBranch(entries).messages);
-        const last = messages.findLast((message) => message.role === "assistant");
-        return {
-          messages,
-          model:
-            (facts.get("model") as string | undefined) ??
-            (last?.role === "assistant" ? `${last.provider}/${last.model}` : undefined),
-          run,
-        };
+        return project(entries);
       } finally {
         await observed.close(BACKGROUND_CONTEXT);
       }
@@ -2042,7 +2081,7 @@ async function createSessionInternal(
             await Promise.all([
               jobsDisposed,
               hooks.run("SessionEnd", { ...hookInput(), reason }, { matchQuery: reason }),
-              ...[...childSessions].map((child) => child.dispose(reason)),
+              ...[...childSessions.keys()].map((child) => child.dispose(reason)),
             ]);
           } finally {
             unregisterReader();

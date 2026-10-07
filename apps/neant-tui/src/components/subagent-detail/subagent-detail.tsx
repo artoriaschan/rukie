@@ -91,7 +91,9 @@ export function SubagentDetailScene({
       status={
         tool.status === "running" ? "running" : tool.status === "failed" ? "error" : "success"
       }
-      result={tool.result ?? tool.resultPreview}
+      result={
+        tool.status === "unknown" ? t("tool.outcome-unknown") : (tool.result ?? tool.resultPreview)
+      }
       error={tool.error}
       outcomeUnknown={tool.status === "unknown"}
       locale={locale}
