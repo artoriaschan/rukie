@@ -298,6 +298,12 @@ const RequestDoc = defineDoc<{
   scope: "session",
   initial: () => ({ requests: {} }),
 });
+const HookStopsDoc = defineDoc<{ requests: Record<string, string> }>({
+  kind: "rukie.hook-stops",
+  version: 1,
+  scope: "session",
+  initial: () => ({ requests: {} }),
+});
 const PendingInputFactsDoc = defineDoc<{ inputs: Record<string, Record<string, JsonValue>> }>({
   kind: "rukie.pending-input-facts",
   version: 1,
@@ -422,13 +428,28 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     let thinkingTask: number | undefined;
     let modelFact = `${model.provider}/${model.id}`;
     const auxiliaryLifetime = new AbortController();
+    let notificationLifetime = new AbortController();
     let stopped = false;
+    let hookStopReason: string | undefined;
+    const toolDurations = new Map<string, number>();
+    let startupStopReason: string | undefined;
     let selectingModel = false;
     let foregroundAdmission = false;
     let goalRound = false;
     let wrapup: string | undefined;
     let permissionMode = options.permissionMode ?? settings.permissionMode ?? "ask";
     const sessionAllowRules = options.sessionAllowRules ?? [];
+    let permissionChecks = Promise.resolve();
+    const serializePermissionChecks =
+      (check: ReturnType<typeof createPermissionGate>["beforeTool"]): typeof check =>
+      (...args) => {
+        const checked = permissionChecks.then(() => check(...args));
+        permissionChecks = checked.then(
+          () => {},
+          () => {},
+        );
+        return checked;
+      };
     let observation: Awaited<ReturnType<typeof createConversationObservation>>;
     let storageFailure: unknown;
     const storageFault = Promise.withResolvers<never>();
@@ -548,6 +569,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     };
     let asyncAdmissions = Promise.resolve();
     const hooks = createHooks({
+      callMcpTool: (...args) => mcp.callHookTool(...args),
       settings: settings.hooks,
       cwd,
       homeDir: options.homeDir,
@@ -566,6 +588,13 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           .then(async () => {
             if (closed) return;
             await applyHookResult(result, "hook-async");
+            for (const content of result.systemMessages)
+              await appendReminder({
+                role: "system-reminder",
+                source: "hook-async",
+                content,
+                timestamp: Date.now(),
+              });
             if (!reason) return;
             const requestId = `hook:${randomUUID()}`;
             const submitted = await conversation.submit(
@@ -604,6 +633,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       transcript_path: join(store.key(lease.id), "main.jsonl"),
       cwd,
       permission_mode: permissionMode,
+      model: `${model.provider}/${model.id}`,
       ...extra,
     });
     const appendReminder = async (reminder: SystemReminder, ctx: Context = context) => {
@@ -633,14 +663,19 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           { role: "system-reminder", source, content: text, timestamp: Date.now() },
           ctx,
         );
-      if (result.continue === false) stopped = true;
+      if (result.continue === false) {
+        stopped = true;
+        hookStopReason = result.stopReason ?? "Stopped by hook.";
+      }
     }
     const notifyInteraction: import("../interaction/index.ts").OnInteractionStart = async (
       notification,
-      signal,
+      _signal,
     ) => {
       const result = await hooks.run("Notification", hookInput({ ...notification }), {
-        signal,
+        // A completed tool invocation closes its native scope. Notification side
+        // effects belong to the Run/Session, so only explicit cancellation ends them.
+        signal: AbortSignal.any([auxiliaryLifetime.signal, notificationLifetime.signal]),
         matchQuery: notification.notification_type,
       });
       await applyHookResult(
@@ -893,8 +928,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
       onHookWarning: warn,
       isRunStopped: () => stopped,
-      stopRun: () => {
+      stopRun: (reason) => {
         stopped = true;
+        hookStopReason = reason ?? "Stopped by hook.";
       },
       isMcpAuthTool: (name) => mcp.authTools.has(name),
       preToolUse: async (call, signal) => {
@@ -1220,7 +1256,12 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                   api,
                   ctx,
                 );
-                return tool.execute(args, api, ctx);
+                const started = performance.now();
+                try {
+                  return await tool.execute(args, api, ctx);
+                } finally {
+                  toolDurations.set(api.callId, performance.now() - started);
+                }
               },
             }));
         };
@@ -1450,7 +1491,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         tools,
         hooks: [
           hook(ToolTask, {
-            beforeTool: gate.beforeTool,
+            beforeTool: serializePermissionChecks(gate.beforeTool),
             afterTool: async (call, result, api, ctx) => {
               const changed = await hooks.run(
                 result.isError ? "PostToolUseFailure" : "PostToolUse",
@@ -1459,6 +1500,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                   tool_input: call.arguments,
                   tool_response: result.content,
                   tool_use_id: call.id,
+                  duration_ms: toolDurations.get(call.id) ?? 0,
                 }),
                 { signal: ctx.abortSignal, matchQuery: call.name },
               );
@@ -1610,6 +1652,28 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                     ) ?? [],
                 ),
               );
+              mcpManager.adopt(mcp.snapshot());
+              if (stopped && hookStopReason) {
+                const live = await harness.snapshot(LiveDoc, conversation.id, ctx);
+                const first = live?.run?.inputs[0];
+                const input =
+                  first === undefined ? undefined : await lease.storage.submission(first, ctx);
+                const reason = hookStopReason;
+                await conversation.commit(async (tx) => {
+                  const stopped = await tx.doc(HookStopsDoc);
+                  if (input?.requestId) stopped.requests[input.requestId] = reason;
+                  await tx.appendEntry(conversation.id, {
+                    kind: "rukie.notice",
+                    data: {
+                      role: "session-notice",
+                      notice: { kind: "hook_stopped", reason },
+                      timestamp: Date.now(),
+                    },
+                  });
+                }, ctx);
+                await conversation.abort(ctx);
+                return;
+              }
               const availableMcp = new Set(mcp.tools.map((tool) => tool.name));
               const publishedMcp = tools
                 .filter((tool) => tool.name.startsWith("mcp__"))
@@ -1630,6 +1694,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 }, ctx);
                 return undefined;
               }
+              if (subagents.list().some((child) => child.active)) return undefined;
               const continuation = async (content: string, source: string) => {
                 await conversation.commit(
                   (tx) =>
@@ -1650,9 +1715,13 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               const live = await harness.snapshot(LiveDoc, conversation.id, ctx);
               const runAnchor = Number(live?.run?.inputs[0]);
               const count = hookState?.taskId === runAnchor ? hookState.count : 0;
-              const result = await hooks.run("Stop", hookInput({ stop_hook_active: count > 0 }), {
-                signal: ctx.abortSignal,
-              });
+              const result = await hooks.run(
+                "Stop",
+                hookInput({ stop_hook_active: count > 0, last_assistant_message: textOf(_answer) }),
+                {
+                  signal: ctx.abortSignal,
+                },
+              );
               await applyHookResult(result, "hook:Stop", ctx);
               if (result.decision === "block" && result.reason) {
                 if (count >= 8) {
@@ -1943,6 +2012,17 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           .join("") ?? "";
       const request = await readRequest(requestId);
       await observation.flush();
+      const persistedStop = (await harness.snapshot(HookStopsDoc, context))?.requests[requestId];
+      if (persistedStop)
+        return {
+          requestId,
+          text,
+          success: true,
+          stopReason: "hook_stopped",
+          reason: persistedStop,
+          usage,
+          durationMs: Date.now() - (request?.startedAt ?? Date.now()),
+        };
       return {
         requestId,
         text,
@@ -1976,13 +2056,20 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         : { systemMessages: [], additionalContext: [] };
       signal?.throwIfAborted();
       await applyHookResult(hookResult, "hook:UserPromptSubmit");
-      if (hookResult.decision === "block") {
-        const reason = hookResult.reason ?? "Prompt blocked by hook.";
+      if (hookResult.decision === "block" || hookResult.continue === false || startupStopReason) {
+        const stopReason =
+          hookResult.continue === false || startupStopReason ? "hook_stopped" : "hook_blocked";
+        const reason =
+          startupStopReason ??
+          hookResult.stopReason ??
+          hookResult.reason ??
+          "Prompt blocked by hook.";
+        startupStopReason = undefined;
         const result: RequestResult = {
           requestId,
           text: "",
           success: true,
-          stopReason: "hook_blocked",
+          stopReason,
           reason,
           usage: zeroUsage(),
           durationMs: 0,
@@ -1999,7 +2086,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             kind: "rukie.notice",
             data: {
               role: "session-notice",
-              notice: { kind: "hook_blocked", reason },
+              notice: { kind: stopReason, reason },
               timestamp: Date.now(),
             },
           });
@@ -2493,6 +2580,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
       async abort() {
         assertAvailable();
+        notificationLifetime.abort();
+        notificationLifetime = new AbortController();
         stopped = true;
         goal.disarm();
         await conversation.abort(context);
@@ -2505,11 +2594,24 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
       async run(prompt, input = {}) {
         input.signal?.throwIfAborted();
+        if (observation.running() && currentRequestId?.startsWith("hook:")) {
+          const cancelled = Promise.withResolvers<never>();
+          const cancelWaiting = () => cancelled.reject(input.signal?.reason);
+          input.signal?.addEventListener("abort", cancelWaiting, { once: true });
+          try {
+            await Promise.race([conversation.waitForIdle(context), cancelled.promise]);
+          } finally {
+            input.signal?.removeEventListener("abort", cancelWaiting);
+          }
+        }
         assertAvailable(true);
         foregroundAdmission = true;
         stopped = false;
+        hookStopReason = undefined;
         goalRound = false;
         const abort = () => {
+          notificationLifetime.abort();
+          notificationLifetime = new AbortController();
           stopped = true;
           goal.disarm();
           void conversation.abort(context).catch(warn);
@@ -2722,6 +2824,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       { matchQuery: options.resumeId ? "resume" : "startup" },
     );
     await applyHookResult(startup, "hook:SessionStart");
+    if (startup.continue === false) startupStopReason = startup.stopReason ?? "Stopped by hook.";
     await asyncAdmissions;
     await subagents.prepareChildren(context);
     const recovering = await harness.inspect(context);
