@@ -15,6 +15,9 @@ import {
   type ToolRegistration,
   type EntryDraft,
   type Storage,
+  type EntryRecord,
+  type Cursor,
+  ROOT_CONVERSATION_ID,
 } from "@earendil-works/pi-durable";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import {
@@ -293,6 +296,14 @@ const RequestDoc = defineDoc<{
   version: 1,
   scope: "session",
   initial: () => ({ requests: {} }),
+});
+const PendingInputFactsDoc = defineDoc<{ inputs: Record<string, Record<string, JsonValue>> }>({
+  kind: "rukie.pending-input-facts",
+  version: 1,
+  scope: "conversation",
+  history: "latest",
+  fork: "initial",
+  initial: () => ({ inputs: {} }),
 });
 const reminderEntry = (reminder: SystemReminder): EntryDraft => ({
   kind: "rukie.reminder",
@@ -631,6 +642,24 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         "hook:Notification",
       );
     };
+    const fullHistory = async (id = conversation.id) => {
+      const entries: EntryRecord[] = [];
+      let cursor: Cursor | undefined;
+      do {
+        const page = await lease.storage.scanEntries({ conversationId: id }, 256, cursor, context);
+        entries.push(...page.items);
+        cursor = page.next;
+      } while (cursor);
+      return entries.reverse();
+    };
+    const promptFacts = new Map<string, string>();
+    const rememberPrompts = (entries: readonly EntryRecord[]) => {
+      for (const entry of entries) {
+        const users = entry.model?.filter((message) => message.role === "user");
+        if (users?.length) promptFacts.set(String(entry.id), users.map(textOf).join(""));
+      }
+    };
+    rememberPrompts(await fullHistory());
     const checkpoints = createCheckpoints({
       homeDir: options.homeDir,
       sessionId: lease.id,
@@ -638,13 +667,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       persist: async (value) => {
         await state.set("checkpoint", value, context);
       },
-      getPrompt: (id) =>
-        observation
-          ?.view()
-          .entries.find((entry) => String(entry.id) === id)
-          ?.model?.filter((message) => message.role === "user")
-          .map(textOf)
-          .join(""),
+      getPrompt: (id) => promptFacts.get(id),
     });
     const tracking = createFileTracking(cwd, {
       initialState: state.get("file-tracking"),
@@ -713,16 +736,75 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     });
     const mcp = createMcpConnections(createMcpAuthState());
     let mcpLoaded = false;
+    const jobHistory = await fullHistory(ROOT_CONVERSATION_ID);
+    const historicalCalls: string[] = [];
+    let lastKnownCall = -1;
+    let initialJobSequence = 0;
+    {
+      for (const entry of jobHistory)
+        for (const message of entry.model ?? []) {
+          if (message.role === "assistant")
+            for (const block of message.content)
+              if (block.type === "toolCall" && block.name === "bash")
+                historicalCalls.push(block.id);
+          if (message.role !== "toolResult" || message.toolName !== "bash") continue;
+          const details = message.details;
+          if (!details || typeof details !== "object" || Array.isArray(details)) continue;
+          const id = "jobId" in details ? details.jobId : undefined;
+          if (typeof id !== "string") continue;
+          const match = /^bash-(\d+)$/.exec(id);
+          if (!match) continue;
+          const sequence = Number(match[1]);
+          if (sequence >= initialJobSequence) {
+            initialJobSequence = sequence;
+            lastKnownCall = historicalCalls.indexOf(message.toolCallId);
+          }
+        }
+      // Calls after the latest receipt may have allocated a process ID before
+      // their receipt was lost. Retire those IDs rather than reuse uncertainty.
+      initialJobSequence += historicalCalls.length - lastKnownCall - 1;
+    }
+    const userStoppedJobs = new Set<string>();
+    let jobAdmissions = Promise.resolve();
     const jobs = createJobs({
+      initialSequence: initialJobSequence,
       onEvent: (event) => custom(event),
       onNotify: (job) => {
-        if (!closed)
-          void appendReminder({
-            role: "system-reminder",
-            source: `job:${job.id}`,
-            content: `Background job ${job.id} ${job.status}.`,
-            timestamp: Date.now(),
-          }).catch(warn);
+        if (closed) return;
+        jobAdmissions = jobAdmissions
+          .then(async () => {
+            const content = `background job ${job.id} (${job.kind}: ${job.label}) finished [status: ${job.status}, exit code: ${job.exitCode ?? "unknown"}]. Read its output with job_output.`;
+            const live = await harness.snapshot(LiveDoc, conversation.id, context);
+            if (live?.run) {
+              await conversation.commit(async (tx) => {
+                const entry = await tx.appendEntry(conversation.id, {
+                  kind: "rukie.job-notification",
+                  model: [
+                    {
+                      role: "user",
+                      content: [{ type: "text", text: content }],
+                      timestamp: Date.now(),
+                    },
+                  ],
+                });
+                await tx.appendEntry(conversation.id, {
+                  kind: "rukie.message-facts",
+                  data: { entryId: Number(entry.id), source: "job" },
+                });
+              }, context);
+            } else {
+              stopped = false;
+              const requestId = `job:${job.id}:${job.startedAt}`;
+              const submitted = await submit(content, [], "followUp", requestId);
+              void resultFor(requestId, submitted.id)
+                .then(async (result) => {
+                  custom({ type: "result", ...result });
+                  await session.waitForRequest(requestId);
+                })
+                .catch(warn);
+            }
+          })
+          .catch(warn);
       },
     });
     failedCleanup.push(async () => {
@@ -1417,6 +1499,17 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               }
               for (const id of live?.run?.inputs ?? []) {
                 const record = await lease.storage.submission(id, ctx);
+                if (record?.entry)
+                  await conversation.commit(async (tx) => {
+                    const pending = await tx.doc(PendingInputFactsDoc, conversation.id);
+                    const facts = pending.inputs[String(id)];
+                    if (!facts) return;
+                    await tx.appendEntry(conversation.id, {
+                      kind: "rukie.message-facts",
+                      data: { ...facts, entryId: Number(record.entry) },
+                    });
+                    delete pending.inputs[String(id)];
+                  }, ctx);
                 if (
                   record?.requestId?.startsWith("human:") &&
                   record.status !== "queued" &&
@@ -1424,8 +1517,11 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                   !checkpoints
                     .list()
                     .some((checkpoint) => checkpoint.promptEntryId === String(record.entry))
-                )
+                ) {
+                  const persisted = await lease.storage.entry(record.entry, ctx);
+                  if (persisted) rememberPrompts([persisted.entry]);
                   await checkpoints.start(String(record.entry));
+                }
               }
               if (wrapup) {
                 const content = wrapup;
@@ -1912,22 +2008,30 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       currentRequestId = requestId;
       await registerSubmission(requestId, submitted.id);
       const record = await submitted.status(context);
-      if (record.entry && (images.length || invocation || !requestId.startsWith("human:")))
-        await conversation.commit(
-          (tx) =>
-            tx.appendEntry(conversation.id, {
+      if (images.length || invocation || !requestId.startsWith("human:")) {
+        const facts: Record<string, JsonValue> = {
+          ...(images.length ? { imageNames: images.map((image) => image.name ?? null) } : {}),
+          ...(invocation ? { skillInvocation: invocation } : {}),
+          ...(!requestId.startsWith("human:")
+            ? {
+                source: requestId.startsWith("goal:")
+                  ? "goal"
+                  : requestId.startsWith("job:")
+                    ? "job"
+                    : "hook",
+              }
+            : {}),
+        };
+        await conversation.commit(async (tx) => {
+          const pending = await tx.doc(PendingInputFactsDoc, conversation.id);
+          if (record.entry)
+            await tx.appendEntry(conversation.id, {
               kind: "rukie.message-facts",
-              data: {
-                entryId: Number(record.entry),
-                ...(images.length ? { imageNames: images.map((image) => image.name ?? null) } : {}),
-                ...(invocation ? { skillInvocation: invocation } : {}),
-                ...(!requestId.startsWith("human:")
-                  ? { source: requestId.startsWith("goal:") ? "goal" : "hook" }
-                  : {}),
-              },
-            }),
-          context,
-        );
+              data: { ...facts, entryId: Number(record.entry) },
+            });
+          else pending.inputs[String(submitted.id)] = facts;
+        }, context);
+      }
       return submitted;
     }
     async function startGoal() {
@@ -2136,8 +2240,27 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       async killJob(id) {
         const job = jobs.get(id);
         if (!job) throw new Error(`Unknown job: ${id}`);
+        if (userStoppedJobs.has(id)) return;
+        userStoppedJobs.add(id);
         job.kill("user");
         await job.completed;
+        const content = `User stopped background job ${id} (${job.view.label}).`;
+        if (observation.running()) {
+          const parent = currentRequestId;
+          const submitted = await submit(
+            content,
+            [],
+            "steer",
+            `job:stopped:${id}:${job.view.startedAt}`,
+          );
+          if (parent) await registerSubmission(parent, submitted.id);
+        } else
+          await appendReminder({
+            role: "system-reminder",
+            source: `job:stopped:${id}`,
+            content,
+            timestamp: Date.now(),
+          });
       },
       async mcpServers(input) {
         assertAvailable(!!input?.refresh);
@@ -2216,7 +2339,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         const prompt = checkpoints.prompt(id);
         const code = input.code ? await checkpoints.restoreCode(id) : { restored: [], deleted: [] };
         if (input.conversation) {
-          const entries = observation.view().entries;
+          const entries = await fullHistory();
           const index = entries.findIndex((entry) => String(entry.id) === id);
           const previous = entries[index - 1];
           if (!previous) throw new Error("Checkpoint has no prior entry anchor.");
@@ -2555,6 +2678,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         return waiting;
       },
       async waitForIdle() {
+        await jobAdmissions;
         await conversation.waitForIdle(context);
         await observation.flush();
       },
