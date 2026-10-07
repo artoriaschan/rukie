@@ -294,6 +294,11 @@ const reminderEntry = (reminder: SystemReminder): EntryDraft => ({
     },
   ],
 });
+class PromptHookBlocked extends Error {
+  constructor(readonly result: RequestResult) {
+    super(result.error);
+  }
+}
 const textOf = (message: Message): string => {
   if (typeof message.content === "string") return message.content;
   return message.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("");
@@ -465,17 +470,22 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         ctx,
       );
     };
+    async function appendNotice(
+      notice: import("./session-notice.ts").SessionNotice,
+      ctx = context,
+    ) {
+      await conversation.commit(
+        (tx) =>
+          tx.appendEntry(conversation.id, {
+            kind: "rukie.notice",
+            data: { role: "session-notice", notice, timestamp: Date.now() },
+          }),
+        ctx,
+      );
+    }
     async function applyHookResult(result: CommonHookResult, source: string, ctx = context) {
       for (const text of result.systemMessages)
-        await appendReminder(
-          {
-            role: "system-reminder",
-            source: `${source}:system`,
-            content: text,
-            timestamp: Date.now(),
-          },
-          ctx,
-        );
+        await appendNotice({ kind: "hook_message", message: text }, ctx);
       for (const text of result.additionalContext)
         await appendReminder(
           { role: "system-reminder", source, content: text, timestamp: Date.now() },
@@ -1394,8 +1404,35 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       images.forEach(validateImage);
       const hookResult = await hooks.run("UserPromptSubmit", hookInput({ prompt }));
       await applyHookResult(hookResult, "hook:UserPromptSubmit");
-      if (hookResult.decision === "block")
-        throw new Error(hookResult.reason ?? "Prompt blocked by hook.");
+      if (hookResult.decision === "block") {
+        const reason = hookResult.reason ?? "Prompt blocked by hook.";
+        const result: RequestResult = {
+          requestId,
+          text: "",
+          success: false,
+          error: reason,
+          usage: zeroUsage(),
+          durationMs: 0,
+        };
+        await harness.commit(async (tx) => {
+          const requests = await tx.doc(RequestDoc);
+          requests.requests[requestId] = {
+            submissions: [],
+            tasks: [],
+            startedAt: Date.now(),
+            result: { ...result, usage: { ...result.usage } },
+          };
+          await tx.appendEntry(conversation.id, {
+            kind: "rukie.notice",
+            data: {
+              role: "session-notice",
+              notice: { kind: "hook_blocked", reason },
+              timestamp: Date.now(),
+            },
+          });
+        }, context);
+        throw new PromptHookBlocked(result);
+      }
       await prepareReminders();
       await title.firstPrompt(prompt);
       const invocation = skillInvocation(prompt, skills);
@@ -1483,8 +1520,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         visited.add(Number(current.id));
         for (const [id, request] of Object.entries(requests))
           if (request.tasks.includes(Number(current.id))) return id;
-        const input = current.input;
-        const origin =
+        const input: JsonValue = current.input;
+        const origin: number | undefined =
           input &&
           typeof input === "object" &&
           !Array.isArray(input) &&
@@ -1898,6 +1935,11 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           return result;
         } catch (error) {
           await observation.flush();
+          if (error instanceof PromptHookBlocked) {
+            custom({ type: "result", ...error.result });
+            custom({ type: "request_settled", ...error.result });
+            return error.result;
+          }
           throw error;
         } finally {
           off();
