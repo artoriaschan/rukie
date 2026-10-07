@@ -1,13 +1,26 @@
-import type { AssistantMessage, Message, UserMessage } from "@earendil-works/pi-ai";
+import type {
+  AssistantMessage,
+  Message,
+  UserMessage,
+  ToolResultMessage,
+} from "@earendil-works/pi-ai";
+import type { ToolCallView, ToolResultView } from "@rukie/shared";
 import type { EntryRecord } from "@earendil-works/pi-durable";
 import type { SystemReminder } from "../reminders/index.ts";
 import type { SessionNoticeMessage } from "./session-notice.ts";
 import { readSessionNotice } from "./session-notice.ts";
 
+export type TranscriptAssistantMessage = Omit<AssistantMessage, "content"> & {
+  content: (AssistantMessage["content"][number] & { view?: ToolCallView })[];
+  rukieThinkingDurationMs?: number;
+};
+export type TranscriptToolResult = ToolResultMessage & { view?: ToolResultView };
+
 export type TranscriptMessage =
-  | Exclude<Message, UserMessage | AssistantMessage>
+  | Exclude<Message, UserMessage | AssistantMessage | ToolResultMessage>
   | (UserMessage & { imageNames?: string[]; skillInvocation?: string; source?: string })
-  | (AssistantMessage & { rukieThinkingDurationMs?: number })
+  | TranscriptAssistantMessage
+  | TranscriptToolResult
   | SystemReminder
   | SessionNoticeMessage;
 
