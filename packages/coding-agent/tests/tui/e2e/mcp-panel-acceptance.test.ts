@@ -233,8 +233,20 @@ test("permission, questions and OAuth take FIFO ownership while a scrolled MCP r
     app.stdin.write("\r");
     await app.waitFor(() => app.calls.length >= 5 && screen(app).includes("Stable reader 12"));
     expect(app.screen().filter((line) => line.includes("Stable reader"))).toEqual(readerLines);
+    const activeChild = app.calls.findLast((call) =>
+      call.context.messages.some(
+        (message) =>
+          message.role === "user" && JSON.stringify(message.content).includes("child FIFO marker"),
+      ),
+    );
+    expect(activeChild).toBeDefined();
     app.stdin.write("\x03");
-    await app.waitFor(() => idle(app) && !screen(app).includes("Stable reader"));
+    await app.waitFor(
+      () => screen(app).includes("用户已中断") && !screen(app).includes("Stable reader"),
+    );
+    // Ordinary parent interruption closes the reader without aborting native background work.
+    expect(activeChild!.signal?.aborted).toBe(false);
+    expect(screen(app)).toContain("子代理 1/1");
   } finally {
     await app.cleanup();
     await server.stop();
