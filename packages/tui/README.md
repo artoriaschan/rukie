@@ -132,4 +132,6 @@ Release clears highlighting and calls the frontend's `onCopy(text): Promise<bool
 
 `Markdown` accepts `dimColor` to dim all body text, including syntax highlighted code, while preserving Markdown emphasis and token colors.
 
+`alignSplitDiff` returns each aligned row's `sourceLines` identities so callers can retain source positions when switching unified/split layouts. `SplitDiffView` accepts both `scrollAnchorId` and `alternateScrollAnchorId` for paired old/new source rows; pane separators are excluded from selection while source text remains selectable.
+
 Multi-click selection uses presses less than 500ms apart and at most one cell away on each axis. Double press highlights the Unicode/path word immediately; triple and later presses highlight a rendered row. Release copies and clears; dragging extends whole word/line units. Shift/Alt/Ctrl mouse presses reset the click chain and select characters. While a pointer gesture remains active, Shift+arrows/Home/End extends its fixed-anchor text range, with horizontal row wrapping and viewport clamping, then pointer release commits the same stale-content check. With no active text gesture these keys remain frontend input. Modal/Interaction ownership fences out transcript selection.

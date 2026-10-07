@@ -219,6 +219,7 @@ test("resumed patch-only diffs keep split pairs and hunk boundaries", async () =
       true,
     );
     expect(app.screen().join("\n")).toContain("⋯");
+    expect(app.screen().join("\n")).toContain("Only diff hunks retained");
     app.stdin.write("\x0f");
     await app.waitFor(() =>
       app.screen().some((row) => row.includes("old-end") && row.includes("new-end")),

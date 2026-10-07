@@ -8,10 +8,12 @@ import {
 import { useSmoothReveal } from "@neant/tui";
 import { useDiffLayout } from "./diff-layout";
 import { Markdown } from "@neant/tui";
+import { toolLinePreview, previewSyntax } from "./line-preview";
 import { unifiedDiffLines } from "./diff-lines";
+import { useToolWindowNavigation, type WindowMove } from "./window-navigation";
 import type { ToolCallView, ToolResultView } from "@neant/shared";
 import { fmtDuration } from "@neant/i18n";
-import { useId, useState, useMemo } from "react";
+import { useId, useState, useMemo, useLayoutEffect, useRef } from "react";
 import type { PromptImage } from "@neant/agent";
 import { ImageGallery } from "../image-gallery";
 import type { Locale } from "@neant/i18n";
@@ -83,6 +85,10 @@ export function ToolCall({
   const [localExpanded, setExpanded] = useState(false);
   const expanded = globalExpanded || localExpanded;
   const toggle = onToggle ?? (() => setExpanded((value) => !value));
+  const navigation = useToolWindowNavigation();
+  const identity = id ?? fallbackId;
+  const [windowOffset, setWindowOffset] = useState(0);
+  const moveWindow = useRef<(move: WindowMove) => void>(() => {});
   const [hovered, setHovered] = useState(false);
   const { columns } = useTerminalSize();
   const diffLayout = useDiffLayout();
@@ -143,13 +149,9 @@ export function ToolCall({
     .split("\n")
     .map((line) => {
       if (titleView?.card !== "terminal" || expanded || line.length <= 1000) return line;
-      let end = 1000;
-      const lead = line.charCodeAt(end - 1);
-      const trail = line.charCodeAt(end);
-      if (lead >= 0xd800 && lead <= 0xdbff && trail >= 0xdc00 && trail <= 0xdfff) end--;
-      const count = line.length - end;
-      hiddenChars += count;
-      return `${line.slice(0, end)} ${t("tool.command-chars", { count })}`;
+      const preview = toolLinePreview(line);
+      hiddenChars += preview.hidden;
+      return `${preview.text} ${t("tool.command-chars", { count: preview.hidden })}`;
     })
     .join("\n");
   const clippedTitle =
@@ -218,17 +220,48 @@ export function ToolCall({
   );
   const limit = diffView ? 8 : 3;
   const folded = lines.length > limit + 1;
-  const windowStart =
-    expanded && searchLocation?.part === "body"
-      ? Math.max(0, Math.min(Math.max(0, lines.length - 400), searchLocation.line - 5))
-      : 0;
+  const rowForSource = (source: number) => {
+    if (!splitRows) return Math.min(source, Math.max(0, lines.length - 1));
+    const exact = splitRows.findIndex((row) => row.sourceLines?.includes(source));
+    if (exact >= 0) return exact;
+    const next = splitRows.findIndex((row) => (row.sourceLines?.[0] ?? 0) >= source);
+    return next >= 0 ? next : Math.max(0, lines.length - 1);
+  };
+  const windowStart = expanded ? rowForSource(windowOffset) : 0;
+  moveWindow.current = (direction) => {
+    const last = Math.floor(Math.max(0, lines.length - 1) / 400) * 400;
+    const next =
+      direction === "first"
+        ? 0
+        : direction === "last"
+          ? last
+          : Math.max(0, Math.min(last, windowStart + direction));
+    setWindowOffset(splitRows?.[next]?.sourceLines?.[0] ?? next);
+  };
+  const focusWindow = (direction: WindowMove) => {
+    navigation?.focus({ id: identity, move: (value) => moveWindow.current(value) });
+    moveWindow.current(direction);
+  };
+  useLayoutEffect(() => {
+    if (!expanded) {
+      navigation?.clear(identity);
+      setWindowOffset(0);
+    } else if (searchLocation?.part === "body")
+      setWindowOffset(Math.max(0, searchLocation.line - 5));
+  }, [expanded, identity, searchLocation?.part, searchLocation?.line]);
+  useLayoutEffect(() => () => navigation?.clear(identity), [identity]);
   const window = expanded ? 400 : folded ? limit : lines.length;
   const visible = useSmoothReveal(
     id ?? fallbackId,
     Math.min(lines.length - windowStart, window),
     status === "running" && !resultView && !!callView && !expanded && !replayed && !error,
   );
-  const shown = lines.slice(windowStart, windowStart + visible);
+  const shownRows = lines
+    .slice(windowStart, windowStart + visible)
+    .map((line) => (expanded ? { text: line, hidden: 0 } : toolLinePreview(line)));
+  const shown = shownRows.map(
+    (row) => row.text + (row.hidden ? ` ${t("tool.command-chars", { count: row.hidden })}` : ""),
+  );
   const titleHidden =
     titleStart > 0 ||
     hiddenLines > 0 ||
@@ -271,7 +304,7 @@ export function ToolCall({
         onClick={toggle}
       >
         <ThemedBox flexGrow={1}>
-          <ThemedBox width={2} flexShrink={0}>
+          <ThemedBox selectable={false} width={2} flexShrink={0}>
             <ThemedText
               preserveWhitespace
               color={outcomeUnknown ? "warning" : status === "error" ? "error" : color}
@@ -313,7 +346,7 @@ export function ToolCall({
                   {parenthesized ? ")" : ""}
                 </ThemedText>
               )}
-              {titleHint}
+              <ThemedText selectable={false}>{titleHint}</ThemedText>
             </ThemedText>
           </ThemedBox>
           {status !== "running" && name && startedAt !== undefined && endedAt !== undefined && (
@@ -324,7 +357,7 @@ export function ToolCall({
             </ThemedBox>
           )}
           {hovered && (
-            <ThemedBox width={2} flexShrink={0}>
+            <ThemedBox selectable={false} width={2} flexShrink={0}>
               <ThemedText preserveWhitespace dimColor>
                 {expanded ? " ▴" : " ▾"}
               </ThemedText>
@@ -346,11 +379,17 @@ export function ToolCall({
         <ThemedBox flexDirection="column" color={status === "error" ? "error" : "text"}>
           {splitRows ? (
             <ThemedBox>
-              <ThemedText preserveWhitespace>{` ${figures.result} `}</ThemedText>
+              <ThemedText selectable={false} preserveWhitespace>{` ${figures.result} `}</ThemedText>
               <SplitDiffView
                 rows={splitRows.slice(windowStart, windowStart + visible).map((row, index) => ({
                   ...row,
-                  scrollAnchorId: id ? `tool-${id}-line-${windowStart + index}` : undefined,
+                  scrollAnchorId: id
+                    ? `tool-${id}-line-${row.sourceLines?.[0] ?? windowStart + index}`
+                    : undefined,
+                  alternateScrollAnchorId:
+                    id && row.sourceLines?.[1] !== undefined
+                      ? `tool-${id}-line-${row.sourceLines[1]}`
+                      : undefined,
                 }))}
                 width={Math.max(0, columns - 3)}
                 onToggle={toggle}
@@ -359,7 +398,11 @@ export function ToolCall({
             </ThemedBox>
           ) : resultView?.card === "web" && status !== "error" ? (
             <ThemedBox>
-              <ThemedText dimColor>{` ${figures.result} `}</ThemedText>
+              <ThemedText
+                selectable={false}
+                dimColor
+                preserveWhitespace
+              >{` ${figures.result} `}</ThemedText>
               <ThemedBox
                 scrollAnchorId={id ? `tool-${id}-body` : undefined}
                 flexDirection="column"
@@ -379,7 +422,7 @@ export function ToolCall({
                 width={hitWidth(`   ${line.trimEnd()}`)}
                 onClick={line.trim() ? toggle : undefined}
               >
-                <ThemedBox width={3} flexShrink={0}>
+                <ThemedBox selectable={false} width={3} flexShrink={0}>
                   <ThemedText dimColor preserveWhitespace>
                     {index === 0 ? ` ${figures.result} ` : "   "}
                   </ThemedText>
@@ -398,13 +441,29 @@ export function ToolCall({
                     wrap="wrap"
                   >
                     {diffLines?.[windowStart + index]?.runs ? (
-                      <SyntaxHighlightedText runs={diffLines[windowStart + index]!.runs} />
+                      <SyntaxHighlightedText
+                        runs={previewSyntax(
+                          diffLines[windowStart + index]!.runs,
+                          shownRows[index]!.text.length,
+                        )}
+                      />
                     ) : highlightedLines ? (
-                      <SyntaxHighlightedText runs={highlightedLines[windowStart + index]} />
+                      <SyntaxHighlightedText
+                        runs={previewSyntax(
+                          highlightedLines[windowStart + index],
+                          shownRows[index]!.text.length,
+                        )}
+                      />
                     ) : (
                       <ThemedText underline={diffLines?.[windowStart + index]?.tone === "path"}>
-                        {line}
+                        {shownRows[index]?.text ?? line}
                       </ThemedText>
+                    )}
+                    {!!shownRows[index]?.hidden && (
+                      <ThemedText
+                        selectable={false}
+                        dimColor
+                      >{` ${t("tool.command-chars", { count: shownRows[index]!.hidden })}`}</ThemedText>
                     )}
                   </ThemedText>
                 </ThemedBox>
@@ -446,15 +505,50 @@ export function ToolCall({
             </ThemedBox>
           )}
           {expanded && lines.length > 400 && (
-            <ThemedText dimColor={!hovered}>
-              {windowStart
-                ? t("tool.window-range", {
-                    start: windowStart + 1,
-                    end: Math.min(lines.length, windowStart + 400),
-                    total: lines.length,
-                  })
-                : t("tool.window", { shown: 400, total: lines.length })}
-            </ThemedText>
+            <ThemedBox scrollAnchorId={id ? `tool-${id}-window` : undefined} flexDirection="column">
+              <ThemedText selectable={false} dimColor={!hovered}>
+                {splitRows
+                  ? t("tool.diff-window", {
+                      start: windowStart + 1,
+                      end: Math.min(lines.length, windowStart + 400),
+                      total: lines.length,
+                      source: diffLines?.length ?? 0,
+                    })
+                  : windowStart
+                    ? t("tool.window-range", {
+                        start: windowStart + 1,
+                        end: Math.min(lines.length, windowStart + 400),
+                        total: lines.length,
+                      })
+                    : t("tool.window", { shown: 400, total: lines.length })}
+              </ThemedText>
+              <ThemedBox>
+                <ThemedBox
+                  width={hitWidth(t("tool.window-previous"))}
+                  onClick={windowStart > 0 ? () => focusWindow(-400) : undefined}
+                >
+                  <ThemedText selectable={false} dimColor={windowStart === 0}>
+                    {t("tool.window-previous")}
+                  </ThemedText>
+                </ThemedBox>
+                <ThemedText selectable={false} preserveWhitespace>
+                  {"  "}
+                </ThemedText>
+                <ThemedBox
+                  width={hitWidth(t("tool.window-next"))}
+                  onClick={windowStart + 400 < lines.length ? () => focusWindow(400) : undefined}
+                >
+                  <ThemedText selectable={false} dimColor={windowStart + 400 >= lines.length}>
+                    {t("tool.window-next")}
+                  </ThemedText>
+                </ThemedBox>
+              </ThemedBox>
+              {navigation?.active === identity && (
+                <ThemedText selectable={false} dimColor>
+                  {t("tool.window-focused")}
+                </ThemedText>
+              )}
+            </ThemedBox>
           )}
         </ThemedBox>
       )}

@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { start } from "../helpers/app";
+import { startWithClock } from "../helpers/clock-app";
 import { isolateProxyEnvironment } from "../helpers/proxy-env";
 isolateProxyEnvironment();
 
@@ -95,7 +96,7 @@ test.each([
 });
 
 test("search keeps earlier messages in view while a running response grows", async () => {
-  const app = await start(["original needle"], { rows: 24, env: { LANG: "en_US.UTF-8" } });
+  const app = await startWithClock(["original needle"], { rows: 24, env: { LANG: "en_US.UTF-8" } });
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.delta(Array.from({ length: 50 }, (_, index) => `stream-${index}`).join("\n"));
