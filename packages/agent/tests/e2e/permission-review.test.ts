@@ -702,3 +702,40 @@ test("a batch reviews only valid calls that still require permission", async () 
   ]);
   expect(await Bun.file(join(dirs.cwd, "reviewed.txt")).text()).toBe("safe");
 });
+
+test("permission requests publish the owner call view before tool execution starts", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([
+    fauxAssistantMessage(
+      fauxToolCall(
+        "bash",
+        { command: "printf shown", description: "Inspect output" },
+        { id: "presented" },
+      ),
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage("denied safely"),
+  ]);
+  const events: SessionEvent[] = [];
+  let asked = false;
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    onPermissionAsk: async (request) => {
+      asked = true;
+      expect(request.callView).toEqual({
+        card: "terminal",
+        kind: "execute",
+        displayKey: "tool.bash",
+        command: "printf shown",
+      });
+      expect(events.some((event) => event.type === "tool_execution_start")).toBe(false);
+      return "deny";
+    },
+  });
+  await session.run("inspect", { onEvent: (event) => events.push(event) });
+  expect(asked).toBe(true);
+  expect(session.messages.findLast((message) => message.role === "toolResult")).toMatchObject({
+    isError: true,
+  });
+});

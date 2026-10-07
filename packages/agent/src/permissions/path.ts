@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { lstatSync, readlinkSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, join, parse, resolve, sep } from "node:path";
 
@@ -28,13 +29,20 @@ export function resolvePermissionPath({
   homeDir: string;
 }): PermissionPath | undefined {
   if (!["read", "edit", "write", "glob", "grep"].includes(toolName)) return undefined;
-  const path =
+  let path =
     typeof args === "object" && args !== null && "path" in args && typeof args.path === "string"
       ? args.path
       : toolName === "glob" || toolName === "grep"
         ? cwd
         : undefined;
   if (path === undefined) return undefined;
+  if (path.startsWith("file://")) {
+    try {
+      path = fileURLToPath(path);
+    } catch {
+      /* Invalid URLs remain ordinary paths, as in native execution. */
+    }
+  }
   const resolvedPath = resolve(
     cwd,
     toolName === "glob" || toolName === "grep" ? path : expandHome(path, homeDir),

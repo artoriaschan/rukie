@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import type { EntryRecord, ToolRegistration } from "@earendil-works/pi-durable";
 import type { JsonValue } from "@earendil-works/chord";
 import type { TranscriptMessage } from "../session/messages.ts";
@@ -380,7 +381,10 @@ export function createFileTracking(
             params !== null &&
             "path" in params &&
             typeof params.path === "string"
-              ? resolve(cwd, params.path)
+              ? resolve(
+                  cwd,
+                  params.path.startsWith("file://") ? fileURLToPath(params.path) : params.path,
+                )
               : undefined;
           if (path && (tool.name === "write" || tool.name === "edit")) {
             const previous = files.get(path);

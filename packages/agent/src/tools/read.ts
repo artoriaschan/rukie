@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import type { ToolRegistration } from "@earendil-works/pi-durable";
 import type { JsonValue } from "@earendil-works/chord";
 import { createReadTool } from "@earendil-works/pi-durable/tools";
@@ -57,7 +58,8 @@ export function createImageReadTool(cwd: string, homeDir: string) {
       "Read the contents of a file. Supports text files and image attachments (jpg, png, gif, webp). BMP images return an omission notice without an attachment. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
     async execute(args, api, context) {
       if (!api.env) throw new Error("read requires an execution environment");
-      const bytes = await api.env.readBinaryFile(args.path, context);
+      const physicalPath = args.path.startsWith("file://") ? fileURLToPath(args.path) : args.path;
+      const bytes = await api.env.readBinaryFile(physicalPath, context);
       if (!bytes.ok) throw bytes.error;
       // BMP requires conversion before attachment; reading it still succeeds
       // with the capability's explicit omission receipt.
