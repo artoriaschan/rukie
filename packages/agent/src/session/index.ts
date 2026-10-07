@@ -311,6 +311,39 @@ const zeroUsage = (): RunResult["usage"] => ({
   totalTokens: 0,
 });
 
+function storedRequestResult(value: JsonValue | null): RequestResult | undefined {
+  if (value === null) return;
+  if (
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    typeof value.requestId !== "string" ||
+    typeof value.text !== "string" ||
+    typeof value.success !== "boolean" ||
+    typeof value.durationMs !== "number" ||
+    !value.usage ||
+    typeof value.usage !== "object" ||
+    Array.isArray(value.usage)
+  )
+    throw new Error("Invalid persisted request result.");
+  const usage = zeroUsage();
+  for (const key of ["input", "output", "cacheRead", "cacheWrite", "totalTokens"] as const) {
+    const count = value.usage[key];
+    if (typeof count !== "number" || !Number.isFinite(count) || count < 0)
+      throw new Error("Invalid persisted request usage.");
+    usage[key] = count;
+  }
+  if (value.error !== undefined && typeof value.error !== "string")
+    throw new Error("Invalid persisted request error.");
+  return {
+    requestId: value.requestId,
+    text: value.text,
+    success: value.success,
+    durationMs: value.durationMs,
+    usage,
+    ...(typeof value.error === "string" ? { error: value.error } : {}),
+  };
+}
+
 /** One native Harness owns every request, task, entry and conversation of this Session. */
 export async function createSession(options: SessionOptions): Promise<Session> {
   const context = BACKGROUND_CONTEXT;
@@ -450,7 +483,13 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       cwd,
       homeDir: options.homeDir,
       projectDir: cwd,
-      model: { models, getModel: async (selected) => (selected ? selectedModel(selected) : model) },
+      model: {
+        models,
+        getModel: async (selected) =>
+          selected || settings.reviewModel
+            ? selectedModel(selected ?? settings.reviewModel!)
+            : model,
+      },
       onWarning: warn,
       onEvent: (event) => custom(event),
       onAsyncResult: (result) => {
@@ -705,6 +744,35 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               (message) => message.role === "assistant" && message.stopReason === "stop",
             ),
           )?.id,
+      async beforeStart(request, child, ctx) {
+        const result = await hooks.run(
+          "SubagentStart",
+          hookInput({
+            agent_id: request.agentId,
+            agent_type: request.type,
+            prompt: request.prompt,
+          }),
+          { signal: ctx.abortSignal, matchQuery: request.type },
+        );
+        for (const content of result.additionalContext)
+          await child.commit(
+            (tx) =>
+              tx.appendEntry(
+                child.id,
+                reminderEntry({
+                  role: "system-reminder",
+                  source: "hook:SubagentStart",
+                  content,
+                  timestamp: Date.now(),
+                }),
+              ),
+            ctx,
+          );
+        await applyHookResult({ ...result, additionalContext: [] }, "hook:SubagentStart", ctx);
+        return result.continue === false
+          ? { stop: result.stopReason ?? "Stopped by SubagentStart hook." }
+          : undefined;
+      },
       async childAgent(type, child) {
         const selected = type.model
           ? selectedModel(type.model)
@@ -1092,6 +1160,23 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 )
                   await checkpoints.start(String(record.entry));
               }
+              if (wrapup) {
+                const content = wrapup;
+                const timestamp = Date.now();
+                await conversation.commit(async (tx) => {
+                  const placed = await tx.appendEntry(conversation.id, {
+                    kind: "rukie.goal-wrapup",
+                    model: [
+                      { role: "user", content: [{ type: "text", text: content }], timestamp },
+                    ],
+                  });
+                  await tx.appendEntry(conversation.id, {
+                    kind: "rukie.message-facts",
+                    data: { entryId: Number(placed.id), source: "goal" },
+                  });
+                }, ctx);
+                wrapup = undefined;
+              }
               await prepareReminders(ctx);
               contextMessages = (await conversation.context(ctx)).messages;
               return { messages: contextMessages };
@@ -1151,8 +1236,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 signal: ctx.abortSignal,
               });
               await applyHookResult(result, "hook:Stop", ctx);
-              if (result.decision === "block" && result.reason)
+              if (result.decision === "block" && result.reason) {
+                custom({ type: "hook_continued", event: "Stop", reason: result.reason });
                 return continuation(result.reason, "hook");
+              }
               const active = goal.view();
               if (active?.armed && active.phase === "active" && !stopped) {
                 const content = renderGoalRoundPrompt(active);
@@ -1399,10 +1486,12 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       images: PromptImage[] = [],
       whenBusy: "reject" | "steer" | "followUp" = "reject",
       requestId = `human:${randomUUID()}`,
+      signal?: AbortSignal,
     ) {
       assertAvailable();
       images.forEach(validateImage);
-      const hookResult = await hooks.run("UserPromptSubmit", hookInput({ prompt }));
+      const hookResult = await hooks.run("UserPromptSubmit", hookInput({ prompt }), { signal });
+      signal?.throwIfAborted();
       await applyHookResult(hookResult, "hook:UserPromptSubmit");
       if (hookResult.decision === "block") {
         const reason = hookResult.reason ?? "Prompt blocked by hook.";
@@ -1491,9 +1580,14 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     }
     function latestInputTokens() {
       const entries = observation.view().entries;
-      const compacted = entries.findLastIndex((entry) => entry.kind === "pi.compaction");
+      const compacted = Math.max(
+        0,
+        ...entries
+          .filter((entry) => entry.kind === "pi.compaction")
+          .map((entry) => Number(entry.id)),
+      );
       const last = entries
-        .slice(compacted + 1)
+        .filter((entry) => Number(entry.id) > compacted)
         .flatMap((entry) => entry.model ?? [])
         .findLast(
           (message) =>
@@ -1910,10 +2004,11 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             onMcpAuth: options.onMcpAuth,
             onWarning: warn,
           });
+          for (const event of [...mcp.errors, ...mcp.authRequired]) custom(event);
           await rebuildTools(true);
           input.signal?.throwIfAborted();
           const requestId = `human:${randomUUID()}`;
-          const submission = await submit(prompt, input.images, "reject", requestId);
+          const submission = await submit(prompt, input.images, "reject", requestId, input.signal);
           const result = await resultFor(requestId, submission.id);
           await conversation.commit(
             (tx) =>
@@ -1948,6 +2043,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
       async waitForRequest(requestId) {
         assertAvailable();
+        const restored = await readRequest(requestId);
+        if (restored?.result) return storedRequestResult(restored.result)!;
         let result: RequestResult | undefined;
         const childReceipts = new Map<
           number,

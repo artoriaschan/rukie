@@ -14,7 +14,7 @@ function goalFixtureModel() {
     ...fake,
     firstCall: called.promise,
     models: auxiliaryModels((...args) => {
-      const stream = fake.models.streamSimple(...args);
+      const stream = fake.provider.streamSimple(...args);
       if (fake.calls.length) called.resolve();
       return stream;
     }),

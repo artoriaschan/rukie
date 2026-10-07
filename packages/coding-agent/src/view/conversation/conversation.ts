@@ -760,7 +760,18 @@ function reduceEvent(
       };
     }
     case "run_start":
-      return { ...state, running: true, error: undefined };
+      return {
+        ...state,
+        running: true,
+        error: undefined,
+        input: 0,
+        output: 0,
+        activityInput: 0,
+        streamedChars: 0,
+        decode: { tokens: 0, ms: 0 },
+        assistant: "",
+        reasoning: "",
+      };
     case "run_end":
       return { ...state, running: false };
     case "tool_state_changed":
