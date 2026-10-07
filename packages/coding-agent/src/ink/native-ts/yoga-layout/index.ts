@@ -1615,6 +1615,11 @@ function layoutNode(
     // call writes cache, rest hit: 105k visits → ~10k for 1593-node tree.
     if (
       node._cN > 0 &&
+      // Historical entries contain only this node's dimensions. A container
+      // layout must also restore descendant geometry, which only the current
+      // single-layout slot above preserves. Measurements and leaves may reuse
+      // every matching entry.
+      (!performLayout || node.children.length === 0) &&
       (sameGen || !node.isDirty_) &&
       // Same scratch guard as _hasL: a layout-pass hit must not skip child
       // recursion over a measure-scratched subtree.
