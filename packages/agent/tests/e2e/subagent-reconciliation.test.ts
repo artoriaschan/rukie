@@ -1,158 +1,118 @@
 import { afterEach, expect, test } from "bun:test";
-import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
-import { branchTip } from "@earendil-works/pi-agent-core/harness/session";
-import { join } from "node:path";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { fauxAssistantMessage, fauxToolCall, getCurrentSystemMessage } from "@earendil-works/pi-ai";
 import { createSession, type SubagentIdentity } from "../../src/index.ts";
-import { crashedSubagents } from "../helpers/crashed-subagents.ts";
+import { parseSubagentIdentities } from "../../src/tools/subagents/state.ts";
+import { crashedSubagents, runRequest } from "../helpers/crashed-subagents.ts";
+import { crashUnsafeEffect } from "../helpers/native-recovery.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
+import { join } from "node:path";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
 afterEach(() => dirs?.cleanup());
 
-test("parent resume reads pending child facts: saved endings win and only a reliable unclosed Run is interrupted", async () => {
+const resumedReply: Parameters<typeof fakeModel>[0][number] = (context) =>
+  getCurrentSystemMessage(context.messages)?.toolsAdded?.some((tool) => tool.name === "subagent")
+    ? fauxAssistantMessage("parent observed child")
+    : fauxAssistantMessage("resumed child answer");
+
+test("native pending child checkpoints resume while saved completed and failed endings remain exact", async () => {
   dirs = await tempDirs();
   const fixture = await crashedSubagents(dirs);
-  const pending = await fixture.child("Interrupted reader");
-  await fixture.child("Already finished", "completed");
+  const pending = await fixture.child("Pending reader");
+  const completed = await fixture.child("Already finished", "completed");
   const failed = await fixture.child("Provider failed", "error");
   await fixture.save();
-  const fake = fakeModel([fauxAssistantMessage("checked")]);
-  const session = await createSession({ ...dirs, ...fake, resumeId: fixture.parentId });
+  const fake = fakeModel(Array.from({ length: 10 }, () => resumedReply));
+  const parent = await createSession({ ...dirs, ...fake, resumeId: fixture.parentId });
   try {
+    await parent.waitForRequest(pending.requestId);
+    const rows = parent.toolState("subagents") as SubagentIdentity[];
+    expect(rows.find((row) => row.id === pending.metadata.id)).toMatchObject({
+      active: false,
+      latestRun: { id: pending.run.id, outcome: "completed" },
+    });
+    expect(rows.find((row) => row.id === completed.metadata.id)?.latestRun).toEqual(completed.run);
+    expect(rows.find((row) => row.id === failed.metadata.id)?.latestRun).toEqual(failed.run);
+    expect(
+      (await parent.readSubagent(pending.metadata.id))?.messages.some(
+        (message) =>
+          message.role === "assistant" &&
+          JSON.stringify(message.content).includes("resumed child answer"),
+      ),
+    ).toBe(true);
+    expect(
+      parent.messages.filter(
+        (message) =>
+          message.role === "user" &&
+          JSON.stringify(message.content).includes("(Pending reader) finished."),
+      ),
+    ).toHaveLength(1);
+  } finally {
+    await parent.close();
+  }
+});
+
+test.each(["missing", "header", "body"] as const)(
+  "native shared storage %s failure rejects resume without fabricating child state or altering bytes",
+  async (damage) => {
+    dirs = await tempDirs();
+    const fixture = await crashedSubagents(dirs);
+    await fixture.child("Saved", "completed");
+    await fixture.save();
+    const path = join(fixture.store.key(fixture.parentId), "main.jsonl");
+    if (damage === "missing") await (await import("node:fs/promises")).unlink(path);
+    else if (damage === "header") await Bun.write(path, "invalid header\n");
+    else await (await import("node:fs/promises")).appendFile(path, "invalid body\n");
+    const baseline = damage === "missing" ? undefined : await Bun.file(path).bytes();
+    const fake = fakeModel([]);
+    await expect(createSession({ ...dirs, ...fake, resumeId: fixture.parentId })).rejects.toThrow();
     expect(fake.contexts).toHaveLength(0);
-    expect(session.running).toBe(false);
-    expect(session.checkpoints()).toEqual([]);
-    expect(session.recovery.subagents).toMatchObject([
-      { id: pending.metadata.id, runId: pending.run.id, outcome: "interrupted" },
-      { id: failed.metadata.id, outcome: "error", reason: "durable failure" },
-    ]);
-    expect(session.recovery.subagents).toHaveLength(2);
-    await session.run("inspect saved work");
-    const messages = JSON.stringify(fake.contexts[0]!.messages);
-    expect(messages).toContain(`${pending.metadata.id} (Interrupted reader): interrupted`);
-    expect(messages).toContain("durable failure");
-    expect(messages).not.toContain("Already finished");
-    expect(session.checkpoints()).toHaveLength(1);
-  } finally {
-    await session.dispose();
-  }
-});
+    if (baseline) expect(await Bun.file(path).bytes()).toEqual(baseline);
+  },
+);
 
-function nativePath(metadata: object): string {
-  const path = Reflect.get(metadata, "path");
-  if (typeof path !== "string") throw new Error("Native Session path missing.");
-  return path;
-}
-
-test("missing, corrupt and unreadable children remain unconfirmed while valid siblings and the parent continue; bytes never change", async () => {
+test("passive child observations share the parent lease, never scan separate stores, and release the lease on close", async () => {
   dirs = await tempDirs();
   const fixture = await crashedSubagents(dirs);
-  const good = await fixture.child("Readable");
-  const broken = [];
-  for (const kind of ["missing", "header", "body", "torn", "unreadable"])
-    broken.push(await fixture.child(kind));
+  const children = [];
+  for (let index = 0; index < 3; index++)
+    children.push(await fixture.child(`Settled ${index}`, "completed"));
   await fixture.save();
-  const { unlink, appendFile, chmod } = await import("node:fs/promises");
-  await unlink(nativePath(broken[0]!.metadata));
-  await Bun.write(nativePath(broken[1]!.metadata), "invalid header\n");
-  await appendFile(nativePath(broken[2]!.metadata), "invalid body\n");
-  await appendFile(nativePath(broken[3]!.metadata), '{"torn":');
-  const baseline = await Promise.all(
-    broken.slice(1).map((child) => Bun.file(nativePath(child.metadata)).bytes()),
-  );
-  await chmod(nativePath(broken[4]!.metadata), 0);
-  const fake = fakeModel([fauxAssistantMessage("parent usable")]);
-  try {
-    const parent = await createSession({ ...dirs, ...fake, resumeId: fixture.parentId });
-    try {
-      expect(parent.recovery.subagents).toMatchObject([
-        { id: good.metadata.id, outcome: "interrupted" },
-        ...broken.map((child) => ({
-          id: child.metadata.id,
-          outcome: "unknown",
-          diagnostic: "unconfirmed",
-        })),
-      ]);
-      expect(fake.contexts).toHaveLength(0);
-      expect(parent.checkpoints()).toEqual([]);
-      await parent.run("continue parent");
-      expect(JSON.stringify(fake.contexts[0]!.messages)).toContain(
-        "unable to confirm the saved child Run",
-      );
-      expect(parent.checkpoints()).toHaveLength(1);
-    } finally {
-      await parent.dispose();
-    }
-  } finally {
-    await chmod(nativePath(broken[4]!.metadata), 0o600);
-  }
-  for (const [index, child] of broken.slice(1).entries())
-    expect(await Bun.file(nativePath(child.metadata)).bytes()).toEqual(baseline[index]!);
-});
-
-test("only pending children are discovered and opened read-only; observers release each Session before returning", async () => {
-  dirs = await tempDirs();
-  const fixture = await crashedSubagents(dirs);
-  const pending = await fixture.child("Pending");
-  for (let index = 0; index < 25; index++) {
-    const settled = await fixture.child(`Settled ${index}`, "completed");
-    fixture.identities.at(-1)!.latestRun = { ...settled.run, endedAt: 20, outcome: "completed" };
-  }
-  fixture.identities.push({ id: "legacy", description: "Legacy", type: "general-purpose" });
-  await fixture.save();
-  const found: string[] = [],
-    observed: string[] = [],
-    closed: string[] = [];
-  const store = fixture.store;
-  const tracked = {
-    ...store,
-    async list(): Promise<never> {
-      throw new Error("Full header scans are forbidden.");
+  let opens = 0;
+  const store = {
+    ...fixture.store,
+    list: async () => {
+      throw new Error("Directory scans are forbidden.");
     },
-    async find(...args: Parameters<NonNullable<typeof store.find>>) {
-      found.push(args[0]);
-      return store.find!(...args);
-    },
-    async openReadonly(...args: Parameters<NonNullable<typeof store.openReadonly>>) {
-      observed.push(args[0].id);
-      const child = await store.openReadonly!(...args);
-      const close = child.close.bind(child);
-      child.close = async (context) => {
-        await close(context);
-        closed.push(child.metadata.id);
-      };
-      return child;
+    async open(...args: Parameters<typeof fixture.store.open>) {
+      opens++;
+      return fixture.store.open(...args);
     },
   };
-  const parent = await createSession({
-    ...dirs,
-    ...fakeModel([]),
-    store: tracked,
-    resumeId: fixture.parentId,
-  });
+  const fake = fakeModel([]);
+  const parent = await createSession({ ...dirs, ...fake, store, resumeId: fixture.parentId });
   try {
-    expect(found).toEqual([fixture.parentId, pending.metadata.id]);
-    expect(observed).toEqual([pending.metadata.id]);
-    expect(closed).toEqual(observed);
-    expect(parent.recovery.subagents.map((row) => row.outcome)).toEqual(["interrupted", "unknown"]);
-    // Same real repo rejects double-open: reopening proves the observation released it.
-    const child = await store.openReadonly!(pending.metadata, BACKGROUND_CONTEXT);
-    await child.close(BACKGROUND_CONTEXT);
+    for (const child of children)
+      expect((await parent.readSubagent(child.metadata.id))?.run).toEqual(child.run);
+    expect(opens).toBe(1);
+    expect(fake.contexts).toHaveLength(0);
   } finally {
-    await parent.dispose();
+    await parent.close();
   }
+  const released = await fixture.store.open({ id: fixture.parentId }, BACKGROUND_CONTEXT);
+  await released.release();
 });
 
-test("opaque injected Store compatibility never assumes an ordinary child open is read-only", async () => {
+test("injected native Store remains a single explicit storage lease with no invented child-open protocol", async () => {
   dirs = await tempDirs();
   const fixture = await crashedSubagents(dirs);
-  const pending = await fixture.child("Opaque");
+  const child = await fixture.child("Opaque storage", "completed");
   await fixture.save();
   let opened = 0;
-  const opaque = {
-    create: fixture.store.create,
+  const store = {
+    key: fixture.store.key,
     list: fixture.store.list,
     async open(...args: Parameters<typeof fixture.store.open>) {
       opened++;
@@ -162,275 +122,201 @@ test("opaque injected Store compatibility never assumes an ordinary child open i
   const parent = await createSession({
     ...dirs,
     ...fakeModel([]),
-    store: opaque,
+    store,
     resumeId: fixture.parentId,
   });
   try {
+    expect((await parent.readSubagent(child.metadata.id))?.run?.outcome).toBe("completed");
     expect(opened).toBe(1);
-    expect(parent.recovery.subagents).toMatchObject([
-      { id: pending.metadata.id, outcome: "unknown", diagnostic: "unconfirmed" },
-    ]);
   } finally {
-    await parent.dispose();
+    await parent.close();
   }
 });
 
-test("second Run start never borrows the first completion and a removed branch ending cannot settle it", async () => {
-  dirs = await tempDirs();
-  const fixture = await crashedSubagents(dirs);
-  const child = await fixture.child("Second attempt", "completed");
-  const stored = await fixture.store.open(child.metadata, BACKGROUND_CONTEXT);
-  const branch = (await stored.branch("main", BACKGROUND_CONTEXT))!;
-  const second = { ...child.run, id: "second-run", startedAt: 30 };
-  await branch.appendCustomEntry(
-    "tool-state/subagent-run",
-    { version: 1, value: second },
-    BACKGROUND_CONTEXT,
-  );
-  const tip = await branch.getTipId(BACKGROUND_CONTEXT);
-  await branch.appendCustomEntry(
-    "tool-state/subagent-run",
-    { version: 1, value: { ...second, endedAt: 40, outcome: "completed" } },
-    BACKGROUND_CONTEXT,
-  );
-  await stored.createBranch(
-    "discarded",
-    await branch.getTipId(BACKGROUND_CONTEXT),
-    BACKGROUND_CONTEXT,
-  );
-  await stored.setValue(branchTip("main"), tip, BACKGROUND_CONTEXT);
-  await stored.close(BACKGROUND_CONTEXT);
-  fixture.identities[0]!.latestRun = second;
-  await fixture.save();
-  const before = await Bun.file(nativePath(child.metadata)).bytes();
-  const parent = await createSession({ ...dirs, ...fakeModel([]), resumeId: fixture.parentId });
-  try {
-    expect(parent.recovery.subagents).toMatchObject([
-      { id: child.metadata.id, runId: "second-run", outcome: "interrupted" },
-    ]);
-    expect(await Bun.file(nativePath(child.metadata)).bytes()).toEqual(before);
-  } finally {
-    await parent.dispose();
-  }
-});
-
-for (const mismatch of ["run", "child", "parent", "header", "start", "branch"] as const)
-  test(`${mismatch} association mismatch stays unconfirmed rather than inventing interruption`, async () => {
-    dirs = await tempDirs();
-    const fixture = await crashedSubagents(dirs);
-    const child = await fixture.child("Uncertain");
-    const stored = await fixture.store.open(child.metadata, BACKGROUND_CONTEXT);
-    const branch = (await stored.branch("main", BACKGROUND_CONTEXT))!;
-    if (mismatch === "branch") await stored.setValue(branchTip("main"), null, BACKGROUND_CONTEXT);
-    else if (mismatch !== "header")
-      await branch.appendCustomEntry(
-        "tool-state/subagent-run",
-        {
-          version: 1,
-          value: {
-            ...child.run,
-            ...(mismatch === "run" && { id: "other-run" }),
-            ...(mismatch === "child" && { sessionId: "other-child" }),
-            ...(mismatch === "parent" && { parentSessionId: "other-parent" }),
-            ...(mismatch === "start" && { startedAt: 999 }),
-          },
-        },
-        BACKGROUND_CONTEXT,
-      );
-    await stored.close(BACKGROUND_CONTEXT);
-    if (mismatch === "header") {
-      const path = nativePath(child.metadata);
-      const text = await Bun.file(path).text();
-      await Bun.write(
-        path,
-        text.replace(
-          `"parentSessionId":"${fixture.parentId}"`,
-          '"parentSessionId":"foreign-parent"',
-        ),
-      );
-    }
-    await fixture.save();
-    const parent = await createSession({
-      ...dirs,
-      ...fakeModel([]),
-      store: fixture.store,
-      resumeId: fixture.parentId,
-    });
-    try {
-      expect(parent.recovery.subagents).toMatchObject([
-        { outcome: "unknown", diagnostic: "unconfirmed" },
-      ]);
-    } finally {
-      await parent.dispose();
-    }
-    const released = await fixture.store.openReadonly!(child.metadata, BACKGROUND_CONTEXT);
-    await released.close(BACKGROUND_CONTEXT);
+for (const mismatch of ["native-id", "child", "parent", "active", "start", "entry"] as const)
+  test(`${mismatch} association mismatch is rejected instead of inventing an interrupted Run`, () => {
+    const row = {
+      id: "child",
+      description: "Reader",
+      type: "general-purpose",
+      conversationId: 3,
+      driverTaskId: 2,
+      originToolTaskId: 1,
+      active: false,
+      latestRun: {
+        id: "2",
+        sessionId: "child",
+        parentSessionId: "parent",
+        startedAt: 10,
+        promptEntryId: 4,
+      },
+    };
+    const value = {
+      ...row,
+      ...(mismatch === "native-id" ? { conversationId: "other-child" } : {}),
+      ...(mismatch === "active" ? { active: "running" } : {}),
+      latestRun: {
+        ...row.latestRun,
+        ...(mismatch === "child" ? { sessionId: "foreign-child" } : {}),
+        ...(mismatch === "parent" ? { parentSessionId: "foreign-parent" } : {}),
+        ...(mismatch === "start" ? { startedAt: NaN } : {}),
+        ...(mismatch === "entry" ? { promptEntryId: 4.5 } : {}),
+      },
+    };
+    expect(() => parseSubagentIdentities([value], "parent")).toThrow();
   });
 
-test("send_message after interruption reuses child history, repairs orphan calls only then, and writes under the real parent Checkpoint", async () => {
+test("an idle child continuation owns a new native Run and does not borrow the earlier completion", async () => {
   dirs = await tempDirs();
-  const fixture = await crashedSubagents(dirs);
-  const child = await fixture.child("Continue reader");
-  const stored = await fixture.store.open(child.metadata, BACKGROUND_CONTEXT);
-  const branch = (await stored.branch("main", BACKGROUND_CONTEXT))!;
-  await branch.appendMessage(fauxAssistantMessage("saved exploration"), BACKGROUND_CONTEXT);
-  await branch.appendMessage(
+  const first = fakeModel([
     fauxAssistantMessage(
-      fauxToolCall("bash", { command: "printf replay >> effect.txt" }, { id: "orphan" }),
+      fauxToolCall("subagent", {
+        description: "Reader",
+        prompt: "first",
+        run_in_background: false,
+      }),
       { stopReason: "toolUse" },
     ),
-    BACKGROUND_CONTEXT,
-  );
-  await stored.close(BACKGROUND_CONTEXT);
-  await fixture.save();
-  const before = await Bun.file(nativePath(child.metadata)).bytes();
-  let childCalls = 0;
-  const reply: Parameters<typeof fakeModel>[0][number] = (context) => {
+    fauxAssistantMessage("saved exploration"),
+    fauxAssistantMessage("parent done"),
+  ]);
+  const original = await createSession({ ...dirs, ...first });
+  await original.run("delegate");
+  const prior = (original.toolState("subagents") as SubagentIdentity[])[0]!;
+  await original.close();
+  const response: Parameters<typeof fakeModel>[0][number] = (context) =>
+    getCurrentSystemMessage(context.messages)?.toolsAdded?.some((tool) => tool.name === "subagent")
+      ? fauxAssistantMessage("parent done")
+      : fauxAssistantMessage("second partial", {
+          stopReason: "error",
+          errorMessage: "second failure",
+        });
+  const fake = fakeModel([
+    fauxAssistantMessage(
+      fauxToolCall("send_message", { agent_id: prior.id, message: "continue" }),
+      { stopReason: "toolUse" },
+    ),
+    response,
+    response,
+    response,
+  ]);
+  const parent = await createSession({ ...dirs, ...fake, resumeId: original.id });
+  try {
+    await runRequest(parent, "continue child");
+    const row = (parent.toolState("subagents") as SubagentIdentity[])[0]!;
+    expect(row.id).toBe(prior.id);
+    expect(row.conversationId).not.toBe(prior.conversationId);
+    expect(row.latestRun?.id).not.toBe(prior.latestRun?.id);
+    expect(row.latestRun).toMatchObject({ outcome: "error", error: "second failure" });
+    expect(
+      (await parent.readSubagent(row.id))?.historyMessages?.some((message) =>
+        JSON.stringify(message).includes("saved exploration"),
+      ),
+    ).toBe(true);
+  } finally {
+    await parent.close();
+  }
+});
+
+test("native fork history cannot impersonate its own child Run facts", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([
+    fauxAssistantMessage("saved parent answer"),
+    fauxAssistantMessage(
+      fauxToolCall("subagent_fork", {
+        description: "Forked",
+        prompt: "fork input",
+        run_in_background: false,
+      }),
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage("own fork answer"),
+    fauxAssistantMessage("parent done"),
+  ]);
+  const parent = await createSession({ ...dirs, ...fake });
+  try {
+    await parent.run("first input");
+    await parent.run("fork now");
+    const row = (parent.toolState("subagents") as SubagentIdentity[])[0]!;
+    const child = await parent.readSubagent(row.id);
+    expect(child?.run).toMatchObject({
+      id: String(row.driverTaskId),
+      sessionId: row.id,
+      parentSessionId: parent.id,
+      outcome: "completed",
+    });
+    expect(
+      child?.historyMessages?.some((message) =>
+        JSON.stringify(message).includes("saved parent answer"),
+      ),
+    ).toBe(true);
+    expect(child?.messages.at(-1)).toMatchObject({
+      role: "assistant",
+      content: [{ type: "text", text: "own fork answer" }],
+    });
+  } finally {
+    await parent.close();
+  }
+});
+
+test("an interrupted unsafe child effect is not replayed and explicit continuation keeps its committed history", async () => {
+  dirs = await tempDirs();
+  const saved = await crashUnsafeEffect(dirs.cwd, true);
+  if (!saved.childId) throw new Error("Native crash child identity missing.");
+  const childId = saved.childId;
+  let sending = false;
+  const response: Parameters<typeof fakeModel>[0][number] = (context) => {
     if (
-      getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
+      !getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
         (tool) => tool.name === "subagent",
       )
     )
-      return fauxAssistantMessage("parent waits");
-    childCalls++;
-    expect(JSON.stringify(context.messages)).toContain("saved exploration");
-    expect(JSON.stringify(context.messages)).toContain("new instruction");
-    expect(
-      context.messages.find(
-        (message) => message.role === "toolResult" && message.toolCallId === "orphan",
-      ),
-    ).toMatchObject({ details: { recovery: { type: "unknown-tool-outcome" } } });
-    return fauxAssistantMessage(
-      fauxToolCall("write", { path: "continued.txt", content: "continued" }),
-      { stopReason: "toolUse" },
-    );
+      return fauxAssistantMessage("child continues safely");
+    const lastUser = context.messages.findLast((message) => message.role === "user");
+    if (!sending && JSON.stringify(lastUser?.content).includes("continue saved child")) {
+      sending = true;
+      return fauxAssistantMessage(
+        fauxToolCall("send_message", { agent_id: childId, message: "continue safely" }),
+        { stopReason: "toolUse" },
+      );
+    }
+    return fauxAssistantMessage("parent observed outcome");
   };
-  const finish: Parameters<typeof fakeModel>[0][number] = (context) =>
-    getCurrentSystemMessage(context.messages)?.toolsAdded?.some((tool) => tool.name === "subagent")
-      ? fauxAssistantMessage("parent done")
-      : fauxAssistantMessage("child done");
-  const fake = fakeModel([
-    fauxAssistantMessage(
-      fauxToolCall("send_message", { agent_id: child.metadata.id, message: "new instruction" }),
-      { stopReason: "toolUse" },
-    ),
-    reply,
-    reply,
-    finish,
-    finish,
-    finish,
-  ]);
-  fake.model.contextWindow = 100000;
+  const fake = fakeModel(Array.from({ length: 15 }, () => response));
   const parent = await createSession({
     ...dirs,
+    homeDir: dirs.cwd,
     ...fake,
-    resumeId: fixture.parentId,
+    resumeId: saved.sessionId,
     permissionMode: "full-access",
   });
   try {
-    expect(parent.recovery.subagents).toMatchObject([{ outcome: "interrupted" }]);
-    expect(fake.contexts).toHaveLength(0);
-    expect(await Bun.file(nativePath(child.metadata)).bytes()).toEqual(before);
-    expect(parent.checkpoints()).toHaveLength(0);
-    const ids: string[] = [];
+    await parent.waitForRequest(parent.currentRequestId!);
+    const child = await parent.readSubagent(childId);
     expect(
-      (
-        await parent.run("continue child", {
-          onEvent(event) {
-            if (event.type === "subagent_event") ids.push(event.agentId);
-          },
-        })
-      ).success,
+      child?.messages.filter(
+        (message) => message.role === "toolResult" && message.toolName === "write",
+      ),
+    ).toMatchObject([{ isError: true, outcomeUnknown: true }]);
+    expect(await Bun.file(join(dirs.cwd, "uncertain-effect.txt")).text()).toBe("saved effect");
+    await Bun.write(join(dirs.cwd, "uncertain-effect.txt"), "externally reconciled");
+    await runRequest(parent, "continue saved child");
+    const continued = await parent.readSubagent(childId);
+    expect(
+      continued?.historyMessages?.filter(
+        (message) => message.role === "toolResult" && message.toolName === "write",
+      ),
+    ).toMatchObject([{ isError: true, outcomeUnknown: true }]);
+    expect(continued?.run?.outcome).toBe("completed");
+    expect(await Bun.file(join(dirs.cwd, "uncertain-effect.txt")).text()).toBe(
+      "externally reconciled",
+    );
+    expect(
+      fake.contexts.some((context) =>
+        JSON.stringify(context.messages).includes("may have partially run"),
+      ),
     ).toBe(true);
-    expect(new Set(ids)).toEqual(new Set([child.metadata.id]));
-    expect(childCalls).toBe(1);
-    const latest = (parent.toolState("subagents") as SubagentIdentity[])[0]!.latestRun!;
-    expect(latest.id).not.toBe(child.run.id);
-    expect(latest.outcome).toBe("completed");
-    expect(await Bun.file(join(dirs.cwd, "effect.txt")).exists()).toBe(false);
-    expect(await Bun.file(join(dirs.cwd, "continued.txt")).text()).toBe("continued");
-    expect(parent.checkpoints()).toMatchObject([
-      {
-        preview: "continue child",
-        files: [{ path: expect.stringContaining("continued.txt"), backup: null }],
-      },
-    ]);
-    await parent.rewind(parent.checkpoints()[0]!.promptEntryId, { code: true, conversation: true });
-    expect(await Bun.file(join(dirs.cwd, "continued.txt")).exists()).toBe(false);
-    expect(parent.recovery.subagents).toMatchObject([
-      { outcome: "unknown", diagnostic: "unconfirmed" },
-    ]);
   } finally {
-    await parent.dispose();
-  }
-  const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: fixture.parentId });
-  try {
-    expect(resumed.recovery.subagents).toMatchObject([
-      { outcome: "unknown", diagnostic: "unconfirmed" },
-    ]);
-  } finally {
-    await resumed.dispose();
-  }
-});
-
-test("native fork inheritance cannot impersonate the fork's own child Run facts", async () => {
-  dirs = await tempDirs();
-  const fixture = await crashedSubagents(dirs);
-  await fixture.save();
-  const metadata = (await fixture.store.find!(
-    fixture.parentId,
-    { cwd: dirs.cwd },
-    BACKGROUND_CONTEXT,
-  ))!;
-  const source = await fixture.store.open(metadata, BACKGROUND_CONTEXT);
-  const copiedRun = {
-    id: "copied-run",
-    sessionId: fixture.parentId,
-    parentSessionId: fixture.parentId,
-    startedAt: 10,
-  };
-  await (await source.branch("main", BACKGROUND_CONTEXT))!.appendCustomEntry(
-    "tool-state/subagent-run",
-    { version: 1, value: { ...copiedRun, endedAt: 20, outcome: "completed" } },
-    BACKGROUND_CONTEXT,
-  );
-  await source.close(BACKGROUND_CONTEXT);
-  const { JsonlSessionRepo } = await import("@earendil-works/pi-agent-core/harness/session");
-  const { NodeExecutionEnv } = await import("@earendil-works/pi-agent-core/harness/env/nodejs");
-  const repo = new JsonlSessionRepo({
-    fileSystem: new NodeExecutionEnv({ cwd: dirs.cwd }),
-    sessionsRoot: join(dirs.homeDir, ".rukie/sessions"),
-  });
-  const native = (await repo.list({ cwd: dirs.cwd }, BACKGROUND_CONTEXT)).find(
-    (row) => row.id === fixture.parentId,
-  )!;
-  const fork = await repo.fork(native, { scope: "tree" }, BACKGROUND_CONTEXT);
-  await fork.close(BACKGROUND_CONTEXT);
-  const parentStore = await fixture.store.open(metadata, BACKGROUND_CONTEXT);
-  await (await parentStore.branch("main", BACKGROUND_CONTEXT))!.appendCustomEntry(
-    "tool-state/subagents",
-    {
-      version: 2,
-      value: [
-        {
-          id: fork.metadata.id,
-          description: "Forked",
-          type: "fork",
-          latestRun: { ...copiedRun, sessionId: fork.metadata.id },
-        },
-      ],
-    },
-    BACKGROUND_CONTEXT,
-  );
-  await parentStore.close(BACKGROUND_CONTEXT);
-  const parent = await createSession({ ...dirs, ...fakeModel([]), resumeId: fixture.parentId });
-  try {
-    expect(parent.recovery.subagents).toMatchObject([
-      { id: fork.metadata.id, outcome: "unknown", diagnostic: "unconfirmed" },
-    ]);
-    expect(parent.recovery.subagents).toHaveLength(1);
-  } finally {
-    await parent.dispose();
-    await repo.close(BACKGROUND_CONTEXT);
+    await parent.close();
   }
 });

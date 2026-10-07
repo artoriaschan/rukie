@@ -26,7 +26,6 @@ export function createGoalController(options: {
   changed(value: GoalSnapshot | null): void | Promise<void>;
   assertAvailable(idle: boolean): void;
   warn(): void;
-  schedule(): void;
 }) {
   let armed = options.initialArmed ?? false;
   let writes = Promise.resolve();
@@ -94,7 +93,6 @@ export function createGoalController(options: {
       });
       options.warn();
       const created = view()!;
-      options.schedule();
       return created;
     },
     async edit(objective: string, idle = true): Promise<GoalView> {
@@ -142,7 +140,6 @@ export function createGoalController(options: {
       });
       options.warn();
       const resumed = view()!;
-      options.schedule();
       return resumed;
     },
     async clear(): Promise<void> {
