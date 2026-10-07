@@ -6,10 +6,11 @@
 
 ## Decisions-so-far
 
-- [01 Bun spike](issues/01-bun-spike.md) resolved：Bun 全屏/输入/注入 xterm 与真实 sixel worker 可行，ADR13 accepted；[证据与迁移清单](spike-notes.md)。生产仍须修复 stream context 与退出已完成状态。
+- [01 Bun spike](issues/01-bun-spike.md) resolved：Bun 全屏/输入/注入 xterm 与真实 sixel worker可行，ADR13 accepted；[证据与迁移清单](spike-notes.md)。
+- [02 native runtime](issues/02-vendor-runtime.md) 与 [03 design system/editor](issues/03-design-system-editor.md) resolved，固定上游来源并保留Rukie产品层。
+- [04 图片](issues/04-image-adoption.md) resolved：六组76/265与额外Logo/Goal协议、共存、窄屏回归通过。
+- [05 TUI](issues/05-app-adoption.md#answer) resolved：最新64d16282合入全部产品前沿，旧9失败均公开聚焦通过；nativeAlt退出无React警告。
 
 ## Fog
 
-- 生产 reading anchor、clipboard outcomes、全屏 selection 和图形 clipping 的最终行为以 04/05/06 的公共终端验收为准。
-
-- 04 图片产品回归完成：六组76/265通过，PNG像素协议场景已原生迁移；见 [04 verification](issues/04-image-adoption.md#final-public-verification)。
+- [06](issues/06-parity-delivery.md) 负责旧ink公共行为迁移、文档、双轴审查、最终完整gate与工作树清理；最终产品交付以该票当前证据为准。

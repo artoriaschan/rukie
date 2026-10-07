@@ -1,6 +1,6 @@
 # 05: 迁移 TUI 生命周期、输入、滚动与选字
 
-Status: in-progress
+Status: resolved
 Blocked by: none
 Type: task
 
@@ -8,13 +8,13 @@ Type: task
 
 应用直接使用 dsh 新 API；包括 runTui、全部页面/模态框、Chat、timeline/search、面板及测试 harness。04 独立拥有图片模块，05 只做必要 exports 接线，避免共享模块同时编辑。
 
-- [ ] 启动采用 renderSync/new stream options，完整树由 AlternateScreen 包裹；显式产品 Ctrl+C/console 配置；错误流、信号、raw mode、resize、退出恢复均可注入
-- [ ] 键盘读取 useInput(input,key,event)、isPasted/keypress；pointer 改 Box typed events；wheel 自动路由只滚一次，不转成旧 union facade
-- [ ] 所有 panel scroll 使用 ScrollBoxHandle/getters/DOM refs；stable ID -> DOMElement 的阅读锚与 source offsets 归应用负责，恢复 scroll top/follow 与宽度重排位置
-- [ ] Chat timeline/pinned prompt/search 等通过实际 DOM refs 和 wrapped positions 查找；MCP followOnReachBottom=false 等阅读策略显式由应用保持
-- [ ] 选字通过自身渲染根获取状态；产品 clipboard host 仍拥有异步 copied/sent/unavailable/stale，不先执行 dsh native clipboard 再报告成功；modal focus 隔离与复制后反馈验证
-- [ ] job-card/logo/status-icon 的 animation tuple、size/focus hooks 与页面导航更新；保留 Session/Interaction 语义及共存面板
-- [ ] 迁移 start/headless terminal/virtual clock helpers 与公共应用测试，保留 streaming、resume、cancellation、history、atomic editor、permissions/jobs/subagents/MCP 的端到端覆盖
+- [x] 启动采用 renderSync/new stream options，完整树由 AlternateScreen 包裹；显式产品 Ctrl+C/console 配置；错误流、信号、raw mode、resize、退出恢复均可注入
+- [x] 键盘读取 useInput(input,key,event)、isPasted/keypress；pointer 改 Box typed events；wheel 自动路由只滚一次，不转成旧 union facade
+- [x] 所有 panel scroll 使用 ScrollBoxHandle/getters/DOM refs；stable ID -> DOMElement 的阅读锚与 source offsets 归应用负责，恢复 scroll top/follow 与宽度重排位置
+- [x] Chat timeline/pinned prompt/search 等通过实际 DOM refs 和 wrapped positions 查找；MCP followOnReachBottom=false 等阅读策略显式由应用保持
+- [x] 选字通过自身渲染根获取状态；产品 clipboard host 仍拥有异步 copied/sent/unavailable/stale，不先执行 dsh native clipboard 再报告成功；modal focus 隔离与复制后反馈验证
+- [x] job-card/logo/status-icon 的 animation tuple、size/focus hooks 与页面导航更新；保留 Session/Interaction 语义及共存面板
+- [x] 迁移 start/headless terminal/virtual clock helpers 与公共应用测试，保留 streaming、resume、cancellation、history、atomic editor、permissions/jobs/subagents/MCP 的端到端覆盖
 
 ## 05 interim（未完成）
 
@@ -29,3 +29,11 @@ Type: task
 ## Latest complete product frontier
 
 集成 `70aaea0b` 执行 `env -u NO_COLOR bun test --parallel=4 packages/coding-agent/tests/tui`：1024 pass / 9 fail / 5555 assertions / 122 files，52.96s。已合入的图片、Search、Side、Rewind、Concurrent 与时钟优化共同通过；9个剩余失败来自 Logo Kitty header（04）、image-model-notice Goal title 共存2项（04）、tool-tooltip Unicode 小视口、composer token Escape/rearm 与 rewind suppression2项、jobs-panel MCP ownership/expanded card/stopped signal3项。按实际失败栈聚焦修复，不再次重复全域定位。05仍in-progress，06仍blocked。
+
+## Answer
+
+TUI 完整采用原生 renderSync/AlternateScreen、typed Box events/useInput、ScrollBox handles/DOM阅读锚与root-local selection/search。产品clipboard host继续拥有异步outcome；键盘page显式seek、原生wheel单次路由、samechunk输入/Jobs命令分别处理。保留Session/Interaction/Run/Transcript、resume/cancellation/history/各面板共存及小终端恢复。
+
+最新父 `64d16282` 收齐全部产品前沿修复：先前完整TUI1024pass/9fail的9项均经公开原断言聚焦先红后绿，四frontier19/92与停止信号1/3独立通过；Jobs完整12/53、相关3/14通过；新AlternateScreen/publicruntime/Mixed/Tooltip17/255独立通过且insertion warning为零。旧hover ownership同步失效，仅Alt mode切换捕获的React通知延至commit后，并保护root generation/new lease/disposed owner。
+
+图片、MCP、Jobs、Rewind与reply reveal的可避免真实等待已迁至virtualclock；实际2500ms notice与1000ms exit window验证前一毫秒/截止点，所有Session数量、microtask顺序、原locale/color/draft/reading/copy/Run断言保留。Concurrent实际两Jobs/两Subagents与TERM→KILL子进程时序保留并记录成本。源码与TUI类型诊断清零；剩余旧ink测试/API迁移属于06，最终fullaggregate尚未运行。
