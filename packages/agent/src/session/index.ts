@@ -362,7 +362,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     let stopped = false;
     let goalRound = false;
     let wrapup: string | undefined;
-    let permissionMode = options.permissionMode ?? "ask";
+    let permissionMode = options.permissionMode ?? settings.permissionMode ?? "ask";
     let observation: Awaited<ReturnType<typeof createConversationObservation>>;
     const harness = await Harness.open(
       lease.storage,
@@ -1178,8 +1178,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             ![
               "subagent",
               "subagent_fork",
-              "subagent_send",
-              "subagent_list",
+              "send_message",
+              "list_agents",
               "goal",
               "enter_plan_mode",
               "exit_plan_mode",
