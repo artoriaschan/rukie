@@ -1,4 +1,4 @@
-import { InteractiveText } from "../interactive-text";
+import { InteractiveText as InteractiveLabel } from "../interactive-text";
 import { createContext, useContext, useMemo, type ComponentProps, type ReactNode } from "react";
 import {
   Box,
@@ -22,6 +22,10 @@ const DimContext = createContext(false);
 function ThemedText(props: ComponentProps<typeof StyledText>) {
   const dim = useContext(DimContext);
   return <StyledText {...props} dim={props.dim ?? dim} />;
+}
+function InteractiveText(props: ComponentProps<typeof InteractiveLabel>) {
+  const dim = useContext(DimContext);
+  return <InteractiveLabel {...props} dim={props.dim ?? dim} />;
 }
 function SyntaxHighlightedText(props: ComponentProps<typeof HighlightedText>) {
   const dim = useContext(DimContext);
@@ -429,7 +433,7 @@ export function Markdown({
   const document = useMemo(() => parseMarkdown(text), [text]);
   return (
     <DimContext.Provider value={dim}>
-      <Box flexDirection="column" flexGrow={1} flexShrink={1}>
+      <Box width="100%" flexDirection="column" flexGrow={1} flexShrink={0}>
         {blocks(document.children, onClick, false, text)}
       </Box>
     </DimContext.Provider>

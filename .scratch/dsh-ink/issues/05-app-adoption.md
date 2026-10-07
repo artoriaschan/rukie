@@ -23,3 +23,5 @@ Type: task
 关键公共用例继续验证；广域非图片 TUI 检查发现卡片/详情/小窗口布局与若干完成同步回归，05 保持 claimed/in-progress。不得用删除公共覆盖或旧 API facade 跳过；完整 aggregate 留给 06。
 
 后续共享根修复：原生 handoff quarantine 的 process-global deadline 在虚拟 clock 恢复后污染后续 TUI 输入；公开两个 root + 119/120ms 边界 + cleanup/clock restore 后新 root 用例先红后绿。改为每个 Ink 独立工厂，并同时更新 useInput 与 App 的 wheel admission。受污染的广域用例已终止，保留日志作诊断证据；在 owner 修复后仅重新执行一次更广域检查。
+
+共享 focused 进展：plan review/thinking/gesture/return button/native host fixtures 46 pass、192 assertions、4.03s；click owner/keyboard/geometry 重置与稳定文本选择合计 21 pass、57 assertions、2.12s。Readonly compact multiline 首行预览使 6 个 40–80×12 共存 Interaction 场景恢复；Markdown 内容取消 shrink 防止 long plan ScrollBox 高度误为一行。测试在模型完成后等待 inactive footer 再采集点击坐标，在第一 click transport 完成后控制 499/500ms 严格边界，保留原点击/复制断言。

@@ -1,4 +1,5 @@
 import type { RefObject } from "react";
+import { usePanelScroll } from "../../hooks/reading-position";
 import {
   Box,
   Divider,
@@ -35,12 +36,19 @@ export function PlanReviewDialog({
   onSelect(index: number): void;
   onOption(index: number): void;
 }) {
+  const scroll = usePanelScroll(scrollRef, 0, columns);
   const t = createTuiI18n(locale);
   const prefix = `${t("plan.review.feedback")}: `;
   return (
     <Box flexShrink={0} flexDirection="column" paddingX={2} height={maxHeight}>
       <Divider title={t("plan.review.heading")} color="plan" />
-      <ScrollBox ref={scrollRef} height={Math.max(1, maxHeight - 5)} stickyScroll={false}>
+      <ScrollBox
+        ref={scroll}
+        flexGrow={0}
+        flexShrink={0}
+        height={Math.max(1, maxHeight - 5)}
+        stickyScroll={false}
+      >
         <Markdown text={plan} />
       </ScrollBox>
       {["plan.review.approve", "plan.review.revise"].map((key, index) => (

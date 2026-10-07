@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { useState } from "react";
 import {
   AlternateScreen,
   Box,
@@ -252,3 +253,97 @@ test("a handoff quarantine belongs to its root through the deadline and clock re
     third.dispose();
   }
 });
+
+test("Shift keys extend a fresh pointer anchor before its first motion", async () => {
+  const terminal = createTerminal(20, 8);
+  let selection: ReturnType<typeof useSelection> | undefined;
+  function Content() {
+    selection = useSelection();
+    useInput((_input, key) => {
+      if (key.shift && key.rightArrow) selection!.moveFocus("right");
+    });
+    return <Text>Alpha beta</Text>;
+  }
+  const app = renderSync(
+    <AlternateScreen>
+      <Content />
+    </AlternateScreen>,
+    { ...terminal, patchConsole: false, exitOnCtrlC: false },
+  );
+  try {
+    await terminal.waitFor(() => terminal.screen()[0] === "Alpha beta");
+    terminal.stdin.write("\x1b[<0;1;1M\x1b[1;2C\x1b[1;2C");
+    await terminal.flush();
+    expect(selection!.readSelectionText()).toBe("Alp");
+    expect(selection!.getState()?.isDragging).toBe(true);
+    terminal.stdin.write("\x1b[<0;3;1m");
+    await terminal.flush();
+    expect(selection!.readSelectionText()).toBe("Alp");
+    expect(selection!.getState()?.isDragging).toBe(false);
+  } finally {
+    app.unmount();
+    await app.waitUntilExit();
+    app.cleanup();
+    terminal.dispose();
+  }
+});
+
+test.each(["keyboard", "owner", "geometry"] as const)(
+  "click chains restart after %s changes while stable text keeps native multi-clicks",
+  async (change) => {
+    const terminal = createTerminal(20, 8);
+    let clicks = 0;
+    function Content() {
+      useInput(() => {});
+      const [open, setOpen] = useState(false);
+      const activate = () => {
+        clicks++;
+        if (change === "geometry") setOpen((value) => !value);
+      };
+      return (
+        <Box flexDirection="column">
+          <Box
+            flexDirection="column"
+            height={change === "geometry" && open ? 2 : 1}
+            flexShrink={0}
+            onClick={activate}
+          >
+            <Text>first</Text>
+            {change === "geometry" && open && <Text>expanded</Text>}
+          </Box>
+          {change === "owner" && (
+            <Box flexShrink={0} onClick={() => clicks++}>
+              <Text>second</Text>
+            </Box>
+          )}
+        </Box>
+      );
+    }
+    const app = renderSync(
+      <AlternateScreen>
+        <Content />
+      </AlternateScreen>,
+      { ...terminal, patchConsole: false, exitOnCtrlC: false },
+    );
+    try {
+      await terminal.waitFor(() => terminal.screen()[0] === "first");
+      terminal.stdin.write("\x1b[<0;1;1M\x1b[<0;1;1m");
+      await terminal.flush();
+      expect(clicks).toBe(1);
+      if (change === "keyboard") {
+        terminal.stdin.write("a");
+        await terminal.flush();
+      }
+      if (change === "geometry") await terminal.waitFor(() => terminal.screen()[1] === "expanded");
+      const row = change === "keyboard" ? 1 : 2;
+      terminal.stdin.write(`\x1b[<0;1;${row}M\x1b[<0;1;${row}m`);
+      await terminal.flush();
+      expect(clicks).toBe(2);
+    } finally {
+      app.unmount();
+      await app.waitUntilExit();
+      app.cleanup();
+      terminal.dispose();
+    }
+  },
+);

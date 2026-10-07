@@ -95,3 +95,7 @@ SplitDiffView 的 `onSourceMount(id, DOMElement | null)` 将稳定源行身份�
 - 05 退出边界：`ink.tsx` 把 React uncaught 和 scheduled paint 错误交给所属 root；一次 microtask 退出避免 final paint 递归，early/late waitUntilExit 均拒绝原始错误，保留既有 #185 overflow 恢复。terminal resize 同步取消旧几何的拖拽选择，不发布完成复制；其他 screen swap 保留原先结束语义。
 
 - 05 终端 handoff quarantine：`input-suppression.ts` 保留为每根实例工厂，`ink.tsx` 拥有 deadline，`hooks/use-input.ts` 和 `components/App.tsx` 读取自己的 renderer。保留原生 120ms 返回隔离（119ms 屏蔽、120ms 恢复），不把一个终端的 handoff 或虚拟时钟 deadline 泄漏到其他/新根。
+
+- 05 active pointer 的 Shift 编辑：`ink.tsx` 的 moveSelectionFocus 从尚无 focus 的当前 char press anchor 开始扩展；无 active gesture/selection 时仍不执行。产品 TextInput 的只读紧凑预览从首行显示，恢复编辑后继续追随原 caret。
+
+- 05 click chain：`components/App.tsx` 和 `ink.tsx` 在非 wheel 键盘操作（无 physical drag）后清除链，按最近的实际 onClick owner 与其已绘制 rectangle 区分新的交互区域/折叠几何。相同稳定 text/path owner 继续使用原生严格 500ms 与一 cell 距离的 char/word/line 选择；不增加产品延时或全局状态。
