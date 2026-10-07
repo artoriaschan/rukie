@@ -287,7 +287,10 @@ test("mixed parent, two Jobs and two Subagents preserve reading, copy and Intera
     await app.flush();
     expect(app.terminal.buffer.active.type).toBe("normal");
     expect(app.stdin.isRaw).toBe(false);
-    expect(app.screen().every((line) => line === "")).toBe(true);
+    expect(app.screen().filter(Boolean)).toEqual([
+      "Resume this session:",
+      expect.stringMatching(/^  rukie --resume [\da-f-]+$/),
+    ]);
   } finally {
     // These gated bash loops exercise real process IO; the virtual clock owns only display timers.
     await Promise.all(

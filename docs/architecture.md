@@ -38,6 +38,8 @@ Headless CLI 的 [`runHeadless`](../packages/coding-agent/src/headless/main.ts) 
 
 TUI 的 [`runTui`](../packages/coding-agent/src/tui/main.tsx) 建立[聊天界面](../packages/coding-agent/src/tui/screens/chat/index.tsx)，为 Session 提供权限、问题与计划评审回调。界面在同一 Session 中接收多次输入；切换 Session 时释放旧的绑定，重建对话呈现，项目输入历史独立保留。stdout 非 TTY 或 TERM 为 dumb 时仍由 TUI 拒绝启动并返回 1。公开包入口导出 `main` 与 IO 类型；IO 可使用终端流，或在 Headless 调用中注入 stdout 回调和异步 stdin 读取。
 
+TUI 退出时先恢复终端并等待 Session 保存、资源释放，再显示当前 Session 的 `rukie --resume <id>` 命令。在原项目目录执行该命令可继续会话；通过 `/new` 或会话选择器切换后，提示使用退出时的 Session。信号中断也显示恢复命令；尚未创建 Session 的启动失败不显示。
+
 [`createSession`](../packages/agent/src/session/index.ts)解析工作目录、创建或打开存储、投影当前分支，并恢复模型选择、Plan Mode、Tool State 与对话上下文。指定的恢复目标不存在或父子归属不符时失败，不改为新建 Session。Session Resume 重建已保存的事实，本身不续跑历史 Subagent。
 
 Session 对 frontend 暴露运行、事件订阅、中断、steer、Goal、上下文查询、compaction、Rewind 等能力；完整接口由源码定义。`run` 的 `onEvent` 接收该次 Run 的有序事件，`subscribe` 观察 Session 中包括 Hook 与 Goal 内部续跑在内的事件；TUI 通过订阅跟踪持续变化。

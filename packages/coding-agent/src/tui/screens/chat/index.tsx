@@ -178,6 +178,9 @@ export async function createChat(
     // Missing git or a non-repository cwd simply omits the branch segment.
   }
   return {
+    get sessionId() {
+      return session.id;
+    },
     submit,
     submitInitial: (prompt: string) => submit(prompt, true),
     async stop() {

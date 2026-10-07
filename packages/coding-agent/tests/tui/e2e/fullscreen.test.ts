@@ -186,7 +186,10 @@ test("Chat fills the alternate screen, scrolls its body and clears the UI on exi
     expect(await app.exit).toBe(0);
     await app.flush();
     expect(app.terminal.buffer.active.type).toBe("normal");
-    expect(app.screen().every((line) => line === "")).toBe(true);
+    expect(app.screen().filter(Boolean)).toEqual([
+      "继续此会话：",
+      expect.stringMatching(/^  rukie --resume [\da-f-]+$/),
+    ]);
   } finally {
     await app.cleanup();
   }

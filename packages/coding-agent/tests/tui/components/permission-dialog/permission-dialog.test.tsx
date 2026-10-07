@@ -30,7 +30,7 @@ test("permission panel groups a tool heading, command and question above its foc
     const buffer = terminal.terminal.buffer.active;
     const divider = buffer.getLine(buffer.viewportY)!;
     expect(divider.getCell(77)!.getChars()).toBe("─");
-    expect(divider.getCell(2)!.getFgColor()).toBe(0xabc2ec);
+    expect(divider.getCell(2)!.getFgColor()).toBe(0xf3a2c4);
     expect(lines).toContain("    printf hello");
     expect(lines.join("\n")).not.toContain('"command"');
     expect(lines).toContain("  要允许这次操作吗？");
@@ -41,7 +41,7 @@ test("permission panel groups a tool heading, command and question above its foc
     expect(lines).toContain("    3. 拒绝");
     const focused = buffer.getLine(buffer.viewportY + selected)!;
     for (const column of [2, 4, 7]) {
-      expect(focused.getCell(column)!.getFgColor()).toBe(0x7da1de);
+      expect(focused.getCell(column)!.getFgColor()).toBe(0xe85693);
       expect(focused.getCell(column)!.isBold()).toBeTruthy();
     }
     const unfocused = buffer

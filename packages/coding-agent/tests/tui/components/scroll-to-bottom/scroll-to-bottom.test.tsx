@@ -33,16 +33,16 @@ test.each([
       );
       expect(terminal.screen()[2]).toBe("input below");
       const row = terminal.terminal.buffer.active.getLine(1)!;
-      expect(row.getCell(left + 1)!.getBgColor()).toBe(0x5e88cc);
+      expect(row.getCell(left + 1)!.getBgColor()).toBe(0xe85693);
       expect(row.getCell(left + 1)!.getFgColor()).toBe(0x22262e);
       expect(row.getCell(left + 1)!.isBold()).toBeTruthy();
       expect(row.getCell(left - 1)!.getBgColorMode()).toBe(0);
       terminal.stdin.write(`\x1b[<35;${left + 2};2M`);
-      await terminal.waitFor(() => row.getCell(left + 1)!.getBgColor() === 0x3b5bdb);
+      await terminal.waitFor(() => row.getCell(left + 1)!.getBgColor() === 0xc83d77);
       terminal.stdin.write(`\x1b[<0;${left + 2};2M\x1b[<0;${left + 2};2m`);
       expect(clicks).toBe(1);
       terminal.stdin.write("\x1b[<35;1;4M");
-      await terminal.waitFor(() => row.getCell(left + 1)!.getBgColor() === 0x5e88cc);
+      await terminal.waitFor(() => row.getCell(left + 1)!.getBgColor() === 0xe85693);
     } finally {
       app.unmount();
       terminal.dispose();

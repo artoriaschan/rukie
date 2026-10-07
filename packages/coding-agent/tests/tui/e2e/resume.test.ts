@@ -205,7 +205,7 @@ test("resume replays each tool's collapsed result and error preview without remi
       lines.some(
         (line, row) =>
           /^[·•●] (read|bash) /.test(line) &&
-          app.terminal.buffer.active.getLine(row)!.getCell(0)!.getFgColor() === 0x7da1de,
+          app.terminal.buffer.active.getLine(row)!.getCell(0)!.getFgColor() === 0xe85693,
       ),
     ).toBe(false);
 

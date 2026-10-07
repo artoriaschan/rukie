@@ -324,9 +324,9 @@ test("picker cells match dsh title, focus, description, hover and native cursor"
     expect(title + 1).toBe(subtitle);
     expect(focus - subtitle).toBe(2);
     expect(lines[focus]).toBe("  ❯ latest question");
-    expect(cell(app, title, 2).getFgColor()).toBe(0xabc2ec);
+    expect(cell(app, title, 2).getFgColor()).toBe(0xf3a2c4);
     expect(cell(app, title, 2).isBold()).toBeTruthy();
-    expect(cell(app, focus, 4).getFgColor()).toBe(0xabc2ec);
+    expect(cell(app, focus, 4).getFgColor()).toBe(0xf3a2c4);
     expect(cell(app, focus, 4).isBold()).toBeFalsy();
     expect(cell(app, description, 4).getFgColor()).toBe(0x8d95a6);
     expect(cell(app, description, 4).isDim()).toBeFalsy();
@@ -335,10 +335,10 @@ test("picker cells match dsh title, focus, description, hover and native cursor"
 
     const old = lines.findIndex((line) => line === "    old question");
     app.stdin.write(`\x1b[<35;5;${old + 1}M`);
-    await app.waitFor(() => cell(app, old, 4).getBgColor() === 0x3b5bdb);
+    await app.waitFor(() => cell(app, old, 4).getBgColor() === 0xc83d77);
     expect(text(app)).toContain("❯ latest question");
     app.stdin.write("\x1b[<35;1;1M");
-    await app.waitFor(() => cell(app, old, 4).getBgColor() !== 0x3b5bdb);
+    await app.waitFor(() => cell(app, old, 4).getBgColor() !== 0xc83d77);
     click(app, old);
     await app.waitFor(() =>
       app

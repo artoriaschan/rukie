@@ -108,6 +108,8 @@ export async function runTui(options: CliOptions, io: TuiIo): Promise<number> {
     } finally {
       try {
         await defaultHost?.dispose();
+        if (chat)
+          io.stdout.write(`\r\n${t("exit.resume")}\r\n  rukie --resume ${chat.sessionId}\r\n`);
       } finally {
         io.signal?.removeEventListener("abort", close);
         process.off("SIGINT", close);

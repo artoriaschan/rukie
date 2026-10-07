@@ -2,7 +2,7 @@
 
 用户认可的幽灵形象 v2，已接入 Rukie TUI 头部。所有品牌素材统一保存在根目录 `brand`。
 
-根据当前 Rukie 的 coding agent 定位与 TUI 冷蓝色风格设计。保留用户认可的幽灵形象，参考 `/Users/artorias_chan/Workspaces/agent/dsh-TUI/src/components/whaleFrames.ts` 的多色像素网格表达，以及 `Whale.tsx` 的半块字符渲染方法；未复制鲸鱼形象或动画帧。
+Rukie TUI 的主题主色为 `#E85693`，强调文字、活动提示、按钮与名称渐变使用同组粉色配色。幽灵采用浅蓝主体与冷色阴影。保留用户认可的幽灵形象，参考 `/Users/artorias_chan/Workspaces/agent/dsh-TUI/src/components/whaleFrames.ts` 的多色像素网格表达，以及 `Whale.tsx` 的半块字符渲染方法；未复制鲸鱼形象或动画帧。
 
 ## 形象细节
 

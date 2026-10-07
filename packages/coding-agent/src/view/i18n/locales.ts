@@ -466,6 +466,7 @@ const zh = {
   "dialog.details": "Tab详情",
   "startup.terminal": "rukie 需要交互式终端。管道或非交互式输出请使用 rukie -p。",
   "startup.warning": "警告：{{warning}}",
+  "exit.resume": "继续此会话：",
   "argv.goal-print": "--goal 与 -p / --print 冲突",
   "argv.goal-empty": "--goal 目标不能为空",
   "argv.rounds-goal": "--max-goal-rounds 需要 --goal",
@@ -922,6 +923,7 @@ const en = {
   "startup.terminal":
     "rukie requires an interactive terminal. Use rukie -p for piped or non-interactive output.",
   "startup.warning": "Warning: {{warning}}",
+  "exit.resume": "Resume this session:",
   "argv.goal-print": "--goal conflicts with -p / --print",
   "argv.goal-empty": "--goal objective cannot be empty",
   "argv.rounds-goal": "--max-goal-rounds requires --goal",

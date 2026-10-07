@@ -211,7 +211,7 @@ test.each([false, true])(
         const column = line.indexOf("Subagent: Child ");
         return (
           column >= 0 &&
-          app.terminal.buffer.active.getLine(row)?.getCell(column)?.getFgColor() === 0x7da1de
+          app.terminal.buffer.active.getLine(row)?.getCell(column)?.getFgColor() === 0xe85693
         );
       });
     try {
