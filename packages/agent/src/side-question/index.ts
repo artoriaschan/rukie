@@ -1,13 +1,13 @@
-import type { AgentMessage, StreamFn } from "@earendil-works/pi-agent-core";
 import {
   normalizeContext,
   type Api,
   type Model,
   type ToolCall,
   type AssistantMessage,
+  type Message,
+  type Models,
 } from "@earendil-works/pi-ai";
-import { convertToLlm } from "../reminders/index.ts";
-import { createUserVisibleError, isUnknownToolOutcome } from "@rukie/shared";
+import { createUserVisibleError } from "@rukie/shared";
 
 function failed(cause?: string) {
   return cause
@@ -54,32 +54,23 @@ function cancellable<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
 /** A standalone provider request over an owned context snapshot; no Agent loop or persistence. */
 export async function* sideQuestion(options: {
   question: string;
-  messages: AgentMessage[];
+  messages: readonly Message[];
   systemPrompt: string;
   model: Model<Api>;
-  streamFn: StreamFn;
+  models: Models;
   running: ReadonlySet<string>;
   signal?: AbortSignal;
 }): AsyncGenerator<string> {
   const answered = new Set(
     options.messages.flatMap((message) =>
-      message.role === "toolResult" && !isUnknownToolOutcome(message.details)
-        ? [message.toolCallId]
-        : [],
+      message.role === "toolResult" ? [message.toolCallId] : [],
     ),
   );
   const pending: ToolCall[] = [];
-  const snapshot = options.messages.flatMap((message): AgentMessage[] => {
-    // Keep recovery uncertainty as text when its unresolved protocol pair is removed.
-    if (message.role === "toolResult" && isUnknownToolOutcome(message.details)) {
-      return [
-        {
-          role: "system-reminder",
-          source: "unknown-tool-outcome",
-          content: `${message.toolName}: ${message.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n")}`,
-          timestamp: message.timestamp,
-        },
-      ];
+  const messages = options.messages.flatMap((message): Message[] => {
+    if (message.role === "system") {
+      const { toolsAdded: _added, toolsRemoved: _removed, ...withoutTools } = message;
+      return [withoutTools];
     }
     if (message.role !== "assistant") return [message];
     const content = message.content.filter((block) => {
@@ -88,11 +79,6 @@ export async function* sideQuestion(options: {
       return false;
     });
     return content.length ? [{ ...message, content }] : [];
-  });
-  const messages = convertToLlm(snapshot).map((message) => {
-    if (message.role !== "system") return message;
-    const { toolsAdded: _added, toolsRemoved: _removed, ...withoutTools } = message;
-    return withoutTools;
   });
   messages.push({
     role: "user",
@@ -113,7 +99,7 @@ export async function* sideQuestion(options: {
   try {
     signal.throwIfAborted();
     const stream = await cancellable(
-      Promise.resolve(options.streamFn(options.model, request, { signal })),
+      Promise.resolve(options.models.streamSimple(options.model, request, { signal })),
       signal,
     );
     const iterator = stream[Symbol.asyncIterator]();
