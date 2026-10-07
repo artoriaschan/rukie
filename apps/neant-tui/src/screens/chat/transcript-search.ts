@@ -12,7 +12,7 @@ import {
 } from "../../components/tool-call/presentation";
 import { unifiedDiffLines } from "../../components/tool-call/diff-lines";
 import { alignSplitDiff } from "@neant/tui";
-import { markdownText, markdownProjection } from "../../components/markdown/markdown";
+import { markdownText, markdownProjection } from "@neant/tui";
 import { contextText } from "../../components/context-report/context-visualization";
 import { jobCardRows } from "../../components/job-card/job-card";
 import type { Settings } from "@neant/shared";
@@ -126,10 +126,13 @@ export function transcriptMatches(
       case "message":
         text(
           entry.role === "assistant"
-            ? entry.text
-                .split("\n")
-                .filter((line) => !line.startsWith("⏵"))
-                .join("\n")
+            ? markdownText(
+                entry.text
+                  .split("\n")
+                  .filter((line) => !line.startsWith("⏵"))
+                  .join("\n"),
+                columns,
+              )
             : entry.text,
           anchor,
         );
@@ -164,7 +167,7 @@ export function transcriptMatches(
     }
   });
   if (state.reasoning) text(state.reasoning, `${state.assistantAnchor}-thinking`);
-  if (state.assistant) text(state.assistant, state.assistantAnchor);
+  if (state.assistant) text(markdownText(state.assistant, columns), state.assistantAnchor);
   state.tools.forEach((call) => tool({ ...call, isRunning: true }, call.id));
   return matches;
 }

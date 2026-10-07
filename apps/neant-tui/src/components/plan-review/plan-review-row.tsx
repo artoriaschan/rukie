@@ -1,7 +1,7 @@
 import type { Locale } from "@neant/i18n";
 import { ThemedBox, ThemedText, useTerminalSize } from "@neant/tui";
 import { createTuiI18n } from "../../i18n";
-import { Markdown } from "../markdown";
+import { Markdown } from "@neant/tui";
 
 export function PlanReviewRow({
   plan,

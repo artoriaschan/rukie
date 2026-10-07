@@ -18,6 +18,7 @@ export interface TextStyle {
   inverse?: boolean;
   italic?: boolean;
   underline?: boolean;
+  strikethrough?: boolean;
 }
 
 export interface TextSpan {

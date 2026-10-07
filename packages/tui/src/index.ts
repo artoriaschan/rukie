@@ -27,6 +27,12 @@ export {
 } from "./hooks";
 export type { InputEvent, Key } from "./input";
 export {
+  SmoothRevealProvider,
+  useSmoothReveal,
+  useSmoothText,
+  Markdown,
+  markdownText,
+  markdownProjection,
   dark,
   light,
   type Theme,

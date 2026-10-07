@@ -20,6 +20,7 @@ export function controlledModel(controlReviews = false, controlTitles = false) {
     thinking(text: string): void;
     toolDelta(text: string): void;
     finish(input?: number, output?: number, cache?: { read: number; write: number }): void;
+    reply(text: string): void;
     tool(name: string, args: Parameters<typeof fauxToolCall>[1]): void;
     tools(tools: { name: string; args: Parameters<typeof fauxToolCall>[1] }[]): void;
     fail(message: string): void;
@@ -129,6 +130,7 @@ export function controlledModel(controlReviews = false, controlTitles = false) {
         partial.content = [fauxToolCall("bash", {}, { id: "partial-tool" })];
         stream.push({ type: "toolcall_delta", contentIndex: 0, delta, partial });
       },
+      reply: (text) => complete(fauxAssistantMessage(text)),
       finish(input = 11, output = 5, cache) {
         complete({ ...partial, stopReason: "stop" }, input, output, cache);
       },

@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { start } from "../helpers/app";
+import { startWithClock } from "../helpers/clock-app";
 
 for (const [lang, title, summary] of [
   ["en_US.UTF-8", "Subagents", "Summary"],
@@ -263,7 +264,7 @@ test.each([false, true])(
 );
 
 test("eight child Runs stream in chat before any Subagent view opens", async () => {
-  const app = await start(["--permission-mode", "full-access", "delegate"], {
+  const app = await startWithClock(["--permission-mode", "full-access", "delegate"], {
     columns: 100,
     rows: 16,
     env: { LANG: "en_US.UTF-8" },
@@ -308,7 +309,7 @@ test("eight child Runs stream in chat before any Subagent view opens", async () 
     const received = JSON.stringify(app.calls.at(-1)!.context.messages);
     for (let index = 0; index < 8; index++)
       expect(received).toContain(`(Concurrent ${index}) finished.`);
-    expect(app.screen().join("\n")).toContain("parent final reply");
+    await app.waitFor(() => app.screen().join("\n").includes("parent final reply"));
   } finally {
     await app.cleanup();
   }

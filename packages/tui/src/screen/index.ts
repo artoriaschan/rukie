@@ -36,6 +36,7 @@ function sgr(style: TextStyle): string {
   if (style.dimColor) codes.push("2");
   if (style.italic) codes.push("3");
   if (style.underline) codes.push("4");
+  if (style.strikethrough) codes.push("9");
   if (style.inverse) codes.push("7");
   if (!process.env.NO_COLOR) {
     const foreground = colorCode(style.color);

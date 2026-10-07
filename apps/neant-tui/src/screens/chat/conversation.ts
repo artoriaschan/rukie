@@ -41,6 +41,7 @@ type CompletedEntry = { anchorId?: string } & (
       text: string;
       source?: string;
       images?: PromptImage[];
+      fresh?: boolean;
     }
   | {
       type: "tool";
@@ -593,6 +594,7 @@ function reduceEvent(
                   role: "assistant" as const,
                   text,
                   anchorId: state.assistantAnchor,
+                  fresh: true,
                 },
               ]
             : []),
@@ -710,6 +712,7 @@ function reduceEvent(
                   role: "assistant" as const,
                   text: state.assistant,
                   anchorId: state.assistantAnchor,
+                  fresh: true,
                 },
               ]
             : []),

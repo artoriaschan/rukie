@@ -62,6 +62,7 @@ function content(node: HostNode, inherited: TextStyle = {}): TextSpan[] {
     inverse: node.props.inverse ?? inherited.inverse,
     italic: node.props.italic ?? inherited.italic,
     underline: node.props.underline ?? inherited.underline,
+    strikethrough: node.props.strikethrough ?? inherited.strikethrough,
   };
   return node.children.flatMap((child) => content(child, style));
 }
