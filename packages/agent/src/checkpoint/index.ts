@@ -3,7 +3,7 @@ import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
-import type { ToolStateDefinition } from "../tool-state/index.ts";
+import { defineToolState, type ToolStateDefinition } from "../tool-state/index.ts";
 import { resolvePermissionPath, type OnToolCallAllowed } from "../permissions/index.ts";
 
 export { cleanupExpiredBackups } from "./cleanup.ts";
@@ -41,7 +41,9 @@ export interface RewindResult {
   deleted: string[];
 }
 
-export const checkpointState: ToolStateDefinition = {
+export const checkpointState: ToolStateDefinition = defineToolState({
+  history: "rewindable",
+  fork: "asOf",
   name: "checkpoint",
   version: 1,
   parse(version, value) {
@@ -49,7 +51,7 @@ export const checkpointState: ToolStateDefinition = {
     if (!Value.Check(checkpointSchema, value)) throw new Error("Invalid checkpoint schema.");
     return value;
   },
-};
+});
 
 export function createCheckpoints({
   homeDir,

@@ -1,5 +1,6 @@
 import type { PresentedTool } from "../tools/presentation.ts";
-import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { ToolRegistration } from "@earendil-works/pi-durable";
+import type { JsonValue } from "@earendil-works/chord";
 import {
   McpClient,
   McpAuthRequiredError,
@@ -113,17 +114,30 @@ function displayUrl(value: string): string {
     );
 }
 
+/** MCP extensions are untrusted wire data; persist only an owned JSON tree. */
+function resultDetails(value: unknown): JsonValue {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (Array.isArray(value)) return value.map(resultDetails);
+  if (typeof value === "object" && value !== null)
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, member]) => member !== undefined)
+        .map(([key, member]) => [key, resultDetails(member)]),
+    );
+  throw new Error("MCP tool returned non-JSON details");
+}
+
 function adaptTool(
   server: string,
   client: McpClient,
   tool: Tool,
   reportError: (error: unknown) => void,
-): AgentTool {
+): ToolRegistration {
   const name = `mcp__${server}__${tool.name}`;
   const parameters = Type.Unsafe<Record<string, unknown>>(tool.inputSchema);
   const adapted: PresentedTool<typeof parameters> = {
     name,
-    label: tool.title ?? name,
     description: tool.description ?? tool.name,
     parameters,
     presentCall: (args) => ({
@@ -134,10 +148,15 @@ function adaptTool(
       rawInput: args,
     }),
     presentResult: (_args, text) => ({ card: "generic", kind: "other", text }),
-    async execute(_id, args, signal) {
+    async execute(args, _api, context) {
+      const signal = context.abortSignal;
       try {
         const result = await client.callTool(tool.name, args, { signal });
-        return { content: toLlmContent(result), details: result, isError: result.isError };
+        return {
+          content: toLlmContent(result),
+          details: resultDetails(result),
+          isError: result.isError,
+        };
       } catch (error) {
         if (!signal?.aborted) reportError(error);
         throw error;
@@ -176,7 +195,7 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
   const authRequired: Extract<CustomSessionEvent, { type: "mcp_auth_required" }>[] = [];
   const authTools = new Set<string>();
   const reportedAuth = new Set<string>();
-  const tools: AgentTool[] = [];
+  const tools: ToolRegistration[] = [];
   const toolServers = new Map<string, string>();
   const descriptions = new Map<string, string>();
   const failed = new Set<string>();
@@ -472,7 +491,7 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
             const scope = url.searchParams.get("scope");
             if (key && scope) authState.authorizationScopes.set(key, scope);
           };
-          const replaceTools = (adapted: AgentTool[]) => {
+          const replaceTools = (adapted: ToolRegistration[]) => {
             for (let i = tools.length - 1; i >= 0; i--) {
               if (toolServers.get(tools[i]!.name) !== server) continue;
               authTools.delete(tools[i]!.name);
@@ -746,11 +765,10 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
             replaceTools([
               preserveErrorDetails({
                 name,
-                label: name,
                 description: `The ${server} MCP server is installed but requires authentication. Call this tool to start the OAuth flow; the user completes it in their browser and the server's real tools become available in your next turn.`,
                 parameters: Type.Object({}),
-                async execute(_id, _args, signal) {
-                  const outcome = await authenticate(signal);
+                async execute(_args, _api, context) {
+                  const outcome = await authenticate(context.abortSignal);
                   return {
                     content: [
                       {

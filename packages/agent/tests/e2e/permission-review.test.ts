@@ -1,4 +1,11 @@
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
+import {
+  withAuxiliaryRequests,
+  modelStream,
+  withModelStream,
+  withModelAlias,
+  deferredModelStream,
+  type ModelStream,
+} from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, jest, test } from "bun:test";
 import {
   fauxAssistantMessage,
@@ -7,6 +14,11 @@ import {
   type Api,
   type Model,
 } from "@earendil-works/pi-ai";
+import {
+  awaitWithContext,
+  withAbortSignal,
+  BACKGROUND_CONTEXT,
+} from "@earendil-works/chord/context";
 import { join } from "node:path";
 import { createSession, type PermissionAskRequest, type SessionEvent } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
@@ -25,14 +37,14 @@ function reviewedModel(review = fauxAssistantMessage('{"risk":"low","decision":"
     fauxAssistantMessage("done"),
   ]);
   const reviewer = fakeModel([review]);
-  const streamFn: typeof main.streamFn = withAuxiliaryRequests((model, context, options) =>
+  const streamFn: ModelStream = withAuxiliaryRequests((model, context, options) =>
     context.messages.some(
       (message) => message.role === "system" && JSON.stringify(message).includes("REVIEW_POLICY"),
     )
-      ? reviewer.streamFn(model, context, options)
-      : main.streamFn(model, context, options),
+      ? modelStream(reviewer.models)(model, context, options)
+      : modelStream(main.models)(model, context, options),
   );
-  return { ...main, streamFn, reviewer, main };
+  return { ...main, models: withModelStream(main.models, streamFn), reviewer, main };
 }
 
 test("auto-review allows a safe call and emits its review outcome without asking", async () => {
@@ -88,7 +100,7 @@ test("old review history truncates first while keeping current authorization and
     }),
     fauxAssistantMessage("done"),
   ]);
-  fake.main.streamFn = main.streamFn;
+  fake.main.models = withModelStream(fake.main.models, modelStream(main.models));
   const session = await createSession({ ...dirs, ...fake, permissionMode: "auto-review" });
   await session.run("OLD_HISTORY ".repeat(1500));
   await session.run("CURRENT_AUTHORIZATION");
@@ -105,14 +117,14 @@ test("oversized required review input asks without sending a reviewer request", 
   const fake = reviewedModel();
   fake.model.contextWindow = 4000;
   // Main turns may compact old work; an oversized pending action cannot be removed.
-  fake.main.streamFn = fakeModel([
+  fake.main.models = fakeModel([
     fauxAssistantMessage(
       fauxToolCall("write", { path: "reviewed.txt", content: "x".repeat(10_000) }),
       { stopReason: "toolUse" },
     ),
     fauxAssistantMessage("summary"),
     fauxAssistantMessage("done"),
-  ]).streamFn;
+  ]).models;
   const requests: PermissionAskRequest[] = [];
   const session = await createSession({
     ...dirs,
@@ -142,7 +154,7 @@ test("review tokens and review messages are excluded from Run usage and Context 
     reply.usage = { ...reply.usage, input: 11, output: 5, totalTokens: 16 };
   review.usage = { ...review.usage, input: 40_000, output: 10_000, totalTokens: 50_000 };
   const responses = [first, review, second];
-  const streamFn: typeof fake.streamFn = withAuxiliaryRequests(() => {
+  const streamFn: ModelStream = withAuxiliaryRequests(() => {
     const reply = responses.shift()!;
     const stream = createAssistantMessageEventStream();
     stream.push({
@@ -157,7 +169,7 @@ test("review tokens and review messages are excluded from Run usage and Context 
   const session = await createSession({
     ...dirs,
     ...fake,
-    streamFn,
+    models: withModelStream(fake.models, streamFn),
     permissionMode: "auto-review",
   });
   const result = await session.run("write", {
@@ -174,17 +186,24 @@ test("review tokens and review messages are excluded from Run usage and Context 
   expect(session.messages.filter((message) => message.role === "assistant")).toHaveLength(2);
 });
 
-test("reviewModel selects a separate model with temperature zero using the Session streamFn", async () => {
+test("reviewModel selects a separate model with temperature zero using the Session Models registry", async () => {
   dirs = await tempDirs();
   const fake = reviewedModel();
   let selected: Model<Api> | undefined;
   let temperature: number | undefined;
-  const reviewStream = fake.reviewer.streamFn;
-  fake.reviewer.streamFn = withAuxiliaryRequests((model, context, options) => {
-    selected = model;
-    temperature = options?.temperature;
-    return reviewStream(model, context, options);
+  fake.reviewer.models = withModelAlias(fake.reviewer.models, "review-test", ["cheap"], {
+    contextWindow: 8000,
   });
+  fake.models = withModelAlias(fake.models, "review-test", ["cheap"], { contextWindow: 8000 });
+  const reviewStream = modelStream(fake.reviewer.models);
+  fake.reviewer.models = withModelStream(
+    fake.reviewer.models,
+    withAuxiliaryRequests((model, context, options) => {
+      selected = model;
+      temperature = options?.temperature;
+      return reviewStream(model, context, options);
+    }),
+  );
   const env = "RUKIE_PERMISSION_REVIEW_TEST_KEY";
   process.env[env] = "test-key";
   try {
@@ -237,10 +256,13 @@ test("aborting an uncooperative review cancels it and never asks or executes", a
   dirs = await tempDirs();
   const fake = reviewedModel();
   const started = Promise.withResolvers<AbortSignal>();
-  fake.reviewer.streamFn = withAuxiliaryRequests((_model, _context, options) => {
-    started.resolve(options!.signal!);
-    return new Promise(() => {});
-  });
+  fake.reviewer.models = withModelStream(
+    fake.reviewer.models,
+    withAuxiliaryRequests((_model, _context, options) => {
+      started.resolve(options!.signal!);
+      return createAssistantMessageEventStream();
+    }),
+  );
   const requests: PermissionAskRequest[] = [];
   const events: SessionEvent[] = [];
   const session = await createSession({
@@ -277,7 +299,7 @@ test("a review still pending at 30s cancels its request and asks the user", asyn
   dirs = await tempDirs();
   const fake = reviewedModel();
   const slow = abortingModel();
-  fake.reviewer.streamFn = slow.streamFn;
+  fake.reviewer.models = withModelStream(fake.reviewer.models, modelStream(slow.models));
   const requests: PermissionAskRequest[] = [];
   const session = await createSession({
     ...dirs,
@@ -300,7 +322,7 @@ test("a review still pending at 30s cancels its request and asks the user", asyn
     expect(await Bun.file(join(dirs.cwd, "reviewed.txt")).exists()).toBe(false);
   } finally {
     try {
-      await session.dispose();
+      await session.close();
     } finally {
       jest.useRealTimers();
     }
@@ -326,7 +348,7 @@ test("review uses project instructions and user/call history without assistant t
     }),
     fauxAssistantMessage("done"),
   ]);
-  fake.main.streamFn = scripted.streamFn;
+  fake.main.models = withModelStream(fake.main.models, modelStream(scripted.models));
   const session = await createSession({ ...dirs, ...fake, permissionMode: "auto-review" });
   await session.run("create the file within this project");
   const text = JSON.stringify(fake.reviewer.contexts[0]);
@@ -371,7 +393,7 @@ test("review discards history and summary before the most recent compaction, inc
 test("parallel tool calls start their reviews before either review completes", async () => {
   dirs = await tempDirs();
   const fake = reviewedModel();
-  fake.main.streamFn = fakeModel([
+  fake.main.models = fakeModel([
     fauxAssistantMessage(
       [
         fauxToolCall("write", { path: "a.txt", content: "a" }, { id: "a" }),
@@ -380,30 +402,34 @@ test("parallel tool calls start their reviews before either review completes", a
       { stopReason: "toolUse" },
     ),
     fauxAssistantMessage("done"),
-  ]).streamFn;
+  ]).models;
   const both = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
   let started = 0;
-  fake.reviewer.streamFn = withAuxiliaryRequests(async (model, context, options) => {
-    if (++started === 2) both.resolve();
-    await release.promise;
-    return fakeModel([fauxAssistantMessage('{"risk":"low","decision":"allow"}')]).streamFn(
-      model,
-      context,
-      options,
-    );
-  });
+  fake.reviewer.models = withModelStream(
+    fake.reviewer.models,
+    withAuxiliaryRequests((model, context, options) =>
+      deferredModelStream(
+        (async () => {
+          if (++started === 2) both.resolve();
+          await release.promise;
+          return modelStream(
+            fakeModel([fauxAssistantMessage('{"risk":"low","decision":"allow"}')]).models,
+          )(model, context, options);
+        })(),
+      ),
+    ),
+  );
   const session = await createSession({ ...dirs, ...fake, permissionMode: "auto-review" });
   const controller = new AbortController();
   const run = session.run("create both files", { signal: controller.signal });
   void run.catch(() => {});
   try {
-    await Promise.race([
+    // This deadline bounds an event wait; it does not pace or synchronize the test.
+    await awaitWithContext(
       both.promise,
-      Bun.sleep(300).then(() => {
-        throw new Error("reviews serialized");
-      }),
-    ]);
+      withAbortSignal(AbortSignal.timeout(300), BACKGROUND_CONTEXT),
+    );
   } finally {
     release.resolve();
     if (started !== 2) controller.abort();
@@ -462,7 +488,7 @@ test("the user can allow a call rejected by the reviewer", async () => {
 test("switching mode while answering a review applies to the next call in the same Turn", async () => {
   dirs = await tempDirs();
   const fake = reviewedModel(fauxAssistantMessage('{"risk":"high","decision":"deny"}'));
-  fake.main.streamFn = fakeModel([
+  fake.main.models = fakeModel([
     fauxAssistantMessage(
       [
         fauxToolCall("write", { path: "first.txt", content: "first" }, { id: "first" }),
@@ -471,7 +497,7 @@ test("switching mode while answering a review applies to the next call in the sa
       { stopReason: "toolUse" },
     ),
     fauxAssistantMessage("done"),
-  ]).streamFn;
+  ]).models;
   const requests: PermissionAskRequest[] = [];
   const session = await createSession({
     ...dirs,
@@ -553,10 +579,13 @@ test.each(["throw", "reject"])(
   async (failure) => {
     dirs = await tempDirs();
     const fake = reviewedModel();
-    fake.reviewer.streamFn = withAuxiliaryRequests(() => {
-      if (failure === "throw") throw new Error("provider offline");
-      return Promise.reject(new Error("provider offline"));
-    });
+    fake.reviewer.models = withModelStream(
+      fake.reviewer.models,
+      withAuxiliaryRequests(() => {
+        if (failure === "throw") throw new Error("provider offline");
+        return deferredModelStream(Promise.reject(new Error("provider offline")));
+      }),
+    );
     const requests: PermissionAskRequest[] = [];
     const session = await createSession({
       ...dirs,
@@ -593,7 +622,7 @@ test("a batch reviews only valid calls that still require permission", async () 
     ),
     fauxAssistantMessage("done"),
   ]);
-  fake.main.streamFn = main.streamFn;
+  fake.main.models = withModelStream(fake.main.models, modelStream(main.models));
   const events: SessionEvent[] = [];
   const session = await createSession({
     ...dirs,

@@ -1,9 +1,17 @@
-import type { Agent, AgentOptions, StreamFn } from "@earendil-works/pi-agent-core";
+import type { Context } from "@earendil-works/chord";
+import type {
+  HookApi,
+  ToolExecutionApi,
+  ToolRegistration,
+  ToolHooks,
+  JsonObject,
+} from "@earendil-works/pi-durable";
 import {
-  validateToolArguments,
   type Api,
   type Model,
-  type AssistantMessage,
+  type ToolCall,
+  type Message,
+  type Models,
 } from "@earendil-works/pi-ai";
 import type { CustomSessionEvent, PermissionMode } from "@rukie/shared";
 import { evaluatePermissionRules, parsePermissionRules, type PermissionRule } from "./rules.ts";
@@ -100,10 +108,11 @@ interface PermissionGateOptions {
   sessionAllowRules?: SessionAllowRule[];
   sessionGrantListeners?: Set<() => void>;
   getMode(): PermissionMode;
-  getAgentState(): Pick<Agent["state"], "tools" | "messages">;
+  getTools(): readonly ToolRegistration[];
+  getMessages(): Promise<readonly Message[]>;
   getProjectInstructions(): string[];
   getReviewModel(): Model<Api> | (() => Promise<Model<Api>>);
-  streamFn: StreamFn;
+  models: Models;
   onPermissionAsk?: (request: PermissionAskRequest) => Promise<"allow" | "deny" | "allow-session">;
   onToolCallAllowed?: OnToolCallAllowed;
   onEvent(event: CustomSessionEvent): void | Promise<void>;
@@ -127,14 +136,19 @@ interface PermissionGateOptions {
   stopRun?(reason?: string): void;
 }
 
-type ToolCallContext = Parameters<NonNullable<AgentOptions["beforeToolCall"]>>[0];
+export interface ToolCallContext {
+  toolCall: ToolCall;
+  args: Record<string, unknown>;
+}
 type PermissionCall = ToolCallContext & { mode: PermissionMode; signal: AbortSignal };
 
 /** Owns fixed permission stages and review lifetime; Session supplies current context. */
 export function createPermissionGate(options: PermissionGateOptions) {
   const sessionRules = options.sessionAllowRules ?? [];
   const sessionGrantListeners = options.sessionGrantListeners ?? new Set<() => void>();
-  const reviewBatches = new WeakMap<AssistantMessage, Map<string, Promise<ReviewResult>>>();
+  // The native tool task passes this same Context through beforeTool and execute.
+  // Recovery receives a fresh invocation context; a grant is consumed once and never persisted.
+  const invocationGrants = new WeakMap<Context, Map<number, string>>();
   const activeReviews = new Set<Promise<ReviewResult>>();
   const denialReason = ({ mode, toolCall }: PermissionCall) =>
     mode === "auto-review"
@@ -165,17 +179,16 @@ export function createPermissionGate(options: PermissionGateOptions) {
     hook?: string,
   ): Extract<PermissionStageDecision, { decision: "deny" }> | undefined {
     try {
-      const tool = options.getAgentState().tools.find((tool) => tool.name === call.toolCall.name)!;
+      const tool = options.getTools().find((tool) => tool.name === call.toolCall.name)!;
       // A hook's replacement uses the same preparation as a model call so
       // permissions, allowed-stage observers and execution share one target.
       const prepared = tool.prepareArguments?.(updatedInput) ?? updatedInput;
       const [invalid] = Value.Errors(tool.parameters, prepared);
       if (invalid) throw new Error(`${invalid.instancePath || "/"} ${invalid.message}`);
-      const updated = validateToolArguments(tool, {
-        ...call.toolCall,
-        arguments: prepared as typeof call.toolCall.arguments,
-      });
-      Object.assign(call.args as object, updated);
+      if (typeof prepared !== "object" || prepared === null || Array.isArray(prepared))
+        throw new Error("Tool arguments must be an object");
+      for (const key of Object.keys(call.args)) delete call.args[key];
+      Object.assign(call.args, prepared);
     } catch (error) {
       return {
         decision: "deny",
@@ -187,85 +200,53 @@ export function createPermissionGate(options: PermissionGateOptions) {
   }
 
   async function evaluateModeStage(context: PermissionCall): Promise<PermissionStageDecision> {
-    const { toolCall, args, assistantMessage, mode, signal } = context;
+    const { toolCall, args, mode, signal } = context;
     const decision = options.isMcpAuthTool?.(toolCall.name)
       ? "allow"
-      : decidePermission({
-          toolName: toolCall.name,
-          mode,
-        });
+      : decidePermission({ toolName: toolCall.name, mode });
     if (decision !== "review") {
       if (decision === "deny") return { decision, reason: denialReason(context), by: "user" };
       return { decision };
     }
-    let batch = reviewBatches.get(assistantMessage);
-    if (!batch) {
-      batch = new Map();
-      reviewBatches.set(assistantMessage, batch);
-    }
-    // pi prepares parallel calls sequentially. Start independent reviews here,
-    // while each actual hook still reads the current Permission Mode.
-    for (const call of assistantMessage.content) {
-      if (call.type !== "toolCall" || batch.has(call.id)) continue;
-      // Each hook must decide before review begins, including later calls in this batch.
-      if (options.preToolUse && call.id !== toolCall.id) continue;
-      if (
-        options.isMcpAuthTool?.(call.name) ||
-        decidePermission({ mode, toolName: call.name }) !== "review"
-      )
-        continue;
-      const tool = options.getAgentState().tools.find((item) => item.name === call.name);
-      if (!tool) continue;
-      let validated: unknown;
-      try {
-        validated =
-          call.id === toolCall.id
-            ? args
-            : validateToolArguments(tool, {
-                ...call,
-                arguments: (tool.prepareArguments?.(call.arguments) ??
-                  call.arguments) as typeof call.arguments,
-              });
-      } catch {
-        // pi returns validation errors without executing or reviewing this call.
-        continue;
-      }
-      if (evaluateRuleStage(call.name, validated) !== undefined) continue;
-      const review = (async () => {
-        await options.onEvent({
-          type: "permission_review",
-          phase: "start",
-          toolCallId: call.id,
-          toolName: call.name,
-        });
-        const result = await reviewPermission({
-          cwd: options.cwd,
-          projectInstructions: options.getProjectInstructions(),
-          messages: options
-            .getAgentState()
-            .messages.filter((message) => message !== assistantMessage),
-          tool,
-          args: validated,
-          model: options.getReviewModel(),
-          streamFn: options.streamFn,
-          signal,
-        });
-        await options.onEvent({
-          type: "permission_review",
-          phase: "end",
-          toolCallId: call.id,
-          ...result,
-        });
-        return result;
-      })();
-      batch.set(call.id, review);
-      activeReviews.add(review);
-      void review.finally(() => activeReviews.delete(review)).catch(() => {});
-    }
-    const review = await batch.get(toolCall.id)!;
-    if (review.decision === "deny")
+    const tool = options.getTools().find((item) => item.name === toolCall.name);
+    if (!tool)
+      return { decision: "deny", reason: `Tool unavailable: ${toolCall.name}`, by: "review" };
+    const review = (async () => {
+      await options.onEvent({
+        type: "permission_review",
+        phase: "start",
+        toolCallId: toolCall.id,
+        toolName: toolCall.name,
+      });
+      const messages = await options.getMessages();
+      const result = await reviewPermission({
+        cwd: options.cwd,
+        projectInstructions: options.getProjectInstructions(),
+        messages: messages.filter(
+          (message) =>
+            message.role !== "assistant" ||
+            !message.content.some((block) => block.type === "toolCall" && block.id === toolCall.id),
+        ),
+        tool,
+        args,
+        model: options.getReviewModel(),
+        models: options.models,
+        signal,
+      });
+      await options.onEvent({
+        type: "permission_review",
+        phase: "end",
+        toolCallId: toolCall.id,
+        ...result,
+      });
+      return result;
+    })();
+    activeReviews.add(review);
+    void review.finally(() => activeReviews.delete(review)).catch(() => {});
+    const result = await review;
+    if (result.decision === "deny")
       return { decision: "deny", reason: denialReason(context), by: "review" };
-    return review.decision === "ask" ? { ...review, by: "review" } : review;
+    return result.decision === "ask" ? { ...result, by: "review" } : result;
   }
 
   async function updatePermissions(updates: unknown[] | undefined, hook?: string) {
@@ -438,7 +419,7 @@ export function createPermissionGate(options: PermissionGateOptions) {
       : { decision: "deny", reason: denialReason(context), by: "user" };
   }
 
-  const beforeToolCall: NonNullable<AgentOptions["beforeToolCall"]> = async (call, signal) => {
+  const authorize = async (call: ToolCallContext, signal?: AbortSignal) => {
     const context = {
       ...call,
       mode: options.getMode(),
@@ -523,7 +504,41 @@ export function createPermissionGate(options: PermissionGateOptions) {
   };
 
   return {
-    beforeToolCall,
+    beforeTool: (async (call, api, context) => {
+      // Native arguments are JSON; structuredClone gives this gate an owned mutable tree.
+      const facts = { toolCall: call, args: structuredClone(call.arguments) as JsonObject };
+      const decision = await authorize(facts, context.abortSignal);
+      if (decision?.block) return { block: decision.reason };
+      let grants = invocationGrants.get(context);
+      if (!grants) invocationGrants.set(context, (grants = new Map()));
+      grants.set(api.taskId, JSON.stringify(facts.args));
+      return { arguments: facts.args };
+    }) satisfies ToolHooks["beforeTool"],
+    async authorizeExecute(
+      call: ToolCall,
+      args: Record<string, unknown>,
+      api: HookApi | ToolExecutionApi,
+      context: Context,
+    ) {
+      const tool = options.getTools().find((candidate) => candidate.name === call.name);
+      if (!tool) throw new Error(`Tool unavailable: ${call.name}`);
+      // Native recovery reuses committed intent without running preparation again.
+      // A changed tool definition must still reject input outside its current schema.
+      const [invalid] = Value.Errors(tool.parameters, args);
+      if (invalid)
+        throw new Error(
+          `Invalid recovered tool input: ${invalid.instancePath || "/"} ${invalid.message}`,
+        );
+      const grants = invocationGrants.get(context);
+      const granted = grants?.get(api.taskId);
+      grants?.delete(api.taskId);
+      if (granted === JSON.stringify(args)) return;
+      const original = JSON.stringify(args);
+      const decision = await authorize({ toolCall: call, args }, context.abortSignal);
+      if (decision?.block) throw new Error(decision.reason);
+      if (original !== JSON.stringify(args))
+        throw new Error("Recovered tool input was changed by a hook; submit a new tool call.");
+    },
     async settleReviews() {
       await Promise.allSettled(activeReviews);
     },

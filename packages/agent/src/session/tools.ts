@@ -1,4 +1,4 @@
-import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { ToolRegistration } from "@earendil-works/pi-durable";
 import type { OnInteractionStart } from "../interaction/index.ts";
 import { createBuiltinTools, type BuiltinToolsOptions } from "../tools/builtin.ts";
 import {
@@ -22,8 +22,8 @@ import {
  * MCP facts; the assembly applies them without keeping a second copy of that state.
  */
 export interface ToolGate {
-  allowsTool(tool: AgentTool): boolean;
-  measureTool(tool: AgentTool): AgentTool;
+  allowsTool(tool: ToolRegistration): boolean;
+  measureTool(tool: ToolRegistration): ToolRegistration;
 }
 
 export interface BaseToolsInput {
@@ -44,7 +44,7 @@ export interface BaseToolsInput {
 }
 
 /** Built-in, Plan Mode and Goal tools, in the model-visible declaration order. */
-export function createBaseTools(input: BaseToolsInput): AgentTool[] {
+export function createBaseTools(input: BaseToolsInput): ToolRegistration[] {
   return [
     ...createBuiltinTools(input.builtin),
     ...(input.isChild ? [] : createPlanModeTools(input.planMode)),
@@ -52,7 +52,7 @@ export function createBaseTools(input: BaseToolsInput): AgentTool[] {
   ];
 }
 
-function createPlanModeTools(input: BaseToolsInput["planMode"]): AgentTool[] {
+function createPlanModeTools(input: BaseToolsInput["planMode"]): ToolRegistration[] {
   if (!input.onPlanReview) return [];
   return [
     createEnterPlanModeTool(input.controller),
@@ -64,7 +64,7 @@ function createPlanModeTools(input: BaseToolsInput["planMode"]): AgentTool[] {
 export function createSubagentTools(input: {
   isChild: boolean;
   controller: Parameters<typeof createSubagentCapabilityTools>[0];
-}): AgentTool[] {
+}): ToolRegistration[] {
   if (input.isChild) return [];
   const tools = createSubagentCapabilityTools(input.controller);
   return [tools.delegate, tools.fork, tools.send, tools.list];
@@ -75,7 +75,7 @@ export async function refreshSubagentTypes(input: {
   cwd: string;
   homeDir: string;
   trusted: boolean;
-  tools: readonly AgentTool[];
+  tools: readonly ToolRegistration[];
   controller: Parameters<typeof createSubagentCapabilityTools>[0];
   /** The startup seed passes nothing; a Run refresh reports diagnostics once per Run. */
   report?(discovery: Awaited<ReturnType<typeof discoverSubagentTypes>>): void | Promise<void>;
@@ -91,16 +91,19 @@ export async function refreshSubagentTypes(input: {
 }
 
 /** Apply the Session gate to a tool set, then wrap each tool for duration measurement. */
-export function selectTools(tools: readonly AgentTool[], gate: ToolGate): AgentTool[] {
+export function selectTools(
+  tools: readonly ToolRegistration[],
+  gate: ToolGate,
+): ToolRegistration[] {
   return tools.filter((tool) => gate.allowsTool(tool)).map((tool) => gate.measureTool(tool));
 }
 
 /** A Turn starts from the Run's non-MCP tools and appends the MCP tools current at that Turn. */
 export function createTurnTools(input: {
-  nonMcpTools: readonly AgentTool[];
-  mcpTools: readonly AgentTool[];
+  nonMcpTools: readonly ToolRegistration[];
+  mcpTools: readonly ToolRegistration[];
   gate: ToolGate;
-}): AgentTool[] {
+}): ToolRegistration[] {
   return [
     ...input.nonMcpTools,
     ...input.mcpTools
