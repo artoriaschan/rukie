@@ -26,7 +26,7 @@ test.each(["zh", "en"] as const)(
       await app.waitFor(() => app.calls.length === 2);
       app.calls[1]!.delta("after card");
       app.calls[1]!.finish();
-      await app.waitFor(() => !app.isWorking());
+      await app.waitFor(() => !app.isWorking() && app.screen().includes("⏺ after card"));
       const lines = app.allLines();
       expect(lines.join("\n")).not.toContain(locale === "zh" ? "• 待办清单" : "• TodoWrite");
       expect(lines.join("\n")).not.toContain('"todos":');

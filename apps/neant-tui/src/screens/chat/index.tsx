@@ -1,3 +1,4 @@
+import { SessionNoticeRow } from "../../components/notice";
 import { completedEntryVisible } from "./completed-visibility";
 import { transcriptMatches } from "./transcript-search";
 import { TextInput } from "@neant/tui";
@@ -2021,8 +2022,18 @@ function Chat({
                 onToggle={() => toggleRow(entry.anchorId ?? `thinking-${index}`)}
               />
             );
+          case "session-notice":
+            return <SessionNoticeRow key={index} notice={entry.notice} locale={locale} />;
           case "notice":
-            return <Notice key={index} kind="info" text={entry.text} report={entry.report} />;
+            return (
+              <Notice
+                key={index}
+                kind="info"
+                text={entry.text}
+                report={entry.report}
+                divider={!entry.report}
+              />
+            );
           case "message":
             return entry.role === "user" ? (
               <UserMessage

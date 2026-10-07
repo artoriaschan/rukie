@@ -26,6 +26,7 @@ export interface ReminderSource {
 /** Custom messages stay intact in the Transcript and convert only at the model boundary. */
 export function convertToLlm(messages: AgentMessage[]): Message[] {
   return messages.flatMap((message): Message[] => {
+    if (message.role === "session-notice") return [];
     if (message.role === "assistant" && "neantThinkingDurationMs" in message) {
       const { neantThinkingDurationMs: _thinkingDuration, ...assistant } = message;
       message = assistant;

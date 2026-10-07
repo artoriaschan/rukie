@@ -44,13 +44,20 @@ test("prompt hooks block a user prompt using one standalone review request", asy
   expect(JSON.stringify(fake.contexts[0])).toContain("Check this input:");
   expect(JSON.stringify(fake.contexts[0])).toContain("UserPromptSubmit");
   expect(JSON.stringify(session.messages)).not.toContain("secret");
-  expect(JSON.stringify(session.messages)).not.toContain("protected prompt");
-  expect(await Bun.file(transcriptPath).text()).not.toContain("protected prompt");
+  expect(session.messages).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        role: "session-notice",
+        notice: { kind: "hook_blocked", reason: "protected prompt" },
+      }),
+    ]),
+  );
+  expect(await Bun.file(transcriptPath).text()).toContain("session-notice");
   expect(await Bun.file(transcriptPath).text()).not.toContain("secret");
   await session.dispose();
 });
 
-test("agent hooks inspect files with only read, glob and grep, without parent transcript writes", async () => {
+test("agent hooks inspect files with only read, glob and grep, without copying review messages to the parent Transcript", async () => {
   dirs = await tempDirs();
   await Bun.write(join(dirs.cwd, "policy.txt"), "protected");
   const fake = fakeModel([
@@ -86,7 +93,14 @@ test("agent hooks inspect files with only read, glob and grep, without parent tr
   });
   expect(fake.contexts).toHaveLength(2);
   expect(JSON.stringify(session.messages)).not.toContain("review-read");
-  expect(JSON.stringify(session.messages)).not.toContain("policy check failed");
+  expect(session.messages).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        role: "session-notice",
+        notice: { kind: "hook_blocked", reason: "policy check failed" },
+      }),
+    ]),
+  );
   await session.dispose();
 });
 
