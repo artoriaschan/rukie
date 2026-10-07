@@ -21,3 +21,5 @@ Type: task
 已采用 renderSync/AlternateScreen、原生输入与一次 wheel 路由、DOM/source 阅读位置注册表、root selection 读取与产品 async host 生命周期、Sinon virtual clock 和原生 headless component harness。修复原生 nested/fresh-layout seek、mixed viewport selection、atomic wide owner、decorative soft-wrap 与 scheduled fatal exit，保持默认 dsh selection fence 并显式设置产品装饰排除。
 
 关键公共用例继续验证；广域非图片 TUI 检查发现卡片/详情/小窗口布局与若干完成同步回归，05 保持 claimed/in-progress。不得用删除公共覆盖或旧 API facade 跳过；完整 aggregate 留给 06。
+
+后续共享根修复：原生 handoff quarantine 的 process-global deadline 在虚拟 clock 恢复后污染后续 TUI 输入；公开两个 root + 119/120ms 边界 + cleanup/clock restore 后新 root 用例先红后绿。改为每个 Ink 独立工厂，并同时更新 useInput 与 App 的 wheel admission。受污染的广域用例已终止，保留日志作诊断证据；在 owner 修复后仅重新执行一次更广域检查。

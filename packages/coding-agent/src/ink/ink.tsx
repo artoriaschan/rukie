@@ -27,7 +27,7 @@ import { dispatchClick, dispatchContextMenu, dispatchDragEvent as bubbleDragEven
 import { logMouseDebug } from './utils/debug.js';
 import { noteTerminalFlush } from './flush-tick.js';
 import instances from './instances.js';
-import { suppressInputFor } from './input-suppression.js';
+import { createInputSuppression } from './input-suppression.js';
 import { LogUpdate } from './log-update.js';
 import { KittyGraphicsManager } from './kitty-graphics.js';
 import { SixelGraphicsManager } from './sixel-graphics.js';
@@ -603,7 +603,7 @@ export default class Ink {
       // replies, mouse fragments): resumeStdin's drain only covers bytes
       // already buffered, and a stray ESC would clear a non-empty prompt
       // (issue #123 field report).
-      suppressInputFor(TERMINAL_REPLY_QUARANTINE_MS);
+      this.inputSuppression.suppressFor(TERMINAL_REPLY_QUARANTINE_MS);
       this.resetFramesForAltScreen();
       this.resume();
     } else {
@@ -622,7 +622,7 @@ export default class Ink {
       '\x1b[?25l' // hide cursor (Ink manages)
       );
       this.resumeStdin();
-      suppressInputFor(TERMINAL_REPLY_QUARANTINE_MS);
+      this.inputSuppression.suppressFor(TERMINAL_REPLY_QUARANTINE_MS);
       this.repaint();
       // repaint()'s fresh empty frontFrame would let the blit fast path
       // copy blanks and diff to nothing — same flag forceRedraw() sets.
@@ -690,6 +690,9 @@ export default class Ink {
     }
     this.drainTimer = setTimeout(this.renderNow, FRAME_INTERVAL_MS >> 2);
   }
+
+  private readonly inputSuppression = createInputSuppression();
+  isInputSuppressed(): boolean { return this.inputSuppression.isSuppressed(); }
 
   private fatalPaintPending = false;
   private handleFatalError(error: unknown): void {

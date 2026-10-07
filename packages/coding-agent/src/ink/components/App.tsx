@@ -4,7 +4,6 @@ import { logForDebugging } from "../utils/debug.js";
 import { stopCapturingEarlyInput } from "../utils/earlyInput.js";
 import { isEnvTruthy } from "../utils/envUtils.js";
 import { isMouseClicksDisabled } from "../utils/fullscreen.js";
-import { isInputSuppressed } from "../input-suppression.js";
 import { logMouseDebug } from "../utils/debug.js";
 import { logError } from "../utils/log.js";
 import { appendCrashLog, serializeCrashDetail } from "../utils/crashDetail.js";
@@ -1003,7 +1002,7 @@ function processKeysInBatch(
 				item.name === "wheelright") &&
 			item.mouseCol !== undefined &&
 			item.mouseRow !== undefined &&
-			!isInputSuppressed()
+			!app.props.renderer?.isInputSuppressed()
 		) {
 			const step =
 				(item.name === "wheelup" || item.name === "wheelleft") ? -3 : 3;

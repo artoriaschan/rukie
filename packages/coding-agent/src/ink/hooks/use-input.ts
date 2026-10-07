@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef } from 'react'
 import type { InputEvent, Key } from '../events/input-event.js'
-import { isInputSuppressed } from '../input-suppression.js'
+import useApp from './use-app.js'
 import useStdin from './use-stdin.js'
 
 type Handler = (input: string, key: Key, event: InputEvent) => void
@@ -66,6 +66,7 @@ type Options = {
  */
 const useInput = (inputHandler: Handler, options: Options = {}): void => {
   const { setRawMode, internal_exitOnCtrlC, internal_eventEmitter } = useStdin()
+  const { renderer } = useApp()
 
   // useLayoutEffect (not useEffect) so that raw mode is enabled synchronously
   // during React's commit phase, before render() returns. With useEffect, raw
@@ -98,7 +99,7 @@ const useInput = (inputHandler: Handler, options: Options = {}): void => {
     // tty delivers right after stdin resumes is terminal chatter, not
     // keystrokes — drop it here so NO listener sees it (a stray ESC would
     // clear the prompt via Chat/PromptInput escape handling).
-    if (isInputSuppressed()) {
+    if (renderer?.isInputSuppressed()) {
       return
     }
     const { input, key } = event

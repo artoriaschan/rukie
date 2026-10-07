@@ -57,6 +57,8 @@ SplitDiffView 的 `onSourceMount(id, DOMElement | null)` 将稳定源行身份�
 - `src/ink/events/dispatcher.ts`
 - `src/ink/hit-test.ts`
 - `src/ink/hooks/use-input.ts`
+- `src/ink/input-suppression.ts`
+- `src/ink/hooks/use-input.ts`
 - `src/ink/hooks/use-search-highlight.ts`
 - `src/ink/hooks/use-selection.ts`
 - `src/ink/ink.tsx`
@@ -91,3 +93,5 @@ SplitDiffView 的 `onSourceMount(id, DOMElement | null)` 将稳定源行身份�
 - 05 装饰边框：`output.ts`、`render-border.ts` 仅在 border 写入时保留该行已有 soft-wrap 元数据；普通文字和背景替换仍清除旧 wrap，产品 CodeBlock 框架由 noSelect Box 排除。
 - 05 原生滚轮：`components/ScrollBox.tsx` 的 `wheelEnabled` 默认为 true；false 消费自己的命中 wheel，既不滚动自己也不漏给外层。重新启用仍由原生自动路由一次。
 - 05 退出边界：`ink.tsx` 把 React uncaught 和 scheduled paint 错误交给所属 root；一次 microtask 退出避免 final paint 递归，early/late waitUntilExit 均拒绝原始错误，保留既有 #185 overflow 恢复。terminal resize 同步取消旧几何的拖拽选择，不发布完成复制；其他 screen swap 保留原先结束语义。
+
+- 05 终端 handoff quarantine：`input-suppression.ts` 保留为每根实例工厂，`ink.tsx` 拥有 deadline，`hooks/use-input.ts` 和 `components/App.tsx` 读取自己的 renderer。保留原生 120ms 返回隔离（119ms 屏蔽、120ms 恢复），不把一个终端的 handoff 或虚拟时钟 deadline 泄漏到其他/新根。

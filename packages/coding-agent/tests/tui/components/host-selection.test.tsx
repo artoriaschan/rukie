@@ -6,8 +6,10 @@ import {
   renderSync,
   useSelection,
   useInput,
+  useApp,
 } from "../../../src/ink/index.ts";
 import { createTerminal } from "../helpers/terminal";
+import { testClock } from "../helpers/test-clock";
 
 test("a root reads its own validated selection without native clipboard side effects", async () => {
   const terminal = createTerminal(20, 8);
@@ -186,5 +188,67 @@ test("terminal resize cancels a held selection without publishing a completed ge
     await app.waitUntilExit();
     app.cleanup();
     terminal.dispose();
+  }
+});
+
+test("a handoff quarantine belongs to its root through the deadline and clock restoration", async () => {
+  testClock.useFakeTimers();
+  const first = createTerminal(20, 8),
+    second = createTerminal(20, 8);
+  let renderer: ReturnType<typeof useApp>["renderer"];
+  const inputs: string[] = [];
+  function Content({ owner }: { owner: string }) {
+    const app = useApp();
+    if (owner === "first") renderer = app.renderer;
+    useInput((input) => inputs.push(owner + ":" + input));
+    return <Text>{owner}</Text>;
+  }
+  const tree = (owner: string) => (
+    <AlternateScreen>
+      <Content owner={owner} />
+    </AlternateScreen>
+  );
+  const a = renderSync(tree("first"), { ...first, patchConsole: false, exitOnCtrlC: false });
+  const b = renderSync(tree("second"), { ...second, patchConsole: false, exitOnCtrlC: false });
+  try {
+    await first.flush();
+    await second.flush();
+    renderer!.exitAlternateScreen();
+    testClock.advanceTimersByTime(119);
+    first.stdin.write("a");
+    second.stdin.write("b");
+    await second.flush();
+    await first.flush();
+    expect(inputs).toEqual(["second:b"]);
+    testClock.advanceTimersByTime(1);
+    first.stdin.write("c");
+    await first.flush();
+    expect(inputs).toEqual(["second:b", "first:c"]);
+    // Advance far enough that a process-global deadline would outlive restored wall time.
+    testClock.advanceTimersByTime(10000);
+    renderer!.exitAlternateScreen();
+  } finally {
+    a.unmount();
+    await a.waitUntilExit();
+    a.cleanup();
+    first.dispose();
+    b.unmount();
+    await b.waitUntilExit();
+    b.cleanup();
+    second.dispose();
+    testClock.useRealTimers();
+  }
+  const third = createTerminal(20, 8);
+  const c = renderSync(tree("third"), { ...third, patchConsole: false, exitOnCtrlC: false });
+  try {
+    await third.flush();
+    third.stdin.write("d");
+    await third.flush();
+    expect(inputs).toEqual(["second:b", "first:c", "third:d"]);
+  } finally {
+    c.unmount();
+    await c.waitUntilExit();
+    c.cleanup();
+    third.dispose();
   }
 });
