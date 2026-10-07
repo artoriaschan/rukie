@@ -13,6 +13,7 @@ import {
   SplitDiffView,
   alignSplitDiff,
   toolKindColor,
+  Tooltip,
   SyntaxHighlightedText,
   highlightSyntax,
   useAnimationFrame,
@@ -41,8 +42,10 @@ export function ToolCall({
   error,
   expanded: globalExpanded = false,
   onToggle,
+  foldTerminalCommand = true,
   locale = "zh",
 }: {
+  foldTerminalCommand?: boolean;
   expanded?: boolean;
   onToggle?(): void;
   summary: string;
@@ -93,7 +96,21 @@ export function ToolCall({
   const jsonTitle =
     callView?.card !== "terminal" &&
     !(callView?.card === "generic" && (callView.title || (callView.server && callView.tool)));
-  const header = displayName ? `${displayName}(${title.slice(0, 480)})` : summary;
+  const commandLines = callView?.card === "terminal" ? title.split(/\r?\n/) : undefined;
+  const hiddenLines =
+    foldTerminalCommand && commandLines
+      ? Math.max(0, commandLines.length - 1 - Number(title.endsWith("\n")))
+      : 0;
+  const shownTitle = hiddenLines ? commandLines![0]! : title;
+  const clippedTitle = callView?.card === "terminal" ? shownTitle : shownTitle.slice(0, 480);
+  const titleHint = hiddenLines
+    ? ` ${t("tool.command-lines", { count: hiddenLines })}`
+    : shownTitle.length > clippedTitle.length
+      ? "…"
+      : "";
+  const header = displayName ? `${displayName}(${clippedTitle})${titleHint}` : summary;
+  const fullHeader = displayName ? `${displayName}(${title})` : summary;
+
   const seconds = Math.max(0, Math.floor((Date.now() - (startedAt ?? Date.now())) / 1000));
   const terminal = resultView?.card === "terminal" ? resultView : undefined;
   const body =
@@ -136,6 +153,30 @@ export function ToolCall({
     status !== "running" && name && startedAt !== undefined && endedAt !== undefined
       ? ` · ${fmtDuration(Math.max(0, endedAt - startedAt), locale)}`
       : "";
+  const titleHidden =
+    hiddenLines > 0 ||
+    clippedTitle.length < shownTitle.length ||
+    header.split("\n").some((line) => Bun.stringWidth(`• ${line}${duration}`) > columns);
+  const metadata = [
+    startedAt !== undefined
+      ? t("tool.started-at", {
+          time: new Date(startedAt).toLocaleTimeString(locale === "zh" ? "zh-CN" : "en-US", {
+            hour12: false,
+          }),
+        })
+      : undefined,
+    endedAt !== undefined
+      ? t("tool.finished-at", {
+          time: new Date(endedAt).toLocaleTimeString(locale === "zh" ? "zh-CN" : "en-US", {
+            hour12: false,
+          }),
+        })
+      : undefined,
+    terminal?.exitCode !== undefined ? t("tool.exit-code", { code: terminal.exitCode }) : undefined,
+    terminal?.signal ? t("tool.signal", { signal: terminal.signal }) : undefined,
+  ]
+    .filter(Boolean)
+    .join("\n");
   return (
     <ThemedBox
       flexDirection="column"
@@ -143,7 +184,12 @@ export function ToolCall({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <ThemedBox width={hitWidth(`• ${header}${duration}`)} onClick={toggle}>
+      <Tooltip
+        content={titleHidden ? `${fullHeader}\n${metadata}` : undefined}
+        disabled={imagesSuspended}
+        width={hitWidth(`• ${header}${duration}`)}
+        onClick={toggle}
+      >
         <ThemedText wrap="truncate">
           <ThemedText color={outcomeUnknown ? "warning" : status === "error" ? "error" : color}>
             {hovered
@@ -169,20 +215,21 @@ export function ToolCall({
             <ThemedText>
               (
               {jsonTitle ? (
-                <SyntaxHighlightedText text={title.slice(0, 480)} language="json" />
+                <SyntaxHighlightedText text={clippedTitle} language="json" />
               ) : (
-                title.slice(0, 480)
+                clippedTitle
               )}
               )
             </ThemedText>
           )}
+          {titleHint}
           {status !== "running" && name && startedAt !== undefined && endedAt !== undefined && (
             <ThemedText
               dimColor={!hovered}
             >{` · ${fmtDuration(Math.max(0, endedAt - startedAt), locale)}`}</ThemedText>
           )}
         </ThemedText>
-      </ThemedBox>
+      </Tooltip>
       {(output || diffView || status === "running") && (
         <ThemedBox flexDirection="column" color={status === "error" ? "error" : "text"}>
           {splitRows ? (
