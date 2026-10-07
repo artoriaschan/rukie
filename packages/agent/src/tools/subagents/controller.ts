@@ -729,19 +729,23 @@ export function createSubagentController(options: SubagentControllerOptions) {
     adopt,
     /** Caller must settle related native work before changing the parent branch. */
     /** Capture native committed directory history before a root rewind fork. */
-    async snapshotForRewind(at: EntryId, context: Context): Promise<SubagentIdentity[]> {
+    async snapshotForRewind(
+      at: EntryId,
+      context: Context,
+    ): Promise<SubagentIdentity[] | undefined> {
       const raw = await harness.snapshotAsOf(SubagentDirectoryDoc, parent.id, at, context);
       return raw?.value === undefined || raw.value === null
-        ? []
+        ? undefined
         : parseSubagentIdentities(raw.value, parentSessionId);
     },
     /** Restore the captured directory inside the caller's atomic root fork commit. */
     async restoreFork(
       tx: Tx,
       forkId: ConversationId,
-      snapshot: readonly SubagentIdentity[],
+      snapshot: readonly SubagentIdentity[] | undefined,
     ): Promise<void> {
-      (await tx.doc(state.document, forkId)).value = structuredClone([...snapshot]);
+      if (snapshot !== undefined)
+        (await tx.doc(state.document, forkId)).value = structuredClone([...snapshot]);
     },
     async rebindParent(next: Conversation, context: Context) {
       const raw = await harness.snapshot(state.document, next.id, context);
