@@ -1,3 +1,4 @@
+import { setImmediate } from "node:timers/promises";
 import { testClock } from "./helpers/test-clock";
 import { observeTimeoutDeadline } from "./helpers/timeout-deadline";
 import { startWithClock } from "./helpers/clock-app";
@@ -237,15 +238,23 @@ test("Ctrl+C only exits for two consecutive empty-input presses within one secon
   let deadline: ReturnType<typeof observeTimeoutDeadline> | undefined;
   try {
     await app.waitFor(() => app.screen().includes("❯"));
-    deadline = observeTimeoutDeadline(1000);
+    advance = false;
+    const armedAt = Date.now();
+    deadline = observeTimeoutDeadline(1000, { expiresAt: armedAt + 1000 });
     app.stdin.write("\x03");
+    await setImmediate();
+    await app.waitFor(() => app.stdin.readableLength === 0);
+    expect(Date.now()).toBe(armedAt);
+    advance = true;
     await app.waitFor(() => app.screen().join("\n").includes(tip));
     advance = false;
     deadline.beforeExpiry();
     await app.flush();
+    expect(Date.now()).toBe(armedAt + 999);
     expect(app.screen().join("\n")).toContain(tip);
     expect(app.stdin.isRaw).toBe(true);
     deadline.expire();
+    expect(Date.now()).toBe(armedAt + 1000);
     advance = true;
     await app.waitFor(() => !app.screen().join("\n").includes(tip));
     app.stdin.write("\x03");

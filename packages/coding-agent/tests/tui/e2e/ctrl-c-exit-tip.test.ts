@@ -1,3 +1,4 @@
+import { setImmediate } from "node:timers/promises";
 import { startWithClock } from "../helpers/clock-app";
 import { testClock } from "../helpers/test-clock";
 import { observeTimeoutDeadline } from "../helpers/timeout-deadline";
@@ -13,7 +14,7 @@ test.each([
     let advance = true;
     const app = await startWithClock([], {
       advanceTimers: (ms) => {
-        if (advance) testClock.advanceTimersByTime(ms);
+        testClock.advanceTimersByTime(advance ? ms : 0);
       },
       columns: 40,
       rows: 12,
@@ -26,8 +27,16 @@ test.each([
       const inputRow = app.screen().indexOf("❯");
       const buffer = app.terminal.buffer.active;
       const cursor = [buffer.cursorX, buffer.cursorY];
-      deadline = observeTimeoutDeadline(1000);
+      advance = false;
+      const armedAt = Date.now();
+      deadline = observeTimeoutDeadline(1000, { expiresAt: armedAt + 1000 });
       app.stdin.write("\x03");
+      // Consume the physical press at frozen time. Painting may then advance
+      // frames before the passive effect registers the remaining lifetime.
+      await setImmediate();
+      await app.waitFor(() => app.stdin.readableLength === 0);
+      expect(Date.now()).toBe(armedAt);
+      advance = true;
       await app.waitFor(() => app.screen().join("\n").includes(tip));
       expect(app.screen().join("\n")).not.toContain(clipboardTip);
       expect(app.screen().indexOf("❯")).toBe(inputRow);
@@ -37,9 +46,11 @@ test.each([
       advance = false;
       deadline.beforeExpiry();
       await app.flush();
+      expect(Date.now()).toBe(armedAt + 999);
       expect(app.screen().join("\n")).toContain(tip);
       expect(app.stdin.isRaw).toBe(true);
       deadline.expire();
+      expect(Date.now()).toBe(armedAt + 1000);
       advance = true;
       await app.waitFor(() => !app.screen().join("\n").includes(tip));
       await app.waitFor(() => app.screen().join("\n").includes(clipboardTip));
