@@ -728,7 +728,12 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
                           notification_type: "mcp_auth",
                         },
                         notify: (notification) =>
-                          options.onInteractionStart?.(notification, signal ?? interactionSignal),
+                          // A temporary management transport closes after its reply;
+                          // its notification belongs to the caller's operation lifetime.
+                          options.onInteractionStart?.(
+                            notification,
+                            toolSignal ?? signal ?? interactionSignal,
+                          ),
                       },
                     ),
                   ]);
