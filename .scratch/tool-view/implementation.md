@@ -27,3 +27,13 @@ TUI 使用说明见[应用 README](../../apps/neant-tui/README.md)，Core 契约
 ## 集成与清理
 
 所有实施票按依赖图在独立分支和 worktree 实现，交付前同步集成分支，经 merger 子代理逐次合并；双轴审查的修复由同一个实现子代理完成。本轮实施 worktree 和已合并的实施分支在最终检查后移除，保留 `codex/tool-view` 及原有其他 worktree。未创建远端 PR；本仓库通过本地 Markdown 票据关闭工作。
+
+## Main 集成
+
+2026-10-07：将 `854a8ec` 合入已有 composer image peek 的 main `ee9940b`，合并提交 `db9d0b2`。保留 TextInput 光标契约与全部 Tool View renderer 契约；Chat 文件菜单优先接管按键，transcript 模式及文件菜单隐藏被动光标预览，退出后恢复。transcript 模式仍允许消息缩略图打开模态图片预览。
+
+新增公共 app/headless terminal 共存回归，验证搜索、文件菜单、Esc 焦点与图片草稿恢复；扩展模态图片测试覆盖 transcript 模式。相关五文件原有 29 项通过，新增共存用例独立通过；最终修改后的 suppression 文件 8 pass / 0 fail，29 个断言，2.31 秒，单项均低于一秒。main 初次聚焦运行因尚未安装锁定的 `diff` 依赖无法加载，执行 `bun install --frozen-lockfile` 后恢复，未更改 lockfile。
+
+最终 main 代码独立执行 `env -u NO_COLOR bun run check`（隔离临时 HOME，`caffeinate -is`）：格式、Oxlint、TypeScript、Knip 全部通过；2601 pass / 0 fail，14479 个断言，199 个文件，测试阶段 82.78 秒。前一次 main 检查运行期间复核收窄了被动预览条件，并补充 transcript 模态回归，因此重跑完整门禁，最终结果以 `/tmp/neant-tool-view-main-final-check.log` 为准。合并提交后的记录更新仅涉及 Markdown，单独验证格式与 diff。
+
+确认 `codex/tool-view` 为 main 祖先、feature worktree 干净后，移除本次 `codex/tool-view` 分支及 `/Users/artorias_chan/.codex/worktrees/4f1b/Neant`；保留其他并行分支与 worktree。
