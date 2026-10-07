@@ -39,3 +39,9 @@
 2026-10-07 用户要求点击输入框 token 复用消息流预览弹窗，05 已 resolved，取代 04 的点击被动卡方案。点击将当前草稿图集快照交给既有 preview 状态与 ImagePreview 模态组件，复用 Fit、缩放/平移、翻页、打开原图及键盘/鼠标关闭路径；翻页同步 token 反色，关闭保留草稿与 Run，不立即回弹光标卡。光标移动的被动预览契约保留。差异复核确认未引入第二套弹窗或事件处理，相关 README 与 spec 已同步。
 
 公共点击测试要求 Open original 控件时先失败（102.78ms）；相关 5 文件最终 33 pass / 0 fail，175 assertions，6.76s。最终 `env -u NO_COLOR bun run check` 退出 0：格式、lint、类型、Knip、scratch 状态与全部测试通过；2604 pass / 0 fail，14509 assertions，200 files，81.51s。门禁后仅追加 Markdown 验收证据，单独验证格式、tracker 与 diff。
+
+## Fallback copy correction
+
+2026-10-07 用户报告 Ghostty + PNG 中图片与“终端无法预览此图片”同时显示。确认 ImagePreview 无条件绘制 fallback 文案，使可显示 PNG 的透明区域仍露出提示。06 已 resolved：图片与提示改为互斥分支，统一可绘制条件；消息流及 composer 共用修复。现有 PNG e2e 在已确认上传和 placement 后断言无降级提示，red 228.31ms → green；相关 3 文件 23 pass / 0 fail，4.57s。用户原图 500×439 RGBA PNG 的临时 headless smoke 109.64ms，通过 f=100 上传、placement、元数据及中文提示不存在断言；未将原图写入仓库。
+
+首次门禁在 TypeScript 尺寸字段收窄处失败，修正为携带已校验尺寸的可绘制值后，独立类型检查及 PNG 回归通过，再执行最终门禁：`env -u NO_COLOR bun run check` 退出 0；2604 pass / 0 fail，14510 assertions，200 files，76.42s。门禁后仅追加 Markdown 验收证据，单独检查格式、tracker 与 diff。

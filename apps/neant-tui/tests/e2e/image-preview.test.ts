@@ -188,6 +188,7 @@ test("PNG thumbnails yield graphics to source-pixel zoom, button/wheel/drag pan 
           .getCell(app.screen()[disabledRow]!.indexOf("100%"))!
           .isDim(),
     );
+    expect(app.screen().join("\n")).not.toContain("Image preview unavailable in this terminal");
     const uploads = app.output().match(/a=t,/g)!.length;
     click(app, "100%");
     await app.waitFor(() => app.screen().some((line) => line.includes("· 100%")));

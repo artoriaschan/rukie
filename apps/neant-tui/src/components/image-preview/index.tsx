@@ -45,15 +45,15 @@ export function ImagePreview({
     [],
   );
   const drawable = width >= 40 && height >= 12;
-  const inspect =
-    !passive &&
+  const drawableImage =
     drawable &&
     graphics.supported &&
     image.mimeType === "image/png" &&
-    !!graphics.cellWidth &&
-    !!graphics.cellHeight &&
-    !!metadata.width &&
-    !!metadata.height;
+    metadata.width &&
+    metadata.height
+      ? { width: metadata.width, height: metadata.height }
+      : undefined;
+  const inspect = !passive && !!drawableImage && !!graphics.cellWidth && !!graphics.cellHeight;
   const activeZoom = inspect ? zoom : 0;
   const maxWidth = Math.max(1, Math.min(width - 8, Math.floor(width * 0.95) - 6));
   const maxHeight = Math.max(
@@ -210,27 +210,24 @@ export function ImagePreview({
           {title}
         </ThemedText>
         <Box width={drawable ? imageWidth : cardWidth - 6} height={drawable ? imageHeight : 1}>
-          <ThemedText dimColor wrap="truncate">
-            {t("image.preview-fallback")}
-          </ThemedText>
-          {drawable &&
-          graphics.supported &&
-          image.mimeType === "image/png" &&
-          metadata.width &&
-          metadata.height ? (
+          {drawableImage ? (
             <Image
               position="absolute"
               top={0}
               left={0}
               data={image.data}
               mimeType={image.mimeType}
-              sourceWidth={metadata.width}
-              sourceHeight={metadata.height}
+              sourceWidth={drawableImage.width}
+              sourceHeight={drawableImage.height}
               width={imageWidth}
               height={imageHeight}
               crop={activeZoom ? { x, y, width: cropWidth, height: cropHeight } : undefined}
             />
-          ) : null}
+          ) : (
+            <ThemedText dimColor wrap="truncate">
+              {t("image.preview-fallback")}
+            </ThemedText>
+          )}
         </Box>
         {!passive && (
           <Box gap={2}>
