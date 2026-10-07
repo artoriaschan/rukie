@@ -401,7 +401,10 @@ export function createSubagentController(options: SubagentControllerOptions) {
       const row = childRow(task.id);
       const child = await runtime.conversation(row.conversationId as ConversationId, context);
       await child?.abort(context);
-      const result = resultError("aborted", task.input.startedAt, runtime.now());
+      const result =
+        task.state.checkpoint.phase === "report" && task.state.checkpoint.result.error === "aborted"
+          ? task.state.checkpoint.result
+          : resultError("aborted", task.input.startedAt, runtime.now());
       await runtime.commit(async (tx) => {
         const doc = await tx.doc(state.document, parent.id);
         const current = parseSubagentIdentities(doc.value ?? [], parentSessionId);
@@ -422,8 +425,59 @@ export function createSubagentController(options: SubagentControllerOptions) {
           (await tx.doc(subagentRunState.document, row.conversationId as ConversationId)).value =
             identity.latestRun;
         }
-        return { status: "terminal", outcome: { status: "aborted", reason: "aborted", result } };
+        return task.input.background
+          ? {
+              status: "running",
+              checkpoint: {
+                phase: "report",
+                childId: row.conversationId as ConversationId,
+                agentId: row.id,
+                result,
+              },
+            }
+          : { status: "terminal", outcome: { status: "aborted", reason: "aborted", result } };
       }, context);
+      if (task.input.background) {
+        const parentHandle = await runtime.conversation(parent.id, context);
+        if (!parentHandle) throw new Error("Parent conversation is missing.");
+        const request = await parentHandle.submit(
+          {
+            type: "input",
+            whenBusy: "followUp",
+            requestId: `subagent:${task.id}:report`,
+            content: `Subagent ${row.id} (${task.input.description}) aborted.`,
+          },
+          context,
+        );
+        await runtime.commit(
+          () => ({
+            status: "running",
+            checkpoint: {
+              phase: "report",
+              childId: row.conversationId as ConversationId,
+              agentId: row.id,
+              result,
+              submissionId: request.id,
+            },
+          }),
+          context,
+        );
+        const receipt = await request.wait(context);
+        const reported = {
+          ...result,
+          parentSubmissionId: request.id,
+          ...(receipt.type === "input" && receipt.status === "done"
+            ? { parentAnswer: receipt.answer }
+            : {}),
+        };
+        await runtime.commit(
+          () => ({
+            status: "terminal",
+            outcome: { status: "aborted", reason: "aborted", result: reported },
+          }),
+          context,
+        );
+      }
     },
   });
   const extension: Extension = { name: "rukie.subagent-runtime", tasks: [driver] };
@@ -636,6 +690,7 @@ export function createSubagentController(options: SubagentControllerOptions) {
     async interrupt(id: string, context: Context = BACKGROUND_CONTEXT) {
       const row = identities.find((row) => row.id === id);
       if (!row) throw new Error(`Unknown subagent: ${id}`);
+      if (!row.active) return;
       await harness.abortTask(row.driverTaskId as TaskId, context);
     },
     close() {

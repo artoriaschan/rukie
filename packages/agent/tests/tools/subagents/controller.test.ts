@@ -164,7 +164,20 @@ test("interrupt explicitly aborts a native background child and commits its outc
     );
     if (!driver) throw new Error("Native driver is missing.");
     await controller.interrupt(row.id, context);
-    await harness.waitForTask(driver.record.id, context);
+    const receipt = await harness.waitForTask(driver.record.id, context);
+    expect(receipt.state).toMatchObject({
+      outcome: {
+        status: "aborted",
+        result: { parentSubmissionId: expect.any(Number), parentAnswer: expect.any(Number) },
+      },
+    });
+    expect(
+      (await parent.context(context)).messages.filter(
+        (message) =>
+          message.role === "user" &&
+          JSON.stringify(message.content).includes("(Held child) aborted."),
+      ),
+    ).toHaveLength(1);
     expect(controller.list()[0]).toMatchObject({
       active: false,
       latestRun: { outcome: "aborted" },
