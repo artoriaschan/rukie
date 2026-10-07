@@ -97,13 +97,14 @@ export function render(url: URL, status: number, body: string, downloadedTruncat
   const footer = truncated
     ? `\n[Truncated; original characters: ${chars}${downloadedTruncated ? " (download truncated)" : ""}. Use a more specific URL or delegate to an explore subagent.]`
     : "";
+  const markdown = body.slice(0, 50_000 - prefix.length - footer.length) + footer;
   return {
     content: [
       {
         type: "text" as const,
-        text: prefix + body.slice(0, 50_000 - prefix.length - footer.length) + footer,
+        text: prefix + markdown,
       },
     ],
-    details: { url: url.href, status, truncated, chars },
+    details: { url: url.href, status, truncated, chars, markdown },
   };
 }

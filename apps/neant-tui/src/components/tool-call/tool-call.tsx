@@ -69,9 +69,12 @@ export function ToolCall({
   const title =
     callView?.card === "terminal"
       ? callView.command
-      : callView?.card === "generic" && callView.title
-        ? callView.title
-        : (JSON.stringify(callView?.card === "generic" ? (callView.rawInput ?? args) : args) ?? "");
+      : callView?.card === "generic" && callView.server && callView.tool
+        ? `${callView.server} › ${callView.tool}`
+        : callView?.card === "generic" && callView.title
+          ? callView.title
+          : (JSON.stringify(callView?.card === "generic" ? (callView.rawInput ?? args) : args) ??
+            "");
   const header = displayName ? `${displayName}(${title.slice(0, 480)})` : summary;
   const seconds = Math.max(0, Math.floor((Date.now() - (startedAt ?? Date.now())) / 1000));
   const terminal = resultView?.card === "terminal" ? resultView : undefined;
@@ -90,7 +93,17 @@ export function ToolCall({
         )}
       </ThemedBox>
     );
-  const output = status === "error" ? (error ?? terminal?.output) : (terminal?.output ?? result);
+  const body =
+    resultView?.card === "read"
+      ? resultView.content
+      : resultView?.card === "web"
+        ? resultView.markdown
+        : resultView?.card === "generic"
+          ? resultView.text
+          : resultView?.card === "search"
+            ? searchLines(resultView).join("\n")
+            : (terminal?.output ?? result);
+  const output = status === "error" ? (error ?? terminal?.output) : body;
   const lines = output?.split(/\r?\n/) ?? [];
   const folded = lines.length > 4;
   const shown = folded ? lines.slice(0, 3) : lines;
@@ -122,14 +135,33 @@ export function ToolCall({
       </ThemedText>
       {(output || status === "running") && (
         <ThemedBox flexDirection="column" color={status === "error" ? "error" : "text"}>
-          {(status === "running" && !output ? [t("tool.running", { seconds })] : shown).map(
-            (line, index) => (
-              <ThemedText
-                key={index}
-                wrap="truncate"
-              >{`${index === 0 ? `${figures.result} ` : name ? "   " : "  "}${line}`}</ThemedText>
-            ),
+          {resultView?.card === "web" && status !== "error" ? (
+            <ThemedBox>
+              <ThemedText>{`${figures.result} `}</ThemedText>
+              <ThemedBox flexDirection="column" flexGrow={1}>
+                <Markdown text={shown.join("\n")} />
+              </ThemedBox>
+            </ThemedBox>
+          ) : (
+            (status === "running" && !output ? [t("tool.running", { seconds })] : shown).map(
+              (line, index) => (
+                <ThemedText
+                  key={index}
+                  wrap="truncate"
+                >{`${index === 0 ? `${figures.result} ` : name ? "   " : "  "}${line}`}</ThemedText>
+              ),
+            )
           )}
+          {resultView?.card === "search" &&
+            resultView.total !== undefined &&
+            resultView.total >
+              (resultView.shape === "paths"
+                ? resultView.paths.length
+                : resultView.matches.length) && (
+              <ThemedText
+                dimColor
+              >{`   ${t("tool.search-total", { count: resultView.total })}`}</ThemedText>
+            )}
           {folded && (
             <ThemedText dimColor>{`   ${t("tool.fold", { count: lines.length - 3 })}`}</ThemedText>
           )}
@@ -156,4 +188,18 @@ export function ToolCall({
       )}
     </ThemedBox>
   );
+}
+
+function searchLines(view: Extract<ToolResultView, { card: "search" }>): string[] {
+  if (view.shape === "paths") return view.paths;
+  const groups = new Map<string, string[]>();
+  for (const match of view.matches) {
+    let lines = groups.get(match.path);
+    if (!lines) {
+      lines = [];
+      groups.set(match.path, lines);
+    }
+    lines.push(`${match.line === undefined ? "" : `${match.line}: `}${match.text}`);
+  }
+  return [...groups].flatMap(([path, lines]) => [path, ...lines]);
 }
