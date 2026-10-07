@@ -205,6 +205,7 @@ test("dragging on a tool path suppresses its file action while a normal click st
     await app.waitFor(() => copied.length === 1);
     expect(copied).toEqual(["file."]);
     expect(app.screen().join("\n")).not.toContain("Copy path");
+    jest.advanceTimersByTime(500);
     app.stdin.write(`\x1b[<0;${x + 1};${y + 1}M\x1b[<0;${x + 1};${y + 1}m`);
     await app.waitFor(() => app.screen().join("\n").includes("Copy path"));
     expect(copied).toHaveLength(1);

@@ -95,3 +95,7 @@ Ctrl+O 切换 transcript 模式，同时展开工具卡、thinking 和后台任�
 工具调用的 pending diff 按共享的约 30fps 节拍逐行出现，每帧推进至少 3 行并按 backlog 自适应追赶。结果、错误、恢复卡片和展开窗口立即显示。已经追赶完成或展开过的调用再次折叠时不会重启动画；Session 更换和界面关闭会释放其 reveal 订阅，所有调用都追赶完成时停止共享定时器。
 
 Ctrl+O 展开整段对话后，按 `/` 输入搜索词，Enter 高亮并跳到首个匹配；`n` / `N` 在全部匹配间循环前进 / 后退，无结果时显示提示。搜索包含已保留的工具源与思考文本，超过 400 行的工具卡会移动显示窗口到当前匹配。Run 进行中也可搜索；Esc 或 Ctrl+O 退出展开模式，保留输入草稿与当前阅读位置，恢复普通斜杠命令补全。
+
+会话选字还支持双击选 Unicode 单词或路径、三击选显示行，再拖动扩展整词或整行；连续按下间隔严格小于 500ms 且横纵距离各不超过一个单元格。修饰键鼠标按下重置连击，使用字符选择。鼠标手势保持期间，Shift+方向键/Home/End 延长同一文本选区，松开鼠标统一校验并复制；没有文本手势时按键交给输入框和消息导航，审批及模态面板优先。
+
+默认 host 根据平台调用 pbcopy、clip.exe 或 wl-copy/xclip/xsel，等待真实退出结果，每个 helper 最多 2000ms。`SSH_CONNECTION` 存在时跳过远端原生剪贴板，单独的旧 `SSH_TTY` 不阻止本地复制。tmux 使用 load-buffer（iTerm2 避免 `-w`）并在成功时发送 DCS 包装的 OSC52；失败使用原始 OSC52。Kitty 使用 ST，其他终端使用 BEL，screen 使用 DCS 包装；不修改 tmux 配置。`writeClipboard` 的 true 表示原生 helper 或 tmux buffer 成功，false 表示失败，`sent` 表示向终端提交了无确认的 OSC52；后者明确提示“已向终端发送剪贴板请求”，不能确认终端实际接受。默认 host 通过 main 的环境及 stdout 终端 transport 注入，关闭后取消未完成 helper 并停止输出。

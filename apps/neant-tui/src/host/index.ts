@@ -12,7 +12,8 @@ export interface TuiHost {
   /** Probe clipboard offers without exporting or decoding image bytes. */
   hasClipboardImage(): Promise<boolean>;
   readClipboard(): Promise<ClipboardContent>;
-  writeClipboard(text: string): Promise<boolean>;
+  /** true confirms a native helper/tmux buffer; sent means unacknowledged terminal OSC submission. */
+  writeClipboard(text: string): Promise<boolean | "sent">;
   /** Open a URL or file path with the operating system's default application. */
   openExternal(target: string): Promise<void>;
   /** Show a file in the operating system file manager. */
@@ -20,29 +21,89 @@ export interface TuiHost {
 }
 
 /** Own one default host per main invocation and dispose it after Chat stops. */
-export function createDefaultHost() {
+export function createDefaultHost(
+  options: {
+    env?: Record<string, string | undefined>;
+    /** Write a clipboard control sequence through the calling terminal's transport. */
+    writeTerminal?(text: string): void;
+  } = {},
+) {
+  const env = options.env ?? process.env;
+  let disposed = false;
+  let nativeWinner: string[] | undefined;
+  const helpers = new Set<() => void>();
+  async function run(command: string[], text: string) {
+    try {
+      const child = Bun.spawn(command, { env, stdin: "pipe", stdout: "ignore", stderr: "ignore" });
+      const stop = () => {
+        child.kill("SIGKILL");
+      };
+      helpers.add(stop);
+      const timeout = setTimeout(stop, 2000);
+      try {
+        child.stdin.write(text);
+        await child.stdin.end();
+        return (await child.exited) === 0;
+      } finally {
+        clearTimeout(timeout);
+        helpers.delete(stop);
+      }
+    } catch {
+      return false;
+    }
+  }
   const clipboard = createClipboard();
   const host: TuiHost = {
     hasClipboardImage: clipboard.hasImage,
     readClipboard: clipboard.read,
     async writeClipboard(text) {
-      for (const command of [
-        ["pbcopy"],
-        ["wl-copy"],
-        ["xclip", "-selection", "clipboard"],
-        ["xsel", "--clipboard", "--input"],
-        ["clip.exe"],
-      ]) {
+      if (disposed) return false;
+      let native = false;
+      if (!env.SSH_CONNECTION) {
+        const commands =
+          process.platform === "darwin"
+            ? [["pbcopy"]]
+            : process.platform === "win32"
+              ? [["clip.exe"]]
+              : [
+                  ["wl-copy"],
+                  ["xclip", "-selection", "clipboard"],
+                  ["xsel", "--clipboard", "--input"],
+                ];
+        const winner = nativeWinner;
+        const ordered = winner
+          ? [winner, ...commands.filter((command) => command[0] !== winner[0])]
+          : commands;
+        for (const command of ordered)
+          if (await run(command, text)) {
+            nativeWinner = command;
+            native = true;
+            break;
+          }
+      }
+      const payload = `\x1b]52;c;${Buffer.from(text).toString("base64")}`;
+      let tmux = false;
+      if (env.TMUX)
+        tmux = await run(
+          ["tmux", "load-buffer", ...(env.LC_TERMINAL === "iTerm2" ? [] : ["-w"]), "-"],
+          text,
+        );
+      if (disposed) return false;
+      if (options.writeTerminal) {
+        const osc = payload + (tmux || !env.TERM?.includes("kitty") ? "\x07" : "\x1b\\");
+        const sequence = tmux
+          ? `\x1bPtmux;${osc.replaceAll("\x1b", "\x1b\x1b")}\x1b\\`
+          : env.STY
+            ? `\x1bP${osc}\x1b\\`
+            : osc;
         try {
-          const child = Bun.spawn(command, { stdin: "pipe", stdout: "ignore", stderr: "ignore" });
-          child.stdin.write(text);
-          await child.stdin.end();
-          if ((await child.exited) === 0) return true;
+          options.writeTerminal(sequence);
+          return native || tmux ? true : "sent";
         } catch {
-          // Missing or unavailable clipboard helpers fall through to the next platform candidate.
+          return native || tmux;
         }
       }
-      return false;
+      return native || tmux;
     },
     async reveal(path) {
       const command =
@@ -67,7 +128,14 @@ export function createDefaultHost() {
       if (exitCode !== 0) throw new Error(`External viewer exited with code ${exitCode}`);
     },
   };
-  return { host, dispose: clipboard.dispose };
+  return {
+    host,
+    async dispose() {
+      disposed = true;
+      for (const stop of helpers) stop();
+      await clipboard.dispose();
+    },
+  };
 }
 
 export { createImageViewer } from "./image-viewer";

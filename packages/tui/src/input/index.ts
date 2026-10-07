@@ -11,9 +11,35 @@ export interface Key {
 export type InputEvent = (
   | { type: "focus"; focused: boolean }
   | { type: "key"; input: string; key: Key }
-  | { type: "wheel"; input: ""; x: number; y: number; delta: number }
-  | { type: "move"; x: number; y: number; button?: number }
-  | { type: "mouse"; action: "press" | "release"; button: number; x: number; y: number }
+  | {
+      type: "wheel";
+      input: "";
+      x: number;
+      y: number;
+      delta: number;
+      shift: boolean;
+      alt: boolean;
+      ctrl: boolean;
+    }
+  | {
+      type: "move";
+      x: number;
+      y: number;
+      button?: number;
+      shift: boolean;
+      alt: boolean;
+      ctrl: boolean;
+    }
+  | {
+      type: "mouse";
+      action: "press" | "release";
+      button: number;
+      x: number;
+      y: number;
+      shift: boolean;
+      alt: boolean;
+      ctrl: boolean;
+    }
   | { type: "paste"; input: string }
 ) & {
   /** A renderer-owned gesture can consume input before frontend handlers. */ handled?: boolean;
@@ -104,16 +130,20 @@ export function listenInput(
             const [button, column, row] = parameters.slice(1).split(";").map(Number);
             if (
               final === "M" &&
-              (button === 64 || button === 65) &&
+              button !== undefined &&
+              ((button & 0xc3) === 64 || (button & 0xc3) === 65) &&
               column !== undefined &&
               row !== undefined
             ) {
               emit({
                 type: "wheel",
+                shift: !!(button & 4),
+                alt: !!(button & 8),
+                ctrl: !!(button & 16),
                 input: "",
                 x: column - 1,
                 y: row - 1,
-                delta: button === 64 ? -1 : 1,
+                delta: (button & 1) === 0 ? -1 : 1,
               });
             } else if (
               final === "M" &&
@@ -125,6 +155,9 @@ export function listenInput(
             ) {
               emit({
                 type: "move",
+                shift: !!(button & 4),
+                alt: !!(button & 8),
+                ctrl: !!(button & 16),
                 x: column - 1,
                 y: row - 1,
                 ...((button & 3) < 3 ? { button: button & 3 } : {}),
@@ -141,6 +174,9 @@ export function listenInput(
             ) {
               emit({
                 type: "mouse",
+                shift: !!(button & 4),
+                alt: !!(button & 8),
+                ctrl: !!(button & 16),
                 action: final === "M" ? "press" : "release",
                 button: button & 3,
                 x: column - 1,
