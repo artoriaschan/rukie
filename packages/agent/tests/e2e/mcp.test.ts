@@ -4,7 +4,11 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { rm } from "node:fs/promises";
 import { fauxAssistantMessage, fauxToolCall, getCurrentTools } from "@earendil-works/pi-ai";
-import { createSession as openSession, type SessionEvent } from "../../src/index.ts";
+import {
+  createSession as openSession,
+  type SessionEvent,
+  type TranscriptMessage,
+} from "../../src/index.ts";
 import { loadSettings } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
@@ -284,7 +288,8 @@ async function expectClosed() {
 
 function mcpReminders(session: Awaited<ReturnType<typeof openSession>>) {
   return session.messages.filter(
-    (message) => message.role === "system-reminder" && message.source === "mcp",
+    (message): message is Extract<TranscriptMessage, { role: "system-reminder" }> =>
+      message.role === "system-reminder" && message.source === "mcp",
   );
 }
 
@@ -303,8 +308,14 @@ test("resume preserves context and Transcript prefixes and reminders track chang
       events.push(event);
     },
   });
-  expect(events.filter((event) => event.type === "reminder_injected")).toEqual([]);
-  const before = structuredClone(session.messages);
+  expect(
+    events.flatMap((event) =>
+      event.type === "message_end"
+        ? event.messages.filter((message) => message.role === "system-reminder")
+        : [],
+    ),
+  ).toEqual([]);
+  const before = structuredClone([...session.messages]);
   await session.close();
   const prefix = structuredClone(fake.contexts[1]!.messages);
   const next = fakeModel([
@@ -345,7 +356,13 @@ test("resume preserves context and Transcript prefixes and reminders track chang
       events.push(event);
     },
   });
-  expect(events.filter((event) => event.type === "reminder_injected")).toEqual([]);
+  expect(
+    events.flatMap((event) =>
+      event.type === "message_end"
+        ? event.messages.filter((message) => message.role === "system-reminder")
+        : [],
+    ),
+  ).toEqual([]);
   expect(mcpReminders(resumed)).toHaveLength(reminderCount);
   await expectClosed();
 });
