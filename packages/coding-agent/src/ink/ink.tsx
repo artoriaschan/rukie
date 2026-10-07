@@ -1234,6 +1234,13 @@ export default class Ink {
       },
       flickers
     });
+    for (const listener of this.frameListeners) listener();
+  }
+  private readonly frameListeners = new Set<() => void>();
+  /** Observe committed paint geometry for app-owned reading and lazy media. */
+  subscribeFrame(listener: () => void): () => void {
+    this.frameListeners.add(listener);
+    return () => { this.frameListeners.delete(listener); };
   }
   pause(): void {
     // Flush pending React updates and render before pausing.
@@ -2675,6 +2682,7 @@ export default class Ink {
     reconciler.flushSyncWork();
   }
   unmount(error?: Error | number | null): void {
+    this.frameListeners.clear();
     if (this.isUnmounted) {
       return;
     }

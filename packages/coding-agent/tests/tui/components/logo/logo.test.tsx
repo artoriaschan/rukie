@@ -1,8 +1,8 @@
 import { expect, jest, test } from "bun:test";
 import { act, useLayoutEffect, useState } from "react";
-import { dark, render, ThemeProvider } from "../../../../src/ink/index.ts";
+import { dark, renderSync, AlternateScreen, ThemeProvider } from "../../../../src/ink/index.ts";
 import { Logo, mergeColoredCells, renderBigText } from "../../../../src/tui/components/logo";
-import { createTerminal } from "../../helpers/terminal";
+import { createTerminal } from "../../../ink/helpers/terminal";
 
 test("RUKIE is five rows with the horizontal gradient reaching both colored edge columns", () => {
   const rows = renderBigText("RUKIE", "#000000", "#ffffff");
@@ -39,7 +39,7 @@ test("adjacent cells of the same color become one text segment without losing sp
 
 test("wide header paints the anime avatar beside the name and separate model, effort and cwd rows without tips", async () => {
   const terminal = createTerminal(80, 24);
-  const app = render(
+  const app = renderSync(
     <ThemeProvider theme={{ ...dark, logoFrom: "#112233", logoTo: "#445566", subtle: "#778899" }}>
       <Logo model="local/model" thinking="high" cwd="/project" working />
     </ThemeProvider>,
@@ -72,13 +72,14 @@ test("wide header paints the anime avatar beside the name and separate model, ef
   } finally {
     app.unmount();
     await app.waitUntilExit();
+    app.cleanup();
     terminal.dispose();
   }
 });
 
 test("narrow and short headers keep metadata readable and clear the avatar on resize", async () => {
   const terminal = createTerminal(80, 24);
-  const app = render(<Logo model="local/model" cwd="/project" working />, terminal);
+  const app = renderSync(<Logo model="local/model" cwd="/project" working />, terminal);
   try {
     await terminal.flush();
     terminal.resize(40, 24);
@@ -99,6 +100,7 @@ test("narrow and short headers keep metadata readable and clear the avatar on re
   } finally {
     app.unmount();
     await app.waitUntilExit();
+    app.cleanup();
     terminal.dispose();
   }
 });
@@ -106,7 +108,7 @@ test("narrow and short headers keep metadata readable and clear the avatar on re
 test("avatar blinks and nods, then permanently freezes on the first Run and releases timers", async () => {
   jest.useFakeTimers();
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-  const terminal = createTerminal(80, 24);
+  const terminal = createTerminal(80, 24, (ms) => jest.advanceTimersByTime(ms));
   let update = (_running: boolean) => {};
   function View() {
     const [running, setRunning] = useState(false);
@@ -115,9 +117,9 @@ test("avatar blinks and nods, then permanently freezes on the first Run and rele
     }, []);
     return <Logo model="local/model" cwd="/project" working={running} />;
   }
-  let app!: ReturnType<typeof render>;
+  let app!: ReturnType<typeof renderSync>;
   act(() => {
-    app = render(<View />, terminal);
+    app = renderSync(<View />, terminal);
   });
   const flush = async () => {
     const pending = terminal.flush();
@@ -142,7 +144,7 @@ test("avatar blinks and nods, then permanently freezes on the first Run and rele
     await advance(160);
     expect(cell(15, 7).getFgColor()).toBe(0xfff8ee);
     await advance(240);
-    expect(cell(18, 0).getChars()).toBe("");
+    expect(cell(18, 0).getChars()).toBe(" ");
     expect(
       terminal
         .screen()
@@ -170,6 +172,7 @@ test("avatar blinks and nods, then permanently freezes on the first Run and rele
     act(() => app.unmount());
     jest.useRealTimers();
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: false });
+    app.cleanup();
     terminal.dispose();
   }
 });
@@ -177,10 +180,10 @@ test("avatar blinks and nods, then permanently freezes on the first Run and rele
 test("removing the welcome header cancels its pending animation", async () => {
   jest.useFakeTimers();
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-  const terminal = createTerminal(80, 24);
-  let app!: ReturnType<typeof render>;
+  const terminal = createTerminal(80, 24, (ms) => jest.advanceTimersByTime(ms));
+  let app!: ReturnType<typeof renderSync>;
   act(() => {
-    app = render(<Logo model="local/model" cwd="/project" />, terminal);
+    app = renderSync(<Logo model="local/model" cwd="/project" />, terminal);
   });
   try {
     const pending = terminal.flush();
@@ -200,6 +203,7 @@ test("removing the welcome header cancels its pending animation", async () => {
     act(() => app.unmount());
     jest.useRealTimers();
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: false });
+    app.cleanup();
     terminal.dispose();
   }
 });
@@ -207,10 +211,10 @@ test("removing the welcome header cancels its pending animation", async () => {
 test("settled welcome animation rests between idle blinks and nods, and stops when hidden", async () => {
   jest.useFakeTimers();
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-  const terminal = createTerminal(80, 24);
-  let app!: ReturnType<typeof render>;
+  const terminal = createTerminal(80, 24, (ms) => jest.advanceTimersByTime(ms));
+  let app!: ReturnType<typeof renderSync>;
   act(() => {
-    app = render(<Logo model="local/model" cwd="/project" />, terminal);
+    app = renderSync(<Logo model="local/model" cwd="/project" />, terminal);
   });
   const flush = async () => {
     const pending = terminal.flush();
@@ -234,7 +238,7 @@ test("settled welcome animation rests between idle blinks and nods, and stops wh
     await advance(350);
     expect(cell(15, 7).getFgColor()).toBe(0xfff8ee);
     await advance(1000);
-    expect(cell(18, 0).getChars()).toBe("");
+    expect(cell(18, 0).getChars()).toBe(" ");
     await advance(500);
     expect(cell(18, 0).getChars()).toBe("▄");
     expect(jest.getTimerCount()).toBe(1);
@@ -248,33 +252,30 @@ test("settled welcome animation rests between idle blinks and nods, and stops wh
     act(() => app.unmount());
     jest.useRealTimers();
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: false });
+    app.cleanup();
     terminal.dispose();
   }
 });
 
 test("Kitty header uploads the full-resolution portrait and removes it on resize and exit", async () => {
   const terminal = createTerminal(80, 24);
-  const app = render(<Logo model="local/model" cwd="/project" working />, {
-    ...terminal,
-    fullscreen: true,
-    env: {},
-  });
+  const app = renderSync(
+    <AlternateScreen>
+      <Logo model="local/model" cwd="/project" working />
+    </AlternateScreen>,
+    {
+      ...terminal,
+      terminalImages: true,
+    },
+  );
   try {
     await terminal.flush();
-    terminal.stdin.write("\x1b_Gi=2147483647;OK\x1b\\\x1b[6;20;10t");
+    await terminal.waitFor(() => terminal.output().includes("a=q"));
+    terminal.stdin.write("\x1b_Gi=31;OK\x1b\\\x1b[6;20;10t\x1b[4;480;800t\x1b[?1;2c");
     await terminal.waitFor(() => terminal.output().includes("a=t,"));
-    // oxlint-disable-next-line no-control-regex -- verify uploaded PNG bytes at terminal output seam
-    const chunks = [...terminal.output().matchAll(/\x1b_G([^;]*m=[01]);([^\x1b]*)\x1b\\/g)];
-    const png = Buffer.from(chunks.map((part) => part[2]).join(""), "base64");
-    expect(png.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
-    expect(png.readUInt32BE(16)).toBeGreaterThanOrEqual(512);
-    expect(png.readUInt32BE(20)).toBeGreaterThanOrEqual(512);
-    const source = Buffer.from(
-      await Bun.file(
-        new URL("../../../../../../brand/rukie-avatar.png", import.meta.url),
-      ).arrayBuffer(),
-    );
-    expect(png.equals(source)).toBe(true);
+    // Native Kitty uploads the bounded decoded RGBA snapshot with zlib compression.
+    expect(terminal.output()).toContain("f=32");
+    expect(terminal.output()).toContain("o=z");
     expect(terminal.output()).toContain("a=p,");
     expect(terminal.screen()[9]?.slice(42)).toBe("local/model");
     expect(terminal.screen()[10]?.slice(42)).toBe("/project");
@@ -282,19 +283,20 @@ test("Kitty header uploads the full-resolution portrait and removes it on resize
     expect(buffer.getLine(7)!.getCell(15)!.isBgDefault()).toBe(true);
     terminal.resize(40, 24);
     await terminal.waitFor(() => terminal.screen()[7] === "local/model");
-    expect(terminal.output()).toContain("a=d,d=I");
+    expect(terminal.output()).toContain("a=d");
     expect(terminal.screen()[8]).toBe("/project");
     terminal.resize(80, 24);
     await terminal.waitFor(() => (terminal.output().match(/a=t,/g)?.length ?? 0) === 2);
     app.unmount();
     await app.waitUntilExit();
     await terminal.flush();
-    expect(terminal.output().lastIndexOf("a=d,d=I")).toBeLessThan(
+    expect(terminal.output().lastIndexOf("a=d")).toBeLessThan(
       terminal.output().lastIndexOf("?1049l"),
     );
   } finally {
     app.unmount();
     await app.waitUntilExit();
+    app.cleanup();
     terminal.dispose();
   }
 });

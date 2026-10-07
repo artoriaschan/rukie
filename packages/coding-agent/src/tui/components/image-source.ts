@@ -53,7 +53,10 @@ export function useImageSource(
     source: TerminalImageSource;
   }>();
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      setSnapshot(undefined);
+      return;
+    }
     let live = true;
     void decodeTerminalImage(Buffer.from(data, "base64"), presentation, crop).then(
       (source) => {

@@ -128,10 +128,10 @@ export function ImagePreview({
   const drag = useRef<{ x: number; y: number } | undefined>(undefined);
   const panBy = (dx: number, dy: number) => {
     if (!activeZoom) return;
-    setPan({
-      x: Math.max(0, Math.min(sourceWidth - cropWidth, x + dx)),
-      y: Math.max(0, Math.min(sourceHeight - cropHeight, y + dy)),
-    });
+    setPan((previous) => ({
+      x: Math.max(0, Math.min(sourceWidth - cropWidth, previous.x + dx)),
+      y: Math.max(0, Math.min(sourceHeight - cropHeight, previous.y + dy)),
+    }));
   };
   const changeZoom = (value: number) => {
     setZoom(value);

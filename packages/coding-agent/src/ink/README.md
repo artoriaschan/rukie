@@ -31,6 +31,12 @@ SplitDiffView 的 `onSourceMount(id, DOMElement | null)` 将稳定源行身份�
 - 类型：`renderer-host.d.ts` 声明内部 JSX host 名称，公开组件仍保持明确 props。仅 reconciler.ts 使用有理由的 @ts-nocheck，因为锁定 React19 的 runtime hostConfig 泛型与 @types 不同；ink.tsx DevTools 参数使用单行 @ts-ignore。不改变项目 strict 配置。sixel-codec 的已验证 0..255 palette 下标添加非空断言。
 - `index.ts` 为 Rukie 明确导出新组件、hooks 和类型。旧 renderer、scroll、terminal、input、screen、graphics、selection 目录全部删除；保留 editor/text 纯逻辑至 design-system 供产品组合使用。
 
+### 图片消费者的绘制观察
+
+应用通过 `useTerminalImages(requested)` 按需求协商图形、`useTerminalImageCellSize()` 读取实测 cell 像素、`Image source/presentation` 提交 immutable RGBA。图片解码、缩放和裁切由 TUI 的 [image-source](../tui/components/image-source.ts) 拥有；renderer 不接受原图 base64 或 crop 参数。
+
+新增 `usePaintedViewport()` 返回 Box ref 与响应式可见性，首次绘制前为 false；绘制后读取 Yoga 的最新布局、祖先 scrollTop 和 hidden/scroll 裁剪，仅在布尔值变化时更新组件。`useApp().renderer.subscribeFrame(listener)` 在帧提交后通知，返回取消订阅函数，unmount 清除剩余订阅；此最小 renderer 扩展使滚轮导致的原生滚动能释放不可见图片，不需要持续 React 重绘。可见性观察不判断后绘制浮层遮挡；应用打开预览时通过 suspended 显式释放底层画廊需求，renderer 仍拥有 placement 遮挡、裁剪与帧预算。
+
 ## 检查与依赖边界
 
 此目录按 ADR-0013 豁免 Oxlint/Knip；oxfmt 同样忽略此目录以保留上游格式。依赖方向由 `bun run check:ink-boundaries` 的 TypeScript AST/module resolution 检查强制，覆盖静态 import、reexport、import-equals、dynamic import 与 require；拒绝无法静态判断的 computed module import。仅允许 ink 内部、npm/标准库和已有的 @rukie/shared，禁止 Agent Core、i18n 与所有上层目录。该检查包含在 check:dev；TUI 仅经 index.ts 导入仍由 Oxlint 强制。
