@@ -1,3 +1,5 @@
+import { testClock } from "./helpers/test-clock";
+import { observeTimeoutDeadline } from "./helpers/timeout-deadline";
 import { startWithClock } from "./helpers/clock-app";
 import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
@@ -224,22 +226,40 @@ test("Ctrl+C clears an idle draft, then two presses on empty input exit and rest
 });
 
 test("Ctrl+C only exits for two consecutive empty-input presses within one second", async () => {
-  const app = await start();
+  let advance = true;
+  const app = await startWithClock([], {
+    env: { LANG: "en" },
+    advanceTimers: (ms) => {
+      if (advance) testClock.advanceTimersByTime(ms);
+    },
+  });
+  const tip = "Press Ctrl+C again to exit";
+  let deadline: ReturnType<typeof observeTimeoutDeadline> | undefined;
   try {
-    await app.waitFor(() => app.stdin.isRaw);
+    await app.waitFor(() => app.screen().includes("❯"));
+    deadline = observeTimeoutDeadline(1000);
     app.stdin.write("\x03");
-    await Bun.sleep(1050);
+    await app.waitFor(() => app.screen().join("\n").includes(tip));
+    advance = false;
+    deadline.beforeExpiry();
+    await app.flush();
+    expect(app.screen().join("\n")).toContain(tip);
+    expect(app.stdin.isRaw).toBe(true);
+    deadline.expire();
+    advance = true;
+    await app.waitFor(() => !app.screen().join("\n").includes(tip));
     app.stdin.write("\x03");
-    await Bun.sleep(30);
+    await app.waitFor(() => app.screen().join("\n").includes(tip));
     expect(app.stdin.isRaw).toBe(true);
     app.stdin.write("x\x7f");
-    await Bun.sleep(30);
+    await app.waitFor(() => !app.screen().join("\n").includes(tip));
     app.stdin.write("\x03");
-    await Bun.sleep(30);
+    await app.waitFor(() => app.screen().join("\n").includes(tip));
     expect(app.stdin.isRaw).toBe(true);
     app.stdin.write("\x03");
     expect(await app.exit).toBe(0);
   } finally {
+    deadline?.restore();
     await app.cleanup();
   }
 });
