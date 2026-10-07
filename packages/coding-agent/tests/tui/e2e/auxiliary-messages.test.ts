@@ -19,7 +19,7 @@ async function seeded(
     rows: 40,
     env,
     prepare: async (root) => {
-      const model = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+      const model = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
       model.setResponses([fauxAssistantMessage("seed reply")]);
       const session = await createSession({
         cwd: root,
@@ -104,7 +104,7 @@ test.each(["assistant", "toolResult"] as const)(
       env: { LANG: "en" },
       session: { permissionMode: "full-access" },
       prepare: async (root) => {
-        const model = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+        const model = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
         model.setResponses([fauxAssistantMessage("seed reply")]);
         const seed = await createSession({
           cwd: root,

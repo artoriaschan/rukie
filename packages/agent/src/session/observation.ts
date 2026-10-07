@@ -434,7 +434,17 @@ export async function createConversationObservation(options: ConversationObserva
     // A head change replaces active history, rather than appending messages to an
     // obsolete reading position. All facts here belong to the same adopted commit.
     const replaced = before.entries.some((entry, index) => current.entries[index]?.id !== entry.id);
-    enqueue(replaced ? [snapshot] : events);
+    const metadataChanged = publication.changes.some(
+      (change) =>
+        change.type === "entry" &&
+        change.value.conversationId === conversation.id &&
+        change.value.kind === "rukie.message-facts",
+    );
+    enqueue(
+      replaced || metadataChanged || !isDeepStrictEqual(previousFacts.background, facts.background)
+        ? [snapshot]
+        : events,
+    );
   });
   function stop() {
     if (closed) return;

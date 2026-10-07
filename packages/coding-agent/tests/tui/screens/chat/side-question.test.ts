@@ -44,7 +44,7 @@ test("opening resume cancels the side overlay and restores the selected session 
     columns: 40,
     rows: 12,
     prepare: async (root) => {
-      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
       faux.setResponses([fauxAssistantMessage("Prior stored answer.")]);
       const seed = await createSession({
         cwd: root,

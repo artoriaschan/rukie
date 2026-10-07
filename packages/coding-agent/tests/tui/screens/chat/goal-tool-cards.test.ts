@@ -56,7 +56,7 @@ test("resume replays Goal summaries and coded errors in the frontend locale", as
     rows: 35,
     env: { LANG: "zh_CN.UTF-8" },
     async prepare(root) {
-      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
       const tool = (name: string, args: Parameters<typeof fauxToolCall>[1]) =>
         fauxAssistantMessage(fauxToolCall(name, args), { stopReason: "toolUse" });
       faux.setResponses([

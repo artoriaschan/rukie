@@ -332,7 +332,7 @@ test.each([
 test("resume shows an expanded English Todo List with full counts and overflow, without persisting folding", async () => {
   const argv: string[] = [];
   let sessionRoot = "";
-  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
   original.setResponses([
     fauxAssistantMessage(
       [

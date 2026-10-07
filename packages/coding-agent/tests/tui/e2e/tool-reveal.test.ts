@@ -180,7 +180,7 @@ test("resumed call and result views paint their complete visible rows immediatel
     env: { LANG: "en_US.UTF-8" },
     prepare: async (root) => {
       await Bun.write(join(root, "code.txt"), oldText);
-      const model = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+      const model = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
       model.setResponses([
         fauxAssistantMessage(
           fauxToolCall("edit", { path: "code.txt", edits: [{ oldText, newText }] }),

@@ -13,7 +13,7 @@ const todos = [{ content: "Saved mixed task", status: "pending" }];
 async function saveMixedSession(root: string) {
   let childId = "";
   await Bun.write(join(root, "mixed.txt"), "read-one\nread-two\nread-three\nread-four\nread-five");
-  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
   original.setResponses([
     fauxAssistantMessage(
       [
@@ -291,7 +291,7 @@ test("a failed write result keeps earlier mixed facts and an honest unknown outc
     expect(await Bun.file(join(app.root, "effect.txt")).text()).toBe("side effect ran once");
     app.stdin.write("/exit\r");
     await app.exit;
-    const recovered = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+    const recovered = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
     recovered.setResponses([fauxAssistantMessage("recovered mixed conclusion")]);
     const saved = await createSession({
       cwd: app.root,

@@ -223,7 +223,7 @@ test("resumed card paths retain actions and report unavailable clipboard", async
     env: { LANG: "en_US.UTF-8" },
     async prepare(root) {
       await writeFile(join(root, path), "one\ntwo\nthree\nfour\nfive\n");
-      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
       faux.setResponses([
         fauxAssistantMessage(fauxToolCall("read", { path }), { stopReason: "toolUse" }),
         fauxAssistantMessage("stored conclusion"),

@@ -183,7 +183,7 @@ test("plan toggles locally, goal shows usage, rewind opens existing picker and c
       rows: 48,
       session: sessionOptions,
       prepare: async (root) => {
-        const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+        const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
         const seed = await createSession({
           cwd: root,
           homeDir: root,
@@ -250,7 +250,7 @@ test("busy commands reject, help stays local, skill invocation steers and exit a
           join(root, ".agents/skills/check/SKILL.md"),
           "---\nname: check\ndescription: check work\n---\nCheck the important edge case.",
         );
-        const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+        const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
         const seed = await createSession({
           cwd: root,
           homeDir: root,

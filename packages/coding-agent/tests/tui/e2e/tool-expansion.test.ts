@@ -144,7 +144,7 @@ test("expansion preserves an earlier reading position and bottom following", asy
 
 test("resumed thinking uses the same transcript expansion", async () => {
   const argv: string[] = [];
-  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
   original.setResponses([
     fauxAssistantMessage([
       { type: "thinking", thinking: "saved reasoning" },

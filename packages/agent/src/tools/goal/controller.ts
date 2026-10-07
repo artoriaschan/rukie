@@ -20,14 +20,15 @@ export function renderGoalRoundPrompt(goal: GoalView): string {
 
 /** Goal mutations serialize independently of event observers, which may call back into Session. */
 export function createGoalController(options: {
+  initialArmed?: boolean;
   getSnapshot(): unknown;
-  persist(value: GoalSnapshot | null): Promise<void>;
+  persist(value: GoalSnapshot | null, armed: boolean): Promise<void>;
   changed(value: GoalSnapshot | null): void | Promise<void>;
   assertAvailable(idle: boolean): void;
   warn(): void;
   schedule(): void;
 }) {
-  let armed = false;
+  let armed = options.initialArmed ?? false;
   let writes = Promise.resolve();
   const view = (): GoalView | undefined => {
     const value = options.getSnapshot();
@@ -56,7 +57,7 @@ export function createGoalController(options: {
     const previous = armed;
     armed = nextArmed;
     try {
-      await options.persist(snapshot);
+      await options.persist(snapshot, nextArmed);
     } catch (cause) {
       armed = previous;
       throw cause;
