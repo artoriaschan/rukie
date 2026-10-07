@@ -42,7 +42,7 @@ for (const columns of [40, 80]) {
       const title = terminal.terminal.buffer.active.getLine(0)!.getCell(6)!;
       expect(title.isBold()).toBeTruthy();
       expect(terminal.terminal.buffer.active.getLine(1)!.getCell(7)!.getFgColor()).toBe(
-        Number.parseInt(dark.text.slice(1), 16),
+        Number.parseInt(dark.accent.slice(1), 16),
       );
       expect(terminal.terminal.buffer.active.getLine(1)!.getCell(6)!.getFgColor()).toBe(
         Number.parseInt(dark.success.slice(1), 16),

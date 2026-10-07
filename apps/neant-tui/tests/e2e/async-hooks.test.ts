@@ -1,3 +1,4 @@
+import { startWithClock } from "../helpers/clock-app";
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { start } from "../helpers/app";
@@ -47,7 +48,7 @@ exit 2
 });
 
 test("a SessionStart asyncRewake before any submitted prompt is visible and cancellable", async () => {
-  const app = await start([], {
+  const app = await startWithClock([], {
     prepare: async (root) => {
       await Bun.write(
         join(root, "rewake.sh"),
@@ -87,7 +88,7 @@ exit 2
     expect(app.calls[1]!.signal!.aborted).toBe(false);
     app.calls[1]!.delta("manual reply");
     app.calls[1]!.finish();
-    await app.waitFor(() => !app.isWorking());
+    await app.waitFor(() => !app.isWorking() && app.allLines().join("\n").includes("manual reply"));
     expect(
       app
         .allLines()

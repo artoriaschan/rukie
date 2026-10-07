@@ -121,6 +121,12 @@ test("a tool animates its localized header then remains once in the scrollable b
       () =>
         app
           .allLines()
+          .map((line) =>
+            line
+              .padEnd(app.stdout.columns)
+              .slice(0, app.stdout.columns - 2)
+              .trimEnd(),
+          )
           .filter((line) => line === "  next reply" || line === `${assistant} next reply`)
           .length === 12 && !app.isWorking(),
     );
@@ -129,9 +135,9 @@ test("a tool animates its localized header then remains once in the scrollable b
     expect(app.allLines().filter((line) => line.startsWith("• 写入 "))).toHaveLength(1);
     expect(app.terminal.buffer.active.baseY).toBe(0);
     app.stdin.write("\x1b[5~");
-    await app.waitFor(() => app.screen().includes("❯ write a file"));
-    // The return button takes two rows from the transcript viewport while reading above the bottom.
-    app.stdin.write("\x1b[<65;5;2M");
+    await app.waitFor(() => app.screen().some((line) => line.includes("Neant")));
+    // Page down from the welcome header to the settled tool in the transcript.
+    app.stdin.write("\x1b[6~");
     await app.waitFor(() => app.screen().some((line) => line.startsWith("• 写入 ")));
     expect(app.screen().filter((line) => line.startsWith("• 写入 "))).toHaveLength(1);
   } finally {
@@ -206,9 +212,9 @@ test.each([
   ["zh", "MCP 服务器 broken 出错："],
   ["en", "MCP server broken:"],
 ] as const)(
-  "%s MCP failures appear once as a warning-colored one-line notice while system reminders stay hidden",
+  "%s MCP failures appear once as a quiet divider notice while system reminders stay hidden",
   async (locale, prefix) => {
-    const app = await start(["--trust-project-mcp", "hi"], {
+    const app = await startWithClock(["--trust-project-mcp", "hi"], {
       env: { LANG: locale },
       prepare: async (root) => {
         await Bun.write(join(root, ".mcp.json"), JSON.stringify({ mcpServers: { broken: {} } }));
@@ -220,21 +226,21 @@ test.each([
     });
     try {
       await app.waitFor(() => app.calls.length === 1);
-      await app.waitFor(() => app.screen().some((line) => line.startsWith(prefix)));
-      const row = app.screen().findIndex((line) => line.startsWith(prefix));
+      await app.waitFor(() => app.screen().some((line) => line.startsWith(`─ ${prefix}`)));
+      const row = app.screen().findIndex((line) => line.startsWith(`─ ${prefix}`));
       const cell = app.terminal.buffer.active
         .getLine(app.terminal.buffer.active.viewportY + row)!
         .getCell(0)!;
-      expect(cell.getFgColor()).toBe(0xd8b270);
+      expect(cell.getFgColor()).toBe(0x5e6673);
       expect(app.screen()[row]).toContain(
         locale === "zh" ? "MCP 配置无效：" : "Invalid MCP configuration:",
       );
-      expect(app.allLines().filter((line) => line.startsWith(prefix))).toHaveLength(1);
+      expect(app.allLines().filter((line) => line.startsWith(`─ ${prefix}`))).toHaveLength(1);
       expect(app.stderr()).toBe("");
       app.calls[0]!.delta("MCP checked");
       app.calls[0]!.finish();
       await app.waitFor(() => app.allLines().includes(`${assistant} MCP checked`));
-      expect(app.allLines().filter((line) => line.startsWith(prefix))).toHaveLength(1);
+      expect(app.allLines().filter((line) => line.startsWith(`─ ${prefix}`))).toHaveLength(1);
       expect(app.allLines().join("\n")).not.toContain("private-project-reminder");
       expect(app.allLines().join("\n")).not.toContain("private-custom-reminder");
       expect(app.allLines().join("\n")).not.toContain("system-reminder");
@@ -248,9 +254,9 @@ test.each([
   ["zh", "上下文已压缩"],
   ["en", "Context compacted"],
 ] as const)(
-  "%s compaction is a warning-colored one-line message notice without exposing the summary",
+  "%s compaction is a quiet divider message notice without exposing the summary",
   async (locale, prefix) => {
-    const app = await start(["read the file"], {
+    const app = await startWithClock(["read the file"], {
       env: { LANG: locale },
       prepare: async (root) => {
         await Bun.write(join(root, "large.txt"), "tool output\n".repeat(2500));
@@ -269,16 +275,16 @@ test.each([
       app.calls[1]!.delta("private-compaction-summary\nsecond summary line");
       app.calls[1]!.finish();
       await app.waitFor(() => app.calls.length === 3);
-      await app.waitFor(() => app.screen().some((line) => line.startsWith(prefix)));
+      await app.waitFor(() => app.screen().some((line) => line.startsWith(`─ ${prefix}`)));
       await app.waitFor(() => app.screen().some((line) => / · [\d.]+k→[\d.]+k/.test(line)));
       expect(app.screen().join("\n")).not.toMatch(/收拾一下上下文…|整理背包中…/);
-      const row = app.screen().findIndex((line) => line.startsWith(prefix));
+      const row = app.screen().findIndex((line) => line.startsWith(`─ ${prefix}`));
       expect(
         app.terminal.buffer.active
           .getLine(app.terminal.buffer.active.viewportY + row)!
           .getCell(0)!
           .getFgColor(),
-      ).toBe(0xd8b270);
+      ).toBe(0x5e6673);
       app.calls[2]!.delta("after compaction\n".repeat(10));
       app.calls[2]!.finish();
       await app.waitFor(
@@ -289,10 +295,10 @@ test.each([
               (line) => line === "  after compaction" || line === `${assistant} after compaction`,
             ).length === 10 && !app.isWorking(),
       );
-      expect(app.allLines().filter((line) => line.startsWith(prefix))).toHaveLength(1);
+      expect(app.allLines().filter((line) => line.startsWith(`─ ${prefix}`))).toHaveLength(1);
       expect(app.allLines().join("\n")).not.toContain("private-compaction-summary");
       expect(app.allLines().join("\n")).not.toContain("second summary line");
-      expect(app.allLines().join("\n")).toContain(" ⎿ tool output");
+      expect(app.allLines().join("\n")).toContain("   tool output");
     } finally {
       await app.cleanup();
     }

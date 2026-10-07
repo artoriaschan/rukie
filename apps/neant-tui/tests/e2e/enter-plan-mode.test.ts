@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { start } from "../helpers/app";
+import { startWithClock as start } from "../helpers/clock-app";
 
 test.each([
   ["ask", "询问"],
@@ -67,6 +67,7 @@ test.each([
       app.calls[3]!.delta("Completed the approved plan.");
       app.calls[3]!.finish();
       await app.waitFor(() => !app.isWorking());
+      await app.waitFor(() => app.screen().join("\n").includes("Completed the approved plan."));
       expect(app.screen().join("\n")).toContain("Completed the approved plan.");
       expect(app.screen().at(-2)).not.toContain("plan");
       expect(app.reviews).toHaveLength(0);

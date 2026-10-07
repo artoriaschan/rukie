@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, test, jest } from "bun:test";
 import { createRef, useState } from "react";
 import { Box, ScrollBox, Text, render, type ScrollHandle } from "../../src";
 import { createTerminal } from "../helpers/terminal";
@@ -184,3 +184,60 @@ test("folding away the visible source stays on its containing card", async () =>
     terminal.dispose();
   }
 });
+
+test.each([
+  { paddingY: 1, border: true, nested: false, height: 2 },
+  { paddingY: 0, border: true, nested: false, height: 4 },
+  { paddingY: 1, paddingBottom: 0, border: true, nested: false, height: 3 },
+  { paddingY: 0, border: false, nested: true, height: 6 },
+])(
+  "a shrunken ancestor clips the scroll viewport to its content area: %j",
+  async ({ paddingY, paddingBottom, border, nested, height }) => {
+    jest.useFakeTimers();
+    const terminal = createTerminal(30, 10, (ms) => jest.advanceTimersByTime(ms));
+    const scroll = createRef<ScrollHandle>();
+    const content = (
+      <ScrollBox height={13} ref={scroll} initialFollow={false}>
+        <Text>{Array.from({ length: 20 }, (_, i) => `body-${i}`).join("\n")}</Text>
+      </ScrollBox>
+    );
+    const app = render(
+      <Box height={10} flexDirection="column">
+        <Box
+          height={13}
+          flexShrink={1}
+          width={30}
+          paddingY={paddingY}
+          paddingBottom={paddingBottom}
+          borderStyle={border ? "single" : undefined}
+        >
+          {nested ? (
+            <Box height={13} width={30}>
+              {content}
+            </Box>
+          ) : (
+            content
+          )}
+        </Box>
+        <Text>{"footer-1\nfooter-2\nfooter-3\nfooter-4"}</Text>
+      </Box>,
+      { ...terminal, fullscreen: true },
+    );
+    try {
+      await terminal.flush();
+      expect(scroll.current!.getSnapshot().height).toBe(height);
+      expect(terminal.screen().slice(6)).toEqual(["footer-1", "footer-2", "footer-3", "footer-4"]);
+      if (border) expect(terminal.screen()[5]).toBe("└" + "─".repeat(28) + "┘");
+      scroll.current!.scrollToBottom();
+      await terminal.waitFor(() => terminal.screen().some((line) => line.includes("body-19")));
+      expect(scroll.current!.getSnapshot().top).toBe(20 - height);
+      expect(terminal.screen().slice(6)).toEqual(["footer-1", "footer-2", "footer-3", "footer-4"]);
+      if (border) expect(terminal.screen()[5]).toBe("└" + "─".repeat(28) + "┘");
+    } finally {
+      app.unmount();
+      await app.waitUntilExit();
+      terminal.dispose();
+      jest.useRealTimers();
+    }
+  },
+);

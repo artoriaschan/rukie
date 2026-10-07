@@ -1,13 +1,21 @@
+import { startWithClock } from "../../helpers/clock-app";
 import { withAuxiliaryRequests } from "../../helpers/auxiliary-model.ts";
-import { expect, test } from "bun:test";
+import { expect, jest, test } from "bun:test";
 import { join } from "node:path";
 import { start } from "../../helpers/app";
 import { createSession, type SessionOptions } from "@neant/agent";
 import { createFauxCore } from "@earendil-works/pi-ai";
 
 const screen = (app: Awaited<ReturnType<typeof start>>) => app.screen().join("\n");
-async function ready(options: Parameters<typeof start>[1] = {}, argv: string[] = []) {
-  const app = await start(argv, { env: { LANG: "en_US.UTF-8" }, ...options });
+async function ready(
+  options: Parameters<typeof start>[1] = {},
+  argv: string[] = [],
+  virtualTime = false,
+) {
+  const app = await (virtualTime ? startWithClock : start)(argv, {
+    env: { LANG: "en_US.UTF-8" },
+    ...options,
+  });
   await app.waitFor(() => app.screen().some((line) => line.startsWith("╭")));
   return app;
 }
@@ -187,6 +195,7 @@ test("plan toggles locally, goal shows usage, rewind opens existing picker and c
       },
     },
     argv,
+    true,
   );
   try {
     app.stdin.write("/plan\r");
@@ -200,7 +209,7 @@ test("plan toggles locally, goal shows usage, rewind opens existing picker and c
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.delta("retained answer");
     app.calls[0]!.finish();
-    await app.waitFor(() => !app.isWorking());
+    await app.waitFor(() => !app.isWorking() && screen(app).includes("retained answer"));
     app.stdin.write("/rewind\r");
     await app.waitFor(() => screen(app).includes("Pick a message to rewind to"));
     expect(screen(app)).toContain("retained question");
@@ -216,6 +225,7 @@ test("plan toggles locally, goal shows usage, rewind opens existing picker and c
     const replay = await start(["--resume", sessionOptions.resumeId!], {
       session: { cwd: app.root, homeDir: app.root },
       rows: 48,
+      advanceTimers: (ms) => jest.advanceTimersByTime(ms),
     });
     try {
       await replay.waitFor(() => screen(replay).includes("retained answer"));

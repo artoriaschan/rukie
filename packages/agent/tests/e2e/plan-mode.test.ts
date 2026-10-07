@@ -641,12 +641,14 @@ test("dispose keeps the Run store open until queued Plan Mode writes settle", as
   const writeStarted = Promise.withResolvers<void>();
   const releaseWrite = Promise.withResolvers<void>();
   let planCommits = 0;
+  let openedHandles = 0;
   /** Record the Plan Mode commits and store closes, and hold the first commit. */
   const store: SessionStore = {
     create: backing.create.bind(backing),
     list: backing.list.bind(backing),
     async open(metadata, context) {
       const stored = await backing.open(metadata, context);
+      const handle = ++openedHandles;
       return new Proxy(stored, {
         get(target, property) {
           if (property === "mutate")
@@ -686,7 +688,7 @@ test("dispose keeps the Run store open until queued Plan Mode writes settle", as
               }, ctx);
           if (property === "close")
             return async (ctx: Parameters<typeof stored.close>[0]) => {
-              order.push("store-closed");
+              order.push(`store-${handle}-closed`);
               await target.close(ctx);
             };
           const member: unknown = Reflect.get(target, property);
@@ -718,13 +720,15 @@ test("dispose keeps the Run store open until queued Plan Mode writes settle", as
   await writes;
   expect(await run).toBeInstanceOf(Error);
   await disposing;
-  // The second queued revision also commits to the open Run store, which closes last.
+  // The Run handle closes after both queued writes. A separate recovery handle
+  // reads the committed branch after the abort; it also closes exactly once.
   expect(order.slice(order.indexOf("plan-write-1"))).toEqual([
     "plan-write-1",
     "plan-write-1-committed",
     "plan-write-2",
     "plan-write-2-committed",
-    "store-closed",
+    "store-1-closed",
+    "store-2-closed",
   ]);
   expect(session.planMode).toBe(false);
   const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });

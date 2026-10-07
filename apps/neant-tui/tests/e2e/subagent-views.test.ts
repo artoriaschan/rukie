@@ -148,7 +148,9 @@ test("running output follows the tail and x interrupts only its child, returning
     await app.waitFor(() => screen().includes("─ Subagents "));
     app.stdin.write("\x1b");
     await app.waitFor(
-      () => !screen().includes("─ Subagents ") && screen().includes("parent line "),
+      () =>
+        !screen().includes("─ Subagents ") &&
+        JSON.stringify(app.screen().slice(0, 8)) === JSON.stringify(before),
     );
     expect(app.screen().slice(0, 8)).toEqual(before);
     parent.finish();

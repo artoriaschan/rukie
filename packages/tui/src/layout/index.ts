@@ -183,11 +183,17 @@ export function calculateTree(root: HostNode, columns: number, rows?: number): L
   root.yoga.setWidth(columns);
   root.yoga.setHeight(rows);
   root.yoga.calculateLayout(columns, rows, Direction.LTR);
-  function snapshot(node: HostNode, x = 0, y = 0): LayoutNode {
+  function snapshot(node: HostNode, x = 0, y = 0, bottom?: number): LayoutNode {
     x += Math.round(node.yoga.getComputedLeft());
     y += Math.round(node.yoga.getComputedTop());
     const width = Math.round(node.yoga.getComputedWidth());
-    const height = Math.round(node.yoga.getComputedHeight());
+    const measuredHeight = Math.round(node.yoga.getComputedHeight());
+    // A flex-shrunk row can retain its child's earlier cross-axis measurement.
+    // The scroll viewport belongs to the parent's allocated area, not that stale size.
+    const height =
+      node.type === "tui-scroll" && bottom !== undefined
+        ? Math.max(0, Math.min(measuredHeight, bottom - y))
+        : measuredHeight;
     let offset = 0;
     let children: LayoutNode[] = [];
     if (node.contentYoga && node.props.scroll) {
@@ -230,7 +236,20 @@ export function calculateTree(root: HostNode, columns: number, rows?: number): L
     } else if (node.type === "tui-box") {
       children = node.children
         .filter((child) => child.type !== "tui-static")
-        .map((child) => snapshot(child, x, y));
+        .map((child) =>
+          snapshot(
+            child,
+            x,
+            y,
+            Math.min(
+              bottom ?? Infinity,
+              y +
+                height -
+                (node.props.paddingBottom ?? node.props.paddingY ?? node.props.padding ?? 0) -
+                (node.props.borderStyle ? 1 : 0),
+            ),
+          ),
+        );
     }
     const text = node.type === "tui-text" ? measuredText(node, width) : undefined;
     if (text && node.props.input && node.props.maxLines !== undefined) {

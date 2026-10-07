@@ -151,7 +151,7 @@ test.each(["en", "zh"])(
   },
 );
 
-test("Enter while reading returns to bottom before a second Enter submits the draft", async () => {
+test("Enter while reading returns to bottom and submits the draft with the same key", async () => {
   const app = await startWithClock(["--yolo", "read"], { rows: 24, env: { LANG: "en" } });
   try {
     await app.waitFor(() => app.calls.length === 1);
@@ -162,10 +162,11 @@ test("Enter while reading returns to bottom before a second Enter submits the dr
     await app.waitFor(() => !app.screen().join("\n").includes("line-69"));
     app.stdin.write("\r");
     await app.waitFor(() => app.screen().join("\n").includes("line-69"));
-    expect(app.calls).toHaveLength(1);
-    expect(app.screen().join("\n")).toContain("❯ draft");
-    app.stdin.write("\r");
     await app.waitFor(() => app.calls.length === 2);
+    expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
+      role: "user",
+      content: [{ type: "text", text: "draft" }],
+    });
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
   } finally {
@@ -310,6 +311,30 @@ test("permission arrows and Enter retain ownership instead of entering message m
     await app.waitFor(() => !app.isWorking());
     expect(app.screen().join("\n")).toContain("+2 lines");
     expect(app.screen()).not.toContain("   five");
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("a slash menu while reading at 40×12 keeps its prompt and footer inside the terminal", async () => {
+  const app = await startWithClock(["inspect"], { columns: 40, rows: 12, env: { LANG: "en" } });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.delta(Array.from({ length: 40 }, (_, index) => `source-${index}`).join("\n"));
+    app.calls[0]!.finish();
+    await app.waitFor(
+      () => !app.isWorking() && app.screen().some((line) => line.includes("source-39")),
+    );
+    app.stdin.write("\x1b[5~");
+    await app.waitFor(() => app.screen().some((line) => line.includes("Back to bottom")));
+    app.stdin.write("/");
+    await app.waitFor(() => app.screen().some((line) => line.includes("Compact context")));
+    expect(app.screen().some((line) => line.includes("❯ /"))).toBe(true);
+    await app.waitFor(() => app.screen().at(-2)?.includes("Ask") === true);
+    expect(app.screen().at(-1)).toBe("");
+    expect(app.screen()).toHaveLength(12);
+    app.stdin.write("\x1b");
+    await app.waitFor(() => !app.screen().some((line) => line.includes("Compact context")));
   } finally {
     await app.cleanup();
   }
