@@ -3,6 +3,7 @@ import {
   createAssistantMessageEventStream,
   fauxAssistantMessage,
   fauxToolCall,
+  getCurrentTools,
 } from "@earendil-works/pi-ai";
 import { createSession, loadSettings, type SessionEvent } from "../../src/index.ts";
 import { join } from "node:path";
@@ -337,30 +338,41 @@ test("project titleModel overrides the user title model and routes an isolated r
 
 test("delegated and forked child sessions use the description without another title model request", async () => {
   const dirs = await tempDirs();
-  const response = () => fauxAssistantMessage("Finished");
-  const fake = fakeModel([
-    fauxAssistantMessage(
-      fauxToolCall("subagent", {
-        description:
-          "Inspect authentication, permission decisions, interrupted requests and restored conversation behavior",
-        prompt: "inspect",
-        run_in_background: false,
-      }),
-      { stopReason: "toolUse" },
-    ),
-    response,
-    response,
-    fauxAssistantMessage(
-      fauxToolCall("subagent_fork", {
-        description: "Check test coverage",
-        prompt: "tests",
-        run_in_background: false,
-      }),
-      { stopReason: "toolUse" },
-    ),
-    response,
-    response,
-  ]);
+  let delegated = false;
+  let forked = false;
+  const response: Parameters<typeof fakeModel>[0][number] = (context) => {
+    if (!getCurrentTools(context.messages).some((tool) => tool.name === "subagent"))
+      return fauxAssistantMessage("Finished");
+    const testsRequested = context.messages.some(
+      (message) =>
+        message.role === "user" && JSON.stringify(message.content).includes("Delegate tests"),
+    );
+    if (testsRequested && !forked) {
+      forked = true;
+      return fauxAssistantMessage(
+        fauxToolCall("subagent_fork", {
+          description: "Check test coverage",
+          prompt: "tests",
+          run_in_background: false,
+        }),
+        { stopReason: "toolUse" },
+      );
+    }
+    if (!delegated) {
+      delegated = true;
+      return fauxAssistantMessage(
+        fauxToolCall("subagent", {
+          description:
+            "Inspect authentication, permission decisions, interrupted requests and restored conversation behavior",
+          prompt: "inspect",
+          run_in_background: false,
+        }),
+        { stopReason: "toolUse" },
+      );
+    }
+    return fauxAssistantMessage("Finished");
+  };
+  const fake = fakeModel(Array.from({ length: 12 }, () => response));
   let titleCalls = 0;
   const session = await createSession({
     ...dirs,
@@ -376,9 +388,17 @@ test("delegated and forked child sessions use the description without another ti
     ),
   });
   try {
-    await session.run("Delegate inspection");
-    await session.run("Delegate tests");
+    const inspection = await session.run("Delegate inspection");
+    await session.waitForRequest(inspection.requestId);
+    const tests = await session.run("Delegate tests");
+    await session.waitForRequest(tests.requestId);
     expect(titleCalls).toBe(1);
+    for (const message of session.messages)
+      if (
+        message.role === "toolResult" &&
+        (message.toolName === "subagent" || message.toolName === "subagent_fork")
+      )
+        expect(message).toMatchObject({ isError: false });
     const children = session.toolState("subagents");
     if (!Array.isArray(children)) throw new Error("Expected child identities");
     const names: (string | undefined)[] = [];
