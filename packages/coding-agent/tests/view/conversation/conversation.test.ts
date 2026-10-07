@@ -14,6 +14,61 @@ import {
 } from "@rukie/agent";
 import { createConversation } from "../../../src/view/conversation/conversation";
 import { controlledModel } from "../../tui/helpers/model";
+import { fakeModel } from "../../tui/helpers/agent-fixtures";
+import { fauxAssistantMessage, fauxToolCall, getCurrentSystemMessage } from "@earendil-works/pi-ai";
+
+test("parent committed snapshots retain a completed child's observed transcript", async () => {
+  const root = await mkdtemp(join(tmpdir(), "rukie-child-view-"));
+  let delegated = false;
+  const fake = await fakeModel(
+    Array.from({ length: 16 }, () => (context) => {
+      const parent = getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
+        (tool) => tool.name === "subagent",
+      );
+      if (!parent) return fauxAssistantMessage("durable child closing output");
+      if (!delegated) {
+        delegated = true;
+        return fauxAssistantMessage(
+          fauxToolCall("subagent", {
+            description: "Retained history",
+            prompt: "record child evidence",
+          }),
+          { stopReason: "toolUse" },
+        );
+      }
+      return fauxAssistantMessage("parent observed child");
+    }),
+  );
+  const session = await createSession({ cwd: root, homeDir: root, ...fake });
+  const conversation = createConversation(session, "faux/faux-1", conversationFacts);
+  let childCommitted = false;
+  let laterParentSnapshots = 0;
+  const off = session.subscribe((event) => {
+    if (
+      event.type === "subagent_event" &&
+      event.event.type === "message_end" &&
+      event.event.messages.some((message) => message.role === "assistant")
+    )
+      childCommitted = true;
+    if (event.type === "snapshot" && childCommitted) laterParentSnapshots++;
+  });
+  try {
+    await session.run("delegate evidence");
+    const requestId = session.currentRequestId;
+    if (!requestId) throw new Error("Accepted request identity missing");
+    await session.waitForRequest(requestId);
+    expect(laterParentSnapshots).toBeGreaterThan(0);
+    const rows = Object.values(conversation.getSnapshot().subagents);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.runOutcome).toBe("completed");
+    expect(rows[0]!.output.map((block) => block.text)).toContain("durable child closing output");
+  } finally {
+    off();
+    await conversation.stop();
+    await session.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test("conversation retains the latest 500 observed TPS samples and wires an actual Session Run", async () => {
   const root = await mkdtemp(join(tmpdir(), "rukie-tps-"));

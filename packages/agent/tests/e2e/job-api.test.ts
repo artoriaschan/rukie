@@ -114,6 +114,7 @@ test.each([false, true])(
     session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
     const running = session.run("start");
     await responding.promise;
+    const initiatingRequestId = session.currentRequestId!;
     if (!active) await running;
     await waitUntil(() => Bun.file(join(dirs.cwd, "pid")).exists());
     const pid = Number(await Bun.file(join(dirs.cwd, "pid")).text());
@@ -135,6 +136,7 @@ test.each([false, true])(
       } else {
         release.resolve();
         await running;
+        await session.waitForRequest(initiatingRequestId);
       }
       expect(fake.contexts).toHaveLength(3);
       expect(JSON.stringify(session.messages).split(stopped)).toHaveLength(2);
@@ -143,6 +145,7 @@ test.each([false, true])(
     } finally {
       release.resolve();
       await running;
+      await session.waitForRequest(initiatingRequestId);
     }
   },
 );

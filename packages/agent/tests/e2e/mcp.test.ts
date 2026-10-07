@@ -1,3 +1,4 @@
+import { waitForFile } from "../helpers/wait-for-file.ts";
 import { afterEach, expect, test } from "bun:test";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -456,14 +457,6 @@ test.each(["error", "crash"])(
     await expectClosed();
   },
 );
-
-async function waitForFile(path: string) {
-  const deadline = Date.now() + 2000;
-  while (!(await Bun.file(path).exists())) {
-    if (Date.now() > deadline) throw new Error(`Timed out waiting for ${path}`);
-    await Bun.sleep(10);
-  }
-}
 
 test.each(["initialize", "model", "tool"])(
   "abort during %s closes all MCP processes after Session close",

@@ -291,11 +291,10 @@ test("SessionStart runs once during creation, matches startup/resume, and keeps 
       })
     ).stopReason,
   ).toBe("hook_blocked");
-  expect(events).toContainEqual(
+  expect(session.messages).toContainEqual(
     expect.objectContaining({
-      type: "hook_message",
-      event: "SessionStart",
-      message: "session notice",
+      role: "session-notice",
+      notice: { kind: "hook_message", message: "session notice" },
     }),
   );
   await session.run("accepted");
