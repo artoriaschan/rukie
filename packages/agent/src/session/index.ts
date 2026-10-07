@@ -15,6 +15,9 @@ import {
   type ToolRegistration,
   type EntryDraft,
   type Storage,
+  type EntryRecord,
+  type Cursor,
+  ROOT_CONVERSATION_ID,
 } from "@earendil-works/pi-durable";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import {
@@ -53,6 +56,7 @@ import { collectReminders, type ReminderSource, type SystemReminder } from "../r
 import { discoverSkills, skillInvocation, skillsReminder } from "../skills/index.ts";
 import {
   createMcpConnections,
+  createMcpManager,
   createMcpAuthState,
   type OnMcpAuth,
   type McpAuthOutcome,
@@ -294,6 +298,20 @@ const RequestDoc = defineDoc<{
   scope: "session",
   initial: () => ({ requests: {} }),
 });
+const HookStopsDoc = defineDoc<{ requests: Record<string, string> }>({
+  kind: "rukie.hook-stops",
+  version: 1,
+  scope: "session",
+  initial: () => ({ requests: {} }),
+});
+const PendingInputFactsDoc = defineDoc<{ inputs: Record<string, Record<string, JsonValue>> }>({
+  kind: "rukie.pending-input-facts",
+  version: 1,
+  scope: "conversation",
+  history: "latest",
+  fork: "initial",
+  initial: () => ({ inputs: {} }),
+});
 const reminderEntry = (reminder: SystemReminder): EntryDraft => ({
   kind: "rukie.reminder",
   data: { source: reminder.source, content: reminder.content, timestamp: reminder.timestamp },
@@ -410,13 +428,28 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     let thinkingTask: number | undefined;
     let modelFact = `${model.provider}/${model.id}`;
     const auxiliaryLifetime = new AbortController();
+    let notificationLifetime = new AbortController();
     let stopped = false;
+    let hookStopReason: string | undefined;
+    const toolDurations = new Map<string, number>();
+    let startupStopReason: string | undefined;
     let selectingModel = false;
     let foregroundAdmission = false;
     let goalRound = false;
     let wrapup: string | undefined;
     let permissionMode = options.permissionMode ?? settings.permissionMode ?? "ask";
     const sessionAllowRules = options.sessionAllowRules ?? [];
+    let permissionChecks = Promise.resolve();
+    const serializePermissionChecks =
+      (check: ReturnType<typeof createPermissionGate>["beforeTool"]): typeof check =>
+      (...args) => {
+        const checked = permissionChecks.then(() => check(...args));
+        permissionChecks = checked.then(
+          () => {},
+          () => {},
+        );
+        return checked;
+      };
     let observation: Awaited<ReturnType<typeof createConversationObservation>>;
     let storageFailure: unknown;
     const storageFault = Promise.withResolvers<never>();
@@ -525,12 +558,18 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     const assertAvailable = (idle = false) => {
       if (closed) throw new Error("Session is closed.");
       if (storageFailure !== undefined) throw storageFailure;
+      if (idle && mcpManager.busy)
+        throw createUserVisibleError("Session is managing MCP servers.", {
+          code: "session-mcp-busy",
+          params: {},
+        });
       if (idle && selectingModel) throw new Error("Session is switching models.");
       if (idle && (foregroundAdmission || observation?.running()))
         throw new Error("Session is busy; it must be idle.");
     };
     let asyncAdmissions = Promise.resolve();
     const hooks = createHooks({
+      callMcpTool: (...args) => mcp.callHookTool(...args),
       settings: settings.hooks,
       cwd,
       homeDir: options.homeDir,
@@ -549,6 +588,13 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           .then(async () => {
             if (closed) return;
             await applyHookResult(result, "hook-async");
+            for (const content of result.systemMessages)
+              await appendReminder({
+                role: "system-reminder",
+                source: "hook-async",
+                content,
+                timestamp: Date.now(),
+              });
             if (!reason) return;
             const requestId = `hook:${randomUUID()}`;
             const submitted = await conversation.submit(
@@ -587,6 +633,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       transcript_path: join(store.key(lease.id), "main.jsonl"),
       cwd,
       permission_mode: permissionMode,
+      model: `${model.provider}/${model.id}`,
       ...extra,
     });
     const appendReminder = async (reminder: SystemReminder, ctx: Context = context) => {
@@ -616,14 +663,19 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           { role: "system-reminder", source, content: text, timestamp: Date.now() },
           ctx,
         );
-      if (result.continue === false) stopped = true;
+      if (result.continue === false) {
+        stopped = true;
+        hookStopReason = result.stopReason ?? "Stopped by hook.";
+      }
     }
     const notifyInteraction: import("../interaction/index.ts").OnInteractionStart = async (
       notification,
-      signal,
+      _signal,
     ) => {
       const result = await hooks.run("Notification", hookInput({ ...notification }), {
-        signal,
+        // A completed tool invocation closes its native scope. Notification side
+        // effects belong to the Run/Session, so only explicit cancellation ends them.
+        signal: AbortSignal.any([auxiliaryLifetime.signal, notificationLifetime.signal]),
         matchQuery: notification.notification_type,
       });
       await applyHookResult(
@@ -631,6 +683,24 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         "hook:Notification",
       );
     };
+    const fullHistory = async (id = conversation.id) => {
+      const entries: EntryRecord[] = [];
+      let cursor: Cursor | undefined;
+      do {
+        const page = await lease.storage.scanEntries({ conversationId: id }, 256, cursor, context);
+        entries.push(...page.items);
+        cursor = page.next;
+      } while (cursor);
+      return entries.reverse();
+    };
+    const promptFacts = new Map<string, string>();
+    const rememberPrompts = (entries: readonly EntryRecord[]) => {
+      for (const entry of entries) {
+        const users = entry.model?.filter((message) => message.role === "user");
+        if (users?.length) promptFacts.set(String(entry.id), users.map(textOf).join(""));
+      }
+    };
+    rememberPrompts(await fullHistory());
     const checkpoints = createCheckpoints({
       homeDir: options.homeDir,
       sessionId: lease.id,
@@ -638,13 +708,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       persist: async (value) => {
         await state.set("checkpoint", value, context);
       },
-      getPrompt: (id) =>
-        observation
-          ?.view()
-          .entries.find((entry) => String(entry.id) === id)
-          ?.model?.filter((message) => message.role === "user")
-          .map(textOf)
-          .join(""),
+      getPrompt: (id) => promptFacts.get(id),
     });
     const tracking = createFileTracking(cwd, {
       initialState: state.get("file-tracking"),
@@ -711,22 +775,98 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       changed: (value, source) => custom({ type: "session_title_changed", title: value, source }),
       warning: warn,
     });
-    const mcp = createMcpConnections(createMcpAuthState());
-    let mcpLoaded = false;
+    const mcpAuthState = createMcpAuthState();
+    const mcp = createMcpConnections(mcpAuthState);
+    const mcpManager = createMcpManager({
+      createConnections: () => createMcpConnections(mcpAuthState),
+      connectOptions: () => ({
+        cwd,
+        homeDir: options.homeDir,
+        settings,
+        trustProjectMcp: options.trustProjectMcp,
+        interactive: !!options.onMcpAuth,
+        onMcpAuth: options.onMcpAuth,
+        onInteractionStart: notifyInteraction,
+        onWarning: warn,
+      }),
+      getRunning: () => !!observation?.running(),
+      getBusy: () => selectingModel || foregroundAdmission,
+      onChange: () => custom({ type: "mcp_servers_changed" }),
+    });
+    const jobHistory = await fullHistory(ROOT_CONVERSATION_ID);
+    const historicalCalls: string[] = [];
+    let lastKnownCall = -1;
+    let initialJobSequence = 0;
+    {
+      for (const entry of jobHistory)
+        for (const message of entry.model ?? []) {
+          if (message.role === "assistant")
+            for (const block of message.content)
+              if (block.type === "toolCall" && block.name === "bash")
+                historicalCalls.push(block.id);
+          if (message.role !== "toolResult" || message.toolName !== "bash") continue;
+          const details = message.details;
+          if (!details || typeof details !== "object" || Array.isArray(details)) continue;
+          const id = "jobId" in details ? details.jobId : undefined;
+          if (typeof id !== "string") continue;
+          const match = /^bash-(\d+)$/.exec(id);
+          if (!match) continue;
+          const sequence = Number(match[1]);
+          if (sequence >= initialJobSequence) {
+            initialJobSequence = sequence;
+            lastKnownCall = historicalCalls.indexOf(message.toolCallId);
+          }
+        }
+      // Calls after the latest receipt may have allocated a process ID before
+      // their receipt was lost. Retire those IDs rather than reuse uncertainty.
+      initialJobSequence += historicalCalls.length - lastKnownCall - 1;
+    }
+    const userStoppedJobs = new Set<string>();
+    let jobAdmissions = Promise.resolve();
     const jobs = createJobs({
+      initialSequence: initialJobSequence,
       onEvent: (event) => custom(event),
       onNotify: (job) => {
-        if (!closed)
-          void appendReminder({
-            role: "system-reminder",
-            source: `job:${job.id}`,
-            content: `Background job ${job.id} ${job.status}.`,
-            timestamp: Date.now(),
-          }).catch(warn);
+        if (closed) return;
+        jobAdmissions = jobAdmissions
+          .then(async () => {
+            const content = `background job ${job.id} (${job.kind}: ${job.label}) finished [status: ${job.status}, exit code: ${job.exitCode ?? "unknown"}]. Read its output with job_output.`;
+            const live = await harness.snapshot(LiveDoc, conversation.id, context);
+            if (live?.run) {
+              await conversation.commit(async (tx) => {
+                const entry = await tx.appendEntry(conversation.id, {
+                  kind: "rukie.job-notification",
+                  model: [
+                    {
+                      role: "user",
+                      content: [{ type: "text", text: content }],
+                      timestamp: Date.now(),
+                    },
+                  ],
+                });
+                await tx.appendEntry(conversation.id, {
+                  kind: "rukie.message-facts",
+                  data: { entryId: Number(entry.id), source: "job" },
+                });
+              }, context);
+            } else {
+              stopped = false;
+              const requestId = `job:${job.id}:${job.startedAt}`;
+              const submitted = await submit(content, [], "followUp", requestId);
+              void resultFor(requestId, submitted.id)
+                .then(async (result) => {
+                  custom({ type: "result", ...result });
+                  await session.waitForRequest(requestId);
+                })
+                .catch(warn);
+            }
+          })
+          .catch(warn);
       },
     });
     failedCleanup.push(async () => {
       await jobs.dispose(true);
+      await mcpManager.close();
       await mcp.close();
       hooks.dispose();
     });
@@ -788,8 +928,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
       onHookWarning: warn,
       isRunStopped: () => stopped,
-      stopRun: () => {
+      stopRun: (reason) => {
         stopped = true;
+        hookStopReason = reason ?? "Stopped by hook.";
       },
       isMcpAuthTool: (name) => mcp.authTools.has(name),
       preToolUse: async (call, signal) => {
@@ -1115,7 +1256,12 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                   api,
                   ctx,
                 );
-                return tool.execute(args, api, ctx);
+                const started = performance.now();
+                try {
+                  return await tool.execute(args, api, ctx);
+                } finally {
+                  toolDurations.set(api.callId, performance.now() - started);
+                }
               },
             }));
         };
@@ -1345,7 +1491,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         tools,
         hooks: [
           hook(ToolTask, {
-            beforeTool: gate.beforeTool,
+            beforeTool: serializePermissionChecks(gate.beforeTool),
             afterTool: async (call, result, api, ctx) => {
               const changed = await hooks.run(
                 result.isError ? "PostToolUseFailure" : "PostToolUse",
@@ -1354,6 +1500,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                   tool_input: call.arguments,
                   tool_response: result.content,
                   tool_use_id: call.id,
+                  duration_ms: toolDurations.get(call.id) ?? 0,
                 }),
                 { signal: ctx.abortSignal, matchQuery: call.name },
               );
@@ -1417,6 +1564,17 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               }
               for (const id of live?.run?.inputs ?? []) {
                 const record = await lease.storage.submission(id, ctx);
+                if (record?.entry)
+                  await conversation.commit(async (tx) => {
+                    const pending = await tx.doc(PendingInputFactsDoc, conversation.id);
+                    const facts = pending.inputs[String(id)];
+                    if (!facts) return;
+                    await tx.appendEntry(conversation.id, {
+                      kind: "rukie.message-facts",
+                      data: { ...facts, entryId: Number(record.entry) },
+                    });
+                    delete pending.inputs[String(id)];
+                  }, ctx);
                 if (
                   record?.requestId?.startsWith("human:") &&
                   record.status !== "queued" &&
@@ -1424,8 +1582,11 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                   !checkpoints
                     .list()
                     .some((checkpoint) => checkpoint.promptEntryId === String(record.entry))
-                )
+                ) {
+                  const persisted = await lease.storage.entry(record.entry, ctx);
+                  if (persisted) rememberPrompts([persisted.entry]);
                   await checkpoints.start(String(record.entry));
+                }
               }
               if (wrapup) {
                 const content = wrapup;
@@ -1491,6 +1652,28 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                     ) ?? [],
                 ),
               );
+              mcpManager.adopt(mcp.snapshot());
+              if (stopped && hookStopReason) {
+                const live = await harness.snapshot(LiveDoc, conversation.id, ctx);
+                const first = live?.run?.inputs[0];
+                const input =
+                  first === undefined ? undefined : await lease.storage.submission(first, ctx);
+                const reason = hookStopReason;
+                await conversation.commit(async (tx) => {
+                  const stopped = await tx.doc(HookStopsDoc);
+                  if (input?.requestId) stopped.requests[input.requestId] = reason;
+                  await tx.appendEntry(conversation.id, {
+                    kind: "rukie.notice",
+                    data: {
+                      role: "session-notice",
+                      notice: { kind: "hook_stopped", reason },
+                      timestamp: Date.now(),
+                    },
+                  });
+                }, ctx);
+                await conversation.abort(ctx);
+                return;
+              }
               const availableMcp = new Set(mcp.tools.map((tool) => tool.name));
               const publishedMcp = tools
                 .filter((tool) => tool.name.startsWith("mcp__"))
@@ -1511,6 +1694,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 }, ctx);
                 return undefined;
               }
+              if (subagents.list().some((child) => child.active)) return undefined;
               const continuation = async (content: string, source: string) => {
                 await conversation.commit(
                   (tx) =>
@@ -1531,9 +1715,13 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               const live = await harness.snapshot(LiveDoc, conversation.id, ctx);
               const runAnchor = Number(live?.run?.inputs[0]);
               const count = hookState?.taskId === runAnchor ? hookState.count : 0;
-              const result = await hooks.run("Stop", hookInput({ stop_hook_active: count > 0 }), {
-                signal: ctx.abortSignal,
-              });
+              const result = await hooks.run(
+                "Stop",
+                hookInput({ stop_hook_active: count > 0, last_assistant_message: textOf(_answer) }),
+                {
+                  signal: ctx.abortSignal,
+                },
+              );
               await applyHookResult(result, "hook:Stop", ctx);
               if (result.decision === "block" && result.reason) {
                 if (count >= 8) {
@@ -1824,6 +2012,17 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           .join("") ?? "";
       const request = await readRequest(requestId);
       await observation.flush();
+      const persistedStop = (await harness.snapshot(HookStopsDoc, context))?.requests[requestId];
+      if (persistedStop)
+        return {
+          requestId,
+          text,
+          success: true,
+          stopReason: "hook_stopped",
+          reason: persistedStop,
+          usage,
+          durationMs: Date.now() - (request?.startedAt ?? Date.now()),
+        };
       return {
         requestId,
         text,
@@ -1857,13 +2056,20 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         : { systemMessages: [], additionalContext: [] };
       signal?.throwIfAborted();
       await applyHookResult(hookResult, "hook:UserPromptSubmit");
-      if (hookResult.decision === "block") {
-        const reason = hookResult.reason ?? "Prompt blocked by hook.";
+      if (hookResult.decision === "block" || hookResult.continue === false || startupStopReason) {
+        const stopReason =
+          hookResult.continue === false || startupStopReason ? "hook_stopped" : "hook_blocked";
+        const reason =
+          startupStopReason ??
+          hookResult.stopReason ??
+          hookResult.reason ??
+          "Prompt blocked by hook.";
+        startupStopReason = undefined;
         const result: RequestResult = {
           requestId,
           text: "",
           success: true,
-          stopReason: "hook_blocked",
+          stopReason,
           reason,
           usage: zeroUsage(),
           durationMs: 0,
@@ -1880,7 +2086,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             kind: "rukie.notice",
             data: {
               role: "session-notice",
-              notice: { kind: "hook_blocked", reason },
+              notice: { kind: stopReason, reason },
               timestamp: Date.now(),
             },
           });
@@ -1912,22 +2118,30 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       currentRequestId = requestId;
       await registerSubmission(requestId, submitted.id);
       const record = await submitted.status(context);
-      if (record.entry && (images.length || invocation || !requestId.startsWith("human:")))
-        await conversation.commit(
-          (tx) =>
-            tx.appendEntry(conversation.id, {
+      if (images.length || invocation || !requestId.startsWith("human:")) {
+        const facts: Record<string, JsonValue> = {
+          ...(images.length ? { imageNames: images.map((image) => image.name ?? null) } : {}),
+          ...(invocation ? { skillInvocation: invocation } : {}),
+          ...(!requestId.startsWith("human:")
+            ? {
+                source: requestId.startsWith("goal:")
+                  ? "goal"
+                  : requestId.startsWith("job:")
+                    ? "job"
+                    : "hook",
+              }
+            : {}),
+        };
+        await conversation.commit(async (tx) => {
+          const pending = await tx.doc(PendingInputFactsDoc, conversation.id);
+          if (record.entry)
+            await tx.appendEntry(conversation.id, {
               kind: "rukie.message-facts",
-              data: {
-                entryId: Number(record.entry),
-                ...(images.length ? { imageNames: images.map((image) => image.name ?? null) } : {}),
-                ...(invocation ? { skillInvocation: invocation } : {}),
-                ...(!requestId.startsWith("human:")
-                  ? { source: requestId.startsWith("goal:") ? "goal" : "hook" }
-                  : {}),
-              },
-            }),
-          context,
-        );
+              data: { ...facts, entryId: Number(record.entry) },
+            });
+          else pending.inputs[String(submitted.id)] = facts;
+        }, context);
+      }
       return submitted;
     }
     async function startGoal() {
@@ -2136,69 +2350,40 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       async killJob(id) {
         const job = jobs.get(id);
         if (!job) throw new Error(`Unknown job: ${id}`);
+        if (userStoppedJobs.has(id)) return;
+        userStoppedJobs.add(id);
         job.kill("user");
         await job.completed;
+        const content = `User stopped background job ${id} (${job.view.label}).`;
+        if (observation.running()) {
+          const parent = currentRequestId;
+          const submitted = await submit(
+            content,
+            [],
+            "steer",
+            `job:stopped:${id}:${job.view.startedAt}`,
+          );
+          if (parent) await registerSubmission(parent, submitted.id);
+        } else
+          await appendReminder({
+            role: "system-reminder",
+            source: `job:stopped:${id}`,
+            content,
+            timestamp: Date.now(),
+          });
       },
       async mcpServers(input) {
-        assertAvailable(!!input?.refresh);
-        if (!mcpLoaded || input?.refresh) {
-          await mcp.connect({
-            cwd,
-            homeDir: options.homeDir,
-            settings,
-            trustProjectMcp: options.trustProjectMcp,
-            interactive: !!options.onMcpAuth,
-            onMcpAuth: options.onMcpAuth,
-            onInteractionStart: notifyInteraction,
-            signal: auxiliaryLifetime.signal,
-            onWarning: warn,
-            onEvent: (event) => custom(event),
-          });
-          mcpLoaded = true;
-          await rebuildTools();
-        }
-        return mcp.snapshot();
+        if (closed) throw new Error("Session has been closed.");
+        return mcpManager.snapshot(input);
       },
       async authenticateMcp(name) {
-        assertAvailable(true);
-        await mcp.connect({
-          cwd,
-          homeDir: options.homeDir,
-          settings,
-          trustProjectMcp: options.trustProjectMcp,
-          interactive: !!options.onMcpAuth,
-          onMcpAuth: options.onMcpAuth,
-          onInteractionStart: notifyInteraction,
-          onWarning: warn,
-          onEvent: (event) => custom(event),
-        });
-        mcpLoaded = true;
-        const result = await mcp.authenticate(name);
-        await rebuildTools();
-        return result;
+        return mcpManager.authenticate(name);
       },
       async clearMcpAuth(name) {
-        assertAvailable(true);
-        await mcp.clearAuth(name);
-        await rebuildTools();
+        await mcpManager.clearAuth(name);
       },
       async reconnectMcp(name) {
-        assertAvailable(true);
-        await mcp.connect({
-          cwd,
-          homeDir: options.homeDir,
-          settings,
-          onlyServer: name,
-          reconnect: true,
-          trustProjectMcp: options.trustProjectMcp,
-          interactive: !!options.onMcpAuth,
-          onMcpAuth: options.onMcpAuth,
-          onInteractionStart: notifyInteraction,
-          signal: auxiliaryLifetime.signal,
-          onWarning: warn,
-          onEvent: (event) => custom(event),
-        });
-        await rebuildTools();
+        await mcpManager.reconnect(name);
       },
       async compact(input) {
         assertAvailable(true);
@@ -2210,13 +2395,15 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       checkpoints: () => checkpoints.list(),
       async rewind(id, input) {
         assertAvailable(true);
+        if (!input.code && !input.conversation)
+          throw new Error("Choose code or conversation rewind.");
         const inspection = await harness.inspect(context);
         if (inspection.tasks.length)
           throw new Error("Rewind requires all related work to be settled.");
         const prompt = checkpoints.prompt(id);
         const code = input.code ? await checkpoints.restoreCode(id) : { restored: [], deleted: [] };
         if (input.conversation) {
-          const entries = observation.view().entries;
+          const entries = await fullHistory();
           const index = entries.findIndex((entry) => String(entry.id) === id);
           const previous = entries[index - 1];
           if (!previous) throw new Error("Checkpoint has no prior entry anchor.");
@@ -2233,6 +2420,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           tracking.restore(state.get("file-tracking"));
           goal.disarm();
           await rebuildTools();
+          const rewindEvents: SessionEvent[] = [];
+          let rewindInstalled = false;
           observation = await createConversationObservation({
             harness,
             conversation,
@@ -2344,6 +2533,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               })),
             }),
             publish: (events) => {
+              if (!rewindInstalled) {
+                rewindEvents.push(...events);
+                return;
+              }
               for (const event of events) {
                 emit(event);
                 if (
@@ -2359,6 +2552,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               }
             },
           });
+          rewindInstalled = true;
+          for (const event of rewindEvents) emit(event);
           contextMessages = (await conversation.context(context)).messages;
         }
         return { prompt, ...code };
@@ -2385,6 +2580,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
       async abort() {
         assertAvailable();
+        notificationLifetime.abort();
+        notificationLifetime = new AbortController();
         stopped = true;
         goal.disarm();
         await conversation.abort(context);
@@ -2397,11 +2594,24 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
       async run(prompt, input = {}) {
         input.signal?.throwIfAborted();
+        if (observation.running() && currentRequestId?.startsWith("hook:")) {
+          const cancelled = Promise.withResolvers<never>();
+          const cancelWaiting = () => cancelled.reject(input.signal?.reason);
+          input.signal?.addEventListener("abort", cancelWaiting, { once: true });
+          try {
+            await Promise.race([conversation.waitForIdle(context), cancelled.promise]);
+          } finally {
+            input.signal?.removeEventListener("abort", cancelWaiting);
+          }
+        }
         assertAvailable(true);
         foregroundAdmission = true;
         stopped = false;
+        hookStopReason = undefined;
         goalRound = false;
         const abort = () => {
+          notificationLifetime.abort();
+          notificationLifetime = new AbortController();
           stopped = true;
           goal.disarm();
           void conversation.abort(context).catch(warn);
@@ -2428,9 +2638,12 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               return row ? { agentId: row.id, description: row.description } : undefined;
             },
             onWarning: warn,
-            onEvent: (event) => custom(event),
+            onEvent: (event) => {
+              custom(event);
+              mcpManager.adopt(mcp.snapshot());
+            },
           });
-          mcpLoaded = true;
+          mcpManager.adopt(mcp.snapshot());
           await rebuildTools(true);
           input.signal?.throwIfAborted();
           const requestId = `human:${randomUUID()}`;
@@ -2555,6 +2768,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         return waiting;
       },
       async waitForIdle() {
+        await mcpManager.waitForIdle();
+        await jobAdmissions;
         await conversation.waitForIdle(context);
         await observation.flush();
       },
@@ -2571,6 +2786,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               failure ??= error;
             }
           };
+          await release(() => mcpManager.close());
           await release(() => title.dispose());
           await release(async () => {
             const result = await hooks.run("SessionEnd", hookInput({ reason }), {
@@ -2605,8 +2821,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     const startup = await hooks.run(
       "SessionStart",
       hookInput({ source: options.resumeId ? "resume" : "startup" }),
+      { matchQuery: options.resumeId ? "resume" : "startup" },
     );
     await applyHookResult(startup, "hook:SessionStart");
+    if (startup.continue === false) startupStopReason = startup.stopReason ?? "Stopped by hook.";
     await asyncAdmissions;
     await subagents.prepareChildren(context);
     const recovering = await harness.inspect(context);

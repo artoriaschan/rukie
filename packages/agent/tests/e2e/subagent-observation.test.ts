@@ -6,7 +6,7 @@ import {
   createAssistantMessageEventStream,
   getCurrentTools,
 } from "@earendil-works/pi-ai";
-import { createSession } from "../../src";
+import { createSession, type SessionEvent } from "../../src";
 import { fakeModel } from "../helpers/fake-model";
 import { tempDirs } from "../helpers/temp-dirs";
 
@@ -118,7 +118,9 @@ test.each([123456, 9_999_999_999_999])(
       return original(model, context, options);
     });
     const parent = await createSession({ ...dirs, ...fake });
+    const childEvents: SessionEvent[] = [];
     const off = parent.subscribe((event) => {
+      if (event.type === "subagent_event") childEvents.push(event.event);
       if (
         event.type === "subagent_event" &&
         JSON.stringify(event.event).includes("active current child marker")
@@ -140,6 +142,12 @@ test.each([123456, 9_999_999_999_999])(
       release.resolve();
       await parent.waitForRequest(parent.currentRequestId!);
       const committed = await parent.readSubagent(id);
+      const ended = childEvents
+        .filter((event) => event.type === "message_end")
+        .flatMap((event) => event.messages);
+      expect(JSON.stringify(ended)).toContain("active current child marker");
+      const final = childEvents.findLast((event) => event.type === "run_end");
+      expect(final).toBeDefined();
       expect(committed?.run?.outcome).toBe("completed");
       expect(JSON.stringify(committed?.messages)).toContain("active current child marker");
       expect(JSON.stringify(committed?.historyMessages)).toContain("saved prior marker");

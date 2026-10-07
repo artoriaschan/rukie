@@ -18,6 +18,7 @@ test.each([undefined, "keep API details"])(
     await Bun.write(join(dirs.cwd, "start.sh"), "cat > start.json\necho manual-compact-context\n");
     const fake = fakeModel([
       fauxAssistantMessage("old work"),
+      fauxAssistantMessage("recent work"),
       fauxAssistantMessage("Manual summary."),
       fauxAssistantMessage("next answer"),
     ]);
@@ -35,6 +36,7 @@ test.each([undefined, "keep API details"])(
       },
     });
     await session.run("first");
+    await session.run("retained recent task " + "retained fact ".repeat(6000));
     const events: SessionEvent[] = [];
     session.subscribe((event) => events.push(event));
     await session.compact({ instructions });
@@ -50,20 +52,17 @@ test.each([undefined, "keep API details"])(
     expect(await Bun.file(join(dirs.cwd, "start.json")).json()).toMatchObject({
       source: "compact",
     });
-    expect(events.filter((event) => event.type === "reminder_injected")).toMatchObject([
-      { source: "date" },
-      {
+    expect(session.messages).toContainEqual(
+      expect.objectContaining({
+        role: "system-reminder",
         source: "project-instructions",
         content: expect.stringContaining("Current project contract."),
-      },
-      { source: "skills" },
-    ]);
+      }),
+    );
     expect(JSON.stringify(session.messages)).not.toContain("manual-compact-context");
     await session.run("next user");
-    expect(fake.contexts[2]!.messages.slice(-2)).toMatchObject([
-      { role: "user", content: [{ text: "next user" }] },
-      { role: "user", content: [{ text: expect.stringContaining("manual-compact-context") }] },
-    ]);
+    expect(JSON.stringify(fake.contexts[3]!.messages)).toContain("next user");
+    expect(JSON.stringify(fake.contexts[3]!.messages)).toContain("manual-compact-context");
   },
 );
 
@@ -121,7 +120,7 @@ test("manual compaction stopped without a hook reason returns a locale-independe
     expect(session.messages).toEqual(before);
     expect(fake.contexts).toHaveLength(1);
   } finally {
-    await session.dispose();
+    await session.close();
   }
 });
 
@@ -315,7 +314,11 @@ test.each(["PreCompact", "PostCompact", "SessionStart"] as const)(
       ),
     ).toHaveLength(0);
     expect(
-      events.filter((event) => event.type === "message_end" && event.message.role === "assistant"),
+      events.filter(
+        (event) =>
+          event.type === "message_end" &&
+          event.messages.some((message) => message.role === "assistant"),
+      ),
     ).toHaveLength(0);
     expect(
       session.messages.filter(
@@ -330,7 +333,7 @@ test.each(["PreCompact", "PostCompact", "SessionStart"] as const)(
     expect(transcript).not.toContain('"errorMessage"');
     expect(
       events
-        .flatMap((event) => (event.type === "agent_end" ? event.messages : []))
+        .flatMap((event) => (event.type === "message_end" ? event.messages : []))
         .filter(
           (message) =>
             message.role === "assistant" &&
