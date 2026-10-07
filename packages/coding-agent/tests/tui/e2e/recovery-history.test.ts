@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { crashedSubagents } from "../../../../agent/tests/helpers/crashed-subagents";
+import { crashedSubagents } from "../helpers/agent-fixtures";
 import { getCurrentSystemMessage } from "@earendil-works/pi-ai";
 import { start } from "../helpers/app";
 

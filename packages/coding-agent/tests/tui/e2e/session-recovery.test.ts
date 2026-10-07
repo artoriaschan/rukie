@@ -1,5 +1,5 @@
-import { expect, test } from "bun:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { expect, test } from "bun:test";
 import { createJsonlStore, createSession } from "@rukie/agent";
 import { getCurrentSystemMessage } from "@earendil-works/pi-ai";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -7,8 +7,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { start } from "../helpers/app";
 import { crashUnsafeEffect } from "../helpers/native-recovery";
-import { crashedSubagents } from "../../../../agent/tests/helpers/crashed-subagents";
-import { fakeModel } from "../../../../agent/tests/helpers/fake-model";
+import { crashedSubagents } from "../helpers/agent-fixtures";
+import { fakeModel } from "../helpers/agent-fixtures";
 
 for (const [lang, notice, unknown, guide] of [
   ["zh_CN.UTF-8", "恢复提示：1 个子 Run 需核对", "Run 结束原因未知", "用现有输入决定如何继续。"],
@@ -114,13 +114,11 @@ test("SIGTERM lets the actual TUI process save an active child Run before report
     }
     expect(output).toContain("CLOSED\n");
     const store = createJsonlStore({ cwd: root, homeDir: root });
-    const parent = (await store.list({ cwd: root }, BACKGROUND_CONTEXT)).find(
-      (item) => !item.parentSessionId,
-    )!;
+    const parent = (await store.list(BACKGROUND_CONTEXT))[0]!;
     const restored = await createSession({
       cwd: root,
       homeDir: root,
-      ...fakeModel([]),
+      ...(await fakeModel([])),
       resumeId: parent.id,
     });
     expect(restored.toolState("subagents")).toMatchObject([

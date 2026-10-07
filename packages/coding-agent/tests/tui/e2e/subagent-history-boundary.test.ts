@@ -4,7 +4,7 @@ import { startWithClock } from "../helpers/clock-app";
 import { start } from "../helpers/app";
 import { controlledModel } from "../helpers/model";
 import { createSession } from "@rukie/agent";
-import { fakeModel } from "../../../../agent/tests/helpers/fake-model";
+import { fakeModel } from "../helpers/agent-fixtures";
 import { crashUnsafeEffect } from "../helpers/native-recovery";
 import {
   createAssistantMessageEventStream,
@@ -27,7 +27,7 @@ test.each(["future", "past"] as const)(
       env: { LANG: "en" },
       session: { model: fake.model, models },
       async prepare(root) {
-        const preparation = fakeModel(
+        const preparation = await fakeModel(
           Array.from({ length: 20 }, () => (context) => {
             const lastUser = context.messages.findLast((message) => message.role === "user");
             if (JSON.stringify(lastUser).includes("old child prompt"))
@@ -132,7 +132,7 @@ test.each(["future", "past"] as const)(
         cwd: app.root,
         homeDir: app.root,
         resumeId: argv[1],
-        ...fakeModel([]),
+        ...(await fakeModel([])),
       });
       try {
         const snapshot = await restored.readSubagent(childId);

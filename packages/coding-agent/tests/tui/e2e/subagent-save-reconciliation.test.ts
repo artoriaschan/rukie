@@ -1,11 +1,11 @@
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { testClock } from "../helpers/test-clock";
 import { test, expect } from "bun:test";
 import { createJsonlStore, createSession } from "@rukie/agent";
 import { start } from "../helpers/app";
 import { startWithClock } from "../helpers/clock-app";
 import { failingStorage } from "../../helpers/native-storage-failure";
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { fakeModel } from "../../../../agent/tests/helpers/fake-model";
+import { fakeModel } from "../helpers/agent-fixtures";
 
 test.each(["assistant", "toolResult"] as const)(
   "child rejected %s save reconciles open Agent View and Resume",
@@ -81,12 +81,12 @@ test.each(["assistant", "toolResult"] as const)(
       app.stdin.write("\x1b\x1b/exit\r");
       await app.exit;
       const store = createJsonlStore({ cwd: app.root, homeDir: app.root });
-      parentId = (await store.list({ cwd: app.root }, BACKGROUND_CONTEXT))[0]!.id;
+      parentId = (await store.list(BACKGROUND_CONTEXT))[0]!.id;
       const restored = await createSession({
         cwd: app.root,
         homeDir: app.root,
         resumeId: parentId,
-        ...fakeModel([]),
+        ...(await fakeModel([])),
       });
       try {
         const identities = restored.toolState("subagents");
