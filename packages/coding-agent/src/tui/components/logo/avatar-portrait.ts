@@ -1,18 +1,15 @@
 import { readFile } from "node:fs/promises";
 import { useEffect, useState } from "react";
 
-interface Portrait {
-  data: string;
-  sourceWidth: number;
-  sourceHeight: number;
-}
+import type { TerminalImageSource } from "../../../ink/index.ts";
+import { decodeTerminalImage } from "../image-source";
 
-let cached: Promise<Portrait | undefined> | undefined;
+let cached: Promise<TerminalImageSource | undefined> | undefined;
 
 /** Load the bundled PNG once, only after graphics support is confirmed. */
 function loadPortrait() {
   cached ??= readFile(new URL("../../../../../../brand/rukie-avatar.png", import.meta.url))
-    .then((bytes): Portrait | undefined => {
+    .then(async (bytes): Promise<TerminalImageSource | undefined> => {
       if (
         bytes.length < 24 ||
         bytes.length > 32 * 1024 * 1024 ||
@@ -24,7 +21,7 @@ function loadPortrait() {
       const sourceHeight = bytes.readUInt32BE(20);
       if (!sourceWidth || !sourceHeight || sourceWidth * sourceHeight > 64 * 1024 * 1024)
         return undefined;
-      return { data: bytes.toString("base64"), sourceWidth, sourceHeight };
+      return decodeTerminalImage(bytes, "transcript");
     })
     .catch(() => undefined);
   return cached;
@@ -32,12 +29,12 @@ function loadPortrait() {
 
 /** Missing assets retain character art; a late load cannot repaint an unmounted header. */
 export function useAvatarPortrait(enabled: boolean) {
-  const [portrait, setPortrait] = useState<Portrait>();
+  const [portrait, setTerminalImageSource] = useState<TerminalImageSource>();
   useEffect(() => {
     if (!enabled) return;
     let live = true;
     void loadPortrait().then((next) => {
-      if (live && next) setPortrait(next);
+      if (live && next) setTerminalImageSource(next);
     });
     return () => {
       live = false;

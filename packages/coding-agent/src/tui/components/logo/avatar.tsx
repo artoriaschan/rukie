@@ -91,7 +91,7 @@ export function AvatarArt({ pose }: { pose: AvatarPose }) {
   return (
     <Box width={AVATAR_WIDTH} height={AVATAR_HEIGHT} flexDirection="column" flexShrink={0}>
       {rendered[pose].map((segments, row) => (
-        <Text key={row} wrap="truncate" preserveWhitespace>
+        <Text key={row} wrap="truncate">
           {segments.map((segment, x) => (
             <Text key={x} color={segment.color} backgroundColor={segment.backgroundColor}>
               {segment.text}

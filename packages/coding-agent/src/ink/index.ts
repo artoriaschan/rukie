@@ -22,3 +22,5 @@ export type { ClickEvent } from "./events/click-event.js";
 export type { PointerEvent } from "./events/pointer-event.js";
 
 export * from "./design-system/index";
+
+export type { TerminalImageSource } from "./terminal-image.js";

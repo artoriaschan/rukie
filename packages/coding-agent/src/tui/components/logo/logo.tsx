@@ -4,7 +4,7 @@ import {
   Box,
   Image,
   ThemedText,
-  useTerminalGraphics,
+  useTerminalImages,
   useTerminalSize,
   useTheme,
 } from "../../../ink/index.ts";
@@ -34,10 +34,10 @@ export function Logo({
   const t = createTuiI18n(locale);
   const theme = useTheme();
   const { columns, rows: terminalRows } = useTerminalSize();
-  const graphics = useTerminalGraphics();
   const showArt = columns >= 76 && terminalRows >= 20;
   const showBigTitle = columns >= 34 && terminalRows >= 18;
-  const portrait = useAvatarPortrait(showArt && graphics.supported);
+  const graphics = useTerminalImages(showArt && !suspended);
+  const portrait = useAvatarPortrait(showArt && graphics);
   const pose = useAvatarPose(showArt && !portrait && !suspended, working);
   const rows = renderBigText("RUKIE", theme.logoFrom, theme.logoTo);
   return (
@@ -47,11 +47,11 @@ export function Logo({
           <Box width={AVATAR_WIDTH} height={AVATAR_HEIGHT} flexShrink={0} />
         ) : portrait ? (
           <Image
-            {...portrait}
-            mimeType="image/png"
+            source={portrait}
+            presentation="transcript"
+            alt=""
             width={AVATAR_WIDTH}
             height={AVATAR_HEIGHT}
-            flexShrink={0}
           />
         ) : (
           <AvatarArt pose={pose} />
@@ -63,7 +63,7 @@ export function Logo({
         {showBigTitle && (
           <>
             {rows.map((row, y) => (
-              <ThemedText key={y} wrap="truncate" preserveWhitespace>
+              <ThemedText key={y} wrap="truncate">
                 {mergeColoredCells(row).map((segment, x) => (
                   <ThemedText key={x} color={segment.color}>
                     {segment.text}

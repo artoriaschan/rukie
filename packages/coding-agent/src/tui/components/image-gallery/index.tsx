@@ -1,13 +1,8 @@
 import type { PromptImage } from "@rukie/agent";
 import type { PresentedImage } from "../../../view/transcript/images";
 import type { Locale } from "@rukie/i18n";
-import {
-  Box,
-  Image,
-  ThemedText,
-  useTerminalGraphics,
-  useTerminalSize,
-} from "../../../ink/index.ts";
+import { Box, Image, ThemedText, useTerminalImages, useTerminalSize } from "../../../ink/index.ts";
+import { useImageSource } from "../image-source";
 import { createTuiI18n } from "../../../view/i18n";
 
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
@@ -36,7 +31,9 @@ export function ImageGallery({
   locale?: Locale;
 }) {
   const { columns, rows } = useTerminalSize();
-  const graphics = useTerminalGraphics();
+  const graphics = useTerminalImages(
+    images.length > 0 && columns >= 40 && rows >= 12 && !suspended,
+  );
   const t = createTuiI18n(locale);
   const available = Math.max(1, columns - 5);
   const perRow = Math.max(1, Math.floor((available + 1) / 11));
@@ -56,7 +53,7 @@ export function ImageGallery({
               image={image}
               multiple={images.length > 1}
               available={available}
-              graphics={graphics.supported && columns >= 40 && rows >= 12 && !suspended}
+              graphics={graphics && columns >= 40 && rows >= 12 && !suspended}
               onOpen={onOpen ? () => onOpen(row * perRow + column) : undefined}
               fallback={t("image.label")}
             />
@@ -83,6 +80,7 @@ function Thumbnail({
   fallback: string;
 }) {
   const metadata = image.metadata;
+  const source = useImageSource(image.data, graphics, "transcript");
   const ratio = Math.max(0.25, Math.min(4, (metadata.width ?? 1) / (metadata.height ?? 1)));
   const width = Math.min(multiple ? 10 : 24, available);
   const height = multiple
@@ -95,25 +93,22 @@ function Thumbnail({
   return (
     <Box flexDirection="column" width={fitWidth} height={height + 1} onClick={onOpen}>
       <Box width={fitWidth} height={height}>
-        <ThemedText
-          dimColor
-          wrap="truncate"
-        >{`[Image · ${imageName(image, fallback)}]`}</ThemedText>
-        {graphics && image.mimeType === "image/png" && metadata.width && metadata.height ? (
+        <ThemedText dim wrap="truncate">{`[Image · ${imageName(image, fallback)}]`}</ThemedText>
+        <Box
+          position="absolute"
+          top={Math.floor((height - drawHeight) / 2)}
+          left={Math.floor((fitWidth - drawWidth) / 2)}
+        >
           <Image
-            position="absolute"
-            top={Math.floor((height - drawHeight) / 2)}
-            left={Math.floor((fitWidth - drawWidth) / 2)}
-            data={image.data}
-            mimeType={image.mimeType}
-            sourceWidth={metadata.width}
-            sourceHeight={metadata.height}
+            source={source}
+            presentation="transcript"
+            alt={`[Image · ${imageName(image, fallback)}]`}
             width={drawWidth}
             height={drawHeight}
           />
-        ) : null}
+        </Box>
       </Box>
-      <ThemedText dimColor wrap="truncate">
+      <ThemedText dim wrap="truncate">
         {imageName(image, fallback)}
       </ThemedText>
     </Box>

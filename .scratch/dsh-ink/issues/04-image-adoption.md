@@ -1,6 +1,6 @@
 # 04: 迁移图片为 bounded RGBA 与 Kitty/sixel
 
-Status: ready-for-agent
+Status: claimed
 Blocked by: 03
 Type: task
 

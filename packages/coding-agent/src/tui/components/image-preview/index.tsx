@@ -6,11 +6,12 @@ import {
   Box,
   Image,
   ThemedText,
-  useInput,
-  useTerminalGraphics,
+  useTerminalImages,
+  useTerminalImageCellSize,
   useTheme,
 } from "../../../ink/index.ts";
 import { createTuiI18n, formatError } from "../../../view/i18n";
+import { useImageSource } from "../image-source";
 import { imageName } from "../image-gallery";
 
 /** Card lives only in the message viewport; controls never execute Session actions. */
@@ -39,7 +40,8 @@ export function ImagePreview({
 }) {
   const t = createTuiI18n(locale);
   const theme = useTheme();
-  const graphics = useTerminalGraphics();
+  const supported = useTerminalImages(width >= 40 && height >= 12);
+  const cellSize = useTerminalImageCellSize();
   const metadata = image.metadata;
   const [zoom, setZoom] = useState(0);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -54,14 +56,10 @@ export function ImagePreview({
   );
   const drawable = width >= 40 && height >= 12;
   const drawableImage =
-    drawable &&
-    graphics.supported &&
-    image.mimeType === "image/png" &&
-    metadata.width &&
-    metadata.height
+    drawable && supported && image.mimeType === "image/png" && metadata.width && metadata.height
       ? { width: metadata.width, height: metadata.height }
       : undefined;
-  const inspect = !passive && !!drawableImage && !!graphics.cellWidth && !!graphics.cellHeight;
+  const inspect = !passive && !!drawableImage && !!cellSize?.width && !!cellSize?.height;
   const activeZoom = inspect ? zoom : 0;
   const maxWidth = Math.max(1, Math.min(width - 8, Math.floor(width * 0.95) - 6));
   const maxHeight = Math.max(
@@ -70,8 +68,8 @@ export function ImagePreview({
   );
   const sourceWidth = metadata.width ?? 1;
   const sourceHeight = metadata.height ?? 1;
-  const cellWidth = graphics.cellWidth ?? 10;
-  const cellHeight = graphics.cellHeight ?? 20;
+  const cellWidth = cellSize?.width ?? 10;
+  const cellHeight = cellSize?.height ?? 20;
   // One calculation keeps rendered crop geometry and zoom-center preservation aligned.
   const geometry = (value: number) => {
     if (value === 0) {
@@ -108,6 +106,12 @@ export function ImagePreview({
   const { cropWidth, cropHeight } = currentGeometry;
   const x = Math.max(0, Math.min(sourceWidth - cropWidth, Math.round(pan.x)));
   const y = Math.max(0, Math.min(sourceHeight - cropHeight, Math.round(pan.y)));
+  const source = useImageSource(
+    image.data,
+    !!drawableImage,
+    "preview",
+    activeZoom ? { x, y, width: cropWidth, height: cropHeight } : undefined,
+  );
   const title = `${t("image.preview-title", { index: index + 1 })} · ${image.mimeType.replace("image/", "").toUpperCase()} · ${metadata.width ?? "?"}×${metadata.height ?? "?"} · ${metadata.bytes < 1024 ? `${metadata.bytes} B` : `${(metadata.bytes / 1024).toFixed(1)} KB`}${activeZoom ? ` · ${activeZoom * 100}%` : ""} · ${imageName(image, t("image.label"))}`;
   const cardWidth = Math.min(
     width,
@@ -129,31 +133,6 @@ export function ImagePreview({
       y: Math.max(0, Math.min(sourceHeight - cropHeight, y + dy)),
     });
   };
-  useInput(
-    (event) => {
-      const overImage =
-        "x" in event &&
-        event.x >= left + 3 &&
-        event.x < left + 3 + imageWidth &&
-        event.y >= top + 2 &&
-        event.y < top + 2 + imageHeight;
-      if (event.type === "wheel" && overImage)
-        panBy(0, (event.delta * cellHeight * 3) / Math.max(1, activeZoom));
-      if (event.type === "mouse" && event.button === 0) {
-        if (event.action === "press" && overImage && activeZoom)
-          drag.current = { x: event.x, y: event.y };
-        else if (event.action === "release") drag.current = undefined;
-      }
-      if (event.type === "move" && drag.current && "button" in event && event.button === 0) {
-        panBy(
-          ((drag.current.x - event.x) * cellWidth) / Math.max(1, activeZoom),
-          ((drag.current.y - event.y) * cellHeight) / Math.max(1, activeZoom),
-        );
-        drag.current = { x: event.x, y: event.y };
-      }
-    },
-    { isActive: !passive },
-  );
   const changeZoom = (value: number) => {
     setZoom(value);
     if (value === 0) {
@@ -175,7 +154,7 @@ export function ImagePreview({
 
   const button = (label: string, action: () => void, disabled = false) => (
     <Box onClick={disabled ? () => {} : action}>
-      <ThemedText dimColor={disabled} underline={!disabled}>
+      <ThemedText dim={disabled} underline={!disabled}>
         {label}
       </ThemedText>
     </Box>
@@ -212,27 +191,72 @@ export function ImagePreview({
         borderStyle="round"
         paddingX={2}
         flexDirection="column"
-        onClick={() => {}}
+        onClick={(event) => event.stopImmediatePropagation()}
+        opaque
+        noSelect
       >
         <ThemedText bold wrap="truncate">
           {title}
         </ThemedText>
-        <Box width={drawable ? imageWidth : cardWidth - 6} height={drawable ? imageHeight : 1}>
+        <Box
+          width={drawable ? imageWidth : cardWidth - 6}
+          height={drawable ? imageHeight : 1}
+          onWheel={
+            passive
+              ? undefined
+              : (event) => {
+                  event.stopImmediatePropagation();
+                  panBy(
+                    (event.deltaX * cellWidth) / Math.max(1, activeZoom),
+                    (event.deltaY * cellHeight) / Math.max(1, activeZoom),
+                  );
+                }
+          }
+          onDragStart={
+            passive
+              ? undefined
+              : (event) => {
+                  event.stopImmediatePropagation();
+                  drag.current = { x: event.startCol, y: event.startRow };
+                  panBy(
+                    ((event.startCol - event.col) * cellWidth) / Math.max(1, activeZoom),
+                    ((event.startRow - event.row) * cellHeight) / Math.max(1, activeZoom),
+                  );
+                  drag.current = { x: event.col, y: event.row };
+                }
+          }
+          onDragMove={
+            passive
+              ? undefined
+              : (event) => {
+                  event.stopImmediatePropagation();
+                  if (drag.current)
+                    panBy(
+                      ((drag.current.x - event.col) * cellWidth) / Math.max(1, activeZoom),
+                      ((drag.current.y - event.row) * cellHeight) / Math.max(1, activeZoom),
+                    );
+                  drag.current = { x: event.col, y: event.row };
+                }
+          }
+          onDragEnd={
+            passive
+              ? undefined
+              : (event) => {
+                  event.stopImmediatePropagation();
+                  drag.current = undefined;
+                }
+          }
+        >
           {drawableImage ? (
             <Image
-              position="absolute"
-              top={0}
-              left={0}
-              data={image.data}
-              mimeType={image.mimeType}
-              sourceWidth={drawableImage.width}
-              sourceHeight={drawableImage.height}
+              source={source}
+              presentation="preview"
+              alt={t("image.preview-fallback")}
               width={imageWidth}
               height={imageHeight}
-              crop={activeZoom ? { x, y, width: cropWidth, height: cropHeight } : undefined}
             />
           ) : (
-            <ThemedText dimColor wrap="truncate">
+            <ThemedText dim wrap="truncate">
               {t("image.preview-fallback")}
             </ThemedText>
           )}
@@ -268,7 +292,7 @@ export function ImagePreview({
           </Box>
         )}
         {!passive && height >= 6 && (
-          <ThemedText dimColor wrap="truncate">
+          <ThemedText dim wrap="truncate">
             {t("image.preview-close")}
           </ThemedText>
         )}
