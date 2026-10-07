@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { start } from "../helpers/app";
-import { createFauxCore, fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { fauxProvider, fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
 import { createJsonlStore, createSession } from "@rukie/agent";
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model";
+import { auxiliaryModels } from "../helpers/auxiliary-model";
 
 // Agent Core owns the real HTTP/OAuth fixture; tests drive only its external boundary.
 const {
@@ -379,7 +379,7 @@ test("exiting an open tool reader restores the terminal and Resume keeps the Tra
         join(root, ".rukie/mcp.json"),
         JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
       );
-      const fake = createFauxCore({ api: "faux", provider: "faux" });
+      const fake = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
       fake.setResponses([fauxAssistantMessage("stored answer sentinel")]);
       store = createJsonlStore({ cwd: root, homeDir: root });
       const session = await createSession({
@@ -387,14 +387,14 @@ test("exiting an open tool reader restores the terminal and Resume keeps the Tra
         homeDir: root,
         store,
         model: fake.getModel(),
-        streamFn: withAuxiliaryRequests(fake.streamSimple),
+        models: auxiliaryModels(fake.provider.streamSimple),
       });
       try {
         await session.run("stored prompt sentinel");
         id = session.id;
         argv.push("--resume", id);
       } finally {
-        await session.dispose();
+        await session.close();
       }
     },
   });
@@ -426,7 +426,7 @@ test("exiting an open tool reader restores the terminal and Resume keeps the Tra
       cwd: app.root,
       homeDir: app.root,
       model: app.model,
-      streamFn: app.streamFn,
+      models: app.models,
       resumeId: id,
     });
     try {
@@ -434,7 +434,7 @@ test("exiting an open tool reader restores the terminal and Resume keeps the Tra
         content: [{ type: "text", text: "stored prompt sentinel" }],
       });
     } finally {
-      await resumed.dispose();
+      await resumed.close();
     }
     const replay = await start(["--resume", id], {
       session: { cwd: app.root, homeDir: app.root },

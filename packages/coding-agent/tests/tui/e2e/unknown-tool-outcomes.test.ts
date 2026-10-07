@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
 import { createJsonlStore, createSession } from "@rukie/agent";
-import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { fauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { start } from "../helpers/app";
 
 test.each([
@@ -45,7 +45,7 @@ test.each([
           BACKGROUND_CONTEXT,
         );
         await stored.close(BACKGROUND_CONTEXT);
-        await original.dispose();
+        await original.close();
         argv.push("--resume", original.id);
       },
     });
@@ -85,7 +85,7 @@ test.each([
 );
 
 function storeModel() {
-  const faux = createFauxCore({ api: "faux", provider: "faux" });
+  const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
   return {
     model: faux.getModel(),
     streamFn: () => {

@@ -184,7 +184,7 @@ test.each(["future", "past"] as const)(
           "current committed child thinking",
         );
       } finally {
-        await restored.dispose();
+        await restored.close();
       }
       if (mode === "future") {
         const replay = await start(argv, {

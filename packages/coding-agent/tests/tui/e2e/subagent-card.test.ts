@@ -1,5 +1,5 @@
 import { testClock } from "../helpers/test-clock";
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
+import { auxiliaryModels } from "../helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
 import { startWithClock as start } from "../helpers/clock-app";
 
@@ -319,10 +319,10 @@ test("an idle child's continuation retains exactly one dedicated row", async () 
 test("parent resume initializes its persisted child card as idle before cold continuation", async () => {
   const argv: string[] = [];
   let id = "";
-  const { createFauxCore, fauxAssistantMessage, fauxToolCall } =
+  const { fauxProvider, fauxAssistantMessage, fauxToolCall } =
     await import("@earendil-works/pi-ai");
   const { createSession } = await import("@rukie/agent");
-  const original = createFauxCore({ api: "faux", provider: "faux" });
+  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
   original.setResponses([
     fauxAssistantMessage(
       fauxToolCall("subagent", {
@@ -351,7 +351,7 @@ test("parent resume initializes its persisted child card as idle before cold con
         cwd: root,
         homeDir: root,
         model: original.getModel(),
-        streamFn: withAuxiliaryRequests(original.streamSimple),
+        models: auxiliaryModels(original.provider.streamSimple),
       });
       await session.run("delegate", {
         onEvent(event) {
@@ -359,7 +359,7 @@ test("parent resume initializes its persisted child card as idle before cold con
         },
       });
       argv.push("--resume", session.id);
-      await session.dispose();
+      await session.close();
     },
   });
   try {
@@ -406,7 +406,7 @@ test("parent resume initializes its persisted child card as idle before cold con
 });
 
 test("fork, agent listing and failed messaging use dedicated rows live and after resume", async () => {
-  const { createFauxCore, fauxAssistantMessage } = await import("@earendil-works/pi-ai");
+  const { fauxProvider, fauxAssistantMessage } = await import("@earendil-works/pi-ai");
   const { createSession } = await import("@rukie/agent");
   const argv: string[] = ["--permission-mode", "full-access"];
   let root = "";
@@ -416,17 +416,17 @@ test("fork, agent listing and failed messaging use dedicated rows live and after
     env: { LANG: "en_US.UTF-8" },
     async prepare(directory) {
       root = directory;
-      const faux = createFauxCore({ api: "faux", provider: "faux" });
+      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
       faux.setResponses([fauxAssistantMessage("seed reply")]);
       const session = await createSession({
         cwd: root,
         homeDir: root,
         model: faux.getModel(),
-        streamFn: withAuxiliaryRequests(faux.streamSimple),
+        models: auxiliaryModels(faux.provider.streamSimple),
       });
       await session.run("seed prompt");
       argv.push("--resume", session.id);
-      await session.dispose();
+      await session.close();
     },
   });
   const assertRows = (view: typeof app) => {

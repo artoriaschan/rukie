@@ -101,6 +101,38 @@ export function reduce(
       phaseStartedAt: now,
       gitBranch: state.gitBranch,
     };
+  if (event.type === "snapshot") {
+    if (!event.run)
+      return { ...state, phase: state.phase === "done" ? "done" : "idle", tools: [], reviews: [] };
+    let next =
+      state.phase === "idle" || state.phase === "done"
+        ? reduce(state, { type: "submit" }, now, random)
+        : state;
+    if (event.generation?.message) next = transition(next, "thinking", now);
+    const active = new Set(
+      event.tools.filter((tool) => tool.status === "running").map((tool) => tool.callId),
+    );
+    next = { ...next, tools: next.tools.filter((tool) => active.has(tool.id)) };
+    for (const slot of event.tools) {
+      if (slot.status !== "running" || next.tools.some((tool) => tool.id === slot.callId)) continue;
+      const call = event.messages
+        .flatMap((message) => (message.role === "assistant" ? message.content : []))
+        .find((block) => block.type === "toolCall" && block.id === slot.callId);
+      next = reduce(
+        next,
+        {
+          type: "tool_execution_start",
+          sessionId: event.sessionId,
+          toolCallId: slot.callId,
+          toolName: slot.name,
+          args: call?.type === "toolCall" ? call.arguments : {},
+        },
+        now,
+        random,
+      );
+    }
+    return next;
+  }
   // Events arriving after a result cannot revive or change a completed Run.
   if (state.phase === "idle" || state.phase === "done") return state;
   switch (event.type) {
@@ -109,17 +141,19 @@ export function reduce(
     case "turn_start":
       return { ...state, streamLine: "", narration: undefined, lastChunkAt: undefined };
     case "message_update": {
-      const update = event.assistantMessageEvent;
-      if (update.type !== "text_delta" && update.type !== "thinking_delta") return state;
+      const changes = event.changes.filter(
+        (change) => change.type === "text_delta" || change.type === "thinking_delta",
+      );
+      if (!changes.length) return state;
       let next = state.phase === "waiting" ? transition(state, "thinking", now) : state;
       next = { ...next, lastChunkAt: now };
-      if (update.type === "text_delta") {
+      for (const update of changes) {
+        if (update.type !== "text_delta") continue;
         let line = next.streamLine;
         let narration = next.narration;
         const chunks = update.delta.split("\n");
         for (const [index, chunk] of chunks.entries()) {
           if (index > 0) line = "";
-          // Only a line prefix is needed; bound memory without inventing line starts.
           line = (line + chunk).slice(0, 1024);
           narration = extractNarration(line) ?? narration;
         }
@@ -156,7 +190,10 @@ export function reduce(
         ...state,
         compactionStartedAt: undefined,
         pending: {
-          line: `${pickPhrase(pools.COMPACT_PHRASES, random)} · ${fmtTokens(event.tokensBefore)}→${fmtTokens(event.tokensAfter)}`,
+          line:
+            "tokensBefore" in event
+              ? `${pickPhrase(pools.COMPACT_PHRASES, random)} · ${fmtTokens(event.tokensBefore)}→${fmtTokens(event.tokensAfter)}`
+              : pickPhrase(pools.COMPACT_PHRASES, random),
           until: now + 6000,
         },
       };
@@ -192,7 +229,7 @@ export function reduce(
         lastTool: {
           ...tool,
           endedAt: now,
-          failure: event.isError ? pickPhrase(pools.FAIL_PHRASES, random) : undefined,
+          failure: event.result?.isError ? pickPhrase(pools.FAIL_PHRASES, random) : undefined,
         },
       };
     }

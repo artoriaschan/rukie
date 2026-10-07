@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { createSession } from "@rukie/agent";
-import { createFauxCore, fauxAssistantMessage } from "@earendil-works/pi-ai";
-import { withAuxiliaryRequests } from "../../helpers/auxiliary-model.ts";
+import { fauxProvider, fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { auxiliaryModels } from "../../helpers/auxiliary-model.ts";
 import { start } from "../../helpers/app";
 
 const screen = (app: Awaited<ReturnType<typeof start>>) => app.screen().join("\n");
@@ -44,17 +44,17 @@ test("opening resume cancels the side overlay and restores the selected session 
     columns: 40,
     rows: 12,
     prepare: async (root) => {
-      const faux = createFauxCore({ api: "faux", provider: "faux" });
+      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
       faux.setResponses([fauxAssistantMessage("Prior stored answer.")]);
       const seed = await createSession({
         cwd: root,
         homeDir: root,
         model: faux.getModel(),
-        streamFn: withAuxiliaryRequests(faux.streamSimple),
+        models: auxiliaryModels(faux.provider.streamSimple),
       });
       await seed.run("Previous main task");
       await seed.rename("Previous session");
-      await seed.dispose();
+      await seed.close();
     },
   });
   try {

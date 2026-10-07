@@ -1,11 +1,11 @@
 import { testClock } from "../../helpers/test-clock";
 import { startWithClock } from "../../helpers/clock-app";
-import { withAuxiliaryRequests } from "../../helpers/auxiliary-model.ts";
+import { auxiliaryModels } from "../../helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { start } from "../../helpers/app";
 import { createSession, type SessionOptions } from "@rukie/agent";
-import { createFauxCore } from "@earendil-works/pi-ai";
+import { fauxProvider } from "@earendil-works/pi-ai";
 
 const screen = (app: Awaited<ReturnType<typeof start>>) => app.screen().join("\n");
 async function ready(
@@ -183,16 +183,16 @@ test("plan toggles locally, goal shows usage, rewind opens existing picker and c
       rows: 48,
       session: sessionOptions,
       prepare: async (root) => {
-        const faux = createFauxCore({ api: "faux", provider: "faux" });
+        const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
         const seed = await createSession({
           cwd: root,
           homeDir: root,
           model: faux.getModel(),
-          streamFn: withAuxiliaryRequests(faux.streamSimple),
+          models: auxiliaryModels(faux.provider.streamSimple),
         });
         sessionOptions.resumeId = seed.id;
         argv.push("--resume", seed.id);
-        await seed.dispose();
+        await seed.close();
       },
     },
     argv,
@@ -250,16 +250,16 @@ test("busy commands reject, help stays local, skill invocation steers and exit a
           join(root, ".agents/skills/check/SKILL.md"),
           "---\nname: check\ndescription: check work\n---\nCheck the important edge case.",
         );
-        const faux = createFauxCore({ api: "faux", provider: "faux" });
+        const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
         const seed = await createSession({
           cwd: root,
           homeDir: root,
           model: faux.getModel(),
-          streamFn: withAuxiliaryRequests(faux.streamSimple),
+          models: auxiliaryModels(faux.provider.streamSimple),
         });
         id = seed.id;
         argv.push("--resume", id);
-        await seed.dispose();
+        await seed.close();
       },
     },
     argv,

@@ -45,7 +45,7 @@ test("Headless titles its persisted session and keeps the auxiliary response out
     expect(resumed.titleSource).toBe("model");
     expect(result.text).toContain("Repair authentication");
     expect(stdout).not.toContain('"text":"Test session"');
-    await resumed.dispose();
+    await resumed.close();
   } finally {
     await rm(root, { recursive: true, force: true });
   }

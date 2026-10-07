@@ -112,9 +112,9 @@ test("thinking preview settles on streamed tool input and measured duration is d
 
 test("resumed thinking paints its full Markdown immediately with saved duration and default fold", async () => {
   const { createSession } = await import("@rukie/agent");
-  const { createFauxCore, createAssistantMessageEventStream, fauxAssistantMessage } =
+  const { fauxProvider, createAssistantMessageEventStream, fauxAssistantMessage } =
     await import("@earendil-works/pi-ai");
-  const { withAuxiliaryRequests } = await import("../helpers/auxiliary-model");
+  const { auxiliaryModels } = await import("../helpers/auxiliary-model");
   const argv: string[] = [];
   const app = await startWithClock(argv, {
     rows: 40,
@@ -134,9 +134,13 @@ test("resumed thinking paints its full Markdown immediately with saved duration 
       const session = await createSession({
         cwd: root,
         homeDir: root,
-        model: createFauxCore({ api: "faux", provider: "faux" }).getModel(),
+        model: fauxProvider({
+          api: "faux",
+          provider: "faux",
+          tokensPerSecond: Infinity,
+        }).getModel(),
         now: () => new Date(clock),
-        streamFn: withAuxiliaryRequests(() => {
+        models: auxiliaryModels(() => {
           stream.push({ type: "start", partial });
           stream.push({
             type: "thinking_delta",
@@ -159,7 +163,7 @@ test("resumed thinking paints its full Markdown immediately with saved duration 
         });
         argv.push("--resume", session.id);
       } finally {
-        await session.dispose();
+        await session.close();
       }
     },
   });

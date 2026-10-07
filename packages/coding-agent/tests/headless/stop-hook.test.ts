@@ -1,6 +1,6 @@
-import { withAuxiliaryRequests } from "./helpers/auxiliary-model.ts";
+import { auxiliaryModels } from "./helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
-import { createFauxCore, fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { fauxProvider, fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,7 +18,7 @@ test.each(["text", "stream-json"])(
   "%s includes Stop continuation feedback and the final result",
   async (format) => {
     const root = await mkdtemp(join(tmpdir(), "rukie-cli-stop-"));
-    const faux = createFauxCore({ api: "faux", provider: "faux" });
+    const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
     faux.setResponses(
       Array.from({ length: 9 }, (_, index) => fauxAssistantMessage(`conclusion ${index}`)),
     );
@@ -42,7 +42,7 @@ test.each(["text", "stream-json"])(
             cwd: root,
             homeDir: root,
             model: faux.getModel(),
-            streamFn: withAuxiliaryRequests(faux.streamSimple),
+            models: auxiliaryModels(faux.provider.streamSimple),
             settings: {
               hooks: { Stop: [{ hooks: [{ type: "command", command: "sh stop.sh" }] }] },
             },

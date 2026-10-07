@@ -1,9 +1,9 @@
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
+import { auxiliaryModels } from "../helpers/auxiliary-model.ts";
 import { expect, spyOn, test } from "bun:test";
 import { join } from "node:path";
 import { appendFile } from "node:fs/promises";
 import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
-import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { fauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { createJsonlStore, createSession, type SessionOptions } from "@rukie/agent";
 import { createUserVisibleError } from "@rukie/shared";
 import { start } from "../helpers/app";
@@ -19,17 +19,17 @@ test.each([
     env: { LANG: locale },
     prepare: async (root) => {
       const store = createJsonlStore({ cwd: root, homeDir: root });
-      const fake = createFauxCore({ api: "faux", provider: "faux" });
+      const fake = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
       const session = await createSession({
         cwd: root,
         homeDir: root,
         store,
         model: fake.getModel(),
-        streamFn: withAuxiliaryRequests((model, context, options) =>
-          fake.streamSimple(model, context, options),
+        models: auxiliaryModels((model, context, options) =>
+          fake.provider.streamSimple(model, context, options),
         ),
       });
-      await session.dispose();
+      await session.close();
       const metadata = (await store.list({ cwd: root }, BACKGROUND_CONTEXT))[0]!;
       const nativePath = Reflect.get(metadata, "path");
       if (typeof nativePath !== "string") throw new Error("Native Session path missing.");
@@ -56,7 +56,7 @@ test.each([
 ] as const)(
   "%s startup error follows user locale before rendering",
   async (locale, expected, lang) => {
-    const session = { model: undefined, streamFn: undefined, homeDir: "" };
+    const session = { model: undefined, models: undefined, homeDir: "" };
     const app = await start([], {
       env: { LANG: lang },
       session,
@@ -124,7 +124,7 @@ test.each([
       columns: 300,
       env: { LANG: locale },
       prepare: async (root) => {
-        const original = createFauxCore({ api: "faux", provider: "faux" });
+        const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
         original.setResponses([
           fauxAssistantMessage(fauxToolCall("grep", { pattern: "missing" }), {
             stopReason: "toolUse",
@@ -136,8 +136,8 @@ test.each([
           homeDir: root,
           settings: { locale: originalLocale },
           model: original.getModel(),
-          streamFn: withAuxiliaryRequests((model, context, options) =>
-            original.streamSimple(model, context, options),
+          models: auxiliaryModels((model, context, options) =>
+            original.provider.streamSimple(model, context, options),
           ),
         });
         const spawn = spyOn(Bun, "spawn").mockImplementation(() => {
@@ -230,7 +230,7 @@ test.each([
   ],
 ] as const)("%s startup translates %s with its parameters", async (locale, scenario, expected) => {
   const session: Partial<SessionOptions> =
-    scenario === "session" ? {} : { model: undefined, streamFn: undefined };
+    scenario === "session" ? {} : { model: undefined, models: undefined };
   const envName = "RUKIE_I18N_STARTUP_MISSING_KEY";
   const previous = process.env[envName];
   delete process.env[envName];

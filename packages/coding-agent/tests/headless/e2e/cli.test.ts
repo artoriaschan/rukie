@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { SettingsSchema } from "@rukie/shared";
 import { Value } from "typebox/value";
 import { fakeOpenAI, type FakeOpenAIOptions } from "../helpers/fake-openai.ts";
-import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { fauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { main as entryMain, type PrintIo } from "../../../src/index.ts";
 function main(argv: string[], io: PrintIo) {
   return entryMain(
@@ -18,7 +18,7 @@ function main(argv: string[], io: PrintIo) {
   );
 }
 
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
+import { auxiliaryModels } from "../helpers/auxiliary-model.ts";
 
 isolateProxyEnvironment();
 
@@ -55,7 +55,7 @@ test.each([
   });
   cleanups.push(() => server.stop(true));
   const url = `http://site.test:${server.port}/docs`;
-  const faux = createFauxCore({ api: "faux", provider: "faux" });
+  const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
   let observed = false;
   faux.setResponses([
     fauxAssistantMessage(fauxToolCall("web_fetch", { url }), { stopReason: "toolUse" }),
@@ -84,7 +84,7 @@ test.each([
       cwd: root,
       homeDir: root,
       model: faux.getModel(),
-      streamFn: withAuxiliaryRequests(faux.streamSimple),
+      models: auxiliaryModels(faux.provider.streamSimple),
       webFetch: {
         resolve: async () => [{ address: "127.0.0.1", family: 4 }],
         allowAddresses: ["127.0.0.1"],
