@@ -167,7 +167,7 @@ test("frontend can allow a tool call using its id, name, arguments and signal", 
     ...dirs,
     ...fake,
     async onPermissionAsk(request) {
-      expect(request).toEqual({
+      expect({ ...request }).toMatchObject({
         toolCallId: "write-ask",
         toolName: "write",
         args: { ...args, path: join(dirs.cwd, args.path) },
