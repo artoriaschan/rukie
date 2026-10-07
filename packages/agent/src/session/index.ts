@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Context, JsonValue } from "@earendil-works/chord";
 import type { Api, Model, Models, Message, ToolCall, UserMessage } from "@earendil-works/pi-ai";
@@ -454,7 +454,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     });
     const hookInput = (extra: Record<string, unknown> = {}): HookInput => ({
       session_id: lease.id,
-      transcript_path: store.key(lease.id),
+      transcript_path: join(store.key(lease.id), "main.jsonl"),
       cwd,
       permission_mode: permissionMode,
       ...extra,
@@ -962,7 +962,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         else await appendReminder(reminder, ctx);
       tracking.finishRequest();
     }
-    const rebuildTools = async () => {
+    const rebuildTools = async (reportDiscovery = false) => {
       skills = (await discoverSkills(cwd, options.homeDir)).skills;
       const base = createBaseTools({
         isChild: false,
@@ -1163,11 +1163,24 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         cwd,
         homeDir: options.homeDir,
         trusted: isTrustedProject(cwd, settings),
-        tools,
+        tools: tools.filter(
+          (tool) =>
+            ![
+              "subagent",
+              "subagent_fork",
+              "subagent_send",
+              "subagent_list",
+              "goal",
+              "enter_plan_mode",
+              "exit_plan_mode",
+            ].includes(tool.name),
+        ),
         controller: subagents,
-        report: (discovery) => {
-          for (const warning of discovery.warnings) warn(warning);
-        },
+        report: reportDiscovery
+          ? (discovery) => {
+              for (const warning of discovery.warnings) warn(warning);
+            }
+          : undefined,
       });
       await conversation.configure(
         { extensions: [extension, subagents.extension], tools },
@@ -1290,13 +1303,15 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         for (const event of events) {
           emit(event);
           if (
-            event.type === "message_end" &&
-            event.messages.some((message) => message.role === "assistant")
+            event.type === "run_start" ||
+            (event.type === "message_end" &&
+              event.messages.some((message) => message.role === "assistant"))
           )
             custom(
               contextUsage(
                 observation.view().entries.flatMap((entry) => entry.model ?? []),
                 model.contextWindow,
+                latestInputTokens(),
               ),
             );
         }
@@ -1434,19 +1449,25 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       await submit(prompt, [], "followUp", requestId);
       return requestId;
     }
-    const modelMessages = (): readonly Message[] =>
-      observation.view().entries.flatMap((entry) => entry.model ?? []);
-    const latestInputTokens = () => {
-      const last = modelMessages().findLast(
-        (message) =>
-          message.role === "assistant" &&
-          message.provider === model.provider &&
-          message.model === model.id,
-      );
+    function modelMessages(): readonly Message[] {
+      return observation.view().entries.flatMap((entry) => entry.model ?? []);
+    }
+    function latestInputTokens() {
+      const entries = observation.view().entries;
+      const compacted = entries.findLastIndex((entry) => entry.kind === "pi.compaction");
+      const last = entries
+        .slice(compacted + 1)
+        .flatMap((entry) => entry.model ?? [])
+        .findLast(
+          (message) =>
+            message.role === "assistant" &&
+            message.provider === model.provider &&
+            message.model === model.id,
+        );
       return last?.role === "assistant"
         ? last.usage.input + last.usage.cacheRead + last.usage.cacheWrite || undefined
         : undefined;
-    };
+    }
     async function causalRequestForTask(
       task: import("@earendil-works/pi-durable").TaskRecord<JsonValue, JsonValue, JsonValue>,
       tasks: readonly import("@earendil-works/pi-durable").TaskRecord<
@@ -1852,7 +1873,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             onMcpAuth: options.onMcpAuth,
             onWarning: warn,
           });
-          await rebuildTools();
+          await rebuildTools(true);
           input.signal?.throwIfAborted();
           const requestId = `human:${randomUUID()}`;
           const submission = await submit(prompt, input.images, "reject", requestId);
