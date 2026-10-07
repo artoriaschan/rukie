@@ -1434,35 +1434,15 @@ export function createConversation(
       const snapshot = await session.readSubagent(id);
       const row = state.subagents[id];
       if (!snapshot || !row || row.historyLoaded || row.startedAt !== owner.startedAt) return;
-      if (row.status === "running") {
-        if (!snapshot.run || snapshot.run.endedAt !== undefined || !snapshot.historyMessages)
-          return;
-        const history = projectSubagent(row, {
-          ...snapshot,
-          messages: snapshot.historyMessages,
-        });
-        update({
-          ...state,
-          subagents: {
-            ...state.subagents,
-            [id]: {
-              ...row,
-              output: [...history.output, ...row.output],
-              toolCalls: [...history.toolCalls, ...row.toolCalls],
-              messageOutputStart: (row.messageOutputStart ?? 0) + history.output.length,
-              historyLoaded: true,
-            },
-          },
-        });
-      } else {
-        update({
-          ...state,
-          subagents: {
-            ...state.subagents,
-            [id]: { ...projectSubagent(row, snapshot), historyLoaded: true },
-          },
-        });
-      }
+      // Native snapshots contain the full committed history and current
+      // generation; replacing once avoids duplicating a separately read prefix.
+      update({
+        ...state,
+        subagents: {
+          ...state.subagents,
+          [id]: { ...projectSubagent(row, snapshot), historyLoaded: true },
+        },
+      });
     },
     isRunning: () => active !== undefined || session.running,
     interrupt() {
