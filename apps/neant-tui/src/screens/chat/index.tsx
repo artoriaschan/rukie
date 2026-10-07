@@ -35,6 +35,7 @@ import {
   createTextInputHistory,
   useInput,
   useTerminalSize,
+  useDismissTooltip,
   useTheme,
   type ScrollHandle,
   type ScrollSnapshot,
@@ -201,6 +202,7 @@ export async function createChat(
               homeDir={options.homeDir}
               cwd={options.cwd}
               checkpointCwd={checkpointCwd}
+              foldTerminalCommand={options.settings?.foldTerminalCommand ?? true}
               thinking={options.settings?.thinking}
               locale={locale}
               onExit={onExit}
@@ -256,6 +258,7 @@ function Chat({
   homeDir,
   checkpointCwd,
   thinking,
+  foldTerminalCommand,
   locale,
   onExit,
   skills,
@@ -275,6 +278,7 @@ function Chat({
   homeDir?: string;
   checkpointCwd: string;
   thinking?: ThinkingLevel;
+  foldTerminalCommand: boolean;
   locale: Locale;
   onExit(): void;
   models: Readonly<ReturnType<typeof listModels>>;
@@ -671,6 +675,20 @@ function Chat({
   const [mode, setMode] = useState(session.permissionMode);
   const { columns, rows } = useTerminalSize();
   const small = columns < 40 || rows < 12;
+  const dismissTooltip = useDismissTooltip();
+  useEffect(() => {
+    dismissTooltip?.();
+  }, [
+    dismissTooltip,
+    small,
+    view,
+    preview,
+    mcp,
+    modelPicker,
+    resumePicker,
+    rewind,
+    interaction?.request,
+  ]);
   useLayoutEffect(() => interactions.setQuestionEditingEnabled(!small), [interactions, small]);
   useLayoutEffect(() => {
     pasteEpoch.current++;
@@ -1688,6 +1706,7 @@ function Chat({
                   group.map(({ entry: member, job, index: at }) => (
                     <Box key={at} flexDirection="column">
                       <ToolCall
+                        foldTerminalCommand={foldTerminalCommand}
                         expanded={expanded || expandedRows.has(member.id ?? `row-${at}`)}
                         onToggle={() => toggleRow(member.id ?? `row-${at}`)}
                         locale={locale}
@@ -1719,6 +1738,7 @@ function Chat({
             return (
               <Box key={index} flexDirection="column">
                 <ToolCall
+                  foldTerminalCommand={foldTerminalCommand}
                   expanded={expanded || expandedRows.has(entry.id ?? `row-${index}`)}
                   onToggle={() => toggleRow(entry.id ?? `row-${index}`)}
                   locale={locale}
@@ -1833,6 +1853,7 @@ function Chat({
       expandedRows,
       columns,
       thinking,
+      foldTerminalCommand,
       locale,
       !!preview,
     ],
@@ -1871,6 +1892,7 @@ function Chat({
       <SubagentDetailScene
         subagent={selectedSubagent}
         page={page}
+        foldTerminalCommand={foldTerminalCommand}
         thinkingOpen={thinkingOpen}
         expanded={expanded}
         scrollRef={subagentScroll}
@@ -1938,6 +1960,7 @@ function Chat({
           .filter((tool) => showsToolCard(tool.name))
           .map((tool) => (
             <ToolCall
+              foldTerminalCommand={foldTerminalCommand}
               key={tool.id}
               expanded={expanded || expandedRows.has(tool.id)}
               onToggle={() => toggleRow(tool.id)}

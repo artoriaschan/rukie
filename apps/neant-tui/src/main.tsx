@@ -9,7 +9,7 @@ import {
   type PermissionMode,
   type ThinkingLevel,
 } from "@neant/shared";
-import { render, ThemeProvider, type RenderOptions } from "@neant/tui";
+import { render, ThemeProvider, TooltipProvider, type RenderOptions } from "@neant/tui";
 import { createDefaultHost, type TuiHost } from "./host";
 import { createChat } from "./screens/chat";
 import { createTuiI18n, formatError } from "./i18n";
@@ -166,7 +166,9 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
     );
     app = render(
       <ThemeProvider>
-        <chat.Chat onExit={() => app?.unmount()} />
+        <TooltipProvider>
+          <chat.Chat onExit={() => app?.unmount()} />
+        </TooltipProvider>
       </ThemeProvider>,
       { ...io, fullscreen: true },
     );
