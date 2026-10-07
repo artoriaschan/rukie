@@ -10,6 +10,8 @@ import { createTuiI18n } from "../../i18n";
 import { Markdown } from "../markdown";
 import {
   toolKindColor,
+  SyntaxHighlightedText,
+  highlightSyntax,
   useAnimationFrame,
   useTerminalFocus,
   ThemedBox,
@@ -73,6 +75,8 @@ export function ToolCall({
       : callView?.card === "generic" && callView.title
         ? callView.title
         : (JSON.stringify(callView?.card === "generic" ? (callView.rawInput ?? args) : args) ?? "");
+  const jsonTitle =
+    callView?.card !== "terminal" && !(callView?.card === "generic" && callView.title);
   const header = displayName ? `${displayName}(${title.slice(0, 480)})` : summary;
   const seconds = Math.max(0, Math.floor((Date.now() - (startedAt ?? Date.now())) / 1000));
   const terminal = resultView?.card === "terminal" ? resultView : undefined;
@@ -91,7 +95,11 @@ export function ToolCall({
         )}
       </ThemedBox>
     );
-  const output = status === "error" ? (error ?? terminal?.output) : (terminal?.output ?? result);
+  const readView = resultView?.card === "read" ? resultView : undefined;
+  const output =
+    status === "error"
+      ? (error ?? terminal?.output)
+      : (terminal?.output ?? readView?.content ?? result);
   const diffView =
     status !== "error"
       ? resultView?.card === "diff"
@@ -102,6 +110,9 @@ export function ToolCall({
       : undefined;
   const diffLines = diffView ? unifiedDiffLines(diffView) : undefined;
   const lines = diffLines?.map((line) => line.text) ?? output?.split(/\r?\n/) ?? [];
+  const highlightedLines = readView
+    ? highlightSyntax(readView.content, { path: readView.path })
+    : undefined;
   const limit = diffView ? 8 : 3;
   const folded = lines.length > limit + 1;
   const shown = folded ? lines.slice(0, limit) : lines;
@@ -124,7 +135,17 @@ export function ToolCall({
         <ThemedText bold color={color}>
           {displayName ?? header}
         </ThemedText>
-        {displayName ? `(${title.slice(0, 480)})` : ""}
+        {displayName && (
+          <ThemedText>
+            (
+            {jsonTitle ? (
+              <SyntaxHighlightedText text={title.slice(0, 480)} language="json" />
+            ) : (
+              title.slice(0, 480)
+            )}
+            )
+          </ThemedText>
+        )}
         {status !== "running" && name && startedAt !== undefined && endedAt !== undefined && (
           <ThemedText
             dimColor
@@ -149,7 +170,16 @@ export function ToolCall({
                       : undefined
               }
               wrap="truncate"
-            >{`${index === 0 ? `${figures.result} ` : name ? "   " : "  "}${line}`}</ThemedText>
+            >
+              {index === 0 ? `${figures.result} ` : name ? "   " : "  "}
+              {diffLines?.[index]?.runs ? (
+                <SyntaxHighlightedText runs={diffLines[index]!.runs} />
+              ) : highlightedLines ? (
+                <SyntaxHighlightedText runs={highlightedLines[index]} />
+              ) : (
+                line
+              )}
+            </ThemedText>
           ))}
           {folded && (
             <ThemedText
