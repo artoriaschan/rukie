@@ -146,7 +146,7 @@ test("valid updatedInput changes executed arguments and rules inspect the change
   }
 });
 
-test("invalid updatedInput denies execution and context is attached to its tool result", async () => {
+test("invalid updatedInput denies execution and commits its bounded Hook context for the model", async () => {
   dirs = await tempDirs();
   const fake = toolModel();
   const handler = await scriptedHook({
@@ -174,9 +174,14 @@ test("invalid updatedInput denies execution and context is attached to its tool 
   const result = fake.contexts[1]!.messages.find((message) => message.role === "toolResult");
   expect(result).toMatchObject({ isError: true });
   expect(JSON.stringify(result)).toContain("invalid updatedInput");
-  expect(JSON.stringify(result)).toContain("<system-reminder>");
-  expect(JSON.stringify(result)).toContain("[truncated]");
-  expect(JSON.stringify(result)).not.toContain("x".repeat(10_001));
+  const reminder = session.messages.find(
+    (message) => message.role === "system-reminder" && message.source === "hook:PreToolUse",
+  );
+  expect(reminder).toMatchObject({ content: expect.stringContaining("[truncated]") });
+  const request = JSON.stringify(fake.contexts[1]!.messages);
+  expect(request).toContain("<system-reminder>");
+  expect(request).toContain("[truncated]");
+  expect(request).not.toContain("x".repeat(10_001));
 });
 
 test("command hooks read the protocol and deny tools before execution", async () => {
