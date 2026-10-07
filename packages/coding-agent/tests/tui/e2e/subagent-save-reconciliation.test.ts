@@ -179,7 +179,8 @@ test.each(["assistant", "toolResult"] as const)(
       await app.waitFor(() => app.screen().join("\n").includes("fresh child live output"));
       expect(app.screen().join("\n")).not.toContain("child ghost body");
       next.finish();
-      await app.waitFor(() => app.screen().join("\n").includes("completed"));
+      // Agent View renders the persisted successful Run Outcome after settlement.
+      await app.waitFor(() => app.screen().join("\n").includes("Run ended normally"));
       expect(app.stderr()).toBe("");
     } finally {
       await app.cleanup();
