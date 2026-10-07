@@ -1,3 +1,4 @@
+import { unifiedDiffLines } from "./diff-lines";
 import type { ToolCallView, ToolResultView } from "@neant/shared";
 import { fmtDuration } from "@neant/i18n";
 import { appCopy } from "../../i18n/locales";
@@ -91,9 +92,19 @@ export function ToolCall({
       </ThemedBox>
     );
   const output = status === "error" ? (error ?? terminal?.output) : (terminal?.output ?? result);
-  const lines = output?.split(/\r?\n/) ?? [];
-  const folded = lines.length > 4;
-  const shown = folded ? lines.slice(0, 3) : lines;
+  const diffView =
+    status !== "error"
+      ? resultView?.card === "diff"
+        ? resultView
+        : !resultView && callView?.card === "diff"
+          ? callView
+          : undefined
+      : undefined;
+  const diffLines = diffView ? unifiedDiffLines(diffView) : undefined;
+  const lines = diffLines?.map((line) => line.text) ?? output?.split(/\r?\n/) ?? [];
+  const limit = diffView ? 8 : 3;
+  const folded = lines.length > limit + 1;
+  const shown = folded ? lines.slice(0, limit) : lines;
   return (
     <ThemedBox flexDirection="column">
       <ThemedText wrap="truncate">
@@ -120,18 +131,30 @@ export function ToolCall({
           >{` · ${fmtDuration(Math.max(0, endedAt - startedAt), locale)}`}</ThemedText>
         )}
       </ThemedText>
-      {(output || status === "running") && (
+      {(output || diffView || status === "running") && (
         <ThemedBox flexDirection="column" color={status === "error" ? "error" : "text"}>
-          {(status === "running" && !output ? [t("tool.running", { seconds })] : shown).map(
-            (line, index) => (
-              <ThemedText
-                key={index}
-                wrap="truncate"
-              >{`${index === 0 ? `${figures.result} ` : name ? "   " : "  "}${line}`}</ThemedText>
-            ),
-          )}
+          {(status === "running" && !output && !diffView
+            ? [t("tool.running", { seconds })]
+            : shown
+          ).map((line, index) => (
+            <ThemedText
+              key={index}
+              color={
+                diffLines?.[index]?.tone === "add"
+                  ? "success"
+                  : diffLines?.[index]?.tone === "del"
+                    ? "error"
+                    : diffLines?.[index]?.tone === "dim"
+                      ? "subtle"
+                      : undefined
+              }
+              wrap="truncate"
+            >{`${index === 0 ? `${figures.result} ` : name ? "   " : "  "}${line}`}</ThemedText>
+          ))}
           {folded && (
-            <ThemedText dimColor>{`   ${t("tool.fold", { count: lines.length - 3 })}`}</ThemedText>
+            <ThemedText
+              dimColor
+            >{`   ${t("tool.fold", { count: lines.length - limit })}`}</ThemedText>
           )}
         </ThemedBox>
       )}

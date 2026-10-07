@@ -10,6 +10,7 @@
     "@neant/i18n": "workspace:*",
     "@neant/shared": "workspace:*",
     "@neant/tui": "workspace:*",
+    "diff": "8.0.4",
     "mdast-util-from-markdown": "2.1.0",
     "react": "19.3.0"
   },
