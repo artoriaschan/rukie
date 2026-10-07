@@ -205,9 +205,10 @@ test.each([
       expect(lines.every((line) => Bun.stringWidth(line) <= columns)).toBe(true);
       app.stdin.write("\x03");
       await app.waitFor(
-        () => !app.screen().some((line) => line.includes("计划评审")) && !app.isWorking(),
+        () => !app.screen().some((line) => line.includes("计划评审")) && parent.signal!.aborted,
       );
-      expect(child.signal!.aborted).toBe(true);
+      // Ordinary parent interruption preserves independently owned background children.
+      expect(child.signal!.aborted).toBe(false);
       expect(app.screen().join("\n")).toContain("draft preserved");
     } finally {
       await app.cleanup();
@@ -248,7 +249,9 @@ test("resume renders the persisted approved plan as a collapsible card", async (
         onPlanReview: async () => ({ kind: "approve" }),
       });
       await session.setPlanMode(true);
-      await session.run("inspect");
+      const result = await session.run("inspect");
+      await session.waitForRequest(result.requestId);
+      await session.close();
       argv.push("--resume", session.id);
     },
   });

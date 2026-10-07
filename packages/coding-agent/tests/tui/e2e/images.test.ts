@@ -188,6 +188,7 @@ test("read images open a preview then explicit original live and after resume", 
     await app.waitFor(() => !app.isWorking());
     const { listSessions } = await import("@rukie/agent");
     const sessions = await listSessions({ cwd: app.root, homeDir: app.root });
+    await app.shutdown();
     const resumed = await start(["--resume", sessions[0]!.id], {
       rows: 32,
       host,
@@ -414,6 +415,7 @@ test("a user image placeholder remains visible and clickable after resume", asyn
     const { listSessions } = await import("@rukie/agent");
     const sessions = await listSessions({ cwd: app.root, homeDir: app.root });
     let opened = "";
+    await app.shutdown();
     const resumed = await start(["--resume", sessions[0]!.id], {
       rows: 32,
       session: { cwd: app.root, homeDir: app.root },

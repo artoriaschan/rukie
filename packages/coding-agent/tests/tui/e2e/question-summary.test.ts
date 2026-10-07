@@ -34,17 +34,20 @@ async function startSession(locale: "zh" | "en") {
       });
       await session.run("seed prompt");
       argv.push("--resume", session.id);
+      await session.close();
     },
   });
   return {
     app,
-    replay: () =>
-      start(argv, {
+    replay: async () => {
+      await app.shutdown();
+      return start(argv, {
         rows: 40,
         columns: 120,
         session: { cwd: root, homeDir: root },
         env: { LANG: locale === "zh" ? "zh_CN.UTF-8" : "en_US.UTF-8" },
-      }),
+      });
+    },
   };
 }
 

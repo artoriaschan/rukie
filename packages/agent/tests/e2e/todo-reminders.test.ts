@@ -408,10 +408,12 @@ test.each([
     });
     expect(resumed.toolState("todo")).toEqual(todos);
     expect(resumed.messages).toEqual(persisted);
+    // Historical Todo reminders stay in the Transcript; the actual provider context
+    // above excludes cleared/completed reminders after the native compaction cut.
     expect(
       resumed.messages.some(
         (message) => message.role === "system-reminder" && message.source === "todo",
       ),
-    ).toBe(false);
+    ).toBe(true);
   },
 );
