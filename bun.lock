@@ -11,6 +11,7 @@
         "husky": "9.1.7",
         "knip": "6.37.0",
         "lint-staged": "17.5.1",
+        "mdast-util-from-markdown": "2.1.0",
         "oxfmt": "0.71.0",
         "oxlint": "1.86.0",
         "typescript": "6.0.3",
@@ -241,14 +242,6 @@
 
     "@napi-rs/wasm-runtime": ["@napi-rs/wasm-runtime@1.2.4", "https://registry.npmmirror.com/@napi-rs/wasm-runtime/-/wasm-runtime-1.2.4.tgz", { "dependencies": { "@tybys/wasm-util": "^0.10.3" }, "peerDependencies": { "@emnapi/core": "^1.7.1 || ^2.0.0-alpha.4", "@emnapi/runtime": "^1.7.1 || ^2.0.0-alpha.4" } }, "sha512-AJxoUD2/15ESHbvpcyjU274nsAPLuOtPHCk0vKJM5pj//Fg/B1FXNWjPnXTT9PymCYYiHo4zPj0ZomXBKhoy7g=="],
 
-    "@rukie/agent": ["@rukie/agent@workspace:packages/agent"],
-
-    "@rukie/coding-agent": ["@rukie/coding-agent@workspace:packages/coding-agent"],
-
-    "@rukie/i18n": ["@rukie/i18n@workspace:packages/i18n"],
-
-    "@rukie/shared": ["@rukie/shared@workspace:packages/shared"],
-
     "@oxc-parser/binding-android-arm-eabi": ["@oxc-parser/binding-android-arm-eabi@0.150.0", "https://registry.npmmirror.com/@oxc-parser/binding-android-arm-eabi/-/binding-android-arm-eabi-0.150.0.tgz", { "os": "android", "cpu": "arm" }, "sha512-oQef2Zu4Prz1KLKznz3HqZzU9uVoA5PMoDZuuLmqms7hKmKSAPzlaMnLllJq3t+rgKmfJJ2siPrpZfFrW06btw=="],
 
     "@oxc-parser/binding-android-arm64": ["@oxc-parser/binding-android-arm64@0.150.0", "https://registry.npmmirror.com/@oxc-parser/binding-android-arm64/-/binding-android-arm64-0.150.0.tgz", { "os": "android", "cpu": "arm64" }, "sha512-B6ofpoFiAUwIZ0MJ2IgHPvZK8FAtL4qzSZRwOkAKIfxEobE1mQC8nDdiFZj7pUaJiVUVCsfkMsBJKedzO8rZvA=="],
@@ -420,6 +413,14 @@
     "@protobufjs/pool": ["@protobufjs/pool@1.1.0", "https://registry.npmmirror.com/@protobufjs/pool/-/pool-1.1.0.tgz", {}, "sha512-0kELaGSIDBKvcgS4zkjz1PeddatrjYcmMWOlAuAPwAeccUrPHdUqo/J6LiymHHEiJT5NrF1UVwxY14f+fy4WQw=="],
 
     "@protobufjs/utf8": ["@protobufjs/utf8@1.1.2", "https://registry.npmmirror.com/@protobufjs/utf8/-/utf8-1.1.2.tgz", {}, "sha512-b1UQwcEZ4yCnMCD8DAL1VlbvBJE9/IX4FTIp7BG1xYpf29SLazLSrqUkj4w7Y5y7cCVP6E5tcqqcI0xemPkHug=="],
+
+    "@rukie/agent": ["@rukie/agent@workspace:packages/agent"],
+
+    "@rukie/coding-agent": ["@rukie/coding-agent@workspace:packages/coding-agent"],
+
+    "@rukie/i18n": ["@rukie/i18n@workspace:packages/i18n"],
+
+    "@rukie/shared": ["@rukie/shared@workspace:packages/shared"],
 
     "@simple-libs/child-process-utils": ["@simple-libs/child-process-utils@2.0.0", "https://registry.npmmirror.com/@simple-libs/child-process-utils/-/child-process-utils-2.0.0.tgz", { "dependencies": { "@simple-libs/stream-utils": "^2.0.0" } }, "sha512-dvNoRKLijXnD0XoJAz94pbNuB5GQgDr55UhpSPhffDkTT0Cmcqh9jSCOtwfT2d4H6MI9E7c4SgtMuJXZ6F3c6A=="],
 

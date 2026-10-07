@@ -49,3 +49,9 @@ If the concept you need isn't in the glossary yet, that's a signal: either you'r
 If your output contradicts an existing ADR, surface it explicitly rather than silently overriding:
 
 > _Contradicts ADR-0007 (event-sourced orders), but worth reopening because…_
+
+## Decision records
+
+Use the [ADR format and lifecycle](../adr/README.md) for durable architectural decisions. `accepted` records design acceptance; implementation and verification evidence belongs in `.scratch/`. Use the [documentation workflow](documentation.md) to update current behavior and references together.
+
+When designing or delivering a spec, record each decision's ADR ownership or a concrete reason no ADR is needed, following [ADR coverage before delivery](issue-tracker.md#adr-coverage-before-delivery). Review coverage against the final implementation before closing the spec.

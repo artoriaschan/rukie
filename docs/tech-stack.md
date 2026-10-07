@@ -79,11 +79,12 @@ Headless CLI、TUI 与 renderer 的依赖统一归 `packages/coding-agent/packag
 
 ## 代码质量
 
-| 用途                 | 选型                                                            |
-| -------------------- | --------------------------------------------------------------- |
-| Lint 和格式化        | Oxlint 1.86.0 + Oxfmt 0.71.0                                    |
-| 提交前格式化         | lint-staged 17.5.1                                              |
-| Git hooks            | husky 9.1.7                                                     |
-| 提交信息规范         | @commitlint/cli 21.2.3 + @commitlint/config-conventional 21.2.3 |
-| 死代码和未使用的依赖 | knip 6.37.0                                                     |
-| 类型检查             | `tsc -b`                                                        |
+| 用途                 | 选型                                                                    |
+| -------------------- | ----------------------------------------------------------------------- |
+| Lint 和格式化        | Oxlint 1.86.0 + Oxfmt 0.71.0                                            |
+| 提交前格式化         | lint-staged 17.5.1                                                      |
+| Git hooks            | husky 9.1.7                                                             |
+| 提交信息规范         | @commitlint/cli 21.2.3 + @commitlint/config-conventional 21.2.3         |
+| 死代码和未使用的依赖 | knip 6.37.0                                                             |
+| 文档 Markdown 解析   | mdast-util-from-markdown 2.1.0（根 devDependency，复用 TUI 已锁定版本） |
+| 类型检查             | `tsc -b`                                                                |
