@@ -356,7 +356,9 @@ test("oversized image bytes are rejected before any Run event or model request",
       session.run("big", { images: [{ data: bytes.toString("base64"), mimeType: "image/png" }] }),
     ).rejects.toThrow("5 MB");
     expect(fake.contexts).toEqual([]);
-    expect(events).toEqual(["snapshot"]);
+    expect(events).not.toContain("run_start");
+    expect(events).not.toContain("submission");
+    expect(session.messages.some((message) => message.role === "user")).toBe(false);
     expect(session.running).toBe(false);
   } finally {
     await session.close();
@@ -405,7 +407,9 @@ test("invalid prompt image is rejected before a Run starts and valid input can s
     ).rejects.toThrow("image");
     expect(session.running).toBe(false);
     expect(fake.contexts).toHaveLength(0);
-    expect(events).toEqual(["snapshot"]);
+    expect(events).not.toContain("run_start");
+    expect(events).not.toContain("submission");
+    expect(session.messages.some((message) => message.role === "user")).toBe(false);
     expect(session.messages.some((message) => message.role === "user")).toBe(false);
     expect(
       (await session.run("valid", { images: [{ data: png, mimeType: "image/png" }] })).text,

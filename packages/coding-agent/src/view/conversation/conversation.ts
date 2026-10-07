@@ -697,7 +697,29 @@ function reduceEvent(
         )[ordinal];
         return previous ? { ...entry, anchorId: previous.anchorId } : entry;
       });
-      const subagents = { ...restoreSubagents(event.toolStates.subagents) };
+      const subagents = Object.fromEntries(
+        Object.entries(restoreSubagents(event.toolStates.subagents)).map(([id, row]) => {
+          const previous = state.subagents[id];
+          // Parent snapshots carry child identity and Run facts. Child transcript
+          // snapshots own the output already observed for each retained identity.
+          return [
+            id,
+            previous
+              ? {
+                  ...row,
+                  childSessionId: previous.childSessionId,
+                  historyLoaded: previous.historyLoaded,
+                  toolCalls: previous.toolCalls,
+                  output: previous.output,
+                  outputLines: previous.outputLines,
+                  messageOutputStart: previous.messageOutputStart,
+                  streamedText: previous.streamedText,
+                  streamedKind: previous.streamedKind,
+                }
+              : row,
+          ];
+        }),
+      );
       for (const background of event.background) {
         const row = subagents[background.id];
         if (row)

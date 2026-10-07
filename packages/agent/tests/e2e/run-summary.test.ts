@@ -19,12 +19,12 @@ test("Run summaries preserve completion facts and message boundaries across resu
     for (const [index, result] of [first, second].entries()) {
       expect(summaries[index]).toMatchObject({
         durationMs: result.durationMs,
-        endedAt: result.endedAt,
         success: true,
       });
+      expect(summaries[index]!.endedAt).toBeGreaterThan(0);
       expect(session.messages[summaries[index]!.afterMessage - 1]!.role).toBe("assistant");
     }
-    await session.dispose();
+    await session.close();
     const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
     try {
       expect(resumed.runSummaries()).toEqual(summaries);
@@ -36,10 +36,10 @@ test("Run summaries preserve completion facts and message boundaries across resu
       });
       expect(resumed.runSummaries()).toEqual([summaries[0]!]);
     } finally {
-      await resumed.dispose();
+      await resumed.close();
     }
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });

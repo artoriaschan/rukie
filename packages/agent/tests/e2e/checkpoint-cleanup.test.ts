@@ -9,7 +9,7 @@ import { tempDirs } from "../helpers/temp-dirs.ts";
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
 const sessions: Session[] = [];
 afterEach(async () => {
-  await Promise.all(sessions.splice(0).map((session) => session.dispose()));
+  await Promise.all(sessions.splice(0).map((session) => session.close()));
   await dirs?.cleanup();
 });
 
@@ -60,6 +60,7 @@ test("resuming an expired Session preserves its backups and can still rewind its
   await utimes(join(history, original.id), old, old);
   await Bun.write(join(history, "other-expired", "backup"), "expired");
   await utimes(join(history, "other-expired"), old, old);
+  await original.close();
   const warnings: string[] = [];
   const resumed = await createSession({
     ...dirs,
@@ -107,7 +108,7 @@ test("resuming a Session without backups starts silently and does not create bac
   });
   sessions.push(original);
   await original.run("hello");
-  await original.dispose();
+  await original.close();
   sessions.pop();
   const warnings: string[] = [];
   const resumed = await createSession({
