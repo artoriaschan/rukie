@@ -3204,7 +3204,11 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
       toolState: (name) => state.get(name),
       runSummaries: () => structuredClone(runSummaries),
-      contextUsage: () => contextUsage(modelMessages(), model.contextWindow, latestInputTokens()),
+      contextUsage: () =>
+        contextUsage(modelMessages(), model.contextWindow, latestInputTokens(), {
+          instructions: SYSTEM_PROMPT,
+          tools,
+        }),
       contextReport: () =>
         contextReport({
           messages: modelMessages(),
@@ -3213,6 +3217,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           model: `${model.provider}/${model.id}`,
           window: model.contextWindow,
           mcpServers: mcp.toolServers,
+          configured: { instructions: SYSTEM_PROMPT, tools },
         }),
       sideQuestion(question, input) {
         assertAvailable();
