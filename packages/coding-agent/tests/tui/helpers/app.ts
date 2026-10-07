@@ -66,7 +66,7 @@ export async function start(
           () => exited || !terminal.stdin.isRaw || terminal.output() !== beforeInterrupt,
         );
       }
-      // Terminal restoration can precede Session disposal and process escalation.
+      // Terminal restoration can precede Session close and process escalation.
       // Keep driving virtual timers until main's completion signal settles.
       await terminal.waitFor(() => exited, 5000);
       await exit;
