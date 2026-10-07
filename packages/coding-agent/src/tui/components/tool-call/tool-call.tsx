@@ -215,13 +215,17 @@ export function ToolCall({
 
   const seconds = Math.max(0, Math.floor((Date.now() - (startedAt ?? Date.now())) / 1000));
   const terminal = resultView?.card === "terminal" ? resultView : undefined;
-  const output = toolCardBody({ callView, resultView, result, error, isError: status === "error" });
-  const diffView = toolCardDiff({
-    callView,
-    resultView,
-    isError: status === "error",
-    isRunning: status === "running",
-  });
+  const output = outcomeUnknown
+    ? t("tool.outcome-unknown")
+    : toolCardBody({ callView, resultView, result, error, isError: status === "error" });
+  const diffView = outcomeUnknown
+    ? undefined
+    : toolCardDiff({
+        callView,
+        resultView,
+        isError: status === "error",
+        isRunning: status === "running",
+      });
   const diffLines = useMemo(
     () => (diffView ? unifiedDiffLines(diffView, highlightSyntax) : undefined),
     [diffView],

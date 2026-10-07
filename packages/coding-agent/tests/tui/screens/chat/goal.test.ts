@@ -269,7 +269,13 @@ test.each(["question", "permission"])(
       expect(lines.some((line) => line.includes("retained draft"))).toBe(true);
       expect(lines.at(-2)).toContain("● 1/256");
       expect(lines.at(-1)).toContain("esc");
-      expect(app.calls[0]!.signal!.aborted).toBe(false);
+      const child = app.calls.find((call) =>
+        call.context.messages.some(
+          (message) =>
+            message.role === "user" && JSON.stringify(message.content).includes("child task"),
+        ),
+      )!;
+      expect(child.signal!.aborted).toBe(false);
     } finally {
       await app.cleanup();
     }
@@ -342,11 +348,12 @@ test.each(["question", "permission"])(
               resolve();
           }),
         );
-        await session.createGoal("migrate " + "界".repeat(50), { maxRounds: 1 });
+        const goal = await session.createGoal("migrate " + "界".repeat(50), { maxRounds: 1 });
         await fake.firstCall;
         fake.calls[0]!.delta("Saved progress.");
         fake.calls[0]!.finish();
         await blocked;
+        await session.waitForRequest(goal.requestId);
         argv.push("--resume", session.id);
         await session.close();
       },
@@ -405,7 +412,13 @@ test.each(["question", "permission"])(
       expect(screen(app)).toContain("retained draft");
       expect(app.screen().at(-2)).toContain("⛔ 1/1");
       expect(screen(app)).toContain("Esc");
-      expect(parent.signal!.aborted).toBe(false);
+      const child = app.calls.find((call) =>
+        call.context.messages.some(
+          (message) =>
+            message.role === "user" && JSON.stringify(message.content).includes("child task"),
+        ),
+      )!;
+      expect(child.signal!.aborted).toBe(false);
       app.stdin.write("\x1b");
       await app.waitFor(() => app.calls.length === 4);
       expect(screen(app)).toContain("⛔ blocked · 1/1");
