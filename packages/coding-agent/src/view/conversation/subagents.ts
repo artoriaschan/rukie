@@ -209,24 +209,30 @@ export function reduceSubagent(
         model: event.model,
       };
     case "message_start":
-      return event.message.role === "assistant"
-        ? {
-            ...row,
-            streamedText: false,
-            streamedKind: undefined,
-            messageOutputStart: row.output.length,
-          }
-        : row;
     case "message_update": {
-      return event.changes.reduce(
-        (next, delta) =>
-          delta.type === "text_delta"
-            ? appendOutput(next, "text", delta.delta)
-            : delta.type === "thinking_delta"
-              ? appendOutput(next, "thinking", delta.delta)
-              : next,
-        row,
-      );
+      if (event.message.role !== "assistant") return row;
+      const start =
+        event.type === "message_start"
+          ? row.output.length
+          : (row.messageOutputStart ?? row.output.length);
+      let next: SubagentState = {
+        ...row,
+        output: row.output.slice(0, start),
+        messageOutputStart: start,
+        streamedText: false,
+        streamedKind: undefined,
+      };
+      next = {
+        ...next,
+        outputLines: next.output
+          .filter((block) => block.type === "text" || block.type === "thinking")
+          .flatMap((block) => block.text.split(/\r?\n/)),
+      };
+      for (const block of event.message.content) {
+        if (block.type === "text") next = appendOutput(next, "text", block.text);
+        if (block.type === "thinking") next = appendOutput(next, "thinking", block.thinking);
+      }
+      return next;
     }
     case "tool_execution_start": {
       const argsPreview = JSON.stringify(event.args).replace(/\s+/g, " ");
@@ -260,7 +266,11 @@ export function reduceSubagent(
           tool.id === event.toolCallId
             ? {
                 ...tool,
-                status: event.result?.isError ? "failed" : "completed",
+                status: event.result?.outcomeUnknown
+                  ? "unknown"
+                  : event.result?.isError
+                    ? "failed"
+                    : "completed",
                 durationMs: Math.max(0, now - (tool.startedAt ?? now)),
                 resultView: event.result?.view,
                 endedAt: now,
@@ -317,10 +327,8 @@ export function reduceSubagent(
 /** Replay actual saved child messages, preserving provider block and tool-result order. */
 export function projectSubagent(
   row: SubagentState,
-  snapshot: Pick<
-    NonNullable<Awaited<ReturnType<Session["readSubagent"]>>>,
-    "messages" | "model"
-  > & { run?: NonNullable<Awaited<ReturnType<Session["readSubagent"]>>>["run"] },
+  snapshot: Pick<NonNullable<Awaited<ReturnType<Session["readSubagent"]>>>, "messages" | "model"> &
+    Partial<Pick<NonNullable<Awaited<ReturnType<Session["readSubagent"]>>>, "run" | "generation">>,
 ): SubagentState {
   const output: SubagentState["output"][number][] = [];
   const tools: SubagentView["toolCalls"][number][] = [];
@@ -361,9 +369,15 @@ export function projectSubagent(
       }
     }
   }
+  const committedOutputLength = output.length;
+  for (const block of snapshot.generation?.message.content ?? []) {
+    if (block.type === "text") output.push({ type: "text", text: block.text });
+    if (block.type === "thinking") output.push({ type: "thinking", text: block.thinking });
+  }
   return {
     ...row,
     model: snapshot.model ?? row.model,
+    messageOutputStart: snapshot.generation ? committedOutputLength : undefined,
     runOutcome: snapshot.run?.outcome ?? row.runOutcome,
     runReason: snapshot.run?.reason ?? snapshot.run?.error ?? row.runReason,
     startedAt: snapshot.run?.startedAt ?? row.startedAt,

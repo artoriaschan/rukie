@@ -497,7 +497,7 @@ test("rename persists while a manual summary is pending and survives compacted r
   const finish = Promise.withResolvers<void>();
   const fake = fakeModel(
     [
-      fauxAssistantMessage("Work completed " + "old fact ".repeat(9000)),
+      fauxAssistantMessage("Work completed"),
       fauxAssistantMessage("Recent retained answer"),
       async () => {
         summarizing.resolve();
@@ -518,7 +518,7 @@ test("rename persists while a manual summary is pending and survives compacted r
   });
   try {
     await session.run("First task");
-    await session.run("Recent retained task");
+    await session.run("Recent retained task " + "new fact ".repeat(9000));
     const compact = session.compact();
     await summarizing.promise;
     await session.rename("Work summary");
@@ -528,7 +528,14 @@ test("rename persists while a manual summary is pending and survives compacted r
     const resumed = await createSession({ ...dirs, ...fake, resumeId: session.id });
     expect(resumed.title).toBe("Work summary");
     expect(resumed.titleSource).toBe("user");
-    expect(JSON.stringify(resumed.messages)).toContain("Summary of the completed work.");
+    const continuation = fakeModel([fauxAssistantMessage("continued")]);
+    await resumed.close();
+    const continued = await createSession({ ...dirs, ...continuation, resumeId: session.id });
+    await continued.run("Continue the summarized work");
+    expect(JSON.stringify(continuation.contexts[0]?.messages)).toContain(
+      "Summary of the completed work.",
+    );
+    await continued.close();
     await resumed.close();
   } finally {
     finish.resolve();
