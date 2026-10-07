@@ -72,7 +72,7 @@ test("context report separates actual memory files and skill catalog from messag
     expect(session.messages).toEqual(before);
     expect(fake.contexts).toHaveLength(requests);
   } finally {
-    await session.dispose();
+    await session.close();
   }
 });
 
@@ -80,7 +80,7 @@ test("context reports and context_usage share the latest response input includin
   dirs = await tempDirs();
   const initial = await createSession({ ...dirs, ...countedModel(["small reply"], 1234, 9, 1) });
   await initial.run("first");
-  await initial.dispose();
+  await initial.close();
   const fake = abortingModel();
   fake.model.contextWindow = 1000;
   const session = await createSession({ ...dirs, ...fake, resumeId: initial.id });
@@ -104,7 +104,7 @@ test("context reports and context_usage share the latest response input includin
     session.interruptRun();
     await expect(run).rejects.toThrow();
   } finally {
-    await session.dispose();
+    await session.close();
   }
 });
 
@@ -133,7 +133,7 @@ test("context report counts inline skill invocations and superseded memory snaps
     expect(report.skills).toEqual(first.skills);
     expect(JSON.stringify(session.messages)).toContain("Review instructions");
   } finally {
-    await session.dispose();
+    await session.close();
   }
 });
 
@@ -172,7 +172,7 @@ test("context reports use live response input and invalidate that count after ma
       )
       .reduce((sum, category) => sum + category.tokens, 0),
   );
-  await session.dispose();
+  await session.close();
 });
 
 test("context reports use the newly selected model window and clear counts from the previous model", async () => {
@@ -195,7 +195,7 @@ test("context reports use the newly selected model window and clear counts from 
       name: "compaction-reserve",
       tokens: 200000,
     });
-    await session.dispose();
+    await session.close();
   } finally {
     if (previousKey === undefined) delete process.env.RUKIE_CONTEXT_REPORT_KEY;
     else process.env.RUKIE_CONTEXT_REPORT_KEY = previousKey;
@@ -235,9 +235,9 @@ test("context reports rediscovered MCP definitions and restores exact server ide
   await session.run("refresh");
   const current = session.contextReport().mcpTools;
   expect(current).toMatchObject([{ server: "team__docs", name: "find__item" }]);
-  await session.dispose();
+  await session.close();
   const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
   expect(resumed.contextReport().mcpTools).toEqual(current);
   expect(resumed.contextReport().mcpTools[0]?.server).toBe("team__docs");
-  await resumed.dispose();
+  await resumed.close();
 });

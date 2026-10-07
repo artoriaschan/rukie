@@ -51,7 +51,7 @@ test("first submitted prompt gets a cleaned UTF-8 fallback without waiting for i
     const response = fauxAssistantMessage("登录页面修复");
     title.push({ type: "done", reason: "stop", message: response });
     title.end(response);
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });
@@ -87,13 +87,13 @@ test("a model title replaces the fallback once and is restored without a second 
     ).toBe(false);
     await session.run("Check the tests");
     expect(titles).toHaveLength(1);
-    await session.dispose();
+    await session.close();
     const resumed = await createSession({ ...dirs, ...fake, resumeId: session.id });
     expect(resumed.title).toBe("Test session");
     expect(resumed.titleSource).toBe("model");
-    await resumed.dispose();
+    await resumed.close();
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });
@@ -143,13 +143,13 @@ test("rename cancels a held generation during the primary Run and fixes the titl
     expect(session.titleSource).toBe("user");
     expect(warnings).toEqual([]);
     await session.rename("Idle title");
-    await session.dispose();
+    await session.close();
     const resumed = await createSession({ ...dirs, ...fake, resumeId: session.id });
     expect(resumed.title).toBe("Idle title");
     expect(resumed.titleSource).toBe("user");
-    await resumed.dispose();
+    await resumed.close();
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });
@@ -194,7 +194,7 @@ for (const [label, response] of [
       expect(session.title).toBe("Fix the login error");
       expect(session.titleSource).toBe("prompt");
     } finally {
-      await session.dispose();
+      await session.close();
       await dirs.cleanup();
     }
   });
@@ -224,7 +224,7 @@ test("a manual title before the first prompt suppresses all automatic generation
     await expect(session.rename("\x1b[31m\x1b[0m\n")).rejects.toThrow("empty");
     expect(session.title).toBe("Chosen name");
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });
@@ -277,7 +277,7 @@ test("title requests have bounded UTF-8 input, no tools, and a cleaned 80-byte r
     expect(new TextEncoder().encode(session.title).length).toBe(78);
     expect(session.title).toBe("中文标题中文标题中文标题中文标题中文标题中文标题中文");
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });
@@ -328,7 +328,7 @@ test("project titleModel overrides the user title model and routes an isolated r
     expect(await requested.promise).toBe("title-test/cheap");
     expect(fake.contexts).toHaveLength(1);
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
     if (original === undefined) delete process.env.RUKIE_TEST_TITLE_KEY;
     else process.env.RUKIE_TEST_TITLE_KEY = original;
@@ -399,7 +399,7 @@ test("delegated and forked child sessions use the description without another ti
       "Inspect authentication, permission decisions, interrupted requests and restored conversation behavior",
     ]);
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });
@@ -415,13 +415,13 @@ test("rewinding the conversation preserves a user's fixed title on resume", asyn
       code: false,
       conversation: true,
     });
-    await session.dispose();
+    await session.close();
     const resumed = await createSession({ ...dirs, ...fake, resumeId: session.id });
     expect(resumed.title).toBe("A fixed title");
     expect(resumed.titleSource).toBe("user");
-    await resumed.dispose();
+    await resumed.close();
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });
@@ -447,14 +447,14 @@ test("an idle rename and model selection can persist concurrently without losing
   try {
     await session.run("Initial work");
     await Promise.all([session.rename("Chosen name"), session.setModel("title-concurrent/cheap")]);
-    await session.dispose();
+    await session.close();
     const resumed = await createSession({ ...dirs, ...fake, settings, resumeId: session.id });
     expect(resumed.title).toBe("Chosen name");
     expect(resumed.titleSource).toBe("user");
     expect(resumed.model).toBe("title-concurrent/cheap");
-    await resumed.dispose();
+    await resumed.close();
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
     if (original === undefined) delete process.env.RUKIE_TITLE_CONCURRENT_KEY;
     else process.env.RUKIE_TITLE_CONCURRENT_KEY = original;
@@ -480,13 +480,13 @@ test("interrupting and disposing a Run while renaming preserves the fixed title"
     session.interruptRun();
     await rename;
     expect(await run).toBeInstanceOf(Error);
-    await session.dispose();
+    await session.close();
     const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
     expect(resumed.title).toBe("Saved through interruption");
     expect(resumed.titleSource).toBe("user");
-    await resumed.dispose();
+    await resumed.close();
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });
@@ -519,15 +519,15 @@ test("rename persists while a manual summary is pending and survives compacted r
     await session.rename("Work summary");
     finish.resolve();
     await compact;
-    await session.dispose();
+    await session.close();
     const resumed = await createSession({ ...dirs, ...fake, resumeId: session.id });
     expect(resumed.title).toBe("Work summary");
     expect(resumed.titleSource).toBe("user");
     expect(JSON.stringify(resumed.messages)).toContain("Summary of the completed work.");
-    await resumed.dispose();
+    await resumed.close();
   } finally {
     finish.resolve();
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });
@@ -540,12 +540,12 @@ test("a user can keep a meaningful manual title longer than the automatic model 
   try {
     await session.rename(name);
     expect(session.title).toBe(name);
-    await session.dispose();
+    await session.close();
     const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
     expect(resumed.title).toBe(name);
-    await resumed.dispose();
+    await resumed.close();
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });

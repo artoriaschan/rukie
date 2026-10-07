@@ -46,7 +46,7 @@ test("resume restores provider totals and current tool attribution without a mod
   const session = await createSession({ ...dirs, ...providerModel([reply]) });
   await session.run("query");
   const before = session.contextUsage();
-  await session.dispose();
+  await session.close();
   const fake = providerModel([]);
   const resumed = await createSession({ ...dirs, ...fake, resumeId: session.id });
   try {
@@ -58,7 +58,7 @@ test("resume restores provider totals and current tool attribution without a mod
     expect(resumed.messages).toEqual(transcript);
     expect(fake.contexts).toHaveLength(0);
   } finally {
-    await resumed.dispose();
+    await resumed.close();
   }
 });
 
@@ -75,7 +75,7 @@ test.each(["compaction", "model"])(
     expect(session.contextUsage().used).toBe(90000);
     if (invalidation === "compaction") await session.compact();
     else await session.setModel("other/small");
-    await session.dispose();
+    await session.close();
     const next = providerModel([]);
     next.models = withModelAlias(next.models, "other", ["small"]);
     const resumed = await createSession({ ...dirs, ...next, resumeId: session.id });
@@ -86,7 +86,7 @@ test.each(["compaction", "model"])(
       expect(resumed.contextReport().used).toBe(usage.used);
       expect(next.contexts).toHaveLength(0);
     } finally {
-      await resumed.dispose();
+      await resumed.close();
     }
   },
 );
@@ -140,7 +140,7 @@ test("Context Usage follows Session start and every assistant Turn with that Tur
       expect(events[index + 1]?.type).toBe("context_usage");
     }
   }
-  await session.dispose();
+  await session.close();
 });
 
 test("the first Run estimates Context Usage and both live and resumed Sessions retain the latest provider count", async () => {
@@ -179,7 +179,7 @@ test("the first Run estimates Context Usage and both live and resumed Sessions r
 
   const next = providerModel([reply]);
   next.model.contextWindow = 128_000;
-  await session.dispose();
+  await session.close();
   const resumed = await createSession({ ...dirs, ...next, resumeId: session.id });
   const snapshot = resumed.contextUsage();
   expect(snapshot.window).toBe(128_000);
@@ -198,7 +198,7 @@ test("the first Run estimates Context Usage and both live and resumed Sessions r
   expect(usage.used).toBe(90_000);
   expect(usage.segments.assistant).toBe(4); // Two eight-character replies.
   expect(usage.segments.prompt).toBeGreaterThan(2); // Includes the persisted reminders.
-  await resumed.dispose();
+  await resumed.close();
 });
 
 test("Context Usage classifies real reminder, tool call, thinking and tool error contributions", async () => {
@@ -231,7 +231,7 @@ test("Context Usage classifies real reminder, tool call, thinking and tool error
     expect(final.used).toBe(Object.values(final.segments).reduce((sum, count) => sum + count, 0));
     expect(JSON.stringify(fake.contexts.at(-1))).toContain("ENOENT");
   } finally {
-    await session.dispose();
+    await session.close();
   }
 });
 
@@ -254,7 +254,7 @@ test("a Turn without input usage falls back to the current estimates rather than
   const usage = events.filter((event) => event.type === "context_usage").at(-1)!;
   expect(usage.used).toBe(Object.values(usage.segments).reduce((sum, count) => sum + count, 0));
   expect(usage.used).not.toBe(90_000);
-  await session.dispose();
+  await session.close();
 });
 
 test("Compaction immediately replaces the segment estimates and invalidates provider usage until the next Turn", async () => {
@@ -322,5 +322,5 @@ test("Compaction immediately replaces the segment estimates and invalidates prov
     segments: { assistant: 2, thinking: 0 },
   });
   expect(updates.at(-1)!.segments.tools).toBe(usage.segments.tools);
-  await session.dispose();
+  await session.close();
 });

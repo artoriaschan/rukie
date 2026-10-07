@@ -64,7 +64,7 @@ test("prompt hooks block a user prompt using one standalone review request", asy
   );
   expect(await Bun.file(transcriptPath).text()).toContain("session-notice");
   expect(await Bun.file(transcriptPath).text()).not.toContain("secret");
-  await session.dispose();
+  await session.close();
 });
 
 test("agent hooks inspect files with only read, glob and grep, without copying review messages to the parent Transcript", async () => {
@@ -111,7 +111,7 @@ test("agent hooks inspect files with only read, glob and grep, without copying r
       }),
     ]),
   );
-  await session.dispose();
+  await session.close();
 });
 
 test.each(["prompt", "agent"] as const)(
@@ -150,7 +150,7 @@ test.each(["prompt", "agent"] as const)(
       expect(session.messages.filter((message) => message.role === "assistant")).toMatchObject([
         { content: [{ type: "text", text: "parent result" }] },
       ]);
-      await session.dispose();
+      await session.close();
     }
   },
 );
@@ -190,7 +190,7 @@ test.each(["prompt", "agent"] as const)(
       { by: "hook", reason: "Denied by hook: protected tool" },
     ]);
     expect(JSON.stringify(fake.contexts.at(-1)?.messages)).toContain("protected tool");
-    await session.dispose();
+    await session.close();
   },
 );
 
@@ -243,7 +243,7 @@ test.each([undefined, "override"])(
       await session.run("hello");
       expect(selected[0]).toBe(override ?? "cheap");
       expect(selected[1]).toBe(fake.model.id);
-      await session.dispose();
+      await session.close();
     } finally {
       delete process.env[key];
     }
@@ -279,25 +279,25 @@ test.each(["prompt", "agent"] as const)(
       },
     });
     jest.useFakeTimers();
-    const run = session.run("hello", {
-      onEvent: (event) => {
-        events.push(event);
-      },
-    });
-    const signal = await entered.promise;
-    jest.advanceTimersByTime(19);
-    expect(signal.aborted).toBe(false);
-    jest.advanceTimersByTime(1);
     try {
+      const run = session.run("hello", {
+        onEvent: (event) => {
+          events.push(event);
+        },
+      });
+      const signal = await entered.promise;
+      jest.advanceTimersByTime(19);
+      expect(signal.aborted).toBe(false);
+      jest.advanceTimersByTime(1);
       expect(await run).toMatchObject({ text: "parent result" });
+      expect(signal.aborted).toBe(true);
     } finally {
       jest.useRealTimers();
     }
-    expect(signal.aborted).toBe(true);
     expect(events.filter((event) => event.type === "hook_warning")).toMatchObject([
       { error: { code: "hook-timeout", params: { timeout: "0.02" } } },
     ]);
-    await session.dispose();
+    await session.close();
   },
 );
 
@@ -327,7 +327,7 @@ test.each(["prompt", "agent"] as const)(
     });
     const run = session.run("hello").catch((error) => error);
     const signal = await entered.promise;
-    await session.dispose();
+    await session.close();
     expect(await run).toMatchObject({ name: "AbortError" });
     expect(signal.aborted).toBe(true);
     expect(calls).toBe(1);
@@ -365,7 +365,7 @@ test.each(["prompt", "agent"] as const)(
       { event: "Stop", reason: "finish verification" },
     ]);
     expect(session.messages.filter((message) => message.role === "assistant")).toHaveLength(2);
-    await session.dispose();
+    await session.close();
   },
 );
 
@@ -387,7 +387,7 @@ test.each(["prompt", "agent"] as const)(
       },
     });
     expect(await session.run("work")).toMatchObject({ text: "parent result" });
-    await session.dispose();
+    await session.close();
   },
 );
 
@@ -418,7 +418,7 @@ test("an unavailable hook model warns without calling it and the parent run proc
     { error: { code: "hook-model-failed" } },
   ]);
   expect(fake.contexts).toHaveLength(1);
-  await session.dispose();
+  await session.close();
 });
 
 test.each(["prompt", "agent"] as const)(
@@ -455,7 +455,7 @@ test.each(["prompt", "agent"] as const)(
     expect(events.filter((event) => event.type === "permission_denied")).toMatchObject([
       { by: "hook", reason: "approval policy" },
     ]);
-    await session.dispose();
+    await session.close();
   },
 );
 
@@ -494,7 +494,7 @@ test.each(["prompt", "agent"] as const)(
     });
     expect(await session.run(prompt)).toMatchObject({ text: "parent done" });
     expect(warnings).toHaveLength(0);
-    await session.dispose();
+    await session.close();
   },
 );
 
@@ -530,7 +530,7 @@ test.each(["prompt", "agent"] as const)(
     expect(JSON.stringify(toolResult)).toContain("original");
     expect(JSON.stringify(toolResult)).toContain("verify output");
     expect(JSON.stringify(toolResult)).toContain("<system-reminder>");
-    await session.dispose();
+    await session.close();
   },
 );
 
@@ -564,16 +564,16 @@ test.each(["prompt", "agent"] as const)(
       },
     });
     jest.useFakeTimers();
-    const run = session.run("hello", {
-      onEvent: (event) => {
-        events.push(event);
-      },
-    });
-    await entered.promise;
-    jest.advanceTimersByTime(19);
-    expect(events.filter((event) => event.type === "hook_warning")).toHaveLength(0);
-    jest.advanceTimersByTime(1);
     try {
+      const run = session.run("hello", {
+        onEvent: (event) => {
+          events.push(event);
+        },
+      });
+      await entered.promise;
+      jest.advanceTimersByTime(19);
+      expect(events.filter((event) => event.type === "hook_warning")).toHaveLength(0);
+      jest.advanceTimersByTime(1);
       expect(await run).toMatchObject({ text: "parent result" });
     } finally {
       jest.useRealTimers();
@@ -587,7 +587,7 @@ test.each(["prompt", "agent"] as const)(
     expect(session.messages.filter((message) => message.role === "assistant")).toMatchObject([
       { content: [{ text: "parent result" }] },
     ]);
-    await session.dispose();
+    await session.close();
   },
 );
 
@@ -618,7 +618,7 @@ test.each(["prompt", "agent"] as const)(
     expect(
       session.messages.some((message) => message.role === "user" || message.role === "assistant"),
     ).toBe(false);
-    await session.dispose();
+    await session.close();
   },
 );
 
@@ -712,7 +712,7 @@ test.each(["prompt", "agent"] as const)(
       expect(transcript).not.toContain("notification guard");
     } finally {
       release.resolve();
-      await session.dispose();
+      await session.close();
     }
   },
 );

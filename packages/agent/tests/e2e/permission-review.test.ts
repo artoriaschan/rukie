@@ -322,7 +322,7 @@ test("a review still pending at 30s cancels its request and asks the user", asyn
     expect(await Bun.file(join(dirs.cwd, "reviewed.txt")).exists()).toBe(false);
   } finally {
     try {
-      await session.dispose();
+      await session.close();
     } finally {
       jest.useRealTimers();
     }
