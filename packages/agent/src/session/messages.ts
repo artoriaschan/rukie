@@ -16,13 +16,15 @@ export type TranscriptAssistantMessage = Omit<AssistantMessage, "content"> & {
 };
 export type TranscriptToolResult = ToolResultMessage & { view?: ToolResultView };
 
-export type TranscriptMessage =
+type TranscriptMessageContent =
   | Exclude<Message, UserMessage | AssistantMessage | ToolResultMessage>
   | (UserMessage & { imageNames?: string[]; skillInvocation?: string; source?: string })
   | TranscriptAssistantMessage
   | TranscriptToolResult
   | SystemReminder
   | SessionNoticeMessage;
+
+export type TranscriptMessage = TranscriptMessageContent & { entryId?: string };
 
 /** Application facts remain distinct from each entry's native model contribution. */
 export function transcriptMessages(entries: readonly EntryRecord[]): TranscriptMessage[] {
@@ -43,6 +45,7 @@ export function transcriptMessages(entries: readonly EntryRecord[]): TranscriptM
           source: data.source,
           content: data.content,
           timestamp: data.timestamp,
+          entryId: String(entry.id),
         },
       ];
     if (entry.kind === "rukie.notice" && data && typeof data === "object" && !Array.isArray(data)) {
@@ -56,6 +59,9 @@ export function transcriptMessages(entries: readonly EntryRecord[]): TranscriptM
           },
         ];
     }
-    return (entry.model ?? []).map((message) => structuredClone(message));
+    return (entry.model ?? []).map((message) => ({
+      ...structuredClone(message),
+      entryId: String(entry.id),
+    }));
   });
 }
