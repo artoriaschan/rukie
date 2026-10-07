@@ -208,11 +208,14 @@ test("review tokens and review messages are excluded from Run usage and Context 
     },
   });
   expect(result.usage).toMatchObject({ input: 22, output: 10, totalTokens: 32 });
-  expect(events.filter((event) => event.type === "context_usage").slice(1)).toMatchObject([
-    { used: 11 },
-    { used: 11 },
-    { used: 11 },
-  ]);
+  // Each response first publishes its committed provider measurement before Stop,
+  // then its committed Transcript contributions; reviewer usage never enters either.
+  expect(
+    events
+      .filter((event) => event.type === "context_usage")
+      .slice(1)
+      .map((event) => event.used),
+  ).toEqual([11, 11, 11, 11, 11]);
   expect(JSON.stringify(session.messages)).not.toContain("REVIEW_POLICY");
   expect(session.messages.filter((message) => message.role === "assistant")).toHaveLength(2);
 });
