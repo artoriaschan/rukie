@@ -190,7 +190,13 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
   const views = new Map<string, McpServerView>();
   const configErrors: McpConfigError[] = [];
   const clearServerAuth = new Map<string, () => Promise<void>>();
-  const authenticateServer = new Map<string, (signal?: AbortSignal) => Promise<McpAuthOutcome>>();
+  const authenticateServer = new Map<
+    string,
+    (
+      signal?: AbortSignal,
+      origin?: { agentId: string; description: string },
+    ) => Promise<McpAuthOutcome>
+  >();
   const errors: Extract<CustomSessionEvent, { type: "mcp_server_error" }>[] = [];
   const authRequired: Extract<CustomSessionEvent, { type: "mcp_auth_required" }>[] = [];
   const authTools = new Set<string>();
@@ -331,6 +337,7 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
       signal?: AbortSignal;
       interactive?: boolean;
       onMcpAuth?: OnMcpAuth;
+      getOrigin?(conversationId: number): { agentId: string; description: string } | undefined;
       onInteractionStart?: OnInteractionStart;
       onWarning?: (message: string) => void;
       onlyServer?: string;
@@ -542,7 +549,10 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
               `${server}:\n${activeClient.instructions ?? ""}\nTools: ${adapted.map((tool) => tool.name).join(", ") || "none"}`,
             );
           };
-          const authenticate = (toolSignal?: AbortSignal): Promise<McpAuthOutcome> => {
+          const authenticate = (
+            toolSignal?: AbortSignal,
+            origin?: { agentId: string; description: string },
+          ): Promise<McpAuthOutcome> => {
             const onMcpAuth = options.onMcpAuth;
             if (!key || !("url" in entry) || !store || !onMcpAuth)
               return Promise.reject(
@@ -636,7 +646,12 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
                 const reply = await Promise.race([
                   callbackReply,
                   requestInteraction(
-                    { server, authorizationUrl, signal: interactionSignal },
+                    {
+                      server,
+                      authorizationUrl,
+                      signal: interactionSignal,
+                      ...(origin && { origin }),
+                    },
                     onMcpAuth,
                     { type: "cancelled" } satisfies McpAuthReply,
                     {
@@ -767,8 +782,11 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
                 name,
                 description: `The ${server} MCP server is installed but requires authentication. Call this tool to start the OAuth flow; the user completes it in their browser and the server's real tools become available in your next turn.`,
                 parameters: Type.Object({}),
-                async execute(_args, _api, context) {
-                  const outcome = await authenticate(context.abortSignal);
+                async execute(_args, api, context) {
+                  const outcome = await authenticate(
+                    context.abortSignal,
+                    options.getOrigin?.(Number(api.conversationId)),
+                  );
                   return {
                     content: [
                       {
