@@ -47,8 +47,8 @@ test("prompt hooks block a user prompt using one standalone review request", asy
     },
   });
   expect(await session.run("secret")).toMatchObject({
-    stopReason: "hook_blocked",
-    reason: "protected prompt",
+    success: false,
+    error: "protected prompt",
   });
   expect(fake.contexts).toHaveLength(1);
   expect(JSON.stringify(fake.contexts[0])).toContain("Check this input:");
@@ -98,8 +98,8 @@ test("agent hooks inspect files with only read, glob and grep, without copying r
     },
   });
   expect(await session.run("perform action")).toMatchObject({
-    stopReason: "hook_blocked",
-    reason: "policy check failed",
+    success: false,
+    error: "policy check failed",
   });
   expect(fake.contexts).toHaveLength(2);
   expect(JSON.stringify(session.messages)).not.toContain("review-read");
@@ -302,7 +302,7 @@ test.each(["prompt", "agent"] as const)(
 );
 
 test.each(["prompt", "agent"] as const)(
-  "dispose cancels a pending %s hook without starting the main model",
+  "close cancels a pending %s hook without starting the main model",
   async (type) => {
     dirs = await tempDirs();
     const entered = Promise.withResolvers<AbortSignal>();
@@ -328,7 +328,7 @@ test.each(["prompt", "agent"] as const)(
     const run = session.run("hello").catch((error) => error);
     const signal = await entered.promise;
     await session.close();
-    expect(await run).toMatchObject({ name: "AbortError" });
+    expect(await run).toMatchObject({ message: "Session is closed" });
     expect(signal.aborted).toBe(true);
     expect(calls).toBe(1);
   },
