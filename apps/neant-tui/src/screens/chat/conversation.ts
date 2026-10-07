@@ -72,7 +72,13 @@ type CompletedEntry = { anchorId?: string } & (
       feedback?: string;
     }
   | { type: "subagent"; agentId: string }
-  | { type: "thinking"; text: string; durationMs?: number }
+  | {
+      type: "thinking";
+      text: string;
+      durationMs?: number;
+      /** This completed Turn's thinking still belongs to the active Run's full-view lifecycle. */
+      thinkingOpen?: boolean;
+    }
   | { type: "session-notice"; notice: SessionNotice; assistantTimestamp?: number }
   | { type: "notice"; text: string; report?: string }
   | { type: "context-report"; report: ContextReport; expanded: boolean; modelName?: string }
@@ -659,6 +665,7 @@ function reduceEvent(
                 {
                   type: "thinking" as const,
                   text: messageThinking(event.message),
+                  thinkingOpen: true,
                   durationMs: assistantThinkingDuration(event.message),
                   anchorId: `${state.assistantAnchor}-thinking`,
                 },
@@ -851,6 +858,18 @@ export function createConversation(session: Session, model: string, locale: Loca
   let noticeTimer: ReturnType<typeof setTimeout> | undefined;
   const authRequired = new Set<string>();
   const update = (next: ViewState, deferNotification = false) => {
+    if (
+      !next.running &&
+      next.completed.some((entry) => entry.type === "thinking" && entry.thinkingOpen)
+    )
+      next = {
+        ...next,
+        completed: next.completed.map((entry) =>
+          entry.type === "thinking" && entry.thinkingOpen
+            ? { ...entry, thinkingOpen: false }
+            : entry,
+        ),
+      };
     state =
       next.completed !== state.completed && next.completed.some((entry) => !entry.anchorId)
         ? {
