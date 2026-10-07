@@ -1,12 +1,25 @@
 import { afterEach, expect, test } from "bun:test";
-import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxToolCall, getCurrentSystemMessage } from "@earendil-works/pi-ai";
 import { join } from "node:path";
-import { createSession, type SessionEvent } from "../../src/index.ts";
+import {
+  createSession as createSessionImpl,
+  type Session,
+  type SessionEvent,
+} from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
-afterEach(() => dirs?.cleanup());
+const sessions: Session[] = [];
+async function createSession(options: Parameters<typeof createSessionImpl>[0]) {
+  const session = await createSessionImpl(options);
+  sessions.push(session);
+  return session;
+}
+afterEach(async () => {
+  await Promise.all(sessions.splice(0).map((session) => session.close()));
+  await dirs?.cleanup();
+});
 
 test("SubagentStart continue:false ends only the child run without storing its prompt; an idle wakeup can run", async () => {
   dirs = await tempDirs();
@@ -18,14 +31,15 @@ test("SubagentStart continue:false ends only the child run without storing its p
   let childCalls = 0;
   let childId = "";
   const reply: Parameters<typeof fakeModel>[0][number] = (context) => {
-    const parent = context.messages.some(
-      (message) =>
-        message.role === "system" && message.toolsAdded?.some((tool) => tool.name === "subagent"),
+    const parent = getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
+      (tool) => tool.name === "subagent",
     );
     if (!parent) {
       childCalls++;
       expect(JSON.stringify(context.messages)).not.toContain("blocked child prompt");
-      expect(JSON.stringify(context.messages.at(-1))).toContain("wake child");
+      expect(
+        JSON.stringify(context.messages.findLast((message) => message.role !== "system")),
+      ).toContain("wake child");
       return fauxAssistantMessage("child awake");
     }
     if (++parentCalls === 1)
@@ -63,12 +77,18 @@ test("SubagentStart continue:false ends only the child run without storing its p
     }),
   ).toMatchObject({ success: true, text: "parent complete" });
   expect(childCalls).toBe(0);
-  expect(
-    events.filter((event) => event.type === "subagent_event" && event.event.type === "result"),
-  ).toMatchObject([{ event: { success: true, stopReason: "hook_stopped", reason: "halt child" } }]);
+  const children = session.toolState("subagents");
+  if (!Array.isArray(children) || typeof children[0]?.id !== "string")
+    throw new Error("stopped child identity was not committed");
+  childId = children[0].id;
+  expect(session.toolState("subagents")).toMatchObject([
+    { id: childId, latestRun: { outcome: "hook_stopped", reason: "halt child" } },
+  ]);
   const input = await Bun.file(join(dirs.cwd, "start.json")).json();
   expect(await Bun.file(input.transcript_path).text()).not.toContain("blocked child prompt");
   expect(await session.run("wake")).toMatchObject({ success: true, text: "parent complete" });
+  if (!session.currentRequestId) throw new Error("parent request was not admitted");
+  await session.waitForRequest(session.currentRequestId);
   expect(childCalls).toBe(1);
 });
 
@@ -119,7 +139,10 @@ test.each([false, true])(
       ),
       fauxAssistantMessage(fauxToolCall("todo_write", { todos: [] }), { stopReason: "toolUse" }),
       (context) => {
-        expect(context.messages.at(-1)).toMatchObject({ role: "toolResult", isError: trusted });
+        expect(context.messages.findLast((message) => message.role !== "system")).toMatchObject({
+          role: "toolResult",
+          isError: trusted,
+        });
         return fauxAssistantMessage("child done");
       },
       fauxAssistantMessage("parent done"),
@@ -170,9 +193,8 @@ test("SubagentStart matches the type on each child run, including idle send_mess
   );
   let childId = "";
   const reply: Parameters<typeof fakeModel>[0][number] = (context) => {
-    const parent = context.messages.some(
-      (message) =>
-        message.role === "system" && message.toolsAdded?.some((tool) => tool.name === "subagent"),
+    const parent = getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
+      (tool) => tool.name === "subagent",
     );
     return fauxAssistantMessage(parent ? "parent complete" : "second child conclusion");
   };
@@ -215,16 +237,17 @@ test("SubagentStart matches the type on each child run, including idle send_mess
       if (event.type === "subagent_event") childId = event.agentId;
     },
   });
+  if (!session.currentRequestId) throw new Error("parent request was not admitted");
+  await session.waitForRequest(session.currentRequestId);
   const childContexts = fake.contexts.filter(
     (context) =>
-      !context.messages.some(
-        (message) =>
-          message.role === "system" && message.toolsAdded?.some((tool) => tool.name === "subagent"),
+      !getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
+        (tool) => tool.name === "subagent",
       ),
   );
   expect(childContexts).toHaveLength(2);
   for (const context of childContexts)
-    expect(JSON.stringify(context.messages.at(-1))).toContain("child instructions");
+    expect(JSON.stringify(context.messages)).toContain("child instructions");
   expect(await inputs("starts.jsonl")).toMatchObject([
     {
       agent_id: childId,
@@ -251,9 +274,8 @@ test("SubagentStop ignores the ninth block, persists feedback, and resets the bu
   const warnings: string[] = [];
   let childId = "";
   const childReply: Parameters<typeof fakeModel>[0][number] = (context) => {
-    const parent = context.messages.some(
-      (message) =>
-        message.role === "system" && message.toolsAdded?.some((tool) => tool.name === "subagent"),
+    const parent = getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
+      (tool) => tool.name === "subagent",
     );
     return fauxAssistantMessage(parent ? "parent complete" : "child conclusion");
   };
@@ -287,14 +309,14 @@ test("SubagentStop ignores the ninth block, persists feedback, and resets the bu
   });
   for (const prompt of ["delegate", "wake"]) {
     const events: SessionEvent[] = [];
-    expect(
-      await session.run(prompt, {
-        onEvent(event) {
-          events.push(event);
-          if (event.type === "subagent_event") childId = event.agentId;
-        },
-      }),
-    ).toMatchObject({ success: true, text: "parent complete" });
+    const unsubscribe = session.subscribe((event) => {
+      events.push(event);
+      if (event.type === "subagent_event") childId = event.agentId;
+    });
+    expect(await session.run(prompt)).toMatchObject({ success: true, text: "parent complete" });
+    if (!session.currentRequestId) throw new Error("parent request was not admitted");
+    await session.waitForRequest(session.currentRequestId);
+    unsubscribe();
     const childEvents = events.flatMap((event) =>
       event.type === "subagent_event" ? [event.event] : [],
     );
@@ -305,7 +327,9 @@ test("SubagentStop ignores the ninth block, persists feedback, and resets the bu
         error: { code: "hook-continuation-limit", params: { event: "SubagentStop", limit: "8" } },
       },
     ]);
-    expect(childEvents.filter((event) => event.type === "result")).toHaveLength(1);
+    expect(session.toolState("subagents")).toMatchObject([
+      { id: childId, active: false, latestRun: { outcome: "completed" } },
+    ]);
   }
   const recorded = await inputs("stops.jsonl");
   expect(recorded).toHaveLength(18);
@@ -324,17 +348,23 @@ test("parent cancellation during SubagentStop feedback prevents another child mo
   dirs = await tempDirs();
   const reply: Parameters<typeof fakeModel>[0][number] = (context) =>
     fauxAssistantMessage(
-      context.messages.some(
-        (message) =>
-          message.role === "system" && message.toolsAdded?.some((tool) => tool.name === "subagent"),
+      getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
+        (tool) => tool.name === "subagent",
       )
         ? "parent waiting"
         : "child conclusion",
     );
   const fake = fakeModel([
-    fauxAssistantMessage(fauxToolCall("subagent", { description: "Inspect", prompt: "child" }), {
-      stopReason: "toolUse",
-    }),
+    fauxAssistantMessage(
+      fauxToolCall("subagent", {
+        description: "Inspect",
+        prompt: "child",
+        run_in_background: false,
+      }),
+      {
+        stopReason: "toolUse",
+      },
+    ),
     reply,
     reply,
   ]);
@@ -364,10 +394,8 @@ test("parent cancellation during SubagentStop feedback prevents another child mo
   expect(
     fake.contexts.filter(
       (context) =>
-        !context.messages.some(
-          (message) =>
-            message.role === "system" &&
-            message.toolsAdded?.some((tool) => tool.name === "subagent"),
+        !getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
+          (tool) => tool.name === "subagent",
         ),
     ),
   ).toHaveLength(1);
@@ -469,7 +497,7 @@ test("type frontmatter hooks add to inherited hooks only in that child; tool hoo
     },
   });
   expect(await session.run("delegate")).toMatchObject({ success: true, text: "parent done" });
-  expect(JSON.stringify(fake.contexts[1]!.messages.at(-1))).toContain("custom child context");
+  expect(JSON.stringify(fake.contexts[1]!.messages)).toContain("custom child context");
   expect(JSON.stringify(fake.contexts[4]!.messages)).not.toContain("custom child context");
   const inherited = await inputs("inherited-tools.jsonl");
   const own = await inputs("type-tools.jsonl");
@@ -505,13 +533,11 @@ test.each([0, 2])(
     );
     const events: SessionEvent[] = [];
     const childReady = Promise.withResolvers<void>();
-    const parentWaiting = Promise.withResolvers<void>();
     const releaseChild = Promise.withResolvers<void>();
     let childCalls = 0;
     const reply: Parameters<typeof fakeModel>[0][number] = async (context) => {
-      const parent = context.messages.some(
-        (message) =>
-          message.role === "system" && message.toolsAdded?.some((tool) => tool.name === "subagent"),
+      const parent = getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
+        (tool) => tool.name === "subagent",
       );
       if (!parent) {
         childCalls++;
@@ -520,15 +546,19 @@ test.each([0, 2])(
           await releaseChild.promise;
           return fauxAssistantMessage("unchecked conclusion");
         }
-        expect(context.messages.at(-1)).toMatchObject({
+        expect(context.messages.findLast((message) => message.role !== "system")).toMatchObject({
           role: "user",
-          content: [{ text: "child-review" }],
+          content: "child-review",
         });
         return fauxAssistantMessage("verified child conclusion");
       }
-      if (context.messages.at(-1)?.role === "user") {
-        expect(JSON.stringify(context.messages.at(-1))).toContain("verified child conclusion");
-        expect(JSON.stringify(context.messages.at(-1))).not.toContain("unchecked conclusion");
+      if (context.messages.findLast((message) => message.role !== "system")?.role === "user") {
+        expect(
+          JSON.stringify(context.messages.findLast((message) => message.role !== "system")),
+        ).toContain("verified child conclusion");
+        expect(
+          JSON.stringify(context.messages.findLast((message) => message.role !== "system")),
+        ).not.toContain("unchecked conclusion");
         return fauxAssistantMessage("parent complete");
       }
       return fauxAssistantMessage("parent waiting");
@@ -551,15 +581,14 @@ test.each([0, 2])(
         },
       },
     });
-    const run = session.run("delegate", {
-      onEvent(event) {
-        events.push(event);
-        if (event.type === "subagents_waiting") parentWaiting.resolve();
-      },
-    });
-    await Promise.all([childReady.promise, parentWaiting.promise]);
+    session.subscribe((event) => events.push(event));
+    expect(await session.run("delegate")).toMatchObject({ success: true, text: "parent waiting" });
+    await childReady.promise;
+    const requestId = session.currentRequestId;
+    if (!requestId) throw new Error("parent request was not admitted");
+    const settled = session.waitForRequest(requestId);
     releaseChild.resolve();
-    expect(await run).toMatchObject({ success: true, text: "parent complete" });
+    expect(await settled).toMatchObject({ success: true, text: "parent complete" });
     const continued = events.filter(
       (event) => event.type === "subagent_event" && event.event.type === "hook_continued",
     );
