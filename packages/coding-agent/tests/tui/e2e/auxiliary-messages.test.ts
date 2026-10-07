@@ -1,7 +1,7 @@
 import { failingStorage } from "../../helpers/native-storage-failure";
 import { testClock } from "../helpers/test-clock";
 import { expect, test } from "bun:test";
-import { fauxProvider, fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { fauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { createSession } from "@rukie/agent";
 import { start } from "../helpers/app";
 import { startWithClock } from "../helpers/clock-app";
@@ -10,6 +10,7 @@ import { auxiliaryModels } from "../helpers/auxiliary-model";
 async function seeded(
   locale: "en" | "zh",
   session: NonNullable<Parameters<typeof startWithClock>[1]>["session"] = {},
+  compactable = false,
 ) {
   const argv: string[] = [];
   const env = { LANG: locale === "zh" ? "zh_CN.UTF-8" : "en_US.UTF-8" };
@@ -20,7 +21,20 @@ async function seeded(
     env,
     prepare: async (root) => {
       const model = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
-      model.setResponses([fauxAssistantMessage("seed reply")]);
+      if (compactable) {
+        await Bun.write(`${root}/context.txt`, "retained fact ".repeat(6000));
+        model.setResponses([
+          fauxAssistantMessage(
+            [
+              fauxToolCall("read", { path: "context.txt" }, { id: "read-context-1" }),
+              fauxToolCall("read", { path: "context.txt" }, { id: "read-context-2" }),
+            ],
+            { stopReason: "toolUse" },
+          ),
+          fauxAssistantMessage("seed reply"),
+          fauxAssistantMessage("recent retained reply"),
+        ]);
+      } else model.setResponses([fauxAssistantMessage("seed reply")]);
       const session = await createSession({
         cwd: root,
         homeDir: root,
@@ -29,6 +43,7 @@ async function seeded(
       });
       try {
         await session.run("seed prompt");
+        if (compactable) await session.run("recent retained task");
         argv.push("--resume", session.id);
       } finally {
         await session.close();
@@ -212,10 +227,12 @@ test.each(["assistant", "toolResult"] as const)(
 );
 
 test("native compaction notices use a quiet divider and reconstruct once on Resume", async () => {
-  const { app, replay } = await seeded("en");
+  const { app, replay } = await seeded("en", {}, true);
   try {
     await app.waitFor(() => app.screen().includes("❯"));
     app.stdin.write("/compact\r");
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.reply("Preserved compacted summary.");
     await app.waitFor(() => app.screen().some((row) => row.startsWith("─ Context compacted")));
     expect(app.screen().filter((row) => row.includes("Context compacted"))).toHaveLength(1);
     const row = app.screen().findIndex((row) => row.includes("Context compacted"));

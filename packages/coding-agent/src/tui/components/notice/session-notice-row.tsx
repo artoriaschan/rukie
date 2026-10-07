@@ -6,6 +6,8 @@ import { Notice } from "./notice";
 
 export function SessionNoticeRow({ notice, locale }: { notice: SessionNotice; locale: Locale }) {
   const t = createTuiI18n(locale);
+  if (notice.kind === "compaction")
+    return <Notice kind="info" text={t("notice.compaction")} divider />;
   if (notice.kind === "hook_message") return <Notice kind="info" text={notice.message} divider />;
   if (notice.kind === "hook_warning")
     return (
