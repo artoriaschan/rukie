@@ -197,3 +197,9 @@ env -u NO_COLOR LANG=en_US.UTF-8 bun "$TASK_REPO/apps/neant-tui/src/main.tsx" --
 用户要求运行全量测试并修复失败。首次 `env -u NO_COLOR bun run test`：2740 pass / 1 fail，225 files，106.07s。唯一失败是旧 edit 记录恢复用例要求 80 列标题容纳完整 JSON；耗时与折叠箭头固定槽位导致标题正常截断，原始结果仍正常显示。将该回退语义用例设置为 100 列，保留既有窄窗口标题、Tooltip 和箭头行为覆盖。相关 3 个文件 9 pass / 0 fail，57 assertions，1.20s。
 
 最终 `env -u NO_COLOR bun run check` 退出码 0：静态检查全部通过，2741 pass / 0 fail，15535 assertions，225 files，全量测试 99.91s。测试代码验证后未再修改；本节仅记录实际结果。
+
+## 2026-10-07 输入框上方留白
+
+会话内容容器增加一行底部内边距，底部跟随时末条消息与输入框之间保留两行空白。留白属于滚动内容，不额外缩小视口；消息之间原有一行间隔保留。回归先复现原有一行间隔，再验证 80×24 与 40×12 的两行留白。
+
+验证：消息间距、导航、展开与 Markdown 代码框共 4 个文件，18 pass / 0 fail，197 assertions，4.42s；`bun run check:dev` 通过。覆盖底部跟随、历史阅读位置及小窗口，未运行全量测试。

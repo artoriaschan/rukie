@@ -2563,7 +2563,7 @@ function Chat({
             thinking={thinking}
             working={state.running}
           />
-          <Box flexDirection="column" gap={1}>
+          <Box flexDirection="column" gap={1} paddingBottom={1}>
             {completed.map(
               (entry, index) =>
                 entry && (
