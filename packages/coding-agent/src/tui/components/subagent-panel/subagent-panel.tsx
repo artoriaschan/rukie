@@ -50,7 +50,14 @@ export function SubagentPanel({
           </ThemedText>
         </Box>
         {compact && preview && (
-          <Box flexShrink={0} flexGrow={1} onClick={() => onOpen(preview.agentId)}>
+          <Box
+            flexShrink={0}
+            flexGrow={1}
+            onClick={(event) => {
+              event.stopImmediatePropagation();
+              onOpen(preview.agentId);
+            }}
+          >
             <ThemedText dim wrap="truncate">{`  ${nodeLabel(preview)}`}</ThemedText>
           </Box>
         )}

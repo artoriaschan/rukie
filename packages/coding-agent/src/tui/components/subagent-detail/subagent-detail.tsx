@@ -106,58 +106,65 @@ export function SubagentDetailScene({
   );
   return (
     <Box flexShrink={0} height={rows} paddingX={2} paddingY={1} flexDirection="column">
-      <Box flexShrink={0}>
-        <ThemedText wrap="truncate">
-          <ThemedText color={color}>{glyph} </ThemedText>
-          <ThemedText bold>
-            {agentView ? `${t("subagent.agent-view")} · ` : t("subagent.prefix")}
-            {subagent.description}
+      <Box flexShrink={0} flexDirection="column">
+        <Box flexShrink={0}>
+          <ThemedText wrap="truncate">
+            <ThemedText color={color}>{glyph} </ThemedText>
+            <ThemedText bold>
+              {agentView ? `${t("subagent.agent-view")} · ` : t("subagent.prefix")}
+              {subagent.description}
+            </ThemedText>
+            <ThemedText dim> · </ThemedText>
+            <ThemedText color={color}>{t(subagentStatusKey(subagent))}</ThemedText>
           </ThemedText>
-          <ThemedText dim> · </ThemedText>
-          <ThemedText color={color}>{t(subagentStatusKey(subagent))}</ThemedText>
+          <Box flexShrink={0} flexGrow={1} />
+          <ExitButton onClick={onBack} />
+        </Box>
+        <ThemedText wrap="truncate">
+          {subagent.model}
+          <ThemedText
+            dim
+          >{`${duration === undefined ? "" : ` · ${duration}`}${subagent.tokens === undefined ? "" : ` · ${subagent.tokens} tok`} · ${subagent.toolCalls.length} tools`}</ThemedText>
         </ThemedText>
-        <Box flexShrink={0} flexGrow={1} />
-        <ExitButton onClick={onBack} />
-      </Box>
-      <ThemedText wrap="truncate">
-        {subagent.model}
         <ThemedText
           dim
-        >{`${duration === undefined ? "" : ` · ${duration}`}${subagent.tokens === undefined ? "" : ` · ${subagent.tokens} tok`} · ${subagent.toolCalls.length} tools`}</ThemedText>
-      </ThemedText>
-      <ThemedText
-        dim
-        wrap="truncate"
-      >{`id ${subagent.agentId.slice(0, 8)} · ${t("subagent.started")} ${timestamp(subagent.startedAt)}${subagent.completedAt ? ` · ${t("subagent.ended")} ${timestamp(subagent.completedAt)}` : ""}`}</ThemedText>
-      {reason && <ThemedText color="error">{reason}</ThemedText>}
-      {!agentView && (
-        <Box marginTop={1} flexShrink={0}>
-          {(["summary", "output", "tools"] as const).map((tab, index) => (
-            <Box flexShrink={0} key={tab}>
-              <Box flexShrink={0} onClick={() => onPage(tab)}>
-                <ThemedText
-                  bold={page === tab}
-                  inverse={page === tab}
-                  color={page === tab ? "accent" : undefined}
-                >{` ${t(`subagent.${tab}`)} `}</ThemedText>
+          wrap="truncate"
+        >{`id ${subagent.agentId.slice(0, 8)} · ${t("subagent.started")} ${timestamp(subagent.startedAt)}${subagent.completedAt ? ` · ${t("subagent.ended")} ${timestamp(subagent.completedAt)}` : ""}`}</ThemedText>
+        {reason && (
+          <ThemedText color="error" wrap="truncate">
+            {reason}
+          </ThemedText>
+        )}
+        {!agentView && (
+          <Box marginTop={1} flexShrink={0}>
+            {(["summary", "output", "tools"] as const).map((tab, index) => (
+              <Box flexShrink={0} key={tab}>
+                <Box flexShrink={0} onClick={() => onPage(tab)}>
+                  <ThemedText
+                    bold={page === tab}
+                    inverse={page === tab}
+                    color={page === tab ? "accent" : undefined}
+                  >{` ${t(`subagent.${tab}`)} `}</ThemedText>
+                </Box>
+                {index < 2 && <ThemedText dim>│</ThemedText>}
               </Box>
-              {index < 2 && <ThemedText dim>│</ThemedText>}
-            </Box>
-          ))}
-          <ThemedText dim>{`  ${["summary", "output", "tools"].indexOf(page) + 1}/3`}</ThemedText>
-        </Box>
-      )}
-      <ThemedText dim wrap="truncate">
-        {"─".repeat(72)}
-      </ThemedText>
+            ))}
+            <ThemedText dim>{`  ${["summary", "output", "tools"].indexOf(page) + 1}/3`}</ThemedText>
+          </Box>
+        )}
+        <ThemedText dim wrap="truncate">
+          {"─".repeat(72)}
+        </ThemedText>
+      </Box>
       <ScrollBox
         key={page}
         ref={panelScroll}
         stickyScroll={
           initialScroll?.following ?? (subagent.status === "running" && page === "output")
         }
-        height={Math.max(1, rows - 14)}
-        flexGrow={0}
+        minHeight={1}
+        flexGrow={1}
+        flexShrink={1}
         paddingX={1}
       >
         {page === "summary" && (
@@ -228,23 +235,27 @@ export function SubagentDetailScene({
             <ThemedText dim>{t("subagent.no-tools")}</ThemedText>
           ))}
       </ScrollBox>
-      <ThemedText dim wrap="truncate">
-        {"─".repeat(72)}
-      </ThemedText>
-      <Box flexShrink={0}>
-        <ThemedText dim>
-          {agentView ? t("subagent.readonly-hint") : t("subagent.detail-hint")}
+      <Box flexShrink={0} flexDirection="column">
+        <ThemedText dim wrap="truncate">
+          {"─".repeat(72)}
         </ThemedText>
-        <Box flexShrink={0} flexGrow={1} />
-        {!agentView && subagent.status === "running" && (
-          <Box flexShrink={0} onClick={onInterrupt}>
-            <ThemedText color="error">{t("subagent.interrupt")}</ThemedText>
-          </Box>
+        <Box flexShrink={0}>
+          <ThemedText dim wrap="truncate">
+            {agentView ? t("subagent.readonly-hint") : t("subagent.detail-hint")}
+          </ThemedText>
+          <Box flexShrink={0} flexGrow={1} />
+          {!agentView && subagent.status === "running" && (
+            <Box flexShrink={0} onClick={onInterrupt}>
+              <ThemedText color="error">{t("subagent.interrupt")}</ThemedText>
+            </Box>
+          )}
+        </Box>
+        {page === "output" && subagent.output.some((line) => line.type === "thinking") && (
+          <ThemedText dim wrap="truncate">
+            {t("subagent.thinking-hint")}
+          </ThemedText>
         )}
       </Box>
-      {page === "output" && subagent.output.some((line) => line.type === "thinking") && (
-        <ThemedText dim>{t("subagent.thinking-hint")}</ThemedText>
-      )}
     </Box>
   );
 }
