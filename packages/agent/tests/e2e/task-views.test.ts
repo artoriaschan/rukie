@@ -61,7 +61,7 @@ test.each(cases)(
             (event) => event.type === type && "toolName" in event && event.toolName === name,
           ),
         ).toMatchObject({ view: { kind: "task", displayKey: `tool.${name}` } });
-      await session.dispose();
+      await session.close();
       resumed = await createSession({ ...options, ...fakeModel([]), resumeId: session.id });
       expect(
         resumed.messages.find(
@@ -69,8 +69,8 @@ test.each(cases)(
         ),
       ).toMatchObject({ view: { kind: "task", displayKey: `tool.${name}` } });
     } finally {
-      await resumed?.dispose();
-      await session.dispose();
+      await resumed?.close();
+      await session.close();
       await dirs.cleanup();
     }
   },
