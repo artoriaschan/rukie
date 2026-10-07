@@ -232,8 +232,8 @@ test("real Compaction retains full uncertain history without reviving compacted 
   expect(resultMessages(session).find((result) => result.toolName === "write")).toMatchObject({
     outcomeUnknown: true,
   });
-  // Session messages project the current native head; the stored Transcript is wider.
-  expect(resultMessages(session)).toHaveLength(1);
+  // The chronological Transcript retains every real receipt; only the provider context is compacted.
+  expect(resultMessages(session)).toHaveLength(3);
   await runRequest(session, "check current state");
   expect(JSON.stringify(fake.contexts.at(-1)!.messages)).toContain("Prior history summarized");
   expect(JSON.stringify(fake.contexts.at(-1)!.messages)).not.toContain("real-success");
