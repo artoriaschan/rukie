@@ -16,7 +16,7 @@ rtk proxy bun test probe.test.ts
 
 ## 当前证据
 
-2026-10-08：Bun 1.4.2 (744846f84)，11 项测试、52 条断言通过，总计 1.420 秒。8 个独立进程场景分别约 152–167 毫秒，真实进程成本是恢复验收的一部分，其余案例 9–43 毫秒。typecheck 退出码 0；pi-mcp 公共入口在 Bun 下导入成功（18 个导出）。未调用真实模型或 MCP 服务。
+2026-10-08：Bun 1.4.2 (744846f84)，11 项测试、52 条断言通过，总计 1.399 秒。8 个独立进程场景分别约 148–163 毫秒，真实进程成本是恢复验收的一部分，其余案例 9–43 毫秒。typecheck 退出码 0；pi-mcp 公共入口在 Bun 下导入成功（18 个导出）。未调用真实模型或 MCP 服务。
 
 - `smoke` 用 fsync JSONL 完成 open、提交、流式 watch、实际原生 write 工具、wait、typed document、close、reopen；相同 requestId 返回原 submission ID。宿主直接使用 NodeExecutionEnv 读取实际写入内容。
 - `worker.ts` 在已提交输入、已提交模型 partial、beforeTool 等待、已提交工具 intent/输出、已提交结果等屏障发布 READY。父进程收到 READY 才 SIGKILL，然后以另一个进程重开同一 storage。safe intent 在当前定义也 safe 时重跑一次；默认 unsafe 不执行，保留 committed output 并给 interrupted。stored safe/current unsafe 和 stored unsafe/current safe 都不重跑。结果已提交时不重复执行。

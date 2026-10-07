@@ -3,11 +3,24 @@ import {
   awaitWithContext,
   withAbortSignal,
 } from "@earendil-works/chord/context";
+import { Type } from "typebox";
+import { Value } from "typebox/value";
 import { test, expect } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { smoke, hookClose, ownershipAndFork } from "./scenario.ts";
+
+const Ready = Type.Object({ mode: Type.String(), id: Type.Number(), providerCalls: Type.Number() });
+const Report = Type.Object({
+  done: Type.Boolean(),
+  sameId: Type.Boolean(),
+  executed: Type.Number(),
+  interrupted: Type.Boolean(),
+  output: Type.Boolean(),
+  partial: Type.Boolean(),
+  retained: Type.Boolean(),
+});
 
 test("public Harness commits streaming, files and documents through close/reopen", async () => {
   const dir = await mkdtemp(join(tmpdir(), "rukie-durable-"));
@@ -51,10 +64,15 @@ for (const mode of [
       while (!output.includes("\n")) {
         const chunk = await awaitWithContext(reader.read(), deadline);
         if (chunk.done)
-          throw new Error("worker ended: " + output + (await new Response(child.stderr).text()));
+          throw new Error(
+            "worker ended: " +
+              output +
+              (await awaitWithContext(new Response(child.stderr).text(), deadline)),
+          );
         output += new TextDecoder().decode(chunk.value);
       }
-      const ready = JSON.parse(output.split("\n")[0]);
+      const ready: unknown = JSON.parse(output.split("\n")[0]);
+      if (!Value.Check(Ready, ready)) throw new Error("invalid worker readiness record");
       expect(ready.mode).toBe(mode);
       if (mode === "admitted") expect(ready.providerCalls).toBe(0);
       child.kill(9);
@@ -70,7 +88,8 @@ for (const mode of [
       const stderr = await awaitWithContext(new Response(resumed.stderr).text(), deadline);
       expect(await awaitWithContext(resumed.exited, deadline)).toBe(0);
       if (stderr) throw new Error(stderr);
-      const report = JSON.parse(result);
+      const report: unknown = JSON.parse(result);
+      if (!Value.Check(Report, report)) throw new Error("invalid worker recovery report");
       expect(report.done).toBe(true);
       expect(report.sameId).toBe(true);
       expect(report.executed).toBe(mode === "safe" || mode === "hook" ? 1 : 0);
@@ -81,11 +100,18 @@ for (const mode of [
       if (mode === "partial") expect(report.partial).toBe(true);
       if (mode === "result") expect(report.retained).toBe(true);
     } finally {
-      for (const proc of [child, resumed]) {
-        if (proc && proc.exitCode === null) proc.kill(9);
-        if (proc) await proc.exited;
-      }
+      const exits = await Promise.allSettled(
+        [child, resumed].map(async (proc) => {
+          if (!proc) return;
+          if (proc.exitCode === null) proc.kill(9);
+          await awaitWithContext(
+            proc.exited,
+            withAbortSignal(AbortSignal.timeout(3000), BACKGROUND_CONTEXT),
+          );
+        }),
+      );
       await rm(dir, { recursive: true, force: true });
+      for (const exit of exits) if (exit.status === "rejected") throw exit.reason;
     }
   }, 10000);
 }
