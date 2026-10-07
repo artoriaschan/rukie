@@ -108,6 +108,12 @@
 - 手工 smoke 未执行，真实 provider、OS/native 剪贴板和真实交互终端可用性不由 fake-model/headless 场景证明。平台/SSH/tmux/OSC 的自动化证据使用隔离 helper 与 terminal transport。
 - 已发生的验证事故：ticket09 初始红 fixture 曾误写真实 macOS 剪贴板为 `hi`，没有读取或恢复原剪贴板；最终相关 fixture 使用隔离 host。本票没有原生剪贴板写入。
 
+## 最终审阅修复
+
+最终 Standards 审阅无发现；Spec 审阅以公开 RED 确认两项缺口：实际子 Session 保存失败后打开的 Agent View 保留未提交尾部，以及 Job 边框／分组轨进入复制文字。修复读取子 Session 已提交分支替换正文及工具状态，保持已保存部分和 Unknown Tool Outcome；后续子 Run、父会话重建和关闭使旧请求失效。Job 仅排除装饰边框和分组轨，输出符号、状态及 Unicode 原文保留。
+
+[subagent-save-reconciliation.test.ts](../../apps/neant-tui/tests/e2e/subagent-save-reconciliation.test.ts) 经公开 startWithClock、真实 JSONL store 与实际子 Session 验证 assistant/toolResult 两类保存失败、已提交思考和 read、已发生的 write 副作用与未知结果、实时和冷恢复相同以及同一子 Session 的新 Run。[job-selection.test.ts](../../apps/neant-tui/tests/e2e/job-selection.test.ts) 通过隔离 fake host 验证单卡及分组卡的 Unicode 命令／输出复制，不含边框和轨道。公开 RED 分别267ms、236ms，未访问原生剪贴板。最终 focused 命令 `rtk proxy env -u NO_COLOR bun test apps/neant-tui/tests/e2e/subagent-save-reconciliation.test.ts apps/neant-tui/tests/e2e/job-selection.test.ts apps/neant-tui/tests/e2e/subagent-history-boundary.test.ts apps/neant-tui/tests/e2e/mixed-session-resume.test.ts apps/neant-tui/tests/e2e/background-jobs.test.ts apps/neant-tui/tests/e2e/text-selection.test.ts`：35 pass、367断言、13.58s；新增4用例237/184/260/242ms，均小于1s。既有 Background Job 进程启动／真实停止升级／更新resize成本为2.17/3.28/2.49s，沿用所属工单的必要进程契约。本次 `rtk proxy bun run check:dev` 和 `git diff --check` 通过。完整 gate 仍待主代理执行。
+
 ## 可复制的本地 smoke
 
 先在仓库根目录运行自动化入口；focused 命令仅验证组合场景，完整 gate 由本次交付的主代理执行一次。
