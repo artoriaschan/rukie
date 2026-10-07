@@ -46,7 +46,7 @@ test("resume replays stored text before input and appends the next Run to the sa
       (line) => line.slice(42) === `${app.model.provider}/${app.model.id}`,
     );
     expect(metadata).toBeGreaterThanOrEqual(0);
-    expect(lines[metadata + 1]?.slice(42)).toBe(root.slice(0, 38));
+    expect(lines[metadata + 1]?.slice(42)).toBe(root.slice(0, 37) + "…");
     const restored = lines.indexOf("❯ stored prompt 中");
     expect(restored).toBeGreaterThan(metadata);
     expect(lines.slice(restored, restored + 4)).toEqual([

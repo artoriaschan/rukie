@@ -28,6 +28,7 @@ SplitDiffView 的 `onSourceMount(id, DOMElement | null)` 将稳定源行身份�
 - sharp loader 返回真实固定版本 sharp；sixel-worker 仍使用真实 node:worker_threads，Bun 支持 .js URL 解析到 .ts 源文件。
 - ink.tsx：stdout 恢复不回退 fd=1；退出保存完成状态与 Error，修复首次 late wait；将 renderer 传给 App。
 - App.tsx/AppContext.ts：提供根自己的 stdout 和 renderer。use-selection/use-search-highlight/AlternateScreen 不使用 process.stdout 全局或单根 fallback。
+- render-node-to-output.ts/renderer.ts/hit-test.ts：绝对覆盖层的绘制区域、命中列表和 image occlusion 历史属于各自根；另一根绘制不会改变当前根的点击目标或覆盖层修复判断。output.ts 的绝对区域 clear 只排除其之前的旧区域 blit，之后绘制的当前子树 border、header、首 glyph 和 prompt 保留。
 - App.tsx/ink.tsx/hit-test.ts/events/click-event.ts：click 事件携带 press 的屏幕和目标局部坐标；通用 click 路由语义不变，产品编辑器校验 press/release 位于同一原子单位。
 - root.ts/ink.tsx/selection.ts：selectionIncludeNoSelectCells 每根可选择原始区域 fence 或严格装饰排除，char/word/line 由同一起点策略初始化；默认保持 dsh 行为。
 - parse-keypress.ts：普通 text token 的 C0/DEL 按顺序拆成独立 key，保留同一 stdin read 中 printable + Enter/清空/删除；bracketed paste 保持一次原始 payload。
