@@ -256,6 +256,7 @@ test("idle send keeps logical identity and runs an owned native fork with prior 
     const parent = await harness.root(context, {
       agent: { model: { provider: fake.model.provider, modelId: fake.model.id } },
     });
+    let configurations = 0;
     const controller = createSubagentController({
       harness,
       parent,
@@ -263,7 +264,10 @@ test("idle send keeps logical identity and runs an owned native fork with prior 
       state: subagentsState("product"),
       forkAt: () => undefined,
       childAgent: async () => ({
-        model: { provider: fake.model.provider, modelId: fake.model.id },
+        model: {
+          provider: fake.model.provider,
+          modelId: ++configurations === 1 ? fake.model.id : "root-model-changed",
+        },
         extensions: [],
         tools: [],
       }),
