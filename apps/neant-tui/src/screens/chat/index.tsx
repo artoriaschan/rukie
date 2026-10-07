@@ -844,13 +844,18 @@ function Chat({
   ]);
   const [jobGroupFolds, setJobGroupFolds] = useState<ReadonlyMap<string, boolean>>(new Map());
   const [expandedRows, setExpandedRows] = useState<ReadonlySet<string>>(new Set());
+  const [streamThinkingRows, setStreamThinkingRows] = useState<ReadonlySet<string>>(new Set());
   useEffect(() => {
     if (state.running) return;
-    setExpandedRows((rows) => {
-      const next = new Set(Array.from(rows).filter((id) => !id.endsWith("-thinking")));
-      return next.size === rows.size ? rows : next;
-    });
+    setStreamThinkingRows((rows) => (rows.size ? new Set() : rows));
   }, [state.running]);
+  const toggleStreamThinking = (id: string) =>
+    setStreamThinkingRows((rows) => {
+      const next = new Set(rows);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   const toggleRow = (id: string) =>
     setExpandedRows((rows) => {
       const next = new Set(rows);
@@ -2068,8 +2073,16 @@ function Chat({
                 durationMs={entry.durationMs}
                 revealKey={entry.anchorId ?? `thinking-${index}`}
                 locale={locale}
-                expanded={expanded || expandedRows.has(entry.anchorId ?? `thinking-${index}`)}
-                onToggle={() => toggleRow(entry.anchorId ?? `thinking-${index}`)}
+                expanded={
+                  expanded ||
+                  expandedRows.has(entry.anchorId ?? `thinking-${index}`) ||
+                  streamThinkingRows.has(entry.anchorId ?? `thinking-${index}`)
+                }
+                onToggle={() =>
+                  (entry.thinkingOpen ? toggleStreamThinking : toggleRow)(
+                    entry.anchorId ?? `thinking-${index}`,
+                  )
+                }
               />
             );
           case "session-notice":
@@ -2120,6 +2133,7 @@ function Chat({
       state.jobs,
       expanded,
       expandedRows,
+      streamThinkingRows,
       jobGroupFolds,
       columns,
       thinking,
@@ -2261,8 +2275,8 @@ function Chat({
               preview={!state.reasoningSettled}
               revealKey={`${state.assistantAnchor}-thinking`}
               locale={locale}
-              expanded={expanded || expandedRows.has(`${state.assistantAnchor}-thinking`)}
-              onToggle={() => toggleRow(`${state.assistantAnchor}-thinking`)}
+              expanded={expanded || streamThinkingRows.has(`${state.assistantAnchor}-thinking`)}
+              onToggle={() => toggleStreamThinking(`${state.assistantAnchor}-thinking`)}
             />
           </Box>
         )}
