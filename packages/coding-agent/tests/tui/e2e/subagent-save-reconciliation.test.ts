@@ -5,6 +5,7 @@ import { start } from "../helpers/app";
 import { startWithClock } from "../helpers/clock-app";
 import { failingStorage } from "../../helpers/native-storage-failure";
 import { fakeModel } from "../helpers/agent-fixtures";
+import { getCurrentTools } from "@earendil-works/pi-ai";
 
 test.each(["assistant", "toolResult"] as const)(
   "child rejected %s save reconciles open Agent View and Resume",
@@ -157,12 +158,31 @@ test.each(["assistant", "toolResult"] as const)(
         expect(JSON.stringify(next.context.messages)).toContain("durable child partial");
         expect(JSON.stringify(next.context.messages)).not.toContain("child rejected final body");
         next.reply("fresh child live output");
-        await replay.waitFor(() => replay.screen().join("\n").includes("fresh child live output"));
+        const completedParents = new Set([replay.calls[0]!]);
+        await replay.waitFor(() => {
+          for (const call of replay.calls) {
+            if (
+              completedParents.has(call) ||
+              !getCurrentTools(call.context.messages).some((tool) => tool.name === "send_message")
+            )
+              continue;
+            completedParents.add(call);
+            call.reply("parent continuation settled");
+          }
+          return (
+            replay.calls.length >= 4 &&
+            replay.screen().join("\n").includes("fresh child live output") &&
+            !replay.screen().some((line) => line.includes("esc interrupt"))
+          );
+        });
+        expect(replay.stderr()).toBe("");
       } finally {
         await replay.cleanup();
       }
 
-      expect(app.stderr()).toBe("");
+      expect(app.stderr()).toContain(
+        "Session is poisoned by a failed commit after storage admission; reopen it",
+      );
     } finally {
       await app.cleanup();
     }
