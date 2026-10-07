@@ -154,7 +154,9 @@ test.each(["zh", "en"] as const)(
       app.calls[2]!.finish();
       await app.waitFor(() => !app.isWorking());
       const lines = app.allLines();
-      const errors = lines.filter((line) => line.startsWith("✗ todo_write "));
+      const errors = lines.filter((line) =>
+        line.startsWith(locale === "zh" ? "✗ 待办(" : "✗ Todos("),
+      );
       expect(errors).toHaveLength(2);
       expect(lines).toContain('⎿ Invalid todos: duplicate content "repeat".');
       expect(lines.join("\n")).toContain("Validation failed");
@@ -164,7 +166,9 @@ test.each(["zh", "en"] as const)(
       try {
         await resumed.waitFor(() => resumed.screen().includes("❯"));
         const replayLines = resumed.allLines();
-        expect(replayLines.filter((line) => line.startsWith("✗ todo_write "))).toEqual(errors);
+        expect(
+          replayLines.filter((line) => line.startsWith(locale === "zh" ? "✗ 待办(" : "✗ Todos(")),
+        ).toEqual(errors);
         expect(replayLines).toContain('⎿ Invalid todos: duplicate content "repeat".');
         expect(replayLines.join("\n")).toContain("Validation failed");
         expect(replayLines.join("\n")).not.toContain("todos ✓");

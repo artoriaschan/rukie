@@ -1673,6 +1673,12 @@ function Chat({
                       <ToolCall
                         locale={locale}
                         summary={member.summary}
+                        name={member.name}
+                        args={member.args}
+                        callView={member.callView}
+                        resultView={member.resultView}
+                        startedAt={member.startedAt}
+                        endedAt={member.endedAt}
                         status="success"
                         result={member.result}
                       />
@@ -1697,6 +1703,14 @@ function Chat({
                   planReview={entry.planReview}
                   locale={locale}
                   summary={entry.summary}
+                  id={entry.id}
+                  name={entry.name}
+                  args={entry.args}
+                  callView={entry.callView}
+                  resultView={entry.resultView}
+                  startedAt={entry.startedAt}
+                  endedAt={entry.endedAt}
+                  replayed={entry.replayed}
                   status={entry.isError ? "error" : "success"}
                   outcomeUnknown={entry.outcomeUnknown}
                   result={entry.result}
@@ -1866,7 +1880,17 @@ function Chat({
           </Box>
         )}
         {state.tools.map((tool) => (
-          <ToolCall key={tool.id} summary={tool.summary} status="running" />
+          <ToolCall
+            key={tool.id}
+            id={tool.id}
+            name={tool.name}
+            args={tool.args}
+            callView={tool.callView}
+            startedAt={tool.startedAt}
+            locale={locale}
+            summary={tool.summary}
+            status="running"
+          />
         ))}
         {state.error && <Notice kind="error" text={state.error} />}
       </ScrollBox>

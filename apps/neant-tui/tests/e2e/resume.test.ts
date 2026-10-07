@@ -177,18 +177,21 @@ test("resume replays each tool's collapsed result and error preview without remi
       "❯ stored tools",
       `${assistant} before tools`,
     ]);
-    expect(lines.filter((line) => line === '• read {"path":"first.txt"}')).toHaveLength(1);
-    expect(lines.filter((line) => line === '• read {"path":"second.txt"}')).toHaveLength(1);
-    expect(lines.filter((line) => line.startsWith('✗ bash {"command":'))).toHaveLength(1);
+    expect(lines.filter((line) => line.startsWith('• 读取({"path":"first.txt"})'))).toHaveLength(1);
+    expect(lines.filter((line) => line.startsWith('• 读取({"path":"second.txt"})'))).toHaveLength(
+      1,
+    );
+    expect(lines.filter((line) => line.startsWith("✗ 执行("))).toHaveLength(1);
     expect(lines).toContain("⎿ first failure");
     expect(lines).toContain("⎿ hidden first output");
     expect(lines).toContain("⎿ hidden second output");
-    expect(lines).toContain("  second failure");
-    expect(lines).toContain("  third failure");
+    expect(lines).toContain("   second failure");
+    expect(lines).toContain("   third failure");
     expect(lines.indexOf(`${assistant} after tools`)).toBeGreaterThan(
-      lines.indexOf("  third failure"),
+      lines.indexOf("   third failure"),
     );
-    for (const hidden of ["fourth-hidden", "hidden reasoning", "system-reminder"])
+    expect(lines).not.toContain("   fourth-hidden");
+    for (const hidden of ["hidden reasoning", "system-reminder"])
       expect(lines.join("\n")).not.toContain(hidden);
     expect(
       lines.some(
@@ -203,8 +206,8 @@ test("resume replays each tool's collapsed result and error preview without remi
     app.calls[0]!.delta("next reply");
     app.calls[0]!.finish();
     await app.waitFor(() => app.allLines().includes(`${assistant} next reply`) && !app.isWorking());
-    expect(app.allLines().filter((line) => line.startsWith("• read "))).toHaveLength(2);
-    expect(app.allLines().filter((line) => line.startsWith("✗ bash "))).toHaveLength(1);
+    expect(app.allLines().filter((line) => line.startsWith("• 读取("))).toHaveLength(2);
+    expect(app.allLines().filter((line) => line.startsWith("✗ 执行("))).toHaveLength(1);
     expect(app.stderr()).toBe("");
   } finally {
     await app.cleanup();

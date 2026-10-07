@@ -145,6 +145,7 @@ export function reduceSubagent(
             id: event.toolCallId,
             name: event.toolName,
             argsPreview,
+            view: event.view,
             status: "running",
             startedAt: now,
           },

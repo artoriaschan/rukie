@@ -1225,3 +1225,36 @@ test.each(["ask", "deny"])(
     );
   },
 );
+
+test.each(["text", "stream-json"])(
+  "CLI %s preserves text output and exposes terminal Tool Views in events",
+  async (format) => {
+    const { server, ...dirs } = await setup(
+      { permissionMode: "full-access" },
+      {
+        toolCalls: [
+          {
+            name: "bash",
+            arguments: { command: "printf cli-view", description: "Print CLI output" },
+          },
+        ],
+      },
+    );
+    expect(server.requests).toHaveLength(0);
+    const result = await neant(["-p", "run", "--output-format", format], {
+      ...dirs,
+      key: "sk-test",
+    });
+    expect(result.exitCode).toBe(0);
+    if (format === "text") expect(result.stdout).toBe("hello from fake\n");
+    else {
+      const events = parseEvents(result.stdout);
+      expect(events.find((event) => event.type === "tool_execution_start")).toMatchObject({
+        view: { card: "terminal", kind: "execute", command: "printf cli-view" },
+      });
+      expect(events.find((event) => event.type === "tool_execution_end")).toMatchObject({
+        view: { card: "terminal", output: "cli-view", exitCode: 0 },
+      });
+    }
+  },
+);

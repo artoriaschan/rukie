@@ -289,7 +289,7 @@ test.each(["idle", "approval"] as const)(
       app.stdin.write(`\x1b[<0;${x};${y + 1}M\x1b[<0;${x};${y + 1}m`);
       await app.waitFor(() => !app.screen().some((line) => line.includes("回到底部")));
       if (phase === "idle") expect(app.screen()).toContain("  line-49");
-      else expect(app.screen().some((line) => /^[·•●] bash \{"command":/.test(line))).toBe(true);
+      else expect(app.screen().some((line) => /^(?:[●⏺] |  )执行\(/.test(line))).toBe(true);
       expect(app.calls).toHaveLength(1);
       if (phase === "approval") expect(app.screen().join("\n")).toContain("等待审批");
     } finally {

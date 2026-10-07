@@ -46,3 +46,5 @@ export {
   type ImageInfo,
   type ImageValidationCode,
 } from "./images/index.ts";
+
+export type { PresentedTool } from "./tools/presentation.ts";

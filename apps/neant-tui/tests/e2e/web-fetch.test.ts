@@ -29,7 +29,9 @@ test.each([120, 60])(
       await app.waitFor(() => app.calls.length === 2);
       app.calls[1]!.finish();
       await app.waitFor(() => !app.isWorking());
-      expect(app.allLines()).toContain(`• web_fetch ${url}`);
+      expect(app.allLines().some((line) => line.startsWith(`• 获取网页({"url":"${url}"})`))).toBe(
+        true,
+      );
       expect(app.allLines()).toContain(`⎿ Fetched ${url} (HTTP 200)`);
       expect(app.allLines().join("\n")).not.toContain("public page body");
       expect(app.screen().every((line) => Bun.stringWidth(line) <= columns)).toBe(true);

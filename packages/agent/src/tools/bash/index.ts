@@ -3,13 +3,13 @@ import {
   DEFAULT_MAX_BYTES,
   DEFAULT_MAX_LINES,
   formatSize,
-  type AgentTool,
   type ShellOutputView,
 } from "@earendil-works/pi-agent-core";
 import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
 import { resolve } from "node:path";
 import type { Jobs } from "../jobs/index.ts";
 import { Type } from "typebox";
+import type { PresentedTool } from "../presentation.ts";
 import { OutputCapture } from "./output-capture.ts";
 
 const schema = Type.Object({
@@ -29,9 +29,30 @@ const schema = Type.Object({
   ),
 });
 
-export function createBashTool(cwd: string, jobs: Jobs): AgentTool<typeof schema> {
+export function createBashTool(cwd: string, jobs: Jobs): PresentedTool<typeof schema> {
   return {
     name: "bash",
+    presentCall(args) {
+      return args.run_in_background
+        ? { card: "generic", kind: "execute", displayKey: "tool.bash", rawInput: args }
+        : { card: "terminal", kind: "execute", displayKey: "tool.bash", command: args.command };
+    },
+    presentResult(args, output, details) {
+      const facts = typeof details === "object" && details !== null ? details : {};
+      if (args.run_in_background || "jobId" in facts)
+        return { card: "generic", kind: "execute", displayKey: "tool.bash", text: output };
+      return {
+        card: "terminal",
+        kind: "execute",
+        displayKey: "tool.bash",
+        output,
+        ...("exitCode" in facts && typeof facts.exitCode === "number"
+          ? { exitCode: facts.exitCode }
+          : {}),
+        ...("signal" in facts && typeof facts.signal === "string" ? { signal: facts.signal } : {}),
+        ...("truncation" in facts ? { outputUnavailable: true } : {}),
+      };
+    },
     label: "bash",
     description: `Execute a bash command. Returns combined stdout and stderr, truncated to the last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB. If truncated, full output is saved to a temp file. Timeout defaults to 120 seconds (maximum: 600); commands still running at the timeout move to background jobs. Set run_in_background to start a job without a timeout; use job_output, job_list, and job_kill to manage it.`,
     parameters: schema,
@@ -146,8 +167,18 @@ export function createBashTool(cwd: string, jobs: Jobs): AgentTool<typeof schema
         status ??=
           failure instanceof Error ? failure.message : failure ? String(failure) : undefined;
         status ??= code !== 0 ? `Command exited with code ${code}` : undefined;
-        if (status) throw new Error(text ? `${text}\n\n${status}` : status);
-        return { content: [{ type: "text", text: text || "(no output)" }], details };
+        const facts = {
+          ...details,
+          exitCode: code,
+          ...(job.view.signal ? { signal: job.view.signal } : {}),
+        };
+        if (status)
+          return {
+            isError: true,
+            content: [{ type: "text", text: text ? `${text}\n\n${status}` : status }],
+            details: facts,
+          };
+        return { content: [{ type: "text", text: text || "(no output)" }], details: facts };
       } catch (error) {
         terminate();
         throw error;

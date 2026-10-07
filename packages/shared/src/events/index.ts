@@ -1,3 +1,4 @@
+import type { ToolCallView, ToolResultView } from "../tool-view.ts";
 import type { UserVisibleErrorData } from "../errors.ts";
 import type { JobEvent } from "../jobs.ts";
 
@@ -94,7 +95,11 @@ export type CustomSessionEvent<PiEvent extends { type: string } = never> =
 
 /** The caller supplies pi's native AgentEvent without a runtime or type dependency here. */
 export type SessionEvent<PiEvent extends { type: string }> = (
-  | PiEvent
+  | (PiEvent extends { type: "tool_execution_start" }
+      ? PiEvent & { view?: ToolCallView }
+      : PiEvent extends { type: "tool_execution_end" }
+        ? PiEvent & { view?: ToolResultView }
+        : PiEvent)
   | CustomSessionEvent<PiEvent>
 ) & {
   sessionId: string;
