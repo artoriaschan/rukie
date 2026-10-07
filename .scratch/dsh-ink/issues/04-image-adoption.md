@@ -1,6 +1,6 @@
 # 04: 迁移图片为 bounded RGBA 与 Kitty/sixel
 
-Status: resolved
+Status: in-progress
 Blocked by: 03
 Type: task
 
@@ -28,3 +28,9 @@ Type: task
 - 真实 Kitty/sixel 能力请求、实际 sharp 解码与 sixel worker、gallery 点击和清理、fallback modal ownership、scroll clipping/resize visibility、需求释放/late decode、100% measured pixel crop/wheel/drag、Logo 缩放退出与虚拟 animation cleanup 通过；单例均小于 1 秒，8000 source case约140 ms。
 - owning files Oxlint 通过，`bun run check:ink-boundaries` 通过；`tsc -b` 的当前范围无错误，但整个迁移前沿仍有 05/06 所有的旧消费者/测试错误，未称整体 typecheck 通过。
 - 旧 app image-preview/image ingress e2e 保留供 06 的应用接线回归；旧 renderer graphics suite 的协议/帧预算/多根/遮挡 cases 由 06 改接新 API。未运行 full aggregate，最终 gate 属于 06。
+
+## Public app revalidation (reopened)
+
+At integration8ea22b37 the six requested app image suites produced70pass6fail. Owning leaf regressions: images.test.ts631 caption retained4CJK instead of5 in10cells; image-preview.test.ts310 zh/en30x10 layout loses Open original (2cases). Cross-core: images.test.ts592 image notice shifts held reading rows; image-preview.test.ts359 preview close loses user header (APP owns). Sixth report image-preview.test.ts167 uses obsolete Kitty2147483647 probe/PNG placement assertions;06 migrates this protocol scenario, it is not counted as a demonstrated product defect. Original public assertions retained.04 remains in-progress until leaf fixes and cross-core public revalidation pass.
+
+Leaf follow-up: gallery captions bound product names to actual slot cell width before native truncation (5CJK in10cells), and compact preview reserves fallback height plus fixed control rows and omits disabled pan/zoom controls at sub40 size. Original caption E2E passes; public native zh/en80→30→80 original-click cases pass. Original non-PNG tests now reach apphost click after restore (line316), pending shared overlay/Chat fix. No click-chain workaround or assertion deletion.04 remains in-progress.
