@@ -204,10 +204,14 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
   const tools: ToolRegistration[] = [];
   const toolServers = new Map<string, string>();
   const descriptions = new Map<string, string>();
+  const configurations = new Map<string, string>();
+  const retired = new WeakSet<McpClient>();
   const failed = new Set<string>();
   let closePromise: Promise<void> | undefined;
   let closing = false;
   let onWarning: ((message: string) => void) | undefined;
+  let onEvent: ((event: CustomSessionEvent) => void) | undefined;
+  let lifetime = new AbortController();
   const report = (server: string, error: unknown) => {
     if (failed.has(server)) return;
     failed.add(server);
@@ -235,10 +239,12 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
       error: error instanceof Error ? error.message : String(error),
       ...(errorData && { errorData }),
     });
+    onEvent?.(errors.at(-1)!);
     onWarning?.(`MCP ${server}: ${error instanceof Error ? error.message : String(error)}`);
   };
   const close = () => {
     closing = true;
+    lifetime.abort();
     connected.clear();
     // Save the first close promise: pi's subsequent close calls can settle before shutdown.
     closePromise ??= Promise.all(
@@ -249,8 +255,34 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
           report(client.options.title ?? "unknown", error);
         }
       }),
-    );
+    ).then(() => undefined);
     return closePromise;
+  };
+  const retire = async (server: string) => {
+    configurations.delete(server);
+    connected.delete(server);
+    views.delete(server);
+    descriptions.delete(server);
+    clearServerAuth.delete(server);
+    authenticateServer.delete(server);
+    failed.delete(server);
+    reportedAuth.delete(server);
+    for (let index = tools.length - 1; index >= 0; index--) {
+      if (toolServers.get(tools[index]!.name) !== server) continue;
+      authTools.delete(tools[index]!.name);
+      toolServers.delete(tools[index]!.name);
+      tools.splice(index, 1);
+    }
+    for (let index = clients.length - 1; index >= 0; index--) {
+      const client = clients[index]!;
+      if (client.options.title !== server) continue;
+      retired.add(client);
+      clients.splice(index, 1);
+      await client.close();
+    }
+    for (const list of [errors, authRequired])
+      for (let index = list.length - 1; index >= 0; index--)
+        if (list[index]!.server === server) list.splice(index, 1);
   };
   async function readConfig(
     path: string,
@@ -339,24 +371,40 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
       getOrigin?(conversationId: number): { agentId: string; description: string } | undefined;
       onInteractionStart?: OnInteractionStart;
       onWarning?: (message: string) => void;
+      onEvent?: (event: CustomSessionEvent) => void;
       onlyServer?: string;
       skipServer?: string;
       loadOnly?: boolean;
       reconnect?: boolean;
     }) {
       onWarning = options.onWarning;
+      onEvent = options.onEvent;
+      if (closing) {
+        await closePromise;
+        closing = false;
+        closePromise = undefined;
+        lifetime = new AbortController();
+      }
       const userPath = join(options.homeDir, ".rukie/mcp.json");
       const projectPath = join(options.cwd, ".mcp.json");
       const servers = new Map<
         string,
         { value: unknown; scope: "user" | "project"; configPath: string }
       >();
+      configErrors.length = 0;
+      for (const path of [userPath, projectPath]) {
+        failed.delete(path);
+        for (let index = errors.length - 1; index >= 0; index--)
+          if (errors[index]!.server === path) errors.splice(index, 1);
+      }
       for (const [name, value] of Object.entries(await readConfig(userPath, "user")))
         servers.set(name, { value, scope: "user", configPath: userPath });
       if (options.trustProjectMcp || isTrustedProject(options.cwd, options.settings)) {
         for (const [name, value] of Object.entries(await readConfig(projectPath, "project")))
           servers.set(name, { value, scope: "project", configPath: projectPath });
       }
+      if (options.onlyServer === undefined && options.skipServer === undefined)
+        for (const server of configurations.keys()) if (!servers.has(server)) await retire(server);
       options.signal?.throwIfAborted();
       const abort = () => {
         void close();
@@ -369,6 +417,16 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
           if (options.onlyServer !== undefined && server !== options.onlyServer) continue;
           if (server === options.skipServer) continue;
           options.signal?.throwIfAborted();
+          const configuration = JSON.stringify({ value, scope, configPath });
+          if (
+            configurations.get(server) === configuration &&
+            !options.reconnect &&
+            !options.loadOnly &&
+            (connected.has(server) || views.get(server)?.status === "needs-auth")
+          )
+            continue;
+          if (configurations.has(server)) await retire(server);
+          configurations.set(server, configuration);
           const metadata = {
             name: server,
             scope,
@@ -397,14 +455,14 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
           let requireAuth: (() => void) | undefined;
           clients.push(client);
           client.onError((error) => {
-            if (!closing) {
+            if (!closing && !retired.has(client)) {
               if (requiresAuthentication(error) && requireAuth) requireAuth();
               else report(server, error);
             }
           });
           client.onClose(() => {
-            connected.delete(server);
-            if (ready && !closing)
+            if (connected.get(server) === client) connected.delete(server);
+            if (ready && !closing && !retired.has(client))
               report(
                 server,
                 createUserVisibleError("MCP connection closed unexpectedly.", {
@@ -508,11 +566,11 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
               tools.push(...adapted);
               for (const tool of adapted) toolServers.set(tool.name, server);
             };
-            const registerTools = async (activeClient: McpClient) => {
+            const registerTools = async (activeClient: McpClient, signal = options.signal) => {
               const discovered = activeClient.serverCapabilities?.tools
-                ? await activeClient.listTools({ signal: options.signal })
+                ? await activeClient.listTools({ signal })
                 : [];
-              options.signal?.throwIfAborted();
+              signal?.throwIfAborted();
               if (closing)
                 throw createUserVisibleError("MCP connections are closed.", {
                   code: "mcp-connection-closed",
@@ -566,10 +624,9 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
                 );
               const shared = authState.inFlight.get(key);
               if (shared) return shared;
-              const signal =
-                toolSignal && options.signal
-                  ? AbortSignal.any([toolSignal, options.signal])
-                  : (toolSignal ?? options.signal);
+              const signal = toolSignal
+                ? AbortSignal.any([toolSignal, lifetime.signal])
+                : lifetime.signal;
               const guard = () => {
                 signal?.throwIfAborted();
                 if (closing)
@@ -721,7 +778,7 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
                     }),
                   );
                   guard();
-                  await registerTools(authenticated);
+                  await registerTools(authenticated, signal);
                   authState.needsAuth.delete(key);
                   authState.authorizationScopes.delete(key);
                   return { type: "authenticated", server };
@@ -773,6 +830,7 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
               if (!reportedAuth.has(server)) {
                 reportedAuth.add(server);
                 authRequired.push({ type: "mcp_auth_required", server });
+                onEvent?.(authRequired.at(-1)!);
               }
               if (!options.interactive) {
                 replaceTools([]);
