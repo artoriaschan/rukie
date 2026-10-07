@@ -403,6 +403,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     let closed = false;
     let closing: Promise<void> | undefined;
     let currentRequestId: string | undefined;
+    const requestWaiters = new Map<string, Promise<RequestResult>>();
     let contextMessages: readonly Message[] = [];
     let runSummaries: RunSummaryFact[] = [];
     const thinking = createThinkingTiming(() => performance.now());
@@ -410,6 +411,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     let modelFact = `${model.provider}/${model.id}`;
     const auxiliaryLifetime = new AbortController();
     let stopped = false;
+    let selectingModel = false;
+    let foregroundAdmission = false;
     let goalRound = false;
     let wrapup: string | undefined;
     let permissionMode = options.permissionMode ?? settings.permissionMode ?? "ask";
@@ -522,7 +525,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     const assertAvailable = (idle = false) => {
       if (closed) throw new Error("Session is closed.");
       if (storageFailure !== undefined) throw storageFailure;
-      if (idle && observation?.running()) throw new Error("Session is busy.");
+      if (idle && selectingModel) throw new Error("Session is switching models.");
+      if (idle && (foregroundAdmission || observation?.running()))
+        throw new Error("Session is busy; it must be idle.");
     };
     let asyncAdmissions = Promise.resolve();
     const hooks = createHooks({
@@ -557,6 +562,12 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             );
             currentRequestId = requestId;
             await registerSubmission(requestId, submitted.id);
+            void resultFor(requestId, submitted.id)
+              .then(async (result) => {
+                custom({ type: "result", ...result });
+                await session.waitForRequest(requestId);
+              })
+              .catch(warn);
             const record = await submitted.status(context);
             if (record.entry)
               await conversation.commit(
@@ -701,6 +712,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       warning: warn,
     });
     const mcp = createMcpConnections(createMcpAuthState());
+    let mcpLoaded = false;
     const jobs = createJobs({
       onEvent: (event) => custom(event),
       onNotify: (job) => {
@@ -875,12 +887,24 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       async afterRun(_request, child) {
         await childResources.get(Number(child.id))?.jobs.clear(true);
       },
-      async childAgent(type, child) {
-        const selected = type.model
-          ? selectedModel(type.model)
-          : settings.subagentModel
-            ? selectedModel(settings.subagentModel)
-            : model;
+      async childAgent(type, child, selection) {
+        const inherited = selection.retained ? (await child.agent(context)).model : undefined;
+        const retainedModel = inherited
+          ? models.getModel(inherited.provider, inherited.modelId)
+          : undefined;
+        if (inherited && !retainedModel)
+          throw new Error(
+            `Unknown retained child model: ${inherited.provider}/${inherited.modelId}`,
+          );
+        const selected =
+          retainedModel ??
+          (type.name === "fork"
+            ? model
+            : type.model
+              ? selectedModel(type.model)
+              : settings.subagentModel
+                ? selectedModel(settings.subagentModel)
+                : model);
         const directory = subagents.list().find((row) => row.conversationId === Number(child.id));
         const description = directory?.description ?? type.description;
         const childId = directory?.id ?? String(child.id);
@@ -933,6 +957,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           },
         });
         let childTools: ToolRegistration[] = [];
+        let childStopped = false;
+        let childStopReason: string | undefined;
         const childGate = createPermissionGate({
           cwd,
           homeDir: options.homeDir,
@@ -981,9 +1007,67 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             permissionMode = value;
           },
           onHookWarning: warn,
-          isRunStopped: () => false,
-          stopRun: () => {},
+          isRunStopped: () => childStopped,
+          stopRun: (reason) => {
+            childStopped = true;
+            childStopReason = reason;
+          },
           isMcpAuthTool: (name) => mcp.authTools.has(name),
+          preToolUse: async (call, signal) => {
+            const result = await hooks.run(
+              "PreToolUse",
+              hookInput({
+                agent_id: childId,
+                agent_type: type.name,
+                tool_name: call.toolCall.name,
+                tool_input: call.args,
+                tool_use_id: call.toolCall.id,
+              }),
+              { signal, matchQuery: call.toolCall.name },
+            );
+            for (const content of result.additionalContext)
+              await child.commit(
+                (tx) =>
+                  tx.appendEntry(
+                    child.id,
+                    reminderEntry({
+                      role: "system-reminder",
+                      source: "hook:PreToolUse",
+                      content,
+                      timestamp: Date.now(),
+                    }),
+                  ),
+                context,
+              );
+            return result;
+          },
+          permissionRequest: (call, suggestions, signal) =>
+            hooks.run(
+              "PermissionRequest",
+              hookInput({
+                agent_id: childId,
+                agent_type: type.name,
+                tool_name: call.toolCall.name,
+                tool_input: call.args,
+                permission_suggestions: suggestions,
+              }),
+              { signal, matchQuery: call.toolCall.name },
+            ),
+          permissionDenied: (call, denial, signal) =>
+            hooks.run(
+              "PermissionDenied",
+              hookInput({
+                agent_id: childId,
+                agent_type: type.name,
+                tool_name: call.toolCall.name,
+                tool_input: call.args,
+                tool_use_id: call.toolCall.id,
+                by: denial.by,
+                reason: denial.reason,
+                ...(denial.rule ? { rule: denial.rule } : {}),
+              }),
+              { signal, matchQuery: call.toolCall.name },
+            ),
         });
         const beforeInput = await child.context(context);
         for (const reminder of await collectReminders({
@@ -1084,6 +1168,25 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                       ) ?? [],
                   ),
                 );
+                if (childStopped) {
+                  await child.commit(
+                    (tx) =>
+                      tx.appendEntry(child.id, {
+                        kind: "rukie.notice",
+                        data: {
+                          role: "session-notice",
+                          notice: {
+                            kind: "hook_stopped",
+                            reason: childStopReason ?? "Stopped by hook.",
+                          },
+                          timestamp: Date.now(),
+                        },
+                      }),
+                    ctx,
+                  );
+                  await child.abort(ctx);
+                  return;
+                }
                 const previousNames = childTools.map((tool) => tool.name).join("\n");
                 refreshChildTools();
                 if (previousNames !== childTools.map((tool) => tool.name).join("\n")) {
@@ -1388,6 +1491,15 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                     ) ?? [],
                 ),
               );
+              const availableMcp = new Set(mcp.tools.map((tool) => tool.name));
+              const publishedMcp = tools
+                .filter((tool) => tool.name.startsWith("mcp__"))
+                .map((tool) => tool.name);
+              if (
+                publishedMcp.length !== availableMcp.size ||
+                publishedMcp.some((name) => !availableMcp.has(name))
+              )
+                await rebuildTools();
             },
             onYield: async (_answer, api, ctx) => {
               if (_answer.stopReason !== "stop") {
@@ -1906,13 +2018,31 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         const slash = spec.indexOf("/");
         const next = models.getModel(spec.slice(0, slash), spec.slice(slash + 1));
         if (!next) throw new Error(`Unknown model: ${spec}`);
-        await conversation.configure(
-          { model: { provider: next.provider, modelId: next.id } },
-          context,
-        );
-        model = next;
-        await state.set("model", spec, context);
-        await writeMetadata();
+        selectingModel = true;
+        try {
+          if (!(await models.checkAuth(next.provider, { signal: auxiliaryLifetime.signal }))) {
+            const env = settings.providers?.find(
+              (provider) => provider.id === next.provider,
+            )?.apiKeyEnv;
+            throw createUserVisibleError(
+              `No API key for provider "${next.provider}"${env ? `: set ${env}` : ""}.`,
+              {
+                code: "no-api-key",
+                params: { provider: next.provider, env: env ?? "" },
+              },
+            );
+          }
+          assertAvailable();
+          await conversation.configure(
+            { model: { provider: next.provider, modelId: next.id } },
+            context,
+          );
+          model = next;
+          await state.set("model", spec, context);
+          await writeMetadata();
+        } finally {
+          selectingModel = false;
+        }
       },
       get permissionMode() {
         return permissionMode;
@@ -2010,15 +2140,21 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         await job.completed;
       },
       async mcpServers(input) {
-        if (input?.refresh) {
-          assertAvailable(true);
+        assertAvailable(!!input?.refresh);
+        if (!mcpLoaded || input?.refresh) {
           await mcp.connect({
             cwd,
             homeDir: options.homeDir,
             settings,
             trustProjectMcp: options.trustProjectMcp,
+            interactive: !!options.onMcpAuth,
+            onMcpAuth: options.onMcpAuth,
+            onInteractionStart: notifyInteraction,
+            signal: auxiliaryLifetime.signal,
             onWarning: warn,
+            onEvent: (event) => custom(event),
           });
+          mcpLoaded = true;
           await rebuildTools();
         }
         return mcp.snapshot();
@@ -2034,7 +2170,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           onMcpAuth: options.onMcpAuth,
           onInteractionStart: notifyInteraction,
           onWarning: warn,
+          onEvent: (event) => custom(event),
         });
+        mcpLoaded = true;
         const result = await mcp.authenticate(name);
         await rebuildTools();
         return result;
@@ -2053,7 +2191,12 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           onlyServer: name,
           reconnect: true,
           trustProjectMcp: options.trustProjectMcp,
+          interactive: !!options.onMcpAuth,
+          onMcpAuth: options.onMcpAuth,
+          onInteractionStart: notifyInteraction,
+          signal: auxiliaryLifetime.signal,
           onWarning: warn,
+          onEvent: (event) => custom(event),
         });
         await rebuildTools();
       },
@@ -2226,7 +2369,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         const facts = await harness.snapshot(ChildFactsDoc, child.conversation.id, context);
         const resource = childResources.get(Number(child.conversation.id));
         return {
-          messages: resource?.observation.messages() ?? child.messages,
+          messages: resource?.observation.present(child.messages) ?? child.messages,
           historyMessages: child.historyMessages,
           title: facts?.title ?? child.description,
           description: child.description,
@@ -2248,11 +2391,14 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         await observation.flush();
       },
       async steer(prompt, input) {
-        await submit(prompt, input?.images, "steer");
+        const parentRequestId = currentRequestId;
+        const submitted = await submit(prompt, input?.images, "steer");
+        if (parentRequestId) await registerSubmission(parentRequestId, submitted.id);
       },
       async run(prompt, input = {}) {
         input.signal?.throwIfAborted();
         assertAvailable(true);
+        foregroundAdmission = true;
         stopped = false;
         goalRound = false;
         const abort = () => {
@@ -2276,13 +2422,15 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             interactive: !!options.onMcpAuth,
             onMcpAuth: options.onMcpAuth,
             onInteractionStart: notifyInteraction,
+            signal: input.signal,
             getOrigin: (conversationId) => {
               const row = subagents.list().find((row) => row.conversationId === conversationId);
               return row ? { agentId: row.id, description: row.description } : undefined;
             },
             onWarning: warn,
+            onEvent: (event) => custom(event),
           });
-          for (const event of [...mcp.errors, ...mcp.authRequired]) custom(event);
+          mcpLoaded = true;
           await rebuildTools(true);
           input.signal?.throwIfAborted();
           const requestId = `human:${randomUUID()}`;
@@ -2315,89 +2463,96 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           }
           throw error;
         } finally {
+          foregroundAdmission = false;
           off();
           input.signal?.removeEventListener("abort", abort);
         }
       },
-      async waitForRequest(requestId) {
-        assertAvailable();
-        const restored = await readRequest(requestId);
-        if (restored?.result) return storedRequestResult(restored.result)!;
-        let result: RequestResult | undefined;
-        const childReceipts = new Map<
-          number,
-          import("@earendil-works/pi-durable").TaskRecord<JsonValue, JsonValue, JsonValue>
-        >();
-        for (;;) {
-          const request = await readRequest(requestId);
-          if (!request) throw new Error(`Unknown request: ${requestId}`);
-          const submissions = await lease.storage.scanSubmissions({}, 100000, undefined, context);
-          const ids = submissions.items
-            .filter((record) => request.submissions.includes(Number(record.id)))
-            .map((record) => record.id);
-          if (!ids.length) throw new Error("Request has no submitted inputs.");
-          const results = await Promise.all(ids.map((id) => resultFor(requestId, id)));
-          result = results.at(-1)!;
-          const tasks = (await lease.storage.scanTasks({}, 100000, undefined, context)).items;
-          const drivers = [];
-          for (const task of tasks)
+      waitForRequest(requestId) {
+        const existing = requestWaiters.get(requestId);
+        if (existing) return existing;
+        const waiting = (async () => {
+          assertAvailable();
+          const restored = await readRequest(requestId);
+          if (restored?.result) return storedRequestResult(restored.result)!;
+          let result: RequestResult | undefined;
+          const childReceipts = new Map<
+            number,
+            import("@earendil-works/pi-durable").TaskRecord<JsonValue, JsonValue, JsonValue>
+          >();
+          for (;;) {
+            const request = await readRequest(requestId);
+            if (!request) throw new Error(`Unknown request: ${requestId}`);
+            const submissions = await lease.storage.scanSubmissions({}, 100000, undefined, context);
+            const ids = submissions.items
+              .filter((record) => request.submissions.includes(Number(record.id)))
+              .map((record) => record.id);
+            if (!ids.length) throw new Error("Request has no submitted inputs.");
+            const results = await Promise.all(ids.map((id) => resultFor(requestId, id)));
+            result = results.at(-1)!;
+            const tasks = (await lease.storage.scanTasks({}, 100000, undefined, context)).items;
+            const drivers = [];
+            for (const task of tasks)
+              if (
+                task.kind === "rukie.subagent-driver" &&
+                (await causalRequestForTask(task, tasks)) === requestId
+              )
+                drivers.push(task);
+            for (const driver of drivers) {
+              const receipt = await Promise.race([
+                harness.waitForTask(driver.id, context),
+                storageFault.promise,
+              ]);
+              childReceipts.set(Number(driver.id), receipt);
+            }
+            const fresh = await readRequest(requestId);
             if (
-              task.kind === "rukie.subagent-driver" &&
-              (await causalRequestForTask(task, tasks)) === requestId
+              fresh &&
+              fresh.submissions.length === request.submissions.length &&
+              fresh.tasks.length === request.tasks.length
             )
-              drivers.push(task);
-          for (const driver of drivers) {
-            const receipt = await Promise.race([
-              harness.waitForTask(driver.id, context),
-              storageFault.promise,
-            ]);
-            childReceipts.set(Number(driver.id), receipt);
+              break;
           }
-          const fresh = await readRequest(requestId);
-          if (
-            fresh &&
-            fresh.submissions.length === request.submissions.length &&
-            fresh.tasks.length === request.tasks.length
-          )
-            break;
-        }
-        const usage = { ...result!.usage };
-        let answerId: number | undefined;
-        for (const receipt of childReceipts.values()) {
-          const outcome = receipt.state.outcome;
-          const value = outcome && "result" in outcome ? outcome.result : undefined;
-          if (!value || typeof value !== "object" || Array.isArray(value)) continue;
-          if (typeof value.parentAnswer === "number")
-            answerId = Math.max(answerId ?? 0, value.parentAnswer);
-          const spend = value.usage;
-          if (spend && typeof spend === "object" && !Array.isArray(spend))
-            for (const key of [
-              "input",
-              "output",
-              "cacheRead",
-              "cacheWrite",
-              "totalTokens",
-            ] as const)
-              if (typeof spend[key] === "number") usage[key] += spend[key];
-        }
-        let text = result!.text;
-        if (answerId !== undefined) {
-          const view = await conversation.context(context);
-          const entry = view.entries.find((entry) => Number(entry.id) === answerId);
-          if (entry)
-            text = (entry.model ?? [])
-              .filter((message) => message.role === "assistant")
-              .map(textOf)
-              .join("");
-        }
-        const settled = { ...result!, text, usage };
-        await harness.commit(async (tx) => {
-          const doc = await tx.doc(RequestDoc);
-          doc.requests[requestId]!.result = { ...settled, usage: { ...settled.usage } };
-        }, context);
-        await observation.flush();
-        custom({ type: "request_settled", ...settled });
-        return settled;
+          const usage = { ...result!.usage };
+          let answerId: number | undefined;
+          for (const receipt of childReceipts.values()) {
+            const outcome = receipt.state.outcome;
+            const value = outcome && "result" in outcome ? outcome.result : undefined;
+            if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+            if (typeof value.parentAnswer === "number")
+              answerId = Math.max(answerId ?? 0, value.parentAnswer);
+            const spend = value.usage;
+            if (spend && typeof spend === "object" && !Array.isArray(spend))
+              for (const key of [
+                "input",
+                "output",
+                "cacheRead",
+                "cacheWrite",
+                "totalTokens",
+              ] as const)
+                if (typeof spend[key] === "number") usage[key] += spend[key];
+          }
+          let text = result!.text;
+          if (answerId !== undefined) {
+            const view = await conversation.context(context);
+            const entry = view.entries.find((entry) => Number(entry.id) === answerId);
+            if (entry)
+              text = (entry.model ?? [])
+                .filter((message) => message.role === "assistant")
+                .map(textOf)
+                .join("");
+          }
+          const settled = { ...result!, text, usage };
+          await harness.commit(async (tx) => {
+            const doc = await tx.doc(RequestDoc);
+            doc.requests[requestId]!.result = { ...settled, usage: { ...settled.usage } };
+          }, context);
+          await observation.flush();
+          custom({ type: "request_settled", ...settled });
+          return settled;
+        })();
+        requestWaiters.set(requestId, waiting);
+        return waiting;
       },
       async waitForIdle() {
         await conversation.waitForIdle(context);

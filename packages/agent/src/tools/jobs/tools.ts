@@ -16,6 +16,9 @@ export function createJobTools(jobs: Jobs): ToolRegistration[] {
     description:
       "Read new background job output. Set wait only when blocked on output or completion (default 30000ms, maximum 600000ms).",
     parameters: outputSchema,
+    // Jobs already retains at most 256 KiB across stdout/stderr. Allow its
+    // status and spill receipt without a second truncation of the bounded tail.
+    outputLimits: { maxBytes: 260 * 1024, maxLines: 260 * 1024, retain: "tail" },
     presentCall: (args) => ({
       card: "generic",
       kind: "execute",
