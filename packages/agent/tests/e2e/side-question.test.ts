@@ -70,12 +70,12 @@ test("side questions stream visible text from a snapshot without tools or Sessio
   expect(session.messages).toEqual(before);
   expect(events).toEqual([]);
   expect(reminderReads).toBe(reads);
-  await session.dispose();
+  await session.close();
   const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
   expect(resumed.messages).toEqual(before);
   expect(fake.contexts).toHaveLength(2);
-  await session.dispose();
-  await resumed.dispose();
+  await session.close();
+  await resumed.close();
 });
 
 test("ending iteration cancels only the auxiliary provider and invalid or failed requests stay out of history", async () => {
@@ -110,7 +110,7 @@ test("ending iteration cancels only the auxiliary provider and invalid or failed
   await expect(empty).rejects.toThrow("No response");
   expect(session.messages).toEqual(before);
   expect(fake.contexts).toHaveLength(0);
-  await session.dispose();
+  await session.close();
 });
 
 test("resumed history retains answered calls while removing historical tool declarations from side questions", async () => {
@@ -126,7 +126,7 @@ test("resumed history retains answered calls while removing historical tool decl
     ]),
   });
   await original.run("read known.txt");
-  await original.dispose();
+  await original.close();
   const fake = fakeModel([]);
   const side = sideModel(fake.models);
   const session = await createSession({ ...dirs, ...fake, resumeId: original.id });
@@ -143,7 +143,7 @@ test("resumed history retains answered calls while removing historical tool decl
     side.calls[0]!.finish();
     expect(await pending).toBe("Known result.");
   } finally {
-    await session.dispose();
+    await session.close();
   }
 });
 
@@ -158,7 +158,7 @@ test("side questions snapshot the restored compaction context before later main 
   });
   await original.run("old main prompt");
   await original.compact();
-  await original.dispose();
+  await original.close();
   const fake = fakeModel([fauxAssistantMessage("LATER_MAIN_RESPONSE")]);
   const side = sideModel(fake.models);
   const session = await createSession({
@@ -179,7 +179,7 @@ test("side questions snapshot the restored compaction context before later main 
   side.calls[0]!.delta("Summary retained widgets.");
   side.calls[0]!.finish();
   expect(await pending).toBe("Summary retained widgets.");
-  await session.dispose();
+  await session.close();
 });
 
 test("Session disposal cancels an active side iterator without requiring a caller signal", async () => {
@@ -191,14 +191,14 @@ test("Session disposal cancels an active side iterator without requiring a calle
   void pending.catch(() => {});
   await side.started;
   try {
-    await session.dispose();
+    await session.close();
     expect(side.calls[0]!.signal!.aborted).toBe(true);
     await expect(pending).rejects.toThrow();
     expect(() => session.sideQuestion("after close")).toThrow("disposed");
   } finally {
     side.calls[0]!.finish();
     await pending.catch(() => {});
-    await session.dispose();
+    await session.close();
   }
 });
 
@@ -240,7 +240,7 @@ test("cancelling a side request settles while its provider stream ignores abort 
     stalled.end(message);
     session.interruptRun();
     await run.catch(() => {});
-    await session.dispose();
+    await session.close();
   }
 });
 
@@ -304,5 +304,5 @@ test("an active side question removes unresolved calls and names the independent
   permission.resolve("deny");
   expect((await run).text).toBe("Main task finished.");
   expect(fake.contexts).toHaveLength(2);
-  await session.dispose();
+  await session.close();
 });
