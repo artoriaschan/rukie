@@ -489,3 +489,57 @@ test("aborting native threshold Compaction preserves its admitted prompt without
   expect(JSON.stringify(next.contexts.at(-1))).toContain("Successful retry summary.");
   expect(JSON.stringify(next.contexts.at(-1))).toContain("explicit retry");
 });
+
+test("threshold Compaction keeps large parallel Tool Calls paired with their Tool Results within the current Run", async () => {
+  dirs = await tempDirs();
+  const fake = historyModel([
+    fauxAssistantMessage(
+      [fauxToolCall("read", { path: "old.txt" }), fauxToolCall("read", { path: "old.txt" })],
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage("large tool batch inspected"),
+  ]);
+  const summaries = fakeModel(
+    Array.from({ length: 4 }, () => fauxAssistantMessage("Prior work summary.")),
+  );
+  const primary = modelStream(fake.models);
+  fake.models = withModelStream(fake.models, (model, context, options) =>
+    JSON.stringify(context.messages).includes("context summarization assistant")
+      ? modelStream(summaries.models)(summaries.model, context, options)
+      : primary(model, context, options),
+  );
+  const session = await createSession({ ...dirs, ...fake });
+  await seedHistory(session);
+  await session.setModel("compact-window/small");
+  const result = await session.run("Inspect both current tool outputs before answering.");
+  expect(result.text).toBe("large tool batch inspected");
+  expect(summaries.contexts).toHaveLength(2);
+  const request = fake.contexts.at(-1)!;
+  const calls = request.messages.flatMap((message) =>
+    message.role === "assistant"
+      ? message.content.filter((part) => part.type === "toolCall").map((part) => part.id)
+      : [],
+  );
+  const results = request.messages.filter((message) => message.role === "toolResult");
+  expect(results.length).toBeGreaterThanOrEqual(2);
+  for (const message of results) expect(calls).toContain(message.toolCallId);
+  expect(JSON.stringify(request)).toContain("OLD_EVIDENCE");
+  expect(JSON.stringify(fake.contexts[5])).toContain(
+    "Inspect both current tool outputs before answering.",
+  );
+  expect(JSON.stringify(summaries.contexts[1])).toContain(
+    "Inspect both current tool outputs before answering.",
+  );
+  expect(JSON.stringify(request)).toContain("Prior work summary.");
+  const restoredMessages = structuredClone(session.messages);
+  await session.close();
+  const next = fakeModel([]);
+  const restored = await createSession({
+    ...dirs,
+    ...next,
+    models: withModelAlias(next.models, "compact-window", ["small"], { contextWindow: 16000 }),
+    resumeId: session.id,
+  });
+  expect(restored.messages).toEqual(restoredMessages);
+  expect(next.contexts).toHaveLength(0);
+});
