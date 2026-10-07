@@ -133,6 +133,8 @@ export const SettingsSchema = Type.Object({
   /** Frontend language preference; unsupported tags fall through to environment candidates. */
   locale: Type.Optional(Type.String()),
   permissionMode: Type.Optional(Type.Enum([...PERMISSION_MODES])),
+  /** Collapse multiline terminal tool titles to the first source line; defaults to true. */
+  foldTerminalCommand: Type.Optional(Type.Boolean()),
   thinking: Type.Optional(Type.Enum([...THINKING_LEVELS])),
   providers: Type.Optional(Type.Array(CustomProvider)),
   permissions: Type.Optional(

@@ -19,3 +19,5 @@ export {
 export { toolKindColor } from "./tool-kind-color";
 
 export { SyntaxHighlightedText, highlightSyntax, type SyntaxRun } from "./syntax-highlighted-text";
+
+export { Tooltip, TooltipProvider, useDismissTooltip } from "./tooltip";

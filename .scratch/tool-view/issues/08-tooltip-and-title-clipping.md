@@ -4,7 +4,7 @@
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] 设计系统新增 Tooltip 组件：悬停 600 ms 显示，按可用空间定位，小终端裁剪
 - [ ] generic 标题 args 超 480 字符裁剪
