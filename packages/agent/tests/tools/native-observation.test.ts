@@ -112,7 +112,7 @@ test("native observation joins committed transcript and capability facts with st
     expect(observation.running()).toBe(false);
     const captured = observation.snapshot();
     const presented = observation.present(observation.messages());
-    expect(presented).toEqual(observation.messages());
+    expect(presented).toEqual([...observation.messages()]);
     expect(observation.snapshot()).toBe(captured);
     expect(delivered.filter((event) => event.type === "run_start")).toHaveLength(1);
     expect(delivered.filter((event) => event.type === "run_end")).toHaveLength(1);
