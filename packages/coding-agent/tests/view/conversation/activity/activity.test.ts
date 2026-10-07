@@ -131,8 +131,8 @@ function delta(
 function toolStart(
   id: string,
   toolName = "read",
-  args: { [key: string]: string } = { path: "src/a.ts" },
-): SessionEvent {
+  args: unknown = { path: "src/a.ts" },
+): Parameters<typeof reduce>[1] {
   return { type: "tool_execution_start", sessionId, toolCallId: id, toolName, args };
 }
 
