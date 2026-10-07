@@ -112,6 +112,13 @@ test("dragging a result copies only its source and never expands the folded card
     app.stdin.write(`\x1b[<0;1;${y + 1}M\x1b[<32;6;${y + 2}M\x1b[<0;6;${y + 2}m`);
     await app.waitFor(() => copied.length === 1);
     expect(copied).toEqual(["one\ntwo"]);
+    const header = app.screen().findIndex((line) => line.includes("Read result.txt"));
+    app.stdin.write(`\x1b[<35;6;${header + 1}M`);
+    await app.waitFor(() => app.screen()[header]?.includes("▾") ?? false);
+    app.stdin.write(`\x1b[<0;1;${header + 1}M\x1b[<32;6;${y + 2}M\x1b[<0;6;${y + 2}m`);
+    await app.waitFor(() => copied.length === 2);
+    expect(copied[1]).toContain("Read result.txt");
+    expect(copied[1]).not.toMatch(/[•⎿▾▴]/u);
     expect(app.screen().join("\n")).toContain("+2 lines");
     expect(app.screen()).not.toContain("   five");
   } finally {
@@ -176,8 +183,15 @@ test("resumed truncated reads disclose retained bounds at the last window withou
 
 test("diff windows retain their source position across the 109/110 layout boundary", async () => {
   const { join } = await import("node:path");
+  const copied: string[] = [];
   const content = Array.from({ length: 410 }, (_, i) => `BEFORE-${i}`).join("\n");
   const app = await startWithClock(["--yolo", "change"], {
+    host: {
+      writeClipboard: async (text) => {
+        copied.push(text);
+        return true;
+      },
+    },
     columns: 109,
     rows: 450,
     env: { LANG: "en" },
@@ -207,6 +221,18 @@ test("diff windows retain their source position across the 109/110 layout bounda
     expect(app.screen().join("\n")).toContain(
       "Showing aligned rows 396–411 of 411 · Retained diff source: 816 lines",
     );
+    const pairedRow = app
+      .screen()
+      .findIndex((line) => line.includes("-before-394") && line.includes("+BEFORE-394"));
+    const pairedLine = app.screen()[pairedRow]!;
+    app.stdin.write(
+      `\x1b[<0;1;${pairedRow + 1}M\x1b[<32;${Bun.stringWidth(pairedLine)};${pairedRow + 1}M\x1b[<0;${Bun.stringWidth(pairedLine)};${pairedRow + 1}m`,
+    );
+    await app.waitFor(() => copied.length === 1);
+    expect(copied[0]).toContain("before-394");
+    expect(copied[0]).toContain("BEFORE-394");
+    expect(copied[0]).not.toMatch(/[│⎿]/u);
+    expect(app.screen().join("\n")).toContain("Showing aligned rows 396–411");
     app.resize(109, 450);
     await app.waitFor(() => app.screen().join("\n").includes("Showing lines 801–816 of 816"));
     expect(app.screen().join("\n")).toContain("+BEFORE-409");

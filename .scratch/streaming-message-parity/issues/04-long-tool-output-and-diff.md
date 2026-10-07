@@ -32,3 +32,5 @@ Blocked by: 03
 - `bunx --no -- tsc -b`, `bunx --no -- oxlint`, formatting and `git diff --check` pass. Aggregate delivery gate belongs to the integration owner after all dependent tickets merge.
 
 - Integration sync: merged `5d5a28a` (selection gestures/clipboard); retained both README contracts and the renderer `event.handled` priority before frontend window ownership. Post-sync tool-window and selection suite: 16 tests / 69 assertions pass (3.17s); typecheck passes.
+
+- Additional post-sync public selection checks drag across visible status/hover arrow and source body, and across both split panes; copied text excludes status marker, arrow, body gutter and splitter rail, and the card stays expanded/folded as before the gesture. Tool-window file: 7 tests / 52 assertions pass (1.99s); targeted hover-copy test, types and lint pass after the final test additions.
