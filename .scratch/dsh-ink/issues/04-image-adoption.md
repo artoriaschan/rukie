@@ -1,6 +1,6 @@
 # 04: 迁移图片为 bounded RGBA 与 Kitty/sixel
 
-Status: in-progress
+Status: resolved
 Blocked by: 03
 Type: task
 
@@ -34,3 +34,9 @@ Type: task
 At integration8ea22b37 the six requested app image suites produced70pass6fail. Owning leaf regressions: images.test.ts631 caption retained4CJK instead of5 in10cells; image-preview.test.ts310 zh/en30x10 layout loses Open original (2cases). Cross-core: images.test.ts592 image notice shifts held reading rows; image-preview.test.ts359 preview close loses user header (APP owns). Sixth report image-preview.test.ts167 uses obsolete Kitty2147483647 probe/PNG placement assertions;06 migrates this protocol scenario, it is not counted as a demonstrated product defect. Original public assertions retained.04 remains in-progress until leaf fixes and cross-core public revalidation pass.
 
 Leaf follow-up: gallery captions bound product names to actual slot cell width before native truncation (5CJK in10cells), and compact preview reserves fallback height plus fixed control rows and omits disabled pan/zoom controls at sub40 size. Original caption E2E passes; public native zh/en80→30→80 original-click cases pass. Original non-PNG tests now reach apphost click after restore (line316), pending shared overlay/Chat fix. No click-chain workaround or assertion deletion.04 remains in-progress.
+
+## Final public verification
+
+在集成提交 `a9fa9509`，六组图片产品回归全部通过：`image-preview`、`images`、`composer-image-click`、`composer-image-peek`、`image-clipboard`、`image-tokens`，76 pass / 0 fail / 265 assertions，20.24s。原图片 notice 阅读位置、预览关闭恢复、窄屏 Original 操作、五个 CJK caption 与像素裁切断言均保留并通过。PNG167 场景已在本票改接真实原生 Kitty f32 RGBA：逐查询回复、动态 ID、解压原像素与 resize 后 completed placement 同步；不再留给06。
+
+本次重跑原因是上次75/1组合在 resize 后只等待 metrics/control ready，先于异步 RGBA publish；修复完成信号后在最新共同集成上验证。部分旧用例的真实 notice/reveal 等待由05后续虚拟时钟成本优化保留原断言；最终完整 gate 与旧 graphics suite 迁移仍属于06。
