@@ -13,6 +13,18 @@ test("alternate exit clears its hover after commit and preserves another root", 
   const b = createTerminal(20, 6, (ms) => clock.tick(ms));
   const errors: unknown[][] = [];
   let frames = 0;
+  const enteredAtFrames: number[] = [];
+  const write = a.stdout.write.bind(a.stdout);
+  a.stdout.write = (
+    chunk: string | Uint8Array,
+    encoding?: BufferEncoding | ((error: Error | null | undefined) => void),
+    callback?: (error: Error | null | undefined) => void,
+  ) => {
+    // Mode admission happens before the replacement frame. Observe the real
+    // output seam so a 1049 switch cannot stand in for painted hit geometry.
+    if (String(chunk).includes("?1049h")) enteredAtFrames.push(frames);
+    return typeof encoding === "string" ? write(chunk, encoding, callback) : write(chunk, encoding);
+  };
   const error = spyOn(console, "error").mockImplementation((...args) => {
     errors.push(args);
   });
@@ -75,8 +87,16 @@ test("alternate exit clears its hover after commit and preserves another root", 
     );
     expect(a.screen().filter((line) => line.includes("alpha:idle"))).toHaveLength(1);
     expect(b.screen().join("\n")).toContain("beta:hover");
+    const beforeEnter = frames;
     a.stdin.write("a");
-    await a.waitFor(() => a.terminal.buffer.active.type === "alternate");
+    await a.waitFor(
+      () =>
+        frames > beforeEnter &&
+        a.terminal.buffer.active.type === "alternate" &&
+        a.screen().join("\n").includes("alpha:idle"),
+    );
+    expect(enteredAtFrames).toHaveLength(2);
+    expect(enteredAtFrames[1]!).toBeLessThan(frames);
     const hoverFrame = frames;
     a.stdin.write("\x1b[<35;2;1M");
     await a.waitFor(() => frames > hoverFrame && a.screen().join("\n").includes("alpha:hover"));
