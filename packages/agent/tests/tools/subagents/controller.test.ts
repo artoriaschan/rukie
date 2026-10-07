@@ -373,3 +373,74 @@ test("background native child survives ordinary parent abort and its durable rep
     await harness.close(context);
   }
 });
+
+test.each([false, true])(
+  "start policy stops background=%s child before configuration or model admission",
+  async (background) => {
+    const context = withAbortSignal(AbortSignal.timeout(3000), BACKGROUND_CONTEXT);
+    const fake = fakeModel([
+      fauxAssistantMessage(
+        fauxToolCall("subagent", {
+          description: "Needs review",
+          prompt: "child input",
+          run_in_background: background,
+        }),
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("parent done"),
+      fauxAssistantMessage("report acknowledged"),
+    ]);
+    const registry = createRegistry();
+    const harness = await Harness.open(
+      new MemoryStorage(),
+      { models: fake.models, registry },
+      context,
+    );
+    try {
+      const parent = await harness.root(context, {
+        agent: { model: { provider: fake.model.provider, modelId: fake.model.id } },
+      });
+      let configurations = 0;
+      const controller = createSubagentController({
+        harness,
+        parent,
+        parentSessionId: "product",
+        state: subagentsState("product"),
+        forkAt: () => undefined,
+        async beforeStart(request, child) {
+          expect(controller.list()[0]?.id).toBe(request.agentId);
+          expect((await child.context(context)).entries).toHaveLength(0);
+          return { stop: "human review required" };
+        },
+        async childAgent() {
+          configurations++;
+          return { tools: [] };
+        },
+      });
+      controller.setTypes(
+        new Map([
+          ["general-purpose", { name: "general-purpose", description: "General", prompt: "" }],
+        ]),
+      );
+      registry.install(controller.extension);
+      registry.install({ name: "tools", tools: Object.values(createSubagentTools(controller)) });
+      await (await parent.submit({ type: "input", content: "delegate" }, context)).wait(context);
+      for (const task of (await harness.inspect(context)).tasks)
+        if (task.record.kind === "rukie.subagent-driver")
+          await harness.waitForTask(task.record.id, context);
+      expect(configurations).toBe(0);
+      expect(controller.list()[0]).toMatchObject({
+        active: false,
+        latestRun: { outcome: "hook_stopped", reason: "human review required", tokens: 0 },
+      });
+      expect(
+        fake.contexts.every(
+          (context) => !JSON.stringify(context.messages).includes('"content":"child input"'),
+        ),
+      ).toBe(true);
+      controller.close();
+    } finally {
+      await harness.close(context);
+    }
+  },
+);
