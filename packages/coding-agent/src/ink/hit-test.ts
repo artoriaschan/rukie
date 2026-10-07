@@ -150,6 +150,7 @@ export function dispatchClick(
   row: number,
   cellIsBlank = false,
   button = 0,
+  press?: { col: number; row: number },
 ): boolean {
   let target: DOMElement | undefined =
     hitTestWithOverlays(root, col, row) ?? undefined
@@ -167,7 +168,7 @@ export function dispatchClick(
       focusTarget = focusTarget.parentNode
     }
   }
-  const event = new ClickEvent(col, row, cellIsBlank, { button })
+  const event = new ClickEvent(col, row, cellIsBlank, { button, pressCol: press?.col, pressRow: press?.row })
   let handled = false
   while (target) {
     const handler = target._eventHandlers?.onClick as

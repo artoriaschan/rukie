@@ -1,5 +1,12 @@
 import { expect, test } from "bun:test";
-import { ThemedBox, ThemedText, ThemeProvider, dark, render, useTheme } from "../../../src/ink";
+import {
+  ThemedBox,
+  ThemedText,
+  ThemeProvider,
+  dark,
+  renderSync as render,
+  useTheme,
+} from "../../../src/ink";
 import { createTerminal } from "../helpers/terminal";
 
 test("ThemedText resolves dark theme tokens to terminal foreground colors", async () => {
@@ -39,6 +46,7 @@ test("ThemedText resolves dark theme tokens to terminal foreground colors", asyn
   } finally {
     app.unmount();
     await app.waitUntilExit();
+    app.cleanup();
     terminal.dispose();
   }
 });
@@ -65,10 +73,11 @@ test("ThemedText resolves bar theme tokens to terminal background colors", async
       0x22305f, 0x2b3d78, 0x344a92, 0x4d6bfe, 0x5a7cff, 0x2e3440, 0x8d95a6,
     ]);
     expect(line.getCell(0)!.getFgColor()).toBe(0x8d95a6);
-    expect(terminal.output()).toContain(";48;2;34;48;95m");
+    expect(terminal.output()).toContain("[48;2;34;48;95m");
   } finally {
     app.unmount();
     await app.waitUntilExit();
+    app.cleanup();
     terminal.dispose();
   }
 });
@@ -80,7 +89,7 @@ test("ThemedText uses provider backgrounds, preserves raw colors and inherits un
       <ThemedBox color="accent">
         <ThemedText backgroundColor="barPrompt">
           A<ThemedText backgroundColor="#abcdef">B</ThemedText>
-          <ThemedText backgroundColor="blue">C</ThemedText>
+          <ThemedText backgroundColor="ansi:blue">C</ThemedText>
           <ThemedText>D</ThemedText>
         </ThemedText>
         <ThemedText>E</ThemedText>
@@ -98,12 +107,13 @@ test("ThemedText uses provider backgrounds, preserves raw colors and inherits un
     ]);
     expect(line.getCell(4)!.isBgDefault()).toBe(true);
     expect(line.getCell(0)!.getFgColor()).toBe(0x445566);
-    expect(terminal.output()).toContain(";48;2;17;34;51m");
-    expect(terminal.output()).toContain(";48;2;171;205;239m");
-    expect(terminal.output()).toContain(";44m");
+    expect(terminal.output()).toContain("[48;2;17;34;51m");
+    expect(terminal.output()).toContain("[48;2;171;205;239m");
+    expect(terminal.output()).toContain("[44m");
   } finally {
     app.unmount();
     await app.waitUntilExit();
+    app.cleanup();
     terminal.dispose();
   }
 });
@@ -120,7 +130,7 @@ test("ThemeProvider supplies tokens and ThemedBox scopes colors without leaking 
             <ThemedText>B</ThemedText>
           </ThemedBox>
           <ThemedText color="error">C</ThemedText>
-          <ThemedText color="blue">D</ThemedText>
+          <ThemedText color="ansi:blue">D</ThemedText>
         </ThemedBox>
         <ThemedText color={theme.text}>E</ThemedText>
       </ThemedBox>
@@ -142,6 +152,7 @@ test("ThemeProvider supplies tokens and ThemedBox scopes colors without leaking 
   } finally {
     app.unmount();
     await app.waitUntilExit();
+    app.cleanup();
     terminal.dispose();
   }
 });

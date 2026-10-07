@@ -7,8 +7,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useInput, useTerminalFocus, useTerminalSize } from "../hooks";
-import { textLines, lineWidth } from "../text";
+import useInput from "../hooks/use-input";
+import { useTerminalFocus } from "../hooks/use-terminal-focus";
+import { useTerminalSize } from "../hooks/use-terminal-size";
+import { textLines, lineWidth } from "./text";
 import { ThemedBox, ThemedText, type ThemedBoxProps } from "./themed";
 
 interface Request {
@@ -54,9 +56,7 @@ export function TooltipProvider({ children }: { children: ReactNode }) {
     hide();
     return hide;
   }, [columns, rows, focused, hide]);
-  useInput((event) => {
-    if (event.type !== "move") hide();
-  });
+  useInput(() => hide());
   const innerWidth = Math.max(1, Math.min(76, columns - 2));
   const wrapped = visible
     ? textLines([{ text: visible.content, style: {} }], innerWidth, true, true)
@@ -75,10 +75,17 @@ export function TooltipProvider({ children }: { children: ReactNode }) {
   );
   return (
     <TooltipContext.Provider value={{ show, hide }}>
-      <ThemedBox width={columns} height={rows} flexDirection="column">
+      <ThemedBox
+        width={columns}
+        height={rows}
+        flexDirection="column"
+        onClick={() => hide()}
+        onWheel={() => hide()}
+      >
         {children}
         {visible && focused && columns >= 3 && rows >= 3 && lines.length > 0 && (
           <ThemedBox
+            noSelect
             position="absolute"
             top={top}
             left={left}
@@ -129,7 +136,12 @@ export function Tooltip({
       {...props}
       onMouseEnter={(position) => {
         if (!disabled && latest.current)
-          context?.show({ owner: owner.current, text: () => latest.current ?? "", ...position });
+          context?.show({
+            owner: owner.current,
+            text: () => latest.current ?? "",
+            x: position.col,
+            y: position.row,
+          });
       }}
       onMouseLeave={() => hide?.(owner.current)}
     >

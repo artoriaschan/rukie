@@ -1,20 +1,10 @@
-type Color =
-  | "black"
-  | "red"
-  | "green"
-  | "yellow"
-  | "blue"
-  | "magenta"
-  | "cyan"
-  | "white"
-  | "gray"
-  | `#${string}`;
+import type { Color } from "../styles";
 
 export interface TextStyle {
   color?: Color;
   backgroundColor?: Color;
   bold?: boolean;
-  dimColor?: boolean;
+  dim?: boolean;
   inverse?: boolean;
   italic?: boolean;
   underline?: boolean;

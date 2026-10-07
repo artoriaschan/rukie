@@ -2449,7 +2449,12 @@ export function parseMultipleKeypresses(
               // dropped; legacy holds keep the pre-gate silent discard.
               // This token then passes through as ordinary typing.
               releaseHeldMouseHead()
-              keys.push(parseKeypress(token.value))
+              // A terminal read may batch printable text with Enter, Ctrl+C,
+              // or deletion. Keep those keys ordered instead of inserting
+              // their control bytes into one printable event.
+              for (const part of token.value.split(/([\x00-\x1f\x7f])/)) {
+                if (part) keys.push(parseKeypress(part))
+              }
             }
           }
         }

@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Box } from "../primitives";
+import Box from "../components/Box";
 import { figures } from "./figures";
 import { ThemedBox, ThemedText, ThemedTextInput } from "./themed";
 
@@ -56,8 +56,8 @@ export function ListItem({
           ) : (
             <ThemedText
               color={color}
-              bold={focused && !picker}
-              dimColor={picker && (showScrollUp || showScrollDown)}
+              bold={focused && !picker ? true : undefined}
+              dim={picker && (showScrollUp || showScrollDown)}
               wrap="truncate"
             >
               {focused ? `${figures.user} ` : showScrollDown ? "↓ " : showScrollUp ? "↑ " : "  "}
@@ -67,7 +67,7 @@ export function ListItem({
         <Box flexGrow={1} flexShrink={singleLine ? 1 : undefined}>
           <ThemedText
             color={color}
-            bold={focused && !picker}
+            bold={focused && !picker ? true : undefined}
             wrap={singleLine ? "truncate" : undefined}
           >
             {children}
@@ -76,7 +76,7 @@ export function ListItem({
         {!picker && focused && (showScrollUp || showScrollDown) && (
           <Box width={2} flexShrink={0}>
             <ThemedText
-              dimColor
+              dim
               wrap="truncate"
             >{`${showScrollUp ? "↑" : ""}${showScrollDown ? "↓" : ""}`}</ThemedText>
           </Box>

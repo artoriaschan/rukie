@@ -1,4 +1,4 @@
-import { Spinner } from "../primitives";
+import { Spinner } from "./spinner";
 import { figures } from "./figures";
 import { useTheme } from "./theme-provider";
 import { ThemedText } from "./themed";

@@ -2322,7 +2322,7 @@ export default class Ink {
   clickProbeAtBatchTail = (): void => {
     this.probeAltScreenHealth({ skipMouseReassert: true });
   };
-  dispatchClick(col: number, row: number, button = 0, deferProbe = false): boolean {
+  dispatchClick(col: number, row: number, button = 0, deferProbe = false, press?: { col: number; row: number }): boolean {
     // Safe-boundary probe: clicks are dispatched from the RELEASE tail,
     // after App cleared the gesture latch — no button is held here. A
     // received mouse report proves tracking is alive but says nothing about
@@ -2342,7 +2342,7 @@ export default class Ink {
       return false;
     }
     const blank = isEmptyCellAt(this.frontFrame.screen, col, row);
-    const handled = dispatchClick(this.rootNode, col, row, blank, button);
+    const handled = dispatchClick(this.rootNode, col, row, blank, button, press);
     logMouseDebug('dispatchClick', { col, row, handled });
     return handled;
   }

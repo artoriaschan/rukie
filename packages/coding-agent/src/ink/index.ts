@@ -20,3 +20,5 @@ export type { MatchPosition } from "./render-to-screen.js";
 export type { Key, InputEvent } from "./events/input-event.js";
 export type { ClickEvent } from "./events/click-event.js";
 export type { PointerEvent } from "./events/pointer-event.js";
+
+export * from "./design-system/index";

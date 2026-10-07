@@ -1,4 +1,4 @@
-import { useTerminalSize } from "../hooks";
+import { useTerminalSize } from "../hooks/use-terminal-size";
 import { ThemedText, type ThemeColor } from "./themed";
 
 export interface DividerProps {

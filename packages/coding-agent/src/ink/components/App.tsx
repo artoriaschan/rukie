@@ -101,7 +101,7 @@ type Props = {
 	// deferProbe: release-path clicks defer the health probe to the batch
 	// tail — a single stdin chunk can carry `release → next press`, and the
 	// probe must not write before the next press latch is established.
-	readonly onClickAt: (col: number, row: number, button?: number, deferProbe?: boolean) => boolean;
+	readonly onClickAt: (col: number, row: number, button?: number, deferProbe?: boolean, press?: { col: number; row: number }) => boolean;
 	// Dispatch a context-menu event at (col, row) on RIGHT-button press —
 	// hit-tests the DOM tree and bubbles onContextMenu handlers, mirroring
 	// the DOM contextmenu event that shows on mousedown. Returns true if a
@@ -1356,7 +1356,7 @@ export function handleMouseEvent(app: App, m: ParsedMouse): void {
 			// chunk can carry `release → next press`, and the probe must not
 			// write before the next press latch is established.
 			app.pendingClickProbe = true;
-			if (!app.props.onClickAt(col, row, m.button, true)) {
+			if (!app.props.onClickAt(col, row, m.button, true, sel.anchor)) {
 				// Resolve the hyperlink URL synchronously while the screen buffer
 				// still reflects what the user clicked — deferring only the
 				// browser-open so double-click can cancel it.

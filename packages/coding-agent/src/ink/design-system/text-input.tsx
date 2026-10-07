@@ -1,7 +1,13 @@
-import { createElement, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { useInput, useTerminalSize } from "../hooks";
-import { textCursor, textLines, type TextStyle } from "../text";
-import type { InputEvent } from "../input";
+import { useLayoutEffect, useRef, useState } from "react";
+import Box from "../components/Box";
+import measureElement from "../measure-element";
+import type { DOMElement } from "../dom";
+import Text from "../components/Text";
+import { useDeclaredCursor } from "../hooks/use-declared-cursor";
+import useInput from "../hooks/use-input";
+import { useTerminalSize } from "../hooks/use-terminal-size";
+import { textCursor, textLines, type TextStyle, type TextSpan, type Glyph } from "./text";
+import type { InputEvent } from "../events/input-event";
 
 export interface TextInputProps extends TextStyle {
   value: string;
@@ -97,7 +103,14 @@ export function TextInput({
   ...style
 }: TextInputProps) {
   const size = useTerminalSize();
-  const width = Math.max(1, columns ?? size.columns);
+  const [measuredWidth, setMeasuredWidth] = useState<number>();
+  const node = useRef<DOMElement | null>(null);
+  const width = Math.max(1, columns ?? measuredWidth ?? size.columns);
+  useLayoutEffect(() => {
+    if (columns !== undefined || !node.current) return;
+    const next = Math.max(1, Math.floor(measureElement(node.current).width));
+    if (next !== measuredWidth) setMeasuredWidth(next);
+  });
   const [cursor, setCursor] = useState(value.length);
   const editing = useRef<{
     value: string;
@@ -149,7 +162,7 @@ export function TextInput({
     setCursor(offset);
   };
   useInput(
-    (event) => {
+    (input, key, event) => {
       const current = editing.current;
       const boundaries = graphemeBoundaries(current.value);
       const before = boundaries.findLast((offset) => offset < current.cursor) ?? 0;
@@ -174,41 +187,40 @@ export function TextInput({
       const insert = (text: string) =>
         replace(current.cursor, current.cursor, text.replace(/\r\n?/g, "\n"));
       if (filterInput && !filterInput(event, insert)) return;
-      if (event.type !== "key" && event.type !== "paste") return;
-      if (event.type === "paste") {
+      if (key.wheelUp || key.wheelDown || key.wheelLeft || key.wheelRight) return;
+      if (event.isPasted) {
         if (onPaste) onPaste(event.input, insert);
         else insert(event.input);
         return;
       }
-      const { key, input } = event;
-      if (key.ctrl || key.alt) return;
-      if (key.name === "left")
+      if (key.ctrl || key.meta) return;
+      if (key.leftArrow)
         move(
           !key.shift && current.anchor !== undefined
             ? Math.min(current.anchor, current.cursor)
             : before,
           key.shift,
         );
-      else if (key.name === "right")
+      else if (key.rightArrow)
         move(
           !key.shift && current.anchor !== undefined
             ? Math.max(current.anchor, current.cursor)
             : after,
           key.shift,
         );
-      else if (key.name === "home")
+      else if (key.home)
         move(
           current.cursor === 0 ? 0 : current.value.lastIndexOf("\n", current.cursor - 1) + 1,
           key.shift,
         );
-      else if (key.name === "end") {
+      else if (key.end) {
         const end = current.value.indexOf("\n", current.cursor);
         move(end < 0 ? current.value.length : end, key.shift);
-      } else if (key.name === "up" || key.name === "down") {
+      } else if (key.upArrow || key.downArrow) {
         const spans = [{ text: current.value + " ", style: {} }];
         const caret = textCursor(spans, width, current.cursor, current.ranges);
         const lines = textLines(spans, width, true, true, current.ranges);
-        const row = caret.y + (key.name === "up" ? -1 : 1);
+        const row = caret.y + (key.upArrow ? -1 : 1);
         const line = lines[row];
         if (line) {
           let x = 0;
@@ -220,7 +232,11 @@ export function TextInput({
           }
           move(Math.min(current.value.length, offset), key.shift);
         } else {
-          const recalled = history?.recall(key.name, current.value, current.cursor);
+          const recalled = history?.recall(
+            key.upArrow ? "up" : "down",
+            current.value,
+            current.cursor,
+          );
           if (recalled) {
             onHistoryRecall?.();
             current.value = recalled.value;
@@ -229,14 +245,14 @@ export function TextInput({
             onChange(current.value);
           }
         }
-      } else if (key.name === "backspace" && (current.cursor > 0 || current.anchor !== undefined))
+      } else if (key.backspace && (current.cursor > 0 || current.anchor !== undefined))
         replace(before, current.cursor, "");
       else if (
-        key.name === "delete" &&
+        key.delete &&
         (current.cursor < current.value.length || current.anchor !== undefined)
       )
         replace(current.cursor, after, "");
-      else if (key.name === "enter") {
+      else if (key.return) {
         const atLineEnd =
           current.cursor === current.value.length || current.value[current.cursor] === "\n";
         if (key.shift) replace(current.cursor, current.cursor, "\n");
@@ -262,43 +278,116 @@ export function TextInput({
       ...(selection ? [selection.start, selection.end] : []),
     ]),
   ].sort((a, b) => a - b);
-  const children: ReactNode[] = edges.slice(0, -1).map((start, index) => {
-    const end = edges[index + 1]!;
+  // Product wrapping preserves whitespace and indivisible editing units. The
+  // runtime receives real Text/Box nodes, never a renderer-specific editor host.
+  const spans: TextSpan[] = edges.slice(0, -1).map((start, index) => {
     const highlight = highlightRanges?.find((range) => range.start <= start && start < range.end);
-    return createElement(
-      "tui-text",
-      {
-        key: start,
-        color: highlight?.color,
+    return {
+      text: value.slice(start, edges[index + 1]),
+      style: {
+        ...style,
+        color: highlight?.color ?? style.color,
         inverse:
           selection && selection.start <= start && start < selection.end
             ? true
-            : highlight?.inverse,
+            : (highlight?.inverse ?? style.inverse),
       },
-      value.slice(start, end),
-    );
+    };
   });
-  children.push(createElement("tui-text", { key: "caret" }, " "));
-  return createElement(
-    "tui-text",
-    {
-      ...style,
-      input: true,
-      width: columns,
-      maxLines,
-      cursorStyle,
-      atomicRanges,
-      onAtomicRangeClick:
-        onAtomicRangeClick && isActive && !readOnly
-          ? (offset: number) => {
-              if (!editing.current.ranges.some((range) => range.start === offset)) return;
-              history?.reset();
-              move(offset);
-              onAtomicRangeClick(offset);
-            }
-          : undefined,
-      cursorOffset: isActive ? position : undefined,
-    },
-    ...children,
+  spans.push({ text: " ", style });
+  const lines = textLines(spans, width, true, true, atomicRanges);
+  const caret = textCursor(spans, width, position, atomicRanges);
+  const limit = Math.max(1, maxLines ?? lines.length);
+  const viewport = useRef(0);
+  const height = Math.min(limit, lines.length);
+  viewport.current = Math.max(0, Math.min(viewport.current, lines.length - height));
+  if (caret.y < viewport.current) viewport.current = caret.y;
+  if (caret.y >= viewport.current + height) viewport.current = caret.y - height + 1;
+  const cursorRef = useDeclaredCursor({
+    line: caret.y - viewport.current,
+    column: caret.x,
+    active: isActive,
+  });
+  return (
+    <Box
+      ref={(element) => {
+        node.current = element;
+        cursorRef(element);
+      }}
+      noSelect
+      flexDirection="column"
+      width={columns ?? "100%"}
+      height={height}
+      flexShrink={0}
+    >
+      {lines.slice(viewport.current, viewport.current + height).map((line, index) => {
+        let column = 0;
+        const row = viewport.current + index;
+        const groups: Glyph[][] = [];
+        for (const glyph of line) {
+          const previous = groups.at(-1);
+          if (previous && previous[0]?.atomic === glyph.atomic) previous.push(glyph);
+          else groups.push([glyph]);
+        }
+        return (
+          <Box key={row} height={1} flexShrink={0} width={width}>
+            {groups.map((group, groupIndex) => {
+              const atomic = group[0]?.atomic;
+              const groupWidth = group.reduce((sum, glyph) => sum + glyph.width, 0);
+              const painted = group.map((glyph, glyphIndex) => {
+                const atCaret = row === caret.y && column === caret.x;
+                column += glyph.width;
+                if (!glyph.text) return null;
+                const { bold, dim, ...glyphStyle } = glyph.style;
+                return (
+                  <Text
+                    key={glyphIndex}
+                    {...glyphStyle}
+                    {...(bold !== undefined ? { bold } : { dim: dim ?? false })}
+                    inverse={
+                      isActive && cursorStyle === "block" && atCaret ? true : glyph.style.inverse
+                    }
+                  >
+                    {glyph.text}
+                  </Text>
+                );
+              });
+              return (
+                <Box
+                  key={groupIndex}
+                  width={groupWidth}
+                  flexShrink={0}
+                  onClick={
+                    atomic !== undefined && onAtomicRangeClick && isActive && !readOnly
+                      ? (event) => {
+                          if (
+                            event.pressLocalRow !== 0 ||
+                            event.pressLocalCol < 0 ||
+                            event.pressLocalCol >= groupWidth
+                          )
+                            return;
+                          const range = editing.current.ranges.find(
+                            (range) => range.start === atomic,
+                          );
+                          if (!range) return;
+                          history?.reset();
+                          move(range.start);
+                          onAtomicRangeClick(range.start);
+                          event.stopImmediatePropagation();
+                        }
+                      : undefined
+                  }
+                >
+                  <Text wrap="truncate">{painted}</Text>
+                </Box>
+              );
+            })}
+            {isActive && cursorStyle === "block" && row === caret.y && column === caret.x ? (
+              <Text inverse> </Text>
+            ) : null}
+          </Box>
+        );
+      })}
+    </Box>
   );
 }

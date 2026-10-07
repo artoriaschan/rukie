@@ -12,6 +12,11 @@ import { PointerEvent, type PointerEventInit } from './pointer-event.js'
  * per handler so containers see coordinates relative to themselves.
  */
 export class ClickEvent extends PointerEvent {
+  /** Initial press coordinates; product editors can validate indivisible targets. */
+  readonly pressCol: number
+  readonly pressRow: number
+  get pressLocalCol(): number { return this.localCol + this.pressCol - this.col }
+  get pressLocalRow(): number { return this.localRow + this.pressRow - this.row }
   /**
    * True if the clicked cell has no visible content (unwritten in the
    * screen buffer — both packed words are 0). Handlers can check this to
@@ -24,7 +29,7 @@ export class ClickEvent extends PointerEvent {
     col: number,
     row: number,
     cellIsBlank: boolean,
-    init?: PointerEventInit,
+    init?: PointerEventInit & { pressCol?: number; pressRow?: number },
   ) {
     // A click is by definition a left-button release without drag. Normalize
     // the low button bits to 0 (left) while preserving modifier bits
@@ -36,5 +41,7 @@ export class ClickEvent extends PointerEvent {
       button: button & ~0x03,
     })
     this.cellIsBlank = cellIsBlank
+    this.pressCol = init?.pressCol ?? col
+    this.pressRow = init?.pressRow ?? row
   }
 }

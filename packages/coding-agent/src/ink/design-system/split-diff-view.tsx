@@ -1,5 +1,7 @@
+import type { DOMElement } from "../dom";
 import { diffLines, diffWordsWithSpace } from "diff";
 import { ThemedBox, ThemedText } from "./themed";
+import { textLines } from "./text";
 import type { SyntaxRun } from "./syntax-highlighted-text";
 
 /** Prelexed unified rows, with source prefixes and file/hunk boundaries. */
@@ -141,17 +143,30 @@ export function alignSplitDiff(lines: readonly SplitDiffLine[]): SplitDiffRow[] 
   return rows;
 }
 
+/** Click handlers belong to visible source glyphs, excluding decoration and whitespace. */
+function isSourceGlyph(text: string, column: number, width: number) {
+  let offset = 0;
+  for (const glyph of textLines([{ text, style: {} }], Math.max(1, width), false, true)[0] ?? []) {
+    if (column >= offset && column < offset + glyph.width) return /\S/.test(glyph.text);
+    offset += glyph.width;
+  }
+  return false;
+}
+
 /** One terminal row per aligned line; fixed pane widths truncate rather than wrap. */
 export function SplitDiffView({
   rows,
   width,
   onToggle,
   onPathClick,
+  onSourceMount,
 }: {
   rows: readonly SplitDiffRow[];
   width: number;
   onToggle?(): void;
   onPathClick?(path: string): void;
+  /** App-owned reading identities bind to measured runtime elements. */
+  onSourceMount?(id: string, element: DOMElement | null): void;
 }) {
   const available = Math.max(0, width - 3);
   const left = Math.floor(available / 2),
@@ -175,9 +190,18 @@ export function SplitDiffView({
         "text" in row ? (
           <ThemedBox
             key={index}
-            scrollAnchorId={row.scrollAnchorId}
+            ref={
+              row.scrollAnchorId
+                ? (element) => onSourceMount?.(row.scrollAnchorId!, element)
+                : undefined
+            }
             width={Math.min(width, Bun.stringWidth(row.text))}
-            onClick={row.path && onPathClick ? () => onPathClick(row.path!) : onToggle}
+            onClick={(event) => {
+              if (isSourceGlyph(row.text, event.localCol, width)) {
+                if (row.path && onPathClick) onPathClick(row.path);
+                else onToggle?.();
+              }
+            }}
           >
             <ThemedText
               color={row.path ? undefined : "subtle"}
@@ -188,19 +212,56 @@ export function SplitDiffView({
             </ThemedText>
           </ThemedBox>
         ) : (
-          <ThemedBox key={index} scrollAnchorId={row.scrollAnchorId} height={1}>
+          <ThemedBox
+            key={index}
+            ref={
+              row.scrollAnchorId
+                ? (element) => onSourceMount?.(row.scrollAnchorId!, element)
+                : undefined
+            }
+            height={1}
+          >
             <ThemedBox width={left}>
-              <ThemedBox width={hitWidth(row.old, left)} onClick={row.old ? onToggle : undefined}>
+              <ThemedBox
+                width={hitWidth(row.old, left)}
+                onClick={(event) => {
+                  if (
+                    isSourceGlyph(
+                      row.old?.map((run) => run.text.replace(/\t/g, "   ")).join("") ?? "",
+                      event.localCol - 1,
+                      left - 1,
+                    )
+                  )
+                    onToggle?.();
+                }}
+              >
                 <Pane runs={row.old} side="old" changed={row.oldChanged} />
               </ThemedBox>
             </ThemedBox>
-            <ThemedBox selectable={false} width={Math.min(3, width)}>
-              <ThemedText dimColor preserveWhitespace>
-                {width >= 3 ? " │ " : ""}
-              </ThemedText>
+            <ThemedBox noSelect width={Math.min(3, width)}>
+              <ThemedText dim>{width >= 3 ? " │ " : ""}</ThemedText>
             </ThemedBox>
-            <ThemedBox width={right} scrollAnchorId={row.alternateScrollAnchorId}>
-              <ThemedBox width={hitWidth(row.new, right)} onClick={row.new ? onToggle : undefined}>
+            <ThemedBox
+              width={right}
+              ref={
+                row.alternateScrollAnchorId
+                  ? (element) => onSourceMount?.(row.alternateScrollAnchorId!, element)
+                  : undefined
+              }
+            >
+              <ThemedBox
+                width={hitWidth(row.new, right)}
+                onClick={(event) => {
+                  if (
+                    isSourceGlyph(
+                      row.new?.map((run) => run.text.replace(/\t/g, "   ")).join("") ?? "",
+                      event.localCol - 1,
+                      right - 1,
+                    )
+                  )
+                    onToggle?.();
+                }}
+              >
                 <Pane runs={row.new} side="new" changed={row.newChanged} />
               </ThemedBox>
             </ThemedBox>
@@ -221,20 +282,26 @@ function Pane({
 }) {
   const tone = side === "old" ? "error" : "success";
   return (
-    <ThemedText wrap="truncate" preserveWhitespace>
-      <ThemedText color={changed ? tone : "subtle"}>
-        {runs ? (changed ? (side === "old" ? "-" : "+") : " ") : ""}
+    <ThemedBox>
+      {runs && (
+        <ThemedBox width={1} flexShrink={0} noSelect>
+          <ThemedText color={changed ? tone : "subtle"}>
+            {changed ? (side === "old" ? "-" : "+") : " "}
+          </ThemedText>
+        </ThemedBox>
+      )}
+      <ThemedText wrap="truncate">
+        {runs?.map((run, index) => (
+          <ThemedText
+            key={index}
+            color={run.changed ? "inverseText" : run.color}
+            backgroundColor={run.changed ? tone : undefined}
+            bold={run.changed}
+          >
+            {run.text.replace(/\t/g, "   ")}
+          </ThemedText>
+        ))}
       </ThemedText>
-      {runs?.map((run, index) => (
-        <ThemedText
-          key={index}
-          color={run.changed ? "inverseText" : run.color}
-          backgroundColor={run.changed ? tone : undefined}
-          bold={run.changed}
-        >
-          {run.text.replace(/\t/g, "   ")}
-        </ThemedText>
-      ))}
-    </ThemedText>
+    </ThemedBox>
   );
 }

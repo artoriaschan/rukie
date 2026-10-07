@@ -1,12 +1,8 @@
 import { createContext, useContext } from "react";
-import {
-  Box,
-  Text,
-  TextInput,
-  type BoxProps,
-  type TextProps,
-  type TextInputProps,
-} from "../primitives";
+import Box, { type Props as BoxProps } from "../components/Box";
+import Text, { type Props as TextProps } from "../components/Text";
+import { TextInput, type TextInputProps } from "./text-input";
+import type { ReactNode } from "react";
 import type { Theme } from "./theme";
 import { useTheme } from "./theme-provider";
 
@@ -28,16 +24,21 @@ function useColor(color?: ThemeColor) {
 export interface ThemedTextProps extends Omit<TextProps, "color" | "backgroundColor"> {
   color?: ThemeColor;
   backgroundColor?: ThemeColor;
-  borderColor?: ThemeColor;
+  children?: ReactNode;
 }
 
-export function ThemedText({ color, backgroundColor, ...props }: ThemedTextProps) {
+export function ThemedText({ color, backgroundColor, bold, dim, ...props }: ThemedTextProps) {
   const resolved = useColor(color);
   const theme = useTheme();
   const background = resolveColor(theme, backgroundColor);
   return (
     <ColorContext.Provider value={resolved}>
-      <Text {...props} color={resolved} backgroundColor={background} />
+      <Text
+        {...props}
+        {...(bold !== undefined ? { bold } : { dim: dim ?? false })}
+        color={resolved}
+        backgroundColor={background}
+      />
     </ColorContext.Provider>
   );
 }
@@ -54,6 +55,7 @@ export interface ThemedBoxProps extends Omit<BoxProps, "backgroundColor" | "bord
   color?: ThemeColor;
   backgroundColor?: ThemeColor;
   borderColor?: ThemeColor;
+  children?: ReactNode;
 }
 
 /** Resolve a box's theme background and scope the foreground for descendant themed text. */

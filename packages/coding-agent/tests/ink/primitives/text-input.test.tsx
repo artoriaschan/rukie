@@ -1,6 +1,13 @@
 import { expect, test } from "bun:test";
 import { useLayoutEffect, useState } from "react";
-import { Box, Text, TextInput, createTextInputHistory, render } from "../../../src/ink";
+import {
+  AlternateScreen,
+  Box,
+  Text,
+  TextInput,
+  createTextInputHistory,
+  renderSync as render,
+} from "../../../src/ink";
 import { createTerminal } from "../helpers/terminal";
 
 test("history walks only past the editor edges and restores the draft caret", async () => {
@@ -18,7 +25,12 @@ test("history walks only past the editor edges and restores the draft caret", as
       />
     );
   }
-  const app = render(<View />, terminal);
+  const app = render(
+    <AlternateScreen>
+      <View />
+    </AlternateScreen>,
+    terminal,
+  );
   try {
     await terminal.flush();
     terminal.stdin.write("\x1b[H\x1b[A");
@@ -39,9 +51,12 @@ test("history walks only past the editor edges and restores the draft caret", as
     await terminal.waitFor(() => terminal.screen()[1] === "second");
     expect(terminal.cursor()).toEqual({ x: 0, y: 0 });
     terminal.stdin.write("!\r");
+    await terminal.waitFor(() => submissions.length > 0);
     expect(submissions).toEqual(["!中A\nsecond"]);
   } finally {
     app.unmount();
+    await app.waitUntilExit();
+    app.cleanup();
     terminal.dispose();
   }
 });
@@ -66,13 +81,19 @@ test("controlled input edits Chinese text and positions the terminal cursor in d
       </Box>
     );
   }
-  const app = render(<View />, terminal);
+  const app = render(
+    <AlternateScreen>
+      <View />
+    </AlternateScreen>,
+    terminal,
+  );
   try {
     await terminal.flush();
+    await terminal.waitFor(() => terminal.cursor().x === 1 && terminal.cursor().y === 1);
     expect(terminal.cursor()).toEqual({ x: 1, y: 1 });
     terminal.stdin.write("中文A");
     await terminal.waitFor(() => terminal.screen()[1] === " 中文A");
-    expect(changes).toEqual(["中", "中文", "中文A"]);
+    expect(changes).toEqual(["中文A"]);
     expect(terminal.cursor()).toEqual({ x: 6, y: 1 });
     terminal.stdin.write("\x1b[D\x7f");
     await terminal.waitFor(() => terminal.screen()[1] === " 中A");
@@ -81,11 +102,13 @@ test("controlled input edits Chinese text and positions the terminal cursor in d
     await terminal.waitFor(() => terminal.screen()[1] === " 中");
     expect(terminal.cursor()).toEqual({ x: 3, y: 1 });
     terminal.stdin.write("\r");
+    await terminal.waitFor(() => submissions.length > 0);
     expect(submissions).toEqual(["中"]);
     expect(changes.at(-1)).toBe("中");
   } finally {
     app.unmount();
     await app.waitUntilExit();
+    app.cleanup();
     terminal.dispose();
   }
 });
@@ -96,7 +119,12 @@ test("wrapped whitespace and graphemes keep cursor movement and deletion aligned
     const [value, setValue] = useState("中  AB");
     return <TextInput value={value} onChange={setValue} />;
   }
-  const app = render(<View />, terminal);
+  const app = render(
+    <AlternateScreen>
+      <View />
+    </AlternateScreen>,
+    terminal,
+  );
   try {
     await terminal.flush();
     expect(terminal.screen()).toEqual(["中  AB", "", "", "", "", ""]);
@@ -119,6 +147,8 @@ test("wrapped whitespace and graphemes keep cursor movement and deletion aligned
     expect(terminal.cursor()).toEqual({ x: 1, y: 1 });
   } finally {
     app.unmount();
+    await app.waitUntilExit();
+    app.cleanup();
     terminal.dispose();
   }
 });
@@ -137,7 +167,12 @@ test("an external value reset remains controlled and inactive inputs ignore stdi
     }, []);
     return <TextInput value={value} onChange={setValue} isActive={active} />;
   }
-  const app = render(<View />, terminal);
+  const app = render(
+    <AlternateScreen>
+      <View />
+    </AlternateScreen>,
+    terminal,
+  );
   try {
     await terminal.flush();
     reset();
@@ -147,6 +182,8 @@ test("an external value reset remains controlled and inactive inputs ignore stdi
     expect(terminal.screen()[0]).toBe("");
   } finally {
     app.unmount();
+    await app.waitUntilExit();
+    app.cleanup();
     terminal.dispose();
   }
 });
@@ -170,7 +207,12 @@ test("external controlled replacement snaps the cursor to a grapheme boundary be
       />
     );
   }
-  const app = render(<View />, terminal);
+  const app = render(
+    <AlternateScreen>
+      <View />
+    </AlternateScreen>,
+    terminal,
+  );
   try {
     await terminal.flush();
     replace();
@@ -181,13 +223,20 @@ test("external controlled replacement snaps the cursor to a grapheme boundary be
     expect(terminal.cursor()).toEqual({ x: 0, y: 0 });
   } finally {
     app.unmount();
+    await app.waitUntilExit();
+    app.cleanup();
     terminal.dispose();
   }
 });
 
 test("narrow resize omits overwide glyphs consistently for both text and cursor", async () => {
   const terminal = createTerminal(6, 6);
-  const app = render(<TextInput value="中A" onChange={() => {}} />, terminal);
+  const app = render(
+    <AlternateScreen>
+      <TextInput value="中A" onChange={() => {}} />
+    </AlternateScreen>,
+    terminal,
+  );
   try {
     await terminal.flush();
     terminal.resize(1, 6);
@@ -196,23 +245,31 @@ test("narrow resize omits overwide glyphs consistently for both text and cursor"
     expect(terminal.cursor()).toEqual({ x: 0, y: 1 });
   } finally {
     app.unmount();
+    await app.waitUntilExit();
+    app.cleanup();
     terminal.dispose();
   }
 });
 
 test("the cursor remains visible before an explicit newline following a full Chinese line", async () => {
   const terminal = createTerminal(4, 5);
-  const app = render(<TextInput value={"中文\nA"} onChange={() => {}} />, terminal);
+  const app = render(
+    <AlternateScreen>
+      <TextInput value={"中文\nA"} onChange={() => {}} />
+    </AlternateScreen>,
+    terminal,
+  );
   try {
     await terminal.flush();
-    const before = terminal.bytesWritten();
     terminal.stdin.write("\x1b[D\x1b[D");
-    await terminal.waitFor(() => terminal.bytesWritten() > before);
+    await terminal.waitFor(() => terminal.cursor().x === 0 && terminal.cursor().y === 1);
     expect(terminal.screen()).toEqual(["中文", "A", "", "", ""]);
     expect(terminal.cursor()).toEqual({ x: 0, y: 1 });
-    expect(terminal.output().endsWith("\x1b[?25h")).toBe(true);
+    // Native runtime parks the IME cursor; product block caret is painted separately.
   } finally {
     app.unmount();
+    await app.waitUntilExit();
+    app.cleanup();
     terminal.dispose();
   }
 });
@@ -229,7 +286,12 @@ test("a block caret follows wide graphemes and empty lines and clears when inact
       <TextInput value={"中文\n\nA"} onChange={() => {}} cursorStyle="block" isActive={active} />
     );
   }
-  const app = render(<View />, terminal);
+  const app = render(
+    <AlternateScreen>
+      <View />
+    </AlternateScreen>,
+    terminal,
+  );
   const cell = (x: number, y: number) => terminal.terminal.buffer.active.getLine(y)!.getCell(x)!;
   try {
     await terminal.flush();
@@ -248,6 +310,8 @@ test("a block caret follows wide graphemes and empty lines and clears when inact
     expect(terminal.screen()).toEqual(["中文", "", "A", "", ""]);
   } finally {
     app.unmount();
+    await app.waitUntilExit();
+    app.cleanup();
     terminal.dispose();
   }
 });
@@ -269,7 +333,12 @@ test("Shift+Enter and a backslash at line end insert newlines, while a paste cha
       />
     );
   }
-  const app = render(<View />, terminal);
+  const app = render(
+    <AlternateScreen>
+      <View />
+    </AlternateScreen>,
+    terminal,
+  );
   try {
     terminal.stdin.write("one\x1b[13;2u中\\\rtwo");
     await terminal.waitFor(() => terminal.screen()[2] === "two");
@@ -283,9 +352,12 @@ test("Shift+Enter and a backslash at line end insert newlines, while a paste cha
     expect(terminal.screen()).toEqual(["one", "中", "two", "  A", "中文", "", ""]);
     expect(terminal.cursor()).toEqual({ x: 4, y: 4 });
     terminal.stdin.write("\r");
+    await terminal.waitFor(() => submissions.length > 0);
     expect(submissions).toEqual(["one\n中\ntwo\n  A\n中文"]);
   } finally {
     app.unmount();
+    await app.waitUntilExit();
+    app.cleanup();
     terminal.dispose();
   }
 });
@@ -311,7 +383,12 @@ test("a screen-owned read-only editor paints the supplied grapheme caret without
       />
     );
   }
-  const app = render(<View />, terminal);
+  const app = render(
+    <AlternateScreen>
+      <View />
+    </AlternateScreen>,
+    terminal,
+  );
   try {
     await terminal.flush();
     // Offset 2 lies inside e + combining accent and must snap before that grapheme.
@@ -330,6 +407,160 @@ test("a screen-owned read-only editor paints the supplied grapheme caret without
     expect(cell(2).isInverse()).toBeFalsy();
   } finally {
     app.unmount();
+    await app.waitUntilExit();
+    app.cleanup();
+    terminal.dispose();
+  }
+});
+
+test("atomic units wrap together, activate only admitted glyphs, and shifted replacement reports the entire edit", async () => {
+  const terminal = createTerminal(12, 6);
+  const clicks: number[] = [];
+  const edits: { start: number; end: number; text: string }[] = [];
+  let draft = "a [image 1] z";
+  function View() {
+    const [value, setValue] = useState(draft);
+    return (
+      <TextInput
+        value={value}
+        atomicRanges={value.includes("[image 1]") ? [{ start: 2, end: 11 }] : []}
+        onAtomicRangeClick={(offset) => clicks.push(offset)}
+        onChange={(next, edit) => {
+          draft = next;
+          setValue(next);
+          if (edit) edits.push(edit);
+        }}
+      />
+    );
+  }
+  const app = render(
+    <AlternateScreen>
+      <View />
+    </AlternateScreen>,
+    terminal,
+  );
+  const click = (x: number, y: number) =>
+    terminal.stdin.write(`\x1b[<0;${x + 1};${y + 1}M\x1b[<0;${x + 1};${y + 1}m`);
+  try {
+    await terminal.waitFor(() => terminal.screen()[0] === "a [image 1]");
+    click(5, 0); // Internal atomic whitespace is an admitted hit.
+    await terminal.waitFor(() => clicks.length === 1);
+    expect(clicks).toEqual([2]);
+    expect(terminal.cursor()).toEqual({ x: 2, y: 0 });
+    click(0, 0);
+    click(11, 0);
+    await terminal.flush();
+    expect(clicks).toEqual([2]);
+    terminal.resize(10, 6);
+    await terminal.waitFor(() => terminal.screen()[1] === "[image 1]");
+    expect(terminal.screen()[0]).toBe("a");
+    click(4, 1);
+    await terminal.waitFor(() => clicks.length === 2);
+    expect(terminal.cursor()).toEqual({ x: 0, y: 1 });
+    terminal.stdin.write("\x1b[1;2C!");
+    await terminal.waitFor(() => draft === "a ! z");
+    expect(edits).toEqual([{ start: 2, end: 11, text: "!" }]);
+  } finally {
+    app.unmount();
+    await app.waitUntilExit();
+    app.cleanup();
+    terminal.dispose();
+  }
+});
+
+test("asynchronous admitted paste inserts once at the live grapheme caret with normalized line endings", async () => {
+  const terminal = createTerminal(12, 6);
+  let accept!: (text: string) => void;
+  let pasted = "";
+  let caret = 0;
+  const changes: string[] = [];
+  const admitted = new Promise<string>((resolve) => {
+    accept = resolve;
+  });
+  function View() {
+    const [value, setValue] = useState("中文A");
+    return (
+      <TextInput
+        value={value}
+        onCursorChange={(offset) => {
+          caret = offset;
+        }}
+        onPaste={(text, insert) => {
+          pasted = text;
+          void admitted.then(insert);
+        }}
+        onChange={(next) => {
+          changes.push(next);
+          setValue(next);
+        }}
+      />
+    );
+  }
+  const app = render(
+    <AlternateScreen>
+      <View />
+    </AlternateScreen>,
+    terminal,
+  );
+  try {
+    await terminal.flush();
+    terminal.stdin.write("\x1b[200~original\r\n\x1b[201~");
+    await terminal.waitFor(() => pasted === "original\r\n");
+    terminal.stdin.write("\x1b[H\x1b[C");
+    await terminal.waitFor(() => caret === 1);
+    accept("X\r\nY");
+    await terminal.waitFor(() => changes.length === 1);
+    expect(changes).toEqual(["中X\nY文A"]);
+    await terminal.waitFor(() => terminal.cursor().x === 1 && terminal.cursor().y === 1);
+    expect(terminal.screen().slice(0, 2)).toEqual(["中X", "Y文A"]);
+  } finally {
+    app.unmount();
+    await app.waitUntilExit();
+    app.cleanup();
+    terminal.dispose();
+  }
+});
+
+test("atomic activation requires press and release on the same admitted unit", async () => {
+  const terminal = createTerminal(12, 4);
+  const clicks: number[] = [];
+  const app = render(
+    <AlternateScreen>
+      <TextInput
+        value="[A] [B]"
+        onChange={() => {}}
+        atomicRanges={[
+          { start: 0, end: 3 },
+          { start: 4, end: 7 },
+        ]}
+        onAtomicRangeClick={(offset) => clicks.push(offset)}
+      />
+    </AlternateScreen>,
+    terminal,
+  );
+  try {
+    await terminal.waitFor(() => terminal.screen()[0] === "[A] [B]");
+    terminal.stdin.write("\x1b[<0;2;1M\x1b[<0;6;1m");
+    await terminal.flush();
+    expect(clicks).toEqual([]);
+    terminal.stdin.write("\x1b[<0;4;1M\x1b[<0;6;1m");
+    await terminal.flush();
+    expect(clicks).toEqual([]);
+    terminal.stdin.write("\x1b[<0;2;1M");
+    await terminal.flush();
+    const beforeResize = terminal.bytesWritten();
+    terminal.resize(10, 4);
+    await terminal.waitFor(() => terminal.bytesWritten() > beforeResize);
+    terminal.stdin.write("\x1b[<0;6;1m");
+    await terminal.flush();
+    expect(clicks).toEqual([]);
+    terminal.stdin.write("\x1b[<0;6;1M\x1b[<0;6;1m");
+    await terminal.waitFor(() => clicks.length === 1);
+    expect(clicks).toEqual([4]);
+  } finally {
+    app.unmount();
+    await app.waitUntilExit();
+    app.cleanup();
     terminal.dispose();
   }
 });

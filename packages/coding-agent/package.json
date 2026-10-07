@@ -43,6 +43,7 @@
   "devDependencies": {
     "@earendil-works/pi-agent-core": "0.99.2",
     "@earendil-works/pi-ai": "0.99.2",
+    "@sinonjs/fake-timers": "15.4.0",
     "@types/lodash-es": "4.17.12",
     "@types/react": "19.3.0",
     "@types/react-reconciler": "0.33.1",

@@ -25,3 +25,7 @@ export { Tooltip, TooltipProvider, useDismissTooltip } from "./tooltip";
 export { SplitDiffView, alignSplitDiff, type SplitDiffRow } from "./split-diff-view";
 
 export { SmoothRevealProvider, useSmoothReveal, useSmoothText } from "./smooth-reveal";
+
+export { TextInput, createTextInputHistory, type TextInputProps } from "./text-input";
+export { Spinner, type SpinnerProps } from "./spinner";
+export { textLines, textCursor, lineWidth } from "./text";

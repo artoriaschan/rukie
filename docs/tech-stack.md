@@ -116,4 +116,4 @@ Headless CLI、TUI 与 renderer 的依赖统一归 `packages/coding-agent/packag
 | `type-fest`                | `5.10.0` |
 | `wrap-ansi`                | `10.0.2` |
 
-类型依赖：`@types/lodash-es` 4.17.12、`@types/semver` 7.8.0、`@types/stack-utils` 2.0.3。测试使用已有 `@xterm/headless` 6.0.0。
+类型依赖：`@types/lodash-es` 4.17.12、`@types/semver` 7.8.0、`@types/stack-utils` 2.0.3。测试使用已有 `@xterm/headless` 6.0.0；原生渲染组合计时测试使用仅开发依赖 `@sinonjs/fake-timers` 15.4.0（自带类型），以零时推进完成 xterm I/O 时保持虚拟截止时间。

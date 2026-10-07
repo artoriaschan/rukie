@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { useState } from "react";
-import { Box, Text, TextInput, render } from "../../../src/ink";
+import { AlternateScreen, Box, Text, TextInput, renderSync as render } from "../../../src/ink";
 import { createTerminal } from "../helpers/terminal";
 
 test("a long draft scrolls inside its limit and keeps the caret visible during editing", async () => {
@@ -25,7 +25,14 @@ test("a long draft scrolls inside its limit and keeps the caret visible during e
       </Box>
     );
   }
-  const app = render(<View />, { ...terminal, fullscreen: true });
+  const app = render(
+    <AlternateScreen>
+      <Box height={8} flexDirection="column">
+        <View />
+      </Box>
+    </AlternateScreen>,
+    terminal,
+  );
   try {
     terminal.stdin.write("\x1b[200~first\nsecond\nthird\nfourth\nfifth\x1b[201~");
     await terminal.waitFor(() => terminal.screen()[6] === "fifth");
@@ -42,6 +49,8 @@ test("a long draft scrolls inside its limit and keeps the caret visible during e
     expect(terminal.screen()[7]).toBe("status");
   } finally {
     app.unmount();
+    await app.waitUntilExit();
+    app.cleanup();
     terminal.dispose();
   }
 });
@@ -59,6 +68,8 @@ test("vertical editing can visit empty lines and the end of a shorter line", asy
     expect(terminal.cursor()).toEqual({ x: 0, y: 1 });
   } finally {
     app.unmount();
+    await app.waitUntilExit();
+    app.cleanup();
     terminal.dispose();
   }
 });

@@ -1112,15 +1112,9 @@ function writeCellWithStyleStr(
   const px = screen.cursor.x
   const vw = screen.viewportWidth
 
-  // Don't write wide chars that would cross the viewport edge.
-  // Single-codepoint chars (CJK) at vw-2 are safe; multi-codepoint
-  // graphemes (flags, ZWJ emoji) need stricter threshold.
-  if (cellWidth === 2 && px < vw) {
-    const threshold = cell.char.length > 2 ? vw : vw + 1
-    if (px + 2 >= threshold) {
-      return false
-    }
-  }
+  // Complete wide graphemes fit at vw-2, including ZWJ emoji and flags.
+  // Exclude only a glyph crossing the viewport edge.
+  if (cellWidth === 2 && px < vw && px + 2 > vw) return false
 
   const diff = screen.diff
   if (styleStr.length > 0) {
