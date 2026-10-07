@@ -171,10 +171,15 @@ test.each(["abort", "close"] as const)(
     );
     const session = await createSession({ ...dirs, ...fake });
     await seedHistory(session);
+    const started = Promise.withResolvers<SessionEvent>();
+    session.subscribe((event) => {
+      if (event.type === "compaction_start") started.resolve(event);
+    });
     const before = structuredClone(session.messages);
     const compact = session.compact();
     const rejected = compact.catch((error: unknown) => error);
     await summary.started;
+    expect(await started.promise).toMatchObject({ type: "compaction_start", reason: "manual" });
     await expect(session.run("competing prompt")).rejects.toThrow();
     await expect(session.compact()).rejects.toThrow();
     await expect(session.setModel("missing/model")).rejects.toThrow();
