@@ -145,7 +145,7 @@ test("context reports use live response input and invalidate that count after ma
     fake.models,
     withAuxiliaryRequests(() => {
       const reply = fauxAssistantMessage(calls++ === 0 ? "reply" : "summary");
-      reply.usage = { ...reply.usage, input: 700, cacheRead: 30, cacheWrite: 20, output: 9000 };
+      reply.usage = { ...reply.usage, input: 700, cacheRead: 30, cacheWrite: 20, output: 5 };
       const stream = createAssistantMessageEventStream();
       stream.push({ type: "done", reason: "stop", message: reply });
       stream.end(reply);
