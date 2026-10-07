@@ -5,9 +5,12 @@ import type { Storage } from "@earendil-works/pi-durable";
 export function committedJobNotifications() {
   const session: Partial<SessionOptions> = {};
   let count = 0;
+  const tasks = new Map<number, boolean>();
   return {
     session,
     count: () => count,
+    /** Native drivers and reporter generations must actually commit their terminal state. */
+    pendingTasks: () => [...tasks.values()].filter(Boolean).length,
     async prepare(root: string) {
       const store = createJsonlStore({ cwd: root, homeDir: root });
       session.store = {
@@ -21,6 +24,9 @@ export function committedJobNotifications() {
                 if (key === "commit")
                   return async (...commit: Parameters<Storage["commit"]>) => {
                     const result = await target.commit(...commit);
+                    for (const write of commit[0])
+                      if (write.type === "task")
+                        tasks.set(Number(write.value.id), write.value.state.status !== "terminal");
                     count += commit[0].filter(
                       (write) =>
                         write.type === "entry" && write.value.kind === "rukie.job-notification",

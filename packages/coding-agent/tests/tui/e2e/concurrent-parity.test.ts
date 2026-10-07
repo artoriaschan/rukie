@@ -2,15 +2,20 @@ import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { getCurrentTools } from "@earendil-works/pi-ai";
 import { startWithClock } from "../helpers/clock-app";
+import { committedJobNotifications } from "../helpers/job-notifications";
 
 test("mixed parent, two Jobs and two Subagents preserve reading, copy and Interaction ownership across microtasks", async () => {
   const copied: string[] = [];
+  const commits = committedJobNotifications();
   const app = await startWithClock(["--yolo", "历史 parent"], {
     columns: 80,
     rows: 60,
     env: { LANG: "en" },
-    prepare: (root) =>
-      Bun.write(join(root, "fixture.txt"), "one\ntwo\nthree\nfour\nfive").then(() => {}),
+    session: commits.session,
+    prepare: async (root) => {
+      await commits.prepare(root);
+      await Bun.write(join(root, "fixture.txt"), "one\ntwo\nthree\nfour\nfive");
+    },
     host: {
       writeClipboard: async (text) => {
         copied.push(text);
@@ -289,6 +294,7 @@ test("mixed parent, two Jobs and two Subagents preserve reading, copy and Intera
       }
       return (
         pending.length === 0 &&
+        commits.pendingTasks() === 0 &&
         roots().some((call) => hasPrompt(call, "(Mixed child B) finished.")) &&
         !app.isWorking() &&
         !screen().includes("esc interrupt")
