@@ -263,6 +263,14 @@ const GoalActivationDoc = defineDoc<{ taskId: number | null; requestId: string |
   fork: "initial",
   initial: () => ({ taskId: null, requestId: null }),
 });
+const HookContinuationDoc = defineDoc<{ taskId: number | null; count: number }>({
+  kind: "rukie.hook-continuation",
+  version: 1,
+  scope: "conversation",
+  history: "latest",
+  fork: "initial",
+  initial: () => ({ taskId: null, count: 0 }),
+});
 const ChildFactsDoc = defineDoc<{ title: string; description: string }>({
   kind: "rukie.child-facts",
   version: 1,
@@ -336,6 +344,10 @@ function storedRequestResult(value: JsonValue | null): RequestResult | undefined
   if (value.error !== undefined && typeof value.error !== "string")
     throw new Error("Invalid persisted request error.");
   return {
+    ...(value.stopReason === "hook_blocked" || value.stopReason === "hook_stopped"
+      ? { stopReason: value.stopReason }
+      : {}),
+    ...(typeof value.reason === "string" ? { reason: value.reason } : {}),
     requestId: value.requestId,
     text: value.text,
     success: value.success,
@@ -1147,11 +1159,11 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 { signal: ctx.abortSignal, matchQuery: call.name },
               );
               await applyHookResult(changed, "hook:PostToolUse", ctx);
-              if (changed.decision === "block" && changed.reason)
+              if ("decision" in changed && changed.decision === "block" && changed.reason)
                 return {
                   ...result,
                   content: [
-                    ...result.content,
+                    ...(result.content ?? []),
                     {
                       type: "text" as const,
                       text: `<system-reminder>\n${changed.reason}\n</system-reminder>`,
@@ -1288,13 +1300,29 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 wrapup = undefined;
                 return continuation(content, "goal");
               }
-              const result = await hooks.run("Stop", hookInput({ stop_hook_active: false }), {
+              const hookState = await harness.snapshot(HookContinuationDoc, conversation.id, ctx);
+              const count = hookState?.taskId === Number(api.taskId) ? hookState.count : 0;
+              const result = await hooks.run("Stop", hookInput({ stop_hook_active: count > 0 }), {
                 signal: ctx.abortSignal,
               });
               await applyHookResult(result, "hook:Stop", ctx);
               if (result.decision === "block" && result.reason) {
+                if (count >= 8) {
+                  custom({
+                    type: "hook_warning",
+                    event: "Stop",
+                    hook: "continuation",
+                    message: "Stop hook continuation limit reached (8).",
+                  });
+                  return undefined;
+                }
+                await conversation.commit(async (tx) => {
+                  const state = await tx.doc(HookContinuationDoc, conversation.id);
+                  state.taskId = Number(api.taskId);
+                  state.count = count + 1;
+                }, ctx);
                 custom({ type: "hook_continued", event: "Stop", reason: result.reason });
-                return continuation(result.reason, "hook");
+                return continuation(result.reason, "stop_hook");
               }
               const active = goal.view();
               if (active?.armed && active.phase === "active" && !stopped) {
@@ -1505,6 +1533,14 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       const submission = await harness.submission(submissionId, context);
       if (!submission) throw new Error(`Request submission missing: ${requestId}`);
       const receipt = await Promise.race([submission.wait(context), storageFault.promise]);
+      if (receipt.status === "unanswered" && goal.view()?.armed) {
+        goal.disarm();
+        await conversation.commit(async (tx) => {
+          const activation = await tx.doc(GoalActivationDoc, conversation.id);
+          activation.taskId = null;
+          activation.requestId = null;
+        }, context);
+      }
       const view = await conversation.context(context);
       contextMessages = view.messages;
       const usage = zeroUsage();
@@ -1555,8 +1591,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         const result: RequestResult = {
           requestId,
           text: "",
-          success: false,
-          error: reason,
+          success: true,
+          stopReason: "hook_blocked",
+          reason,
           usage: zeroUsage(),
           durationMs: 0,
         };
@@ -1737,7 +1774,12 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         if (!requestId) throw new Error("Created Goal did not admit its initial request.");
         return { ...goal.view()!, requestId };
       },
-      editGoal: (objective) => goal.edit(objective),
+      editGoal: async (objective) => {
+        const prior = goal.view();
+        const value = await goal.edit(objective);
+        const requestId = prior?.phase === "complete" ? await startGoal() : undefined;
+        return { ...value, ...(requestId ? { requestId } : {}) };
+      },
       pauseGoal: () => goal.pause(),
       resumeGoal: async () => {
         const value = await goal.resume();
@@ -2200,7 +2242,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           };
           await release(() => title.dispose());
           await release(async () => {
-            const result = await hooks.run("SessionEnd", hookInput({ reason }));
+            const result = await hooks.run("SessionEnd", hookInput({ reason }), {
+              matchQuery: reason,
+            });
             await applyHookResult(result, "hook:SessionEnd");
           });
           hooks.dispose();
