@@ -50,7 +50,13 @@ test.each([
       await app.waitFor(() => app.screen().at(-2)!.includes("plan"));
       app.stdin.write("inspect layout\r");
       await app.waitFor(() => app.calls.length === 1);
-      expect(app.calls[0]!.context.messages.at(-1)).toMatchObject({
+      expect(
+        app.calls[0]!.context.messages.findLast(
+          (message) =>
+            message.role === "user" &&
+            !JSON.stringify(message.content).includes("<system-reminder>"),
+        ),
+      ).toMatchObject({
         role: "user",
         content: [{ type: "text", text: "inspect layout" }],
       });
@@ -60,7 +66,13 @@ test.each([
       await completedRuns(app, 1);
       app.stdin.write("inspect again\r");
       await app.waitFor(() => app.calls.length === 2);
-      expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
+      expect(
+        app.calls[1]!.context.messages.findLast(
+          (message) =>
+            message.role === "user" &&
+            !JSON.stringify(message.content).includes("<system-reminder>"),
+        ),
+      ).toMatchObject({
         content: [{ type: "text", text: "inspect again" }],
       });
       app.calls[1]!.finish();
@@ -69,7 +81,13 @@ test.each([
       await app.waitFor(() => !app.screen().at(-2)!.includes("plan"));
       app.stdin.write("/planner untouched\r");
       await app.waitFor(() => app.calls.length === 3);
-      expect(app.calls[2]!.context.messages.at(-1)).toMatchObject({
+      expect(
+        app.calls[2]!.context.messages.findLast(
+          (message) =>
+            message.role === "user" &&
+            !JSON.stringify(message.content).includes("<system-reminder>"),
+        ),
+      ).toMatchObject({
         content: [{ type: "text", text: "/planner untouched" }],
       });
       expect(JSON.stringify(app.calls[2]!.context)).toContain("You have exited Plan Mode");

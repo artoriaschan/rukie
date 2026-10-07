@@ -1,3 +1,4 @@
+import { crashedSubagents } from "../helpers/agent-fixtures";
 import { auxiliaryModels } from "../helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
 import { dark } from "../../../src/ink/index.ts";
@@ -96,8 +97,10 @@ async function resumeWithChild(checkpoint = false) {
           original.provider.streamSimple(model, context, options),
         ),
       });
-      await session.run("save child");
+      const saved = await session.run("save child");
+      await session.waitForRequest(saved.requestId);
       if (checkpoint) await session.run("later parent");
+      await session.close();
       argv.push("--resume", session.id);
     },
   });
@@ -134,7 +137,11 @@ test("resumed history stays hidden through a parent prompt and list_agents, then
     await app.waitFor(() => app.calls.length === 2);
     const result = app.calls[1]!.context.messages.at(-1)!;
     expect(result).toMatchObject({ role: "toolResult", toolName: "list_agents", isError: false });
-    const agentId = JSON.stringify(result).match(/([\da-f-]{36}) \[idle\] — Restored/)?.[1];
+    const text =
+      result.role === "toolResult"
+        ? result.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("")
+        : "";
+    const agentId = text.match(/(\S+) \[idle\] — Restored/)?.[1];
     expect(agentId).toBeDefined();
     expect(hasPanel()).toBe(false);
     app.calls[1]!.tool("send_message", { agent_id: agentId!, message: "resume saved child" });
@@ -218,7 +225,9 @@ test("the panel keeps settled context while another child runs and stays visible
     parent.finish();
     await app.waitFor(() => app.calls.length === 5);
     app.calls[4]!.finish();
-    await app.waitFor(() => app.screen().some((line) => line.includes("等待 1 个子代理")));
+    await app.waitFor(() =>
+      app.screen().some((line) => line.includes("后台任务") && line.includes("1 个子代理")),
+    );
     expect(app.screen()).toContain("  ▾ 子代理 1/2");
     live.finish();
     await app.waitFor(() => app.calls.length === 6);
@@ -300,15 +309,16 @@ test("Subagent panel follows Todo, has independent mouse folding and opens child
       call.context.messages.some(
         (message) =>
           message.role === "user" &&
-          typeof message.content !== "string" &&
-          message.content.some(
-            (part) => part.type === "text" && (part.text === "first" || part.text === "second"),
-          ),
+          (typeof message.content === "string"
+            ? message.content === "first" || message.content === "second"
+            : message.content.some(
+                (part) => part.type === "text" && (part.text === "first" || part.text === "second"),
+              )),
       ),
     );
     expect(children).toHaveLength(2);
     expect(children.every((call) => !call.signal!.aborted)).toBe(true);
-    // Child model requests can precede React's coalesced session_start render.
+    // Committed child model requests can precede React's coalesced snapshot render.
     // Assert the panel only when its two live Runs are actually visible.
     await app.waitFor(() => app.screen().includes("  ▾ 子代理 2/2"));
     expect(app.screen()).toContain("  ▾ 子代理 2/2");
@@ -436,7 +446,7 @@ for (const kind of ["permission", "question"] as const) {
           expect(lines.some((line) => line.includes("1. 允许（仅本次）"))).toBe(true);
           expect(lines.some((line) => line.includes("2. 本 session 允许此命令"))).toBe(true);
           expect(lines.some((line) => line.includes("3. 拒绝"))).toBe(true);
-          app.stdin.write("\x1b");
+          app.stdin.write("3\r");
         } else {
           expect(lines.some((line) => line.includes("第一项"))).toBe(true);
           app.stdin.write("\x1b[B");
@@ -464,9 +474,9 @@ for (const kind of ["permission", "question"] as const) {
   }
 }
 
-for (const [lang, label, completed, unknown, error] of [
-  ["en_US.UTF-8", "Subagents", "Run ended normally", "Run outcome unknown", "Run ended with error"],
-  ["zh_CN.UTF-8", "子代理", "Run 正常结束", "Run 结束原因未知", "Run 错误结束"],
+for (const [lang, label, completed, error] of [
+  ["en_US.UTF-8", "Subagents", "Run ended normally", "Run ended with error"],
+  ["zh_CN.UTF-8", "子代理", "Run 正常结束", "Run 错误结束"],
 ] as const) {
   test(`${lang} restored Run outcomes remain readable in a 40x12 history view without activity`, async () => {
     const argv: string[] = [];
@@ -475,58 +485,12 @@ for (const [lang, label, completed, unknown, error] of [
       rows: 12,
       env: { LANG: lang },
       prepare: async (root) => {
-        const fake = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
-        fake.setResponses([
-          fauxAssistantMessage(
-            fauxToolCall("subagent", {
-              description: "Normal",
-              prompt: "child",
-              run_in_background: false,
-            }),
-            { stopReason: "toolUse" },
-          ),
-          fauxAssistantMessage("done"),
-          fauxAssistantMessage(
-            fauxToolCall("subagent", {
-              description: "Error",
-              prompt: "failed child",
-              run_in_background: false,
-            }),
-            { stopReason: "toolUse" },
-          ),
-          fauxAssistantMessage("partial", { stopReason: "error", errorMessage: "saved failure" }),
-          fauxAssistantMessage("parent done"),
-        ]);
-        const parent = await createSession({
-          cwd: root,
-          homeDir: root,
-          model: fake.getModel(),
-          models: auxiliaryModels((model, context, options) =>
-            fake.provider.streamSimple(model, context, options),
-          ),
-        });
-        await parent.run("delegate");
-        await parent.close();
-        // Native JSONL fixture: append an old identity to the latest saved parent snapshot.
-        for await (const path of new Bun.Glob(`**/*_${parent.id}.jsonl`).scan({
-          cwd: `${root}/.rukie/sessions`,
-          absolute: true,
-        })) {
-          const records = (await Bun.file(path).text())
-            .trimEnd()
-            .split("\n")
-            .map((line) => JSON.parse(line));
-          const snapshots = records
-            .flatMap((record) => (Array.isArray(record) ? record : [record]))
-            .filter((entry) => entry.customType === "tool-state/subagents");
-          snapshots.at(-1).data.value.push({
-            id: "legacy-child",
-            description: "Legacy",
-            type: "general-purpose",
-          });
-          await Bun.write(path, records.map((record) => JSON.stringify(record)).join("\n") + "\n");
-        }
-        argv.push("--resume", parent.id);
+        const fixture = await crashedSubagents({ cwd: root, homeDir: root });
+        await fixture.child("Normal", "completed");
+        await fixture.child("Error", "error");
+        await fixture.child("Aborted", "aborted");
+        await fixture.save();
+        argv.push("--resume", fixture.parentId);
       },
     });
     const screen = () => app.screen().join("\n");
@@ -540,7 +504,7 @@ for (const [lang, label, completed, unknown, error] of [
       await app.waitFor(() => !screen().includes(`─ ${label} `) && screen().includes(completed));
       for (const [description, outcome] of [
         ["Error", error],
-        ["Legacy", unknown],
+        ["Aborted", lang.startsWith("zh") ? "Run 已中止" : "Run aborted"],
       ]) {
         app.stdin.write("\x1b");
         await app.waitFor(() => screen().includes(`─ ${label} `));
