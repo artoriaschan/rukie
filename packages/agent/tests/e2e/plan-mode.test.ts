@@ -516,10 +516,12 @@ test("a child continued after a parent rewind reads the projected Plan Mode with
   session.subscribe(onEvent);
   const first = await session.run("first");
   await session.waitForRequest(first.requestId);
+  expect(session.toolState("subagents")).toMatchObject([{ id: childId, description: "Inspect" }]);
   // Entering Plan Mode after the child exists and leaving it again makes the rewind
   // change the state a continued child has to project.
   await session.setPlanMode(true);
   await session.run("second", { onEvent });
+  expect(session.toolState("subagents")).toMatchObject([{ id: childId, description: "Inspect" }]);
   await session.setPlanMode(false);
   await session.rewind(session.checkpoints()[1]!.promptEntryId, {
     code: false,
