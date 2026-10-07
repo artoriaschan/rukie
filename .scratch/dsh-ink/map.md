@@ -11,3 +11,5 @@
 ## Fog
 
 - 生产 reading anchor、clipboard outcomes、全屏 selection 和图形 clipping 的最终行为以 04/05/06 的公共终端验收为准。
+
+- 04 图片产品回归完成：六组76/265通过，PNG像素协议场景已原生迁移；见 [04 verification](issues/04-image-adoption.md#final-public-verification)。
