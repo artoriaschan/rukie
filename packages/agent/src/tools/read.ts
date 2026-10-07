@@ -57,6 +57,17 @@ export function createImageReadTool(cwd: string, homeDir: string) {
       if (!api.env) throw new Error("read requires an execution environment");
       const bytes = await api.env.readBinaryFile(args.path, context);
       if (!bytes.ok) throw bytes.error;
+      // BMP requires conversion before attachment; reading it still succeeds
+      // with the capability's explicit omission receipt.
+      if (bytes.value[0] === 0x42 && bytes.value[1] === 0x4d)
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Read image file [image/bmp]\n[Image omitted: configure an imageProcessor to convert BMP images.]",
+            },
+          ],
+        };
       const mimeType = detectReadImageMimeType(bytes.value);
       if (mimeType) {
         validateImageBytes(bytes.value);
