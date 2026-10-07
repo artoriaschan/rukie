@@ -1,3 +1,4 @@
+import { modelStream, withModelStream } from "../helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { createSession } from "../../src/index.ts";
@@ -250,7 +251,7 @@ test("without an approval callback the default ask mode denies web_fetch", async
   expect(requests).toBe(0);
 });
 
-test("interruptRun cancels an in-flight body and the server observes cancellation", async () => {
+test("abort cancels an in-flight body and the server observes cancellation", async () => {
   const received = Promise.withResolvers<void>();
   const cancelled = Promise.withResolvers<void>();
   const base = server(() => {
@@ -280,11 +281,11 @@ test("interruptRun cancels an in-flight body and the server observes cancellatio
       allowAddresses: ["127.0.0.1"],
     },
   });
-  resources.push(() => session.dispose());
+  resources.push(() => session.close());
   const run = session.run("fetch");
   void run.catch(() => {});
   await received.promise;
-  session.interruptRun();
+  await session.abort();
   await expect(run).rejects.toThrow();
   await cancelled.promise;
   expect(session.running).toBe(false);
@@ -325,9 +326,9 @@ test("PreToolUse rewrites are still subject to SSRF checks and its matcher recei
       },
     },
   });
-  resources.push(() => session.dispose());
+  resources.push(() => session.close());
   await session.run("fetch");
-  const result = fake.contexts[1]!.messages.at(-1)!;
+  const result = fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult")!;
   expect(result).toMatchObject({
     isError: true,
     content: [{ text: expect.stringContaining("SSRF rejected:") }],
@@ -357,16 +358,18 @@ test.each(["explore", "general-purpose"])(
       ),
       fauxAssistantMessage(fauxToolCall("web_fetch", { url: base }), { stopReason: "toolUse" }),
       (context) => {
-        expect(context.messages.at(-1)).toMatchObject({
-          toolName: "web_fetch",
-          isError: false,
-          content: [{ text: expect.stringContaining("Child documentation") }],
-        });
+        expect(context.messages.findLast((message) => message.role === "toolResult")).toMatchObject(
+          {
+            toolName: "web_fetch",
+            isError: false,
+            content: [{ text: expect.stringContaining("Child documentation") }],
+          },
+        );
         return fauxAssistantMessage("child done");
       },
       fauxAssistantMessage("parent done"),
     ]);
-    let asks = 0;
+    const requests: { toolName: string; origin?: unknown }[] = [];
     const session = await createSession({
       ...dirs,
       ...fake,
@@ -375,15 +378,18 @@ test.each(["explore", "general-purpose"])(
         allowAddresses: ["127.0.0.1"],
       },
       onPermissionAsk: async (request) => {
-        expect(request.toolName).toBe("web_fetch");
-        expect(request.origin).toMatchObject({ description: "Read docs" });
-        asks++;
+        requests.push(request);
         return "allow";
       },
     });
-    resources.push(() => session.dispose());
+    resources.push(() => session.close());
     await session.run("delegate");
-    expect(asks).toBe(1);
+    expect(requests).toMatchObject([
+      { toolName: "web_fetch", origin: { description: "Read docs" } },
+    ]);
+    expect(
+      fake.contexts[2]!.messages.findLast((message) => message.role === "toolResult"),
+    ).toMatchObject({ toolName: "web_fetch", isError: false });
   },
 );
 
@@ -405,7 +411,7 @@ test("auto-review evaluates web_fetch before anonymous public access", async () 
       resolve: async () => [{ address: "127.0.0.1", family: 4 }],
       allowAddresses: ["127.0.0.1"],
     },
-    streamFn: (model, context, options) => {
+    models: withModelStream(fake.models, (model, context, options) => {
       if (
         context.messages.some(
           (message) =>
@@ -413,17 +419,19 @@ test("auto-review evaluates web_fetch before anonymous public access", async () 
         )
       ) {
         reviews++;
-        return reviewer.streamFn(model, context, options);
+        return modelStream(reviewer.models)(model, context, options);
       }
-      return fake.streamFn(model, context, options);
-    },
+      return modelStream(fake.models)(model, context, options);
+    }),
     onPermissionAsk: async () => {
       throw new Error("A low-risk review should authorize this call");
     },
   });
-  resources.push(() => session.dispose());
+  resources.push(() => session.close());
   await session.run("fetch");
   expect(reviews).toBe(1);
   expect(JSON.stringify(reviewer.contexts[0]!.messages)).toContain("web_fetch");
-  expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({ isError: false });
+  expect(
+    fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+  ).toMatchObject({ isError: false });
 });

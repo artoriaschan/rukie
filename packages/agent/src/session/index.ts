@@ -413,6 +413,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     let goalRound = false;
     let wrapup: string | undefined;
     let permissionMode = options.permissionMode ?? settings.permissionMode ?? "ask";
+    const sessionAllowRules = options.sessionAllowRules ?? [];
     let observation: Awaited<ReturnType<typeof createConversationObservation>>;
     let storageFailure: unknown;
     const storageFault = Promise.withResolvers<never>();
@@ -450,6 +451,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               enabled: true,
               keepRecentTokens: Math.min(16000, Math.floor(model.contextWindow * 0.4)),
               reserveTokens: Math.min(16384, Math.floor(model.contextWindow * 0.2)),
+              backgroundTokens: Math.min(32768, Math.floor(model.contextWindow * 0.25)),
             };
           },
         },
@@ -463,6 +465,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         model: { provider: model.provider, modelId: model.id },
         cwd,
         instructions: SYSTEM_PROMPT,
+        ...(settings.thinking ? { thinkingLevel: settings.thinking } : {}),
       },
       init: async (tx, id) => {
         await tx.appendEntry(id, { kind: "rukie.initial" });
@@ -521,6 +524,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       if (storageFailure !== undefined) throw storageFailure;
       if (idle && observation?.running()) throw new Error("Session is busy.");
     };
+    let asyncAdmissions = Promise.resolve();
     const hooks = createHooks({
       settings: settings.hooks,
       cwd,
@@ -535,8 +539,36 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
       onWarning: warn,
       onEvent: (event) => custom(event),
-      onAsyncResult: (result) => {
-        void applyHookResult(result, "hook-async").catch(warn);
+      onAsyncResult: (result, reason) => {
+        asyncAdmissions = asyncAdmissions
+          .then(async () => {
+            if (closed) return;
+            await applyHookResult(result, "hook-async");
+            if (!reason) return;
+            const requestId = `hook:${randomUUID()}`;
+            const submitted = await conversation.submit(
+              {
+                type: "input",
+                content: reason,
+                requestId,
+                whenBusy: "followUp",
+              },
+              context,
+            );
+            currentRequestId = requestId;
+            await registerSubmission(requestId, submitted.id);
+            const record = await submitted.status(context);
+            if (record.entry)
+              await conversation.commit(
+                (tx) =>
+                  tx.appendEntry(conversation.id, {
+                    kind: "rukie.message-facts",
+                    data: { entryId: Number(record.entry), source: "hook" },
+                  }),
+                context,
+              );
+          })
+          .catch(warn);
       },
     });
     const hookInput = (extra: Record<string, unknown> = {}): HookInput => ({
@@ -695,7 +727,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         ...settings.permissions,
         allow: [...(settings.permissions?.allow ?? []), ...(options.allowRules ?? [])],
       }),
-      sessionAllowRules: options.sessionAllowRules,
+      sessionAllowRules,
       getMode: () => permissionMode,
       getTools: () => tools,
       getMessages: async () => {
@@ -782,6 +814,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           { signal, matchQuery: call.toolCall.name },
         ),
     });
+    const childJobRegistries = new Map<string, ReturnType<typeof createJobs>>();
     const childResources = new Map<
       number,
       {
@@ -797,14 +830,19 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       restored: state.get("subagents") as
         | import("../tools/subagents/state.ts").SubagentIdentity[]
         | undefined,
-      forkAt: () =>
-        observation
-          ?.view()
-          .entries.findLast((entry) =>
-            entry.model?.some(
-              (message) => message.role === "assistant" && message.stopReason === "stop",
-            ),
-          )?.id,
+      forkAt: () => {
+        const entries = observation?.view().entries ?? [];
+        const current = entries.findLast((entry) =>
+          entry.model?.some((message) => message.role === "assistant"),
+        );
+        return entries.findLast((entry) =>
+          entry.model?.some(
+            (message) =>
+              (message.role === "assistant" && message.stopReason === "stop") ||
+              (message.role === "toolResult" && (!current || entry.id < current.id)),
+          ),
+        )?.id;
+      },
       async beforeStart(request, child, ctx) {
         const result = await hooks.run(
           "SubagentStart",
@@ -852,7 +890,37 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           facts.title ||= description;
           facts.description = description;
         }, context);
-        const childJobs = childResources.get(Number(child.id))?.jobs ?? createJobs();
+        const childJobs =
+          childJobRegistries.get(childId) ??
+          createJobs({
+            onEvent: (event) =>
+              custom({
+                type: "subagent_event",
+                agentId: childId,
+                description,
+                subagentType: type.name,
+                event: { ...event, sessionId: childId },
+              }),
+            onNotify: (job) => {
+              if (!closed)
+                void child
+                  .commit(
+                    (tx) =>
+                      tx.appendEntry(
+                        child.id,
+                        reminderEntry({
+                          role: "system-reminder",
+                          source: `job:${job.id}`,
+                          content: `background job ${job.id} (${job.kind}: ${job.label}) finished [status: ${job.status}, exit code: ${job.exitCode ?? "unknown"}]. Read its output with job_output.`,
+                          timestamp: Date.now(),
+                        }),
+                      ),
+                    context,
+                  )
+                  .catch(warn);
+            },
+          });
+        childJobRegistries.set(childId, childJobs);
         const childTracking = createFileTracking(cwd, {
           initialState: childState.get("file-tracking"),
           persist: async (value, reminder) => {
@@ -872,7 +940,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             ...settings.permissions,
             allow: [...(settings.permissions?.allow ?? []), ...(options.allowRules ?? [])],
           }),
-          sessionAllowRules: options.sessionAllowRules,
+          sessionAllowRules,
           getMode: () => permissionMode,
           getTools: () => childTools,
           getMessages: async () => {
@@ -899,7 +967,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           getReviewModel: () => async () =>
             settings.reviewModel ? selectedModel(settings.reviewModel) : selected,
           models,
-          onPermissionAsk: options.onPermissionAsk,
+          onPermissionAsk: options.onPermissionAsk
+            ? (request) =>
+                options.onPermissionAsk!({ ...request, origin: { agentId: childId, description } })
+            : undefined,
           onInteractionStart: notifyInteraction,
           onToolCallAllowed: async (call) => {
             await checkpoints.record(call, cwd, options.homeDir);
@@ -1049,6 +1120,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         }
         return {
           model: { provider: selected.provider, modelId: selected.id },
+          ...(settings.thinking ? { thinkingLevel: settings.thinking } : {}),
           cwd,
           instructions: SYSTEM_PROMPT,
           extensions: [extension],
@@ -1659,7 +1731,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     ) {
       assertAvailable();
       images.forEach(validateImage);
-      const hookResult = await hooks.run("UserPromptSubmit", hookInput({ prompt }), { signal });
+      const hookResult = requestId.startsWith("human:")
+        ? await hooks.run("UserPromptSubmit", hookInput({ prompt }), { signal })
+        : { systemMessages: [], additionalContext: [] };
       signal?.throwIfAborted();
       await applyHookResult(hookResult, "hook:UserPromptSubmit");
       if (hookResult.decision === "block") {
@@ -2369,6 +2443,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       hookInput({ source: options.resumeId ? "resume" : "startup" }),
     );
     await applyHookResult(startup, "hook:SessionStart");
+    await asyncAdmissions;
     await subagents.prepareChildren(context);
     const recovering = await harness.inspect(context);
     const requestValues = (await harness.snapshot(RequestDoc, context))?.requests ?? {};
