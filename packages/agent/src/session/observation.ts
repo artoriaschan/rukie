@@ -124,7 +124,7 @@ function interruptedResult(entry: EntryRecord) {
 }
 function unknownOutcome(
   entry: EntryRecord,
-  task: TaskRecord<JsonValue, JsonValue, JsonValue> | undefined,
+  task: TaskRecord<JsonValue, JsonValue, unknown> | undefined,
 ) {
   if (
     !interruptedResult(entry) ||
@@ -141,6 +141,7 @@ function unknownOutcome(
     result !== null &&
     typeof result === "object" &&
     !Array.isArray(result) &&
+    "entryId" in result &&
     result.entryId === entry.id &&
     input !== null &&
     typeof input === "object" &&
@@ -474,7 +475,7 @@ export async function createConversationObservation(options: ConversationObserva
 
   const unsubscribe = harness.subscribeCommits((publication) => {
     if (closed) return;
-    const tasks = new Map(
+    const tasks = new Map<number, TaskRecord<JsonValue, JsonValue, unknown>>(
       publication.changes.flatMap((change) =>
         change.type === "task" ? [[change.value.id, change.value] as const] : [],
       ),
