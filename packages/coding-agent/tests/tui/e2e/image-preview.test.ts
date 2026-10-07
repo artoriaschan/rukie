@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 import { start } from "../helpers/app";
 import { startWithClock } from "../helpers/clock-app";
-import { inflateSync } from "node:zlib";
 import sharp from "sharp";
 
 const png =
@@ -153,7 +152,7 @@ type KittyUpload = {
   maxChunk: number;
 };
 
-/** Parse complete native APC packets and assemble one real zlib RGBA upload across its chunks. */
+/** Parse complete native APC packets and assemble one real RGBA upload across its chunks. */
 function kittyReader(output: () => string) {
   let offset = 0;
   let pending: { fields: Record<string, string>; chunks: string[] } | undefined;
@@ -173,10 +172,11 @@ function kittyReader(output: () => string) {
       if (pending && fields.m !== undefined) {
         pending.chunks.push(payload);
         if (fields.m === "0") {
-          expect(pending.fields).toMatchObject({ f: "32", o: "z", t: "d" });
+          expect(pending.fields).toMatchObject({ f: "32", t: "d" });
+          expect(pending.fields.o).toBeUndefined();
           const width = Number(pending.fields.s);
           const height = Number(pending.fields.v);
-          const pixels = inflateSync(Buffer.from(pending.chunks.join(""), "base64"));
+          const pixels = Buffer.from(pending.chunks.join(""), "base64");
           const maxChunk = Math.max(...pending.chunks.map((chunk) => chunk.length));
           expect(maxChunk).toBeLessThanOrEqual(4096);
           expect(pixels.length).toBe(width * height * 4);

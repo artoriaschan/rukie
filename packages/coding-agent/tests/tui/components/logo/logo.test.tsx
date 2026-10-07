@@ -273,9 +273,9 @@ test("Kitty header uploads the full-resolution portrait and removes it on resize
     await terminal.waitFor(() => terminal.output().includes("a=q"));
     terminal.stdin.write("\x1b_Gi=31;OK\x1b\\\x1b[6;20;10t\x1b[4;480;800t\x1b[?1;2c");
     await terminal.waitFor(() => terminal.output().includes("a=t,"));
-    // Native Kitty uploads the bounded decoded RGBA snapshot with zlib compression.
+    // Native Kitty uploads the bounded decoded RGBA snapshot without compression.
     expect(terminal.output()).toContain("f=32");
-    expect(terminal.output()).toContain("o=z");
+    expect(terminal.output()).not.toContain("o=z");
     expect(terminal.output()).toContain("a=p,");
     expect(terminal.screen()[9]?.slice(42)).toBe("local/model");
     expect(terminal.screen()[10]?.slice(42)).toBe("/project");
