@@ -16,7 +16,7 @@ import {
   type SubagentView,
 } from "../subagent-message";
 import { ToolCall } from "../tool-call";
-import { Markdown } from "../../../ink/index.ts";
+import { Markdown } from "../markdown";
 import { ExitButton } from "../subagent-dashboard";
 
 function formatDuration(elapsed: number) {

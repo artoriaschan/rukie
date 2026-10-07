@@ -1,5 +1,5 @@
 import { Box, ThemedText, figures } from "../../../ink/index.ts";
-import { Markdown } from "../../../ink/index.ts";
+import { Markdown } from "../markdown";
 import { useSmoothText } from "../../../ink/index.ts";
 
 export function AssistantMessage({

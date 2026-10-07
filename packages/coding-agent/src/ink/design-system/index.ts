@@ -24,6 +24,4 @@ export { Tooltip, TooltipProvider, useDismissTooltip } from "./tooltip";
 
 export { SplitDiffView, alignSplitDiff, type SplitDiffRow } from "./split-diff-view";
 
-export { Markdown, markdownText, markdownProjection } from "./markdown";
-
 export { SmoothRevealProvider, useSmoothReveal, useSmoothText } from "./smooth-reveal";

@@ -1,7 +1,7 @@
+import { Markdown } from "./markdown";
 import { useEffect, useState } from "react";
 import {
   Box,
-  Markdown,
   ThemedText,
   hex,
   interpolateColor,

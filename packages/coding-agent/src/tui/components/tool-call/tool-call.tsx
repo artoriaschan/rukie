@@ -7,7 +7,7 @@ import {
 } from "./presentation";
 import { useSmoothReveal } from "../../../ink/index.ts";
 import { useDiffLayout } from "./diff-layout";
-import { Markdown } from "../../../ink/index.ts";
+import { Markdown } from "../markdown";
 import { toolLinePreview, previewSyntax } from "./line-preview";
 import { unifiedDiffLines } from "./diff-lines";
 import { useToolWindowNavigation, type WindowMove } from "./window-navigation";

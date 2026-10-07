@@ -30,9 +30,6 @@ export {
   SmoothRevealProvider,
   useSmoothReveal,
   useSmoothText,
-  Markdown,
-  markdownText,
-  markdownProjection,
   dark,
   light,
   type Theme,
@@ -74,3 +71,5 @@ export {
 export type { TerminalGraphics } from "./terminal";
 
 export type { TextSelectionOptions, TextSelectionResult } from "./selection";
+
+export { textLines } from "./text";

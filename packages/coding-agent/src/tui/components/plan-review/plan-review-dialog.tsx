@@ -10,7 +10,7 @@ import {
 } from "../../../ink/index.ts";
 import type { Locale } from "@neant/i18n";
 import { createTuiI18n } from "../../../view/i18n";
-import { Markdown } from "../../../ink/index.ts";
+import { Markdown } from "../markdown";
 
 export function PlanReviewDialog({
   plan,

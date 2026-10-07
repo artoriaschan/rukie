@@ -1,19 +1,21 @@
 import { createContext, useContext, useMemo, type ComponentProps, type ReactNode } from "react";
-import { fromMarkdown } from "mdast-util-from-markdown";
-import { Box } from "../../primitives";
-import { ThemedBox, ThemedText as StyledText } from "../themed";
 import {
+  Box,
+  ThemedBox,
+  ThemedText as StyledText,
   SyntaxHighlightedText as HighlightedText,
   highlightSyntax,
-} from "../syntax-highlighted-text";
-import { useTerminalSize } from "../../hooks";
-import { textLines } from "../../text";
-import { gfm } from "micromark-extension-gfm";
-import { gfmFromMarkdown } from "mdast-util-gfm";
-import { math } from "micromark-extension-math";
-import { mathFromMarkdown } from "mdast-util-math";
-import { render as renderMermaid } from "lovely-mermaid";
-import { renderLatex } from "./latex";
+  useTerminalSize,
+  textLines,
+} from "../../../ink/index.ts";
+import {
+  parseMarkdown,
+  rawMarkdown,
+  renderFormula,
+  mathText,
+  mermaidDiagram,
+  markdownText,
+} from "../../../view/transcript/markdown";
 
 const DimContext = createContext(false);
 function ThemedText(props: ComponentProps<typeof StyledText>) {
@@ -25,51 +27,7 @@ function SyntaxHighlightedText(props: ComponentProps<typeof HighlightedText>) {
   return <HighlightedText {...props} dimColor={props.dimColor ?? dimColor} />;
 }
 
-function parse(text: string) {
-  // Keep offsets identical when recognizing TeX delimiters. Code and HTML are
-  // protected from normalization; fallback always slices the original source.
-  if (!/\\[()[\]]/.test(text))
-    return fromMarkdown(text, {
-      extensions: [gfm(), math()],
-      mdastExtensions: [gfmFromMarkdown(), mathFromMarkdown()],
-    });
-  const base = fromMarkdown(text, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] });
-  const protectedRanges: [number, number][] = [];
-  function protect(node: {
-    type: string;
-    position?: { start: { offset?: number }; end: { offset?: number } };
-    children?: readonly { type: string; children?: readonly { type: string }[] }[];
-  }) {
-    if (["code", "inlineCode", "html"].includes(node.type))
-      protectedRanges.push([node.position?.start.offset ?? 0, node.position?.end.offset ?? 0]);
-    if (node.children) for (const child of node.children) protect(child);
-  }
-  protect(base);
-  const normalized = text.replace(/\\([()[\]])/g, (literal, delimiter: string, offset: number) => {
-    if (protectedRanges.some(([start, end]) => offset >= start && offset < end)) return literal;
-    return delimiter === "(" ? "$ " : delimiter === ")" ? " $" : "$$";
-  });
-  return fromMarkdown(normalized, {
-    extensions: [gfm(), math()],
-    mdastExtensions: [gfmFromMarkdown(), mathFromMarkdown()],
-  });
-}
-function raw(
-  node: { position?: { start: { offset?: number }; end: { offset?: number } } },
-  source: string,
-) {
-  return source.slice(node.position?.start.offset, node.position?.end.offset);
-}
-function formula(value: string, display: boolean): string | undefined {
-  if (value.length > 4096) return undefined;
-  try {
-    return renderLatex(value, { display });
-  } catch {
-    return undefined;
-  }
-}
-
-type Node = ReturnType<typeof fromMarkdown>["children"][number];
+type Node = ReturnType<typeof parseMarkdown>["children"][number];
 type InlineNode = Extract<Node, { type: "paragraph" }>["children"][number];
 
 function inline(nodes: readonly InlineNode[], source = ""): ReactNode {
@@ -134,7 +92,7 @@ function blocks(
       case "table":
         return <TableBlock key={index} node={node} source={source} onClick={onClick} />;
       case "paragraph": {
-        const literal = raw(node, source);
+        const literal = rawMarkdown(node, source);
         if (
           /^\\begin\{(?:align\*?|aligned|equation\*?|gather\*?|matrix|pmatrix|bmatrix|cases)\}/.test(
             literal,
@@ -237,26 +195,6 @@ function blocks(
   });
 }
 
-function mathText(
-  node: {
-    type: string;
-    value?: string;
-    position?: { start: { offset?: number }; end: { offset?: number } };
-  },
-  source: string,
-  columns: number,
-): string {
-  const literal = raw(node, source);
-  const inline = node.type === "inlineMath";
-  const closed = inline || /\n[ \t]*(?:\$\$+|\\\])[ \t]*$/.test(literal);
-  const price = inline && /^\$\d/.test(literal);
-  const rendered = closed && !price ? formula(node.value ?? "", !inline) : undefined;
-  return rendered &&
-    (!inline || !rendered.includes("\n")) &&
-    rendered.split("\n").every((row) => Bun.stringWidth(row) <= columns - 4)
-    ? rendered
-    : literal;
-}
 function InlineFormula({
   node,
   source,
@@ -270,7 +208,7 @@ function InlineFormula({
 function EnvironmentBlock({ text, onClick }: { text: string; onClick?: () => void }) {
   const { columns } = useTerminalSize();
   const name = /^\\begin\{([^}]+)\}/.exec(text)?.[1];
-  const rendered = name && text.endsWith(`\\end{${name}}`) ? formula(text, true) : undefined;
+  const rendered = name && text.endsWith(`\\end{${name}}`) ? renderFormula(text, true) : undefined;
   const fits = rendered && rendered.split("\n").every((row) => Bun.stringWidth(row) <= columns - 4);
   return (
     <ThemedText onClick={onClick} preserveWhitespace>
@@ -303,12 +241,7 @@ function CodeBlock({
 }) {
   const { columns } = useTerminalSize();
   const art = useMemo(() => {
-    if (node.lang?.toLowerCase() !== "mermaid" || node.value.length > 20000) return null;
-    try {
-      return renderMermaid(node.value);
-    } catch {
-      return null;
-    }
+    return node.lang?.toLowerCase() === "mermaid" ? mermaidDiagram(node.value) : null;
   }, [node.lang, node.value]);
   const label = node.lang ?? "code";
   const highlighted = useMemo(
@@ -370,7 +303,7 @@ function TableBlock({
 }) {
   const { columns } = useTerminalSize();
   const values = node.children.map((row) =>
-    row.children.map((cell) => markdownText(raw(cell, source))),
+    row.children.map((cell) => markdownText(rawMarkdown(cell, source))),
   );
   const count = node.children[0]?.children.length ?? 0;
   const budget = Math.max(0, columns - 5 - count * 3);
@@ -482,7 +415,7 @@ export function Markdown({
   onClick?(): void;
   dimColor?: boolean;
 }) {
-  const document = useMemo(() => parse(text), [text]);
+  const document = useMemo(() => parseMarkdown(text), [text]);
   return (
     <DimContext.Provider value={dimColor}>
       <Box flexDirection="column" flexGrow={1} flexShrink={1}>
@@ -490,82 +423,4 @@ export function Markdown({
       </Box>
     </DimContext.Provider>
   );
-}
-
-/** Plain text emitted by Markdown, excluding formatting delimiters. */
-export function markdownProjection(
-  source: string,
-  columns = Infinity,
-): { text: string; sourceLines: number[] } {
-  type Tree = {
-    type: string;
-    value?: string;
-    url?: string;
-    alt?: string | null;
-    children?: Tree[];
-    lang?: string | null;
-    position?: { start: { line: number; offset?: number }; end: { offset?: number } };
-  };
-  function literal(text: string, line: number) {
-    const sourceLines: number[] = [];
-    for (let at = 0; at < text.length; at++) {
-      sourceLines.push(line);
-      if (text[at] === "\n") line++;
-    }
-    return { text, sourceLines };
-  }
-  function visit(node: Tree): { text: string; sourceLines: number[] } {
-    const line = (node.position?.start.line ?? 1) - 1;
-    if (node.type === "image")
-      return literal(node.alt ? `[img] ${node.alt}` : (node.url ?? ""), line);
-    if (node.type === "break") return literal("\n", line);
-    if (node.type === "inlineMath" || node.type === "math")
-      return literal(mathText(node, source, columns), line);
-    if (
-      node.type === "code" &&
-      node.lang?.toLowerCase() === "mermaid" &&
-      (node.value?.length ?? 0) <= 20000
-    ) {
-      try {
-        const art = renderMermaid(node.value ?? "");
-        if (art && art.width <= columns - 4) return literal(art.plain.join("\n"), line + 1);
-      } catch {
-        /* Unsupported source retains its code text. */
-      }
-    }
-    if (node.type === "paragraph") {
-      const original = raw(node, source);
-      const name = /^\\begin\{([^}]+)\}/.exec(original)?.[1];
-      if (name) {
-        const rendered = original.endsWith(`\\end{${name}}`) ? formula(original, true) : undefined;
-        return literal(
-          rendered && rendered.split("\n").every((row) => Bun.stringWidth(row) <= columns - 4)
-            ? rendered
-            : original,
-          line,
-        );
-      }
-    }
-    if (node.value !== undefined) return literal(node.value, line + Number(node.type === "code"));
-    const separator = ["root", "list", "listItem", "blockquote", "table", "tableRow"].includes(
-      node.type,
-    )
-      ? "\n"
-      : "";
-    const output = { text: "", sourceLines: [] as number[] };
-    for (const child of node.children ?? []) {
-      const part = visit(child);
-      if (output.text && separator) {
-        output.text += separator;
-        output.sourceLines.push(part.sourceLines[0] ?? line);
-      }
-      output.text += part.text;
-      output.sourceLines.push(...part.sourceLines);
-    }
-    return output;
-  }
-  return visit(parse(source));
-}
-export function markdownText(source: string, columns = Infinity): string {
-  return markdownProjection(source, columns).text;
 }

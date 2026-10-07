@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
-import { Box, Markdown, render } from "../../../src/ink";
-import { createTerminal } from "../helpers/terminal";
+import { Box, render } from "../../../../src/ink";
+import { Markdown } from "../../../../src/tui/components/markdown";
+import { createTerminal } from "../../../ink/helpers/terminal";
 
 test("a code frame uses its containing width and clips an oversized language label", async () => {
   const terminal = createTerminal(80, 12);
