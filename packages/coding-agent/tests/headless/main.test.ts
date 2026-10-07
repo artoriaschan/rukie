@@ -831,7 +831,18 @@ test.each(["prompt", "stdin", "stdin-stream-json", "goal", "goal-interrupted"])(
           .trim()
           .split("\n")
           .map((line) => JSON.parse(line));
-        expect(events.filter((event) => event.type === "request_settled")).toHaveLength(1);
+        const human = events.filter(
+          (event) => event.type === "request_settled" && event.text === "human done",
+        );
+        expect(human).toHaveLength(1);
+        const startup = events.filter(
+          (event) => event.type === "request_settled" && event.text === "autorun done",
+        );
+        expect(startup.length).toBeLessThanOrEqual(1);
+        if (startup.length) expect(startup[0].requestId).not.toBe(human[0].requestId);
+        else
+          // Startup may commit before createSession returns; the initial snapshot owns that history.
+          expect(JSON.stringify(events[0].messages)).toContain("autorun done");
         expect(
           events.filter(
             (event) =>
