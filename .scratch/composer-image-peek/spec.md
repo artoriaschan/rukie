@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 
 # Spec: 输入框图片光标预览
 
@@ -68,3 +68,7 @@ Status: ready-for-agent
 
 - dsh-TUI 允许点击 token 强制重新显示；本 spec 不做点击，由「光标离开再回来」承担同样作用。
 - 完成后在 [终端图形协议](../agent-core-roadmap/issues/21-terminal-graphics.md) 追加实施证据。
+
+## Delivery
+
+2026-10-07：全部三张实施票已合入 `codex/composer-image-peek`。实现与最终门禁见 [验收记录](review.md)。

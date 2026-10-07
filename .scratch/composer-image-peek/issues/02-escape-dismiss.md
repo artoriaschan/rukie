@@ -10,7 +10,7 @@
 - [x] Run 进行中按 Esc 关卡，Run 不中止（fake model `signal.aborted` 为 false），第二次 Esc 才走原有 Esc 链
 - [x] 关闭后光标留在原 token，卡不再出现；光标离开再回来，卡重新出现
 - [x] 关闭一张后移到另一个 token，那张照常显示
-- [x] e2e 覆盖以上行为；focused checks 通过，aggregate gate 由 integration 执行
+- [x] e2e 覆盖以上行为；集成代码 `3950234` 的 `env -u NO_COLOR bun run check` 通过（2512 pass / 0 fail）
 
 ## Answer
 
@@ -21,3 +21,7 @@ Chat 优先消费当前显示光标预览的 Esc，以 token 文本和起始位�
 验证：原实现首次 Esc 会清空草稿，新增用例首先失败；实现后 `env -u NO_COLOR bun test apps/neant-tui/tests/e2e/composer-image-dismiss.test.ts apps/neant-tui/tests/e2e/composer-image-peek.test.ts apps/neant-tui/tests/e2e/image-tokens.test.ts`：17 pass，0 fail，3.06s；两条新增测试 253ms/208ms。`bun run check:dev` 通过。全量 `env -u NO_COLOR bun run check` 留给最终 integration 单次 gate。
 
 合并注意：ticket03 的 `imagePreviewBlocked()` 需同时用于派生预览与最前面的 Esc 分支，保证被隐藏的 token 不消费 Interaction/picker/MCP/Rewind 的 Esc。
+
+## Final verification
+
+2026-10-07：集成代码 `3950234` 执行 `env -u NO_COLOR bun run check` 通过，2512 pass / 0 fail，184 files，测试阶段 74.47s。此前票据中的“待最终门禁”已完成；审查发现和修复见 [验收记录](../review.md)。
