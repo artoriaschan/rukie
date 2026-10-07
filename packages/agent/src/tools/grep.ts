@@ -1,6 +1,24 @@
-import { truncateHead, type AgentTool } from "@earendil-works/pi-agent-core";
+import { truncateHead } from "@earendil-works/pi-agent-core";
 import { createUserVisibleError } from "@neant/shared";
 import { Type } from "typebox";
+import { Value } from "typebox/value";
+import type { PresentedTool } from "./presentation.ts";
+
+const facts = Type.Object({
+  matches: Type.Array(
+    Type.Object({ path: Type.String(), line: Type.Number(), text: Type.String() }),
+  ),
+  total: Type.Number(),
+});
+
+const matchEvent = Type.Object({
+  type: Type.Literal("match"),
+  data: Type.Object({
+    path: Type.Object({ text: Type.String() }),
+    lines: Type.Object({ text: Type.String() }),
+    line_number: Type.Number(),
+  }),
+});
 
 const schema = Type.Object({
   pattern: Type.String({ description: "Regular expression to search for." }),
@@ -9,13 +27,23 @@ const schema = Type.Object({
   ),
 });
 
-export function createGrepTool(cwd: string): AgentTool<typeof schema> {
+export function createGrepTool(cwd: string): PresentedTool<typeof schema> {
   return {
     name: "grep",
     label: "grep",
     description:
       "Search file contents with ripgrep (rg), respecting ignore files. Returns path:line:text matches.",
     parameters: schema,
+    presentCall: (args) => ({
+      card: "generic",
+      kind: "search",
+      displayKey: "tool.grep",
+      rawInput: args,
+    }),
+    presentResult: (_args, _text, details) =>
+      Value.Check(facts, details)
+        ? { card: "search", kind: "search", displayKey: "tool.grep", shape: "matches", ...details }
+        : undefined,
     async execute(_id, { pattern, path }, signal) {
       signal?.throwIfAborted();
       let proc;
@@ -25,6 +53,7 @@ export function createGrepTool(cwd: string): AgentTool<typeof schema> {
         proc = Bun.spawn(
           [
             rg,
+            "--json",
             "--line-number",
             "--with-filename",
             "--no-heading",
@@ -61,7 +90,33 @@ export function createGrepTool(cwd: string): AgentTool<typeof schema> {
       signal?.throwIfAborted();
       if (code !== 0 && code !== 1)
         throw new Error(stderr.trim() || `rg failed with exit code ${code}.`);
-      const output = truncateHead(stdout.trimEnd());
+      // ripgrep JSON makes path boundaries unambiguous, including colons and newlines.
+      const allMatches = stdout
+        .trimEnd()
+        .split("\n")
+        .flatMap((record) => {
+          if (!record) return [];
+          const event: unknown = JSON.parse(record);
+          return Value.Check(matchEvent, event)
+            ? [
+                {
+                  path: event.data.path.text,
+                  line: event.data.line_number,
+                  text: event.data.lines.text.replace(/\r?\n$/, ""),
+                },
+              ]
+            : [];
+        });
+      const output = truncateHead(
+        allMatches.map((match) => `${match.path}:${match.line}:${match.text}`).join("\n"),
+      );
+      // A byte cutoff can leave a partial final line. Keep only complete match facts.
+      let consumed = 0;
+      const matches = allMatches.filter((match, index) => {
+        consumed += `${match.path}:${match.line}:${match.text}`.length + (index ? 1 : 0);
+        return consumed <= output.content.length;
+      });
+      const total = allMatches.length;
       return {
         content: [
           {
@@ -72,7 +127,7 @@ export function createGrepTool(cwd: string): AgentTool<typeof schema> {
               : "No matches.",
           },
         ],
-        details: undefined,
+        details: { matches, total },
       };
     },
   };

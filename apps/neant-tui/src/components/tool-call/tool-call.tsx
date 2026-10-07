@@ -77,13 +77,26 @@ export function ToolCall({
   const title =
     callView?.card === "terminal"
       ? callView.command
-      : callView?.card === "generic" && callView.title
-        ? callView.title
-        : (JSON.stringify(callView?.card === "generic" ? (callView.rawInput ?? args) : args) ?? "");
+      : callView?.card === "generic" && callView.server && callView.tool
+        ? `${callView.server} › ${callView.tool}`
+        : callView?.card === "generic" && callView.title
+          ? callView.title
+          : (JSON.stringify(callView?.card === "generic" ? (callView.rawInput ?? args) : args) ??
+            "");
   const header = displayName ? `${displayName}(${title.slice(0, 480)})` : summary;
   const seconds = Math.max(0, Math.floor((Date.now() - (startedAt ?? Date.now())) / 1000));
   const terminal = resultView?.card === "terminal" ? resultView : undefined;
-  const output = status === "error" ? (error ?? terminal?.output) : (terminal?.output ?? result);
+  const body =
+    resultView?.card === "read"
+      ? resultView.content
+      : resultView?.card === "web"
+        ? resultView.markdown
+        : resultView?.card === "generic"
+          ? resultView.text
+          : resultView?.card === "search"
+            ? searchLines(resultView).join("\n")
+            : (terminal?.output ?? result);
+  const output = status === "error" ? (error ?? terminal?.output) : body;
   const diffView =
     status !== "error"
       ? resultView?.card === "diff"
@@ -140,31 +153,50 @@ export function ToolCall({
       </ThemedBox>
       {(output || diffView || status === "running") && (
         <ThemedBox flexDirection="column" color={status === "error" ? "error" : "text"}>
-          {(status === "running" && !output && !diffView
-            ? [t("tool.running", { seconds })]
-            : shown
-          ).map((line, index) => (
-            <ThemedBox
-              key={index}
-              width={hitWidth(
-                `${index === 0 ? `${figures.result} ` : name ? "   " : "  "}${line.trimEnd()}`,
-              )}
-              onClick={line.trim() || index === 0 ? toggle : undefined}
-            >
-              <ThemedText
-                color={
-                  diffLines?.[index]?.tone === "add"
-                    ? "success"
-                    : diffLines?.[index]?.tone === "del"
-                      ? "error"
-                      : diffLines?.[index]?.tone === "dim"
-                        ? "subtle"
-                        : undefined
-                }
-                wrap="truncate"
-              >{`${index === 0 ? `${figures.result} ` : name ? "   " : "  "}${line}`}</ThemedText>
+          {resultView?.card === "web" && status !== "error" ? (
+            <ThemedBox>
+              <ThemedText>{`${figures.result} `}</ThemedText>
+              <ThemedBox flexDirection="column" flexGrow={1}>
+                <Markdown text={shown.join("\n")} />
+              </ThemedBox>
             </ThemedBox>
-          ))}
+          ) : (
+            (status === "running" && !output && !diffView
+              ? [t("tool.running", { seconds })]
+              : shown
+            ).map((line, index) => (
+              <ThemedBox
+                key={index}
+                width={hitWidth(
+                  `${index === 0 ? `${figures.result} ` : name ? "   " : "  "}${line.trimEnd()}`,
+                )}
+                onClick={line.trim() || index === 0 ? toggle : undefined}
+              >
+                <ThemedText
+                  color={
+                    diffLines?.[index]?.tone === "add"
+                      ? "success"
+                      : diffLines?.[index]?.tone === "del"
+                        ? "error"
+                        : diffLines?.[index]?.tone === "dim"
+                          ? "subtle"
+                          : undefined
+                  }
+                  wrap="truncate"
+                >{`${index === 0 ? `${figures.result} ` : name ? "   " : "  "}${line}`}</ThemedText>
+              </ThemedBox>
+            ))
+          )}
+          {resultView?.card === "search" &&
+            resultView.total !== undefined &&
+            resultView.total >
+              (resultView.shape === "paths"
+                ? resultView.paths.length
+                : resultView.matches.length) && (
+              <ThemedText
+                dimColor
+              >{`   ${t("tool.search-total", { count: resultView.total })}`}</ThemedText>
+            )}
           {folded && !expanded && (
             <ThemedBox
               width={hitWidth(`   ${t("tool.fold", { count: lines.length - limit })}`)}
@@ -203,4 +235,18 @@ export function ToolCall({
       )}
     </ThemedBox>
   );
+}
+
+function searchLines(view: Extract<ToolResultView, { card: "search" }>): string[] {
+  if (view.shape === "paths") return view.paths;
+  const groups = new Map<string, string[]>();
+  for (const match of view.matches) {
+    let lines = groups.get(match.path);
+    if (!lines) {
+      lines = [];
+      groups.set(match.path, lines);
+    }
+    lines.push(`${match.line === undefined ? "" : `${match.line}: `}${match.text}`);
+  }
+  return [...groups].flatMap(([path, lines]) => [path, ...lines]);
 }
