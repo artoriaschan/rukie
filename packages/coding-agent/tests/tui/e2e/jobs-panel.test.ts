@@ -253,8 +253,8 @@ test("card clicks focus exact jobs and expanded promoted details show bounded ou
 }, 15000);
 
 test("reading position and follow state survive settlement and group folding above the viewport while jobs is open", async () => {
-  // Real time covers the fixture child process polling files and producing job output.
-  const app = await start(["--permission-mode", "full-access", "launch"], {
+  // Frontend reveal is virtual; file barriers and output still observe real child completion.
+  const app = await startWithClock(["--permission-mode", "full-access", "launch"], {
     env: { LANG: "en_US.UTF-8" },
     columns: 100,
     rows: 24,
