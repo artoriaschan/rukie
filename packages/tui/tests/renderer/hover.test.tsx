@@ -317,3 +317,66 @@ test("hover uses painted ancestors when an enter callback removes a child before
     terminal.dispose();
   }
 });
+
+test("Text clicks target painted graphemes and exclude whitespace after wrapping and resize", async () => {
+  const terminal = createTerminal(8, 6);
+  const clicks: string[] = [];
+  const app = render(
+    <Box flexDirection="column">
+      <Text onClick={() => clicks.push("text")} preserveWhitespace>
+        <Text bold>界é</Text>
+        {" \n  end"}
+      </Text>
+      <Box width={8} height={1} onClick={() => clicks.push("box")}>
+        <Text>path</Text>
+      </Box>
+    </Box>,
+    { ...terminal, fullscreen: true },
+  );
+  const click = (x: number, y: number) =>
+    terminal.stdin.write(`\x1b[<0;${x};${y}M\x1b[<0;${x};${y}m`);
+  try {
+    await terminal.flush();
+    click(1, 1);
+    click(2, 1);
+    click(3, 1);
+    expect(clicks).toEqual(["text", "text", "text"]);
+    click(4, 1);
+    click(8, 1);
+    click(1, 2);
+    click(2, 2);
+    expect(clicks).toHaveLength(3);
+    click(3, 2);
+    click(8, 3);
+    expect(clicks).toEqual(["text", "text", "text", "text", "box"]);
+    terminal.resize(3, 6);
+    await terminal.waitFor(() => terminal.screen()[2] === "  e");
+    click(3, 1);
+    expect(clicks.at(-1)).toBe("text");
+  } finally {
+    app.unmount();
+    terminal.dispose();
+  }
+});
+
+test("Text clicks exclude wide glyphs omitted at a ScrollBox clip boundary", async () => {
+  const terminal = createTerminal(8, 4);
+  let clicks = 0;
+  const app = render(
+    <ScrollBox width={1} height={1}>
+      <Box width={2}>
+        <Text onClick={() => clicks++}>界</Text>
+      </Box>
+    </ScrollBox>,
+    { ...terminal, fullscreen: true },
+  );
+  try {
+    await terminal.flush();
+    expect(terminal.screen()[0]).not.toContain("界");
+    terminal.stdin.write("\x1b[<0;1;1M\x1b[<0;1;1m");
+    expect(clicks).toBe(0);
+  } finally {
+    app.unmount();
+    terminal.dispose();
+  }
+});

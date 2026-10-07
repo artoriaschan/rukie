@@ -1,4 +1,6 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { PresentedTool } from "../presentation.ts";
+import { Value } from "typebox/value";
 import { createUserVisibleError } from "@neant/shared";
 import { Type } from "typebox";
 import { preserveErrorDetails } from "../runtime.ts";
@@ -89,13 +91,25 @@ export function createGoalTools(
     };
     return { content: [{ type: "text" as const, text: JSON.stringify(value) }], details: value };
   };
-  const create: AgentTool<typeof createParameters> = {
+  const create: PresentedTool<typeof createParameters> = {
     name: "create_goal",
     label: "Create Goal",
     description:
       "Create a persisted Goal that keeps this Session working across automatic continuation rounds. Use it when the direct human request is a long-running objective, even if the user did not say goal; not for single-turn work. " +
       guidance,
     parameters: createParameters,
+    presentCall: (args) => ({
+      card: "generic",
+      kind: "task",
+      displayKey: "tool.create_goal",
+      title: args.objective,
+    }),
+    presentResult: (_args, text, details) => ({
+      card: "generic",
+      kind: "task",
+      displayKey: "tool.create_goal",
+      text: goalSummary(details) ?? text,
+    }),
     async execute(_id, args, signal) {
       signal?.throwIfAborted();
       requireHuman();
@@ -103,13 +117,25 @@ export function createGoalTools(
       return result();
     },
   };
-  const update: AgentTool<typeof updateParameters> = {
+  const update: PresentedTool<typeof updateParameters> = {
     name: "update_goal",
     label: "Update Goal",
     description:
       "Update the current Goal. complete and blocked are also allowed during its automatic continuation round. " +
       guidance,
     parameters: updateParameters,
+    presentCall: (args) => ({
+      card: "generic",
+      kind: "task",
+      displayKey: "tool.update_goal",
+      title: args.action,
+    }),
+    presentResult: (_args, text, details) => ({
+      card: "generic",
+      kind: "task",
+      displayKey: "tool.update_goal",
+      text: goalSummary(details) ?? text,
+    }),
     async execute(_id, args, signal) {
       signal?.throwIfAborted();
       if (args.action === "edit" || args.action === "pause" || args.action === "resume")
@@ -141,4 +167,9 @@ export function createGoalTools(
     },
   };
   return [preserveErrorDetails(create), preserveErrorDetails(update)];
+}
+
+const summaryFacts = Type.Object({ goal: Type.Object({ objective: Type.String() }) });
+function goalSummary(details: unknown): string | undefined {
+  return Value.Check(summaryFacts, details) ? details.goal.objective : undefined;
 }

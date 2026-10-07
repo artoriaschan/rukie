@@ -5,5 +5,10 @@
     "jsx": "react-jsx",
     "outDir": "../../node_modules/.cache/tsc/tui"
   },
-  "include": ["src", "tests"]
+  "include": ["src", "tests"],
+  "references": [
+    {
+      "path": "../shared"
+    }
+  ]
 }

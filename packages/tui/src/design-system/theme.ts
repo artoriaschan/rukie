@@ -5,8 +5,12 @@ export interface Theme {
   remember: `#${string}`;
   suggestion: `#${string}`;
   inactive: `#${string}`;
-  toolNameMutate: `#${string}`;
-  toolNameExec: `#${string}`;
+  toolDotExec: `#${string}`;
+  toolDotRead: `#${string}`;
+  toolDotWrite: `#${string}`;
+  toolDotWeb: `#${string}`;
+  toolDotTask: `#${string}`;
+  toolCardBackground: `#${string}`;
   inverseText: `#${string}`;
   badgeBackground: `#${string}`;
   badgeHoverBackground: `#${string}`;
@@ -38,8 +42,12 @@ export const dark: Theme = {
   remember: "#ABC2EC",
   suggestion: "#ABC2EC",
   inactive: "#8D95A6",
-  toolNameMutate: "#E5C07B",
-  toolNameExec: "#56B6C2",
+  toolDotExec: "#56B6C2",
+  toolDotRead: "#7DA1DE",
+  toolDotWrite: "#E5C07B",
+  toolDotWeb: "#82B89D",
+  toolDotTask: "#B49ADC",
+  toolCardBackground: "#2E3440",
   inverseText: "#22262E",
   badgeBackground: "#5E88CC",
   badgeHoverBackground: "#3B5BDB",
@@ -72,8 +80,12 @@ export const light: Theme = {
   remember: "#27478C",
   suggestion: "#3F6CC4",
   inactive: "#8991A0",
-  toolNameMutate: "#8C6118",
-  toolNameExec: "#257B87",
+  toolDotExec: "#257B87",
+  toolDotRead: "#345C9C",
+  toolDotWrite: "#8C6118",
+  toolDotWeb: "#397B59",
+  toolDotTask: "#7856A8",
+  toolCardBackground: "#E2E6ED",
   inverseText: "#FFFFFF",
   badgeBackground: "#4069AD",
   badgeHoverBackground: "#31539B",

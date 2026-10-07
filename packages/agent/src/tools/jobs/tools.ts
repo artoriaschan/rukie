@@ -1,5 +1,6 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
+import type { PresentedTool } from "../presentation.ts";
 import { jobStatus, type Jobs } from "./registry.ts";
 
 const outputSchema = Type.Object({
@@ -10,12 +11,24 @@ const outputSchema = Type.Object({
 const killSchema = Type.Object({ job_id: Type.String(), reason: Type.Optional(Type.String()) });
 
 export function createJobTools(jobs: Jobs): AgentTool[] {
-  const output: AgentTool<typeof outputSchema> = {
+  const output: PresentedTool<typeof outputSchema> = {
     name: "job_output",
     label: "job output",
     description:
       "Read new background job output. Set wait only when blocked on output or completion (default 30000ms, maximum 600000ms).",
     parameters: outputSchema,
+    presentCall: (args) => ({
+      card: "generic",
+      kind: "execute",
+      displayKey: "tool.job_output",
+      title: args.job_id,
+    }),
+    presentResult: (_args, text) => ({
+      card: "generic",
+      kind: "execute",
+      displayKey: "tool.job_output",
+      text,
+    }),
     async execute(_id, { job_id, wait = false, timeout_ms = 30_000 }, signal) {
       const job = jobs.get(job_id);
       const result = await job.collect(wait, timeout_ms, signal);
@@ -28,12 +41,24 @@ export function createJobTools(jobs: Jobs): AgentTool[] {
       return { content: [{ type: "text", text }], details: undefined };
     },
   };
-  const kill: AgentTool<typeof killSchema> = {
+  const kill: PresentedTool<typeof killSchema> = {
     name: "job_kill",
     label: "job kill",
     description:
       "Stop a background job and its process group. Finished jobs keep their final status.",
     parameters: killSchema,
+    presentCall: (args) => ({
+      card: "generic",
+      kind: "execute",
+      displayKey: "tool.job_kill",
+      title: args.job_id,
+    }),
+    presentResult: (_args, text) => ({
+      card: "generic",
+      kind: "execute",
+      displayKey: "tool.job_kill",
+      text,
+    }),
     async execute(_id, { job_id }) {
       const job = jobs.get(job_id);
       if (!["running", "stopping"].includes(job.view.status))
@@ -50,24 +75,28 @@ export function createJobTools(jobs: Jobs): AgentTool[] {
       };
     },
   };
-  return [
-    output,
-    {
-      name: "job_list",
-      label: "job list",
-      description: "List every background job owned by this Session.",
-      parameters: Type.Object({}),
-      async execute() {
-        const text = jobs
-          .list()
-          .map((job) => `${job.id} [bash] ${job.status} — ${job.label}`)
-          .join("\n");
-        return {
-          content: [{ type: "text", text: text || "(no background jobs)" }],
-          details: undefined,
-        };
-      },
+  const list: PresentedTool = {
+    name: "job_list",
+    label: "job list",
+    description: "List every background job owned by this Session.",
+    parameters: Type.Object({}),
+    presentCall: () => ({ card: "generic", kind: "execute", displayKey: "tool.job_list" }),
+    presentResult: (_args: unknown, text: string) => ({
+      card: "generic",
+      kind: "execute",
+      displayKey: "tool.job_list",
+      text,
+    }),
+    async execute() {
+      const text = jobs
+        .list()
+        .map((job) => `${job.id} [bash] ${job.status} — ${job.label}`)
+        .join("\n");
+      return {
+        content: [{ type: "text", text: text || "(no background jobs)" }],
+        details: undefined,
+      };
     },
-    kill,
-  ];
+  };
+  return [output, list, kill];
 }

@@ -5,7 +5,7 @@ import { createSession } from "@neant/agent";
 import { start } from "../helpers/app";
 
 test.each(["zh", "en"] as const)(
-  "%s todo transcript cards show progress within four rows",
+  "%s successful todo calls update only the panel",
   async (locale) => {
     const app = await start(["plan"], {
       columns: 80,
@@ -28,18 +28,9 @@ test.each(["zh", "en"] as const)(
       app.calls[1]!.finish();
       await app.waitFor(() => !app.isWorking());
       const lines = app.allLines();
-      const title = locale === "zh" ? "• 待办清单" : "• TodoWrite";
-      const index = lines.indexOf(title);
-      expect(index).toBeGreaterThanOrEqual(0);
-      expect(lines.slice(index, index + 4)).toEqual([
-        title,
-        "⎿ todos ✓ 1/5",
-        "  ● First active",
-        "  ● Second active " + "x".repeat(62),
-      ]);
-      expect(lines[index + 4]).toBe("⏺ after card");
-      expect(lines.join("\n")).not.toContain("Updated todo list:");
+      expect(lines.join("\n")).not.toContain(locale === "zh" ? "• 待办清单" : "• TodoWrite");
       expect(lines.join("\n")).not.toContain('"todos":');
+      expect(lines).toContain("⏺ after card");
     } finally {
       await app.cleanup();
     }
@@ -79,7 +70,7 @@ async function startSession(locale: "zh" | "en") {
 }
 
 test.each(["zh", "en"] as const)(
-  "%s todo transcript cards keep each call's list live and after resume even after clearing",
+  "%s successful todo calls stay out of the transcript live and after resume",
   async (locale) => {
     const { app, replay } = await startSession(locale);
     try {
@@ -106,25 +97,11 @@ test.each(["zh", "en"] as const)(
       app.calls[3]!.finish();
       await app.waitFor(() => !app.isWorking());
       const title = locale === "zh" ? "• 待办清单" : "• TodoWrite";
-      const expected = [
-        title,
-        "⎿ todos ✓ 1/3",
-        "  ● Original active",
-        title,
-        "⎿ todos ✓ 1/2",
-        "  ● Replacement active",
-        title,
-        "⎿ todos ✓ 0/0",
-      ];
-      const lines = app.allLines();
-      const index = lines.indexOf(title);
-      expect(lines.slice(index, index + expected.length)).toEqual(expected);
+      expect(app.allLines()).not.toContain(title);
       const resumed = await replay();
       try {
         await resumed.waitFor(() => resumed.screen().includes("❯"));
-        const lines = resumed.allLines();
-        const index = lines.indexOf(title);
-        expect(lines.slice(index, index + expected.length)).toEqual(expected);
+        expect(resumed.allLines()).not.toContain(title);
       } finally {
         await resumed.cleanup();
       }
@@ -154,7 +131,9 @@ test.each(["zh", "en"] as const)(
       app.calls[2]!.finish();
       await app.waitFor(() => !app.isWorking());
       const lines = app.allLines();
-      const errors = lines.filter((line) => line.startsWith("✗ todo_write "));
+      const errors = lines.filter((line) =>
+        line.startsWith(locale === "zh" ? "✗ 待办(" : "✗ Todos("),
+      );
       expect(errors).toHaveLength(2);
       expect(lines).toContain('⎿ Invalid todos: duplicate content "repeat".');
       expect(lines.join("\n")).toContain("Validation failed");
@@ -164,7 +143,9 @@ test.each(["zh", "en"] as const)(
       try {
         await resumed.waitFor(() => resumed.screen().includes("❯"));
         const replayLines = resumed.allLines();
-        expect(replayLines.filter((line) => line.startsWith("✗ todo_write "))).toEqual(errors);
+        expect(
+          replayLines.filter((line) => line.startsWith(locale === "zh" ? "✗ 待办(" : "✗ Todos(")),
+        ).toEqual(errors);
         expect(replayLines).toContain('⎿ Invalid todos: duplicate content "repeat".');
         expect(replayLines.join("\n")).toContain("Validation failed");
         expect(replayLines.join("\n")).not.toContain("todos ✓");

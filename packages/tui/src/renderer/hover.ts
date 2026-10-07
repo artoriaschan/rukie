@@ -27,7 +27,7 @@ export function createHover() {
       if (!next.has(node)) node.props.onMouseLeave?.();
     }
     for (const node of next) {
-      if (!previous.has(node)) node.props.onMouseEnter?.();
+      if (!previous.has(node)) if (position) node.props.onMouseEnter?.(position);
     }
   }
 
@@ -43,7 +43,7 @@ export function createHover() {
         const chain =
           node.props.onMouseEnter ||
           node.props.onMouseLeave ||
-          node.props.onClick ||
+          (node.type !== "tui-text" && node.props.onClick) ||
           node.props.onWheel
             ? [node.source, ...ancestors]
             : ancestors;
@@ -56,6 +56,34 @@ export function createHover() {
         };
         if (rectangle.left >= rectangle.right || rectangle.top >= rectangle.bottom) return;
         rectangles.push(rectangle);
+        if (node.type === "tui-text" && node.props.onClick) {
+          for (const [row, line] of (node.lines ?? []).entries()) {
+            let column = 0;
+            for (const glyph of line) {
+              // The painter omits an entire glyph when any of its cells cross the clip.
+              const left = node.x + column;
+              const right = left + glyph.width;
+              const top = node.y - offset + row - (node.textTop ?? 0);
+              if (
+                glyph.text.trim() &&
+                glyph.width > 0 &&
+                left >= rectangle.left &&
+                right <= rectangle.right &&
+                top >= rectangle.top &&
+                top < rectangle.bottom
+              )
+                rectangles.push({
+                  left,
+                  right,
+                  top,
+                  bottom: top + 1,
+                  ancestors: [node.source, ...chain],
+                });
+              column += glyph.width;
+            }
+          }
+        }
+        if (node.type === "tui-text") return;
         for (const child of node.children)
           visit(child, node.type === "tui-scroll" ? rectangle : clip, chain);
       }

@@ -15,9 +15,10 @@ import {
   type RunResult,
   type ContextReport,
   type JobView,
+  type ToolCallView,
+  type ToolResultView,
 } from "@neant/shared";
 import type { TpsSample } from "../../components/status-line";
-import { goalPhasePresentation } from "../../components";
 import { reduceSubagent, restoreSubagents, type SubagentState } from "./subagents";
 import { createActivity, reduce } from "./activity/activity";
 import type { NoticeKind } from "../../components/notice";
@@ -27,6 +28,8 @@ interface ToolCall {
   name: string;
   args: unknown;
   summary: string;
+  callView?: ToolCallView;
+  startedAt?: number;
   rule?: string;
   hook?: string;
 }
@@ -41,6 +44,14 @@ type CompletedEntry = { anchorId?: string } & (
     }
   | {
       type: "tool";
+      id?: string;
+      name?: string;
+      args?: unknown;
+      callView?: ToolCallView;
+      resultView?: ToolResultView;
+      startedAt?: number;
+      endedAt?: number;
+      replayed?: boolean;
       jobId?: string;
       summary: string;
       isError: boolean;
@@ -48,9 +59,17 @@ type CompletedEntry = { anchorId?: string } & (
       result?: string;
       images?: PromptImage[];
       error?: string;
-      agentId?: string;
-      planReview?: { plan: string; kind: "approve" | "revise" | "takeover"; feedback?: string };
     }
+  | { type: "question"; text: string }
+  | {
+      type: "plan-review";
+      id: string;
+      plan: string;
+      kind: "approve" | "revise" | "takeover";
+      feedback?: string;
+    }
+  | { type: "subagent"; agentId: string }
+  | { type: "thinking"; text: string }
   | { type: "notice"; text: string; report?: string }
   | { type: "context-report"; report: ContextReport; expanded: boolean; modelName?: string }
 );
@@ -66,24 +85,37 @@ function resultText(result: Pick<ToolResultMessage, "content">) {
     .join("\n");
 }
 
+export function showsToolCard(name: string) {
+  return ![
+    "todo_write",
+    "ask_user_question",
+    "enter_plan_mode",
+    "exit_plan_mode",
+    "subagent",
+    "subagent_fork",
+    "send_message",
+    "list_agents",
+  ].includes(name);
+}
+
 function toolSummary(name: string, args: unknown) {
-  if (
-    name === "web_fetch" &&
-    typeof args === "object" &&
-    args !== null &&
-    "url" in args &&
-    typeof args.url === "string"
-  )
-    return `web_fetch ${args.url}`;
   return `${name} ${JSON.stringify(args)}`.replace(/\s+/g, " ");
 }
 
 function toolEntry(
-  tool: Pick<ToolCall, "id" | "name" | "args" | "summary" | "rule" | "hook">,
+  tool: Pick<
+    ToolCall,
+    "id" | "name" | "args" | "summary" | "rule" | "hook" | "callView" | "startedAt"
+  >,
   isError: boolean,
-  result: Pick<ToolResultMessage, "content" | "details">,
+  result: Pick<ToolResultMessage, "content" | "details"> & {
+    view?: ToolResultView;
+    timestamp?: number;
+  },
   t: ReturnType<typeof createTuiI18n>,
-): CompletedEntry {
+): CompletedEntry | undefined {
+  if (isUnknownToolOutcome(result.details) && !showsToolCard(tool.name))
+    return { type: "notice", text: t("tool.outcome-unknown") };
   if (isUnknownToolOutcome(result.details))
     return {
       type: "tool",
@@ -131,13 +163,36 @@ function toolEntry(
             : {}),
         }
       : undefined;
-  const goal =
-    ["create_goal", "update_goal"].includes(tool.name) && !isError
-      ? goalSummary(resultText(result), t)
+  if (review) return { type: "plan-review", id: tool.id, ...review };
+  if (tool.name === "ask_user_question")
+    return { type: "question", text: questionSummary(tool.args, resultText(result), t) };
+  if (["subagent", "subagent_fork", "send_message", "list_agents"].includes(tool.name)) {
+    const details = result.details;
+    if (
+      typeof details === "object" &&
+      details !== null &&
+      "agentId" in details &&
+      typeof details.agentId === "string"
+    )
+      return { type: "subagent", agentId: details.agentId };
+    return isError
+      ? { type: "notice", text: `✗ ${formatError({ message: resultText(result) }, t)}` }
       : undefined;
-  const todo = tool.name === "todo_write" && !isError ? todoSummary(tool.args, t) : undefined;
+  }
+  if (["enter_plan_mode", "exit_plan_mode"].includes(tool.name))
+    return isError
+      ? { type: "notice", text: `✗ ${formatError({ message: resultText(result) }, t)}` }
+      : undefined;
+  if (tool.name === "todo_write" && !isError) return undefined;
   return {
     type: "tool",
+    id: tool.id,
+    name: tool.name,
+    args: tool.args,
+    callView: tool.callView,
+    resultView: result.view,
+    startedAt: tool.startedAt,
+    endedAt: result.timestamp,
     jobId:
       tool.name === "bash" &&
       !isError &&
@@ -161,30 +216,9 @@ function toolEntry(
           ? { name: basename(tool.args.path) }
           : {}),
       })),
-    ...(review && { planReview: review }),
-    summary:
-      goal !== undefined
-        ? goal.summary
-        : todo !== undefined
-          ? t("todo.summary")
-          : tool.name === "ask_user_question" && !isError
-            ? t("question.summary")
-            : tool.summary,
+    summary: tool.summary,
     isError,
-    agentId:
-      typeof result.details === "object" &&
-      result.details !== null &&
-      "agentId" in result.details &&
-      typeof result.details.agentId === "string"
-        ? result.details.agentId
-        : undefined,
-    result: isError
-      ? undefined
-      : tool.name === "ask_user_question"
-        ? questionSummary(tool.args, resultText(result), t)
-        : tool.name === "web_fetch"
-          ? resultText(result).split(/\r?\n/)[0]
-          : (goal?.result ?? todo ?? resultText(result)),
+    result: isError ? undefined : resultText(result),
     error: isError
       ? hook !== undefined
         ? t("tool.hook-denied", {
@@ -204,73 +238,6 @@ function toolEntry(
             )
       : undefined,
   };
-}
-
-function goalSummary(text: string, t: ReturnType<typeof createTuiI18n>) {
-  let value: unknown;
-  try {
-    value = JSON.parse(text);
-  } catch {
-    return undefined;
-  }
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    !("goal" in value) ||
-    !("armed" in value) ||
-    typeof value.armed !== "boolean"
-  )
-    return undefined;
-  const goal = value.goal;
-  if (
-    typeof goal !== "object" ||
-    goal === null ||
-    !("objective" in goal) ||
-    typeof goal.objective !== "string" ||
-    !("phase" in goal) ||
-    typeof goal.phase !== "string" ||
-    !("roundsStarted" in goal) ||
-    typeof goal.roundsStarted !== "number" ||
-    !("maxRounds" in goal) ||
-    typeof goal.maxRounds !== "number"
-  )
-    return undefined;
-  const phase = goal.phase;
-  if (phase !== "active" && phase !== "paused" && phase !== "blocked" && phase !== "complete")
-    return undefined;
-  const presentation = goalPhasePresentation[phase];
-  const singleLine = (text: string) => text.replace(/[\r\n]+/g, " ");
-  return {
-    summary: `🎯 ${singleLine(goal.objective)}`,
-    result:
-      `${presentation.glyph} ${phase} · ${goal.roundsStarted}/${goal.maxRounds} · ${t(value.armed ? "goal.armed" : "goal.disarmed")}` +
-      (goal.phase === "blocked" && "blockedReason" in goal && typeof goal.blockedReason === "string"
-        ? `\n⛔ ${singleLine(goal.blockedReason)}`
-        : ""),
-  };
-}
-
-function todoSummary(args: unknown, t: ReturnType<typeof createTuiI18n>) {
-  if (typeof args !== "object" || args === null || !("todos" in args)) return undefined;
-  const todos = args.todos;
-  if (
-    !Array.isArray(todos) ||
-    !todos.every(
-      (item) =>
-        typeof item?.content === "string" &&
-        ["pending", "in_progress", "completed"].includes(item.status),
-    )
-  )
-    return undefined;
-  const done = todos.filter((todo) => todo.status === "completed").length;
-  // The tool heading and progress row leave two rows within the four-row card budget.
-  return [
-    t("todo.progress", { done, total: todos.length }),
-    ...todos
-      .filter((todo) => todo.status === "in_progress")
-      .slice(0, 2)
-      .map((todo) => `● ${todo.content.trim().replace(/[\r\n]+/g, " ")}`),
-  ].join("\n");
 }
 
 function questionSummary(args: unknown, text: string, t: ReturnType<typeof createTuiI18n>) {
@@ -367,7 +334,9 @@ interface ViewState {
   completed: CompletedEntry[];
   tools: ToolCall[];
   assistant: string;
+  reasoning: string;
   assistantAnchor: string;
+  assistantTimestamp?: number;
   model: string;
   running: boolean;
   input: number;
@@ -389,6 +358,14 @@ function messageText(message: Extract<SessionEvent, { type: "message_end" }>["me
     : message.content
         .flatMap((content) => (content.type === "text" ? [content.text] : []))
         .join("");
+}
+
+function messageThinking(message: Extract<SessionEvent, { type: "message_end" }>["message"]) {
+  return message.role === "assistant"
+    ? message.content
+        .flatMap((content) => (content.type === "thinking" ? [content.thinking] : []))
+        .join("\n")
+    : "";
 }
 
 function userMessageEntry(
@@ -429,9 +406,15 @@ function replayMessages(
             name: content.name,
             args: content.arguments,
             summary: toolSummary(content.name, content.arguments),
+            callView: content.view,
+            startedAt: message.timestamp,
           });
       }
-      return text ? [{ type: "message", role: "assistant", text }] : [];
+      const reasoning = messageThinking(message);
+      return [
+        ...(reasoning ? [{ type: "thinking" as const, text: reasoning }] : []),
+        ...(text ? [{ type: "message" as const, role: "assistant" as const, text }] : []),
+      ];
     }
     if (message.role === "toolResult") {
       const tool = tools.get(message.toolCallId) ?? {
@@ -441,7 +424,8 @@ function replayMessages(
         summary: message.toolName,
       };
       tools.delete(message.toolCallId);
-      return [toolEntry(tool, message.isError, message, t)];
+      const entry = toolEntry(tool, message.isError, message, t);
+      return entry ? [{ ...entry, ...(entry.type === "tool" ? { replayed: true } : {}) }] : [];
     }
     return [];
   });
@@ -547,6 +531,7 @@ function reduceEvent(
       return {
         ...state,
         assistant: messageText(event.message),
+        reasoning: messageThinking(event.message),
         streamedChars,
         decode:
           chars > 0
@@ -559,7 +544,12 @@ function reduceEvent(
     }
     case "message_start":
       return event.message.role === "assistant"
-        ? { ...state, assistant: messageText(event.message), assistantAnchor: crypto.randomUUID() }
+        ? {
+            ...state,
+            assistant: messageText(event.message),
+            reasoning: messageThinking(event.message),
+            assistantAnchor: crypto.randomUUID(),
+          }
         : state;
     case "message_end": {
       const text = messageText(event.message);
@@ -570,17 +560,46 @@ function reduceEvent(
           completed: [...state.completed, userMessageEntry(event.message)],
         };
       }
+      if (event.message.role === "toolResult") {
+        const result = event.message;
+        return {
+          ...state,
+          completed: state.completed.map((entry) =>
+            entry.type === "tool" && entry.id === result.toolCallId
+              ? { ...entry, endedAt: result.timestamp }
+              : entry,
+          ),
+        };
+      }
       if (event.message.role !== "assistant") return state;
       const step = state.decode.step;
       return {
         ...state,
-        completed: text
-          ? [
-              ...state.completed,
-              { type: "message", role: "assistant", text, anchorId: state.assistantAnchor },
-            ]
-          : state.completed,
+        completed: [
+          ...state.completed,
+          ...(messageThinking(event.message)
+            ? [
+                {
+                  type: "thinking" as const,
+                  text: messageThinking(event.message),
+                  anchorId: `${state.assistantAnchor}-thinking`,
+                },
+              ]
+            : []),
+          ...(text
+            ? [
+                {
+                  type: "message" as const,
+                  role: "assistant" as const,
+                  text,
+                  anchorId: state.assistantAnchor,
+                },
+              ]
+            : []),
+        ],
         assistant: "",
+        reasoning: "",
+        assistantTimestamp: event.message.timestamp,
         assistantAnchor: crypto.randomUUID(),
         input: state.input + event.message.usage.input,
         output: state.output + event.message.usage.output,
@@ -602,6 +621,8 @@ function reduceEvent(
             name: event.toolName,
             args: event.args,
             summary: toolSummary(event.toolName, event.args),
+            callView: event.view,
+            startedAt: state.assistantTimestamp,
           },
         ],
       };
@@ -623,8 +644,8 @@ function reduceEvent(
     case "tool_execution_end": {
       const tool = state.tools.find((tool) => tool.id === event.toolCallId);
       if (!tool) return state;
-      const entry = toolEntry(tool, event.isError, event.result, t);
-      const job = entry.type === "tool" && entry.jobId ? state.jobs[entry.jobId] : undefined;
+      const entry = toolEntry(tool, event.isError, { ...event.result, view: event.view }, t);
+      const job = entry?.type === "tool" && entry.jobId ? state.jobs[entry.jobId] : undefined;
       const explicit =
         tool.args !== null &&
         typeof tool.args === "object" &&
@@ -637,7 +658,7 @@ function reduceEvent(
             ? { ...state.jobs, [job.id]: { ...job, promotedAt: job.backgroundedAt } }
             : state.jobs,
         tools: state.tools.filter((tool) => tool.id !== event.toolCallId),
-        completed: [...state.completed, entry],
+        completed: [...state.completed, ...(entry ? [entry] : [])],
       };
     }
     case "compaction_end":
@@ -673,6 +694,15 @@ function reduceEvent(
         ...state,
         completed: [
           ...state.completed,
+          ...(state.reasoning
+            ? [
+                {
+                  type: "thinking" as const,
+                  text: state.reasoning,
+                  anchorId: `${state.assistantAnchor}-thinking`,
+                },
+              ]
+            : []),
           ...(state.assistant
             ? [
                 {
@@ -698,6 +728,7 @@ function reduceEvent(
             : []),
         ],
         assistant: "",
+        reasoning: "",
         running: false,
         waitingSubagents: 0,
         input: event.usage.input,
@@ -736,6 +767,7 @@ function createViewState(session: Session, model: string, locale: Locale): ViewS
     })),
     tools: [],
     assistant: "",
+    reasoning: "",
     assistantAnchor: crypto.randomUUID(),
     model: session.model ?? model,
     running: session.running,

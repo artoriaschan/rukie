@@ -1,4 +1,4 @@
-import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { PresentedTool } from "../presentation.ts";
 import { Type } from "typebox";
 import { todoSchema, type TodoItem } from "./state.ts";
 
@@ -8,9 +8,21 @@ const parameters = Type.Object({ todos: todoSchema });
 
 export function createTodoTool(
   setTodo: (todos: TodoItem[]) => Promise<void>,
-): AgentTool<typeof parameters> {
+): PresentedTool<typeof parameters> {
   return {
     name: "todo_write",
+    presentCall: (args) => ({
+      card: "generic",
+      kind: "task",
+      displayKey: "tool.todo_write",
+      rawInput: args,
+    }),
+    presentResult: (_args, text) => ({
+      card: "generic",
+      kind: "task",
+      displayKey: "tool.todo_write",
+      text,
+    }),
     label: "Update todo list",
     // Source: deepseek-harness packages/todo/tool-todo, parallel description.
     description:

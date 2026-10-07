@@ -136,7 +136,7 @@ test("a narrow folded group keeps failure visible and opens with its header", as
     app.calls[1]!.tools(
       ["bash-1", "bash-2"].map((job_id) => ({ name: "job_output", args: { job_id, wait: true } })),
     );
-    await app.waitFor(() => screen().includes("job_output"));
+    await app.waitFor(() => screen().includes("任务输出"));
     await Bun.write(join(app.root, "go"), "");
     await app.waitFor(() => app.calls.length === 3 && screen().includes("已折叠 2 个后台任务"));
     app.calls[2]!.finish();
@@ -304,7 +304,7 @@ test("job output and streaming bursts preserve reading position, draft, and unre
   }
 });
 
-test("consecutive duplicate commands group, fold after settlement, and Ctrl+O respects a question", async () => {
+test("consecutive jobs share transcript expansion and Ctrl+O respects an active question", async () => {
   const app = await start(["--permission-mode", "full-access", "launch"], {
     columns: 120,
     rows: 40,

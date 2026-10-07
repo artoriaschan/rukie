@@ -111,6 +111,8 @@ test("a modal thumbnail preview takes priority and closing restores the caret pr
     app.stdin.write("\r");
     await app.waitFor(() => app.calls.length === 1 && screen().includes("[Image · shot.png]"));
     await draftImage(app, 2);
+    app.stdin.write("\x0f");
+    await app.waitFor(() => !screen().includes("Image #2 · PNG"));
     const row = app.screen().findIndex((line) => line.includes("[Image · sho"));
     expect(row).toBeGreaterThanOrEqual(0);
     const col = app.screen()[row]!.indexOf("[Image · sho") + 1;
@@ -118,9 +120,10 @@ test("a modal thumbnail preview takes priority and closing restores the caret pr
     await app.waitFor(() => screen().includes("Open original"));
     expect(app.screen().filter((line) => line.includes("PNG · 1×1")).length).toBe(1);
     app.stdin.write("\r");
-    await app.waitFor(
-      () => !screen().includes("Open original") && screen().includes("Image #2 · PNG"),
-    );
+    await app.waitFor(() => !screen().includes("Open original"));
+    expect(screen()).not.toContain("Image #2 · PNG");
+    app.stdin.write("\x0f");
+    await app.waitFor(() => screen().includes("Image #2 · PNG"));
     expect(app.calls[0]!.signal!.aborted).toBe(false);
     app.calls[0]!.finish();
   } finally {
@@ -175,3 +178,43 @@ test.each([
     }
   },
 );
+
+test("transcript search and file actions retain focus over a caret image draft", async () => {
+  const app = await start(["inspect"], {
+    ...options,
+    prepare: async (root) => {
+      await options.prepare(root);
+      await Bun.write(`${root}/review.txt`, "searchable text\n");
+    },
+  });
+  const screen = () => app.screen().join("\n");
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("read", { path: "review.txt" });
+    await app.waitFor(() => app.calls.length === 2);
+    app.calls[1]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    await draftImage(app);
+    app.stdin.write("\x0f");
+    await app.waitFor(() => !screen().includes("Image #1 · PNG"));
+    app.stdin.write("/");
+    await app.waitFor(() => screen().includes("Search transcript"));
+    app.stdin.write("searchable\r");
+    await app.waitFor(() => screen().includes("Search transcript: searchable · 1/1"));
+    const row = app.screen().findIndex((line) => line.includes("review.txt"));
+    expect(row).toBeGreaterThanOrEqual(0);
+    const column = Bun.stringWidth(app.screen()[row]!.split("review.txt")[0]!) + 1;
+    app.stdin.write(`\x1b[<0;${column};${row + 1}M\x1b[<0;${column};${row + 1}m`);
+    await app.waitFor(() => screen().includes("File actions"));
+    expect(screen()).not.toContain("Image #1 · PNG");
+    app.stdin.write("\x1b");
+    await app.waitFor(() => !screen().includes("File actions"));
+    expect(screen()).toContain("searchable");
+    expect(screen()).not.toContain("Image #1 · PNG");
+    app.stdin.write("\x1b");
+    await app.waitFor(() => screen().includes("Image #1 · PNG"));
+    expect(screen()).toContain("❯ [Image #1]");
+  } finally {
+    await app.cleanup();
+  }
+});

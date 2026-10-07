@@ -20,6 +20,8 @@ export interface ScrollSnapshot {
 export interface ScrollHandle {
   scrollBy(lines: number): void;
   scrollToBottom(): void;
+  /** Find a literal occurrence inside a stable content box on the next layout. */
+  scrollToText(id: string, query: string, occurrence?: number): void;
   getSnapshot(): ScrollSnapshot;
 }
 
@@ -53,6 +55,7 @@ export function createScrollState(
     following: initialFollow,
   };
   let pendingAnchor = initialAnchor;
+  let pendingText: { id: string; query: string; occurrence: number } | undefined;
   const listeners = new Set<() => void>();
   let redraw = () => {};
   let scheduled = false;
@@ -84,6 +87,11 @@ export function createScrollState(
       set({ ...snapshot, top, following: followOnReachBottom && top === max });
       redraw();
     },
+    scrollToText(id, query, occurrence = 0) {
+      pendingText = { id, query, occurrence };
+      set({ ...snapshot, following: false });
+      redraw();
+    },
     scrollToBottom() {
       set({
         ...snapshot,
@@ -106,6 +114,11 @@ export function createScrollState(
       return () => {
         redraw = () => {};
       };
+    },
+    takeTextTarget() {
+      const target = pendingText;
+      pendingText = undefined;
+      return target;
     },
     takeInitialAnchor() {
       const anchor = pendingAnchor;

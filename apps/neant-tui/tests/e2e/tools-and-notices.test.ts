@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { createSession } from "@neant/agent";
 import { start } from "../helpers/app";
+import { startWithClock } from "../helpers/clock-app";
 
 const assistant = process.platform === "darwin" ? "⏺" : "●";
 
@@ -82,20 +83,12 @@ test.each([
 });
 
 function runningTools(app: Awaited<ReturnType<typeof start>>) {
-  const buffer = app.terminal.buffer.active;
-  return app.screen().filter(
-    (line, row) =>
-      /^[·•●] (write|bash) /.test(line) &&
-      buffer
-        .getLine(buffer.viewportY + row)!
-        .getCell(0)!
-        .getFgColor() === 0x7da1de,
-  );
+  return app.screen().filter((line) => /^(?:[●⏺] |  )(写入|执行)\(/.test(line));
 }
 
-test("a tool shows an animated one-line summary then remains once in the scrollable body", async () => {
+test("a tool animates its localized header then remains once in the scrollable body", async () => {
   const permission = Promise.withResolvers<"allow" | "deny">();
-  const app = await start(["write a file"], {
+  const app = await startWithClock(["write a file"], {
     session: { onPermissionAsk: () => permission.promise },
   });
   try {
@@ -104,22 +97,22 @@ test("a tool shows an animated one-line summary then remains once in the scrolla
       path: "written.txt",
       content: "first line\n" + "long content ".repeat(30) + "hidden tail",
     });
-    await app.waitFor(() => runningTools(app).some((line) => line.includes("write ")));
-    const first = app.screen().find((line) => line.includes("write {"))!;
-    expect(first).toContain('"path":"written.txt"');
-    expect(app.screen().filter((line) => line.includes("write {"))).toHaveLength(1);
+    await app.waitFor(() => runningTools(app).some((line) => line.includes("写入(")));
+    const first = app.screen().find((line) => line.includes("写入(written.txt)"))!;
+    expect(first).toContain("written.txt");
+    expect(app.screen().filter((line) => line.includes("写入(written.txt)"))).toHaveLength(1);
     expect(app.screen().join("\n")).not.toContain("hidden tail");
     await app.waitFor(() =>
-      app.screen().some((line) => line.includes("write {") && line !== first),
+      app.screen().some((line) => line.includes("写入(written.txt)") && line !== first),
     );
     permission.resolve("allow");
     await app.waitFor(() => app.calls.length === 2);
     app.calls[1]!.delta("file written");
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
-    expect(app.allLines().filter((line) => line.startsWith("• write "))).toHaveLength(1);
-    expect(app.allLines().join("\n")).toContain("⎿ Successfully wrote");
-    expect(runningTools(app).some((line) => line.includes("write "))).toBe(false);
+    expect(app.allLines().filter((line) => line.startsWith("• 写入("))).toHaveLength(1);
+    expect(app.allLines().join("\n")).toContain("+first line");
+    expect(runningTools(app).some((line) => line.includes("写入("))).toBe(false);
     app.stdin.write("next\r");
     await app.waitFor(() => app.calls.length === 3);
     app.calls[2]!.delta("next reply\n".repeat(12));
@@ -131,14 +124,16 @@ test("a tool shows an animated one-line summary then remains once in the scrolla
           .filter((line) => line === "  next reply" || line === `${assistant} next reply`)
           .length === 12 && !app.isWorking(),
     );
-    expect(app.allLines().filter((line) => line.startsWith("• write "))).toHaveLength(1);
+    app.stdin.write("\x1b[5~");
+    await app.waitFor(() => app.allLines().some((line) => line.startsWith("• 写入(")));
+    expect(app.allLines().filter((line) => line.startsWith("• 写入("))).toHaveLength(1);
     expect(app.terminal.buffer.active.baseY).toBe(0);
     app.stdin.write("\x1b[5~");
     await app.waitFor(() => app.screen().includes("❯ write a file"));
     // The return button takes two rows from the transcript viewport while reading above the bottom.
     app.stdin.write("\x1b[<65;5;2M");
-    await app.waitFor(() => app.screen().some((line) => line.startsWith("• write ")));
-    expect(app.screen().filter((line) => line.startsWith("• write "))).toHaveLength(1);
+    await app.waitFor(() => app.screen().some((line) => line.startsWith("• 写入(")));
+    expect(app.screen().filter((line) => line.startsWith("• 写入("))).toHaveLength(1);
   } finally {
     permission.resolve("deny");
     await app.cleanup();
@@ -176,12 +171,12 @@ test("parallel calls of the same tool finish independently and show only the fir
     expect(active()[0]).toContain("first.release");
     expect(active()[1]).toContain("second.release");
     await Bun.write(join(root, "second.release"), "");
-    await app.waitFor(() => app.allLines().some((line) => line.startsWith("✗ bash ")));
+    await app.waitFor(() => app.allLines().some((line) => line.startsWith("✗ 执行(")));
     expect(active()).toHaveLength(1);
     expect(active()[0]).toContain("first.release");
     expect(app.allLines()).toContain("⎿ first failure");
-    expect(app.allLines()).toContain("  second failure");
-    expect(app.allLines()).toContain("  third failure");
+    expect(app.allLines()).toContain("   second failure");
+    expect(app.allLines()).toContain("   third failure");
     expect(app.allLines()).not.toContain("fourth-hidden");
     await Bun.write(join(root, "first.release"), "");
     await app.waitFor(() => app.calls.length === 2);
@@ -191,11 +186,11 @@ test("parallel calls of the same tool finish independently and show only the fir
       () => app.allLines().includes(`${assistant} tools finished`) && !app.isWorking(),
     );
     expect(active()).toHaveLength(0);
-    const completed = app.allLines().filter((line) => /^[•✗] bash /.test(line));
+    const completed = app.allLines().filter((line) => /^[•✗] 执行\(/.test(line));
     expect(completed).toHaveLength(2);
-    expect(completed[0]).toContain("✗ bash");
+    expect(completed[0]).toContain("✗ 执行(");
     expect(completed[0]).toContain("second.release");
-    expect(completed[1]).toContain("• bash");
+    expect(completed[1]).toContain("• 执行(");
     expect(completed[1]).toContain("first.release");
     expect(app.allLines()).toContain("⎿ hidden-success-output");
   } finally {

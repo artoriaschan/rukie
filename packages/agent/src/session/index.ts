@@ -1,3 +1,5 @@
+import { presentCall, presentResult } from "../tools/presentation.ts";
+import type { ToolCallView, ToolResultView } from "@neant/shared";
 import { createJobs, jobStatus } from "../tools/jobs/index.ts";
 import {
   Agent,
@@ -163,6 +165,14 @@ export interface SessionOptions {
 }
 
 export type SessionEvent = SharedSessionEvent<AgentEvent>;
+type PresentedMessage<M = AgentMessage> = M extends {
+  role: "assistant";
+  content: infer C extends readonly unknown[];
+}
+  ? Omit<M, "content"> & { content: (C[number] & { view?: ToolCallView })[] }
+  : M extends { role: "toolResult" }
+    ? M & { view?: ToolResultView }
+    : M;
 
 function promptText(message: Extract<AgentMessage, { role: "user" }>): string {
   return typeof message.content === "string"
@@ -256,7 +266,7 @@ export interface Session {
   /** Answer once from current context without changing this Session or its Run. */
   sideQuestion(question: string, options?: { signal?: AbortSignal }): AsyncIterable<string>;
   /** Current restored context in memory, including reminders and any compaction. */
-  readonly messages: readonly AgentMessage[];
+  readonly messages: readonly PresentedMessage[];
   /** Current Tool State snapshot; undefined before the first write. */
   toolState(name: string): unknown;
   /** Prompt anchors and their file records, in chronological order. */
@@ -1817,7 +1827,36 @@ async function createSessionInternal(
       );
     },
     get messages() {
-      return agent.state.messages;
+      const calls = new Map<string, { name: string; args: unknown }>();
+      return agent.state.messages.map((message): PresentedMessage => {
+        if (message.role === "assistant")
+          return {
+            ...message,
+            content: message.content.map((block) => {
+              if (block.type !== "toolCall") return block;
+              calls.set(block.id, { name: block.name, args: block.arguments });
+              return {
+                ...block,
+                view: presentCall(
+                  agent.state.tools.find((tool) => tool.name === block.name),
+                  block.arguments,
+                ),
+              };
+            }),
+          };
+        if (message.role === "toolResult") {
+          const call = calls.get(message.toolCallId);
+          return {
+            ...message,
+            view: presentResult(
+              agent.state.tools.find((tool) => tool.name === message.toolName),
+              call?.args,
+              message,
+            ),
+          };
+        }
+        return message;
+      });
     },
     toolState: (name) =>
       name === "plan" && (internal.plan || toolState.get("plan") !== undefined)
@@ -2344,6 +2383,30 @@ async function createSessionInternal(
               sidePendingCalls.delete(event.toolCallId);
               Object.assign(event.result, consumeToolHookOutput(event.toolCallId, event.result));
             }
+            const presentedEvent =
+              event.type === "tool_execution_start"
+                ? {
+                    ...event,
+                    view: presentCall(
+                      agent.state.tools.find((tool) => tool.name === event.toolName),
+                      event.args,
+                    ),
+                  }
+                : event.type === "tool_execution_end"
+                  ? {
+                      ...event,
+                      view: presentResult(
+                        agent.state.tools.find((tool) => tool.name === event.toolName),
+                        agent.state.messages
+                          .flatMap((message) =>
+                            message.role === "assistant" ? message.content : [],
+                          )
+                          .filter((block) => block.type === "toolCall")
+                          .findLast((block) => block.id === event.toolCallId)?.arguments,
+                        event.result,
+                      ),
+                    }
+                  : event;
             await emitMcpErrors();
             if (event.type === "turn_end") {
               sidePendingCalls.clear();
@@ -2420,7 +2483,7 @@ async function createSessionInternal(
               inputTokens = input + cacheRead + cacheWrite || undefined;
               reportInputTokens = inputTokens;
             }
-            await emit(event);
+            await emit(presentedEvent);
             if (event.type === "message_end" && event.message.role === "assistant")
               await emitContextUsage();
           });

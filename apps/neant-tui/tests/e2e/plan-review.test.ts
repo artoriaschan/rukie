@@ -19,6 +19,8 @@ test("approval closes review, exits Plan Mode and leaves a collapsible plan card
   try {
     await app.waitFor(() => app.screen().some((line) => line.includes("计划评审")));
     expect(app.screen().join("\n")).toContain("Storage plan");
+    expect(app.screen().join("\n")).not.toContain("Review plan(");
+    expect(app.screen().join("\n")).not.toContain("评审计划(");
     app.stdin.write("1");
     await app.waitFor(() => app.calls.length === 2);
     await app.waitFor(() => !app.screen().at(-2)!.includes("plan"));
@@ -62,8 +64,10 @@ test.each([
     expect(result).toMatchObject({ isError: !approval });
     if (keys.includes("change 12")) expect(JSON.stringify(result)).toContain("change 12");
     if (!approval) {
-      await app.waitFor(() => app.screen().some((line) => line.includes("反馈:")));
-      expect(app.screen().join("\n")).toContain("Storage plan");
+      await app.waitFor(() => app.screen().some((line) => line.includes("继续规划 ·")));
+      expect(app.screen().join("\n")).not.toContain("Storage plan");
+      app.stdin.write("\x0f");
+      await app.waitFor(() => app.screen().join("\n").includes("Storage plan"));
       expect(app.screen().at(-2)).toContain("plan");
     }
     app.calls[1]!.finish();

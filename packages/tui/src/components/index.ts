@@ -14,6 +14,12 @@ export { ScrollBox, type ScrollBoxProps } from "./scroll-box";
 
 export interface BoxProps {
   children?: ReactNode;
+  /** Highlight literal matches in descendant text without changing layout. */
+  textSearch?: {
+    query: string;
+    color?: TextStyle["color"];
+    backgroundColor?: TextStyle["backgroundColor"];
+  };
   /** Unique identity within a ScrollBox; keep descendant structure stable when restoring. */
   scrollAnchorId?: string;
   position?: "relative" | "absolute";
@@ -43,7 +49,8 @@ export interface BoxProps {
   marginBottom?: number;
   gap?: number;
   borderStyle?: "single" | "round";
-  onMouseEnter?(): void;
+  /** Mouse entry coordinates refer to the last painted terminal viewport. */
+  onMouseEnter?(position: { x: number; y: number }): void;
   onMouseLeave?(): void;
   /** Primary mouse press and release on this box activate it once. */
   onClick?(): void;
@@ -66,6 +73,8 @@ export function Image(props: ImageProps) {
 }
 
 export interface TextProps extends TextStyle {
+  /** Primary click on a painted non-whitespace glyph; blank cells do not activate text. */
+  onClick?(): void;
   children?: ReactNode;
   /** Word wrap, splitting long words by display columns, or clip each explicit line. */
   wrap?: "wrap" | "truncate";

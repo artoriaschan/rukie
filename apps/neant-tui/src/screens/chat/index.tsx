@@ -1,5 +1,14 @@
+import { completedEntryVisible } from "./completed-visibility";
+import { transcriptMatches } from "./transcript-search";
+import { TextInput } from "@neant/tui";
+import { DiffLayoutProvider, useDiffLayout } from "../../components/tool-call/diff-layout";
+import { SmoothRevealProvider } from "../../components/tool-call/use-smooth-reveal";
+import { FileActionsPanel } from "../../components/file-actions-panel";
+import { PlanReviewRow } from "../../components/plan-review/plan-review-row";
+import { showsToolCard } from "./conversation";
+import { ThinkingRow } from "../../components/thinking-row";
 import { realpath } from "node:fs/promises";
-import { relative, join } from "node:path";
+import { relative, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import {
   Fragment,
@@ -30,6 +39,7 @@ import {
   createTextInputHistory,
   useInput,
   useTerminalSize,
+  useDismissTooltip,
   useTheme,
   type ScrollHandle,
   type ScrollSnapshot,
@@ -182,27 +192,32 @@ export async function createChat(
         () => binding,
       );
       return (
-        <Chat
-          key={current.session.id}
-          session={current.session}
-          conversation={current.conversation}
-          history={inputHistory}
-          imageViewer={imageViewer}
-          host={host}
-          submit={submit}
-          interactions={interactions}
-          homeDir={options.homeDir}
-          cwd={options.cwd}
-          checkpointCwd={checkpointCwd}
-          thinking={options.settings?.thinking}
-          locale={locale}
-          onExit={onExit}
-          models={models}
-          sessions={() => listSessions(options)}
-          skills={skills}
-          replaceSession={replaceSession}
-          writeTitle={writeTitle}
-        />
+        <DiffLayoutProvider value={options.settings?.diffLayout}>
+          <SmoothRevealProvider key={current.session.id}>
+            <Chat
+              key={current.session.id}
+              session={current.session}
+              conversation={current.conversation}
+              history={inputHistory}
+              imageViewer={imageViewer}
+              host={host}
+              submit={submit}
+              interactions={interactions}
+              homeDir={options.homeDir}
+              cwd={options.cwd}
+              checkpointCwd={checkpointCwd}
+              foldTerminalCommand={options.settings?.foldTerminalCommand ?? true}
+              thinking={options.settings?.thinking}
+              locale={locale}
+              onExit={onExit}
+              models={models}
+              sessions={() => listSessions(options)}
+              skills={skills}
+              replaceSession={replaceSession}
+              writeTitle={writeTitle}
+            />
+          </SmoothRevealProvider>
+        </DiffLayoutProvider>
       );
     },
   };
@@ -247,6 +262,7 @@ function Chat({
   homeDir,
   checkpointCwd,
   thinking,
+  foldTerminalCommand,
   locale,
   onExit,
   skills,
@@ -266,6 +282,7 @@ function Chat({
   homeDir?: string;
   checkpointCwd: string;
   thinking?: ThinkingLevel;
+  foldTerminalCommand: boolean;
   locale: Locale;
   onExit(): void;
   models: Readonly<ReturnType<typeof listModels>>;
@@ -347,6 +364,32 @@ function Chat({
   useEffect(() => () => clearTimeout(modelImageNoticeTimer.current), []);
   const state = useSyncExternalStore(conversation.subscribe, conversation.getSnapshot);
   const promptNotice = imageNotice ?? state.notification;
+  type FileActions = { path: string; focus: number };
+  const [fileActions, setFileActions] = useState<FileActions>();
+  const fileActionsRef = useRef<FileActions | undefined>(undefined);
+  const showFileActions = (next: FileActions | undefined) => {
+    pasteEpoch.current++;
+    fileActionsRef.current = next;
+    setFileActions(next);
+  };
+  const openFileActions = (path: string) => {
+    if (interactions.getSnapshot() || previewRef.current) return;
+    showFileActions({ path: resolve(cwd, path), focus: 0 });
+  };
+  const pickFileAction = async (index: number) => {
+    const menu = fileActionsRef.current;
+    if (!menu) return;
+    showFileActions(undefined);
+    try {
+      if (index === 0) await host.openExternal(menu.path);
+      else if (index === 1) await host.reveal(menu.path);
+      else if (!(await host.writeClipboard(menu.path)))
+        throw new Error(t("file-actions.copy-unavailable"));
+    } catch (error) {
+      if (pasteOwner.current)
+        conversation.notify(t("file-actions.failed", { error: formatError(error, t) }), "error");
+    }
+  };
   type Preview = { images: readonly PromptImage[]; index: number };
   const [preview, setPreview] = useState<Preview>();
   const previewRef = useRef<Preview | undefined>(undefined);
@@ -358,6 +401,7 @@ function Chat({
   const imagePreviewBlocked = () =>
     !!(
       interactions.getSnapshot() ||
+      fileActionsRef.current ||
       viewRef.current !== "chat" ||
       rewindRef.current ||
       mcpPanel.getSnapshot() ||
@@ -386,7 +430,10 @@ function Chat({
     () =>
       session.subscribe((event) => {
         if (event.type === "session_title_changed") setTitle(event.title);
-        if (event.type === "conversation_rewound") showPreview(undefined);
+        if (event.type === "conversation_rewound") {
+          showPreview(undefined);
+          showFileActions(undefined);
+        }
       }),
     [session],
   );
@@ -416,7 +463,10 @@ function Chat({
   useEffect(() => () => sideController.current?.abort(), [session]);
   const pendingInteraction = useSyncExternalStore(interactions.subscribe, interactions.getSnapshot);
   useLayoutEffect(() => {
-    if (pendingInteraction) showPreview(undefined);
+    if (pendingInteraction) {
+      showPreview(undefined);
+      showFileActions(undefined);
+    }
   }, [pendingInteraction?.request]);
   const interaction = side ? undefined : pendingInteraction;
   const question = interaction?.kind === "permission" ? interaction : undefined;
@@ -679,6 +729,21 @@ function Chat({
   const [mode, setMode] = useState(session.permissionMode);
   const { columns, rows } = useTerminalSize();
   const small = columns < 40 || rows < 12;
+  const dismissTooltip = useDismissTooltip();
+  useEffect(() => {
+    dismissTooltip?.();
+  }, [
+    dismissTooltip,
+    small,
+    view,
+    preview,
+    fileActions,
+    mcp,
+    modelPicker,
+    resumePicker,
+    rewind,
+    interaction?.request,
+  ]);
   useLayoutEffect(() => interactions.setQuestionEditingEnabled(!small), [interactions, small]);
   useLayoutEffect(() => {
     pasteEpoch.current++;
@@ -713,7 +778,55 @@ function Chat({
 
   const [scrollFocus, setScrollFocus] = useState<"body" | "details">("body");
   const [unread, setUnread] = useState(false);
-  const [jobsExpanded, setJobsExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [transcriptSearch, setTranscriptSearch] = useState<{
+    editing: boolean;
+    draft: string;
+    query: string;
+    index: number;
+  }>({ editing: false, draft: "", query: "", index: 0 });
+  const searchRef = useRef(transcriptSearch);
+  const searchInputEvents = useRef(new WeakSet<object>());
+  const expandedRef = useRef(expanded);
+  expandedRef.current = expanded;
+  const diffSearchLayout = useDiffLayout();
+  const searchMatches = useMemo(
+    () => transcriptMatches(state, transcriptSearch.query, columns, diffSearchLayout, locale),
+    [state, transcriptSearch.query, columns, diffSearchLayout, locale],
+  );
+  const currentMatch = searchMatches[transcriptSearch.index % Math.max(1, searchMatches.length)];
+  const updateSearch = (next: typeof transcriptSearch) => {
+    searchRef.current = next;
+    setTranscriptSearch(next);
+  };
+  const closeTranscript = () => {
+    expandedRef.current = false;
+    setExpanded(false);
+    updateSearch({ editing: false, draft: "", query: "", index: 0 });
+  };
+  useEffect(() => {
+    if (expanded && currentMatch && !transcriptSearch.editing)
+      body.current?.scrollToText(
+        currentMatch.anchorId,
+        transcriptSearch.query,
+        currentMatch.occurrence,
+      );
+  }, [
+    expanded,
+    currentMatch?.anchorId,
+    currentMatch?.occurrence,
+    currentMatch?.line,
+    transcriptSearch.query,
+    transcriptSearch.editing,
+  ]);
+  const [expandedRows, setExpandedRows] = useState<ReadonlySet<string>>(new Set());
+  const toggleRow = (id: string) =>
+    setExpandedRows((rows) => {
+      const next = new Set(rows);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   const previousOutput = useRef({
     completed: state.completed,
     assistant: state.assistant,
@@ -1146,7 +1259,9 @@ function Chat({
     (!!interaction &&
       rows - footerHeight - minimumDialogHeight - dialogGap - panelMinimum < promptMaxLines + 3);
   const promptHeight =
-    (compactPrompt ? 1 + Number(!!promptNotice) : promptMaxLines + 3) + modelNoticeHeight;
+    Number(expanded) * (transcriptSearch.editing ? 2 : 1) +
+    (compactPrompt ? 1 + Number(!!promptNotice) : promptMaxLines + 3) +
+    modelNoticeHeight;
   const transcriptHeight = rewind
     ? Number(!compactPrompt)
     : interaction
@@ -1221,17 +1336,37 @@ function Chat({
   const subagentMaxHeight = hasSubagents ? panelHeights[Number(hasTodos)]! : 1;
   const caretImage = composer.atCursor(input, composerCursor);
   const composerPreview =
+    !expanded &&
     !preview &&
     !small &&
     !imagePreviewBlocked() &&
     !(composerDismissed && composerImageDismissed(caretImage)) &&
     caretImage;
   useInput((event) => {
+    const fileMenu = fileActionsRef.current;
+    if (fileMenu) {
+      handledInput.current.add(event);
+      if (event.type !== "key") return;
+      const { key } = event;
+      if (key.name === "escape" || (key.ctrl && key.name === "c")) showFileActions(undefined);
+      else if (!key.ctrl && !key.alt && !key.shift) {
+        if (key.name === "up" || key.name === "down")
+          showFileActions({
+            ...fileMenu,
+            focus: (fileMenu.focus + (key.name === "up" ? 2 : 1)) % 3,
+          });
+        else if (key.name === "enter") void pickFileAction(fileMenu.focus);
+        else if (["1", "2", "3"].includes(event.input))
+          void pickFileAction(Number(event.input) - 1);
+      }
+      return;
+    }
     const currentCaretImage = composer.atCursor(draft.current, composerCursorRef.current);
     if (
       event.type === "key" &&
       event.key.name === "escape" &&
       !previewRef.current &&
+      !expandedRef.current &&
       !small &&
       !imagePreviewBlocked() &&
       currentCaretImage &&
@@ -1485,8 +1620,49 @@ function Chat({
       !previewRef.current
     ) {
       handledInput.current.add(event);
-      setJobsExpanded((expanded) => !expanded);
+      if (expandedRef.current) closeTranscript();
+      else {
+        expandedRef.current = true;
+        setExpanded(true);
+      }
       return;
+    }
+    if (
+      expandedRef.current &&
+      !interactions.getSnapshot() &&
+      !sideController.current &&
+      !previewRef.current &&
+      !small
+    ) {
+      if (event.type === "key" && event.key.name === "escape") {
+        handledInput.current.add(event);
+        closeTranscript();
+        return;
+      }
+      if (searchRef.current.editing && (event.type === "key" || event.type === "paste")) {
+        handledInput.current.add(event);
+        searchInputEvents.current.add(event);
+        return;
+      }
+      if (!searchRef.current.editing && event.type === "key" && !event.key.ctrl && !event.key.alt) {
+        if (event.input === "/") {
+          handledInput.current.add(event);
+          updateSearch({ ...searchRef.current, editing: true, draft: "" });
+          dismissTooltip?.();
+          return;
+        }
+        if ((event.input === "n" || event.input === "N") && searchRef.current.query) {
+          handledInput.current.add(event);
+          const count = searchMatches.length;
+          updateSearch({
+            ...searchRef.current,
+            index: count
+              ? (searchRef.current.index + (event.input === "N" ? count - 1 : 1)) % count
+              : 0,
+          });
+          return;
+        }
+      }
     }
     if (
       event.type === "key" &&
@@ -1682,6 +1858,7 @@ function Chat({
   const completed = useMemo(
     () =>
       state.completed.map((entry, index) => {
+        if (!completedEntryVisible(state, index)) return null;
         const hasJob = (candidate: typeof entry | undefined) =>
           candidate?.type === "tool" && candidate.jobId && state.jobs[candidate.jobId];
         if (hasJob(entry)) {
@@ -1695,7 +1872,7 @@ function Chat({
           }
           if (group.length >= 2) {
             const folded =
-              !jobsExpanded &&
+              !expanded &&
               group.every(({ job }) => job.status !== "running" && job.status !== "stopping");
             return (
               <Box key={index} flexDirection="column">
@@ -1704,14 +1881,34 @@ function Chat({
                   folded={folded}
                   columns={columns}
                   locale={locale}
-                  onToggle={() => setJobsExpanded((expanded) => !expanded)}
+                  onToggle={() => setExpanded((expanded) => !expanded)}
                 />
                 {!folded &&
                   group.map(({ entry: member, job, index: at }) => (
                     <Box key={at} flexDirection="column">
                       <ToolCall
+                        id={member.id ?? `row-${at}`}
+                        searchLocation={
+                          currentMatch?.toolId === (member.id ?? `row-${at}`)
+                            ? {
+                                part: currentMatch.part!,
+                                line: currentMatch.line,
+                                offset: currentMatch.offset,
+                              }
+                            : undefined
+                        }
+                        onPathClick={openFileActions}
+                        foldTerminalCommand={foldTerminalCommand}
+                        expanded={expanded || expandedRows.has(member.id ?? `row-${at}`)}
+                        onToggle={() => toggleRow(member.id ?? `row-${at}`)}
                         locale={locale}
                         summary={member.summary}
+                        name={member.name}
+                        args={member.args}
+                        callView={member.callView}
+                        resultView={member.resultView}
+                        startedAt={member.startedAt}
+                        endedAt={member.endedAt}
                         status="success"
                         result={member.result}
                       />
@@ -1733,9 +1930,29 @@ function Chat({
             return (
               <Box key={index} flexDirection="column">
                 <ToolCall
-                  planReview={entry.planReview}
+                  onPathClick={openFileActions}
+                  foldTerminalCommand={foldTerminalCommand}
+                  expanded={expanded || expandedRows.has(entry.id ?? `row-${index}`)}
+                  onToggle={() => toggleRow(entry.id ?? `row-${index}`)}
                   locale={locale}
                   summary={entry.summary}
+                  id={entry.id ?? `row-${index}`}
+                  searchLocation={
+                    currentMatch?.toolId === (entry.id ?? `row-${index}`)
+                      ? {
+                          part: currentMatch.part!,
+                          line: currentMatch.line,
+                          offset: currentMatch.offset,
+                        }
+                      : undefined
+                  }
+                  name={entry.name}
+                  args={entry.args}
+                  callView={entry.callView}
+                  resultView={entry.resultView}
+                  startedAt={entry.startedAt}
+                  endedAt={entry.endedAt}
+                  replayed={entry.replayed}
                   status={entry.isError ? "error" : "success"}
                   outcomeUnknown={entry.outcomeUnknown}
                   result={entry.result}
@@ -1753,21 +1970,31 @@ function Chat({
                     locale={locale}
                   />
                 )}
-                {entry.agentId &&
-                  state.subagents[entry.agentId] &&
-                  state.completed.findLastIndex(
-                    (candidate) => candidate.type === "tool" && candidate.agentId === entry.agentId,
-                  ) === index && (
-                    <SubagentMessage
-                      subagent={state.subagents[entry.agentId]!}
-                      columns={columns}
-                      effort={thinking}
-                      locale={locale}
-                      onClick={() => openDetail(entry.agentId!, "chat")}
-                    />
-                  )}
               </Box>
             );
+          case "question":
+            return <ThemedText key={index}>{entry.text}</ThemedText>;
+          case "plan-review":
+            return (
+              <PlanReviewRow
+                key={index}
+                {...entry}
+                locale={locale}
+                expanded={expanded || expandedRows.has(entry.id)}
+                onToggle={() => toggleRow(entry.id)}
+              />
+            );
+          case "subagent":
+            return state.subagents[entry.agentId] ? (
+              <SubagentMessage
+                key={index}
+                subagent={state.subagents[entry.agentId]!}
+                columns={columns}
+                effort={thinking}
+                locale={locale}
+                onClick={() => openDetail(entry.agentId, "chat")}
+              />
+            ) : null;
           case "context-report":
             return (
               <ContextVisualization
@@ -1777,6 +2004,16 @@ function Chat({
                 modelName={entry.modelName}
                 columns={columns}
                 locale={locale}
+              />
+            );
+          case "thinking":
+            return (
+              <ThinkingRow
+                key={index}
+                text={entry.text}
+                locale={locale}
+                expanded={expanded || expandedRows.has(entry.anchorId ?? `thinking-${index}`)}
+                onToggle={() => toggleRow(entry.anchorId ?? `thinking-${index}`)}
               />
             );
           case "notice":
@@ -1811,9 +2048,12 @@ function Chat({
       state.completed,
       state.subagents,
       state.jobs,
-      jobsExpanded,
+      expanded,
+      expandedRows,
       columns,
       thinking,
+      foldTerminalCommand,
+      currentMatch,
       locale,
       !!preview,
     ],
@@ -1849,20 +2089,36 @@ function Chat({
     );
   if (typeof view === "object" && selectedSubagent)
     return (
-      <SubagentDetailScene
-        subagent={selectedSubagent}
-        page={page}
-        thinkingOpen={thinkingOpen}
-        scrollRef={subagentScroll}
-        rows={rows}
-        locale={locale}
-        onBack={closeView}
-        onPage={turnPage}
-        onInterrupt={() => session.interruptSubagent(selectedSubagent.agentId)}
-      />
+      <Box height={rows} flexDirection="column">
+        <SubagentDetailScene
+          subagent={selectedSubagent}
+          onPathClick={openFileActions}
+          foldTerminalCommand={foldTerminalCommand}
+          page={page}
+          thinkingOpen={thinkingOpen}
+          expanded={expanded}
+          scrollRef={subagentScroll}
+          rows={rows}
+          locale={locale}
+          onBack={closeView}
+          onPage={turnPage}
+          onInterrupt={() => session.interruptSubagent(selectedSubagent.agentId)}
+        />
+        {fileActions && (
+          <FileActionsPanel
+            {...fileActions}
+            columns={columns}
+            rows={rows}
+            locale={locale}
+            onPick={(index) => void pickFileAction(index)}
+          />
+        )}
+      </Box>
     );
   const promptReadOnly =
+    transcriptSearch.editing ||
     !!mcp ||
+    !!fileActions ||
     !!preview ||
     modelPicker !== undefined ||
     !!resumePicker ||
@@ -1871,6 +2127,15 @@ function Chat({
   return (
     <Box flexDirection="column" height={rows}>
       <ScrollBox
+        textSearch={
+          expanded && transcriptSearch.query
+            ? {
+                query: transcriptSearch.query,
+                color: theme.inverseText,
+                backgroundColor: theme.badgeBackground,
+              }
+            : undefined
+        }
         ref={body}
         onScroll={setBodyScroll}
         initialFollow={savedChatScroll.current?.following ?? true}
@@ -1892,21 +2157,56 @@ function Chat({
             entry && (
               <Box
                 key={index}
-                scrollAnchorId={state.completed[index]?.anchorId}
+                scrollAnchorId={state.completed[index]?.anchorId ?? `row-${index}`}
                 flexDirection="column"
               >
                 {entry}
               </Box>
             ),
         )}
+        {state.reasoning && (
+          <Box scrollAnchorId={`${state.assistantAnchor}-thinking`} flexDirection="column">
+            <ThinkingRow
+              text={state.reasoning}
+              locale={locale}
+              expanded={expanded || expandedRows.has(`${state.assistantAnchor}-thinking`)}
+              onToggle={() => toggleRow(`${state.assistantAnchor}-thinking`)}
+            />
+          </Box>
+        )}
         {state.assistant && (
           <Box scrollAnchorId={state.assistantAnchor} flexDirection="column">
             <AssistantMessage text={state.assistant} />
           </Box>
         )}
-        {state.tools.map((tool) => (
-          <ToolCall key={tool.id} summary={tool.summary} status="running" />
-        ))}
+        {state.tools
+          .filter((tool) => showsToolCard(tool.name))
+          .map((tool) => (
+            <ToolCall
+              foldTerminalCommand={foldTerminalCommand}
+              key={tool.id}
+              onPathClick={openFileActions}
+              expanded={expanded || expandedRows.has(tool.id)}
+              onToggle={() => toggleRow(tool.id)}
+              id={tool.id}
+              searchLocation={
+                currentMatch?.toolId === tool.id
+                  ? {
+                      part: currentMatch.part!,
+                      line: currentMatch.line,
+                      offset: currentMatch.offset,
+                    }
+                  : undefined
+              }
+              name={tool.name}
+              args={tool.args}
+              callView={tool.callView}
+              startedAt={tool.startedAt}
+              locale={locale}
+              summary={tool.summary}
+              status="running"
+            />
+          ))}
         {state.error && <Notice kind="error" text={state.error} />}
       </ScrollBox>
       {composerPreview && (
@@ -2180,8 +2480,39 @@ function Chat({
                 }}
               />
             )}
+            {expanded && (
+              <Box flexDirection="column">
+                <ThemedText color="accent">
+                  {transcriptSearch.editing
+                    ? t("transcript.search-input")
+                    : transcriptSearch.query
+                      ? searchMatches.length
+                        ? t("transcript.search-count", {
+                            index: (transcriptSearch.index % searchMatches.length) + 1,
+                            count: searchMatches.length,
+                            query: transcriptSearch.query,
+                          })
+                        : t("transcript.search-none", { query: transcriptSearch.query })
+                      : t("transcript.mode")}
+                </ThemedText>
+                {transcriptSearch.editing && (
+                  <TextInput
+                    isActive={!small && !interaction && !side && !preview && !fileActions && !mcp}
+                    value={transcriptSearch.draft}
+                    onChange={(draft) => updateSearch({ ...searchRef.current, draft })}
+                    onSubmit={(query) =>
+                      updateSearch({ editing: false, draft: query, query: query.trim(), index: 0 })
+                    }
+                    filterInput={(event) =>
+                      !handledInput.current.has(event) || searchInputEvents.current.has(event)
+                    }
+                  />
+                )}
+              </Box>
+            )}
             <PromptInput
               suggestions={
+                !expanded &&
                 !!commandMatches.length &&
                 !mcp &&
                 !preview &&
@@ -2241,7 +2572,23 @@ function Chat({
                 pasteEpoch.current++;
               }}
               filterInput={(event, insert) => {
-                if (mcpPanel.getSnapshot() || previewRef.current || handledInput.current.has(event))
+                if (
+                  expandedRef.current &&
+                  event.type === "key" &&
+                  !event.key.ctrl &&
+                  !event.key.alt &&
+                  (event.input === "/" ||
+                    (searchRef.current.query && (event.input === "n" || event.input === "N")) ||
+                    event.key.name === "escape")
+                )
+                  return false;
+                if (searchRef.current.editing) return false;
+                if (
+                  fileActionsRef.current ||
+                  mcpPanel.getSnapshot() ||
+                  previewRef.current ||
+                  handledInput.current.has(event)
+                )
                   return false;
                 if (
                   event.type === "key" &&
@@ -2297,7 +2644,7 @@ function Chat({
               }))}
               atomicRanges={composer.ranges(input)}
               onPaste={(text, insert) => {
-                if (mcpPanel.getSnapshot() || previewRef.current) return;
+                if (fileActionsRef.current || mcpPanel.getSnapshot() || previewRef.current) return;
                 const epoch = pasteEpoch.current;
                 const path = pastedImagePath(text, homeDir ?? "");
                 if (!path) {
@@ -2318,6 +2665,7 @@ function Chat({
               onChange={(value, edit) => {
                 const pending = sideController.current ? undefined : interactions.getSnapshot();
                 if (
+                  fileActionsRef.current ||
                   mcpPanel.getSnapshot() ||
                   viewRef.current !== "chat" ||
                   rewindRef.current ||
@@ -2330,6 +2678,7 @@ function Chat({
               onSubmit={(prompt) => {
                 const pending = sideController.current ? undefined : interactions.getSnapshot();
                 if (
+                  fileActionsRef.current ||
                   mcpPanel.getSnapshot() ||
                   viewRef.current !== "chat" ||
                   rewindRef.current ||
@@ -2363,6 +2712,15 @@ function Chat({
           </>
         )}
       </Box>
+      {fileActions && (
+        <FileActionsPanel
+          {...fileActions}
+          columns={columns}
+          rows={rows}
+          locale={locale}
+          onPick={(index) => void pickFileAction(index)}
+        />
+      )}
     </Box>
   );
 }

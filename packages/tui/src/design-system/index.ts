@@ -16,4 +16,10 @@ export {
   type ThemedBoxProps,
   type ThemedTextInputProps,
 } from "./themed";
-export { toolNameColor } from "./tool-name-color";
+export { toolKindColor } from "./tool-kind-color";
+
+export { SyntaxHighlightedText, highlightSyntax, type SyntaxRun } from "./syntax-highlighted-text";
+
+export { Tooltip, TooltipProvider, useDismissTooltip } from "./tooltip";
+
+export { SplitDiffView, alignSplitDiff, type SplitDiffRow } from "./split-diff-view";

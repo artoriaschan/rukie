@@ -29,3 +29,11 @@ export {
 
 export type { ContextReport, ContextCategory } from "./context-report.ts";
 export type { McpServerView, McpToolView, McpConfigError, McpSnapshot } from "./mcp.ts";
+
+export {
+  ToolCallViewSchema,
+  ToolResultViewSchema,
+  type ToolCallView,
+  type ToolResultView,
+  type ToolKind,
+} from "./tool-view.ts";

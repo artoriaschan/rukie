@@ -1,3 +1,4 @@
+import type { PresentedTool } from "../tools/presentation.ts";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import {
   McpClient,
@@ -120,11 +121,19 @@ function adaptTool(
 ): AgentTool {
   const name = `mcp__${server}__${tool.name}`;
   const parameters = Type.Unsafe<Record<string, unknown>>(tool.inputSchema);
-  const adapted: AgentTool<typeof parameters> = {
+  const adapted: PresentedTool<typeof parameters> = {
     name,
     label: tool.title ?? name,
     description: tool.description ?? tool.name,
     parameters,
+    presentCall: (args) => ({
+      card: "generic",
+      kind: "other",
+      server,
+      tool: tool.name,
+      rawInput: args,
+    }),
+    presentResult: (_args, text) => ({ card: "generic", kind: "other", text }),
     async execute(_id, args, signal) {
       try {
         const result = await client.callTool(tool.name, args, { signal });

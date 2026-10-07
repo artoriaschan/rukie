@@ -34,6 +34,111 @@ function formatTokens(value: number) {
   return String(value);
 }
 
+function contextPresentation(
+  report: ContextReport,
+  expanded: boolean,
+  modelName: string | undefined,
+  locale: Locale,
+) {
+  const t = createTuiI18n(locale);
+  const percent = (value: number) =>
+    report.window > 0 ? ((value / report.window) * 100).toFixed(1) : "0.0";
+  const modelId = report.model.slice(report.model.indexOf("/") + 1);
+  const groups = [
+    {
+      name: "mcp-tools" as const,
+      command: "/mcp",
+      unit: "tool" as const,
+      items: report.mcpTools.map((item) => ({
+        name: `${item.server}/${item.name}`,
+        tokens: item.tokens,
+      })),
+    },
+    {
+      name: "agent-types" as const,
+      command: ".agents/agents/",
+      unit: "agent" as const,
+      items: report.agentTypes,
+    },
+    {
+      name: "memory-files" as const,
+      command: "/memory",
+      unit: "file" as const,
+      items: report.memoryFiles.map((item) => ({ name: item.path, tokens: item.tokens })),
+    },
+    { name: "skills" as const, command: "/skills", unit: "skill" as const, items: report.skills },
+  ];
+  return {
+    command: expanded ? "/context all" : "/context",
+    title: t("context.title"),
+    model: t("context.model", { model: modelName ?? modelId, window: formatTokens(report.window) }),
+    modelId,
+    total: t("context.total", {
+      used: formatTokens(report.used),
+      window: formatTokens(report.window),
+      percent: Math.round(report.window > 0 ? (report.used / report.window) * 100 : 0),
+    }),
+    estimated: t("context.estimated"),
+    expand: expanded ? "" : t("context.expand"),
+    legend: order
+      .flatMap((name) =>
+        report.categories.filter((category) => category.name === name && category.tokens > 0),
+      )
+      .map((category) => ({
+        name: category.name,
+        label: t(`context.category.${category.name}`),
+        usage: t(category.name === "free-space" ? "context.free" : "context.amount", {
+          tokens: formatTokens(category.tokens),
+          percent: percent(category.tokens),
+        }),
+      })),
+    groups: groups
+      .filter((group) => group.items.length > 0)
+      .map((group) => ({
+        ...group,
+        label: t(`context.category.${group.name}`),
+        summary: t("context.summary", {
+          count: group.items.length,
+          unit: t(`context.unit.${group.unit}${group.items.length === 1 ? "" : "s"}`),
+          tokens: formatTokens(
+            report.categories.find((category) => category.name === group.name)?.tokens ??
+              group.items.reduce((sum, item) => sum + item.tokens, 0),
+          ),
+        }),
+        details: expanded
+          ? group.items.map((item) =>
+              t("context.detail", { name: item.name, tokens: formatTokens(item.tokens) }),
+            )
+          : [],
+      })),
+  };
+}
+export function contextText(
+  report: ContextReport,
+  expanded: boolean,
+  modelName: string | undefined,
+  locale: Locale,
+): string {
+  const display = contextPresentation(report, expanded, modelName, locale);
+  return [
+    display.command,
+    display.title,
+    display.model,
+    display.modelId,
+    display.total,
+    display.estimated,
+    ...display.legend.map((row) => `${row.label}: ${row.usage}`),
+    ...display.groups.flatMap((group) => [
+      `${group.label} · ${group.command}`,
+      group.summary,
+      ...group.details,
+    ]),
+    display.expand,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 /** Local snapshot; provider totals and category estimates retain their separate meanings. */
 export function ContextVisualization({
   report,
@@ -48,9 +153,7 @@ export function ContextVisualization({
   expanded?: boolean;
   modelName?: string;
 }) {
-  const t = createTuiI18n(locale);
-  const percent = (value: number) =>
-    report.window > 0 ? ((value / report.window) * 100).toFixed(1) : "0.0";
+  const display = contextPresentation(report, expanded, modelName, locale);
   const million = report.window >= 1_000_000;
   const width = columns < 80 ? 5 : million ? 20 : 10;
   const height = columns < 80 && !million ? 5 : 10;
@@ -76,64 +179,28 @@ export function ContextVisualization({
   while (cells.length < count - reserved) cells.push({ symbol: "⛶", color: colors["free-space"] });
   while (cells.length < count) cells.push({ symbol: "⛝", color: colors["compaction-reserve"] });
 
-  const detailGroups = [
-    {
-      name: "mcp-tools" as const,
-      command: "/mcp",
-      unit: "tool" as const,
-      items: report.mcpTools.map((item) => ({
-        name: `${item.server}/${item.name}`,
-        tokens: item.tokens,
-      })),
-    },
-    {
-      name: "agent-types" as const,
-      command: ".agents/agents/",
-      unit: "agent" as const,
-      items: report.agentTypes,
-    },
-    {
-      name: "memory-files" as const,
-      command: "/memory",
-      unit: "file" as const,
-      items: report.memoryFiles.map((item) => ({ name: item.path, tokens: item.tokens })),
-    },
-    { name: "skills" as const, command: "/skills", unit: "skill" as const, items: report.skills },
-  ];
-  const legend = categories.map((category) => {
+  const legend = display.legend.map((category) => {
     const symbol =
       category.name === "free-space" ? "⛶" : category.name === "compaction-reserve" ? "⛝" : "⛁";
-    const usage = t(category.name === "free-space" ? "context.free" : "context.amount", {
-      tokens: formatTokens(category.tokens),
-      percent: percent(category.tokens),
-    });
     return (
       <ThemedText key={category.name} color={text} wrap="wrap">
         <ThemedText color={colors[category.name]}>{symbol}</ThemedText>
-        {` ${t(`context.category.${category.name}`)}: `}
-        <ThemedText color={muted}>{usage}</ThemedText>
+        {` ${category.label}: `}
+        <ThemedText color={muted}>{category.usage}</ThemedText>
       </ThemedText>
     );
   });
   // A 1M grid uses 40 columns; stack if the legend cannot fit beside it.
   const legendWidth = Math.max(
     0,
-    ...categories.map((category) =>
-      Bun.stringWidth(
-        `⛁ ${t(`context.category.${category.name}`)}: ${t("context.amount", {
-          tokens: formatTokens(category.tokens),
-          percent: percent(category.tokens),
-        })}`,
-      ),
-    ),
+    ...display.legend.map((category) => Bun.stringWidth(`⛁ ${category.label}: ${category.usage}`)),
   );
   const sideBySide = columns >= 80 && columns >= width * 2 + 7 + legendWidth;
-  const modelId = report.model.slice(report.model.indexOf("/") + 1);
   return (
     <Box flexDirection="column" flexShrink={0}>
-      <UserMessage text={expanded ? "/context all" : "/context"} locale={locale} />
+      <UserMessage text={display.command} locale={locale} />
       <Box paddingLeft={2}>
-        <ThemedText color={text} bold>{`└ ${t("context.title")}`}</ThemedText>
+        <ThemedText color={text} bold>{`└ ${display.title}`}</ThemedText>
       </Box>
       <Box flexDirection="column" paddingLeft={5}>
         <Box flexDirection={sideBySide ? "row" : "column"} gap={sideBySide ? 2 : 1}>
@@ -147,57 +214,35 @@ export function ContextVisualization({
             ))}
           </Box>
           <Box flexDirection="column" flexGrow={1} flexShrink={1}>
-            <ThemedText color={muted}>
-              {t("context.model", {
-                model: modelName ?? modelId,
-                window: formatTokens(report.window),
-              })}
-            </ThemedText>
-            <ThemedText color={muted}>{modelId}</ThemedText>
-            <ThemedText color={muted}>
-              {t("context.total", {
-                used: formatTokens(report.used),
-                window: formatTokens(report.window),
-                percent: Math.round(report.window > 0 ? (report.used / report.window) * 100 : 0),
-              })}
-            </ThemedText>
+            <ThemedText color={muted}>{display.model}</ThemedText>
+            <ThemedText color={muted}>{display.modelId}</ThemedText>
+            <ThemedText color={muted}>{display.total}</ThemedText>
             <Box flexDirection="column" marginTop={1}>
               <ThemedText color={muted} italic>
-                {t("context.estimated")}
+                {display.estimated}
               </ThemedText>
               {legend}
             </Box>
           </Box>
         </Box>
-        {detailGroups
-          .filter((group) => group.items.length > 0)
-          .map((group) => (
-            <Box key={group.name} flexDirection="column" marginTop={1}>
-              <ThemedText color={text}>
-                <ThemedText bold>{t(`context.category.${group.name}`)}</ThemedText>
-                <ThemedText color={muted}>{` · ${group.command}`}</ThemedText>
-              </ThemedText>
-              <ThemedText color={muted}>
-                {t("context.summary", {
-                  count: group.items.length,
-                  unit: t(`context.unit.${group.unit}${group.items.length === 1 ? "" : "s"}`),
-                  tokens: formatTokens(
-                    report.categories.find((category) => category.name === group.name)?.tokens ??
-                      group.items.reduce((sum, item) => sum + item.tokens, 0),
-                  ),
-                })}
-              </ThemedText>
-              {expanded &&
-                group.items.map((item) => (
-                  <ThemedText key={item.name} color={muted} wrap="wrap">
-                    {t("context.detail", { name: item.name, tokens: formatTokens(item.tokens) })}
-                  </ThemedText>
-                ))}
-            </Box>
-          ))}
+        {display.groups.map((group) => (
+          <Box key={group.name} flexDirection="column" marginTop={1}>
+            <ThemedText color={text}>
+              <ThemedText bold>{group.label}</ThemedText>
+              <ThemedText color={muted}>{` · ${group.command}`}</ThemedText>
+            </ThemedText>
+            <ThemedText color={muted}>{group.summary}</ThemedText>
+            {expanded &&
+              group.details.map((detail) => (
+                <ThemedText key={detail} color={muted} wrap="wrap">
+                  {detail}
+                </ThemedText>
+              ))}
+          </Box>
+        ))}
         {!expanded && (
           <Box marginTop={1}>
-            <ThemedText color={muted}>{t("context.expand")}</ThemedText>
+            <ThemedText color={muted}>{display.expand}</ThemedText>
           </Box>
         )}
       </Box>

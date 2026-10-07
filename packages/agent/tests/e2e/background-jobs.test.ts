@@ -78,6 +78,9 @@ test("aborting a job_output wait leaves the background process alive for the nex
     },
   });
   await session.run("start");
+  expect(session.messages.find((message) => message.role === "toolResult")).toMatchObject({
+    view: { card: "generic", kind: "execute" },
+  });
   const pid = Number(await waitFile("pid"));
   const controller = new AbortController();
   const waiting = Promise.withResolvers<void>();
@@ -703,6 +706,9 @@ test("timeout promotion hands off newer output and job_kill terminates the conti
   ]);
   session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
   await session.run("start slow command");
+  expect(session.messages.find((message) => message.role === "toolResult")).toMatchObject({
+    view: { card: "generic", kind: "execute" },
+  });
   expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
     isError: false,
     details: { jobId: "bash-1" },

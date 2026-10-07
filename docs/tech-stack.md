@@ -12,19 +12,19 @@
 
 ## Agent
 
-| 用途                        | 选型                                                                        |
-| --------------------------- | --------------------------------------------------------------------------- |
-| 模型调用                    | @earendil-works/pi-ai 0.99.2                                                |
-| HTML → Markdown             | turndown 7.2.4 + @joplin/turndown-plugin-gfm 1.0.68                         |
-| HTML 内容过滤               | @mixmark-io/domino 2.2.0（复用 turndown 的 DOM，在 GFM 转换前删除隐藏子树） |
-| HTML 转换类型               | @types/turndown 5.0.6（仅 devDependency）                                   |
-| 公网 HTTP 请求              | undici 8.11.2                                                               |
-| Agent loop 和 harness       | @earendil-works/pi-agent-core 0.99.2                                        |
-| 文件外部修改的 unified diff | diff 8.0.4                                                                  |
-| glob 的 gitignore 匹配      | ignore 7.0.8                                                                |
-| grep 的内置二进制           | @vscode/ripgrep 1.18.0                                                      |
-| MCP                         | @earendil-works/pi-mcp 0.99.2                                               |
-| 支持的协议                  | Chat Completions、Responses、Anthropic Messages                             |
+| 用途                                        | 选型                                                                        |
+| ------------------------------------------- | --------------------------------------------------------------------------- |
+| 模型调用                                    | @earendil-works/pi-ai 0.99.2                                                |
+| HTML → Markdown                             | turndown 7.2.4 + @joplin/turndown-plugin-gfm 1.0.68                         |
+| HTML 内容过滤                               | @mixmark-io/domino 2.2.0（复用 turndown 的 DOM，在 GFM 转换前删除隐藏子树） |
+| HTML 转换类型                               | @types/turndown 5.0.6（仅 devDependency）                                   |
+| 公网 HTTP 请求                              | undici 8.11.2                                                               |
+| Agent loop 和 harness                       | @earendil-works/pi-agent-core 0.99.2                                        |
+| 文件外部修改与工具卡的 unified / split diff | diff 8.0.4                                                                  |
+| glob 的 gitignore 匹配                      | ignore 7.0.8                                                                |
+| grep 的内置二进制                           | @vscode/ripgrep 1.18.0                                                      |
+| MCP                                         | @earendil-works/pi-mcp 0.99.2                                               |
+| 支持的协议                                  | Chat Completions、Responses、Anthropic Messages                             |
 
 ## 服务端
 
@@ -71,6 +71,7 @@
 | 类型                                        | @types/react 19.3.0、@types/react-reconciler 0.33.1（目前发布的类型版本，覆盖 0.34.0 使用的接口） |
 | 假终端（仅 devDependency）                  | @xterm/headless 6.0.0                                                                             |
 | 假终端 Unicode（TUI app，仅 devDependency） | @xterm/addon-unicode11 0.9.0（月相 emoji 按 2 列解释）                                            |
+| 工具代码语法高亮                            | highlight.js 11.12.0（直接将 lexer 输出映射到主题 token，无 ANSI 桥接依赖）                       |
 | TUI Markdown                                | mdast-util-from-markdown 2.1.0（micromark 解析 CommonMark，自研终端 React 渲染）                  |
 | 布局                                        | dsh-TUI 的纯 TS Yoga，commit `646740f12c34546d6c195f5b7031be0dc67421a5`，拷入包内，不对外导出     |
 
