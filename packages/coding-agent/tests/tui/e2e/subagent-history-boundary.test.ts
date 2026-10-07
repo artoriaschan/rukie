@@ -148,7 +148,18 @@ test.each(["future", "past"] as const)(
         expect(app.screen().filter((line) => line.includes("✗ Read"))).toHaveLength(1);
       }
       child.finish();
-      await app.waitFor(() => app.screen().join("\n").includes("completed"));
+      // The event row briefly says "completed" before readSubagent supplies
+      // the committed Run Outcome. Synchronize on that permanent detail frame.
+      await app.waitFor(() => {
+        const screen = app.screen().join("\n");
+        return (
+          screen.includes("Run ended normally") &&
+          screen.includes(mode === "future" ? "2/3" : "3/3") &&
+          screen.includes(
+            mode === "future" ? "active current child marker" : "Read missing-current.txt",
+          )
+        );
+      });
       const restored = await createSession({
         cwd: app.root,
         homeDir: app.root,

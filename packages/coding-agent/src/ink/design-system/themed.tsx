@@ -35,7 +35,7 @@ export function ThemedText({ color, backgroundColor, bold, dim, ...props }: Them
     <ColorContext.Provider value={resolved}>
       <Text
         {...props}
-        {...(bold !== undefined ? { bold } : { dim: dim ?? false })}
+        {...(bold !== undefined ? { bold } : dim !== undefined ? { dim } : {})}
         color={resolved}
         backgroundColor={background}
       />

@@ -156,3 +156,33 @@ test("ThemeProvider supplies tokens and ThemedBox scopes colors without leaking 
     terminal.dispose();
   }
 });
+
+test("themed children inherit dim and an explicit false resets only its subtree", async () => {
+  const terminal = createTerminal(20, 2);
+  const app = render(
+    <ThemedText dim>
+      A<ThemedText>B</ThemedText>
+      <ThemedText dim={false}>
+        C<ThemedText>D</ThemedText>
+      </ThemedText>
+      <ThemedText>E</ThemedText>
+    </ThemedText>,
+    terminal,
+  );
+  try {
+    await terminal.flush();
+    const line = terminal.terminal.buffer.active.getLine(0)!;
+    expect(Array.from({ length: 5 }, (_, x) => Boolean(line.getCell(x)!.isDim()))).toEqual([
+      true,
+      true,
+      false,
+      false,
+      true,
+    ]);
+  } finally {
+    app.unmount();
+    await app.waitUntilExit();
+    app.cleanup();
+    terminal.dispose();
+  }
+});

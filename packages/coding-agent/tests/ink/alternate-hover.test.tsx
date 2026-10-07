@@ -1,12 +1,18 @@
 import { expect, spyOn, test } from "bun:test";
+import FakeTimers from "@sinonjs/fake-timers";
 import { useState } from "react";
 import { renderSync, AlternateScreen, Box, Text, useInput } from "../../src/ink/index.ts";
 import { createTerminal } from "../tui/helpers/terminal";
 
 test("alternate exit clears its hover after commit and preserves another root", async () => {
-  const a = createTerminal(20, 6);
-  const b = createTerminal(20, 6);
+  const clock = FakeTimers.install({
+    now: 1000,
+    toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+  });
+  const a = createTerminal(20, 6, (ms) => clock.tick(ms));
+  const b = createTerminal(20, 6, (ms) => clock.tick(ms));
   const errors: unknown[][] = [];
+  let frames = 0;
   const error = spyOn(console, "error").mockImplementation((...args) => {
     errors.push(args);
   });
@@ -37,6 +43,7 @@ test("alternate exit clears its hover after commit and preserves another root", 
   const options = { exitOnCtrlC: false, patchConsole: false, terminalImages: false };
   const first = renderSync(<Screen label="alpha" inline />, {
     ...options,
+    onFrame: () => frames++,
     stdin: a.stdin,
     stdout: a.stdout,
     stderr: a.stdout,
@@ -70,11 +77,20 @@ test("alternate exit clears its hover after commit and preserves another root", 
     expect(b.screen().join("\n")).toContain("beta:hover");
     a.stdin.write("a");
     await a.waitFor(() => a.terminal.buffer.active.type === "alternate");
+    const hoverFrame = frames;
     a.stdin.write("\x1b[<35;2;1M");
-    await a.waitFor(() => a.screen().join("\n").includes("alpha:hover"));
+    await a.waitFor(() => frames > hoverFrame && a.screen().join("\n").includes("alpha:hover"));
+    const previousFrame = frames;
     first.rerender(<Screen label="alpha" mode={false} />);
     first.rerender(<Screen label="alpha" mode={true} />);
-    await a.flush();
+    // Mode writes clear the buffer during commit; flush drains admitted I/O,
+    // while the replacement frame can still be waiting for its renderer tick.
+    await a.waitFor(
+      () =>
+        frames > previousFrame &&
+        a.terminal.buffer.active.type === "alternate" &&
+        a.screen().join("\n").includes("alpha:hover"),
+    );
     expect(a.terminal.buffer.active.type).toBe("alternate");
     expect(a.screen().join("\n")).toContain("alpha:hover");
     expect(errors.flat().some((value) => String(value).includes("useInsertionEffect"))).toBe(false);
@@ -89,5 +105,6 @@ test("alternate exit clears its hover after commit and preserves another root", 
     error.mockRestore();
     a.dispose();
     b.dispose();
+    clock.uninstall();
   }
 });

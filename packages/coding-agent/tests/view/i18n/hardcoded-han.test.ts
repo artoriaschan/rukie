@@ -43,7 +43,7 @@ test("hardcoded Han in TUI and Agent Core fails with every file and one-based li
   );
 });
 
-test("only the exact TUI dictionary and activity phrase pool may contain Han", async () => {
+test("the exact TUI dictionary and activity phrase pool may contain Han", async () => {
   const root = await sourceTree({
     "packages/coding-agent/src/view/i18n/locales.ts": 'export const zh = { ready: "准备好了" };\n',
     "packages/coding-agent/src/view/conversation/activity/phrases.ts":
@@ -73,7 +73,7 @@ test("new files beside dictionaries and phrase pools cannot bypass the scan", as
   );
 });
 
-// No existing Han comments need an exemption; comments deliberately fail too.
+// Product comments deliberately fail too; retained upstream comments have exact scoped exceptions.
 test("Han in line and block comments is rejected", async () => {
   const root = await sourceTree({
     "packages/coding-agent/src/tui/example.ts":
@@ -90,4 +90,20 @@ test("current TUI and Agent Core sources have no Han outside localized files", a
   await expect(
     assertNoHardcodedHan(join(import.meta.dir, "../../../../..")),
   ).resolves.toBeUndefined();
+});
+
+test("pinned upstream explanatory comments do not exempt new renderer or product copy", async () => {
+  const root = await sourceTree({
+    "packages/coding-agent/src/ink/screen.ts":
+      '// Scenario: [a, 💻, spacer] → [本, spacer, ORPHAN spacer] when\nexport const label = "新的文案";\n',
+    "packages/coding-agent/src/ink/design-system/themed.tsx": 'export const label = "中文";\n',
+    "packages/coding-agent/src/tui/example.ts":
+      "// Scenario: [a, 💻, spacer] → [本, spacer, ORPHAN spacer] when\n",
+  });
+  await expect(assertNoHardcodedHan(root)).rejects.toThrow(
+    "Hardcoded Han found (including comments):\n" +
+      "packages/coding-agent/src/tui/example.ts:1\n" +
+      "packages/coding-agent/src/ink/design-system/themed.tsx:1\n" +
+      "packages/coding-agent/src/ink/screen.ts:2",
+  );
 });
