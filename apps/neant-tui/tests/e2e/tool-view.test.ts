@@ -88,3 +88,50 @@ test("a four-line terminal body stays visible without a folding hint", async () 
     await app.cleanup();
   }
 });
+
+test("logical preview wraps Unicode content, ignores trailing newline and preserves status on hover", async () => {
+  const app = await start(["--yolo", "read wrapped"], {
+    columns: 40,
+    rows: 40,
+    env: { LANG: "en" },
+    prepare: (root) =>
+      Bun.write(join(root, "wrapped.txt"), `${"界".repeat(30)}END\nsecond\nthird\nfourth\n`).then(
+        () => {},
+      ),
+  });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("read", { path: "wrapped.txt" });
+    await app.waitFor(() => app.calls.length === 2);
+    app.calls[1]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    const screen = () => app.screen().join("\n");
+    expect(screen()).toContain("END");
+    expect(screen()).toContain("fourth");
+    expect(screen()).not.toContain("ctrl+o to expand");
+    const row = app.screen().findIndex((line) => line.includes("Read wrapped.txt"));
+    expect(row).toBeGreaterThanOrEqual(0);
+    app.stdin.write(`\x1b[<35;5;${row + 1}M`);
+    await app.waitFor(() => app.screen()[row]!.includes("▾"));
+    expect(app.screen()[row]).toMatch(/^• Read wrapped.txt.*▾/);
+    app.resize(60, 40);
+    await app.waitFor(() => app.screen().some((line) => line.includes("END")));
+    expect(app.screen().every((line) => Bun.stringWidth(line) <= 60)).toBe(true);
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("empty structured search falls back to its actual no-match result", async () => {
+  const app = await start(["--yolo", "search"], { env: { LANG: "en" } });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("grep", { pattern: "missing needle" });
+    await app.waitFor(() => app.calls.length === 2);
+    app.calls[1]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    expect(app.screen().join("\n")).toContain("No matches.");
+  } finally {
+    await app.cleanup();
+  }
+});

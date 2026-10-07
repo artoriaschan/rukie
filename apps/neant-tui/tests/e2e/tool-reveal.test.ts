@@ -19,7 +19,7 @@ test("pending edit call rows reveal in frames and completing the result snaps ev
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.tool("edit", { path: "code.txt", edits: [{ oldText, newText }] });
-    await app.waitFor(() => app.screen().some((row) => row.includes("Edit(")));
+    await app.waitFor(() => app.screen().some((row) => row.includes("Edit ")));
     expect(app.screen().join("\n")).not.toContain("+after-2");
     jest.advanceTimersByTime(32);
     await app.flush();
@@ -28,7 +28,7 @@ test("pending edit call rows reveal in frames and completing the result snaps ev
     await app.flush();
     jest.advanceTimersByTime(16);
     await app.flush();
-    expect(app.screen().filter((row) => /^⎿|^   [-+]/.test(row))).toHaveLength(3);
+    expect(app.screen().filter((row) => /^ ⎿|^   [-+]/.test(row))).toHaveLength(3);
     expect(app.screen().join("\n")).toContain("before-1");
     expect(app.screen().join("\n")).not.toContain("+after-2");
     permission.resolve("allow");
@@ -56,12 +56,12 @@ test.each(["card", "transcript"] as const)(
     try {
       await app.waitFor(() => app.calls.length === 1);
       app.calls[0]!.tool("edit", { path: "code.txt", edits: [{ oldText, newText }] });
-      await app.waitFor(() => app.screen().some((row) => row.includes("Edit(")));
+      await app.waitFor(() => app.screen().some((row) => row.includes("Edit ")));
       expect(app.screen().join("\n")).not.toContain("+after-2");
       const toggle = () => {
         if (mode === "transcript") app.stdin.write("\x0f");
         else {
-          const row = app.screen().findIndex((row) => row.includes("Edit(")) + 1;
+          const row = app.screen().findIndex((row) => row.includes("Edit ")) + 1;
           app.stdin.write(`\x1b[<0;5;${row}M\x1b[<0;5;${row}m`);
         }
       };
@@ -107,8 +107,8 @@ test("pending cards share a reveal phase across apps and a denied result appears
     await b.waitFor(() => b!.calls.length === 1);
     a.calls[0]!.tool("edit", { path: "code.txt", edits: [{ oldText, newText }] });
     b.calls[0]!.tool("edit", { path: "code.txt", edits: [{ oldText, newText }] });
-    await a.waitFor(() => a.screen().some((row) => row.includes("Edit(")));
-    await b.waitFor(() => b!.screen().some((row) => row.includes("Edit(")));
+    await a.waitFor(() => a.screen().some((row) => row.includes("Edit ")));
+    await b.waitFor(() => b!.screen().some((row) => row.includes("Edit ")));
     expect(a.screen().join("\n")).not.toContain("+after-2");
     expect(b.screen().join("\n")).not.toContain("+after-2");
     jest.advanceTimersByTime(34);
@@ -153,7 +153,7 @@ test("split pending rows reveal together and resize never restarts a caught-up c
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.tool("edit", { path: "code.txt", edits: [{ oldText, newText }] });
-    await app.waitFor(() => app.screen().some((row) => row.includes("Edit(")));
+    await app.waitFor(() => app.screen().some((row) => row.includes("Edit ")));
     expect(app.screen().join("\n")).not.toContain("+after-2");
     jest.advanceTimersByTime(34);
     await app.flush();

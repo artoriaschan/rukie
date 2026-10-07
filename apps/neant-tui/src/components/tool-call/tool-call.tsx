@@ -110,13 +110,14 @@ export function ToolCall({
     !(titleView?.card === "generic" && (titleView.title || (titleView.server && titleView.tool)));
   const commandLines = titleView?.card === "terminal" ? title.split(/\r?\n/) : undefined;
   const hiddenLines =
-    foldTerminalCommand && commandLines
+    foldTerminalCommand && !expanded && commandLines
       ? Math.max(0, commandLines.length - 1 - Number(title.endsWith("\n")))
       : 0;
   const titleOffset =
     searchLocation?.part === "header"
       ? Math.max(0, searchLocation.offset - (displayName?.length ?? 0) - 1)
       : undefined;
+  const firstCommandLine = commandLines?.findIndex((line) => line.trim()) ?? 0;
   const selectedLine =
     titleOffset !== undefined && commandLines
       ? title.slice(0, titleOffset).split(/\r?\n/).length - 1
@@ -125,7 +126,7 @@ export function ToolCall({
     titleOffset !== undefined && commandLines
       ? commandLines[selectedLine]!
       : hiddenLines
-        ? commandLines![0]!
+        ? commandLines![Math.max(0, firstCommandLine)]!
         : title;
   const titleStart =
     titleOffset !== undefined
@@ -136,10 +137,27 @@ export function ToolCall({
             : titleOffset) - 10,
         )
       : 0;
+  let hiddenChars = 0;
+  const terminalTitle = shownTitle
+    .slice(titleStart)
+    .split("\n")
+    .map((line) => {
+      if (titleView?.card !== "terminal" || expanded || line.length <= 1000) return line;
+      let end = 1000;
+      const lead = line.charCodeAt(end - 1);
+      const trail = line.charCodeAt(end);
+      if (lead >= 0xd800 && lead <= 0xdbff && trail >= 0xdc00 && trail <= 0xdfff) end--;
+      const count = line.length - end;
+      hiddenChars += count;
+      return `${line.slice(0, end)} ${t("tool.command-chars", { count })}`;
+    })
+    .join("\n");
   const clippedTitle =
-    titleView?.card === "terminal"
-      ? shownTitle.slice(titleStart)
-      : shownTitle.slice(titleStart, titleStart + 480);
+    titleView?.card === "terminal" ? terminalTitle : shownTitle.slice(titleStart, titleStart + 480);
+  const duration =
+    status !== "running" && name && startedAt !== undefined && endedAt !== undefined
+      ? ` · ${fmtDuration(Math.max(0, endedAt - startedAt), locale)}`
+      : "";
   const pathLeft =
     2 +
     Bun.stringWidth(displayName ?? "") +
@@ -149,7 +167,11 @@ export function ToolCall({
     path && pathOffset >= titleStart
       ? Math.max(
           0,
-          Math.min(Bun.stringWidth(path), columns - pathLeft, 480 - (pathOffset - titleStart)),
+          Math.min(
+            Bun.stringWidth(path),
+            columns - pathLeft - Bun.stringWidth(duration) - (hovered ? 2 : 0),
+            480 - (pathOffset - titleStart),
+          ),
         )
       : 0;
   const titleHint = hiddenLines
@@ -157,8 +179,13 @@ export function ToolCall({
     : shownTitle.length > clippedTitle.length
       ? "…"
       : "";
-  const header = displayName ? `${displayName}(${clippedTitle})${titleHint}` : summary;
-  const fullHeader = displayName ? `${displayName}(${title})` : summary;
+  const parenthesized = titleView?.card === "terminal" || jsonTitle;
+  const header = displayName
+    ? `${displayName}${parenthesized ? "(" : " "}${clippedTitle}${parenthesized ? ")" : ""}${titleHint}`
+    : summary;
+  const fullHeader = displayName
+    ? `${displayName}${parenthesized ? "(" : " "}${title}${parenthesized ? ")" : ""}`
+    : summary;
 
   const seconds = Math.max(0, Math.floor((Date.now() - (startedAt ?? Date.now())) / 1000));
   const terminal = resultView?.card === "terminal" ? resultView : undefined;
@@ -180,7 +207,7 @@ export function ToolCall({
   const lines =
     splitRows?.map((row) => ("text" in row ? row.text : "")) ??
     diffLines?.map((line) => line.text) ??
-    output?.split(/\r?\n/) ??
+    output?.trimEnd().split(/\r?\n/) ??
     [];
   const highlightedLines = useMemo(
     () =>
@@ -199,18 +226,16 @@ export function ToolCall({
   const visible = useSmoothReveal(
     id ?? fallbackId,
     Math.min(lines.length - windowStart, window),
-    status === "running" && !resultView && callView?.card === "diff" && !expanded && !replayed,
+    status === "running" && !resultView && !!callView && !expanded && !replayed && !error,
   );
   const shown = lines.slice(windowStart, windowStart + visible);
-  const duration =
-    status !== "running" && name && startedAt !== undefined && endedAt !== undefined
-      ? ` · ${fmtDuration(Math.max(0, endedAt - startedAt), locale)}`
-      : "";
   const titleHidden =
     titleStart > 0 ||
     hiddenLines > 0 ||
+    hiddenChars > 0 ||
     clippedTitle.length < shownTitle.length ||
-    header.split("\n").some((line) => Bun.stringWidth(`• ${line}${duration}`) > columns);
+    (titleView?.card !== "terminal" &&
+      header.split("\n").some((line) => Bun.stringWidth(`• ${line}${duration} ▾`) > columns));
   const metadata = [
     startedAt !== undefined
       ? t("tool.started-at", {
@@ -242,16 +267,16 @@ export function ToolCall({
         scrollAnchorId={id ? `tool-${id}-header` : undefined}
         content={titleHidden ? `${fullHeader}\n${metadata}` : undefined}
         disabled={imagesSuspended}
-        width={hitWidth(`• ${header}${duration}`)}
+        width={hitWidth(`• ${header}${duration}${hovered ? " ▾" : ""}`)}
         onClick={toggle}
       >
-        <ThemedText wrap="truncate">
-          <ThemedText color={outcomeUnknown ? "warning" : status === "error" ? "error" : color}>
-            {hovered
-              ? expanded
-                ? "▴"
-                : "▾"
-              : outcomeUnknown
+        <ThemedBox flexGrow={1}>
+          <ThemedBox width={2} flexShrink={0}>
+            <ThemedText
+              preserveWhitespace
+              color={outcomeUnknown ? "warning" : status === "error" ? "error" : color}
+            >
+              {outcomeUnknown
                 ? "?"
                 : status === "error"
                   ? "✗"
@@ -261,37 +286,51 @@ export function ToolCall({
                       : process.platform === "darwin"
                         ? "⏺"
                         : "●"
-                    : "•"}
-          </ThemedText>{" "}
-          <ThemedText bold color={color}>
-            {displayName ?? header}
-          </ThemedText>
-          {displayName && (
-            <ThemedText>
-              (
-              {jsonTitle ? (
-                <SyntaxHighlightedText text={clippedTitle} language="json" />
-              ) : path && pathOffset >= titleStart ? (
-                <>
-                  {title.slice(titleStart, pathOffset)}
-                  <ThemedText underline>
-                    {path.slice(0, 480 - (pathOffset - titleStart))}
-                  </ThemedText>
-                  {title.slice(pathOffset + path.length, titleStart + 480)}
-                </>
-              ) : (
-                clippedTitle
-              )}
-              )
+                    : "•"}{" "}
             </ThemedText>
-          )}
-          {titleHint}
+          </ThemedBox>
+          <ThemedBox flexGrow={1} flexShrink={1}>
+            <ThemedText wrap={titleView?.card === "terminal" ? "wrap" : "truncate"}>
+              <ThemedText bold color={color}>
+                {displayName ?? header}
+              </ThemedText>
+              {displayName && (
+                <ThemedText>
+                  {parenthesized ? "(" : " "}
+                  {jsonTitle ? (
+                    <SyntaxHighlightedText text={clippedTitle} language="json" />
+                  ) : path && pathOffset >= titleStart ? (
+                    <>
+                      {title.slice(titleStart, pathOffset)}
+                      <ThemedText underline>
+                        {path.slice(0, 480 - (pathOffset - titleStart))}
+                      </ThemedText>
+                      {title.slice(pathOffset + path.length, titleStart + 480)}
+                    </>
+                  ) : (
+                    clippedTitle
+                  )}
+                  {parenthesized ? ")" : ""}
+                </ThemedText>
+              )}
+              {titleHint}
+            </ThemedText>
+          </ThemedBox>
           {status !== "running" && name && startedAt !== undefined && endedAt !== undefined && (
-            <ThemedText
-              dimColor={!hovered}
-            >{` · ${fmtDuration(Math.max(0, endedAt - startedAt), locale)}`}</ThemedText>
+            <ThemedBox width={Bun.stringWidth(duration)} flexShrink={0}>
+              <ThemedText preserveWhitespace dimColor={!hovered}>
+                {duration}
+              </ThemedText>
+            </ThemedBox>
           )}
-        </ThemedText>
+          {hovered && (
+            <ThemedBox width={2} flexShrink={0}>
+              <ThemedText preserveWhitespace dimColor>
+                {expanded ? " ▴" : " ▾"}
+              </ThemedText>
+            </ThemedBox>
+          )}
+        </ThemedBox>
         {onPathClick && path && pathWidth > 0 && (
           <ThemedBox
             position="absolute"
@@ -307,7 +346,7 @@ export function ToolCall({
         <ThemedBox flexDirection="column" color={status === "error" ? "error" : "text"}>
           {splitRows ? (
             <ThemedBox>
-              <ThemedText preserveWhitespace>{`${figures.result} `}</ThemedText>
+              <ThemedText preserveWhitespace>{` ${figures.result} `}</ThemedText>
               <SplitDiffView
                 rows={splitRows.slice(windowStart, windowStart + visible).map((row, index) => ({
                   ...row,
@@ -320,7 +359,7 @@ export function ToolCall({
             </ThemedBox>
           ) : resultView?.card === "web" && status !== "error" ? (
             <ThemedBox>
-              <ThemedText>{`${figures.result} `}</ThemedText>
+              <ThemedText dimColor>{` ${figures.result} `}</ThemedText>
               <ThemedBox
                 scrollAnchorId={id ? `tool-${id}-body` : undefined}
                 flexDirection="column"
@@ -337,45 +376,46 @@ export function ToolCall({
               <ThemedBox
                 scrollAnchorId={id ? `tool-${id}-line-${windowStart + index}` : undefined}
                 key={windowStart + index}
-                width={hitWidth(
-                  `${index === 0 ? `${figures.result} ` : name ? "   " : "  "}${line.trimEnd()}`,
-                )}
-                onClick={line.trim() || index === 0 ? toggle : undefined}
+                width={hitWidth(`   ${line.trimEnd()}`)}
+                onClick={line.trim() ? toggle : undefined}
               >
-                <ThemedText
-                  color={
-                    diffLines?.[windowStart + index]?.tone === "add"
-                      ? "success"
-                      : diffLines?.[windowStart + index]?.tone === "del"
-                        ? "error"
-                        : diffLines?.[windowStart + index]?.tone === "dim"
-                          ? "subtle"
-                          : undefined
-                  }
-                  wrap="truncate"
-                >
-                  {index === 0 ? `${figures.result} ` : name ? "   " : "  "}
-                  {diffLines?.[windowStart + index]?.runs ? (
-                    <SyntaxHighlightedText runs={diffLines[windowStart + index]!.runs} />
-                  ) : highlightedLines ? (
-                    <SyntaxHighlightedText runs={highlightedLines[windowStart + index]} />
-                  ) : (
-                    <ThemedText underline={diffLines?.[windowStart + index]?.tone === "path"}>
-                      {line}
-                    </ThemedText>
-                  )}
-                </ThemedText>
+                <ThemedBox width={3} flexShrink={0}>
+                  <ThemedText dimColor preserveWhitespace>
+                    {index === 0 ? ` ${figures.result} ` : "   "}
+                  </ThemedText>
+                </ThemedBox>
+                <ThemedBox flexGrow={1} flexShrink={1}>
+                  <ThemedText
+                    color={
+                      diffLines?.[windowStart + index]?.tone === "add"
+                        ? "success"
+                        : diffLines?.[windowStart + index]?.tone === "del"
+                          ? "error"
+                          : diffLines?.[windowStart + index]?.tone === "dim"
+                            ? "subtle"
+                            : undefined
+                    }
+                    wrap="wrap"
+                  >
+                    {diffLines?.[windowStart + index]?.runs ? (
+                      <SyntaxHighlightedText runs={diffLines[windowStart + index]!.runs} />
+                    ) : highlightedLines ? (
+                      <SyntaxHighlightedText runs={highlightedLines[windowStart + index]} />
+                    ) : (
+                      <ThemedText underline={diffLines?.[windowStart + index]?.tone === "path"}>
+                        {line}
+                      </ThemedText>
+                    )}
+                  </ThemedText>
+                </ThemedBox>
                 {onPathClick &&
                   diffLines?.[windowStart + index]?.tone === "path" &&
                   diffLines[windowStart + index]!.path && (
                     <ThemedBox
                       position="absolute"
-                      left={index === 0 ? 2 : name ? 3 : 2}
+                      left={3}
                       top={0}
-                      width={Math.max(
-                        0,
-                        Math.min(columns - (index === 0 ? 2 : name ? 3 : 2), Bun.stringWidth(line)),
-                      )}
+                      width={Math.max(0, Math.min(columns - 3, Bun.stringWidth(line)))}
                       height={1}
                       onClick={() => onPathClick(diffLines[windowStart + index]!.path!)}
                     />
@@ -419,7 +459,7 @@ export function ToolCall({
         </ThemedBox>
       )}
       <ThemedBox scrollAnchorId={id ? `tool-${id}-verdict` : undefined} flexDirection="column">
-        {terminal?.exitCode !== undefined && (
+        {terminal?.exitCode !== undefined && terminal.exitCode !== 0 && (
           <ThemedText
             color={terminal.exitCode ? "error" : "subtle"}
           >{`   ${t("tool.exit-code", { code: terminal.exitCode })}`}</ThemedText>

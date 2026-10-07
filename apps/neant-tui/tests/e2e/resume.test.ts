@@ -48,7 +48,7 @@ test("resume replays stored text before input and appends the next Run to the sa
     expect(restored).toBeGreaterThan(metadata);
     expect(lines.slice(restored, restored + 3)).toEqual([
       "❯ stored prompt 中",
-      `${assistant} **stored reply** 中`,
+      `${assistant} stored reply 中`,
       "  second line",
     ]);
     const promptCell = app.terminal.buffer.active.getLine(restored)!.getCell(2)!;
@@ -91,9 +91,9 @@ test("resume replays stored text before input and appends the next Run to the sa
           .length === 12 && !app.isWorking(),
     );
     expect(app.allLines().filter((line) => line === "❯ stored prompt 中")).toHaveLength(1);
-    expect(
-      app.allLines().filter((line) => line === `${assistant} **stored reply** 中`),
-    ).toHaveLength(1);
+    expect(app.allLines().filter((line) => line === `${assistant} stored reply 中`)).toHaveLength(
+      1,
+    );
     expect(app.terminal.buffer.active.baseY).toBe(0);
     app.stdin.write("\x1b[5~");
     await app.waitFor(() => app.screen()[3]?.slice(42) === logoTop);
@@ -178,12 +178,12 @@ test("resume replays each tool's collapsed result and error preview without remi
       "▾ 思考",
       `${assistant} before tools`,
     ]);
-    expect(lines.filter((line) => line.startsWith("• 读取(first.txt)"))).toHaveLength(1);
-    expect(lines.filter((line) => line.startsWith("• 读取(second.txt)"))).toHaveLength(1);
+    expect(lines.filter((line) => line.startsWith("• 读取 first.txt"))).toHaveLength(1);
+    expect(lines.filter((line) => line.startsWith("• 读取 second.txt"))).toHaveLength(1);
     expect(lines.filter((line) => line.startsWith("✗ 执行("))).toHaveLength(1);
-    expect(lines).toContain("⎿ first failure");
-    expect(lines).toContain("⎿ hidden first output");
-    expect(lines).toContain("⎿ hidden second output");
+    expect(lines).toContain(" ⎿ first failure");
+    expect(lines).toContain(" ⎿ hidden first output");
+    expect(lines).toContain(" ⎿ hidden second output");
     expect(lines).toContain("   second failure");
     expect(lines).toContain("   third failure");
     expect(lines.indexOf(`${assistant} after tools`)).toBeGreaterThan(
@@ -205,7 +205,7 @@ test("resume replays each tool's collapsed result and error preview without remi
     app.calls[0]!.delta("next reply");
     app.calls[0]!.finish();
     await app.waitFor(() => app.allLines().includes(`${assistant} next reply`) && !app.isWorking());
-    expect(app.allLines().filter((line) => line.startsWith("• 读取("))).toHaveLength(2);
+    expect(app.allLines().filter((line) => line.startsWith("• 读取 "))).toHaveLength(2);
     expect(app.allLines().filter((line) => line.startsWith("✗ 执行("))).toHaveLength(1);
     expect(app.stderr()).toBe("");
   } finally {
