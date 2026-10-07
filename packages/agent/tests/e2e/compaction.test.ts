@@ -274,7 +274,7 @@ test("native Compaction is appended without deleting historical evidence and col
   const before = await nativeJournal();
   const previousTranscript = structuredClone(session.messages);
   await session.compact();
-  expect(session.messages.slice(0, previousTranscript.length)).toEqual(previousTranscript);
+  expect(session.messages.slice(0, previousTranscript.length)).toEqual([...previousTranscript]);
   const divider = session.messages.findIndex(
     (message) => message.role === "session-notice" && message.notice.kind === "compaction",
   );
