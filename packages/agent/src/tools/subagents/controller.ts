@@ -238,8 +238,30 @@ export function createSubagentController(options: SubagentControllerOptions) {
         const answer =
           receipt.type === "input" && receipt.status === "done"
             ? view.entries.find((entry) => entry.id === receipt.answer)
-            : undefined;
+            : view.entries.findLast(
+                (entry) =>
+                  entry.id >= (childRow(task.id).latestRun?.promptEntryId ?? Infinity) &&
+                  entry.model?.some((message) => message.role === "assistant"),
+              );
         const message = answer?.model?.find((message) => message.role === "assistant");
+        const outcome =
+          message?.stopReason === "length"
+            ? "length"
+            : message?.stopReason === "aborted" ||
+                (receipt.status === "unanswered" && receipt.reason === "aborted")
+              ? "aborted"
+              : receipt.status === "done" && message?.stopReason !== "error"
+                ? "completed"
+                : "error";
+        const error =
+          outcome === "completed"
+            ? undefined
+            : (message?.errorMessage ??
+              (outcome === "length"
+                ? "Model response reached its token limit"
+                : receipt.status === "unanswered"
+                  ? receipt.reason
+                  : outcome));
         const usageState = await runtime.snapshot(UsageDoc, childId, context);
         const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 };
         for (const entry of Object.values(usageState?.models ?? {})) {
@@ -255,11 +277,11 @@ export function createSubagentController(options: SubagentControllerOptions) {
             message?.content
               .flatMap((block) => (block.type === "text" ? [block.text] : []))
               .join("") ?? "",
-          success: receipt.status === "done",
+          success: outcome === "completed",
           usage,
           endedAt,
           durationMs: Math.max(0, endedAt - task.input.startedAt),
-          ...(receipt.status === "unanswered" ? { error: receipt.reason } : {}),
+          ...(error ? { error } : {}),
         };
         await runtime.commit(async (tx) => {
           const doc = await tx.doc(state.document, parent.id);
@@ -279,11 +301,7 @@ export function createSubagentController(options: SubagentControllerOptions) {
             endedAt,
             durationMs: result.durationMs,
             tokens: usage.totalTokens,
-            outcome: result.success
-              ? "completed"
-              : result.error === "aborted"
-                ? "aborted"
-                : "error",
+            outcome,
             ...(result.error ? { error: result.error } : {}),
           };
           doc.value = current;
