@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { stat, readFile, access, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { createFauxCore, fauxAssistantMessage } from "@earendil-works/pi-ai";
@@ -6,6 +6,8 @@ import { createSession } from "@rukie/agent";
 import { withAuxiliaryRequests } from "../helpers/auxiliary-model";
 import { dark } from "../../../src/ink/index.ts";
 import { start } from "../helpers/app";
+import { startWithClock } from "../helpers/clock-app";
+import { testClock } from "../helpers/test-clock";
 
 const png =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jV2UAAAAASUVORK5CYII=";
@@ -567,12 +569,29 @@ test.each(["zh_CN.UTF-8", "en_US.UTF-8"])(
 );
 
 test("an image notice remains visible while reading history without moving the reading position", async () => {
-  const app = await start(["long output"], {
+  let advance = true;
+  const app = await startWithClock(["long output"], {
     env: { LANG: "en_US.UTF-8" },
+    advanceTimers: (ms) => {
+      if (advance) testClock.advanceTimersByTime(ms);
+    },
     prepare: async (root) => {
       await Bun.write(`${root}/shot.png`, Buffer.from(png, "base64"));
     },
   });
+  let expiresAt = 0;
+  let expired = false;
+  const nativeTimeout = globalThis.setTimeout;
+  const trackedTimeout = Object.assign((...parameters: Parameters<typeof setTimeout>) => {
+    const [handler, delay, ...args] = parameters;
+    if (delay !== 2500) return nativeTimeout(handler, delay, ...args);
+    expiresAt = Date.now() + delay;
+    return nativeTimeout(() => {
+      expired = true;
+      handler(...args);
+    }, delay);
+  }, nativeTimeout);
+  const timer = spyOn(globalThis, "setTimeout").mockImplementation(trackedTimeout);
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.delta(
@@ -591,12 +610,18 @@ test("an image notice remains visible while reading history without moving the r
     await app.waitFor(() => app.screen().some((line) => line.includes("Pasted image [Image #1]")));
     expect(app.screen().slice(0, 5)).toEqual(before);
     expect(app.screen().join("\n")).toContain("❯ [Image #1]");
-    await app.waitFor(
-      () => !app.screen().some((line) => line.includes("Pasted image [Image #1]")),
-      3500,
-    );
+    advance = false;
+    testClock.advanceTimersByTime(expiresAt - Date.now() - 1);
+    expect(expired).toBe(false);
+    expect(app.screen().join("\n")).toContain("Pasted image [Image #1]");
+    testClock.advanceTimersByTime(1);
+    expect(expired).toBe(true);
+    // Timer expiry is exact; completing the resulting terminal paint advances renderer frames.
+    advance = true;
+    await app.waitFor(() => !app.screen().some((line) => line.includes("Pasted image [Image #1]")));
     expect(app.screen().slice(0, 5)).toEqual(before);
   } finally {
+    timer.mockRestore();
     await app.cleanup();
   }
 });

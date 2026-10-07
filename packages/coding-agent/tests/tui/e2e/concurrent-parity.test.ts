@@ -166,7 +166,6 @@ test("mixed parent, two Jobs and two Subagents preserve reading, copy and Intera
         app.screen().every((line) => Bun.stringWidth(line) <= 40) &&
         app.screen().some((line) => /^╭─{38}╮$/u.test(line)) &&
         app.screen().at(-2)?.includes("Full access") === true,
-      10,
     );
     app.resize(80, 60);
     await waitFor(
@@ -175,11 +174,10 @@ test("mixed parent, two Jobs and two Subagents preserve reading, copy and Intera
         screen().includes("New output") &&
         app.screen().some((line) => /^╭─{78}╮$/u.test(line)) &&
         app.screen().at(-2)?.includes("Full access") === true,
-      10,
     );
     expect(app.screen().slice(1, 6)).toEqual(reading);
     app.stdin.write("\x1b[1;5F");
-    await waitFor(() => screen().includes("mixed-63") && !screen().includes("Back to bottom"), 10);
+    await waitFor(() => screen().includes("mixed-63") && !screen().includes("Back to bottom"));
     const replacedRow = app.screen().findIndex((line) => line.includes("mixed-32"));
     const replacedX = app.screen()[replacedRow]!.indexOf("mixed-32");
     startDrag(replacedX, replacedRow, replacedX + 7);
@@ -192,18 +190,16 @@ test("mixed parent, two Jobs and two Subagents preserve reading, copy and Intera
         "\nFINAL MIXED RESULT",
     );
     completed.add(parent);
-    await waitFor(() => screen().includes("FINAL MIXED RESULT"), 10);
+    await waitFor(() => screen().includes("FINAL MIXED RESULT"));
     release(replacedX + 7, replacedRow);
-    await waitFor(() => screen().includes("Selected content changed"), 10);
+    await waitFor(() => screen().includes("Selected content changed"));
     expect(copied).toEqual(["选取 🐋 anchor"]);
     expect(screen()).not.toContain("mixed-63");
     await waitFor(() => roots().some((call) => !completed.has(call)));
     const request = roots().find((call) => !completed.has(call))!;
     app.stdin.write("\x1b[5~");
-    await waitFor(
-      () =>
-        app.screen().some((line) => line.includes("Subagent: Mixed child B") && line.includes("⤢")),
-      10,
+    await waitFor(() =>
+      app.screen().some((line) => line.includes("Subagent: Mixed child B") && line.includes("⤢")),
     );
     const childRow = app.screen().findIndex((line) => line.includes("Subagent: Mixed child B"));
     click(app.screen()[childRow]!.indexOf("⤢"), childRow);
