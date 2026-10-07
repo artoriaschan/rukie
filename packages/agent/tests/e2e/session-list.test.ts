@@ -4,14 +4,65 @@ import {
   fauxAssistantMessage,
   fauxToolCall,
 } from "@earendil-works/pi-ai";
-import { MemorySessionRepo } from "@earendil-works/pi-agent-core/harness/session";
-import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
+import { MemoryStorage, createSession as createNativeSession } from "@earendil-works/pi-durable";
+import { SessionMetadataDoc } from "../../src/store/index.ts";
+import type { SessionStore, SessionSummary } from "../../src/index.ts";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { appendFile, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { createJsonlStore, createSession, listSessions } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
+import {
+  withAuxiliaryRequests,
+  withModelStream,
+  withModelAlias,
+} from "../helpers/auxiliary-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
+
+function memoryStore(): SessionStore & { close(): Promise<void> } {
+  const storages = new Map<string, MemoryStorage>();
+  const root = crypto.randomUUID();
+  const retained = (storage: MemoryStorage) =>
+    new Proxy(storage, {
+      get(target, key) {
+        if (key === "close") return async () => {};
+        const value = Reflect.get(target, key);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+  return {
+    async close() {
+      await Promise.all([...storages.values()].map((storage) => storage.close(BACKGROUND_CONTEXT)));
+    },
+    key: (id) => `${root}:${id}`,
+    async open({ id = crypto.randomUUID() }) {
+      const storage = storages.get(id) ?? new MemoryStorage();
+      storages.set(id, storage);
+      // The test backend owns the retained in-memory store across host leases.
+      return {
+        id,
+        storage: retained(storage),
+        release: async () => {},
+      };
+    },
+    async list(context) {
+      const results: SessionSummary[] = [];
+      for (const storage of storages.values()) {
+        const native = createNativeSession(retained(storage));
+        try {
+          const metadata = await native.snapshot(SessionMetadataDoc, context);
+          if (metadata) {
+            const { id, title, titleSource, model, updatedAt, messageCount } = metadata;
+            results.push({ id, title, titleSource, model, updatedAt, messageCount });
+          }
+        } finally {
+          await native.close(BACKGROUND_CONTEXT);
+        }
+      }
+      return results.sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
+    },
+  };
+}
 
 test("lists the current project's named sessions by native modification time", async () => {
   const dirs = await tempDirs();
@@ -26,8 +77,8 @@ test("lists the current project's named sessions by native modification time", a
     await first.run("First prompt");
     await second.rename("Latest session");
     await second.run("Second prompt");
-    await first.dispose();
-    await second.dispose();
+    await first.close();
+    await second.close();
     const sessions = await listSessions(dirs);
     expect(sessions.map(({ id }) => id)).toEqual([second.id, first.id]);
     expect(sessions[0]).toMatchObject({
@@ -48,8 +99,8 @@ test("lists the current project's named sessions by native modification time", a
     expect(sessions[0]!.updatedAt).toBeGreaterThanOrEqual(sessions[1]!.updatedAt);
     expect(await listSessions({ ...dirs, cwd: dirs.homeDir })).toEqual([]);
   } finally {
-    await first.dispose();
-    await second.dispose();
+    await first.close();
+    await second.close();
     await dirs.cleanup();
   }
 });
@@ -65,10 +116,8 @@ test("listing refuses storage repair and keeps torn transcript bytes unchanged",
   try {
     await session.rename("Read-only history");
     await session.run("Keep this history");
-    await session.dispose();
-    const metadata = (await store.list({ cwd: dirs.cwd }, BACKGROUND_CONTEXT))[0]!;
-    const path = Reflect.get(metadata, "path");
-    if (typeof path !== "string") throw new Error("Native Session path missing.");
+    await session.close();
+    const path = join(store.key(session.id), "main.jsonl");
     await appendFile(path, '{"torn":');
     const before = await Bun.file(path).bytes();
     await expect(listSessions({ ...dirs, store })).rejects.toMatchObject({
@@ -77,7 +126,7 @@ test("listing refuses storage repair and keeps torn transcript bytes unchanged",
     });
     expect(await Bun.file(path).bytes()).toEqual(before);
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });
@@ -109,12 +158,17 @@ test("stored model selection wins over the last answer and delegated children ar
       },
     ],
   };
-  const session = await createSession({ ...dirs, ...fake, settings });
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    settings,
+    models: withModelAlias(fake.models, "list-test", ["selected"]),
+  });
   try {
     await session.rename("Parent");
     await session.run("Delegate inspection");
     await session.setModel("list-test/selected");
-    await session.dispose();
+    await session.close();
     expect(await listSessions(dirs)).toEqual([
       expect.objectContaining({
         id: session.id,
@@ -124,46 +178,44 @@ test("stored model selection wins over the last answer and delegated children ar
       }),
     ]);
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
     if (previous === undefined) delete process.env.RUKIE_LIST_KEY;
     else process.env.RUKIE_LIST_KEY = previous;
   }
 });
 
-test("a generic store uses entry timestamps without JSONL-only metadata", async () => {
+test("a MemoryStorage backend lists committed Session metadata without JSONL paths", async () => {
   const dirs = await tempDirs();
-  let now = 1000;
-  const store = new MemorySessionRepo({ now: () => now });
+  const before = Date.now();
+  const store = memoryStore();
   const fake = fakeModel([fauxAssistantMessage("Done")]);
   const first = await createSession({ ...dirs, ...fake, store });
   try {
     await first.rename("First");
-    now = 2000;
     const latest = await createSession({ ...dirs, ...fake, store });
     await latest.run("Recent work");
     await latest.rename("Latest");
-    await latest.dispose();
-    const sessions = await listSessions({
-      ...dirs,
-      store,
-      settings: { model: "configured/default" },
-    });
+    await latest.close();
+    await first.close();
+    const sessions = await listSessions({ ...dirs, store });
     expect(sessions.map(({ id }) => id)).toEqual([latest.id, first.id]);
     expect(sessions[0]).toMatchObject({
       title: "Latest",
-      updatedAt: 2000,
       messageCount: 6,
       model: "faux/faux-1",
     });
+    expect(sessions[0]!.updatedAt).toBeGreaterThanOrEqual(sessions[1]!.updatedAt);
+    expect(sessions[1]!.updatedAt).toBeGreaterThanOrEqual(before);
+    expect(sessions[0]!.updatedAt).toBeLessThanOrEqual(Date.now());
     expect(sessions[1]).toMatchObject({
       title: "First",
-      updatedAt: 1000,
       messageCount: 0,
-      model: "configured/default",
+      model: "faux/faux-1",
     });
   } finally {
-    await first.dispose();
+    await first.close();
+    await store.close();
     await dirs.cleanup();
   }
 });
@@ -175,33 +227,29 @@ test("session creation and listing use the same resolved spelling of a symlink c
   const session = await createSession({ ...dirs, cwd: alias, ...fakeModel([]) });
   try {
     await session.rename("Linked project");
-    await session.dispose();
+    await session.close();
     expect((await listSessions({ ...dirs, cwd: join(alias, ".") })).map(({ id }) => id)).toEqual([
       session.id,
     ]);
     expect(await listSessions(dirs)).toEqual([]);
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });
 
-test("legacy child metadata is omitted even when it has no parent session id", async () => {
+test("listing excludes the old session directory and rejects old ids without changing its bytes", async () => {
   const dirs = await tempDirs();
-  const session = await createSession({ ...dirs, ...fakeModel([]) });
+  const path = join(dirs.homeDir, ".rukie", "sessions", "old-id.jsonl");
+  const legacy = '{"type":"session","id":"old-id","cwd":"old"}\n';
   try {
-    await session.rename("Legacy child");
-    await session.dispose();
-    const metadata = (await createJsonlStore(dirs).list({ cwd: dirs.cwd }, BACKGROUND_CONTEXT))[0]!;
-    if (!("path" in metadata) || typeof metadata.path !== "string")
-      throw new Error("Expected native JSONL path");
-    const lines = (await Bun.file(metadata.path).text()).split("\n");
-    const header: Record<string, unknown> = JSON.parse(lines[0]!);
-    lines[0] = JSON.stringify({ ...header, legacyParentSessionPath: "/old/parent.jsonl" });
-    await Bun.write(metadata.path, lines.join("\n"));
+    await Bun.write(path, legacy);
     expect(await listSessions(dirs)).toEqual([]);
+    await expect(
+      createSession({ ...dirs, ...fakeModel([]), resumeId: "old-id" }),
+    ).rejects.toMatchObject({ code: "session-not-found", params: { id: "old-id" } });
+    expect(await Bun.file(path).text()).toBe(legacy);
   } finally {
-    await session.dispose();
     await dirs.cleanup();
   }
 });
@@ -212,16 +260,20 @@ test("listing borrows the live Session's native store while its Run and title ge
   const primary = createAssistantMessageEventStream();
   const title = createAssistantMessageEventStream();
   const started = Promise.withResolvers<void>();
+  const fake = fakeModel([]);
   const session = await createSession({
     ...dirs,
     store,
-    model: fakeModel([]).model,
-    streamFn: withAuxiliaryRequests(
-      () => {
-        started.resolve();
-        return primary;
-      },
-      { titles: () => title },
+    model: fake.model,
+    models: withModelStream(
+      fake.models,
+      withAuxiliaryRequests(
+        () => {
+          started.resolve();
+          return primary;
+        },
+        { titles: () => title },
+      ),
     ),
   });
   let run: Promise<unknown> | undefined;
@@ -233,7 +285,7 @@ test("listing borrows the live Session's native store while its Run and title ge
         id: session.id,
         title: "Pending work",
         titleSource: "prompt",
-        model: "",
+        model: `${fake.model.provider}/${fake.model.id}`,
       }),
     ]);
     await session.rename("A fixed title");
@@ -243,7 +295,10 @@ test("listing borrows the live Session's native store while its Run and title ge
     primary.push({ type: "done", reason: "stop", message: response });
     primary.end(response);
     await run;
-    await session.dispose();
+    const generatedTitle = fauxAssistantMessage("Generated title");
+    title.push({ type: "done", reason: "stop", message: generatedTitle });
+    title.end(generatedTitle);
+    await session.close();
     await dirs.cleanup();
   }
 });
