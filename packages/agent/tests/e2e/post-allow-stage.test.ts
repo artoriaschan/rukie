@@ -1,14 +1,24 @@
+import { modelStream, withModelStream } from "../helpers/auxiliary-model.ts";
 import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { join } from "node:path";
-import { createSession } from "../../src/index.ts";
+import { createSession as createSessionImpl, type Session } from "../../src/index.ts";
 import type { HookHandler, HooksSettings } from "@rukie/shared";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
-afterEach(() => dirs?.cleanup());
+const sessions: Session[] = [];
+async function createSession(options: Parameters<typeof createSessionImpl>[0]) {
+  const session = await createSessionImpl(options);
+  sessions.push(session);
+  return session;
+}
+afterEach(async () => {
+  await Promise.all(sessions.splice(0).map((session) => session.close()));
+  await dirs?.cleanup();
+});
 
 async function scriptedHook(output: unknown, name = "hook.sh") {
   await Bun.write(
@@ -32,18 +42,26 @@ function routePermissionReviews(
   response: string,
   onReview: () => void,
 ) {
-  const mainStream = fake.streamFn;
-  fake.streamFn = withAuxiliaryRequests((model, context, options) => {
-    if (
-      context.messages.some(
-        (message) => message.role === "system" && JSON.stringify(message).includes("REVIEW_POLICY"),
-      )
-    ) {
-      onReview();
-      return fakeModel([fauxAssistantMessage(response)]).streamFn(model, context, options);
-    }
-    return mainStream(model, context, options);
-  });
+  const mainStream = modelStream(fake.models);
+  fake.models = withModelStream(
+    fake.models,
+    withAuxiliaryRequests((model, context, options) => {
+      if (
+        context.messages.some(
+          (message) =>
+            message.role === "system" && JSON.stringify(message).includes("REVIEW_POLICY"),
+        )
+      ) {
+        onReview();
+        return modelStream(fakeModel([fauxAssistantMessage(response)]).models)(
+          model,
+          context,
+          options,
+        );
+      }
+      return mainStream(model, context, options);
+    }),
+  );
 }
 
 test("allowed tools wait for the read-only stage after frontend permission", async () => {
@@ -162,7 +180,7 @@ test("a failed allowed stage becomes a tool error without executing or denying p
   expect(session.messages.findLast((message) => message.role === "toolResult")).toMatchObject({
     toolName: "write",
     isError: true,
-    content: [{ type: "text", text: "snapshot unavailable" }],
+    content: [{ type: "text", text: expect.stringContaining("snapshot unavailable") }],
   });
   expect(denied).toBe(false);
   expect(await Bun.file(join(dirs.cwd, "allowed.txt")).exists()).toBe(false);

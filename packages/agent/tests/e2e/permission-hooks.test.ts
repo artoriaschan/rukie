@@ -1,14 +1,28 @@
+import { modelStream, withModelStream } from "../helpers/auxiliary-model.ts";
 import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { join } from "node:path";
-import { createSession, type SessionEvent } from "../../src/index.ts";
+import {
+  createSession as createSessionImpl,
+  type Session,
+  type SessionEvent,
+} from "../../src/index.ts";
 import type { HookEvent, HookHandler } from "@rukie/shared";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
-afterEach(() => dirs?.cleanup());
+const sessions: Session[] = [];
+async function createSession(options: Parameters<typeof createSessionImpl>[0]) {
+  const session = await createSessionImpl(options);
+  sessions.push(session);
+  return session;
+}
+afterEach(async () => {
+  await Promise.all(sessions.splice(0).map((session) => session.close()));
+  await dirs?.cleanup();
+});
 
 async function script(event: HookEvent, output: unknown, exitCode = 0): Promise<HookHandler> {
   const name = `${event}.sh`;
@@ -261,15 +275,16 @@ test.each(["rule", "hook", "mode", "review"] as const)(
     const pre = await script("PreToolUse", { hookSpecificOutput: { permissionDecision: "ask" } });
     const fake = toolModel();
     if (source === "review") {
-      const main = fake.streamFn;
-      fake.streamFn = withAuxiliaryRequests((model, context, options) =>
-        JSON.stringify(context).includes("REVIEW_POLICY")
-          ? fakeModel([fauxAssistantMessage('{"risk":"high","decision":"deny"}')]).streamFn(
-              model,
-              context,
-              options,
-            )
-          : main(model, context, options),
+      const main = modelStream(fake.models);
+      fake.models = withModelStream(
+        fake.models,
+        withAuxiliaryRequests((model, context, options) =>
+          JSON.stringify(context).includes("REVIEW_POLICY")
+            ? modelStream(
+                fakeModel([fauxAssistantMessage('{"risk":"high","decision":"deny"}')]).models,
+              )(model, context, options)
+            : main(model, context, options),
+        ),
       );
     }
     let asks = 0;
@@ -351,15 +366,16 @@ test.each(["rule", "hook", "user", "review"] as const)(
     });
     const fake = toolModel();
     if (by === "review") {
-      const main = fake.streamFn;
-      fake.streamFn = withAuxiliaryRequests((model, context, options) =>
-        JSON.stringify(context).includes("REVIEW_POLICY")
-          ? fakeModel([fauxAssistantMessage('{"risk":"high","decision":"deny"}')]).streamFn(
-              model,
-              context,
-              options,
-            )
-          : main(model, context, options),
+      const main = modelStream(fake.models);
+      fake.models = withModelStream(
+        fake.models,
+        withAuxiliaryRequests((model, context, options) =>
+          JSON.stringify(context).includes("REVIEW_POLICY")
+            ? modelStream(
+                fakeModel([fauxAssistantMessage('{"risk":"high","decision":"deny"}')]).models,
+              )(model, context, options)
+            : main(model, context, options),
+        ),
       );
     }
     const session = await createSession({
@@ -467,15 +483,16 @@ test("PermissionDenied exit 2 ignores JSON retry after review denial", async () 
   dirs = await tempDirs();
   const handler = await script("PermissionDenied", { hookSpecificOutput: { retry: true } }, 2);
   const fake = toolModel();
-  const main = fake.streamFn;
-  fake.streamFn = withAuxiliaryRequests((model, context, options) =>
-    JSON.stringify(context).includes("REVIEW_POLICY")
-      ? fakeModel([fauxAssistantMessage('{"risk":"high","decision":"deny"}')]).streamFn(
-          model,
-          context,
-          options,
-        )
-      : main(model, context, options),
+  const main = modelStream(fake.models);
+  fake.models = withModelStream(
+    fake.models,
+    withAuxiliaryRequests((model, context, options) =>
+      JSON.stringify(context).includes("REVIEW_POLICY")
+        ? modelStream(
+            fakeModel([fauxAssistantMessage('{"risk":"high","decision":"deny"}')]).models,
+          )(model, context, options)
+        : main(model, context, options),
+    ),
   );
   const session = await createSession({
     ...dirs,

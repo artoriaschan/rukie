@@ -499,7 +499,10 @@ export function createPermissionGate(options: PermissionGateOptions) {
     return {
       block: true,
       ...((decision.terminate || denied?.continue === false) && { terminate: true }),
-      reason: decision.reason,
+      reason:
+        decision.by === "review" && denied?.retry
+          ? `${decision.reason} You may adjust the tool input and retry.`
+          : decision.reason,
     };
   };
 
