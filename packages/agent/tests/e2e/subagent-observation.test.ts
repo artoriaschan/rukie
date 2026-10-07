@@ -37,7 +37,7 @@ test("read-only child snapshots preserve actual model, usage, outcome and ordere
         (message) => message.role === "toolResult" && message.toolName === "read",
       ),
     ).toBe(true);
-    await parent.dispose();
+    await parent.close();
     const resumed = await createSession({ ...dirs, ...fake, resumeId: parent.id });
     try {
       const snapshot = await resumed.readSubagent(id);
@@ -47,10 +47,10 @@ test("read-only child snapshots preserve actual model, usage, outcome and ordere
       expect(resumed.running).toBe(false);
       expect(await resumed.readSubagent("unrelated-id")).toBeUndefined();
     } finally {
-      await resumed.dispose();
+      await resumed.close();
     }
   } finally {
-    await parent.dispose();
+    await parent.close();
     await dirs.cleanup();
   }
 });

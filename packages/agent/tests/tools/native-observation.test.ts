@@ -368,3 +368,77 @@ test("native interrupted tool receipts project uncertainty live and cold without
     await dirs.cleanup();
   }
 });
+
+test("committed application notices publish their projected message with the native entry live", async () => {
+  const context = withAbortSignal(AbortSignal.timeout(3000), BACKGROUND_CONTEXT);
+  const fake = fakeModel([]);
+  const harness = await Harness.open(
+    new MemoryStorage(),
+    { models: fake.models, registry: createRegistry() },
+    context,
+  );
+  const conversation = await harness.root(context);
+  const events: SessionEvent[] = [];
+  const observation = await createConversationObservation({
+    harness,
+    conversation,
+    sessionId: "product",
+    tools: () => [],
+    adopt: () => {},
+    facts: () => ({
+      toolStates: {},
+      runSummaries: [],
+      model: "faux/faux-1",
+      planMode: false,
+      background: [],
+    }),
+    publish: (batch) => {
+      events.push(...batch);
+    },
+  });
+  try {
+    const entry = await conversation.commit(
+      (tx) =>
+        tx.appendEntry(conversation.id, {
+          kind: "rukie.notice",
+          data: {
+            role: "session-notice",
+            notice: { kind: "hook_message", message: "Review the committed Hook note" },
+            timestamp: 10,
+          },
+        }),
+      context,
+    );
+    await observation.flush();
+    expect(events.find((event) => event.type === "message_end")).toMatchObject({
+      entryId: String(entry.id),
+      entry,
+      messages: [
+        {
+          role: "session-notice",
+          notice: { kind: "hook_message", message: "Review the committed Hook note" },
+          entryId: String(entry.id),
+        },
+      ],
+    });
+    expect(observation.messages()).toHaveLength(1);
+    expect(
+      (await conversation.context(context)).messages.some((message) =>
+        JSON.stringify(message).includes("Review the committed Hook note"),
+      ),
+    ).toBe(false);
+    await conversation.commit(
+      (tx) =>
+        tx.appendEntry(conversation.id, {
+          kind: "rukie.notice",
+          data: { role: "session-notice", notice: { kind: "hook_message" } },
+        }),
+      context,
+    );
+    await observation.flush();
+    expect(events.filter((event) => event.type === "message_end")).toHaveLength(1);
+  } finally {
+    await observation.close();
+    await harness.close(context);
+  }
+});
