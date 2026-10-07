@@ -255,7 +255,7 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
           report(client.options.title ?? "unknown", error);
         }
       }),
-    );
+    ).then(() => undefined);
     return closePromise;
   };
   const retire = async (server: string) => {
