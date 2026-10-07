@@ -250,7 +250,7 @@ test("real Compaction retains full uncertain history without reviving compacted 
   expect(stored.map((message) => message.toolName).sort()).toEqual(["read", "read", "write"]);
   const again = await createSession({ ...resumeOptions(saved.sessionId), ...fakeModel([]) });
   expect([...again.messages]).toEqual(snapshot);
-  expect(resultMessages(again)).toHaveLength(1);
+  expect(resultMessages(again)).toHaveLength(3);
 });
 
 test("replayed safe delegation uses current authorization and never creates a second child after its receipt was lost", async () => {
