@@ -3127,7 +3127,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       get titleSource() {
         return title.source;
       },
-      rename: (value) => title.rename(value),
+      rename: async (value) => title.rename(value),
       get model() {
         return `${model.provider}/${model.id}`;
       },
