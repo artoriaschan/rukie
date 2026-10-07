@@ -1336,6 +1336,27 @@ export function createConversation(
           if (!state.activity.interrupted && !recordedEnding) {
             update({
               ...state,
+              completed: [
+                ...state.completed,
+                ...state.tools
+                  .filter(
+                    (tool) =>
+                      !state.completed.some(
+                        (entry) => entry.type === "tool" && entry.id === tool.id,
+                      ),
+                  )
+                  .map((tool): CompletedEntry => ({
+                    type: "tool",
+                    id: tool.id,
+                    name: tool.name,
+                    args: tool.args,
+                    callView: tool.callView,
+                    summary: tool.summary,
+                    isError: false,
+                    outcomeUnknown: true,
+                    anchorId: `unresolved-${tool.id}`,
+                  })),
+              ],
               assistant: "",
               reasoning: "",
               tools: [],

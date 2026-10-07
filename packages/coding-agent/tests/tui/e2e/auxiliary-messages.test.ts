@@ -38,6 +38,8 @@ async function seeded(
   return {
     app,
     async replay() {
+      app.stdin.write("/exit\r");
+      await app.exit;
       return start(argv, {
         columns: 80,
         rows: 40,
@@ -151,7 +153,7 @@ test.each(["assistant", "toolResult"] as const)(
       } else {
         app.calls[0]!.tool("write", { path: "executed.txt", content: "actual side effect" });
       }
-      app.calls[0]!.finish();
+      if (failure === "assistant") app.calls[0]!.finish();
       await app.waitFor(() => !app.isWorking());
       await app.waitFor(() => app.screen().join("\n").includes(`${failure} save failed`));
       expect(app.screen().join("\n")).not.toContain("ghost-tail");
@@ -162,6 +164,8 @@ test.each(["assistant", "toolResult"] as const)(
         expect(app.calls).toHaveLength(1);
       }
       expect(app.screen().join("\n")).toContain("seed reply");
+      app.stdin.write("/exit\r");
+      await app.exit;
       const restored = await start(argv, {
         rows: 40,
         env: { LANG: "en" },
@@ -169,24 +173,28 @@ test.each(["assistant", "toolResult"] as const)(
         session: { cwd: app.root, homeDir: app.root },
       });
       try {
-        await restored.waitFor(() => restored.screen().includes("❯"));
-        expect(restored.screen().join("\n")).toContain(`${failure} save failed`);
-        expect(restored.screen().join("\n")).not.toContain("ghost-tail");
-        expect(restored.screen().join("\n")).not.toContain("ghost-thinking");
+        await restored.waitFor(() => restored.calls.length === 1);
+        const recoveryContext = JSON.stringify(restored.calls[0]!.context.messages);
+        expect(recoveryContext).not.toContain("session-notice");
+        expect(recoveryContext).not.toContain("unknown-tool-outcome");
         if (failure === "toolResult") {
-          expect(restored.screen().join("\n")).toContain("Outcome unknown");
-          expect(restored.calls).toHaveLength(0);
+          expect(recoveryContext).toContain("may have partially run");
           expect(await Bun.file(`${app.root}/executed.txt`).text()).toBe("actual side effect");
         }
+        restored.calls[0]!.reply("recovered conclusion");
+        await restored.waitFor(() => !restored.isWorking());
+        expect(restored.screen().join("\n")).toContain("seed reply");
+        expect(
+          restored.screen().filter((line) => line.includes("recovered conclusion")),
+        ).toHaveLength(1);
+        expect(restored.screen().join("\n")).not.toContain("ghost-tail");
+        expect(restored.screen().join("\n")).not.toContain("ghost-thinking");
         restored.stdin.write("continue\r");
-        await restored.waitFor(() => restored.calls.length === 1);
-        expect(JSON.stringify(restored.calls[0]!.context.messages)).not.toContain("ghost-tail");
-        expect(JSON.stringify(restored.calls[0]!.context.messages)).not.toContain("session-notice");
-        if (failure === "toolResult")
-          expect(JSON.stringify(restored.calls[0]!.context.messages)).toContain(
-            "unknown-tool-outcome",
-          );
-        restored.calls[0]!.finish();
+        await restored.waitFor(() => restored.calls.length === 2);
+        expect(JSON.stringify(restored.calls[1]!.context.messages)).toContain(
+          "recovered conclusion",
+        );
+        restored.calls[1]!.finish();
       } finally {
         await restored.cleanup();
       }
