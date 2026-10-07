@@ -717,7 +717,8 @@ test("stream-json emits session metadata, verbatim pi events, and the Run result
   expect(types.indexOf("run_end")).toBeLessThan(types.indexOf("request_settled"));
   expect(events[0].mcpServers ?? []).toEqual([]);
   const usage = events.filter((event) => event.type === "context_usage");
-  expect(usage).toHaveLength(2);
+  // Request estimate, committed provider measurement, then committed answer context.
+  expect(usage).toHaveLength(3);
   expect(structuredClone(usage[0])).toMatchObject({
     type: "context_usage",
     sessionId,
@@ -741,6 +742,7 @@ test("stream-json emits session metadata, verbatim pi events, and the Run result
     sessionId,
     used: 12, // Provider input 8 + cacheRead 4, excluding output 5.
     window: usage[0].window,
+    segments: { assistant: 0, thinking: 0 },
   });
   const assistant = events.find(
     (event) =>
@@ -750,6 +752,15 @@ test("stream-json emits session metadata, verbatim pi events, and the Run result
   expect(assistant.messages).toMatchObject([
     { role: "assistant", model: "m", content: [{ type: "text", text: "hello from fake" }] },
   ]);
+  expect(usage[2]).toMatchObject({
+    type: "context_usage",
+    sessionId,
+    used: 12,
+    window: usage[0].window,
+  });
+  expect(usage[2].segments.assistant).toBeGreaterThan(0);
+  expect(events.indexOf(usage[1])).toBeLessThan(events.indexOf(assistant));
+  expect(events.indexOf(assistant)).toBeLessThan(events.indexOf(usage[2]));
   expect(events.at(-1)).toEqual({
     type: "request_settled",
     sessionId,
