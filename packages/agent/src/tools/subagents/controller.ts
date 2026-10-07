@@ -23,7 +23,12 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { RunResult } from "@rukie/shared";
 import { transcriptMessages } from "../../session/messages.ts";
 import type { ToolStateDefinition } from "../../tool-state/index.ts";
-import { parseSubagentIdentities, subagentRunState, type SubagentIdentity } from "./state.ts";
+import {
+  parseSubagentIdentities,
+  subagentRunState,
+  type SubagentIdentity,
+  type SubagentRun,
+} from "./state.ts";
 import type { SubagentType } from "./types.ts";
 
 export const SUBAGENT_PROMPT =
@@ -44,6 +49,19 @@ export interface SubagentControllerOptions {
   forkAt(): EntryId | undefined;
   /** Install child capability extensions before returning its explicit agent config. */
   childAgent(type: SubagentType, conversation: Conversation): Promise<AgentChange>;
+  /** Settle child resources and end hooks before exposing its terminal receipt. */
+  afterRun?(
+    request: {
+      agentId: string;
+      description: string;
+      type: string;
+      prompt: string;
+      background: boolean;
+    },
+    conversation: Conversation,
+    result: RunResult & { outcome: NonNullable<SubagentRun["outcome"]> },
+    context: Context,
+  ): Promise<void>;
   beforeStart?(
     request: {
       agentId: string;
@@ -76,6 +94,7 @@ type Result = {
     cacheWrite: number;
     totalTokens: number;
   };
+  driverFailure?: string;
   parentAnswer?: number;
   parentSubmissionId?: number;
 };
@@ -139,6 +158,36 @@ export function createSubagentController(options: SubagentControllerOptions) {
       endedAt,
       usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 },
     };
+  }
+  async function settleChild(
+    task: { input: Input },
+    childId: ConversationId,
+    agentId: string,
+    result: Result,
+    outcome: NonNullable<SubagentRun["outcome"]>,
+    context: Context,
+  ): Promise<Result> {
+    if (!options.afterRun) return result;
+    try {
+      const conversation = await harness.conversation(childId, context);
+      if (!conversation) throw new Error("Subagent conversation is missing.");
+      await options.afterRun(
+        { ...task.input, agentId },
+        conversation,
+        { ...result, outcome },
+        context,
+      );
+      return result;
+    } catch (error) {
+      if (context.abortSignal?.aborted) throw error;
+      const failure = error instanceof Error ? error.message : String(error);
+      return { ...result, success: false, error: failure, driverFailure: failure };
+    }
+  }
+  function terminalResult(result: Result) {
+    return result.driverFailure
+      ? { status: "failed" as const, error: { message: result.driverFailure }, result }
+      : { status: "completed" as const, result };
   }
   const driver = defineTask<Input, Phase, Result>({
     name: "rukie.subagent-driver",
@@ -289,7 +338,7 @@ export function createSubagentController(options: SubagentControllerOptions) {
                   entry.model?.some((message) => message.role === "assistant"),
               );
         const message = answer?.model?.find((message) => message.role === "assistant");
-        const outcome =
+        let outcome: NonNullable<SubagentRun["outcome"]> =
           message?.stopReason === "length"
             ? "length"
             : message?.stopReason === "aborted" ||
@@ -317,7 +366,7 @@ export function createSubagentController(options: SubagentControllerOptions) {
           usage.totalTokens += entry.totalTokens;
         }
         const endedAt = runtime.now();
-        const result: Result = {
+        let result: Result = {
           text:
             view.entries
               .filter(
@@ -337,6 +386,8 @@ export function createSubagentController(options: SubagentControllerOptions) {
           durationMs: Math.max(0, endedAt - task.input.startedAt),
           ...(error ? { error } : {}),
         };
+        result = await settleChild(task, childId, agentId, result, outcome, context);
+        if (result.driverFailure) outcome = "error";
         await runtime.commit(async (tx) => {
           const doc = await tx.doc(state.document, parent.id);
           const current = parseSubagentIdentities(doc.value ?? [], parentSessionId);
@@ -362,7 +413,7 @@ export function createSubagentController(options: SubagentControllerOptions) {
           (await tx.doc(subagentRunState.document, childId)).value = row.latestRun;
           return task.input.background
             ? { status: "running", checkpoint: { phase: "report", childId, agentId, result } }
-            : { status: "terminal", outcome: { status: "completed", result } };
+            : { status: "terminal", outcome: terminalResult(result) };
         }, context);
       },
       async report(task, runtime, context) {
@@ -394,7 +445,7 @@ export function createSubagentController(options: SubagentControllerOptions) {
             : {}),
         };
         await runtime.commit(
-          () => ({ status: "terminal", outcome: { status: "completed", result: reported } }),
+          () => ({ status: "terminal", outcome: terminalResult(reported) }),
           context,
         );
       },
@@ -403,10 +454,21 @@ export function createSubagentController(options: SubagentControllerOptions) {
       const row = childRow(task.id);
       const child = await runtime.conversation(row.conversationId as ConversationId, context);
       await child?.abort(context);
-      const result =
+      let result =
         task.state.checkpoint.phase === "report" && task.state.checkpoint.result.error === "aborted"
           ? task.state.checkpoint.result
           : resultError("aborted", task.input.startedAt, runtime.now());
+      if (task.state.checkpoint.phase === "run") {
+        await child?.waitForIdle(context);
+        result = await settleChild(
+          task,
+          row.conversationId as ConversationId,
+          row.id,
+          result,
+          "aborted",
+          context,
+        );
+      }
       await runtime.commit(async (tx) => {
         const doc = await tx.doc(state.document, parent.id);
         const current = parseSubagentIdentities(doc.value ?? [], parentSessionId);
@@ -421,7 +483,8 @@ export function createSubagentController(options: SubagentControllerOptions) {
             startedAt: task.input.startedAt,
             endedAt: result.endedAt,
             durationMs: result.durationMs,
-            outcome: "aborted",
+            outcome: result.driverFailure ? "error" : "aborted",
+            ...(result.driverFailure ? { error: result.driverFailure } : {}),
           };
           doc.value = current;
           (await tx.doc(subagentRunState.document, row.conversationId as ConversationId)).value =
@@ -437,7 +500,12 @@ export function createSubagentController(options: SubagentControllerOptions) {
                 result,
               },
             }
-          : { status: "terminal", outcome: { status: "aborted", reason: "aborted", result } };
+          : {
+              status: "terminal",
+              outcome: result.driverFailure
+                ? terminalResult(result)
+                : { status: "aborted", reason: "aborted", result },
+            };
       }, context);
       if (task.input.background) {
         const parentHandle = await runtime.conversation(parent.id, context);
@@ -447,7 +515,9 @@ export function createSubagentController(options: SubagentControllerOptions) {
             type: "input",
             whenBusy: "followUp",
             requestId: `subagent:${task.id}:report`,
-            content: `Subagent ${row.id} (${task.input.description}) aborted.`,
+            content: result.driverFailure
+              ? `Subagent ${row.id} (${task.input.description}) failed: ${result.driverFailure}.`
+              : `Subagent ${row.id} (${task.input.description}) aborted.`,
           },
           context,
         );
@@ -475,7 +545,9 @@ export function createSubagentController(options: SubagentControllerOptions) {
         await runtime.commit(
           () => ({
             status: "terminal",
-            outcome: { status: "aborted", reason: "aborted", result: reported },
+            outcome: result.driverFailure
+              ? terminalResult(reported)
+              : { status: "aborted", reason: "aborted", result: reported },
           }),
           context,
         );

@@ -60,6 +60,21 @@ export function transcriptMessages(entries: readonly EntryRecord[]): TranscriptM
           entryId: String(entry.id),
         },
       ];
+    if (
+      entry.kind === "pi.compaction" &&
+      data &&
+      typeof data === "object" &&
+      !Array.isArray(data) &&
+      (data.reason === "manual" || data.reason === "threshold" || data.reason === "overflow")
+    )
+      return [
+        {
+          role: "session-notice",
+          notice: { kind: "compaction", reason: data.reason },
+          timestamp: entry.model?.[0]?.timestamp ?? 0,
+          entryId: String(entry.id),
+        },
+      ];
     if (entry.kind === "rukie.notice" && data && typeof data === "object" && !Array.isArray(data)) {
       const notice = readSessionNotice(data);
       if (notice)

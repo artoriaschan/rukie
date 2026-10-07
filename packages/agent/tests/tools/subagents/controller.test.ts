@@ -38,12 +38,26 @@ test.each(["stop", "error", "aborted", "length"] as const)(
       const parent = await harness.root(context, {
         agent: { model: { provider: fake.model.provider, modelId: fake.model.id } },
       });
+      let cleaned = false;
       const controller = createSubagentController({
         harness,
         parent,
         parentSessionId: "product",
         state: subagentsState("product"),
         forkAt: () => undefined,
+        afterRun: async (request, child, result) => {
+          expect(request.agentId).toBe(controller.list()[0]!.id);
+          expect(Number(child.id)).toBe(controller.list()[0]!.conversationId);
+          expect(result.outcome).toBe(stopReason === "stop" ? "completed" : stopReason);
+          expect(result.text).toBe("child answer");
+          expect(controller.list()[0]!.active).toBe(true);
+          expect(
+            (await parent.context(context)).entries.some((entry) =>
+              entry.model?.some((item) => item.role === "toolResult"),
+            ),
+          ).toBe(false);
+          cleaned = true;
+        },
         childAgent: async () => ({
           model: { provider: fake.model.provider, modelId: fake.model.id },
           extensions: [],
@@ -61,6 +75,7 @@ test.each(["stop", "error", "aborted", "length"] as const)(
       const request = await parent.submit({ type: "input", content: "delegate" }, context);
       expect((await request.wait(context)).status).toBe("done");
       await parent.waitForIdle(context);
+      expect(cleaned).toBe(true);
       const rows = controller.list();
       expect(rows).toHaveLength(1);
       expect(rows[0]).toMatchObject({
@@ -142,6 +157,13 @@ test("interrupt explicitly aborts a native background child and commits its outc
       parentSessionId: "product",
       state: subagentsState("product"),
       forkAt: () => undefined,
+      afterRun: async (_request, _child, result) => {
+        expect(result.outcome).toBe("aborted");
+        expect(controller.list()[0]!.active).toBe(true);
+        expect(
+          (await parent.context(context)).messages.filter((message) => message.role === "user"),
+        ).toHaveLength(1);
+      },
       childAgent: async () => ({
         model: { provider: fake.model.provider, modelId: fake.model.id },
         extensions: [{ name: "hold-tool", tools: [hold] }],
@@ -451,6 +473,87 @@ test.each([false, true])(
           (context) => !JSON.stringify(context.messages).includes('"content":"child input"'),
         ),
       ).toBe(true);
+      controller.close();
+    } finally {
+      await harness.close(context);
+    }
+  },
+);
+
+test.each([false, true])(
+  "child cleanup failure produces a failed native driver receipt, background=%s",
+  async (background) => {
+    const context = withAbortSignal(AbortSignal.timeout(3000), BACKGROUND_CONTEXT);
+    const fake = fakeModel([
+      fauxAssistantMessage(
+        fauxToolCall("subagent", {
+          description: "Cleanup",
+          prompt: "child",
+          run_in_background: background,
+        }),
+        { stopReason: "toolUse" },
+      ),
+      ...Array.from({ length: 4 }, () => fauxAssistantMessage("actual output")),
+    ]);
+    const registry = createRegistry();
+    const harness = await Harness.open(
+      new MemoryStorage(),
+      { models: fake.models, registry },
+      context,
+    );
+    try {
+      const parent = await harness.root(context, {
+        agent: { model: { provider: fake.model.provider, modelId: fake.model.id } },
+      });
+      const controller = createSubagentController({
+        harness,
+        parent,
+        parentSessionId: "product",
+        state: subagentsState("product"),
+        forkAt: () => undefined,
+        childAgent: async () => ({
+          model: { provider: fake.model.provider, modelId: fake.model.id },
+          tools: [],
+        }),
+        afterRun: async () => {
+          throw new Error("cleanup failed");
+        },
+      });
+      controller.setTypes(
+        new Map([
+          ["general-purpose", { name: "general-purpose", description: "General", prompt: "" }],
+        ]),
+      );
+      registry.install(controller.extension);
+      registry.install({ name: "tools", tools: Object.values(createSubagentTools(controller)) });
+      await (await parent.submit({ type: "input", content: "delegate" }, context)).wait(context);
+      const row = controller.list()[0]!;
+      const driver = await harness.getTask(
+        row.driverTaskId as import("@earendil-works/pi-durable").TaskId,
+        context,
+      );
+      if (!driver) throw new Error("Committed native driver is missing.");
+      const receipt = await harness.waitForTask(driver.id, context);
+      expect(receipt.state).toMatchObject({
+        outcome: {
+          status: "failed",
+          error: { message: "cleanup failed" },
+          result: { success: false, text: "actual output", error: "cleanup failed" },
+        },
+      });
+      expect(controller.list()[0]).toMatchObject({
+        active: false,
+        latestRun: { outcome: "error", error: "cleanup failed" },
+      });
+      if (background)
+        expect(receipt.state.outcome.result).toMatchObject({
+          parentAnswer: expect.any(Number),
+          parentSubmissionId: expect.any(Number),
+        });
+      else
+        expect(
+          (await parent.context(context)).messages.find((message) => message.role === "toolResult"),
+        ).toMatchObject({ isError: true, content: [{ type: "text", text: "actual output" }] });
       controller.close();
     } finally {
       await harness.close(context);
