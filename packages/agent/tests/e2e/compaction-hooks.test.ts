@@ -305,7 +305,15 @@ test("PostCompact receives the stored summary after compaction_end, then compact
     },
   ]);
   await session.close();
-  const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
+  const next = fakeModel([]);
+  const resumed = await createSession({
+    ...dirs,
+    ...next,
+    models: withModelAlias(next.models, "hook-window", ["large", "small"], {
+      contextWindow: 128000,
+    }),
+    resumeId: session.id,
+  });
   expect(resumed.messages).toEqual(session.messages);
 });
 
@@ -499,14 +507,22 @@ test("compact SessionStart context attaches to the next Stop feedback user in th
   expect((await session.run("second")).text).toBe("verified");
   expect(JSON.stringify(fake.contexts[6])).not.toContain("critical-project-state");
   expect(fake.contexts[7]!.messages.slice(-2)).toMatchObject([
-    { role: "user", source: "stop_hook", content: [{ text: "verify feedback" }] },
+    { role: "user", content: "verify feedback" },
     {
       role: "user",
       content: [{ text: "<system-reminder>\ncritical-project-state\n</system-reminder>" }],
     },
   ]);
   await session.close();
-  const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
+  const next = fakeModel([]);
+  const resumed = await createSession({
+    ...dirs,
+    ...next,
+    models: withModelAlias(next.models, "hook-window", ["large", "small"], {
+      contextWindow: 128000,
+    }),
+    resumeId: session.id,
+  });
   expect(resumed.messages).toEqual(session.messages);
 });
 
