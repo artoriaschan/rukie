@@ -729,7 +729,9 @@ test("cold resume rejects an unsupported native Plan document version", async ()
     await lease.release();
   }
   const fake = fakeModel([]);
-  await expect(createSession({ ...dirs, ...fake, resumeId: session.id })).rejects.toThrow();
+  await expect(createSession({ ...dirs, ...fake, resumeId: session.id })).rejects.toThrow(
+    /version/i,
+  );
   expect(fake.contexts).toEqual([]);
 });
 
