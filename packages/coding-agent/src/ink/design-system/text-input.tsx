@@ -306,7 +306,7 @@ export function TextInput({
   const viewport = useRef(0);
   const height = Math.min(limit, lines.length);
   viewport.current = Math.max(0, Math.min(viewport.current, lines.length - height));
-  if (readOnly) viewport.current = 0;
+  if (readOnly && !isActive) viewport.current = 0;
   else {
     if (caret.y < viewport.current) viewport.current = caret.y;
     if (caret.y >= viewport.current + height) viewport.current = caret.y - height + 1;

@@ -347,6 +347,7 @@ export function QuestionDialog({
             <ThemedTextInput
               value={inputFocused ? custom : custom.slice(0, cursor) + "▏" + custom.slice(cursor)}
               onChange={() => {}}
+              isActive={inputFocused}
               readOnly
               cursorOffset={cursor}
               cursorStyle={inputFocused ? "block" : undefined}
