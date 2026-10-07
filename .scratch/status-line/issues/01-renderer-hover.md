@@ -12,7 +12,7 @@ Status: resolved
   - 鼠标在同一格内不重复派发；
   - resize 时清空命中集合。
 
-**Blocked by:** —
+Blocked by: —
 
 - [x] 进入和退出全屏时写出 1002/1003 的开关序列
 - [x] 嵌套 Box 的 enter/leave 派发顺序正确，鼠标移出所有节点时派发 leave

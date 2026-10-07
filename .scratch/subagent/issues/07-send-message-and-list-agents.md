@@ -7,9 +7,9 @@
 - 父 session 记 Tool State `subagents: [{ id, description, type }]`，version 1。resume 父 session 后全部为 idle，`send_message` 以子 session id 冷恢复，沿用原类型配置；类型已删除时回退 `general-purpose` 并告警。
 - TUI：`send_message` 发起的 run 的卡片挂在该 `send_message` 工具卡下；父 session resume 时从 Tool State 初始化 idle 条目。
 
-**Blocked by:** 02, 06
+Blocked by: 02, 06
 
-**Status:** resolved
+Status: resolved
 
 参考：[spec](../spec.md)「模型工具」「Tool State 与 resume」。
 

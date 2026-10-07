@@ -2,9 +2,9 @@
 
 **What to build:** TUI 用户用 `/jobs` 或点击 JobCard 打开整屏 JobsPanel，查看每个 job 的输出和时间线，并能手动停止 job。照 dsh-TUI 窄屏 overlay 复刻。详见 [后台 bash spec](../spec.md) 的 TUI 一节。
 
-**Blocked by:** 07
+Blocked by: 07
 
-**Status:** resolved
+Status: resolved
 
 - [x] 新增内置 Slash Command `/jobs`，run 进行中也可以用；在 chat 屏幕内整屏 early return，与 subagent dashboard 的做法一致
 - [x] 列出本 session 的全部 job；↑/↓ 选择；`e` 展开详情（输出尾部、时间线、spill 路径、丢数据提示）

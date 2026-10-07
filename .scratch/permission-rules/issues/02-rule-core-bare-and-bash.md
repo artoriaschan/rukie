@@ -2,9 +2,9 @@
 
 **What to build:** 用户在 `~/.neant/settings.json` 写 `permissions.{allow,ask,deny}`，用裸工具名 glob 或 `bash(pattern)`（这一张先只按单条命令匹配整串）放行、询问或拒绝工具调用。deny 和 ask 规则在所有 Permission Mode 下都生效；ask 规则在 auto-review 下直接问用户，不发起 review；allow 规则跳过询问和 review；按 deny > ask > allow 取最严。被规则拒绝时，模型收到 `Denied by permission rule: <规则>`；`permission_denied` 事件带 `by: "rule" | "user" | "review"` 和可选的 `rule`，stream-json 自动带出，TUI 工具卡显示规则原文。规则写错（未知工具带 specifier、空串、括号不闭合）时，加载报错并指出文件和规则。本工单不动 `allowTools`（expand）。
 
-**Blocked by:** 01
+Blocked by: 01
 
-**Status:** resolved
+Status: resolved
 
 参考：[spec](../spec.md)「Permission Rule」「拒绝反馈」；User Stories 1–3、7–8、14–18、27–29、36–37、42。
 

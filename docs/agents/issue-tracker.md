@@ -7,7 +7,9 @@ Issues and specs for this repo live as markdown files in `.scratch/`.
 - One feature per directory: `.scratch/<feature-slug>/`
 - The spec is `.scratch/<feature-slug>/spec.md`
 - Implementation issues are one file per ticket at `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01`, never a single combined tickets file
-- Triage state is recorded as a `Status:` line near the top of each issue file (see `triage-labels.md` for the role strings)
+- Triage state is recorded as one plain `Status: <value>` line near the top of each spec and issue file: a role string from `triage-labels.md`, `claimed`, or `resolved` (the only closing status besides `wontfix`). Blocking uses a plain `Blocked by: NN, NN` line
+- Set the spec to `resolved` in the same change that closes its last open ticket
+- `bun run check:scratch` enforces these rules and runs in `check:dev`; `bun scripts/check-scratch.ts --report` prints per-feature progress and open tickets, so use it instead of grepping `.scratch/` for status
 - Comments and conversation history append to the bottom of the file under a `## Comments` heading
 
 ## When a skill says "publish to the issue tracker"

@@ -2,9 +2,9 @@
 
 **What to build:** 用户在子代理执行期间异常退出进程后恢复父 Session，系统只读核对尚未结算的新 Run，准确提醒中断或无法确认；子 Run 已保存的结束事实优先于滞后的父摘要。用户随后仍能通过原有输入和 `send_message` 继续原子 Session。
 
-**Blocked by:** 02 — 正常关闭后的恢复提示与摘要。
+Blocked by: 02 — 正常关闭后的恢复提示与摘要。
 
-**Status:** resolved
+Status: resolved
 
 - [x] 恢复父 Session 时，仅核对父摘要中尚未结算的新 Run，按父子所属关系和 Run 身份只读观察对应子 Transcript。
 - [x] 子 Transcript 已记录结束、父摘要未更新时，按子结束事实呈现，不误判为中断；保留该 Run 的实际结束原因。

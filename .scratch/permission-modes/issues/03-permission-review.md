@@ -4,7 +4,7 @@ Status: resolved
 
 **What to build:** `auto-review` 模式下，非只读且未命中 `allowTools` 的工具调用先经一次 Permission Review：安全的直接执行，有风险或评审失败的转为 ask 并附评审理由。Headless CLI 下有风险的即 deny。见 spec Implementation Decisions 的 review 模块与 session 节，以及 ADR-0007。
 
-**Blocked by:** 01
+Blocked by: 01
 
 - [x] 新 review 模块（Agent Core 内独立概念目录），复用 session 的 `streamFn`，模型取 `reviewModel` 否则主模型，`temperature: 0`
 - [x] 评审输入：cwd、project instructions、最近 compaction 之后的过滤历史（user 消息 + 历史工具调用名与参数，不含 assistant 文本 / thinking / tool result）、待执行调用（名称、description、参数 schema、实参）

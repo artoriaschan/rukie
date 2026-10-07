@@ -2,9 +2,9 @@
 
 **What to build:** 在需要代理的网络里，web_fetch 遵循 `HTTP(S)_PROXY` / `NO_PROXY` 正常工作，写成私网 IP 的 URL 仍被拒绝。在 fake-IP / TUN 代理环境下，域名被解析到 `198.18.x.x` 而被 SSRF 拦下时，错误信息明确告诉用户（经模型转告）去设置 `HTTPS_PROXY` / `HTTP_PROXY`，而不是只给一个费解的"私网地址被拒"。详见 [web fetch spec](../spec.md) 的"代理"和"fake-IP / TUN 提示"两节。
 
-**Blocked by:** 01 最小安全 web_fetch
+Blocked by: 01 最小安全 web_fetch
 
-**Status:** resolved
+Status: resolved
 
 - [x] 读取 `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY`（大小写均可），判定需要走代理时用 undici `EnvHttpProxyAgent`，跳过 DNS 校验与钉 IP
 - [x] 走代理时，host 是私网 IP 字面量的 URL 仍被拒绝

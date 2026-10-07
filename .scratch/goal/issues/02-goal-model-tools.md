@@ -2,9 +2,9 @@
 
 **What to build:** 模型可以用 `create_goal` 根据用户的长任务请求替用户设 goal，也可以用 `update_goal` 修改、暂停、恢复 goal，或在完成时标记 complete、卡住时标记 blocked。在 goal round 内标记 complete / blocked 后，模型会在同一 run 里给用户写一段收尾说明。TUI 中这两个工具的卡片显示 goal 摘要，而不是原始 JSON。详见 [Goal spec](../spec.md) 的"模型工具"和"TUI 工具卡"两节。
 
-**Blocked by:** 01 Goal 续跑核心
+Blocked by: 01 Goal 续跑核心
 
-**Status:** resolved
+Status: resolved
 
 - [x] 仅顶层 session 注册 `create_goal { objective, max_goal_rounds? }` 与 `update_goal { action, objective?, blocked_reason? }`（Headless 也注册），不提供 `get_goal`
 - [x] 授权：create / edit / pause / resume 需当前 run 有直接人类输入（prompt 或 steer）；模型 resume 一个 paused 的 goal 时拒绝；complete / blocked 在直接人类输入或当前 goal round 内都可以

@@ -1,10 +1,10 @@
 # 02: 替换 TUI 其余界面文案
 
-Status: done
+Status: resolved
 
 **What to build:** 英文环境下 TUI 所有界面文案为英文、中文环境下为中文，不再中英混杂。覆盖现有中文硬编码与英文硬编码两类。见 spec Implementation Decisions 的 TUI 节替换清单。
 
-**Blocked by:** 01
+Blocked by: 01
 
 - [x] 状态栏：切换提示（`shift+tab`）、缓存命中率、`esc` 中断、上下文分段名（system / prompt / assistant / thinking / tools 及缩写）、`ctx`、`tps`；zh 中技术缩写可保持原值
 - [x] 审批对话框：标题、问题、按键提示

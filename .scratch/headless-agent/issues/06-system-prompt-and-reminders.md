@@ -10,9 +10,9 @@
   - text 输出里看不到 reminder 内容；stream-json 里会发出 `reminder_injected` 事件。
 - 这张 ticket 要把"按来源比较、只补发变化的部分"做成通用机制，07 和 08 会在此基础上添加 skills 和 MCP 两种来源。
 
-**Blocked by:** 05
+Blocked by: 05
 
-**Status:** resolved
+Status: resolved
 
 - [x] System Prompt 在所有项目和所有 Session 中逐字节相同
 - [x] 首次 Run 时，环境信息和 Project Instructions 都附在第一条 user 消息上；`AGENTS.md` 优先，没有时用 `CLAUDE.md`；两个文件都不存在时不注入这部分

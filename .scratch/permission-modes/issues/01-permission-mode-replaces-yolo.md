@@ -4,7 +4,7 @@ Status: resolved
 
 **What to build:** 用户可以通过 settings 的 `permissionMode`、CLI/TUI 的 `--permission-mode` 选择 `ask` / `auto-review` / `full-access`，`--yolo` 是 `full-access` 的别名；运行中调用 session 的 `setPermissionMode` 后，下一个工具调用即按新模式判定。本单 `auto-review` 暂按 `ask` 判定（评审在 03 实现）。见 spec Implementation Decisions 的 permissions / session / settings / Headless CLI 节。
 
-**Blocked by:** None (can start immediately)
+Blocked by: None (can start immediately)
 
 - [x] `SessionOptions.yolo` 删除，`permissionMode` 取代；默认 `ask`
 - [x] `ask`：只读工具 allow，命中 `allowTools` allow，其余 ask（与现状一致）

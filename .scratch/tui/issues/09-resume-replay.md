@@ -2,9 +2,9 @@
 
 **What to build:** 用户运行 `neant --resume <id>` 后，先看到这个 session 之前的对话（用户消息、助手回复、工具调用摘要），然后接着对话。TUI 和 `neant-cli` 共用同一个 Session Store，两边可以互相 resume。
 
-**Blocked by:** 07
+Blocked by: 07
 
-**Status:** resolved
+Status: resolved
 
 - [x] `Session` 新增只读的 `messages`，返回内存中已经还原的 context 消息，不重新读文件；在 Agent Core 公开接口上测试：resume 之后包含之前的对话
 - [x] TUI 启动时把旧的用户消息、助手文本和工具调用摘要（复用 07 的折叠行样式）写进 `Static`，然后显示输入框

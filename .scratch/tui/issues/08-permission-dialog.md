@@ -2,9 +2,9 @@
 
 **What to build:** 模型调用需要授权的工具时，TUI 弹出确认对话框，用户当场决定：允许一次、本 session 内一直允许这个工具、拒绝。拒绝后模型收到“未获授权”，run 继续。
 
-**Blocked by:** 05, 06
+Blocked by: 05, 06
 
-**Status:** resolved
+Status: resolved
 
 - [x] TUI 传入 `onPermissionAsk`，对话框显示工具名和参数摘要，以及三个选项
 - [x] 方向键或数字键选择，Enter 确认，Esc 等于拒绝

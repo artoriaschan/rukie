@@ -2,9 +2,9 @@
 
 **What to build:** 提问结束后，transcript 中 `ask_user_question` 的工具卡片显示"提问"摘要及每题一行"问题 → 回答"；拒绝回答显示"未回答"。resume 会话后显示一致，数据只来自 transcript 中的工具参数与结果，不额外存储。
 
-**Blocked by:** 02（单题单选端到端提问）
+Blocked by: 02（单题单选端到端提问）
 
-**Status:** resolved
+Status: resolved
 
 参考：[spec](../spec.md) transcript 呈现。
 

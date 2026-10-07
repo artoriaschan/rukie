@@ -2,9 +2,9 @@
 
 **What to build:** 用户在输入框草稿里把光标移到已绑定的 `[Image #N]` token 起始位置时，消息区显示这张图的被动预览卡，token 反色；光标离开即消失。预览不抢键盘，打字、←/→、Enter 发送都照常。见 [spec](../spec.md) Implementation Decisions。
 
-**Blocked by:** None (can start immediately)
+Blocked by: None (can start immediately)
 
-**Status:** resolved
+Status: resolved
 
 - [x] 光标在已绑定 token 的 `start` 时，消息区出现预览卡，标题 `Image #N`，带元数据行，不盖住输入框与状态行
 - [x] 命中的 token 反色；renderer 的 highlight 通道支持 `inverse`

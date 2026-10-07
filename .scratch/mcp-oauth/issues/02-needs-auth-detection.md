@@ -2,9 +2,9 @@
 
 **What to build:** 需要 OAuth 的远程 MCP server 不再被当作普通错误，而是识别为"需要授权"：frontend 收到 `mcp_auth_required`，有 `onMcpAuth` 时模型看到 `mcp__<server>__authenticate`；Headless CLI 提示用户去 TUI 登录，run 照常进行。详见 [MCP OAuth spec](../spec.md) 的连接与 needs-auth、Headless CLI 两节。
 
-**Blocked by:** None (can start immediately)
+Blocked by: None (can start immediately)
 
-**Status:** resolved
+Status: resolved
 
 - [x] 新增 fake OAuth + MCP fixture（`Bun.serve`），端点：资源元数据、AS 元数据、DCR、`/authorize`、`/token`（authorization_code + refresh）、MCP 端点（没有 token 或 token 失效时返回 401 并带 `WWW-Authenticate`）；测试可以让 token 失效，并读到请求记录
 - [x] http server 一律带上由 pi `McpOAuthProvider` 经 `adaptOAuthProvider` 得到的 authProvider；先用内存存储，文件存储在 03 实现

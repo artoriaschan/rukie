@@ -2,9 +2,9 @@
 
 **What to build:** 打通 Tool View 全链路：工具声明 presenter，Session 把 view 附在工具事件上并在 resume 时从 Transcript 重算，TUI 按 view 渲染新卡片骨架。前台 bash 以 terminal 卡呈现（含退出码），其余工具暂为 generic 卡。见 [spec](../spec.md) 的「Tool View 契约」「Presenter」「事件与 resume」「类别与主题」「TUI 工具卡」。
 
-**Blocked by:** None (can start immediately)
+Blocked by: None (can start immediately)
 
-**Status:** resolved
+Status: resolved
 
 - [x] `@neant/shared` 提供 Tool View 的 TypeBox schema（call / result 各 card 变体、`kind`、`displayKey`），不含自然语言字段
 - [x] 工具可选声明 `presentCall` / `presentResult`；presenter 抛错或参数非法时 view 为 `undefined`，工具调用照常完成

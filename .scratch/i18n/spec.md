@@ -1,4 +1,4 @@
-Status: done
+Status: resolved
 
 # Spec: 国际化（Locale：zh / en）
 

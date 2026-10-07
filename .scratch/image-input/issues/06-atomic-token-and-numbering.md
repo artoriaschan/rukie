@@ -2,9 +2,9 @@
 
 **What to build:** `[Image #N]` token 在输入框中像单个字符：光标不进入、整删、选区覆盖整个 token；删掉即解绑，手打同文不算；编号在 Session 内递增，新上下文时重置。详见 [图片输入 spec](../spec.md) 的 Composer token 一节。
 
-**Blocked by:** 05
+Blocked by: 05
 
-**Status:** resolved
+Status: resolved
 
 - [x] 光标移动按方向吸附 token 边界；Backspace 在末尾 / Delete 在起点整删；选区边缘落入 token 时外扩；自动换行不在 token 内断开
 - [x] 文本不再含某 token 时解绑；手打 `[Image #1]` 不绑定；输入历史恢复的 token 不绑定

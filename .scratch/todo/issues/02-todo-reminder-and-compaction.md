@@ -2,9 +2,9 @@
 
 **What to build:** 清单还有未完成项时，模型在新 run 开始时经 system reminder 看到当前清单；compaction 之后同一 run 的下一 turn 立即重新看到它。全部完成或为空时不打扰模型。
 
-**Blocked by:** 01（`todo_write` 写入并在 resume 后恢复）
+Blocked by: 01（`todo_write` 写入并在 resume 后恢复）
 
-**Status:** done
+Status: resolved
 
 参考：[spec](../spec.md)「Tool State 地基」反馈给模型 / compaction 后两条，「`todo_write` 工具」reminder 渲染。
 

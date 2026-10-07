@@ -2,9 +2,9 @@
 
 **What to build:** run 即将结束时 Stop hook 可以拦下并让模型继续（如"测试不过不许收工"），连续最多 8 次。见 [spec](../spec.md)「接入：Session 生命周期」。
 
-**Blocked by:** 01
+Blocked by: 01
 
-**Status:** resolved
+Status: resolved
 
 - [x] 挂在 Session run 层（不挂 pi `finishTurn`）：pi agent 循环返回、无在跑子代理与未交付通知、最后一条 assistant 消息非中止非错误时触发；等待子代理期间不触发。输入带 `stop_hook_active`、`last_assistant_message`。
 - [x] `decision: "block"` + `reason` 或 exit 2：原因作为来源为 `stop_hook` 的 user 消息再跑一轮 agent 循环，仍在同一 run 内。

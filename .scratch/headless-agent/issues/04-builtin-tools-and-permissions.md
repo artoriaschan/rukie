@@ -7,9 +7,9 @@
 - 没有授权的调用不会执行，而是以 `isError` 告诉模型"该工具未获授权"，同时发出 `permission_denied` 事件。
 - 权限判定是一个纯函数，返回 `allow`、`deny` 或 `ask`；headless 模式下 `ask` 按 `deny` 处理。
 
-**Blocked by:** 02
+Blocked by: 02
 
-**Status:** resolved
+Status: resolved
 
 - [x] glob 基于 `Bun.Glob`，遵守 `.gitignore`
 - [x] grep 调用内置 `rg`；内置二进制无法加载或启动时，工具返回带依赖修复提示的错误，进程不崩溃

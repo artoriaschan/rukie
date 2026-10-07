@@ -2,9 +2,9 @@
 
 **What to build:** 子代理可以在自己的 run 里起后台进程并管理它；子 run 结束时这些进程被清理，不影响父 session。详见 [后台 bash spec](../spec.md) 的子代理一节。
 
-**Blocked by:** 05
+Blocked by: 05
 
-**Status:** resolved
+Status: resolved
 
 - [x] 子 session 有自己的 registry 和 owner，可以用 `bash run_in_background` 和 `job_*`，名额是它自己的 10 个；结束通知只发给子 session
 - [x] 子 run 结束时（成功、失败、中止）以 teardown 取消它名下的 job，不通知、不唤醒子 session

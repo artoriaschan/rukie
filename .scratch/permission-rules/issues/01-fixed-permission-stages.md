@@ -2,9 +2,9 @@
 
 **What to build:** 不改任何行为，把 session 里的 `beforeToolCall` 权限逻辑移进 permissions 模块，由一个入口按固定顺序调用具名阶段：规则（本工单为空，永远无意见）→ Permission Mode（含 Permission Review 的批量预启动）→ 交互。每个阶段返回 `allow | deny(reason) | ask(reason) | 无意见`，合成语义按 spec 的「固定阶段」一节实现。后续工单只需往规则阶段里填内容。
 
-**Blocked by:** None (can start immediately)
+Blocked by: None (can start immediately)
 
-**Status:** resolved
+Status: resolved
 
 参考：[spec](../spec.md)「固定阶段（地基 C 的本轮落地）」。
 

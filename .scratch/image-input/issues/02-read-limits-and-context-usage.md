@@ -2,9 +2,9 @@
 
 **What to build:** 模型 read 超限图片时得到明确的工具错误；图片计入 Context Usage 与 Context Report。详见 [图片输入 spec](../spec.md) 的 read 工具与 Context Usage 两节。
 
-**Blocked by:** 01
+Blocked by: 01
 
-**Status:** resolved
+Status: resolved
 
 - [x] 文件工具包装层在 read 图片文件执行前跑共享检查，超限返回工具错误；主 session 与子代理一致
 - [x] user 与 toolResult 中的 image 块按 `ceil(w*h/750)` 估算、单张上限 1,600，解析失败按 1,600；user 归 prompt、toolResult 归 tools；Context Report 同步

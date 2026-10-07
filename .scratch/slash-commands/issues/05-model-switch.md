@@ -2,9 +2,9 @@
 
 **What to build:** 用户在 TUI 输入 `/model` 打开模型选择器，或 `/model provider/id` 直接切换；从下一次模型调用起使用新模型，resume 后保持，不改 `settings.json`。见 [spec](../spec.md) 的“模型切换”。
 
-**Blocked by:** 01（命令框架与补全菜单）
+Blocked by: 01（命令框架与补全菜单）
 
-**Status:** resolved
+Status: resolved
 
 - [x] Agent Core 导出可用模型清单：settings 自定义模型 + 内置 provider 模型
 - [x] Session 新增 `setModel(spec)`：仅空闲；经现有模型解析，失败抛错且当前模型不变

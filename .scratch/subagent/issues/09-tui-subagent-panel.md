@@ -8,9 +8,9 @@
 - 折叠时只显示第一个 running 节点作预览。
 - 与 todo 面板平分剩余高度，一方为空时另一方用全部；空间不够时折叠成 1 行预览。审批框 / 提问框打开时仍显示。
 
-**Blocked by:** 01, 08
+Blocked by: 01, 08
 
-**Status:** resolved
+Status: resolved
 
 Implementing in `codex/subagent-09-panel` at `/Users/artorias_chan/.codex/worktrees/subagent-09-panel/Neant`. Public terminal/model seams follow the approved spec.
 

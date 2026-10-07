@@ -8,9 +8,9 @@
 - 可以用 `--model provider/id` 和 `--thinking` 覆盖设置。
 - 配置不合法（指出是哪个文件、哪个字段）、模型缺失或 key 缺失时，给出明确报错，并返回约定的退出码。
 
-**Blocked by:** 01
+Blocked by: 01
 
-**Status:** resolved
+Status: resolved
 
 - [x] settings 的 typebox schema 放在 `@neant/shared`，字段有 `model`、`thinking`、`providers[]`、`allowTools[]`、`trustedProjects[]`
 - [x] 用户级和项目级 settings 合并时，项目级的 `providers` 被忽略并给出警告

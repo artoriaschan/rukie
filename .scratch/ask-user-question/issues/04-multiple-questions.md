@@ -2,9 +2,9 @@
 
 **What to build:** 模型一次提 2–4 题时，用户在同一提问框内逐题作答，可来回切换修改，最后一题确认后整批提交；模型收到每题一行的结果。
 
-**Blocked by:** 02（单题单选端到端提问）
+Blocked by: 02（单题单选端到端提问）
 
-**Status:** resolved
+Status: resolved
 
 参考：[spec](../spec.md) TUI 提问框键位。与 03 同改提问框组件，建议串行以避免冲突。
 

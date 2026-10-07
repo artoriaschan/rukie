@@ -7,7 +7,7 @@ Status: resolved
 - 在 dark 主题中新增 `barSystem`、`barPrompt`、`barAssistant`、`barThinking`、`barTools`、`barFree`、`barFreeText`，取值照搬 dsh。
 - `ThemedText` 的 `backgroundColor` 支持传入主题 token，传原始颜色值时原样透传。
 
-**Blocked by:** —
+Blocked by: —
 
 - [x] `backgroundColor` 传主题 token 时输出对应的 SGR 48，传原始值时行为不变
 - [x] 主题测试覆盖新增的 token

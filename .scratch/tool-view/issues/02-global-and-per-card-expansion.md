@@ -2,9 +2,9 @@
 
 **What to build:** 用户按 `ctrl+o` 进入 transcript 模式，所有工具卡、thinking 与后台 job 组一起展开；点击单张卡片只切换这一张；hover 可点击卡片时整行高亮并出现 `▾ / ▴`。见 [spec](../spec.md) 的「TUI 工具卡」展开状态、按键与鼠标部分。
 
-**Blocked by:** 01
+Blocked by: 01
 
-**Status:** resolved
+Status: resolved
 
 - [x] `ctrl+o` 切换全局展开，展开卡片、thinking 与 job 组；有交互、侧问、预览打开时忽略
 - [x] 删除独立的 job 组展开状态，job 组折叠改读同一全局状态，相关提示文案更新

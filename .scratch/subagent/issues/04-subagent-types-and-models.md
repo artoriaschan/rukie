@@ -8,9 +8,9 @@
 - 子代理系统提示为：父 System Prompt + 委派说明 + 类型正文。
 - settings 增加 `subagentModel`。模型取值顺序：类型 `model` → `subagentModel` → 父模型。解析失败时报错，不回退。
 
-**Blocked by:** 02
+Blocked by: 02
 
-**Status:** resolved
+Status: resolved
 
 参考：[spec](../spec.md)「类型」「模型与配置」。
 

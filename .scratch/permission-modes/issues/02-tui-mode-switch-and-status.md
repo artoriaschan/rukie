@@ -4,7 +4,7 @@ Status: resolved
 
 **What to build:** TUI 用户按 shift+tab 在 `ask → auto-review → full-access → ask` 间循环切换，切换立即作用于 session；状态栏 row 2 第一个字段始终显示当前模式。见 spec Implementation Decisions 的 TUI 节。
 
-**Blocked by:** 01
+Blocked by: 01
 
 - [x] shift+tab 循环切换并调用 `session.setPermissionMode`
 - [x] 审批对话框打开时 shift+tab 被忽略

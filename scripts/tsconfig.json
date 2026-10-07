@@ -1,0 +1,5 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": { "types": ["bun"], "outDir": "../node_modules/.cache/tsc/scripts" },
+  "include": ["*.ts"]
+}

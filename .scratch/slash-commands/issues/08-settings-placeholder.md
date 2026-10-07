@@ -2,9 +2,9 @@
 
 **What to build:** 用户在 TUI 输入 `/settings`，进入一个外观与交互复刻 dsh-TUI `Settings` 的全屏设置页；当前没有任何设置项，只显示空状态，Esc 回到对话。见 [spec](../spec.md) 的“TUI：选择器与界面”。
 
-**Blocked by:** 01（命令框架与补全菜单）
+Blocked by: 01（命令框架与补全菜单）
 
-**Status:** resolved
+Status: resolved
 
 - [x] 新增 ④ 层设置屏幕：全屏，标题行带 `1/N` 计数；圆角分区卡片；`❯` 指针 + 选中底色；布尔 `[✓ ]` / `[  ]`、枚举 `‹ 值 ›` 的取值样式
 - [x] 页脚：分隔线、通知行、按键提示（`**Enter** …  · Esc 退出`，加粗部分同 dsh-TUI）

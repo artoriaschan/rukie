@@ -2,9 +2,9 @@
 
 **What to build:** TUI 用户在输入框上方看到待办面板（复刻 dsh-TUI `GoalTodoPanel` 的 todo 部分），随模型写入实时更新，resume 后立即出现。
 
-**Blocked by:** 01（`todo_write` 写入并在 resume 后恢复）
+Blocked by: 01（`todo_write` 写入并在 resume 后恢复）
 
-**Status:** done
+Status: resolved
 
 参考：[spec](../spec.md)「TUI」；dsh-TUI `src/components/GoalTodoPanel.tsx`。
 

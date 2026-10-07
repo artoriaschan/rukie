@@ -2,9 +2,9 @@
 
 **What to build:** TUI 用户在 transcript 里看到 `todo_write` 调用显示为"待办清单"加一行进度摘要和进行中项，回看历史时每张卡反映当时那一版清单。
 
-**Blocked by:** 01（`todo_write` 写入并在 resume 后恢复）
+Blocked by: 01（`todo_write` 写入并在 resume 后恢复）
 
-**Status:** done
+Status: resolved
 
 参考：[spec](../spec.md)「TUI」transcript 工具卡；dsh-TUI `src/dsh-adapter/channel/transcript.ts`；Neant 现有 `ask_user_question` 摘要做法。
 

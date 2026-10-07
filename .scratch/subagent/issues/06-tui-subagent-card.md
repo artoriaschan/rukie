@@ -10,9 +10,9 @@
 
 所有 running 子代理都在跑而父 agent 空闲时，显示 `waiting for N subagents`。新文案进 i18n（zh / en）。点击进入详情由工单 08 接上。
 
-**Blocked by:** 02
+Blocked by: 02
 
-**Status:** resolved
+Status: resolved
 
 参考：[spec](../spec.md)「TUI」中的「子代理状态」「消息流卡片」「父代理等待」；dsh-TUI `src/components/Chat/SubagentMessage.tsx`。
 

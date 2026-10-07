@@ -2,9 +2,9 @@
 
 **What to build:** `createSession` 启动时，删除 `~/.neant/file-history/` 下 mtime 超过 30 天的 session 备份目录，防止磁盘无限增长。清理失败只发 warning，不影响启动。见 [spec](../spec.md)"清理"。
 
-**Blocked by:** 02
+Blocked by: 02
 
-**Status:** resolved
+Status: resolved
 
 - [x] 超过 30 天的目录被删，30 天内的保留，当前 session 目录不受影响
 - [x] 备份目录尚不存在时静默跳过、不创建目录；其他读取或删除失败只经 `onWarning` 告警

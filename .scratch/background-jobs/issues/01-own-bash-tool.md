@@ -2,9 +2,9 @@
 
 **What to build:** 用 Agent Core 自研的 bash 替换 pi `createBashTool`（ADR-0010），为后面的 Background Job 准备好单一执行路径。模型侧行为与现在一致，只多 `description`（必填）和 `workdir` 两个参数。详见 [后台 bash spec](../spec.md) 的 bash 工具一节。
 
-**Blocked by:** None (can start immediately)
+Blocked by: None (can start immediately)
 
-**Status:** resolved
+Status: resolved
 
 - [x] 命令以 detached 方式在独立进程组中启动；终止时先向进程组发 SIGTERM，3 s 后发 SIGKILL
 - [x] 参数为 `command`、`description`（必填）、`timeout?`（秒，默认 120，上限 600）、`workdir?`（相对 session cwd 解析）；`run_in_background` 暂不加

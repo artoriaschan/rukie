@@ -2,9 +2,9 @@
 
 **What to build:** `subagent` / `subagent_fork` 用文件工具写的文件，记入父 session 当前 Checkpoint（父 transcript 的 Tool State `checkpoint`）；回滚父 session 时一并还原。子 session 不建自己的 Checkpoint，也没有 rewind 入口。记录器随判定配置按引用传给子 session。见 [spec](../spec.md)"子代理"。
 
-**Blocked by:** 02
+Blocked by: 02
 
-**Status:** resolved
+Status: resolved
 
 - [x] 子代理写入的文件出现在父 `checkpoints()` 对应 prompt 下
 - [x] 父与子都写同一文件时只记首次写前内容

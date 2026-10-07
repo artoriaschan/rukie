@@ -7,9 +7,9 @@
 - 子代理工具集里没有它；Headless CLI 也没有它。
 - TUI 用通用审批框和通用工具卡。
 
-**Blocked by:** 01
+Blocked by: 01
 
-**Status:** resolved
+Status: resolved
 
 - [x] e2e：`ask` 下调用触发审批，批准后 `planMode` 为 true，下一次模型调用有 plan reminder
 - [x] e2e：`auto-review` 下不走 reviewer，直接问用户；`full-access` 下不问直接进入

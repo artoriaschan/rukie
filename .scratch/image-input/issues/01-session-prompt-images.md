@@ -2,9 +2,9 @@
 
 **What to build:** SDK 调用方用 `run(prompt, { images })` / `steer(prompt, { images })` 把图片随 prompt 交给模型；超限或非图片数据在 Run 开始前被拒。图片随 Transcript 持久化，resume 后仍在。详见 [图片输入 spec](../spec.md) 的共享图片检查、Session API、存储、compaction、UserPromptSubmit hook 几节。
 
-**Blocked by:** None (can start immediately)
+Blocked by: None (can start immediately)
 
-**Status:** resolved
+Status: resolved
 
 - [x] 新领域模块（共享图片检查）：按 magic bytes 识别 png/jpeg/gif/webp，从文件头读宽高；超 5 MB 或任一边超 8000 px 拒绝并给出原因；经 `@neant/agent` 导出供 TUI 使用
 - [x] `run` / `steer` options 增加 `images?: Array<{ data; mimeType; name? }>`；任一图片检查失败则调用被拒、无模型请求

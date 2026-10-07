@@ -2,9 +2,9 @@
 
 **What to build:** Core 提交 MCP 展示快照后发出轻量 `mcp_servers_changed`，使可见面板读取当前记录并实时更新。详见 [spec](../spec.md) 的状态通知。
 
-**Blocked by:** 01
+Blocked by: 01
 
-**Status:** resolved
+Status: resolved
 
 - [x] 共享 SessionEvent 增加无完整 schema payload 的 `mcp_servers_changed`；统一快照提交路径，先更新可读记录再通知，无变化不重复通知。
 - [x] 首次 probe、Run 连接、同一 Run 授权成功/再次 needs-auth、管理成功/失败/取消的实际变化均可见；自动状态刷新不增加网络请求或轮询。

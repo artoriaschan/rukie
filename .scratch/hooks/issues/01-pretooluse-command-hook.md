@@ -2,9 +2,9 @@
 
 **What to build:** 用户在 settings 里配置 PreToolUse command hook，工具调用前运行脚本；脚本可以拒绝、要求询问、放行或改写参数，改写后的参数仍要过权限规则。见 [spec](../spec.md)「配置」「匹配」「执行与协议」「接入：权限判定链」。
 
-**Blocked by:** None (can start immediately)
+Blocked by: None (can start immediately)
 
-**Status:** resolved
+Status: resolved
 
 - [x] settings schema 新增 `hooks.<Event>[]{matcher, hooks[]}`（本票只需 command handler，schema 按 spec 全量定义事件名与 handler 联合）；非法配置加载时报错并指出位置。
 - [x] 用户层总是加载；项目层仅 Trusted Project 加载，否则丢弃并告警；两层拼接（用户在前），按去重键去重。

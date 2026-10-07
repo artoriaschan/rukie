@@ -2,9 +2,9 @@
 
 **What to build:** 即将询问用户时 hook 可以代答；任何拒绝都能被 hook 记录，auto-review 误判时可以提示模型重试。见 [spec](../spec.md)「接入：权限判定链」。
 
-**Blocked by:** 01
+Blocked by: 01
 
-**Status:** resolved
+Status: resolved
 
 - [x] PermissionRequest 在判定为 ask、进入交互阶段前触发（规则 / hook / Permission Mode / auto-review 产生的 ask 都算），输入带 `tool_name`、`tool_input`、`permission_suggestions`。
 - [x] `behavior: "allow"`：可带 `updatedInput`（校验后改写并重新过规则，规则 deny / ask 仍生效）、`updatedPermissions`。

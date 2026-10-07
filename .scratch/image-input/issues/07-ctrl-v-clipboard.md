@@ -2,9 +2,9 @@
 
 **What to build:** 用户在输入框按 Ctrl+V：剪贴板是复制的文件时图片成 token、其他文件插入路径；是图片时成 token；是文本时插入文本；为空、不可用或格式不支持时给出对应提示。详见 [图片输入 spec](../spec.md) 的剪贴板默认实现与提示文案两节。
 
-**Blocked by:** 05
+Blocked by: 05
 
-**Status:** resolved
+Status: resolved
 
 - [x] 输入框 Ctrl+V 调用 `host.readClipboard`，按 files → image → text 分支处理；empty / unavailable / 格式不支持各自 notice
 - [x] 默认实现：macOS `osascript` 依次取 `«class furl»`、`«class PNGf»`（写入 0700 临时目录 0600 文件）、`pbpaste`；Linux 按 `wl-paste --list-types` / `xclip -t TARGETS` 选 `text/uri-list`、`image/png`、文本；Windows 只取文本；临时文件退出时清理

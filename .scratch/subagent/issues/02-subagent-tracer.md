@@ -13,9 +13,9 @@
 
 新建 `subagents/` 概念目录。
 
-**Blocked by:** None (can start immediately)
+Blocked by: None (can start immediately)
 
-**Status:** resolved
+Status: resolved
 
 参考：[spec](../spec.md)「Agent Core：新模块 `subagents/`」「模型工具」「父 run 等待与结束通知」「usage」「Session API 与事件」「Headless CLI」。
 

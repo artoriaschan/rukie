@@ -2,9 +2,9 @@
 
 **What to build:** 用户关闭并恢复父 Session 后，能在现有子代理历史视图中看到子身份及最近一次 Run 的真实结束原因。当前运行活动与历史结束事实分开，正常结束不被当作整个委派任务已验收，旧记录保留未知。
 
-**Blocked by:** None (can start immediately).
+Blocked by: None (can start immediately).
 
-**Status:** resolved
+Status: resolved
 
 - [x] 每次子 Run 有稳定身份；开始执行前保存可关联子 Session 与 Run 的开始事实，结束事实先保存在子 Transcript，再更新父摘要。
 - [x] 父摘要保留子身份、最新 Run 关联和已知结束信息；旧 Run 的原始事实不改写，续跑产生新 Run 身份。

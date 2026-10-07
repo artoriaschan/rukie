@@ -7,9 +7,9 @@
 - **加载**：模型通过 `skill` 工具（属于只读工具，默认放开）按名称加载正文。
 - **Skill Invocation**：用户在 prompt 开头写 `/name` 时，对应 skill 的正文作为 reminder 附在这条消息上，用户原话保持不变；找不到对应 skill 时，prompt 按普通文本原样发送。
 
-**Blocked by:** 04, 06
+Blocked by: 04, 06
 
-**Status:** resolved
+Status: resolved
 
 - [x] 六个发现路径都能生效，重名时项目级优先，坏掉的 skill 只产生警告
 - [x] `skill` 工具加入只读集合，能按名称返回正文；名称不存在时返回 `isError`

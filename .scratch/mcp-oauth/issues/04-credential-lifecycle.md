@@ -2,9 +2,9 @@
 
 **What to build:** 长时间使用时授权仍然有效：access token 过期后自动刷新；refresh 失效或 server 中途要求重新授权时回到 needs-auth；credential 不会被同名的其他 server 借用；预注册客户端可以用。详见 [MCP OAuth spec](../spec.md) 的 MCP Credential 存储、连接与 needs-auth 两节。
 
-**Blocked by:** 01, 03
+Blocked by: 01, 03
 
-**Status:** resolved
+Status: resolved
 
 - [x] token 失效后由 pi 自动刷新，工具调用照常成功（fake 记录到 refresh 请求）；refresh 返回 `invalid_grant` 时 server 回到 needs-auth，伪工具重新出现
 - [x] 工具调用途中遇到 401 / 需要授权：这次调用返回错误，server 标为 needs-auth，下一个 turn 换成伪工具

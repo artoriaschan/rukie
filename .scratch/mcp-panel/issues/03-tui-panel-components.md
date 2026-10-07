@@ -2,9 +2,9 @@
 
 **What to build:** 服务器列表、服务器详情、工具列表和工具详情采用同一通用 Design System 框架；组件只消费 props，不连接 Session。详见 [spec](../spec.md) 的面板框架与页面导航。
 
-**Blocked by:** 01
+Blocked by: 01
 
-**Status:** resolved
+Status: resolved
 
 - [x] 使用 Rewind flow 槽位样式、permission Divider、remember 标题、通用 ListItem/状态/HintLine/ScrollBox；采用现有主题，不创建专用视觉原语。
 - [x] 服务器 project/user 分组与路径、稳定排序、状态与数量；工具名称与简介列表；hover 不改键盘 focus，单击回调直接激活项，边界滚动提示明确。

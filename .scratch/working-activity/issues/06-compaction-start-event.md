@@ -24,7 +24,7 @@ Status: resolved
 - CONTEXT.md 补 **Compaction** 词条（已完成）。
 - `.scratch/headless-agent/spec.md` 列出的自定义事件名同步改掉。
 
-**Blocked by:** 03
+Blocked by: 03
 
 - [x] Agent Core 测试：压缩时事件顺序为 `compaction_start` → `compaction_end`，两者 `tokensBefore` 相同，且 `tokensAfter < tokensBefore`
 - [x] Agent Core 测试：超过阈值但没东西可压时，两个事件都不发

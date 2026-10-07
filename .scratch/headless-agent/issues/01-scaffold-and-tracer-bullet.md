@@ -2,9 +2,9 @@
 
 **What to build:** 搭起 Bun monorepo，包含 `@neant/shared`、`@neant/agent`、`@neant/cli` 三个包，配齐全套质量闸门，并打通最短的端到端路径：`neant -p "<prompt>"`（不写 `-p` 时从 stdin 读取）→ Agent Core 创建 Session，执行一次 Run（底层是 pi `Agent`，模型由 `streamFn` 提供）→ 输出最终 assistant 文本。这张 ticket 不接真实 provider，模型调用通过注入的 `streamFn` 完成。仓库结构、版本和测试约定见 `CLAUDE.md`、`docs/tech-stack.md` 和 spec 的 "Testing Decisions" 部分。
 
-**Blocked by:** None (can start immediately)
+Blocked by: None (can start immediately)
 
-**Status:** resolved
+Status: resolved
 
 - [x] 三个包按 `CLAUDE.md` 的 Repo layout 建好；内部包不构建，用 `workspace:*` 互相引用；依赖版本按 `docs/tech-stack.md` 精确锁定（typebox 与 pi 的版本一致，用 `bun pm ls` 确认依赖树里只有一份）
 - [x] pre-commit hook（husky）执行 lint-staged，对暂存的文件运行 oxfmt 格式化和 `oxlint --fix`

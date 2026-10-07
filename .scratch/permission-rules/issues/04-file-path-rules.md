@@ -2,9 +2,9 @@
 
 **What to build:** 用户写 `read(~/.ssh/**)`、`edit(src/**)` 或绝对路径规则，约束文件工具（read / edit / write / glob / grep）。`~/` 展开为 home；相对路径按项目根解析；glob 和 grep 省略 `path` 时按 cwd 算。deny 和 ask 对 resolve 后与 realpath 后两个路径都匹配，任一命中即生效；allow 只认 realpath。路径不存在时，对最近一个存在的祖先取 realpath。因为只读工具的默认放行属于模式阶段，`deny: ["read(~/.ssh/**)"]` 能拦住 read。
 
-**Blocked by:** 02
+Blocked by: 02
 
-**Status:** resolved
+Status: resolved
 
 参考：[spec](../spec.md)「Permission Rule」中的文件工具与目标路径；User Stories 4–6、24–26。
 

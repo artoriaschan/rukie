@@ -1,6 +1,6 @@
 # 10: TUI 流式输出触发 React 更新深度限制
 
-**Status:** resolved
+Status: resolved
 
 **Problem:** 本地验证时，两个子代理正常完成，父代理汇总阶段保存了 `Maximum update depth exceeded` 错误。聊天屏幕必须能够持续接收流式事件，保留滚动阅读位置与未读提示，并在完成后接受下一次输入。
 

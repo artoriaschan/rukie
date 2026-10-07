@@ -2,9 +2,9 @@
 
 **What to build:** 每条 user prompt 自动建 Checkpoint：同一 Checkpoint 内，`write` / `edit` 首次写某文件前把原内容备份到 `~/.neant/file-history/<sessionId>/`（按内容 hash；原本不存在的文件也要记下来），引用作为 Tool State `checkpoint` 记入 transcript。Session 提供 `checkpoints()` 与 `rewind(promptEntryId, { code: true, conversation: false })`，可以把文件还原到那条 prompt 之前。见 [spec](../spec.md) Implementation Decisions 的"快照时机 / Checkpoint 锚点 / 备份存储 / Tool State / Session API / 回代码"。
 
-**Blocked by:** 01
+Blocked by: 01
 
-**Status:** resolved
+Status: resolved
 
 - [x] 快照挂在放行后阶段；路径经与权限相同的 realpath 规范化；bash / MCP 工具不快照
 - [x] 同 prompt 内多次写同一文件只备份首次

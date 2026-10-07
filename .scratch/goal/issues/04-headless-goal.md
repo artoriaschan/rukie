@@ -2,9 +2,9 @@
 
 **What to build:** Headless 用户可以运行 `neant --goal "<objective>" [--max-goal-rounds N]`，让 agent 无人值守地跑到 goal 结束；按结果给出退出码，脚本和 CI 可据此判断成败。详见 [Goal spec](../spec.md) 的"Headless CLI"一节。
 
-**Blocked by:** 01 Goal 续跑核心，02 模型 goal 工具与收尾
+Blocked by: 01 Goal 续跑核心，02 模型 goal 工具与收尾
 
-**Status:** resolved
+Status: resolved
 
 - [x] 新 flag `--goal <objective>` 与 `--max-goal-rounds <N>`；后者仅能与 `--goal` 同用且须为正整数，否则报错
 - [x] `--goal` 与 `-p` 互斥，同时给出时报错

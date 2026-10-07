@@ -4,7 +4,7 @@ Status: resolved
 
 **What to build:** `apps/neant-tui/src/screens/chat/activity/` 下的纯函数状态机 `reduce(state, event, now)` / `render(state, now) → { phase, line, nextWakeAt }`，和从 dsh-working-activity 拷贝的中文文案池，见 spec ④ 节。原包的 turn 对应 Neant 的 Run。这张只做纯逻辑和单元测试，不接 UI。
 
-**Blocked by:** —
+Blocked by: —
 
 - [x] `phrases.ts` 文件头保留 BSD-3-Clause 全文，并注明来源路径与版本 0.5.1；删掉 en 和没有输入来源的池
 - [x] 阶段迁移 `idle → waiting → thinking ⇄ tool → done`，事件对应关系按 spec 实现

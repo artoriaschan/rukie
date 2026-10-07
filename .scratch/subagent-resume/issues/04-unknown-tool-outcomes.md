@@ -2,9 +2,9 @@
 
 **What to build:** 用户实际恢复一个 Session 时，已有 Tool 调用却缺少结果的项目被持久化为“结果未知”，原调用保留，TUI 和模型都能理解这种不确定性。恢复不自动重放 Tool；历史子 Session 仅在之后实际续跑它时修复。
 
-**Blocked by:** None (can start immediately).
+Blocked by: None (can start immediately).
 
-**Status:** resolved
+Status: resolved
 
 - [x] 实际恢复对应 Session 时，在当前分支中识别有已保存调用却缺少匹配真实结果的 Tool；不修改已有真实结果。
 - [x] 在新 Run 请求模型前，追加与原调用身份关联的持久化恢复信息及协议兼容结果表示；恢复占位能够区别于真实 Tool 结果。

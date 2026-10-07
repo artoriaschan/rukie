@@ -2,9 +2,9 @@
 
 **What to build:** 用户写一句自然语言规则，由 LLM 判定是否放行；需要看代码时可以用一个只读小 agent 核查。见 [spec](../spec.md)「执行与协议」。
 
-**Blocked by:** 01
+Blocked by: 01
 
-**Status:** resolved
+Status: resolved
 
 - [x] prompt：`$ARGUMENTS` 替换为输入 JSON，单次调用 review model（`model` 覆盖时解析该模型），输出 `{ ok, reason? }`；`ok: false` 视同 deny / block。默认超时 30s。
 - [x] agent：以 read / glob / grep 跑一个无 transcript 的临时 run，最终输出 `{ ok, reason? }`。默认超时 60s。

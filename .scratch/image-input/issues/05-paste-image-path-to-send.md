@@ -2,9 +2,9 @@
 
 **What to build:** 用户把图片文件拖进终端（bracketed paste 一个图片路径），输入框出现 `[Image #N]` token 并提示已粘贴；发送后模型收到图片，transcript 中 user 消息与 read 工具卡下方显示 `[Image · name]`，点击用系统查看器打开原图。详见 [图片输入 spec](../spec.md) 的粘贴路径识别、Composer token（发送部分）、提示文案、transcript 呈现几节。
 
-**Blocked by:** 01, 04
+Blocked by: 01, 04
 
-**Status:** resolved
+Status: resolved
 
 - [x] 整段粘贴恰为一个图片路径（引号、反斜杠转义、`~/`、绝对路径、`file://`，≤ 4096，png/jpg/jpeg/gif/webp）时读取并跑共享检查，成功插入 `[Image #N] `（`suggestion` 色）与成功 notice；读取失败原文照插；超限 warning notice 且不插入
 - [x] 发送时按 token 出现顺序把绑定图片作为 `images` 交给 `run` / `steer`，文本保留 token 字面量

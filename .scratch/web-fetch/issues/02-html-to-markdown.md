@@ -2,9 +2,9 @@
 
 **What to build:** web_fetch 读到 HTML 页面时返回干净的 markdown（标题、代码块、GFM 表格保留，脚本、样式和隐藏元素去掉）。非 UTF-8 页面正确解码，PDF、图片等不支持的类型返回明确错误。详见 [web fetch spec](../spec.md) 的"内容类型与解码"和"HTML 转换"两节。
 
-**Blocked by:** 01 最小安全 web_fetch
+Blocked by: 01 最小安全 web_fetch
 
-**Status:** resolved
+Status: resolved
 
 - [x] `text/html`、`application/xhtml+xml` 经 turndown（atx 标题、fenced 代码块、`-` 列表）加 `@joplin/turndown-plugin-gfm` 转换
 - [x] 转换前去掉 `script`、`style`、`noscript`、`iframe`、`template`、`svg`、`[hidden]`、`aria-hidden="true"`、内联 `display:none` 的元素

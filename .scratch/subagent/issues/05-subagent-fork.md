@@ -2,9 +2,9 @@
 
 **What to build:** 模型调用 `subagent_fork { description, prompt, run_in_background? }`，创建一个带着父代理到最后一个已完成 turn 为止的消息的子代理（不含当前进行中的 turn）。复制来的消息写进子 transcript 自己的 entry，之后冷恢复不读父 session。系统提示、工具集（去掉子代理工具）、模型均与父相同，type 为 `fork`。其余行为（后台 / 前台、通知、限制、事件）同 `subagent`。
 
-**Blocked by:** 02
+Blocked by: 02
 
-**Status:** resolved
+Status: resolved
 
 参考：[spec](../spec.md)「模型工具」。
 

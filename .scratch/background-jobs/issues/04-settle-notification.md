@@ -2,9 +2,9 @@
 
 **What to build:** Background Job 结束时 Agent Core 通知模型：run 进行中就插进下一个 turn，空闲时开一个新 run 让模型处理。详见 [后台 bash spec](../spec.md) 的结束通知一节。
 
-**Blocked by:** 02
+Blocked by: 02
 
-**Status:** resolved
+Status: resolved
 
 - [x] 结束时生成 user 消息 `background job <id> (bash: <label>) finished [status: …]. Read its output with job_output.`，走 Session 现有的 rewake 通道（与 asyncRewake 同一路径，保留 observer）
 - [x] 以下情况不通知：已被 `wait` 收走、模型 `job_kill`、teardown

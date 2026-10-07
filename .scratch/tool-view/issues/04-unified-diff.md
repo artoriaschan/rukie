@@ -2,9 +2,9 @@
 
 **What to build:** edit 与 write 的结果以 diff 卡呈现，覆盖文件也能看到改了什么，新建文件显示为全新增。见 [spec](../spec.md) 的「Agent Core 需补的事实」与 diff 部分。
 
-**Blocked by:** 01
+Blocked by: 01
 
-**Status:** resolved
+Status: resolved
 
 - [x] write 覆盖已有文件时写前读取旧内容存入 `details`；新建文件记 `oldText: null`
 - [x] 旧或新内容超过 diff 截断上限时只存统一 patch，不存全文

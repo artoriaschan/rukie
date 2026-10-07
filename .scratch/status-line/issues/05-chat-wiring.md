@@ -12,7 +12,7 @@ Status: resolved
 - `ActivityLine`：新增 `warnPct`，≥80% 时显示 `⚠ 上下文 N% · `，≥95% 改为 error 色。
 - 收尾时把 `.scratch/working-activity/spec.md` 中关于后缀和滚动提示的描述同步过来。
 
-**Blocked by:** 03, 04
+Blocked by: 03, 04
 
 - [x] 终端 e2e：footer 在 80、60、40 列下的三行内容
 - [x] 终端 e2e：运行中第三行显示 `esc 中断`，结束后清空；活动行后缀不再出现 `esc 中断`

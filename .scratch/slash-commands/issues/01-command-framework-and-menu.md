@@ -2,9 +2,9 @@
 
 **What to build:** TUI 里输入 `/` 弹出补全菜单，列出内置 Slash Command 和用户可调用的 skill；内置命令由 frontend 执行，其余 `/` 输入原样交给 Agent Core（Skill Invocation 或普通 prompt）。本工单交付命令表、补全菜单、run 中可用性规则，以及不需要新 Agent Core API 的命令：`/help`、`/exit`、`/clear`、`/plan`、`/rewind`、`/goal`（占位）。其余命令（`/compact`、`/model`、`/resume`、`/context`、`/settings`、`/btw`、`/rename`）由后续工单逐个接入。见 [spec](../spec.md) 的“TUI：命令与补全”。
 
-**Blocked by:** None (can start immediately)
+Blocked by: None (can start immediately)
 
-**Status:** resolved
+Status: resolved
 
 - [x] 命令名匹配规则：`/` 后接 `[a-z0-9-]+`，再跟空白或结尾；匹配到内置命令才由 frontend 执行
 - [x] 不认识的 `/foo bar` 与以路径开头的输入（如 `/Users/x/a.ts 有 bug`）原样作为 prompt 发出；`/skill-name 参数` 照旧展开 skill

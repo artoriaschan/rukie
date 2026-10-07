@@ -10,7 +10,7 @@ Status: resolved
 - `used` 优先取最后一个 step 的真实 usage（`input + cacheRead + cacheWrite`）。没有真实 usage，或刚做完 Compaction 时，改用估算总和。
 - headless CLI 的 stream-json 输出原样透传该事件。
 
-**Blocked by:** —
+Blocked by: —
 
 - [x] e2e：假 `streamFn` 跑多 step 的 Run，断言事件出现的时机，以及 `used` 等于真实 usage
 - [x] e2e：首次 Run 和 resume 时 `used` 取估算值，`window` 等于模型的 `contextWindow`

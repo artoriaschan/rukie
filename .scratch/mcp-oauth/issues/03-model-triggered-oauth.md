@@ -2,9 +2,9 @@
 
 **What to build:** 模型调用 `mcp__<server>__authenticate`，Agent Core 经 `onMcpAuth` 请用户在浏览器授权。授权完成后，server 的真实工具在当前 run 的下一个 turn 即可用，MCP Credential 保存到本机，之后的 session 直接复用。详见 [MCP OAuth spec](../spec.md) 的 MCP Credential 存储、OAuth 流程、Interaction 回调、伪工具四节。
 
-**Blocked by:** 02
+Blocked by: 02
 
-**Status:** resolved
+Status: resolved
 
 - [x] 文件存储实现 `McpOAuthStateStore`：`<homeDir>/.neant/credentials.json`，权限 0600，目录不存在时以 0700 创建；结构 `{ version: 1, mcp: { [key]: { serverName, serverUrl, state } } }`；key 为 `name|sha256(type,url,headers) 前 16 位`；先写临时文件再 rename
 - [x] 流程：启动 `OAuthCallbackServer`（127.0.0.1、随机端口、`/callback`、5 分钟），redirect_uri 为 `http://localhost:<port>/callback`；拿到 authorizationUrl 后调用 `onMcpAuth`，同时等待回调；本地回调先到时 abort `signal`；收到粘贴的 `callback-url` 时解析并校验 state

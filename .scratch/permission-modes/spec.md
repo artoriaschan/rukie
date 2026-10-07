@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 
 # Spec: Permission Mode（ask / auto-review / full-access）
 

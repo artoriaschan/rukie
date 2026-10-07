@@ -2,9 +2,9 @@
 
 **What to build:** 关闭 session 期间被改的文件，resume 后的第一次模型请求前被报告为"已修改，请重新 read"（无 diff），随后的 edit 被过期检查拒绝，直到重读。详见 [文件外部修改检测 spec](../spec.md) 的持久化与 resume 两节。
 
-**Blocked by:** 03
+Blocked by: 03
 
-**Status:** resolved
+Status: resolved
 
 - [x] Tool State `file-tracking` version 1，值 `{ files: Array<{ path, mtimeMs, size, hash, stale }> }`，TypeBox 校验；不存内容，不提供 `renderReminder`
 - [x] 基线每次变化（工具执行后、报告后、删除移出）写完整快照，last-wins；坏记录按地基 B 跳过并告警

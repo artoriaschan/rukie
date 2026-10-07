@@ -1,4 +1,4 @@
-Status: done
+Status: resolved
 
 # Spec: todo 工具（`todo_write`）与 Tool State 地基
 

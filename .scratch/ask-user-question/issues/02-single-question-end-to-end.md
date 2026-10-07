@@ -2,9 +2,9 @@
 
 **What to build:** 模型在 TUI 中调用 `ask_user_question` 问一个单选题，用户在底部提问框选择后，模型下一轮收到 `"问题" → 选项` 的工具结果，run 继续。Headless CLI 下模型看不到该工具。
 
-**Blocked by:** 01（预重构：交互 helper 与 TUI Interaction 队列）
+Blocked by: 01（预重构：交互 helper 与 TUI Interaction 队列）
 
-**Status:** resolved
+Status: resolved
 
 参考：[spec](../spec.md) 命名、工具 schema、回调契约、注册条件、权限、结果文本、TUI 提问框。
 

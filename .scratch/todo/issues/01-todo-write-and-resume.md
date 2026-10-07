@@ -2,9 +2,9 @@
 
 **What to build:** 模型调用 `todo_write` 写下完整 Todo List，收到一行计数结果；frontend 经 `tool_state_changed` 事件与 `session.toolState("todo")` 读到当前清单；session resume 后清单原样恢复，单条坏记录不影响 resume。顺带落地 Tool State 地基的最小实现，由本用例驱动。
 
-**Blocked by:** None (can start immediately)
+Blocked by: None (can start immediately)
 
-**Status:** done
+Status: resolved
 
 参考：[spec](../spec.md)「Tool State 地基」「`todo_write` 工具」。
 

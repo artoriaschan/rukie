@@ -2,9 +2,9 @@
 
 **What to build:** 每个 session 自动获得 Session Title：首条 prompt 发出后立即以清洗截断的 prompt 作标题，随后模型异步总结一次；用户可用 `/rename` 改名并固定。标题显示在终端标题上。见 [spec](../spec.md) 的“Session 标题”。
 
-**Blocked by:** 01（命令框架与补全菜单）
+Blocked by: 01（命令框架与补全菜单）
 
-**Status:** resolved
+Status: resolved
 
 - [x] 新概念目录 `session-title`；标题存 pi session name，来源（`prompt` / `model` / `user`）记 Tool State；Session 暴露 `title` / `titleSource`
 - [x] 首条 user prompt 写入后立即写 fallback：去控制字符与 ANSI、折叠空白、截到 40 个 UTF-8 字节（不切断码点、无省略号）

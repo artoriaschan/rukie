@@ -2,9 +2,9 @@
 
 **What to build:** 前台 bash 超时后不再被杀，而是转为 Background Job，模型拿到 job id 后可以继续读取或终止。详见 [后台 bash spec](../spec.md) 的 bash 工具一节。
 
-**Blocked by:** 02
+Blocked by: 02
 
-**Status:** resolved
+Status: resolved
 
 - [x] 超时后返回 `[still running after <s>s; moved to background job <id>]` 加 harness 的说明文字，进程继续运行
 - [x] 转入后台不受每个 owner 10 个的上限限制

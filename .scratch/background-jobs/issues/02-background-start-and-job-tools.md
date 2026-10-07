@@ -2,9 +2,9 @@
 
 **What to build:** 模型可以用 `bash run_in_background` 启动 Background Job，用 `job_output` 增量读取、`job_list` 列出、`job_kill` 终止，session 结束时 job 被清理。这一张还不发结束通知。详见 [后台 bash spec](../spec.md) 的 Job registry、job 工具、生命周期三节。
 
-**Blocked by:** 01
+Blocked by: 01
 
-**Status:** resolved
+Status: resolved
 
 - [x] Session 持有 job registry；id 为 `bash-N`；字段与状态按 spec
 - [x] `run_in_background: true` 立即返回 `started background job <id>`，没有超时；每个 owner 第 11 个后台 job 返回上限错误

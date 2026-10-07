@@ -2,9 +2,9 @@
 
 **What to build:** hook 可以阻止一次自动 compaction；compaction 后可以记录摘要，并重新注入被摘要掉的关键上下文。见 [spec](../spec.md)「接入：compaction 与交互」。
 
-**Blocked by:** 04
+Blocked by: 04
 
-**Status:** resolved
+Status: resolved
 
 - [x] PreCompact 在自动 compaction 前触发，`trigger: "auto"`、`custom_instructions: null`，matcher 匹配 `trigger`。
 - [x] `decision: "block"` 或 exit 2：跳过本次 compaction 并 `hook_warning`；下次达到阈值仍会尝试。

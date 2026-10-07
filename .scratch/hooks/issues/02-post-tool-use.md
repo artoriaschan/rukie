@@ -2,9 +2,9 @@
 
 **What to build:** 工具执行后运行 hook：成功时可以给模型附加反馈或替换结果，失败时可以补充排查提示。见 [spec](../spec.md)「接入：after 阶段」。
 
-**Blocked by:** 01
+Blocked by: 01
 
-**Status:** resolved
+Status: resolved
 
 - [x] 工具成功触发 PostToolUse，输入含 `tool_input`、`tool_response`、`tool_use_id`、`duration_ms`。
 - [x] `decision: "block"` + `reason` 或 exit 2：原因作为 system reminder 附在结果上，原结果保留。

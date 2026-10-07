@@ -2,9 +2,9 @@
 
 **What to build:** todo、ask user、plan mode、子代理工具不再在 transcript 中出通用工具卡，只由各自的面板或专用行呈现，同一件事只出现一次。见 [spec](../spec.md) 的「建卡前分流」。
 
-**Blocked by:** 01, 02
+Blocked by: 01, 02
 
-**Status:** resolved
+Status: resolved
 
 - [x] `todo_write` 成功时不出工具行，只更新 todo 面板；失败时出错误卡
 - [x] `ask_user_question` 不出调用行，结果投影为已回答记录行（沿用现有 `q → answer` 文案）

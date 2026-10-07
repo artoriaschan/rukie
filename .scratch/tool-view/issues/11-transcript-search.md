@@ -2,9 +2,9 @@
 
 **What to build:** 在 transcript 模式下用户按 `/` 搜索整段对话，`n` / `N` 在匹配间跳转；退出后输入框的 `/` 命令补全照常工作。见 [spec](../spec.md) 的「TUI 工具卡」按键部分。
 
-**Blocked by:** 02
+Blocked by: 02
 
-**Status:** resolved
+Status: resolved
 
 - [x] transcript 模式下 `/` 进入搜索输入，回车后高亮匹配并跳到第一处
 - [x] `n` / `N` 前后跳转，无匹配时显示提示

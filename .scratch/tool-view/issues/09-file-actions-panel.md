@@ -2,9 +2,9 @@
 
 **What to build:** 用户点击卡片头部或 diff 路径行里的路径，弹出菜单选择打开文件、在文件管理器中显示或复制路径。见 [spec](../spec.md) 的「TUI 工具卡」FileActionsPanel 部分。
 
-**Blocked by:** 02
+Blocked by: 02
 
-**Status:** resolved
+Status: resolved
 
 - [x] 路径段带下划线，点击停止冒泡，不切换卡片展开
 - [x] FileActionsPanel 三项：打开（host `openExternal`）、在文件管理器中显示（host 新增 reveal：macOS `open -R`，Linux 打开父目录）、复制路径

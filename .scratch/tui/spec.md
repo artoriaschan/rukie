@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 
 # Spec: TUI（`@neant/tui` 渲染器 + `neant` 交互式 frontend）
 

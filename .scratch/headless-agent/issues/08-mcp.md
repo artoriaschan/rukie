@@ -8,9 +8,9 @@
 - **instructions**：server 提供的 instructions 通过 System Reminder 注入，并参与增量比较。
 - **容错与清理**：单个 server 失败时发出 `mcp_server_error` 事件并继续运行；Run 结束或被中止时关闭所有连接，不留孤儿进程。
 
-**Blocked by:** 03, 04, 06
+Blocked by: 03, 04, 06
 
-**Status:** resolved
+Status: resolved
 
 - [x] stdio 和 HTTP 两种传输都可以通过配置连接
 - [x] 项目级 `.mcp.json` 在不受信任时不加载，在受信任或加了 trust 参数时加载

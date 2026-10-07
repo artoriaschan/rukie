@@ -2,9 +2,9 @@
 
 **What to build:** 用户在 TUI 输入 `/context`，对话区出现一条静态快照：复刻 Claude Code 的 token 格子图、按类别的图例和明细区，一眼看出上下文被什么占满。见 [spec](../spec.md) 的“上下文报告”与“TUI：选择器与界面”。
 
-**Blocked by:** 01（命令框架与补全菜单）
+Blocked by: 01（命令框架与补全菜单）
 
-**Status:** resolved
+Status: resolved
 
 - [x] Session 新增 `contextReport()`（只读，空闲与 run 中都可用）：`model`、`window`、`used`（优先最近一次 response 的 input tokens，否则估算总和）、`categories[]`、`memoryFiles[]`、`mcpTools[]`、`skills[]`、`agentTypes[]`
 - [x] 类别：System prompt（仅系统提示词）、Memory files（`user-instructions` / `project-instructions` reminder 当前内容，按路径）、System tools（含子代理类型）、MCP tools、Skills（列表 reminder）、Messages（其余，不重复计）、Compaction 预留（窗口 20%）、Free space（≥0）；细分用 chars/4；现有 `context_usage` 不变

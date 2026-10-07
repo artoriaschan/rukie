@@ -4,7 +4,7 @@ Status: resolved
 
 **What to build:** TUI 在 `auto-review` 下：评审进行时 ActivityLine 显示 REVIEW 文案；评审转来的审批对话框展示评审理由，只提供"允许一次"和"拒绝"。见 spec Implementation Decisions 的 TUI 节。
 
-**Blocked by:** 02, 03
+Blocked by: 02, 03
 
 - [x] `mode === "auto-review"` 的审批请求，对话框只有"允许一次 / 拒绝"两项
 - [x] 请求带 `reason` 时展示评审理由（后续用户要求：工具名作为标题，理由放入可滚动正文）

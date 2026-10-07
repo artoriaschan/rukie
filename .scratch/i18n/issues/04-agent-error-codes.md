@@ -1,10 +1,10 @@
 # 04: Agent Core 错误码与英文拒绝原因
 
-Status: done
+Status: resolved
 
 **What to build:** Agent Core 不再产出中文（ADR-0008）。ripgrep 不可用、未配置模型、未知模型、缺少 API key、session 不存在这五种错误在 TUI 中按 locale 显示；模型收到的工具拒绝原因固定英文，transcript 不含界面语言。见 spec Implementation Decisions 的 `@neant/shared`、Agent Core、TUI（错误展示）节。
 
-**Blocked by:** 01
+Blocked by: 01
 
 - [x] `@neant/shared` 新增用户可见错误码联合类型与带码错误形状 `{ code, params }`：`ripgrep-unavailable`（cause）、`no-model`（settings 路径）、`unknown-model`（model）、`no-api-key`（provider、env）、`session-not-found`（id）
 - [x] Agent Core 上述五处抛出带 `code` / `params` 的错误，`message` 英文

@@ -2,9 +2,9 @@
 
 **What to build:** 模型调用 `web_fetch { url }` 读取公网 http/https 页面的文本内容。结果第一行注明最终 URL 和状态码，接着是不可信内容声明，然后是正文，超长时截断。请求只能到公网地址，连接钉在校验过的 IP 上。工具不在免询问清单里，`ask` 模式会询问。主 session 和子代理都能用。详见 [web fetch spec](../spec.md) 的工具 schema、URL 校验、SSRF、限制、输出渲染、错误、请求头、权限（默认值部分）、hooks、子代理、测试注入点几节。
 
-**Blocked by:** None (can start immediately)
+Blocked by: None (can start immediately)
 
-**Status:** resolved
+Status: resolved
 
 - [x] 注册 `web_fetch { url }`，description 照 spec 写
 - [x] URL 校验：长度不超过 2048，只允许 http/https，不得带凭证，必须有 host

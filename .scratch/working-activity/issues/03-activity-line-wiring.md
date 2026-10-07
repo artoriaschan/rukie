@@ -10,7 +10,7 @@ Status: resolved
 - 启动时读一次 git 分支。
 - `StatusLine` 删掉 `Running` / `Ready`。
 
-**Blocked by:** 01, 02
+Blocked by: 01, 02
 
 - [x] Run 进行中显示状态行；成功、失败或打断结束后隐藏，下次提交时重新显示；启动后首次提交前不显示
 - [x] 流式过程中 `↓` 增长，`message_end` 后校正为真实 usage

@@ -2,9 +2,9 @@
 
 **What to build:** frontend 不用解析错误，也能查看各 MCP server 的状态，并发起登录、登出、重连。详见 [MCP OAuth spec](../spec.md) 的 Session API 一节。
 
-**Blocked by:** 03
+Blocked by: 03
 
-**Status:** resolved
+Status: resolved
 
 - [x] `mcpServers(): Promise<McpServerView[]>`，字段 `{ name, transport, status: connected | needs-auth | failed, toolCount, auth: oauth | headers | none, error? }`；返回上一个 run 的结果；还没有结果时做一次独立探测（连接、listTools、关闭；不注入 reminder，不写 Transcript）
 - [x] `authenticateMcp(name)`：走 03 的流程；不是 http server 时报错，没有 `onMcpAuth` 时报错

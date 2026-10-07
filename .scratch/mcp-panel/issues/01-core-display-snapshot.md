@@ -2,9 +2,9 @@
 
 **What to build:** 扩展公开 MCP 快照，让 Frontend 通过同一个 Session 接口显示配置分组、服务器详情与真实工具详情。详见 [spec](../spec.md) 的 Ownership 与 Agent Core 展示数据。
 
-**Blocked by:** none
+Blocked by: none
 
-**Status:** resolved
+Status: resolved
 
 - [x] 从现有配置读取/合并路径保留有效 `user | project` 来源与路径；同名覆盖、Trusted Project 和环境变量展开保持原行为，Frontend 不重读配置。
 - [x] 公开读取返回单一 `McpSnapshot`（servers/configErrors）；整个文件错误与服务器 failed 行分离，部分合法来源保留可用，缺失文件正常为空，既有 Run fail-open/警告不变，所有仓库消费者同步更新。

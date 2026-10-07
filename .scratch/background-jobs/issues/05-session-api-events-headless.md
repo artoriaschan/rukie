@@ -2,9 +2,9 @@
 
 **What to build:** frontend 能列出、读取、停止 job 并收到 job 事件；用户停止的 job 会告诉模型；Headless CLI 输出 job 事件，并在 run 结束时清理所有 job。详见 [后台 bash spec](../spec.md) 的 Session API 与事件、用户停止、Headless CLI 三节。
 
-**Blocked by:** 04
+Blocked by: 04
 
-**Status:** resolved
+Status: resolved
 
 - [x] Session 新增 `jobs()`、`readJob(id, offset)`（绝对偏移，不移动模型游标）、`killJob(id)`；类型放进 `@neant/shared`
 - [x] `job_event { kind: started | output | settled, job }`：job 成为后台 job 时才发 `started`，output 按约 150 ms 节流；前台命令不发

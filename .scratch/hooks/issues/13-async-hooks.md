@@ -2,9 +2,9 @@
 
 **What to build:** 日志、通知类 command hook 在后台运行不拖慢 agent；后台检查发现问题时可以把 agent 叫回来。见 [spec](../spec.md)「执行与协议」。
 
-**Blocked by:** 01
+Blocked by: 01
 
-**Status:** resolved
+Status: resolved
 
 - [x] `async: true`：立即返回，不参与决定，不受超时约束；完成后的 `additionalContext` / `systemMessage` 在下一次模型调用前注入。
 - [x] `asyncRewake: true`：后台完成且 exit 2 时，session 空闲则以 stderr 作为 user 消息起新 run，run 中则 steer。

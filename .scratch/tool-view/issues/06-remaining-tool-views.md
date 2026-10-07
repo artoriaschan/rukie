@@ -2,9 +2,9 @@
 
 **What to build:** read、grep、glob、web_fetch、MCP、goal、job 工具都有各自的卡片样式，不再只是原始文本。见 [spec](../spec.md) 的「Presenter」与「TUI 工具卡」。
 
-**Blocked by:** 01
+Blocked by: 01
 
-**Status:** resolved
+Status: resolved
 
 - [x] read 出 read view，标题为路径，正文为文本内容
 - [x] grep 出 search `matches` 形态（按文件分组 + `n: line`），glob 出 `paths` 形态；截断时显示总数

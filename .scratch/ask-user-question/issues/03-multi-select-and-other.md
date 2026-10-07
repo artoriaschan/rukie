@@ -2,9 +2,9 @@
 
 **What to build:** 模型提 `multiSelect` 题时，用户可勾选多项一次确认；任意题末尾固定有"其他"，选中后就地变为输入框，用户可只写自由回答，或在单选/多选之外附言。模型收到的结果反映所有选中项与附言。
 
-**Blocked by:** 02（单题单选端到端提问）
+Blocked by: 02（单题单选端到端提问）
 
-**Status:** resolved
+Status: resolved
 
 参考：[spec](../spec.md) TUI 提问框、结果文本。
 

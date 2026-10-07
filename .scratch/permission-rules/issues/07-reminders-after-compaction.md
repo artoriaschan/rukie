@@ -2,9 +2,9 @@
 
 **What to build:** compaction 后，模型立即重新看到 date、user / project instructions、skills、MCP 说明、frontend 传入的 reminder source，以及 Tool State（environment 是一次性快照，不重发）。下一个 run 不重复发送内容未变的 reminder。resume 后恢复的 context 与 compaction 当时一致。reminder 去重统一只对照最近一次 compaction 之后的 transcript，去掉 Tool State source 的特例。
 
-**Blocked by:** None (can start immediately)
+Blocked by: None (can start immediately)
 
-**Status:** resolved
+Status: resolved
 
 参考：[spec](../spec.md)「compaction 后 reminder 重发」；User Stories 38–40。
 

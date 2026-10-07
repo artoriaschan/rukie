@@ -8,9 +8,9 @@
   - **详情页**（`SubagentDetailScene`）：固定头部；summary / output / tools 三页，←/→ 或点 tab 切换；output 页折叠 thinking、Markdown 正文、`● ` 工具行、`── Conclusion ──`，运行中自动跟随到底部；`x` 或 `X interrupt` 中断；Esc 返回进入前的位置（dashboard 或 chat，chat 恢复滚动位置）。不显示 one-shot / continuable 徽标。
 - 消息流卡片点击进入详情。视图打开期间 run 继续，事件照常折叠。
 
-**Blocked by:** 06
+Blocked by: 06
 
-**Status:** resolved
+Status: resolved
 
 参考：[spec](../spec.md)「Session API 与事件」「TUI」中的 dashboard / 详情页 / 屏幕切换；dsh-TUI `SubagentDashboard.tsx`、`SubagentDetailScene.tsx`。
 

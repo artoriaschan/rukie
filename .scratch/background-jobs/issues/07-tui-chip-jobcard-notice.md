@@ -2,9 +2,9 @@
 
 **What to build:** TUI 用户在 statusline 看到运行中 job 的数量，在转录里看到每个 job 的卡片和实时输出，job 结束时有提示。照 dsh-TUI 复刻。详见 [后台 bash spec](../spec.md) 的 TUI 一节。
 
-**Blocked by:** 05
+Blocked by: 05
 
-**Status:** resolved
+Status: resolved
 
 - [x] statusline 有 running / stopping 的 job 时显示 `● N`，悬停列出 label 和已运行时长
 - [x] JobCard 挂在发起它的 bash 工具卡下（显式后台调用或超时转后台）：`❯ <command>`、● / ✓ / ✗、最近 2 行输出（经 `readJob`）

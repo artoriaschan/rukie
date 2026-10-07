@@ -2,9 +2,9 @@
 
 **What to build:** TUI 用户用 `/mcp` 查看各 MCP server 的状态，用 `/mcp login|logout|reconnect <server>` 主动登录、登出、重连。照 dsh-TUI 的 `/mcp` 复刻。详见 [MCP OAuth spec](../spec.md) 的 TUI 一节。
 
-**Blocked by:** 06, 07
+Blocked by: 06, 07
 
-**Status:** resolved
+Status: resolved
 
 - [x] 新增内置 Slash Command `/mcp`；不带参数时 run 进行中也可用；调用 `mcpServers()`，以多行 notice 写入 transcript：`! /mcp` 标题行（bashBorder 色），内容行 dim、缩进 2，依次为 `MCP 服务器（N）`、`name · status · N 个工具`、有 needs-auth 时的提示行；空状态显示配置路径；首次探测时显示 loading 文案。现有 notice 渲染不了时加 `report` 变体
 - [x] 子命令 `login|logout|reconnect <server>` 只能在空闲时用，分别调用 `authenticateMcp` / `clearMcpAuth` / `reconnectMcp`；成功和失败用 notice（文案照 spec）；缺参数时用 warning 显示用法；run 进行中显示现有的 busy 提示

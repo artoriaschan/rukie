@@ -2,9 +2,9 @@
 
 **What to build:** 用户在 TUI 输入 `/btw <问题>`（run 中也可以），overlay 里流式显示一个基于当前上下文的单轮回答，不打断主 run、不进 transcript，Esc 关闭并中止。见 [spec](../spec.md) 的“侧问”。
 
-**Blocked by:** 01（命令框架与补全菜单）
+Blocked by: 01（命令框架与补全菜单）
 
-**Status:** resolved
+Status: resolved
 
 - [x] Session 新增 `sideQuestion(question, { signal })`：流式返回文本；空闲与 run 中都可用
 - [x] 请求：当前恢复后的上下文，剔除没有结果的 tool call，追加按 dsh-TUI `wrapSideQuestion` 包裹的 user 消息（只基于已有上下文、无工具、列出仍在执行的调用）；不带工具定义

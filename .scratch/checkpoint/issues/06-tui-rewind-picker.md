@@ -2,9 +2,9 @@
 
 **What to build:** TUI 中，session 空闲且输入框为空时双击 Esc 打开 Rewind 面板，界面、样式、交互照 dsh-TUI `RewindPicker`。面板列出本 session 的 user prompt（新到旧，单行预览，附改动文件数），选中后在确认步选"回代码 + 对话 / 只回对话 / 只回代码"，并列出将还原、将删除的文件和 bash 提示。完成后显示 notice；回对话时 prompt 填回输入框。细节见 [spec](../spec.md) Implementation Decisions 的 TUI 条目。
 
-**Blocked by:** 03
+Blocked by: 03
 
-**Status:** resolved
+Status: resolved
 
 - [x] 首次 Esc 显示 "Press Esc again to rewind"，3000ms 内第二次打开；超时重新计窗
 - [x] 输入非空时 Esc 清空；run 中 Esc 中止；有挂起交互时不触发；无 prompt 时只提示 "Nothing to rewind yet"

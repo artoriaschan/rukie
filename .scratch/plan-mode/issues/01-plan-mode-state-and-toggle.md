@@ -7,9 +7,9 @@
 - 子代理与父 session 共用同一个 Plan Mode 状态。
 - TUI：`/plan` 打开，`/plan <指令>` 打开并发送指令，`/plan off` 关闭；已在 Plan Mode 时再输入 `/plan` 只提示。Plan Mode 下输入框边框换成 plan 色，StatusLine 显示 `plan` chip。新文案走 i18n，zh / en 齐全。
 
-**Blocked by:** None (can start immediately)
+Blocked by: None (can start immediately)
 
-**Status:** resolved
+Status: resolved
 
 - [x] e2e：`setPlanMode(true)` 后下一次模型调用的上下文里有 plan reminder；关闭后有一条退出提示，之后不再注入
 - [x] e2e：run 进行中调用 `setPlanMode`，从下一次模型调用起生效；重复调用不重复发事件

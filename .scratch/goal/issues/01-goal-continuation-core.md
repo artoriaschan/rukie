@@ -2,9 +2,9 @@
 
 **What to build:** 通过 Session API 给顶层 session 设一个 Goal 后，Agent Core 在每个 run 结束时自动开下一轮 goal round，直到用户 pause / clear、达到续跑上限转 blocked，或者因出错 / 中止 / token 超限而 disarm。Goal 作为 Tool State 持久化，resume 和 rewind 后恢复，但不会自动开跑。模型每个 run 都能经 reminder 看到 objective 和轮次，compaction 后立即补回。详见 [Goal spec](../spec.md) 的 Tool State、Session API、续跑调度、disarm 条件、round 消息、reminder、子代理几节。
 
-**Blocked by:** None (can start immediately)
+Blocked by: None (can start immediately)
 
-**Status:** resolved
+Status: resolved
 
 - [x] Tool State `goal`（v1）：完整快照 `{ id, objective, phase, roundsStarted, maxRounds, blockedReason? }`，clear 写 `null` tombstone；坏记录跳过并告警；armed 不持久化
 - [x] Session 暴露 `goal: GoalView | undefined`，以及 `createGoal` / `editGoal` / `pauseGoal` / `resumeGoal` / `clearGoal`；各方法的状态前置条件与空闲限制照 spec，非法调用抛可读错误

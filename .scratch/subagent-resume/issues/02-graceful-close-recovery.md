@@ -2,9 +2,9 @@
 
 **What to build:** 用户在子代理执行期间正常关闭 TUI，关闭完成后子 Run 已停止并保存；恢复原父 Session 时收到一次说明，第一次真实输入时父模型得到一次恢复摘要。恢复本身不启动模型或子代理。
 
-**Blocked by:** 01 — 恢复已结束子 Run 的历史状态。
+Blocked by: 01 — 恢复已结束子 Run 的历史状态。
 
-**Status:** resolved
+Status: resolved
 
 - [x] 正常 Frontend 关闭取消拥有的父子 Run，等待已启动 Run 收束、结束事实保存与 Session Store 关闭，之后才报告关闭完成。
 - [x] 中止与实际错误结束分别记录，不将取消、失败或保存失败伪装为正常完成；关闭过程中不发起新的模型请求。

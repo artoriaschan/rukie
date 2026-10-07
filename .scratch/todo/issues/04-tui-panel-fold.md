@@ -2,9 +2,9 @@
 
 **What to build:** TUI 用户可用 `ctrl+q` 或鼠标点击折叠头折叠 / 展开待办面板；折叠后仍能看到当前在做的那一项。
 
-**Blocked by:** 03（TUI 待办面板）
+Blocked by: 03（TUI 待办面板）
 
-**Status:** done
+Status: resolved
 
 参考：[spec](../spec.md)「TUI」；dsh-TUI `GoalTodoPanel.tsx` 折叠部分与 `keymap.ts`（`todoFold`）。
 

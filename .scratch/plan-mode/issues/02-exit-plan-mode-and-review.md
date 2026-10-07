@@ -11,9 +11,9 @@
 - Headless resume 一个处于 Plan Mode 的 session 时，reminder 改为让模型直接以文本给出计划。
 - TUI：评审面板放在固定顺序里的 PermissionDialog 槽位，计划用 markdown 渲染、可滚动；`1`/`2` 选择，打字进入反馈输入行，`Enter` 提交，`Esc` 接手，支持鼠标点选。消息流里 `exit_plan_mode` 的工具卡在获批后显示折叠的计划，点击可展开；继续规划时显示计划和反馈。
 
-**Blocked by:** 01
+Blocked by: 01
 
-**Status:** resolved
+Status: resolved
 
 - [x] e2e：批准后 `planMode` 为 false，工具结果为成功，退出提示注入一次
 - [x] e2e：继续规划时反馈出现在失败的工具结果里，`planMode` 仍为 true，模型继续下一轮

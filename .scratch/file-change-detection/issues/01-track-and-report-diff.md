@@ -2,9 +2,9 @@
 
 **What to build:** 模型 read / write / edit 过的文件被外部改动后，下一次模型请求前收到一条 `file-changes` system reminder，附 unified diff；文件被删时告知已删除。agent 自己的写入不被报告。跟踪集此时只在内存。详见 [文件外部修改检测 spec](../spec.md) 的跟踪对象、接入点、基线内容、检测、报告规则（diff 与删除部分）、reminder 文本、差异生成几节。
 
-**Blocked by:** None (can start immediately)
+Blocked by: None (can start immediately)
 
-**Status:** resolved
+Status: resolved
 
 - [x] 新领域模块 `file-tracking` 独占跟踪集与基线；包装 read / write / edit 的 execute，成功执行后以磁盘完整内容为基线（read 带 offset/limit 也记整文件），失败不更新
 - [x] 新 `ReminderSource` `file-changes`，同时接入 prompt 开始的 `collectReminders` 与每次请求前的 `collectSourceReminders` 路径

@@ -2,9 +2,9 @@
 
 **What to build:** 新建 `@neant/neant-tui`，命令是 `neant`。用户运行 `neant` 后看到输入框，输入 prompt 后看到助手回复流式出现，回复完成后进入 scrollback，可以接着输入下一条，同一个 session 里连续对话。可以中断 run，也可以退出。
 
-**Blocked by:** 03, 04
+Blocked by: 03, 04
 
-**Status:** resolved
+Status: resolved
 
 - [x] 新增 `@neant/neant-tui` 包，bin 为 `neant`；加入根 tsconfig 的 references，CLAUDE.md 的目录说明补上这个包
 - [x] 入口写成 `main(argv, io)`，`io` 里注入 stdin、stdout、stderr 和 session 覆盖项，和 `neant-cli` 的形式一致

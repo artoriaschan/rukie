@@ -2,9 +2,9 @@
 
 **What to build:** 过长的参数和多行命令在头部被裁剪，用户悬停被裁剪的标题时出现 tooltip 看全内容与起止时间。见 [spec](../spec.md) 的「TUI 工具卡」Tooltip 部分。
 
-**Blocked by:** 02
+Blocked by: 02
 
-**Status:** resolved
+Status: resolved
 
 - [x] 设计系统新增 Tooltip 组件：悬停 600 ms 显示，按可用空间定位，小终端裁剪
 - [x] generic 标题 args 超 480 字符裁剪

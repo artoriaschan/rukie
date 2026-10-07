@@ -6,6 +6,7 @@
     { "path": "packages/agent" },
     { "path": "packages/tui" },
     { "path": "apps/neant-cli" },
-    { "path": "apps/neant-tui" }
+    { "path": "apps/neant-tui" },
+    { "path": "scripts" }
   ]
 }

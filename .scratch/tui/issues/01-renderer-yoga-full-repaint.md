@@ -2,9 +2,9 @@
 
 **What to build:** 新建 `@neant/tui`。在测试里 `render(<Box><Text>…</Text></Box>, { stdin, stdout })` 之后，假终端屏幕上能看到按 flex 布局排好的内容，中文等宽字符列对齐。这张票每一帧都整屏重画，差分留给 02。管线的前半段打通：React reconciler → 拷入的纯 TS Yoga → cell 网格 → 把整个网格写成 ANSI。
 
-**Blocked by:** None (can start immediately)
+Blocked by: None (can start immediately)
 
-**Status:** resolved
+Status: resolved
 
 - [x] 新增 `@neant/tui` 包，按 CLAUDE.md 的仓库约定组织，加入根 tsconfig 的 references，CLAUDE.md 的目录说明补上这个包
 - [x] Yoga 从 dsh-TUI 拷入，作为包内独立模块，文件头注明来源仓库和 commit（ADR-0005），不对外导出

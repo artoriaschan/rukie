@@ -2,9 +2,9 @@
 
 **What to build:** 项目 `.neant/settings.json` 的 `permissions.deny` 和 `ask` 总是与用户层合并；项目层的 `permissions.allow` 只在 Trusted Project 下生效，否则丢弃并警告（与项目级 `.mcp.json` 共用同一个信任判定）。这修掉了项目级 `allowTools` 可以放宽权限的漏洞。`allowTools` 退役：任一层出现时报错，提示迁移到 `permissions.allow`。CLI / TUI 的 `--allow-tools` 参数名不变，改为接受规则语法，作为会话级 allow 规则传给 session 的 `allowRules` 选项；规则非法时启动失败，并指出来源 `--allow-tools`。
 
-**Blocked by:** 02
+Blocked by: 02
 
-**Status:** resolved
+Status: resolved
 
 参考：[spec](../spec.md)「配置层级与来源」；User Stories 19–23。
 

@@ -2,9 +2,9 @@
 
 **What to build:** 改动太大、文件非文本、或读取出错时，reminder 不附 diff，只列路径并提示"修改前请重新 read"，且 Run 不中断。这些文件被标记为 stale，供后续过期检查使用。详见 [文件外部修改检测 spec](../spec.md) 的报告规则与失败行为两节。
 
-**Blocked by:** 01
+Blocked by: 01
 
-**Status:** resolved
+Status: resolved
 
 - [x] 单文件 diff 超 4,000 字符只列路径
 - [x] 累计超 16,000 字符后余下文件只列路径

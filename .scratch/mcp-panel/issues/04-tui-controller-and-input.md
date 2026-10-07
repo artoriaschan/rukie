@@ -2,9 +2,9 @@
 
 **What to build:** 无参数 `/mcp` 打开四层面板，实时读取 Core 状态，接通管理动作、Interaction 暂停恢复与严格主输入锁。详见 [spec](../spec.md) 的页面导航及输入、Interaction 与生命周期。
 
-**Blocked by:** 02, 03
+Blocked by: 02, 03
 
-**Status:** resolved
+Status: resolved
 
 - [x] 替换旧无参数文本 report 路径，命令不调用模型、不写 Transcript；保留有参数子命令与补全，删除仅服务旧 MCP report 的过时分支和断言，保留其他 report 消费者。
 - [x] screen 维护四层页面、稳定身份焦点与每页滚动位置；↑/↓ 循环、单击进入、滚轮选择、详情 Tab 正文/操作切换、正文翻页、逐层 Esc 和鼠标返回可用。

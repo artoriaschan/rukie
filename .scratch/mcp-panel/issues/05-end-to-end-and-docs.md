@@ -2,9 +2,9 @@
 
 **What to build:** 验证完成接线后的跨概念行为，补齐公开回归与使用说明，交付可审查且状态准确的完整功能。详见 [spec](../spec.md) 的 Testing Decisions。
 
-**Blocked by:** 04
+Blocked by: 04
 
-**Status:** resolved
+Status: resolved
 
 - [x] 公开 Core/TUI 组合回归验证实际状态事件、同一 Run 授权/失效与工具浏览更新、Interaction 暂停/恢复、管理结果与选择消失退回，包含相关微任务排序。
 - [x] zh/en、40×12、resize、小于下限暂停/恢复、鼠标/键盘/长 schema 与 Todo/Subagent/Goal 共存不溢出，阅读锚点与焦点稳定。

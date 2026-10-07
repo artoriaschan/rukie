@@ -2,9 +2,9 @@
 
 **What to build:** 组件能拿到解析好的按键和粘贴事件，能感知终端尺寸变化；有一个可以直接用的多行 `TextInput`。退出时终端恢复原状。
 
-**Blocked by:** 02
+Blocked by: 02
 
-**Status:** resolved
+Status: resolved
 
 - [x] `useInput`：开启 raw mode，解析常见按键（字符、方向键、Enter、Shift+Enter、Backspace、Esc、Ctrl 组合键），开启 bracketed paste，一次粘贴作为一个整体事件交出
 - [x] `useTerminalSize` 返回列数和行数；resize 后清掉活动区并完整重画，假终端里没有残影

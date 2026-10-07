@@ -10,7 +10,7 @@ Status: resolved
 - 新增 token `activity #7DA1DE`、`activityFlash #C6D8F8`。
 - `figures.activityFrames` 用 moon8（120ms）。
 
-**Blocked by:** —
+Blocked by: —
 
 - [x] 两个订阅者只开一个定时器；全部卸载后停表；传 `null` 不订阅
 - [x] `Spinner` 现有测试不改断言即可通过

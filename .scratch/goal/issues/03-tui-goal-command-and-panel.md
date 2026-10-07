@@ -2,9 +2,9 @@
 
 **What to build:** TUI 用户可以用 `/goal` 系列子命令设定、查看、修改、暂停、恢复、清除 goal。输入框上方面板显示 🎯 根行（PhaseBadge、轮次、计时，blocked 时显示原因），statusline 最前面显示 phase chip，goal 的 round 消息和收尾消息不出现在对话里。界面复刻 dsh-TUI。详见 [Goal spec](../spec.md) 的 TUI 各节。
 
-**Blocked by:** 01 Goal 续跑核心
+Blocked by: 01 Goal 续跑核心
 
-**Status:** resolved
+Status: resolved
 
 - [x] `/goal` 文法：`/goal`、`/goal <objective>`、`/goal edit <objective>`、`/goal pause|resume|clear`（控制字不区分大小写，其他任意文本视为 objective），替换 Slash Command 框架里的占位
 - [x] run 中只有查看、pause、clear 可用，其余提示"仅空闲可用"；Session API 抛的错渲染为 error notice

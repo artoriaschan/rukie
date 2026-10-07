@@ -2,9 +2,9 @@
 
 **What to build:** 同站内的重定向（如 `/docs` → `/docs/`）自动跟随，结果首行显示最终 URL。跳到其他站点时不跟随，告诉模型新地址，让它重新调用；再次调用时新域名要重新过权限。详见 [web fetch spec](../spec.md) 的"重定向"一节。
 
-**Blocked by:** 01 最小安全 web_fetch
+Blocked by: 01 最小安全 web_fetch
 
-**Status:** resolved
+Status: resolved
 
 - [x] 使用 `redirect: "manual"`，`Location` 按当前 URL 解析为绝对地址
 - [x] 同源（scheme、host、port 相同）跟随，最多 5 跳，每跳重新做 URL 校验与 SSRF 校验；超过 5 跳报工具错误
