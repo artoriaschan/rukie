@@ -46,7 +46,11 @@ test("background bash renders its card and idle job chip without consuming model
     );
     expect(screen()).toContain("Background job completed: Watch fixture output");
     app.calls[3]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    expect(app.calls).toHaveLength(4);
+    app.stdin.write("verify settled output\r");
     await app.waitFor(() => app.calls.length === 5);
+    expect(JSON.stringify(app.calls[4]!.context.messages)).toContain("background job bash-1");
     app.calls[4]!.finish();
     await app.waitFor(() => !app.isWorking());
     expect(app.stderr()).toBe("");
@@ -360,12 +364,11 @@ test("consecutive jobs share transcript expansion and Ctrl+O respects an active 
     expect(screen()).not.toContain("✓ job: bash-1");
     app.stdin.write("\r");
     await app.waitFor(() => app.calls.length === 3);
+    for (const id of ["bash-1", "bash-2", "bash-3"])
+      expect(JSON.stringify(app.calls[2]!.context.messages)).toContain(`background job ${id}`);
     app.calls[2]!.finish();
-    await app.waitFor(() => app.calls.length === 4);
-    app.calls[3]!.finish();
-    await app.waitFor(() => app.calls.length === 5 || !app.isWorking());
-    if (app.calls.length === 5) app.calls[4]!.finish();
     await app.waitFor(() => !app.isWorking());
+    expect(app.calls).toHaveLength(3);
     app.stdin.write("keep draft\x0f");
     await app.waitFor(
       () => screen().includes("✓ job: bash-1") && screen().includes("✓ job: bash-2"),
@@ -436,9 +439,8 @@ test("a failed job notice stays one row at 40×12 and expires without removing o
     await app.waitFor(() => screen().includes("后台任务失败"));
     const noticedAt = performance.now();
     app.calls[1]!.finish();
-    await app.waitFor(() => app.calls.length === 3);
-    app.calls[2]!.finish();
     await app.waitFor(() => !app.isWorking());
+    expect(app.calls).toHaveLength(2);
     const noticeRow = app.screen().findIndex((row) => row.includes("后台任务失败"));
     expect(app.screen().findIndex((row) => /^╭─+╮$/.test(row))).toBe(noticeRow + 2);
     expect(app.screen()[noticeRow + 1]).toBe("");
