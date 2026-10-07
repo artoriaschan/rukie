@@ -41,7 +41,7 @@ test.each([
   });
   await session.run("try");
   expect(await Bun.file(join(dirs.cwd, "hook-ran")).exists()).toBe(matched);
-  await session.dispose();
+  await session.close();
 });
 
 test.each([
@@ -72,7 +72,7 @@ test.each([
   });
   await session.run("read");
   expect(await Bun.file(join(dirs.cwd, "hook-ran")).exists()).toBe(matched);
-  await session.dispose();
+  await session.close();
 });
 
 test("the same command with distinct if rules runs separately while exact repeats run once", async () => {
@@ -103,7 +103,7 @@ test("the same command with distinct if rules runs separately while exact repeat
   });
   await session.run("try");
   expect(await Bun.file(join(dirs.cwd, "count")).text()).toBe("ran\nran\n");
-  await session.dispose();
+  await session.close();
 });
 
 test("if on every non-tool event warns at session load and never executes", async () => {
@@ -136,12 +136,10 @@ test("if on every non-tool event warns at session load and never executes", asyn
     },
   });
   expect(warnings).toHaveLength(events.length);
-  await session.run("try", {
-    onEvent: (event) => {
-      emitted.push(event);
-    },
-  });
-  await session.dispose();
+  const unsubscribe = session.subscribe((event) => emitted.push(event));
+  await session.run("try");
+  unsubscribe();
+  await session.close();
   expect(await Bun.file(join(dirs.cwd, "unexpected")).exists()).toBe(false);
   const diagnostics = emitted.filter((event) => event.type === "hook_warning");
   expect(diagnostics).toHaveLength(events.length);

@@ -1,5 +1,13 @@
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { withModelAlias } from "../helpers/auxiliary-model.ts";
+import { getCurrentTools } from "@earendil-works/pi-ai";
+import {
+  awaitWithContext,
+  BACKGROUND_CONTEXT,
+  withAbortSignal,
+} from "@earendil-works/chord/context";
+import { watch } from "node:fs/promises";
 import { join } from "node:path";
 import { createSession, type Session, type SessionEvent } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
@@ -9,7 +17,7 @@ let dirs: Awaited<ReturnType<typeof tempDirs>>;
 let session: Session | undefined;
 const hookPids: number[] = [];
 afterEach(async () => {
-  await session?.dispose();
+  await session?.close();
   for (const pid of hookPids.splice(0)) {
     try {
       process.kill(-pid, "SIGKILL");
@@ -20,6 +28,46 @@ afterEach(async () => {
   session = undefined;
   await dirs?.cleanup();
 });
+
+function modelText(messages: Parameters<typeof getCurrentTools>[0]) {
+  return messages
+    .flatMap((message) => {
+      if (message.role === "system" || !("content" in message)) return [];
+      const content = message.content;
+      if (typeof content === "string") return [content];
+      if (!Array.isArray(content)) return [];
+      const blocks: readonly unknown[] = content;
+      return blocks.flatMap((block) =>
+        block &&
+        typeof block === "object" &&
+        "type" in block &&
+        block.type === "text" &&
+        "text" in block &&
+        typeof block.text === "string"
+          ? [block.text]
+          : [],
+      );
+    })
+    .join("\n");
+}
+
+async function completion<T>(promise: Promise<T>) {
+  return awaitWithContext(promise, withAbortSignal(AbortSignal.timeout(2000), BACKGROUND_CONTEXT));
+}
+
+async function waitFile(name: string) {
+  const controller = new AbortController();
+  const changes = watch(dirs.cwd, {
+    signal: AbortSignal.any([controller.signal, AbortSignal.timeout(2000)]),
+  });
+  try {
+    if (await Bun.file(join(dirs.cwd, name)).exists()) return;
+    for await (const _change of changes) if (await Bun.file(join(dirs.cwd, name)).exists()) return;
+    throw new Error(`Hook gate ${name} was not reached`);
+  } finally {
+    controller.abort();
+  }
+}
 
 test("async hooks do not block tools or obey timeout and inject completed output before the next model call", async () => {
   dirs = await tempDirs();
@@ -68,10 +116,10 @@ echo '{"continue":false,"systemMessage":"background notice","hookSpecificOutput"
   expect(first).toMatchObject({ success: true });
   expect(await Bun.file(join(dirs.cwd, "release")).exists()).toBe(true);
   expect(warnings).toEqual([]);
-  await completed.promise;
+  await completion(completed.promise);
   await session.run("second");
-  expect(JSON.stringify(fake.contexts[2]!.messages)).toContain("background context");
-  expect(JSON.stringify(fake.contexts[2]!.messages)).toContain("background notice");
+  expect(modelText(fake.contexts[2]!.messages)).toContain("background context");
+  expect(modelText(fake.contexts[2]!.messages)).toContain("background notice");
   expect(
     session.messages.filter(
       (message) => message.role === "system-reminder" && message.source === "async-hook",
@@ -93,12 +141,16 @@ exit 2
   const completed = Promise.withResolvers<void>();
   const fake = fakeModel([
     fauxAssistantMessage(
-      fauxToolCall("bash", { description: "Run test command", command: "touch release" }),
+      fauxToolCall("bash", {
+        description: "Run test command",
+        command: "touch release; while [ ! -f hook-admitted ]; do sleep 0.01; done",
+      }),
       {
         stopReason: "toolUse",
       },
     ),
     fauxAssistantMessage("repaired"),
+    fauxAssistantMessage("unexpected extra Run"),
   ]);
   session = await createSession({
     ...dirs,
@@ -117,15 +169,23 @@ exit 2
     },
   });
   const result = await session.run("start", {
-    onEvent: async (event) => {
+    onEvent: (event) => {
       if (event.type === "hook_message") completed.resolve();
-      if (event.type === "tool_execution_end") await completed.promise;
+      // Release the real tool only after the native hook input is committed.
+      if (
+        event.type === "submission" &&
+        event.record.status === "queued" &&
+        event.record.requestId?.startsWith("hook:")
+      )
+        void Bun.write(join(dirs.cwd, "hook-admitted"), "");
     },
   });
+  await completion(completed.promise);
+  await session.waitForIdle();
   expect(result.text).toBe("repaired");
   expect(fake.contexts).toHaveLength(2);
-  expect(JSON.stringify(fake.contexts[1]!.messages)).toContain("repair the background failure");
-  expect(JSON.stringify(fake.contexts[1]!.messages)).toContain("check detail");
+  expect(modelText(fake.contexts[1]!.messages)).toContain("repair the background failure");
+  expect(modelText(fake.contexts[1]!.messages)).toContain("check detail");
   expect((await Bun.file(join(dirs.cwd, "prompts")).text()).match(/hook_event_name/g)).toHaveLength(
     1,
   );
@@ -159,16 +219,16 @@ exit 2
       },
     },
   });
-  await session.run("start", {
-    onEvent: (event) => {
-      if (event.type === "result" && ++results === 2) rewoken.resolve();
-    },
+  session.subscribe((event) => {
+    if (event.type === "run_end" && ++results === 2) rewoken.resolve();
   });
+  await session.run("start");
   expect(fake.contexts).toHaveLength(1);
   await Bun.write(join(dirs.cwd, "release"), "");
-  await rewoken.promise;
+  await completion(rewoken.promise);
+  await session.waitForIdle();
   expect(fake.contexts).toHaveLength(2);
-  expect(JSON.stringify(fake.contexts[1]!.messages)).toContain("idle background failure");
+  expect(modelText(fake.contexts[1]!.messages)).toContain("idle background failure");
   expect((await Bun.file(join(dirs.cwd, "prompts")).text()).match(/hook_event_name/g)).toHaveLength(
     1,
   );
@@ -180,17 +240,23 @@ async function hookProcess() {
   return pid;
 }
 async function waitForExit(pid: number) {
-  await Bun.spawn(["sh", "-c", `while kill -0 ${pid} 2>/dev/null; do sleep 0.01; done`]).exited;
+  // A real child process must exit; a parent-process virtual clock cannot reap it.
+  const probe = Bun.spawn(["sh", "-c", `while kill -0 ${pid} 2>/dev/null; do sleep 0.01; done`]);
+  try {
+    await completion(probe.exited);
+  } finally {
+    probe.kill();
+  }
 }
 
-test("dispose stops a background hook that outlives its run", async () => {
+test("close stops a background hook that outlives its run", async () => {
   dirs = await tempDirs();
   await Bun.write(
     join(dirs.cwd, "hook.sh"),
     `cat > hook-input
 echo $$ > hook.pid
 while [ ! -f release ]; do sleep 0.01; done
-touch forbidden-after-dispose
+touch forbidden-after-close
 `,
   );
   const fake = fakeModel([
@@ -218,13 +284,13 @@ touch forbidden-after-dispose
   await session.run("start");
   const pid = await hookProcess();
   process.kill(pid, 0);
-  await session.dispose();
+  await session.close();
   await waitForExit(pid);
   await Bun.write(join(dirs.cwd, "release"), "");
-  expect(await Bun.file(join(dirs.cwd, "forbidden-after-dispose")).exists()).toBe(false);
+  expect(await Bun.file(join(dirs.cwd, "forbidden-after-close")).exists()).toBe(false);
 });
 
-test("parent disposal stops a completed subagent's background hook", async () => {
+test("parent close stops a completed subagent's background hook", async () => {
   dirs = await tempDirs();
   await Bun.write(
     join(dirs.cwd, "hook.sh"),
@@ -232,7 +298,7 @@ test("parent disposal stops a completed subagent's background hook", async () =>
 case "$input" in *agent_id*) ;; *) exit 0 ;; esac
 echo $$ > hook.pid
 while [ ! -f release ]; do sleep 0.01; done
-touch forbidden-after-dispose
+touch forbidden-after-close
 `,
   );
   const fake = fakeModel([
@@ -244,6 +310,8 @@ touch forbidden-after-dispose
       fauxToolCall("bash", {
         description: "Run test command",
         command: "while [ ! -f hook.pid ]; do sleep 0.01; done",
+        // Bound the actual shell gate when a missing child startup hook is the failure.
+        timeout: 1,
       }),
       { stopReason: "toolUse" },
     ),
@@ -265,10 +333,10 @@ touch forbidden-after-dispose
   await session.run("delegate");
   const pid = await hookProcess();
   process.kill(pid, 0);
-  await session.dispose();
+  await session.close();
   await waitForExit(pid);
   await Bun.write(join(dirs.cwd, "release"), "");
-  expect(await Bun.file(join(dirs.cwd, "forbidden-after-dispose")).exists()).toBe(false);
+  expect(await Bun.file(join(dirs.cwd, "forbidden-after-close")).exists()).toBe(false);
 });
 
 test("asyncRewake delivered during a Stop check continues the same run", async () => {
@@ -315,16 +383,16 @@ fi
       if (event.type === "result") results++;
     },
   });
-  await Bun.spawn(["sh", "-c", "while [ ! -f stop-entered ]; do sleep 0.01; done"], {
-    cwd: dirs.cwd,
-  }).exited;
+  await waitFile("stop-entered");
   await Bun.write(join(dirs.cwd, "release"), "");
-  await completed.promise;
+  await completion(completed.promise);
   await Bun.write(join(dirs.cwd, "stop-release"), "");
-  expect((await run).text).toBe("repaired before stopping");
+  const result = await run;
+  await session.waitForIdle();
+  expect(result.text).toBe("repaired before stopping");
   expect(results).toBe(1);
   expect(fake.contexts).toHaveLength(2);
-  expect(JSON.stringify(fake.contexts[1]!.messages)).toContain("repair during Stop");
+  expect(modelText(fake.contexts[1]!.messages)).toContain("repair during Stop");
 });
 
 test("asyncRewake wakes a parent waiting for a running child", async () => {
@@ -339,13 +407,9 @@ exit 2
 `,
   );
   const childRelease = Promise.withResolvers<void>();
-  const parentWaiting = Promise.withResolvers<void>();
   let parentCalls = 0;
   const response: Parameters<typeof fakeModel>[0][number] = async (context) => {
-    const parent = context.messages.some(
-      (message) =>
-        message.role === "system" && message.toolsAdded?.some((tool) => tool.name === "subagent"),
-    );
+    const parent = getCurrentTools(context.messages).some((tool) => tool.name === "subagent");
     if (!parent) {
       await childRelease.promise;
       return fauxAssistantMessage("child done");
@@ -358,7 +422,7 @@ exit 2
       );
     if (turn === 1) return fauxAssistantMessage("waiting for child");
     if (turn === 2) {
-      expect(JSON.stringify(context.messages)).toContain("repair while child runs");
+      expect(modelText(context.messages)).toContain("repair while child runs");
       childRelease.resolve();
       return fauxAssistantMessage("background repaired");
     }
@@ -377,18 +441,14 @@ exit 2
       },
     },
   });
-  const run = session.run("delegate", {
-    onEvent: (event) => {
-      if (event.type === "subagents_waiting") parentWaiting.resolve();
-    },
-  });
-  await parentWaiting.promise;
+  expect((await session.run("delegate")).text).toBe("waiting for child");
+  const run = session.waitForRequest(session.currentRequestId!);
   await Bun.write(join(dirs.cwd, "release"), "");
   expect((await run).text).toBe("all done");
   expect(parentCalls).toBe(4);
 });
 
-test("session subscription replays startup autorun events once and can unsubscribe", async () => {
+test("session subscription captures startup native state once and can unsubscribe", async () => {
   dirs = await tempDirs();
   const firstCall = Promise.withResolvers<void>();
   const firstReply = Promise.withResolvers<void>();
@@ -422,27 +482,28 @@ test("session subscription replays startup autorun events once and can unsubscri
   expect(session.running).toBe(true);
   const unsubscribe = session.subscribe((event) => {
     events.push(event);
-    if (event.type === "result") finished.resolve();
+    if (event.type === "run_end") finished.resolve();
   });
-  expect(events.filter((event) => event.type === "session_start")).toHaveLength(1);
+  const initial = events.filter((event) => event.type === "snapshot");
+  expect(initial).toHaveLength(1);
+  expect(initial[0]?.run).toBeDefined();
   expect(
-    events.filter((event) => event.type === "message_end" && event.message.role === "user"),
+    initial[0]?.messages.filter((message) => message.role === "user" && message.source === "hook"),
   ).toHaveLength(1);
   firstReply.resolve();
-  await finished.promise;
-  // Wait for the public running flag to settle, through the live result boundary.
-  await Promise.resolve();
+  await completion(finished.promise);
+  await session.waitForIdle();
   const direct: SessionEvent[] = [];
   await session.run("manual", {
     onEvent: (event) => {
       direct.push(event);
     },
   });
-  expect(events.filter((event) => event.type === "result")).toHaveLength(2);
-  expect(direct.filter((event) => event.type === "result")).toHaveLength(1);
+  expect(events.filter((event) => event.type === "run_end")).toHaveLength(2);
+  expect(direct.filter((event) => event.type === "run_end")).toHaveLength(1);
   unsubscribe();
   await session.run("after unsubscribe");
-  expect(events.filter((event) => event.type === "result")).toHaveLength(2);
+  expect(events.filter((event) => event.type === "run_end")).toHaveLength(2);
 });
 
 test.each(["PostCompact", "SessionStart"] as const)(
@@ -463,12 +524,23 @@ touch release
 while [ ! -f compact-release ]; do sleep 0.01; done
 `,
     );
+    await Bun.write(join(dirs.cwd, "context.txt"), "retained fact ".repeat(6000));
     const fake = fakeModel([
-      fauxAssistantMessage("old work ".repeat(2500)),
+      fauxAssistantMessage(
+        [
+          fauxToolCall("read", { path: "context.txt" }),
+          fauxToolCall("read", { path: "context.txt" }),
+        ],
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("old work"),
+      fauxAssistantMessage("recent retained reply"),
       fauxAssistantMessage("Saved summary."),
       fauxAssistantMessage("after compaction"),
     ]);
-    fake.model.contextWindow = 4000;
+    const models = withModelAlias(fake.models, "hook-compact", ["main"], { contextWindow: 128000 });
+    const model = models.getModel("hook-compact", "main");
+    if (!model) throw new Error("Missing fixture compact model");
     const hooks = {
       SessionStart: [
         {
@@ -486,26 +558,36 @@ while [ ! -f compact-release ]; do sleep 0.01; done
             ]
           : []),
         {
-          matcher: event === "SessionStart" ? "compact" : "auto",
+          matcher: event === "SessionStart" ? "compact" : "manual",
           hooks: [{ type: "command" as const, command: "sh compact-hook.sh" }],
         },
       ],
     };
-    session = await createSession({ ...dirs, ...fake, settings: { hooks } });
+    session = await createSession({ ...dirs, models, model, settings: { hooks } });
     await session.run("first");
+    await session.run("recent retained task");
     const events: SessionEvent[] = [];
-    await session.run("compact", {
-      onEvent: async (event) => {
-        events.push(event);
-        if (event.type === "hook_message" && event.message === "late async notice")
-          await Bun.write(join(dirs.cwd, "compact-release"), "");
-      },
+    const unsubscribe = session.subscribe((event) => {
+      events.push(event);
+      if (event.type === "hook_message" && event.message === "late async notice")
+        void Bun.write(join(dirs.cwd, "compact-release"), "");
     });
-    expect(JSON.stringify(fake.contexts[2]!.messages)).toContain("late async context");
-    expect(JSON.stringify(fake.contexts[2]!.messages)).toContain("late async notice");
+    await session.compact();
+    await session.run("after compact");
+    unsubscribe();
     expect(
-      events.filter((event) => event.type === "reminder_injected" && event.source === "async-hook"),
-    ).toHaveLength(2);
+      session.messages.some(
+        (message) => message.role === "session-notice" && message.notice.kind === "compaction",
+      ),
+    ).toBe(true);
+    expect(modelText(fake.contexts[4]!.messages)).toContain("late async context");
+    expect(modelText(fake.contexts[4]!.messages)).toContain("late async notice");
+    const injected = events
+      .flatMap((event) =>
+        event.type === "snapshot" || event.type === "message_end" ? event.messages : [],
+      )
+      .filter((message) => message.role === "system-reminder" && message.source === "async-hook");
+    expect(new Set(injected.map((message) => message.entryId)).size).toBe(2);
     const input = await Bun.file(join(dirs.cwd, "background-input")).json();
     expect(await Bun.file(input.transcript_path).text()).toContain("late async context");
   },
@@ -547,28 +629,36 @@ test.each([false, true])(
       },
     });
     session.subscribe((event) => {
-      if (event.type === "result") finished.resolve();
+      if (event.type === "run_end") finished.resolve();
     });
     await firstCall.promise;
     const controller = new AbortController();
     const manual = session.run("actual human task", { signal: controller.signal });
-    if (cancel) {
-      controller.abort();
-      await expect(manual).rejects.toThrow();
-      expect(await Bun.file(join(dirs.cwd, "human-prompts")).exists()).toBe(false);
-      expect(JSON.stringify(session.messages)).not.toContain("actual human task");
+    void manual.catch(() => {});
+    try {
+      if (cancel) {
+        controller.abort();
+        await expect(manual).rejects.toThrow();
+        expect(await Bun.file(join(dirs.cwd, "human-prompts")).exists()).toBe(false);
+        expect(JSON.stringify(session.messages)).not.toContain("actual human task");
+        firstReply.resolve();
+        await completion(finished.promise);
+        await session.waitForIdle();
+        expect(fake.contexts).toHaveLength(1);
+      } else {
+        expect(await Bun.file(join(dirs.cwd, "human-prompts")).exists()).toBe(false);
+        firstReply.resolve();
+        expect((await manual).text).toBe("human done");
+        expect(fake.contexts).toHaveLength(2);
+        expect(modelText(fake.contexts[1]!.messages)).toContain("actual human task");
+        expect(
+          (await Bun.file(join(dirs.cwd, "human-prompts")).text()).match(/hook_event_name/g),
+        ).toHaveLength(1);
+      }
+    } finally {
       firstReply.resolve();
-      await finished.promise;
-      expect(fake.contexts).toHaveLength(1);
-    } else {
-      expect(await Bun.file(join(dirs.cwd, "human-prompts")).exists()).toBe(false);
-      firstReply.resolve();
-      expect((await manual).text).toBe("human done");
-      expect(fake.contexts).toHaveLength(2);
-      expect(JSON.stringify(fake.contexts[1]!.messages)).toContain("actual human task");
-      expect(
-        (await Bun.file(join(dirs.cwd, "human-prompts")).text()).match(/hook_event_name/g),
-      ).toHaveLength(1);
+      await manual.catch(() => {});
+      await session.waitForIdle();
     }
   },
 );
@@ -587,9 +677,7 @@ test("a competing user run is still rejected rather than queued", async () => {
   session = await createSession({ ...dirs, ...fake });
   const first = session.run("first user task");
   await called.promise;
-  await expect(session.run("second user task")).rejects.toThrow(
-    "Session already has an active Run",
-  );
+  await expect(session.run("second user task")).rejects.toThrow("Session is busy");
   expect(JSON.stringify(session.messages)).not.toContain("second user task");
   reply.resolve();
   await first;
