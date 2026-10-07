@@ -34,7 +34,7 @@ async function login(dirs: Awaited<ReturnType<typeof tempDirs>>) {
   try {
     await session.run("sign in");
   } finally {
-    await session.dispose();
+    await session.close();
   }
 }
 
@@ -103,7 +103,7 @@ test.each([false, true])(
             content: [{ type: "text", text: "OAuth MCP: called" }],
           });
       } finally {
-        await session.dispose();
+        await session.close();
       }
     } finally {
       await server.stop();
@@ -166,7 +166,7 @@ test.each([false, true])(
           toolCount: 0,
         });
       } finally {
-        await session.dispose();
+        await session.close();
       }
     } finally {
       await server.stop();
@@ -222,7 +222,7 @@ test("an access token expiring during the Run refreshes transparently before the
         ),
       ).toEqual([]);
     } finally {
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await server.stop();
@@ -258,7 +258,7 @@ test("pre-registered clients send client_secret_post even when the server also s
         getCurrentTools(fake.contexts[0]!.messages).some((tool) => tool.name === "mcp__srv__echo"),
       ).toBe(true);
     } finally {
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await server.stop();
@@ -309,7 +309,7 @@ test("configured HTTPS authorization metadata bypasses well-known discovery", as
         getCurrentTools(fake.contexts[0]!.messages).some((tool) => tool.name === "mcp__srv__echo"),
       ).toBe(true);
     } finally {
-      await session.dispose();
+      await session.close();
     }
   } finally {
     globalThis.fetch = originalFetch;
@@ -362,7 +362,7 @@ test("scope step-up reauthorizes for the server's requested scopes and restores 
         ),
       ).toEqual([]);
     } finally {
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await server.stop();
@@ -405,7 +405,7 @@ test("scope-required memory skips an unchanged grant after cancelled login on th
       ).toEqual(["mcp__srv__authenticate"]);
       expect(server.requests.filter((request) => request.path === "/mcp")).toHaveLength(before);
     } finally {
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await server.stop();
@@ -446,7 +446,7 @@ test.each(["url", "headers"])(
             .at(-1)?.authorization,
         ).toBeNull();
       } finally {
-        await session.dispose();
+        await session.close();
       }
     } finally {
       await first.stop();
@@ -473,7 +473,7 @@ test("credential identity uses expanded header values across Sessions", async ()
         getCurrentTools(fake.contexts[0]!.messages).some((tool) => tool.name === "mcp__srv__echo"),
       ).toBe(true);
     } finally {
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await server.stop();
@@ -514,7 +514,7 @@ test("a configured callback port controls the OAuth redirect and closes after co
       ).toMatchObject({ isError: false, details: { type: "authenticated", server: "srv" } });
       await expect(fetch(redirect!)).rejects.toThrow();
     } finally {
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await server.stop();
@@ -541,7 +541,7 @@ test("untrusted project OAuth servers do not send any discovery or authorization
       ).toEqual([]);
       expect(server.requests).toEqual([]);
     } finally {
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await server.stop();
@@ -621,7 +621,7 @@ test("scope step-up immediately after the first OAuth login in the same Run rest
         toolCount: 1,
       });
     } finally {
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await server.stop();
