@@ -499,7 +499,7 @@ test.each(["zh_CN.UTF-8", "en_US.UTF-8"])(
 );
 
 test("a reading preview preserves its transcript anchor while the background Run streams and consumes return-to-bottom clicks", async () => {
-  const app = await start([], {
+  const app = await startWithClock([], {
     rows: 40,
     env: { LANG: "en_US.UTF-8" },
     prepare: async (root) => {
