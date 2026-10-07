@@ -199,3 +199,38 @@ test("live full thinking reveals smoothly while the raw ticker follows arrivals 
     await app.cleanup();
   }
 });
+
+test.each(["before", "during"] as const)(
+  "settled thinking manually expanded %s the next Run survives its completion",
+  async (when) => {
+    const app = await startWithClock(["first"], { rows: 50, env: { LANG: "en" } });
+    try {
+      await app.waitFor(() => app.calls.length === 1);
+      app.calls[0]!.thinking("historical secret marker");
+      app.calls[0]!.delta("first answer");
+      app.calls[0]!.finish();
+      await app.waitFor(() => !app.isWorking() && app.screen().join("\n").includes("first answer"));
+      const y = app.screen().findIndex((line) => line.includes("Thinking"));
+      if (when === "before") {
+        click(app, 3, y);
+        await app.waitFor(() => app.screen().join("\n").includes("historical secret marker"));
+      }
+      app.stdin.write("second\r");
+      await app.waitFor(() => app.calls.length === 2);
+      if (when === "during") {
+        click(app, 3, y);
+        await app.waitFor(() => app.screen().join("\n").includes("historical secret marker"));
+      }
+      expect(app.screen().join("\n")).toContain("historical secret marker");
+      app.calls[1]!.delta("second answer");
+      app.calls[1]!.finish();
+      await app.waitFor(
+        () => !app.isWorking() && app.screen().join("\n").includes("second answer"),
+      );
+      await app.flush();
+      expect(app.screen().join("\n")).toContain("historical secret marker");
+    } finally {
+      await app.cleanup();
+    }
+  },
+);
