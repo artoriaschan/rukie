@@ -1,6 +1,5 @@
 /** Owned output retention; Jobs owns full-output spill files. */
-export const DEFAULT_MAX_BYTES = 50 * 1024;
-export const DEFAULT_MAX_LINES = 2000;
+
 export function formatSize(bytes: number) {
   return bytes < 1024 ? `${bytes}B` : `${(bytes / 1024).toFixed(1)}KB`;
 }
@@ -16,24 +15,6 @@ type Truncation = {
   maxBytes: number;
   maxLines: number;
 };
-export function truncateHead(text: string) {
-  const lines = text.split("\n");
-  if (lines.at(-1) === "") lines.pop();
-  const kept: string[] = [];
-  let bytes = 0;
-  for (const line of lines.slice(0, DEFAULT_MAX_LINES)) {
-    const added = Buffer.byteLength(line) + (kept.length ? 1 : 0);
-    if (bytes + added > DEFAULT_MAX_BYTES) break;
-    bytes += added;
-    kept.push(line);
-  }
-  const truncated = kept.length < lines.length;
-  return {
-    content: kept.join("\n"),
-    truncated,
-    truncatedBy: truncated ? (kept.length === DEFAULT_MAX_LINES ? "lines" : "bytes") : null,
-  };
-}
 export class OutputCapture {
   private decoder = new TextDecoder();
   private text = "";
