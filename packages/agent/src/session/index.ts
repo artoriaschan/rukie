@@ -2133,6 +2133,45 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           },
         },
       });
+      await refreshSubagentTypes({
+        cwd,
+        homeDir: options.homeDir,
+        trusted: isTrustedProject(cwd, settings),
+        tools: [...base, ...mcp.tools].filter(
+          (tool) =>
+            ![
+              "subagent",
+              "subagent_fork",
+              "send_message",
+              "list_agents",
+              "goal",
+              "enter_plan_mode",
+              "exit_plan_mode",
+            ].includes(tool.name),
+        ),
+        controller: subagents,
+        report: reportDiscovery
+          ? async (discovery) => {
+              for (const warning of discovery.warnings) warn(warning);
+              for (const warning of discovery.hookWarnings) {
+                await appendNotice({
+                  kind: "hook_warning",
+                  event: "SubagentStart",
+                  hook: warning.source,
+                  message: warning.message,
+                  error: warning.error,
+                });
+                custom({
+                  type: "hook_warning",
+                  event: "SubagentStart",
+                  hook: warning.source,
+                  message: warning.message,
+                  error: warning.error,
+                });
+              }
+            }
+          : undefined,
+      });
       tools = [
         ...base,
         ...createSubagentTools({ isChild: false, controller: subagents }),
@@ -2397,6 +2436,29 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             },
             afterResponse: async (message, api, ctx) => {
               tracking.finishRequest();
+              const inputTokens =
+                message.usage.input + message.usage.cacheRead + message.usage.cacheWrite;
+              // Stop hooks can remain pending before the native assistant entry is appended.
+              // Persist provider measurements first so observers never see uncommitted usage.
+              if (Number.isFinite(inputTokens) && inputTokens >= 0) {
+                await conversation.commit(
+                  (tx) =>
+                    tx.appendEntry(conversation.id, {
+                      kind: "rukie.message-facts",
+                      data: {
+                        taskId: Number(api.taskId),
+                        provider: message.provider,
+                        model: message.model,
+                        inputTokens,
+                      },
+                    }),
+                  ctx,
+                );
+                await observation.flush();
+                custom(
+                  contextUsage(contextMessages, model.contextWindow, inputTokens || undefined),
+                );
+              }
               if (message.stopReason === "error" || message.stopReason === "aborted") {
                 goal.disarm();
                 await conversation.commit(async (tx) => {
@@ -2620,45 +2682,6 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       };
       registry.install(subagents.extension);
       registry.install(extension);
-      await refreshSubagentTypes({
-        cwd,
-        homeDir: options.homeDir,
-        trusted: isTrustedProject(cwd, settings),
-        tools: tools.filter(
-          (tool) =>
-            ![
-              "subagent",
-              "subagent_fork",
-              "send_message",
-              "list_agents",
-              "goal",
-              "enter_plan_mode",
-              "exit_plan_mode",
-            ].includes(tool.name),
-        ),
-        controller: subagents,
-        report: reportDiscovery
-          ? async (discovery) => {
-              for (const warning of discovery.warnings) warn(warning);
-              for (const warning of discovery.hookWarnings) {
-                await appendNotice({
-                  kind: "hook_warning",
-                  event: "SubagentStart",
-                  hook: warning.source,
-                  message: warning.message,
-                  error: warning.error,
-                });
-                custom({
-                  type: "hook_warning",
-                  event: "SubagentStart",
-                  hook: warning.source,
-                  message: warning.message,
-                  error: warning.error,
-                });
-              }
-            }
-          : undefined,
-      });
       await conversation.configure(
         { extensions: [extension, subagents.extension], tools },
         context,
@@ -3060,6 +3083,21 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           .filter((entry) => entry.kind === "pi.compaction")
           .map((entry) => Number(entry.id)),
       );
+      const measurement = entries.findLast((entry) => {
+        const data = entry.data;
+        return (
+          Number(entry.id) > compacted &&
+          entry.kind === "rukie.message-facts" &&
+          data !== null &&
+          typeof data === "object" &&
+          !Array.isArray(data) &&
+          data.provider === model.provider &&
+          data.model === model.id &&
+          typeof data.inputTokens === "number" &&
+          Number.isFinite(data.inputTokens) &&
+          data.inputTokens >= 0
+        );
+      });
       const last = entries
         .filter((entry) => Number(entry.id) > compacted)
         .flatMap((entry) => entry.model ?? [])
@@ -3069,9 +3107,15 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             message.provider === model.provider &&
             message.model === model.id,
         );
-      return last?.role === "assistant"
-        ? last.usage.input + last.usage.cacheRead + last.usage.cacheWrite || undefined
-        : undefined;
+      const measuredData = measurement?.data;
+      return measuredData !== null &&
+        typeof measuredData === "object" &&
+        !Array.isArray(measuredData) &&
+        typeof measuredData.inputTokens === "number"
+        ? measuredData.inputTokens || undefined
+        : last?.role === "assistant"
+          ? last.usage.input + last.usage.cacheRead + last.usage.cacheWrite || undefined
+          : undefined;
     }
     async function causalRequestForTask(
       task: import("@earendil-works/pi-durable").TaskRecord<JsonValue, JsonValue, JsonValue>,

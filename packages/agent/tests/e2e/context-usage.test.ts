@@ -128,21 +128,17 @@ test("Context Usage follows Session start and every assistant Turn with that Tur
   });
 
   const usage = events.filter((event) => event.type === "context_usage");
-  expect(usage).toHaveLength(4);
+  expect(usage).toHaveLength(6);
   expect(events.indexOf(usage[0]!)).toBeGreaterThan(
     events.findIndex((event) => event.type === "run_start"),
   );
-  expect(usage.slice(1)).toMatchObject([
-    { used: 13, window: 64_000, sessionId: session.id },
-    { used: 13, window: 64_000, sessionId: session.id },
-    { used: 29, window: 64_000, sessionId: session.id },
-  ]);
-  expect(usage[1]!.segments.assistant).toBe(3);
-  expect(usage[1]!.segments.tools).toBeGreaterThanOrEqual(usage[0]!.segments.tools);
-  expect(usage[1]!.segments.tools).toBeGreaterThan(0);
+  expect(usage.slice(1).map((event) => event.used)).toEqual([13, 13, 13, 29, 29]);
+  // The committed provider measurement precedes Stop; native message settlement later
+  // adds the actual response contributions without changing the provider total.
+  expect(usage[1]!.segments.assistant).toBe(0);
   expect(usage[2]!.segments.assistant).toBe(3);
-  expect(usage[3]!.segments.assistant).toBe(6);
-  expect(usage[2]!.segments.tools).toBeGreaterThanOrEqual(usage[1]!.segments.tools);
+  expect(usage.at(-1)!.segments.assistant).toBe(6);
+  expect(usage.at(-1)!.segments.tools).toBeGreaterThan(0);
   for (const [index, event] of events.entries()) {
     if (
       event.type === "message_end" &&
@@ -234,7 +230,12 @@ test("Context Usage classifies real reminder, tool call, thinking and tool error
       },
     });
     const updates = events.filter((event) => event.type === "context_usage");
-    expect(updates[1]).toMatchObject({ used: 9999, segments: { assistant: 6, thinking: 3 } });
+    expect(
+      updates.find((event) => event.used === 9999 && event.segments.assistant === 6),
+    ).toMatchObject({
+      used: 9999,
+      segments: { assistant: 6, thinking: 3 },
+    });
     const final = updates.at(-1)!;
     expect(final.segments).toMatchObject({ assistant: 7, thinking: 3 });
     expect(final.segments.prompt).toBeGreaterThan(3);
