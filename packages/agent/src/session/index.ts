@@ -56,6 +56,7 @@ import { collectReminders, type ReminderSource, type SystemReminder } from "../r
 import { discoverSkills, skillInvocation, skillsReminder } from "../skills/index.ts";
 import {
   createMcpConnections,
+  createMcpManager,
   createMcpAuthState,
   type OnMcpAuth,
   type McpAuthOutcome,
@@ -536,6 +537,11 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     const assertAvailable = (idle = false) => {
       if (closed) throw new Error("Session is closed.");
       if (storageFailure !== undefined) throw storageFailure;
+      if (idle && mcpManager.busy)
+        throw createUserVisibleError("Session is managing MCP servers.", {
+          code: "session-mcp-busy",
+          params: {},
+        });
       if (idle && selectingModel) throw new Error("Session is switching models.");
       if (idle && (foregroundAdmission || observation?.running()))
         throw new Error("Session is busy; it must be idle.");
@@ -734,8 +740,24 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       changed: (value, source) => custom({ type: "session_title_changed", title: value, source }),
       warning: warn,
     });
-    const mcp = createMcpConnections(createMcpAuthState());
-    let mcpLoaded = false;
+    const mcpAuthState = createMcpAuthState();
+    const mcp = createMcpConnections(mcpAuthState);
+    const mcpManager = createMcpManager({
+      createConnections: () => createMcpConnections(mcpAuthState),
+      connectOptions: () => ({
+        cwd,
+        homeDir: options.homeDir,
+        settings,
+        trustProjectMcp: options.trustProjectMcp,
+        interactive: !!options.onMcpAuth,
+        onMcpAuth: options.onMcpAuth,
+        onInteractionStart: notifyInteraction,
+        onWarning: warn,
+      }),
+      getRunning: () => !!observation?.running(),
+      getBusy: () => selectingModel || foregroundAdmission,
+      onChange: () => custom({ type: "mcp_servers_changed" }),
+    });
     const jobHistory = await fullHistory(ROOT_CONVERSATION_ID);
     const historicalCalls: string[] = [];
     let lastKnownCall = -1;
@@ -809,6 +831,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     });
     failedCleanup.push(async () => {
       await jobs.dispose(true);
+      await mcpManager.close();
       await mcp.close();
       hooks.dispose();
     });
@@ -2263,65 +2286,17 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           });
       },
       async mcpServers(input) {
-        assertAvailable(!!input?.refresh);
-        if (!mcpLoaded || input?.refresh) {
-          await mcp.connect({
-            cwd,
-            homeDir: options.homeDir,
-            settings,
-            trustProjectMcp: options.trustProjectMcp,
-            interactive: !!options.onMcpAuth,
-            onMcpAuth: options.onMcpAuth,
-            onInteractionStart: notifyInteraction,
-            signal: auxiliaryLifetime.signal,
-            onWarning: warn,
-            onEvent: (event) => custom(event),
-          });
-          mcpLoaded = true;
-          await rebuildTools();
-        }
-        return mcp.snapshot();
+        if (closed) throw new Error("Session has been closed.");
+        return mcpManager.snapshot(input);
       },
       async authenticateMcp(name) {
-        assertAvailable(true);
-        await mcp.connect({
-          cwd,
-          homeDir: options.homeDir,
-          settings,
-          trustProjectMcp: options.trustProjectMcp,
-          interactive: !!options.onMcpAuth,
-          onMcpAuth: options.onMcpAuth,
-          onInteractionStart: notifyInteraction,
-          onWarning: warn,
-          onEvent: (event) => custom(event),
-        });
-        mcpLoaded = true;
-        const result = await mcp.authenticate(name);
-        await rebuildTools();
-        return result;
+        return mcpManager.authenticate(name);
       },
       async clearMcpAuth(name) {
-        assertAvailable(true);
-        await mcp.clearAuth(name);
-        await rebuildTools();
+        await mcpManager.clearAuth(name);
       },
       async reconnectMcp(name) {
-        assertAvailable(true);
-        await mcp.connect({
-          cwd,
-          homeDir: options.homeDir,
-          settings,
-          onlyServer: name,
-          reconnect: true,
-          trustProjectMcp: options.trustProjectMcp,
-          interactive: !!options.onMcpAuth,
-          onMcpAuth: options.onMcpAuth,
-          onInteractionStart: notifyInteraction,
-          signal: auxiliaryLifetime.signal,
-          onWarning: warn,
-          onEvent: (event) => custom(event),
-        });
-        await rebuildTools();
+        await mcpManager.reconnect(name);
       },
       async compact(input) {
         assertAvailable(true);
@@ -2333,6 +2308,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       checkpoints: () => checkpoints.list(),
       async rewind(id, input) {
         assertAvailable(true);
+        if (!input.code && !input.conversation)
+          throw new Error("Choose code or conversation rewind.");
         const inspection = await harness.inspect(context);
         if (inspection.tasks.length)
           throw new Error("Rewind requires all related work to be settled.");
@@ -2356,6 +2333,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           tracking.restore(state.get("file-tracking"));
           goal.disarm();
           await rebuildTools();
+          const rewindEvents: SessionEvent[] = [];
+          let rewindInstalled = false;
           observation = await createConversationObservation({
             harness,
             conversation,
@@ -2467,6 +2446,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               })),
             }),
             publish: (events) => {
+              if (!rewindInstalled) {
+                rewindEvents.push(...events);
+                return;
+              }
               for (const event of events) {
                 emit(event);
                 if (
@@ -2482,6 +2465,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               }
             },
           });
+          rewindInstalled = true;
+          for (const event of rewindEvents) emit(event);
           contextMessages = (await conversation.context(context)).messages;
         }
         return { prompt, ...code };
@@ -2551,9 +2536,12 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               return row ? { agentId: row.id, description: row.description } : undefined;
             },
             onWarning: warn,
-            onEvent: (event) => custom(event),
+            onEvent: (event) => {
+              custom(event);
+              mcpManager.adopt(mcp.snapshot());
+            },
           });
-          mcpLoaded = true;
+          mcpManager.adopt(mcp.snapshot());
           await rebuildTools(true);
           input.signal?.throwIfAborted();
           const requestId = `human:${randomUUID()}`;
@@ -2678,6 +2666,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         return waiting;
       },
       async waitForIdle() {
+        await mcpManager.waitForIdle();
         await jobAdmissions;
         await conversation.waitForIdle(context);
         await observation.flush();
@@ -2695,6 +2684,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               failure ??= error;
             }
           };
+          await release(() => mcpManager.close());
           await release(() => title.dispose());
           await release(async () => {
             const result = await hooks.run("SessionEnd", hookInput({ reason }), {
@@ -2729,6 +2719,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     const startup = await hooks.run(
       "SessionStart",
       hookInput({ source: options.resumeId ? "resume" : "startup" }),
+      { matchQuery: options.resumeId ? "resume" : "startup" },
     );
     await applyHookResult(startup, "hook:SessionStart");
     await asyncAdmissions;
