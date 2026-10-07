@@ -245,10 +245,11 @@ test("manual Compaction after cold reopen refreshes current project, skill, Plan
     "plan-mode",
   ])
     expect(messages).toContain(text);
-  expect(messages).not.toContain("git branch:");
+  expect(messages).toContain("git branch:"); // Historical Transcript facts remain readable.
   const events: SessionEvent[] = [];
   session.subscribe((event) => events.push(event));
   await session.run("continue");
+  expect(JSON.stringify(fake.contexts.at(-1))).not.toContain("git branch:");
   expect(publishedReminders(events)).toEqual([]);
   frontend = "Updated frontend state.";
   await Bun.write(join(dirs.cwd, "AGENTS.md"), "Latest project contract.");
@@ -271,7 +272,14 @@ test("native Compaction is appended without deleting historical evidence and col
   const session = await createSession({ ...dirs, ...fake });
   await seedHistory(session);
   const before = await nativeJournal();
+  const previousTranscript = structuredClone(session.messages);
   await session.compact();
+  expect(session.messages.slice(0, previousTranscript.length)).toEqual(previousTranscript);
+  const divider = session.messages.findIndex(
+    (message) => message.role === "session-notice" && message.notice.kind === "compaction",
+  );
+  expect(divider).toBeGreaterThanOrEqual(previousTranscript.length);
+  expect(JSON.stringify(session.messages)).toContain("OLD_EVIDENCE widget contract OLD_EVIDENCE");
   await session.run("next prompt");
   const after = await nativeJournal();
   expect(after).toStartWith(before);

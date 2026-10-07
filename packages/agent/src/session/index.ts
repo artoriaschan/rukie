@@ -36,7 +36,12 @@ import {
   type JobOutput,
 } from "@rukie/shared";
 import type { SessionEvent } from "./events.ts";
-import { modelContextMessages, transcriptMessages, type TranscriptMessage } from "./messages.ts";
+import {
+  permissionDenialFacts,
+  modelContextMessages,
+  transcriptMessages,
+  type TranscriptMessage,
+} from "./messages.ts";
 const entryData = (entry: EntryRecord | undefined) => {
   const value = entry?.data;
   return value && typeof value === "object" && !Array.isArray(value) ? value : undefined;
@@ -1001,6 +1006,23 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     };
     let skills = await loadSkills();
     let tools: ToolRegistration[] = [];
+    async function persistDenial(
+      owner: typeof conversation,
+      event: Parameters<typeof permissionDenialFacts>[1],
+    ) {
+      const live = await harness.snapshot(LiveDoc, owner.id, context);
+      const slot = live?.tools?.find((tool) => tool.callId === event.toolCallId);
+      if (slot?.taskId === undefined)
+        throw new Error("Permission denial has no committed native tool task.");
+      await owner.commit(
+        (tx) =>
+          tx.appendEntry(owner.id, {
+            kind: "rukie.message-facts",
+            data: permissionDenialFacts(slot.taskId!, event),
+          }),
+        context,
+      );
+    }
     const gate = createPermissionGate({
       cwd,
       homeDir: options.homeDir,
@@ -1049,7 +1071,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         await checkpoints.record(call, cwd, options.homeDir);
         await options.onToolCallAllowed?.(call);
       },
-      onEvent: (event) => custom(event),
+      onEvent: async (event) => {
+        if (event.type === "permission_denied") await persistDenial(conversation, event);
+        custom(event);
+      },
       setMode: (value) => {
         permissionMode = value;
       },
@@ -1428,14 +1453,16 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             await checkpoints.record(call, cwd, options.homeDir);
             await options.onToolCallAllowed?.(call);
           },
-          onEvent: (event) =>
+          onEvent: async (event) => {
+            if (event.type === "permission_denied") await persistDenial(child, event);
             custom({
               type: "subagent_event",
               agentId: childId,
               description,
               subagentType: type.name,
               event: { ...event, sessionId: childId },
-            }),
+            });
+          },
           setMode: (value) => {
             permissionMode = value;
           },
@@ -1850,6 +1877,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             harness,
             conversation: child,
             sessionId: childId,
+            history: () => fullHistory(child.id),
             tools: () => childTools,
             adopt: (publication) => {
               childState.adopt(publication);
@@ -2693,6 +2721,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       harness,
       conversation,
       sessionId: lease.id,
+      history: () => fullHistory(),
       tools: () => tools,
       liveAssistantFacts: () =>
         thinking.duration() !== undefined ? { rukieThinkingDurationMs: thinking.duration() } : {},
@@ -3434,6 +3463,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             harness,
             conversation,
             sessionId: lease.id,
+            history: () => fullHistory(),
             tools: () => tools,
             liveAssistantFacts: () =>
               thinking.duration() !== undefined

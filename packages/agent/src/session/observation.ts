@@ -43,6 +43,8 @@ export interface ConversationObservationOptions {
   conversation: Conversation;
   sessionId: string;
   tools(): readonly ToolRegistration[];
+  /** Immutable fork-aware chronological Transcript; native view.entries remains the active model head. */
+  history?(): Promise<readonly EntryRecord[]>;
   /** Product timing facts captured with this committed live generation frame. */
   liveAssistantFacts?(): Pick<TranscriptAssistantMessage, "rukieThinkingDurationMs">;
   /** Adopt app documents from this exact publication, without calling Session APIs. */
@@ -197,7 +199,8 @@ export async function createConversationObservation(options: ConversationObserva
   // commit records themselves, never a potentially lagging state.value getter.
   const state = await conversation.viewState(BACKGROUND_CONTEXT);
   let current = state.value;
-  const unknownOutcomes = await readUnknownOutcomes(current.entries, harness, BACKGROUND_CONTEXT);
+  let transcriptEntries = options.history ? await options.history() : current.entries;
+  const unknownOutcomes = await readUnknownOutcomes(transcriptEntries, harness, BACKGROUND_CONTEXT);
   let projectedEntries: readonly EntryRecord[] | undefined;
   let messagesByEntry = new Map<string, TranscriptMessage[]>();
   let messages: readonly TranscriptMessage[] = [];
@@ -241,9 +244,10 @@ export async function createConversationObservation(options: ConversationObserva
     };
   }
   function project(view: ConversationView) {
-    if (projectedEntries === view.entries) return;
-    projectedEntries = view.entries;
-    const raw = transcriptMessages(view.entries);
+    const entries = options.history ? transcriptEntries : view.entries;
+    if (projectedEntries === entries) return;
+    projectedEntries = entries;
+    const raw = transcriptMessages(entries);
     callArgs = new Map();
     for (const message of raw) {
       if (message.role !== "assistant") continue;
@@ -526,6 +530,15 @@ export async function createConversationObservation(options: ConversationObserva
       )
         unknownOutcomes.add(String(change.value.id));
     const before = current;
+    const appendedTranscript = publication.changes.flatMap((change) =>
+      change.type === "entry" && change.value.conversationId === conversation.id
+        ? [change.value]
+        : [],
+    );
+    if (appendedTranscript.length)
+      transcriptEntries = [...transcriptEntries, ...appendedTranscript].sort(
+        (a, b) => Number(a.id) - Number(b.id),
+      );
     current = adoptView(current, publication);
     options.adopt(publication);
     const previousFacts = facts;
