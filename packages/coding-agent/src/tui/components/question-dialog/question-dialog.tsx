@@ -239,10 +239,12 @@ export function QuestionDialog({
       </Box>
       {auth && (
         <Box height={detailHeight} flexShrink={0}>
-          <ScrollBox ref={auth.scrollRef} stickyScroll={false}>
-            <ThemedText dim wrap="wrap">
-              {auth.detail}
-            </ThemedText>
+          <ScrollBox ref={auth.scrollRef} height={detailHeight} flexGrow={0} stickyScroll={false}>
+            <Box flexShrink={0}>
+              <ThemedText dim wrap="wrap">
+                {auth.detail}
+              </ThemedText>
+            </Box>
           </ScrollBox>
         </Box>
       )}
