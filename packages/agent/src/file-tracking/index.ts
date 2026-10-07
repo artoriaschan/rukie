@@ -105,7 +105,10 @@ export function createFileTracking(
     string,
     Map<string, { previous: TrackedFile; current?: TrackedFile }>
   >();
-  const toolCandidates = new Map<string, TrackedFile>();
+  const toolCandidates = new Map<
+    string,
+    { candidate: Static<typeof candidateSchema>; current: TrackedFile }
+  >();
   let lastResultEntryId = 0;
   let requestRemaining = 16000;
   const restore = (snapshot: unknown) => {
@@ -278,7 +281,11 @@ export function createFileTracking(
   };
   /** The immutable successful receipt, rather than a staged candidate, advances knowledge. */
   async function commitResults(entries: readonly EntryRecord[]) {
-    const candidates = new Map<string, Static<typeof candidateSchema>>();
+    // These candidates entered this cache only after their native owner-entry commit.
+    // A warm afterTools callback can therefore supply receipts without rescanning history.
+    const candidates = new Map(
+      [...toolCandidates].map(([callId, value]) => [callId, value.candidate]),
+    );
     const previous = new Map(files);
     const previousResultEntryId = lastResultEntryId;
     const next = new Map(files);
@@ -299,12 +306,12 @@ export function createFileTracking(
         if (message.role !== "toolResult") continue;
         const candidate = candidates.get(message.toolCallId);
         if (!candidate || candidate.toolName !== message.toolName || message.isError) continue;
-        const warm = toolCandidates.get(message.toolCallId);
+        const warm = toolCandidates.get(message.toolCallId)?.current;
         next.set(
           candidate.file.path,
           warm?.hash === candidate.file.hash ? warm : { ...candidate.file },
         );
-        nextResultEntryId = Number(entry.id);
+        nextResultEntryId = Math.max(nextResultEntryId, Number(entry.id));
         learned.push(message.toolCallId);
       }
     }
@@ -393,7 +400,11 @@ export function createFileTracking(
             }
           }
           const result = await tool.execute(...args);
-          if (!result.isError && path) {
+          if (
+            !result.isError &&
+            path &&
+            (tool.name === "read" || tool.name === "write" || tool.name === "edit")
+          ) {
             let current: TrackedFile | undefined;
             try {
               current = await baseline(path);
@@ -403,19 +414,20 @@ export function createFileTracking(
             if (current) {
               const { path, mtimeMs, size, hash, stale } = current;
               const api = args[1];
+              const candidate: Static<typeof candidateSchema> = {
+                callId: api.callId,
+                toolName: tool.name,
+                file: { path, mtimeMs, size, hash, stale },
+              };
               await api.commit(
                 (tx) =>
                   tx.appendEntry(api.conversationId, {
                     kind: "rukie.file-baseline",
-                    data: {
-                      callId: api.callId,
-                      toolName: tool.name,
-                      file: { path, mtimeMs, size, hash, stale },
-                    },
+                    data: candidate,
                   }),
                 args[2],
               );
-              toolCandidates.set(api.callId, current);
+              toolCandidates.set(api.callId, { candidate, current });
             }
           }
 

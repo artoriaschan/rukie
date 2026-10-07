@@ -62,8 +62,12 @@ test.each([false, true])(
       expect(candidate).toBeGreaterThanOrEqual(0);
       expect(receipt).toBeGreaterThan(candidate);
       expect(writes).toBe(0);
-      if (failed) await tracking.commitResults(entries);
-      else await expect(tracking.commitResults(entries)).rejects.toThrow("tracking storage failed");
+      const receipts = entries.filter((entry) =>
+        entry.model?.some((message) => message.role === "toolResult"),
+      );
+      if (failed) await tracking.commitResults(receipts);
+      else
+        await expect(tracking.commitResults(receipts)).rejects.toThrow("tracking storage failed");
       expect(writes).toBe(failed ? 0 : 1);
 
       await Bun.write(path, "external changed contents\n");
