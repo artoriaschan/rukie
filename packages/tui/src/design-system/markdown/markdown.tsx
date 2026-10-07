@@ -1,8 +1,11 @@
-import { useMemo, type ReactNode } from "react";
+import { createContext, useContext, useMemo, type ComponentProps, type ReactNode } from "react";
 import { fromMarkdown } from "mdast-util-from-markdown";
 import { Box } from "../../components";
-import { ThemedText } from "../themed";
-import { SyntaxHighlightedText, highlightSyntax } from "../syntax-highlighted-text";
+import { ThemedText as StyledText } from "../themed";
+import {
+  SyntaxHighlightedText as HighlightedText,
+  highlightSyntax,
+} from "../syntax-highlighted-text";
 import { useTerminalSize } from "../../hooks";
 import { textLines } from "../../text";
 import { gfm } from "micromark-extension-gfm";
@@ -11,6 +14,16 @@ import { math } from "micromark-extension-math";
 import { mathFromMarkdown } from "mdast-util-math";
 import { render as renderMermaid } from "lovely-mermaid";
 import { renderLatex } from "./latex";
+
+const DimContext = createContext(false);
+function ThemedText(props: ComponentProps<typeof StyledText>) {
+  const dimColor = useContext(DimContext);
+  return <StyledText {...props} dimColor={props.dimColor ?? dimColor} />;
+}
+function SyntaxHighlightedText(props: ComponentProps<typeof HighlightedText>) {
+  const dimColor = useContext(DimContext);
+  return <HighlightedText {...props} dimColor={props.dimColor ?? dimColor} />;
+}
 
 function parse(text: string) {
   // Keep offsets identical when recognizing TeX delimiters. Code and HTML are
@@ -471,9 +484,21 @@ function TableBlock({
 }
 
 /** CommonMark parsed by micromark, rendered as native terminal text and boxes. */
-export function Markdown({ text, onClick }: { text: string; onClick?(): void }) {
+export function Markdown({
+  text,
+  onClick,
+  dimColor = false,
+}: {
+  text: string;
+  onClick?(): void;
+  dimColor?: boolean;
+}) {
   const document = useMemo(() => parse(text), [text]);
-  return <Box flexDirection="column">{blocks(document.children, onClick, false, text)}</Box>;
+  return (
+    <DimContext.Provider value={dimColor}>
+      <Box flexDirection="column">{blocks(document.children, onClick, false, text)}</Box>
+    </DimContext.Provider>
+  );
 }
 
 /** Plain text emitted by Markdown, excluding formatting delimiters. */

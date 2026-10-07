@@ -55,13 +55,13 @@ test("transcript expansion reveals streamed and completed thinking", async () =>
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.thinking("private reasoning first\nprivate reasoning second");
     await app.waitFor(() => app.screen().join("\n").includes("Thinking"));
-    expect(app.screen().join("\n")).not.toContain("private reasoning first");
+    expect(app.screen().join("\n")).toContain("private reasoning first");
     app.stdin.write("\x0f");
     await app.waitFor(() => app.screen().join("\n").includes("private reasoning second"));
     app.calls[0]!.delta("answer");
     app.calls[0]!.finish();
     await app.waitFor(() => !app.isWorking());
-    expect(app.screen().join("\n")).toContain("private reasoning first");
+    await app.waitFor(() => app.screen().join("\n").includes("private reasoning first"));
     app.stdin.write("\x0f");
     await app.waitFor(() => !app.screen().join("\n").includes("private reasoning first"));
   } finally {
