@@ -90,6 +90,9 @@ export function JobsPanel({
         wrap="truncate"
       >{`${live} ${t("jobs.status.running")} · ${complete} ${t("jobs.status.completed")} · ${failed} ${t("jobs.status.failed")} · ${killed} ${t("jobs.status.killed")}`}</ThemedText>
       <ScrollBox
+        flexGrow={1}
+        flexShrink={1}
+        minHeight={1}
         stickyScroll={initialScroll?.following ?? false}
         key={[...expanded].join(",")}
         ref={panelScroll}

@@ -180,3 +180,47 @@ for (const [previous, active, previousColor, activeColor] of [
     }
   });
 }
+
+test("Agent View glyph opens independently after blank cells and header truncation", async () => {
+  const terminal = createTerminal(80, 12);
+  let details = 0,
+    agentViews = 0;
+  const row: SubagentView = {
+    agentId: "child",
+    childSessionId: "child",
+    description: "Reader",
+    subagentType: "general-purpose",
+    status: "running",
+    model: "faux/faux-1",
+    startedAt: Date.now(),
+    outputLines: ["child output"],
+    toolCalls: [],
+  };
+  const app = renderComponent(
+    <SubagentMessage
+      subagent={row}
+      columns={80}
+      locale="en"
+      onClick={() => details++}
+      onOpenView={() => agentViews++}
+    />,
+    terminal,
+  );
+  try {
+    await terminal.flush();
+    terminal.stdin.write("\x1b[<0;80;4M\x1b[<0;80;4m");
+    await terminal.flush();
+    expect(details).toBe(0);
+    expect(agentViews).toBe(0);
+    const column = terminal.screen()[0]!.indexOf("⤢");
+    expect(column).toBeGreaterThan(0);
+    terminal.stdin.write(`\x1b[<0;${column + 1};1M\x1b[<0;${column + 1};1m`);
+    await terminal.waitFor(() => agentViews === 1);
+    expect(details).toBe(0);
+  } finally {
+    app.unmount();
+    await app.waitUntilExit();
+    app.cleanup();
+    terminal.dispose();
+  }
+});

@@ -66,40 +66,38 @@ export function SubagentDashboard({
   ).length;
   return (
     <Box flexShrink={0} height={rows} flexDirection="column" paddingX={2} paddingY={1}>
-      <Divider color="accent" title={t("subagent.dashboard")} />
-      <Box marginY={1} gap={3} flexShrink={0}>
-        <ThemedText>
-          <ThemedText color="accent">
-            {subagents.filter((row) => row.status === "running").length}
+      <Box flexShrink={0} flexDirection="column">
+        <Divider color="accent" title={t("subagent.dashboard")} />
+        <Box marginY={1} gap={3} flexShrink={0}>
+          <ThemedText wrap="truncate">
+            <ThemedText color="accent">
+              {subagents.filter((row) => row.status === "running").length}
+            </ThemedText>
+            <ThemedText dim> {t("subagent.status.running")}</ThemedText>
           </ThemedText>
-          <ThemedText dim> {t("subagent.status.running")}</ThemedText>
-        </ThemedText>
-        <ThemedText>
-          <ThemedText color="success">
-            {
-              subagents.filter(
-                (row) =>
-                  row.runOutcome === "completed" || (row.status === "completed" && !row.runOutcome),
-              ).length
-            }
+          <ThemedText wrap="truncate">
+            <ThemedText color="success">
+              {
+                subagents.filter(
+                  (row) =>
+                    row.runOutcome === "completed" ||
+                    (row.status === "completed" && !row.runOutcome),
+                ).length
+              }
+            </ThemedText>
+            <ThemedText dim> {t("subagent.status.completed")}</ThemedText>
           </ThemedText>
-          <ThemedText dim> {t("subagent.status.completed")}</ThemedText>
-        </ThemedText>
-        {failed > 0 && (
-          <ThemedText>
-            <ThemedText color="error">{failed}</ThemedText>
-            <ThemedText dim> {t("subagent.status.failed")}</ThemedText>
-          </ThemedText>
-        )}
-        <Box flexShrink={0} flexGrow={1} />
-        <ExitButton onClick={onClose} />
+          {failed > 0 && (
+            <ThemedText wrap="truncate">
+              <ThemedText color="error">{failed}</ThemedText>
+              <ThemedText dim> {t("subagent.status.failed")}</ThemedText>
+            </ThemedText>
+          )}
+          <Box flexShrink={0} flexGrow={1} />
+          <ExitButton onClick={onClose} />
+        </Box>
       </Box>
-      <ScrollBox
-        ref={panelScroll}
-        stickyScroll={false}
-        height={Math.max(1, rows - 10)}
-        flexGrow={0}
-      >
+      <ScrollBox ref={panelScroll} stickyScroll={false} minHeight={1} flexGrow={1} flexShrink={1}>
         {subagents.length === 0 ? (
           <Box flexShrink={0} flexDirection="column" marginTop={2}>
             <ThemedText dim>○</ThemedText>
@@ -122,8 +120,12 @@ export function SubagentDashboard({
           ))
         )}
       </ScrollBox>
-      <Divider />
-      <ThemedText dim>{t("subagent.dashboard-hint")}</ThemedText>
+      <Box flexShrink={0} flexDirection="column">
+        <Divider />
+        <ThemedText dim wrap="truncate">
+          {t("subagent.dashboard-hint")}
+        </ThemedText>
+      </Box>
     </Box>
   );
 }

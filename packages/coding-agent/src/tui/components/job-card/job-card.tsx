@@ -79,10 +79,14 @@ export function JobCard({
         </Box>
         <Box flexShrink={0} flexDirection="column" onClick={() => setCommandOpen((open) => !open)}>
           {commandRows.map((line, index) => (
-            <ThemedText key={index} wrap="truncate">
-              <ThemedText color="accent">│</ThemedText>
-              <ThemedText dim>{line.slice(1)}</ThemedText>
-            </ThemedText>
+            <Box key={index} flexShrink={0}>
+              <Box noSelect="from-left-edge" flexShrink={0}>
+                <ThemedText color="accent">│</ThemedText>
+              </Box>
+              <ThemedText dim wrap="truncate">
+                {line.slice(1)}
+              </ThemedText>
+            </Box>
           ))}
         </Box>
         {dropped && (
@@ -91,10 +95,14 @@ export function JobCard({
           </ThemedText>
         )}
         {Array.from({ length: 2 }, (_, index) => (
-          <ThemedText key={index} wrap="truncate">
-            <ThemedText color="success">│</ThemedText>
-            <ThemedText dim>{rows[rows.length - 2 + index]?.slice(1)}</ThemedText>
-          </ThemedText>
+          <Box key={index} flexShrink={0}>
+            <Box noSelect="from-left-edge" flexShrink={0}>
+              <ThemedText color="success">│</ThemedText>
+            </Box>
+            <ThemedText dim wrap="truncate">
+              {rows[rows.length - 2 + index]?.slice(1)}
+            </ThemedText>
+          </Box>
         ))}
       </Box>
     </Box>
