@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: claimed
 
 # Spec: pi 1.0.4 与 pi-durable 全面迁移
 
@@ -173,6 +173,8 @@ Q1–Q3：全面 durable，接受实验性与 API 破坏；执行逻辑按 durab
 | 包版本、格式和消费者机械更新                          | 无需单独 ADR                                                                                                                                                                                                                                                                                                    | 实现已选定的 harness，不形成新的长期取舍               |
 
 ## Comments
+
+2026-10-08：通过 implement-spec 开始实施，集成分支为 `codex/pi-durable-migration`，基线为 `41821852`。按 01–09 严格依赖推进；01 使用独立工作树验证精确发布依赖，门槛通过前不切换生产执行路径。测试入口沿用本规格已确认的公开 Harness、Session 与 Frontend seams。
 
 2026-10-07：规格和九张实施票已发布到本地 Markdown tracker，全部为 ready-for-agent；仅设计交付，实施未开始。用户已确认公开 Session 与现有 Frontend 测试入口。设计覆盖审阅确认上述旧 ADR 冲突有明确替代归属；最终实现覆盖与验证由 09 完成，当前不能关闭 spec。
 
