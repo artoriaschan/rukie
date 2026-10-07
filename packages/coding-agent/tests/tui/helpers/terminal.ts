@@ -5,16 +5,15 @@ import { PassThrough, Writable } from "node:stream";
 import { setImmediate } from "node:timers/promises";
 import { setTimeout as ioTimeout, clearTimeout as ioClearTimeout } from "node:timers";
 import xterm from "@xterm/headless";
-import unicode11 from "@xterm/addon-unicode11";
+import unicodeGraphemes from "@xterm/addon-unicode-graphemes";
 
 /** Interpret the frontend's ANSI output at its terminal IO seam. */
 export function createTerminal(columns = 80, rows = 24, advanceTimers?: (ms: number) => void) {
   if (activeTerminals++ === 0) previousColorLevel = chalk.level;
   chalk.level = 3;
   const terminal = new xterm.Terminal({ cols: columns, rows, allowProposedApi: true });
-  // xterm defaults to Unicode 6, where moon emoji occupy one column.
-  terminal.loadAddon(new unicode11.Unicode11Addon());
-  terminal.unicode.activeVersion = "11";
+  // Interpret complete Unicode graphemes, including ZWJ owners and their wide tail cells.
+  terminal.loadAddon(new unicodeGraphemes.UnicodeGraphemesAddon());
   const stdin = Object.assign(new PassThrough(), {
     ref() {
       return this;
