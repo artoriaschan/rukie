@@ -207,13 +207,16 @@ test.each([false, true])(
     });
     const screen = () => app.screen().join("\n");
     const focused = () =>
-      app.screen().find((line, row) => {
-        const column = line.indexOf("Subagent: Child ");
-        return (
-          column >= 0 &&
-          app.terminal.buffer.active.getLine(row)?.getCell(column)?.getFgColor() === 0xe85693
-        );
-      });
+      app
+        .screen()
+        .find((line, row) => {
+          const column = line.indexOf("Subagent: Child ");
+          return (
+            column >= 0 &&
+            app.terminal.buffer.active.getLine(row)?.getCell(column)?.getFgColor() === 0xe85693
+          );
+        })
+        ?.match(/Subagent: Child \d+/)?.[0];
     try {
       await app.waitFor(() => app.calls.length === 1);
       app.calls[0]!.tools(
