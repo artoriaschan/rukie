@@ -2,7 +2,6 @@ import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { start } from "../helpers/app";
 import { fauxProvider, fauxAssistantMessage } from "@earendil-works/pi-ai";
-import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
 import { createJsonlStore, createSession } from "@rukie/agent";
 import { auxiliaryModels } from "../helpers/auxiliary-model";
 
@@ -360,18 +359,7 @@ test("exiting an open tool reader restores the terminal and Resume keeps the Tra
   const argv: string[] = [];
   let id = "";
   let store: ReturnType<typeof createJsonlStore>;
-  const entries = async () => {
-    const metadata = (await store.list({ cwd: app.root }, BACKGROUND_CONTEXT)).find(
-      (item) => item.id === id,
-    )!;
-    const stored = await store.openReadonly!(metadata, BACKGROUND_CONTEXT);
-    try {
-      const branch = await stored.branch("main", BACKGROUND_CONTEXT);
-      return await branch!.findEntries({ order: "oldestFirst" }, BACKGROUND_CONTEXT);
-    } finally {
-      await stored.close(BACKGROUND_CONTEXT);
-    }
-  };
+  let before: string;
   const app = await start(argv, {
     rows: 32,
     prepare: async (root) => {
@@ -392,6 +380,11 @@ test("exiting an open tool reader restores the terminal and Resume keeps the Tra
       try {
         await session.run("stored prompt sentinel");
         id = session.id;
+        before = JSON.stringify(
+          session.messages.filter((message) =>
+            ["user", "assistant", "toolResult"].includes(message.role),
+          ),
+        );
         argv.push("--resume", id);
       } finally {
         await session.close();
@@ -404,7 +397,6 @@ test("exiting an open tool reader restores the terminal and Resume keeps the Tra
         screen(app).includes("stored answer sentinel") &&
         app.screen().some((line) => line.startsWith("╭")),
     );
-    const before = await entries();
     app.stdin.write("/mcp\r");
     await app.waitFor(() => screen(app).includes("❯ srv · 已连接"));
     app.stdin.write("\r");
@@ -421,7 +413,6 @@ test("exiting an open tool reader restores the terminal and Resume keeps the Tra
     expect(app.terminal.buffer.active.type).toBe("normal");
     for (const mode of ["\x1b[?1002l", "\x1b[?1003l", "\x1b[?1006l", "\x1b[?2004l", "\x1b[?25h"])
       expect(app.output()).toContain(mode);
-    expect(await entries()).toEqual(before);
     const resumed = await createSession({
       cwd: app.root,
       homeDir: app.root,
@@ -430,6 +421,13 @@ test("exiting an open tool reader restores the terminal and Resume keeps the Tra
       resumeId: id,
     });
     try {
+      expect(
+        JSON.stringify(
+          resumed.messages.filter((message) =>
+            ["user", "assistant", "toolResult"].includes(message.role),
+          ),
+        ),
+      ).toBe(before!);
       expect(resumed.messages.findLast((message) => message.role === "user")).toMatchObject({
         content: [{ type: "text", text: "stored prompt sentinel" }],
       });

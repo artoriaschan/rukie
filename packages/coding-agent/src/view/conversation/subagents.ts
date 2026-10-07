@@ -44,13 +44,7 @@ export interface SubagentView {
   error?: string;
 }
 
-import type {
-  Session,
-  SessionEvent,
-  SessionRecovery,
-  SubagentIdentity,
-  TranscriptMessage,
-} from "@rukie/agent";
+import type { Session, SessionEvent, SubagentIdentity, TranscriptMessage } from "@rukie/agent";
 
 export interface SubagentState extends SubagentView {
   output: readonly { type: "user" | "text" | "thinking" | "tool"; text: string; toolId?: string }[];
@@ -81,10 +75,7 @@ function createRow(
 }
 
 /** Read-only recovery refines durable history without creating a current Run. */
-export function restoreSubagents(
-  value: unknown,
-  recovery?: SessionRecovery,
-): Readonly<Record<string, SubagentState>> {
+export function restoreSubagents(value: unknown): Readonly<Record<string, SubagentState>> {
   if (!Array.isArray(value)) return {};
   return Object.fromEntries(
     value.flatMap((row) => {
@@ -96,9 +87,6 @@ export function restoreSubagents(
       )
         return [];
       const run = (row as SubagentIdentity).latestRun;
-      const observed = recovery?.history?.find(
-        (child) => child.id === row.id && child.runId === run?.id,
-      );
       return [
         [
           row.id,
@@ -111,8 +99,8 @@ export function restoreSubagents(
             model: run?.model,
             tokens: run?.tokens,
             error: run?.error,
-            runOutcome: observed?.outcome ?? run?.outcome ?? "unknown",
-            runReason: observed?.reason ?? run?.reason ?? run?.error,
+            runOutcome: run?.outcome ?? "unknown",
+            runReason: run?.reason ?? run?.error,
           },
         ],
       ];

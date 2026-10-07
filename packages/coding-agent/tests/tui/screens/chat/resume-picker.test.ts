@@ -32,7 +32,7 @@ test("a 40 by 12 picker scrolls two-row entries and dims a prompt fallback", asy
         }),
       });
       await fallback.run("Prompt session");
-      await fallback.dispose();
+      await fallback.close();
       for (const name of ["Middle session", "Latest session"]) {
         const seed = await createSession({
           cwd: root,
@@ -134,7 +134,7 @@ test("/resume displays two-row session metadata, Escape preserves the current ch
       const store = createJsonlStore({ cwd: root, homeDir: root });
       let lists = 0;
       sessionOptions.store = {
-        create: (...args) => store.create(...args),
+        key: store.key,
         open: (...args) => store.open(...args),
         async list(...args) {
           if (++lists === 2) {

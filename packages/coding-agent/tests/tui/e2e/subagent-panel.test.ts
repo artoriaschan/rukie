@@ -506,7 +506,7 @@ for (const [lang, label, completed, unknown, error] of [
           ),
         });
         await parent.run("delegate");
-        await parent.dispose();
+        await parent.close();
         // Native JSONL fixture: append an old identity to the latest saved parent snapshot.
         for await (const path of new Bun.Glob(`**/*_${parent.id}.jsonl`).scan({
           cwd: `${root}/.rukie/sessions`,

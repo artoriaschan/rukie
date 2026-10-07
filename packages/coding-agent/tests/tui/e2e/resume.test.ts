@@ -376,11 +376,10 @@ test("--resume rejects a child session before requesting a model turn", async ()
         model: faux.getModel(),
         models: auxiliaryModels(faux.provider.streamSimple),
       });
-      await session.run("delegate", {
-        onEvent(event) {
-          if (event.type === "subagent_event") childId = event.agentId;
-        },
+      session.subscribe((event) => {
+        if (event.type === "subagent_event") childId = event.agentId;
       });
+      await session.run("delegate");
       argv.push("--resume", childId);
     },
   });

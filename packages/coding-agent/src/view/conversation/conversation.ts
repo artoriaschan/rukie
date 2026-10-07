@@ -11,7 +11,6 @@ import type {
   GoalView,
   Session,
   SessionEvent,
-  SessionRecovery,
   TranscriptMessage,
   BackgroundActivity,
   TodoItem,
@@ -416,6 +415,7 @@ function replayMessages(
   facts: ConversationFacts,
   t: ReturnType<typeof createTuiI18n>,
   summaries: ReturnType<Session["runSummaries"]> = [],
+  activeCalls: ReadonlySet<string> = new Set(),
 ): CompletedEntry[] {
   const tools = new Map<string, ToolCall>();
   const replayed = messages.flatMap((message, index): CompletedEntry[] => {
@@ -491,6 +491,22 @@ function replayMessages(
         })),
     ];
   });
+  replayed.push(
+    ...[...tools.values()]
+      .filter((tool) => !activeCalls.has(tool.id))
+      .map((tool): CompletedEntry => ({
+        type: "tool",
+        id: tool.id,
+        name: tool.name,
+        args: tool.args,
+        callView: tool.callView,
+        summary: tool.summary,
+        isError: false,
+        outcomeUnknown: true,
+        replayed: true,
+        anchorId: `unresolved-${tool.id}`,
+      })),
+  );
   return replayed.reduce<CompletedEntry[]>((entries, entry) => {
     if (
       entry.type === "session-notice" &&
@@ -636,7 +652,6 @@ function reduceEvent(
   now: number,
   t: ReturnType<typeof createTuiI18n>,
   facts: ConversationFacts,
-  recovery?: SessionRecovery,
 ): ViewState {
   switch (event.type) {
     case "snapshot": {
@@ -655,7 +670,17 @@ function reduceEvent(
               startedAt: message.timestamp,
             });
       }
-      const replayed = replayMessages(event.messages, facts, t, [...event.runSummaries]);
+      const replayed = replayMessages(
+        event.messages,
+        facts,
+        t,
+        [...event.runSummaries],
+        new Set(
+          event.tools
+            .filter((slot) => slot.status === "pending" || slot.status === "running")
+            .map((slot) => slot.callId),
+        ),
+      );
       const ordinals = new Map<string, number>();
       const anchored = replayed.map((entry) => {
         const key = `${entry.sourceEntryId}:${entry.type}`;
@@ -669,7 +694,7 @@ function reduceEvent(
         )[ordinal];
         return previous ? { ...entry, anchorId: previous.anchorId } : entry;
       });
-      const subagents = { ...restoreSubagents(event.toolStates.subagents, recovery) };
+      const subagents = { ...restoreSubagents(event.toolStates.subagents) };
       for (const background of event.background) {
         const row = subagents[background.id];
         if (row)
@@ -752,7 +777,7 @@ function reduceEvent(
           ? {
               ...state,
               subagents: Object.fromEntries(
-                Object.entries(restoreSubagents(event.value, recovery)).map(([id, row]) => [
+                Object.entries(restoreSubagents(event.value)).map(([id, row]) => [
                   id,
                   state.subagents[id]
                     ? {
@@ -896,6 +921,22 @@ function reduceEvent(
         tool.args.run_in_background === true;
       return {
         ...state,
+        completed: event.result
+          ? state.completed
+          : [
+              ...state.completed,
+              {
+                type: "tool",
+                id: tool.id,
+                name: tool.name,
+                args: tool.args,
+                callView: tool.callView,
+                summary: tool.summary,
+                isError: false,
+                outcomeUnknown: true,
+                anchorId: `unresolved-${tool.id}`,
+              },
+            ],
         jobs:
           job && tool.name === "bash" && !explicit
             ? { ...state.jobs, [job.id]: { ...job, promotedAt: job.backgroundedAt } }
@@ -982,7 +1023,7 @@ function createViewState(
     planMode: session.planMode,
     goal: session.goal,
     background: [],
-    subagents: restoreSubagents(session.toolState("subagents"), session.recovery),
+    subagents: restoreSubagents(session.toolState("subagents")),
     todos: (session.toolState("todo") as TodoItem[] | undefined) ?? [],
     completed: replayMessages(session.messages, facts, t, session.runSummaries()),
     tools: [],
@@ -1019,7 +1060,7 @@ export function createConversation(
   let state = createViewState(session, model, locale, facts);
   const listeners = new Set<() => void>();
   let compacting = false;
-  let active: { controller: AbortController; promise: Promise<unknown> } | undefined;
+  let active: { promise: Promise<unknown> } | undefined;
   let jobNoticeTimer: ReturnType<typeof setTimeout> | undefined;
   let notificationTimer: ReturnType<typeof setTimeout> | undefined;
   let noticeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -1198,23 +1239,12 @@ export function createConversation(
     }
     update(
       {
-        ...reduceEvent(
-          state,
-          event,
-          now,
-          t,
-          facts,
-          event.type === "snapshot" ||
-            (event.type === "tool_state_changed" && event.name === "subagents")
-            ? session.recovery
-            : undefined,
-        ),
+        ...reduceEvent(state, event, now, t, facts),
         goal:
           event.type === "snapshot"
             ? (event.toolStates.goal as GoalView | undefined)
-            : event.type === "result" ||
-                (event.type === "tool_state_changed" && event.name === "goal")
-              ? session.goal
+            : event.type === "tool_state_changed" && event.name === "goal"
+              ? (event.value as GoalView | undefined)
               : state.goal,
         activity: reduce(
           (event.type === "session_start" || event.type === "run_start") && !state.running
@@ -1280,7 +1310,6 @@ export function createConversation(
         });
         return true;
       }
-      const controller = new AbortController();
       if (!session.running)
         update({
           ...state,
@@ -1295,16 +1324,16 @@ export function createConversation(
         });
       const promise = session
         .run(prompt, {
-          signal: controller.signal,
           images,
         })
         .catch((error: unknown) => {
+          if (stopped) return;
           const last = state.completed.findLast((entry) => entry.type !== "run-summary");
           const recordedEnding =
             last?.type === "session-notice" &&
             last.notice.kind !== "hook_message" &&
             last.notice.kind !== "hook_warning";
-          if (!controller.signal.aborted && !recordedEnding) {
+          if (!state.activity.interrupted && !recordedEnding) {
             update({
               ...state,
               assistant: "",
@@ -1318,16 +1347,15 @@ export function createConversation(
         })
         .finally(() => {
           active = undefined;
-          if (!session.running) update({ ...state, running: false });
+          if (!stopped && !session.running) update({ ...state, running: false });
         });
-      active = { controller, promise };
+      active = { promise };
       return true;
     },
     compact(instructions?: string) {
       if (active || session.running)
         return Promise.reject(new Error("Session already has an active Run."));
       compacting = true;
-      const controller = new AbortController();
       const previousActivity = state.activity;
       update({
         ...state,
@@ -1338,9 +1366,9 @@ export function createConversation(
       const promise = session.compact({ instructions }).finally(() => {
         active = undefined;
         compacting = false;
-        update({ ...state, running: false, activity: previousActivity });
+        if (!stopped) update({ ...state, running: false, activity: previousActivity });
       });
-      active = { controller, promise };
+      active = { promise };
       return promise;
     },
     async loadSubagent(id: string) {
