@@ -270,6 +270,7 @@ export default class App extends PureComponent<Props, State> {
 	lastClickCol = -1;
 	lastClickRow = -1;
 	clickCount = 0;
+	lastClickRegion: ReturnType<Ink["getClickRegionAt"]> = null;
 	// Deferred hyperlink-open timer — cancelled if a second click arrives
 	// within MULTI_CLICK_TIMEOUT_MS (so double-clicking a hyperlink selects
 	// the word without also opening the browser). DOM onClick dispatch is
@@ -365,6 +366,7 @@ export default class App extends PureComponent<Props, State> {
 	 * a double-click).
 	 */
 	resetPointerState(cancelSelection = false): void {
+		this.lastClickRegion = null;
 		this.clickCount = 0;
 		this.lastClickTime = 0;
 		this.lastClickCol = -1;
@@ -1028,6 +1030,9 @@ function processKeysInBatch(
 				continue;
 			}
 		}
+		if (!item.name?.startsWith("wheel") && app.heldButtons === 0 && !app.ambiguousHeld && !app.props.selection.isDragging) {
+			app.clickCount = 0; app.lastClickTime = 0; app.lastClickRegion = null;
+		}
 		app.handleInput(sequence);
 		const event = new InputEvent(item);
 		app.internal_eventEmitter.emit("input", event);
@@ -1274,11 +1279,18 @@ export function handleMouseEvent(app: App, m: ParsedMouse): void {
 		// release, which meant (a) visible latency before the word highlights
 		// and (b) double-click+drag fell through to char-mode selection.
 		const now = Date.now();
+		const region = app.props.renderer.getClickRegionAt(col, row);
+		const previousRegion = app.lastClickRegion;
+		const sameRegion = region?.node === previousRegion?.node &&
+			region?.x === previousRegion?.x && region?.y === previousRegion?.y &&
+			region?.width === previousRegion?.width && region?.height === previousRegion?.height;
 		const nearLast =
+			sameRegion &&
 			now - app.lastClickTime < MULTI_CLICK_TIMEOUT_MS &&
 			Math.abs(col - app.lastClickCol) <= MULTI_CLICK_DISTANCE &&
 			Math.abs(row - app.lastClickRow) <= MULTI_CLICK_DISTANCE;
 		app.clickCount = nearLast ? app.clickCount + 1 : 1;
+		app.lastClickRegion = region;
 		app.lastClickTime = now;
 		app.lastClickCol = col;
 		app.lastClickRow = row;

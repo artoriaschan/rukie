@@ -1,5 +1,5 @@
 import { testClock } from "../helpers/test-clock";
-import { expect, jest, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { startWithClock } from "../helpers/clock-app";
 
 function press(app: Awaited<ReturnType<typeof startWithClock>>, x: number, y: number, flags = 0) {
@@ -107,7 +107,8 @@ test.each([
       expect(app.screen()[y + 1]).toContain("alpha beta");
       press(app, 3, y);
       release(app, 3, y);
-      jest.setSystemTime(new Date(Date.now() + Number(delay)));
+      await app.flush();
+      testClock.advanceTimersByTime(Number(delay));
       press(app, 3 + Number(dx), y + Number(dy));
       release(app, 3 + Number(dx), y + Number(dy));
       await app.flush();
@@ -143,7 +144,7 @@ test("word and line drags extend complete units; modified press resets click cha
     release(app, 10, y);
     await app.waitFor(() => copied.length === 1);
     expect(copied[0]).toBe("alpha beta");
-    jest.setSystemTime(new Date(Date.now() + 501));
+    testClock.advanceTimersByTime(501);
     press(app, 3, y);
     release(app, 3, y);
     press(app, 3, y);

@@ -306,8 +306,11 @@ export function TextInput({
   const viewport = useRef(0);
   const height = Math.min(limit, lines.length);
   viewport.current = Math.max(0, Math.min(viewport.current, lines.length - height));
-  if (caret.y < viewport.current) viewport.current = caret.y;
-  if (caret.y >= viewport.current + height) viewport.current = caret.y - height + 1;
+  if (readOnly) viewport.current = 0;
+  else {
+    if (caret.y < viewport.current) viewport.current = caret.y;
+    if (caret.y >= viewport.current + height) viewport.current = caret.y - height + 1;
+  }
   const cursorRef = useDeclaredCursor({
     line: caret.y - viewport.current,
     column: caret.x,

@@ -39,10 +39,13 @@ test.each([
       expect(row.getCell(left + 1)!.isBold()).toBeTruthy();
       expect(row.getCell(left - 1)!.getBgColorMode()).toBe(0);
       terminal.stdin.write(`\x1b[<35;${left + 2};2M`);
+      await terminal.flush();
       await terminal.waitFor(() => row.getCell(left + 1)!.getBgColor() === 0xc83d77);
       terminal.stdin.write(`\x1b[<0;${left + 2};2M\x1b[<0;${left + 2};2m`);
+      await terminal.flush();
       expect(clicks).toBe(1);
       terminal.stdin.write("\x1b[<35;1;4M");
+      await terminal.flush();
       await terminal.waitFor(() => row.getCell(left + 1)!.getBgColor() === 0xe85693);
     } finally {
       app.unmount();

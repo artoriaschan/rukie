@@ -23,7 +23,7 @@ import { KeyboardEvent } from './events/keyboard-event.js';
 import type { DragEvent } from './events/drag-event.js';
 import { FocusManager } from './focus.js';
 import { emptyFrame, type Frame, type FrameEvent } from './frame.js';
-import { dispatchClick, dispatchContextMenu, dispatchDragEvent as bubbleDragEvent, dispatchHover, dispatchWheel, findDragTarget, clearHovered, invalidateNoInterestRect } from './hit-test.js';
+import { dispatchClick, dispatchContextMenu, dispatchDragEvent as bubbleDragEvent, dispatchHover, dispatchWheel, findDragTarget, clearHovered, invalidateNoInterestRect, hitTestWithOverlays } from './hit-test.js';
 import { logMouseDebug } from './utils/debug.js';
 import { noteTerminalFlush } from './flush-tick.js';
 import instances from './instances.js';
@@ -2268,9 +2268,7 @@ export default class Ink {
    */
   moveSelectionFocus(move: FocusMove): void {
     if (!this.altScreenActive) return;
-    const {
-      focus
-    } = this.selection;
+    const focus = this.selection.focus ?? (this.selection.isDragging ? this.selection.anchor : null);
     if (!focus) return;
     const {
       width,
@@ -2309,6 +2307,7 @@ export default class Ink {
         break;
     }
     if (col === focus.col && row === focus.row) return;
+    this.selection.focus ??= { ...focus };
     moveFocus(this.selection, col, row);
     this.notifySelectionChange();
   }
@@ -2345,6 +2344,18 @@ export default class Ink {
    * on ClickEvent.shift/alt/ctrl.
    */
   /** Batch-tail probe for release-path clicks that deferred via deferProbe. */
+  getClickRegionAt(col: number, row: number): { node: dom.DOMElement; x: number; y: number; width: number; height: number } | null {
+    let node = hitTestWithOverlays(this.rootNode, col, row);
+    while (node) {
+      if (node._eventHandlers?.onClick) {
+        const rect = nodeCache.get(node);
+        return rect ? { node, x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null;
+      }
+      node = node.parentNode ?? null;
+    }
+    return null;
+  }
+
   clickProbeAtBatchTail = (): void => {
     this.probeAltScreenHealth({ skipMouseReassert: true });
   };

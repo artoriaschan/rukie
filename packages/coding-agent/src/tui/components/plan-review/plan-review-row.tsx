@@ -21,8 +21,8 @@ export function PlanReviewRow({
   const t = createTuiI18n(locale);
   const title = `${expanded ? "▴" : "▾"} ${t(kind === "approve" ? "plan.review.approved" : kind === "revise" ? "plan.review.revised" : "plan.review.takeover")} · ${t(expanded ? "plan.review.collapse" : "plan.review.expand")}`;
   return (
-    <ThemedBox flexShrink={0} flexDirection="column">
-      <ThemedBox flexShrink={0} onClick={onToggle}>
+    <ThemedBox width="100%" flexShrink={0} flexDirection="column">
+      <ThemedBox width="100%" flexShrink={0} onClick={onToggle}>
         <ThemedText color="plan" wrap="truncate">
           {title}
         </ThemedText>
