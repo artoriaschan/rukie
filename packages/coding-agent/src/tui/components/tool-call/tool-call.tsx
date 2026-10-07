@@ -34,6 +34,9 @@ import {
   figures,
   type StatusIconProps,
   useTerminalSize,
+  measureElement,
+  type DOMElement,
+  type ClickEvent,
 } from "../../../ink/index.ts";
 
 export function ToolCall({
@@ -96,7 +99,20 @@ export function ToolCall({
   presentation.current = { expanded: localExpanded, offset: windowOffset };
   const moveWindow = useRef<(move: WindowMove) => void>(() => {});
   const [hovered, setHovered] = useState(false);
-  const { columns } = useTerminalSize();
+  const { columns: terminalColumns } = useTerminalSize();
+  const card = useRef<DOMElement | null>(null);
+  const [cardWidth, setCardWidth] = useState<number>();
+  const columns = Math.min(terminalColumns, cardWidth ?? terminalColumns);
+  useLayoutEffect(() => {
+    if (!card.current) return;
+    const width = Math.max(1, Math.floor(measureElement(card.current).width));
+
+    if (width !== cardWidth) setCardWidth(width);
+  });
+  const handleToggle = (event: ClickEvent) => {
+    event.stopImmediatePropagation();
+    toggle();
+  };
   const diffLayout = useDiffLayout();
   const hitWidth = (text: string) => Math.min(columns, Math.max(1, Bun.stringWidth(text)));
   const t = createTuiI18n(locale);
@@ -308,21 +324,24 @@ export function ToolCall({
     .join("\n");
   return (
     <ThemedBox
+      ref={card}
+      width="100%"
       flexShrink={0}
       flexDirection="column"
       backgroundColor={hovered ? "toolCardBackground" : undefined}
-      onClick={toggle}
+      onClick={handleToggle}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
       <Tooltip
+        width={columns}
         flexShrink={0}
         ref={(element) => mountSource?.(id ? `tool-${id}-header` : "", element)}
         content={titleHidden ? `${fullHeader}\n${metadata}` : undefined}
         disabled={imagesSuspended}
-        onClick={toggle}
+        onClick={handleToggle}
       >
-        <ThemedBox flexGrow={1} flexShrink={1}>
+        <ThemedBox width={columns} flexGrow={1} flexShrink={1}>
           <ThemedBox noSelect width={2} flexShrink={0}>
             <ThemedText color={outcomeUnknown ? "warning" : status === "error" ? "error" : color}>
               {outcomeUnknown
@@ -338,7 +357,7 @@ export function ToolCall({
                     : "•"}{" "}
             </ThemedText>
           </ThemedBox>
-          <ThemedBox width={titleWidth} flexShrink={1}>
+          <ThemedBox width={titleWidth} flexGrow={1} flexShrink={1}>
             <ThemedText wrap={titleView?.card === "terminal" ? "wrap" : "truncate"}>
               <ThemedText bold color={color}>
                 {displayName ?? header}
@@ -382,7 +401,10 @@ export function ToolCall({
             top={0}
             width={pathWidth}
             height={1}
-            onClick={() => onPathClick(path)}
+            onClick={(event) => {
+              event.stopImmediatePropagation();
+              onPathClick(path);
+            }}
           />
         )}
       </Tooltip>
@@ -393,7 +415,7 @@ export function ToolCall({
           color={status === "error" ? "error" : "text"}
         >
           {splitRows ? (
-            <ThemedBox flexShrink={0}>
+            <ThemedBox flexShrink={0} onClick={(event) => event.stopImmediatePropagation()}>
               <InteractiveText noSelect>{` ${figures.result} `}</InteractiveText>
               <SplitDiffView
                 onSourceMount={mountSource}
@@ -421,7 +443,7 @@ export function ToolCall({
                 flexDirection="column"
                 flexGrow={1}
               >
-                <Markdown text={shown.join("\n")} onClick={toggle} />
+                <Markdown text={shown.join("\n")} />
               </ThemedBox>
             </ThemedBox>
           ) : (
@@ -436,7 +458,7 @@ export function ToolCall({
                 }
                 key={windowStart + index}
                 width={hitWidth(`   ${line.trimEnd()}`)}
-                onClick={line.trim() ? toggle : undefined}
+                onClick={line.trim() ? handleToggle : undefined}
               >
                 <ThemedBox noSelect width={3} flexShrink={0}>
                   <ThemedText dim>{index === 0 ? ` ${figures.result} ` : "   "}</ThemedText>
@@ -490,7 +512,10 @@ export function ToolCall({
                       top={0}
                       width={Math.max(0, Math.min(columns - 3, Bun.stringWidth(line)))}
                       height={1}
-                      onClick={() => onPathClick(diffLines[windowStart + index]!.path!)}
+                      onClick={(event) => {
+                        event.stopImmediatePropagation();
+                        onPathClick(diffLines[windowStart + index]!.path!);
+                      }}
                     />
                   )}
               </ThemedBox>
@@ -515,7 +540,7 @@ export function ToolCall({
             <ThemedBox
               flexShrink={0}
               width={hitWidth(`   ${t("tool.fold", { count: lines.length - limit })}`)}
-              onClick={toggle}
+              onClick={handleToggle}
             >
               <ThemedText
                 dim={!hovered}
@@ -548,7 +573,10 @@ export function ToolCall({
                 <ThemedBox
                   flexShrink={0}
                   width={hitWidth(t("tool.window-previous"))}
-                  onClick={windowStart > 0 ? () => focusWindow(-400) : undefined}
+                  onClick={(event) => {
+                    event.stopImmediatePropagation();
+                    if (windowStart > 0) focusWindow(-400);
+                  }}
                 >
                   <InteractiveText noSelect dim={windowStart === 0}>
                     {t("tool.window-previous")}
@@ -558,7 +586,10 @@ export function ToolCall({
                 <ThemedBox
                   flexShrink={0}
                   width={hitWidth(t("tool.window-next"))}
-                  onClick={windowStart + 400 < lines.length ? () => focusWindow(400) : undefined}
+                  onClick={(event) => {
+                    event.stopImmediatePropagation();
+                    if (windowStart + 400 < lines.length) focusWindow(400);
+                  }}
                 >
                   <InteractiveText noSelect dim={windowStart + 400 >= lines.length}>
                     {t("tool.window-next")}
