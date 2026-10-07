@@ -63,6 +63,7 @@ type CompletedEntry = { anchorId?: string } & (
       agentId?: string;
       planReview?: { plan: string; kind: "approve" | "revise" | "takeover"; feedback?: string };
     }
+  | { type: "thinking"; text: string }
   | { type: "notice"; text: string; report?: string }
   | { type: "context-report"; report: ContextReport; expanded: boolean; modelName?: string }
 );
@@ -395,6 +396,7 @@ interface ViewState {
   completed: CompletedEntry[];
   tools: ToolCall[];
   assistant: string;
+  reasoning: string;
   assistantAnchor: string;
   assistantTimestamp?: number;
   model: string;
@@ -418,6 +420,14 @@ function messageText(message: Extract<SessionEvent, { type: "message_end" }>["me
     : message.content
         .flatMap((content) => (content.type === "text" ? [content.text] : []))
         .join("");
+}
+
+function messageThinking(message: Extract<SessionEvent, { type: "message_end" }>["message"]) {
+  return message.role === "assistant"
+    ? message.content
+        .flatMap((content) => (content.type === "thinking" ? [content.thinking] : []))
+        .join("\n")
+    : "";
 }
 
 function userMessageEntry(
@@ -462,7 +472,11 @@ function replayMessages(
             startedAt: message.timestamp,
           });
       }
-      return text ? [{ type: "message", role: "assistant", text }] : [];
+      const reasoning = messageThinking(message);
+      return [
+        ...(reasoning ? [{ type: "thinking" as const, text: reasoning }] : []),
+        ...(text ? [{ type: "message" as const, role: "assistant" as const, text }] : []),
+      ];
     }
     if (message.role === "toolResult") {
       const tool = tools.get(message.toolCallId) ?? {
@@ -578,6 +592,7 @@ function reduceEvent(
       return {
         ...state,
         assistant: messageText(event.message),
+        reasoning: messageThinking(event.message),
         streamedChars,
         decode:
           chars > 0
@@ -590,7 +605,12 @@ function reduceEvent(
     }
     case "message_start":
       return event.message.role === "assistant"
-        ? { ...state, assistant: messageText(event.message), assistantAnchor: crypto.randomUUID() }
+        ? {
+            ...state,
+            assistant: messageText(event.message),
+            reasoning: messageThinking(event.message),
+            assistantAnchor: crypto.randomUUID(),
+          }
         : state;
     case "message_end": {
       const text = messageText(event.message);
@@ -616,13 +636,30 @@ function reduceEvent(
       const step = state.decode.step;
       return {
         ...state,
-        completed: text
-          ? [
-              ...state.completed,
-              { type: "message", role: "assistant", text, anchorId: state.assistantAnchor },
-            ]
-          : state.completed,
+        completed: [
+          ...state.completed,
+          ...(messageThinking(event.message)
+            ? [
+                {
+                  type: "thinking" as const,
+                  text: messageThinking(event.message),
+                  anchorId: `${state.assistantAnchor}-thinking`,
+                },
+              ]
+            : []),
+          ...(text
+            ? [
+                {
+                  type: "message" as const,
+                  role: "assistant" as const,
+                  text,
+                  anchorId: state.assistantAnchor,
+                },
+              ]
+            : []),
+        ],
         assistant: "",
+        reasoning: "",
         assistantTimestamp: event.message.timestamp,
         assistantAnchor: crypto.randomUUID(),
         input: state.input + event.message.usage.input,
@@ -718,6 +755,15 @@ function reduceEvent(
         ...state,
         completed: [
           ...state.completed,
+          ...(state.reasoning
+            ? [
+                {
+                  type: "thinking" as const,
+                  text: state.reasoning,
+                  anchorId: `${state.assistantAnchor}-thinking`,
+                },
+              ]
+            : []),
           ...(state.assistant
             ? [
                 {
@@ -743,6 +789,7 @@ function reduceEvent(
             : []),
         ],
         assistant: "",
+        reasoning: "",
         running: false,
         waitingSubagents: 0,
         input: event.usage.input,
@@ -781,6 +828,7 @@ function createViewState(session: Session, model: string, locale: Locale): ViewS
     })),
     tools: [],
     assistant: "",
+    reasoning: "",
     assistantAnchor: crypto.randomUUID(),
     model: session.model ?? model,
     running: session.running,

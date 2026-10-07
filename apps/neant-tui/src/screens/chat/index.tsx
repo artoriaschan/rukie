@@ -1,3 +1,4 @@
+import { ThinkingRow } from "../../components/thinking-row";
 import { realpath } from "node:fs/promises";
 import { relative, join } from "node:path";
 import { homedir } from "node:os";
@@ -696,7 +697,15 @@ function Chat({
 
   const [scrollFocus, setScrollFocus] = useState<"body" | "details">("body");
   const [unread, setUnread] = useState(false);
-  const [jobsExpanded, setJobsExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [expandedRows, setExpandedRows] = useState<ReadonlySet<string>>(new Set());
+  const toggleRow = (id: string) =>
+    setExpandedRows((rows) => {
+      const next = new Set(rows);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   const previousOutput = useRef({
     completed: state.completed,
     assistant: state.assistant,
@@ -1446,7 +1455,7 @@ function Chat({
       !previewRef.current
     ) {
       handledInput.current.add(event);
-      setJobsExpanded((expanded) => !expanded);
+      setExpanded((expanded) => !expanded);
       return;
     }
     if (
@@ -1656,7 +1665,7 @@ function Chat({
           }
           if (group.length >= 2) {
             const folded =
-              !jobsExpanded &&
+              !expanded &&
               group.every(({ job }) => job.status !== "running" && job.status !== "stopping");
             return (
               <Box key={index} flexDirection="column">
@@ -1665,12 +1674,14 @@ function Chat({
                   folded={folded}
                   columns={columns}
                   locale={locale}
-                  onToggle={() => setJobsExpanded((expanded) => !expanded)}
+                  onToggle={() => setExpanded((expanded) => !expanded)}
                 />
                 {!folded &&
                   group.map(({ entry: member, job, index: at }) => (
                     <Box key={at} flexDirection="column">
                       <ToolCall
+                        expanded={expanded || expandedRows.has(member.id ?? `row-${at}`)}
+                        onToggle={() => toggleRow(member.id ?? `row-${at}`)}
                         locale={locale}
                         summary={member.summary}
                         name={member.name}
@@ -1700,6 +1711,8 @@ function Chat({
             return (
               <Box key={index} flexDirection="column">
                 <ToolCall
+                  expanded={expanded || expandedRows.has(entry.id ?? `row-${index}`)}
+                  onToggle={() => toggleRow(entry.id ?? `row-${index}`)}
                   planReview={entry.planReview}
                   locale={locale}
                   summary={entry.summary}
@@ -1754,6 +1767,16 @@ function Chat({
                 locale={locale}
               />
             );
+          case "thinking":
+            return (
+              <ThinkingRow
+                key={index}
+                text={entry.text}
+                locale={locale}
+                expanded={expanded || expandedRows.has(entry.anchorId ?? `thinking-${index}`)}
+                onToggle={() => toggleRow(entry.anchorId ?? `thinking-${index}`)}
+              />
+            );
           case "notice":
             return <Notice key={index} kind="info" text={entry.text} report={entry.report} />;
           case "message":
@@ -1786,7 +1809,8 @@ function Chat({
       state.completed,
       state.subagents,
       state.jobs,
-      jobsExpanded,
+      expanded,
+      expandedRows,
       columns,
       thinking,
       locale,
@@ -1874,6 +1898,16 @@ function Chat({
               </Box>
             ),
         )}
+        {state.reasoning && (
+          <Box scrollAnchorId={`${state.assistantAnchor}-thinking`} flexDirection="column">
+            <ThinkingRow
+              text={state.reasoning}
+              locale={locale}
+              expanded={expanded || expandedRows.has(`${state.assistantAnchor}-thinking`)}
+              onToggle={() => toggleRow(`${state.assistantAnchor}-thinking`)}
+            />
+          </Box>
+        )}
         {state.assistant && (
           <Box scrollAnchorId={state.assistantAnchor} flexDirection="column">
             <AssistantMessage text={state.assistant} />
@@ -1882,6 +1916,8 @@ function Chat({
         {state.tools.map((tool) => (
           <ToolCall
             key={tool.id}
+            expanded={expanded || expandedRows.has(tool.id)}
+            onToggle={() => toggleRow(tool.id)}
             id={tool.id}
             name={tool.name}
             args={tool.args}

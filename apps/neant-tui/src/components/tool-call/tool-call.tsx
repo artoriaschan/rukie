@@ -18,6 +18,7 @@ import {
   ThemedText,
   figures,
   type StatusIconProps,
+  useTerminalSize,
 } from "@neant/tui";
 
 export function ToolCall({
@@ -36,8 +37,12 @@ export function ToolCall({
   imagesSuspended,
   error,
   planReview,
+  expanded: globalExpanded = false,
+  onToggle,
   locale = "zh",
 }: {
+  expanded?: boolean;
+  onToggle?(): void;
   summary: string;
   id?: string;
   name?: string;
@@ -57,7 +62,12 @@ export function ToolCall({
   locale?: Locale;
   planReview?: { plan: string; kind: "approve" | "revise" | "takeover"; feedback?: string };
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [localExpanded, setExpanded] = useState(false);
+  const expanded = globalExpanded || localExpanded;
+  const toggle = onToggle ?? (() => setExpanded((value) => !value));
+  const [hovered, setHovered] = useState(false);
+  const { columns } = useTerminalSize();
+  const hitWidth = (text: string) => Math.min(columns, Math.max(1, Bun.stringWidth(text)));
   const t = createTuiI18n(locale);
   const focused = useTerminalFocus();
   const [, time] = useAnimationFrame(status === "running" && focused ? 16 : null);
@@ -115,76 +125,108 @@ export function ToolCall({
     : undefined;
   const limit = diffView ? 8 : 3;
   const folded = lines.length > limit + 1;
-  const shown = folded ? lines.slice(0, limit) : lines;
+  const shown = expanded ? lines.slice(0, 400) : folded ? lines.slice(0, limit) : lines;
+  const duration =
+    status !== "running" && name && startedAt !== undefined && endedAt !== undefined
+      ? ` · ${fmtDuration(Math.max(0, endedAt - startedAt), locale)}`
+      : "";
   return (
-    <ThemedBox flexDirection="column">
-      <ThemedText wrap="truncate">
-        <ThemedText color={outcomeUnknown ? "warning" : status === "error" ? "error" : color}>
-          {outcomeUnknown
-            ? "?"
-            : status === "error"
-              ? "✗"
-              : status === "running"
-                ? focused && Math.floor(time / 600) % 2
-                  ? " "
-                  : process.platform === "darwin"
-                    ? "⏺"
-                    : "●"
-                : "•"}
-        </ThemedText>{" "}
-        <ThemedText bold color={color}>
-          {displayName ?? header}
-        </ThemedText>
-        {displayName && (
-          <ThemedText>
-            (
-            {jsonTitle ? (
-              <SyntaxHighlightedText text={title.slice(0, 480)} language="json" />
-            ) : (
-              title.slice(0, 480)
-            )}
-            )
+    <ThemedBox
+      flexDirection="column"
+      backgroundColor={hovered ? "toolCardBackground" : undefined}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <ThemedBox width={hitWidth(`• ${header}${duration}`)} onClick={toggle}>
+        <ThemedText wrap="truncate">
+          <ThemedText color={outcomeUnknown ? "warning" : status === "error" ? "error" : color}>
+            {hovered
+              ? expanded
+                ? "▴"
+                : "▾"
+              : outcomeUnknown
+                ? "?"
+                : status === "error"
+                  ? "✗"
+                  : status === "running"
+                    ? focused && Math.floor(time / 600) % 2
+                      ? " "
+                      : process.platform === "darwin"
+                        ? "⏺"
+                        : "●"
+                    : "•"}
+          </ThemedText>{" "}
+          <ThemedText bold color={color}>
+            {displayName ?? header}
           </ThemedText>
-        )}
-        {status !== "running" && name && startedAt !== undefined && endedAt !== undefined && (
-          <ThemedText
-            dimColor
-          >{` · ${fmtDuration(Math.max(0, endedAt - startedAt), locale)}`}</ThemedText>
-        )}
-      </ThemedText>
+          {displayName && (
+            <ThemedText>
+              (
+              {jsonTitle ? (
+                <SyntaxHighlightedText text={title.slice(0, 480)} language="json" />
+              ) : (
+                title.slice(0, 480)
+              )}
+              )
+            </ThemedText>
+          )}
+          {status !== "running" && name && startedAt !== undefined && endedAt !== undefined && (
+            <ThemedText
+              dimColor={!hovered}
+            >{` · ${fmtDuration(Math.max(0, endedAt - startedAt), locale)}`}</ThemedText>
+          )}
+        </ThemedText>
+      </ThemedBox>
       {(output || diffView || status === "running") && (
         <ThemedBox flexDirection="column" color={status === "error" ? "error" : "text"}>
           {(status === "running" && !output && !diffView
             ? [t("tool.running", { seconds })]
             : shown
           ).map((line, index) => (
-            <ThemedText
+            <ThemedBox
               key={index}
-              color={
-                diffLines?.[index]?.tone === "add"
-                  ? "success"
-                  : diffLines?.[index]?.tone === "del"
-                    ? "error"
-                    : diffLines?.[index]?.tone === "dim"
-                      ? "subtle"
-                      : undefined
-              }
-              wrap="truncate"
-            >
-              {index === 0 ? `${figures.result} ` : name ? "   " : "  "}
-              {diffLines?.[index]?.runs ? (
-                <SyntaxHighlightedText runs={diffLines[index]!.runs} />
-              ) : highlightedLines ? (
-                <SyntaxHighlightedText runs={highlightedLines[index]} />
-              ) : (
-                line
+              width={hitWidth(
+                `${index === 0 ? `${figures.result} ` : name ? "   " : "  "}${line.trimEnd()}`,
               )}
-            </ThemedText>
+              onClick={line.trim() || index === 0 ? toggle : undefined}
+            >
+              <ThemedText
+                color={
+                  diffLines?.[index]?.tone === "add"
+                    ? "success"
+                    : diffLines?.[index]?.tone === "del"
+                      ? "error"
+                      : diffLines?.[index]?.tone === "dim"
+                        ? "subtle"
+                        : undefined
+                }
+                wrap="truncate"
+              >
+                {index === 0 ? `${figures.result} ` : name ? "   " : "  "}
+                {diffLines?.[index]?.runs ? (
+                  <SyntaxHighlightedText runs={diffLines[index]!.runs} />
+                ) : highlightedLines ? (
+                  <SyntaxHighlightedText runs={highlightedLines[index]} />
+                ) : (
+                  line
+                )}
+              </ThemedText>
+            </ThemedBox>
           ))}
-          {folded && (
-            <ThemedText
-              dimColor
-            >{`   ${t("tool.fold", { count: lines.length - limit })}`}</ThemedText>
+          {folded && !expanded && (
+            <ThemedBox
+              width={hitWidth(`   ${t("tool.fold", { count: lines.length - limit })}`)}
+              onClick={toggle}
+            >
+              <ThemedText
+                dimColor={!hovered}
+              >{`   ${t("tool.fold", { count: lines.length - limit })}`}</ThemedText>
+            </ThemedBox>
+          )}
+          {expanded && lines.length > 400 && (
+            <ThemedText dimColor={!hovered}>
+              {t("tool.window", { shown: 400, total: lines.length })}
+            </ThemedText>
           )}
         </ThemedBox>
       )}
