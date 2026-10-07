@@ -59,7 +59,6 @@ type CompletedEntry = { anchorId?: string } & (
       result?: string;
       images?: PromptImage[];
       error?: string;
-      agentId?: string;
     }
   | { type: "question"; text: string }
   | {
@@ -169,13 +168,15 @@ function toolEntry(
     return { type: "question", text: questionSummary(tool.args, resultText(result), t) };
   if (["subagent", "subagent_fork", "send_message", "list_agents"].includes(tool.name)) {
     const details = result.details;
-    if (isError)
-      return { type: "notice", text: `✗ ${formatError({ message: resultText(result) }, t)}` };
-    return typeof details === "object" &&
+    if (
+      typeof details === "object" &&
       details !== null &&
       "agentId" in details &&
       typeof details.agentId === "string"
-      ? { type: "subagent", agentId: details.agentId }
+    )
+      return { type: "subagent", agentId: details.agentId };
+    return isError
+      ? { type: "notice", text: `✗ ${formatError({ message: resultText(result) }, t)}` }
       : undefined;
   }
   if (["enter_plan_mode", "exit_plan_mode"].includes(tool.name))
@@ -217,13 +218,6 @@ function toolEntry(
       })),
     summary: tool.summary,
     isError,
-    agentId:
-      typeof result.details === "object" &&
-      result.details !== null &&
-      "agentId" in result.details &&
-      typeof result.details.agentId === "string"
-        ? result.details.agentId
-        : undefined,
     result: isError ? undefined : resultText(result),
     error: isError
       ? hook !== undefined

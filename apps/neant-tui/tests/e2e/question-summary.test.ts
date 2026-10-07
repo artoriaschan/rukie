@@ -58,6 +58,8 @@ test.each(["zh", "en"] as const)(
       await app.waitFor(() => app.calls.length === 1);
       app.calls[0]!.tool("ask_user_question", { questions: [question] });
       await app.waitFor(() => app.screen().some((line) => line.trim() === "Which storage?"));
+      expect(app.screen().join("\n")).not.toContain("Question({");
+      expect(app.screen().join("\n")).not.toContain("提问({");
       app.stdin.write("\x1b[B\r");
       await app.waitFor(() => app.calls.length === 2);
       app.calls[1]!.finish();

@@ -1,3 +1,4 @@
+import { Markdown } from "../markdown";
 import { unifiedDiffLines } from "./diff-lines";
 import type { ToolCallView, ToolResultView } from "@neant/shared";
 import { fmtDuration } from "@neant/i18n";

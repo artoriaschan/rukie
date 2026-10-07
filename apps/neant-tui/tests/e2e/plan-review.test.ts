@@ -19,6 +19,8 @@ test("approval closes review, exits Plan Mode and leaves a collapsible plan card
   try {
     await app.waitFor(() => app.screen().some((line) => line.includes("计划评审")));
     expect(app.screen().join("\n")).toContain("Storage plan");
+    expect(app.screen().join("\n")).not.toContain("Review plan(");
+    expect(app.screen().join("\n")).not.toContain("评审计划(");
     app.stdin.write("1");
     await app.waitFor(() => app.calls.length === 2);
     await app.waitFor(() => !app.screen().at(-2)!.includes("plan"));

@@ -362,3 +362,73 @@ test("parent resume initializes its persisted child card as idle before cold con
     await app.cleanup();
   }
 });
+
+test("fork, agent listing and failed messaging use dedicated rows live and after resume", async () => {
+  const { createFauxCore, fauxAssistantMessage } = await import("@earendil-works/pi-ai");
+  const { createSession } = await import("@neant/agent");
+  const argv: string[] = ["--permission-mode", "full-access"];
+  let root = "";
+  const app = await start(argv, {
+    columns: 160,
+    rows: 50,
+    env: { LANG: "en_US.UTF-8" },
+    async prepare(directory) {
+      root = directory;
+      const faux = createFauxCore({ api: "faux", provider: "faux" });
+      faux.setResponses([fauxAssistantMessage("seed reply")]);
+      const session = await createSession({
+        cwd: root,
+        homeDir: root,
+        model: faux.getModel(),
+        streamFn: withAuxiliaryRequests(faux.streamSimple),
+      });
+      await session.run("seed prompt");
+      argv.push("--resume", session.id);
+      await session.dispose();
+    },
+  });
+  const assertRows = (view: typeof app) => {
+    const text = view.allLines().join("\n");
+    expect(text).toContain("Subagent: Forked reader");
+    expect(text).not.toContain("Fork subagent(");
+    expect(text).not.toContain("List agents(");
+    expect(text).not.toContain("Send message(");
+    expect(text).not.toContain("started subagent");
+    expect(text).toContain("not-found-child");
+  };
+  try {
+    await app.waitFor(() => app.screen().includes("❯"));
+    app.stdin.write("fork reader\r");
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("subagent_fork", {
+      description: "Forked reader",
+      prompt: "inspect fork",
+      run_in_background: false,
+    });
+    await app.waitFor(() => app.calls.length === 2);
+    app.calls[1]!.delta("fork conclusion");
+    app.calls[1]!.finish();
+    await app.waitFor(() => app.calls.length === 3);
+    app.calls[2]!.tool("list_agents", {});
+    await app.waitFor(() => app.calls.length === 4);
+    app.calls[3]!.tool("send_message", { agent_id: "not-found-child", message: "inspect more" });
+    await app.waitFor(() => app.calls.length === 5);
+    app.calls[4]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    assertRows(app);
+    const replay = await start(argv, {
+      columns: 160,
+      rows: 50,
+      env: { LANG: "en_US.UTF-8" },
+      session: { cwd: root, homeDir: root },
+    });
+    try {
+      await replay.waitFor(() => replay.screen().includes("❯"));
+      assertRows(replay);
+    } finally {
+      await replay.cleanup();
+    }
+  } finally {
+    await app.cleanup();
+  }
+});
