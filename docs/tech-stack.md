@@ -12,19 +12,21 @@
 
 ## Agent
 
-| 用途                                        | 选型                                                                        |
-| ------------------------------------------- | --------------------------------------------------------------------------- |
-| 模型调用                                    | @earendil-works/pi-ai 0.99.2                                                |
-| HTML → Markdown                             | turndown 7.2.4 + @joplin/turndown-plugin-gfm 1.0.68                         |
-| HTML 内容过滤                               | @mixmark-io/domino 2.2.0（复用 turndown 的 DOM，在 GFM 转换前删除隐藏子树） |
-| HTML 转换类型                               | @types/turndown 5.0.6（仅 devDependency）                                   |
-| 公网 HTTP 请求                              | undici 8.11.2                                                               |
-| Agent loop 和 harness                       | @earendil-works/pi-agent-core 0.99.2                                        |
-| 文件外部修改与工具卡的 unified / split diff | diff 8.0.4                                                                  |
-| glob 的 gitignore 匹配                      | ignore 7.0.8                                                                |
-| grep 的内置二进制                           | @vscode/ripgrep 1.18.0                                                      |
-| MCP                                         | @earendil-works/pi-mcp 0.99.2                                               |
-| 支持的协议                                  | Chat Completions、Responses、Anthropic Messages                             |
+| 用途                                         | 选型                                                                                 |
+| -------------------------------------------- | ------------------------------------------------------------------------------------ |
+| 模型调用                                     | @earendil-works/pi-ai 1.0.4                                                          |
+| HTML → Markdown                              | turndown 7.2.4 + @joplin/turndown-plugin-gfm 1.0.68                                  |
+| HTML 内容过滤                                | @mixmark-io/domino 2.2.0（复用 turndown 的 DOM，在 GFM 转换前删除隐藏子树）          |
+| HTML 转换类型                                | @types/turndown 5.0.6（仅 devDependency）                                            |
+| 公网 HTTP 请求                               | undici 8.11.2                                                                        |
+| Harness、Conversation、Submission 和恢复任务 | @earendil-works/pi-durable 1.0.4（[ADR-0024](adr/0024-adopt-pi-durable-harness.md)） |
+| 原生运行与持久化任务上下文                   | @earendil-works/chord 1.0.4                                                          |
+| pi 遥测解析依赖                              | @earendil-works/pi-telemetry 1.0.4（通过根 overrides 精确对齐）                      |
+| 文件外部修改与工具卡的 unified / split diff  | diff 8.0.4                                                                           |
+| glob 的 gitignore 匹配                       | ignore 7.0.8                                                                         |
+| grep 的内置二进制                            | @vscode/ripgrep 1.18.0                                                               |
+| MCP                                          | @earendil-works/pi-mcp 1.0.4                                                         |
+| 支持的协议                                   | Chat Completions、Responses、Anthropic Messages                                      |
 
 ## 服务端
 
@@ -34,7 +36,7 @@
 | HTTP      | ⚠️ Hono 4.13.12（原清单为 4.13.9）                                                                                                                                 |
 | WebSocket | ⚠️ `@hono/bun` 1.0.0（peer 依赖 `hono >=4.13.9`）。从它引入 `upgradeWebSocket` 和 `websocket`；不要用 `hono/bun` 子路径，它从 4.13.10 起已标记弃用，Hono v5 会移除 |
 | 输入校验  | ⚠️ typebox 跟随 pi 的版本，目前是 1.3.27，不用 1.3.34。保证依赖树里只有一份，否则 schema 类型对不上                                                                |
-| 存储      | sqlite（`bun:sqlite`）；headless 模式用 JSONL（ADR-0003）                                                                                                          |
+| 存储      | 原生 durable JSONL（启用 fsync）；`bun:sqlite` 独占事务持有宿主 lease（[ADR-0024](adr/0024-adopt-pi-durable-harness.md)）                                          |
 
 ## 桌面端
 
