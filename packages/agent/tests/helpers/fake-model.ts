@@ -14,7 +14,8 @@ export function fakeModel(responses: FauxResponseStep[], options: { chunkTokens?
   const faux = fauxProvider({
     api: "faux",
     provider: "faux",
-    tokensPerSecond: Infinity,
+    // Native faux zero uses microtasks; Infinity schedules zero-delay timers and stalls virtual clocks.
+    tokensPerSecond: 0,
     ...(options.chunkTokens && {
       tokenSize: { min: options.chunkTokens, max: options.chunkTokens },
     }),
