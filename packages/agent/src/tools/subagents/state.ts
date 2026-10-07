@@ -7,6 +7,8 @@ export type SubagentRun = {
   parentSessionId: string;
   startedAt: number;
   promptEntryId?: number;
+  /** The driver's original input was durably admitted before later steering. */
+  inputSubmissionId?: number;
   answerEntryId?: number;
   endedAt?: number;
   model?: string;
@@ -60,7 +62,7 @@ function parseRun(value: unknown): SubagentRun {
       run[key] = number;
     }
   }
-  for (const key of ["promptEntryId", "answerEntryId"] as const) {
+  for (const key of ["promptEntryId", "answerEntryId", "inputSubmissionId"] as const) {
     const entry = Reflect.get(value, key);
     if (entry !== undefined) {
       if (typeof entry !== "number" || !Number.isSafeInteger(entry))
