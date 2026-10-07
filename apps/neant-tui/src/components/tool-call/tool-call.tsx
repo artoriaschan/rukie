@@ -1,3 +1,4 @@
+import { unifiedDiffLines } from "./diff-lines";
 import type { ToolCallView, ToolResultView } from "@neant/shared";
 import { fmtDuration } from "@neant/i18n";
 import { appCopy } from "../../i18n/locales";
@@ -101,9 +102,19 @@ export function ToolCall({
       </ThemedBox>
     );
   const output = status === "error" ? (error ?? terminal?.output) : (terminal?.output ?? result);
-  const lines = output?.split(/\r?\n/) ?? [];
-  const folded = lines.length > 4;
-  const shown = expanded ? lines.slice(0, 400) : folded ? lines.slice(0, 3) : lines;
+  const diffView =
+    status !== "error"
+      ? resultView?.card === "diff"
+        ? resultView
+        : !resultView && callView?.card === "diff"
+          ? callView
+          : undefined
+      : undefined;
+  const diffLines = diffView ? unifiedDiffLines(diffView) : undefined;
+  const lines = diffLines?.map((line) => line.text) ?? output?.split(/\r?\n/) ?? [];
+  const limit = diffView ? 8 : 3;
+  const folded = lines.length > limit + 1;
+  const shown = expanded ? lines.slice(0, 400) : folded ? lines.slice(0, limit) : lines;
   const duration =
     status !== "running" && name && startedAt !== undefined && endedAt !== undefined
       ? ` · ${fmtDuration(Math.max(0, endedAt - startedAt), locale)}`
@@ -145,29 +156,41 @@ export function ToolCall({
           )}
         </ThemedText>
       </ThemedBox>
-      {(output || status === "running") && (
+      {(output || diffView || status === "running") && (
         <ThemedBox flexDirection="column" color={status === "error" ? "error" : "text"}>
-          {(status === "running" && !output ? [t("tool.running", { seconds })] : shown).map(
-            (line, index) => (
-              <ThemedBox
-                key={index}
-                width={hitWidth(
-                  `${index === 0 ? `${figures.result} ` : name ? "   " : "  "}${line.trimEnd()}`,
-                )}
-                onClick={line.trim() || index === 0 ? toggle : undefined}
-              >
-                <ThemedText wrap="truncate">{`${index === 0 ? `${figures.result} ` : name ? "   " : "  "}${line}`}</ThemedText>
-              </ThemedBox>
-            ),
-          )}
+          {(status === "running" && !output && !diffView
+            ? [t("tool.running", { seconds })]
+            : shown
+          ).map((line, index) => (
+            <ThemedBox
+              key={index}
+              width={hitWidth(
+                `${index === 0 ? `${figures.result} ` : name ? "   " : "  "}${line.trimEnd()}`,
+              )}
+              onClick={line.trim() || index === 0 ? toggle : undefined}
+            >
+              <ThemedText
+                color={
+                  diffLines?.[index]?.tone === "add"
+                    ? "success"
+                    : diffLines?.[index]?.tone === "del"
+                      ? "error"
+                      : diffLines?.[index]?.tone === "dim"
+                        ? "subtle"
+                        : undefined
+                }
+                wrap="truncate"
+              >{`${index === 0 ? `${figures.result} ` : name ? "   " : "  "}${line}`}</ThemedText>
+            </ThemedBox>
+          ))}
           {folded && !expanded && (
             <ThemedBox
-              width={hitWidth(`   ${t("tool.fold", { count: lines.length - 3 })}`)}
+              width={hitWidth(`   ${t("tool.fold", { count: lines.length - limit })}`)}
               onClick={toggle}
             >
               <ThemedText
                 dimColor={!hovered}
-              >{`   ${t("tool.fold", { count: lines.length - 3 })}`}</ThemedText>
+              >{`   ${t("tool.fold", { count: lines.length - limit })}`}</ThemedText>
             </ThemedBox>
           )}
           {expanded && lines.length > 400 && (
