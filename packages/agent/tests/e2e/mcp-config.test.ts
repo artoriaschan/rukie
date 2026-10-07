@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, getCurrentTools } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { createSession, type SessionEvent } from "../../src/index.ts";
@@ -83,10 +83,13 @@ async function runConfigured(trusted = false) {
     const result = await session.run("list MCP tools", {
       onEvent: (event) => void events.push(event),
     });
-    const start = events.find((event) => event.type === "session_start");
-    return { events, tools: start?.tools, result };
+    return {
+      events,
+      tools: getCurrentTools(fake.contexts[0]!.messages).map((tool) => tool.name),
+      result,
+    };
   } finally {
-    await session.dispose();
+    await session.close();
   }
 }
 

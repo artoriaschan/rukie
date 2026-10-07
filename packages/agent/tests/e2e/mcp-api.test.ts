@@ -1,3 +1,4 @@
+import { modelStream, withModelStream } from "../helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { fauxAssistantMessage, getCurrentTools } from "@earendil-works/pi-ai";
@@ -79,7 +80,7 @@ test("first MCP status query independently probes servers and leaves Transcript 
       await session.mcpServers();
       expect(healthy.requests).toHaveLength(requestCount);
     } finally {
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await healthy.stop();
@@ -123,7 +124,7 @@ test("Session login returns its outcome, updates status and makes tools availabl
       expect(JSON.stringify(fake.contexts[0]!.messages)).toContain("mcp__srv__echo");
       expect(JSON.stringify(fake.contexts[0]!.messages)).not.toContain("mcp__srv__authenticate");
     } finally {
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await server.stop();
@@ -180,7 +181,7 @@ test("logout deletes only the selected credential and status returns to needs-au
         "needs-auth",
       );
     } finally {
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await server.stop();
@@ -224,7 +225,7 @@ test("reconnect refreshes the selected failed server without probing other cache
       expect(other.requests).toHaveLength(requests);
       expect(server.requests.at(-1)?.method).toBe("DELETE");
     } finally {
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await server.stop();
@@ -272,7 +273,7 @@ test("a delayed status probe adopts a newer Run snapshot", async () => {
       expect((await reads[0])?.servers).toMatchObject(expected);
     } finally {
       release.resolve();
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await old.stop();
@@ -307,7 +308,7 @@ test("MCP management rejects during a Run while recorded status remains readable
     } finally {
       controller.abort();
       await running.catch(() => {});
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await server.stop();
@@ -328,7 +329,7 @@ test("unsupported authentication and unknown server operations fail without prob
       });
       expect(server.requests).toEqual([]);
     } finally {
-      await unsupported.dispose();
+      await unsupported.close();
     }
     const interactive = await createSession({
       ...dirs,
@@ -348,7 +349,7 @@ test("unsupported authentication and unknown server operations fail without prob
       await expect(interactive.reconnectMcp("missing")).rejects.toThrow("Unknown MCP server");
       expect(server.requests).toEqual([]);
     } finally {
-      await interactive.dispose();
+      await interactive.close();
     }
   } finally {
     await server.stop();
@@ -377,13 +378,13 @@ test("pending Session login excludes Run and other management, and dispose cance
       await expect(session.run("must wait")).rejects.toMatchObject({ code: "session-mcp-busy" });
       await expect(session.clearMcpAuth("srv")).rejects.toMatchObject({ code: "session-mcp-busy" });
       await expect(session.reconnectMcp("srv")).rejects.toMatchObject({ code: "session-mcp-busy" });
-      await session.dispose();
+      await session.close();
       expect(await login).toEqual({ type: "cancelled", server: "srv" });
       expect(request.signal?.aborted).toBe(true);
       expect(fake.contexts).toEqual([]);
-      await expect(session.mcpServers()).rejects.toThrow("disposed");
+      await expect(session.mcpServers()).rejects.toThrow("closed");
     } finally {
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await server.stop();
@@ -410,7 +411,7 @@ test("cancelled manual login keeps the cached needs-auth status", async () => {
       expect(await session.mcpServers()).toEqual(before);
       expect(events).not.toContain("mcp_servers_changed");
     } finally {
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await server.stop();
@@ -452,7 +453,7 @@ test("manual login delivers Notification even when the frontend immediately dism
       });
       expect(session.messages).toEqual(before);
     } finally {
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await hook.stop(true);
@@ -482,11 +483,11 @@ test("disposing during an independent probe closes it before a delayed initializ
         () => true,
       );
       await started.promise;
-      await session.dispose();
+      await session.close();
       expect(await failure).toBe(true);
     } finally {
       release.resolve();
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await server.stop();
@@ -509,7 +510,7 @@ test("clearing absent OAuth credentials preserves a connected server using confi
       expect(await session.mcpServers()).toEqual(before);
       expect(server.requests).toHaveLength(requests);
     } finally {
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await server.stop();
@@ -544,7 +545,7 @@ test("known MCP configuration errors retain typed metadata through a probe and m
       });
       expect(server.requests).toEqual([]);
     } finally {
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await server.stop();
@@ -603,7 +604,7 @@ test("MCP snapshot exposes effective configuration and original tools without sh
       expect(project.requests).toHaveLength(count);
       expect(JSON.stringify(await session.mcpServers())).not.toContain("private-header");
     } finally {
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await user.stop();
@@ -645,7 +646,7 @@ test.each([false, true])("MCP provenance respects project trust (%s)", async (tr
       expect(JSON.stringify(snapshot)).not.toContain("private-env");
       expect(trusted ? user.requests : project.requests).toEqual([]);
     } finally {
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await user.stop();
@@ -692,7 +693,7 @@ test.each([
         /password|private-query|private-fragment|private-client/,
       );
     } finally {
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await dirs.cleanup();
@@ -741,7 +742,7 @@ test.each(["{", '{"other":{}}'])(
         expect(warnings).toContainEqual(expect.stringContaining(`MCP server ${path}:`));
         expect((await session.mcpServers()).configErrors).toHaveLength(1);
       } finally {
-        await session.dispose();
+        await session.close();
       }
     } finally {
       await server.stop();
@@ -758,7 +759,7 @@ test("missing MCP files are a normal empty snapshot and untrusted malformed proj
     try {
       expect(await session.mcpServers()).toEqual({ servers: [], configErrors: [] });
     } finally {
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await dirs.cleanup();
@@ -784,10 +785,10 @@ test("MCP tool details preserve nested JSON Schema and an absent description ind
     const session = await createSession({
       ...dirs,
       ...fake,
-      streamFn: (model, context, options) => {
+      models: withModelStream(fake.models, (model, context, options) => {
         declarations = getCurrentTools(context.messages);
-        return fake.streamFn(model, context, options);
-      },
+        return modelStream(fake.models)(model, context, options);
+      }),
     });
     const controller = new AbortController();
     const running = session.run("wait", { signal: controller.signal });
@@ -821,7 +822,7 @@ test("MCP tool details preserve nested JSON Schema and an absent description ind
     } finally {
       controller.abort();
       await running.catch(() => {});
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await server.stop();
@@ -856,7 +857,7 @@ test("MCP change events expose the committed snapshot and cached reads never loo
       expect(reads).toHaveLength(1);
       stop();
     } finally {
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await server.stop();
@@ -895,7 +896,7 @@ test("explicit MCP refresh repairs configuration diagnostics and replaces the co
       });
       expect(reads).toHaveLength(3);
     } finally {
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await server.stop();
@@ -929,7 +930,7 @@ test("management before the first MCP read publishes a complete snapshot with th
       expect(await reads[0]).toEqual(await session.mcpServers());
       expect(other.requests).toHaveLength(requests);
     } finally {
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await server.stop();
@@ -977,11 +978,11 @@ test("concurrent MCP refresh shares one probe, excludes management and cleans up
             request.body.method === "initialize",
         ),
       ).toHaveLength(1);
-      await session.dispose();
-      await expect(session.mcpServers({ refresh: true })).rejects.toThrow("disposed");
+      await session.close();
+      await expect(session.mcpServers({ refresh: true })).rejects.toThrow("closed");
     } finally {
       release.resolve();
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await server.stop();
@@ -1009,7 +1010,7 @@ test("management commits changed file diagnostics while preserving other cached 
       expect((await reads[0])?.configErrors).toEqual([]);
       expect((await reads[0])?.servers).toMatchObject([{ name: "srv", status: "connected" }]);
     } finally {
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await server.stop();
@@ -1041,14 +1042,14 @@ test("dispose cancels a pending explicit MCP refresh without a late change event
         () => true,
       );
       await started.promise;
-      await session.dispose();
+      await session.close();
       expect(await refresh).toBe(true);
       release.resolve();
       await Promise.resolve();
       expect(changed).toEqual([]);
     } finally {
       release.resolve();
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await server.stop();
@@ -1094,7 +1095,7 @@ test("first-management and initial-read race retain all servers and publish afte
       expect(await Promise.all(reads)).toEqual([snapshot]);
     } finally {
       release.resolve();
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await server.stop();
@@ -1131,12 +1132,12 @@ test("dispose during first-management completion preserves the cancelled login o
         (error: unknown) => error,
       );
       await started.promise;
-      await session.dispose();
+      await session.close();
       expect(await outcome).toEqual({ type: "cancelled", server: "srv" });
       expect(events).not.toContain("mcp_servers_changed");
     } finally {
       release.resolve();
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await server.stop();
