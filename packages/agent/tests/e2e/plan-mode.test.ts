@@ -388,7 +388,13 @@ test("frontend can await a second Plan Mode change from its state event", async 
       if (event.type === "tool_execution_end") await session.setPlanMode(true);
       if (event.type !== "tool_state_changed" || event.name !== "plan") return;
       values.push(event.value);
-      if ((event.value as { active: boolean }).active) await session.setPlanMode(false);
+      if (
+        typeof event.value === "object" &&
+        event.value !== null &&
+        "active" in event.value &&
+        event.value.active === true
+      )
+        await session.setPlanMode(false);
     },
   });
   expect(values).toEqual([{ active: true }, { active: false }]);
@@ -734,7 +740,7 @@ test("the first Plan write persists a Session baseline before any model call", a
   const session = await createSession({ ...dirs, ...fake, store });
   await session.setPlanMode(true);
   expect(fake.contexts).toEqual([]);
-  expect(await store.list({ cwd: dirs.cwd })).toMatchObject([{ id: session.id }]);
+  expect(await store.list(BACKGROUND_CONTEXT)).toMatchObject([{ id: session.id }]);
   await session.close();
   const lease = await store.open({ id: session.id }, BACKGROUND_CONTEXT);
   const native = createNativeSession(lease.storage);
