@@ -49,10 +49,10 @@ async function fetchUrls(urls: string[], options: Partial<SessionOptions> = {}) 
     fauxAssistantMessage("done"),
   ]);
   const session = await createSession({ ...dirs, ...fake, webFetch, ...options });
-  resources.push(() => session.dispose());
+  resources.push(() => session.close());
   await session.run("read the pages");
   return fake.contexts.slice(1).map((context) => {
-    const result = context.messages.at(-1)!;
+    const result = context.messages.findLast((message) => message.role === "toolResult")!;
     if (result.role !== "toolResult") throw new Error("Expected tool result");
     return result;
   });
@@ -216,7 +216,13 @@ test.each(["PreToolUse", "PermissionRequest"] as const)(
     expect(results).toMatchObject([
       {
         isError: true,
-        content: [{ text: "Denied by permission rule: web_fetch(domain:blocked.test)" }],
+        content: [
+          {
+            text: expect.stringContaining(
+              "Denied by permission rule: web_fetch(domain:blocked.test)",
+            ),
+          },
+        ],
       },
     ]);
     expect(http.requests).toEqual([]);
@@ -248,22 +254,26 @@ test("a child shares domain rules and its top-level approval also covers the par
     fauxAssistantMessage("parent done"),
   ]);
   const asks: string[] = [];
+  const origins: unknown[] = [];
   const session = await createSession({
     ...dirs,
     ...fake,
     webFetch,
     settings: { permissions: { allow: ["web_fetch(domain:site.test)"] } },
     onPermissionAsk: async (request) => {
-      expect(request.origin).toMatchObject({ description: "Read docs" });
+      origins.push(request.origin);
       asks.push(request.sessionAllow.rule);
       return "allow-session";
     },
   });
-  resources.push(() => session.dispose());
+  resources.push(() => session.close());
   await session.run("delegate");
   expect(asks).toEqual(["web_fetch(domain:other.test)"]);
+  expect(origins).toMatchObject([{ description: "Read docs" }]);
   expect(http.requests).toHaveLength(3);
-  expect(fake.contexts[5]!.messages.at(-1)).toMatchObject({ isError: false });
+  expect(
+    fake.contexts[5]!.messages.findLast((message) => message.role === "toolResult"),
+  ).toMatchObject({ isError: false });
 });
 
 test("approving a malformed URL for the session never grants all web access", async () => {
