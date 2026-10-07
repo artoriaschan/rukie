@@ -230,7 +230,6 @@ export interface Session {
   compact(options?: { instructions?: string }): Promise<void>;
   /** Answer once from current context without changing this Session or its Run. */
   sideQuestion(question: string, options?: { signal?: AbortSignal }): AsyncIterable<string>;
-  /** Current restored context in memory, including reminders and any compaction. */
   /** Chronological committed Transcript for the active branch, including compacted history. */
   readonly messages: readonly TranscriptMessage[];
   /** Current Tool State snapshot; undefined before the first write. */
@@ -246,9 +245,9 @@ export interface Session {
   readSubagent(id: string): Promise<
     | {
         messages: readonly TranscriptMessage[];
-        /** Committed context before the latest Run's native start entry; excludes its current Turns. */
         title: string;
         description: string;
+        /** Committed context before the latest Run's native start entry; excludes its current Turns. */
         historyMessages?: readonly TranscriptMessage[];
         generation?: {
           attempt: number;
@@ -263,10 +262,9 @@ export interface Session {
   interruptSubagent(id: string): void;
   /** Closes the owner once; pending native work remains resumable while host resources are released. */
   close(reason?: "exit" | "other"): Promise<void>;
-  /** External completion boundary, including Hook autoruns; never await from a Run callback. */
   /** Wait for native foreground idle and host admission release; background children may remain active. */
   waitForIdle(): Promise<void>;
-  /** Waits behind an internal Hook or Goal Run; a competing user Run is rejected. */
+  /** Waits behind a startup Hook Run; other active foreground work rejects competing admission. */
   run(
     prompt: string,
     options?: {
