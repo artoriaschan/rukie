@@ -201,13 +201,6 @@ export function reduceSubagent(
   };
   const event = wrapped.event;
   switch (event.type) {
-    case "session_start":
-      return {
-        ...createRow(wrapped.agentId, wrapped.description, wrapped.subagentType, now),
-        childSessionId: event.sessionId,
-        status: "running",
-        model: event.model,
-      };
     case "message_start":
     case "message_update": {
       if (event.message.role !== "assistant") return row;
