@@ -34,6 +34,7 @@ test.each([
     const app = await startWithClock(["--yolo", "run"], { env: { LANG: lang } });
     const dot = process.platform === "darwin" ? "⏺" : "●";
     try {
+      app.stdin.write("\x1b[I");
       await app.waitFor(() => app.calls.length === 1);
       app.calls[0]!.tools([
         {

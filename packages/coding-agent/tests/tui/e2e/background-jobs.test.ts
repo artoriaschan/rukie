@@ -1,3 +1,4 @@
+import { committedJobNotifications } from "../helpers/job-notifications";
 import { testClock } from "../helpers/test-clock";
 import { startWithClock } from "../helpers/clock-app";
 import { expect, test } from "bun:test";
@@ -7,7 +8,10 @@ import { auxiliaryModels } from "../helpers/auxiliary-model";
 import { dark } from "../../../src/ink/index.ts";
 
 test("background bash renders its card and idle job chip without consuming model output", async () => {
+  const notifications = committedJobNotifications();
   const app = await startWithClock(["--permission-mode", "full-access", "launch"], {
+    session: notifications.session,
+    prepare: notifications.prepare,
     columns: 120,
     rows: 32,
     env: { LANG: "en_US.UTF-8" },
@@ -45,6 +49,7 @@ test("background bash renders its card and idle job chip without consuming model
       () => screen().includes("✓ job: bash-1") && !app.screen().at(-2)?.includes("● 1"),
     );
     expect(screen()).toContain("Background job completed: Watch fixture output");
+    await app.waitFor(() => notifications.count() === 1);
     app.calls[3]!.finish();
     await app.waitFor(() => !app.isWorking());
     expect(app.calls).toHaveLength(4);
@@ -319,7 +324,10 @@ test("job output and streaming bursts preserve reading position, draft, and unre
 });
 
 test("consecutive jobs share transcript expansion and Ctrl+O respects an active question", async () => {
+  const notifications = committedJobNotifications();
   const app = await start(["--permission-mode", "full-access", "launch"], {
+    session: notifications.session,
+    prepare: notifications.prepare,
     columns: 120,
     rows: 40,
     env: { LANG: "en_US.UTF-8" },
@@ -358,6 +366,7 @@ test("consecutive jobs share transcript expansion and Ctrl+O respects an active 
     await app.waitFor(() => screen().includes("Choose fixture"));
     await Bun.write(join(app.root, "go"), "");
     await app.waitFor(() => screen().includes("3 background jobs folded"));
+    await app.waitFor(() => notifications.count() === 3);
     app.stdin.write("\x0f");
     await app.flush();
     expect(screen()).toContain("3 background jobs folded");
@@ -420,7 +429,10 @@ test("a promoted job shows the last visual output rows at 40×12 and after resiz
 });
 
 test("a failed job notice stays one row at 40×12 and expires without removing other notices", async () => {
+  const notifications = committedJobNotifications();
   const app = await startWithClock(["--permission-mode", "full-access", "launch"], {
+    session: notifications.session,
+    prepare: notifications.prepare,
     columns: 40,
     rows: 12,
   });
@@ -438,6 +450,7 @@ test("a failed job notice stays one row at 40×12 and expires without removing o
     await Bun.write(join(app.root, "go"), "");
     await app.waitFor(() => screen().includes("后台任务失败"));
     const noticedAt = performance.now();
+    await app.waitFor(() => notifications.count() === 1);
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
     expect(app.calls).toHaveLength(2);

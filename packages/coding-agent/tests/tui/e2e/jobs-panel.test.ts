@@ -1,3 +1,4 @@
+import { committedJobNotifications } from "../helpers/job-notifications";
 import { startWithClock } from "../helpers/clock-app";
 import { expect, test } from "bun:test";
 import { join } from "node:path";
@@ -71,7 +72,10 @@ for (const [lang, exitCode] of [
   ["en_US.UTF-8", "exit code: 7"],
 ] as const) {
   test(`settled job details localize the exit code for ${lang}`, async () => {
+    const notifications = committedJobNotifications();
     const app = await start(["--permission-mode", "full-access", "launch"], {
+      session: notifications.session,
+      prepare: notifications.prepare,
       env: { LANG: lang },
       columns: 100,
       rows: 28,
@@ -91,6 +95,7 @@ for (const [lang, exitCode] of [
       await Bun.write(join(app.root, "go"), "");
       await app.waitFor(() => screen().includes(exitCode));
       expect(screen()).toContain(exitCode);
+      await app.waitFor(() => notifications.count() === 1);
       app.calls[1]!.finish();
       await app.waitFor(() => !app.isWorking());
       expect(app.calls).toHaveLength(2);
@@ -274,7 +279,10 @@ test("card clicks focus exact jobs and expanded promoted details show bounded ou
 
 test("reading position and follow state survive settlement and group folding above the viewport while jobs is open", async () => {
   // Frontend reveal is virtual; file barriers and output still observe real child completion.
+  const notifications = committedJobNotifications();
   const app = await startWithClock(["--permission-mode", "full-access", "launch"], {
+    session: notifications.session,
+    prepare: notifications.prepare,
     env: { LANG: "en_US.UTF-8" },
     columns: 100,
     rows: 24,
@@ -308,6 +316,7 @@ test("reading position and follow state survive settlement and group folding abo
     await app.waitFor(
       () => screen().includes("bash-1 · completed") && screen().includes("bash-2 · completed"),
     );
+    await app.waitFor(() => notifications.count() === 2);
     app.calls[1]!.delta("\ncontinued-stream");
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
