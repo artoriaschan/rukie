@@ -15,7 +15,7 @@ import type {
   TaskRecord,
   TaskId,
 } from "@earendil-works/pi-durable";
-import type { JsonValue } from "@earendil-works/chord";
+import type { Context, JsonValue } from "@earendil-works/chord";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { isDeepStrictEqual } from "node:util";
 import type { BackgroundActivity, SessionEvent } from "./events.ts";
@@ -124,7 +124,7 @@ function interruptedResult(entry: EntryRecord) {
 }
 function unknownOutcome(
   entry: EntryRecord,
-  task: TaskRecord<JsonValue, JsonValue, JsonValue> | undefined,
+  task: TaskRecord<JsonValue, JsonValue, unknown> | undefined,
 ) {
   if (
     !interruptedResult(entry) ||
@@ -141,6 +141,7 @@ function unknownOutcome(
     result !== null &&
     typeof result === "object" &&
     !Array.isArray(result) &&
+    "entryId" in result &&
     result.entryId === entry.id &&
     input !== null &&
     typeof input === "object" &&
@@ -148,6 +149,41 @@ function unknownOutcome(
     entry.model?.some(
       (message) => message.role === "toolResult" && message.toolCallId === input.callId,
     ) === true
+  );
+}
+
+async function readUnknownOutcomes(
+  entries: readonly EntryRecord[],
+  harness: Harness,
+  context: Context,
+) {
+  const outcomes = new Set<string>();
+  // getTask reads committed receipts without scheduling recovery. Reserved native
+  // diagnostics plus the matching receipt establish uncertainty, never model text.
+  await Promise.all(
+    entries.filter(interruptedResult).map(async (entry) => {
+      if (
+        entry.byTaskId !== undefined &&
+        unknownOutcome(entry, await harness.getTask(entry.byTaskId, context))
+      )
+        outcomes.add(String(entry.id));
+    }),
+  );
+  return outcomes;
+}
+
+/** Join history DTOs with exact native receipts, retaining uncertainty across child continuation. */
+export async function projectCommittedOutcomeFacts(
+  messages: readonly TranscriptMessage[],
+  entries: readonly EntryRecord[],
+  harness: Harness,
+  context: Context,
+): Promise<readonly TranscriptMessage[]> {
+  const outcomes = await readUnknownOutcomes(entries, harness, context);
+  return messages.map((message) =>
+    message.role === "toolResult" && outcomes.has(message.entryId ?? "")
+      ? { ...message, outcomeUnknown: true }
+      : message,
   );
 }
 
@@ -159,19 +195,7 @@ export async function createConversationObservation(options: ConversationObserva
   // commit records themselves, never a potentially lagging state.value getter.
   const state = await conversation.viewState(BACKGROUND_CONTEXT);
   let current = state.value;
-  const unknownOutcomes = new Set<string>();
-  // Public getTask reads committed receipts without scheduling recovery. Reserved
-  // ToolResult diagnostics and their exact native task receipt jointly establish
-  // uncertainty; arbitrary model text or a tool-supplied error does not.
-  await Promise.all(
-    current.entries.filter(interruptedResult).map(async (entry) => {
-      if (
-        entry.byTaskId !== undefined &&
-        unknownOutcome(entry, await harness.getTask(entry.byTaskId, BACKGROUND_CONTEXT))
-      )
-        unknownOutcomes.add(String(entry.id));
-    }),
-  );
+  const unknownOutcomes = await readUnknownOutcomes(current.entries, harness, BACKGROUND_CONTEXT);
   let projectedEntries: readonly EntryRecord[] | undefined;
   let messages: readonly TranscriptMessage[] = [];
   let callArgs = new Map<string, { name: string; args: unknown }>();
@@ -474,7 +498,7 @@ export async function createConversationObservation(options: ConversationObserva
 
   const unsubscribe = harness.subscribeCommits((publication) => {
     if (closed) return;
-    const tasks = new Map(
+    const tasks = new Map<number, TaskRecord<JsonValue, JsonValue, unknown>>(
       publication.changes.flatMap((change) =>
         change.type === "task" ? [[change.value.id, change.value] as const] : [],
       ),
