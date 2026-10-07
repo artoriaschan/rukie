@@ -1,8 +1,6 @@
 import { expect, test } from "bun:test";
-import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
-import { createJsonlStore, createSession } from "@rukie/agent";
-import { fauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { start } from "../helpers/app";
+import { crashUnsafeEffect } from "../helpers/native-recovery";
 
 test.each([
   ["zh_CN.UTF-8", 40, 12, "结果未知", "可能已产生副作用。", "重试前先核对实际状态。"],
@@ -32,21 +30,8 @@ test.each([
       rows,
       env: { LANG: lang },
       async prepare(root) {
-        const store = createJsonlStore({ cwd: root, homeDir: root });
-        const original = await createSession({ cwd: root, homeDir: root, ...storeModel(), store });
-        const metadata = (await store.list({ cwd: root }, BACKGROUND_CONTEXT))[0]!;
-        const stored = await store.open(metadata, BACKGROUND_CONTEXT);
-        const branch = (await stored.branch("main", BACKGROUND_CONTEXT))!;
-        await branch.appendMessage(
-          fauxAssistantMessage(
-            fauxToolCall("write", { path: "saved.txt", content: "payload" }, { id: "lost-write" }),
-            { stopReason: "toolUse" },
-          ),
-          BACKGROUND_CONTEXT,
-        );
-        await stored.close(BACKGROUND_CONTEXT);
-        await original.close();
-        argv.push("--resume", original.id);
+        const { sessionId } = await crashUnsafeEffect(root);
+        argv.push("--resume", sessionId);
       },
     });
     try {
@@ -63,7 +48,7 @@ test.each([
       expect(history).toContain("? write");
       expect(history).not.toContain("✗ write");
       expect(history).not.toContain("• write");
-      expect(await Bun.file(`${app.root}/saved.txt`).exists()).toBe(false);
+      expect(await Bun.file(`${app.root}/uncertain-effect.txt`).text()).toBe("saved effect");
       if (rows === 12) {
         app.resize(columns, rows);
         await app.waitFor(() => app.screen().at(-3)?.includes("/128k") === true);
@@ -83,13 +68,3 @@ test.each([
     }
   },
 );
-
-function storeModel() {
-  const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
-  return {
-    model: faux.getModel(),
-    streamFn: () => {
-      throw new Error("History preparation must not request the model");
-    },
-  };
-}
