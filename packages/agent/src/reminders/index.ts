@@ -1,20 +1,13 @@
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import { convertToLlm as convertPiMessages } from "@earendil-works/pi-agent-core";
+import type { TranscriptMessage } from "../session/messages.ts";
 import type { Message } from "@earendil-works/pi-ai";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-interface SystemReminder {
+export interface SystemReminder {
   role: "system-reminder";
   source: string;
   content: string;
   timestamp: number;
-}
-
-declare module "@earendil-works/pi-agent-core" {
-  interface CustomAgentMessages {
-    "system-reminder": SystemReminder;
-  }
 }
 
 /** A new source only supplies its current content; comparison is owned here. */
@@ -24,7 +17,7 @@ export interface ReminderSource {
 }
 
 /** Custom messages stay intact in the Transcript and convert only at the model boundary. */
-export function convertToLlm(messages: AgentMessage[]): Message[] {
+export function convertToLlm(messages: TranscriptMessage[]): Message[] {
   return messages.flatMap((message): Message[] => {
     if (message.role === "session-notice") return [];
     if (message.role === "assistant" && "rukieThinkingDurationMs" in message) {
@@ -71,7 +64,7 @@ export function convertToLlm(messages: AgentMessage[]): Message[] {
     ) {
       return [message];
     }
-    return convertPiMessages([message]);
+    return [];
   });
 }
 
@@ -99,7 +92,7 @@ async function git(cwd: string, args: string[]): Promise<string> {
   }
 }
 
-function latestReminderContents(messages: readonly AgentMessage[]): Map<string, string> {
+function latestReminderContents(messages: readonly TranscriptMessage[]): Map<string, string> {
   const latest = new Map<string, string>();
   for (const message of messages) {
     if (message.role === "system-reminder") latest.set(message.source, message.content);
@@ -108,7 +101,7 @@ function latestReminderContents(messages: readonly AgentMessage[]): Map<string, 
 }
 
 export async function collectReminders(options: {
-  messages: AgentMessage[];
+  messages: TranscriptMessage[];
   cwd: string;
   homeDir: string;
   now: Date;
@@ -158,7 +151,7 @@ export async function collectReminders(options: {
 
 /** Compare only the supplied sources against their latest persisted content. */
 export async function collectSourceReminders(
-  messages: readonly AgentMessage[],
+  messages: readonly TranscriptMessage[],
   sources: readonly ReminderSource[],
   now: Date,
 ): Promise<SystemReminder[]> {
