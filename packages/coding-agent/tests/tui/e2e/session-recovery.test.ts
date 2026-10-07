@@ -167,7 +167,8 @@ for (const [lang, interrupted, completed] of [
   test(`${lang} native resume at 40×12 preserves aborted, failed and completed child facts, with accurate manual history`, async () => {
     const argv: string[] = [];
     let childId = "",
-      completedId = "";
+      completedId = "",
+      failedId = "";
     const app = await start(argv, {
       columns: 40,
       rows: 12,
@@ -178,7 +179,7 @@ for (const [lang, interrupted, completed] of [
         childId = pending.metadata.id;
         const finished = await fixture.child("Finished", "completed");
         completedId = finished.metadata.id;
-        await fixture.child("Failed", "error");
+        failedId = (await fixture.child("Failed", "error")).metadata.id;
         await fixture.save();
         argv.push("--resume", fixture.parentId);
       },
@@ -186,7 +187,9 @@ for (const [lang, interrupted, completed] of [
     try {
       await app.waitFor(() => app.screen().includes("❯"));
       const output = app.allLines().join("\n");
-      expect(output).toContain("durable failure");
+      // A child's failure stays on its own native history; it is not replayed
+      // as a new parent notice when a settled Session is opened read-only.
+      expect(output).toContain("parent idle");
       expect(output).not.toContain(`${completed}: Finished`);
       expect(app.calls).toHaveLength(0);
       expect(app.screen().join("\n")).not.toContain(
@@ -213,6 +216,19 @@ for (const [lang, interrupted, completed] of [
             .includes(`id ${completedId.slice(0, 8)}`),
       );
       expect(app.screen().join("\n")).toContain(completed!);
+      app.stdin.write("\x1b");
+      await app.waitFor(() => !app.screen().join("\n").includes("id "));
+      app.stdin.write("\x1b[B\r");
+      await app.waitFor(() =>
+        app
+          .screen()
+          .join("\n")
+          .includes(`id ${failedId.slice(0, 8)}`),
+      );
+      expect(app.screen().join("\n")).toContain(
+        lang!.startsWith("zh") ? "Run 错误结束" : "Run ended with error",
+      );
+      expect(app.screen().join("\n")).toContain("durable failure");
       expect(app.calls).toHaveLength(0);
       app.stdin.write("\x1b");
       await app.waitFor(
