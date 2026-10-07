@@ -485,7 +485,9 @@ export function Markdown({
   const document = useMemo(() => parse(text), [text]);
   return (
     <DimContext.Provider value={dimColor}>
-      <Box flexDirection="column">{blocks(document.children, onClick, false, text)}</Box>
+      <Box flexDirection="column" flexGrow={1} flexShrink={1}>
+        {blocks(document.children, onClick, false, text)}
+      </Box>
     </DimContext.Provider>
   );
 }
