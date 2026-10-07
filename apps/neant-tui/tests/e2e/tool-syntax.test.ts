@@ -41,6 +41,7 @@ test("file read highlighting preserves multiline comments and unknown extensions
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.tool("read", { path: "code.ts" });
     await app.waitFor(() => app.calls.length === 2);
+    await app.waitFor(() => app.screen().some((row) => row.includes("continued */")));
     expect(foreground(app, "continued */", "continued")).toBe(parseInt(dark.subtle.slice(1), 16));
     expect(foreground(app, "const answer", "const")).toBe(parseInt(dark.plan.slice(1), 16));
     app.calls[1]!.tool("read", { path: "code.unknown" });

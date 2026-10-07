@@ -105,3 +105,5 @@ PNG bytes use Kitty `f=100`, transmitted in at most 4096-byte base64 chunks. Vis
 Mouse motion with a held button uses `{ type: "move", x, y, button }`, with primary button `0`; unheld motion retains the existing event without `button`. Apps can use this generic event for drag interactions without outputting terminal protocol sequences.
 
 The implementation independently follows [Kitty's protocol](https://sw.kovidgoyal.net/kitty/graphics-protocol/) and references dsh-TUI's image behavior at `646740f12c34546d6c195f5b7031be0dc67421a5`; no dsh renderer source or decoder dependency is imported (ADR-0005).
+
+`SyntaxHighlightedText` renders source with semantic theme colors. Supply `text` and a `language` or file `path` to select a grammar; unsupported extensions stay plain. For folded code and aligned diffs, call `highlightSyntax(text, { path })` on the complete source first, then pass a selected line's `runs` to `SyntaxHighlightedText`. This preserves multiline comments and strings across the visible window. Runs contain text plus theme token names, so a theme change updates colors without relexing.
