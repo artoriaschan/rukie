@@ -7,7 +7,6 @@ export {
 } from "./store/index.ts";
 export {
   createSession,
-  type SessionEvent,
   type Session,
   type SessionOptions,
   type SessionRecovery,
@@ -63,3 +62,5 @@ export type {
   TranscriptToolResult,
 } from "./session/messages.ts";
 export type { BackgroundActivity } from "./session/events.ts";
+
+export type { SessionEvent } from "./session/events.ts";
