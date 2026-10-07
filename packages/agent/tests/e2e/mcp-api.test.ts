@@ -733,11 +733,10 @@ test.each(["{", '{"other":{}}'])(
           });
         snapshot.configErrors[0]!.error = "modified";
         expect((await session.mcpServers()).configErrors[0]?.error).not.toBe("modified");
-        const result = await session.run("continue with valid MCP", {
-          onEvent: (event) => {
-            if (event.type === "session_start") expect(event.tools).toContain("mcp__project__echo");
-          },
-        });
+        const result = await session.run("continue with valid MCP");
+        expect(getCurrentTools(fake.contexts[0]!.messages).map((tool) => tool.name)).toContain(
+          "mcp__project__echo",
+        );
         expect(result.success).toBe(true);
         expect(warnings).toContainEqual(expect.stringContaining(`MCP server ${path}:`));
         expect((await session.mcpServers()).configErrors).toHaveLength(1);
