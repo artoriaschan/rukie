@@ -1,12 +1,19 @@
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
+import { runRequest } from "../helpers/crashed-subagents.ts";
+import { withAuxiliaryRequests, modelStream, withModelStream } from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
 import {
   createAssistantMessageEventStream,
   fauxAssistantMessage,
   fauxToolCall,
+  getCurrentSystemMessage,
 } from "@earendil-works/pi-ai";
-import { createSession, createJsonlStore, type SessionEvent } from "../../src/index.ts";
-import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
+import {
+  createSession,
+  createJsonlStore,
+  type SubagentIdentity,
+  type SessionEvent,
+} from "../../src/index.ts";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
@@ -49,17 +56,10 @@ test.each(["subagent", "subagent_fork"])(
       response,
       response,
       (context) => {
-        expect(structuredClone(context.messages.at(-1))).toMatchObject({
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: expect.stringContaining(
-                "(Inspect) finished. Its closing message:\nchild conclusion",
-              ),
-            },
-          ],
-        });
+        expect(context.messages.at(-1)?.role).toBe("user");
+        expect(JSON.stringify(context.messages.at(-1))).toContain(
+          "(Inspect) finished. Its closing message:\nchild conclusion".replaceAll("\n", "\\n"),
+        );
         return fauxAssistantMessage("parent conclusion");
       },
     ]);
@@ -67,17 +67,15 @@ test.each(["subagent", "subagent_fork"])(
     const events: SessionEvent[] = [];
     const session = await createSession({ ...dirs, ...fake });
     let settled = false;
-    const run = session
-      .run("delegate", {
-        onEvent(event) {
-          events.push(event);
-          if (event.type === "subagents_waiting") waiting.resolve();
-        },
-      })
-      .then((result) => {
-        settled = true;
-        return result;
-      });
+    const run = runRequest(session, "delegate", {
+      onEvent(event) {
+        events.push(event);
+        if (event.type === "run_end") waiting.resolve();
+      },
+    }).then((result) => {
+      settled = true;
+      return result;
+    });
     await waiting.promise;
     expect(settled).toBe(false);
     child.resolve();
@@ -93,12 +91,11 @@ test.each(["subagent", "subagent_fork"])(
           event.event.sessionId === childId,
       ),
     ).toBe(true);
-    expect(wrapped[0]!.event.type).toBe("session_start");
-    expect(wrapped.at(-1)!.event.type).toBe("result");
-    const stored = await createJsonlStore(dirs).list({ cwd: dirs.cwd }, BACKGROUND_CONTEXT);
-    expect(stored.find((item) => item.id === childId)).toMatchObject({
-      parentSessionId: session.id,
-    });
+    expect(wrapped[0]!.event.type).toBe("snapshot");
+    expect(wrapped.some((event) => event.event.type === "run_end")).toBe(true);
+    const stored = await createJsonlStore(dirs).list(BACKGROUND_CONTEXT);
+    expect(stored.map((item) => item.id)).toEqual([session.id]);
+    expect((await session.readSubagent(childId))?.run?.parentSessionId).toBe(session.id);
     await expect(createSession({ ...dirs, ...fakeModel([]), resumeId: childId })).rejects.toThrow(
       "Session not found",
     );
@@ -120,10 +117,7 @@ test.each([false, true])(
       ),
       (context) => {
         expect(
-          context.messages
-            .filter((message) => message.role === "system")
-            .map((message) => message.content)
-            .join("\n"),
+          JSON.stringify(context.messages.filter((message) => message.role === "system")),
         ).toContain("You are a subagent");
         return fauxAssistantMessage(
           "child closing",
@@ -136,12 +130,16 @@ test.each([false, true])(
           isError: failed,
           content: [{ type: "text", text: "child closing" }],
         });
-        expect(context.messages.filter((message) => message.role === "user")).toHaveLength(4);
+        expect(
+          context.messages
+            .filter((message) => message.role === "user")
+            .some((message) => JSON.stringify(message.content).includes("Subagent ")),
+        ).toBe(false);
         return fauxAssistantMessage("parent final");
       },
     ]);
     const session = await createSession({ ...dirs, ...fake });
-    const result = await session.run("delegate");
+    const result = await runRequest(session, "delegate");
     expect(result.text).toBe("parent final");
     expect(session.messages.filter((message) => message.role === "user")).toHaveLength(1);
   },
@@ -158,7 +156,11 @@ test.each(["subagent", "subagent_fork"])(
     let received = 0;
     const reply: Parameters<typeof fakeModel>[0][number] = async (context) => {
       const last = context.messages.at(-1)!;
-      if (last.role === "user" && JSON.stringify(last.content).includes("child-prompt")) {
+      if (
+        !getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
+          (tool) => tool.name === "subagent",
+        )
+      ) {
         started++;
         if (started === 8) allChildrenStarted.resolve();
         await release.promise;
@@ -210,35 +212,38 @@ test.each(["subagent", "subagent_fork"])(
       totalTokens: 0,
     };
     const fake = fakeModel([initial, ...Array.from({ length: 30 }, () => reply)]);
-    const originalStream = fake.streamFn;
-    fake.streamFn = withAuxiliaryRequests((model, context, options) => {
-      const stream = createAssistantMessageEventStream();
-      void (async () => {
-        const response = await originalStream(model, context, options);
-        for await (const event of response) {
-          if (event.type === "done") {
-            const childReply = event.message.content.some(
-              (block) => block.type === "text" && block.text === "child finished",
-            );
-            event.message.usage = {
-              ...event.message.usage,
-              input: childReply ? 2 : 0,
-              output: childReply ? 3 : 0,
-              cacheRead: childReply ? 4 : 0,
-              cacheWrite: childReply ? 5 : 0,
-              totalTokens: childReply ? 14 : 0,
-            };
+    const originalStream = modelStream(fake.models);
+    fake.models = withModelStream(
+      fake.models,
+      withAuxiliaryRequests((model, context, options) => {
+        const stream = createAssistantMessageEventStream();
+        void (async () => {
+          const response = await originalStream(model, context, options);
+          for await (const event of response) {
+            if (event.type === "done") {
+              const childReply = event.message.content.some(
+                (block) => block.type === "text" && block.text === "child finished",
+              );
+              event.message.usage = {
+                ...event.message.usage,
+                input: childReply ? 2 : 0,
+                output: childReply ? 3 : 0,
+                cacheRead: childReply ? 4 : 0,
+                cacheWrite: childReply ? 5 : 0,
+                totalTokens: childReply ? 14 : 0,
+              };
+            }
+            stream.push(event);
           }
-          stream.push(event);
-        }
-        stream.end(await response.result());
-      })();
-      return stream;
-    });
+          stream.end(await response.result());
+        })();
+        return stream;
+      }),
+    );
     const session = await createSession({ ...dirs, ...fake });
-    const run = session.run("delegate", {
+    const run = runRequest(session, "delegate", {
       onEvent(event) {
-        if (event.type === "subagents_waiting") parentWaiting.resolve();
+        if (event.type === "run_end") parentWaiting.resolve();
       },
     });
     await Promise.all([allChildrenStarted.promise, parentWaiting.promise]);
@@ -256,16 +261,18 @@ test.each(["subagent", "subagent_fork"])(
 );
 
 test.each(["subagent", "subagent_fork"])(
-  "parent cancellation stops all %s child runs, closes them before the parent result and sends no notification",
+  "ordinary parent abort retains native %s backgrounds until explicit child interruption",
   async (toolName) => {
     dirs = await tempDirs();
     const started = Promise.withResolvers<void>();
-    const waiting = Promise.withResolvers<void>();
     let childCalls = 0;
     let childAborts = 0;
     const reply: Parameters<typeof fakeModel>[0][number] = async (context, options) => {
-      const last = context.messages.at(-1)!;
-      if (last.role === "user" && JSON.stringify(last.content).includes("child-prompt")) {
+      if (
+        !getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
+          (tool) => tool.name === "subagent",
+        )
+      ) {
         childCalls++;
         if (childCalls === 2) started.resolve();
         await new Promise<void>((resolve) =>
@@ -290,30 +297,36 @@ test.each(["subagent", "subagent_fork"])(
         ],
         { stopReason: "toolUse" },
       ),
-      ...Array.from({ length: 10 }, () => reply),
+      ...Array.from({ length: 12 }, () => reply),
     ]);
     const session = await createSession({ ...dirs, ...fake });
     const events: SessionEvent[] = [];
-    const signal = new AbortController();
-    const run = session.run("delegate", {
-      signal: signal.signal,
-      onEvent(event) {
-        events.push(event);
-        if (event.type === "subagents_waiting") waiting.resolve();
-      },
-    });
-    const rejected = run.catch((error) => error);
-    await Promise.all([started.promise, waiting.promise]);
-    signal.abort();
-    expect(await rejected).toBeInstanceOf(Error);
-    expect(childAborts).toBe(2);
-    expect(events.at(-1)?.type).toBe("result");
-    expect(
-      events.filter((event) => event.type === "subagent_event" && event.event.type === "result"),
-    ).toHaveLength(2);
-    expect(session.messages.filter((message) => message.role === "user")).toHaveLength(1);
-    expect((await session.run("next prompt")).text).toBe("parent response");
-    expect(session.messages.filter((message) => message.role === "user")).toHaveLength(2);
+    const off = session.subscribe((event) => events.push(event));
+    try {
+      await session.run("delegate");
+      await started.promise;
+      const requestId = session.currentRequestId!;
+      await session.abort();
+      expect(childAborts).toBe(0);
+      expect(
+        (session.toolState("subagents") as { active: boolean }[]).filter((row) => row.active),
+      ).toHaveLength(2);
+      expect(session.messages.filter((message) => message.role === "user")).toHaveLength(1);
+      const rows = session.toolState("subagents") as { id: string }[];
+      for (const row of rows) session.interruptSubagent(row.id);
+      await session.waitForRequest(requestId);
+      expect(childAborts).toBe(2);
+      expect(
+        events.filter((event) => event.type === "subagent_event" && event.event.type === "run_end"),
+      ).toHaveLength(2);
+      expect(
+        (session.toolState("subagents") as { active: boolean }[]).some((row) => row.active),
+      ).toBe(false);
+      expect((await runRequest(session, "next prompt")).text).toBe("parent response");
+    } finally {
+      off();
+      await session.close();
+    }
   },
 );
 
@@ -375,9 +388,13 @@ test.each(["subagent", "subagent_fork"])(
       ],
       { stopReason: "toolUse" },
     );
+    let parentReplies = 0;
     const reply: Parameters<typeof fakeModel>[0][number] = async (context) => {
-      const last = context.messages.at(-1)!;
-      if (last.role === "user" && JSON.stringify(last.content).includes("child-prompt")) {
+      if (
+        !getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
+          (tool) => tool.name === "subagent",
+        )
+      ) {
         await releaseChild.promise;
         return fauxAssistantMessage("partial child text", {
           stopReason: "error",
@@ -385,6 +402,8 @@ test.each(["subagent", "subagent_fork"])(
         });
       }
       expect(toolFinished).toBe(true);
+      parentReplies++;
+      if (parentReplies === 1) return fauxAssistantMessage("parent waiting");
       expect(context.messages.filter((message) => message.role === "toolResult")).toHaveLength(2);
       expect(
         context.messages.some(
@@ -397,7 +416,7 @@ test.each(["subagent", "subagent_fork"])(
       ).toBe(true);
       return fauxAssistantMessage("parent continues");
     };
-    const fake = fakeModel([initial, reply, reply]);
+    const fake = fakeModel([initial, reply, reply, reply]);
     const session = await createSession({
       ...dirs,
       ...fake,
@@ -410,10 +429,10 @@ test.each(["subagent", "subagent_fork"])(
     const events: SessionEvent[] = [];
     expect(
       (
-        await session.run("delegate", {
+        await runRequest(session, "delegate", {
           onEvent(event) {
             events.push(event);
-            if (event.type === "subagent_event" && event.event.type === "result")
+            if (event.type === "subagent_event" && event.event.type === "run_end")
               childEnded.resolve();
             if (event.type === "tool_execution_end" && event.toolName === "ask_user_question")
               toolFinished = true;
@@ -421,8 +440,7 @@ test.each(["subagent", "subagent_fork"])(
         })
       ).text,
     ).toBe("parent continues");
-    expect(events.filter((event) => event.type === "agent_start")).toHaveLength(1);
-    expect(events.some((event) => event.type === "subagents_waiting")).toBe(false);
+    expect(events.filter((event) => event.type === "run_start")).toHaveLength(2);
   },
 );
 
@@ -458,7 +476,7 @@ test.each([
       },
     });
     const events: SessionEvent[] = [];
-    await session.run("delegate", {
+    await runRequest(session, "delegate", {
       onEvent(event) {
         events.push(event);
       },
@@ -474,7 +492,11 @@ test("interruptSubagent aborts only the selected child and delivers an aborted n
   const waiting = Promise.withResolvers<void>();
   let childId = "";
   const reply: Parameters<typeof fakeModel>[0][number] = async (context, options) => {
-    if (JSON.stringify(context.messages.at(-1)).includes("child-prompt")) {
+    if (
+      !getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
+        (tool) => tool.name === "subagent",
+      )
+    ) {
       started.resolve();
       await new Promise<void>((resolve) =>
         options!.signal!.addEventListener("abort", () => resolve(), { once: true }),
@@ -498,10 +520,10 @@ test("interruptSubagent aborts only the selected child and delivers an aborted n
   ]);
   const session = await createSession({ ...dirs, ...fake });
   session.interruptSubagent("missing");
-  const run = session.run("delegate", {
+  const run = runRequest(session, "delegate", {
     onEvent(event) {
       if (event.type === "subagent_event") childId = event.agentId;
-      if (event.type === "subagents_waiting") waiting.resolve();
+      if (event.type === "run_end") waiting.resolve();
     },
   });
   await Promise.all([started.promise, waiting.promise]);
@@ -510,12 +532,34 @@ test("interruptSubagent aborts only the selected child and delivers an aborted n
   session.interruptSubagent(childId);
 });
 
-test("a failed child creation releases its run slot and wakes the waiting parent", async () => {
+test("failed background child configuration releases every native run slot and reports each failure", async () => {
   dirs = await tempDirs();
   await Bun.write(
     `${dirs.cwd}/.rukie/agents/broken.md`,
     "---\nname: broken\ndescription: Broken\nmodel: missing/type\n---\nBroken instructions",
   );
+  let working = false;
+  const reply: Parameters<typeof fakeModel>[0][number] = (context) => {
+    if (
+      !getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
+        (tool) => tool.name === "subagent",
+      )
+    )
+      return fauxAssistantMessage("second child answer");
+    const user = context.messages.findLast((message) => message.role === "user");
+    if (!working && JSON.stringify(user?.content).includes("start working child")) {
+      working = true;
+      return fauxAssistantMessage(
+        fauxToolCall("subagent", {
+          description: "Working",
+          prompt: "second child",
+          run_in_background: false,
+        }),
+        { stopReason: "toolUse" },
+      );
+    }
+    return fauxAssistantMessage("parent final");
+  };
   const fake = fakeModel([
     fauxAssistantMessage(
       Array.from({ length: 8 }, () =>
@@ -527,55 +571,88 @@ test("a failed child creation releases its run slot and wakes the waiting parent
       ),
       { stopReason: "toolUse" },
     ),
-    (context) => {
-      const results = context.messages.filter((message) => message.role === "toolResult");
-      expect(results).toHaveLength(8);
-      for (const result of results)
-        expect(structuredClone(result)).toMatchObject({
-          isError: true,
-          content: [{ type: "text", text: 'Unknown model "missing/type".' }],
-        });
-      return fauxAssistantMessage(
-        fauxToolCall("subagent", {
-          description: "Working",
-          prompt: "second child",
-          run_in_background: false,
-        }),
-        { stopReason: "toolUse" },
-      );
-    },
-    fauxAssistantMessage("second child answer"),
-    (context) => {
-      expect(structuredClone(context.messages.at(-1))).toMatchObject({
-        role: "toolResult",
-        isError: false,
-        content: [{ type: "text", text: "second child answer" }],
-      });
-      return fauxAssistantMessage("parent final");
-    },
+    ...Array.from({ length: 20 }, () => reply),
   ]);
   const session = await createSession({ ...dirs, ...fake });
-  expect((await session.run("delegate")).text).toBe("parent final");
-  expect(session.toolState("subagents")).toMatchObject([
-    { description: "Working", type: "general-purpose" },
-  ]);
+  try {
+    await runRequest(session, "delegate");
+    const failed = session.toolState("subagents") as SubagentIdentity[];
+    expect(failed).toHaveLength(8);
+    expect(
+      failed.map((row) => ({
+        active: row.active,
+        outcome: row.latestRun?.outcome,
+        error: row.latestRun?.error,
+      })),
+    ).toEqual(
+      Array.from({ length: 8 }, () => ({
+        active: false,
+        outcome: "error",
+        error: "Unknown model: missing/type",
+      })),
+    );
+    expect(
+      session.messages.filter(
+        (message) =>
+          message.role === "user" &&
+          JSON.stringify(message.content).includes("(Broken) failed: Unknown model"),
+      ),
+    ).toHaveLength(8);
+    expect(
+      fake.contexts.every((context) =>
+        getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
+          (tool) => tool.name === "subagent",
+        ),
+      ),
+    ).toBe(true);
+    expect((await runRequest(session, "start working child")).text).toBe("parent final");
+    expect(
+      (session.toolState("subagents") as SubagentIdentity[]).find(
+        (row) => row.description === "Working",
+      ),
+    ).toMatchObject({ active: false, latestRun: { outcome: "completed" } });
+  } finally {
+    await session.close();
+  }
 });
 
-test("parent cancellation during child creation settles the late child without a model request", async () => {
+test("cancellation during native storage admission retains the committed child for cold resume", async () => {
   dirs = await tempDirs();
   const store = createJsonlStore(dirs);
   const creating = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
   let gated = false;
   const gatedStore = {
-    create(...args: Parameters<typeof store.create>) {
-      if (!gated) return store.create(...args);
-      gated = false;
-      creating.resolve();
-      return release.promise.then(() => store.create(...args));
+    ...store,
+    async open(...args: Parameters<typeof store.open>) {
+      const lease = await store.open(...args);
+      return {
+        ...lease,
+        storage: new Proxy(lease.storage, {
+          get(target, key) {
+            if (key === "commit")
+              return async (
+                ...commit: Parameters<import("@earendil-works/pi-durable").Storage["commit"]>
+              ) => {
+                if (
+                  gated &&
+                  commit[0].some(
+                    (write) =>
+                      write.type === "task" && write.value.kind === "rukie.subagent-driver",
+                  )
+                ) {
+                  gated = false;
+                  creating.resolve();
+                  await release.promise;
+                }
+                return target.commit(...commit);
+              };
+            const value = Reflect.get(target, key);
+            return typeof value === "function" ? value.bind(target) : value;
+          },
+        }),
+      };
     },
-    open: store.open,
-    list: store.list,
   };
   const fake = fakeModel([
     fauxAssistantMessage(fauxToolCall("subagent", { description: "Late", prompt: "child" }), {
@@ -587,29 +664,41 @@ test("parent cancellation during child creation settles the late child without a
   const session = await createSession({ ...dirs, ...fake, store: gatedStore });
   gated = true;
   const signal = new AbortController();
-  const rejected = session.run("delegate", { signal: signal.signal }).catch((error) => error);
+  const rejected = runRequest(session, "delegate", { signal: signal.signal }).catch(
+    (error) => error,
+  );
   await creating.promise;
   signal.abort();
   release.resolve();
   expect(await rejected).toBeInstanceOf(Error);
-  // The reserved AbortController was already aborted, so the late child Run
-  // never reaches the model and the aborted parent sends no notification.
   expect(
     fake.contexts.filter((context) =>
       JSON.stringify(context.messages).includes("You are a subagent"),
     ),
   ).toHaveLength(0);
   expect(session.toolState("subagents")).toMatchObject([
-    {
-      description: "Late",
-      type: "general-purpose",
-      // The parent Run settled only after the late child Run closed as aborted.
-      latestRun: { outcome: "aborted" },
-    },
+    { description: "Late", type: "general-purpose", active: true },
   ]);
-  expect(session.messages.filter((message) => message.role === "user")).toHaveLength(1);
-  const stored = await store.list({ cwd: dirs.cwd }, BACKGROUND_CONTEXT);
-  expect(stored.filter((item) => item.parentSessionId === session.id)).toHaveLength(1);
+  const requestId = session.currentRequestId!;
+  await session.close();
+  const replies = fakeModel(
+    Array.from({ length: 6 }, () => fauxAssistantMessage("resumed after admission")),
+  );
+  const resumed = await createSession({ ...dirs, ...replies, store, resumeId: session.id });
+  try {
+    await resumed.waitForRequest(requestId);
+    expect(resumed.toolState("subagents")).toMatchObject([
+      { description: "Late", active: false, latestRun: { outcome: "completed" } },
+    ]);
+    expect(
+      replies.contexts.some((context) =>
+        JSON.stringify(context.messages).includes("You are a subagent"),
+      ),
+    ).toBe(true);
+    expect((await store.list(BACKGROUND_CONTEXT)).map((item) => item.id)).toEqual([session.id]);
+  } finally {
+    await resumed.close();
+  }
 });
 
 test("subagent_event forwards the child's terminal Tool Views", async () => {
@@ -643,7 +732,7 @@ test("subagent_event forwards the child's terminal Tool Views", async () => {
   const session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
   const events: SessionEvent[] = [];
   try {
-    await session.run("delegate", {
+    await runRequest(session, "delegate", {
       onEvent(event) {
         events.push(event);
       },
@@ -659,6 +748,6 @@ test("subagent_event forwards the child's terminal Tool Views", async () => {
       { view: { card: "terminal", output: "child-view", exitCode: 0 } },
     ]);
   } finally {
-    await session.dispose();
+    await session.close();
   }
 });

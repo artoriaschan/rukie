@@ -465,6 +465,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         model: { provider: model.provider, modelId: model.id },
         cwd,
         instructions: SYSTEM_PROMPT,
+        ...(settings.thinking ? { thinkingLevel: settings.thinking } : {}),
       },
       init: async (tx, id) => {
         await tx.appendEntry(id, { kind: "rukie.initial" });
@@ -829,14 +830,19 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       restored: state.get("subagents") as
         | import("../tools/subagents/state.ts").SubagentIdentity[]
         | undefined,
-      forkAt: () =>
-        observation
-          ?.view()
-          .entries.findLast((entry) =>
-            entry.model?.some(
-              (message) => message.role === "assistant" && message.stopReason === "stop",
-            ),
-          )?.id,
+      forkAt: () => {
+        const entries = observation?.view().entries ?? [];
+        const current = entries.findLast((entry) =>
+          entry.model?.some((message) => message.role === "assistant"),
+        );
+        return entries.findLast((entry) =>
+          entry.model?.some(
+            (message) =>
+              (message.role === "assistant" && message.stopReason === "stop") ||
+              (message.role === "toolResult" && (!current || entry.id < current.id)),
+          ),
+        )?.id;
+      },
       async beforeStart(request, child, ctx) {
         const result = await hooks.run(
           "SubagentStart",
@@ -995,39 +1001,41 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           ],
         }))
           await child.commit((tx) => tx.appendEntry(child.id, reminderEntry(reminder)), context);
-        const rawTools = [
-          ...createBuiltinTools({
-            cwd,
-            homeDir: options.homeDir,
-            jobs: childJobs,
-            getSkill: (name) => skills.get(name),
-            setTodo: async (todos) => {
-              await childState.set("todo", todos, context);
-            },
-            onQuestion: options.onQuestion,
-            onInteractionStart: notifyInteraction,
-            webFetch: options.webFetch,
-            fileTracking: childTracking,
-          }),
-          ...mcp.tools,
-        ];
-        childTools = rawTools.map((tool) => ({
-          ...tool,
-          async execute(args, api, ctx) {
-            await childGate.authorizeExecute(
-              {
-                type: "toolCall",
-                id: api.callId,
-                name: tool.name,
-                arguments: args as Record<string, JsonValue>,
-              },
-              args as Record<string, unknown>,
-              api,
-              ctx,
-            );
-            return tool.execute(args, api, ctx);
+        const builtinTools = createBuiltinTools({
+          cwd,
+          homeDir: options.homeDir,
+          jobs: childJobs,
+          getSkill: (name) => skills.get(name),
+          setTodo: async (todos) => {
+            await childState.set("todo", todos, context);
           },
-        }));
+          onQuestion: options.onQuestion,
+          onInteractionStart: notifyInteraction,
+          webFetch: options.webFetch,
+          fileTracking: childTracking,
+        });
+        const refreshChildTools = () => {
+          childTools = [...builtinTools, ...mcp.tools]
+            .filter((tool) => !type.tools || type.tools.includes(tool.name))
+            .map((tool) => ({
+              ...tool,
+              async execute(args, api, ctx) {
+                await childGate.authorizeExecute(
+                  {
+                    type: "toolCall",
+                    id: api.callId,
+                    name: tool.name,
+                    arguments: args as Record<string, JsonValue>,
+                  },
+                  args as Record<string, unknown>,
+                  api,
+                  ctx,
+                );
+                return tool.execute(args, api, ctx);
+              },
+            }));
+        };
+        refreshChildTools();
         const extension = {
           name: `rukie.child.${child.id}`,
           tools: childTools,
@@ -1076,6 +1084,13 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                       ) ?? [],
                   ),
                 );
+                const previousNames = childTools.map((tool) => tool.name).join("\n");
+                refreshChildTools();
+                if (previousNames !== childTools.map((tool) => tool.name).join("\n")) {
+                  const updated = { ...extension, tools: childTools };
+                  registry.install(updated);
+                  await child.configure({ extensions: [updated], tools: childTools }, ctx);
+                }
               },
             }),
           ],
@@ -1114,6 +1129,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         }
         return {
           model: { provider: selected.provider, modelId: selected.id },
+          ...(settings.thinking ? { thinkingLevel: settings.thinking } : {}),
           cwd,
           instructions: SYSTEM_PROMPT,
           extensions: [extension],

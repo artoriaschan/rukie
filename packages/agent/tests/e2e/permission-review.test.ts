@@ -92,17 +92,33 @@ test("old review history truncates first while keeping current authorization and
   dirs = await tempDirs();
   const fake = reviewedModel();
   // Keep old history below main compaction but above the half-window review budget.
-  fake.model.contextWindow = 10000;
-  const main = fakeModel([
+  fake.models = withModelAlias(fake.models, "review-small", ["small-review"], {
+    contextWindow: 16000,
+  });
+  const reviewerProvider = fake.models.getProvider("review-small")!;
+  fake.models.setProvider({
+    ...reviewerProvider,
+    streamSimple: (model, context, options) =>
+      modelStream(fake.reviewer.models)({ ...model, provider: "faux" }, context, options),
+  });
+  const replies = [
     fauxAssistantMessage("short"),
     fauxAssistantMessage(fauxToolCall("write", { path: "reviewed.txt", content: "safe" }), {
       stopReason: "toolUse",
     }),
     fauxAssistantMessage("done"),
-  ]);
+  ];
+  for (const reply of replies)
+    reply.usage = { ...reply.usage, input: 5000, cacheRead: 0, cacheWrite: 0 };
+  const main = fakeModel(replies);
   fake.main.models = withModelStream(fake.main.models, modelStream(main.models));
-  const session = await createSession({ ...dirs, ...fake, permissionMode: "auto-review" });
-  await session.run("OLD_HISTORY ".repeat(1500));
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    permissionMode: "auto-review",
+    settings: { reviewModel: "review-small/small-review" },
+  });
+  await session.run("OLD_HISTORY ".repeat(3000));
   await session.run("CURRENT_AUTHORIZATION");
   expect(fake.reviewer.contexts).toHaveLength(1);
   const text = JSON.stringify(fake.reviewer.contexts[0]);
@@ -179,6 +195,7 @@ test("review tokens and review messages are excluded from Run usage and Context 
   });
   expect(result.usage).toMatchObject({ input: 22, output: 10, totalTokens: 32 });
   expect(events.filter((event) => event.type === "context_usage").slice(1)).toMatchObject([
+    { used: 11 },
     { used: 11 },
     { used: 11 },
   ]);
