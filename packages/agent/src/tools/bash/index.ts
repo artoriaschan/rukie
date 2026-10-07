@@ -1,11 +1,4 @@
-import {
-  applyShellOutputUpdate,
-  DEFAULT_MAX_BYTES,
-  DEFAULT_MAX_LINES,
-  formatSize,
-  type ShellOutputView,
-} from "@earendil-works/pi-agent-core";
-import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
+import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize } from "./output-capture.ts";
 import { resolve } from "node:path";
 import type { Jobs } from "../jobs/index.ts";
 import { Type } from "typebox";
@@ -56,22 +49,22 @@ export function createBashTool(cwd: string, jobs: Jobs): PresentedTool<typeof sc
           : {}),
       };
     },
-    label: "bash",
     description: `Execute a bash command. Returns combined stdout and stderr, truncated to the last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB. If truncated, full output is saved to a temp file. Timeout defaults to 120 seconds (maximum: 600); commands still running at the timeout move to background jobs. Set run_in_background to start a job without a timeout; use job_output, job_list, and job_kill to manage it.`,
     parameters: schema,
+    outputLimits: { maxBytes: DEFAULT_MAX_BYTES, maxLines: DEFAULT_MAX_LINES, retain: "tail" },
     async execute(
-      _id,
       { command, description, timeout = 120, workdir, run_in_background = false },
-      signal,
-      onUpdate,
+      api,
+      context,
     ) {
+      const signal = context.abortSignal;
       if (!Number.isFinite(timeout) || timeout <= 0)
         throw new Error("Invalid timeout: must be a finite number of seconds");
       if (timeout > 600) throw new Error("Invalid timeout: maximum is 600 seconds");
       if (signal?.aborted) throw new Error("Command aborted");
 
-      let view: ShellOutputView | undefined;
       let failure: unknown;
+      let progress = Promise.resolve();
       let status: string | undefined;
       if (run_in_background) {
         const job = jobs.start({
@@ -87,37 +80,29 @@ export function createBashTool(cwd: string, jobs: Jobs): PresentedTool<typeof sc
       }
       let job: ReturnType<Jobs["start"]> | undefined;
       const terminate = () => job?.kill("foreground");
-      const capture = new OutputCapture(
-        {
-          limits: { maxBytes: DEFAULT_MAX_BYTES, maxLines: DEFAULT_MAX_LINES, retain: "tail" },
-          spill: true,
-        },
-        BACKGROUND_CONTEXT,
-        {
-          onUpdate(update) {
-            view = applyShellOutputUpdate(view, update);
-            onUpdate?.({
-              content: [{ type: "text", text: view.text }],
-              details: {
-                truncation: view.truncation.truncated ? view.truncation : undefined,
-                fullOutputPath: view.spillPath,
-              },
-            });
-          },
-          onError(error) {
-            failure ??= error;
-            terminate();
-          },
-        },
-      );
+      const capture = new OutputCapture({
+        limits: { maxBytes: DEFAULT_MAX_BYTES, maxLines: DEFAULT_MAX_LINES, retain: "tail" },
+        spill: true,
+      });
       job = jobs.start({
         command,
         label: description,
         cwd: resolve(cwd, workdir ?? "."),
         background: false,
         onOutput(chunk) {
+          api.output(chunk);
           capture.push(chunk);
-          if (capture.truncated) capture.setSpillPath(job!.view.spillPath!);
+          if (capture.truncated) {
+            const fullOutputPath = job!.view.spillPath!;
+            capture.setSpillPath(fullOutputPath);
+            const { truncation } = capture.snapshot();
+            progress = progress
+              .then(() => api.details({ truncation, fullOutputPath }, context))
+              .catch((error: unknown) => {
+                failure ??= error;
+                terminate();
+              });
+          }
         },
       });
       let promoted = false;
@@ -137,15 +122,15 @@ export function createBashTool(cwd: string, jobs: Jobs): PresentedTool<typeof sc
         }, timeout * 1000);
       });
       try {
-        onUpdate?.({ content: [], details: undefined });
         signal?.addEventListener("abort", abort, { once: true });
         if (signal?.aborted) abort();
         const code = await Promise.race([job.completed, deadline]);
         // The promotion result hands over output already shown by foreground capture.
         if (promoted) await job.collect(false, 0);
+        await progress;
         failure ??= job.failure;
         capture.finish();
-        capture.flush();
+        if (capture.truncated) capture.setSpillPath(job.view.spillPath!);
         const output = capture.snapshot();
         let text = output.text;
         let details;
@@ -172,7 +157,7 @@ export function createBashTool(cwd: string, jobs: Jobs): PresentedTool<typeof sc
         status ??= code !== 0 ? `Command exited with code ${code}` : undefined;
         const facts = {
           ...details,
-          exitCode: code,
+          ...(code !== undefined && { exitCode: code }),
           ...(job.view.signal ? { signal: job.view.signal } : {}),
         };
         if (status)
@@ -188,7 +173,6 @@ export function createBashTool(cwd: string, jobs: Jobs): PresentedTool<typeof sc
       } finally {
         clearTimeout(timer);
         signal?.removeEventListener("abort", abort);
-        capture.dispose();
         if (!promoted) jobs.forget(job.view.id);
       }
     },
