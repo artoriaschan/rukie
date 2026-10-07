@@ -15,11 +15,11 @@ _Avoid_: engine, backend
 _Avoid_: client, UI
 
 **Headless CLI**:
-非交互的 frontend：读入一条 prompt 执行一个 run，或设定 Goal 并等待自动续跑结束，输出文本或 stream-json 后退出。不提供任何 Interaction 回调：依赖交互的工具不暴露给模型，Agent Core 自身发起的交互取各自的安全默认值。
+`neant -p` 或 `neant --goal` 启动的非交互 frontend：读入一条 prompt 执行一个 run，或设定 Goal 并等待自动续跑结束，输出文本或 stream-json 后退出。不提供任何 Interaction 回调：依赖交互的工具不暴露给模型，Agent Core 自身发起的交互取各自的安全默认值。
 _Avoid_: CLI（会和 TUI 混淆）
 
 **TUI**:
-运行在终端里的交互式 frontend，在同一个 session 里连续接收 prompt。
+不带 `-p` 或 `--goal` 启动 `neant` 时运行在终端里的交互式 frontend，在同一个 session 里连续接收 prompt；命令行位置参数作为首条 prompt。
 _Avoid_: CLI, REPL
 
 **Session**:
