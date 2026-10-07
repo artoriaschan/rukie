@@ -17,6 +17,7 @@ import {
   type Cursor,
   type EntryRecord,
   type SubmissionId,
+  type Tx,
 } from "@earendil-works/pi-durable";
 import type { Context } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT, awaitWithContext } from "@earendil-works/chord/context";
@@ -27,6 +28,7 @@ import type { ToolStateDefinition } from "../../tool-state/index.ts";
 import {
   parseSubagentIdentities,
   subagentRunState,
+  SubagentDirectoryDoc,
   type SubagentIdentity,
   type SubagentRun,
 } from "./state.ts";
@@ -726,6 +728,21 @@ export function createSubagentController(options: SubagentControllerOptions) {
     extension,
     adopt,
     /** Caller must settle related native work before changing the parent branch. */
+    /** Capture native committed directory history before a root rewind fork. */
+    async snapshotForRewind(at: EntryId, context: Context): Promise<SubagentIdentity[]> {
+      const raw = await harness.snapshotAsOf(SubagentDirectoryDoc, parent.id, at, context);
+      return raw?.value === undefined || raw.value === null
+        ? []
+        : parseSubagentIdentities(raw.value, parentSessionId);
+    },
+    /** Restore the captured directory inside the caller's atomic root fork commit. */
+    async restoreFork(
+      tx: Tx,
+      forkId: ConversationId,
+      snapshot: readonly SubagentIdentity[],
+    ): Promise<void> {
+      (await tx.doc(state.document, forkId)).value = structuredClone([...snapshot]);
+    },
     async rebindParent(next: Conversation, context: Context) {
       const raw = await harness.snapshot(state.document, next.id, context);
       const nextIdentities =
