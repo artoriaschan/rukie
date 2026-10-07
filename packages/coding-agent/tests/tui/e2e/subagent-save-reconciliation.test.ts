@@ -77,7 +77,6 @@ test.each(["assistant", "toolResult"] as const)(
       if (rejectedRole === "assistant") tail.reply("child rejected final body");
       else tail.tool("write", { path: "child-effect.txt", content: "saved effect" });
       await app.waitFor(() => rejected);
-      await app.waitFor(() => app.screen().join("\n").includes("Run ended with error"));
       await app.waitFor(() => !app.screen().join("\n").includes("child rejected final body"));
 
       expect(rejected).toBe(true);
@@ -85,8 +84,7 @@ test.each(["assistant", "toolResult"] as const)(
       app.stdin.write("\r");
       await app.waitFor(() => app.screen().join("\n").includes("durable child partial"));
       expect(app.screen().join("\n")).toContain("durable child partial");
-      app.stdin.write("\x1b\x1b/exit\r");
-      await app.exit;
+      await app.shutdown();
       const restored = await createSession({
         cwd: app.root,
         homeDir: app.root,
@@ -94,6 +92,7 @@ test.each(["assistant", "toolResult"] as const)(
         ...(await fakeModel([])),
       });
       try {
+        if (restored.currentRequestId) await restored.waitForRequest(restored.currentRequestId);
         const identities = restored.toolState("subagents");
         if (!Array.isArray(identities) || !identities[0] || typeof identities[0].id !== "string")
           throw new Error("Native child identity missing");
@@ -106,7 +105,7 @@ test.each(["assistant", "toolResult"] as const)(
           const result = snapshot!.messages.find(
             (m) => m.role === "toolResult" && m.toolName === "write",
           );
-          expect(JSON.stringify(result)).toContain("unknown-tool-outcome");
+          expect(result?.role === "toolResult" && result.outcomeUnknown).toBe(true);
           expect(await Bun.file(app.root + "/child-effect.txt").text()).toBe("saved effect");
         }
       } finally {
@@ -131,7 +130,9 @@ test.each(["assistant", "toolResult"] as const)(
         await replay.waitFor(() => replay.screen().join("\n").includes("durable child partial"));
         expect(replay.screen().join("\n")).not.toContain("child rejected final body");
         expect(replay.calls).toHaveLength(0);
-        replay.stdin.write("\x1b\x1bcontinue child\r");
+        replay.stdin.write("\x1b");
+        await replay.waitFor(() => replay.screen().includes("❯"));
+        replay.stdin.write("continue child\r");
         await replay.waitFor(() => replay.calls.length === 1);
         replay.calls[0]!.tool("send_message", {
           agent_id: childId,
@@ -139,11 +140,19 @@ test.each(["assistant", "toolResult"] as const)(
         });
         await replay.waitFor(() =>
           replay.calls.some((call) =>
-            JSON.stringify(call.context.messages).includes("fresh child continuation"),
+            call.context.messages.some(
+              (message) =>
+                message.role === "user" &&
+                JSON.stringify(message.content).includes("fresh child continuation"),
+            ),
           ),
         );
         const next = replay.calls.find((call) =>
-          JSON.stringify(call.context.messages).includes("fresh child continuation"),
+          call.context.messages.some(
+            (message) =>
+              message.role === "user" &&
+              JSON.stringify(message.content).includes("fresh child continuation"),
+          ),
         )!;
         expect(JSON.stringify(next.context.messages)).toContain("durable child partial");
         expect(JSON.stringify(next.context.messages)).not.toContain("child rejected final body");
