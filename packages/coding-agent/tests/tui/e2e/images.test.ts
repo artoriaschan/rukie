@@ -1,4 +1,4 @@
-import { expect, spyOn, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { stat, readFile, access, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { createFauxCore, fauxAssistantMessage } from "@earendil-works/pi-ai";
@@ -8,38 +8,11 @@ import { dark } from "../../../src/ink/index.ts";
 import { start } from "../helpers/app";
 import { startWithClock } from "../helpers/clock-app";
 import { testClock } from "../helpers/test-clock";
+import { observeTimeoutDeadline } from "../helpers/timeout-deadline";
 
 const png =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jV2UAAAAASUVORK5CYII=";
 const paste = (text: string) => `\x1b[200~${text}\x1b[201~`;
-
-// Observe the frontend's admitted timeout; image I/O and completed terminal paints stay public signals.
-function observeImageNoticeDeadline() {
-  let expiresAt = 0;
-  let expired = false;
-  const nativeTimeout = globalThis.setTimeout;
-  const trackedTimeout = Object.assign((...parameters: Parameters<typeof setTimeout>) => {
-    const [handler, delay, ...args] = parameters;
-    if (delay !== 2500) return nativeTimeout(handler, delay, ...args);
-    expiresAt = Date.now() + delay;
-    return nativeTimeout(() => {
-      expired = true;
-      handler(...args);
-    }, delay);
-  }, nativeTimeout);
-  const timer = spyOn(globalThis, "setTimeout").mockImplementation(trackedTimeout);
-  return {
-    beforeExpiry() {
-      testClock.advanceTimersByTime(expiresAt - Date.now() - 1);
-      expect(expired).toBe(false);
-    },
-    expire() {
-      testClock.advanceTimersByTime(1);
-      expect(expired).toBe(true);
-    },
-    restore: () => timer.mockRestore(),
-  };
-}
 
 async function openOriginal(app: Awaited<ReturnType<typeof start>>) {
   await app.waitFor(() =>
@@ -580,7 +553,7 @@ test.each(["zh_CN.UTF-8", "en_US.UTF-8"])(
         await Bun.write(`${root}/shot.png`, Buffer.from(png, "base64"));
       },
     });
-    const deadline = observeImageNoticeDeadline();
+    const deadline = observeTimeoutDeadline(2500);
     try {
       await app.waitFor(() => app.screen().includes("❯"));
       app.stdin.write(paste(`${app.root}/shot.png`));
@@ -619,7 +592,7 @@ test("an image notice remains visible while reading history without moving the r
       await Bun.write(`${root}/shot.png`, Buffer.from(png, "base64"));
     },
   });
-  const deadline = observeImageNoticeDeadline();
+  const deadline = observeTimeoutDeadline(2500);
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.delta(
