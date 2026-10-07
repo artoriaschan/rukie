@@ -141,7 +141,13 @@ test("if on every non-tool event warns at session load and never executes", asyn
   unsubscribe();
   await session.close();
   expect(await Bun.file(join(dirs.cwd, "unexpected")).exists()).toBe(false);
-  const diagnostics = emitted.filter((event) => event.type === "hook_warning");
+  const initial = emitted.find((event) => event.type === "snapshot");
+  if (!initial || initial.type !== "snapshot") throw new Error("Missing native startup snapshot.");
+  const diagnostics = initial.messages.flatMap((message) =>
+    message.role === "session-notice" && message.notice.kind === "hook_warning"
+      ? [message.notice]
+      : [],
+  );
   expect(diagnostics).toHaveLength(events.length);
   for (const event of events)
     expect(diagnostics).toContainEqual(

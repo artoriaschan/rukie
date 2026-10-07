@@ -627,8 +627,11 @@ test("HTTP notification runs beside permission interaction and warns while disca
     ).toEqual(["continue", "decision", "hookSpecificOutput.additionalContext"]);
     expect(JSON.stringify(fake.contexts)).not.toContain("HTTP forbidden context");
     expect(
-      events.some(
-        (event) => event.type === "hook_warning" && event.error?.code === "hook-if-nontool",
+      session.messages.some(
+        (message) =>
+          message.role === "session-notice" &&
+          message.notice.kind === "hook_warning" &&
+          message.notice.error?.code === "hook-if-nontool",
       ),
     ).toBe(true);
   } finally {
