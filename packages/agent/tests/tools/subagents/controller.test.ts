@@ -47,7 +47,7 @@ test.each(["stop", "error", "aborted", "length"] as const)(
         forkAt: () => undefined,
         afterRun: async (request, child, result) => {
           expect(request.agentId).toBe(controller.list()[0]!.id);
-          expect(child.id).toBe(controller.list()[0]!.conversationId);
+          expect(Number(child.id)).toBe(controller.list()[0]!.conversationId);
           expect(result.outcome).toBe(stopReason === "stop" ? "completed" : stopReason);
           expect(result.text).toBe("child answer");
           expect(controller.list()[0]!.active).toBe(true);
@@ -528,7 +528,12 @@ test.each([false, true])(
       registry.install({ name: "tools", tools: Object.values(createSubagentTools(controller)) });
       await (await parent.submit({ type: "input", content: "delegate" }, context)).wait(context);
       const row = controller.list()[0]!;
-      const receipt = await harness.waitForTask(row.driverTaskId, context);
+      const driver = await harness.getTask(
+        row.driverTaskId as import("@earendil-works/pi-durable").TaskId,
+        context,
+      );
+      if (!driver) throw new Error("Committed native driver is missing.");
+      const receipt = await harness.waitForTask(driver.id, context);
       expect(receipt.state).toMatchObject({
         outcome: {
           status: "failed",
