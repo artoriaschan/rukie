@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import type { SessionEvent } from "@rukie/agent";
+import type { TaskId } from "@earendil-works/pi-durable";
 import {
   createActivity,
   reduce,
@@ -21,6 +22,8 @@ import {
 } from "../../../../src/view/conversation/activity/phrases";
 
 const sessionId = "activity-test";
+// Pure projection fixtures use one valid positive native task ID without a scheduler.
+const taskId = 1 as TaskId;
 const start = 1_790_942_400_000;
 const random = () => 0;
 
@@ -28,7 +31,7 @@ test("English compaction, review, approval, failure and interruption keep their 
   let state = reduce(createActivity("en"), { type: "submit" }, start, random);
   state = reduce(
     state,
-    { type: "compaction_start", trigger: "auto", sessionId, tokensBefore: 120_000 },
+    { type: "compaction_start", taskId, reason: "threshold", blocking: true, sessionId },
     start,
     random,
   );
@@ -59,16 +62,14 @@ test("English compaction, review, approval, failure and interruption keep their 
     state,
     {
       type: "compaction_end",
-      trigger: "auto",
+      taskId,
+      reason: "threshold",
       sessionId,
-      summary: "private",
-      tokensBefore: 120_000,
-      tokensAfter: 18_000,
     },
     start,
     random,
   );
-  expect(render(state, start).line).toBe("Compacted · 120.0k→18.0k · total 0s");
+  expect(render(state, start).line).toBe("Compacted · total 0s");
   state = reduce(state, toolStart("a"), start + 7000, random);
   state = reduce(state, toolEnd("a", true), start + 8000, random);
   expect(render(state, start + 8000).line).toBe("✗ That failed · Reading src/a.ts · 1s · total 8s");
@@ -288,7 +289,7 @@ test("compaction copy stays deterministic above other copy and below approval wi
   state = reduce(state, { type: "interrupt" }, start + 50, random);
   state = reduce(
     state,
-    { type: "compaction_start", trigger: "auto", sessionId, tokensBefore: 120_000 },
+    { type: "compaction_start", taskId, reason: "threshold", blocking: true, sessionId },
     start + 100,
     random,
   );
@@ -315,7 +316,7 @@ test.each(["waiting", "thinking", "tool"] as const)(
     if (phase === "tool") state = reduce(state, toolStart("a"), start + 50, random);
     state = reduce(
       state,
-      { type: "compaction_start", trigger: "auto", sessionId, tokensBefore: 120_000 },
+      { type: "compaction_start", taskId, reason: "threshold", blocking: true, sessionId },
       start + 100,
       random,
     );
@@ -329,11 +330,9 @@ test.each(["waiting", "thinking", "tool"] as const)(
 const clearingEvents: Parameters<typeof reduce>[1][] = [
   {
     type: "compaction_end",
-    trigger: "auto",
+    taskId,
+    reason: "threshold",
     sessionId,
-    summary: "private summary",
-    tokensBefore: 120_000,
-    tokensAfter: 18_000,
   },
   { type: "message_start", sessionId, message: fauxAssistantMessage("") },
   result(),
@@ -343,7 +342,7 @@ test.each(clearingEvents)("$type clears compaction waiting copy", (event) => {
   let state = reduce(createActivity(), { type: "submit" }, start, random);
   state = reduce(
     state,
-    { type: "compaction_start", trigger: "auto", sessionId, tokensBefore: 120_000 },
+    { type: "compaction_start", taskId, reason: "threshold", blocking: true, sessionId },
     start + 100,
     random,
   );
@@ -355,11 +354,11 @@ test.each(clearingEvents)("$type clears compaction waiting copy", (event) => {
   }
 });
 
-test("compaction completion reports formatted before and after tokens for exactly six seconds", () => {
+test("native compaction completion reports localized copy for exactly six seconds", () => {
   let state = reduce(createActivity(), { type: "submit" }, start, random);
   state = reduce(
     state,
-    { type: "compaction_start", trigger: "auto", sessionId, tokensBefore: 120_000 },
+    { type: "compaction_start", taskId, reason: "threshold", blocking: true, sessionId },
     start + 100,
     random,
   );
@@ -370,11 +369,10 @@ test("compaction completion reports formatted before and after tokens for exactl
     start + 201,
     random,
   );
-  expect(render(state, start + 200).line).toBe("压缩了一下 · 120.0k→18.0k · 总0s");
-  expect(render(state, start + 6199).line).toContain("120.0k→18.0k");
+  expect(render(state, start + 200).line).toBe("压缩了一下 · 总0s");
+  expect(render(state, start + 6199).line).toContain("压缩了一下");
   expect(render(state, start + 6199).nextWakeAt).toBe(start + 6200);
-  expect(render(state, start + 6200).line).not.toContain("120.0k→18.0k");
-  expect(render(state, start + 200).line).not.toContain("private summary");
+  expect(render(state, start + 6200).line).not.toContain("压缩了一下");
 });
 
 test("approval overrides narration and compaction; a closed dialog restores fresh copy", () => {
@@ -384,11 +382,9 @@ test("approval overrides narration and compaction; a closed dialog restores fres
     state,
     {
       type: "compaction_end",
-      trigger: "auto",
+      taskId,
+      reason: "threshold",
       sessionId,
-      summary: "",
-      tokensBefore: 1,
-      tokensAfter: 0,
     },
     start + 100,
     random,
