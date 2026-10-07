@@ -1530,8 +1530,13 @@ function renderNodeToOutput(
         // ping-ponged forever at delta=2. Smooth needs drain-end notify
         // plumbing; shipping instant first. stickyScroll overrides.
         if (node.scrollAnchor) {
-          const anchorTop = node.scrollAnchor.el.yogaNode?.getComputedTop()
-          if (anchorTop != null) {
+          let anchor = node.scrollAnchor.el
+          let anchorTop = 0
+          while (anchor !== node && anchor.parentNode) {
+            anchorTop += anchor.yogaNode?.getComputedTop() ?? 0
+            anchor = anchor.parentNode
+          }
+          if (anchor === node) {
             node.scrollTop = anchorTop + node.scrollAnchor.offset
             node.pendingScrollDelta = undefined
           }
@@ -1575,10 +1580,12 @@ function renderNodeToOutput(
         // stickyScroll below) so the "N new messages" pill clears once the
         // user scrolls home — otherwise sticky stays broken until the next
         // content growth, and an idle stream leaves the pill stuck.
+        const explicitSeek = node.scrollExplicitSeek === true
+        node.scrollExplicitSeek = undefined
         const atBottom =
-          sticky ||
+          !explicitSeek && (sticky ||
           (scrollTopBeforeFollow >= prevMaxScroll &&
-            (grew || scrollTopBeforeFollow >= maxScroll))
+            (grew || scrollTopBeforeFollow >= maxScroll)))
         if (atBottom && (node.pendingScrollDelta ?? 0) >= 0 && !shrunk) {
           node.scrollTop = maxScroll
           node.pendingScrollDelta = undefined

@@ -177,6 +177,7 @@ function ScrollBox({
       el.pendingScrollDelta = undefined;
       el.scrollAnchor = undefined;
       el.scrollTop = Math.max(0, Math.floor(y));
+      el.scrollExplicitSeek = true;
       scrollMutated(el);
     },
     scrollToElement(el: DOMElement, offset = 0) {
@@ -184,6 +185,7 @@ function ScrollBox({
       if (!box) return;
       box.stickyScroll = false;
       box.pendingScrollDelta = undefined;
+      box.scrollExplicitSeek = true;
       box.scrollAnchor = {
         el,
         offset
