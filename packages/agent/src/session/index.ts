@@ -1,3 +1,4 @@
+import { sessionNoticeFromHook, type SessionNotice } from "./session-notice.ts";
 import { createThinkingTiming } from "./thinking.ts";
 import { presentCall, presentResult } from "../tools/presentation.ts";
 import type { ToolCallView, ToolResultView } from "@neant/shared";
@@ -525,6 +526,17 @@ async function createSessionInternal(
       activeStore = undefined;
       await target?.close(context);
     });
+  async function persistSessionNotice(notice: SessionNotice) {
+    const message = { role: "session-notice" as const, notice, timestamp: Date.now() };
+    await withStore(async (target) => {
+      const branch = await target.branch("main", context);
+      if (!branch) throw new Error("Session has no main branch.");
+      await branch.appendMessage(message, context);
+    });
+    transcriptMessages.push(message);
+    agent.state.messages.push(message);
+    return message;
+  }
   const unregisterReader = registerSessionReader(store, stored.metadata.id, withStore);
   const promptTexts = initialBranch.promptTexts;
   const checkpoint =
@@ -2099,7 +2111,25 @@ async function createSessionInternal(
       const promptContexts: string[] = [];
       currentResult = result;
       subagents.begin();
-      const emit = (event: AgentEvent | CustomSessionEvent<AgentEvent>) => {
+      const emit = async (event: AgentEvent | CustomSessionEvent<AgentEvent>) => {
+        if (
+          (event.type === "hook_message" || event.type === "hook_warning") &&
+          event.event !== "SessionEnd"
+        ) {
+          try {
+            const message = await persistSessionNotice(sessionNoticeFromHook(event));
+            const committed = {
+              type: "message_end" as const,
+              message,
+              sessionId: stored.metadata.id,
+            };
+            broadcast(committed);
+            await onEvent?.(committed);
+          } catch (error) {
+            result.error ??= error instanceof Error ? error.message : String(error);
+            throw error;
+          }
+        }
         const identified = { ...event, sessionId: stored.metadata.id };
         broadcast(identified);
         return onEvent?.(identified);
@@ -2141,6 +2171,9 @@ async function createSessionInternal(
         : undefined;
       let childRunSaved = false;
       let childModelStop: "aborted" | "length" | undefined;
+      let abnormalAssistant: "error" | "aborted" | undefined;
+      let abnormalAssistantTimestamp: number | undefined;
+      let messageSaveFailed = false;
       async function persistChildRun(run: SubagentRun) {
         try {
           await withStore(async (target) => {
@@ -2444,7 +2477,17 @@ async function createSessionInternal(
                   throw error;
                 }
               } else {
-                const entryId = await branch.appendMessage(event.message, context);
+                let entryId;
+                try {
+                  entryId = await branch.appendMessage(event.message, context);
+                } catch (error) {
+                  // pi already reduced this event; an unconfirmed append must not become model input.
+                  messageSaveFailed = true;
+                  agent.state.messages = agent.state.messages.filter(
+                    (message) => message !== event.message,
+                  );
+                  throw error;
+                }
                 if (
                   event.message === userPrompt &&
                   source === "user" &&
@@ -2484,6 +2527,8 @@ async function createSessionInternal(
                     ? message.stopReason
                     : undefined;
                 if (message.stopReason === "error" || message.stopReason === "aborted") {
+                  abnormalAssistant = message.stopReason;
+                  abnormalAssistantTimestamp = message.timestamp;
                   result.error = message.errorMessage ?? `Model stopped: ${message.stopReason}`;
                 }
               }
@@ -2683,6 +2728,48 @@ async function createSessionInternal(
             });
           }
           if (result.error || signal?.aborted || childModelStop) goal.disarm();
+          if (!result.success) {
+            let restored = false;
+            try {
+              await withStore(async (target) => {
+                const branch = await target.branch("main", context);
+                if (!branch) throw new Error("Session has no main branch.");
+                const restore = (entries: Parameters<typeof projectBranch>[0]) => {
+                  const saved = projectBranch(entries);
+                  agent.state.messages = saved.messages;
+                  transcriptMessages.splice(
+                    0,
+                    transcriptMessages.length,
+                    ...saved.transcriptMessages,
+                  );
+                  completedMessages = structuredClone(saved.messages);
+                  restored = true;
+                };
+                const entries = await branch.findEntries({ order: "oldestFirst" }, context);
+                restore(entries);
+                if (messageSaveFailed)
+                  restore(await repairUnknownToolOutcomes(branch, entries, context));
+              });
+            } finally {
+              // Even an unavailable recovery write must remove optimistic frontend results.
+              if (messageSaveFailed && restored) await emit({ type: "conversation_reconciled" });
+            }
+          }
+          if (
+            (!abnormalAssistant || (signal?.aborted && abnormalAssistant === "error")) &&
+            (signal?.aborted || !result.success || result.stopReason)
+          ) {
+            const notice: SessionNotice = {
+              kind: signal?.aborted ? "interrupted" : (result.stopReason ?? "error"),
+              ...(signal?.aborted && abnormalAssistant === "error"
+                ? { assistantTimestamp: abnormalAssistantTimestamp }
+                : {}),
+              ...(result.reason || result.error ? { reason: result.reason ?? result.error } : {}),
+            };
+            const message = await persistSessionNotice(notice);
+            completedMessages = structuredClone(agent.state.messages);
+            await emit({ type: "message_end", message });
+          }
           await emit({ type: "result", ...result });
         } finally {
           // Prompt reminder persistence can fail before request preparation resets this budget.
