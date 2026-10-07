@@ -996,6 +996,7 @@ function reduceEvent(
           }
         : state;
     case "compaction_end":
+      return state;
     case "mcp_server_error":
       return {
         ...state,
@@ -1003,15 +1004,10 @@ function reduceEvent(
           ...state.completed,
           {
             type: "notice",
-            text:
-              event.type === "compaction_end"
-                ? t("notice.compaction", {
-                    tokens: "tokensBefore" in event ? event.tokensBefore : 0,
-                  })
-                : t("notice.mcp-error", {
-                    server: event.server,
-                    error: formatError({ ...event.errorData, message: event.error }, t),
-                  }).replace(/\s+/g, " "),
+            text: t("notice.mcp-error", {
+              server: event.server,
+              error: formatError({ ...event.errorData, message: event.error }, t),
+            }).replace(/\s+/g, " "),
           },
         ],
       };
