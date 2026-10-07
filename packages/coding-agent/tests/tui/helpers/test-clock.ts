@@ -17,6 +17,10 @@ export const testClock = {
     if (!clock) throw new Error("No virtual clock is active");
     clock.tick(ms);
   },
+  setSystemTime(now: number) {
+    if (!clock) throw new Error("No virtual clock is active");
+    clock.setSystemTime(now);
+  },
   getTimerCount() {
     return clock?.countTimers() ?? 0;
   },

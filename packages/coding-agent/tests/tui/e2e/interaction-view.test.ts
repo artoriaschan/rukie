@@ -142,7 +142,11 @@ test("a parent question temporarily replaces the jobs panel and returns its focu
     await app.waitFor(() => app.screen().some((line) => line.includes("❯ bash-1")));
     await app.waitFor(() => app.screen().some((line) => line.includes("│ worker ready")));
     app.resize(40, 12);
-    await app.waitFor(() => app.screen().some((line) => line.includes("│ worker ready")));
+    await app.waitFor(
+      () =>
+        app.screen().some((line) => line.includes("│ worker ready")) &&
+        app.screen().at(-1)?.includes("Esc 返回") === true,
+    );
     app.stdin.write("\x1b[6~");
     await app.waitFor(() => !app.screen().some((line) => line.includes("❯ bash-1")));
     const panel = app

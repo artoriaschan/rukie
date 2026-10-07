@@ -121,9 +121,11 @@ export function JobsPanel({
           ))
         )}
       </ScrollBox>
-      <ThemedText color="warning" wrap="truncate">
-        {armed ? t("jobs.panel.confirm", { id: armed }) : ""}
-      </ThemedText>
+      <Box height={1} flexShrink={0}>
+        <ThemedText color="warning" wrap="truncate">
+          {armed ? t("jobs.panel.confirm", { id: armed }) : ""}
+        </ThemedText>
+      </Box>
       <ThemedText dim wrap="truncate">
         {t("jobs.panel.hint")}
       </ThemedText>

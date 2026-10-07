@@ -10,7 +10,7 @@ export async function startWithClock(
   try {
     const app = await start(argv, {
       ...options,
-      advanceTimers: (ms) => testClock.advanceTimersByTime(ms),
+      advanceTimers: options.advanceTimers ?? ((ms) => testClock.advanceTimersByTime(ms)),
     });
     return {
       ...app,
