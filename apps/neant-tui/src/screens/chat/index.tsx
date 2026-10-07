@@ -533,6 +533,26 @@ function Chat({
   const [killArmed, setKillArmed] = useState<{ id: string; until: number }>();
   const killArmRef = useRef<{ id: string; until: number } | undefined>(undefined);
   const jobsScroll = useRef<ScrollHandle>(null);
+  const interruptedViewScroll = useRef<{ view: View; snapshot?: ScrollSnapshot } | undefined>(
+    undefined,
+  );
+  if (interaction && view !== "chat" && interruptedViewScroll.current?.view !== view) {
+    toolWindows?.beginSuspend();
+    interruptedViewScroll.current = {
+      view,
+      snapshot: (view === "jobs" ? jobsScroll : subagentScroll).current?.getSnapshot(),
+    };
+  }
+  const restoredViewScroll =
+    interruptedViewScroll.current?.view === view
+      ? interruptedViewScroll.current.snapshot
+      : undefined;
+  useLayoutEffect(() => {
+    if (!interaction) {
+      interruptedViewScroll.current = undefined;
+      toolWindows?.finishRestore();
+    }
+  }, [interaction?.request, view]);
   const disarmKill = () => {
     killArmRef.current = undefined;
     setKillArmed(undefined);
@@ -1385,15 +1405,18 @@ function Chat({
     panelCount > 0 && available - dialogGap - minimumDialogHeight >= panelCount * 3 + goalRows
       ? panelCount * 3 + goalRows
       : panelMinimum;
-  const dialogMaxHeight = interaction
-    ? Math.max(
-        minimumDialogHeight,
-        Math.min(
-          userQuestion?.collapsed ? 3 : userQuestion?.oauth ? available : Math.floor(rows / 2),
-          available - dialogGap - panelReserve,
-        ),
-      )
-    : 0;
+  const dialogMaxHeight =
+    interaction && view !== "chat"
+      ? Math.max(1, rows - 2)
+      : interaction
+        ? Math.max(
+            minimumDialogHeight,
+            Math.min(
+              userQuestion?.collapsed ? 3 : userQuestion?.oauth ? available : Math.floor(rows / 2),
+              available - dialogGap - panelReserve,
+            ),
+          )
+        : 0;
   // Six rows keep the focused item, file summary, bash warning and footer visible
   // even at 40×12 with both persistent panels. Activity/return rows yield first.
   const rewindMaxHeight = rewind ? Math.min(14, available - panelMinimum) : 0;
@@ -1583,7 +1606,8 @@ function Chat({
       }
       return;
     }
-    const currentView = viewRef.current;
+    // A parent request temporarily owns a full-screen view without changing its return target.
+    const currentView = interactions.getSnapshot() ? "chat" : viewRef.current;
     if (currentView === "jobs") {
       handledInput.current.add(event);
       if (event.type === "wheel") {
@@ -2259,6 +2283,104 @@ function Chat({
       !!preview,
     ],
   );
+  const interactionPanel = (
+    <>
+      {userQuestion && currentQuestion && (
+        <QuestionDialog
+          auth={
+            userQuestion.oauth
+              ? {
+                  scrollRef: authDetails,
+                  detail: [
+                    userQuestion.oauth.note,
+                    t(userQuestion.oauth.opened ? "mcp.auth.opened" : "mcp.auth.manual"),
+                    t(userQuestion.oauth.opened ? "mcp.auth.fallback" : "mcp.auth.copy-hint"),
+                    userQuestion.oauth.authorizationUrl,
+                  ]
+                    .filter(Boolean)
+                    .join("\n"),
+                }
+              : undefined
+          }
+          origin={userQuestion.request.origin}
+          key={`${userQuestion.request.toolCallId}-${userQuestion.questionIndex}`}
+          question={userQuestion.request.questions[userQuestion.questionIndex]!}
+          questionIndex={userQuestion.questionIndex}
+          questionCount={userQuestion.request.questions.length}
+          selected={currentQuestion.selected}
+          checked={currentQuestion.checked}
+          answeredCount={userQuestion.drafts.filter((draft) => draft.answer).length}
+          collapsed={userQuestion.collapsed}
+          onToggle={() => {
+            if (isCurrentQuestion()) interactions.toggleQuestionFold();
+          }}
+          cursor={currentQuestion.cursor}
+          attached={currentQuestion.attached}
+          error={currentQuestion.error}
+          onSelect={(index) => {
+            if (isCurrentQuestion()) interactions.selectQuestion(index);
+          }}
+          onOption={(index) => {
+            if (!isCurrentQuestion()) return;
+            if (userQuestion.request.questions[userQuestion.questionIndex]!.multiSelect)
+              interactions.toggleQuestion(index);
+            else interactions.answerQuestion(index);
+          }}
+          onSubmit={() => {
+            if (isCurrentQuestion()) interactions.answerQuestion();
+          }}
+          custom={currentQuestion.custom}
+          maxHeight={dialogMaxHeight}
+          columns={columns}
+          locale={locale}
+        />
+      )}
+      {planReview && (
+        <PlanReviewDialog
+          key={planReview.request.toolCallId}
+          plan={planReview.request.plan}
+          selected={planReview.selected}
+          feedback={planReview.feedback}
+          cursor={planReview.cursor}
+          columns={columns}
+          locale={locale}
+          maxHeight={dialogMaxHeight}
+          scrollRef={details}
+          onSelect={(index) => {
+            if (interactions.getSnapshot()?.request === planReview.request)
+              interactions.selectPlan(index);
+          }}
+          onOption={(index) => {
+            if (interactions.getSnapshot()?.request === planReview.request)
+              interactions.confirmPlan(index);
+          }}
+        />
+      )}
+      {question && (
+        <PermissionDialog
+          bottomGap={dialogGap}
+          origin={question.request.origin}
+          locale={locale}
+          key={question.request.toolCallId}
+          toolName={question.request.toolName}
+          sessionAllow={question.request.sessionAllow}
+          args={question.request.args}
+          mode={question.request.mode}
+          reason={question.request.reason}
+          selected={question.selected}
+          maxHeight={dialogMaxHeight}
+          scrollRef={details}
+          scrollFocused={scrollFocus === "details"}
+        />
+      )}
+    </>
+  );
+  if (interaction && view !== "chat")
+    return (
+      <Box height={rows} flexDirection="column">
+        {small ? <ThemedText wrap="truncate">{t("window.small")}</ThemedText> : interactionPanel}
+      </Box>
+    );
   if (view === "jobs")
     return (
       <JobsPanel
@@ -2271,6 +2393,7 @@ function Chat({
         armed={killArmed?.id}
         scrollRef={jobsScroll}
         onSelect={selectJob}
+        initialScroll={restoredViewScroll}
       />
     );
   if (view === "settings") return <SettingsScreen locale={locale} onClose={closeView} />;
@@ -2284,7 +2407,7 @@ function Chat({
         columns={columns}
         locale={locale}
         onClose={closeView}
-        initialTop={savedDashboardScroll.current?.top ?? 0}
+        initialTop={restoredViewScroll?.top ?? savedDashboardScroll.current?.top ?? 0}
         onSelect={(id) => openDetail(id, "dashboard")}
       />
     );
@@ -2300,6 +2423,7 @@ function Chat({
           thinkingOpen={thinkingOpen}
           expanded={expanded}
           scrollRef={subagentScroll}
+          initialScroll={restoredViewScroll}
           rows={rows}
           locale={locale}
           onBack={closeView}
@@ -2627,94 +2751,7 @@ function Chat({
               locale={locale}
               maxHeight={subagentMaxHeight}
             />
-            {userQuestion && currentQuestion && (
-              <QuestionDialog
-                auth={
-                  userQuestion.oauth
-                    ? {
-                        scrollRef: authDetails,
-                        detail: [
-                          userQuestion.oauth.note,
-                          t(userQuestion.oauth.opened ? "mcp.auth.opened" : "mcp.auth.manual"),
-                          t(userQuestion.oauth.opened ? "mcp.auth.fallback" : "mcp.auth.copy-hint"),
-                          userQuestion.oauth.authorizationUrl,
-                        ]
-                          .filter(Boolean)
-                          .join("\n"),
-                      }
-                    : undefined
-                }
-                origin={userQuestion.request.origin}
-                key={`${userQuestion.request.toolCallId}-${userQuestion.questionIndex}`}
-                question={userQuestion.request.questions[userQuestion.questionIndex]!}
-                questionIndex={userQuestion.questionIndex}
-                questionCount={userQuestion.request.questions.length}
-                selected={currentQuestion.selected}
-                checked={currentQuestion.checked}
-                answeredCount={userQuestion.drafts.filter((draft) => draft.answer).length}
-                collapsed={userQuestion.collapsed}
-                onToggle={() => {
-                  if (isCurrentQuestion()) interactions.toggleQuestionFold();
-                }}
-                cursor={currentQuestion.cursor}
-                attached={currentQuestion.attached}
-                error={currentQuestion.error}
-                onSelect={(index) => {
-                  if (isCurrentQuestion()) interactions.selectQuestion(index);
-                }}
-                onOption={(index) => {
-                  if (!isCurrentQuestion()) return;
-                  if (userQuestion.request.questions[userQuestion.questionIndex]!.multiSelect)
-                    interactions.toggleQuestion(index);
-                  else interactions.answerQuestion(index);
-                }}
-                onSubmit={() => {
-                  if (isCurrentQuestion()) interactions.answerQuestion();
-                }}
-                custom={currentQuestion.custom}
-                maxHeight={dialogMaxHeight}
-                columns={columns}
-                locale={locale}
-              />
-            )}
-            {planReview && (
-              <PlanReviewDialog
-                key={planReview.request.toolCallId}
-                plan={planReview.request.plan}
-                selected={planReview.selected}
-                feedback={planReview.feedback}
-                cursor={planReview.cursor}
-                columns={columns}
-                locale={locale}
-                maxHeight={dialogMaxHeight}
-                scrollRef={details}
-                onSelect={(index) => {
-                  if (interactions.getSnapshot()?.request === planReview.request)
-                    interactions.selectPlan(index);
-                }}
-                onOption={(index) => {
-                  if (interactions.getSnapshot()?.request === planReview.request)
-                    interactions.confirmPlan(index);
-                }}
-              />
-            )}
-            {question && (
-              <PermissionDialog
-                bottomGap={dialogGap}
-                origin={question.request.origin}
-                locale={locale}
-                key={question.request.toolCallId}
-                toolName={question.request.toolName}
-                sessionAllow={question.request.sessionAllow}
-                args={question.request.args}
-                mode={question.request.mode}
-                reason={question.request.reason}
-                selected={question.selected}
-                maxHeight={dialogMaxHeight}
-                scrollRef={details}
-                scrollFocused={scrollFocus === "details"}
-              />
-            )}
+            {interactionPanel}
             {rewind && (
               <RewindPicker
                 entries={rewind.entries}

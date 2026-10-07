@@ -2,7 +2,14 @@ import type { Ref } from "react";
 import { useLayoutEffect } from "react";
 import { fmtDuration, type Locale } from "@neant/i18n";
 import type { JobView } from "@neant/shared";
-import { Box, Divider, ScrollBox, ThemedText, type ScrollHandle } from "@neant/tui";
+import {
+  Box,
+  Divider,
+  ScrollBox,
+  ThemedText,
+  type ScrollHandle,
+  type ScrollSnapshot,
+} from "@neant/tui";
 import { createTuiI18n } from "../../i18n";
 import { cleanJobText, jobOutputRows } from "../job-card/output";
 
@@ -17,6 +24,7 @@ export function JobsPanel({
   expanded,
   armed,
   scrollRef,
+  initialScroll,
   onSelect,
 }: {
   rows: number;
@@ -27,6 +35,7 @@ export function JobsPanel({
   expanded: ReadonlySet<string>;
   armed?: string;
   scrollRef: Ref<ScrollHandle>;
+  initialScroll?: ScrollSnapshot;
   onSelect(index: number): void;
 }) {
   const t = createTuiI18n(locale);
@@ -85,10 +94,11 @@ export function JobsPanel({
         wrap="truncate"
       >{`${live} ${t("jobs.status.running")} · ${complete} ${t("jobs.status.completed")} · ${failed} ${t("jobs.status.failed")} · ${killed} ${t("jobs.status.killed")}`}</ThemedText>
       <ScrollBox
+        initialTop={initialScroll?.top ?? focusedTop}
+        initialAnchor={initialScroll?.anchor}
+        initialFollow={initialScroll?.following ?? false}
         key={[...expanded].join(",")}
         ref={scrollRef}
-        initialFollow={false}
-        initialTop={focusedTop}
       >
         {jobs.length === 0 ? (
           <ThemedText>{t("jobs.panel.empty")}</ThemedText>

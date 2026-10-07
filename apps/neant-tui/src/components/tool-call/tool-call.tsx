@@ -82,12 +82,15 @@ export function ToolCall({
   locale?: Locale;
 }) {
   const fallbackId = useId();
-  const [localExpanded, setExpanded] = useState(false);
-  const expanded = globalExpanded || localExpanded;
-  const toggle = onToggle ?? (() => setExpanded((value) => !value));
   const navigation = useToolWindowNavigation();
   const identity = id ?? fallbackId;
-  const [windowOffset, setWindowOffset] = useState(0);
+  const [restored] = useState(() => navigation?.takePreserved(identity));
+  const [localExpanded, setExpanded] = useState(restored?.expanded ?? false);
+  const expanded = globalExpanded || localExpanded;
+  const toggle = onToggle ?? (() => setExpanded((value) => !value));
+  const [windowOffset, setWindowOffset] = useState(restored?.offset ?? 0);
+  const presentation = useRef({ expanded: localExpanded, offset: windowOffset });
+  presentation.current = { expanded: localExpanded, offset: windowOffset };
   const moveWindow = useRef<(move: WindowMove) => void>(() => {});
   const [hovered, setHovered] = useState(false);
   const { columns } = useTerminalSize();
@@ -249,7 +252,13 @@ export function ToolCall({
     } else if (searchLocation?.part === "body")
       setWindowOffset(Math.max(0, searchLocation.line - 5));
   }, [expanded, identity, searchLocation?.part, searchLocation?.line]);
-  useLayoutEffect(() => () => navigation?.clear(identity), [identity]);
+  useLayoutEffect(
+    () => () => {
+      navigation?.preserveOnUnmount(identity, presentation.current);
+      navigation?.clear(identity);
+    },
+    [identity],
+  );
   const window = expanded ? 400 : folded ? limit : lines.length;
   const visible = useSmoothReveal(
     id ?? fallbackId,
