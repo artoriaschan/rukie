@@ -79,7 +79,7 @@ export function ThinkingRow({
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
       >
-        <Box width={streaming ? 2 : 3} flexShrink={0}>
+        <Box width={streaming ? 2 : 3} flexShrink={0} selectable={false}>
           <ThemedText color={streaming ? pulseColor : undefined} dimColor={!streaming}>
             {streaming ? "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"[frame % 10] : "⚓"}
           </ThemedText>
@@ -97,7 +97,7 @@ export function ThinkingRow({
           <Box flexDirection="column" height={3} flexShrink={0} paddingLeft={2}>
             {Array.from({ length: 3 }, (_, index) => (
               <Box key={index} height={1}>
-                <Box width={2} flexShrink={0}>
+                <Box width={2} flexShrink={0} selectable={false}>
                   <ThemedText dimColor italic>
                     {"│"}
                   </ThemedText>

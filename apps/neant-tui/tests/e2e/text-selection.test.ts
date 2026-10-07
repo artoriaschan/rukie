@@ -289,3 +289,37 @@ test("a late clipboard result belongs to its original Session and does not notif
     await app.cleanup();
   }
 });
+
+test("thinking header and preview drags exclude spinner and rails without toggling the body", async () => {
+  const copied: string[] = [];
+  const app = await startWithClock(["explain"], {
+    columns: 80,
+    rows: 40,
+    env: { LANG: "en_US.UTF-8" },
+    host: {
+      writeClipboard: async (text) => {
+        copied.push(text);
+        return true;
+      },
+    },
+  });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.thinking("first secret\nsecond\nthird");
+    await app.waitFor(() => app.screen().some((line) => line.includes("│ first secret")));
+    const y = app.screen().findIndex((line) => line.includes("│ first secret"));
+    gesture(app, { x: 2, y }, { x: 15, y });
+    release(app, { x: 15, y });
+    await app.waitFor(() => copied.length === 1);
+    expect(copied).toEqual(["first secret"]);
+    const heading = app.screen().findIndex((line) => line.includes("Thinking"));
+    gesture(app, { x: 0, y: heading }, { x: 9, y: heading });
+    release(app, { x: 9, y: heading });
+    await app.waitFor(() => copied.length === 2);
+    expect(copied[1]).toBe("Thinking");
+    expect(app.screen().some((line) => line.includes("│ first secret"))).toBe(true);
+    app.calls[0]!.finish();
+  } finally {
+    await app.cleanup();
+  }
+});

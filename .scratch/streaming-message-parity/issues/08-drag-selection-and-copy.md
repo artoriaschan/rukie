@@ -28,3 +28,7 @@ Blocked by: 01
 - `rtk proxy env -u NO_COLOR bun test apps/neant-tui/tests/e2e/text-selection.test.ts`: 8 pass, 20 assertions, 980ms. Covers forward/reverse and inert blank drags, Unicode Markdown, both clipboard failure outcomes/locales, streaming replacement/outside append, resize/wheel/Escape, path action suppression, softwrapped code and stale Session feedback; all app timers use virtual clocks.
 - Related message/file-action/fullscreen/hover/terminal/input/text-style/scroll/frame checks: 69 pass, 368 assertions, 6.10s before the final two extra reverse/blank assertions. Existing fullscreen terminal integration remains the only case above one second (1.08s); new selection cases are below 170ms.
 - `rtk proxy bun run check:dev`: passed. Renderer/app READMEs and ADR-0006 record the basic copy closure; ticket 09 retains extra gestures and remote adaptation. Parent integration owns the final aggregate check.
+
+### Integration follow-up
+
+Merged thinking baseline `d836e97` (merge `ca6be5b`), preserving dimmed Markdown and selection docs. A new public drag test first failed with copied `│first secret`; excluding ThinkingRow spinner/anchor and preview rails corrected it and retains ordinary header clicks. After integration: selection/thinking/messages 23 pass, 105 assertions, 2.88s; `rtk proxy bun run check:dev` passes. Tool card decoration follow-up awaits ticket 03's integration and is coordinated by parent.
