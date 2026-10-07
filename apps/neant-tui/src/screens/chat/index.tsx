@@ -390,7 +390,7 @@ function Chat({
         conversation.notify(t("file-actions.failed", { error: formatError(error, t) }), "error");
     }
   };
-  type Preview = { images: readonly PromptImage[]; index: number };
+  type Preview = { images: readonly PromptImage[]; index: number; composer?: boolean };
   const [preview, setPreview] = useState<Preview>();
   const previewRef = useRef<Preview | undefined>(undefined);
   const showPreview = (next: Preview | undefined) => {
@@ -2640,22 +2640,28 @@ function Chat({
               onAtomicRangeClick={
                 !expanded && !small && !preview && !imagePreviewBlocked()
                   ? (offset) => {
-                      if (
-                        previewRef.current ||
-                        imagePreviewBlocked() ||
-                        !composer.atCursor(draft.current, offset)
-                      )
-                        return;
-                      dismissedComposerImage.current = undefined;
-                      setComposerDismissed(false);
+                      if (previewRef.current || imagePreviewBlocked()) return;
+                      const selected = composer.atCursor(draft.current, offset);
+                      if (!selected) return;
+                      const images = composer.ordered(draft.current);
                       updateComposerCursor(offset);
+                      // Closing this modal must not immediately reveal the caret card underneath.
+                      dismissedComposerImage.current = selected;
+                      setComposerDismissed(true);
+                      showPreview({
+                        images,
+                        index: images.indexOf(selected.image),
+                        composer: true,
+                      });
                     }
                   : undefined
               }
               highlightRanges={composer.ranges(input).map((range) => ({
                 ...range,
                 color: theme.suggestion,
-                inverse: !!composerPreview && range.start === composerCursor,
+                inverse: preview?.composer
+                  ? composer.atCursor(input, range.start)?.image === preview.images[preview.index]
+                  : !!composerPreview && range.start === composerCursor,
               }))}
               atomicRanges={composer.ranges(input)}
               onPaste={(text, insert) => {

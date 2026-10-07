@@ -37,3 +37,5 @@ Spec：[输入框图片光标预览](../../composer-image-peek/spec.md)
 2026-10-07：输入框光标预览已在 `codex/composer-image-peek` 完成；三张实施票均 resolved，集成代码 `3950234`。绑定 token 起始位置触发被动卡与反色；Esc 仅关闭当前卡，离开再回来重新显示；审批/提问、选择器、Rewind、非 chat、MCP、小终端与模态优先处理已覆盖。补齐小终端恢复光标和正常最小尺寸文字占位。`env -u NO_COLOR bun run check`：2512 pass / 0 fail，184 files；Standards / Spec 审查发现已修复并复核，详见 [验收记录](../../composer-image-peek/review.md)。原 Comments 中“尚未实施”的状态已由本次交付更新；2026-10-07 已快进合入 main `585cb2d`。
 
 2026-10-07 点击补充：用户明确扩展原 Answer 第 3 项的范围，点击绑定 token 会定位起点、显示被动预览并反色高亮，同 token 再次点击可重开 Esc 关闭的卡。普通文本鼠标定位与悬停仍不在范围内。04 已 resolved；最终门禁 2604 pass / 0 fail，200 files，76.44s。见 [点击票据](../../composer-image-peek/issues/04-click-preview.md) 与 [验收](../../composer-image-peek/review.md)。
+
+2026-10-07 弹窗补充：用户进一步要求点击 token 复用消息流弹窗，05 已 resolved，取代上一条的点击被动卡行为；草稿图片图集快照复用现有模态组件及操作，翻页同步高亮，关闭保留草稿与 Run。光标被动卡保持原契约。最终门禁 2604 pass / 0 fail，200 files，81.51s；见 [05](../../composer-image-peek/issues/05-shared-modal.md) 与 [验收](../../composer-image-peek/review.md)。

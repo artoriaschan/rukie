@@ -33,3 +33,9 @@
 2026-10-07 用户补充点击及高亮要求，04 已 resolved。TextInput 的可选 atomic 点击接口按绘制 glyph 与裁剪命中，同 unit 主键按下/释放后定位起点；Chat 重用被动预览和反色状态，同 token 点击可解除 Esc 关闭记录。普通文字/字面 token、待处理 Interaction 保持原行为。代码与规格/README 差异复核未发现遗漏。
 
 公共接缝先复现原点击不预览；新增 3 个 app start/headless terminal 用例覆盖点击高亮、同 token 重开、输入/图片发送、多图切换、中文/emoji、换行/resize、字面 token 与折叠提问。相关 7 文件 50 pass / 0 fail，6.55s；新增用例均低于 300ms。最终 `env -u NO_COLOR bun run check` 退出 0：格式、lint、类型、Knip、scratch 状态检查与 2604 tests 全通过，14503 assertions，200 files，测试阶段 76.44s。最终门禁后仅补充 Markdown 验收记录并验证格式、tracker 与 diff。未进行真实 Kitty 终端人工验收。
+
+## Shared modal supplement
+
+2026-10-07 用户要求点击输入框 token 复用消息流预览弹窗，05 已 resolved，取代 04 的点击被动卡方案。点击将当前草稿图集快照交给既有 preview 状态与 ImagePreview 模态组件，复用 Fit、缩放/平移、翻页、打开原图及键盘/鼠标关闭路径；翻页同步 token 反色，关闭保留草稿与 Run，不立即回弹光标卡。光标移动的被动预览契约保留。差异复核确认未引入第二套弹窗或事件处理，相关 README 与 spec 已同步。
+
+公共点击测试要求 Open original 控件时先失败（102.78ms）；相关 5 文件最终 33 pass / 0 fail，175 assertions，6.76s。最终 `env -u NO_COLOR bun run check` 退出 0：格式、lint、类型、Knip、scratch 状态与全部测试通过；2604 pass / 0 fail，14509 assertions，200 files，81.51s。门禁后仅追加 Markdown 验收证据，单独验证格式、tracker 与 diff。

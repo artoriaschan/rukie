@@ -10,9 +10,13 @@ Status: resolved
 
 ## Solution
 
-点击已绑定的 `[Image #N]` token，或将光标移到 token 起始位置时，消息区上方显示该图的预览卡，token 反色。光标离开，卡消失。预览不抢键盘：用户照常打字、移动光标、发送。Esc 只关掉当前这张卡，再次点击或光标离开再回来会重新显示。
+将光标移到已绑定的 `[Image #N]` 起始位置时，消息区上方显示被动预览卡，token 反色。光标离开，卡消失。被动卡不抢键盘，Esc 只关掉当前卡；光标离开再回来可重开。
+
+点击绑定 token 打开消息流同款模态预览弹窗，反色高亮所选图片的 token。弹窗复用当前草稿图集的翻页、缩放/平移、打开原图和关闭操作。弹窗接管输入；Esc、Ctrl+C、Enter 或消息区空白点击只关闭弹窗，保留草稿与 Run，关闭后不立即冒出同一 token 的被动卡。再次点击可重开。
 
 ## User Stories
+
+1–22 描述光标触发的被动卡；点击弹窗按第 23 项与以下点击实现决定执行。
 
 1. 作为 TUI 用户，我想把光标移到 `[Image #N]` 上就看到这张图，以便发送前确认贴的是对的图。
 2. 作为 TUI 用户，我想看到光标所在的 token 反色，以便知道预览的是哪个 token。
@@ -37,11 +41,13 @@ Status: resolved
 21. 作为 TUI 用户，我想提交或清空草稿后预览消失，以便新草稿从干净状态开始。
 22. 作为终端不支持 kitty 图形的用户，我想预览照常给出文字占位与元数据，以便行为与消息区预览一致。
 
+23. 作为 TUI 用户，我想点击 token 打开与消息流一致的弹窗，并高亮当前图片对应的 token，以便翻页、缩放或打开原图。
+
 ## Implementation Decisions
 
 - **renderer `TextInput` 加光标回调**：新增可选 `onCursorChange(offset)`，报告吸附 atomic range 之后的 UTF-16 光标位置，光标变化时触发（含 owner 重置 value 导致的变化）。`TextInput` 不感知图片；`@neant/tui` 不依赖 Agent Core。更新 renderer README 的 `TextInput` 契约。
 - **命中判定归 Chat**：Chat 用 composer 的 `ranges(draft)`（只含仍绑定的 token 原位置）判断光标是否等于某个 range 的 `start`。光标在 token 的 `start` 才算命中，`end` 不算。命中时通过 composer 取该 token 绑定的 `PromptImage`；composer 需新增按光标位置返回绑定图片的读取接口，复用现有绑定表，不另建状态。
-- **点击绑定 token**：TextInput 的可选 `onAtomicRangeClick(offset)` 启用 atomic unit 点击，按最后绘制的 glyph 与可见裁剪范围命中；同一 unit 上主键按下与释放后，光标移到 unit 起点并通知 owner，包括光标未变化的重击。Chat 只为可预览的绑定图片启用回调，点击清除当前关闭记录。普通文字点击不定位光标；renderer 不感知图片。
+- **点击绑定 token**：TextInput 的可选 `onAtomicRangeClick(offset)` 启用 atomic unit 点击，按最后绘制的 glyph 与可见裁剪范围命中；同一 unit 上主键按下与释放后，光标移到 unit 起点并通知 owner，包括光标未变化的重击。Chat 只为可预览的绑定图片启用回调；点击将草稿绑定图片的有序快照交给既有模态预览状态与 ImagePreview 控件。翻页时高亮所选图片对应 token；当前 token 的被动卡记为关闭，避免弹窗关闭后自动回弹。普通文字点击不定位光标；renderer 不感知图片。
 - **token 反色**：命中的 token 反色显示。现有 `highlightRanges` 只带 color；优先扩展它支持 `inverse`，不另加渲染通道。
 - **派生状态，非模态**：光标预览是由「光标位置 + 草稿 + 屏幕拦截条件」派生的显示状态，不写入模态预览的 `previewRef`，不走模态预览的按键分支。键盘始终归输入框；←/→、Enter、打字行为不变。
 - **Esc 关闭**：光标预览显示时，Chat 的 Esc 链最先处理：记下被关闭的 token（按 token 文本 + 位置区分），消费这次按键，不触发中止 Run 等后续 Esc 行为。光标离开该 token 时清除记录。双击 Esc 打开 Rewind 只在空草稿时成立，与此不冲突。
@@ -55,6 +61,7 @@ Status: resolved
 
 - 唯一接缝：`apps/neant-tui` 的 app `start` helper + headless terminal 的 e2e，放在 `tests/e2e/`。通过粘贴图片路径生成 token，再用按键驱动，断言屏幕。只测可观察行为，不测 Chat 内部状态或 `TextInput` 回调本身。
 - 覆盖：光标进入 token 出卡与反色、标题 `Image #N`；离开消失、token 后一格不算；两个 token 间切换；Esc 只关当前卡、Run 不中止（fake model 的 `signal.aborted` 为 false）、离开再回来重新出现、关一张不影响另一张；预览显示时 Enter 发送且模型调用带图片；被动卡无 `Open original`；字面 `[Image #N]` 不触发；删除 token 后消失；小终端不显示；待处理审批或提问时不显示；模态预览打开时只显示模态卡。
+- 点击覆盖：消息流同款控件与元数据、Enter 关闭且不提交、Esc/Ctrl+C 关闭不打断 Run、多图翻页同步高亮、关闭后可重击、草稿编辑/发送保留。
 - Prior art：`tests/e2e/image-tokens.test.ts`（token 粘贴、绑定与光标移动）、`tests/e2e/image-preview.test.ts`（预览卡断言、`click` 辅助、Run 不中止断言、元数据行）、`tests/e2e/permissions.test.ts`/`questions.test.ts`（构造待处理交互）。
 - 不单独为 `TextInput` 光标回调或 placement 删除序列加 `packages/tui` 测试：placement 清理已由现有 `ImagePreview` 测试覆盖，回调经 e2e 覆盖。
 
@@ -68,6 +75,7 @@ Status: resolved
 ## Further Notes
 
 - 2026-10-07 用户补充要求点击图片 token 预览并高亮，授权点击绑定 token 定位起点与重开预览；见 [04](issues/04-click-preview.md)。
+- 2026-10-07 用户进一步要求点击预览弹窗复用消息流弹窗，取代 04 的点击被动卡行为；见 [05](issues/05-shared-modal.md)。
 - 完成后在 [终端图形协议](../agent-core-roadmap/issues/21-terminal-graphics.md) 追加实施证据。
 
 ## Delivery
