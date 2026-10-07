@@ -77,6 +77,17 @@ export function createComposerImages() {
           : [],
       );
     },
+    atCursor(text: string, offset: number) {
+      for (const [token, binding] of bound) {
+        if (binding.start === offset && text.slice(offset, offset + token.length) === token)
+          return {
+            token,
+            start: offset,
+            image: binding.image,
+            index: Number(token.slice(8, -1)) - 1,
+          };
+      }
+    },
     ordered(text: string) {
       const images: PromptImage[] = [];
       const seen = new Set<string>();

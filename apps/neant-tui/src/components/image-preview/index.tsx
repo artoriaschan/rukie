@@ -13,6 +13,7 @@ export function ImagePreview({
   width,
   height,
   locale,
+  passive = false,
   onClose,
   onStep,
   onOriginal,
@@ -23,9 +24,10 @@ export function ImagePreview({
   width: number;
   height: number;
   locale: Locale;
-  onClose(): void;
-  onStep(delta: number): void;
-  onOriginal(image: PromptImage): Promise<void>;
+  passive?: boolean;
+  onClose?(): void;
+  onStep?(delta: number): void;
+  onOriginal?(image: PromptImage): Promise<void>;
 }) {
   const t = createTuiI18n(locale);
   const theme = useTheme();
@@ -44,6 +46,7 @@ export function ImagePreview({
   );
   const drawable = width >= 40 && height >= 12;
   const inspect =
+    !passive &&
     drawable &&
     graphics.supported &&
     image.mimeType === "image/png" &&
@@ -113,28 +116,31 @@ export function ImagePreview({
       y: Math.max(0, Math.min(sourceHeight - cropHeight, y + dy)),
     });
   };
-  useInput((event) => {
-    const overImage =
-      "x" in event &&
-      event.x >= left + 3 &&
-      event.x < left + 3 + imageWidth &&
-      event.y >= top + 2 &&
-      event.y < top + 2 + imageHeight;
-    if (event.type === "wheel" && overImage)
-      panBy(0, (event.delta * cellHeight * 3) / Math.max(1, activeZoom));
-    if (event.type === "mouse" && event.button === 0) {
-      if (event.action === "press" && overImage && activeZoom)
+  useInput(
+    (event) => {
+      const overImage =
+        "x" in event &&
+        event.x >= left + 3 &&
+        event.x < left + 3 + imageWidth &&
+        event.y >= top + 2 &&
+        event.y < top + 2 + imageHeight;
+      if (event.type === "wheel" && overImage)
+        panBy(0, (event.delta * cellHeight * 3) / Math.max(1, activeZoom));
+      if (event.type === "mouse" && event.button === 0) {
+        if (event.action === "press" && overImage && activeZoom)
+          drag.current = { x: event.x, y: event.y };
+        else if (event.action === "release") drag.current = undefined;
+      }
+      if (event.type === "move" && drag.current && "button" in event && event.button === 0) {
+        panBy(
+          ((drag.current.x - event.x) * cellWidth) / Math.max(1, activeZoom),
+          ((drag.current.y - event.y) * cellHeight) / Math.max(1, activeZoom),
+        );
         drag.current = { x: event.x, y: event.y };
-      else if (event.action === "release") drag.current = undefined;
-    }
-    if (event.type === "move" && drag.current && "button" in event && event.button === 0) {
-      panBy(
-        ((drag.current.x - event.x) * cellWidth) / Math.max(1, activeZoom),
-        ((drag.current.y - event.y) * cellHeight) / Math.max(1, activeZoom),
-      );
-      drag.current = { x: event.x, y: event.y };
-    }
-  });
+      }
+    },
+    { isActive: !passive },
+  );
   const changeZoom = (value: number) => {
     setZoom(value);
     if (value === 0) {
@@ -162,7 +168,7 @@ export function ImagePreview({
     </Box>
   );
   const openOriginal = () => {
-    if (opening.current) return;
+    if (opening.current || !onOriginal) return;
     opening.current = true;
     setOriginal(t("image.opening"));
     void onOriginal(image)
@@ -180,7 +186,9 @@ export function ImagePreview({
   };
   return (
     <>
-      <Box position="absolute" top={0} left={0} width={width} height={height} onClick={onClose} />
+      {!passive && (
+        <Box position="absolute" top={0} left={0} width={width} height={height} onClick={onClose} />
+      )}
       <Box
         position="absolute"
         top={top}
@@ -220,33 +228,37 @@ export function ImagePreview({
             ) : null}
           </Box>
         )}
-        <Box gap={2}>
-          {button(t("image.fit"), () => changeZoom(0))}
-          {button("100%", () => changeZoom(1), !inspect)}
-          {button("−", () => changeZoom(activeZoom / 2), !inspect || activeZoom <= 1)}
-          {button(
-            "+",
-            () => changeZoom(activeZoom ? Math.min(8, activeZoom * 2) : 1),
-            !inspect || activeZoom >= 8,
-          )}
-          {button("←", () => panBy(-cropWidth / 4, 0), !activeZoom)}
-          {button("↑", () => panBy(0, -cropHeight / 4), !activeZoom)}
-          {button("↓", () => panBy(0, cropHeight / 4), !activeZoom)}
-          {button("→", () => panBy(cropWidth / 4, 0), !activeZoom)}
-        </Box>
-        {total > 1 && height >= 6 && (
+        {!passive && (
           <Box gap={2}>
-            {button("‹", () => onStep(-1), index === 0)}
-            <ThemedText>{`${index + 1}/${total}`}</ThemedText>
-            {button("›", () => onStep(1), index === total - 1)}
+            {button(t("image.fit"), () => changeZoom(0))}
+            {button("100%", () => changeZoom(1), !inspect)}
+            {button("−", () => changeZoom(activeZoom / 2), !inspect || activeZoom <= 1)}
+            {button(
+              "+",
+              () => changeZoom(activeZoom ? Math.min(8, activeZoom * 2) : 1),
+              !inspect || activeZoom >= 8,
+            )}
+            {button("←", () => panBy(-cropWidth / 4, 0), !activeZoom)}
+            {button("↑", () => panBy(0, -cropHeight / 4), !activeZoom)}
+            {button("↓", () => panBy(0, cropHeight / 4), !activeZoom)}
+            {button("→", () => panBy(cropWidth / 4, 0), !activeZoom)}
           </Box>
         )}
-        <Box onClick={openOriginal}>
-          <ThemedText underline wrap="truncate">
-            {original ?? `${t("image.open-original")}: ${imageName(image, t("image.label"))}`}
-          </ThemedText>
-        </Box>
-        {height >= 6 && (
+        {!passive && total > 1 && height >= 6 && (
+          <Box gap={2}>
+            {button("‹", () => onStep?.(-1), index === 0)}
+            <ThemedText>{`${index + 1}/${total}`}</ThemedText>
+            {button("›", () => onStep?.(1), index === total - 1)}
+          </Box>
+        )}
+        {!passive && (
+          <Box onClick={openOriginal}>
+            <ThemedText underline wrap="truncate">
+              {original ?? `${t("image.open-original")}: ${imageName(image, t("image.label"))}`}
+            </ThemedText>
+          </Box>
+        )}
+        {!passive && height >= 6 && (
           <ThemedText dimColor wrap="truncate">
             {t("image.preview-close")}
           </ThemedText>
