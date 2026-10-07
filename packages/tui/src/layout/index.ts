@@ -1,6 +1,7 @@
 import type { BoxProps, TextProps, ImageProps } from "../components";
 import {
   lineWidth,
+  sanitizeText,
   textCursor,
   textLines,
   type Glyph,
@@ -196,11 +197,15 @@ export function calculateTree(root: HostNode, columns: number, rows?: number): L
           ? readingAnchor(node.scrollContent.children, top)
           : undefined;
       const restored = node.props.scroll.takeInitialAnchor();
-      const anchoredTop = restored
-        ? resolvePortableAnchor(local, restored)
-        : anchor
-          ? resolveAnchor(local, anchor)
-          : undefined;
+      const target = node.props.scroll.takeTextTarget();
+      const targetTop = target ? resolveTextTarget(local, target) : undefined;
+      const anchoredTop =
+        targetTop ??
+        (restored
+          ? resolvePortableAnchor(local, restored)
+          : anchor
+            ? resolveAnchor(local, anchor)
+            : undefined);
       offset = node.props.scroll.layout(
         { x, y, width, height, total: Math.round(node.contentYoga.getComputedHeight()) },
         anchoredTop,
@@ -350,4 +355,37 @@ export function calculateStaticTree(item: HostNode, columns: number): LayoutNode
   } finally {
     root.yoga.removeChild(item.yoga);
   }
+}
+
+function resolveTextTarget(
+  nodes: LayoutNode[],
+  target: { id: string; query: string; occurrence: number },
+): number | undefined {
+  let remaining = target.occurrence;
+  function scan(node: LayoutNode): number | undefined {
+    if (node.type === "tui-text") {
+      const text = sanitizeText(node.spans.map((span) => span.text).join("")).toLowerCase();
+      const query = target.query.toLowerCase();
+      if (query)
+        for (let at = text.indexOf(query); at !== -1; at = text.indexOf(query, at + query.length)) {
+          if (remaining-- === 0) {
+            const row =
+              node.lines?.findLastIndex((line) => (line[0]?.offset ?? Infinity) <= at) ?? 0;
+            return node.y + Math.max(0, row);
+          }
+        }
+    }
+    for (const child of node.children) {
+      const top = scan(child);
+      if (top !== undefined) return top;
+    }
+  }
+  function find(nodes: LayoutNode[]): number | undefined {
+    for (const node of nodes) {
+      if (node.props.scrollAnchorId === target.id) return scan(node) ?? node.y;
+      const top = find(node.children);
+      if (top !== undefined) return top;
+    }
+  }
+  return find(nodes);
 }

@@ -1,11 +1,11 @@
+import { toolCardTitle, toolCardBody, toolCardName } from "./presentation";
 import { useSmoothReveal } from "./use-smooth-reveal";
 import { useDiffLayout } from "./diff-layout";
 import { Markdown } from "../markdown";
 import { unifiedDiffLines } from "./diff-lines";
 import type { ToolCallView, ToolResultView } from "@neant/shared";
 import { fmtDuration } from "@neant/i18n";
-import { appCopy } from "../../i18n/locales";
-import { useId, useState } from "react";
+import { useId, useState, useMemo } from "react";
 import type { PromptImage } from "@neant/agent";
 import { ImageGallery } from "../image-gallery";
 import type { Locale } from "@neant/i18n";
@@ -30,6 +30,7 @@ export function ToolCall({
   id,
   replayed = false,
   summary,
+  searchLocation,
   name,
   args,
   callView,
@@ -52,6 +53,7 @@ export function ToolCall({
   foldTerminalCommand?: boolean;
   expanded?: boolean;
   onToggle?(): void;
+  searchLocation?: { part: "header" | "body"; line: number; offset: number };
   onPathClick?(path: string): void;
   summary: string;
   id?: string;
@@ -84,23 +86,8 @@ export function ToolCall({
   const [, time] = useAnimationFrame(status === "running" && focused ? 16 : null);
   const kind = resultView?.kind ?? callView?.kind;
   const color = toolKindColor(kind);
-  const key = callView?.displayKey ?? resultView?.displayKey ?? `tool.${name}`;
-  const displayName = Object.hasOwn(appCopy[locale], key)
-    ? appCopy[locale][key as keyof typeof appCopy.zh]
-    : name
-      ? name[0]!.toUpperCase() + name.slice(1)
-      : undefined;
-  const title =
-    callView?.card === "terminal"
-      ? callView.command
-      : callView?.card === "diff"
-        ? (callView.diffs[0]?.path ?? "")
-        : callView?.card === "generic" && callView.server && callView.tool
-          ? `${callView.server} › ${callView.tool}`
-          : callView?.card === "generic" && callView.title
-            ? callView.title
-            : (JSON.stringify(callView?.card === "generic" ? (callView.rawInput ?? args) : args) ??
-              "");
+  const displayName = toolCardName({ name, callView, resultView }, locale);
+  const title = toolCardTitle({ args, callView });
   const path =
     resultView?.card === "read"
       ? resultView.path
@@ -110,15 +97,6 @@ export function ToolCall({
           ? callView.diffs[0]?.path
           : undefined;
   const pathOffset = path ? title.indexOf(path) : -1;
-  const pathLeft =
-    2 +
-    Bun.stringWidth(displayName ?? "") +
-    1 +
-    (pathOffset >= 0 ? Bun.stringWidth(title.slice(0, pathOffset)) : 0);
-  const pathWidth =
-    path && pathOffset >= 0
-      ? Math.max(0, Math.min(Bun.stringWidth(path), columns - pathLeft, 480 - pathOffset))
-      : 0;
   const jsonTitle =
     callView?.card !== "terminal" &&
     callView?.card !== "diff" &&
@@ -128,8 +106,45 @@ export function ToolCall({
     foldTerminalCommand && commandLines
       ? Math.max(0, commandLines.length - 1 - Number(title.endsWith("\n")))
       : 0;
-  const shownTitle = hiddenLines ? commandLines![0]! : title;
-  const clippedTitle = callView?.card === "terminal" ? shownTitle : shownTitle.slice(0, 480);
+  const titleOffset =
+    searchLocation?.part === "header"
+      ? Math.max(0, searchLocation.offset - (displayName?.length ?? 0) - 1)
+      : undefined;
+  const selectedLine =
+    titleOffset !== undefined && commandLines
+      ? title.slice(0, titleOffset).split(/\r?\n/).length - 1
+      : 0;
+  const shownTitle =
+    titleOffset !== undefined && commandLines
+      ? commandLines[selectedLine]!
+      : hiddenLines
+        ? commandLines![0]!
+        : title;
+  const titleStart =
+    titleOffset !== undefined
+      ? Math.max(
+          0,
+          (commandLines
+            ? titleOffset - title.slice(0, titleOffset).lastIndexOf("\n") - 1
+            : titleOffset) - 10,
+        )
+      : 0;
+  const clippedTitle =
+    callView?.card === "terminal"
+      ? shownTitle.slice(titleStart)
+      : shownTitle.slice(titleStart, titleStart + 480);
+  const pathLeft =
+    2 +
+    Bun.stringWidth(displayName ?? "") +
+    1 +
+    (pathOffset >= titleStart ? Bun.stringWidth(title.slice(titleStart, pathOffset)) : 0);
+  const pathWidth =
+    path && pathOffset >= titleStart
+      ? Math.max(
+          0,
+          Math.min(Bun.stringWidth(path), columns - pathLeft, 480 - (pathOffset - titleStart)),
+        )
+      : 0;
   const titleHint = hiddenLines
     ? ` ${t("tool.command-lines", { count: hiddenLines })}`
     : shownTitle.length > clippedTitle.length
@@ -140,17 +155,7 @@ export function ToolCall({
 
   const seconds = Math.max(0, Math.floor((Date.now() - (startedAt ?? Date.now())) / 1000));
   const terminal = resultView?.card === "terminal" ? resultView : undefined;
-  const body =
-    resultView?.card === "read"
-      ? resultView.content
-      : resultView?.card === "web"
-        ? resultView.markdown
-        : resultView?.card === "generic"
-          ? resultView.text
-          : resultView?.card === "search"
-            ? searchLines(resultView).join("\n")
-            : (terminal?.output ?? result);
-  const output = status === "error" ? (error ?? terminal?.output) : body;
+  const output = toolCardBody({ callView, resultView, result, error, isError: status === "error" });
   const diffView =
     status !== "error"
       ? resultView?.card === "diff"
@@ -159,34 +164,45 @@ export function ToolCall({
           ? callView
           : undefined
       : undefined;
-  const diffLines = diffView ? unifiedDiffLines(diffView) : undefined;
-  const splitRows =
-    diffLines && (diffLayout === "split" || (diffLayout === "auto" && columns >= 110))
-      ? alignSplitDiff(diffLines)
-      : undefined;
+  const diffLines = useMemo(() => (diffView ? unifiedDiffLines(diffView) : undefined), [diffView]);
+  const splitRows = useMemo(
+    () =>
+      diffLines && (diffLayout === "split" || (diffLayout === "auto" && columns >= 110))
+        ? alignSplitDiff(diffLines)
+        : undefined,
+    [diffLines, diffLayout, columns],
+  );
   const lines =
     splitRows?.map((row) => ("text" in row ? row.text : "")) ??
     diffLines?.map((line) => line.text) ??
     output?.split(/\r?\n/) ??
     [];
-  const highlightedLines =
-    resultView?.card === "read" && status !== "error"
-      ? highlightSyntax(resultView.content, { path: resultView.path })
-      : undefined;
+  const highlightedLines = useMemo(
+    () =>
+      resultView?.card === "read" && status !== "error"
+        ? highlightSyntax(resultView.content, { path: resultView.path })
+        : undefined,
+    [resultView, status],
+  );
   const limit = diffView ? 8 : 3;
   const folded = lines.length > limit + 1;
+  const windowStart =
+    expanded && searchLocation?.part === "body"
+      ? Math.max(0, Math.min(Math.max(0, lines.length - 400), searchLocation.line - 5))
+      : 0;
   const window = expanded ? 400 : folded ? limit : lines.length;
   const visible = useSmoothReveal(
     id ?? fallbackId,
-    Math.min(lines.length, window),
+    Math.min(lines.length - windowStart, window),
     status === "running" && !resultView && callView?.card === "diff" && !expanded && !replayed,
   );
-  const shown = lines.slice(0, visible);
+  const shown = lines.slice(windowStart, windowStart + visible);
   const duration =
     status !== "running" && name && startedAt !== undefined && endedAt !== undefined
       ? ` · ${fmtDuration(Math.max(0, endedAt - startedAt), locale)}`
       : "";
   const titleHidden =
+    titleStart > 0 ||
     hiddenLines > 0 ||
     clippedTitle.length < shownTitle.length ||
     header.split("\n").some((line) => Bun.stringWidth(`• ${line}${duration}`) > columns);
@@ -218,6 +234,7 @@ export function ToolCall({
       onMouseLeave={() => setHovered(false)}
     >
       <Tooltip
+        scrollAnchorId={id ? `tool-${id}-header` : undefined}
         content={titleHidden ? `${fullHeader}\n${metadata}` : undefined}
         disabled={imagesSuspended}
         width={hitWidth(`• ${header}${duration}`)}
@@ -249,11 +266,13 @@ export function ToolCall({
               (
               {jsonTitle ? (
                 <SyntaxHighlightedText text={clippedTitle} language="json" />
-              ) : path && pathOffset >= 0 ? (
+              ) : path && pathOffset >= titleStart ? (
                 <>
-                  {title.slice(0, pathOffset)}
-                  <ThemedText underline>{path.slice(0, 480 - pathOffset)}</ThemedText>
-                  {title.slice(pathOffset + path.length, 480)}
+                  {title.slice(titleStart, pathOffset)}
+                  <ThemedText underline>
+                    {path.slice(0, 480 - (pathOffset - titleStart))}
+                  </ThemedText>
+                  {title.slice(pathOffset + path.length, titleStart + 480)}
                 </>
               ) : (
                 clippedTitle
@@ -285,7 +304,10 @@ export function ToolCall({
             <ThemedBox>
               <ThemedText preserveWhitespace>{`${figures.result} `}</ThemedText>
               <SplitDiffView
-                rows={splitRows.slice(0, visible)}
+                rows={splitRows.slice(windowStart, windowStart + visible).map((row, index) => ({
+                  ...row,
+                  scrollAnchorId: id ? `tool-${id}-line-${windowStart + index}` : undefined,
+                }))}
                 width={Math.max(0, columns - 3)}
                 onToggle={toggle}
                 onPathClick={onPathClick}
@@ -294,7 +316,11 @@ export function ToolCall({
           ) : resultView?.card === "web" && status !== "error" ? (
             <ThemedBox>
               <ThemedText>{`${figures.result} `}</ThemedText>
-              <ThemedBox flexDirection="column" flexGrow={1}>
+              <ThemedBox
+                scrollAnchorId={id ? `tool-${id}-body` : undefined}
+                flexDirection="column"
+                flexGrow={1}
+              >
                 <Markdown text={shown.join("\n")} />
               </ThemedBox>
             </ThemedBox>
@@ -304,7 +330,8 @@ export function ToolCall({
               : shown
             ).map((line, index) => (
               <ThemedBox
-                key={index}
+                scrollAnchorId={id ? `tool-${id}-line-${windowStart + index}` : undefined}
+                key={windowStart + index}
                 width={hitWidth(
                   `${index === 0 ? `${figures.result} ` : name ? "   " : "  "}${line.trimEnd()}`,
                 )}
@@ -312,38 +339,42 @@ export function ToolCall({
               >
                 <ThemedText
                   color={
-                    diffLines?.[index]?.tone === "add"
+                    diffLines?.[windowStart + index]?.tone === "add"
                       ? "success"
-                      : diffLines?.[index]?.tone === "del"
+                      : diffLines?.[windowStart + index]?.tone === "del"
                         ? "error"
-                        : diffLines?.[index]?.tone === "dim"
+                        : diffLines?.[windowStart + index]?.tone === "dim"
                           ? "subtle"
                           : undefined
                   }
                   wrap="truncate"
                 >
                   {index === 0 ? `${figures.result} ` : name ? "   " : "  "}
-                  {diffLines?.[index]?.runs ? (
-                    <SyntaxHighlightedText runs={diffLines[index]!.runs} />
+                  {diffLines?.[windowStart + index]?.runs ? (
+                    <SyntaxHighlightedText runs={diffLines[windowStart + index]!.runs} />
                   ) : highlightedLines ? (
-                    <SyntaxHighlightedText runs={highlightedLines[index]} />
+                    <SyntaxHighlightedText runs={highlightedLines[windowStart + index]} />
                   ) : (
-                    <ThemedText underline={diffLines?.[index]?.tone === "path"}>{line}</ThemedText>
+                    <ThemedText underline={diffLines?.[windowStart + index]?.tone === "path"}>
+                      {line}
+                    </ThemedText>
                   )}
                 </ThemedText>
-                {onPathClick && diffLines?.[index]?.tone === "path" && diffLines[index]!.path && (
-                  <ThemedBox
-                    position="absolute"
-                    left={index === 0 ? 2 : name ? 3 : 2}
-                    top={0}
-                    width={Math.max(
-                      0,
-                      Math.min(columns - (index === 0 ? 2 : name ? 3 : 2), Bun.stringWidth(line)),
-                    )}
-                    height={1}
-                    onClick={() => onPathClick(diffLines[index]!.path!)}
-                  />
-                )}
+                {onPathClick &&
+                  diffLines?.[windowStart + index]?.tone === "path" &&
+                  diffLines[windowStart + index]!.path && (
+                    <ThemedBox
+                      position="absolute"
+                      left={index === 0 ? 2 : name ? 3 : 2}
+                      top={0}
+                      width={Math.max(
+                        0,
+                        Math.min(columns - (index === 0 ? 2 : name ? 3 : 2), Bun.stringWidth(line)),
+                      )}
+                      height={1}
+                      onClick={() => onPathClick(diffLines[windowStart + index]!.path!)}
+                    />
+                  )}
               </ThemedBox>
             ))
           )}
@@ -353,9 +384,11 @@ export function ToolCall({
               (resultView.shape === "paths"
                 ? resultView.paths.length
                 : resultView.matches.length) && (
-              <ThemedText
-                dimColor
-              >{`   ${t("tool.search-total", { count: resultView.total })}`}</ThemedText>
+              <ThemedBox scrollAnchorId={id ? `tool-${id}-verdict` : undefined}>
+                <ThemedText
+                  dimColor
+                >{`   ${t("tool.search-total", { count: resultView.total })}`}</ThemedText>
+              </ThemedBox>
             )}
           {folded && !expanded && (
             <ThemedBox
@@ -369,22 +402,30 @@ export function ToolCall({
           )}
           {expanded && lines.length > 400 && (
             <ThemedText dimColor={!hovered}>
-              {t("tool.window", { shown: 400, total: lines.length })}
+              {windowStart
+                ? t("tool.window-range", {
+                    start: windowStart + 1,
+                    end: Math.min(lines.length, windowStart + 400),
+                    total: lines.length,
+                  })
+                : t("tool.window", { shown: 400, total: lines.length })}
             </ThemedText>
           )}
         </ThemedBox>
       )}
-      {terminal?.exitCode !== undefined && (
-        <ThemedText
-          color={terminal.exitCode ? "error" : "subtle"}
-        >{`   ${t("tool.exit-code", { code: terminal.exitCode })}`}</ThemedText>
-      )}
-      {terminal?.signal && (
-        <ThemedText color="error">{`   ${t("tool.signal", { signal: terminal.signal })}`}</ThemedText>
-      )}
-      {terminal?.outputUnavailable && (
-        <ThemedText dimColor>{`   ${t("tool.output-unavailable")}`}</ThemedText>
-      )}
+      <ThemedBox scrollAnchorId={id ? `tool-${id}-verdict` : undefined} flexDirection="column">
+        {terminal?.exitCode !== undefined && (
+          <ThemedText
+            color={terminal.exitCode ? "error" : "subtle"}
+          >{`   ${t("tool.exit-code", { code: terminal.exitCode })}`}</ThemedText>
+        )}
+        {terminal?.signal && (
+          <ThemedText color="error">{`   ${t("tool.signal", { signal: terminal.signal })}`}</ThemedText>
+        )}
+        {terminal?.outputUnavailable && (
+          <ThemedText dimColor>{`   ${t("tool.output-unavailable")}`}</ThemedText>
+        )}
+      </ThemedBox>
       {!!images?.length && (
         <ImageGallery
           images={images}
@@ -395,18 +436,4 @@ export function ToolCall({
       )}
     </ThemedBox>
   );
-}
-
-function searchLines(view: Extract<ToolResultView, { card: "search" }>): string[] {
-  if (view.shape === "paths") return view.paths;
-  const groups = new Map<string, string[]>();
-  for (const match of view.matches) {
-    let lines = groups.get(match.path);
-    if (!lines) {
-      lines = [];
-      groups.set(match.path, lines);
-    }
-    lines.push(`${match.line === undefined ? "" : `${match.line}: `}${match.text}`);
-  }
-  return [...groups].flatMap(([path, lines]) => [path, ...lines]);
 }
