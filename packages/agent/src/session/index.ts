@@ -445,7 +445,13 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         settings: {
           retry: { enabled: false },
           progress: { partialIntervalMs: 0, outputIntervalMs: 0 },
-          compaction: { enabled: true },
+          get compaction() {
+            return {
+              enabled: true,
+              keepRecentTokens: Math.min(16000, Math.floor(model.contextWindow * 0.4)),
+              reserveTokens: Math.min(16384, Math.floor(model.contextWindow * 0.2)),
+            };
+          },
         },
         onReport: (error) => warn(String(error)),
       },
@@ -640,9 +646,12 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
       changed: () => {},
       assertAvailable,
-      warn: () => {},
-      // Public Session admissions and native onYield own Goal scheduling.
-      schedule: () => {},
+      warn: () => {
+        if (permissionMode === "ask")
+          warn(
+            "Goal continuation may wait for permissions in ask mode. Consider switching to auto-review.",
+          );
+      },
     });
     const title = createSessionTitle({
       title: metadata?.title,
@@ -824,6 +833,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         return result.continue === false
           ? { stop: result.stopReason ?? "Stopped by SubagentStart hook." }
           : undefined;
+      },
+      async afterRun(_request, child) {
+        await childResources.get(Number(child.id))?.jobs.clear(true);
       },
       async childAgent(type, child) {
         const selected = type.model
@@ -1250,9 +1262,19 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               }
               await prepareReminders(ctx);
               contextMessages = (await conversation.context(ctx)).messages;
+              await observation.flush();
+              custom(contextUsage(contextMessages, model.contextWindow, latestInputTokens()));
               return { messages: contextMessages };
             },
             afterResponse: async (message, api, ctx) => {
+              if (message.stopReason === "error" || message.stopReason === "aborted") {
+                goal.disarm();
+                await conversation.commit(async (tx) => {
+                  const activation = await tx.doc(GoalActivationDoc, conversation.id);
+                  activation.taskId = null;
+                  activation.requestId = null;
+                }, ctx);
+              }
               const measured = {
                 content: structuredClone(message.content),
                 rukieThinkingDurationMs: undefined as number | undefined,
@@ -1522,9 +1544,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         for (const event of events) {
           emit(event);
           if (
-            event.type === "run_start" ||
-            (event.type === "message_end" &&
-              event.messages.some((message) => message.role === "assistant"))
+            event.type === "message_end" &&
+            event.messages.some((message) => message.role === "assistant")
           )
             custom(
               contextUsage(
