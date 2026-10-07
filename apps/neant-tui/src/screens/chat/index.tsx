@@ -299,6 +299,21 @@ function Chat({
   }, [host]);
   const composer = useMemo(createComposerImages, [session]);
   const [composerCursor, setComposerCursor] = useState(0);
+  const composerCursorRef = useRef(0);
+  const dismissedComposerImage = useRef<{ token: string; start: number }>(undefined);
+  const [composerDismissed, setComposerDismissed] = useState(false);
+  const composerImageDismissed = (image: ReturnType<typeof composer.atCursor>) =>
+    !!image &&
+    dismissedComposerImage.current?.token === image.token &&
+    dismissedComposerImage.current.start === image.start;
+  const updateComposerCursor = (offset: number) => {
+    composerCursorRef.current = offset;
+    if (!composerImageDismissed(composer.atCursor(draft.current, offset))) {
+      dismissedComposerImage.current = undefined;
+      setComposerDismissed(false);
+    }
+    setComposerCursor(offset);
+  };
   const pasteOwner = useRef(true);
   const pasteEpoch = useRef(0);
   useLayoutEffect(
@@ -1203,7 +1218,24 @@ function Chat({
   );
   const todoMaxHeight = hasTodos ? panelHeights[0]! + goalRows : 1;
   const subagentMaxHeight = hasSubagents ? panelHeights[Number(hasTodos)]! : 1;
+  const caretImage = composer.atCursor(input, composerCursor);
+  const composerPreview =
+    !preview && !small && !(composerDismissed && composerImageDismissed(caretImage)) && caretImage;
   useInput((event) => {
+    const currentCaretImage = composer.atCursor(draft.current, composerCursorRef.current);
+    if (
+      event.type === "key" &&
+      event.key.name === "escape" &&
+      !previewRef.current &&
+      !small &&
+      currentCaretImage &&
+      !composerImageDismissed(currentCaretImage)
+    ) {
+      dismissedComposerImage.current = currentCaretImage;
+      setComposerDismissed(true);
+      handledInput.current.add(event);
+      return;
+    }
     const currentMcp = mcpPanel.getSnapshot();
     if (currentMcp && !interactions.getSnapshot()) {
       handledInput.current.add(event);
@@ -1823,8 +1855,6 @@ function Chat({
         onInterrupt={() => session.interruptSubagent(selectedSubagent.agentId)}
       />
     );
-  const caretImage = composer.atCursor(input, composerCursor);
-  const composerPreview = !preview && !small && caretImage;
   const promptReadOnly =
     !!mcp ||
     !!preview ||
@@ -2252,7 +2282,7 @@ function Chat({
                   )
                 );
               }}
-              onCursorChange={setComposerCursor}
+              onCursorChange={updateComposerCursor}
               highlightRanges={composer.ranges(input).map((range) => ({
                 ...range,
                 color: theme.suggestion,
