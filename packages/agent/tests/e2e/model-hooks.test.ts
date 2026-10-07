@@ -279,21 +279,21 @@ test.each(["prompt", "agent"] as const)(
       },
     });
     jest.useFakeTimers();
-    const run = session.run("hello", {
-      onEvent: (event) => {
-        events.push(event);
-      },
-    });
-    const signal = await entered.promise;
-    jest.advanceTimersByTime(19);
-    expect(signal.aborted).toBe(false);
-    jest.advanceTimersByTime(1);
     try {
+      const run = session.run("hello", {
+        onEvent: (event) => {
+          events.push(event);
+        },
+      });
+      const signal = await entered.promise;
+      jest.advanceTimersByTime(19);
+      expect(signal.aborted).toBe(false);
+      jest.advanceTimersByTime(1);
       expect(await run).toMatchObject({ text: "parent result" });
+      expect(signal.aborted).toBe(true);
     } finally {
       jest.useRealTimers();
     }
-    expect(signal.aborted).toBe(true);
     expect(events.filter((event) => event.type === "hook_warning")).toMatchObject([
       { error: { code: "hook-timeout", params: { timeout: "0.02" } } },
     ]);
@@ -564,16 +564,16 @@ test.each(["prompt", "agent"] as const)(
       },
     });
     jest.useFakeTimers();
-    const run = session.run("hello", {
-      onEvent: (event) => {
-        events.push(event);
-      },
-    });
-    await entered.promise;
-    jest.advanceTimersByTime(19);
-    expect(events.filter((event) => event.type === "hook_warning")).toHaveLength(0);
-    jest.advanceTimersByTime(1);
     try {
+      const run = session.run("hello", {
+        onEvent: (event) => {
+          events.push(event);
+        },
+      });
+      await entered.promise;
+      jest.advanceTimersByTime(19);
+      expect(events.filter((event) => event.type === "hook_warning")).toHaveLength(0);
+      jest.advanceTimersByTime(1);
       expect(await run).toMatchObject({ text: "parent result" });
     } finally {
       jest.useRealTimers();
