@@ -8,6 +8,8 @@ export interface TextInputProps extends TextStyle {
   /** Edits report the replaced UTF-16 range before the new value is applied. */
   onChange(value: string, edit?: { start: number; end: number; text: string }): void;
   onSubmit?(value: string): void;
+  /** Reports the snapped UTF-16 caret offset when it changes, including owner resets. */
+  onCursorChange?(offset: number): void;
   isActive?: boolean;
   maxLines?: number;
   columns?: number;
@@ -22,8 +24,13 @@ export interface TextInputProps extends TextStyle {
   onHistoryRecall?(): void;
   /** Intercept a paste; call insert to place accepted text at the live caret. */
   onPaste?(text: string, insert: (text: string) => void): void;
-  /** Ordered, non-overlapping UTF-16 ranges to paint with a distinct foreground. */
-  highlightRanges?: readonly { start: number; end: number; color: TextStyle["color"] }[];
+  /** Ordered, non-overlapping UTF-16 ranges with foreground and inverse emphasis. */
+  highlightRanges?: readonly {
+    start: number;
+    end: number;
+    color?: TextStyle["color"];
+    inverse?: boolean;
+  }[];
   /** Ordered UTF-16 ranges that form indivisible editing and wrapping units. */
   atomicRanges?: readonly { start: number; end: number }[];
   /** Let a screen reserve navigation keys for a completion menu. */
@@ -71,6 +78,7 @@ export function TextInput({
   value,
   onChange,
   onSubmit,
+  onCursorChange,
   isActive = true,
   maxLines,
   columns,
@@ -123,6 +131,12 @@ export function TextInput({
     editing.current.cursor = position;
     if (cursor !== position) setCursor(position);
   });
+  const reportedCursor = useRef<number>(undefined);
+  useLayoutEffect(() => {
+    if (reportedCursor.current === position) return;
+    reportedCursor.current = position;
+    onCursorChange?.(position);
+  }, [position, onCursorChange]);
   useInput(
     (event) => {
       const current = editing.current;
@@ -246,15 +260,16 @@ export function TextInput({
   ].sort((a, b) => a - b);
   const children: ReactNode[] = edges.slice(0, -1).map((start, index) => {
     const end = edges[index + 1]!;
-    const color = highlightRanges?.find(
-      (range) => range.start <= start && start < range.end,
-    )?.color;
+    const highlight = highlightRanges?.find((range) => range.start <= start && start < range.end);
     return createElement(
       "tui-text",
       {
         key: start,
-        color,
-        inverse: selection && selection.start <= start && start < selection.end ? true : undefined,
+        color: highlight?.color,
+        inverse:
+          selection && selection.start <= start && start < selection.end
+            ? true
+            : highlight?.inverse,
       },
       value.slice(start, end),
     );

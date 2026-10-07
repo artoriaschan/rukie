@@ -298,6 +298,7 @@ function Chat({
     };
   }, [host]);
   const composer = useMemo(createComposerImages, [session]);
+  const [composerCursor, setComposerCursor] = useState(0);
   const pasteOwner = useRef(true);
   const pasteEpoch = useRef(0);
   useLayoutEffect(
@@ -1822,6 +1823,8 @@ function Chat({
         onInterrupt={() => session.interruptSubagent(selectedSubagent.agentId)}
       />
     );
+  const caretImage = composer.atCursor(input, composerCursor);
+  const composerPreview = !preview && !small && caretImage;
   const promptReadOnly =
     !!mcp ||
     !!preview ||
@@ -1870,6 +1873,18 @@ function Chat({
         ))}
         {state.error && <Notice kind="error" text={state.error} />}
       </ScrollBox>
+      {composerPreview && (
+        <ImagePreview
+          key={`composer-${composerPreview.token}-${composerPreview.start}`}
+          passive
+          image={composerPreview.image}
+          index={composerPreview.index}
+          total={1}
+          width={columns}
+          height={bodyScroll?.height ?? Math.max(1, rows - promptHeight - footerHeight)}
+          locale={locale}
+        />
+      )}
       {preview && (
         <ImagePreview
           key={preview.index}
@@ -2237,9 +2252,12 @@ function Chat({
                   )
                 );
               }}
-              highlightRanges={composer
-                .ranges(input)
-                .map((range) => ({ ...range, color: theme.suggestion }))}
+              onCursorChange={setComposerCursor}
+              highlightRanges={composer.ranges(input).map((range) => ({
+                ...range,
+                color: theme.suggestion,
+                inverse: !!composerPreview && range.start === composerCursor,
+              }))}
               atomicRanges={composer.ranges(input)}
               onPaste={(text, insert) => {
                 if (mcpPanel.getSnapshot() || previewRef.current) return;

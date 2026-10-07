@@ -22,6 +22,7 @@ export function PromptInput({
   onPaste,
   highlightRanges,
   atomicRanges,
+  onCursorChange,
   suggestions,
 }: {
   value: string;
@@ -46,6 +47,7 @@ export function PromptInput({
   onPaste?: TextInputProps["onPaste"];
   highlightRanges?: TextInputProps["highlightRanges"];
   atomicRanges?: TextInputProps["atomicRanges"];
+  onCursorChange?: TextInputProps["onCursorChange"];
   suggestions?: ReactNode;
 }) {
   const [visibleTip, setVisibleTip] = useState(tip);
@@ -88,6 +90,7 @@ export function PromptInput({
             onPaste={onPaste}
             highlightRanges={highlightRanges}
             atomicRanges={atomicRanges}
+            onCursorChange={onCursorChange}
           />
         </Box>
       </Box>
