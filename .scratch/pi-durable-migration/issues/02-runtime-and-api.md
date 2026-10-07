@@ -11,12 +11,12 @@ Blocked by: 01
 
 ## Acceptance Criteria
 
-- [ ] 所有实际需要的 pi/Chord 直接和解析依赖精确对齐 1.0.4；bun.lock 同步；所有工作区移除 pi-agent-core 与旧私有入口。
-- [ ] Session 提交、流式观察、工具 execution、steer/follow-up、Run/Turn 结束和 Compaction 调用走原生 Harness；Session 不再修改旧 Agent.state 或自行运行模型循环。
-- [ ] 产品 Session 与 Conversation、Harness、Submission 的身份和生命周期映射清楚；公开调用方可区分父 Run idle、任务恢复与整次请求结算。
-- [ ] 模型/provider 设置、自定义模型、代理、凭据输入和 fake model helpers 已接入目标 pi-ai；原先支持的模型设置没有因接口升级消失。
-- [ ] 订阅使用 committed snapshot/events，处理批量增量和 snapshot 重置；没有重复消息、已关闭视图写入或 callback 自等待。
-- [ ] 每次接口变更更新受影响消费者与类型；目录依赖方向继续有效，Frontend 无具体执行器依赖，Agent Core 保持 locale-agnostic；coding-agent 的旧 pi devDependencies 按新测试 helpers 实际消费改为目标版本或移除，不误列为生产依赖。
+- [x] 所有实际需要的 pi/Chord 直接和解析依赖精确对齐 1.0.4；bun.lock 同步；所有工作区移除 pi-agent-core 与旧私有入口。
+- [x] Session 提交、流式观察、工具 execution、steer/follow-up、Run/Turn 结束和 Compaction 调用走原生 Harness；Session 不再修改旧 Agent.state 或自行运行模型循环。
+- [x] 产品 Session 与 Conversation、Harness、Submission 的身份和生命周期映射清楚；公开调用方可区分父 Run idle、任务恢复与整次请求结算。
+- [x] 模型/provider 设置、自定义模型、代理、凭据输入和 fake model helpers 已接入目标 pi-ai；原先支持的模型设置没有因接口升级消失。
+- [x] 订阅使用 committed snapshot/events，处理批量增量和 snapshot 重置；没有重复消息、已关闭视图写入或 callback 自等待。
+- [x] 每次接口变更更新受影响消费者与类型；目录依赖方向继续有效，Frontend 无具体执行器依赖，Agent Core 保持 locale-agnostic；coding-agent 的旧 pi devDependencies 按新测试 helpers 实际消费改为目标版本或移除，不误列为生产依赖。
 
 ## Testing Decisions
 
@@ -59,7 +59,13 @@ populated-directory fork 原子事务冲突已修复：子代理目录使用原�
 
 Compaction 后的公开 Transcript 现在使用公开 Storage 的 fork-aware 完整历史并按实际 Entry ID 顺序投影；模型上下文仍采用原生 active head。公开回归验证旧 Human/Read 回执保留、真实压缩 notice 位于此前消息之后、冷恢复顺序不变，以及下一次 provider context 不重新包含已压缩 Read 内容。Rewind 的目标分支仍按其原生 fork cutoff 投影，不显示已丢弃分支。
 
-仍需在 02 关闭前完成：受影响包剩余失败收敛与集成复核。03–08 保持依赖门禁，另行验证存储故障/并发恢复、挂起 Interaction 重授权、有限因果结算崩溃窗口、Goal 原子续轮以及 Frontend 回放和终端矩阵；不得从本票聚焦通过推断这些验收完成。
+2026-10-08 当前实施交付待集成复核：受影响包第二次检查的实际结果为 Agent 1481 pass / 3 fail（50.26 s，6490 assertions），coding-agent 1397 pass / 56 fail（89.42 s，10069 assertions）。这些结果仍是失败，未重复包检查，也未执行最终聚合检查。Agent 的三个失败已通过最小公开回归修正：完整 Transcript 中保留的 Todo 回执和权限请求新增 callView 的断言；审批断言使用请求副本，避免 matcher 改写真实 AbortSignal。coding-agent 的失败逐项定位为原生租约交接、原生背景任务与因果结算边界、受控模型目录、真实 provider context、以及可见终端裁剪下的测试同步；相应修复记录在实际提交中，不能从局部通过推断包检查整体通过。
+
+最新实际聚焦结果：Panel、Plan Review、Plan Mode、Session Recovery 与 Recovery History 共 49 pass / 317 assertions / 14.67 s；MCP 真实传输、原生 Goal、Context Usage 与 MCP 两个 TUI 文件共 74 pass / 449 assertions / 7.88 s；真实 CLI 78 pass / 449 assertions / 20.41 s；Jobs UI 32 pass / 176 assertions / 12.38 s。前台公开 waitForIdle 回归验证原生父 Run 已 idle 时仍等待主机回执提交完成，Run 与 Close 共 20 pass / 69 assertions / 2.42 s。上述修改后的当前 `rtk proxy bun run check:dev` 再次通过全部静态、tracker、docs 与边界检查。
+
+MCP 按原生 Run 边界刷新保留的配置/连接；普通 Human Run 在 admission 前保留可取消发现，内部 Goal/report 请求也刷新当前配置。原生 generation preparation 先于 beforeRequest，因此晚到的实际工具声明以公开 pi-ai 系统消息写入 committed `rukie.mcp-loadout`，再替换该次请求消息。公开真实服务测试验证首个 Goal provider context 已含 MCP 工具、下一轮配置移除立即作用于实际工具声明，并保留 manager 当前快照；不使用私有 prompt planner 或第二条执行路径。
+
+仍需在 02 关闭前完成：集成复核与 merger 在 integration 分支确认交付状态。03–08 保持依赖门禁，另行验证存储故障/并发恢复、挂起 Interaction 重授权、有限因果结算崩溃窗口、Goal 原子续轮以及 Frontend 回放和终端矩阵；不得从本票聚焦通过推断这些验收完成。
 
 ## Comments
 

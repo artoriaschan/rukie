@@ -1,9 +1,19 @@
 import { withHookTranscript, writeHookTranscript } from "../hooks/transcript.ts";
 import { randomUUID } from "node:crypto";
+import { declarationsEqual } from "@earendil-works/pi-ai/utils/transcript";
 import { join, resolve } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Context, JsonValue } from "@earendil-works/chord";
-import type { Api, Model, Models, Message, ToolCall, UserMessage } from "@earendil-works/pi-ai";
+import {
+  getCurrentTools,
+  toToolDeclaration,
+  type Api,
+  type Model,
+  type Models,
+  type Message,
+  type ToolCall,
+  type UserMessage,
+} from "@earendil-works/pi-ai";
 import {
   Harness,
   createRegistry,
@@ -2128,6 +2138,36 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         }, ctx);
       }
     }
+    let preparedMcpRequestId: string | undefined;
+    let preparedMcpRun: number | undefined;
+    const refreshMcp = async (signal?: AbortSignal) => {
+      const connectionOptions: Parameters<typeof mcp.connect>[0] = {
+        cwd,
+        homeDir: options.homeDir,
+        settings,
+        trustProjectMcp: options.trustProjectMcp,
+        interactive: !!options.onMcpAuth,
+        onMcpAuth: options.onMcpAuth,
+        onInteractionStart: notifyInteraction,
+        signal,
+        getOrigin: (conversationId) => {
+          const row = subagents.list().find((row) => row.conversationId === conversationId);
+          return row ? { agentId: row.id, description: row.description } : undefined;
+        },
+        onWarning: warn,
+        onEvent: (event) => {
+          custom(event);
+          mcpManager.adopt(mcp.snapshot());
+        },
+      };
+      for (const name of reconnectMcpServers) {
+        await mcp.connect({ ...connectionOptions, onlyServer: name, reconnect: true });
+        reconnectMcpServers.delete(name);
+      }
+      await mcp.connect(connectionOptions);
+      mcpManager.adopt(mcp.snapshot());
+      await rebuildTools(true);
+    };
     const rebuildTools = async (reportDiscovery = false) => {
       skills = await loadSkills();
       const base = createBaseTools({
@@ -2317,8 +2357,21 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           }),
           hook(GenerationTask, {
             beforeRequest: async (_request, api, ctx) => {
-              await processCompactionHooks(ctx);
               const live = await harness.snapshot(LiveDoc, conversation.id, ctx);
+              if (live?.run && preparedMcpRun !== Number(live.run.taskId)) {
+                const inputs = await Promise.all(
+                  live.run.inputs.map((id) => lease.storage.submission(id, ctx)),
+                );
+                // Human Runs already discover MCP before admission, including cancellation.
+                // Goal rounds and reporters refresh once at their native Run boundary.
+                if (
+                  preparedMcpRequestId === undefined ||
+                  !inputs.some((input) => input?.requestId === preparedMcpRequestId)
+                )
+                  await refreshMcp(ctx.abortSignal);
+                preparedMcpRun = Number(live.run.taskId);
+              }
+              await processCompactionHooks(ctx);
               if (live?.run) {
                 if (goal.view()?.armed)
                   await conversation.commit(async (tx) => {
@@ -2457,6 +2510,32 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 wrapup = undefined;
               }
               await prepareReminders(ctx);
+              const offered = getCurrentTools((await conversation.context(ctx)).messages);
+              const desired = tools.map(toToolDeclaration);
+              if (
+                offered.length !== desired.length ||
+                offered.some(
+                  (tool, index) => !desired[index] || !declarationsEqual(tool, desired[index]!),
+                )
+              )
+                // Native preparation precedes beforeRequest. A late MCP refresh must publish
+                // its actual positional loadout before replacing this request's messages.
+                await conversation.commit(
+                  (tx) =>
+                    tx.appendEntry(conversation.id, {
+                      kind: "rukie.mcp-loadout",
+                      model: [
+                        {
+                          role: "system",
+                          content: "",
+                          timestamp: Date.now(),
+                          toolsRemoved: offered.map((tool) => ({ name: tool.name })),
+                          toolsAdded: desired,
+                        },
+                      ],
+                    }),
+                  ctx,
+                );
               contextMessages = modelContextMessages(await conversation.context(ctx));
               await observation.flush();
               custom(contextUsage(contextMessages, model.contextWindow, latestInputTokens()));
@@ -3680,34 +3759,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           : () => {};
         try {
           await rebuildTools();
-          const connectionOptions: Parameters<typeof mcp.connect>[0] = {
-            cwd,
-            homeDir: options.homeDir,
-            settings,
-            trustProjectMcp: options.trustProjectMcp,
-            interactive: !!options.onMcpAuth,
-            onMcpAuth: options.onMcpAuth,
-            onInteractionStart: notifyInteraction,
-            signal: input.signal,
-            getOrigin: (conversationId) => {
-              const row = subagents.list().find((row) => row.conversationId === conversationId);
-              return row ? { agentId: row.id, description: row.description } : undefined;
-            },
-            onWarning: warn,
-            onEvent: (event) => {
-              custom(event);
-              mcpManager.adopt(mcp.snapshot());
-            },
-          };
-          for (const name of reconnectMcpServers) {
-            await mcp.connect({ ...connectionOptions, onlyServer: name, reconnect: true });
-            reconnectMcpServers.delete(name);
-          }
-          await mcp.connect(connectionOptions);
-          mcpManager.adopt(mcp.snapshot());
-          await rebuildTools(true);
+          await refreshMcp(input.signal);
           input.signal?.throwIfAborted();
           const requestId = `human:${randomUUID()}`;
+          preparedMcpRequestId = requestId;
           const submission = await submit(prompt, input.images, "reject", requestId, input.signal);
           const result = await resultFor(requestId, submission.id);
           await conversation.commit(
