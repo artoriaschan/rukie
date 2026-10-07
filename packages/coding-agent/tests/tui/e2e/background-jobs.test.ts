@@ -7,7 +7,7 @@ import { withAuxiliaryRequests } from "../helpers/auxiliary-model";
 import { dark } from "../../../src/ink/index.ts";
 
 test("background bash renders its card and idle job chip without consuming model output", async () => {
-  const app = await start(["--permission-mode", "full-access", "launch"], {
+  const app = await startWithClock(["--permission-mode", "full-access", "launch"], {
     columns: 120,
     rows: 32,
     env: { LANG: "en_US.UTF-8" },
@@ -185,6 +185,7 @@ test("stopping jobs remain counted until they settle", async () => {
     );
     expect(app.screen().at(-2)).toContain("● 1");
     app.calls[2]!.finish();
+    // TERM-resistant child escalation uses real process time; the parent clock cannot drive it.
     await app.waitFor(() => /✗ 任务：bash-1 bash \S+ 已停止/.test(screen()), 4000);
     expect(app.screen().at(-2)).not.toContain("● 1");
     expect(screen()).toContain("后台任务已停止");
@@ -256,7 +257,7 @@ test("resume never attaches a historical bash job result to a new job with the s
 });
 
 test("job output and streaming bursts preserve reading position, draft, and unread through resize", async () => {
-  const app = await start(["--permission-mode", "full-access", "history"], {
+  const app = await startWithClock(["--permission-mode", "full-access", "history"], {
     columns: 100,
     rows: 24,
     env: { LANG: "en_US.UTF-8" },
