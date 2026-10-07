@@ -65,9 +65,9 @@ export const pendingClears = new WeakMap<DOMElement, Rectangle[]>()
  * earlier in tree order), so their blits from prevScreen would restore
  * the overlay's pixels. Normal-flow removals are already handled by
  * hasRemovedChild at the parent level; only absolute positioning paints
- * cross-subtree. Reset at the start of each render.
+ * cross-subtree. Consumed only by that root's next render.
  */
-let absoluteNodeRemoved = false
+const absoluteRemovalRoots = new WeakSet<DOMElement>()
 
 /**
  * Register a removed child's rect for clearing on the next render, and
@@ -88,16 +88,18 @@ export function addPendingClear(
     pendingClears.set(parent, [rect])
   }
   if (isAbsolute) {
-    absoluteNodeRemoved = true
+    let root = parent
+    while (root.parentNode) root = root.parentNode
+    absoluteRemovalRoots.add(root)
   }
 }
 
 /**
- * Read and clear the absolute-removal flag set by addPendingClear.
+ * Read and clear this root's absolute-removal flag set by addPendingClear.
  * @returns whether an absolutely positioned node was removed since the last render.
  */
-export function consumeAbsoluteRemovedFlag(): boolean {
-  const had = absoluteNodeRemoved
-  absoluteNodeRemoved = false
+export function consumeAbsoluteRemovedFlag(root: DOMElement): boolean {
+  const had = absoluteRemovalRoots.has(root)
+  absoluteRemovalRoots.delete(root)
   return had
 }

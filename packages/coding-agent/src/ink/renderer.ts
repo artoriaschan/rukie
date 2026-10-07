@@ -171,7 +171,7 @@ export default function createRenderer(
     // earlier in tree order), so their blits would restore the removed
     // node's pixels. hasRemovedChild only shields direct siblings.
     // Normal-flow removals don't paint cross-subtree and are fine.
-    const absoluteRemoved = consumeAbsoluteRemovedFlag()
+    const absoluteRemoved = consumeAbsoluteRemovedFlag(node)
     renderNodeToOutput(node, output, {
       prevScreen:
         absoluteRemoved || options.prevFrameContaminated
