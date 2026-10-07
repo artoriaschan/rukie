@@ -1,5 +1,11 @@
+import { modelStream, withModelStream } from "../helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
-import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import {
+  fauxAssistantMessage,
+  fauxToolCall,
+  createAssistantMessageEventStream,
+  getCurrentTools,
+} from "@earendil-works/pi-ai";
 import { createSession } from "../../src";
 import { fakeModel } from "../helpers/fake-model";
 import { tempDirs } from "../helpers/temp-dirs";
@@ -54,3 +60,97 @@ test("read-only child snapshots preserve actual model, usage, outcome and ordere
     await dirs.cleanup();
   }
 });
+
+test.each([123456, 9_999_999_999_999])(
+  "committed child continuation retains streamed output with colliding timestamp %s",
+  async (timestamp) => {
+    const dirs = await tempDirs();
+    let id = "";
+    const entered = Promise.withResolvers<void>();
+    const partialCommitted = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const prior = fauxAssistantMessage("saved prior marker");
+    prior.timestamp = timestamp;
+    const fake = fakeModel([
+      fauxAssistantMessage(
+        fauxToolCall("subagent", {
+          description: "Same clock",
+          prompt: "prior child",
+          run_in_background: false,
+        }),
+        { stopReason: "toolUse" },
+      ),
+      prior,
+      fauxAssistantMessage("parent finished"),
+      () =>
+        fauxAssistantMessage(
+          fauxToolCall("send_message", { agent_id: id, message: "current child" }),
+          { stopReason: "toolUse" },
+        ),
+      fauxAssistantMessage("parent idle"),
+      fauxAssistantMessage("parent report finished"),
+    ]);
+    const original = modelStream(fake.models);
+    fake.models = withModelStream(fake.models, (model, context, options) => {
+      if (
+        !getCurrentTools(context.messages).some((tool) => tool.name === "subagent") &&
+        JSON.stringify(
+          context.messages.findLast((message) => message.role === "user")?.content,
+        ).includes("current child")
+      ) {
+        const stream = createAssistantMessageEventStream();
+        const partial = fauxAssistantMessage("active current child marker");
+        partial.timestamp = timestamp;
+        stream.push({ type: "start", partial });
+        stream.push({
+          type: "text_delta",
+          contentIndex: 0,
+          delta: "active current child marker",
+          partial,
+        });
+        entered.resolve();
+        void release.promise.then(() => {
+          stream.push({ type: "done", reason: "stop", message: partial });
+          stream.end(partial);
+        });
+        return stream;
+      }
+      return original(model, context, options);
+    });
+    const parent = await createSession({ ...dirs, ...fake });
+    const off = parent.subscribe((event) => {
+      if (
+        event.type === "subagent_event" &&
+        JSON.stringify(event.event).includes("active current child marker")
+      )
+        partialCommitted.resolve();
+    });
+    try {
+      await parent.run("delegate");
+      const state = parent.toolState("subagents");
+      if (!Array.isArray(state) || !state[0] || typeof state[0].id !== "string")
+        throw new Error("Child identity missing");
+      id = state[0].id;
+      await parent.run("continue");
+      await entered.promise;
+      await partialCommitted.promise;
+      expect(JSON.stringify((await parent.readSubagent(id))?.generation?.message)).toContain(
+        "active current child marker",
+      );
+      release.resolve();
+      await parent.waitForRequest(parent.currentRequestId!);
+      const committed = await parent.readSubagent(id);
+      expect(committed?.run?.outcome).toBe("completed");
+      expect(JSON.stringify(committed?.messages)).toContain("active current child marker");
+      expect(JSON.stringify(committed?.historyMessages)).toContain("saved prior marker");
+      expect(
+        committed?.messages.findLast((message) => message.role === "assistant")?.timestamp,
+      ).toBe(timestamp);
+    } finally {
+      off();
+      release.resolve();
+      await parent.close();
+      await dirs.cleanup();
+    }
+  },
+);
