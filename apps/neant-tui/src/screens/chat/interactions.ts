@@ -391,9 +391,11 @@ export function createInteractions(
                 busy: false,
                 note: t(
                   focus === 0
-                    ? success
-                      ? "mcp.auth.copied"
-                      : "mcp.auth.copy-failed"
+                    ? success === "sent"
+                      ? "selection.sent"
+                      : success
+                        ? "mcp.auth.copied"
+                        : "mcp.auth.copy-failed"
                     : success
                       ? "mcp.auth.reopened"
                       : "mcp.auth.open-failed",

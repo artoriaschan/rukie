@@ -18,6 +18,7 @@ import {
 import { createScreen } from "../screen";
 import { ClockProvider } from "../hooks/animation-frame";
 import { createGraphics } from "../graphics";
+import { createSelection } from "../selection";
 import { createHover } from "./hover";
 
 export interface RenderOptions extends TerminalIO {
@@ -30,6 +31,7 @@ interface Container {
   active: boolean;
   screen: ReturnType<typeof createScreen>;
   hover: ReturnType<typeof createHover>;
+  selection: ReturnType<typeof createSelection>;
   graphics: ReturnType<typeof createGraphics>;
   graphicsState(): ReturnType<ReturnType<typeof createTerminalSession>["getGraphics"]>;
   completed: WeakSet<HostNode>;
@@ -157,11 +159,13 @@ const reconciler = Reconciler({
 
 /** Mount synchronously; later commits coalesce into at most one frame every 16ms. */
 export function render(element: ReactNode, options: RenderOptions) {
+  const selection = createSelection(() => schedulePaint(container));
   const container: Container = {
     tree: createNode("tui-box", { flexDirection: "column" }),
     options,
     active: true,
-    screen: createScreen(options.fullscreen),
+    screen: createScreen(options.fullscreen, selection),
+    selection,
     hover: createHover(),
     graphics: createGraphics((text) => options.stdout.write(text)),
     graphicsState: () => terminal.getGraphics(),
@@ -180,11 +184,13 @@ export function render(element: ReactNode, options: RenderOptions) {
     () => {
       if (!container.active) return;
       container.hover.clear();
+      selection.clear();
       container.screen.invalidate();
       schedulePaint(container);
     },
     () => {
       container.active = false;
+      selection.dispose();
       container.graphics.clear();
       clearTimeout(container.timer);
       container.pending = [];
@@ -197,9 +203,37 @@ export function render(element: ReactNode, options: RenderOptions) {
     options.fullscreen,
   );
   terminal.subscribeInput((event) => {
-    if (event.type === "move") container.hover.move(event.x, event.y);
-    else if (event.type === "mouse") container.hover[event.action](event.x, event.y, event.button);
-    else if (event.type === "wheel") container.hover.wheel(event);
+    if (event.type === "move") {
+      if (event.button === 0 && selection.move(event.x, event.y)) container.hover.cancelPress();
+      container.hover.move(event.x, event.y);
+    } else if (event.type === "mouse") {
+      if (event.button === 0 && event.action === "press")
+        selection.press(event.x, event.y, event.shift || event.alt || event.ctrl);
+      if (event.button === 0 && event.action === "release" && selection.release())
+        container.hover.cancelPress();
+      container.hover[event.action](event.x, event.y, event.button);
+    } else if (event.type === "wheel") {
+      selection.clear();
+      container.hover.cancelPress();
+      container.hover.wheel(event);
+    } else if (event.type === "focus" && !event.focused) {
+      selection.clear();
+      container.hover.cancelPress();
+    } else if (event.type === "key" && selection.hasSelection()) {
+      if (
+        event.key.shift &&
+        !event.key.ctrl &&
+        !event.key.alt &&
+        selection.extend(event.key.name)
+      ) {
+        event.handled = true;
+        container.hover.cancelPress();
+        return;
+      }
+      selection.clear();
+      container.hover.cancelPress();
+      if (event.key.name === "escape") event.handled = true;
+    }
   });
   const fail = container.onError;
   const root = reconciler.createContainer(
@@ -243,6 +277,7 @@ export function render(element: ReactNode, options: RenderOptions) {
       if (unmounted) return;
       unmounted = true;
       container.active = false;
+      selection.dispose();
       clearTimeout(container.timer);
       container.pending = [];
       try {

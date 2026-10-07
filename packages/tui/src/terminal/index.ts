@@ -119,7 +119,10 @@ export function createTerminalSession(
             focused = event.focused;
             focusListeners.forEach((listener) => listener());
           }
-          inputs.forEach((listener) => listener(event));
+          for (const listener of inputs) {
+            listener(event);
+            if (event.handled) break;
+          }
         }),
       control,
     );

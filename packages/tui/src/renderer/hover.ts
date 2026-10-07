@@ -142,6 +142,9 @@ export function createHover() {
       if (target.atomic !== undefined) target.node.props.onAtomicRangeClick?.(target.atomic);
       else target.node.props.onClick?.();
     },
+    cancelPress() {
+      pressed = undefined;
+    },
     clear() {
       rectangles = [];
       position = undefined;

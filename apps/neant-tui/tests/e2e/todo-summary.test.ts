@@ -26,11 +26,13 @@ test.each(["zh", "en"] as const)(
       await app.waitFor(() => app.calls.length === 2);
       app.calls[1]!.delta("after card");
       app.calls[1]!.finish();
-      await app.waitFor(() => !app.isWorking() && app.screen().includes("⏺ after card"));
+      await app.waitFor(
+        () => !app.isWorking() && app.screen().some((line) => line.endsWith(" after card")),
+      );
       const lines = app.allLines();
       expect(lines.join("\n")).not.toContain(locale === "zh" ? "• 待办清单" : "• TodoWrite");
       expect(lines.join("\n")).not.toContain('"todos":');
-      expect(lines).toContain("⏺ after card");
+      expect(lines).toContain((process.platform === "darwin" ? "⏺" : "●") + " after card");
     } finally {
       await app.cleanup();
     }
@@ -135,7 +137,7 @@ test.each(["zh", "en"] as const)(
         line.startsWith(locale === "zh" ? "✗ 待办(" : "✗ Todos("),
       );
       expect(errors).toHaveLength(2);
-      expect(lines).toContain('⎿ Invalid todos: duplicate content "repeat".');
+      expect(lines).toContain(' ⎿ Invalid todos: duplicate content "repeat".');
       expect(lines.join("\n")).toContain("Validation failed");
       expect(lines.join("\n")).not.toContain("todos ✓");
       expect(lines).not.toContain(locale === "zh" ? "• 待办清单" : "• TodoWrite");
@@ -146,7 +148,7 @@ test.each(["zh", "en"] as const)(
         expect(
           replayLines.filter((line) => line.startsWith(locale === "zh" ? "✗ 待办(" : "✗ Todos(")),
         ).toEqual(errors);
-        expect(replayLines).toContain('⎿ Invalid todos: duplicate content "repeat".');
+        expect(replayLines).toContain(' ⎿ Invalid todos: duplicate content "repeat".');
         expect(replayLines.join("\n")).toContain("Validation failed");
         expect(replayLines.join("\n")).not.toContain("todos ✓");
       } finally {

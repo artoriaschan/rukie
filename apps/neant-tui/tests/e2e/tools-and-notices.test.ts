@@ -83,7 +83,7 @@ test.each([
 });
 
 function runningTools(app: Awaited<ReturnType<typeof start>>) {
-  return app.screen().filter((line) => /^(?:[●⏺] |  )(写入|执行)\(/.test(line));
+  return app.screen().filter((line) => /^(?:[●⏺] |  )(?:写入 |执行\()/.test(line));
 }
 
 test("a tool animates its localized header then remains once in the scrollable body", async () => {
@@ -97,22 +97,22 @@ test("a tool animates its localized header then remains once in the scrollable b
       path: "written.txt",
       content: "first line\n" + "long content ".repeat(30) + "hidden tail",
     });
-    await app.waitFor(() => runningTools(app).some((line) => line.includes("写入(")));
-    const first = app.screen().find((line) => line.includes("写入(written.txt)"))!;
+    await app.waitFor(() => runningTools(app).some((line) => line.includes("写入 ")));
+    const first = app.screen().find((line) => line.includes("写入 written.txt"))!;
     expect(first).toContain("written.txt");
-    expect(app.screen().filter((line) => line.includes("写入(written.txt)"))).toHaveLength(1);
+    expect(app.screen().filter((line) => line.includes("写入 written.txt"))).toHaveLength(1);
     expect(app.screen().join("\n")).not.toContain("hidden tail");
     await app.waitFor(() =>
-      app.screen().some((line) => line.includes("写入(written.txt)") && line !== first),
+      app.screen().some((line) => line.includes("写入 written.txt") && line !== first),
     );
     permission.resolve("allow");
     await app.waitFor(() => app.calls.length === 2);
     app.calls[1]!.delta("file written");
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
-    expect(app.allLines().filter((line) => line.startsWith("• 写入("))).toHaveLength(1);
+    expect(app.allLines().filter((line) => line.startsWith("• 写入 "))).toHaveLength(1);
     expect(app.allLines().join("\n")).toContain("+first line");
-    expect(runningTools(app).some((line) => line.includes("写入("))).toBe(false);
+    expect(runningTools(app).some((line) => line.includes("写入 "))).toBe(false);
     app.stdin.write("next\r");
     await app.waitFor(() => app.calls.length === 3);
     app.calls[2]!.delta("next reply\n".repeat(12));
@@ -125,15 +125,15 @@ test("a tool animates its localized header then remains once in the scrollable b
           .length === 12 && !app.isWorking(),
     );
     app.stdin.write("\x1b[5~");
-    await app.waitFor(() => app.allLines().some((line) => line.startsWith("• 写入(")));
-    expect(app.allLines().filter((line) => line.startsWith("• 写入("))).toHaveLength(1);
+    await app.waitFor(() => app.allLines().some((line) => line.startsWith("• 写入 ")));
+    expect(app.allLines().filter((line) => line.startsWith("• 写入 "))).toHaveLength(1);
     expect(app.terminal.buffer.active.baseY).toBe(0);
     app.stdin.write("\x1b[5~");
     await app.waitFor(() => app.screen().includes("❯ write a file"));
     // The return button takes two rows from the transcript viewport while reading above the bottom.
     app.stdin.write("\x1b[<65;5;2M");
-    await app.waitFor(() => app.screen().some((line) => line.startsWith("• 写入(")));
-    expect(app.screen().filter((line) => line.startsWith("• 写入("))).toHaveLength(1);
+    await app.waitFor(() => app.screen().some((line) => line.startsWith("• 写入 ")));
+    expect(app.screen().filter((line) => line.startsWith("• 写入 "))).toHaveLength(1);
   } finally {
     permission.resolve("deny");
     await app.cleanup();
@@ -174,7 +174,7 @@ test("parallel calls of the same tool finish independently and show only the fir
     await app.waitFor(() => app.allLines().some((line) => line.startsWith("✗ 执行(")));
     expect(active()).toHaveLength(1);
     expect(active()[0]).toContain("first.release");
-    expect(app.allLines()).toContain("⎿ first failure");
+    expect(app.allLines()).toContain(" ⎿ first failure");
     expect(app.allLines()).toContain("   second failure");
     expect(app.allLines()).toContain("   third failure");
     expect(app.allLines()).not.toContain("fourth-hidden");
@@ -192,7 +192,7 @@ test("parallel calls of the same tool finish independently and show only the fir
     expect(completed[0]).toContain("second.release");
     expect(completed[1]).toContain("• 执行(");
     expect(completed[1]).toContain("first.release");
-    expect(app.allLines()).toContain("⎿ hidden-success-output");
+    expect(app.allLines()).toContain(" ⎿ hidden-success-output");
   } finally {
     await Promise.all([
       Bun.write(join(root, "first.release"), ""),
@@ -253,7 +253,7 @@ test.each([
     const app = await start(["read the file"], {
       env: { LANG: locale },
       prepare: async (root) => {
-        await Bun.write(join(root, "large.txt"), "tool output ".repeat(2500));
+        await Bun.write(join(root, "large.txt"), "tool output\n".repeat(2500));
       },
     });
     // Keep tool declarations below the trigger; the large read starts compaction.
@@ -292,7 +292,7 @@ test.each([
       expect(app.allLines().filter((line) => line.startsWith(prefix))).toHaveLength(1);
       expect(app.allLines().join("\n")).not.toContain("private-compaction-summary");
       expect(app.allLines().join("\n")).not.toContain("second summary line");
-      expect(app.allLines().join("\n")).toContain("⎿ tool output");
+      expect(app.allLines().join("\n")).toContain(" ⎿ tool output");
     } finally {
       await app.cleanup();
     }

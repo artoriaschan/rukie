@@ -9,6 +9,7 @@ import { PlanReviewRow } from "../../components/plan-review/plan-review-row";
 import { showsToolCard } from "./conversation";
 import { ThinkingRow } from "../../components/thinking-row";
 import { realpath } from "node:fs/promises";
+import { statSync } from "node:fs";
 import { relative, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import {
@@ -365,7 +366,7 @@ function Chat({
   useEffect(() => () => clearTimeout(modelImageNoticeTimer.current), []);
   const state = useSyncExternalStore(conversation.subscribe, conversation.getSnapshot);
   const promptNotice = imageNotice ?? state.notification;
-  type FileActions = { path: string; focus: number };
+  type FileActions = { path: string; focus: number; directory: boolean };
   const [fileActions, setFileActions] = useState<FileActions>();
   const fileActionsRef = useRef<FileActions | undefined>(undefined);
   const showFileActions = (next: FileActions | undefined) => {
@@ -375,7 +376,14 @@ function Chat({
   };
   const openFileActions = (path: string) => {
     if (interactions.getSnapshot() || previewRef.current) return;
-    showFileActions({ path: resolve(cwd, path), focus: 0 });
+    const absolute = resolve(cwd, path);
+    let directory = false;
+    try {
+      directory = statSync(absolute, { throwIfNoEntry: false })?.isDirectory() ?? false;
+    } catch {
+      /* Host actions report inaccessible paths. */
+    }
+    showFileActions({ path: absolute, focus: 0, directory });
   };
   const pickFileAction = async (index: number) => {
     const menu = fileActionsRef.current;
@@ -384,8 +392,12 @@ function Chat({
     try {
       if (index === 0) await host.openExternal(menu.path);
       else if (index === 1) await host.reveal(menu.path);
-      else if (!(await host.writeClipboard(menu.path)))
-        throw new Error(t("file-actions.copy-unavailable"));
+      else {
+        const copied = await host.writeClipboard(menu.path);
+        if (!copied) throw new Error(t("file-actions.copy-unavailable"));
+        if (copied === "sent" && pasteOwner.current)
+          conversation.notify(t("selection.sent"), "info");
+      }
     } catch (error) {
       if (pasteOwner.current)
         conversation.notify(t("file-actions.failed", { error: formatError(error, t) }), "error");
@@ -2148,6 +2160,22 @@ function Chat({
   return (
     <Box flexDirection="column" height={rows}>
       <ScrollBox
+        textSelection={
+          small || pendingInteraction || preview || imagePreviewBlocked()
+            ? false
+            : {
+                key: session.id,
+                backgroundColor: theme.badgeBackground,
+                onCopy: (text) => host.writeClipboard(text),
+                onResult: (result) => {
+                  if (pasteOwner.current)
+                    notifyImage(
+                      t(`selection.${result}`),
+                      result === "unavailable" || result === "stale",
+                    );
+                },
+              }
+        }
         textSearch={
           expanded && transcriptSearch.query
             ? {

@@ -4,6 +4,7 @@ import { createTuiI18n } from "../i18n";
 
 export function FileActionsPanel({
   path,
+  directory,
   focus,
   columns,
   rows,
@@ -11,6 +12,7 @@ export function FileActionsPanel({
   onPick,
 }: {
   path: string;
+  directory: boolean;
   focus: number;
   columns: number;
   rows: number;
@@ -43,7 +45,11 @@ export function FileActionsPanel({
           {Bun.stripANSI(path).replace(/[\r\n\t]/g, " ")}
         </ThemedText>
       )}
-      {["file-actions.open", "file-actions.reveal", "file-actions.copy"]
+      {[
+        directory ? "file-actions.open-folder" : "file-actions.open",
+        "file-actions.reveal",
+        "file-actions.copy",
+      ]
         .slice(start, start + count)
         .map((key, offset) => {
           const index = start + offset;
@@ -54,7 +60,7 @@ export function FileActionsPanel({
                 bold={focus === index}
                 wrap="truncate"
               >
-                {`${focus === index ? "❯" : " "} ${index + 1} ${t(key as "file-actions.open" | "file-actions.reveal" | "file-actions.copy")}`}
+                {`${focus === index ? "❯" : " "} ${index + 1} ${t(key as "file-actions.open" | "file-actions.open-folder" | "file-actions.reveal" | "file-actions.copy")}`}
               </ThemedText>
             </ThemedBox>
           );

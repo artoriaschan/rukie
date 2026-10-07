@@ -3,6 +3,7 @@ import { createSession } from "@neant/agent";
 import { withAuxiliaryRequests } from "../helpers/auxiliary-model";
 import { expect, test } from "bun:test";
 import { start } from "../helpers/app";
+import { startWithClock } from "../helpers/clock-app";
 
 async function outputCard(app: Awaited<ReturnType<typeof start>>, text: string) {
   await app.waitFor(() => app.calls.length === 1);
@@ -26,12 +27,16 @@ test("cards expand individually, ignore blank clicks, and union with transcript 
     await app.flush();
     expect(app.screen().join("\n")).toContain("+2 lines");
     app.stdin.write(`\x1b[<35;4;${header() + 1}M`);
-    await app.waitFor(() => app.screen().some((line) => line.startsWith("▾ Bash(")));
+    await app.waitFor(() =>
+      app.screen().some((line) => line.startsWith("• Bash(") && line.endsWith("▾")),
+    );
     const cell = app.terminal.buffer.active.getLine(header())!.getCell(79)!;
     expect(cell.getBgColor()).toBe(0x2e3440);
     click(app, 3, header());
     await app.waitFor(() => app.screen().includes("   fifth"));
-    expect(app.screen().some((line) => line.startsWith("▴ Bash("))).toBe(true);
+    expect(app.screen().some((line) => line.startsWith("• Bash(") && line.endsWith("▴"))).toBe(
+      true,
+    );
     app.stdin.write("\x0f");
     await app.flush();
     click(app, 3, header());
@@ -87,7 +92,7 @@ test("expanded output shows a bounded 400-line window and fits after small-termi
 });
 
 test("expansion preserves an earlier reading position and bottom following", async () => {
-  const app = await start(["--yolo", "reading anchor"], { rows: 40, env: { LANG: "en" } });
+  const app = await startWithClock(["--yolo", "reading anchor"], { rows: 40, env: { LANG: "en" } });
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.tool("bash", {
