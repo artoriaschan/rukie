@@ -101,7 +101,7 @@ test("context reports and context_usage share the latest response input includin
     expect(session.messages).toEqual(before);
     expect(events).toHaveLength(count);
     expect(events.find((event) => event.type === "context_usage")?.used).toBe(1244);
-    session.interruptRun();
+    await session.abort();
     await expect(run).rejects.toThrow();
   } finally {
     await session.close();

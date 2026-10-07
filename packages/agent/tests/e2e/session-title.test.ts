@@ -477,7 +477,7 @@ test("interrupting and disposing a Run while renaming preserves the fixed title"
     const run = session.run("Interrupted task").catch((error) => error);
     await primary.started;
     const rename = session.rename("Saved through interruption");
-    session.interruptRun();
+    await session.abort();
     await rename;
     expect(await run).toBeInstanceOf(Error);
     await session.close();
