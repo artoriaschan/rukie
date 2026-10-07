@@ -167,6 +167,8 @@ MCP 用户配置始终参与发现；项目 `.mcp.json` 在项目受信任或用
 
 这些规则控制配置来源和工具授权，不提供进程或文件系统沙箱。所有 frontend 与工具扩展都要保持凭据来源、显式拒绝、取消及执行目标的一致性。
 
+Agent Core 在 assistant 流式事件中测量已观察到的思考阶段：从首次思考内容到首次正文 token、工具调用或 assistant 消息结束。耗时随 native assistant 消息写入 Transcript，Frontend 通过 [`assistantThinkingDuration`](../packages/agent/src/session/thinking.ts) 读取已校验的事实；耗时 metadata 在模型边界剥离，不作为 prompt 内容。Session Resume 保留正常、中断及错误消息的已提交思考与耗时。该值表示客户端观察到的阶段墙钟耗时；没有观察到阶段或没有 provider 思考 token 计数时，Frontend 省略对应信息，不将总输出 token 当作思考 token。
+
 ## 新行为的落点
 
 | 需求                       | 所有者与接入方式                                                                                                                                                                                                                            |

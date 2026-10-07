@@ -1,3 +1,4 @@
+import { createThinkingTiming } from "./thinking.ts";
 import { presentCall, presentResult } from "../tools/presentation.ts";
 import type { ToolCallView, ToolResultView } from "@neant/shared";
 import { createJobs, jobStatus } from "../tools/jobs/index.ts";
@@ -2364,7 +2365,16 @@ async function createSessionInternal(
               fileTracking.finishRequest();
             }
           };
+          const thinkingTiming = createThinkingTiming(() =>
+            (options.now ?? (() => new Date()))().getTime(),
+          );
           unsubscribe = agent.subscribe(async (event) => {
+            if (event.type === "message_start" && event.message.role === "assistant")
+              thinkingTiming.start();
+            if (event.type === "message_update" && event.message.role === "assistant")
+              thinkingTiming.update(event.message);
+            if (event.type === "message_end" && event.message.role === "assistant")
+              thinkingTiming.settle(event.message);
             if ("message" in event && isHookRequestStop(event.message)) {
               if (event.type === "message_end")
                 agent.state.messages = agent.state.messages.filter(
