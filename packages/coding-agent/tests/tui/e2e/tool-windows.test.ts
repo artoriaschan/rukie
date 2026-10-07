@@ -141,7 +141,7 @@ test("resumed truncated reads disclose retained bounds at the last window withou
         join(root, "large.txt"),
         Array.from({ length: 2200 }, (_, i) => `source-${i + 1}`).join("\n"),
       );
-      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
       faux.setResponses([
         fauxAssistantMessage(fauxToolCall("read", { path: "large.txt" }), {
           stopReason: "toolUse",
@@ -293,7 +293,7 @@ test("resumed web windows preserve retained source and disclose upstream truncat
     rows: 450,
     env: { LANG: "en" },
     prepare: async (root) => {
-      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
       faux.setResponses([
         fauxAssistantMessage(
           fauxToolCall("web_fetch", { url: `http://site.test:${server.port}/docs` }),

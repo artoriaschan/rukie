@@ -134,7 +134,7 @@ test("a fresh one-shot response reveals while resumed assistant Markdown paints 
     columns: 80,
     rows: 40,
     prepare: async (root) => {
-      const model = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+      const model = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
       model.setResponses([fauxAssistantMessage(body)]);
       const session = await createSession({
         cwd: root,

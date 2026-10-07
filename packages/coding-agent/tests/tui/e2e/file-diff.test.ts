@@ -40,7 +40,7 @@ test("resumed diffs retain file paths and separated hunks", async () => {
     rows: 48,
     env: { LANG: "en_US.UTF-8" },
     prepare: async (root) => {
-      const model = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+      const model = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
       await Bun.write(join(root, "first.txt"), `before\n${"context\n".repeat(12)}last\n`);
       model.setResponses([
         fauxAssistantMessage(

@@ -137,7 +137,7 @@ test("resumed thinking paints its full Markdown immediately with saved duration 
         model: fauxProvider({
           api: "faux",
           provider: "faux",
-          tokensPerSecond: Infinity,
+          tokensPerSecond: 0,
         }).getModel(),
         now: () => new Date(clock),
         models: auxiliaryModels(() => {

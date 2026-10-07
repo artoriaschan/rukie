@@ -39,7 +39,7 @@ export function auxiliaryModels(
   };
   const models = createModels();
   models.setProvider({
-    ...fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity }).provider,
+    ...fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 }).provider,
     streamSimple,
   });
   return models;

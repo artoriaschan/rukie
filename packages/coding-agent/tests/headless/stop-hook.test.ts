@@ -18,7 +18,7 @@ test.each(["text", "stream-json"])(
   "%s includes Stop continuation feedback and the final result",
   async (format) => {
     const root = await mkdtemp(join(tmpdir(), "rukie-cli-stop-"));
-    const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+    const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
     faux.setResponses(
       Array.from({ length: 9 }, (_, index) => fauxAssistantMessage(`conclusion ${index}`)),
     );

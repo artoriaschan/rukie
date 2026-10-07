@@ -551,6 +551,20 @@ test("a committed snapshot restores active generation and a batched delta retain
   );
   expect(next.streamLine).toBe("I am reading the source");
   expect(next.lastChunkAt).toBe(1100);
+  const extended = fauxAssistantMessage("I am reading the source now");
+  const structural = reduce(
+    next,
+    {
+      type: "message_update",
+      sessionId,
+      message: extended,
+      usage: extended.usage,
+      changes: [{ type: "message", message: extended }],
+    },
+    1150,
+  );
+  expect(structural.streamLine).toBe("I am reading the source now");
+  expect(structural.phase).toBe("thinking");
   expect(reduce(next, { ...snapshot, run: undefined, generation: undefined }, 1200).phase).toBe(
     "idle",
   );

@@ -322,7 +322,7 @@ test("parent resume initializes its persisted child card as idle before cold con
   const { fauxProvider, fauxAssistantMessage, fauxToolCall } =
     await import("@earendil-works/pi-ai");
   const { createSession } = await import("@rukie/agent");
-  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
   original.setResponses([
     fauxAssistantMessage(
       fauxToolCall("subagent", {
@@ -415,7 +415,7 @@ test("fork, agent listing and failed messaging use dedicated rows live and after
     env: { LANG: "en_US.UTF-8" },
     async prepare(directory) {
       root = directory;
-      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
       faux.setResponses([fauxAssistantMessage("seed reply")]);
       const session = await createSession({
         cwd: root,

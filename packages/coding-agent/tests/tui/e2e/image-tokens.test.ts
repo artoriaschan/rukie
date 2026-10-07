@@ -231,7 +231,7 @@ test.each(["new", "resume", "rewind"])(
       env: { LANG: "en_US.UTF-8" },
       prepare: async (root) => {
         await Bun.write(`${root}/shot.png`, Buffer.from(png, "base64"));
-        const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+        const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
         const previous = await createSession({
           cwd: root,
           homeDir: root,

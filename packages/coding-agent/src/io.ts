@@ -7,7 +7,7 @@ interface CommonIo {
   env?: Record<string, string | undefined>;
   /** Session overrides let embedders supply credentials, storage and model transport. */
   session?: Partial<SessionOptions>;
-  /** Cancellation is forwarded to the active Run or pending stdin read. */
+  /** Host shutdown closes the Session; pending stdin reads are cancelled. Durable work remains resumable. */
   signal?: AbortSignal;
 }
 

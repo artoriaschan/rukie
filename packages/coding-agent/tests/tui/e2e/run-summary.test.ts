@@ -28,7 +28,7 @@ test.each(["en", "zh"] as const)(
 
 test("resume renders saved Run summaries below the corresponding replies", async () => {
   const argv: string[] = [];
-  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
   original.setResponses([
     fauxAssistantMessage("saved first reply"),
     fauxAssistantMessage("saved second reply"),

@@ -18,7 +18,7 @@ test.each([
     env: { LANG: locale },
     prepare: async (root) => {
       const store = createJsonlStore({ cwd: root, homeDir: root });
-      const fake = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+      const fake = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
       const session = await createSession({
         cwd: root,
         homeDir: root,
@@ -120,7 +120,7 @@ test.each([
       columns: 300,
       env: { LANG: locale },
       prepare: async (root) => {
-        const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+        const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
         original.setResponses([
           fauxAssistantMessage(fauxToolCall("grep", { pattern: "missing" }), {
             stopReason: "toolUse",
