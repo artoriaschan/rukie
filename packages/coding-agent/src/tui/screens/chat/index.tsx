@@ -872,7 +872,7 @@ function Chat({
     );
   });
   useEffect(() => {
-    if (view !== "chat" && view !== "dashboard" && page === "output")
+    if (typeof view === "object" && !view.agentView && page === "output")
       subagentScroll.current?.scrollBy(-Infinity);
   }, [thinkingOpen, page]);
   const selectedSubagent = typeof view === "object" ? state.subagents[view.detail] : undefined;

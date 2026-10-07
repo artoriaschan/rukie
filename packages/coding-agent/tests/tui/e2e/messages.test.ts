@@ -232,7 +232,7 @@ test("assistant search uses visible Markdown text without phantom formatting mat
     const col = line.translateToString().indexOf("α");
     await app.waitFor(
       () =>
-        app.terminal.buffer.active.getLine(row)!.getCell(col)!.isInverse() &&
+        app.terminal.buffer.active.getLine(row)!.getCell(col)!.isInverse() !== 0 &&
         app.terminal.buffer.active.getLine(row)!.getCell(col)!.getFgColor() === 3,
     );
     const cell = app.terminal.buffer.active.getLine(row)!.getCell(col)!;
