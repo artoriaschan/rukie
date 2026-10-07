@@ -1,11 +1,25 @@
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
+import { withAuxiliaryRequests, withModelStream, modelStream } from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
-import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { createSession, type PlanReviewRequest, type PlanReviewResult } from "../../src/index.ts";
+import { fauxAssistantMessage, fauxToolCall, getCurrentSystemMessage } from "@earendil-works/pi-ai";
+import {
+  createSession as createSessionImpl,
+  type Session,
+  type PlanReviewRequest,
+  type PlanReviewResult,
+} from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
-afterEach(() => dirs?.cleanup());
+const sessions: Session[] = [];
+async function createSession(options: Parameters<typeof createSessionImpl>[0]) {
+  const session = await createSessionImpl(options);
+  sessions.push(session);
+  return session;
+}
+afterEach(async () => {
+  await Promise.all(sessions.splice(0).map((session) => session.close()));
+  await dirs?.cleanup();
+});
 const plan = "# Implementation\n\n1. Add storage\n2. Run tests";
 const submit = () =>
   fauxAssistantMessage(fauxToolCall("exit_plan_mode", { plan }), { stopReason: "toolUse" });
@@ -115,7 +129,10 @@ test("review outside Plan Mode fails without opening interaction", async () => {
   });
   await session.run("plan");
   expect(fake.contexts[1]!.messages.find((message) => message.role === "toolResult")).toMatchObject(
-    { isError: true, content: [{ type: "text", text: "Not in plan mode." }] },
+    {
+      isError: true,
+      content: [{ type: "text", text: expect.stringContaining("Not in plan mode.") }],
+    },
   );
 });
 
@@ -131,12 +148,10 @@ test.each([true, false])(
         onPlanReview: async (): Promise<PlanReviewResult> => ({ kind: "takeover" }),
       }),
     });
-    let tools: string[] = [];
-    await session.run("inspect", {
-      onEvent: (event) => {
-        if (event.type === "session_start") tools = event.tools;
-      },
-    });
+    await session.run("inspect");
+    const tools =
+      getCurrentSystemMessage(fake.contexts[0]!.messages)?.toolsAdded?.map((tool) => tool.name) ??
+      [];
     expect(tools.includes("exit_plan_mode")).toBe(interactive);
   },
 );
@@ -209,13 +224,13 @@ test.each(["general-purpose", "explore", "custom", "fork"])(
       ...fake,
       onPlanReview: async () => ({ kind: "takeover" }),
     });
-    let childTools: string[] | undefined;
-    await session.run("delegate", {
-      onEvent: (event) => {
-        if (event.type === "subagent_event" && event.event.type === "session_start")
-          childTools = event.event.tools;
-      },
-    });
+    await session.run("delegate");
+    await session.waitForRequest(session.currentRequestId!);
+    const childTools = fake.contexts
+      .map((context) =>
+        getCurrentSystemMessage(context.messages)?.toolsAdded?.map((tool) => tool.name),
+      )
+      .find((tools) => tools && !tools.includes("exit_plan_mode"));
     expect(childTools).toBeDefined();
     expect(childTools).not.toContain("exit_plan_mode");
   },
@@ -251,7 +266,7 @@ test.each([false, true])(
   },
 );
 
-test("takeover settles an active child without continuation and the next user Run remains available", async () => {
+test("takeover leaves its background child active and the next user Run remains available", async () => {
   dirs = await tempDirs();
   const ready = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
@@ -273,35 +288,45 @@ test("takeover settles an active child without continuation and the next user Ru
       await release.promise;
       return fauxAssistantMessage("child settled");
     },
+    fauxAssistantMessage("child result acknowledged"),
     fauxAssistantMessage("next user prompt handled"),
   ]);
   const session = await createSession({
     ...dirs,
     ...fake,
-    streamFn: withAuxiliaryRequests((model, context, options) => {
-      if (
-        context.messages.some(
-          (message) =>
-            message.role === "user" && JSON.stringify(message.content).includes("child waiting"),
-        )
-      ) {
-        childSignal = options?.signal;
-        childSignal?.addEventListener("abort", () => release.resolve(), { once: true });
-      }
-      return fake.streamFn(model, context, options);
-    }),
+    models: withModelStream(
+      fake.models,
+      withAuxiliaryRequests((model, context, options) => {
+        if (
+          context.messages.some(
+            (message) =>
+              message.role === "user" && JSON.stringify(message.content).includes("child waiting"),
+          )
+        ) {
+          childSignal = options?.signal;
+          childSignal?.addEventListener("abort", () => release.resolve(), { once: true });
+        }
+        return modelStream(fake.models)(model, context, options);
+      }),
+    ),
     onPlanReview: async () => {
       await ready.promise;
       return { kind: "takeover" };
     },
   });
   await session.setPlanMode(true);
-  await session.run("inspect");
-  expect(childSignal?.aborted).toBe(true);
-  expect(fake.contexts).toHaveLength(2);
-  expect(session.toolState("subagents")).toHaveLength(1);
-  expect(session.messages.filter((message) => message.role === "toolResult")).toHaveLength(2);
-  expect(session.planMode).toBe(true);
-  expect((await session.run("next user prompt")).text).toBe("next user prompt handled");
-  expect(fake.contexts).toHaveLength(3);
+  try {
+    await session.run("inspect");
+    expect(childSignal?.aborted).toBe(false);
+    expect(fake.contexts).toHaveLength(2);
+    expect(session.toolState("subagents")).toHaveLength(1);
+    expect(session.messages.filter((message) => message.role === "toolResult")).toHaveLength(2);
+    expect(session.planMode).toBe(true);
+    release.resolve();
+    await session.waitForRequest(session.currentRequestId!);
+    expect((await session.run("next user prompt")).text).toBe("next user prompt handled");
+    expect(fake.contexts).toHaveLength(4);
+  } finally {
+    release.resolve();
+  }
 });

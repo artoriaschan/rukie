@@ -43,37 +43,49 @@ test("interruption during a real question persists one canonical ending and neve
     await expect(run).rejects.toThrow("user interrupted");
     expect(
       session.messages.filter(
-        (message) => message.role === "assistant" && message.stopReason === "error",
+        (message) =>
+          message.role === "toolResult" &&
+          message.toolName === "ask_user_question" &&
+          message.isError,
       ),
     ).toHaveLength(1);
-    expect(session.messages.flatMap((message) => readSessionNotice(message) ?? [])).toMatchObject([
-      { kind: "interrupted", reason: "user interrupted" },
-    ]);
+    expect(
+      JSON.stringify(session.messages.find((message) => message.role === "toolResult")),
+    ).toContain("Tool ask_user_question was aborted");
     expect(session.messages.find((message) => message.role === "assistant")).toMatchObject({
       stopReason: "toolUse",
     });
     const id = session.id;
-    await session.dispose();
+    await session.close();
     const replayFake = fakeModel([fauxAssistantMessage("continued")]);
     const resumed = await createSession({ ...dirs, ...replayFake, resumeId: id });
     try {
       expect(
         resumed.messages.filter(
-          (message) => message.role === "assistant" && message.stopReason === "error",
+          (message) =>
+            message.role === "toolResult" &&
+            message.toolName === "ask_user_question" &&
+            message.isError,
         ),
       ).toHaveLength(1);
-      expect(resumed.messages.flatMap((message) => readSessionNotice(message) ?? [])).toMatchObject(
-        [{ kind: "interrupted", reason: "user interrupted" }],
-      );
+      const receipt = session.messages.find((message) => message.role === "toolResult");
+      const restored = resumed.messages.find((message) => message.role === "toolResult");
+      if (receipt?.role !== "toolResult") throw new Error("Missing committed question result");
+      expect(restored).toMatchObject({
+        entryId: receipt.entryId,
+        toolCallId: receipt.toolCallId,
+        content: receipt.content,
+        isError: true,
+      });
       expect(replayFake.contexts).toHaveLength(0);
       await resumed.run("continue");
       expect(JSON.stringify(replayFake.contexts[0])).not.toContain("session-notice");
       expect(JSON.stringify(replayFake.contexts[0])).toContain("ask_user_question");
     } finally {
-      await resumed.dispose();
+      await resumed.close();
     }
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });
@@ -95,7 +107,7 @@ test("a blocked prompt stores its visible Hook reason while review input stays o
     ]);
     expect(JSON.stringify(session.messages)).not.toContain("secret input");
     const id = session.id;
-    await session.dispose();
+    await session.close();
     const follow = fakeModel([fauxAssistantMessage("next")]);
     const resumed = await createSession({ ...dirs, ...follow, resumeId: id });
     try {
@@ -106,10 +118,10 @@ test("a blocked prompt stores its visible Hook reason while review input stays o
       expect(JSON.stringify(follow.contexts[0])).not.toContain("protected reason");
       expect(JSON.stringify(follow.contexts[0])).not.toContain("secret input");
     } finally {
-      await resumed.dispose();
+      await resumed.close();
     }
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });
