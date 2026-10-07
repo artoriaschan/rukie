@@ -79,7 +79,7 @@ test("clicking a composer image reuses the message modal and preserves the highl
   }
 });
 
-test("click targets follow wrapped image units and resize while typed labels stay inert", async () => {
+test("click targets follow wrapped image units and resize while typed labels move only the caret", async () => {
   const app = await start([], {
     columns: 40,
     rows: 32,
@@ -144,9 +144,9 @@ test("click targets follow wrapped image units and resize while typed labels sta
     app.stdin.write("\x1b[F" + paste("\n[Image #9]!"));
     await app.waitFor(() => screen().includes("[Image #9]!"));
     clickToken(app, "[Image #9]");
-    // A subsequent edit paints a new frame and proves the literal click did not move the caret.
+    // Literal labels move the caret without opening an attachment preview.
     app.stdin.write("?");
-    await app.waitFor(() => screen().includes("[Image #9]!?"));
+    await app.waitFor(() => screen().includes("[Imag?e #9]!"));
     expect(screen()).not.toContain("Image #9 · PNG");
     expect(screen()).not.toContain("Image #1 · PNG");
     clickToken(app, "[Image #2]");
@@ -194,7 +194,7 @@ test("a folded pending question blocks composer image clicks and preserves the R
     await app.waitFor(() => screen().includes("Ctrl+K to expand"));
     clickToken(app, "[Image #1]");
     app.stdin.write("x");
-    await app.waitFor(() => screen().includes("❯ [Image #1] x"));
+    await app.waitFor(() => screen().includes("❯ x[Image #1]"));
     expect(screen()).not.toContain("Image #1 · PNG");
     app.stdin.write("\x0b");
     await app.waitFor(() => screen().includes("Enter submit"));

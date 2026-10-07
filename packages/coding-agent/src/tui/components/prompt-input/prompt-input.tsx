@@ -6,6 +6,7 @@ import {
   ThemedText,
   figures,
   type TextInputProps,
+  type TextSelectionOptions,
 } from "../../../ink/index.ts";
 
 export function PromptInput({
@@ -32,6 +33,7 @@ export function PromptInput({
   onAtomicRangeClick,
   initialCursorOffset,
   suggestions,
+  textSelection,
 }: {
   value: string;
   onChange: TextInputProps["onChange"];
@@ -60,6 +62,7 @@ export function PromptInput({
   /** Restores the caret when a view or small terminal remounts the composer. */
   initialCursorOffset?: number;
   suggestions?: ReactNode;
+  textSelection?: TextSelectionOptions | false;
 }) {
   const [restoredCursor, setRestoredCursor] = useState(initialCursorOffset);
   const [visibleTip, setVisibleTip] = useState(tip);
@@ -85,7 +88,7 @@ export function PromptInput({
         <Box width={2} flexShrink={0}>
           <ThemedText dimColor={working}>{`${figures.user} `}</ThemedText>
         </Box>
-        <Box flexGrow={1}>
+        <Box flexGrow={1} textSelection={readOnly ? false : textSelection}>
           <ThemedTextInput
             key={inputRevision}
             isActive={!readOnly}

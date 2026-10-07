@@ -2967,6 +2967,18 @@ function Chat({
                         : undefined
               }
               initialCursorOffset={composerCursor}
+              textSelection={{
+                key: session.id,
+                backgroundColor: theme.badgeBackground,
+                onCopy: (text) => host.writeClipboard(text),
+                onResult: (result) => {
+                  if (pasteOwner.current)
+                    notifyImage(
+                      t(`selection.${result}`),
+                      result === "unavailable" || result === "stale",
+                    );
+                },
+              }}
               inputRevision={promptRevision}
               readOnly={promptReadOnly}
               compact={compactPrompt}

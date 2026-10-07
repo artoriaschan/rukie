@@ -228,7 +228,7 @@ function paintGrid(root: LayoutNode, columns: number, rows: number): Cell[][] {
               glyph.text,
               glyph.width,
               atCaret ? { ...highlighted, inverse: true } : highlighted,
-              region && !node.props.input
+              region
                 ? {
                     region: region.source,
                     options: region.options,

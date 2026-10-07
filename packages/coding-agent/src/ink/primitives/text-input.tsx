@@ -278,7 +278,7 @@ export function TextInput({
       value.slice(start, end),
     );
   });
-  children.push(createElement("tui-text", { key: "caret" }, " "));
+  children.push(createElement("tui-text", { key: "caret", selectable: false }, " "));
   return createElement(
     "tui-text",
     {
@@ -288,6 +288,13 @@ export function TextInput({
       maxLines,
       cursorStyle,
       atomicRanges,
+      onCursorClick:
+        isActive && !readOnly
+          ? (offset: number) => {
+              history?.reset();
+              move(Math.min(value.length, offset));
+            }
+          : undefined,
       onAtomicRangeClick:
         onAtomicRangeClick && isActive && !readOnly
           ? (offset: number) => {
