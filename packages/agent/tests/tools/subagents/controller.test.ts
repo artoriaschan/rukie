@@ -9,75 +9,87 @@ import { createSubagentTools } from "../../../src/tools/subagents/tools.ts";
 import { subagentsState } from "../../../src/tools/subagents/state.ts";
 import { fakeModel } from "../../helpers/fake-model.ts";
 
-test("foreground delegation executes a native owned child and retains an idle directory identity", async () => {
-  const context = withAbortSignal(AbortSignal.timeout(3000), BACKGROUND_CONTEXT);
-  const fake = fakeModel([
-    fauxAssistantMessage(
-      fauxToolCall("subagent", {
-        description: "Inspect file",
-        prompt: "child work",
-        run_in_background: false,
+test.each(["stop", "error", "aborted", "length"] as const)(
+  "foreground delegation preserves %s native child outcome and retains an idle directory identity",
+  async (stopReason) => {
+    const context = withAbortSignal(AbortSignal.timeout(3000), BACKGROUND_CONTEXT);
+    const fake = fakeModel([
+      fauxAssistantMessage(
+        fauxToolCall("subagent", {
+          description: "Inspect file",
+          prompt: "child work",
+          run_in_background: false,
+        }),
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("child answer", {
+        stopReason,
+        ...(stopReason === "error" ? { errorMessage: "provider failure" } : {}),
       }),
-      { stopReason: "toolUse" },
-    ),
-    fauxAssistantMessage("child answer"),
-    fauxAssistantMessage("parent answer"),
-  ]);
-  const registry = createRegistry();
-  const harness = await Harness.open(
-    new MemoryStorage(),
-    { models: fake.models, registry },
-    context,
-  );
-  try {
-    const parent = await harness.root(context, {
-      agent: { model: { provider: fake.model.provider, modelId: fake.model.id } },
-    });
-    const controller = createSubagentController({
-      harness,
-      parent,
-      parentSessionId: "product",
-      state: subagentsState("product"),
-      forkAt: () => undefined,
-      childAgent: async () => ({
-        model: { provider: fake.model.provider, modelId: fake.model.id },
-        extensions: [],
-        tools: [],
-      }),
-    });
-    controller.setTypes(
-      new Map([
-        ["general-purpose", { name: "general-purpose", description: "General", prompt: "" }],
-      ]),
+      fauxAssistantMessage("parent answer"),
+    ]);
+    const registry = createRegistry();
+    const harness = await Harness.open(
+      new MemoryStorage(),
+      { models: fake.models, registry },
+      context,
     );
-    registry.install(controller.extension);
-    const tools = createSubagentTools(controller);
-    registry.install({ name: "subagent-tools", tools: Object.values(tools) });
-    const request = await parent.submit({ type: "input", content: "delegate" }, context);
-    expect((await request.wait(context)).status).toBe("done");
-    await parent.waitForIdle(context);
-    const rows = controller.list();
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({
-      description: "Inspect file",
-      active: false,
-      latestRun: { outcome: "completed", parentSessionId: "product" },
-    });
-    expect(controller.count).toBe(0);
-    const child = await controller.readChild(rows[0]!.id, context);
-    expect(child?.messages.at(-1)).toMatchObject({
-      role: "assistant",
-      content: [{ type: "text", text: "child answer" }],
-    });
-    expect(
-      (await parent.context(context)).messages.find((message) => message.role === "toolResult"),
-    ).toMatchObject({ isError: false, content: [{ type: "text", text: "child answer" }] });
-    expect((await harness.inspect(context)).tasks).toHaveLength(0);
-    controller.close();
-  } finally {
-    await harness.close(context);
-  }
-});
+    try {
+      const parent = await harness.root(context, {
+        agent: { model: { provider: fake.model.provider, modelId: fake.model.id } },
+      });
+      const controller = createSubagentController({
+        harness,
+        parent,
+        parentSessionId: "product",
+        state: subagentsState("product"),
+        forkAt: () => undefined,
+        childAgent: async () => ({
+          model: { provider: fake.model.provider, modelId: fake.model.id },
+          extensions: [],
+          tools: [],
+        }),
+      });
+      controller.setTypes(
+        new Map([
+          ["general-purpose", { name: "general-purpose", description: "General", prompt: "" }],
+        ]),
+      );
+      registry.install(controller.extension);
+      const tools = createSubagentTools(controller);
+      registry.install({ name: "subagent-tools", tools: Object.values(tools) });
+      const request = await parent.submit({ type: "input", content: "delegate" }, context);
+      expect((await request.wait(context)).status).toBe("done");
+      await parent.waitForIdle(context);
+      const rows = controller.list();
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        description: "Inspect file",
+        active: false,
+        latestRun: {
+          outcome: stopReason === "stop" ? "completed" : stopReason,
+          parentSessionId: "product",
+        },
+      });
+      expect(controller.count).toBe(0);
+      const child = await controller.readChild(rows[0]!.id, context);
+      expect(child?.messages.at(-1)).toMatchObject({
+        role: "assistant",
+        content: [{ type: "text", text: "child answer" }],
+      });
+      expect(
+        (await parent.context(context)).messages.find((message) => message.role === "toolResult"),
+      ).toMatchObject({
+        isError: stopReason !== "stop",
+        content: [{ type: "text", text: "child answer" }],
+      });
+      expect((await harness.inspect(context)).tasks).toHaveLength(0);
+      controller.close();
+    } finally {
+      await harness.close(context);
+    }
+  },
+);
 
 test("interrupt explicitly aborts a native background child and commits its outcome", async () => {
   const context = withAbortSignal(AbortSignal.timeout(3000), BACKGROUND_CONTEXT);
@@ -152,7 +164,20 @@ test("interrupt explicitly aborts a native background child and commits its outc
     );
     if (!driver) throw new Error("Native driver is missing.");
     await controller.interrupt(row.id, context);
-    await harness.waitForTask(driver.record.id, context);
+    const receipt = await harness.waitForTask(driver.record.id, context);
+    expect(receipt.state).toMatchObject({
+      outcome: {
+        status: "aborted",
+        result: { parentSubmissionId: expect.any(Number), parentAnswer: expect.any(Number) },
+      },
+    });
+    expect(
+      (await parent.context(context)).messages.filter(
+        (message) =>
+          message.role === "user" &&
+          JSON.stringify(message.content).includes("(Held child) aborted."),
+      ),
+    ).toHaveLength(1);
     expect(controller.list()[0]).toMatchObject({
       active: false,
       latestRun: { outcome: "aborted" },
@@ -361,3 +386,74 @@ test("background native child survives ordinary parent abort and its durable rep
     await harness.close(context);
   }
 });
+
+test.each([false, true])(
+  "start policy stops background=%s child before configuration or model admission",
+  async (background) => {
+    const context = withAbortSignal(AbortSignal.timeout(3000), BACKGROUND_CONTEXT);
+    const fake = fakeModel([
+      fauxAssistantMessage(
+        fauxToolCall("subagent", {
+          description: "Needs review",
+          prompt: "child input",
+          run_in_background: background,
+        }),
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("parent done"),
+      fauxAssistantMessage("report acknowledged"),
+    ]);
+    const registry = createRegistry();
+    const harness = await Harness.open(
+      new MemoryStorage(),
+      { models: fake.models, registry },
+      context,
+    );
+    try {
+      const parent = await harness.root(context, {
+        agent: { model: { provider: fake.model.provider, modelId: fake.model.id } },
+      });
+      let configurations = 0;
+      const controller = createSubagentController({
+        harness,
+        parent,
+        parentSessionId: "product",
+        state: subagentsState("product"),
+        forkAt: () => undefined,
+        async beforeStart(request, child) {
+          expect(controller.list()[0]?.id).toBe(request.agentId);
+          expect((await child.context(context)).entries).toHaveLength(0);
+          return { stop: "human review required" };
+        },
+        async childAgent() {
+          configurations++;
+          return { tools: [] };
+        },
+      });
+      controller.setTypes(
+        new Map([
+          ["general-purpose", { name: "general-purpose", description: "General", prompt: "" }],
+        ]),
+      );
+      registry.install(controller.extension);
+      registry.install({ name: "tools", tools: Object.values(createSubagentTools(controller)) });
+      await (await parent.submit({ type: "input", content: "delegate" }, context)).wait(context);
+      for (const task of (await harness.inspect(context)).tasks)
+        if (task.record.kind === "rukie.subagent-driver")
+          await harness.waitForTask(task.record.id, context);
+      expect(configurations).toBe(0);
+      expect(controller.list()[0]).toMatchObject({
+        active: false,
+        latestRun: { outcome: "hook_stopped", reason: "human review required", tokens: 0 },
+      });
+      expect(
+        fake.contexts.every(
+          (context) => !JSON.stringify(context.messages).includes('"content":"child input"'),
+        ),
+      ).toBe(true);
+      controller.close();
+    } finally {
+      await harness.close(context);
+    }
+  },
+);

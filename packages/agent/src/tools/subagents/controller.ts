@@ -42,6 +42,17 @@ export interface SubagentControllerOptions {
   forkAt(): EntryId | undefined;
   /** Install child capability extensions before returning its explicit agent config. */
   childAgent(type: SubagentType, conversation: Conversation): Promise<AgentChange>;
+  beforeStart?(
+    request: {
+      agentId: string;
+      description: string;
+      type: string;
+      prompt: string;
+      background: boolean;
+    },
+    conversation: Conversation,
+    context: Context,
+  ): Promise<{ stop: string } | undefined>;
 }
 export type SubagentDelegationFact =
   | { kind: "started"; agentId: string; childSessionId: string; reused: boolean }
@@ -142,6 +153,38 @@ export function createSubagentController(options: SubagentControllerOptions) {
           if (!conversation) throw new Error("Subagent conversation is missing.");
           const type = typeFor(task.input.type);
           if (!type) throw new Error(`Subagent type ${task.input.type} is unavailable.`);
+          const decision = await options.beforeStart?.(
+            { ...task.input, agentId: row.id },
+            conversation,
+            context,
+          );
+          if (decision) {
+            const result = resultError(decision.stop, task.input.startedAt, runtime.now());
+            await runtime.commit(async (tx) => {
+              const doc = await tx.doc(state.document, parent.id);
+              const current = parseSubagentIdentities(doc.value ?? [], parentSessionId);
+              const identity = current.find((item) => item.driverTaskId === task.id);
+              if (!identity?.latestRun) throw new Error("Subagent Run identity is missing.");
+              identity.active = false;
+              identity.latestRun = {
+                ...identity.latestRun,
+                endedAt: result.endedAt,
+                durationMs: result.durationMs,
+                tokens: 0,
+                outcome: "hook_stopped",
+                reason: decision.stop,
+              };
+              doc.value = current;
+              (await tx.doc(subagentRunState.document, childId)).value = identity.latestRun;
+              return task.input.background
+                ? {
+                    status: "running",
+                    checkpoint: { phase: "report", childId, agentId: row.id, result },
+                  }
+                : { status: "terminal", outcome: { status: "completed", result } };
+            }, context);
+            return;
+          }
           const change = await options.childAgent(type, conversation);
           const parentAgent = await runtime.agent(context);
           const selection = change.tools;
@@ -238,8 +281,30 @@ export function createSubagentController(options: SubagentControllerOptions) {
         const answer =
           receipt.type === "input" && receipt.status === "done"
             ? view.entries.find((entry) => entry.id === receipt.answer)
-            : undefined;
+            : view.entries.findLast(
+                (entry) =>
+                  entry.id >= (childRow(task.id).latestRun?.promptEntryId ?? Infinity) &&
+                  entry.model?.some((message) => message.role === "assistant"),
+              );
         const message = answer?.model?.find((message) => message.role === "assistant");
+        const outcome =
+          message?.stopReason === "length"
+            ? "length"
+            : message?.stopReason === "aborted" ||
+                (receipt.status === "unanswered" && receipt.reason === "aborted")
+              ? "aborted"
+              : receipt.status === "done" && message?.stopReason !== "error"
+                ? "completed"
+                : "error";
+        const error =
+          outcome === "completed"
+            ? undefined
+            : (message?.errorMessage ??
+              (outcome === "length"
+                ? "Model response reached its token limit"
+                : receipt.status === "unanswered"
+                  ? receipt.reason
+                  : outcome));
         const usageState = await runtime.snapshot(UsageDoc, childId, context);
         const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 };
         for (const entry of Object.values(usageState?.models ?? {})) {
@@ -252,14 +317,23 @@ export function createSubagentController(options: SubagentControllerOptions) {
         const endedAt = runtime.now();
         const result: Result = {
           text:
-            message?.content
-              .flatMap((block) => (block.type === "text" ? [block.text] : []))
-              .join("") ?? "",
-          success: receipt.status === "done",
+            view.entries
+              .filter(
+                (entry) => entry.id >= (childRow(task.id).latestRun?.promptEntryId ?? Infinity),
+              )
+              .flatMap((entry) => entry.model ?? [])
+              .filter((message) => message.role === "assistant")
+              .map((message) =>
+                message.content
+                  .flatMap((block) => (block.type === "text" ? [block.text] : []))
+                  .join(""),
+              )
+              .findLast((text) => text.trim().length > 0) ?? "",
+          success: outcome === "completed",
           usage,
           endedAt,
           durationMs: Math.max(0, endedAt - task.input.startedAt),
-          ...(receipt.status === "unanswered" ? { error: receipt.reason } : {}),
+          ...(error ? { error } : {}),
         };
         await runtime.commit(async (tx) => {
           const doc = await tx.doc(state.document, parent.id);
@@ -279,11 +353,7 @@ export function createSubagentController(options: SubagentControllerOptions) {
             endedAt,
             durationMs: result.durationMs,
             tokens: usage.totalTokens,
-            outcome: result.success
-              ? "completed"
-              : result.error === "aborted"
-                ? "aborted"
-                : "error",
+            outcome,
             ...(result.error ? { error: result.error } : {}),
           };
           doc.value = current;
@@ -331,7 +401,10 @@ export function createSubagentController(options: SubagentControllerOptions) {
       const row = childRow(task.id);
       const child = await runtime.conversation(row.conversationId as ConversationId, context);
       await child?.abort(context);
-      const result = resultError("aborted", task.input.startedAt, runtime.now());
+      const result =
+        task.state.checkpoint.phase === "report" && task.state.checkpoint.result.error === "aborted"
+          ? task.state.checkpoint.result
+          : resultError("aborted", task.input.startedAt, runtime.now());
       await runtime.commit(async (tx) => {
         const doc = await tx.doc(state.document, parent.id);
         const current = parseSubagentIdentities(doc.value ?? [], parentSessionId);
@@ -352,8 +425,59 @@ export function createSubagentController(options: SubagentControllerOptions) {
           (await tx.doc(subagentRunState.document, row.conversationId as ConversationId)).value =
             identity.latestRun;
         }
-        return { status: "terminal", outcome: { status: "aborted", reason: "aborted", result } };
+        return task.input.background
+          ? {
+              status: "running",
+              checkpoint: {
+                phase: "report",
+                childId: row.conversationId as ConversationId,
+                agentId: row.id,
+                result,
+              },
+            }
+          : { status: "terminal", outcome: { status: "aborted", reason: "aborted", result } };
       }, context);
+      if (task.input.background) {
+        const parentHandle = await runtime.conversation(parent.id, context);
+        if (!parentHandle) throw new Error("Parent conversation is missing.");
+        const request = await parentHandle.submit(
+          {
+            type: "input",
+            whenBusy: "followUp",
+            requestId: `subagent:${task.id}:report`,
+            content: `Subagent ${row.id} (${task.input.description}) aborted.`,
+          },
+          context,
+        );
+        await runtime.commit(
+          () => ({
+            status: "running",
+            checkpoint: {
+              phase: "report",
+              childId: row.conversationId as ConversationId,
+              agentId: row.id,
+              result,
+              submissionId: request.id,
+            },
+          }),
+          context,
+        );
+        const receipt = await request.wait(context);
+        const reported = {
+          ...result,
+          parentSubmissionId: request.id,
+          ...(receipt.type === "input" && receipt.status === "done"
+            ? { parentAnswer: receipt.answer }
+            : {}),
+        };
+        await runtime.commit(
+          () => ({
+            status: "terminal",
+            outcome: { status: "aborted", reason: "aborted", result: reported },
+          }),
+          context,
+        );
+      }
     },
   });
   const extension: Extension = { name: "rukie.subagent-runtime", tasks: [driver] };
@@ -566,6 +690,7 @@ export function createSubagentController(options: SubagentControllerOptions) {
     async interrupt(id: string, context: Context = BACKGROUND_CONTEXT) {
       const row = identities.find((row) => row.id === id);
       if (!row) throw new Error(`Unknown subagent: ${id}`);
+      if (!row.active) return;
       await harness.abortTask(row.driverTaskId as TaskId, context);
     },
     close() {

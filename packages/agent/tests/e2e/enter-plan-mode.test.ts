@@ -1,12 +1,28 @@
+import { modelStream, withModelStream } from "../helpers/auxiliary-model.ts";
 import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { createSession, type PermissionAskRequest, type SessionEvent } from "../../src/index.ts";
+import {
+  createSession as createCoreSession,
+  type Session,
+  type SessionOptions,
+  type PermissionAskRequest,
+  type SessionEvent,
+} from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
-afterEach(() => dirs?.cleanup());
+const sessions: Session[] = [];
+async function createSession(options: SessionOptions) {
+  const session = await createCoreSession(options);
+  sessions.push(session);
+  return session;
+}
+afterEach(async () => {
+  await Promise.all(sessions.splice(0).map((session) => session.close()));
+  await dirs?.cleanup();
+});
 
 const interactive = { onPlanReview: async () => ({ kind: "approve" as const }) };
 
@@ -103,23 +119,25 @@ test("auto-review batches review ordinary tools while asking the user about ente
     ),
     fauxAssistantMessage("planning"),
   ]);
-  const mainStream = fake.streamFn;
+  const mainStream = modelStream(fake.models);
   let reviews = 0;
-  fake.streamFn = withAuxiliaryRequests((model, context, options) => {
-    if (
-      context.messages.some(
-        (message) => message.role === "system" && JSON.stringify(message).includes("REVIEW_POLICY"),
-      )
-    ) {
-      reviews++;
-      return fakeModel([fauxAssistantMessage('{"risk":"low","decision":"allow"}')]).streamFn(
-        model,
-        context,
-        options,
-      );
-    }
-    return mainStream(model, context, options);
-  });
+  fake.models = withModelStream(
+    fake.models,
+    withAuxiliaryRequests((model, context, options) => {
+      if (
+        context.messages.some(
+          (message) =>
+            message.role === "system" && JSON.stringify(message).includes("REVIEW_POLICY"),
+        )
+      ) {
+        reviews++;
+        return modelStream(
+          fakeModel([fauxAssistantMessage('{"risk":"low","decision":"allow"}')]).models,
+        )(model, context, options);
+      }
+      return mainStream(model, context, options);
+    }),
+  );
   const requests: PermissionAskRequest[] = [];
   const events: SessionEvent[] = [];
   const session = await createSession({
@@ -219,7 +237,7 @@ test("enter_plan_mode reports an error when already in Plan Mode", async () => {
   expect(fake.contexts[1]!.messages.find((message) => message.role === "toolResult")).toMatchObject(
     {
       isError: true,
-      content: [{ type: "text", text: "already in plan mode" }],
+      content: [{ type: "text", text: expect.stringContaining("already in plan mode") }],
     },
   );
 });
@@ -234,9 +252,10 @@ test("enter_plan_mode is absent when the frontend has no plan review callback", 
       events.push(event);
     },
   });
-  const started = events.find((event) => event.type === "session_start");
-  if (started?.type !== "session_start") throw new Error("missing session start");
-  expect(started.tools).not.toContain("enter_plan_mode");
+  const offered = fake.contexts[0]!.messages.flatMap((message) =>
+    message.role === "system" ? (message.toolsAdded?.map((tool) => tool.name) ?? []) : [],
+  );
+  expect(offered).not.toContain("enter_plan_mode");
 });
 
 test.each(["general-purpose", "explore", "custom", "fork"])(
@@ -275,14 +294,12 @@ Inspect the project.
       },
     });
     expect(fake.contexts).toHaveLength(3);
-    const childStarted = events.flatMap((event) =>
-      event.type === "subagent_event" && event.event.type === "session_start" ? [event.event] : [],
-    );
-    expect(childStarted).toHaveLength(1);
-    expect(childStarted[0]!.tools).not.toContain("enter_plan_mode");
-    const parentStarted = events.find((event) => event.type === "session_start");
-    if (parentStarted?.type !== "session_start") throw new Error("missing parent start");
-    expect(parentStarted.tools).toContain("enter_plan_mode");
+    const offered = (index: number) =>
+      fake.contexts[index]!.messages.flatMap((message) =>
+        message.role === "system" ? (message.toolsAdded?.map((tool) => tool.name) ?? []) : [],
+      );
+    expect(offered(1)).not.toContain("enter_plan_mode");
+    expect(offered(0)).toContain("enter_plan_mode");
   },
 );
 
@@ -312,6 +329,7 @@ test("aborting a pending permission request discards a late approval", async () 
   expect(request.signal.aborted).toBe(true);
   answer.resolve("allow");
   expect(session.planMode).toBe(false);
+  await session.close();
   const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
   expect(resumed.planMode).toBe(false);
 });

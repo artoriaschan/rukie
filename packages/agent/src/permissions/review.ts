@@ -141,7 +141,10 @@ export async function reviewPermission(options: {
       interrupted.promise,
     ]);
     if (signal.aborted) throw signal.reason;
-    if (response.stopReason !== "stop") throw new Error(`review stopped: ${response.stopReason}`);
+    if (response.stopReason !== "stop")
+      throw new Error(
+        `review stopped: ${response.stopReason}${response.errorMessage ? `: ${response.errorMessage}` : ""}`,
+      );
     const blocks = response.content.filter((block) => block.type !== "thinking");
     if (blocks.length !== 1 || blocks[0]?.type !== "text")
       throw new Error("expected one JSON text block");
