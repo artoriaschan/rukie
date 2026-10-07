@@ -491,7 +491,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     const executedInputs = new Map<string, Record<string, unknown>>();
     let startupStopReason: string | undefined;
     let selectingModel = false;
-    let foregroundAdmission = false;
+    let foregroundAdmission: Promise<void> | undefined;
     let manualCompaction = false;
     let manualCompactionTask: TaskId | undefined;
     let goalRound = false;
@@ -914,7 +914,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         onWarning: warn,
       }),
       getRunning: () => !!observation?.running(),
-      getBusy: () => selectingModel || foregroundAdmission || manualCompaction,
+      getBusy: () => selectingModel || foregroundAdmission !== undefined || manualCompaction,
       onChange: () => custom({ type: "mcp_servers_changed" }),
     });
     const jobHistory = await fullHistory(ROOT_CONVERSATION_ID);
@@ -3180,7 +3180,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     const session: Session = {
       get running() {
         return (
-          !closed && storageFailure === undefined && (manualCompaction || observation.running())
+          !closed &&
+          storageFailure === undefined &&
+          (foregroundAdmission !== undefined || manualCompaction || observation.running())
         );
       },
       get currentRequestId() {
@@ -3656,7 +3658,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           }
         }
         assertAvailable(true);
-        foregroundAdmission = true;
+        const admissionFinished = Promise.withResolvers<void>();
+        foregroundAdmission = admissionFinished.promise;
         stopped = false;
         hookStopReason = undefined;
         goalRound = false;
@@ -3735,7 +3738,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           }
           throw error;
         } finally {
-          foregroundAdmission = false;
+          foregroundAdmission = undefined;
+          admissionFinished.resolve();
           off();
           input.signal?.removeEventListener("abort", abort);
         }
@@ -3827,6 +3831,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         return waiting;
       },
       async waitForIdle() {
+        // A native Run can settle before its host receipt/metadata commit releases
+        // foreground admission. Readiness includes that owned completion boundary.
+        await foregroundAdmission;
         await mcpManager.waitForIdle();
         await jobAdmissions;
         await conversation.waitForIdle(context);

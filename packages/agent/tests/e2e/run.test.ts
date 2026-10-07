@@ -10,6 +10,7 @@ import { MemoryStorage } from "@earendil-works/pi-durable";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import {
   createSession as createSessionImpl,
+  createJsonlStore,
   type Session,
   type SessionStore,
   type SessionEvent,
@@ -324,4 +325,52 @@ test("an aborted Run preserves admitted input without treating live partial outp
     { role: "user", content: [{ type: "text", text: "interrupted prompt" }] },
     { role: "user", content: [{ type: "text", text: "continue" }] },
   ]);
+});
+
+test("public idle waits for the owned foreground receipt commit before accepting another Run", async () => {
+  dirs = await tempDirs();
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const base = createJsonlStore(dirs);
+  const store: SessionStore = {
+    ...base,
+    async open(input, context) {
+      const lease = await base.open(input, context);
+      const commit = lease.storage.commit.bind(lease.storage);
+      let held = false;
+      lease.storage.commit = async (writes, context) => {
+        if (
+          !held &&
+          writes.some((write) => write.type === "entry" && write.value.kind === "rukie.run-summary")
+        ) {
+          held = true;
+          entered.resolve();
+          await release.promise;
+        }
+        return commit(writes, context);
+      };
+      return lease;
+    },
+  };
+  const fake = fakeModel([fauxAssistantMessage("first"), fauxAssistantMessage("second")]);
+  const session = await createSession({ ...dirs, ...fake, store });
+  const run = session.run("first");
+  try {
+    await entered.promise;
+    expect(session.running).toBe(true);
+    let idleSettled = false;
+    const idle = session.waitForIdle().then(() => {
+      idleSettled = true;
+    });
+    await Promise.resolve();
+    expect(idleSettled).toBe(false);
+    release.resolve();
+    expect((await run).text).toBe("first");
+    await idle;
+    expect(session.running).toBe(false);
+    expect((await session.run("second")).text).toBe("second");
+  } finally {
+    release.resolve();
+    await run.catch(() => {});
+  }
 });
