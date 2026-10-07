@@ -1,6 +1,6 @@
 import type { Ref } from "react";
 import type { Locale } from "@neant/i18n";
-import { Box, ScrollBox, ThemedText, type ScrollHandle } from "@neant/tui";
+import { Box, ScrollBox, ThemedText, type ScrollHandle, type ScrollSnapshot } from "@neant/tui";
 import { createTuiI18n } from "../../i18n";
 import {
   subagentAppearance,
@@ -33,6 +33,7 @@ export function SubagentDetailScene({
   expanded = false,
   foldTerminalCommand = true,
   scrollRef,
+  initialScroll,
   rows,
   locale,
   onBack,
@@ -48,6 +49,7 @@ export function SubagentDetailScene({
   expanded?: boolean;
   foldTerminalCommand?: boolean;
   scrollRef: Ref<ScrollHandle>;
+  initialScroll?: ScrollSnapshot;
   rows: number;
   locale: Locale;
   onBack(): void;
@@ -150,7 +152,11 @@ export function SubagentDetailScene({
       <ScrollBox
         key={page}
         ref={scrollRef}
-        initialFollow={subagent.status === "running" && page === "output"}
+        initialTop={initialScroll?.top}
+        initialAnchor={initialScroll?.anchor}
+        initialFollow={
+          initialScroll?.following ?? (subagent.status === "running" && page === "output")
+        }
         height={Math.max(1, rows - 14)}
         flexGrow={0}
         paddingX={1}
