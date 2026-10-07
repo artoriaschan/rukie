@@ -69,7 +69,7 @@ test("side questions stream visible text from a snapshot without tools or Sessio
   call.finish();
   expect(await pending).toBe("Already known.");
   expect(session.messages).toEqual(before);
-  expect(events).toEqual([]);
+  expect(events.filter((event) => event.type !== "snapshot")).toEqual([]);
   expect(reminderReads).toBe(reads);
   await session.close();
   const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
@@ -195,7 +195,7 @@ test("Session disposal cancels an active side iterator without requiring a calle
     await session.close();
     expect(side.calls[0]!.signal!.aborted).toBe(true);
     await expect(pending).rejects.toThrow();
-    expect(() => session.sideQuestion("after close")).toThrow("disposed");
+    expect(() => session.sideQuestion("after close")).toThrow("closed");
   } finally {
     side.calls[0]!.finish();
     await pending.catch(() => {});

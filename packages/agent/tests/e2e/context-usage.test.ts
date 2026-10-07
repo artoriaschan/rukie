@@ -136,7 +136,10 @@ test("Context Usage follows Session start and every assistant Turn with that Tur
   expect(usage[2]!.segments.assistant).toBe(6);
   expect(usage[2]!.segments.tools).toBeGreaterThanOrEqual(usage[1]!.segments.tools);
   for (const [index, event] of events.entries()) {
-    if (event.type === "message_end" && event.entry.kind === "assistant") {
+    if (
+      event.type === "message_end" &&
+      event.entry.model?.some((message) => message.role === "assistant")
+    ) {
       expect(events[index + 1]?.type).toBe("context_usage");
     }
   }

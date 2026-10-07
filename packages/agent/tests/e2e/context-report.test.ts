@@ -156,7 +156,10 @@ test("context reports use live response input and invalidate that count after ma
   let observed: number | undefined;
   await session.run("work", {
     onEvent: (event) => {
-      if (event.type === "message_end" && event.entry.kind === "assistant")
+      if (
+        event.type === "message_end" &&
+        event.entry.model?.some((message) => message.role === "assistant")
+      )
         observed = session.contextReport().used;
     },
   });
