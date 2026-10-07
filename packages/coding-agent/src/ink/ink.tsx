@@ -976,7 +976,7 @@ export default class Ink {
       // then refuses rather than shipping whatever text now occupies the
       // highlight coordinates. Runs on frame.screen (post-render, pre-swap)
       // with this frame's coordinated selection coordinates.
-      refreshSelectionFingerprint(this.selection, frame.screen, selectionCoordinated);
+      refreshSelectionFingerprint(this.selection, frame.screen, selectionCoordinated, this.rootNode);
       // Scan-highlight: inverse on ALL visible matches (less/vim style).
       // Position-highlight (below) overlays CURRENT (yellow) on top.
       hlActive = applySearchHighlight(frame.screen, this.searchHighlightQuery, this.stylePool);
