@@ -156,7 +156,8 @@ test("a narrow folded group keeps failure visible and opens with its header", as
     );
     app.stdin.write(`\x1b[<0;2;${header + 1}M\x1b[<0;2;${header + 1}m`);
     await app.waitFor(() => /✗ 任务：bash-2 bash \S+ 失败/.test(screen()));
-    expect(screen()).toMatch(/✓ 任务：bash-1 bash \S+ 已完成/);
+    app.stdin.write("\x1b[5~");
+    await app.waitFor(() => /✓ 任务：bash-1 bash \S+ 已完成/.test(screen()));
     expect(app.screen().every((line) => Bun.stringWidth(line) <= 40)).toBe(true);
     expect(app.stderr()).toBe("");
   } finally {

@@ -179,12 +179,18 @@ test("mixed parent, two Jobs and two Subagents preserve reading, copy and Intera
     expect(app.screen().slice(1, 6)).toEqual(reading);
     app.stdin.write("\x1b[1;5F");
     await waitFor(() => screen().includes("mixed-63") && !screen().includes("Back to bottom"), 10);
+    // Let the return action settle before taking pointer coordinates.
+    await waitFor(() => app.screen().some((line) => line === "❯ saved draft"));
     const replacedRow = app.screen().findIndex((line) => line.includes("mixed-32"));
     const replacedX = app.screen()[replacedRow]!.indexOf("mixed-32");
     startDrag(replacedX, replacedRow, replacedX + 7);
-    await waitFor(
-      () => !app.terminal.buffer.active.getLine(replacedRow)?.getCell(replacedX)?.isBgDefault(),
-    );
+
+    await waitFor(() => {
+      const row = app.screen().findIndex((line) => line.includes("mixed-32"));
+      return (
+        row >= 0 && !app.terminal.buffer.active.getLine(row)?.getCell(replacedX)?.isBgDefault()
+      );
+    });
     parent.reply(
       "## Canonical mixed\n```ts\nconst 完成 = true;\n```\n" +
         Array.from({ length: 58 }, (_, i) => `canonical-${i}`).join("\n") +

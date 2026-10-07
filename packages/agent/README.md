@@ -8,6 +8,12 @@ View 不写入 Transcript，也不进入模型上下文。`Session.messages` 在
 
 `session.contextUsage()` 同步返回当前模型上下文的占用及分段快照，不发起模型请求、不写入 Transcript。Session Resume 按恢复的当前上下文重新估算；活跃 Session 收到新回复后，总占用采用最近 provider 输入计数，分段仍按当前上下文估算。Frontend 可在恢复视图时读取该快照，并继续消费 `context_usage` 事件更新预览。分类报告使用 `session.contextReport()`，其恢复后的历史 provider 计数规则独立于该占用预览。
 
+# Run summary
+
+Run 的 `result` 携带总执行时长 `durationMs` 和完成时间 `endedAt`。Session 在完成边界保存独立的 `run-summary` 自定义条目，记录时长、完成时间、成功状态及消息边界；元数据不进入模型上下文。`session.runSummaries()` 返回当前恢复上下文中可定位的摘要，`afterMessage` 是 `Session.messages` 中一基消息位置。Frontend 在该消息后绘制摘要，Rewind 丢弃被回退的摘要，Compaction 后仅保留仍可定位的边界。旧历史没有完成记录时不推算耗时；非法记录忽略，摘要保存失败报告 warning，不改变 Run 结果。
+
+TUI 在每个结束的 Run 消息底部显示摘要，完成时间使用本地时区。成功显示完成，失败或中断显示结束；摘要不参与消息选择或复制。实时结束与 Resume 使用同一记录语义。
+
 # Background Job
 
 Session 持有一个 registry；所有 bash 使用同一条进程组启动路径。前台记录对模型不可见，在超时前完成后移除；`run_in_background: true` 返回 `started background job bash-N`，工具结果的 `details.jobId` 保留关联。前台超时返回 `[still running after <s>s; moved to background job bash-N]` 和后台操作说明，同样带 `details.jobId`，进程继续运行；此前已显示的输出不在后续 `job_output` 中重复。每个 Session 的后台任务处于 running 或 stopping 的数量达到 10 时，拒绝新的显式后台启动；超时转后台不受该上限限制。前台调用被取消会终止进程，后台任务在 Run 结束或取消后继续运行；Session Resume 创建空 registry。

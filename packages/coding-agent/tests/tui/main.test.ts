@@ -411,18 +411,24 @@ test("--resume continues the existing Session context", async () => {
     fake.calls[1]!.delta("resumed reply");
     fake.calls[1]!.finish();
     await terminal.waitFor(() => terminal.screen().includes(`${assistant} resumed reply`));
-    const lines = terminal.allLines();
-    const restored = lines.indexOf("❯ stored prompt");
-    expect(restored).toBeGreaterThanOrEqual(0);
-    expect(lines.slice(restored, restored + 7)).toEqual([
+    await terminal.waitFor(() => !terminal.isWorking());
+    terminal.resize(80, 40);
+    await terminal.waitFor(() => terminal.screen().some((line) => line.includes("stored prompt")));
+    const lines = terminal.screen().join("\n");
+    const markers = [
       "❯ stored prompt",
-      "",
       `${assistant} stored reply`,
-      "",
+      "✻ 执行了",
       "❯ continuation",
-      "",
       `${assistant} resumed reply`,
-    ]);
+    ];
+    let prior = -1;
+    for (const marker of markers) {
+      const position = lines.indexOf(marker);
+      expect(position).toBeGreaterThan(prior);
+      prior = position;
+    }
+    expect(lines.match(/✻ 执行了/g)).toHaveLength(2);
     await terminal.waitFor(() => !terminal.isWorking());
     terminal.stdin.write("\x04");
     expect(await exit).toBe(0);

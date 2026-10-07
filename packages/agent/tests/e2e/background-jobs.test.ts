@@ -24,11 +24,16 @@ function resultText(messages: Session["messages"]) {
 async function waitFile(name: string) {
   const path = join(dirs.cwd, name);
   const deadline = Date.now() + 2000;
-  while (!(await Bun.file(path).exists())) {
+  while (true) {
+    if (await Bun.file(path).exists()) {
+      const text = await Bun.file(path).text();
+      // The child creates pid before its write completes; process.kill(0) probes
+      // the test's process group, so wait for the actual positive process id.
+      if (name !== "pid" || Number(text) > 0) return text;
+    }
     if (Date.now() > deadline) throw new Error(`Missing command marker ${name}`);
     await Bun.sleep(5);
   }
-  return Bun.file(path).text();
 }
 
 async function expectDead(pid: number) {

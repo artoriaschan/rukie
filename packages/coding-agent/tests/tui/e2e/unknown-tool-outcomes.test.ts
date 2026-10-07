@@ -52,7 +52,11 @@ test.each([
     try {
       await app.waitFor(() => app.screen().includes("❯"));
       expect(app.calls).toHaveLength(0);
-      const history = app.allLines().join("\n");
+      if (rows === 12) {
+        app.resize(columns, 24);
+        await app.waitFor(() => app.screen().some((line) => line.includes("? write")));
+      }
+      const history = app.screen().join("\n");
       expect(history).toContain(`⎿ ${unknown}`);
       expect(history).toContain(effects);
       expect(history).toContain(retry);
@@ -60,6 +64,10 @@ test.each([
       expect(history).not.toContain("✗ write");
       expect(history).not.toContain("• write");
       expect(await Bun.file(`${app.root}/saved.txt`).exists()).toBe(false);
+      if (rows === 12) {
+        app.resize(columns, rows);
+        await app.waitFor(() => app.screen().at(-3)?.includes("/128k") === true);
+      }
       app.stdin.write("verify\r");
       await app.waitFor(() => app.calls.length === 1);
       expect(JSON.stringify(app.calls[0]!.context.messages)).toContain("unknown-tool-outcome");

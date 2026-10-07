@@ -766,6 +766,7 @@ test("stream-json emits session metadata, verbatim pi events, and the Run result
     success: true,
     usage: { input: 8, output: 5, cacheRead: 4, cacheWrite: 0, totalTokens: 17 },
     durationMs: expect.any(Number),
+    endedAt: expect.any(Number),
   });
   expect(events.at(-1).durationMs).toBeGreaterThanOrEqual(0);
   expect(events.filter((event) => event.type === "reminder_injected")).toMatchObject([

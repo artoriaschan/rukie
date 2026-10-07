@@ -5,7 +5,7 @@ test("bottom-following messages leave two blank rows above the input through res
   const app = await startWithClock(["bottom spacing"], { columns: 80, rows: 24 });
   const gap = () => {
     const screen = app.screen();
-    const message = screen.findIndex((line) => line.includes("bottom marker"));
+    const message = screen.findIndex((line) => line.includes("✻"));
     const input = screen.findIndex((line) => line.startsWith("╭"));
     expect(message).toBeGreaterThanOrEqual(0);
     expect(input).toBe(message + 3);
@@ -65,7 +65,8 @@ test("messages retain one blank row between live and settled cards through resiz
     await app.waitFor(() => app.calls.length === 3 && row("first output") >= 0);
     app.calls[2]!.tool("read", { path: "second.txt" });
     await app.waitFor(() => app.calls.length === 4 && row("second output") >= 0);
-    separated("answer marker", "tool prompt");
+    separated("answer marker", "✻");
+    separated("✻", "tool prompt");
     separated("tool prompt", "Read first.txt");
     separated("first output", "Read second.txt");
     app.calls[3]!.delta("final marker");
@@ -76,7 +77,8 @@ test("messages retain one blank row between live and settled cards through resiz
     await app.waitFor(() => app.screen().every((line) => Bun.stringWidth(line) <= 40));
     separated("spacing prompt", "Thinking");
     separated("Thinking", "answer marker");
-    separated("answer marker", "tool prompt");
+    separated("answer marker", "✻");
+    separated("✻", "tool prompt");
     separated("tool prompt", "Read first.txt");
     separated("first output", "Read second.txt");
     separated("second output", "final marker");

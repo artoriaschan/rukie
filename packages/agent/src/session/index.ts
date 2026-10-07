@@ -183,12 +183,52 @@ function promptText(message: Extract<AgentMessage, { role: "user" }>): string {
     : message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
 }
 
+interface RunSummaryFact {
+  afterMessage: number;
+  durationMs: number;
+  endedAt: number;
+  success: boolean;
+}
+
 /** Project the same Transcript branch for startup/resume and in-place Rewind. */
 function projectBranch(entries: Entry[]) {
   const transcriptMessages = entries.flatMap((entry) =>
     entry.type === "message" ? [entry.message] : [],
   );
   return {
+    runSummaries: entries.flatMap((entry): RunSummaryFact[] => {
+      if (entry.type !== "custom" || entry.customType !== "run-summary") return [];
+      const data: unknown = entry.data;
+      if (!data || typeof data !== "object") return [];
+      if (
+        !("afterMessage" in data) ||
+        !("durationMs" in data) ||
+        !("endedAt" in data) ||
+        !("success" in data)
+      )
+        return [];
+      if (
+        typeof data.afterMessage !== "number" ||
+        !Number.isSafeInteger(data.afterMessage) ||
+        data.afterMessage < 1 ||
+        typeof data.durationMs !== "number" ||
+        !Number.isFinite(data.durationMs) ||
+        data.durationMs < 0 ||
+        typeof data.endedAt !== "number" ||
+        !Number.isFinite(data.endedAt) ||
+        Math.abs(data.endedAt) > 8.64e15 ||
+        typeof data.success !== "boolean"
+      )
+        return [];
+      return [
+        {
+          afterMessage: data.afterMessage,
+          durationMs: data.durationMs,
+          endedAt: data.endedAt,
+          success: data.success,
+        },
+      ];
+    }),
     messages: restoreContext(entries),
     transcriptMessages,
     reminderStart: entries
@@ -252,6 +292,8 @@ export interface Session {
   contextReport(): ContextReport;
   /** Snapshot current usage; restored context is estimated until a new provider response. */
   contextUsage(): ContextUsageEvent;
+  /** Completed Runs anchored after a one-based message position in the current restored context. */
+  runSummaries(): readonly RunSummaryFact[];
   /**
    * Returns an independent copy of the latest committed snapshot; cached reads never reconnect.
    * Concurrent first reads share a probe that closes its connections before resolving.
@@ -494,6 +536,7 @@ async function createSessionInternal(
             const branch = await target.branch("main", context);
             if (!branch) throw new Error("Session has no main branch.");
             await branch.appendMessage(agent.state.messages[0]!, context);
+            transcriptMessages.push(agent.state.messages[0]!);
             baselinePersisted = true;
           }
           await toolState.set("plan", { active: on }, target, context);
@@ -574,6 +617,7 @@ async function createSessionInternal(
     await emitRunEvent?.({ type: "tool_state_changed", name: "todo", value });
   };
   const transcriptMessages = initialBranch.transcriptMessages;
+  let runSummaries = initialBranch.runSummaries;
   let reminderStart = initialBranch.reminderStart;
   // Older Sessions did not persist their implicit baseline. Do not append it
   // behind existing conversation messages; pi will seed it when restoring them.
@@ -1808,6 +1852,19 @@ async function createSessionInternal(
     contextUsage() {
       return contextUsage(agent.state.messages, model.contextWindow, inputTokens);
     },
+    runSummaries() {
+      const positions = new Map<number, number>();
+      let source = transcriptMessages.length - 1;
+      for (let index = agent.state.messages.length - 1; index >= 0; index--) {
+        const key = JSON.stringify(agent.state.messages[index]);
+        while (source >= 0 && JSON.stringify(transcriptMessages[source]) !== key) source--;
+        if (source >= 0) positions.set(source-- + 1, index + 1);
+      }
+      return runSummaries.flatMap((summary) => {
+        const afterMessage = positions.get(summary.afterMessage);
+        return afterMessage === undefined ? [] : [{ ...summary, afterMessage }];
+      });
+    },
     contextReport() {
       return contextReport({
         messages: agent.state.messages,
@@ -2032,6 +2089,7 @@ async function createSessionInternal(
           userMessageSequence = 0;
           sessionContextUserSequence = 0;
           const restoredBranch = projectBranch(restoredEntries);
+          runSummaries = restoredBranch.runSummaries;
           transcriptMessages.splice(
             0,
             transcriptMessages.length,
@@ -2398,6 +2456,7 @@ async function createSessionInternal(
           if (!branch) throw new Error("Session has no main branch.");
           if (!baselinePersisted) {
             await branch.appendMessage(agent.state.messages[0]!, context);
+            transcriptMessages.push(agent.state.messages[0]!);
             baselinePersisted = true;
           }
           const injectAsyncContexts = async (messages: AgentMessage[]): Promise<AgentMessage[]> => {
@@ -2864,6 +2923,27 @@ async function createSessionInternal(
             const message = await persistSessionNotice(notice);
             completedMessages = structuredClone(agent.state.messages);
             await emit({ type: "message_end", message });
+          }
+          result.endedAt = Date.now();
+          const summary = {
+            afterMessage: transcriptMessages.length,
+            durationMs: result.durationMs,
+            endedAt: result.endedAt,
+            success: result.success,
+          };
+          if (summary.afterMessage > 0) {
+            try {
+              await withStore(async (target) => {
+                const branch = await target.branch("main", context);
+                if (!branch) throw new Error("Session has no main branch.");
+                await branch.appendCustomEntry("run-summary", summary, context);
+              });
+              runSummaries.push(summary);
+            } catch (error) {
+              (options.onWarning ?? console.warn)(
+                `Could not save Run summary: ${error instanceof Error ? error.message : String(error)}`,
+              );
+            }
           }
           await emit({ type: "result", ...result });
         } finally {

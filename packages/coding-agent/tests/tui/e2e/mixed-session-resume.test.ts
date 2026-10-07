@@ -166,14 +166,20 @@ test.each([
           app.screen().join("\n").includes("read-five"),
       );
       app.stdin.write("\x1b[1;2A");
-      await app.flush();
+      await app.waitFor(() => {
+        const row = app.screen().findIndex((line) => line.includes(ending));
+        return row >= 0 && !app.terminal.buffer.active.getLine(row)!.getCell(3)!.isBgDefault();
+      });
       const y = app.screen().findIndex((line) => line.includes("committed partial mixed body"));
       app.stdin.write(`\x1b[<0;3;${y + 1}M\x1b[<32;15;${y + 1}M`);
-      await app.waitFor(() => !app.terminal.buffer.active.getLine(y)!.getCell(3)!.isBgDefault());
+      await app.waitFor(() => {
+        const row = app.screen().findIndex((line) => line.includes("committed partial mixed body"));
+        return row >= 0 && !app.terminal.buffer.active.getLine(row)!.getCell(3)!.isBgDefault();
+      });
       const readY = app.screen().findIndex((line) => line.includes("mixed.txt"));
       app.stdin.write(`\x1b[<35;4;${readY + 1}M`);
       await app.waitFor(
-        () => app.terminal.buffer.active.getLine(readY)!.getCell(99)!.getBgColor() === 0x2e3440,
+        () => app.terminal.buffer.active.getLine(readY)!.getCell(96)!.getBgColor() === 0x2e3440,
       );
       const replay = await start(argv, {
         rows: 60,
@@ -197,7 +203,7 @@ test.each([
           .findIndex((line) => line.includes("committed partial mixed body"));
         expect(replay.terminal.buffer.active.getLine(bodyY)!.getCell(3)!.isBgDefault()).toBe(true);
         const freshReadY = replay.screen().findIndex((line) => line.includes("mixed.txt"));
-        expect(replay.terminal.buffer.active.getLine(freshReadY)!.getCell(99)!.isBgDefault()).toBe(
+        expect(replay.terminal.buffer.active.getLine(freshReadY)!.getCell(96)!.isBgDefault()).toBe(
           true,
         );
         // A release from the old terminal gesture must not copy in this new interface.

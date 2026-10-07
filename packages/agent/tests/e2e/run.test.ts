@@ -86,6 +86,7 @@ test("the Run result totals every Turn and forwards tool events without changing
     text: "final reply",
     success: true,
     durationMs: expect.any(Number),
+    endedAt: expect.any(Number),
     usage: { input: 30, output: 7, cacheRead: 7, cacheWrite: 1, totalTokens: 45 },
   });
   expect(events[0]).toMatchObject({ type: "session_start", sessionId: session.id });

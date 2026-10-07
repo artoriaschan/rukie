@@ -16,6 +16,8 @@ export interface RunResult {
   success: boolean;
   usage: TokenUsage;
   durationMs: number;
+  /** Wall-clock completion time, including settlement, when supplied by Agent Core. */
+  endedAt?: number;
   error?: string;
   stopReason?: "hook_stopped" | "hook_blocked";
   reason?: string;

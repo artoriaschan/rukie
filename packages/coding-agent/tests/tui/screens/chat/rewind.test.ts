@@ -475,7 +475,7 @@ test.each([
       await app.waitFor(() => text(app).includes("❯ 消息11"));
       app.stdin.write(esc);
       await app.waitFor(() => !text(app).includes("Pick a message to rewind to"));
-      expect(text(app)).toContain("消息11");
+      expect(text(app)).toContain("answer 11");
     } finally {
       await app.cleanup();
     }
@@ -851,8 +851,11 @@ test("40×12 rewind preserves Todo and historical children without reopening the
     expect(app.screen().findIndex((line) => line.includes("Enter to rewind"))).toBe(footerRow);
     expect(app.screen().every((line) => Bun.stringWidth(line) <= 40)).toBe(true);
     app.stdin.write("\r");
+    app.resize(40, 24);
     await app.waitFor(() => text(app).includes("Restored 1 files"));
     expect(await Bun.file(join(app.root, "new.txt")).exists()).toBe(false);
+    app.resize(40, 12);
+    await app.waitFor(() => text(app).includes("retained task"));
     expect(text(app)).toContain("retained task");
     expect(text(app)).not.toMatch(/[▸▾] Subagents/);
     app.stdin.write("\x01");
@@ -948,7 +951,7 @@ test.each([
         app.stdin.write(esc);
         await app.waitFor(() => !/Pick a message to rewind|选择要回退到的消息/.test(text(app)));
       }
-      app.stdin.write("\x1b[5~".repeat(10));
+      app.resize(columns, 40);
       await app.waitFor(() => text(app).includes("checkpoint"));
       expect(app.allLines().join("\n")).not.toContain(hint);
     } finally {

@@ -380,10 +380,14 @@ test("Chinese command completion and single job details fit 40×12 through resiz
       description: "中文输出任务",
       run_in_background: true,
     });
-    await app.waitFor(() => app.calls.length === 2 && screen().includes("● 任务：bash-1"));
+    await app.waitFor(() => app.calls.length === 2);
+    app.resize(40, 24);
+    await app.waitFor(() => screen().includes("● 任务：bash-1"));
     const card = app.screen().findIndex((line) => line.includes("● 任务：bash-1"));
     app.stdin.write(`\x1b[<0;4;${card + 1}M\x1b[<0;4;${card + 1}m`);
     await app.waitFor(() => screen().includes("❯ bash-1"));
+    app.resize(40, 12);
+    await app.waitFor(() => app.screen().at(-1)?.includes("Esc") === true);
     app.calls[1]!.tool("ask_user_question", {
       questions: [
         {
@@ -491,6 +495,8 @@ test("a narrow jobs list starts at the focused first job and follows keyboard se
     await app.waitFor(() => screen().includes("❯ bash-1 ·"));
     expect(app.screen().at(-1)).toContain("Esc");
     app.stdin.write("\x1b");
+    await app.waitFor(() => !screen().includes("↑/↓ select"));
+    app.resize(40, 24);
     await app.waitFor(() => /● job: bash-10 bash \S+ running/.test(screen()));
     expect(app.stderr()).toBe("");
   } finally {

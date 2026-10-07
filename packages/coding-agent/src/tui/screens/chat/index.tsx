@@ -98,6 +98,7 @@ import { createConversation } from "../../../view/conversation/conversation";
 import { createInteractions } from "./interactions";
 import { permissionChoices } from "../../components/permission-dialog";
 import { fmtTokens, render as renderActivity } from "../../../view/conversation/activity/activity";
+import { fmtDuration } from "@rukie/i18n";
 import { commandCatalog } from "../../../view/commands/commands";
 import { createMcpCommands } from "./mcp-commands";
 import { createMcpPanel } from "./mcp-panel";
@@ -911,6 +912,7 @@ function Chat({
       if (
         !completedEntryVisible(state, index) ||
         entry.type === "subagent" ||
+        entry.type === "run-summary" ||
         (entry.type === "tool" && entry.jobId)
       )
         return [];
@@ -2272,6 +2274,19 @@ function Chat({
             );
           case "session-notice":
             return <SessionNoticeRow key={index} notice={entry.notice} locale={locale} />;
+          case "run-summary":
+            return (
+              <ThemedText key={index} color="subtle" selectable={false} wrap="truncate">
+                {t(entry.success ? "run.summary.done" : "run.summary.stopped", {
+                  duration: fmtDuration(entry.durationMs, locale),
+                  time: new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-US", {
+                    hour: "numeric",
+                    minute: "2-digit",
+                    hour12: true,
+                  }).format(entry.endedAt),
+                })}
+              </ThemedText>
+            );
           case "notice":
             return (
               <Notice

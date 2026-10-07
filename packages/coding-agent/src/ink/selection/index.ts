@@ -55,7 +55,15 @@ export function createSelection(redraw: () => void) {
     | undefined;
   let alive = true;
   let clicks:
-    | { x: number; y: number; at: number; count: number; region: HostNode; key?: string }
+    | {
+        x: number;
+        y: number;
+        at: number;
+        count: number;
+        region: HostNode;
+        key?: string;
+        owner?: HostNode;
+      }
     | undefined;
   const regions = new Map<HostNode, TextSelectionOptions>();
   function ordered() {
@@ -222,7 +230,22 @@ export function createSelection(redraw: () => void) {
         const viewport = viewports.get(previous.owner);
         if (!viewport) clear();
         else {
-          const shift = viewport.top - previous.top - (viewport.scrollTop - previous.scrollTop);
+          // Scroll notifications may coalesce while layout anchors settle. Prefer the
+          // painted source position over a snapshot delta when it remains visible.
+          const anchorCell = grid[current.anchor.y]?.[current.anchor.x]?.selection;
+          const paintedRow = anchorCell?.owner
+            ? next.findIndex((row) =>
+                row.some(
+                  (cell) =>
+                    cell.selection?.owner === anchorCell.owner &&
+                    cell.selection?.offset === anchorCell.offset,
+                ),
+              )
+            : -1;
+          const shift =
+            paintedRow >= 0
+              ? paintedRow - current.anchor.y
+              : viewport.top - previous.top - (viewport.scrollTop - previous.scrollTop);
           if (shift || viewport.bottom !== previous.bottom) {
             // Capture from the previous painted frame before translated rows are replaced.
             for (let y = previous.top; y < previous.bottom; y++) {
@@ -283,12 +306,21 @@ export function createSelection(redraw: () => void) {
         clicks &&
         clicks.region === current.region &&
         clicks.key === current.key &&
+        clicks.owner === meta?.owner &&
         now - clicks.at < 500 &&
         Math.abs(x - clicks.x) <= 1 &&
         Math.abs(y - clicks.y) <= 1
           ? clicks.count + 1
           : 1;
-      clicks = { x, y, at: now, count, region: current.region, key: current.key };
+      clicks = {
+        x,
+        y,
+        at: now,
+        count,
+        region: current.region,
+        key: current.key,
+        owner: meta?.owner,
+      };
       if (count > 1) {
         const mode = count === 2 ? "word" : "line";
         const span = bounds(x, y, mode);
