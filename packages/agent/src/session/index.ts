@@ -3352,11 +3352,13 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           const index = entries.findIndex((entry) => String(entry.id) === id);
           const previous = entries[index - 1];
           if (!previous) throw new Error("Checkpoint has no prior entry anchor.");
+          const directory = await subagents.snapshotForRewind(previous.id, context);
           const forkRecord = await conversation.commit(async (tx) => {
             const active = await tx.doc(SessionMetadataDoc);
             const fork = await tx.forkConversation(conversation.id, previous.id, {
               ownership: { kind: "ownerless" },
             });
+            await subagents.restoreFork(tx, fork.id, directory);
             active.activeConversationId = Number(fork.id);
             active.updatedAt = Date.now();
             return fork;
