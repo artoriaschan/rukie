@@ -6,15 +6,29 @@ import {
   withModelAlias,
 } from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
-import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import {
+  fauxAssistantMessage,
+  fauxToolCall,
+  getCurrentTools,
+  getCurrentSystemMessage,
+} from "@earendil-works/pi-ai";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createSession } from "../../src/index.ts";
+import { createSession as createSessionImpl, type Session } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
-afterEach(() => dirs?.cleanup());
+const sessions: Session[] = [];
+async function createSession(options: Parameters<typeof createSessionImpl>[0]) {
+  const session = await createSessionImpl(options);
+  sessions.push(session);
+  return session;
+}
+afterEach(async () => {
+  await Promise.all(sessions.splice(0).map((session) => session.close()));
+  await dirs?.cleanup();
+});
 
 test.each([false, true])(
   "explore offers only read-only tools; question callback=%s",
@@ -32,10 +46,8 @@ test.each([false, true])(
         { stopReason: "toolUse" },
       ),
       (context) => {
-        tools = context.messages
-          .flatMap((message) =>
-            message.role === "system" ? (message.toolsAdded?.map((tool) => tool.name) ?? []) : [],
-          )
+        tools = getCurrentTools(context.messages)
+          .map((tool) => tool.name)
           .sort();
         return fauxAssistantMessage("inspected");
       },
@@ -95,19 +107,13 @@ test("project custom type overrides home and built-in types, narrows tools and a
   await runRequest(session, "delegate");
   const parent = fake.contexts[0]!;
   const child = fake.contexts[1]!;
-  const description = parent.messages
-    .flatMap((message) => (message.role === "system" ? (message.toolsAdded ?? []) : []))
-    .findLast((tool) => tool.name === "subagent")?.description;
+  const description = getCurrentTools(parent.messages).findLast(
+    (tool) => tool.name === "subagent",
+  )?.description;
   expect(description).toContain("explore: Project explorer");
   expect(description).not.toContain("Home explorer");
-  expect(
-    child.messages.flatMap((message) =>
-      message.role === "system" ? (message.toolsAdded?.map((tool) => tool.name) ?? []) : [],
-    ),
-  ).toEqual(["read"]);
-  expect(JSON.stringify(child.messages.filter((message) => message.role === "system"))).toContain(
-    "Project body",
-  );
+  expect(getCurrentTools(child.messages).map((tool) => tool.name)).toEqual(["read"]);
+  expect(JSON.stringify(getCurrentSystemMessage(child.messages))).toContain("Project body");
   expect(warnings).toEqual([
     `${path}: unknown tool "unknown" ignored.`,
     `${path}: unknown tool "subagent" ignored.`,
@@ -146,9 +152,9 @@ test("each Run refreshes available types and bad files warn without preventing d
   const result = await runRequest(session, "second");
   expect(result.text).toBe("second");
   expect(fake.contexts).toHaveLength(4);
-  const description = fake.contexts[1]!.messages.flatMap((message) =>
-    message.role === "system" ? (message.toolsAdded ?? []) : [],
-  ).findLast((tool) => tool.name === "subagent")?.description;
+  const description = getCurrentTools(fake.contexts[1]!.messages).findLast(
+    (tool) => tool.name === "subagent",
+  )?.description;
   expect(description).toContain("added: Newly added");
   expect(description).not.toContain("bad:");
   expect(warnings).toEqual([expect.stringContaining(`${bad}:`)]);
@@ -300,9 +306,9 @@ test.each([
   });
   expect((await runRequest(session, "hello")).success).toBe(true);
   expect(warnings).toEqual([expect.stringContaining(`${path}:`)]);
-  const description = fake.contexts[0]!.messages.flatMap((message) =>
-    message.role === "system" ? (message.toolsAdded ?? []) : [],
-  ).findLast((tool) => tool.name === "subagent")?.description;
+  const description = getCurrentTools(fake.contexts[0]!.messages).findLast(
+    (tool) => tool.name === "subagent",
+  )?.description;
   expect(description).toContain("general-purpose:");
   expect(description).not.toContain("bad:");
 });
@@ -405,8 +411,8 @@ test("fork is reserved for subagent_fork and a custom definition cannot create a
   });
   expect(session.toolState("subagents")).toBeUndefined();
   expect(warnings).toEqual([`${path}: name "fork" is reserved for subagent_fork.`]);
-  const description = fake.contexts[0]!.messages.flatMap((message) =>
-    message.role === "system" ? (message.toolsAdded ?? []) : [],
-  ).find((tool) => tool.name === "subagent")?.description;
+  const description = getCurrentTools(fake.contexts[0]!.messages).find(
+    (tool) => tool.name === "subagent",
+  )?.description;
   expect(description).not.toContain("fork: Restricted custom fork");
 });

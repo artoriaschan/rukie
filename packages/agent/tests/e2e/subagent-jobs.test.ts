@@ -60,7 +60,9 @@ test.each(["stop", "error"] as const)(
       call("bash", background("child-pid")),
       async (context) => {
         expect(
-          context.messages.filter((message) => message.role !== "system").at(-1),
+          context.messages.findLast(
+            (message) => message.role === "toolResult" || message.role === "user",
+          ),
         ).toMatchObject({
           content: [{ type: "text", text: "started background job bash-1" }],
         });
@@ -71,7 +73,9 @@ test.each(["stop", "error"] as const)(
       },
       (context) => {
         expect(
-          context.messages.filter((message) => message.role !== "system").at(-1),
+          context.messages.findLast(
+            (message) => message.role === "toolResult" || message.role === "user",
+          ),
         ).toMatchObject({
           content: [{ type: "text", text: "bash-1 [bash] running — Wait for child-pid release" }],
         });
@@ -87,7 +91,9 @@ test.each(["stop", "error"] as const)(
       },
       (context) => {
         expect(
-          context.messages.filter((message) => message.role !== "system").at(-1),
+          context.messages.findLast(
+            (message) => message.role === "toolResult" || message.role === "user",
+          ),
         ).toMatchObject({
           content: [{ type: "text", text: "bash-1 [bash] running — Wait for parent-pid release" }],
         });
@@ -132,7 +138,9 @@ test("send_message reuses the child Session with no old jobs, output or reused i
   let childResults = 0;
   const childJobs: SessionEvent[] = [];
   const reply: Parameters<typeof fakeModel>[0][number] = async (context) => {
-    const last = context.messages.filter((message) => message.role !== "system").at(-1)!;
+    const last = context.messages.findLast(
+      (message) => message.role === "toolResult" || message.role === "user",
+    )!;
     if (last.role === "user" && JSON.stringify(last.content).includes("continue child"))
       return call("job_list");
     if (last.role === "toolResult") {
@@ -202,7 +210,7 @@ test("send_message reuses the child Session with no old jobs, output or reused i
   expect(session.jobs()).toEqual([]);
 });
 
-test.each(["child", "parent", "dispose"] as const)(
+test.each(["child", "parent", "close"] as const)(
   "%s cancellation settles owned process resources without child job teardown notifications",
   async (cancellation) => {
     dirs = await tempDirs();
@@ -213,7 +221,9 @@ test.each(["child", "parent", "dispose"] as const)(
     let childRequests = 0;
     const events: SessionEvent[] = [];
     const reply: Parameters<typeof fakeModel>[0][number] = async (context, options) => {
-      const last = context.messages.filter((message) => message.role !== "system").at(-1)!;
+      const last = context.messages.findLast(
+        (message) => message.role === "toolResult" || message.role === "user",
+      )!;
       if (last.role === "user" && JSON.stringify(last.content).includes("child-prompt")) {
         childRequests++;
         return call("bash", background("child-pid"));
@@ -248,14 +258,14 @@ test.each(["child", "parent", "dispose"] as const)(
     const settled = run.catch((error: unknown) => error);
     await Promise.all([started.promise, waiting.promise]);
     const parentPid = Number(await waitFile("parent-pid"));
-    if (cancellation === "dispose") {
+    if (cancellation === "close") {
       await session.close();
       expect(await settled).toBeInstanceOf(Error);
     } else {
       if (cancellation === "parent") {
         await session.abort();
         expect(() => process.kill(childPid, 0)).not.toThrow();
-        expect((session.toolState("subagents") as { active: boolean }[])[0]?.active).toBe(true);
+        expect(session.toolState("subagents")).toMatchObject([{ active: true }]);
       }
       session.interruptSubagent(childId);
       expect((await run).text).toBe("parent final");
@@ -265,7 +275,7 @@ test.each(["child", "parent", "dispose"] as const)(
     expect(childRequests).toBe(2);
     expect(
       events.filter((event) => event.type === "subagent_event" && event.event.type === "run_end"),
-    ).toHaveLength(cancellation === "dispose" ? 0 : 1);
+    ).toHaveLength(cancellation === "close" ? 0 : 1);
     expect(
       events.flatMap((event) =>
         event.type === "subagent_event" && event.event.type === "job_event"
@@ -274,9 +284,9 @@ test.each(["child", "parent", "dispose"] as const)(
       ),
     ).toEqual(["started"]);
     expect(session.jobs().map((job) => job.label)).toEqual(
-      cancellation === "dispose" ? [] : ["Wait for parent-pid release"],
+      cancellation === "close" ? [] : ["Wait for parent-pid release"],
     );
-    if (cancellation === "dispose") expect(() => process.kill(parentPid, 0)).toThrow();
+    if (cancellation === "close") expect(() => process.kill(parentPid, 0)).toThrow();
     else expect(() => process.kill(parentPid, 0)).not.toThrow();
     expect(JSON.stringify(fake.contexts.map((context) => context.messages))).not.toContain(
       "background job bash-1 (bash: Wait for child-pid release) finished",
@@ -382,7 +392,11 @@ test("parent and child each own ten job slots and the child can list and kill on
       expect(toolText(context.messages)).toContain(
         "background job limit reached for this owner (limit: 10)",
       );
-      expect(context.messages.filter((message) => message.role !== "system").at(-1)).toMatchObject({
+      expect(
+        context.messages.findLast(
+          (message) => message.role === "toolResult" || message.role === "user",
+        ),
+      ).toMatchObject({
         isError: true,
       });
       return call("job_list");
