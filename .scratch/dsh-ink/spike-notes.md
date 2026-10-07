@@ -1,12 +1,12 @@
 # Bun spike evidence
 
-Source: dsh-TUI `3c89ea516e4f7d2777efe979200016528722a0b4`. Runtime: Bun 1.4.2 on macOS arm64, 2026-10-07. 独立 prototype，生产 renderer 尚未改变。
+Source: dsh-TUI `3c89ea516e4f7d2777efe979200016528722a0b4`. Runtime: Bun 1.4.2 on macOS arm64, 2026-10-07. 这是提交 `d14a1503` 的独立 prototype 历史记录；02 在提交 `71eac6ee` 迁入正式 runtime 并移除重复源码。当前来源、公开 API 与本地修改以 [ink README](../../packages/coding-agent/src/ink/README.md) 为准。
 
-## 复现
+## 当前 runtime 验证
 
 ```sh
 rtk proxy bun install --frozen-lockfile
-rtk proxy bun test packages/coding-agent/tests/ink/runtime.test.tsx
+rtk proxy env -u NO_COLOR bun test packages/coding-agent/tests/ink/runtime.test.tsx
 ```
 
 02 已将 spike 迁入正式 runtime，移除 prototype 重复源码；下面的3 tests计数为历史独立 spike 证据，当前 runtime 增加多根及 late exit 验证。
@@ -80,4 +80,4 @@ prototype 用下表全部精确版本安装（22 个直接依赖、安装输出 
 
 ## 结论与剩余范围
 
-可行：Bun render/input/default streams、injectable xterm 与真实 sixel worker 已证明；ADR-0013 accepted，ADR-0005 superseded。spike 不代表完整应用验收；production 仍须修复 stream-context 注入、exit lazy promise，验证 selection/clipboard、reading position、graphics/clipping、small terminal、signals 与 module boundaries。06 在最终 revision 执行完整 check。prototype 临时复制用于复现实验，02 在保留必要 tests/manifest/port notes 后移除重复源。
+可行：Bun render/input/default streams、injectable xterm 与真实 sixel worker 已证明；ADR-0013 accepted，ADR-0005 superseded。spike 不代表完整应用验收；上述 stream-context 与 late wait 限制已由正式 runtime 修复，应用迁移与各专项公开测试见关联工单；06 在最终 revision 执行完整 check。历史 prototype 已移除，其源与运行结果通过上述历史提交保留。

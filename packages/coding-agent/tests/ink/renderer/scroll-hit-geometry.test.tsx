@@ -43,7 +43,7 @@ test("clicks follow scrolled cells, exclude clipped rows, and cancel presses acr
         </Box>
       </Box>
     </MouseScreen>,
-    { ...terminal, fullscreen: true },
+    terminal,
   );
   try {
     await terminal.flush();
@@ -100,7 +100,7 @@ test("scrolling records new screen rectangles and excludes content clipped behin
         </Box>
       </Box>
     </MouseScreen>,
-    { ...terminal, fullscreen: true },
+    terminal,
   );
   try {
     await terminal.flush();

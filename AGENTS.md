@@ -58,7 +58,7 @@ env -u NO_COLOR bun run check                     # format → lint → types �
 - **Runtime-agnostic packages.** `@rukie/shared` uses no Bun, Node, or DOM APIs and depends only on `typebox`; `@rukie/i18n` has the same restriction and depends only on `@rukie/shared`.
 - **Locale.** Agent Core stays locale-agnostic. Update both zh and en dictionaries when changing localized copy (ADR-0008).
 - **Terminal behavior.** Preserve terminal restoration, reading position, bottom-follow behavior, and small-terminal handling (ADR-0006). Read [packages/coding-agent/src/ink/README.md](packages/coding-agent/src/ink/README.md) before changing renderer APIs or lifecycle behavior.
-- **Reference code.** dsh-TUI is the design/behavior reference when specified. Yoga is the explicitly vendored exception: only `layout` imports it, and changes follow ADR-0005 and the renderer README. Keep unrelated visual and interaction behavior intact.
+- **Reference code.** dsh-TUI is the design/behavior reference when specified. The ink runtime and its Yoga are the explicitly vendored exception under ADR-0013; preserve the fixed-source diff and document local changes in the renderer README. Keep unrelated visual and interaction behavior intact.
 - **Dependencies.** External versions are pinned exactly; update [docs/tech-stack.md](docs/tech-stack.md) and the Bun lockfile with dependency changes. Distinguish installed dependencies from planned stack choices. Keep TypeBox aligned with the locked pi version.
 
 ## Sessions, configuration, and interactions

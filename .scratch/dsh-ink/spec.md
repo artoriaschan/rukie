@@ -2,7 +2,7 @@ Status: claimed
 
 # Spec: 渲染栈改用 dsh-TUI 的 ink
 
-决定见 [ADR-0013](../../docs/adr/0013-adopt-dsh-tui-ink.md)（proposed）。必须在 [package-merge](../package-merge/spec.md) resolved 之后开始。
+决定见 [ADR-0013](../../docs/adr/0013-adopt-dsh-tui-ink.md)（accepted）。必须在 [package-merge](../package-merge/spec.md) resolved 之后开始。
 
 ## Problem Statement
 

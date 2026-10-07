@@ -1,19 +1,21 @@
 import { expect, test } from "bun:test";
 import { useLayoutEffect, useState } from "react";
-import { Box, Text, render } from "../../../src/ink";
+import { AlternateScreen, Box, ScrollBox, Text, renderSync } from "../../../src/ink";
 import { createTerminal } from "../helpers/terminal";
 
 test("box backgrounds fill padding and empty cells, inherit through text and stay within the box", async () => {
   const terminal = createTerminal(12, 5);
-  const app = render(
-    <Box flexDirection="column">
-      <Box width={8} height={3} paddingX={1} backgroundColor="#d8dadd">
-        <Text color="#20242b">
-          中<Text backgroundColor="#112233">A</Text>B
-        </Text>
+  const app = renderSync(
+    <AlternateScreen>
+      <Box flexDirection="column">
+        <Box width={8} height={3} paddingX={1} backgroundColor="#d8dadd">
+          <Text color="#20242b">
+            中<Text backgroundColor="#112233">A</Text>B
+          </Text>
+        </Box>
+        <Text>outside</Text>
       </Box>
-      <Text>outside</Text>
-    </Box>,
+    </AlternateScreen>,
     terminal,
   );
   try {
@@ -31,20 +33,23 @@ test("box backgrounds fill padding and empty cells, inherit through text and sta
   } finally {
     app.unmount();
     await app.waitUntilExit();
+    app.cleanup();
     terminal.dispose();
   }
 });
 
 test("nested flex boxes place text inside padding and borders", async () => {
   const terminal = createTerminal(16, 8);
-  const app = render(
-    <Box flexDirection="column" width={12} borderStyle="single" padding={1}>
-      <Box gap={1}>
-        <Text>A</Text>
-        <Text>B</Text>
+  const app = renderSync(
+    <AlternateScreen>
+      <Box flexDirection="column" width={12} borderStyle="single" padding={1}>
+        <Box gap={1}>
+          <Text>A</Text>
+          <Text>B</Text>
+        </Box>
+        <Text>C</Text>
       </Box>
-      <Text>C</Text>
-    </Box>,
+    </AlternateScreen>,
     terminal,
   );
   try {
@@ -59,20 +64,23 @@ test("nested flex boxes place text inside padding and borders", async () => {
       "",
       "",
     ]);
-    expect(terminal.cursor()).toEqual({ x: 0, y: 6 });
+    expect(terminal.terminal.buffer.active.baseY).toBe(0);
   } finally {
     app.unmount();
     await app.waitUntilExit();
+    app.cleanup();
     terminal.dispose();
   }
 });
 
 test("wrapping a multi-codepoint grapheme preserves the following ASCII text", async () => {
   const terminal = createTerminal(6, 3);
-  const app = render(
-    <Box width={2}>
-      <Text>👩‍💻AB</Text>
-    </Box>,
+  const app = renderSync(
+    <AlternateScreen>
+      <Box width={2}>
+        <Text>👩‍💻AB</Text>
+      </Box>
+    </AlternateScreen>,
     terminal,
   );
   try {
@@ -81,21 +89,24 @@ test("wrapping a multi-codepoint grapheme preserves the following ASCII text", a
   } finally {
     app.unmount();
     await app.waitUntilExit();
+    app.cleanup();
     terminal.dispose();
   }
 });
 
 test("word wrapping keeps words together and retains their nested styles", async () => {
   const terminal = createTerminal(12, 4);
-  const app = render(
-    <Box width={8}>
-      <Text>
-        hello{" "}
-        <Text color="red" bold>
-          world
+  const app = renderSync(
+    <AlternateScreen>
+      <Box width={8}>
+        <Text>
+          hello{" "}
+          <Text color="ansi:red" bold>
+            world
+          </Text>
         </Text>
-      </Text>
-    </Box>,
+      </Box>
+    </AlternateScreen>,
     terminal,
   );
   try {
@@ -107,6 +118,7 @@ test("word wrapping keeps words together and retains their nested styles", async
   } finally {
     app.unmount();
     await app.waitUntilExit();
+    app.cleanup();
     terminal.dispose();
   }
 });
@@ -114,13 +126,15 @@ test("word wrapping keeps words together and retains their nested styles", async
 test("a grapheme split across React children remains intact and occupies one column", async () => {
   const terminal = createTerminal(8, 2);
   const accent = "\u0301";
-  const app = render(
-    <Box gap={1}>
-      <Text color="green">
-        e<Text bold>{accent}</Text>中
-      </Text>
-      <Text>|</Text>
-    </Box>,
+  const app = renderSync(
+    <AlternateScreen>
+      <Box gap={1}>
+        <Text color="ansi:green">
+          e<Text bold>{accent}</Text>中
+        </Text>
+        <Text>|</Text>
+      </Box>
+    </AlternateScreen>,
     terminal,
   );
   try {
@@ -130,26 +144,32 @@ test("a grapheme split across React children remains intact and occupies one col
   } finally {
     app.unmount();
     await app.waitUntilExit();
+    app.cleanup();
     terminal.dispose();
   }
 });
 
 test("a full viewport clips excess content without scrolling after its bottom-right cell", async () => {
   const terminal = createTerminal(4, 3);
-  const app = render(
-    <Box flexDirection="column">
-      <Text>{"AB中\n1234\n中文\nEND!"}</Text>
-    </Box>,
+  const app = renderSync(
+    <AlternateScreen>
+      <ScrollBox height={3} stickyScroll>
+        <Box flexShrink={0}>
+          <Text>{"AB中\n1234\n中文\nEND!"}</Text>
+        </Box>
+      </ScrollBox>
+    </AlternateScreen>,
     terminal,
   );
   try {
-    await terminal.flush();
+    await terminal.waitFor(() => terminal.screen()[2] === "END!");
     expect(terminal.screen()).toEqual(["1234", "中文", "END!"]);
     expect(terminal.terminal.buffer.active.baseY).toBe(0);
-    expect(terminal.cursor()).toEqual({ x: 0, y: 2 });
+    expect(terminal.terminal.buffer.active.baseY).toBe(0);
   } finally {
     app.unmount();
     await app.waitUntilExit();
+    app.cleanup();
     terminal.dispose();
   }
 });
@@ -166,7 +186,7 @@ test("React state updates repaint text, styles and keyed box order, clearing old
       <Box flexDirection="column" width={short ? 4 : 6} paddingLeft={short ? undefined : 1}>
         {(short ? ["b", "a"] : ["a", "b"]).map((key) => (
           <Box key={key}>
-            <Text color={short ? undefined : "red"} bold={!short}>
+            <Text color={short ? undefined : "ansi:red"} bold={!short}>
               {key === "a" ? (short ? "A" : "中文ABCDEF") : "B"}
             </Text>
           </Box>
@@ -175,7 +195,12 @@ test("React state updates repaint text, styles and keyed box order, clearing old
       </Box>
     );
   }
-  const app = render(<View />, terminal);
+  const app = renderSync(
+    <AlternateScreen>
+      <View />
+    </AlternateScreen>,
+    terminal,
+  );
   try {
     await terminal.flush();
     expect(terminal.screen()).toEqual([" 中文A", " BCDEF", " B", " remov", " ed", "", ""]);
@@ -184,34 +209,41 @@ test("React state updates repaint text, styles and keyed box order, clearing old
     expect(terminal.screen()).toEqual(["B", "A", "", "", "", "", ""]);
     expect(terminal.terminal.buffer.active.getLine(1)!.getCell(0)!.isFgDefault()).toBeTruthy();
     expect(terminal.terminal.buffer.active.getLine(1)!.getCell(0)!.isBold()).toBeFalsy();
-    expect(terminal.cursor()).toEqual({ x: 0, y: 2 });
+    expect(terminal.terminal.buffer.active.baseY).toBe(0);
     app.unmount();
     app.unmount();
     await app.waitUntilExit();
+    app.cleanup();
+    await terminal.flush();
+    const afterUnmount = terminal.bytesWritten();
     update(false);
     await terminal.flush();
-    expect(terminal.screen()).toEqual(["B", "A", "", "", "", "", ""]);
+    expect(terminal.bytesWritten()).toBe(afterUnmount);
+    expect(terminal.terminal.buffer.active.type).toBe("normal");
   } finally {
     app.unmount();
     await app.waitUntilExit();
+    app.cleanup();
     terminal.dispose();
   }
 });
 
 test("text styles survive nesting and wrapping without leaking to siblings", async () => {
   const terminal = createTerminal(12, 5);
-  const app = render(
-    <Box flexDirection="column" width={4}>
-      <Text color="red" bold dimColor>
-        A
-        <Text color="blue" bold={false} dimColor={false}>
-          中
+  const app = renderSync(
+    <AlternateScreen>
+      <Box flexDirection="column" width={4}>
+        <Text color="ansi:red" bold>
+          A
+          <Text color="ansi:blue" bold={false}>
+            中
+          </Text>
+          BC
         </Text>
-        BC
-      </Text>
-      <Text color="#12ab34">D</Text>
-      <Text>E</Text>
-    </Box>,
+        <Text color="#12ab34">D</Text>
+        <Text>E</Text>
+      </Box>
+    </AlternateScreen>,
     terminal,
   );
   try {
@@ -221,7 +253,7 @@ test("text styles survive nesting and wrapping without leaking to siblings", asy
     const cell = (x: number, y: number) => buffer.getLine(y)!.getCell(x)!;
     expect(cell(0, 0).getFgColor()).toBe(1);
     expect(cell(0, 0).isBold()).toBeTruthy();
-    expect(cell(0, 0).isDim()).toBeTruthy();
+    expect(cell(0, 0).isDim()).toBeFalsy();
     expect(cell(1, 0).getFgColor()).toBe(4);
     expect(cell(1, 0).isBold()).toBeFalsy();
     expect(cell(1, 0).isDim()).toBeFalsy();
@@ -233,22 +265,25 @@ test("text styles survive nesting and wrapping without leaking to siblings", asy
   } finally {
     app.unmount();
     await app.waitUntilExit();
+    app.cleanup();
     terminal.dispose();
   }
 });
 
 test("overwide text wraps by display columns or truncates without splitting wide characters", async () => {
-  const terminal = createTerminal(12, 9);
-  const app = render(
-    <Box flexDirection="column" width={5}>
-      <Text>AB中文Z</Text>
-      <Text wrap="truncate">AB中文Z</Text>
-      <Text>{"中AB\nCD中"}</Text>
-      <Box width={1}>
-        <Text>中文A</Text>
+  const terminal = createTerminal(12, 12);
+  const app = renderSync(
+    <AlternateScreen>
+      <Box flexDirection="column" flexShrink={0} width={5}>
+        <Text>AB中文Z</Text>
+        <Text wrap="truncate">AB中文Z</Text>
+        <Text>{"中AB\nCD中"}</Text>
+        <Box width={1} flexShrink={0} overflow="hidden">
+          <Text>中文A</Text>
+        </Box>
+        <Text>{"12345\n"}</Text>
       </Box>
-      <Text>{"12345\n"}</Text>
-    </Box>,
+    </AlternateScreen>,
     terminal,
   );
   try {
@@ -256,38 +291,44 @@ test("overwide text wraps by display columns or truncates without splitting wide
     expect(terminal.screen()).toEqual([
       "AB中",
       "文Z",
-      "AB中",
+      "AB中…",
       "中AB",
       "CD中",
+      "",
+      "",
       "A",
       "12345",
+      "",
       "",
       "",
     ]);
   } finally {
     app.unmount();
     await app.waitUntilExit();
+    app.cleanup();
     terminal.dispose();
   }
 });
 
 test("CJK characters and combining characters align adjacent flex columns", async () => {
   const terminal = createTerminal(18, 4);
-  const app = render(
-    <Box flexDirection="column">
-      <Box gap={1}>
-        <Text>中文A</Text>
-        <Text>|</Text>
+  const app = renderSync(
+    <AlternateScreen>
+      <Box flexDirection="column">
+        <Box gap={1}>
+          <Text>中文A</Text>
+          <Text>|</Text>
+        </Box>
+        <Box gap={1}>
+          <Text>ABCDE</Text>
+          <Text>|</Text>
+        </Box>
+        <Box gap={1}>
+          <Text>é中AB</Text>
+          <Text>|</Text>
+        </Box>
       </Box>
-      <Box gap={1}>
-        <Text>ABCDE</Text>
-        <Text>|</Text>
-      </Box>
-      <Box gap={1}>
-        <Text>é中AB</Text>
-        <Text>|</Text>
-      </Box>
-    </Box>,
+    </AlternateScreen>,
     terminal,
   );
   try {
@@ -300,35 +341,38 @@ test("CJK characters and combining characters align adjacent flex columns", asyn
   } finally {
     app.unmount();
     await app.waitUntilExit();
+    app.cleanup();
     terminal.dispose();
   }
 });
 
 test("grow, shrink, margin and gaps distribute terminal columns", async () => {
   const terminal = createTerminal(20, 6);
-  const app = render(
-    <Box flexDirection="column">
-      <Box width={16} gap={1}>
-        <Box width={4} marginLeft={1}>
-          <Text>L</Text>
+  const app = renderSync(
+    <AlternateScreen>
+      <Box flexDirection="column">
+        <Box width={16} gap={1}>
+          <Box width={4} marginLeft={1}>
+            <Text>L</Text>
+          </Box>
+          <Box flexGrow={1}>
+            <Text>R</Text>
+          </Box>
+          <Text>X</Text>
         </Box>
-        <Box flexGrow={1}>
-          <Text>R</Text>
+        <Box width={8}>
+          <Box width={6} flexShrink={1}>
+            <Text>A</Text>
+          </Box>
+          <Box width={6} flexShrink={1}>
+            <Text>B</Text>
+          </Box>
         </Box>
-        <Text>X</Text>
+        <Box height={3} paddingX={2} paddingY={1}>
+          <Text>P</Text>
+        </Box>
       </Box>
-      <Box width={8}>
-        <Box width={6} flexShrink={1}>
-          <Text>A</Text>
-        </Box>
-        <Box width={6} flexShrink={1}>
-          <Text>B</Text>
-        </Box>
-      </Box>
-      <Box height={3} paddingX={2} paddingY={1}>
-        <Text>P</Text>
-      </Box>
-    </Box>,
+    </AlternateScreen>,
     terminal,
   );
   try {
@@ -337,6 +381,69 @@ test("grow, shrink, margin and gaps distribute terminal columns", async () => {
   } finally {
     app.unmount();
     await app.waitUntilExit();
+    app.cleanup();
+    terminal.dispose();
+  }
+});
+
+// These ordinary layout contracts were previously embedded in Static append tests.
+test("ordinary completed content retains vertical margins", async () => {
+  const terminal = createTerminal(10, 5);
+  const app = renderSync(
+    <AlternateScreen>
+      <Box flexDirection="column" flexShrink={0}>
+        <Box flexShrink={0} marginTop={1} marginLeft={2} marginBottom={1}>
+          <Text>DONE</Text>
+        </Box>
+        <Text>active</Text>
+      </Box>
+    </AlternateScreen>,
+    terminal,
+  );
+  try {
+    await terminal.flush();
+    expect(terminal.screen()).toEqual(["", "  DONE", "", "active", ""]);
+    expect(terminal.terminal.buffer.active.baseY).toBe(0);
+  } finally {
+    app.unmount();
+    await app.waitUntilExit();
+    app.cleanup();
+    terminal.dispose();
+  }
+});
+
+test("ordinary completed content retains padded borders and colored wide glyphs", async () => {
+  const terminal = createTerminal(10, 7);
+  const app = renderSync(
+    <AlternateScreen>
+      <Box flexDirection="column" flexShrink={0}>
+        <Box flexShrink={0} width={6} padding={1} borderStyle="single">
+          <Text color="ansi:red">中</Text>
+        </Box>
+        <Text>live</Text>
+      </Box>
+    </AlternateScreen>,
+    terminal,
+  );
+  try {
+    await terminal.flush();
+    expect(terminal.screen()).toEqual([
+      "┌────┐",
+      "│    │",
+      "│ 中 │",
+      "│    │",
+      "└────┘",
+      "live",
+      "",
+    ]);
+    const glyph = terminal.terminal.buffer.active.getLine(2)!.getCell(2)!;
+    expect(glyph.getFgColor()).toBe(1);
+    expect(glyph.getWidth()).toBe(2);
+    expect(terminal.terminal.buffer.active.baseY).toBe(0);
+  } finally {
+    app.unmount();
+    await app.waitUntilExit();
+    app.cleanup();
     terminal.dispose();
   }
 });

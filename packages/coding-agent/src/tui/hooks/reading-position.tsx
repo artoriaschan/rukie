@@ -28,7 +28,7 @@ export function readPosition(
     following: handle.isSticky(),
   };
 }
-export function usePaintedPosition(
+function usePaintedPosition(
   ref: RefObject<ScrollBoxHandle | null>,
   width: number,
   onChange?: (position: ReadingPosition) => void,
@@ -51,10 +51,7 @@ export function usePaintedPosition(
     };
   }, [renderer, ref, width]);
 }
-export function restorePosition(
-  handle: ScrollBoxHandle | null | undefined,
-  position?: ReadingPosition,
-) {
+function restorePosition(handle: ScrollBoxHandle | null | undefined, position?: ReadingPosition) {
   if (!handle || !position) return;
   if (position.following) handle.scrollToBottom();
   else handle.scrollTo(position.top);
@@ -96,10 +93,6 @@ export function useSources(): Sources {
 }
 export function useSourceMount() {
   return useContext(SourceContext)?.mount;
-}
-export function useSourceRef(id?: string) {
-  const sources = useContext(SourceContext);
-  return id ? sources?.ref(id) : undefined;
 }
 export function sourceTop(element: DOMElement): number {
   let top = 0;

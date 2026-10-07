@@ -46,26 +46,28 @@ SplitDiffView 的 `onSourceMount(id, DOMElement | null)` 将稳定源行身份�
 
 ## 检查与依赖边界
 
-此目录按 ADR-0013 豁免 Oxlint/Knip；oxfmt 同样忽略此目录以保留上游格式。依赖方向由 `bun run check:ink-boundaries` 的 TypeScript AST/module resolution 检查强制，覆盖静态 import、reexport、import-equals、dynamic import 与 require；拒绝无法静态判断的 computed module import。仅允许 ink 内部、npm/标准库和已有的 @rukie/shared，禁止 Agent Core、i18n 与所有上层目录。该检查包含在 check:dev；TUI 仅经 index.ts 导入仍由 Oxlint 强制。
+此目录按 ADR-0013 豁免 Oxlint/Knip；来源 Link 使用的 supports-hyperlinks 依赖由 Knip 的单项 ignoreDependencies 保留，当前产品不导入 Link，但完整来源组件仍可升级比对。oxfmt 同样忽略此目录以保留上游格式。依赖方向由 `bun run check:ink-boundaries` 的 TypeScript AST/module resolution 检查强制，覆盖静态 import、reexport、import-equals、dynamic import 与 require；拒绝无法静态判断的 computed module import。仅允许 ink 内部、npm/标准库和已有的 @rukie/shared，禁止 Agent Core、i18n 与所有上层目录。该检查包含在 check:dev；TUI 仅经 index.ts 导入仍由 Oxlint 强制。
 
 `bun test packages/coding-agent/tests/ink/runtime.test.tsx` 验证公开 render + xterm cells、输入/raw mode/退出、真实 sixel worker/sharp、默认流进程、多根鼠标选字/search 隔离和错误完成。使用帧、xterm write callback、selection subscription、worker message/termination 与 child.exited 同步。依赖精确版本见 [技术栈](../../../../docs/tech-stack.md)，根 bun.lock 是安装依据。spike 的重复生产源码已移除，历史可行性证据保留在 [.scratch/dsh-ink/spike-notes.md](../../../../.scratch/dsh-ink/spike-notes.md)。
 
 ### 与 manifest 不同的原始路径
 
+124 个来源文件全部保留；当前 37 个文件包含上文说明的本地改动。以下路径沿用 manifest 的来源路径，`src/native-ts/` 在本仓库映射到 `ink/native-ts/`。
+
 - `src/ink/components/AlternateScreen.tsx`
 - `src/ink/components/App.tsx`
 - `src/ink/components/AppContext.ts`
 - `src/ink/components/ScrollBox.tsx`
+- `src/ink/components/Text.tsx`
 - `src/ink/dom.ts`
 - `src/ink/events/click-event.ts`
 - `src/ink/events/dispatcher.ts`
 - `src/ink/hit-test.ts`
 - `src/ink/hooks/use-input.ts`
-- `src/ink/input-suppression.ts`
-- `src/ink/hooks/use-input.ts`
 - `src/ink/hooks/use-search-highlight.ts`
 - `src/ink/hooks/use-selection.ts`
 - `src/ink/ink.tsx`
+- `src/ink/input-suppression.ts`
 - `src/ink/layout/yoga.ts`
 - `src/ink/log-update.ts`
 - `src/ink/node-cache.ts`
@@ -77,8 +79,10 @@ SplitDiffView 的 `onSourceMount(id, DOMElement | null)` 将稳定源行身份�
 - `src/ink/render-to-screen.ts`
 - `src/ink/renderer.ts`
 - `src/ink/root.ts`
+- `src/ink/screen.ts`
 - `src/ink/selection.ts`
 - `src/ink/sixel-codec.ts`
+- `src/ink/squash-text-nodes.ts`
 - `src/ink/stringWidth.ts`
 - `src/ink/terminal.ts`
 - `src/ink/termio/osc.ts`
@@ -86,7 +90,6 @@ SplitDiffView 的 `onSourceMount(id, DOMElement | null)` 将稳定源行身份�
 - `src/ink/update-overflow-guard.ts`
 - `src/ink/warn.ts`
 - `src/ink/wrap-text.ts`
-- `src/native-ts/yoga-layout/enums.ts`
 - `src/native-ts/yoga-layout/index.ts`
 
 - 05 应用原生输入与复制接线：`hooks/use-input.ts` 在 layout effect 同步注册输入 listener，与 raw mode 启用同一 commit，避免首批输入窗口；`hooks/use-selection.ts`、`ink.tsx` 暴露 `readSelectionText()`，仅核验并读取最后绘制的选中文字，无原生或 OSC clipboard 副作用。TUI 的异步 host 独立拥有 copied/sent/unavailable/stale 与 Session/modal 生命周期。
@@ -112,3 +115,12 @@ TextInput 的 `onCursorChange` 对已接纳输入批次中的每次移动同步�
 AlternateScreen 保持 insertion effect 中的 pre-paint 终端模式所有权。`ink.tsx`/`hit-test.ts` 在该边界同步清除旧 hover geometry/owner，再于 commit 后 microtask 通知捕获的旧 React leave handler；普通 pointer leave 仍同步。根局部 dispatch generation 与新 hover lease 防止旧通知取消重新进入的 hover，双根互不影响。
 
 06 的公开滚动验收补充：`render-node-to-output.ts` 在 DECSTBM blit/shift 后同步保留子树的屏幕命中矩形，并丢弃已离开 viewport 的缓存；移动后的字符与鼠标命中保持一致，嵌套 ScrollBox 的 viewport origin 同步移动。应用的读取位置模块在原来源因 fold 消失时，优先恢复保存的存活父来源，再使用绝对 top 回退；这些稳定产品身份不进入原生 ScrollBox props。
+
+ScrollBox 的 DECSTBM 快速路径使用实际滚动内容高度判断纯滚动和尾部追加；内容包装 Box 的 Yoga 高度可能一直等于 viewport，不能用于识别内容收缩。收缩进入完整绘制，避免把旧行移回空白区域。
+
+- Text.tsx 保留显式 false style，使子 Text 能关闭父级 bold/inverse/italic/underline；undefined 继续继承。squash-text-nodes.ts 在 ANSI 样式序列插入前合并跨 React Text 子段的 combining/ZWJ continuation，以首段拥有完整 grapheme 的样式。原生 Text wrapping 以实际 display columns 和 whitespace 为准，产品源位置由源身份与 codepoint offset 恢复。
+- screen.ts 的 StylePool 在启动时读取非空 NO_COLOR，统一排除文字、背景、border/fill 和 RawAnsi 的 FG/BG 颜色；bold/dim 等 modifier 仍保留。空字符串不禁色；图片 RGBA 不属于 ANSI 色彩平面。
+- App.tsx/hit-test.ts 保留 SGR hover 的原始 button modifier，孤立 release 不重放旧 click。Alt 拖拽结束的产品通知在 commit 后交给仍存活的同一输入 lease；延迟 hover handler 错误归所属 renderer。
+- ink.tsx/App.tsx 在真实进程退出或 signal-exit 中恢复各自终端；stdout 持续写入失败仍释放输入/raw mode 并拒绝 early/late exit wait。React insertion 中的写失败延迟给所属 root 处理，退出后的 rerender 不再输出。ConPTY 同尺寸 resize 擦除是其启动 capability 对应的原生规则，其他终端同尺寸通知保持静默。
+
+- selection.ts 为 held wheel 移出的选中行记录 normalized source 的实际 glyph 范围，在复制前用所属 root 的存活源重新核验；ANSI/style、选区外同一行更新和相同字节的 Text remount 不改变内容指纹，选中范围替换仍拒绝读取。向反方向滚回时以 virtual endpoints 弹出 capture debt，避免重复行或丢失原选中文字。

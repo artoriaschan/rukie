@@ -50,7 +50,7 @@ for (const [opaque, paired] of [
                   left={2}
                   width={20}
                   height={2}
-                  backgroundColor={opaque ? "blue" : undefined}
+                  backgroundColor={opaque ? "ansi:blue" : undefined}
                   onClick={(event) => event.stopImmediatePropagation()}
                 >
                   <Text>{"OVERLAY-GHOST\nOVERLAY-SECOND"}</Text>

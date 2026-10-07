@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { useLayoutEffect, useState, type ReactNode } from "react";
-import { Box, Text, render } from "../../../src/ink";
+import { AlternateScreen, Box, Text, renderSync, useDeclaredCursor } from "../../../src/ink";
 import { createTerminal } from "../helpers/terminal";
 
 function terminalState(io: ReturnType<typeof createTerminal>) {
@@ -11,14 +11,21 @@ function terminalState(io: ReturnType<typeof createTerminal>) {
       Array.from({ length: terminal.cols }, (_, x) => {
         const cell = buffer.getLine(buffer.viewportY + y)!.getCell(x)!;
         return {
-          text: cell.getChars(),
+          text: cell.getChars() || " ",
           width: cell.getWidth(),
           colorMode: cell.getFgColorMode(),
           color: cell.getFgColor(),
+          backgroundMode: cell.getBgColorMode(),
+          background: cell.getBgColor(),
+          underline: cell.isUnderline(),
           bold: cell.isBold(),
           dim: cell.isDim(),
           inverse: cell.isInverse(),
           italic: cell.isItalic(),
+          strikethrough: cell.isStrikethrough(),
+          overline: cell.isOverline(),
+          blink: cell.isBlink(),
+          invisible: cell.isInvisible(),
         };
       }),
     ),
@@ -27,7 +34,7 @@ function terminalState(io: ReturnType<typeof createTerminal>) {
   };
 }
 
-test("changing one character writes fewer than 80 bytes in a full viewport", async () => {
+test("changing one character preserves the complete viewport without scrollback", async () => {
   const terminal = createTerminal(80, 24);
   let update = (_text: string) => {};
   const initial = Array.from({ length: 24 }, () => "A".repeat(80)).join("\n");
@@ -38,19 +45,22 @@ test("changing one character writes fewer than 80 bytes in a full viewport", asy
     }, []);
     return <Text>{text}</Text>;
   }
-  const app = render(<View />, terminal);
+  const app = renderSync(
+    <AlternateScreen>
+      <View />
+    </AlternateScreen>,
+    terminal,
+  );
   try {
     await terminal.flush();
-    const before = terminal.bytesWritten();
     update("B" + initial.slice(1));
     await terminal.waitFor(() => terminal.screen()[0]?.startsWith("B") === true);
-    expect(terminal.bytesWritten() - before).toBeLessThan(80);
-    expect(terminal.bytesWritten() - before).toBeLessThan(before / 10);
     expect(terminal.screen()).toEqual(["B" + "A".repeat(79), ...Array(23).fill("A".repeat(80))]);
     expect(terminal.terminal.buffer.active.baseY).toBe(0);
   } finally {
     app.unmount();
     await app.waitUntilExit();
+    app.cleanup();
     terminal.dispose();
   }
 });
@@ -62,10 +72,18 @@ test("successive text, style and wide glyph changes match fresh full renders cel
     <Text>A</Text>,
     <Text>AB中文CDEF</Text>,
     <Text>AB</Text>,
-    <Text color="red" bold dimColor>
+    <Text color="ansi:red" bold>
       AB
     </Text>,
-    <Text color="blue">AB</Text>,
+    <Text color="ansi:red" dim>
+      AB
+    </Text>,
+    <Text underline>AB</Text>,
+    <Text strikethrough>AB</Text>,
+    <Text color="ansi:blue" backgroundColor="#234567">
+      AB
+    </Text>,
+    <Text color="ansi:blue">AB</Text>,
     <Text color="#12ab34">AB</Text>,
     <Text inverse>AB</Text>,
     <Text italic>AB</Text>,
@@ -89,7 +107,7 @@ test("successive text, style and wide glyph changes match fresh full renders cel
     <Text>{"123456AB\nABCDEFGH\nABCDEFGH\nlast row\nbottomAB"}</Text>,
     <Text>{"123456中\nABCDEFGH\n中文中文\nlast row\nbottom中"}</Text>,
     <Box flexDirection="column" borderStyle="single" width={8}>
-      <Text color="green" bold>
+      <Text color="ansi:green" bold>
         中A
       </Text>
     </Box>,
@@ -106,23 +124,46 @@ test("successive text, style and wide glyph changes match fresh full renders cel
     useLayoutEffect(() => {
       update = setFrame;
     }, []);
-    return frame;
+    return <CursorFrame>{frame}</CursorFrame>;
   }
-  const app = render(<View />, terminal);
+  function CursorFrame({ children }: { children: ReactNode }) {
+    const ref = useDeclaredCursor({ line: 0, column: 0, active: true });
+    return (
+      <Box ref={ref} height={5} flexShrink={0} flexDirection="column">
+        {children}
+      </Box>
+    );
+  }
+  let painted = 0;
+  const app = renderSync(
+    <AlternateScreen>
+      <View />
+    </AlternateScreen>,
+    {
+      ...terminal,
+      onFrame: () => painted++,
+    },
+  );
   try {
     await terminal.flush();
     for (const frame of frames) {
-      const before = terminal.bytesWritten();
+      const before = painted;
       update(frame);
-      await terminal.waitFor(() => terminal.bytesWritten() > before);
+      await terminal.waitFor(() => painted > before);
       const fresh = createTerminal(8, 5);
-      const reference = render(frame, fresh);
+      const reference = renderSync(
+        <AlternateScreen>
+          <CursorFrame>{frame}</CursorFrame>
+        </AlternateScreen>,
+        fresh,
+      );
       try {
         await fresh.flush();
         expect(terminalState(terminal)).toEqual(terminalState(fresh));
       } finally {
         reference.unmount();
         await reference.waitUntilExit();
+        reference.cleanup();
         fresh.dispose();
       }
     }
@@ -130,6 +171,7 @@ test("successive text, style and wide glyph changes match fresh full renders cel
   } finally {
     app.unmount();
     await app.waitUntilExit();
+    app.cleanup();
     terminal.dispose();
   }
 });

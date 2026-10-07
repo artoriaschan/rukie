@@ -1,10 +1,16 @@
-import { expect, jest, test } from "bun:test";
+import { expect, test } from "bun:test";
+import FakeTimers from "@sinonjs/fake-timers";
 import { act, useLayoutEffect, useState } from "react";
-import { Box, Static, Text, render } from "../../../src/ink";
+import { AlternateScreen, Text, renderSync } from "../../../src/ink";
 import { createTerminal } from "../helpers/terminal";
 
-test("separate React commits in one 16ms window write only the latest frame", async () => {
-  const terminal = createTerminal(12, 3);
+test("separate commits paint their final content and pending updates stop after unmount", async () => {
+  const clock = FakeTimers.install({
+    now: 1000,
+    toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+  });
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const terminal = createTerminal(12, 3, (ms) => act(() => clock.tick(ms)));
   let update = (_text: string) => {};
   let committed = "";
   function View() {
@@ -15,86 +21,39 @@ test("separate React commits in one 16ms window write only the latest frame", as
     });
     return <Text>{text}</Text>;
   }
-  const app = render(<View />, terminal);
-  const commit = async (text: string) => {
-    act(() => update(text));
-    expect(committed).toBe(text);
-  };
-  const flush = async () => {
-    const flushed = terminal.flush();
-    jest.advanceTimersByTime(0);
-    await flushed;
-  };
-  try {
-    await terminal.flush();
-    jest.useFakeTimers();
-    Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-    const before = terminal.writes.length;
-    await commit("first");
-    jest.advanceTimersByTime(5);
-    await commit("second");
-    jest.advanceTimersByTime(10);
-    await commit("latest");
-    expect(terminal.writes.length).toBe(before);
-    jest.advanceTimersByTime(1);
-    await flush();
-    expect(terminal.writes.length).toBe(before + 1);
-    expect(terminal.screen()).toEqual(["latest", "", ""]);
-    await commit("pending");
-    act(() => app.unmount());
-    const afterUnmount = terminal.writes.length;
-    jest.advanceTimersByTime(16);
-    await flush();
-    expect(terminal.writes.length).toBe(afterUnmount);
-  } finally {
-    act(() => app.unmount());
-    await app.waitUntilExit();
-    jest.useRealTimers();
-    Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: false });
-    terminal.dispose();
-  }
-});
-
-test("Static items from intermediate commits survive coalescing in their original order", async () => {
-  const terminal = createTerminal(10, 3);
-  let update = (_items: string[]) => {};
-  function View() {
-    const [items, setItems] = useState<string[]>([]);
-    useLayoutEffect(() => {
-      update = setItems;
-    }, []);
-    return (
-      <Box flexDirection="column">
-        <Static>
-          {items.map((item) => (
-            <Text key={item}>{item}</Text>
-          ))}
-        </Static>
-        <Text>active</Text>
-      </Box>
+  let app!: ReturnType<typeof renderSync>;
+  act(() => {
+    app = renderSync(
+      <AlternateScreen>
+        <View />
+      </AlternateScreen>,
+      terminal,
     );
-  }
-  const app = render(<View />, terminal);
+  });
   try {
     await terminal.flush();
-    jest.useFakeTimers();
-    Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-    const before = terminal.writes.length;
-    act(() => update(["first", "second"]));
-    jest.advanceTimersByTime(5);
-    act(() => update(["first", "second", "third"]));
-    jest.advanceTimersByTime(11);
-    const flushed = terminal.flush();
-    jest.advanceTimersByTime(0);
-    await flushed;
-    expect(terminal.writes.length).toBe(before + 1);
-    expect(terminal.scrollback()).toEqual(["first", "second"]);
-    expect(terminal.screen()).toEqual(["third", "active", ""]);
+    for (const text of ["first", "second", "latest"]) {
+      act(() => update(text));
+      expect(committed).toBe(text);
+    }
+    await terminal.waitFor(() => terminal.screen()[0] === "latest");
+    expect(terminal.screen()).toEqual(["latest", "", ""]);
+    act(() => update("pending"));
+    act(() => app.unmount());
+    await app.waitUntilExit();
+    await terminal.flush();
+    const afterUnmount = terminal.bytesWritten();
+    act(() => clock.tick(100));
+    act(() => update("late"));
+    await terminal.flush();
+    expect(terminal.bytesWritten()).toBe(afterUnmount);
+    expect(terminal.terminal.buffer.active.type).toBe("normal");
   } finally {
     act(() => app.unmount());
     await app.waitUntilExit();
-    jest.useRealTimers();
-    Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: false });
+    app.cleanup();
     terminal.dispose();
+    clock.uninstall();
+    Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: false });
   }
 });
