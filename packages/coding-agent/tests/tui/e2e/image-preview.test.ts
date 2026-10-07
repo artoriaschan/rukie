@@ -298,17 +298,27 @@ test("PNG thumbnails yield graphics to source-pixel zoom, button/wheel/drag pan 
     expect(disabled()).toBeTruthy();
     // Protocol support can precede metrics; a public resize requests a fresh geometry batch.
     const metricsAt = app.output().length;
+    const metricsPacketsAt = read().packets.length;
     app.resize(80, 41);
     await app.waitFor(() => app.output().slice(metricsAt).includes("\x1b[16t"));
     app.stdin.write("\x1b[6;20;10t\x1b[4;820;800t");
     answerSentinels();
-    await app.waitFor(() => !disabled());
-    expect(app.screen().join("\n")).not.toContain("Image preview unavailable in this terminal");
     await app.waitFor(() => {
-      const p = latestPlacement();
-      const image = p && read().images.get(p.i!);
-      return !!image && image.width === Number(p.c) * 10 && image.height === Number(p.r) * 20;
+      const current = read();
+      const p = current.packets
+        .slice(metricsPacketsAt)
+        .filter((packet) => packet.fields.a === "p")
+        .at(-1)?.fields;
+      const image = p && current.images.get(p.i!);
+      // Metrics enable the control before asynchronous RGBA decode has necessarily committed.
+      return (
+        !disabled() &&
+        !!image &&
+        image.width === Number(p.c) * 10 &&
+        image.height === Number(p.r) * 20
+      );
     });
+    expect(app.screen().join("\n")).not.toContain("Image preview unavailable in this terminal");
     const fit = placedImage();
     click(app, "100%");
     await app.waitFor(
