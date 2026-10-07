@@ -1,5 +1,5 @@
 import type { PresentedTool } from "../tools/presentation.ts";
-import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { ToolRegistration } from "@earendil-works/pi-durable";
 import {
   McpClient,
   McpAuthRequiredError,
@@ -118,12 +118,11 @@ function adaptTool(
   client: McpClient,
   tool: Tool,
   reportError: (error: unknown) => void,
-): AgentTool {
+): ToolRegistration {
   const name = `mcp__${server}__${tool.name}`;
   const parameters = Type.Unsafe<Record<string, unknown>>(tool.inputSchema);
   const adapted: PresentedTool<typeof parameters> = {
     name,
-    label: tool.title ?? name,
     description: tool.description ?? tool.name,
     parameters,
     presentCall: (args) => ({
@@ -134,7 +133,8 @@ function adaptTool(
       rawInput: args,
     }),
     presentResult: (_args, text) => ({ card: "generic", kind: "other", text }),
-    async execute(_id, args, signal) {
+    async execute(args, _api, context) {
+      const signal = context.abortSignal;
       try {
         const result = await client.callTool(tool.name, args, { signal });
         return { content: toLlmContent(result), details: result, isError: result.isError };
@@ -176,7 +176,7 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
   const authRequired: Extract<CustomSessionEvent, { type: "mcp_auth_required" }>[] = [];
   const authTools = new Set<string>();
   const reportedAuth = new Set<string>();
-  const tools: AgentTool[] = [];
+  const tools: ToolRegistration[] = [];
   const toolServers = new Map<string, string>();
   const descriptions = new Map<string, string>();
   const failed = new Set<string>();
@@ -472,7 +472,7 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
             const scope = url.searchParams.get("scope");
             if (key && scope) authState.authorizationScopes.set(key, scope);
           };
-          const replaceTools = (adapted: AgentTool[]) => {
+          const replaceTools = (adapted: ToolRegistration[]) => {
             for (let i = tools.length - 1; i >= 0; i--) {
               if (toolServers.get(tools[i]!.name) !== server) continue;
               authTools.delete(tools[i]!.name);
@@ -746,11 +746,10 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
             replaceTools([
               preserveErrorDetails({
                 name,
-                label: name,
                 description: `The ${server} MCP server is installed but requires authentication. Call this tool to start the OAuth flow; the user completes it in their browser and the server's real tools become available in your next turn.`,
                 parameters: Type.Object({}),
-                async execute(_id, _args, signal) {
-                  const outcome = await authenticate(signal);
+                async execute(_args, _api, context) {
+                  const outcome = await authenticate(context.abortSignal);
                   return {
                     content: [
                       {

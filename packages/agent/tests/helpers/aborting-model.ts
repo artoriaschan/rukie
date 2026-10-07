@@ -1,13 +1,13 @@
 import { withAuxiliaryRequests } from "./auxiliary-model.ts";
-import type { StreamFn } from "@earendil-works/pi-agent-core";
+import type { ModelStream } from "./auxiliary-model.ts";
 import { createAssistantMessageEventStream, fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { fakeModel } from "./fake-model.ts";
 
 /** Emits a partial response and settles only when the caller aborts the Run. */
 export function abortingModel() {
   const started = Promise.withResolvers<void>();
-  const { model } = fakeModel([]);
-  const streamFn: StreamFn = withAuxiliaryRequests((_model, _context, options) => {
+  const { model, models } = fakeModel([]);
+  const stream: ModelStream = withAuxiliaryRequests((_model, _context, options) => {
     const stream = createAssistantMessageEventStream();
     const partial = fauxAssistantMessage("partial output", { stopReason: "pending" });
     const abort = () => {
@@ -25,5 +25,7 @@ export function abortingModel() {
     started.resolve();
     return stream;
   });
-  return { model, streamFn, started: started.promise };
+  const provider = models.getProvider(model.provider)!;
+  models.setProvider({ ...provider, streamSimple: stream });
+  return { model, models, started: started.promise };
 }

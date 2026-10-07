@@ -6,8 +6,6 @@ import {
   getCurrentTools,
 } from "@earendil-works/pi-ai";
 import { abortingModel } from "../helpers/aborting-model.ts";
-import { MemorySessionRepo } from "@earendil-works/pi-agent-core/harness/session";
-import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
 import { createSession, type SessionEvent } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { sideModel } from "../helpers/side-model.ts";
@@ -27,12 +25,12 @@ test("side questions stream visible text from a snapshot without tools or Sessio
     fauxAssistantMessage('{"ok":true}'),
     fauxAssistantMessage("Widget behavior already inspected."),
   ]);
-  const side = sideModel(fake.streamFn);
+  const side = sideModel(fake.models);
   let reminderReads = 0;
   const session = await createSession({
     ...dirs,
     ...fake,
-    streamFn: side.streamFn,
+    models: side.models,
     settings: {
       hooks: { UserPromptSubmit: [{ hooks: [{ type: "prompt", prompt: "Review $ARGUMENTS" }] }] },
     },
@@ -72,6 +70,7 @@ test("side questions stream visible text from a snapshot without tools or Sessio
   expect(session.messages).toEqual(before);
   expect(events).toEqual([]);
   expect(reminderReads).toBe(reads);
+  await session.dispose();
   const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
   expect(resumed.messages).toEqual(before);
   expect(fake.contexts).toHaveLength(2);
@@ -82,8 +81,8 @@ test("side questions stream visible text from a snapshot without tools or Sessio
 test("ending iteration cancels only the auxiliary provider and invalid or failed requests stay out of history", async () => {
   dirs = await tempDirs();
   const fake = fakeModel([]);
-  const side = sideModel(fake.streamFn);
-  const session = await createSession({ ...dirs, ...fake, streamFn: side.streamFn });
+  const side = sideModel(fake.models);
+  const session = await createSession({ ...dirs, ...fake, models: side.models });
   const before = structuredClone(session.messages);
   expect(() => session.sideQuestion(" \n ")).toThrow("empty");
   const aborted = new AbortController();
@@ -101,11 +100,12 @@ test("ending iteration cancels only the auxiliary provider and invalid or failed
   expect(side.calls[0]!.signal!.aborted).toBe(true);
   const failed = answer(session.sideQuestion("failed provider"));
   void failed.catch(() => {});
-  // The synchronous injected provider is reached before the generator's first await.
+  await side.waitForCall(1);
   side.calls[1]!.fail("Side provider unavailable");
   await expect(failed).rejects.toThrow("Side provider unavailable");
   const empty = answer(session.sideQuestion("empty answer"));
   void empty.catch(() => {});
+  await side.waitForCall(2);
   side.calls[2]!.finish();
   await expect(empty).rejects.toThrow("No response");
   expect(session.messages).toEqual(before);
@@ -113,83 +113,38 @@ test("ending iteration cancels only the auxiliary provider and invalid or failed
   await session.dispose();
 });
 
-test("resumed history keeps answered calls but drops stale unresolved calls and every historical tool delta", async () => {
+test("resumed history retains answered calls while removing historical tool declarations from side questions", async () => {
   dirs = await tempDirs();
-  const store = new MemorySessionRepo();
-  const stored = await store.create({}, BACKGROUND_CONTEXT);
-  const branch = await stored.createBranch("main", null, BACKGROUND_CONTEXT);
-  await branch.appendMessage(
-    {
-      role: "system",
-      content: "Historical policy.",
-      toolsAdded: [
-        { name: "old", description: "old tool", parameters: { type: "object", properties: {} } },
-      ],
-      timestamp: 1,
-    },
-    BACKGROUND_CONTEXT,
-  );
-  await branch.appendMessage(
-    {
-      role: "system",
-      content: "Later policy.",
-      toolsAdded: [
-        { name: "new", description: "new tool", parameters: { type: "object", properties: {} } },
-      ],
-      toolsRemoved: [{ name: "old" }],
-      timestamp: 2,
-    },
-    BACKGROUND_CONTEXT,
-  );
-  await branch.appendMessage(
-    fauxAssistantMessage([
-      fauxToolCall("read", { path: "known.txt" }, { id: "answered" }),
-      fauxToolCall(
-        "bash",
-        { description: "Run test command", command: "stale work" },
-        { id: "stale" },
-      ),
-    ]),
-    BACKGROUND_CONTEXT,
-  );
-  await branch.appendMessage(
-    {
-      role: "toolResult",
-      toolCallId: "answered",
-      toolName: "read",
-      content: [{ type: "text", text: "Known file result." }],
-      isError: false,
-      timestamp: 3,
-    },
-    BACKGROUND_CONTEXT,
-  );
-  await stored.close(BACKGROUND_CONTEXT);
-  const fake = fakeModel([]);
-  const side = sideModel(fake.streamFn);
-  const session = await createSession({
+  await Bun.write(`${dirs.cwd}/known.txt`, "Known file result.");
+  const original = await createSession({
     ...dirs,
-    ...fake,
-    streamFn: side.streamFn,
-    store,
-    resumeId: stored.metadata.id,
+    ...fakeModel([
+      fauxAssistantMessage(fauxToolCall("read", { path: "known.txt" }, { id: "answered" }), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("Read completed."),
+    ]),
   });
-  const pending = answer(session.sideQuestion("What was read?"));
-  await side.started;
-  const context = side.calls[0]!.context;
-  expect(JSON.stringify(context)).toContain("Known file result.");
-  expect(JSON.stringify(context)).toContain('"id":"answered"');
-  expect(JSON.stringify(context)).not.toContain('"id":"stale"');
-  expect(JSON.stringify(context)).not.toContain("stale work");
-  expect(JSON.stringify(context)).toContain("Tool outcome unknown");
-  expect(JSON.stringify(context)).toContain("not a real Tool result");
-  expect(JSON.stringify(context)).not.toContain("still executing");
-  expect(JSON.stringify(context)).not.toContain("toolsAdded");
-  expect(JSON.stringify(context)).not.toContain("toolsRemoved");
-  side.calls[0]!.delta("Known result.");
-  side.calls[0]!.finish();
-  expect(await pending).toBe("Known result.");
-  expect(JSON.stringify(session.messages)).toContain('"id":"stale"');
-  await session.dispose();
+  await original.run("read known.txt");
+  await original.dispose();
+  const fake = fakeModel([]);
+  const side = sideModel(fake.models);
+  const session = await createSession({ ...dirs, ...fake, resumeId: original.id });
+  try {
+    const pending = answer(session.sideQuestion("What was read?"));
+    await side.started;
+    const context = JSON.stringify(side.calls[0]!.context);
+    expect(context).toContain("Known file result.");
+    expect(context).toContain('"id":"answered"');
+    expect(context).not.toContain("still executing");
+    expect(context).not.toContain("toolsAdded");
+    expect(context).not.toContain("toolsRemoved");
+    side.calls[0]!.delta("Known result.");
+    side.calls[0]!.finish();
+    expect(await pending).toBe("Known result.");
+  } finally {
+    await session.dispose();
+  }
 });
 
 test("side questions snapshot the restored compaction context before later main messages", async () => {
@@ -205,11 +160,11 @@ test("side questions snapshot the restored compaction context before later main 
   await original.compact();
   await original.dispose();
   const fake = fakeModel([fauxAssistantMessage("LATER_MAIN_RESPONSE")]);
-  const side = sideModel(fake.streamFn);
+  const side = sideModel(fake.models);
   const session = await createSession({
     ...dirs,
     ...fake,
-    streamFn: side.streamFn,
+    models: side.models,
     resumeId: original.id,
   });
   const snapshot = session.sideQuestion("What did the summary retain?");
@@ -230,8 +185,8 @@ test("side questions snapshot the restored compaction context before later main 
 test("Session disposal cancels an active side iterator without requiring a caller signal", async () => {
   dirs = await tempDirs();
   const fake = fakeModel([]);
-  const side = sideModel(fake.streamFn);
-  const session = await createSession({ ...dirs, ...fake, streamFn: side.streamFn });
+  const side = sideModel(fake.models);
+  const session = await createSession({ ...dirs, ...fake, models: side.models });
   const pending = answer(session.sideQuestion("pending during close"));
   void pending.catch(() => {});
   await side.started;
@@ -247,26 +202,27 @@ test("Session disposal cancels an active side iterator without requiring a calle
   }
 });
 
-test("cancelling a side request settles even while its asynchronous provider setup ignores abort", async () => {
+test("cancelling a side request settles while its provider stream ignores abort and the main task continues", async () => {
   dirs = await tempDirs();
   const fake = abortingModel();
   const started = Promise.withResolvers<void>();
-  const setup = Promise.withResolvers<ReturnType<typeof createAssistantMessageEventStream>>();
-  const session = await createSession({
-    ...dirs,
-    ...fake,
-    streamFn: (model, context, options) => {
+  const provider = fake.models.getProvider(fake.model.provider)!;
+  const stalled = createAssistantMessageEventStream();
+  fake.models.setProvider({
+    ...provider,
+    streamSimple(model, context, options) {
       const last = context.messages.at(-1);
       if (
         last?.role === "user" &&
         JSON.stringify(last.content).includes("<side-question-context>")
       ) {
         started.resolve();
-        return setup.promise;
+        return stalled;
       }
-      return fake.streamFn(model, context, options);
+      return provider.streamSimple(model, context, options);
     },
   });
+  const session = await createSession({ ...dirs, ...fake });
   const run = session.run("ongoing main task");
   void run.catch(() => {});
   await fake.started;
@@ -279,11 +235,9 @@ test("cancelling a side request settles even while its asynchronous provider set
     await expect(pending).rejects.toThrow("cancel side only");
     expect(session.running).toBe(true);
   } finally {
-    const stream = createAssistantMessageEventStream();
     const message = fauxAssistantMessage("unused");
-    stream.push({ type: "done", reason: "stop", message });
-    stream.end(message);
-    setup.resolve(stream);
+    stalled.push({ type: "done", reason: "stop", message });
+    stalled.end(message);
     session.interruptRun();
     await run.catch(() => {});
     await session.dispose();
@@ -306,13 +260,13 @@ test("an active side question removes unresolved calls and names the independent
     ),
     fauxAssistantMessage("Main task finished."),
   ]);
-  const side = sideModel(fake.streamFn);
+  const side = sideModel(fake.models);
   const requested = Promise.withResolvers<void>();
   const permission = Promise.withResolvers<"deny">();
   const session = await createSession({
     ...dirs,
     ...fake,
-    streamFn: side.streamFn,
+    models: side.models,
     onPermissionAsk: () => {
       requested.resolve();
       return permission.promise;

@@ -1,5 +1,4 @@
-import type { StreamFn } from "@earendil-works/pi-agent-core";
-import { normalizeContext, type Api, type Model } from "@earendil-works/pi-ai";
+import { normalizeContext, type Api, type Model, type Models } from "@earendil-works/pi-ai";
 import { createUserVisibleError } from "@rukie/shared";
 import { defineToolState, type ToolStateDefinition } from "../tool-state/index.ts";
 
@@ -68,7 +67,7 @@ export function createSessionTitle(options: {
   hasPrompt: boolean;
   childDescription?: string;
   getModel(): Promise<Model<Api>>;
-  streamFn: StreamFn;
+  models: Models;
   persist(title: string, source: TitleSource): Promise<void>;
   changed(title: string, source: TitleSource): void;
   warning(message: string): void;
@@ -104,7 +103,7 @@ export function createSessionTitle(options: {
           const model = await options.getModel();
           controller.signal.throwIfAborted();
           return (
-            await options.streamFn(
+            await options.models.streamSimple(
               model,
               normalizeContext({
                 systemPrompt: POLICY,

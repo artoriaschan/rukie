@@ -1,5 +1,16 @@
-import { Agent, type StreamFn } from "@earendil-works/pi-agent-core";
-import { normalizeContext, type Api, type Model } from "@earendil-works/pi-ai";
+import {
+  Harness,
+  MemoryStorage,
+  createRegistry,
+  defineExtension,
+} from "@earendil-works/pi-durable";
+import {
+  BACKGROUND_CONTEXT,
+  withAbortSignal,
+  withoutAbortSignal,
+} from "@earendil-works/chord/context";
+import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
+import { normalizeContext, type Api, type Model, type Models } from "@earendil-works/pi-ai";
 import { createUserVisibleError, type HookHandler, type HookEvent } from "@rukie/shared";
 
 import { createReadonlyTools } from "../tools/readonly.ts";
@@ -8,7 +19,7 @@ import { executeBounded } from "./bounded.ts";
 type ModelHook = Extract<HookHandler, { type: "prompt" | "agent" }>;
 export interface HookModelDependencies {
   getModel(selected?: string): Promise<Model<Api>>;
-  streamFn: StreamFn;
+  models: Models;
 }
 
 const POLICY =
@@ -37,7 +48,7 @@ export async function executeModelHook(
         const run = async () => {
           if (handler.type === "prompt") {
             return (
-              await options.model.streamFn(
+              await options.model.models.streamSimple(
                 model,
                 normalizeContext({
                   systemPrompt: POLICY,
@@ -49,26 +60,43 @@ export async function executeModelHook(
               )
             ).result();
           }
-          const agent = new Agent({
-            streamFn: options.model.streamFn,
-            initialState: {
-              model,
-              systemPrompt: POLICY,
-              tools: createReadonlyTools(options.cwd, options.homeDir),
-              messages: [],
-            },
+          const context = withAbortSignal(signal, BACKGROUND_CONTEXT);
+          const registry = createRegistry();
+          const extension = defineExtension({
+            name: "rukie.model-hook",
+            tools: createReadonlyTools(options.cwd, options.homeDir),
           });
-          const abortAgent = () => agent.abort();
-          signal.addEventListener("abort", abortAgent, { once: true });
+          registry.install(extension);
+          const harness = await Harness.open(
+            new MemoryStorage(),
+            {
+              models: options.model.models,
+              registry,
+              env: () => new NodeExecutionEnv({ cwd: options.cwd }),
+            },
+            context,
+          );
           try {
-            signal.throwIfAborted();
-            await agent.prompt(text);
-            const response = agent.state.messages.at(-1);
+            const conversation = await harness.root(context, {
+              agent: {
+                model: { provider: model.provider, modelId: model.id },
+                instructions: POLICY,
+                extensions: [extension],
+              },
+            });
+            const submission = await conversation.submit(
+              { type: "input", content: [{ type: "text", text }] },
+              context,
+            );
+            await submission.wait(context);
+            const response = (await conversation.context(context)).messages.findLast(
+              (message) => message.role === "assistant",
+            );
             if (response?.role !== "assistant")
               throw new Error("Model hook produced no assistant result");
             return response;
           } finally {
-            signal.removeEventListener("abort", abortAgent);
+            await harness.close(withoutAbortSignal(context));
           }
         };
         const response = await run();
