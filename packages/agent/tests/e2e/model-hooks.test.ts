@@ -47,6 +47,7 @@ test("prompt hooks block a user prompt using one standalone review request", asy
     },
   });
   expect(await session.run("secret")).toMatchObject({
+    success: true,
     stopReason: "hook_blocked",
     reason: "protected prompt",
   });
@@ -98,6 +99,7 @@ test("agent hooks inspect files with only read, glob and grep, without copying r
     },
   });
   expect(await session.run("perform action")).toMatchObject({
+    success: true,
     stopReason: "hook_blocked",
     reason: "policy check failed",
   });
@@ -302,7 +304,7 @@ test.each(["prompt", "agent"] as const)(
 );
 
 test.each(["prompt", "agent"] as const)(
-  "dispose cancels a pending %s hook without starting the main model",
+  "close cancels a pending %s hook without starting the main model",
   async (type) => {
     dirs = await tempDirs();
     const entered = Promise.withResolvers<AbortSignal>();
@@ -328,7 +330,7 @@ test.each(["prompt", "agent"] as const)(
     const run = session.run("hello").catch((error) => error);
     const signal = await entered.promise;
     await session.close();
-    expect(await run).toMatchObject({ name: "AbortError" });
+    expect(await run).toMatchObject({ message: "Session is closed" });
     expect(signal.aborted).toBe(true);
     expect(calls).toBe(1);
   },
