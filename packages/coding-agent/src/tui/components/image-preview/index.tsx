@@ -122,7 +122,7 @@ export function ImagePreview({
       drawable ? 0 : Bun.stringWidth(t("image.preview-fallback")) + 6,
     ),
   );
-  const cardHeight = Math.min(height, imageHeight + 6 + Number(total > 1));
+  const cardHeight = Math.min(height, Math.max(1, imageHeight) + 6 + Number(total > 1));
   const left = Math.max(0, Math.floor((width - cardWidth) / 2));
   const top = Math.max(0, Math.floor((height - cardHeight) / 2));
   const drag = useRef<{ x: number; y: number } | undefined>(undefined);
@@ -153,7 +153,7 @@ export function ImagePreview({
   };
 
   const button = (label: string, action: () => void, disabled = false) => (
-    <Box onClick={disabled ? () => {} : action}>
+    <Box flexShrink={0} onClick={disabled ? () => {} : action}>
       <ThemedText dim={disabled} underline={!disabled}>
         {label}
       </ThemedText>
@@ -262,19 +262,23 @@ export function ImagePreview({
           )}
         </Box>
         {!passive && (
-          <Box gap={2}>
+          <Box flexShrink={0} gap={2}>
             {button(t("image.fit"), () => changeZoom(0))}
             {button("100%", () => changeZoom(1), !inspect)}
-            {button("−", () => changeZoom(activeZoom / 2), !inspect || activeZoom <= 1)}
-            {button(
-              "+",
-              () => changeZoom(activeZoom ? Math.min(8, activeZoom * 2) : 1),
-              !inspect || activeZoom >= 8,
+            {drawable && (
+              <>
+                {button("−", () => changeZoom(activeZoom / 2), !inspect || activeZoom <= 1)}
+                {button(
+                  "+",
+                  () => changeZoom(activeZoom ? Math.min(8, activeZoom * 2) : 1),
+                  !inspect || activeZoom >= 8,
+                )}
+                {button("←", () => panBy(-cropWidth / 4, 0), !activeZoom)}
+                {button("↑", () => panBy(0, -cropHeight / 4), !activeZoom)}
+                {button("↓", () => panBy(0, cropHeight / 4), !activeZoom)}
+                {button("→", () => panBy(cropWidth / 4, 0), !activeZoom)}
+              </>
             )}
-            {button("←", () => panBy(-cropWidth / 4, 0), !activeZoom)}
-            {button("↑", () => panBy(0, -cropHeight / 4), !activeZoom)}
-            {button("↓", () => panBy(0, cropHeight / 4), !activeZoom)}
-            {button("→", () => panBy(cropWidth / 4, 0), !activeZoom)}
           </Box>
         )}
         {!passive && total > 1 && height >= 6 && (
@@ -285,7 +289,7 @@ export function ImagePreview({
           </Box>
         )}
         {!passive && (
-          <Box onClick={openOriginal}>
+          <Box flexShrink={0} onClick={openOriginal}>
             <ThemedText underline wrap="truncate">
               {original ?? `${t("image.open-original")}: ${imageName(image, t("image.label"))}`}
             </ThemedText>

@@ -261,3 +261,68 @@ test("preview uses measured 100% crop and native wheel/drag without closing the 
     terminal.dispose();
   }
 });
+
+for (const locale of ["zh", "en"] as const) {
+  test(`${locale} fallback preview keeps original action through small resize`, async () => {
+    const terminal = createTerminal(80, 40);
+    let opened = 0;
+    const label = locale === "zh" ? "打开原图" : "Open original";
+    function View({ width, height }: { width: number; height: number }) {
+      useInput(() => {});
+      return (
+        <Box width={width} height={height}>
+          <ImagePreview
+            image={{
+              ...image,
+              data: "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
+              mimeType: "image/gif",
+              metadata: { width: 1, height: 1, bytes: 42 },
+            }}
+            index={0}
+            total={1}
+            width={width}
+            height={height}
+            locale={locale}
+            onOriginal={async () => {
+              opened++;
+            }}
+          />
+        </Box>
+      );
+    }
+    const app = renderSync(
+      <AlternateScreen>
+        <View width={80} height={32} />
+      </AlternateScreen>,
+      { ...terminal, terminalImages: false },
+    );
+    try {
+      await terminal.flush();
+      terminal.resize(30, 10);
+      app.rerender(
+        <AlternateScreen>
+          <View width={30} height={9} />
+        </AlternateScreen>,
+      );
+      await terminal.waitFor(() => terminal.screen().join("\n").includes(label));
+      expect(terminal.screen().every((line) => Bun.stringWidth(line) <= 30)).toBe(true);
+      terminal.resize(80, 40);
+      app.rerender(
+        <AlternateScreen>
+          <View width={80} height={32} />
+        </AlternateScreen>,
+      );
+      await terminal.waitFor(() => terminal.screen().join("\n").includes("GIF · 1×1 · 42 B"));
+      const row = terminal.screen().findIndex((line) => line.includes(label));
+      const col = terminal.screen()[row]!.indexOf(label);
+      terminal.stdin.write(`\x1b[<0;${col + 1};${row + 1}M\x1b[<0;${col + 1};${row + 1}m`);
+      await terminal.waitFor(() => opened === 1);
+      expect(opened).toBe(1);
+    } finally {
+      app.unmount();
+      await app.waitUntilExit();
+      app.cleanup();
+      terminal.dispose();
+    }
+  });
+}

@@ -15,12 +15,12 @@ import { createTuiI18n } from "../../../view/i18n";
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
 /** Image names are bounded display data, never terminal commands. */
-export function imageName(image: PromptImage, fallback: string) {
+export function imageName(image: PromptImage, fallback: string, width = 80) {
   // oxlint-disable-next-line no-control-regex -- Remove terminal and C1 control characters.
   const safe = (image.name ?? fallback).replace(/[\x00-\x1f\x7f-\x9f]/g, " ");
   let label = "";
   for (const { segment } of graphemes.segment(safe)) {
-    if (Bun.stringWidth(label + segment) > 80) break;
+    if (Bun.stringWidth(label + segment) > width) break;
     label += segment;
   }
   return label;
@@ -123,7 +123,7 @@ function Thumbnail({
         </Box>
       </Box>
       <ThemedText dim wrap="truncate">
-        {imageName(image, fallback)}
+        {imageName(image, fallback, fitWidth)}
       </ThemedText>
     </Box>
   );
