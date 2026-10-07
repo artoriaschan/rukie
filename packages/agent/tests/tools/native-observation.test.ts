@@ -1,3 +1,5 @@
+import { createJsonlStore } from "../../src/store/index.ts";
+import { tempDirs } from "../helpers/temp-dirs.ts";
 import { expect, test } from "bun:test";
 import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
 import { Harness, MemoryStorage, createRegistry, defineDoc } from "@earendil-works/pi-durable";
@@ -213,5 +215,156 @@ test("closing observation from delivery releases the view without aborting nativ
   } finally {
     release.resolve();
     await harness.close(context);
+  }
+});
+
+test("native interrupted tool receipts project uncertainty live and cold without replay or text matching", async () => {
+  const context = withAbortSignal(AbortSignal.timeout(3000), BACKGROUND_CONTEXT);
+  const entered = Promise.withResolvers<void>();
+  const held = Promise.withResolvers<void>();
+  let effects = 0;
+  const unsafe: PresentedTool = {
+    name: "unsafe_effect",
+    description: "Write an unsafe effect",
+    parameters: Type.Object({}),
+    async execute(_args, _api, ctx) {
+      effects++;
+      entered.resolve();
+      await (await import("@earendil-works/chord/context")).awaitWithContext(held.promise, ctx);
+      return { content: [{ type: "text", text: "effect finished" }] };
+    },
+  };
+  const ordinary: PresentedTool = {
+    name: "ordinary_error",
+    description: "An ordinary tool-supplied error",
+    parameters: Type.Object({}),
+    async execute() {
+      return {
+        isError: true,
+        content: [
+          { type: "text", text: "Tool unsafe_effect was interrupted and may have partially run" },
+        ],
+        diagnostics: [
+          { severity: "error", code: "interrupted", message: "Tool-supplied diagnostic" },
+        ],
+      };
+    },
+  };
+  const registry = createRegistry();
+  registry.install({ name: "effects", tools: [unsafe, ordinary] });
+  const dirs = await tempDirs();
+  const store = createJsonlStore(dirs);
+  const firstLease = await store.open({}, context);
+  const initial = fakeModel([
+    fauxAssistantMessage(fauxToolCall("unsafe_effect", {}), { stopReason: "toolUse" }),
+  ]);
+  const first = await Harness.open(
+    firstLease.storage,
+    { models: initial.models, registry },
+    context,
+  );
+  const parent = await first.root(context, {
+    agent: {
+      model: { provider: initial.model.provider, modelId: initial.model.id },
+      tools: [unsafe, ordinary],
+    },
+  });
+  await parent.submit({ type: "input", content: "write effect" }, context);
+  await entered.promise;
+  await first.close(context);
+  await firstLease.release();
+  const recovered = fakeModel([
+    fauxAssistantMessage("inspected saved effect"),
+    fauxAssistantMessage(fauxToolCall("ordinary_error", {}), { stopReason: "toolUse" }),
+    fauxAssistantMessage("ordinary error handled"),
+  ]);
+  const secondLease = await store.open({ id: firstLease.id }, context);
+  const second = await Harness.open(
+    secondLease.storage,
+    { models: recovered.models, registry },
+    context,
+  );
+  const child = await second.root(context);
+  const events: SessionEvent[] = [];
+  const options = {
+    harness: second,
+    conversation: child,
+    sessionId: "product",
+    tools: () => [unsafe, ordinary],
+    adopt: () => {},
+    facts: () => ({
+      toolStates: {},
+      runSummaries: [],
+      model: "faux/faux-1",
+      planMode: false,
+      background: [],
+    }),
+    publish: (batch: readonly SessionEvent[]) => {
+      events.push(...batch);
+    },
+  };
+  const live = await createConversationObservation(options);
+  try {
+    await child.waitForIdle(context);
+    await live.flush();
+    expect(effects).toBe(1);
+    const result = live
+      .messages()
+      .find((message) => message.role === "toolResult" && message.toolName === "unsafe_effect");
+    expect(result).toMatchObject({ isError: true, outcomeUnknown: true });
+    expect(
+      events.some(
+        (event) =>
+          event.type === "message_end" &&
+          event.messages.some(
+            (message) =>
+              message.role === "toolResult" &&
+              "outcomeUnknown" in message &&
+              message.outcomeUnknown === true,
+          ),
+      ),
+    ).toBe(true);
+    await (
+      await child.submit({ type: "input", content: "ordinary failure" }, context)
+    ).wait(context);
+    await live.flush();
+    expect(
+      live
+        .messages()
+        .find((message) => message.role === "toolResult" && message.toolName === "ordinary_error"),
+    ).not.toHaveProperty("outcomeUnknown");
+  } finally {
+    await live.close();
+    await second.close(context);
+    await secondLease.release();
+  }
+  const cold = fakeModel([]);
+  const thirdLease = await store.open({ id: firstLease.id }, context);
+  const third = await Harness.open(thirdLease.storage, { models: cold.models, registry }, context);
+  const saved = await third.root(context);
+  const observation = await createConversationObservation({
+    ...options,
+    harness: third,
+    conversation: saved,
+    publish: () => {},
+  });
+  try {
+    expect(
+      observation
+        .messages()
+        .find((message) => message.role === "toolResult" && message.toolName === "unsafe_effect"),
+    ).toMatchObject({ isError: true, outcomeUnknown: true });
+    expect(
+      observation
+        .messages()
+        .find((message) => message.role === "toolResult" && message.toolName === "ordinary_error"),
+    ).not.toHaveProperty("outcomeUnknown");
+    expect(cold.contexts).toHaveLength(0);
+    expect(effects).toBe(1);
+  } finally {
+    await observation.close();
+    await third.close(context);
+    await thirdLease.release();
+    await dirs.cleanup();
   }
 });
