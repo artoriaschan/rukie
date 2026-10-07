@@ -129,8 +129,27 @@ test.each([
         expect(text).not.toContain("system-reminder");
       };
       checkOrder(app.screen().join("\n"));
-      app.stdin.write("/exit\r");
-      await app.exit;
+      app.stdin.write("\x0f");
+      await app.waitFor(
+        () =>
+          app.screen().join("\n").includes("saved mixed reasoning") &&
+          app.screen().join("\n").includes("read-five"),
+      );
+      app.stdin.write("\x1b[1;2A");
+      await app.waitFor(() => {
+        const row = app.screen().findIndex((line) => line.includes(ending));
+        return row >= 0 && !app.terminal.buffer.active.getLine(row)!.getCell(3)!.isBgDefault();
+      });
+      const y = app.screen().findIndex((line) => line.includes("committed partial mixed body"));
+      const readY = app.screen().findIndex((line) => line.includes("mixed.txt"));
+      app.stdin.write(`\x1b[<35;4;${readY + 1}M`);
+      await app.waitFor(
+        () => app.terminal.buffer.active.getLine(readY)!.getCell(96)!.getBgColor() === 0x2e3440,
+      );
+      // Hover first: no-button motion during a native drag ends a lost release.
+      app.stdin.write(`\x1b[<0;3;${y + 1}M\x1b[<32;15;${y + 1}M`);
+      await app.waitFor(() => !app.terminal.buffer.active.getLine(y)!.getCell(3)!.isBgDefault());
+      await app.shutdown();
       const saved = await createSession({
         cwd: app.root,
         homeDir: app.root,
@@ -161,26 +180,6 @@ test.each([
         await saved.close();
       }
 
-      app.stdin.write("\x0f");
-      await app.waitFor(
-        () =>
-          app.screen().join("\n").includes("saved mixed reasoning") &&
-          app.screen().join("\n").includes("read-five"),
-      );
-      app.stdin.write("\x1b[1;2A");
-      await app.waitFor(() => {
-        const row = app.screen().findIndex((line) => line.includes(ending));
-        return row >= 0 && !app.terminal.buffer.active.getLine(row)!.getCell(3)!.isBgDefault();
-      });
-      const y = app.screen().findIndex((line) => line.includes("committed partial mixed body"));
-      const readY = app.screen().findIndex((line) => line.includes("mixed.txt"));
-      app.stdin.write(`\x1b[<35;4;${readY + 1}M`);
-      await app.waitFor(
-        () => app.terminal.buffer.active.getLine(readY)!.getCell(96)!.getBgColor() === 0x2e3440,
-      );
-      // Hover first: no-button motion during a native drag ends a lost release.
-      app.stdin.write(`\x1b[<0;3;${y + 1}M\x1b[<32;15;${y + 1}M`);
-      await app.waitFor(() => !app.terminal.buffer.active.getLine(y)!.getCell(3)!.isBgDefault());
       const replay = await start(argv, {
         rows: 60,
         columns: 100,

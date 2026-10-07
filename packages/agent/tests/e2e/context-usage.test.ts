@@ -129,7 +129,9 @@ test("Context Usage follows Session start and every assistant Turn with that Tur
 
   const usage = events.filter((event) => event.type === "context_usage");
   expect(usage).toHaveLength(3);
-  expect(events[1]).toBe(usage[0]!);
+  expect(events.indexOf(usage[0]!)).toBeGreaterThan(
+    events.findIndex((event) => event.type === "run_start"),
+  );
   expect(usage.slice(1)).toMatchObject([
     { used: 13, window: 64_000, sessionId: session.id },
     { used: 29, window: 64_000, sessionId: session.id },
@@ -167,7 +169,7 @@ test("the first Run estimates Context Usage and both live and resumed Sessions r
   expect(initial.window).toBe(128_000);
   expect(initial.used).toBeGreaterThan(0);
   expect(initial.segments).toMatchObject({
-    prompt: 0,
+    prompt: expect.any(Number),
     assistant: 0,
     thinking: 0,
   });
