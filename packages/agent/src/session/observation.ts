@@ -1,3 +1,4 @@
+import { ToolTask, ToolResultEntry } from "@earendil-works/pi-durable";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type {
   AgentState,
@@ -112,6 +113,44 @@ function taskArguments(task: TaskRecord<JsonValue, JsonValue, JsonValue> | undef
   return {};
 }
 
+function interruptedResult(entry: EntryRecord) {
+  return (
+    ToolResultEntry.is(entry) &&
+    Array.isArray(entry.data?.diagnostics) &&
+    entry.data.diagnostics.some(
+      (diagnostic) => diagnostic.code === "interrupted" && diagnostic.severity === "error",
+    )
+  );
+}
+function unknownOutcome(
+  entry: EntryRecord,
+  task: TaskRecord<JsonValue, JsonValue, JsonValue> | undefined,
+) {
+  if (
+    !interruptedResult(entry) ||
+    !task ||
+    task.kind !== ToolTask.definition.name ||
+    task.id !== entry.byTaskId ||
+    (task.state.status !== "terminal" && task.state.status !== "completing") ||
+    task.state.outcome.status !== "failed"
+  )
+    return false;
+  const result = task.state.outcome.result;
+  const input = task.input;
+  return (
+    result !== null &&
+    typeof result === "object" &&
+    !Array.isArray(result) &&
+    result.entryId === entry.id &&
+    input !== null &&
+    typeof input === "object" &&
+    !Array.isArray(input) &&
+    entry.model?.some(
+      (message) => message.role === "toolResult" && message.toolCallId === input.callId,
+    ) === true
+  );
+}
+
 /** Committed presentation only: never drives execution or reads the Session from a commit callback. */
 export async function createConversationObservation(options: ConversationObservationOptions) {
   const { harness, conversation, sessionId } = options;
@@ -120,6 +159,19 @@ export async function createConversationObservation(options: ConversationObserva
   // commit records themselves, never a potentially lagging state.value getter.
   const state = await conversation.viewState(BACKGROUND_CONTEXT);
   let current = state.value;
+  const unknownOutcomes = new Set<string>();
+  // Public getTask reads committed receipts without scheduling recovery. Reserved
+  // ToolResult diagnostics and their exact native task receipt jointly establish
+  // uncertainty; arbitrary model text or a tool-supplied error does not.
+  await Promise.all(
+    current.entries.filter(interruptedResult).map(async (entry) => {
+      if (
+        entry.byTaskId !== undefined &&
+        unknownOutcome(entry, await harness.getTask(entry.byTaskId, BACKGROUND_CONTEXT))
+      )
+        unknownOutcomes.add(String(entry.id));
+    }),
+  );
   let projectedEntries: readonly EntryRecord[] | undefined;
   let messages: readonly TranscriptMessage[] = [];
   let callArgs = new Map<string, { name: string; args: unknown }>();
@@ -152,7 +204,11 @@ export async function createConversationObservation(options: ConversationObserva
     if (message.role !== "toolResult") return message;
     const call = callArgs.get(message.toolCallId);
     const view = call ? presentResult(tool(call.name), call.args, message) : undefined;
-    return { ...message, ...(view ? { view } : {}) };
+    return {
+      ...message,
+      ...(unknownOutcomes.has(message.entryId ?? "") ? { outcomeUnknown: true } : {}),
+      ...(view ? { view } : {}),
+    };
   }
   function project(view: ConversationView) {
     if (projectedEntries === view.entries) return;
@@ -416,6 +472,18 @@ export async function createConversationObservation(options: ConversationObserva
 
   const unsubscribe = harness.subscribeCommits((publication) => {
     if (closed) return;
+    const tasks = new Map(
+      publication.changes.flatMap((change) =>
+        change.type === "task" ? [[change.value.id, change.value] as const] : [],
+      ),
+    );
+    for (const change of publication.changes)
+      if (
+        change.type === "entry" &&
+        change.value.byTaskId !== undefined &&
+        unknownOutcome(change.value, tasks.get(change.value.byTaskId))
+      )
+        unknownOutcomes.add(String(change.value.id));
     const before = current;
     current = adoptView(current, publication);
     options.adopt(publication);
