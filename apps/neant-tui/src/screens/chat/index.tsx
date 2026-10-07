@@ -355,16 +355,17 @@ function Chat({
     previewRef.current = next;
     setPreview(next);
   };
-  const openImage = (entryIndex: number, imageIndex: number) => {
-    if (
+  const imagePreviewBlocked = () =>
+    !!(
       interactions.getSnapshot() ||
       viewRef.current !== "chat" ||
       rewindRef.current ||
       mcpPanel.getSnapshot() ||
       modelPickerRef.current !== undefined ||
       resumePickerRef.current
-    )
-      return;
+    );
+  const openImage = (entryIndex: number, imageIndex: number) => {
+    if (imagePreviewBlocked()) return;
     const entries = conversation.getSnapshot().completed;
     const images = entries.flatMap((entry) => ("images" in entry ? (entry.images ?? []) : []));
     const before = entries
@@ -1220,7 +1221,11 @@ function Chat({
   const subagentMaxHeight = hasSubagents ? panelHeights[Number(hasTodos)]! : 1;
   const caretImage = composer.atCursor(input, composerCursor);
   const composerPreview =
-    !preview && !small && !(composerDismissed && composerImageDismissed(caretImage)) && caretImage;
+    !preview &&
+    !small &&
+    !imagePreviewBlocked() &&
+    !(composerDismissed && composerImageDismissed(caretImage)) &&
+    caretImage;
   useInput((event) => {
     const currentCaretImage = composer.atCursor(draft.current, composerCursorRef.current);
     if (
@@ -1228,6 +1233,7 @@ function Chat({
       event.key.name === "escape" &&
       !previewRef.current &&
       !small &&
+      !imagePreviewBlocked() &&
       currentCaretImage &&
       !composerImageDismissed(currentCaretImage)
     ) {
@@ -2220,6 +2226,7 @@ function Chat({
                         ? t("image.clipboard-tip")
                         : undefined
               }
+              initialCursorOffset={composerCursor}
               inputRevision={promptRevision}
               readOnly={promptReadOnly}
               compact={compactPrompt}

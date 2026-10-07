@@ -23,6 +23,7 @@ export function PromptInput({
   highlightRanges,
   atomicRanges,
   onCursorChange,
+  initialCursorOffset,
   suggestions,
 }: {
   value: string;
@@ -48,8 +49,11 @@ export function PromptInput({
   highlightRanges?: TextInputProps["highlightRanges"];
   atomicRanges?: TextInputProps["atomicRanges"];
   onCursorChange?: TextInputProps["onCursorChange"];
+  /** Restores the caret when a view or small terminal remounts the composer. */
+  initialCursorOffset?: number;
   suggestions?: ReactNode;
 }) {
+  const [restoredCursor, setRestoredCursor] = useState(initialCursorOffset);
   const [visibleTip, setVisibleTip] = useState(tip);
   useEffect(() => {
     setVisibleTip(tip);
@@ -90,7 +94,11 @@ export function PromptInput({
             onPaste={onPaste}
             highlightRanges={highlightRanges}
             atomicRanges={atomicRanges}
-            onCursorChange={onCursorChange}
+            cursorOffset={restoredCursor}
+            onCursorChange={(offset) => {
+              setRestoredCursor(undefined);
+              onCursorChange?.(offset);
+            }}
           />
         </Box>
       </Box>
