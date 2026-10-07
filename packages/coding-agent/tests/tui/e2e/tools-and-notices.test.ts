@@ -353,7 +353,7 @@ test.each([
   ["en", "Denied by permission rule: read"],
 ] as const)("%s resume retains localized rule denial on the tool card", async (locale, text) => {
   const argv: string[] = [];
-  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
   original.setResponses([
     fauxAssistantMessage(fauxToolCall("read", { path: "secret" }), { stopReason: "toolUse" }),
     fauxAssistantMessage("done"),

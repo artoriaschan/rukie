@@ -507,7 +507,7 @@ test("preview collapses whitespace, caps at 80 characters, and mouse only moves 
     columns: 100,
     env: { LANG: "en_US.UTF-8" },
     prepare: async (root) => {
-      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
       faux.setResponses([fauxAssistantMessage("old answer"), fauxAssistantMessage("new answer")]);
       await mkdir(join(root, ".rukie/file-history"), { recursive: true });
       const seed = await createSession({
@@ -720,7 +720,7 @@ test.each([true, false])(
       env: { LANG: "en_US.UTF-8" },
       prepare: async (root) => {
         await mkdir(join(root, ".rukie/file-history"), { recursive: true });
-        const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+        const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
         faux.setResponses([
           ...(priorTodo
             ? [
@@ -816,7 +816,7 @@ test("40×12 rewind preserves Todo and historical children without reopening the
     env: { LANG: "en_US.UTF-8" },
     prepare: async (root) => {
       await mkdir(join(root, ".rukie/file-history"), { recursive: true });
-      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
       faux.setResponses([
         fauxAssistantMessage(
           [

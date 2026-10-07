@@ -21,7 +21,7 @@ test("a 40 by 12 picker scrolls two-row entries and dims a prompt fallback", asy
     rows: 12,
     env: { LANG: "en_US.UTF-8" },
     prepare: async (root) => {
-      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
       faux.setResponses([fauxAssistantMessage("Stored answer")]);
       const fallback = await createSession({
         cwd: root,
@@ -119,7 +119,7 @@ test("/resume displays two-row session metadata, Escape preserves the current ch
     session: sessionOptions,
     prepare: async (root) => {
       await Bun.write(`${root}/.rukie/settings.json`, JSON.stringify(settings));
-      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
       faux.setResponses([fauxAssistantMessage("Stored answer")]);
       const seed = await createSession({
         cwd: root,

@@ -185,7 +185,7 @@ test("resumed patch-only diffs keep split pairs and hunk boundaries", async () =
     prepare: async (root) => {
       const old = `old-start\n${"unchanged context\n".repeat(5000)}old-end\n`;
       await Bun.write(join(root, "large.txt"), old);
-      const model = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+      const model = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
       model.setResponses([
         fauxAssistantMessage(
           fauxToolCall("write", {

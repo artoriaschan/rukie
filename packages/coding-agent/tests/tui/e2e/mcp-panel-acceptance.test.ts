@@ -367,7 +367,7 @@ test("exiting an open tool reader restores the terminal and Resume keeps the Tra
         join(root, ".rukie/mcp.json"),
         JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
       );
-      const fake = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+      const fake = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
       fake.setResponses([fauxAssistantMessage("stored answer sentinel")]);
       store = createJsonlStore({ cwd: root, homeDir: root });
       const session = await createSession({

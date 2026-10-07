@@ -11,7 +11,7 @@ const assistant = process.platform === "darwin" ? "⏺" : "●";
 
 test("resume rebuilds the footer context preview before submitting a new prompt", async () => {
   const argv: string[] = [];
-  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
   original.setResponses([fauxAssistantMessage("restored context ".repeat(100))]);
   const app = await startWithClock(argv, {
     rows: 24,
@@ -49,7 +49,7 @@ test("resume replays stored text before input and appends the next Run to the sa
   const argv: string[] = [];
   let root = "";
   let id = "";
-  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
   const storedReply = "⏵ 查一下报错原因\n**stored reply** 中\n⏵ 给补丁跑个验证\nsecond line";
   original.setResponses([fauxAssistantMessage(storedReply)]);
   const app = await startWithClock(argv, {
@@ -171,7 +171,7 @@ test("resume replays stored text before input and appends the next Run to the sa
 
 test("resume replays each tool's collapsed result and error preview without reminders", async () => {
   const argv: string[] = [];
-  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
   original.setResponses([
     fauxAssistantMessage(
       [
@@ -261,7 +261,7 @@ test("resume replays each tool's collapsed result and error preview without remi
 
 test("resume replays the restored compaction suffix without exposing its summary", async () => {
   const argv: string[] = [];
-  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
   original.setResponses([
     fauxAssistantMessage("old transcript ".repeat(2000)),
     fauxAssistantMessage("hidden compaction summary"),
@@ -305,7 +305,7 @@ test("resume replays the restored compaction suffix without exposing its summary
 
 test("resume hides a skill reminder retained by compaction while preserving user-authored tags", async () => {
   const argv: string[] = [];
-  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
   original.setResponses([
     fauxAssistantMessage("old work ".repeat(15000)),
     fauxAssistantMessage("y".repeat(10000)),
@@ -359,7 +359,7 @@ test("resume hides a skill reminder retained by compaction while preserving user
 test("--resume rejects a child session before requesting a model turn", async () => {
   const argv: string[] = [];
   let childId = "";
-  const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+  const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
   faux.setResponses([
     fauxAssistantMessage(
       fauxToolCall("subagent", { description: "Child", prompt: "child", run_in_background: false }),

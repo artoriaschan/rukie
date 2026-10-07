@@ -42,6 +42,8 @@ interface ActivityState {
   lastTool?: ActiveTool & { endedAt: number; failure?: string };
   streak: number;
   streamLine: string;
+  textCharacters: number;
+  thinkingCharacters: number;
   narration?: string;
   lastChunkAt?: number;
   pending?: { line: string; until: number };
@@ -74,6 +76,8 @@ export function createActivity(locale: Locale = "zh"): ActivityState {
     reviews: [],
     streak: 0,
     streamLine: "",
+    textCharacters: 0,
+    thinkingCharacters: 0,
     interrupted: false,
   };
 }
@@ -115,7 +119,18 @@ export function reduce(
       state.phase === "idle" || state.phase === "done"
         ? reduce(state, { type: "submit" }, now, random)
         : state;
-    if (event.generation?.message) next = transition(next, "thinking", now);
+    if (event.generation?.message) {
+      next = transition(next, "thinking", now);
+      next = {
+        ...next,
+        textCharacters: event.generation.message.content
+          .flatMap((block) => (block.type === "text" ? [block.text] : []))
+          .join("").length,
+        thinkingCharacters: event.generation.message.content
+          .flatMap((block) => (block.type === "thinking" ? [block.thinking] : []))
+          .join("").length,
+      };
+    }
     const active = new Set(
       event.tools.filter((tool) => tool.status === "running").map((tool) => tool.callId),
     );
@@ -143,17 +158,71 @@ export function reduce(
   // Events arriving after a result cannot revive or change a completed Run.
   if (state.phase === "idle" || state.phase === "done") return state;
   switch (event.type) {
-    case "message_start":
-      return { ...state, compactionStartedAt: undefined };
+    case "message_start": {
+      if (event.message.role !== "assistant") return { ...state, compactionStartedAt: undefined };
+      return reduce(
+        {
+          ...state,
+          textCharacters: 0,
+          thinkingCharacters: 0,
+          streamLine: "",
+          compactionStartedAt: undefined,
+        },
+        {
+          type: "message_update",
+          sessionId: event.sessionId,
+          message: event.message,
+          usage: event.message.usage,
+          changes: [{ type: "message", message: event.message }],
+        },
+        now,
+        random,
+      );
+    }
     case "turn_start":
       return { ...state, streamLine: "", narration: undefined, lastChunkAt: undefined };
     case "message_update": {
-      const changes = event.changes.filter(
-        (change) => change.type === "text_delta" || change.type === "thinking_delta",
+      const text = event.message.content
+        .flatMap((block) => (block.type === "text" ? [block.text] : []))
+        .join("");
+      const thinking = event.message.content
+        .flatMap((block) => (block.type === "thinking" ? [block.thinking] : []))
+        .join("");
+      const structural = event.changes.some(
+        (change) => change.type === "message" || change.type === "block",
       );
-      if (!changes.length) return state;
+      const changes = structural
+        ? [
+            ...(text.length > state.textCharacters
+              ? [{ type: "text_delta" as const, delta: text.slice(state.textCharacters) }]
+              : []),
+            ...(thinking.length > state.thinkingCharacters
+              ? [
+                  {
+                    type: "thinking_delta" as const,
+                    delta: thinking.slice(state.thinkingCharacters),
+                  },
+                ]
+              : []),
+          ]
+        : event.changes.filter(
+            (change) => change.type === "text_delta" || change.type === "thinking_delta",
+          );
+      if (!changes.length)
+        return {
+          ...state,
+          textCharacters: text.length,
+          thinkingCharacters: thinking.length,
+          ...(text.length < state.textCharacters ? { streamLine: "", narration: undefined } : {}),
+        };
+
       let next = state.phase === "waiting" ? transition(state, "thinking", now) : state;
-      next = { ...next, lastChunkAt: now };
+      next = {
+        ...next,
+        lastChunkAt: now,
+        textCharacters: text.length,
+        thinkingCharacters: thinking.length,
+      };
       for (const update of changes) {
         if (update.type !== "text_delta") continue;
         let line = next.streamLine;

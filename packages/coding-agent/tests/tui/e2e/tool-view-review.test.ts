@@ -72,7 +72,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { auxiliaryModels } from "../helpers/auxiliary-model";
 function fakeModel(replies: FauxResponseStep[]) {
-  const core = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+  const core = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
   core.setResponses(replies);
   return {
     model: core.getModel(),

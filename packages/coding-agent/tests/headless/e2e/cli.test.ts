@@ -55,7 +55,7 @@ test.each([
   });
   cleanups.push(() => server.stop(true));
   const url = `http://site.test:${server.port}/docs`;
-  const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+  const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
   let observed = false;
   faux.setResponses([
     fauxAssistantMessage(fauxToolCall("web_fetch", { url }), { stopReason: "toolUse" }),
@@ -753,17 +753,15 @@ test("stream-json emits session metadata, verbatim pi events, and the Run result
       tools: usage[0].segments.tools,
     },
   });
-  expect(
-    events.find((event) =>
-      event.changes?.some((change: { type: string }) => change.type === "text_delta"),
-    ),
-  ).toMatchObject({
+  const streamed = events.filter((event) => event.type === "message_update");
+  expect(streamed.length).toBeGreaterThan(0);
+  expect(streamed.at(-1)).toMatchObject({
     type: "message_update",
     message: { role: "assistant", model: "m" },
-    changes: expect.arrayContaining([
-      expect.objectContaining({ type: "text_delta", delta: "hello from fake" }),
-    ]),
   });
+  expect(streamed.every((event) => Array.isArray(event.changes) && event.changes.length > 0)).toBe(
+    true,
+  );
   expect(events.at(-1)).toEqual({
     type: "request_settled",
     sessionId,

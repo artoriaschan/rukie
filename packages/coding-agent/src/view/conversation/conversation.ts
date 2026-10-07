@@ -811,20 +811,33 @@ function reduceEvent(
         decode: { ...state.decode, step: undefined },
       };
     case "message_update": {
-      const streamedChars =
-        state.streamedChars +
-        event.changes.reduce(
-          (count, change) =>
-            count +
-            (change.type === "text_delta" || change.type === "thinking_delta"
-              ? change.delta.length
-              : 0),
-          0,
-        );
-      const chars = event.changes.reduce(
+      const structural = event.changes.some(
+        (change) => change.type === "message" || change.type === "block",
+      );
+      const growth = Math.max(
+        0,
+        messageText(event.message).length +
+          messageThinking(event.message).length -
+          state.assistant.length -
+          state.reasoning.length,
+      );
+      const deltaChars = event.changes.reduce(
         (count, change) => count + ("delta" in change ? change.delta.length : 0),
         0,
       );
+      const chars = structural ? growth : deltaChars;
+      const streamedChars =
+        state.streamedChars +
+        (structural
+          ? growth
+          : event.changes.reduce(
+              (count, change) =>
+                count +
+                (change.type === "text_delta" || change.type === "thinking_delta"
+                  ? change.delta.length
+                  : 0),
+              0,
+            ));
       const step = state.decode.step;
       return {
         ...state,
@@ -855,6 +868,19 @@ function reduceEvent(
             reasoningSettled: false,
             reasoningDurationMs: undefined,
             assistantAnchor: crypto.randomUUID(),
+            streamedChars:
+              messageText(event.message).length + messageThinking(event.message).length,
+            decode:
+              messageText(event.message).length + messageThinking(event.message).length > 0
+                ? {
+                    ...state.decode,
+                    step: {
+                      startedAt: now,
+                      chars:
+                        messageText(event.message).length + messageThinking(event.message).length,
+                    },
+                  }
+                : { ...state.decode, step: undefined },
           }
         : state;
     case "message_end": {

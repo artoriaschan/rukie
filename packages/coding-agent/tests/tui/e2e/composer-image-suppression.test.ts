@@ -142,7 +142,7 @@ test.each([
       ...options,
       prepare: async (root) => {
         await options.prepare(root);
-        const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+        const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
         faux.setResponses([fauxAssistantMessage("stored response")]);
         const previous = await createSession({
           cwd: root,

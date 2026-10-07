@@ -3,6 +3,7 @@ import { expect, test } from "bun:test";
 import { fauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { watch } from "node:fs";
 import { join } from "node:path";
 import { createSession } from "@rukie/agent";
 import { main as entryMain, type PrintIo } from "../../src/index.ts";
@@ -49,7 +50,7 @@ test.each([
 ])("CLI %s %s observes jobs and terminates them at completion", async (source, format) => {
   const root = await mkdtemp(join(tmpdir(), "rukie-cli-jobs-"));
   await mkdir(join(root, ".rukie", "file-history"), { recursive: true });
-  const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+  const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
   faux.setResponses([
     fauxAssistantMessage(
       fauxToolCall("bash", {
@@ -61,10 +62,26 @@ test.each([
       { stopReason: "toolUse" },
     ),
     async () => {
-      const deadline = Date.now() + 2000;
-      while (!(await Bun.file(join(root, "ready")).exists())) {
-        if (Date.now() > deadline) throw new Error("Background process did not start");
-        await Bun.sleep(5);
+      // This readiness file belongs to a real child process; a parent virtual clock cannot drive it.
+      const ready = Promise.withResolvers<void>();
+      const deadline = AbortSignal.timeout(2000);
+      const fail = () => ready.reject(new Error("Background process did not start"));
+      const watcher = watch(root, (_event, filename) => {
+        if (filename !== null && filename !== "ready") return;
+        void Bun.file(join(root, "ready"))
+          .exists()
+          .then((exists) => {
+            if (exists) ready.resolve();
+          })
+          .catch(ready.reject);
+      });
+      watcher.once("error", ready.reject);
+      deadline.addEventListener("abort", fail, { once: true });
+      try {
+        if (!(await Bun.file(join(root, "ready")).exists())) await ready.promise;
+      } finally {
+        watcher.close();
+        deadline.removeEventListener("abort", fail);
       }
       return source === "goal"
         ? fauxAssistantMessage(fauxToolCall("update_goal", { action: "complete" }), {
@@ -157,7 +174,7 @@ test.each(["text", "stream-json"])(
   "%s exposes hook warnings, headless ask denial, and user messages",
   async (format) => {
     const root = await mkdtemp(join(tmpdir(), "rukie-cli-hooks-"));
-    const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+    const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
     faux.setResponses([
       fauxAssistantMessage(
         fauxToolCall("bash", { description: "Run test command", command: "touch forbidden" }),
@@ -361,7 +378,7 @@ test.each([
 ])("--allow-tools %s grants the matching command only", async (rule, command) => {
   const root = await mkdtemp(join(tmpdir(), "rukie-cli-rules-"));
   await mkdir(join(root, ".rukie", "file-history"), { recursive: true });
-  const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+  const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
   faux.setResponses([
     fauxAssistantMessage(
       [
@@ -415,7 +432,7 @@ test.each(["text", "stream-json"])(
   async (format) => {
     const root = await mkdtemp(join(tmpdir(), "rukie-cli-subagent-"));
     await mkdir(join(root, ".rukie", "file-history"), { recursive: true });
-    const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+    const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
     const reply: Parameters<typeof faux.setResponses>[0][number] = (context) => {
       const last = context.messages.at(-1)!;
       if (last.role === "user" && JSON.stringify(last.content).includes("child-prompt"))
@@ -517,7 +534,7 @@ test("Headless resume emits a text plan and never registers interactive plan too
   try {
     const seed = await createSession({ cwd: root, homeDir: root, ...echoModel() });
     await seed.setPlanMode(true);
-    const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+    const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
     faux.setResponses([
       (context) => {
         expect(JSON.stringify(context)).toContain(
@@ -569,7 +586,7 @@ test.each([false, true])(
   "Goal output and exit belong to the parent even when a child fails: %s",
   async (fail) => {
     const root = await mkdtemp(join(tmpdir(), "rukie-cli-goal-child-"));
-    const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+    const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
     let childResponded = false;
     const reply: Parameters<typeof faux.setResponses>[0][number] = (context) => {
       const last = context.messages.at(-1);
@@ -627,7 +644,7 @@ test.each(["error", "length"] as const)(
   "Goal exits 1 after a Run ends with %s",
   async (stopReason) => {
     const root = await mkdtemp(join(tmpdir(), "rukie-cli-goal-outcome-"));
-    const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+    const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
     faux.setResponses([
       fauxAssistantMessage("partial work", {
         stopReason,
@@ -665,7 +682,7 @@ test.each(["error", "length"] as const)(
 test("Goal preserves SIGINT received while creation is still settling", async () => {
   const root = await mkdtemp(join(tmpdir(), "rukie-cli-goal-create-abort-"));
   const controller = new AbortController();
-  const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+  const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
   let modelCalled = false;
   faux.setResponses([
     () => {
@@ -706,7 +723,7 @@ test.each(["prompt", "stdin", "stdin-stream-json", "goal", "goal-interrupted"])(
     const firstCall = Promise.withResolvers<void>();
     const firstReply = Promise.withResolvers<void>();
     const contexts: string[] = [];
-    const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+    const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
     faux.setResponses([
       async (context) => {
         contexts.push(JSON.stringify(context.messages));
@@ -906,7 +923,7 @@ test("Headless calls real MCP tools using credentials written by an earlier Sess
       await seed.close();
     }
     expect(await Bun.file(join(root, ".rukie/credentials.json")).exists()).toBe(true);
-    const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+    const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
     faux.setResponses([
       fauxAssistantMessage(fauxToolCall("mcp__srv__echo", { text: "hello" }), {
         stopReason: "toolUse",
