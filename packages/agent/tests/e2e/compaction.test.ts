@@ -135,11 +135,11 @@ test("manual Compaction summarizes eligible history, keeps focus outside model T
   expect(untouched.contexts).toHaveLength(0);
 });
 
-test("manual Compaction rejects an active Run; empty and tiny history do not request a summary", async () => {
+test("manual Compaction rejects empty history and an active Run; tiny history does not request a summary", async () => {
   dirs = await tempDirs();
   const fake = abortingModel();
   const session = await createSession({ ...dirs, ...fake });
-  await session.compact();
+  await expect(session.compact()).rejects.toMatchObject({ code: "compaction-no-history" });
   const run = session.run("pending work");
   await fake.started;
   const before = structuredClone(session.messages);

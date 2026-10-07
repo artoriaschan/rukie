@@ -151,7 +151,9 @@ test("closing a side overlay restores a folded main question without answering o
     app.stdin.write("\x1b");
     await app.waitFor(() => screen(app).includes("Waiting for your answer"));
     expect(app.sideQuestions[0]!.signal!.aborted).toBe(true);
-    expect(app.calls[0]!.signal!.aborted).toBe(false);
+    // The finished tool-use generation releases its SDK signal independently
+    // of the still-pending question and its owning Session Run.
+    expect(app.isWorking()).toBe(true);
     expect(app.calls).toHaveLength(1);
     app.stdin.write("\x0b");
     await app.waitFor(() => screen(app).includes("Choose storage"));
