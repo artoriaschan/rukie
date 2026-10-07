@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { join } from "node:path";
 import { realpath, symlink } from "node:fs/promises";
-import type { HookEvent, HooksSettings } from "@neant/shared";
+import type { HookEvent, HooksSettings } from "@rukie/shared";
 import type { SessionEvent } from "../../src/index.ts";
 import { createSession } from "../../src/index.ts";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";

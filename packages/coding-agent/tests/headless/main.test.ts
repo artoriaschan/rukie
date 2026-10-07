@@ -4,7 +4,7 @@ import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-wo
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createSession } from "@neant/agent";
+import { createSession } from "@rukie/agent";
 import { main as entryMain, type PrintIo } from "../../src/index.ts";
 function main(argv: string[], io: PrintIo) {
   return entryMain(
@@ -24,8 +24,8 @@ const {
 import { echoModel } from "./helpers/echo-model.ts";
 
 async function run(argv: string[], stdin = "") {
-  const root = await mkdtemp(join(tmpdir(), "neant-main-"));
-  await mkdir(join(root, ".neant", "file-history"), { recursive: true });
+  const root = await mkdtemp(join(tmpdir(), "rukie-main-"));
+  await mkdir(join(root, ".rukie", "file-history"), { recursive: true });
   let stdout = "";
   let stderr = "";
   try {
@@ -47,8 +47,8 @@ test.each([
   ["goal", "text"],
   ["goal", "stream-json"],
 ])("CLI %s %s observes jobs and terminates them at completion", async (source, format) => {
-  const root = await mkdtemp(join(tmpdir(), "neant-cli-jobs-"));
-  await mkdir(join(root, ".neant", "file-history"), { recursive: true });
+  const root = await mkdtemp(join(tmpdir(), "rukie-cli-jobs-"));
+  await mkdir(join(root, ".rukie", "file-history"), { recursive: true });
   const faux = createFauxCore({ api: "faux", provider: "faux" });
   faux.setResponses([
     fauxAssistantMessage(
@@ -127,7 +127,7 @@ test("-p prints the final assistant text", async () => {
 });
 
 test.each([false, true])("CLI disposes its Session after success or failure: %s", async (fail) => {
-  const root = await mkdtemp(join(tmpdir(), "neant-cli-dispose-"));
+  const root = await mkdtemp(join(tmpdir(), "rukie-cli-dispose-"));
   try {
     const exitCode = await main(fail ? [] : ["-p", "hi"], {
       readStdin: async () => {
@@ -156,7 +156,7 @@ test.each([false, true])("CLI disposes its Session after success or failure: %s"
 test.each(["text", "stream-json"])(
   "%s exposes hook warnings, headless ask denial, and user messages",
   async (format) => {
-    const root = await mkdtemp(join(tmpdir(), "neant-cli-hooks-"));
+    const root = await mkdtemp(join(tmpdir(), "rukie-cli-hooks-"));
     const faux = createFauxCore({ api: "faux", provider: "faux" });
     faux.setResponses([
       fauxAssistantMessage(
@@ -231,7 +231,7 @@ test("print reads stdin when the positional prompt is absent", async () => {
 test.each(["text", "stream-json"])(
   "%s reports hook_blocked without invoking the model",
   async (format) => {
-    const root = await mkdtemp(join(tmpdir(), "neant-cli-prompt-hook-"));
+    const root = await mkdtemp(join(tmpdir(), "rukie-cli-prompt-hook-"));
     let stdout = "";
     let stderr = "";
     let modelCalls = 0;
@@ -359,8 +359,8 @@ test.each([
   ["bash(printf a,b*)", "printf a,b > marker"],
   ["bash(printf {alpha,beta}*)", "printf alpha > marker"],
 ])("--allow-tools %s grants the matching command only", async (rule, command) => {
-  const root = await mkdtemp(join(tmpdir(), "neant-cli-rules-"));
-  await mkdir(join(root, ".neant", "file-history"), { recursive: true });
+  const root = await mkdtemp(join(tmpdir(), "rukie-cli-rules-"));
+  await mkdir(join(root, ".rukie", "file-history"), { recursive: true });
   const faux = createFauxCore({ api: "faux", provider: "faux" });
   faux.setResponses([
     fauxAssistantMessage(
@@ -413,8 +413,8 @@ test.each([
 test.each(["text", "stream-json"])(
   "%s output keeps child events distinct from the parent closing text",
   async (format) => {
-    const root = await mkdtemp(join(tmpdir(), "neant-cli-subagent-"));
-    await mkdir(join(root, ".neant", "file-history"), { recursive: true });
+    const root = await mkdtemp(join(tmpdir(), "rukie-cli-subagent-"));
+    await mkdir(join(root, ".rukie", "file-history"), { recursive: true });
     const faux = createFauxCore({ api: "faux", provider: "faux" });
     const reply: Parameters<typeof faux.setResponses>[0][number] = (context) => {
       const last = context.messages.at(-1)!;
@@ -507,7 +507,7 @@ test.each(["text", "stream-json"])(
 );
 
 test("Headless resume emits a text plan and never registers interactive plan tools", async () => {
-  const root = await mkdtemp(join(tmpdir(), "neant-cli-plan-"));
+  const root = await mkdtemp(join(tmpdir(), "rukie-cli-plan-"));
   try {
     const seed = await createSession({ cwd: root, homeDir: root, ...echoModel() });
     await seed.setPlanMode(true);
@@ -562,7 +562,7 @@ test("Headless resume emits a text plan and never registers interactive plan too
 test.each([false, true])(
   "Goal output and exit belong to the parent even when a child fails: %s",
   async (fail) => {
-    const root = await mkdtemp(join(tmpdir(), "neant-cli-goal-child-"));
+    const root = await mkdtemp(join(tmpdir(), "rukie-cli-goal-child-"));
     const faux = createFauxCore({ api: "faux", provider: "faux" });
     let childResponded = false;
     const reply: Parameters<typeof faux.setResponses>[0][number] = (context) => {
@@ -620,7 +620,7 @@ test.each([false, true])(
 test.each(["error", "length"] as const)(
   "Goal exits 1 after a Run ends with %s",
   async (stopReason) => {
-    const root = await mkdtemp(join(tmpdir(), "neant-cli-goal-outcome-"));
+    const root = await mkdtemp(join(tmpdir(), "rukie-cli-goal-outcome-"));
     const faux = createFauxCore({ api: "faux", provider: "faux" });
     faux.setResponses([
       fauxAssistantMessage("partial work", {
@@ -657,7 +657,7 @@ test.each(["error", "length"] as const)(
 );
 
 test("Goal preserves SIGINT received while creation is still settling", async () => {
-  const root = await mkdtemp(join(tmpdir(), "neant-cli-goal-create-abort-"));
+  const root = await mkdtemp(join(tmpdir(), "rukie-cli-goal-create-abort-"));
   const controller = new AbortController();
   const faux = createFauxCore({ api: "faux", provider: "faux" });
   let modelCalled = false;
@@ -695,7 +695,7 @@ test("Goal preserves SIGINT received while creation is still settling", async ()
 test.each(["prompt", "stdin", "stdin-stream-json", "goal", "goal-interrupted"])(
   "CLI %s retains a user task while a startup hook autorun is active",
   async (source) => {
-    const root = await mkdtemp(join(tmpdir(), "neant-cli-async-hook-"));
+    const root = await mkdtemp(join(tmpdir(), "rukie-cli-async-hook-"));
     const controller = new AbortController();
     const firstCall = Promise.withResolvers<void>();
     const firstReply = Promise.withResolvers<void>();
@@ -815,13 +815,13 @@ test.each(["prompt", "stdin", "stdin-stream-json", "goal", "goal-interrupted"])(
 test.each(["text", "stream-json"])(
   "Headless %s reports OAuth login requirements and completes without auth tools",
   async (format) => {
-    const root = await mkdtemp(join(tmpdir(), "neant-cli-mcp-oauth-"));
+    const root = await mkdtemp(join(tmpdir(), "rukie-cli-mcp-oauth-"));
     const server = mcpOAuthServer();
     let stdout = "";
     let stderr = "";
     try {
       await Bun.write(
-        join(root, ".neant/mcp.json"),
+        join(root, ".rukie/mcp.json"),
         JSON.stringify({ mcpServers: { srv: { type: "http", url: server.url } } }),
       );
       const exitCode = await main(["-p", "continue", "--output-format", format], {
@@ -872,11 +872,11 @@ test.each(["text", "stream-json"])(
 );
 
 test("Headless calls real MCP tools using credentials written by an earlier Session login", async () => {
-  const root = await mkdtemp(join(tmpdir(), "neant-cli-mcp-credentials-"));
+  const root = await mkdtemp(join(tmpdir(), "rukie-cli-mcp-credentials-"));
   const server = mcpOAuthServer();
   try {
     await Bun.write(
-      join(root, ".neant/mcp.json"),
+      join(root, ".rukie/mcp.json"),
       JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
     );
     const seed = await createSession({
@@ -895,7 +895,7 @@ test("Headless calls real MCP tools using credentials written by an earlier Sess
     } finally {
       await seed.dispose();
     }
-    expect(await Bun.file(join(root, ".neant/credentials.json")).exists()).toBe(true);
+    expect(await Bun.file(join(root, ".rukie/credentials.json")).exists()).toBe(true);
     const faux = createFauxCore({ api: "faux", provider: "faux" });
     faux.setResponses([
       fauxAssistantMessage(fauxToolCall("mcp__srv__echo", { text: "hello" }), {

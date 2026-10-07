@@ -1,4 +1,4 @@
-// Neant night-spirit v2: original pixel art. Editable design assets live in brand.
+// Rukie night-spirit v2: original pixel art. Editable design assets live in brand.
 export const SPIRIT_WIDTH = 40;
 export const SPIRIT_HEIGHT = 14;
 

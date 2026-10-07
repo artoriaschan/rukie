@@ -35,7 +35,7 @@ test.each(["subagent", "subagent_fork"])(
     const server = mcpOAuthServer();
     try {
       await Bun.write(
-        join(dirs.homeDir, ".neant/mcp.json"),
+        join(dirs.homeDir, ".rukie/mcp.json"),
         JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
       );
       const fake = fakeModel([
@@ -110,7 +110,7 @@ test.each(["subagent", "subagent_fork"])(
     const server = mcpOAuthServer();
     try {
       await Bun.write(
-        join(dirs.homeDir, ".neant/mcp.json"),
+        join(dirs.homeDir, ".rukie/mcp.json"),
         JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
       );
       const fake = fakeModel([
@@ -142,7 +142,7 @@ test("a child's cancelled OAuth interaction remains non-error and leaves the par
   const server = mcpOAuthServer();
   try {
     await Bun.write(
-      join(dirs.homeDir, ".neant/mcp.json"),
+      join(dirs.homeDir, ".rukie/mcp.json"),
       JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
     );
     const fake = fakeModel([
@@ -191,11 +191,11 @@ test("an authenticate-only type keeps its exact restriction after logging in", a
   const other = mcpOAuthServer();
   try {
     await Bun.write(
-      join(dirs.homeDir, ".neant/mcp.json"),
+      join(dirs.homeDir, ".rukie/mcp.json"),
       JSON.stringify({ mcpServers: { srv: { url: server.url }, other: { url: other.url } } }),
     );
     await Bun.write(
-      join(dirs.homeDir, ".neant/agents/auth-only.md"),
+      join(dirs.homeDir, ".rukie/agents/auth-only.md"),
       "---\nname: auth-only\ndescription: Authenticate without data access\ntools: [mcp__srv__authenticate]\n---\nOnly authenticate.",
     );
     const fake = fakeModel([

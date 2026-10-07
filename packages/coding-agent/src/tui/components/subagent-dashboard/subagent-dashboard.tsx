@@ -1,5 +1,5 @@
 import { useState, type Ref } from "react";
-import type { Locale } from "@neant/i18n";
+import type { Locale } from "@rukie/i18n";
 import {
   Box,
   Divider,

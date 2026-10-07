@@ -28,7 +28,7 @@ test("SSH uses UTF8 OSC52 rather than the remote native clipboard; missing trans
 });
 
 test("tmux actual helper success wraps OSC; failed helper falls back raw and iTerm2 avoids -w", async () => {
-  const root = await mkdtemp(join(tmpdir(), "neant-copy-"));
+  const root = await mkdtemp(join(tmpdir(), "rukie-copy-"));
   const calls = join(root, "calls");
   const output: string[] = [];
   try {
@@ -77,7 +77,7 @@ await Bun.write(${JSON.stringify(calls)},JSON.stringify(Bun.argv.slice(2)));proc
 });
 
 test("local native helper receives exact text despite stale SSH_TTY; failed native falls back to Kitty or screen transport", async () => {
-  const root = await mkdtemp(join(tmpdir(), "neant-native-copy-"));
+  const root = await mkdtemp(join(tmpdir(), "rukie-native-copy-"));
   const bytes = join(root, "text");
   const output: string[] = [];
   try {
@@ -137,7 +137,7 @@ test("local native helper receives exact text despite stale SSH_TTY; failed nati
 });
 
 test("a stalled native clipboard helper is bounded at 2000ms and reports only the terminal fallback", async () => {
-  const root = await mkdtemp(join(tmpdir(), "neant-copy-timeout-"));
+  const root = await mkdtemp(join(tmpdir(), "rukie-copy-timeout-"));
   const ready = join(root, "ready");
   const command =
     process.platform === "darwin"

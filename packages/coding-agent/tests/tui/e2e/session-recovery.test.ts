@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
-import { createJsonlStore, createSession } from "@neant/agent";
+import { createJsonlStore, createSession } from "@rukie/agent";
 import { createFauxCore, getCurrentSystemMessage } from "@earendil-works/pi-ai";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -76,7 +76,7 @@ for (const [lang, notice, unknown, guide] of [
   }
 
 test("SIGTERM lets the actual TUI process save an active child Run before reporting exit", async () => {
-  const root = await mkdtemp(join(tmpdir(), "neant-close-"));
+  const root = await mkdtemp(join(tmpdir(), "rukie-close-"));
   const script = `
     import { main } from ${JSON.stringify(join(import.meta.dir, "../../../src/index.ts"))};
     import { controlledModel } from ${JSON.stringify(join(import.meta.dir, "../helpers/model.ts"))};

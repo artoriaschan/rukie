@@ -1,6 +1,6 @@
 import { createImagePresentation } from "./image-metadata";
 import { alignSplitDiff } from "../../../ink/index.ts";
-import { readSessionNotice, sessionNoticeFromHook, assistantThinkingDuration } from "@neant/agent";
+import { readSessionNotice, sessionNoticeFromHook, assistantThinkingDuration } from "@rukie/agent";
 const conversationFacts = { readSessionNotice, sessionNoticeFromHook, assistantThinkingDuration };
 import { SessionNoticeRow } from "../../components/notice";
 import { completedEntryVisible } from "../../../view/conversation/completed-visibility";
@@ -39,9 +39,9 @@ import {
   ImageValidationError,
   type Session,
   type SessionOptions,
-} from "@neant/agent";
-import type { Locale } from "@neant/i18n";
-import { PERMISSION_MODES, type ThinkingLevel } from "@neant/shared";
+} from "@rukie/agent";
+import type { Locale } from "@rukie/i18n";
+import { PERMISSION_MODES, type ThinkingLevel } from "@rukie/shared";
 import {
   Box,
   ScrollBox,
@@ -467,7 +467,7 @@ function Chat({
     const frames = ["🌑", "🌒", "🌓", "🌔", "🌕", "🌖", "🌗", "🌘"];
     let frame = 0;
     const update = () =>
-      writeTitle?.(`${state.running ? frames[frame++ % frames.length] : "✦"} ${title || "Neant"}`);
+      writeTitle?.(`${state.running ? frames[frame++ % frames.length] : "✦"} ${title || "Rukie"}`);
     update();
     if (!state.running || !writeTitle) return;
     const timer = setInterval(update, 120);
@@ -627,7 +627,7 @@ function Chat({
       createMcpPanel(
         mcpCommands,
         {
-          user: join(homeDir ?? homedir(), ".neant/mcp.json"),
+          user: join(homeDir ?? homedir(), ".rukie/mcp.json"),
           project: join(cwd, ".mcp.json"),
         },
         t,

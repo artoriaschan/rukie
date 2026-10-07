@@ -63,7 +63,7 @@ async function withMcpServer(): Promise<void> {
   const manifest = join(dirs.homeDir, "manifest.json");
   await Bun.write(manifest, JSON.stringify({ tools: ["echo"] }));
   await Bun.write(
-    join(dirs.homeDir, ".neant/mcp.json"),
+    join(dirs.homeDir, ".rukie/mcp.json"),
     JSON.stringify({
       mcpServers: {
         local: {
@@ -720,7 +720,7 @@ test("the built-in explore type declares only its read-only tools", async () => 
 test("a subagent type with an explicit tools whitelist declares exactly that allowlist", async () => {
   dirs = await tempDirs();
   await Bun.write(
-    join(dirs.cwd, ".neant/agents/reader.md"),
+    join(dirs.cwd, ".rukie/agents/reader.md"),
     "---\nname: reader\ndescription: Reader\ntools: [read, grep]\n---\nRead only.",
   );
   const fake = fakeModel([
@@ -753,7 +753,7 @@ test("an explicit tools whitelist excludes every inherited MCP server tool", asy
   dirs = await tempDirs();
   await withMcpServer();
   await Bun.write(
-    join(dirs.cwd, ".neant/agents/reader.md"),
+    join(dirs.cwd, ".rukie/agents/reader.md"),
     "---\nname: reader\ndescription: Reader\ntools: [read, grep]\n---\nRead only.",
   );
   const warnings: string[] = [];
@@ -815,7 +815,7 @@ test("a later Run rebuilds the subagent declaration from the latest discovered t
   const session = await createSession({ ...dirs, ...fake, ...interactive });
   await session.run("first");
   await Bun.write(
-    join(dirs.cwd, ".neant/agents/added.md"),
+    join(dirs.cwd, ".rukie/agents/added.md"),
     "---\nname: added\ndescription: Newly added\n---\nNew body",
   );
   await session.run("second");

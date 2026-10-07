@@ -34,7 +34,7 @@ test.each([
   async (locale, enabled) => {
     const app = await start([], {
       prepare: async (root) => {
-        await Bun.write(`${root}/.neant/settings.json`, JSON.stringify({ locale }));
+        await Bun.write(`${root}/.rukie/settings.json`, JSON.stringify({ locale }));
       },
     });
     try {

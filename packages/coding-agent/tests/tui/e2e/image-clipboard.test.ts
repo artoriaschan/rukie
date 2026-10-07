@@ -230,7 +230,7 @@ test("a pending Ctrl+V image cannot take focus from an active question", async (
 });
 
 test("Ctrl+V on a text-only model keeps image success and the separate model warning", async () => {
-  const key = "NEANT_CLIPBOARD_MODEL_KEY";
+  const key = "RUKIE_CLIPBOARD_MODEL_KEY";
   const previousKey = process.env[key];
   process.env[key] = "test-key";
   let path = "";
@@ -244,7 +244,7 @@ test("Ctrl+V on a text-only model keeps image success and the separate model war
         path = `${root}/clipboard.png`;
         await Bun.write(path, Buffer.from(png, "base64"));
         await Bun.write(
-          `${root}/.neant/settings.json`,
+          `${root}/.rukie/settings.json`,
           JSON.stringify({
             model: "img/text",
             providers: [

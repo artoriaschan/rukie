@@ -14,7 +14,7 @@ export async function cleanupExpiredBackups({
   now: Date;
   onWarning(warning: string): void;
 }): Promise<void> {
-  const history = join(homeDir, ".neant", "file-history");
+  const history = join(homeDir, ".rukie", "file-history");
   let entries;
   try {
     entries = await readdir(history, { withFileTypes: true });

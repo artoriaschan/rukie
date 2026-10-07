@@ -1,8 +1,8 @@
 import { expect, jest, test } from "bun:test";
 import { join } from "node:path";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { createJsonlStore, createSession } from "@neant/agent";
-import { isUnknownToolOutcome } from "@neant/shared";
+import { createJsonlStore, createSession } from "@rukie/agent";
+import { isUnknownToolOutcome } from "@rukie/shared";
 import { start } from "../helpers/app";
 import { startWithClock } from "../helpers/clock-app";
 import { withAuxiliaryRequests } from "../helpers/auxiliary-model";

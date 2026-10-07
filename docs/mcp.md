@@ -1,6 +1,6 @@
 # MCP 配置与授权
 
-Agent Core 读取用户的 `~/.neant/mcp.json`。项目 `.mcp.json` 只在 Trusted Project 中，或明确启用 `trustProjectMcp` 时参与合并；同名项目配置覆盖用户配置。信任与工具权限是独立决定，真实 MCP 工具仍经过 hooks 和 Permission Rule。
+Agent Core 读取用户的 `~/.rukie/mcp.json`。项目 `.mcp.json` 只在 Trusted Project 中，或明确启用 `trustProjectMcp` 时参与合并；同名项目配置覆盖用户配置。信任与工具权限是独立决定，真实 MCP 工具仍经过 hooks 和 Permission Rule。
 
 ## 配置
 
@@ -41,7 +41,7 @@ Headless CLI 不提供授权交互，也不向模型暴露 `authenticate` 工具
 
 ## MCP Credential
 
-MCP Credential 存在 Session 的 `homeDir` 下的 `.neant/credentials.json`，文件权限为 0600，新建目录权限为 0700。按 server 名、URL 与展开后的 headers 区分，所有 Session 和子代理共用；同名但 URL 或 headers 不同的 server 不能借用。Provider 凭据继续来自环境变量。
+MCP Credential 存在 Session 的 `homeDir` 下的 `.rukie/credentials.json`，文件权限为 0600，新建目录权限为 0700。按 server 名、URL 与展开后的 headers 区分，所有 Session 和子代理共用；同名但 URL 或 headers 不同的 server 不能借用。Provider 凭据继续来自环境变量。
 
 写入使用临时文件和 rename。损坏 JSON 被视为空并告警，直到下一次成功写入前保留原文件。pi-mcp 负责 token 刷新；授权失效或需要额外 scopes 时重新回到 `needs-auth`。登出删除本地凭据，不向授权服务器撤销 token。
 

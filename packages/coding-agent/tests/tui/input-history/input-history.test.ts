@@ -6,7 +6,7 @@ import { createInputHistory } from "../../../src/tui/input-history";
 
 const roots: string[] = [];
 async function fixture() {
-  const root = await mkdtemp(join(tmpdir(), "neant-history-"));
+  const root = await mkdtemp(join(tmpdir(), "rukie-history-"));
   roots.push(root);
   return root;
 }
@@ -23,7 +23,7 @@ test("history is scoped to a normalized project and stores multiline text privat
     "中文👩‍💻\nnext line",
   ]);
   expect((await createInputHistory(join(root, "other"), root)).entries).toEqual([]);
-  const directory = join(root, ".neant/input-history");
+  const directory = join(root, ".rukie/input-history");
   const files = await readdir(directory);
   expect(files).toHaveLength(1);
   expect((await stat(join(directory, files[0]!))).mode & 0o777).toBe(0o600);
@@ -71,7 +71,7 @@ test("corrupt records are ignored and the next save keeps valid history", async 
   const history = await createInputHistory(root, root);
   history.remember("first");
   await history.flush();
-  const directory = join(root, ".neant/input-history");
+  const directory = join(root, ".rukie/input-history");
   const file = join(directory, (await readdir(directory))[0]!);
   await writeFile(file, '"first"\n{broken\nnull\n42\n""\n"   "\n"second"\n');
   const restored = await createInputHistory(root, root);
@@ -83,7 +83,7 @@ test("corrupt records are ignored and the next save keeps valid history", async 
 
 test("an unavailable history directory leaves session recall usable and flush resolves", async () => {
   const root = await fixture();
-  await writeFile(join(root, ".neant"), "blocked");
+  await writeFile(join(root, ".rukie"), "blocked");
   const history = await createInputHistory(root, root);
   history.remember("session only");
   await expect(history.flush()).resolves.toBeUndefined();

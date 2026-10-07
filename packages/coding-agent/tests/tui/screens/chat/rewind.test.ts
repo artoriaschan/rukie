@@ -1,7 +1,7 @@
 import { startWithClock } from "../../helpers/clock-app";
 import { withAuxiliaryRequests } from "../../helpers/auxiliary-model.ts";
 import { expect, jest, spyOn, test } from "bun:test";
-import { createSession } from "@neant/agent";
+import { createSession } from "@rukie/agent";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { join } from "node:path";
 import { mkdir, rm } from "node:fs/promises";
@@ -490,7 +490,7 @@ test("preview collapses whitespace, caps at 80 characters, and mouse only moves 
     prepare: async (root) => {
       const faux = createFauxCore({ api: "faux", provider: "faux" });
       faux.setResponses([fauxAssistantMessage("old answer"), fauxAssistantMessage("new answer")]);
-      await mkdir(join(root, ".neant/file-history"), { recursive: true });
+      await mkdir(join(root, ".rukie/file-history"), { recursive: true });
       const seed = await createSession({
         cwd: root,
         homeDir: root,
@@ -613,7 +613,7 @@ test("missing backup closes the picker with an error and preserves files and con
       [{ name: "write", args: { path: "existing.txt", content: "changed" } }],
       "keep answer",
     );
-    await rm(join(app.root, ".neant/file-history"), { recursive: true, force: true });
+    await rm(join(app.root, ".rukie/file-history"), { recursive: true, force: true });
     await open(app);
     app.stdin.write("\r");
     await app.waitFor(() => text(app).includes("Rewind to this message?"));
@@ -700,7 +700,7 @@ test.each([true, false])(
       rows: 24,
       env: { LANG: "en_US.UTF-8" },
       prepare: async (root) => {
-        await mkdir(join(root, ".neant/file-history"), { recursive: true });
+        await mkdir(join(root, ".rukie/file-history"), { recursive: true });
         const faux = createFauxCore({ api: "faux", provider: "faux" });
         faux.setResponses([
           ...(priorTodo
@@ -796,7 +796,7 @@ test("40×12 rewind preserves Todo and historical children without reopening the
     rows: 12,
     env: { LANG: "en_US.UTF-8" },
     prepare: async (root) => {
-      await mkdir(join(root, ".neant/file-history"), { recursive: true });
+      await mkdir(join(root, ".rukie/file-history"), { recursive: true });
       const faux = createFauxCore({ api: "faux", provider: "faux" });
       faux.setResponses([
         fauxAssistantMessage(

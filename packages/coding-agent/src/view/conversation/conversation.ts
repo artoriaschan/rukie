@@ -3,8 +3,8 @@ import type {
   readSessionNotice,
   sessionNoticeFromHook,
   assistantThinkingDuration,
-} from "@neant/agent";
-import { fmtDuration, type Locale } from "@neant/i18n";
+} from "@rukie/agent";
+import { fmtDuration, type Locale } from "@rukie/i18n";
 import { createTuiI18n, formatError } from "../i18n";
 import type {
   PromptImage,
@@ -13,7 +13,7 @@ import type {
   SessionEvent,
   SessionRecovery,
   TodoItem,
-} from "@neant/agent";
+} from "@rukie/agent";
 import {
   isUnknownToolOutcome,
   type ContextUsageEvent,
@@ -22,7 +22,7 @@ import {
   type JobView,
   type ToolCallView,
   type ToolResultView,
-} from "@neant/shared";
+} from "@rukie/shared";
 import type { TpsSample } from "../transcript/metrics";
 import { reduceSubagent, restoreSubagents, projectSubagent, type SubagentState } from "./subagents";
 import { createActivity, reduce } from "./activity/activity";

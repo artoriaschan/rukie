@@ -1,7 +1,7 @@
 import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
 import { createFauxCore, fauxAssistantMessage } from "@earendil-works/pi-ai";
-import { createSession } from "@neant/agent";
+import { createSession } from "@rukie/agent";
 import { start } from "../helpers/app";
 
 const question = {

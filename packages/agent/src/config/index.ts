@@ -10,7 +10,7 @@ import {
   SettingsSchema,
   type Settings,
   type CustomSessionEvent,
-} from "@neant/shared";
+} from "@rukie/shared";
 import { parsePermissionRules } from "../permissions/index.ts";
 import { mergeHooks, validateHooks } from "../hooks/index.ts";
 import { Value } from "typebox/value";
@@ -58,7 +58,7 @@ function validate(
 }
 
 /**
- * Loads `~/.neant/settings.json` merged with `<cwd>/.neant/settings.json`.
+ * Loads `~/.rukie/settings.json` merged with `<cwd>/.rukie/settings.json`.
  * The project file may override `model`, `reviewModel` and `subagentModel`.
  * Project deny/ask rules append to the user rules; allow rules append only for
  * the exact Trusted Project used by project MCP configuration.
@@ -67,8 +67,8 @@ function validate(
  * Language preferences belong to the user, not the project.
  */
 export async function loadSettings(options: { cwd: string; homeDir: string }) {
-  const userFile = join(options.homeDir, ".neant/settings.json");
-  const projectFile = join(options.cwd, ".neant/settings.json");
+  const userFile = join(options.homeDir, ".rukie/settings.json");
+  const projectFile = join(options.cwd, ".rukie/settings.json");
   const [userData, { providers, permissionMode, locale, ...projectData }] = await Promise.all([
     readJson(userFile),
     readJson(projectFile),
@@ -157,7 +157,7 @@ export async function resolveModel(
   homeDir: string,
 ): Promise<{ model: Model<Api>; streamFn: StreamFn }> {
   if (!settings.model) {
-    const settingsPath = join(homeDir, ".neant/settings.json");
+    const settingsPath = join(homeDir, ".rukie/settings.json");
     throw createUserVisibleError(noModelMessage(settingsPath), {
       code: "no-model",
       params: { settings: settingsPath },

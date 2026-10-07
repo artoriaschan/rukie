@@ -16,7 +16,8 @@ const glyphs: Readonly<Record<string, readonly string[]>> = {
   M: ["██··██", "██████", "██▀▀██", "██··██", "██··██"],
   Y: ["██··██", "██··██", "▀▀██▀▀", "··██··", "··██··"],
   W: ["██··██", "██··██", "██▄▄██", "██████", "██··██"],
-  // Neant extension: upstream bold has no T; reuse I's top and stem.
+  U: ["██··██", "██··██", "██··██", "██··██", "▀▄▄▄▄▀"],
+  // Rukie extension: upstream bold has no T; reuse I's top and stem.
   T: ["▀▀██▀▀", "··██··", "··██··", "··██··", "··██··"],
 };
 

@@ -162,11 +162,11 @@ test.each([false, true])("project domain allow requires user trust: %s", async (
   resources.push(dirs.cleanup);
   const http = server();
   await Bun.write(
-    join(dirs.homeDir, ".neant/settings.json"),
+    join(dirs.homeDir, ".rukie/settings.json"),
     JSON.stringify({ trustedProjects: trusted ? [dirs.cwd] : [] }),
   );
   await Bun.write(
-    join(dirs.cwd, ".neant/settings.json"),
+    join(dirs.cwd, ".rukie/settings.json"),
     JSON.stringify({
       trustedProjects: [dirs.cwd],
       permissions: { allow: ["web_fetch(domain:site.test)"] },

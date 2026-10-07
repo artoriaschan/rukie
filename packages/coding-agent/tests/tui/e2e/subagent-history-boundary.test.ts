@@ -2,7 +2,7 @@ import { expect, jest, test } from "bun:test";
 import { startWithClock } from "../helpers/clock-app";
 import { start } from "../helpers/app";
 import { controlledModel } from "../helpers/model";
-import { createSession, createJsonlStore } from "@neant/agent";
+import { createSession, createJsonlStore } from "@rukie/agent";
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/pi-agent-core/harness/context";
 import {
   createAssistantMessageEventStream,

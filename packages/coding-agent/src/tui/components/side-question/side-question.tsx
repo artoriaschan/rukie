@@ -7,7 +7,7 @@ import {
   type ScrollHandle,
 } from "../../../ink/index.ts";
 import type { RefObject } from "react";
-import type { Locale } from "@neant/i18n";
+import type { Locale } from "@rukie/i18n";
 import { Markdown } from "../markdown";
 import { createTuiI18n } from "../../../view/i18n";
 

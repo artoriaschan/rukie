@@ -110,7 +110,7 @@ test("thinking preview settles on streamed tool input and measured duration is d
 });
 
 test("resumed thinking paints its full Markdown immediately with saved duration and default fold", async () => {
-  const { createSession } = await import("@neant/agent");
+  const { createSession } = await import("@rukie/agent");
   const { createFauxCore, createAssistantMessageEventStream, fauxAssistantMessage } =
     await import("@earendil-works/pi-ai");
   const { withAuxiliaryRequests } = await import("../helpers/auxiliary-model");

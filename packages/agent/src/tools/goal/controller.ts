@@ -1,4 +1,4 @@
-import { createUserVisibleError, type UserVisibleErrorCode } from "@neant/shared";
+import { createUserVisibleError, type UserVisibleErrorCode } from "@rukie/shared";
 import { Value } from "typebox/value";
 import { goalSchema, type GoalSnapshot, type GoalView } from "./state.ts";
 
@@ -186,7 +186,7 @@ export function createGoalController(options: {
   return controller;
 }
 
-/** DSH tool-goal/src/wrapup.ts verbatim text; Neant uses one text user message with source goal. */
+/** DSH tool-goal/src/wrapup.ts verbatim text; Rukie uses one text user message with source goal. */
 export function renderWrapupContext(objective: string, blockedReason?: string): string {
   const heading = `Objective: ${JSON.stringify(objective)}\n`;
   const grounding =

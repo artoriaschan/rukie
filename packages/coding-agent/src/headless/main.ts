@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { homedir } from "node:os";
-import { createSession, loadSettings, type Session } from "@neant/agent";
-import type { PermissionMode, ThinkingLevel } from "@neant/shared";
+import { createSession, loadSettings, type Session } from "@rukie/agent";
+import type { PermissionMode, ThinkingLevel } from "@rukie/shared";
 import type { CliOptions } from "../cli";
 import type { PrintIo } from "../io";
 

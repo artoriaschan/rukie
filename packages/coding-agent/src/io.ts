@@ -1,4 +1,4 @@
-import type { SessionOptions } from "@neant/agent";
+import type { SessionOptions } from "@rukie/agent";
 import type { RenderOptions } from "./ink/index.ts";
 import type { TuiHost } from "./tui/host";
 

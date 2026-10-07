@@ -4,11 +4,11 @@ Status: ready-for-agent
 
 ## Problem Statement
 
-`neant` 在 Run 进行中只靠状态栏里的 `Running` 一个词表示"在工作"，外加正在跑的工具前的 spinner。模型思考时、两个工具调用之间、等首 token 时都没有任何指示，用户不知道 agent 是卡住了还是在干活，也不知道已经跑了多久、花了多少 token。我想要 dsh-TUI 那样的实时工作状态行：一行带动画的文案，告诉我 agent 此刻在做什么、做了多久。
+`rukie` 在 Run 进行中只靠状态栏里的 `Running` 一个词表示"在工作"，外加正在跑的工具前的 spinner。模型思考时、两个工具调用之间、等首 token 时都没有任何指示，用户不知道 agent 是卡住了还是在干活，也不知道已经跑了多久、花了多少 token。我想要 dsh-TUI 那样的实时工作状态行：一行带动画的文案，告诉我 agent 此刻在做什么、做了多久。
 
 ## Solution
 
-全量移植 `dsh-working-activity`（中文部分）的文案与状态机，按 dsh-TUI `ActivityLine` 的方式渲染：输入框上方一行 `🌔 脑子在冒烟 · 总12s · ↑ 8.1k · ↓ 1.2k tokens`，月相帧 + 扫光文字。`esc 中断` 放在输入框下方 StatusLine 的提示行，该行始终占位；回到底部按钮放在正文下方、活动行/权限弹窗/输入区域上方并水平居中，可点击恢复底部跟随。上下文条不展示时不占位，字段行直接位于输入框下方。状态机重写为纯函数，以 Neant 的 `SessionEvent` 为输入；术语沿用 Neant/pi：原包的 turn 一律对应 **Run**。
+全量移植 `dsh-working-activity`（中文部分）的文案与状态机，按 dsh-TUI `ActivityLine` 的方式渲染：输入框上方一行 `🌔 脑子在冒烟 · 总12s · ↑ 8.1k · ↓ 1.2k tokens`，月相帧 + 扫光文字。`esc 中断` 放在输入框下方 StatusLine 的提示行，该行始终占位；回到底部按钮放在正文下方、活动行/权限弹窗/输入区域上方并水平居中，可点击恢复底部跟随。上下文条不展示时不占位，字段行直接位于输入框下方。状态机重写为纯函数，以 Rukie 的 `SessionEvent` 为输入；术语沿用 Rukie/pi：原包的 turn 一律对应 **Run**。
 
 ## User Stories
 
@@ -28,7 +28,7 @@ Status: ready-for-agent
 
 ### ① 渲染器（`packages/tui`）
 
-- 新增共享时钟：`ClockProvider` + `useAnimationFrame(intervalMs: number | null)`，返回 `[ref, time]`，同 dsh-TUI `ink/hooks/use-animation-frame.js`。全部订阅者共用一个定时器，各自按 `intervalMs` 节流 `setTime`；无订阅者时停表。可视区检测不做（Neant 为 inline 渲染，状态行始终在底部），`ref` 预留。
+- 新增共享时钟：`ClockProvider` + `useAnimationFrame(intervalMs: number | null)`，返回 `[ref, time]`，同 dsh-TUI `ink/hooks/use-animation-frame.js`。全部订阅者共用一个定时器，各自按 `intervalMs` 节流 `setTime`；无订阅者时停表。可视区检测不做（Rukie 为 inline 渲染，状态行始终在底部），`ref` 预留。
 - `Spinner` 改用 `useAnimationFrame`，行为和现有测试保持不变。
 
 ### ② 设计系统（`packages/coding-agent/src/ink/design-system`）
@@ -103,7 +103,7 @@ Status: ready-for-agent
   - 运行中能看到状态行；成功、失败或打断结束后隐藏，下次提交时重新显示；底部 token 统计、错误提示及已输出正文保留。
   - 状态栏不再出现 `Running`。
   - 首次 Run 注入的 reminder 里含 narration 指令，第二次 Run 不重复注入。
-- 视觉（扫光、帧速、颜色）手动运行 `neant` 确认。
+- 视觉（扫光、帧速、颜色）手动运行 `rukie` 确认。
 
 ## Out of Scope
 
@@ -126,5 +126,5 @@ context-pressure 已由 `.scratch/status-line/issues/05-chat-wiring.md` 接入 `
 ## Further Notes
 
 - 参考源：`~/.dsh/profiles/dsh-tui/node_modules/dsh-working-activity/`（0.5.1，BSD-3-Clause，© 2026 chimney）。状态机见 `src/status.ts`，文案见 `src/phrases.ts`，自述指令见 `src/lang.ts` 的 `narrate-instruction`。渲染见 `@deepseek-harness-tui/dsh-tui/lib/types/components/{ActivityLine,shimmer}.js`，时钟见 `ink/hooks/use-animation-frame.js`，主题见 `theme.js` 的 darkTheme。
-- 术语映射：原包的 turn 对应 Neant 的 **Run**，原包的 step 对应 Neant 的 **Turn**。新代码里不使用原包的 turn 含义。
+- 术语映射：原包的 turn 对应 Rukie 的 **Run**，原包的 step 对应 Rukie 的 **Turn**。新代码里不使用原包的 turn 含义。
 - `activity` 与 `accent` 同色，和参考项目一致，所以 thinking 与 tool 阶段的底色相同。

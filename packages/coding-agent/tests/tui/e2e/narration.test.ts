@@ -15,9 +15,9 @@ test.each(["environment", "settings"])(
       prepare:
         source === "settings"
           ? async (root) => {
-              await mkdir(join(root, ".neant"));
+              await mkdir(join(root, ".rukie"));
               await writeFile(
-                join(root, ".neant", "settings.json"),
+                join(root, ".rukie", "settings.json"),
                 JSON.stringify({ locale: "en-GB" }),
               );
             }

@@ -3,7 +3,7 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createSession } from "@neant/agent";
+import { createSession } from "@rukie/agent";
 import { main } from "../../src/index.ts";
 import { controlledModel } from "./helpers/model";
 import { createTerminal } from "./helpers/terminal";
@@ -23,7 +23,7 @@ test.each(["zh", "en"] as const)(
         session.homeDir = join(root, "home");
         await Bun.write(join(session.cwd, ".keep"), "");
         await Bun.write(
-          join(session.homeDir, ".neant/settings.json"),
+          join(session.homeDir, ".rukie/settings.json"),
           JSON.stringify({
             locale,
             hooks: {
@@ -39,7 +39,7 @@ test.each(["zh", "en"] as const)(
     });
     try {
       await app.waitFor(() => app.stdin.isRaw);
-      const source = `${session.homeDir}/.neant/settings.json: /hooks/SessionStart/0/hooks/0/if`;
+      const source = `${session.homeDir}/.rukie/settings.json: /hooks/SessionStart/0/hooks/0/if`;
       expect(app.stderr()).toBe(
         locale === "zh"
           ? `警告：${source}：if 仅支持工具事件，此 SessionStart hook 永不运行\n`
@@ -360,12 +360,12 @@ test("missing model configuration reports localized guidance and exits before re
 test("invalid settings reports the same configuration error before entering rendering", async () => {
   const app = await start([], {
     prepare: async (root) => {
-      await Bun.write(join(root, ".neant/settings.json"), "{invalid");
+      await Bun.write(join(root, ".rukie/settings.json"), "{invalid");
     },
   });
   try {
     expect(await app.exit).toBe(1);
-    expect(app.stderr()).toContain(".neant/settings.json: invalid JSON:");
+    expect(app.stderr()).toContain(".rukie/settings.json: invalid JSON:");
     expect(app.output()).toBe("");
     expect(app.stdin.isRaw).toBe(false);
     expect(app.calls).toHaveLength(0);
@@ -375,8 +375,8 @@ test("invalid settings reports the same configuration error before entering rend
 });
 
 test("--resume continues the existing Session context", async () => {
-  const root = await mkdtemp(join(tmpdir(), "neant-tui-resume-"));
-  await mkdir(join(root, ".neant", "file-history"), { recursive: true });
+  const root = await mkdtemp(join(tmpdir(), "rukie-tui-resume-"));
+  await mkdir(join(root, ".rukie", "file-history"), { recursive: true });
   const terminal = createTerminal();
   const fake = controlledModel();
   let stderr = "";
@@ -503,7 +503,7 @@ test("--model overrides settings before model resolution", async () => {
     session: { model: undefined, streamFn: undefined },
     prepare: async (root) => {
       await Bun.write(
-        join(root, ".neant/settings.json"),
+        join(root, ".rukie/settings.json"),
         JSON.stringify({ model: "missing/original" }),
       );
     },

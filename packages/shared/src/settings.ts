@@ -122,7 +122,7 @@ const CustomProvider = Type.Object({
   models: Type.Array(CustomModel),
 });
 
-/** `~/.neant/settings.json` and `<project>/.neant/settings.json`. */
+/** `~/.rukie/settings.json` and `<project>/.rukie/settings.json`. */
 export const SettingsSchema = Type.Object({
   hooks: Type.Optional(HooksSchema),
   /** `provider/id`. */

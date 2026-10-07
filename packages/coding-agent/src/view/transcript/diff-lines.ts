@@ -1,4 +1,4 @@
-import type { ToolCallView, ToolResultView } from "@neant/shared";
+import type { ToolCallView, ToolResultView } from "@rukie/shared";
 import { createTwoFilesPatch, parsePatch } from "diff";
 
 type DiffView = Extract<ToolCallView | ToolResultView, { card: "diff" }>;

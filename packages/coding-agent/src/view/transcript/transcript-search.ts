@@ -1,5 +1,5 @@
 import { completedEntryVisible } from "../conversation/completed-visibility";
-import type { Locale } from "@neant/i18n";
+import type { Locale } from "@rukie/i18n";
 import { createTuiI18n } from "../i18n";
 import type { createConversation } from "../conversation/conversation";
 import {
@@ -14,7 +14,7 @@ import { unifiedDiffLines } from "./diff-lines";
 import { markdownText, markdownProjection } from "./markdown";
 import { contextText } from "./context";
 import { jobCardRows } from "./job-card";
-import type { Settings } from "@neant/shared";
+import type { Settings } from "@rukie/shared";
 
 export interface TranscriptMatch {
   anchorId: string;

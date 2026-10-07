@@ -70,7 +70,7 @@ let priority = NoEventPriority;
 const noop = () => {};
 const reconciler = Reconciler({
   rendererVersion: "0.1.0",
-  rendererPackageName: "@neant/coding-agent",
+  rendererPackageName: "@rukie/coding-agent",
   extraDevToolsConfig: null,
   isPrimaryRenderer: true,
   supportsMutation: true,

@@ -1,5 +1,5 @@
 import { createContext, useContext, type ReactNode } from "react";
-import type { Settings } from "@neant/shared";
+import type { Settings } from "@rukie/shared";
 const DiffLayout = createContext<NonNullable<Settings["diffLayout"]>>("auto");
 export function DiffLayoutProvider({
   value = "auto",

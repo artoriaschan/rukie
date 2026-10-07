@@ -5,7 +5,7 @@ import {
 } from "@earendil-works/pi-agent-core";
 import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
 import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/pi-agent-core/harness/context";
-import type { UserVisibleErrorData } from "@neant/shared";
+import type { UserVisibleErrorData } from "@rukie/shared";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { type TSchema, type Static } from "typebox";

@@ -96,7 +96,7 @@ test.each([false, true])(
     dirs = await tempDirs();
     await Bun.write(join(dirs.homeDir, "manifest"), JSON.stringify({ tools: ["echo"] }));
     await Bun.write(
-      join(dirs.homeDir, ".neant/mcp.json"),
+      join(dirs.homeDir, ".rukie/mcp.json"),
       JSON.stringify({
         mcpServers: {
           local: {

@@ -1,6 +1,6 @@
 import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
-import { createSession } from "@neant/agent";
+import { createSession } from "@rukie/agent";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { startWithClock as start } from "../helpers/clock-app";
 const plan = "# Storage plan\n\nAdd **SQLite** storage.\n\nValidate public behavior.";

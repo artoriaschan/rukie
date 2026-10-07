@@ -2,9 +2,9 @@
  * or assistant settlement. Kept on the native assistant message in Transcript.
  */
 export function assistantThinkingDuration(message: unknown): number | undefined {
-  if (!message || typeof message !== "object" || !("neantThinkingDurationMs" in message))
+  if (!message || typeof message !== "object" || !("rukieThinkingDurationMs" in message))
     return undefined;
-  const duration = message.neantThinkingDurationMs;
+  const duration = message.rukieThinkingDurationMs;
   return typeof duration === "number" && Number.isFinite(duration) && duration >= 0
     ? duration
     : undefined;
@@ -29,12 +29,12 @@ export function createThinkingTiming(now: () => number) {
         )
       )
         durationMs = Math.max(0, now() - startedAt);
-      if (durationMs !== undefined) Object.assign(message, { neantThinkingDurationMs: durationMs });
+      if (durationMs !== undefined) Object.assign(message, { rukieThinkingDurationMs: durationMs });
     },
     settle(message: object) {
       if (startedAt !== undefined)
         Object.assign(message, {
-          neantThinkingDurationMs: durationMs ?? Math.max(0, now() - startedAt),
+          rukieThinkingDurationMs: durationMs ?? Math.max(0, now() - startedAt),
         });
     },
   };

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
-import type { SessionEvent } from "@neant/agent";
+import type { SessionEvent } from "@rukie/agent";
 import {
   createActivity,
   reduce,
@@ -105,7 +105,7 @@ test.each([
   "agent_browser",
   "chrome_devtools",
   "unknown-tool",
-])("English tool activity covers Neant's %s alias and tool streaks", (name) => {
+])("English tool activity covers Rukie's %s alias and tool streaks", (name) => {
   let state = reduce(createActivity("en"), { type: "submit" }, start, random);
   state = reduce(state, toolStart("a", name), start + 1000, random);
   state = reduce(state, toolStart("b", name), start + 2000, random);

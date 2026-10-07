@@ -4,20 +4,20 @@ import { dark, render, ThemeProvider } from "../../../../src/ink/index.ts";
 import { Logo, mergeColoredCells, renderBigText } from "../../../../src/tui/components/logo";
 import { createTerminal } from "../../helpers/terminal";
 
-test("NEANT is five rows with the horizontal gradient reaching both colored edge columns", () => {
-  const rows = renderBigText("NEANT", "#000000", "#ffffff");
+test("RUKIE is five rows with the horizontal gradient reaching both colored edge columns", () => {
+  const rows = renderBigText("RUKIE", "#000000", "#ffffff");
   expect(rows).toHaveLength(5);
   expect(rows.map((row) => row.length)).toEqual([34, 34, 34, 34, 34]);
   expect(rows[0]![0]).toEqual({ ch: "█", color: "#000000" });
   expect(rows[0]![33]).toEqual({ ch: "▀", color: "#ffffff" });
-  expect(rows[0]![16]).toEqual({ ch: "▀", color: "#7c7c7c" });
+  expect(rows[0]![16]).toEqual({ ch: " ", color: "#7c7c7c" });
   expect(rows[4]![16]).toEqual({ ch: " ", color: "#7c7c7c" });
   expect(
     rows[4]!
       .slice(28)
       .map((cell) => cell.ch)
       .join(""),
-  ).toBe("  ██  ");
+  ).toBe("██▄▄▄▄");
 });
 
 test("adjacent cells of the same color become one text segment without losing spaces", () => {
@@ -47,7 +47,7 @@ test("wide header paints the ghost beside the name and separate model, effort an
   );
   try {
     await terminal.flush();
-    expect(terminal.screen()[3]?.slice(42)).toBe("██  ██ ██▀▀▀▀  ▄▀▀▄  ██  ██ ▀▀██▀▀");
+    expect(terminal.screen()[3]?.slice(42)).toBe("██▀▀▄▄ ██  ██ ██  ██ ▀▀██▀▀ ██▀▀▀▀");
     expect(terminal.screen()[9]?.slice(42)).toBe("local/model · 推理强度：高");
     expect(terminal.screen()[10]?.slice(42)).toBe("/project");
     expect(terminal.screen().join("\n")).not.toMatch(/提示|Tip:|\/tips/);
@@ -76,7 +76,7 @@ test("narrow and short headers keep metadata readable and clear the ghost on res
     terminal.resize(40, 24);
     await terminal.waitFor(() => terminal.screen()[7] === "local/model");
     expect(terminal.screen()[8]).toBe("/project");
-    expect(terminal.screen()[0]).toBe("Neant");
+    expect(terminal.screen()[0]).toBe("Rukie");
     expect(terminal.screen()[9]).toBe("");
     const buffer = terminal.terminal.buffer.active;
     expect(
@@ -87,7 +87,7 @@ test("narrow and short headers keep metadata readable and clear the ghost on res
     ).toBe(true);
     terminal.resize(40, 12);
     await terminal.waitFor(() => terminal.screen()[1] === "local/model");
-    expect(terminal.screen().slice(0, 4)).toEqual(["Neant", "local/model", "/project", ""]);
+    expect(terminal.screen().slice(0, 4)).toEqual(["Rukie", "local/model", "/project", ""]);
   } finally {
     app.unmount();
     await app.waitUntilExit();

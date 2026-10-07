@@ -78,7 +78,7 @@ test("four levels preserve raw delimiter names, selections and schema reading po
     rows: 32,
     prepare: (root) =>
       Bun.write(
-        join(root, ".neant/mcp.json"),
+        join(root, ".rukie/mcp.json"),
         JSON.stringify({ mcpServers: { "server:raw__name": { url: server.url } } }),
       ).then(() => {}),
   });
@@ -134,7 +134,7 @@ test("idle management yields to OAuth, blocks duplicate login and restores detai
     rows: 32,
     prepare: (root) =>
       Bun.write(
-        join(root, ".neant/mcp.json"),
+        join(root, ".rukie/mcp.json"),
         JSON.stringify({ mcpServers: { notion: { url: server.url } } }),
       ).then(() => {}),
     host: {
@@ -168,7 +168,7 @@ test("idle management yields to OAuth, blocks duplicate login and restores detai
 test("configuration retry rereads corrected files and stays open while loading or empty", async () => {
   const app = await start([], {
     rows: 32,
-    prepare: (root) => Bun.write(join(root, ".neant/mcp.json"), '{"other":{}}').then(() => {}),
+    prepare: (root) => Bun.write(join(root, ".rukie/mcp.json"), '{"other":{}}').then(() => {}),
   });
   try {
     await ready(app);
@@ -177,7 +177,7 @@ test("configuration retry rereads corrected files and stays open while loading o
     app.stdin.write("blocked" + paste("ignored"));
     await app.flush();
     expect(app.calls).toHaveLength(0);
-    await Bun.write(join(app.root, ".neant/mcp.json"), JSON.stringify({ mcpServers: {} }));
+    await Bun.write(join(app.root, ".rukie/mcp.json"), JSON.stringify({ mcpServers: {} }));
     app.stdin.write("\r");
     await app.waitFor(
       () => screen(app).includes("已刷新 MCP 状态") && screen(app).includes("没有配置 MCP"),
@@ -195,7 +195,7 @@ test("Run browsing is local, management reports busy, and FIFO questions restore
     rows: 32,
     prepare: (root) =>
       Bun.write(
-        join(root, ".neant/mcp.json"),
+        join(root, ".rukie/mcp.json"),
         JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
       ).then(() => {}),
   });
@@ -323,7 +323,7 @@ test("mouse hover does not select, wheel selects, click enters and mouse Back re
     rows: 32,
     prepare: (root) =>
       Bun.write(
-        join(root, ".neant/mcp.json"),
+        join(root, ".rukie/mcp.json"),
         JSON.stringify({ mcpServers: { alpha: { url: server.url }, beta: { url: server.url } } }),
       ).then(() => {}),
   });
@@ -372,7 +372,7 @@ test.each(["zh_CN.UTF-8", "en_US.UTF-8"])(
       env: { LANG: lang },
       prepare: (root) =>
         Bun.write(
-          join(root, ".neant/mcp.json"),
+          join(root, ".rukie/mcp.json"),
           JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
         ).then(() => {}),
     });
@@ -423,7 +423,7 @@ test("a changed snapshot at a microtask boundary preserves valid identities and 
     rows: 32,
     prepare: (root) =>
       Bun.write(
-        join(root, ".neant/mcp.json"),
+        join(root, ".rukie/mcp.json"),
         JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
       ).then(() => {}),
   });
@@ -476,7 +476,7 @@ test("closing a loading panel and replacing its Session rejects a late probe wit
     rows: 32,
     prepare: (root) =>
       Bun.write(
-        join(root, ".neant/mcp.json"),
+        join(root, ".rukie/mcp.json"),
         JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
       ).then(() => {}),
   });
@@ -523,7 +523,7 @@ test("40x12 keeps the active MCP operable alongside real Goal, Todo and Subagent
     session: { permissionMode: "full-access" },
     prepare: (root) =>
       Bun.write(
-        join(root, ".neant/mcp.json"),
+        join(root, ".rukie/mcp.json"),
         JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
       ).then(() => {}),
   });
@@ -666,7 +666,7 @@ test("OAuth callback paste belongs to the Interaction and successful login retur
     rows: 32,
     prepare: (root) =>
       Bun.write(
-        join(root, ".neant/mcp.json"),
+        join(root, ".rukie/mcp.json"),
         JSON.stringify({ mcpServers: { notion: { url: server.url } } }),
       ).then(() => {}),
     host: {

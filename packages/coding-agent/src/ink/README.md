@@ -8,7 +8,7 @@ import { Box, Text, render } from "./index.ts";
 const app = render(
   <Box flexDirection="column" padding={1} borderStyle="single">
     <Text color="cyan" bold>
-      你好 Neant
+      你好 Rukie
     </Text>
     <Box gap={1}>
       <Text>Left</Text>

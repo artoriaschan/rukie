@@ -3,7 +3,7 @@ import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { join } from "node:path";
 import { createSession, type SessionEvent } from "../../src/index.ts";
-import type { HookEvent, HookHandler } from "@neant/shared";
+import type { HookEvent, HookHandler } from "@rukie/shared";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
@@ -163,7 +163,7 @@ test("PermissionRequest session allow rules cover later calls without persisting
   expect(await Bun.file(join(dirs.cwd, "PermissionRequest.input")).json()).toMatchObject({
     tool_input: { command: "touch first" },
   });
-  expect(await Bun.file(join(dirs.homeDir, ".neant/settings.json")).exists()).toBe(false);
+  expect(await Bun.file(join(dirs.homeDir, ".rukie/settings.json")).exists()).toBe(false);
 });
 
 test("non-session and unsupported permission updates warn without changing mode or settings", async () => {
@@ -203,7 +203,7 @@ test("non-session and unsupported permission updates warn without changing mode 
   expect(session.permissionMode).toBe("ask");
   expect(warnings).toHaveLength(6);
   expect(events.filter((event) => event.type === "hook_warning")).toHaveLength(6);
-  expect(await Bun.file(join(dirs.homeDir, ".neant/settings.json")).exists()).toBe(false);
+  expect(await Bun.file(join(dirs.homeDir, ".rukie/settings.json")).exists()).toBe(false);
 });
 
 test("child PermissionRequest session setMode changes the parent's shared permission mode", async () => {

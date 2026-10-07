@@ -1,17 +1,17 @@
 # AGENTS.md
 
-Neant is a coding agent. Agent Core owns Session execution; Headless CLI and TUI drive it as frontends. Read [docs/architecture.md](docs/architecture.md) before changing `packages/`, [CONTEXT.md](CONTEXT.md) before changing domain behavior, and the relevant [ADRs](docs/adr/) before changing architecture. Follow [docs/AGENTS.md](docs/AGENTS.md) when writing documentation. Use the glossary's terms in code, tests, issues, and documentation.
+Rukie is a coding agent. Agent Core owns Session execution; Headless CLI and TUI drive it as frontends. Read [docs/architecture.md](docs/architecture.md) before changing `packages/`, [CONTEXT.md](CONTEXT.md) before changing domain behavior, and the relevant [ADRs](docs/adr/) before changing architecture. Follow [docs/AGENTS.md](docs/AGENTS.md) when writing documentation. Use the glossary's terms in code, tests, issues, and documentation.
 
 ## Repository layout
 
 | Path                                  | Owns                                                                                                         |
 | ------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `packages/coding-agent/src/headless/` | `@neant/coding-agent`: non-interactive argv/stdin → Agent Core → text or stream-json output                  |
-| `packages/coding-agent/src/tui/`      | `@neant/coding-agent`: interactive `neant`, fullscreen conversation, input, dialogs, and app state           |
-| `packages/agent/`                     | `@neant/agent`: Sessions, tools, permissions, hooks, skills, MCP, context, persistence, and subagents        |
+| `packages/coding-agent/src/headless/` | `@rukie/coding-agent`: non-interactive argv/stdin → Agent Core → text or stream-json output                  |
+| `packages/coding-agent/src/tui/`      | `@rukie/coding-agent`: interactive `rukie`, fullscreen conversation, input, dialogs, and app state           |
+| `packages/agent/`                     | `@rukie/agent`: Sessions, tools, permissions, hooks, skills, MCP, context, persistence, and subagents        |
 | `packages/coding-agent/src/ink/`      | `ink/`: React reconciler, terminal input, layout, cell grid, ANSI rendering, and design system               |
-| `packages/shared/`                    | `@neant/shared`: runtime-agnostic types, TypeBox schemas, and pure functions shared by at least two packages |
-| `packages/i18n/`                      | `@neant/i18n`: runtime-agnostic locale resolution, common copy, interpolation, and durations                 |
+| `packages/shared/`                    | `@rukie/shared`: runtime-agnostic types, TypeBox schemas, and pure functions shared by at least two packages |
+| `packages/i18n/`                      | `@rukie/i18n`: runtime-agnostic locale resolution, common copy, interpolation, and durations                 |
 | `CONTEXT.md`, `docs/adr/`             | Domain vocabulary and architectural decisions                                                                |
 | `docs/agents/`                        | Issue tracking, triage, and domain-document workflows                                                        |
 | `.scratch/`                           | Local feature specs, implementation tickets, and investigation records                                       |
@@ -55,7 +55,7 @@ env -u NO_COLOR bun run check                     # format → lint → types �
 - **Tools capabilities.** `tools/` owns built-in tools and their associated execution, state, and resource capabilities, grouped by capability. Keep model protocol adapters separate from controllers and registries inside each directory; Session may call capability interfaces directly and assembles the model tool set in `session/tools.ts`. Generic Tool State accepts registered definitions. Before moving capabilities or extracting Session behavior, read [ADR-0011](docs/adr/0011-agent-module-ownership.md) for internal dependency direction, shared support, and the enforced import restrictions.
 - **Harness reuse.** Build on the locked pi-agent-core/pi-ai/pi-mcp APIs, following ADR-0002. Inspect their installed source and types before replacing harness capabilities or assuming upstream behavior.
 - **UI layers.** Imports point downward: screens wire Session and pass presentation facts to app components and terminal-independent `view/`. App components and view import Agent Core types only; view has no React, ink, TUI, or Node dependency. TUI uses terminal primitives and design system through `ink/index.ts`; ink has no Agent Core, locale, or upper-layer dependency. Paths and responsibilities: [docs/architecture.md](docs/architecture.md).
-- **Runtime-agnostic packages.** `@neant/shared` uses no Bun, Node, or DOM APIs and depends only on `typebox`; `@neant/i18n` has the same restriction and depends only on `@neant/shared`.
+- **Runtime-agnostic packages.** `@rukie/shared` uses no Bun, Node, or DOM APIs and depends only on `typebox`; `@rukie/i18n` has the same restriction and depends only on `@rukie/shared`.
 - **Locale.** Agent Core stays locale-agnostic. Update both zh and en dictionaries when changing localized copy (ADR-0008).
 - **Terminal behavior.** Preserve terminal restoration, reading position, bottom-follow behavior, and small-terminal handling (ADR-0006). Read [packages/coding-agent/src/ink/README.md](packages/coding-agent/src/ink/README.md) before changing renderer APIs or lifecycle behavior.
 - **Reference code.** dsh-TUI is the design/behavior reference when specified. Yoga is the explicitly vendored exception: only `layout` imports it, and changes follow ADR-0005 and the renderer README. Keep unrelated visual and interaction behavior intact.

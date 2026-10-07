@@ -1,4 +1,4 @@
-import type { GoalView } from "@neant/agent";
+import type { GoalView } from "@rukie/agent";
 import type { ThemeColor } from "../../../ink/index.ts";
 
 export const goalPhasePresentation: Record<

@@ -33,8 +33,8 @@ import {
   ThemedTextInput,
   type ScrollHandle,
 } from "../../../ink/index.ts";
-import type { Question, QuestionRequest } from "@neant/agent";
-import type { Locale } from "@neant/i18n";
+import type { Question, QuestionRequest } from "@rukie/agent";
+import type { Locale } from "@rukie/i18n";
 import { createTuiI18n } from "../../../view/i18n";
 
 const singleLine = (text: string) => text.replace(/[\r\n]+/g, " ");

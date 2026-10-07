@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { basename, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
-import { validateImageBytes, type PromptImage } from "@neant/agent";
+import { validateImageBytes, type PromptImage } from "@rukie/agent";
 
 /** Recognize only one whole local image path; ambiguous pastes stay text. */
 export function pastedImagePath(text: string, homeDir: string): string | undefined {

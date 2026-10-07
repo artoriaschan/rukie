@@ -1,6 +1,6 @@
-import type { PromptImage } from "@neant/agent";
+import type { PromptImage } from "@rukie/agent";
 import type { PresentedImage } from "../../../view/transcript/images";
-import type { Locale } from "@neant/i18n";
+import type { Locale } from "@rukie/i18n";
 import {
   Box,
   Image,

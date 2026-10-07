@@ -1,6 +1,6 @@
 import { Box, ThemedText } from "../../../ink/index.ts";
-import type { Locale } from "@neant/i18n";
-import type { SessionNotice } from "@neant/agent";
+import type { Locale } from "@rukie/i18n";
+import type { SessionNotice } from "@rukie/agent";
 import { createTuiI18n, formatError } from "../../../view/i18n";
 import { Notice } from "./notice";
 

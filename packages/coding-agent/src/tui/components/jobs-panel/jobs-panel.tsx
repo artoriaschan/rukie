@@ -1,7 +1,7 @@
 import type { Ref } from "react";
 import { useLayoutEffect } from "react";
-import { fmtDuration, type Locale } from "@neant/i18n";
-import type { JobView } from "@neant/shared";
+import { fmtDuration, type Locale } from "@rukie/i18n";
+import type { JobView } from "@rukie/shared";
 import {
   Box,
   Divider,

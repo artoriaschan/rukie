@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { SessionOptions } from "@neant/agent";
+import type { SessionOptions } from "@rukie/agent";
 import { main, type TuiIo } from "../../../src/index.ts";
 import { controlledModel } from "./model";
 import { createTerminal } from "./terminal";
@@ -22,9 +22,9 @@ export async function start(
     advanceTimers?: (ms: number) => void;
   } = {},
 ) {
-  const root = await mkdtemp(join(tmpdir(), "neant-tui-"));
+  const root = await mkdtemp(join(tmpdir(), "rukie-tui-"));
   await options.prepare?.(root);
-  await mkdir(join(options.session?.homeDir ?? root, ".neant", "file-history"), {
+  await mkdir(join(options.session?.homeDir ?? root, ".rukie", "file-history"), {
     recursive: true,
   });
   const terminal = createTerminal(options.columns, options.rows, options.advanceTimers);

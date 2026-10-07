@@ -1,3 +1,5 @@
+import { join } from "node:path";
+import { readdir, stat } from "node:fs/promises";
 import { expect, test } from "bun:test";
 import { createAssistantMessageEventStream, fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { createSession, assistantThinkingDuration } from "../../src/index.ts";
@@ -44,6 +46,9 @@ test("observed thinking phase duration stops at first text and survives Session 
     });
     const message = session.messages.find((message) => message.role === "assistant");
     expect(assistantThinkingDuration(message)).toBe(2500);
+    expect(message).toHaveProperty("rukieThinkingDurationMs", 2500);
+    expect((await readdir(join(dirs.homeDir, ".rukie/sessions"))).length).toBeGreaterThan(0);
+    await expect(stat(join(dirs.homeDir, ".neant/sessions"))).rejects.toThrow();
     const id = session.id;
     await session.dispose();
     const resumed = await createSession({ ...dirs, ...fake, resumeId: id });
@@ -61,7 +66,7 @@ test("observed thinking phase duration stops at first text and survives Session 
       const modelHistory = fake.contexts[0]!.messages.find(
         (message) => message.role === "assistant",
       );
-      expect(modelHistory).not.toHaveProperty("neantThinkingDurationMs");
+      expect(modelHistory).not.toHaveProperty("rukieThinkingDurationMs");
       expect(
         assistantThinkingDuration(resumed.messages.find((message) => message.role === "assistant")),
       ).toBe(2500);

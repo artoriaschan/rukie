@@ -67,7 +67,7 @@ test("foldTerminalCommand false keeps all source lines visible", async () => {
     env: { LANG: "en_US.UTF-8" },
     prepare: async (root) => {
       await Bun.write(
-        join(root, ".neant", "settings.json"),
+        join(root, ".rukie", "settings.json"),
         JSON.stringify({ foldTerminalCommand: false }),
       );
     },

@@ -177,7 +177,7 @@ test("MCP views carry server and tool facts and disappear safely when resumed of
   const manifest = join(dirs.homeDir, "manifest.json");
   await Bun.write(manifest, JSON.stringify({ tools: ["echo"] }));
   await Bun.write(
-    join(dirs.homeDir, ".neant", "mcp.json"),
+    join(dirs.homeDir, ".rukie", "mcp.json"),
     JSON.stringify({
       mcpServers: {
         local: {
@@ -220,7 +220,7 @@ test("MCP views carry server and tool facts and disappear safely when resumed of
       view: { card: "generic", kind: "other", text: "MCP: hello" },
     });
     await session.dispose();
-    await Bun.write(join(dirs.homeDir, ".neant", "mcp.json"), "{}");
+    await Bun.write(join(dirs.homeDir, ".rukie", "mcp.json"), "{}");
     resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
     const result = resumed.messages.find((message) => message.role === "toolResult");
     expect(result?.view).toBeUndefined();

@@ -1,4 +1,4 @@
-import type { PromptImage, inspectImage } from "@neant/agent";
+import type { PromptImage, inspectImage } from "@rukie/agent";
 
 /** Screen-provided facts keep image decoding outside reusable components. */
 export type PresentedImage = PromptImage & {

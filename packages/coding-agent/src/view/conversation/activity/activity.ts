@@ -1,5 +1,5 @@
-import type { SessionEvent } from "@neant/agent";
-import { fmtDuration, type Locale } from "@neant/i18n";
+import type { SessionEvent } from "@rukie/agent";
+import { fmtDuration, type Locale } from "@rukie/i18n";
 import { createTuiI18n } from "../../i18n";
 import {
   activityPhrases,

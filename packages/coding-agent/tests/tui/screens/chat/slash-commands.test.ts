@@ -3,7 +3,7 @@ import { withAuxiliaryRequests } from "../../helpers/auxiliary-model.ts";
 import { expect, jest, test } from "bun:test";
 import { join } from "node:path";
 import { start } from "../../helpers/app";
-import { createSession, type SessionOptions } from "@neant/agent";
+import { createSession, type SessionOptions } from "@rukie/agent";
 import { createFauxCore } from "@earendil-works/pi-ai";
 
 const screen = (app: Awaited<ReturnType<typeof start>>) => app.screen().join("\n");

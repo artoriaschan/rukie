@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { listSessions } from "@neant/agent";
+import { listSessions } from "@rukie/agent";
 import { start } from "../helpers/app";
 
 const png =

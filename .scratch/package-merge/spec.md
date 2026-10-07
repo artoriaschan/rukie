@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 
 # Spec: 合并为 coding-agent 包并改名 Rukie
 
@@ -14,10 +14,10 @@ Headless CLI 与 TUI 是两个应用、两个 bin，参数解析和校验重复�
 
 ## User Stories
 
-1. 作为用户，我想运行 `neant` 进入 TUI。
-2. 作为用户，我想运行 `neant "问题"` 进入 TUI，并把问题作为首条 prompt 发送。
-3. 作为用户，我想运行 `neant -p "问题"` 或 `cat x | neant -p`，执行一个 run 后退出，与原 Headless CLI 行为一致。
-4. 作为用户，我想运行 `neant --goal "目标"` 走 Headless 的 Goal 流程。
+1. 作为用户，我想运行 `rukie` 进入 TUI。
+2. 作为用户，我想运行 `rukie "问题"` 进入 TUI，并把问题作为首条 prompt 发送。
+3. 作为用户，我想运行 `rukie -p "问题"` 或 `cat x | rukie -p`，执行一个 run 后退出，与原 Headless CLI 行为一致。
+4. 作为用户，我想运行 `rukie --goal "目标"` 走 Headless 的 Goal 流程。
 5. 作为用户，我想在不带 `-p` 且 stdin 不是 TTY 时得到错误提示和退出码 2。
 6. 作为用户，我想在 TUI 模式使用 `--output-format` 或 `--max-goal-rounds` 时得到参数错误。
 7. 作为用户，我想参数错误按我的 locale 显示。
@@ -28,7 +28,7 @@ Headless CLI 与 TUI 是两个应用、两个 bin，参数解析和校验重复�
 
 ## Implementation Decisions
 
-- 包：`packages/coding-agent`，bin `neant`（改名后为 `rukie`）。`src/index.ts` 导出 `main` 与 IO 类型。Agent Core 保持 `packages/agent`。删除 `apps/`，workspaces 去掉 `apps/*`。
+- 包：`packages/coding-agent`，bin `rukie`。`src/index.ts` 导出 `main` 与 IO 类型。Agent Core 保持 `packages/agent`。删除 `apps/`，workspaces 去掉 `apps/*`。
 - 目录：
 
   ```
@@ -46,10 +46,10 @@ Headless CLI 与 TUI 是两个应用、两个 bin，参数解析和校验重复�
   - `headless/` 依赖 agent、`cli/`、`view/`，不依赖 `tui/`、`ink/`、react。
   - `tui/` 依赖 agent、`cli/`、`view/`，并且只经 `ink/index.ts` 使用 `ink/`。
   - `tui/components` 对 agent 只做类型导入。
-  - `view/` 对 agent 只做类型导入，依赖 `@neant/i18n` 与 shared，不依赖 react、`ink/`、`tui/` 或 Node API。
+  - `view/` 对 agent 只做类型导入，依赖 `@rukie/i18n` 与 shared，不依赖 react、`ink/`、`tui/` 或 Node API。
   - `ink/` 不依赖 agent、i18n 或上层目录。
-  - 包内禁止自引用 `@neant/coding-agent`。
-  - Agent Core 现有规则改为禁止导入 `@neant/coding-agent`。
+  - 包内禁止自引用 `@rukie/coding-agent`。
+  - Agent Core 现有规则改为禁止导入 `@rukie/coding-agent`。
 - 模式判定：带 `-p`/`--print` 或 `--goal` 进 Headless，`-p` 改为布尔开关，prompt 取位置参数，缺省时读 stdin。不带时进 TUI，位置参数作为首条 prompt。不带 `-p` 且 stdin 非 TTY 时退出码 2。`--output-format`、`--max-goal-rounds` 只在 Headless 下有效。参数错误走 i18n，删除 CLI 原有的英文常量。
 - 脚本：删除 `dev:cli`、`dev:tui`，只保留 `dev`；`test:tui`、`test:cli` 合为 `test:coding-agent`。
 - 测试目录跟随 `src/`：`tests/headless`、`tests/tui`、`tests/ink`、`tests/view`、`tests/e2e`，各自保留 helpers 与 fixtures。
@@ -73,3 +73,7 @@ Headless CLI 与 TUI 是两个应用、两个 bin，参数解析和校验重复�
 - 拆分 `tui/screens/chat/index.tsx`。
 - 替换渲染栈（[dsh-ink](../dsh-ink/spec.md)）。
 - 改本地仓库目录名、git remote，迁移 Claude memory。由用户在交付后处理。
+
+## Delivery
+
+01–04 均已 resolved：合包、统一入口、view 分层与依赖约束、Rukie 命名及资源同步完成。最后完整检查 2774 pass / 0 fail / 227 files / 15635 assertions（100.62s）；详情与用户手动迁移步骤见 [04](issues/04-rename-rukie.md)。历史 resolved / wontfix 记录保留原提交时的命名与路径。

@@ -3,7 +3,7 @@ import { afterEach, expect, test } from "bun:test";
 import { dark } from "../../../src/ink/index.ts";
 import { start } from "../helpers/app";
 
-const key = "NEANT_IMAGE_MODEL_NOTICE_KEY";
+const key = "RUKIE_IMAGE_MODEL_NOTICE_KEY";
 const previousKey = process.env[key];
 afterEach(() => {
   if (previousKey === undefined) delete process.env[key];
@@ -40,7 +40,7 @@ async function startImages(
     prepare: async (root) => {
       await Bun.write(`${root}/shot.png`, Buffer.from(png, "base64"));
       await Bun.write(
-        `${root}/.neant/settings.json`,
+        `${root}/.rukie/settings.json`,
         JSON.stringify({ ...settings, model: `img/${model}` }),
       );
     },
@@ -91,7 +91,7 @@ test("a long valid model ID keeps image warning, editor and status usable at 40Ã
     prepare: async (root) => {
       await Bun.write(`${root}/shot.png`, Buffer.from(png, "base64"));
       await Bun.write(
-        `${root}/.neant/settings.json`,
+        `${root}/.rukie/settings.json`,
         JSON.stringify({
           ...settings,
           model: `img/${id}`,

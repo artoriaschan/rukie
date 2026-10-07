@@ -3,8 +3,8 @@ import { closeSync, mkdtempSync, openSync, rmSync, writeSync } from "node:fs";
 import { constants, tmpdir } from "node:os";
 import { StringDecoder } from "node:string_decoder";
 import { join } from "node:path";
-import { createUserVisibleError } from "@neant/shared";
-import type { JobView, JobOutput, JobEvent } from "@neant/shared";
+import { createUserVisibleError } from "@rukie/shared";
+import type { JobView, JobOutput, JobEvent } from "@rukie/shared";
 
 interface OutputChunk {
   offset: number;
@@ -63,7 +63,7 @@ export function createJobs(
           params: { limit: 10 },
         },
       );
-    spillDir ??= mkdtempSync(join(tmpdir(), "neant-jobs-"));
+    spillDir ??= mkdtempSync(join(tmpdir(), "rukie-jobs-"));
     const id = `bash-${++sequence}`;
     const view: JobView = {
       id,

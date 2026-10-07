@@ -22,7 +22,7 @@ const props: StatusLineProps = {
   now: 60_000,
   usage: { input: 12_000, output: 3000, cacheRead: 20_000, cacheWrite: 0 },
   gitBranch: "main",
-  cwd: "/work/Neant",
+  cwd: "/work/Rukie",
   working: true,
 };
 const cleanups: (() => Promise<void>)[] = [];
@@ -174,7 +174,7 @@ test("compact fields are ordered and missing optional fields leave no spare sepa
     usage: { input: 12_000, output: 3000, cacheRead: 0, cacheWrite: 0 },
   });
   expect(terminal.screen()[1]!.trim()).toMatch(
-    /^询问 · deepseek-chat · 42 t\/s · 缓存 0.0% · 12k→3.0k · Neant +ctx 20% \(13k\/64k\)$/,
+    /^询问 · deepseek-chat · 42 t\/s · 缓存 0.0% · 12k→3.0k · Rukie +ctx 20% \(13k\/64k\)$/,
   );
   expect(terminal.screen()[2]).toBe("");
 });
@@ -400,7 +400,7 @@ test("absent cache, effort and git fields produce a clean compact row", async ()
     usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   });
   expect(terminal.screen()[1]!.trim()).toMatch(
-    /^询问 · deepseek-chat · 42 t\/s · 0→0 · Neant +ctx 20% \(13k\/64k\)$/,
+    /^询问 · deepseek-chat · 42 t\/s · 0→0 · Rukie +ctx 20% \(13k\/64k\)$/,
   );
   const x = columnOf(terminal.screen()[1]!, "42 t/s");
   expect(terminal.terminal.buffer.active.getLine(1)!.getCell(x)!.getFgColor()).toBe(rgb(dark.text));
@@ -422,7 +422,7 @@ test("hover details expose provider, full token numbers, speed statistics, branc
     ["42 tps", "tps 42 · avg60 40.0 · 均值 30.0 · p95 60.0"],
     ["12k→3.0k", "输入 12,000 · 输出 3,000 · 总计 35,000"],
     ["main", "git main"],
-    ["Neant", "cwd /work/Neant"],
+    ["Rukie", "cwd /work/Rukie"],
   ]) {
     await move(terminal, Bun.stringWidth(initial.slice(0, initial.indexOf(field!))), 1);
     expect(terminal.screen()[2]).toBe(` ${detail}`);

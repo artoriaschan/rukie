@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { createUserVisibleError, type HookHandler } from "@neant/shared";
+import { createUserVisibleError, type HookHandler } from "@rukie/shared";
 
 export interface CommandOutput {
   stdout: string;
@@ -21,7 +21,7 @@ export async function executeCommand(
       handler.args ?? ["-c", handler.command],
       {
         cwd: options.cwd,
-        env: { ...process.env, NEANT_PROJECT_DIR: options.projectDir },
+        env: { ...process.env, RUKIE_PROJECT_DIR: options.projectDir },
         stdio: ["pipe", "pipe", "pipe"],
         detached: grouped,
       },

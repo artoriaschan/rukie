@@ -1,6 +1,6 @@
 import type { Ref } from "react";
-import type { Locale } from "@neant/i18n";
-import type { McpServerView, McpSnapshot, McpToolView } from "@neant/shared";
+import type { Locale } from "@rukie/i18n";
+import type { McpServerView, McpSnapshot, McpToolView } from "@rukie/shared";
 import {
   Box,
   Divider,

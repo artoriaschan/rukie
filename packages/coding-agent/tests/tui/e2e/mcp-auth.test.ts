@@ -23,7 +23,7 @@ test("model authentication opens the shared question panel and copy/reopen keep 
     rows: 40,
     prepare: (root) =>
       Bun.write(
-        join(root, ".neant/mcp.json"),
+        join(root, ".rukie/mcp.json"),
         JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
       ).then(() => {}),
     host: {
@@ -79,7 +79,7 @@ test.each(["zh_CN.UTF-8", "en_US.UTF-8"])(
       env: { LANG: lang },
       prepare: (root) =>
         Bun.write(
-          join(root, ".neant/mcp.json"),
+          join(root, ".rukie/mcp.json"),
           JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
         ).then(() => {}),
       host: {
@@ -135,7 +135,7 @@ test("failed browser/clipboard helpers keep manual authorization and callback pa
     rows: 40,
     prepare: (root) =>
       Bun.write(
-        join(root, ".neant/mcp.json"),
+        join(root, ".rukie/mcp.json"),
         JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
       ).then(() => {}),
     host: {
@@ -184,7 +184,7 @@ test.each(["cancel", "state"])(
       rows: 32,
       prepare: (root) =>
         Bun.write(
-          join(root, ".neant/mcp.json"),
+          join(root, ".rukie/mcp.json"),
           JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
         ).then(() => {}),
     });
@@ -221,7 +221,7 @@ test("needs-auth notice appears once per Session even after another Run and call
     rows: 32,
     prepare: (root) =>
       Bun.write(
-        join(root, ".neant/mcp.json"),
+        join(root, ".rukie/mcp.json"),
         JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
       ).then(() => {}),
   });
@@ -254,7 +254,7 @@ test("OAuth and permission approvals share the FIFO without overlapping panels",
     rows: 32,
     prepare: (root) =>
       Bun.write(
-        join(root, ".neant/mcp.json"),
+        join(root, ".rukie/mcp.json"),
         JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
       ).then(() => {}),
     host: {
@@ -297,7 +297,7 @@ test("a clipboard reply after cancellation cannot update the next question", asy
     rows: 32,
     prepare: (root) =>
       Bun.write(
-        join(root, ".neant/mcp.json"),
+        join(root, ".rukie/mcp.json"),
         JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
       ).then(() => {}),
     host: {
@@ -351,7 +351,7 @@ test("Run abort closes an authorization panel and ignores a late opener result",
     rows: 32,
     prepare: (root) =>
       Bun.write(
-        join(root, ".neant/mcp.json"),
+        join(root, ".rukie/mcp.json"),
         JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
       ).then(() => {}),
     host: {
@@ -391,7 +391,7 @@ test.each([
       rows: 32,
       prepare: (root) =>
         Bun.write(
-          join(root, ".neant/mcp.json"),
+          join(root, ".rukie/mcp.json"),
           JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
         ).then(() => {}),
       host: {
@@ -435,7 +435,7 @@ test.each(["copy", "reopen", "cancel"])(
       rows: 40,
       prepare: (root) =>
         Bun.write(
-          join(root, ".neant/mcp.json"),
+          join(root, ".rukie/mcp.json"),
           JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
         ).then(() => {}),
       host: {
@@ -503,7 +503,7 @@ test.each([
       env: { LANG: lang },
       prepare: (root) =>
         Bun.write(
-          join(root, ".neant/mcp.json"),
+          join(root, ".rukie/mcp.json"),
           JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
         ).then(() => {}),
     });

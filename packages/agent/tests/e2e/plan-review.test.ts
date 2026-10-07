@@ -188,7 +188,7 @@ test.each(["general-purpose", "explore", "custom", "fork"])(
   async (type) => {
     dirs = await tempDirs();
     await Bun.write(
-      `${dirs.cwd}/.neant/agents/custom.md`,
+      `${dirs.cwd}/.rukie/agents/custom.md`,
       "---\nname: custom\ndescription: Custom investigator\n---\nInspect.",
     );
     const fake = fakeModel([

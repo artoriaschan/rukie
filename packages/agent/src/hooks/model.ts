@@ -1,6 +1,6 @@
 import { Agent, type StreamFn } from "@earendil-works/pi-agent-core";
 import { normalizeContext, type Api, type Model } from "@earendil-works/pi-ai";
-import { createUserVisibleError, type HookHandler, type HookEvent } from "@neant/shared";
+import { createUserVisibleError, type HookHandler, type HookEvent } from "@rukie/shared";
 
 import { createReadonlyTools } from "../tools/readonly.ts";
 import { executeBounded } from "./bounded.ts";

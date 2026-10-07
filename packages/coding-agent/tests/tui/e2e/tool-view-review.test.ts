@@ -63,7 +63,7 @@ test("read upstream truncation disclosure must remain outside fold", async () =>
     await app.cleanup();
   }
 });
-import { createSession } from "@neant/agent";
+import { createSession } from "@rukie/agent";
 import {
   createFauxCore,
   fauxAssistantMessage,
@@ -124,9 +124,9 @@ test("resumed missing edit facts falls back to raw result", async () => {
       });
       await session.run("edit");
       await session.dispose();
-      const files = await readdir(`${root}/.neant/sessions`, { recursive: true });
+      const files = await readdir(`${root}/.rukie/sessions`, { recursive: true });
       for (const file of files.filter((f) => f.endsWith(".jsonl"))) {
-        const path = `${root}/.neant/sessions/${file}`;
+        const path = `${root}/.rukie/sessions/${file}`;
         const source = await Bun.file(path).text();
         const updated = source
           .split("\n")

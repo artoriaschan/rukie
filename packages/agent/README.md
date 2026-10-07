@@ -1,6 +1,6 @@
 # Tool View
 
-工具可声明纯函数 `presentCall` 和 `presentResult`，分别从调用参数及持久化结果事实生成 `@neant/shared` 的 Tool View。`tool_execution_start` / `tool_execution_end` 携带对应 view，子 Session 事件沿 `subagent_event` 保留它；Headless stream-json 原样输出事件，text 输出行为不变。Presenter 参数或输出不合法、抛错，或工具不可用时，view 为 `undefined`，Frontend 使用原始参数与结果回退显示，呈现失败不影响执行。
+工具可声明纯函数 `presentCall` 和 `presentResult`，分别从调用参数及持久化结果事实生成 `@rukie/shared` 的 Tool View。`tool_execution_start` / `tool_execution_end` 携带对应 view，子 Session 事件沿 `subagent_event` 保留它；Headless stream-json 原样输出事件，text 输出行为不变。Presenter 参数或输出不合法、抛错，或工具不可用时，view 为 `undefined`，Frontend 使用原始参数与结果回退显示，呈现失败不影响执行。
 
 View 不写入 Transcript，也不进入模型上下文。`Session.messages` 在读取时重算调用与结果 view；恢复时使用当前内置 presenter，未连接的 MCP 工具没有 view。Presenter 只能读取参数、结果文本及 details，不查询当前文件或运行状态。前台 bash details 保存退出码与信号；write 保存写入前后内容，超过 50 KiB 的文件保存 unified patch，edit 保存实际修改 patch，以便恢复后重算 diff。
 
@@ -12,7 +12,7 @@ Session 持有一个 registry；所有 bash 使用同一条进程组启动路径
 
 后台任务完成后，Session 通过现有 rewake 通道向模型发送 `background job <id> (bash: <label>) finished [status: …]. Read its output with job_output.`。正在运行时通知进入下一次模型请求；空闲时通知开启内部 Run，并保留上次 Run 的 observer。新输出不触发通知，父 Run 不等待后台任务；完成后的 `wait` 收集、模型停止和 teardown 抑制通知，取消等待仍保留通知资格。内部通知不触发 `UserPromptSubmit`。
 
-Frontend 使用 `session.jobs()` 获取本 Session 的后台任务快照，包括已结束的记录；`session.readJob(id, offset)` 从 stdout 与 stderr 共用的绝对 UTF-8 字节偏移读取，返回 `stdout`、`stderr`、`nextOffset`、`dropped`，不消费模型游标。首次读取传 `0`，后续增量读取传上次 `nextOffset`；多个观察者分别保存自己的偏移。偏移必须是非负安全整数；未知 id 报错。`JobView`、`JobOutput`、`JobEvent` 由 `@neant/shared` 定义，`@neant/agent` 同时导出。
+Frontend 使用 `session.jobs()` 获取本 Session 的后台任务快照，包括已结束的记录；`session.readJob(id, offset)` 从 stdout 与 stderr 共用的绝对 UTF-8 字节偏移读取，返回 `stdout`、`stderr`、`nextOffset`、`dropped`，不消费模型游标。首次读取传 `0`，后续增量读取传上次 `nextOffset`；多个观察者分别保存自己的偏移。偏移必须是非负安全整数；未知 id 报错。`JobView`、`JobOutput`、`JobEvent` 由 `@rukie/shared` 定义，`@rukie/agent` 同时导出。
 
 `session.subscribe` 在 Run 内外接收 `job_event`：显式后台启动或超时转后台时发送 `started`；输出按约 150 ms 合并发送 `output`，事件只带任务视图，Frontend 用 `readJob` 拉取内容；最终输出先发送，再发送 `settled`。前台任务不可见，也不发事件。活跃 Run 的 `onEvent` 同样接收这些事件；输出观察者不阻塞进程 drain，可以在回调中 await `dispose()`。普通 bash 工具结果的 `details.jobId` 将当前 registry 的任务关联到发起调用，恢复时不凭历史结果重建任务。恢复后的编号从已保存的 bash 调用和结果继续，扫描包括 compaction 和 Rewind 的历史；缺少结果或未获授权的调用可以留下编号空隙。
 

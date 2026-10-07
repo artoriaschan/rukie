@@ -29,7 +29,7 @@ test.each([
       env,
       prepare: async (root) => {
         if (locale !== undefined)
-          await Bun.write(join(root, ".neant/settings.json"), JSON.stringify({ locale }));
+          await Bun.write(join(root, ".rukie/settings.json"), JSON.stringify({ locale }));
       },
     });
     try {
@@ -66,7 +66,7 @@ test("project locale is ignored and startup locale stays fixed after env changes
     session,
     prepare: async (root) => {
       session.homeDir = join(root, "home");
-      await Bun.write(join(root, ".neant/settings.json"), JSON.stringify({ locale: "zh" }));
+      await Bun.write(join(root, ".rukie/settings.json"), JSON.stringify({ locale: "zh" }));
     },
   });
   try {
@@ -111,7 +111,7 @@ test.each([
   const app = await start([...argv], {
     env: { LANG: "en", LC_MESSAGES: "zh_CN.UTF-8" },
     prepare: (root) =>
-      Bun.write(join(root, ".neant/settings.json"), '{"locale":"en"}').then(() => {}),
+      Bun.write(join(root, ".rukie/settings.json"), '{"locale":"en"}').then(() => {}),
   });
   try {
     expect(await app.exit).toBe(2);
@@ -123,10 +123,10 @@ test.each([
 });
 
 test.each([
-  ["zh", "neant 需要交互式终端"],
-  ["en", "neant requires an interactive terminal"],
+  ["zh", "rukie 需要交互式终端"],
+  ["en", "rukie requires an interactive terminal"],
 ] as const)("%s non-interactive terminal guidance", async (locale, message) => {
-  const root = await mkdtemp(join(tmpdir(), "neant-locale-terminal-"));
+  const root = await mkdtemp(join(tmpdir(), "rukie-locale-terminal-"));
   const terminal = createTerminal();
   terminal.stdin.isTTY = false;
   let stderr = "";
@@ -140,7 +140,7 @@ test.each([
       }),
     ).toBe(2);
     expect(stderr).toContain(message);
-    expect(stderr).toContain("neant -p");
+    expect(stderr).toContain("rukie -p");
     expect(terminal.output()).toBe("");
   } finally {
     terminal.dispose();
@@ -155,8 +155,8 @@ test("settings warning prefix follows user locale", async () => {
     session,
     prepare: async (root) => {
       session.homeDir = join(root, "home");
-      await Bun.write(join(root, "home/.neant/settings.json"), '{"locale":"zh"}');
-      await Bun.write(join(root, ".neant/settings.json"), '{"locale":"en"}');
+      await Bun.write(join(root, "home/.rukie/settings.json"), '{"locale":"zh"}');
+      await Bun.write(join(root, ".rukie/settings.json"), '{"locale":"en"}');
     },
   });
   try {
@@ -264,12 +264,12 @@ test("English welcome header localizes configured effort", async () => {
 });
 
 test("user locale overrides environment for non-interactive terminal guidance", async () => {
-  const root = await mkdtemp(join(tmpdir(), "neant-locale-terminal-"));
+  const root = await mkdtemp(join(tmpdir(), "rukie-locale-terminal-"));
   const terminal = createTerminal();
   terminal.stdout.isTTY = false;
   let stderr = "";
   try {
-    await Bun.write(join(root, ".neant/settings.json"), '{"locale":"zh"}');
+    await Bun.write(join(root, ".rukie/settings.json"), '{"locale":"zh"}');
     expect(
       await main([], {
         ...terminal,
@@ -278,7 +278,7 @@ test("user locale overrides environment for non-interactive terminal guidance", 
         stderr: (text) => (stderr += text),
       }),
     ).toBe(1);
-    expect(stderr).toContain("neant 需要交互式终端");
+    expect(stderr).toContain("rukie 需要交互式终端");
     expect(terminal.output()).toBe("");
   } finally {
     terminal.dispose();
@@ -300,7 +300,7 @@ test.each([
     const app = await start([], {
       env: { LANG: locale },
       prepare: async (root) => {
-        source = join(root, ".neant/settings.json");
+        source = join(root, ".rukie/settings.json");
         await Bun.write(source, JSON.stringify({ permissions: { allow: [rule] } }));
       },
     });
@@ -325,7 +325,7 @@ test.each([
     const app = await start([], {
       env: { LANG: locale },
       prepare: async (root) => {
-        source = join(root, ".neant/settings.json");
+        source = join(root, ".rukie/settings.json");
         await Bun.write(source, JSON.stringify({ allowTools: [] }));
       },
     });

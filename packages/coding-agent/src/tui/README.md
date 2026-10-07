@@ -1,6 +1,6 @@
-# Neant TUI
+# Rukie TUI
 
-交互式 `neant` 在全屏终端中显示 Transcript，输入及状态栏固定在底部。启动方式和模型配置见[架构](../../../../docs/architecture.md)。非交互输入使用 Headless CLI。
+交互式 `rukie` 在全屏终端中显示 Transcript，输入及状态栏固定在底部。启动方式和模型配置见[架构](../../../../docs/architecture.md)。非交互输入使用 Headless CLI。
 
 ## 会话正文
 
@@ -96,7 +96,7 @@ Ctrl+O 切换 transcript 模式，同时展开工具卡、thinking 和后台任�
 
 ## 工具标题
 
-工具参数 JSON 最多显示 480 个字符。多行前台命令默认显示首个非空行和 `+N 行`；用户 `~/.neant/settings.json` 中的 `foldTerminalCommand: false` 保留所有命令行。该设置只控制标题，不改变执行内容或正文折叠。命令标题按终端宽度换行，折叠状态每个逻辑行最多保留 1000 个 UTF-16 单位，不拆开 surrogate pair，并披露隐藏字符数；单卡展开或 Ctrl+O 显示完整命令。文件标题采用工具名与路径，保留路径独立点击入口。
+工具参数 JSON 最多显示 480 个字符。多行前台命令默认显示首个非空行和 `+N 行`；用户 `~/.rukie/settings.json` 中的 `foldTerminalCommand: false` 保留所有命令行。该设置只控制标题，不改变执行内容或正文折叠。命令标题按终端宽度换行，折叠状态每个逻辑行最多保留 1000 个 UTF-16 单位，不拆开 surrogate pair，并披露隐藏字符数；单卡展开或 Ctrl+O 显示完整命令。文件标题采用工具名与路径，保留路径独立点击入口。
 
 标题确有隐藏内容（参数裁剪、脚本折叠、长命令裁剪或非命令标题宽度裁剪）时，悬停 600 ms 显示完整标题、开始 / 结束时刻，以及可用的退出码 / 信号；tooltip 不重复耗时。移开、按键、点击、滚轮、失焦、resize、打开交互或切换页面会清除 tooltip。小终端按可用空间换行与裁剪，浮层不会改变 Transcript 阅读位置。
 
@@ -104,7 +104,7 @@ Ctrl+O 切换 transcript 模式，同时展开工具卡、thinking 和后台任�
 
 读文件、终端、网页或搜索结果截断时，完整源不可用提示显示在折叠与窗口之外；读文件续读 offset、终端恢复路径与执行状态同样独立显示。patch-only diff 只保留变更片段，片段外源不可用提示不会被折叠隐藏。Session Resume 从保存的事实重建相同披露，窗口范围仅描述保留源。
 
-用户在 `~/.neant/settings.json` 设置 `diffLayout` 为 `auto`、`unified` 或 `split`。默认 `auto` 在终端宽度至少 110 列时使用左右分栏，窄于 110 列时使用 unified，resize 后即时切换。显式值固定布局，包括小终端上的 `split`；分栏长行截断，两栏保持逐行对齐。diff 默认折叠到 8 个呈现行，点击单卡或 Ctrl+O 展开；展开最多显示 400 个对齐行，窗口控件可继续浏览；范围说明区分对齐行与保留的 diff 源行总数，resize 用源行身份恢复位置。设置由启动时加载，Session Resume 与子代理详情使用同一布局选择。
+用户在 `~/.rukie/settings.json` 设置 `diffLayout` 为 `auto`、`unified` 或 `split`。默认 `auto` 在终端宽度至少 110 列时使用左右分栏，窄于 110 列时使用 unified，resize 后即时切换。显式值固定布局，包括小终端上的 `split`；分栏长行截断，两栏保持逐行对齐。diff 默认折叠到 8 个呈现行，点击单卡或 Ctrl+O 展开；展开最多显示 400 个对齐行，窗口控件可继续浏览；范围说明区分对齐行与保留的 diff 源行总数，resize 用源行身份恢复位置。设置由启动时加载，Session Resume 与子代理详情使用同一布局选择。
 
 工具调用的 pending diff 按共享的约 30fps 节拍逐行出现，每帧推进至少 3 行并按 backlog 自适应追赶。结果、错误、恢复卡片和展开窗口立即显示。已经追赶完成或展开过的调用再次折叠时不会重启动画；Session 更换和界面关闭会释放其 reveal 订阅，所有调用都追赶完成时停止共享定时器。
 

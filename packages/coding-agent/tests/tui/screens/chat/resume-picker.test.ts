@@ -1,6 +1,6 @@
 import { startWithClock } from "../../helpers/clock-app";
 import { afterEach, expect, test } from "bun:test";
-import { createSession, createJsonlStore, type SessionOptions } from "@neant/agent";
+import { createSession, createJsonlStore, type SessionOptions } from "@rukie/agent";
 import {
   createAssistantMessageEventStream,
   createFauxCore,
@@ -9,10 +9,10 @@ import {
 import { withAuxiliaryRequests } from "../../helpers/auxiliary-model.ts";
 import { start } from "../../helpers/app";
 
-const previousKey = process.env.NEANT_RESUME_TUI_KEY;
+const previousKey = process.env.RUKIE_RESUME_TUI_KEY;
 afterEach(() => {
-  if (previousKey === undefined) delete process.env.NEANT_RESUME_TUI_KEY;
-  else process.env.NEANT_RESUME_TUI_KEY = previousKey;
+  if (previousKey === undefined) delete process.env.RUKIE_RESUME_TUI_KEY;
+  else process.env.RUKIE_RESUME_TUI_KEY = previousKey;
 });
 
 test("a 40 by 12 picker scrolls two-row entries and dims a prompt fallback", async () => {
@@ -99,7 +99,7 @@ const settings = {
       id: "resume-test",
       api: "openai-completions" as const,
       baseUrl: "http://localhost:1/v1",
-      apiKeyEnv: "NEANT_RESUME_TUI_KEY",
+      apiKeyEnv: "RUKIE_RESUME_TUI_KEY",
       models: [{ id: "first" }, { id: "second" }],
     },
   ],
@@ -110,7 +110,7 @@ const title = (app: Awaited<ReturnType<typeof start>>) =>
 const screen = (app: Awaited<ReturnType<typeof start>>) => app.screen().join("\n");
 
 test("/resume displays two-row session metadata, Escape preserves the current chat, and selection restores title, model and conversation", async () => {
-  process.env.NEANT_RESUME_TUI_KEY = "test-key";
+  process.env.RUKIE_RESUME_TUI_KEY = "test-key";
   const listing = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
   const sessionOptions: Partial<SessionOptions> = { model: undefined };
@@ -118,7 +118,7 @@ test("/resume displays two-row session metadata, Escape preserves the current ch
     env: { LANG: "en_US.UTF-8" },
     session: sessionOptions,
     prepare: async (root) => {
-      await Bun.write(`${root}/.neant/settings.json`, JSON.stringify(settings));
+      await Bun.write(`${root}/.rukie/settings.json`, JSON.stringify(settings));
       const faux = createFauxCore({ api: "faux", provider: "faux" });
       faux.setResponses([fauxAssistantMessage("Stored answer")]);
       const seed = await createSession({

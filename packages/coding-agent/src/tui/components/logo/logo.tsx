@@ -1,7 +1,7 @@
-import type { Locale } from "@neant/i18n";
+import type { Locale } from "@rukie/i18n";
 import { createTuiI18n } from "../../../view/i18n";
 import { Box, ThemedText, useTerminalSize, useTheme } from "../../../ink/index.ts";
-import type { ThinkingLevel } from "@neant/shared";
+import type { ThinkingLevel } from "@rukie/shared";
 import { mergeColoredCells, renderBigText } from "./bigfont";
 import { SpiritArt, useSpiritPose } from "./spirit";
 
@@ -25,13 +25,13 @@ export function Logo({
   const showArt = columns >= 76 && terminalRows >= 20;
   const showBigTitle = columns >= 34 && terminalRows >= 18;
   const pose = useSpiritPose(showArt, working);
-  const rows = renderBigText("NEANT", theme.logoFrom, theme.logoTo);
+  const rows = renderBigText("RUKIE", theme.logoFrom, theme.logoTo);
   return (
     <Box flexDirection="row" width={columns} gap={showArt ? 2 : 0}>
       {showArt && <SpiritArt pose={pose} />}
       <Box flexDirection="column" flexGrow={1} paddingTop={showArt ? 2 : 0}>
         <ThemedText color="accent" bold wrap="truncate">
-          Neant
+          Rukie
         </ThemedText>
         {showBigTitle && (
           <>

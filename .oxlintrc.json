@@ -20,7 +20,7 @@
             "patterns": [
               {
                 "group": ["node:*", "bun", "bun:*"],
-                "message": "@neant/shared must stay runtime-agnostic."
+                "message": "@rukie/shared must stay runtime-agnostic."
               }
             ]
           }
@@ -29,7 +29,7 @@
           "error",
           {
             "name": "Bun",
-            "message": "@neant/shared must stay runtime-agnostic."
+            "message": "@rukie/shared must stay runtime-agnostic."
           },
           "window",
           "document",
@@ -48,7 +48,7 @@
           {
             "patterns": [
               {
-                "group": ["@neant/coding-agent", "@neant/coding-agent/**", "**/coding-agent/**"],
+                "group": ["@rukie/coding-agent", "@rukie/coding-agent/**", "**/coding-agent/**"],
                 "message": "Agent Core must not depend on Frontend screens, components, or command parsing."
               }
             ]
@@ -75,7 +75,7 @@
           {
             "patterns": [
               {
-                "group": ["@neant/coding-agent", "@neant/coding-agent/**", "**/coding-agent/**"],
+                "group": ["@rukie/coding-agent", "@rukie/coding-agent/**", "**/coding-agent/**"],
                 "message": "Agent Core must not depend on Frontend screens, components, or command parsing."
               },
               {
@@ -107,7 +107,7 @@
           {
             "patterns": [
               {
-                "group": ["@neant/coding-agent", "@neant/coding-agent/**", "**/coding-agent/**"],
+                "group": ["@rukie/coding-agent", "@rukie/coding-agent/**", "**/coding-agent/**"],
                 "message": "Agent Core must not depend on Frontend screens, components, or command parsing."
               },
               {
@@ -127,7 +127,7 @@
           {
             "patterns": [
               {
-                "group": ["@neant/coding-agent", "@neant/coding-agent/**"],
+                "group": ["@rukie/coding-agent", "@rukie/coding-agent/**"],
                 "message": "Use relative imports inside coding-agent."
               }
             ]
@@ -143,7 +143,7 @@
           {
             "patterns": [
               {
-                "group": ["@neant/coding-agent", "@neant/coding-agent/**"],
+                "group": ["@rukie/coding-agent", "@rukie/coding-agent/**"],
                 "message": "Use relative imports inside coding-agent."
               },
               {
@@ -163,11 +163,11 @@
           {
             "patterns": [
               {
-                "group": ["@neant/coding-agent", "@neant/coding-agent/**"],
+                "group": ["@rukie/coding-agent", "@rukie/coding-agent/**"],
                 "message": "Use relative imports inside coding-agent."
               },
               {
-                "group": ["@neant/agent", "@neant/agent/**", "@neant/i18n", "@neant/i18n/**"],
+                "group": ["@rukie/agent", "@rukie/agent/**", "@rukie/i18n", "@rukie/i18n/**"],
                 "message": "ink must not depend on Agent Core or locale."
               },
               {
@@ -196,11 +196,11 @@
           {
             "patterns": [
               {
-                "group": ["@neant/coding-agent", "@neant/coding-agent/**"],
+                "group": ["@rukie/coding-agent", "@rukie/coding-agent/**"],
                 "message": "Use relative imports inside coding-agent."
               },
               {
-                "group": ["@neant/agent", "@neant/agent/**", "@neant/i18n", "@neant/i18n/**"],
+                "group": ["@rukie/agent", "@rukie/agent/**", "@rukie/i18n", "@rukie/i18n/**"],
                 "message": "ink must not depend on Agent Core or locale."
               },
               {
@@ -226,11 +226,11 @@
           {
             "patterns": [
               {
-                "group": ["@neant/coding-agent", "@neant/coding-agent/**"],
+                "group": ["@rukie/coding-agent", "@rukie/coding-agent/**"],
                 "message": "Use relative imports inside coding-agent."
               },
               {
-                "group": ["@neant/agent", "@neant/agent/**", "@neant/i18n", "@neant/i18n/**"],
+                "group": ["@rukie/agent", "@rukie/agent/**", "@rukie/i18n", "@rukie/i18n/**"],
                 "message": "ink must not depend on Agent Core or locale."
               },
               {
@@ -256,11 +256,11 @@
           {
             "patterns": [
               {
-                "group": ["@neant/coding-agent", "@neant/coding-agent/**"],
+                "group": ["@rukie/coding-agent", "@rukie/coding-agent/**"],
                 "message": "Use relative imports inside coding-agent."
               },
               {
-                "group": ["@neant/agent", "@neant/agent/**", "@neant/i18n", "@neant/i18n/**"],
+                "group": ["@rukie/agent", "@rukie/agent/**", "@rukie/i18n", "@rukie/i18n/**"],
                 "message": "ink must not depend on Agent Core or locale."
               },
               {
@@ -286,7 +286,7 @@
           {
             "patterns": [
               {
-                "group": ["@neant/coding-agent", "@neant/coding-agent/**"],
+                "group": ["@rukie/coding-agent", "@rukie/coding-agent/**"],
                 "message": "Use relative imports inside coding-agent."
               },
               {
@@ -306,7 +306,7 @@
           {
             "patterns": [
               {
-                "group": ["@neant/coding-agent", "@neant/coding-agent/**"],
+                "group": ["@rukie/coding-agent", "@rukie/coding-agent/**"],
                 "message": "Use relative imports inside coding-agent."
               },
               {
@@ -326,7 +326,7 @@
           {
             "patterns": [
               {
-                "group": ["@neant/coding-agent", "@neant/coding-agent/**"],
+                "group": ["@rukie/coding-agent", "@rukie/coding-agent/**"],
                 "message": "Use relative imports inside coding-agent."
               },
               {
@@ -334,7 +334,7 @@
                 "message": "TUI must use ink/index.ts."
               },
               {
-                "group": ["@neant/agent", "@neant/agent/**", "**/agent", "**/agent/**"],
+                "group": ["@rukie/agent", "@rukie/agent/**", "**/agent", "**/agent/**"],
                 "allowTypeImports": true,
                 "message": "Presentation layers may import only Agent Core types."
               }
@@ -351,11 +351,11 @@
           {
             "patterns": [
               {
-                "group": ["@neant/coding-agent", "@neant/coding-agent/**"],
+                "group": ["@rukie/coding-agent", "@rukie/coding-agent/**"],
                 "message": "Use relative imports inside coding-agent."
               },
               {
-                "group": ["@neant/agent", "@neant/agent/**", "**/agent", "**/agent/**"],
+                "group": ["@rukie/agent", "@rukie/agent/**", "**/agent", "**/agent/**"],
                 "allowTypeImports": true,
                 "message": "Presentation layers may import only Agent Core types."
               },
@@ -544,11 +544,11 @@
           {
             "patterns": [
               {
-                "group": ["@neant/coding-agent", "@neant/coding-agent/**"],
+                "group": ["@rukie/coding-agent", "@rukie/coding-agent/**"],
                 "message": "Use relative imports inside coding-agent."
               },
               {
-                "group": ["@neant/agent", "@neant/agent/**", "@neant/i18n", "@neant/i18n/**"],
+                "group": ["@rukie/agent", "@rukie/agent/**", "@rukie/i18n", "@rukie/i18n/**"],
                 "message": "ink must not depend on Agent Core or locale."
               },
               {
@@ -574,11 +574,11 @@
           {
             "patterns": [
               {
-                "group": ["@neant/coding-agent", "@neant/coding-agent/**"],
+                "group": ["@rukie/coding-agent", "@rukie/coding-agent/**"],
                 "message": "Use relative imports inside coding-agent."
               },
               {
-                "group": ["@neant/agent", "@neant/agent/**", "@neant/i18n", "@neant/i18n/**"],
+                "group": ["@rukie/agent", "@rukie/agent/**", "@rukie/i18n", "@rukie/i18n/**"],
                 "message": "ink must not depend on Agent Core or locale."
               },
               {

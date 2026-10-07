@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { appendFile } from "node:fs/promises";
 import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { createJsonlStore, createSession, type SessionOptions } from "@neant/agent";
-import { createUserVisibleError } from "@neant/shared";
+import { createJsonlStore, createSession, type SessionOptions } from "@rukie/agent";
+import { createUserVisibleError } from "@rukie/shared";
 import { start } from "../helpers/app";
 
 test.each([
@@ -62,13 +62,13 @@ test.each([
       session,
       prepare: async (root) => {
         session.homeDir = join(root, "home");
-        await Bun.write(join(session.homeDir, ".neant/settings.json"), JSON.stringify({ locale }));
+        await Bun.write(join(session.homeDir, ".rukie/settings.json"), JSON.stringify({ locale }));
       },
     });
     try {
       expect(await app.exit).toBe(1);
       expect(app.stderr()).toStartWith(expected);
-      expect(app.stderr()).toContain(".neant/settings.json");
+      expect(app.stderr()).toContain(".rukie/settings.json");
       expect(app.output()).toBe("");
     } finally {
       await app.cleanup();
@@ -222,16 +222,16 @@ test.each([
   ["en", "unknown", 'Unknown model "missing/model".'],
   ["zh", "session", "Session 不存在：missing"],
   ["en", "session", "Session not found: missing"],
-  ["zh", "key", '缺少 provider "local" 的 API key。环境变量：NEANT_I18N_STARTUP_MISSING_KEY。'],
+  ["zh", "key", '缺少 provider "local" 的 API key。环境变量：RUKIE_I18N_STARTUP_MISSING_KEY。'],
   [
     "en",
     "key",
-    'No API key for provider "local". Environment variable: NEANT_I18N_STARTUP_MISSING_KEY.',
+    'No API key for provider "local". Environment variable: RUKIE_I18N_STARTUP_MISSING_KEY.',
   ],
 ] as const)("%s startup translates %s with its parameters", async (locale, scenario, expected) => {
   const session: Partial<SessionOptions> =
     scenario === "session" ? {} : { model: undefined, streamFn: undefined };
-  const envName = "NEANT_I18N_STARTUP_MISSING_KEY";
+  const envName = "RUKIE_I18N_STARTUP_MISSING_KEY";
   const previous = process.env[envName];
   delete process.env[envName];
   const argv =
@@ -247,7 +247,7 @@ test.each([
       session.homeDir = join(root, "home");
       if (scenario === "key")
         await Bun.write(
-          join(session.homeDir, ".neant/settings.json"),
+          join(session.homeDir, ".rukie/settings.json"),
           JSON.stringify({
             model: "local/m",
             providers: [

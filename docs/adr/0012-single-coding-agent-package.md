@@ -10,7 +10,7 @@ Status: accepted
 
 - `headless/` 依赖 Agent Core、`cli/` 与 `view/`，不依赖 `tui/` 与 `ink/`。
 - `tui/` 依赖 Agent Core、`cli/`、`view/` 和 `ink/` 的入口；`tui/components` 对 Agent Core 只做类型导入。
-- `view/` 对 Agent Core 只做类型导入，依赖 `@neant/i18n` 与 `@neant/shared`，不依赖 React、`ink/`、`tui/` 或 Node API。
+- `view/` 对 Agent Core 只做类型导入，依赖 `@rukie/i18n` 与 `@rukie/shared`，不依赖 React、`ink/`、`tui/` 或 Node API。
 - `ink/` 不依赖 Agent Core、i18n 或任何上层目录。
 
 代价是 renderer 不依赖 Agent Core 的约束从包边界降为目录边界，只能靠 lint 维持。`ink/` 沿用 dsh-TUI 的目录名；合包时内容仍是 ADR-0005 的自研渲染栈，不是 Ink 的 fork，是否换成 dsh-TUI 的 ink 由 ADR-0013 决定。
@@ -20,5 +20,5 @@ Status: accepted
 ## Considered Options
 
 - 只把 `apps/` 移入 `packages/`，TUI 应用与渲染栈仍分两个包：保留包级边界，但渲染栈没有第二个使用者，用户选择不做这层拆分。
-- 应用包命名为 `packages/agent`，Agent Core 改名 `packages/core`：会让历史提交、ADR 与工单中的 `@neant/agent` 改变含义，也和 glossary 中 Agent Core 与 Frontend 的区分冲突。
+- 应用包命名为 `packages/agent`，Agent Core 改名 `packages/core`：会让历史提交、ADR 与工单中的 `@rukie/agent` 改变含义，也和 glossary 中 Agent Core 与 Frontend 的区分冲突。
 - 渲染栈目录叫 `termui/`：语义更准确，用户选择沿用 dsh-TUI 的 `ink/`。

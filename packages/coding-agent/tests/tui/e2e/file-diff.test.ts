@@ -32,7 +32,7 @@ test("write diffs show deletion/addition prefixes and an eight-line fold", async
 
 test("resumed diffs retain file paths and separated hunks", async () => {
   const argv: string[] = [];
-  const { createSession } = await import("@neant/agent");
+  const { createSession } = await import("@rukie/agent");
   const { createFauxCore, fauxAssistantMessage, fauxToolCall } =
     await import("@earendil-works/pi-ai");
   const { withAuxiliaryRequests } = await import("../helpers/auxiliary-model");

@@ -2,7 +2,7 @@ import { startWithClock } from "../helpers/clock-app";
 import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { createSession } from "@neant/agent";
+import { createSession } from "@rukie/agent";
 import { dark } from "../../../src/ink/index.ts";
 import { start } from "../helpers/app";
 

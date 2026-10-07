@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 import { homedir } from "node:os";
-import { loadSettings } from "@neant/agent";
-import { resolveLocale } from "@neant/i18n";
-import type { PermissionMode, ThinkingLevel } from "@neant/shared";
+import { loadSettings } from "@rukie/agent";
+import { resolveLocale } from "@rukie/i18n";
+import type { PermissionMode, ThinkingLevel } from "@rukie/shared";
 import type { CliOptions } from "../cli";
 import type { TuiIo } from "../io";
 import { render, ThemeProvider, TooltipProvider } from "../ink/index.ts";

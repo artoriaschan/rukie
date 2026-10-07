@@ -6,7 +6,7 @@ import {
   ToolResultViewSchema,
   type ToolCallView,
   type ToolResultView,
-} from "@neant/shared";
+} from "@rukie/shared";
 
 /** Pure presentation reads only arguments and persisted result facts. Failures never affect execution. */
 export type PresentedTool<T extends TSchema = TSchema, D = unknown> = AgentTool<T, D> & {

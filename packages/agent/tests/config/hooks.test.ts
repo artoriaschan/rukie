@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { join } from "node:path";
 import { loadSettings } from "../../src/index.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
-import type { HooksSettings } from "@neant/shared";
+import type { HooksSettings } from "@rukie/shared";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
 afterEach(() => dirs?.cleanup());
@@ -11,7 +11,7 @@ test("loading a non-tool event with if warns and preserves distinct filtered han
   dirs = await tempDirs();
   const command = "echo ran";
   await Bun.write(
-    join(dirs.homeDir, ".neant/settings.json"),
+    join(dirs.homeDir, ".rukie/settings.json"),
     JSON.stringify({
       hooks: {
         SessionStart: [{ hooks: [{ type: "command", command, if: "bash" }] }],
@@ -40,7 +40,7 @@ test("loading a non-tool event with if warns and preserves distinct filtered han
       error: {
         code: "hook-if-nontool",
         params: {
-          source: `${join(dirs.homeDir, ".neant/settings.json")}: /hooks/SessionStart/0/hooks/0/if`,
+          source: `${join(dirs.homeDir, ".rukie/settings.json")}: /hooks/SessionStart/0/hooks/0/if`,
           event: "SessionStart",
         },
       },
@@ -55,14 +55,14 @@ test.each([false, true])(
     dirs = await tempDirs();
     const repeated = { type: "command", command: "echo user" };
     await Bun.write(
-      join(dirs.homeDir, ".neant/settings.json"),
+      join(dirs.homeDir, ".rukie/settings.json"),
       JSON.stringify({
         trustedProjects: trusted ? [dirs.cwd] : [],
         hooks: { PreToolUse: [{ matcher: "bash", hooks: [repeated] }] },
       }),
     );
     await Bun.write(
-      join(dirs.cwd, ".neant/settings.json"),
+      join(dirs.cwd, ".rukie/settings.json"),
       JSON.stringify({
         hooks: {
           PreToolUse: [
@@ -96,7 +96,7 @@ test.each([
   ["PreToolUse", [{ hooks: [{ type: "command", command: "echo", if: "bash(" }] }]],
 ])("invalid hooks report their settings source and location: %s", async (event, groups) => {
   dirs = await tempDirs();
-  const source = join(dirs.homeDir, ".neant/settings.json");
+  const source = join(dirs.homeDir, ".rukie/settings.json");
   await Bun.write(source, JSON.stringify({ hooks: { [event as string]: groups } }));
   await expect(loadSettings(dirs)).rejects.toThrow(`${source}: /hooks`);
 });
@@ -158,7 +158,7 @@ test("the complete hook schema accepts all events and handler types", async () =
     SessionEnd: [],
     Notification: [],
   };
-  await Bun.write(join(dirs.homeDir, ".neant/settings.json"), JSON.stringify({ hooks }));
+  await Bun.write(join(dirs.homeDir, ".rukie/settings.json"), JSON.stringify({ hooks }));
   const { settings } = await loadSettings(dirs);
   expect(settings.hooks?.PreToolUse).toEqual(hooks.PreToolUse);
   expect(settings.hooks?.PermissionDenied).toEqual(hooks.PermissionDenied);

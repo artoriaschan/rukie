@@ -190,7 +190,7 @@ test.each([undefined, "override"])(
     dirs = await tempDirs();
     const fake = fakeModel([fauxAssistantMessage('{"ok":true}'), fauxAssistantMessage("done")]);
     const selected: string[] = [];
-    const key = "NEANT_HOOK_MODEL_TEST_KEY";
+    const key = "RUKIE_HOOK_MODEL_TEST_KEY";
     process.env[key] = "test-key";
     try {
       const session = await createSession({

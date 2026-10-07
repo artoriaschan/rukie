@@ -27,8 +27,8 @@ export interface ReminderSource {
 export function convertToLlm(messages: AgentMessage[]): Message[] {
   return messages.flatMap((message): Message[] => {
     if (message.role === "session-notice") return [];
-    if (message.role === "assistant" && "neantThinkingDurationMs" in message) {
-      const { neantThinkingDurationMs: _thinkingDuration, ...assistant } = message;
+    if (message.role === "assistant" && "rukieThinkingDurationMs" in message) {
+      const { rukieThinkingDurationMs: _thinkingDuration, ...assistant } = message;
       message = assistant;
     }
     if (message.role === "user" && message.imageNames !== undefined) {
@@ -132,7 +132,7 @@ export async function collectReminders(options: {
   }
   const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   sources.push({ source: "date", currentContent: () => `Current date: ${date}` });
-  const userPath = join(homeDir, ".neant/AGENTS.md");
+  const userPath = join(homeDir, ".rukie/AGENTS.md");
   sources.push({
     source: "user-instructions",
     currentContent: async () => {

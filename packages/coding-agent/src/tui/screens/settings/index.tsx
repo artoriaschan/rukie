@@ -9,7 +9,7 @@ import {
   useTerminalSize,
   type ScrollHandle,
 } from "../../../ink/index.ts";
-import type { Locale } from "@neant/i18n";
+import type { Locale } from "@rukie/i18n";
 import { createTuiI18n } from "../../../view/i18n";
 
 /** Field values are local presentation drafts; this screen has no settings writer. */

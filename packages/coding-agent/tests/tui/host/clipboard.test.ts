@@ -6,7 +6,7 @@ import { join } from "node:path";
 test.skipIf(process.platform !== "darwin")(
   "default macOS host detects offered images and Finder image files without exporting clipboard contents",
   async () => {
-    const root = await mkdtemp(join(tmpdir(), "neant-clipboard-probe-"));
+    const root = await mkdtemp(join(tmpdir(), "rukie-clipboard-probe-"));
     const payload = join(root, "metadata.json");
     const calls = join(root, "calls.jsonl");
     const command = join(root, "osascript");

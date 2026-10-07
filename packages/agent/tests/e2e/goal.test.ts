@@ -286,7 +286,7 @@ test("ask mode warns on create and resume without changing Permission Mode", asy
 });
 
 async function appendGoalSnapshot(data: unknown) {
-  const root = join(dirs.homeDir, ".neant/sessions");
+  const root = join(dirs.homeDir, ".rukie/sessions");
   const files = (await readdir(root, { recursive: true })).filter((file) =>
     file.endsWith(".jsonl"),
   );

@@ -1,4 +1,4 @@
-import type { Locale } from "@neant/i18n";
+import type { Locale } from "@rukie/i18n";
 import { ThemedBox, ThemedText } from "../../../ink/index.ts";
 import { createTuiI18n } from "../../../view/i18n";
 import { Markdown } from "../markdown";

@@ -1,4 +1,4 @@
-import type { SessionOptions } from "@neant/agent";
+import type { SessionOptions } from "@rukie/agent";
 type StreamFn = NonNullable<SessionOptions["streamFn"]>;
 import {
   createAssistantMessageEventStream,

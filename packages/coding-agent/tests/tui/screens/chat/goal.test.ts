@@ -1,6 +1,6 @@
 import { expect, spyOn, test } from "bun:test";
 import { start } from "../../helpers/app";
-import { createSession } from "@neant/agent";
+import { createSession } from "@rukie/agent";
 import { controlledModel } from "../../helpers/model";
 import { dark } from "../../../../src/ink/index.ts";
 
@@ -123,7 +123,7 @@ test("a persisted complete goal freezes elapsed time and edit starts a fresh goa
       await session.dispose();
       // A native persisted Goal fixture allows complete replay without model-tool ownership.
       for await (const path of new Bun.Glob(`**/*_${session.id}.jsonl`).scan({
-        cwd: `${root}/.neant/sessions`,
+        cwd: `${root}/.rukie/sessions`,
         absolute: true,
       })) {
         const records: unknown[] = (await Bun.file(path).text())

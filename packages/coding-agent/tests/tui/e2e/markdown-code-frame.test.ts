@@ -25,7 +25,7 @@ test("assistant code frame fits beside the timeline after a second prompt", asyn
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.delta(
       Array.from({ length: 40 }, (_, i) => `history ${i}`).join("\n") +
-        "\n\n## 仓库结构（Bun workspaces monorepo）\n\n```\napps/neant-cli/    @neant/neant-cli    非交互 argv/stdin\npackages/tui/    React reconciler + Yoga layout\n```\n\nNext paragraph",
+        "\n\n## 仓库结构（Bun workspaces monorepo）\n\n```\napps/rukie-cli/    @rukie/rukie-cli    非交互 argv/stdin\npackages/tui/    React reconciler + Yoga layout\n```\n\nNext paragraph",
     );
     app.calls[0]!.finish();
     await app.waitFor(() => !app.isWorking());

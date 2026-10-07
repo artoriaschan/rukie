@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { start } from "../helpers/app";
 import { createFauxCore, fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
-import { createJsonlStore, createSession } from "@neant/agent";
+import { createJsonlStore, createSession } from "@rukie/agent";
 import { withAuxiliaryRequests } from "../helpers/auxiliary-model";
 
 // Agent Core owns the real HTTP/OAuth fixture; tests drive only its external boundary.
@@ -56,7 +56,7 @@ test("same Run authorization publishes real tools, then a challenge removes the 
     session: { permissionMode: "full-access" },
     prepare: (root) =>
       Bun.write(
-        join(root, ".neant/mcp.json"),
+        join(root, ".rukie/mcp.json"),
         JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
       ).then(() => {}),
     host: {
@@ -146,7 +146,7 @@ test("permission, questions and OAuth take FIFO ownership while a scrolled MCP r
     rows: 32,
     prepare: (root) =>
       Bun.write(
-        join(root, ".neant/mcp.json"),
+        join(root, ".rukie/mcp.json"),
         JSON.stringify({ mcpServers: { alpha: { url: server.url }, oauth: { url: oauth.url } } }),
       ).then(() => {}),
     host: {
@@ -250,7 +250,7 @@ test("a real Goal round removes a server and retreats to the list without select
     session: { permissionMode: "full-access" },
     prepare: (root) =>
       Bun.write(
-        join(root, ".neant/mcp.json"),
+        join(root, ".rukie/mcp.json"),
         JSON.stringify({ mcpServers: { keep: { url: server.url }, removed: { url: server.url } } }),
       ).then(() => {}),
   });
@@ -271,7 +271,7 @@ test("a real Goal round removes a server and retreats to the list without select
     app.stdin.write("\r");
     await app.waitFor(() => screen(app).includes("输入参数 JSON Schema"));
     await Bun.write(
-      join(app.root, ".neant/mcp.json"),
+      join(app.root, ".rukie/mcp.json"),
       JSON.stringify({ mcpServers: { keep: { url: server.url } } }),
     );
     await Promise.resolve();
@@ -305,7 +305,7 @@ test("failed OAuth management reports its result in the retained detail and leav
     rows: 32,
     prepare: (root) =>
       Bun.write(
-        join(root, ".neant/mcp.json"),
+        join(root, ".rukie/mcp.json"),
         JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
       ).then(() => {}),
     host: {
@@ -376,7 +376,7 @@ test("exiting an open tool reader restores the terminal and Resume keeps the Tra
     rows: 32,
     prepare: async (root) => {
       await Bun.write(
-        join(root, ".neant/mcp.json"),
+        join(root, ".rukie/mcp.json"),
         JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
       );
       const fake = createFauxCore({ api: "faux", provider: "faux" });

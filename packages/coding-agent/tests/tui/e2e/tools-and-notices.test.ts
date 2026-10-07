@@ -2,7 +2,7 @@ import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { createSession } from "@neant/agent";
+import { createSession } from "@rukie/agent";
 import { start } from "../helpers/app";
 import { startWithClock } from "../helpers/clock-app";
 
@@ -135,7 +135,7 @@ test("a tool animates its localized header then remains once in the scrollable b
     expect(app.allLines().filter((line) => line.startsWith("• 写入 "))).toHaveLength(1);
     expect(app.terminal.buffer.active.baseY).toBe(0);
     app.stdin.write("\x1b[5~");
-    await app.waitFor(() => app.screen().some((line) => line.includes("Neant")));
+    await app.waitFor(() => app.screen().some((line) => line.includes("Rukie")));
     // Page down from the welcome header to the settled tool in the transcript.
     app.stdin.write("\x1b[6~");
     await app.waitFor(() => app.screen().some((line) => line.startsWith("• 写入 ")));

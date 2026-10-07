@@ -31,7 +31,7 @@
  * Adapted from dsh-working-activity 0.5.1 (src/phrases.ts).
  */
 
-import type { Locale } from "@neant/i18n";
+import type { Locale } from "@rukie/i18n";
 
 export function mixSlot(seed: number, slot: number): number {
   let h = (Math.imul(seed | 0, 0x9e3779b1) ^ Math.imul(slot | 0, 0x85ebca6b)) >>> 0;
@@ -670,7 +670,7 @@ export const EN_ACTION_MAP: readonly {
   readonly test: RegExp;
   readonly actions: readonly string[];
 }[] = [
-  // Neant-specific aliases; the upstream entries below keep their original pools.
+  // Rukie-specific aliases; the upstream entries below keep their original pools.
   { test: /^(ffgrep)$/i, actions: ["Hunting through files", "Fast search, sharp eyes"] },
   { test: /^(fffind)$/i, actions: ["Chasing that file", "Paths, please"] },
   {

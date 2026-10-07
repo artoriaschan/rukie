@@ -166,7 +166,7 @@ test("manual compaction immediately after resume refreshes project, skill, plan 
 
 test("Compaction restores current Project Instructions, skills and frontend reminders before the retained request", async () => {
   dirs = await tempDirs();
-  await Bun.write(join(dirs.homeDir, ".neant/AGENTS.md"), "Use personal conventions.");
+  await Bun.write(join(dirs.homeDir, ".rukie/AGENTS.md"), "Use personal conventions.");
   await Bun.write(join(dirs.cwd, "AGENTS.md"), "Preserve the widget contract.");
   await Bun.write(
     join(dirs.cwd, ".agents/skills/review/SKILL.md"),
@@ -573,7 +573,7 @@ test("failed summarization preserves the Transcript for a later resume", async (
 test("an oversized tail keeps the pending user prompt together with its Skill Invocation", async () => {
   dirs = await tempDirs();
   await Bun.write(
-    join(dirs.cwd, ".neant/skills/plan/SKILL.md"),
+    join(dirs.cwd, ".rukie/skills/plan/SKILL.md"),
     "---\nname: plan\ndescription: Plan the work.\n---\nKeep the plan concise.",
   );
   const fake = fakeModel([
@@ -602,7 +602,7 @@ test("compaction preserves effective MCP tool declarations and resume replays th
     JSON.stringify({ tools: ["old"], instructions: "Inspect widgets through this MCP server." }),
   );
   await Bun.write(
-    join(dirs.homeDir, ".neant/mcp.json"),
+    join(dirs.homeDir, ".rukie/mcp.json"),
     JSON.stringify({
       mcpServers: {
         local: {
@@ -715,7 +715,7 @@ test("aborting summary generation cancels its provider request without persistin
 });
 
 async function transcript() {
-  const root = join(dirs.homeDir, ".neant/sessions");
+  const root = join(dirs.homeDir, ".rukie/sessions");
   const files = (await readdir(root, { recursive: true })).filter((file) =>
     file.endsWith(".jsonl"),
   );

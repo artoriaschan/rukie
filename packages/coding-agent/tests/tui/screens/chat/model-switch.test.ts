@@ -1,12 +1,12 @@
 import { afterEach, expect, test } from "bun:test";
-import { createSession } from "@neant/agent";
+import { createSession } from "@rukie/agent";
 import { createFauxCore } from "@earendil-works/pi-ai";
 import { start } from "../../helpers/app";
 
-const originalKey = process.env.NEANT_MODEL_TUI_KEY;
+const originalKey = process.env.RUKIE_MODEL_TUI_KEY;
 afterEach(() => {
-  if (originalKey === undefined) delete process.env.NEANT_MODEL_TUI_KEY;
-  else process.env.NEANT_MODEL_TUI_KEY = originalKey;
+  if (originalKey === undefined) delete process.env.RUKIE_MODEL_TUI_KEY;
+  else process.env.RUKIE_MODEL_TUI_KEY = originalKey;
 });
 const settings = {
   model: "test-model/first",
@@ -15,7 +15,7 @@ const settings = {
       id: "test-model",
       api: "openai-completions" as const,
       baseUrl: "http://localhost:1/v1",
-      apiKeyEnv: "NEANT_MODEL_TUI_KEY",
+      apiKeyEnv: "RUKIE_MODEL_TUI_KEY",
       models: [{ id: "first" }, { id: "second" }],
     },
   ],
@@ -23,12 +23,12 @@ const settings = {
 const screen = (app: Awaited<ReturnType<typeof start>>) => app.screen().join("\n");
 
 test("direct /model switches the idle status, reports errors and refuses switching during a Run", async () => {
-  process.env.NEANT_MODEL_TUI_KEY = "test-key";
+  process.env.RUKIE_MODEL_TUI_KEY = "test-key";
   const app = await start([], {
     env: { LANG: "en_US.UTF-8" },
     session: { model: undefined },
     prepare: (root) =>
-      Bun.write(`${root}/.neant/settings.json`, JSON.stringify(settings)).then(() => {}),
+      Bun.write(`${root}/.rukie/settings.json`, JSON.stringify(settings)).then(() => {}),
   });
   try {
     await app.waitFor(() => screen(app).includes("test-model/first"));
@@ -53,14 +53,14 @@ test("direct /model switches the idle status, reports errors and refuses switchi
 });
 
 test("/model opens a focused picker, Escape preserves the model and Enter selects a new model", async () => {
-  process.env.NEANT_MODEL_TUI_KEY = "test-key";
+  process.env.RUKIE_MODEL_TUI_KEY = "test-key";
   const app = await start([], {
     columns: 40,
     rows: 12,
     env: { LANG: "en_US.UTF-8" },
     session: { model: undefined },
     prepare: (root) =>
-      Bun.write(`${root}/.neant/settings.json`, JSON.stringify(settings)).then(() => {}),
+      Bun.write(`${root}/.rukie/settings.json`, JSON.stringify(settings)).then(() => {}),
   });
   try {
     await app.waitFor(() => app.screen().some((line) => line.startsWith("╭")));
@@ -85,7 +85,7 @@ test("/model opens a focused picker, Escape preserves the model and Enter select
 });
 
 test("a resumed session displays its persisted model before sending another prompt", async () => {
-  process.env.NEANT_MODEL_TUI_KEY = "test-key";
+  process.env.RUKIE_MODEL_TUI_KEY = "test-key";
   const argv: string[] = [];
   const app = await start(argv, {
     env: { LANG: "en_US.UTF-8" },
@@ -102,7 +102,7 @@ test("a resumed session displays its persisted model before sending another prom
       await seed.dispose();
       argv.push("--resume", seed.id);
       await Bun.write(
-        `${root}/.neant/settings.json`,
+        `${root}/.rukie/settings.json`,
         JSON.stringify({ ...settings, model: "missing/model" }),
       );
     },

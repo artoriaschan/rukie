@@ -9,10 +9,10 @@ afterEach(() => dirs?.cleanup());
 test("user permission mode is retained while the project can override the review model", async () => {
   dirs = await tempDirs();
   await Bun.write(
-    join(dirs.homeDir, ".neant/settings.json"),
+    join(dirs.homeDir, ".rukie/settings.json"),
     JSON.stringify({ permissionMode: "auto-review", reviewModel: "user/reviewer" }),
   );
-  const projectFile = join(dirs.cwd, ".neant/settings.json");
+  const projectFile = join(dirs.cwd, ".rukie/settings.json");
   await Bun.write(
     projectFile,
     JSON.stringify({ permissionMode: "full-access", reviewModel: "project/reviewer" }),
@@ -28,17 +28,17 @@ const provider = (id: string) => ({
   id,
   api: "openai-completions" as const,
   baseUrl: "http://127.0.0.1:1/v1",
-  apiKeyEnv: "NEANT_TEST_KEY",
+  apiKeyEnv: "RUKIE_TEST_KEY",
   models: [{ id: "m" }],
 });
 
 test("project settings cannot define providers", async () => {
   dirs = await tempDirs();
   await Bun.write(
-    join(dirs.homeDir, ".neant/settings.json"),
+    join(dirs.homeDir, ".rukie/settings.json"),
     JSON.stringify({ model: "mine/m", providers: [provider("mine")] }),
   );
-  const projectFile = join(dirs.cwd, ".neant/settings.json");
+  const projectFile = join(dirs.cwd, ".rukie/settings.json");
   await Bun.write(projectFile, JSON.stringify({ model: "evil/m", providers: [provider("evil")] }));
 
   const { settings, warnings } = await loadSettings({ cwd: dirs.cwd, homeDir: dirs.homeDir });
@@ -54,8 +54,8 @@ test("project settings cannot define providers", async () => {
 
 test("malformed project providers are ignored, not fatal", async () => {
   dirs = await tempDirs();
-  await Bun.write(join(dirs.homeDir, ".neant/settings.json"), JSON.stringify({ model: "a/x" }));
-  await Bun.write(join(dirs.cwd, ".neant/settings.json"), JSON.stringify({ providers: "evil" }));
+  await Bun.write(join(dirs.homeDir, ".rukie/settings.json"), JSON.stringify({ model: "a/x" }));
+  await Bun.write(join(dirs.cwd, ".rukie/settings.json"), JSON.stringify({ providers: "evil" }));
 
   const { settings, warnings } = await loadSettings({ cwd: dirs.cwd, homeDir: dirs.homeDir });
 
@@ -66,11 +66,11 @@ test("malformed project providers are ignored, not fatal", async () => {
 test("project settings override model and reviewModel only", async () => {
   dirs = await tempDirs();
   await Bun.write(
-    join(dirs.homeDir, ".neant/settings.json"),
+    join(dirs.homeDir, ".rukie/settings.json"),
     JSON.stringify({ model: "a/x", thinking: "low" }),
   );
   await Bun.write(
-    join(dirs.cwd, ".neant/settings.json"),
+    join(dirs.cwd, ".rukie/settings.json"),
     JSON.stringify({ model: "b/y", thinking: "high", trustedProjects: ["/"] }),
   );
 
@@ -82,7 +82,7 @@ test("project settings override model and reviewModel only", async () => {
 test.each(["ask", "auto-review", "full-access"])("user settings accept mode %s", async (mode) => {
   dirs = await tempDirs();
   await Bun.write(
-    join(dirs.homeDir, ".neant/settings.json"),
+    join(dirs.homeDir, ".rukie/settings.json"),
     JSON.stringify({ permissionMode: mode, reviewModel: "user/reviewer" }),
   );
   expect(await loadSettings(dirs)).toEqual({
@@ -93,7 +93,7 @@ test.each(["ask", "auto-review", "full-access"])("user settings accept mode %s",
 
 test("malformed project permission mode is ignored without granting permissions", async () => {
   dirs = await tempDirs();
-  const projectFile = join(dirs.cwd, ".neant/settings.json");
+  const projectFile = join(dirs.cwd, ".rukie/settings.json");
   await Bun.write(projectFile, JSON.stringify({ permissionMode: { mode: "full-access" } }));
   const { settings, warnings } = await loadSettings(dirs);
   expect(settings).toEqual({});
@@ -109,14 +109,14 @@ test.each([
   ["locale", 42],
 ])("invalid user setting %s=%s names the file and field", async (field, value) => {
   dirs = await tempDirs();
-  const userFile = join(dirs.homeDir, ".neant/settings.json");
+  const userFile = join(dirs.homeDir, ".rukie/settings.json");
   await Bun.write(userFile, JSON.stringify({ [field!]: value }));
   await expect(loadSettings(dirs)).rejects.toThrow(`${userFile}: /${field}`);
 });
 
 test("invalid settings name the file and the field", async () => {
   dirs = await tempDirs();
-  const file = join(dirs.homeDir, ".neant/settings.json");
+  const file = join(dirs.homeDir, ".rukie/settings.json");
   await Bun.write(file, JSON.stringify({ providers: [{ ...provider("p"), api: "grpc" }] }));
 
   await expect(loadSettings({ cwd: dirs.cwd, homeDir: dirs.homeDir })).rejects.toThrow(
@@ -136,7 +136,7 @@ test.each(["zh-CN", "fr", ""])(
   "user locale %j is preserved without enum validation",
   async (locale) => {
     dirs = await tempDirs();
-    await Bun.write(join(dirs.homeDir, ".neant/settings.json"), JSON.stringify({ locale }));
+    await Bun.write(join(dirs.homeDir, ".rukie/settings.json"), JSON.stringify({ locale }));
     expect(await loadSettings(dirs)).toEqual({ settings: { locale }, warnings: [] });
   },
 );
@@ -145,8 +145,8 @@ test.each(["en", { invalid: true }, null])(
   "project locale %j is ignored with a warning",
   async (locale) => {
     dirs = await tempDirs();
-    await Bun.write(join(dirs.homeDir, ".neant/settings.json"), JSON.stringify({ locale: "zh" }));
-    const projectFile = join(dirs.cwd, ".neant/settings.json");
+    await Bun.write(join(dirs.homeDir, ".rukie/settings.json"), JSON.stringify({ locale: "zh" }));
+    const projectFile = join(dirs.cwd, ".rukie/settings.json");
     await Bun.write(projectFile, JSON.stringify({ locale }));
     expect(await loadSettings(dirs)).toEqual({
       settings: { locale: "zh" },
@@ -159,7 +159,7 @@ test("missing model exposes a locale-independent code and settings path", async 
   dirs = await tempDirs();
   await expect(createSession(dirs)).rejects.toMatchObject({
     code: "no-model",
-    params: { settings: join(dirs.homeDir, ".neant/settings.json") },
+    params: { settings: join(dirs.homeDir, ".rukie/settings.json") },
     message: expect.stringContaining("No model configured."),
   });
 });
@@ -177,7 +177,7 @@ test("unknown model exposes the selected model with its code", async () => {
 
 test("missing API key exposes the provider and configured environment variable", async () => {
   dirs = await tempDirs();
-  const env = "NEANT_I18N_TEST_MISSING_KEY";
+  const env = "RUKIE_I18N_TEST_MISSING_KEY";
   const previous = process.env[env];
   delete process.env[env];
   try {
@@ -192,7 +192,7 @@ test("missing API key exposes the provider and configured environment variable",
     ).rejects.toMatchObject({
       code: "no-api-key",
       params: { provider: "local", env },
-      message: 'No API key for provider "local": set NEANT_I18N_TEST_MISSING_KEY.',
+      message: 'No API key for provider "local": set RUKIE_I18N_TEST_MISSING_KEY.',
     });
   } finally {
     if (previous !== undefined) process.env[env] = previous;
@@ -203,7 +203,7 @@ test.each(["", "bash(echo", "unknown(pattern)"])(
   "invalid permission rule %j reports its settings file",
   async (rule) => {
     dirs = await tempDirs();
-    const file = join(dirs.homeDir, ".neant/settings.json");
+    const file = join(dirs.homeDir, ".rukie/settings.json");
     await Bun.write(file, JSON.stringify({ permissions: { deny: [rule] } }));
     await expect(loadSettings(dirs)).rejects.toThrow(
       `${file}: invalid permission rule ${JSON.stringify(rule)}`,
@@ -213,7 +213,7 @@ test.each(["", "bash(echo", "unknown(pattern)"])(
 
 test("invalid project permission rule reports its project settings source", async () => {
   dirs = await tempDirs();
-  const file = join(dirs.cwd, ".neant/settings.json");
+  const file = join(dirs.cwd, ".rukie/settings.json");
   await Bun.write(file, JSON.stringify({ permissions: { ask: ["mcp__x(pattern)"] } }));
   await expect(loadSettings(dirs)).rejects.toThrow(
     `${file}: invalid permission rule "mcp__x(pattern)"`,
@@ -227,13 +227,13 @@ test("valid user permission rules survive settings loading", async () => {
     ask: ["bash(git push*)"],
     deny: ["read(~/.ssh/**)"],
   };
-  await Bun.write(join(dirs.homeDir, ".neant/settings.json"), JSON.stringify({ permissions }));
+  await Bun.write(join(dirs.homeDir, ".rukie/settings.json"), JSON.stringify({ permissions }));
   expect((await loadSettings(dirs)).settings.permissions).toEqual(permissions);
 });
 
 test("invalid permission rules carry a typed source and untouched rule", async () => {
   dirs = await tempDirs();
-  const source = join(dirs.homeDir, ".neant/settings.json");
+  const source = join(dirs.homeDir, ".rukie/settings.json");
   const rule = "  unknown(pattern)  ";
   await Bun.write(source, JSON.stringify({ permissions: { deny: [rule] } }));
   await expect(loadSettings(dirs)).rejects.toMatchObject({
@@ -254,7 +254,7 @@ test.each([false, true])(
   async (trusted) => {
     dirs = await tempDirs();
     await Bun.write(
-      join(dirs.homeDir, ".neant/settings.json"),
+      join(dirs.homeDir, ".rukie/settings.json"),
       JSON.stringify({
         trustedProjects: trusted ? [dirs.cwd] : [],
         permissions: {
@@ -264,7 +264,7 @@ test.each([false, true])(
         },
       }),
     );
-    const projectFile = join(dirs.cwd, ".neant/settings.json");
+    const projectFile = join(dirs.cwd, ".rukie/settings.json");
     await Bun.write(
       projectFile,
       JSON.stringify({
@@ -287,11 +287,11 @@ test.each([false, true])(
 test("trust in a parent directory does not activate a child project's allow rules", async () => {
   dirs = await tempDirs();
   await Bun.write(
-    join(dirs.homeDir, ".neant/settings.json"),
+    join(dirs.homeDir, ".rukie/settings.json"),
     JSON.stringify({ trustedProjects: [join(dirs.cwd, "..")] }),
   );
   await Bun.write(
-    join(dirs.cwd, ".neant/settings.json"),
+    join(dirs.cwd, ".rukie/settings.json"),
     JSON.stringify({ permissions: { allow: ["bash"] } }),
   );
   const { settings, warnings } = await loadSettings(dirs);
@@ -303,7 +303,7 @@ test.each(["user", "project"])(
   "legacy allowTools in the %s layer fails with a typed migration error",
   async (layer) => {
     dirs = await tempDirs();
-    const source = join(layer === "user" ? dirs.homeDir : dirs.cwd, ".neant/settings.json");
+    const source = join(layer === "user" ? dirs.homeDir : dirs.cwd, ".rukie/settings.json");
     await Bun.write(source, JSON.stringify({ allowTools: null }));
     await expect(loadSettings(dirs)).rejects.toMatchObject({
       code: "allow-tools-retired",
@@ -316,11 +316,11 @@ test.each(["user", "project"])(
 test("project subagentModel overrides the user value", async () => {
   dirs = await tempDirs();
   await Bun.write(
-    join(dirs.homeDir, ".neant/settings.json"),
+    join(dirs.homeDir, ".rukie/settings.json"),
     JSON.stringify({ subagentModel: "user/worker" }),
   );
   await Bun.write(
-    join(dirs.cwd, ".neant/settings.json"),
+    join(dirs.cwd, ".rukie/settings.json"),
     JSON.stringify({ subagentModel: "project/worker" }),
   );
   expect(await loadSettings(dirs)).toEqual({
@@ -333,7 +333,7 @@ test.each(["user", "project"])(
   "invalid %s subagentModel names its source and field",
   async (layer) => {
     dirs = await tempDirs();
-    const source = join(layer === "user" ? dirs.homeDir : dirs.cwd, ".neant/settings.json");
+    const source = join(layer === "user" ? dirs.homeDir : dirs.cwd, ".rukie/settings.json");
     await Bun.write(source, JSON.stringify({ subagentModel: 42 }));
     await expect(loadSettings(dirs)).rejects.toThrow(`${source}: /subagentModel`);
   },
@@ -341,7 +341,7 @@ test.each(["user", "project"])(
 
 test("a custom model input without text reports its settings field", async () => {
   dirs = await tempDirs();
-  const file = join(dirs.homeDir, ".neant/settings.json");
+  const file = join(dirs.homeDir, ".rukie/settings.json");
   await Bun.write(
     file,
     JSON.stringify({
@@ -355,7 +355,7 @@ test.each([[], ["audio"], ["text", "video"], "text", null].map((input) => [input
   "invalid custom model input %j names its settings field",
   async (input) => {
     dirs = await tempDirs();
-    const file = join(dirs.homeDir, ".neant/settings.json");
+    const file = join(dirs.homeDir, ".rukie/settings.json");
     await Bun.write(
       file,
       JSON.stringify({
@@ -373,7 +373,7 @@ test.each(
 )("custom model input %j is retained and exposed to frontends", async (input) => {
   dirs = await tempDirs();
   await Bun.write(
-    join(dirs.homeDir, ".neant/settings.json"),
+    join(dirs.homeDir, ".rukie/settings.json"),
     JSON.stringify({
       providers: [{ ...provider("vision"), models: [{ id: "m", input }] }],
     }),
@@ -386,7 +386,7 @@ test.each(
 test("custom models without input default to text while built-in vision models keep their modalities", async () => {
   dirs = await tempDirs();
   await Bun.write(
-    join(dirs.homeDir, ".neant/settings.json"),
+    join(dirs.homeDir, ".rukie/settings.json"),
     JSON.stringify({
       providers: [provider("legacy")],
     }),
@@ -399,4 +399,36 @@ test("custom models without input default to text while built-in vision models k
     name: "Claude Sonnet 4.5",
     input: ["text", "image"],
   });
+});
+
+test("Rukie settings load while malformed legacy product settings are ignored", async () => {
+  dirs = await tempDirs();
+  for (const root of [dirs.homeDir, dirs.cwd])
+    await Bun.write(join(root, ".neant/settings.json"), "{malformed legacy config");
+  await Bun.write(
+    join(dirs.homeDir, ".rukie/settings.json"),
+    JSON.stringify({
+      model: "user/m",
+      locale: "en",
+      permissionMode: "auto-review",
+      providers: [provider("user")],
+    }),
+  );
+  await Bun.write(join(dirs.cwd, ".rukie/settings.json"), JSON.stringify({ model: "project/m" }));
+  expect(await loadSettings(dirs)).toEqual({
+    settings: {
+      model: "project/m",
+      locale: "en",
+      permissionMode: "auto-review",
+      providers: [provider("user")],
+    },
+    warnings: [],
+  });
+});
+
+test("legacy-only settings are ignored without compatibility loading", async () => {
+  dirs = await tempDirs();
+  for (const root of [dirs.homeDir, dirs.cwd])
+    await Bun.write(join(root, ".neant/settings.json"), JSON.stringify({ model: "legacy/m" }));
+  expect(await loadSettings(dirs)).toEqual({ settings: {}, warnings: [] });
 });

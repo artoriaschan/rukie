@@ -86,7 +86,7 @@ test("non-interactive terminals fail before rendering or requesting a model", as
     [true, false, "xterm-256color"],
     [true, true, "dumb"],
   ] as const) {
-    const root = await mkdtemp(join(tmpdir(), "neant-tui-noninteractive-"));
+    const root = await mkdtemp(join(tmpdir(), "rukie-tui-noninteractive-"));
     const terminal = createTerminal();
     terminal.stdin.isTTY = stdin;
     terminal.stdout.isTTY = stdout;
@@ -102,7 +102,7 @@ test("non-interactive terminals fail before rendering or requesting a model", as
           },
         }),
       ).toBe(stdin ? 1 : 2);
-      expect(stderr).toContain("neant -p");
+      expect(stderr).toContain("rukie -p");
       expect(terminal.output()).toBe("");
       expect(terminal.stdin.isRaw).toBe(false);
     } finally {
@@ -113,7 +113,7 @@ test("non-interactive terminals fail before rendering or requesting a model", as
 });
 
 test("a fatal paint IO error restores the terminal before stderr and aborts the active Run", async () => {
-  const root = await mkdtemp(join(tmpdir(), "neant-tui-fatal-"));
+  const root = await mkdtemp(join(tmpdir(), "rukie-tui-fatal-"));
   const terminal = createTerminal();
   const fake = controlledModel();
   let fail = false;

@@ -1,5 +1,5 @@
-import type { Session } from "@neant/agent";
-import type { McpSnapshot } from "@neant/shared";
+import type { Session } from "@rukie/agent";
+import type { McpSnapshot } from "@rukie/shared";
 import { formatError, type createTuiI18n } from "../../../view/i18n";
 import type { createConversation } from "../../../view/conversation/conversation";
 

@@ -7,7 +7,7 @@ import {
   type TranscriptContext,
 } from "@earendil-works/pi-ai";
 import { isTitleRequest } from "./auxiliary-model.ts";
-import type { SessionOptions } from "@neant/agent";
+import type { SessionOptions } from "@rukie/agent";
 
 /** Model boundary controlled by the test, including streamed text and cancellation. */
 export function controlledModel(controlReviews = false, controlTitles = false) {

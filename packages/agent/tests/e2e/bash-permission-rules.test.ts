@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { PERMISSION_MODES } from "@neant/shared";
+import { PERMISSION_MODES } from "@rukie/shared";
 import { join } from "node:path";
 import { createSession, type SessionEvent } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { PermissionAskRequest } from "@neant/agent";
+import type { PermissionAskRequest } from "@rukie/agent";
 import { createInteractions } from "../../../../src/tui/screens/chat/interactions";
 
 const request = (

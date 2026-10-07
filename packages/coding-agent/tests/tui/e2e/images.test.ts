@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { stat, readFile, access, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { createFauxCore, fauxAssistantMessage } from "@earendil-works/pi-ai";
-import { createSession } from "@neant/agent";
+import { createSession } from "@rukie/agent";
 import { withAuxiliaryRequests } from "../helpers/auxiliary-model";
 import { dark } from "../../../src/ink/index.ts";
 import { start } from "../helpers/app";
@@ -183,7 +183,7 @@ test("read images open a preview then explicit original live and after resume", 
     expect(await readFile(opened)).toEqual(Buffer.from(png, "base64"));
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
-    const { listSessions } = await import("@neant/agent");
+    const { listSessions } = await import("@rukie/agent");
     const sessions = await listSessions({ cwd: app.root, homeDir: app.root });
     const resumed = await start(["--resume", sessions[0]!.id], {
       rows: 32,
@@ -408,7 +408,7 @@ test("a user image placeholder remains visible and clickable after resume", asyn
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.finish();
     await app.waitFor(() => !app.isWorking());
-    const { listSessions } = await import("@neant/agent");
+    const { listSessions } = await import("@rukie/agent");
     const sessions = await listSessions({ cwd: app.root, homeDir: app.root });
     let opened = "";
     const resumed = await start(["--resume", sessions[0]!.id], {

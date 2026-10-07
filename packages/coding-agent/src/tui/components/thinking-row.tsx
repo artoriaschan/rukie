@@ -10,8 +10,8 @@ import {
   useTerminalSize,
   useTheme,
 } from "../../ink/index.ts";
-import type { Locale } from "@neant/i18n";
-import { fmtDuration } from "@neant/i18n";
+import type { Locale } from "@rukie/i18n";
+import { fmtDuration } from "@rukie/i18n";
 import { createTuiI18n } from "../../view/i18n";
 
 /** Clip by grapheme width; the ticker's final row preserves newly arrived tokens. */

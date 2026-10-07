@@ -1,4 +1,4 @@
-import type { UserVisibleErrorCode, UserVisibleErrorParams } from "@neant/shared";
+import type { UserVisibleErrorCode, UserVisibleErrorParams } from "@rukie/shared";
 
 /** Base64 image supplied by a frontend; names are Transcript metadata only. */
 export interface PromptImage {

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/pi-agent-core/harness/context";
-import { createJsonlStore } from "@neant/agent";
+import { createJsonlStore } from "@rukie/agent";
 import { getCurrentSystemMessage } from "@earendil-works/pi-ai";
 import { start } from "../helpers/app";
 

@@ -1,5 +1,5 @@
 {
-  "name": "neant",
+  "name": "rukie",
   "private": true,
   "workspaces": [
     "packages/*"

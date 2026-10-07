@@ -1,4 +1,4 @@
-import { inspectImage, type PromptImage } from "@neant/agent";
+import { inspectImage, type PromptImage } from "@rukie/agent";
 import type { PresentedImage } from "../../../view/transcript/images";
 
 /** Decode each immutable Session/composer image once while its source is retained. */

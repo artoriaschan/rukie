@@ -53,7 +53,7 @@ const uriFiles = (value: string) =>
 
 /** Per-main clipboard exports outlive staging and are reclaimed after pending reads settle. */
 export function createClipboard() {
-  const exports = createPrivateExports("neant-clipboard-");
+  const exports = createPrivateExports("rukie-clipboard-");
   const run = async (command: string[]) => {
     if (exports.closed) return;
     try {

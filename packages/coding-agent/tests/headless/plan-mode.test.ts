@@ -17,8 +17,8 @@ import { echoModel } from "./helpers/echo-model.ts";
 test.each(["ask", "auto-review", "full-access"])(
   "Headless stream-json omits enter_plan_mode in %s",
   async (permissionMode) => {
-    const root = await mkdtemp(join(tmpdir(), "neant-cli-plan-"));
-    await mkdir(join(root, ".neant", "file-history"), { recursive: true });
+    const root = await mkdtemp(join(tmpdir(), "rukie-cli-plan-"));
+    await mkdir(join(root, ".rukie", "file-history"), { recursive: true });
     let stdout = "";
     let stderr = "";
     try {

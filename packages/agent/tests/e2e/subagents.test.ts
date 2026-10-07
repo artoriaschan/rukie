@@ -513,7 +513,7 @@ test("interruptSubagent aborts only the selected child and delivers an aborted n
 test("a failed child creation releases its run slot and wakes the waiting parent", async () => {
   dirs = await tempDirs();
   await Bun.write(
-    `${dirs.cwd}/.neant/agents/broken.md`,
+    `${dirs.cwd}/.rukie/agents/broken.md`,
     "---\nname: broken\ndescription: Broken\nmodel: missing/type\n---\nBroken instructions",
   );
   const fake = fakeModel([

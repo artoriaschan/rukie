@@ -10,7 +10,7 @@ Bash、Web Fetch、Todo、Goal、Jobs、Subagent、Plan Mode 分别归 tools 内
 
 工具按能力构造，Session 内部组装并保留现有动态刷新；Hook 消费独立只读工具集，MCP 发现与协议适配仍归 mcp，可复用工具错误包装。跨能力消费使用所属能力入口，例如 Bash 调用 Jobs registry。依赖限制针对能力内部：协议适配调用执行模块，执行模块不反向依赖自身协议适配或全局工具组装；通用状态机制不依赖具体状态定义。不禁止 Session 或其他能力导入 tools，沿用现有 Oxlint 验证明确的路径及导入名称约束。
 
-这些能力属于 Agent Core，不导入 `@neant/coding-agent` 或其内部路径，也不导入 Frontend 的屏幕、组件、输入命令解析或呈现状态。Frontend 通过 Session 查询、事实事件和 Interaction 回调使用能力；Session 注入存储与事件接口是 Core 内部协调，不是能力依赖 Frontend 实现。
+这些能力属于 Agent Core，不导入 `@rukie/coding-agent` 或其内部路径，也不导入 Frontend 的屏幕、组件、输入命令解析或呈现状态。Frontend 通过 Session 查询、事实事件和 Interaction 回调使用能力；Session 注入存储与事件接口是 Core 内部协调，不是能力依赖 Frontend 实现。
 
 本决定替代此前允许内置工具在所属领域、tools 或 Session 多处构造的组织约定，不替代 ADR-0002、ADR-0003、ADR-0009、ADR-0010 的运行、存储与恢复决定。迁移保留包公开接口、工具声明和结果、事件、Frontend 行为、Transcript 格式、取消和恢复时序。
 

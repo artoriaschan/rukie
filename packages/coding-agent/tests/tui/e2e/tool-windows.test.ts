@@ -127,7 +127,7 @@ test("dragging a result copies only its source and never expands the folded card
 });
 
 test("resumed truncated reads disclose retained bounds at the last window without replaying the tool", async () => {
-  const { createSession } = await import("@neant/agent");
+  const { createSession } = await import("@rukie/agent");
   const { createFauxCore, fauxAssistantMessage, fauxToolCall } =
     await import("@earendil-works/pi-ai");
   const { withAuxiliaryRequests } = await import("../helpers/auxiliary-model");
@@ -280,7 +280,7 @@ test("resumed web windows preserve retained source and disclose upstream truncat
     "\n",
   );
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response(source) });
-  const { createSession } = await import("@neant/agent");
+  const { createSession } = await import("@rukie/agent");
   const { createFauxCore, fauxAssistantMessage, fauxToolCall } =
     await import("@earendil-works/pi-ai");
   const { withAuxiliaryRequests } = await import("../helpers/auxiliary-model");

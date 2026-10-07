@@ -8,7 +8,7 @@ import { tempDirs } from "../helpers/temp-dirs.ts";
 import { mcpOAuthServer } from "../helpers/mcp-oauth-server.ts";
 
 async function configure(dirs: Awaited<ReturnType<typeof tempDirs>>, servers: object) {
-  await Bun.write(join(dirs.homeDir, ".neant/mcp.json"), JSON.stringify({ mcpServers: servers }));
+  await Bun.write(join(dirs.homeDir, ".rukie/mcp.json"), JSON.stringify({ mcpServers: servers }));
 }
 
 test("first MCP status query independently probes servers and leaves Transcript untouched", async () => {
@@ -38,7 +38,7 @@ test("first MCP status query independently probes servers and leaves Transcript 
           toolCount: 0,
           auth: "none",
           scope: "user",
-          configPath: join(dirs.homeDir, ".neant/mcp.json"),
+          configPath: join(dirs.homeDir, ".rukie/mcp.json"),
           command: join(dirs.cwd, "missing"),
           tools: [],
           error: expect.any(String),
@@ -50,7 +50,7 @@ test("first MCP status query independently probes servers and leaves Transcript 
           toolCount: 1,
           auth: "none",
           scope: "user",
-          configPath: join(dirs.homeDir, ".neant/mcp.json"),
+          configPath: join(dirs.homeDir, ".rukie/mcp.json"),
           url: healthy.url,
           tools: [
             {
@@ -67,7 +67,7 @@ test("first MCP status query independently probes servers and leaves Transcript 
           toolCount: 0,
           auth: "oauth",
           scope: "user",
-          configPath: join(dirs.homeDir, ".neant/mcp.json"),
+          configPath: join(dirs.homeDir, ".rukie/mcp.json"),
           url: oauth.url,
           tools: [],
         },
@@ -151,7 +151,7 @@ test("logout deletes only the selected credential and status returns to needs-au
       await session.authenticateMcp("other");
       await session.mcpServers();
       await session.clearMcpAuth("srv");
-      const raw = await Bun.file(join(dirs.homeDir, ".neant/credentials.json")).text();
+      const raw = await Bun.file(join(dirs.homeDir, ".rukie/credentials.json")).text();
       expect(raw).not.toContain('"serverName":"srv"');
       expect(raw).toContain('"serverName":"other"');
       expect(
@@ -163,7 +163,7 @@ test("logout deletes only the selected credential and status returns to needs-au
         toolCount: 0,
         auth: "oauth",
         scope: "user",
-        configPath: join(dirs.homeDir, ".neant/mcp.json"),
+        configPath: join(dirs.homeDir, ".rukie/mcp.json"),
         url: server.url,
         tools: [],
       });
@@ -217,7 +217,7 @@ test("reconnect refreshes the selected failed server without probing other cache
         toolCount: 1,
         auth: "headers",
         scope: "user",
-        configPath: join(dirs.homeDir, ".neant/mcp.json"),
+        configPath: join(dirs.homeDir, ".rukie/mcp.json"),
         url: server.url,
         tools: [{ name: "echo" }],
       });
@@ -630,7 +630,7 @@ test.each([false, true])("MCP provenance respects project trust (%s)", async (tr
       const snapshot = await session.mcpServers();
       expect(snapshot.servers.find((server) => server.name === "srv")).toMatchObject({
         scope: trusted ? "project" : "user",
-        configPath: trusted ? join(dirs.cwd, ".mcp.json") : join(dirs.homeDir, ".neant/mcp.json"),
+        configPath: trusted ? join(dirs.cwd, ".mcp.json") : join(dirs.homeDir, ".rukie/mcp.json"),
         url: trusted ? project.url : user.url,
       });
       expect(snapshot.servers.some((server) => server.name === "project")).toBe(trusted);
@@ -659,14 +659,14 @@ test.each([
     "https://user:password@example.com/mcp?token=private-query#private-fragment",
     "https://example.com/mcp",
   ],
-  ["${NEANT_PANEL_ENDPOINT}", "${NEANT_PANEL_ENDPOINT}"],
+  ["${RUKIE_PANEL_ENDPOINT}", "${RUKIE_PANEL_ENDPOINT}"],
   [
-    "${NEANT_PANEL_ENDPOINT:-https://user:password@example.com/mcp?token=private-query#private-fragment}",
-    "${NEANT_PANEL_ENDPOINT:-https://example.com/mcp}",
+    "${RUKIE_PANEL_ENDPOINT:-https://user:password@example.com/mcp?token=private-query#private-fragment}",
+    "${RUKIE_PANEL_ENDPOINT:-https://example.com/mcp}",
   ],
   [
-    "https://${NEANT_PANEL_HOST}/mcp?token=${NEANT_PANEL_TOKEN}#private-fragment",
-    "https://${NEANT_PANEL_HOST}/mcp",
+    "https://${RUKIE_PANEL_HOST}/mcp?token=${RUKIE_PANEL_TOKEN}#private-fragment",
+    "https://${RUKIE_PANEL_HOST}/mcp",
   ],
 ])("MCP display URL redacts secrets in raw configuration %s", async (url, displayed) => {
   const dirs = await tempDirs();
@@ -686,7 +686,7 @@ test.each([
         tools: [],
         toolCount: 0,
         scope: "user",
-        configPath: join(dirs.homeDir, ".neant/mcp.json"),
+        configPath: join(dirs.homeDir, ".rukie/mcp.json"),
       });
       expect(JSON.stringify(snapshot)).not.toMatch(
         /password|private-query|private-fragment|private-client/,
@@ -705,7 +705,7 @@ test.each(["{", '{"other":{}}'])(
     const dirs = await tempDirs();
     const server = mcpOAuthServer({ authentication: false });
     try {
-      const path = join(dirs.homeDir, ".neant/mcp.json");
+      const path = join(dirs.homeDir, ".rukie/mcp.json");
       await Bun.write(path, invalid);
       await Bun.write(
         join(dirs.cwd, ".mcp.json"),
@@ -868,7 +868,7 @@ test("explicit MCP refresh repairs configuration diagnostics and replaces the co
   const dirs = await tempDirs();
   const server = mcpOAuthServer({ authentication: false });
   try {
-    await Bun.write(join(dirs.homeDir, ".neant/mcp.json"), "{");
+    await Bun.write(join(dirs.homeDir, ".rukie/mcp.json"), "{");
     const session = await createSession({ ...dirs, ...fakeModel([]), onWarning: () => {} });
     try {
       const reads: ReturnType<typeof session.mcpServers>[] = [];

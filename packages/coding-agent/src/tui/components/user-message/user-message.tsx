@@ -1,6 +1,6 @@
 import { Box, ThemedBox, ThemedText, figures } from "../../../ink/index.ts";
 import type { PresentedImage } from "../../../view/transcript/images";
-import type { Locale } from "@neant/i18n";
+import type { Locale } from "@rukie/i18n";
 import { ImageGallery } from "../image-gallery";
 import { createTuiI18n } from "../../../view/i18n";
 

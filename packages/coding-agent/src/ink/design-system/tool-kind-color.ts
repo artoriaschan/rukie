@@ -1,4 +1,4 @@
-import type { ToolKind } from "@neant/shared";
+import type { ToolKind } from "@rukie/shared";
 /** Tool View facts choose mutation gold or execution cyan; all other tools use the accent family. */
 export function toolKindColor(kind?: ToolKind) {
   switch (kind) {

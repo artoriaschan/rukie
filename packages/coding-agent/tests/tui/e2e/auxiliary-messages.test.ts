@@ -1,6 +1,6 @@
 import { expect, jest, test } from "bun:test";
 import { createFauxCore, fauxAssistantMessage } from "@earendil-works/pi-ai";
-import { createSession } from "@neant/agent";
+import { createSession } from "@rukie/agent";
 import { start } from "../helpers/app";
 import { startWithClock } from "../helpers/clock-app";
 import { withAuxiliaryRequests } from "../helpers/auxiliary-model";
@@ -93,7 +93,7 @@ for (const locale of ["en", "zh"] as const) {
 test.each(["assistant", "toolResult"] as const)(
   "a %s persistence failure reconciles committed history live and after Resume",
   async (failure) => {
-    const { createJsonlStore } = await import("@neant/agent");
+    const { createJsonlStore } = await import("@rukie/agent");
     const argv: string[] = [];
     let store: ReturnType<typeof createJsonlStore>;
     let rejected = false;

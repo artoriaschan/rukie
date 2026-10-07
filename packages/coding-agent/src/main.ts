@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { addAbortSignal } from "node:stream";
 import { text } from "node:stream/consumers";
-import { resolveLocale } from "@neant/i18n";
+import { resolveLocale } from "@rukie/i18n";
 import { parseCli, formatArgvError } from "./cli";
 import { createTuiI18n } from "./view/i18n";
 import type { CodingAgentIo, TuiIo } from "./io";

@@ -320,7 +320,7 @@ test("parent resume initializes its persisted child card as idle before cold con
   let id = "";
   const { createFauxCore, fauxAssistantMessage, fauxToolCall } =
     await import("@earendil-works/pi-ai");
-  const { createSession } = await import("@neant/agent");
+  const { createSession } = await import("@rukie/agent");
   const original = createFauxCore({ api: "faux", provider: "faux" });
   original.setResponses([
     fauxAssistantMessage(
@@ -406,7 +406,7 @@ test("parent resume initializes its persisted child card as idle before cold con
 
 test("fork, agent listing and failed messaging use dedicated rows live and after resume", async () => {
   const { createFauxCore, fauxAssistantMessage } = await import("@earendil-works/pi-ai");
-  const { createSession } = await import("@neant/agent");
+  const { createSession } = await import("@rukie/agent");
   const argv: string[] = ["--permission-mode", "full-access"];
   let root = "";
   const app = await start(argv, {

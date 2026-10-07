@@ -2,7 +2,7 @@ import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { expect, test, jest } from "bun:test";
 import { join } from "node:path";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { createSession } from "@neant/agent";
+import { createSession } from "@rukie/agent";
 import { start } from "../helpers/app";
 import { startWithClock } from "../helpers/clock-app";
 
@@ -38,7 +38,7 @@ test("resume replays stored text before input and appends the next Run to the sa
     expect(app.screen().at(-2)).toContain("0→0");
     expect(app.screen().join("\n")).not.toContain("tokens");
     expect(app.calls).toHaveLength(0);
-    const logoTop = "██  ██ ██▀▀▀▀  ▄▀▀▄  ██  ██ ▀▀██▀▀";
+    const logoTop = "██▀▀▄▄ ██  ██ ██  ██ ▀▀██▀▀ ██▀▀▀▀";
     const lines = app.allLines();
     expect(lines.some((line) => line.slice(42) === logoTop)).toBe(true);
     const metadata = lines.findIndex(
@@ -279,7 +279,7 @@ test("resume hides a skill reminder retained by compaction while preserving user
   const app = await start(argv, {
     prepare: async (root) => {
       await Bun.write(
-        join(root, ".neant/skills/plan/SKILL.md"),
+        join(root, ".rukie/skills/plan/SKILL.md"),
         "---\nname: plan\ndescription: Plan work\n---\nHidden skill instructions. " +
           "x".repeat(7000),
       );

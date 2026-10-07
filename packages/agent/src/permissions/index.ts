@@ -5,7 +5,7 @@ import {
   type Model,
   type AssistantMessage,
 } from "@earendil-works/pi-ai";
-import type { CustomSessionEvent, PermissionMode } from "@neant/shared";
+import type { CustomSessionEvent, PermissionMode } from "@rukie/shared";
 import { evaluatePermissionRules, parsePermissionRules, type PermissionRule } from "./rules.ts";
 export { parsePermissionRules, evaluatePermissionRules } from "./rules.ts";
 export { resolvePermissionPath } from "./path.ts";

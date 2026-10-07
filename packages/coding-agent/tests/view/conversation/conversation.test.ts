@@ -1,15 +1,15 @@
-import { readSessionNotice, sessionNoticeFromHook, assistantThinkingDuration } from "@neant/agent";
+import { readSessionNotice, sessionNoticeFromHook, assistantThinkingDuration } from "@rukie/agent";
 const conversationFacts = { readSessionNotice, sessionNoticeFromHook, assistantThinkingDuration };
 import { expect, spyOn, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createSession, type Session, type SessionEvent, type SessionOptions } from "@neant/agent";
+import { createSession, type Session, type SessionEvent, type SessionOptions } from "@rukie/agent";
 import { createConversation } from "../../../src/view/conversation/conversation";
 import { controlledModel } from "../../tui/helpers/model";
 
 test("conversation retains the latest 500 observed TPS samples and wires an actual Session Run", async () => {
-  const root = await mkdtemp(join(tmpdir(), "neant-tps-"));
+  const root = await mkdtemp(join(tmpdir(), "rukie-tps-"));
   const fake = controlledModel();
   let now = Date.UTC(2026, 9, 2);
   const clock = spyOn(Date, "now").mockImplementation(() => now);

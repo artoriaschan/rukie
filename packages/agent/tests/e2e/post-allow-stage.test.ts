@@ -3,7 +3,7 @@ import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { join } from "node:path";
 import { createSession } from "../../src/index.ts";
-import type { HookHandler, HooksSettings } from "@neant/shared";
+import type { HookHandler, HooksSettings } from "@rukie/shared";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 

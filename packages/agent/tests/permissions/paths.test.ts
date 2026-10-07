@@ -13,7 +13,7 @@ afterEach(() => dirs?.cleanup());
 
 test.each([
   ["read", "~/.ssh/**", { path: "~/.ssh/key" }, "deny"],
-  ["read", "~/.ssh/**", { path: "/neant-test-home/user/.ssh/key" }, "deny"],
+  ["read", "~/.ssh/**", { path: "/rukie-test-home/user/.ssh/key" }, "deny"],
   ["edit", "src/**", { path: "src/module.ts" }, "allow"],
   ["write", "src/**", { path: "./src/new/deep/module.ts" }, "allow"],
   ["write", "src/**", { path: "/project/src/new.ts" }, "ask"],
@@ -35,7 +35,7 @@ test.each([
       toolName,
       args,
       cwd: "/project",
-      homeDir: "/neant-test-home/user",
+      homeDir: "/rukie-test-home/user",
     }),
   ).toEqual(decision ? { decision, rule: raw } : undefined);
 });

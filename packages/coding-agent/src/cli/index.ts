@@ -1,11 +1,11 @@
 import { parseArgs } from "node:util";
-import { parsePermissionRules } from "@neant/agent";
+import { parsePermissionRules } from "@rukie/agent";
 import {
   PERMISSION_MODES,
   THINKING_LEVELS,
   type PermissionMode,
   type ThinkingLevel,
-} from "@neant/shared";
+} from "@rukie/shared";
 import { createTuiI18n, formatError } from "../view/i18n";
 
 const options = {

@@ -9,7 +9,7 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 async function isolatedSession() {
-  const root = await mkdtemp(join(tmpdir(), "neant-entry-"));
+  const root = await mkdtemp(join(tmpdir(), "rukie-entry-"));
   roots.push(root);
   return { cwd: root, homeDir: root, ...echoModel() };
 }

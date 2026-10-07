@@ -193,7 +193,7 @@ test("stopping jobs remain counted until they settle", async () => {
 }, 10000);
 
 test("resume never attaches a historical bash job result to a new job with the same command", async () => {
-  const { createSession } = await import("@neant/agent");
+  const { createSession } = await import("@rukie/agent");
   const { createFauxCore, fauxAssistantMessage, fauxToolCall } =
     await import("@earendil-works/pi-ai");
   const argv: string[] = [];

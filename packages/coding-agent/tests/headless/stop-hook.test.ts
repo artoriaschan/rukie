@@ -17,7 +17,7 @@ function main(argv: string[], io: PrintIo) {
 test.each(["text", "stream-json"])(
   "%s includes Stop continuation feedback and the final result",
   async (format) => {
-    const root = await mkdtemp(join(tmpdir(), "neant-cli-stop-"));
+    const root = await mkdtemp(join(tmpdir(), "rukie-cli-stop-"));
     const faux = createFauxCore({ api: "faux", provider: "faux" });
     faux.setResponses(
       Array.from({ length: 9 }, (_, index) => fauxAssistantMessage(`conclusion ${index}`)),

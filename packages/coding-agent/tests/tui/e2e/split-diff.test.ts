@@ -57,7 +57,7 @@ test.each([
     rows: 40,
     env: { LANG: "en_US.UTF-8" },
     prepare: async (root) => {
-      await Bun.write(join(root, ".neant", "settings.json"), JSON.stringify({ diffLayout }));
+      await Bun.write(join(root, ".rukie", "settings.json"), JSON.stringify({ diffLayout }));
       await Bun.write(join(root, "code.txt"), "old value\n");
     },
   });
@@ -115,7 +115,7 @@ test("forced split on a small terminal folds eight rows and expands without wrap
     env: { LANG: "en_US.UTF-8" },
     prepare: async (root) => {
       await Bun.write(
-        join(root, ".neant", "settings.json"),
+        join(root, ".rukie", "settings.json"),
         JSON.stringify({ diffLayout: "split" }),
       );
       await Bun.write(
@@ -158,7 +158,7 @@ test("invalid diffLayout in user settings is rejected before creating a Session"
   const app = await start([], {
     prepare: async (root) => {
       await Bun.write(
-        join(root, ".neant", "settings.json"),
+        join(root, ".rukie", "settings.json"),
         JSON.stringify({ diffLayout: "sideways" }),
       );
     },
@@ -174,7 +174,7 @@ test("invalid diffLayout in user settings is rejected before creating a Session"
 
 test("resumed patch-only diffs keep split pairs and hunk boundaries", async () => {
   const argv: string[] = [];
-  const { createSession } = await import("@neant/agent");
+  const { createSession } = await import("@rukie/agent");
   const { createFauxCore, fauxAssistantMessage, fauxToolCall } =
     await import("@earendil-works/pi-ai");
   const { withAuxiliaryRequests } = await import("../helpers/auxiliary-model");

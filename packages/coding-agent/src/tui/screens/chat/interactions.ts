@@ -6,12 +6,12 @@ import type {
   PlanReviewResult,
   McpAuthRequest,
   McpAuthReply,
-} from "@neant/agent";
+} from "@rukie/agent";
 import type { TuiHost } from "../../host";
 import type { InputEvent } from "../../../ink/index.ts";
 import { permissionChoices } from "../../components/permission-dialog";
 import { createTuiI18n } from "../../../view/i18n";
-import type { Locale } from "@neant/i18n";
+import type { Locale } from "@rukie/i18n";
 
 interface PermissionInteraction {
   kind: "permission";

@@ -1,4 +1,4 @@
-import type { McpSnapshot } from "@neant/shared";
+import type { McpSnapshot } from "@rukie/shared";
 import { mcpPanelChoices, type McpPanelPage } from "../../components/mcp-panel";
 import { formatError, type createTuiI18n } from "../../../view/i18n";
 import type { createMcpCommands } from "./mcp-commands";

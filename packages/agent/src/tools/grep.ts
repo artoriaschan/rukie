@@ -1,5 +1,5 @@
 import { truncateHead } from "@earendil-works/pi-agent-core";
-import { createUserVisibleError } from "@neant/shared";
+import { createUserVisibleError } from "@rukie/shared";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type { PresentedTool } from "./presentation.ts";
@@ -77,7 +77,7 @@ export function createGrepTool(cwd: string): PresentedTool<typeof schema> {
         signal?.throwIfAborted();
         const cause = error instanceof Error ? error.message : String(error);
         throw createUserVisibleError(
-          `Bundled ripgrep is unavailable. Reinstall Neant dependencies (including optionalDependencies) and check platform compatibility or binary execution permissions. Cause: ${cause}`,
+          `Bundled ripgrep is unavailable. Reinstall Rukie dependencies (including optionalDependencies) and check platform compatibility or binary execution permissions. Cause: ${cause}`,
           { code: "ripgrep-unavailable", params: { cause } },
           { cause: error },
         );

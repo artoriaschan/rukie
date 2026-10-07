@@ -2,7 +2,7 @@ export interface TpsSample {
   at: number;
   value: number;
 }
-import type { ContextUsageEvent } from "@neant/shared";
+import type { ContextUsageEvent } from "@rukie/shared";
 
 export const segments = [
   { key: "system", color: "barSystem" },

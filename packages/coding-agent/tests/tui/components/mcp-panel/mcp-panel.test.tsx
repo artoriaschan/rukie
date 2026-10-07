@@ -10,7 +10,7 @@ import {
   useInput,
   type ScrollHandle,
 } from "../../../../src/ink/index.ts";
-import type { McpServerView } from "@neant/shared";
+import type { McpServerView } from "@rukie/shared";
 import { McpPanel, GoalTodoPanel, SubagentPanel } from "../../../../src/tui/components";
 import {
   mcpPanelChoices,
@@ -23,7 +23,7 @@ import { createTerminal } from "../../helpers/terminal";
 const server = (name: string, scope: "user" | "project" = "user"): McpServerView => ({
   name,
   scope,
-  configPath: scope === "user" ? "/home/.neant/mcp.json" : "/work/.mcp.json",
+  configPath: scope === "user" ? "/home/.rukie/mcp.json" : "/work/.mcp.json",
   transport: "stdio",
   command: "mcp-command",
   status: "connected",
@@ -36,14 +36,14 @@ test("loading resolves from props and empty configuration shows both paths and t
   const page = {
     kind: "servers",
     snapshot: null,
-    configPaths: { user: "/home/.neant/mcp.json", project: "/work/.mcp.json" },
+    configPaths: { user: "/home/.rukie/mcp.json", project: "/work/.mcp.json" },
   } as const;
   const terminal = await mount({ page });
   expect(terminal.screen().join("\n")).toContain("Reading MCP status…");
   terminal.update({ page: { ...page, snapshot: { servers: [], configErrors: [] } } });
   await terminal.waitFor(() => terminal.screen().join("\n").includes("No MCP servers configured"));
   const screen = terminal.screen().join("\n");
-  expect(screen).toContain("/home/.neant/mcp.json");
+  expect(screen).toContain("/home/.rukie/mcp.json");
   expect(screen).toContain("/work/.mcp.json");
   expect(screen).toContain("trusted project");
 });
@@ -93,7 +93,7 @@ async function mount(overrides: Partial<McpPanelProps> = {}, columns = 80, rows 
           servers: [server("zeta"), server("beta", "project"), server("alpha", "project")],
           configErrors: [],
         },
-        configPaths: { user: "/home/.neant/mcp.json", project: "/work/.mcp.json" },
+        configPaths: { user: "/home/.rukie/mcp.json", project: "/work/.mcp.json" },
       },
       selected: "server:alpha",
       columns,
@@ -137,7 +137,7 @@ test("server list groups project before user, sorts names, and uses the current 
   const lines = terminal.screen();
   expect(lines.join("\n")).toContain("Manage MCP servers (3)");
   expect(lines.findIndex((line) => line.includes("Project · /work/.mcp.json"))).toBeLessThan(
-    lines.findIndex((line) => line.includes("User · /home/.neant/mcp.json")),
+    lines.findIndex((line) => line.includes("User · /home/.rukie/mcp.json")),
   );
   expect(lines.findIndex((line) => line.includes("alpha"))).toBeLessThan(
     lines.findIndex((line) => line.includes("beta")),

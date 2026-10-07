@@ -1,7 +1,7 @@
 import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
 import { dark } from "../../../src/ink/index.ts";
-import { createSession } from "@neant/agent";
+import { createSession } from "@rukie/agent";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { start } from "../helpers/app";
 
@@ -509,7 +509,7 @@ for (const [lang, label, completed, unknown, error] of [
         await parent.dispose();
         // Native JSONL fixture: append an old identity to the latest saved parent snapshot.
         for await (const path of new Bun.Glob(`**/*_${parent.id}.jsonl`).scan({
-          cwd: `${root}/.neant/sessions`,
+          cwd: `${root}/.rukie/sessions`,
           absolute: true,
         })) {
           const records = (await Bun.file(path).text())

@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createSession } from "@neant/agent";
+import { createSession } from "@rukie/agent";
 import { main as entryMain, type PrintIo } from "../../src/index.ts";
 function main(argv: string[], io: PrintIo) {
   return entryMain(
@@ -16,8 +16,8 @@ function main(argv: string[], io: PrintIo) {
 import { echoModel } from "./helpers/echo-model.ts";
 
 test("Headless titles its persisted session and keeps the auxiliary response out of stdout", async () => {
-  const root = await mkdtemp(join(tmpdir(), "neant-title-cli-"));
-  await mkdir(join(root, ".neant/file-history"), { recursive: true });
+  const root = await mkdtemp(join(tmpdir(), "rukie-title-cli-"));
+  await mkdir(join(root, ".rukie/file-history"), { recursive: true });
   const fake = echoModel();
   let stdout = "";
   try {

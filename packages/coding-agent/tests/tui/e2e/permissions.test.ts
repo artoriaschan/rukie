@@ -2,7 +2,7 @@ import { startWithClock } from "../helpers/clock-app";
 import { expect, test } from "bun:test";
 import { isolateProxyEnvironment } from "../helpers/proxy-env.ts";
 import { join } from "node:path";
-import { createSession, type SessionOptions } from "@neant/agent";
+import { createSession, type SessionOptions } from "@rukie/agent";
 import { controlledModel } from "../helpers/model";
 import { start } from "../helpers/app";
 
@@ -67,8 +67,8 @@ test.each([
       prepare: async (directory) => {
         root = directory;
         sessionOptions.homeDir = join(root, "home");
-        await Bun.write(join(root, "home/.neant/settings.json"), userSettings);
-        await Bun.write(join(root, ".neant/settings.json"), projectSettings);
+        await Bun.write(join(root, "home/.rukie/settings.json"), userSettings);
+        await Bun.write(join(root, ".rukie/settings.json"), projectSettings);
         const seed = await createSession({
           cwd: root,
           homeDir: sessionOptions.homeDir,
@@ -106,8 +106,8 @@ test.each([
       app.calls[2]!.finish();
       await app.waitFor(() => !app.isWorking());
       expect(settings.permissionMode).toBe(defaultMode);
-      expect(await Bun.file(join(root, "home/.neant/settings.json")).text()).toBe(userSettings);
-      expect(await Bun.file(join(root, ".neant/settings.json")).text()).toBe(projectSettings);
+      expect(await Bun.file(join(root, "home/.rukie/settings.json")).text()).toBe(userSettings);
+      expect(await Bun.file(join(root, ".rukie/settings.json")).text()).toBe(projectSettings);
       const replay = await start(["--resume", id], {
         session: { cwd: root, homeDir: join(root, "home"), settings },
       });
@@ -123,7 +123,7 @@ test.each([
           replay.screen().some((line) => line.includes("1. 允许（仅本次）")),
         );
         expect(replay.calls).toHaveLength(1);
-        expect(await Bun.file(join(root, "home/.neant/settings.json")).text()).toBe(userSettings);
+        expect(await Bun.file(join(root, "home/.rukie/settings.json")).text()).toBe(userSettings);
       } finally {
         await replay.cleanup();
       }
@@ -381,7 +381,7 @@ test.each(["flag", "settings", "yolo", "readonly"])(
         prepare: async (root) => {
           if (mode === "settings") {
             await Bun.write(
-              join(root, ".neant/settings.json"),
+              join(root, ".rukie/settings.json"),
               '{"permissions":{"allow":["ba*"]}}',
             );
           }
@@ -414,7 +414,7 @@ test("session allow remembers only this command across Runs and leaves settings 
   const app = await startWithClock(["use bash"], {
     prepare: async (directory) => {
       root = directory;
-      await Bun.write(join(root, ".neant/settings.json"), settings);
+      await Bun.write(join(root, ".rukie/settings.json"), settings);
     },
   });
   try {
@@ -449,7 +449,7 @@ test("session allow remembers only this command across Runs and leaves settings 
     await app.waitFor(() => app.calls.length === 5);
     app.calls[4]!.finish();
     await app.waitFor(() => !app.isWorking());
-    expect(await Bun.file(join(root, ".neant/settings.json")).text()).toBe(settings);
+    expect(await Bun.file(join(root, ".rukie/settings.json")).text()).toBe(settings);
   } finally {
     await app.cleanup();
   }

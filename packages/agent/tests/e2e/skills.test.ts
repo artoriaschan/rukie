@@ -22,10 +22,10 @@ async function writeSkill(
 }
 
 test.each([
-  ["homeDir", ".neant"],
+  ["homeDir", ".rukie"],
   ["homeDir", ".claude"],
   ["homeDir", ".agents"],
-  ["cwd", ".neant"],
+  ["cwd", ".rukie"],
   ["cwd", ".claude"],
   ["cwd", ".agents"],
 ] as const)(
@@ -108,7 +108,7 @@ test.each([
 });
 
 async function transcript() {
-  const root = join(dirs.homeDir, ".neant/sessions");
+  const root = join(dirs.homeDir, ".rukie/sessions");
   const file = (await readdir(root, { recursive: true })).find((path) => path.endsWith(".jsonl"))!;
   return Bun.file(join(root, file)).text();
 }
@@ -170,7 +170,7 @@ test("resume preserves the model and Transcript prefix and appends only changed 
 
 test("an unchanged skill list is not reinjected and the tool loads the current body in a later Run", async () => {
   dirs = await tempDirs();
-  await writeSkill(dirs.cwd, ".neant", "review", "Stable description", "First instructions.");
+  await writeSkill(dirs.cwd, ".rukie", "review", "Stable description", "First instructions.");
   const fake = fakeModel([
     fauxAssistantMessage("first reply"),
     fauxAssistantMessage(fauxToolCall("skill", { name: "review" }), { stopReason: "toolUse" }),
@@ -178,7 +178,7 @@ test("an unchanged skill list is not reinjected and the tool loads the current b
   ]);
   const session = await createSession({ ...dirs, ...fake });
   await session.run("first");
-  await writeSkill(dirs.cwd, ".neant", "review", "Stable description", "Updated instructions.");
+  await writeSkill(dirs.cwd, ".rukie", "review", "Stable description", "Updated instructions.");
   const events: SessionEvent[] = [];
   await session.run("load review", {
     onEvent: (event) => {
@@ -261,7 +261,7 @@ test("Skill Invocation appends the body as a reminder and preserves the original
 test("project skills take precedence over user skills across namespaces", async () => {
   dirs = await tempDirs();
   await writeSkill(dirs.homeDir, ".agents", "review", "User review", "User instructions");
-  await writeSkill(dirs.cwd, ".neant", "review", "Project review", "Project instructions");
+  await writeSkill(dirs.cwd, ".rukie", "review", "Project review", "Project instructions");
   const fake = fakeModel([
     fauxAssistantMessage(fauxToolCall("skill", { name: "review" }), { stopReason: "toolUse" }),
     fauxAssistantMessage("done"),
@@ -289,7 +289,7 @@ test("invalid skills are skipped with warnings while valid skills and the Run re
   ];
   const paths: string[] = [];
   for (const [name, content] of invalid) {
-    const path = join(dirs.cwd, ".neant/skills", name!, "SKILL.md");
+    const path = join(dirs.cwd, ".rukie/skills", name!, "SKILL.md");
     paths.push(path);
     await Bun.write(path, content!);
   }

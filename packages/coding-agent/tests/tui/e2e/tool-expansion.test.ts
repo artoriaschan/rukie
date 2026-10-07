@@ -1,5 +1,5 @@
 import { createFauxCore, fauxAssistantMessage } from "@earendil-works/pi-ai";
-import { createSession } from "@neant/agent";
+import { createSession } from "@rukie/agent";
 import { withAuxiliaryRequests } from "../helpers/auxiliary-model";
 import { expect, test, jest } from "bun:test";
 import { start } from "../helpers/app";

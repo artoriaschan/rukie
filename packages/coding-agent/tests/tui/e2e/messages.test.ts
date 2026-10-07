@@ -124,7 +124,7 @@ test("assistant renders GFM tables and tasks, Unicode math, Mermaid and literal 
 });
 
 test("a fresh one-shot response reveals while resumed assistant Markdown paints in full", async () => {
-  const { createSession } = await import("@neant/agent");
+  const { createSession } = await import("@rukie/agent");
   const { createFauxCore, fauxAssistantMessage } = await import("@earendil-works/pi-ai");
   const { withAuxiliaryRequests } = await import("../helpers/auxiliary-model");
   const body = "**history 中文🐋**\n\n" + "x".repeat(180) + " tail";

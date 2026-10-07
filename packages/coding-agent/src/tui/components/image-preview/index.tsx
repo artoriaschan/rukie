@@ -1,7 +1,7 @@
 import type { PresentedImage } from "../../../view/transcript/images";
 import { useRef, useState, useEffect } from "react";
-import type { PromptImage } from "@neant/agent";
-import type { Locale } from "@neant/i18n";
+import type { PromptImage } from "@rukie/agent";
+import type { Locale } from "@rukie/i18n";
 import {
   Box,
   Image,

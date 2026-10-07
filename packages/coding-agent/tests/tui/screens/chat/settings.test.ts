@@ -59,7 +59,7 @@ test("the empty settings page fits 40×12, ignores editing keys and leaves setti
   const app = await start([], {
     columns: 40,
     rows: 12,
-    prepare: (root) => Bun.write(`${root}/.neant/settings.json`, original).then(() => {}),
+    prepare: (root) => Bun.write(`${root}/.rukie/settings.json`, original).then(() => {}),
   });
   try {
     await app.waitFor(() => app.screen().some((line) => line.startsWith("╭")));
@@ -84,7 +84,7 @@ test("the empty settings page fits 40×12, ignores editing keys and leaves setti
     ).toBeTruthy();
     app.stdin.write("\x1b[A\x1b[B\x1b[C\x1b[D\r");
     await app.waitFor(() => screen(app).includes("No settings are available yet."));
-    expect(await Bun.file(`${app.root}/.neant/settings.json`).text()).toBe(original);
+    expect(await Bun.file(`${app.root}/.rukie/settings.json`).text()).toBe(original);
     app.stdin.write("\x1b");
     await app.waitFor(() => app.screen().some((line) => line.startsWith("╭")));
     expect(screen(app)).not.toContain("hidden draft");

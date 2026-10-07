@@ -1,8 +1,8 @@
 # 小夜灵 v2
 
-用户认可的幽灵形象 v2，已接入 Neant TUI 头部。所有品牌素材统一保存在根目录 `brand`。
+用户认可的幽灵形象 v2，已接入 Rukie TUI 头部。所有品牌素材统一保存在根目录 `brand`。
 
-根据当前 Neant 的 coding agent 定位与 TUI 冷蓝色风格设计。保留用户认可的幽灵形象，参考 `/Users/artorias_chan/Workspaces/agent/dsh-TUI/src/components/whaleFrames.ts` 的多色像素网格表达，以及 `Whale.tsx` 的半块字符渲染方法；未复制鲸鱼形象或动画帧。
+根据当前 Rukie 的 coding agent 定位与 TUI 冷蓝色风格设计。保留用户认可的幽灵形象，参考 `/Users/artorias_chan/Workspaces/agent/dsh-TUI/src/components/whaleFrames.ts` 的多色像素网格表达，以及 `Whale.tsx` 的半块字符渲染方法；未复制鲸鱼形象或动画帧。
 
 ## 形象细节
 
@@ -23,7 +23,7 @@
 - `standard.ansi`、`blink.ansi`、`float.ansi`：40 列 × 14 行的实际 ANSI 文本。
 - `preview.html`：无需外部依赖，解析实际 ANSI 的 SGR 颜色与半块字符，再用等宽字符单元的上下半格模拟终端像素，避免浏览器字体造成块字符接缝。可在浏览器中离线打开；终端实际渲染使用 `.ansi` 文件。
 - `standard.png`：从同一像素网格直接生成的放大静态对照图；不是终端渲染依赖。
-- `render.py`：素材生成脚本，只使用 Python 标准库；不依赖或修改 Neant 产品代码。
+- `render.py`：素材生成脚本，只使用 Python 标准库；不依赖或修改 Rukie 产品代码。
 
 产品实现位于 `packages/coding-agent/src/tui/components/logo/`。`spirit-frames.ts` 保存与 `frames.json` 相同的色板和网格，`spirit.tsx` 负责半块渲染与动画，`logo.tsx` 负责名称及信息布局。
 

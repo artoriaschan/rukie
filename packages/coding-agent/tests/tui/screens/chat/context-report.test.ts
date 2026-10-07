@@ -146,7 +146,7 @@ test("context shows resource summaries below the grid and expands details locall
     env: { LANG: "en_US.UTF-8" },
     prepare: async (root) => {
       await Bun.write(join(root, "AGENTS.md"), "Project contract.");
-      await Bun.write(join(root, ".neant/AGENTS.md"), "User contract.");
+      await Bun.write(join(root, ".rukie/AGENTS.md"), "User contract.");
       await Bun.write(
         join(root, ".agents/skills/review/SKILL.md"),
         "---\nname: review\ndescription: Review widgets\n---\nInspect widgets.\n",
@@ -199,7 +199,7 @@ test("context shows resource summaries below the grid and expands details locall
       }
     }
     expect(screen(app)).toContain(`└ ${join(app.root, "AGENTS.md")}:`);
-    expect(screen(app)).toContain(`└ ${join(app.root, ".neant/AGENTS.md")}:`);
+    expect(screen(app)).toContain(`└ ${join(app.root, ".rukie/AGENTS.md")}:`);
     expect(screen(app)).toContain("└ review:");
     expect(screen(app)).toContain("└ editor:");
     expect(app.calls).toHaveLength(1);

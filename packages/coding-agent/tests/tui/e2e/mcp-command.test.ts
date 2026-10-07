@@ -13,7 +13,7 @@ test("MCP completion lists controls and the most recent server names, keeping co
     env: { LANG: "en_US.UTF-8" },
     prepare: (root) =>
       Bun.write(
-        join(root, ".neant/mcp.json"),
+        join(root, ".rukie/mcp.json"),
         JSON.stringify({ mcpServers: { notion: { url: server.url } } }),
       ).then(() => {}),
   });
@@ -50,7 +50,7 @@ test("idle login cancellation and callback errors show result notices without a 
     rows: 32,
     prepare: (root) =>
       Bun.write(
-        join(root, ".neant/mcp.json"),
+        join(root, ".rukie/mcp.json"),
         JSON.stringify({ mcpServers: { notion: { url: server.url } } }),
       ).then(() => {}),
   });
@@ -79,7 +79,7 @@ test("idle MCP commands authorize, logout and reconnect with current panel snaps
     rows: 40,
     prepare: (root) =>
       Bun.write(
-        join(root, ".neant/mcp.json"),
+        join(root, ".rukie/mcp.json"),
         JSON.stringify({ mcpServers: { notion: { url: server.url } } }),
       ).then(() => {}),
     host: {
@@ -130,7 +130,7 @@ test.each(["zh_CN.UTF-8", "en_US.UTF-8"])(
       env: { LANG: lang },
       prepare: (root) =>
         Bun.write(
-          join(root, ".neant/mcp.json"),
+          join(root, ".rukie/mcp.json"),
           JSON.stringify({
             mcpServers: {
               notion: {
@@ -159,7 +159,7 @@ test.each(["zh_CN.UTF-8", "en_US.UTF-8"])(
 test("/mcp exposes malformed file diagnostics instead of reporting an empty configuration", async () => {
   const app = await start([], {
     rows: 32,
-    prepare: (root) => Bun.write(join(root, ".neant/mcp.json"), '{"other":{}}').then(() => {}),
+    prepare: (root) => Bun.write(join(root, ".rukie/mcp.json"), '{"other":{}}').then(() => {}),
   });
   try {
     await app.waitFor(() => app.screen().some((line) => line.startsWith("╭")));

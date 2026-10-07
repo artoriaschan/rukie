@@ -1,4 +1,4 @@
-import type { ToolCallView, ToolResultView } from "@neant/shared";
+import type { ToolCallView, ToolResultView } from "@rukie/shared";
 export interface SubagentOutput {
   type: "user" | "text" | "thinking" | "tool";
   text: string;
@@ -44,8 +44,8 @@ export interface SubagentView {
   error?: string;
 }
 
-import type { Session, SessionEvent, SessionRecovery, SubagentIdentity } from "@neant/agent";
-import { isUnknownToolOutcome } from "@neant/shared";
+import type { Session, SessionEvent, SessionRecovery, SubagentIdentity } from "@rukie/agent";
+import { isUnknownToolOutcome } from "@rukie/shared";
 
 export interface SubagentState extends SubagentView {
   output: readonly { type: "user" | "text" | "thinking" | "tool"; text: string; toolId?: string }[];

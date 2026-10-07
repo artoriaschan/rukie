@@ -1,5 +1,5 @@
 import { HintLine, ListItem, ThemedBox, ThemedText } from "../../../ink/index.ts";
-import type { Locale } from "@neant/i18n";
+import type { Locale } from "@rukie/i18n";
 import { createTuiI18n } from "../../../view/i18n";
 
 /** A focus-centered, bounded list using the same picker rows as rewind. */

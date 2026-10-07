@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { createJsonlStore, createSession } from "@neant/agent";
+import { createJsonlStore, createSession } from "@rukie/agent";
 import { controlledModel } from "../helpers/model";
 import { start } from "../helpers/app";
 import { jest } from "bun:test";

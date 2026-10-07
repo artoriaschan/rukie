@@ -1,5 +1,5 @@
-import type { ContextCategory, ContextReport } from "@neant/shared";
-import type { Locale } from "@neant/i18n";
+import type { ContextCategory, ContextReport } from "@rukie/shared";
+import type { Locale } from "@rukie/i18n";
 import { createTuiI18n } from "../i18n";
 
 export const order: ContextCategory[] = [

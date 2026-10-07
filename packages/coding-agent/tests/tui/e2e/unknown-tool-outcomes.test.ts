@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
-import { createJsonlStore, createSession } from "@neant/agent";
+import { createJsonlStore, createSession } from "@rukie/agent";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { start } from "../helpers/app";
 

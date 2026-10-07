@@ -1,12 +1,12 @@
-# Neant 架构
+# Rukie 架构
 
 本文是当前运行架构的参考：先说明组合与依赖，再说明 Session、Run、持久化和扩展位置。修改 `packages/` 前阅读本文；领域定义以 [CONTEXT.md](../CONTEXT.md) 为准，决策与取舍见 [ADRs](adr/)，编写规则见 [AGENTS.md](AGENTS.md)。
 
 ## 运行组成
 
-Neant 的 Headless CLI 与 TUI 都运行在 Bun 中，直接调用 `@neant/agent`。Agent Core 通过 `createSession` 组合模型、pi Agent loop、工具、权限、hooks、MCP、上下文与存储。Session 是 frontend 使用的运行接口，frontend 负责输入和呈现。
+Rukie 的 Headless CLI 与 TUI 都运行在 Bun 中，直接调用 `@rukie/agent`。Agent Core 通过 `createSession` 组合模型、pi Agent loop、工具、权限、hooks、MCP、上下文与存储。Session 是 frontend 使用的运行接口，frontend 负责输入和呈现。
 
-pi-agent-core 提供 Agent loop 及可复用的 harness 能力，pi-ai 提供模型协议与流式调用，pi-mcp 提供 MCP 客户端。Neant 的组合入口与应用规则位于自身模块中；它们的责任分界由 [ADR-0002](adr/0002-reuse-pi-agent-core-harness.md) 规定。
+pi-agent-core 提供 Agent loop 及可复用的 harness 能力，pi-ai 提供模型协议与流式调用，pi-mcp 提供 MCP 客户端。Rukie 的组合入口与应用规则位于自身模块中；它们的责任分界由 [ADR-0002](adr/0002-reuse-pi-agent-core-harness.md) 规定。
 
 下面的箭头表示导入或调用依赖，公共类型与本地化能力另列在表中。
 
@@ -23,16 +23,16 @@ flowchart TD
 
 | 包                    | 在运行组合中的责任                                                                                             |
 | --------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `@neant/coding-agent` | `headless/` 驱动非交互 Run 与 Goal，`tui/` 管理交互与呈现，`view/` 负责终端无关的呈现投影，`ink/` 负责终端渲染 |
-| `@neant/agent`        | 执行 frontend 无关的 Session 行为，协调模型、工具、Transcript 与 Run 资源                                      |
-| `@neant/shared`       | 提供运行时无关的公共类型、schema 与纯函数                                                                      |
-| `@neant/i18n`         | 提供运行时无关的通用文案与 locale 能力，只依赖 shared                                                          |
+| `@rukie/coding-agent` | `headless/` 驱动非交互 Run 与 Goal，`tui/` 管理交互与呈现，`view/` 负责终端无关的呈现投影，`ink/` 负责终端渲染 |
+| `@rukie/agent`        | 执行 frontend 无关的 Session 行为，协调模型、工具、Transcript 与 Run 资源                                      |
+| `@rukie/shared`       | 提供运行时无关的公共类型、schema 与纯函数                                                                      |
+| `@rukie/i18n`         | 提供运行时无关的通用文案与 locale 能力，只依赖 shared                                                          |
 
 公共内部包直接导出 TypeScript 源码，跨包消费者通过工作区包名导入；coding-agent 包内使用相对路径，TUI 只经 `ink/index.ts` 使用终端能力。具体依赖与脚本由各包 `package.json` 定义；技术版本由 [tech-stack.md](tech-stack.md) 维护。
 
 ## 应用启动与 Session
 
-[`main`](../packages/coding-agent/src/main.ts) 用 [`cli/`](../packages/coding-agent/src/cli/index.ts) 的一份参数表解析并校验 argv，按模式动态加载 Frontend。`neant` 与 `neant "问题"` 启动 TUI；后者自动提交首条 prompt。`neant -p "问题"`、`cat x | neant -p` 或 `neant --goal "目标"` 启动 Headless CLI；`-p` / `--print` 是布尔开关，prompt 来自位置参数，缺省时读取 stdin。不带 print / goal 且 stdin 非 TTY 时返回 2，并提示使用 `-p`。参数错误依据启动环境的 locale 显示。`--output-format` 与 `--max-goal-rounds` 仅用于 Headless 模式；rounds 还要求 `--goal`。Headless 启动不加载 React 或终端 renderer。
+[`main`](../packages/coding-agent/src/main.ts) 用 [`cli/`](../packages/coding-agent/src/cli/index.ts) 的一份参数表解析并校验 argv，按模式动态加载 Frontend。`rukie` 与 `rukie "问题"` 启动 TUI；后者自动提交首条 prompt。`rukie -p "问题"`、`cat x | rukie -p` 或 `rukie --goal "目标"` 启动 Headless CLI；`-p` / `--print` 是布尔开关，prompt 来自位置参数，缺省时读取 stdin。不带 print / goal 且 stdin 非 TTY 时返回 2，并提示使用 `-p`。参数错误依据启动环境的 locale 显示。`--output-format` 与 `--max-goal-rounds` 仅用于 Headless 模式；rounds 还要求 `--goal`。Headless 启动不加载 React 或终端 renderer。
 
 Headless CLI 的 [`runHeadless`](../packages/coding-agent/src/headless/main.ts) 读取合并设置，创建或恢复 Session。普通 prompt 调用 `Session.run`；Goal 调用 `Session.createGoal`，等待自动续跑和收尾完成，再释放 Session。`--goal` 与 `-p` / `--print` 互斥，也不接受额外的 prompt。Goal 完成退出 0，受阻或达到轮次上限退出 1；恢复到已有未完成 Goal 的 Session 时拒绝覆盖，用户通过 TUI 处理。它不提供 Interaction 回调：依赖回调的工具不进入模型工具集；权限询问等 Agent Core 请求采用安全默认值。
 
@@ -71,7 +71,7 @@ Session 持有自己的 Background Job registry。bash 使用同一条进程组�
 
 ## Run 与 Turn 流程
 
-Run 处理一条 prompt，包含一次或多次 Turn；每个 Turn 是一次模型调用及其返回的工具调用。这个划分沿用 Neant 领域定义。一个 Session 同时只有一个执行中的 Run；用户输入与 Hook 内部 Run 的竞争由 Session 协调。
+Run 处理一条 prompt，包含一次或多次 Turn；每个 Turn 是一次模型调用及其返回的工具调用。这个划分沿用 Rukie 领域定义。一个 Session 同时只有一个执行中的 Run；用户输入与 Hook 内部 Run 的竞争由 Session 协调。
 
 ```text
 frontend prompt / Hook 内部输入 / Goal round
@@ -91,7 +91,7 @@ frontend prompt / Hook 内部输入 / Goal round
   → 发布 result，解除运行占用
 ```
 
-Tool View 的 schema 由 `@neant/shared` 定义，工具在自身模块声明纯 presenter，Session 在工具开始与结束事件上附加调用或结果 view。`Session.messages` 为工具调用和结果重算 view；它只读取参数、结果与持久化 details，presenter 缺失、参数非法或抛错时省略 view，由 frontend 使用通用卡。View 不进入 Transcript，也不进入模型上下文。read 的截断声明与继续读取 offset、bash 的完整输出路径从持久化结果事实重算；frontend 将这些事实呈现于折叠正文之外。todo、question、plan 与 subagent 工具的 view 分类为 task；TUI 在建卡前仍分流到专用组件。
+Tool View 的 schema 由 `@rukie/shared` 定义，工具在自身模块声明纯 presenter，Session 在工具开始与结束事件上附加调用或结果 view。`Session.messages` 为工具调用和结果重算 view；它只读取参数、结果与持久化 details，presenter 缺失、参数非法或抛错时省略 view，由 frontend 使用通用卡。View 不进入 Transcript，也不进入模型上下文。read 的截断声明与继续读取 offset、bash 的完整输出路径从持久化结果事实重算；frontend 将这些事实呈现于折叠正文之外。todo、question、plan 与 subagent 工具的 view 分类为 task；TUI 在建卡前仍分流到专用组件。
 
 Session 在 pi 的请求准备、工具前后回调和消息事件上接入这些行为。模型流式增量用于实时呈现，完成消息用于 Transcript 追加；frontend 收到的所有运行事件并不都作为持久化条目保存。
 
@@ -105,7 +105,7 @@ Goal 只属于顶层 Session。用户通过 TUI `/goal`、Headless `--goal` 或�
 
 ## 工具、权限与交互
 
-read/write/edit 经适配连接 pi 的执行环境与 Neant 的 AbortSignal；bash 由 Session 的 job registry 启动独立进程组；前台调用等待完成，显式后台调用立即返回 id。Run 结束或取消保留后台任务，Session dispose 清理进程组与输出；终止先发 SIGTERM，3 秒后升级为 SIGKILL。后台工具的读取与生命周期见 [`tools/jobs/`](../packages/agent/README.md)。Skill 加载工具、结构化提问、Todo、计划评审与 Subagent 工具由所属能力模块构造，Session 按身份、子类型与当前 MCP 发现组装成运行工具集。MCP 发现的工具也转换为同一种 AgentTool，再进入共同的授权流程。完整工具声明以构造模块和当前运行发现结果为准。
+read/write/edit 经适配连接 pi 的执行环境与 Rukie 的 AbortSignal；bash 由 Session 的 job registry 启动独立进程组；前台调用等待完成，显式后台调用立即返回 id。Run 结束或取消保留后台任务，Session dispose 清理进程组与输出；终止先发 SIGTERM，3 秒后升级为 SIGKILL。后台工具的读取与生命周期见 [`tools/jobs/`](../packages/agent/README.md)。Skill 加载工具、结构化提问、Todo、计划评审与 Subagent 工具由所属能力模块构造，Session 按身份、子类型与当前 MCP 发现组装成运行工具集。MCP 发现的工具也转换为同一种 AgentTool，再进入共同的授权流程。完整工具声明以构造模块和当前运行发现结果为准。
 
 权限执行入口是 pi 的 `beforeToolCall`。它协调 Hook、显式规则、Permission Mode 和必要的 frontend 询问；Hook 改写的输入重新校验，路径匹配与实际执行使用同一规范化目标。显式 deny/ask 不被 full-access 或 Hook allow 越过。规则语法、顺序及限制由 [permission-rules.md](permission-rules.md) 维护。
 
@@ -115,7 +115,7 @@ Interaction 由 Agent Core 发起，frontend 提供响应回调。[`interaction/
 
 ## 模型上下文
 
-System Prompt 提供固定行为指令；System Reminder 承载日期、项目说明、Skill 目录或正文、MCP 描述以及其他有来源的上下文。用户说明读取 `~/.neant/AGENTS.md`；项目说明优先读取项目根的 `AGENTS.md`，缺失时读取 `CLAUDE.md`。[`reminders/`](../packages/agent/src/reminders/index.ts)按来源与最近持久化内容比较，仅追加需要更新的提醒，并在模型调用处转换自定义消息。
+System Prompt 提供固定行为指令；System Reminder 承载日期、项目说明、Skill 目录或正文、MCP 描述以及其他有来源的上下文。用户说明读取 `~/.rukie/AGENTS.md`；项目说明优先读取项目根的 `AGENTS.md`，缺失时读取 `CLAUDE.md`。[`reminders/`](../packages/agent/src/reminders/index.ts)按来源与最近持久化内容比较，仅追加需要更新的提醒，并在模型调用处转换自定义消息。
 
 Compaction 在请求前自动检查，也可由空闲 Session 手动执行。它追加原生 compaction 记录，模型上下文由 System Prompt、摘要、保留尾部与之后的消息重建；原始 Transcript 仍保留。压缩后重新建立当前提醒来源，后续请求和恢复走相同的上下文投影。
 
@@ -184,7 +184,7 @@ Agent Core 在 assistant 流式事件中测量已观察到的思考阶段：从�
 | 调整权限或生命周期 Hook    | `permissions/`、`hooks/`；保持相应专项文档同步                                                                                                                                                                                              |
 | 增加交互                   | Agent Core 声明回调与取消行为，frontend 连接交互呈现，并覆盖无回调场景                                                                                                                                                                      |
 | 增加 frontend 或存储后端   | 消费公开 Session 接口或实现 SessionStore；运行与存储约束参照 ADR-0001、ADR-0003                                                                                                                                                             |
-| 增加 TUI 命令或 Neant 面板 | `packages/coding-agent/src/tui/` 的命令、screen 与 components；复用通用终端原语                                                                                                                                                             |
+| 增加 TUI 命令或 Rukie 面板 | `packages/coding-agent/src/tui/` 的命令、screen 与 components；复用通用终端原语                                                                                                                                                             |
 | 增加通用终端能力           | `packages/coding-agent/src/ink/`，保持 Agent Core 无关，并更新 renderer README                                                                                                                                                              |
 
 接口声明留在源码，局部能力细节留在所属文档。改变运行组合、Run 完成条件、持久化投影或跨包职责时，同步更新本图谱及相关 ADR；验证入口和测试约定见[根 AGENTS.md](../AGENTS.md)。

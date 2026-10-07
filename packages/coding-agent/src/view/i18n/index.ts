@@ -1,5 +1,5 @@
-import { common, createI18n, type Locale } from "@neant/i18n";
-import type { UserVisibleErrorData } from "@neant/shared";
+import { common, createI18n, type Locale } from "@rukie/i18n";
+import type { UserVisibleErrorData } from "@rukie/shared";
 import { appCopy } from "./locales";
 
 /** Each frontend instance owns its fixed startup locale. */

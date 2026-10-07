@@ -90,8 +90,8 @@ test.each([
   "read(x))",
   "bash)foo",
 ])("invalid rule %j names its source and original text", (rule) => {
-  expect(() => parsePermissionRules({ allow: [rule] }, "/home/.neant/settings.json")).toThrow(
-    `/home/.neant/settings.json: invalid permission rule ${JSON.stringify(rule)}`,
+  expect(() => parsePermissionRules({ allow: [rule] }, "/home/.rukie/settings.json")).toThrow(
+    `/home/.rukie/settings.json: invalid permission rule ${JSON.stringify(rule)}`,
   );
 });
 

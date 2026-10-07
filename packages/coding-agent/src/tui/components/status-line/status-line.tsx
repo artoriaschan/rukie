@@ -1,4 +1,4 @@
-import type { GoalView } from "@neant/agent";
+import type { GoalView } from "@rukie/agent";
 import { useState, type ReactNode } from "react";
 import { basename } from "node:path";
 import { Box, ThemedText, type ThemeColor } from "../../../ink/index.ts";
@@ -8,7 +8,7 @@ import type {
   PermissionMode,
   RunResult,
   ThinkingLevel,
-} from "@neant/shared";
+} from "@rukie/shared";
 import { goalPhasePresentation } from "../goal-phase";
 import {
   allocateColumns,
@@ -443,5 +443,5 @@ export function StatusLine(props: StatusLineProps) {
     </Box>
   );
 }
-import { fmtDuration, type Locale } from "@neant/i18n";
+import { fmtDuration, type Locale } from "@rukie/i18n";
 import { createTuiI18n } from "../../../view/i18n";

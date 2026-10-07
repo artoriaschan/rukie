@@ -3,7 +3,7 @@ import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createSession, type SessionEvent } from "../../src/index.ts";
-import type { HookHandler } from "@neant/shared";
+import type { HookHandler } from "@rukie/shared";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
@@ -94,8 +94,8 @@ test.each([
 
 test("HTTP headers expand only permitted environment variables", async () => {
   dirs = await tempDirs();
-  const old = process.env.NEANT_HOOK_TEST_TOKEN;
-  process.env.NEANT_HOOK_TEST_TOKEN = "allowed-token";
+  const old = process.env.RUKIE_HOOK_TEST_TOKEN;
+  process.env.RUKIE_HOOK_TEST_TOKEN = "allowed-token";
   try {
     let headers: Headers | undefined;
     const server = Bun.serve({
@@ -110,18 +110,18 @@ test("HTTP headers expand only permitted environment variables", async () => {
       type: "http",
       url: server.url.href,
       headers: {
-        authorization: "Bearer $NEANT_HOOK_TEST_TOKEN",
+        authorization: "Bearer $RUKIE_HOOK_TEST_TOKEN",
         "x-blocked": "$HOME",
-        "x-missing": "$NEANT_HOOK_MISSING",
+        "x-missing": "$RUKIE_HOOK_MISSING",
       },
-      allowedEnvVars: ["NEANT_HOOK_TEST_TOKEN", "NEANT_HOOK_MISSING"],
+      allowedEnvVars: ["RUKIE_HOOK_TEST_TOKEN", "RUKIE_HOOK_MISSING"],
     });
     expect(headers!.get("authorization")).toBe("Bearer allowed-token");
     expect(headers!.get("x-blocked")).toBe("$HOME");
     expect(headers!.get("x-missing")).toBe("");
   } finally {
-    if (old === undefined) delete process.env.NEANT_HOOK_TEST_TOKEN;
-    else process.env.NEANT_HOOK_TEST_TOKEN = old;
+    if (old === undefined) delete process.env.RUKIE_HOOK_TEST_TOKEN;
+    else process.env.RUKIE_HOOK_TEST_TOKEN = old;
   }
 });
 
@@ -144,7 +144,7 @@ test("HTTP deadline discards a late deny and allows the tool", async () => {
 async function connectMcp(tools = ["json", "echo", "hang", "error"]) {
   await Bun.write(join(dirs.homeDir, "manifest.json"), JSON.stringify({ tools }));
   await Bun.write(
-    join(dirs.homeDir, ".neant/mcp.json"),
+    join(dirs.homeDir, ".rukie/mcp.json"),
     JSON.stringify({
       mcpServers: {
         local: {

@@ -159,7 +159,7 @@ test.each(["same Run", "previous Run"])(
 test("fork inherits the parent model, system prompt and tools despite model settings and a custom fork type", async () => {
   dirs = await tempDirs();
   await Bun.write(
-    join(dirs.cwd, ".neant/agents/fork.md"),
+    join(dirs.cwd, ".rukie/agents/fork.md"),
     "---\nname: fork\ndescription: Custom fork\nmodel: missing/type\ntools: [read]\n---\nCustom fork instructions",
   );
   const fake = fakeModel([

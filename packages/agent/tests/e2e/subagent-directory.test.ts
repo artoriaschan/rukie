@@ -87,7 +87,7 @@ test.each(["explore", "custom", "deleted", "fork"])(
   "parent resume restores idle %s and cold continuation preserves child history and configuration",
   async (type) => {
     dirs = await tempDirs();
-    const path = `${dirs.cwd}/.neant/agents/reader.md`;
+    const path = `${dirs.cwd}/.rukie/agents/reader.md`;
     if (type === "custom" || type === "deleted")
       await Bun.write(
         path,

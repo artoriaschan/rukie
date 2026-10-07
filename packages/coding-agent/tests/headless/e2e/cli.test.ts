@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm, readdir, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { SettingsSchema } from "@neant/shared";
+import { SettingsSchema } from "@rukie/shared";
 import { Value } from "typebox/value";
 import { fakeOpenAI, type FakeOpenAIOptions } from "../helpers/fake-openai.ts";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
@@ -41,9 +41,9 @@ test.each([
   [["--allow-tools", "web_fetch(domain:site.test)"], true],
   [["--permission-mode", "full-access"], true],
 ] as const)("Headless web_fetch permission flags %j: allowed=%s", async (flags, allowed) => {
-  const root = await mkdtemp(join(tmpdir(), "neant-cli-web-"));
+  const root = await mkdtemp(join(tmpdir(), "rukie-cli-web-"));
   cleanups.push(() => rm(root, { recursive: true, force: true }));
-  await mkdir(join(root, ".neant", "file-history"), { recursive: true });
+  await mkdir(join(root, ".rukie", "file-history"), { recursive: true });
   const requests: string[] = [];
   const server = Bun.serve({
     hostname: "127.0.0.1",
@@ -100,14 +100,14 @@ test.each([
 /** Temp home whose user settings point a custom provider `fake` at a fake server. */
 async function setup(settings: object = {}, options: FakeOpenAIOptions = {}) {
   const server = fakeOpenAI("hello from fake", options);
-  const root = await mkdtemp(join(tmpdir(), "neant-cli-"));
+  const root = await mkdtemp(join(tmpdir(), "rukie-cli-"));
   cleanups.push(server.stop, () => rm(root, { recursive: true, force: true }));
   const home = join(root, "home");
   const cwd = join(root, "project");
-  await mkdir(join(home, ".neant", "file-history"), { recursive: true });
+  await mkdir(join(home, ".rukie", "file-history"), { recursive: true });
   await Bun.write(join(cwd, ".keep"), "");
   await Bun.write(
-    join(home, ".neant/settings.json"),
+    join(home, ".rukie/settings.json"),
     JSON.stringify({
       model: "fake/m",
       providers: [
@@ -135,7 +135,7 @@ test.each(["untrusted", "flag", "settings"])(
       },
     );
     if (trust === "settings") {
-      const path = join(dirs.home, ".neant/settings.json");
+      const path = join(dirs.home, ".rukie/settings.json");
       const settings = await Bun.file(path).json();
       settings.trustedProjects = [await realpath(dirs.cwd)];
       await Bun.write(path, JSON.stringify(settings));
@@ -165,7 +165,7 @@ test.each(["untrusted", "flag", "settings"])(
         },
       }),
     );
-    const result = await neant(
+    const result = await rukie(
       [
         "-p",
         "use MCP",
@@ -196,10 +196,10 @@ test.each(["text", "stream-json"])(
   async (format) => {
     const { server, ...dirs } = await setup();
     await Bun.write(
-      join(dirs.home, ".neant/mcp.json"),
+      join(dirs.home, ".rukie/mcp.json"),
       JSON.stringify({ mcpServers: { missing: { command: join(dirs.cwd, "missing-command") } } }),
     );
-    const result = await neant(["-p", "hi", "--output-format", format], {
+    const result = await rukie(["-p", "hi", "--output-format", format], {
       ...dirs,
       key: "sk-test",
     });
@@ -260,7 +260,7 @@ test.each([
               : mode === "override"
                 ? ["--permission-mode", "ask"]
                 : [];
-  const result = await neant([...flags, "-p", "use tools", "--output-format", "stream-json"], {
+  const result = await rukie([...flags, "-p", "use tools", "--output-format", "stream-json"], {
     ...dirs,
     key: "sk-test",
   });
@@ -295,7 +295,7 @@ test.each([
         reviewReply,
       },
     );
-    const result = await neant(
+    const result = await rukie(
       ["--permission-mode", "auto-review", "-p", "write", "--output-format", "stream-json"],
       { ...dirs, key: "sk-test" },
     );
@@ -315,7 +315,7 @@ test.each([
   },
 );
 
-async function neant(
+async function rukie(
   args: string[],
   opts: { home: string; cwd: string; key?: string; input?: string; env?: Record<string, string> },
 ) {
@@ -350,7 +350,7 @@ async function neant(
 
 test("--goal prints its round and exits 1 when its round limit blocks continuation", async () => {
   const { server, ...dirs } = await setup();
-  const result = await neant(["--goal", "finish migration", "--max-goal-rounds", "1"], {
+  const result = await rukie(["--goal", "finish migration", "--max-goal-rounds", "1"], {
     ...dirs,
     key: "sk-test",
   });
@@ -378,7 +378,7 @@ test.each(["complete", "blocked"])(
         ],
       },
     );
-    const result = await neant(["--goal", "finish migration", "--output-format", "stream-json"], {
+    const result = await rukie(["--goal", "finish migration", "--output-format", "stream-json"], {
       ...dirs,
       key: "sk-test",
     });
@@ -410,7 +410,7 @@ test("--goal prints every round in order, including its final wrapup", async () 
       ],
     },
   );
-  const result = await neant(["--goal", "finish migration", "--max-goal-rounds", "2"], {
+  const result = await rukie(["--goal", "finish migration", "--max-goal-rounds", "2"], {
     ...dirs,
     key: "sk-test",
   });
@@ -432,7 +432,7 @@ test.each([
   ),
 ] as const)("invalid Goal flags %j exit 2 before model requests", async (flags, message) => {
   const { server, ...dirs } = await setup();
-  const result = await neant([...flags], { ...dirs, key: "sk-test", input: "unused stdin" });
+  const result = await rukie([...flags], { ...dirs, key: "sk-test", input: "unused stdin" });
   expect(result.exitCode).toBe(2);
   expect(result.stderr).toContain(message);
   expect(result.stdout).toBe("");
@@ -441,7 +441,7 @@ test.each([
 
 test("--goal exits 1 on a model error and reports the failure", async () => {
   const { server, ...dirs } = await setup({}, { error: "Goal provider failed" });
-  const result = await neant(["--goal", "finish migration", "--output-format", "stream-json"], {
+  const result = await rukie(["--goal", "finish migration", "--output-format", "stream-json"], {
     ...dirs,
     key: "sk-test",
   });
@@ -454,13 +454,13 @@ test("--goal exits 1 on a model error and reports the failure", async () => {
 test("--resume --goal rejects an unfinished Goal without invoking the model", async () => {
   const { server, ...dirs } = await setup();
   const opts = { ...dirs, key: "sk-test" };
-  const seed = await neant(
+  const seed = await rukie(
     ["--goal", "old objective", "--max-goal-rounds", "1", "--output-format", "stream-json"],
     opts,
   );
   expect(seed.exitCode).toBe(1);
   const id = parseEvents(seed.stdout)[0].sessionId;
-  const result = await neant(["--resume", id, "--goal", "new objective"], opts);
+  const result = await rukie(["--resume", id, "--goal", "new objective"], opts);
   expect(result.exitCode).toBe(1);
   expect(result.stderr).toContain("unfinished Goal");
   expect(result.stderr).toContain("TUI");
@@ -485,7 +485,7 @@ test.each(["none", "complete"])("--resume --goal creates a Goal after %s", async
     },
   );
   const opts = { ...dirs, key: "sk-test" };
-  const seed = await neant(
+  const seed = await rukie(
     [previous === "none" ? "-p" : "--goal", "old objective", "--output-format", "stream-json"],
     opts,
   );
@@ -494,7 +494,7 @@ test.each(["none", "complete"])("--resume --goal creates a Goal after %s", async
   const oldGoal = events.find(
     (event) => event.type === "tool_state_changed" && event.name === "goal",
   )?.value;
-  const result = await neant(
+  const result = await rukie(
     ["--resume", events[0].sessionId, "--goal", "new objective", "--output-format", "stream-json"],
     opts,
   );
@@ -520,7 +520,7 @@ test("--goal denies headless interactions and still reaches completion", async (
       ],
     },
   );
-  const result = await neant(["--goal", "finish safely", "--output-format", "stream-json"], {
+  const result = await rukie(["--goal", "finish safely", "--output-format", "stream-json"], {
     ...dirs,
     key: "sk-test",
   });
@@ -549,9 +549,9 @@ test.each(["text", "stream-json"])(
       join(dirs.cwd, ".agents/skills/review/SKILL.md"),
       "---\nname: review\ndescription: Review changes\n---\nCheck the changed behavior.",
     );
-    const broken = join(dirs.home, ".neant/skills/broken/SKILL.md");
+    const broken = join(dirs.home, ".rukie/skills/broken/SKILL.md");
     await Bun.write(broken, "---\nname: broken\ndescription: [invalid\n---\nBad YAML");
-    const result = await neant(["-p", "/review original prompt", "--output-format", format], {
+    const result = await rukie(["-p", "/review original prompt", "--output-format", format], {
       ...dirs,
       key: "sk-test",
     });
@@ -586,7 +586,7 @@ test("CLI grep uses bundled ripgrep when the child process PATH is empty", async
     { toolCalls: [{ name: "grep", arguments: { pattern: "hello (Bun|rg)", path: "file.txt" } }] },
   );
   await Bun.write(join(dirs.cwd, "file.txt"), "hello Bun\nhello rg\n");
-  const result = await neant(["-p", "search", "--output-format", "stream-json"], {
+  const result = await rukie(["-p", "search", "--output-format", "stream-json"], {
     ...dirs,
     key: "sk-test",
     env: { PATH: "" },
@@ -615,10 +615,10 @@ test("an unavailable bundled ripgrep returns a tool error while read and the Run
     },
   );
   await Bun.write(join(dirs.cwd, "file.txt"), "available text\n");
-  const result = await neant(["-p", "search and read", "--output-format", "stream-json"], {
+  const result = await rukie(["-p", "search and read", "--output-format", "stream-json"], {
     ...dirs,
     key: "sk-test",
-    env: { npm_config_arch: "neant-test-unsupported" },
+    env: { npm_config_arch: "rukie-test-unsupported" },
   });
   expect(result).toMatchObject({ exitCode: 0, stderr: "" });
   const events = parseEvents(result.stdout);
@@ -627,7 +627,7 @@ test("an unavailable bundled ripgrep returns a tool error while read and the Run
   );
   expect(grep).toMatchObject({ isError: true });
   expect(JSON.stringify(grep.result.content)).toContain("Bundled ripgrep is unavailable");
-  expect(JSON.stringify(grep.result.content)).toContain("neant-test-unsupported");
+  expect(JSON.stringify(grep.result.content)).toContain("rukie-test-unsupported");
   expect(JSON.stringify(grep.result.content)).not.toContain("brew install ripgrep");
   expect(
     events.find((event) => event.type === "tool_execution_end" && event.toolName === "read"),
@@ -647,7 +647,7 @@ test("an unavailable bundled ripgrep returns a tool error while read and the Run
 test("prints the model's reply using the configured custom provider", async () => {
   const { server, ...dirs } = await setup();
 
-  const result = await neant(["-p", "hi"], { ...dirs, key: "sk-test" });
+  const result = await rukie(["-p", "hi"], { ...dirs, key: "sk-test" });
 
   expect(result).toMatchObject({ exitCode: 0, stdout: "hello from fake\n" });
   expect(server.requests).toHaveLength(1);
@@ -658,7 +658,7 @@ test("prints the model's reply using the configured custom provider", async () =
 
 test("stream-json emits session metadata, verbatim pi events, and the Run result in order", async () => {
   const { server, ...dirs } = await setup();
-  const result = await neant(["-p", "hi", "--output-format", "stream-json"], {
+  const result = await rukie(["-p", "hi", "--output-format", "stream-json"], {
     ...dirs,
     key: "sk-test",
   });
@@ -775,7 +775,7 @@ test("stream-json emits session metadata, verbatim pi events, and the Run result
   ]);
   expect(server.requests).toHaveLength(1);
 
-  const resumed = await neant(
+  const resumed = await rukie(
     ["-p", "continue", "--resume", sessionId, "--output-format", "stream-json"],
     {
       ...dirs,
@@ -802,11 +802,11 @@ test("stream-json reports compaction start and end around a large tool result", 
     },
   );
   await Bun.write(join(dirs.cwd, "large.txt"), "tool output ".repeat(2500));
-  const settingsPath = join(dirs.home, ".neant/settings.json");
+  const settingsPath = join(dirs.home, ".rukie/settings.json");
   const settings = await Bun.file(settingsPath).json();
   settings.providers[0].models[0].contextWindow = 4000;
   await Bun.write(settingsPath, JSON.stringify(settings));
-  const result = await neant(["-p", "read the file", "--output-format", "stream-json"], {
+  const result = await rukie(["-p", "read the file", "--output-format", "stream-json"], {
     ...dirs,
     key: "sk-test",
   });
@@ -839,7 +839,7 @@ test("stream-json reports compaction start and end around a large tool result", 
 
 test("a failed stream-json Run emits a failure result and exits 1", async () => {
   const { server, ...dirs } = await setup({}, { error: "model unavailable" });
-  const result = await neant(["-p", "hi", "--output-format", "stream-json"], {
+  const result = await rukie(["-p", "hi", "--output-format", "stream-json"], {
     ...dirs,
     key: "sk-test",
   });
@@ -868,8 +868,8 @@ test.each(["text", "stream-json"])(
   "%s sends configuration warnings only to stderr",
   async (format) => {
     const { server, ...dirs } = await setup();
-    await Bun.write(join(dirs.cwd, ".neant/settings.json"), JSON.stringify({ providers: [] }));
-    const result = await neant(["-p", "hi", "--output-format", format], {
+    await Bun.write(join(dirs.cwd, ".rukie/settings.json"), JSON.stringify({ providers: [] }));
+    const result = await rukie(["-p", "hi", "--output-format", format], {
       ...dirs,
       key: "sk-test",
     });
@@ -888,10 +888,10 @@ test.each(["text", "stream-json"])(
 
 test("reads a piped prompt and completes normally", async () => {
   const { server, ...dirs } = await setup();
-  const result = await neant([], { ...dirs, key: "sk-test", input: "from pipe\n" });
+  const result = await rukie([], { ...dirs, key: "sk-test", input: "from pipe\n" });
   expect(result).toMatchObject({ exitCode: 0, stdout: "hello from fake\n", stderr: "" });
   expect(server.requests[0]!.body.messages).toEqual([
-    { role: "developer", content: expect.stringContaining("You are Neant") },
+    { role: "developer", content: expect.stringContaining("You are Rukie") },
     {
       role: "user",
       content: [{ type: "text", text: expect.stringContaining("<system-reminder>\ncwd:") }],
@@ -915,8 +915,8 @@ test("reads a piped prompt and completes normally", async () => {
 test("--resume continues the persisted session in another CLI process", async () => {
   const { server, ...dirs } = await setup();
   const opts = { ...dirs, key: "sk-test" };
-  expect((await neant(["-p", "first prompt"], opts)).exitCode).toBe(0);
-  const root = join(dirs.home, ".neant/sessions");
+  expect((await rukie(["-p", "first prompt"], opts)).exitCode).toBe(0);
+  const root = join(dirs.home, ".rukie/sessions");
   const [slug] = await readdir(root);
   const directory = join(root, slug!);
   const [file] = await readdir(directory);
@@ -924,7 +924,7 @@ test("--resume continues the persisted session in another CLI process", async ()
   const before = await Bun.file(path).text();
   const header = JSON.parse(before.split("\n")[0]!);
 
-  const result = await neant(["--resume", header.id, "-p", "second prompt"], opts);
+  const result = await rukie(["--resume", header.id, "-p", "second prompt"], opts);
 
   expect(result).toMatchObject({ exitCode: 0, stdout: "hello from fake\n", stderr: "" });
   expect(server.requests[1]!.body.messages).toEqual([
@@ -941,7 +941,7 @@ test("--resume continues the persisted session in another CLI process", async ()
 
 test("an unknown --resume id exits 1 with a clear error", async () => {
   const { server, ...dirs } = await setup();
-  const result = await neant(["--resume", "missing", "-p", "hi"], { ...dirs, key: "sk-test" });
+  const result = await rukie(["--resume", "missing", "-p", "hi"], { ...dirs, key: "sk-test" });
   expect(result.exitCode).toBe(1);
   expect(result.stderr).toContain("Session not found: missing");
   expect(server.requests).toHaveLength(0);
@@ -972,7 +972,7 @@ test.each(["prompt", "goal"])(
     expect(await output).toBe("");
     expect(await errors).toContain("Interrupted");
 
-    const root = join(dirs.home, ".neant/sessions");
+    const root = join(dirs.home, ".rukie/sessions");
     const [slug] = await readdir(root);
     const directory = join(root, slug!);
     const [file] = await readdir(directory);
@@ -985,7 +985,7 @@ test.each(["prompt", "goal"])(
       .filter((write) => write.kind === "entry" && write.type === "message")
       .map((write) => write.message);
     expect(entries).toMatchObject([
-      { role: "system", content: expect.stringContaining("You are Neant") },
+      { role: "system", content: expect.stringContaining("You are Rukie") },
       { role: "system-reminder", source: "environment" },
       { role: "system-reminder", source: "date" },
       { role: "system-reminder", source: "skills" },
@@ -1105,7 +1105,7 @@ test("SIGINT exits 130 while stdin is still open", async () => {
   const output = new Response(proc.stdout).text();
   const errors = new Response(proc.stderr).text();
   // Session creation is an observable readiness point before stdin acquisition.
-  const root = join(dirs.home, ".neant/sessions");
+  const root = join(dirs.home, ".rukie/sessions");
   const deadline = Date.now() + 2000;
   let ready = false;
   while (!ready && Date.now() < deadline) {
@@ -1127,7 +1127,7 @@ test("SIGINT exits 130 while stdin is still open", async () => {
 test("--model and --thinking override settings", async () => {
   const { server, ...dirs } = await setup({ model: "fake/missing" });
 
-  const result = await neant(["-p", "hi", "--model", "fake/m", "--thinking", "high"], {
+  const result = await rukie(["-p", "hi", "--model", "fake/m", "--thinking", "high"], {
     ...dirs,
     key: "sk-test",
   });
@@ -1139,11 +1139,11 @@ test("--model and --thinking override settings", async () => {
 test("no model configured exits 1 with a clear error", async () => {
   const { server, ...dirs } = await setup({ model: undefined });
 
-  const result = await neant(["-p", "hi"], { ...dirs, key: "sk-test" });
+  const result = await rukie(["-p", "hi"], { ...dirs, key: "sk-test" });
 
   expect(result.exitCode).toBe(1);
   expect(result.stderr).toContain("No model configured");
-  expect(result.stderr).toContain(join(dirs.home, ".neant/settings.json"));
+  expect(result.stderr).toContain(join(dirs.home, ".rukie/settings.json"));
   // The printed example is valid settings the user can paste as-is.
   const example = JSON.parse(
     result.stderr.slice(result.stderr.indexOf("{"), result.stderr.lastIndexOf("}") + 1),
@@ -1156,11 +1156,11 @@ test("no model configured exits 1 with a clear error", async () => {
 test("apiKeyEnv never falls back to sending its value as a literal key", async () => {
   const dirs = await setup();
   const server = dirs.server;
-  const settings = await Bun.file(join(dirs.home, ".neant/settings.json")).json();
+  const settings = await Bun.file(join(dirs.home, ".rukie/settings.json")).json();
   settings.providers[0].apiKeyEnv = "sk-literal-1";
-  await Bun.write(join(dirs.home, ".neant/settings.json"), JSON.stringify(settings));
+  await Bun.write(join(dirs.home, ".rukie/settings.json"), JSON.stringify(settings));
 
-  const result = await neant(["-p", "hi"], dirs);
+  const result = await rukie(["-p", "hi"], dirs);
 
   expect(result.exitCode).toBe(1);
   expect(result.stderr).toContain("No API key");
@@ -1170,7 +1170,7 @@ test("apiKeyEnv never falls back to sending its value as a literal key", async (
 test("missing API key exits 1 naming the env var", async () => {
   const { server, ...dirs } = await setup();
 
-  const result = await neant(["-p", "hi"], dirs);
+  const result = await rukie(["-p", "hi"], dirs);
 
   expect(result.exitCode).toBe(1);
   expect(result.stderr).toContain("FAKE_API_KEY");
@@ -1180,7 +1180,7 @@ test("missing API key exits 1 naming the env var", async () => {
 test("built-in providers resolve without settings and need their standard key", async () => {
   const dirs = await setup();
 
-  const result = await neant(["-p", "hi", "--model", "openai/gpt-4.1"], dirs);
+  const result = await rukie(["-p", "hi", "--model", "openai/gpt-4.1"], dirs);
 
   expect(result.exitCode).toBe(1);
   expect(result.stderr).toContain('No API key for provider "openai"');
@@ -1189,10 +1189,10 @@ test("built-in providers resolve without settings and need their standard key", 
 test("invalid settings exit 1 naming the file and field", async () => {
   const dirs = await setup({ thinking: "extreme" });
 
-  const result = await neant(["-p", "hi"], { ...dirs, key: "sk-test" });
+  const result = await rukie(["-p", "hi"], { ...dirs, key: "sk-test" });
 
   expect(result.exitCode).toBe(1);
-  expect(result.stderr).toContain(join(dirs.home, ".neant/settings.json"));
+  expect(result.stderr).toContain(join(dirs.home, ".rukie/settings.json"));
   expect(result.stderr).toContain("/thinking");
 });
 
@@ -1207,7 +1207,7 @@ test.each([
 ])("bad arguments %j exit 2", async (args) => {
   const { server, ...dirs } = await setup();
 
-  const result = await neant(args, { ...dirs, key: "sk-test" });
+  const result = await rukie(args, { ...dirs, key: "sk-test" });
 
   expect(result.exitCode).toBe(2);
   expect(result.stderr).not.toBe("");
@@ -1228,7 +1228,7 @@ test.each(["ask", "deny"])(
         ],
       },
     );
-    const result = await neant(
+    const result = await rukie(
       ["--permission-mode", "full-access", "-p", "try", "--output-format", "stream-json"],
       { ...dirs, key: "sk-test" },
     );
@@ -1260,7 +1260,7 @@ test.each(["text", "stream-json"])(
       },
     );
     expect(server.requests).toHaveLength(0);
-    const result = await neant(["-p", "run", "--output-format", format], {
+    const result = await rukie(["-p", "run", "--output-format", format], {
       ...dirs,
       key: "sk-test",
     });

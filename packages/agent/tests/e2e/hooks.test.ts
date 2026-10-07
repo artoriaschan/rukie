@@ -3,7 +3,7 @@ import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { join, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createSession, type SessionEvent } from "../../src/index.ts";
-import type { HookHandler } from "@neant/shared";
+import type { HookHandler } from "@rukie/shared";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
@@ -168,7 +168,7 @@ test("command hooks read the protocol and deny tools before execution", async ()
   dirs = await tempDirs();
   await Bun.write(
     join(dirs.cwd, "hook.sh"),
-    'cat > input.json\nprintf "%s" "$NEANT_PROJECT_DIR" > project-root\necho protected >&2\nexit 2\n',
+    'cat > input.json\nprintf "%s" "$RUKIE_PROJECT_DIR" > project-root\necho protected >&2\nexit 2\n',
   );
   const fake = fakeModel([
     fauxAssistantMessage(
@@ -500,12 +500,12 @@ test("inherited hooks see child identity and deny subagent tools", async () => {
 test("MCP and skill tools pass through PreToolUse hooks", async () => {
   dirs = await tempDirs();
   await Bun.write(
-    join(dirs.cwd, ".neant/skills/review/SKILL.md"),
+    join(dirs.cwd, ".rukie/skills/review/SKILL.md"),
     "---\nname: review\ndescription: Review\n---\nSensitive instructions",
   );
   await Bun.write(join(dirs.homeDir, "manifest.json"), JSON.stringify({ tools: ["echo"] }));
   await Bun.write(
-    join(dirs.homeDir, ".neant/mcp.json"),
+    join(dirs.homeDir, ".rukie/mcp.json"),
     JSON.stringify({
       mcpServers: {
         local: {

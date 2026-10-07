@@ -11,12 +11,12 @@ import { Markdown } from "../markdown";
 import { toolLinePreview, previewSyntax } from "./line-preview";
 import { unifiedDiffLines } from "../../../view/transcript/diff-lines";
 import { useToolWindowNavigation, type WindowMove } from "./window-navigation";
-import type { ToolCallView, ToolResultView } from "@neant/shared";
-import { fmtDuration } from "@neant/i18n";
+import type { ToolCallView, ToolResultView } from "@rukie/shared";
+import { fmtDuration } from "@rukie/i18n";
 import { useId, useState, useMemo, useLayoutEffect, useRef } from "react";
 import type { PresentedImage } from "../../../view/transcript/images";
 import { ImageGallery } from "../image-gallery";
-import type { Locale } from "@neant/i18n";
+import type { Locale } from "@rukie/i18n";
 import { createTuiI18n } from "../../../view/i18n";
 import {
   SplitDiffView,

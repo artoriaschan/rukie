@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { createSession } from "@neant/agent";
+import { createSession } from "@rukie/agent";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { withAuxiliaryRequests } from "../../helpers/auxiliary-model";
 import { startWithClock as start } from "../../helpers/clock-app";

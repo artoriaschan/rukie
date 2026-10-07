@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import type { SessionOptions } from "@neant/agent";
+import type { SessionOptions } from "@rukie/agent";
 import { start } from "../helpers/app";
 
 function clickText(app: Awaited<ReturnType<typeof start>>, label: string, occurrence = 0) {
@@ -213,7 +213,7 @@ test("edit headers expose their path as an underlined action segment", async () 
 test("resumed card paths retain actions and report unavailable clipboard", async () => {
   const { createFauxCore, fauxAssistantMessage, fauxToolCall } =
     await import("@earendil-works/pi-ai");
-  const { createSession } = await import("@neant/agent");
+  const { createSession } = await import("@rukie/agent");
   const { withAuxiliaryRequests } = await import("../helpers/auxiliary-model");
   const argv: string[] = [];
   const path = "stored.txt";

@@ -24,7 +24,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 import { useState } from "react";
-import type { Locale } from "@neant/i18n";
+import type { Locale } from "@rukie/i18n";
 import {
   Box,
   figures,

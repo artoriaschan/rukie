@@ -1,6 +1,6 @@
 # Hooks
 
-在 `~/.neant/settings.json` 中配置用户 hooks，在项目的 `.neant/settings.json` 中配置项目 hooks：
+在 `~/.rukie/settings.json` 中配置用户 hooks，在项目的 `.rukie/settings.json` 中配置项目 hooks：
 
 ```json
 {
@@ -8,7 +8,7 @@
     "PreToolUse": [
       {
         "matcher": "bash",
-        "hooks": [{ "type": "command", "command": "sh .neant/check-command.sh", "timeout": 10 }]
+        "hooks": [{ "type": "command", "command": "sh .rukie/check-command.sh", "timeout": 10 }]
       }
     ]
   }
@@ -21,7 +21,7 @@
 
 单个 handler 可写 `if: "bash(git push *)"`，复用 Permission Rule 的复合命令拆段和路径规范化：任一段命中就运行 hook。`if` 只用于五种工具类事件，写在其他事件上会加载告警且永不执行；非法规则加载时报错。去重键包含 `if`，不同条件的同一命令可以各运行一次。
 
-command 默认经 `sh -c` 执行；`shell: "bash"` 改用 Bash。提供 `args` 时直接执行 `command` 和参数列表，避免 shell 展开。工作目录为 session 的 cwd，环境包含 `NEANT_PROJECT_DIR`。脚本从 stdin 读取 JSON，输入后 stdin 关闭：
+command 默认经 `sh -c` 执行；`shell: "bash"` 改用 Bash。提供 `args` 时直接执行 `command` 和参数列表，避免 shell 展开。工作目录为 session 的 cwd，环境包含 `RUKIE_PROJECT_DIR`。脚本从 stdin 读取 JSON，输入后 stdin 关闭：
 
 ```json
 {
@@ -36,7 +36,7 @@ command 默认经 `sh -c` 执行；`shell: "bash"` 改用 Bash。提供 `args` �
 }
 ```
 
-子代理工具调用另有 `agent_id` 和 `agent_type`。工具名使用 Neant 命名：`bash`、`edit`、`skill`、`mcp__<server>__<tool>`。
+子代理工具调用另有 `agent_id` 和 `agent_type`。工具名使用 Rukie 命名：`bash`、`edit`、`skill`、`mcp__<server>__<tool>`。
 
 脚本退出码 0 时解析 stdout JSON：
 
@@ -137,7 +137,7 @@ Notification 输入含 `message`、`title`、`notification_type`，类型为 per
 
 ## 子代理类型与 session 收尾
 
-`agents/*.md` frontmatter 可声明相同格式的 `hooks`；仅在该子代理中与父配置合并，`Stop` 自动改为 `SubagentStop`。用户目录中的类型 hooks 可加载；项目 `.neant` / `.claude` / `.agents` 中的类型 hooks 同样受 Trusted Project 限制，未信任时只丢弃 hooks，保留类型其他定义并告警。
+`agents/*.md` frontmatter 可声明相同格式的 `hooks`；仅在该子代理中与父配置合并，`Stop` 自动改为 `SubagentStop`。用户目录中的类型 hooks 可加载；项目 `.rukie` / `.claude` / `.agents` 中的类型 hooks 同样受 Trusted Project 限制，未信任时只丢弃 hooks，保留类型其他定义并告警。
 
 调用 `await session.dispose(reason)` 统一收尾：中止当前 run 与后台 hooks、触发 SessionEnd、关闭 MCP，并清理子代理 session。默认 reason 为 exit，也可用 other；调用幂等。CLI finally 与 TUI 退出已接入。
 

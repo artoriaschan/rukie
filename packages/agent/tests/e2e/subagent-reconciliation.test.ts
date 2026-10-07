@@ -399,7 +399,7 @@ test("native fork inheritance cannot impersonate the fork's own child Run facts"
   const { NodeExecutionEnv } = await import("@earendil-works/pi-agent-core/harness/env/nodejs");
   const repo = new JsonlSessionRepo({
     fileSystem: new NodeExecutionEnv({ cwd: dirs.cwd }),
-    sessionsRoot: join(dirs.homeDir, ".neant/sessions"),
+    sessionsRoot: join(dirs.homeDir, ".rukie/sessions"),
   });
   const native = (await repo.list({ cwd: dirs.cwd }, BACKGROUND_CONTEXT)).find(
     (row) => row.id === fixture.parentId,

@@ -11,7 +11,7 @@ afterEach(async () => {
 });
 
 async function sourceTree(files: Record<string, string>): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "neant-han-scan-"));
+  const root = await mkdtemp(join(tmpdir(), "rukie-han-scan-"));
   fixtures.push(root);
   for (const directory of [
     "packages/coding-agent/src/tui",

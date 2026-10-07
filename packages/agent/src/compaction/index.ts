@@ -17,9 +17,9 @@ import {
   type Api,
   type Model,
 } from "@earendil-works/pi-ai";
-import { createUserVisibleError } from "@neant/shared";
+import { createUserVisibleError } from "@rukie/shared";
 import { convertToLlm } from "../reminders/index.ts";
-import { isUnknownToolOutcome } from "@neant/shared";
+import { isUnknownToolOutcome } from "@rukie/shared";
 
 /** Replay system deltas and project the latest native compaction plus its suffix. */
 export function restoreContext(entries: Entry[]): AgentMessage[] {
@@ -146,7 +146,7 @@ export async function compactTurn(options: {
   const compactableEntries = hasPendingRequest ? entries.slice(0, latestUserIndex) : entries;
   const preparation = prepareCompaction(
     compactableEntries.map((entry): Entry => {
-      // pi does not know Neant's custom reminder role. Preserve its model-visible text.
+      // pi does not know Rukie's custom reminder role. Preserve its model-visible text.
       if (entry.type === "message" && entry.message.role === "system-reminder") {
         return { ...entry, message: convertToLlm([entry.message])[0]! };
       }

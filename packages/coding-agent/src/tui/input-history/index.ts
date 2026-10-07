@@ -34,7 +34,7 @@ export async function createInputHistory(cwd: string, homeDir = homedir()) {
   const key = createHash("sha256")
     .update(process.platform === "win32" ? project.toLowerCase() : project)
     .digest("hex");
-  const directory = join(homeDir, ".neant/input-history");
+  const directory = join(homeDir, ".rukie/input-history");
   const file = join(directory, `${key}.jsonl`);
   const lock = `${file}.lock`;
   const entries = await load(file);

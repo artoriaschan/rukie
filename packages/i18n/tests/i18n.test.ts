@@ -2,7 +2,7 @@ import {
   createUserVisibleError,
   type UserVisibleErrorCode,
   type UserVisibleErrorParams,
-} from "@neant/shared";
+} from "@rukie/shared";
 import { expect, test } from "bun:test";
 import {
   common,
@@ -121,15 +121,15 @@ test("common and app translations compose and interpolate literal parameter valu
 test.each([
   [
     "zh",
-    "未配置模型。请在 /home/test/.neant/settings.json 中设置 model，或传入 --model provider/id。",
+    "未配置模型。请在 /home/test/.rukie/settings.json 中设置 model，或传入 --model provider/id。",
   ],
   [
     "en",
-    'No model configured. Set "model" in /home/test/.neant/settings.json or pass --model provider/id.',
+    'No model configured. Set "model" in /home/test/.rukie/settings.json or pass --model provider/id.',
   ],
 ] as const)("%s common errors interpolate the settings path", (locale, expected) => {
   const t = createI18n(locale, { common, app: { zh: {}, en: {} } });
-  const message = t("error.no-model", { settings: "/home/test/.neant/settings.json" });
+  const message = t("error.no-model", { settings: "/home/test/.rukie/settings.json" });
   expect(message).toStartWith(expected);
   expect(message).toContain("ANTHROPIC_API_KEY");
   expect(message).toContain('"apiKeyEnv": "LOCAL_API_KEY"');

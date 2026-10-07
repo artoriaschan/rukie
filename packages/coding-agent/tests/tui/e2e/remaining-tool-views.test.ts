@@ -65,7 +65,7 @@ test("MCP identity, path lists and goal summaries render as their declared views
       const manifest = join(root, "manifest.json");
       await Bun.write(manifest, JSON.stringify({ tools: ["echo"] }));
       await Bun.write(
-        join(root, ".neant", "mcp.json"),
+        join(root, ".rukie", "mcp.json"),
         JSON.stringify({
           mcpServers: {
             local: {

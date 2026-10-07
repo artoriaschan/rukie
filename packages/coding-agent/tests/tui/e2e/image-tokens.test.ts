@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { start } from "../helpers/app";
-import { createSession } from "@neant/agent";
+import { createSession } from "@rukie/agent";
 import { createFauxCore } from "@earendil-works/pi-ai";
 import { writeFile } from "node:fs/promises";
 
@@ -312,15 +312,15 @@ test("deleting an image detaches it permanently while numbers keep increasing an
 });
 
 test("switching a model clears staged images and resets numbering", async () => {
-  const oldKey = process.env.NEANT_TOKEN_MODEL_KEY;
-  process.env.NEANT_TOKEN_MODEL_KEY = "test-key";
+  const oldKey = process.env.RUKIE_TOKEN_MODEL_KEY;
+  process.env.RUKIE_TOKEN_MODEL_KEY = "test-key";
   const app = await start([], {
     env: { LANG: "en_US.UTF-8" },
     session: { model: undefined },
     prepare: async (root) => {
       await Bun.write(`${root}/shot.png`, Buffer.from(png, "base64"));
       await Bun.write(
-        `${root}/.neant/settings.json`,
+        `${root}/.rukie/settings.json`,
         JSON.stringify({
           model: "token-model/first",
           providers: [
@@ -328,7 +328,7 @@ test("switching a model clears staged images and resets numbering", async () => 
               id: "token-model",
               api: "openai-completions",
               baseUrl: "http://localhost:1/v1",
-              apiKeyEnv: "NEANT_TOKEN_MODEL_KEY",
+              apiKeyEnv: "RUKIE_TOKEN_MODEL_KEY",
               models: [
                 { id: "first", input: ["text", "image"] },
                 { id: "second", input: ["text", "image"] },
@@ -360,8 +360,8 @@ test("switching a model clears staged images and resets numbering", async () => 
     await app.waitFor(() => draft(app) === "❯ [Image #1]");
   } finally {
     await app.cleanup();
-    if (oldKey === undefined) delete process.env.NEANT_TOKEN_MODEL_KEY;
-    else process.env.NEANT_TOKEN_MODEL_KEY = oldKey;
+    if (oldKey === undefined) delete process.env.RUKIE_TOKEN_MODEL_KEY;
+    else process.env.RUKIE_TOKEN_MODEL_KEY = oldKey;
   }
 });
 

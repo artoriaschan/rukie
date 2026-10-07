@@ -30,7 +30,7 @@ test("web_fetch returns public text through the validated IP while preserving th
     markdown: "Public documentation",
   });
   expect(received[0]!.get("host")).toBe(new URL(base).host);
-  expect(received[0]!.get("user-agent")).toBe("Neant/0.0.0");
+  expect(received[0]!.get("user-agent")).toBe("Rukie/0.0.0");
   expect(received[0]!.get("accept")).toBe("text/markdown, text/html;q=0.9, */*;q=0.8");
   expect(received[0]!.get("cookie")).toBeNull();
   expect(received[0]!.get("authorization")).toBeNull();

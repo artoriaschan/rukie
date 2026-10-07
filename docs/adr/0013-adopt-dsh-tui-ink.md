@@ -12,11 +12,11 @@ Status: proposed
 - dsh-TUI 内部依赖（`utils/*`、`bootstrap/state`、`handoffAck`、`dsh-adapter/sharp`）以最小桩替代，改动逐项记录在 `ink/README.md`。
 - `ink/` 整体豁免 Oxlint 与 Knip，与此前 vendored Yoga 的处理一致。
 - 新增的约 30 个 npm 依赖按精确版本固定，登记在 `docs/tech-stack.md`。
-- 保留 Neant 的 design-system，改接 dsh ink 的原语；不引入 dsh-TUI 的主题与偏好体系。
+- 保留 Rukie 的 design-system，改接 dsh ink 的原语；不引入 dsh-TUI 的主题与偏好体系。
 
 保持 proposed，直到 spike 证明它能在 Bun 下运行、并能注入 xterm headless 终端测试。spike 通过后本 ADR 改为 accepted，ADR-0005 标记为 superseded。
 
 ## Considered Options
 
 - 维持 ADR-0005，按需对照 dsh-TUI 在自研渲染器上补齐行为：依赖少、来源清楚，但 selection、keypress 等能力需要逐项重写。
-- 搬入后改写为 Neant 代码规范：33k 行的改写成本高，之后无法再与上游同步。
+- 搬入后改写为 Rukie 代码规范：33k 行的改写成本高，之后无法再与上游同步。

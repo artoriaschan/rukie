@@ -1,6 +1,6 @@
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import { normalizeContext, type Api, type Model } from "@earendil-works/pi-ai";
-import { createUserVisibleError } from "@neant/shared";
+import { createUserVisibleError } from "@rukie/shared";
 import type { ToolStateDefinition } from "../tool-state/index.ts";
 
 export type TitleSource = "prompt" | "model" | "user";

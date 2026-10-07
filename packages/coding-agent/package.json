@@ -1,15 +1,15 @@
 {
-  "name": "@neant/coding-agent",
+  "name": "@rukie/coding-agent",
   "private": true,
   "bin": {
-    "neant": "./src/main.ts"
+    "rukie": "./src/main.ts"
   },
   "type": "module",
   "exports": "./src/index.ts",
   "dependencies": {
-    "@neant/agent": "workspace:*",
-    "@neant/i18n": "workspace:*",
-    "@neant/shared": "workspace:*",
+    "@rukie/agent": "workspace:*",
+    "@rukie/i18n": "workspace:*",
+    "@rukie/shared": "workspace:*",
     "diff": "8.0.4",
     "highlight.js": "11.12.0",
     "lovely-mermaid": "0.3.3",
