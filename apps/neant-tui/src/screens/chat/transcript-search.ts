@@ -117,11 +117,10 @@ export function transcriptMatches(
     const anchor = entry.anchorId ?? `row-${index}`;
     switch (entry.type) {
       case "tool":
-        tool(entry, entry.id ?? `row-${index}`);
         if (entry.jobId && state.jobs[entry.jobId]) {
           const job = state.jobs[entry.jobId]!;
-          text(jobCardRows(job, job.output, columns, locale).join("\n"), `job-${job.id}`);
-        }
+          text(jobCardRows(job, job.output, columns, locale, true).join("\n"), `job-${job.id}`);
+        } else tool(entry, entry.id ?? `row-${index}`);
         break;
       case "message":
         text(

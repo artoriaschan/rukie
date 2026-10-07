@@ -216,7 +216,6 @@ test("card clicks focus exact jobs and expanded promoted details show bounded ou
     const row = app.screen().findIndex((line) => line.includes("● bash-2"));
     app.stdin.write(`\x1b[<0;4;${row + 1}M\x1b[<0;4;${row + 1}m`);
     await app.waitFor(() => screen().includes("❯ bash-2"));
-    app.stdin.write("e");
     await app.waitFor(
       () =>
         screen().includes("Started") &&
@@ -243,7 +242,6 @@ test("card clicks focus exact jobs and expanded promoted details show bounded ou
     const first = app.screen().findIndex((line) => line.includes("✓ bash-1"));
     app.stdin.write(`\x1b[<0;4;${first + 1}M\x1b[<0;4;${first + 1}m`);
     await app.waitFor(() => screen().includes("❯ bash-1"));
-    app.stdin.write("e");
     await app.waitFor(() => screen().includes("Started") && screen().includes("first"));
     expect(screen()).not.toContain("Promoted ·");
     app.stdin.write("\x1b");
@@ -388,7 +386,6 @@ test("Chinese command completion and single job details fit 40×12 through resiz
         },
       ],
     });
-    app.stdin.write("e");
     await app.waitFor(() => screen().includes("启动"));
     app.stdin.write("\x1b[6~");
     await app.waitFor(() => screen().includes("SAFE-TAIL"));
@@ -483,6 +480,38 @@ test("a narrow jobs list starts at the focused first job and follows keyboard se
     expect(app.screen().at(-1)).toContain("Esc");
     app.stdin.write("\x1b");
     await app.waitFor(() => screen().includes("● bash-10 · running"));
+    expect(app.stderr()).toBe("");
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("stopped job details disclose the real terminating signal", async () => {
+  const app = await start(["--permission-mode", "full-access", "launch"], {
+    columns: 100,
+    rows: 28,
+    env: { LANG: "en_US.UTF-8" },
+  });
+  const screen = () => app.screen().join("\n");
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("bash", {
+      command: "printf armed; while :; do sleep 0.01; done",
+      description: "Signal fixture",
+      run_in_background: true,
+    });
+    await app.waitFor(() => app.calls.length === 2 && screen().includes("│ armed"));
+    app.stdin.write("/jobs\re");
+    await app.waitFor(() => screen().includes("Output tail"));
+    app.stdin.write("kk");
+    await app.waitFor(() => screen().includes("bash-1 · stopped"));
+    expect(screen()).toContain("signal: SIGTERM");
+    expect(screen()).toContain("1 stopped");
+    app.stdin.write("\x1b");
+    app.calls[1]!.finish();
+    await app.waitFor(() => app.calls.length === 3 || !app.isWorking());
+    if (app.calls.length === 3) app.calls[2]!.finish();
+    await app.waitFor(() => !app.isWorking());
     expect(app.stderr()).toBe("");
   } finally {
     await app.cleanup();

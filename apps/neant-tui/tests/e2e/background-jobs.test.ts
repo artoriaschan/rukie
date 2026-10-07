@@ -1,5 +1,5 @@
 import { startWithClock } from "../helpers/clock-app";
-import { expect, test } from "bun:test";
+import { expect, jest, test } from "bun:test";
 import { join } from "node:path";
 import { start } from "../helpers/app";
 import { withAuxiliaryRequests } from "../helpers/auxiliary-model";
@@ -123,7 +123,7 @@ test("a narrow folded group keeps failure visible and opens with its header", as
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.tools(
-      [0, 9].map((code) => ({
+      [0, 9, 0].map((code) => ({
         name: "bash",
         args: {
           command: `while [ ! -e go ]; do sleep 0.01; done; exit ${code}`,
@@ -132,19 +132,22 @@ test("a narrow folded group keeps failure visible and opens with its header", as
         },
       })),
     );
-    await app.waitFor(() => app.calls.length === 2 && screen().includes("后台任务 ×2"));
+    await app.waitFor(() => app.calls.length === 2 && screen().includes("后台任务 ×3"));
     app.calls[1]!.tools(
-      ["bash-1", "bash-2"].map((job_id) => ({ name: "job_output", args: { job_id, wait: true } })),
+      ["bash-1", "bash-2", "bash-3"].map((job_id) => ({
+        name: "job_output",
+        args: { job_id, wait: true },
+      })),
     );
     await app.waitFor(() => screen().includes("任务输出"));
     await Bun.write(join(app.root, "go"), "");
-    await app.waitFor(() => app.calls.length === 3 && screen().includes("已折叠 2 个后台任务"));
+    await app.waitFor(() => app.calls.length === 3 && screen().includes("已折叠 3 个后台任务"));
     app.calls[2]!.finish();
     await app.waitFor(() => !app.isWorking());
-    const header = app.screen().findIndex((row) => row.includes("已折叠 2 个后台任务"));
+    const header = app.screen().findIndex((row) => row.includes("已折叠 3 个后台任务"));
     const row = app.screen()[header]!;
     expect(row).toContain("1 失败");
-    expect(row).toContain("1 已完成");
+    expect(row).toContain("2 已完成");
     const failedColumn = Bun.stringWidth(row.slice(0, row.indexOf("失败")));
     expect(app.terminal.buffer.active.getLine(header)!.getCell(failedColumn)!.getFgColor()).toBe(
       Number.parseInt(dark.error.slice(1), 16),
@@ -314,7 +317,7 @@ test("consecutive jobs share transcript expansion and Ctrl+O respects an active 
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.tools(
-      ["First watcher", "Second watcher"].map((description) => ({
+      ["First watcher", "Second watcher", "Third watcher"].map((description) => ({
         name: "bash",
         args: {
           command: "printf 'ready\\n'; while [ ! -e go ]; do sleep 0.01; done",
@@ -323,11 +326,11 @@ test("consecutive jobs share transcript expansion and Ctrl+O respects an active 
         },
       })),
     );
-    await app.waitFor(() => app.calls.length === 2 && screen().includes("Background jobs ×2"));
+    await app.waitFor(() => app.calls.length === 2 && screen().includes("Background jobs ×3"));
     expect(screen()).toContain("● bash-1");
     expect(screen()).toContain("● bash-2");
-    expect(app.screen().filter((row) => row.includes("❯ printf"))).toHaveLength(2);
-    expect(app.screen().at(-2)).toContain("● 2");
+    expect(app.screen().filter((row) => row.includes("❯ printf"))).toHaveLength(3);
+    expect(app.screen().at(-2)).toContain("● 3");
     app.calls[1]!.tool("ask_user_question", {
       questions: [
         {
@@ -343,23 +346,25 @@ test("consecutive jobs share transcript expansion and Ctrl+O respects an active 
     });
     await app.waitFor(() => screen().includes("Choose fixture"));
     await Bun.write(join(app.root, "go"), "");
-    await app.waitFor(() => screen().includes("2 background jobs folded"));
+    await app.waitFor(() => screen().includes("3 background jobs folded"));
     app.stdin.write("\x0f");
     await app.flush();
-    expect(screen()).toContain("2 background jobs folded");
+    expect(screen()).toContain("3 background jobs folded");
     expect(screen()).not.toContain("✓ bash-1");
     app.stdin.write("\r");
     await app.waitFor(() => app.calls.length === 3);
     app.calls[2]!.finish();
     await app.waitFor(() => app.calls.length === 4);
     app.calls[3]!.finish();
+    await app.waitFor(() => app.calls.length === 5 || !app.isWorking());
+    if (app.calls.length === 5) app.calls[4]!.finish();
     await app.waitFor(() => !app.isWorking());
     app.stdin.write("keep draft\x0f");
     await app.waitFor(() => screen().includes("✓ bash-1") && screen().includes("✓ bash-2"));
     expect(screen()).toContain("keep draft");
     expect(screen()).not.toContain("background jobs folded");
     app.stdin.write("\x0f");
-    await app.waitFor(() => screen().includes("2 background jobs folded"));
+    await app.waitFor(() => screen().includes("3 background jobs folded"));
     expect(screen()).not.toContain("✓ bash-1");
     expect(app.stderr()).toBe("");
   } finally {
@@ -440,3 +445,169 @@ test("a failed job notice stays one row at 40×12 and expires without removing o
     await app.cleanup();
   }
 }, 15000);
+
+test("job command toggles independently and its title opens focused details", async () => {
+  const app = await start(["--permission-mode", "full-access", "launch"], {
+    columns: 100,
+    rows: 32,
+    env: { LANG: "en_US.UTF-8" },
+  });
+  const screen = () => app.screen().join("\n");
+  const clickRow = (text: string) => {
+    const row = app.screen().findIndex((line) => line.includes(text));
+    expect(row).toBeGreaterThanOrEqual(0);
+    app.stdin.write(`\x1b[<0;4;${row + 1}M\x1b[<0;4;${row + 1}m`);
+  };
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("bash", {
+      command: "printf ready\\n\n# COMMAND-DETAIL\nwhile [ ! -e go ]; do sleep 0.01; done",
+      description: "Independent command",
+      run_in_background: true,
+    });
+    await app.waitFor(() => app.calls.length === 2 && screen().includes("● bash-1"));
+    const commandRow = app.screen().find((line) => line.trimStart().startsWith("❯ printf"));
+    expect(commandRow).not.toContain("COMMAND-DETAIL");
+    clickRow("❯ printf");
+    await app.waitFor(() => screen().includes("COMMAND-DETAIL"));
+    expect(screen()).not.toContain("Output tail");
+    clickRow("COMMAND-DETAIL");
+    await app.waitFor(
+      () => !app.screen().some((line) => line.trimStart().startsWith("# COMMAND-DETAIL")),
+    );
+    const header = app.screen().findIndex((line) => line.includes("● bash-1"));
+    app.stdin.write(`\x1b[<0;95;${header + 1}M\x1b[<0;95;${header + 1}m`);
+    await app.flush();
+    expect(screen()).not.toContain("Output tail");
+    clickRow("● bash-1");
+    await app.waitFor(() => screen().includes("❯ bash-1") && screen().includes("Started"));
+    expect(screen()).toContain("Output tail");
+    app.stdin.write("\x1b");
+    await app.waitFor(() => screen().includes("● bash-1"));
+    app.calls[1]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    expect(app.stderr()).toBe("");
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("two settled jobs stay open and group folding leaves a separate job unchanged", async () => {
+  const app = await start(["--permission-mode", "full-access", "launch"], {
+    columns: 100,
+    rows: 40,
+    env: { LANG: "en_US.UTF-8" },
+  });
+  const screen = () => app.screen().join("\n");
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    // File gates synchronize real child processes; the parent clock cannot advance shell timers.
+    app.calls[0]!.tools(
+      [0, 7].map((code) => ({
+        name: "bash",
+        args: {
+          command: `while [ ! -e pair ]; do sleep 0.01; done; exit ${code}`,
+          description: `Pair ${code}`,
+          run_in_background: true,
+        },
+      })),
+    );
+    await app.waitFor(() => app.calls.length === 2 && screen().includes("Background jobs ×2"));
+    app.calls[1]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    app.stdin.write("separate launch\r");
+    await app.waitFor(() => app.calls.length === 3);
+    app.calls[2]!.tool("bash", {
+      command: "printf separate-ready; while [ ! -e separate ]; do sleep 0.01; done",
+      description: "Separate job",
+      run_in_background: true,
+    });
+    await app.waitFor(() => app.calls.length === 4 && screen().includes("● bash-3"));
+    app.calls[3]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    await Bun.write(join(app.root, "pair"), "");
+    await app.waitFor(() => screen().includes("✓ bash-1") && screen().includes("✗ bash-2"));
+    expect(screen()).not.toContain("background jobs folded");
+    expect(screen()).toContain("╭");
+    expect(screen()).toContain("╰");
+    const header = app.screen().findIndex((line) => line.includes("Background jobs ×2"));
+    app.stdin.write(`\x1b[<0;2;${header + 1}M\x1b[<0;2;${header + 1}m`);
+    await app.waitFor(() => screen().includes("2 background jobs folded"));
+    expect(screen()).toContain("1 failed");
+    expect(screen()).toContain("● bash-3");
+    expect(screen()).not.toContain("✗ bash-2");
+    app.stdin.write("\x0f");
+    await app.waitFor(() => screen().includes("✗ bash-2"));
+    expect(screen()).toContain("● bash-3");
+    app.resize(80, 32);
+    await app.waitFor(() => app.screen().every((line) => Bun.stringWidth(line) <= 80));
+    expect(app.stderr()).toBe("");
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("an automatically folded group keeps stopped and failed counts visible", async () => {
+  const app = await start(["--permission-mode", "full-access", "launch"], {
+    columns: 80,
+    rows: 32,
+    env: { LANG: "en_US.UTF-8" },
+  });
+  const screen = () => app.screen().join("\n");
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tools(
+      [0, 9, 0].map((code, index) => ({
+        name: "bash",
+        args: {
+          command: `printf armed-${index}; while [ ! -e go ]; do sleep 0.01; done; exit ${code}`,
+          description: `Mixed outcome ${index}`,
+          run_in_background: true,
+        },
+      })),
+    );
+    await app.waitFor(() => app.calls.length === 2 && screen().includes("│ armed-2"));
+    app.calls[1]!.tool("job_kill", { job_id: "bash-3" });
+    await app.waitFor(() => app.calls.length === 3 && screen().includes("✗ bash-3 · stopped"));
+    await Bun.write(join(app.root, "go"), "");
+    await app.waitFor(() => screen().includes("3 background jobs folded"));
+    const header = app.screen().find((line) => line.includes("3 background jobs folded"))!;
+    expect(header).toContain("1 failed");
+    expect(header).toContain("1 stopped");
+    expect(header).toContain("1 completed");
+    expect(screen()).not.toContain("✗ bash-3");
+    expect(app.stderr()).toBe("");
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("job elapsed time advances on the display clock and freezes after settlement", async () => {
+  const app = await startWithClock(["--permission-mode", "full-access", "launch"], {
+    columns: 80,
+    rows: 28,
+    env: { LANG: "en_US.UTF-8" },
+  });
+  const card = () => app.screen().find((line) => line.includes("bash-1 ·"));
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("bash", {
+      command: "printf armed; while :; do sleep 0.01; done",
+      description: "Display clock",
+      run_in_background: true,
+    });
+    await app.waitFor(() => app.calls.length === 2 && card()?.includes("running") === true);
+    const before = card();
+    jest.advanceTimersByTime(1000);
+    await app.waitFor(() => card() !== before);
+    app.calls[1]!.tool("job_kill", { job_id: "bash-1" });
+    await app.waitFor(() => app.calls.length === 3 && card()?.includes("stopped") === true);
+    const settled = card();
+    jest.advanceTimersByTime(2000);
+    await app.flush();
+    expect(card()).toBe(settled);
+    expect(app.stderr()).toBe("");
+  } finally {
+    await app.cleanup();
+  }
+});
