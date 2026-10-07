@@ -1,6 +1,6 @@
 # 02: durable 运行基座、目标依赖与公开接口
 
-Status: claimed
+Status: resolved
 Blocked by: 01
 
 ## What to build
@@ -24,7 +24,7 @@ Blocked by: 01
 
 ## Verification
 
-2026-10-08 实施中，尚未关闭。生产路径已使用原生 Harness、Conversation、Models、ToolRegistration、Submission 和 committed 观察；旧 Agent loop 与私有 Session Store 消费者已替换。当前源码提供原生文档、JSONL 主文件 flush、主机 SQLite 独占租约，以及产品事实投影；这些基础实现不代替 03–08 的专门验收。
+2026-10-08 运行基座与公开接口迁移已完成集成复核。生产路径已使用原生 Harness、Conversation、Models、ToolRegistration、Submission 和 committed 观察；旧 Agent loop 与私有 Session Store 消费者已替换。当前源码提供原生文档、JSONL 主文件 flush、主机 SQLite 独占租约，以及产品事实投影；这些基础实现不代替 03–08 的专门验收。
 
 公开行为的实际聚焦验证（退出码均为 0）：
 
@@ -65,7 +65,9 @@ Compaction 后的公开 Transcript 现在使用公开 Storage 的 fork-aware 完
 
 MCP 按原生 Run 边界刷新保留的配置/连接；普通 Human Run 在 admission 前保留可取消发现，内部 Goal/report 请求也刷新当前配置。原生 generation preparation 先于 beforeRequest，因此晚到的实际工具声明以公开 pi-ai 系统消息写入 committed `rukie.mcp-loadout`，再替换该次请求消息。公开真实服务测试验证首个 Goal provider context 已含 MCP 工具、下一轮配置移除立即作用于实际工具声明，并保留 manager 当前快照；不使用私有 prompt planner 或第二条执行路径。
 
-仍需在 02 关闭前完成：集成复核与 merger 在 integration 分支确认交付状态。03–08 保持依赖门禁，另行验证存储故障/并发恢复、挂起 Interaction 重授权、有限因果结算崩溃窗口、Goal 原子续轮以及 Frontend 回放和终端矩阵；不得从本票聚焦通过推断这些验收完成。
+Merger 已核对本票全部验收标准、01 resolved 依赖、最新 check:dev 与公开回归证据，将实现 22f3e3cd 合并至集成分支 codex/pi-durable-migration，合并提交 8562ffcf。依赖清单与锁文件统一到目标版本，工作区未发现旧 pi-agent-core、AgentTool 或 Agent.state 执行路径，集成 diff 检查通过。沿用 spec 的 ADR Coverage：ADR-0024 拥有原生执行、生命周期与持久化迁移决定，ADR-0011 拥有能力模块方向；本次交付记录不引入新长期取舍。历史包测试失败保持原记录，最终聚合验证留在 09，不将本票关闭表述为整体迁移完成。
+
+03 的依赖门禁已解除；04–08 按各自依赖继续推进，另行验证存储故障/并发恢复、挂起 Interaction 重授权、有限因果结算崩溃窗口、Goal 原子续轮以及 Frontend 回放和终端矩阵；不得从本票聚焦通过推断这些验收完成。
 
 ## Comments
 
@@ -74,3 +76,5 @@ MCP 按原生 Run 边界刷新保留的配置/连接；普通 Human Run 在 admi
 2026-10-07 基线刷新：Frontend 消费已合并 dsh ink 的公开 API；Session 接口迁移不得恢复旧 renderer options、primitives 或 input event union。当前 Agent Core 和 Headless 生产路径尚未迁移。
 
 2026-10-08：02 基于集成 5f7f63e5 在 codex/pi-durable-02 开始实施；采用 tdd 的公开 Session 与 Frontend seams，原生 Models/ToolRegistration/committed events 作为唯一新契约。
+
+2026-10-08：独立 merger 已完成验收与集成审查，在 codex/pi-durable-migration 关闭本票；03 可从集成提交继续，spec 与后续票保持未关闭。
