@@ -18,10 +18,11 @@ const recovering = resumed === "resume";
 let executed = 0;
 let readyId: number | undefined;
 let announced = false;
+const identityReady = Promise.withResolvers<void>();
 function ready() {
   if (readyId !== undefined && !announced) {
     announced = true;
-    console.log(JSON.stringify({ mode, id: readyId }));
+    console.log(JSON.stringify({ mode, id: readyId, providerCalls: h.faux.state.callCount }));
   }
 }
 const hang = (context: Parameters<typeof awaitWithContext>[1]) =>
@@ -58,6 +59,11 @@ const ext = defineExtension({
     }),
     hook(GenerationTask, {
       beforeRequest: async (request, _api, context) => {
+        if (!recovering && mode === "admitted") {
+          await identityReady.promise;
+          ready();
+          await hang(context);
+        }
         if (
           !recovering &&
           mode === "result" &&
@@ -73,9 +79,7 @@ const ext = defineExtension({
 });
 const callsTool = ["hook", "safe", "unsafe", "downgrade", "upgrade", "result"].includes(mode);
 const responses = recovering
-  ? mode === "hook"
-    ? [fauxAssistantMessage("recovered")]
-    : [fauxAssistantMessage("recovered")]
+  ? [fauxAssistantMessage("recovered")]
   : callsTool
     ? [
         fauxAssistantMessage(fauxToolCall("probe", {}), { stopReason: "toolUse" }),
@@ -130,8 +134,8 @@ watch.start(async (view) => {
 const before = recovering ? JSON.stringify(watch.value) : "";
 const sub = await h.root.submit({ type: "input", content: "probe", requestId: "restart" }, ctx);
 readyId = sub.id;
+identityReady.resolve();
 if (!recovering) {
-  if (mode === "admitted") ready();
   await hang(ctx);
 } else {
   const result = await sub.wait(ctx);

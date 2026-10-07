@@ -23,7 +23,7 @@ Status: resolved
 
 ## Verification
 
-2026-10-08：隔离 [probe](../probe/README.md)通过 Bun 1.4.2 的公开 Harness 可行性门槛。`rtk proxy bun install --frozen-lockfile --ignore-scripts`、`rtk proxy bun run typecheck`、`rtk proxy bun test probe.test.ts` 均退出码 0；11 项测试、51 条断言，总计 1.417 秒，独立进程案例约 152–167 毫秒。精确 1.0.4 包和 TypeBox 1.3.27 的实际解析见独立 package/lockfile。pi-mcp 公共入口导入成功。探针的 8 个 SIGKILL/reopen 场景覆盖 admitted input、partial、beforeTool、safe/unsafe intent、双向 replay 策略变化和 committed result；另验证原生 close/reopen、实际文件工具、自有 env 消费、documents/fork/events/background ownership。临时目录及 worker 均在 finally 清理。未验证真实模型、MCP/OAuth 服务或生产迁移；未运行全库检查。
+2026-10-08：隔离 [probe](../probe/README.md)通过 Bun 1.4.2 的公开 Harness 可行性门槛。`rtk proxy bun install --frozen-lockfile --ignore-scripts`、`rtk proxy bun run typecheck`、`rtk proxy bun test probe.test.ts` 均退出码 0；11 项测试、52 条断言，总计 1.420 秒，独立进程案例约 152–167 毫秒。精确 1.0.4 包和 TypeBox 1.3.27 的实际解析见独立 package/lockfile。pi-mcp 公共入口导入成功。探针的 8 个 SIGKILL/reopen 场景覆盖 admitted input、partial、beforeTool、safe/unsafe intent、双向 replay 策略变化和 committed result；另验证原生 close/reopen、实际文件工具、自有 env 消费、documents/fork/events/background ownership。临时目录及 worker 均在 finally 清理。未验证真实模型、MCP/OAuth 服务或生产迁移；未运行全库检查。
 
 ## Comments
 
@@ -32,3 +32,5 @@ Status: resolved
 2026-10-07 基线刷新：当前代码 92d17ca1，宿主 Bun 1.4.2 已实测。现有 dsh ink 的 Bun 验收不是 pi-durable 可行性证据，本票仍须独立完成精确 1.0.4 的上述闭环。
 
 2026-10-08：以公开 Harness/Conversation seam 逐片 TDD，初始缺失实现/worker 的 red 失败后完成 green；无旧引擎 fallback。exact 1.0.4 的安全重放 execute 不重新运行 beforeTool，04/05 必须在 execute 路径执行当前授权检查。该 API 义务已记录在探针，沿用 spec/ADR-0024，无新架构决定。
+
+审阅修正：admitted 场景在 Generation beforeRequest 的受控屏障等待，先取得已提交 submission ID，再发布 READY；第一进程 provider callCount 明确断言为 0，排除 SIGKILL 前模型已经完成的竞态。共享 worker 的精简与 metadata 变更后重跑隔离 11 项测试，52 条断言通过；不是全库重跑。

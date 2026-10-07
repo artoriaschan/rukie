@@ -56,6 +56,7 @@ for (const mode of [
       }
       const ready = JSON.parse(output.split("\n")[0]);
       expect(ready.mode).toBe(mode);
+      if (mode === "admitted") expect(ready.providerCalls).toBe(0);
       child.kill(9);
       await awaitWithContext(child.exited, deadline);
       reader.releaseLock();
