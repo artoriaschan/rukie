@@ -163,7 +163,11 @@ export function SplitDiffView({
             width={Math.min(width, Bun.stringWidth(row.text))}
             onClick={row.path && onPathClick ? () => onPathClick(row.path!) : onToggle}
           >
-            <ThemedText color={row.path ? undefined : "subtle"} wrap="truncate">
+            <ThemedText
+              color={row.path ? undefined : "subtle"}
+              underline={!!row.path}
+              wrap="truncate"
+            >
               {row.text}
             </ThemedText>
           </ThemedBox>

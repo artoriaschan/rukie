@@ -14,11 +14,14 @@ export interface ToolCardSource {
 export function toolCardTitle({ args, callView }: ToolCardSource): string {
   return callView?.card === "terminal"
     ? callView.command
-    : callView?.card === "generic" && callView.server && callView.tool
-      ? `${callView.server} › ${callView.tool}`
-      : callView?.card === "generic" && callView.title
-        ? callView.title
-        : (JSON.stringify(callView?.card === "generic" ? (callView.rawInput ?? args) : args) ?? "");
+    : callView?.card === "diff"
+      ? (callView.diffs[0]?.path ?? "")
+      : callView?.card === "generic" && callView.server && callView.tool
+        ? `${callView.server} › ${callView.tool}`
+        : callView?.card === "generic" && callView.title
+          ? callView.title
+          : (JSON.stringify(callView?.card === "generic" ? (callView.rawInput ?? args) : args) ??
+            "");
 }
 export function toolCardBody(source: ToolCardSource): string | undefined {
   const { resultView: view, callView, result, error, isError } = source;

@@ -1,10 +1,11 @@
 import { toolCardTitle, toolCardBody, toolCardName } from "./presentation";
+import { useSmoothReveal } from "./use-smooth-reveal";
 import { useDiffLayout } from "./diff-layout";
 import { Markdown } from "../markdown";
 import { unifiedDiffLines } from "./diff-lines";
 import type { ToolCallView, ToolResultView } from "@neant/shared";
 import { fmtDuration } from "@neant/i18n";
-import { useState, useMemo } from "react";
+import { useId, useState, useMemo } from "react";
 import type { PromptImage } from "@neant/agent";
 import { ImageGallery } from "../image-gallery";
 import type { Locale } from "@neant/i18n";
@@ -26,8 +27,9 @@ import {
 } from "@neant/tui";
 
 export function ToolCall({
-  summary,
   id,
+  replayed = false,
+  summary,
   searchLocation,
   name,
   args,
@@ -44,6 +46,7 @@ export function ToolCall({
   error,
   expanded: globalExpanded = false,
   onToggle,
+  onPathClick,
   foldTerminalCommand = true,
   locale = "zh",
 }: {
@@ -51,6 +54,7 @@ export function ToolCall({
   expanded?: boolean;
   onToggle?(): void;
   searchLocation?: { part: "header" | "body"; line: number; offset: number };
+  onPathClick?(path: string): void;
   summary: string;
   id?: string;
   name?: string;
@@ -69,6 +73,7 @@ export function ToolCall({
   error?: string;
   locale?: Locale;
 }) {
+  const fallbackId = useId();
   const [localExpanded, setExpanded] = useState(false);
   const expanded = globalExpanded || localExpanded;
   const toggle = onToggle ?? (() => setExpanded((value) => !value));
@@ -83,8 +88,18 @@ export function ToolCall({
   const color = toolKindColor(kind);
   const displayName = toolCardName({ name, callView, resultView }, locale);
   const title = toolCardTitle({ args, callView });
+  const path =
+    resultView?.card === "read"
+      ? resultView.path
+      : callView?.card === "generic" && ["read", "edit"].includes(callView.kind)
+        ? callView.title
+        : callView?.card === "diff"
+          ? callView.diffs[0]?.path
+          : undefined;
+  const pathOffset = path ? title.indexOf(path) : -1;
   const jsonTitle =
     callView?.card !== "terminal" &&
+    callView?.card !== "diff" &&
     !(callView?.card === "generic" && (callView.title || (callView.server && callView.tool)));
   const commandLines = callView?.card === "terminal" ? title.split(/\r?\n/) : undefined;
   const hiddenLines =
@@ -118,6 +133,18 @@ export function ToolCall({
     callView?.card === "terminal"
       ? shownTitle.slice(titleStart)
       : shownTitle.slice(titleStart, titleStart + 480);
+  const pathLeft =
+    2 +
+    Bun.stringWidth(displayName ?? "") +
+    1 +
+    (pathOffset >= titleStart ? Bun.stringWidth(title.slice(titleStart, pathOffset)) : 0);
+  const pathWidth =
+    path && pathOffset >= titleStart
+      ? Math.max(
+          0,
+          Math.min(Bun.stringWidth(path), columns - pathLeft, 480 - (pathOffset - titleStart)),
+        )
+      : 0;
   const titleHint = hiddenLines
     ? ` ${t("tool.command-lines", { count: hiddenLines })}`
     : shownTitle.length > clippedTitle.length
@@ -163,11 +190,13 @@ export function ToolCall({
     expanded && searchLocation?.part === "body"
       ? Math.max(0, Math.min(Math.max(0, lines.length - 400), searchLocation.line - 5))
       : 0;
-  const shown = expanded
-    ? lines.slice(windowStart, windowStart + 400)
-    : folded
-      ? lines.slice(0, limit)
-      : lines;
+  const window = expanded ? 400 : folded ? limit : lines.length;
+  const visible = useSmoothReveal(
+    id ?? fallbackId,
+    Math.min(lines.length - windowStart, window),
+    status === "running" && !resultView && callView?.card === "diff" && !expanded && !replayed,
+  );
+  const shown = lines.slice(windowStart, windowStart + visible);
   const duration =
     status !== "running" && name && startedAt !== undefined && endedAt !== undefined
       ? ` · ${fmtDuration(Math.max(0, endedAt - startedAt), locale)}`
@@ -237,6 +266,14 @@ export function ToolCall({
               (
               {jsonTitle ? (
                 <SyntaxHighlightedText text={clippedTitle} language="json" />
+              ) : path && pathOffset >= titleStart ? (
+                <>
+                  {title.slice(titleStart, pathOffset)}
+                  <ThemedText underline>
+                    {path.slice(0, 480 - (pathOffset - titleStart))}
+                  </ThemedText>
+                  {title.slice(pathOffset + path.length, titleStart + 480)}
+                </>
               ) : (
                 clippedTitle
               )}
@@ -250,6 +287,16 @@ export function ToolCall({
             >{` · ${fmtDuration(Math.max(0, endedAt - startedAt), locale)}`}</ThemedText>
           )}
         </ThemedText>
+        {onPathClick && path && pathWidth > 0 && (
+          <ThemedBox
+            position="absolute"
+            left={pathLeft}
+            top={0}
+            width={pathWidth}
+            height={1}
+            onClick={() => onPathClick(path)}
+          />
+        )}
       </Tooltip>
       {(output || diffView || status === "running") && (
         <ThemedBox flexDirection="column" color={status === "error" ? "error" : "text"}>
@@ -257,18 +304,13 @@ export function ToolCall({
             <ThemedBox>
               <ThemedText preserveWhitespace>{`${figures.result} `}</ThemedText>
               <SplitDiffView
-                rows={
-                  expanded
-                    ? splitRows.slice(windowStart, windowStart + 400).map((row, index) => ({
-                        ...row,
-                        scrollAnchorId: id ? `tool-${id}-line-${windowStart + index}` : undefined,
-                      }))
-                    : folded
-                      ? splitRows.slice(0, limit)
-                      : splitRows
-                }
+                rows={splitRows.slice(windowStart, windowStart + visible).map((row, index) => ({
+                  ...row,
+                  scrollAnchorId: id ? `tool-${id}-line-${windowStart + index}` : undefined,
+                }))}
                 width={Math.max(0, columns - 3)}
                 onToggle={toggle}
+                onPathClick={onPathClick}
               />
             </ThemedBox>
           ) : resultView?.card === "web" && status !== "error" ? (
@@ -313,9 +355,26 @@ export function ToolCall({
                   ) : highlightedLines ? (
                     <SyntaxHighlightedText runs={highlightedLines[windowStart + index]} />
                   ) : (
-                    line
+                    <ThemedText underline={diffLines?.[windowStart + index]?.tone === "path"}>
+                      {line}
+                    </ThemedText>
                   )}
                 </ThemedText>
+                {onPathClick &&
+                  diffLines?.[windowStart + index]?.tone === "path" &&
+                  diffLines[windowStart + index]!.path && (
+                    <ThemedBox
+                      position="absolute"
+                      left={index === 0 ? 2 : name ? 3 : 2}
+                      top={0}
+                      width={Math.max(
+                        0,
+                        Math.min(columns - (index === 0 ? 2 : name ? 3 : 2), Bun.stringWidth(line)),
+                      )}
+                      height={1}
+                      onClick={() => onPathClick(diffLines[windowStart + index]!.path!)}
+                    />
+                  )}
               </ThemedBox>
             ))
           )}
@@ -325,9 +384,11 @@ export function ToolCall({
               (resultView.shape === "paths"
                 ? resultView.paths.length
                 : resultView.matches.length) && (
-              <ThemedText
-                dimColor
-              >{`   ${t("tool.search-total", { count: resultView.total })}`}</ThemedText>
+              <ThemedBox scrollAnchorId={id ? `tool-${id}-verdict` : undefined}>
+                <ThemedText
+                  dimColor
+                >{`   ${t("tool.search-total", { count: resultView.total })}`}</ThemedText>
+              </ThemedBox>
             )}
           {folded && !expanded && (
             <ThemedBox

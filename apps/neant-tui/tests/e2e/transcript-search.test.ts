@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { start } from "../helpers/app";
+import { isolateProxyEnvironment } from "../helpers/proxy-env";
+isolateProxyEnvironment();
 
 test("transcript search jumps distinct matches beyond the 400-line tool window", async () => {
   const app = await start(["--yolo", "inspect"], {
@@ -79,10 +81,10 @@ test.each([
     await app.flush();
     expect(app.calls.length).toBe(1);
     app.stdin.write("/private-live-needle\r");
-    await app.waitFor(() => app.screen().some((line) => line.includes("1/1")));
+    await app.waitFor(() => app.screen().some((line) => / · 1\/1 · /.test(line)));
     expect(app.screen().join("\n")).toContain("private-live-needle");
     app.stdin.write("\x0f");
-    await app.waitFor(() => !app.screen().some((line) => line.includes("1/1")));
+    await app.waitFor(() => !app.screen().some((line) => / · 1\/1 · /.test(line)));
     expect(app.screen().join("\n")).toContain("❯ saved draft");
     app.calls[0]!.finish();
     await app.waitFor(() => !app.isWorking());
@@ -101,12 +103,12 @@ test("search keeps earlier messages in view while a running response grows", asy
     app.stdin.write("\x0f/needle\r");
     await app.waitFor(
       () =>
-        app.screen().some((line) => line.includes("1/1")) &&
+        app.screen().some((line) => / · 1\/1 · /.test(line)) &&
         app.screen().some((line) => line.includes("original needle")),
     );
     const earlier = app.screen().slice(0, 4);
     app.calls[0]!.delta("\nstream-50\nstream-51");
-    await app.waitFor(() => app.screen().some((line) => line.includes("1/1")));
+    await app.waitFor(() => app.screen().some((line) => / · 1\/1 · /.test(line)));
     expect(app.screen().slice(0, 4)).toEqual(earlier);
     expect(app.screen().join("\n")).not.toContain("stream-51");
     app.stdin.write("\x1b");
@@ -131,7 +133,9 @@ test("clipped generic title matches can be revealed without searching result met
     await app.waitFor(() => !app.isWorking());
     expect(app.screen().join("\n")).not.toContain("TITLE_NEEDLE");
     app.stdin.write("\x0f/TITLE_NEEDLE\r");
-    await app.waitFor(() => app.screen().some((line) => line.includes("1/1")));
+    await app.waitFor(() =>
+      app.screen().some((line) => line.includes("Unknown_tool(") && line.includes("TITLE_NEEDLE")),
+    );
     expect(
       app.screen().some((line) => line.includes("Unknown_tool(") && line.includes("TITLE_NEEDLE")),
     ).toBe(true);
@@ -165,6 +169,97 @@ test("split diff search navigates old and new occurrences in the same aligned ro
     app.stdin.write("N");
     await app.waitFor(() => app.screen().some((line) => line.includes("1/2")));
   } finally {
+    await app.cleanup();
+  }
+});
+
+test("Markdown search maps repeated visible text back to source rows beyond its window", async () => {
+  const server = Bun.serve({
+    port: 0,
+    fetch: () =>
+      new Response(
+        Array.from({ length: 260 }, (_, index) =>
+          index === 3
+            ? "**MARK_NEEDLE** first\n"
+            : index === 230
+              ? "**MARK_NEEDLE** second\n"
+              : `paragraph-${index}\n`,
+        ).join("\n"),
+        { headers: { "content-type": "text/markdown" } },
+      ),
+  });
+  const app = await start(["--yolo", "inspect"], {
+    rows: 24,
+    env: { LANG: "en_US.UTF-8" },
+    session: {
+      webFetch: {
+        resolve: async () => [{ address: "127.0.0.1", family: 4 }],
+        allowAddresses: ["127.0.0.1"],
+      },
+    },
+  });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("web_fetch", { url: `http://site.test:${server.port}/docs` });
+    await app.waitFor(() => app.calls.length === 2);
+    app.calls[1]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    app.stdin.write("\x0f/MARK_NEEDLE\r");
+    await app.waitFor(
+      () =>
+        app.screen().some((line) => line.includes("1/2")) &&
+        app.screen().some((line) => line.includes("MARK_NEEDLE first")),
+    );
+    app.stdin.write("n");
+    await app.waitFor(
+      () =>
+        app.screen().some((line) => line.includes("2/2")) &&
+        app.screen().some((line) => line.includes("MARK_NEEDLE second")),
+    );
+    expect(app.screen().join("\n")).not.toContain("**MARK_NEEDLE**");
+  } finally {
+    await app.cleanup();
+    server.stop(true);
+  }
+});
+
+test("search includes the displayed context snapshot without scanning hidden metadata", async () => {
+  const app = await start([], { env: { LANG: "en_US.UTF-8" } });
+  try {
+    app.stdin.write("/context\r");
+    await app.waitFor(() =>
+      app.screen().some((line) => line.includes("Estimated usage by category")),
+    );
+    app.stdin.write("\x0f/Estimated usage by category\r");
+    await app.waitFor(() => app.screen().some((line) => / · 1\/1 · /.test(line)));
+    expect(app.screen().join("\n")).toContain("Estimated usage by category");
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("search indexes the displayed background job tail", async () => {
+  const app = await start(["--yolo", "inspect"], { rows: 24, env: { LANG: "en_US.UTF-8" } });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    // Real child output exercises the retained background-job delivery contract.
+    app.calls[0]!.tool("bash", {
+      command:
+        "printf '\\112\\117\\102\\137\\116\\105\\105\\104\\114\\105\\n'; while [ ! -e go ]; do sleep 0.01; done",
+      description: "start worker",
+      timeout: 10,
+      run_in_background: true,
+    });
+    await app.waitFor(() => app.calls.length === 2);
+    app.calls[1]!.finish();
+    await app.waitFor(
+      () => !app.isWorking() && app.screen().some((line) => line.includes("JOB_NEEDLE")),
+    );
+    app.stdin.write("\x0f/● bash-1 · running\r");
+    await app.waitFor(() => app.screen().some((line) => / · 1\/1 · /.test(line)));
+    expect(app.screen().join("\n")).toContain("JOB_NEEDLE");
+  } finally {
+    await Bun.write(join(app.root, "go"), "");
     await app.cleanup();
   }
 });

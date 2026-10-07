@@ -30,6 +30,7 @@ export function SubagentDetailScene({
   rows,
   locale,
   onBack,
+  onPathClick,
   onPage,
   onInterrupt,
 }: {
@@ -42,6 +43,7 @@ export function SubagentDetailScene({
   rows: number;
   locale: Locale;
   onBack(): void;
+  onPathClick?(path: string): void;
   onPage(page: DetailPage): void;
   onInterrupt(): void;
 }) {
@@ -181,7 +183,8 @@ export function SubagentDetailScene({
               <ToolCall
                 foldTerminalCommand={foldTerminalCommand}
                 key={tool.id}
-                id={tool.id}
+                onPathClick={onPathClick}
+                id={`${subagent.agentId}:${tool.id}`}
                 name={tool.name}
                 args={tool.args}
                 summary={`${tool.name} ${tool.argsPreview}`}

@@ -142,8 +142,10 @@ function paintGrid(root: LayoutNode, columns: number, rows: number): Cell[][] {
             const highlighted = match
               ? {
                   ...glyph.style,
-                  color: textSearch?.color,
-                  backgroundColor: textSearch?.backgroundColor,
+                  ...(textSearch?.color !== undefined ? { color: textSearch.color } : {}),
+                  ...(textSearch?.backgroundColor !== undefined
+                    ? { backgroundColor: textSearch.backgroundColor }
+                    : {}),
                   dimColor: false,
                 }
               : glyph.style;

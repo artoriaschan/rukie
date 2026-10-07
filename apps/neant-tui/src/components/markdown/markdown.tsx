@@ -119,20 +119,48 @@ export function Markdown({ text }: { text: string }) {
 }
 
 /** Plain text emitted by Markdown, excluding formatting delimiters. */
-export function markdownText(source: string): string {
+export function markdownProjection(source: string): { text: string; sourceLines: number[] } {
   type Tree = {
     type: string;
     value?: string;
     url?: string;
     alt?: string | null;
     children?: Tree[];
+    position?: { start: { line: number } };
   };
-  function visit(node: Tree): string {
-    if (node.type === "image") return node.alt ?? node.url ?? "";
-    if (node.value !== undefined) return node.value;
+  function literal(text: string, line: number) {
+    const sourceLines: number[] = [];
+    for (let at = 0; at < text.length; at++) {
+      sourceLines.push(line);
+      if (text[at] === "\n") line++;
+    }
+    return { text, sourceLines };
+  }
+  function visit(node: Tree): { text: string; sourceLines: number[] } {
+    const line = (node.position?.start.line ?? 1) - 1;
+    if (node.type === "image") return literal(node.alt ?? node.url ?? "", line);
+    if (node.type === "break") return literal("\n", line);
+    if (node.value !== undefined) return literal(node.value, line + Number(node.type === "code"));
     const separator = ["root", "list", "listItem", "blockquote"].includes(node.type) ? "\n" : "";
-    const body = node.children?.map(visit).join(separator) ?? "";
-    return node.type === "link" ? `${body} (${node.url})` : body;
+    const output = { text: "", sourceLines: [] as number[] };
+    for (const child of node.children ?? []) {
+      const part = visit(child);
+      if (output.text && separator) {
+        output.text += separator;
+        output.sourceLines.push(part.sourceLines[0] ?? line);
+      }
+      output.text += part.text;
+      output.sourceLines.push(...part.sourceLines);
+    }
+    if (node.type === "link") {
+      const tail = literal(` (${node.url})`, line);
+      output.text += tail.text;
+      output.sourceLines.push(...tail.sourceLines);
+    }
+    return output;
   }
   return visit(fromMarkdown(source));
+}
+export function markdownText(source: string): string {
+  return markdownProjection(source).text;
 }

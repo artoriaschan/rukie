@@ -9,7 +9,9 @@ import {
 } from "../../components/tool-call/presentation";
 import { unifiedDiffLines } from "../../components/tool-call/diff-lines";
 import { alignSplitDiff } from "@neant/tui";
-import { markdownText } from "../../components/markdown/markdown";
+import { markdownText, markdownProjection } from "../../components/markdown/markdown";
+import { contextText } from "../../components/context-report/context-visualization";
+import { jobCardRows } from "../../components/job-card/job-card";
 import type { Settings } from "@neant/shared";
 
 export interface TranscriptMatch {
@@ -72,11 +74,23 @@ export function transcriptMatches(
       diffLines?.map((row) => row.text) ??
       (source.resultView?.card === "web" ? markdownText(body) : body).split(/\r?\n/);
     if (source.resultView?.card === "web") {
-      const rendered = markdownText(body);
+      const projection = markdownProjection(body);
+      const rendered = projection.text;
       const first = matches.length;
       text(rendered, `tool-${id}-body`, { toolId: id, part: "body" });
-      for (const match of matches.slice(first))
-        match.line = rendered.slice(0, match.offset).split("\n").length - 1;
+      const found = matches.slice(first);
+      for (const match of found) {
+        match.line = projection.sourceLines[match.offset] ?? 0;
+        const start = Math.max(
+          0,
+          Math.min(Math.max(0, body.split(/\r?\n/).length - 400), match.line - 5),
+        );
+        match.occurrence = found.filter(
+          (candidate) =>
+            candidate.offset < match.offset &&
+            (projection.sourceLines[candidate.offset] ?? 0) >= start,
+        ).length;
+      }
     } else
       lines.forEach((line, index) =>
         text(line, `tool-${id}-line-${index}`, { toolId: id, part: "body", line: index }),
@@ -92,7 +106,9 @@ export function transcriptMatches(
           ]
             .filter(Boolean)
             .join("\n")
-        : view?.card === "search" && view.total !== undefined
+        : view?.card === "search" &&
+            view.total !== undefined &&
+            view.total > (view.shape === "paths" ? view.paths.length : view.matches.length)
           ? t("tool.search-total", { count: view.total })
           : "";
     if (notes) text(notes, `tool-${id}-verdict`);
@@ -102,6 +118,10 @@ export function transcriptMatches(
     switch (entry.type) {
       case "tool":
         tool(entry, entry.id ?? `row-${index}`);
+        if (entry.jobId && state.jobs[entry.jobId]) {
+          const job = state.jobs[entry.jobId]!;
+          text(jobCardRows(job, job.output, columns, locale).join("\n"), `job-${job.id}`);
+        }
         break;
       case "message":
         text(
@@ -113,6 +133,9 @@ export function transcriptMatches(
             : entry.text,
           anchor,
         );
+        break;
+      case "context-report":
+        text(contextText(entry.report, entry.expanded, entry.modelName, locale), anchor);
         break;
       case "thinking":
       case "question":

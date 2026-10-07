@@ -1,3 +1,4 @@
+import { dirname } from "node:path";
 import { createClipboard } from "./clipboard";
 
 export type ClipboardContent =
@@ -14,6 +15,8 @@ export interface TuiHost {
   writeClipboard(text: string): Promise<boolean>;
   /** Open a URL or file path with the operating system's default application. */
   openExternal(target: string): Promise<void>;
+  /** Show a file in the operating system file manager. */
+  reveal(path: string): Promise<void>;
 }
 
 /** Own one default host per main invocation and dispose it after Chat stops. */
@@ -40,6 +43,17 @@ export function createDefaultHost() {
         }
       }
       return false;
+    },
+    async reveal(path) {
+      const command =
+        process.platform === "darwin"
+          ? ["open", "-R", path]
+          : process.platform === "win32"
+            ? ["explorer.exe", `/select,${path}`]
+            : ["xdg-open", dirname(path)];
+      const child = Bun.spawn(command, { stdout: "ignore", stderr: "ignore" });
+      const exitCode = await child.exited;
+      if (exitCode !== 0) throw new Error(`File manager exited with code ${exitCode}`);
     },
     async openExternal(path) {
       const command =
