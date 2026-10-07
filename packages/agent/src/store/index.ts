@@ -3,7 +3,8 @@ import { createHash } from "node:crypto";
 import { mkdir, readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { BACKGROUND_CONTEXT, type Context } from "@earendil-works/chord/context";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import type { Context } from "@earendil-works/chord";
 import { createModels } from "@earendil-works/pi-ai";
 import { Harness, createRegistry, defineDoc, type Storage } from "@earendil-works/pi-durable";
 import { JsonlStorage } from "@earendil-works/pi-durable/storage/jsonl";
@@ -92,7 +93,12 @@ function readonlyFiles(files: FileSystem): FileSystem {
     get(target, key) {
       if (mutations.has(key))
         return async () =>
-          err(new FileError("permission_denied", "Session observation is read-only."));
+          Promise.reject(
+            createUserVisibleError(
+              "Session history requires repair and cannot be viewed read-only.",
+              { code: "session-observation-readonly", params: {} },
+            ),
+          );
       if (key === "createDir")
         return async (path: string, _options: unknown, context: Context) => {
           const result = await target.fileInfo(path, context);
