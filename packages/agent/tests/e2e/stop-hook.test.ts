@@ -47,12 +47,14 @@ echo '{}'
     expect(result).toMatchObject({ success: true, text: "verified" });
     expect(session.messages.filter((message) => message.role === "user")).toMatchObject([
       { content: [{ text: "finish" }] },
-      { source: "stop_hook", content: [{ text: "verify-tests" }] },
+      { source: "stop_hook", content: "verify-tests" },
     ]);
-    expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
-      role: "user",
-      content: [{ text: "verify-tests" }],
-    });
+    expect(fake.contexts[1]!.messages.findLast((message) => message.role === "user")).toMatchObject(
+      {
+        role: "user",
+        content: "verify-tests",
+      },
+    );
     expect(events.filter((event) => event.type === "hook_continued")).toMatchObject([
       { event: "Stop", reason: "verify-tests", sessionId: session.id },
     ]);
@@ -70,11 +72,13 @@ echo '{}'
       },
       { stop_hook_active: true, last_assistant_message: "verified", session_id: session.id },
     ]);
+    await session.close();
     const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
     expect(resumed.messages.filter((message) => message.role === "user")).toMatchObject([
       {},
-      { source: "stop_hook", content: [{ text: "verify-tests" }] },
+      { source: "stop_hook", content: "verify-tests" },
     ]);
+    await resumed.close();
   },
 );
 
@@ -95,6 +99,7 @@ test("Stop waits until background children finish and their notification is deli
       await child.promise;
       return fauxAssistantMessage("child conclusion");
     }
+    waiting.resolve();
     return fauxAssistantMessage("parent waiting");
   };
   const fake = fakeModel([
@@ -104,9 +109,11 @@ test("Stop waits until background children finish and their notification is deli
     response,
     response,
     (context) => {
-      expect(structuredClone(context.messages.at(-1))).toMatchObject({
+      expect(
+        structuredClone(context.messages.findLast((message) => message.role === "user")),
+      ).toMatchObject({
         role: "user",
-        content: [{ text: expect.stringContaining("child conclusion") }],
+        content: expect.stringContaining("child conclusion"),
       });
       return fauxAssistantMessage("parent conclusion");
     },
@@ -120,13 +127,16 @@ test("Stop waits until background children finish and their notification is deli
   const run = session.run("delegate", {
     onEvent: (event) => {
       events.push(event);
-      if (event.type === "subagents_waiting") waiting.resolve();
     },
   });
   await waiting.promise;
   expect(await Bun.file(join(dirs.cwd, "inputs.jsonl")).exists()).toBe(false);
   child.resolve();
-  expect(await run).toMatchObject({ success: true, text: "parent conclusion" });
+  await run;
+  expect(await session.waitForRequest(session.currentRequestId!)).toMatchObject({
+    success: true,
+    text: "parent conclusion",
+  });
   const inputs = (await Bun.file(join(dirs.cwd, "inputs.jsonl")).text())
     .trim()
     .split("\n")

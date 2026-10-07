@@ -40,7 +40,7 @@ async function runHook(handler: HookHandler) {
       events.push(event);
     },
   });
-  await session.dispose();
+  await session.close();
   return { session, events, fake, executed: await Bun.file(join(dirs.cwd, "marker")).exists() };
 }
 
@@ -274,7 +274,7 @@ test.each(["cancel", "dispose"] as const)(
       );
     await started.promise;
     if (action === "cancel") controller.abort();
-    else await session.dispose();
+    else await session.close();
     try {
       const result = await running;
       expect(result?.name).toBe("AbortError");
@@ -282,7 +282,7 @@ test.each(["cancel", "dispose"] as const)(
       expect(events.filter((event) => event.type === "permission_denied")).toHaveLength(0);
     } finally {
       release.resolve(Response.json(denial));
-      await session.dispose();
+      await session.close();
     }
   },
 );
@@ -329,7 +329,7 @@ test.each(["http", "mcp_tool"] as const)(
       },
     });
     await session.run("try");
-    await session.dispose();
+    await session.close();
     expect(type === "http" ? calls : await Bun.file(join(dirs.homeDir, "calls")).text()).toBe(
       type === "http" ? 1 : "json\n",
     );
@@ -381,10 +381,10 @@ test.each(["cancel", "dispose"] as const)(
       await Bun.sleep(5);
     }
     if (action === "cancel") controller.abort();
-    else await session.dispose();
+    else await session.close();
     expect((await running)?.name).toBe("AbortError");
     expect(await Bun.file(join(dirs.cwd, "marker")).exists()).toBe(false);
-    await session.dispose();
+    await session.close();
   },
 );
 
@@ -442,7 +442,7 @@ test("HTTP non-success streams release their connection before session disposal"
     ).toBe(true);
     expect(server.pendingRequests).toBe(0);
   } finally {
-    await session.dispose();
+    await session.close();
   }
 });
 
@@ -511,7 +511,7 @@ test.each(["http", "mcp_tool"] as const)(
       expect(await Bun.file(join(dirs.cwd, "marker")).exists()).toBe(false);
       expect(session.permissionMode).toBe("full-access");
     } finally {
-      await session.dispose();
+      await session.close();
     }
   },
 );
