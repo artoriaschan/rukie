@@ -184,7 +184,7 @@ export function SubagentDetailScene({
                 foldTerminalCommand={foldTerminalCommand}
                 key={tool.id}
                 onPathClick={onPathClick}
-                id={tool.id}
+                id={`${subagent.agentId}:${tool.id}`}
                 name={tool.name}
                 args={tool.args}
                 summary={`${tool.name} ${tool.argsPreview}`}

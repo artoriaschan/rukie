@@ -67,3 +67,5 @@ Esc、Ctrl+C、Enter 或点击消息区域中卡片外的位置关闭预览，�
 ## 工具 diff 布局
 
 用户在 `~/.neant/settings.json` 设置 `diffLayout` 为 `auto`、`unified` 或 `split`。默认 `auto` 在终端宽度至少 110 列时使用左右分栏，窄于 110 列时使用 unified，resize 后即时切换。显式值固定布局，包括小终端上的 `split`；分栏长行截断，两栏保持逐行对齐。diff 默认折叠到 8 个呈现行，点击单卡或 Ctrl+O 展开；展开最多显示 400 行。设置由启动时加载，Session Resume 与子代理详情使用同一布局选择。
+
+工具调用的 pending diff 按共享的约 30fps 节拍逐行出现，每帧推进至少 3 行并按 backlog 自适应追赶。结果、错误、恢复卡片和展开窗口立即显示。已经追赶完成或展开过的调用再次折叠时不会重启动画；Session 更换和界面关闭会释放其 reveal 订阅，所有调用都追赶完成时停止共享定时器。
