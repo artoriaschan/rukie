@@ -2041,11 +2041,13 @@ export default class Ink {
     this.prevFrameContaminated = true;
   }
 
-  /**
-   * Copy the current selection to the clipboard without clearing the
-   * highlight. Matches iTerm2's copy-on-select behavior where the selected
-   * region stays visible after the automatic copy.
-   */
+  /** Read validated painted selection text without writing either clipboard transport. Empty for stale or absent selection. */
+  readSelectionText(): string {
+    if (!hasSelection(this.selection) || this.selection.stale) return '';
+    return getSelectedText(this.selection, this.frontFrame.screen);
+  }
+
+  /** Copy the current selection through native/OSC clipboard transport without clearing it. */
   copySelectionNoClear(): string {
     if (!hasSelection(this.selection)) return '';
     // Commit-consistency guard: the rows under the highlight changed

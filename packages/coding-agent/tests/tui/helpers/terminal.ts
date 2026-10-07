@@ -1,5 +1,6 @@
 import { PassThrough, Writable } from "node:stream";
 import { setImmediate } from "node:timers/promises";
+import { setTimeout as ioTimeout, clearTimeout as ioClearTimeout } from "node:timers";
 import xterm from "@xterm/headless";
 import unicode11 from "@xterm/addon-unicode11";
 
@@ -10,6 +11,12 @@ export function createTerminal(columns = 80, rows = 24, advanceTimers?: (ms: num
   terminal.loadAddon(new unicode11.Unicode11Addon());
   terminal.unicode.activeVersion = "11";
   const stdin = Object.assign(new PassThrough(), {
+    ref() {
+      return this;
+    },
+    unref() {
+      return this;
+    },
     isTTY: true,
     isRaw: false,
     setRawMode(raw: boolean) {
@@ -22,7 +29,18 @@ export function createTerminal(columns = 80, rows = 24, advanceTimers?: (ms: num
     new Writable({
       write(chunk, _encoding, callback) {
         output += chunk.toString();
-        terminal.write(chunk, callback);
+        // xterm parsing is an I/O completion queue, not a frontend deadline. Keep its zero-delay
+        // scheduler real so a timer created inside a virtual tick cannot strand callback flushes.
+        const frontendTimeout = globalThis.setTimeout;
+        const frontendClearTimeout = globalThis.clearTimeout;
+        try {
+          globalThis.setTimeout = ioTimeout as typeof setTimeout;
+          globalThis.clearTimeout = ioClearTimeout as typeof clearTimeout;
+          terminal.write(chunk, callback);
+        } finally {
+          globalThis.setTimeout = frontendTimeout;
+          globalThis.clearTimeout = frontendClearTimeout;
+        }
       },
     }),
     { columns, rows, isTTY: true },
@@ -55,8 +73,8 @@ export function createTerminal(columns = 80, rows = 24, advanceTimers?: (ms: num
   }
   return {
     term: "xterm-256color",
-    stdin,
-    stdout,
+    stdin: stdin as typeof stdin & NodeJS.ReadStream,
+    stdout: stdout as typeof stdout & NodeJS.WriteStream,
     terminal,
     flush,
     screen,
@@ -84,7 +102,7 @@ export function createTerminal(columns = 80, rows = 24, advanceTimers?: (ms: num
         if (predicate()) return;
         advanceTimers?.(16);
         if (advanceTimers) await setImmediate();
-        else await Bun.sleep(1);
+        else await setImmediate();
       } while (advanceTimers ? --remainingYields > 0 : performance.now() < deadline);
       throw new Error(`Terminal did not reach expected state:\n${screen().join("\n")}`);
     },

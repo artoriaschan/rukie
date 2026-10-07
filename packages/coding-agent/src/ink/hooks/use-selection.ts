@@ -13,6 +13,7 @@ import {
  *   copy, clear, query, subscribe, and scroll/keyboard manipulation.
  */
 export function useSelection(): {
+  readSelectionText: () => string
   copySelection: () => string
   /** Copy without clearing the highlight (for copy-on-select). */
   copySelectionNoClear: () => string
@@ -54,6 +55,7 @@ export function useSelection(): {
   return useMemo(() => {
     if (!ink) {
       return {
+        readSelectionText: () => '',
         copySelection: () => '',
         copySelectionNoClear: () => '',
         clearSelection: () => {},
@@ -68,6 +70,7 @@ export function useSelection(): {
       }
     }
     return {
+      readSelectionText: () => ink.readSelectionText(),
       copySelection: () => ink.copySelection(),
       copySelectionNoClear: () => ink.copySelectionNoClear(),
       clearSelection: () => ink.clearTextSelection(),

@@ -11,6 +11,8 @@ import type { InputEvent } from "../events/input-event";
 
 export interface TextInputProps extends TextStyle {
   value: string;
+  /** Read the owner value before each event when a native input batch includes external resets. */
+  getValue?(): string;
   /** Edits report the replaced UTF-16 range before the new value is applied. */
   onChange(value: string, edit?: { start: number; end: number; text: string }): void;
   onSubmit?(value: string): void;
@@ -84,6 +86,7 @@ function graphemeBoundaries(text: string) {
 /** Controlled multiline editor. Cursor offsets follow graphemes, rather than code units. */
 export function TextInput({
   value,
+  getValue,
   onChange,
   onSubmit,
   onCursorChange,
@@ -164,6 +167,8 @@ export function TextInput({
   useInput(
     (input, key, event) => {
       const current = editing.current;
+      const owned = getValue?.();
+      if (owned !== undefined && owned !== current.value) { current.value = owned; current.cursor = owned.length; current.anchor = undefined; current.ranges = []; history?.reset(); }
       const boundaries = graphemeBoundaries(current.value);
       const before = boundaries.findLast((offset) => offset < current.cursor) ?? 0;
       const after = boundaries.find((offset) => offset > current.cursor) ?? current.value.length;
