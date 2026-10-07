@@ -496,7 +496,8 @@ test("rename persists while a manual summary is pending and survives compacted r
   const summarizing = Promise.withResolvers<void>();
   const finish = Promise.withResolvers<void>();
   const fake = fakeModel([
-    fauxAssistantMessage("Work completed"),
+    fauxAssistantMessage("Work completed " + "old fact ".repeat(9000)),
+    fauxAssistantMessage("Recent retained answer"),
     async () => {
       summarizing.resolve();
       await finish.promise;
@@ -514,6 +515,7 @@ test("rename persists while a manual summary is pending and survives compacted r
   });
   try {
     await session.run("First task");
+    await session.run("Recent retained task");
     const compact = session.compact();
     await summarizing.promise;
     await session.rename("Work summary");

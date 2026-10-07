@@ -66,15 +66,19 @@ test.each(["compaction", "model"])(
   "resume estimates context after %s invalidates provider usage",
   async (invalidation) => {
     dirs = await tempDirs();
-    const reply = fauxAssistantMessage("retained answer");
+    const reply = fauxAssistantMessage("retained answer " + "old fact ".repeat(9000));
     reply.usage = { ...reply.usage, input: 90000 };
-    const fake = providerModel([reply, fauxAssistantMessage("summary")]);
+    const recent = fauxAssistantMessage("Recent retained answer");
+    recent.usage = { ...recent.usage, input: 90000 };
+    const fake = providerModel([reply, recent, fauxAssistantMessage("summary")]);
     fake.models = withModelAlias(fake.models, "other", ["small"]);
     const session = await createSession({ ...dirs, ...fake });
     await session.run("question");
     expect(session.contextUsage().used).toBe(90000);
-    if (invalidation === "compaction") await session.compact();
-    else await session.setModel("other/small");
+    if (invalidation === "compaction") {
+      await session.run("recent retained prompt");
+      await session.compact();
+    } else await session.setModel("other/small");
     await session.close();
     const next = providerModel([]);
     next.models = withModelAlias(next.models, "other", ["small"]);
