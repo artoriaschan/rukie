@@ -111,7 +111,7 @@ test.each(["paste", "wrong-state", "cancel", "oauth-error"])(
             server: "srv",
           });
       } finally {
-        await session.dispose();
+        await session.close();
       }
     } finally {
       await server.stop();
@@ -136,7 +136,7 @@ test("a new Session reuses the credential without requesting authentication", as
     await first.run("login");
     expect((await stat(join(dirs.homeDir, ".rukie/credentials.json"))).isFile()).toBe(true);
     await expect(stat(join(dirs.homeDir, ".neant/credentials.json"))).rejects.toThrow();
-    await first.dispose();
+    await first.close();
     const fake = fakeModel([
       fauxAssistantMessage(fauxToolCall("mcp__srv__echo", { text: "reused" }), {
         stopReason: "toolUse",
@@ -160,7 +160,7 @@ test("a new Session reuses the credential without requesting authentication", as
       ).toMatchObject({ isError: false, content: [{ type: "text", text: "OAuth MCP: called" }] });
       expect(asks).toBe(0);
     } finally {
-      await next.dispose();
+      await next.close();
     }
   } finally {
     await server.stop();
@@ -199,7 +199,7 @@ test("two concurrent authentication calls share one interaction and outcome", as
       ]);
       expect(asks).toBe(1);
     } finally {
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await server.stop();
@@ -207,7 +207,7 @@ test("two concurrent authentication calls share one interaction and outcome", as
   }
 });
 
-test("Run abort closes the pending frontend and callback and records a non-error declined tool result", async () => {
+test("Run abort closes the pending frontend and callback and records a native aborted tool result", async () => {
   const dirs = await tempDirs();
   const server = mcpOAuthServer();
   const controller = new AbortController();
@@ -234,15 +234,14 @@ test("Run abort closes the pending frontend and callback and records a non-error
       expect(await running).toBeInstanceOf(Error);
       expect(request.signal.aborted).toBe(true);
       expect(session.messages.findLast((message) => message.role === "toolResult")).toMatchObject({
-        isError: false,
-        details: { type: "cancelled", server: "srv" },
+        isError: true,
       });
       await expect(fetch(callback)).rejects.toThrow();
       expect(await Bun.file(join(dirs.homeDir, ".rukie/credentials.json")).text()).not.toContain(
         "access_token",
       );
     } finally {
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await server.stop();
@@ -275,12 +274,11 @@ test("abort during code exchange prevents token persistence and late tool promot
         .run("login", { signal: controller.signal })
         .catch((error: unknown) => error);
       await exchanging.promise;
-      controller.abort();
+      await session.abort();
       release.resolve();
       expect(await running).toBeInstanceOf(Error);
       expect(session.messages.findLast((message) => message.role === "toolResult")).toMatchObject({
-        isError: false,
-        details: { type: "cancelled", server: "srv" },
+        isError: true,
       });
       expect(await Bun.file(join(dirs.homeDir, ".rukie/credentials.json")).text()).not.toContain(
         "access_token",
@@ -288,7 +286,7 @@ test("abort during code exchange prevents token persistence and late tool promot
       expect(JSON.stringify(session.messages)).not.toContain('"name":"mcp__srv__echo"');
     } finally {
       release.resolve();
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await server.stop();
@@ -338,7 +336,7 @@ test("concurrent servers preserve both credentials in the shared atomic file", a
         ),
       ).toEqual([false, false]);
     } finally {
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await first.stop();
@@ -386,7 +384,7 @@ test.each(["bad-json", "bad-state"])(
         expect(warnings).toEqual(["MCP credentials file is invalid; ignoring its contents."]);
         expect(await Bun.file(path).text()).toBe(raw);
       } finally {
-        await session.dispose();
+        await session.close();
       }
     } finally {
       await server.stop();
@@ -434,7 +432,7 @@ test("authentication emits an MCP Notification hook with the authorization messa
         session_id: session.id,
       });
     } finally {
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await hook.stop(true);
@@ -480,13 +478,12 @@ test("model authorization replaces authentication with executable tools in the n
         isError: false,
         content: [{ type: "text", text: "Authenticated srv; its tools are now available." }],
       });
-      const changes = fake.contexts[1]!.messages.filter((message) => message.role === "system").at(
-        -1,
+      expect(getCurrentTools(fake.contexts[1]!.messages).map((tool) => tool.name)).toContain(
+        "mcp__srv__echo",
       );
-      expect(changes).toMatchObject({
-        toolsAdded: [expect.objectContaining({ name: "mcp__srv__echo" })],
-        toolsRemoved: [expect.objectContaining({ name: "mcp__srv__authenticate" })],
-      });
+      expect(getCurrentTools(fake.contexts[1]!.messages).map((tool) => tool.name)).not.toContain(
+        "mcp__srv__authenticate",
+      );
       expect(
         fake.contexts[2]!.messages.findLast((message) => message.role === "toolResult"),
       ).toMatchObject({ isError: false, content: [{ type: "text", text: "OAuth MCP: called" }] });
@@ -497,7 +494,7 @@ test("model authorization replaces authentication with executable tools in the n
       expect(JSON.stringify(credential)).toContain('"access_token":"access-');
       expect(credential).toMatchObject({ version: 1, mcp: expect.any(Object) });
       expect((await stat(credentialPath)).mode & 0o777).toBe(0o600);
-      await session.dispose();
+      await session.close();
       const resumedFake = fakeModel([fauxAssistantMessage("resumed")]);
       const resumed = await createSession({
         ...dirs,
@@ -516,10 +513,10 @@ test("model authorization replaces authentication with executable tools in the n
         }
         expect([...tools]).toEqual(["mcp__srv__echo"]);
       } finally {
-        await resumed.dispose();
+        await resumed.close();
       }
     } finally {
-      await session.dispose();
+      await session.close();
     }
   } finally {
     await server.stop();
@@ -569,7 +566,7 @@ test("OAuth servers require authentication without opening an interaction and ar
     expect(server.requests.filter((request) => request.path === "/mcp")).toHaveLength(1);
     expect(server.requests.filter((request) => request.path === "/authorize")).toEqual([]);
     expect(interactions).toBe(0);
-    await session.dispose();
+    await session.close();
   } finally {
     await server.stop();
     await dirs.cleanup();
@@ -609,7 +606,9 @@ test("authentication is allowed without an approval and still passes through hoo
       },
     });
     await session.run("login");
-    expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
+    expect(
+      fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+    ).toMatchObject({
       role: "toolResult",
       isError: false,
       content: [{ type: "text", text: "User did not complete authentication for srv." }],
@@ -619,7 +618,7 @@ test("authentication is allowed without an approval and still passes through hoo
     expect((await Bun.file(join(dirs.cwd, "auth-hook")).json()).tool_name).toBe(
       "mcp__srv__authenticate",
     );
-    await session.dispose();
+    await session.close();
   } finally {
     await server.stop();
     await dirs.cleanup();
@@ -671,8 +670,10 @@ test.each(["rule", "hook"])("authentication tools preserve explicit %s denials",
     expect(events.filter((event) => event.type === "permission_denied")).toMatchObject([
       { toolName: "mcp__srv__authenticate", by: denial },
     ]);
-    expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({ role: "toolResult", isError: true });
-    await session.dispose();
+    expect(
+      fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+    ).toMatchObject({ role: "toolResult", isError: true });
+    await session.close();
   } finally {
     await server.stop();
     await dirs.cleanup();
@@ -707,7 +708,7 @@ test("needs-auth memory belongs to the exact server endpoint and follows project
     expect(original.requests.filter((request) => request.path === "/mcp")).toHaveLength(1);
     expect(replacement.requests.filter((request) => request.path === "/mcp")).toHaveLength(1);
     expect(project.requests).toEqual([]);
-    await session.dispose();
+    await session.close();
   } finally {
     await Promise.all([original.stop(), replacement.stop(), project.stop()]);
     await dirs.cleanup();

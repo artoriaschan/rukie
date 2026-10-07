@@ -1,16 +1,23 @@
 import { afterEach, expect, test } from "bun:test";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readdir, rm } from "node:fs/promises";
-import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { createSession, type SessionEvent } from "../../src/index.ts";
+import { rm } from "node:fs/promises";
+import { fauxAssistantMessage, fauxToolCall, getCurrentTools } from "@earendil-works/pi-ai";
+import { createSession as openSession, type SessionEvent } from "../../src/index.ts";
 import { loadSettings } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 import { abortingModel } from "../helpers/aborting-model.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
+const sessions: Awaited<ReturnType<typeof openSession>>[] = [];
+async function createSession(options: Parameters<typeof openSession>[0]) {
+  const session = await openSession(options);
+  sessions.push(session);
+  return session;
+}
 afterEach(async () => {
+  await Promise.all(sessions.splice(0).map((session) => session.close()));
   if (!dirs) return;
   // Also prevent a failing cleanup assertion from leaving fixture processes alive.
   const pids = Bun.file(join(dirs.homeDir, "pids"));
@@ -38,40 +45,46 @@ test.each(["instructions", "tools"])("only changed MCP %s reinject a reminder", 
     instructions: change === "instructions" ? "Changed instructions." : "Stable instructions.",
     tools: change === "tools" ? ["added"] : ["echo"],
   });
+  await session.reconnectMcp("local");
   const events: SessionEvent[] = [];
   await session.run("changed", {
     onEvent: (event) => {
       events.push(event);
     },
   });
-  const updates = events.filter((event) => event.type === "reminder_injected");
-  expect(updates.map((event) => event.source)).toEqual(["mcp"]);
-  expect(updates[0]!.content).toContain(
+  const updates = mcpReminders(session);
+  expect(updates).toHaveLength(2);
+  expect(updates.at(-1)!.content).toContain(
     change === "instructions" ? "Changed instructions." : "mcp__local__added",
   );
   await expectClosed();
 });
 
 test.each(["model-error", "event-error"])(
-  "a failed Run (%s) still closes MCP before result",
+  "a failed Run (%s) still closes MCP after Session close",
   async (failure) => {
     dirs = await tempDirs();
     await userConfig({ local: await stdioConfig() });
     const fake = fakeModel([
       fauxAssistantMessage("", { stopReason: "error", errorMessage: "model failed" }),
     ]);
-    const session = await createSession({ ...dirs, ...fake });
+    const warnings: string[] = [];
+    const session = await createSession({
+      ...dirs,
+      ...fake,
+      onWarning: (warning) => warnings.push(warning),
+    });
     const events: SessionEvent[] = [];
     await expect(
       session.run("fail", {
         onEvent: async (event) => {
           events.push(event);
-          if (event.type === "session_start" && failure === "event-error")
+          if (event.type === "snapshot" && failure === "event-error")
             throw new Error("event failed");
-          if (event.type === "result") await expectClosed();
         },
       }),
-    ).rejects.toThrow(failure === "model-error" ? "model failed" : "event failed");
+    ).rejects.toThrow("model failed");
+    if (failure === "event-error") expect(warnings.join("\n")).toContain("event failed");
     expect(events.at(-1)).toMatchObject({ type: "result", success: false });
     await expectClosed();
   },
@@ -133,9 +146,7 @@ test.each(["untrusted", "settings", "flag", "project-self-trust"])(
       },
     });
     const trusted = trust === "settings" || trust === "flag";
-    const start = events[0];
-    if (start?.type !== "session_start") throw new Error("Missing session_start");
-    const names = start.tools;
+    const names = getCurrentTools(fake.contexts[0]!.messages).map((tool) => tool.name);
     expect(names.includes("mcp__project__echo")).toBe(trusted);
     expect(names).toContain("mcp__user__echo");
     expect((await Bun.file(join(dirs.homeDir, "pids")).text()).trim().split("\n")).toHaveLength(
@@ -219,14 +230,16 @@ test.each(["success", "server-error"])(
         },
       });
       expect(JSON.stringify(fake.contexts[0]!.messages)).toContain("Remote server instructions.");
-      expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
+      expect(
+        fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+      ).toMatchObject({
         role: "toolResult",
         isError: mode === "server-error",
       });
       if (mode === "success")
-        expect(fake.contexts[1]!.messages.at(-1)!.content).toEqual([
-          { type: "text", text: "Remote: hello" },
-        ]);
+        expect(
+          fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult")!.content,
+        ).toEqual([{ type: "text", text: "Remote: hello" }]);
       const errors = events.filter((event) => event.type === "mcp_server_error");
       expect(errors).toHaveLength(mode === "server-error" ? 1 : 0);
       if (mode === "server-error")
@@ -235,6 +248,7 @@ test.each(["success", "server-error"])(
           error: expect.stringContaining("503"),
         });
       expect(events.at(-1)).toMatchObject({ type: "result", success: true });
+      await Promise.all(sessions.splice(0).map((session) => session.close()));
       expect(requests.at(-1)?.method).toBe("DELETE");
       expect(requests.every((request) => request.authorization === "Bearer test-token")).toBe(true);
     } finally {
@@ -261,15 +275,16 @@ async function userConfig(servers: object) {
 }
 
 async function expectClosed() {
+  await Promise.all(sessions.splice(0).map((session) => session.close()));
   const pids = (await Bun.file(join(dirs.homeDir, "pids")).text()).trim().split("\n");
   expect(pids.length).toBeGreaterThan(0);
   for (const pid of pids) expect(() => process.kill(Number(pid), 0)).toThrow();
 }
 
-async function transcript() {
-  const root = join(dirs.homeDir, ".rukie/sessions");
-  const path = (await readdir(root, { recursive: true })).find((path) => path.endsWith(".jsonl"))!;
-  return Bun.file(join(root, path)).text();
+function mcpReminders(session: Awaited<ReturnType<typeof openSession>>) {
+  return session.messages.filter(
+    (message) => message.role === "system-reminder" && message.source === "mcp",
+  );
 }
 
 test("resume preserves context and Transcript prefixes and reminders track changed instructions, tools and removal", async () => {
@@ -288,7 +303,8 @@ test("resume preserves context and Transcript prefixes and reminders track chang
     },
   });
   expect(events.filter((event) => event.type === "reminder_injected")).toEqual([]);
-  const before = await transcript();
+  const before = structuredClone(session.messages);
+  await session.close();
   const prefix = structuredClone(fake.contexts[1]!.messages);
   const next = fakeModel([
     fauxAssistantMessage("changed"),
@@ -304,12 +320,12 @@ test("resume preserves context and Transcript prefixes and reminders track chang
     },
   });
   expect(next.contexts[0]!.messages.slice(0, prefix.length)).toEqual(prefix);
-  expect(await transcript()).toStartWith(before);
-  const updates = events.filter((event) => event.type === "reminder_injected");
-  expect(updates.map((event) => event.source)).toEqual(["mcp"]);
-  expect(updates[0]!.content).toContain("Updated instructions.");
-  expect(updates[0]!.content).toContain("mcp__local__added");
-  expect(updates[0]!.content).not.toContain("mcp__local__echo");
+  expect(resumed.messages.slice(0, before.length)).toEqual(before);
+  const updates = mcpReminders(resumed);
+  expect(updates).toHaveLength(2);
+  expect(updates.at(-1)!.content).toContain("Updated instructions.");
+  expect(updates.at(-1)!.content).toContain("mcp__local__added");
+  expect(updates.at(-1)!.content).not.toContain("mcp__local__echo");
   await rm(join(dirs.homeDir, ".rukie/mcp.json"));
   events.length = 0;
   await resumed.run("removed", {
@@ -317,9 +333,11 @@ test("resume preserves context and Transcript prefixes and reminders track chang
       events.push(event);
     },
   });
-  expect(events.filter((event) => event.type === "reminder_injected")).toMatchObject([
-    { source: "mcp", content: "MCP servers: none." },
-  ]);
+  expect(mcpReminders(resumed).at(-1)).toMatchObject({
+    source: "mcp",
+    content: "MCP servers: none.",
+  });
+  const reminderCount = mcpReminders(resumed).length;
   events.length = 0;
   await resumed.run("still empty", {
     onEvent: (event) => {
@@ -327,6 +345,7 @@ test("resume preserves context and Transcript prefixes and reminders track chang
     },
   });
   expect(events.filter((event) => event.type === "reminder_injected")).toEqual([]);
+  expect(mcpReminders(resumed)).toHaveLength(reminderCount);
   await expectClosed();
 });
 
@@ -362,12 +381,14 @@ test("bad servers emit errors and warnings while the healthy server and Run rema
       })
     ).success,
   ).toBe(true);
-  expect(events[0]?.type).toBe("session_start");
+  expect(events[0]?.type).toBe("snapshot");
   const errors = events.filter((event) => event.type === "mcp_server_error");
   expect(errors.map((event) => event.server).sort()).toEqual(["invalid", "missing"]);
   expect(warnings).toHaveLength(2);
   expect(JSON.stringify(errors)).not.toContain("secret-value");
-  expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
+  expect(
+    fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+  ).toMatchObject({
     isError: false,
     content: [{ type: "text", text: "MCP: works" }],
   });
@@ -426,7 +447,9 @@ test.each(["error", "crash"])(
         })
       ).text,
     ).toBe("recovered");
-    expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({ role: "toolResult", isError: true });
+    expect(
+      fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+    ).toMatchObject({ role: "toolResult", isError: true });
     expect(events.filter((event) => event.type === "mcp_server_error")).toHaveLength(
       tool === "crash" ? 1 : 0,
     );
@@ -443,7 +466,7 @@ async function waitForFile(path: string) {
 }
 
 test.each(["initialize", "model", "tool"])(
-  "abort during %s closes all MCP processes before failure result",
+  "abort during %s closes all MCP processes after Session close",
   async (phase) => {
     dirs = await tempDirs();
     await userConfig({
@@ -469,7 +492,6 @@ test.each(["initialize", "model", "tool"])(
         signal: controller.signal,
         onEvent: async (event) => {
           events.push(event);
-          if (event.type === "result") await expectClosed();
         },
       })
       .then(
@@ -480,14 +502,14 @@ test.each(["initialize", "model", "tool"])(
     else await waitForFile(join(dirs.homeDir, phase === "tool" ? "calls" : "pids"));
     controller.abort();
     expect(await running).toBeInstanceOf(Error);
-    expect(events[0]?.type).toBe("session_start");
+    expect(events[0]?.type).toBe("snapshot");
     expect(events.at(-1)).toMatchObject({ type: "result", success: false });
     await expectClosed();
   },
 );
 
 test.each([false, true])(
-  "stdio tools require permission (allowed: %s) and close before result",
+  "stdio tools require permission (allowed: %s) and close after Session close",
   async (allowed) => {
     dirs = await tempDirs();
     await userConfig({ local: await stdioConfig() });
@@ -508,17 +530,17 @@ test.each([false, true])(
         await session.run("use MCP", {
           onEvent: async (event) => {
             events.push(event);
-            if (event.type === "result") await expectClosed();
           },
         })
       ).text,
     ).toBe("done");
-    expect(events[0]).toMatchObject({
-      type: "session_start",
-      tools: expect.arrayContaining(["mcp__local__echo"]),
-    });
+    expect(getCurrentTools(fake.contexts[0]!.messages).map((tool) => tool.name)).toContain(
+      "mcp__local__echo",
+    );
     expect(JSON.stringify(fake.contexts[0]!.messages)).toContain("Use echo for test messages.");
-    expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
+    expect(
+      fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+    ).toMatchObject({
       role: "toolResult",
       toolName: "mcp__local__echo",
       isError: !allowed,
@@ -528,6 +550,10 @@ test.each([false, true])(
     );
     expect(await Bun.file(join(dirs.homeDir, "calls")).exists()).toBe(allowed);
     if (allowed)
-      expect(JSON.stringify(fake.contexts[1]!.messages.at(-1)!.content)).toContain("MCP: hello");
+      expect(
+        JSON.stringify(
+          fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult")!.content,
+        ),
+      ).toContain("MCP: hello");
   },
 );
