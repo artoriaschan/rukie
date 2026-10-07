@@ -1,5 +1,6 @@
-import { expect, test } from "bun:test";
+import { expect, jest, test } from "bun:test";
 import { startWithClock } from "../helpers/clock-app";
+import { start } from "../helpers/app";
 import { controlledModel } from "../helpers/model";
 import { createSession, createJsonlStore } from "@neant/agent";
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/pi-agent-core/harness/context";
@@ -173,6 +174,36 @@ test.each(["future", "past"] as const)(
       } finally {
         await restored.dispose();
       }
+      if (mode === "future") {
+        const replay = await start(argv, {
+          columns: 100,
+          rows: 40,
+          env: { LANG: "en" },
+          advanceTimers: (ms) => jest.advanceTimersByTime(ms),
+          session: { cwd: app.root, homeDir: app.root },
+        });
+        try {
+          await replay.waitFor(() => replay.screen().includes("❯"));
+          const y = replay.screen().findIndex((line) => line.includes("Same clock child"));
+          const x = Bun.stringWidth(replay.screen()[y]!.split("⤢")[0]!) + 1;
+          replay.stdin.write(`\x1b[<0;${x};${y + 1}M\x1b[<0;${x};${y + 1}m`);
+          await replay.waitFor(() => replay.screen().join("\n").includes("Agent View"));
+          await replay.waitFor(() =>
+            replay.screen().join("\n").includes("active current child marker"),
+          );
+          expect(replay.screen().join("\n").split("❯ new continuation marker")).toHaveLength(2);
+          expect(replay.calls).toHaveLength(0);
+          replay.stdin.write("\x1b");
+          await replay.waitFor(() => !replay.screen().join("\n").includes("Agent View"));
+          expect(replay.calls).toHaveLength(0);
+        } finally {
+          await replay.cleanup();
+        }
+      }
+      expect(output.split("❯ new continuation marker")).toHaveLength(2);
+      expect(output.indexOf("new continuation marker")).toBeLessThan(
+        output.indexOf("active current child marker"),
+      );
       expect(output).toContain("saved prior child marker");
       if (mode === "past") expect(output.split("current committed child thinking")).toHaveLength(2);
       expect(output.split("active current child marker")).toHaveLength(2);

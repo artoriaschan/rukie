@@ -39,3 +39,12 @@ Blocked by: 03
 - Worktree `/tmp/neant-streaming-subagent-history`, branch `codex/streaming-parity-subagent-history`, baseline `7709774`. Focused new tests 3 pass / 34 assertions / 665ms; broader pre-final set 26 pass / 190 assertions / 6.08s. All new cases below one second; virtual clock and public terminal/completion signals, no fixed sleeps. Static/final focused evidence appended after final checks; aggregate gate remains integration-owned.
 
 - Final focused/static verification: 27 tests / 197 assertions / 6.04s across child history, observation, card, detail and recovery suites; `bun run check:dev` passes after readonly lease and unknown-result disclosure changes.
+
+## Integration fix: live and restored child input agree
+
+- Public audit at `57156f4` showed the actual continuation prompt present after cold load but absent during live child observation. Repository red in `subagent-history-boundary.test.ts` expected the live prompt once before its assistant response and failed (278ms). The existing native user facts remain authoritative.
+- Live reduction now consumes completed user messages once, sharing cold projection's source-free user filtering and content extraction. User `message_start` does not add a duplicate. Internal reminder sources remain hidden; the three-line card preview remains child output only.
+- Reference adaptation is explicit: fixed dsh child transcript filters assistant/tool leaves, while Neant's existing read-only child projection includes actual user inputs. This fix keeps that established Neant input contract consistent live and after Resume; it does not fabricate or delete prompts to copy the reference filter.
+- Worktree `/tmp/neant-streaming-child-input`, branch `codex/streaming-parity-child-input`, baseline `57156f4`. Public virtual-clock continuation cases assert prompt/assistant ordering and one prompt under future/past provider timestamps; cold independent Agent View asserts the same saved prompt and zero model calls. Browsing remains read-only.
+- Focused child history, card, views and recovery verification: 26 passed / 194 assertions / 5.62s; new history cases 175ms and 152ms, using public terminal/completion signals without fixed sleeps. Final static check recorded below; no full aggregate gate here. Ticket 11 remains blocked on 10 and unclaimed.
+- `bun run check:dev` and `git diff --check` passed; integration tip remains `57156f4` at handoff.
