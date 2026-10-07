@@ -314,6 +314,14 @@ const CompactHookContextDoc = defineDoc<{ pending: string[] }>({
   fork: "asOf",
   initial: () => ({ pending: [] }),
 });
+const HookYieldDoc = defineDoc<{ runAnchor: number | null; pending: string[] }>({
+  kind: "rukie.hook-yield",
+  version: 1,
+  scope: "conversation",
+  history: "rewindable",
+  fork: "initial",
+  initial: () => ({ runAnchor: null, pending: [] }),
+});
 const PlanTakeoverDoc = defineDoc<{ requests: Record<string, true> }>({
   kind: "rukie.plan-takeovers",
   version: 1,
@@ -475,6 +483,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     let manualCompactionTask: TaskId | undefined;
     let goalRound = false;
     const steeringAdmissions = new Set<Promise<void>>();
+    let checkingStop: number | undefined;
     let wrapup: string | undefined;
     let permissionMode = options.permissionMode ?? settings.permissionMode ?? "ask";
     const sessionAllowRules = options.sessionAllowRules ?? [];
@@ -654,24 +663,35 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 timestamp: Date.now(),
               });
             if (!reason) return;
+            const live = await harness.snapshot(LiveDoc, conversation.id, context);
+            if (live?.run && checkingStop === Number(live.run.inputs[0])) {
+              await conversation.commit(async (tx) => {
+                const pending = await tx.doc(HookYieldDoc, conversation.id);
+                pending.runAnchor = checkingStop!;
+                pending.pending.push(reason);
+              }, context);
+              return;
+            }
+            const parentRequestId = live?.run ? currentRequestId : undefined;
             const requestId = `hook:${randomUUID()}`;
             const submitted = await conversation.submit(
               {
                 type: "input",
                 content: reason,
                 requestId,
-                whenBusy: "followUp",
+                whenBusy: "steer",
               },
               context,
             );
-            currentRequestId = requestId;
-            await registerSubmission(requestId, submitted.id);
-            void resultFor(requestId, submitted.id)
-              .then(async (result) => {
-                custom({ type: "result", ...result });
-                await session.waitForRequest(requestId);
-              })
-              .catch(warn);
+            if (!parentRequestId) currentRequestId = requestId;
+            await registerSubmission(parentRequestId ?? requestId, submitted.id);
+            if (!parentRequestId)
+              void resultFor(requestId, submitted.id)
+                .then(async (result) => {
+                  custom({ type: "result", ...result });
+                  await session.waitForRequest(requestId);
+                })
+                .catch(warn);
             const record = await submitted.status(context);
             if (record.entry)
               await conversation.commit(
@@ -1847,7 +1867,32 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     const pendingCompactions = new Map<number, EntryRecord>();
     const compactFocus = new Map<number, string>();
     let compactionHooks = Promise.resolve();
-    const processCompactionHooks = () => {
+    const stopCompactionByHook = async (reason: string, caller = context) => {
+      const live = await harness.snapshot(LiveDoc, conversation.id, context);
+      const first = live?.run?.inputs[0];
+      const input =
+        first === undefined ? undefined : await lease.storage.submission(first, context);
+      await conversation.commit(async (tx) => {
+        const stops = await tx.doc(HookStopsDoc);
+        if (input?.requestId) stops.requests[input.requestId] = reason;
+        await tx.appendEntry(conversation.id, {
+          kind: "rukie.notice",
+          data: {
+            role: "session-notice",
+            notice: { kind: "hook_stopped", reason },
+            timestamp: Date.now(),
+          },
+        });
+      }, context);
+      stopped = true;
+      hookStopReason = reason;
+      try {
+        await conversation.abort(caller);
+      } catch (error) {
+        if (!caller.abortSignal?.aborted) throw error;
+      }
+    };
+    const processCompactionHooks = (caller = context) => {
       compactionHooks = compactionHooks.then(async () => {
         for (const [id, entry] of pendingCompactions) {
           pendingCompactions.delete(id);
@@ -1875,6 +1920,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             matchQuery: "compact",
           });
           for (const result of [post, startup]) {
+            if (result.continue === false) {
+              await stopCompactionByHook(result.stopReason ?? "Stopped by hook.", caller);
+              break;
+            }
             for (const message of result.systemMessages)
               await appendNotice({ kind: "hook_message", message });
             await conversation.commit(async (tx) => {
@@ -2041,11 +2090,27 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               if (compaction.reason === "manual") return undefined;
               const result = await hooks.run(
                 "PreCompact",
-                hookInput({ trigger: "auto", custom_instructions: compaction.instructions ?? "" }),
+                hookInput({
+                  trigger: "auto",
+                  custom_instructions: compaction.instructions ?? null,
+                }),
                 { signal: ctx.abortSignal, matchQuery: "auto" },
               );
-              if (result.continue === false || result.decision === "block") {
-                warn(result.stopReason ?? result.reason ?? "Compaction declined by hook.");
+              if (result.continue === false) {
+                await stopCompactionByHook(result.stopReason ?? "Stopped by hook.", ctx);
+                return { decline: true };
+              }
+              if (result.decision === "block") {
+                const reason = result.reason ?? "Compaction declined by hook.";
+                const warning = {
+                  event: "PreCompact" as const,
+                  hook: "compaction",
+                  message: reason,
+                  error: { code: "hook-compaction-blocked" as const, params: { reason } },
+                };
+                await appendNotice({ kind: "hook_warning", ...warning });
+                custom({ type: "hook_warning", ...warning });
+                warn(reason);
                 return { decline: true };
               }
               return undefined;
@@ -2092,7 +2157,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           }),
           hook(GenerationTask, {
             beforeRequest: async (_request, api, ctx) => {
-              await processCompactionHooks();
+              await processCompactionHooks(ctx);
               const live = await harness.snapshot(LiveDoc, conversation.id, ctx);
               if (live?.run) {
                 if (goal.view()?.armed)
@@ -2110,6 +2175,19 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                     entry.kind !== "rukie.reminder" &&
                     (entry.model ?? []).some((message) => message.role === "user"),
                 );
+                const repairs = await harness.snapshot(HookYieldDoc, conversation.id, ctx);
+                if (
+                  repairs?.pending.length &&
+                  latestInput?.model?.some(
+                    (message) =>
+                      message.role === "user" && textOf(message) === repairs.pending.join("\n\n"),
+                  )
+                )
+                  await conversation.commit(async (tx) => {
+                    const pending = await tx.doc(HookYieldDoc, conversation.id);
+                    pending.pending = [];
+                    pending.runAnchor = null;
+                  }, ctx);
                 if (
                   placed.some(
                     (record) =>
@@ -2353,13 +2431,22 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               const live = await harness.snapshot(LiveDoc, conversation.id, ctx);
               const runAnchor = Number(live?.run?.inputs[0]);
               const count = hookState?.taskId === runAnchor ? hookState.count : 0;
-              const result = await hooks.run(
-                "Stop",
-                hookInput({ stop_hook_active: count > 0, last_assistant_message: textOf(_answer) }),
-                {
-                  signal: ctx.abortSignal,
-                },
-              );
+              checkingStop = runAnchor;
+              const result = await hooks
+                .run(
+                  "Stop",
+                  hookInput({
+                    stop_hook_active: count > 0,
+                    last_assistant_message: textOf(_answer),
+                  }),
+                  {
+                    signal: ctx.abortSignal,
+                  },
+                )
+                .finally(async () => {
+                  await asyncAdmissions;
+                  checkingStop = undefined;
+                });
               await applyHookResult(result, "hook:Stop", ctx);
               if (result.continue === false) {
                 const input =
@@ -2381,6 +2468,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 }, ctx);
                 return undefined;
               }
+              const repairs = await harness.snapshot(HookYieldDoc, conversation.id, ctx);
+              if (repairs?.runAnchor === runAnchor && repairs.pending.length)
+                return continuation(repairs.pending.join("\n\n"), "async-hook");
               if (result.decision === "block" && result.reason) {
                 if (count >= 8) {
                   warn("Stop hook reached the 8 continuation limit");
