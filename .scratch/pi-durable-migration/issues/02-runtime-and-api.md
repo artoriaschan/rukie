@@ -38,12 +38,20 @@ Blocked by: 01
 | 中断、作业停止通知与关闭   | `post-tool-hooks`、`job-api`、`session-dispose`            | 39 pass，177 assertions | 4.65 s |
 | 子代理权限与权限 Hook      | `subagent-permissions`、`permission-hooks`                 | 42 pass，147 assertions | 2.91 s |
 | 真实进程丢失不安全工具回执 | `unknown-tool-outcomes`                                    | 6 pass                  | 2.04 s |
+| 实时与恢复 Thinking 时长   | Agent `thinking`、TUI `thinking`                           | 12 pass，55 assertions  | 1.62 s |
+| 原生 Goal 工具回执         | `goal-tools`                                               | 21 pass，71 assertions  | 1.17 s |
+| 异步警告与关闭生命周期     | `session-dispose`                                          | 9 pass，34 assertions   | 2.02 s |
+| 恢复模型与选择器           | TUI `model-switch`、`resume-picker`                        | 6 pass，33 assertions   | 0.96 s |
+| 子代理 fork 与原子 Rewind  | `session-title`、`checkpoint`、`checkpoint-subagents`      | 53 pass，281 assertions | 3.87 s |
+| MCP 上下文归属与恢复       | `context-report`                                           | 6 pass，34 assertions   | 0.48 s |
 
 上述命令统一使用 `rtk proxy bun test packages/agent/tests/e2e/<name>.test.ts ...`。关闭预算用例实际覆盖跨进程 1.5 秒资源回收契约，保留真实时间；其余同步使用模型回复、原生结算、文件事件和进程退出。
 
 `rtk proxy bunx --no tsc -b --pretty false` 已通过全部工作区类型检查；受影响源文件的 oxfmt、oxlint 通过。受影响 Agent package 首轮为 1436 pass / 30 fail，coding-agent package 首轮为 1307 pass / 146 fail；正在用最小用例区分原生消费者差异、共享时钟级联与真实源码缺陷，不能把后续局部通过报告成包检查通过。最终聚合检查保留给 09，尚未执行。
 
-仍需在 02 关闭前完成：已发现的 populated-directory fork 原子事务冲突、受影响包失败收敛、静态依赖检查与集成复核。03–08 保持依赖门禁，另行验证存储故障/并发恢复、挂起 Interaction 重授权、有限因果结算崩溃窗口、Goal 原子续轮以及 Frontend 回放和终端矩阵；不得从本票聚焦通过推断这些验收完成。
+populated-directory fork 原子事务冲突已修复：子代理目录使用原生 rewindable 历史与 fork initial 策略；Rewind 通过公开 snapshotAsOf 读取锚点目录，在创建目标 Conversation 的同一事务内恢复目录，保留原先不存在与显式空目录的区别。已有子代理时的 fork 与 Checkpoint 恢复均已通过公开行为测试。恢复模型的首帧投影、实时 Thinking 时长和异步警告字符串边界也已通过实际 TUI 回归。全部工作区类型检查与 Knip 已通过。
+
+仍需在 02 关闭前完成：受影响包失败收敛、权限弹窗呈现与恢复上下文用量等已发现问题、静态开发检查与集成复核。03–08 保持依赖门禁，另行验证存储故障/并发恢复、挂起 Interaction 重授权、有限因果结算崩溃窗口、Goal 原子续轮以及 Frontend 回放和终端矩阵；不得从本票聚焦通过推断这些验收完成。
 
 ## Comments
 

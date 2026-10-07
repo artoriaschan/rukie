@@ -1,3 +1,5 @@
+import { defineDoc } from "@earendil-works/pi-durable";
+import type { JsonValue } from "@earendil-works/chord";
 import { defineToolState, type ToolStateDefinition } from "../../tool-state/index.ts";
 
 /** Durable facts for one child Run; an absent outcome has not been settled. */
@@ -155,15 +157,24 @@ export function parseSubagentIdentities(
   });
 }
 
+/** Native history supports root rewind; child forks receive a fresh owned directory. */
+export const SubagentDirectoryDoc = defineDoc({
+  kind: "rukie.subagents",
+  version: 3,
+  scope: "conversation",
+  history: "rewindable",
+  fork: "initial",
+  initial: () => ({ value: null as JsonValue }),
+});
+
 export function subagentsState(parentSessionId: string): ToolStateDefinition {
-  return defineToolState({
-    history: "rewindable",
-    fork: "asOf",
+  return {
+    document: SubagentDirectoryDoc,
     name: "subagents",
     version: 3,
     parse(version, value) {
       if (version !== 3) throw new Error("Invalid subagent directory version.");
       return parseSubagentIdentities(value, parentSessionId);
     },
-  });
+  };
 }

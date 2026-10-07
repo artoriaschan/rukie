@@ -106,11 +106,16 @@ test.each(["stop", "error", "aborted", "length"] as const)(
           ),
         );
         if (!completed) throw new Error("Missing committed closing parent answer.");
-        const retained = await parent.fork(
-          completed.id,
-          { ownership: { kind: "ownerless" } },
-          context,
-        );
+        const saved = await controller.snapshotForRewind(completed.id, context);
+        const restored = await parent.commit(async (tx) => {
+          const fork = await tx.forkConversation(parent.id, completed.id, {
+            ownership: { kind: "ownerless" },
+          });
+          await controller.restoreFork(tx, fork.id, saved);
+          return fork;
+        }, context);
+        const retained = await harness.conversation(restored.id, context);
+        if (!retained) throw new Error("Missing restored root fork.");
         expect(
           await harness.snapshot(subagentsState("product").document, retained.id, context),
         ).toEqual({ value: rows });
