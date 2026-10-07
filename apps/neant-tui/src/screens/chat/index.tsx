@@ -507,7 +507,7 @@ function Chat({
     | "dashboard"
     | "settings"
     | "jobs"
-    | { detail: string; from: "chat" | "dashboard" };
+    | { detail: string; from: "chat" | "dashboard"; agentView?: boolean };
   const [view, setView] = useState<View>("chat");
   const viewRef = useRef<View>("chat");
   const switchView = (next: View) => {
@@ -566,14 +566,17 @@ function Chat({
     savedChatScroll.current = body.current?.getSnapshot();
     switchView("jobs");
   };
-  const openDetail = (id: string, from: "chat" | "dashboard") => {
+  const openDetail = (id: string, from: "chat" | "dashboard", agentView = false) => {
     if (previewRef.current || mcpPanel.getSnapshot()) return;
     if (from === "chat") savedChatScroll.current = body.current?.getSnapshot();
     else savedDashboardScroll.current = subagentScroll.current?.getSnapshot();
-    pageRef.current = "summary";
-    setPage("summary");
+    pageRef.current = agentView ? "output" : "summary";
+    setPage(agentView ? "output" : "summary");
     setThinkingOpen(false);
-    switchView({ detail: id, from });
+    switchView({ detail: id, from, agentView });
+    void conversation.loadSubagent(id).catch((error) => {
+      if (pasteOwner.current) conversation.notice(formatError(error, t), true);
+    });
   };
   const closeView = () => {
     const current = viewRef.current;
@@ -793,7 +796,7 @@ function Chat({
       selectedSubagent?.status !== "running"
     )
       return;
-    subagentScroll.current?.scrollToBottom();
+    if (subagentScroll.current?.getSnapshot().following) subagentScroll.current.scrollToBottom();
   }, [view, page, selectedSubagent?.output, selectedSubagent?.status]);
 
   const [scrollFocus, setScrollFocus] = useState<"body" | "details">("body");
@@ -1575,6 +1578,10 @@ function Chat({
     }
     if (currentView === "settings") return;
     if (currentView !== "chat") {
+      if (!small && typeof currentView === "object" && toolWindows?.handle(event)) {
+        handledInput.current.add(event);
+        return;
+      }
       if (event.type === "wheel") subagentScroll.current?.scrollBy(event.delta * 3);
       if (event.type !== "key") return;
       const { key } = event;
@@ -1608,12 +1615,23 @@ function Chat({
           if (selected) openDetail(selected.agentId, "dashboard");
         }
       } else {
-        if (key.name === "left" || key.name === "right") {
+        if (!currentView.agentView && (key.name === "left" || key.name === "right")) {
           const pages: DetailPage[] = ["summary", "output", "tools"];
           turnPage(pages[(pages.indexOf(pageRef.current) + (key.name === "left" ? 2 : 1)) % 3]!);
         } else if (key.name === "up" || key.name === "down")
           subagentScroll.current?.scrollBy(key.name === "up" ? -3 : 3);
-        else if (!key.ctrl && !key.alt && event.input.toLowerCase() === "x")
+        else if (key.name === "pageup" || key.name === "pagedown")
+          subagentScroll.current?.scrollBy(
+            (subagentScroll.current.getSnapshot().height - 1) * (key.name === "pageup" ? -1 : 1),
+          );
+        else if (key.name === "home" || key.name === "end")
+          subagentScroll.current?.scrollBy(key.name === "home" ? -Infinity : Infinity);
+        else if (
+          !currentView.agentView &&
+          !key.ctrl &&
+          !key.alt &&
+          event.input.toLowerCase() === "x"
+        )
           session.interruptSubagent(currentView.detail);
         else if (key.name === "enter" && !key.ctrl && !key.alt && !key.shift) {
           if (pageRef.current === "output") setThinkingOpen((open) => !open);
@@ -2033,6 +2051,7 @@ function Chat({
                 effort={thinking}
                 locale={locale}
                 onClick={() => openDetail(entry.agentId, "chat")}
+                onOpenView={() => openDetail(entry.agentId, "chat", true)}
               />
             ) : null;
           case "context-report":
@@ -2158,6 +2177,7 @@ function Chat({
       <Box height={rows} flexDirection="column">
         <SubagentDetailScene
           subagent={selectedSubagent}
+          agentView={typeof view === "object" && view.agentView}
           onPathClick={openFileActions}
           foldTerminalCommand={foldTerminalCommand}
           page={page}

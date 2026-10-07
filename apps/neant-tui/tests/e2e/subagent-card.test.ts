@@ -1,6 +1,6 @@
 import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
-import { expect, test } from "bun:test";
-import { start } from "../helpers/app";
+import { expect, test, jest } from "bun:test";
+import { startWithClock as start } from "../helpers/clock-app";
 
 test("a delegated Subagent renders only its dedicated running row", async () => {
   const app = await start(["--permission-mode", "full-access", "--thinking", "high", "delegate"], {
@@ -30,7 +30,7 @@ test("a delegated Subagent renders only its dedicated running row", async () => 
     );
     const rows = app.screen();
     const card = rows.findIndex((line) => line.includes("子代理：Investigate renderer"));
-    expect(rows[card]).toMatch(/faux\/faux-1.*high.*0 tok.*0 tools.*运行中/);
+    expect(rows[card]).toMatch(/faux\/faux-1.*high.*0 tools.*运行中/);
     expect(rows.join("\n")).not.toContain("started subagent");
     expect(rows.slice(card + 1, card + 5)).toEqual([
       "",
@@ -72,14 +72,20 @@ for (const outcome of ["completed", "failed"] as const) {
       await app.waitFor(() =>
         app
           .screen()
-          .some((line) => line.includes("Subagent: Check results") && line.endsWith(outcome)),
+          .some(
+            (line) =>
+              line.includes("Subagent: Check results") &&
+              line.includes(
+                outcome === "completed" ? "Run ended normally" : "Run ended with error",
+              ),
+          ),
       );
       const rows = app.screen();
       const card = rows.findIndex((line) => line.includes("Subagent: Check results"));
       expect(rows[card]).toMatch(
         outcome === "completed"
-          ? /^  🟢 Subagent: Check results.*20 tok.*0 tools.*completed$/
-          : /^  🔴 Subagent: Check results.*failed$/,
+          ? /^  🟢 Subagent: Check results.*20 tok.*0 tools.*Run ended normally.*⤢$/
+          : /^  🔴 Subagent: Check results.*Run ended with error.*⤢$/,
       );
       expect(rows[card + 1]).toBe(outcome === "completed" ? "" : "    └ provider offline");
       expect(screen()).not.toContain("│ temporary output");
@@ -119,11 +125,13 @@ test("running cards retain exactly three single output rows through streaming, t
     app.resize(160, 40);
     child.tool("read", { path: "missing.txt" });
     await app.waitFor(
-      () => app.calls.length === 4 && screen().includes("1 tools") && screen().includes("✓read"),
+      () => app.calls.length === 4 && screen().includes("1 tools") && screen().includes("✗read"),
     );
+    expect(screen()).not.toContain("│ three");
+    expect(waterfall()).toEqual(["    │", "    │", "    │"]);
     const card = app.screen().findIndex((line) => line.includes("子代理：Read files"));
     expect(app.screen()[card]).toContain("16 tok");
-    expect(app.screen()[card + 1]).toContain("✓read");
+    expect(app.screen()[card + 1]).toContain("✗read");
     expect(
       app
         .screen()
@@ -132,9 +140,7 @@ test("running cards retain exactly three single output rows through streaming, t
     ).toBe(true);
     app.calls[3]!.delta("next message");
     await app.waitFor(() => screen().includes("│ next message"));
-    expect(waterfall()[0]).toBe("    │ three");
-    expect(waterfall()[1]).toEndWith("…");
-    expect(waterfall()[2]).toBe("    │ next message");
+    expect(waterfall()).toEqual(["    │ next message", "    │", "    │"]);
   } finally {
     await app.cleanup();
   }
@@ -175,7 +181,7 @@ for (const [locale, waiting, aborted] of [
       await app.waitFor(() => !app.isWorking() && !screen().includes(waiting));
       expect(children.every((child) => child.signal!.aborted)).toBe(true);
       expect(
-        app.screen().filter((line) => line.includes("🔴") && line.endsWith(aborted)),
+        app.screen().filter((line) => line.includes("🔴") && line.includes(aborted)),
       ).toHaveLength(2);
       expect(screen()).not.toContain("    │");
       app.stdin.write("again\r");
@@ -302,7 +308,7 @@ test("an idle child's continuation retains exactly one dedicated row", async () 
     app.calls[5]!.finish();
     await app.waitFor(() => !app.isWorking());
     app.stdin.write("\x0f/Continue investigation\r");
-    await app.waitFor(() => screen().includes("1/"));
+    await app.waitFor(() => screen().includes("1/2"));
     expect(screen()).toContain("1/2");
   } finally {
     await app.cleanup();
@@ -325,6 +331,14 @@ test("parent resume initializes its persisted child card as idle before cold con
       }),
       { stopReason: "toolUse" },
     ),
+    fauxAssistantMessage(
+      [
+        { type: "thinking", thinking: "stored reasoning" },
+        { type: "text", text: "before tool" },
+        fauxToolCall("read", { path: "missing.txt" }),
+      ],
+      { stopReason: "toolUse" },
+    ),
     fauxAssistantMessage("stored answer"),
     fauxAssistantMessage("parent answer"),
   ]);
@@ -344,13 +358,31 @@ test("parent resume initializes its persisted child card as idle before cold con
         },
       });
       argv.push("--resume", session.id);
+      await session.dispose();
     },
   });
   try {
     const screen = () => app.screen().join("\n");
     await app.waitFor(() => screen().includes("子代理：Stored child"));
-    expect(app.screen().find((row) => row.includes("子代理：Stored child"))).toEndWith("空闲");
+    expect(app.screen().find((row) => row.includes("子代理：Stored child"))).toContain(
+      "Run 正常结束",
+    );
     expect(app.isWorking()).toBe(false);
+    expect(app.calls).toHaveLength(0);
+    const y = app.screen().findIndex((row) => row.includes("子代理：Stored child"));
+    const x = Bun.stringWidth(app.screen()[y]!.split("⤢")[0]!) + 1;
+    app.stdin.write(`\x1b[<0;${x};${y + 1}M\x1b[<0;${x};${y + 1}m`);
+    await app.waitFor(() => screen().includes("Agent View"));
+    await app.waitFor(() => screen().includes("stored answer"));
+    expect(app.calls).toHaveLength(0);
+    expect(screen()).toContain("before tool");
+    expect(screen()).toContain("missing.txt");
+    expect(screen().indexOf("before tool")).toBeLessThan(screen().indexOf("missing.txt"));
+    expect(screen().indexOf("missing.txt")).toBeLessThan(screen().indexOf("stored answer"));
+    app.stdin.write("\r");
+    await app.waitFor(() => screen().includes("stored reasoning"));
+    app.stdin.write("\x1b");
+    await app.waitFor(() => !screen().includes("Agent View"));
     app.stdin.write("continue\r");
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.tool("send_message", { agent_id: id, message: "cold followup" });
@@ -425,11 +457,14 @@ test("fork, agent listing and failed messaging use dedicated rows live and after
     app.calls[4]!.finish();
     await app.waitFor(() => !app.isWorking());
     assertRows(app);
-    const replay = await start(argv, {
+    const replay = await (
+      await import("../helpers/app")
+    ).start(argv, {
       columns: 160,
       rows: 50,
       env: { LANG: "en_US.UTF-8" },
       session: { cwd: root, homeDir: root },
+      advanceTimers: (ms) => jest.advanceTimersByTime(ms),
     });
     try {
       await replay.waitFor(() => replay.screen().includes("❯"));

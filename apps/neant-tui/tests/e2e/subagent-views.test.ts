@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { start } from "../helpers/app";
+import { startWithClock as start } from "../helpers/clock-app";
 import { startWithClock } from "../helpers/clock-app";
 
 for (const [lang, title, summary] of [
@@ -81,7 +81,7 @@ test("message card opens detail; tabs, thinking fold, Markdown, tool rows and co
     app.stdin.write("\r");
     await app.waitFor(() => screen().includes("private reasoning"));
     child.tool("read", { path: "missing.txt" });
-    await app.waitFor(() => app.calls.length === 4 && screen().includes("● read"));
+    await app.waitFor(() => app.calls.length === 4 && screen().includes("✗ Read"));
     app.stdin.write("\x1b[C");
     await app.waitFor(() => screen().includes("missing.txt") && screen().includes("3/3"));
     click(app, "Output");
