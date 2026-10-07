@@ -108,14 +108,20 @@ export function contextReport(options: {
     if (!message) continue;
     const path = /^Project Instructions \(([^\n]+)\):\n/.exec(message.content)?.[1];
     if (!path) continue;
-    const count = tokens(message.content);
+    const count = Object.values(contextUsage(message.model, window).segments).reduce(
+      (sum, value) => sum + value,
+      0,
+    );
     memoryFiles.push({ path, tokens: count });
     category["memory-files"] += count;
     for (const contribution of message.model) attributed.add(contribution);
   }
   const catalog = latest.get("skills");
   if (catalog) {
-    category.skills = tokens(catalog.content);
+    category.skills = Object.values(contextUsage(catalog.model, window).segments).reduce(
+      (sum, value) => sum + value,
+      0,
+    );
     for (const contribution of catalog.model) attributed.add(contribution);
     for (const match of catalog.content.matchAll(/^- ([a-z0-9-]+): (.*)$/gm))
       skills.push({ name: match[1]!, tokens: tokens(match[0]) });
