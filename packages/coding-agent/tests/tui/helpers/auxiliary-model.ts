@@ -26,7 +26,7 @@ export function isTitleRequest(context: TranscriptContext) {
 /** Auxiliary requests must not consume the main conversation's scripted responses. */
 export function auxiliaryModels(
   primary: ModelStream,
-  options: { titles?: ModelStream } = {},
+  options: { titles?: ModelStream; models?: Models } = {},
 ): Models {
   const streamSimple: ModelStream = (model, context, request) => {
     if (!isTitleRequest(context)) return primary(model, context, request);
@@ -38,9 +38,9 @@ export function auxiliaryModels(
     return stream;
   };
   const models = createModels();
-  models.setProvider({
-    ...fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 }).provider,
-    streamSimple,
-  });
+  const providers = options.models?.getProviders() ?? [
+    fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 }).provider,
+  ];
+  for (const provider of providers) models.setProvider({ ...provider, streamSimple });
   return models;
 }

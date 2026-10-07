@@ -17,15 +17,6 @@ import {
   discoverSubagentTypes,
 } from "../tools/subagents/index.ts";
 
-/**
- * Per-Session selection of model tools. Session owns the identity, tool-name and inherited
- * MCP facts; the assembly applies them without keeping a second copy of that state.
- */
-export interface ToolGate {
-  allowsTool(tool: ToolRegistration): boolean;
-  measureTool(tool: ToolRegistration): ToolRegistration;
-}
-
 export interface BaseToolsInput {
   /** Child Sessions share Plan Mode but expose neither Plan Mode nor Goal tools. */
   isChild: boolean;
@@ -37,7 +28,7 @@ export interface BaseToolsInput {
     onInteractionStart?: OnInteractionStart;
   };
   goal: {
-    /** The Goal controller is created after the Agent, so callers pass its lazy facade. */
+    /** Tool assembly receives the Goal controller through a lazy facade. */
     controller: GoalToolController;
     execution: GoalToolExecution;
   };
@@ -88,26 +79,4 @@ export async function refreshSubagentTypes(input: {
   );
   input.controller.setTypes(discovered.types);
   await input.report?.(discovered);
-}
-
-/** Apply the Session gate to a tool set, then wrap each tool for duration measurement. */
-export function selectTools(
-  tools: readonly ToolRegistration[],
-  gate: ToolGate,
-): ToolRegistration[] {
-  return tools.filter((tool) => gate.allowsTool(tool)).map((tool) => gate.measureTool(tool));
-}
-
-/** A Turn starts from the Run's non-MCP tools and appends the MCP tools current at that Turn. */
-export function createTurnTools(input: {
-  nonMcpTools: readonly ToolRegistration[];
-  mcpTools: readonly ToolRegistration[];
-  gate: ToolGate;
-}): ToolRegistration[] {
-  return [
-    ...input.nonMcpTools,
-    ...input.mcpTools
-      .filter((tool) => input.gate.allowsTool(tool))
-      .map((tool) => input.gate.measureTool(tool)),
-  ];
 }

@@ -1,11 +1,20 @@
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall, getCurrentSystemMessage } from "@earendil-works/pi-ai";
-import { createSession } from "../../src/index.ts";
+import { createSession as createNativeSession, type Session } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
-afterEach(() => dirs?.cleanup());
+const sessions: Session[] = [];
+const createSession = async (...args: Parameters<typeof createNativeSession>) => {
+  const session = await createNativeSession(...args);
+  sessions.push(session);
+  return session;
+};
+afterEach(async () => {
+  await Promise.all(sessions.splice(0).map((session) => session.close()));
+  await dirs?.cleanup();
+});
 const call = (name: string, args: Parameters<typeof fauxToolCall>[1]) =>
   fauxAssistantMessage(fauxToolCall(name, args), { stopReason: "toolUse" });
 
@@ -14,7 +23,7 @@ test("a human Run can create a Goal in ask mode and continuation starts only aft
   const fake = fakeModel([
     call("create_goal", { objective: "Verify migration", max_goal_rounds: 1 }),
     (context) => {
-      expect(context.messages.at(-1)).toMatchObject({
+      expect(context.messages.findLast((message) => message.role === "toolResult")).toMatchObject({
         role: "toolResult",
         isError: false,
         content: [
@@ -51,8 +60,12 @@ test.each(["complete", "blocked"] as const)(
         ...(action === "blocked" && { blocked_reason: "Missing deployment credential" }),
       }),
       (context) => {
-        expect(context.messages.at(-1)).toMatchObject({ role: "user", source: "goal" });
-        const text = JSON.stringify(context.messages.at(-1));
+        const wrapup = context.messages.findLast(
+          (message) =>
+            message.role === "user" && JSON.stringify(message.content).includes(`<goal_${action}>`),
+        );
+        expect(wrapup).toMatchObject({ role: "user" });
+        const text = JSON.stringify(wrapup);
         expect(text).toContain(`<goal_${action}>`);
         expect(text).toContain(
           "Report only what earlier rounds and tool results in this session actually establish",
@@ -67,14 +80,18 @@ test.each(["complete", "blocked"] as const)(
     const session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
     const results: string[] = [];
     session.subscribe((event) => {
-      if (event.type === "result") results.push(event.text);
+      if (event.type === "request_settled") results.push(event.text);
     });
-    await session.createGoal("Ship verified release");
-    await session.waitForIdle();
+    const accepted = await session.createGoal("Ship verified release");
+    expect(await session.waitForRequest(accepted.requestId)).toMatchObject({
+      success: true,
+      text: "Closing report with verified artifacts",
+    });
     expect(fake.contexts).toHaveLength(2);
     expect(results).toEqual(["Closing report with verified artifacts"]);
     expect(session.checkpoints()).toEqual([]);
     expect(session.title).toBe("");
+    await session.close();
     const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
     expect(resumed.goal).toEqual(session.goal);
     expect(resumed.messages.filter((message) => message.role === "user")).toMatchObject([

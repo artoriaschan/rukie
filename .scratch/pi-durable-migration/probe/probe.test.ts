@@ -100,18 +100,7 @@ for (const mode of [
       if (mode === "partial") expect(report.partial).toBe(true);
       if (mode === "result") expect(report.retained).toBe(true);
     } finally {
-      const exits = await Promise.allSettled(
-        [child, resumed].map(async (proc) => {
-          if (!proc) return;
-          if (proc.exitCode === null) proc.kill(9);
-          await awaitWithContext(
-            proc.exited,
-            withAbortSignal(AbortSignal.timeout(3000), BACKGROUND_CONTEXT),
-          );
-        }),
-      );
-      await rm(dir, { recursive: true, force: true });
-      for (const exit of exits) if (exit.status === "rejected") throw exit.reason;
+      await cleanupWorkers([child, resumed], dir);
     }
   }, 10000);
 }
@@ -141,3 +130,21 @@ test("read-only reopen, rewindable fork, event snapshot and background abort bou
     await rm(dir, { recursive: true, force: true });
   }
 }, 10000);
+
+async function cleanupWorkers(
+  processes: (Bun.Subprocess<"ignore", "pipe", "pipe"> | undefined)[],
+  dir: string,
+) {
+  const exits = await Promise.allSettled(
+    processes.map(async (proc) => {
+      if (!proc) return;
+      if (proc.exitCode === null) proc.kill(9);
+      await awaitWithContext(
+        proc.exited,
+        withAbortSignal(AbortSignal.timeout(3000), BACKGROUND_CONTEXT),
+      );
+    }),
+  );
+  await rm(dir, { recursive: true, force: true });
+  for (const exit of exits) if (exit.status === "rejected") throw exit.reason;
+}

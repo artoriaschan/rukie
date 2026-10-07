@@ -1,429 +1,290 @@
 import { afterEach, expect, test } from "bun:test";
 import { join } from "node:path";
-import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
-import { branchTip, insertEntry, setValue } from "@earendil-works/pi-agent-core/harness/session";
+import { stat } from "node:fs/promises";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { createSession as createNativeSession } from "@earendil-works/pi-durable";
+import { fauxAssistantMessage, fauxToolCall, getCurrentTools } from "@earendil-works/pi-ai";
 import {
-  fauxAssistantMessage,
-  fauxToolCall,
-  getCurrentSystemMessage,
-  type TranscriptContext,
-} from "@earendil-works/pi-ai";
-import { createJsonlStore, createSession } from "../../src/index.ts";
+  createJsonlStore,
+  createSession as createSessionImpl,
+  type Session,
+} from "../../src/index.ts";
+import { SessionMetadataDoc } from "../../src/store/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
+import { crashUnsafeEffect, crashSafeDelegation } from "../helpers/native-recovery.ts";
+import { runRequest } from "../helpers/crashed-subagents.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
-afterEach(() => dirs?.cleanup());
-
-test("Session Resume persists an unknown outcome before the next model request without replay or a Checkpoint", async () => {
-  dirs = await tempDirs();
-  const effect = join(dirs.cwd, "effect.txt");
-  await Bun.write(effect, "already happened\n");
-  const store = createJsonlStore(dirs);
-  const original = await createSession({ ...dirs, ...fakeModel([]), store });
-  const metadata = (await store.list({ cwd: dirs.cwd }, BACKGROUND_CONTEXT))[0]!;
-  const stored = await store.open(metadata, BACKGROUND_CONTEXT);
-  const branch = (await stored.branch("main", BACKGROUND_CONTEXT))!;
-  const call = fauxAssistantMessage(
-    fauxToolCall("bash", { command: "printf replay >> effect.txt" }, { id: "lost-bash" }),
-    { stopReason: "toolUse" },
-  );
-  await branch.appendMessage(call, BACKGROUND_CONTEXT);
-  await stored.close(BACKGROUND_CONTEXT);
-  await original.dispose();
-
-  const fake = fakeModel([
-    (context) => {
-      const result = context.messages.find(
-        (message) => message.role === "toolResult" && message.toolCallId === "lost-bash",
+const sessions: Session[] = [];
+async function createSession(options: Parameters<typeof createSessionImpl>[0]) {
+  const session = await createSessionImpl(options);
+  sessions.push(session);
+  return session;
+}
+afterEach(async () => {
+  await Promise.all(sessions.splice(0).map((session) => session.close()));
+  await dirs?.cleanup();
+});
+const resultMessages = (session: Session) =>
+  session.messages.filter((message) => message.role === "toolResult");
+function resumeOptions(id: string) {
+  return { ...dirs, homeDir: dirs.cwd, resumeId: id, permissionMode: "full-access" as const };
+}
+async function settle(session: Session) {
+  const id = session.currentRequestId;
+  if (!id) throw new Error("Accepted native request missing");
+  return session.waitForRequest(id);
+}
+async function rawResults(id: string, fullHistory = false) {
+  const store = createJsonlStore({ ...dirs, homeDir: dirs.cwd });
+  const lease = await store.open({ id }, BACKGROUND_CONTEXT);
+  const native = createNativeSession(lease.storage);
+  try {
+    const metadata = await native.snapshot(SessionMetadataDoc, BACKGROUND_CONTEXT);
+    if (!metadata) throw new Error("Native Session metadata missing");
+    const conversations = await lease.storage.scanConversations(
+      {},
+      10000,
+      undefined,
+      BACKGROUND_CONTEXT,
+    );
+    const active = conversations.items.find(
+      (conversation) => conversation.id === metadata.activeConversationId,
+    );
+    if (!active) throw new Error("Active native conversation missing");
+    const entries = new Map<number, import("@earendil-works/pi-durable").EntryRecord>();
+    for (const conversation of fullHistory ? conversations.items : [active]) {
+      const page = await lease.storage.scanEntries(
+        { conversationId: conversation.id },
+        10000,
+        undefined,
+        BACKGROUND_CONTEXT,
       );
-      expect(result).toMatchObject({
-        role: "toolResult",
-        toolCallId: "lost-bash",
-        toolName: "bash",
-        isError: false,
-        details: { recovery: { type: "unknown-tool-outcome", version: 1 } },
-      });
-      const text = JSON.stringify(result);
-      for (const fact of [
-        "unknown",
-        "success",
-        "failure",
-        "not executed",
-        "side effects",
-        "Verify",
-        "retry",
-      ])
-        expect(text).toContain(fact);
-      return fauxAssistantMessage("verify first");
-    },
-  ]);
-  const resumed = await createSession({
-    ...dirs,
-    ...fake,
-    store,
-    resumeId: original.id,
-    permissionMode: "full-access",
-  });
-  expect(fake.contexts).toHaveLength(0);
-  expect(resumed.checkpoints()).toEqual([]);
-  expect(resumed.messages.find((message) => message.role === "assistant")).toEqual(call);
-  expect(resumed.messages.filter((message) => message.role === "toolResult")).toHaveLength(1);
-  const reopened = await store.open(metadata, BACKGROUND_CONTEXT);
-  const persisted = await (await reopened.branch("main", BACKGROUND_CONTEXT))!.findEntries(
-    { order: "oldestFirst" },
-    BACKGROUND_CONTEXT,
-  );
-  expect(
-    persisted.filter((entry) => entry.type === "message" && entry.message.role === "toolResult"),
-  ).toHaveLength(1);
-  await reopened.close(BACKGROUND_CONTEXT);
-  expect((await resumed.run("check what happened")).text).toBe("verify first");
-  expect(await Bun.file(effect).text()).toBe("already happened\n");
-  expect(resumed.checkpoints()).toHaveLength(1);
-  await resumed.dispose();
-});
-
-test("mixed real success, real failure and recovery results survive repeated Session Resume unchanged", async () => {
-  dirs = await tempDirs();
-  const store = createJsonlStore(dirs);
-  const original = await createSession({ ...dirs, ...fakeModel([]), store });
-  const metadata = (await store.list({ cwd: dirs.cwd }, BACKGROUND_CONTEXT))[0]!;
-  const stored = await store.open(metadata, BACKGROUND_CONTEXT);
-  const branch = (await stored.branch("main", BACKGROUND_CONTEXT))!;
-  await branch.appendMessage(
-    fauxAssistantMessage(
-      ["success", "failure", "recovered", "missing"].map((id) =>
-        fauxToolCall("read", { path: `${id}.txt` }, { id }),
-      ),
-      { stopReason: "toolUse" },
-    ),
-    BACKGROUND_CONTEXT,
-  );
-  const real = [
-    {
-      role: "toolResult" as const,
-      toolCallId: "success",
-      toolName: "read",
-      content: [{ type: "text" as const, text: "saved output" }],
-      isError: false,
-      timestamp: 10,
-    },
-    {
-      role: "toolResult" as const,
-      toolCallId: "failure",
-      toolName: "read",
-      content: [{ type: "text" as const, text: "saved failure" }],
-      isError: true,
-      timestamp: 11,
-    },
-    {
-      role: "toolResult" as const,
-      toolCallId: "recovered",
-      toolName: "read",
-      content: [{ type: "text" as const, text: "previous unknown" }],
-      isError: false,
-      details: { recovery: { type: "unknown-tool-outcome", version: 1 } },
-      timestamp: 12,
-    },
-  ];
-  for (const result of real) await branch.appendMessage(result, BACKGROUND_CONTEXT);
-  await stored.close(BACKGROUND_CONTEXT);
-  await original.dispose();
-  const first = await createSession({ ...dirs, ...fakeModel([]), resumeId: original.id });
-  const results = first.messages.filter((message) => message.role === "toolResult");
-  // Session.messages adds ephemeral Tool Views; every native result fact stays unchanged.
-  const nativeResults = results.map(({ view: _view, ...facts }) => facts);
-  expect(nativeResults.slice(0, 3)).toEqual(real);
-  for (const [index, result] of results.slice(0, 3).entries())
-    expect(result.view).toMatchObject({
-      card: "read",
-      kind: "read",
-      displayKey: "tool.read",
-      path: `${real[index]!.toolCallId}.txt`,
-      content: real[index]!.content[0]!.text,
-    });
-  expect(results).toHaveLength(4);
-  expect(results.at(-1)).toMatchObject({
-    toolCallId: "missing",
-    details: { recovery: { type: "unknown-tool-outcome" } },
-  });
-  const repairedStore = await store.open(metadata, BACKGROUND_CONTEXT);
-  const persisted = await (await repairedStore.branch("main", BACKGROUND_CONTEXT))!.findEntries(
-    { order: "oldestFirst" },
-    BACKGROUND_CONTEXT,
-  );
-  const persistedResults = persisted.flatMap((entry) =>
-    entry.type === "message" && entry.message.role === "toolResult" ? [entry.message] : [],
-  );
-  expect(persistedResults).toEqual(nativeResults);
-  for (const result of persistedResults) expect(Object.hasOwn(result, "view")).toBe(false);
-  await repairedStore.close(BACKGROUND_CONTEXT);
-  await first.dispose();
-  const again = await createSession({ ...dirs, ...fakeModel([]), resumeId: original.id });
-  expect(again.messages.filter((message) => message.role === "toolResult")).toEqual(results);
-  const finalStore = await store.open(metadata, BACKGROUND_CONTEXT);
-  expect(
-    await (await finalStore.branch("main", BACKGROUND_CONTEXT))!.findEntries(
-      { order: "oldestFirst" },
-      BACKGROUND_CONTEXT,
-    ),
-  ).toEqual(persisted);
-  await finalStore.close(BACKGROUND_CONTEXT);
-  await again.dispose();
-});
-
-test("resuming a parent leaves child Tool calls untouched until send_message resumes the original child", async () => {
-  dirs = await tempDirs();
-  const store = createJsonlStore(dirs);
-  const first = fakeModel([
-    fauxAssistantMessage(
-      fauxToolCall("subagent", {
-        description: "Inspect",
-        prompt: "child history",
-        run_in_background: false,
-      }),
-      { stopReason: "toolUse" },
-    ),
-    fauxAssistantMessage("preserved child answer"),
-    fauxAssistantMessage("parent answer"),
-  ]);
-  first.model.contextWindow = 100000;
-  const parent = await createSession({ ...dirs, ...first, store, permissionMode: "full-access" });
-  let childId = "";
-  await parent.run("delegate", {
-    onEvent(event) {
-      if (event.type === "subagent_event") childId = event.agentId;
-    },
-  });
-  await parent.dispose();
-  const metadata = (await store.list({ cwd: dirs.cwd }, BACKGROUND_CONTEXT)).find(
-    (item) => item.id === childId,
-  )!;
-  const child = await store.open(metadata, BACKGROUND_CONTEXT);
-  const branch = (await child.branch("main", BACKGROUND_CONTEXT))!;
-  await branch.appendMessage(
-    fauxAssistantMessage(
-      fauxToolCall("bash", { command: "printf replay >> effects.txt" }, { id: "lost-child" }),
-      { stopReason: "toolUse" },
-    ),
-    BACKGROUND_CONTEXT,
-  );
-  const before = await branch.findEntries({ order: "oldestFirst" }, BACKGROUND_CONTEXT);
-  await child.close(BACKGROUND_CONTEXT);
-  let childRequests = 0;
-  const reply = async (context: TranscriptContext) => {
-    const isParent = getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
-      (tool) => tool.name === "subagent",
+      for (const entry of page.items) entries.set(entry.id, entry);
+    }
+    return [...entries.values()].flatMap((entry) =>
+      (entry.model ?? []).filter((message) => message.role === "toolResult"),
     );
-    if (isParent) return fauxAssistantMessage("parent continues");
-    childRequests++;
-    expect(JSON.stringify(context.messages)).toContain("preserved child answer");
-    expect(JSON.stringify(context.messages)).toContain("new child instruction");
-    expect(
-      context.messages.find(
-        (message) => message.role === "toolResult" && message.toolCallId === "lost-child",
-      ),
-    ).toMatchObject({ details: { recovery: { type: "unknown-tool-outcome" } } });
-    const reopened = await createJsonlStore(dirs).open(metadata, BACKGROUND_CONTEXT);
-    const entries = await (await reopened.branch("main", BACKGROUND_CONTEXT))!.findEntries(
-      { order: "oldestFirst" },
-      BACKGROUND_CONTEXT,
-    );
-    expect(
-      entries.filter((entry) => entry.type === "message" && entry.message.role === "toolResult"),
-    ).toMatchObject([{ message: { toolCallId: "lost-child" } }]);
-    await reopened.close(BACKGROUND_CONTEXT);
-    return fauxAssistantMessage(
-      fauxToolCall("write", { path: "continued.txt", content: "new work" }),
-      { stopReason: "toolUse" },
-    );
-  };
-  const finish = (context: TranscriptContext) => {
-    if (
-      !getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
-        (tool) => tool.name === "subagent",
-      )
-    )
-      return fauxAssistantMessage("child continued");
-    return fauxAssistantMessage("parent continues");
-  };
-  const fake = fakeModel([
-    fauxAssistantMessage(
-      fauxToolCall("send_message", { agent_id: childId, message: "new child instruction" }),
-      { stopReason: "toolUse" },
-    ),
-    reply,
-    reply,
-    finish,
-    finish,
-    finish,
-  ]);
-  fake.model.contextWindow = 100000;
-  const resumed = await createSession({
-    ...dirs,
-    ...fake,
-    store,
-    resumeId: parent.id,
-    permissionMode: "full-access",
-  });
-  expect(fake.contexts).toHaveLength(0);
-  const untouched = await store.open(metadata, BACKGROUND_CONTEXT);
-  expect(
-    await (await untouched.branch("main", BACKGROUND_CONTEXT))!.findEntries(
-      { order: "oldestFirst" },
-      BACKGROUND_CONTEXT,
-    ),
-  ).toEqual(before);
-  await untouched.close(BACKGROUND_CONTEXT);
-  const ids: string[] = [];
-  expect(
-    (
-      await resumed.run("continue the original child", {
-        onEvent(event) {
-          if (event.type === "subagent_event") ids.push(event.agentId);
-        },
-      })
-    ).success,
-  ).toBe(true);
-  expect(childRequests).toBe(1);
-  expect(JSON.stringify(resumed.messages)).toContain("child continued");
-  expect(new Set(ids)).toEqual(new Set([childId]));
-  expect(await Bun.file(join(dirs.cwd, "effects.txt")).exists()).toBe(false);
-  expect(await Bun.file(join(dirs.cwd, "continued.txt")).text()).toBe("new work");
-  expect(resumed.checkpoints()).toHaveLength(2);
-  expect(resumed.checkpoints().at(-1)!.files).toMatchObject([
-    { path: expect.stringContaining("continued.txt"), backup: null },
-  ]);
-  await resumed.rewind(resumed.checkpoints().at(-1)!.promptEntryId, {
-    code: true,
-    conversation: false,
-  });
-  expect(await Bun.file(join(dirs.cwd, "continued.txt")).exists()).toBe(false);
-  await resumed.dispose();
-});
+  } finally {
+    await native.close(BACKGROUND_CONTEXT);
+    await lease.release();
+  }
+}
 
-test("Rewind discards orphan calls and recovery placeholders from the current branch", async () => {
+test("a real unsafe effect with a lost native receipt resumes as unknown without replay or another recovery Checkpoint", async () => {
   dirs = await tempDirs();
-  const store = createJsonlStore(dirs);
-  const original = await createSession({
-    ...dirs,
-    ...fakeModel([fauxAssistantMessage("first"), fauxAssistantMessage("second")]),
-    store,
-  });
-  await original.run("first prompt");
-  await original.run("discard this prompt");
-  const anchor = original.checkpoints()[1]!.promptEntryId;
-  await original.dispose();
-  const metadata = (await store.list({ cwd: dirs.cwd }, BACKGROUND_CONTEXT))[0]!;
-  const stored = await store.open(metadata, BACKGROUND_CONTEXT);
-  await (await stored.branch("main", BACKGROUND_CONTEXT))!.appendMessage(
-    fauxAssistantMessage(
-      fauxToolCall("write", { path: "removed.txt", content: "orphan" }, { id: "discarded" }),
-      { stopReason: "toolUse" },
-    ),
-    BACKGROUND_CONTEXT,
-  );
-  await stored.close(BACKGROUND_CONTEXT);
-  const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: original.id });
-  expect(JSON.stringify(resumed.messages)).toContain("unknown-tool-outcome");
-  await resumed.rewind(anchor, { code: false, conversation: true });
-  await resumed.dispose();
-  const fake = fakeModel([fauxAssistantMessage("new branch answer")]);
-  const again = await createSession({ ...dirs, ...fake, resumeId: original.id });
-  expect(JSON.stringify(again.messages)).not.toContain("discarded");
-  expect(JSON.stringify(again.messages)).not.toContain("unknown-tool-outcome");
-  await again.run("new branch prompt");
-  expect(JSON.stringify(fake.contexts)).not.toContain("discarded");
-  expect(await Bun.file(join(dirs.cwd, "removed.txt")).exists()).toBe(false);
-  await again.dispose();
-});
-
-test("Compaction retains unknown outcomes without duplicating repair or reviving compacted calls", async () => {
-  dirs = await tempDirs();
-  const store = createJsonlStore(dirs);
-  const original = await createSession({ ...dirs, ...fakeModel([]), store });
-  const metadata = (await store.list({ cwd: dirs.cwd }, BACKGROUND_CONTEXT))[0]!;
-  const stored = await store.open(metadata, BACKGROUND_CONTEXT);
-  const branch = (await stored.branch("main", BACKGROUND_CONTEXT))!;
-  await branch.appendMessage(
-    fauxAssistantMessage(fauxToolCall("bash", { command: "old" }, { id: "compacted-away" }), {
-      stopReason: "toolUse",
-    }),
-    BACKGROUND_CONTEXT,
-  );
-  const retained = fauxAssistantMessage(
-    fauxToolCall("bash", { command: "current" }, { id: "retained" }),
-    { stopReason: "toolUse" },
-  );
-  await branch.appendMessage(retained, BACKGROUND_CONTEXT);
-  const id = "compaction-fixture";
-  await stored.mutate(async (mutator) => {
-    await mutator.commit(
-      [
-        insertEntry({
-          id,
-          parentId: (await mutator.getValue(branchTip("main"), BACKGROUND_CONTEXT))?.value ?? null,
-          type: "compaction",
-          summary: "Prior context summarized",
-          retainedTail: [retained],
-          tokensBefore: 10000,
-          fromHook: false,
-        }),
-        setValue(branchTip("main"), id),
-      ],
-      BACKGROUND_CONTEXT,
-    );
-  }, BACKGROUND_CONTEXT);
-  await stored.close(BACKGROUND_CONTEXT);
-  await original.dispose();
-  const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: original.id });
-  expect(resumed.messages.filter((message) => message.role === "toolResult")).toMatchObject([
-    { toolCallId: "retained" },
-  ]);
-  expect(JSON.stringify(resumed.messages)).not.toContain("compacted-away");
-  const repairedStore = await store.open(metadata, BACKGROUND_CONTEXT);
-  const persisted = await (await repairedStore.branch("main", BACKGROUND_CONTEXT))!.findEntries(
-    { order: "oldestFirst" },
-    BACKGROUND_CONTEXT,
-  );
-  expect(
-    persisted.filter((entry) => entry.type === "message" && entry.message.role === "toolResult"),
-  ).toMatchObject([
-    {
-      message: {
-        toolCallId: "compacted-away",
-        details: { recovery: { type: "unknown-tool-outcome" } },
-      },
-    },
-    {
-      message: { toolCallId: "retained", details: { recovery: { type: "unknown-tool-outcome" } } },
-    },
-  ]);
-  await repairedStore.close(BACKGROUND_CONTEXT);
-  const repaired = structuredClone(resumed.messages);
-  await resumed.dispose();
-  const again = await createSession({ ...dirs, ...fakeModel([]), resumeId: original.id });
-  expect(again.messages).toEqual(repaired);
-  const finalStore = await store.open(metadata, BACKGROUND_CONTEXT);
-  expect(
-    await (await finalStore.branch("main", BACKGROUND_CONTEXT))!.findEntries(
-      { order: "oldestFirst" },
-      BACKGROUND_CONTEXT,
-    ),
-  ).toEqual(persisted);
-  await finalStore.close(BACKGROUND_CONTEXT);
-  await again.dispose();
+  const saved = await crashUnsafeEffect(dirs.cwd);
   const fake = fakeModel([
     (context) => {
-      expect(JSON.stringify(context.messages)).not.toContain("compacted-away");
-      expect(context.messages.filter((message) => message.role === "toolResult")).toMatchObject([
-        { toolCallId: "retained", details: { recovery: { type: "unknown-tool-outcome" } } },
-      ]);
-      return fauxAssistantMessage("verify retained call");
+      expect(
+        context.messages.findLast(
+          (message) => message.role === "toolResult" && message.toolName === "write",
+        ),
+      ).toMatchObject({
+        isError: true,
+        content: [{ type: "text", text: expect.stringContaining("may have partially run") }],
+      });
+      return fauxAssistantMessage("verify real state before retrying");
     },
   ]);
-  const continuing = await createSession({ ...dirs, ...fake, resumeId: original.id });
-  expect((await continuing.run("check current state")).text).toBe("verify retained call");
-  await continuing.dispose();
+  const resumed = await createSession({ ...resumeOptions(saved.sessionId), ...fake });
+  await settle(resumed);
+  expect(resultMessages(resumed)).toMatchObject([
+    { toolName: "write", isError: true, outcomeUnknown: true },
+  ]);
+  expect(resumed.checkpoints()).toHaveLength(1);
+  expect(await Bun.file(join(dirs.cwd, "uncertain-effect.txt")).text()).toBe("saved effect");
+  expect((await stat(join(dirs.cwd, "uncertain-effect.txt"))).mtimeMs).toBe(saved.effectModifiedAt);
+  const snapshot = structuredClone([...resumed.messages]);
+  await resumed.close();
+  const raw = await rawResults(saved.sessionId);
+  expect(raw).toHaveLength(1);
+  expect(raw[0]).toMatchObject({ toolName: "write", isError: true });
+  expect(Object.hasOwn(raw[0]!, "view")).toBe(false);
+  const next = fakeModel([fauxAssistantMessage("checked")]);
+  const again = await createSession({ ...resumeOptions(saved.sessionId), ...next });
+  expect([...again.messages]).toEqual(snapshot);
+  await runRequest(again, "check what happened");
+  expect(resultMessages(again)).toHaveLength(1);
+  expect(again.checkpoints()).toHaveLength(2);
+  expect((await stat(join(dirs.cwd, "uncertain-effect.txt"))).mtimeMs).toBe(saved.effectModifiedAt);
+});
+
+test("real successful, failed and uncertain ToolResults and reconstructed views survive repeated cold opens unchanged", async () => {
+  dirs = await tempDirs();
+  const saved = await crashUnsafeEffect(dirs.cwd, false, { completedReads: true });
+  const first = await createSession({
+    ...resumeOptions(saved.sessionId),
+    ...fakeModel([fauxAssistantMessage("verified")]),
+  });
+  await settle(first);
+  const results = structuredClone(resultMessages(first));
+  expect(results).toHaveLength(3);
+  const success = results.find((result) => result.toolCallId === "real-success")!;
+  const failure = results.find((result) => result.toolCallId === "real-failure")!;
+  expect(success).toMatchObject({
+    toolCallId: "real-success",
+    toolName: "read",
+    isError: false,
+    content: [{ type: "text", text: "saved output" }],
+    view: { card: "read", content: "saved output" },
+  });
+  expect(failure).toMatchObject({
+    toolCallId: "real-failure",
+    toolName: "read",
+    isError: true,
+    view: { card: "read" },
+  });
+  expect(success.outcomeUnknown).not.toBe(true);
+  expect(failure.outcomeUnknown).not.toBe(true);
+  expect(results[2]).toMatchObject({ toolName: "write", isError: true, outcomeUnknown: true });
+  await first.close();
+  const raw = await rawResults(saved.sessionId);
+  expect(raw).toHaveLength(3);
+  for (const result of raw) expect(Object.hasOwn(result, "view")).toBe(false);
+  const again = await createSession({ ...resumeOptions(saved.sessionId), ...fakeModel([]) });
+  expect(resultMessages(again)).toEqual(results);
+  await again.close();
+  expect(await rawResults(saved.sessionId)).toEqual(raw);
+});
+
+test("a pending native child resumes its identity without replaying an unsafe effect and explicit send preserves the old outcome", async () => {
+  dirs = await tempDirs();
+  const saved = await crashUnsafeEffect(dirs.cwd, true);
+  if (!saved.childId) throw new Error("Expected native child identity");
+  const childId = saved.childId;
+  let send = false;
+  const reply: Parameters<typeof fakeModel>[0][number] = (context) => {
+    if (!getCurrentTools(context.messages).some((tool) => tool.name === "subagent"))
+      return fauxAssistantMessage("child continued safely");
+    if (
+      !send &&
+      JSON.stringify(
+        context.messages.findLast((message) => message.role === "user")?.content,
+      ).includes("send a follow up")
+    ) {
+      send = true;
+      return fauxAssistantMessage(
+        fauxToolCall("send_message", { agent_id: childId, message: "continue after inspection" }),
+        { stopReason: "toolUse" },
+      );
+    }
+    return fauxAssistantMessage("parent observed child");
+  };
+  const fake = fakeModel(Array.from({ length: 12 }, () => reply));
+  const parent = await createSession({ ...resumeOptions(saved.sessionId), ...fake });
+  await settle(parent);
+  const child = await parent.readSubagent(childId);
+  expect(child?.messages.filter((message) => message.role === "toolResult")).toMatchObject([
+    { toolName: "write", outcomeUnknown: true, isError: true },
+  ]);
+  await Bun.write(join(dirs.cwd, "uncertain-effect.txt"), "externally reconciled");
+  await runRequest(parent, "send a follow up");
+  const continued = await parent.readSubagent(childId);
+  expect(
+    continued?.historyMessages?.filter((message) => message.role === "toolResult"),
+  ).toMatchObject([{ toolName: "write", outcomeUnknown: true, isError: true }]);
+  expect(continued?.run?.outcome).toBe("completed");
+  expect(parent.toolState("subagents")).toMatchObject([{ id: childId, active: false }]);
+  expect(await Bun.file(join(dirs.cwd, "uncertain-effect.txt")).text()).toBe(
+    "externally reconciled",
+  );
+});
+
+test("Rewind excludes an uncertain call from the active branch while preserving its real effect and original durable facts", async () => {
+  dirs = await tempDirs();
+  const saved = await crashUnsafeEffect(dirs.cwd);
+  const session = await createSession({
+    ...resumeOptions(saved.sessionId),
+    ...fakeModel([fauxAssistantMessage("verify first"), fauxAssistantMessage("new branch answer")]),
+  });
+  await settle(session);
+  expect(resultMessages(session)).toMatchObject([{ outcomeUnknown: true }]);
+  const anchor = session.checkpoints()[0]!.promptEntryId;
+  await session.rewind(anchor, { code: false, conversation: true });
+  expect(resultMessages(session)).toEqual([]);
+  await runRequest(session, "new branch prompt");
+  expect(JSON.stringify(session.messages)).not.toContain("may have partially run");
+  expect(await Bun.file(join(dirs.cwd, "uncertain-effect.txt")).text()).toBe("saved effect");
+  await session.close();
+  expect(await rawResults(saved.sessionId, true)).toMatchObject([
+    { toolName: "write", isError: true },
+  ]);
+  const again = await createSession({ ...resumeOptions(saved.sessionId), ...fakeModel([]) });
+  expect(resultMessages(again)).toEqual([]);
+});
+
+test("real Compaction retains full uncertain history without reviving compacted context or duplicating its result", async () => {
+  dirs = await tempDirs();
+  const saved = await crashUnsafeEffect(dirs.cwd, false, {
+    completedReads: true,
+    priorTurns: [{ prompt: "retained large turn ".repeat(9000), reply: "large reply" }],
+  });
+  const fake = fakeModel([
+    fauxAssistantMessage("inspected uncertain effect"),
+    fauxAssistantMessage("Prior history summarized; preserve uncertain effect for inspection."),
+    fauxAssistantMessage("continued"),
+  ]);
+  const session = await createSession({ ...resumeOptions(saved.sessionId), ...fake });
+  await settle(session);
+  await session.compact();
+  expect(resultMessages(session).find((result) => result.toolName === "write")).toMatchObject({
+    outcomeUnknown: true,
+  });
+  // Session messages project the current native head; the stored Transcript is wider.
+  expect(resultMessages(session)).toHaveLength(1);
+  await runRequest(session, "check current state");
+  expect(JSON.stringify(fake.contexts.at(-1)!.messages)).toContain("Prior history summarized");
+  expect(JSON.stringify(fake.contexts.at(-1)!.messages)).not.toContain("real-success");
+  expect(JSON.stringify(fake.contexts.at(-1)!.messages)).not.toContain("real-failure");
+  expect(
+    fake.contexts
+      .at(-1)!
+      .messages.filter((message) => message.role === "toolResult" && message.toolName === "write"),
+  ).toHaveLength(1);
+  const snapshot = structuredClone([...session.messages]);
+  await session.close();
+  const stored = await rawResults(saved.sessionId, true);
+  expect(stored).toHaveLength(3);
+  expect(stored.map((message) => message.toolName).sort()).toEqual(["read", "read", "write"]);
+  const again = await createSession({ ...resumeOptions(saved.sessionId), ...fakeModel([]) });
+  expect([...again.messages]).toEqual(snapshot);
+  expect(resultMessages(again)).toHaveLength(1);
+});
+
+test("replayed safe delegation uses current authorization and never creates a second child after its receipt was lost", async () => {
+  dirs = await tempDirs();
+  const saved = await crashSafeDelegation(dirs.cwd);
+  if (!saved.childId) throw new Error("Accepted child identity missing");
+  const reply = () => fauxAssistantMessage("finish accepted work");
+  const fake = fakeModel(Array.from({ length: 8 }, () => reply));
+  const events: import("../../src/index.ts").SessionEvent[] = [];
+  const session = await createSession({
+    ...resumeOptions(saved.sessionId),
+    ...fake,
+    settings: { permissions: { deny: ["subagent"] } },
+    onPermissionAsk: async () => {
+      throw new Error("Explicit denial must never ask");
+    },
+  });
+  session.subscribe((event) => events.push(event));
+  await settle(session);
+  expect(
+    session.messages.find(
+      (message) => message.role === "toolResult" && message.toolName === "subagent",
+    ),
+  ).toMatchObject({
+    isError: true,
+    content: [{ type: "text", text: expect.stringContaining("Denied by permission rule") }],
+  });
+  expect(session.toolState("subagents")).toMatchObject([{ id: saved.childId, active: false }]);
+  expect(events.filter((event) => event.type === "permission_denied")).toMatchObject([
+    { by: "rule", rule: "subagent" },
+  ]);
+  expect(
+    session.messages.filter(
+      (message) => message.role === "toolResult" && message.toolName === "subagent",
+    ),
+  ).toHaveLength(1);
 });

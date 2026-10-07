@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { SessionOptions } from "@rukie/agent";
+import { loadSettings, listSessions, type SessionOptions } from "@rukie/agent";
 import { main, type TuiIo } from "../../../src/index.ts";
 import { controlledModel } from "./model";
 import { createTerminal } from "./terminal";
@@ -29,6 +29,24 @@ export async function start(
   });
   const terminal = createTerminal(options.columns, options.rows, options.advanceTimers);
   const fake = controlledModel(options.controlReviews, options.controlTitles);
+  const session: SessionOptions = { cwd: root, homeDir: root, ...fake, ...options.session };
+  // Clearing only the model requests configured metadata with the controlled provider.
+  // Clearing both native inputs deliberately retains the real SDK/configuration seam.
+  if (!session.model && session.models === fake.models) {
+    const loaded = await loadSettings({ cwd: session.cwd, homeDir: session.homeDir });
+    const settings = { ...loaded.settings, ...session.settings };
+    const resumeIndex = argv.indexOf("--resume");
+    const resumeId = session.resumeId ?? (resumeIndex >= 0 ? argv[resumeIndex + 1] : undefined);
+    const stored = resumeId
+      ? (
+          await listSessions({ cwd: session.cwd, homeDir: session.homeDir, store: session.store })
+        ).find((entry) => entry.id === resumeId)
+      : undefined;
+    session.model = fake.configuredModel({
+      ...settings,
+      ...(stored ? { model: stored.model } : {}),
+    });
+  }
   let stderr = "";
   const lifetime = new AbortController();
   const exit = main(argv, {
@@ -44,7 +62,7 @@ export async function start(
       ...options.host,
     },
     stderr: (text) => (stderr += text),
-    session: { cwd: root, homeDir: root, ...fake, ...options.session },
+    session,
   });
   let exited = false;
   void exit.then(() => {

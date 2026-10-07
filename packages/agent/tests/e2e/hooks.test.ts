@@ -2,13 +2,26 @@ import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { join, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createSession, type SessionEvent } from "../../src/index.ts";
+import {
+  createSession as createSessionImpl,
+  type Session,
+  type SessionEvent,
+} from "../../src/index.ts";
 import type { HookHandler } from "@rukie/shared";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
-afterEach(() => dirs?.cleanup());
+const sessions: Session[] = [];
+async function createSession(options: Parameters<typeof createSessionImpl>[0]) {
+  const session = await createSessionImpl(options);
+  sessions.push(session);
+  return session;
+}
+afterEach(async () => {
+  await Promise.all(sessions.splice(0).map((session) => session.close()));
+  await dirs?.cleanup();
+});
 
 async function scriptedHook(
   output: unknown,
@@ -125,13 +138,15 @@ test("valid updatedInput changes executed arguments and rules inspect the change
     if (denied)
       expect(result).toMatchObject({
         isError: true,
-        content: [{ text: "Denied by permission rule: bash(printf changed*)" }],
+        content: [
+          { text: expect.stringContaining("Denied by permission rule: bash(printf changed*)") },
+        ],
       });
     else expect(await Bun.file(join(dirs.cwd, "changed")).text()).toBe("changed");
   }
 });
 
-test("invalid updatedInput denies execution and context is attached to its tool result", async () => {
+test("invalid updatedInput denies execution and commits its bounded Hook context for the model", async () => {
   dirs = await tempDirs();
   const fake = toolModel();
   const handler = await scriptedHook({
@@ -159,9 +174,14 @@ test("invalid updatedInput denies execution and context is attached to its tool 
   const result = fake.contexts[1]!.messages.find((message) => message.role === "toolResult");
   expect(result).toMatchObject({ isError: true });
   expect(JSON.stringify(result)).toContain("invalid updatedInput");
-  expect(JSON.stringify(result)).toContain("<system-reminder>");
-  expect(JSON.stringify(result)).toContain("[truncated]");
-  expect(JSON.stringify(result)).not.toContain("x".repeat(10_001));
+  const reminder = session.messages.find(
+    (message) => message.role === "system-reminder" && message.source === "hook:PreToolUse",
+  );
+  expect(reminder).toMatchObject({ content: expect.stringContaining("[truncated]") });
+  const request = JSON.stringify(fake.contexts[1]!.messages);
+  expect(request).toContain("<system-reminder>");
+  expect(request).toContain("[truncated]");
+  expect(request).not.toContain("x".repeat(10_001));
 });
 
 test("command hooks read the protocol and deny tools before execution", async () => {
@@ -206,7 +226,10 @@ test("command hooks read the protocol and deny tools before execution", async ()
   expect(
     fake.contexts[1]!.messages.filter((message) => message.role === "toolResult"),
   ).toMatchObject([
-    { isError: true, content: [{ type: "text", text: "Denied by hook: protected" }] },
+    {
+      isError: true,
+      content: [{ type: "text", text: expect.stringContaining("Denied by hook: protected") }],
+    },
   ]);
   const input = await Bun.file(join(dirs.cwd, "input.json")).json();
   expect(input).toMatchObject({
@@ -477,11 +500,9 @@ test("inherited hooks see child identity and deny subagent tools", async () => {
     permissionMode: "full-access",
     settings: { hooks: { PreToolUse: [{ matcher: "bash", hooks: [handler] }] } },
   });
-  await session.run("delegate", {
-    onEvent: (event) => {
-      events.push(event);
-    },
-  });
+  session.subscribe((event) => events.push(event));
+  const run = await session.run("delegate");
+  await session.waitForRequest(run.requestId);
   const input = await Bun.file(join(dirs.cwd, "hook.sh.input")).json();
   expect(input.agent_id).toBe(input.session_id);
   expect(input.agent_id).not.toBe(session.id);

@@ -32,7 +32,7 @@ import {
 } from "./state.ts";
 import type { SubagentType } from "./types.ts";
 
-export const SUBAGENT_PROMPT =
+const SUBAGENT_PROMPT =
   "You are a subagent delegated by a parent session. Work on the assigned prompt; your final reply will be delivered to the parent. You cannot expand the parent session permissions or create other subagents.";
 const FORK_TYPE: SubagentType = {
   name: "fork",
@@ -86,7 +86,6 @@ export type SubagentDelegationFact =
 export type SubagentSendFact =
   | { kind: "steered"; agentId: string }
   | Extract<SubagentDelegationFact, { kind: "started" }>;
-export type SubagentListing = SubagentIdentity;
 type Result = {
   text: string;
   success: boolean;

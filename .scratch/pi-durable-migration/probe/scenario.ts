@@ -39,7 +39,7 @@ async function cleanup(resources: Awaited<ReturnType<typeof open>>[]) {
     );
 }
 
-export const Facts = defineDoc<{ count: number }>({
+const Facts = defineDoc<{ count: number }>({
   kind: "probe.facts",
   version: 1,
   scope: "conversation",

@@ -277,7 +277,7 @@ test("Ctrl+V on a text-only model keeps image success and the separate model war
     ).toMatchObject({
       content: [
         { type: "text", text: "[Image #1] inspect" },
-        { type: "image", data: png, mimeType: "image/png" },
+        { type: "text", text: "(image omitted: model does not support images)" },
       ],
     });
     current.calls[0]!.finish();

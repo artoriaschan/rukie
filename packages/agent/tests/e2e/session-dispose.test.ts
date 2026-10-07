@@ -24,6 +24,22 @@ afterEach(async () => {
   await dirs?.cleanup();
 });
 
+test("asynchronous observer errors reach the string warning callback", async () => {
+  dirs = await tempDirs();
+  const warning = Promise.withResolvers<string>();
+  const fake = fakeModel([fauxAssistantMessage("done")]);
+  const session = await createSession({ ...dirs, ...fake, onWarning: warning.resolve });
+  let rejected = false;
+  await session.run("hi", {
+    onEvent: async () => {
+      if (rejected) return;
+      rejected = true;
+      throw new Error("observer unavailable");
+    },
+  });
+  expect(await warning.promise).toBe("Error: observer unavailable");
+});
+
 test.each([undefined, "other"] as const)(
   "close matches reason %s and concurrent calls run SessionEnd once",
   async (reason) => {
@@ -241,12 +257,15 @@ test("SessionEnd exit failures emit diagnostics after the Run while discarding o
   await session.run("try");
   await session.close();
   expect(warnings).toHaveLength(1);
-  expect(events.at(-1)).toMatchObject({
-    type: "hook_warning",
-    sessionId: session.id,
-    event: "SessionEnd",
-    error: { code: "hook-exit", params: { exitCode: "3", stderr: "failed" } },
-  });
+  // Native notice commits also publish structural entry events during shutdown.
+  expect(events.filter((event) => event.type === "hook_warning")).toMatchObject([
+    {
+      type: "hook_warning",
+      sessionId: session.id,
+      event: "SessionEnd",
+      error: { code: "hook-exit", params: { exitCode: "3", stderr: "failed" } },
+    },
+  ]);
 });
 
 // A real Hook process owns the 1.5s budget; a virtual parent clock cannot drive its shutdown.

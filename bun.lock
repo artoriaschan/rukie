@@ -79,7 +79,6 @@
         "wrap-ansi": "10.0.2",
       },
       "devDependencies": {
-        "@earendil-works/chord": "1.0.4",
         "@earendil-works/pi-ai": "1.0.4",
         "@earendil-works/pi-durable": "1.0.4",
         "@sinonjs/fake-timers": "15.4.0",
