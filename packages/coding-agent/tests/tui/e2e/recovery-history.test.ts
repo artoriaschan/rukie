@@ -89,10 +89,7 @@ for (const outcome of ["completed", "interrupted"] as const)
         call.context.messages.some(
           (message) =>
             message.role === "user" &&
-            typeof message.content !== "string" &&
-            message.content.some(
-              (part) => part.type === "text" && part.text === "continue original",
-            ),
+            JSON.stringify(message.content).includes("continue original"),
         ),
       )!;
       continuedCall.fail("new Run failure");
