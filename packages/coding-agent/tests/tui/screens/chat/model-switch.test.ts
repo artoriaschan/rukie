@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { createSession } from "@rukie/agent";
 import { createFauxCore } from "@earendil-works/pi-ai";
-import { start } from "../../helpers/app";
+import { startWithClock as start } from "../../helpers/clock-app";
 
 const originalKey = process.env.RUKIE_MODEL_TUI_KEY;
 afterEach(() => {

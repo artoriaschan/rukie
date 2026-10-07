@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { start } from "../helpers/app";
+import { startWithClock as start } from "../helpers/clock-app";
 
 test.each([false, true])(
   "parent streaming bursts complete while reading earlier output=%s",
