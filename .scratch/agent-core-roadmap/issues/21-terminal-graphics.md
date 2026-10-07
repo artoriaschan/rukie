@@ -34,4 +34,4 @@ Spec：[输入框图片光标预览](../../composer-image-peek/spec.md)
 
 ## Composer preview delivery
 
-2026-10-07：输入框光标预览已在 `codex/composer-image-peek` 完成；三张实施票均 resolved，集成代码 `3950234`。绑定 token 起始位置触发被动卡与反色；Esc 仅关闭当前卡，离开再回来重新显示；审批/提问、选择器、Rewind、非 chat、MCP、小终端与模态优先处理已覆盖。补齐小终端恢复光标和正常最小尺寸文字占位。`env -u NO_COLOR bun run check`：2512 pass / 0 fail，184 files；Standards / Spec 审查发现已修复并复核，详见 [验收记录](../../composer-image-peek/review.md)。原 Comments 中“尚未实施”的状态已由本次交付更新；本分支尚未合入 main。
+2026-10-07：输入框光标预览已在 `codex/composer-image-peek` 完成；三张实施票均 resolved，集成代码 `3950234`。绑定 token 起始位置触发被动卡与反色；Esc 仅关闭当前卡，离开再回来重新显示；审批/提问、选择器、Rewind、非 chat、MCP、小终端与模态优先处理已覆盖。补齐小终端恢复光标和正常最小尺寸文字占位。`env -u NO_COLOR bun run check`：2512 pass / 0 fail，184 files；Standards / Spec 审查发现已修复并复核，详见 [验收记录](../../composer-image-peek/review.md)。原 Comments 中“尚未实施”的状态已由本次交付更新；2026-10-07 已快进合入 main `585cb2d`。

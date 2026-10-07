@@ -23,3 +23,7 @@
 - 最终代码 `3950234`：`env -u NO_COLOR bun run check` 退出 0，格式、lint、类型、Knip 和全量测试通过；2512 pass / 0 fail，14098 assertions，184 files，测试阶段 74.47s。
 
 验证不依赖真实 provider 或用户配置；测试通过 app start/headless terminal 与 fake model 公共接缝。未进行真实 Kitty 终端人工验收；既有 placement/协议测试包含于全量门禁。最终门禁后仅更新 Markdown 交付证据，单独验证格式、引用路径和 diff。
+
+## Main integration
+
+2026-10-07：main 从 `3e8c2a1` 快进到 `585cb2d`；功能代码与全量门禁 `3950234` 完全一致。main checkout 独立执行三个 composer image e2e 文件：13 pass / 0 fail，48 assertions，2.58s。仅交付 Markdown 后续更新，按文档规则验证格式与 diff，无需重复全量测试。确认 feature 相对 main 无未合并提交且 worktree 干净后，清理本次集成 worktree 与分支，保留其他并行工作。
