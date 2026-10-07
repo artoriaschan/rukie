@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Context, JsonValue } from "@earendil-works/chord";
 import type { Api, Model, Models, Message, ToolCall, UserMessage } from "@earendil-works/pi-ai";
@@ -294,6 +294,11 @@ const reminderEntry = (reminder: SystemReminder): EntryDraft => ({
     },
   ],
 });
+class PromptHookBlocked extends Error {
+  constructor(readonly result: RequestResult) {
+    super(result.error);
+  }
+}
 const textOf = (message: Message): string => {
   if (typeof message.content === "string") return message.content;
   return message.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("");
@@ -357,7 +362,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     let stopped = false;
     let goalRound = false;
     let wrapup: string | undefined;
-    let permissionMode = options.permissionMode ?? "ask";
+    let permissionMode = options.permissionMode ?? settings.permissionMode ?? "ask";
     let observation: Awaited<ReturnType<typeof createConversationObservation>>;
     const harness = await Harness.open(
       lease.storage,
@@ -454,7 +459,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     });
     const hookInput = (extra: Record<string, unknown> = {}): HookInput => ({
       session_id: lease.id,
-      transcript_path: store.key(lease.id),
+      transcript_path: join(store.key(lease.id), "main.jsonl"),
       cwd,
       permission_mode: permissionMode,
       ...extra,
@@ -465,17 +470,22 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         ctx,
       );
     };
+    async function appendNotice(
+      notice: import("./session-notice.ts").SessionNotice,
+      ctx = context,
+    ) {
+      await conversation.commit(
+        (tx) =>
+          tx.appendEntry(conversation.id, {
+            kind: "rukie.notice",
+            data: { role: "session-notice", notice, timestamp: Date.now() },
+          }),
+        ctx,
+      );
+    }
     async function applyHookResult(result: CommonHookResult, source: string, ctx = context) {
       for (const text of result.systemMessages)
-        await appendReminder(
-          {
-            role: "system-reminder",
-            source: `${source}:system`,
-            content: text,
-            timestamp: Date.now(),
-          },
-          ctx,
-        );
+        await appendNotice({ kind: "hook_message", message: text }, ctx);
       for (const text of result.additionalContext)
         await appendReminder(
           { role: "system-reminder", source, content: text, timestamp: Date.now() },
@@ -962,7 +972,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         else await appendReminder(reminder, ctx);
       tracking.finishRequest();
     }
-    const rebuildTools = async () => {
+    const rebuildTools = async (reportDiscovery = false) => {
       skills = (await discoverSkills(cwd, options.homeDir)).skills;
       const base = createBaseTools({
         isChild: false,
@@ -1163,11 +1173,24 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         cwd,
         homeDir: options.homeDir,
         trusted: isTrustedProject(cwd, settings),
-        tools,
+        tools: tools.filter(
+          (tool) =>
+            ![
+              "subagent",
+              "subagent_fork",
+              "send_message",
+              "list_agents",
+              "goal",
+              "enter_plan_mode",
+              "exit_plan_mode",
+            ].includes(tool.name),
+        ),
         controller: subagents,
-        report: (discovery) => {
-          for (const warning of discovery.warnings) warn(warning);
-        },
+        report: reportDiscovery
+          ? (discovery) => {
+              for (const warning of discovery.warnings) warn(warning);
+            }
+          : undefined,
       });
       await conversation.configure(
         { extensions: [extension, subagents.extension], tools },
@@ -1290,13 +1313,15 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         for (const event of events) {
           emit(event);
           if (
-            event.type === "message_end" &&
-            event.messages.some((message) => message.role === "assistant")
+            event.type === "run_start" ||
+            (event.type === "message_end" &&
+              event.messages.some((message) => message.role === "assistant"))
           )
             custom(
               contextUsage(
                 observation.view().entries.flatMap((entry) => entry.model ?? []),
                 model.contextWindow,
+                latestInputTokens(),
               ),
             );
         }
@@ -1379,8 +1404,35 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       images.forEach(validateImage);
       const hookResult = await hooks.run("UserPromptSubmit", hookInput({ prompt }));
       await applyHookResult(hookResult, "hook:UserPromptSubmit");
-      if (hookResult.decision === "block")
-        throw new Error(hookResult.reason ?? "Prompt blocked by hook.");
+      if (hookResult.decision === "block") {
+        const reason = hookResult.reason ?? "Prompt blocked by hook.";
+        const result: RequestResult = {
+          requestId,
+          text: "",
+          success: false,
+          error: reason,
+          usage: zeroUsage(),
+          durationMs: 0,
+        };
+        await harness.commit(async (tx) => {
+          const requests = await tx.doc(RequestDoc);
+          requests.requests[requestId] = {
+            submissions: [],
+            tasks: [],
+            startedAt: Date.now(),
+            result: { ...result, usage: { ...result.usage } },
+          };
+          await tx.appendEntry(conversation.id, {
+            kind: "rukie.notice",
+            data: {
+              role: "session-notice",
+              notice: { kind: "hook_blocked", reason },
+              timestamp: Date.now(),
+            },
+          });
+        }, context);
+        throw new PromptHookBlocked(result);
+      }
       await prepareReminders();
       await title.firstPrompt(prompt);
       const invocation = skillInvocation(prompt, skills);
@@ -1434,19 +1486,25 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       await submit(prompt, [], "followUp", requestId);
       return requestId;
     }
-    const modelMessages = (): readonly Message[] =>
-      observation.view().entries.flatMap((entry) => entry.model ?? []);
-    const latestInputTokens = () => {
-      const last = modelMessages().findLast(
-        (message) =>
-          message.role === "assistant" &&
-          message.provider === model.provider &&
-          message.model === model.id,
-      );
+    function modelMessages(): readonly Message[] {
+      return observation.view().entries.flatMap((entry) => entry.model ?? []);
+    }
+    function latestInputTokens() {
+      const entries = observation.view().entries;
+      const compacted = entries.findLastIndex((entry) => entry.kind === "pi.compaction");
+      const last = entries
+        .slice(compacted + 1)
+        .flatMap((entry) => entry.model ?? [])
+        .findLast(
+          (message) =>
+            message.role === "assistant" &&
+            message.provider === model.provider &&
+            message.model === model.id,
+        );
       return last?.role === "assistant"
         ? last.usage.input + last.usage.cacheRead + last.usage.cacheWrite || undefined
         : undefined;
-    };
+    }
     async function causalRequestForTask(
       task: import("@earendil-works/pi-durable").TaskRecord<JsonValue, JsonValue, JsonValue>,
       tasks: readonly import("@earendil-works/pi-durable").TaskRecord<
@@ -1462,8 +1520,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         visited.add(Number(current.id));
         for (const [id, request] of Object.entries(requests))
           if (request.tasks.includes(Number(current.id))) return id;
-        const input = current.input;
-        const origin =
+        const input: JsonValue = current.input;
+        const origin: number | undefined =
           input &&
           typeof input === "object" &&
           !Array.isArray(input) &&
@@ -1852,7 +1910,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             onMcpAuth: options.onMcpAuth,
             onWarning: warn,
           });
-          await rebuildTools();
+          await rebuildTools(true);
           input.signal?.throwIfAborted();
           const requestId = `human:${randomUUID()}`;
           const submission = await submit(prompt, input.images, "reject", requestId);
@@ -1877,6 +1935,11 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           return result;
         } catch (error) {
           await observation.flush();
+          if (error instanceof PromptHookBlocked) {
+            custom({ type: "result", ...error.result });
+            custom({ type: "request_settled", ...error.result });
+            return error.result;
+          }
           throw error;
         } finally {
           off();
