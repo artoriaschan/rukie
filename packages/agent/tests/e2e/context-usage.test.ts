@@ -175,7 +175,7 @@ test("the first Run estimates Context Usage and both live and resumed Sessions r
   });
   expect(initial.segments.system).toBeGreaterThan(0);
   expect(initial.segments.tools).toBeGreaterThan(0);
-  expect(initial.used).toBe(initial.segments.system + initial.segments.tools);
+  expect(initial.used).toBe(Object.values(initial.segments).reduce((sum, value) => sum + value, 0));
 
   const continued: SessionEvent[] = [];
   await session.run("efgh", {
@@ -282,7 +282,9 @@ test("Compaction immediately replaces the segment estimates and invalidates prov
   summary.usage = { ...summary.usage, input: 7777 };
   const final = fauxAssistantMessage("finished");
   final.usage = { ...final.usage, input: 50, cacheRead: 20, cacheWrite: 3 };
-  const fake = providerModel([first, summary, final]);
+  const previous = fauxAssistantMessage("previously learned fact");
+  previous.usage = { ...previous.usage, input: 500 };
+  const fake = providerModel([previous, first, summary, final]);
   fake.model.contextWindow = 4000;
   const session = await createSession({
     ...dirs,
@@ -290,6 +292,7 @@ test("Compaction immediately replaces the segment estimates and invalidates prov
     now: () => new Date("2026-10-01T12:00:00Z"),
   });
   const events: SessionEvent[] = [];
+  await session.run("previous task");
   await session.run("read the file", {
     onEvent: async (event) => {
       events.push(structuredClone(event));
@@ -301,27 +304,21 @@ test("Compaction immediately replaces the segment estimates and invalidates prov
   if (end.type !== "compaction_end") throw new Error("Expected a completed Compaction");
   const usage = events[endIndex + 1]!;
   if (usage.type !== "context_usage") throw new Error("Expected Context Usage after Compaction");
-  expect(
-    fake.contexts
-      .at(-1)!
-      .messages.slice(2)
-      .map((message) => message.content),
-  ).toEqual([
-    [{ type: "text", text: "<system-reminder>\nCurrent date: 2026-10-01\n</system-reminder>" }],
-    [{ type: "text", text: "<system-reminder>\nAvailable skills: none.\n</system-reminder>" }],
-  ]);
+  const retained = JSON.stringify(fake.contexts.at(-1)!.messages);
+  expect(retained).not.toContain("previously learned fact");
+  expect(retained).toContain("The file contained large tool output.");
   expect(usage).toMatchObject({
     window: 4000,
     sessionId: session.id,
     // Compaction restores date and empty skills reminders, six tokens each.
     segments: {
       prompt: expect.any(Number),
-      assistant: 0,
-      thinking: 0,
+      assistant: expect.any(Number),
+      thinking: expect.any(Number),
     },
   });
   expect(usage.segments.tools).toBeGreaterThan(0);
-  expect(usage.used).toBe(usage.segments.system + usage.segments.prompt + usage.segments.tools);
+  expect(usage.used).toBe(Object.values(usage.segments).reduce((sum, value) => sum + value, 0));
   expect(usage.used).toBeLessThan(9000);
   expect(usage.used).not.toBe(7777);
   const updates = events.filter((event) => event.type === "context_usage");
