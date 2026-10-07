@@ -17,3 +17,5 @@ export {
   type ThemedTextInputProps,
 } from "./themed";
 export { toolKindColor } from "./tool-kind-color";
+
+export { SyntaxHighlightedText, highlightSyntax, type SyntaxRun } from "./syntax-highlighted-text";
