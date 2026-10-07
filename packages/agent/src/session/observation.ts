@@ -43,6 +43,8 @@ export interface ConversationObservationOptions {
   conversation: Conversation;
   sessionId: string;
   tools(): readonly ToolRegistration[];
+  /** Product timing facts captured with this committed live generation frame. */
+  liveAssistantFacts?(): Pick<TranscriptAssistantMessage, "rukieThinkingDurationMs">;
   /** Adopt app documents from this exact publication, without calling Session APIs. */
   adopt(publication: CommitPublication): void;
   facts(): Facts;
@@ -224,6 +226,9 @@ export async function createConversationObservation(options: ConversationObserva
       }),
     };
   }
+  function liveAssistant(message: AssistantMessage): TranscriptAssistantMessage {
+    return { ...assistant(message), ...options.liveAssistantFacts?.() };
+  }
   function enrich(message: TranscriptMessage, calls = callArgs): TranscriptMessage {
     if (message.role === "assistant") return { ...assistant(message), entryId: message.entryId };
     if (message.role !== "toolResult") return message;
@@ -271,7 +276,9 @@ export async function createConversationObservation(options: ConversationObserva
         ? {
             generation: {
               ...live.generation,
-              ...(live.generation.message ? { message: assistant(live.generation.message) } : {}),
+              ...(live.generation.message
+                ? { message: liveAssistant(live.generation.message) }
+                : {}),
             },
           }
         : {}),
@@ -346,9 +353,9 @@ export async function createConversationObservation(options: ConversationObserva
     }
     const partialBefore = was.live.generation?.message;
     const partial = now.live.generation?.message;
-    if (partial && !partialBefore) emit({ type: "message_start", message: assistant(partial) });
+    if (partial && !partialBefore) emit({ type: "message_start", message: liveAssistant(partial) });
     else if (partial && partial !== partialBefore) {
-      const message = assistant(partial);
+      const message = liveAssistant(partial);
       emit({
         type: "message_update",
         message,

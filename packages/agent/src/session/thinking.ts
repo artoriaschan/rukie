@@ -14,6 +14,7 @@ export function createThinkingTiming(now: () => number) {
   let startedAt: number | undefined;
   let durationMs: number | undefined;
   return {
+    duration: () => durationMs,
     start() {
       startedAt = undefined;
       durationMs = undefined;
