@@ -1,6 +1,5 @@
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { expect, test } from "bun:test";
-import { createJsonlStore, createSession } from "@rukie/agent";
+import { createSession } from "@rukie/agent";
 import { getCurrentSystemMessage } from "@earendil-works/pi-ai";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -69,16 +68,19 @@ for (const [lang, notice, unknown, guide] of [
     });
   }
 
-test("SIGTERM lets the actual TUI process save an active child Run before reporting exit", async () => {
+test("SIGTERM lets the actual TUI process suspend an active native child before reporting exit", async () => {
   const root = await mkdtemp(join(tmpdir(), "rukie-close-"));
   const script = `
     import { main } from ${JSON.stringify(join(import.meta.dir, "../../../src/index.ts"))};
     import { controlledModel } from ${JSON.stringify(join(import.meta.dir, "../helpers/model.ts"))};
     import { createTerminal } from ${JSON.stringify(join(import.meta.dir, "../helpers/terminal.ts"))};
     import { getCurrentSystemMessage } from "@earendil-works/pi-ai";
+    import { createJsonlStore } from "@rukie/agent";
+    const store = createJsonlStore({cwd:${JSON.stringify(root)},homeDir:${JSON.stringify(root)}});
+    const saved = {...store,async open(...args) {const lease = await store.open(...args);process.stdout.write("SESSION " + lease.id + "\\n"); return lease;}};
     const terminal = createTerminal();
     const fake = controlledModel();
-    const exit = main(["delegate"], { ...terminal, env: { LANG: "en" }, stderr: (text) => process.stderr.write(text), session: { cwd: ${JSON.stringify(root)}, homeDir: ${JSON.stringify(root)}, ...fake } });
+    const exit = main(["delegate"], { ...terminal, env: { LANG: "en" }, stderr: (text) => process.stderr.write(text), session: { cwd: ${JSON.stringify(root)}, homeDir: ${JSON.stringify(root)}, ...fake, store:saved } });
     await terminal.waitFor(() => fake.calls.length === 1);
     fake.calls[0].tool("subagent", { description: "Active child", prompt: "work" });
     await terminal.waitFor(() => fake.calls.length === 3);
@@ -113,17 +115,23 @@ test("SIGTERM lets the actual TUI process save an active child Run before report
       output += new TextDecoder().decode(part.value);
     }
     expect(output).toContain("CLOSED\n");
-    const store = createJsonlStore({ cwd: root, homeDir: root });
-    const parent = (await store.list(BACKGROUND_CONTEXT))[0]!;
+    const sessionId = output
+      .split("\n")
+      .find((line) => line.startsWith("SESSION "))
+      ?.slice(8);
+    if (!sessionId) throw new Error("Native TUI Session identity missing");
     const restored = await createSession({
       cwd: root,
       homeDir: root,
       ...(await fakeModel([])),
-      resumeId: parent.id,
+      resumeId: sessionId,
     });
     expect(restored.toolState("subagents")).toMatchObject([
-      { description: "Active child", latestRun: { outcome: "aborted" } },
+      { description: "Active child", active: true },
     ]);
+    const saved = restored.toolState("subagents");
+    if (!Array.isArray(saved)) throw new Error("Native child directory missing");
+    expect(saved[0]?.latestRun?.outcome).toBeUndefined();
     expect(restored.checkpoints()).toHaveLength(1);
     await restored.close();
     expect(await errors).toBe("");

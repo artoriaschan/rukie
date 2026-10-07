@@ -1,7 +1,6 @@
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { testClock } from "../helpers/test-clock";
 import { test, expect } from "bun:test";
-import { createJsonlStore, createSession } from "@rukie/agent";
+import { createSession } from "@rukie/agent";
 import { start } from "../helpers/app";
 import { startWithClock } from "../helpers/clock-app";
 import { failingStorage } from "../../helpers/native-storage-failure";
@@ -19,7 +18,7 @@ test.each(["assistant", "toolResult"] as const)(
       env: { LANG: "en" },
       session: { permissionMode: "full-access" },
       prepare: async (root) => {
-        options.session!.store = failingStorage(root, (writes) => {
+        const failing = failingStorage(root, (writes) => {
           if (rejected) return;
           if (
             writes.some(
@@ -38,6 +37,14 @@ test.each(["assistant", "toolResult"] as const)(
             return new Error("child save rejected");
           }
         });
+        options.session!.store = {
+          ...failing,
+          async open(...args) {
+            const lease = await failing.open(...args);
+            parentId = lease.id;
+            return lease;
+          },
+        };
       },
     };
     const app = await startWithClock(["delegate"], options);
@@ -80,8 +87,6 @@ test.each(["assistant", "toolResult"] as const)(
       expect(app.screen().join("\n")).toContain("durable child partial");
       app.stdin.write("\x1b\x1b/exit\r");
       await app.exit;
-      const store = createJsonlStore({ cwd: app.root, homeDir: app.root });
-      parentId = (await store.list(BACKGROUND_CONTEXT))[0]!.id;
       const restored = await createSession({
         cwd: app.root,
         homeDir: app.root,
