@@ -1,3 +1,4 @@
+import { createSession, listSessions } from "@rukie/agent";
 import { startWithClock } from "../helpers/clock-app";
 import { afterEach, expect, test } from "bun:test";
 import { dark } from "../../../src/ink/index.ts";
@@ -65,16 +66,38 @@ test("text-only model paste keeps the token and success notice while adding one 
     );
     app.stdin.write("inspect\r");
     await app.waitFor(() => app.calls.length === 1);
+    expect(app.calls[0]!.model).toMatchObject({ provider: "img", id: "text", input: ["text"] });
     expect(
       app.calls[0]!.context.messages.findLast((message) => message.role === "user"),
     ).toMatchObject({
       content: [
         { type: "text", text: "[Image #1] inspect" },
-        { type: "image", data: png, mimeType: "image/png" },
+        { type: "text", text: "(image omitted: model does not support images)" },
       ],
     });
     await app.waitFor(() => app.screen().some((line) => line.includes("[Image · shot.png]")));
     app.calls[0]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    await app.shutdown();
+    const saved = await listSessions({ cwd: app.root, homeDir: app.root });
+    const resumed = await createSession({
+      cwd: app.root,
+      homeDir: app.root,
+      resumeId: saved[0]!.id,
+      model: app.calls[0]!.model,
+      models: app.models,
+    });
+    try {
+      expect(resumed.messages.findLast((message) => message.role === "user")).toMatchObject({
+        content: [
+          { type: "text", text: "[Image #1] inspect" },
+          { type: "image", data: png, mimeType: "image/png" },
+        ],
+      });
+      expect(app.calls).toHaveLength(1);
+    } finally {
+      await resumed.close();
+    }
   } finally {
     await app.cleanup();
   }
@@ -126,7 +149,7 @@ test("a long valid model ID keeps image warning, editor and status usable at 40�
     ).toMatchObject({
       content: [
         { type: "text", text: "[Image #1] inspect" },
-        { type: "image", data: png },
+        { type: "text", text: "(image omitted: model does not support images)" },
       ],
     });
     expect(app.screen().at(-2)).toContain("Ask");
@@ -161,7 +184,11 @@ test("switching a Session with transcript images to a text model warns once and 
     await app.waitFor(() => app.screen().join("\n").includes("[Image · shot.png]"));
     app.stdin.write("continue\r");
     await app.waitFor(() => app.calls.length === 2);
-    expect(JSON.stringify(app.calls[1]!.context.messages)).toContain(png);
+    expect(JSON.stringify(app.calls[1]!.context.messages)).not.toContain(png);
+    expect(JSON.stringify(app.calls[1]!.context.messages)).toContain(
+      "image omitted: model does not support images",
+    );
+    expect(app.screen().join("\n")).toContain("[Image · shot.png]");
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
     app.stdin.write("/model img/vision\r");
@@ -212,7 +239,7 @@ test("a hand-typed image token stays a model argument and does not imply attache
   try {
     await app.waitFor(() => app.screen().includes("❯"));
     app.stdin.write("/model [Image #1]\r");
-    await app.waitFor(() => app.screen().join("\n").includes('Unknown model "[Image #1]"'));
+    await app.waitFor(() => app.screen().join("\n").includes("Unknown model: [Image #1]"));
     expect(app.screen().join("\n")).not.toContain("does not accept images");
     expect(app.calls).toHaveLength(0);
   } finally {

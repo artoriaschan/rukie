@@ -33,6 +33,7 @@ test.each([
       await app.waitFor(() => app.screen().join("\n").includes(copy));
       app.calls[1]!.finish();
       await app.waitFor(() => !app.isWorking());
+      await app.shutdown();
       const sessions = await listSessions({ cwd: app.root, homeDir: app.root });
       resumed = await start(["--resume", sessions[0]!.id], {
         env: { LANG: lang },
