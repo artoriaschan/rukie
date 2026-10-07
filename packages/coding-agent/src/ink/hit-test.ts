@@ -326,7 +326,9 @@ export function clearHovered(
   hovered: Set<DOMElement>,
   col = -1,
   row = -1,
-  notify: (node: DOMElement, callback: () => void) => void = (_node, callback) => callback(),
+  notify: (node: DOMElement, callback: () => void) => void = (_node, callback) => {
+    try { callback() } catch (error) { logError(error) }
+  },
 ): void {
   for (const node of hovered) {
     hovered.delete(node)
@@ -336,13 +338,7 @@ export function clearHovered(
     if (!node.parentNode) continue
     const handler = (node._eventHandlers as EventHandlerProps | undefined)
       ?.onMouseLeave
-    if (handler) notify(node, () => {
-      try {
-        handler(new PointerEvent('hover', col, row, { action: 'move' }))
-      } catch (error) {
-        logError(error)
-      }
-    })
+    if (handler) notify(node, () => handler(new PointerEvent('hover', col, row, { action: 'move' })))
   }
 }
 
@@ -520,6 +516,7 @@ export function dispatchHover(
   col: number,
   row: number,
   hovered: Set<DOMElement>,
+  button = 0,
 ): void {
   const next = new Set<DOMElement>()
   const cached = noInterestRects.get(root)
@@ -590,7 +587,7 @@ export function dispatchHover(
           ?.onMouseLeave
         if (handler) {
           try {
-            handler(new PointerEvent('hover', col, row, { action: 'move' }))
+            handler(new PointerEvent('hover', col, row, { action: 'move', button }))
           } catch (error) {
             logError(error)
           }
@@ -605,7 +602,7 @@ export function dispatchHover(
         ?.onMouseEnter
       if (handler) {
         try {
-          handler(new PointerEvent('hover', col, row, { action: 'move' }))
+          handler(new PointerEvent('hover', col, row, { action: 'move', button }))
         } catch (error) {
           logError(error)
         }
