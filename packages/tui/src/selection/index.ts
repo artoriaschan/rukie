@@ -1,4 +1,5 @@
 import type { HostNode } from "../layout";
+import { sanitizeText } from "../text";
 import type { TextStyle } from "../text";
 
 export type TextSelectionResult = "copied" | "sent" | "unavailable" | "stale";
@@ -9,6 +10,15 @@ export interface TextSelectionOptions {
   onCopy(text: string): Promise<boolean | "sent">;
   onResult(result: TextSelectionResult): void;
 }
+/** Measured innermost scroll viewport belonging to painted cells; bounds are half-open. */
+export interface SelectionViewport {
+  owner: HostNode;
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+  scrollTop: number;
+}
 export interface SelectionMetadata {
   region: HostNode;
   options: TextSelectionOptions;
@@ -17,6 +27,7 @@ export interface SelectionMetadata {
   source?: string;
   offset?: number;
   softWrap?: boolean;
+  viewport?: SelectionViewport;
 }
 export interface SelectionCell {
   text: string;
@@ -37,6 +48,8 @@ export function createSelection(redraw: () => void) {
         baseline: string;
         stale: boolean;
         dragged: boolean;
+        viewport?: SelectionViewport;
+        captured: Map<number, readonly SelectionCell[]>;
         span?: { start: Point; end: Point; mode: "word" | "line" };
       }
     | undefined;
@@ -69,6 +82,50 @@ export function createSelection(redraw: () => void) {
       cell.selection.options.key === current?.key
     );
   }
+  function cellsAt(y: number) {
+    const viewport = current?.viewport;
+    return viewport && (y < viewport.top || y >= viewport.bottom)
+      ? current?.captured.get(viewport.scrollTop + y - viewport.top)
+      : grid[y];
+  }
+  /** Captured glyphs remain copyable only while their source still owns the same bytes. */
+  function sourcesUnchanged() {
+    const range = ordered();
+    if (!range) return true;
+    const sources = new Map<HostNode, string | undefined>();
+    for (let y = range.start.y; y <= range.end.y; y++) {
+      for (const [x, cell] of (cellsAt(y) ?? []).entries()) {
+        const metadata = cell.selection;
+        if (
+          !(included(x, y) || (cell.width === 2 && included(x + 1, y))) ||
+          !eligible(cell) ||
+          metadata?.selectable === false ||
+          !metadata?.owner ||
+          cell.width === 0
+        )
+          continue;
+        const owner = metadata.owner;
+        let parent: HostNode | undefined = owner;
+        while (parent && parent !== current?.region) parent = parent.parent;
+        if (!parent) return false;
+        if (!sources.has(owner)) {
+          const text = (node: HostNode): string =>
+            node.type === "raw" ? node.text : node.children.map(text).join("");
+          sources.set(owner, sanitizeText(text(owner)));
+        }
+        const source = sources.get(owner);
+        if (
+          source === undefined ||
+          metadata.offset === undefined ||
+          metadata.source === undefined ||
+          source.slice(metadata.offset, metadata.offset + cell.text.length) !==
+            metadata.source.slice(metadata.offset, metadata.offset + cell.text.length)
+        )
+          return false;
+      }
+    }
+    return true;
+  }
   function extract() {
     const range = ordered();
     if (!range) return "";
@@ -79,8 +136,9 @@ export function createSelection(redraw: () => void) {
       let row = "",
         first: SelectionCell | undefined,
         last: SelectionCell | undefined;
-      for (let x = 0; x < (grid[y]?.length ?? 0); x++) {
-        const cell = grid[y]![x]!;
+      const cells = cellsAt(y);
+      for (let x = 0; x < (cells?.length ?? 0); x++) {
+        const cell = cells![x]!;
         const within =
           included(x, y) ||
           (cell.width === 2 && included(x + 1, y)) ||
@@ -152,6 +210,40 @@ export function createSelection(redraw: () => void) {
   }
   return {
     record(next: readonly (readonly SelectionCell[])[]) {
+      const viewports = new Map<HostNode, SelectionViewport>();
+      for (const row of next)
+        for (const cell of row)
+          if (cell.selection?.viewport)
+            viewports.set(cell.selection.viewport.owner, cell.selection.viewport);
+      let coordinated = false;
+      if (current?.focus && !sourcesUnchanged()) current.stale = true;
+      if (current?.viewport) {
+        const previous = current.viewport;
+        const viewport = viewports.get(previous.owner);
+        if (!viewport) clear();
+        else {
+          const shift = viewport.top - previous.top - (viewport.scrollTop - previous.scrollTop);
+          if (shift || viewport.bottom !== previous.bottom) {
+            // Capture from the previous painted frame before translated rows are replaced.
+            for (let y = previous.top; y < previous.bottom; y++) {
+              const translated = y + shift;
+              if (
+                (translated < viewport.top || translated >= viewport.bottom) &&
+                grid[y]?.some((cell, x) => included(x, y) && eligible(cell))
+              )
+                current.captured.set(previous.scrollTop + y - previous.top, grid[y]!);
+            }
+            current.anchor.y += shift;
+            if (current.focus) current.focus.y += shift;
+            if (current.span) {
+              current.span.start.y += shift;
+              current.span.end.y += shift;
+            }
+            coordinated = true;
+          }
+          current.viewport = viewport;
+        }
+      }
       grid = next;
       regions.clear();
       for (const row of grid)
@@ -162,7 +254,10 @@ export function createSelection(redraw: () => void) {
       if (current) {
         const region = regions.get(current.region);
         if (!region || region.key !== current.key) clear();
-        else if (current.focus && extract() !== current.baseline) current.stale = true;
+        else if (current.focus) {
+          if (coordinated) current.baseline = extract();
+          else if (extract() !== current.baseline) current.stale = true;
+        }
       }
     },
     press(x: number, y: number, modified = false) {
@@ -176,6 +271,8 @@ export function createSelection(redraw: () => void) {
           baseline: "",
           stale: false,
           dragged: false,
+          viewport: meta.viewport,
+          captured: new Map(),
         };
       const now = Date.now();
       if (!current || modified) {
@@ -257,12 +354,20 @@ export function createSelection(redraw: () => void) {
     release() {
       if (!current) return false;
       const selected = current;
-      const text = extract();
+      const viewport = selected.viewport;
+      const fullyOutside =
+        viewport &&
+        selected.focus &&
+        ((selected.anchor.y < viewport.top && selected.focus.y < viewport.top) ||
+          (selected.anchor.y >= viewport.bottom && selected.focus.y >= viewport.bottom));
+      const text = fullyOutside ? "" : extract();
       const options = regions.get(selected.region);
+      const unchanged = sourcesUnchanged();
       clear();
       if (!selected.dragged) return false;
+      if (fullyOutside) return true;
       if (!options || options.key !== selected.key) return true;
-      if (selected.stale || text !== selected.baseline) {
+      if (selected.stale || !unchanged || text !== selected.baseline) {
         options.onResult("stale");
         return true;
       }

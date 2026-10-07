@@ -183,8 +183,6 @@ export function render(element: ReactNode, options: RenderOptions) {
     options,
     () => {
       if (!container.active) return;
-      container.hover.clear();
-      selection.clear();
       container.screen.invalidate();
       schedulePaint(container);
     },
@@ -202,6 +200,10 @@ export function render(element: ReactNode, options: RenderOptions) {
     (notify) => reconciler.flushSyncFromReconciler(notify),
     options.fullscreen,
   );
+  terminal.subscribeSize(() => {
+    container.hover.clear();
+    selection.clear();
+  });
   terminal.subscribeInput((event) => {
     if (event.type === "move") {
       if (event.button === 0 && selection.move(event.x, event.y)) container.hover.cancelPress();
@@ -213,7 +215,6 @@ export function render(element: ReactNode, options: RenderOptions) {
         container.hover.cancelPress();
       container.hover[event.action](event.x, event.y, event.button);
     } else if (event.type === "wheel") {
-      selection.clear();
       container.hover.cancelPress();
       container.hover.wheel(event);
     } else if (event.type === "focus" && !event.focused) {
