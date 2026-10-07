@@ -306,13 +306,13 @@ const RequestDoc = defineDoc<{
   scope: "session",
   initial: () => ({ requests: {} }),
 });
-const CompactHookContextDoc = defineDoc<{ pending: string[] }>({
+const CompactHookContextDoc = defineDoc<{ pending: string[]; afterEntry: number | null }>({
   kind: "rukie.compact-hook-context",
   version: 1,
   scope: "conversation",
   history: "rewindable",
   fork: "asOf",
-  initial: () => ({ pending: [] }),
+  initial: () => ({ pending: [], afterEntry: null }),
 });
 const HookYieldDoc = defineDoc<{ runAnchor: number | null; pending: string[] }>({
   kind: "rukie.hook-yield",
@@ -1926,9 +1926,17 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             }
             for (const message of result.systemMessages)
               await appendNotice({ kind: "hook_message", message });
+            const before = await conversation.context(context);
+            const latest = before.entries.findLast(
+              (entry) =>
+                entry.kind !== "rukie.reminder" &&
+                entry.model?.some((message) => message.role === "user"),
+            );
             await conversation.commit(async (tx) => {
               const context = await tx.doc(CompactHookContextDoc, conversation.id);
               context.pending.push(...result.additionalContext);
+              if (result.additionalContext.length)
+                context.afterEntry = latest ? Number(latest.id) : null;
             }, context);
           }
           tracking.finishRequest();
@@ -1949,9 +1957,16 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 entry.kind === "rukie.reminder" && entryData(entry)?.source === "plan-mode",
             )
           : undefined;
-      if (includeHookContext)
+      if (includeHookContext) {
+        const before = await conversation.context(ctx);
+        const latest = before.entries.findLast(
+          (entry) =>
+            entry.kind !== "rukie.reminder" &&
+            entry.model?.some((message) => message.role === "user"),
+        );
         await conversation.commit(async (tx) => {
           const owned = await tx.doc(CompactHookContextDoc, conversation.id);
+          if (owned.afterEntry !== null && owned.afterEntry === Number(latest?.id)) return;
           for (const content of owned.pending)
             await tx.appendEntry(
               conversation.id,
@@ -1963,7 +1978,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               }),
             );
           owned.pending = [];
+          owned.afterEntry = null;
         }, ctx);
+      }
       const sources: ReminderSource[] = [
         { source: "skills", currentContent: () => skillsReminder(skills) },
         {
