@@ -10,8 +10,15 @@ import {
  * Scripted model: replies with `responses` in order and records every context it receives.
  * The only test double for the model side (Seam 1).
  */
-export function fakeModel(responses: FauxResponseStep[]) {
-  const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+export function fakeModel(responses: FauxResponseStep[], options: { chunkTokens?: number } = {}) {
+  const faux = fauxProvider({
+    api: "faux",
+    provider: "faux",
+    tokensPerSecond: Infinity,
+    ...(options.chunkTokens && {
+      tokenSize: { min: options.chunkTokens, max: options.chunkTokens },
+    }),
+  });
   faux.setResponses(responses);
   const contexts: TranscriptContext[] = [];
   const stream = withAuxiliaryRequests((model, context, options) => {
