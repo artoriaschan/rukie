@@ -1,7 +1,7 @@
 import { createContext, useContext, useMemo, type ComponentProps, type ReactNode } from "react";
 import { fromMarkdown } from "mdast-util-from-markdown";
 import { Box } from "../../components";
-import { ThemedText as StyledText } from "../themed";
+import { ThemedBox, ThemedText as StyledText } from "../themed";
 import {
   SyntaxHighlightedText as HighlightedText,
   highlightSyntax,
@@ -318,16 +318,6 @@ function CodeBlock({
       ),
     [node.value, node.lang],
   );
-  const lines = textLines([{ text: node.value, style: {} }], Math.max(1, columns - 6), true, true);
-  function runs(start: number, end: number) {
-    let offset = 0;
-    return highlighted.flatMap((run) => {
-      const from = Math.max(start - offset, 0),
-        to = Math.min(end - offset, run.text.length);
-      offset += run.text.length;
-      return from < to ? [{ ...run, text: run.text.slice(from, to) }] : [];
-    });
-  }
   const diagram = art && art.width <= columns - 4;
   if (diagram)
     return (
@@ -361,31 +351,12 @@ function CodeBlock({
       </Box>
     );
   return (
-    <Box flexDirection="column">
-      <ThemedText
-        color="subtle"
-        selectable={false}
-      >{`┌─ ${label}${columns >= 60 ? " " + "─".repeat(Math.max(0, columns - 8 - label.length)) : ""}`}</ThemedText>
-      {node.value &&
-        lines.map((row, index) => (
-          <Box key={index}>
-            <Box width={2} flexShrink={0}>
-              <ThemedText color="subtle" selectable={false}>
-                │
-              </ThemedText>
-            </Box>
-            <SyntaxHighlightedText
-              runs={runs(
-                row[0]?.offset ?? 0,
-                row.at(-1) ? row.at(-1)!.offset + row.at(-1)!.text.length : 0,
-              )}
-              onClick={onClick}
-              preserveWhitespace
-              softWrap={index > 0 && !lines[index - 1]!.some((glyph) => glyph.lineBreak)}
-            />
-          </Box>
-        ))}
-    </Box>
+    <ThemedBox borderStyle="single" borderColor="subtle" flexDirection="column" paddingX={1}>
+      <Box position="absolute" left={1} right={1} top={-1} height={1} selectable={false}>
+        <ThemedText color="subtle" wrap="truncate">{` ${label} `}</ThemedText>
+      </Box>
+      <SyntaxHighlightedText runs={highlighted} onClick={onClick} preserveWhitespace />
+    </ThemedBox>
   );
 }
 function TableBlock({

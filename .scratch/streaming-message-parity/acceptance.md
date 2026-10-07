@@ -173,3 +173,9 @@ env -u NO_COLOR LANG=en_US.UTF-8 bun "$TASK_REPO/apps/neant-tui/src/main.tsx" --
 工具标题按可见宽度为状态标记、耗时与折叠箭头预留固定列；非悬停时箭头槽位保留空白，标题使用剩余宽度，路径点击范围避开耗时和箭头。长 read 路径与 bash 命令的 80/40 列回归覆盖悬停进入、离开及 resize，核对耗时始终可见且列位置稳定。超长 emoji 后缀允许自然换行，验证展开后内容完整。
 
 验证：`tool-header-layout`、`tool-tooltip`、`tool-expansion` 与 `text-selection` 共 25 pass / 0 fail，123 assertions，3.68s；`bun run check:dev` 通过。按用户本次要求未运行全量测试。
+
+## 2026-10-07 Markdown 代码框
+
+截图反馈的代码块只有顶边与左边，是手绘开放框的实现结果。代码块改用现有原生单线边框，右边与底边随内容布局完整绘制；语言标签限定在顶边内，正文按实际容器宽度换行，语法高亮与原文复制保留。移除按终端全局列数预折行及逐行切片路径。
+
+验证：助手代码框在未闭合流式输入、完成与 80→40 列 resize 后的四边；24 列容器中的长语言标签、Unicode 与正文换行；复制不带边框；思考 Markdown 与助手标记。相关 5 个文件共 30 pass / 0 fail，139 assertions，2.37s；`bun run check:dev` 通过。按用户要求未运行全量测试。
