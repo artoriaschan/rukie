@@ -28,22 +28,26 @@ Blocked by: 01
 
 公开行为的实际聚焦验证（退出码均为 0）：
 
-| 范围                       | 命令中的测试文件                                           | 结果                    | 时间   |
-| -------------------------- | ---------------------------------------------------------- | ----------------------- | ------ |
-| 权限规则、Hook 与执行阶段  | `permission-hooks`、`permission-rules`、`post-allow-stage` | 74 pass，260 assertions | 3.68 s |
-| 原生 Compaction 与 Goal    | `compaction`、`goal`                                       | 35 pass，212 assertions | 2.40 s |
-| Plan Mode                  | `plan-mode`                                                | 21 pass，91 assertions  | 1.23 s |
-| 异步 Hook                  | `async-hooks`                                              | 13 pass，54 assertions  | 0.99 s |
-| MCP 协议、管理与声明       | `mcp`、`mcp-api`、`tool-declarations`                      | 65 pass，286 assertions | 2.87 s |
-| 中断、作业停止通知与关闭   | `post-tool-hooks`、`job-api`、`session-dispose`            | 39 pass，177 assertions | 4.65 s |
-| 子代理权限与权限 Hook      | `subagent-permissions`、`permission-hooks`                 | 42 pass，147 assertions | 2.91 s |
-| 真实进程丢失不安全工具回执 | `unknown-tool-outcomes`                                    | 6 pass                  | 2.04 s |
-| 实时与恢复 Thinking 时长   | Agent `thinking`、TUI `thinking`                           | 12 pass，55 assertions  | 1.62 s |
-| 原生 Goal 工具回执         | `goal-tools`                                               | 21 pass，71 assertions  | 1.17 s |
-| 异步警告与关闭生命周期     | `session-dispose`                                          | 9 pass，34 assertions   | 2.02 s |
-| 恢复模型与选择器           | TUI `model-switch`、`resume-picker`                        | 6 pass，33 assertions   | 0.96 s |
-| 子代理 fork 与原子 Rewind  | `session-title`、`checkpoint`、`checkpoint-subagents`      | 53 pass，281 assertions | 3.87 s |
-| MCP 上下文归属与恢复       | `context-report`                                           | 6 pass，34 assertions   | 0.48 s |
+| 范围                       | 命令中的测试文件                                                                     | 结果                    | 时间   |
+| -------------------------- | ------------------------------------------------------------------------------------ | ----------------------- | ------ |
+| 权限规则、Hook 与执行阶段  | `permission-hooks`、`permission-rules`、`post-allow-stage`                           | 74 pass，260 assertions | 3.68 s |
+| 原生 Compaction 与 Goal    | `compaction`、`goal`                                                                 | 35 pass，212 assertions | 2.40 s |
+| Plan Mode                  | `plan-mode`                                                                          | 21 pass，91 assertions  | 1.23 s |
+| 异步 Hook                  | `async-hooks`                                                                        | 13 pass，54 assertions  | 0.99 s |
+| MCP 协议、管理与声明       | `mcp`、`mcp-api`、`tool-declarations`                                                | 65 pass，286 assertions | 2.87 s |
+| 中断、作业停止通知与关闭   | `post-tool-hooks`、`job-api`、`session-dispose`                                      | 39 pass，177 assertions | 4.65 s |
+| 子代理权限与权限 Hook      | `subagent-permissions`、`permission-hooks`                                           | 42 pass，147 assertions | 2.91 s |
+| 真实进程丢失不安全工具回执 | `unknown-tool-outcomes`                                                              | 6 pass                  | 2.04 s |
+| 实时与恢复 Thinking 时长   | Agent `thinking`、TUI `thinking`                                                     | 12 pass，55 assertions  | 1.62 s |
+| 原生 Goal 工具回执         | `goal-tools`                                                                         | 21 pass，71 assertions  | 1.17 s |
+| 异步警告与关闭生命周期     | `session-dispose`                                                                    | 9 pass，34 assertions   | 2.02 s |
+| 恢复模型与选择器           | TUI `model-switch`、`resume-picker`                                                  | 6 pass，33 assertions   | 0.96 s |
+| 子代理 fork 与原子 Rewind  | `session-title`、`checkpoint`、`checkpoint-subagents`                                | 53 pass，281 assertions | 3.87 s |
+| MCP 上下文归属与恢复       | `context-report`                                                                     | 6 pass，34 assertions   | 0.48 s |
+| 原生并行权限轮次屏障       | `permission-review`、`subagent-permissions`、`permission-hooks`、permissions `batch` | 80 pass，269 assertions | 4.62 s |
+| 持久化拒绝来源             | `permission-denial`、permissions `provenance`                                        | 8 pass，19 assertions   | 0.29 s |
+| 压缩、拒绝来源与原生观察   | `compaction`、`permission-denial`、tools `native-observation`                        | 21 pass，160 assertions | 1.63 s |
+| Stop 前用量与初始类型目录  | TUI `context-report`                                                                 | 9 pass                  | 1.12 s |
 
 上述命令统一使用 `rtk proxy bun test packages/agent/tests/e2e/<name>.test.ts ...`。关闭预算用例实际覆盖跨进程 1.5 秒资源回收契约，保留真实时间；其余同步使用模型回复、原生结算、文件事件和进程退出。
 
@@ -51,7 +55,11 @@ Blocked by: 01
 
 populated-directory fork 原子事务冲突已修复：子代理目录使用原生 rewindable 历史与 fork initial 策略；Rewind 通过公开 snapshotAsOf 读取锚点目录，在创建目标 Conversation 的同一事务内恢复目录，保留原先不存在与显式空目录的区别。已有子代理时的 fork 与 Checkpoint 恢复均已通过公开行为测试。恢复模型的首帧投影、实时 Thinking 时长和异步警告字符串边界也已通过实际 TUI 回归。全部工作区类型检查与 Knip 已通过。
 
-仍需在 02 关闭前完成：受影响包失败收敛、权限弹窗呈现与恢复上下文用量等已发现问题、静态开发检查与集成复核。03–08 保持依赖门禁，另行验证存储故障/并发恢复、挂起 Interaction 重授权、有限因果结算崩溃窗口、Goal 原子续轮以及 Frontend 回放和终端矩阵；不得从本票聚焦通过推断这些验收完成。
+2026-10-08 补充：`rtk proxy bun run check:dev` 已通过格式、lint、全部工作区类型、Knip、tracker、docs 与 ink 边界检查。权限轮次以原生 LiveDoc 中的实际 task ID 协调并行审查，并在屏障后重新检查停止状态；被停止的同批次工具不能凭先前授权执行。拒绝来源按原生 ToolTask ID 写入产品事实，实时与冷恢复均输出 typed permissionDenial，重复 provider call ID 不会串用事实。Stop 前的 provider input/cache 用量先提交产品测量事实，再发布 context_usage；类型发现先于工具描述组装，初始 /context 不启动模型也可显示实际目录。
+
+Compaction 后的公开 Transcript 现在使用公开 Storage 的 fork-aware 完整历史并按实际 Entry ID 顺序投影；模型上下文仍采用原生 active head。公开回归验证旧 Human/Read 回执保留、真实压缩 notice 位于此前消息之后、冷恢复顺序不变，以及下一次 provider context 不重新包含已压缩 Read 内容。Rewind 的目标分支仍按其原生 fork cutoff 投影，不显示已丢弃分支。
+
+仍需在 02 关闭前完成：受影响包剩余失败收敛与集成复核。03–08 保持依赖门禁，另行验证存储故障/并发恢复、挂起 Interaction 重授权、有限因果结算崩溃窗口、Goal 原子续轮以及 Frontend 回放和终端矩阵；不得从本票聚焦通过推断这些验收完成。
 
 ## Comments
 
