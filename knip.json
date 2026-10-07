@@ -1,9 +1,9 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "ignore": ["packages/coding-agent/src/ink/yoga/**"],
+  "ignore": ["packages/coding-agent/src/ink/**"],
   "workspaces": {
     "packages/coding-agent": {
-      "entry": ["src/ink/index.ts"]
+      "entry": ["src/ink/index.ts", "tests/fixtures/runtime-default-streams.tsx"]
     }
   }
 }

@@ -1,75 +1,22 @@
-export {
-  Box,
-  Image,
-  type ImageProps,
-  Text,
-  TextInput,
-  createTextInputHistory,
-  type BoxProps,
-  type TextProps,
-  type TextInputProps,
-  Static,
-  ScrollBox,
-  type ScrollBoxProps,
-  Spinner,
-  type SpinnerProps,
-  type StaticProps,
-} from "./primitives";
-export type { ScrollHandle, ScrollSnapshot, ScrollAnchor } from "./scroll";
-export { render, type RenderOptions } from "./renderer";
-export {
-  useInput,
-  useTerminalSize,
-  useTerminalFocus,
-  useTerminalGraphics,
-  ClockProvider,
-  useAnimationFrame,
-} from "./hooks";
-export type { InputEvent, Key } from "./input";
-export {
-  SmoothRevealProvider,
-  useSmoothReveal,
-  useSmoothText,
-  dark,
-  light,
-  type Theme,
-  ThemeProvider,
-  useTheme,
-  figures,
-  toolKindColor,
-  Tooltip,
-  TooltipProvider,
-  useDismissTooltip,
-  SyntaxHighlightedText,
-  highlightSyntax,
-  SplitDiffView,
-  alignSplitDiff,
-  type SplitDiffRow,
-  type SyntaxRun,
-  rgb,
-  hex,
-  interpolateColor,
-  type Rgb,
-  sweep,
-  StatusIcon,
-  type StatusIconProps,
-  Divider,
-  type DividerProps,
-  ListItem,
-  type ListItemProps,
-  HintLine,
-  type HintLineProps,
-  ThemedText,
-  ThemedBox,
-  ThemedTextInput,
-  type ThemeColor,
-  type ThemedTextProps,
-  type ThemedBoxProps,
-  type ThemedTextInputProps,
-} from "./design-system";
-
-export type { TerminalGraphics } from "./terminal";
-
-export type { TextSelectionOptions, TextSelectionResult } from "./selection";
-
-export { textLines } from "./text";
+export { default as render, renderSync, createRoot, type RenderOptions, type Instance, type Root } from "./root.js";
+export { default as Box, type Props as BoxProps } from "./components/Box.js";
+export { default as Text, type Props as TextProps } from "./components/Text.js";
+export { default as Image, type ImageProps } from "./components/Image.js";
+export { default as ScrollBox, type ScrollBoxHandle, type ScrollBoxProps } from "./components/ScrollBox.js";
+export { AlternateScreen } from "./components/AlternateScreen.js";
+export { default as useInput } from "./hooks/use-input.js";
+export { default as useApp } from "./hooks/use-app.js";
+export { useSelection, useHasSelection } from "./hooks/use-selection.js";
+export { useSearchHighlight } from "./hooks/use-search-highlight.js";
+export { useTerminalSize } from "./hooks/use-terminal-size.js";
+export { useTerminalFocus } from "./hooks/use-terminal-focus.js";
+export { useTerminalImages, useTerminalImageProtocol, useTerminalImageCellSize } from "./hooks/use-terminal-images.js";
+export { useAnimationFrame } from "./hooks/use-animation-frame.js";
+export { ClockProvider } from "./components/ClockContext.js";
+export { useDeclaredCursor } from "./hooks/use-declared-cursor.js";
+export { default as measureElement } from "./measure-element.js";
+export type { DOMElement } from "./dom.js";
+export type { MatchPosition } from "./render-to-screen.js";
+export type { Key, InputEvent } from "./events/input-event.js";
+export type { ClickEvent } from "./events/click-event.js";
+export type { PointerEvent } from "./events/pointer-event.js";

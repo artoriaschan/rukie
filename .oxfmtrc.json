@@ -1,1 +1,3 @@
-{}
+{
+  "ignorePatterns": ["packages/coding-agent/src/ink/**"]
+}

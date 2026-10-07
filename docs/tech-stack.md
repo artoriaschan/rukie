@@ -87,3 +87,33 @@ Headless CLI、TUI 与 renderer 的依赖统一归 `packages/coding-agent/packag
 | 提交信息规范         | @commitlint/cli 21.2.3 + @commitlint/config-conventional 21.2.3 |
 | 死代码和未使用的依赖 | knip 6.37.0                                                     |
 | 类型检查             | `tsc -b`                                                        |
+
+## dsh ink runtime
+
+终端管线采用 dsh-TUI `3c89ea516e4f7d2777efe979200016528722a0b4` 的 ink 与纯 TypeScript Yoga；来源及最小本地改动见 [ink README](../packages/coding-agent/src/ink/README.md)。以下为实际安装的直接依赖，版本全部精确固定；sharp 提供真实图片解码/缩放，sixel 通过 Bun worker 编码。
+
+| 依赖                       | 版本     |
+| -------------------------- | -------- |
+| `react`                    | `19.3.0` |
+| `react-reconciler`         | `0.34.0` |
+| `@alcalzone/ansi-tokenize` | `0.3.1`  |
+| `auto-bind`                | `5.0.1`  |
+| `bidi-js`                  | `1.1.0`  |
+| `chalk`                    | `6.0.1`  |
+| `cli-boxes`                | `4.0.1`  |
+| `code-excerpt`             | `4.0.0`  |
+| `emoji-regex`              | `11.0.0` |
+| `get-east-asian-width`     | `1.7.0`  |
+| `indent-string`            | `5.0.0`  |
+| `lodash-es`                | `4.18.1` |
+| `semver`                   | `7.8.5`  |
+| `sharp`                    | `0.35.4` |
+| `signal-exit`              | `4.1.0`  |
+| `sixel`                    | `0.16.0` |
+| `stack-utils`              | `2.0.6`  |
+| `strip-ansi`               | `7.2.0`  |
+| `supports-hyperlinks`      | `4.6.0`  |
+| `type-fest`                | `5.10.0` |
+| `wrap-ansi`                | `10.0.2` |
+
+类型依赖：`@types/lodash-es` 4.17.12、`@types/semver` 7.8.0、`@types/stack-utils` 2.0.3。测试使用已有 `@xterm/headless` 6.0.0。

@@ -5,13 +5,6 @@
   },
   "overrides": [
     {
-      "files": ["packages/coding-agent/src/ink/yoga/**"],
-      "rules": {
-        "no-unused-vars": "off",
-        "unicorn/no-new-array": "off"
-      }
-    },
-    {
       "files": ["packages/shared/**"],
       "rules": {
         "no-restricted-imports": [
@@ -149,129 +142,6 @@
               {
                 "message": "TUI must use ink/index.ts.",
                 "group": ["**/ink", "**/ink/**", "!**/ink/index.ts"]
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "files": ["packages/coding-agent/src/ink/**"],
-      "rules": {
-        "no-restricted-imports": [
-          "error",
-          {
-            "patterns": [
-              {
-                "group": ["@rukie/coding-agent", "@rukie/coding-agent/**"],
-                "message": "Use relative imports inside coding-agent."
-              },
-              {
-                "group": ["@rukie/agent", "@rukie/agent/**", "@rukie/i18n", "@rukie/i18n/**"],
-                "message": "ink must not depend on Agent Core or locale."
-              },
-              {
-                "message": "ink must not depend on upper layers.",
-                "group": [
-                  "**/headless",
-                  "**/headless/**",
-                  "**/tui",
-                  "**/tui/**",
-                  "**/cli",
-                  "**/cli/**",
-                  "**/view",
-                  "**/view/**"
-                ]
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "files": ["packages/coding-agent/src/ink/*.{ts,tsx}"],
-      "rules": {
-        "no-restricted-imports": [
-          "error",
-          {
-            "patterns": [
-              {
-                "group": ["@rukie/coding-agent", "@rukie/coding-agent/**"],
-                "message": "Use relative imports inside coding-agent."
-              },
-              {
-                "group": ["@rukie/agent", "@rukie/agent/**", "@rukie/i18n", "@rukie/i18n/**"],
-                "message": "ink must not depend on Agent Core or locale."
-              },
-              {
-                "message": "ink must not depend on upper layers.",
-                "group": [
-                  "../**",
-                  "**/coding-agent/src/headless/**",
-                  "**/coding-agent/src/tui/**",
-                  "**/coding-agent/src/cli/**",
-                  "**/coding-agent/src/view/**"
-                ]
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "files": ["packages/coding-agent/src/ink/*/*.{ts,tsx}"],
-      "rules": {
-        "no-restricted-imports": [
-          "error",
-          {
-            "patterns": [
-              {
-                "group": ["@rukie/coding-agent", "@rukie/coding-agent/**"],
-                "message": "Use relative imports inside coding-agent."
-              },
-              {
-                "group": ["@rukie/agent", "@rukie/agent/**", "@rukie/i18n", "@rukie/i18n/**"],
-                "message": "ink must not depend on Agent Core or locale."
-              },
-              {
-                "message": "ink must not depend on upper layers.",
-                "group": [
-                  "../../**",
-                  "**/coding-agent/src/headless/**",
-                  "**/coding-agent/src/tui/**",
-                  "**/coding-agent/src/cli/**",
-                  "**/coding-agent/src/view/**"
-                ]
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "files": ["packages/coding-agent/src/ink/*/*/*.{ts,tsx}"],
-      "rules": {
-        "no-restricted-imports": [
-          "error",
-          {
-            "patterns": [
-              {
-                "group": ["@rukie/coding-agent", "@rukie/coding-agent/**"],
-                "message": "Use relative imports inside coding-agent."
-              },
-              {
-                "group": ["@rukie/agent", "@rukie/agent/**", "@rukie/i18n", "@rukie/i18n/**"],
-                "message": "ink must not depend on Agent Core or locale."
-              },
-              {
-                "message": "ink must not depend on upper layers.",
-                "group": [
-                  "../../../**",
-                  "**/coding-agent/src/headless/**",
-                  "**/coding-agent/src/tui/**",
-                  "**/coding-agent/src/cli/**",
-                  "**/coding-agent/src/view/**"
-                ]
               }
             ]
           }
@@ -535,66 +405,7 @@
           "require"
         ]
       }
-    },
-    {
-      "files": ["packages/coding-agent/src/ink/*/*/*/*.{ts,tsx}"],
-      "rules": {
-        "no-restricted-imports": [
-          "error",
-          {
-            "patterns": [
-              {
-                "group": ["@rukie/coding-agent", "@rukie/coding-agent/**"],
-                "message": "Use relative imports inside coding-agent."
-              },
-              {
-                "group": ["@rukie/agent", "@rukie/agent/**", "@rukie/i18n", "@rukie/i18n/**"],
-                "message": "ink must not depend on Agent Core or locale."
-              },
-              {
-                "message": "ink must not depend on upper layers.",
-                "group": [
-                  "../../../../**",
-                  "**/coding-agent/src/headless/**",
-                  "**/coding-agent/src/tui/**",
-                  "**/coding-agent/src/cli/**",
-                  "**/coding-agent/src/view/**"
-                ]
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "files": ["packages/coding-agent/src/ink/*/*/*/*/*.{ts,tsx}"],
-      "rules": {
-        "no-restricted-imports": [
-          "error",
-          {
-            "patterns": [
-              {
-                "group": ["@rukie/coding-agent", "@rukie/coding-agent/**"],
-                "message": "Use relative imports inside coding-agent."
-              },
-              {
-                "group": ["@rukie/agent", "@rukie/agent/**", "@rukie/i18n", "@rukie/i18n/**"],
-                "message": "ink must not depend on Agent Core or locale."
-              },
-              {
-                "message": "ink must not depend on upper layers.",
-                "group": [
-                  "../../../../../**",
-                  "**/coding-agent/src/headless/**",
-                  "**/coding-agent/src/tui/**",
-                  "**/coding-agent/src/cli/**",
-                  "**/coding-agent/src/view/**"
-                ]
-              }
-            ]
-          }
-        ]
-      }
     }
-  ]
+  ],
+  "ignorePatterns": ["packages/coding-agent/src/ink/**"]
 }

@@ -5,10 +5,11 @@ Source: dsh-TUI `3c89ea516e4f7d2777efe979200016528722a0b4`. Runtime: Bun 1.4.2 o
 ## 复现
 
 ```sh
-cd .scratch/dsh-ink/prototype
 rtk proxy bun install --frozen-lockfile
-rtk proxy bun test spike.test.tsx
+rtk proxy bun test packages/coding-agent/tests/ink/runtime.test.tsx
 ```
+
+02 已将 spike 迁入正式 runtime，移除 prototype 重复源码；下面的3 tests计数为历史独立 spike 证据，当前 runtime 增加多根及 late exit 验证。
 
 3 tests / 14 assertions pass，194ms 总计；frame/input/restore 50.96ms，真实 sixel worker 46.44ms，默认 process streams 子进程 56.42ms。等待仅使用 onFrame、xterm write callback、worker message/terminate 与 child.exited；5000ms 是失败上限。NodeJS stream 类型在 Bun 运行可用；注入 stdin 还须 setEncoding/read/readable、ref/unref/setRawMode/isTTY，stdout 须 write/events/columns/rows/isTTY。
 
