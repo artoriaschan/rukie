@@ -21,6 +21,8 @@ export interface TextInputProps extends TextStyle {
   /** Opt in to primary clicks on atomic glyphs: move to the unit start and notify, even at the same caret. */
   onAtomicRangeClick?(offset: number): void;
   isActive?: boolean;
+  /** Exclude editor cells from root text selection; editable composers can opt in. */
+  noSelect?: boolean;
   maxLines?: number;
   columns?: number;
   cursorStyle?: "block";
@@ -92,6 +94,7 @@ export function TextInput({
   onCursorChange,
   onAtomicRangeClick,
   isActive = true,
+  noSelect = true,
   maxLines,
   columns,
   cursorStyle,
@@ -326,11 +329,31 @@ export function TextInput({
         node.current = element;
         cursorRef(element);
       }}
-      noSelect
+      noSelect={readOnly || noSelect}
       flexDirection="column"
       width={columns ?? "100%"}
       height={height}
       flexShrink={0}
+      onClick={isActive && !readOnly ? (event) => {
+        const line = lines[viewport.current + event.localRow];
+        if (!line || event.pressLocalRow !== event.localRow) return;
+        const offsetAt = (target: number) => {
+          let column = 0;
+          let offset = line.at(-1)?.offset ?? value.length;
+          for (const glyph of line) {
+            offset = glyph.offset;
+            if (target < column + glyph.width || glyph.lineBreak) break;
+            column += glyph.width;
+            offset = glyph.offset + glyph.text.length;
+          }
+          return Math.min(value.length, offset);
+        };
+        const offset = offsetAt(event.localCol);
+        if (offsetAt(event.pressLocalCol) !== offset) return;
+        history?.reset();
+        move(Math.min(value.length, offset));
+        event.stopImmediatePropagation();
+      } : undefined}
     >
       {lines.slice(viewport.current, viewport.current + height).map((line, index) => {
         let column = 0;
@@ -342,7 +365,9 @@ export function TextInput({
           else groups.push([glyph]);
         }
         return (
-          <Box key={row} height={1} flexShrink={0} width={width}>
+          <Box key={row} height={1} flexShrink={0} width={width}
+            softWrapContinuation={row > 0 && !lines[row - 1]?.some((glyph) => glyph.lineBreak)
+              ? lines[row - 1]!.reduce((sum, glyph) => sum + glyph.width, 0) : undefined}>
             {groups.map((group, groupIndex) => {
               const atomic = group[0]?.atomic;
               const groupWidth = group.reduce((sum, glyph) => sum + glyph.width, 0);

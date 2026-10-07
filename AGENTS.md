@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Rukie is a coding agent. Agent Core owns Session execution; Headless CLI and TUI drive it as frontends. Read [docs/architecture.md](docs/architecture.md) before changing `packages/`, [CONTEXT.md](CONTEXT.md) before changing domain behavior, and the relevant [ADRs](docs/adr/) before changing architecture. Follow [docs/AGENTS.md](docs/AGENTS.md) when writing documentation. Use the glossary's terms in code, tests, issues, and documentation.
+Rukie is a coding agent. Agent Core owns Session execution; Headless CLI and TUI drive it as frontends. Read [docs/architecture.md](docs/architecture.md) before changing `packages/`, [CONTEXT.md](CONTEXT.md) before changing domain behavior, and the relevant [ADRs](docs/adr/) before changing architecture. Follow [docs/AGENTS.md](docs/AGENTS.md) and the repository [rukie-doc skill](.agents/skills/rukie-doc/SKILL.md) when writing documentation. Use the glossary's terms in code, tests, issues, and documentation.
 
 ## Repository layout
 
@@ -27,7 +27,10 @@ bun run dev -- -p "task"                        # Headless CLI; requires configu
 bun run test:agent                               # Agent Core tests
 bun run test:coding-agent                        # Headless CLI, TUI and renderer tests
 bun test <file-or-directory>                     # narrower tests for the affected behavior
-bun run check:dev                                # format → lint → types → Knip; no tests
+bun run check:dev                                # static checks, tracker and docs; no tests
+bun run check:docs                               # local links, ADR format and skill metadata
+bun run docs:update                              # synchronize generated ADR index
+bun run test:docs                                # documentation checker regression tests
 bun run test                                     # all current Bun tests
 bunx --no -- oxfmt --check                        # formatting
 bunx --no -- oxlint                              # lint
@@ -83,7 +86,7 @@ Frontends supply Interaction callbacks. Headless CLI supplies none: dependent to
 - UI changes need terminal assertions for the affected dimensions and interactions, including resize or small-terminal behavior when relevant. Verify coexisting panels, focus, and reading position when their layout or state changes.
 - During development, run the smallest affected test set: a test case or file first, then related files or a package when the change crosses those boundaries. Measure performance with a focused reproducer; use a full-suite baseline only when needed to locate or compare suite-wide costs.
 - For code delivery, run `env -u NO_COLOR bun run check` once after the final changes and focused checks pass. It already includes all tests; use that result for review, commit, and delivery of the same code state. Repeat full verification only when later code, configuration, dependency, or integration changes invalidate it, or an unresolved failure requires suite-wide reproduction; state the reason before rerunning. Investigate full-suite failures with focused tests before returning to the delivery gate.
-- For documentation-only changes, verify formatting, referenced paths, and the diff without running tests. Report commands actually run and any failures or checks that could not run.
+- For documentation-only changes, run `bun run check:docs`, verify formatting and the diff without running tests. Report commands actually run and any failures or checks that could not run.
 
 ## Agent skills
 
@@ -107,7 +110,7 @@ Single context: root `CONTEXT.md` plus `docs/adr/`. Update the glossary when ter
 
 ## Done
 
-The requested behavior works end to end, affected consumers and documentation agree, and the required checks pass. For ticket work, its status and verification evidence match the delivered result. Report what changed, what was verified, and any remaining limitation; claim completion only from current evidence.
+The requested behavior works end to end, affected consumers and documentation agree, and the required checks pass. For ticket work, its status and verification evidence match the delivered result; complete the [ADR coverage review](docs/agents/issue-tracker.md#adr-coverage-before-delivery) before closing the spec. Report what changed, what was verified, and any remaining limitation; claim completion only from current evidence.
 
 ## Editing these instructions
 

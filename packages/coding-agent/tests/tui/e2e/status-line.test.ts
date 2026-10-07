@@ -3,6 +3,59 @@ import { start } from "../helpers/app";
 import { startWithClock } from "../helpers/clock-app";
 import { testClock } from "../helpers/test-clock";
 import { dark } from "../../../src/ink/index.ts";
+import { MemorySessionRepo } from "@earendil-works/pi-agent-core/harness/session";
+import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
+import { fauxAssistantMessage } from "@earendil-works/pi-ai";
+
+test("resumed context bar retains provider input and includes MCP definitions in hover details", async () => {
+  const store = new MemorySessionRepo();
+  const argv: string[] = [];
+  const app = await start(argv, {
+    columns: 120,
+    rows: 24,
+    env: { LANG: "en_US.UTF-8" },
+    session: { store },
+    async prepare() {
+      const stored = await store.create({}, BACKGROUND_CONTEXT);
+      try {
+        const branch = await stored.createBranch("main", null, BACKGROUND_CONTEXT);
+        await branch.appendMessage(
+          {
+            role: "system",
+            content: "abcd",
+            timestamp: 0,
+            toolsAdded: [
+              { name: "mcp__docs__search", description: "x".repeat(2048), parameters: {} },
+            ],
+          },
+          BACKGROUND_CONTEXT,
+        );
+        await branch.appendMessage(
+          { role: "user", content: "query", timestamp: 1 },
+          BACKGROUND_CONTEXT,
+        );
+        const reply = fauxAssistantMessage("answer");
+        reply.usage = { ...reply.usage, input: 70000, cacheRead: 2000, cacheWrite: 1000 };
+        await branch.appendMessage(reply, BACKGROUND_CONTEXT);
+        argv.push("--resume", stored.metadata.id);
+      } finally {
+        await stored.close(BACKGROUND_CONTEXT);
+      }
+    },
+  });
+  try {
+    await app.waitFor(() => app.screen().at(-2)?.includes("ctx 57% (73k/128k)") === true);
+    app.stdin.write("\x1b[<35;3;22M");
+    await app.waitFor(() => app.screen().at(-1)?.includes("tools 528") === true);
+    expect(app.calls).toHaveLength(0);
+    app.resize(80, 24);
+    await app.waitFor(() => app.screen().at(-2)?.includes("ctx 57% (73k/128k)") === true);
+    app.stdin.write("\x1b[<35;3;22M");
+    await app.waitFor(() => app.screen().at(-1)?.includes("tools 528") === true);
+  } finally {
+    await app.cleanup();
+  }
+});
 
 // Metric samples own their exact wall-time deadline. Renderer completion advances
 // the same clock's timers without moving that sample's Date beyond the assertion.

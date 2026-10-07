@@ -1,3 +1,4 @@
+import { testClock } from "../../tui/helpers/test-clock";
 import { expect, test } from "bun:test";
 import { useLayoutEffect, useState } from "react";
 import {
@@ -562,5 +563,65 @@ test("atomic activation requires press and release on the same admitted unit", a
     await app.waitUntilExit();
     app.cleanup();
     terminal.dispose();
+  }
+});
+
+test("mouse positioning follows clipped input rows, blank lines and read-only state", async () => {
+  testClock.useFakeTimers();
+  const terminal = createTerminal(8, 6, (ms) => testClock.advanceTimersByTime(ms));
+  let freeze = () => {};
+  const changes: string[] = [];
+  function View() {
+    const [value, setValue] = useState("first\n\n中é👩‍💻A\nlast");
+    const [readOnly, setReadOnly] = useState(false);
+    freeze = () => setReadOnly(true);
+    return (
+      <TextInput
+        value={value}
+        onChange={(text) => {
+          changes.push(text);
+          setValue(text);
+        }}
+        maxLines={2}
+        readOnly={readOnly}
+        dim={readOnly}
+      />
+    );
+  }
+  const app = render(
+    <AlternateScreen>
+      <View />
+    </AlternateScreen>,
+    terminal,
+  );
+  try {
+    await terminal.flush();
+    expect(terminal.screen().slice(0, 2)).toEqual(["中é👩‍💻A", "last"]);
+    terminal.stdin.write("\x1b[<0;4;1M\x1b[<0;4;1m");
+    await terminal.waitFor(() => terminal.cursor().x === 3 && terminal.cursor().y === 0);
+    terminal.stdin.write("!");
+    await terminal.waitFor(() => terminal.screen()[0] === "中é!👩‍💻A");
+    expect(changes).toEqual(["first\n\n中é!👩‍💻A\nlast"]);
+    // Keyboard navigation exposes the blank logical row; clicking its blank cells keeps that row.
+    terminal.stdin.write("\x1b[A");
+    await terminal.waitFor(() => terminal.screen()[0] === "");
+    terminal.stdin.write("\x1b[<0;6;1M\x1b[<0;6;1m");
+    await terminal.waitFor(() => terminal.cursor().x === 0 && terminal.cursor().y === 0);
+    terminal.stdin.write("B");
+    await terminal.waitFor(() => terminal.screen()[0] === "B");
+    expect(changes.at(-1)).toBe("first\nB\n中é!👩‍💻A\nlast");
+    freeze();
+    await terminal.waitFor(() => !!terminal.terminal.buffer.active.getLine(0)!.getCell(0)!.isDim());
+    const caret = terminal.cursor();
+    terminal.stdin.write("\x1b[<0;4;2M\x1b[<0;4;2mX");
+    testClock.advanceTimersByTime(32);
+    await terminal.flush();
+    expect(terminal.cursor()).toEqual(caret);
+    expect(changes).toHaveLength(2);
+  } finally {
+    app.unmount();
+    await app.waitUntilExit();
+    terminal.dispose();
+    testClock.useRealTimers();
   }
 });

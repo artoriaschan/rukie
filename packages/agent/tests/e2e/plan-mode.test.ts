@@ -721,7 +721,7 @@ test("dispose keeps the Run store open until queued Plan Mode writes settle", as
   expect(await run).toBeInstanceOf(Error);
   await disposing;
   // The Run handle closes after both queued writes. A separate recovery handle
-  // reads the committed branch after the abort; it also closes exactly once.
+  // reads the committed branch after the abort; the summary write uses its own handle.
   expect(order.slice(order.indexOf("plan-write-1"))).toEqual([
     "plan-write-1",
     "plan-write-1-committed",
@@ -729,6 +729,7 @@ test("dispose keeps the Run store open until queued Plan Mode writes settle", as
     "plan-write-2-committed",
     "store-1-closed",
     "store-2-closed",
+    "store-3-closed",
   ]);
   expect(session.planMode).toBe(false);
   const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });

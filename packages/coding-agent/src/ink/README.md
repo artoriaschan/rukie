@@ -124,3 +124,9 @@ ScrollBox 的 DECSTBM 快速路径使用实际滚动内容高度判断纯滚动�
 - ink.tsx/App.tsx 在真实进程退出或 signal-exit 中恢复各自终端；stdout 持续写入失败仍释放输入/raw mode 并拒绝 early/late exit wait。React insertion 中的写失败延迟给所属 root 处理，退出后的 rerender 不再输出。ConPTY 同尺寸 resize 擦除是其启动 capability 对应的原生规则，其他终端同尺寸通知保持静默。
 
 - selection.ts 为 held wheel 移出的选中行记录 normalized source 的实际 glyph 范围，内部校验必须传入所属 root，在复制前用该 root 的存活源重新核验；来源片段和绘制 cell 以 NFC glyph 进行匹配，保留 display-cell 偏移与来源片段自身字节，组合字符的替换仍会被捕获，规范等价的表示不误判为变更；ANSI/style、选区外同一行更新和相同字节的 Text remount 不改变内容指纹，选中范围替换仍拒绝读取。向反方向滚回时以 virtual endpoints 弹出 capture debt，避免重复行或丢失原选中文字。
+
+主分支的输入框选择与鼠标 caret 使用原生选择和已绘制的 glyph offset；复制仍由 Frontend host 拥有异步 transport 与结果反馈，提示前缀、边框及合成 caret 空格不进入正文。TextInput 的预排版行通过已有 `Box.softWrapContinuation` 标记逻辑续行，真实换行仍分隔；该标记须在行内 Text 写入后发射，后绘制的 overlay 仍可清除它，避免 soft wrap 被误复制为换行。Inactive/read-only 输入不响应 caret 点击。
+
+ScrollBox 的显式 `stickyScroll` bottom-follow 意图在响应式内容真实收缩时仍跟随新最大 top；手动浏览或显式 source seek 不因收缩重新获得跟随权。此区别保留 Run summary 在收窄窗口后的可见性，同时保持历史阅读位置。
+
+TextInput 的 `noSelect` 默认 true，编辑器调用方可为可编辑 composer 显式传 false；read-only 仍排除选区与 caret 点击。PromptInput 的复制选项通过应用唯一的 host-selection owner 读取根选区，composer 与 Transcript 共用该 owner，不创建重复订阅；选区 key、异步传输与 copied/sent/unavailable/stale 反馈归 Frontend。

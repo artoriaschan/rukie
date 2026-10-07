@@ -2,7 +2,14 @@ import { renderComponent } from "../../helpers/render-component";
 import { testClock } from "../../helpers/test-clock";
 import { expect, test } from "bun:test";
 import { useLayoutEffect, useState } from "react";
-import { Box, Text, ThemeProvider, dark, light } from "../../../../src/ink/index.ts";
+import {
+  Box,
+  Text,
+  ThemeProvider,
+  dark,
+  light,
+  useTerminalSize,
+} from "../../../../src/ink/index.ts";
 import { PromptInput } from "../../../../src/tui/components/prompt-input/prompt-input";
 import { createTerminal } from "../../helpers/terminal";
 
@@ -199,3 +206,72 @@ test("replacing a tip starts a fresh lifetime without an old timeout hiding it o
     testClock.useRealTimers();
   }
 }, 15000);
+
+test("prompt clicks move the caret and dragging copies only editable Unicode text", async () => {
+  testClock.useFakeTimers();
+  const terminal = createTerminal(12, 8, (ms) => testClock.advanceTimersByTime(ms));
+  const cursor = () => ({
+    x: terminal.terminal.buffer.active.cursorX,
+    y: terminal.terminal.buffer.active.cursorY,
+  });
+  const copied: string[] = [];
+  const results: string[] = [];
+  function View() {
+    const { columns } = useTerminalSize();
+    const [value, setValue] = useState("中é👩AB\nnext");
+    return (
+      <PromptInput
+        value={value}
+        onChange={setValue}
+        onSubmit={() => {}}
+        columns={columns}
+        maxLines={3}
+        textSelection={{
+          onCopy: async (text) => {
+            copied.push(text);
+            return true;
+          },
+          onResult: (result) => results.push(result),
+        }}
+      />
+    );
+  }
+  const app = renderComponent(<View />, terminal);
+  try {
+    await terminal.flush();
+    // The second cell of Chinese text still targets its complete grapheme.
+    terminal.stdin.write("\x1b[<0;4;3M\x1b[<0;4;3m");
+    await terminal.waitFor(() => cursor().x === 2 && cursor().y === 2);
+    terminal.stdin.write("!");
+    await terminal.waitFor(() => terminal.screen()[2] === "❯ !中é👩AB");
+    // Trailing blank cells target the logical end of their painted line.
+    terminal.stdin.write("\x1b[<0;11;4M\x1b[<0;11;4m");
+    await terminal.waitFor(() => cursor().x === 6 && cursor().y === 3);
+    terminal.stdin.write("\x1b[<0;4;3M\x1b[<32;9;3M");
+    await terminal.waitFor(
+      () => !terminal.terminal.buffer.active.getLine(2)!.getCell(3)!.isBgDefault(),
+    );
+    terminal.stdin.write("\x1b[<0;9;3m");
+    testClock.advanceTimersByTime(32);
+    await terminal.flush();
+    expect(copied).toEqual(["中é👩A"]);
+    expect(results).toEqual(["copied"]);
+    expect(cursor()).toEqual({ x: 6, y: 3 });
+    terminal.resize(8, 8);
+    await terminal.waitFor(() => terminal.screen()[2] === "❯ !中é");
+    terminal.stdin.write("\x1b[<0;3;4M\x1b[<0;3;4m");
+    await terminal.waitFor(() => cursor().x === 2 && cursor().y === 3);
+    terminal.stdin.write("X");
+    await terminal.waitFor(() => terminal.screen()[2] === "❯ !中éX");
+    expect(terminal.screen()[3]).toBe("  👩AB");
+    terminal.stdin.write("\x1b[<4;3;3M\x1b[<32;6;5M\x1b[<0;6;5m");
+    testClock.advanceTimersByTime(32);
+    await terminal.flush();
+    expect(copied.at(-1)).toBe("!中éX👩AB\nnext");
+  } finally {
+    app.unmount();
+    await app.waitUntilExit();
+    terminal.dispose();
+    testClock.useRealTimers();
+  }
+});

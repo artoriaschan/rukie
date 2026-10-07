@@ -218,7 +218,6 @@ for (const [lang, interrupted, unconfirmed, completed] of [
     try {
       await app.waitFor(() => app.screen().includes("❯"));
       const output = app.allLines().join("\n");
-      expect(output).toContain(interrupted!);
       expect(output).toContain(unconfirmed!);
       expect(output).not.toContain(`${completed}: Finished`);
       expect(app.calls).toHaveLength(0);

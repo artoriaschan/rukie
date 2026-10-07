@@ -4,6 +4,12 @@ status: accepted
 
 # Subagent 恢复保留对话与结束原因，续跑由新消息触发
 
+## 问题
+
+Session Resume 需要区分历史子代理记录与当前运行活动，避免重复执行或误报完成。
+
+## 决定
+
 用户已确认采用 deepseek-harness 的恢复语义：持久化的子 Session 与当前运行活动分开，正常关闭时停止并收束子 Run、保留 Transcript；Session Resume 本身不自动续跑子代理，向原子代理发送 `send_message` 才启动新的 Run。自动子代理列表依据当前运行活动显示，历史上未完成的委派不会因此被视为完成。
 
 每次 Run 记录结束原因；`completed` 只表示该次 Run 正常结束，不表示委派任务已验收。将没有当前运行活动等同于任务完成会掩盖中断，而自动重放可能重复已经产生的文件或外部副作用，因此活动状态、Run Outcome 与父代理的任务判断必须分开。
@@ -20,11 +26,19 @@ Run 结束事实以子 Session 自己的 Transcript 为准，父会话保存用�
 
 恢复父 Session 时，仅对父摘要中尚未结算的新 Run 只读核对子 Transcript，不扫描全部历史子会话、不创建子运行实例。已结算的 Run 使用父会话保存的摘要；旧记录保持未知。子记录缺失或损坏时提示“无法确认”，保留未知，继续恢复父 Session。子 Session 的工具结果修复在之后实际恢复该子 Session、启动新的 Run 前执行。
 
-## 设计确认
+### 设计范围
 
-Q1–Q8 均已确认，用户调用 `/to-spec` 确认进入规范阶段。后续由规范生成实施工单，再按依赖实施。本文记录已接受的设计，不表示运行代码已经实现。
+本决定记录已接受的恢复语义；实施与验证状态由 `.scratch/` 工单记录，当前运行行为由 Agent Core 的 README 与源码说明。
 
-## 实现约束
+依据：[子代理规格](../../.scratch/subagent/spec.md)与[恢复规格](../../.scratch/subagent-resume/spec.md)。
+
+### 父子 Session 的所有权
+
+每个子代理拥有独立 Transcript、Todo 与文件跟踪，身份由父级 Tool State 记录。`subagent` 从空历史创建，`subagent_fork` 带入父代理已完成 Turn；子代理类型只能收窄父级可用工具，不能递归委派。权限模式、规则、临时授权与 Plan Mode 共享父级当前状态，子代理不能借委派扩大授权。
+
+父 Run 在子代理仍活动时等待，子 Run 结束通知使父模型继续判断任务结果。子代理交互带来源转发至父 Frontend；使用量向父级汇总，模型上下文仍分别归各 Session。子 Run 在发布结果前清理自己的 Background Job，但保留可通过 `send_message` 续跑的子 Session；资源生命周期见 [ADR-0010](0010-own-bash-tool-for-background-jobs.md)。
+
+### 实现约束
 
 沿用 CONTEXT 中的 Session、Run、Subagent、Transcript 与 Tool State，不引入另一套运行单位，也不增加子代理的递归委派能力。历史 Run 开始与结束是持久化事实；当前进程的运行活动由实际运行实例判定，不能从历史开始记录恢复为 `running`。
 
@@ -33,3 +47,11 @@ Q1–Q8 均已确认，用户调用 `/to-spec` 确认进入规范阶段。后续
 当前 Transcript 没有独立工具开始事实，只有调用没有结果时无法推断工具是否执行。工具恢复修复保留这一不确定性，不将缺失结果伪造成已失败，也不自动重放调用。
 
 恢复提示和内部摘要不创建 Checkpoint。用户之后提交的真实 prompt 按现有 Checkpoint 规则创建锚点；子代理后续文件写入仍归父 Session 的当前 Checkpoint。
+
+## 备选方案
+
+**恢复时自动续跑或自动重放未知工具结果。** 原记录说明自动续跑可能重复文件或外部副作用；缺失结果不能证明执行失败，因此不能据此自动重放。
+
+## 影响
+
+恢复保留执行结果未知这一事实，调用方需检查实际状态后决定是否重试；关闭还需避免 Run 自等待。父子共享授权与 Checkpoint，同时保持对话、Todo、文件基线和进程资源各自的所有权。

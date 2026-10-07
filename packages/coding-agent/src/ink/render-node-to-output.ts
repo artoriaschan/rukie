@@ -1377,10 +1377,6 @@ function renderNodeToOutput(
         })
       }
 
-      if (node.style.softWrapContinuation !== undefined) {
-        output.softWrapRow(Math.floor(y), Math.floor(x) + node.style.softWrapContinuation)
-      }
-
       const overflowX = node.style.overflowX ?? node.style.overflow
       const overflowY = node.style.overflowY ?? node.style.overflow
       const clipHorizontally = overflowX === 'hidden' || overflowX === 'scroll'
@@ -1598,7 +1594,10 @@ function renderNodeToOutput(
           !explicitSeek && (sticky ||
           (scrollTopBeforeFollow >= prevMaxScroll &&
             (grew || scrollTopBeforeFollow >= maxScroll)))
-        if (atBottom && (node.pendingScrollDelta ?? 0) >= 0 && !shrunk) {
+        // An explicit bottom-follow lease also covers real content contraction
+        // (for example a responsive header). Only manual reading positions
+        // freeze on a possibly transient shrink measurement.
+        if (atBottom && (node.pendingScrollDelta ?? 0) >= 0 && (!shrunk || sticky)) {
           node.scrollTop = maxScroll
           node.pendingScrollDelta = undefined
           // Sync flag so useVirtualScroll's isSticky() agrees with positional
@@ -2212,6 +2211,11 @@ function renderNodeToOutput(
         )
       }
 
+      // A manually laid-out row owns its children's line break metadata.
+      // Emit after their writes, while still inside this row's paint clip.
+      if (node.style.softWrapContinuation !== undefined) {
+        output.softWrapRow(Math.floor(y), Math.floor(x) + node.style.softWrapContinuation)
+      }
       if (needsClip) {
         output.unclip()
       }

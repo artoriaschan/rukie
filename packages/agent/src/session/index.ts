@@ -33,6 +33,7 @@ import type {
   Settings,
   HooksSettings,
   ContextReport,
+  ContextUsageEvent,
   McpServerView,
   McpSnapshot,
   JobView,
@@ -182,12 +183,52 @@ function promptText(message: Extract<AgentMessage, { role: "user" }>): string {
     : message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
 }
 
+interface RunSummaryFact {
+  afterMessage: number;
+  durationMs: number;
+  endedAt: number;
+  success: boolean;
+}
+
 /** Project the same Transcript branch for startup/resume and in-place Rewind. */
 function projectBranch(entries: Entry[]) {
   const transcriptMessages = entries.flatMap((entry) =>
     entry.type === "message" ? [entry.message] : [],
   );
   return {
+    runSummaries: entries.flatMap((entry): RunSummaryFact[] => {
+      if (entry.type !== "custom" || entry.customType !== "run-summary") return [];
+      const data: unknown = entry.data;
+      if (!data || typeof data !== "object") return [];
+      if (
+        !("afterMessage" in data) ||
+        !("durationMs" in data) ||
+        !("endedAt" in data) ||
+        !("success" in data)
+      )
+        return [];
+      if (
+        typeof data.afterMessage !== "number" ||
+        !Number.isSafeInteger(data.afterMessage) ||
+        data.afterMessage < 1 ||
+        typeof data.durationMs !== "number" ||
+        !Number.isFinite(data.durationMs) ||
+        data.durationMs < 0 ||
+        typeof data.endedAt !== "number" ||
+        !Number.isFinite(data.endedAt) ||
+        Math.abs(data.endedAt) > 8.64e15 ||
+        typeof data.success !== "boolean"
+      )
+        return [];
+      return [
+        {
+          afterMessage: data.afterMessage,
+          durationMs: data.durationMs,
+          endedAt: data.endedAt,
+          success: data.success,
+        },
+      ];
+    }),
     messages: restoreContext(entries),
     transcriptMessages,
     reminderStart: entries
@@ -249,6 +290,10 @@ export interface Session {
   setPermissionMode(mode: PermissionMode): void;
   /** Snapshot the restored context; usable while idle or running. */
   contextReport(): ContextReport;
+  /** Snapshot current usage, retaining the latest provider input count on resume. */
+  contextUsage(): ContextUsageEvent;
+  /** Completed Runs anchored after a one-based message position in the current restored context. */
+  runSummaries(): readonly RunSummaryFact[];
   /**
    * Returns an independent copy of the latest committed snapshot; cached reads never reconnect.
    * Concurrent first reads share a probe that closes its connections before resolving.
@@ -491,6 +536,7 @@ async function createSessionInternal(
             const branch = await target.branch("main", context);
             if (!branch) throw new Error("Session has no main branch.");
             await branch.appendMessage(agent.state.messages[0]!, context);
+            transcriptMessages.push(agent.state.messages[0]!);
             baselinePersisted = true;
           }
           await toolState.set("plan", { active: on }, target, context);
@@ -571,6 +617,7 @@ async function createSessionInternal(
     await emitRunEvent?.({ type: "tool_state_changed", name: "todo", value });
   };
   const transcriptMessages = initialBranch.transcriptMessages;
+  let runSummaries = initialBranch.runSummaries;
   let reminderStart = initialBranch.reminderStart;
   // Older Sessions did not persist their implicit baseline. Do not append it
   // behind existing conversation messages; pi will seed it when restoring them.
@@ -1322,14 +1369,19 @@ async function createSessionInternal(
     },
     schedule: () => scheduleRewake?.(),
   });
-  let inputTokens: number | undefined;
-  // Preserve context_usage's existing resume estimate while reports can display
-  // the last stored provider count until an operation invalidates it.
-  const lastResponse = initialBranch.messages.findLast((message) => message.role === "assistant");
-  let reportInputTokens =
-    lastResponse?.role === "assistant"
-      ? lastResponse.usage.input + lastResponse.usage.cacheRead + lastResponse.usage.cacheWrite ||
-        undefined
+  // Resume retains the last response's input count, just like a live Session.
+  const lastCompaction = entries.findLastIndex((entry) => entry.type === "compaction");
+  const lastResponse = entries
+    .slice(lastCompaction + 1)
+    .findLast((entry) => entry.type === "message" && entry.message.role === "assistant");
+  let inputTokens =
+    lastResponse?.type === "message" &&
+    lastResponse.message.role === "assistant" &&
+    lastResponse.message.model === model.id &&
+    lastResponse.message.provider === model.provider
+      ? lastResponse.message.usage.input +
+          lastResponse.message.usage.cacheRead +
+          lastResponse.message.usage.cacheWrite || undefined
       : undefined;
   let sessionStartControl: CommonHookResult | undefined = await hooks.run(
     "SessionStart",
@@ -1493,7 +1545,6 @@ async function createSessionInternal(
     agent.state.messages = restored;
     if (trigger === "manual") completedMessages = structuredClone(restored);
     inputTokens = undefined;
-    reportInputTokens = undefined;
     await emit({
       type: "compaction_end",
       trigger,
@@ -1678,7 +1729,6 @@ async function createSessionInternal(
         streamFn = selected.streamFn;
         agent.state.model = model;
         inputTokens = undefined;
-        reportInputTokens = undefined;
         broadcast({
           type: "tool_state_changed",
           name: "model",
@@ -1802,12 +1852,28 @@ async function createSessionInternal(
         }
       }
     },
+    contextUsage() {
+      return contextUsage(agent.state.messages, model.contextWindow, inputTokens);
+    },
+    runSummaries() {
+      const positions = new Map<number, number>();
+      let source = transcriptMessages.length - 1;
+      for (let index = agent.state.messages.length - 1; index >= 0; index--) {
+        const key = JSON.stringify(agent.state.messages[index]);
+        while (source >= 0 && JSON.stringify(transcriptMessages[source]) !== key) source--;
+        if (source >= 0) positions.set(source-- + 1, index + 1);
+      }
+      return runSummaries.flatMap((summary) => {
+        const afterMessage = positions.get(summary.afterMessage);
+        return afterMessage === undefined ? [] : [{ ...summary, afterMessage }];
+      });
+    },
     contextReport() {
       return contextReport({
         messages: agent.state.messages,
         model: `${model.provider}/${model.id}`,
         window: model.contextWindow,
-        inputTokens: inputTokens ?? reportInputTokens,
+        inputTokens,
         mcpServers: mcpToolServers,
       });
     },
@@ -2026,6 +2092,7 @@ async function createSessionInternal(
           userMessageSequence = 0;
           sessionContextUserSequence = 0;
           const restoredBranch = projectBranch(restoredEntries);
+          runSummaries = restoredBranch.runSummaries;
           transcriptMessages.splice(
             0,
             transcriptMessages.length,
@@ -2039,7 +2106,6 @@ async function createSessionInternal(
           agent.state.messages = restoredBranch.messages;
           completedMessages = structuredClone(agent.state.messages);
           inputTokens = undefined;
-          reportInputTokens = undefined;
           for (const change of changes)
             broadcast({ type: "tool_state_changed", ...change, sessionId: session.id });
           broadcast({ type: "conversation_rewound", promptEntryId, sessionId: session.id });
@@ -2392,6 +2458,7 @@ async function createSessionInternal(
           if (!branch) throw new Error("Session has no main branch.");
           if (!baselinePersisted) {
             await branch.appendMessage(agent.state.messages[0]!, context);
+            transcriptMessages.push(agent.state.messages[0]!);
             baselinePersisted = true;
           }
           const injectAsyncContexts = async (messages: AgentMessage[]): Promise<AgentMessage[]> => {
@@ -2623,7 +2690,6 @@ async function createSessionInternal(
             if (event.type === "message_end" && event.message.role === "assistant") {
               const { input, cacheRead, cacheWrite } = event.message.usage;
               inputTokens = input + cacheRead + cacheWrite || undefined;
-              reportInputTokens = inputTokens;
             }
             await emit(presentedEvent);
             if (event.type === "message_end" && event.message.role === "assistant")
@@ -2858,6 +2924,27 @@ async function createSessionInternal(
             const message = await persistSessionNotice(notice);
             completedMessages = structuredClone(agent.state.messages);
             await emit({ type: "message_end", message });
+          }
+          result.endedAt = Date.now();
+          const summary = {
+            afterMessage: transcriptMessages.length,
+            durationMs: result.durationMs,
+            endedAt: result.endedAt,
+            success: result.success,
+          };
+          if (summary.afterMessage > 0) {
+            try {
+              await withStore(async (target) => {
+                const branch = await target.branch("main", context);
+                if (!branch) throw new Error("Session has no main branch.");
+                await branch.appendCustomEntry("run-summary", summary, context);
+              });
+              runSummaries.push(summary);
+            } catch (error) {
+              (options.onWarning ?? console.warn)(
+                `Could not save Run summary: ${error instanceof Error ? error.message : String(error)}`,
+              );
+            }
           }
           await emit({ type: "result", ...result });
         } finally {

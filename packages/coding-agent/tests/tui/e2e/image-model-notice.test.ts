@@ -157,7 +157,8 @@ test("switching a Session with transcript images to a text model warns once and 
         .join("\n")
         .match(/does not accept images/g),
     ).toHaveLength(1);
-    expect(app.screen().join("\n")).toContain("[Image · shot.png]");
+    app.resize(80, 40);
+    await app.waitFor(() => app.screen().join("\n").includes("[Image · shot.png]"));
     app.stdin.write("continue\r");
     await app.waitFor(() => app.calls.length === 2);
     expect(JSON.stringify(app.calls[1]!.context.messages)).toContain(png);

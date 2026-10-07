@@ -28,3 +28,15 @@ Status: resolved
 ## Delivery
 
 全部六张工单 resolved，最终验收与清理见 [06 交付记录](issues/06-parity-delivery.md#answer)。集成分支为 `codex/dsh-ink`；固定来源、原生 runtime、Rukie 产品接线与文档一致。最终 `env -u NO_COLOR bun run check` 通过：2885 tests、16517 assertions、0 fail。双轴审查问题已修复，本任务的实现工作树与已合入辅助分支已清理。
+
+## ADR Coverage
+
+| 决定或修改                                        | 归属                                                                                                                                  | 理由                                                                                                       |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| 固定来源采用 dsh ink/Yoga、保留本地差异和来源风险 | 更新 [ADR-0013](../../docs/adr/0013-adopt-dsh-tui-ink.md)，替代 [ADR-0005](../../docs/adr/0005-own-tui-renderer.md)                   | 原生渲染管线替换自研实现；原始 SHA 与局部补丁分开维护，accepted 与 superseded 关系明确                     |
+| 全屏、阅读位置、bottom-follow、选字与退出恢复     | 沿用 [ADR-0006](../../docs/adr/0006-fullscreen-tui.md)                                                                                | 原语替换不改变产品交互义务；注入终端、多根与真实进程覆盖生命周期                                           |
+| Headless/TUI/ink/view 依赖方向                    | 更新并沿用 [ADR-0012](../../docs/adr/0012-single-coding-agent-package.md)                                                             | Headless 仍动态加载，ink 豁免不解除目录边界，增加 AST 导入检查                                             |
+| 图片持久化与终端资源、Frontend 本地化             | 沿用 [ADR-0021](../../docs/adr/0021-native-image-input-persistence.md)、[ADR-0008](../../docs/adr/0008-locale-agnostic-agent-core.md) | Session 原生图片与恢复语义不变；Frontend 解码、交互、释放 RGBA 与复制传输，Agent Core 保持 locale-agnostic |
+| 主分支输入选择/caret、Run 统计与文档工具整合      | 无需新 ADR                                                                                                                            | 将已有公开行为接到已接受的原生路径；不引入新的持久化、权限或模块所有权决定                                 |
+
+主分支整合复核已核对来源、边界、资源归属及替代关系；采用 ADR-0013 accepted，不恢复 ADR-0005 或旧 renderer facade。ADR 的 YAML 格式与索引遵循主分支的文档工具，未提交的 pi-durable 决定属于并行工作。

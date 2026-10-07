@@ -1,6 +1,36 @@
 import { expect, test } from "bun:test";
 import { startWithClock } from "../helpers/clock-app";
 
+test("bottom-following messages leave two blank rows above the input through resize", async () => {
+  const app = await startWithClock(["bottom spacing"], { columns: 80, rows: 24 });
+  const gap = () => {
+    const screen = app.screen();
+    const message = screen.findIndex((line) => line.includes("✻"));
+    const input = screen.findIndex((line) => line.startsWith("╭"));
+    expect(message).toBeGreaterThanOrEqual(0);
+    expect(input).toBe(message + 3);
+    expect(screen.slice(message + 1, input)).toEqual(["", ""]);
+  };
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.delta(
+      Array.from({ length: 50 }, (_, i) => `line ${i}`).join("\n") + "\nbottom marker",
+    );
+    app.calls[0]!.finish();
+    await app.waitFor(
+      () => !app.isWorking() && app.screen().some((line) => line.includes("bottom marker")),
+    );
+    gap();
+    const before = app.output();
+    app.resize(40, 12);
+    await app.waitFor(() => app.output() !== before);
+    gap();
+    expect(app.stderr()).toBe("");
+  } finally {
+    await app.cleanup();
+  }
+});
+
 test("messages retain one blank row between live and settled cards through resize", async () => {
   const app = await startWithClock(["--yolo", "spacing prompt"], {
     columns: 80,
@@ -35,7 +65,8 @@ test("messages retain one blank row between live and settled cards through resiz
     await app.waitFor(() => app.calls.length === 3 && row("first output") >= 0);
     app.calls[2]!.tool("read", { path: "second.txt" });
     await app.waitFor(() => app.calls.length === 4 && row("second output") >= 0);
-    separated("answer marker", "tool prompt");
+    separated("answer marker", "✻");
+    separated("✻", "tool prompt");
     separated("tool prompt", "Read first.txt");
     separated("first output", "Read second.txt");
     app.calls[3]!.delta("final marker");
@@ -46,7 +77,8 @@ test("messages retain one blank row between live and settled cards through resiz
     await app.waitFor(() => app.screen().every((line) => Bun.stringWidth(line) <= 40));
     separated("spacing prompt", "Thinking");
     separated("Thinking", "answer marker");
-    separated("answer marker", "tool prompt");
+    separated("answer marker", "✻");
+    separated("✻", "tool prompt");
     separated("tool prompt", "Read first.txt");
     separated("first output", "Read second.txt");
     separated("second output", "final marker");

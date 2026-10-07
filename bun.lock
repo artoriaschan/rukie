@@ -11,6 +11,7 @@
         "husky": "9.1.7",
         "knip": "6.37.0",
         "lint-staged": "17.5.1",
+        "mdast-util-from-markdown": "2.1.0",
         "oxfmt": "0.71.0",
         "oxlint": "1.86.0",
         "typescript": "6.0.3",

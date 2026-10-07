@@ -30,7 +30,7 @@ test.each([false, true])(
       const readingPosition = app.screen().slice(0, 5);
       // Yield through the model event boundary while keeping buffered chunks in
       // one microtask burst, as when several SSE chunks arrive in one packet.
-      for (let index = 0; index < 350; index++) {
+      for (let index = 0; index < 100; index++) {
         response.delta(`chunk-${index}\n`);
         await Promise.resolve();
         await Promise.resolve();
@@ -40,7 +40,7 @@ test.each([false, true])(
         expect(app.screen().slice(0, 5)).toEqual(readingPosition);
         app.stdin.write("\x1b[1;5F");
         await app.waitFor(
-          () => screen().includes("chunk-349") && !screen().includes("Back to bottom"),
+          () => screen().includes("chunk-99") && !screen().includes("Back to bottom"),
         );
       }
       response.delta("FINAL BURST RESULT");

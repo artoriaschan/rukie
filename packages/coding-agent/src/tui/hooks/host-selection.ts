@@ -9,7 +9,7 @@ export function useHostSelection(
   owner: string,
   viewportKey: string,
   background: string,
-  host: TuiHost,
+  host: Pick<TuiHost, "writeClipboard">,
   onResult: (outcome: CopyOutcome) => void,
 ) {
   const selection = useSelection();

@@ -1,6 +1,14 @@
-Status: accepted
+---
+status: accepted
+---
 
 # 终端渲染栈改用 dsh-TUI 的 ink
+
+## 问题
+
+自研终端渲染器需要逐项补齐参考实现的选择、按键和图形行为；因此直接引入固定来源的参考代码。
+
+## 决定
 
 `packages/coding-agent/src/ink/` 采用 dsh-TUI `3c89ea516e4f7d2777efe979200016528722a0b4` 的 `src/ink/` 与 `src/native-ts/yoga-layout`，取代 ADR-0005 的自研渲染管线。动机是直接获得全屏选字与复制（ADR-0006）、hit-test、按键解析、kitty 与 sixel 图形等已有实现，不再逐项对照 dsh-TUI 重写。
 
@@ -16,7 +24,13 @@ Status: accepted
 
 2026-10-07 的 [spike](../../.scratch/dsh-ink/spike-notes.md) 在 Bun 1.4.2 下验证了注入 xterm headless 的全屏原语、键盘输入、退出完成、默认 process 流，以及真实 sixel worker 和 sharp 缩放。本决定据此 accepted，并替代 [ADR-0005](0005-own-tui-renderer.md) 的渲染管线与代码复用边界；应用消费者通过原生公开组件、hooks 与 immutable RGBA 输入使用该 runtime；产品输入编辑与读取位置策略由 Rukie 组合层保留。
 
-## Considered Options
+实施证据由 [dsh ink 规格](../../.scratch/dsh-ink/spec.md)及其工单维护，当前 API 与调用方义务见 [ink README](../../packages/coding-agent/src/ink/README.md)。
+
+## 备选方案
 
 - 维持 ADR-0005，按需对照 dsh-TUI 在自研渲染器上补齐行为：依赖少、来源清楚，但 selection、keypress 等能力需要逐项重写。
 - 搬入后改写为 Rukie 代码规范：33k 行的改写成本高，之后无法再与上游同步。
+
+## 影响
+
+增加 vendored 代码、依赖及上游同步成本，并承担已记录的来源风险；原生行为、应用输入与终端生命周期需要持续验收。

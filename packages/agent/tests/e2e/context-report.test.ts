@@ -70,7 +70,7 @@ test("context report separates current memory files and skill catalog from messa
   expect(fake.contexts).toHaveLength(0);
 });
 
-test("context reports prefer the latest response input including cache on resume without changing context_usage", async () => {
+test("context reports and context_usage share the latest response input including cache on resume", async () => {
   dirs = await tempDirs();
   const reply = fauxAssistantMessage("small reply");
   reply.usage = { ...reply.usage, input: 1234, cacheRead: 9, cacheWrite: 1, output: 5000 };
@@ -97,7 +97,7 @@ test("context reports prefer the latest response input including cache on resume
   expect(session.messages).toEqual(before);
   expect(events).toHaveLength(count);
   const firstUsage = events.find((event) => event.type === "context_usage");
-  expect(firstUsage?.used).not.toBe(1244);
+  expect(firstUsage?.used).toBe(1244);
   session.interruptRun();
   await expect(run).rejects.toThrow();
 });

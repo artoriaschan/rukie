@@ -91,6 +91,7 @@ type CompletedEntry = { anchorId?: string } & (
   | { type: "session-notice"; notice: SessionNotice; assistantTimestamp?: number }
   | { type: "notice"; text: string; report?: string }
   | { type: "context-report"; report: ContextReport; expanded: boolean; modelName?: string }
+  | { type: "run-summary"; durationMs: number; endedAt: number; success: boolean }
 );
 
 type ToolResultMessage = Extract<
@@ -427,64 +428,78 @@ function replayMessages(
   messages: Session["messages"],
   facts: ConversationFacts,
   t: ReturnType<typeof createTuiI18n>,
+  summaries: ReturnType<Session["runSummaries"]> = [],
 ): CompletedEntry[] {
   const tools = new Map<string, ToolCall>();
-  const replayed = messages.flatMap((message): CompletedEntry[] => {
-    const text = messageText(message);
-    if (message.role === "compactionSummary")
-      return [{ type: "notice", text: t("notice.compaction", { tokens: message.tokensBefore }) }];
-    const outcome = messageNotice(message, facts);
-    if (message.role === "session-notice")
-      return outcome ? [{ type: "session-notice", notice: outcome }] : [];
-    if (message.role === "user")
-      return "source" in message && message.source === "goal" ? [] : [userMessageEntry(message)];
-    if (message.role === "assistant") {
-      for (const content of message.content) {
-        if (content.type === "toolCall")
-          tools.set(content.id, {
-            id: content.id,
-            name: content.name,
-            args: content.arguments,
-            summary: toolSummary(content.name, content.arguments),
-            callView: content.view,
-            startedAt: message.timestamp,
-          });
+  const replayed = messages.flatMap((message, index): CompletedEntry[] => {
+    const entries = ((): CompletedEntry[] => {
+      const text = messageText(message);
+      if (message.role === "compactionSummary")
+        return [{ type: "notice", text: t("notice.compaction", { tokens: message.tokensBefore }) }];
+      const outcome = messageNotice(message, facts);
+      if (message.role === "session-notice")
+        return outcome ? [{ type: "session-notice", notice: outcome }] : [];
+      if (message.role === "user")
+        return "source" in message && message.source === "goal" ? [] : [userMessageEntry(message)];
+      if (message.role === "assistant") {
+        for (const content of message.content) {
+          if (content.type === "toolCall")
+            tools.set(content.id, {
+              id: content.id,
+              name: content.name,
+              args: content.arguments,
+              summary: toolSummary(content.name, content.arguments),
+              callView: content.view,
+              startedAt: message.timestamp,
+            });
+        }
+        const reasoning = messageThinking(message);
+        return [
+          ...(reasoning
+            ? [
+                {
+                  type: "thinking" as const,
+                  text: reasoning,
+                  durationMs: facts.assistantThinkingDuration(message),
+                },
+              ]
+            : []),
+          ...(text ? [{ type: "message" as const, role: "assistant" as const, text }] : []),
+          ...(outcome
+            ? [
+                {
+                  type: "session-notice" as const,
+                  notice: outcome,
+                  assistantTimestamp: message.timestamp,
+                },
+              ]
+            : []),
+        ];
       }
-      const reasoning = messageThinking(message);
-      return [
-        ...(reasoning
-          ? [
-              {
-                type: "thinking" as const,
-                text: reasoning,
-                durationMs: facts.assistantThinkingDuration(message),
-              },
-            ]
-          : []),
-        ...(text ? [{ type: "message" as const, role: "assistant" as const, text }] : []),
-        ...(outcome
-          ? [
-              {
-                type: "session-notice" as const,
-                notice: outcome,
-                assistantTimestamp: message.timestamp,
-              },
-            ]
-          : []),
-      ];
-    }
-    if (message.role === "toolResult") {
-      const tool = tools.get(message.toolCallId) ?? {
-        id: message.toolCallId,
-        name: message.toolName,
-        args: undefined,
-        summary: message.toolName,
-      };
-      tools.delete(message.toolCallId);
-      const entry = toolEntry(tool, message.isError, message, t);
-      return entry ? [{ ...entry, ...(entry.type === "tool" ? { replayed: true } : {}) }] : [];
-    }
-    return [];
+      if (message.role === "toolResult") {
+        const tool = tools.get(message.toolCallId) ?? {
+          id: message.toolCallId,
+          name: message.toolName,
+          args: undefined,
+          summary: message.toolName,
+        };
+        tools.delete(message.toolCallId);
+        const entry = toolEntry(tool, message.isError, message, t);
+        return entry ? [{ ...entry, ...(entry.type === "tool" ? { replayed: true } : {}) }] : [];
+      }
+      return [];
+    })();
+    return [
+      ...entries,
+      ...summaries
+        .filter((summary) => summary.afterMessage === index + 1)
+        .map((summary): CompletedEntry => ({
+          type: "run-summary",
+          durationMs: summary.durationMs,
+          endedAt: summary.endedAt,
+          success: summary.success,
+        })),
+    ];
   });
   return replayed.reduce<CompletedEntry[]>((entries, entry) => {
     if (
@@ -803,7 +818,15 @@ function reduceEvent(
     case "result":
       return {
         ...state,
-        completed: state.completed,
+        completed: [
+          ...state.completed,
+          {
+            type: "run-summary",
+            durationMs: event.durationMs,
+            endedAt: event.endedAt ?? now,
+            success: event.success,
+          },
+        ],
         assistant: "",
         reasoning: "",
         running: false,
@@ -843,7 +866,7 @@ function createViewState(
     waitingSubagents: 0,
     subagents: restoreSubagents(session.toolState("subagents"), session.recovery),
     todos: (session.toolState("todo") as TodoItem[] | undefined) ?? [],
-    completed: replayMessages(session.messages, facts, t).map((entry) => ({
+    completed: replayMessages(session.messages, facts, t, session.runSummaries()).map((entry) => ({
       ...entry,
       anchorId: crypto.randomUUID(),
     })),
@@ -852,6 +875,9 @@ function createViewState(
     reasoning: "",
     assistantAnchor: crypto.randomUUID(),
     model: session.model ?? model,
+    contextUsage: session.messages.some((message) => message.role !== "system")
+      ? session.contextUsage()
+      : undefined,
     running: session.running,
     input: 0,
     output: 0,
@@ -1196,7 +1222,7 @@ export function createConversation(
           images,
         })
         .catch((error: unknown) => {
-          const last = state.completed.at(-1);
+          const last = state.completed.findLast((entry) => entry.type !== "run-summary");
           const recordedEnding =
             last?.type === "session-notice" &&
             last.notice.kind !== "hook_message" &&
