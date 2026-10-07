@@ -1,6 +1,6 @@
 # 12: 并发流式会话与完整参考验收
 
-Status: ready-for-agent
+Status: claimed
 Blocked by: 11
 
 **What to build:** 用户在高频正文、工具和多个后台活动同时更新时仍能稳定阅读、导航和复制；固定参考范围完成逐项核对并留下准确的交付证据。
@@ -11,11 +11,25 @@ Blocked by: 11
 
 ## Acceptance criteria
 
-- [ ] 构造跨 microtask 的高频流式回复，与多个工具、Background Job 和 Subagent 更新交错，验证顺序、状态、尾部完整性及下一次 Run 保留前次最终内容。
-- [ ] 同时覆盖底部跟随和向上阅读、新内容提示、回底、展开、选字复制与流式替换，不出现重复消息、阅读漂移、更新深度错误或意外 stderr。
-- [ ] Interaction 与详情面板共存、关闭及焦点返回可用；小终端、resize 和退出恢复终端画面、光标与模式保持既有契约。
-- [ ] 按固定参考逐项核对正文、思考、工具、jobs、Subagent、辅助消息、导航和复制的颜色、布局、默认值、生命周期及操作入口；中英、长行与 Unicode 覆盖齐全。
-- [ ] 形成可复核的参考差异清单，仅包含规范确认的品牌、本地化、领域／生命周期、数据缺失、小终端及持久化中断内容等差异；未覆盖范围不得默默降低。
-- [ ] 依据 61 条用户故事核对前置测试证据，补充跨类型缺口并修复实际集成问题；不重复所有昂贵场景或以静态截图代替交互验证。
-- [ ] 定时测试使用虚拟时钟、异步清理使用完成信号；检查超过一秒的用例成本并记录必要真实进程契约，避免任意固定 sleep。
+- [x] 构造跨 microtask 的高频流式回复，与多个工具、Background Job 和 Subagent 更新交错，验证顺序、状态、尾部完整性及下一次 Run 保留前次最终内容。
+- [x] 同时覆盖底部跟随和向上阅读、新内容提示、回底、展开、选字复制与流式替换，不出现重复消息、阅读漂移、更新深度错误或意外 stderr。
+- [x] Interaction 与详情面板共存、关闭及焦点返回可用；小终端、resize 和退出恢复终端画面、光标与模式保持既有契约。
+- [x] 按固定参考逐项核对正文、思考、工具、jobs、Subagent、辅助消息、导航和复制的颜色、布局、默认值、生命周期及操作入口；中英、长行与 Unicode 覆盖齐全。
+- [x] 形成可复核的参考差异清单，仅包含规范确认的品牌、本地化、领域／生命周期、数据缺失、小终端及持久化中断内容等差异；未覆盖范围不得默默降低。
+- [x] 依据 61 条用户故事核对前置测试证据，补充跨类型缺口并修复实际集成问题；不重复所有昂贵场景或以静态截图代替交互验证。
+- [x] 定时测试使用虚拟时钟、异步清理使用完成信号；检查超过一秒的用例成本并记录必要真实进程契约，避免任意固定 sleep。
 - [ ] 最终代码状态通过清除 NO_COLOR 的完整 bun run check；记录实际验证命令、结果、限制及手工 smoke 步骤，工单与父规范状态按 tracker 规则准确收束。
+
+## Implementation progress
+
+- Claimed on verified integration `42b507e289767a4006e707a7e62356400c9b6cbe`; isolated worktree `/tmp/neant-streaming-12`, branch `codex/streaming-parity-12`. Existing public start/startWithClock + controlled model and injected host are the agreed seams. Reuse ticket11 actual-store recovery and existing 350-chunk stress coverage; add one representative cross-type lifecycle. Final aggregate gate and status closure remain with the orchestrator.
+
+## Implementation and focused verification evidence
+
+- Synced final dependencies plus Interaction-over-Agent-View repair at integration `e0642205775e135d35ee6046d07835734835ec7e`; the new fixture changes no production execution or presentation module. It exercises that repair through a real parent question while the other child continues streaming, then checks the successful selected answer, automatically restored live Agent View, un-aborted child and original parent draft/source.
+- Added one public `concurrent-parity.test.ts` lifecycle: actual parent read, two real gated bash Jobs, two actual child Sessions, one child read failure, parent thinking and64 interleaved updates across two microtask boundaries. Follow/paused/read/pin/unread, retained Unicode selection under outside changes, copy-clear, selected-source canonical replacement/stale refusal,40×12 resize round trip, child completion, Job success/failure/exit7 focused details, next Run canonical-only context and terminal restoration are asserted through startWithClock/model/terminal/host boundaries. Children are identified by their actual context prompt, not private registry position. No private event injection or production test seam added.
+- Initial fixture failures were observation/expectation errors rather than new production defects: warning RGB was corrected from the fixed reference `#D8B270`; the first input tick can be active when later input is below the maximum scroll; host copy completion precedes its clear paint; xterm immediately clips resize cells before the requested layout paints; full-offedge selection is discarded on release as fixed-reference behavior, so replacement checks select a source that remains visible; a Job's exit code belongs to focused details. Final public paint predicates preserve exact reading position after both resize and detail return. Existing actual Interaction RED remains covered by the integrated owner's tests. No arbitrary sleeps, extra production APIs or timeout inflation were used to hide these cases.
+- Final focused command: `rtk env -u NO_COLOR bun test apps/neant-tui/tests/e2e/concurrent-parity.test.ts`:1 pass,27 assertions,1.27s (whole command1.48s). Real two-process/three-Session initialization, persistence and mixed terminal rendering are necessary integration costs. Inspected temporary CPU sampling: setup/ready dominates; Bun virtual Date/high-resolution clocks were not used as wall-time evidence. Reduced witness screen100×80→80×60 while retaining both running Job/child slots. Existing350chunk stress,400-row owned samples, three-job stop escalation and ticket11 real-store restore chains are reused, not duplicated. Normal/finally gate release and main's completion promise drive cleanup; child shell10ms polls are actual process IO, not test synchronization sleeps.
+- `rtk bun run check:dev` passed formatting, lint, project types, Knip and scratch validation. `acceptance.md` has61 story rows; all relative Markdown targets exist. Final formatting/diff checks passed before commit. No full aggregate command or real-provider/interactive smoke was run here.
+- [acceptance.md](../acceptance.md) records every story's fixed reference/owner/public evidence, authorized differences and explicit spec corrections/extensions, current recorded results versus final gate pending, clipboard incident disclosure and copy-pasteable focused/full/interactive smoke commands. Ticket11 owns actual mixed persistence/no-replay/default-transient results; platform Clipboard/OSC tests remain isolated. No user credentials or native clipboard actions were introduced.
+- Standards review: only a public e2e case and local acceptance/tracker documentation change; all resource/Locale/home boundaries are isolated, downward dependency rules remain intact, and expected canonical source comes from the explicit final model response. Spec review: the mixed case closes simultaneous update/reading/copy/ownership coverage while retaining all61 owning tests and the fixed reference. Final Standards/Spec review, one `env -u NO_COLOR bun run check`, final evidence and tracker/spec closure remain pending with the orchestrator. This ticket intentionally stays claimed and the final-gate criterion unchecked.
