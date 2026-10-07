@@ -1,13 +1,32 @@
 import { afterEach, expect, test } from "bun:test";
-import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { appendFile, readdir } from "node:fs/promises";
-import { join } from "node:path";
-import { createSession, type SessionEvent } from "../../src/index.ts";
+import { fauxAssistantMessage, fauxToolCall, getCurrentTools } from "@earendil-works/pi-ai";
+import type { JsonValue } from "@earendil-works/chord";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import {
+  createSession as createNativeSession,
+  ROOT_CONVERSATION_ID,
+} from "@earendil-works/pi-durable";
+import { todoState } from "../../src/tools/todo/index.ts";
+import {
+  createSession as createSessionImpl,
+  createJsonlStore,
+  type Session,
+  type SessionEvent,
+} from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
-afterEach(() => dirs?.cleanup());
+const sessions: Session[] = [];
+async function createSession(options: Parameters<typeof createSessionImpl>[0]) {
+  const session = await createSessionImpl(options);
+  sessions.push(session);
+  return session;
+}
+afterEach(async () => {
+  await Promise.all(sessions.splice(0).map((session) => session.close()));
+  await dirs?.cleanup();
+});
 
 test.each(["ask", "auto-review", "full-access"] as const)(
   "todo_write replaces the list without approval in %s mode",
@@ -42,7 +61,9 @@ test.each(["ask", "auto-review", "full-access"] as const)(
         })
       ).text,
     ).toBe("done");
-    expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
+    expect(
+      fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+    ).toMatchObject({
       role: "toolResult",
       isError: false,
       content: [
@@ -66,9 +87,9 @@ test.each(["ask", "auto-review", "full-access"] as const)(
         (event) => event.type === "permission_review" || event.type === "permission_denied",
       ),
     ).toBe(false);
-    expect(events.find((event) => event.type === "session_start")).toMatchObject({
-      tools: expect.arrayContaining(["todo_write"]),
-    });
+    expect(getCurrentTools(fake.contexts[0]!.messages).map((tool) => tool.name)).toContain(
+      "todo_write",
+    );
   },
 );
 
@@ -105,7 +126,9 @@ test.each([
         events.push(structuredClone(event));
       },
     });
-    expect(fake.contexts[3]!.messages.at(-1)).toMatchObject({
+    expect(
+      fake.contexts[3]!.messages.findLast((message) => message.role === "toolResult"),
+    ).toMatchObject({
       role: "toolResult",
       isError: true,
       content: [{ type: "text", text: expect.stringContaining(message) }],
@@ -141,16 +164,20 @@ test("the latest complete snapshot survives resume and an empty list clears it",
     fauxAssistantMessage(fauxToolCall("todo_write", { todos: [] }), { stopReason: "toolUse" }),
     fauxAssistantMessage("cleared"),
   ]);
+  const history = structuredClone([...session.messages]);
+  await session.close();
   const resumed = await createSession({ ...dirs, ...next, resumeId: session.id });
   expect(resumed.toolState("todo")).toEqual(replacement);
-  expect(resumed.messages).toEqual(session.messages);
+  expect([...resumed.messages]).toEqual(history);
   const events: SessionEvent[] = [];
   await resumed.run("clear", {
     onEvent: (event) => {
       events.push(structuredClone(event));
     },
   });
-  expect(next.contexts[1]!.messages.at(-1)).toMatchObject({
+  expect(
+    next.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+  ).toMatchObject({
     isError: false,
     content: [{ type: "text", text: "Updated todo list: 0 pending, 0 in progress, 0 completed." }],
   });
@@ -158,83 +185,51 @@ test("the latest complete snapshot survives resume and an empty list clears it",
   expect(
     events.filter((event) => event.type === "tool_state_changed" && event.name === "todo"),
   ).toEqual([{ type: "tool_state_changed", sessionId: session.id, name: "todo", value: [] }]);
+  await resumed.close();
   const reopened = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
   expect(reopened.toolState("todo")).toEqual([]);
 });
 
-test.each([
-  { version: 2, value: [] },
-  { version: "1", value: [] },
-  { version: 1, value: "not an array" },
-  { version: 1, value: [null] },
-  { version: 1, value: [{ content: "bad status", status: "cancelled" }] },
-  { version: 1, value: [{ status: "pending" }] },
-  { version: 1, value: [{ content: "extra field", status: "pending", extra: true }] },
-  null,
-])(
-  "a corrupt Tool State snapshot is warned about and resume keeps the valid list (%j)",
-  async (data) => {
+const malformedTodos: { value: JsonValue }[] = [
+  { value: "not an array" },
+  { value: [null] },
+  { value: [{ content: "bad status", status: "cancelled" }] },
+  { value: [{ status: "pending" }] },
+  { value: [{ content: "extra field", status: "pending", extra: true }] },
+  { value: { content: "not a list", status: "pending" } },
+];
+test.each(malformedTodos)(
+  "resume rejects a malformed native Todo document before model execution (%j)",
+  async ({ value }) => {
     dirs = await tempDirs();
-    const todos = [
-      { content: "Parallel one", status: "in_progress" },
-      { content: "Parallel two", status: "in_progress" },
-    ];
-    const fake = fakeModel([
-      fauxAssistantMessage(fauxToolCall("todo_write", { todos }), { stopReason: "toolUse" }),
-      fauxAssistantMessage("saved"),
-    ]);
-    const session = await createSession({ ...dirs, ...fake });
-    await session.run("plan");
-    const root = join(dirs.homeDir, ".rukie/sessions");
-    const files = (await readdir(root, { recursive: true })).filter((file) =>
-      file.endsWith(".jsonl"),
-    );
-    expect(files).toHaveLength(1);
-    const path = join(root, files[0]!);
-    const records = (await Bun.file(path).text())
-      .trim()
-      .split("\n")
-      .flatMap((line) => JSON.parse(line));
-    const last = records.at(-1);
-    // Fault injection in pi's native v4 transaction format, advancing the same main branch.
-    const id = "corrupt-todo";
-    await appendFile(
-      path,
-      `${JSON.stringify([
-        {
-          kind: "entry",
-          type: "custom",
-          customType: "tool-state/todo",
-          id,
-          parentId: last.value,
-          seq: last.seq + 1,
-          timestamp: Date.now(),
-          data,
-        },
-        {
-          kind: "value",
-          op: "set",
-          namespace: "pi.branch.tip",
-          key: "main",
-          value: id,
-          seq: last.seq + 2,
-        },
-      ])}\n`,
-    );
-    const warnings: string[] = [];
-    const next = fakeModel([fauxAssistantMessage("continued")]);
-    const resumed = await createSession({
+    const store = createJsonlStore(dirs);
+    const session = await createSession({
       ...dirs,
-      ...next,
-      resumeId: session.id,
-      onWarning: (warning) => {
-        warnings.push(warning);
-      },
+      store,
+      ...fakeModel([
+        fauxAssistantMessage(
+          fauxToolCall("todo_write", { todos: [{ content: "Keep", status: "pending" }] }),
+          { stopReason: "toolUse" },
+        ),
+        fauxAssistantMessage("saved"),
+      ]),
     });
-    expect(resumed.toolState("todo")).toEqual(todos);
-    expect(warnings).toEqual([expect.stringContaining("tool-state/todo")]);
-    expect(warnings[0]).toContain(id);
-    expect((await resumed.run("continue")).text).toBe("continued");
-    expect(resumed.toolState("todo")).toEqual(todos);
+    await session.run("plan");
+    await session.close();
+    const lease = await store.open({ id: session.id }, BACKGROUND_CONTEXT);
+    const native = createNativeSession(lease.storage);
+    try {
+      await native.commit(async (tx) => {
+        (await tx.doc(todoState.document, ROOT_CONVERSATION_ID)).value = value;
+      }, BACKGROUND_CONTEXT);
+    } finally {
+      await native.close(BACKGROUND_CONTEXT);
+      await lease.release();
+    }
+    const fake = fakeModel([]);
+    await expect(createSession({ ...dirs, store, ...fake, resumeId: session.id })).rejects.toThrow(
+      "Invalid todo list schema",
+    );
+    expect(fake.contexts).toHaveLength(0);
   },
 );
