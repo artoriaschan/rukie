@@ -103,7 +103,12 @@ export function ImagePreview({
   const title = `${t("image.preview-title", { index: index + 1 })} · ${image.mimeType.replace("image/", "").toUpperCase()} · ${metadata.width ?? "?"}×${metadata.height ?? "?"} · ${metadata.bytes < 1024 ? `${metadata.bytes} B` : `${(metadata.bytes / 1024).toFixed(1)} KB`}${activeZoom ? ` · ${activeZoom * 100}%` : ""} · ${imageName(image, t("image.label"))}`;
   const cardWidth = Math.min(
     width,
-    Math.max(Math.min(40, width), imageWidth + 6, Bun.stringWidth(title) + 6),
+    Math.max(
+      Math.min(40, width),
+      imageWidth + 6,
+      Bun.stringWidth(title) + 6,
+      drawable ? 0 : Bun.stringWidth(t("image.preview-fallback")) + 6,
+    ),
   );
   const cardHeight = Math.min(height, imageHeight + 6 + Number(total > 1));
   const left = Math.max(0, Math.floor((width - cardWidth) / 2));
@@ -204,30 +209,29 @@ export function ImagePreview({
         <ThemedText bold wrap="truncate">
           {title}
         </ThemedText>
-        {drawable && (
-          <Box width={imageWidth} height={imageHeight}>
-            <ThemedText dimColor wrap="truncate">
-              {t("image.preview-fallback")}
-            </ThemedText>
-            {graphics.supported &&
-            image.mimeType === "image/png" &&
-            metadata.width &&
-            metadata.height ? (
-              <Image
-                position="absolute"
-                top={0}
-                left={0}
-                data={image.data}
-                mimeType={image.mimeType}
-                sourceWidth={metadata.width}
-                sourceHeight={metadata.height}
-                width={imageWidth}
-                height={imageHeight}
-                crop={activeZoom ? { x, y, width: cropWidth, height: cropHeight } : undefined}
-              />
-            ) : null}
-          </Box>
-        )}
+        <Box width={drawable ? imageWidth : cardWidth - 6} height={drawable ? imageHeight : 1}>
+          <ThemedText dimColor wrap="truncate">
+            {t("image.preview-fallback")}
+          </ThemedText>
+          {drawable &&
+          graphics.supported &&
+          image.mimeType === "image/png" &&
+          metadata.width &&
+          metadata.height ? (
+            <Image
+              position="absolute"
+              top={0}
+              left={0}
+              data={image.data}
+              mimeType={image.mimeType}
+              sourceWidth={metadata.width}
+              sourceHeight={metadata.height}
+              width={imageWidth}
+              height={imageHeight}
+              crop={activeZoom ? { x, y, width: cropWidth, height: cropHeight } : undefined}
+            />
+          ) : null}
+        </Box>
         {!passive && (
           <Box gap={2}>
             {button(t("image.fit"), () => changeZoom(0))}
