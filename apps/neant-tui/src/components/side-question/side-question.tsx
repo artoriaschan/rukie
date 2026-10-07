@@ -1,7 +1,7 @@
 import { Box, HintLine, ScrollBox, Spinner, ThemedText, type ScrollHandle } from "@neant/tui";
 import type { RefObject } from "react";
 import type { Locale } from "@neant/i18n";
-import { Markdown } from "../markdown";
+import { Markdown } from "@neant/tui";
 import { createTuiI18n } from "../../i18n";
 
 /** Pure presentation for the current auxiliary answer; Chat owns request and input state. */

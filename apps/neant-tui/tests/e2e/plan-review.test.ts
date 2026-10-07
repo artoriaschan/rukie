@@ -134,12 +134,12 @@ test.each([40, 80])(
     try {
       await app.waitFor(() => app.screen().some((line) => line.includes("First heading")));
       expect(app.screen().join("\n")).not.toContain("Final validation");
-      app.stdin.write("\x1b[6~".repeat(80) + (columns === 40 ? "\x1b[5~" : ""));
+      app.stdin.write("\x1b[6~".repeat(80));
       await app.waitFor(() => app.screen().some((line) => line.includes("Final validation")));
       app.stdin.write("\x1b[5~".repeat(80));
       await app.waitFor(() => app.screen().some((line) => line.includes("First heading")));
       const top = app.screen().findIndex((line) => line.includes("First heading"));
-      app.stdin.write(`\x1b[<65;8;${top + 1}M`.repeat(80) + (columns === 40 ? "\x1b[5~" : ""));
+      app.stdin.write(`\x1b[<65;8;${top + 1}M`.repeat(80));
       await app.waitFor(() => app.screen().some((line) => line.includes("Final validation")));
       expect(app.screen().every((line) => Bun.stringWidth(line) <= columns)).toBe(true);
       expect(app.screen().at(-2)).toContain("plan");

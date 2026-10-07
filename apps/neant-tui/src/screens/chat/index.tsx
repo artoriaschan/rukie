@@ -2,7 +2,7 @@ import { completedEntryVisible } from "./completed-visibility";
 import { transcriptMatches } from "./transcript-search";
 import { TextInput } from "@neant/tui";
 import { DiffLayoutProvider, useDiffLayout } from "../../components/tool-call/diff-layout";
-import { SmoothRevealProvider } from "../../components/tool-call/use-smooth-reveal";
+import { SmoothRevealProvider } from "@neant/tui";
 import { FileActionsPanel } from "../../components/file-actions-panel";
 import { PlanReviewRow } from "../../components/plan-review/plan-review-row";
 import { showsToolCard } from "./conversation";
@@ -2027,7 +2027,11 @@ function Chat({
               />
             ) : (
               <Fragment key={index}>
-                <AssistantMessage text={entry.text} />
+                <AssistantMessage
+                  text={entry.text}
+                  revealKey={entry.anchorId ?? `assistant-${index}`}
+                  streaming={entry.fresh}
+                />
                 {!!entry.images?.length && (
                   <ImageGallery
                     images={entry.images}
@@ -2173,7 +2177,7 @@ function Chat({
         )}
         {state.assistant && (
           <Box scrollAnchorId={state.assistantAnchor} flexDirection="column">
-            <AssistantMessage text={state.assistant} />
+            <AssistantMessage text={state.assistant} revealKey={state.assistantAnchor} streaming />
           </Box>
         )}
         {state.tools

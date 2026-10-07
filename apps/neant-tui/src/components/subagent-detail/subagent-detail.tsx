@@ -4,7 +4,7 @@ import { Box, ScrollBox, ThemedText, type ScrollHandle } from "@neant/tui";
 import { createTuiI18n } from "../../i18n";
 import { SUBAGENT_APPEARANCE, subagentStatusKey, type SubagentView } from "../subagent-message";
 import { ToolCall } from "../tool-call";
-import { Markdown } from "../markdown";
+import { Markdown } from "@neant/tui";
 import { ExitButton } from "../subagent-dashboard";
 
 function formatDuration(elapsed: number) {

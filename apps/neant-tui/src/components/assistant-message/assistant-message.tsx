@@ -1,7 +1,18 @@
 import { Box, ThemedText, figures } from "@neant/tui";
+import { Markdown } from "@neant/tui";
+import { useSmoothText } from "@neant/tui";
 
-export function AssistantMessage({ text }: { text: string }) {
-  const body = text
+export function AssistantMessage({
+  text,
+  revealKey = "assistant",
+  streaming = false,
+}: {
+  text: string;
+  revealKey?: string;
+  streaming?: boolean;
+}) {
+  const visible = useSmoothText(revealKey, text, streaming);
+  const body = visible
     .split("\n")
     .filter((line) => !line.startsWith("⏵"))
     .join("\n")
@@ -10,10 +21,10 @@ export function AssistantMessage({ text }: { text: string }) {
   return (
     <Box>
       <Box width={2} flexShrink={0}>
-        <ThemedText color="accent">{figures.assistant}</ThemedText>
+        <ThemedText color="text">{figures.assistant}</ThemedText>
       </Box>
       <Box flexGrow={1} flexShrink={1}>
-        <ThemedText>{body}</ThemedText>
+        <Markdown text={body} />
       </Box>
     </Box>
   );

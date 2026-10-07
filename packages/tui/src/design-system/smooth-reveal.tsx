@@ -16,13 +16,20 @@ type Cursor = {
   shown: number;
   listeners: Set<() => void>;
   memory: Set<string>;
+  text?: string;
 };
 const active = new Set<Cursor>();
 const RevealMemory = createContext<Set<string> | null>(null);
+const TextReveals = createContext<Map<string, Cursor> | null>(null);
 /** Reveal identity belongs to the displayed Session, not a process-global tool-call ID. */
 export function SmoothRevealProvider({ children }: { children: ReactNode }) {
   const [memory] = useState(() => new Set<string>());
-  return <RevealMemory value={memory}>{children}</RevealMemory>;
+  const [texts] = useState(() => new Map<string, Cursor>());
+  return (
+    <RevealMemory value={memory}>
+      <TextReveals value={texts}>{children}</TextReveals>
+    </RevealMemory>
+  );
 }
 let timer: ReturnType<typeof setInterval> | undefined;
 
@@ -101,4 +108,79 @@ export function useSmoothReveal(key: string, total: number, enabled: boolean): n
     };
   }, [cursor, enabled, key, total, completed]);
   return shown;
+}
+
+/** Live text starts a cursor; settlement keeps it chasing. History paints immediately.
+ * A non-prefix replacement snaps, and remounting a settled live row retains its cursor.
+ */
+export function useSmoothText(
+  key: string,
+  text: string,
+  activeText: boolean,
+  enabled = true,
+): string {
+  const scopedMemory = useContext(RevealMemory);
+  const scopedTexts = useContext(TextReveals);
+  const localMemory = useMemo(() => new Set<string>(), []);
+  const localTexts = useMemo(() => new Map<string, Cursor>(), []);
+  const memory = scopedMemory ?? localMemory;
+  const texts = scopedTexts ?? localTexts;
+  const cursor = useMemo(() => {
+    const existing = texts.get(key);
+    if (existing) return existing;
+    const created: Cursor = {
+      key,
+      total: text.length,
+      shown: activeText && !memory.has(key) ? 0 : text.length,
+      text,
+      listeners: new Set(),
+      memory,
+    };
+    if (texts.size >= 2048) {
+      for (const [oldKey, old] of texts) {
+        if (!active.has(old) && !old.listeners.size) {
+          texts.delete(oldKey);
+          break;
+        }
+      }
+    }
+    texts.set(key, created);
+    return created;
+  }, [key, memory, texts]);
+  if (cursor.text !== text) {
+    if (!text.startsWith(cursor.text ?? "")) complete(cursor);
+    cursor.text = text;
+    cursor.total = text.length;
+  }
+  const subscribe = useCallback(
+    (notify: () => void) => {
+      cursor.listeners.add(notify);
+      return () => {
+        cursor.listeners.delete(notify);
+      };
+    },
+    [cursor],
+  );
+  const snapshot = useCallback(
+    () => (!enabled || memory.has(key) ? text.length : Math.min(cursor.shown, text.length)),
+    [cursor, memory, key, text, enabled],
+  );
+  const shown = useSyncExternalStore(subscribe, snapshot);
+  useEffect(() => {
+    if (!enabled || memory.has(key) || cursor.shown >= cursor.total) complete(cursor);
+    else {
+      active.add(cursor);
+      schedule();
+    }
+    return () => {
+      active.delete(cursor);
+      stopIfIdle();
+    };
+  }, [cursor, key, memory, text, enabled]);
+  // A reveal boundary must never feed an unpaired surrogate to Markdown/layout.
+  const end =
+    shown > 0 && shown < text.length && /[\uD800-\uDBFF]/.test(text[shown - 1]!)
+      ? shown - 1
+      : shown;
+  return text.slice(0, end);
 }

@@ -5,9 +5,9 @@ import {
   toolCardNotices,
   toolCardDiff,
 } from "./presentation";
-import { useSmoothReveal } from "./use-smooth-reveal";
+import { useSmoothReveal } from "@neant/tui";
 import { useDiffLayout } from "./diff-layout";
-import { Markdown } from "../markdown";
+import { Markdown } from "@neant/tui";
 import { unifiedDiffLines } from "./diff-lines";
 import type { ToolCallView, ToolResultView } from "@neant/shared";
 import { fmtDuration } from "@neant/i18n";
