@@ -1,19 +1,19 @@
 import { testClock } from "../helpers/test-clock";
 import { expect, test } from "bun:test";
 import { join } from "node:path";
-import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { fauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { createJsonlStore, createSession } from "@rukie/agent";
 import { isUnknownToolOutcome } from "@rukie/shared";
 import { start } from "../helpers/app";
 import { startWithClock } from "../helpers/clock-app";
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model";
+import { auxiliaryModels } from "../helpers/auxiliary-model";
 
 const todos = [{ content: "Saved mixed task", status: "pending" }];
 
 async function saveMixedSession(root: string) {
   let childId = "";
   await Bun.write(join(root, "mixed.txt"), "read-one\nread-two\nread-three\nread-four\nread-five");
-  const original = createFauxCore({ api: "faux", provider: "faux" });
+  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
   original.setResponses([
     fauxAssistantMessage(
       [
@@ -54,7 +54,7 @@ async function saveMixedSession(root: string) {
     cwd: root,
     homeDir: root,
     model: original.getModel(),
-    streamFn: withAuxiliaryRequests((m, c, o) => original.streamSimple(m, c, o)),
+    models: auxiliaryModels((m, c, o) => original.provider.streamSimple(m, c, o)),
     permissionMode: "full-access",
     onQuestion: async () => ({ answers: [{ selected: ["Keep"] }] }),
   });
@@ -69,7 +69,7 @@ async function saveMixedSession(root: string) {
     expect((await session.readSubagent(childId))!.run?.outcome).toBe("completed");
     return { id: session.id, childId };
   } finally {
-    await session.dispose();
+    await session.close();
   }
 }
 

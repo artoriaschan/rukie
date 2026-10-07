@@ -1,7 +1,7 @@
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
+import { auxiliaryModels } from "../helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
 import { join } from "node:path";
-import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { fauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { createSession } from "@rukie/agent";
 import { start } from "../helpers/app";
 import { startWithClock } from "../helpers/clock-app";
@@ -353,7 +353,7 @@ test.each([
   ["en", "Denied by permission rule: read"],
 ] as const)("%s resume retains localized rule denial on the tool card", async (locale, text) => {
   const argv: string[] = [];
-  const original = createFauxCore({ api: "faux", provider: "faux" });
+  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
   original.setResponses([
     fauxAssistantMessage(fauxToolCall("read", { path: "secret" }), { stopReason: "toolUse" }),
     fauxAssistantMessage("done"),
@@ -365,8 +365,8 @@ test.each([
         cwd: root,
         homeDir: root,
         model: original.getModel(),
-        streamFn: withAuxiliaryRequests((model, context, options) =>
-          original.streamSimple(model, context, options),
+        models: auxiliaryModels((model, context, options) =>
+          original.provider.streamSimple(model, context, options),
         ),
         settings: { permissions: { deny: ["read"] } },
       });

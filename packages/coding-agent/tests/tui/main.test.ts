@@ -373,7 +373,7 @@ for (const [argv, message] of [
 }
 
 test("missing model configuration reports localized guidance and exits before rendering", async () => {
-  const app = await start([], { session: { model: undefined, streamFn: undefined } });
+  const app = await start([], { session: { model: undefined, models: undefined } });
   try {
     expect(await app.exit).toBe(1);
     expect(app.stderr()).toContain("未配置模型。请在 ");
@@ -535,7 +535,7 @@ test("--thinking is forwarded to the model request", async () => {
 
 test("--model overrides settings before model resolution", async () => {
   const app = await start(["--model", "missing/selected"], {
-    session: { model: undefined, streamFn: undefined },
+    session: { model: undefined, models: undefined },
     prepare: async (root) => {
       await Bun.write(
         join(root, ".rukie/settings.json"),

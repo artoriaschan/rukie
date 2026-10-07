@@ -1,3 +1,4 @@
+import { auxiliaryModels } from "../../helpers/auxiliary-model";
 import { expect, test } from "bun:test";
 import { start } from "../../helpers/app";
 import { startWithClock } from "../../helpers/clock-app";
@@ -12,11 +13,11 @@ function goalFixtureModel() {
   return {
     ...fake,
     firstCall: called.promise,
-    streamFn(...args: Parameters<typeof fake.streamFn>) {
-      const stream = fake.streamFn(...args);
+    models: auxiliaryModels((...args) => {
+      const stream = fake.models.streamSimple(...args);
       if (fake.calls.length) called.resolve();
       return stream;
-    },
+    }),
   };
 }
 
@@ -136,7 +137,7 @@ test("a persisted complete goal freezes elapsed time and edit starts a fresh goa
       await fake.firstCall;
       fake.calls[0]!.fail("fixture stops scheduling");
       await finished;
-      await session.dispose();
+      await session.close();
       // A native persisted Goal fixture allows complete replay without model-tool ownership.
       for await (const path of new Bun.Glob(`**/*_${session.id}.jsonl`).scan({
         cwd: `${root}/.rukie/sessions`,
@@ -216,7 +217,7 @@ test("an errored goal refreshes activation and resumed active goals stay disarme
       fake.calls[0]!.fail("provider unavailable");
       await finished;
       argv.push("--resume", session.id);
-      await session.dispose();
+      await session.close();
     },
   });
   try {
@@ -385,7 +386,7 @@ test.each(["question", "permission"])(
         fake.calls[0]!.finish();
         await blocked;
         argv.push("--resume", session.id);
-        await session.dispose();
+        await session.close();
       },
     });
     try {

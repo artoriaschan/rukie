@@ -123,14 +123,15 @@ function delta(
     type: "message_update",
     sessionId,
     message,
-    assistantMessageEvent: { type, contentIndex: 0, delta: text, partial: message },
+    usage: message.usage,
+    changes: [{ type, contentIndex: 0, delta: text }],
   };
 }
 
 function toolStart(
   id: string,
   toolName = "read",
-  args: unknown = { path: "src/a.ts" },
+  args: { [key: string]: string } = { path: "src/a.ts" },
 ): SessionEvent {
   return { type: "tool_execution_start", sessionId, toolCallId: id, toolName, args };
 }
@@ -141,8 +142,14 @@ function toolEnd(id: string, isError = false): SessionEvent {
     sessionId,
     toolCallId: id,
     toolName: "read",
-    result: {},
-    isError,
+    result: {
+      role: "toolResult",
+      toolCallId: id,
+      toolName: "read",
+      content: [],
+      timestamp: 0,
+      isError,
+    },
   };
 }
 

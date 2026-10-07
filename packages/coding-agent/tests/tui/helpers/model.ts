@@ -1,17 +1,19 @@
 import {
   createAssistantMessageEventStream,
-  createFauxCore,
+  createModels,
+  fauxProvider,
   fauxAssistantMessage,
   fauxToolCall,
   type AssistantMessage,
   type TranscriptContext,
 } from "@earendil-works/pi-ai";
 import { isTitleRequest } from "./auxiliary-model.ts";
-import type { SessionOptions } from "@rukie/agent";
+import type { Provider } from "@earendil-works/pi-ai/models";
 
 /** Model boundary controlled by the test, including streamed text and cancellation. */
 export function controlledModel(controlReviews = false, controlTitles = false) {
-  const model = createFauxCore({ api: "faux", provider: "faux" }).getModel();
+  const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+  const model = faux.getModel();
   const calls: {
     context: TranscriptContext;
     signal?: AbortSignal;
@@ -28,7 +30,7 @@ export function controlledModel(controlReviews = false, controlTitles = false) {
   const reviews: typeof calls = [];
   const titles: typeof calls = [];
   const sideQuestions: typeof calls = [];
-  const streamFn: NonNullable<SessionOptions["streamFn"]> = (_model, context, options) => {
+  const stream: Provider["streamSimple"] = (_model, context, options) => {
     const stream = createAssistantMessageEventStream();
     const isTitle = isTitleRequest(context);
     if (isTitle && !controlTitles) {
@@ -147,5 +149,7 @@ export function controlledModel(controlReviews = false, controlTitles = false) {
     if (options?.signal?.aborted) abort();
     return stream;
   };
-  return { model, streamFn, calls, reviews, titles, sideQuestions };
+  const models = createModels();
+  models.setProvider({ ...faux.provider, streamSimple: stream });
+  return { model, models, calls, reviews, titles, sideQuestions };
 }

@@ -23,13 +23,13 @@ test.each(["zh", "en"] as const)(
         cwd: app.root,
         homeDir: app.root,
         model: app.model,
-        streamFn: app.streamFn,
+        models: app.models,
         resumeId: session!.id,
       });
       try {
         expect(resumed.id).toBe(session!.id);
       } finally {
-        await resumed.dispose();
+        await resumed.close();
       }
     } finally {
       await app.cleanup();
@@ -53,7 +53,7 @@ test("signal exit saves an interrupted Run before displaying its resume command"
       cwd: app.root,
       homeDir: app.root,
       model: app.model,
-      streamFn: app.streamFn,
+      models: app.models,
       resumeId: session!.id,
     });
     try {
@@ -64,7 +64,7 @@ test("signal exit saves an interrupted Run before displaying its resume command"
       app.calls[1]!.reply("continued");
       await result;
     } finally {
-      await resumed.dispose();
+      await resumed.close();
     }
   } finally {
     await app.cleanup();

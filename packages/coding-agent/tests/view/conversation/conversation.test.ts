@@ -1,10 +1,17 @@
+import type { Provider } from "@earendil-works/pi-ai/models";
+import { auxiliaryModels } from "../../tui/helpers/auxiliary-model";
 import { readSessionNotice, sessionNoticeFromHook, assistantThinkingDuration } from "@rukie/agent";
 const conversationFacts = { readSessionNotice, sessionNoticeFromHook, assistantThinkingDuration };
 import { expect, spyOn, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createSession, type Session, type SessionEvent, type SessionOptions } from "@rukie/agent";
+import {
+  createSession,
+  type Session,
+  type SessionEvent,
+  type TranscriptMessage,
+} from "@rukie/agent";
 import { createConversation } from "../../../src/view/conversation/conversation";
 import { controlledModel } from "../../tui/helpers/model";
 
@@ -15,9 +22,9 @@ test("conversation retains the latest 500 observed TPS samples and wires an actu
   const clock = spyOn(Date, "now").mockImplementation(() => now);
   let session: Session | undefined;
   let conversation: ReturnType<typeof createConversation> | undefined;
-  const streamFn: NonNullable<SessionOptions["streamFn"]> = (...args) => {
+  const stream: Provider["streamSimple"] = (...args) => {
     const before = fake.calls.length;
-    const stream = fake.streamFn(...args);
+    const stream = fake.models.streamSimple(...args);
     if (fake.calls.length > before) {
       const call = fake.calls.at(-1)!;
       call.thinking("x");
@@ -26,7 +33,12 @@ test("conversation retains the latest 500 observed TPS samples and wires an actu
     return stream;
   };
   try {
-    session = await createSession({ cwd: root, homeDir: root, model: fake.model, streamFn });
+    session = await createSession({
+      cwd: root,
+      homeDir: root,
+      model: fake.model,
+      models: auxiliaryModels(stream),
+    });
     let observe: ((event: SessionEvent) => void) | undefined;
     const source = new Proxy(session, {
       get(target, key) {
@@ -43,7 +55,10 @@ test("conversation retains the latest 500 observed TPS samples and wires an actu
     const events: SessionEvent[] = [];
     session.subscribe((event) => {
       events.push(event);
-      if (event.type === "message_update" && event.assistantMessageEvent.type === "thinking_delta")
+      if (
+        event.type === "message_update" &&
+        event.changes.some((change) => change.type === "thinking_delta")
+      )
         now += 1000;
     });
     for (let run = 0; run < 501; run++) {
@@ -55,19 +70,20 @@ test("conversation retains the latest 500 observed TPS samples and wires an actu
           const event: SessionEvent =
             saved.type === "result"
               ? { ...saved, usage: { ...saved.usage, output: 50 } }
-              : saved.type === "message_end" && saved.message.role === "assistant"
+              : saved.type === "message_end"
                 ? {
                     ...saved,
-                    message: {
-                      ...saved.message,
-                      usage: { ...saved.message.usage, output: 50, totalTokens: 51 },
-                    },
+                    messages: saved.messages.map((message): TranscriptMessage =>
+                      message.role === "assistant"
+                        ? { ...message, usage: { ...message.usage, output: 50, totalTokens: 51 } }
+                        : message,
+                    ),
                   }
                 : saved;
           observe!(event);
           if (
             event.type === "message_update" &&
-            event.assistantMessageEvent.type === "thinking_delta"
+            event.changes.some((change) => change.type === "thinking_delta")
           )
             now += 1000;
         }
@@ -82,7 +98,7 @@ test("conversation retains the latest 500 observed TPS samples and wires an actu
   } finally {
     try {
       await conversation?.stop();
-      await session?.dispose();
+      await session?.close();
     } finally {
       clock.mockRestore();
       await rm(root, { recursive: true, force: true });

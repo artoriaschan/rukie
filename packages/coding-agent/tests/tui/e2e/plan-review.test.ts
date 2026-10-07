@@ -1,7 +1,7 @@
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
+import { auxiliaryModels } from "../helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
 import { createSession } from "@rukie/agent";
-import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { fauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { startWithClock as start } from "../helpers/clock-app";
 const plan = "# Storage plan\n\nAdd **SQLite** storage.\n\nValidate public behavior.";
 async function review(options: Parameters<typeof start>[1] = {}, markdown = plan) {
@@ -235,7 +235,7 @@ test("resume renders the persisted approved plan as a collapsible card", async (
   const argv: string[] = [];
   const app = await start(argv, {
     prepare: async (root) => {
-      const faux = createFauxCore({ api: "faux", provider: "faux" });
+      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
       faux.setResponses([
         fauxAssistantMessage(fauxToolCall("exit_plan_mode", { plan }), { stopReason: "toolUse" }),
         fauxAssistantMessage("Executed."),
@@ -244,7 +244,7 @@ test("resume renders the persisted approved plan as a collapsible card", async (
         cwd: root,
         homeDir: root,
         model: faux.getModel(),
-        streamFn: withAuxiliaryRequests(faux.streamSimple),
+        models: auxiliaryModels(faux.provider.streamSimple),
         onPlanReview: async () => ({ kind: "approve" }),
       });
       await session.setPlanMode(true);

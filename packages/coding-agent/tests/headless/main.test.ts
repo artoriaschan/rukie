@@ -1,6 +1,6 @@
-import { withAuxiliaryRequests } from "./helpers/auxiliary-model.ts";
+import { auxiliaryModels } from "./helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
-import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { fauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -49,7 +49,7 @@ test.each([
 ])("CLI %s %s observes jobs and terminates them at completion", async (source, format) => {
   const root = await mkdtemp(join(tmpdir(), "rukie-cli-jobs-"));
   await mkdir(join(root, ".rukie", "file-history"), { recursive: true });
-  const faux = createFauxCore({ api: "faux", provider: "faux" });
+  const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
   faux.setResponses([
     fauxAssistantMessage(
       fauxToolCall("bash", {
@@ -91,7 +91,7 @@ test.each([
           cwd: root,
           homeDir: root,
           model: faux.getModel(),
-          streamFn: withAuxiliaryRequests(faux.streamSimple),
+          models: auxiliaryModels(faux.provider.streamSimple),
           allowRules: ["bash"],
         },
       },
@@ -157,7 +157,7 @@ test.each(["text", "stream-json"])(
   "%s exposes hook warnings, headless ask denial, and user messages",
   async (format) => {
     const root = await mkdtemp(join(tmpdir(), "rukie-cli-hooks-"));
-    const faux = createFauxCore({ api: "faux", provider: "faux" });
+    const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
     faux.setResponses([
       fauxAssistantMessage(
         fauxToolCall("bash", { description: "Run test command", command: "touch forbidden" }),
@@ -182,7 +182,7 @@ test.each(["text", "stream-json"])(
           cwd: root,
           homeDir: root,
           model: faux.getModel(),
-          streamFn: withAuxiliaryRequests(faux.streamSimple),
+          models: auxiliaryModels(faux.provider.streamSimple),
           settings: {
             hooks: {
               PreToolUse: [
@@ -249,9 +249,9 @@ test.each(["text", "stream-json"])(
           cwd: root,
           homeDir: root,
           ...fake,
-          streamFn: withAuxiliaryRequests((...args) => {
+          models: auxiliaryModels((...args) => {
             modelCalls++;
-            return fake.streamFn(...args);
+            return fake.models.streamSimple(...args);
           }),
           settings: {
             hooks: {
@@ -361,7 +361,7 @@ test.each([
 ])("--allow-tools %s grants the matching command only", async (rule, command) => {
   const root = await mkdtemp(join(tmpdir(), "rukie-cli-rules-"));
   await mkdir(join(root, ".rukie", "file-history"), { recursive: true });
-  const faux = createFauxCore({ api: "faux", provider: "faux" });
+  const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
   faux.setResponses([
     fauxAssistantMessage(
       [
@@ -399,7 +399,7 @@ test.each([
           cwd: root,
           homeDir: root,
           model: faux.getModel(),
-          streamFn: withAuxiliaryRequests(faux.streamSimple),
+          models: auxiliaryModels(faux.provider.streamSimple),
         },
       }),
     ).toBe(0);
@@ -415,7 +415,7 @@ test.each(["text", "stream-json"])(
   async (format) => {
     const root = await mkdtemp(join(tmpdir(), "rukie-cli-subagent-"));
     await mkdir(join(root, ".rukie", "file-history"), { recursive: true });
-    const faux = createFauxCore({ api: "faux", provider: "faux" });
+    const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
     const reply: Parameters<typeof faux.setResponses>[0][number] = (context) => {
       const last = context.messages.at(-1)!;
       if (last.role === "user" && JSON.stringify(last.content).includes("child-prompt"))
@@ -445,7 +445,7 @@ test.each(["text", "stream-json"])(
             cwd: root,
             homeDir: root,
             model: faux.getModel(),
-            streamFn: withAuxiliaryRequests(faux.streamSimple),
+            models: auxiliaryModels(faux.provider.streamSimple),
           },
         }),
       ).toBe(0);
@@ -494,7 +494,7 @@ test.each(["text", "stream-json"])(
               cwd: root,
               homeDir: root,
               model: faux.getModel(),
-              streamFn: withAuxiliaryRequests(faux.streamSimple),
+              models: auxiliaryModels(faux.provider.streamSimple),
             },
           }),
         ).toBe(1);
@@ -511,7 +511,7 @@ test("Headless resume emits a text plan and never registers interactive plan too
   try {
     const seed = await createSession({ cwd: root, homeDir: root, ...echoModel() });
     await seed.setPlanMode(true);
-    const faux = createFauxCore({ api: "faux", provider: "faux" });
+    const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
     faux.setResponses([
       (context) => {
         expect(JSON.stringify(context)).toContain(
@@ -532,7 +532,7 @@ test("Headless resume emits a text plan and never registers interactive plan too
           cwd: root,
           homeDir: root,
           model: faux.getModel(),
-          streamFn: withAuxiliaryRequests(faux.streamSimple),
+          models: auxiliaryModels(faux.provider.streamSimple),
         },
       }),
     ).toBe(0);
@@ -563,7 +563,7 @@ test.each([false, true])(
   "Goal output and exit belong to the parent even when a child fails: %s",
   async (fail) => {
     const root = await mkdtemp(join(tmpdir(), "rukie-cli-goal-child-"));
-    const faux = createFauxCore({ api: "faux", provider: "faux" });
+    const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
     let childResponded = false;
     const reply: Parameters<typeof faux.setResponses>[0][number] = (context) => {
       const last = context.messages.at(-1);
@@ -604,7 +604,7 @@ test.each([false, true])(
           cwd: root,
           homeDir: root,
           model: faux.getModel(),
-          streamFn: withAuxiliaryRequests(faux.streamSimple),
+          models: auxiliaryModels(faux.provider.streamSimple),
         },
       });
       expect({ exitCode, stderr, stdout }).toMatchObject({ exitCode: 0 });
@@ -621,7 +621,7 @@ test.each(["error", "length"] as const)(
   "Goal exits 1 after a Run ends with %s",
   async (stopReason) => {
     const root = await mkdtemp(join(tmpdir(), "rukie-cli-goal-outcome-"));
-    const faux = createFauxCore({ api: "faux", provider: "faux" });
+    const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
     faux.setResponses([
       fauxAssistantMessage("partial work", {
         stopReason,
@@ -644,7 +644,7 @@ test.each(["error", "length"] as const)(
             cwd: root,
             homeDir: root,
             model: faux.getModel(),
-            streamFn: withAuxiliaryRequests(faux.streamSimple),
+            models: auxiliaryModels(faux.provider.streamSimple),
           },
         }),
       ).toBe(1);
@@ -659,7 +659,7 @@ test.each(["error", "length"] as const)(
 test("Goal preserves SIGINT received while creation is still settling", async () => {
   const root = await mkdtemp(join(tmpdir(), "rukie-cli-goal-create-abort-"));
   const controller = new AbortController();
-  const faux = createFauxCore({ api: "faux", provider: "faux" });
+  const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
   let modelCalled = false;
   faux.setResponses([
     () => {
@@ -681,7 +681,7 @@ test("Goal preserves SIGINT received while creation is still settling", async ()
         cwd: root,
         homeDir: root,
         model: faux.getModel(),
-        streamFn: withAuxiliaryRequests(faux.streamSimple),
+        models: auxiliaryModels(faux.provider.streamSimple),
       },
     });
     expect(exitCode).toBe(130);
@@ -700,7 +700,7 @@ test.each(["prompt", "stdin", "stdin-stream-json", "goal", "goal-interrupted"])(
     const firstCall = Promise.withResolvers<void>();
     const firstReply = Promise.withResolvers<void>();
     const contexts: string[] = [];
-    const faux = createFauxCore({ api: "faux", provider: "faux" });
+    const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
     faux.setResponses([
       async (context) => {
         contexts.push(JSON.stringify(context.messages));
@@ -749,7 +749,7 @@ test.each(["prompt", "stdin", "stdin-stream-json", "goal", "goal-interrupted"])(
             cwd: root,
             homeDir: root,
             model: faux.getModel(),
-            streamFn: withAuxiliaryRequests(faux.streamSimple),
+            models: auxiliaryModels(faux.provider.streamSimple),
             settings: {
               hooks: {
                 SessionStart: [
@@ -893,10 +893,10 @@ test("Headless calls real MCP tools using credentials written by an earlier Sess
     try {
       await seed.authenticateMcp("srv");
     } finally {
-      await seed.dispose();
+      await seed.close();
     }
     expect(await Bun.file(join(root, ".rukie/credentials.json")).exists()).toBe(true);
-    const faux = createFauxCore({ api: "faux", provider: "faux" });
+    const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
     faux.setResponses([
       fauxAssistantMessage(fauxToolCall("mcp__srv__echo", { text: "hello" }), {
         stopReason: "toolUse",
@@ -917,7 +917,7 @@ test("Headless calls real MCP tools using credentials written by an earlier Sess
         cwd: root,
         homeDir: root,
         model: faux.getModel(),
-        streamFn: withAuxiliaryRequests(faux.streamSimple),
+        models: auxiliaryModels(faux.provider.streamSimple),
       },
     });
     expect(exitCode).toBe(0);

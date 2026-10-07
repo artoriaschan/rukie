@@ -318,7 +318,7 @@ const zh = {
   "subagent.status.completed": "已完成",
   "subagent.status.failed": "失败",
   "subagent.status.aborted": "已中止",
-  "subagent.waiting": "等待 {{count}} 个子代理",
+  "subagent.background": "后台任务：{{count}} 个子代理",
 
   "question.heading": " 📋 提问 · 第 {{current}}/{{total}} 题{{remaining}} ",
   "question.remaining": " · 还剩 {{count}} 题",
@@ -775,7 +775,7 @@ const en = {
   "subagent.status.completed": "completed",
   "subagent.status.failed": "failed",
   "subagent.status.aborted": "aborted",
-  "subagent.waiting": "waiting for {{count}} subagents",
+  "subagent.background": "background tasks: {{count}} subagents",
 
   "question.heading": " 📋 Question {{current}}/{{total}} {{remaining}} ",
   "question.remaining": " · {{count}} left",

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
 import { createJsonlStore, createSession } from "@rukie/agent";
-import { createFauxCore, getCurrentSystemMessage } from "@earendil-works/pi-ai";
+import { fauxProvider, getCurrentSystemMessage } from "@earendil-works/pi-ai";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -123,19 +123,19 @@ test("SIGTERM lets the actual TUI process save an active child Run before report
     const parent = (await store.list({ cwd: root }, BACKGROUND_CONTEXT)).find(
       (item) => !item.parentSessionId,
     )!;
-    const faux = createFauxCore({ api: "faux", provider: "faux" });
+    const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
     const restored = await createSession({
       cwd: root,
       homeDir: root,
       model: faux.getModel(),
-      streamFn: faux.streamSimple,
+      streamFn: faux.provider.streamSimple,
       resumeId: parent.id,
     });
     expect(restored.recovery.subagents).toMatchObject([
       { description: "Active child", outcome: "aborted" },
     ]);
     expect(restored.checkpoints()).toHaveLength(1);
-    await restored.dispose();
+    await restored.close();
     expect(await errors).toBe("");
   } finally {
     child.kill();

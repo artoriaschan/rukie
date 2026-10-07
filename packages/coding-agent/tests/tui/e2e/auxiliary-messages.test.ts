@@ -1,10 +1,10 @@
 import { testClock } from "../helpers/test-clock";
 import { expect, test } from "bun:test";
-import { createFauxCore, fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { fauxProvider, fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { createSession } from "@rukie/agent";
 import { start } from "../helpers/app";
 import { startWithClock } from "../helpers/clock-app";
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model";
+import { auxiliaryModels } from "../helpers/auxiliary-model";
 
 async function seeded(
   locale: "en" | "zh",
@@ -18,19 +18,19 @@ async function seeded(
     rows: 40,
     env,
     prepare: async (root) => {
-      const model = createFauxCore({ api: "faux", provider: "faux" });
+      const model = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
       model.setResponses([fauxAssistantMessage("seed reply")]);
       const session = await createSession({
         cwd: root,
         homeDir: root,
         model: model.getModel(),
-        streamFn: withAuxiliaryRequests((m, c, o) => model.streamSimple(m, c, o)),
+        models: auxiliaryModels((m, c, o) => model.provider.streamSimple(m, c, o)),
       });
       try {
         await session.run("seed prompt");
         argv.push("--resume", session.id);
       } finally {
-        await session.dispose();
+        await session.close();
       }
     },
   });
@@ -104,19 +104,19 @@ test.each(["assistant", "toolResult"] as const)(
       session: { permissionMode: "full-access" },
       prepare: async (root) => {
         store = createJsonlStore({ cwd: root, homeDir: root });
-        const model = createFauxCore({ api: "faux", provider: "faux" });
+        const model = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
         model.setResponses([fauxAssistantMessage("seed reply")]);
         const seed = await createSession({
           cwd: root,
           homeDir: root,
           model: model.getModel(),
-          streamFn: withAuxiliaryRequests((m, c, o) => model.streamSimple(m, c, o)),
+          models: auxiliaryModels((m, c, o) => model.provider.streamSimple(m, c, o)),
         });
         try {
           await seed.run("seed prompt");
           argv.push("--resume", seed.id);
         } finally {
-          await seed.dispose();
+          await seed.close();
         }
         options.session!.store = {
           ...store,
