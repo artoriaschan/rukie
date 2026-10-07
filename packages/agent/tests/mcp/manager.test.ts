@@ -124,6 +124,47 @@ test("close cancels a held management interaction and preserves its cancelled ou
   }
 });
 
+test("manual authentication refreshes a runtime's cached authentication declaration", async () => {
+  const dirs = await tempDirs();
+  const server = mcpOAuthServer();
+  const auth = createMcpAuthState();
+  await Bun.write(
+    join(dirs.homeDir, ".rukie/mcp.json"),
+    JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
+  );
+  const options = {
+    ...dirs,
+    settings: {},
+    interactive: true,
+    onMcpAuth: async ({ authorizationUrl }: { authorizationUrl: string }) => {
+      const response = await fetch(authorizationUrl, { redirect: "manual" });
+      const url = response.headers.get("location");
+      if (!url) throw new Error("Missing callback");
+      return { type: "callback-url" as const, url };
+    },
+  };
+  const runtime = createMcpConnections(auth);
+  const manager = createMcpManager({
+    createConnections: () => createMcpConnections(auth),
+    connectOptions: () => options,
+    getRunning: () => false,
+    onChange: () => {},
+  });
+  try {
+    await runtime.connect(options);
+    expect(runtime.snapshot().servers[0]?.status).toBe("needs-auth");
+    manager.adopt(runtime.snapshot());
+    expect(await manager.authenticate("srv")).toEqual({ type: "authenticated", server: "srv" });
+    await runtime.connect(options);
+    expect(runtime.snapshot().servers[0]).toMatchObject({ status: "connected", toolCount: 1 });
+    expect(runtime.authTools.size).toBe(0);
+  } finally {
+    await Promise.all([manager.close(), runtime.close()]);
+    await server.stop();
+    await dirs.cleanup();
+  }
+});
+
 test("unsupported and unknown management errors are typed before any server transport opens", async () => {
   const dirs = await tempDirs();
   const server = mcpOAuthServer();

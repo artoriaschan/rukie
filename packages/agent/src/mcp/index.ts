@@ -205,6 +205,7 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
   const toolServers = new Map<string, string>();
   const descriptions = new Map<string, string>();
   const configurations = new Map<string, string>();
+  const serverAuthKeys = new Map<string, string>();
   const retired = new WeakSet<McpClient>();
   const failed = new Set<string>();
   let closePromise: Promise<void> | undefined;
@@ -260,6 +261,7 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
   };
   const retire = async (server: string) => {
     configurations.delete(server);
+    serverAuthKeys.delete(server);
     connected.delete(server);
     views.delete(server);
     descriptions.delete(server);
@@ -418,11 +420,15 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
           if (server === options.skipServer) continue;
           options.signal?.throwIfAborted();
           const configuration = JSON.stringify({ value, scope, configPath });
+          const authKey = serverAuthKeys.get(server);
           if (
             configurations.get(server) === configuration &&
             !options.reconnect &&
             !options.loadOnly &&
-            (connected.has(server) || views.get(server)?.status === "needs-auth")
+            (connected.has(server) ||
+              (views.get(server)?.status === "needs-auth" &&
+                authKey !== undefined &&
+                authState.needsAuth.has(authKey)))
           )
             continue;
           if (configurations.has(server)) await retire(server);
@@ -528,6 +534,7 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
                 auth: "oauth",
               });
             const key = "url" in entry ? credentialKey(server, entry) : undefined;
+            if (key) serverAuthKeys.set(server, key);
             if (options.reconnect && key) {
               authState.needsAuth.delete(key);
               authState.rejectedTokens.delete(key);
