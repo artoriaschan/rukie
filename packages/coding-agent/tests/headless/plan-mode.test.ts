@@ -51,9 +51,7 @@ test.each(["ask", "auto-review", "full-access"])(
         .map((line) => JSON.parse(line))
         .find((event) => event.type === "snapshot");
       expect(started).toBeDefined();
-      expect(started.tools.map((tool: { name: string }) => tool.name)).not.toContain(
-        "enter_plan_mode",
-      );
+      expect(started.agent.tools).not.toContain("enter_plan_mode");
     } finally {
       await rm(root, { recursive: true, force: true });
     }

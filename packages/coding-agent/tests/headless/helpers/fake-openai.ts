@@ -17,6 +17,7 @@ export function fakeOpenAI(reply: string, options: FakeOpenAIOptions = {}) {
   const received = Promise.withResolvers<void>();
   const requests: { body: any; authorization: string | null }[] = [];
   const titleRequests: typeof requests = [];
+  const streams = new Set<ReadableStreamDefaultController<Uint8Array>>();
   const chunk = (delta: object, finish: string | null) =>
     `data: ${JSON.stringify({
       id: "chatcmpl-1",
@@ -84,6 +85,7 @@ export function fakeOpenAI(reply: string, options: FakeOpenAIOptions = {}) {
         return new Response(
           new ReadableStream({
             start(controller) {
+              streams.add(controller);
               controller.enqueue(
                 new TextEncoder().encode(chunk({ role: "assistant", content: reply }, null)),
               );
@@ -133,6 +135,10 @@ export function fakeOpenAI(reply: string, options: FakeOpenAIOptions = {}) {
     requests,
     titleRequests,
     received: received.promise,
+    delta(text: string) {
+      for (const controller of streams)
+        controller.enqueue(new TextEncoder().encode(chunk({ content: text }, null)));
+    },
     stop: () => server.stop(true),
   };
 }
