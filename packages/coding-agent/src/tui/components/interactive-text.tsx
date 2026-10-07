@@ -24,7 +24,12 @@ export function InteractiveText({
     const element = text.current;
     if (!element) return false;
     const width = element.yogaNode?.getComputedWidth() ?? 0;
-    const lines = textLines([{ text: paintedText(element), style: {} }], Math.max(1, width));
+    const lines = textLines(
+      [{ text: paintedText(element), style: {} }],
+      Math.max(1, width),
+      true,
+      true,
+    );
     let column = 0;
     const glyph = lines[row]?.find((glyph) => {
       const at = column;
