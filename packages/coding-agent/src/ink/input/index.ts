@@ -100,6 +100,12 @@ export function listenInput(
       }
       if (buffer[0] === "\x1b") {
         if (buffer.length === 1) return;
+        if (buffer[1] === "\x1b") {
+          // A following ESC begins another key or control sequence, not an Alt character.
+          buffer = buffer.slice(1);
+          key("escape");
+          continue;
+        }
         if (buffer[1] === "_") {
           const end = buffer.indexOf("\x1b\\", 2);
           if (end < 0) {

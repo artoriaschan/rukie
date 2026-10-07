@@ -19,6 +19,21 @@ async function ready(options: Parameters<typeof start>[1] = {}, virtualTime = fa
   return app;
 }
 
+test("rapid double Escape with mouse motion rewinds without inserting protocol text", async () => {
+  const app = await ready({}, true);
+  try {
+    app.stdin.write("\x1b\x1b\x1b[<35;10;66M");
+    await app.waitFor(() => text(app).includes("Nothing to rewind yet"));
+    expect(app.screen()).toContain("❯");
+    expect(text(app)).not.toContain("[<35;10;66M");
+    app.stdin.write("draft");
+    await app.waitFor(() => app.screen().includes("❯ draft"));
+    expect(app.calls).toHaveLength(0);
+  } finally {
+    await app.cleanup();
+  }
+});
+
 test.each(
   (
     [
