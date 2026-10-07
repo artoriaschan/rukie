@@ -61,7 +61,10 @@ test("successful tool hooks receive executed input and result, preserving output
   ).toMatchObject([
     {
       isError: false,
-      content: [{ type: "text", text: "original" }],
+      content: [
+        { type: "text", text: "original" },
+        { type: "text", text: "<system-reminder>\nrun lint\n</system-reminder>" },
+      ],
     },
   ]);
   expect(JSON.stringify(fake.contexts[1]!.messages)).toContain("check formatting");
@@ -449,20 +452,17 @@ test("replacement retains PreToolUse context and child hooks include child ident
     tool_input: { command: "printf rewritten" },
     tool_response: { content: [{ text: "rewritten" }] },
   });
-  const childResult = fake.contexts
-    .find((context) =>
-      context.messages.some(
-        (message) => message.role === "toolResult" && message.toolCallId === "child-call",
-      ),
-    )!
-    .messages.find(
+  const childContext = fake.contexts.find((context) =>
+    context.messages.some(
       (message) => message.role === "toolResult" && message.toolCallId === "child-call",
-    );
+    ),
+  )!;
+  const childResult = childContext.messages.find(
+    (message) => message.role === "toolResult" && message.toolCallId === "child-call",
+  );
   expect(childResult).toMatchObject({
     isError: false,
-    content: [
-      { text: "child filtered" },
-      { text: "<system-reminder>\nbefore context\n</system-reminder>" },
-    ],
+    content: [{ text: "child filtered" }],
   });
+  expect(JSON.stringify(childContext.messages)).toContain("before context");
 });
