@@ -459,7 +459,14 @@ for (const kind of ["permission", "question"] as const) {
         child.finish();
         app.calls[4]!.finish();
         await app.waitFor(() => app.calls.length === 6);
-        app.calls[5]!.finish();
+        // At 12 rows the previews and draft can hide all transcript/activity rows.
+        // Observe the actual reporter completion before restoring the tested viewport.
+        app.calls[5]!.reply("Reporter finished");
+        app.resize(columns, 40);
+        await app.waitFor(
+          () => app.screen().some((line) => line.includes("Reporter finished")) && !app.isWorking(),
+        );
+        app.resize(columns, rows);
         await app.waitFor(() => app.screen().at(-1)?.trim() === "");
         app.stdin.write("\r");
         await app.waitFor(() => app.calls.length === 7);
