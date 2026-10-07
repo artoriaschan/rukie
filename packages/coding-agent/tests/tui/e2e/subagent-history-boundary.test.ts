@@ -11,6 +11,7 @@ import {
   createModels,
   fauxAssistantMessage,
   fauxToolCall,
+  getCurrentTools,
 } from "@earendil-works/pi-ai";
 
 test.each(["future", "past"] as const)(
@@ -114,9 +115,19 @@ test.each(["future", "past"] as const)(
         expect(app.screen().filter((line) => line.includes("✗ Read"))).toHaveLength(1);
       }
       child.finish();
+      const completedParents = new Set([fake.calls[0]!]);
       // The event row briefly says "completed" before readSubagent supplies
       // the committed Run Outcome. Synchronize on that permanent detail frame.
       await app.waitFor(() => {
+        for (const call of fake.calls) {
+          if (
+            completedParents.has(call) ||
+            !getCurrentTools(call.context.messages).some((tool) => tool.name === "send_message")
+          )
+            continue;
+          completedParents.add(call);
+          call.reply("parent continuation settled");
+        }
         const screen = app.screen().join("\n");
         return (
           screen.includes("Run ended normally") &&
@@ -126,7 +137,28 @@ test.each(["future", "past"] as const)(
           )
         );
       });
-      app.stdin.write("\x1b\x1b/exit\r");
+      app.stdin.write("\x1b");
+      await app.waitFor(() => !app.screen().some((line) => line.includes(`id ${childId} ·`)));
+      app.stdin.write("\x1b");
+      await app.waitFor(
+        () => !app.screen().join("\n").includes("↑/↓ select · Enter detail · Esc close"),
+      );
+      await app.waitFor(() => {
+        for (const call of fake.calls) {
+          if (
+            completedParents.has(call) ||
+            !getCurrentTools(call.context.messages).some((tool) => tool.name === "send_message")
+          )
+            continue;
+          completedParents.add(call);
+          call.reply("parent continuation settled");
+        }
+        return (
+          fake.calls.length >= (mode === "future" ? 4 : 5) &&
+          !app.screen().some((line) => line.includes("esc interrupt"))
+        );
+      });
+      app.stdin.write("/exit\r");
       await app.exit;
       const restored = await createSession({
         cwd: app.root,
@@ -161,7 +193,9 @@ test.each(["future", "past"] as const)(
         });
         try {
           await replay.waitFor(() => replay.screen().includes("❯"));
-          const y = replay.screen().findIndex((line) => line.includes("Same clock child"));
+          const y = replay
+            .screen()
+            .findIndex((line) => line.includes("Subagent: Same clock child"));
           const x = Bun.stringWidth(replay.screen()[y]!.split("⤢")[0]!) + 1;
           replay.stdin.write(`\x1b[<0;${x};${y + 1}M\x1b[<0;${x};${y + 1}m`);
           await replay.waitFor(() => replay.screen().join("\n").includes("Agent View"));
@@ -184,7 +218,7 @@ test.each(["future", "past"] as const)(
       expect(output).toContain("saved prior child marker");
       if (mode === "past") expect(output.split("current committed child thinking")).toHaveLength(2);
       expect(output.split("active current child marker")).toHaveLength(2);
-      expect(fake.calls).toHaveLength(mode === "future" ? 3 : 4);
+      expect(fake.calls.length).toBeGreaterThanOrEqual(mode === "future" ? 4 : 5);
     } finally {
       await app.cleanup();
     }

@@ -21,7 +21,7 @@ for (const [lang, unknown] of [
   for (const [columns, rows] of [
     [40, 12],
     [80, 24],
-  ])
+  ] as const)
     test(`${lang} native child resume keeps uncertainty accessible at ${columns}×${rows} and accepts fresh input`, async () => {
       const argv: string[] = [];
       const fake = controlledModel();

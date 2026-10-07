@@ -362,6 +362,7 @@ interface ViewState {
   activity: ReturnType<typeof createActivity>;
   activityInput: number;
   streamedChars: number;
+  toolArgumentsChars: number;
   error?: string;
 }
 
@@ -380,6 +381,16 @@ function messageThinking(message: TranscriptMessage) {
         .flatMap((content) => (content.type === "thinking" ? [content.thinking] : []))
         .join("\n")
     : "";
+}
+
+function messageToolArguments(message: TranscriptMessage) {
+  return message.role === "assistant"
+    ? message.content.reduce(
+        (total, block) =>
+          total + (block.type === "toolCall" ? JSON.stringify(block.arguments).length : 0),
+        0,
+      )
+    : 0;
 }
 
 function userMessageEntry(message: Extract<TranscriptMessage, { role: "user" }>): CompletedEntry {
@@ -642,6 +653,7 @@ function reduceMessageEnd(
     output: state.output + message.usage.output,
     activityInput: message.usage.input,
     streamedChars: 0,
+    toolArgumentsChars: 0,
     decode: {
       tokens: state.decode.tokens + (step ? message.usage.output : 0),
       ms: state.decode.ms + (step ? Math.max(0, now - step.startedAt) : 0),
@@ -793,6 +805,7 @@ function reduceEvent(
         output: 0,
         activityInput: 0,
         streamedChars: 0,
+        toolArgumentsChars: 0,
         decode: { tokens: 0, ms: 0 },
         assistant: "",
         reasoning: "",
@@ -832,6 +845,7 @@ function reduceEvent(
       return {
         ...state,
         streamedChars: 0,
+        toolArgumentsChars: 0,
         decode: { ...state.decode, step: undefined },
       };
     case "message_update": {
@@ -849,7 +863,10 @@ function reduceEvent(
         (count, change) => count + ("delta" in change ? change.delta.length : 0),
         0,
       );
-      const chars = structural ? growth : deltaChars;
+      const toolArgumentsChars = messageToolArguments(event.message);
+      const chars = structural
+        ? growth + Math.max(0, toolArgumentsChars - state.toolArgumentsChars)
+        : deltaChars;
       const streamedChars =
         state.streamedChars +
         (structural
@@ -874,6 +891,7 @@ function reduceEvent(
           (event.message.role === "assistant" &&
             event.message.content.some((block) => block.type === "toolCall")),
         streamedChars,
+        toolArgumentsChars,
         decode:
           chars > 0
             ? {
@@ -888,6 +906,7 @@ function reduceEvent(
         ? {
             ...state,
             assistant: messageText(event.message),
+            toolArgumentsChars: messageToolArguments(event.message),
             reasoning: messageThinking(event.message),
             reasoningSettled: false,
             reasoningDurationMs: undefined,
@@ -895,13 +914,18 @@ function reduceEvent(
             streamedChars:
               messageText(event.message).length + messageThinking(event.message).length,
             decode:
-              messageText(event.message).length + messageThinking(event.message).length > 0
+              messageText(event.message).length +
+                messageThinking(event.message).length +
+                messageToolArguments(event.message) >
+              0
                 ? {
                     ...state.decode,
                     step: {
                       startedAt: now,
                       chars:
-                        messageText(event.message).length + messageThinking(event.message).length,
+                        messageText(event.message).length +
+                        messageThinking(event.message).length +
+                        messageToolArguments(event.message),
                     },
                   }
                 : { ...state.decode, step: undefined },
@@ -1049,6 +1073,7 @@ function reduceEvent(
           { at: now, value: decodeMetrics(state, now).value },
         ].slice(-500),
         streamedChars: 0,
+        toolArgumentsChars: 0,
         error: undefined,
       };
     default:
@@ -1092,6 +1117,7 @@ function createViewState(
       : createActivity(locale),
     activityInput: 0,
     streamedChars: 0,
+    toolArgumentsChars: 0,
   };
 }
 
@@ -1107,6 +1133,7 @@ export function createConversation(
   const listeners = new Set<() => void>();
   let compacting = false;
   let active: { promise: Promise<unknown> } | undefined;
+  let pendingResult: { event: Extract<SessionEvent, { type: "result" }>; at: number } | undefined;
   let jobNoticeTimer: ReturnType<typeof setTimeout> | undefined;
   let notificationTimer: ReturnType<typeof setTimeout> | undefined;
   let noticeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -1256,22 +1283,29 @@ export function createConversation(
       // emit no output before settlement. Reconcile at the tool boundary.
       refreshJobs();
     }
+    if (event.type === "result" && active) pendingResult = { event, at: now };
+    if (event.type === "run_start") pendingResult = undefined;
+    const settling =
+      active && (event.type === "result" || (event.type === "snapshot" && !event.run));
     update(
       {
         ...reduceEvent(state, event, now, t, facts),
+        ...(active && { running: true }),
         goal:
           event.type === "snapshot"
             ? (event.toolStates.goal as GoalView | undefined)
             : event.type === "tool_state_changed" && event.name === "goal"
               ? (event.value as GoalView | undefined)
               : state.goal,
-        activity: reduce(
-          event.type === "run_start" && !state.running
-            ? reduce(state.activity, { type: "submit" }, now)
-            : state.activity,
-          event,
-          now,
-        ),
+        activity: settling
+          ? state.activity
+          : reduce(
+              event.type === "run_start" && !state.running
+                ? reduce(state.activity, { type: "submit" }, now)
+                : state.activity,
+              event,
+              now,
+            ),
       },
       event.type === "subagent_event",
     );
@@ -1338,6 +1372,7 @@ export function createConversation(
           error: undefined,
           activityInput: 0,
           streamedChars: 0,
+          toolArgumentsChars: 0,
           decode: { tokens: 0, ms: 0 },
           activity: reduce(state.activity, { type: "submit" }, Date.now()),
         });
@@ -1387,7 +1422,15 @@ export function createConversation(
         })
         .finally(() => {
           active = undefined;
-          if (!stopped && !session.running) update({ ...state, running: false });
+          if (!stopped && !session.running)
+            update({
+              ...state,
+              running: false,
+              activity: pendingResult
+                ? reduce(state.activity, pendingResult.event, pendingResult.at)
+                : { ...state.activity, phase: "idle", tools: [], reviews: [] },
+            });
+          pendingResult = undefined;
         });
       active = { promise };
       return true;
