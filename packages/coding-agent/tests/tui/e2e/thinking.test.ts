@@ -236,3 +236,31 @@ test.each(["before", "during"] as const)(
     }
   },
 );
+
+test("settled thinking toggles on header whitespace after resize", async () => {
+  const app = await startWithClock(["reason"], { columns: 80, rows: 40, env: { LANG: "en" } });
+  const screen = () => app.screen().join("\n");
+  const header = () => app.screen().findIndex((row) => row.includes("Thinking"));
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.thinking("reasoning click marker");
+    app.calls[0]!.delta("answer");
+    app.calls[0]!.finish();
+    await app.waitFor(() => screen().includes("✻ Baked for"));
+    for (const columns of [80, 40]) {
+      app.resize(columns, 40);
+      await app.waitFor(() => header() >= 0 && app.terminal.cols === columns);
+      const x = columns - 5;
+      expect(app.screen()[header()]!.charAt(x).trim()).toBe("");
+      const pressedAt = Date.now();
+      click(app, x, header());
+      await app.waitFor(() => screen().includes("reasoning click marker"));
+      // The second action stays inside the native double-click window.
+      expect(Date.now() - pressedAt).toBeLessThan(500);
+      click(app, x, header());
+      await app.waitFor(() => !screen().includes("reasoning click marker"));
+    }
+  } finally {
+    await app.cleanup();
+  }
+});

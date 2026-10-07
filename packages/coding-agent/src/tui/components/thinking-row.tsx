@@ -74,6 +74,9 @@ export function ThinkingRow({
   return (
     <Box width="100%" flexShrink={0} flexDirection="column" gap={expanded ? 1 : 0}>
       <Box
+        // A changed disclosure state starts a new action, rather than a
+        // double-click selection on the previous header's blank cells.
+        key={expanded ? "expanded" : "folded"}
         flexShrink={0}
         width="100%"
         onClick={onToggle}
