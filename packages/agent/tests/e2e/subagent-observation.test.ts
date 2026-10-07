@@ -1,4 +1,4 @@
-import { modelStream, withModelStream } from "../helpers/auxiliary-model.ts";
+import { modelStream, withModelStream, withModelAlias } from "../helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
 import {
   fauxAssistantMessage,
@@ -154,3 +154,70 @@ test.each([123456, 9_999_999_999_999])(
     }
   },
 );
+
+test("retained child provider requests keep their native model after parent model selection", async () => {
+  const dirs = await tempDirs();
+  let childId = "";
+  const fake = fakeModel([
+    fauxAssistantMessage(
+      fauxToolCall("subagent", {
+        description: "original",
+        prompt: "first child request",
+        run_in_background: false,
+      }),
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage("first child done"),
+    fauxAssistantMessage("parent done"),
+    () =>
+      fauxAssistantMessage(
+        [
+          fauxToolCall("send_message", { agent_id: childId, message: "retained child request" }),
+          fauxToolCall("subagent", {
+            description: "new",
+            prompt: "new child request",
+            run_in_background: false,
+          }),
+        ],
+        { stopReason: "toolUse" },
+      ),
+    fauxAssistantMessage("child done"),
+    fauxAssistantMessage("child done"),
+    fauxAssistantMessage("parent done"),
+    fauxAssistantMessage("report received"),
+  ]);
+  const aliased = withModelAlias(fake.models, "child-pin", ["first", "second"]);
+  const original = modelStream(aliased);
+  const requested = new Map<string, string>();
+  const models = withModelStream(aliased, (model, context, options) => {
+    const tools = getCurrentTools(context.messages);
+    if (
+      tools.some((tool) => tool.name === "read") &&
+      !tools.some((tool) => tool.name === "subagent")
+    ) {
+      const input = context.messages.findLast((message) => message.role === "user");
+      if (input?.role === "user" && typeof input.content === "string")
+        requested.set(input.content, model.id);
+    }
+    return original(model, context, options);
+  });
+  const model = models.getModel("child-pin", "first");
+  if (!model) throw new Error("Missing fixture model");
+  const session = await createSession({ ...dirs, models, model });
+  try {
+    await session.run("delegate", {
+      onEvent(event) {
+        if (event.type === "subagent_event") childId ||= event.agentId;
+      },
+    });
+    await session.setModel("child-pin/second");
+    await session.run("continue and delegate");
+    await session.waitForRequest(session.currentRequestId!);
+    expect(requested.get("first child request")).toBe("first");
+    expect(requested.get("retained child request")).toBe("first");
+    expect(requested.get("new child request")).toBe("second");
+  } finally {
+    await session.close();
+    await dirs.cleanup();
+  }
+});

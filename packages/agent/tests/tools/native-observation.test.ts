@@ -15,6 +15,7 @@ import {
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
 import { Type } from "typebox";
 import { createConversationObservation } from "../../src/session/observation.ts";
+import type { TranscriptMessage } from "../../src/session/messages.ts";
 import type { SessionEvent } from "../../src/session/events.ts";
 import type { PresentedTool } from "../../src/tools/presentation.ts";
 import { withModelAlias } from "../helpers/auxiliary-model.ts";
@@ -110,6 +111,28 @@ test("native observation joins committed transcript and capability facts with st
     expect(initial.toolStates).toEqual({ counter: { count: 0 } });
     expect(observation.snapshot().toolStates).toEqual({ counter: { count: 1 } });
     expect(observation.running()).toBe(false);
+    const captured = observation.snapshot();
+    const presented = observation.present(observation.messages());
+    expect(presented).toEqual([...observation.messages()]);
+    expect(observation.snapshot()).toBe(captured);
+    const fresh: TranscriptMessage[] = [
+      {
+        ...fauxAssistantMessage(fauxToolCall("count", {}, { id: "fresh-call" })),
+        entryId: "fresh-assistant",
+      },
+      {
+        role: "toolResult",
+        toolCallId: "fresh-call",
+        toolName: "count",
+        content: [{ type: "text", text: "fresh result" }],
+        isError: false,
+        timestamp: 0,
+        entryId: "fresh-result",
+      },
+    ];
+    const freshResult = observation.present(fresh).find((message) => message.role === "toolResult");
+    expect(freshResult).toMatchObject({ entryId: "fresh-result", view: { text: "Counted once" } });
+    expect(observation.snapshot()).toBe(captured);
     expect(delivered.filter((event) => event.type === "run_start")).toHaveLength(1);
     expect(delivered.filter((event) => event.type === "run_end")).toHaveLength(1);
     expect(delivered).toContainEqual({

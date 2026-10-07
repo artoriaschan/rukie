@@ -224,10 +224,10 @@ export async function createConversationObservation(options: ConversationObserva
       }),
     };
   }
-  function enrich(message: TranscriptMessage): TranscriptMessage {
+  function enrich(message: TranscriptMessage, calls = callArgs): TranscriptMessage {
     if (message.role === "assistant") return { ...assistant(message), entryId: message.entryId };
     if (message.role !== "toolResult") return message;
-    const call = callArgs.get(message.toolCallId);
+    const call = calls.get(message.toolCallId);
     const view = call ? presentResult(tool(call.name), call.args, message) : undefined;
     return {
       ...message,
@@ -247,7 +247,7 @@ export async function createConversationObservation(options: ConversationObserva
           callArgs.set(block.id, { name: block.name, args: block.arguments });
       }
     }
-    messages = raw.map(enrich);
+    messages = raw.map((message) => enrich(message));
     messagesByEntry = new Map();
     for (const message of messages) {
       if (!message.entryId) continue;
@@ -571,6 +571,17 @@ export async function createConversationObservation(options: ConversationObserva
   return {
     snapshot: () => snapshot,
     messages: () => messages,
+    // Present fresh committed DTOs without replacing this observation's captured frame.
+    present: (input: readonly TranscriptMessage[]) => {
+      const calls = new Map(callArgs);
+      for (const message of input) {
+        if (message.role !== "assistant") continue;
+        for (const block of message.content)
+          if (block.type === "toolCall")
+            calls.set(block.id, { name: block.name, args: block.arguments });
+      }
+      return input.map((message) => enrich(message, calls));
+    },
     running: () => parts(current).live.run !== undefined,
     view: () => current,
     flush: () =>
