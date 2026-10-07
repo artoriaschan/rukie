@@ -57,5 +57,9 @@ export {
   type SessionNotice,
 } from "./session/session-notice.ts";
 
-export type { TranscriptMessage } from "./session/messages.ts";
+export type {
+  TranscriptMessage,
+  TranscriptAssistantMessage,
+  TranscriptToolResult,
+} from "./session/messages.ts";
 export type { BackgroundActivity } from "./session/events.ts";
