@@ -96,7 +96,7 @@ test.each(["assistant", "toolResult"] as const)(
       if (rejectedRole === "assistant") tail.finish();
       else tail.tool("write", { path: "child-effect.txt", content: "saved effect" });
       await app.waitFor(() => rejected);
-      await app.waitFor(() => app.screen().join("\n").includes("failed"));
+      await app.waitFor(() => app.screen().join("\n").includes("Run ended with error"));
       await app.waitFor(() => !app.screen().join("\n").includes("child ghost body"));
 
       expect(rejected).toBe(true);
