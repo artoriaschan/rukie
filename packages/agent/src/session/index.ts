@@ -33,6 +33,7 @@ import type {
   Settings,
   HooksSettings,
   ContextReport,
+  ContextUsageEvent,
   McpServerView,
   McpSnapshot,
   JobView,
@@ -249,6 +250,8 @@ export interface Session {
   setPermissionMode(mode: PermissionMode): void;
   /** Snapshot the restored context; usable while idle or running. */
   contextReport(): ContextReport;
+  /** Snapshot current usage; restored context is estimated until a new provider response. */
+  contextUsage(): ContextUsageEvent;
   /**
    * Returns an independent copy of the latest committed snapshot; cached reads never reconnect.
    * Concurrent first reads share a probe that closes its connections before resolving.
@@ -1801,6 +1804,9 @@ async function createSessionInternal(
           scheduleRewake?.();
         }
       }
+    },
+    contextUsage() {
+      return contextUsage(agent.state.messages, model.contextWindow, inputTokens);
     },
     contextReport() {
       return contextReport({

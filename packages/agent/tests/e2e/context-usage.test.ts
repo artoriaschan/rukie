@@ -115,10 +115,19 @@ test("the first Run and resume estimate Context Usage while continuing a live Se
     },
   });
   expect(continued[1]).toMatchObject({ type: "context_usage", used: 90_000 });
+  expect(session.contextUsage().used).toBe(90_000);
 
   const next = providerModel([reply]);
   next.model.contextWindow = 128_000;
   const resumed = await createSession({ ...dirs, ...next, resumeId: session.id });
+  const snapshot = resumed.contextUsage();
+  expect(snapshot.window).toBe(128_000);
+  expect(snapshot.used).toBe(
+    Object.values(snapshot.segments).reduce((sum, count) => sum + count, 0),
+  );
+  expect(snapshot.used).not.toBe(90_000);
+  expect(snapshot.segments.assistant).toBe(4);
+  expect(next.contexts).toHaveLength(0);
   const events: SessionEvent[] = [];
   await resumed.run("ijkl", {
     onEvent: (event) => {

@@ -8,6 +8,42 @@ import { startWithClock } from "../helpers/clock-app";
 
 const assistant = process.platform === "darwin" ? "⏺" : "●";
 
+test("resume rebuilds the footer context preview before submitting a new prompt", async () => {
+  const argv: string[] = [];
+  const original = createFauxCore({ api: "faux", provider: "faux" });
+  original.setResponses([fauxAssistantMessage("restored context ".repeat(100))]);
+  const app = await startWithClock(argv, {
+    rows: 24,
+    env: { LANG: "en" },
+    prepare: async (root) => {
+      const session = await createSession({
+        cwd: root,
+        homeDir: root,
+        model: original.getModel(),
+        streamFn: withAuxiliaryRequests((model, context, options) =>
+          original.streamSimple(model, context, options),
+        ),
+      });
+      await session.run("saved prompt");
+      argv.push("--resume", session.id);
+      await session.dispose();
+    },
+  });
+  try {
+    await app.waitFor(() => app.screen().includes("❯"));
+    expect(app.screen().join("\n")).toContain("/128k");
+    expect(app.screen().at(-2)).toContain("0→0");
+    expect(app.calls).toHaveLength(0);
+    const before = app.output();
+    app.resize(40, 12);
+    await app.waitFor(() => app.output() !== before);
+    expect(app.screen().join("\n")).toContain("/128k");
+    expect(app.calls).toHaveLength(0);
+  } finally {
+    await app.cleanup();
+  }
+});
+
 test("resume replays stored text before input and appends the next Run to the same Session", async () => {
   const argv: string[] = [];
   let root = "";

@@ -4,6 +4,10 @@
 
 View 不写入 Transcript，也不进入模型上下文。`Session.messages` 在读取时重算调用与结果 view；恢复时使用当前内置 presenter，未连接的 MCP 工具没有 view。Presenter 只能读取参数、结果文本及 details，不查询当前文件或运行状态。前台 bash details 保存退出码与信号；write 保存写入前后内容，超过 50 KiB 的文件保存 unified patch，edit 保存实际修改 patch，以便恢复后重算 diff。
 
+# Context Usage
+
+`session.contextUsage()` 同步返回当前模型上下文的占用及分段快照，不发起模型请求、不写入 Transcript。Session Resume 按恢复的当前上下文重新估算；活跃 Session 收到新回复后，总占用采用最近 provider 输入计数，分段仍按当前上下文估算。Frontend 可在恢复视图时读取该快照，并继续消费 `context_usage` 事件更新预览。分类报告使用 `session.contextReport()`，其恢复后的历史 provider 计数规则独立于该占用预览。
+
 # Background Job
 
 Session 持有一个 registry；所有 bash 使用同一条进程组启动路径。前台记录对模型不可见，在超时前完成后移除；`run_in_background: true` 返回 `started background job bash-N`，工具结果的 `details.jobId` 保留关联。前台超时返回 `[still running after <s>s; moved to background job bash-N]` 和后台操作说明，同样带 `details.jobId`，进程继续运行；此前已显示的输出不在后续 `job_output` 中重复。每个 Session 的后台任务处于 running 或 stopping 的数量达到 10 时，拒绝新的显式后台启动；超时转后台不受该上限限制。前台调用被取消会终止进程，后台任务在 Run 结束或取消后继续运行；Session Resume 创建空 registry。

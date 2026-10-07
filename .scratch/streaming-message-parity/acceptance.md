@@ -203,3 +203,9 @@ env -u NO_COLOR LANG=en_US.UTF-8 bun "$TASK_REPO/apps/neant-tui/src/main.tsx" --
 会话内容容器增加一行底部内边距，底部跟随时末条消息与输入框之间保留两行空白。留白属于滚动内容，不额外缩小视口；消息之间原有一行间隔保留。回归先复现原有一行间隔，再验证 80×24 与 40×12 的两行留白。
 
 验证：消息间距、导航、展开与 Markdown 代码框共 4 个文件，18 pass / 0 fail，197 assertions，4.42s；`bun run check:dev` 通过。覆盖底部跟随、历史阅读位置及小窗口，未运行全量测试。
+
+## 2026-10-07 Resume 上下文预览
+
+恢复消息后，conversation 初始化读取 Session 的当前 Context Usage 快照，首次输入前即可重建底部占用预览。Agent Core 的 `contextUsage()` 复用现有计算路径，恢复时重算分段和总量，新回复后保留当前 provider 输入计数；不发起模型请求、不累加历史用量。公开接口义务记录在 Agent Core README，保持原有上下文语义，无需新增 ADR。
+
+验证：修正前 resume 的底部无 `/128k`，修正后首次输入前和 40×12 resize 后均可见且模型调用数为零。上下文、分类报告、恢复、恢复面板和 conversation 共 6 个文件，35 pass / 0 fail，1329 assertions，5.79s；`bun run check:dev` 通过。初次静态检查的一处测试格式问题已修正；小窗口恢复断言不再要求较早中断提示处于底部视口，仍通过子 Run 历史面板验证其准确中断原因。未运行全量测试。

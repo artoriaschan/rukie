@@ -852,6 +852,7 @@ function createViewState(
     reasoning: "",
     assistantAnchor: crypto.randomUUID(),
     model: session.model ?? model,
+    contextUsage: session.messages.length ? session.contextUsage() : undefined,
     running: session.running,
     input: 0,
     output: 0,
