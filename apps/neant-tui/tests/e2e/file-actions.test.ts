@@ -173,3 +173,83 @@ test.each([80, 120])(
     }
   },
 );
+
+test("edit headers expose their path as an underlined action segment", async () => {
+  const opened: string[] = [];
+  const path = "edit.txt";
+  const app = await start(["--permission-mode", "full-access", "edit"], {
+    columns: 100,
+    rows: 40,
+    env: { LANG: "en_US.UTF-8" },
+    prepare: (root) => writeFile(join(root, path), "original\n"),
+    host: {
+      openExternal: async (target) => {
+        opened.push(target);
+      },
+    },
+  });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("read", { path });
+    await app.waitFor(() => app.calls.length === 2);
+    app.calls[1]!.tool("edit", { path, edits: [{ oldText: "original", newText: "updated" }] });
+    await app.waitFor(() => app.calls.length === 3);
+    app.calls[2]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    const row = app.screen().findIndex((line) => line.includes("Edit("));
+    expect(app.screen()[row]).toContain("Edit(edit.txt)");
+    const column = Bun.stringWidth(app.screen()[row]!.split(path)[0]!);
+    expect(app.terminal.buffer.active.getLine(row)!.getCell(column)!.isUnderline()).toBeTruthy();
+    app.stdin.write(`\x1b[<0;${column + 1};${row + 1}M\x1b[<0;${column + 1};${row + 1}m`);
+    await app.waitFor(() => app.screen().join("\n").includes("File actions"));
+    app.stdin.write("\r");
+    await app.waitFor(() => opened.length === 1);
+    expect(opened).toEqual([join(app.root, path)]);
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("resumed card paths retain actions and report unavailable clipboard", async () => {
+  const { createFauxCore, fauxAssistantMessage, fauxToolCall } =
+    await import("@earendil-works/pi-ai");
+  const { createSession } = await import("@neant/agent");
+  const { withAuxiliaryRequests } = await import("../helpers/auxiliary-model");
+  const argv: string[] = [];
+  const path = "stored.txt";
+  const app = await start(argv, {
+    columns: 100,
+    rows: 40,
+    env: { LANG: "en_US.UTF-8" },
+    async prepare(root) {
+      await writeFile(join(root, path), "one\ntwo\nthree\nfour\nfive\n");
+      const faux = createFauxCore({ api: "faux", provider: "faux" });
+      faux.setResponses([
+        fauxAssistantMessage(fauxToolCall("read", { path }), { stopReason: "toolUse" }),
+        fauxAssistantMessage("stored conclusion"),
+      ]);
+      const session = await createSession({
+        cwd: root,
+        homeDir: root,
+        model: faux.getModel(),
+        streamFn: withAuxiliaryRequests(faux.streamSimple),
+      });
+      await session.run("inspect stored file");
+      argv.push("--resume", session.id);
+      await session.dispose();
+    },
+    host: { writeClipboard: async () => false },
+  });
+  try {
+    await app.waitFor(() => app.screen().includes("❯"));
+    clickText(app, path);
+    await app.waitFor(() => app.screen().join("\n").includes("File actions"));
+    app.stdin.write("3");
+    await app.waitFor(() => app.screen().join("\n").includes("Clipboard is unavailable"));
+    expect(app.screen().join("\n")).not.toContain("File actions");
+    expect(app.screen().join("\n")).not.toContain("five");
+    expect(app.calls).toHaveLength(0);
+  } finally {
+    await app.cleanup();
+  }
+});

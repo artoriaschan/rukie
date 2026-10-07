@@ -89,12 +89,14 @@ export function ToolCall({
   const title =
     callView?.card === "terminal"
       ? callView.command
-      : callView?.card === "generic" && callView.server && callView.tool
-        ? `${callView.server} › ${callView.tool}`
-        : callView?.card === "generic" && callView.title
-          ? callView.title
-          : (JSON.stringify(callView?.card === "generic" ? (callView.rawInput ?? args) : args) ??
-            "");
+      : callView?.card === "diff"
+        ? (callView.diffs[0]?.path ?? "")
+        : callView?.card === "generic" && callView.server && callView.tool
+          ? `${callView.server} › ${callView.tool}`
+          : callView?.card === "generic" && callView.title
+            ? callView.title
+            : (JSON.stringify(callView?.card === "generic" ? (callView.rawInput ?? args) : args) ??
+              "");
   const path =
     resultView?.card === "read"
       ? resultView.path
@@ -115,6 +117,7 @@ export function ToolCall({
       : 0;
   const jsonTitle =
     callView?.card !== "terminal" &&
+    callView?.card !== "diff" &&
     !(callView?.card === "generic" && (callView.title || (callView.server && callView.tool)));
   const commandLines = callView?.card === "terminal" ? title.split(/\r?\n/) : undefined;
   const hiddenLines =
