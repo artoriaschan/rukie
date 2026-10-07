@@ -312,10 +312,9 @@ export function ToolCall({
         scrollAnchorId={id ? `tool-${id}-header` : undefined}
         content={titleHidden ? `${fullHeader}\n${metadata}` : undefined}
         disabled={imagesSuspended}
-        width={headerWidth}
         onClick={toggle}
       >
-        <ThemedBox width={headerWidth}>
+        <ThemedBox flexGrow={1} flexShrink={1}>
           <ThemedBox selectable={false} width={2} flexShrink={0}>
             <ThemedText
               preserveWhitespace
