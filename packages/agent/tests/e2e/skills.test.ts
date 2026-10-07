@@ -19,9 +19,9 @@ afterEach(async () => {
   await dirs?.cleanup();
 });
 function reminders(session: Awaited<ReturnType<typeof createAgentSession>>, source: string) {
-  return session.messages.filter(
-    (message) => message.role === "system-reminder" && message.source === source,
-  );
+  return session.messages
+    .filter((message) => message.role === "system-reminder")
+    .filter((message) => message.source === source);
 }
 
 async function writeSkill(
@@ -126,7 +126,7 @@ test("resume preserves the model and Transcript prefix and appends only changed 
   const fake = fakeModel([fauxAssistantMessage("first reply")]);
   const session = await createSession({ ...dirs, ...fake, now });
   await session.run("/review original prompt");
-  const before = structuredClone(session.messages);
+  const before = structuredClone([...session.messages]);
   await session.close();
   const next = fakeModel([fauxAssistantMessage("continued")]);
   const resumed = await createSession({ ...dirs, ...next, now, resumeId: session.id });
