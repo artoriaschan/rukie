@@ -26,6 +26,16 @@ async function runRequest(session: Session, ...args: Parameters<Session["run"]>)
   await session.waitForRequest(result.requestId);
   return result;
 }
+function agentId(details: unknown) {
+  if (
+    !details ||
+    typeof details !== "object" ||
+    !("agentId" in details) ||
+    typeof details.agentId !== "string"
+  )
+    throw new Error("Expected subagent result identity");
+  return details.agentId;
+}
 const call = (name: string, args = {}) =>
   fauxAssistantMessage(fauxToolCall(name, args), { stopReason: "toolUse" });
 
@@ -71,7 +81,7 @@ test("idle children keep their own history and todos when send_message starts a 
     (context) => {
       const result = context.messages.findLast((message) => message.role === "toolResult")!;
       if (result.role !== "toolResult") throw new Error("Expected child result");
-      id = (result.details as { agentId: string }).agentId;
+      id = agentId(result.details);
       return call("list_agents");
     },
     (context) => {
@@ -134,7 +144,7 @@ test.each(["explore", "custom", "deleted", "fork"])(
       (context) => {
         const result = context.messages.findLast((message) => message.role === "toolResult")!;
         if (result.role !== "toolResult") throw new Error("Expected tool result");
-        id = (result.details as { agentId: string }).agentId;
+        id = agentId(result.details);
         return fauxAssistantMessage("parent done");
       },
     ]);
@@ -244,7 +254,7 @@ test("send_message steers the active child before its next model request and lis
     const result = context.messages.findLast((message) => message.role === "toolResult")!;
     if (result.role === "toolResult" && result.toolName === "subagent") {
       await childStarted.promise;
-      id = (result.details as { agentId: string }).agentId;
+      id = agentId(result.details);
       return call("list_agents");
     }
     if (result.role === "toolResult" && result.toolName === "list_agents") {
@@ -281,7 +291,7 @@ test("send_message cannot address a child belonging to another parent session", 
     fauxAssistantMessage("child done"),
     (context) => {
       const result = context.messages.findLast((message) => message.role === "toolResult")!;
-      if (result.role === "toolResult") id = (result.details as { agentId: string }).agentId;
+      if (result.role === "toolResult") id = agentId(result.details);
       return fauxAssistantMessage("done");
     },
   ]);
@@ -323,7 +333,7 @@ test("an idle continuation is rejected at eight running children while active st
       );
       const activeResult = results.at(-1)!;
       if (activeResult.role !== "toolResult") throw new Error("Expected tool result");
-      activeId = (activeResult.details as { agentId: string }).agentId;
+      activeId = agentId(activeResult.details);
       return call("send_message", { agent_id: idleId, message: "should reject" });
     }
     if (last.role === "toolResult" && last.toolName === "send_message" && last.isError) {
@@ -341,7 +351,7 @@ test("an idle continuation is rejected at eight running children while active st
     fauxAssistantMessage("idle done"),
     (context) => {
       const result = context.messages.findLast((message) => message.role === "toolResult")!;
-      if (result.role === "toolResult") idleId = (result.details as { agentId: string }).agentId;
+      if (result.role === "toolResult") idleId = agentId(result.details);
       return fauxAssistantMessage(
         Array.from({ length: 8 }, (_, index) =>
           fauxToolCall("subagent", { description: `Active ${index}`, prompt: "active" }),
@@ -365,7 +375,7 @@ test("parallel messages to an idle cold child start one Run and steer the follow
     fauxAssistantMessage("original done"),
     (context) => {
       const result = context.messages.findLast((message) => message.role === "toolResult")!;
-      if (result.role === "toolResult") id = (result.details as { agentId: string }).agentId;
+      if (result.role === "toolResult") id = agentId(result.details);
       return fauxAssistantMessage("done");
     },
   ]);
