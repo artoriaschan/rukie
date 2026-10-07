@@ -33,7 +33,7 @@ import {
   type JobOutput,
 } from "@rukie/shared";
 import type { SessionEvent } from "./events.ts";
-import { transcriptMessages, type TranscriptMessage } from "./messages.ts";
+import { modelContextMessages, transcriptMessages, type TranscriptMessage } from "./messages.ts";
 export type { SessionEvent } from "./events.ts";
 import { createJobs } from "../tools/jobs/index.ts";
 import { resolveModel, isTrustedProject, modelState } from "../config/index.ts";
@@ -455,14 +455,23 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     let wrapup: string | undefined;
     let permissionMode = options.permissionMode ?? settings.permissionMode ?? "ask";
     const sessionAllowRules = options.sessionAllowRules ?? [];
-    let permissionChecks = Promise.resolve();
+    const sessionGrantListeners = new Set<() => void>();
+    const permissionChecks = new Map<number, Promise<void>>();
     const serializePermissionChecks =
-      (check: ReturnType<typeof createPermissionGate>["beforeTool"]): typeof check =>
+      (
+        check: ReturnType<typeof createPermissionGate>["beforeTool"],
+        conversationId: number,
+      ): typeof check =>
       (...args) => {
-        const checked = permissionChecks.then(() => check(...args));
-        permissionChecks = checked.then(
-          () => {},
-          () => {},
+        const checked = (permissionChecks.get(conversationId) ?? Promise.resolve()).then(() =>
+          check(...args),
+        );
+        permissionChecks.set(
+          conversationId,
+          checked.then(
+            () => {},
+            () => {},
+          ),
         );
         return checked;
       };
@@ -940,6 +949,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         allow: [...(settings.permissions?.allow ?? []), ...(options.allowRules ?? [])],
       }),
       sessionAllowRules,
+      sessionGrantListeners,
       getMode: () => permissionMode,
       getTools: () => tools,
       getMessages: async () => {
@@ -1037,6 +1047,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       }
     >();
     const subagents = createSubagentController({
+      onWarning: warn,
       harness,
       parent: conversation,
       parentSessionId: lease.id,
@@ -1119,6 +1130,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             session_id: childId,
             agent_id: childId,
             agent_type: type.name,
+            agent_transcript_path: join(store.key(lease.id), "main.jsonl"),
             model: `${selected.provider}/${selected.id}`,
             ...extra,
           });
@@ -1285,6 +1297,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             allow: [...(settings.permissions?.allow ?? []), ...(options.allowRules ?? [])],
           }),
           sessionAllowRules,
+          sessionGrantListeners,
           getMode: () => permissionMode,
           getTools: () => childTools,
           getMessages: async () => {
@@ -1411,7 +1424,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           setTodo: async (todos) => {
             await childState.set("todo", todos, context);
           },
-          onQuestion: options.onQuestion,
+          onQuestion: options.onQuestion
+            ? (request) =>
+                options.onQuestion!({ ...request, origin: { agentId: childId, description } })
+            : undefined,
           onInteractionStart: childNotify,
           webFetch: options.webFetch,
           fileTracking: childTracking,
@@ -1450,7 +1466,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           tools: childTools,
           hooks: [
             hook(ToolTask, {
-              beforeTool: serializePermissionChecks(childGate.beforeTool),
+              beforeTool: serializePermissionChecks(childGate.beforeTool, Number(child.id)),
               afterTool: async (call, result, _api, ctx) => {
                 const changed = await childHooks.run(
                   result.isError ? "PostToolUseFailure" : "PostToolUse",
@@ -1738,12 +1754,16 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             }, context);
           }
           tracking.finishRequest();
-          await prepareReminders(context, false);
+          await prepareReminders(context, false, Number(entry.id));
         }
       });
       return compactionHooks;
     };
-    async function prepareReminders(ctx = context, includeHookContext = true) {
+    async function prepareReminders(
+      ctx = context,
+      includeHookContext = true,
+      afterCompactionId?: number,
+    ) {
       if (includeHookContext)
         await conversation.commit(async (tx) => {
           const owned = await tx.doc(CompactHookContextDoc, conversation.id);
@@ -1788,9 +1808,13 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         ...(options.reminderSources ?? []),
       ];
       const reminders = await collectReminders({
-        messages: observation
-          ? [...observation.messages()]
-          : transcriptMessages((await conversation.context(ctx)).entries),
+        messages:
+          afterCompactionId === undefined
+            ? observation
+              ? [...observation.messages()]
+              : transcriptMessages((await conversation.context(ctx)).entries)
+            : [],
+        includeEnvironment: afterCompactionId === undefined,
         cwd,
         homeDir: options.homeDir,
         now: options.now?.() ?? new Date(),
@@ -1798,7 +1822,20 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       });
       for (const reminder of reminders)
         if (reminder.source === "file-changes") await tracking.persistReminder(reminder);
-        else await appendReminder(reminder, ctx);
+        else if (afterCompactionId === undefined) await appendReminder(reminder, ctx);
+        else
+          await conversation.commit((tx) => {
+            const draft = reminderEntry(reminder);
+            return tx.appendEntry(conversation.id, {
+              ...draft,
+              data: {
+                source: reminder.source,
+                content: reminder.content,
+                timestamp: reminder.timestamp,
+                afterCompactionId,
+              },
+            });
+          }, ctx);
     }
     const rebuildTools = async (reportDiscovery = false) => {
       skills = await loadSkills();
@@ -1877,7 +1914,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             },
           }),
           hook(ToolTask, {
-            beforeTool: serializePermissionChecks(gate.beforeTool),
+            beforeTool: serializePermissionChecks(gate.beforeTool, Number(conversation.id)),
             afterTool: async (call, result, api, ctx) => {
               const changed = await hooks.run(
                 result.isError ? "PostToolUseFailure" : "PostToolUse",
@@ -2001,7 +2038,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 wrapup = undefined;
               }
               await prepareReminders(ctx);
-              contextMessages = (await conversation.context(ctx)).messages;
+              contextMessages = modelContextMessages(await conversation.context(ctx));
               await observation.flush();
               custom(contextUsage(contextMessages, model.contextWindow, latestInputTokens()));
               return { messages: contextMessages };

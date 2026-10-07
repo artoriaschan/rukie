@@ -542,6 +542,16 @@ export async function createConversationObservation(options: ConversationObserva
         change.value.conversationId === conversation.id &&
         change.value.kind === "rukie.message-facts",
     );
+    const anchoredReminder = publication.changes.some(
+      (change) =>
+        change.type === "entry" &&
+        change.value.conversationId === conversation.id &&
+        change.value.kind === "rukie.reminder" &&
+        change.value.data &&
+        typeof change.value.data === "object" &&
+        !Array.isArray(change.value.data) &&
+        typeof change.value.data.afterCompactionId === "number",
+    );
     // A replacement snapshot supersedes message deltas, while native lifecycle
     // receipts from that same commit still belong to this captured frame.
     enqueue(
@@ -555,7 +565,9 @@ export async function createConversationObservation(options: ConversationObserva
                 ),
             ),
           ]
-        : events,
+        : anchoredReminder
+          ? [...events, snapshot]
+          : events,
     );
   });
   function stop() {
