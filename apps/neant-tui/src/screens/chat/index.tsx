@@ -1,3 +1,4 @@
+import { SmoothRevealProvider } from "../../components/tool-call/use-smooth-reveal";
 import { DiffLayoutProvider } from "../../components/tool-call/diff-layout";
 import { PlanReviewRow } from "../../components/plan-review/plan-review-row";
 import { showsToolCard } from "./conversation";
@@ -187,27 +188,29 @@ export async function createChat(
       );
       return (
         <DiffLayoutProvider value={options.settings?.diffLayout}>
-          <Chat
-            key={current.session.id}
-            session={current.session}
-            conversation={current.conversation}
-            history={inputHistory}
-            imageViewer={imageViewer}
-            host={host}
-            submit={submit}
-            interactions={interactions}
-            homeDir={options.homeDir}
-            cwd={options.cwd}
-            checkpointCwd={checkpointCwd}
-            thinking={options.settings?.thinking}
-            locale={locale}
-            onExit={onExit}
-            models={models}
-            sessions={() => listSessions(options)}
-            skills={skills}
-            replaceSession={replaceSession}
-            writeTitle={writeTitle}
-          />
+          <SmoothRevealProvider key={current.session.id}>
+            <Chat
+              key={current.session.id}
+              session={current.session}
+              conversation={current.conversation}
+              history={inputHistory}
+              imageViewer={imageViewer}
+              host={host}
+              submit={submit}
+              interactions={interactions}
+              homeDir={options.homeDir}
+              cwd={options.cwd}
+              checkpointCwd={checkpointCwd}
+              thinking={options.settings?.thinking}
+              locale={locale}
+              onExit={onExit}
+              models={models}
+              sessions={() => listSessions(options)}
+              skills={skills}
+              replaceSession={replaceSession}
+              writeTitle={writeTitle}
+            />
+          </SmoothRevealProvider>
         </DiffLayoutProvider>
       );
     },

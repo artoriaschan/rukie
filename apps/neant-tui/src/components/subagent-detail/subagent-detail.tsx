@@ -178,7 +178,7 @@ export function SubagentDetailScene({
             subagent.toolCalls.map((tool) => (
               <ToolCall
                 key={tool.id}
-                id={tool.id}
+                id={`${subagent.agentId}:${tool.id}`}
                 name={tool.name}
                 args={tool.args}
                 summary={`${tool.name} ${tool.argsPreview}`}

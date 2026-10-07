@@ -1,10 +1,11 @@
+import { useSmoothReveal } from "./use-smooth-reveal";
 import { useDiffLayout } from "./diff-layout";
 import { Markdown } from "../markdown";
 import { unifiedDiffLines } from "./diff-lines";
 import type { ToolCallView, ToolResultView } from "@neant/shared";
 import { fmtDuration } from "@neant/i18n";
 import { appCopy } from "../../i18n/locales";
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { PromptImage } from "@neant/agent";
 import { ImageGallery } from "../image-gallery";
 import type { Locale } from "@neant/i18n";
@@ -25,6 +26,8 @@ import {
 } from "@neant/tui";
 
 export function ToolCall({
+  id,
+  replayed = false,
   summary,
   name,
   args,
@@ -63,6 +66,7 @@ export function ToolCall({
   error?: string;
   locale?: Locale;
 }) {
+  const fallbackId = useId();
   const [localExpanded, setExpanded] = useState(false);
   const expanded = globalExpanded || localExpanded;
   const toggle = onToggle ?? (() => setExpanded((value) => !value));
@@ -131,7 +135,13 @@ export function ToolCall({
       : undefined;
   const limit = diffView ? 8 : 3;
   const folded = lines.length > limit + 1;
-  const shown = expanded ? lines.slice(0, 400) : folded ? lines.slice(0, limit) : lines;
+  const window = expanded ? 400 : folded ? limit : lines.length;
+  const visible = useSmoothReveal(
+    id ?? fallbackId,
+    Math.min(lines.length, window),
+    status === "running" && !resultView && callView?.card === "diff" && !expanded && !replayed,
+  );
+  const shown = lines.slice(0, visible);
   const duration =
     status !== "running" && name && startedAt !== undefined && endedAt !== undefined
       ? ` · ${fmtDuration(Math.max(0, endedAt - startedAt), locale)}`
@@ -189,13 +199,7 @@ export function ToolCall({
             <ThemedBox>
               <ThemedText preserveWhitespace>{`${figures.result} `}</ThemedText>
               <SplitDiffView
-                rows={
-                  expanded
-                    ? splitRows.slice(0, 400)
-                    : folded
-                      ? splitRows.slice(0, limit)
-                      : splitRows
-                }
+                rows={splitRows.slice(0, visible)}
                 width={Math.max(0, columns - 3)}
                 onToggle={toggle}
               />
