@@ -1,3 +1,4 @@
+import { withHookTranscript, writeHookTranscript } from "../hooks/transcript.ts";
 import { randomUUID } from "node:crypto";
 import { join, resolve } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -327,6 +328,14 @@ const PendingInputFactsDoc = defineDoc<{ inputs: Record<string, Record<string, J
   fork: "initial",
   initial: () => ({ inputs: {} }),
 });
+const ChildHookContextDoc = defineDoc<{ pending: { source: string; content: string }[] }>({
+  kind: "rukie.child-hook-context",
+  version: 1,
+  scope: "conversation",
+  history: "rewindable",
+  fork: "initial",
+  initial: () => ({ pending: [] }),
+});
 const reminderEntry = (reminder: SystemReminder): EntryDraft => ({
   kind: "rukie.reminder",
   data: { source: reminder.source, content: reminder.content, timestamp: reminder.timestamp },
@@ -423,7 +432,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     const emit = (event: SessionEvent) => {
       for (const listener of listeners) {
         try {
-          listener(event);
+          listener(structuredClone(event));
         } catch (error) {
           warn(String(error));
         }
@@ -593,7 +602,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         throw new Error("Session is busy; it must be idle.");
     };
     let asyncAdmissions = Promise.resolve();
-    const hooks = createHooks({
+    const rootHookRuntime = createHooks({
       callMcpTool: (...args) => mcp.callHookTool(...args),
       settings: settings.hooks,
       cwd,
@@ -608,7 +617,6 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
       onWarning: warn,
       onEvent: async (event) => {
-        custom(event);
         if (event.type === "hook_warning")
           await appendNotice({
             kind: "hook_warning",
@@ -617,6 +625,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             message: event.message,
             ...(event.error ? { error: event.error } : {}),
           });
+        custom(structuredClone(event));
       },
       onAsyncResult: (result, reason) => {
         asyncAdmissions = asyncAdmissions
@@ -663,9 +672,18 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           .catch(warn);
       },
     });
+    const hookTranscriptPath = (id: string) =>
+      join(store.key(lease.id), "hook-transcripts", `${encodeURIComponent(id)}.jsonl`);
+    const hooks = withHookTranscript(
+      rootHookRuntime,
+      () => hookTranscriptPath(lease.id),
+      async () => fullHistory(),
+      !!settings.hooks && Object.values(settings.hooks).some((groups) => groups.length > 0),
+      () => !closed,
+    );
     const hookInput = (extra: Record<string, unknown> = {}): HookInput => ({
       session_id: lease.id,
-      transcript_path: join(store.key(lease.id), "main.jsonl"),
+      transcript_path: hookTranscriptPath(lease.id),
       cwd,
       permission_mode: permissionMode,
       model: `${model.provider}/${model.id}`,
@@ -689,6 +707,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           }),
         ctx,
       );
+      if (settings.hooks && Object.values(settings.hooks).some((groups) => groups.length > 0))
+        await writeHookTranscript(hookTranscriptPath(lease.id), await fullHistory());
     }
     async function applyHookResult(result: CommonHookResult, source: string, ctx = context) {
       for (const text of result.systemMessages)
@@ -1038,6 +1058,110 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         ),
     });
     const childHookOwners = new Map<number, ReturnType<typeof createHooks>>();
+    const childHookStarted = new Set<number>();
+    const persistChildHook = async (
+      child: Parameters<Parameters<typeof createSubagentController>[0]["childAgent"]>[1],
+      result: CommonHookResult,
+      source: string,
+      ctx = context,
+    ) => {
+      const live = await harness.snapshot(LiveDoc, child.id, ctx);
+      await child.commit(async (tx) => {
+        const pending = !live?.run ? await tx.doc(ChildHookContextDoc, child.id) : undefined;
+        for (const message of result.systemMessages)
+          await tx.appendEntry(child.id, {
+            kind: "rukie.notice",
+            data: {
+              role: "session-notice",
+              notice: { kind: "hook_message", message },
+              timestamp: Date.now(),
+            },
+          });
+        if (pending) {
+          pending.pending.push(...result.additionalContext.map((content) => ({ source, content })));
+        } else
+          for (const content of result.additionalContext)
+            await tx.appendEntry(
+              child.id,
+              reminderEntry({ role: "system-reminder", source, content, timestamp: Date.now() }),
+            );
+      }, ctx);
+    };
+    const ownedChildHooks = (
+      type: Parameters<Parameters<typeof createSubagentController>[0]["childAgent"]>[0],
+      child: Parameters<Parameters<typeof createSubagentController>[0]["childAgent"]>[1],
+      selected: Model<Api>,
+      childId: string,
+      description: string,
+    ) => {
+      const previous = childHookOwners.get(Number(child.id));
+      if (previous) return previous;
+      let owner = createHooks({
+        settings: mergeHooks(settings.hooks, type.hooks),
+        cwd,
+        homeDir: options.homeDir,
+        projectDir: cwd,
+        model: {
+          models,
+          getModel: async (requested) =>
+            requested || settings.reviewModel
+              ? selectedModel(requested ?? settings.reviewModel!)
+              : selected,
+        },
+        callMcpTool: (...args) => mcp.callHookTool(...args),
+        onWarning: warn,
+        onEvent: (event) =>
+          custom({
+            type: "subagent_event",
+            agentId: childId,
+            description,
+            subagentType: type.name,
+            event: { ...event, sessionId: childId },
+          }),
+        onAsyncResult: (result, reason) => {
+          asyncAdmissions = asyncAdmissions
+            .then(async () => {
+              if (closed) return;
+              await persistChildHook(child, result, "async-hook");
+              for (const content of result.systemMessages)
+                await child.commit(
+                  (tx) =>
+                    tx.appendEntry(
+                      child.id,
+                      reminderEntry({
+                        role: "system-reminder",
+                        source: "async-hook",
+                        content,
+                        timestamp: Date.now(),
+                      }),
+                    ),
+                  context,
+                );
+              if (reason) {
+                const requestId = `hook:${childId}:${randomUUID()}`;
+                const submitted = await submit(reason, [], "followUp", requestId);
+                void resultFor(requestId, submitted.id)
+                  .then(async (result) => {
+                    custom({ type: "result", ...result });
+                    await session.waitForRequest(requestId);
+                  })
+                  .catch(warn);
+              }
+            })
+            .catch(warn);
+        },
+      });
+
+      owner = withHookTranscript(
+        owner,
+        () => hookTranscriptPath(childId),
+        async () => fullHistory(child.id),
+        Object.values(mergeHooks(settings.hooks, type.hooks)).some((groups) => groups.length > 0),
+        () => !closed,
+      );
+      childHookOwners.set(Number(child.id), owner);
+      return owner;
+    };
     const childJobRegistries = new Map<string, ReturnType<typeof createJobs>>();
     const childResources = new Map<
       number,
@@ -1069,34 +1193,35 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         )?.id;
       },
       async beforeStart(request, child, ctx) {
-        const result = await hooks.run(
+        const type =
+          subagents.types().find((type) => type.name === request.type) ??
+          subagents.types().find((type) => type.name === "general-purpose");
+        if (!type) throw new Error("Subagent type is unavailable.");
+        const saved = (await child.agent(ctx)).model;
+        const selected = saved
+          ? selectedModel(`${saved.provider}/${saved.modelId}`)
+          : type.name === "fork"
+            ? model
+            : type.model
+              ? selectedModel(type.model)
+              : settings.subagentModel
+                ? selectedModel(settings.subagentModel)
+                : model;
+        const owner = ownedChildHooks(type, child, selected, request.agentId, request.description);
+        const result = await owner.run(
           "SubagentStart",
           hookInput({
+            session_id: request.agentId,
+            transcript_path: hookTranscriptPath(request.agentId),
+            agent_transcript_path: hookTranscriptPath(request.agentId),
+            model: `${selected.provider}/${selected.id}`,
             agent_id: request.agentId,
             agent_type: request.type,
             prompt: request.prompt,
           }),
           { signal: ctx.abortSignal, matchQuery: request.type },
         );
-        for (const content of result.additionalContext)
-          await child.commit(
-            (tx) =>
-              tx.appendEntry(
-                child.id,
-                reminderEntry({
-                  role: "system-reminder",
-                  source: "hook:SubagentStart",
-                  content,
-                  timestamp: Date.now(),
-                }),
-              ),
-            ctx,
-          );
-        await applyHookResult(
-          { systemMessages: result.systemMessages, additionalContext: [] },
-          "hook:SubagentStart",
-          ctx,
-        );
+        await persistChildHook(child, result, "hook:SubagentStart", ctx);
         return result.continue === false
           ? { stop: result.stopReason ?? "Stopped by SubagentStart hook." }
           : undefined;
@@ -1130,104 +1255,20 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             session_id: childId,
             agent_id: childId,
             agent_type: type.name,
-            agent_transcript_path: join(store.key(lease.id), "main.jsonl"),
+            transcript_path: hookTranscriptPath(childId),
+            agent_transcript_path: hookTranscriptPath(childId),
             model: `${selected.provider}/${selected.id}`,
             ...extra,
           });
         const applyChildHook = async (result: CommonHookResult, source: string, ctx = context) => {
-          for (const message of result.systemMessages)
-            await child.commit(
-              (tx) =>
-                tx.appendEntry(child.id, {
-                  kind: "rukie.notice",
-                  data: {
-                    role: "session-notice",
-                    notice: { kind: "hook_message", message },
-                    timestamp: Date.now(),
-                  },
-                }),
-              ctx,
-            );
-          for (const content of result.additionalContext)
-            await child.commit(
-              (tx) =>
-                tx.appendEntry(
-                  child.id,
-                  reminderEntry({
-                    role: "system-reminder",
-                    source,
-                    content,
-                    timestamp: Date.now(),
-                  }),
-                ),
-              ctx,
-            );
+          await persistChildHook(child, result, source, ctx);
           if (result.continue === false) {
             childStopped = true;
             childStopReason = result.stopReason;
           }
         };
-        let ownedHooks = childHookOwners.get(Number(child.id));
-        const firstAttachment = !ownedHooks;
-        if (!ownedHooks) {
-          ownedHooks = createHooks({
-            settings: mergeHooks(settings.hooks, type.hooks),
-            cwd,
-            homeDir: options.homeDir,
-            projectDir: cwd,
-            model: {
-              models,
-              getModel: async (requested) =>
-                requested || settings.reviewModel
-                  ? selectedModel(requested ?? settings.reviewModel!)
-                  : selected,
-            },
-            callMcpTool: (...args) => mcp.callHookTool(...args),
-            onWarning: warn,
-            onEvent: (event) =>
-              custom({
-                type: "subagent_event",
-                agentId: childId,
-                description,
-                subagentType: type.name,
-                event: { ...event, sessionId: childId },
-              }),
-            onAsyncResult: (result, reason) => {
-              asyncAdmissions = asyncAdmissions
-                .then(async () => {
-                  if (closed) return;
-                  await applyChildHook(result, "async-hook");
-                  for (const content of result.systemMessages)
-                    await child.commit(
-                      (tx) =>
-                        tx.appendEntry(
-                          child.id,
-                          reminderEntry({
-                            role: "system-reminder",
-                            source: "async-hook",
-                            content,
-                            timestamp: Date.now(),
-                          }),
-                        ),
-                      context,
-                    );
-                  if (reason) {
-                    const requestId = `hook:${childId}:${randomUUID()}`;
-                    const submitted = await submit(reason, [], "followUp", requestId);
-                    void resultFor(requestId, submitted.id)
-                      .then(async (result) => {
-                        custom({ type: "result", ...result });
-                        await session.waitForRequest(requestId);
-                      })
-                      .catch(warn);
-                  }
-                })
-                .catch(warn);
-            },
-          });
-          childHookOwners.set(Number(child.id), ownedHooks);
-        }
-        const childHooks = ownedHooks;
+        const firstAttachment = !childHookStarted.has(Number(child.id));
+        const childHooks = ownedChildHooks(type, child, selected, childId, description);
         const childNotify: import("../interaction/index.ts").OnInteractionStart = async (
           notification,
         ) => {
@@ -1506,6 +1547,20 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             }),
             hook(GenerationTask, {
               beforeRequest: async (_request, _api, ctx) => {
+                await child.commit(async (tx) => {
+                  const pending = await tx.doc(ChildHookContextDoc, child.id);
+                  for (const { source, content } of pending.pending)
+                    await tx.appendEntry(
+                      child.id,
+                      reminderEntry({
+                        role: "system-reminder",
+                        source,
+                        content,
+                        timestamp: Date.now(),
+                      }),
+                    );
+                  pending.pending = [];
+                }, ctx);
                 const view = await child.context(ctx);
                 const reminders = await collectReminders({
                   messages: transcriptMessages(view.entries),
@@ -1570,6 +1625,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 }
                 if (result.decision !== "block" || !result.reason) return undefined;
                 if (count >= 8) {
+                  warn("SubagentStop hook reached the 8 continuation limit");
                   await child.commit(
                     (tx) =>
                       tx.appendEntry(child.id, {
@@ -1591,6 +1647,23 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                       }),
                     ctx,
                   );
+                  custom({
+                    type: "subagent_event",
+                    agentId: childId,
+                    description,
+                    subagentType: type.name,
+                    event: {
+                      type: "hook_warning",
+                      event: "SubagentStop",
+                      hook: "continuation",
+                      message: "SubagentStop hook reached the 8 continuation limit",
+                      error: {
+                        code: "hook-continuation-limit",
+                        params: { event: "SubagentStop", limit: "8" },
+                      },
+                      sessionId: childId,
+                    },
+                  });
                   return undefined;
                 }
                 const reason = result.reason;
@@ -1660,6 +1733,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         };
         registry.install(extension);
         if (firstAttachment) {
+          childHookStarted.add(Number(child.id));
           const source = type.name === "fork" ? "fork" : selection.retained ? "resume" : "startup";
           await applyChildHook(
             await childHooks.run("SessionStart", childInput({ source }), { matchQuery: source }),
@@ -2200,6 +2274,19 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               if (result.decision === "block" && result.reason) {
                 if (count >= 8) {
                   warn("Stop hook reached the 8 continuation limit");
+                  await appendNotice(
+                    {
+                      kind: "hook_warning",
+                      event: "Stop",
+                      hook: "continuation",
+                      message: "Stop hook reached the 8 continuation limit",
+                      error: {
+                        code: "hook-continuation-limit",
+                        params: { event: "Stop", limit: "8" },
+                      },
+                    },
+                    ctx,
+                  );
                   custom({
                     type: "hook_warning",
                     event: "Stop",
@@ -2254,8 +2341,24 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         ),
         controller: subagents,
         report: reportDiscovery
-          ? (discovery) => {
+          ? async (discovery) => {
               for (const warning of discovery.warnings) warn(warning);
+              for (const warning of discovery.hookWarnings) {
+                await appendNotice({
+                  kind: "hook_warning",
+                  event: "SubagentStart",
+                  hook: warning.source,
+                  message: warning.message,
+                  error: warning.error,
+                });
+                custom({
+                  type: "hook_warning",
+                  event: "SubagentStart",
+                  hook: warning.source,
+                  message: warning.message,
+                  error: warning.error,
+                });
+              }
             }
           : undefined,
       });
@@ -2583,6 +2686,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             },
           });
         }, context);
+        await writeHookTranscript(hookTranscriptPath(lease.id), await fullHistory());
         throw new PromptHookBlocked(result);
       }
       await prepareReminders();
@@ -2784,14 +2888,14 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       clearGoal: () => goal.clear(),
       subscribe(listener) {
         listeners.add(listener);
-        listener(observation.snapshot());
+        listener(structuredClone(observation.snapshot()));
         return () => listeners.delete(listener);
       },
       get messages() {
-        return observation.messages();
+        return structuredClone(observation.messages());
       },
       toolState: (name) => state.get(name),
-      runSummaries: () => runSummaries,
+      runSummaries: () => structuredClone(runSummaries),
       contextUsage: () => contextUsage(modelMessages(), model.contextWindow, latestInputTokens()),
       contextReport: () =>
         contextReport({
@@ -3296,7 +3400,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         await conversation.waitForIdle(context);
         await observation.flush();
       },
-      close(reason = "other") {
+      close(reason = "exit") {
         return (closing ??= (async () => {
           if (closed) return;
           closed = true;

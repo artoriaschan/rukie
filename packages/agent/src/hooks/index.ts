@@ -220,7 +220,7 @@ export function createHooks(options: {
                 event,
                 hook,
                 message: warning,
-                error,
+                error: { ...error },
               };
               // Shutdown may be called by an event observer awaiting dispose itself.
               if (event === "SessionEnd") {
