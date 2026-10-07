@@ -27,14 +27,14 @@ const settings = {
       api: "openai-completions" as const,
       baseUrl: "http://localhost:1/v1",
       apiKeyEnv: "RUKIE_SWITCH_TEST_KEY",
-      models: [{ id: "first" }, { id: "second", contextWindow: 32000 }],
+      models: [{ id: "first" }, { id: "second", contextWindow: 128000 }],
     },
   ],
 };
 
 function switchModels(fake: ReturnType<typeof fakeModel>) {
   const models = withModelAlias(fake.models, "switch", ["first", "second"], {
-    contextWindow: 32000,
+    contextWindow: 128000,
   });
   const provider = models.getProviders().find((provider) => provider.id === "switch");
   if (!provider) throw new Error("Missing fixture switch provider");
