@@ -794,22 +794,48 @@ test("stream-json emits session metadata, verbatim pi events, and the Run result
   });
 });
 
-test("stream-json reports compaction start and end around a large tool result", async () => {
+test("stream-json reports native automatic compaction of eligible history", async () => {
   const { server, ...dirs } = await setup(
     {},
     {
-      toolCalls: [{ name: "read", arguments: { path: "large.txt" } }],
+      promptTokens: 8000,
+      responses: [
+        {
+          toolCalls: [
+            { name: "read", arguments: { path: "large.txt" } },
+            { name: "read", arguments: { path: "large.txt" } },
+          ],
+        },
+        "recorded older evidence",
+        "recent protected reply",
+        "summary of older evidence",
+        "continued after compaction",
+      ],
     },
   );
-  await Bun.write(join(dirs.cwd, "large.txt"), "tool output ".repeat(2500));
+  await Bun.write(join(dirs.cwd, "large.txt"), "tool output ".repeat(6000));
+  const first = await rukie(["-p", "read the file", "--output-format", "stream-json"], {
+    ...dirs,
+    key: "sk-test",
+  });
+  expect(first).toMatchObject({ exitCode: 0, stderr: "" });
+  const sessionId = parseEvents(first.stdout)[0].sessionId;
+  const recent = await rukie(["-p", "recent retained task", "--resume", sessionId], {
+    ...dirs,
+    key: "sk-test",
+  });
+  expect(recent).toMatchObject({ exitCode: 0, stderr: "" });
   const settingsPath = join(dirs.home, ".rukie/settings.json");
   const settings = await Bun.file(settingsPath).json();
   settings.providers[0].models[0].contextWindow = 4000;
   await Bun.write(settingsPath, JSON.stringify(settings));
-  const result = await rukie(["-p", "read the file", "--output-format", "stream-json"], {
-    ...dirs,
-    key: "sk-test",
-  });
+  const result = await rukie(
+    ["-p", "continue", "--resume", sessionId, "--output-format", "stream-json"],
+    {
+      ...dirs,
+      key: "sk-test",
+    },
+  );
   expect(result).toMatchObject({ exitCode: 0, stderr: "" });
   const events = parseEvents(result.stdout);
   const compactions = events.filter(
@@ -818,23 +844,29 @@ test("stream-json reports compaction start and end around a large tool result", 
   expect(compactions).toEqual([
     {
       type: "compaction_start",
-      trigger: "auto",
-      sessionId: events[0].sessionId,
-      tokensBefore: expect.any(Number),
+      taskId: expect.any(Number),
+      reason: "threshold",
+      blocking: true,
+      sessionId,
     },
     {
       type: "compaction_end",
-      trigger: "auto",
-      sessionId: events[0].sessionId,
-      summary: expect.stringContaining("hello from fake"),
-      tokensBefore: compactions[0].tokensBefore,
-      tokensAfter: expect.any(Number),
+      taskId: compactions[0].taskId,
+      reason: compactions[0].reason,
+      sessionId,
     },
   ]);
-  expect(compactions[1].tokensAfter).toBeLessThan(compactions[1].tokensBefore);
   expect(events.filter((event) => event.type === "compaction")).toEqual([]);
   expect(events.at(-1)).toMatchObject({ type: "request_settled", success: true });
-  expect(server.requests).toHaveLength(3);
+  expect(server.requests).toHaveLength(5);
+  expect(JSON.stringify(server.requests.at(-1)!.body.messages)).toContain(
+    "summary of older evidence",
+  );
+  expect(
+    events
+      .flatMap((event) => event.messages ?? [])
+      .some((message) => message.role === "session-notice" && message.notice.kind === "compaction"),
+  ).toBe(true);
 });
 
 test("a failed stream-json Run emits a failure result and exits 1", async () => {
