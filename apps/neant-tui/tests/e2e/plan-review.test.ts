@@ -2,7 +2,7 @@ import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
 import { createSession } from "@neant/agent";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { start } from "../helpers/app";
+import { startWithClock as start } from "../helpers/clock-app";
 const plan = "# Storage plan\n\nAdd **SQLite** storage.\n\nValidate public behavior.";
 async function review(options: Parameters<typeof start>[1] = {}, markdown = plan) {
   const app = await start([], options);
@@ -14,7 +14,7 @@ async function review(options: Parameters<typeof start>[1] = {}, markdown = plan
   app.calls[0]!.tool("exit_plan_mode", { plan: markdown });
   return app;
 }
-test("approval closes review, exits Plan Mode and leaves a collapsible plan card", async () => {
+test("approval leaves a plan card toggled from header whitespace", async () => {
   const app = await review();
   try {
     await app.waitFor(() => app.screen().some((line) => line.includes("计划评审")));
@@ -31,7 +31,7 @@ test("approval closes review, exits Plan Mode and leaves a collapsible plan card
     await app.waitFor(() => app.screen().some((line) => line.includes("已批准计划")));
     expect(app.screen().join("\n")).not.toContain("Add SQLite storage.");
     const row = app.screen().findIndex((line) => line.includes("已批准计划"));
-    click(app, row);
+    click(app, row, 79);
     await app.waitFor(() => app.screen().some((line) => line.includes("Add SQLite storage.")));
     click(
       app,
@@ -43,8 +43,8 @@ test("approval closes review, exits Plan Mode and leaves a collapsible plan card
   }
 });
 
-function click(app: Awaited<ReturnType<typeof start>>, row: number) {
-  app.stdin.write(`\x1b[<0;4;${row + 1}M\x1b[<0;4;${row + 1}m`);
+function click(app: Awaited<ReturnType<typeof start>>, row: number, x = 3) {
+  app.stdin.write(`\x1b[<0;${x + 1};${row + 1}M\x1b[<0;${x + 1};${row + 1}m`);
 }
 
 test.each([

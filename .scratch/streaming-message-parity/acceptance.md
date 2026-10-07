@@ -30,7 +30,7 @@
 | 20 unavailable source                | Tool; retained source facts                   | tool-windows resumedtruncatedread/web/search/unifieddiff; ticket11 [mixed-session-resume](../../apps/neant-tui/tests/e2e/mixed-session-resume.test.ts) recorded4cases/174assertions; mixed fact honesty                                                                                                                     |
 | 21 exit/signal visible               | Tool; ToolCall status                         | tool-view exitoutsidefold; jobs-panel stoppedreal signal;03 evidence. Keep process escalation existing                                                                                                                                                                                                                      |
 | 22 immediate results/errors/full     | Tool; shared reveal contracts                 | tool-reveal complete/deniedsnap/history/resize                                                                                                                                                                                                                                                                              |
-| 23 hover/hit boundaries              | Tool/RefA no bodyclick; renderer hover        | tool-expansion blankclick and source/path drag;04 NoSelect. actual selected-card highlight and source-only copy exclude pinned/rail chrome                                                                                                                                                                                  |
+| 23 hover/hit boundaries              | Tool/RefA no bodyclick; renderer hover        | tool-expansion card whitespace toggle and source/path drag;04 NoSelect. actual selected-card highlight and source-only copy exclude pinned/rail chrome                                                                                                                                                                      |
 | 24 path actions                      | Tool; host/file menu                          | file-actions actualopen/reveal/absolutecopy/failed directories. Avoid real host                                                                                                                                                                                                                                             |
 | 25 path vs fold                      | same                                          | file-actions first test; text-selection path drag; ToolCall decorators drag                                                                                                                                                                                                                                                 |
 | 26 genuine Job info                  | J; JobCard                                    | background-jobs actualID/timestamps/elapsedfreeze/style; displayprogress absent                                                                                                                                                                                                                                             |
@@ -90,7 +90,7 @@
 - 缺失耗时、token、模型或历史事实时省略或标未知；不使用参考占位默认值推断执行成功或任务验收。Subagent 的 Activity、Run Outcome 和父代理对委派任务的判断分别保留。输出范围只描述实际保留源，缺口/截断/patch-only 必须披露。
 - 小于40列或12行暂停编辑与审批，保留中断/退出；不引入参考 local shell 等 Neant 不具备的执行模式。
 - 已经写入 Transcript 的 error/aborted 部分正文和思考保留，未提交临时尾部按最终保存事实收束；没有 attempt 模型、旧会话迁移、自动重试或未知工具重放。Background Job 不恢复执行，子代理只读查看不自动续跑。
-- 父规范明确修正参考边界：思考末行必须保留最新 token；失败工具不能沿用无条件成功 glyph；`sent` OSC 请求不宣称剪贴板已成功；空白热区及拖选不能触发卡片动作。400 行后的继续浏览是规范要求的扩展，固定参考没有对应后续窗口入口。以上是规范驱动的差异，不宣称逐字相同。
+- 父规范明确修正参考边界：思考末行必须保留最新 token；失败工具不能沿用无条件成功 glyph；`sent` OSC 请求不宣称剪贴板已成功；拖选不能触发卡片动作；空白热区限制已按 2026-10-07 后续用户要求修正为工具卡整卡、思考与计划整行标题可点击。400 行后的继续浏览是规范要求的扩展，固定参考没有对应后续窗口入口。以上是规范驱动的差异，不宣称逐字相同。
 
 ## 新组合场景与成本
 
@@ -155,3 +155,9 @@ env -u NO_COLOR LANG=en_US.UTF-8 bun "$TASK_REPO/apps/neant-tui/src/main.tsx" --
 ## 最终交付
 
 2026-10-07：最终代码 `5dd090458f8d04333236c21bdb68324b74060298` 的完整检查通过（2732 pass、0 fail、15330断言、2732 tests /220 files、108.09s，退出码0），Standards／Spec 剩余问题均为0；父规范与12张工单全部 resolved。本次收束提交仅修改验收和 tracker 文档，保留已验证代码状态。18个实现 worktree 已检查干净且均为集成分支祖先，按 implement-spec 清理；集成工作区和 main 保留。手工 smoke 与原生平台验证的限制，以及 ticket09 历史剪贴板事故，保持如上披露。
+
+## 2026-10-07 卡片空白点击修正
+
+用户反馈点击非文字部分无法展开/收起，明确替代此前的空白热区限制。工具卡由外层矩形提供默认切换动作，标题、普通输出、Markdown 与 split diff 的空白均可命中；子路径和窗口入口仍优先命中各自动作，拖选继续取消卡片点击。思考与计划标题取消文字宽度限制，正文保留原有选择行为。
+
+回归复现：修正前工具卡标题、web 正文、思考标题、计划标题空白点击均失败；修正后 4 项通过。相关 7 个文件共 56 项测试通过，覆盖选择、路径动作、窗口、Tooltip、思考生命周期与计划交互；空白行、40 列 resize 与卡片外点击回归通过。最终 `env -u NO_COLOR bun run check` 通过：2732 pass / 0 fail，15333 assertions，220 files，105.62s。

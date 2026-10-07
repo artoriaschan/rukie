@@ -302,6 +302,7 @@ export function ToolCall({
     <ThemedBox
       flexDirection="column"
       backgroundColor={hovered ? "toolCardBackground" : undefined}
+      onClick={toggle}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >

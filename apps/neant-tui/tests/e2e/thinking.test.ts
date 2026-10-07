@@ -37,15 +37,16 @@ test("thinking preview holds three rows, keeps newest Unicode and folds on first
   }
 });
 
-test("thinking header click shows full content until Run end and ignores body clicks", async () => {
+test("thinking header whitespace click shows full content until Run end and ignores body clicks", async () => {
   const app = await startWithClock(["reason"], { rows: 40, env: { LANG: "en" } });
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.thinking("first secret\nsecond\nthird\nlatest");
     await app.waitFor(() => app.screen().join("\n").includes("latest"));
     const header = () => app.screen().findIndex((row) => row.includes("Thinking"));
-    click(app, 3, header());
+    click(app, 79, header());
     await app.waitFor(() => app.screen().join("\n").includes("first secret"));
+    expect(app.screen().join("\n")).toContain("first secret");
     const body = app.screen().findIndex((row) => row.includes("first secret"));
     click(app, 3, body);
     await app.flush();

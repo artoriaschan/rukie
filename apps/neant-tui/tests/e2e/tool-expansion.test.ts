@@ -17,15 +17,20 @@ function click(app: Awaited<ReturnType<typeof start>>, x: number, y: number) {
   app.stdin.write(`\x1b[<0;${x + 1};${y + 1}M\x1b[<0;${x + 1};${y + 1}m`);
 }
 
-test("cards expand individually, ignore blank clicks, and union with transcript expansion", async () => {
+test("cards toggle from header and body whitespace and union with transcript expansion", async () => {
   const app = await startWithClock(["--yolo", "expand"], { rows: 40, env: { LANG: "en" } });
   try {
-    await outputCard(app, "first\\nsecond\\nthird\\nfourth\\nfifth");
+    await outputCard(app, "first\\n\\nthird\\nfourth\\nfifth");
     await app.waitFor(() => app.screen().join("\n").includes("+2 lines"));
     const header = () => app.screen().findIndex((line) => /^[•▾▴] Bash\(/.test(line));
     click(app, 79, header());
-    await app.flush();
-    expect(app.screen().join("\n")).toContain("+2 lines");
+    await app.waitFor(() => app.screen().includes("   fifth"));
+    expect(app.screen()).toContain("   fifth");
+    jest.advanceTimersByTime(500);
+    const body = header() + 2;
+    expect(app.screen()[body]!.trim()).toBe("");
+    click(app, 79, body);
+    await app.waitFor(() => app.screen().join("\n").includes("+2 lines"));
     app.stdin.write(`\x1b[<35;4;${header() + 1}M`);
     await app.waitFor(() =>
       app.screen().some((line) => line.startsWith("• Bash(") && line.endsWith("▾")),
@@ -45,6 +50,15 @@ test("cards expand individually, ignore blank clicks, and union with transcript 
     expect(app.screen()).toContain("   fifth");
     app.stdin.write("\x0f");
     await app.waitFor(() => app.screen().join("\n").includes("+2 lines"));
+    app.resize(40, 40);
+    await app.waitFor(() => app.screen().every((line) => Bun.stringWidth(line) <= 40));
+    jest.advanceTimersByTime(500);
+    click(app, 39, header() + 2);
+    await app.waitFor(() => app.screen().includes("   fifth"));
+    jest.advanceTimersByTime(500);
+    click(app, 39, header() - 1);
+    await app.flush();
+    expect(app.screen()).toContain("   fifth");
   } finally {
     await app.cleanup();
   }

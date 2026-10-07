@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { start } from "../helpers/app";
 import { isolateProxyEnvironment } from "../helpers/proxy-env";
 isolateProxyEnvironment();
-test("web body click must expand", async () => {
+test("web body whitespace click expands and text click collapses", async () => {
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
@@ -27,11 +27,11 @@ test("web body click must expand", async () => {
     const row = app.screen().findIndex((x) => x.includes("body0"));
     expect(row).toBeGreaterThanOrEqual(0);
     app.stdin.write(`\x1b[<0;30;${row + 1}M\x1b[<0;30;${row + 1}m`);
-    await app.flush();
-    expect(app.screen().join("\n")).toContain("+7 lines");
-    app.stdin.write(`\x1b[<0;6;${row + 1}M\x1b[<0;6;${row + 1}m`);
     await app.waitFor(() => app.screen().join("\n").includes("body9"));
     expect(app.screen().join("\n")).toContain("body9");
+    app.stdin.write(`\x1b[<0;6;${row + 1}M\x1b[<0;6;${row + 1}m`);
+    await app.waitFor(() => app.screen().join("\n").includes("+7 lines"));
+    expect(app.screen().join("\n")).not.toContain("body9");
   } finally {
     await app.cleanup();
     server.stop(true);

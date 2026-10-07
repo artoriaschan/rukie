@@ -74,7 +74,6 @@ export function ThinkingRow({
   return (
     <Box flexDirection="column" gap={expanded ? 1 : 0}>
       <Box
-        width={Math.min(columns, Bun.stringWidth(title) + 3)}
         onClick={onToggle}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
