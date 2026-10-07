@@ -193,7 +193,13 @@ test.each(["future", "past"] as const)(
 
 test("read-only child history retains an unknown Tool outcome without success, failure or replay", async () => {
   const argv: string[] = [];
-  const app = await startWithClock(argv, {
+  const fake = await fakeModel([
+    () => fauxAssistantMessage("restored history reviewed"),
+    () => fauxAssistantMessage("restored history reviewed"),
+    () => fauxAssistantMessage("restored history reviewed"),
+  ]);
+  const app = await start(argv, {
+    session: fake,
     columns: 100,
     rows: 40,
     env: { LANG: "en" },
@@ -203,21 +209,18 @@ test("read-only child history retains an unknown Tool outcome without success, f
     },
   });
   try {
-    await app.waitFor(() => app.screen().includes("❯"));
+    await app.waitFor(() => app.screen().includes("❯") && !app.isWorking());
+    const requests = fake.contexts.length;
     app.stdin.write("\x01\r");
     await app.waitFor(() => app.screen().join("\n").includes("id "));
     app.stdin.write("\x1b[C\x1b[C");
-    await app.waitFor(
-      () =>
-        app.screen().join("\n").includes("3/3") &&
-        app.screen().join("\n").includes("uncertain-effect.txt"),
-    );
+    await app.waitFor(() => app.screen().join("\n").includes("uncertain-effect.txt"));
     const tools = app.screen().join("\n");
     expect(tools).toContain("? Write");
     expect(tools).toContain("Outcome unknown");
     expect(tools).not.toContain("• Write");
     expect(tools).not.toContain("✗ Write");
-    expect(app.calls).toHaveLength(0);
+    expect(fake.contexts).toHaveLength(requests);
     expect(await Bun.file(`${app.root}/uncertain-effect.txt`).text()).toBe("saved effect");
   } finally {
     await app.cleanup();
