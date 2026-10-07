@@ -75,3 +75,8 @@ SplitDiffView 的 `onSourceMount(id, DOMElement | null)` 将稳定源行身份�
 - `src/ink/update-overflow-guard.ts`
 - `src/ink/warn.ts`
 - `src/ink/wrap-text.ts`
+
+- 05 应用原生输入与复制接线：`hooks/use-input.ts` 在 layout effect 同步注册输入 listener，与 raw mode 启用同一 commit，避免首批输入窗口；`hooks/use-selection.ts`、`ink.tsx` 暴露 `readSelectionText()`，仅核验并读取最后绘制的选中文字，无原生或 OSC clipboard 副作用。TUI 的异步 host 独立拥有 copied/sent/unavailable/stale 与 Session/modal 生命周期。
+- 05 保留产品 editor 组合增加可选 `getValue()`，在原生同批键事件前读应用的即时 controlled value，保留 submit/clear 后紧接输入的公共行为；它不改变原生 renderer/input protocol。
+
+- 05 原生 source seek 修复：`components/ScrollBox.tsx`、`dom.ts`、`render-node-to-output.ts` 为显式 `scrollTo` / `scrollToElement` 保留一次绘制的 seek 优先级，内容同批增长不会误恢复底部跟随；元素定位累加到所属 ScrollBox 的 Yoga 祖先偏移，越界元素不改变位置。后续 `scrollToBottom` 和滚轮到达底部仍恢复跟随。

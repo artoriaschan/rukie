@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from 'react'
+import { useLayoutEffect, useRef } from 'react'
 import type { InputEvent, Key } from '../events/input-event.js'
 import { isInputSuppressed } from '../input-suppression.js'
 import useStdin from './use-stdin.js'
@@ -114,7 +114,7 @@ const useInput = (inputHandler: Handler, options: Options = {}): void => {
   // Mount-time value, per the option's contract: a later change must not
   // re-register the listener and move its slot.
   const prepend = useRef(options.prepend === true).current
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (prepend) internal_eventEmitter?.prependListener('input', handleData)
     else internal_eventEmitter?.on('input', handleData)
 

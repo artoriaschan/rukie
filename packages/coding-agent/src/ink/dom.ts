@@ -126,6 +126,8 @@ export type DOMElement = {
   // time the throttled render fires, the element ref defers the position
   // read to paint time. One-shot.
   scrollAnchor?: { el: DOMElement; offset: number }
+  /** An explicit seek suppresses positional bottom-follow for its next paint. */
+  scrollExplicitSeek?: boolean
   // Only set on ink-root. The document owns focus — any node can
   // reach it by walking parentNode, like browser getRootNode().
   focusManager?: FocusManager
