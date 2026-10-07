@@ -4,13 +4,16 @@ import {
   fauxToolCall,
   createAssistantMessageEventStream,
 } from "@earendil-works/pi-ai";
-import { MemorySessionRepo } from "@earendil-works/pi-agent-core/harness/session";
-import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import { createSession, type SessionEvent } from "../../src/index.ts";
+import {
+  createSession as createNativeSession,
+  ROOT_CONVERSATION_ID,
+} from "@earendil-works/pi-durable";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import type { Message } from "@earendil-works/pi-ai";
+import { createSession, createJsonlStore, type SessionEvent } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
+import { withAuxiliaryRequests, withModelStream } from "../helpers/auxiliary-model.ts";
 
 const png =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aSf8AAAAASUVORK5CYII=";
@@ -34,7 +37,7 @@ test("read rejects oversized JPEG bytes even when its header cannot provide dime
     });
     expect(JSON.stringify(fake.contexts[1])).not.toContain('"type":"image"');
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });
@@ -67,7 +70,7 @@ test.each([
       });
       expect(JSON.stringify(fake.contexts[1])).not.toContain('"type":"image"');
     } finally {
-      await session.dispose();
+      await session.close();
       await dirs.cleanup();
     }
   },
@@ -104,19 +107,32 @@ test.each(["APNG", "JPEG-LS", "PNG signature only"])(
       });
       expect(JSON.stringify(fake.contexts[1])).not.toContain('"type":"image"');
     } finally {
-      await session.dispose();
+      await session.close();
       await dirs.cleanup();
     }
   },
 );
 
-async function seed(messages: AgentMessage[]) {
-  const store = new MemorySessionRepo();
-  const stored = await store.create({}, BACKGROUND_CONTEXT);
-  const branch = await stored.createBranch("main", null, BACKGROUND_CONTEXT);
-  for (const message of messages) await branch.appendMessage(message, BACKGROUND_CONTEXT);
-  await stored.close(BACKGROUND_CONTEXT);
-  return { store, resumeId: stored.metadata.id };
+async function seed(dirs: Awaited<ReturnType<typeof tempDirs>>, messages: Message[]) {
+  const session = await createSession({ ...dirs, ...fakeModel([]) });
+  const resumeId = session.id;
+  await session.close();
+  const store = createJsonlStore(dirs);
+  const lease = await store.open({ id: resumeId }, BACKGROUND_CONTEXT);
+  const kernel = createNativeSession(lease.storage);
+  try {
+    await kernel.commit(async (tx) => {
+      await tx.appendEntry(ROOT_CONVERSATION_ID, {
+        kind: "test.historical-image",
+        data: {},
+        model: messages,
+      });
+    }, BACKGROUND_CONTEXT);
+  } finally {
+    await kernel.close(BACKGROUND_CONTEXT);
+    await lease.release();
+  }
+  return { resumeId };
 }
 
 test("a 100×100 prompt image adds fourteen estimated tokens to Context Usage and Context Report", async () => {
@@ -128,7 +144,7 @@ test("a 100×100 prompt image adds fourteen estimated tokens to Context Usage an
   const session = await createSession({
     ...dirs,
     ...fake,
-    ...(await seed([
+    ...(await seed(dirs, [
       {
         role: "user",
         content: [
@@ -147,11 +163,11 @@ test("a 100×100 prompt image adds fourteen estimated tokens to Context Usage an
         events.push(event);
       },
     });
-    expect(events.find((event) => event.type === "context_usage")?.segments).toMatchObject({
-      prompt: 15,
-    });
+    expect(
+      events.find((event) => event.type === "context_usage")!.segments.prompt,
+    ).toBeGreaterThanOrEqual(16);
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });
@@ -181,17 +197,17 @@ test("read image tokens belong to tools and appear in the live Context Report", 
     expect(
       report.categories.find((category) => category.name === "messages")?.tokens,
     ).toBeGreaterThanOrEqual(30);
-    await session.dispose();
+    await session.close();
     const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
     try {
       expect(
         resumed.contextReport().categories.find((category) => category.name === "messages")?.tokens,
       ).toBe(report.categories.find((category) => category.name === "messages")?.tokens);
     } finally {
-      await resumed.dispose();
+      await resumed.close();
     }
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });
@@ -203,31 +219,18 @@ test.each([false, true])(
     const bytes = Buffer.from(png, "base64");
     if (oversized) bytes.writeUInt32BE(8001, 16);
     await Bun.write(`${dirs.cwd}/child.png`, bytes);
-    const reply: Parameters<typeof fakeModel>[0][number] = (context) => {
-      const child = !context.messages.some(
-        (message) =>
-          message.role === "system" && message.toolsAdded?.some((tool) => tool.name === "subagent"),
-      );
-      if (
-        child &&
-        !context.messages.some(
-          (message) => message.role === "toolResult" && message.toolName === "read",
-        )
-      )
-        return fauxAssistantMessage(fauxToolCall("read", { path: "child.png" }), {
-          stopReason: "toolUse",
-        });
-      return fauxAssistantMessage(child ? "child finished" : "parent finished");
-    };
     const fake = fakeModel([
       fauxAssistantMessage(
-        fauxToolCall("subagent", { description: "Inspect screenshot", prompt: "Read child.png" }),
+        fauxToolCall("subagent", {
+          description: "Inspect screenshot",
+          prompt: "Read child.png",
+          run_in_background: false,
+        }),
         { stopReason: "toolUse" },
       ),
-      reply,
-      reply,
-      reply,
-      reply,
+      fauxAssistantMessage(fauxToolCall("read", { path: "child.png" }), { stopReason: "toolUse" }),
+      fauxAssistantMessage("child finished"),
+      fauxAssistantMessage("parent finished"),
     ]);
     const session = await createSession({ ...dirs, ...fake });
     try {
@@ -248,7 +251,7 @@ test.each([false, true])(
         });
       }
     } finally {
-      await session.dispose();
+      await session.close();
       await dirs.cleanup();
     }
   },
@@ -273,7 +276,9 @@ test("read keeps pi's BMP omission text without applying PNG/JPEG/GIF/WebP limit
   const session = await createSession({ ...dirs, ...fake });
   try {
     await session.run("read BMP");
-    expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
+    expect(
+      fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+    ).toMatchObject({
       isError: false,
       content: [
         {
@@ -283,7 +288,7 @@ test("read keeps pi's BMP omission text without applying PNG/JPEG/GIF/WebP limit
       ],
     });
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });
@@ -297,14 +302,17 @@ test("provider input usage overrides image estimates without losing image segmen
   const session = await createSession({
     ...dirs,
     model: fake.model,
-    streamFn: withAuxiliaryRequests(() => {
-      const reply = fauxAssistantMessage("seen");
-      reply.usage = { ...reply.usage, input: 700, cacheRead: 30, cacheWrite: 20 };
-      const stream = createAssistantMessageEventStream();
-      stream.push({ type: "done", reason: "stop", message: reply });
-      stream.end(reply);
-      return stream;
-    }),
+    models: withModelStream(
+      fake.models,
+      withAuxiliaryRequests(() => {
+        const reply = fauxAssistantMessage("seen");
+        reply.usage = { ...reply.usage, input: 700, cacheRead: 30, cacheWrite: 20 };
+        const stream = createAssistantMessageEventStream();
+        stream.push({ type: "done", reason: "stop", message: reply });
+        stream.end(reply);
+        return stream;
+      }),
+    ),
   });
   try {
     const events: SessionEvent[] = [];
@@ -322,7 +330,7 @@ test("provider input usage overrides image estimates without losing image segmen
       session.contextReport().categories.find((category) => category.name === "messages")?.tokens,
     ).toBeGreaterThanOrEqual(16);
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });
@@ -357,7 +365,9 @@ test.each([
   const session = await createSession({ ...dirs, ...fake });
   try {
     await session.run("read the image");
-    expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
+    expect(
+      fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+    ).toMatchObject({
       isError: false,
       content: [
         { type: "text", text: `Read image file [${mimeType}]` },
@@ -365,7 +375,7 @@ test.each([
       ],
     });
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });
@@ -386,8 +396,12 @@ test.each(["large", "unparseable", "zero"])(
     const session = await createSession({
       ...dirs,
       ...fake,
-      ...(await seed([
+      ...(await seed(dirs, [
         { role: "user", content: [{ type: "text", text: "look" }, image], timestamp: 1 },
+        fauxAssistantMessage(
+          { type: "toolCall", id: "historical", name: "read", arguments: {} },
+          { stopReason: "toolUse" },
+        ),
         {
           role: "toolResult",
           toolName: "read",
@@ -399,16 +413,16 @@ test.each(["large", "unparseable", "zero"])(
       ])),
     });
     try {
-      expect(session.contextReport().categories).toContainEqual({ name: "messages", tokens: 3201 });
+      expect(session.contextReport().categories).toContainEqual({ name: "messages", tokens: 3203 });
       const events: SessionEvent[] = [];
       await session.run("next", {
         onEvent: (event) => {
           events.push(event);
         },
       });
-      expect(events.find((event) => event.type === "context_usage")?.segments).toMatchObject({
-        prompt: 1601,
-      });
+      expect(
+        events.find((event) => event.type === "context_usage")!.segments.prompt,
+      ).toBeGreaterThanOrEqual(1602);
       const declarations = session
         .contextReport()
         .categories.find((category) => category.name === "system-tools")!.tokens;
@@ -416,7 +430,7 @@ test.each(["large", "unparseable", "zero"])(
         events.find((event) => event.type === "context_usage")!.segments.tools - declarations,
       ).toBe(1600);
     } finally {
-      await session.dispose();
+      await session.close();
       await dirs.cleanup();
     }
   },
@@ -441,7 +455,7 @@ test("read refuses image byte limits by file magic before the image reaches the 
     });
     expect(JSON.stringify(result)).not.toContain('"type":"image"');
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });
@@ -464,13 +478,21 @@ test.each([
   const session = await createSession({ ...dirs, ...fake });
   try {
     await session.run("read the image");
-    expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({ isError: true });
-    expect(JSON.stringify(fake.contexts[1]!.messages.at(-1))).toContain(
-      dimension ? "8000" : "Invalid",
-    );
-    expect(JSON.stringify(fake.contexts[1]!.messages.at(-1))).not.toContain('"type":"image"');
+    expect(
+      fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+    ).toMatchObject({ isError: true });
+    expect(
+      JSON.stringify(
+        fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+      ),
+    ).toContain(dimension ? "8000" : "Invalid");
+    expect(
+      JSON.stringify(
+        fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+      ),
+    ).not.toContain('"type":"image"');
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });

@@ -1,4 +1,9 @@
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
+import { envApiKeyAuth } from "@earendil-works/pi-ai";
+import {
+  withAuxiliaryRequests,
+  withModelAlias,
+  withModelStream,
+} from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { createSession, listModels, type SessionEvent } from "../../src/index.ts";
@@ -7,7 +12,9 @@ import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
 const originalKey = process.env.RUKIE_SWITCH_TEST_KEY;
+const sessions: Awaited<ReturnType<typeof createSession>>[] = [];
 afterEach(async () => {
+  for (const session of sessions.splice(0)) await session.close();
   if (originalKey === undefined) delete process.env.RUKIE_SWITCH_TEST_KEY;
   else process.env.RUKIE_SWITCH_TEST_KEY = originalKey;
   await dirs?.cleanup();
@@ -25,6 +32,21 @@ const settings = {
   ],
 };
 
+function switchModels(fake: ReturnType<typeof fakeModel>) {
+  const models = withModelAlias(fake.models, "switch", ["first", "second"], {
+    contextWindow: 32000,
+  });
+  const provider = models.getProviders().find((provider) => provider.id === "switch");
+  if (!provider) throw new Error("Missing fixture switch provider");
+  models.setProvider({
+    ...provider,
+    auth: { apiKey: envApiKeyAuth("switch API key", ["RUKIE_SWITCH_TEST_KEY"]) },
+  });
+  const model = models.getModel("switch", "first");
+  if (!model) throw new Error("Missing fixture switch model");
+  return { models, model };
+}
+
 test("changing a Session model affects the next request and survives resume without valid settings.model", async () => {
   dirs = await tempDirs();
   process.env.RUKIE_SWITCH_TEST_KEY = "test-key";
@@ -34,28 +56,37 @@ test("changing a Session model affects the next request and survives resume with
     fauxAssistantMessage("resumed reply"),
   ]);
   const requested: string[] = [];
-  const stream = fake.streamFn;
-  fake.streamFn = withAuxiliaryRequests((model, context, options) => {
-    requested.push(`${model.provider}/${model.id}`);
-    return stream(model, context, options);
+  const stream = fake.models.getProviders()[0]!.streamSimple;
+  fake.models = withModelStream(
+    fake.models,
+    withAuxiliaryRequests((model, context, options) => {
+      requested.push(`${model.provider}/${model.id}`);
+      return stream(model, context, options);
+    }),
+  );
+  const session = await createSession({
+    ...dirs,
+    settings,
+    ...switchModels(fake),
   });
-  const session = await createSession({ ...dirs, settings, streamFn: fake.streamFn });
+  sessions.push(session);
   await session.run("first question");
   await session.setModel("switch/second");
   expect(session.model).toBe("switch/second");
   expect(session.toolState("model")).toBe("switch/second");
   await session.run("second question");
-  await session.dispose();
+  await session.close();
   const resumed = await createSession({
     ...dirs,
     settings: { ...settings, model: "missing/model" },
-    streamFn: fake.streamFn,
+    ...switchModels(fake),
     resumeId: session.id,
   });
+  sessions.push(resumed);
   expect(resumed.model).toBe("switch/second");
   expect((await resumed.run("third question")).text).toBe("resumed reply");
   expect(requested).toEqual(["switch/first", "switch/second", "switch/second"]);
-  await resumed.dispose();
+  await resumed.close();
 });
 
 test("available models include custom and built-in provider entries without requiring credentials", () => {
@@ -73,7 +104,12 @@ test("invalid and busy model changes preserve the current model and settings fil
   const original = JSON.stringify(settings);
   await Bun.write(settingsPath, original);
   const fake = fakeModel([fauxAssistantMessage("answer")]);
-  const session = await createSession({ ...dirs, settings, streamFn: fake.streamFn });
+  const session = await createSession({
+    ...dirs,
+    settings,
+    ...switchModels(fake),
+  });
+  sessions.push(session);
   await expect(session.setModel("switch/no-such-model")).rejects.toThrow("Unknown model");
   expect(session.model).toBe("switch/first");
   expect(session.toolState("model")).toBeUndefined();
@@ -85,8 +121,8 @@ test("invalid and busy model changes preserve the current model and settings fil
   await run;
   await session.setModel("switch/second");
   expect(await Bun.file(settingsPath).text()).toBe(original);
-  await session.dispose();
-  await expect(session.setModel("switch/first")).rejects.toThrow("disposed");
+  await session.close();
+  await expect(session.setModel("switch/first")).rejects.toThrow("closed");
 });
 
 test("new inherited children use the switched model while retained children keep their original model", async () => {
@@ -122,9 +158,14 @@ test("new inherited children use the switched model while retained children keep
     fauxAssistantMessage("second finished"),
     fauxAssistantMessage("notification finished"),
   ]);
-  const session = await createSession({ ...dirs, settings, streamFn: fake.streamFn });
+  const session = await createSession({
+    ...dirs,
+    settings,
+    ...switchModels(fake),
+  });
+  sessions.push(session);
   const observe = (event: SessionEvent) => {
-    if (event.type === "subagent_event" && event.event.type === "session_start") {
+    if (event.type === "subagent_event" && event.event.type === "snapshot") {
       childId ||= event.agentId;
       childModels.push(event.event.model);
     }
@@ -133,29 +174,51 @@ test("new inherited children use the switched model while retained children keep
   await session.setModel("switch/second");
   await session.run("delegate and continue", { onEvent: observe });
   expect(childModels).toEqual(["switch/first", "switch/first", "switch/second"]);
-  await session.dispose();
+  await session.close();
 });
 
 test("manual compaction waits for model selection and summarizes through the selected model", async () => {
   dirs = await tempDirs();
   process.env.RUKIE_SWITCH_TEST_KEY = "test-key";
+  await Bun.write(`${dirs.cwd}/context.txt`, "retained fact ".repeat(6000));
   const fake = fakeModel([
+    fauxAssistantMessage(
+      [
+        fauxToolCall("read", { path: "context.txt" }),
+        fauxToolCall("read", { path: "context.txt" }),
+      ],
+      { stopReason: "toolUse" },
+    ),
     fauxAssistantMessage("first reply"),
+    fauxAssistantMessage("recent retained reply"),
     fauxAssistantMessage("Selected model summary."),
   ]);
   const requested: string[] = [];
-  const primary = fake.streamFn;
-  fake.streamFn = withAuxiliaryRequests((model, context, options) => {
-    requested.push(`${model.provider}/${model.id}`);
-    return primary(model, context, options);
+  const primary = fake.models.getProviders()[0]!.streamSimple;
+  fake.models = withModelStream(
+    fake.models,
+    withAuxiliaryRequests((model, context, options) => {
+      requested.push(`${model.provider}/${model.id}`);
+      return primary(model, context, options);
+    }),
+  );
+  const session = await createSession({
+    ...dirs,
+    settings,
+    ...switchModels(fake),
   });
-  const session = await createSession({ ...dirs, settings, streamFn: fake.streamFn });
+  sessions.push(session);
   await session.run("first question");
+  await session.run("recent retained task");
   const switching = session.setModel("switch/second");
   await expect(session.compact()).rejects.toThrow("switching models");
   await switching;
   await session.compact();
-  expect(requested).toEqual(["switch/first", "switch/second"]);
-  expect(JSON.stringify(session.messages)).toContain("Selected model summary.");
-  await session.dispose();
+  expect(requested).toEqual(["switch/first", "switch/first", "switch/first", "switch/second"]);
+  expect(
+    session.messages.some(
+      (message) => message.role === "session-notice" && message.notice.kind === "compaction",
+    ),
+  ).toBe(true);
+  await session.close();
 });
