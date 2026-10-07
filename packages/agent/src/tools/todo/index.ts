@@ -23,12 +23,11 @@ export function createTodoTool(
       displayKey: "tool.todo_write",
       text,
     }),
-    label: "Update todo list",
     // Source: deepseek-harness packages/todo/tool-todo, parallel description.
     description:
       "Record and update a task list to plan multi-step work and show progress; skip it for trivial single-step tasks. Add one todo per concrete step before you start. While work remains, keep the todos being worked on `in_progress`, several only when work runs in parallel. Mark each todo `completed` as soon as it is done.",
     parameters,
-    async execute(_id, { todos }) {
+    async execute({ todos }) {
       const normalized = todos.map(({ content, status }) => ({ content: content.trim(), status }));
       const seen = new Set<string>();
       for (const { content } of normalized) {
