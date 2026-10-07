@@ -31,11 +31,13 @@ export function jobCardRows(
   const glyph = live ? "●" : job.status === "completed" ? "✓" : "✗";
   const rows = jobOutputRows(output, Math.max(1, columns - 6));
   return [
-    `${glyph} ${job.id} · ${t(`jobs.status.${job.status}`)} · ${fmtDuration(Math.max(0, (job.endedAt ?? Date.now()) - job.startedAt), locale)}`,
+    `${glyph} ${t("jobs.card.prefix")}${job.id} ${job.kind} ${fmtDuration(Math.max(0, (job.endedAt ?? Date.now()) - job.startedAt), locale)} ${t(`jobs.status.${job.status}`)}`,
     ...(commandExpanded
-      ? jobOutputRows(`❯ ${job.command}`, Math.max(1, columns - 4), Infinity)
-      : [`❯ ${cleanJobText(job.command).split("\n")[0] ?? ""}`]),
-    ...Array.from({ length: 2 }, (_, index) => `  │ ${rows[index] ?? ""}`),
+      ? jobOutputRows(`❯ ${job.command}`, Math.max(1, columns - 4), Infinity).map(
+          (line) => `│ ${line}`,
+        )
+      : [`│ ❯ ${cleanJobText(job.command).split("\n")[0] ?? ""}`]),
+    ...Array.from({ length: 2 }, (_, index) => `│ ${index === 0 ? "≡ " : ""}${rows[index] ?? ""}`),
   ].map((row) => clipRow(row, Math.max(0, columns - 2)));
 }
 
@@ -64,6 +66,8 @@ export function JobCard({
   const [commandOpen, setCommandOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
   const t = createTuiI18n(locale);
+  const glyph = live ? "●" : job.status === "completed" ? "✓" : "✗";
+  const duration = fmtDuration(Math.max(0, (job.endedAt ?? Date.now()) - job.startedAt), locale);
   const color = live ? "warning" : job.status === "completed" ? "success" : "error";
   // Wrap before taking the fixed waterfall: a long output line shows its tail.
   const rows = jobCardRows(job, output, contentColumns, locale, expanded || commandOpen);
@@ -94,14 +98,22 @@ export function JobCard({
           width={Bun.stringWidth(rows[0] ?? "")}
           onClick={onOpen ? () => onOpen(job.id) : undefined}
         >
-          <ThemedText color={hovered ? "accent" : color} wrap="truncate">
-            {rows[0]}
+          <ThemedText wrap="truncate">
+            <ThemedText color={hovered ? "accent" : color}>{glyph}</ThemedText>{" "}
+            <ThemedText bold color={hovered ? "accent" : undefined}>
+              {t("jobs.card.prefix")}
+              {job.id}
+            </ThemedText>{" "}
+            <ThemedText dimColor>{job.kind}</ThemedText>{" "}
+            <ThemedText dimColor>{duration}</ThemedText>{" "}
+            <ThemedText color={color}>{t(`jobs.status.${job.status}`)}</ThemedText>
           </ThemedText>
         </Box>
         <Box flexDirection="column" onClick={() => setCommandOpen((open) => !open)}>
           {commandRows.map((line, index) => (
             <ThemedText key={index} wrap="truncate">
-              {line}
+              <ThemedText color="accent">│</ThemedText>
+              <ThemedText dimColor>{line.slice(1)}</ThemedText>
             </ThemedText>
           ))}
         </Box>
@@ -111,8 +123,9 @@ export function JobCard({
           </ThemedText>
         )}
         {Array.from({ length: 2 }, (_, index) => (
-          <ThemedText key={index} dimColor wrap="truncate">
-            {rows[rows.length - 2 + index]}
+          <ThemedText key={index} wrap="truncate">
+            <ThemedText color="success">│</ThemedText>
+            <ThemedText dimColor>{rows[rows.length - 2 + index]?.slice(1)}</ThemedText>
           </ThemedText>
         ))}
       </Box>

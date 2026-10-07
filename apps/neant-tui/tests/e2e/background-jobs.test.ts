@@ -20,10 +20,10 @@ test("background bash renders its card and idle job chip without consuming model
       run_in_background: true,
     });
     await app.waitFor(() => app.calls.length === 2);
-    await app.waitFor(() => screen().includes("● bash-1") && screen().includes("│ third"));
+    await app.waitFor(() => screen().includes("● job: bash-1") && screen().includes("│ third"));
     expect(screen()).toContain("❯ printf");
-    expect(screen()).toContain("│ second");
-    expect(screen()).not.toContain("│ first");
+    expect(screen()).toContain("│ ≡ second");
+    expect(screen()).not.toContain("│ ≡ first");
     expect(app.screen().at(-2)).toContain("● 1");
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
@@ -40,7 +40,9 @@ test("background bash renders its card and idle job chip without consuming model
     await app.waitFor(() => app.calls.length === 4);
     expect(JSON.stringify(app.calls[3]!.context.messages)).toContain("first\\nsecond\\nthird");
     await Bun.write(join(app.root, "go"), "");
-    await app.waitFor(() => screen().includes("✓ bash-1") && !app.screen().at(-2)?.includes("● 1"));
+    await app.waitFor(
+      () => screen().includes("✓ job: bash-1") && !app.screen().at(-2)?.includes("● 1"),
+    );
     expect(screen()).toContain("Background job completed: Watch fixture output");
     app.calls[3]!.finish();
     await app.waitFor(() => app.calls.length === 5);
@@ -153,8 +155,8 @@ test("a narrow folded group keeps failure visible and opens with its header", as
       Number.parseInt(dark.error.slice(1), 16),
     );
     app.stdin.write(`\x1b[<0;2;${header + 1}M\x1b[<0;2;${header + 1}m`);
-    await app.waitFor(() => screen().includes("✗ bash-2 · 失败"));
-    expect(screen()).toContain("✓ bash-1 · 已完成");
+    await app.waitFor(() => /✗ 任务：bash-2 bash \S+ 失败/.test(screen()));
+    expect(screen()).toMatch(/✓ 任务：bash-1 bash \S+ 已完成/);
     expect(app.screen().every((line) => Bun.stringWidth(line) <= 40)).toBe(true);
     expect(app.stderr()).toBe("");
   } finally {
@@ -175,12 +177,14 @@ test("stopping jobs remain counted until they settle", async () => {
       description: "Stop resistant fixture",
       run_in_background: true,
     });
-    await app.waitFor(() => app.calls.length === 2 && screen().includes("│ armed"));
+    await app.waitFor(() => app.calls.length === 2 && screen().includes("│ ≡ armed"));
     app.calls[1]!.tool("job_kill", { job_id: "bash-1" });
-    await app.waitFor(() => app.calls.length === 3 && screen().includes("● bash-1 · 停止中"));
+    await app.waitFor(
+      () => app.calls.length === 3 && /● 任务：bash-1 bash \S+ 停止中/.test(screen()),
+    );
     expect(app.screen().at(-2)).toContain("● 1");
     app.calls[2]!.finish();
-    await app.waitFor(() => screen().includes("✗ bash-1 · 已停止"), 4000);
+    await app.waitFor(() => /✗ 任务：bash-1 bash \S+ 已停止/.test(screen()), 4000);
     expect(app.screen().at(-2)).not.toContain("● 1");
     expect(screen()).toContain("后台任务已停止");
   } finally {
@@ -228,7 +232,7 @@ test("resume never attaches a historical bash job result to a new job with the s
   const screen = () => app.screen().join("\n");
   try {
     await app.waitFor(() => app.stdin.isRaw && screen().includes("Historical result"));
-    expect(screen()).not.toContain("● bash-1");
+    expect(screen()).not.toContain("● 任务：bash-1");
     expect(app.screen().at(-2)).not.toContain("● 1");
     app.stdin.write("new launch\r");
     await app.waitFor(() => app.calls.length === 1);
@@ -237,9 +241,9 @@ test("resume never attaches a historical bash job result to a new job with the s
       description: "Current watcher",
       run_in_background: true,
     });
-    await app.waitFor(() => app.calls.length === 2 && screen().includes("● bash-2"));
+    await app.waitFor(() => app.calls.length === 2 && screen().includes("● 任务：bash-2"));
     expect(app.screen().filter((row) => row.includes("❯ printf"))).toHaveLength(1);
-    expect(screen()).not.toContain("● bash-1");
+    expect(screen()).not.toContain("● 任务：bash-1");
     app.calls[1]!.tool("job_kill", { job_id: "bash-2" });
     await app.waitFor(() => app.calls.length === 3);
     app.calls[2]!.finish();
@@ -270,7 +274,7 @@ test("job output and streaming bursts preserve reading position, draft, and unre
       description: "Reading position watcher",
       run_in_background: true,
     });
-    await app.waitFor(() => app.calls.length === 3 && screen().includes("│ initial"));
+    await app.waitFor(() => app.calls.length === 3 && screen().includes("│ ≡ initial"));
     app.stdin.write("saved draft\x1b[5~");
     await app.waitFor(() => screen().includes("Back to bottom"));
     const reading = app.screen().slice(0, 5);
@@ -327,8 +331,8 @@ test("consecutive jobs share transcript expansion and Ctrl+O respects an active 
       })),
     );
     await app.waitFor(() => app.calls.length === 2 && screen().includes("Background jobs ×3"));
-    expect(screen()).toContain("● bash-1");
-    expect(screen()).toContain("● bash-2");
+    expect(screen()).toContain("● job: bash-1");
+    expect(screen()).toContain("● job: bash-2");
     expect(app.screen().filter((row) => row.includes("❯ printf"))).toHaveLength(3);
     expect(app.screen().at(-2)).toContain("● 3");
     app.calls[1]!.tool("ask_user_question", {
@@ -350,7 +354,7 @@ test("consecutive jobs share transcript expansion and Ctrl+O respects an active 
     app.stdin.write("\x0f");
     await app.flush();
     expect(screen()).toContain("3 background jobs folded");
-    expect(screen()).not.toContain("✓ bash-1");
+    expect(screen()).not.toContain("✓ job: bash-1");
     app.stdin.write("\r");
     await app.waitFor(() => app.calls.length === 3);
     app.calls[2]!.finish();
@@ -360,12 +364,14 @@ test("consecutive jobs share transcript expansion and Ctrl+O respects an active 
     if (app.calls.length === 5) app.calls[4]!.finish();
     await app.waitFor(() => !app.isWorking());
     app.stdin.write("keep draft\x0f");
-    await app.waitFor(() => screen().includes("✓ bash-1") && screen().includes("✓ bash-2"));
+    await app.waitFor(
+      () => screen().includes("✓ job: bash-1") && screen().includes("✓ job: bash-2"),
+    );
     expect(screen()).toContain("keep draft");
     expect(screen()).not.toContain("background jobs folded");
     app.stdin.write("\x0f");
     await app.waitFor(() => screen().includes("3 background jobs folded"));
-    expect(screen()).not.toContain("✓ bash-1");
+    expect(screen()).not.toContain("✓ job: bash-1");
     expect(app.stderr()).toBe("");
   } finally {
     await app.cleanup();
@@ -396,7 +402,9 @@ test("a promoted job shows the last visual output rows at 40×12 and after resiz
     expect(app.screen().every((row) => Bun.stringWidth(row) <= 60)).toBe(true);
     app.calls[1]!.tool("job_kill", { job_id: "bash-1" });
     await app.waitFor(() => app.calls.length === 3);
-    await app.waitFor(() => screen().includes("✗ bash-1") && screen().includes("后台任务已停止"));
+    await app.waitFor(
+      () => screen().includes("✗ 任务：bash-1") && screen().includes("后台任务已停止"),
+    );
     app.calls[2]!.finish();
     await app.waitFor(() => !app.isWorking());
     expect(app.stderr()).toBe("");
@@ -465,25 +473,25 @@ test("job command toggles independently and its title opens focused details", as
       description: "Independent command",
       run_in_background: true,
     });
-    await app.waitFor(() => app.calls.length === 2 && screen().includes("● bash-1"));
-    const commandRow = app.screen().find((line) => line.trimStart().startsWith("❯ printf"));
+    await app.waitFor(() => app.calls.length === 2 && screen().includes("● job: bash-1"));
+    const commandRow = app.screen().find((line) => line.trimStart().startsWith("│ ❯ printf"));
     expect(commandRow).not.toContain("COMMAND-DETAIL");
     clickRow("❯ printf");
     await app.waitFor(() => screen().includes("COMMAND-DETAIL"));
     expect(screen()).not.toContain("Output tail");
     clickRow("COMMAND-DETAIL");
     await app.waitFor(
-      () => !app.screen().some((line) => line.trimStart().startsWith("# COMMAND-DETAIL")),
+      () => !app.screen().some((line) => line.trimStart().startsWith("│ # COMMAND-DETAIL")),
     );
-    const header = app.screen().findIndex((line) => line.includes("● bash-1"));
+    const header = app.screen().findIndex((line) => line.includes("● job: bash-1"));
     app.stdin.write(`\x1b[<0;95;${header + 1}M\x1b[<0;95;${header + 1}m`);
     await app.flush();
     expect(screen()).not.toContain("Output tail");
-    clickRow("● bash-1");
+    clickRow("● job: bash-1");
     await app.waitFor(() => screen().includes("❯ bash-1") && screen().includes("Started"));
     expect(screen()).toContain("Output tail");
     app.stdin.write("\x1b");
-    await app.waitFor(() => screen().includes("● bash-1"));
+    await app.waitFor(() => screen().includes("● job: bash-1"));
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
     expect(app.stderr()).toBe("");
@@ -522,11 +530,13 @@ test("two settled jobs stay open and group folding leaves a separate job unchang
       description: "Separate job",
       run_in_background: true,
     });
-    await app.waitFor(() => app.calls.length === 4 && screen().includes("● bash-3"));
+    await app.waitFor(() => app.calls.length === 4 && screen().includes("● job: bash-3"));
     app.calls[3]!.finish();
     await app.waitFor(() => !app.isWorking());
     await Bun.write(join(app.root, "pair"), "");
-    await app.waitFor(() => screen().includes("✓ bash-1") && screen().includes("✗ bash-2"));
+    await app.waitFor(
+      () => screen().includes("✓ job: bash-1") && screen().includes("✗ job: bash-2"),
+    );
     expect(screen()).not.toContain("background jobs folded");
     expect(screen()).toContain("╭");
     expect(screen()).toContain("╰");
@@ -534,11 +544,11 @@ test("two settled jobs stay open and group folding leaves a separate job unchang
     app.stdin.write(`\x1b[<0;2;${header + 1}M\x1b[<0;2;${header + 1}m`);
     await app.waitFor(() => screen().includes("2 background jobs folded"));
     expect(screen()).toContain("1 failed");
-    expect(screen()).toContain("● bash-3");
-    expect(screen()).not.toContain("✗ bash-2");
+    expect(screen()).toContain("● job: bash-3");
+    expect(screen()).not.toContain("✗ job: bash-2");
     app.stdin.write("\x0f");
-    await app.waitFor(() => screen().includes("✗ bash-2"));
-    expect(screen()).toContain("● bash-3");
+    await app.waitFor(() => screen().includes("✗ job: bash-2"));
+    expect(screen()).toContain("● job: bash-3");
     app.resize(80, 32);
     await app.waitFor(() => app.screen().every((line) => Bun.stringWidth(line) <= 80));
     expect(app.stderr()).toBe("");
@@ -566,16 +576,18 @@ test("an automatically folded group keeps stopped and failed counts visible", as
         },
       })),
     );
-    await app.waitFor(() => app.calls.length === 2 && screen().includes("│ armed-2"));
+    await app.waitFor(() => app.calls.length === 2 && screen().includes("│ ≡ armed-2"));
     app.calls[1]!.tool("job_kill", { job_id: "bash-3" });
-    await app.waitFor(() => app.calls.length === 3 && screen().includes("✗ bash-3 · stopped"));
+    await app.waitFor(
+      () => app.calls.length === 3 && /✗ job: bash-3 bash \S+ stopped/.test(screen()),
+    );
     await Bun.write(join(app.root, "go"), "");
     await app.waitFor(() => screen().includes("3 background jobs folded"));
     const header = app.screen().find((line) => line.includes("3 background jobs folded"))!;
     expect(header).toContain("1 failed");
     expect(header).toContain("1 stopped");
     expect(header).toContain("1 completed");
-    expect(screen()).not.toContain("✗ bash-3");
+    expect(screen()).not.toContain("✗ job: bash-3");
     expect(app.stderr()).toBe("");
   } finally {
     await app.cleanup();
@@ -588,7 +600,7 @@ test("job elapsed time advances on the display clock and freezes after settlemen
     rows: 28,
     env: { LANG: "en_US.UTF-8" },
   });
-  const card = () => app.screen().find((line) => line.includes("bash-1 ·"));
+  const card = () => app.screen().find((line) => line.includes("bash-1 bash"));
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.tool("bash", {
@@ -606,6 +618,47 @@ test("job elapsed time advances on the display clock and freezes after settlemen
     jest.advanceTimersByTime(2000);
     await app.flush();
     expect(card()).toBe(settled);
+    expect(app.stderr()).toBe("");
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("job card uses the reference header hierarchy and colored section rails", async () => {
+  const app = await start(["--permission-mode", "full-access", "launch"], {
+    columns: 100,
+    rows: 32,
+    env: { LANG: "en_US.UTF-8" },
+  });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("bash", {
+      command: "printf 'first\\nsecond\\nthird\\n'; while :; do sleep 0.01; done",
+      description: "Card styling",
+      run_in_background: true,
+    });
+    await app.waitFor(
+      () => app.calls.length === 2 && app.screen().some((line) => line.includes("│ third")),
+    );
+    const row = app.screen().findIndex((line) => line.includes("●") && line.includes("bash-1"));
+    const header = app.screen()[row]!;
+    const cell = (y: number, x: number) => app.terminal.buffer.active.getLine(y)!.getCell(x)!;
+    const idX = Bun.stringWidth(header.slice(0, header.indexOf("bash-1")));
+    expect(cell(row, idX).isBold()).toBeTruthy();
+    expect(header).toMatch(/● job: bash-1 bash \S+ running/);
+    const kindX = header.indexOf(" bash ") + 1;
+    expect(cell(row, kindX).isDim()).toBeTruthy();
+    expect(cell(row, kindX + "bash ".length).isDim()).toBeTruthy();
+    const statusX = header.indexOf("running");
+    expect(cell(row, statusX).getFgColor()).toBe(Number.parseInt(dark.warning.slice(1), 16));
+    const command = app.screen()[row + 1]!;
+    const railX = command.indexOf("│");
+    expect(command).toContain("│ ❯ printf");
+    expect(cell(row + 1, railX).getFgColor()).toBe(Number.parseInt(dark.accent.slice(1), 16));
+    expect(app.screen()[row + 2]).toContain("│ ≡ second");
+    expect(app.screen()[row + 3]).toContain("│ third");
+    expect(cell(row + 2, railX).getFgColor()).toBe(Number.parseInt(dark.success.slice(1), 16));
+    expect(cell(row + 3, railX).getFgColor()).toBe(Number.parseInt(dark.success.slice(1), 16));
     expect(app.stderr()).toBe("");
   } finally {
     await app.cleanup();
