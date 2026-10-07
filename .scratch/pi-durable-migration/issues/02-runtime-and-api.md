@@ -24,7 +24,26 @@ Blocked by: 01
 
 ## Verification
 
-尚未实施。执行时追加实际命令、退出码、公开行为证据、focused timing 与未验证范围；不得用文档检查冒充代码验收。
+2026-10-08 实施中，尚未关闭。生产路径已使用原生 Harness、Conversation、Models、ToolRegistration、Submission 和 committed 观察；旧 Agent loop 与私有 Session Store 消费者已替换。当前源码提供原生文档、JSONL 主文件 flush、主机 SQLite 独占租约，以及产品事实投影；这些基础实现不代替 03–08 的专门验收。
+
+公开行为的实际聚焦验证（退出码均为 0）：
+
+| 范围                       | 命令中的测试文件                                           | 结果                    | 时间   |
+| -------------------------- | ---------------------------------------------------------- | ----------------------- | ------ |
+| 权限规则、Hook 与执行阶段  | `permission-hooks`、`permission-rules`、`post-allow-stage` | 74 pass，260 assertions | 3.68 s |
+| 原生 Compaction 与 Goal    | `compaction`、`goal`                                       | 35 pass，212 assertions | 2.40 s |
+| Plan Mode                  | `plan-mode`                                                | 21 pass，91 assertions  | 1.23 s |
+| 异步 Hook                  | `async-hooks`                                              | 13 pass，54 assertions  | 0.99 s |
+| MCP 协议、管理与声明       | `mcp`、`mcp-api`、`tool-declarations`                      | 65 pass，286 assertions | 2.87 s |
+| 中断、作业停止通知与关闭   | `post-tool-hooks`、`job-api`、`session-dispose`            | 39 pass，177 assertions | 4.65 s |
+| 子代理权限与权限 Hook      | `subagent-permissions`、`permission-hooks`                 | 42 pass，147 assertions | 2.91 s |
+| 真实进程丢失不安全工具回执 | `unknown-tool-outcomes`                                    | 6 pass                  | 2.04 s |
+
+上述命令统一使用 `rtk proxy bun test packages/agent/tests/e2e/<name>.test.ts ...`。关闭预算用例实际覆盖跨进程 1.5 秒资源回收契约，保留真实时间；其余同步使用模型回复、原生结算、文件事件和进程退出。
+
+`rtk proxy bunx --no tsc -b --pretty false` 已通过全部工作区类型检查；受影响源文件的 oxfmt、oxlint 通过。受影响 Agent package 首轮为 1436 pass / 30 fail，coding-agent package 首轮为 1307 pass / 146 fail；正在用最小用例区分原生消费者差异、共享时钟级联与真实源码缺陷，不能把后续局部通过报告成包检查通过。最终聚合检查保留给 09，尚未执行。
+
+仍需在 02 关闭前完成：已发现的 populated-directory fork 原子事务冲突、受影响包失败收敛、静态依赖检查与集成复核。03–08 保持依赖门禁，另行验证存储故障/并发恢复、挂起 Interaction 重授权、有限因果结算崩溃窗口、Goal 原子续轮以及 Frontend 回放和终端矩阵；不得从本票聚焦通过推断这些验收完成。
 
 ## Comments
 

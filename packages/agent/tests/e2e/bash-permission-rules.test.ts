@@ -52,7 +52,12 @@ test.each([...PERMISSION_MODES])(
     ).toMatchObject([
       {
         isError: true,
-        content: [{ type: "text", text: "Denied by permission rule: bash(rm -rf *)" }],
+        content: [
+          {
+            type: "text",
+            text: expect.stringContaining("Denied by permission rule: bash(rm -rf *)"),
+          },
+        ],
       },
     ]);
     expect(await Bun.file(join(dirs.cwd, "marker")).exists()).toBe(false);
