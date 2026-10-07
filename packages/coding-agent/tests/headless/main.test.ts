@@ -434,8 +434,11 @@ test.each(["text", "stream-json"])(
     await mkdir(join(root, ".rukie", "file-history"), { recursive: true });
     const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
     const reply: Parameters<typeof faux.setResponses>[0][number] = (context) => {
-      const last = context.messages.at(-1)!;
-      if (last.role === "user" && JSON.stringify(last.content).includes("child-prompt"))
+      const last = context.messages.findLast(
+        (message) =>
+          message.role === "user" && !JSON.stringify(message.content).includes("<system-reminder>"),
+      );
+      if (last?.role === "user" && JSON.stringify(last.content).includes("child-prompt"))
         return fauxAssistantMessage("child-only text");
       return fauxAssistantMessage("parent-only text");
     };
@@ -537,6 +540,7 @@ test("Headless resume emits a text plan and never registers interactive plan too
   try {
     const seed = await createSession({ cwd: root, homeDir: root, ...echoModel() });
     await seed.setPlanMode(true);
+    await seed.close();
     const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
     faux.setResponses([
       (context) => {
@@ -567,8 +571,8 @@ test("Headless resume emits a text plan and never registers interactive plan too
       .split("\n")
       .map((line) => JSON.parse(line));
     const start = events.find((event) => event.type === "snapshot");
-    expect(start.tools).not.toContain("exit_plan_mode");
-    expect(start.tools).not.toContain("enter_plan_mode");
+    expect(start.tools.map((tool: { name: string }) => tool.name)).not.toContain("exit_plan_mode");
+    expect(start.tools.map((tool: { name: string }) => tool.name)).not.toContain("enter_plan_mode");
     expect(events.findLast((event) => event.type === "request_settled")).toMatchObject({
       type: "request_settled",
       text: "# Text plan\n\nInspect, implement and verify.",
@@ -592,7 +596,10 @@ test.each([false, true])(
     const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
     let childResponded = false;
     const reply: Parameters<typeof faux.setResponses>[0][number] = (context) => {
-      const last = context.messages.at(-1);
+      const last = context.messages.findLast(
+        (message) =>
+          message.role === "user" && !JSON.stringify(message.content).includes("<system-reminder>"),
+      );
       if (last?.role === "user" && JSON.stringify(last.content).includes("child-prompt")) {
         childResponded = true;
         return fauxAssistantMessage(
@@ -892,7 +899,15 @@ test.each(["text", "stream-json"])(
           { server: "srv", error: "needs authentication; run /mcp login srv in the TUI" },
         ]);
         expect(stdout).not.toContain("mcp__srv__authenticate");
-        expect(events.findLast((event) => event.type === "request_settled")).toMatchObject({
+        expect(
+          events.findLast(
+            (event) =>
+              typeof event === "object" &&
+              event !== null &&
+              "type" in event &&
+              event.type === "request_settled",
+          ),
+        ).toMatchObject({
           type: "request_settled",
           success: true,
         });
