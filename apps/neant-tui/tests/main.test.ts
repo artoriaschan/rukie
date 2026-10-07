@@ -74,7 +74,7 @@ test("TUI exit disposes an idle Session and runs SessionEnd once", async () => {
 });
 
 test("renders Markdown replies and continues two prompts in the same Session", async () => {
-  const app = await startWithClock();
+  const app = await startWithClock([], { rows: 40 });
   try {
     await app.waitFor(() => app.stdin.isRaw);
     app.stdin.write("first prompt\r");
@@ -414,10 +414,13 @@ test("--resume continues the existing Session context", async () => {
     const lines = terminal.allLines();
     const restored = lines.indexOf("❯ stored prompt");
     expect(restored).toBeGreaterThanOrEqual(0);
-    expect(lines.slice(restored, restored + 4)).toEqual([
+    expect(lines.slice(restored, restored + 7)).toEqual([
       "❯ stored prompt",
+      "",
       `${assistant} stored reply`,
+      "",
       "❯ continuation",
+      "",
       `${assistant} resumed reply`,
     ]);
     await terminal.waitFor(() => !terminal.isWorking());

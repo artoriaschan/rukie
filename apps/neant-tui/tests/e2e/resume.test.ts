@@ -16,6 +16,7 @@ test("resume replays stored text before input and appends the next Run to the sa
   const storedReply = "⏵ 查一下报错原因\n**stored reply** 中\n⏵ 给补丁跑个验证\nsecond line";
   original.setResponses([fauxAssistantMessage(storedReply)]);
   const app = await startWithClock(argv, {
+    rows: 28,
     prepare: async (directory) => {
       root = directory;
       await Bun.write(join(root, "AGENTS.md"), "hidden project instructions");
@@ -47,8 +48,9 @@ test("resume replays stored text before input and appends the next Run to the sa
     expect(lines[metadata + 1]?.slice(42)).toBe(root.slice(0, 38));
     const restored = lines.indexOf("❯ stored prompt 中");
     expect(restored).toBeGreaterThan(metadata);
-    expect(lines.slice(restored, restored + 3)).toEqual([
+    expect(lines.slice(restored, restored + 4)).toEqual([
       "❯ stored prompt 中",
+      "",
       `${assistant} stored reply 中`,
       "  second line",
     ]);
@@ -58,7 +60,7 @@ test("resume replays stored text before input and appends the next Run to the sa
     expect(app.terminal.buffer.active.getLine(restored)!.getCell(79)!.isBgDefault()).toBe(true);
     expect(
       app.terminal.buffer.active
-        .getLine(restored + 1)!
+        .getLine(restored + 2)!
         .getCell(79)!
         .isBgDefault(),
     ).toBe(true);
@@ -91,13 +93,13 @@ test("resume replays stored text before input and appends the next Run to the sa
           return body === "  resumed reply" || body === `${assistant} resumed reply`;
         }).length === 12 && !app.isWorking(),
     );
+    expect(app.terminal.buffer.active.baseY).toBe(0);
+    app.stdin.write("\x1b[5~");
+    await app.waitFor(() => app.screen()[4]?.slice(42) === logoTop);
     expect(app.allLines().filter((line) => line === "❯ stored prompt 中")).toHaveLength(1);
     expect(app.allLines().filter((line) => line === `${assistant} stored reply 中`)).toHaveLength(
       1,
     );
-    expect(app.terminal.buffer.active.baseY).toBe(0);
-    app.stdin.write("\x1b[5~");
-    await app.waitFor(() => app.screen()[4]?.slice(42) === logoTop);
     expect(app.allLines()[1]).toBe(lines[0]);
     expect(app.allLines().filter((line) => line.slice(42) === logoTop)).toHaveLength(1);
     const resumed = await createSession({ cwd: root, homeDir: root, ...app, resumeId: id });
@@ -155,6 +157,7 @@ test("resume replays each tool's collapsed result and error preview without remi
     fauxAssistantMessage("after tools"),
   ]);
   const app = await start(argv, {
+    rows: 40,
     prepare: async (root) => {
       await Bun.write(join(root, "first.txt"), "hidden first output");
       await Bun.write(join(root, "second.txt"), "hidden second output");
@@ -177,9 +180,11 @@ test("resume replays each tool's collapsed result and error preview without remi
     const lines = app.allLines();
     const restored = lines.indexOf("❯ stored tools");
     expect(restored).toBeGreaterThanOrEqual(0);
-    expect(lines.slice(restored, restored + 3)).toEqual([
+    expect(lines.slice(restored, restored + 5)).toEqual([
       "❯ stored tools",
+      "",
       "⚓ 思考 （Ctrl+O 展开）",
+      "",
       `${assistant} before tools`,
     ]);
     expect(lines.filter((line) => line.startsWith("• 读取 first.txt"))).toHaveLength(1);
@@ -247,8 +252,9 @@ test("resume replays the restored compaction suffix without exposing its summary
     const lines = app.allLines();
     const restored = lines.indexOf("❯ retained prompt");
     expect(restored).toBeGreaterThanOrEqual(0);
-    expect(lines.slice(restored, restored + 2)).toEqual([
+    expect(lines.slice(restored, restored + 3)).toEqual([
       "❯ retained prompt",
+      "",
       `${assistant} retained reply`,
     ]);
     expect(app.allLines().join("\n")).not.toContain("old transcript");

@@ -2563,104 +2563,106 @@ function Chat({
             thinking={thinking}
             working={state.running}
           />
-          {completed.map(
-            (entry, index) =>
-              entry && (
-                <Box
-                  key={index}
-                  backgroundColor={
-                    selectedMessage ===
-                    (state.completed[index]?.type === "tool" && state.completed[index].id
-                      ? `tool-${state.completed[index].id}-header`
-                      : (state.completed[index]?.anchorId ?? `row-${index}`))
-                      ? theme.messageActionsBackground
-                      : undefined
-                  }
-                  scrollAnchorId={state.completed[index]?.anchorId ?? `row-${index}`}
-                  flexDirection="column"
-                >
-                  {entry}
-                </Box>
-              ),
-          )}
-          {state.reasoning && (
-            <Box
-              backgroundColor={
-                selectedMessage === `${state.assistantAnchor}-thinking`
-                  ? theme.messageActionsBackground
-                  : undefined
-              }
-              scrollAnchorId={`${state.assistantAnchor}-thinking`}
-              flexDirection="column"
-            >
-              <ThinkingRow
-                text={state.reasoning}
-                durationMs={state.reasoningDurationMs}
-                streaming={!state.reasoningSettled}
-                preview={!state.reasoningSettled}
-                revealKey={`${state.assistantAnchor}-thinking`}
-                locale={locale}
-                expanded={expanded || streamThinkingRows.has(`${state.assistantAnchor}-thinking`)}
-                onToggle={() => toggleStreamThinking(`${state.assistantAnchor}-thinking`)}
-              />
-            </Box>
-          )}
-          {state.assistant && (
-            <Box
-              backgroundColor={
-                selectedMessage === state.assistantAnchor
-                  ? theme.messageActionsBackground
-                  : undefined
-              }
-              scrollAnchorId={state.assistantAnchor}
-              flexDirection="column"
-            >
-              <AssistantMessage
-                text={state.assistant}
-                revealKey={state.assistantAnchor}
-                streaming
-              />
-            </Box>
-          )}
-          {state.tools
-            .filter((tool) => showsToolCard(tool.name))
-            .map((tool) => (
+          <Box flexDirection="column" gap={1}>
+            {completed.map(
+              (entry, index) =>
+                entry && (
+                  <Box
+                    key={index}
+                    backgroundColor={
+                      selectedMessage ===
+                      (state.completed[index]?.type === "tool" && state.completed[index].id
+                        ? `tool-${state.completed[index].id}-header`
+                        : (state.completed[index]?.anchorId ?? `row-${index}`))
+                        ? theme.messageActionsBackground
+                        : undefined
+                    }
+                    scrollAnchorId={state.completed[index]?.anchorId ?? `row-${index}`}
+                    flexDirection="column"
+                  >
+                    {entry}
+                  </Box>
+                ),
+            )}
+            {state.reasoning && (
               <Box
-                key={tool.id}
                 backgroundColor={
-                  selectedMessage === `tool-${tool.id}-header`
+                  selectedMessage === `${state.assistantAnchor}-thinking`
                     ? theme.messageActionsBackground
                     : undefined
                 }
+                scrollAnchorId={`${state.assistantAnchor}-thinking`}
                 flexDirection="column"
               >
-                <ToolCall
-                  foldTerminalCommand={foldTerminalCommand}
-                  key={tool.id}
-                  onPathClick={openFileActions}
-                  expanded={expanded || expandedRows.has(tool.id)}
-                  onToggle={() => toggleRow(tool.id)}
-                  id={tool.id}
-                  searchLocation={
-                    currentMatch?.toolId === tool.id
-                      ? {
-                          part: currentMatch.part!,
-                          line: currentMatch.line,
-                          offset: currentMatch.offset,
-                        }
-                      : undefined
-                  }
-                  name={tool.name}
-                  args={tool.args}
-                  callView={tool.callView}
-                  startedAt={tool.startedAt}
+                <ThinkingRow
+                  text={state.reasoning}
+                  durationMs={state.reasoningDurationMs}
+                  streaming={!state.reasoningSettled}
+                  preview={!state.reasoningSettled}
+                  revealKey={`${state.assistantAnchor}-thinking`}
                   locale={locale}
-                  summary={tool.summary}
-                  status="running"
+                  expanded={expanded || streamThinkingRows.has(`${state.assistantAnchor}-thinking`)}
+                  onToggle={() => toggleStreamThinking(`${state.assistantAnchor}-thinking`)}
                 />
               </Box>
-            ))}
-          {state.error && <Notice kind="error" text={state.error} />}
+            )}
+            {state.assistant && (
+              <Box
+                backgroundColor={
+                  selectedMessage === state.assistantAnchor
+                    ? theme.messageActionsBackground
+                    : undefined
+                }
+                scrollAnchorId={state.assistantAnchor}
+                flexDirection="column"
+              >
+                <AssistantMessage
+                  text={state.assistant}
+                  revealKey={state.assistantAnchor}
+                  streaming
+                />
+              </Box>
+            )}
+            {state.tools
+              .filter((tool) => showsToolCard(tool.name))
+              .map((tool) => (
+                <Box
+                  key={tool.id}
+                  backgroundColor={
+                    selectedMessage === `tool-${tool.id}-header`
+                      ? theme.messageActionsBackground
+                      : undefined
+                  }
+                  flexDirection="column"
+                >
+                  <ToolCall
+                    foldTerminalCommand={foldTerminalCommand}
+                    key={tool.id}
+                    onPathClick={openFileActions}
+                    expanded={expanded || expandedRows.has(tool.id)}
+                    onToggle={() => toggleRow(tool.id)}
+                    id={tool.id}
+                    searchLocation={
+                      currentMatch?.toolId === tool.id
+                        ? {
+                            part: currentMatch.part!,
+                            line: currentMatch.line,
+                            offset: currentMatch.offset,
+                          }
+                        : undefined
+                    }
+                    name={tool.name}
+                    args={tool.args}
+                    callView={tool.callView}
+                    startedAt={tool.startedAt}
+                    locale={locale}
+                    summary={tool.summary}
+                    status="running"
+                  />
+                </Box>
+              ))}
+            {state.error && <Notice kind="error" text={state.error} />}
+          </Box>
         </ScrollBox>
         {railVisible && bodyScroll && (
           <TimelineRail

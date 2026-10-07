@@ -257,6 +257,7 @@ test.each([
   "%s compaction is a quiet divider message notice without exposing the summary",
   async (locale, prefix) => {
     const app = await startWithClock(["read the file"], {
+      rows: 40,
       env: { LANG: locale },
       prepare: async (root) => {
         await Bun.write(join(root, "large.txt"), "tool output\n".repeat(2500));
