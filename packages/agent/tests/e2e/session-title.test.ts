@@ -4,17 +4,17 @@ import {
   fauxAssistantMessage,
   fauxToolCall,
 } from "@earendil-works/pi-ai";
-import {
-  createSession,
-  loadSettings,
-  createJsonlStore,
-  type SessionEvent,
-} from "../../src/index.ts";
-import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
+import { createSession, loadSettings, type SessionEvent } from "../../src/index.ts";
 import { join } from "node:path";
 import { abortingModel } from "../helpers/aborting-model.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
+import {
+  withAuxiliaryRequests,
+  modelStream,
+  withModelStream,
+  withModelAlias,
+  type ModelStream,
+} from "../helpers/auxiliary-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 test("first submitted prompt gets a cleaned UTF-8 fallback without waiting for its title model", async () => {
@@ -26,12 +26,15 @@ test("first submitted prompt gets a cleaned UTF-8 fallback without waiting for i
   const session = await createSession({
     ...dirs,
     model: fake.model,
-    streamFn: withAuxiliaryRequests(fake.streamFn, {
-      titles: () => {
-        requested.resolve();
-        return title;
-      },
-    }),
+    models: withModelStream(
+      fake.models,
+      withAuxiliaryRequests(modelStream(fake.models), {
+        titles: () => {
+          requested.resolve();
+          return title;
+        },
+      }),
+    ),
   });
   session.subscribe((event) => events.push(event));
   try {
@@ -56,17 +59,20 @@ test("first submitted prompt gets a cleaned UTF-8 fallback without waiting for i
 test("a model title replaces the fallback once and is restored without a second request", async () => {
   const dirs = await tempDirs();
   const fake = fakeModel([fauxAssistantMessage("Done"), fauxAssistantMessage("Again")]);
-  const titles: Parameters<NonNullable<Parameters<typeof createSession>[0]["streamFn"]>>[1][] = [];
+  const titles: Parameters<ModelStream>[1][] = [];
   const changed = Promise.withResolvers<void>();
   const session = await createSession({
     ...dirs,
     ...fake,
-    streamFn: withAuxiliaryRequests(fake.streamFn, {
-      titles: (model, context, options) => {
-        titles.push(context);
-        return withAuxiliaryRequests(fake.streamFn)(model, context, options);
-      },
-    }),
+    models: withModelStream(
+      fake.models,
+      withAuxiliaryRequests(modelStream(fake.models), {
+        titles: (model, context, options) => {
+          titles.push(context);
+          return withAuxiliaryRequests(modelStream(fake.models))(model, context, options);
+        },
+      }),
+    ),
   });
   session.subscribe((event) => {
     if (event.type === "session_title_changed" && event.source === "model") changed.resolve();
@@ -104,17 +110,20 @@ test("rename cancels a held generation during the primary Run and fixes the titl
     ...dirs,
     model: fake.model,
     onWarning: (warning) => warnings.push(warning),
-    streamFn: withAuxiliaryRequests(
-      () => {
-        started.resolve();
-        return primary;
-      },
-      {
-        titles: (_model, _context, options) => {
-          titleSignal = options?.signal;
-          return title;
+    models: withModelStream(
+      fake.models,
+      withAuxiliaryRequests(
+        () => {
+          started.resolve();
+          return primary;
         },
-      },
+        {
+          titles: (_model, _context, options) => {
+            titleSignal = options?.signal;
+            return title;
+          },
+        },
+      ),
     ),
   });
   try {
@@ -167,14 +176,17 @@ for (const [label, response] of [
       ...dirs,
       ...fake,
       onWarning: (text) => warning.resolve(text),
-      streamFn: withAuxiliaryRequests(fake.streamFn, {
-        titles: () => {
-          const stream = createAssistantMessageEventStream();
-          stream.push({ type: "done", reason: "stop", message: response });
-          stream.end(response);
-          return stream;
-        },
-      }),
+      models: withModelStream(
+        fake.models,
+        withAuxiliaryRequests(modelStream(fake.models), {
+          titles: () => {
+            const stream = createAssistantMessageEventStream();
+            stream.push({ type: "done", reason: "stop", message: response });
+            stream.end(response);
+            return stream;
+          },
+        }),
+      ),
     });
     try {
       expect((await session.run("Fix the login error")).text).toBe("Primary answer");
@@ -194,12 +206,15 @@ test("a manual title before the first prompt suppresses all automatic generation
   const session = await createSession({
     ...dirs,
     ...fake,
-    streamFn: withAuxiliaryRequests(fake.streamFn, {
-      titles: (...args) => {
-        generated = true;
-        return fake.streamFn(...args);
-      },
-    }),
+    models: withModelStream(
+      fake.models,
+      withAuxiliaryRequests(modelStream(fake.models), {
+        titles: (...args) => {
+          generated = true;
+          return modelStream(fake.models)(...args);
+        },
+      }),
+    ),
   });
   try {
     await session.rename("Chosen name");
@@ -224,28 +239,31 @@ test("title requests have bounded UTF-8 input, no tools, and a cleaned 80-byte r
   const session = await createSession({
     ...dirs,
     ...fake,
-    streamFn: withAuxiliaryRequests(fake.streamFn, {
-      titles: (_model, context, options) => {
-        input = JSON.stringify(context.messages.at(-1));
-        const message = context.messages.at(-1)!;
-        input =
-          typeof message.content === "string"
-            ? message.content
-            : message.content
-                .filter((block) => block.type === "text")
-                .map((block) => block.text)
-                .join("");
-        outputLimit = options?.maxTokens;
-        tools = context.messages.some(
-          (message) => message.role === "system" && (message.toolsAdded?.length ?? 0) > 0,
-        );
-        const stream = createAssistantMessageEventStream();
-        const response = fauxAssistantMessage("\x1b[31m" + "中文标题".repeat(30) + "\x1b[0m\n");
-        stream.push({ type: "done", reason: "stop", message: response });
-        stream.end(response);
-        return stream;
-      },
-    }),
+    models: withModelStream(
+      fake.models,
+      withAuxiliaryRequests(modelStream(fake.models), {
+        titles: (_model, context, options) => {
+          input = JSON.stringify(context.messages.at(-1));
+          const message = context.messages.at(-1)!;
+          input =
+            typeof message.content === "string"
+              ? message.content
+              : message.content
+                  .filter((block) => block.type === "text")
+                  .map((block) => block.text)
+                  .join("");
+          outputLimit = options?.maxTokens;
+          tools = context.messages.some(
+            (message) => message.role === "system" && (message.toolsAdded?.length ?? 0) > 0,
+          );
+          const stream = createAssistantMessageEventStream();
+          const response = fauxAssistantMessage("\x1b[31m" + "中文标题".repeat(30) + "\x1b[0m\n");
+          stream.push({ type: "done", reason: "stop", message: response });
+          stream.end(response);
+          return stream;
+        },
+      }),
+    ),
   });
   session.subscribe((event) => {
     if (event.type === "session_title_changed" && event.source === "model") changed.resolve();
@@ -288,18 +306,22 @@ test("project titleModel overrides the user title model and routes an isolated r
     join(dirs.cwd, ".rukie/settings.json"),
     JSON.stringify({ titleModel: "title-test/cheap" }),
   );
+  fake.models = withModelAlias(fake.models, "title-test", ["cheap", "other"]);
   const { settings } = await loadSettings(dirs);
   const requested = Promise.withResolvers<string>();
   const session = await createSession({
     ...dirs,
     ...fake,
     settings,
-    streamFn: withAuxiliaryRequests(fake.streamFn, {
-      titles: (model, context, options) => {
-        requested.resolve(`${model.provider}/${model.id}`);
-        return fake.streamFn(model, context, options);
-      },
-    }),
+    models: withModelStream(
+      fake.models,
+      withAuxiliaryRequests(modelStream(fake.models), {
+        titles: (model, context, options) => {
+          requested.resolve(`${model.provider}/${model.id}`);
+          return modelStream(fake.models)(model, context, options);
+        },
+      }),
+    ),
   });
   try {
     await session.run("Build a login page");
@@ -343,26 +365,34 @@ test("delegated and forked child sessions use the description without another ti
   const session = await createSession({
     ...dirs,
     ...fake,
-    streamFn: withAuxiliaryRequests(fake.streamFn, {
-      titles: (...args) => {
-        titleCalls++;
-        return fake.streamFn(...args);
-      },
-    }),
+    models: withModelStream(
+      fake.models,
+      withAuxiliaryRequests(modelStream(fake.models), {
+        titles: (...args) => {
+          titleCalls++;
+          return modelStream(fake.models)(...args);
+        },
+      }),
+    ),
   });
   try {
     await session.run("Delegate inspection");
     await session.run("Delegate tests");
     expect(titleCalls).toBe(1);
-    const store = createJsonlStore(dirs);
-    const children = (await store.list({ cwd: dirs.cwd }, BACKGROUND_CONTEXT)).filter(
-      (item) => item.parentSessionId === session.id,
-    );
+    const children = session.toolState("subagents");
+    if (!Array.isArray(children)) throw new Error("Expected child identities");
     const names: (string | undefined)[] = [];
-    for (const metadata of children) {
-      const child = await store.open(metadata, BACKGROUND_CONTEXT);
-      names.push(await child.getName(BACKGROUND_CONTEXT));
-      await child.close(BACKGROUND_CONTEXT);
+    for (const identity of children) {
+      if (
+        typeof identity !== "object" ||
+        identity === null ||
+        !("id" in identity) ||
+        typeof identity.id !== "string"
+      )
+        throw new Error("Expected a child conversation ID");
+      const child = await session.readSubagent(identity.id);
+      names.push(child?.title);
+      expect(child?.title).toBe(child?.description);
     }
     expect(names.sort()).toEqual([
       "Check test coverage",
@@ -412,6 +442,7 @@ test("an idle rename and model selection can persist concurrently without losing
       },
     ],
   };
+  fake.models = withModelAlias(fake.models, "title-concurrent", ["cheap"]);
   const session = await createSession({ ...dirs, ...fake, settings });
   try {
     await session.run("Initial work");
@@ -437,7 +468,10 @@ test("interrupting and disposing a Run while renaming preserves the fixed title"
   const session = await createSession({
     ...dirs,
     ...primary,
-    streamFn: withAuxiliaryRequests(primary.streamFn, { titles: () => title }),
+    models: withModelStream(
+      primary.models,
+      withAuxiliaryRequests(modelStream(primary.models), { titles: () => title }),
+    ),
   });
   try {
     const run = session.run("Interrupted task").catch((error) => error);
@@ -473,7 +507,10 @@ test("rename persists while a manual summary is pending and survives compacted r
   const session = await createSession({
     ...dirs,
     ...fake,
-    streamFn: withAuxiliaryRequests(fake.streamFn, { titles: () => title }),
+    models: withModelStream(
+      fake.models,
+      withAuxiliaryRequests(modelStream(fake.models), { titles: () => title }),
+    ),
   });
   try {
     await session.run("First task");

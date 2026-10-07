@@ -1,6 +1,16 @@
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
-import { afterEach, expect, test } from "bun:test";
-import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import {
+  withAuxiliaryRequests,
+  modelStream,
+  withModelStream,
+  withModelAlias,
+  deferredModelStream,
+} from "../helpers/auxiliary-model.ts";
+import { afterEach, expect, jest, test } from "bun:test";
+import {
+  fauxAssistantMessage,
+  fauxToolCall,
+  createAssistantMessageEventStream,
+} from "@earendil-works/pi-ai";
 import { createSession, type SessionEvent } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
@@ -189,6 +199,7 @@ test.each([undefined, "override"])(
   async (override) => {
     dirs = await tempDirs();
     const fake = fakeModel([fauxAssistantMessage('{"ok":true}'), fauxAssistantMessage("done")]);
+    fake.models = withModelAlias(fake.models, "hook-review", ["cheap", "override"]);
     const selected: string[] = [];
     const key = "RUKIE_HOOK_MODEL_TEST_KEY";
     process.env[key] = "test-key";
@@ -196,10 +207,13 @@ test.each([undefined, "override"])(
       const session = await createSession({
         ...dirs,
         ...fake,
-        streamFn: withAuxiliaryRequests((model, context, options) => {
-          selected.push(model.id);
-          return fake.streamFn(model, context, options);
-        }),
+        models: withModelStream(
+          fake.models,
+          withAuxiliaryRequests((model, context, options) => {
+            selected.push(model.id);
+            return modelStream(fake.models)(model, context, options);
+          }),
+        ),
         settings: {
           reviewModel: "hook-review/cheap",
           providers: [
@@ -247,13 +261,16 @@ test.each(["prompt", "agent"] as const)(
     const session = await createSession({
       ...dirs,
       ...fake,
-      streamFn: withAuxiliaryRequests((model, context, options) => {
-        if (calls++ === 0) {
-          entered.resolve(options!.signal!);
-          return new Promise(() => {});
-        }
-        return fake.streamFn(model, context, options);
-      }),
+      models: withModelStream(
+        fake.models,
+        withAuxiliaryRequests((model, context, options) => {
+          if (calls++ === 0) {
+            entered.resolve(options!.signal!);
+            return createAssistantMessageEventStream();
+          }
+          return modelStream(fake.models)(model, context, options);
+        }),
+      ),
       onWarning() {},
       settings: {
         hooks: {
@@ -261,14 +278,22 @@ test.each(["prompt", "agent"] as const)(
         },
       },
     });
-    expect(
-      await session.run("hello", {
-        onEvent: (event) => {
-          events.push(event);
-        },
-      }),
-    ).toMatchObject({ text: "parent result" });
-    expect((await entered.promise).aborted).toBe(true);
+    jest.useFakeTimers();
+    const run = session.run("hello", {
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+    const signal = await entered.promise;
+    jest.advanceTimersByTime(19);
+    expect(signal.aborted).toBe(false);
+    jest.advanceTimersByTime(1);
+    try {
+      expect(await run).toMatchObject({ text: "parent result" });
+    } finally {
+      jest.useRealTimers();
+    }
+    expect(signal.aborted).toBe(true);
     expect(events.filter((event) => event.type === "hook_warning")).toMatchObject([
       { error: { code: "hook-timeout", params: { timeout: "0.02" } } },
     ]);
@@ -286,11 +311,14 @@ test.each(["prompt", "agent"] as const)(
     const session = await createSession({
       ...dirs,
       ...fake,
-      streamFn: withAuxiliaryRequests((_model, _context, options) => {
-        calls++;
-        entered.resolve(options!.signal!);
-        return new Promise(() => {});
-      }),
+      models: withModelStream(
+        fake.models,
+        withAuxiliaryRequests((_model, _context, options) => {
+          calls++;
+          entered.resolve(options!.signal!);
+          return createAssistantMessageEventStream();
+        }),
+      ),
       settings: {
         hooks: {
           UserPromptSubmit: [{ hooks: [{ type, prompt: "check" }] }],
@@ -511,16 +539,23 @@ test.each(["prompt", "agent"] as const)(
   async (type) => {
     dirs = await tempDirs();
     const late = Promise.withResolvers<never>();
+    const entered = Promise.withResolvers<void>();
     const fake = fakeModel([fauxAssistantMessage("parent result")]);
     let calls = 0;
     const events: SessionEvent[] = [];
     const session = await createSession({
       ...dirs,
       ...fake,
-      streamFn: withAuxiliaryRequests((model, context, options) => {
-        if (calls++ === 0) return late.promise;
-        return fake.streamFn(model, context, options);
-      }),
+      models: withModelStream(
+        fake.models,
+        withAuxiliaryRequests((model, context, options) => {
+          if (calls++ === 0) {
+            entered.resolve();
+            return deferredModelStream(late.promise);
+          }
+          return modelStream(fake.models)(model, context, options);
+        }),
+      ),
       onWarning() {},
       settings: {
         hooks: {
@@ -528,13 +563,21 @@ test.each(["prompt", "agent"] as const)(
         },
       },
     });
-    expect(
-      await session.run("hello", {
-        onEvent: (event) => {
-          events.push(event);
-        },
-      }),
-    ).toMatchObject({ text: "parent result" });
+    jest.useFakeTimers();
+    const run = session.run("hello", {
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+    await entered.promise;
+    jest.advanceTimersByTime(19);
+    expect(events.filter((event) => event.type === "hook_warning")).toHaveLength(0);
+    jest.advanceTimersByTime(1);
+    try {
+      expect(await run).toMatchObject({ text: "parent result" });
+    } finally {
+      jest.useRealTimers();
+    }
     late.reject(new Error("late hook stream failure"));
     await new Promise<void>((resolve) => setImmediate(resolve));
     expect(events.filter((event) => event.type === "hook_warning")).toHaveLength(1);
@@ -557,10 +600,13 @@ test.each(["prompt", "agent"] as const)(
     const session = await createSession({
       ...dirs,
       ...fake,
-      streamFn: withAuxiliaryRequests((_model, _context, options) => {
-        entered.resolve(options!.signal!);
-        return new Promise(() => {});
-      }),
+      models: withModelStream(
+        fake.models,
+        withAuxiliaryRequests((_model, _context, options) => {
+          entered.resolve(options!.signal!);
+          return createAssistantMessageEventStream();
+        }),
+      ),
       settings: { hooks: { UserPromptSubmit: [{ hooks: [{ type, prompt: "check" }] }] } },
     });
     const controller = new AbortController();

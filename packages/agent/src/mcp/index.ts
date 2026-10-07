@@ -1,5 +1,6 @@
 import type { PresentedTool } from "../tools/presentation.ts";
 import type { ToolRegistration } from "@earendil-works/pi-durable";
+import type { JsonValue } from "@earendil-works/chord";
 import {
   McpClient,
   McpAuthRequiredError,
@@ -113,6 +114,20 @@ function displayUrl(value: string): string {
     );
 }
 
+/** MCP extensions are untrusted wire data; persist only an owned JSON tree. */
+function resultDetails(value: unknown): JsonValue {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (Array.isArray(value)) return value.map(resultDetails);
+  if (typeof value === "object" && value !== null)
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, member]) => member !== undefined)
+        .map(([key, member]) => [key, resultDetails(member)]),
+    );
+  throw new Error("MCP tool returned non-JSON details");
+}
+
 function adaptTool(
   server: string,
   client: McpClient,
@@ -137,7 +152,11 @@ function adaptTool(
       const signal = context.abortSignal;
       try {
         const result = await client.callTool(tool.name, args, { signal });
-        return { content: toLlmContent(result), details: result, isError: result.isError };
+        return {
+          content: toLlmContent(result),
+          details: resultDetails(result),
+          isError: result.isError,
+        };
       } catch (error) {
         if (!signal?.aborted) reportError(error);
         throw error;
