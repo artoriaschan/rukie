@@ -1,145 +1,173 @@
 # coding-agent npm 发布流程
 
-Status: needs-info
+Status: ready-for-agent
 
-## 目标与确认状态
+## Problem Statement
 
-用户通过 npm 安装 `@rukie/coding-agent` 后运行 `rukie`，不需要另行安装 Bun。首版支持 macOS arm64 和 x64，公开契约为命令行接口；Agent Core、shared、i18n 保持内部 workspace 包。构建、安装验收、版本准备、发布及失败恢复形成同一条可审阅的流程。
+用户希望通过 npm 安装 Rukie 后直接运行命令，而当前 coding-agent 是依赖源码仓库与外部 Bun 的 private workspace 包。开发者没有统一的编译、安装包验收、版本与 Changelog 生成、CI 触发、npm 发布和失败恢复流程，无法证明发布包在普通用户环境中可用，也无法可靠地重复发版。
 
-2026-10-07 的 grill-with-docs 访谈已确认本文设计。本文尚待书面规格审阅；之后编写实施计划并确认执行方式，再开始代码开发。`needs-info` 表示等待该审阅，不表示设计决策仍有未回答的问题。实现、真实 GitHub CI、npm 发布均未完成。
+现有源码具有动态加载模块、外部 ripgrep 二进制及头像资源，直接编译或发布 workspace manifest 不能证明资源可用。对内部包分别公开发布还会扩大公共接口与版本维护范围。
 
-## 当前事实
+## Solution
 
-- coding-agent 为 private workspace 包，没有版本号，`bin` 指向 `src/main.ts`；源码入口使用 Bun，依赖包含 `workspace:*`。
-- Agent Core 是 private 包，版本为 `0.0.0`；WebFetch 的 User-Agent 当前读取该内部包版本。
-- 参数表没有 `--help` 或 `--version`。Headless CLI 和 TUI 共用参数解析，按模式动态加载。
-- 仓库没有 `.github/`、发布脚本、Changelog 或 Git remote，也没有项目 LICENSE。Conventional Commits 已由 commitlint 约束。
-- bash 输出捕获通过计算出的 URL 加载 pi 内部模块；ripgrep 按平台定位外部二进制；TUI 头像从仓库 brand 目录读取；pi-ai 部分 OAuth/provider 模块使用动态加载。
-- ADR-0005 对外部分发时要求替换 vendored Yoga。用户在本次访谈明确要求不处理 Yoga；范围例外由 ADR-0023 记录，不宣称来源问题已经解决。
+提供公开命令行包 `@rukie/coding-agent`，用户使用 Node/npm 安装后运行 `rukie`，无需另行安装 Bun。首版支持 macOS arm64 和 x64，通过主包 launcher 启动对应平台的独立 Bun 可执行文件；内部 workspace 包保持私有。
 
-事实来自当前 manifest、CLI 参数表、相关资源定位源码及安装的 pi 0.99.2 源码；调查未执行构建、安装或发布。
+维护者合并普通开发 PR 后，由 Release Please 自动整理整个产品的 Conventional Commits，更新包含版本与 Changelog 的 Release PR。维护者审阅并合并 Release PR 后创建版本 tag，触发构建、打包、双架构安装验收和 npm 发布。正式主包先进入 candidate，经 registry 安装验收后推进 latest；beta 使用 next。失败保留旧 latest，并可核对产物后恢复。
 
-## 范围
+交付发布脚本、CI 与 Release Please 配置、文档及本地验证证据。外部 GitHub App、npm scope 和 Trusted Publisher 完成配置后验证真实 CI；首个正式 npm 发布作为单独明确的操作。
 
-### 纳入
+## User Stories
 
-- macOS arm64/x64 的独立 Bun 可执行文件、主 npm 包和两个平台 npm 包。
-- launcher、运行资源定位、provider/auth 打包完整性及第三方许可声明。
-- 产品版本、命令行 help/version、Release Please、Conventional Commits Changelog。
-- PR/main 检查、tag 发布、人工恢复入口和 npm OIDC。
-- tarball 及 registry 安装验收、失败续发和 dist-tag 推进。
-- 发布使用文档、GitHub App/npm 配置步骤和本地交付证据。
-
-### 范围边界
-
-Linux、Windows、musl、公开 SDK、独立发布内部 workspace 包、Yoga 替换及来源调查不在本次范围。保留现有 provider/auth 能力，不为简化打包删减支持。
-
-代码交付不包含自动建立远程仓库、写入真实凭据或正式发布首个 npm 版本。外部身份配置完成后验证真实 CI；正式 npm 发布作为单独明确的操作。包名使用权和 npm scope 权限通过外部配置核实，不能由本地构建通过推断。
-
-## 术语
-
-- 产品版本：coding-agent 对外分发的版本，所有发布包及用户可见版本信息一致。内部 workspace 包不获得独立发布生命周期。
-- Release PR：Release Please 生成的版本与 Changelog 变更，由维护者审阅并合并以决定发布时间。
-- 发布产物：从一个确定 commit 构建、打包、验证的 `.tgz` 及其校验信息；进入发布阶段后不重新构建。
-- 安装验收：从 tarball 或 npm registry 安装后，在源码仓库之外通过命令入口验证可观察行为。
-- CI job：GitHub Actions 中的工作单元，与 Agent Core 的 Run、Subagent、Background Job 无关。
-
-这些术语归发布流程，不改变 CONTEXT.md 的 Session/Run 等产品领域定义。
+1. As a macOS arm64 user, I want to install Rukie through npm, so that I can use it without checking out its source repository.
+2. As a macOS x64 user, I want an executable built for my architecture, so that I can run Rukie without an architecture mismatch.
+3. As a Rukie user, I want installation to require only Node and npm, so that I do not have to install Bun separately.
+4. As a Rukie user, I want the installed package to expose the rukie command, so that I can start it from my terminal.
+5. As a Rukie user, I want to run the command from any project directory, so that installation paths do not determine where I can work.
+6. As a Rukie user, I want installation paths containing spaces to work, so that my filesystem layout does not break startup.
+7. As a Rukie user, I want help output without credentials or a TTY, so that I can discover usage before configuration.
+8. As a Rukie user, I want version output without initializing a Session, so that I can identify the installed release quickly.
+9. As a Rukie user, I want invalid arguments to produce clear errors and deterministic exit codes, so that automation can detect misuse.
+10. As a Headless CLI user, I want text output from the installed command, so that I can use it in existing scripts.
+11. As a Headless CLI user, I want stream-json output, so that integrations can consume structured Session events.
+12. As a Headless CLI user, I want piped stdin to reach the actual Session, so that I can submit input from other commands.
+13. As a Headless CLI user, I want interruption to stop work with the expected exit behavior, so that cancellation works in automation.
+14. As a TUI user, I want the installed command to start the interactive interface, so that I can work without the development environment.
+15. As a TUI user, I want normal exit and interruption to restore my terminal, so that subsequent commands remain usable.
+16. As a TUI user, I want the shipped avatar resource to remain available, so that installation preserves the intended presentation.
+17. As a Rukie user, I want grep to use the correct shipped ripgrep binary, so that search works without a separate installation.
+18. As a Rukie user, I want bash output capture and cleanup to work after packaging, so that execution remains observable and resources are released.
+19. As a Rukie user, I want to resume persisted Sessions, so that packaging does not disrupt my workflow.
+20. As a Rukie user, I want existing provider and auth capabilities preserved, so that distribution does not reduce supported integrations.
+21. As a Rukie user, I want package and executable versions to agree, so that diagnostics identify one product release.
+22. As a Rukie user, I want a clear error for a missing platform package, so that I can repair installation.
+23. As a user on an unsupported platform, I want an explicit support message, so that I understand the platform boundary.
+24. As a Rukie user, I want to upgrade through latest, so that default installation selects an accepted stable release.
+25. As a beta user, I want to install through next, so that I can try prereleases without changing the stable channel.
+26. As a maintainer, I want one product version shared by all packages, so that I do not coordinate independent internal releases.
+27. As a maintainer, I want internal workspace packages kept private, so that CLI distribution does not create a public SDK commitment.
+28. As a maintainer, I want generated release manifests, so that package metadata cannot drift between platforms.
+29. As a maintainer, I want a package file whitelist, so that tests, credentials, settings and Sessions stay out of artifacts.
+30. As a maintainer, I want MIT and third-party notices shipped, so that recipients can inspect the declared terms.
+31. As a maintainer, I want fixed build tool versions, so that evidence identifies the artifact toolchain.
+32. As a maintainer, I want tarball tests outside the repository, so that workspace links cannot hide missing resources.
+33. As a maintainer, I want both architectures tested on matching runtimes, so that cross-compilation is not execution evidence.
+34. As a maintainer, I want local model fixtures and isolated configuration, so that tests spend no API credits and alter no real Sessions.
+35. As a maintainer, I want packaged provider and auth loading checked, so that one fake-provider Run does not hide omitted adapters.
+36. As a contributor, I want checks on PR creation and updates targeting main, so that regressions are caught before merge.
+37. As a maintainer, I want main checked after merge, so that release preparation uses the integrated commit.
+38. As a contributor, I want Conventional Commit titles validated, so that squash commits drive predictable notes.
+39. As a maintainer, I want Changelog generation across the whole product, so that internal package changes are included.
+40. As a maintainer, I want an automatically maintained Release PR, so that I can review versions and edit release wording.
+41. As a maintainer, I want ordinary merges to prepare releases without publishing, so that I control release timing.
+42. As a maintainer, I want an explicit pre-1.0 version policy, so that compatible and breaking changes receive agreed increments.
+43. As a maintainer, I want tags to identify exact commits, so that artifacts trace back to reviewed code.
+44. As a maintainer, I want App-created PRs and tags to trigger workflows, so that automation does not stop at event boundaries.
+45. As a maintainer, I want npm OIDC publishing, so that routine CI needs no stored long-lived npm token.
+46. As a maintainer, I want all platform tests to pass before registry writes, so that unverified architectures are not published.
+47. As a maintainer, I want to publish the tested tarballs, so that later rebuilds cannot invalidate verification.
+48. As a maintainer, I want platform packages published first, so that main package dependencies exist when users install it.
+49. As a maintainer, I want candidate installation verified before latest changes, so that broken candidates do not replace stable releases.
+50. As a maintainer, I want serialized publication, so that releases cannot interleave channel updates.
+51. As a maintainer, I want matching existing packages recognized during recovery, so that partial releases can continue.
+52. As a maintainer, I want conflicting existing versions to stop publication, so that retries cannot conceal inconsistent artifacts.
+53. As a maintainer, I want failures to preserve the previous latest, so that users retain a working stable default.
+54. As a maintainer, I want old recovery attempts to avoid channel regression, so that retries cannot undo newer releases.
+55. As a maintainer, I want explicit recovery and rollback instructions, so that failures do not require improvised procedures.
+56. As a maintainer, I want GitHub Release evidence to distinguish tags from npm success, so that delivery status is accurate.
+57. As a maintainer, I want precise external setup instructions, so that I can bind the repository and publishers without committing credentials.
+58. As a maintainer, I want separate local, CI and npm evidence, so that unverified external behavior is visible.
 
 ## Implementation Decisions
 
-### 包与运行时
+1. 分发边界为一个 CLI 产品：公开 `@rukie/coding-agent` 与两个 macOS 平台包，所有发布包使用同一版本；Agent Core、shared、i18n 不单独公开发布。
+2. 主包 Node launcher 根据平台与架构定位二进制。平台包使用 os/cpu 限制及精确版本 optionalDependencies；不支持的平台或缺失依赖产生明确修复提示。
+3. Agent Core 与 Frontend 运行在编入二进制的 Bun。launcher 保持工作目录、环境、标准 IO、信号和退出状态，避免重复中断及终端恢复失效；直接执行平台二进制不需要外部 Node/Bun。
+4. 内部开发继续使用 workspace TypeScript 入口。构建生成 staging manifest 和 tarball，采用文件白名单，排除 workspace 依赖声明、源码入口、测试和用户数据，不新增发布版业务执行路径。
+5. 固定 Bun 构建版本，保留共用参数解析与 Headless/TUI 动态加载边界。产物可包含 TUI 代码，但 Headless 不初始化 React/renderer。
+6. 携带对应架构的 ripgrep 和头像，定位相对于安装产物或嵌入资源，不依赖用户工作目录、源码路径或构建宿主架构。
+7. 对 pi 输出捕获、OAuth/provider 动态加载使用构建可追踪入口或明确资源分发，保留锁定 pi 能力及现有支持范围，不另写模型适配器或输出捕获业务。
+8. coding-agent manifest 是产品版本来源，初始 0.1.0；生成 manifest、二进制、launcher、平台依赖及可见版本一致。Release Please manifest 仅记录自动化状态。产品版本进入 Agent Core 的应用 User-Agent 时通过内部接口注入，不反向导入 Frontend。
+9. 增加 help/version 入口，无 TTY、无凭据即可成功返回且不初始化 Session。共用解析入口定义参数组合规则，并更新中英文文案。
+10. 0.x 兼容修复、新增能力和性能优化升 patch，不兼容变更升 minor；稳定契约确认后进入 1.0.0。beta 使用 beta.N 后缀，显式配置策略并记录首版引导、beta 进入和退出步骤。
+11. Release Please 从整个产品的 Conventional Commits 生成 Release PR，包含内部包、锁文件和构建变更。Changelog 展示 feat/fix/perf 与不兼容变更，docs/test/chore 默认隐藏且不单独发版。检查开发 PR 标题，推荐 squash merge。
+12. Release PR 更新版本、Changelog 和自动化状态，维护者可调整文案。普通合并不直接发布 npm；Release PR 合并后创建 coding-agent-v 加产品版本的 tag，固定发布 commit。
+13. 普通 CI 对 main 目标 PR 的创建、更新、重开以及 main push、人工运行触发，不加 paths 过滤。版本准备由 main push 触发，依赖该 commit 必要 CI 成功，不使用无关旧状态。
+14. 发布由产品版本 tag 或人工指定已有 tag 触发，检出准确 commit 并验证 tag、版本、可达性和产物身份。人工恢复不绕过验收，也不接受任意分支。
+15. GitHub App 创建 PR/tag/Release 并触发独立 workflow；npm OIDC 负责 registry 写入，仅发布阶段有写权限。普通 PR 不需要发布凭据。工具与 Actions 固定为核实过的版本或 commit。
+16. 双架构实际安装验收通过后，保存所有 tarball 及版本、commit、工具版本和校验信息。发布消费这份产物，不重新构建、pack 或生成 manifest。
+17. 发布串行，不取消正在写 registry 的旧发布。先发平台包后发主包；所有 publish/dist-tag 操作显式指定标签，避免提前改变 latest。
+18. 稳定主包先进入 candidate，registry 精确版本安装验收成功后推进主包 latest。beta 使用 next，不改变 latest，稳定验收不覆盖 beta next。
+19. 构建或 tarball 验收失败不写 registry。部分成功的恢复核对已发布内容、依赖及身份，匹配则续发缺失包，冲突则停止并改用新版本。
+20. 主包发布后的恢复核对原产物与 registry 状态，再执行验收或标签推进；旧恢复不能意外倒退 latest/next，人工回退另有明确操作。GitHub Release 创建不代表 npm 成功，最终补齐产物及实际验证信息。
+21. 自有代码采用 MIT，携带项目许可与第三方声明。按用户明确指示保留 Yoga，本次不替换、不调查来源；范围例外不表示来源问题解决。
+22. 外部仓库、App、npm scope 权限及 Trusted Publisher 是真实 CI/发布前提，本次提供配置步骤，不读取或提交真实凭据。配置后验证真实 CI，首个正式 npm 发布需单独明确执行。
+23. 构建、安装验收、版本准备和恢复各有明确责任与公开操作入口。使用者文档覆盖安装与命令，维护者教程覆盖配置、发布、恢复和回退；技术版本与架构决定遵循既有文档归属。
 
-发布 `@rukie/coding-agent`、`@rukie/coding-agent-darwin-arm64`、`@rukie/coding-agent-darwin-x64`。主包使用 Node launcher 提供 `rukie` 命令，通过精确版本的 optionalDependencies 声明平台包。平台 manifest 使用 `os`、`cpu` 限制安装范围；launcher 对不支持的平台或缺失的平台依赖给出可执行的错误提示。
+## Testing Decisions
 
-用户安装和启动 launcher 需要 Node/npm，实际 Agent Core、Headless CLI 和 TUI 运行于编入可执行文件的 Bun。launcher 保持工作目录、环境、标准输入输出、信号与退出码，不能导致重复中断或终端恢复失效。直接执行平台二进制不需要外部 Node/Bun。
+### 已确认的测试入口
 
-开发时保留内部包直接导出 TypeScript 的 workspace 方式。发布 manifest 在 staging 目录生成，使用 files 白名单；不携带 `workspace:*`、指向 TS 源码的 bin/exports、测试目录、用户设置、凭据或 Sessions。coding-agent 的源码入口继续服务仓库内消费者，发布包首版不提供 SDK exports。
+Q8 与最终完整设计已确认安装包验收；Q13 确认 provider/auth 打包完整性。本次沿用确认，不新增产品侧测试接口，也不重新访谈。
 
-固定构建用 Bun 版本。开发源文件与构建产物走同一条 Frontend/Session 执行路径；不能新增独立的发布版业务实现。编译产物包含 TUI 代码，但 Headless 执行不能初始化 React/renderer。
+主要入口是安装后的 rukie 命令：在仓库外安装真实 tarball，临时 HOME 和项目目录隔离配置，通过正常用户设置连接本地 fake provider，以子进程运行。断言 argv/stdin、终端输入、模型 HTTP 请求、stdout/stderr、退出状态和持久化 Transcript，不向编译产物加入测试专用业务入口。
 
-### 资源与许可
+发布恢复通过公开发布操作连接可控本地 registry，使用隔离地址与认证环境验证实际上传、读取、安装和 dist-tag 状态。测试不镜像每次 npm 调用，也不向真实 npm 上传测试版本。这是外部发布协议边界，与产品 Session 的命令入口分别承担责任。
 
-每个平台包携带对应架构的 `rg` 和头像资源；资源定位相对于已安装包或编译时嵌入位置，与用户工作目录及源码仓库路径无关。平台构建不能误用构建宿主架构的 ripgrep。
+### Observable behavior
 
-pi 的 output-capture、OAuth 和 provider 动态加载需要构建可追踪的入口或显式分发所需资源。复用锁定 pi 的现有能力，不重写输出捕获或模型适配器。对保留的能力检查打包后的加载完整性，并按协议差异选择本地模拟用例。
+- tarball 和 registry 安装后都能运行，启动不借助 workspace 链接、源码路径或外部 Bun。控制产品子进程 PATH；测试 harness 使用 Bun 不代表产品依赖外部 Bun。
+- 覆盖 help/version、参数错误、中英文输出、缺失 optionalDependencies、不支持的平台、空格路径、标准 IO、text/stream-json、中断与退出状态。
+- 本地 fake provider 驱动实际 Session Run，验证分发的 ripgrep、bash 输出捕获及清理、取消、Session Resume 和持久化事实，保持权限及 project trust 语义。
+- 真实 PTY 验证安装产物 TUI 的启动、输入、退出、中断和终端恢复，确认头像可用。分发涉及的 resize/小终端取代表性场景，其他交互沿用既有覆盖。
+- 验证安装后的 provider/auth 加载路径，协议不同的路径使用本地模拟；真实远程 OAuth 与模型连通性单列外部验证，不以加载成功替代。
+- 检查真实 tarball 的白名单、许可、架构、版本、依赖和身份，这是分发契约，不是内部 helper 实现断言。
+- 验证版本/Changelog 对兼容功能、修复、性能、不兼容标记、隐藏提交和 beta/稳定切换的结果，内部包变更必须进入产品发布范围。
+- 验证普通 PR/main 不发布，tag/恢复使用准确版本，版本准备依赖当前 commit 的 CI，全部架构通过才发布，发布消费已验收 tarball。
+- 本地 registry 覆盖部分成功、匹配既有版本、同版本冲突、主包验收失败、标签推进失败、重试、旧版本恢复与显式回退，断言包内容及 latest/next/candidate 状态。
 
-自有代码采用 MIT，项目 LICENSE 与完整第三方许可声明随发布包分发。Yoga 实现保持现状；按用户明确范围例外不进行替换或来源调查，许可声明不能被表述为已解决该来源问题。
+### Prior art and verification cost
 
-### 版本和 Changelog
+现有 [Headless CLI e2e](../../packages/coding-agent/tests/headless/e2e/cli.test.ts) 使用临时配置、[fake OpenAI 服务](../../packages/coding-agent/tests/headless/helpers/fake-openai.ts) 和子进程验证输出、工具与持久化。发布验收复用其协议及隔离方式，将执行目标换为安装后的命令。
 
-coding-agent 的 package manifest 是产品版本来源，初始版本 `0.1.0`。生成的发布 manifest、可执行文件版本、launcher 检查和所有平台依赖使用同一版本。Release Please 的版本记录属于自动化状态，不成为另一套手工版本来源。实际应用的 User-Agent 使用产品版本时，通过内部接口注入，不让 Agent Core 反向导入 Frontend 包。
+现有 TUI [app start](../../packages/coding-agent/tests/tui/helpers/app.ts) 使用公共入口、controlled model、可观察 terminal 与完成信号；[startWithClock](../../packages/coding-agent/tests/tui/helpers/clock-app.ts) 提供同进程虚拟时钟。局部源码回归复用它们，安装产物仍走 PTY，不把源码调用视为发布验收。
 
-增加 `rukie --help` 和 `rukie --version`，不要求 TTY、provider 凭据或 Session 初始化；退出码为 0。参数组合遵循共用参数解析的确定规则，更新中英文文案。
+使用 bun:test，以外部行为、事件、终端谓词、进程退出及持久化结果断言。等待有诊断性超时，固定等待不是同步；父进程假时钟不能驱动产品或 npm 子进程。真实 transport/runtime 等待只覆盖必要契约并记录理由。
 
-0.x 期间兼容修复、新增能力及性能优化升 patch，不兼容变更升 minor；显式决定稳定契约后进入 1.0.0。beta 使用 `-beta.N`。Release Please 配置明确表达该策略，不能沿用与确认结果不同的默认 feat/minor 规则。首版引导及 beta 切换/退出步骤记录在发布教程，并通过版本配置检查验证。
+两个架构在匹配 runtime 上实际验收，交叉编译不代替运行。复用构建与安装 fixtures，用少量端到端场景验证 wiring，较多恢复组合放在 registry 边界，不反复启动完整 TUI。记录超过一秒用例的必要成本，优先移除可避免的等待与重复初始化。
 
-Release Please 以整个产品的仓库变更范围收集 Conventional Commits，不能只收集 coding-agent 目录而漏掉内部包、锁文件或构建配置。Changelog 按 feat/fix/perf 分组；docs/test/chore 默认隐藏，不单独触发版本发布。使用不兼容标记记录 breaking changes。开发 PR 标题检查 Conventional Commits，推荐 squash merge，使进入 main 的提交信息可解析。
+开发期间运行最小相关测试，最终代码状态运行一次全量 check 并复用结果。文档阶段只运行文档、tracker、格式及 diff 检查。分别记录本地、真实 CI、registry 安装与真实远程认证的状态。
 
-Release PR 自动更新产品版本、Changelog 和自动化记录；维护者可调整 Changelog 文案。main 的普通合并只准备候选版本，不直接发布 npm。版本 tag 采用 `coding-agent-v<version>`，tag 必须对应 Release PR 合并后的确定 commit。
+## Out of Scope
 
-### Workflow 与身份
+- Linux、Windows、musl 和 macOS 之外的平台。
+- 公开 SDK、独立发布内部包及重写 Frontend/Session 执行路径。
+- Yoga 替换和来源调查，采用用户明确确认的本次范围例外。
+- 因打包方便而缩减现有 provider/auth 支持。
+- 自动创建远程仓库、替用户决定 scope 所有权、读取或提交真实凭据。
+- 外部配置完成前宣称真实 CI、OAuth 登录或 npm 发布成功。
+- 未经单独明确操作就正式发布首个 npm 版本。
 
-| Workflow           | 触发                                                      | 责任                                                                   |
-| ------------------ | --------------------------------------------------------- | ---------------------------------------------------------------------- |
-| ci.yml             | 目标为 main 的 pull_request；push 到 main；人工运行       | 安装固定版本依赖，检查源码、版本配置、构建与安装包行为                 |
-| release-please.yml | push 到 main                                              | 使用 GitHub App 创建/更新 Release PR，合并后创建 tag 和 GitHub Release |
-| publish.yml        | push 匹配 coding-agent-v*；workflow_dispatch 指定已有 tag | 校验发布目标，构建、pack、验收、发布及 dist-tag 推进                   |
+## Further Notes
 
-PR 事件覆盖 opened/synchronize/reopened；首版不加 paths 过滤。Release Please 对 main 的处理以该 commit 的必要 CI 成功为前提；不以无关联的旧成功状态放行。发布始终检出 tag 对应 commit，并独立完成发布验收，人工运行不能绕过这些条件。
+2026-10-07 的 grill-with-docs 访谈及最终设计已确认全部决策。用户随后调用 to-spec，要求按标准模板发布到本地 tracker，因此状态为 ready-for-agent，不继续保留书面规格等待状态。本次整理不表示脚本、workflow、真实 CI 或 npm 发布已经完成。
 
-GitHub App 负责 PR/tag/release，使其事件可以触发独立 CI。npm 使用 Trusted Publishing/OIDC，只在发布阶段授予必要权限。普通 PR 验证不需要发布凭据，也不发布包。发布工具与 Actions 固定到经过核实的版本或 commit；准确权限、外部配置字段和版本由实施时核实后写入教程。
+当前调查包括 private workspace TS 入口、产品版本与 help/version 缺失、内部 Agent Core 版本、pi 动态资源、ripgrep 和头像定位，以及 Git remote、CI、Changelog、项目 LICENSE 缺失。实施前核对实际源码与外部工具，不把调查当作外部服务验证。包名和 scope 发布权限须实际账号配置证明。
 
-发布 workflow 使用不会互相交叉更新 dist-tag 的串行机制；新的发布不能取消已经开始写 registry 的旧发布。人工恢复仅接受符合产品 tag/版本规范的既有发布目标；验证 tag 可达性、commit、版本和产物身份，不接受任意分支作为发布来源。
-
-### 发布顺序和恢复
-
-所有 macOS 平台的构建和 tarball 安装验收成功后，保存两个平台包及主包的 `.tgz`、版本、commit、构建工具版本和校验信息。发布阶段消费这份已经验收的产物，不重新生成 manifest 或编译二进制。
-
-先发布两个平台包，再发布依赖它们的主包。平台包的发布不得意外推进 latest；稳定主包先进入 candidate，从 registry 安装并验收后才将主包 latest 指向该版本。beta 主包使用 next，且不修改 latest。平台包与主包的 dist-tag 操作显式指定，不能依赖 npm publish 默认值。
-
-构建或安装验收失败不写入 registry。部分平台包已经发布时，保留旧 latest；恢复时比对 npm 已发布的完整版本产物及依赖关系，匹配后续发缺失包。相同版本存在不一致内容时停止，改用新版本；不能覆盖或未经核对就跳过。
-
-主包已发布但 registry 验收或 tag 推进失败时，从对应发布产物和 registry 状态恢复验收与推进。避免较旧恢复操作将 latest/next 倒退；明确的人工回退使用单独的操作步骤。正式版 registry 验收完成后补齐 GitHub Release 的产物和验证信息；Release Please 已创建的 Release 本身不证明 npm 已发布成功。
-
-## 验收要求
-
-### 本地与 tarball
-
-- 在隔离目录和临时 HOME 中安装实际 `.tgz`，通过安装后的 `rukie` 命令运行；测试不依赖 workspace 链接、源码路径、真实用户设置或外部 Bun。
-- 验证 help/version、参数错误、退出码、stdin、text/stream-json 与中断行为。
-- 通过本地 fake provider 驱动实际 Session Run，验证 grep 使用分发的 rg、bash 输出捕获和清理、Session Resume；保留 Agent Core 安全默认和权限规则。
-- 在 PTY 中验证 TUI 启动、退出、信号及终端恢复，检查头像资源可达。必要的终端断言复用现有公共测试入口。
-- 逐项覆盖保留的 provider/auth 的构建后加载路径；针对不同协议使用本地模拟。真实远程认证/模型连通性单独记录为未验证，不以加载成功替代。
-- 检查包文件列表、许可文件、精确平台依赖、版本一致性；阻止 workspace:*、源码入口和构建宿主绝对路径进入分发契约。
-- launcher 覆盖不支持的平台、缺失 optionalDependencies、信号转发和退出状态，包含有空格的安装路径。
-
-### CI 与 registry
-
-- arm64 和 x64 都在匹配架构的 macOS runtime 上实际执行验收；交叉编译成功不能代替运行验收。可用 runner 与外部账号能力在真实 CI 配置时核实。
-- 所有平台验收完成才进入有写权限的发布阶段；记录实际发布的 `.tgz` 身份与对应验证结果。
-- registry 验收从已发布的精确版本安装主包，确认平台依赖、命令版本和代表性 Session 行为，再推进稳定主包 latest。
-- 发布恢复使用本地 registry 模拟覆盖部分成功、同版本冲突、主包验收失败、tag 推进失败、重试及旧版本恢复，不通过测试写入真实 npm registry。
-- 无 real provider 凭据、GitHub App 或 npm 权限的本地交付不得报告真实 CI、OAuth 登录或 npm 发布成功。
-
-## 文档与实施准备
-
-规格审阅通过后，将实施拆分为依赖有序的编号票：产品版本与命令入口、构建资源与平台产物、安装包验收、Release Please/CI、发布恢复与文档。具体文件和公开测试入口在实施计划中按当前源码确定，不在尚未审阅的阶段创建 ready-for-agent 实施票。
-
-发布教程提供维护者日常 Release PR 流程、首次 npm 包/Trusted Publisher 建立步骤、GitHub App 与 remote 绑定、beta/稳定版本切换、失败恢复和回退。包 README 面向安装和使用者。技术版本只在 docs/tech-stack.md 维护；维护文档在实现后描述实际可用行为。
+具体文件组织与实施顺序由后续编号实施票确定。本规格保留需求、接口与验收契约，避免将易变文件路径写入 Implementation Decisions。
 
 ## ADR Coverage
 
-| 决定或修改                              | 归属                                                                                                                                | 理由                                            |
-| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| Bun 编译产物运行 Agent Core 与 Frontend | 沿用 [ADR-0001](../../docs/adr/0001-agent-runs-in-bun-sidecar.md)                                                                   | 保留 Bun 生产运行时，不迁移到 Node Agent Core   |
-| pi 能力与构建资源适配                   | 沿用 [ADR-0002](../../docs/adr/0002-reuse-pi-agent-core-harness.md)                                                                 | 复用锁定 harness，适配分发方式，不另写业务实现  |
-| 唯一 CLI 与 Headless/TUI 动态加载       | 沿用 [ADR-0012](../../docs/adr/0012-single-coding-agent-package.md)                                                                 | 分发只改变交付载体，保留 Frontend 运行边界      |
-| 产品版本、平台包、发布身份及可恢复发布  | 新增 [ADR-0023](../../docs/adr/0023-npm-cli-distribution.md)                                                                        | 对外安装和自动发布契约需要长期维护              |
-| 本次不处理 Yoga                         | [ADR-0023](../../docs/adr/0023-npm-cli-distribution.md) 部分替代 [ADR-0005](../../docs/adr/0005-own-tui-renderer.md) 的外部分发条件 | 用户明确范围例外，其余渲染管线决定继续有效      |
-| help/version、本地化与许可清单          | 无需独立 ADR                                                                                                                        | 局部命令入口和分发配套；不改变 Session 领域语义 |
+| 决定或修改                              | 归属                                                                                                                 | 理由                           |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| Bun 编译产物运行 Agent Core 与 Frontend | 沿用 [ADR-0001](../../docs/adr/0001-agent-runs-in-bun-sidecar.md)                                                    | 保留 Bun 生产运行时            |
+| pi 能力与资源适配                       | 沿用 [ADR-0002](../../docs/adr/0002-reuse-pi-agent-core-harness.md)                                                  | 复用锁定 harness               |
+| 唯一命令及动态加载                      | 沿用 [ADR-0012](../../docs/adr/0012-single-coding-agent-package.md)                                                  | 保持 Frontend 边界             |
+| 产品版本、平台包、身份和恢复            | [ADR-0023](../../docs/adr/0023-npm-cli-distribution.md)                                                              | 长期对外分发契约               |
+| 本次不处理 Yoga                         | [ADR-0023](../../docs/adr/0023-npm-cli-distribution.md) 部分替代 [ADR-0005](../../docs/adr/0005-own-tui-renderer.md) | 用户明确范围例外，其余决定有效 |
+| help/version、本地化及许可清单          | 无需独立 ADR                                                                                                         | 不改变 Session 领域语义        |
 
 ## Comments
 
-- 2026-10-07：用户确认第一轮五项推荐；第二轮平台改为仅 macOS，其余推荐确认；第三轮要求不处理 Yoga，MIT 和保留 provider/auth 确认；最终完整设计确认。当前阶段为书面规格审阅，代码尚未实施。
-- 2026-10-07：书面规格自审完成，核对了全部访谈决定、ADR Coverage、平台与包版本、候选标签、GitHub Release 与 npm 成功状态、恢复行为及外部配置边界。没有新增 Session 领域术语或运行实现。文档验证通过：`bun run docs:update`、`bun run check:docs`（44 个维护 Markdown 文件）、`bun run check:scratch`、四个修改文件的 `oxfmt --check` 和 `git diff --check`；本阶段未运行代码测试、构建或发布。
+- 2026-10-07：第一轮五项推荐确认；第二轮平台改为仅 macOS；第三轮 Yoga 排除，MIT 与保留 provider/auth 确认；完整设计确认。原设计提交为 3598ed1。
+- 2026-10-07：原设计文档、tracker、格式与 diff 检查通过；未执行代码测试、构建或发布。
+- 2026-10-07：按 to-spec 整理标准模板，保留已确认测试入口，补齐 58 条用户故事，更新为 ready-for-agent；不重新访谈或创建重复规格。
