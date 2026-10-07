@@ -93,6 +93,10 @@ export async function runHeadless(options: CliOptions, io: PrintIo): Promise<num
     };
     io.signal?.addEventListener("abort", interrupt);
     io.signal?.throwIfAborted();
+    if (prompt) {
+      await session.waitForIdle();
+      io.signal?.throwIfAborted();
+    }
     const requestId =
       !prompt && session.currentRequestId
         ? session.currentRequestId
