@@ -1384,7 +1384,7 @@ export function createConversation(
       const promise = (async () => {
         if (awaitIdle) await session.waitForIdle();
         if (stopped || input.signal.aborted) return;
-        return session.run(prompt, { images, signal: input.signal });
+        return session.run(prompt, { images });
       })()
         .catch((error: unknown) => {
           if (stopped) return;

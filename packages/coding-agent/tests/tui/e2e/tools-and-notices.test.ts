@@ -302,7 +302,9 @@ test.each([
       await app.waitFor(() => app.calls.length === 6);
       app.calls[5]!.delta("private-compaction-summary\nsecond summary line");
       app.calls[5]!.finish();
-      await app.waitFor(() => app.screen().some((line) => line.startsWith(`─ ${prefix}`)));
+      await app.waitFor(
+        () => app.screen().some((line) => line.startsWith(`─ ${prefix}`)) && !app.isWorking(),
+      );
       expect(app.screen().join("\n")).not.toMatch(/收拾一下上下文…|整理背包中…/);
       const row = app.screen().findIndex((line) => line.startsWith(`─ ${prefix}`));
       expect(
@@ -326,7 +328,8 @@ test.each([
       expect(app.allLines().filter((line) => line.startsWith(`─ ${prefix}`))).toHaveLength(1);
       expect(app.allLines().join("\n")).not.toContain("private-compaction-summary");
       expect(app.allLines().join("\n")).not.toContain("second summary line");
-      expect(app.allLines().join("\n")).toContain("tool output");
+      app.stdin.write("\x1b[5~");
+      await app.waitFor(() => app.screen().some((line) => line.includes("tool output")));
     } finally {
       await app.cleanup();
     }

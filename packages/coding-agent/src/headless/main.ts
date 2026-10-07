@@ -46,8 +46,11 @@ export async function runHeadless(options: CliOptions, io: PrintIo): Promise<num
       trustProjectMcp: values["trust-project-mcp"] ?? io.session?.trustProjectMcp,
     });
     const streamJson = values["output-format"] === "stream-json";
-    let runFailed = false;
     unsubscribe = session.subscribe((event) => {
+      if (event.type === "mcp_auth_required")
+        io.stderr(
+          `MCP server ${event.server} needs authentication; run /mcp login ${event.server} in the TUI\n`,
+        );
       if (streamJson) io.stdout(`${JSON.stringify(event)}\n`);
       else if (event.type === "hook_message") io.stderr(`${event.message}\n`);
       else if (
@@ -57,13 +60,6 @@ export async function runHeadless(options: CliOptions, io: PrintIo): Promise<num
         io.stderr(
           `${event.reason ?? (event.stopReason === "hook_blocked" ? "Prompt blocked by hook" : "Stopped by hook")}\n`,
         );
-      if (values.goal !== undefined && event.type === "request_settled") {
-        if (!streamJson && event.text) io.stdout(`${event.text}\n`);
-        if (!event.success) {
-          runFailed = true;
-          if (event.error && !io.signal?.aborted) io.stderr(`${event.error}\n`);
-        }
-      }
     });
     const startupRequestId = session.currentRequestId;
     if (values.goal !== undefined) {
@@ -85,9 +81,11 @@ export async function runHeadless(options: CliOptions, io: PrintIo): Promise<num
         maxRounds:
           values["max-goal-rounds"] === undefined ? undefined : Number(values["max-goal-rounds"]),
       });
-      await session.waitForRequest(goal.requestId);
+      const result = await session.waitForRequest(goal.requestId);
       io.signal?.throwIfAborted();
-      return !runFailed && session.goal?.phase === "complete" ? 0 : 1;
+      if (!streamJson && result.text) io.stdout(`${result.text}\n`);
+      if (!result.success && result.error) io.stderr(`${result.error}\n`);
+      return result.success && session.goal?.phase === "complete" ? 0 : 1;
     }
     const prompt = initialPrompt ?? (await readStdin(io)).trimEnd();
     interrupt = () => {

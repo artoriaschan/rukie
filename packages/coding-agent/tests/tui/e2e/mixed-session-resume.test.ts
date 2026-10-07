@@ -372,6 +372,7 @@ test("cold mixed history starts at the bottom with fresh message navigation", as
             app.terminal.buffer.active.getLine(y)?.getCell(2)?.getBgColor() === 0x2e333d,
         ),
     );
+    await app.shutdown();
     const replay = await start(argv, {
       columns: 100,
       rows: 24,
