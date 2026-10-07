@@ -160,14 +160,13 @@ export interface SessionOptions {
 }
 
 export interface Session {
-  /** Historical child Runs requiring attention on this Session Resume. No Run is started. */
-  /** Includes internal Hook and Goal Runs. */
+  /** Foreground admission, native parent Runs and manual Compaction; background children are independent. */
   readonly running: boolean;
   /** Cancels the current run, including one started without a frontend controller. */
   abort(): Promise<void>;
   /** Queue another user instruction for the current Run, including Skill Invocation. */
   steer(prompt: string, options?: { images?: PromptImage[] }): Promise<void>;
-  /** Observe all runs; the first subscriber also receives events from startup autoruns. */
+  /** Receive a committed snapshot followed by live updates, including active startup autoruns. */
   subscribe(onEvent: (event: SessionEvent) => void): () => void;
   /** Current Session's background jobs, including settled records; excludes foreground work. */
   jobs(): JobView[];
@@ -176,6 +175,7 @@ export interface Session {
   /** Stop a job; inform the active Run or queue input for the next human prompt while idle. */
   killJob(id: string): Promise<void>;
   readonly currentRequestId: string | undefined;
+  /** Settle this accepted request and its finite owned descendants; parent Run idle alone is insufficient. */
   waitForRequest(requestId: string): Promise<RequestResult>;
   readonly id: string;
   readonly title: string;
@@ -230,7 +230,7 @@ export interface Session {
   compact(options?: { instructions?: string }): Promise<void>;
   /** Answer once from current context without changing this Session or its Run. */
   sideQuestion(question: string, options?: { signal?: AbortSignal }): AsyncIterable<string>;
-  /** Current restored context in memory, including reminders and any compaction. */
+  /** Chronological committed Transcript for the active branch, including compacted history. */
   readonly messages: readonly TranscriptMessage[];
   /** Current Tool State snapshot; undefined before the first write. */
   toolState(name: string): unknown;
@@ -245,9 +245,9 @@ export interface Session {
   readSubagent(id: string): Promise<
     | {
         messages: readonly TranscriptMessage[];
-        /** Committed context before the latest Run's native start entry; excludes its current Turns. */
         title: string;
         description: string;
+        /** Committed context before the latest Run's native start entry; excludes its current Turns. */
         historyMessages?: readonly TranscriptMessage[];
         generation?: {
           attempt: number;
@@ -262,9 +262,9 @@ export interface Session {
   interruptSubagent(id: string): void;
   /** Closes the owner once; pending native work remains resumable while host resources are released. */
   close(reason?: "exit" | "other"): Promise<void>;
-  /** External completion boundary, including Hook autoruns; never await from a Run callback. */
+  /** Wait for native foreground idle and host admission release; background children may remain active. */
   waitForIdle(): Promise<void>;
-  /** Waits behind an internal Hook or Goal Run; a competing user Run is rejected. */
+  /** Waits behind a startup Hook Run; other active foreground work rejects competing admission. */
   run(
     prompt: string,
     options?: {
