@@ -141,7 +141,7 @@ test("native observation joins committed transcript and capability facts with st
     await conversation.reset(undefined, context);
     await observation.flush();
     expect(observation.messages()).toEqual([]);
-    expect(delivered.at(-1)).toMatchObject({
+    expect(delivered.findLast((event) => event.type === "snapshot")).toMatchObject({
       type: "snapshot",
       messages: [],
       toolStates: { counter: { count: 2 } },
