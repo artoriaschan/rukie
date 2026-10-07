@@ -71,7 +71,9 @@ test("a burst reveals at 30fps and keeps chasing the saved reply after Run compl
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.delta("你好🐋" + "x".repeat(180) + " tail");
-    await app.flush();
+    // Native stream pulses commit asynchronously; observe admission before
+    // measuring renderer frame boundaries with the virtual clock.
+    await app.waitFor(() => app.screen().some((line) => line.includes("↓ 48")));
     // Commit the event projection before the first reveal frame.
     testClock.advanceTimersByTime(16);
     await app.flush();

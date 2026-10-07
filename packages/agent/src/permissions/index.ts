@@ -13,7 +13,8 @@ import {
   type Message,
   type Models,
 } from "@earendil-works/pi-ai";
-import type { CustomSessionEvent, PermissionMode } from "@rukie/shared";
+import { presentCall } from "../tools/presentation.ts";
+import type { CustomSessionEvent, PermissionMode, ToolCallView } from "@rukie/shared";
 import { evaluatePermissionRules, parsePermissionRules, type PermissionRule } from "./rules.ts";
 export { parsePermissionRules, evaluatePermissionRules } from "./rules.ts";
 export { resolvePermissionPath } from "./path.ts";
@@ -33,6 +34,8 @@ export interface PermissionAskRequest {
   toolName: string;
   /** Validated arguments for this tool call. */
   args: unknown;
+  /** Owner-defined call presentation is available before execution starts. */
+  callView?: ToolCallView;
   /** Mode captured when this call entered the permission gate. */
   mode: PermissionMode;
   reason?: string;
@@ -387,6 +390,10 @@ export function createPermissionGate(options: PermissionGateOptions) {
             toolCallId: toolCall.id,
             toolName: toolCall.name,
             args,
+            callView: presentCall(
+              options.getTools().find((tool) => tool.name === toolCall.name),
+              args,
+            ),
             mode,
             sessionAllow: grant.description,
             ...(decision.reason !== undefined && { reason: decision.reason }),

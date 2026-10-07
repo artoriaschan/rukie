@@ -1,6 +1,6 @@
 import { lstatSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 /** Match pi's file tool spellings before permission checks and execution share the argument. */
 export function prepareFileToolPath(
@@ -9,6 +9,7 @@ export function prepareFileToolPath(
   cwd: string,
   homeDir: string,
 ): string {
+  let url = false;
   let normalized = path.replace(/[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g, " ");
   if (normalized.startsWith("@")) normalized = normalized.slice(1);
   if (normalized === "~") normalized = homeDir;
@@ -20,12 +21,14 @@ export function prepareFileToolPath(
   else if (normalized.startsWith("file://")) {
     try {
       normalized = fileURLToPath(normalized);
+      url = true;
     } catch {
       /* pi leaves malformed URLs as ordinary paths. */
     }
   }
   const absolute = resolve(cwd, normalized);
-  if (!read) return absolute;
+  const prepared = (candidate: string) => (url ? pathToFileURL(candidate).href : candidate);
+  if (!read) return prepared(absolute);
   const variants = [
     absolute,
     absolute.replace(/ (AM|PM)\./gi, "\u202F$1."),
@@ -37,12 +40,12 @@ export function prepareFileToolPath(
     try {
       // pi env.exists uses lstat: a dangling symlink is an existing first candidate.
       lstatSync(candidate);
-      return candidate;
+      return prepared(candidate);
     } catch (error) {
       // Only not-found advances pi's read fallbacks. Leave other failures to execute,
       // so its established filesystem error result remains unchanged.
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") return candidate;
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") return prepared(candidate);
     }
   }
-  return absolute;
+  return prepared(absolute);
 }

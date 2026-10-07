@@ -594,23 +594,30 @@ function reduceMessageEnd(
     return { ...state, completed: [...state.completed, ...(entry ? [entry] : [])] };
   }
   if (message.role !== "assistant") return state;
+  const announcedTools = message.content.flatMap((block): ToolCall[] =>
+    block.type === "toolCall"
+      ? [
+          {
+            id: block.id,
+            name: block.name,
+            args: block.arguments,
+            summary: toolSummary(block.name, block.arguments),
+            callView: block.view,
+            startedAt: message.timestamp,
+          },
+        ]
+      : [],
+  );
   const step = state.decode.step;
   return {
     ...state,
-    announcedTools: message.content.flatMap((block): ToolCall[] =>
-      block.type === "toolCall"
-        ? [
-            {
-              id: block.id,
-              name: block.name,
-              args: block.arguments,
-              summary: toolSummary(block.name, block.arguments),
-              callView: block.view,
-              startedAt: message.timestamp,
-            },
-          ]
-        : [],
-    ),
+    announcedTools,
+    // A committed model call has a preview while native authorization waits.
+    // Execution activity still begins only with its native running-tool event.
+    tools: [
+      ...state.tools.filter((tool) => !announcedTools.some((call) => call.id === tool.id)),
+      ...announcedTools,
+    ],
     completed: [
       ...state.completed,
       ...(messageThinking(message)
@@ -738,7 +745,7 @@ function reduceEvent(
           subagents[background.id] = { ...row, status: background.active ? "running" : row.status };
       }
       const tools = event.tools
-        .filter((slot) => slot.status === "running")
+        .filter((slot) => slot.status === "running" || slot.status === "pending")
         .map(
           (slot): ToolCall =>
             knownCalls.get(slot.callId) ?? {
@@ -947,7 +954,7 @@ function reduceEvent(
       return {
         ...state,
         tools: [
-          ...state.tools,
+          ...state.tools.filter((tool) => tool.id !== event.toolCallId),
           {
             id: event.toolCallId,
             name: event.toolName,
@@ -958,21 +965,22 @@ function reduceEvent(
           },
         ],
       };
-    case "permission_denied":
-      return (event.by === "rule" && event.rule !== undefined) || event.by === "hook"
-        ? {
-            ...state,
-            tools: state.tools.map((tool) =>
-              tool.id === event.toolCallId
-                ? {
-                    ...tool,
-                    rule: event.rule,
-                    ...(event.by === "hook" && { hook: event.hook ?? "hook" }),
-                  }
-                : tool,
-            ),
-          }
-        : state;
+    case "permission_denied": {
+      if (!((event.by === "rule" && event.rule !== undefined) || event.by === "hook")) return state;
+      const annotate = (tool: ToolCall): ToolCall =>
+        tool.id === event.toolCallId
+          ? {
+              ...tool,
+              rule: event.rule,
+              ...(event.by === "hook" && { hook: event.hook ?? "hook" }),
+            }
+          : tool;
+      return {
+        ...state,
+        tools: state.tools.map(annotate),
+        announcedTools: state.announcedTools.map(annotate),
+      };
+    }
     case "tool_execution_end": {
       const tool = state.tools.find((tool) => tool.id === event.toolCallId);
       if (!tool) return state;
