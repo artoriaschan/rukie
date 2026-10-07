@@ -279,13 +279,10 @@ export function reduceSubagent(
       return event.messages.reduce((next, message) => commitMessage(next, message), row);
     }
     case "snapshot": {
-      const committed = projectSubagent(
-        { ...row, output: [], toolCalls: [], outputLines: [] },
-        {
-          messages: event.messages,
-          model: event.model,
-        },
-      );
+      const committed = projectSubagent(row, {
+        messages: event.messages,
+        model: event.model,
+      });
       const partial = event.generation?.message;
       let next: SubagentState = {
         ...committed,
@@ -334,6 +331,7 @@ export function projectSubagent(
         if (block.type === "thinking") output.push({ type: "thinking", text: block.thinking });
         if (block.type === "toolCall") {
           tools.push({
+            ...row.toolCalls.find((tool) => tool.id === block.id),
             id: block.id,
             name: block.name,
             args: block.arguments,
