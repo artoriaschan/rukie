@@ -249,6 +249,7 @@ test("SessionEnd exit failures emit diagnostics after the Run while discarding o
   });
 });
 
+// A real Hook process owns the 1.5s budget; a virtual parent clock cannot drive its shutdown.
 test("SessionEnd handlers share a 1.5 second total shutdown budget", async () => {
   dirs = await tempDirs();
   const warnings: string[] = [];

@@ -6,7 +6,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { MemoryStorage, createSession as createNativeSession } from "@earendil-works/pi-durable";
 import { SessionMetadataDoc } from "../../src/store/index.ts";
-import type { SessionStore, SessionSummary } from "../../src/index.ts";
+import type { Session, SessionStore, SessionSummary } from "../../src/index.ts";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { appendFile, symlink } from "node:fs/promises";
 import { join } from "node:path";
@@ -191,9 +191,10 @@ test("a MemoryStorage backend lists committed Session metadata without JSONL pat
   const store = memoryStore();
   const fake = fakeModel([fauxAssistantMessage("Done")]);
   const first = await createSession({ ...dirs, ...fake, store });
+  let latest: Session | undefined;
   try {
     await first.rename("First");
-    const latest = await createSession({ ...dirs, ...fake, store });
+    latest = await createSession({ ...dirs, ...fake, store });
     await latest.run("Recent work");
     await latest.rename("Latest");
     await latest.close();
@@ -214,6 +215,7 @@ test("a MemoryStorage backend lists committed Session metadata without JSONL pat
       model: "faux/faux-1",
     });
   } finally {
+    await latest?.close();
     await first.close();
     await store.close();
     await dirs.cleanup();
