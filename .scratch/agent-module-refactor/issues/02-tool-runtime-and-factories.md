@@ -57,3 +57,5 @@ packages/agent/src/tools/index.ts 及 tools/runtime.ts、tools/builtin.ts；更�
   - AC 第三句"均不为了 helper 加载整个工具组装入口"按**组装入口**（`tools/index.ts`、今天的 `session/tools.ts`）成立；但 `hooks/model.ts` 导入的 `tools/builtin.ts` 同时是内置工具工厂模块，因此 Hook 仍会传递加载 `jobs`/`bash`/`todo`/`web-fetch`/`question`/`skill`/`glob`/`grep`/`file-tracking`/`interaction` 模块。本票只要求"独立只读工具集"这一条由 `createReadonlyTools` 与 `createBuiltinTools` 两个独立函数满足；"只读工厂单独成文件"不在本票要求内，票 08 未改动该落点。
   - MCP authenticate 的错误路径与原始工具适配路径本票未改代码，`mcp-oauth.test.ts` / `mcp-oauth-lifecycle.test.ts` / `mcp.test.ts` 全绿且四个文件 blob 与 `5c730be` 相同；这是既有套件保护，不是本票可独立区分的证据。
   - 未运行 `bun run check` 聚合检查（按 Spec 留给票 08）。
+
+- 2026-10-07（后续修复）：`createReadonlyTools` 从 `tools/builtin.ts` 移至 `tools/readonly.ts`，`hooks/model.ts` 直接消费独立模块，无兼容转导出。`hook-module-boundary.test.ts` 使用 Bun 的真实模块解析捕获本地加载图：修复前失败并列出 builtin/bash/jobs/todo/web-fetch/question/skill，修复后通过；已有 `model-hooks.test.ts` 继续保护只读声明、真实 read、父 Transcript 隔离、失败与取消。AC-3 的传递加载缺口关闭。AC-1 被票 07 替代的历史事实保持。

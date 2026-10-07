@@ -66,3 +66,5 @@ Blocked by: [02](02-tool-runtime-and-factories.md)
   - 本票没有留下自己的实施证据评论。`docs/architecture.md` 中 bash/jobs/web-fetch/todo 相关行的更新无法归因到本票：该文件在区间内只被票 07（`340aa1a`）改动，票 05/06 的证据明确把 `architecture.md` 的同步推给票 07。最终状态正确（见票 07、票 08 的文档核对），但"本票更新了哪些当前文档链接"不可恢复。AC 第 7 项因此取消勾选并保留删除线原文：该条的文档子句不可核实，删除与迁移子句有证据。
   - Permission Review 的失败转 ask、取消与显式规则行为由既有 `permission-review.test.ts`（31 项）与 `permissions/` 套件保护，文件 blob 与 `5c730be` 相同；这是既有覆盖，不是本票可独立区分的证据。
   - 未运行 `bun run check` 聚合检查（按 Spec 留给票 08）。
+
+- 2026-10-07（后续核对）：当前架构与 ADR 的 Bash、Jobs、Web Fetch、Todo、Permission Review 链接均指向迁移后路径，旧路径删除状态成立。当前文档正确不等于能把票 07 的修改归因于票 03；AC-7 的历史归因限制保持，不伪造完成记录。

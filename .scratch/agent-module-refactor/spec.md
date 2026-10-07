@@ -113,7 +113,7 @@ Status: resolved
 
 2026-10-07 评审整改：Oxlint 的能力执行模块限制补上共享工具运行时适配层（`tools/runtime.ts`），以受控临时输入验证命中后清理；Plan Mode 投影与 Goal 工具参数类型收敛为单一来源。四条验收框取消勾选并就地标注原因——02 AC-1 由票 07 取代（字面标准未在最终树存活）、01 AC-8 只有提交拓扑支持、03 AC-7 的文档链接归属不可恢复、05 AC-6 的 `settle` 创建项分支不可独立区分；各票 `Status` 保持 `resolved`，指交付完成，上述证据边界随框披露，不表示工作待办。
 
-同日复核记入[票 08](issues/08-final-review-and-verification.md)：Hook 只读工具集仍只是独立工厂，`hooks/model.ts` 经 `tools/builtin.ts` 传递加载 bash/jobs/todo/web-fetch/question/skill，因此"Hook 可消费独立只读工具集"只在工厂层面成立；测试文件的三处既有标准问题（TUI 慢用例缺 before/after 计时、两处手写 fake timer 未复用 `startWithClock`、Plan Mode 用例的 0ms 排空）同处记录，前两处来自 main、不属本分支范围。
+同日后续修复前的复核记入[票 08](issues/08-final-review-and-verification.md)：Hook 只读工具集仍只是独立工厂，`hooks/model.ts` 经 `tools/builtin.ts` 传递加载 bash/jobs/todo/web-fetch/question/skill，因此"Hook 可消费独立只读工具集"只在工厂层面成立；测试文件的三处既有标准问题（TUI 慢用例缺 before/after 计时、两处手写 fake timer 未复用 `startWithClock`、Plan Mode 用例的 0ms 排空）同处记录，前两处来自 main、不属本分支范围。
 
 实施严格按 01 → 02 → 03 → 04 → 05 → 06 → 07 → 08。每票更新当时的所有消费者与相关当前文档，保持可运行，不留待下票修复的破坏。
 
@@ -129,3 +129,11 @@ Status: resolved
 - [08：最终审查和验证](issues/08-final-review-and-verification.md)
 
 长期约定见 [ADR-0011](../../docs/adr/0011-agent-module-ownership.md)。目标目录与接口解释见 [设计参考](design.md)，决策过程见 [访谈记录](interview.md)；实施范围与验收以本规范和工单为准。
+
+### 2026-10-07 后续排查与修复
+
+当前 main 已由 `66f68a8` 合入原重构尖端 `81ba0c9`；“尚未合并”和“main 无本次重构”已过时。仓库仍无 remote，无法 push 或创建 PR。
+
+Hook 改为直接消费 `tools/readonly.ts`；只读工厂不再与完整内置工厂共处模块。新增实际模块解析回归，构建前捕获全部本地依赖，防止 tree shaking 掩盖传递加载。原 Hook 限制已修复。两处 TUI 手写时钟改为 `startWithClock`。
+
+补充控制器公开接口测试，使 Subagent `settle` 的“无 done promise 创建项”可独立区分；Session 端既有用例的区分能力仍保持原披露。历史日志、文档提交归因与字面标准被后续票取代不能通过当前修改重建；现在的回放和验证另记于各票及票 08，不改写当时事实。Oxlint 仍约束明确路径，不承担完整传递依赖图校验，符合本 spec 的既定检查范围。

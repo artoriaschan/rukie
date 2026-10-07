@@ -65,6 +65,8 @@ Session 持有自己的 Background Job registry。bash 使用同一条进程组�
 | [`tools/plan-mode/`](../packages/agent/src/tools/plan-mode/index.ts)                                              | 管理 Plan Mode 快照、引导与 Enter/Exit 工具，Session 协调存储与状态事件      |
 | [`tools/goal/`](../packages/agent/src/tools/goal/index.ts)                                                        | 管理 Goal 快照、模型工具授权与续跑提示，Session 协调自动续跑                 |
 
+模型 Hook 通过 [`tools/readonly.ts`](../packages/agent/src/tools/readonly.ts) 构造 read、glob、grep，只加载这些只读能力及共享运行时适配，不加载完整内置工厂。
+
 模块之间通过各自 `index.ts` 协作；frontend 使用包级公开入口，不读取 Agent Core 的私有运行状态。
 
 ## Run 与 Turn 流程

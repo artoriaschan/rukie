@@ -56,3 +56,7 @@ Plan Mode、Plan Review、Enter Plan Mode、Subagent Types/Fork、Goal Tools、T
   未能验证/限制：
   - 本票没有留下自己的实施证据评论，也没有记录"是否暴露既有失败"。票 08 只能证明基线测试是在未迁移提交上编写并提交的（`8a6d5b7^` = `5c730be`，且早于任何重构实现提交 `b78dbdf`），无法在集成 worktree 内重放"在旧实现上先运行"的日志——重放需要在 `5c730be` 检出并运行，超出本 worktree 的 Git 范围。未找到任何既有失败记录，即 AC 中"若暴露既有失败，记录证据"的**否定分支无记录**，不能据此宣称当时无失败。AC 第 8 项据此取消勾选（保留删除线原文），"先在旧实现上验证"只有提交拓扑支持。
   - 预迁移审计记录的"654 次断言"在本套件上不可复现为稳定计数：同一组 7 个文件连续运行得到 654/656/657/658 次 `expect()`（`mcp-api.test.ts` 等含 `if (event.type === "mcp_servers_changed")` 一类时序条件断言）。通过/失败数与退出码稳定（112/0，exit 0），文件 blob 又是逐字节相同，故以 blob 相同 + 112 pass/0 fail 作为断言未变的证据，断言计数不作为信号。
+
+- 2026-10-07（后续回放）：在临时 detached worktree 检出迁移前测试提交 `8a6d5b7`（父提交 `5c730be`），执行 `bun install --frozen-lockfile` 后运行 `env -u NO_COLOR bun test packages/agent/tests/e2e/tool-declarations.test.ts packages/agent/tests/e2e/plan-mode.test.ts`，23 pass / 0 fail，84 expect，938ms，exit 0。证明今天在旧实现上可回放通过；不能证明实施当时先运行，AC-8 历史边界保持。
+
+  同一旧实现上补跑七个 MCP/Job 套件（原票列出的文件），112 pass / 0 fail，657 expect，4.57s，exit 0。本次计数继续证明 654 不能当作稳定门槛；通过数、退出码及冻结 blob 才是可比较信号。临时 worktree 已正常删除。

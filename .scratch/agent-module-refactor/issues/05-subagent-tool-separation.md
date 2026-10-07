@@ -20,7 +20,7 @@ packages/agent/src/subagents/ 整体迁至 tools/subagents/，按 controller.ts�
 - [x] 运行名额和 AbortController 在 await 创建子 Session 前预留；创建失败释放并唤醒；迟到创建使用已中止的 signal。
 - [x] 每 child 只有领域持有的一条发送队列，轮到执行时重新判断 active；finally 释放自己的队列节点，不在工具包装另建队列。
 - [x] 保留子 Run Outcome 写父摘要、usage 结算、后台通知、取消压制与 running/wake 的原先顺序。
-- [ ] settle 覆盖尚未产生 done promise 的创建项；restore 保留同 id 的现有 handle，并保留通知清理。（`settle` 子句保留但**不可独立区分**：公开行为无法与"settle 只等待已有 done"区分；`restore` 与通知清理子句成立，由 `subagent-outcomes.test.ts` Rewind 用例与 `subagent-directory.test.ts` 恢复用例覆盖，见评论）
+- [x] settle 覆盖尚未产生 done promise 的创建项；restore 保留同 id 的现有 handle，并保留通知清理。（后续控制器公开接口测试已独立区分 `settle` 子句，Session 端原测试仍不能独立区分；`restore` 与通知清理子句成立，由 `subagent-outcomes.test.ts` Rewind 用例与 `subagent-directory.test.ts` 恢复用例覆盖，见评论）
 - [x] Session 继续拥有子 Session 构造、资源和父子协调；不引入通用 controller 框架或新的运行单位。
 - [x] 普通/fork 子 Session 的 MCP OAuth 保留 child origin、授权后真实工具刷新与父子凭据共享；默认类型仅继承父 Session 已可用 server，显式 type.tools 含 authenticate-only 限制仍是精确白名单。缺失回调时隐藏授权工具，取消授权保持原非错误结果。
 - [x] 从 controller 移出工具对象与模型结果包装到同目录协议适配；删除顶层 subagents/ 旧归属，保持包公开 Subagent 类型、事件和恢复协议，全部消费者使用能力入口。
@@ -74,3 +74,7 @@ packages/agent/src/subagents/ 整体迁至 tools/subagents/，按 controller.ts�
   复核运行的命令与结果：`env -u NO_COLOR bun test packages/agent/tests` → 1390 pass / 0 fail，6046 expect，79 文件，exit 0（本票基点记录为 1385 pass / 6027 expect / 79 文件；差值来自票 06 新增的 5 项 Plan Mode 用例，非本票行为变化）。`bunx --no -- oxlint` exit 0（398 文件，0/0）、`bunx --no -- tsc -b` exit 0、`bunx --no -- knip` exit 0、`bunx --no -- oxfmt --check` exit 0（694 文件）——这些由票 08 在集成点重跑，与票内记录一致。
 
   仍保留的限制（本票已披露，票 08 未使其可独立区分）：`settle()` 的"尚无 done promise 的创建项"分支仍只能证明代码路径保留，用公开行为无法与"settle 只等待已有 done"区分；创建失败释放名额与唤醒这一半由变异验证（删除 `running.delete(key)` → 用例 5002ms 超时失败）区分，该变异结论未在票 08 重放，属于本票自证。
+
+- 2026-10-07（后续证据补齐）：新增 `tests/tools/subagents/controller.test.ts`，直接经能力公开入口调用 controller 的 fork、abort、settle、count，在 createChild 门控中证明 settle 不提前完成，随后创建失败释放名额并使 settle 完成，无通知。改为仅等待已有 done 时该测试立刻失败（settled 收到 true），恢复后 1 pass / 0 fail，6 expect，0.55ms。该测试通过 owning module 的公开接口区分创建阶段；不再笼统声称“公开行为无法区分”，Session 测试的原边界仍成立。
+
+  重放创建失败名额释放变异：仅删除 catch 中 `running.delete(key)`，既有 `a failed child creation releases its run slot and wakes the waiting parent` 5002.34ms 超时、exit 1；变异已恢复。该反证证明本用例需要名额释放，不把它扩写为分别证明每个唤醒分支。

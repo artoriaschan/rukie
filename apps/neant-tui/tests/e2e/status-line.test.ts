@@ -1,5 +1,6 @@
-import { expect, jest, spyOn, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { start } from "../helpers/app";
+import { startWithClock } from "../helpers/clock-app";
 import { dark } from "@neant/tui";
 
 for (const columns of [80, 60, 40]) {
@@ -60,7 +61,7 @@ for (const columns of [80, 60, 40]) {
 test("tps starts after 500ms of decoding and final usage corrects the Run sample", async () => {
   let now = Date.UTC(2026, 9, 2);
   const clock = spyOn(Date, "now").mockImplementation(() => now);
-  const app = await start(["decode"]);
+  const app = await startWithClock(["decode"]);
   const hoverSpeed = () => {
     const fields = app.screen().at(-2)!;
     const prefix = fields.slice(0, fields.indexOf("▕"));
@@ -101,14 +102,14 @@ test("tps starts after 500ms of decoding and final usage corrects the Run sample
 test("tps includes tool-call deltas and completed Turns while excluding time between Turns", async () => {
   let now = Date.UTC(2026, 9, 2);
   const clock = spyOn(Date, "now").mockImplementation(() => now);
-  const app = await start(["tool decode"], {
+  const app = await startWithClock(["tool decode"], {
     columns: 120,
     session: { permissionMode: "full-access" },
   });
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.toolDelta("x".repeat(800));
-    await Bun.sleep(25);
+    await app.flush();
     now += 500;
     app.calls[0]!.toolDelta("abcd");
     await app.waitFor(() => app.screen().at(-2)?.includes("402 tps") === true);
@@ -161,10 +162,9 @@ test("Session cache counters accumulate across Runs in hover details", async () 
 });
 
 test("tps hover summarizes completed Run samples", async () => {
-  jest.useFakeTimers();
   let now = Date.UTC(2026, 9, 2);
   const clock = spyOn(Date, "now").mockImplementation(() => now);
-  const app = await start([], { advanceTimers: (ms) => jest.advanceTimersByTime(ms) });
+  const app = await startWithClock([]);
   try {
     await app.waitFor(() => app.stdin.isRaw);
     for (let run = 0; run < 12; run++) {
@@ -188,7 +188,6 @@ test("tps hover summarizes completed Run samples", async () => {
       await app.cleanup();
     } finally {
       clock.mockRestore();
-      jest.useRealTimers();
     }
   }
 }, 60000);

@@ -21,15 +21,6 @@ import { createTodoTool, type TodoItem } from "./todo/index.ts";
 import { createWebFetchTool } from "./web-fetch/index.ts";
 import { adaptTool, createImageReadEnv, preserveErrorDetails } from "./runtime.ts";
 
-/** Read-only tools for isolated model hook checks. */
-export function createReadonlyTools(cwd: string, homeDir = homedir()): AgentTool[] {
-  return [
-    preserveErrorDetails(adaptTool(createReadTool(), createImageReadEnv(cwd), homeDir)),
-    createGlobTool(cwd),
-    preserveErrorDetails(createGrepTool(cwd)),
-  ];
-}
-
 export interface BuiltinToolsOptions {
   cwd: string;
   jobs: Jobs;

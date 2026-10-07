@@ -72,3 +72,5 @@ Blocked by: [05](05-subagent-tool-separation.md)
   仍保留的限制（本票已披露，票 08 未使其可独立区分）：
   - teardown 的 `await plan.settleWrites()` 位置用公开 Store 接缝无法独立区分（把它移到 `closeActiveStore` 之后或让 `settleWrites()` 立即 resolve，本票的 dispose 用例仍通过）；`serializeStore` 的 FIFO 与在途 mutation 已保证同一顺序。票 08 只确认等待点与断言存在，不宣称该位置被变异验证区分。
   - 本票记录的两项变异验证（同值分支改回已 settled promise → 用例失败；把通知链放进 `writes` → 用例 5002ms 超时失败）未由票 08 重放：重放需要在生产代码上制造临时变异，超出最终审查票的范围。这两项属本票自证。
+
+- 2026-10-07（后续重放）：同值分支改为 `Promise.resolve()`，`a repeated Plan Mode change waits on the pending write` 在 8.52ms 失败（repeated 收到 true）；把 `changed` 放入 writes 链，`a pending Plan Mode notification does not hold the write queue` 在 5001.55ms 超时。两次 exit 1，均用 finally 恢复原生产文件。0ms 宏任务屏障保留，teardown 等待点在 Session Store 接缝上不可独立区分的限制保持。

@@ -149,3 +149,17 @@ Blocked by: [07](07-session-assembly-and-boundaries.md)
   合并结果上的复跑：`env -u NO_COLOR bun run check` 退出码 **0**；`oxfmt --check` 694 文件、`oxlint` 398 文件 0/0、`tsc -b`、`knip` 通过，`bun test --parallel=4` → **2497 pass / 0 fail**，14043 expect，179 文件，60.50s；日志 5436 行。通过/失败数与文件数与上一条评论的 2497/0/179 相同，expect 计数在上次 14042 与该次 14043 之间波动，与票 01/08 已披露的时序条件断言波动一致。
 
   本条评论为 Markdown-only 改动，按根 `AGENTS.md` 的仅文档变化要求验证：对改动的 Markdown 运行 `bunx --no -- oxfmt --check`、`git diff --check`，不重跑测试；代码、配置与依赖自上述聚合检查后未再变化。
+
+- 2026-10-07（用户要求后续排查与修复，起点 main `66f68a8`）：原分支尖端 `81ba0c9` 已由 `66f68a8` 合入 main，故“未合并 / main 无重构”的报告已过时；本次直接修复 main 工作树，无 remote，未 push 或创建 PR。
+
+  修复 Hook 实际传递加载：只读工厂独立到 `tools/readonly.ts`，Hook 直接消费；保留真实 read/glob/grep 和共用 runtime，完整 builtin 工厂没有只读兼容转导出。模块解析测试在修复前失败，记录 17 个禁止依赖，修复后通过；它记录构建时实际解析的本地模块，避免 tree shaking 把违规依赖裁掉后假通过。该测试只保护 Hook 的隔离边界，不宣称完整仓库依赖图已被检查。Oxlint 追加 readonly 两个路径；受控 controller 两行违规均被拒绝，兄弟 tools.ts 的合法消费未被标记，探针已清理。
+
+  TUI 时钟修复：clipboard 全部用例与 status-line 的三个 TPS 用例复用 `startWithClock`，包含 app/renderer 生命周期及 finally 恢复；tool-call delta 的 25ms 固定睡眠替换为 terminal flush。保留手动 Date.now 投影以精确控制解码时刻，原公开屏幕断言保持。
+
+  补齐证据：旧实现 `8a6d5b7` 上声明/Plan 基线 23 pass / 0 fail（938ms）；七个 MCP/Job 文件 112 pass / 0 fail（4.57s，657 expect）。Subagent owning controller 的公开接口新增创建阶段 settle 测试，变异为仅等待已有 done 时立即失败；恢复后通过。票 05 名额释放、票 06 同值等待与通知队列三项变异均重放失败并恢复，详见各票。恢复后的八个专项文件共 96 pass / 0 fail，467 expect，4.66s，exit 0。
+
+  TPS retention 性能复核：同一未修改用例（501 个真实 Session Run + JSONL 持久化 + 1005 个断言），本次前/后焦点运行分别 4424.24ms / 3273.07ms，均 1 pass / 0 fail；用例没有优化，不把运行波动宣称为加速。该集成成本保留以覆盖跨真实 Run 的采样保留和首项淘汰；未引入任意等待或增加 timeout。历史 `3200d15` 当时 before/after 日志仍不可重建，本条是当前计时证据。
+
+  保留的判断：Session 的四个 Subagent 工具名是既有动态筛选，不为消除字面量引入新 API/初始化耦合；sendResult 集中重复结果文本、builtin 按声明顺序组合工厂，未发现功能缺陷；Parameters 派生控制器类型保持工厂签名单一来源。旧 index.ts lint 路径继续作为防止入口回归的守卫。Plan Mode 0ms 是宏任务屏障，原等待与通知变异证据支持保留。Oxlint 的路径匹配上限符合 spec，不增加传递图检查框架。历史执行日志及票 03 文档提交归因不可补造，分别保持未勾选历史条款。
+
+  最终交付检查：临时隔离 HOME、清除 NO_COLOR 后运行 `bun run check`（静态检查和全部测试），exit 0；oxfmt 检查 697 个文件，通过；oxlint、tsc -b、Knip 依次通过；2499 pass / 0 fail，14052 expect，181 文件，64.69s。完整日志 `/tmp/neant-audit-check.log` 为本次本机证据，未提交日志。所有相对 Markdown 路径已核对存在，根 CLAUDE.md 仍为 symlink。完整检查后的改动仅为本票和 spec 的记录，按文档规则补跑格式与 diff 检查，不重复全套测试。最终 readonly lint 反证只产生两条 restricted-import 错误，无其他错误，合法兄弟文件未命中，探针已删除；代码恢复为聚合检查时状态。本次改动保留在 main 工作树，未创建提交；没有远端，未推送。所有既有 worktree 保留，仅删除本次创建的临时基线 worktree。

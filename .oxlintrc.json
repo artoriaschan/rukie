@@ -80,6 +80,8 @@
                   "../../tools/index.ts",
                   "../builtin.ts",
                   "../../tools/builtin.ts",
+                  "../readonly.ts",
+                  "../../tools/readonly.ts",
                   "../../session/tools.ts"
                 ],
                 "message": "A capability execution module must not import its own protocol adapter, the shared tool-runtime adaptation layer, or the global tools entry."

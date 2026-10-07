@@ -1,11 +1,5 @@
-import { afterEach, beforeEach, expect, jest, test } from "bun:test";
-import { start as startApp } from "../helpers/app";
-
-beforeEach(() => jest.useFakeTimers());
-afterEach(() => jest.useRealTimers());
-
-const start: typeof startApp = (argv, options) =>
-  startApp(argv, { ...options, advanceTimers: (ms) => jest.advanceTimersByTime(ms) });
+import { expect, test } from "bun:test";
+import { startWithClock as start } from "../helpers/clock-app";
 
 const english = "Image in clipboard · ctrl+v to paste";
 
