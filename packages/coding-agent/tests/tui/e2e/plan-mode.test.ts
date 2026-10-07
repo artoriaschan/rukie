@@ -6,6 +6,13 @@ function border(app: Awaited<ReturnType<typeof start>>) {
   return app.terminal.buffer.active.getLine(row)!.getCell(0)!.getFgColor();
 }
 
+// An absent spinner can precede result settlement for an empty model reply.
+async function completedRuns(app: Awaited<ReturnType<typeof start>>, count: number) {
+  await app.waitFor(
+    () => !app.isWorking() && app.screen().filter((line) => line.startsWith("✻ ")).length === count,
+  );
+}
+
 test("/plan toggles guidance, border and chip without sending a prompt", async () => {
   const app = await start();
   try {
@@ -50,14 +57,14 @@ test.each([
       expect(JSON.stringify(app.calls[0]!.context)).toContain("You are in Plan Mode");
       expect(app.screen().at(-2)).toContain("plan");
       app.calls[0]!.finish();
-      await app.waitFor(() => !app.isWorking());
+      await completedRuns(app, 1);
       app.stdin.write("inspect again\r");
       await app.waitFor(() => app.calls.length === 2);
       expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
         content: [{ type: "text", text: "inspect again" }],
       });
       app.calls[1]!.finish();
-      await app.waitFor(() => !app.isWorking());
+      await completedRuns(app, 2);
       app.stdin.write("/plan\r");
       await app.waitFor(() => !app.screen().at(-2)!.includes("plan"));
       app.stdin.write("/planner untouched\r");
@@ -67,7 +74,7 @@ test.each([
       });
       expect(JSON.stringify(app.calls[2]!.context)).toContain("You have exited Plan Mode");
       app.calls[2]!.finish();
-      await app.waitFor(() => !app.isWorking());
+      await completedRuns(app, 3);
       app.stdin.write("/plan\r");
       await app.waitFor(() => app.screen().some((line) => line.includes(enabled)));
     } finally {
@@ -91,7 +98,7 @@ test.each([40, 60, 80])(
       await app.waitFor(() => app.screen().join("\n").includes("run 结束后再用"));
       expect(app.screen().at(-2)).toContain("plan");
       app.calls[0]!.finish();
-      await app.waitFor(() => !app.isWorking());
+      await completedRuns(app, 1);
       app.stdin.write("/plan\r");
       await app.waitFor(() => !app.screen().at(-2)!.includes("plan"));
     } finally {
