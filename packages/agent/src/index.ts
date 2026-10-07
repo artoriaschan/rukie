@@ -26,17 +26,17 @@ export type {
 } from "@neant/shared";
 export type { McpAuthRequest, McpAuthReply, McpAuthOutcome, OnMcpAuth } from "./mcp/index.ts";
 export type { ReminderSource } from "./reminders/index.ts";
-export type { TodoItem } from "./tool-state/index.ts";
+export type { TodoItem } from "./tools/todo/index.ts";
 export type { Checkpoint, RewindResult } from "./checkpoint/index.ts";
 
-export type { PlanReviewRequest, PlanReviewResult } from "./tools/index.ts";
-export type { Question, QuestionRequest, QuestionReply } from "./tools/index.ts";
+export type { PlanReviewRequest, PlanReviewResult } from "./tools/plan-mode/index.ts";
+export type { Question, QuestionRequest, QuestionReply } from "./tools/question.ts";
 
 export { parsePermissionRules } from "./permissions/index.ts";
-export type { SubagentIdentity, SubagentRun } from "./subagents/index.ts";
+export type { SubagentIdentity, SubagentRun } from "./tools/subagents/index.ts";
 export { listSkills } from "./skills/index.ts";
 
-export type { GoalView } from "./goal/index.ts";
+export type { GoalView } from "./tools/goal/index.ts";
 export {
   validateImage,
   validateImageBytes,

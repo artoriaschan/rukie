@@ -8,7 +8,7 @@ import {
   type HooksSettings,
   type UserVisibleErrorData,
 } from "@neant/shared";
-import { mergeHooks, validateHooks } from "../hooks/index.ts";
+import { mergeHooks, validateHooks } from "../../hooks/index.ts";
 
 const Metadata = Type.Object({
   name: Type.String({ minLength: 1 }),

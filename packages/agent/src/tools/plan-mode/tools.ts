@@ -1,6 +1,6 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
-import { requestInteraction, type OnInteractionStart } from "../interaction/index.ts";
+import { requestInteraction, type OnInteractionStart } from "../../interaction/index.ts";
 
 export interface PlanReviewRequest {
   plan: string;
@@ -17,18 +17,46 @@ export type OnPlanReview = (
   signal: AbortSignal,
 ) => Promise<PlanReviewResult>;
 
-const parameters = Type.Object({ plan: Type.String({ minLength: 1 }) });
+const enterParameters = Type.Object({});
+const reviewParameters = Type.Object({ plan: Type.String({ minLength: 1 }) });
+
+export function createEnterPlanModeTool(plan: {
+  getActive(): boolean;
+  setMode(on: boolean): Promise<void>;
+}): AgentTool<typeof enterParameters> {
+  return {
+    name: "enter_plan_mode",
+    label: "Enter Plan Mode",
+    description:
+      "Request permission to enter Plan Mode before exploring and planning a larger task.",
+    parameters: enterParameters,
+    async execute(_toolCallId, _params, signal) {
+      signal?.throwIfAborted();
+      if (plan.getActive()) throw new Error("already in plan mode");
+      await plan.setMode(true);
+      return {
+        content: [
+          {
+            type: "text",
+            text: "Entered Plan Mode. Explore the code and context first, then submit a markdown plan with exit_plan_mode for user review.",
+          },
+        ],
+        details: {},
+      };
+    },
+  };
+}
 
 export function createExitPlanModeTool(
   planMode: { getActive(): boolean; setMode(on: boolean): Promise<void> },
   onPlanReview: OnPlanReview,
   onInteractionStart?: OnInteractionStart,
-): AgentTool<typeof parameters> {
+): AgentTool<typeof reviewParameters> {
   return {
     name: "exit_plan_mode",
     label: "Review plan",
     description: "Submit a markdown plan for user review. Only available in Plan Mode.",
-    parameters,
+    parameters: reviewParameters,
     async execute(toolCallId, { plan }, signal = new AbortController().signal) {
       if (!planMode.getActive()) throw new Error("Not in plan mode.");
       if (!plan.trim()) throw new Error("Plan must not be empty.");

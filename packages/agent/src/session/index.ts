@@ -1,4 +1,4 @@
-import { createJobs, jobStatus } from "../jobs/index.ts";
+import { createJobs, jobStatus } from "../tools/jobs/index.ts";
 import {
   Agent,
   type AgentEvent,
@@ -35,14 +35,13 @@ import type {
   JobOutput,
 } from "@neant/shared";
 import {
-  createSubagents,
-  discoverSubagentTypes,
+  createSubagentController,
   SUBAGENT_PROMPT,
   subagentsState,
   subagentRunState,
   type SubagentRun,
   type SubagentIdentity,
-} from "../subagents/index.ts";
+} from "../tools/subagents/index.ts";
 import { isTrustedProject, resolveModel, modelState } from "../config/index.ts";
 import { createJsonlStore, registerSessionReader, type SessionStore } from "../store/index.ts";
 import {
@@ -58,14 +57,7 @@ import {
   type PermissionAskRequest,
   type SessionAllowRule,
 } from "../permissions/index.ts";
-import {
-  createBuiltinTools,
-  createEnterPlanModeTool,
-  createExitPlanModeTool,
-  type QuestionRequest,
-  type QuestionReply,
-  type OnPlanReview,
-} from "../tools/index.ts";
+import type { QuestionReply, QuestionRequest } from "../tools/question.ts";
 import { createFileTracking, fileTrackingState } from "../file-tracking/index.ts";
 import { SYSTEM_PROMPT } from "../prompt/index.ts";
 import {
@@ -85,7 +77,8 @@ import { compactTurn, estimateContextTokens, restoreContext } from "../compactio
 import { createSessionTitle, titleSourceState, type TitleSource } from "../session-title/index.ts";
 import { sideQuestion } from "../side-question/index.ts";
 import { contextUsage, contextReport } from "../context-usage/index.ts";
-import { createToolState, todoState, type TodoItem } from "../tool-state/index.ts";
+import { createToolState } from "../tool-state/index.ts";
+import { todoState, type TodoItem } from "../tools/todo/index.ts";
 import {
   createCheckpoints,
   checkpointState,
@@ -94,21 +87,36 @@ import {
   type RewindResult,
 } from "../checkpoint/index.ts";
 
-import { planState, planModeReminder, PLAN_MODE_EXIT } from "../plan-mode/index.ts";
+import {
+  createPlanModeController,
+  planModeReminder,
+  planState,
+  PLAN_MODE_EXIT,
+  type OnPlanReview,
+  type PlanModeController,
+} from "../tools/plan-mode/index.ts";
 import {
   createGoalController,
-  createGoalTools,
   goalState,
   renderGoalRoundPrompt,
   type GoalView,
-} from "../goal/index.ts";
+} from "../tools/goal/index.ts";
 import type { OnInteractionStart } from "../interaction/index.ts";
 import { createHooks, mergeHooks, type CommonHookResult, type HookInput } from "../hooks/index.ts";
+import {
+  createBaseTools,
+  createSubagentTools,
+  createTurnTools,
+  refreshSubagentTypes,
+  selectTools,
+  type BaseToolsInput,
+  type ToolGate,
+} from "./tools.ts";
 
 export type { PermissionAskRequest, SessionAllowRule } from "../permissions/index.ts";
 import type { OnToolCallAllowed } from "../permissions/index.ts";
 
-import type { WebFetchOptions } from "../web-fetch/index.ts";
+import type { WebFetchOptions } from "../tools/web-fetch/index.ts";
 import { validateImage, type PromptImage } from "../images/index.ts";
 
 export interface SessionOptions {
@@ -301,7 +309,7 @@ interface InternalSessionOptions {
     getMode(): PermissionMode;
     setMode(mode: PermissionMode): void;
   };
-  plan?: { getActive(): boolean; hasEntered(): boolean; setMode(on: boolean): Promise<void> };
+  plan?: PlanModeController;
   toolNames?: readonly string[];
   inheritedMcpServers?: readonly string[];
   typePrompt?: string;
@@ -449,45 +457,22 @@ async function createSessionInternal(
       : options.model
         ? { model: options.model, streamFn: options.streamFn! }
         : await resolveModel(settings, options.homeDir);
-  let planActive = (toolState.get("plan") as { active: boolean } | undefined)?.active ?? false;
-  let planEntered = toolState.get("plan") !== undefined;
-  let planWrites = Promise.resolve();
-  let planRevision = 0;
   const pendingPlanEvents: CustomSessionEvent<AgentEvent>[] = [];
-  const plan = internal.plan ?? {
-    getActive: () => planActive,
-    hasEntered: () => planEntered,
-    setMode(on: boolean): Promise<void> {
-      if (planActive === on) return planWrites;
-      planActive = on;
-      planEntered = true;
-      const revision = ++planRevision;
-      const write = planWrites.then(async () => {
-        return withStore(async (target) => {
+  const plan =
+    internal.plan ??
+    createPlanModeController({
+      getSnapshot: () => toolState.get("plan"),
+      persist: (on) =>
+        withStore(async (target) => {
           if (!baselinePersisted) {
             const branch = await target.branch("main", context);
             if (!branch) throw new Error("Session has no main branch.");
             await branch.appendMessage(agent.state.messages[0]!, context);
             baselinePersisted = true;
           }
-          return await toolState.set("plan", { active: on }, target, context);
-        });
-      });
-      // Keep frontend callbacks outside the write queue so a callback may
-      // await another state change without waiting on its own notification.
-      const persisted = write.catch((error: unknown) => {
-        if (revision === planRevision) {
-          const snapshot = toolState.get("plan") as { active: boolean } | undefined;
-          planActive = snapshot?.active ?? false;
-          planEntered = snapshot !== undefined;
-        }
-        throw error;
-      });
-      planWrites = persisted.then(
-        () => {},
-        () => {},
-      );
-      return persisted.then(async (value) => {
+          await toolState.set("plan", { active: on }, target, context);
+        }),
+      async changed(value) {
         const event: CustomSessionEvent<AgentEvent> = {
           type: "tool_state_changed",
           name: "plan",
@@ -495,9 +480,8 @@ async function createSessionInternal(
         };
         if (emitRunEvent) await emitRunEvent(event);
         else pendingPlanEvents.push(event);
-      });
-    },
-  };
+      },
+    });
   let activeStore: StoredSession | undefined;
   let storeOperations = Promise.resolve();
   function serializeStore<T>(work: () => Promise<T>): Promise<T> {
@@ -820,7 +804,7 @@ async function createSessionInternal(
   const childSessions = new Set<Session>();
   let currentResult: RunResult | undefined;
   let completedMessages = initialBranch.messages;
-  const subagents = createSubagents({
+  const subagents = createSubagentController({
     restored: toolState.get("subagents") as SubagentIdentity[] | undefined,
     warn: options.onWarning ?? console.warn,
     async persist(identities) {
@@ -893,41 +877,8 @@ async function createSessionInternal(
           currentResult.usage[key] += usage[key];
     },
   });
-  const planTools =
-    options.onPlanReview && !internal.parentSessionId
-      ? [
-          createEnterPlanModeTool(plan),
-          createExitPlanModeTool(plan, options.onPlanReview, onInteractionStart),
-        ]
-      : [];
   let runDirectHuman = false;
   let runGoalRound = false;
-  const goalTools = internal.parentSessionId
-    ? []
-    : createGoalTools(
-        // Construction declares tools before Agent/controller initialization; execution occurs after both exist.
-        {
-          view: () => goal.view(),
-          create: (...args) => goal.create(...args),
-          edit: (...args) => goal.edit(...args),
-          pause: () => goal.pause(),
-          resume: (...args) => goal.resume(...args),
-          finish: (...args) => goal.finish(...args),
-        },
-        {
-          directHuman: () => runDirectHuman,
-          goalRound: () => runGoalRound,
-          wrapup(text) {
-            const message = {
-              role: "user" as const,
-              content: [{ type: "text" as const, text }],
-              timestamp: Date.now(),
-              source: "goal",
-            };
-            agent.steer(message);
-          },
-        },
-      );
   const fileTracking = createFileTracking(cwd, {
     initialState: toolState.get("file-tracking"),
     previousReminder: initialBranch.transcriptMessages.findLast(
@@ -962,30 +913,62 @@ async function createSessionInternal(
       scheduleRewake?.();
     },
   });
-  const initialTools = [
-    ...createBuiltinTools(
+  const isChild = Boolean(internal.parentSessionId);
+  const toolGate: ToolGate = { allowsTool, measureTool };
+  const toolOptions: BaseToolsInput = {
+    isChild,
+    builtin: {
       cwd,
       jobs,
-      (name) => skills.get(name),
+      getSkill: (name) => skills.get(name),
       setTodo,
       onQuestion,
-      options.homeDir,
+      homeDir: options.homeDir,
       onInteractionStart,
-      options.webFetch,
+      webFetch: options.webFetch,
       fileTracking,
-    ),
-    ...planTools,
-    ...goalTools,
-  ];
-  if (!internal.parentSessionId) {
-    const discovered = await discoverSubagentTypes(
-      cwd,
-      options.homeDir,
-      initialTools.map((tool) => tool.name),
-      { trusted: isTrustedProject(cwd, settings) },
-    );
+    },
+    planMode: {
+      controller: plan,
+      onPlanReview: options.onPlanReview,
+      onInteractionStart,
+    },
+    goal: {
+      // Construction declares tools before the Goal controller exists; execution occurs after both.
+      controller: {
+        view: () => goal.view(),
+        create: (...args) => goal.create(...args),
+        edit: (...args) => goal.edit(...args),
+        pause: () => goal.pause(),
+        resume: (...args) => goal.resume(...args),
+        finish: (...args) => goal.finish(...args),
+      },
+      execution: {
+        directHuman: () => runDirectHuman,
+        goalRound: () => runGoalRound,
+        wrapup(text) {
+          const message = {
+            role: "user" as const,
+            content: [{ type: "text" as const, text }],
+            timestamp: Date.now(),
+            source: "goal",
+          };
+          agent.steer(message);
+        },
+      },
+    },
+  };
+  const initialTools = createBaseTools(toolOptions);
+  const subagentTools = createSubagentTools({ isChild, controller: subagents });
+  if (!isChild) {
     // Seed pi's initial declaration; Run discovery owns diagnostics and later changes.
-    subagents.setTypes(discovered.types);
+    await refreshSubagentTypes({
+      cwd,
+      homeDir: options.homeDir,
+      trusted: isTrustedProject(cwd, settings),
+      tools: initialTools,
+      controller: subagents,
+    });
   }
   let planTakenOver = false;
   const agent = new Agent({
@@ -1058,14 +1041,7 @@ async function createSessionInternal(
         (internal.parentSessionId
           ? `${SYSTEM_PROMPT}\n\n${SUBAGENT_PROMPT}${internal.typePrompt ? `\n\n${internal.typePrompt}` : ""}`
           : SYSTEM_PROMPT),
-      tools: [
-        ...initialTools,
-        ...(internal.parentSessionId
-          ? []
-          : [subagents.tool, subagents.forkTool, subagents.sendTool, subagents.listTool]),
-      ]
-        .filter(allowsTool)
-        .map(measureTool),
+      tools: selectTools([...initialTools, ...subagentTools], toolGate),
       ...(settings.thinking && { thinkingLevel: settings.thinking }),
     },
   });
@@ -1702,7 +1678,7 @@ async function createSessionInternal(
       emitRunEvent = emit;
       let target: StoredSession | undefined;
       try {
-        await planWrites;
+        await plan.settleWrites();
         controller.signal.throwIfAborted();
         const discovered = await discoverSkills(cwd, options.homeDir);
         skills = discovered.skills;
@@ -1857,7 +1833,7 @@ async function createSessionInternal(
       if (!code && !conversation) throw new Error("Rewind requires code or conversation.");
       rewinding = true;
       try {
-        await planWrites;
+        await plan.settleWrites();
         const prompt = checkpoint.prompt(promptEntryId);
         const files = code
           ? await checkpoint.restoreCode(promptEntryId)
@@ -1903,8 +1879,7 @@ async function createSessionInternal(
               )
             : { subagents: [] };
           recoveryPending = false;
-          planActive = (toolState.get("plan") as { active: boolean } | undefined)?.active ?? false;
-          planEntered = toolState.get("plan") !== undefined;
+          plan.restore();
           pendingPlanEvents.length = 0;
           goal.disarm();
           // A compact SessionStart hook may be waiting for the next user. Its
@@ -2160,52 +2135,37 @@ async function createSessionInternal(
             onWarning: options.onWarning,
           });
         } finally {
-          const generalTools = [
-            ...createBuiltinTools(
+          const generalTools = [...createBaseTools(toolOptions), ...mcp.tools];
+          if (!isChild) {
+            await refreshSubagentTypes({
               cwd,
-              jobs,
-              (name) => skills.get(name),
-              setTodo,
-              onQuestion,
-              options.homeDir,
-              onInteractionStart,
-              options.webFetch,
-              fileTracking,
-            ),
-            ...planTools,
-            ...goalTools,
-            ...mcp.tools,
-          ];
-          if (!internal.parentSessionId) {
-            const discovered = await discoverSubagentTypes(
-              cwd,
-              options.homeDir,
-              generalTools.map((tool) => tool.name),
-              { trusted: isTrustedProject(cwd, settings) },
-            );
-            subagents.setTypes(discovered.types);
-            for (const warning of discovered.warnings) (options.onWarning ?? console.warn)(warning);
-            for (const warning of discovered.hookWarnings)
-              await emit({
-                type: "hook_warning",
-                event: "SubagentStart",
-                hook: warning.source,
-                message: warning.message,
-                error: warning.error,
-              });
+              homeDir: options.homeDir,
+              trusted: isTrustedProject(cwd, settings),
+              tools: generalTools,
+              controller: subagents,
+              async report(discovered) {
+                for (const warning of discovered.warnings)
+                  (options.onWarning ?? console.warn)(warning);
+                for (const warning of discovered.hookWarnings)
+                  await emit({
+                    type: "hook_warning",
+                    event: "SubagentStart",
+                    hook: warning.source,
+                    message: warning.message,
+                    error: warning.error,
+                  });
+              },
+            });
           }
           mcpToolServers = mcp.toolServers;
-          agent.state.tools = [
-            ...generalTools,
-            ...(internal.parentSessionId
-              ? []
-              : [subagents.tool, subagents.forkTool, subagents.sendTool, subagents.listTool]),
-          ]
-            .filter(allowsTool)
-            .map(measureTool);
+          agent.state.tools = selectTools([...generalTools, ...subagentTools], toolGate);
           const nonMcpTools = agent.state.tools.filter((tool) => !mcp.toolServers.has(tool.name));
           agent.prepareNextTurnWithContext = ({ context: turnContext }) => {
-            agent.state.tools = [...nonMcpTools, ...mcp.tools.filter(allowsTool).map(measureTool)];
+            agent.state.tools = createTurnTools({
+              nonMcpTools,
+              mcpTools: mcp.tools,
+              gate: toolGate,
+            });
             return { context: { ...turnContext, tools: agent.state.tools } };
           };
           await emit({
@@ -2220,7 +2180,7 @@ async function createSessionInternal(
         try {
           signal?.addEventListener("abort", abort);
           signal?.throwIfAborted();
-          await planWrites;
+          await plan.settleWrites();
           for (const event of pendingPlanEvents.splice(0)) await emit(event);
           for (const event of pendingHookEvents.splice(0)) await emit(event);
           if (sessionStartControl) {
@@ -2330,7 +2290,7 @@ async function createSessionInternal(
                 injectAsyncContexts,
               });
               if (!compacted) {
-                await planWrites;
+                await plan.settleWrites();
                 const changed = await collectSourceReminders(
                   transcriptMessages.slice(reminderStart),
                   [planReminder, fileTracking.reminderSource],
@@ -2609,7 +2569,7 @@ async function createSessionInternal(
           agent.prepareRequest = undefined;
           agent.prepareNextTurnWithContext = undefined;
           try {
-            await planWrites;
+            await plan.settleWrites();
           } finally {
             try {
               await sessionTitle.settleWrites();

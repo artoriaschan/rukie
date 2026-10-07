@@ -1,6 +1,6 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
-import { jobStatus, type Jobs } from "./index.ts";
+import { jobStatus, type Jobs } from "./registry.ts";
 
 const outputSchema = Type.Object({
   job_id: Type.String(),

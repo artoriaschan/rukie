@@ -1,39 +1,23 @@
-import type { createFileTracking } from "../file-tracking/index.ts";
-import { createWebFetchTool } from "./web-fetch.ts";
-import type { WebFetchOptions } from "../web-fetch/index.ts";
-import type { OnInteractionStart } from "../interaction/index.ts";
 import {
-  createReadTool,
-  createWriteTool,
-  createEditTool,
   type AgentHarnessTool,
   type AgentTool,
   type ExecutionToolContext,
-  type Skill,
 } from "@earendil-works/pi-agent-core";
 import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
 import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/pi-agent-core/harness/context";
 import type { UserVisibleErrorData } from "@neant/shared";
-import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { prepareFileToolPath } from "./path.ts";
 import { type TSchema, type Static } from "typebox";
-import { createJobTools, type Jobs } from "../jobs/index.ts";
-import { createBashTool } from "../bash/index.ts";
-import { createGlobTool } from "./glob.ts";
-import { createGrepTool } from "./grep.ts";
-import { createSkillTool } from "./skill.ts";
-import { createQuestionTool, type OnQuestion } from "./question.ts";
-import { createTodoTool } from "./todo.ts";
-import type { TodoItem } from "../tool-state/index.ts";
 import { detectReadImageMimeType, validateImageBytes } from "../images/index.ts";
-export { createExitPlanModeTool } from "./plan-review.ts";
-export type { PlanReviewRequest, PlanReviewResult, OnPlanReview } from "./plan-review.ts";
-export type { Question, QuestionRequest, QuestionReply } from "./question.ts";
-export { createEnterPlanModeTool } from "./enter-plan-mode.ts";
+import { prepareFileToolPath } from "./path.ts";
 
 /** Validate the original read bytes before pi encodes them, without a second file read. */
+export function createImageReadEnv(cwd: string): NodeExecutionEnv {
+  return new ImageReadEnv({ cwd });
+}
+
+/** pi's file reads return a non-exported `Result`, so the subclass stays private. */
 class ImageReadEnv extends NodeExecutionEnv {
   override async readBinaryFile(...args: Parameters<NodeExecutionEnv["readBinaryFile"]>) {
     const result = await super.readBinaryFile(...args);
@@ -43,7 +27,7 @@ class ImageReadEnv extends NodeExecutionEnv {
 }
 
 /** pi's built-ins use the harness context; Agent uses an AbortSignal. */
-function adaptTool<T extends TSchema, D>(
+export function adaptTool<T extends TSchema, D>(
   tool: AgentHarnessTool<ExecutionToolContext, T, D>,
   env: NodeExecutionEnv,
   homeDir?: string,
@@ -117,42 +101,4 @@ export function preserveErrorDetails<T extends TSchema>(tool: AgentTool<T>): Age
       }
     },
   };
-}
-
-/** Read-only tools for isolated model hook checks. */
-export function createReadonlyTools(cwd: string, homeDir = homedir()): AgentTool[] {
-  return [
-    preserveErrorDetails(adaptTool(createReadTool(), new ImageReadEnv({ cwd }), homeDir)),
-    createGlobTool(cwd),
-    preserveErrorDetails(createGrepTool(cwd)),
-  ];
-}
-
-export function createBuiltinTools(
-  cwd: string,
-  jobs: Jobs,
-  getSkill: (name: string) => Skill | undefined,
-  setTodo: (todos: TodoItem[]) => Promise<void>,
-  onQuestion?: OnQuestion,
-  homeDir = homedir(),
-  onInteractionStart?: OnInteractionStart,
-  webFetch?: WebFetchOptions,
-  fileTracking?: ReturnType<typeof createFileTracking>,
-): AgentTool[] {
-  const env = new NodeExecutionEnv({ cwd });
-  const track = <T extends TSchema, D>(tool: AgentTool<T, D>): AgentTool<T, D> =>
-    fileTracking ? fileTracking.wrapTool(tool) : tool;
-  return [
-    track(preserveErrorDetails(adaptTool(createReadTool(), new ImageReadEnv({ cwd }), homeDir))),
-    track(adaptTool(createWriteTool(), env, homeDir)),
-    track(adaptTool(createEditTool(), env, homeDir)),
-    preserveErrorDetails(createBashTool(cwd, jobs)),
-    ...createJobTools(jobs),
-    createGlobTool(cwd),
-    preserveErrorDetails(createGrepTool(cwd)),
-    createSkillTool(getSkill),
-    createTodoTool(setTodo),
-    createWebFetchTool(webFetch),
-    ...(onQuestion ? [createQuestionTool(onQuestion, onInteractionStart)] : []),
-  ];
 }

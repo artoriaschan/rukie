@@ -1,8 +1,8 @@
 import { afterEach, expect, test } from "bun:test";
 import { runToolCall, type AgentContext } from "@earendil-works/pi-agent-core";
 import { createPermissionGate, parsePermissionRules } from "../../src/permissions/index.ts";
-import { createJobs } from "../../src/jobs/index.ts";
-import { createBuiltinTools } from "../../src/tools/index.ts";
+import { createJobs } from "../../src/tools/jobs/index.ts";
+import { createBuiltinTools } from "../../src/tools/builtin.ts";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { mkdir, symlink } from "node:fs/promises";
 import { realpathSync } from "node:fs";
@@ -168,12 +168,12 @@ test.each(["command", "directory"] as const)(
     dirs = await tempDirs();
     const fake = fakeModel([]);
     toolJobs = createJobs();
-    const tools = createBuiltinTools(
-      dirs.cwd,
-      toolJobs,
-      () => undefined,
-      async () => {},
-    );
+    const tools = createBuiltinTools({
+      cwd: dirs.cwd,
+      jobs: toolJobs,
+      getSkill: () => undefined,
+      setTodo: async () => {},
+    });
     const calls =
       kind === "command"
         ? [
@@ -375,12 +375,12 @@ test("other tools receive an exact bare tool session grant", async () => {
   dirs = await tempDirs();
   const fake = fakeModel([]);
   toolJobs = createJobs();
-  const tools = createBuiltinTools(
-    dirs.cwd,
-    toolJobs,
-    () => undefined,
-    async () => {},
-  )
+  const tools = createBuiltinTools({
+    cwd: dirs.cwd,
+    jobs: toolJobs,
+    getSkill: () => undefined,
+    setTodo: async () => {},
+  })
     .filter((tool) => tool.name === "write")
     .map((tool) => ({ ...tool, name: "mcp__example__store" }));
   const call = fauxToolCall("mcp__example__store", { path: "first", content: "ok" });

@@ -1,4 +1,7 @@
-import type { ToolStateDefinition } from "../tool-state/index.ts";
+import type { ToolStateDefinition } from "../../tool-state/index.ts";
+
+/** Strict version-1 Plan Mode snapshot: `active` is the only stored fact. */
+export type PlanSnapshot = { active: boolean };
 
 export const planState: ToolStateDefinition = {
   name: "plan",

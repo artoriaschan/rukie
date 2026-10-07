@@ -11,8 +11,6 @@ import {
 } from "@earendil-works/pi-agent-core/harness/session";
 import type { ReminderSource } from "../reminders/index.ts";
 
-export { todoSchema, todoState, type TodoItem } from "./todo.ts";
-
 export interface ToolStateDefinition {
   name: string;
   version: number;

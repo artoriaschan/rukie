@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 
 # Spec: Agent Core 模块归属与职责重构
 
@@ -90,8 +90,8 @@ Status: ready-for-agent
 - 先固定未重构版本的工具名称、description、完整 parameters schema 和工具顺序，覆盖顶层、缺少 Interaction 回调、普通及 fork 子 Session、类型过滤和动态刷新。label 等非模型声明字段保留原值，通过已有事件或呈现测试保护。
 - 使用确定的临时项目、类型定义、隔离 homeDir 与现有模型回复 helpers。随机 Session 标识与路径验证关联事实，不写入机器相关的静态协议基线。同步使用明确事件、完成信号和终端谓词。
 - 结果、事件、错误码、持久化、权限、Hooks、取消和资源清理由已有公开测试保护，避免重复创建全量结果快照。测试先于对应实现变动通过；不得修改原断言迁就重构。
-- Plan Mode 重点保护乐观内存状态、串行写入、最新 revision 回退、失败后重试、队列与通知边界、同值等待、父子共享、Compaction、Rewind 及关闭等待。核查并补齐多个待写 revision 的失败组合，以及父 Rewind 后已有子 Session 继续 send_message 的状态共享。
-- Subagent 重点保护前后台结果、创建前名额预留、迟到创建的取消收束、发送串行、类型变化、错误与通知、fork、恢复、Run Outcome 和使用量结算。
+- Plan Mode 重点保护乐观内存状态、串行写入、最新 revision 回退、失败后重试、队列与通知边界、同值等待、父子共享、Compaction、Rewind 及关闭等待。核查并补齐多个待写 revision 的失败组合，以及父 Rewind 后已有子 Session 继续 send_message 的状态共享。teardown 的 `await plan.settleWrites()` 位置按交付保留，但在公开 Store 接缝上不可独立区分（[票 06](issues/06-plan-mode-controller.md)）。
+- Subagent 重点保护前后台结果、创建前名额预留、迟到创建的取消收束、发送串行、类型变化、错误与通知、fork、恢复、Run Outcome 和使用量结算。`settle` 对「尚无 done promise 的创建项」的等待按交付保留，但公开行为无法与「只等待已有 done」区分（[票 05](issues/05-subagent-tool-separation.md)）。
 - MCP 快照、刷新、事件提交顺序、管理互斥、probe 与 Run 竞态、副本隔离、配置诊断及 dispose 复用 mcp-api.test.ts；配置与 OAuth 生命周期复用 mcp-config.test.ts、mcp-oauth.test.ts 和 mcp-oauth-lifecycle.test.ts。普通/fork 子 Session 的 child origin、授权后工具刷新、凭据共享、取消及精确白名单复用 subagent-mcp-oauth.test.ts。先验证既有用例，仅为真实缺口增加测试。
 - Bash、Background Job、Web Fetch、Todo、Goal、Permission Review、MCP 和 Hook 沿用现有公开场景，覆盖生命周期和执行协议而非目录或私有状态结构。
 - 测试 prior art 包括 tools、Plan Mode、Plan Review、Enter Plan Mode、Todo 与提醒、Goal 工具、Subagent 与 fork、类型和恢复、Background Job 与 Session Job API、通知与子 Jobs，以及 Web Fetch 的请求、重定向、代理、转换和权限套件。
@@ -107,7 +107,13 @@ Status: ready-for-agent
 
 ## Further Notes
 
-用户以 to-spec 确认将 Q1–Q11 和完整设计转为正式规范，随后明确调整 tools 的含义，将 Goal、Jobs、Subagent、Plan Mode 的关联能力一并聚合到 tools。最新调整覆盖此前要求外层领域目录与工具入口分离的目录决策，保留内部职责和公开契约。状态 ready-for-agent 表示已具备实施信息，依赖仍须按票遵守。当前仅发布文档，代码与 lint 规则尚未迁移。
+用户以 to-spec 确认将 Q1–Q11 和完整设计转为正式规范，随后明确调整 tools 的含义，将 Goal、Jobs、Subagent、Plan Mode 的关联能力一并聚合到 tools。最新调整覆盖此前要求外层领域目录与工具入口分离的目录决策，保留内部职责和公开契约。
+
+2026-10-07：01–07 已实施并集成（集成点 `ba200b7`），08 完成 Standards/Spec 审查、契约兼容核对、MCP 验收、边界核对、删除审计与文档核对，并修复了 Oxlint 的"全局工具组装入口"约束指向已删除路径的缺陷（[票 08](issues/08-final-review-and-verification.md)）。八票均为 `resolved`；合并结果 `587457a` 上的 `env -u NO_COLOR bun run check` 退出码 0，`oxfmt --check` 694 文件、`oxlint` 398 文件 0/0、`tsc -b`、`knip` 通过，测试 2497 pass / 0 fail（14040 expect，179 文件）。
+
+2026-10-07 评审整改：Oxlint 的能力执行模块限制补上共享工具运行时适配层（`tools/runtime.ts`），以受控临时输入验证命中后清理；Plan Mode 投影与 Goal 工具参数类型收敛为单一来源。四条验收框取消勾选并就地标注原因——02 AC-1 由票 07 取代（字面标准未在最终树存活）、01 AC-8 只有提交拓扑支持、03 AC-7 的文档链接归属不可恢复、05 AC-6 的 `settle` 创建项分支不可独立区分；各票 `Status` 保持 `resolved`，指交付完成，上述证据边界随框披露，不表示工作待办。
+
+同日复核记入[票 08](issues/08-final-review-and-verification.md)：Hook 只读工具集仍只是独立工厂，`hooks/model.ts` 经 `tools/builtin.ts` 传递加载 bash/jobs/todo/web-fetch/question/skill，因此"Hook 可消费独立只读工具集"只在工厂层面成立；测试文件的三处既有标准问题（TUI 慢用例缺 before/after 计时、两处手写 fake timer 未复用 `startWithClock`、Plan Mode 用例的 0ms 排空）同处记录，前两处来自 main、不属本分支范围。
 
 实施严格按 01 → 02 → 03 → 04 → 05 → 06 → 07 → 08。每票更新当时的所有消费者与相关当前文档，保持可运行，不留待下票修复的破坏。
 

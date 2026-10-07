@@ -2,7 +2,7 @@ import { Agent, type StreamFn } from "@earendil-works/pi-agent-core";
 import { normalizeContext, type Api, type Model } from "@earendil-works/pi-ai";
 import { createUserVisibleError, type HookHandler, type HookEvent } from "@neant/shared";
 
-import { createReadonlyTools } from "../tools/index.ts";
+import { createReadonlyTools } from "../tools/builtin.ts";
 import { executeBounded } from "./bounded.ts";
 
 type ModelHook = Extract<HookHandler, { type: "prompt" | "agent" }>;

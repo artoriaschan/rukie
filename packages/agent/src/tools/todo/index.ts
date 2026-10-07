@@ -1,6 +1,8 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
-import { todoSchema, type TodoItem } from "../tool-state/index.ts";
+import { todoSchema, type TodoItem } from "./state.ts";
+
+export { todoState, type TodoItem } from "./state.ts";
 
 const parameters = Type.Object({ todos: todoSchema });
 

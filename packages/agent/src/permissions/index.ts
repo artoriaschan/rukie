@@ -12,7 +12,7 @@ export { resolvePermissionPath } from "./path.ts";
 import { sessionAllowRule, type SessionAllow, type SessionAllowRule } from "./session-rules.ts";
 export type { SessionAllowRule } from "./session-rules.ts";
 import { requestInteraction, type OnInteractionStart } from "../interaction/index.ts";
-import { reviewPermission, type ReviewResult } from "../review/index.ts";
+import { reviewPermission, type ReviewResult } from "./review.ts";
 import type {
   PreToolUseResult,
   PermissionRequestResult,
