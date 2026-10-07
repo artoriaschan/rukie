@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { Box, Text } from "../../../ink/index.ts";
 import {
-  SPIRIT_FRAMES,
-  SPIRIT_HEIGHT,
-  SPIRIT_PALETTE,
-  SPIRIT_WIDTH,
-  type SpiritPose,
-} from "./spirit-frames";
+  AVATAR_FRAMES,
+  AVATAR_HEIGHT,
+  AVATAR_PALETTE,
+  AVATAR_WIDTH,
+  type AvatarPose,
+} from "./avatar-frames";
 
 interface Segment {
   text: string;
@@ -16,11 +16,11 @@ interface Segment {
 
 /** Two vertical palette pixels share one styled cell, without embedding control bytes in Text. */
 function spriteRows(grid: readonly string[]) {
-  return Array.from({ length: SPIRIT_HEIGHT }, (_, row) => {
+  return Array.from({ length: AVATAR_HEIGHT }, (_, row) => {
     const segments: Segment[] = [];
-    for (let x = 0; x < SPIRIT_WIDTH; x++) {
-      const upper = SPIRIT_PALETTE[grid[row * 2]![x]!];
-      const lower = SPIRIT_PALETTE[grid[row * 2 + 1]![x]!];
+    for (let x = 0; x < AVATAR_WIDTH; x++) {
+      const upper = AVATAR_PALETTE[grid[row * 2]![x]!];
+      const lower = AVATAR_PALETTE[grid[row * 2 + 1]![x]!];
       const color = upper ?? lower;
       const backgroundColor = upper && lower ? lower : undefined;
       const text = upper ? "▀" : lower ? "▄" : " ";
@@ -34,32 +34,32 @@ function spriteRows(grid: readonly string[]) {
 }
 
 const rendered = {
-  standard: spriteRows(SPIRIT_FRAMES.standard),
-  blink: spriteRows(SPIRIT_FRAMES.blink),
-  float: spriteRows(SPIRIT_FRAMES.float),
+  standard: spriteRows(AVATAR_FRAMES.standard),
+  blink: spriteRows(AVATAR_FRAMES.blink),
+  nod: spriteRows(AVATAR_FRAMES.nod),
 };
 
-const opening: readonly { pose: SpiritPose; ms: number }[] = [
+const opening: readonly { pose: AvatarPose; ms: number }[] = [
   { pose: "standard", ms: 400 },
   { pose: "blink", ms: 160 },
   { pose: "standard", ms: 240 },
-  { pose: "float", ms: 240 },
+  { pose: "nod", ms: 240 },
   { pose: "standard", ms: 240 },
-  { pose: "float", ms: 240 },
+  { pose: "nod", ms: 240 },
   { pose: "standard", ms: 400 },
 ];
-const idle: readonly { pose: SpiritPose; ms: number }[] = [
+const idle: readonly { pose: AvatarPose; ms: number }[] = [
   { pose: "standard", ms: 3500 },
   { pose: "blink", ms: 160 },
   { pose: "standard", ms: 1200 },
-  { pose: "float", ms: 350 },
+  { pose: "nod", ms: 350 },
 ];
 
 /** Like dsh-TUI's welcome mascot, the first Run freezes it for the rest of this mount. */
-export function useSpiritPose(visible: boolean, working: boolean) {
+export function useAvatarPose(visible: boolean, working: boolean) {
   const [frozen, setFrozen] = useState(working);
   const [opened, setOpened] = useState(false);
-  const [pose, setPose] = useState<SpiritPose>("standard");
+  const [pose, setPose] = useState<AvatarPose>("standard");
   useEffect(() => {
     if (working) setFrozen(true);
   }, [working]);
@@ -87,9 +87,9 @@ export function useSpiritPose(visible: boolean, working: boolean) {
   return working || frozen || !visible ? "standard" : pose;
 }
 
-export function SpiritArt({ pose }: { pose: SpiritPose }) {
+export function AvatarArt({ pose }: { pose: AvatarPose }) {
   return (
-    <Box width={SPIRIT_WIDTH} height={SPIRIT_HEIGHT} flexDirection="column" flexShrink={0}>
+    <Box width={AVATAR_WIDTH} height={AVATAR_HEIGHT} flexDirection="column" flexShrink={0}>
       {rendered[pose].map((segments, row) => (
         <Text key={row} wrap="truncate" preserveWhitespace>
           {segments.map((segment, x) => (

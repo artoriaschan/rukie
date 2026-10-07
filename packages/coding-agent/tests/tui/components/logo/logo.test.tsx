@@ -37,7 +37,7 @@ test("adjacent cells of the same color become one text segment without losing sp
   ]);
 });
 
-test("wide header paints the ghost beside the name and separate model, effort and cwd rows without tips", async () => {
+test("wide header paints the anime avatar beside the name and separate model, effort and cwd rows without tips", async () => {
   const terminal = createTerminal(80, 24);
   const app = render(
     <ThemeProvider theme={{ ...dark, logoFrom: "#112233", logoTo: "#445566", subtle: "#778899" }}>
@@ -56,9 +56,17 @@ test("wide header paints the ghost beside the name and separate model, effort an
     expect(cell(42, 3).getFgColor()).toBe(0x112233);
     expect(cell(75, 3).getFgColor()).toBe(0x445566);
     expect(cell(42, 10).getFgColor()).toBe(0x778899);
-    expect(cell(13, 5).getChars()).toBe("▀");
-    expect(cell(13, 5).getFgColor()).toBe(0xffffff);
-    expect(cell(13, 5).getBgColor()).toBe(0xedf5ff);
+    const colors = new Set<number>();
+    for (let y = 0; y < 14; y++)
+      for (let x = 0; x < 40; x++) {
+        const pixel = cell(x, y);
+        if (pixel.isFgRGB()) colors.add(pixel.getFgColor());
+        if (pixel.isBgRGB()) colors.add(pixel.getBgColor());
+      }
+    expect(colors.has(0xe85693)).toBe(true);
+    expect(cell(15, 7).getChars()).toBe("▀");
+    expect(cell(15, 7).getFgColor()).toBe(0xfff8ee);
+    expect(cell(15, 7).getBgColor()).toBe(0xffe6dc);
     expect(cell(0, 5).isBgDefault()).toBe(true);
     expect(cell(42, 9).isBgDefault()).toBe(true);
   } finally {
@@ -68,7 +76,7 @@ test("wide header paints the ghost beside the name and separate model, effort an
   }
 });
 
-test("narrow and short headers keep metadata readable and clear the ghost on resize", async () => {
+test("narrow and short headers keep metadata readable and clear the avatar on resize", async () => {
   const terminal = createTerminal(80, 24);
   const app = render(<Logo model="local/model" cwd="/project" working />, terminal);
   try {
@@ -95,7 +103,7 @@ test("narrow and short headers keep metadata readable and clear the ghost on res
   }
 });
 
-test("ghost blinks and floats, then permanently freezes on the first Run and releases timers", async () => {
+test("avatar blinks and nods, then permanently freezes on the first Run and releases timers", async () => {
   jest.useFakeTimers();
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   const terminal = createTerminal(80, 24);
@@ -124,17 +132,17 @@ test("ghost blinks and floats, then permanently freezes on the first Run and rel
   const cell = (x: number, y: number) => terminal.terminal.buffer.active.getLine(y)!.getCell(x)!;
   try {
     await flush();
-    expect(cell(13, 5).getFgColor()).toBe(0xffffff);
+    expect(cell(15, 7).getFgColor()).toBe(0xfff8ee);
     const metadata = terminal
       .screen()
       .slice(9, 11)
       .map((row) => row.slice(42));
     await advance(400);
-    expect(cell(13, 5).getFgColor()).toBe(0xadc8ee);
+    expect(cell(15, 7).getFgColor()).toBe(0x42283e);
     await advance(160);
-    expect(cell(13, 5).getFgColor()).toBe(0xffffff);
+    expect(cell(15, 7).getFgColor()).toBe(0xfff8ee);
     await advance(240);
-    expect(cell(20, 0).getChars()).toBe("▀");
+    expect(cell(18, 0).getChars()).toBe("");
     expect(
       terminal
         .screen()
@@ -144,7 +152,7 @@ test("ghost blinks and floats, then permanently freezes on the first Run and rel
     act(() => update(true));
     jest.advanceTimersByTime(16);
     await flush();
-    expect(cell(20, 0).getChars()).toBe("▄");
+    expect(cell(18, 0).getChars()).toBe("▄");
     expect(jest.getTimerCount()).toBe(0);
     act(() => update(false));
     await advance(16);
@@ -196,7 +204,7 @@ test("removing the welcome header cancels its pending animation", async () => {
   }
 });
 
-test("settled welcome animation rests between idle blinks and floats, and stops when hidden", async () => {
+test("settled welcome animation rests between idle blinks and nods, and stops when hidden", async () => {
   jest.useFakeTimers();
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   const terminal = createTerminal(80, 24);
@@ -222,13 +230,13 @@ test("settled welcome animation rests between idle blinks and floats, and stops 
     await advance(3000);
     expect(terminal.output()).toBe(resting);
     await advance(600);
-    expect(cell(13, 5).getFgColor()).toBe(0xadc8ee);
+    expect(cell(15, 7).getFgColor()).toBe(0x42283e);
     await advance(350);
-    expect(cell(13, 5).getFgColor()).toBe(0xffffff);
+    expect(cell(15, 7).getFgColor()).toBe(0xfff8ee);
     await advance(1000);
-    expect(cell(20, 0).getChars()).toBe("▀");
+    expect(cell(18, 0).getChars()).toBe("");
     await advance(500);
-    expect(cell(20, 0).getChars()).toBe("▄");
+    expect(cell(18, 0).getChars()).toBe("▄");
     expect(jest.getTimerCount()).toBe(1);
     act(() => terminal.resize(40, 24));
     await advance(16);
@@ -240,6 +248,53 @@ test("settled welcome animation rests between idle blinks and floats, and stops 
     act(() => app.unmount());
     jest.useRealTimers();
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: false });
+    terminal.dispose();
+  }
+});
+
+test("Kitty header uploads the full-resolution portrait and removes it on resize and exit", async () => {
+  const terminal = createTerminal(80, 24);
+  const app = render(<Logo model="local/model" cwd="/project" working />, {
+    ...terminal,
+    fullscreen: true,
+    env: {},
+  });
+  try {
+    await terminal.flush();
+    terminal.stdin.write("\x1b_Gi=2147483647;OK\x1b\\\x1b[6;20;10t");
+    await terminal.waitFor(() => terminal.output().includes("a=t,"));
+    // oxlint-disable-next-line no-control-regex -- verify uploaded PNG bytes at terminal output seam
+    const chunks = [...terminal.output().matchAll(/\x1b_G([^;]*m=[01]);([^\x1b]*)\x1b\\/g)];
+    const png = Buffer.from(chunks.map((part) => part[2]).join(""), "base64");
+    expect(png.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
+    expect(png.readUInt32BE(16)).toBeGreaterThanOrEqual(512);
+    expect(png.readUInt32BE(20)).toBeGreaterThanOrEqual(512);
+    const source = Buffer.from(
+      await Bun.file(
+        new URL("../../../../../../brand/rukie-avatar.png", import.meta.url),
+      ).arrayBuffer(),
+    );
+    expect(png.equals(source)).toBe(true);
+    expect(terminal.output()).toContain("a=p,");
+    expect(terminal.screen()[9]?.slice(42)).toBe("local/model");
+    expect(terminal.screen()[10]?.slice(42)).toBe("/project");
+    const buffer = terminal.terminal.buffer.active;
+    expect(buffer.getLine(7)!.getCell(15)!.isBgDefault()).toBe(true);
+    terminal.resize(40, 24);
+    await terminal.waitFor(() => terminal.screen()[7] === "local/model");
+    expect(terminal.output()).toContain("a=d,d=I");
+    expect(terminal.screen()[8]).toBe("/project");
+    terminal.resize(80, 24);
+    await terminal.waitFor(() => (terminal.output().match(/a=t,/g)?.length ?? 0) === 2);
+    app.unmount();
+    await app.waitUntilExit();
+    await terminal.flush();
+    expect(terminal.output().lastIndexOf("a=d,d=I")).toBeLessThan(
+      terminal.output().lastIndexOf("?1049l"),
+    );
+  } finally {
+    app.unmount();
+    await app.waitUntilExit();
     terminal.dispose();
   }
 });

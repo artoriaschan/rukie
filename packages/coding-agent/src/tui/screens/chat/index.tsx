@@ -2578,6 +2578,7 @@ function Chat({
             cwd={cwd}
             thinking={thinking}
             working={state.running}
+            suspended={!!preview || !!composerPreview}
           />
           <Box flexDirection="column" gap={1}>
             {completed.map(

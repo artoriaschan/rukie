@@ -1,4 +1,4 @@
-"""Standalone design prototype. No Rukie application code is imported or changed."""
+"""Generate terminal avatars and previews from the authoritative palette grid."""
 
 from pathlib import Path
 import html
@@ -8,104 +8,13 @@ import struct
 import zlib
 
 ROOT = Path(__file__).parent
-WIDTH, HEIGHT = 40, 28
-PALETTE = {
-    "D": "#3B506F",  # outline
-    "B": "#ADC8EE",  # body
-    "L": "#EDF5FF",  # highlight
-    "S": "#789BCE",  # shade
-    "T": "#5D7DAC",  # deepest fold
-    "E": "#202E46",  # eyes
-    "W": "#FFFFFF",  # eye glint
-    "C": "#CCB2CC",  # cheek
-    "P": "#527AAF",  # terminal prompt
-    "Z": "#202C3E",  # floating shadow
-}
+DATA = json.loads((ROOT / "frames.json").read_text())
+WIDTH, HEIGHT = DATA["width"], DATA["height"]
+PALETTE = DATA["palette"]
 
 
 def rgb(color):
     return tuple(int(color[i:i + 2], 16) for i in (1, 3, 5))
-
-
-def standard():
-    mask = set()
-    spans = {
-        1: [(20, 20)], 2: [(19, 22)], 3: [(13, 25)],
-        4: [(11, 28)], 5: [(10, 29)], 6: [(9, 30)],
-        7: [(8, 31)], 8: [(8, 31)],
-        **{y: [(7, 32)] for y in range(9, 20)},
-        20: [(8, 31)], 21: [(8, 14), (17, 23), (26, 31)],
-        22: [(9, 13), (18, 22), (27, 30)],
-        23: [(10, 12), (19, 21), (28, 29)],
-    }
-    for y, ranges in spans.items():
-        for lo, hi in ranges:
-            mask.update((x, y) for x in range(lo, hi + 1))
-    # A raised left hand and relaxed right hand break the silhouette's symmetry.
-    for y, lo, hi in [(11, 5, 7), (12, 4, 8), (13, 3, 8), (14, 3, 8),
-                      (15, 4, 8), (16, 5, 8), (13, 31, 34), (14, 31, 35),
-                      (15, 31, 36), (16, 31, 36), (17, 31, 35), (18, 31, 33)]:
-        mask.update((x, y) for x in range(lo, hi + 1))
-    grid = [["." for _ in range(WIDTH)] for _ in range(HEIGHT)]
-    for x, y in mask:
-        exposed = any((x + dx, y + dy) not in mask
-                      for dx, dy in [(0, -1), (0, 1), (-1, 0), (1, 0)])
-        if exposed:
-            tone = "D"
-        elif y >= 20:
-            tone = "T" if x >= 24 else "S"
-        elif x >= 29 or (y >= 17 and x >= 25):
-            tone = "S"
-        elif y <= 6 or (9 <= x <= 12 and y <= 10):
-            tone = "L"
-        else:
-            tone = "B"
-        grid[y][x] = tone
-    # A broken curved highlight follows the forehead and left cheek.
-    for y, lo, hi in [(5, 13, 23), (6, 11, 15), (7, 10, 12),
-                      (8, 10, 11), (9, 9, 10), (10, 9, 10)]:
-        for x in range(lo, hi + 1):
-            grid[y][x] = "L"
-    for origin in (12, 22):
-        for dy, lo, hi in [(0, 1, 3), (1, 0, 4), (2, 0, 4), (3, 0, 4), (4, 1, 3)]:
-            for dx in range(lo, hi + 1):
-                grid[9 + dy][origin + dx] = "E"
-        grid[10][origin + 1] = "W"
-        grid[10][origin + 2] = "W"
-        grid[11][origin + 1] = "L"
-    for x in (10, 11, 12, 27, 28, 29):
-        grid[14][x] = "C"
-    # A pixel-drawn >_ is a quiet identity detail, rather than another pair of eyes.
-    for x, y in [(16, 15), (17, 16), (18, 17), (17, 18), (16, 19)]:
-        grid[y][x] = "P"
-    for x in range(21, 25):
-        grid[19][x] = "P"
-    for x in range(13, 28):
-        grid[26][x] = "Z"
-    for x in range(16, 25):
-        grid[27][x] = "Z"
-    return grid
-
-
-def blink(base):
-    result = [row[:] for row in base]
-    for origin in (12, 22):
-        for y in range(9, 14):
-            for x in range(origin, origin + 5):
-                result[y][x] = "B"
-        for dx, dy in [(0, 0), (1, 1), (2, 1), (3, 1), (4, 0)]:
-            result[11 + dy][origin + dx] = "E"
-    return result
-
-
-def floating(base):
-    result = [["." for _ in range(WIDTH)] for _ in range(HEIGHT)]
-    for y in range(1, 24):
-        for x in range(WIDTH):
-            result[y - 1][x] = base[y][x]
-    for x in range(16, 25):
-        result[27][x] = "Z"
-    return result
 
 
 def ansi(grid):
@@ -172,27 +81,21 @@ def png(grid):
             + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
 
 
-base = standard()
-frames = {"standard": base, "blink": blink(base), "float": floating(base)}
+frames = {frame["name"]: frame["rows"] for frame in DATA["frames"]}
 for name, grid in frames.items():
     assert len(grid) == HEIGHT and all(len(row) == WIDTH for row in grid)
-    assert set("".join("".join(row) for row in grid)) <= set(PALETTE) | {"."}
-    encoded = ansi(grid)
-    assert encoded.endswith("\x1b[0m\n")
-    assert all(len(row) == WIDTH for row in re.sub(r"\x1b\[[0-9;]*m", "", encoded).splitlines())
-    (ROOT / f"{name}.ansi").write_text(encoded)
-(ROOT / "standard.png").write_bytes(png(base))
-(ROOT / "frames.json").write_text(json.dumps({
-    "width": WIDTH, "height": HEIGHT, "palette": PALETTE,
-    "frames": [{"name": name, "rows": ["".join(row) for row in grid]} for name, grid in frames.items()],
-}, ensure_ascii=False, indent=2) + "\n")
-titles = {"standard": "01 · 睁眼", "blink": "02 · 眨眼", "float": "03 · 轻浮"}
-cards = "".join(f'<article><pre aria-label="{titles[name]}">{ansi_html(ansi(grid))}</pre><h2>{titles[name]}</h2></article>' for name, grid in frames.items())
-chips = "".join(f'<span class="chip"><i style="background:{value}"></i>{key} {value}</span>' for key, value in PALETTE.items())
-page = '''<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Rukie · 小夜灵 v2</title>
-<style>*{box-sizing:border-box}body{margin:0;background:#101318;color:#E8E6E0;font-family:system-ui,sans-serif;padding:42px 48px}main{max-width:1120px;margin:auto}.eyebrow{font-size:12px;letter-spacing:3px;color:#E85693}h1{font-size:30px;font-weight:550;margin:14px 0 8px}.subtitle{color:#99A5B8;font-size:14px;margin:0}.hero{display:flex;align-items:center;justify-content:center;gap:64px;padding:18px 0 28px}.hero pre{font-size:20px;line-height:20px}.wordmark{color:#E85693;font-size:36px;letter-spacing:6px}.caption{font-size:13px;color:#99A5B8;margin-top:14px;line-height:1.8}pre{font-family:Menlo,Monaco,'Courier New',monospace;font-weight:normal;white-space:pre;letter-spacing:0;font-variant-ligatures:none;margin:0}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;border-top:1px solid #293241;padding-top:28px}article{background:#151A23;border:1px solid #242D3B;border-radius:10px;padding:20px 12px;text-align:center}article pre{font-size:12px;line-height:12px;display:inline-block}h2{font-size:12px;color:#AAB8CD;font-weight:500;margin:20px 0 0}.chips{display:flex;gap:14px;flex-wrap:wrap;margin-top:26px}.chip{font-size:10px;color:#99A5B8;display:flex;align-items:center;gap:6px}.chip i{width:10px;height:10px;border-radius:2px}footer{font-size:12px;color:#718096;margin-top:24px}@media(max-width:800px){body{padding:24px}.hero{gap:16px}.hero pre{font-size:13px;line-height:13px}.wordmark{font-size:24px}.cards{grid-template-columns:1fr}}</style>
-<main><div class="eyebrow">RUKIE / CHARACTER STUDY 02</div><h1>小夜灵</h1><p class="subtitle">厚轮廓 · 额头高光 · 反光双眼 · 不对称小手 · 波浪下摆</p><div class="hero"><pre aria-label="主形象">__HERO__</pre><div><div class="wordmark">rukie</div><div class="caption">安静、专注的 coding agent。<br>胸前藏着一枚像素提示符 &gt;_。</div></div></div><div class="cards">__CARDS__</div><div class="chips">__CHIPS__</div><footer>40 × 28 像素 → 40 列 × 14 行 ANSI 文本。预览直接解释 ANSI 字符与颜色，无图片参与渲染。v2 形象已接入 Rukie TUI。</footer></main></html>'''
-page = page.replace("</style>", ".cell{display:inline-block;width:1ch;height:1.2em;vertical-align:top;color:transparent;background:linear-gradient(to bottom,var(--up) 0 50%,var(--lo) 50% 100%)}.hero pre,article pre{line-height:1.2}</style>")
-page = page.replace("预览直接解释 ANSI 字符与颜色，无图片参与渲染", "浏览器按 ANSI 半块字符及颜色模拟像素，无图片参与渲染")
-(ROOT / "preview.html").write_text(page.replace("__HERO__", ansi_html(ansi(base))).replace("__CARDS__", cards).replace("__CHIPS__", chips))
-print("Generated 3 palette-grid poses, 3 ANSI previews, PNG proof and text-only HTML preview.")
+    assert set("".join(grid)) <= set(PALETTE) | {"."}
+    (ROOT / f"{name}.ansi").write_text(ansi(grid))
+(ROOT / "standard.png").write_bytes(png(frames["standard"]))
+source = "// Generated by brand/render.py from brand/frames.json.\n"
+source += f"export const AVATAR_WIDTH = {WIDTH};\nexport const AVATAR_HEIGHT = {HEIGHT // 2};\n\n"
+source += "export const AVATAR_PALETTE: Readonly<Record<string, `#${string}` | undefined>> = " + json.dumps(PALETTE, indent=2) + ";\n\n"
+source += "export const AVATAR_FRAMES = " + json.dumps(frames, indent=2) + ";\n\n"
+source += "export type AvatarPose = keyof typeof AVATAR_FRAMES;\n"
+(ROOT.parent / "packages/coding-agent/src/tui/components/logo/avatar-frames.ts").write_text(source)
+cards = "".join(f'<article><pre>{ansi_html(ansi(grid))}</pre><p>{html.escape(name)}</p></article>' for name, grid in frames.items())
+page = '''<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Rukie · 角色头像</title>
+<style>body{margin:32px;background:#101318;color:#eee;font-family:system-ui}h1{color:#E85693;font-weight:500}main{display:flex;gap:32px;flex-wrap:wrap}pre{font-family:monospace;font-size:16px;line-height:1.2;white-space:pre;margin:0}.cell{display:inline-block;width:1ch;height:1.2em;vertical-align:top;color:transparent;background:linear-gradient(to bottom,var(--up) 0 50%,var(--lo) 50% 100%)}p{color:#aaa}</style>
+<h1>Rukie · 高清角色头像</h1><img src="rukie-avatar.png" alt="Rukie 高清透明头像" width="280" height="280" style="object-fit:contain"><p>Kitty 终端优先显示完整 PNG；下方为字符回退。</p><p>40 × 28 像素 → 40 列 × 14 行 ANSI；#E85693 主题色。预览解释实际半块字符与 SGR 颜色。</p><main>__CARDS__</main></html>'''
+(ROOT / "preview.html").write_text(page.replace("__CARDS__", cards))
+print("Generated avatar TypeScript, ANSI poses, PNG proof and HTML preview from frames.json.")

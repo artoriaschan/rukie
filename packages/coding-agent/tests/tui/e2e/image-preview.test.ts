@@ -163,14 +163,19 @@ test("PNG thumbnails yield graphics to source-pixel zoom, button/wheel/drag pan 
     );
     app.calls[0]!.finish();
     await app.waitFor(() => !app.isWorking());
-    const before = app.screen().slice(0, 5);
     app.stdin.write("\x1b_Gi=2147483647;OK\x1b\\");
-    await app.waitFor(() => placements(app.output()).length > 0);
-    const thumb = placements(app.output()).at(-1)!;
+    await app.waitFor(() =>
+      placements(app.output()).some((item) => item.w === item.h && item.w! >= 512),
+    );
+    const portrait = placements(app.output()).find((item) => item.w === item.h && item.w! >= 512)!;
+    const before = app.screen().slice(0, 5);
+    const thumb = placements(app.output()).find((item) => item.w === 1000 && item.h === 800)!;
     expect(thumb.c).toBe(24);
     expect(thumb.r).toBe(9);
+    const openedAt = app.output().length;
     click(app, "large.png");
     await app.waitFor(() => app.screen().join("\n").includes("Open original"));
+    expect(app.output().slice(openedAt)).toContain(`a=d,d=I,i=${portrait.i}`);
     const title = app.screen().find((line) => line.includes("Image #1"))!;
     expect(title).toContain("PNG · 1000×800");
     const disabledRow = app.screen().findIndex((line) => line.includes("100%"));
@@ -214,8 +219,14 @@ test("PNG thumbnails yield graphics to source-pixel zoom, button/wheel/drag pan 
     await app.waitFor(() => !app.screen().some((line) => line.includes("· 200%")));
     expect(placements(app.output()).at(-1)).toMatchObject({ x: 0, y: 0, w: 1000, h: 800 });
     expect(app.output().match(/a=t,/g)!.length).toBe(uploads);
+    const closedAt = app.output().length;
     app.stdin.write("\r");
     await app.waitFor(() => !app.screen().join("\n").includes("Open original"));
+    await app.waitFor(() =>
+      placements(app.output().slice(closedAt)).some(
+        (item) => item.w === portrait.w && item.h === portrait.h,
+      ),
+    );
     expect(app.screen().slice(0, 5)).toEqual(before);
   } finally {
     await app.cleanup();
