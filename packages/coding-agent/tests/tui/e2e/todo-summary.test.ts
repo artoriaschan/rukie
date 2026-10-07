@@ -1,6 +1,6 @@
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
+import { auxiliaryModels } from "../helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
-import { createFauxCore, fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { fauxProvider, fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { createSession } from "@rukie/agent";
 import { start } from "../helpers/app";
 
@@ -42,7 +42,7 @@ test.each(["zh", "en"] as const)(
 async function startSession(locale: "zh" | "en") {
   const argv: string[] = [];
   let root = "";
-  const original = createFauxCore({ api: "faux", provider: "faux" });
+  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
   original.setResponses([fauxAssistantMessage("seed reply")]);
   const options = {
     rows: 40,
@@ -57,17 +57,21 @@ async function startSession(locale: "zh" | "en") {
         cwd: root,
         homeDir: root,
         model: original.getModel(),
-        streamFn: withAuxiliaryRequests((model, context, options) =>
-          original.streamSimple(model, context, options),
+        models: auxiliaryModels((model, context, options) =>
+          original.provider.streamSimple(model, context, options),
         ),
       });
       await session.run("seed prompt");
       argv.push("--resume", session.id);
+      await session.close();
     },
   });
   return {
     app,
-    replay: () => start(argv, { ...options, session: { cwd: root, homeDir: root } }),
+    replay: async () => {
+      await app.shutdown();
+      return start(argv, { ...options, session: { cwd: root, homeDir: root } });
+    },
   };
 }
 
@@ -137,7 +141,7 @@ test.each(["zh", "en"] as const)(
         line.startsWith(locale === "zh" ? "✗ 待办(" : "✗ Todos("),
       );
       expect(errors).toHaveLength(2);
-      expect(lines).toContain(' ⎿ Invalid todos: duplicate content "repeat".');
+      expect(lines.join("\n")).toContain('Invalid todos: duplicate content "repeat".');
       expect(lines.join("\n")).toContain("Validation failed");
       expect(lines.join("\n")).not.toContain("todos ✓");
       expect(lines).not.toContain(locale === "zh" ? "• 待办清单" : "• TodoWrite");
@@ -146,9 +150,11 @@ test.each(["zh", "en"] as const)(
         await resumed.waitFor(() => resumed.screen().includes("❯"));
         const replayLines = resumed.allLines();
         expect(
-          replayLines.filter((line) => line.startsWith(locale === "zh" ? "✗ 待办(" : "✗ Todos(")),
-        ).toEqual(errors);
-        expect(replayLines).toContain(' ⎿ Invalid todos: duplicate content "repeat".');
+          replayLines
+            .filter((line) => line.startsWith(locale === "zh" ? "✗ 待办(" : "✗ Todos("))
+            .map((line) => line.replace(/\s+·/g, " ·")),
+        ).toEqual(errors.map((line) => line.replace(/\s+·/g, " ·")));
+        expect(replayLines.join("\n")).toContain('Invalid todos: duplicate content "repeat".');
         expect(replayLines.join("\n")).toContain("Validation failed");
         expect(replayLines.join("\n")).not.toContain("todos ✓");
       } finally {

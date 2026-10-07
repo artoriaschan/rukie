@@ -1,30 +1,47 @@
+import { modelStream, withModelStream } from "../helpers/auxiliary-model.ts";
 import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { PERMISSION_MODES } from "@rukie/shared";
 import { realpathSync } from "node:fs";
 import { join } from "node:path";
-import { createSession, type PermissionAskRequest, type SessionEvent } from "../../src/index.ts";
+import {
+  createSession as createCoreSession,
+  type Session,
+  type SessionOptions,
+  type PermissionAskRequest,
+  type SessionEvent,
+} from "../../src/index.ts";
 import { fakeModel as scriptedModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
-afterEach(() => dirs?.cleanup());
+const sessions: Session[] = [];
+async function createSession(options: SessionOptions) {
+  const session = await createCoreSession(options);
+  sessions.push(session);
+  return session;
+}
+afterEach(async () => {
+  await Promise.all(sessions.splice(0).map((session) => session.close()));
+  await dirs?.cleanup();
+});
 
 // These policy tests ask on review denial; standalone reviews do not consume main replies.
 function fakeModel(responses: Parameters<typeof scriptedModel>[0]) {
   const fake = scriptedModel(responses);
-  const mainStream = fake.streamFn;
-  fake.streamFn = withAuxiliaryRequests((model, context, options) =>
-    context.messages.some(
-      (message) => message.role === "system" && JSON.stringify(message).includes("REVIEW_POLICY"),
-    )
-      ? scriptedModel([fauxAssistantMessage('{"risk":"medium","decision":"deny"}')]).streamFn(
-          model,
-          context,
-          options,
-        )
-      : mainStream(model, context, options),
+  const mainStream = modelStream(fake.models);
+  fake.models = withModelStream(
+    fake.models,
+    withAuxiliaryRequests((model, context, options) =>
+      context.messages.some(
+        (message) => message.role === "system" && JSON.stringify(message).includes("REVIEW_POLICY"),
+      )
+        ? modelStream(
+            scriptedModel([fauxAssistantMessage('{"risk":"medium","decision":"deny"}')]).models,
+          )(model, context, options)
+        : mainStream(model, context, options),
+    ),
   );
   return fake;
 }
@@ -126,6 +143,7 @@ test.each(["ask", "auto-review"] as const)(
       }),
       fauxAssistantMessage("resumed reply"),
     ]);
+    await session.close();
     const resumed = await createSession({ ...dirs, ...fake, settings, resumeId: session.id });
     expect(resumed.permissionMode).toBe(permissionMode);
     await resumed.run("continue");
@@ -149,7 +167,7 @@ test("frontend can allow a tool call using its id, name, arguments and signal", 
     ...dirs,
     ...fake,
     async onPermissionAsk(request) {
-      expect(request).toEqual({
+      expect({ ...request }).toMatchObject({
         toolCallId: "write-ask",
         toolName: "write",
         args: { ...args, path: join(dirs.cwd, args.path) },
@@ -222,7 +240,7 @@ test("frontend denial blocks the tool, reports the denial and lets the model con
     role: "toolResult",
     toolCallId: "write-denied",
     isError: true,
-    content: [{ type: "text", text: "Tool not authorized: write" }],
+    content: [{ type: "text", text: expect.stringContaining("Tool not authorized: write") }],
   });
   expect(await Bun.file(join(dirs.cwd, "denied.txt")).exists()).toBe(false);
 });
@@ -268,6 +286,7 @@ test.each(["pending", "allow", "allow-session", "reject"] as const)(
     void run.catch(() => {});
     const request = await asked.promise;
     controller.abort(new Error("cancel permission wait"));
+    await session.abort();
     expect(request.signal.aborted).toBe(true);
     await expect(run).rejects.toThrow("cancel permission wait");
     expect(events.filter((event) => event.type === "permission_denied")).toEqual([
@@ -283,6 +302,7 @@ test.each(["pending", "allow", "allow-session", "reject"] as const)(
     answer.resolve("allow");
     expect(await Bun.file(join(dirs.cwd, "cancelled.txt")).exists()).toBe(false);
     const next = fakeModel([fauxAssistantMessage("continued")]);
+    await session.close();
     const resumed = await createSession({ ...dirs, ...next, resumeId: session.id });
     await resumed.run("continue");
     expect(

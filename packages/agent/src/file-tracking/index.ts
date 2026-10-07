@@ -1,4 +1,7 @@
-import type { AgentMessage, AgentTool } from "@earendil-works/pi-agent-core";
+import { fileURLToPath } from "node:url";
+import type { EntryRecord, ToolRegistration } from "@earendil-works/pi-durable";
+import type { JsonValue } from "@earendil-works/chord";
+import type { TranscriptMessage } from "../session/messages.ts";
 import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
@@ -6,22 +9,30 @@ import { createTwoFilesPatch } from "diff";
 import { Type, type Static, type TSchema } from "typebox";
 import { Value } from "typebox/value";
 import type { ReminderSource } from "../reminders/index.ts";
-import type { ToolStateDefinition } from "../tool-state/index.ts";
+import { defineToolState, type ToolStateDefinition } from "../tool-state/index.ts";
 
+const trackedFileSchema = Type.Object(
+  {
+    path: Type.String({ minLength: 1 }),
+    mtimeMs: Type.Number(),
+    size: Type.Integer({ minimum: 0 }),
+    hash: Type.String({ pattern: "^[a-fA-F0-9]{64}$" }),
+    stale: Type.Boolean(),
+  },
+  { additionalProperties: false },
+);
+const candidateSchema = Type.Object(
+  {
+    callId: Type.String({ minLength: 1 }),
+    toolName: Type.Union([Type.Literal("read"), Type.Literal("write"), Type.Literal("edit")]),
+    file: trackedFileSchema,
+  },
+  { additionalProperties: false },
+);
 const trackingSchema = Type.Object(
   {
-    files: Type.Array(
-      Type.Object(
-        {
-          path: Type.String({ minLength: 1 }),
-          mtimeMs: Type.Number(),
-          size: Type.Integer({ minimum: 0 }),
-          hash: Type.String({ pattern: "^[a-fA-F0-9]{64}$" }),
-          stale: Type.Boolean(),
-        },
-        { additionalProperties: false },
-      ),
-    ),
+    files: Type.Array(trackedFileSchema),
+    lastResultEntryId: Type.Optional(Type.Integer({ minimum: 1 })),
   },
   { additionalProperties: false },
 );
@@ -34,7 +45,9 @@ function validSnapshot(value: unknown): value is TrackingSnapshot {
   );
 }
 
-export const fileTrackingState: ToolStateDefinition = {
+export const fileTrackingState: ToolStateDefinition = defineToolState({
+  history: "rewindable",
+  fork: "asOf",
   name: "file-tracking",
   version: 1,
   parse(version, value) {
@@ -42,7 +55,7 @@ export const fileTrackingState: ToolStateDefinition = {
     if (!validSnapshot(value)) throw new Error("Invalid file-tracking schema.");
     return value;
   },
-};
+});
 
 interface TrackedFile {
   path: string;
@@ -84,7 +97,7 @@ export function createFileTracking(
     previousReminder?: string;
     persist: (
       snapshot: TrackingSnapshot,
-      reminder?: Extract<AgentMessage, { role: "system-reminder" }>,
+      reminder?: Extract<TranscriptMessage, { role: "system-reminder" }>,
     ) => Promise<void>;
   },
 ) {
@@ -93,13 +106,20 @@ export function createFileTracking(
     string,
     Map<string, { previous: TrackedFile; current?: TrackedFile }>
   >();
+  const toolCandidates = new Map<
+    string,
+    { candidate: Static<typeof candidateSchema>; current: TrackedFile }
+  >();
+  let lastResultEntryId = 0;
   let requestRemaining = 16000;
   const restore = (snapshot: unknown) => {
     const previous = new Map(files);
     files.clear();
+    lastResultEntryId = 0;
     pendingReminders.clear();
     requestRemaining = 16000;
     if (!validSnapshot(snapshot)) return;
+    lastResultEntryId = snapshot.lastResultEntryId ?? 0;
     for (const file of snapshot.files) {
       const known = previous.get(file.path);
       files.set(file.path, {
@@ -113,10 +133,11 @@ export function createFileTracking(
   let sequence = Number(options.previousReminder?.match(/^File changes \((\d+)\):/)?.[1] ?? 0);
   const persist = (
     unreported?: ReadonlySet<string>,
-    reminder?: Extract<AgentMessage, { role: "system-reminder" }>,
+    reminder?: Extract<TranscriptMessage, { role: "system-reminder" }>,
   ) =>
     options.persist(
       {
+        ...(lastResultEntryId ? { lastResultEntryId } : {}),
         files: Array.from(files.values(), ({ path, mtimeMs, size, hash, stale }) => ({
           path,
           mtimeMs,
@@ -259,12 +280,66 @@ export function createFileTracking(
       }
     },
   };
+  /** The immutable successful receipt, rather than a staged candidate, advances knowledge. */
+  async function commitResults(entries: readonly EntryRecord[]) {
+    // These candidates entered this cache only after their native owner-entry commit.
+    // A warm afterTools callback can therefore supply receipts without rescanning history.
+    const candidates = new Map(
+      [...toolCandidates].map(([callId, value]) => [callId, value.candidate]),
+    );
+    const previous = new Map(files);
+    const previousResultEntryId = lastResultEntryId;
+    const next = new Map(files);
+    let nextResultEntryId = lastResultEntryId;
+    const learned: string[] = [];
+    // Native append IDs order committed entries; afterTools results may instead
+    // arrive in the assistant's call order when independent tools overlap.
+    for (const entry of entries.toSorted((left, right) => Number(left.id) - Number(right.id))) {
+      if (entry.kind === "rukie.file-baseline") {
+        if (
+          !Value.Check(candidateSchema, entry.data) ||
+          !isAbsolute(entry.data.file.path) ||
+          !Number.isFinite(entry.data.file.mtimeMs)
+        )
+          throw new Error("Invalid committed file baseline candidate.");
+        candidates.set(entry.data.callId, entry.data);
+      }
+      if (Number(entry.id) <= previousResultEntryId) continue;
+      for (const message of entry.model ?? []) {
+        if (message.role !== "toolResult") continue;
+        const candidate = candidates.get(message.toolCallId);
+        if (!candidate || candidate.toolName !== message.toolName || message.isError) continue;
+        const warm = toolCandidates.get(message.toolCallId)?.current;
+        next.set(
+          candidate.file.path,
+          warm?.hash === candidate.file.hash ? warm : { ...candidate.file },
+        );
+        nextResultEntryId = Math.max(nextResultEntryId, Number(entry.id));
+        learned.push(message.toolCallId);
+      }
+    }
+    if (!learned.length) return;
+    files.clear();
+    for (const [path, file] of next) files.set(path, file);
+    lastResultEntryId = nextResultEntryId;
+    try {
+      await persist();
+      for (const id of learned) toolCandidates.delete(id);
+    } catch (error) {
+      files.clear();
+      for (const [path, file] of previous) files.set(path, file);
+      lastResultEntryId = previousResultEntryId;
+      throw error;
+    }
+  }
   return {
     reminderSource,
     /** Replace a Tool State projection; retain bytes only when their hash still matches. */
     restore,
+    /** Reconcile saved successful receipts before native task recovery can execute another tool. */
+    restoreCommitted: commitResults,
     /** Commit the staged knowledge and its reminder together; failures leave both undelivered. */
-    async persistReminder(reminder: Extract<AgentMessage, { role: "system-reminder" }>) {
+    async persistReminder(reminder: Extract<TranscriptMessage, { role: "system-reminder" }>) {
       const known = pendingReminders.get(reminder.content);
       const previous = new Map(files);
       for (const [path, { previous: expected, current }] of known ?? []) {
@@ -286,23 +361,30 @@ export function createFileTracking(
         throw error;
       }
     },
+    /** Learn only from native result entries already committed, before the next provider request. */
+    commitResults,
     /** Prompt collection and request preparation share a budget until this request is prepared. */
     finishRequest() {
       requestRemaining = 16000;
       pendingReminders.clear();
     },
     /** Prepared paths include hook rewrites; reject stale writes before invoking the file tool. */
-    wrapTool<T extends TSchema, D>(tool: AgentTool<T, D>): AgentTool<T, D> {
+    wrapTool<T extends TSchema, D extends JsonValue>(
+      tool: ToolRegistration<T, D>,
+    ): ToolRegistration<T, D> {
       return {
         ...tool,
         async execute(...args) {
-          const params = args[1];
+          const params = args[0];
           const path =
             typeof params === "object" &&
             params !== null &&
             "path" in params &&
             typeof params.path === "string"
-              ? resolve(cwd, params.path)
+              ? resolve(
+                  cwd,
+                  params.path.startsWith("file://") ? fileURLToPath(params.path) : params.path,
+                )
               : undefined;
           if (path && (tool.name === "write" || tool.name === "edit")) {
             const previous = files.get(path);
@@ -324,7 +406,11 @@ export function createFileTracking(
             }
           }
           const result = await tool.execute(...args);
-          if (!result.isError && path) {
+          if (
+            !result.isError &&
+            path &&
+            (tool.name === "read" || tool.name === "write" || tool.name === "edit")
+          ) {
             let current: TrackedFile | undefined;
             try {
               current = await baseline(path);
@@ -332,17 +418,25 @@ export function createFileTracking(
               // A successful tool result remains successful when its file disappears before tracking.
             }
             if (current) {
-              const previous = files.get(path);
-              files.set(path, current);
-              try {
-                await persist();
-              } catch (error) {
-                // Failed knowledge persistence cannot grant permission to overwrite unknown bytes.
-                files.set(path, previous ?? { ...current, content: undefined, stale: true });
-                throw error;
-              }
+              const { path, mtimeMs, size, hash, stale } = current;
+              const api = args[1];
+              const candidate: Static<typeof candidateSchema> = {
+                callId: api.callId,
+                toolName: tool.name,
+                file: { path, mtimeMs, size, hash, stale },
+              };
+              await api.commit(
+                (tx) =>
+                  tx.appendEntry(api.conversationId, {
+                    kind: "rukie.file-baseline",
+                    data: candidate,
+                  }),
+                args[2],
+              );
+              toolCandidates.set(api.callId, { candidate, current });
             }
           }
+
           return result;
         },
       };

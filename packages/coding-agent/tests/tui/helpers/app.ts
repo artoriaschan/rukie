@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { SessionOptions } from "@rukie/agent";
+import { loadSettings, listSessions, type SessionOptions } from "@rukie/agent";
 import { main, type TuiIo } from "../../../src/index.ts";
 import { controlledModel } from "./model";
 import { createTerminal } from "./terminal";
@@ -29,10 +29,39 @@ export async function start(
   });
   const terminal = createTerminal(options.columns, options.rows, options.advanceTimers);
   const fake = controlledModel(options.controlReviews, options.controlTitles);
+  const session: SessionOptions = { cwd: root, homeDir: root, ...fake, ...options.session };
+  if (session.model && session.models === fake.models && session.model !== fake.model) {
+    // Explicit fixture model metadata must agree with the native provider catalog.
+    const fixtureModel = session.model;
+    fake.models.setProvider({
+      ...fake.provider,
+      id: fixtureModel.provider,
+      getModels: () => [fixtureModel],
+      getAllModels: () => [fixtureModel],
+    });
+  }
+  // Clearing only the model requests configured metadata with the controlled provider.
+  // Clearing both native inputs deliberately retains the real SDK/configuration seam.
+  if (!session.model && session.models === fake.models) {
+    const loaded = await loadSettings({ cwd: session.cwd, homeDir: session.homeDir });
+    const settings = { ...loaded.settings, ...session.settings };
+    const resumeIndex = argv.indexOf("--resume");
+    const resumeId = session.resumeId ?? (resumeIndex >= 0 ? argv[resumeIndex + 1] : undefined);
+    const stored = resumeId
+      ? (
+          await listSessions({ cwd: session.cwd, homeDir: session.homeDir, store: session.store })
+        ).find((entry) => entry.id === resumeId)
+      : undefined;
+    session.model = fake.configuredModel({
+      ...settings,
+      ...(stored ? { model: stored.model } : {}),
+    });
+  }
   let stderr = "";
+  const lifetime = new AbortController();
   const exit = main(argv, {
     ...terminal,
-    signal: options.signal,
+    signal: options.signal ? AbortSignal.any([options.signal, lifetime.signal]) : lifetime.signal,
     env: options.env ?? { LANG: "zh_CN.UTF-8" },
     host: {
       hasClipboardImage: async () => false,
@@ -43,33 +72,27 @@ export async function start(
       ...options.host,
     },
     stderr: (text) => (stderr += text),
-    session: { cwd: root, homeDir: root, ...fake, ...options.session },
+    session,
   });
   let exited = false;
   void exit.then(() => {
     exited = true;
   });
+  const shutdown = async () => {
+    lifetime.abort();
+    await terminal.waitFor(() => exited, 5000);
+    await exit;
+  };
   return {
     root,
     ...terminal,
     ...fake,
     exit,
+    shutdown,
     stderr: () => stderr,
     async cleanup() {
-      await terminal.waitFor(() => exited || terminal.stdin.isRaw);
-      // Close views, decline interactions and interrupt Runs through terminal input.
-      // Wait for each painted response: views can hide activity while children settle.
-      while (!exited && terminal.stdin.isRaw) {
-        const beforeInterrupt = terminal.output();
-        terminal.stdin.write("\x03\x03\x03");
-        await terminal.waitFor(
-          () => exited || !terminal.stdin.isRaw || terminal.output() !== beforeInterrupt,
-        );
-      }
-      // Terminal restoration can precede Session disposal and process escalation.
-      // Keep driving virtual timers until main's completion signal settles.
-      await terminal.waitFor(() => exited, 5000);
-      await exit;
+      // Process shutdown closes the durable owner even after a failed storage invocation.
+      await shutdown();
       terminal.dispose();
       await rm(root, { recursive: true, force: true });
     },

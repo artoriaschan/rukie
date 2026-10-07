@@ -15,6 +15,13 @@ import { detailFor, extractNarration, sanitizeFragment } from "./text";
 type Phase = "idle" | "waiting" | "thinking" | "tool" | "done";
 type ActivityEvent =
   | SessionEvent
+  | {
+      type: "tool_execution_start";
+      sessionId: string;
+      toolCallId: string;
+      toolName: string;
+      args: unknown;
+    }
   | { type: "submit" | "interrupt" | "approval-open" | "approval-close" }
   | { type: "git-branch"; branch: string };
 
@@ -35,6 +42,8 @@ interface ActivityState {
   lastTool?: ActiveTool & { endedAt: number; failure?: string };
   streak: number;
   streamLine: string;
+  textCharacters: number;
+  thinkingCharacters: number;
   narration?: string;
   lastChunkAt?: number;
   pending?: { line: string; until: number };
@@ -67,6 +76,8 @@ export function createActivity(locale: Locale = "zh"): ActivityState {
     reviews: [],
     streak: 0,
     streamLine: "",
+    textCharacters: 0,
+    thinkingCharacters: 0,
     interrupted: false,
   };
 }
@@ -101,25 +112,124 @@ export function reduce(
       phaseStartedAt: now,
       gitBranch: state.gitBranch,
     };
+  if (event.type === "snapshot") {
+    if (!event.run)
+      return { ...state, phase: state.phase === "done" ? "done" : "idle", tools: [], reviews: [] };
+    let next =
+      state.phase === "idle" || state.phase === "done"
+        ? reduce(state, { type: "submit" }, now, random)
+        : state;
+    if (event.generation?.message) {
+      next = transition(next, "thinking", now);
+      next = {
+        ...next,
+        textCharacters: event.generation.message.content
+          .flatMap((block) => (block.type === "text" ? [block.text] : []))
+          .join("").length,
+        thinkingCharacters: event.generation.message.content
+          .flatMap((block) => (block.type === "thinking" ? [block.thinking] : []))
+          .join("").length,
+      };
+    }
+    const active = new Set(
+      event.tools.filter((tool) => tool.status === "running").map((tool) => tool.callId),
+    );
+    next = { ...next, tools: next.tools.filter((tool) => active.has(tool.id)) };
+    for (const slot of event.tools) {
+      if (slot.status !== "running" || next.tools.some((tool) => tool.id === slot.callId)) continue;
+      const call = event.messages
+        .flatMap((message) => (message.role === "assistant" ? message.content : []))
+        .find((block) => block.type === "toolCall" && block.id === slot.callId);
+      next = reduce(
+        next,
+        {
+          type: "tool_execution_start",
+          sessionId: event.sessionId,
+          toolCallId: slot.callId,
+          toolName: slot.name,
+          args: call?.type === "toolCall" ? call.arguments : {},
+        },
+        now,
+        random,
+      );
+    }
+    return next;
+  }
   // Events arriving after a result cannot revive or change a completed Run.
   if (state.phase === "idle" || state.phase === "done") return state;
   switch (event.type) {
-    case "message_start":
-      return { ...state, compactionStartedAt: undefined };
+    case "message_start": {
+      if (event.message.role !== "assistant") return { ...state, compactionStartedAt: undefined };
+      return reduce(
+        {
+          ...state,
+          textCharacters: 0,
+          thinkingCharacters: 0,
+          streamLine: "",
+          compactionStartedAt: undefined,
+        },
+        {
+          type: "message_update",
+          sessionId: event.sessionId,
+          message: event.message,
+          usage: event.message.usage,
+          changes: [{ type: "message", message: event.message }],
+        },
+        now,
+        random,
+      );
+    }
     case "turn_start":
       return { ...state, streamLine: "", narration: undefined, lastChunkAt: undefined };
     case "message_update": {
-      const update = event.assistantMessageEvent;
-      if (update.type !== "text_delta" && update.type !== "thinking_delta") return state;
+      const text = event.message.content
+        .flatMap((block) => (block.type === "text" ? [block.text] : []))
+        .join("");
+      const thinking = event.message.content
+        .flatMap((block) => (block.type === "thinking" ? [block.thinking] : []))
+        .join("");
+      const structural = event.changes.some(
+        (change) => change.type === "message" || change.type === "block",
+      );
+      const changes = structural
+        ? [
+            ...(text.length > state.textCharacters
+              ? [{ type: "text_delta" as const, delta: text.slice(state.textCharacters) }]
+              : []),
+            ...(thinking.length > state.thinkingCharacters
+              ? [
+                  {
+                    type: "thinking_delta" as const,
+                    delta: thinking.slice(state.thinkingCharacters),
+                  },
+                ]
+              : []),
+          ]
+        : event.changes.filter(
+            (change) => change.type === "text_delta" || change.type === "thinking_delta",
+          );
+      if (!changes.length)
+        return {
+          ...state,
+          textCharacters: text.length,
+          thinkingCharacters: thinking.length,
+          ...(text.length < state.textCharacters ? { streamLine: "", narration: undefined } : {}),
+        };
+
       let next = state.phase === "waiting" ? transition(state, "thinking", now) : state;
-      next = { ...next, lastChunkAt: now };
-      if (update.type === "text_delta") {
+      next = {
+        ...next,
+        lastChunkAt: now,
+        textCharacters: text.length,
+        thinkingCharacters: thinking.length,
+      };
+      for (const update of changes) {
+        if (update.type !== "text_delta") continue;
         let line = next.streamLine;
         let narration = next.narration;
         const chunks = update.delta.split("\n");
         for (const [index, chunk] of chunks.entries()) {
           if (index > 0) line = "";
-          // Only a line prefix is needed; bound memory without inventing line starts.
           line = (line + chunk).slice(0, 1024);
           narration = extractNarration(line) ?? narration;
         }
@@ -156,7 +266,7 @@ export function reduce(
         ...state,
         compactionStartedAt: undefined,
         pending: {
-          line: `${pickPhrase(pools.COMPACT_PHRASES, random)} · ${fmtTokens(event.tokensBefore)}→${fmtTokens(event.tokensAfter)}`,
+          line: pickPhrase(pools.COMPACT_PHRASES, random),
           until: now + 6000,
         },
       };
@@ -192,7 +302,7 @@ export function reduce(
         lastTool: {
           ...tool,
           endedAt: now,
-          failure: event.isError ? pickPhrase(pools.FAIL_PHRASES, random) : undefined,
+          failure: event.result?.isError ? pickPhrase(pools.FAIL_PHRASES, random) : undefined,
         },
       };
     }

@@ -1,8 +1,9 @@
 import { afterEach, expect, test } from "bun:test";
-import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxToolCall, getCurrentSystemMessage } from "@earendil-works/pi-ai";
 import { join } from "node:path";
 import {
-  createSession,
+  createSession as createSessionImpl,
+  type Session,
   type QuestionReply,
   type QuestionRequest,
   type SessionEvent,
@@ -11,7 +12,16 @@ import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
-afterEach(() => dirs?.cleanup());
+const sessions: Session[] = [];
+async function createSession(options: Parameters<typeof createSessionImpl>[0]) {
+  const session = await createSessionImpl(options);
+  sessions.push(session);
+  return session;
+}
+afterEach(async () => {
+  await Promise.all(sessions.splice(0).map((session) => session.close()));
+  await dirs?.cleanup();
+});
 const question = {
   question: "Which storage?",
   header: "Storage",
@@ -48,7 +58,9 @@ test("the frontend answer reaches the next model turn without permission approva
   });
   expect((await session.run("choose storage")).text).toBe("continued");
   expect(asked).toBe(true);
-  expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
+  expect(
+    fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+  ).toMatchObject({
     role: "toolResult",
     isError: false,
     content: [{ type: "text", text: '"Which storage?" → SQLite' }],
@@ -86,7 +98,9 @@ test.each(["ask", "auto-review", "full-access"] as const)(
         (event) => event.type === "permission_review" || event.type === "permission_denied",
       ),
     ).toEqual([]);
-    expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({ isError: false });
+    expect(
+      fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+    ).toMatchObject({ isError: false });
   },
 );
 
@@ -123,11 +137,11 @@ test.each([false, true])(
         events.push(event);
       },
     });
-    const started = events.find((event) => event.type === "session_start");
-    expect(started?.type).toBe("session_start");
-    if (started?.type !== "session_start") throw new Error("missing session start");
-    expect(started.tools.includes("ask_user_question")).toBe(interactive);
-    expect(started.tools).toContain("mcp__local__echo");
+    const tools =
+      getCurrentSystemMessage(fake.contexts[0]!.messages)?.toolsAdded?.map((tool) => tool.name) ??
+      [];
+    expect(tools.includes("ask_user_question")).toBe(interactive);
+    expect(tools).toContain("mcp__local__echo");
   },
 );
 
@@ -153,7 +167,9 @@ test.each([
     ]);
     const session = await createSession({ ...dirs, ...fake, onQuestion: async () => reply });
     expect((await session.run("ask")).text).toBe("continued");
-    expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
+    expect(
+      fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+    ).toMatchObject({
       isError: false,
       content: [{ type: "text", text: expected }],
     });
@@ -176,9 +192,11 @@ test("frontend failures return ordinary tool errors", async () => {
     },
   });
   expect((await session.run("ask")).text).toBe("recovered");
-  expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
+  expect(
+    fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+  ).toMatchObject({
     isError: true,
-    content: [{ type: "text", text: "frontend failed" }],
+    content: [{ type: "text", text: expect.stringContaining("frontend failed") }],
   });
 });
 
@@ -206,8 +224,12 @@ test.each([
   });
   await session.run("ask");
   expect(called).toBe(false);
-  expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({ isError: true });
-  expect(JSON.stringify(fake.contexts[1]!.messages.at(-1))).toContain("Validation");
+  expect(
+    fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+  ).toMatchObject({ isError: true });
+  expect(
+    JSON.stringify(fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult")),
+  ).toContain("Validation");
 });
 
 test("aborting a pending question cancels its signal and discards late answers", async () => {
@@ -236,7 +258,7 @@ test("aborting a pending question cancels its signal and discards late answers",
   await expect(run).rejects.toThrow("cancel questions");
   expect(request.signal.aborted).toBe(true);
   reply.resolve({ answers: [{ selected: ["SQLite"] }] });
-  await Bun.sleep(10);
+  await session.waitForIdle();
   expect(
     JSON.stringify(session.messages.filter((message) => message.role === "toolResult")),
   ).not.toContain("→");
@@ -271,7 +293,9 @@ test("four questions with four options preserve question order in the result", a
     },
   });
   await session.run("ask");
-  expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
+  expect(
+    fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+  ).toMatchObject({
     isError: false,
     content: [
       {

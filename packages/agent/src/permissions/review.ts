@@ -1,5 +1,11 @@
-import type { AgentMessage, StreamFn } from "@earendil-works/pi-agent-core";
-import { normalizeContext, type Api, type Model, type Tool } from "@earendil-works/pi-ai";
+import {
+  normalizeContext,
+  type Api,
+  type Model,
+  type Tool,
+  type Models,
+  type Message,
+} from "@earendil-works/pi-ai";
 
 const REVIEW_POLICY = `REVIEW_POLICY
 You are the authorization reviewer for exactly one pending tool call. Allow executes it immediately with full host access.
@@ -59,11 +65,11 @@ function parseDecision(text: string): ReviewResult {
 export async function reviewPermission(options: {
   cwd: string;
   projectInstructions: string[];
-  messages: readonly AgentMessage[];
+  messages: readonly Message[];
   tool: Tool;
   args: unknown;
   model: Model<Api> | (() => Promise<Model<Api>>);
-  streamFn: StreamFn;
+  models: Models;
   signal: AbortSignal;
 }): Promise<ReviewResult> {
   const timer = new AbortController();
@@ -79,7 +85,19 @@ export async function reviewPermission(options: {
       interrupted.promise,
     ]);
     const history = options.messages.flatMap((message): unknown[] => {
-      if (message.role === "user") return [{ kind: "user-message", content: message.content }];
+      if (message.role === "user") {
+        // Host reminders are model context, never fresh human authorization.
+        const content =
+          typeof message.content === "string"
+            ? message.content.trimStart().startsWith("<system-reminder>")
+              ? ""
+              : message.content
+            : message.content.filter(
+                (block) =>
+                  block.type !== "text" || !block.text.trimStart().startsWith("<system-reminder>"),
+              );
+        return content.length ? [{ kind: "user-message", content }] : [];
+      }
       if (message.role === "assistant")
         return message.content.flatMap((block) =>
           block.type === "toolCall"
@@ -111,7 +129,7 @@ export async function reviewPermission(options: {
     if (tokens() > limit) throw new Error("review input exceeds half the context window");
     const response = await Promise.race([
       Promise.resolve(
-        options.streamFn(
+        options.models.streamSimple(
           model,
           normalizeContext({
             systemPrompt: REVIEW_POLICY,
@@ -123,7 +141,10 @@ export async function reviewPermission(options: {
       interrupted.promise,
     ]);
     if (signal.aborted) throw signal.reason;
-    if (response.stopReason !== "stop") throw new Error(`review stopped: ${response.stopReason}`);
+    if (response.stopReason !== "stop")
+      throw new Error(
+        `review stopped: ${response.stopReason}${response.errorMessage ? `: ${response.errorMessage}` : ""}`,
+      );
     const blocks = response.content.filter((block) => block.type !== "thinking");
     if (blocks.length !== 1 || blocks[0]?.type !== "text")
       throw new Error("expected one JSON text block");

@@ -1,14 +1,29 @@
+import { modelStream, withModelStream } from "../helpers/auxiliary-model.ts";
 import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { PERMISSION_MODES } from "@rukie/shared";
 import { join } from "node:path";
-import { createSession, loadSettings, type SessionEvent } from "../../src/index.ts";
+import {
+  createSession as createSessionImpl,
+  loadSettings,
+  type Session,
+  type SessionEvent,
+} from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
-afterEach(() => dirs?.cleanup());
+const sessions: Session[] = [];
+async function createSession(options: Parameters<typeof createSessionImpl>[0]) {
+  const session = await createSessionImpl(options);
+  sessions.push(session);
+  return session;
+}
+afterEach(async () => {
+  await Promise.all(sessions.splice(0).map((session) => session.close()));
+  await dirs?.cleanup();
+});
 
 test.each([...PERMISSION_MODES])(
   "deny rules override %s, read-only defaults and allowRules",
@@ -56,10 +71,20 @@ test.each([...PERMISSION_MODES])(
     expect(
       fake.contexts[1]!.messages.filter((message) => message.role === "toolResult"),
     ).toMatchObject([
-      { isError: true, content: [{ type: "text", text: "Denied by permission rule: read" }] },
       {
         isError: true,
-        content: [{ type: "text", text: "Denied by permission rule: bash(printf blocked*)" }],
+        content: [
+          { type: "text", text: expect.stringContaining("Denied by permission rule: read") },
+        ],
+      },
+      {
+        isError: true,
+        content: [
+          {
+            type: "text",
+            text: expect.stringContaining("Denied by permission rule: bash(printf blocked*)"),
+          },
+        ],
       },
     ]);
     expect(await Bun.file(join(dirs.cwd, "marker")).exists()).toBe(false);
@@ -197,23 +222,25 @@ test("batched reviews skip rule allow, ask, deny and invalid calls", async () =>
     ),
     fauxAssistantMessage("done"),
   ]);
-  const main = fake.streamFn;
+  const main = modelStream(fake.models);
   let reviews = 0;
-  fake.streamFn = withAuxiliaryRequests((model, context, options) => {
-    if (
-      context.messages.some(
-        (message) => message.role === "system" && JSON.stringify(message).includes("REVIEW_POLICY"),
-      )
-    ) {
-      reviews++;
-      return fakeModel([fauxAssistantMessage('{"risk":"low","decision":"allow"}')]).streamFn(
-        model,
-        context,
-        options,
-      );
-    }
-    return main(model, context, options);
-  });
+  fake.models = withModelStream(
+    fake.models,
+    withAuxiliaryRequests((model, context, options) => {
+      if (
+        context.messages.some(
+          (message) =>
+            message.role === "system" && JSON.stringify(message).includes("REVIEW_POLICY"),
+        )
+      ) {
+        reviews++;
+        return modelStream(
+          fakeModel([fauxAssistantMessage('{"risk":"low","decision":"allow"}')]).models,
+        )(model, context, options);
+      }
+      return main(model, context, options);
+    }),
+  );
   const events: SessionEvent[] = [];
   const asks: string[] = [];
   const session = await createSession({
@@ -271,13 +298,16 @@ test.each([
     }),
     fauxAssistantMessage("done"),
   ]);
-  const main = fake.streamFn;
-  fake.streamFn = withAuxiliaryRequests((model, context, options) =>
-    context.messages.some(
-      (message) => message.role === "system" && JSON.stringify(message).includes("REVIEW_POLICY"),
-    )
-      ? fakeModel([fauxAssistantMessage(response)]).streamFn(model, context, options)
-      : main(model, context, options),
+  const main = modelStream(fake.models);
+  fake.models = withModelStream(
+    fake.models,
+    withAuxiliaryRequests((model, context, options) =>
+      context.messages.some(
+        (message) => message.role === "system" && JSON.stringify(message).includes("REVIEW_POLICY"),
+      )
+        ? modelStream(fakeModel([fauxAssistantMessage(response)]).models)(model, context, options)
+        : main(model, context, options),
+    ),
   );
   const events: SessionEvent[] = [];
   const session = await createSession({

@@ -1,6 +1,6 @@
-import { withAuxiliaryRequests } from "./helpers/auxiliary-model.ts";
+import { auxiliaryModels } from "./helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
-import { createFauxCore, fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { fauxProvider, fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,7 +18,7 @@ test.each(["text", "stream-json"])(
   "%s includes Stop continuation feedback and the final result",
   async (format) => {
     const root = await mkdtemp(join(tmpdir(), "rukie-cli-stop-"));
-    const faux = createFauxCore({ api: "faux", provider: "faux" });
+    const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
     faux.setResponses(
       Array.from({ length: 9 }, (_, index) => fauxAssistantMessage(`conclusion ${index}`)),
     );
@@ -29,26 +29,25 @@ test.each(["text", "stream-json"])(
         join(root, "stop.sh"),
         `cat >/dev/null\necho '{"decision":"block","reason":"verify tests"}'\n`,
       );
-      expect(
-        await main(["-p", "finish", "--output-format", format], {
-          readStdin: async () => "",
-          stdout: (text) => {
-            stdout += text;
+      const code = await main(["-p", "finish", "--output-format", format], {
+        readStdin: async () => "",
+        stdout: (text) => {
+          stdout += text;
+        },
+        stderr: (text) => {
+          stderr += text;
+        },
+        session: {
+          cwd: root,
+          homeDir: root,
+          model: faux.getModel(),
+          models: auxiliaryModels(faux.provider.streamSimple),
+          settings: {
+            hooks: { Stop: [{ hooks: [{ type: "command", command: "sh stop.sh" }] }] },
           },
-          stderr: (text) => {
-            stderr += text;
-          },
-          session: {
-            cwd: root,
-            homeDir: root,
-            model: faux.getModel(),
-            streamFn: withAuxiliaryRequests(faux.streamSimple),
-            settings: {
-              hooks: { Stop: [{ hooks: [{ type: "command", command: "sh stop.sh" }] }] },
-            },
-          },
-        }),
-      ).toBe(0);
+        },
+      });
+      expect(code, stderr).toBe(0);
       expect(stderr).toContain("Stop hook reached the 8 continuation limit");
       if (format === "text") expect(stdout).toBe("conclusion 8\n");
       else {
@@ -65,14 +64,16 @@ test.each(["text", "stream-json"])(
         });
         expect(
           events.filter(
-            (event) => event.type === "message_end" && event.message.source === "stop_hook",
+            (event) =>
+              event.type === "message_end" &&
+              event.messages.some((message: { source?: string }) => message.source === "stop_hook"),
           ),
         ).toHaveLength(8);
         expect(events.filter((event) => event.type === "hook_warning")).toMatchObject([
           { event: "Stop", error: { code: "hook-continuation-limit" } },
         ]);
-        expect(events.at(-1)).toMatchObject({
-          type: "result",
+        expect(events.findLast((event) => event.type === "request_settled")).toMatchObject({
+          type: "request_settled",
           text: "conclusion 8",
           success: true,
         });

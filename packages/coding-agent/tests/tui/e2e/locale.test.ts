@@ -245,7 +245,9 @@ test("Chinese context segment names use Chinese while technical abbreviations st
   const app = await start(["first"], { columns: 160, env: { LANG: "zh" } });
   try {
     await app.waitFor(() => app.calls.length === 1);
-    app.stdin.write("\x1b[<35;2;22M");
+    await app.waitFor(() => app.screen().some((line) => line.includes("ctx ")));
+    const statusRow = app.screen().findIndex((line) => line.includes("ctx "));
+    app.stdin.write(`\x1b[<35;2;${statusRow}M`);
     await app.waitFor(() => app.screen().at(-1)?.includes("■") === true);
     for (const label of ["系统", "提示词", "助手", "思考", "工具"])
       expect(app.screen().at(-1)).toContain(label);

@@ -1,10 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import {
-  fauxAssistantMessage,
-  fauxToolCall,
-  type TextContent,
-  type ImageContent,
-} from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { join } from "node:path";
 import { watch } from "node:fs";
 import { createSession, type SessionEvent } from "../../src/index.ts";
@@ -68,11 +63,12 @@ test("successful tool hooks receive executed input and result, preserving output
       isError: false,
       content: [
         { type: "text", text: "original" },
-        { type: "text", text: "<system-reminder>\ncheck formatting\n</system-reminder>" },
         { type: "text", text: "<system-reminder>\nrun lint\n</system-reminder>" },
       ],
     },
   ]);
+  expect(JSON.stringify(fake.contexts[1]!.messages)).toContain("check formatting");
+  expect(JSON.stringify(fake.contexts[1]!.messages)).toContain("run lint");
 });
 
 test.each([
@@ -105,11 +101,16 @@ test.each([
   const result = session.messages.find((message) => message.role === "toolResult");
   expect(result).toMatchObject({
     isError: false,
-    content: [
-      ...(valid ? content : [{ type: "text", text: "original" }]),
-      { type: "text", text: "<system-reminder>\nkeep this reminder\n</system-reminder>" },
-    ],
+    content: valid ? content : [{ type: "text", text: "original" }],
   });
+  expect(session.messages).toContainEqual(
+    expect.objectContaining({
+      role: "system-reminder",
+      source: "hook:PostToolUse",
+      content: "keep this reminder",
+    }),
+  );
+  expect(JSON.stringify(fake.contexts[1]!.messages)).toContain("keep this reminder");
   expect(events.filter((event) => event.type === "hook_warning")).toHaveLength(valid ? 0 : 1);
   if (!valid)
     expect(events.filter((event) => event.type === "hook_warning")).toMatchObject([
@@ -143,6 +144,7 @@ test("exit 2 adds stderr feedback without discarding a successful result", async
     isError: false,
     content: [{ text: "original" }, { text: "<system-reminder>\nfix-lint\n</system-reminder>" }],
   });
+  expect(JSON.stringify(fake.contexts[1]!.messages)).toContain("fix-lint");
 });
 
 test("execution failures receive troubleshooting context and ignore block or replacement outputs", async () => {
@@ -188,7 +190,7 @@ test("execution failures receive troubleshooting context and ignore block or rep
   const result = session.messages.find((message) => message.role === "toolResult");
   expect(result).toMatchObject({ isError: true });
   expect(JSON.stringify(result)).toContain("failed");
-  expect(JSON.stringify(result)).toContain("check exit status");
+  expect(JSON.stringify(fake.contexts[1]!.messages)).toContain("check exit status");
   expect(JSON.stringify(result)).not.toContain("hidden failure");
   expect(JSON.stringify(result)).not.toContain("ignored reason");
   expect(events.filter((event) => event.type === "hook_warning")).toHaveLength(2);
@@ -280,9 +282,9 @@ test("interrupted tool failures still run the failure hook and persist its conte
     onEvent: (event) => {
       if (
         event.type === "tool_execution_update" &&
-        event.partialResult.content.some(
-          (item: TextContent | ImageContent) => item.type === "text" && item.text.includes("ready"),
-        )
+        event.output &&
+        "set" in event.output &&
+        event.output.set.includes("ready")
       )
         controller.abort(new Error("cancel test"));
     },
@@ -343,9 +345,9 @@ test("dispose cancels a failure hook running after tool interruption", async () 
     onEvent: (event) => {
       if (
         event.type === "tool_execution_update" &&
-        event.partialResult.content.some(
-          (item: TextContent | ImageContent) => item.type === "text" && item.text.includes("ready"),
-        )
+        event.output &&
+        "set" in event.output &&
+        event.output.set.includes("ready")
       )
         controller.abort(new Error("cancel test"));
     },
@@ -360,7 +362,7 @@ test("dispose cancels a failure hook running after tool interruption", async () 
       is_interrupt: true,
     });
     await Promise.race([
-      Promise.all([session.dispose(), expect(run).rejects.toThrow("cancel test")]),
+      Promise.all([session.close(), expect(run).rejects.toThrow("cancel test")]),
       new Promise<never>((_resolve, reject) => {
         settlementTimeout = setTimeout(
           () => reject(new Error("Disposed failure hook did not settle its Run")),
@@ -386,7 +388,7 @@ test("dispose cancels a failure hook running after tool interruption", async () 
     let cleanupTimeout: ReturnType<typeof setTimeout> | undefined;
     try {
       await Promise.race([
-        Promise.all([session.dispose(), run.catch(() => {})]),
+        Promise.all([session.close(), run.catch(() => {})]),
         new Promise<never>((_resolve, reject) => {
           cleanupTimeout = setTimeout(
             () => reject(new Error("Failure-hook fixture cleanup did not settle")),
@@ -450,20 +452,17 @@ test("replacement retains PreToolUse context and child hooks include child ident
     tool_input: { command: "printf rewritten" },
     tool_response: { content: [{ text: "rewritten" }] },
   });
-  const childResult = fake.contexts
-    .find((context) =>
-      context.messages.some(
-        (message) => message.role === "toolResult" && message.toolCallId === "child-call",
-      ),
-    )!
-    .messages.find(
+  const childContext = fake.contexts.find((context) =>
+    context.messages.some(
       (message) => message.role === "toolResult" && message.toolCallId === "child-call",
-    );
+    ),
+  )!;
+  const childResult = childContext.messages.find(
+    (message) => message.role === "toolResult" && message.toolCallId === "child-call",
+  );
   expect(childResult).toMatchObject({
     isError: false,
-    content: [
-      { text: "child filtered" },
-      { text: "<system-reminder>\nbefore context\n</system-reminder>" },
-    ],
+    content: [{ text: "child filtered" }],
   });
+  expect(JSON.stringify(childContext.messages)).toContain("before context");
 });

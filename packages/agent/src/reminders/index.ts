@@ -1,78 +1,18 @@
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import { convertToLlm as convertPiMessages } from "@earendil-works/pi-agent-core";
-import type { Message } from "@earendil-works/pi-ai";
+import type { TranscriptMessage } from "../session/messages.ts";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-interface SystemReminder {
+export interface SystemReminder {
   role: "system-reminder";
   source: string;
   content: string;
   timestamp: number;
 }
 
-declare module "@earendil-works/pi-agent-core" {
-  interface CustomAgentMessages {
-    "system-reminder": SystemReminder;
-  }
-}
-
 /** A new source only supplies its current content; comparison is owned here. */
 export interface ReminderSource {
   source: string;
   currentContent: () => string | undefined | Promise<string | undefined>;
-}
-
-/** Custom messages stay intact in the Transcript and convert only at the model boundary. */
-export function convertToLlm(messages: AgentMessage[]): Message[] {
-  return messages.flatMap((message): Message[] => {
-    if (message.role === "session-notice") return [];
-    if (message.role === "assistant" && "rukieThinkingDurationMs" in message) {
-      const { rukieThinkingDurationMs: _thinkingDuration, ...assistant } = message;
-      message = assistant;
-    }
-    if (message.role === "user" && message.imageNames !== undefined) {
-      const { imageNames: _imageNames, ...prompt } = message;
-      message = prompt;
-    }
-    if (
-      message.role === "user" &&
-      "skillInvocation" in message &&
-      typeof message.skillInvocation === "string"
-    ) {
-      const { skillInvocation, ...prompt } = message;
-      return [
-        prompt,
-        {
-          role: "user",
-          content: [
-            { type: "text", text: `<system-reminder>\n${skillInvocation}\n</system-reminder>` },
-          ],
-          timestamp: message.timestamp,
-        },
-      ];
-    }
-    if (message.role === "system-reminder") {
-      return [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: `<system-reminder>\n${message.content}\n</system-reminder>` },
-          ],
-          timestamp: message.timestamp,
-        },
-      ];
-    }
-    if (
-      message.role === "system" ||
-      message.role === "user" ||
-      message.role === "assistant" ||
-      message.role === "toolResult"
-    ) {
-      return [message];
-    }
-    return convertPiMessages([message]);
-  });
 }
 
 async function optionalText(path: string): Promise<string | undefined> {
@@ -99,7 +39,7 @@ async function git(cwd: string, args: string[]): Promise<string> {
   }
 }
 
-function latestReminderContents(messages: readonly AgentMessage[]): Map<string, string> {
+function latestReminderContents(messages: readonly TranscriptMessage[]): Map<string, string> {
   const latest = new Map<string, string>();
   for (const message of messages) {
     if (message.role === "system-reminder") latest.set(message.source, message.content);
@@ -108,7 +48,7 @@ function latestReminderContents(messages: readonly AgentMessage[]): Map<string, 
 }
 
 export async function collectReminders(options: {
-  messages: AgentMessage[];
+  messages: TranscriptMessage[];
   cwd: string;
   homeDir: string;
   now: Date;
@@ -157,8 +97,8 @@ export async function collectReminders(options: {
 }
 
 /** Compare only the supplied sources against their latest persisted content. */
-export async function collectSourceReminders(
-  messages: readonly AgentMessage[],
+async function collectSourceReminders(
+  messages: readonly TranscriptMessage[],
   sources: readonly ReminderSource[],
   now: Date,
 ): Promise<SystemReminder[]> {

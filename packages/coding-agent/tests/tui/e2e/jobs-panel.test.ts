@@ -1,3 +1,4 @@
+import { committedJobNotifications } from "../helpers/job-notifications";
 import { startWithClock } from "../helpers/clock-app";
 import { expect, test } from "bun:test";
 import { join } from "node:path";
@@ -71,7 +72,10 @@ for (const [lang, exitCode] of [
   ["en_US.UTF-8", "exit code: 7"],
 ] as const) {
   test(`settled job details localize the exit code for ${lang}`, async () => {
+    const notifications = committedJobNotifications();
     const app = await start(["--permission-mode", "full-access", "launch"], {
+      session: notifications.session,
+      prepare: notifications.prepare,
       env: { LANG: lang },
       columns: 100,
       rows: 28,
@@ -91,8 +95,17 @@ for (const [lang, exitCode] of [
       await Bun.write(join(app.root, "go"), "");
       await app.waitFor(() => screen().includes(exitCode));
       expect(screen()).toContain(exitCode);
+      await app.waitFor(() => notifications.count() === 1);
       app.calls[1]!.finish();
+      await app.waitFor(() => !app.isWorking());
+      expect(app.calls).toHaveLength(2);
+      app.stdin.write("\x1b");
+      await app.waitFor(() => !screen().includes("Output tail") && !screen().includes("输出尾部"));
+      app.stdin.write("verify settled result\r");
       await app.waitFor(() => app.calls.length === 3);
+      expect(JSON.stringify(app.calls[2]!.context.messages)).toContain(
+        "status: failed, exit code: 7",
+      );
       app.calls[2]!.finish();
       await app.waitFor(() => !app.isWorking());
       expect(app.stderr()).toBe("");
@@ -266,7 +279,10 @@ test("card clicks focus exact jobs and expanded promoted details show bounded ou
 
 test("reading position and follow state survive settlement and group folding above the viewport while jobs is open", async () => {
   // Frontend reveal is virtual; file barriers and output still observe real child completion.
+  const notifications = committedJobNotifications();
   const app = await startWithClock(["--permission-mode", "full-access", "launch"], {
+    session: notifications.session,
+    prepare: notifications.prepare,
     env: { LANG: "en_US.UTF-8" },
     columns: 100,
     rows: 24,
@@ -300,21 +316,24 @@ test("reading position and follow state survive settlement and group folding abo
     await app.waitFor(
       () => screen().includes("bash-1 · completed") && screen().includes("bash-2 · completed"),
     );
+    await app.waitFor(() => notifications.count() === 2);
     app.calls[1]!.delta("\ncontinued-stream");
     app.calls[1]!.finish();
-    await app.waitFor(() => app.calls.length === 3);
+    await app.waitFor(() => !app.isWorking());
+    expect(app.calls).toHaveLength(2);
     app.stdin.write("\x1b");
-    await app.waitFor(
-      () =>
-        screen().includes("Back to bottom") &&
-        JSON.stringify(app.screen().slice(0, 5)) === JSON.stringify(before),
-    );
+    await app.waitFor(() => screen().includes("Back to bottom"));
+    expect(app.screen().slice(0, 5)).toEqual(before);
     const restored = app.screen().slice(0, 5);
     expect(screen()).toContain("New output");
     app.stdin.write("\x1b[1;5F");
     await app.waitFor(
       () => screen().includes("continued-stream") && !screen().includes("Back to bottom"),
     );
+    app.stdin.write("continue follow\r");
+    await app.waitFor(() => app.calls.length === 3);
+    expect(JSON.stringify(app.calls[2]!.context.messages)).toContain("background job bash-1");
+    expect(JSON.stringify(app.calls[2]!.context.messages)).toContain("background job bash-2");
     app.stdin.write("/jobs\r");
     await app.waitFor(() => screen().includes("❯ bash-1"));
     app.calls[2]!.delta("\nfollowed-stream");

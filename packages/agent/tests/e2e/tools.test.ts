@@ -1,17 +1,25 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
-import {
-  fauxAssistantMessage,
-  fauxToolCall,
-  type TextContent,
-  type ImageContent,
-} from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { join } from "node:path";
-import { createSession, type SessionEvent } from "../../src/index.ts";
+import {
+  createSession as createSessionImpl,
+  type Session,
+  type SessionEvent,
+} from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
-afterEach(() => dirs?.cleanup());
+const sessions: Session[] = [];
+async function createSession(options: Parameters<typeof createSessionImpl>[0]) {
+  const session = await createSessionImpl(options);
+  sessions.push(session);
+  return session;
+}
+afterEach(async () => {
+  await Promise.all(sessions.splice(0).map((session) => session.close()));
+  await dirs?.cleanup();
+});
 
 test("glob from a repository subdirectory honors repository root gitignore rules", async () => {
   dirs = await tempDirs();
@@ -26,7 +34,9 @@ test("glob from a repository subdirectory honors repository root gitignore rules
   ]);
   const session = await createSession({ ...dirs, ...fake, cwd: join(dirs.cwd, "src") });
   await session.run("find files");
-  expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
+  expect(
+    fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+  ).toMatchObject({
     role: "toolResult",
     isError: false,
     content: [{ type: "text", text: "main.ts" }],
@@ -50,12 +60,16 @@ test("glob scoped to a subdirectory still honors parent gitignore rules", async 
   ]);
   const session = await createSession({ ...dirs, ...fake });
   await session.run("find source");
-  expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
+  expect(
+    fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+  ).toMatchObject({
     role: "toolResult",
     isError: false,
     content: [{ type: "text", text: "main.ts" }],
   });
-  expect(fake.contexts[2]!.messages.at(-1)).toMatchObject({
+  expect(
+    fake.contexts[2]!.messages.findLast((message) => message.role === "toolResult"),
+  ).toMatchObject({
     role: "toolResult",
     isError: false,
     content: [{ type: "text", text: "No matching files." }],
@@ -76,7 +90,9 @@ test("bash times out and moves to a background job without ending the Run", asyn
   const session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
   try {
     expect((await session.run("slow command")).text).toBe("recovered");
-    expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
+    expect(
+      fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+    ).toMatchObject({
       role: "toolResult",
       isError: false,
       content: [
@@ -88,7 +104,7 @@ test("bash times out and moves to a background job without ending the Run", asyn
       details: { jobId: "bash-1" },
     });
   } finally {
-    await session.dispose();
+    await session.close();
   }
 });
 
@@ -111,36 +127,31 @@ test("aborting a Run kills bash and its child process and preserves the error in
   const session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
   const controller = new AbortController();
   const started = Promise.withResolvers<number[]>();
+  let output = "";
   const run = session.run("start shell", {
     signal: controller.signal,
     onEvent(event) {
       if (event.type !== "tool_execution_update" || event.toolCallId !== "bash-abort") return;
-      const content = event.partialResult.content.find(
-        (item: TextContent | ImageContent) => item.type === "text",
-      );
-      if (content?.type === "text" && /^\d+ \d+\n/.test(content.text)) {
-        started.resolve(content.text.trim().split(" ").map(Number));
-      }
+      if (!event.output) return;
+      output =
+        "set" in event.output
+          ? event.output.set
+          : output.slice(event.output.trimStart ?? 0) + (event.output.append ?? "");
+      if (/^\d+ \d+\n/.test(output)) started.resolve(output.trim().split(" ").map(Number));
     },
   });
   void run.catch(() => {});
   const pids = await started.promise;
   controller.abort(new Error("cancel shell"));
   await expect(run).rejects.toThrow("cancel shell");
-  for (const pid of pids) {
-    // Reaping a killed child can lag behind the shell closing its streams.
-    const deadline = Date.now() + 1000;
-    let alive = true;
-    while (alive && Date.now() < deadline) {
-      try {
-        process.kill(pid, 0);
-        await Bun.sleep(10);
-      } catch {
-        alive = false;
-      }
-    }
-    expect(alive).toBe(false);
-  }
+  // Native Run abort waits for the foreground shell's close and process-group termination.
+  for (const pid of pids) expect(() => process.kill(pid, 0)).toThrow();
+  expect(
+    session.messages.find(
+      (message) => message.role === "toolResult" && message.toolCallId === "bash-abort",
+    ),
+  ).toMatchObject({ isError: true });
+  await session.close();
   const next = fakeModel([fauxAssistantMessage("continued")]);
   const resumed = await createSession({ ...dirs, ...next, resumeId: session.id });
   await resumed.run("continue");
@@ -169,12 +180,14 @@ test("grep returns regex matches with file and line numbers, respects ignores, a
   ]);
   const session = await createSession({ ...dirs, ...fake });
   expect((await session.run("search")).success).toBe(true);
-  const first = fake.contexts[1]!.messages.at(-1)!;
+  const first = fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult")!;
   expect(first).toMatchObject({ role: "toolResult", isError: false });
   expect(JSON.stringify(first.content)).toContain("src/main.ts:1:const one = 1;");
   expect(JSON.stringify(first.content)).toContain("src/main.ts:2:const two = 2;");
   expect(JSON.stringify(first.content)).not.toContain("hidden");
-  expect(fake.contexts[2]!.messages.at(-1)).toMatchObject({
+  expect(
+    fake.contexts[2]!.messages.findLast((message) => message.role === "toolResult"),
+  ).toMatchObject({
     role: "toolResult",
     isError: false,
     content: [{ type: "text", text: "No matches." }],
@@ -196,7 +209,7 @@ test("grep searches with bundled ripgrep when PATH contains no rg", async () => 
   } finally {
     process.env.PATH = originalPath;
   }
-  const result = fake.contexts[1]!.messages.at(-1)!;
+  const result = fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult")!;
   expect(result).toMatchObject({ role: "toolResult", isError: false });
   expect(JSON.stringify(result.content)).toContain("file.txt:2:hello bundled rg");
 });
@@ -223,7 +236,9 @@ test("glob finds dotfiles and nested files while respecting nested gitignore rul
   ]);
   const session = await createSession({ ...dirs, ...fake });
   expect((await session.run("find files")).success).toBe(true);
-  expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
+  expect(
+    fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+  ).toMatchObject({
     role: "toolResult",
     isError: false,
     content: [
@@ -258,12 +273,18 @@ test.each(["cli", "settings", "full-access"])(
     const session = await createSession({ ...dirs, ...fake, ...permissions });
     expect((await session.run("write and read")).success).toBe(true);
     expect(await Bun.file(join(dirs.cwd, "file.txt")).text()).toBe("one\ntwo\nthree\n");
-    expect(fake.contexts[2]!.messages.at(-1)).toMatchObject({
+    expect(
+      fake.contexts[2]!.messages.findLast((message) => message.role === "toolResult"),
+    ).toMatchObject({
       role: "toolResult",
       toolName: "read",
       isError: false,
     });
-    expect(JSON.stringify(fake.contexts[2]!.messages.at(-1))).toContain("two");
+    expect(
+      JSON.stringify(
+        fake.contexts[2]!.messages.findLast((message) => message.role === "toolResult"),
+      ),
+    ).toContain("two");
   },
 );
 
@@ -289,12 +310,16 @@ test("full-access permits edits and bash; tool exceptions are returned so the mo
   ]);
   const session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
   expect((await session.run("edit then inspect")).text).toBe("recovered");
-  expect(fake.contexts[2]!.messages.at(-1)).toMatchObject({
+  expect(
+    fake.contexts[2]!.messages.findLast((message) => message.role === "toolResult"),
+  ).toMatchObject({
     role: "toolResult",
     isError: false,
     content: [{ type: "text", text: "changed" }],
   });
-  expect(fake.contexts[3]!.messages.at(-1)).toMatchObject({
+  expect(
+    fake.contexts[3]!.messages.findLast((message) => message.role === "toolResult"),
+  ).toMatchObject({
     role: "toolResult",
     toolName: "read",
     isError: true,
@@ -396,8 +421,8 @@ test("unavailable bundled ripgrep reports English content and coded UI details",
       ).text,
     ).toBe("recovered");
     expect(events.find((event) => event.type === "tool_execution_end")).toMatchObject({
-      isError: true,
       result: {
+        isError: true,
         content: [
           { type: "text", text: expect.stringContaining("Bundled ripgrep is unavailable.") },
         ],

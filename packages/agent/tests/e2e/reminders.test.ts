@@ -2,12 +2,47 @@ import { afterEach, expect, test } from "bun:test";
 import { join } from "node:path";
 import { readdir } from "node:fs/promises";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
-import { createSession, type SessionEvent } from "../../src/index.ts";
+import {
+  createSession,
+  type SessionEvent,
+  type Session,
+  type TranscriptMessage,
+} from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
-afterEach(() => dirs?.cleanup());
+const sessions: Session[] = [];
+async function openSession(options: Parameters<typeof createSession>[0]) {
+  const session = await createSession(options);
+  sessions.push(session);
+  return session;
+}
+afterEach(async () => {
+  await Promise.all(sessions.splice(0).map((session) => session.close()));
+  await dirs?.cleanup();
+});
+/** Newly committed reminder entries, rather than a second notification protocol. */
+function publishedReminders(events: readonly SessionEvent[]) {
+  return events.flatMap((event) =>
+    event.type === "message_end"
+      ? event.messages.flatMap((message) =>
+          message.role === "system-reminder"
+            ? [{ source: message.source, content: message.content }]
+            : [],
+        )
+      : [],
+  );
+}
+
+function identity(messages: readonly TranscriptMessage[]): string {
+  const system = messages.find(
+    (message) => message.role === "system" && message.sections?.instructions,
+  );
+  if (!system || system.role !== "system" || !system.sections?.instructions)
+    throw new Error("Missing native system instructions.");
+  return system.sections.instructions;
+}
 
 test("the first Run supplies static identity, environment and both levels of Project Instructions", async () => {
   dirs = await tempDirs();
@@ -17,7 +52,7 @@ test("the first Run supplies static identity, environment and both levels of Pro
   expect(await Bun.spawn(["git", "init", "-b", "reminder-test"], { cwd: dirs.cwd }).exited).toBe(0);
   const fake = fakeModel([fauxAssistantMessage("done")]);
   const events: SessionEvent[] = [];
-  const session = await createSession({
+  const session = await openSession({
     cwd: dirs.cwd,
     homeDir: dirs.homeDir,
     ...fake,
@@ -29,8 +64,8 @@ test("the first Run supplies static identity, environment and both levels of Pro
     },
   });
   const messages = fake.contexts[0]!.messages;
-  expect(messages[0]).toMatchObject({ role: "system", content: expect.stringContaining("Rukie") });
-  const reminders = events.filter((event) => event.type === "reminder_injected");
+  expect(identity(messages)).toContain("Rukie");
+  const reminders = publishedReminders(events);
   expect(reminders.map((event) => event.source)).toEqual([
     "environment",
     "date",
@@ -46,25 +81,25 @@ test("the first Run supplies static identity, environment and both levels of Pro
   expect(reminders[2]!.content).toContain("Personal coding preferences");
   expect(reminders[3]!.content).toContain("Project coding conventions");
   expect(JSON.stringify(messages)).not.toContain("Ignored fallback instructions");
-  expect(messages.slice(1, -1)).toEqual(
+  expect(messages.filter((message) => message.role === "user").slice(0, -1)).toEqual(
     reminders.map((event) => ({
       role: "user",
       content: [{ type: "text", text: `<system-reminder>\n${event.content}\n</system-reminder>` }],
       timestamp: expect.any(Number),
     })),
   );
-  expect(messages.at(-1)).toMatchObject({
+  expect(messages.findLast((message) => message.role === "user")).toMatchObject({
     role: "user",
     content: [{ type: "text", text: "original prompt" }],
   });
-  expect(events[0]!.type).toBe("session_start");
+  expect(events[0]!.type).toBe("snapshot");
   expect(events.at(-1)!.type).toBe("result");
-  expect(reminders.every((event) => event.sessionId === session.id)).toBe(true);
+  expect(events.every((event) => event.sessionId === session.id)).toBe(true);
   expect(result.text).toBe("done");
 });
 
 async function transcript() {
-  const root = join(dirs.homeDir, ".rukie/sessions");
+  const root = join(dirs.homeDir, ".rukie/durable-sessions");
   const files = await readdir(root, { recursive: true });
   const file = files.find((path) => path.endsWith(".jsonl"))!;
   return Bun.file(join(root, file)).text();
@@ -79,7 +114,7 @@ test("resume preserves the model and Transcript prefix and appends changed date 
     fauxAssistantMessage("first reply"),
     fauxAssistantMessage("second reply"),
   ]);
-  const session = await createSession({
+  const session = await openSession({
     cwd: dirs.cwd,
     homeDir: dirs.homeDir,
     ...fake,
@@ -87,16 +122,8 @@ test("resume preserves the model and Transcript prefix and appends changed date 
   });
   await session.run("first prompt");
   const before = await transcript();
-  const storedMessages = before
-    .trim()
-    .split("\n")
-    .flatMap((line) => {
-      const writes = JSON.parse(line);
-      return Array.isArray(writes) ? writes : [writes];
-    })
-    .filter((write) => write.kind === "entry" && write.type === "message")
-    .map((write) => write.message);
-  expect(storedMessages[0]).toEqual(fake.contexts[0]!.messages[0]);
+  const storedMessages = structuredClone(session.messages);
+  expect(storedMessages[0]).toMatchObject({ role: "system-reminder", source: "environment" });
   expect(storedMessages.filter((message) => message.role === "system-reminder")).toMatchObject([
     { source: "environment" },
     { source: "date", content: "Current date: 2026-10-01" },
@@ -112,14 +139,15 @@ test("resume preserves the model and Transcript prefix and appends changed date 
       events.push(event);
     },
   });
-  expect(events.filter((event) => event.type === "reminder_injected")).toEqual([]);
+  expect(publishedReminders(events)).toEqual([]);
   const prefix = structuredClone(fake.contexts[1]!.messages);
   const beforeResume = await transcript();
 
   date = new Date("2026-10-02T12:00:00Z");
   await Bun.write(join(dirs.cwd, "AGENTS.md"), "New instructions must not rewrite the prefix");
+  await session.close();
   const next = fakeModel([fauxAssistantMessage("continued")]);
-  const resumed = await createSession({
+  const resumed = await openSession({
     cwd: dirs.cwd,
     homeDir: dirs.homeDir,
     ...next,
@@ -153,16 +181,12 @@ test("resume preserves the model and Transcript prefix and appends changed date 
     },
     { role: "user", content: [{ type: "text", text: "continue" }] },
   ]);
-  expect(events.filter((event) => event.type === "reminder_injected")).toEqual([
+  expect(publishedReminders(events)).toEqual([
     {
-      type: "reminder_injected",
-      sessionId: session.id,
       source: "date",
       content: "Current date: 2026-10-02",
     },
     {
-      type: "reminder_injected",
-      sessionId: session.id,
       source: "project-instructions",
       content: expect.stringContaining("New instructions must not rewrite the prefix"),
     },
@@ -179,16 +203,16 @@ test.each(["CLAUDE.md", "absent", "empty AGENTS.md"])(
       await Bun.write(join(dirs.cwd, "CLAUDE.md"), "Fallback project instructions");
     if (mode === "empty AGENTS.md") await Bun.write(join(dirs.cwd, "AGENTS.md"), "");
     const fake = fakeModel([fauxAssistantMessage("done")]);
-    const session = await createSession({ cwd: dirs.cwd, homeDir: dirs.homeDir, ...fake });
+    const session = await openSession({ cwd: dirs.cwd, homeDir: dirs.homeDir, ...fake });
     const events: SessionEvent[] = [];
     await session.run("hi", {
       onEvent: (event) => {
         events.push(event);
       },
     });
-    const instructions = events
-      .filter((event) => event.type === "reminder_injected")
-      .filter((event) => event.source.endsWith("instructions"));
+    const instructions = publishedReminders(events).filter((event) =>
+      event.source.endsWith("instructions"),
+    );
     if (mode === "absent") expect(instructions).toEqual([]);
     else {
       expect(instructions).toHaveLength(1);
@@ -199,7 +223,7 @@ test.each(["CLAUDE.md", "absent", "empty AGENTS.md"])(
     if (mode === "empty AGENTS.md")
       expect(JSON.stringify(fake.contexts)).not.toContain("Fallback project instructions");
     expect(
-      events.find((event) => event.type === "reminder_injected" && event.source === "environment"),
+      publishedReminders(events).find((event) => event.source === "environment"),
     ).toMatchObject({
       content: expect.stringContaining("git branch: unavailable"),
     });
@@ -209,29 +233,29 @@ test.each(["CLAUDE.md", "absent", "empty AGENTS.md"])(
 test("System Prompt is identical across projects, dates and Sessions", async () => {
   dirs = await tempDirs();
   const fake = fakeModel([fauxAssistantMessage("done")]);
-  await (await createSession({ cwd: dirs.cwd, homeDir: dirs.homeDir, ...fake })).run("hi");
+  await (await openSession({ cwd: dirs.cwd, homeDir: dirs.homeDir, ...fake })).run("hi");
   const other = fakeModel([fauxAssistantMessage("done")]);
   await Bun.write(join(dirs.homeDir, "AGENTS.md"), "Different project instructions");
   await (
-    await createSession({
+    await openSession({
       cwd: dirs.homeDir,
       homeDir: dirs.homeDir,
       ...other,
       now: () => new Date("2030-01-01T12:00:00Z"),
     })
   ).run("different prompt");
-  expect(other.contexts[0]!.messages[0]!.content).toEqual(fake.contexts[0]!.messages[0]!.content);
-  const identity = JSON.stringify(fake.contexts[0]!.messages[0]!.content);
-  expect(identity).not.toContain(dirs.cwd);
-  expect(identity).not.toContain("2026-10-01");
-  expect(identity).not.toContain("Different project instructions");
+  expect(identity(other.contexts[0]!.messages)).toEqual(identity(fake.contexts[0]!.messages));
+  const prompt = identity(fake.contexts[0]!.messages);
+  expect(prompt).not.toContain(dirs.cwd);
+  expect(prompt).not.toContain("2026-10-01");
+  expect(prompt).not.toContain("Different project instructions");
 });
 
 test("additional sources compare current content against the latest persisted value independently", async () => {
   dirs = await tempDirs();
   const now = () => new Date("2026-10-01T12:00:00Z");
   const fake = fakeModel([fauxAssistantMessage("first reply")]);
-  const session = await createSession({
+  const session = await openSession({
     cwd: dirs.cwd,
     homeDir: dirs.homeDir,
     ...fake,
@@ -244,12 +268,13 @@ test("additional sources compare current content against the latest persisted va
   await session.run("first prompt");
   const before = await transcript();
   let catalog = "Available: beta";
+  await session.close();
   const next = fakeModel([
     fauxAssistantMessage("second reply"),
     fauxAssistantMessage("third reply"),
     fauxAssistantMessage("fourth reply"),
   ]);
-  const resumed = await createSession({
+  const resumed = await openSession({
     cwd: dirs.cwd,
     homeDir: dirs.homeDir,
     ...next,
@@ -266,11 +291,7 @@ test("additional sources compare current content against the latest persisted va
     events.push(event);
   };
   await resumed.run("continue", { onEvent });
-  expect(
-    events
-      .filter((event) => event.type === "reminder_injected")
-      .map(({ source, content }) => ({ source, content })),
-  ).toEqual([
+  expect(publishedReminders(events).map(({ source, content }) => ({ source, content }))).toEqual([
     { source: "catalog", content: "Available: beta" },
     { source: "new-source", content: "New context" },
   ]);
@@ -280,14 +301,12 @@ test("additional sources compare current content against the latest persisted va
   expect(await transcript()).toStartWith(before);
   events.length = 0;
   await resumed.run("unchanged", { onEvent });
-  expect(events.filter((event) => event.type === "reminder_injected")).toEqual([]);
+  expect(publishedReminders(events)).toEqual([]);
   catalog = "Available: alpha";
   events.length = 0;
   await resumed.run("changed back", { onEvent });
-  expect(events.filter((event) => event.type === "reminder_injected")).toEqual([
+  expect(publishedReminders(events)).toEqual([
     {
-      type: "reminder_injected",
-      sessionId: session.id,
       source: "catalog",
       content: "Available: alpha",
     },

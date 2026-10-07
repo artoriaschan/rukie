@@ -1,4 +1,4 @@
-import { truncateHead } from "@earendil-works/pi-agent-core";
+import { truncateHead } from "./runtime.ts";
 import { createUserVisibleError } from "@rukie/shared";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
@@ -30,7 +30,6 @@ const schema = Type.Object({
 export function createGrepTool(cwd: string): PresentedTool<typeof schema> {
   return {
     name: "grep",
-    label: "grep",
     description:
       "Search file contents with ripgrep (rg), respecting ignore files. Returns path:line:text matches.",
     parameters: schema,
@@ -44,7 +43,8 @@ export function createGrepTool(cwd: string): PresentedTool<typeof schema> {
       Value.Check(facts, details)
         ? { card: "search", kind: "search", displayKey: "tool.grep", shape: "matches", ...details }
         : undefined,
-    async execute(_id, { pattern, path }, signal) {
+    async execute({ pattern, path }, _api, context) {
+      const signal = context.abortSignal;
       signal?.throwIfAborted();
       let proc;
       try {

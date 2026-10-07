@@ -1,17 +1,18 @@
-import { formatSkillInvocation, type AgentTool, type Skill } from "@earendil-works/pi-agent-core";
+import type { ToolRegistration } from "@earendil-works/pi-durable";
+import { formatSkillInvocation, type Skill } from "../skills/index.ts";
 import { Type } from "typebox";
 
 const schema = Type.Object({ name: Type.String({ description: "Name of the skill to load." }) });
 
 export function createSkillTool(
   getSkill: (name: string) => Skill | undefined,
-): AgentTool<typeof schema> {
+): ToolRegistration<typeof schema> {
   return {
     name: "skill",
-    label: "skill",
     description: "Load a skill's full instructions by name from the available skills list.",
     parameters: schema,
-    async execute(_id, { name }, signal) {
+    async execute({ name }, _api, context) {
+      const signal = context.abortSignal;
       signal?.throwIfAborted();
       const skill = getSkill(name);
       if (!skill) throw new Error(`Skill not found: ${name}`);

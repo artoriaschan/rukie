@@ -1,6 +1,13 @@
 import { afterEach, expect, test } from "bun:test";
-import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
-import { branchTip } from "@earendil-works/pi-agent-core/harness/session";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import {
+  createSession as createNativeSession,
+  ROOT_CONVERSATION_ID,
+  defineDoc,
+} from "@earendil-works/pi-durable";
+import type { JsonValue } from "@earendil-works/chord";
+import { planState } from "../../src/tools/plan-mode/state.ts";
+import { withModelAlias } from "../helpers/auxiliary-model.ts";
 import {
   fauxAssistantMessage,
   fauxToolCall,
@@ -9,7 +16,7 @@ import {
 } from "@earendil-works/pi-ai";
 import {
   createJsonlStore,
-  createSession,
+  createSession as createSessionImpl,
   type Session,
   type SessionEvent,
   type SessionStore,
@@ -18,29 +25,84 @@ import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
-afterEach(() => dirs?.cleanup());
-
-/** Store that fails the selected `mutate` calls, to exercise Plan Mode write recovery. */
-function failingPlanWrites(backing: SessionStore, fail: (index: number) => boolean): SessionStore {
-  let mutates = 0;
+const sessions: Session[] = [];
+async function createSession(options: Parameters<typeof createSessionImpl>[0]) {
+  const session = await createSessionImpl(options);
+  sessions.push(session);
+  return session;
+}
+afterEach(async () => {
+  await Promise.all(sessions.splice(0).map((session) => session.close()));
+  await dirs?.cleanup();
+});
+function reminders(events: readonly SessionEvent[]) {
+  return events.flatMap((event) =>
+    event.type === "message_end"
+      ? event.messages.flatMap((message) =>
+          message.role === "system-reminder" && message.source === "plan-mode"
+            ? [message.content]
+            : [],
+        )
+      : [],
+  );
+}
+/** Hold or reject actual native Plan document commits, without replacing Harness execution. */
+function planWrites(
+  backing: SessionStore,
+  before: (index: number) => void | Promise<void>,
+  closed?: () => void,
+): SessionStore {
+  let index = 0;
   return {
-    create: backing.create.bind(backing),
-    list: backing.list.bind(backing),
-    async open(metadata, context) {
-      const stored = await backing.open(metadata, context);
-      return new Proxy(stored, {
-        get(target, property) {
-          if (property === "mutate")
-            return (...args: Parameters<typeof stored.mutate>) => {
-              if (fail(mutates++)) throw new Error("snapshot unavailable");
-              return stored.mutate(...args);
-            };
-          const member = Reflect.get(target, property);
-          return typeof member === "function" ? member.bind(target) : member;
-        },
-      });
+    ...backing,
+    async open(...args) {
+      const lease = await backing.open(...args);
+      const docs = await lease.storage.scanDocuments(
+        { scope: { kind: "conversation", conversationId: ROOT_CONVERSATION_ID }, at: "current" },
+        10000,
+        undefined,
+        BACKGROUND_CONTEXT,
+      );
+      const ids = new Set(
+        docs.items.filter((doc) => doc.kind === "rukie.plan").map((doc) => doc.id),
+      );
+      const commit = lease.storage.commit.bind(lease.storage);
+      lease.storage.commit = async (writes, context) => {
+        const creates = writes.filter(
+          (write) => write.type === "document.create" && write.record.kind === "rukie.plan",
+        );
+        if (
+          writes.some((write) =>
+            write.type === "document.create"
+              ? write.record.kind === "rukie.plan"
+              : write.type === "document.change" && ids.has(write.id),
+          )
+        )
+          await before(index++);
+        const result = await commit(writes, context);
+        for (const write of creates) if (write.type === "document.create") ids.add(write.record.id);
+        return result;
+      };
+      const close = lease.storage.close.bind(lease.storage);
+      lease.storage.close = async (context) => {
+        await close(context);
+        closed?.();
+      };
+      return lease;
     },
   };
+}
+async function writePlanDocument(id: string, value: JsonValue) {
+  const lease = await createJsonlStore(dirs).open({ id }, BACKGROUND_CONTEXT);
+  const native = createNativeSession(lease.storage);
+  try {
+    await native.commit(async (tx) => {
+      (await tx.doc(planState.document, ROOT_CONVERSATION_ID)).value = value;
+    }, BACKGROUND_CONTEXT);
+  } finally {
+    await native.close(BACKGROUND_CONTEXT);
+    await lease.release();
+  }
 }
 
 test("Plan Mode persists outside a Run and injects changed guidance once", async () => {
@@ -50,20 +112,21 @@ test("Plan Mode persists outside a Run and injects changed guidance once", async
   expect(session.planMode).toBe(false);
   await session.run("ordinary");
   expect(JSON.stringify(fake.contexts[0])).not.toContain("Plan Mode");
+  const events: SessionEvent[] = [];
+  session.subscribe((event) => events.push(event));
   await session.setPlanMode(true);
   expect(session.planMode).toBe(true);
   expect(session.toolState("plan")).toEqual({ active: true });
-  const events: SessionEvent[] = [];
-  await session.run("plan", {
-    onEvent: (event) => {
-      events.push(event);
-    },
-  });
+  await session.run("plan");
   expect(JSON.stringify(fake.contexts[1])).toContain("You are in Plan Mode");
   expect(JSON.stringify(fake.contexts[1])).toContain("markdown");
   expect(JSON.stringify(fake.contexts[1])).toContain("Permissions still apply");
   const next = fakeModel(Array.from({ length: 3 }, () => fauxAssistantMessage("resumed")));
+  await session.close();
   const resumed = await createSession({ ...dirs, ...next, resumeId: session.id });
+  resumed.subscribe((event) => {
+    if (event.type === "tool_state_changed") events.push(event);
+  });
   expect(resumed.planMode).toBe(true);
   await resumed.run("continue planning");
   expect(JSON.stringify(next.contexts[0])).toContain("You are in Plan Mode");
@@ -83,11 +146,7 @@ test("Plan Mode persists outside a Run and injects changed guidance once", async
       events.push(event);
     },
   });
-  expect(
-    events.flatMap((event) =>
-      event.type === "reminder_injected" && event.source === "plan-mode" ? [event.content] : [],
-    ),
-  ).toEqual([
+  expect(reminders(events)).toEqual([
     expect.stringContaining("You are in Plan Mode"),
     expect.stringContaining("You have exited Plan Mode"),
   ]);
@@ -117,7 +176,7 @@ test("switching during a Run affects the next model call and repeated changes ar
       });
     },
     (context) => {
-      expect(JSON.stringify(context.messages.at(-1))).toContain("You have exited Plan Mode");
+      expect(JSON.stringify(context.messages)).toContain("You have exited Plan Mode");
       return fauxAssistantMessage("done");
     },
   ]);
@@ -170,7 +229,7 @@ test.each(["subagent", "subagent_fork"])(
         });
       },
       (context) => {
-        expect(JSON.stringify(context.messages.at(-1))).toContain("You have exited Plan Mode");
+        expect(JSON.stringify(context.messages)).toContain("You have exited Plan Mode");
         return fauxAssistantMessage("child done");
       },
       fauxAssistantMessage("parent done"),
@@ -238,64 +297,77 @@ test.each(["ask", "auto-review", "full-access"] as const)(
 
 test("Compaction re-injects active guidance and never repeats a consumed exit reminder", async () => {
   dirs = await tempDirs();
+  await Bun.write(`${dirs.cwd}/large.txt`, "older evidence ".repeat(6000));
   const work = () =>
     fauxAssistantMessage(
-      [{ type: "text", text: "old work ".repeat(2500) }, fauxToolCall("todo_write", { todos: [] })],
+      [fauxToolCall("read", { path: "large.txt" }), fauxToolCall("read", { path: "large.txt" })],
       { stopReason: "toolUse" },
     );
   const fake = fakeModel([
-    fauxAssistantMessage("saved"),
     work(),
+    fauxAssistantMessage("older"),
+    fauxAssistantMessage("protected"),
     fauxAssistantMessage("First summary."),
     fauxAssistantMessage("continued"),
     fauxAssistantMessage("execute"),
     work(),
+    fauxAssistantMessage("older again"),
+    fauxAssistantMessage("protected again"),
     fauxAssistantMessage("Second summary."),
     fauxAssistantMessage("done"),
   ]);
-  fake.model.contextWindow = 4000;
-  const session = await createSession({ ...dirs, ...fake });
+  const models = withModelAlias(fake.models, "plan-window", ["large"], { contextWindow: 128000 });
+  const provider = models.getProviders().find((provider) => provider.id === "plan-window");
+  const large = provider?.getModels()[0];
+  if (!provider || !large) throw new Error("Missing fixture model");
+  models.setProvider({
+    ...provider,
+    getModels: () => [large, { ...large, id: "small", contextWindow: 16000 }],
+  });
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    models,
+    settings: { model: "plan-window/large" },
+  });
   await session.setPlanMode(true);
   const events: SessionEvent[] = [];
-  const onEvent = (event: SessionEvent) => {
-    events.push(event);
-  };
-  await session.run("plan", { onEvent });
-  await session.run("work", { onEvent });
-  expect(
-    events.filter((event) => event.type === "reminder_injected" && event.source === "plan-mode"),
-  ).toHaveLength(2);
-  expect(JSON.stringify(fake.contexts[3])).toContain("You are in Plan Mode");
+  session.subscribe((event) => events.push(event));
+  await session.run("older");
+  await session.run("protected");
+  await session.setModel("plan-window/small");
+  await session.run("continue");
+  expect(reminders(events).filter((text) => text.includes("You are in Plan Mode"))).toHaveLength(2);
+  expect(JSON.stringify(fake.contexts.at(-1))).toContain("You are in Plan Mode");
   await session.setPlanMode(false);
-  await session.run("execute", { onEvent });
-  await session.run("more", { onEvent });
+  await session.run("execute");
+  await session.setModel("plan-window/large");
+  await session.run("older again");
+  await session.run("protected again");
+  await session.setModel("plan-window/small");
+  await session.run("more");
   expect(events.filter((event) => event.type === "compaction_end")).toHaveLength(2);
-  expect(
-    events
-      .flatMap((event) =>
-        event.type === "reminder_injected" && event.source === "plan-mode" ? [event.content] : [],
-      )
-      .filter((text) => text.includes("exited")),
-  ).toHaveLength(1);
+  expect(reminders(events).filter((text) => text.includes("exited"))).toHaveLength(1);
 });
 
-test("rewind restores Plan Mode from the snapshot at the selected transcript point", async () => {
+test("rewind restores Plan Mode at the selected public checkpoint", async () => {
   dirs = await tempDirs();
-  const store = createJsonlStore(dirs);
-  const session = await createSession({ ...dirs, ...fakeModel([]), store });
+  const session = await createSession({
+    ...dirs,
+    ...fakeModel([fauxAssistantMessage("planning"), fauxAssistantMessage("executing")]),
+  });
   await session.setPlanMode(true);
-  const metadata = (await store.list({ cwd: dirs.cwd }, BACKGROUND_CONTEXT))[0]!;
-  const stored = await store.open(metadata, BACKGROUND_CONTEXT);
-  const point = await (await stored.branch("main", BACKGROUND_CONTEXT))!.getTipId(
-    BACKGROUND_CONTEXT,
-  );
-  await stored.close(BACKGROUND_CONTEXT);
+  await session.run("plan");
   await session.setPlanMode(false);
-  const rewind = await store.open(metadata, BACKGROUND_CONTEXT);
-  await rewind.setValue(branchTip("main"), point, BACKGROUND_CONTEXT);
-  await rewind.close(BACKGROUND_CONTEXT);
+  await session.run("execute");
+  await session.rewind(session.checkpoints()[0]!.promptEntryId, {
+    code: false,
+    conversation: true,
+  });
+  expect(session.planMode).toBe(true);
+  await session.close();
   const fake = fakeModel([fauxAssistantMessage("planning")]);
-  const resumed = await createSession({ ...dirs, ...fake, store, resumeId: session.id });
+  const resumed = await createSession({ ...dirs, ...fake, resumeId: session.id });
   expect(resumed.planMode).toBe(true);
   await resumed.run("continue");
   expect(JSON.stringify(fake.contexts[0])).toContain("You are in Plan Mode");
@@ -316,138 +388,79 @@ test("frontend can await a second Plan Mode change from its state event", async 
       if (event.type === "tool_execution_end") await session.setPlanMode(true);
       if (event.type !== "tool_state_changed" || event.name !== "plan") return;
       values.push(event.value);
-      if ((event.value as { active: boolean }).active) await session.setPlanMode(false);
+      if (
+        typeof event.value === "object" &&
+        event.value !== null &&
+        "active" in event.value &&
+        event.value.active === true
+      )
+        await session.setPlanMode(false);
     },
   });
   expect(values).toEqual([{ active: true }, { active: false }]);
   expect(session.planMode).toBe(false);
 }, 1000);
 
-test("a rejected Plan Mode snapshot closes the Run store, rolls back and can be retried", async () => {
+test("a rejected native Plan document rolls back and can be retried after cold reopen", async () => {
   dirs = await tempDirs();
-  const backing = createJsonlStore(dirs);
-  let rejectWrite = false;
-  let opened = 0;
+  let reject = true;
   let closed = 0;
-  const store: typeof backing = {
-    create: backing.create.bind(backing),
-    list: backing.list.bind(backing),
-    async open(metadata, context) {
-      const stored = await backing.open(metadata, context);
-      opened++;
-      return new Proxy(stored, {
-        get(target, property) {
-          if (property === "mutate")
-            return (...args: Parameters<typeof stored.mutate>) => {
-              if (rejectWrite) {
-                rejectWrite = false;
-                throw new Error("snapshot unavailable");
-              }
-              return stored.mutate(...args);
-            };
-          if (property === "close")
-            return async (ctx: typeof context) => {
-              await stored.close(ctx);
-              closed++;
-            };
-          const member = Reflect.get(target, property);
-          return typeof member === "function" ? member.bind(target) : member;
-        },
-      });
+  const store = planWrites(
+    createJsonlStore(dirs),
+    () => {
+      if (reject) {
+        reject = false;
+        throw new Error("snapshot unavailable");
+      }
     },
-  };
-  const fake = fakeModel([
-    fauxAssistantMessage(fauxToolCall("todo_write", { todos: [] }), { stopReason: "toolUse" }),
-    fauxAssistantMessage("retried"),
-  ]);
-  const session = await createSession({ ...dirs, ...fake, store });
-  await expect(
-    session.run("work", {
-      onEvent: async (event) => {
-        if (event.type === "tool_execution_end") {
-          rejectWrite = true;
-          await session.setPlanMode(true);
-        }
-      },
-    }),
-  ).rejects.toThrow("snapshot unavailable");
-  expect(closed).toBe(opened);
+    () => closed++,
+  );
+  const session = await createSession({ ...dirs, ...fakeModel([]), store });
+  await expect(session.setPlanMode(true)).rejects.toThrow("snapshot unavailable");
   expect(session.planMode).toBe(false);
-  await session.setPlanMode(true);
-  expect(session.planMode).toBe(true);
-  expect((await session.run("retry")).success).toBe(true);
-  const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
-  expect(resumed.planMode).toBe(true);
+  await session.close();
+  expect(closed).toBeGreaterThan(0);
+  const resumed = await createSession({
+    ...dirs,
+    ...fakeModel([fauxAssistantMessage("retried")]),
+    store,
+    resumeId: session.id,
+  });
+  expect(resumed.planMode).toBe(false);
+  await resumed.setPlanMode(true);
+  expect((await resumed.run("retry")).success).toBe(true);
+  await resumed.close();
+  const saved = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
+  expect(saved.planMode).toBe(true);
 });
 
-test("pending Plan Mode revisions keep the latest state, report their own failure and stay writable", async () => {
-  /** Both revisions are queued before either write settles, so the queue holds two. */
-  const withFailures = async (
-    fail: (index: number) => boolean,
-    scenario: (session: Session) => Promise<void>,
-  ) => {
+test.each([0, 1])(
+  "queued Plan revisions preserve their last durable state after rejection %i",
+  async (failedIndex) => {
     dirs = await tempDirs();
-    const store = failingPlanWrites(createJsonlStore(dirs), fail);
-    const session = await createSession({
+    const store = planWrites(createJsonlStore(dirs), (index) => {
+      if (index === failedIndex) throw new Error("snapshot unavailable");
+    });
+    const session = await createSession({ ...dirs, ...fakeModel([]), store });
+    const entered = session.setPlanMode(true);
+    const exited = session.setPlanMode(false);
+    const results = await Promise.allSettled([entered, exited]);
+    expect(results[failedIndex]!.status).toBe("rejected");
+    if (failedIndex === 0) expect(results[1]!.status).toBe("rejected");
+    else expect(results[0]!.status).toBe("fulfilled");
+    expect(session.planMode).toBe(failedIndex === 1);
+    await session.close();
+    const resumed = await createSession({
       ...dirs,
-      ...fakeModel([fauxAssistantMessage("done")]),
-      store,
+      ...fakeModel([fauxAssistantMessage("continued")]),
+      resumeId: session.id,
     });
-    try {
-      await scenario(session);
-    } finally {
-      await session.dispose();
-    }
-  };
-  /** Plan Mode guidance the next Run injects, which follows the entered/exited history. */
-  const planGuidance = async (session: Session) => {
-    const events: SessionEvent[] = [];
-    await session.run("continue", {
-      onEvent: (event) => {
-        events.push(event);
-      },
-    });
-    return events.flatMap((event) =>
-      event.type === "reminder_injected" && event.source === "plan-mode" ? [event.content] : [],
-    );
-  };
-  // Earlier failure, later success: the failing revision reports its own error and does
-  // not roll back the revision that replaced it.
-  await withFailures(
-    (index) => index === 0,
-    async (session) => {
-      const failed = session.setPlanMode(true);
-      const succeeded = session.setPlanMode(false);
-      await expect(failed).rejects.toThrow("snapshot unavailable");
-      await succeeded;
-      expect(session.planMode).toBe(false);
-      expect(await planGuidance(session)).toEqual([
-        expect.stringContaining("You have exited Plan Mode"),
-      ]);
-      const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
-      expect(resumed.planMode).toBe(false);
-    },
-  );
-  // Earlier success, later failure: the failed revision rolls back to the state the
-  // earlier write persisted, and the Session still accepts the next change.
-  await withFailures(
-    (index) => index === 1,
-    async (session) => {
-      const succeeded = session.setPlanMode(true);
-      const failed = session.setPlanMode(false);
-      await succeeded;
-      await expect(failed).rejects.toThrow("snapshot unavailable");
-      expect(session.planMode).toBe(true);
-      expect(await planGuidance(session)).toEqual([
-        expect.stringContaining("You are in Plan Mode"),
-      ]);
-      await session.setPlanMode(false);
-      expect(session.planMode).toBe(false);
-      const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
-      expect(resumed.planMode).toBe(false);
-    },
-  );
-});
+    expect(resumed.planMode).toBe(failedIndex === 1);
+    await resumed.setPlanMode(failedIndex === 0);
+    await resumed.run("continue");
+    expect(resumed.planMode).toBe(failedIndex === 0);
+  },
+);
 
 test("a child continued after a parent rewind reads the projected Plan Mode without its own snapshot", async () => {
   dirs = await tempDirs();
@@ -495,16 +508,20 @@ test("a child continued after a parent rewind reads the projected Plan Mode with
   const childIds = new Set<string>();
   const onEvent = (event: SessionEvent) => {
     if (event.type !== "subagent_event") return;
-    if (event.event.type === "session_start") childIds.add((childId = event.agentId));
-    if (event.event.type === "result") childResult.resolve();
+    if (event.event.type === "snapshot") childIds.add((childId = event.agentId));
+    if (event.event.type === "run_end") childResult.resolve();
     if (event.event.type === "tool_state_changed" && event.event.name === "plan")
       childPlanEvents.push(event.event);
   };
-  await session.run("first", { onEvent });
+  session.subscribe(onEvent);
+  const first = await session.run("first");
+  await session.waitForRequest(first.requestId);
+  expect(session.toolState("subagents")).toMatchObject([{ id: childId, description: "Inspect" }]);
   // Entering Plan Mode after the child exists and leaving it again makes the rewind
   // change the state a continued child has to project.
   await session.setPlanMode(true);
   await session.run("second", { onEvent });
+  expect(session.toolState("subagents")).toMatchObject([{ id: childId, description: "Inspect" }]);
   await session.setPlanMode(false);
   await session.rewind(session.checkpoints()[1]!.promptEntryId, {
     code: false,
@@ -515,7 +532,8 @@ test("a child continued after a parent rewind reads the projected Plan Mode with
   expect(session.toolState("subagents")).toMatchObject([
     { id: childId, description: "Inspect", type: "general-purpose" },
   ]);
-  await session.run("continue the child", { onEvent });
+  const continuedRun = await session.run("continue the child");
+  await session.waitForRequest(continuedRun.requestId);
   // The parent addressed the child Session that already existed, not a new one.
   expect([...childIds]).toEqual([childId]);
   expect(
@@ -524,7 +542,7 @@ test("a child continued after a parent rewind reads the projected Plan Mode with
     ),
   ).toMatchObject({
     isError: false,
-    content: [{ type: "text", text: `delivered to ${childId}` }],
+    content: [{ type: "text", text: expect.stringContaining(childId) }],
   });
   expect(childContext).toBeDefined();
   expect(JSON.stringify(childContext)).toContain("You are in Plan Mode");
@@ -542,19 +560,13 @@ test("a repeated Plan Mode change waits on the pending write", async () => {
   const writeStarted = Promise.withResolvers<void>();
   const releaseWrite = Promise.withResolvers<void>();
   let gated = false;
-  /** Hold the store handle the queued Plan Mode write is about to use. */
-  const store: SessionStore = {
-    create: backing.create.bind(backing),
-    list: backing.list.bind(backing),
-    async open(metadata, context) {
-      if (gated) {
-        gated = false;
-        writeStarted.resolve();
-        await releaseWrite.promise;
-      }
-      return backing.open(metadata, context);
-    },
-  };
+  const store = planWrites(backing, async () => {
+    if (gated) {
+      gated = false;
+      writeStarted.resolve();
+      await releaseWrite.promise;
+    }
+  });
   const session = await createSession({ ...dirs, ...fakeModel([]), store });
   gated = true;
   const entered = session.setPlanMode(true);
@@ -570,7 +582,7 @@ test("a repeated Plan Mode change waits on the pending write", async () => {
     },
   );
   // Drain every pending microtask; only the release can settle the queued write.
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  await Promise.resolve();
   // The same-value call returns the pending write queue instead of a settled promise.
   expect(repeated).toBe(false);
   releaseWrite.resolve();
@@ -622,8 +634,8 @@ test("a pending Plan Mode notification does not hold the write queue", async () 
   );
   await Promise.resolve();
   await Promise.resolve();
-  // The original caller still waits for its own notification.
-  expect(enteredSettled).toBe(false);
+  // Public event observers are asynchronous consumers, outside the mutation line.
+  expect(enteredSettled).toBe(true);
   expect(session.planMode).toBe(false);
   release.resolve();
   await run;
@@ -632,162 +644,128 @@ test("a pending Plan Mode notification does not hold the write queue", async () 
   expect(enteredSettled).toBe(true);
 });
 
-test("dispose keeps the Run store open until queued Plan Mode writes settle", async () => {
+test("close keeps native storage open until queued Plan writes settle", async () => {
   dirs = await tempDirs();
-  const ready = Promise.withResolvers<void>();
-  const release = Promise.withResolvers<void>();
-  const backing = createJsonlStore(dirs);
   const order: string[] = [];
-  const writeStarted = Promise.withResolvers<void>();
-  const releaseWrite = Promise.withResolvers<void>();
-  let planCommits = 0;
-  let openedHandles = 0;
-  /** Record the Plan Mode commits and store closes, and hold the first commit. */
-  const store: SessionStore = {
-    create: backing.create.bind(backing),
-    list: backing.list.bind(backing),
-    async open(metadata, context) {
-      const stored = await backing.open(metadata, context);
-      const handle = ++openedHandles;
-      return new Proxy(stored, {
-        get(target, property) {
-          if (property === "mutate")
-            return (
-              mutation: Parameters<typeof stored.mutate>[0],
-              ctx: Parameters<typeof stored.mutate>[1],
-            ) =>
-              target.mutate(async (mutator, inner) => {
-                const commit: typeof mutator = new Proxy(mutator, {
-                  get(member, key) {
-                    if (key === "commit")
-                      return async (
-                        writes: Parameters<typeof mutator.commit>[0],
-                        commitContext: Parameters<typeof mutator.commit>[1],
-                      ) => {
-                        const plan = writes.some(
-                          (write) =>
-                            write.kind === "entry" &&
-                            write.entry.type === "custom" &&
-                            write.entry.customType === "tool-state/plan",
-                        );
-                        const step = plan ? ++planCommits : 0;
-                        if (plan) order.push(`plan-write-${step}`);
-                        if (step === 1) {
-                          writeStarted.resolve();
-                          await releaseWrite.promise;
-                        }
-                        const result = await member.commit(writes, commitContext);
-                        if (plan) order.push(`plan-write-${step}-committed`);
-                        return result;
-                      };
-                    const value: unknown = Reflect.get(member, key);
-                    return typeof value === "function" ? value.bind(member) : value;
-                  },
-                });
-                return mutation(commit, inner);
-              }, ctx);
-          if (property === "close")
-            return async (ctx: Parameters<typeof stored.close>[0]) => {
-              order.push(`store-${handle}-closed`);
-              await target.close(ctx);
-            };
-          const member: unknown = Reflect.get(target, property);
-          return typeof member === "function" ? member.bind(target) : member;
-        },
-      });
+  const started = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const store = planWrites(
+    createJsonlStore(dirs),
+    async (index) => {
+      order.push(`write-${index}`);
+      if (index === 0) {
+        started.resolve();
+        await release.promise;
+      }
     },
-  };
+    () => order.push("closed"),
+  );
+  const ready = Promise.withResolvers<void>();
+  const finish = Promise.withResolvers<void>();
   const session = await createSession({
     ...dirs,
     ...fakeModel([
       async () => {
         ready.resolve();
-        await release.promise;
+        await finish.promise;
         return fauxAssistantMessage("done");
       },
     ]),
     store,
   });
-  const run = session.run("work").catch((error: unknown) => error);
+  const run = session.run("active work").catch((error: unknown) => error);
   await ready.promise;
   const entered = session.setPlanMode(true);
-  await writeStarted.promise;
+  await started.promise;
   const exited = session.setPlanMode(false);
-  const writes = Promise.all([entered, exited]);
-  const disposing = session.dispose();
+  const closing = session.close();
   release.resolve();
-  releaseWrite.resolve();
-  await writes;
+  finish.resolve();
+  await Promise.all([entered, exited]);
+  await closing;
   expect(await run).toBeInstanceOf(Error);
-  await disposing;
-  // The Run handle closes after both queued writes. A separate recovery handle
-  // reads the committed branch after the abort; the summary write uses its own handle.
-  expect(order.slice(order.indexOf("plan-write-1"))).toEqual([
-    "plan-write-1",
-    "plan-write-1-committed",
-    "plan-write-2",
-    "plan-write-2-committed",
-    "store-1-closed",
-    "store-2-closed",
-    "store-3-closed",
-  ]);
-  expect(session.planMode).toBe(false);
+  expect(order).toEqual(["write-0", "write-1", "closed"]);
   const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
   expect(resumed.planMode).toBe(false);
 });
 
-test("an unsupported or malformed Plan Mode snapshot is ignored on resume", async () => {
+test.each([{ active: "yes" }, { active: true, extra: true }])(
+  "cold resume rejects malformed current Plan document: %j",
+  async (value) => {
+    dirs = await tempDirs();
+    const session = await createSession({ ...dirs, ...fakeModel([]) });
+    await session.setPlanMode(true);
+    await session.close();
+    await writePlanDocument(
+      session.id,
+      value.active === "yes" ? { active: "yes" } : { active: true, extra: true },
+    );
+    const fake = fakeModel([]);
+    await expect(createSession({ ...dirs, ...fake, resumeId: session.id })).rejects.toThrow(
+      "Invalid Plan Mode snapshot",
+    );
+    expect(fake.contexts).toEqual([]);
+  },
+);
+
+test("cold resume rejects an unsupported native Plan document version", async () => {
   dirs = await tempDirs();
-  const store = createJsonlStore(dirs);
-  const session = await createSession({ ...dirs, ...fakeModel([]), store });
-  const metadata = (await store.list({ cwd: dirs.cwd }, BACKGROUND_CONTEXT))[0]!;
-  const stored = await store.open(metadata, BACKGROUND_CONTEXT);
-  const branch = (await stored.branch("main", BACKGROUND_CONTEXT))!;
-  await branch.appendCustomEntry(
-    "tool-state/plan",
-    { version: 2, value: { active: true } },
-    BACKGROUND_CONTEXT,
-  );
-  await branch.appendCustomEntry(
-    "tool-state/plan",
-    { version: 1, value: { active: "yes" } },
-    BACKGROUND_CONTEXT,
-  );
-  await stored.close(BACKGROUND_CONTEXT);
-  const warnings: string[] = [];
-  const resumed = await createSession({
-    ...dirs,
-    ...fakeModel([]),
-    store,
-    resumeId: session.id,
-    onWarning: (warning) => {
-      warnings.push(warning);
-    },
+  const session = await createSession({ ...dirs, ...fakeModel([]) });
+  await session.close();
+  const lease = await createJsonlStore(dirs).open({ id: session.id }, BACKGROUND_CONTEXT);
+  const native = createNativeSession(lease.storage);
+  const futurePlan = defineDoc({
+    kind: "rukie.plan",
+    version: 2,
+    scope: "conversation",
+    history: "rewindable",
+    fork: "asOf",
+    initial: () => ({ value: { active: true } }),
   });
-  expect(resumed.planMode).toBe(false);
-  expect(resumed.toolState("plan")).toBeUndefined();
-  expect(warnings.join("\n")).toContain("Unsupported plan version: 2");
-  expect(warnings.join("\n")).toContain("Invalid Plan Mode snapshot.");
-  await session.dispose();
-  await resumed.dispose();
+  try {
+    await native.commit(async (tx) => {
+      await tx.doc(futurePlan, ROOT_CONVERSATION_ID);
+    }, BACKGROUND_CONTEXT);
+  } finally {
+    await native.close(BACKGROUND_CONTEXT);
+    await lease.release();
+  }
+  const fake = fakeModel([]);
+  await expect(createSession({ ...dirs, ...fake, resumeId: session.id })).rejects.toThrow(
+    /version/i,
+  );
+  expect(fake.contexts).toEqual([]);
 });
 
-test("the first Plan Mode write saves the Session baseline before the snapshot", async () => {
+test("the first Plan write persists a Session baseline before any model call", async () => {
   dirs = await tempDirs();
   const store = createJsonlStore(dirs);
-  const session = await createSession({ ...dirs, ...fakeModel([]), store });
+  const fake = fakeModel([]);
+  const session = await createSession({ ...dirs, ...fake, store });
   await session.setPlanMode(true);
-  const metadata = (await store.list({ cwd: dirs.cwd }, BACKGROUND_CONTEXT))[0]!;
-  const stored = await store.open(metadata, BACKGROUND_CONTEXT);
-  const entries = await (await stored.branch("main", BACKGROUND_CONTEXT))!.findEntries(
-    { order: "oldestFirst" },
-    BACKGROUND_CONTEXT,
-  );
-  await stored.close(BACKGROUND_CONTEXT);
-  const plan = entries.findIndex(
-    (entry) => entry.type === "custom" && entry.customType === "tool-state/plan",
-  );
-  expect(plan).toBeGreaterThan(0);
-  expect(entries.slice(0, plan).some((entry) => entry.type === "message")).toBe(true);
-  await session.dispose();
+  expect(fake.contexts).toEqual([]);
+  expect(await store.list(BACKGROUND_CONTEXT)).toMatchObject([{ id: session.id }]);
+  await session.close();
+  const lease = await store.open({ id: session.id }, BACKGROUND_CONTEXT);
+  const native = createNativeSession(lease.storage);
+  try {
+    expect(
+      await native.snapshot(planState.document, ROOT_CONVERSATION_ID, BACKGROUND_CONTEXT),
+    ).toEqual({ value: { active: true } });
+    expect(
+      (
+        await lease.storage.scanDocuments(
+          { scope: { kind: "conversation", conversationId: ROOT_CONVERSATION_ID }, at: "current" },
+          10000,
+          undefined,
+          BACKGROUND_CONTEXT,
+        )
+      ).items.length,
+    ).toBeGreaterThan(1);
+  } finally {
+    await native.close(BACKGROUND_CONTEXT);
+    await lease.release();
+  }
+  const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
+  expect(resumed.planMode).toBe(true);
 });

@@ -40,7 +40,6 @@ export interface ContextUsageEvent {
 
 export type CustomSessionEvent<PiEvent extends { type: string } = never> =
   | JobEvent
-  | { type: "session_start"; model: string; cwd: string; tools: string[] }
   | {
       type: "subagent_event";
       agentId: string;
@@ -48,16 +47,12 @@ export type CustomSessionEvent<PiEvent extends { type: string } = never> =
       subagentType: string;
       event: SessionEvent<PiEvent>;
     }
-  | { type: "subagents_waiting"; count: number }
   | ContextUsageEvent
   | ({ type: "result" } & RunResult)
-  | { type: "reminder_injected"; source: string; content: string }
   | { type: "session_title_changed"; title: string; source: "prompt" | "model" | "user" }
   | { type: "tool_state_changed"; name: string; value: unknown }
   /** The Session's messages and Tool State now project the rewound branch. */
   | { type: "conversation_rewound"; promptEntryId: string }
-  /** A failed message save was reconciled; read Session.messages for committed history and unknown Tool outcomes. */
-  | { type: "conversation_reconciled" }
   | {
       type: "permission_denied";
       toolCallId: string;
@@ -88,15 +83,7 @@ export type CustomSessionEvent<PiEvent extends { type: string } = never> =
   /** Committed MCP snapshot or diagnostics changed. Read mcpServers() without refresh; cache reads do not re-emit. */
   | { type: "mcp_servers_changed" }
   | { type: "mcp_server_error"; server: string; error: string; errorData?: UserVisibleErrorData }
-  | { type: "mcp_auth_required"; server: string }
-  | { type: "compaction_start"; trigger: "auto" | "manual"; tokensBefore: number }
-  | {
-      type: "compaction_end";
-      trigger: "auto" | "manual";
-      summary: string;
-      tokensBefore: number;
-      tokensAfter: number;
-    };
+  | { type: "mcp_auth_required"; server: string };
 
 /** The caller supplies pi's native AgentEvent without a runtime or type dependency here. */
 export type SessionEvent<PiEvent extends { type: string }> = (

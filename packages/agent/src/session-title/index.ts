@@ -1,10 +1,11 @@
-import type { StreamFn } from "@earendil-works/pi-agent-core";
-import { normalizeContext, type Api, type Model } from "@earendil-works/pi-ai";
+import { normalizeContext, type Api, type Model, type Models } from "@earendil-works/pi-ai";
 import { createUserVisibleError } from "@rukie/shared";
-import type { ToolStateDefinition } from "../tool-state/index.ts";
+import { defineToolState, type ToolStateDefinition } from "../tool-state/index.ts";
 
 export type TitleSource = "prompt" | "model" | "user";
-export const titleSourceState: ToolStateDefinition = {
+export const titleSourceState: ToolStateDefinition = defineToolState({
+  history: "rewindable",
+  fork: "asOf",
   name: "title-source",
   version: 1,
   parse(version, value) {
@@ -12,7 +13,7 @@ export const titleSourceState: ToolStateDefinition = {
       throw new Error("Invalid Session Title source.");
     return value;
   },
-};
+});
 
 const POLICY = [
   "Create a concise title for an AI coding-assistant session from the supplied human messages.",
@@ -66,7 +67,7 @@ export function createSessionTitle(options: {
   hasPrompt: boolean;
   childDescription?: string;
   getModel(): Promise<Model<Api>>;
-  streamFn: StreamFn;
+  models: Models;
   persist(title: string, source: TitleSource): Promise<void>;
   changed(title: string, source: TitleSource): void;
   warning(message: string): void;
@@ -102,7 +103,7 @@ export function createSessionTitle(options: {
           const model = await options.getModel();
           controller.signal.throwIfAborted();
           return (
-            await options.streamFn(
+            await options.models.streamSimple(
               model,
               normalizeContext({
                 systemPrompt: POLICY,

@@ -1,9 +1,11 @@
 import { testClock } from "../helpers/test-clock";
 import { test, expect } from "bun:test";
-import { createJsonlStore, createSession } from "@rukie/agent";
-import { controlledModel } from "../helpers/model";
+import { createSession } from "@rukie/agent";
 import { start } from "../helpers/app";
 import { startWithClock } from "../helpers/clock-app";
+import { failingStorage } from "../../helpers/native-storage-failure";
+import { fakeModel } from "../helpers/agent-fixtures";
+import { getCurrentTools } from "@earendil-works/pi-ai";
 
 test.each(["assistant", "toolResult"] as const)(
   "child rejected %s save reconciles open Agent View and Resume",
@@ -17,56 +19,32 @@ test.each(["assistant", "toolResult"] as const)(
       env: { LANG: "en" },
       session: { permissionMode: "full-access" },
       prepare: async (root) => {
-        const store = createJsonlStore({ cwd: root, homeDir: root });
-        const wrap = (stored: Awaited<ReturnType<typeof store.create>>) => {
-          const wrapBranch = (branch: Awaited<ReturnType<typeof stored.createBranch>>) =>
-            new Proxy(branch, {
-              get(owner, method) {
-                if (method === "appendMessage")
-                  return async (...args: Parameters<typeof branch.appendMessage>) => {
-                    const m = args[0];
-                    if (
-                      !rejected &&
-                      ((rejectedRole === "assistant" &&
-                        m.role === "assistant" &&
-                        JSON.stringify(m).includes("child ghost body")) ||
-                        (rejectedRole === "toolResult" &&
-                          m.role === "toolResult" &&
-                          m.toolName === "write"))
-                    ) {
-                      rejected = true;
-                      throw new Error("child save rejected");
-                    }
-                    return owner.appendMessage(...args);
-                  };
-                const v = Reflect.get(owner, method);
-                return typeof v === "function" ? v.bind(owner) : v;
-              },
-            });
-          return new Proxy(stored, {
-            get(target, key) {
-              if (key === "createBranch")
-                return async (...args: Parameters<typeof stored.createBranch>) =>
-                  wrapBranch(await target.createBranch(...args));
-              if (key === "branch")
-                return async (...args: Parameters<typeof stored.branch>) => {
-                  const branch = await target.branch(...args);
-                  return branch ? wrapBranch(branch) : branch;
-                };
-              const v = Reflect.get(target, key);
-              return typeof v === "function" ? v.bind(target) : v;
-            },
-          });
-        };
+        const failing = failingStorage(root, (writes) => {
+          if (rejected) return;
+          if (
+            writes.some(
+              (write) =>
+                write.type === "entry" &&
+                write.value.model?.some((message) =>
+                  rejectedRole === "assistant"
+                    ? message.role === "assistant" &&
+                      message.stopReason === "stop" &&
+                      JSON.stringify(message.content).includes("child rejected final body")
+                    : message.role === "toolResult" && message.toolName === "write",
+                ),
+            )
+          ) {
+            rejected = true;
+            return new Error("child save rejected");
+          }
+        });
         options.session!.store = {
-          ...store,
-          create: async (...args) => {
-            const saved = await store.create(...args);
-            if (saved.metadata.parentSessionId) childId = saved.metadata.id;
-            else parentId = saved.metadata.id;
-            return wrap(saved);
+          ...failing,
+          async open(...args) {
+            const lease = await failing.open(...args);
+            parentId = lease.id;
+            return lease;
           },
-          open: async (...args) => wrap(await store.open(...args)),
         };
       },
     };
@@ -83,50 +61,56 @@ test.each(["assistant", "toolResult"] as const)(
           (m) => m.role === "user" && JSON.stringify(m.content).includes("child rejected prompt"),
         ),
       )!;
+      app.calls
+        .slice(1)
+        .find((call) => call !== child)!
+        .finish();
       child.thinking("durable child partial");
       child.tool("read", { path: "missing-durable.txt" });
       await app.waitFor(() => app.calls.length === 4);
       const tail = app.calls[3]!;
-      tail.delta("child ghost body");
-      await app.waitFor(() => app.screen().join("\n").includes("child ghost body"));
+      tail.delta("durable child tail");
+      await app.waitFor(() => app.screen().join("\n").includes("durable child tail"));
       const y = app.screen().findIndex((r) => r.includes("Subagent: Reject child"));
       const x = app.screen()[y]!.indexOf("⤢");
       app.stdin.write(`\x1b[<0;${x + 1};${y + 1}M\x1b[<0;${x + 1};${y + 1}m`);
       await app.waitFor(() => app.screen().join("\n").includes("Agent View"));
-      if (rejectedRole === "assistant") tail.finish();
+      if (rejectedRole === "assistant") tail.reply("child rejected final body");
       else tail.tool("write", { path: "child-effect.txt", content: "saved effect" });
       await app.waitFor(() => rejected);
-      await app.waitFor(() => app.screen().join("\n").includes("Run ended with error"));
-      await app.waitFor(() => !app.screen().join("\n").includes("child ghost body"));
+      await app.waitFor(() => !app.screen().join("\n").includes("child rejected final body"));
 
       expect(rejected).toBe(true);
-      expect(app.screen().join("\n")).not.toContain("child ghost body");
+      expect(app.screen().join("\n")).not.toContain("child rejected final body");
       app.stdin.write("\r");
       await app.waitFor(() => app.screen().join("\n").includes("durable child partial"));
       expect(app.screen().join("\n")).toContain("durable child partial");
+      await app.shutdown();
       const restored = await createSession({
         cwd: app.root,
         homeDir: app.root,
         resumeId: parentId,
-        model: controlledModel().model,
-        streamFn: () => {
-          throw new Error("read-only verification must not run");
-        },
+        ...(await fakeModel([])),
       });
       try {
+        if (restored.currentRequestId) await restored.waitForRequest(restored.currentRequestId);
+        const identities = restored.toolState("subagents");
+        if (!Array.isArray(identities) || !identities[0] || typeof identities[0].id !== "string")
+          throw new Error("Native child identity missing");
+        childId = identities[0].id;
         const snapshot = await restored.readSubagent(childId);
         expect(JSON.stringify(snapshot!.messages)).toContain("durable child partial");
-        expect(JSON.stringify(snapshot!.messages)).not.toContain("child ghost body");
+        expect(JSON.stringify(snapshot!.messages)).not.toContain("child rejected final body");
         expect(snapshot!.run!.outcome).toBe("error");
         if (rejectedRole === "toolResult") {
           const result = snapshot!.messages.find(
             (m) => m.role === "toolResult" && m.toolName === "write",
           );
-          expect(JSON.stringify(result)).toContain("unknown-tool-outcome");
+          expect(result?.role === "toolResult" && result.outcomeUnknown).toBe(true);
           expect(await Bun.file(app.root + "/child-effect.txt").text()).toBe("saved effect");
         }
       } finally {
-        await restored.dispose();
+        await restored.close();
       }
       const replay = await start(["--resume", parentId], {
         columns: 120,
@@ -145,43 +129,60 @@ test.each(["assistant", "toolResult"] as const)(
         await replay.waitFor(() => replay.screen().join("\n").includes("Agent View"));
         replay.stdin.write("\r");
         await replay.waitFor(() => replay.screen().join("\n").includes("durable child partial"));
-        expect(replay.screen().join("\n")).not.toContain("child ghost body");
+        expect(replay.screen().join("\n")).not.toContain("child rejected final body");
         expect(replay.calls).toHaveLength(0);
+        replay.stdin.write("\x1b");
+        await replay.waitFor(() => replay.screen().includes("❯"));
+        replay.stdin.write("continue child\r");
+        await replay.waitFor(() => replay.calls.length === 1);
+        replay.calls[0]!.tool("send_message", {
+          agent_id: childId,
+          message: "fresh child continuation",
+        });
+        await replay.waitFor(() =>
+          replay.calls.some((call) =>
+            call.context.messages.some(
+              (message) =>
+                message.role === "user" &&
+                JSON.stringify(message.content).includes("fresh child continuation"),
+            ),
+          ),
+        );
+        const next = replay.calls.find((call) =>
+          call.context.messages.some(
+            (message) =>
+              message.role === "user" &&
+              JSON.stringify(message.content).includes("fresh child continuation"),
+          ),
+        )!;
+        expect(JSON.stringify(next.context.messages)).toContain("durable child partial");
+        expect(JSON.stringify(next.context.messages)).not.toContain("child rejected final body");
+        next.reply("fresh child live output");
+        const completedParents = new Set([replay.calls[0]!]);
+        await replay.waitFor(() => {
+          for (const call of replay.calls) {
+            if (
+              completedParents.has(call) ||
+              !getCurrentTools(call.context.messages).some((tool) => tool.name === "send_message")
+            )
+              continue;
+            completedParents.add(call);
+            call.reply("parent continuation settled");
+          }
+          return (
+            replay.calls.length >= 4 &&
+            replay.screen().join("\n").includes("fresh child live output") &&
+            !replay.screen().some((line) => line.includes("esc interrupt"))
+          );
+        });
+        expect(replay.stderr()).toBe("");
       } finally {
         await replay.cleanup();
       }
-      if (rejectedRole === "toolResult") {
-        app.stdin.write("\x1b[C");
-        await app.waitFor(() => app.screen().join("\n").includes("? Write"));
-        expect(app.screen().join("\n")).not.toContain("✓ Write");
-      }
-      const parent = app.calls
-        .slice(1)
-        .find((c) =>
-          c.context.messages.some(
-            (m) => m.role === "user" && JSON.stringify(m.content).includes("delegate"),
-          ),
-        )!;
-      expect(parent).toBeDefined();
-      const count = app.calls.length;
-      parent.tool("send_message", { agent_id: childId, message: "fresh child continuation" });
-      await app.waitFor(() => app.calls.length >= count + 2);
-      const next = app.calls
-        .slice(count)
-        .find((c) =>
-          c.context.messages.some(
-            (m) =>
-              m.role === "user" && JSON.stringify(m.content).includes("fresh child continuation"),
-          ),
-        )!;
-      next.delta("fresh child live output");
-      if (rejectedRole === "toolResult") app.stdin.write("\x1b[D");
-      await app.waitFor(() => app.screen().join("\n").includes("fresh child live output"));
-      expect(app.screen().join("\n")).not.toContain("child ghost body");
-      next.finish();
-      // Agent View renders the persisted successful Run Outcome after settlement.
-      await app.waitFor(() => app.screen().join("\n").includes("Run ended normally"));
-      expect(app.stderr()).toBe("");
+
+      expect(app.stderr()).toContain(
+        "Session is poisoned by a failed commit after storage admission; reopen it",
+      );
     } finally {
       await app.cleanup();
     }

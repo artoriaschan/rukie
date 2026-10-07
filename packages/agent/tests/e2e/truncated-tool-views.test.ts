@@ -46,16 +46,22 @@ test.each(reads)(
       if (!("nextOffset" in facts)) expect(end.view.nextOffset).toBeUndefined();
       if (!("outputUnavailable" in facts)) expect(end.view.outputUnavailable).toBeUndefined();
       const message = session.messages.find((item) => item.role === "toolResult");
-      expect(JSON.stringify(message?.content)).toContain(end.view.content.replaceAll("\n", "\\n"));
-      await session.dispose();
+      if (message?.role !== "toolResult") throw new Error("Missing committed tool result");
+      expect(
+        message.content
+          .filter((block) => block.type === "text")
+          .map((block) => block.text)
+          .join("\n"),
+      ).toBe(end.view.content);
+      await session.close();
       await Bun.write(`${dirs.cwd}/input.txt`, "changed after read");
       resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
       expect(resumed.messages.find((item) => item.role === "toolResult")).toMatchObject({
         view: end.view,
       });
     } finally {
-      await resumed?.dispose();
-      await session.dispose();
+      await resumed?.close();
+      await session.close();
       await dirs.cleanup();
     }
   },
@@ -88,14 +94,14 @@ test("bash preserves recovery path and model-visible text through Session Resume
     expect(end.view.outputUnavailable).toBe(true);
     expect(end.view.fullOutputPath).toBeString();
     expect(end.view.output).toContain(`Full output: ${end.view.fullOutputPath}`);
-    await session.dispose();
+    await session.close();
     resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
     expect(resumed.messages.find((item) => item.role === "toolResult")).toMatchObject({
       view: end.view,
     });
   } finally {
-    await resumed?.dispose();
-    await session.dispose();
+    await resumed?.close();
+    await session.close();
     await dirs.cleanup();
   }
 });

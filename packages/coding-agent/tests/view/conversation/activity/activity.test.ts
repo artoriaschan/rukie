@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import type { SessionEvent } from "@rukie/agent";
+import type { TaskId } from "@earendil-works/pi-durable";
 import {
   createActivity,
   reduce,
@@ -21,6 +22,8 @@ import {
 } from "../../../../src/view/conversation/activity/phrases";
 
 const sessionId = "activity-test";
+// Pure projection fixtures use one valid positive native task ID without a scheduler.
+const taskId = 1 as TaskId;
 const start = 1_790_942_400_000;
 const random = () => 0;
 
@@ -28,7 +31,7 @@ test("English compaction, review, approval, failure and interruption keep their 
   let state = reduce(createActivity("en"), { type: "submit" }, start, random);
   state = reduce(
     state,
-    { type: "compaction_start", trigger: "auto", sessionId, tokensBefore: 120_000 },
+    { type: "compaction_start", taskId, reason: "threshold", blocking: true, sessionId },
     start,
     random,
   );
@@ -59,16 +62,14 @@ test("English compaction, review, approval, failure and interruption keep their 
     state,
     {
       type: "compaction_end",
-      trigger: "auto",
+      taskId,
+      reason: "threshold",
       sessionId,
-      summary: "private",
-      tokensBefore: 120_000,
-      tokensAfter: 18_000,
     },
     start,
     random,
   );
-  expect(render(state, start).line).toBe("Compacted · 120.0k→18.0k · total 0s");
+  expect(render(state, start).line).toBe("Compacted · total 0s");
   state = reduce(state, toolStart("a"), start + 7000, random);
   state = reduce(state, toolEnd("a", true), start + 8000, random);
   expect(render(state, start + 8000).line).toBe("✗ That failed · Reading src/a.ts · 1s · total 8s");
@@ -123,7 +124,8 @@ function delta(
     type: "message_update",
     sessionId,
     message,
-    assistantMessageEvent: { type, contentIndex: 0, delta: text, partial: message },
+    usage: message.usage,
+    changes: [{ type, contentIndex: 0, delta: text }],
   };
 }
 
@@ -131,7 +133,7 @@ function toolStart(
   id: string,
   toolName = "read",
   args: unknown = { path: "src/a.ts" },
-): SessionEvent {
+): Parameters<typeof reduce>[1] {
   return { type: "tool_execution_start", sessionId, toolCallId: id, toolName, args };
 }
 
@@ -141,8 +143,14 @@ function toolEnd(id: string, isError = false): SessionEvent {
     sessionId,
     toolCallId: id,
     toolName: "read",
-    result: {},
-    isError,
+    result: {
+      role: "toolResult",
+      toolCallId: id,
+      toolName: "read",
+      content: [],
+      timestamp: 0,
+      isError,
+    },
   };
 }
 
@@ -281,7 +289,7 @@ test("compaction copy stays deterministic above other copy and below approval wi
   state = reduce(state, { type: "interrupt" }, start + 50, random);
   state = reduce(
     state,
-    { type: "compaction_start", trigger: "auto", sessionId, tokensBefore: 120_000 },
+    { type: "compaction_start", taskId, reason: "threshold", blocking: true, sessionId },
     start + 100,
     random,
   );
@@ -308,7 +316,7 @@ test.each(["waiting", "thinking", "tool"] as const)(
     if (phase === "tool") state = reduce(state, toolStart("a"), start + 50, random);
     state = reduce(
       state,
-      { type: "compaction_start", trigger: "auto", sessionId, tokensBefore: 120_000 },
+      { type: "compaction_start", taskId, reason: "threshold", blocking: true, sessionId },
       start + 100,
       random,
     );
@@ -322,11 +330,9 @@ test.each(["waiting", "thinking", "tool"] as const)(
 const clearingEvents: Parameters<typeof reduce>[1][] = [
   {
     type: "compaction_end",
-    trigger: "auto",
+    taskId,
+    reason: "threshold",
     sessionId,
-    summary: "private summary",
-    tokensBefore: 120_000,
-    tokensAfter: 18_000,
   },
   { type: "message_start", sessionId, message: fauxAssistantMessage("") },
   result(),
@@ -336,7 +342,7 @@ test.each(clearingEvents)("$type clears compaction waiting copy", (event) => {
   let state = reduce(createActivity(), { type: "submit" }, start, random);
   state = reduce(
     state,
-    { type: "compaction_start", trigger: "auto", sessionId, tokensBefore: 120_000 },
+    { type: "compaction_start", taskId, reason: "threshold", blocking: true, sessionId },
     start + 100,
     random,
   );
@@ -348,11 +354,11 @@ test.each(clearingEvents)("$type clears compaction waiting copy", (event) => {
   }
 });
 
-test("compaction completion reports formatted before and after tokens for exactly six seconds", () => {
+test("native compaction completion reports localized copy for exactly six seconds", () => {
   let state = reduce(createActivity(), { type: "submit" }, start, random);
   state = reduce(
     state,
-    { type: "compaction_start", trigger: "auto", sessionId, tokensBefore: 120_000 },
+    { type: "compaction_start", taskId, reason: "threshold", blocking: true, sessionId },
     start + 100,
     random,
   );
@@ -363,11 +369,10 @@ test("compaction completion reports formatted before and after tokens for exactl
     start + 201,
     random,
   );
-  expect(render(state, start + 200).line).toBe("压缩了一下 · 120.0k→18.0k · 总0s");
-  expect(render(state, start + 6199).line).toContain("120.0k→18.0k");
+  expect(render(state, start + 200).line).toBe("压缩了一下 · 总0s");
+  expect(render(state, start + 6199).line).toContain("压缩了一下");
   expect(render(state, start + 6199).nextWakeAt).toBe(start + 6200);
-  expect(render(state, start + 6200).line).not.toContain("120.0k→18.0k");
-  expect(render(state, start + 200).line).not.toContain("private summary");
+  expect(render(state, start + 6200).line).not.toContain("压缩了一下");
 });
 
 test("approval overrides narration and compaction; a closed dialog restores fresh copy", () => {
@@ -377,11 +382,9 @@ test("approval overrides narration and compaction; a closed dialog restores fres
     state,
     {
       type: "compaction_end",
-      trigger: "auto",
+      taskId,
+      reason: "threshold",
       sessionId,
-      summary: "",
-      tokensBefore: 1,
-      tokensAfter: 0,
     },
     start + 100,
     random,
@@ -503,4 +506,62 @@ test("failed tools show a failure quip instead of a success checkmark", () => {
   state = reduce(state, toolStart("a"), start, random);
   state = reduce(state, toolEnd("a", true), start + 87, random);
   expect(render(state, start + 87).line).toBe("✗ 翻车了 · 翻翻文档 src/a.ts · 87ms · 总0s");
+});
+
+test("a committed snapshot restores active generation and a batched delta retains all narration", () => {
+  const snapshot: SessionEvent = {
+    type: "snapshot",
+    sessionId,
+    entries: [],
+    run: { inputs: [] },
+    generation: { attempt: 1, message: fauxAssistantMessage("partial") },
+    tools: [],
+    compactions: [],
+    inbox: [],
+    agent: {},
+    usage: { models: {}, tools: {} },
+    messages: [],
+    background: [],
+    toolStates: {},
+    runSummaries: [],
+    model: "faux/faux-1",
+    planMode: false,
+  };
+  const restored = reduce(createActivity("en"), snapshot, 1000);
+  expect(restored.phase).toBe("thinking");
+  const message = fauxAssistantMessage("I am reading the source");
+  const next = reduce(
+    restored,
+    {
+      type: "message_update",
+      sessionId,
+      message,
+      usage: message.usage,
+      changes: [
+        { type: "text_delta", contentIndex: 0, delta: "I am reading " },
+        { type: "thinking_delta", contentIndex: 1, delta: "inspect" },
+        { type: "text_delta", contentIndex: 0, delta: "the source" },
+      ],
+    },
+    1100,
+  );
+  expect(next.streamLine).toBe("I am reading the source");
+  expect(next.lastChunkAt).toBe(1100);
+  const extended = fauxAssistantMessage("I am reading the source now");
+  const structural = reduce(
+    next,
+    {
+      type: "message_update",
+      sessionId,
+      message: extended,
+      usage: extended.usage,
+      changes: [{ type: "message", message: extended }],
+    },
+    1150,
+  );
+  expect(structural.streamLine).toBe("I am reading the source now");
+  expect(structural.phase).toBe("thinking");
+  expect(reduce(next, { ...snapshot, run: undefined, generation: undefined }, 1200).phase).toBe(
+    "idle",
+  );
 });

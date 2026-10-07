@@ -1,8 +1,7 @@
 import { expect, test } from "bun:test";
-import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
-import { createJsonlStore, createSession } from "@rukie/agent";
-import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { stat } from "node:fs/promises";
 import { start } from "../helpers/app";
+import { crashUnsafeEffect } from "../helpers/native-recovery";
 
 test.each([
   ["zh_CN.UTF-8", 40, 12, "结果未知", "可能已产生副作用。", "重试前先核对实际状态。"],
@@ -27,52 +26,54 @@ test.each([
   "resume shows honest unknown Tool history in %s at %s×%s and accepts the next input",
   async (lang, columns, rows, unknown, effects, retry) => {
     const argv: string[] = [];
+    let effectModifiedAt = 0;
     const app = await start(argv, {
       columns,
       rows,
       env: { LANG: lang },
       async prepare(root) {
-        const store = createJsonlStore({ cwd: root, homeDir: root });
-        const original = await createSession({ cwd: root, homeDir: root, ...storeModel(), store });
-        const metadata = (await store.list({ cwd: root }, BACKGROUND_CONTEXT))[0]!;
-        const stored = await store.open(metadata, BACKGROUND_CONTEXT);
-        const branch = (await stored.branch("main", BACKGROUND_CONTEXT))!;
-        await branch.appendMessage(
-          fauxAssistantMessage(
-            fauxToolCall("write", { path: "saved.txt", content: "payload" }, { id: "lost-write" }),
-            { stopReason: "toolUse" },
-          ),
-          BACKGROUND_CONTEXT,
-        );
-        await stored.close(BACKGROUND_CONTEXT);
-        await original.dispose();
-        argv.push("--resume", original.id);
+        const crashed = await crashUnsafeEffect(root);
+        const { sessionId } = crashed;
+        effectModifiedAt = crashed.effectModifiedAt;
+        argv.push("--resume", sessionId);
       },
     });
     try {
       await app.waitFor(() => app.screen().includes("❯"));
-      expect(app.calls).toHaveLength(0);
+      await app.waitFor(() => app.calls.length === 1);
+      expect(JSON.stringify(app.calls[0]!.context.messages)).toContain("may have partially run");
+      app.calls[0]!.reply("ready to verify");
+      await app.waitFor(() => !app.isWorking());
       if (rows === 12) {
         app.resize(columns, 24);
-        await app.waitFor(() => app.screen().some((line) => line.includes("? write")));
+        await app.waitFor(() =>
+          app.screen().some((line) => /^\? (?:write|Write|写入)/.test(line.trimStart())),
+        );
       }
+      const row = app
+        .screen()
+        .findIndex((line) => /^\? (?:write|Write|写入)/.test(line.trimStart()));
+      expect(row).toBeGreaterThanOrEqual(0);
+      app.stdin.write(`\x1b[<0;3;${row + 1}M\x1b[<0;3;${row + 1}m`);
+      await app.waitFor(() => app.screen().join("\n").includes(unknown));
       const history = app.screen().join("\n");
       expect(history).toContain(`⎿ ${unknown}`);
       expect(history).toContain(effects);
       expect(history).toContain(retry);
-      expect(history).toContain("? write");
+      expect(history).toMatch(/\? (?:write|Write|写入)/);
       expect(history).not.toContain("✗ write");
       expect(history).not.toContain("• write");
-      expect(await Bun.file(`${app.root}/saved.txt`).exists()).toBe(false);
+      expect(await Bun.file(`${app.root}/uncertain-effect.txt`).text()).toBe("saved effect");
+      expect((await stat(`${app.root}/uncertain-effect.txt`)).mtimeMs).toBe(effectModifiedAt);
       if (rows === 12) {
         app.resize(columns, rows);
         await app.waitFor(() => app.screen().at(-3)?.includes("/128k") === true);
       }
       app.stdin.write("verify\r");
-      await app.waitFor(() => app.calls.length === 1);
-      expect(JSON.stringify(app.calls[0]!.context.messages)).toContain("unknown-tool-outcome");
-      app.calls[0]!.delta("ready to verify");
-      app.calls[0]!.finish();
+      await app.waitFor(() => app.calls.length === 2);
+      expect(JSON.stringify(app.calls[1]!.context.messages)).toContain("may have partially run");
+      app.calls[1]!.delta("ready to verify");
+      app.calls[1]!.finish();
       await app.waitFor(
         () => app.allLines().join("\n").includes("ready to verify") && !app.isWorking(),
       );
@@ -83,13 +84,3 @@ test.each([
     }
   },
 );
-
-function storeModel() {
-  const faux = createFauxCore({ api: "faux", provider: "faux" });
-  return {
-    model: faux.getModel(),
-    streamFn: () => {
-      throw new Error("History preparation must not request the model");
-    },
-  };
-}

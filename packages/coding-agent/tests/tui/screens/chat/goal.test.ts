@@ -1,3 +1,4 @@
+import { auxiliaryModels } from "../../helpers/auxiliary-model";
 import { expect, test } from "bun:test";
 import { start } from "../../helpers/app";
 import { startWithClock } from "../../helpers/clock-app";
@@ -9,14 +10,17 @@ import { dark } from "../../../../src/ink/index.ts";
 function goalFixtureModel() {
   const fake = controlledModel();
   const called = Promise.withResolvers<void>();
+  const continued = Promise.withResolvers<void>();
   return {
     ...fake,
     firstCall: called.promise,
-    streamFn(...args: Parameters<typeof fake.streamFn>) {
-      const stream = fake.streamFn(...args);
+    secondCall: continued.promise,
+    models: auxiliaryModels((...args) => {
+      const stream = fake.provider.streamSimple(...args);
       if (fake.calls.length) called.resolve();
+      if (fake.calls.length >= 2) continued.resolve();
       return stream;
-    },
+    }),
   };
 }
 
@@ -127,49 +131,13 @@ test("a persisted complete goal freezes elapsed time and edit starts a fresh goa
         permissionMode: "full-access",
         ...fake,
       });
-      const finished = new Promise<void>((resolve) =>
-        session.subscribe((event) => {
-          if (event.type === "result") resolve();
-        }),
-      );
-      await session.createGoal("finished migration");
+      const goal = await session.createGoal("finished migration");
       await fake.firstCall;
-      fake.calls[0]!.fail("fixture stops scheduling");
-      await finished;
-      await session.dispose();
-      // A native persisted Goal fixture allows complete replay without model-tool ownership.
-      for await (const path of new Bun.Glob(`**/*_${session.id}.jsonl`).scan({
-        cwd: `${root}/.rukie/sessions`,
-        absolute: true,
-      })) {
-        const records: unknown[] = (await Bun.file(path).text())
-          .trimEnd()
-          .split("\n")
-          .map((line) => JSON.parse(line));
-        for (const entry of records.flatMap((record) =>
-          Array.isArray(record) ? record : [record],
-        )) {
-          if (
-            typeof entry !== "object" ||
-            entry === null ||
-            !("customType" in entry) ||
-            entry.customType !== "tool-state/goal" ||
-            !("data" in entry)
-          )
-            continue;
-          const data: unknown = entry.data;
-          if (
-            typeof data !== "object" ||
-            data === null ||
-            !("value" in data) ||
-            typeof data.value !== "object" ||
-            data.value === null
-          )
-            continue;
-          data.value = { ...data.value, phase: "complete" };
-        }
-        await Bun.write(path, records.map((record) => JSON.stringify(record)).join("\n") + "\n");
-      }
+      fake.calls[0]!.tool("update_goal", { action: "complete" });
+      await fake.secondCall;
+      fake.calls[1]!.reply("Migration complete.");
+      await session.waitForRequest(goal.requestId);
+      await session.close();
       argv.push("--resume", session.id);
     },
   });
@@ -206,17 +174,12 @@ test("an errored goal refreshes activation and resumed active goals stay disarme
         permissionMode: "full-access",
         ...fake,
       });
-      const finished = new Promise<void>((resolve) =>
-        session.subscribe((event) => {
-          if (event.type === "result") resolve();
-        }),
-      );
-      await session.createGoal("repair widgets");
+      const goal = await session.createGoal("repair widgets");
       await fake.firstCall;
       fake.calls[0]!.fail("provider unavailable");
-      await finished;
+      await session.waitForRequest(goal.requestId);
       argv.push("--resume", session.id);
-      await session.dispose();
+      await session.close();
     },
   });
   try {
@@ -306,7 +269,13 @@ test.each(["question", "permission"])(
       expect(lines.some((line) => line.includes("retained draft"))).toBe(true);
       expect(lines.at(-2)).toContain("● 1/256");
       expect(lines.at(-1)).toContain("esc");
-      expect(app.calls[0]!.signal!.aborted).toBe(false);
+      const child = app.calls.find((call) =>
+        call.context.messages.some(
+          (message) =>
+            message.role === "user" && JSON.stringify(message.content).includes("child task"),
+        ),
+      )!;
+      expect(child.signal!.aborted).toBe(false);
     } finally {
       await app.cleanup();
     }
@@ -379,13 +348,14 @@ test.each(["question", "permission"])(
               resolve();
           }),
         );
-        await session.createGoal("migrate " + "界".repeat(50), { maxRounds: 1 });
+        const goal = await session.createGoal("migrate " + "界".repeat(50), { maxRounds: 1 });
         await fake.firstCall;
         fake.calls[0]!.delta("Saved progress.");
         fake.calls[0]!.finish();
         await blocked;
+        await session.waitForRequest(goal.requestId);
         argv.push("--resume", session.id);
-        await session.dispose();
+        await session.close();
       },
     });
     try {
@@ -442,7 +412,13 @@ test.each(["question", "permission"])(
       expect(screen(app)).toContain("retained draft");
       expect(app.screen().at(-2)).toContain("⛔ 1/1");
       expect(screen(app)).toContain("Esc");
-      expect(parent.signal!.aborted).toBe(false);
+      const child = app.calls.find((call) =>
+        call.context.messages.some(
+          (message) =>
+            message.role === "user" && JSON.stringify(message.content).includes("child task"),
+        ),
+      )!;
+      expect(child.signal!.aborted).toBe(false);
       app.stdin.write("\x1b");
       await app.waitFor(() => app.calls.length === 4);
       expect(screen(app)).toContain("⛔ blocked · 1/1");

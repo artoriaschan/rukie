@@ -1,15 +1,21 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
+import { getCurrentTools } from "@earendil-works/pi-ai";
 import { startWithClock } from "../helpers/clock-app";
+import { committedJobNotifications } from "../helpers/job-notifications";
 
 test("mixed parent, two Jobs and two Subagents preserve reading, copy and Interaction ownership across microtasks", async () => {
   const copied: string[] = [];
+  const commits = committedJobNotifications();
   const app = await startWithClock(["--yolo", "历史 parent"], {
     columns: 80,
     rows: 60,
     env: { LANG: "en" },
-    prepare: (root) =>
-      Bun.write(join(root, "fixture.txt"), "one\ntwo\nthree\nfour\nfive").then(() => {}),
+    session: commits.session,
+    prepare: async (root) => {
+      await commits.prepare(root);
+      await Bun.write(join(root, "fixture.txt"), "one\ntwo\nthree\nfour\nfive");
+    },
     host: {
       writeClipboard: async (text) => {
         copied.push(text);
@@ -30,9 +36,10 @@ test("mixed parent, two Jobs and two Subagents preserve reading, copy and Intera
     call.context.messages.some(
       (message) => message.role === "user" && JSON.stringify(message.content).includes(prompt),
     );
-  const isChild = (call: Call) =>
-    hasPrompt(call, "child-A-only") || hasPrompt(call, "child-B-only");
-  const roots = () => app.calls.filter((call) => !isChild(call));
+  const roots = () =>
+    app.calls.filter((call) =>
+      getCurrentTools(call.context.messages).some((tool) => tool.name === "send_message"),
+    );
   const completed = new Set<Call>();
   const click = (x: number, y: number) =>
     app.stdin.write(`\x1b[<0;${x + 1};${y + 1}M\x1b[<0;${x + 1};${y + 1}m`);
@@ -273,7 +280,29 @@ test("mixed parent, two Jobs and two Subagents preserve reading, copy and Intera
     expect(app.stderr()).toBe("");
     app.stdin.write("\x1b[1;5F");
     await waitFor(() => !screen().includes("Back to bottom"));
-    app.stdin.write("\x15next verification\r");
+    app.stdin.write("\x1b[F");
+    await app.flush();
+    app.stdin.write("\x7f".repeat("saved draft".length));
+    await waitFor(() => app.screen().some((line) => line === "❯"));
+    // Native child reports can resume the parent after its preceding generation ends.
+    // Settle those actual generations before submitting the next human prompt.
+    await waitFor(() => {
+      const pending = roots().filter((call) => !completed.has(call));
+      for (const call of pending) {
+        call.reply("All activities observed");
+        completed.add(call);
+      }
+      return (
+        pending.length === 0 &&
+        commits.pendingTasks() === 0 &&
+        roots().some((call) => hasPrompt(call, "(Mixed child B) finished.")) &&
+        !app.isWorking() &&
+        !screen().includes("esc interrupt")
+      );
+    });
+    app.stdin.write("next verification");
+    await waitFor(() => app.screen().some((line) => line === "❯ next verification"));
+    app.stdin.write("\r");
     await waitFor(() => app.calls.some((call) => hasPrompt(call, "next verification")));
     const next = app.calls.findLast((call) => hasPrompt(call, "next verification"))!;
     expect(

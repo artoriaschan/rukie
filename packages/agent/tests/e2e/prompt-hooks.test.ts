@@ -61,7 +61,7 @@ test.each(["json", "exit"])(
       },
     });
     expect(result).toMatchObject({
-      success: false,
+      success: true,
       stopReason: "hook_blocked",
       reason: "secret rejected",
     });
@@ -74,7 +74,7 @@ test.each(["json", "exit"])(
       session_id: session.id,
     });
     expect(await Bun.file(input.transcript_path).text()).not.toContain("private prompt");
-    expect(events.at(-1)).toMatchObject({
+    expect(events.findLast((event) => event.type === "result")).toMatchObject({
       type: "result",
       stopReason: "hook_blocked",
       reason: "secret rejected",
@@ -148,16 +148,17 @@ test("fork SessionStart matches its source, while child prompts and completion n
     "cat >> starts.jsonl\necho >> starts.jsonl\necho fork-project-state\n",
   );
   const childRelease = Promise.withResolvers<void>();
-  const parentWaiting = Promise.withResolvers<void>();
+  const childStarted = Promise.withResolvers<void>();
   const reply: Parameters<typeof fakeModel>[0][number] = async (context) => {
-    const isChild = !context.messages.some(
+    const isChild = context.messages.some(
       (message) =>
-        message.role === "system" && message.toolsAdded?.some((tool) => tool.name === "subagent"),
+        message.role === "user" && JSON.stringify(message.content).includes("child prompt"),
     );
     if (isChild) {
       expect(JSON.stringify(context.messages)).toContain(
         "<system-reminder>\\nfork-project-state\\n</system-reminder>",
       );
+      childStarted.resolve();
       await childRelease.promise;
       return fauxAssistantMessage("child finished");
     }
@@ -165,7 +166,11 @@ test("fork SessionStart matches its source, while child prompts and completion n
   };
   const fake = fakeModel([
     fauxAssistantMessage(
-      fauxToolCall("subagent_fork", { description: "Fork", prompt: "child prompt" }),
+      fauxToolCall("subagent_fork", {
+        description: "Fork",
+        prompt: "child prompt",
+        run_in_background: true,
+      }),
       { stopReason: "toolUse" },
     ),
     reply,
@@ -182,14 +187,11 @@ test("fork SessionStart matches its source, while child prompts and completion n
       },
     },
   });
-  const run = session.run("parent prompt", {
-    onEvent: (event) => {
-      if (event.type === "subagents_waiting") parentWaiting.resolve();
-    },
-  });
-  await parentWaiting.promise;
+  const run = session.run("parent prompt");
+  await childStarted.promise;
   childRelease.resolve();
   expect((await run).text).toBe("parent finished");
+  await session.waitForRequest(session.currentRequestId!);
   const starts = (await Bun.file(join(dirs.cwd, "starts.jsonl")).text())
     .trim()
     .split("\n")
@@ -244,7 +246,7 @@ test("prompt context and plain stdout are persisted as reminders for each accept
   }
   expect(
     session.messages.filter(
-      (message) => message.role === "system-reminder" && message.source === "user-prompt-hook",
+      (message) => message.role === "system-reminder" && message.source === "hook:UserPromptSubmit",
     ),
   ).toHaveLength(4);
 });
@@ -289,23 +291,23 @@ test("SessionStart runs once during creation, matches startup/resume, and keeps 
       })
     ).stopReason,
   ).toBe("hook_blocked");
-  expect(events).toContainEqual(
+  expect(session.messages).toContainEqual(
     expect.objectContaining({
-      type: "hook_message",
-      event: "SessionStart",
-      message: "session notice",
+      role: "session-notice",
+      notice: { kind: "hook_message", message: "session notice" },
     }),
   );
   await session.run("accepted");
   await session.run("next");
   expect(
     session.messages.filter(
-      (message) => message.role === "system-reminder" && message.source === "session-start-hook",
+      (message) => message.role === "system-reminder" && message.source === "hook:SessionStart",
     ),
   ).toHaveLength(1);
   expect(JSON.stringify(fake.contexts[0]!.messages)).toContain(
     "<system-reminder>\\nsession state\\n</system-reminder>",
   );
+  await session.close();
   const resumedFake = fakeModel([fauxAssistantMessage("resumed")]);
   const resumed = await createSession({ ...dirs, ...resumedFake, settings, resumeId: session.id });
   await resumed.run("resume");
@@ -315,4 +317,5 @@ test("SessionStart runs once during creation, matches startup/resume, and keeps 
     .map((line) => JSON.parse(line));
   expect(inputs.map((input) => input.source)).toEqual(["startup", "resume"]);
   expect(await Bun.file(join(dirs.cwd, "wrong-source")).exists()).toBe(false);
+  await resumed.close();
 });

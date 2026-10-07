@@ -38,11 +38,11 @@ export function createEnterPlanModeTool(plan: {
       displayKey: "tool.enter_plan_mode",
       text,
     }),
-    label: "Enter Plan Mode",
     description:
       "Request permission to enter Plan Mode before exploring and planning a larger task.",
     parameters: enterParameters,
-    async execute(_toolCallId, _params, signal) {
+    async execute(_params, _api, context) {
+      const signal = context.abortSignal ?? new AbortController().signal;
       signal?.throwIfAborted();
       if (plan.getActive()) throw new Error("already in plan mode");
       await plan.setMode(true);
@@ -78,10 +78,11 @@ export function createExitPlanModeTool(
       displayKey: "tool.exit_plan_mode",
       text,
     }),
-    label: "Review plan",
     description: "Submit a markdown plan for user review. Only available in Plan Mode.",
     parameters: reviewParameters,
-    async execute(toolCallId, { plan }, signal = new AbortController().signal) {
+    async execute({ plan }, api, context) {
+      const toolCallId = api.callId;
+      const signal = context.abortSignal ?? new AbortController().signal;
       if (!planMode.getActive()) throw new Error("Not in plan mode.");
       if (!plan.trim()) throw new Error("Plan must not be empty.");
       const request: PlanReviewRequest = { toolCallId, plan, signal };
@@ -111,7 +112,7 @@ export function createExitPlanModeTool(
         content: [{ type: "text", text }],
         details: reply,
         isError: reply.kind !== "approve",
-        ...(reply.kind === "takeover" && { terminate: true }),
+        ...(reply.kind === "takeover" && { control: { terminate: true } }),
       };
     },
   };

@@ -1,7 +1,8 @@
+import { auxiliaryModels } from "../helpers/auxiliary-model";
 import { expect, test } from "bun:test";
 import { start } from "../helpers/app";
 import { createSession } from "@rukie/agent";
-import { createFauxCore } from "@earendil-works/pi-ai";
+import { fauxProvider } from "@earendil-works/pi-ai";
 import { writeFile } from "node:fs/promises";
 
 const png =
@@ -230,15 +231,15 @@ test.each(["new", "resume", "rewind"])(
       env: { LANG: "en_US.UTF-8" },
       prepare: async (root) => {
         await Bun.write(`${root}/shot.png`, Buffer.from(png, "base64"));
-        const faux = createFauxCore({ api: "faux", provider: "faux" });
+        const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
         const previous = await createSession({
           cwd: root,
           homeDir: root,
           model: faux.getModel(),
-          streamFn: faux.streamSimple,
+          models: auxiliaryModels(faux.provider.streamSimple),
         });
         await previous.rename("Previous context");
-        await previous.dispose();
+        await previous.close();
       },
     });
     try {

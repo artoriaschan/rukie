@@ -1,6 +1,6 @@
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
+import { auxiliaryModels } from "../helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
-import { createFauxCore, fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { fauxProvider, fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { createSession } from "@rukie/agent";
 import { start } from "../helpers/app";
 
@@ -16,7 +16,7 @@ const question = {
 async function startSession(locale: "zh" | "en") {
   const argv: string[] = [];
   let root = "";
-  const original = createFauxCore({ api: "faux", provider: "faux" });
+  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
   original.setResponses([fauxAssistantMessage("seed reply")]);
   const app = await start(argv, {
     rows: 40,
@@ -28,23 +28,26 @@ async function startSession(locale: "zh" | "en") {
         cwd: root,
         homeDir: root,
         model: original.getModel(),
-        streamFn: withAuxiliaryRequests((model, context, options) =>
-          original.streamSimple(model, context, options),
+        models: auxiliaryModels((model, context, options) =>
+          original.provider.streamSimple(model, context, options),
         ),
       });
       await session.run("seed prompt");
       argv.push("--resume", session.id);
+      await session.close();
     },
   });
   return {
     app,
-    replay: () =>
-      start(argv, {
+    replay: async () => {
+      await app.shutdown();
+      return start(argv, {
         rows: 40,
         columns: 120,
         session: { cwd: root, homeDir: root },
         env: { LANG: locale === "zh" ? "zh_CN.UTF-8" : "en_US.UTF-8" },
-      }),
+      });
+    },
   };
 }
 

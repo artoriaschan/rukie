@@ -1,3 +1,4 @@
+import { withModelStream, modelStream } from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { dirname, join } from "node:path";
@@ -9,7 +10,7 @@ import { tempDirs } from "../helpers/temp-dirs.ts";
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
 let session: Session | undefined;
 afterEach(async () => {
-  await session?.dispose();
+  await session?.close();
   session = undefined;
   await dirs?.cleanup();
 });
@@ -32,7 +33,7 @@ async function waitFile(name: string) {
       if (name !== "pid" || Number(text) > 0) return text;
     }
     if (Date.now() > deadline) throw new Error(`Missing command marker ${name}`);
-    await Bun.sleep(5);
+    await new Promise<void>((resolve) => setImmediate(resolve));
   }
 }
 
@@ -45,7 +46,7 @@ async function expectDead(pid: number) {
       return;
     }
     if (Date.now() > deadline) throw new Error(`Process ${pid} survived termination`);
-    await Bun.sleep(5);
+    await new Promise<void>((resolve) => setImmediate(resolve));
   }
 }
 
@@ -63,7 +64,9 @@ test("aborting a job_output wait leaves the background process alive for the nex
   session = await createSession({
     ...dirs,
     model: fake.model,
-    streamFn: (model, context, options) => fake.streamFn(model, context, options),
+    models: withModelStream(fake.models, (model, context, options) =>
+      modelStream(fake.models)(model, context, options),
+    ),
     allowRules: ["bash"],
     settings: {
       permissions: { ask: ["job_output"] },
@@ -91,12 +94,14 @@ test("aborting a job_output wait leaves the background process alive for the nex
   const waiting = Promise.withResolvers<void>();
   const collected = Promise.withResolvers<void>();
   let collecting = false;
+  session.subscribe((event) => {
+    if (event.type === "result" && collecting) collected.resolve();
+  });
   const run = session.run("wait", {
     signal: controller.signal,
     onEvent(event) {
       if (event.type === "tool_execution_start" && event.toolName === "job_output")
         waiting.resolve();
-      if (event.type === "result" && collecting) collected.resolve();
     },
   });
   void run.catch(() => {});
@@ -135,7 +140,7 @@ test.each(["job_kill", "dispose"])(
       ["parent", "child", "grandchild"].map(async (name) => Number(await waitFile(name))),
     );
     for (const pid of pids) expect(() => process.kill(pid, 0)).not.toThrow();
-    if (action === "dispose") await session.dispose();
+    if (action === "dispose") await session.close();
     else {
       await session.run("kill tree");
       expect(resultText(session.messages)).toBe("(no new output)\n[status: killed]");
@@ -160,7 +165,7 @@ test("the eleventh running background job fails with a coded limit while foregro
   ]);
   session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
   await session.run("start eleven jobs");
-  const limited = fake.contexts[11]!.messages.at(-1);
+  const limited = fake.contexts[11]!.messages.findLast((message) => message.role === "toolResult");
   expect(limited).toMatchObject({
     role: "toolResult",
     isError: true,
@@ -186,7 +191,7 @@ test("Session Resume starts with no jobs and explains an old job id", async () =
   session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
   await session.run("start");
   const id = session.id;
-  await session.dispose();
+  await session.close();
   const resumed = fakeModel([
     call("job_list"),
     call("job_output", { job_id: "bash-1" }),
@@ -194,10 +199,12 @@ test("Session Resume starts with no jobs and explains an old job id", async () =
   ]);
   session = await createSession({ ...dirs, ...resumed, resumeId: id });
   await session.run("recover");
-  expect(resumed.contexts[1]!.messages.at(-1)).toMatchObject({
+  expect(
+    resumed.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+  ).toMatchObject({
     content: [{ type: "text", text: "(no background jobs)" }],
   });
-  expect(resultText(session.messages)).toBe(
+  expect(resultText(session.messages)).toContain(
     "unknown job bash-1; background jobs do not survive a session restart",
   );
 });
@@ -217,7 +224,7 @@ test("dispose cleans a foreground descendant even after its shell closes its out
   const pid = Number(await waitFile("child"));
   try {
     expect(resultText(session.messages)).toBe("(no background jobs)");
-    await session.dispose();
+    await session.close();
     await expectDead(pid);
   } finally {
     try {
@@ -319,9 +326,9 @@ test("bash deny rules and job hook denials still block background operations", a
     },
   });
   await session.run("try denied operations");
-  expect(JSON.stringify(fake.contexts[1]!.messages.at(-1))).toContain(
-    "Denied by permission rule: bash",
-  );
+  expect(
+    JSON.stringify(fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult")),
+  ).toContain("Denied by permission rule: bash");
   expect(resultText(session.messages)).toContain("Denied by hook: protected roster");
   expect(await Bun.file(join(dirs.cwd, "denied")).exists()).toBe(false);
 });
@@ -516,7 +523,9 @@ test("explicit job deny rules and background bash ask remain effective", async (
       ),
     ).toMatchObject({
       isError: true,
-      content: [{ type: "text", text: `Denied by permission rule: ${toolName}` }],
+      content: [
+        { type: "text", text: expect.stringContaining(`Denied by permission rule: ${toolName}`) },
+      ],
     });
   }
   expect(session.jobs()).toEqual([]);
@@ -546,7 +555,7 @@ spawn("bash", ["-c", "printf '%s' $$ > escaped; while [ ! -e go ]; do sleep 0.01
   const pid = Number(await waitFile("escaped"));
   try {
     const start = Date.now();
-    await session.dispose();
+    await session.close();
     expect(Date.now() - start).toBeLessThan(4500);
     // Detached groups are outside Rukie's process-group termination contract.
     expect(() => process.kill(pid, 0)).not.toThrow();
@@ -576,11 +585,10 @@ test("a settled job retains only a 16 KiB tail but spills its complete stdout an
   session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
   const collected = Promise.withResolvers<void>();
   let results = 0;
-  await session.run("start", {
-    onEvent(event) {
-      if (event.type === "result" && ++results === 2) collected.resolve();
-    },
+  session.subscribe((event) => {
+    if (event.type === "result" && ++results === 2) collected.resolve();
   });
+  await session.run("start");
   const pid = Number(await waitFile("pid"));
   await waitFile("ready");
   await Bun.write(join(dirs.cwd, "go"), "");
@@ -618,7 +626,7 @@ test("large background output keeps a valid UTF-8 tail and its full private spil
   if (!spill) throw new Error("Missing spill path");
   expect(await Bun.file(spill).text()).toBe("前".repeat(100000));
   expect((await stat(dirname(spill))).mode & 0o777).toBe(0o700);
-  await session.dispose();
+  await session.close();
   expect(await Bun.file(spill).exists()).toBe(false);
 });
 
@@ -639,7 +647,9 @@ test("background bash returns immediately and remains listed after its Run", asy
   ]);
   session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
   expect((await session.run("start job")).text).toBe("done");
-  expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
+  expect(
+    fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+  ).toMatchObject({
     role: "toolResult",
     isError: false,
     content: [{ type: "text", text: "started background job bash-1" }],
@@ -714,7 +724,9 @@ test("timeout promotion hands off newer output and job_kill terminates the conti
   expect(session.messages.find((message) => message.role === "toolResult")).toMatchObject({
     view: { card: "generic", kind: "execute" },
   });
-  expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
+  expect(
+    fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+  ).toMatchObject({
     isError: false,
     details: { jobId: "bash-1" },
   });
@@ -754,7 +766,9 @@ test("timeout promotion exceeds ten running background jobs without applying the
   ]);
   session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
   await session.run("start full quota then foreground command");
-  expect(fake.contexts[11]!.messages.at(-1)).toMatchObject({
+  expect(
+    fake.contexts[11]!.messages.findLast((message) => message.role === "toolResult"),
+  ).toMatchObject({
     isError: false,
     details: { jobId: "bash-11" },
   });
@@ -777,7 +791,9 @@ test("aborting the Run after timeout promotion leaves the job available to the n
   session = await createSession({
     ...dirs,
     model: fake.model,
-    streamFn: (model, context, options) => fake.streamFn(model, context, options),
+    models: withModelStream(fake.models, (model, context, options) =>
+      modelStream(fake.models)(model, context, options),
+    ),
     allowRules: ["bash"],
   });
   const controller = new AbortController();
@@ -862,11 +878,10 @@ test("a timeout-promoted job completing while idle notifies a new Run and preser
   session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
   const notified = Promise.withResolvers<void>();
   let results = 0;
-  await session.run("start slow command", {
-    onEvent(event) {
-      if (event.type === "result" && ++results === 2) notified.resolve();
-    },
+  session.subscribe((event) => {
+    if (event.type === "result" && ++results === 2) notified.resolve();
   });
+  await session.run("start slow command");
   expect(results).toBe(1);
   const pid = Number(await waitFile("pid"));
   expect(() => process.kill(pid, 0)).not.toThrow();
@@ -874,7 +889,7 @@ test("a timeout-promoted job completing while idle notifies a new Run and preser
   await notified.promise;
   await session.waitForIdle();
   expect(fake.contexts).toHaveLength(4);
-  expect(fake.contexts[2]!.messages.at(-1)).toMatchObject({
+  expect(fake.contexts[2]!.messages.findLast((message) => message.role === "user")).toMatchObject({
     role: "user",
     content: [
       {

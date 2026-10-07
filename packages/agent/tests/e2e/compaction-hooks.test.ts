@@ -1,12 +1,43 @@
+import { withModelAlias } from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { join } from "node:path";
-import { createSession, type SessionEvent } from "../../src/index.ts";
+import {
+  createSession as createSessionImpl,
+  type Session,
+  type SessionEvent,
+} from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
-afterEach(() => dirs?.cleanup());
+const sessions: Session[] = [];
+async function createSession(options: Parameters<typeof createSessionImpl>[0]) {
+  const session = await createSessionImpl(options);
+  sessions.push(session);
+  return session;
+}
+afterEach(async () => {
+  await Promise.all(sessions.splice(0).map((session) => session.close()));
+  await dirs?.cleanup();
+});
+
+function oldToolEvidence() {
+  return [
+    fauxAssistantMessage(fauxToolCall("read", { path: "old.txt" }), { stopReason: "toolUse" }),
+    fauxAssistantMessage("old evidence inspected"),
+    fauxAssistantMessage(fauxToolCall("read", { path: "old.txt" }), { stopReason: "toolUse" }),
+    fauxAssistantMessage("second evidence inspected"),
+    fauxAssistantMessage("recent protected answer"),
+  ];
+}
+async function seedHookHistory(session: Session) {
+  await Bun.write(join(dirs.cwd, "old.txt"), "OLD_EVIDENCE widget contract ".repeat(2000));
+  await session.run("inspect old work");
+  await session.run("inspect second work");
+  await session.run("recent retained work");
+  await session.setModel("hook-window/small");
+}
 
 test.each([undefined, "keep API details"])(
   "manual compaction hooks receive focus %s and reinject current reminders for the next user",
@@ -18,6 +49,7 @@ test.each([undefined, "keep API details"])(
     await Bun.write(join(dirs.cwd, "start.sh"), "cat > start.json\necho manual-compact-context\n");
     const fake = fakeModel([
       fauxAssistantMessage("old work"),
+      fauxAssistantMessage("recent work"),
       fauxAssistantMessage("Manual summary."),
       fauxAssistantMessage("next answer"),
     ]);
@@ -35,6 +67,7 @@ test.each([undefined, "keep API details"])(
       },
     });
     await session.run("first");
+    await session.run("retained recent task " + "retained fact ".repeat(6000));
     const events: SessionEvent[] = [];
     session.subscribe((event) => events.push(event));
     await session.compact({ instructions });
@@ -50,20 +83,17 @@ test.each([undefined, "keep API details"])(
     expect(await Bun.file(join(dirs.cwd, "start.json")).json()).toMatchObject({
       source: "compact",
     });
-    expect(events.filter((event) => event.type === "reminder_injected")).toMatchObject([
-      { source: "date" },
-      {
+    expect(session.messages).toContainEqual(
+      expect.objectContaining({
+        role: "system-reminder",
         source: "project-instructions",
         content: expect.stringContaining("Current project contract."),
-      },
-      { source: "skills" },
-    ]);
+      }),
+    );
     expect(JSON.stringify(session.messages)).not.toContain("manual-compact-context");
     await session.run("next user");
-    expect(fake.contexts[2]!.messages.slice(-2)).toMatchObject([
-      { role: "user", content: [{ text: "next user" }] },
-      { role: "user", content: [{ text: expect.stringContaining("manual-compact-context") }] },
-    ]);
+    expect(JSON.stringify(fake.contexts[3]!.messages)).toContain("next user");
+    expect(JSON.stringify(fake.contexts[3]!.messages)).toContain("manual-compact-context");
   },
 );
 
@@ -94,7 +124,12 @@ test.each(["block", "stop"])(
       params: { reason: "preserve review evidence" },
     });
     expect(session.messages).toEqual(before);
-    expect(events.filter((event) => event.type.startsWith("compaction_"))).toHaveLength(0);
+    expect(
+      session.messages.filter(
+        (message) => message.role === "session-notice" && message.notice.kind === "compaction",
+      ),
+    ).toEqual([]);
+    expect(fake.contexts).toHaveLength(1);
     expect((await session.run("next prompt")).text).toBe("next answer");
   },
 );
@@ -121,7 +156,7 @@ test("manual compaction stopped without a hook reason returns a locale-independe
     expect(session.messages).toEqual(before);
     expect(fake.contexts).toHaveLength(1);
   } finally {
-    await session.dispose();
+    await session.close();
   }
 });
 
@@ -140,6 +175,7 @@ test.each(["json", "exit"])(
       fauxAssistantMessage("after compaction"),
     ]);
     fake.model.contextWindow = 4000;
+    fake.models = withModelAlias(fake.models, "hook-window", ["large"], { contextWindow: 128000 });
     const warnings: string[] = [];
     const events: SessionEvent[] = [];
     const session = await createSession({
@@ -164,11 +200,14 @@ test.each(["json", "exit"])(
     };
     expect((await session.run("second", { onEvent })).text).toBe("without compaction");
     expect(JSON.stringify(fake.contexts[1])).toContain("old work old work");
+    // A declined native CompactionTask still has lifecycle events; only a
+    // committed compaction changes the durable Transcript.
     expect(
-      events.filter(
-        (event) => event.type === "compaction_start" || event.type === "compaction_end",
+      session.messages.filter(
+        (message) => message.role === "session-notice" && message.notice.kind === "compaction",
       ),
     ).toHaveLength(0);
+    expect(fake.contexts).toHaveLength(2);
     expect(events.filter((event) => event.type === "hook_warning")).toMatchObject([
       {
         event: "PreCompact",
@@ -214,6 +253,7 @@ test("PostCompact receives the stored summary after compaction_end, then compact
     fauxAssistantMessage("next answer"),
   ]);
   fake.model.contextWindow = 4000;
+  fake.models = withModelAlias(fake.models, "hook-window", ["large"], { contextWindow: 128000 });
   const session = await createSession({
     ...dirs,
     ...fake,
@@ -238,11 +278,11 @@ test("PostCompact receives the stored summary after compaction_end, then compact
       }
     },
   });
-  const ended = events.find((event) => event.type === "compaction_end")!;
+  expect(events.some((event) => event.type === "compaction_end")).toBe(true);
   expect(await Bun.file(join(dirs.cwd, "post.json")).json()).toMatchObject({
     hook_event_name: "PostCompact",
     trigger: "auto",
-    compact_summary: ended.summary,
+    compact_summary: "Saved summary.",
     session_id: session.id,
   });
   expect(await Bun.file(join(dirs.cwd, "start.json")).json()).toMatchObject({
@@ -255,6 +295,7 @@ test("PostCompact receives the stored summary after compaction_end, then compact
     { event: "PostCompact", message: "summary saved" },
   ]);
   expect(JSON.stringify(fake.contexts[2])).not.toContain("critical-project-state");
+  await session.setModel("hook-window/large");
   await session.run("third");
   expect(fake.contexts[3]!.messages.slice(-2)).toMatchObject([
     { role: "user", content: [{ text: "third" }] },
@@ -263,7 +304,16 @@ test("PostCompact receives the stored summary after compaction_end, then compact
       content: [{ text: "<system-reminder>\ncritical-project-state\n</system-reminder>" }],
     },
   ]);
-  const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
+  await session.close();
+  const next = fakeModel([]);
+  const resumed = await createSession({
+    ...dirs,
+    ...next,
+    models: withModelAlias(next.models, "hook-window", ["large", "small"], {
+      contextWindow: 128000,
+    }),
+    resumeId: session.id,
+  });
   expect(resumed.messages).toEqual(session.messages);
 });
 
@@ -277,10 +327,11 @@ test.each(["PreCompact", "PostCompact", "SessionStart"] as const)(
     );
     const fake = fakeModel([
       fauxAssistantMessage("old work ".repeat(2500)),
-      fauxAssistantMessage("Saved summary."),
+      ...(event === "PreCompact" ? [] : [fauxAssistantMessage("Saved summary.")]),
       fauxAssistantMessage("next answer"),
     ]);
     fake.model.contextWindow = 4000;
+    fake.models = withModelAlias(fake.models, "hook-window", ["large"], { contextWindow: 128000 });
     const session = await createSession({
       ...dirs,
       ...fake,
@@ -306,16 +357,23 @@ test.each(["PreCompact", "PostCompact", "SessionStart"] as const)(
       }),
     ).toMatchObject({ success: true, stopReason: "hook_stopped", reason: "halt compaction" });
     expect(fake.contexts).toHaveLength(event === "PreCompact" ? 1 : 2);
-    expect(events.filter((event) => event.type === "compaction_end")).toHaveLength(
-      event === "PreCompact" ? 0 : 1,
-    );
+    expect(events.filter((event) => event.type === "compaction_end")).toHaveLength(1);
+    expect(
+      session.messages.filter(
+        (message) => message.role === "session-notice" && message.notice.kind === "compaction",
+      ),
+    ).toHaveLength(event === "PreCompact" ? 0 : 1);
     expect(
       events.filter(
         (event) => event.type === "hook_warning" && event.error?.code === "hook-compaction-blocked",
       ),
     ).toHaveLength(0);
     expect(
-      events.filter((event) => event.type === "message_end" && event.message.role === "assistant"),
+      events.filter(
+        (event) =>
+          event.type === "message_end" &&
+          event.messages.some((message) => message.role === "assistant"),
+      ),
     ).toHaveLength(0);
     expect(
       session.messages.filter(
@@ -330,13 +388,14 @@ test.each(["PreCompact", "PostCompact", "SessionStart"] as const)(
     expect(transcript).not.toContain('"errorMessage"');
     expect(
       events
-        .flatMap((event) => (event.type === "agent_end" ? event.messages : []))
+        .flatMap((event) => (event.type === "message_end" ? event.messages : []))
         .filter(
           (message) =>
             message.role === "assistant" &&
             (message.stopReason === "error" || message.stopReason === "aborted"),
         ),
     ).toHaveLength(0);
+    await session.setModel("hook-window/large");
     expect((await session.run("next prompt")).text).toBe("next answer");
   },
 );
@@ -353,6 +412,7 @@ test.each([
     fauxAssistantMessage("continued"),
   ]);
   fake.model.contextWindow = 4000;
+  fake.models = withModelAlias(fake.models, "hook-window", ["large"], { contextWindow: 128000 });
   const session = await createSession({
     ...dirs,
     ...fake,
@@ -378,11 +438,10 @@ test.each([
   expect(events.filter((event) => event.type === "compaction_end")).toHaveLength(1);
 });
 
-test("an oversized pending request without earlier Transcript messages to compact does not trigger PreCompact", async () => {
+test("an oversized first request preserves its input when native Compaction summarizes initial reminders", async () => {
   dirs = await tempDirs();
   const fake = fakeModel([
-    fauxAssistantMessage("old work ".repeat(2500)),
-    fauxAssistantMessage("Saved summary."),
+    fauxAssistantMessage("Initial guidance summary."),
     fauxAssistantMessage("answered"),
   ]);
   fake.model.contextWindow = 4000;
@@ -390,39 +449,40 @@ test("an oversized pending request without earlier Transcript messages to compac
     ...dirs,
     ...fake,
     settings: {
-      hooks: {
-        PreCompact: [
-          { hooks: [{ type: "command", command: "cat >> inputs.jsonl; echo >> inputs.jsonl" }] },
-        ],
-      },
+      hooks: { PreCompact: [{ hooks: [{ type: "command", command: "cat >> inputs.jsonl" }] }] },
     },
   });
-  await session.run("first");
-  await expect(
-    session.run("second", {
-      onEvent: (event) => {
-        if (event.type === "compaction_end") throw new Error("pause after compaction");
-      },
-    }),
-  ).rejects.toThrow("pause after compaction");
-  const before = await Bun.file(join(dirs.cwd, "inputs.jsonl")).text();
-  expect((await session.run("pending ".repeat(2500))).text).toBe("answered");
-  expect(await Bun.file(join(dirs.cwd, "inputs.jsonl")).text()).toBe(before);
+  const prompt = "pending ".repeat(2500);
+  expect((await session.run(prompt)).text).toBe("answered");
+  expect(fake.contexts).toHaveLength(2);
+  expect(JSON.stringify(fake.contexts[1])).toContain(prompt);
+  expect(await Bun.file(join(dirs.cwd, "inputs.jsonl")).json()).toMatchObject({
+    trigger: "auto",
+    custom_instructions: null,
+  });
+  expect(JSON.stringify(fake.contexts[1])).toContain("Initial guidance summary.");
 });
 
 test("compact SessionStart context attaches to the next Stop feedback user in the same Run", async () => {
   dirs = await tempDirs();
   const fake = fakeModel([
-    fauxAssistantMessage("old work ".repeat(2500)),
+    ...oldToolEvidence(),
     fauxAssistantMessage("Saved summary."),
     fauxAssistantMessage("conclusion"),
     fauxAssistantMessage("verified"),
   ]);
-  fake.model.contextWindow = 4000;
+  fake.models = withModelAlias(fake.models, "hook-window", ["large"], { contextWindow: 128000 });
+  const provider = fake.models.getProvider("hook-window")!;
+  const large = provider.getModels()[0]!;
+  fake.models.setProvider({
+    ...provider,
+    getModels: () => [large, { ...large, id: "small", contextWindow: 16000 }],
+  });
   const session = await createSession({
     ...dirs,
     ...fake,
     settings: {
+      model: "hook-window/large",
       hooks: {
         SessionStart: [
           {
@@ -443,37 +503,47 @@ test("compact SessionStart context attaches to the next Stop feedback user in th
       },
     },
   });
-  await session.run("first");
+  await seedHookHistory(session);
   expect((await session.run("second")).text).toBe("verified");
-  expect(JSON.stringify(fake.contexts[2])).not.toContain("critical-project-state");
-  expect(fake.contexts[3]!.messages.slice(-2)).toMatchObject([
-    { role: "user", source: "stop_hook", content: [{ text: "verify feedback" }] },
+  expect(JSON.stringify(fake.contexts[6])).not.toContain("critical-project-state");
+  expect(fake.contexts[7]!.messages.slice(-2)).toMatchObject([
+    { role: "user", content: "verify feedback" },
     {
       role: "user",
       content: [{ text: "<system-reminder>\ncritical-project-state\n</system-reminder>" }],
     },
   ]);
-  const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
+  await session.close();
+  const next = fakeModel([]);
+  const resumed = await createSession({
+    ...dirs,
+    ...next,
+    models: withModelAlias(next.models, "hook-window", ["large", "small"], {
+      contextWindow: 128000,
+    }),
+    resumeId: session.id,
+  });
   expect(resumed.messages).toEqual(session.messages);
 });
 
 test("compact SessionStart context attaches to the next child notification user in the same Run", async () => {
   dirs = await tempDirs();
   const childRelease = Promise.withResolvers<void>();
-  const parentWaiting = Promise.withResolvers<void>();
+  const childStarted = Promise.withResolvers<void>();
   const reply: Parameters<typeof fakeModel>[0][number] = async (context) => {
-    const isChild = !context.messages.some(
+    const isChild = context.messages.some(
       (message) =>
-        message.role === "system" && message.toolsAdded?.some((tool) => tool.name === "subagent"),
+        message.role === "user" && JSON.stringify(message.content).includes("inspect project"),
     );
     if (isChild) {
+      childStarted.resolve();
       await childRelease.promise;
       return fauxAssistantMessage("child finished");
     }
     return fauxAssistantMessage("parent waiting");
   };
   const fake = fakeModel([
-    fauxAssistantMessage("old work ".repeat(2500)),
+    ...oldToolEvidence(),
     fauxAssistantMessage("Saved summary."),
     fauxAssistantMessage(
       fauxToolCall("subagent", { description: "Inspect", prompt: "inspect project" }),
@@ -483,11 +553,18 @@ test("compact SessionStart context attaches to the next child notification user 
     reply,
     fauxAssistantMessage("parent finished"),
   ]);
-  fake.model.contextWindow = 4000;
+  fake.models = withModelAlias(fake.models, "hook-window", ["large"], { contextWindow: 128000 });
+  const provider = fake.models.getProvider("hook-window")!;
+  const large = provider.getModels()[0]!;
+  fake.models.setProvider({
+    ...provider,
+    getModels: () => [large, { ...large, id: "small", contextWindow: 16000 }],
+  });
   const session = await createSession({
     ...dirs,
     ...fake,
     settings: {
+      model: "hook-window/large",
       hooks: {
         SessionStart: [
           {
@@ -498,20 +575,14 @@ test("compact SessionStart context attaches to the next child notification user 
       },
     },
   });
-  await session.run("first");
-  const run = session.run("second", {
-    onEvent: (event) => {
-      if (event.type === "subagents_waiting") parentWaiting.resolve();
-    },
-  });
-  await parentWaiting.promise;
+  await seedHookHistory(session);
+  const run = session.run("second");
+  await childStarted.promise;
   childRelease.resolve();
-  expect((await run).text).toBe("parent finished");
-  expect(fake.contexts.at(-1)!.messages.slice(-2)).toMatchObject([
-    { role: "user", content: [{ text: expect.stringContaining("child finished") }] },
-    {
-      role: "user",
-      content: [{ text: "<system-reminder>\ncritical-project-state\n</system-reminder>" }],
-    },
-  ]);
+  await run;
+  expect(await session.waitForRequest(session.currentRequestId!)).toMatchObject({
+    text: "parent finished",
+  });
+  expect(JSON.stringify(fake.contexts.at(-1)!.messages)).toContain("child finished");
+  expect(JSON.stringify(fake.contexts.at(-1)!.messages)).toContain("critical-project-state");
 });

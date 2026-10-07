@@ -3,12 +3,25 @@ import { fauxAssistantMessage, fauxToolCall, type JsonObject } from "@earendil-w
 import { pathToFileURL } from "node:url";
 import { join } from "node:path";
 import { realpath, symlink, mkdir } from "node:fs/promises";
-import { createSession, type SessionEvent } from "../../src/index.ts";
+import {
+  createSession as createSessionImpl,
+  type Session,
+  type SessionEvent,
+} from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
-afterEach(() => dirs?.cleanup());
+const sessions: Session[] = [];
+async function createSession(options: Parameters<typeof createSessionImpl>[0]) {
+  const session = await createSessionImpl(options);
+  sessions.push(session);
+  return session;
+}
+afterEach(async () => {
+  await Promise.all(sessions.splice(0).map((session) => session.close()));
+  await dirs?.cleanup();
+});
 
 test.each(["ask", "full-access"] as const)(
   "read path deny blocks sensitive content and symlink aliases in %s",
@@ -56,11 +69,21 @@ test.each(["ask", "full-access"] as const)(
     ).toMatchObject([
       {
         isError: true,
-        content: [{ type: "text", text: "Denied by permission rule: read(~/.ssh/**)" }],
+        content: [
+          {
+            type: "text",
+            text: "<harness>\n[error] Tool call blocked: Denied by permission rule: read(~/.ssh/**)\n</harness>",
+          },
+        ],
       },
       {
         isError: true,
-        content: [{ type: "text", text: "Denied by permission rule: read(~/.ssh/**)" }],
+        content: [
+          {
+            type: "text",
+            text: "<harness>\n[error] Tool call blocked: Denied by permission rule: read(~/.ssh/**)\n</harness>",
+          },
+        ],
       },
     ]);
     expect(JSON.stringify(fake.contexts[1]!.messages)).not.toContain("private-key-do-not-expose");
@@ -133,7 +156,15 @@ test.each(["glob", "grep"])("%s path denial applies to its omitted cwd path", as
   expect(
     fake.contexts[1]!.messages.filter((message) => message.role === "toolResult"),
   ).toMatchObject([
-    { isError: true, content: [{ type: "text", text: `Denied by permission rule: ${rule}` }] },
+    {
+      isError: true,
+      content: [
+        {
+          type: "text",
+          text: `<harness>\n[error] Tool call blocked: Denied by permission rule: ${rule}\n</harness>`,
+        },
+      ],
+    },
   ]);
 });
 
@@ -199,7 +230,15 @@ test.each(["ask", "full-access"] as const)(
     expect(
       fake.contexts[1]!.messages.filter((message) => message.role === "toolResult"),
     ).toMatchObject([
-      { isError: true, content: [{ type: "text", text: `Denied by permission rule: ${rule}` }] },
+      {
+        isError: true,
+        content: [
+          {
+            type: "text",
+            text: `<harness>\n[error] Tool call blocked: Denied by permission rule: ${rule}\n</harness>`,
+          },
+        ],
+      },
     ]);
   },
 );
@@ -291,7 +330,7 @@ test("read selected file URL preserves encoded Unicode spaces during execution",
   ]);
   const session = await createSession({ ...dirs, ...fake });
   await session.run("read");
-  const result = fake.contexts[1]!.messages.at(-1);
+  const result = fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult");
   expect(result).toMatchObject({
     isError: false,
     content: [{ type: "text", text: "selected-url-target" }],
@@ -316,7 +355,7 @@ test.each(["read", "write", "edit"] as const)(
         ? { path }
         : tool === "write"
           ? { path, content: "changed" }
-          : { path, oldText: "protected-file-content", newText: "changed" };
+          : { path, edits: [{ oldText: "protected-file-content", newText: "changed" }] };
     const fake = fakeModel([
       fauxAssistantMessage(
         aliases.map((path, index) => fauxToolCall(tool, args(path), { id: `alias-${index}` })),
@@ -343,7 +382,12 @@ test.each(["read", "write", "edit"] as const)(
     ).toMatchObject(
       aliases.map(() => ({
         isError: true,
-        content: [{ type: "text", text: `Denied by permission rule: ${rule}` }],
+        content: [
+          {
+            type: "text",
+            text: `<harness>\n[error] Tool call blocked: Denied by permission rule: ${rule}\n</harness>`,
+          },
+        ],
       })),
     );
     expect(await Bun.file(secret).text()).toBe("protected-file-content");
@@ -373,9 +417,12 @@ test.each(["at", "file-url", "unicode-space", "home", "ordinary"] as const)(
       fauxAssistantMessage(fauxToolCall("write", { path, content: "written" }), {
         stopReason: "toolUse",
       }),
-      fauxAssistantMessage(fauxToolCall("edit", { path, oldText: "written", newText: "edited" }), {
-        stopReason: "toolUse",
-      }),
+      fauxAssistantMessage(
+        fauxToolCall("edit", { path, edits: [{ oldText: "written", newText: "edited" }] }),
+        {
+          stopReason: "toolUse",
+        },
+      ),
       fauxAssistantMessage("done"),
     ]);
     const session = await createSession({
@@ -384,7 +431,9 @@ test.each(["at", "file-url", "unicode-space", "home", "ordinary"] as const)(
       settings: { permissions: { allow: ["write(~/public/**)", "edit(~/public/**)"] } },
     });
     await session.run("perform");
-    expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
+    expect(
+      fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+    ).toMatchObject({
       isError: false,
       content: [{ type: "text", text: "original" }],
     });
@@ -466,7 +515,9 @@ test.each(["nfd", "curly", "ampm"] as const)(
     ]);
     const session = await createSession({ ...dirs, ...fake });
     await session.run("read");
-    expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
+    expect(
+      fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+    ).toMatchObject({
       isError: false,
       content: [{ type: "text", text: "fallback-selected" }],
     });
@@ -490,4 +541,35 @@ test("missing reads and dangling primary symlinks keep errors instead of selecti
     fake.contexts[1]!.messages.filter((message) => message.role === "toolResult"),
   ).toMatchObject([{ isError: true }, { isError: true }]);
   expect(JSON.stringify(fake.contexts[1]!.messages)).not.toContain("must-not-use-fallback");
+});
+
+test("file URL knowledge rejects a stale write to the literal Unicode target", async () => {
+  dirs = await tempDirs();
+  const path = join(dirs.cwd, "name\u00A0key");
+  const url = pathToFileURL(path).href;
+  await Bun.write(path, "original");
+  const ready = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const fake = fakeModel([
+    fauxAssistantMessage(fauxToolCall("read", { path: url }), { stopReason: "toolUse" }),
+    async () => {
+      ready.resolve();
+      await release.promise;
+      return fauxAssistantMessage(
+        fauxToolCall("write", { path: url, content: "wrong overwrite" }),
+        { stopReason: "toolUse" },
+      );
+    },
+    fauxAssistantMessage("stale write rejected"),
+  ]);
+  const session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
+  const running = session.run("read then change");
+  await ready.promise;
+  await Bun.write(path, "external change");
+  release.resolve();
+  await running;
+  expect(
+    fake.contexts.at(-1)!.messages.findLast((message) => message.role === "toolResult"),
+  ).toMatchObject({ toolName: "write", isError: true });
+  expect(await Bun.file(path).text()).toBe("external change");
 });

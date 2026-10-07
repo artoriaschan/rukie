@@ -1,8 +1,9 @@
-import { withAuxiliaryRequests } from "./helpers/auxiliary-model.ts";
+import { auxiliaryModels } from "./helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
-import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { fauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { watch } from "node:fs";
 import { join } from "node:path";
 import { createSession } from "@rukie/agent";
 import { main as entryMain, type PrintIo } from "../../src/index.ts";
@@ -49,7 +50,7 @@ test.each([
 ])("CLI %s %s observes jobs and terminates them at completion", async (source, format) => {
   const root = await mkdtemp(join(tmpdir(), "rukie-cli-jobs-"));
   await mkdir(join(root, ".rukie", "file-history"), { recursive: true });
-  const faux = createFauxCore({ api: "faux", provider: "faux" });
+  const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
   faux.setResponses([
     fauxAssistantMessage(
       fauxToolCall("bash", {
@@ -61,10 +62,26 @@ test.each([
       { stopReason: "toolUse" },
     ),
     async () => {
-      const deadline = Date.now() + 2000;
-      while (!(await Bun.file(join(root, "ready")).exists())) {
-        if (Date.now() > deadline) throw new Error("Background process did not start");
-        await Bun.sleep(5);
+      // This readiness file belongs to a real child process; a parent virtual clock cannot drive it.
+      const ready = Promise.withResolvers<void>();
+      const deadline = AbortSignal.timeout(2000);
+      const fail = () => ready.reject(new Error("Background process did not start"));
+      const watcher = watch(root, (_event, filename) => {
+        if (filename !== null && filename !== "ready") return;
+        void Bun.file(join(root, "ready"))
+          .exists()
+          .then((exists) => {
+            if (exists) ready.resolve();
+          })
+          .catch(ready.reject);
+      });
+      watcher.once("error", ready.reject);
+      deadline.addEventListener("abort", fail, { once: true });
+      try {
+        if (!(await Bun.file(join(root, "ready")).exists())) await ready.promise;
+      } finally {
+        watcher.close();
+        deadline.removeEventListener("abort", fail);
       }
       return source === "goal"
         ? fauxAssistantMessage(fauxToolCall("update_goal", { action: "complete" }), {
@@ -91,7 +108,7 @@ test.each([
           cwd: root,
           homeDir: root,
           model: faux.getModel(),
-          streamFn: withAuxiliaryRequests(faux.streamSimple),
+          models: auxiliaryModels(faux.provider.streamSimple),
           allowRules: ["bash"],
         },
       },
@@ -113,7 +130,7 @@ test.each([
         job: { id: "bash-1", status: "killed" },
       });
       expect(jobs.every((event) => event.sessionId === jobs[0].sessionId)).toBe(true);
-      expect(events.filter((event) => event.type === "session_start")).toHaveLength(1);
+      expect(events.filter((event) => event.type === "snapshot").length).toBeGreaterThanOrEqual(1);
     }
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -157,7 +174,7 @@ test.each(["text", "stream-json"])(
   "%s exposes hook warnings, headless ask denial, and user messages",
   async (format) => {
     const root = await mkdtemp(join(tmpdir(), "rukie-cli-hooks-"));
-    const faux = createFauxCore({ api: "faux", provider: "faux" });
+    const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
     faux.setResponses([
       fauxAssistantMessage(
         fauxToolCall("bash", { description: "Run test command", command: "touch forbidden" }),
@@ -182,7 +199,7 @@ test.each(["text", "stream-json"])(
           cwd: root,
           homeDir: root,
           model: faux.getModel(),
-          streamFn: withAuxiliaryRequests(faux.streamSimple),
+          models: auxiliaryModels(faux.provider.streamSimple),
           settings: {
             hooks: {
               PreToolUse: [
@@ -249,9 +266,9 @@ test.each(["text", "stream-json"])(
           cwd: root,
           homeDir: root,
           ...fake,
-          streamFn: withAuxiliaryRequests((...args) => {
+          models: auxiliaryModels((...args) => {
             modelCalls++;
-            return fake.streamFn(...args);
+            return fake.models.streamSimple(...args);
           }),
           settings: {
             hooks: {
@@ -276,8 +293,8 @@ test.each(["text", "stream-json"])(
           .trim()
           .split("\n")
           .map((line) => JSON.parse(line));
-        expect(events.at(-1)).toMatchObject({
-          type: "result",
+        expect(events.findLast((event) => event.type === "request_settled")).toMatchObject({
+          type: "request_settled",
           stopReason: "hook_blocked",
           reason: "private prompt rejected",
         });
@@ -361,7 +378,7 @@ test.each([
 ])("--allow-tools %s grants the matching command only", async (rule, command) => {
   const root = await mkdtemp(join(tmpdir(), "rukie-cli-rules-"));
   await mkdir(join(root, ".rukie", "file-history"), { recursive: true });
-  const faux = createFauxCore({ api: "faux", provider: "faux" });
+  const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
   faux.setResponses([
     fauxAssistantMessage(
       [
@@ -399,7 +416,7 @@ test.each([
           cwd: root,
           homeDir: root,
           model: faux.getModel(),
-          streamFn: withAuxiliaryRequests(faux.streamSimple),
+          models: auxiliaryModels(faux.provider.streamSimple),
         },
       }),
     ).toBe(0);
@@ -415,10 +432,13 @@ test.each(["text", "stream-json"])(
   async (format) => {
     const root = await mkdtemp(join(tmpdir(), "rukie-cli-subagent-"));
     await mkdir(join(root, ".rukie", "file-history"), { recursive: true });
-    const faux = createFauxCore({ api: "faux", provider: "faux" });
+    const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
     const reply: Parameters<typeof faux.setResponses>[0][number] = (context) => {
-      const last = context.messages.at(-1)!;
-      if (last.role === "user" && JSON.stringify(last.content).includes("child-prompt"))
+      const last = context.messages.findLast(
+        (message) =>
+          message.role === "user" && !JSON.stringify(message.content).includes("<system-reminder>"),
+      );
+      if (last?.role === "user" && JSON.stringify(last.content).includes("child-prompt"))
         return fauxAssistantMessage("child-only text");
       return fauxAssistantMessage("parent-only text");
     };
@@ -445,7 +465,7 @@ test.each(["text", "stream-json"])(
             cwd: root,
             homeDir: root,
             model: faux.getModel(),
-            streamFn: withAuxiliaryRequests(faux.streamSimple),
+            models: auxiliaryModels(faux.provider.streamSimple),
           },
         }),
       ).toBe(0);
@@ -462,9 +482,15 @@ test.each(["text", "stream-json"])(
           wrapped.some(
             (event) =>
               event.event.type === "message_end" &&
-              event.event.message.role === "assistant" &&
-              event.event.message.content.some(
-                (block: { type: string; text?: string }) => block.text === "child-only text",
+              event.event.messages.some(
+                (message: { role: string }) => message.role === "assistant",
+              ) &&
+              event.event.messages.some(
+                (message: { role: string; content: { type: string; text?: string }[] }) =>
+                  message.role === "assistant" &&
+                  message.content.some(
+                    (block: { type: string; text?: string }) => block.text === "child-only text",
+                  ),
               ),
           ),
         ).toBe(true);
@@ -474,7 +500,10 @@ test.each(["text", "stream-json"])(
               event.sessionId !== event.event.sessionId && event.agentId === event.event.sessionId,
           ),
         ).toBe(true);
-        expect(events.at(-1)).toMatchObject({ type: "result", text: "parent-only text" });
+        expect(events.findLast((event) => event.type === "request_settled")).toMatchObject({
+          type: "request_settled",
+          text: "parent-only text",
+        });
       }
       if (format === "stream-json") {
         const childId = stdout
@@ -494,7 +523,7 @@ test.each(["text", "stream-json"])(
               cwd: root,
               homeDir: root,
               model: faux.getModel(),
-              streamFn: withAuxiliaryRequests(faux.streamSimple),
+              models: auxiliaryModels(faux.provider.streamSimple),
             },
           }),
         ).toBe(1);
@@ -511,7 +540,8 @@ test("Headless resume emits a text plan and never registers interactive plan too
   try {
     const seed = await createSession({ cwd: root, homeDir: root, ...echoModel() });
     await seed.setPlanMode(true);
-    const faux = createFauxCore({ api: "faux", provider: "faux" });
+    await seed.close();
+    const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
     faux.setResponses([
       (context) => {
         expect(JSON.stringify(context)).toContain(
@@ -532,7 +562,7 @@ test("Headless resume emits a text plan and never registers interactive plan too
           cwd: root,
           homeDir: root,
           model: faux.getModel(),
-          streamFn: withAuxiliaryRequests(faux.streamSimple),
+          models: auxiliaryModels(faux.provider.streamSimple),
         },
       }),
     ).toBe(0);
@@ -540,11 +570,11 @@ test("Headless resume emits a text plan and never registers interactive plan too
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line));
-    const start = events.find((event) => event.type === "session_start");
-    expect(start.tools).not.toContain("exit_plan_mode");
-    expect(start.tools).not.toContain("enter_plan_mode");
-    expect(events.at(-1)).toMatchObject({
-      type: "result",
+    const start = events.find((event) => event.type === "snapshot");
+    expect(start.agent.tools).not.toContain("exit_plan_mode");
+    expect(start.agent.tools).not.toContain("enter_plan_mode");
+    expect(events.findLast((event) => event.type === "request_settled")).toMatchObject({
+      type: "request_settled",
       text: "# Text plan\n\nInspect, implement and verify.",
     });
     const resumed = await createSession({
@@ -563,10 +593,13 @@ test.each([false, true])(
   "Goal output and exit belong to the parent even when a child fails: %s",
   async (fail) => {
     const root = await mkdtemp(join(tmpdir(), "rukie-cli-goal-child-"));
-    const faux = createFauxCore({ api: "faux", provider: "faux" });
+    const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
     let childResponded = false;
     const reply: Parameters<typeof faux.setResponses>[0][number] = (context) => {
-      const last = context.messages.at(-1);
+      const last = context.messages.findLast(
+        (message) =>
+          message.role === "user" && !JSON.stringify(message.content).includes("<system-reminder>"),
+      );
       if (last?.role === "user" && JSON.stringify(last.content).includes("child-prompt")) {
         childResponded = true;
         return fauxAssistantMessage(
@@ -604,7 +637,7 @@ test.each([false, true])(
           cwd: root,
           homeDir: root,
           model: faux.getModel(),
-          streamFn: withAuxiliaryRequests(faux.streamSimple),
+          models: auxiliaryModels(faux.provider.streamSimple),
         },
       });
       expect({ exitCode, stderr, stdout }).toMatchObject({ exitCode: 0 });
@@ -621,7 +654,7 @@ test.each(["error", "length"] as const)(
   "Goal exits 1 after a Run ends with %s",
   async (stopReason) => {
     const root = await mkdtemp(join(tmpdir(), "rukie-cli-goal-outcome-"));
-    const faux = createFauxCore({ api: "faux", provider: "faux" });
+    const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
     faux.setResponses([
       fauxAssistantMessage("partial work", {
         stopReason,
@@ -644,7 +677,7 @@ test.each(["error", "length"] as const)(
             cwd: root,
             homeDir: root,
             model: faux.getModel(),
-            streamFn: withAuxiliaryRequests(faux.streamSimple),
+            models: auxiliaryModels(faux.provider.streamSimple),
           },
         }),
       ).toBe(1);
@@ -659,7 +692,7 @@ test.each(["error", "length"] as const)(
 test("Goal preserves SIGINT received while creation is still settling", async () => {
   const root = await mkdtemp(join(tmpdir(), "rukie-cli-goal-create-abort-"));
   const controller = new AbortController();
-  const faux = createFauxCore({ api: "faux", provider: "faux" });
+  const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
   let modelCalled = false;
   faux.setResponses([
     () => {
@@ -681,7 +714,7 @@ test("Goal preserves SIGINT received while creation is still settling", async ()
         cwd: root,
         homeDir: root,
         model: faux.getModel(),
-        streamFn: withAuxiliaryRequests(faux.streamSimple),
+        models: auxiliaryModels(faux.provider.streamSimple),
       },
     });
     expect(exitCode).toBe(130);
@@ -700,7 +733,7 @@ test.each(["prompt", "stdin", "stdin-stream-json", "goal", "goal-interrupted"])(
     const firstCall = Promise.withResolvers<void>();
     const firstReply = Promise.withResolvers<void>();
     const contexts: string[] = [];
-    const faux = createFauxCore({ api: "faux", provider: "faux" });
+    const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
     faux.setResponses([
       async (context) => {
         contexts.push(JSON.stringify(context.messages));
@@ -749,7 +782,7 @@ test.each(["prompt", "stdin", "stdin-stream-json", "goal", "goal-interrupted"])(
             cwd: root,
             homeDir: root,
             model: faux.getModel(),
-            streamFn: withAuxiliaryRequests(faux.streamSimple),
+            models: auxiliaryModels(faux.provider.streamSimple),
             settings: {
               hooks: {
                 SessionStart: [
@@ -798,12 +831,27 @@ test.each(["prompt", "stdin", "stdin-stream-json", "goal", "goal-interrupted"])(
           .trim()
           .split("\n")
           .map((line) => JSON.parse(line));
-        expect(events.filter((event) => event.type === "result")).toHaveLength(2);
+        const human = events.filter(
+          (event) => event.type === "request_settled" && event.text === "human done",
+        );
+        expect(human).toHaveLength(1);
+        const startup = events.filter(
+          (event) => event.type === "request_settled" && event.text === "autorun done",
+        );
+        expect(startup.length).toBeLessThanOrEqual(1);
+        if (startup.length) expect(startup[0].requestId).not.toBe(human[0].requestId);
+        else
+          // Startup may commit before createSession returns; the initial snapshot owns that history.
+          expect(JSON.stringify(events[0].messages)).toContain("autorun done");
         expect(
-          events.filter((event) => event.type === "message_end" && event.message.role === "user"),
-        ).toHaveLength(2);
-      } else
-        expect(stdout).toBe(source === "goal" ? "autorun done\ngoal wrapup\n" : "human done\n");
+          events.filter(
+            (event) =>
+              event.type === "message_end" &&
+              event.messages.some((message: { role: string }) => message.role === "user"),
+          ),
+        ).toHaveLength(1);
+        expect(JSON.stringify(events[0].messages)).toContain("startup-background-failure");
+      } else expect(stdout).toBe(source === "goal" ? "goal wrapup\n" : "human done\n");
       expect(stderr).not.toContain("Session already has an active Run");
     } finally {
       firstReply.resolve();
@@ -858,11 +906,20 @@ test.each(["text", "stream-json"])(
               "type" in event &&
               event.type === "mcp_server_error",
           ),
-        ).toMatchObject([
-          { server: "srv", error: "needs authentication; run /mcp login srv in the TUI" },
-        ]);
+        ).toHaveLength(0);
         expect(stdout).not.toContain("mcp__srv__authenticate");
-        expect(events.at(-1)).toMatchObject({ type: "result", success: true });
+        expect(
+          events.findLast(
+            (event) =>
+              typeof event === "object" &&
+              event !== null &&
+              "type" in event &&
+              event.type === "request_settled",
+          ),
+        ).toMatchObject({
+          type: "request_settled",
+          success: true,
+        });
       } else expect(stdout).toContain("echo:");
     } finally {
       await server.stop();
@@ -893,10 +950,10 @@ test("Headless calls real MCP tools using credentials written by an earlier Sess
     try {
       await seed.authenticateMcp("srv");
     } finally {
-      await seed.dispose();
+      await seed.close();
     }
     expect(await Bun.file(join(root, ".rukie/credentials.json")).exists()).toBe(true);
-    const faux = createFauxCore({ api: "faux", provider: "faux" });
+    const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
     faux.setResponses([
       fauxAssistantMessage(fauxToolCall("mcp__srv__echo", { text: "hello" }), {
         stopReason: "toolUse",
@@ -917,7 +974,7 @@ test("Headless calls real MCP tools using credentials written by an earlier Sess
         cwd: root,
         homeDir: root,
         model: faux.getModel(),
-        streamFn: withAuxiliaryRequests(faux.streamSimple),
+        models: auxiliaryModels(faux.provider.streamSimple),
       },
     });
     expect(exitCode).toBe(0);

@@ -1,12 +1,41 @@
 import { afterEach, expect, test } from "bun:test";
-import { fauxAssistantMessage, fauxToolCall, type TranscriptContext } from "@earendil-works/pi-ai";
+import {
+  fauxAssistantMessage,
+  fauxToolCall,
+  getCurrentTools,
+  type TranscriptContext,
+} from "@earendil-works/pi-ai";
 import { getCurrentSystemMessage } from "@earendil-works/pi-ai";
-import { createSession } from "../../src/index.ts";
+import { createSession as createSessionImpl, type Session } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
-afterEach(() => dirs?.cleanup());
+const sessions: Session[] = [];
+async function createSession(options: Parameters<typeof createSessionImpl>[0]) {
+  const session = await createSessionImpl(options);
+  sessions.push(session);
+  return session;
+}
+afterEach(async () => {
+  await Promise.all(sessions.splice(0).map((session) => session.close()));
+  await dirs?.cleanup();
+});
+async function runRequest(session: Session, ...args: Parameters<Session["run"]>) {
+  const result = await session.run(...args);
+  await session.waitForRequest(result.requestId);
+  return result;
+}
+function agentId(details: unknown) {
+  if (
+    !details ||
+    typeof details !== "object" ||
+    !("agentId" in details) ||
+    typeof details.agentId !== "string"
+  )
+    throw new Error("Expected subagent result identity");
+  return details.agentId;
+}
 const call = (name: string, args = {}) =>
   fauxAssistantMessage(fauxToolCall(name, args), { stopReason: "toolUse" });
 
@@ -15,7 +44,9 @@ test("list_agents reports an empty directory and errors for unknown ids", async 
   const fake = fakeModel([
     call("list_agents"),
     (context) => {
-      expect(structuredClone(context.messages.at(-1))).toMatchObject({
+      expect(
+        structuredClone(context.messages.findLast((message) => message.role === "toolResult")),
+      ).toMatchObject({
         role: "toolResult",
         isError: false,
         content: [{ type: "text", text: "(no subagents)" }],
@@ -23,7 +54,9 @@ test("list_agents reports an empty directory and errors for unknown ids", async 
       return call("send_message", { agent_id: "unknown", message: "continue" });
     },
     (context) => {
-      expect(structuredClone(context.messages.at(-1))).toMatchObject({
+      expect(
+        structuredClone(context.messages.findLast((message) => message.role === "toolResult")),
+      ).toMatchObject({
         role: "toolResult",
         isError: true,
         content: [{ type: "text", text: expect.stringContaining("Unknown subagent") }],
@@ -46,34 +79,38 @@ test("idle children keep their own history and todos when send_message starts a 
     call("todo_write", { todos: [{ content: "Child task", status: "in_progress" }] }),
     fauxAssistantMessage("first child answer"),
     (context) => {
-      const result = context.messages.at(-1)!;
+      const result = context.messages.findLast((message) => message.role === "toolResult")!;
       if (result.role !== "toolResult") throw new Error("Expected child result");
-      id = (result.details as { agentId: string }).agentId;
+      id = agentId(result.details);
       return call("list_agents");
     },
     (context) => {
-      expect(JSON.stringify(context.messages.at(-1))).toContain(`${id} [idle] — Investigate`);
+      expect(
+        JSON.stringify(context.messages.findLast((message) => message.role === "toolResult")),
+      ).toContain(`${id} [idle] — Investigate`);
       return call("send_message", { agent_id: id, message: "follow up" });
     },
     ...Array.from({ length: 3 }, () => (context: TranscriptContext) => {
       const text = JSON.stringify(context.messages);
-      const child = !getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
-        (tool) => tool.name === "subagent",
-      );
+      const child = !getCurrentTools(context.messages).some((tool) => tool.name === "subagent");
       if (child) {
         expect(text).toContain("first child answer");
         expect(text).toContain("Child task");
         expect(text).toContain("follow up");
         return fauxAssistantMessage("follow up answer");
       }
-      if (context.messages.at(-1)?.role === "toolResult")
-        expect(JSON.stringify(context.messages.at(-1))).toContain(`delivered to ${id}`);
+      if (
+        context.messages.findLast((message) => message.role === "toolResult")?.role === "toolResult"
+      )
+        expect(
+          JSON.stringify(context.messages.findLast((message) => message.role === "toolResult")),
+        ).toContain(`delivered to ${id}`);
       return fauxAssistantMessage("parent done");
     }),
   ]);
   fake.model.contextWindow = 100_000;
   const session = await createSession({ ...dirs, ...fake });
-  await session.run("delegate");
+  await runRequest(session, "delegate");
   expect(session.toolState("subagents")).toMatchObject([
     { id, description: "Investigate", type: "general-purpose" },
   ]);
@@ -105,21 +142,22 @@ test.each(["explore", "custom", "deleted", "fork"])(
       call("todo_write", { todos: [{ content: "Own todo", status: "pending" }] }),
       fauxAssistantMessage("child original answer"),
       (context) => {
-        const result = context.messages.at(-1)!;
+        const result = context.messages.findLast((message) => message.role === "toolResult")!;
         if (result.role !== "toolResult") throw new Error("Expected tool result");
-        id = (result.details as { agentId: string }).agentId;
+        id = agentId(result.details);
         return fauxAssistantMessage("parent done");
       },
     ]);
     first.model.contextWindow = 100_000;
     const parent = await createSession({ ...dirs, ...first });
-    await parent.run("parent original");
-    await parent.run("delegate");
+    await runRequest(parent, "parent original");
+    await runRequest(parent, "delegate");
     // Later parent work must never be copied into an existing fork.
     const later = fakeModel([fauxAssistantMessage("later parent history")]);
-    await (
-      await createSession({ ...dirs, ...later, resumeId: parent.id })
-    ).run("later parent prompt");
+    await parent.close();
+    const laterSession = await createSession({ ...dirs, ...later, resumeId: parent.id });
+    await runRequest(laterSession, "later parent prompt");
+    await laterSession.close();
     if (type === "deleted") await Bun.file(path).delete();
     if (type === "fork")
       await Bun.write(
@@ -129,17 +167,13 @@ test.each(["explore", "custom", "deleted", "fork"])(
     const warnings: string[] = [];
     const reply = (context: TranscriptContext) => {
       const text = JSON.stringify(context.messages);
-      if (
-        !getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
-          (tool) => tool.name === "subagent",
-        )
-      ) {
+      if (!getCurrentTools(context.messages).some((tool) => tool.name === "subagent")) {
         expect(text).toContain("child original answer");
         expect(text).toContain("Own todo");
         expect(text).toContain("continue restored child");
         const system = getCurrentSystemMessage(context.messages)!;
         if (system.role !== "system") throw new Error("Expected system");
-        const tools = system.toolsAdded!.map((tool) => tool.name);
+        const tools = getCurrentTools(context.messages).map((tool) => tool.name);
         expect(tools).not.toContain("send_message");
         if (type === "custom") {
           expect(tools).toEqual(["read", "todo_write"]);
@@ -165,7 +199,9 @@ test.each(["explore", "custom", "deleted", "fork"])(
     const resumedFake = fakeModel([
       call("list_agents"),
       (context) => {
-        expect(JSON.stringify(context.messages.at(-1))).toContain(`${id} [idle] — Restore`);
+        expect(
+          JSON.stringify(context.messages.findLast((message) => message.role === "toolResult")),
+        ).toContain(`${id} [idle] — Restore`);
         return call("send_message", { agent_id: id, message: "continue restored child" });
       },
       ...Array.from({ length: 3 }, () => reply),
@@ -185,7 +221,7 @@ test.each(["explore", "custom", "deleted", "fork"])(
       },
     ]);
     expect(resumed.toolState("todo")).toBeUndefined();
-    expect((await resumed.run("resume")).success).toBe(true);
+    expect((await runRequest(resumed, "resume")).success).toBe(true);
     expect(warnings.some((warning) => warning.includes("falling back to general-purpose"))).toBe(
       type === "deleted",
     );
@@ -198,13 +234,11 @@ test("send_message steers the active child before its next model request and lis
   const release = Promise.withResolvers<void>();
   let id = "";
   let childCalls = 0;
+  const childStarted = Promise.withResolvers<void>();
   const reply = async (context: TranscriptContext) => {
-    if (
-      !getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
-        (tool) => tool.name === "subagent",
-      )
-    ) {
+    if (!getCurrentTools(context.messages).some((tool) => tool.name === "subagent")) {
       if (++childCalls === 1) {
+        childStarted.resolve();
         await release.promise;
         return call("todo_write", { todos: [] });
       }
@@ -217,9 +251,10 @@ test("send_message steers the active child before its next model request and lis
       ).toBe(true);
       return fauxAssistantMessage("adjusted conclusion");
     }
-    const result = context.messages.at(-1)!;
+    const result = context.messages.findLast((message) => message.role === "toolResult")!;
     if (result.role === "toolResult" && result.toolName === "subagent") {
-      id = (result.details as { agentId: string }).agentId;
+      await childStarted.promise;
+      id = agentId(result.details);
       return call("list_agents");
     }
     if (result.role === "toolResult" && result.toolName === "list_agents") {
@@ -229,6 +264,7 @@ test("send_message steers the active child before its next model request and lis
     if (result.role === "toolResult") {
       expect(JSON.stringify(result)).toContain(`delivered to ${id}`);
       expect(result.details).toEqual({});
+      release.resolve();
     }
     return fauxAssistantMessage("parent done");
   };
@@ -238,12 +274,11 @@ test("send_message steers the active child before its next model request and lis
   ]);
   fake.model.contextWindow = 100_000;
   const session = await createSession({ ...dirs, ...fake });
-  await session.run("delegate", {
-    onEvent(event) {
-      if (event.type === "tool_execution_end" && event.toolName === "send_message")
-        release.resolve();
-    },
-  });
+  try {
+    await runRequest(session, "delegate");
+  } finally {
+    release.resolve();
+  }
   expect(childCalls).toBe(2);
   expect(JSON.stringify(session.messages)).toContain("adjusted conclusion");
 });
@@ -255,8 +290,8 @@ test("send_message cannot address a child belonging to another parent session", 
     call("subagent", { description: "Owned", prompt: "child", run_in_background: false }),
     fauxAssistantMessage("child done"),
     (context) => {
-      const result = context.messages.at(-1)!;
-      if (result.role === "toolResult") id = (result.details as { agentId: string }).agentId;
+      const result = context.messages.findLast((message) => message.role === "toolResult")!;
+      if (result.role === "toolResult") id = agentId(result.details);
       return fauxAssistantMessage("done");
     },
   ]);
@@ -264,9 +299,11 @@ test("send_message cannot address a child belonging to another parent session", 
   const other = fakeModel([
     call("send_message", { agent_id: id, message: "cross parent" }),
     (context) => {
-      expect(structuredClone(context.messages.at(-1))).toMatchObject({
+      expect(
+        structuredClone(context.messages.findLast((message) => message.role === "toolResult")),
+      ).toMatchObject({
         isError: true,
-        content: [{ type: "text", text: `Unknown subagent: ${id}` }],
+        content: [{ type: "text", text: expect.stringContaining(`Unknown subagent: ${id}`) }],
       });
       return fauxAssistantMessage("done");
     },
@@ -282,15 +319,13 @@ test("an idle continuation is rejected at eight running children while active st
   let started = 0;
   const allStarted = Promise.withResolvers<void>();
   const response = async (context: TranscriptContext) => {
-    const parent = getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
-      (tool) => tool.name === "subagent",
-    );
+    const parent = getCurrentTools(context.messages).some((tool) => tool.name === "subagent");
     if (!parent) {
       if (++started === 8) allStarted.resolve();
       await release.promise;
       return fauxAssistantMessage("active done");
     }
-    const last = context.messages.at(-1)!;
+    const last = context.messages.findLast((message) => message.role === "toolResult")!;
     if (last.role === "toolResult" && last.toolName === "subagent") {
       await allStarted.promise;
       const results = context.messages.filter(
@@ -298,7 +333,7 @@ test("an idle continuation is rejected at eight running children while active st
       );
       const activeResult = results.at(-1)!;
       if (activeResult.role !== "toolResult") throw new Error("Expected tool result");
-      activeId = (activeResult.details as { agentId: string }).agentId;
+      activeId = agentId(activeResult.details);
       return call("send_message", { agent_id: idleId, message: "should reject" });
     }
     if (last.role === "toolResult" && last.toolName === "send_message" && last.isError) {
@@ -315,8 +350,8 @@ test("an idle continuation is rejected at eight running children while active st
     call("subagent", { description: "Idle", prompt: "idle", run_in_background: false }),
     fauxAssistantMessage("idle done"),
     (context) => {
-      const result = context.messages.at(-1)!;
-      if (result.role === "toolResult") idleId = (result.details as { agentId: string }).agentId;
+      const result = context.messages.findLast((message) => message.role === "toolResult")!;
+      if (result.role === "toolResult") idleId = agentId(result.details);
       return fauxAssistantMessage(
         Array.from({ length: 8 }, (_, index) =>
           fauxToolCall("subagent", { description: `Active ${index}`, prompt: "active" }),
@@ -328,7 +363,7 @@ test("an idle continuation is rejected at eight running children while active st
   ]);
   fake.model.contextWindow = 100_000;
   const session = await createSession({ ...dirs, ...fake });
-  expect((await session.run("delegate")).success).toBe(true);
+  expect((await runRequest(session, "delegate")).success).toBe(true);
   expect(session.toolState("subagents")).toHaveLength(9);
 });
 
@@ -339,22 +374,18 @@ test("parallel messages to an idle cold child start one Run and steer the follow
     call("subagent", { description: "One", prompt: "original", run_in_background: false }),
     fauxAssistantMessage("original done"),
     (context) => {
-      const result = context.messages.at(-1)!;
-      if (result.role === "toolResult") id = (result.details as { agentId: string }).agentId;
+      const result = context.messages.findLast((message) => message.role === "toolResult")!;
+      if (result.role === "toolResult") id = agentId(result.details);
       return fauxAssistantMessage("done");
     },
   ]);
   const parent = await createSession({ ...dirs, ...original });
-  await parent.run("delegate");
+  await runRequest(parent, "delegate");
   const release = Promise.withResolvers<void>();
   let calls = 0;
   let starts = 0;
   const response = async (context: TranscriptContext) => {
-    if (
-      !getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
-        (tool) => tool.name === "subagent",
-      )
-    ) {
+    if (!getCurrentTools(context.messages).some((tool) => tool.name === "subagent")) {
       if (++calls === 1) {
         await release.promise;
         return call("todo_write", { todos: [] });
@@ -381,13 +412,13 @@ test("parallel messages to an idle cold child start one Run and steer the follow
     ...Array.from({ length: 8 }, () => response),
   ]);
   fake.model.contextWindow = 100_000;
+  await parent.close();
   const resumed = await createSession({ ...dirs, ...fake, resumeId: parent.id });
-  await resumed.run("continue", {
+  await runRequest(resumed, "continue", {
     onEvent(event) {
-      if (event.type === "subagent_event" && event.event.type === "session_start") starts++;
+      if (event.type === "subagent_event" && event.event.type === "run_start") starts++;
     },
   });
-  expect(starts).toBe(1);
-  expect(calls).toBe(2);
+  expect({ starts, calls }).toEqual({ starts: 1, calls: 2 });
   expect(JSON.stringify(resumed.messages)).toContain("combined done");
 });

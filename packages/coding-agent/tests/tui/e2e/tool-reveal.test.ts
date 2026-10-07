@@ -172,15 +172,15 @@ test("split pending rows reveal together and resize never restarts a caught-up c
 test("resumed call and result views paint their complete visible rows immediately", async () => {
   const argv: string[] = [];
   const { createSession } = await import("@rukie/agent");
-  const { createFauxCore, fauxAssistantMessage, fauxToolCall } =
+  const { fauxProvider, fauxAssistantMessage, fauxToolCall } =
     await import("@earendil-works/pi-ai");
-  const { withAuxiliaryRequests } = await import("../helpers/auxiliary-model");
+  const { auxiliaryModels } = await import("../helpers/auxiliary-model");
   const app = await startWithClock(argv, {
     rows: 40,
     env: { LANG: "en_US.UTF-8" },
     prepare: async (root) => {
       await Bun.write(join(root, "code.txt"), oldText);
-      const model = createFauxCore({ api: "faux", provider: "faux" });
+      const model = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
       model.setResponses([
         fauxAssistantMessage(
           fauxToolCall("edit", { path: "code.txt", edits: [{ oldText, newText }] }),
@@ -192,14 +192,14 @@ test("resumed call and result views paint their complete visible rows immediatel
         cwd: root,
         homeDir: root,
         model: model.getModel(),
-        streamFn: withAuxiliaryRequests((m, c, o) => model.streamSimple(m, c, o)),
+        models: auxiliaryModels((m, c, o) => model.provider.streamSimple(m, c, o)),
         permissionMode: "full-access",
       });
       try {
         await session.run("change");
         argv.push("--resume", session.id);
       } finally {
-        await session.dispose();
+        await session.close();
       }
     },
   });

@@ -1,10 +1,9 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { start } from "../helpers/app";
-import { createFauxCore, fauxAssistantMessage } from "@earendil-works/pi-ai";
-import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
+import { fauxProvider, fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { createJsonlStore, createSession } from "@rukie/agent";
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model";
+import { auxiliaryModels } from "../helpers/auxiliary-model";
 
 // Agent Core owns the real HTTP/OAuth fixture; tests drive only its external boundary.
 const {
@@ -234,8 +233,20 @@ test("permission, questions and OAuth take FIFO ownership while a scrolled MCP r
     app.stdin.write("\r");
     await app.waitFor(() => app.calls.length >= 5 && screen(app).includes("Stable reader 12"));
     expect(app.screen().filter((line) => line.includes("Stable reader"))).toEqual(readerLines);
+    const activeChild = app.calls.findLast((call) =>
+      call.context.messages.some(
+        (message) =>
+          message.role === "user" && JSON.stringify(message.content).includes("child FIFO marker"),
+      ),
+    );
+    expect(activeChild).toBeDefined();
     app.stdin.write("\x03");
-    await app.waitFor(() => idle(app) && !screen(app).includes("Stable reader"));
+    await app.waitFor(
+      () => screen(app).includes("用户已中断") && !screen(app).includes("Stable reader"),
+    );
+    // Ordinary parent interruption closes the reader without aborting native background work.
+    expect(activeChild!.signal?.aborted).toBe(false);
+    expect(screen(app)).toContain("子代理 1/1");
   } finally {
     await app.cleanup();
     await server.stop();
@@ -360,18 +371,7 @@ test("exiting an open tool reader restores the terminal and Resume keeps the Tra
   const argv: string[] = [];
   let id = "";
   let store: ReturnType<typeof createJsonlStore>;
-  const entries = async () => {
-    const metadata = (await store.list({ cwd: app.root }, BACKGROUND_CONTEXT)).find(
-      (item) => item.id === id,
-    )!;
-    const stored = await store.openReadonly!(metadata, BACKGROUND_CONTEXT);
-    try {
-      const branch = await stored.branch("main", BACKGROUND_CONTEXT);
-      return await branch!.findEntries({ order: "oldestFirst" }, BACKGROUND_CONTEXT);
-    } finally {
-      await stored.close(BACKGROUND_CONTEXT);
-    }
-  };
+  let before: string;
   const app = await start(argv, {
     rows: 32,
     prepare: async (root) => {
@@ -379,7 +379,7 @@ test("exiting an open tool reader restores the terminal and Resume keeps the Tra
         join(root, ".rukie/mcp.json"),
         JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
       );
-      const fake = createFauxCore({ api: "faux", provider: "faux" });
+      const fake = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
       fake.setResponses([fauxAssistantMessage("stored answer sentinel")]);
       store = createJsonlStore({ cwd: root, homeDir: root });
       const session = await createSession({
@@ -387,14 +387,19 @@ test("exiting an open tool reader restores the terminal and Resume keeps the Tra
         homeDir: root,
         store,
         model: fake.getModel(),
-        streamFn: withAuxiliaryRequests(fake.streamSimple),
+        models: auxiliaryModels(fake.provider.streamSimple),
       });
       try {
         await session.run("stored prompt sentinel");
         id = session.id;
+        before = JSON.stringify(
+          session.messages.filter((message) =>
+            ["user", "assistant", "toolResult"].includes(message.role),
+          ),
+        );
         argv.push("--resume", id);
       } finally {
-        await session.dispose();
+        await session.close();
       }
     },
   });
@@ -404,7 +409,6 @@ test("exiting an open tool reader restores the terminal and Resume keeps the Tra
         screen(app).includes("stored answer sentinel") &&
         app.screen().some((line) => line.startsWith("╭")),
     );
-    const before = await entries();
     app.stdin.write("/mcp\r");
     await app.waitFor(() => screen(app).includes("❯ srv · 已连接"));
     app.stdin.write("\r");
@@ -421,20 +425,26 @@ test("exiting an open tool reader restores the terminal and Resume keeps the Tra
     expect(app.terminal.buffer.active.type).toBe("normal");
     for (const mode of ["\x1b[?1002l", "\x1b[?1003l", "\x1b[?1006l", "\x1b[?2004l", "\x1b[?25h"])
       expect(app.output()).toContain(mode);
-    expect(await entries()).toEqual(before);
     const resumed = await createSession({
       cwd: app.root,
       homeDir: app.root,
       model: app.model,
-      streamFn: app.streamFn,
+      models: app.models,
       resumeId: id,
     });
     try {
+      expect(
+        JSON.stringify(
+          resumed.messages.filter((message) =>
+            ["user", "assistant", "toolResult"].includes(message.role),
+          ),
+        ),
+      ).toBe(before!);
       expect(resumed.messages.findLast((message) => message.role === "user")).toMatchObject({
         content: [{ type: "text", text: "stored prompt sentinel" }],
       });
     } finally {
-      await resumed.dispose();
+      await resumed.close();
     }
     const replay = await start(["--resume", id], {
       session: { cwd: app.root, homeDir: app.root },

@@ -1,19 +1,27 @@
 import * as bashFactory from "../../src/tools/bash/index.ts";
 import { afterEach, expect, test, spyOn } from "bun:test";
-import {
-  fauxAssistantMessage,
-  fauxToolCall,
-  type TextContent,
-  type ImageContent,
-} from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { dirname, join } from "node:path";
 import { rm } from "node:fs/promises";
-import { createSession } from "../../src/index.ts";
+import {
+  createSession as createSessionImpl,
+  type Session,
+  type SessionEvent,
+} from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
-afterEach(() => dirs?.cleanup());
+const sessions: Session[] = [];
+async function createSession(options: Parameters<typeof createSessionImpl>[0]) {
+  const session = await createSessionImpl(options);
+  sessions.push(session);
+  return session;
+}
+afterEach(async () => {
+  await Promise.all(sessions.splice(0).map((session) => session.close()));
+  await dirs?.cleanup();
+});
 
 test("bash resolves workdir relative to the Session cwd", async () => {
   dirs = await tempDirs();
@@ -51,7 +59,9 @@ test("bash resolves workdir relative to the Session cwd", async () => {
   expect(session.messages.find((message) => message.role === "toolResult")).toMatchObject({
     view: { card: "terminal", exitCode: 0 },
   });
-  expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
+  expect(
+    fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+  ).toMatchObject({
     role: "toolResult",
     isError: false,
     content: [{ type: "text", text: "nested output" }],
@@ -67,15 +77,16 @@ test("bash rejects a missing description without executing the command", async (
     fauxAssistantMessage("recovered"),
   ]);
   const session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
-  const events: unknown[] = [];
+  const events: SessionEvent[] = [];
   await session.run("run command", {
     onEvent(event) {
       if (event.type === "tool_execution_start" || event.type === "tool_execution_end")
         events.push(event);
     },
   });
-  expect(events).toMatchObject([{ view: undefined }, { view: undefined }]);
-  const result = fake.contexts[1]!.messages.at(-1);
+  expect(events).toMatchObject([{ type: "tool_execution_end" }]);
+  expect(events[0] && "view" in events[0] ? events[0].view : undefined).toBeUndefined();
+  const result = fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult");
   expect(result).toMatchObject({ role: "toolResult", isError: true });
   expect(JSON.stringify(result)).toContain("description");
   expect(await Bun.file(join(dirs.cwd, "marker")).exists()).toBe(false);
@@ -105,7 +116,9 @@ test.each([
       details: { exitCode: command.includes("exit 7") ? 7 : command.includes("TERM") ? 143 : 0 },
       view: { card: "terminal", ...(command.includes("TERM") ? { signal: "SIGTERM" } : {}) },
     });
-    expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
+    expect(
+      fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+    ).toMatchObject({
       role: "toolResult",
       isError,
       content: [{ type: "text", text }],
@@ -131,15 +144,17 @@ test("aborting bash terminates its shell, child, and grandchild", async () => {
   const session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
   const controller = new AbortController();
   const ready = Promise.withResolvers<number[]>();
+  let output = "";
   const run = session.run("start tree", {
     signal: controller.signal,
     onEvent(event) {
       if (event.type !== "tool_execution_update" || event.toolCallId !== "tree") return;
-      const text = event.partialResult.content.find(
-        (item: TextContent | ImageContent) => item.type === "text",
-      );
-      if (text?.type !== "text") return;
-      const pids: number[] = text.text.trim().split(/\s+/).map(Number);
+      if (!event.output) return;
+      output =
+        "set" in event.output
+          ? event.output.set
+          : output.slice(event.output.trimStart ?? 0) + (event.output.append ?? "");
+      const pids: number[] = output.trim().split(/\s+/).map(Number);
       if (pids.length === 3 && pids.every((pid) => Number.isInteger(pid) && pid > 0))
         ready.resolve(pids);
     },
@@ -154,14 +169,17 @@ test("aborting bash terminates its shell, child, and grandchild", async () => {
     while (alive && Date.now() < deadline) {
       try {
         process.kill(pid, 0);
-        await Bun.sleep(10);
+        await new Promise<void>((resolve) => setImmediate(resolve));
       } catch {
         alive = false;
       }
     }
     expect(alive).toBe(false);
   }
-  expect(JSON.stringify(session.messages)).toContain("Command aborted");
+  expect(session.messages.find((message) => message.role === "toolResult")).toMatchObject({
+    isError: true,
+  });
+  expect(JSON.stringify(session.messages)).toContain("Tool bash was aborted");
 });
 
 test("bash preserves the tail truncation notice and full spill output", async () => {
@@ -178,7 +196,7 @@ test("bash preserves the tail truncation notice and full spill output", async ()
   ]);
   const session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
   await session.run("produce large output");
-  const result = fake.contexts[1]!.messages.at(-1);
+  const result = fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult");
   expect(result).toMatchObject({ role: "toolResult", isError: false });
   if (result?.role !== "toolResult") throw new Error("Missing tool result");
   const content = result.content.find((item) => item.type === "text");
@@ -216,15 +234,17 @@ test("bash escalates cancellation when a process handles SIGTERM without exiting
   const session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
   const controller = new AbortController();
   const ready = Promise.withResolvers<number>();
+  let output = "";
   const run = session.run("start process", {
     signal: controller.signal,
     onEvent(event) {
       if (event.type !== "tool_execution_update" || event.toolCallId !== "stubborn") return;
-      const content = event.partialResult.content.find(
-        (item: TextContent | ImageContent) => item.type === "text",
-      );
-      if (content?.type === "text" && /^\d+\n$/.test(content.text))
-        ready.resolve(Number(content.text));
+      if (!event.output) return;
+      output =
+        "set" in event.output
+          ? event.output.set
+          : output.slice(event.output.trimStart ?? 0) + (event.output.append ?? "");
+      if (/^\d+\n$/.test(output)) ready.resolve(Number(output));
     },
   });
   void run.catch(() => {});
@@ -247,7 +267,7 @@ test("Tool Views are recomputed from persisted facts after Session resume", asyn
   const session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
   await session.run("run command");
   const before = session.messages;
-  await session.dispose();
+  await session.close();
   const resumed = await createSession({ ...dirs, ...fake, resumeId: session.id });
   try {
     expect(resumed.messages).toEqual(before);
@@ -260,7 +280,7 @@ test("Tool Views are recomputed from persisted facts after Session resume", asyn
       expect(stored).not.toContain('"view":');
     }
   } finally {
-    await resumed.dispose();
+    await resumed.close();
   }
 });
 
@@ -271,7 +291,7 @@ test("unknown tools produce no Tool View and retain their normal error result", 
     fauxAssistantMessage("done"),
   ]);
   const session = await createSession({ ...dirs, ...fake });
-  const events: unknown[] = [];
+  const events: SessionEvent[] = [];
   try {
     await session.run("run", {
       onEvent(event) {
@@ -279,13 +299,13 @@ test("unknown tools produce no Tool View and retain their normal error result", 
           events.push(event);
       },
     });
-    expect(events).toMatchObject([{ view: undefined }, { view: undefined, isError: true }]);
+    expect(events).toMatchObject([{ type: "tool_execution_end", result: { isError: true } }]);
+    expect(events[0] && "view" in events[0] ? events[0].view : undefined).toBeUndefined();
     expect(session.messages.find((message) => message.role === "toolResult")).toMatchObject({
       isError: true,
-      view: undefined,
     });
   } finally {
-    await session.dispose();
+    await session.close();
   }
 });
 
@@ -311,7 +331,7 @@ test("a tool author's throwing presenters cannot fail a Session Run", async () =
   ]);
   const session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
   try {
-    const events: unknown[] = [];
+    const events: SessionEvent[] = [];
     expect(
       (
         await session.run("run", {
@@ -322,13 +342,16 @@ test("a tool author's throwing presenters cannot fail a Session Run", async () =
         })
       ).success,
     ).toBe(true);
-    expect(events).toMatchObject([{ view: undefined }, { view: undefined, isError: false }]);
+    expect(events).toMatchObject([
+      { type: "tool_execution_start" },
+      { type: "tool_execution_end", result: { isError: false } },
+    ]);
+    for (const event of events) expect("view" in event ? event.view : undefined).toBeUndefined();
     expect(session.messages.find((message) => message.role === "toolResult")).toMatchObject({
       content: [{ text: "survived" }],
-      view: undefined,
     });
   } finally {
     factory.mockRestore();
-    await session.dispose();
+    await session.close();
   }
 });

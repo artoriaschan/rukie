@@ -1,7 +1,7 @@
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
+import { auxiliaryModels } from "../helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
 import { createSession } from "@rukie/agent";
-import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { fauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { startWithClock as start } from "../helpers/clock-app";
 const plan = "# Storage plan\n\nAdd **SQLite** storage.\n\nValidate public behavior.";
 async function review(options: Parameters<typeof start>[1] = {}, markdown = plan) {
@@ -205,9 +205,10 @@ test.each([
       expect(lines.every((line) => Bun.stringWidth(line) <= columns)).toBe(true);
       app.stdin.write("\x03");
       await app.waitFor(
-        () => !app.screen().some((line) => line.includes("计划评审")) && !app.isWorking(),
+        () => !app.screen().some((line) => line.includes("计划评审")) && parent.signal!.aborted,
       );
-      expect(child.signal!.aborted).toBe(true);
+      // Ordinary parent interruption preserves independently owned background children.
+      expect(child.signal!.aborted).toBe(false);
       expect(app.screen().join("\n")).toContain("draft preserved");
     } finally {
       await app.cleanup();
@@ -235,7 +236,7 @@ test("resume renders the persisted approved plan as a collapsible card", async (
   const argv: string[] = [];
   const app = await start(argv, {
     prepare: async (root) => {
-      const faux = createFauxCore({ api: "faux", provider: "faux" });
+      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
       faux.setResponses([
         fauxAssistantMessage(fauxToolCall("exit_plan_mode", { plan }), { stopReason: "toolUse" }),
         fauxAssistantMessage("Executed."),
@@ -244,11 +245,13 @@ test("resume renders the persisted approved plan as a collapsible card", async (
         cwd: root,
         homeDir: root,
         model: faux.getModel(),
-        streamFn: withAuxiliaryRequests(faux.streamSimple),
+        models: auxiliaryModels(faux.provider.streamSimple),
         onPlanReview: async () => ({ kind: "approve" }),
       });
       await session.setPlanMode(true);
-      await session.run("inspect");
+      const result = await session.run("inspect");
+      await session.waitForRequest(result.requestId);
+      await session.close();
       argv.push("--resume", session.id);
     },
   });

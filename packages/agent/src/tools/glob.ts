@@ -1,4 +1,4 @@
-import { truncateHead } from "@earendil-works/pi-agent-core";
+import { truncateHead } from "./runtime.ts";
 import { Value } from "typebox/value";
 import type { PresentedTool } from "./presentation.ts";
 import { lstat } from "node:fs/promises";
@@ -55,7 +55,6 @@ async function repositoryRoot(
 export function createGlobTool(cwd: string): PresentedTool<typeof schema> {
   return {
     name: "glob",
-    label: "glob",
     description:
       "Find files by glob, including dotfiles, respecting nested .gitignore files. Skips .git and directory symlinks.",
     parameters: schema,
@@ -69,7 +68,8 @@ export function createGlobTool(cwd: string): PresentedTool<typeof schema> {
       Value.Check(facts, details)
         ? { card: "search", kind: "search", displayKey: "tool.glob", shape: "paths", ...details }
         : undefined,
-    async execute(_id, { pattern, path }, signal) {
+    async execute({ pattern, path }, _api, context) {
+      const signal = context.abortSignal;
       const root = resolve(cwd, path ?? ".");
       const glob = new Bun.Glob(pattern);
       const matches: string[] = [];

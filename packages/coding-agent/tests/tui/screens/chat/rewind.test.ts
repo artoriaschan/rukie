@@ -1,9 +1,9 @@
 import { testClock } from "../../helpers/test-clock";
 import { startWithClock } from "../../helpers/clock-app";
-import { withAuxiliaryRequests } from "../../helpers/auxiliary-model.ts";
+import { auxiliaryModels } from "../../helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
 import { createSession } from "@rukie/agent";
-import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { fauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { join } from "node:path";
 import { mkdir, rm } from "node:fs/promises";
 import { start } from "../../helpers/app";
@@ -507,19 +507,19 @@ test("preview collapses whitespace, caps at 80 characters, and mouse only moves 
     columns: 100,
     env: { LANG: "en_US.UTF-8" },
     prepare: async (root) => {
-      const faux = createFauxCore({ api: "faux", provider: "faux" });
+      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
       faux.setResponses([fauxAssistantMessage("old answer"), fauxAssistantMessage("new answer")]);
       await mkdir(join(root, ".rukie/file-history"), { recursive: true });
       const seed = await createSession({
         cwd: root,
         homeDir: root,
         model: faux.getModel(),
-        streamFn: withAuxiliaryRequests(faux.streamSimple),
+        models: auxiliaryModels(faux.provider.streamSimple),
       });
       await seed.run("old  \n  question");
       await seed.run("x".repeat(90));
       argv.push("--resume", seed.id);
-      await seed.dispose();
+      await seed.close();
     },
   });
   try {
@@ -720,7 +720,7 @@ test.each([true, false])(
       env: { LANG: "en_US.UTF-8" },
       prepare: async (root) => {
         await mkdir(join(root, ".rukie/file-history"), { recursive: true });
-        const faux = createFauxCore({ api: "faux", provider: "faux" });
+        const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
         faux.setResponses([
           ...(priorTodo
             ? [
@@ -753,13 +753,13 @@ test.each([true, false])(
           cwd: root,
           homeDir: root,
           model: faux.getModel(),
-          streamFn: withAuxiliaryRequests(faux.streamSimple),
+          models: auxiliaryModels(faux.provider.streamSimple),
         });
         await seed.run("prior prompt");
         await seed.run("discarded prompt");
         await seed.setPlanMode(true);
         argv.push("--resume", seed.id);
-        await seed.dispose();
+        await seed.close();
       },
     });
     try {
@@ -816,7 +816,7 @@ test("40×12 rewind preserves Todo and historical children without reopening the
     env: { LANG: "en_US.UTF-8" },
     prepare: async (root) => {
       await mkdir(join(root, ".rukie/file-history"), { recursive: true });
-      const faux = createFauxCore({ api: "faux", provider: "faux" });
+      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
       faux.setResponses([
         fauxAssistantMessage(
           [
@@ -842,13 +842,13 @@ test("40×12 rewind preserves Todo and historical children without reopening the
         cwd: root,
         homeDir: root,
         model: faux.getModel(),
-        streamFn: withAuxiliaryRequests(faux.streamSimple),
+        models: auxiliaryModels(faux.provider.streamSimple),
         permissionMode: "full-access",
       });
       await seed.run("prior prompt");
       await seed.run("target");
       argv.push("--resume", seed.id);
-      await seed.dispose();
+      await seed.close();
     },
   });
   try {

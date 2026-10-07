@@ -1,14 +1,27 @@
+import { runRequest } from "../helpers/crashed-subagents.ts";
 import { afterEach, expect, test } from "bun:test";
-import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
+import { fauxAssistantMessage, fauxToolCall, getCurrentSystemMessage } from "@earendil-works/pi-ai";
 import { realpath, symlink } from "node:fs/promises";
 import { join } from "node:path";
-import { createSession, createJsonlStore, type SessionEvent } from "../../src/index.ts";
+import {
+  createSession as createSessionImpl,
+  type Session,
+  type SessionEvent,
+} from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
-afterEach(() => dirs?.cleanup());
+const sessions: Session[] = [];
+async function createSession(options: Parameters<typeof createSessionImpl>[0]) {
+  const session = await createSessionImpl(options);
+  sessions.push(session);
+  return session;
+}
+afterEach(async () => {
+  await Promise.all(sessions.splice(0).map((session) => session.close()));
+  await dirs?.cleanup();
+});
 
 test.each(["subagent", "subagent_fork"])(
   "%s file writes belong to the parent's Checkpoint and code rewind",
@@ -45,7 +58,7 @@ test.each(["subagent", "subagent_fork"])(
     });
     expect(
       (
-        await session.run("delegate changes", {
+        await runRequest(session, "delegate changes", {
           onEvent: (event) => {
             events.push(event);
           },
@@ -80,25 +93,13 @@ test.each(["subagent", "subagent_fork"])(
           event.event.name === "checkpoint",
       ),
     ).toBe(false);
-    const store = createJsonlStore(dirs);
-    const children = (await store.list({ cwd: dirs.cwd }, BACKGROUND_CONTEXT)).filter(
-      (metadata) => metadata.parentSessionId === session.id,
-    );
+    const children = session.toolState("subagents") as { id: string }[];
     expect(children).toHaveLength(1);
-    const stored = await store.open(children[0]!, BACKGROUND_CONTEXT);
-    try {
-      const entries = await (await stored.branch("main", BACKGROUND_CONTEXT))!.findEntries(
-        { order: "oldestFirst" },
-        BACKGROUND_CONTEXT,
-      );
-      expect(
-        entries.some(
-          (entry) => entry.type === "custom" && entry.customType === "tool-state/checkpoint",
-        ),
-      ).toBe(false);
-    } finally {
-      await stored.close(BACKGROUND_CONTEXT);
-    }
+    expect(
+      (await session.readSubagent(children[0]!.id))?.messages.some(
+        (message) => message.role === "toolResult" && message.toolName === "write",
+      ),
+    ).toBe(true);
     expect(
       await session.rewind(checkpoint.promptEntryId, { code: true, conversation: false }),
     ).toEqual({
@@ -108,6 +109,7 @@ test.each(["subagent", "subagent_fork"])(
     });
     expect(await Bun.file(join(dirs.cwd, "existing.txt")).text()).toBe("original");
     expect(await Bun.file(join(dirs.cwd, "created.txt")).exists()).toBe(false);
+    await session.close();
     const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
     expect(resumed.checkpoints()).toEqual([checkpoint]);
   },
@@ -151,7 +153,7 @@ test.each([
     ]),
     permissionMode: "full-access",
   });
-  await session.run("change together");
+  await runRequest(session, "change together");
   expect(await Bun.file(join(dirs.cwd, "shared.txt")).text()).toBe(
     first === "parent" ? "child" : "parent",
   );
@@ -170,9 +172,11 @@ test.each(["subagent", "subagent_fork"])(
     const waiting = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
     const response: Parameters<typeof fakeModel>[0][number] = async (context) => {
-      const last = context.messages.at(-1);
-      const isParent = last?.role === "toolResult" && last.toolName === toolName;
+      const isParent = getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
+        (tool) => tool.name === "subagent",
+      );
       if (isParent) return fauxAssistantMessage("parent waiting");
+      waiting.resolve();
       await release.promise;
       return fauxAssistantMessage(fauxToolCall("write", { path: "late.txt", content: "child" }), {
         stopReason: "toolUse",
@@ -195,18 +199,13 @@ test.each(["subagent", "subagent_fork"])(
       ]),
       permissionMode: "full-access",
     });
-    await session.run("inspect");
+    await runRequest(session, "inspect");
     let settled = false;
-    const run = session
-      .run("delegate late write", {
-        onEvent(event) {
-          if (event.type === "subagents_waiting") waiting.resolve();
-        },
-      })
-      .then((result) => {
-        settled = true;
-        return result;
-      });
+    await session.run("delegate late write");
+    const run = session.waitForRequest(session.currentRequestId!).then((result) => {
+      settled = true;
+      return result;
+    });
     await waiting.promise;
     const checkpoint = session.checkpoints()[1]!;
     try {
@@ -214,7 +213,7 @@ test.each(["subagent", "subagent_fork"])(
       expect(checkpoint.files).toEqual([]);
       await expect(
         session.rewind(checkpoint.promptEntryId, { code: true, conversation: false }),
-      ).rejects.toThrow("idle Session");
+      ).rejects.toThrow("related work to be settled");
     } finally {
       release.resolve();
       await run;
@@ -291,7 +290,7 @@ test.each([
       ]),
       permissionMode: "full-access",
     });
-    await parent.run("inspect first", {
+    await runRequest(parent, "inspect first", {
       onEvent(event) {
         events.push(event);
       },
@@ -299,6 +298,7 @@ test.each([
     const event = events.find((event) => event.type === "subagent_event");
     if (event?.type !== "subagent_event") throw new Error("Missing child event");
     childId = event.agentId;
+    if (resume) await parent.close();
     const session = resume
       ? await createSession({
           ...dirs,
@@ -307,7 +307,7 @@ test.each([
           permissionMode: "full-access",
         })
       : parent;
-    await session.run("ask the child to write");
+    await runRequest(session, "ask the child to write");
     expect(await Bun.file(join(dirs.cwd, "later.txt")).text()).toBe("child");
     const checkpoints = session.checkpoints();
     expect(checkpoints).toHaveLength(2);
@@ -357,7 +357,7 @@ test("concurrent parent and child writes share one original file record", async 
       await release.promise;
     },
   });
-  await session.run("write together");
+  await runRequest(session, "write together");
   expect(allowed).toBe(3);
   const checkpoint = session.checkpoints()[0]!;
   expect(checkpoint.files).toEqual([

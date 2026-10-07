@@ -1,11 +1,25 @@
 import { afterEach, expect, test } from "bun:test";
-import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { createSession, type PermissionAskRequest, type QuestionRequest } from "../../src/index.ts";
+import { fauxAssistantMessage, fauxToolCall, getCurrentSystemMessage } from "@earendil-works/pi-ai";
+import {
+  createSession as createSessionImpl,
+  type Session,
+  type PermissionAskRequest,
+  type QuestionRequest,
+} from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
-afterEach(() => dirs?.cleanup());
+const sessions: Session[] = [];
+async function createSession(options: Parameters<typeof createSessionImpl>[0]) {
+  const session = await createSessionImpl(options);
+  sessions.push(session);
+  return session;
+}
+afterEach(async () => {
+  await Promise.all(sessions.splice(0).map((session) => session.close()));
+  await dirs?.cleanup();
+});
 
 const delegate = (toolName = "subagent") =>
   fauxAssistantMessage(
@@ -35,7 +49,9 @@ test.each(["subagent", "subagent_fork"])(
       fauxAssistantMessage("child done"),
       bash(),
       (context) => {
-        expect(structuredClone(context.messages.at(-1))).toMatchObject({
+        expect(
+          structuredClone(context.messages.findLast((message) => message.role !== "system")),
+        ).toMatchObject({
           isError: false,
           content: [{ type: "text", text: "shared-grant" }],
         });
@@ -53,7 +69,7 @@ test.each(["subagent", "subagent_fork"])(
     const childIds: string[] = [];
     await session.run("delegate", {
       onEvent(event) {
-        if (event.type === "subagent_event" && event.event.type === "session_start")
+        if (event.type === "subagent_event" && event.event.type === "run_start")
           childIds.push(event.agentId);
       },
     });
@@ -72,9 +88,8 @@ test("a child session grant withdraws a matching parent approval already in the 
   let parentCalls = 0;
   let childCalls = 0;
   const response: Parameters<typeof fakeModel>[0][number] = async (context) => {
-    const parent = context.messages.some(
-      (message) =>
-        message.role === "system" && message.toolsAdded?.some((tool) => tool.name === "subagent"),
+    const parent = getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
+      (tool) => tool.name === "subagent",
     );
     if (parent) {
       if (parentCalls++ === 0) return bash();
@@ -130,7 +145,9 @@ test.each(["subagent", "subagent_fork"])(
         return bash();
       },
       (context) => {
-        expect(structuredClone(context.messages.at(-1))).toMatchObject({ isError: false });
+        expect(
+          structuredClone(context.messages.findLast((message) => message.role !== "system")),
+        ).toMatchObject({ isError: false });
         expect(asked).toBe(1);
         session.setPermissionMode("ask");
         return bash();
@@ -166,7 +183,9 @@ test.each(["subagent", "subagent_fork"])(
         return bash();
       },
       (context) => {
-        expect(structuredClone(context.messages.at(-1))).toMatchObject({
+        expect(
+          structuredClone(context.messages.findLast((message) => message.role !== "system")),
+        ).toMatchObject({
           isError: true,
           content: [{ type: "text", text: "Tool not authorized: bash" }],
         });
@@ -198,7 +217,9 @@ test("child question uses the parent callback with origin and parent questions h
     delegate(),
     askQuestion(),
     (context) => {
-      expect(structuredClone(context.messages.at(-1))).toMatchObject({
+      expect(
+        structuredClone(context.messages.findLast((message) => message.role !== "system")),
+      ).toMatchObject({
         content: [{ type: "text", text: '"Proceed?" → Yes' }],
       });
       return fauxAssistantMessage("child done");
@@ -235,7 +256,9 @@ test("session grants from one child also cover sibling calls", async () => {
     delegate(),
     bash(),
     (context) => {
-      expect(structuredClone(context.messages.at(-1))).toMatchObject({ isError: false });
+      expect(
+        structuredClone(context.messages.findLast((message) => message.role !== "system")),
+      ).toMatchObject({ isError: false });
       return fauxAssistantMessage("second done");
     },
     fauxAssistantMessage("parent done"),

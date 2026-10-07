@@ -41,12 +41,12 @@ test.each(["new", "overwrite", "large"])(
       expect(JSON.stringify(result)).not.toContain("oldText");
       expect(JSON.stringify(result).length).toBeLessThan(3000);
     } else expect(result).toMatchObject({ details: { oldText, newText: content } });
-    await session.dispose();
+    await session.close();
     const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
     expect(resumed.messages.find((message) => message.role === "toolResult")).toMatchObject({
       view: end?.type === "tool_execution_end" ? end.view : undefined,
     });
-    await resumed.dispose();
+    await resumed.close();
   },
 );
 test("edit publishes pending replacements and the actual successful unified patch", async () => {
@@ -73,7 +73,10 @@ test("edit publishes pending replacements and the actual successful unified patc
     },
   });
   expect(events.find((event) => event.type === "tool_execution_start")).toMatchObject({
-    view: { card: "diff", diffs: [{ path: "file.txt", oldText: "before", newText: "after" }] },
+    view: {
+      card: "diff",
+      diffs: [{ path: join(dirs.cwd, "file.txt"), oldText: "before", newText: "after" }],
+    },
   });
   expect(events.find((event) => event.type === "tool_execution_end")).toMatchObject({
     view: {
@@ -83,7 +86,7 @@ test("edit publishes pending replacements and the actual successful unified patc
       ],
     },
   });
-  await session.dispose();
+  await session.close();
 });
 
 test("failed file tools preserve errors without claiming a successful diff", async () => {
@@ -115,8 +118,8 @@ test("failed file tools preserve errors without claiming a successful diff", asy
   const ends = events.filter((event) => event.type === "tool_execution_end");
   expect(ends).toHaveLength(2);
   for (const end of ends) {
-    expect(end.isError).toBe(true);
+    expect(end.result?.isError).toBe(true);
     expect(end.view).toBeUndefined();
   }
-  await session.dispose();
+  await session.close();
 });

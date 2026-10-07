@@ -2,16 +2,46 @@ import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { join, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createSession, type SessionEvent } from "../../src/index.ts";
+import {
+  createSession as createSessionImpl,
+  type Session,
+  type SessionEvent,
+} from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { abortingModel } from "../helpers/aborting-model.ts";
+import { waitForFile } from "../helpers/wait-for-file.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
-afterEach(() => dirs?.cleanup());
+const sessions: Session[] = [];
+async function createSession(options: Parameters<typeof createSessionImpl>[0]) {
+  const session = await createSessionImpl(options);
+  sessions.push(session);
+  return session;
+}
+afterEach(async () => {
+  await Promise.all(sessions.splice(0).map((session) => session.close()));
+  await dirs?.cleanup();
+});
+
+test("asynchronous observer errors reach the string warning callback", async () => {
+  dirs = await tempDirs();
+  const warning = Promise.withResolvers<string>();
+  const fake = fakeModel([fauxAssistantMessage("done")]);
+  const session = await createSession({ ...dirs, ...fake, onWarning: warning.resolve });
+  let rejected = false;
+  await session.run("hi", {
+    onEvent: async () => {
+      if (rejected) return;
+      rejected = true;
+      throw new Error("observer unavailable");
+    },
+  });
+  expect(await warning.promise).toBe("Error: observer unavailable");
+});
 
 test.each([undefined, "other"] as const)(
-  "dispose matches reason %s and concurrent calls run SessionEnd once",
+  "close matches reason %s and concurrent calls run SessionEnd once",
   async (reason) => {
     dirs = await tempDirs();
     const fake = fakeModel([fauxAssistantMessage("done")]);
@@ -31,8 +61,8 @@ test.each([undefined, "other"] as const)(
       },
     });
     await session.run("hi");
-    await Promise.all([session.dispose(reason), session.dispose("other")]);
-    await session.dispose();
+    await Promise.all([session.close(reason), session.close("other")]);
+    await session.close();
     const input = await Bun.file(join(dirs.cwd, "input")).json();
     expect(input).toMatchObject({
       session_id: session.id,
@@ -46,7 +76,7 @@ test.each([undefined, "other"] as const)(
   },
 );
 
-test("dispose interrupts an active Run and closes its MCP process", async () => {
+test("close interrupts an active Run and closes its MCP process", async () => {
   dirs = await tempDirs();
   await Bun.write(join(dirs.homeDir, "manifest.json"), JSON.stringify({ tools: ["echo"] }));
   await Bun.write(
@@ -80,11 +110,11 @@ test("dispose interrupts an active Run and closes its MCP process", async () => 
   const pid = Number((await Bun.file(join(dirs.homeDir, "pids")).text()).trim());
   expect(() => process.kill(pid, 0)).not.toThrow();
   try {
-    await session.dispose();
+    await session.close();
     expect(await run).toBeInstanceOf(Error);
     expect(() => process.kill(pid, 0)).toThrow();
     expect(await Bun.file(join(dirs.cwd, "count")).text()).toBe("ended\n");
-    await expect(session.run("again")).rejects.toThrow("disposed");
+    await expect(session.run("again")).rejects.toThrow("closed");
   } finally {
     try {
       process.kill(pid, "SIGKILL");
@@ -121,14 +151,14 @@ test("SessionEnd discards all output and retains the small handler timeout", asy
     },
   });
   const started = performance.now();
-  await session.dispose();
+  await session.close();
   expect(performance.now() - started).toBeLessThan(1000);
   expect(warnings).toHaveLength(1);
   expect(warnings[0]).toContain("timed out after 0.02s");
   expect(await Bun.file(join(dirs.cwd, "late")).exists()).toBe(false);
 });
 
-test("dispose cancels a slow in-flight tool hook before running SessionEnd", async () => {
+test("close cancels a slow in-flight tool hook before running SessionEnd", async () => {
   dirs = await tempDirs();
   const session = await createSession({
     ...dirs,
@@ -153,13 +183,9 @@ test("dispose cancels a slow in-flight tool hook before running SessionEnd", asy
     },
   });
   const run = session.run("try").catch((error: unknown) => error);
-  const deadline = Date.now() + 2000;
-  while (!(await Bun.file(join(dirs.cwd, "hook-started")).exists())) {
-    if (Date.now() > deadline) throw new Error("Tool hook did not start");
-    await Bun.sleep(10);
-  }
+  await waitForFile(join(dirs.cwd, "hook-started"));
   const started = performance.now();
-  await session.dispose();
+  await session.close();
   expect(performance.now() - started).toBeLessThan(1000);
   expect(await run).toBeInstanceOf(Error);
   expect(await Bun.file(join(dirs.cwd, "hook-late")).exists()).toBe(false);
@@ -167,7 +193,7 @@ test("dispose cancels a slow in-flight tool hook before running SessionEnd", asy
   expect(await Bun.file(join(dirs.cwd, "ended")).exists()).toBe(true);
 });
 
-test("an event observer can await dispose without waiting on its own Run", async () => {
+test("an event observer can await close without waiting on its own Run", async () => {
   dirs = await tempDirs();
   const warnings: string[] = [];
   const events: SessionEvent[] = [];
@@ -183,15 +209,25 @@ test("an event observer can await dispose without waiting on its own Run", async
       },
     },
   });
+  const closed = Promise.withResolvers<void>();
+  let closeStarted = false;
   const started = performance.now();
+  session.subscribe((event) => events.push(event));
   await expect(
     session.run("try", {
-      onEvent: async (event) => {
-        events.push(event);
-        await session.dispose();
+      onEvent: async () => {
+        if (closeStarted) return;
+        closeStarted = true;
+        try {
+          await session.close();
+          closed.resolve();
+        } catch (error) {
+          closed.reject(error);
+        }
       },
     }),
   ).rejects.toThrow();
+  await closed.promise;
   expect(performance.now() - started).toBeLessThan(1000);
   expect(warnings).toHaveLength(1);
   expect(events.filter((event) => event.type === "hook_warning")).toMatchObject([
@@ -217,21 +253,22 @@ test("SessionEnd exit failures emit diagnostics after the Run while discarding o
       },
     },
   });
-  await session.run("try", {
-    onEvent: (event) => {
-      events.push(event);
-    },
-  });
-  await session.dispose();
+  session.subscribe((event) => events.push(event));
+  await session.run("try");
+  await session.close();
   expect(warnings).toHaveLength(1);
-  expect(events.at(-1)).toMatchObject({
-    type: "hook_warning",
-    sessionId: session.id,
-    event: "SessionEnd",
-    error: { code: "hook-exit", params: { exitCode: "3", stderr: "failed" } },
-  });
+  // Native notice commits also publish structural entry events during shutdown.
+  expect(events.filter((event) => event.type === "hook_warning")).toMatchObject([
+    {
+      type: "hook_warning",
+      sessionId: session.id,
+      event: "SessionEnd",
+      error: { code: "hook-exit", params: { exitCode: "3", stderr: "failed" } },
+    },
+  ]);
 });
 
+// A real Hook process owns the 1.5s budget; a virtual parent clock cannot drive its shutdown.
 test("SessionEnd handlers share a 1.5 second total shutdown budget", async () => {
   dirs = await tempDirs();
   const warnings: string[] = [];
@@ -259,13 +296,10 @@ test("SessionEnd handlers share a 1.5 second total shutdown budget", async () =>
       },
     },
   });
-  await session.run("try", {
-    onEvent: (event) => {
-      events.push(event);
-    },
-  });
+  session.subscribe((event) => events.push(event));
+  await session.run("try");
   const started = performance.now();
-  await session.dispose();
+  await session.close();
   expect(performance.now() - started).toBeLessThan(2500);
   expect(warnings).toHaveLength(2);
   expect(events.filter((event) => event.type === "hook_warning")).toMatchObject([

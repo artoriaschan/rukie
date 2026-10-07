@@ -1,4 +1,4 @@
-import type { AgentToolResult } from "@earendil-works/pi-agent-core";
+import type { ToolExecutionResult } from "@earendil-works/pi-durable";
 import type { PresentedTool } from "../presentation.ts";
 import { Type } from "typebox";
 import type {
@@ -23,7 +23,7 @@ const sendParameters = Type.Object({ agent_id: Type.String(), message: Type.Stri
 type DelegationDetails = { agentId: string; childSessionId: string };
 
 /** Renders one delegation's execution facts as the model-visible tool result. */
-function delegationResult(fact: SubagentDelegationFact): AgentToolResult<DelegationDetails> {
+function delegationResult(fact: SubagentDelegationFact): ToolExecutionResult<DelegationDetails> {
   const details = { agentId: fact.agentId, childSessionId: fact.childSessionId };
   if (fact.kind === "completed")
     return {
@@ -42,7 +42,9 @@ function delegationResult(fact: SubagentDelegationFact): AgentToolResult<Delegat
   };
 }
 
-function sendResult(fact: SubagentSendFact): AgentToolResult<object> {
+function sendResult(
+  fact: SubagentSendFact,
+): ToolExecutionResult<Record<string, never> | DelegationDetails> {
   if (fact.kind === "steered")
     return { content: [{ type: "text", text: `delivered to ${fact.agentId}` }], details: {} };
   return delegationResult(fact);
@@ -52,6 +54,7 @@ function sendResult(fact: SubagentSendFact): AgentToolResult<object> {
 export function createSubagentTools(subagents: ReturnType<typeof createSubagentController>) {
   const delegate: PresentedTool<typeof delegateParameters> = {
     name: "subagent",
+    replay: "safe",
     presentCall: (args) => ({
       card: "generic",
       kind: "task",
@@ -64,7 +67,6 @@ export function createSubagentTools(subagents: ReturnType<typeof createSubagentC
       displayKey: "tool.subagent",
       text,
     }),
-    label: "Subagent",
     // Discovery refreshes the available types per Run, so the declaration reads them now.
     get description() {
       const available = subagents.types();
@@ -77,21 +79,27 @@ export function createSubagentTools(subagents: ReturnType<typeof createSubagentC
     },
     parameters: delegateParameters,
     async execute(
-      _id,
       { description, prompt, subagent_type = "general-purpose", run_in_background = true },
+      api,
+      context,
     ) {
       return delegationResult(
-        await subagents.delegate({
-          type: subagent_type,
-          description,
-          prompt,
-          background: run_in_background,
-        }),
+        await subagents.delegate(
+          {
+            type: subagent_type,
+            description,
+            prompt,
+            background: run_in_background,
+          },
+          api,
+          context,
+        ),
       );
     },
   };
   const fork: PresentedTool<typeof forkParameters> = {
     name: "subagent_fork",
+    replay: "safe",
     presentCall: (args) => ({
       card: "generic",
       kind: "task",
@@ -104,13 +112,12 @@ export function createSubagentTools(subagents: ReturnType<typeof createSubagentC
       displayKey: "tool.subagent_fork",
       text,
     }),
-    label: "Fork Subagent",
     description:
       "Delegate a prompt to a fork of this session through its last completed Turn, excluding the current Turn. Inherits the parent model and tools; runs in the background by default.",
     parameters: forkParameters,
-    async execute(_id, { description, prompt, run_in_background = true }) {
+    async execute({ description, prompt, run_in_background = true }, api, context) {
       return delegationResult(
-        await subagents.fork({ description, prompt, background: run_in_background }),
+        await subagents.fork({ description, prompt, background: run_in_background }, api, context),
       );
     },
   };
@@ -128,12 +135,11 @@ export function createSubagentTools(subagents: ReturnType<typeof createSubagentC
       displayKey: "tool.send_message",
       text,
     }),
-    label: "Send Message",
     description:
       "Send instructions to one of this session's subagents. Steers an active Run or starts a new background Run for an idle child.",
     parameters: sendParameters,
-    async execute(_id, { agent_id, message }) {
-      return sendResult(await subagents.send(agent_id, message));
+    async execute({ agent_id, message }, api, context) {
+      return sendResult(await subagents.send(agent_id, message, api, context));
     },
   };
   const list: PresentedTool = {
@@ -150,7 +156,6 @@ export function createSubagentTools(subagents: ReturnType<typeof createSubagentC
       displayKey: "tool.list_agents",
       text,
     }),
-    label: "List Agents",
     description: "List this session's subagents, their Run status and descriptions.",
     parameters: Type.Object({}),
     async execute() {

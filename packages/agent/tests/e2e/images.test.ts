@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
-import { fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { createSession } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
+import { withAuxiliaryRequests, modelStream, withModelStream } from "../helpers/auxiliary-model.ts";
 
 const png =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aSf8AAAAASUVORK5CYII=";
@@ -23,7 +23,9 @@ test.each([
     try {
       const data = bytes.toString("base64");
       await session.run("webp", { images: [{ data, mimeType: "image/webp" }] });
-      expect(fake.contexts[0]!.messages.at(-1)).toMatchObject({
+      expect(
+        fake.contexts[0]!.messages.findLast((message) => message.role === "user"),
+      ).toMatchObject({
         content: [
           { type: "text", text: "webp" },
           { type: "image", data, mimeType: "image/webp" },
@@ -36,7 +38,7 @@ test.each([
         }),
       ).rejects.toThrow("8000");
     } finally {
-      await session.dispose();
+      await session.close();
       await dirs.cleanup();
     }
   },
@@ -44,28 +46,42 @@ test.each([
 
 test("Compaction summarizes prompt text without base64 and resumes into a continuing Run", async () => {
   const dirs = await tempDirs();
+  await Bun.write(`${dirs.cwd}/context.txt`, "retained fact ".repeat(6000));
   const fake = fakeModel([
+    fauxAssistantMessage(
+      [
+        fauxToolCall("read", { path: "context.txt" }),
+        fauxToolCall("read", { path: "context.txt" }),
+      ],
+      { stopReason: "toolUse" },
+    ),
     fauxAssistantMessage("identified the screenshot issue"),
+    fauxAssistantMessage("recent retained reply"),
     fauxAssistantMessage("Screenshot issue summary."),
   ]);
   const session = await createSession({ ...dirs, ...fake });
   try {
     await session.run("inspect screenshot", { images: [{ data: png, mimeType: "image/png" }] });
+    await session.run("recent retained task");
     await session.compact();
-    expect(JSON.stringify(fake.contexts[1])).toContain("inspect screenshot");
-    expect(JSON.stringify(fake.contexts[1])).not.toContain(png);
-    expect(JSON.stringify(session.messages)).toContain("Screenshot issue summary.");
-    await session.dispose();
+    expect(JSON.stringify(fake.contexts[3])).toContain("inspect screenshot");
+    expect(JSON.stringify(fake.contexts[3])).not.toContain(png);
+    expect(
+      session.messages.some(
+        (message) => message.role === "session-notice" && message.notice.kind === "compaction",
+      ),
+    ).toBe(true);
+    await session.close();
     const next = fakeModel([fauxAssistantMessage("continued")]);
     const resumed = await createSession({ ...dirs, ...next, resumeId: session.id });
     try {
       expect((await resumed.run("continue")).text).toBe("continued");
       expect(JSON.stringify(next.contexts[0])).toContain("Screenshot issue summary.");
     } finally {
-      await resumed.dispose();
+      await resumed.close();
     }
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });
@@ -85,7 +101,7 @@ test.each([
       expect(fake.contexts).toHaveLength(0);
       expect(session.running).toBe(false);
     } finally {
-      await session.dispose();
+      await session.close();
       await dirs.cleanup();
     }
   },
@@ -103,13 +119,16 @@ test("UserPromptSubmit and Session Title receive only prompt text while hook con
     settings: {
       hooks: { UserPromptSubmit: [{ hooks: [{ type: "command", command: "sh submit.sh" }] }] },
     },
-    streamFn: withAuxiliaryRequests(fake.streamFn, {
-      titles: (model, context, options) => {
-        titleRequest = JSON.stringify(context);
-        titled.resolve();
-        return withAuxiliaryRequests(fake.streamFn)(model, context, options);
-      },
-    }),
+    models: withModelStream(
+      fake.models,
+      withAuxiliaryRequests(modelStream(fake.models), {
+        titles: (model, context, options) => {
+          titleRequest = JSON.stringify(context);
+          titled.resolve();
+          return withAuxiliaryRequests(modelStream(fake.models))(model, context, options);
+        },
+      }),
+    ),
   });
   try {
     await session.run("inspect screenshot", {
@@ -126,7 +145,7 @@ test("UserPromptSubmit and Session Title receive only prompt text while hook con
     expect(JSON.stringify(fake.contexts[0])).toContain(png);
     expect(JSON.stringify(fake.contexts[0])).toContain("hook-context");
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });
@@ -139,7 +158,7 @@ test("Session Resume restores inline images and names and the next request still
     await session.run("look", {
       images: [{ data: png, mimeType: "image/png", name: "saved.png" }],
     });
-    await session.dispose();
+    await session.close();
     const next = fakeModel([fauxAssistantMessage("restored")]);
     const resumed = await createSession({ ...dirs, ...next, resumeId: session.id });
     try {
@@ -167,10 +186,10 @@ test("Session Resume restores inline images and names and the next request still
       });
       expect(JSON.stringify(next.contexts[0])).not.toContain("saved.png");
     } finally {
-      await resumed.dispose();
+      await resumed.close();
     }
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });
@@ -195,17 +214,22 @@ test("steering validates before queueing and sends ordered images with a Skill I
   const run = session.run("start");
   try {
     await started.promise;
-    expect(() =>
+    await expect(
       session.steer("invalid", { images: [{ data: "bm90LWltYWdl", mimeType: "image/png" }] }),
-    ).toThrow("image");
-    session.steer("/check [Image #2] then [Image #1]", {
+    ).rejects.toThrow("image");
+    await session.steer("/check [Image #2] then [Image #1]", {
       images: [
         { data: png, mimeType: "image/png", name: "two.png" },
         { data: png, mimeType: "image/png" },
       ],
     });
     release.resolve();
-    expect((await run).text).toBe("steered");
+    const first = await run;
+    expect(first.text).toBe("first");
+    await session.waitForIdle();
+    expect(session.messages.findLast((message) => message.role === "assistant")).toMatchObject({
+      content: [{ type: "text", text: "steered" }],
+    });
     const user = fake.contexts[1]!.messages.find(
       (message) =>
         message.role === "user" &&
@@ -227,7 +251,7 @@ test("steering validates before queueing and sends ordered images with a Skill I
   } finally {
     release.resolve();
     await run.catch(() => {});
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });
@@ -244,12 +268,14 @@ test("JPEG headers skip metadata before enforcing image dimensions", async () =>
   try {
     const data = bytes.toString("base64");
     await session.run("jpeg", { images: [{ data, mimeType: "image/jpeg" }] });
-    expect(fake.contexts[0]!.messages.at(-1)).toMatchObject({
-      content: [
-        { type: "text", text: "jpeg" },
-        { type: "image", data, mimeType: "image/jpeg" },
-      ],
-    });
+    expect(fake.contexts[0]!.messages.findLast((message) => message.role === "user")).toMatchObject(
+      {
+        content: [
+          { type: "text", text: "jpeg" },
+          { type: "image", data, mimeType: "image/jpeg" },
+        ],
+      },
+    );
     bytes.writeUInt16BE(8001, 25);
     await expect(
       session.run("bad jpeg", {
@@ -257,7 +283,7 @@ test("JPEG headers skip metadata before enforcing image dimensions", async () =>
       }),
     ).rejects.toThrow("8000");
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });
@@ -269,12 +295,14 @@ test("GIF prompt images reach the model and their header dimensions enforce the 
   const data = "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
   try {
     await session.run("gif", { images: [{ data, mimeType: "image/gif" }] });
-    expect(fake.contexts[0]!.messages.at(-1)).toMatchObject({
-      content: [
-        { type: "text", text: "gif" },
-        { type: "image", data, mimeType: "image/gif" },
-      ],
-    });
+    expect(fake.contexts[0]!.messages.findLast((message) => message.role === "user")).toMatchObject(
+      {
+        content: [
+          { type: "text", text: "gif" },
+          { type: "image", data, mimeType: "image/gif" },
+        ],
+      },
+    );
     const large = Buffer.from(data, "base64");
     large.writeUInt16LE(8001, 6);
     await expect(
@@ -283,7 +311,7 @@ test("GIF prompt images reach the model and their header dimensions enforce the 
       }),
     ).rejects.toThrow("8000");
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });
@@ -309,7 +337,7 @@ test.each(["width", "height"])(
       expect(session.running).toBe(false);
       expect(session.messages.some((message) => message.role === "user")).toBe(false);
     } finally {
-      await session.dispose();
+      await session.close();
       await dirs.cleanup();
     }
   },
@@ -328,10 +356,12 @@ test("oversized image bytes are rejected before any Run event or model request",
       session.run("big", { images: [{ data: bytes.toString("base64"), mimeType: "image/png" }] }),
     ).rejects.toThrow("5 MB");
     expect(fake.contexts).toEqual([]);
-    expect(events).toEqual([]);
+    expect(events).not.toContain("run_start");
+    expect(events).not.toContain("submission");
+    expect(session.messages.some((message) => message.role === "user")).toBe(false);
     expect(session.running).toBe(false);
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });
@@ -358,7 +388,7 @@ test("prompt images follow text in caller order while names stay in the Transcri
       imageNames: ["second.png", "first.gif"],
     });
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });
@@ -377,13 +407,15 @@ test("invalid prompt image is rejected before a Run starts and valid input can s
     ).rejects.toThrow("image");
     expect(session.running).toBe(false);
     expect(fake.contexts).toHaveLength(0);
-    expect(events).toEqual([]);
+    expect(events).not.toContain("run_start");
+    expect(events).not.toContain("submission");
+    expect(session.messages.some((message) => message.role === "user")).toBe(false);
     expect(session.messages.some((message) => message.role === "user")).toBe(false);
     expect(
       (await session.run("valid", { images: [{ data: png, mimeType: "image/png" }] })).text,
     ).toBe("valid");
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });

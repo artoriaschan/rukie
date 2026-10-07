@@ -1,3 +1,4 @@
+import { waitForFile } from "../helpers/wait-for-file.ts";
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { join } from "node:path";
@@ -40,7 +41,7 @@ async function runHook(handler: HookHandler) {
       events.push(event);
     },
   });
-  await session.dispose();
+  await session.close();
   return { session, events, fake, executed: await Bun.file(join(dirs.cwd, "marker")).exists() };
 }
 
@@ -274,15 +275,15 @@ test.each(["cancel", "dispose"] as const)(
       );
     await started.promise;
     if (action === "cancel") controller.abort();
-    else await session.dispose();
+    else await session.close();
     try {
       const result = await running;
-      expect(result?.name).toBe("AbortError");
+      expect(result?.name).toBe(action === "cancel" ? "AbortError" : "Error");
       expect(await Bun.file(join(dirs.cwd, "marker")).exists()).toBe(false);
       expect(events.filter((event) => event.type === "permission_denied")).toHaveLength(0);
     } finally {
       release.resolve(Response.json(denial));
-      await session.dispose();
+      await session.close();
     }
   },
 );
@@ -329,7 +330,7 @@ test.each(["http", "mcp_tool"] as const)(
       },
     });
     await session.run("try");
-    await session.dispose();
+    await session.close();
     expect(type === "http" ? calls : await Bun.file(join(dirs.homeDir, "calls")).text()).toBe(
       type === "http" ? 1 : "json\n",
     );
@@ -375,16 +376,12 @@ test.each(["cancel", "dispose"] as const)(
       () => undefined,
       (error) => error as Error,
     );
-    const deadline = Date.now() + 2000;
-    while (!(await Bun.file(join(dirs.homeDir, "calls")).exists())) {
-      if (Date.now() > deadline) throw new Error("MCP hook did not start");
-      await Bun.sleep(5);
-    }
+    await waitForFile(join(dirs.homeDir, "calls"));
     if (action === "cancel") controller.abort();
-    else await session.dispose();
-    expect((await running)?.name).toBe("AbortError");
+    else await session.close();
+    expect((await running)?.name).toBe(action === "cancel" ? "AbortError" : "Error");
     expect(await Bun.file(join(dirs.cwd, "marker")).exists()).toBe(false);
-    await session.dispose();
+    await session.close();
   },
 );
 
@@ -437,18 +434,17 @@ test("HTTP non-success streams release their connection before session disposal"
     expect(events.filter((event) => event.type === "hook_warning")).toMatchObject([
       { error: { code: "hook-http-status" } },
     ]);
-    expect(
-      await Promise.race([cancelled.promise.then(() => true), Bun.sleep(100).then(() => false)]),
-    ).toBe(true);
+    await cancelled.promise;
     expect(server.pendingRequests).toBe(0);
   } finally {
-    await session.dispose();
+    await session.close();
   }
 });
 
 test("MCP hook default and explicit budgets permit decisions after the SDK's 30s deadline", async () => {
   dirs = await tempDirs();
   await connectMcp(["delayed-json"]);
+  // The real SDK timeout runs in a child process; a parent virtual clock cannot advance it.
   const results = await Promise.all(
     [undefined, 35].map((timeout) =>
       runHook({
@@ -511,7 +507,7 @@ test.each(["http", "mcp_tool"] as const)(
       expect(await Bun.file(join(dirs.cwd, "marker")).exists()).toBe(false);
       expect(session.permissionMode).toBe("full-access");
     } finally {
-      await session.dispose();
+      await session.close();
     }
   },
 );

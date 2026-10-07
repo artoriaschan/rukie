@@ -63,21 +63,21 @@ test("read upstream truncation disclosure must remain outside fold", async () =>
     await app.cleanup();
   }
 });
-import { createSession } from "@rukie/agent";
+import { createSession, createJsonlStore } from "@rukie/agent";
 import {
-  createFauxCore,
+  fauxProvider,
   fauxAssistantMessage,
   fauxToolCall,
   type FauxResponseStep,
 } from "@earendil-works/pi-ai";
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model";
+import { auxiliaryModels } from "../helpers/auxiliary-model";
 function fakeModel(replies: FauxResponseStep[]) {
-  const core = createFauxCore({ api: "faux", provider: "faux" });
+  const core = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
   core.setResponses(replies);
   return {
     model: core.getModel(),
-    streamFn: withAuxiliaryRequests((model, context, options) =>
-      core.streamSimple(model, context, options),
+    models: auxiliaryModels((model, context, options) =>
+      core.provider.streamSimple(model, context, options),
     ),
   };
 }
@@ -97,11 +97,11 @@ test("bash full output recovery footnote is never folded away", async () => {
     await app.cleanup();
   }
 });
-import { readdir } from "node:fs/promises";
+
 test("resumed missing edit facts falls back to raw result", async () => {
   const argv: string[] = [];
   const app = await start(argv, {
-    // This case checks legacy source fallback; leave room for JSON and header metadata.
+    // Missing optional presentation facts still show the committed raw tool result.
     columns: 100,
     rows: 40,
     env: { LANG: "en_US.UTF-8" },
@@ -111,6 +111,56 @@ test("resumed missing edit facts falls back to raw result", async () => {
         cwd: root,
         homeDir: root,
         permissionMode: "full-access",
+        store: {
+          ...createJsonlStore({ cwd: root, homeDir: root }),
+          async open(options, context) {
+            const opened = await createJsonlStore({ cwd: root, homeDir: root }).open(
+              options,
+              context,
+            );
+            return {
+              ...opened,
+              storage: new Proxy(opened.storage, {
+                get(target, property) {
+                  if (property === "commit")
+                    return (
+                      writes: Parameters<typeof target.commit>[0],
+                      context: Parameters<typeof target.commit>[1],
+                    ) =>
+                      target.commit(
+                        writes.map((write) =>
+                          write.type !== "entry"
+                            ? write
+                            : {
+                                ...write,
+                                value: {
+                                  ...write.value,
+                                  model: write.value.model?.map((message) =>
+                                    message.role === "toolResult" && message.toolName === "edit"
+                                      ? {
+                                          ...message,
+                                          details: {},
+                                          content: [
+                                            {
+                                              type: "text" as const,
+                                              text: "RAW_RESULT_WITHOUT_EDIT_FACTS",
+                                            },
+                                          ],
+                                        }
+                                      : message,
+                                  ),
+                                },
+                              },
+                        ),
+                        context,
+                      );
+                  const value: unknown = Reflect.get(target, property, target);
+                  return typeof value === "function" ? value.bind(target) : value;
+                },
+              }),
+            };
+          },
+        },
         ...fakeModel([
           fauxAssistantMessage(
             fauxToolCall("edit", {
@@ -123,40 +173,7 @@ test("resumed missing edit facts falls back to raw result", async () => {
         ]),
       });
       await session.run("edit");
-      await session.dispose();
-      const files = await readdir(`${root}/.rukie/sessions`, { recursive: true });
-      for (const file of files.filter((f) => f.endsWith(".jsonl"))) {
-        const path = `${root}/.rukie/sessions/${file}`;
-        const source = await Bun.file(path).text();
-        const updated = source
-          .split("\n")
-          .map((line) => {
-            if (!line) return line;
-            const item: unknown = JSON.parse(line);
-            function change(value: unknown) {
-              if (!value || typeof value !== "object") return;
-              if (Array.isArray(value)) {
-                value.forEach(change);
-                return;
-              }
-              if (!("role" in value)) {
-                Object.values(value).forEach(change);
-                return;
-              }
-              if (value.role === "toolResult" && "toolName" in value && value.toolName === "edit") {
-                Object.assign(value, {
-                  details: {},
-                  content: [{ type: "text", text: "LEGACY_RAW_RESULT" }],
-                });
-              }
-              for (const child of Object.values(value)) change(child);
-            }
-            change(item);
-            return JSON.stringify(item);
-          })
-          .join("\n");
-        await Bun.write(path, updated);
-      }
+      await session.close();
       argv.push("--resume", session.id);
     },
   });
@@ -165,8 +182,8 @@ test("resumed missing edit facts falls back to raw result", async () => {
     expect(app.screen().join("\n")).toContain(
       'Edit({"path":"file.txt","edits":[{"oldText":"before","newText":"after"}]}',
     );
-    expect(app.screen().join("\n")).toContain("LEGACY_RAW_RESULT");
-    app.stdin.write("\x0f/LEGACY_RAW_RESULT\r");
+    expect(app.screen().join("\n")).toContain("RAW_RESULT_WITHOUT_EDIT_FACTS");
+    app.stdin.write("\x0f/RAW_RESULT_WITHOUT_EDIT_FACTS\r");
     await app.waitFor(() => app.screen().join("\n").includes("1/1"));
   } finally {
     await app.cleanup();

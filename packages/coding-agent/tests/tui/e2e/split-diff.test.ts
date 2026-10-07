@@ -175,9 +175,9 @@ test("invalid diffLayout in user settings is rejected before creating a Session"
 test("resumed patch-only diffs keep split pairs and hunk boundaries", async () => {
   const argv: string[] = [];
   const { createSession } = await import("@rukie/agent");
-  const { createFauxCore, fauxAssistantMessage, fauxToolCall } =
+  const { fauxProvider, fauxAssistantMessage, fauxToolCall } =
     await import("@earendil-works/pi-ai");
-  const { withAuxiliaryRequests } = await import("../helpers/auxiliary-model");
+  const { auxiliaryModels } = await import("../helpers/auxiliary-model");
   const app = await start(argv, {
     columns: 120,
     rows: 48,
@@ -185,7 +185,7 @@ test("resumed patch-only diffs keep split pairs and hunk boundaries", async () =
     prepare: async (root) => {
       const old = `old-start\n${"unchanged context\n".repeat(5000)}old-end\n`;
       await Bun.write(join(root, "large.txt"), old);
-      const model = createFauxCore({ api: "faux", provider: "faux" });
+      const model = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
       model.setResponses([
         fauxAssistantMessage(
           fauxToolCall("write", {
@@ -200,14 +200,14 @@ test("resumed patch-only diffs keep split pairs and hunk boundaries", async () =
         cwd: root,
         homeDir: root,
         model: model.getModel(),
-        streamFn: withAuxiliaryRequests((m, c, o) => model.streamSimple(m, c, o)),
+        models: auxiliaryModels((m, c, o) => model.provider.streamSimple(m, c, o)),
         permissionMode: "full-access",
       });
       try {
         await session.run("change large file");
         argv.push("--resume", session.id);
       } finally {
-        await session.dispose();
+        await session.close();
       }
     },
   });

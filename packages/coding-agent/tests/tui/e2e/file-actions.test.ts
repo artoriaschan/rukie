@@ -211,10 +211,10 @@ test("edit headers expose their path as an underlined action segment", async () 
 });
 
 test("resumed card paths retain actions and report unavailable clipboard", async () => {
-  const { createFauxCore, fauxAssistantMessage, fauxToolCall } =
+  const { fauxProvider, fauxAssistantMessage, fauxToolCall } =
     await import("@earendil-works/pi-ai");
   const { createSession } = await import("@rukie/agent");
-  const { withAuxiliaryRequests } = await import("../helpers/auxiliary-model");
+  const { auxiliaryModels } = await import("../helpers/auxiliary-model");
   const argv: string[] = [];
   const path = "stored.txt";
   const app = await start(argv, {
@@ -223,7 +223,7 @@ test("resumed card paths retain actions and report unavailable clipboard", async
     env: { LANG: "en_US.UTF-8" },
     async prepare(root) {
       await writeFile(join(root, path), "one\ntwo\nthree\nfour\nfive\n");
-      const faux = createFauxCore({ api: "faux", provider: "faux" });
+      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
       faux.setResponses([
         fauxAssistantMessage(fauxToolCall("read", { path }), { stopReason: "toolUse" }),
         fauxAssistantMessage("stored conclusion"),
@@ -232,11 +232,11 @@ test("resumed card paths retain actions and report unavailable clipboard", async
         cwd: root,
         homeDir: root,
         model: faux.getModel(),
-        streamFn: withAuxiliaryRequests(faux.streamSimple),
+        models: auxiliaryModels(faux.provider.streamSimple),
       });
       await session.run("inspect stored file");
       argv.push("--resume", session.id);
-      await session.dispose();
+      await session.close();
     },
     host: { writeClipboard: async () => false },
   });

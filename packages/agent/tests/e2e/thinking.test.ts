@@ -1,11 +1,11 @@
 import { join } from "node:path";
 import { readdir, stat } from "node:fs/promises";
-import { expect, test } from "bun:test";
+import { expect, test, spyOn } from "bun:test";
 import { createAssistantMessageEventStream, fauxAssistantMessage } from "@earendil-works/pi-ai";
-import { createSession, assistantThinkingDuration } from "../../src/index.ts";
+import { createSession, createJsonlStore, assistantThinkingDuration } from "../../src/index.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
+import { withAuxiliaryRequests, withModelStream } from "../helpers/auxiliary-model.ts";
 
 test("observed thinking phase duration stops at first text and survives Session Resume", async () => {
   const dirs = await tempDirs();
@@ -15,30 +15,44 @@ test("observed thinking phase duration stops at first text and survives Session 
   });
   const stream = createAssistantMessageEventStream();
   let clock = 1000;
+  const monotonicClock = spyOn(performance, "now").mockImplementation(() => clock);
+  let textSent = false;
   const session = await createSession({
     ...dirs,
     model: fake.model,
     now: () => new Date(clock),
-    streamFn: withAuxiliaryRequests(() => {
-      stream.push({ type: "start", partial });
-      stream.push({ type: "thinking_delta", contentIndex: 0, delta: "saved reasoning", partial });
-      return stream;
-    }),
+    models: withModelStream(
+      fake.models,
+      withAuxiliaryRequests(() => {
+        stream.push({ type: "start", partial });
+        stream.push({ type: "thinking_delta", contentIndex: 0, delta: "saved reasoning", partial });
+        return stream;
+      }),
+    ),
   });
   try {
     await session.run("reason", {
       onEvent(event) {
-        if (event.type !== "message_update" || event.message.role !== "assistant") return;
-        if (event.assistantMessageEvent.type === "thinking_delta") {
+        if (
+          (event.type !== "message_start" && event.type !== "message_update") ||
+          event.message.role !== "assistant"
+        )
+          return;
+        if (
+          !textSent &&
+          event.message.content.some((block) => block.type === "thinking" && block.thinking)
+        ) {
+          textSent = true;
           clock = 3500;
           const text = {
             ...partial,
             content: [...partial.content, { type: "text" as const, text: "answer" }],
           };
           stream.push({ type: "text_delta", contentIndex: 1, delta: "answer", partial: text });
-        } else if (event.assistantMessageEvent.type === "text_delta") {
+        } else if (event.message.content.some((block) => block.type === "text" && block.text)) {
           clock = 9000;
-          const final = { ...event.message, stopReason: "stop" as const };
+          // The provider publishes native protocol data; observed presentation facts stay in Core.
+          const final = { ...partial, content: event.message.content, stopReason: "stop" as const };
           stream.push({ type: "done", reason: "stop", message: final });
           stream.end(final);
         }
@@ -47,10 +61,10 @@ test("observed thinking phase duration stops at first text and survives Session 
     const message = session.messages.find((message) => message.role === "assistant");
     expect(assistantThinkingDuration(message)).toBe(2500);
     expect(message).toHaveProperty("rukieThinkingDurationMs", 2500);
-    expect((await readdir(join(dirs.homeDir, ".rukie/sessions"))).length).toBeGreaterThan(0);
+    expect((await readdir(createJsonlStore(dirs).key(session.id))).length).toBeGreaterThan(0);
     await expect(stat(join(dirs.homeDir, ".neant/sessions"))).rejects.toThrow();
     const id = session.id;
-    await session.dispose();
+    await session.close();
     const resumed = await createSession({ ...dirs, ...fake, resumeId: id });
     try {
       const restored = resumed.messages.find((message) => message.role === "assistant");
@@ -71,10 +85,11 @@ test("observed thinking phase duration stops at first text and survives Session 
         assistantThinkingDuration(resumed.messages.find((message) => message.role === "assistant")),
       ).toBe(2500);
     } finally {
-      await resumed.dispose();
+      await resumed.close();
     }
   } finally {
-    await session.dispose();
+    await session.close();
+    monotonicClock.mockRestore();
     await dirs.cleanup();
   }
 });
@@ -90,25 +105,34 @@ test.each(["error", "aborted"] as const)(
       { stopReason: "pending" },
     );
     let clock = 1000;
+    const monotonicClock = spyOn(performance, "now").mockImplementation(() => clock);
     const session = await createSession({
       ...dirs,
       model: fake.model,
       now: () => new Date(clock),
-      streamFn: withAuxiliaryRequests(() => {
-        stream.push({ type: "start", partial });
-        stream.push({
-          type: "thinking_delta",
-          contentIndex: 0,
-          delta: "committed partial reasoning",
-          partial,
-        });
-        return stream;
-      }),
+      models: withModelStream(
+        fake.models,
+        withAuxiliaryRequests(() => {
+          stream.push({ type: "start", partial });
+          stream.push({
+            type: "thinking_delta",
+            contentIndex: 0,
+            delta: "committed partial reasoning",
+            partial,
+          });
+          return stream;
+        }),
+      ),
     });
     try {
       const run = session.run("reason", {
         onEvent(event) {
-          if (event.type !== "message_update") return;
+          if (
+            (event.type !== "message_start" && event.type !== "message_update") ||
+            event.message.role !== "assistant" ||
+            !event.message.content.some((block) => block.type === "thinking" && block.thinking)
+          )
+            return;
           clock = 4000;
           const final = { ...partial, stopReason: reason, errorMessage: "ended while thinking" };
           stream.push({ type: "error", reason, error: final });
@@ -119,7 +143,7 @@ test.each(["error", "aborted"] as const)(
       const id = session.id;
       const live = session.messages.find((message) => message.role === "assistant");
       expect(assistantThinkingDuration(live)).toBe(3000);
-      await session.dispose();
+      await session.close();
       const resumed = await createSession({ ...dirs, ...fake, resumeId: id });
       try {
         const restored = resumed.messages.find((message) => message.role === "assistant");
@@ -127,10 +151,11 @@ test.each(["error", "aborted"] as const)(
         expect(assistantThinkingDuration(restored)).toBe(3000);
         expect(fake.contexts).toHaveLength(0);
       } finally {
-        await resumed.dispose();
+        await resumed.close();
       }
     } finally {
-      await session.dispose();
+      await session.close();
+      monotonicClock.mockRestore();
       await dirs.cleanup();
     }
   },

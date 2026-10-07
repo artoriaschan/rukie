@@ -126,7 +126,7 @@ test.each([true, false])(
         expect(JSON.stringify(provider.requests[1])).not.toContain("image_url");
       }
     } finally {
-      await session.dispose();
+      await session.close();
     }
   },
 );

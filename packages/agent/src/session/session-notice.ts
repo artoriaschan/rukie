@@ -3,6 +3,7 @@ import type { CustomSessionEvent } from "@rukie/shared";
 type NoticeError = { code: string; params: Record<string, string | number> };
 /** Model-invisible facts for auxiliary messages that cannot be rebuilt from native messages. */
 export type SessionNotice =
+  | { kind: "compaction"; reason: "manual" | "threshold" | "overflow" }
   | {
       kind: "interrupted" | "error" | "hook_stopped" | "hook_blocked";
       reason?: string;
@@ -11,15 +12,10 @@ export type SessionNotice =
     }
   | { kind: "hook_message"; message: string }
   | { kind: "hook_warning"; event: string; hook: string; message: string; error?: NoticeError };
-interface SessionNoticeMessage {
+export interface SessionNoticeMessage {
   role: "session-notice";
   notice: SessionNotice;
   timestamp: number;
-}
-declare module "@earendil-works/pi-agent-core" {
-  interface CustomAgentMessages {
-    "session-notice": SessionNoticeMessage;
-  }
 }
 
 export function sessionNoticeFromHook(
@@ -72,6 +68,11 @@ export function readSessionNotice(message: unknown): SessionNotice | undefined {
     return undefined;
   const notice = message.notice;
   if (!notice || typeof notice !== "object" || !("kind" in notice)) return undefined;
+  if (notice.kind === "compaction")
+    return "reason" in notice &&
+      (notice.reason === "manual" || notice.reason === "threshold" || notice.reason === "overflow")
+      ? { kind: "compaction", reason: notice.reason }
+      : undefined;
   if (notice.kind === "hook_message")
     return "message" in notice && typeof notice.message === "string"
       ? { kind: notice.kind, message: notice.message }

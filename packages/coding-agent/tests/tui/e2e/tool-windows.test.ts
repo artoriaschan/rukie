@@ -128,9 +128,9 @@ test("dragging a result copies only its source and never expands the folded card
 
 test("resumed truncated reads disclose retained bounds at the last window without replaying the tool", async () => {
   const { createSession } = await import("@rukie/agent");
-  const { createFauxCore, fauxAssistantMessage, fauxToolCall } =
+  const { fauxProvider, fauxAssistantMessage, fauxToolCall } =
     await import("@earendil-works/pi-ai");
-  const { withAuxiliaryRequests } = await import("../helpers/auxiliary-model");
+  const { auxiliaryModels } = await import("../helpers/auxiliary-model");
   const { join } = await import("node:path");
   const argv: string[] = [];
   const app = await startWithClock(argv, {
@@ -141,7 +141,7 @@ test("resumed truncated reads disclose retained bounds at the last window withou
         join(root, "large.txt"),
         Array.from({ length: 2200 }, (_, i) => `source-${i + 1}`).join("\n"),
       );
-      const faux = createFauxCore({ api: "faux", provider: "faux" });
+      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
       faux.setResponses([
         fauxAssistantMessage(fauxToolCall("read", { path: "large.txt" }), {
           stopReason: "toolUse",
@@ -152,11 +152,11 @@ test("resumed truncated reads disclose retained bounds at the last window withou
         cwd: root,
         homeDir: root,
         model: faux.getModel(),
-        streamFn: withAuxiliaryRequests(faux.streamSimple),
+        models: auxiliaryModels(faux.provider.streamSimple),
       });
       await session.run("inspect");
       argv.push("--resume", session.id);
-      await session.dispose();
+      await session.close();
     },
   });
   try {
@@ -281,9 +281,9 @@ test("resumed web windows preserve retained source and disclose upstream truncat
   );
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response(source) });
   const { createSession } = await import("@rukie/agent");
-  const { createFauxCore, fauxAssistantMessage, fauxToolCall } =
+  const { fauxProvider, fauxAssistantMessage, fauxToolCall } =
     await import("@earendil-works/pi-ai");
-  const { withAuxiliaryRequests } = await import("../helpers/auxiliary-model");
+  const { auxiliaryModels } = await import("../helpers/auxiliary-model");
   const webFetch = {
     resolve: async () => [{ address: "127.0.0.1", family: 4 }],
     allowAddresses: ["127.0.0.1"],
@@ -293,7 +293,7 @@ test("resumed web windows preserve retained source and disclose upstream truncat
     rows: 450,
     env: { LANG: "en" },
     prepare: async (root) => {
-      const faux = createFauxCore({ api: "faux", provider: "faux" });
+      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
       faux.setResponses([
         fauxAssistantMessage(
           fauxToolCall("web_fetch", { url: `http://site.test:${server.port}/docs` }),
@@ -305,7 +305,7 @@ test("resumed web windows preserve retained source and disclose upstream truncat
         cwd: root,
         homeDir: root,
         model: faux.getModel(),
-        streamFn: withAuxiliaryRequests(faux.streamSimple),
+        models: auxiliaryModels(faux.provider.streamSimple),
         webFetch,
         permissionMode: "full-access",
       });
@@ -313,7 +313,7 @@ test("resumed web windows preserve retained source and disclose upstream truncat
         await session.run("fetch");
         argv.push("--resume", session.id);
       } finally {
-        await session.dispose();
+        await session.close();
       }
     },
   });

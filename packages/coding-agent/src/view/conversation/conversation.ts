@@ -11,11 +11,11 @@ import type {
   GoalView,
   Session,
   SessionEvent,
-  SessionRecovery,
+  TranscriptMessage,
+  BackgroundActivity,
   TodoItem,
 } from "@rukie/agent";
 import {
-  isUnknownToolOutcome,
   type ContextUsageEvent,
   type RunResult,
   type ContextReport,
@@ -24,7 +24,13 @@ import {
   type ToolResultView,
 } from "@rukie/shared";
 import type { TpsSample } from "../transcript/metrics";
-import { reduceSubagent, restoreSubagents, projectSubagent, type SubagentState } from "./subagents";
+import {
+  reduceSubagent,
+  restoreSubagents,
+  projectSubagent,
+  reconcileSubagentIdentity,
+  type SubagentState,
+} from "./subagents";
 import { createActivity, reduce } from "./activity/activity";
 export type NoticeKind = "info" | "error" | "success" | "warning" | "dim";
 
@@ -45,7 +51,7 @@ interface ToolCall {
   hook?: string;
 }
 
-type CompletedEntry = { anchorId?: string } & (
+type CompletedEntry = { anchorId?: string; sourceEntryId?: string } & (
   | {
       type: "message";
       role: "user" | "assistant";
@@ -94,10 +100,7 @@ type CompletedEntry = { anchorId?: string } & (
   | { type: "run-summary"; durationMs: number; endedAt: number; success: boolean }
 );
 
-type ToolResultMessage = Extract<
-  Extract<SessionEvent, { type: "message_end" }>["message"],
-  { role: "toolResult" }
->;
+type ToolResultMessage = Extract<TranscriptMessage, { role: "toolResult" }>;
 
 function resultText(result: Pick<ToolResultMessage, "content">) {
   return result.content
@@ -131,25 +134,11 @@ function toolEntry(
   result: Pick<ToolResultMessage, "content" | "details"> & {
     view?: ToolResultView;
     timestamp?: number;
+    outcomeUnknown?: boolean;
+    permissionDenial?: Extract<TranscriptMessage, { role: "toolResult" }>["permissionDenial"];
   },
   t: ReturnType<typeof createTuiI18n>,
 ): CompletedEntry | undefined {
-  if (isUnknownToolOutcome(result.details) && !showsToolCard(tool.name))
-    return { type: "notice", text: t("tool.outcome-unknown") };
-  if (isUnknownToolOutcome(result.details))
-    return {
-      type: "tool",
-      summary: tool.summary,
-      isError: false,
-      outcomeUnknown: true,
-      result: t("tool.outcome-unknown"),
-    };
-  // Events supply live provenance; persisted tool results retain the rule on replay.
-  const rule =
-    tool.rule ??
-    (isError && resultText(result).startsWith("Denied by permission rule: ")
-      ? resultText(result).slice("Denied by permission rule: ".length)
-      : undefined);
   const provenance =
     typeof result.details === "object" &&
     result.details !== null &&
@@ -158,8 +147,15 @@ function toolEntry(
     result.details.permissionDenied !== null
       ? result.details.permissionDenied
       : undefined;
+  // Live events and committed decision facts preserve the same localized provenance.
+  const rule =
+    tool.rule ??
+    (result.permissionDenial?.by === "rule" ? result.permissionDenial.rule : undefined);
   const hook =
     tool.hook ??
+    (result.permissionDenial?.by === "hook"
+      ? (result.permissionDenial.hook ?? "hook")
+      : undefined) ??
     (provenance && "by" in provenance && provenance.by === "hook"
       ? "hook" in provenance && typeof provenance.hook === "string"
         ? provenance.hook
@@ -238,26 +234,28 @@ function toolEntry(
           : {}),
       })),
     summary: tool.summary,
-    isError,
-    result: isError ? undefined : resultText(result),
-    error: isError
-      ? hook !== undefined
-        ? t("tool.hook-denied", {
-            hook,
-            reason: resultText(result)
-              .split("\n")[0]!
-              .replace(/^Denied by hook: /, ""),
-          })
-        : rule !== undefined
-          ? t("tool.rule-denied", { rule })
-          : formatError(
-              {
-                ...(typeof result.details === "object" && result.details),
-                message: resultText(result),
-              },
-              t,
-            )
-      : undefined,
+    isError: isError && !result.outcomeUnknown,
+    outcomeUnknown: result.outcomeUnknown,
+    result: isError || result.outcomeUnknown ? undefined : resultText(result),
+    error:
+      isError && !result.outcomeUnknown
+        ? hook !== undefined
+          ? t("tool.hook-denied", {
+              hook,
+              reason: resultText(result)
+                .split("\n")[0]!
+                .replace(/^Denied by hook: /, ""),
+            })
+          : rule !== undefined
+            ? t("tool.rule-denied", { rule })
+            : formatError(
+                {
+                  ...(typeof result.details === "object" && result.details),
+                  message: resultText(result),
+                },
+                t,
+              )
+        : undefined,
   };
 }
 
@@ -349,11 +347,12 @@ interface ViewState {
   jobNotice?: { id: string; text: string; kind: "success" | "error" | "warning" };
   goal: GoalView | undefined;
   planMode: boolean;
-  waitingSubagents: number;
+  background: readonly BackgroundActivity[];
   subagents: Readonly<Record<string, SubagentState>>;
   todos: readonly TodoItem[];
   completed: CompletedEntry[];
   tools: ToolCall[];
+  announcedTools: ToolCall[];
   assistant: string;
   reasoning: string;
   reasoningSettled?: boolean;
@@ -371,10 +370,11 @@ interface ViewState {
   activity: ReturnType<typeof createActivity>;
   activityInput: number;
   streamedChars: number;
+  toolArgumentsChars: number;
   error?: string;
 }
 
-function messageText(message: Extract<SessionEvent, { type: "message_end" }>["message"]) {
+function messageText(message: TranscriptMessage) {
   if (message.role !== "user" && message.role !== "assistant") return "";
   return typeof message.content === "string"
     ? message.content
@@ -383,7 +383,7 @@ function messageText(message: Extract<SessionEvent, { type: "message_end" }>["me
         .join("");
 }
 
-function messageThinking(message: Extract<SessionEvent, { type: "message_end" }>["message"]) {
+function messageThinking(message: TranscriptMessage) {
   return message.role === "assistant"
     ? message.content
         .flatMap((content) => (content.type === "thinking" ? [content.thinking] : []))
@@ -391,9 +391,17 @@ function messageThinking(message: Extract<SessionEvent, { type: "message_end" }>
     : "";
 }
 
-function userMessageEntry(
-  message: Extract<Session["messages"][number], { role: "user" }>,
-): CompletedEntry {
+function messageToolArguments(message: TranscriptMessage) {
+  return message.role === "assistant"
+    ? message.content.reduce(
+        (total, block) =>
+          total + (block.type === "toolCall" ? JSON.stringify(block.arguments).length : 0),
+        0,
+      )
+    : 0;
+}
+
+function userMessageEntry(message: Extract<TranscriptMessage, { role: "user" }>): CompletedEntry {
   return {
     type: "message",
     role: "user",
@@ -429,13 +437,12 @@ function replayMessages(
   facts: ConversationFacts,
   t: ReturnType<typeof createTuiI18n>,
   summaries: ReturnType<Session["runSummaries"]> = [],
+  activeCalls: ReadonlySet<string> = new Set(),
 ): CompletedEntry[] {
   const tools = new Map<string, ToolCall>();
   const replayed = messages.flatMap((message, index): CompletedEntry[] => {
     const entries = ((): CompletedEntry[] => {
       const text = messageText(message);
-      if (message.role === "compactionSummary")
-        return [{ type: "notice", text: t("notice.compaction", { tokens: message.tokensBefore }) }];
       const outcome = messageNotice(message, facts);
       if (message.role === "session-notice")
         return outcome ? [{ type: "session-notice", notice: outcome }] : [];
@@ -490,7 +497,11 @@ function replayMessages(
       return [];
     })();
     return [
-      ...entries,
+      ...entries.map((entry, blockIndex) => ({
+        ...entry,
+        sourceEntryId: message.entryId,
+        anchorId: `${message.entryId ?? `message-${message.timestamp}-${index}`}-${blockIndex}-${entry.type}`,
+      })),
       ...summaries
         .filter((summary) => summary.afterMessage === index + 1)
         .map((summary): CompletedEntry => ({
@@ -498,9 +509,26 @@ function replayMessages(
           durationMs: summary.durationMs,
           endedAt: summary.endedAt,
           success: summary.success,
+          anchorId: `run-${summary.endedAt}`,
         })),
     ];
   });
+  replayed.push(
+    ...[...tools.values()]
+      .filter((tool) => !activeCalls.has(tool.id))
+      .map((tool): CompletedEntry => ({
+        type: "tool",
+        id: tool.id,
+        name: tool.name,
+        args: tool.args,
+        callView: tool.callView,
+        summary: tool.summary,
+        isError: false,
+        outcomeUnknown: true,
+        replayed: true,
+        anchorId: `unresolved-${tool.id}`,
+      })),
+  );
   return replayed.reduce<CompletedEntry[]>((entries, entry) => {
     if (
       entry.type === "session-notice" &&
@@ -533,15 +561,224 @@ function decodeMetrics(state: ViewState, now: number) {
   };
 }
 
+function reduceMessageEnd(
+  state: ViewState,
+  message: TranscriptMessage,
+  now: number,
+  t: ReturnType<typeof createTuiI18n>,
+  facts: ConversationFacts,
+): ViewState {
+  const text = messageText(message);
+  const outcome = messageNotice(message, facts);
+  if (message.role === "session-notice") {
+    if (!outcome) return state;
+    const last = state.completed.at(-1);
+    const completed =
+      outcome.kind === "interrupted" &&
+      last?.type === "session-notice" &&
+      last.notice.kind === "error" &&
+      outcome.assistantTimestamp !== undefined &&
+      last.assistantTimestamp === outcome.assistantTimestamp
+        ? state.completed.slice(0, -1)
+        : state.completed;
+    return { ...state, completed: [...completed, { type: "session-notice", notice: outcome }] };
+  }
+  if (message.role === "user") {
+    if ("source" in message && message.source === "goal") return state;
+    return {
+      ...state,
+      completed: [...state.completed, userMessageEntry(message)],
+    };
+  }
+  if (message.role === "toolResult") {
+    const tool = state.tools.find((candidate) => candidate.id === message.toolCallId) ??
+      state.announcedTools.find((candidate) => candidate.id === message.toolCallId) ?? {
+        id: message.toolCallId,
+        name: message.toolName,
+        args: undefined,
+        summary: message.toolName,
+      };
+    const entry = toolEntry(tool, message.isError, message, t);
+    return { ...state, completed: [...state.completed, ...(entry ? [entry] : [])] };
+  }
+  if (message.role !== "assistant") return state;
+  const announcedTools = message.content.flatMap((block): ToolCall[] =>
+    block.type === "toolCall"
+      ? [
+          {
+            id: block.id,
+            name: block.name,
+            args: block.arguments,
+            summary: toolSummary(block.name, block.arguments),
+            callView: block.view,
+            startedAt: message.timestamp,
+          },
+        ]
+      : [],
+  );
+  const step = state.decode.step;
+  return {
+    ...state,
+    announcedTools,
+    // A committed model call has a preview while native authorization waits.
+    // Execution activity still begins only with its native running-tool event.
+    tools: [
+      ...state.tools.filter((tool) => !announcedTools.some((call) => call.id === tool.id)),
+      ...announcedTools,
+    ],
+    completed: [
+      ...state.completed,
+      ...(messageThinking(message)
+        ? [
+            {
+              type: "thinking" as const,
+              text: messageThinking(message),
+              thinkingOpen: true,
+              durationMs: facts.assistantThinkingDuration(message),
+              anchorId: `${state.assistantAnchor}-thinking`,
+            },
+          ]
+        : []),
+      ...(text
+        ? [
+            {
+              type: "message" as const,
+              role: "assistant" as const,
+              text,
+              anchorId: state.assistantAnchor,
+              fresh: true,
+            },
+          ]
+        : []),
+      ...(outcome
+        ? [
+            {
+              type: "session-notice" as const,
+              notice: outcome,
+              assistantTimestamp: message.timestamp,
+            },
+          ]
+        : []),
+    ],
+    assistant: "",
+    reasoning: "",
+    assistantTimestamp: message.timestamp,
+    assistantAnchor: crypto.randomUUID(),
+    input: state.input + message.usage.input,
+    output: state.output + message.usage.output,
+    activityInput: message.usage.input,
+    streamedChars: 0,
+    toolArgumentsChars: 0,
+    decode: {
+      tokens: state.decode.tokens + (step ? message.usage.output : 0),
+      ms: state.decode.ms + (step ? Math.max(0, now - step.startedAt) : 0),
+    },
+  };
+}
+
 function reduceEvent(
   state: ViewState,
   event: SessionEvent,
   now: number,
   t: ReturnType<typeof createTuiI18n>,
   facts: ConversationFacts,
-  recovery?: SessionRecovery,
 ): ViewState {
   switch (event.type) {
+    case "snapshot": {
+      const partial = event.generation?.message;
+      const knownCalls = new Map<string, ToolCall>();
+      for (const message of event.messages) {
+        if (message.role !== "assistant") continue;
+        for (const block of message.content)
+          if (block.type === "toolCall")
+            knownCalls.set(block.id, {
+              id: block.id,
+              name: block.name,
+              args: block.arguments,
+              summary: toolSummary(block.name, block.arguments),
+              callView: block.view,
+              startedAt: message.timestamp,
+            });
+      }
+      const replayed = replayMessages(
+        event.messages,
+        facts,
+        t,
+        [...event.runSummaries],
+        new Set(
+          event.tools
+            .filter((slot) => slot.status === "pending" || slot.status === "running")
+            .map((slot) => slot.callId),
+        ),
+      );
+      const ordinals = new Map<string, number>();
+      const anchored = replayed.map((entry) => {
+        const key = `${entry.sourceEntryId}:${entry.type}`;
+        const ordinal = ordinals.get(key) ?? 0;
+        ordinals.set(key, ordinal + 1);
+        const previous = state.completed.filter(
+          (candidate) =>
+            candidate.sourceEntryId === entry.sourceEntryId &&
+            candidate.type === entry.type &&
+            candidate.sourceEntryId !== undefined,
+        )[ordinal];
+        return previous ? { ...entry, anchorId: previous.anchorId } : entry;
+      });
+      const subagents = Object.fromEntries(
+        Object.entries(restoreSubagents(event.toolStates.subagents)).map(([id, row]) => {
+          const previous = state.subagents[id];
+          return [id, reconcileSubagentIdentity(previous, row)];
+        }),
+      );
+      for (const background of event.background) {
+        const row = subagents[background.id];
+        if (row)
+          subagents[background.id] = {
+            ...row,
+            status: background.active && row.completedAt === undefined ? "running" : row.status,
+          };
+      }
+      const tools = event.tools
+        .filter((slot) => slot.status === "running" || slot.status === "pending")
+        .map(
+          (slot): ToolCall =>
+            knownCalls.get(slot.callId) ?? {
+              id: slot.callId,
+              name: slot.name,
+              args: undefined,
+              summary: slot.name,
+            },
+        );
+      return {
+        ...state,
+        completed: [
+          ...anchored,
+          ...state.completed.filter(
+            (entry) =>
+              entry.type === "context-report" || (entry.type === "notice" && !entry.sourceEntryId),
+          ),
+        ],
+        tools,
+        announcedTools: [...knownCalls.values()],
+        assistant: partial ? messageText(partial) : "",
+        reasoning: partial ? messageThinking(partial) : "",
+        reasoningSettled:
+          !!partial &&
+          (messageText(partial).length > 0 ||
+            partial.content.some((block) => block.type === "toolCall")),
+        model: event.model,
+        planMode: event.planMode,
+        todos: (event.toolStates.todo as TodoItem[] | undefined) ?? [],
+        goal: event.toolStates.goal as GoalView | undefined,
+        subagents,
+        background: event.background,
+        running: event.run !== undefined,
+        // Footer usage belongs to Runs observed by this frontend instance.
+        // Durable totals remain available through Session context reports;
+        // replaying a snapshot must not count them again at Run settlement.
+        usage: state.usage,
+      };
+    }
     case "subagent_event": {
       const subagents = {
         ...state.subagents,
@@ -550,15 +787,24 @@ function reduceEvent(
       return {
         ...state,
         subagents,
-        waitingSubagents: state.waitingSubagents
-          ? Object.values(subagents).filter((row) => row.status === "running").length
-          : 0,
       };
     }
-    case "subagents_waiting":
-      return { ...state, waitingSubagents: event.count };
-    case "agent_start":
-      return { ...state, waitingSubagents: 0 };
+    case "run_start":
+      return {
+        ...state,
+        running: true,
+        error: undefined,
+        input: 0,
+        output: 0,
+        activityInput: 0,
+        streamedChars: 0,
+        toolArgumentsChars: 0,
+        decode: { tokens: 0, ms: 0 },
+        assistant: "",
+        reasoning: "",
+      };
+    case "run_end":
+      return { ...state, running: false };
     case "tool_state_changed":
       if (event.name === "model" && typeof event.value === "string")
         return { ...state, model: event.value, contextUsage: undefined };
@@ -573,51 +819,53 @@ function reduceEvent(
           ? {
               ...state,
               subagents: Object.fromEntries(
-                Object.entries(restoreSubagents(event.value, recovery)).map(([id, row]) => [
+                Object.entries(restoreSubagents(event.value)).map(([id, row]) => [
                   id,
-                  state.subagents[id]
-                    ? {
-                        ...state.subagents[id]!,
-                        runOutcome: row.runOutcome,
-                        runReason: row.runReason,
-                      }
-                    : row,
+                  reconcileSubagentIdentity(state.subagents[id], row),
                 ]),
               ),
             }
           : state;
-    case "session_start":
-      return {
-        ...state,
-        model: event.model,
-        running: true,
-        error: undefined,
-        input: 0,
-        output: 0,
-        activityInput: 0,
-        streamedChars: 0,
-        decode: { tokens: 0, ms: 0 },
-      };
     case "context_usage":
       return { ...state, contextUsage: event };
     case "turn_start":
       return {
         ...state,
-        waitingSubagents: 0,
         streamedChars: 0,
+        toolArgumentsChars: 0,
         decode: { ...state.decode, step: undefined },
       };
     case "message_update": {
-      const delta = event.assistantMessageEvent;
+      const structural = event.changes.some(
+        (change) => change.type === "message" || change.type === "block",
+      );
+      const growth = Math.max(
+        0,
+        messageText(event.message).length +
+          messageThinking(event.message).length -
+          state.assistant.length -
+          state.reasoning.length,
+      );
+      const deltaChars = event.changes.reduce(
+        (count, change) => count + ("delta" in change ? change.delta.length : 0),
+        0,
+      );
+      const toolArgumentsChars = messageToolArguments(event.message);
+      const chars = structural
+        ? growth + Math.max(0, toolArgumentsChars - state.toolArgumentsChars)
+        : deltaChars;
       const streamedChars =
         state.streamedChars +
-        (delta.type === "text_delta" || delta.type === "thinking_delta" ? delta.delta.length : 0);
-      const chars =
-        delta.type === "text_delta" ||
-        delta.type === "thinking_delta" ||
-        delta.type === "toolcall_delta"
-          ? delta.delta.length
-          : 0;
+        (structural
+          ? growth
+          : event.changes.reduce(
+              (count, change) =>
+                count +
+                (change.type === "text_delta" || change.type === "thinking_delta"
+                  ? change.delta.length
+                  : 0),
+              0,
+            ));
       const step = state.decode.step;
       return {
         ...state,
@@ -630,6 +878,7 @@ function reduceEvent(
           (event.message.role === "assistant" &&
             event.message.content.some((block) => block.type === "toolCall")),
         streamedChars,
+        toolArgumentsChars,
         decode:
           chars > 0
             ? {
@@ -644,132 +893,89 @@ function reduceEvent(
         ? {
             ...state,
             assistant: messageText(event.message),
+            toolArgumentsChars: messageToolArguments(event.message),
             reasoning: messageThinking(event.message),
             reasoningSettled: false,
             reasoningDurationMs: undefined,
             assistantAnchor: crypto.randomUUID(),
+            streamedChars:
+              messageText(event.message).length + messageThinking(event.message).length,
+            decode:
+              messageText(event.message).length +
+                messageThinking(event.message).length +
+                messageToolArguments(event.message) >
+              0
+                ? {
+                    ...state.decode,
+                    step: {
+                      startedAt: now,
+                      chars:
+                        messageText(event.message).length +
+                        messageThinking(event.message).length +
+                        messageToolArguments(event.message),
+                    },
+                  }
+                : { ...state.decode, step: undefined },
           }
         : state;
     case "message_end": {
-      const text = messageText(event.message);
-      const outcome = messageNotice(event.message, facts);
-      if (event.message.role === "session-notice") {
-        if (!outcome) return state;
-        const last = state.completed.at(-1);
-        const completed =
-          outcome.kind === "interrupted" &&
-          last?.type === "session-notice" &&
-          last.notice.kind === "error" &&
-          outcome.assistantTimestamp !== undefined &&
-          last.assistantTimestamp === outcome.assistantTimestamp
-            ? state.completed.slice(0, -1)
-            : state.completed;
-        return { ...state, completed: [...completed, { type: "session-notice", notice: outcome }] };
-      }
-      if (event.message.role === "user") {
-        if ("source" in event.message && event.message.source === "goal") return state;
-        return {
-          ...state,
-          completed: [...state.completed, userMessageEntry(event.message)],
-        };
-      }
-      if (event.message.role === "toolResult") {
-        const result = event.message;
-        return {
-          ...state,
-          completed: state.completed.map((entry) =>
-            entry.type === "tool" && entry.id === result.toolCallId
-              ? { ...entry, endedAt: result.timestamp }
-              : entry,
+      let next = state;
+      for (const message of event.messages) {
+        const length = next.completed.length;
+        next = reduceMessageEnd(next, message, now, t, facts);
+        next = {
+          ...next,
+          completed: next.completed.map((entry, index) =>
+            index < length
+              ? entry
+              : {
+                  ...entry,
+                  sourceEntryId: event.entryId,
+                  anchorId: entry.anchorId ?? `${event.entryId}-${index - length}-${entry.type}`,
+                },
           ),
         };
       }
-      if (event.message.role !== "assistant") return state;
-      const step = state.decode.step;
+      return next;
+    }
+    case "tool_execution_start": {
+      const started: ToolCall = {
+        id: event.toolCallId,
+        name: event.toolName,
+        args: event.args,
+        summary: toolSummary(event.toolName, event.args),
+        callView: event.view,
+        startedAt: state.assistantTimestamp,
+      };
       return {
         ...state,
-        completed: [
-          ...state.completed,
-          ...(messageThinking(event.message)
-            ? [
-                {
-                  type: "thinking" as const,
-                  text: messageThinking(event.message),
-                  thinkingOpen: true,
-                  durationMs: facts.assistantThinkingDuration(event.message),
-                  anchorId: `${state.assistantAnchor}-thinking`,
-                },
-              ]
-            : []),
-          ...(text
-            ? [
-                {
-                  type: "message" as const,
-                  role: "assistant" as const,
-                  text,
-                  anchorId: state.assistantAnchor,
-                  fresh: true,
-                },
-              ]
-            : []),
-          ...(outcome
-            ? [
-                {
-                  type: "session-notice" as const,
-                  notice: outcome,
-                  assistantTimestamp: event.message.timestamp,
-                },
-              ]
-            : []),
-        ],
-        assistant: "",
-        reasoning: "",
-        assistantTimestamp: event.message.timestamp,
-        assistantAnchor: crypto.randomUUID(),
-        input: state.input + event.message.usage.input,
-        output: state.output + event.message.usage.output,
-        activityInput: event.message.usage.input,
-        streamedChars: 0,
-        decode: {
-          tokens: state.decode.tokens + (step ? event.message.usage.output : 0),
-          ms: state.decode.ms + (step ? Math.max(0, now - step.startedAt) : 0),
-        },
+        tools: state.tools.some((tool) => tool.id === event.toolCallId)
+          ? state.tools.map((tool) => (tool.id === event.toolCallId ? started : tool))
+          : [...state.tools, started],
       };
     }
-    case "tool_execution_start":
+    case "permission_denied": {
+      if (!((event.by === "rule" && event.rule !== undefined) || event.by === "hook")) return state;
+      const annotate = (tool: ToolCall): ToolCall =>
+        tool.id === event.toolCallId
+          ? {
+              ...tool,
+              rule: event.rule,
+              ...(event.by === "hook" && { hook: event.hook ?? "hook" }),
+            }
+          : tool;
       return {
         ...state,
-        tools: [
-          ...state.tools,
-          {
-            id: event.toolCallId,
-            name: event.toolName,
-            args: event.args,
-            summary: toolSummary(event.toolName, event.args),
-            callView: event.view,
-            startedAt: state.assistantTimestamp,
-          },
-        ],
+        tools: state.tools.map(annotate),
+        announcedTools: state.announcedTools.map(annotate),
       };
-    case "permission_denied":
-      return (event.by === "rule" && event.rule !== undefined) || event.by === "hook"
-        ? {
-            ...state,
-            tools: state.tools.map((tool) =>
-              tool.id === event.toolCallId
-                ? {
-                    ...tool,
-                    rule: event.rule,
-                    ...(event.by === "hook" && { hook: event.hook ?? "hook" }),
-                  }
-                : tool,
-            ),
-          }
-        : state;
+    }
     case "tool_execution_end": {
       const tool = state.tools.find((tool) => tool.id === event.toolCallId);
       if (!tool) return state;
-      const entry = toolEntry(tool, event.isError, { ...event.result, view: event.view }, t);
+      const entry = event.result
+        ? toolEntry(tool, event.result.isError, { ...event.result, view: event.view }, t)
+        : undefined;
       const job = entry?.type === "tool" && entry.jobId ? state.jobs[entry.jobId] : undefined;
       const explicit =
         tool.args !== null &&
@@ -778,12 +984,27 @@ function reduceEvent(
         tool.args.run_in_background === true;
       return {
         ...state,
+        completed: event.result
+          ? state.completed
+          : [
+              ...state.completed,
+              {
+                type: "tool",
+                id: tool.id,
+                name: tool.name,
+                args: tool.args,
+                callView: tool.callView,
+                summary: tool.summary,
+                isError: false,
+                outcomeUnknown: true,
+                anchorId: `unresolved-${tool.id}`,
+              },
+            ],
         jobs:
           job && tool.name === "bash" && !explicit
             ? { ...state.jobs, [job.id]: { ...job, promotedAt: job.backgroundedAt } }
             : state.jobs,
         tools: state.tools.filter((tool) => tool.id !== event.toolCallId),
-        completed: [...state.completed, ...(entry ? [entry] : [])],
       };
     }
     case "hook_warning":
@@ -798,6 +1019,7 @@ function reduceEvent(
           }
         : state;
     case "compaction_end":
+      return state;
     case "mcp_server_error":
       return {
         ...state,
@@ -805,13 +1027,10 @@ function reduceEvent(
           ...state.completed,
           {
             type: "notice",
-            text:
-              event.type === "compaction_end"
-                ? t("notice.compaction", { tokens: event.tokensBefore })
-                : t("notice.mcp-error", {
-                    server: event.server,
-                    error: formatError({ ...event.errorData, message: event.error }, t),
-                  }).replace(/\s+/g, " "),
+            text: t("notice.mcp-error", {
+              server: event.server,
+              error: formatError({ ...event.errorData, message: event.error }, t),
+            }).replace(/\s+/g, " "),
           },
         ],
       };
@@ -830,7 +1049,6 @@ function reduceEvent(
         assistant: "",
         reasoning: "",
         running: false,
-        waitingSubagents: 0,
         input: event.usage.input,
         output: event.usage.output,
         usage: {
@@ -844,6 +1062,7 @@ function reduceEvent(
           { at: now, value: decodeMetrics(state, now).value },
         ].slice(-500),
         streamedChars: 0,
+        toolArgumentsChars: 0,
         error: undefined,
       };
     default:
@@ -863,14 +1082,12 @@ function createViewState(
     jobNotice: undefined,
     planMode: session.planMode,
     goal: session.goal,
-    waitingSubagents: 0,
-    subagents: restoreSubagents(session.toolState("subagents"), session.recovery),
+    background: [],
+    subagents: restoreSubagents(session.toolState("subagents")),
     todos: (session.toolState("todo") as TodoItem[] | undefined) ?? [],
-    completed: replayMessages(session.messages, facts, t, session.runSummaries()).map((entry) => ({
-      ...entry,
-      anchorId: crypto.randomUUID(),
-    })),
+    completed: replayMessages(session.messages, facts, t, session.runSummaries()),
     tools: [],
+    announcedTools: [],
     assistant: "",
     reasoning: "",
     assistantAnchor: crypto.randomUUID(),
@@ -889,6 +1106,7 @@ function createViewState(
       : createActivity(locale),
     activityInput: 0,
     streamedChars: 0,
+    toolArgumentsChars: 0,
   };
 }
 
@@ -903,7 +1121,8 @@ export function createConversation(
   let state = createViewState(session, model, locale, facts);
   const listeners = new Set<() => void>();
   let compacting = false;
-  let active: { controller: AbortController; promise: Promise<unknown> } | undefined;
+  let active: { promise: Promise<unknown>; input?: AbortController } | undefined;
+  let pendingResult: { event: Extract<SessionEvent, { type: "result" }>; at: number } | undefined;
   let jobNoticeTimer: ReturnType<typeof setTimeout> | undefined;
   let notificationTimer: ReturnType<typeof setTimeout> | undefined;
   let noticeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -963,13 +1182,13 @@ export function createConversation(
         notify(t("mcp.auth.required", { name: event.server }), "warning");
       }
     }
-    if (event.type !== "tool_execution_end") return;
+    if (event.type !== "tool_execution_end" || !event.result) return;
     const server = [...authRequired].find(
       (name) => event.toolName === `mcp__${name}__authenticate`,
     );
     if (!server) return;
     const details: unknown = event.result.details;
-    if (event.isError)
+    if (event.result.isError)
       notify(
         t("mcp.auth.failure", {
           err: formatError(
@@ -1004,34 +1223,9 @@ export function createConversation(
       },
       true,
     );
-  const childReconciliations = new Map<string, symbol>();
   let stopped = false;
-  const reconcileChild = async (id: string, token: symbol) => {
-    const snapshot = await session.readSubagent(id);
-    const row = state.subagents[id];
-    if (!snapshot || !row || childReconciliations.get(id) !== token) return;
-    update({
-      ...state,
-      subagents: {
-        ...state.subagents,
-        [id]: { ...projectSubagent(row, snapshot), historyLoaded: true },
-      },
-    });
-  };
   const onEvent = (event: SessionEvent) => {
-    if (event.type === "subagent_event") {
-      if (event.event.type === "session_start") childReconciliations.delete(event.agentId);
-      if (!stopped && event.event.type === "conversation_reconciled") {
-        // Re-read the committed child branch even if its earlier history was loaded.
-        // A later Run invalidates this read before it can replace newer streaming output.
-        const token = Symbol();
-        childReconciliations.set(event.agentId, token);
-        void reconcileChild(event.agentId, token).catch((error) => {
-          if (childReconciliations.get(event.agentId) === token)
-            notify(formatError(error, t), "error");
-        });
-      }
-    }
+    if (stopped) return;
     mcpNotice(event);
     const now = Date.now();
     if (event.type === "job_event") {
@@ -1063,8 +1257,7 @@ export function createConversation(
       update({ ...state, jobs: { ...state.jobs, [job.id]: job }, jobNotice }, true);
       return;
     }
-    if (event.type === "conversation_rewound" || event.type === "conversation_reconciled") {
-      childReconciliations.clear();
+    if (event.type === "conversation_rewound") {
       const restored = createViewState(session, state.model, locale, facts);
       update({
         ...restored,
@@ -1079,79 +1272,34 @@ export function createConversation(
       // emit no output before settlement. Reconcile at the tool boundary.
       refreshJobs();
     }
+    if (event.type === "result" && active) pendingResult = { event, at: now };
+    if (event.type === "run_start") pendingResult = undefined;
+    const settling =
+      active && (event.type === "result" || (event.type === "snapshot" && !event.run));
     update(
       {
-        ...reduceEvent(
-          state,
-          event,
-          now,
-          t,
-          facts,
-          event.type === "tool_state_changed" && event.name === "subagents"
-            ? session.recovery
-            : undefined,
-        ),
+        ...reduceEvent(state, event, now, t, facts),
+        ...(active && { running: true }),
         goal:
-          event.type === "result" || (event.type === "tool_state_changed" && event.name === "goal")
-            ? session.goal
-            : state.goal,
-        activity: reduce(
-          event.type === "session_start" && !state.running
-            ? reduce(state.activity, { type: "submit" }, now)
-            : state.activity,
-          event,
-          now,
-        ),
+          event.type === "snapshot"
+            ? (event.toolStates.goal as GoalView | undefined)
+            : event.type === "tool_state_changed" && event.name === "goal"
+              ? (event.value as GoalView | undefined)
+              : state.goal,
+        activity: settling
+          ? state.activity
+          : reduce(
+              event.type === "run_start" && !state.running
+                ? reduce(state.activity, { type: "submit" }, now)
+                : state.activity,
+              event,
+              now,
+            ),
       },
       event.type === "subagent_event",
     );
   };
-  // Startup hooks can start a run before the chat exists. Remove the already
-  // replayed messages from the snapshot, then fold the buffered events once.
-  const startupEvents: SessionEvent[] = [];
-  let observing = false;
-  const unsubscribe = session.subscribe((event) => {
-    if (observing) onEvent(event);
-    else startupEvents.push(event);
-  });
-  if (startupEvents.length) {
-    const emittedMessages = new Set(
-      startupEvents.flatMap((event) =>
-        event.type === "message_end" ? [JSON.stringify(event.message)] : [],
-      ),
-    );
-    state = {
-      ...state,
-      completed: replayMessages(
-        session.messages.filter((message) => !emittedMessages.has(JSON.stringify(message))),
-        facts,
-        t,
-      ),
-    };
-    for (const event of startupEvents) onEvent(event);
-  }
-  observing = true;
-  const recovered = session.recovery.subagents;
-  if (recovered.length) {
-    state = {
-      ...state,
-      completed: [
-        ...state.completed,
-        {
-          type: "notice",
-          text: [
-            t("resume.subagents", { count: recovered.length }),
-            ...recovered.flatMap((child) => [
-              `${t(`subagent.outcome.${child.outcome}`)}: ${child.description}`,
-              ...(child.diagnostic ? [t("resume.unconfirmed")] : []),
-            ]),
-            t("resume.no-automatic-continuation"),
-            t("resume.continue-guidance"),
-          ].join("\n"),
-        },
-      ],
-    };
-  }
+  const unsubscribe = session.subscribe(onEvent);
   return {
     dispatchActivity,
     notify,
@@ -1197,39 +1345,64 @@ export function createConversation(
     submit(prompt: string, initial = false, images: PromptImage[] = []) {
       if (compacting) return false;
       if (!prompt.trim()) return false;
-      if (active || (session.running && !initial)) {
+      const awaitIdle = !active && !state.running && session.running && !initial;
+      if (active || (session.running && !initial && !awaitIdle)) {
         if (!images.length && !prompt.startsWith("/")) return false;
-        session.steer(prompt, { images });
+        void session.steer(prompt, { images }).catch((error: unknown) => {
+          if (!stopped) notify(formatError(error, t), "error");
+        });
         return true;
       }
-      const controller = new AbortController();
-      if (!session.running)
+      if (!session.running || awaitIdle)
         update({
           ...state,
           running: true,
-          waitingSubagents: 0,
           input: 0,
           output: 0,
           error: undefined,
           activityInput: 0,
           streamedChars: 0,
+          toolArgumentsChars: 0,
           decode: { tokens: 0, ms: 0 },
           activity: reduce(state.activity, { type: "submit" }, Date.now()),
         });
-      const promise = session
-        .run(prompt, {
-          signal: controller.signal,
-          images,
-        })
+      const input = new AbortController();
+      const promise = (async () => {
+        if (awaitIdle) await session.waitForIdle();
+        if (stopped || input.signal.aborted) return;
+        return session.run(prompt, { images });
+      })()
         .catch((error: unknown) => {
+          if (stopped) return;
           const last = state.completed.findLast((entry) => entry.type !== "run-summary");
           const recordedEnding =
             last?.type === "session-notice" &&
             last.notice.kind !== "hook_message" &&
             last.notice.kind !== "hook_warning";
-          if (!controller.signal.aborted && !recordedEnding) {
+          if (!state.activity.interrupted && !recordedEnding) {
             update({
               ...state,
+              completed: [
+                ...state.completed,
+                ...state.tools
+                  .filter(
+                    (tool) =>
+                      !state.completed.some(
+                        (entry) => entry.type === "tool" && entry.id === tool.id,
+                      ),
+                  )
+                  .map((tool): CompletedEntry => ({
+                    type: "tool",
+                    id: tool.id,
+                    name: tool.name,
+                    args: tool.args,
+                    callView: tool.callView,
+                    summary: tool.summary,
+                    isError: false,
+                    outcomeUnknown: true,
+                    anchorId: `unresolved-${tool.id}`,
+                  })),
+              ],
               assistant: "",
               reasoning: "",
               tools: [],
@@ -1241,16 +1414,23 @@ export function createConversation(
         })
         .finally(() => {
           active = undefined;
-          if (!session.running) update({ ...state, running: false, waitingSubagents: 0 });
+          if (!stopped && !session.running)
+            update({
+              ...state,
+              running: false,
+              activity: pendingResult
+                ? reduce(state.activity, pendingResult.event, pendingResult.at)
+                : { ...state.activity, phase: "idle", tools: [], reviews: [] },
+            });
+          pendingResult = undefined;
         });
-      active = { controller, promise };
+      active = { promise, input };
       return true;
     },
     compact(instructions?: string) {
       if (active || session.running)
         return Promise.reject(new Error("Session already has an active Run."));
       compacting = true;
-      const controller = new AbortController();
       const previousActivity = state.activity;
       update({
         ...state,
@@ -1261,9 +1441,9 @@ export function createConversation(
       const promise = session.compact({ instructions }).finally(() => {
         active = undefined;
         compacting = false;
-        update({ ...state, running: false, activity: previousActivity });
+        if (!stopped) update({ ...state, running: false, activity: previousActivity });
       });
-      active = { controller, promise };
+      active = { promise };
       return promise;
     },
     async loadSubagent(id: string) {
@@ -1272,55 +1452,28 @@ export function createConversation(
       const snapshot = await session.readSubagent(id);
       const row = state.subagents[id];
       if (!snapshot || !row || row.historyLoaded || row.startedAt !== owner.startedAt) return;
-      if (row.status === "running") {
-        if (!snapshot.run || snapshot.run.endedAt !== undefined || !snapshot.historyMessages)
-          return;
-        const history = projectSubagent(row, {
-          ...snapshot,
-          messages: snapshot.historyMessages,
-        });
-        update({
-          ...state,
-          subagents: {
-            ...state.subagents,
-            [id]: {
-              ...row,
-              output: [...history.output, ...row.output],
-              toolCalls: [...history.toolCalls, ...row.toolCalls],
-              messageOutputStart: (row.messageOutputStart ?? 0) + history.output.length,
-              historyLoaded: true,
-            },
-          },
-        });
-      } else {
-        update({
-          ...state,
-          subagents: {
-            ...state.subagents,
-            [id]: { ...projectSubagent(row, snapshot), historyLoaded: true },
-          },
-        });
-      }
+      // Native snapshots contain the full committed history and current
+      // generation; replacing once avoids duplicating a separately read prefix.
+      update({
+        ...state,
+        subagents: {
+          ...state.subagents,
+          [id]: { ...projectSubagent(row, snapshot), historyLoaded: true },
+        },
+      });
     },
     isRunning: () => active !== undefined || session.running,
     interrupt() {
       if (!active && !session.running) return;
       dispatchActivity({ type: "interrupt" });
-      session.interruptRun();
-      active?.controller.abort();
+      active?.input?.abort();
+      void session.abort().catch((error: unknown) => {
+        if (!stopped) notify(formatError(error, t), "error");
+      });
     },
     async stop() {
       stopped = true;
-      childReconciliations.clear();
-      const pending = active;
-      session.interruptRun();
-      pending?.controller.abort();
-      try {
-        await pending?.promise;
-      } catch (error) {
-        if (!pending?.controller.signal.aborted) throw error;
-      }
-      await session.waitForIdle();
+      active?.input?.abort();
       unsubscribe();
       clearTimeout(noticeTimer);
       clearTimeout(jobNoticeTimer);

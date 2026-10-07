@@ -2,8 +2,8 @@ import { testClock } from "../helpers/test-clock";
 import { expect, test } from "bun:test";
 import { startWithClock } from "../helpers/clock-app";
 import { createSession } from "@rukie/agent";
-import { createFauxCore, fauxAssistantMessage } from "@earendil-works/pi-ai";
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model";
+import { fauxProvider, fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { auxiliaryModels } from "../helpers/auxiliary-model";
 
 test.each(["en", "zh"] as const)(
   "an interrupted Run has an end time without a success label (%s)",
@@ -28,7 +28,7 @@ test.each(["en", "zh"] as const)(
 
 test("resume renders saved Run summaries below the corresponding replies", async () => {
   const argv: string[] = [];
-  const original = createFauxCore({ api: "faux", provider: "faux" });
+  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
   original.setResponses([
     fauxAssistantMessage("saved first reply"),
     fauxAssistantMessage("saved second reply"),
@@ -41,14 +41,14 @@ test("resume renders saved Run summaries below the corresponding replies", async
         cwd: root,
         homeDir: root,
         model: original.getModel(),
-        streamFn: withAuxiliaryRequests((model, context, options) =>
-          original.streamSimple(model, context, options),
+        models: auxiliaryModels((model, context, options) =>
+          original.provider.streamSimple(model, context, options),
         ),
       });
       await session.run("saved first prompt");
       await session.run("saved second prompt");
       argv.push("--resume", session.id);
-      await session.dispose();
+      await session.close();
     },
   });
   try {

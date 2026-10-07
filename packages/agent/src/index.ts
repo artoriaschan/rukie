@@ -7,10 +7,8 @@ export {
 } from "./store/index.ts";
 export {
   createSession,
-  type SessionEvent,
   type Session,
   type SessionOptions,
-  type SessionRecovery,
   type PermissionAskRequest,
   type SessionAllowRule,
 } from "./session/index.ts";
@@ -56,3 +54,12 @@ export {
   sessionNoticeFromHook,
   type SessionNotice,
 } from "./session/session-notice.ts";
+
+export type {
+  TranscriptMessage,
+  TranscriptAssistantMessage,
+  TranscriptToolResult,
+} from "./session/messages.ts";
+export type { BackgroundActivity } from "./session/events.ts";
+
+export type { SessionEvent } from "./session/events.ts";

@@ -1,7 +1,7 @@
 import { startWithClock } from "../helpers/clock-app";
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
+import { auxiliaryModels } from "../helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
-import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { fauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { createSession } from "@rukie/agent";
 import { dark } from "../../../src/ink/index.ts";
 import { start } from "../helpers/app";
@@ -332,7 +332,7 @@ test.each([
 test("resume shows an expanded English Todo List with full counts and overflow, without persisting folding", async () => {
   const argv: string[] = [];
   let sessionRoot = "";
-  const original = createFauxCore({ api: "faux", provider: "faux" });
+  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
   original.setResponses([
     fauxAssistantMessage(
       [
@@ -359,12 +359,13 @@ test("resume shows an expanded English Todo List with full counts and overflow, 
         cwd: root,
         homeDir: root,
         model: original.getModel(),
-        streamFn: withAuxiliaryRequests((model, context, options) =>
-          original.streamSimple(model, context, options),
+        models: auxiliaryModels((model, context, options) =>
+          original.provider.streamSimple(model, context, options),
         ),
       });
       await session.run("save plan");
       argv.push("--resume", session.id);
+      await session.close();
     },
   });
   try {

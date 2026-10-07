@@ -207,13 +207,16 @@ test.each([false, true])(
     });
     const screen = () => app.screen().join("\n");
     const focused = () =>
-      app.screen().find((line, row) => {
-        const column = line.indexOf("Subagent: Child ");
-        return (
-          column >= 0 &&
-          app.terminal.buffer.active.getLine(row)?.getCell(column)?.getFgColor() === 0xe85693
-        );
-      });
+      app
+        .screen()
+        .find((line, row) => {
+          const column = line.indexOf("Subagent: Child ");
+          return (
+            column >= 0 &&
+            app.terminal.buffer.active.getLine(row)?.getCell(column)?.getFgColor() === 0xe85693
+          );
+        })
+        ?.match(/Subagent: Child \d+/)?.[0];
     try {
       await app.waitFor(() => app.calls.length === 1);
       app.calls[0]!.tools(
@@ -240,6 +243,7 @@ test.each([false, true])(
           screen().includes(mixed ? "4 completed" : "8 running") &&
           !!focused(),
       );
+      await app.waitFor(() => screen().includes("live preview"));
       let previous = focused();
       for (let index = 0; index < 7; index++) {
         app.stdin.write("\x1b[B");
@@ -247,7 +251,14 @@ test.each([false, true])(
         previous = focused();
       }
       const selected = focused()!.match(/Subagent: (Child \d)/)![1]!;
-      const before = app.screen().slice(4, 11);
+      // Live elapsed labels may advance while detail is open; compare the
+      // selected rows and geometry independently of that ticking value.
+      const dashboardRows = () =>
+        app
+          .screen()
+          .slice(4, 11)
+          .map((line) => line.replace(/ · \d+(?:\.\d+)?(?:ms|s|m\d+s)(?= ·)/g, " · <elapsed>"));
+      const before = dashboardRows();
       app.stdin.write("\r");
       await app.waitFor(
         () => screen().includes("id ") && screen().includes(`Subagent: ${selected}`),
@@ -256,7 +267,7 @@ test.each([false, true])(
       await app.waitFor(
         () => screen().includes("─ Subagents ") && focused()?.includes(selected) === true,
       );
-      expect(app.screen().slice(4, 11)).toEqual(before);
+      expect(dashboardRows()).toEqual(before);
       app.stdin.write("\x1b[A\x1b[A");
       await app.waitFor(() => !!focused() && !focused()!.includes(selected));
     } finally {
@@ -298,17 +309,24 @@ test("eight child Runs stream in chat before any Subagent view opens", async () 
     children.forEach((child) => child.finish());
     app.calls.find((call, index) => index > 0 && !children.includes(call))!.finish();
     let answered = 10;
+    let received = "";
     for (;;) {
-      await app.waitFor(() => app.calls.length > answered || app.screen().at(-1) === "");
-      if (app.calls.length <= answered) break;
+      await app.waitFor(() => app.calls.length > answered);
+
       const response = app.calls[answered++]!;
       const messages = JSON.stringify(response.context.messages);
       expect(messages).not.toContain("Maximum update depth");
       expect(messages).not.toContain("failed:");
       response.delta("parent final reply");
       response.finish();
+      received = messages;
+      if (
+        Array.from({ length: 8 }, (_, index) =>
+          received.includes(`(Concurrent ${index}) finished.`),
+        ).every(Boolean)
+      )
+        break;
     }
-    const received = JSON.stringify(app.calls.at(-1)!.context.messages);
     for (let index = 0; index < 8; index++)
       expect(received).toContain(`(Concurrent ${index}) finished.`);
     await app.waitFor(() => app.screen().join("\n").includes("parent final reply"));

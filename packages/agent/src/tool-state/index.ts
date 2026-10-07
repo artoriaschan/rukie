@@ -1,65 +1,82 @@
-import type { Context } from "@earendil-works/pi-agent-core/harness/context";
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import {
-  branchTip,
-  insertEntry,
-  setValue,
-  type Entry,
-  type JsonValue,
-  type Session,
-  type Write,
-} from "@earendil-works/pi-agent-core/harness/session";
+  defineDoc,
+  type Conversation,
+  type Harness,
+  type ConversationDocToken,
+  type EntryDraft,
+  type CommitPublication,
+} from "@earendil-works/pi-durable";
+import type { Context, JsonValue } from "@earendil-works/chord";
 import type { ReminderSource } from "../reminders/index.ts";
 
 export interface ToolStateDefinition {
   name: string;
   version: number;
+  document: ConversationDocToken<{ value: JsonValue }>;
   parse(version: number, value: unknown): JsonValue;
   renderReminder?(value: JsonValue): string | undefined;
 }
 
-export function createToolState(
+/** Owners choose copy/history semantics; the registry only coordinates committed reads and writes. */
+export function defineToolState(
+  definition: Omit<ToolStateDefinition, "document"> & {
+    history: "latest" | "rewindable";
+    fork: "current" | "asOf" | "initial";
+  },
+): ToolStateDefinition {
+  const { history, fork, ...owner } = definition;
+  const common = {
+    kind: `rukie.${definition.name}`,
+    version: definition.version,
+    scope: "conversation" as const,
+    initial: () => ({ value: null as JsonValue }),
+  };
+  const document =
+    history === "rewindable"
+      ? defineDoc({ ...common, history, fork })
+      : defineDoc({ ...common, history, fork: fork === "current" ? "current" : "initial" });
+  return { ...owner, document };
+}
+
+export async function createToolState(
   definitions: readonly ToolStateDefinition[],
-  entries: readonly Entry[],
-  onWarning: (warning: string) => void,
+  harness: Harness,
+  conversation: Conversation,
+  context: Context,
 ) {
   const registered = new Map(definitions.map((definition) => [definition.name, definition]));
   const values = new Map<string, JsonValue>();
-  function replay(entries: readonly Entry[]) {
-    values.clear();
-    for (const entry of entries) {
-      if (entry.type !== "custom" || !entry.customType.startsWith("tool-state/")) continue;
-      const name = entry.customType.slice("tool-state/".length);
-      const definition = registered.get(name);
-      if (!definition) continue;
-      try {
-        const data = entry.data;
-        if (
-          typeof data !== "object" ||
-          data === null ||
-          Array.isArray(data) ||
-          typeof data.version !== "number"
-        )
-          throw new Error("Invalid Tool State snapshot.");
-        values.set(name, definition.parse(data.version, data.value));
-      } catch (error) {
-        onWarning(
-          `Skipping invalid ${entry.customType} entry ${entry.id}: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
+  async function refresh() {
+    const next = new Map<string, JsonValue>();
+    for (const definition of definitions) {
+      const snapshot = await harness.snapshot(definition.document, conversation.id, context);
+      if (snapshot && snapshot.value !== null)
+        next.set(definition.name, definition.parse(definition.version, snapshot.value));
     }
+    values.clear();
+    for (const [name, value] of next) values.set(name, value);
   }
-  replay(entries);
+  await refresh();
   return {
-    /** Replace the branch projection while preserving live reminder closures. */
-    restore(entries: readonly Entry[]) {
-      const previous = new Map(values);
-      replay(entries);
-      return definitions.flatMap(({ name }) =>
-        JSON.stringify(previous.get(name)) === JSON.stringify(values.get(name))
-          ? []
-          : [{ name, value: values.get(name) }],
-      );
+    refresh,
+    snapshot() {
+      return Object.fromEntries([...values].map(([name, value]) => [name, structuredClone(value)]));
+    },
+    adopt(publication: CommitPublication) {
+      const changed: { name: string; value: unknown }[] = [];
+      for (const change of publication.changes) {
+        if (change.type !== "document" || change.conversationId !== conversation.id) continue;
+        const definition = definitions.find(
+          (definition) => definition.document.definition.kind === change.record.kind,
+        );
+        if (!definition) continue;
+        const raw = change.value?.value;
+        if (raw === undefined || raw === null) values.delete(definition.name);
+        else
+          values.set(definition.name, definition.parse(change.version ?? definition.version, raw));
+        changed.push({ name: definition.name, value: values.get(definition.name) });
+      }
+      return changed;
     },
     reminderSources: definitions.flatMap((definition): ReminderSource[] =>
       definition.renderReminder
@@ -75,43 +92,19 @@ export function createToolState(
         : [],
     ),
     get(name: string): unknown {
-      return values.get(name);
+      const value = values.get(name);
+      return value === undefined ? undefined : structuredClone(value);
     },
-    /** An accompanying reminder and its state become durable in one branch transaction. */
-    async set(
-      name: string,
-      value: JsonValue,
-      session: Session,
-      context: Context,
-      reminder?: Extract<AgentMessage, { role: "system-reminder" }>,
-    ) {
+    async set(name: string, value: JsonValue, context: Context, reminder?: EntryDraft) {
       const definition = registered.get(name);
       if (!definition) throw new Error(`Unknown Tool State: ${name}`);
       const parsed = definition.parse(definition.version, value);
-      await session.mutate(async (mutator) => {
-        const tip = await mutator.getValue(branchTip("main"), context);
-        if (!tip) throw new Error("Session has no main branch.");
-        const id = session.idGenerator.next();
-        const writes: Write[] = [
-          insertEntry({
-            id,
-            parentId: tip.value,
-            type: "custom",
-            customType: `tool-state/${name}`,
-            data: { version: definition.version, value: parsed },
-          }),
-        ];
-        let finalTip = id;
-        if (reminder) {
-          finalTip = session.idGenerator.next();
-          writes.push(
-            insertEntry({ id: finalTip, parentId: id, type: "message", message: reminder }),
-          );
-        }
-        writes.push(setValue(branchTip("main"), finalTip));
-        await mutator.commit(writes, context);
+      await conversation.commit(async (tx) => {
+        (await tx.doc(definition.document, conversation.id)).value = parsed;
+        if (reminder) await tx.appendEntry(conversation.id, reminder);
       }, context);
-      values.set(name, parsed);
+      if (parsed === null) values.delete(name);
+      else values.set(name, structuredClone(parsed));
       return parsed;
     },
   };

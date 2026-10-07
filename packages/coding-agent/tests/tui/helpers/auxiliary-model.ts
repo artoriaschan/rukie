@@ -1,7 +1,10 @@
-import type { SessionOptions } from "@rukie/agent";
-type StreamFn = NonNullable<SessionOptions["streamFn"]>;
+import type { Provider } from "@earendil-works/pi-ai/models";
+type ModelStream = Provider["streamSimple"];
 import {
   createAssistantMessageEventStream,
+  createModels,
+  fauxProvider,
+  type Models,
   fauxAssistantMessage,
   type TranscriptContext,
 } from "@earendil-works/pi-ai";
@@ -21,11 +24,11 @@ export function isTitleRequest(context: TranscriptContext) {
 }
 
 /** Auxiliary requests must not consume the main conversation's scripted responses. */
-export function withAuxiliaryRequests(
-  primary: StreamFn,
-  options: { titles?: StreamFn } = {},
-): StreamFn {
-  return (model, context, request) => {
+export function auxiliaryModels(
+  primary: ModelStream,
+  options: { titles?: ModelStream; models?: Models } = {},
+): Models {
+  const streamSimple: ModelStream = (model, context, request) => {
     if (!isTitleRequest(context)) return primary(model, context, request);
     if (options.titles) return options.titles(model, context, request);
     const stream = createAssistantMessageEventStream();
@@ -34,4 +37,10 @@ export function withAuxiliaryRequests(
     stream.end(message);
     return stream;
   };
+  const models = createModels();
+  const providers = options.models?.getProviders() ?? [
+    fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 }).provider,
+  ];
+  for (const provider of providers) models.setProvider({ ...provider, streamSimple });
+  return models;
 }

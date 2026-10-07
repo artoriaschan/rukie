@@ -1,4 +1,5 @@
-import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { JsonValue } from "@earendil-works/chord";
+import type { ToolRegistration } from "@earendil-works/pi-durable";
 import { Value } from "typebox/value";
 import type { Static, TSchema } from "typebox";
 import {
@@ -9,11 +10,17 @@ import {
 } from "@rukie/shared";
 
 /** Pure presentation reads only arguments and persisted result facts. Failures never affect execution. */
-export type PresentedTool<T extends TSchema = TSchema, D = unknown> = AgentTool<T, D> & {
+export type PresentedTool<
+  T extends TSchema = TSchema,
+  D extends JsonValue = JsonValue,
+> = ToolRegistration<T, D> & {
   presentCall?(args: Static<T>): ToolCallView | undefined;
   presentResult?(args: Static<T>, result: string, details: unknown): ToolResultView | undefined;
 };
-export function presentCall(tool: AgentTool | undefined, args: unknown): ToolCallView | undefined {
+export function presentCall(
+  tool: ToolRegistration | undefined,
+  args: unknown,
+): ToolCallView | undefined {
   try {
     if (!tool || !Value.Check(tool.parameters, args)) return;
     const view = (tool as PresentedTool).presentCall?.(args);
@@ -23,7 +30,7 @@ export function presentCall(tool: AgentTool | undefined, args: unknown): ToolCal
   }
 }
 export function presentResult(
-  tool: AgentTool | undefined,
+  tool: ToolRegistration | undefined,
   args: unknown,
   result: { content: { type: string; text?: string }[]; details?: unknown },
 ): ToolResultView | undefined {

@@ -1,18 +1,37 @@
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
+import { join } from "node:path";
+import { withModelStream, withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
 import {
   createAssistantMessageEventStream,
   fauxAssistantMessage,
   fauxToolCall,
 } from "@earendil-works/pi-ai";
-import { MemorySessionRepo } from "@earendil-works/pi-agent-core/harness/session";
-import { createSession, type SessionEvent } from "../../src/index.ts";
+import { MemoryStorage } from "@earendil-works/pi-durable";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import {
+  createSession as createSessionImpl,
+  createJsonlStore,
+  type Session,
+  type SessionStore,
+  type SessionEvent,
+} from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { abortingModel } from "../helpers/aborting-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
-afterEach(() => dirs?.cleanup());
+const sessions: Session[] = [];
+const storages: MemoryStorage[] = [];
+async function createSession(options: Parameters<typeof createSessionImpl>[0]) {
+  const session = await createSessionImpl(options);
+  sessions.push(session);
+  return session;
+}
+afterEach(async () => {
+  await Promise.all(sessions.splice(0).map((session) => session.close()));
+  await Promise.all(storages.splice(0).map((storage) => storage.close(BACKGROUND_CONTEXT)));
+  await dirs?.cleanup();
+});
 
 test("a run sends the prompt to the model and returns the final assistant text", async () => {
   dirs = await tempDirs();
@@ -23,7 +42,7 @@ test("a run sends the prompt to the model and returns the final assistant text",
 
   expect(result.text).toBe("hello back");
   expect(fake.contexts).toHaveLength(1);
-  expect(fake.contexts[0]!.messages.at(-1)).toMatchObject({
+  expect(fake.contexts[0]!.messages.findLast((message) => message.role === "user")).toMatchObject({
     role: "user",
     content: [{ type: "text", text: "hello" }],
   });
@@ -37,9 +56,9 @@ test("a model error fails the run", async () => {
   await expect(session.run("hello")).rejects.toThrow("boom");
 });
 
-test("the Run result totals every Turn and forwards tool events without changing their payload", async () => {
+test("the Run result totals every Turn and publishes execution facts for its registered tool", async () => {
   dirs = await tempDirs();
-  const first = fauxAssistantMessage(fauxToolCall("missing", { path: "a.ts" }, { id: "call-1" }), {
+  const first = fauxAssistantMessage(fauxToolCall("read", { path: "a.ts" }, { id: "call-1" }), {
     stopReason: "toolUse",
   });
   first.usage = {
@@ -62,18 +81,21 @@ test("the Run result totals every Turn and forwards tool events without changing
   // pi's faux provider estimates usage itself; this boundary supplies known provider counts.
   const fake = fakeModel([]);
   const replies = [first, second];
-  fake.streamFn = withAuxiliaryRequests((_model, context) => {
-    fake.contexts.push(context);
-    const stream = createAssistantMessageEventStream();
-    const message = replies.shift()!;
-    stream.push({
-      type: "done",
-      reason: message.stopReason === "toolUse" ? "toolUse" : "stop",
-      message,
-    });
-    stream.end(message);
-    return stream;
-  });
+  fake.models = withModelStream(
+    fake.models,
+    withAuxiliaryRequests((_model, context) => {
+      fake.contexts.push(context);
+      const stream = createAssistantMessageEventStream();
+      const message = replies.shift()!;
+      stream.push({
+        type: "done",
+        reason: message.stopReason === "toolUse" ? "toolUse" : "stop",
+        message,
+      });
+      stream.end(message);
+      return stream;
+    }),
+  );
   const session = await createSession({ cwd: dirs.cwd, homeDir: dirs.homeDir, ...fake });
   const events: SessionEvent[] = [];
   const result = await session.run("hi", {
@@ -86,17 +108,24 @@ test("the Run result totals every Turn and forwards tool events without changing
     text: "final reply",
     success: true,
     durationMs: expect.any(Number),
-    endedAt: expect.any(Number),
+    requestId: expect.stringMatching(/^human:/),
     usage: { input: 30, output: 7, cacheRead: 7, cacheWrite: 1, totalTokens: 45 },
   });
-  expect(events[0]).toMatchObject({ type: "session_start", sessionId: session.id });
-  expect(events.at(-1)).toEqual({ type: "result", sessionId: session.id, ...result });
-  expect(events.find((event) => event.type === "tool_execution_start")).toEqual({
+  expect(events.find((event) => event.type === "run_start")).toMatchObject({
+    type: "run_start",
+    sessionId: session.id,
+  });
+  expect(events.find((event) => event.type === "result")).toMatchObject({
+    type: "result",
+    sessionId: session.id,
+    ...result,
+  });
+  expect(events.find((event) => event.type === "tool_execution_start")).toMatchObject({
     type: "tool_execution_start",
     sessionId: session.id,
     toolCallId: "call-1",
-    toolName: "missing",
-    args: { path: "a.ts" },
+    toolName: "read",
+    args: { path: join(dirs.cwd, "a.ts") },
   });
   expect(fake.contexts).toHaveLength(2);
 });
@@ -112,13 +141,13 @@ test("a model error without an error message still emits a failed result and rej
         events.push(structuredClone(event));
       },
     }),
-  ).rejects.toThrow("Model stopped: error");
-  expect(events.at(-1)).toMatchObject({
+  ).rejects.toThrow("Model response ended with stop reason error");
+  expect(events.find((event) => event.type === "result")).toMatchObject({
     type: "result",
     sessionId: session.id,
     success: false,
     text: "partial",
-    error: "Model stopped: error",
+    error: "Model response ended with stop reason error",
   });
 });
 
@@ -155,7 +184,10 @@ test("resuming a stored session restores the exact context prefix and appends to
   const prompt = "first prompt\n<system-reminder>keep this verbatim</system-reminder>";
   await session.run(prompt);
   await session.run("second prompt");
-  const expectedPrefix = structuredClone(fake.contexts[1]!.messages);
+  const expectedPrefix = structuredClone(
+    fake.contexts[1]!.messages.filter((message) => message.role !== "system"),
+  );
+  await session.close();
 
   const next = fakeModel([fauxAssistantMessage("resumed reply")]);
   const resumed = await createSession({
@@ -166,7 +198,9 @@ test("resuming a stored session restores the exact context prefix and appends to
   });
   expect(next.contexts).toHaveLength(0);
   expect(resumed.messages).toEqual(session.messages);
-  expect(resumed.messages.slice(-4)).toMatchObject([
+  expect(
+    resumed.messages.filter((message) => message.role === "user" || message.role === "assistant"),
+  ).toMatchObject([
     { role: "user", content: [{ type: "text", text: prompt }] },
     { role: "assistant", content: [{ type: "text", text: "first reply" }] },
     { role: "user", content: [{ type: "text", text: "second prompt" }] },
@@ -175,12 +209,13 @@ test("resuming a stored session restores the exact context prefix and appends to
   await resumed.run("third prompt");
 
   expect(resumed.id).toBe(session.id);
-  expect(next.contexts[0]!.messages.slice(0, -2)).toEqual(expectedPrefix);
-  expect(next.contexts[0]!.messages.at(-2)).toMatchObject({
+  const visible = next.contexts[0]!.messages.filter((message) => message.role !== "system");
+  expect(visible.slice(0, -2)).toEqual(expectedPrefix);
+  expect(visible.at(-2)).toMatchObject({
     role: "assistant",
     content: [{ type: "text", text: "second reply" }],
   });
-  expect(next.contexts[0]!.messages.at(-1)).toMatchObject({
+  expect(visible.at(-1)).toMatchObject({
     role: "user",
     content: [{ type: "text", text: "third prompt" }],
   });
@@ -188,6 +223,7 @@ test("resuming a stored session restores the exact context prefix and appends to
     { role: "user", content: [{ type: "text", text: "third prompt" }] },
     { role: "assistant", content: [{ type: "text", text: "resumed reply" }] },
   ]);
+  await resumed.close();
   const reopened = await createSession({ ...dirs, ...next, resumeId: session.id });
   expect(reopened.messages).toEqual(resumed.messages);
 });
@@ -210,12 +246,27 @@ test("an unknown resume id fails without calling the model", async () => {
   expect(fake.contexts).toHaveLength(0);
 });
 
-test("a supplied pi repo can persist and resume without the JSONL backend", async () => {
+test("a supplied native MemoryStorage can persist and resume across host leases", async () => {
   dirs = await tempDirs();
-  const store = new MemorySessionRepo();
+  const storage = new MemoryStorage();
+  storages.push(storage);
+  const id = crypto.randomUUID();
+  const retained = new Proxy(storage, {
+    get(target, key) {
+      if (key === "close") return async () => {};
+      const value = Reflect.get(target, key);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  const store: SessionStore = {
+    key: (sessionId) => `${id}:${sessionId}`,
+    open: async () => ({ id, storage: retained, release: async () => {} }),
+    list: async () => [],
+  };
   const fake = fakeModel([fauxAssistantMessage("stored reply")]);
   const session = await createSession({ cwd: dirs.cwd, homeDir: dirs.homeDir, store, ...fake });
   await session.run("stored prompt");
+  await session.close();
   const next = fakeModel([fauxAssistantMessage("next reply")]);
   const resumed = await createSession({
     cwd: dirs.cwd,
@@ -225,14 +276,14 @@ test("a supplied pi repo can persist and resume without the JSONL backend", asyn
     resumeId: session.id,
   });
   await resumed.run("next prompt");
-  expect(next.contexts[0]!.messages).toMatchObject([
-    ...fake.contexts[0]!.messages,
+  expect(next.contexts[0]!.messages.filter((message) => message.role !== "system")).toMatchObject([
+    ...fake.contexts[0]!.messages.filter((message) => message.role !== "system"),
     { role: "assistant", content: [{ type: "text", text: "stored reply" }] },
     { role: "user", content: [{ type: "text", text: "next prompt" }] },
   ]);
 });
 
-test("an aborted Run persists the user message and partial assistant output before rejecting", async () => {
+test("an aborted Run preserves admitted input without treating live partial output as committed history", async () => {
   dirs = await tempDirs();
   const fake = abortingModel();
   const session = await createSession({ cwd: dirs.cwd, homeDir: dirs.homeDir, ...fake });
@@ -244,6 +295,7 @@ test("an aborted Run persists the user message and partial assistant output befo
   controller.abort();
   await expect(run).rejects.toThrow();
 
+  await session.close();
   const next = fakeModel([fauxAssistantMessage("continued")]);
   const resumed = await createSession({
     cwd: dirs.cwd,
@@ -251,9 +303,9 @@ test("an aborted Run persists the user message and partial assistant output befo
     ...next,
     resumeId: session.id,
   });
+  expect(JSON.stringify(resumed.messages)).not.toContain("partial output");
   await resumed.run("continue");
-  expect(next.contexts[0]!.messages).toMatchObject([
-    { role: "system", toolsAdded: expect.any(Array) },
+  expect(next.contexts[0]!.messages.filter((message) => message.role !== "system")).toMatchObject([
     {
       role: "user",
       content: [{ type: "text", text: expect.stringContaining("<system-reminder>\ncwd:") }],
@@ -271,11 +323,54 @@ test("an aborted Run persists the user message and partial assistant output befo
       ],
     },
     { role: "user", content: [{ type: "text", text: "interrupted prompt" }] },
-    {
-      role: "assistant",
-      content: [{ type: "text", text: "partial output" }],
-      stopReason: "aborted",
-    },
     { role: "user", content: [{ type: "text", text: "continue" }] },
   ]);
+});
+
+test("public idle waits for the owned foreground receipt commit before accepting another Run", async () => {
+  dirs = await tempDirs();
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const base = createJsonlStore(dirs);
+  const store: SessionStore = {
+    ...base,
+    async open(input, context) {
+      const lease = await base.open(input, context);
+      const commit = lease.storage.commit.bind(lease.storage);
+      let held = false;
+      lease.storage.commit = async (writes, context) => {
+        if (
+          !held &&
+          writes.some((write) => write.type === "entry" && write.value.kind === "rukie.run-summary")
+        ) {
+          held = true;
+          entered.resolve();
+          await release.promise;
+        }
+        return commit(writes, context);
+      };
+      return lease;
+    },
+  };
+  const fake = fakeModel([fauxAssistantMessage("first"), fauxAssistantMessage("second")]);
+  const session = await createSession({ ...dirs, ...fake, store });
+  const run = session.run("first");
+  try {
+    await entered.promise;
+    expect(session.running).toBe(true);
+    let idleSettled = false;
+    const idle = session.waitForIdle().then(() => {
+      idleSettled = true;
+    });
+    await Promise.resolve();
+    expect(idleSettled).toBe(false);
+    release.resolve();
+    expect((await run).text).toBe("first");
+    await idle;
+    expect(session.running).toBe(false);
+    expect((await session.run("second")).text).toBe("second");
+  } finally {
+    release.resolve();
+    await run.catch(() => {});
+  }
 });

@@ -46,52 +46,75 @@ export async function runHeadless(options: CliOptions, io: PrintIo): Promise<num
       trustProjectMcp: values["trust-project-mcp"] ?? io.session?.trustProjectMcp,
     });
     const streamJson = values["output-format"] === "stream-json";
-    let runFailed = false;
     unsubscribe = session.subscribe((event) => {
+      if (event.type === "mcp_auth_required")
+        io.stderr(
+          `MCP server ${event.server} needs authentication; run /mcp login ${event.server} in the TUI\n`,
+        );
       if (streamJson) io.stdout(`${JSON.stringify(event)}\n`);
       else if (event.type === "hook_message") io.stderr(`${event.message}\n`);
       else if (
-        event.type === "result" &&
+        event.type === "request_settled" &&
         (event.stopReason === "hook_stopped" || event.stopReason === "hook_blocked")
       )
         io.stderr(
           `${event.reason ?? (event.stopReason === "hook_blocked" ? "Prompt blocked by hook" : "Stopped by hook")}\n`,
         );
-      if (values.goal !== undefined && event.type === "result") {
-        if (!streamJson && event.text) io.stdout(`${event.text}\n`);
-        if (!event.success) {
-          runFailed = true;
-          if (event.error && !io.signal?.aborted) io.stderr(`${event.error}\n`);
-        }
-      }
     });
+    const startupRequestId = session.currentRequestId;
     if (values.goal !== undefined) {
       if (session.goal && session.goal.phase !== "complete")
         throw new Error(
           "An unfinished Goal already exists in this Session. Use the TUI to edit, resume or clear it.",
         );
-      interrupt = () => session?.interruptRun();
+      interrupt = () => {
+        void session?.close("exit");
+      };
       io.signal?.addEventListener("abort", interrupt);
       io.signal?.throwIfAborted();
       // SessionStart hooks may already have started an internal Run. Preserve the
       // supplied objective until that Run settles, then use the idle-only API.
-      await session.waitForIdle();
+      if (startupRequestId) await session.waitForRequest(startupRequestId);
+      else await session.waitForIdle();
       io.signal?.throwIfAborted();
-      await session.createGoal(values.goal, {
+      const goal = await session.createGoal(values.goal, {
         maxRounds:
           values["max-goal-rounds"] === undefined ? undefined : Number(values["max-goal-rounds"]),
       });
+      const result = await session.waitForRequest(goal.requestId);
       io.signal?.throwIfAborted();
-      do {
-        await session.waitForIdle();
-        io.signal?.throwIfAborted();
-      } while (session.goal?.armed);
-      return !runFailed && session.goal?.phase === "complete" ? 0 : 1;
+      if (!streamJson && result.text) io.stdout(`${result.text}\n`);
+      if (!result.success && result.error) io.stderr(`${result.error}\n`);
+      return result.success && session.goal?.phase === "complete" ? 0 : 1;
     }
     const prompt = initialPrompt ?? (await readStdin(io)).trimEnd();
-    const { text } = await session.run(prompt, { signal: io.signal });
+    interrupt = () => {
+      void session?.close("exit");
+    };
+    io.signal?.addEventListener("abort", interrupt);
+    io.signal?.throwIfAborted();
+    if (prompt) {
+      if (startupRequestId) await session.waitForRequest(startupRequestId);
+      else await session.waitForIdle();
+      io.signal?.throwIfAborted();
+    }
+    let requestId = !prompt ? session.currentRequestId : undefined;
+    if (!requestId) {
+      try {
+        requestId = (await session.run(prompt)).requestId;
+      } catch (error) {
+        // A committed failed Run still has a causal request to settle. Storage
+        // faults and host shutdown keep their original failure semantics.
+        if (io.signal?.aborted || !session.currentRequestId) throw error;
+        requestId = session.currentRequestId;
+      }
+    }
+    const result = await session.waitForRequest(requestId);
+    io.signal?.throwIfAborted();
+    const { text } = result;
     if (!streamJson) io.stdout(`${text}\n`);
-    return 0;
+    if (!result.success && result.error) io.stderr(`${result.error}\n`);
+    return result.success ? 0 : 1;
   } catch (error) {
     if (io.signal?.aborted) {
       io.stderr("Interrupted\n");
@@ -101,8 +124,7 @@ export async function runHeadless(options: CliOptions, io: PrintIo): Promise<num
     return 1;
   } finally {
     try {
-      await session?.dispose();
-      if (values.goal !== undefined) await session?.waitForIdle();
+      await session?.close("exit");
     } finally {
       unsubscribe?.();
       if (interrupt) io.signal?.removeEventListener("abort", interrupt);

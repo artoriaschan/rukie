@@ -11,12 +11,15 @@ export interface FakeOpenAIOptions {
   responses?: (string | { toolCalls: { name: string; arguments: object }[] })[];
   /** Standalone Permission Review reply; main responses keep their original text. */
   reviewReply?: string;
+  /** Provider-reported prompt usage for native compaction threshold scenarios. */
+  promptTokens?: number;
 }
 
 export function fakeOpenAI(reply: string, options: FakeOpenAIOptions = {}) {
   const received = Promise.withResolvers<void>();
   const requests: { body: any; authorization: string | null }[] = [];
   const titleRequests: typeof requests = [];
+  const streams = new Set<ReadableStreamDefaultController<Uint8Array>>();
   const chunk = (delta: object, finish: string | null) =>
     `data: ${JSON.stringify({
       id: "chatcmpl-1",
@@ -84,6 +87,7 @@ export function fakeOpenAI(reply: string, options: FakeOpenAIOptions = {}) {
         return new Response(
           new ReadableStream({
             start(controller) {
+              streams.add(controller);
               controller.enqueue(
                 new TextEncoder().encode(chunk({ role: "assistant", content: reply }, null)),
               );
@@ -118,9 +122,9 @@ export function fakeOpenAI(reply: string, options: FakeOpenAIOptions = {}) {
           model: "m",
           choices: [],
           usage: {
-            prompt_tokens: 12,
+            prompt_tokens: options.promptTokens ?? 12,
             completion_tokens: 5,
-            total_tokens: 17,
+            total_tokens: (options.promptTokens ?? 12) + 5,
             prompt_tokens_details: { cached_tokens: 4 },
           },
         })}\n\n` +
@@ -133,6 +137,10 @@ export function fakeOpenAI(reply: string, options: FakeOpenAIOptions = {}) {
     requests,
     titleRequests,
     received: received.promise,
+    delta(text: string) {
+      for (const controller of streams)
+        controller.enqueue(new TextEncoder().encode(chunk({ content: text }, null)));
+    },
     stop: () => server.stop(true),
   };
 }

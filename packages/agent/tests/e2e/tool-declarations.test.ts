@@ -7,12 +7,25 @@ import {
 } from "@earendil-works/pi-ai";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createSession, type SessionEvent } from "../../src/index.ts";
+import {
+  createSession as createSessionImpl,
+  type Session,
+  type SessionEvent,
+} from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
-afterEach(() => dirs?.cleanup());
+const sessions: Session[] = [];
+async function createSession(options: Parameters<typeof createSessionImpl>[0]) {
+  const session = await createSessionImpl(options);
+  sessions.push(session);
+  return session;
+}
+afterEach(async () => {
+  await Promise.all(sessions.splice(0).map((session) => session.close()));
+  await dirs?.cleanup();
+});
 
 /** A Session with every frontend Interaction callback, so no tool is hidden. */
 const interactive = {
@@ -166,29 +179,6 @@ const exploreTools = [
   "ask_user_question",
 ];
 
-/** Before-Run scope for a headless-style session: connected MCP tools precede the subagent tools. */
-const beforeRunToolsWithMcp = [
-  "read",
-  "write",
-  "edit",
-  "bash",
-  "job_output",
-  "job_list",
-  "job_kill",
-  "glob",
-  "grep",
-  "skill",
-  "todo_write",
-  "web_fetch",
-  "create_goal",
-  "update_goal",
-  "mcp__local__echo",
-  "subagent",
-  "subagent_fork",
-  "send_message",
-  "list_agents",
-];
-
 /**
  * Frozen model-visible declarations of the current, unmigrated Agent Core.
  *
@@ -199,7 +189,7 @@ const beforeRunToolsWithMcp = [
 const BASELINE: Record<string, BaselineEntry> = {
   read: {
     description:
-      "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+      "Read the contents of a file. Supports text files and image attachments (jpg, png, gif, webp). BMP images return an omission notice without an attachment. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
     parameters: {
       type: "object",
       required: ["path"],
@@ -655,6 +645,20 @@ const BASELINE: Record<string, BaselineEntry> = {
   },
 };
 
+test("read declares supported image attachments and BMP omission to the model", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([fauxAssistantMessage("done")]);
+  const session = await createSession({ ...dirs, ...fake });
+  try {
+    await session.run("hello");
+    expect(declared(fake.contexts[0]!).find((tool) => tool.name === "read")).toEqual(
+      expected(["read"])[0],
+    );
+  } finally {
+    await session.close();
+  }
+});
+
 test("top-level declarations freeze tool names, descriptions, schemas and order", async () => {
   dirs = await tempDirs();
   const fake = fakeModel([fauxAssistantMessage("done")]);
@@ -675,8 +679,10 @@ test("a session without Interaction callbacks hides only the question and plan t
   });
   expect(declared(fake.contexts[0]!)).toEqual(expected(headlessTools));
   // The frontend-visible contract agrees with the model-visible one.
-  expect(events.find((event) => event.type === "session_start")).toMatchObject({
-    tools: headlessTools,
+  expect(
+    events.findLast((event) => event.type === "snapshot" || event.type === "agent_changed"),
+  ).toMatchObject({
+    agent: { tools: headlessTools },
   });
 });
 
@@ -773,7 +779,7 @@ test("an explicit tools whitelist excludes every inherited MCP server tool", asy
   expect(warnings).toEqual([]);
 });
 
-test("startup seeds the declarations, Run start adds the connected MCP tools and later Turns keep them", async () => {
+test("native configuration declares connected MCP tools before the first request and later Turns keep them", async () => {
   dirs = await tempDirs();
   await withMcpServer();
   const fake = fakeModel([
@@ -788,20 +794,19 @@ test("startup seeds the declarations, Run start adds the connected MCP tools and
       events.push(event);
     },
   });
-  // Startup declares the built-in, goal and subagent tools; the Run adds the connected
-  // MCP tools as a second declaration before the first request is sent. A declaration
-  // only appends, so the model sees the MCP tool after every startup-declared tool.
+  // Native request preparation declares the complete admitted agent tool inventory.
   expect(deltas(fake.contexts[0]!)).toEqual([
-    { added: headlessTools, removed: [] },
-    { added: ["mcp__local__echo"], removed: [] },
+    { added: [...headlessTools, "mcp__local__echo"], removed: [] },
   ]);
   expect(declared(fake.contexts[0]!).map((tool) => tool.name)).toEqual([
     ...headlessTools,
     "mcp__local__echo",
   ]);
-  // The before-Run scope reports the executable order, which keeps the subagent tools last.
-  expect(events.find((event) => event.type === "session_start")).toMatchObject({
-    tools: beforeRunToolsWithMcp,
+  // The committed native agent and model declaration publish the same admitted order.
+  expect(
+    events.findLast((event) => event.type === "snapshot" || event.type === "agent_changed"),
+  ).toMatchObject({
+    agent: { tools: [...headlessTools, "mcp__local__echo"] },
   });
   // Turn preparation re-declares nothing: the model keeps the same tools and order.
   await session.run("second");
@@ -819,17 +824,15 @@ test("a later Run rebuilds the subagent declaration from the latest discovered t
     "---\nname: added\ndescription: Newly added\n---\nNew body",
   );
   await session.run("second");
-  // Only the changed subagent declaration is re-declared; every other tool keeps its
-  // original declaration, so the model learns the new type without a tool-set change.
+  // Native agent reconfiguration republishes its complete declaration atomically.
   expect(deltas(fake.contexts[1]!)).toEqual([
     ...deltas(fake.contexts[0]!),
-    { added: ["subagent"], removed: ["subagent"] },
+    { added: topLevelTools, removed: topLevelTools },
   ]);
   const subagent = BASELINE.subagent!;
-  // Re-declaring a changed tool appends it, so the subagent tool moves to the end of the
-  // declared order while every other tool keeps its position.
+  // Reconfiguration retains executable ordering and updates the discovered type description.
   expect(declared(fake.contexts[1]!)).toEqual(
-    expected([...topLevelTools.filter((name) => name !== "subagent"), "subagent"]).map((tool) =>
+    expected(topLevelTools).map((tool) =>
       tool.name === "subagent"
         ? { ...tool, description: `${subagent.description}\nadded: Newly added` }
         : tool,

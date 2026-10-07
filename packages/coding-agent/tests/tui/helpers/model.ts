@@ -1,18 +1,24 @@
+import { transformMessages } from "@earendil-works/pi-ai/api/transform-messages";
+import { listModels, type SessionOptions } from "@rukie/agent";
 import {
   createAssistantMessageEventStream,
-  createFauxCore,
+  createModels,
+  fauxProvider,
   fauxAssistantMessage,
   fauxToolCall,
   type AssistantMessage,
+  type Model,
   type TranscriptContext,
 } from "@earendil-works/pi-ai";
 import { isTitleRequest } from "./auxiliary-model.ts";
-import type { SessionOptions } from "@rukie/agent";
+import type { Provider } from "@earendil-works/pi-ai/models";
 
 /** Model boundary controlled by the test, including streamed text and cancellation. */
 export function controlledModel(controlReviews = false, controlTitles = false) {
-  const model = createFauxCore({ api: "faux", provider: "faux" }).getModel();
+  const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
+  const model = faux.getModel();
   const calls: {
+    model: Model<string>;
     context: TranscriptContext;
     signal?: AbortSignal;
     reasoning?: string;
@@ -28,7 +34,7 @@ export function controlledModel(controlReviews = false, controlTitles = false) {
   const reviews: typeof calls = [];
   const titles: typeof calls = [];
   const sideQuestions: typeof calls = [];
-  const streamFn: NonNullable<SessionOptions["streamFn"]> = (_model, context, options) => {
+  const stream: Provider["streamSimple"] = (_model, context, options) => {
     const stream = createAssistantMessageEventStream();
     const isTitle = isTitleRequest(context);
     if (isTitle && !controlTitles) {
@@ -59,9 +65,15 @@ export function controlledModel(controlReviews = false, controlTitles = false) {
       stream.end(message);
       return stream;
     }
-    const partial = fauxAssistantMessage("", { stopReason: "pending" });
+    const partial = {
+      ...fauxAssistantMessage("", { stopReason: "pending" }),
+      provider: _model.provider,
+      model: _model.id,
+      api: _model.api,
+    };
     let text = "";
     let thinking = "";
+    let toolArguments = "";
     let ended = false;
     const fail = (reason: "aborted" | "error", errorMessage: string) => {
       if (ended) return;
@@ -82,6 +94,9 @@ export function controlledModel(controlReviews = false, controlTitles = false) {
     ) => {
       ended = true;
       options?.signal?.removeEventListener("abort", abort);
+      message.provider = _model.provider;
+      message.model = _model.id;
+      message.api = _model.api;
       message.usage = {
         ...message.usage,
         input,
@@ -110,7 +125,12 @@ export function controlledModel(controlReviews = false, controlTitles = false) {
         ),
       );
     (isTitle ? titles : isSideQuestion ? sideQuestions : isReview ? reviews : calls).push({
-      context: structuredClone(context),
+      model: structuredClone(_model),
+      // Match the native SDK boundary while durable Transcript entries retain originals.
+      context: structuredClone({
+        ...context,
+        messages: transformMessages([...context.messages], _model),
+      }),
       signal: options?.signal,
       reasoning: options?.reasoning,
       delta(delta) {
@@ -130,9 +150,10 @@ export function controlledModel(controlReviews = false, controlTitles = false) {
         stream.push({ type: "thinking_delta", contentIndex: 0, delta, partial });
       },
       toolDelta(delta) {
+        toolArguments += delta;
         partial.content = [
           ...(thinking ? [{ type: "thinking" as const, thinking }] : []),
-          fauxToolCall("bash", {}, { id: "partial-tool" }),
+          fauxToolCall("bash", { command: toolArguments }, { id: "partial-tool" }),
         ];
         stream.push({ type: "toolcall_delta", contentIndex: 0, delta, partial });
       },
@@ -147,5 +168,45 @@ export function controlledModel(controlReviews = false, controlTitles = false) {
     if (options?.signal?.aborted) abort();
     return stream;
   };
-  return { model, streamFn, calls, reviews, titles, sideQuestions };
+  const models = createModels();
+  const provider = { ...faux.provider, streamSimple: stream };
+  models.setProvider(provider);
+  function configuredModel(settings: NonNullable<SessionOptions["settings"]>) {
+    const catalog = listModels(settings);
+    const providers = new Map<string, Model<string>[]>();
+    for (const item of catalog) {
+      const slash = item.spec.indexOf("/");
+      const providerId = item.spec.slice(0, slash);
+      const id = item.spec.slice(slash + 1);
+      const configured = settings.providers?.find((candidate) => candidate.id === providerId);
+      const limits = configured?.models.find((candidate) => candidate.id === id);
+      const entry = {
+        ...model,
+        id,
+        provider: providerId,
+        name: item.name,
+        input: item.input,
+        ...(configured ? { api: configured.api, baseUrl: configured.baseUrl } : {}),
+        reasoning: limits?.reasoning ?? false,
+        contextWindow: limits?.contextWindow ?? 128_000,
+        maxTokens: limits?.maxTokens ?? 16_384,
+      };
+      const entries = providers.get(providerId) ?? [];
+      entries.push(entry);
+      providers.set(providerId, entries);
+    }
+    for (const [id, entries] of providers)
+      models.setProvider({
+        ...provider,
+        id,
+        getModels: () => entries,
+        getAllModels: () => entries,
+        stream: (model, context, options) => stream(model, context, { signal: options?.signal }),
+        streamSimple: stream,
+      });
+    if (!settings.model) return undefined;
+    const slash = settings.model.indexOf("/");
+    return models.getModel(settings.model.slice(0, slash), settings.model.slice(slash + 1));
+  }
+  return { model, models, provider, calls, reviews, titles, sideQuestions, configuredModel };
 }

@@ -1,9 +1,11 @@
-import type { ToolStateDefinition } from "../../tool-state/index.ts";
+import { defineToolState, type ToolStateDefinition } from "../../tool-state/index.ts";
 
 /** Strict version-1 Plan Mode snapshot: `active` is the only stored fact. */
 export type PlanSnapshot = { active: boolean };
 
-export const planState: ToolStateDefinition = {
+export const planState: ToolStateDefinition = defineToolState({
+  history: "rewindable",
+  fork: "asOf",
   name: "plan",
   version: 1,
   parse(version, value) {
@@ -19,10 +21,7 @@ export const planState: ToolStateDefinition = {
       throw new Error("Invalid Plan Mode snapshot.");
     return { active: value.active };
   },
-};
-
-export const PLAN_MODE_EXIT =
-  "You have exited Plan Mode. You may now execute the plan. Permissions still apply as usual.";
+});
 
 /** Guidance follows the tool set available to this session, including headless resumes. */
 export function planModeReminder(canSubmit: boolean): string {

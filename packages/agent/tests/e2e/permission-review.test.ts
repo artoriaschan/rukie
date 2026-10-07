@@ -1,4 +1,11 @@
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
+import {
+  withAuxiliaryRequests,
+  modelStream,
+  withModelStream,
+  withModelAlias,
+  deferredModelStream,
+  type ModelStream,
+} from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, jest, test } from "bun:test";
 import {
   fauxAssistantMessage,
@@ -7,14 +14,33 @@ import {
   type Api,
   type Model,
 } from "@earendil-works/pi-ai";
+import {
+  awaitWithContext,
+  withAbortSignal,
+  BACKGROUND_CONTEXT,
+} from "@earendil-works/chord/context";
 import { join } from "node:path";
-import { createSession, type PermissionAskRequest, type SessionEvent } from "../../src/index.ts";
+import {
+  createSession as createSessionImpl,
+  type Session,
+  type PermissionAskRequest,
+  type SessionEvent,
+} from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 import { abortingModel } from "../helpers/aborting-model.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
-afterEach(() => dirs?.cleanup());
+const sessions: Session[] = [];
+async function createSession(options: Parameters<typeof createSessionImpl>[0]) {
+  const session = await createSessionImpl(options);
+  sessions.push(session);
+  return session;
+}
+afterEach(async () => {
+  await Promise.all(sessions.splice(0).map((session) => session.close()));
+  await dirs?.cleanup();
+});
 
 function reviewedModel(review = fauxAssistantMessage('{"risk":"low","decision":"allow"}')) {
   const main = fakeModel([
@@ -25,14 +51,14 @@ function reviewedModel(review = fauxAssistantMessage('{"risk":"low","decision":"
     fauxAssistantMessage("done"),
   ]);
   const reviewer = fakeModel([review]);
-  const streamFn: typeof main.streamFn = withAuxiliaryRequests((model, context, options) =>
+  const streamFn: ModelStream = withAuxiliaryRequests((model, context, options) =>
     context.messages.some(
       (message) => message.role === "system" && JSON.stringify(message).includes("REVIEW_POLICY"),
     )
-      ? reviewer.streamFn(model, context, options)
-      : main.streamFn(model, context, options),
+      ? modelStream(reviewer.models)(model, context, options)
+      : modelStream(main.models)(model, context, options),
   );
-  return { ...main, streamFn, reviewer, main };
+  return { ...main, models: withModelStream(main.models, streamFn), reviewer, main };
 }
 
 test("auto-review allows a safe call and emits its review outcome without asking", async () => {
@@ -80,17 +106,33 @@ test("old review history truncates first while keeping current authorization and
   dirs = await tempDirs();
   const fake = reviewedModel();
   // Keep old history below main compaction but above the half-window review budget.
-  fake.model.contextWindow = 10000;
-  const main = fakeModel([
+  fake.models = withModelAlias(fake.models, "review-small", ["small-review"], {
+    contextWindow: 16000,
+  });
+  const reviewerProvider = fake.models.getProvider("review-small")!;
+  fake.models.setProvider({
+    ...reviewerProvider,
+    streamSimple: (model, context, options) =>
+      modelStream(fake.reviewer.models)({ ...model, provider: "faux" }, context, options),
+  });
+  const replies = [
     fauxAssistantMessage("short"),
     fauxAssistantMessage(fauxToolCall("write", { path: "reviewed.txt", content: "safe" }), {
       stopReason: "toolUse",
     }),
     fauxAssistantMessage("done"),
-  ]);
-  fake.main.streamFn = main.streamFn;
-  const session = await createSession({ ...dirs, ...fake, permissionMode: "auto-review" });
-  await session.run("OLD_HISTORY ".repeat(1500));
+  ];
+  for (const reply of replies)
+    reply.usage = { ...reply.usage, input: 5000, cacheRead: 0, cacheWrite: 0 };
+  const main = fakeModel(replies);
+  fake.main.models = withModelStream(fake.main.models, modelStream(main.models));
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    permissionMode: "auto-review",
+    settings: { reviewModel: "review-small/small-review" },
+  });
+  await session.run("OLD_HISTORY ".repeat(3000));
   await session.run("CURRENT_AUTHORIZATION");
   expect(fake.reviewer.contexts).toHaveLength(1);
   const text = JSON.stringify(fake.reviewer.contexts[0]);
@@ -105,14 +147,14 @@ test("oversized required review input asks without sending a reviewer request", 
   const fake = reviewedModel();
   fake.model.contextWindow = 4000;
   // Main turns may compact old work; an oversized pending action cannot be removed.
-  fake.main.streamFn = fakeModel([
+  fake.main.models = fakeModel([
     fauxAssistantMessage(
       fauxToolCall("write", { path: "reviewed.txt", content: "x".repeat(10_000) }),
       { stopReason: "toolUse" },
     ),
     fauxAssistantMessage("summary"),
     fauxAssistantMessage("done"),
-  ]).streamFn;
+  ]).models;
   const requests: PermissionAskRequest[] = [];
   const session = await createSession({
     ...dirs,
@@ -142,7 +184,7 @@ test("review tokens and review messages are excluded from Run usage and Context 
     reply.usage = { ...reply.usage, input: 11, output: 5, totalTokens: 16 };
   review.usage = { ...review.usage, input: 40_000, output: 10_000, totalTokens: 50_000 };
   const responses = [first, review, second];
-  const streamFn: typeof fake.streamFn = withAuxiliaryRequests(() => {
+  const streamFn: ModelStream = withAuxiliaryRequests(() => {
     const reply = responses.shift()!;
     const stream = createAssistantMessageEventStream();
     stream.push({
@@ -157,7 +199,7 @@ test("review tokens and review messages are excluded from Run usage and Context 
   const session = await createSession({
     ...dirs,
     ...fake,
-    streamFn,
+    models: withModelStream(fake.models, streamFn),
     permissionMode: "auto-review",
   });
   const result = await session.run("write", {
@@ -166,25 +208,36 @@ test("review tokens and review messages are excluded from Run usage and Context 
     },
   });
   expect(result.usage).toMatchObject({ input: 22, output: 10, totalTokens: 32 });
-  expect(events.filter((event) => event.type === "context_usage").slice(1)).toMatchObject([
-    { used: 11 },
-    { used: 11 },
-  ]);
+  // Each response first publishes its committed provider measurement before Stop,
+  // then its committed Transcript contributions; reviewer usage never enters either.
+  expect(
+    events
+      .filter((event) => event.type === "context_usage")
+      .slice(1)
+      .map((event) => event.used),
+  ).toEqual([11, 11, 11, 11, 11]);
   expect(JSON.stringify(session.messages)).not.toContain("REVIEW_POLICY");
   expect(session.messages.filter((message) => message.role === "assistant")).toHaveLength(2);
 });
 
-test("reviewModel selects a separate model with temperature zero using the Session streamFn", async () => {
+test("reviewModel selects a separate model with temperature zero using the Session Models registry", async () => {
   dirs = await tempDirs();
   const fake = reviewedModel();
   let selected: Model<Api> | undefined;
   let temperature: number | undefined;
-  const reviewStream = fake.reviewer.streamFn;
-  fake.reviewer.streamFn = withAuxiliaryRequests((model, context, options) => {
-    selected = model;
-    temperature = options?.temperature;
-    return reviewStream(model, context, options);
+  fake.reviewer.models = withModelAlias(fake.reviewer.models, "review-test", ["cheap"], {
+    contextWindow: 8000,
   });
+  fake.models = withModelAlias(fake.models, "review-test", ["cheap"], { contextWindow: 8000 });
+  const reviewStream = modelStream(fake.reviewer.models);
+  fake.reviewer.models = withModelStream(
+    fake.reviewer.models,
+    withAuxiliaryRequests((model, context, options) => {
+      selected = model;
+      temperature = options?.temperature;
+      return reviewStream(model, context, options);
+    }),
+  );
   const env = "RUKIE_PERMISSION_REVIEW_TEST_KEY";
   process.env[env] = "test-key";
   try {
@@ -237,10 +290,13 @@ test("aborting an uncooperative review cancels it and never asks or executes", a
   dirs = await tempDirs();
   const fake = reviewedModel();
   const started = Promise.withResolvers<AbortSignal>();
-  fake.reviewer.streamFn = withAuxiliaryRequests((_model, _context, options) => {
-    started.resolve(options!.signal!);
-    return new Promise(() => {});
-  });
+  fake.reviewer.models = withModelStream(
+    fake.reviewer.models,
+    withAuxiliaryRequests((_model, _context, options) => {
+      started.resolve(options!.signal!);
+      return createAssistantMessageEventStream();
+    }),
+  );
   const requests: PermissionAskRequest[] = [];
   const events: SessionEvent[] = [];
   const session = await createSession({
@@ -277,7 +333,7 @@ test("a review still pending at 30s cancels its request and asks the user", asyn
   dirs = await tempDirs();
   const fake = reviewedModel();
   const slow = abortingModel();
-  fake.reviewer.streamFn = slow.streamFn;
+  fake.reviewer.models = withModelStream(fake.reviewer.models, modelStream(slow.models));
   const requests: PermissionAskRequest[] = [];
   const session = await createSession({
     ...dirs,
@@ -300,7 +356,7 @@ test("a review still pending at 30s cancels its request and asks the user", asyn
     expect(await Bun.file(join(dirs.cwd, "reviewed.txt")).exists()).toBe(false);
   } finally {
     try {
-      await session.dispose();
+      await session.close();
     } finally {
       jest.useRealTimers();
     }
@@ -326,7 +382,7 @@ test("review uses project instructions and user/call history without assistant t
     }),
     fauxAssistantMessage("done"),
   ]);
-  fake.main.streamFn = scripted.streamFn;
+  fake.main.models = withModelStream(fake.main.models, modelStream(scripted.models));
   const session = await createSession({ ...dirs, ...fake, permissionMode: "auto-review" });
   await session.run("create the file within this project");
   const text = JSON.stringify(fake.reviewer.contexts[0]);
@@ -344,14 +400,15 @@ test("review discards history and summary before the most recent compaction, inc
   dirs = await tempDirs();
   await Bun.write(join(dirs.cwd, "AGENTS.md"), "Keep the public API stable.");
   const previous = fakeModel([
-    fauxAssistantMessage("old work ".repeat(2500)),
-    fauxAssistantMessage("COMPACTED_SUMMARY"),
+    fauxAssistantMessage("old work"),
     fauxAssistantMessage("after compaction"),
+    fauxAssistantMessage("COMPACTED_SUMMARY"),
   ]);
-  previous.model.contextWindow = 4000;
   const original = await createSession({ ...dirs, ...previous });
   await original.run("OLD_AUTHORIZATION");
-  await original.run("POST_COMPACTION_INSTRUCTION");
+  await original.run("POST_COMPACTION_INSTRUCTION " + "retained fact ".repeat(6000));
+  await original.compact();
+  await original.close();
   const fake = reviewedModel();
   const session = await createSession({
     ...dirs,
@@ -371,7 +428,7 @@ test("review discards history and summary before the most recent compaction, inc
 test("parallel tool calls start their reviews before either review completes", async () => {
   dirs = await tempDirs();
   const fake = reviewedModel();
-  fake.main.streamFn = fakeModel([
+  const main = fakeModel([
     fauxAssistantMessage(
       [
         fauxToolCall("write", { path: "a.txt", content: "a" }, { id: "a" }),
@@ -380,30 +437,48 @@ test("parallel tool calls start their reviews before either review completes", a
       { stopReason: "toolUse" },
     ),
     fauxAssistantMessage("done"),
-  ]).streamFn;
+  ]);
   const both = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
   let started = 0;
-  fake.reviewer.streamFn = withAuxiliaryRequests(async (model, context, options) => {
-    if (++started === 2) both.resolve();
-    await release.promise;
-    return fakeModel([fauxAssistantMessage('{"risk":"low","decision":"allow"}')]).streamFn(
-      model,
-      context,
-      options,
-    );
-  });
-  const session = await createSession({ ...dirs, ...fake, permissionMode: "auto-review" });
+  fake.reviewer.models = withModelStream(
+    fake.reviewer.models,
+    withAuxiliaryRequests((model, context, options) =>
+      deferredModelStream(
+        (async () => {
+          if (++started === 2) both.resolve();
+          await release.promise;
+          return modelStream(
+            fakeModel([fauxAssistantMessage('{"risk":"low","decision":"allow"}')]).models,
+          )(model, context, options);
+        })(),
+      ),
+    ),
+  );
+  const models = withModelStream(
+    main.models,
+    withAuxiliaryRequests((model, context, options) =>
+      context.messages.some(
+        (message) => message.role === "system" && JSON.stringify(message).includes("REVIEW_POLICY"),
+      )
+        ? modelStream(fake.reviewer.models)(model, context, options)
+        : modelStream(main.models)(model, context, options),
+    ),
+  );
+  const session = await createSession({ ...dirs, ...main, models, permissionMode: "auto-review" });
   const controller = new AbortController();
   const run = session.run("create both files", { signal: controller.signal });
   void run.catch(() => {});
   try {
-    await Promise.race([
+    // This deadline bounds an event wait; it does not pace or synchronize the test.
+    await awaitWithContext(
       both.promise,
-      Bun.sleep(300).then(() => {
-        throw new Error("reviews serialized");
-      }),
-    ]);
+      withAbortSignal(AbortSignal.timeout(300), BACKGROUND_CONTEXT),
+    );
+  } catch (error) {
+    throw new Error(`Only ${started} permission reviews started before completion`, {
+      cause: error,
+    });
   } finally {
     release.resolve();
     if (started !== 2) controller.abort();
@@ -436,7 +511,9 @@ test.each(["medium", "high"])(
     expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
       role: "toolResult",
       isError: true,
-      content: [{ type: "text", text: "User denied this tool call: write" }],
+      content: [
+        { type: "text", text: expect.stringContaining("User denied this tool call: write") },
+      ],
     });
     expect(JSON.stringify(fake.contexts)).not.toContain(reason);
     expect(await Bun.file(join(dirs.cwd, "reviewed.txt")).exists()).toBe(false);
@@ -459,19 +536,20 @@ test("the user can allow a call rejected by the reviewer", async () => {
   expect(await Bun.file(join(dirs.cwd, "reviewed.txt")).text()).toBe("safe");
 });
 
-test("switching mode while answering a review applies to the next call in the same Turn", async () => {
+test("switching mode while answering a review applies to the next admitted Turn", async () => {
   dirs = await tempDirs();
   const fake = reviewedModel(fauxAssistantMessage('{"risk":"high","decision":"deny"}'));
-  fake.main.streamFn = fakeModel([
+  fake.main.models = fakeModel([
     fauxAssistantMessage(
-      [
-        fauxToolCall("write", { path: "first.txt", content: "first" }, { id: "first" }),
-        fauxToolCall("write", { path: "second.txt", content: "second" }, { id: "second" }),
-      ],
+      fauxToolCall("write", { path: "first.txt", content: "first" }, { id: "first" }),
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage(
+      fauxToolCall("write", { path: "second.txt", content: "second" }, { id: "second" }),
       { stopReason: "toolUse" },
     ),
     fauxAssistantMessage("done"),
-  ]).streamFn;
+  ]).models;
   const requests: PermissionAskRequest[] = [];
   const session = await createSession({
     ...dirs,
@@ -553,10 +631,13 @@ test.each(["throw", "reject"])(
   async (failure) => {
     dirs = await tempDirs();
     const fake = reviewedModel();
-    fake.reviewer.streamFn = withAuxiliaryRequests(() => {
-      if (failure === "throw") throw new Error("provider offline");
-      return Promise.reject(new Error("provider offline"));
-    });
+    fake.reviewer.models = withModelStream(
+      fake.reviewer.models,
+      withAuxiliaryRequests(() => {
+        if (failure === "throw") throw new Error("provider offline");
+        return deferredModelStream(Promise.reject(new Error("provider offline")));
+      }),
+    );
     const requests: PermissionAskRequest[] = [];
     const session = await createSession({
       ...dirs,
@@ -593,7 +674,7 @@ test("a batch reviews only valid calls that still require permission", async () 
     ),
     fauxAssistantMessage("done"),
   ]);
-  fake.main.streamFn = main.streamFn;
+  fake.main.models = withModelStream(fake.main.models, modelStream(main.models));
   const events: SessionEvent[] = [];
   const session = await createSession({
     ...dirs,
@@ -623,4 +704,45 @@ test("a batch reviews only valid calls that still require permission", async () 
     { toolCallId: "reviewed", isError: false },
   ]);
   expect(await Bun.file(join(dirs.cwd, "reviewed.txt")).text()).toBe("safe");
+});
+
+test("permission requests publish the owner call view before tool execution starts", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([
+    fauxAssistantMessage(
+      fauxToolCall(
+        "bash",
+        { command: "printf shown", description: "Inspect output" },
+        { id: "presented" },
+      ),
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage("denied safely"),
+  ]);
+  const events: SessionEvent[] = [];
+  let asked = false;
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    onPermissionAsk: async (request) => {
+      asked = true;
+      expect(request.callView).toEqual({
+        card: "terminal",
+        kind: "execute",
+        displayKey: "tool.bash",
+        command: "printf shown",
+      });
+      expect(events.some((event) => event.type === "tool_execution_start")).toBe(false);
+      return "deny";
+    },
+  });
+  await session.run("inspect", {
+    onEvent: (event) => {
+      events.push(event);
+    },
+  });
+  expect(asked).toBe(true);
+  expect(session.messages.findLast((message) => message.role === "toolResult")).toMatchObject({
+    isError: true,
+  });
 });

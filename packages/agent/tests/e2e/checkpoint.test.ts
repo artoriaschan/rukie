@@ -1,17 +1,33 @@
 import { afterEach, expect, test } from "bun:test";
-import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
-import { branchTipInventoryPrefix } from "@earendil-works/pi-agent-core/harness/session";
+import { fauxAssistantMessage, fauxToolCall, getCurrentSystemMessage } from "@earendil-works/pi-ai";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { ROOT_CONVERSATION_ID } from "@earendil-works/pi-durable";
+import type { SessionStorageLease } from "../../src/store/index.ts";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { realpath, rm, symlink } from "node:fs/promises";
 import { readFileSync } from "node:fs";
-import { createJsonlStore, createSession, type SessionEvent } from "../../src/index.ts";
+import {
+  createJsonlStore,
+  createSession as createSessionImpl,
+  type Session,
+  type SessionEvent,
+} from "../../src/index.ts";
+import { withModelAlias } from "../helpers/auxiliary-model.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
-afterEach(() => dirs?.cleanup());
+const sessions: Session[] = [];
+async function createSession(options: Parameters<typeof createSessionImpl>[0]) {
+  const session = await createSessionImpl(options);
+  sessions.push(session);
+  return session;
+}
+afterEach(async () => {
+  await Promise.all(sessions.splice(0).map((session) => session.close()));
+  await dirs?.cleanup();
+});
 
 test("conversation rewind restores live messages and Tool State, keeping code and the old branch", async () => {
   dirs = await tempDirs();
@@ -40,19 +56,32 @@ test("conversation rewind restores live messages and Tool State, keeping code an
     fauxAssistantMessage("new answer"),
   ]);
   const store = createJsonlStore(dirs);
-  const session = await createSession({ ...dirs, ...fake, store, permissionMode: "full-access" });
+  const leases: SessionStorageLease[] = [];
+  const open = store.open.bind(store);
+  store.open = async (...args) => {
+    const lease = await open(...args);
+    leases.push(lease);
+    return lease;
+  };
+  let session = await createSession({ ...dirs, ...fake, store, permissionMode: "full-access" });
   await session.run("first prompt");
   // State written after the target prompt is also discarded.
   await session.run("  second\n prompt  ");
   await session.setPlanMode(true);
   const checkpoints = session.checkpoints();
-  const metadata = (await store.list({ cwd: dirs.cwd }, BACKGROUND_CONTEXT))[0]!;
-  const original = await store.open(metadata, BACKGROUND_CONTEXT);
-  const oldTip = await (await original.branch("main", BACKGROUND_CONTEXT))!.getTipId(
+  const storage = leases[0]!.storage;
+  const original = await storage.scanEntries(
+    { conversationId: ROOT_CONVERSATION_ID },
+    1000,
+    undefined,
     BACKGROUND_CONTEXT,
   );
-  const anchor = (await original.getEntry(checkpoints[1]!.promptEntryId, BACKGROUND_CONTEXT))!;
-  await original.close(BACKGROUND_CONTEXT);
+  const oldTip = original.items[0]!;
+  const anchorIndex = original.items.findIndex(
+    (entry) => String(entry.id) === checkpoints[1]!.promptEntryId,
+  );
+  const anchor = original.items[anchorIndex]!;
+  const prior = original.items[anchorIndex + 1]!;
   const events: SessionEvent[] = [];
   session.subscribe((event) => events.push(structuredClone(event)));
   const result = await session.rewind(checkpoints[1]!.promptEntryId, {
@@ -67,29 +96,26 @@ test("conversation rewind restores live messages and Tool State, keeping code an
   expect(session.planMode).toBe(false);
   expect(session.toolState("plan")).toBeUndefined();
   expect(session.checkpoints()).toEqual([checkpoints[0]!]);
-  const rewound = await store.open(metadata, BACKGROUND_CONTEXT);
+  const branches = await storage.scanConversations({}, 1000, undefined, BACKGROUND_CONTEXT);
   expect(
-    await (await rewound.branch("main", BACKGROUND_CONTEXT))!.getTipId(BACKGROUND_CONTEXT),
-  ).toBe(anchor.parentId);
-  const branches = await rewound.scanValues(branchTipInventoryPrefix(), BACKGROUND_CONTEXT);
-  expect(branches.some((branch) => branch.value === oldTip)).toBe(true);
-  expect((await rewound.getEntry(checkpoints[1]!.promptEntryId, BACKGROUND_CONTEXT))!.id).toBe(
-    checkpoints[1]!.promptEntryId,
-  );
-  await rewound.close(BACKGROUND_CONTEXT);
-  expect(events).toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({ type: "tool_state_changed", name: "todo", value: before }),
-      expect.objectContaining({ type: "tool_state_changed", name: "plan", value: undefined }),
-      expect.objectContaining({
-        type: "conversation_rewound",
-        promptEntryId: checkpoints[1]!.promptEntryId,
-      }),
-    ]),
-  );
-  const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
+    branches.items.some(
+      (branch) =>
+        branch.parent?.conversationId === ROOT_CONVERSATION_ID && branch.parent.at === prior.id,
+    ),
+  ).toBe(true);
+  expect((await storage.entry(oldTip.id, BACKGROUND_CONTEXT))!.entry).toEqual(oldTip);
+  expect((await storage.entry(anchor.id, BACKGROUND_CONTEXT))!.entry).toEqual(anchor);
+  expect(events.findLast((event) => event.type === "snapshot")).toMatchObject({
+    type: "snapshot",
+    planMode: false,
+    toolStates: { todo: before },
+    messages: session.messages,
+  });
+  await session.close();
+  const resumed = await createSession({ ...dirs, ...fake, resumeId: session.id });
   expect(resumed.messages).toEqual(session.messages);
   expect(resumed.toolState("todo")).toEqual(before);
+  session = resumed;
   await session.run("replacement prompt");
   expect(session.checkpoints().map(({ preview }) => preview)).toEqual([
     "first prompt",
@@ -137,6 +163,7 @@ test("each user prompt has a chronological Checkpoint with its own file records"
   expect(
     fake.contexts.some((context) => JSON.stringify(context).includes("tool-state/checkpoint")),
   ).toBe(false);
+  await session.close();
   const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
   expect(resumed.checkpoints()).toEqual(checkpoints);
 });
@@ -157,7 +184,9 @@ test("conversation rewind removes discarded child identities from subsequent mod
     fauxAssistantMessage("second answer"),
     fauxAssistantMessage(fauxToolCall("list_agents", {}), { stopReason: "toolUse" }),
     (context) => {
-      expect(JSON.stringify(context.messages.at(-1))).toContain("(no subagents)");
+      expect(
+        JSON.stringify(context.messages.findLast((message) => message.role === "toolResult")),
+      ).toContain("(no subagents)");
       expect(JSON.stringify(context)).not.toContain("discarded child");
       return fauxAssistantMessage("listed");
     },
@@ -178,7 +207,6 @@ test("startup hook autoruns never create a user Checkpoint", async () => {
   dirs = await tempDirs();
   const started = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
-  const finished = Promise.withResolvers<void>();
   const session = await createSession({
     ...dirs,
     ...fakeModel([
@@ -202,15 +230,13 @@ test("startup hook autoruns never create a user Checkpoint", async () => {
       },
     },
   });
-  session.subscribe((event) => {
-    if (event.type === "result") finished.resolve();
-  });
   await started.promise;
   expect(session.checkpoints()).toEqual([]);
   release.resolve();
-  await finished.promise;
+  await session.waitForIdle();
   await session.run("real prompt");
   expect(session.checkpoints().map(({ preview }) => preview)).toEqual(["real prompt"]);
+  await session.close();
   const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
   expect(resumed.checkpoints()).toEqual(session.checkpoints());
 });
@@ -254,11 +280,11 @@ test.each(["subagent", "subagent_fork"])(
     const child = Promise.withResolvers<void>();
     const waiting = Promise.withResolvers<void>();
     const response: Parameters<typeof fakeModel>[0][number] = async (context) => {
-      const parent = context.messages.some(
-        (message) =>
-          message.role === "system" && message.toolsAdded?.some((tool) => tool.name === "subagent"),
+      const parent = getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
+        (tool) => tool.name === "subagent",
       );
       if (!parent) {
+        waiting.resolve();
         await child.promise;
         return fauxAssistantMessage("child conclusion");
       }
@@ -271,7 +297,9 @@ test.each(["subagent", "subagent_fork"])(
       response,
       response,
       (context) => {
-        expect(JSON.stringify(context.messages.at(-1))).toContain("child conclusion");
+        expect(
+          JSON.stringify(context.messages.findLast((message) => message.role === "user")),
+        ).toContain("child conclusion");
         return fauxAssistantMessage(
           fauxToolCall("write", { path: "notified.txt", content: "after notification" }),
           { stopReason: "toolUse" },
@@ -280,14 +308,11 @@ test.each(["subagent", "subagent_fork"])(
       fauxAssistantMessage("parent conclusion"),
     ]);
     const session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
-    const run = session.run("real parent prompt", {
-      onEvent(event) {
-        if (event.type === "subagents_waiting") waiting.resolve();
-      },
-    });
+    const run = session.run("real parent prompt");
     await waiting.promise;
     child.resolve();
     await run;
+    await session.waitForRequest(session.currentRequestId!);
     expect(session.messages.filter((message) => message.role === "user")).toHaveLength(2);
     expect(session.checkpoints()).toMatchObject([
       {
@@ -296,6 +321,7 @@ test.each(["subagent", "subagent_fork"])(
       },
     ]);
     expect(session.checkpoints()).toHaveLength(1);
+    await session.close();
     const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
     expect(resumed.checkpoints()).toEqual(session.checkpoints());
     await resumed.rewind(resumed.checkpoints()[0]!.promptEntryId, {
@@ -452,7 +478,7 @@ test("rewinding a later prompt preserves earlier edits and returns the original 
   );
   await expect(
     session.rewind(checkpoint.promptEntryId, { code: false, conversation: false }),
-  ).rejects.toThrow("requires code or conversation");
+  ).rejects.toThrow("Choose code or conversation rewind");
 });
 
 test.each([
@@ -484,7 +510,7 @@ test.each([
   await entered.promise;
   const checkpoints = session.checkpoints();
   try {
-    await expect(session.rewind(promptEntryId, mode)).rejects.toThrow("idle Session");
+    await expect(session.rewind(promptEntryId, mode)).rejects.toThrow("must be idle");
     expect(await Bun.file(join(dirs.cwd, "file.txt")).text()).toBe("first");
     expect(session.checkpoints()).toEqual(checkpoints);
   } finally {
@@ -518,16 +544,16 @@ test("a failed backup prevents file execution and leaves no file record", async 
   expect(session.checkpoints()).toMatchObject([{ files: [] }]);
 });
 
-test("rewind rejects while a background child is running and the parent waits", async () => {
+test("rewind rejects while a background child is running after the parent becomes idle", async () => {
   dirs = await tempDirs();
   const release = Promise.withResolvers<void>();
   const waiting = Promise.withResolvers<void>();
   const response: Parameters<typeof fakeModel>[0][number] = async (context) => {
-    const isParent = context.messages.some(
-      (message) =>
-        message.role === "system" && message.toolsAdded?.some((tool) => tool.name === "subagent"),
+    const isParent = getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
+      (tool) => tool.name === "subagent",
     );
     if (!isParent) {
+      waiting.resolve();
       await release.promise;
       return fauxAssistantMessage("child done");
     }
@@ -547,20 +573,19 @@ test("rewind rejects while a background child is running and the parent waits", 
       fauxAssistantMessage("all done"),
     ]),
   });
-  const run = session.run("delegate", {
-    onEvent(event) {
-      if (event.type === "subagents_waiting") waiting.resolve();
-    },
-  });
+  const run = session.run("delegate");
   await waiting.promise;
+  await run;
+  expect(session.running).toBe(false);
   const checkpoint = session.checkpoints()[0]!;
   try {
     await expect(
       session.rewind(checkpoint.promptEntryId, { code: true, conversation: false }),
-    ).rejects.toThrow("idle Session");
+    ).rejects.toThrow("all related work to be settled");
   } finally {
     release.resolve();
     await run;
+    await session.waitForRequest(session.currentRequestId!);
   }
   expect(
     await session.rewind(checkpoint.promptEntryId, { code: true, conversation: false }),
@@ -619,12 +644,14 @@ test("combined rewind restores code before publishing the restored conversation"
   });
   await session.run("change file");
   const checkpoint = session.checkpoints()[0]!;
-  const observed: string[] = [];
+  const observed: { content: string; checkpointCount: number; hasUser: boolean }[] = [];
   session.subscribe((event) => {
-    if (event.type === "conversation_rewound") {
-      expect(session.checkpoints()).toEqual([]);
-      expect(session.messages.some((message) => message.role === "user")).toBe(false);
-      observed.push(readFileSync(join(dirs.cwd, "file.txt"), "utf8"));
+    if (event.type === "snapshot" && !event.messages.some((message) => message.role === "user")) {
+      observed.push({
+        content: readFileSync(join(dirs.cwd, "file.txt"), "utf8"),
+        checkpointCount: session.checkpoints().length,
+        hasUser: session.messages.some((message) => message.role === "user"),
+      });
     }
   });
   const result = await session.rewind(checkpoint.promptEntryId, { code: true, conversation: true });
@@ -633,7 +660,7 @@ test("combined rewind restores code before publishing the restored conversation"
     restored: [await realpath(join(dirs.cwd, "file.txt"))],
     deleted: [],
   });
-  expect(observed).toEqual(["original"]);
+  expect(observed).toEqual([{ content: "original", checkpointCount: 0, hasUser: false }]);
 });
 
 test.each(["live", "resumed"])(
@@ -652,7 +679,8 @@ test.each(["live", "resumed"])(
         return fauxAssistantMessage("replacement answer");
       },
     ]);
-    fake.model.contextWindow = 4000;
+    fake.models = withModelAlias(fake.models, "small", ["m"], { contextWindow: 4000 });
+    fake.model = fake.models.getModel("small", "m")!;
     const session = await createSession({
       ...dirs,
       ...fake,
@@ -677,6 +705,7 @@ test.each(["live", "resumed"])(
       },
     });
     expect(events.some((event) => event.type === "compaction_end")).toBe(true);
+    if (mode === "resumed") await session.close();
     const target =
       mode === "live" ? session : await createSession({ ...dirs, ...fake, resumeId: session.id });
     const first = target.checkpoints()[0]!;
@@ -705,7 +734,8 @@ test("resume retains Checkpoint anchors and code rewind across compaction", asyn
     }),
     fauxAssistantMessage("done"),
   ]);
-  fake.model.contextWindow = 4000;
+  fake.models = withModelAlias(fake.models, "small", ["m"], { contextWindow: 4000 });
+  fake.model = fake.models.getModel("small", "m")!;
   const session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
   await session.run("first prompt");
   let compacted = false;
@@ -716,7 +746,8 @@ test("resume retains Checkpoint anchors and code rewind across compaction", asyn
   });
   expect(compacted).toBe(true);
   const checkpoints = session.checkpoints();
-  const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
+  await session.close();
+  const resumed = await createSession({ ...dirs, ...fake, resumeId: session.id });
   expect(resumed.checkpoints()).toEqual(checkpoints);
   expect(
     await resumed.rewind(checkpoints[0]!.promptEntryId, { code: true, conversation: false }),
@@ -773,6 +804,7 @@ test("code rewind restores the earliest original bytes across prompts and delete
   expect(await Bun.file(join(dirs.cwd, "new.txt")).exists()).toBe(false);
   expect(session.messages).toEqual(messages);
   expect(session.toolState("checkpoint")).toEqual(state);
+  await session.close();
   const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
   expect(resumed.messages).toEqual(messages);
   expect(resumed.toolState("checkpoint")).toEqual(state);

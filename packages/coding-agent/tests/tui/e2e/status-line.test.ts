@@ -3,55 +3,98 @@ import { start } from "../helpers/app";
 import { startWithClock } from "../helpers/clock-app";
 import { testClock } from "../helpers/test-clock";
 import { dark } from "../../../src/ink/index.ts";
-import { MemorySessionRepo } from "@earendil-works/pi-agent-core/harness/session";
-import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
-import { fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { createJsonlStore, createSession } from "@rukie/agent";
+import { controlledModel } from "../helpers/model";
+import { join } from "node:path";
+import { count } from "../../../src/view/transcript/metrics";
 
 test("resumed context bar retains provider input and includes MCP definitions in hover details", async () => {
-  const store = new MemorySessionRepo();
   const argv: string[] = [];
+  let tools = 0;
   const app = await start(argv, {
     columns: 120,
     rows: 24,
     env: { LANG: "en_US.UTF-8" },
-    session: { store },
-    async prepare() {
-      const stored = await store.create({}, BACKGROUND_CONTEXT);
-      try {
-        const branch = await stored.createBranch("main", null, BACKGROUND_CONTEXT);
-        await branch.appendMessage(
-          {
-            role: "system",
-            content: "abcd",
-            timestamp: 0,
-            toolsAdded: [
-              { name: "mcp__docs__search", description: "x".repeat(2048), parameters: {} },
-            ],
+    async prepare(root) {
+      const manifest = join(root, "manifest.json");
+      await Bun.write(manifest, JSON.stringify({ tools: ["search"] }));
+      await Bun.write(
+        join(root, ".rukie/mcp.json"),
+        JSON.stringify({
+          mcpServers: {
+            docs: {
+              command: process.execPath,
+              args: [join(import.meta.dir, "../../../../agent/tests/helpers/mcp-server.ts")],
+              env: {
+                MCP_MANIFEST: manifest,
+                MCP_PIDS: join(root, "pids"),
+                MCP_CALLS: join(root, "calls"),
+              },
+            },
           },
-          BACKGROUND_CONTEXT,
-        );
-        await branch.appendMessage(
-          { role: "user", content: "query", timestamp: 1 },
-          BACKGROUND_CONTEXT,
-        );
-        const reply = fauxAssistantMessage("answer");
-        reply.usage = { ...reply.usage, input: 70000, cacheRead: 2000, cacheWrite: 1000 };
-        await branch.appendMessage(reply, BACKGROUND_CONTEXT);
-        argv.push("--resume", stored.metadata.id);
+        }),
+      );
+      const fake = controlledModel();
+      const session = await createSession({
+        cwd: root,
+        homeDir: root,
+        ...fake,
+        store: createJsonlStore({ cwd: root, homeDir: root }),
+      });
+      const entered = Promise.withResolvers<void>();
+      const dispose = session.subscribe(() => {
+        if (fake.calls.length) entered.resolve();
+      });
+      try {
+        const run = session.run("query");
+        await entered.promise;
+        fake.calls[0]!.reply("answer");
+        // Preserve the provider's reported input/cache usage through a completed native Run.
+        await run;
+        const counted = session.run("counted query", {
+          onEvent(event) {
+            if (event.type === "context_usage") tools = event.segments.tools;
+          },
+        });
+        const ready = Promise.withResolvers<void>();
+        const unsubscribe = session.subscribe(() => {
+          if (fake.calls.length === 2) ready.resolve();
+        });
+        await ready.promise;
+        unsubscribe();
+        fake.calls[1]!.finish(70000, 5, { read: 2000, write: 1000 });
+        await counted;
+        const report = session.contextReport();
+        expect(report.mcpTools).toMatchObject([{ server: "docs", name: "search" }]);
+        expect(tools).toBeGreaterThan(0);
+        argv.push("--resume", session.id);
       } finally {
-        await stored.close(BACKGROUND_CONTEXT);
+        dispose();
+        await session.close();
       }
     },
   });
   try {
     await app.waitFor(() => app.screen().at(-2)?.includes("ctx 57% (73k/128k)") === true);
     app.stdin.write("\x1b[<35;3;22M");
-    await app.waitFor(() => app.screen().at(-1)?.includes("tools 528") === true);
+    await app.waitFor(
+      () =>
+        app
+          .screen()
+          .at(-1)
+          ?.includes(`tools ${count(tools)}`) === true,
+    );
     expect(app.calls).toHaveLength(0);
     app.resize(80, 24);
     await app.waitFor(() => app.screen().at(-2)?.includes("ctx 57% (73k/128k)") === true);
     app.stdin.write("\x1b[<35;3;22M");
-    await app.waitFor(() => app.screen().at(-1)?.includes("tools 528") === true);
+    await app.waitFor(
+      () =>
+        app
+          .screen()
+          .at(-1)
+          ?.includes(`tools ${count(tools)}`) === true,
+    );
   } finally {
     await app.cleanup();
   }
@@ -83,7 +126,12 @@ for (const columns of [80, 60, 40]) {
       app.stdin.write("\x1b[<35;80;1M");
       await app.waitFor(() => app.screen().at(-1) === "");
       app.stdin.write("first\r");
-      await app.waitFor(() => app.calls.length === 1 && app.screen().at(-1)?.trim() === "esc 中断");
+      await app.waitFor(
+        () =>
+          app.calls.length === 1 &&
+          app.screen().at(-1)?.trim() === "esc 中断" &&
+          app.screen().at(-2)?.includes("ctx ") === true,
+      );
       expect(app.screen().at(-2)).toContain("ctx ");
       expect(app.screen().at(-4)).toMatch(/^╰─+╯$/);
       const activity = app.screen().find((line) => /^[🌑🌒🌓🌔🌕🌖🌗🌘] /u.test(line));
@@ -129,7 +177,12 @@ test("tps starts after 500ms of decoding and final usage corrects the Run sample
     app.stdin.write(`\x1b[<35;${Bun.stringWidth(prefix) + 1};23M`);
   };
   try {
-    await app.waitFor(() => app.calls.length === 1 && app.screen().at(-1)?.trim() === "esc 中断");
+    await app.waitFor(
+      () =>
+        app.calls.length === 1 &&
+        app.screen().at(-1)?.trim() === "esc 中断" &&
+        app.screen().at(-2)?.includes("ctx ") === true,
+    );
     now += 5000; // Waiting for the first delta must not count as decode time.
     testClock.setSystemTime(now);
     app.calls[0]!.thinking("x".repeat(800));
@@ -173,12 +226,13 @@ test("tps includes tool-call deltas and completed Turns while excluding time bet
   try {
     await app.waitFor(() => app.calls.length === 1);
     testClock.setSystemTime(now);
+    app.calls[0]!.thinking("x");
     app.calls[0]!.toolDelta("x".repeat(800));
-    await app.flush();
+    await app.waitFor(() => app.screen().join("\n").includes("🧠 思考"));
     now += 500;
     testClock.setSystemTime(now);
     app.calls[0]!.toolDelta("abcd");
-    await app.waitFor(() => app.screen().at(-2)?.includes("402 tps") === true);
+    await app.waitFor(() => app.screen().at(-2)?.includes("410 tps") === true);
     now += 500;
     testClock.setSystemTime(now);
     app.calls[0]!.tool("bash", { command: "printf ok", description: "Run test command" });
@@ -363,7 +417,7 @@ test.each(["idle", "approval"] as const)(
       app.stdin.write(`\x1b[<0;${x};${y + 1}M\x1b[<0;${x};${y + 1}m`);
       await app.waitFor(() => !app.screen().some((line) => line.includes("回到底部")));
       if (phase === "idle") expect(app.screen()).toContain("  line-49");
-      else expect(app.screen().some((line) => /^(?:[●⏺] |  )执行\(/.test(line))).toBe(true);
+      else expect(app.screen().join("\n")).toContain("printf must-wait-for-permission");
       expect(app.calls).toHaveLength(1);
       if (phase === "approval") expect(app.screen().join("\n")).toContain("等待审批");
     } finally {

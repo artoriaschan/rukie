@@ -1,11 +1,13 @@
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type { EntryRecord } from "@earendil-works/pi-durable";
+import type { Message, Tool } from "@earendil-works/pi-ai";
 import { getCurrentSystemMessage, getCurrentTools, toToolDeclaration } from "@earendil-works/pi-ai";
 import type { ContextUsageEvent, ContextReport, ContextCategory } from "@rukie/shared";
 
-import { convertToLlm } from "../reminders/index.ts";
 import { inspectImage } from "../images/index.ts";
 
 const tokens = (text: string) => Math.ceil(text.length / 4);
+
+type ConfiguredContext = { instructions: string; tools: readonly Tool[] };
 
 const imageTokens = (data: string) => {
   const info = inspectImage(Buffer.from(data, "base64"));
@@ -21,9 +23,10 @@ const imageTokens = (data: string) => {
  * Provider input tokens override only the total, retaining estimates for attribution.
  */
 export function contextUsage(
-  messages: readonly AgentMessage[],
+  messages: readonly Message[],
   window: number,
   inputTokens?: number,
+  configured?: ConfiguredContext,
 ): ContextUsageEvent {
   const segments = { system: 0, prompt: 0, assistant: 0, thinking: 0, tools: 0 };
   const system = getCurrentSystemMessage(messages.filter((message) => message.role === "system"));
@@ -36,13 +39,13 @@ export function contextUsage(
     for (const section of Object.values(system.sections ?? {})) {
       if (section) segments.system += tokens(section);
     }
-  }
-  for (const tool of getCurrentTools(messages))
+  } else if (configured) segments.system = tokens(configured.instructions);
+  for (const tool of system
+    ? getCurrentTools(messages)
+    : (configured?.tools ?? getCurrentTools(messages)))
     segments.tools += tokens(JSON.stringify(toToolDeclaration(tool)));
   for (const message of messages) {
-    if (message.role === "system-reminder") {
-      segments.prompt += tokens(message.content);
-    } else if (message.role === "user" || message.role === "toolResult") {
+    if (message.role === "user" || message.role === "toolResult") {
       const segment = message.role === "user" ? "prompt" : "tools";
       if (typeof message.content === "string") segments[segment] += tokens(message.content);
       else
@@ -57,8 +60,6 @@ export function contextUsage(
         else if (block.type === "toolCall")
           segments.assistant += tokens(block.name + JSON.stringify(block.arguments));
       }
-    } else if (message.role === "compactionSummary") {
-      segments.prompt += tokens(message.summary);
     }
   }
   return {
@@ -71,11 +72,14 @@ export function contextUsage(
 
 /** Attribute the current restored model context without mutating it or making a request. */
 export function contextReport(options: {
-  messages: readonly AgentMessage[];
+  messages: readonly Message[];
+  entries?: readonly EntryRecord[];
   model: string;
   window: number;
   inputTokens?: number;
   mcpServers: ReadonlyMap<string, string>;
+  /** Committed agent configuration before the native generation has materialized its first system entry. */
+  configured?: ConfiguredContext;
 }): ContextReport {
   const { messages, window } = options;
   const category: Record<ContextCategory, number> = {
@@ -92,24 +96,40 @@ export function contextReport(options: {
   const skills: ContextReport["skills"] = [];
   const mcpTools: ContextReport["mcpTools"] = [];
   const agentTypes: ContextReport["agentTypes"] = [];
-  const latest = new Map<string, Extract<AgentMessage, { role: "system-reminder" }>>();
-  for (const message of messages)
-    if (message.role === "system-reminder") latest.set(message.source, message);
-  const attributed = new Set<AgentMessage>();
+  const latest = new Map<string, { content: string; model: readonly Message[] }>();
+  for (const entry of options.entries ?? []) {
+    const data = entry.data;
+    if (
+      typeof data === "object" &&
+      data !== null &&
+      !Array.isArray(data) &&
+      typeof data.source === "string" &&
+      typeof data.content === "string"
+    ) {
+      latest.set(data.source, { content: data.content, model: entry.model ?? [] });
+    }
+  }
+  const attributed = new Set<Message>();
   for (const source of ["user-instructions", "project-instructions"]) {
     const message = latest.get(source);
     if (!message) continue;
     const path = /^Project Instructions \(([^\n]+)\):\n/.exec(message.content)?.[1];
     if (!path) continue;
-    const count = tokens(message.content);
+    const count = Object.values(contextUsage(message.model, window).segments).reduce(
+      (sum, value) => sum + value,
+      0,
+    );
     memoryFiles.push({ path, tokens: count });
     category["memory-files"] += count;
-    attributed.add(message);
+    for (const contribution of message.model) attributed.add(contribution);
   }
   const catalog = latest.get("skills");
   if (catalog) {
-    category.skills = tokens(catalog.content);
-    attributed.add(catalog);
+    category.skills = Object.values(contextUsage(catalog.model, window).segments).reduce(
+      (sum, value) => sum + value,
+      0,
+    );
+    for (const contribution of catalog.model) attributed.add(contribution);
     for (const match of catalog.content.matchAll(/^- ([a-z0-9-]+): (.*)$/gm))
       skills.push({ name: match[1]!, tokens: tokens(match[0]) });
   }
@@ -130,8 +150,12 @@ export function contextReport(options: {
         (sum, section) => sum + (section ? tokens(section) : 0),
         0,
       );
+  } else if (options.configured) {
+    category["system-prompt"] = tokens(options.configured.instructions);
   }
-  for (const tool of getCurrentTools(messages)) {
+  for (const tool of system
+    ? getCurrentTools(messages)
+    : (options.configured?.tools ?? getCurrentTools(messages))) {
     const count = tokens(JSON.stringify(toToolDeclaration(tool)));
     if (tool.name.startsWith("mcp__")) {
       const server =
@@ -155,10 +179,7 @@ export function contextReport(options: {
   const remainder = messages.filter(
     (message) => message.role !== "system" && !attributed.has(message),
   );
-  const visible = remainder.flatMap((message): AgentMessage[] =>
-    message.role === "user" && "skillInvocation" in message ? convertToLlm([message]) : [message],
-  );
-  category.messages = Object.values(contextUsage(visible, window).segments).reduce(
+  category.messages = Object.values(contextUsage(remainder, window).segments).reduce(
     (sum, count) => sum + count,
     0,
   );

@@ -1,7 +1,7 @@
 import { testClock } from "../helpers/test-clock";
-import { createFauxCore, fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { fauxProvider, fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { createSession } from "@rukie/agent";
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model";
+import { auxiliaryModels } from "../helpers/auxiliary-model";
 import { expect, test } from "bun:test";
 import { start } from "../helpers/app";
 import { startWithClock } from "../helpers/clock-app";
@@ -144,7 +144,7 @@ test("expansion preserves an earlier reading position and bottom following", asy
 
 test("resumed thinking uses the same transcript expansion", async () => {
   const argv: string[] = [];
-  const original = createFauxCore({ api: "faux", provider: "faux" });
+  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
   original.setResponses([
     fauxAssistantMessage([
       { type: "thinking", thinking: "saved reasoning" },
@@ -159,13 +159,13 @@ test("resumed thinking uses the same transcript expansion", async () => {
         cwd: root,
         homeDir: root,
         model: original.getModel(),
-        streamFn: withAuxiliaryRequests((model, context, options) =>
-          original.streamSimple(model, context, options),
+        models: auxiliaryModels((model, context, options) =>
+          original.provider.streamSimple(model, context, options),
         ),
       });
       await session.run("saved prompt");
       argv.push("--resume", session.id);
-      await session.dispose();
+      await session.close();
     },
   });
   try {

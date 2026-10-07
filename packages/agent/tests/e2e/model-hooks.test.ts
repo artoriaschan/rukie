@@ -1,6 +1,16 @@
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
-import { afterEach, expect, test } from "bun:test";
-import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import {
+  withAuxiliaryRequests,
+  modelStream,
+  withModelStream,
+  withModelAlias,
+  deferredModelStream,
+} from "../helpers/auxiliary-model.ts";
+import { afterEach, expect, jest, test } from "bun:test";
+import {
+  fauxAssistantMessage,
+  fauxToolCall,
+  createAssistantMessageEventStream,
+} from "@earendil-works/pi-ai";
 import { createSession, type SessionEvent } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
@@ -37,6 +47,7 @@ test("prompt hooks block a user prompt using one standalone review request", asy
     },
   });
   expect(await session.run("secret")).toMatchObject({
+    success: true,
     stopReason: "hook_blocked",
     reason: "protected prompt",
   });
@@ -54,7 +65,7 @@ test("prompt hooks block a user prompt using one standalone review request", asy
   );
   expect(await Bun.file(transcriptPath).text()).toContain("session-notice");
   expect(await Bun.file(transcriptPath).text()).not.toContain("secret");
-  await session.dispose();
+  await session.close();
 });
 
 test("agent hooks inspect files with only read, glob and grep, without copying review messages to the parent Transcript", async () => {
@@ -88,6 +99,7 @@ test("agent hooks inspect files with only read, glob and grep, without copying r
     },
   });
   expect(await session.run("perform action")).toMatchObject({
+    success: true,
     stopReason: "hook_blocked",
     reason: "policy check failed",
   });
@@ -101,7 +113,7 @@ test("agent hooks inspect files with only read, glob and grep, without copying r
       }),
     ]),
   );
-  await session.dispose();
+  await session.close();
 });
 
 test.each(["prompt", "agent"] as const)(
@@ -140,7 +152,7 @@ test.each(["prompt", "agent"] as const)(
       expect(session.messages.filter((message) => message.role === "assistant")).toMatchObject([
         { content: [{ type: "text", text: "parent result" }] },
       ]);
-      await session.dispose();
+      await session.close();
     }
   },
 );
@@ -180,7 +192,7 @@ test.each(["prompt", "agent"] as const)(
       { by: "hook", reason: "Denied by hook: protected tool" },
     ]);
     expect(JSON.stringify(fake.contexts.at(-1)?.messages)).toContain("protected tool");
-    await session.dispose();
+    await session.close();
   },
 );
 
@@ -189,6 +201,7 @@ test.each([undefined, "override"])(
   async (override) => {
     dirs = await tempDirs();
     const fake = fakeModel([fauxAssistantMessage('{"ok":true}'), fauxAssistantMessage("done")]);
+    fake.models = withModelAlias(fake.models, "hook-review", ["cheap", "override"]);
     const selected: string[] = [];
     const key = "RUKIE_HOOK_MODEL_TEST_KEY";
     process.env[key] = "test-key";
@@ -196,10 +209,13 @@ test.each([undefined, "override"])(
       const session = await createSession({
         ...dirs,
         ...fake,
-        streamFn: withAuxiliaryRequests((model, context, options) => {
-          selected.push(model.id);
-          return fake.streamFn(model, context, options);
-        }),
+        models: withModelStream(
+          fake.models,
+          withAuxiliaryRequests((model, context, options) => {
+            selected.push(model.id);
+            return modelStream(fake.models)(model, context, options);
+          }),
+        ),
         settings: {
           reviewModel: "hook-review/cheap",
           providers: [
@@ -229,7 +245,7 @@ test.each([undefined, "override"])(
       await session.run("hello");
       expect(selected[0]).toBe(override ?? "cheap");
       expect(selected[1]).toBe(fake.model.id);
-      await session.dispose();
+      await session.close();
     } finally {
       delete process.env[key];
     }
@@ -247,13 +263,16 @@ test.each(["prompt", "agent"] as const)(
     const session = await createSession({
       ...dirs,
       ...fake,
-      streamFn: withAuxiliaryRequests((model, context, options) => {
-        if (calls++ === 0) {
-          entered.resolve(options!.signal!);
-          return new Promise(() => {});
-        }
-        return fake.streamFn(model, context, options);
-      }),
+      models: withModelStream(
+        fake.models,
+        withAuxiliaryRequests((model, context, options) => {
+          if (calls++ === 0) {
+            entered.resolve(options!.signal!);
+            return createAssistantMessageEventStream();
+          }
+          return modelStream(fake.models)(model, context, options);
+        }),
+      ),
       onWarning() {},
       settings: {
         hooks: {
@@ -261,23 +280,31 @@ test.each(["prompt", "agent"] as const)(
         },
       },
     });
-    expect(
-      await session.run("hello", {
+    jest.useFakeTimers();
+    try {
+      const run = session.run("hello", {
         onEvent: (event) => {
           events.push(event);
         },
-      }),
-    ).toMatchObject({ text: "parent result" });
-    expect((await entered.promise).aborted).toBe(true);
+      });
+      const signal = await entered.promise;
+      jest.advanceTimersByTime(19);
+      expect(signal.aborted).toBe(false);
+      jest.advanceTimersByTime(1);
+      expect(await run).toMatchObject({ text: "parent result" });
+      expect(signal.aborted).toBe(true);
+    } finally {
+      jest.useRealTimers();
+    }
     expect(events.filter((event) => event.type === "hook_warning")).toMatchObject([
       { error: { code: "hook-timeout", params: { timeout: "0.02" } } },
     ]);
-    await session.dispose();
+    await session.close();
   },
 );
 
 test.each(["prompt", "agent"] as const)(
-  "dispose cancels a pending %s hook without starting the main model",
+  "close cancels a pending %s hook without starting the main model",
   async (type) => {
     dirs = await tempDirs();
     const entered = Promise.withResolvers<AbortSignal>();
@@ -286,11 +313,14 @@ test.each(["prompt", "agent"] as const)(
     const session = await createSession({
       ...dirs,
       ...fake,
-      streamFn: withAuxiliaryRequests((_model, _context, options) => {
-        calls++;
-        entered.resolve(options!.signal!);
-        return new Promise(() => {});
-      }),
+      models: withModelStream(
+        fake.models,
+        withAuxiliaryRequests((_model, _context, options) => {
+          calls++;
+          entered.resolve(options!.signal!);
+          return createAssistantMessageEventStream();
+        }),
+      ),
       settings: {
         hooks: {
           UserPromptSubmit: [{ hooks: [{ type, prompt: "check" }] }],
@@ -299,8 +329,8 @@ test.each(["prompt", "agent"] as const)(
     });
     const run = session.run("hello").catch((error) => error);
     const signal = await entered.promise;
-    await session.dispose();
-    expect(await run).toMatchObject({ name: "AbortError" });
+    await session.close();
+    expect(await run).toMatchObject({ message: "Session is closed" });
     expect(signal.aborted).toBe(true);
     expect(calls).toBe(1);
   },
@@ -337,7 +367,7 @@ test.each(["prompt", "agent"] as const)(
       { event: "Stop", reason: "finish verification" },
     ]);
     expect(session.messages.filter((message) => message.role === "assistant")).toHaveLength(2);
-    await session.dispose();
+    await session.close();
   },
 );
 
@@ -359,7 +389,7 @@ test.each(["prompt", "agent"] as const)(
       },
     });
     expect(await session.run("work")).toMatchObject({ text: "parent result" });
-    await session.dispose();
+    await session.close();
   },
 );
 
@@ -390,7 +420,7 @@ test("an unavailable hook model warns without calling it and the parent run proc
     { error: { code: "hook-model-failed" } },
   ]);
   expect(fake.contexts).toHaveLength(1);
-  await session.dispose();
+  await session.close();
 });
 
 test.each(["prompt", "agent"] as const)(
@@ -427,7 +457,7 @@ test.each(["prompt", "agent"] as const)(
     expect(events.filter((event) => event.type === "permission_denied")).toMatchObject([
       { by: "hook", reason: "approval policy" },
     ]);
-    await session.dispose();
+    await session.close();
   },
 );
 
@@ -466,7 +496,7 @@ test.each(["prompt", "agent"] as const)(
     });
     expect(await session.run(prompt)).toMatchObject({ text: "parent done" });
     expect(warnings).toHaveLength(0);
-    await session.dispose();
+    await session.close();
   },
 );
 
@@ -502,7 +532,7 @@ test.each(["prompt", "agent"] as const)(
     expect(JSON.stringify(toolResult)).toContain("original");
     expect(JSON.stringify(toolResult)).toContain("verify output");
     expect(JSON.stringify(toolResult)).toContain("<system-reminder>");
-    await session.dispose();
+    await session.close();
   },
 );
 
@@ -511,16 +541,23 @@ test.each(["prompt", "agent"] as const)(
   async (type) => {
     dirs = await tempDirs();
     const late = Promise.withResolvers<never>();
+    const entered = Promise.withResolvers<void>();
     const fake = fakeModel([fauxAssistantMessage("parent result")]);
     let calls = 0;
     const events: SessionEvent[] = [];
     const session = await createSession({
       ...dirs,
       ...fake,
-      streamFn: withAuxiliaryRequests((model, context, options) => {
-        if (calls++ === 0) return late.promise;
-        return fake.streamFn(model, context, options);
-      }),
+      models: withModelStream(
+        fake.models,
+        withAuxiliaryRequests((model, context, options) => {
+          if (calls++ === 0) {
+            entered.resolve();
+            return deferredModelStream(late.promise);
+          }
+          return modelStream(fake.models)(model, context, options);
+        }),
+      ),
       onWarning() {},
       settings: {
         hooks: {
@@ -528,13 +565,21 @@ test.each(["prompt", "agent"] as const)(
         },
       },
     });
-    expect(
-      await session.run("hello", {
+    jest.useFakeTimers();
+    try {
+      const run = session.run("hello", {
         onEvent: (event) => {
           events.push(event);
         },
-      }),
-    ).toMatchObject({ text: "parent result" });
+      });
+      await entered.promise;
+      jest.advanceTimersByTime(19);
+      expect(events.filter((event) => event.type === "hook_warning")).toHaveLength(0);
+      jest.advanceTimersByTime(1);
+      expect(await run).toMatchObject({ text: "parent result" });
+    } finally {
+      jest.useRealTimers();
+    }
     late.reject(new Error("late hook stream failure"));
     await new Promise<void>((resolve) => setImmediate(resolve));
     expect(events.filter((event) => event.type === "hook_warning")).toHaveLength(1);
@@ -544,7 +589,7 @@ test.each(["prompt", "agent"] as const)(
     expect(session.messages.filter((message) => message.role === "assistant")).toMatchObject([
       { content: [{ text: "parent result" }] },
     ]);
-    await session.dispose();
+    await session.close();
   },
 );
 
@@ -557,10 +602,13 @@ test.each(["prompt", "agent"] as const)(
     const session = await createSession({
       ...dirs,
       ...fake,
-      streamFn: withAuxiliaryRequests((_model, _context, options) => {
-        entered.resolve(options!.signal!);
-        return new Promise(() => {});
-      }),
+      models: withModelStream(
+        fake.models,
+        withAuxiliaryRequests((_model, _context, options) => {
+          entered.resolve(options!.signal!);
+          return createAssistantMessageEventStream();
+        }),
+      ),
       settings: { hooks: { UserPromptSubmit: [{ hooks: [{ type, prompt: "check" }] }] } },
     });
     const controller = new AbortController();
@@ -572,7 +620,7 @@ test.each(["prompt", "agent"] as const)(
     expect(
       session.messages.some((message) => message.role === "user" || message.role === "assistant"),
     ).toBe(false);
-    await session.dispose();
+    await session.close();
   },
 );
 
@@ -666,7 +714,7 @@ test.each(["prompt", "agent"] as const)(
       expect(transcript).not.toContain("notification guard");
     } finally {
       release.resolve();
-      await session.dispose();
+      await session.close();
     }
   },
 );

@@ -39,10 +39,10 @@ async function fetchPages(urls: string[], options: Partial<SessionOptions> = {})
     },
     ...options,
   });
-  resources.push(() => session.dispose());
+  resources.push(() => session.close());
   await session.run("fetch these pages");
   return fake.contexts.slice(1).map((context) => {
-    const result = context.messages.at(-1)!;
+    const result = context.messages.findLast((message) => message.role === "toolResult")!;
     if (result.role !== "toolResult") throw new Error("Expected tool result");
     return result;
   });

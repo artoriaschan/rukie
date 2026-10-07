@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { createSession } from "@rukie/agent";
-import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { withAuxiliaryRequests } from "../../helpers/auxiliary-model";
+import { fauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { auxiliaryModels } from "../../helpers/auxiliary-model";
 import { startWithClock as start } from "../../helpers/clock-app";
 
 let app: Awaited<ReturnType<typeof start>>;
@@ -56,7 +56,7 @@ test("resume replays Goal summaries and coded errors in the frontend locale", as
     rows: 35,
     env: { LANG: "zh_CN.UTF-8" },
     async prepare(root) {
-      const faux = createFauxCore({ api: "faux", provider: "faux" });
+      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
       const tool = (name: string, args: Parameters<typeof fauxToolCall>[1]) =>
         fauxAssistantMessage(fauxToolCall(name, args), { stopReason: "toolUse" });
       faux.setResponses([
@@ -70,14 +70,14 @@ test("resume replays Goal summaries and coded errors in the frontend locale", as
         homeDir: root,
         permissionMode: "full-access",
         model: faux.getModel(),
-        streamFn: withAuxiliaryRequests((model, context, options) =>
-          faux.streamSimple(model, context, options),
+        models: auxiliaryModels((model, context, options) =>
+          faux.provider.streamSimple(model, context, options),
         ),
       });
       await session.run("Work through release");
       await session.waitForIdle();
       argv.push("--resume", session.id);
-      await session.dispose();
+      await session.close();
     },
   });
   await app.waitFor(() => app.screen().join("\n").includes("Credential unavailable"));

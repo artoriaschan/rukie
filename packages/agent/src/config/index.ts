@@ -1,6 +1,11 @@
 import { join, resolve } from "node:path";
-import type { StreamFn } from "@earendil-works/pi-agent-core";
-import { createProvider, envApiKeyAuth, type Api, type Model } from "@earendil-works/pi-ai";
+import {
+  createProvider,
+  envApiKeyAuth,
+  type Api,
+  type Model,
+  type Models,
+} from "@earendil-works/pi-ai";
 import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messages.lazy";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
@@ -155,7 +160,7 @@ const customApis = {
 export async function resolveModel(
   settings: Settings,
   homeDir: string,
-): Promise<{ model: Model<Api>; streamFn: StreamFn }> {
+): Promise<{ model: Model<Api>; models: Models }> {
   if (!settings.model) {
     const settingsPath = join(homeDir, ".rukie/settings.json");
     throw createUserVisibleError(noModelMessage(settingsPath), {
@@ -180,7 +185,7 @@ export async function resolveModel(
       { code: "no-api-key", params: { provider: providerId, env: env ?? "" } },
     );
   }
-  return { model, streamFn: (m, context, options) => models.streamSimple(m, context, options) };
+  return { model, models };
 }
 
 function modelRegistry(settings: Settings) {

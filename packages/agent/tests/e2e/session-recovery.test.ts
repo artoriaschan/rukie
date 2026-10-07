@@ -1,321 +1,260 @@
 import { afterEach, expect, test } from "bun:test";
-import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
 import { fauxAssistantMessage, fauxToolCall, getCurrentSystemMessage } from "@earendil-works/pi-ai";
-import { createJsonlStore, createSession } from "../../src/index.ts";
-import { fakeModel } from "../helpers/fake-model.ts";
-import { tempDirs } from "../helpers/temp-dirs.ts";
+import type { Storage } from "@earendil-works/pi-durable";
 import { join } from "node:path";
-import { mkdir, rename, rm } from "node:fs/promises";
+import {
+  createJsonlStore,
+  createSession as createSessionImpl,
+  type Session,
+} from "../../src/index.ts";
+import { fakeModel } from "../helpers/fake-model.ts";
+import { crashedSubagents, runRequest } from "../helpers/crashed-subagents.ts";
+import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
-afterEach(() => dirs?.cleanup());
-
-test("Session Resume exposes abnormal and legacy child facts, then persists one summary on the first real prompt", async () => {
-  dirs = await tempDirs();
-  const store = createJsonlStore(dirs);
-  const stored = await store.create({ cwd: dirs.cwd }, BACKGROUND_CONTEXT);
-  const branch = await stored.createBranch("main", null, BACKGROUND_CONTEXT);
-  const known = ["completed", "aborted", "error", "length", "hook_stopped", "hook_blocked"].map(
-    (outcome) => ({
-      id: `child-${outcome}`,
-      description: outcome,
-      type: "general-purpose",
-      latestRun: {
-        id: `run-${outcome}`,
-        sessionId: `child-${outcome}`,
-        parentSessionId: stored.metadata.id,
-        startedAt: 10,
-        endedAt: 20,
-        outcome,
-        ...(outcome === "error" && { error: "saved provider failure" }),
-      },
-    }),
-  );
-  await branch.appendCustomEntry(
-    "tool-state/subagents",
-    {
-      version: 2,
-      value: [...known, { id: "legacy", description: "Old reader", type: "general-purpose" }],
-    },
-    BACKGROUND_CONTEXT,
-  );
-  await stored.close(BACKGROUND_CONTEXT);
-  const fake = fakeModel([
-    fauxAssistantMessage("first answer"),
-    fauxAssistantMessage("second answer"),
-  ]);
-  const session = await createSession({ ...dirs, ...fake, resumeId: stored.metadata.id });
-  expect(session.recovery.subagents.map((row) => row.outcome)).toEqual([
-    "aborted",
-    "error",
-    "length",
-    "hook_stopped",
-    "hook_blocked",
-    "unknown",
-  ]);
-  expect(session.recovery.subagents.find((row) => row.outcome === "error")).toMatchObject({
-    id: "child-error",
-    runId: "run-error",
-    reason: "saved provider failure",
+const sessions: Session[] = [];
+function childIds(session: Session) {
+  const children = session.toolState("subagents");
+  if (!Array.isArray(children)) throw new Error("Subagent identities are missing");
+  return children.map((value: unknown) => {
+    if (
+      typeof value !== "object" ||
+      value === null ||
+      !("id" in value) ||
+      typeof value.id !== "string"
+    )
+      throw new Error("Invalid committed subagent identity");
+    return value.id;
   });
-  expect(fake.contexts).toHaveLength(0);
-  expect(session.checkpoints()).toEqual([]);
-  expect(
-    session.messages.some(
-      (message) => message.role === "system-reminder" && message.source === "session-resume",
-    ),
-  ).toBe(false);
-  await session.run("verify the existing work");
-  const summary = session.messages.filter(
-    (message) => message.role === "system-reminder" && message.source === "session-resume",
-  );
-  expect(summary).toHaveLength(1);
-  const text = JSON.stringify(summary);
-  for (const fact of [
-    "child-aborted",
-    "child-error",
-    "legacy",
-    "unknown",
-    "saved provider failure",
-    "send_message",
-    "not automatically",
-    "completed",
-  ])
-    expect(text).toContain(fact);
-  expect(text).not.toContain("child-completed");
-  expect(JSON.stringify(fake.contexts[0]!.messages)).toContain("saved provider failure");
-  expect(session.checkpoints()).toHaveLength(1);
-  await session.run("second real prompt");
-  expect(
-    session.messages.filter(
-      (message) => message.role === "system-reminder" && message.source === "session-resume",
-    ),
-  ).toEqual(summary);
-  await session.dispose();
-  const againFake = fakeModel([fauxAssistantMessage("again")]);
-  const again = await createSession({ ...dirs, ...againFake, resumeId: session.id });
-  expect(againFake.contexts).toHaveLength(0);
-  expect(
-    again.messages.filter(
-      (message) => message.role === "system-reminder" && message.source === "session-resume",
-    ),
-  ).toHaveLength(1);
-  await again.run("check on a new resume");
-  expect(
-    again.messages.filter(
-      (message) => message.role === "system-reminder" && message.source === "session-resume",
-    ),
-  ).toHaveLength(2);
-  expect(again.checkpoints()).toHaveLength(3);
-  await again.dispose();
+}
+async function createSession(options: Parameters<typeof createSessionImpl>[0]) {
+  const session = await createSessionImpl(options);
+  sessions.push(session);
+  return session;
+}
+afterEach(async () => {
+  await Promise.all(sessions.splice(0).map((session) => session.close()));
+  await dirs?.cleanup();
 });
 
-test("external shutdown waits for child Run persistence while dispose stays safe in the parent's event callback", async () => {
+test.each(["completed", "aborted", "error"] as const)(
+  "cold observation preserves committed child %s without authorizing another Run",
+  async (outcome) => {
+    dirs = await tempDirs();
+    const fixture = await crashedSubagents(dirs);
+    const child = await fixture.child("Settled", outcome);
+    await fixture.save();
+    const fake = fakeModel([fauxAssistantMessage("new answer")]);
+    const restored = await createSession({ ...dirs, ...fake, resumeId: fixture.parentId });
+    expect(fake.contexts).toHaveLength(0);
+    expect(restored.toolState("subagents")).toMatchObject([
+      { id: child.metadata.id, active: false, latestRun: { id: child.run.id, outcome } },
+    ]);
+    expect(restored.checkpoints()).toHaveLength(1);
+    await restored.run("new accepted work");
+    expect(fake.contexts).toHaveLength(1);
+    expect(restored.checkpoints()).toHaveLength(2);
+    expect(restored.toolState("subagents")).toMatchObject([
+      { id: child.metadata.id, active: false, latestRun: { id: child.run.id, outcome } },
+    ]);
+  },
+);
+
+test("close waits for an active child provider, then cold resume continues the same accepted work", async () => {
   dirs = await tempDirs();
-  const childStarted = Promise.withResolvers<void>();
+  const entered = Promise.withResolvers<void>();
   const cancelled = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
-  const waiting = Promise.withResolvers<void>();
   const reply: Parameters<typeof fakeModel>[0][number] = async (context, options) => {
     if (
       getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
         (tool) => tool.name === "subagent",
       )
     )
-      return fauxAssistantMessage("parent waits");
-    childStarted.resolve();
-    if (!options!.signal!.aborted)
+      return fauxAssistantMessage("parent idle");
+    entered.resolve();
+    if (!options?.signal) throw new Error("native child provider lacks cancellation signal");
+    if (!options.signal.aborted)
       await new Promise<void>((resolve) =>
-        options!.signal!.addEventListener("abort", () => resolve(), { once: true }),
+        options.signal!.addEventListener("abort", () => resolve(), { once: true }),
       );
     cancelled.resolve();
     await release.promise;
-    return fauxAssistantMessage("partial work", { stopReason: "aborted" });
+    return fauxAssistantMessage("", { stopReason: "aborted" });
   };
   const fake = fakeModel([
-    fauxAssistantMessage(fauxToolCall("subagent", { description: "Active", prompt: "working" }), {
-      stopReason: "toolUse",
-    }),
+    fauxAssistantMessage(
+      fauxToolCall("subagent", { description: "Active", prompt: "accepted child work" }),
+      { stopReason: "toolUse" },
+    ),
     reply,
     reply,
   ]);
   const session = await createSession({ ...dirs, ...fake });
-  const run = session
-    .run("delegate", {
-      async onEvent(event) {
-        if (event.type === "subagents_waiting") {
-          await childStarted.promise;
-          await session.dispose();
-          waiting.resolve();
-        }
-      },
-    })
-    .catch((error) => error);
+  let closing: Promise<void> | undefined;
   try {
-    await Promise.all([childStarted.promise, waiting.promise, cancelled.promise]);
-    let settled = false;
-    const done = session.waitForIdle().then(() => {
-      settled = true;
+    expect(await session.run("delegate")).toMatchObject({ text: "parent idle" });
+    await entered.promise;
+    const requestId = session.currentRequestId;
+    if (!requestId) throw new Error("accepted parent request is missing");
+    const identities = childIds(session);
+    let closed = false;
+    closing = session.close().then(() => {
+      closed = true;
     });
-    await Promise.resolve();
-    expect(settled).toBe(false);
+    await cancelled.promise;
+    expect(closed).toBe(false);
     release.resolve();
-    await done;
-    expect(await run).toBeInstanceOf(Error);
-    const untouched = fakeModel([]);
-    const restored = await createSession({ ...dirs, ...untouched, resumeId: session.id });
-    expect(restored.recovery.subagents).toMatchObject([
-      { outcome: "aborted", description: "Active" },
-    ]);
-    expect(untouched.contexts).toHaveLength(0);
-    expect(fake.contexts).toHaveLength(3);
-    await restored.dispose();
+    await closing;
+    const replies = fakeModel(
+      Array.from(
+        { length: 5 },
+        () => (context) =>
+          fauxAssistantMessage(
+            getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
+              (tool) => tool.name === "subagent",
+            )
+              ? "parent restored"
+              : "child restored",
+          ),
+      ),
+    );
+    const restored = await createSession({ ...dirs, ...replies, resumeId: session.id });
+    expect(await restored.waitForRequest(requestId)).toMatchObject({
+      success: true,
+      text: "parent restored",
+    });
+    const children = restored.toolState("subagents");
+    expect(children).toHaveLength(1);
+    expect(children).toMatchObject([{ active: false, latestRun: { outcome: "completed" } }]);
+    expect(childIds(restored)).toEqual(identities);
+    expect(
+      replies.contexts.filter(
+        (context) =>
+          !getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
+            (tool) => tool.name === "subagent",
+          ),
+      ),
+    ).toHaveLength(1);
+    expect(
+      restored.messages.filter(
+        (message) =>
+          message.role === "user" && JSON.stringify(message.content).includes("(Active) finished."),
+      ),
+    ).toHaveLength(1);
   } finally {
     release.resolve();
-    await run;
-    await session.dispose();
+    await closing;
   }
 });
 
-test.each(["parent", "child"])(
-  "shutdown records a failed %s save without rewriting durable child facts",
-  async (target) => {
+test.each(["child-answer", "parent-notification"] as const)(
+  "failed %s commit leaves only committed facts and cold recovery settles the original child once",
+  async (phase) => {
     dirs = await tempDirs();
-    const started = Promise.withResolvers<void>();
-    const release = Promise.withResolvers<void>();
-    const warnings: string[] = [];
     const store = createJsonlStore(dirs);
-    let damagedPath: string | undefined;
-    let childId: string | undefined;
-    const blockSave = async (id: string) => {
-      const metadata = (await store.list({ cwd: dirs.cwd }, BACKGROUND_CONTEXT)).find(
-        (row) => row.id === id,
-      )!;
-      if (!("path" in metadata) || typeof metadata.path !== "string")
-        throw new Error("Missing native Store path");
-      damagedPath = metadata.path;
-      await rename(damagedPath, `${damagedPath}.saved`);
-      await mkdir(damagedPath);
+    let reject = true;
+    const failingStore = {
+      ...store,
+      async open(...args: Parameters<typeof store.open>) {
+        const lease = await store.open(...args);
+        return {
+          ...lease,
+          storage: new Proxy(lease.storage, {
+            get(target, key) {
+              if (key === "commit")
+                return async (...args: Parameters<Storage["commit"]>) => {
+                  const hit = args[0].some(
+                    (write) =>
+                      write.type === "entry" &&
+                      write.value.model?.some((message) =>
+                        phase === "child-answer"
+                          ? message.role === "assistant" &&
+                            JSON.stringify(message.content).includes("saved child answer")
+                          : message.role === "user" &&
+                            JSON.stringify(message.content).includes("(Fault child) finished."),
+                      ),
+                  );
+                  if (reject && hit) {
+                    reject = false;
+                    throw new Error(`injected ${phase} failure`);
+                  }
+                  return target.commit(...args);
+                };
+              const value = Reflect.get(target, key);
+              return typeof value === "function" ? value.bind(target) : value;
+            },
+          }),
+        };
+      },
     };
-    const reply: Parameters<typeof fakeModel>[0][number] = async (context, options) => {
-      if (
+    const reply: Parameters<typeof fakeModel>[0][number] = (context) =>
+      fauxAssistantMessage(
         getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
           (tool) => tool.name === "subagent",
         )
-      )
-        return fauxAssistantMessage("parent waits");
-      started.resolve();
-      if (!options!.signal!.aborted)
-        await new Promise<void>((resolve) =>
-          options!.signal!.addEventListener("abort", () => resolve(), { once: true }),
-        );
-      await release.promise;
-      return fauxAssistantMessage("partial work", { stopReason: "aborted" });
-    };
-    const fake = fakeModel([
-      fauxAssistantMessage(fauxToolCall("subagent", { description: "Active", prompt: "working" }), {
-        stopReason: "toolUse",
-      }),
-      reply,
-      reply,
-    ]);
-    const session = await createSession({
-      ...dirs,
-      ...fake,
-      onWarning: (warning) => warnings.push(warning),
-    });
-    const run = session
-      .run("delegate", {
-        async onEvent(event) {
-          if (event.type === "subagents_waiting") {
-            await started.promise;
-            await session.dispose();
-            if (target === "child") {
-              childId = (await store.list({ cwd: dirs.cwd }, BACKGROUND_CONTEXT)).find(
-                (row) => row.parentSessionId === session.id,
-              )!.id;
-              await blockSave(childId);
-            }
-            release.resolve();
-          }
-          if (
-            target === "parent" &&
-            event.type === "subagent_event" &&
-            event.event.type === "result"
-          ) {
-            childId = event.agentId;
-            await blockSave(session.id);
-          }
-        },
-      })
-      .catch((error) => error);
-    try {
-      expect(await run).toBeInstanceOf(Error);
-      await session.waitForIdle();
-      expect(warnings.join("\n")).toContain(
-        target === "parent"
-          ? "Could not save subagent Run summary"
-          : "Could not save subagent Run fact",
+          ? "parent settled"
+          : "saved child answer",
       );
-      expect(warnings.join("\n")).toContain(childId!);
-      await rm(damagedPath!, { recursive: true, force: true });
-      await rename(`${damagedPath!}.saved`, damagedPath!);
-      damagedPath = undefined;
-      const metadata = (await store.list({ cwd: dirs.cwd }, BACKGROUND_CONTEXT)).find(
-        (row) => row.id === childId,
-      )!;
-      const child = await store.open(metadata, BACKGROUND_CONTEXT);
-      try {
-        const entries = await (await child.branch("main", BACKGROUND_CONTEXT))!.findEntries(
-          { order: "oldestFirst" },
-          BACKGROUND_CONTEXT,
-        );
-        expect(
-          entries
-            .filter(
-              (entry) => entry.type === "custom" && entry.customType === "tool-state/subagent-run",
-            )
-            .at(-1),
-        ).toMatchObject({
-          data: {
-            value: {
-              ...(target === "parent" && { outcome: "aborted" }),
-              parentSessionId: session.id,
-            },
-          },
-        });
-        if (target === "child")
-          expect(JSON.stringify(entries)).not.toContain('"outcome":"completed"');
-      } finally {
-        await child.close(BACKGROUND_CONTEXT);
-      }
-    } finally {
-      release.resolve();
-      await run;
-      await session.dispose();
-      if (damagedPath) {
-        await rm(damagedPath, { recursive: true, force: true });
-        await rename(`${damagedPath}.saved`, damagedPath);
-      }
-    }
+    const fake = fakeModel([
+      fauxAssistantMessage(
+        fauxToolCall("subagent", { description: "Fault child", prompt: "accepted fault child" }),
+        { stopReason: "toolUse" },
+      ),
+      ...Array.from({ length: 5 }, () => reply),
+    ]);
+    const session = await createSession({ ...dirs, ...fake, store: failingStore, onWarning() {} });
+    await expect(runRequest(session, "delegate")).rejects.toThrow(`injected ${phase} failure`);
+    expect(reject).toBe(false);
+    const requestId = session.currentRequestId;
+    if (!requestId) throw new Error("accepted request lost before failed commit");
+    const childId = childIds(session)[0];
+    expect(childId).toBeDefined();
+    expect(
+      session.messages.filter(
+        (message) =>
+          message.role === "user" &&
+          JSON.stringify(message.content).includes("(Fault child) finished."),
+      ),
+    ).toHaveLength(0);
+    await session.close();
+    const replies = fakeModel(Array.from({ length: 6 }, () => reply));
+    const restored = await createSession({ ...dirs, ...replies, store, resumeId: session.id });
+    expect(await restored.waitForRequest(requestId)).toMatchObject({
+      success: true,
+      text: "parent settled",
+    });
+    expect(restored.toolState("subagents")).toMatchObject([
+      { id: childId, active: false, latestRun: { outcome: "completed" } },
+    ]);
+    expect(
+      restored.messages.filter(
+        (message) =>
+          message.role === "user" &&
+          JSON.stringify(message.content).includes("(Fault child) finished."),
+      ),
+    ).toHaveLength(1);
+    expect(
+      replies.contexts.filter(
+        (context) =>
+          !getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
+            (tool) => tool.name === "subagent",
+          ),
+      ),
+    ).toHaveLength(phase === "child-answer" ? 1 : 0);
+    await restored.close();
+    const untouched = fakeModel([]);
+    const again = await createSession({ ...dirs, ...untouched, store, resumeId: session.id });
+    expect(await again.waitForRequest(requestId)).toMatchObject({ success: true });
+    expect(untouched.contexts).toHaveLength(0);
+    expect(again.toolState("subagents")).toHaveLength(1);
   },
 );
 
-test("Hook autoruns leave the resume summary pending until a real accepted prompt, without a Checkpoint", async () => {
+test("resume Hook autoruns do not create Human Prompt Checkpoints; blocked prompts remain unaccepted", async () => {
   dirs = await tempDirs();
-  const store = createJsonlStore(dirs);
-  const stored = await store.create({ cwd: dirs.cwd }, BACKGROUND_CONTEXT);
-  await (
-    await stored.createBranch("main", null, BACKGROUND_CONTEXT)
-  ).appendCustomEntry(
-    "tool-state/subagents",
-    {
-      version: 1,
-      value: [{ id: "old-child", description: "Legacy work", type: "general-purpose" }],
-    },
-    BACKGROUND_CONTEXT,
-  );
-  await stored.close(BACKGROUND_CONTEXT);
+  const original = await createSession({ ...dirs, ...fakeModel([]) });
+  await original.close();
   const finished = Promise.withResolvers<void>();
   const fake = fakeModel([
     fauxAssistantMessage("internal hook answer"),
@@ -324,7 +263,7 @@ test("Hook autoruns leave the resume summary pending until a real accepted promp
   const session = await createSession({
     ...dirs,
     ...fake,
-    resumeId: stored.metadata.id,
+    resumeId: original.id,
     settings: {
       hooks: {
         SessionStart: [
@@ -344,8 +283,7 @@ test("Hook autoruns leave the resume summary pending until a real accepted promp
             hooks: [
               {
                 type: "command",
-                command:
-                  'cat >/dev/null; if [ ! -f attempted ]; then touch attempted; printf \'{"decision":"block","reason":"rejected first prompt"}\'; fi',
+                command: `cat >/dev/null; if [ ! -f attempted ]; then touch attempted; printf '{"decision":"block","reason":"rejected first prompt"}'; fi`,
               },
             ],
           },
@@ -359,28 +297,86 @@ test("Hook autoruns leave the resume summary pending until a real accepted promp
   await finished.promise;
   await session.waitForIdle();
   expect(fake.contexts).toHaveLength(1);
-  expect(JSON.stringify(fake.contexts[0]!.messages)).not.toContain("Session Resume:");
-  expect(
-    session.messages.filter(
-      (message) => message.role === "system-reminder" && message.source === "session-resume",
-    ),
-  ).toHaveLength(0);
+  expect(JSON.stringify(fake.contexts[0]!.messages)).toContain("internal startup work");
   expect(session.checkpoints()).toHaveLength(0);
-  expect((await session.run("rejected real prompt")).stopReason).toBe("hook_blocked");
+  expect(await session.run("rejected real prompt")).toMatchObject({ stopReason: "hook_blocked" });
   expect(session.checkpoints()).toHaveLength(0);
   expect(fake.contexts).toHaveLength(1);
   await session.run("accepted real prompt");
-  expect(JSON.stringify(fake.contexts[1]!.messages)).toContain("old-child (Legacy work): unknown");
-  expect(
-    session.messages.filter(
-      (message) => message.role === "system-reminder" && message.source === "session-resume",
-    ),
-  ).toHaveLength(1);
   expect(session.checkpoints()).toHaveLength(1);
-  await session.dispose();
+  expect(fake.contexts).toHaveLength(2);
 });
 
-test("a completed-only resume has no warning or summary and keeps normal file Checkpoints", async () => {
+test("close waits for Hook autorun cancellation and preserves its accepted input for cold recovery", async () => {
+  dirs = await tempDirs();
+  const original = await createSession({ ...dirs, ...fakeModel([]) });
+  await original.close();
+  const started = Promise.withResolvers<void>();
+  const aborted = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const fake = fakeModel([
+    async (_context, options) => {
+      started.resolve();
+      if (!options?.signal) throw new Error("Hook autorun lacks a cancellation signal");
+      if (!options.signal.aborted)
+        await new Promise<void>((resolve) =>
+          options.signal!.addEventListener("abort", () => resolve(), { once: true }),
+        );
+      aborted.resolve();
+      await release.promise;
+      return fauxAssistantMessage("", { stopReason: "aborted" });
+    },
+  ]);
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    resumeId: original.id,
+    settings: {
+      hooks: {
+        SessionStart: [
+          {
+            matcher: "resume",
+            hooks: [
+              {
+                type: "command",
+                command: "printf 'accepted internal follow-up' >&2; exit 2",
+                asyncRewake: true,
+              },
+            ],
+          },
+        ],
+      },
+    },
+  });
+  let closing: Promise<void> | undefined;
+  try {
+    await started.promise;
+    expect(session.checkpoints()).toHaveLength(0);
+    let closed = false;
+    closing = session.close().then(() => {
+      closed = true;
+    });
+    await aborted.promise;
+    expect(closed).toBe(false);
+    release.resolve();
+    await closing;
+    const replies = fakeModel([fauxAssistantMessage("internal work recovered")]);
+    const restored = await createSession({ ...dirs, ...replies, resumeId: session.id });
+    await restored.waitForIdle();
+    expect(replies.contexts).toHaveLength(1);
+    expect(JSON.stringify(replies.contexts[0]!.messages)).toContain("accepted internal follow-up");
+    expect(restored.checkpoints()).toHaveLength(0);
+    await restored.close();
+    const untouched = fakeModel([]);
+    await createSession({ ...dirs, ...untouched, resumeId: session.id });
+    expect(untouched.contexts).toHaveLength(0);
+  } finally {
+    release.resolve();
+    await closing;
+  }
+});
+
+test("completed child resume keeps authorized file Checkpoints without executing historic work", async () => {
   dirs = await tempDirs();
   const first = fakeModel([
     fauxAssistantMessage(
@@ -396,7 +392,7 @@ test("a completed-only resume has no warning or summary and keeps normal file Ch
   ]);
   const original = await createSession({ ...dirs, ...first });
   await original.run("delegate");
-  await original.dispose();
+  await original.close();
   const fake = fakeModel([
     fauxAssistantMessage(fauxToolCall("write", { path: "new.txt", content: "new work" }), {
       stopReason: "toolUse",
@@ -409,90 +405,11 @@ test("a completed-only resume has no warning or summary and keeps normal file Ch
     resumeId: original.id,
     permissionMode: "full-access",
   });
-  expect(resumed.recovery.subagents).toEqual([]);
   expect(fake.contexts).toHaveLength(0);
   await resumed.run("write new work");
   expect(JSON.stringify(fake.contexts)).not.toContain("Session Resume:");
   expect(resumed.checkpoints()).toHaveLength(2);
   await resumed.rewind(resumed.checkpoints()[1]!.promptEntryId, { code: true, conversation: true });
   expect(await Bun.file(join(dirs.cwd, "new.txt")).exists()).toBe(false);
-  expect(resumed.recovery.subagents).toEqual([]);
-  await resumed.dispose();
-});
-
-test("the public completion boundary waits for a cancelled Hook autorun without consuming recovery", async () => {
-  dirs = await tempDirs();
-  const store = createJsonlStore(dirs);
-  const stored = await store.create({ cwd: dirs.cwd }, BACKGROUND_CONTEXT);
-  await (
-    await stored.createBranch("main", null, BACKGROUND_CONTEXT)
-  ).appendCustomEntry(
-    "tool-state/subagents",
-    { version: 1, value: [{ id: "legacy", description: "Old work", type: "general-purpose" }] },
-    BACKGROUND_CONTEXT,
-  );
-  await stored.close(BACKGROUND_CONTEXT);
-  const started = Promise.withResolvers<void>();
-  const aborted = Promise.withResolvers<void>();
-  const release = Promise.withResolvers<void>();
-  const fake = fakeModel([
-    async (_context, options) => {
-      started.resolve();
-      if (!options!.signal!.aborted)
-        await new Promise<void>((resolve) =>
-          options!.signal!.addEventListener("abort", () => resolve(), { once: true }),
-        );
-      aborted.resolve();
-      await release.promise;
-      return fauxAssistantMessage("", { stopReason: "aborted" });
-    },
-  ]);
-  const session = await createSession({
-    ...dirs,
-    ...fake,
-    resumeId: stored.metadata.id,
-    settings: {
-      hooks: {
-        SessionStart: [
-          {
-            matcher: "resume",
-            hooks: [
-              {
-                type: "command",
-                command: "printf 'internal follow-up' >&2; exit 2",
-                asyncRewake: true,
-              },
-            ],
-          },
-        ],
-      },
-    },
-  });
-  try {
-    await started.promise;
-    await session.dispose();
-    await aborted.promise;
-    let closed = false;
-    const completion = session.waitForIdle().then(() => {
-      closed = true;
-    });
-    await Promise.resolve();
-    expect(closed).toBe(false);
-    release.resolve();
-    await completion;
-    expect(session.running).toBe(false);
-    expect(fake.contexts).toHaveLength(1);
-    const restored = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
-    expect(restored.checkpoints()).toHaveLength(0);
-    expect(
-      restored.messages.filter(
-        (message) => message.role === "system-reminder" && message.source === "session-resume",
-      ),
-    ).toHaveLength(0);
-    await restored.dispose();
-  } finally {
-    release.resolve();
-    await session.waitForIdle();
-    await session.dispose();
-  }
+  await resumed.close();
 });

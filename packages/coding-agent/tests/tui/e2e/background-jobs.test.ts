@@ -1,13 +1,17 @@
+import { committedJobNotifications } from "../helpers/job-notifications";
 import { testClock } from "../helpers/test-clock";
 import { startWithClock } from "../helpers/clock-app";
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { start } from "../helpers/app";
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model";
+import { auxiliaryModels } from "../helpers/auxiliary-model";
 import { dark } from "../../../src/ink/index.ts";
 
 test("background bash renders its card and idle job chip without consuming model output", async () => {
+  const notifications = committedJobNotifications();
   const app = await startWithClock(["--permission-mode", "full-access", "launch"], {
+    session: notifications.session,
+    prepare: notifications.prepare,
     columns: 120,
     rows: 32,
     env: { LANG: "en_US.UTF-8" },
@@ -45,8 +49,13 @@ test("background bash renders its card and idle job chip without consuming model
       () => screen().includes("✓ job: bash-1") && !app.screen().at(-2)?.includes("● 1"),
     );
     expect(screen()).toContain("Background job completed: Watch fixture output");
+    await app.waitFor(() => notifications.count() === 1);
     app.calls[3]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    expect(app.calls).toHaveLength(4);
+    app.stdin.write("verify settled output\r");
     await app.waitFor(() => app.calls.length === 5);
+    expect(JSON.stringify(app.calls[4]!.context.messages)).toContain("background job bash-1");
     app.calls[4]!.finish();
     await app.waitFor(() => !app.isWorking());
     expect(app.stderr()).toBe("");
@@ -197,7 +206,7 @@ test("stopping jobs remain counted until they settle", async () => {
 
 test("resume never attaches a historical bash job result to a new job with the same command", async () => {
   const { createSession } = await import("@rukie/agent");
-  const { createFauxCore, fauxAssistantMessage, fauxToolCall } =
+  const { fauxProvider, fauxAssistantMessage, fauxToolCall } =
     await import("@earendil-works/pi-ai");
   const argv: string[] = [];
   const command = "printf 'ready\\n'; while :; do sleep 0.01; done";
@@ -205,7 +214,7 @@ test("resume never attaches a historical bash job result to a new job with the s
     columns: 120,
     rows: 40,
     prepare: async (root) => {
-      const model = createFauxCore({ api: "faux", provider: "faux" });
+      const model = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
       model.setResponses([
         fauxAssistantMessage(
           fauxToolCall("bash", {
@@ -222,13 +231,13 @@ test("resume never attaches a historical bash job result to a new job with the s
         homeDir: root,
         permissionMode: "full-access",
         model: model.getModel(),
-        streamFn: withAuxiliaryRequests(model.streamSimple),
+        models: auxiliaryModels(model.provider.streamSimple),
       });
       try {
         await session.run("historical launch");
         argv.push("--resume", session.id, "--permission-mode", "full-access");
       } finally {
-        await session.dispose();
+        await session.close();
       }
     },
   });
@@ -315,7 +324,10 @@ test("job output and streaming bursts preserve reading position, draft, and unre
 });
 
 test("consecutive jobs share transcript expansion and Ctrl+O respects an active question", async () => {
+  const notifications = committedJobNotifications();
   const app = await start(["--permission-mode", "full-access", "launch"], {
+    session: notifications.session,
+    prepare: notifications.prepare,
     columns: 120,
     rows: 40,
     env: { LANG: "en_US.UTF-8" },
@@ -354,18 +366,18 @@ test("consecutive jobs share transcript expansion and Ctrl+O respects an active 
     await app.waitFor(() => screen().includes("Choose fixture"));
     await Bun.write(join(app.root, "go"), "");
     await app.waitFor(() => screen().includes("3 background jobs folded"));
+    await app.waitFor(() => notifications.count() === 3);
     app.stdin.write("\x0f");
     await app.flush();
     expect(screen()).toContain("3 background jobs folded");
     expect(screen()).not.toContain("✓ job: bash-1");
     app.stdin.write("\r");
     await app.waitFor(() => app.calls.length === 3);
+    for (const id of ["bash-1", "bash-2", "bash-3"])
+      expect(JSON.stringify(app.calls[2]!.context.messages)).toContain(`background job ${id}`);
     app.calls[2]!.finish();
-    await app.waitFor(() => app.calls.length === 4);
-    app.calls[3]!.finish();
-    await app.waitFor(() => app.calls.length === 5 || !app.isWorking());
-    if (app.calls.length === 5) app.calls[4]!.finish();
     await app.waitFor(() => !app.isWorking());
+    expect(app.calls).toHaveLength(3);
     app.stdin.write("keep draft\x0f");
     await app.waitFor(
       () => screen().includes("✓ job: bash-1") && screen().includes("✓ job: bash-2"),
@@ -417,7 +429,10 @@ test("a promoted job shows the last visual output rows at 40×12 and after resiz
 });
 
 test("a failed job notice stays one row at 40×12 and expires without removing other notices", async () => {
+  const notifications = committedJobNotifications();
   const app = await startWithClock(["--permission-mode", "full-access", "launch"], {
+    session: notifications.session,
+    prepare: notifications.prepare,
     columns: 40,
     rows: 12,
   });
@@ -435,10 +450,10 @@ test("a failed job notice stays one row at 40×12 and expires without removing o
     await Bun.write(join(app.root, "go"), "");
     await app.waitFor(() => screen().includes("后台任务失败"));
     const noticedAt = performance.now();
+    await app.waitFor(() => notifications.count() === 1);
     app.calls[1]!.finish();
-    await app.waitFor(() => app.calls.length === 3);
-    app.calls[2]!.finish();
     await app.waitFor(() => !app.isWorking());
+    expect(app.calls).toHaveLength(2);
     const noticeRow = app.screen().findIndex((row) => row.includes("后台任务失败"));
     expect(app.screen().findIndex((row) => /^╭─+╮$/.test(row))).toBe(noticeRow + 2);
     expect(app.screen()[noticeRow + 1]).toBe("");

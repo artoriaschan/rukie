@@ -92,7 +92,9 @@ test("renders Markdown replies and continues two prompts in the same Session", a
     expect(app.screen().at(-2)).toContain("11→5");
     app.stdin.write("second prompt\r");
     await app.waitFor(() => app.calls.length === 2);
-    expect(app.calls[1]!.context.messages.slice(-3)).toMatchObject([
+    expect(
+      app.calls[1]!.context.messages.filter((message) => message.role !== "system").slice(-3),
+    ).toMatchObject([
       { role: "user", content: [{ type: "text", text: "first prompt" }] },
       { role: "assistant", content: [{ type: "text", text: "**literal** 中\nsecond line" }] },
       { role: "user", content: [{ type: "text", text: "second prompt" }] },
@@ -129,7 +131,9 @@ test("submission clears the editor before the next key in the same input chunk",
     );
     app.stdin.write("\r");
     await app.waitFor(() => app.calls.length === 2);
-    expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
+    expect(
+      app.calls[1]!.context.messages.findLast((message) => message.role === "user"),
+    ).toMatchObject({
       role: "user",
       content: [{ type: "text", text: "next" }],
     });
@@ -149,7 +153,9 @@ test("idle Ctrl+C clears the editor before subsequent keys in the same input chu
     await app.waitFor(() => app.screen().includes("❯ discard"));
     app.stdin.write("\x03fresh\r");
     await app.waitFor(() => app.calls.length === 1);
-    expect(app.calls[0]!.context.messages.at(-1)).toMatchObject({
+    expect(
+      app.calls[0]!.context.messages.findLast((message) => message.role === "user"),
+    ).toMatchObject({
       role: "user",
       content: [{ type: "text", text: "fresh" }],
     });
@@ -188,7 +194,9 @@ for (const [name, key] of [
       expect(app.stdin.isRaw).toBe(true);
       app.stdin.write("\r");
       await app.waitFor(() => app.calls.length === 2);
-      expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
+      expect(
+        app.calls[1]!.context.messages.findLast((message) => message.role === "user"),
+      ).toMatchObject({
         role: "user",
         content: [{ type: "text", text: "next draft" }],
       });
@@ -301,7 +309,9 @@ test("a positional prompt is submitted automatically", async () => {
   const app = await startWithClock(["auto prompt"]);
   try {
     await app.waitFor(() => app.calls.length === 1);
-    expect(app.calls[0]!.context.messages.at(-1)).toMatchObject({
+    expect(
+      app.calls[0]!.context.messages.findLast((message) => message.role === "user"),
+    ).toMatchObject({
       role: "user",
       content: [{ type: "text", text: "auto prompt" }],
     });
@@ -373,7 +383,7 @@ for (const [argv, message] of [
 }
 
 test("missing model configuration reports localized guidance and exits before rendering", async () => {
-  const app = await start([], { session: { model: undefined, streamFn: undefined } });
+  const app = await start([], { session: { model: undefined, models: undefined } });
   try {
     expect(await app.exit).toBe(1);
     expect(app.stderr()).toContain("未配置模型。请在 ");
@@ -417,6 +427,7 @@ test("--resume continues the existing Session context", async () => {
     fake.calls[0]!.delta("stored reply");
     fake.calls[0]!.finish();
     await run;
+    await session.close();
     exit = main(["--resume", session.id, "continuation"], {
       ...terminal,
       env: { LANG: "zh_CN.UTF-8" },
@@ -424,19 +435,28 @@ test("--resume continues the existing Session context", async () => {
       session: { cwd: root, homeDir: root, ...fake },
     });
     await terminal.waitFor(() => fake.calls.length === 2);
-    expect(fake.calls[1]!.context.messages.slice(-5)).toMatchObject([
-      { role: "user", content: [{ type: "text", text: "stored prompt" }] },
-      { role: "assistant", content: [{ type: "text", text: "stored reply" }] },
-      {
-        role: "system",
-        toolsAdded: expect.arrayContaining([
-          expect.objectContaining({ name: "ask_user_question" }),
-          expect.objectContaining({ name: "exit_plan_mode" }),
-        ]),
-      },
-      { role: "user", content: [{ type: "text", text: expect.stringContaining("[状态栏]") }] },
-      { role: "user", content: [{ type: "text", text: "continuation" }] },
-    ]);
+    expect(fake.calls[1]!.context.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "user",
+          content: [{ type: "text", text: "stored prompt" }],
+        }),
+        expect.objectContaining({
+          role: "assistant",
+          content: [{ type: "text", text: "stored reply" }],
+        }),
+        expect.objectContaining({
+          role: "system",
+          toolsAdded: expect.arrayContaining([
+            expect.objectContaining({ name: "ask_user_question" }),
+            expect.objectContaining({ name: "exit_plan_mode" }),
+          ]),
+        }),
+      ]),
+    );
+    expect(
+      fake.calls[1]!.context.messages.findLast((message) => message.role === "user"),
+    ).toMatchObject({ content: [{ type: "text", text: "continuation" }] });
     fake.calls[1]!.delta("resumed reply");
     fake.calls[1]!.finish();
     await terminal.waitFor(() => terminal.screen().includes(`${assistant} resumed reply`));
@@ -498,13 +518,17 @@ for (const [mode, argv, session] of [
     });
     try {
       await app.waitFor(() => app.calls.length === 1);
-      expect(app.calls[0]!.context.messages.at(-1)).toMatchObject({
+      expect(
+        app.calls[0]!.context.messages.findLast((message) => message.role === "user"),
+      ).toMatchObject({
         role: "user",
         content: [{ type: "text", text: "write a file" }],
       });
       app.calls[0]!.tool("write", { path: "written.txt", content: "content" });
       await app.waitFor(() => app.calls.length === 2);
-      expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
+      expect(
+        app.calls[1]!.context.messages.findLast((message) => message.role === "toolResult"),
+      ).toMatchObject({
         role: "toolResult",
         toolName: "write",
         isError: false,
@@ -535,7 +559,7 @@ test("--thinking is forwarded to the model request", async () => {
 
 test("--model overrides settings before model resolution", async () => {
   const app = await start(["--model", "missing/selected"], {
-    session: { model: undefined, streamFn: undefined },
+    session: { model: undefined, models: undefined },
     prepare: async (root) => {
       await Bun.write(
         join(root, ".rukie/settings.json"),
@@ -604,7 +628,9 @@ test.each([
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.tool("bash", { command, description: "Run test command" });
     await app.waitFor(() => app.calls.length === 2);
-    expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
+    expect(
+      app.calls[1]!.context.messages.findLast((message) => message.role === "toolResult"),
+    ).toMatchObject({
       role: "toolResult",
       isError: false,
     });

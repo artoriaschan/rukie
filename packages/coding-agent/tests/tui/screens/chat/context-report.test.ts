@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { expect, test } from "bun:test";
-import { createFauxCore } from "@earendil-works/pi-ai";
+import { fauxProvider } from "@earendil-works/pi-ai";
 import { start } from "../../helpers/app";
 const screen = (app: Awaited<ReturnType<typeof start>>) => app.screen().join("\n");
 
@@ -17,7 +17,7 @@ for (const [columns, window, gridColumns, gridRows] of [
       env: { LANG: "en_US.UTF-8" },
       session: {
         model: {
-          ...createFauxCore({ api: "faux", provider: "faux" }).getModel(),
+          ...fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 }).getModel(),
           contextWindow: window,
         },
       },
@@ -120,7 +120,7 @@ test("context visualization paints full, partial, free and reserved cells with t
     env: { LANG: "en_US.UTF-8" },
     session: {
       model: {
-        ...createFauxCore({ api: "faux", provider: "faux" }).getModel(),
+        ...fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 }).getModel(),
         // A non-round window keeps estimated schema usage between grid cells.
         contextWindow: 12100,
       },
@@ -217,7 +217,7 @@ test("context uses colored symbols, muted values and an italic legend after resi
     env: { LANG: "en_US.UTF-8" },
     session: {
       model: {
-        ...createFauxCore({ api: "faux", provider: "faux" }).getModel(),
+        ...fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 }).getModel(),
         contextWindow: 1000000,
       },
     },

@@ -1,5 +1,11 @@
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { watch } from "node:fs/promises";
+import {
+  BACKGROUND_CONTEXT,
+  withAbortSignal,
+  awaitWithContext,
+} from "@earendil-works/chord/context";
 import { join } from "node:path";
 import { createSession, type SessionEvent } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
@@ -79,7 +85,7 @@ exit ${exitCode}
       ]);
       expect(JSON.stringify(fake.contexts)).not.toContain("must not reach model");
     } finally {
-      await session.dispose();
+      await session.close();
     }
   },
 );
@@ -151,7 +157,7 @@ printf '%s' '{"systemMessage":"question notice"}'
       title: expect.any(String),
     });
   } finally {
-    await session.dispose();
+    await session.close();
   }
 });
 
@@ -204,7 +210,7 @@ test("plan review notifies with the submitted plan", async () => {
       message: "Implement the feature.",
     });
   } finally {
-    await session.dispose();
+    await session.close();
   }
 });
 
@@ -222,11 +228,30 @@ async function waitForNotification(notification: Promise<void>) {
   }
 }
 
-async function until(predicate: () => boolean | Promise<boolean>) {
-  const deadline = Date.now() + 2000;
-  while (!(await predicate())) {
-    if (Date.now() > deadline) throw new Error("Notification process did not reach expected state");
-    await Bun.sleep(5);
+async function untilFile(predicate: () => boolean | Promise<boolean>) {
+  const controller = new AbortController();
+  const changes = watch(dirs.cwd, {
+    signal: AbortSignal.any([controller.signal, AbortSignal.timeout(2000)]),
+  });
+  try {
+    if (await predicate()) return;
+    for await (const _change of changes) if (await predicate()) return;
+    throw new Error("Notification file did not reach expected state");
+  } finally {
+    controller.abort();
+  }
+}
+
+async function waitForExit(pid: number) {
+  // This observes a real OS process group; a test-process virtual clock cannot reap it.
+  const probe = Bun.spawn(["sh", "-c", `while kill -0 ${pid} 2>/dev/null; do sleep 0.01; done`]);
+  try {
+    await awaitWithContext(
+      probe.exited,
+      withAbortSignal(AbortSignal.timeout(2000), BACKGROUND_CONTEXT),
+    );
+  } finally {
+    probe.kill();
   }
 }
 
@@ -293,11 +318,11 @@ test("child permission notification includes child session identity", async () =
     expect(input.agent_type).toBe("general-purpose");
     expect(input.notification_type).toBe("permission_prompt");
   } finally {
-    await session.dispose();
+    await session.close();
   }
 });
 
-test.each(["cancel", "dispose"])(
+test.each(["cancel", "close"])(
   "%s kills notification process while frontend awaits a reply",
   async (action) => {
     dirs = await tempDirs();
@@ -334,24 +359,18 @@ test.each(["cancel", "dispose"])(
     let pid: number | undefined;
     try {
       await asked.promise;
-      await until(() => Bun.file(join(dirs.cwd, "pid")).exists());
+      await untilFile(() => Bun.file(join(dirs.cwd, "pid")).exists());
       pid = Number(await Bun.file(join(dirs.cwd, "pid")).text());
       expect(() => process.kill(pid!, 0)).not.toThrow();
       if (action === "cancel") controller.abort();
-      else await session.dispose();
+      else await session.close();
       expect(await run).toBeInstanceOf(Error);
-      await until(() => {
-        try {
-          process.kill(pid!, 0);
-          return false;
-        } catch {
-          return true;
-        }
-      });
+      if (pid === undefined) throw new Error("Missing notification process identity");
+      await waitForExit(pid);
       expect(await Bun.file(join(dirs.cwd, "forbidden")).exists()).toBe(false);
       expect(await Bun.file(join(dirs.cwd, "late")).exists()).toBe(false);
     } finally {
-      await session.dispose();
+      await session.close();
       if (pid) {
         try {
           process.kill(pid, "SIGKILL");
@@ -411,21 +430,16 @@ exit 2
       },
       onPermissionAsk: async () => "allow",
     });
+    const unsubscribe = session.subscribe((event) => {
+      if (event.type === "hook_warning" && event.error?.code === "hook-output-ignored")
+        ignoredFields.push(event.error.params.field);
+      if (event.type === "hook_message") {
+        notices++;
+        noticed.resolve();
+      }
+    });
     try {
-      expect(
-        (
-          await session.run("first", {
-            onEvent(event) {
-              if (event.type === "hook_warning" && event.error?.code === "hook-output-ignored")
-                ignoredFields.push(event.error.params.field);
-              if (event.type === "hook_message") {
-                notices++;
-                noticed.resolve();
-              }
-            },
-          })
-        ).text,
-      ).toBe("done");
+      expect((await session.run("first")).text).toBe("done");
       expect(notices).toBe(0);
       await Bun.write(join(dirs.cwd, "release-notice"), "release");
       await waitForNotification(noticed.promise);
@@ -444,12 +458,13 @@ exit 2
       expect(messages).not.toContain("notification cannot feed model");
       expect(messages).not.toContain("notification cannot rewake");
     } finally {
-      await session.dispose();
+      unsubscribe();
+      await session.close();
     }
   },
 );
 
-test("parent disposal kills completed child async notification processes", async () => {
+test("parent close kills completed child async notification processes", async () => {
   dirs = await tempDirs();
   const fake = fakeModel([
     fauxAssistantMessage(
@@ -498,7 +513,7 @@ test("parent disposal kills completed child async notification processes", async
     expect((await session.run("delegate")).text).toBe("parent done");
     // Shell redirection creates the file before echo writes it. Empty text parses
     // as PID 0, whose signal probe checks our process group instead of the hook.
-    await until(async () => {
+    await untilFile(async () => {
       const file = Bun.file(join(dirs.cwd, "child-pid"));
       if (!(await file.exists())) return false;
       const candidate = Number(await file.text());
@@ -507,18 +522,12 @@ test("parent disposal kills completed child async notification processes", async
       return true;
     });
     expect(() => process.kill(pid!, 0)).not.toThrow();
-    await session.dispose();
-    await until(() => {
-      try {
-        process.kill(pid!, 0);
-        return false;
-      } catch {
-        return true;
-      }
-    });
+    await session.close();
+    if (pid === undefined) throw new Error("Missing notification process identity");
+    await waitForExit(pid);
     expect(await Bun.file(join(dirs.cwd, "child-late")).exists()).toBe(false);
   } finally {
-    await session.dispose();
+    await session.close();
     if (pid) {
       try {
         process.kill(pid, "SIGKILL");
@@ -618,12 +627,15 @@ test("HTTP notification runs beside permission interaction and warns while disca
     ).toEqual(["continue", "decision", "hookSpecificOutput.additionalContext"]);
     expect(JSON.stringify(fake.contexts)).not.toContain("HTTP forbidden context");
     expect(
-      events.some(
-        (event) => event.type === "hook_warning" && event.error?.code === "hook-if-nontool",
+      session.messages.some(
+        (message) =>
+          message.role === "session-notice" &&
+          message.notice.kind === "hook_warning" &&
+          message.notice.error?.code === "hook-if-nontool",
       ),
     ).toBe(true);
   } finally {
-    await session.dispose();
+    await session.close();
     server.stop(true);
   }
 });
@@ -680,6 +692,6 @@ test("a notification event observer can cancel a pending session permission inte
     expect(notices).toBe(1);
     expect(await Bun.file(join(dirs.cwd, "forbidden")).exists()).toBe(false);
   } finally {
-    await session.dispose();
+    await session.close();
   }
 });

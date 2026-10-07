@@ -71,7 +71,9 @@ test("a burst reveals at 30fps and keeps chasing the saved reply after Run compl
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.delta("你好🐋" + "x".repeat(180) + " tail");
-    await app.flush();
+    // Native stream pulses commit asynchronously; observe admission before
+    // measuring renderer frame boundaries with the virtual clock.
+    await app.waitFor(() => app.screen().some((line) => line.includes("↓ 48")));
     // Commit the event projection before the first reveal frame.
     testClock.advanceTimersByTime(16);
     await app.flush();
@@ -126,27 +128,27 @@ test("assistant renders GFM tables and tasks, Unicode math, Mermaid and literal 
 
 test("a fresh one-shot response reveals while resumed assistant Markdown paints in full", async () => {
   const { createSession } = await import("@rukie/agent");
-  const { createFauxCore, fauxAssistantMessage } = await import("@earendil-works/pi-ai");
-  const { withAuxiliaryRequests } = await import("../helpers/auxiliary-model");
+  const { fauxProvider, fauxAssistantMessage } = await import("@earendil-works/pi-ai");
+  const { auxiliaryModels } = await import("../helpers/auxiliary-model");
   const body = "**history 中文🐋**\n\n" + "x".repeat(180) + " tail";
   const argv: string[] = [];
   const app = await startWithClock(argv, {
     columns: 80,
     rows: 40,
     prepare: async (root) => {
-      const model = createFauxCore({ api: "faux", provider: "faux" });
+      const model = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
       model.setResponses([fauxAssistantMessage(body)]);
       const session = await createSession({
         cwd: root,
         homeDir: root,
         model: model.getModel(),
-        streamFn: withAuxiliaryRequests((m, c, o) => model.streamSimple(m, c, o)),
+        models: auxiliaryModels((m, c, o) => model.provider.streamSimple(m, c, o)),
       });
       try {
         await session.run("saved prompt");
         argv.push("--resume", session.id);
       } finally {
-        await session.dispose();
+        await session.close();
       }
     },
   });
