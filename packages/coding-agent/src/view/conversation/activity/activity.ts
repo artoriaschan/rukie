@@ -15,6 +15,13 @@ import { detailFor, extractNarration, sanitizeFragment } from "./text";
 type Phase = "idle" | "waiting" | "thinking" | "tool" | "done";
 type ActivityEvent =
   | SessionEvent
+  | {
+      type: "tool_execution_start";
+      sessionId: string;
+      toolCallId: string;
+      toolName: string;
+      args: unknown;
+    }
   | { type: "submit" | "interrupt" | "approval-open" | "approval-close" }
   | { type: "git-branch"; branch: string };
 
