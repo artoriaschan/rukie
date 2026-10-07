@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: claimed
 
 # Spec: 渲染栈改用 dsh-TUI 的 ink
 
