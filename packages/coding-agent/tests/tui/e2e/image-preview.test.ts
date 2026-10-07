@@ -1,5 +1,8 @@
 import { expect, test } from "bun:test";
 import { start } from "../helpers/app";
+import { startWithClock } from "../helpers/clock-app";
+import { inflateSync } from "node:zlib";
+import sharp from "sharp";
 
 const png =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jV2UAAAAASUVORK5CYII=";
@@ -141,17 +144,109 @@ const placements = (output: string) =>
     ),
   );
 
+type KittyPacket = { fields: Record<string, string>; payload: string };
+type KittyUpload = {
+  width: number;
+  height: number;
+  pixels: Buffer;
+  chunks: number;
+  maxChunk: number;
+};
+
+/** Parse complete native APC packets and assemble one real zlib RGBA upload across its chunks. */
+function kittyReader(output: () => string) {
+  let offset = 0;
+  let pending: { fields: Record<string, string>; chunks: string[] } | undefined;
+  const packets: KittyPacket[] = [];
+  const images = new Map<string, KittyUpload>();
+  return () => {
+    const bytes = output();
+    // oxlint-disable-next-line no-control-regex -- Read the real terminal protocol boundary.
+    const pattern = /\x1b_G([^;]*);([^\x1b]*)\x1b\\/g;
+    pattern.lastIndex = offset;
+    for (let match = pattern.exec(bytes); match; match = pattern.exec(bytes)) {
+      offset = pattern.lastIndex;
+      const fields = Object.fromEntries(match[1]!.split(",").map((field) => field.split("=")));
+      const payload = match[2]!;
+      packets.push({ fields, payload });
+      if (fields.a === "t") pending = { fields, chunks: [] };
+      if (pending && fields.m !== undefined) {
+        pending.chunks.push(payload);
+        if (fields.m === "0") {
+          expect(pending.fields).toMatchObject({ f: "32", o: "z", t: "d" });
+          const width = Number(pending.fields.s);
+          const height = Number(pending.fields.v);
+          const pixels = inflateSync(Buffer.from(pending.chunks.join(""), "base64"));
+          const maxChunk = Math.max(...pending.chunks.map((chunk) => chunk.length));
+          expect(maxChunk).toBeLessThanOrEqual(4096);
+          expect(pixels.length).toBe(width * height * 4);
+          images.set(pending.fields.i!, {
+            width,
+            height,
+            pixels,
+            chunks: pending.chunks.length,
+            maxChunk,
+          });
+          pending = undefined;
+        }
+      }
+    }
+    return { packets, images };
+  };
+}
+
 test("PNG thumbnails yield graphics to source-pixel zoom, button/wheel/drag pan and Fit without moving the transcript", async () => {
-  const app = await start([], {
+  // Coordinates are encoded in opaque pixels so the real decoded crops prove pan direction.
+  const pixels = Buffer.alloc(1000 * 800 * 4);
+  for (let y = 0; y < 800; y++)
+    for (let x = 0; x < 1000; x++)
+      pixels.set(
+        [x % 251, y % 251, Math.floor(x / 251) + Math.floor(y / 251) * 4, 255],
+        (y * 1000 + x) * 4,
+      );
+  const pngBytes = await sharp(pixels, { raw: { width: 1000, height: 800, channels: 4 } })
+    .png()
+    .toBuffer();
+  const app = await startWithClock([], {
     rows: 40,
     env: { LANG: "en_US.UTF-8" },
     prepare: async (root) => {
-      await Bun.write(
-        `${root}/large.png`,
-        Bun.file(new URL("../fixtures/1000x800.png", import.meta.url)),
-      );
+      await Bun.write(`${root}/large.png`, pngBytes);
     },
   });
+  const read = kittyReader(app.output);
+  let answeredSentinels = 0;
+  const answerSentinels = () => {
+    // Each emitted DA1 query owns one reply, including concurrent startup batches.
+    // oxlint-disable-next-line no-control-regex -- Terminal query acknowledgement.
+    const sent = app.output().match(/\x1b\[c/g)?.length ?? 0;
+    app.stdin.write("\x1b[?1;2c".repeat(sent - answeredSentinels));
+    answeredSentinels = sent;
+  };
+  const latestPlacement = () =>
+    read()
+      .packets.filter((packet) => packet.fields.a === "p")
+      .at(-1)?.fields;
+  const placedImage = () => {
+    const placement = latestPlacement()!;
+    return { placement, image: read().images.get(placement.i!)! };
+  };
+  const crop = (image: KittyUpload) => {
+    const x = image.pixels[0]! + (image.pixels[2]! % 4) * 251;
+    const y = image.pixels[1]! + Math.floor(image.pixels[2]! / 4) * 251;
+    expect(x + image.width).toBeLessThanOrEqual(1000);
+    expect(y + image.height).toBeLessThanOrEqual(800);
+    const expected = Buffer.alloc(image.pixels.length);
+    for (let row = 0; row < image.height; row++)
+      pixels.copy(
+        expected,
+        row * image.width * 4,
+        ((y + row) * 1000 + x) * 4,
+        ((y + row) * 1000 + x + image.width) * 4,
+      );
+    expect(image.pixels.equals(expected)).toBe(true);
+    return { x, y };
+  };
   try {
     await app.waitFor(() => app.screen().includes("❯"));
     app.stdin.write(paste(`${app.root}/large.png`));
@@ -161,73 +256,136 @@ test("PNG thumbnails yield graphics to source-pixel zoom, button/wheel/drag pan 
       () =>
         app.calls.length === 1 && app.screen().some((line) => line.includes("[Image · large.png]")),
     );
-    app.calls[0]!.finish();
-    await app.waitFor(() => !app.isWorking());
-    app.stdin.write("\x1b_Gi=2147483647;OK\x1b\\");
+    app.stdin.write("keep draft");
+    await app.waitFor(() => app.screen().includes("❯ keep draft"));
+    await app.waitFor(() => read().packets.some((packet) => packet.fields.a === "q"));
+    expect(read().packets.find((packet) => packet.fields.a === "q")!.fields.i).toBe("31");
+    app.stdin.write("\x1b_Gi=31;OK\x1b\\");
+    answerSentinels();
     await app.waitFor(() =>
-      placements(app.output()).some((item) => item.w === item.h && item.w! >= 512),
+      read().packets.some(
+        (packet) => packet.fields.a === "p" && packet.fields.c === "24" && packet.fields.r === "10",
+      ),
     );
-    const portrait = placements(app.output()).find((item) => item.w === item.h && item.w! >= 512)!;
+    await app.waitFor(() => read().packets.filter((packet) => packet.fields.a === "p").length >= 2);
+    const visible = read()
+      .packets.filter((packet) => packet.fields.a === "p")
+      .map((packet) => packet.fields);
+    const thumb = visible.find((item) => item.c === "24" && item.r === "10")!;
+    const portrait = visible.find((item) => item.i !== thumb.i)!;
+    expect(portrait).toBeDefined();
+    expect(read().images.get(thumb.i!)!.pixels.length).toBeLessThanOrEqual(4 * 1024 * 1024);
     const before = app.screen().slice(0, 5);
-    const thumb = placements(app.output()).find((item) => item.w === 1000 && item.h === 800)!;
-    expect(thumb.c).toBe(24);
-    expect(thumb.r).toBe(9);
-    const openedAt = app.output().length;
+    const openedAt = read().packets.length;
     click(app, "large.png");
     await app.waitFor(() => app.screen().join("\n").includes("Open original"));
-    expect(app.output().slice(openedAt)).toContain(`a=d,d=I,i=${portrait.i}`);
-    const title = app.screen().find((line) => line.includes("Image #1"))!;
-    expect(title).toContain("PNG · 1000×800");
-    const disabledRow = app.screen().findIndex((line) => line.includes("100%"));
-    expect(
-      app.terminal.buffer.active
-        .getLine(disabledRow)!
-        .getCell(app.screen()[disabledRow]!.indexOf("100%"))!
-        .isDim(),
-    ).toBeTruthy();
-    app.stdin.write("\x1b[6;20;10t");
+    await app.waitFor(() =>
+      read()
+        .packets.slice(openedAt)
+        .some(
+          (packet) =>
+            packet.fields.a === "d" && packet.fields.d === "i" && packet.fields.i === portrait.i,
+        ),
+    );
+    expect(app.screen().find((line) => line.includes("Image #1"))).toContain("PNG · 1000×800");
+    const disabled = () => {
+      const row = app.screen().findIndex((line) => line.includes("100%"));
+      return app.terminal.buffer.active
+        .getLine(row)!
+        .getCell(app.screen()[row]!.indexOf("100%"))!
+        .isDim();
+    };
+    expect(disabled()).toBeTruthy();
+    // Protocol support can precede metrics; a public resize requests a fresh geometry batch.
+    const metricsAt = app.output().length;
+    app.resize(80, 41);
+    await app.waitFor(() => app.output().slice(metricsAt).includes("\x1b[16t"));
+    app.stdin.write("\x1b[6;20;10t\x1b[4;820;800t");
+    answerSentinels();
+    await app.waitFor(() => !disabled());
+    expect(app.screen().join("\n")).not.toContain("Image preview unavailable in this terminal");
+    await app.waitFor(() => {
+      const p = latestPlacement();
+      const image = p && read().images.get(p.i!);
+      return !!image && image.width === Number(p.c) * 10 && image.height === Number(p.r) * 20;
+    });
+    const fit = placedImage();
+    click(app, "100%");
     await app.waitFor(
       () =>
-        !app.terminal.buffer.active
-          .getLine(disabledRow)!
-          .getCell(app.screen()[disabledRow]!.indexOf("100%"))!
-          .isDim(),
+        app.screen().some((line) => line.includes("· 100%")) &&
+        latestPlacement()?.i !== fit.placement.i,
     );
-    expect(app.screen().join("\n")).not.toContain("Image preview unavailable in this terminal");
-    const uploads = app.output().match(/a=t,/g)!.length;
-    click(app, "100%");
-    await app.waitFor(() => app.screen().some((line) => line.includes("· 100%")));
-    const at100 = placements(app.output()).at(-1)!;
-    expect(at100.w).toBe(at100.c! * 10);
-    expect(at100.h).toBe(at100.r! * 20);
-    expect(at100.x).toBeGreaterThan(0);
+    const at100 = placedImage();
+    expect(at100.image.width).toBe(Number(at100.placement.c) * 10);
+    expect(at100.image.height).toBe(Number(at100.placement.r) * 20);
+    const first = crop(at100.image);
+    expect(first.x).toBeGreaterThan(0);
     click(app, "→");
-    await app.waitFor(() => placements(app.output()).at(-1)!.x! > at100.x!);
-    const afterButton = placements(app.output()).at(-1)!;
+    await app.waitFor(() => latestPlacement()?.i !== at100.placement.i);
+    const afterButton = placedImage();
+    const buttonCrop = crop(afterButton.image);
+    expect(buttonCrop.x).toBeGreaterThan(first.x);
+    expect(buttonCrop.y).toBe(first.y);
     const cardRow = app.screen().findIndex((line) => line.includes("Image #1"));
     const imageY = cardRow + 2;
     app.stdin.write(`\x1b[<65;40;${imageY}M`);
-    await app.waitFor(() => placements(app.output()).at(-1)!.y! > afterButton.y!);
-    const afterWheel = placements(app.output()).at(-1)!;
+    await app.waitFor(() => latestPlacement()?.i !== afterButton.placement.i);
+    const afterWheel = placedImage();
+    const wheelCrop = crop(afterWheel.image);
+    expect(wheelCrop.y).toBeGreaterThan(buttonCrop.y);
+    expect(wheelCrop.x).toBe(buttonCrop.x);
     app.stdin.write(`\x1b[<0;40;${imageY}M\x1b[<32;42;${imageY}M\x1b[<0;42;${imageY}m`);
-    await app.waitFor(() => placements(app.output()).at(-1)!.x! < afterWheel.x!);
+    await app.waitFor(() => latestPlacement()?.i !== afterWheel.placement.i);
+    const afterDrag = placedImage();
+    expect(crop(afterDrag.image).x).toBeLessThan(wheelCrop.x);
+    expect(app.screen().join("\n")).toContain("Open original");
     click(app, "+");
-    await app.waitFor(() => app.screen().some((line) => line.includes("· 200%")));
-    const at200 = placements(app.output()).at(-1)!;
-    expect(at200.w).toBe(at200.c! * 5);
+    await app.waitFor(
+      () =>
+        app.screen().some((line) => line.includes("· 200%")) &&
+        latestPlacement()?.i !== afterDrag.placement.i,
+    );
+    const at200 = placedImage();
+    expect(at200.image.width).toBe(Number(at200.placement.c) * 5);
+    expect(at200.image.height).toBe(Number(at200.placement.r) * 10);
+    crop(at200.image);
+    const uploads = read().images.size;
     click(app, "Fit");
-    await app.waitFor(() => !app.screen().some((line) => line.includes("· 200%")));
-    expect(placements(app.output()).at(-1)).toMatchObject({ x: 0, y: 0, w: 1000, h: 800 });
-    expect(app.output().match(/a=t,/g)!.length).toBe(uploads);
-    const closedAt = app.output().length;
+    await app.waitFor(
+      () =>
+        !app.screen().some((line) => line.includes("· 200%")) &&
+        latestPlacement()?.i === fit.placement.i,
+    );
+    expect(placedImage().image.pixels.equals(fit.image.pixels)).toBe(true);
+    expect(read().images.size).toBe(uploads);
+    const closedAt = read().packets.length;
     app.stdin.write("\r");
     await app.waitFor(() => !app.screen().join("\n").includes("Open original"));
     await app.waitFor(() =>
-      placements(app.output().slice(closedAt)).some(
-        (item) => item.w === portrait.w && item.h === portrait.h,
-      ),
+      read()
+        .packets.slice(closedAt)
+        .some(
+          (packet) =>
+            packet.fields.a === "p" &&
+            packet.fields.c === portrait.c &&
+            packet.fields.r === portrait.r,
+        ),
+    );
+    await app.waitFor(() =>
+      read()
+        .packets.slice(closedAt)
+        .some(
+          (packet) =>
+            packet.fields.a === "p" && packet.fields.c === thumb.c && packet.fields.r === thumb.r,
+        ),
     );
     expect(app.screen().slice(0, 5)).toEqual(before);
+    expect(app.screen()).toContain("❯ keep draft");
+    expect(app.calls).toHaveLength(1);
+    expect(app.calls[0]!.signal!.aborted).toBe(false);
+    app.calls[0]!.finish();
+    await app.waitFor(() => !app.isWorking());
   } finally {
     await app.cleanup();
   }
