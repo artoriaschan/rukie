@@ -108,7 +108,7 @@ export function SubagentMessage({
     <ThemedBox
       flexShrink={0}
       flexDirection="column"
-      width={columns}
+      width="100%"
       paddingLeft={2}
       onMouseEnter={onClick ? () => setHovered(true) : undefined}
       onMouseLeave={onClick ? () => setHovered(false) : undefined}

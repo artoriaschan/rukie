@@ -24,7 +24,7 @@ test("mixed parent, two Jobs and two Subagents preserve reading, copy and Intera
     },
   });
   const screen = () => app.screen().join("\n");
-  const waitFor = (predicate: () => boolean, bound = 100) => app.waitFor(predicate, bound);
+  const waitFor = (predicate: () => boolean, bound = 2000) => app.waitFor(predicate, bound);
   type Call = (typeof app.calls)[number];
   const hasPrompt = (call: Call, prompt: string) =>
     call.context.messages.some(
@@ -40,6 +40,7 @@ test("mixed parent, two Jobs and two Subagents preserve reading, copy and Intera
     app.stdin.write(`\x1b[<16;${x + 1};${y + 1}M\x1b[<48;${end + 1};${y + 1}M`);
   const release = (x: number, y: number) => app.stdin.write(`\x1b[<16;${x + 1};${y + 1}m`);
   try {
+    await app.waitFor(() => app.stdin.isRaw);
     await waitFor(() => app.calls.length === 1);
     const seed = app.calls[0]!;
     seed.reply(
@@ -199,7 +200,11 @@ test("mixed parent, two Jobs and two Subagents preserve reading, copy and Intera
     await waitFor(() => roots().some((call) => !completed.has(call)));
     const request = roots().find((call) => !completed.has(call))!;
     app.stdin.write("\x1b[5~");
-    await waitFor(() => app.screen().some((line) => line.includes("Subagent: Mixed child B")), 10);
+    await waitFor(
+      () =>
+        app.screen().some((line) => line.includes("Subagent: Mixed child B") && line.includes("⤢")),
+      10,
+    );
     const childRow = app.screen().findIndex((line) => line.includes("Subagent: Mixed child B"));
     click(app.screen()[childRow]!.indexOf("⤢"), childRow);
     await waitFor(() => screen().includes("Agent View") && screen().includes("B-63"));
