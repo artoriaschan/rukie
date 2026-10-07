@@ -1,7 +1,7 @@
 import { testClock } from "../../helpers/test-clock";
 import { startWithClock } from "../../helpers/clock-app";
 import { withAuxiliaryRequests } from "../../helpers/auxiliary-model.ts";
-import { expect, spyOn, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { createSession } from "@rukie/agent";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { join } from "node:path";
@@ -188,18 +188,22 @@ test("picker shows recent prompts first, cycles, confirms conversation and refil
 });
 
 test("expired Escape window restarts, content Escape clears and running Escape aborts", async () => {
-  const app = await ready();
-  const now = performance.now.bind(performance);
-  let advance = 0;
-  const clock = spyOn(performance, "now").mockImplementation(() => now() + advance);
+  const app = await ready({}, true);
   try {
     await prompt(app, "checkpoint");
-    app.stdin.write(esc);
+    // A complete Kitty Escape key avoids the separate lone-ESC parser deadline.
+    const armedAt = performance.now();
+    app.stdin.write("\x1b[27u");
     await app.waitFor(() => text(app).includes("Press Esc again to rewind"));
-    advance = 3100;
+    testClock.advanceTimersByTime(armedAt + 2999 - performance.now());
+    await app.flush();
+    expect(text(app)).toContain("Press Esc again to rewind");
+    testClock.advanceTimersByTime(1);
     const frame = app.output().length;
-    app.stdin.write(esc);
-    await app.waitFor(() => app.output().length > frame);
+    app.stdin.write("\x1b[27u");
+    await app.waitFor(
+      () => app.output().length > frame && text(app).includes("Press Esc again to rewind"),
+    );
     expect(app.screen().filter((line) => line.includes("Press Esc again to rewind"))).toHaveLength(
       1,
     );
@@ -218,7 +222,6 @@ test("expired Escape window restarts, content Escape clears and running Escape a
     await app.waitFor(() => app.calls[1]!.signal!.aborted);
     expect(text(app)).not.toContain("Pick a message to rewind to");
   } finally {
-    clock.mockRestore();
     await app.cleanup();
   }
 });

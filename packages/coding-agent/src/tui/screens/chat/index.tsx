@@ -1,6 +1,8 @@
 import { useHostSelection } from "../../hooks/host-selection";
 import {
   readPosition,
+  sourceTop,
+  sourceLeft,
   useSources,
   SourceContext,
   captureSourcePosition,
@@ -906,6 +908,13 @@ function Chat({
   expandedRef.current = expanded;
   const diffSearchLayout = useDiffLayout();
   const searchHighlight = useSearchHighlight();
+  const currentSearchPaint = useRef<
+    | {
+        anchorId: string;
+        position: ReturnType<typeof searchHighlight.scanElement>[number];
+      }
+    | undefined
+  >(undefined);
   const searchMatches = useMemo(
     () =>
       transcriptMatches(
@@ -931,13 +940,23 @@ function Chat({
   useLayoutEffect(() => {
     if (!expanded || !currentMatch || transcriptSearch.editing) return;
     searchHighlight.setQuery(transcriptSearch.query);
+    currentSearchPaint.current = undefined;
+    searchHighlight.setPositions(null);
     // Search paints the newly admitted product source before scanning its native subtree.
     pendingSearchSeek.current = () => {
       const element = sources.elements.get(currentMatch.anchorId);
       if (!element) return false;
       const position = searchHighlight.scanElement(element)[currentMatch.occurrence];
       if (!position) return false;
+      currentSearchPaint.current = { anchorId: currentMatch.anchorId, position };
       body.current?.scrollToElement(element, position.row);
+      if (body.current)
+        searchHighlight.setPositions({
+          positions: [{ ...position, col: position.col + sourceLeft(element) }],
+          rowOffset:
+            sourceTop(element) + body.current.getViewportTop() - body.current.getScrollTop(),
+          currentIdx: 0,
+        });
       return true;
     };
     body.current?.scrollBy(0);
@@ -946,9 +965,26 @@ function Chat({
     currentMatch?.anchorId,
     currentMatch?.occurrence,
     currentMatch?.line,
+    currentMatch?.offset,
+    columns,
     transcriptSearch.query,
     transcriptSearch.editing,
   ]);
+  useLayoutEffect(() => {
+    if (!expanded || transcriptSearch.editing || !currentMatch) {
+      currentSearchPaint.current = undefined;
+      searchHighlight.setPositions(null);
+      return;
+    }
+    const current = currentSearchPaint.current;
+    const element = current && sources.elements.get(current.anchorId);
+    if (!current || current.anchorId !== currentMatch.anchorId || !element || !bodyScroll) return;
+    searchHighlight.setPositions({
+      positions: [{ ...current.position, col: current.position.col + sourceLeft(element) }],
+      rowOffset: sourceTop(element) + bodyScroll.y - bodyScroll.top,
+      currentIdx: 0,
+    });
+  }, [expanded, transcriptSearch.editing, currentMatch, bodyScroll, searchHighlight, sources]);
   const [jobGroupFolds, setJobGroupFolds] = useState<ReadonlyMap<string, boolean>>(new Map());
   const [expandedRows, setExpandedRows] = useState<ReadonlySet<string>>(new Set());
   const [streamThinkingRows, setStreamThinkingRows] = useState<ReadonlySet<string>>(new Set());

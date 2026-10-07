@@ -169,13 +169,14 @@ test.each([
       app.stdin.write("\x1b[1;2A");
       await app.flush();
       const y = app.screen().findIndex((line) => line.includes("committed partial mixed body"));
-      app.stdin.write(`\x1b[<0;3;${y + 1}M\x1b[<32;15;${y + 1}M`);
-      await app.waitFor(() => !app.terminal.buffer.active.getLine(y)!.getCell(3)!.isBgDefault());
       const readY = app.screen().findIndex((line) => line.includes("mixed.txt"));
       app.stdin.write(`\x1b[<35;4;${readY + 1}M`);
       await app.waitFor(
         () => app.terminal.buffer.active.getLine(readY)!.getCell(99)!.getBgColor() === 0x2e3440,
       );
+      // Hover first: no-button motion during a native drag ends a lost release.
+      app.stdin.write(`\x1b[<0;3;${y + 1}M\x1b[<32;15;${y + 1}M`);
+      await app.waitFor(() => !app.terminal.buffer.active.getLine(y)!.getCell(3)!.isBgDefault());
       const replay = await start(argv, {
         rows: 60,
         columns: 100,

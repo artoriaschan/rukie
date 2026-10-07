@@ -33,7 +33,7 @@ export function SideQuestionPanel({
   return (
     <Box flexDirection="column" height={height} flexShrink={0}>
       <ThemedText color="permission" bold wrap="truncate">{`/btw ${question}`}</ThemedText>
-      <ScrollBox ref={scrollRef} height={Math.max(1, height - 2)}>
+      <ScrollBox ref={scrollRef} height={Math.max(1, height - 2)} stickyScroll>
         {error ? (
           <ThemedText color="error">{error}</ThemedText>
         ) : answer ? (

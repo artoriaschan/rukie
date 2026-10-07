@@ -91,7 +91,9 @@ test("/btw streams in a separate overlay during the main Run and Escape aborts o
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.delta("Main task continues.");
     app.stdin.write("/btw explain current work\r");
-    await app.waitFor(() => app.sideQuestions.length === 1);
+    await app.waitFor(
+      () => app.sideQuestions.length === 1 && screen(app).includes("explain current work"),
+    );
     const side = app.sideQuestions[0]!;
     expect(screen(app)).toContain("explain current work");
     side.thinking("PRIVATE_SIDE_REASONING");
