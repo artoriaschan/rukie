@@ -92,7 +92,15 @@ for (const [lang, exitCode] of [
       await app.waitFor(() => screen().includes(exitCode));
       expect(screen()).toContain(exitCode);
       app.calls[1]!.finish();
+      await app.waitFor(() => !app.isWorking());
+      expect(app.calls).toHaveLength(2);
+      app.stdin.write("\x1b");
+      await app.waitFor(() => !screen().includes("Output tail") && !screen().includes("输出尾部"));
+      app.stdin.write("verify settled result\r");
       await app.waitFor(() => app.calls.length === 3);
+      expect(JSON.stringify(app.calls[2]!.context.messages)).toContain(
+        "status: failed, exit code: 7",
+      );
       app.calls[2]!.finish();
       await app.waitFor(() => !app.isWorking());
       expect(app.stderr()).toBe("");
@@ -302,19 +310,21 @@ test("reading position and follow state survive settlement and group folding abo
     );
     app.calls[1]!.delta("\ncontinued-stream");
     app.calls[1]!.finish();
-    await app.waitFor(() => app.calls.length === 3);
+    await app.waitFor(() => !app.isWorking());
+    expect(app.calls).toHaveLength(2);
     app.stdin.write("\x1b");
-    await app.waitFor(
-      () =>
-        screen().includes("Back to bottom") &&
-        JSON.stringify(app.screen().slice(0, 5)) === JSON.stringify(before),
-    );
+    await app.waitFor(() => screen().includes("Back to bottom"));
+    expect(app.screen().slice(0, 5)).toEqual(before);
     const restored = app.screen().slice(0, 5);
     expect(screen()).toContain("New output");
     app.stdin.write("\x1b[1;5F");
     await app.waitFor(
       () => screen().includes("continued-stream") && !screen().includes("Back to bottom"),
     );
+    app.stdin.write("continue follow\r");
+    await app.waitFor(() => app.calls.length === 3);
+    expect(JSON.stringify(app.calls[2]!.context.messages)).toContain("background job bash-1");
+    expect(JSON.stringify(app.calls[2]!.context.messages)).toContain("background job bash-2");
     app.stdin.write("/jobs\r");
     await app.waitFor(() => screen().includes("❯ bash-1"));
     app.calls[2]!.delta("\nfollowed-stream");
