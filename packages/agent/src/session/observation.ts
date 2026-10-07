@@ -534,9 +534,19 @@ export async function createConversationObservation(options: ConversationObserva
         change.value.conversationId === conversation.id &&
         change.value.kind === "rukie.message-facts",
     );
+    // A replacement snapshot supersedes message deltas, while native lifecycle
+    // receipts from that same commit still belong to this captured frame.
     enqueue(
       replaced || metadataChanged || !isDeepStrictEqual(previousFacts.background, facts.background)
-        ? [snapshot]
+        ? [
+            snapshot,
+            ...events.filter(
+              (event) =>
+                !["message_start", "message_update", "message_end", "entry_appended"].includes(
+                  event.type,
+                ),
+            ),
+          ]
         : events,
     );
   });

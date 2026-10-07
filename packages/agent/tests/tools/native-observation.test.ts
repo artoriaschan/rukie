@@ -2,12 +2,20 @@ import { createJsonlStore } from "../../src/store/index.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 import { expect, test } from "bun:test";
 import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
-import { Harness, MemoryStorage, createRegistry, defineDoc } from "@earendil-works/pi-durable";
+import {
+  Harness,
+  MemoryStorage,
+  createRegistry,
+  defineDoc,
+  hook,
+  CompactionTask,
+} from "@earendil-works/pi-durable";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
 import { Type } from "typebox";
 import { createConversationObservation } from "../../src/session/observation.ts";
 import type { SessionEvent } from "../../src/session/events.ts";
 import type { PresentedTool } from "../../src/tools/presentation.ts";
+import { withModelAlias } from "../helpers/auxiliary-model.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 
 test("native observation joins committed transcript and capability facts with stable entry IDs", async () => {
@@ -439,6 +447,84 @@ test("committed application notices publish their projected message with the nat
     expect(events.filter((event) => event.type === "message_end")).toHaveLength(1);
   } finally {
     await observation.close();
+    await harness.close(context);
+  }
+});
+
+test("blocking native compaction publishes its committed summary and one terminal frame", async () => {
+  const context = withAbortSignal(AbortSignal.timeout(3000), BACKGROUND_CONTEXT);
+  const first = fauxAssistantMessage("old history ".repeat(1800));
+  first.usage = { ...first.usage, input: 4000, output: 6000, totalTokens: 10000 };
+  const fake = fakeModel([first, fauxAssistantMessage("continued")]);
+  fake.models = withModelAlias(fake.models, fake.model.provider, [fake.model.id], {
+    contextWindow: 4000,
+  });
+  const registry = createRegistry();
+  registry.install({
+    name: "summary",
+    hooks: [
+      hook(CompactionTask, {
+        beforeCompact: async () => ({ summary: "committed native summary" }),
+      }),
+    ],
+  });
+  const harness = await Harness.open(
+    new MemoryStorage(),
+    {
+      models: fake.models,
+      registry,
+      settings: {
+        compaction: {
+          enabled: true,
+          reserveTokens: 1000,
+          keepRecentTokens: 100,
+          backgroundTokens: 0,
+        },
+      },
+    },
+    context,
+  );
+  try {
+    const conversation = await harness.root(context, {
+      agent: { model: { provider: fake.model.provider, modelId: fake.model.id } },
+    });
+    const delivered: SessionEvent[] = [];
+    const observation = await createConversationObservation({
+      harness,
+      conversation,
+      sessionId: "product",
+      tools: () => [],
+      adopt: () => {},
+      facts: () => ({
+        toolStates: {},
+        runSummaries: [],
+        model: "faux",
+        planMode: false,
+        background: [],
+      }),
+      publish: (events) => delivered.push(...events),
+    });
+    expect(
+      await (await conversation.submit({ type: "input", content: "first" }, context)).wait(context),
+    ).toMatchObject({ status: "done" });
+    expect(
+      await (
+        await conversation.submit({ type: "input", content: "second" }, context)
+      ).wait(context),
+    ).toMatchObject({ status: "done" });
+    await conversation.waitForIdle(context);
+    await observation.flush();
+    expect(observation.view().entries.map((entry) => entry.kind)).toContain("pi.compaction");
+    expect(
+      JSON.stringify(
+        observation.view().entries.find((entry) => entry.kind === "pi.compaction")?.model,
+      ),
+    ).toContain("committed native summary");
+    expect(delivered.filter((event) => event.type === "compaction_start")).toHaveLength(1);
+    expect(delivered.filter((event) => event.type === "compaction_end")).toHaveLength(1);
+    expect(observation.snapshot().compactions).toEqual([]);
+    await observation.close();
+  } finally {
     await harness.close(context);
   }
 });
