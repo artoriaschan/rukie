@@ -24,3 +24,4 @@ export type { PointerEvent } from "./events/pointer-event.js";
 export * from "./design-system/index";
 
 export type { TerminalImageSource } from "./terminal-image.js";
+export { usePaintedViewport } from "./hooks/use-painted-viewport.js";

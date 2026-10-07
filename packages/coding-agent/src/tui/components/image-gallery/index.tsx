@@ -1,7 +1,14 @@
 import type { PromptImage } from "@rukie/agent";
 import type { PresentedImage } from "../../../view/transcript/images";
 import type { Locale } from "@rukie/i18n";
-import { Box, Image, ThemedText, useTerminalImages, useTerminalSize } from "../../../ink/index.ts";
+import {
+  Box,
+  Image,
+  ThemedText,
+  useTerminalImages,
+  usePaintedViewport,
+  useTerminalSize,
+} from "../../../ink/index.ts";
 import { useImageSource } from "../image-source";
 import { createTuiI18n } from "../../../view/i18n";
 
@@ -80,7 +87,8 @@ function Thumbnail({
   fallback: string;
 }) {
   const metadata = image.metadata;
-  const source = useImageSource(image.data, graphics, "transcript");
+  const [viewportRef, visible] = usePaintedViewport();
+  const source = useImageSource(image.data, graphics && visible, "transcript");
   const ratio = Math.max(0.25, Math.min(4, (metadata.width ?? 1) / (metadata.height ?? 1)));
   const width = Math.min(multiple ? 10 : 24, available);
   const height = multiple
@@ -91,7 +99,13 @@ function Thumbnail({
   const drawHeight = Math.min(height, Math.max(1, Math.round(fitWidth / actualRatio)));
   const drawWidth = Math.min(fitWidth, Math.max(1, Math.round(drawHeight * actualRatio)));
   return (
-    <Box flexDirection="column" width={fitWidth} height={height + 1} onClick={onOpen}>
+    <Box
+      ref={viewportRef}
+      flexDirection="column"
+      width={fitWidth}
+      height={height + 1}
+      onClick={onOpen}
+    >
       <Box width={fitWidth} height={height}>
         <ThemedText dim wrap="truncate">{`[Image · ${imageName(image, fallback)}]`}</ThemedText>
         <Box
