@@ -6,10 +6,10 @@ import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
-const originalKey = process.env.NEANT_SWITCH_TEST_KEY;
+const originalKey = process.env.RUKIE_SWITCH_TEST_KEY;
 afterEach(async () => {
-  if (originalKey === undefined) delete process.env.NEANT_SWITCH_TEST_KEY;
-  else process.env.NEANT_SWITCH_TEST_KEY = originalKey;
+  if (originalKey === undefined) delete process.env.RUKIE_SWITCH_TEST_KEY;
+  else process.env.RUKIE_SWITCH_TEST_KEY = originalKey;
   await dirs?.cleanup();
 });
 const settings = {
@@ -19,7 +19,7 @@ const settings = {
       id: "switch",
       api: "openai-completions" as const,
       baseUrl: "http://localhost:1/v1",
-      apiKeyEnv: "NEANT_SWITCH_TEST_KEY",
+      apiKeyEnv: "RUKIE_SWITCH_TEST_KEY",
       models: [{ id: "first" }, { id: "second", contextWindow: 32000 }],
     },
   ],
@@ -27,7 +27,7 @@ const settings = {
 
 test("changing a Session model affects the next request and survives resume without valid settings.model", async () => {
   dirs = await tempDirs();
-  process.env.NEANT_SWITCH_TEST_KEY = "test-key";
+  process.env.RUKIE_SWITCH_TEST_KEY = "test-key";
   const fake = fakeModel([
     fauxAssistantMessage("first reply"),
     fauxAssistantMessage("second reply"),
@@ -59,7 +59,7 @@ test("changing a Session model affects the next request and survives resume with
 });
 
 test("available models include custom and built-in provider entries without requiring credentials", () => {
-  delete process.env.NEANT_SWITCH_TEST_KEY;
+  delete process.env.RUKIE_SWITCH_TEST_KEY;
   const choices = listModels(settings);
   expect(choices).toContainEqual({ spec: "switch/first", name: "first", input: ["text"] });
   expect(choices).toContainEqual({ spec: "switch/second", name: "second", input: ["text"] });
@@ -68,8 +68,8 @@ test("available models include custom and built-in provider entries without requ
 
 test("invalid and busy model changes preserve the current model and settings files", async () => {
   dirs = await tempDirs();
-  process.env.NEANT_SWITCH_TEST_KEY = "test-key";
-  const settingsPath = `${dirs.homeDir}/.neant/settings.json`;
+  process.env.RUKIE_SWITCH_TEST_KEY = "test-key";
+  const settingsPath = `${dirs.homeDir}/.rukie/settings.json`;
   const original = JSON.stringify(settings);
   await Bun.write(settingsPath, original);
   const fake = fakeModel([fauxAssistantMessage("answer")]);
@@ -77,9 +77,9 @@ test("invalid and busy model changes preserve the current model and settings fil
   await expect(session.setModel("switch/no-such-model")).rejects.toThrow("Unknown model");
   expect(session.model).toBe("switch/first");
   expect(session.toolState("model")).toBeUndefined();
-  delete process.env.NEANT_SWITCH_TEST_KEY;
+  delete process.env.RUKIE_SWITCH_TEST_KEY;
   await expect(session.setModel("switch/second")).rejects.toThrow("No API key");
-  process.env.NEANT_SWITCH_TEST_KEY = "test-key";
+  process.env.RUKIE_SWITCH_TEST_KEY = "test-key";
   const run = session.run("question");
   await expect(session.setModel("switch/second")).rejects.toThrow("idle");
   await run;
@@ -91,7 +91,7 @@ test("invalid and busy model changes preserve the current model and settings fil
 
 test("new inherited children use the switched model while retained children keep their original model", async () => {
   dirs = await tempDirs();
-  process.env.NEANT_SWITCH_TEST_KEY = "test-key";
+  process.env.RUKIE_SWITCH_TEST_KEY = "test-key";
   const childModels: string[] = [];
   let childId = "";
   const fake = fakeModel([
@@ -138,7 +138,7 @@ test("new inherited children use the switched model while retained children keep
 
 test("manual compaction waits for model selection and summarizes through the selected model", async () => {
   dirs = await tempDirs();
-  process.env.NEANT_SWITCH_TEST_KEY = "test-key";
+  process.env.RUKIE_SWITCH_TEST_KEY = "test-key";
   const fake = fakeModel([
     fauxAssistantMessage("first reply"),
     fauxAssistantMessage("Selected model summary."),

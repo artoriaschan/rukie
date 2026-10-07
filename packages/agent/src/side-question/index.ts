@@ -7,7 +7,7 @@ import {
   type AssistantMessage,
 } from "@earendil-works/pi-ai";
 import { convertToLlm } from "../reminders/index.ts";
-import { createUserVisibleError, isUnknownToolOutcome } from "@neant/shared";
+import { createUserVisibleError, isUnknownToolOutcome } from "@rukie/shared";
 
 function failed(cause?: string) {
   return cause

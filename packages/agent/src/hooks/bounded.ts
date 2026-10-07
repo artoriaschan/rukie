@@ -1,4 +1,4 @@
-import { createUserVisibleError } from "@neant/shared";
+import { createUserVisibleError } from "@rukie/shared";
 
 /** Race cancellation even when a connected MCP transport cannot abort its request. */
 export async function executeBounded<T>(

@@ -76,7 +76,7 @@ export function credentialStore(options: {
   warning: () => void;
   signal?: AbortSignal;
 }): McpOAuthStateStore & { clear(): Promise<void> } {
-  const directory = join(options.homeDir, ".neant");
+  const directory = join(options.homeDir, ".rukie");
   const path = join(directory, "credentials.json");
   const read = async () => {
     try {

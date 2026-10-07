@@ -8,7 +8,7 @@ import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
 import { createTwoFilesPatch } from "diff";
 import { adaptTool } from "./runtime.ts";
 import type { PresentedTool } from "./presentation.ts";
-import type { ToolResultView } from "@neant/shared";
+import type { ToolResultView } from "@rukie/shared";
 
 /** Store full before/after text only below the harness's 50 KiB output budget. */
 const DIFF_TEXT_LIMIT = 50 * 1024;

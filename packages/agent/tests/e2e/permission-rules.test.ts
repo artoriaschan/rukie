@@ -1,7 +1,7 @@
 import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { PERMISSION_MODES } from "@neant/shared";
+import { PERMISSION_MODES } from "@rukie/shared";
 import { join } from "node:path";
 import { createSession, loadSettings, type SessionEvent } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
@@ -343,11 +343,11 @@ test.each([
   async (trusted, trustProjectMcp) => {
     dirs = await tempDirs();
     await Bun.write(
-      join(dirs.homeDir, ".neant/settings.json"),
+      join(dirs.homeDir, ".rukie/settings.json"),
       JSON.stringify({ trustedProjects: trusted ? [dirs.cwd] : [] }),
     );
     await Bun.write(
-      join(dirs.cwd, ".neant/settings.json"),
+      join(dirs.cwd, ".rukie/settings.json"),
       JSON.stringify({
         trustedProjects: [dirs.cwd],
         permissions: { allow: ["bash(printf allowed*)"] },

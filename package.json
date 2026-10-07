@@ -1,23 +1,22 @@
 {
-  "name": "neant",
+  "name": "rukie",
   "private": true,
   "workspaces": [
-    "apps/*",
     "packages/*"
   ],
   "type": "module",
   "scripts": {
-    "dev": "bun run dev:tui",
-    "dev:tui": "bun apps/neant-tui/src/main.tsx",
-    "dev:cli": "bun apps/neant-cli/src/main.ts",
-    "check:dev": "oxfmt --check && oxlint && tsc -b && knip && bun run check:scratch",
+    "dev": "bun packages/coding-agent/src/main.ts",
+    "check:dev": "bun run docs:update && oxfmt --check && oxlint && tsc -b && knip && bun run check:scratch && bun run check:docs",
     "check:scratch": "bun scripts/check-scratch.ts",
     "check": "bun run check:dev && bun run test",
     "test": "bun test --parallel=4",
     "test:agent": "env -u NO_COLOR bun test --parallel=4 packages/agent/tests",
-    "test:tui": "env -u NO_COLOR bun test --parallel=4 apps/neant-tui/tests packages/tui/tests",
-    "test:cli": "env -u NO_COLOR bun test --parallel=4 apps/neant-cli/tests",
-    "prepare": "husky"
+    "prepare": "husky",
+    "test:coding-agent": "env -u NO_COLOR bun test --parallel=4 packages/coding-agent/tests",
+    "check:docs": "bun scripts/check-docs.ts",
+    "docs:update": "bun scripts/check-docs.ts --write",
+    "test:docs": "bun test scripts/tests/check-docs.test.ts"
   },
   "devDependencies": {
     "@commitlint/cli": "21.2.3",
@@ -26,6 +25,7 @@
     "husky": "9.1.7",
     "knip": "6.37.0",
     "lint-staged": "17.5.1",
+    "mdast-util-from-markdown": "2.1.0",
     "oxfmt": "0.71.0",
     "oxlint": "1.86.0",
     "typescript": "6.0.3"

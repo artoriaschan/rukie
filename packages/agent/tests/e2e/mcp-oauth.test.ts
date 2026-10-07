@@ -31,7 +31,7 @@ async function paste({ authorizationUrl }: McpAuthRequest): Promise<McpAuthReply
 }
 
 async function configure(dirs: Awaited<ReturnType<typeof tempDirs>>, servers: object) {
-  await Bun.write(join(dirs.homeDir, ".neant/mcp.json"), JSON.stringify({ mcpServers: servers }));
+  await Bun.write(join(dirs.homeDir, ".rukie/mcp.json"), JSON.stringify({ mcpServers: servers }));
 }
 
 test.each(["paste", "wrong-state", "cancel", "oauth-error"])(
@@ -77,6 +77,34 @@ test.each(["paste", "wrong-state", "cancel", "oauth-error"])(
                 ? "state does not match"
                 : "access_denied",
         );
+        if (path === "paste") {
+          const registrations = server.requests.filter((request) => request.path === "/register");
+          expect(registrations.length).toBeGreaterThan(0);
+          for (const request of registrations)
+            expect(request.body).toMatchObject({ client_name: "Rukie" });
+          const initialize = server.requests.filter(
+            (request) =>
+              request.path === "/mcp" &&
+              Value.Check(Type.Object({ method: Type.Literal("initialize") }), request.body),
+          );
+          expect(initialize.length).toBeGreaterThan(0);
+          for (const request of initialize)
+            expect(request.body).toMatchObject({ params: { clientInfo: { name: "rukie" } } });
+          await session.clearMcpAuth("srv");
+          const registeredBeforeReconnect = server.requests.filter(
+            (request) => request.path === "/register",
+          ).length;
+          await session.reconnectMcp("srv");
+          const reconnectRegistrations = server.requests
+            .filter((request) => request.path === "/register")
+            .slice(registeredBeforeReconnect);
+          expect(reconnectRegistrations.length).toBeGreaterThan(0);
+          for (const request of reconnectRegistrations)
+            expect(request.body).toMatchObject({ client_name: "Rukie" });
+          expect(
+            (await session.mcpServers()).servers.find((view) => view.name === "srv")?.status,
+          ).toBe("needs-auth");
+        }
         if (!error)
           expect(result?.details).toEqual({
             type: path === "paste" ? "authenticated" : "cancelled",
@@ -106,6 +134,8 @@ test("a new Session reuses the credential without requesting authentication", as
       onMcpAuth: paste,
     });
     await first.run("login");
+    expect((await stat(join(dirs.homeDir, ".rukie/credentials.json"))).isFile()).toBe(true);
+    await expect(stat(join(dirs.homeDir, ".neant/credentials.json"))).rejects.toThrow();
     await first.dispose();
     const fake = fakeModel([
       fauxAssistantMessage(fauxToolCall("mcp__srv__echo", { text: "reused" }), {
@@ -208,7 +238,7 @@ test("Run abort closes the pending frontend and callback and records a non-error
         details: { type: "cancelled", server: "srv" },
       });
       await expect(fetch(callback)).rejects.toThrow();
-      expect(await Bun.file(join(dirs.homeDir, ".neant/credentials.json")).text()).not.toContain(
+      expect(await Bun.file(join(dirs.homeDir, ".rukie/credentials.json")).text()).not.toContain(
         "access_token",
       );
     } finally {
@@ -252,7 +282,7 @@ test("abort during code exchange prevents token persistence and late tool promot
         isError: false,
         details: { type: "cancelled", server: "srv" },
       });
-      expect(await Bun.file(join(dirs.homeDir, ".neant/credentials.json")).text()).not.toContain(
+      expect(await Bun.file(join(dirs.homeDir, ".rukie/credentials.json")).text()).not.toContain(
         "access_token",
       );
       expect(JSON.stringify(session.messages)).not.toContain('"name":"mcp__srv__echo"');
@@ -285,7 +315,7 @@ test("concurrent servers preserve both credentials in the shared atomic file", a
     const session = await createSession({ ...dirs, ...fake, onMcpAuth: paste });
     try {
       await session.run("login both");
-      const data: unknown = await Bun.file(join(dirs.homeDir, ".neant/credentials.json")).json();
+      const data: unknown = await Bun.file(join(dirs.homeDir, ".rukie/credentials.json")).json();
       const schema = Type.Object({
         mcp: Type.Record(
           Type.String(),
@@ -340,7 +370,7 @@ test.each(["bad-json", "bad-state"])(
                 },
               },
             });
-      const path = join(dirs.homeDir, ".neant/credentials.json");
+      const path = join(dirs.homeDir, ".rukie/credentials.json");
       await Bun.write(path, raw);
       const warnings: string[] = [];
       const session = await createSession({
@@ -420,7 +450,7 @@ test("model authorization replaces authentication with executable tools in the n
   let callbackClosed = false;
   try {
     await Bun.write(
-      join(dirs.homeDir, ".neant/mcp.json"),
+      join(dirs.homeDir, ".rukie/mcp.json"),
       JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
     );
     const fake = fakeModel([
@@ -462,7 +492,7 @@ test("model authorization replaces authentication with executable tools in the n
       ).toMatchObject({ isError: false, content: [{ type: "text", text: "OAuth MCP: called" }] });
       expect(interactions).toBe(1);
       expect(callbackClosed).toBe(true);
-      const credentialPath = join(dirs.homeDir, ".neant/credentials.json");
+      const credentialPath = join(dirs.homeDir, ".rukie/credentials.json");
       const credential: unknown = await Bun.file(credentialPath).json();
       expect(JSON.stringify(credential)).toContain('"access_token":"access-');
       expect(credential).toMatchObject({ version: 1, mcp: expect.any(Object) });
@@ -502,7 +532,7 @@ test("OAuth servers require authentication without opening an interaction and ar
   const server = mcpOAuthServer();
   try {
     await Bun.write(
-      join(dirs.homeDir, ".neant/mcp.json"),
+      join(dirs.homeDir, ".rukie/mcp.json"),
       JSON.stringify({ mcpServers: { srv: { type: "http", url: server.url } } }),
     );
     const fake = fakeModel([fauxAssistantMessage("first"), fauxAssistantMessage("second")]);
@@ -551,7 +581,7 @@ test("authentication is allowed without an approval and still passes through hoo
   const server = mcpOAuthServer();
   try {
     await Bun.write(
-      join(dirs.homeDir, ".neant/mcp.json"),
+      join(dirs.homeDir, ".rukie/mcp.json"),
       JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
     );
     const fake = fakeModel([
@@ -601,7 +631,7 @@ test.each(["rule", "hook"])("authentication tools preserve explicit %s denials",
   const server = mcpOAuthServer();
   try {
     await Bun.write(
-      join(dirs.homeDir, ".neant/mcp.json"),
+      join(dirs.homeDir, ".rukie/mcp.json"),
       JSON.stringify({ mcpServers: { srv: { url: server.url } } }),
     );
     const fake = fakeModel([
@@ -661,7 +691,7 @@ test("needs-auth memory belongs to the exact server endpoint and follows project
     );
     const config = (url: string) =>
       Bun.write(
-        join(dirs.homeDir, ".neant/mcp.json"),
+        join(dirs.homeDir, ".rukie/mcp.json"),
         JSON.stringify({ mcpServers: { srv: { url } } }),
       );
     await config(original.url);

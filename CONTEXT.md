@@ -1,6 +1,6 @@
-# Neant
+# Rukie
 
-Neant 是 coding agent。Agent Core 负责 agent loop、工具、MCP、skills 和上下文注入；Headless CLI、TUI 和以后的桌面端都是驱动它的 frontend。
+Rukie 是 coding agent。Agent Core 负责 agent loop、工具、MCP、skills 和上下文注入；Headless CLI、TUI 和以后的桌面端都是驱动它的 frontend。
 
 ## Language
 
@@ -15,11 +15,11 @@ _Avoid_: engine, backend
 _Avoid_: client, UI
 
 **Headless CLI**:
-`neant -p` 或 `neant --goal` 启动的非交互 frontend：读入一条 prompt 执行一个 run，或设定 Goal 并等待自动续跑结束，输出文本或 stream-json 后退出。不提供任何 Interaction 回调：依赖交互的工具不暴露给模型，Agent Core 自身发起的交互取各自的安全默认值。
+`rukie -p` 或 `rukie --goal` 启动的非交互 frontend：读入一条 prompt 执行一个 run，或设定 Goal 并等待自动续跑结束，输出文本或 stream-json 后退出。不提供任何 Interaction 回调：依赖交互的工具不暴露给模型，Agent Core 自身发起的交互取各自的安全默认值。
 _Avoid_: CLI（会和 TUI 混淆）
 
 **TUI**:
-不带 `-p` 或 `--goal` 启动 `neant` 时运行在终端里的交互式 frontend，在同一个 session 里连续接收 prompt；命令行位置参数作为首条 prompt。
+不带 `-p` 或 `--goal` 启动 `rukie` 时运行在终端里的交互式 frontend，在同一个 session 里连续接收 prompt；命令行位置参数作为首条 prompt。
 _Avoid_: CLI, REPL
 
 **Session**:
@@ -75,7 +75,7 @@ _Avoid_: tool card, tool presentation
 _Avoid_: task list, plan
 
 **Checkpoint**:
-某条真实 user prompt 之前、文件工具 `write` / `edit` 首次写入每个文件前的原样内容。每条真实 user prompt 一个；内部续跑与通知不另建。以 prompt 的 transcript entry id 为锚点，文件路径经权限相同的 realpath 规范化，引用作为 Tool State `checkpoint` 持久化。备份存放在 Session 的 homeDir 下 `~/.neant/file-history/<sessionId>/`；bash 与 MCP 工具造成的改动不在其中。子代理与父 session 共用记录器，写入归父 session 当前 Checkpoint 和父 transcript；子 session 不建自己的 Checkpoint。
+某条真实 user prompt 之前、文件工具 `write` / `edit` 首次写入每个文件前的原样内容。每条真实 user prompt 一个；内部续跑与通知不另建。以 prompt 的 transcript entry id 为锚点，文件路径经权限相同的 realpath 规范化，引用作为 Tool State `checkpoint` 持久化。备份存放在 Session 的 homeDir 下 `~/.rukie/file-history/<sessionId>/`；bash 与 MCP 工具造成的改动不在其中。子代理与父 session 共用记录器，写入归父 session 当前 Checkpoint 和父 transcript；子 session 不建自己的 Checkpoint。
 _Avoid_: snapshot, backup, undo point
 
 **Rewind**:

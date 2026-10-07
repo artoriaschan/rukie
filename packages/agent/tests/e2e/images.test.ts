@@ -178,7 +178,7 @@ test("Session Resume restores inline images and names and the next request still
 test("steering validates before queueing and sends ordered images with a Skill Invocation", async () => {
   const dirs = await tempDirs();
   await Bun.write(
-    `${dirs.cwd}/.neant/skills/check/SKILL.md`,
+    `${dirs.cwd}/.rukie/skills/check/SKILL.md`,
     "---\nname: check\ndescription: Check images.\n---\nInspect the screenshots carefully.",
   );
   const started = Promise.withResolvers<void>();

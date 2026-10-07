@@ -1,7 +1,7 @@
 import { sessionNoticeFromHook, type SessionNotice } from "./session-notice.ts";
 import { createThinkingTiming } from "./thinking.ts";
 import { presentCall, presentResult } from "../tools/presentation.ts";
-import type { ToolCallView, ToolResultView } from "@neant/shared";
+import type { ToolCallView, ToolResultView } from "@rukie/shared";
 import { createJobs, jobStatus } from "../tools/jobs/index.ts";
 import {
   Agent,
@@ -24,7 +24,7 @@ import {
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { createUserVisibleError } from "@neant/shared";
+import { createUserVisibleError } from "@rukie/shared";
 import type {
   CustomSessionEvent,
   PermissionMode,
@@ -37,7 +37,7 @@ import type {
   McpSnapshot,
   JobView,
   JobOutput,
-} from "@neant/shared";
+} from "@rukie/shared";
 import {
   createSubagentController,
   SUBAGENT_PROMPT,
@@ -128,7 +128,7 @@ export interface SessionOptions {
   webFetch?: WebFetchOptions;
   /** Project directory the session works in. */
   cwd: string;
-  /** User home; `~/.neant` lives under it. Injectable for tests. */
+  /** User home; `~/.rukie` lives under it. Injectable for tests. */
   homeDir: string;
   /** Merged settings, see `loadSettings`. */
   settings?: Settings;

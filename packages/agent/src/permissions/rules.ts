@@ -1,5 +1,5 @@
 import { sep } from "node:path";
-import { createUserVisibleError } from "@neant/shared";
+import { createUserVisibleError } from "@rukie/shared";
 import { analyzeBashCommand, matchesBashPattern } from "./bash.ts";
 import { parsePermissionDomain, permissionUrlDomain } from "./domain.ts";
 import { matchesPermissionPath, resolvePermissionPath } from "./path.ts";

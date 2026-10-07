@@ -419,7 +419,7 @@ test("denied file tools and bash writes do not leave file records", async () => 
   expect(await Bun.file(join(dirs.cwd, "denied.txt")).exists()).toBe(false);
   expect(await Bun.file(join(dirs.cwd, "existing.txt")).text()).toBe("before");
   expect(await Bun.file(join(dirs.cwd, "bash.txt")).text()).toBe("bash");
-  expect(await Bun.file(join(dirs.homeDir, ".neant/file-history")).exists()).toBe(false);
+  expect(await Bun.file(join(dirs.homeDir, ".rukie/file-history")).exists()).toBe(false);
 });
 
 test("rewinding a later prompt preserves earlier edits and returns the original prompt text", async () => {
@@ -499,7 +499,7 @@ test.each([
 test("a failed backup prevents file execution and leaves no file record", async () => {
   dirs = await tempDirs({ fileHistory: false });
   await Bun.write(join(dirs.cwd, "file.txt"), "before");
-  await Bun.write(join(dirs.homeDir, ".neant/file-history"), "blocked directory");
+  await Bun.write(join(dirs.homeDir, ".rukie/file-history"), "blocked directory");
   const session = await createSession({
     ...dirs,
     ...fakeModel([

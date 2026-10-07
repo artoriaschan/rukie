@@ -1,0 +1,97 @@
+import { expect, test } from "bun:test";
+import { createSession, listSessions } from "@rukie/agent";
+import { startWithClock } from "./helpers/clock-app";
+
+test.each(["zh", "en"] as const)(
+  "exit prints a resumable command on the restored terminal in %s",
+  async (locale) => {
+    const app = await startWithClock([], { env: { LANG: locale } });
+    try {
+      await app.waitFor(() => app.stdin.isRaw);
+      const [session] = await listSessions({ cwd: app.root, homeDir: app.root });
+      expect(session).toBeDefined();
+      app.stdin.write("\x04");
+      await app.waitFor(() => !app.stdin.isRaw);
+      expect(await app.exit).toBe(0);
+      await app.flush();
+      const command = `rukie --resume ${session!.id}`;
+      expect(app.screen().join("\n")).toContain(command);
+      expect(app.output().slice(app.output().lastIndexOf("\x1b[?1049l"))).toContain(
+        `${locale === "zh" ? "继续此会话：" : "Resume this session:"}\r\n  ${command}\r\n`,
+      );
+      const resumed = await createSession({
+        cwd: app.root,
+        homeDir: app.root,
+        model: app.model,
+        streamFn: app.streamFn,
+        resumeId: session!.id,
+      });
+      try {
+        expect(resumed.id).toBe(session!.id);
+      } finally {
+        await resumed.dispose();
+      }
+    } finally {
+      await app.cleanup();
+    }
+  },
+);
+
+test("signal exit saves an interrupted Run before displaying its resume command", async () => {
+  const controller = new AbortController();
+  const app = await startWithClock(["interrupted prompt"], { signal: controller.signal });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.delta("partial reply");
+    const [session] = await listSessions({ cwd: app.root, homeDir: app.root });
+    controller.abort();
+    await app.waitFor(() => !app.stdin.isRaw);
+    expect(await app.exit).toBe(0);
+    await app.flush();
+    expect(app.screen().join("\n")).toContain(`rukie --resume ${session!.id}`);
+    const resumed = await createSession({
+      cwd: app.root,
+      homeDir: app.root,
+      model: app.model,
+      streamFn: app.streamFn,
+      resumeId: session!.id,
+    });
+    try {
+      const result = resumed.run("continue");
+      await app.waitFor(() => app.calls.length === 2);
+      expect(JSON.stringify(app.calls[1]!.context.messages)).toContain("interrupted prompt");
+      expect(JSON.stringify(app.calls[1]!.context.messages)).toContain("partial reply");
+      app.calls[1]!.reply("continued");
+      await result;
+    } finally {
+      await resumed.dispose();
+    }
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("signal exit prints the current Session after switching with /new", async () => {
+  const controller = new AbortController();
+  const app = await startWithClock(["original prompt"], { signal: controller.signal });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.reply("original reply");
+    await app.waitFor(() => !app.isWorking() && app.screen().join("\n").includes("original reply"));
+    const options = { cwd: app.root, homeDir: app.root };
+    const [original] = await listSessions(options);
+    app.stdin.write("/new\r");
+    await app.waitFor(() => !app.screen().join("\n").includes("original prompt"));
+    const sessions = await listSessions(options);
+    const currentId = sessions.find((session) => session.id !== original!.id)?.id;
+    expect(currentId).toBeDefined();
+    controller.abort();
+    await app.waitFor(() => !app.stdin.isRaw);
+    expect(await app.exit).toBe(0);
+    await app.flush();
+    expect(app.screen().join("\n")).toContain(`rukie --resume ${currentId}`);
+    expect(app.screen().join("\n")).not.toContain(`rukie --resume ${original!.id}`);
+  } finally {
+    await app.cleanup();
+  }
+});

@@ -6,13 +6,13 @@ import { join } from "node:path";
 export async function discoverSkills(cwd: string, homeDir: string) {
   const env = new NodeExecutionEnv({ cwd });
   const paths = [homeDir, cwd].flatMap((root) =>
-    [".neant", ".claude", ".agents"].map((namespace) => join(root, namespace, "skills")),
+    [".rukie", ".claude", ".agents"].map((namespace) => join(root, namespace, "skills")),
   );
   const loaded = await loadSkills(env, paths, BACKGROUND_CONTEXT);
   const warnings = loaded.diagnostics.map(
     (diagnostic) => `${diagnostic.path}: ${diagnostic.message}`,
   );
-  // pi returns some invalid skills alongside diagnostics; Neant skips them.
+  // pi returns some invalid skills alongside diagnostics; Rukie skips them.
   const invalidPaths = new Set(loaded.diagnostics.map((diagnostic) => diagnostic.path));
   const skills = new Map<string, Skill>();
   const invocable = new Map<string, { name: string; description: string }>();

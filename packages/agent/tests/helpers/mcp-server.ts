@@ -15,7 +15,7 @@ for await (const line of lines) {
       if (manifest.hangInitialize) continue;
       result = {
         protocolVersion: request.params.protocolVersion,
-        serverInfo: { name: "neant-test", version: "1" },
+        serverInfo: { name: "rukie-test", version: "1" },
         capabilities: { tools: {} },
         instructions: manifest.instructions,
       };

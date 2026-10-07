@@ -1,4 +1,4 @@
-import { createUserVisibleError, type HookHandler } from "@neant/shared";
+import { createUserVisibleError, type HookHandler } from "@rukie/shared";
 import type { CommandOutput } from "./command.ts";
 
 export async function executeHttp(

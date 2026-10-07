@@ -1,4 +1,4 @@
-import type { CustomSessionEvent } from "@neant/shared";
+import type { CustomSessionEvent } from "@rukie/shared";
 
 type NoticeError = { code: string; params: Record<string, string | number> };
 /** Model-invisible facts for auxiliary messages that cannot be rebuilt from native messages. */

@@ -6,7 +6,7 @@ import { tempDirs } from "../helpers/temp-dirs.ts";
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
 afterEach(() => dirs?.cleanup());
 
-test.each([".neant", ".claude", ".agents"])(
+test.each([".rukie", ".claude", ".agents"])(
   "home type hooks accept settings format and rename Stop: %s",
   async (namespace) => {
     dirs = await tempDirs();
@@ -35,14 +35,14 @@ test.each([false, true])(
   async (trusted) => {
     dirs = await tempDirs();
     const hooks = { Stop: [{ hooks: [{ type: "command", command: "echo project" }] }] };
-    for (const namespace of [".neant", ".claude", ".agents"]) {
+    for (const namespace of [".rukie", ".claude", ".agents"]) {
       await Bun.write(
         join(dirs.cwd, namespace, "agents", `${namespace.slice(1)}.md`),
         `---\n${JSON.stringify({ name: namespace.slice(1), description: "Project type", hooks })}\n---\nProject body`,
       );
     }
     const discovered = await discoverSubagentTypes(dirs.cwd, dirs.homeDir, ["read"], { trusted });
-    for (const name of ["neant", "claude", "agents"]) {
+    for (const name of ["rukie", "claude", "agents"]) {
       expect(discovered.types.get(name)).toMatchObject({
         description: "Project type",
         prompt: "Project body",
@@ -66,7 +66,7 @@ test.each([
   { Stop: [{ hooks: [{ type: "command", command: "echo", if: "bash(" }] }] },
 ])("invalid home type hooks warn with their source and structured diagnostic", async (hooks) => {
   dirs = await tempDirs();
-  const path = join(dirs.homeDir, ".neant/agents/invalid.md");
+  const path = join(dirs.homeDir, ".rukie/agents/invalid.md");
   await Bun.write(
     path,
     `---\n${JSON.stringify({ name: "invalid", description: "Invalid", hooks })}\n---\nBody`,

@@ -543,7 +543,7 @@ spawn("bash", ["-c", "printf '%s' $$ > escaped; while [ ! -e go ]; do sleep 0.01
     const start = Date.now();
     await session.dispose();
     expect(Date.now() - start).toBeLessThan(4500);
-    // Detached groups are outside Neant's process-group termination contract.
+    // Detached groups are outside Rukie's process-group termination contract.
     expect(() => process.kill(pid, 0)).not.toThrow();
   } finally {
     try {

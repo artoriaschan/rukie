@@ -96,15 +96,15 @@ test("stored model selection wins over the last answer and delegated children ar
     fauxAssistantMessage("Child answer"),
     fauxAssistantMessage("Parent answer"),
   ]);
-  const previous = process.env.NEANT_LIST_KEY;
-  process.env.NEANT_LIST_KEY = "test-key";
+  const previous = process.env.RUKIE_LIST_KEY;
+  process.env.RUKIE_LIST_KEY = "test-key";
   const settings = {
     providers: [
       {
         id: "list-test",
         api: "openai-completions" as const,
         baseUrl: "http://localhost:1",
-        apiKeyEnv: "NEANT_LIST_KEY",
+        apiKeyEnv: "RUKIE_LIST_KEY",
         models: [{ id: "selected" }],
       },
     ],
@@ -126,8 +126,8 @@ test("stored model selection wins over the last answer and delegated children ar
   } finally {
     await session.dispose();
     await dirs.cleanup();
-    if (previous === undefined) delete process.env.NEANT_LIST_KEY;
-    else process.env.NEANT_LIST_KEY = previous;
+    if (previous === undefined) delete process.env.RUKIE_LIST_KEY;
+    else process.env.RUKIE_LIST_KEY = previous;
   }
 });
 

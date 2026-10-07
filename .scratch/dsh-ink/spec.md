@@ -18,7 +18,7 @@ Status: ready-for-agent
 - dsh-TUI 内部依赖（`utils/*`、`bootstrap/state`、`handoffAck`、`dsh-adapter/sharp`）用最小桩替代，每处改动记在 `ink/README.md`。
 - `ink/` 整体豁免 Oxlint 与 Knip。ADR-0012 的目录边界照旧生效：`ink/` 不依赖上层目录，`tui/` 只经 `ink/index.ts` 使用 `ink/`。
 - 约 30 个新 npm 依赖按精确版本固定，登记在 `docs/tech-stack.md`。
-- 保留 Neant 的 design-system，改接 dsh ink 的原语；不引入 dsh 的 theme、themePrefs、ui。
+- 保留 Rukie 的 design-system，改接 dsh ink 的原语；不引入 dsh 的 theme、themePrefs、ui。
 - 应用层改用 dsh ink 的 `Box`、`Text`、`ScrollBox`、`useInput`、`Image` 等的 props 与语义。ADR-0006 要求的终端恢复、阅读位置、bottom-follow 与小终端处理需要重新验证。
 
 ## Out of Scope

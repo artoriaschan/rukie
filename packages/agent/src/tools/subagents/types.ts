@@ -7,7 +7,7 @@ import {
   createUserVisibleError,
   type HooksSettings,
   type UserVisibleErrorData,
-} from "@neant/shared";
+} from "@rukie/shared";
 import { mergeHooks, validateHooks } from "../../hooks/index.ts";
 
 const Metadata = Type.Object({
@@ -57,7 +57,7 @@ export async function discoverSubagentTypes(
   const warnings: string[] = [];
   const hookWarnings: { source: string; message: string; error: UserVisibleErrorData }[] = [];
   for (const root of [homeDir, cwd]) {
-    for (const namespace of [".neant", ".claude", ".agents"]) {
+    for (const namespace of [".rukie", ".claude", ".agents"]) {
       const directory = join(root, namespace, "agents");
       let files: string[];
       try {

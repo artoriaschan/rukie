@@ -1,5 +1,5 @@
 {
-  "name": "@neant/shared",
+  "name": "@rukie/shared",
   "private": true,
   "type": "module",
   "exports": "./src/index.ts",

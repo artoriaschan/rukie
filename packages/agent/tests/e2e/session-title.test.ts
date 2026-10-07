@@ -267,10 +267,10 @@ test("title requests have bounded UTF-8 input, no tools, and a cleaned 80-byte r
 test("project titleModel overrides the user title model and routes an isolated request", async () => {
   const dirs = await tempDirs();
   const fake = fakeModel([fauxAssistantMessage("Done")]);
-  const original = process.env.NEANT_TEST_TITLE_KEY;
-  process.env.NEANT_TEST_TITLE_KEY = "test-key";
+  const original = process.env.RUKIE_TEST_TITLE_KEY;
+  process.env.RUKIE_TEST_TITLE_KEY = "test-key";
   await Bun.write(
-    join(dirs.homeDir, ".neant/settings.json"),
+    join(dirs.homeDir, ".rukie/settings.json"),
     JSON.stringify({
       titleModel: "title-test/other",
       providers: [
@@ -278,14 +278,14 @@ test("project titleModel overrides the user title model and routes an isolated r
           id: "title-test",
           api: "openai-completions",
           baseUrl: "https://invalid.example",
-          apiKeyEnv: "NEANT_TEST_TITLE_KEY",
+          apiKeyEnv: "RUKIE_TEST_TITLE_KEY",
           models: [{ id: "cheap" }, { id: "other" }],
         },
       ],
     }),
   );
   await Bun.write(
-    join(dirs.cwd, ".neant/settings.json"),
+    join(dirs.cwd, ".rukie/settings.json"),
     JSON.stringify({ titleModel: "title-test/cheap" }),
   );
   const { settings } = await loadSettings(dirs);
@@ -308,8 +308,8 @@ test("project titleModel overrides the user title model and routes an isolated r
   } finally {
     await session.dispose();
     await dirs.cleanup();
-    if (original === undefined) delete process.env.NEANT_TEST_TITLE_KEY;
-    else process.env.NEANT_TEST_TITLE_KEY = original;
+    if (original === undefined) delete process.env.RUKIE_TEST_TITLE_KEY;
+    else process.env.RUKIE_TEST_TITLE_KEY = original;
   }
 });
 
@@ -399,15 +399,15 @@ test("rewinding the conversation preserves a user's fixed title on resume", asyn
 test("an idle rename and model selection can persist concurrently without losing either value", async () => {
   const dirs = await tempDirs();
   const fake = fakeModel([fauxAssistantMessage("Done")]);
-  const original = process.env.NEANT_TITLE_CONCURRENT_KEY;
-  process.env.NEANT_TITLE_CONCURRENT_KEY = "test-key";
+  const original = process.env.RUKIE_TITLE_CONCURRENT_KEY;
+  process.env.RUKIE_TITLE_CONCURRENT_KEY = "test-key";
   const settings = {
     providers: [
       {
         id: "title-concurrent",
         api: "openai-completions" as const,
         baseUrl: "https://invalid.example",
-        apiKeyEnv: "NEANT_TITLE_CONCURRENT_KEY",
+        apiKeyEnv: "RUKIE_TITLE_CONCURRENT_KEY",
         models: [{ id: "cheap" }],
       },
     ],
@@ -425,8 +425,8 @@ test("an idle rename and model selection can persist concurrently without losing
   } finally {
     await session.dispose();
     await dirs.cleanup();
-    if (original === undefined) delete process.env.NEANT_TITLE_CONCURRENT_KEY;
-    else process.env.NEANT_TITLE_CONCURRENT_KEY = original;
+    if (original === undefined) delete process.env.RUKIE_TITLE_CONCURRENT_KEY;
+    else process.env.RUKIE_TITLE_CONCURRENT_KEY = original;
   }
 });
 

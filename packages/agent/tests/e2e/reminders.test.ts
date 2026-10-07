@@ -11,7 +11,7 @@ afterEach(() => dirs?.cleanup());
 
 test("the first Run supplies static identity, environment and both levels of Project Instructions", async () => {
   dirs = await tempDirs();
-  await Bun.write(join(dirs.homeDir, ".neant/AGENTS.md"), "Personal coding preferences");
+  await Bun.write(join(dirs.homeDir, ".rukie/AGENTS.md"), "Personal coding preferences");
   await Bun.write(join(dirs.cwd, "AGENTS.md"), "Project coding conventions");
   await Bun.write(join(dirs.cwd, "CLAUDE.md"), "Ignored fallback instructions");
   expect(await Bun.spawn(["git", "init", "-b", "reminder-test"], { cwd: dirs.cwd }).exited).toBe(0);
@@ -29,7 +29,7 @@ test("the first Run supplies static identity, environment and both levels of Pro
     },
   });
   const messages = fake.contexts[0]!.messages;
-  expect(messages[0]).toMatchObject({ role: "system", content: expect.stringContaining("Neant") });
+  expect(messages[0]).toMatchObject({ role: "system", content: expect.stringContaining("Rukie") });
   const reminders = events.filter((event) => event.type === "reminder_injected");
   expect(reminders.map((event) => event.source)).toEqual([
     "environment",
@@ -64,7 +64,7 @@ test("the first Run supplies static identity, environment and both levels of Pro
 });
 
 async function transcript() {
-  const root = join(dirs.homeDir, ".neant/sessions");
+  const root = join(dirs.homeDir, ".rukie/sessions");
   const files = await readdir(root, { recursive: true });
   const file = files.find((path) => path.endsWith(".jsonl"))!;
   return Bun.file(join(root, file)).text();

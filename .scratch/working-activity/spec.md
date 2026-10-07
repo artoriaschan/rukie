@@ -4,11 +4,11 @@ Status: ready-for-agent
 
 ## Problem Statement
 
-`neant` 在 Run 进行中只靠状态栏里的 `Running` 一个词表示"在工作"，外加正在跑的工具前的 spinner。模型思考时、两个工具调用之间、等首 token 时都没有任何指示，用户不知道 agent 是卡住了还是在干活，也不知道已经跑了多久、花了多少 token。我想要 dsh-TUI 那样的实时工作状态行：一行带动画的文案，告诉我 agent 此刻在做什么、做了多久。
+`rukie` 在 Run 进行中只靠状态栏里的 `Running` 一个词表示"在工作"，外加正在跑的工具前的 spinner。模型思考时、两个工具调用之间、等首 token 时都没有任何指示，用户不知道 agent 是卡住了还是在干活，也不知道已经跑了多久、花了多少 token。我想要 dsh-TUI 那样的实时工作状态行：一行带动画的文案，告诉我 agent 此刻在做什么、做了多久。
 
 ## Solution
 
-全量移植 `dsh-working-activity`（中文部分）的文案与状态机，按 dsh-TUI `ActivityLine` 的方式渲染：输入框上方一行 `🌔 脑子在冒烟 · 总12s · ↑ 8.1k · ↓ 1.2k tokens`，月相帧 + 扫光文字。`esc 中断` 放在输入框下方 StatusLine 的提示行，该行始终占位；回到底部按钮放在正文下方、活动行/权限弹窗/输入区域上方并水平居中，可点击恢复底部跟随。上下文条不展示时不占位，字段行直接位于输入框下方。状态机重写为纯函数，以 Neant 的 `SessionEvent` 为输入；术语沿用 Neant/pi：原包的 turn 一律对应 **Run**。
+全量移植 `dsh-working-activity`（中文部分）的文案与状态机，按 dsh-TUI `ActivityLine` 的方式渲染：输入框上方一行 `🌔 脑子在冒烟 · 总12s · ↑ 8.1k · ↓ 1.2k tokens`，月相帧 + 扫光文字。`esc 中断` 放在输入框下方 StatusLine 的提示行，该行始终占位；回到底部按钮放在正文下方、活动行/权限弹窗/输入区域上方并水平居中，可点击恢复底部跟随。上下文条不展示时不占位，字段行直接位于输入框下方。状态机重写为纯函数，以 Rukie 的 `SessionEvent` 为输入；术语沿用 Rukie/pi：原包的 turn 一律对应 **Run**。
 
 ## User Stories
 
@@ -22,23 +22,23 @@ Status: ready-for-agent
 8. 作为用户，我想看到 git 分支 `· git main`。
 9. 作为用户，我想让状态行在窄终端下截断而不是换行把界面挤乱。
 10. 作为维护者，我想让状态机是 `reduce(state, event, now)` + `render(state, now)` 纯函数，用假时钟就能测。
-11. 作为 `@neant/tui` 使用者，我想要一个共享时钟的 `useAnimationFrame`，多个动画组件只用一个定时器。
+11. 作为 `ink/index.ts` 使用者，我想要一个共享时钟的 `useAnimationFrame`，多个动画组件只用一个定时器。
 
 ## Implementation Decisions
 
 ### ① 渲染器（`packages/tui`）
 
-- 新增共享时钟：`ClockProvider` + `useAnimationFrame(intervalMs: number | null)`，返回 `[ref, time]`，同 dsh-TUI `ink/hooks/use-animation-frame.js`。全部订阅者共用一个定时器，各自按 `intervalMs` 节流 `setTime`；无订阅者时停表。可视区检测不做（Neant 为 inline 渲染，状态行始终在底部），`ref` 预留。
+- 新增共享时钟：`ClockProvider` + `useAnimationFrame(intervalMs: number | null)`，返回 `[ref, time]`，同 dsh-TUI `ink/hooks/use-animation-frame.js`。全部订阅者共用一个定时器，各自按 `intervalMs` 节流 `setTime`；无订阅者时停表。可视区检测不做（Rukie 为 inline 渲染，状态行始终在底部），`ref` 预留。
 - `Spinner` 改用 `useAnimationFrame`，行为和现有测试保持不变。
 
-### ② 设计系统（`packages/tui/src/design-system`）
+### ② 设计系统（`packages/coding-agent/src/ink/design-system`）
 
 - `theme.ts` 新增 2 个 token：`activity: "#7DA1DE"`（dsh darkTheme `activity`）、`activityFlash: "#C6D8F8"`（dsh `shimmer.js` 的 `FLASH`）。
-- 新增 `color.ts`：`rgb()` / `hex()` / `interpolateColor()` 从 `apps/neant-tui/src/components/logo/bigfont.ts` 下沉至此，logo 改为从 `@neant/tui` 引用。
+- 新增 `color.ts`：`rgb()` / `hex()` / `interpolateColor()` 从 `packages/coding-agent/src/tui/components/logo/bigfont.ts` 下沉至此，logo 改为从 `ink/index.ts` 引用。
 - 新增 `sweep(text, time, base, highlight, stepMs = 60)`：移植 dsh `shimmer.js`，输出 `{ text, color }[]` 段（相邻同色合并），不输出 ANSI。10 列高亮窗口每 `stepMs` 前进一列，周期 `width + 20`，窗口内亮度 `(sin(time / (stepMs*2)) + 1) / 2`。宽度用 grapheme + `Bun.stringWidth`。
 - `figures.ts` 新增 `activityFrames`：moon8 `🌑🌒🌓🌔🌕🌖🌗🌘`，120ms。
 
-### ③ 应用组件（`apps/neant-tui/src/components/activity-line/`）
+### ③ 应用组件（`packages/coding-agent/src/tui/components/activity-line/`）
 
 - `ActivityLine({ phase, line, suffix, warnPct })`：
   - `useAnimationFrame(60)` 驱动。
@@ -50,7 +50,7 @@ Status: ready-for-agent
 - `status-line/`：最多三行（上下文分段条、字段行、提示行）；上下文条不展示时不占位，仅提示行始终保留占位，详见 `.scratch/status-line/spec.md`。不显示 `Running` / `Ready` 状态词。
 - `assistant-message/`：渲染前剥掉行首 `⏵` 自述行（流式和回放共用）。
 
-### ④ 屏幕（`apps/neant-tui/src/screens/chat/`）
+### ④ 屏幕（`packages/coding-agent/src/tui/screens/chat/`）
 
 - `activity/`（屏幕私有模块，按需拆文件）：
   - `phrases.ts`：从 `dsh-working-activity/src/phrases.ts` 拷贝中文文案池与选择器（THINKING、30/60/300s 分档、WAITING、TOOL_OPENING、FALLBACK、FAIL、DONE、NIGHT、RARE、周末、节日 + 农历新年表、CONTINUE、COMPACT、COMPACTION_START、APPROVAL、ACTION_MAP、`pickPhraseAt`、`mixSlot`、`fmtDuration` 等）。删去 en、MODEL_QUIPS、RETRY、OVERFLOW、COMPACT_RETRY 及其他无输入来源的池。文件头保留 BSD-3-Clause 版权与许可全文，并注明来源路径与版本 `0.5.1`。
@@ -86,7 +86,7 @@ Status: ready-for-agent
 
 ## Testing Decisions
 
-- 状态机（`apps/neant-tui/tests/screens/chat/activity.test.ts`）：假时钟 + 注入随机源，喂 `SessionEvent` 序列，断言 `render` 的 phase 与 line：
+- 状态机（`packages/coding-agent/tests/tui/screens/chat/activity.test.ts`）：假时钟 + 注入随机源，喂 `SessionEvent` 序列，断言 `render` 的 phase 与 line：
   - 阶段迁移：waiting → thinking（首个 delta）→ tool → thinking → done。
   - 文案确定性：同 seed 同 slot 结果相同；4s 边界换条；30s / 60s / 300s 分档。
   - 工具行：`detailFor` 取参与截断，连击 `工具x3`，刚完成保留 2.5s。
@@ -95,15 +95,15 @@ Status: ready-for-agent
   - 审批卡住原因优先于文案池。
   - done 汇总文本，跨 Turn 累计。
   - `nextWakeAt` 取整秒、换条边界、过期三者中最早的一个。
-- `sweep`（`packages/tui/tests/design-system/`）：窗口外为 base；窗口位置随 time 前进；相邻同色合并；CJK 双宽字符按 2 列计。
+- `sweep`（`packages/coding-agent/tests/ink/design-system/`）：窗口外为 base；窗口位置随 time 前进；相邻同色合并；CJK 双宽字符按 2 列计。
 - `useAnimationFrame`：两个订阅者只开一个定时器；全部卸载后停表；`null` 不订阅。`Spinner` 现有测试保持通过。
 - `ActivityLine` 一条冒烟测试：render + headless terminal 读回首格为月相帧、文字加粗、suffix 为 subtle 色、超宽单行截断。
 - 剥离：`AssistantMessage` 不渲染行首 `⏵` 行；resume 回放同样不渲染。
-- e2e（`apps/neant-tui/tests/e2e/`）：用假 `streamFn` 跑一次带工具的 Run：
+- e2e（`packages/coding-agent/tests/tui/e2e/`）：用假 `streamFn` 跑一次带工具的 Run：
   - 运行中能看到状态行；成功、失败或打断结束后隐藏，下次提交时重新显示；底部 token 统计、错误提示及已输出正文保留。
   - 状态栏不再出现 `Running`。
   - 首次 Run 注入的 reminder 里含 narration 指令，第二次 Run 不重复注入。
-- 视觉（扫光、帧速、颜色）手动运行 `neant` 确认。
+- 视觉（扫光、帧速、颜色）手动运行 `rukie` 确认。
 
 ## Out of Scope
 
@@ -126,5 +126,5 @@ context-pressure 已由 `.scratch/status-line/issues/05-chat-wiring.md` 接入 `
 ## Further Notes
 
 - 参考源：`~/.dsh/profiles/dsh-tui/node_modules/dsh-working-activity/`（0.5.1，BSD-3-Clause，© 2026 chimney）。状态机见 `src/status.ts`，文案见 `src/phrases.ts`，自述指令见 `src/lang.ts` 的 `narrate-instruction`。渲染见 `@deepseek-harness-tui/dsh-tui/lib/types/components/{ActivityLine,shimmer}.js`，时钟见 `ink/hooks/use-animation-frame.js`，主题见 `theme.js` 的 darkTheme。
-- 术语映射：原包的 turn 对应 Neant 的 **Run**，原包的 step 对应 Neant 的 **Turn**。新代码里不使用原包的 turn 含义。
+- 术语映射：原包的 turn 对应 Rukie 的 **Run**，原包的 step 对应 Rukie 的 **Turn**。新代码里不使用原包的 turn 含义。
 - `activity` 与 `accent` 同色，和参考项目一致，所以 thinking 与 tool 阶段的底色相同。

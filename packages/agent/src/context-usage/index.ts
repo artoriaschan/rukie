@@ -1,6 +1,6 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { getCurrentSystemMessage, getCurrentTools, toToolDeclaration } from "@earendil-works/pi-ai";
-import type { ContextUsageEvent, ContextReport, ContextCategory } from "@neant/shared";
+import type { ContextUsageEvent, ContextReport, ContextCategory } from "@rukie/shared";
 
 import { convertToLlm } from "../reminders/index.ts";
 import { inspectImage } from "../images/index.ts";

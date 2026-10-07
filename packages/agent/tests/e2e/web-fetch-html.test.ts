@@ -80,12 +80,12 @@ test("an unknown response charset produces a distinguishable tool error", async 
   const base = server(
     () =>
       new Response("text", {
-        headers: { "Content-Type": "text/html; charset=unknown-neant-encoding" },
+        headers: { "Content-Type": "text/html; charset=unknown-rukie-encoding" },
       }),
   );
   const result = await fetchPage(base);
   expect(result.isError).toBe(true);
-  expect(text(result)).toContain("Unsupported charset: unknown-neant-encoding");
+  expect(text(result)).toContain("Unsupported charset: unknown-rukie-encoding");
 });
 
 test("HTTP failures attach converted Markdown and omit hidden error page content", async () => {

@@ -10,7 +10,7 @@ import {
   type SessionRepo,
   type Session as StoredSession,
 } from "@earendil-works/pi-agent-core/harness/session";
-import { createUserVisibleError, type Settings } from "@neant/shared";
+import { createUserVisibleError, type Settings } from "@rukie/shared";
 import { loadSettings, modelState } from "../config/index.ts";
 import { titleSourceState, type TitleSource } from "../session-title/index.ts";
 import { createToolState } from "../tool-state/index.ts";
@@ -85,7 +85,7 @@ export function registerSessionReader(store: SessionStore, id: string, reader: S
 /** pi owns project slugs, file naming and its native JSONL v4 encoding. */
 export function createJsonlStore(options: { cwd: string; homeDir: string }): SessionStore {
   const files = new NodeExecutionEnv({ cwd: options.cwd });
-  const sessionsRoot = join(options.homeDir, ".neant/sessions");
+  const sessionsRoot = join(options.homeDir, ".rukie/sessions");
   const repo = new JsonlSessionRepo({ fileSystem: files, sessionsRoot });
   const readonly = new JsonlSessionRepo({ fileSystem: readonlyFiles(files), sessionsRoot });
   return {

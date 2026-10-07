@@ -7,7 +7,7 @@ import {
   type HooksSettings,
   type PermissionMode,
   type UserVisibleErrorData,
-} from "@neant/shared";
+} from "@rukie/shared";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import { evaluatePermissionRules, parsePermissionRules } from "../permissions/index.ts";
 import { executeCommand } from "./command.ts";

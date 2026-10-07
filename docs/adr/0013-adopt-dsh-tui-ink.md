@@ -1,6 +1,14 @@
-Status: proposed
+---
+status: proposed
+---
 
 # 终端渲染栈改用 dsh-TUI 的 ink
+
+## 问题
+
+自研终端渲染器需要逐项补齐参考实现的选择、按键和图形行为；本提案评估直接引入参考代码。
+
+## 决定
 
 `packages/coding-agent/src/ink/` 计划改为 dsh-TUI `3c89ea51` 的 `src/ink/` 与 `src/native-ts/yoga-layout`，取代 ADR-0005 的自研渲染管线。动机是直接获得全屏选字与复制（ADR-0006）、hit-test、按键解析、kitty 与 sixel 图形等已有实现，不再逐项对照 dsh-TUI 重写。
 
@@ -12,11 +20,17 @@ Status: proposed
 - dsh-TUI 内部依赖（`utils/*`、`bootstrap/state`、`handoffAck`、`dsh-adapter/sharp`）以最小桩替代，改动逐项记录在 `ink/README.md`。
 - `ink/` 整体豁免 Oxlint 与 Knip，与此前 vendored Yoga 的处理一致。
 - 新增的约 30 个 npm 依赖按精确版本固定，登记在 `docs/tech-stack.md`。
-- 保留 Neant 的 design-system，改接 dsh ink 的原语；不引入 dsh-TUI 的主题与偏好体系。
+- 保留 Rukie 的 design-system，改接 dsh ink 的原语；不引入 dsh-TUI 的主题与偏好体系。
 
 保持 proposed，直到 spike 证明它能在 Bun 下运行、并能注入 xterm headless 终端测试。spike 通过后本 ADR 改为 accepted，ADR-0005 标记为 superseded。
 
-## Considered Options
+确认条件与实施证据由 [dsh ink 规格](../../.scratch/dsh-ink/spec.md)及其 spike 工单维护；接受来源风险不代表上述运行条件已经满足。
+
+## 备选方案
 
 - 维持 ADR-0005，按需对照 dsh-TUI 在自研渲染器上补齐行为：依赖少、来源清楚，但 selection、keypress 等能力需要逐项重写。
-- 搬入后改写为 Neant 代码规范：33k 行的改写成本高，之后无法再与上游同步。
+- 搬入后改写为 Rukie 代码规范：33k 行的改写成本高，之后无法再与上游同步。
+
+## 影响
+
+若提案通过，将增加 vendored 代码、依赖及上游同步成本，并承担已记录的来源风险；spike 通过前保持 proposed。

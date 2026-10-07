@@ -1,35 +1,36 @@
 # AGENTS.md
 
-Neant is a coding agent. Agent Core owns Session execution; Headless CLI and TUI drive it as frontends. Read [docs/architecture.md](docs/architecture.md) before changing `apps/` or `packages/`, [CONTEXT.md](CONTEXT.md) before changing domain behavior, and the relevant [ADRs](docs/adr/) before changing architecture. Follow [docs/AGENTS.md](docs/AGENTS.md) when writing documentation. Use the glossary's terms in code, tests, issues, and documentation.
+Rukie is a coding agent. Agent Core owns Session execution; Headless CLI and TUI drive it as frontends. Read [docs/architecture.md](docs/architecture.md) before changing `packages/`, [CONTEXT.md](CONTEXT.md) before changing domain behavior, and the relevant [ADRs](docs/adr/) before changing architecture. Follow [docs/AGENTS.md](docs/AGENTS.md) and the repository [rukie-doc skill](.agents/skills/rukie-doc/SKILL.md) when writing documentation. Use the glossary's terms in code, tests, issues, and documentation.
 
 ## Repository layout
 
-| Path                      | Owns                                                                                                         |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `apps/neant-cli/`         | `@neant/neant-cli`: non-interactive argv/stdin → Agent Core → text or stream-json output                     |
-| `apps/neant-tui/`         | `@neant/neant-tui`: interactive `neant`, fullscreen conversation, input, dialogs, and app state              |
-| `packages/agent/`         | `@neant/agent`: Sessions, tools, permissions, hooks, skills, MCP, context, persistence, and subagents        |
-| `packages/tui/`           | `@neant/tui`: React reconciler, terminal input, layout, cell grid, ANSI rendering, and design system         |
-| `packages/shared/`        | `@neant/shared`: runtime-agnostic types, TypeBox schemas, and pure functions shared by at least two packages |
-| `packages/i18n/`          | `@neant/i18n`: runtime-agnostic locale resolution, common copy, interpolation, and durations                 |
-| `CONTEXT.md`, `docs/adr/` | Domain vocabulary and architectural decisions                                                                |
-| `docs/agents/`            | Issue tracking, triage, and domain-document workflows                                                        |
-| `.scratch/`               | Local feature specs, implementation tickets, and investigation records                                       |
+| Path                                  | Owns                                                                                                         |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `packages/coding-agent/src/headless/` | `@rukie/coding-agent`: non-interactive argv/stdin → Agent Core → text or stream-json output                  |
+| `packages/coding-agent/src/tui/`      | `@rukie/coding-agent`: interactive `rukie`, fullscreen conversation, input, dialogs, and app state           |
+| `packages/agent/`                     | `@rukie/agent`: Sessions, tools, permissions, hooks, skills, MCP, context, persistence, and subagents        |
+| `packages/coding-agent/src/ink/`      | `ink/`: React reconciler, terminal input, layout, cell grid, ANSI rendering, and design system               |
+| `packages/shared/`                    | `@rukie/shared`: runtime-agnostic types, TypeBox schemas, and pure functions shared by at least two packages |
+| `packages/i18n/`                      | `@rukie/i18n`: runtime-agnostic locale resolution, common copy, interpolation, and durations                 |
+| `CONTEXT.md`, `docs/adr/`             | Domain vocabulary and architectural decisions                                                                |
+| `docs/agents/`                        | Issue tracking, triage, and domain-document workflows                                                        |
+| `.scratch/`                           | Local feature specs, implementation tickets, and investigation records                                       |
 
 ## Commands
 
-Bun manages the `apps/*` and `packages/*` workspaces. Run commands from the repository root.
+Bun manages the `packages/*` workspaces. Run commands from the repository root.
 
 ```sh
 bun install                                      # install workspace dependencies
 bun run dev                                      # TUI; requires an interactive terminal and provider credentials
-bun run dev:tui                                  # explicit TUI entry; same as dev
-bun run dev:cli -p "task"                         # Headless CLI; requires configured provider credentials
+bun run dev -- -p "task"                        # Headless CLI; requires configured credentials
 bun run test:agent                               # Agent Core tests
-bun run test:tui                                 # TUI app and renderer tests
-bun run test:cli                                 # Headless CLI tests
+bun run test:coding-agent                        # Headless CLI, TUI and renderer tests
 bun test <file-or-directory>                     # narrower tests for the affected behavior
-bun run check:dev                                # format → lint → types → Knip; no tests
+bun run check:dev                                # static checks, tracker and docs; no tests
+bun run check:docs                               # local links, ADR format and skill metadata
+bun run docs:update                              # synchronize generated ADR index
+bun run test:docs                                # documentation checker regression tests
 bun run test                                     # all current Bun tests
 bunx --no -- oxfmt --check                        # formatting
 bunx --no -- oxlint                              # lint
@@ -38,7 +39,7 @@ bunx --no -- knip                                # unused files, exports, and de
 env -u NO_COLOR bun run check                     # format → lint → types → Knip → tests
 ```
 
-`package.json` owns the executable scripts. `bun run check:dev` runs static development checks without tests. Use `test:agent`, `test:tui`, or `test:cli` for the affected area; these scripts clear `NO_COLOR` and run with four workers. Select a narrower case or file with `bun test <file-or-directory>` and clear `NO_COLOR` for terminal color assertions. `bun run check` is the aggregate validation command; there are no root `build` or `typecheck` scripts. Clear `NO_COLOR` for the aggregate check so terminal color behavior is exercised.
+`package.json` owns the executable scripts. `bun run check:dev` runs static development checks without tests. Use `test:agent` or `test:coding-agent` for the affected area; these scripts clear `NO_COLOR` and run with four workers. Select a narrower case or file with `bun test <file-or-directory>` and clear `NO_COLOR` for terminal color assertions. `bun run check` is the aggregate validation command; there are no root `build` or `typecheck` scripts. Clear `NO_COLOR` for the aggregate check so terminal color behavior is exercised.
 
 ## Code
 
@@ -56,10 +57,10 @@ env -u NO_COLOR bun run check                     # format → lint → types �
 - **Agent modules.** Group code by owned capability, exposing `index.ts` for other modules. Execution rules, state, and resources belong to the capability; Session composes and coordinates them. Agent Core owns behavior independently of frontend presentation.
 - **Tools capabilities.** `tools/` owns built-in tools and their associated execution, state, and resource capabilities, grouped by capability. Keep model protocol adapters separate from controllers and registries inside each directory; Session may call capability interfaces directly and assembles the model tool set in `session/tools.ts`. Generic Tool State accepts registered definitions. Before moving capabilities or extracting Session behavior, read [ADR-0011](docs/adr/0011-agent-module-ownership.md) for internal dependency direction, shared support, and the enforced import restrictions.
 - **Harness reuse.** Build on the locked pi-agent-core/pi-ai/pi-mcp APIs, following ADR-0002. Inspect their installed source and types before replacing harness capabilities or assuming upstream behavior.
-- **UI layers.** Imports point downward: app screens → app components → design system → renderer primitives. Only screens wire Session; design system and renderer primitives have no Agent Core dependency. Paths and responsibilities: [docs/architecture.md](docs/architecture.md).
-- **Runtime-agnostic packages.** `@neant/shared` uses no Bun, Node, or DOM APIs and depends only on `typebox`; `@neant/i18n` has the same restriction and depends only on `@neant/shared`.
+- **UI layers.** Imports point downward: screens wire Session and pass presentation facts to app components and terminal-independent `view/`. App components and view import Agent Core types only; view has no React, ink, TUI, or Node dependency. TUI uses terminal primitives and design system through `ink/index.ts`; ink has no Agent Core, locale, or upper-layer dependency. Paths and responsibilities: [docs/architecture.md](docs/architecture.md).
+- **Runtime-agnostic packages.** `@rukie/shared` uses no Bun, Node, or DOM APIs and depends only on `typebox`; `@rukie/i18n` has the same restriction and depends only on `@rukie/shared`.
 - **Locale.** Agent Core stays locale-agnostic. Update both zh and en dictionaries when changing localized copy (ADR-0008).
-- **Terminal behavior.** Preserve terminal restoration, reading position, bottom-follow behavior, and small-terminal handling (ADR-0006). Read [packages/tui/README.md](packages/tui/README.md) before changing renderer APIs or lifecycle behavior.
+- **Terminal behavior.** Preserve terminal restoration, reading position, bottom-follow behavior, and small-terminal handling (ADR-0006). Read [packages/coding-agent/src/ink/README.md](packages/coding-agent/src/ink/README.md) before changing renderer APIs or lifecycle behavior.
 - **Reference code.** dsh-TUI is the design/behavior reference when specified. Yoga is the explicitly vendored exception: only `layout` imports it, and changes follow ADR-0005 and the renderer README. Keep unrelated visual and interaction behavior intact.
 - **Dependencies.** External versions are pinned exactly; update [docs/tech-stack.md](docs/tech-stack.md) and the Bun lockfile with dependency changes. Distinguish installed dependencies from planned stack choices. Keep TypeBox aligned with the locked pi version.
 
@@ -73,7 +74,7 @@ Frontends supply Interaction callbacks. Headless CLI supplies none: dependent to
 
 ## Tests and verification
 
-- Tests live in each package/app's `tests/`, mirroring `src/`. Cross-concept scenarios live in `tests/e2e/`; reusable fixtures live in `tests/helpers/`.
+- Tests live in each package's `tests/`, mirroring `src/`. Cross-concept scenarios live in `tests/e2e/`; reusable fixtures live in `tests/helpers/`.
 - Follow the production runtime (ADR-0004): current Bun code uses `bun:test`; Electron main and renderer will use Vitest when introduced.
 - Test observable behavior through public entry points. For Agent Core, use `createSession` with the existing fake model helpers; for TUI, use the app `start` helper and injected/headless terminals. Prefer explicit model replies, events, idle/completion signals, or terminal predicates over timing guesses.
 - **Time and cleanup.** New or modified timer tests use a virtual clock when the relevant timers share the test process; assert behavior immediately before and at the deadline. Use `startWithClock` for TUI app timer scenarios and restore clocks in `finally`. Synchronize asynchronous work and cleanup on completion promises, events, terminal predicates, or process exit; fixed sleeps are not synchronization. Bound waits so failures terminate with useful diagnostics.
@@ -85,7 +86,7 @@ Frontends supply Interaction callbacks. Headless CLI supplies none: dependent to
 - UI changes need terminal assertions for the affected dimensions and interactions, including resize or small-terminal behavior when relevant. Verify coexisting panels, focus, and reading position when their layout or state changes.
 - During development, run the smallest affected test set: a test case or file first, then related files or a package when the change crosses those boundaries. Measure performance with a focused reproducer; use a full-suite baseline only when needed to locate or compare suite-wide costs.
 - For code delivery, run `env -u NO_COLOR bun run check` once after the final changes and focused checks pass. It already includes all tests; use that result for review, commit, and delivery of the same code state. Repeat full verification only when later code, configuration, dependency, or integration changes invalidate it, or an unresolved failure requires suite-wide reproduction; state the reason before rerunning. Investigate full-suite failures with focused tests before returning to the delivery gate.
-- For documentation-only changes, verify formatting, referenced paths, and the diff without running tests. Report commands actually run and any failures or checks that could not run.
+- For documentation-only changes, run `bun run check:docs`, verify formatting and the diff without running tests. Report commands actually run and any failures or checks that could not run.
 
 ## Agent skills
 
@@ -109,7 +110,7 @@ Single context: root `CONTEXT.md` plus `docs/adr/`. Update the glossary when ter
 
 ## Done
 
-The requested behavior works end to end, affected consumers and documentation agree, and the required checks pass. For ticket work, its status and verification evidence match the delivered result. Report what changed, what was verified, and any remaining limitation; claim completion only from current evidence.
+The requested behavior works end to end, affected consumers and documentation agree, and the required checks pass. For ticket work, its status and verification evidence match the delivered result; complete the [ADR coverage review](docs/agents/issue-tracker.md#adr-coverage-before-delivery) before closing the spec. Report what changed, what was verified, and any remaining limitation; claim completion only from current evidence.
 
 ## Editing these instructions
 

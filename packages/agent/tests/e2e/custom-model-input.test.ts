@@ -5,7 +5,7 @@ import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
 const servers: ReturnType<typeof Bun.serve>[] = [];
-const key = "NEANT_IMAGE_INPUT_TEST_KEY";
+const key = "RUKIE_IMAGE_INPUT_TEST_KEY";
 const originalKey = process.env[key];
 afterEach(async () => {
   for (const server of servers.splice(0)) server.stop(true);
@@ -69,7 +69,7 @@ test.each([true, false])(
     const provider = readImageProvider();
     await Bun.write(join(dirs.cwd, "screenshot.png"), Buffer.from(png, "base64"));
     await Bun.write(
-      join(dirs.homeDir, ".neant/settings.json"),
+      join(dirs.homeDir, ".rukie/settings.json"),
       JSON.stringify({
         model: "image-test/m",
         providers: [

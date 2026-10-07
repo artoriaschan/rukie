@@ -1,7 +1,7 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { PresentedTool } from "../presentation.ts";
 import { Value } from "typebox/value";
-import { createUserVisibleError } from "@neant/shared";
+import { createUserVisibleError } from "@rukie/shared";
 import { Type } from "typebox";
 import { preserveErrorDetails } from "../runtime.ts";
 import { renderWrapupContext, type createGoalController } from "./controller.ts";

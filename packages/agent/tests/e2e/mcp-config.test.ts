@@ -65,7 +65,7 @@ function httpServer() {
 
 async function writeConfig(servers: object, project = false) {
   await Bun.write(
-    project ? join(dirs.cwd, ".mcp.json") : join(dirs.homeDir, ".neant/mcp.json"),
+    project ? join(dirs.cwd, ".mcp.json") : join(dirs.homeDir, ".rukie/mcp.json"),
     JSON.stringify({ mcpServers: servers }),
   );
 }
@@ -93,17 +93,17 @@ async function runConfigured(trusted = false) {
 test("HTTP URL and header values expand process variables and defaults before connection", async () => {
   dirs = await tempDirs();
   const { server, requests } = httpServer();
-  setEnvironment("NEANT_MCP_CONFIG_URL", server.url.href);
-  setEnvironment("NEANT_MCP_CONFIG_TOKEN", "test-secret");
-  setEnvironment("NEANT_MCP_CONFIG_UNSET", undefined);
+  setEnvironment("RUKIE_MCP_CONFIG_URL", server.url.href);
+  setEnvironment("RUKIE_MCP_CONFIG_TOKEN", "test-secret");
+  setEnvironment("RUKIE_MCP_CONFIG_UNSET", undefined);
   try {
     await writeConfig({
       remote: {
         type: "http",
-        url: "${NEANT_MCP_CONFIG_URL}${NEANT_MCP_CONFIG_UNSET:-mcp}",
+        url: "${RUKIE_MCP_CONFIG_URL}${RUKIE_MCP_CONFIG_UNSET:-mcp}",
         headers: {
-          Authorization: "Bearer ${NEANT_MCP_CONFIG_TOKEN}",
-          "X-Fallback": "${NEANT_MCP_CONFIG_UNSET:-fallback}",
+          Authorization: "Bearer ${RUKIE_MCP_CONFIG_TOKEN}",
+          "X-Fallback": "${RUKIE_MCP_CONFIG_UNSET:-fallback}",
         },
       },
     });
@@ -121,17 +121,17 @@ test("HTTP URL and header values expand process variables and defaults before co
 
 test("stdio env values expand variables and defaults before starting the server", async () => {
   dirs = await tempDirs();
-  setEnvironment("NEANT_MCP_CONFIG_HOME", dirs.homeDir);
-  setEnvironment("NEANT_MCP_CONFIG_UNSET", undefined);
+  setEnvironment("RUKIE_MCP_CONFIG_HOME", dirs.homeDir);
+  setEnvironment("RUKIE_MCP_CONFIG_UNSET", undefined);
   await Bun.write(join(dirs.homeDir, "manifest.json"), JSON.stringify({ tools: ["echo"] }));
   await writeConfig({
     local: {
       command: process.execPath,
       args: [fileURLToPath(new URL("../helpers/mcp-server.ts", import.meta.url))],
       env: {
-        MCP_MANIFEST: "${NEANT_MCP_CONFIG_HOME}/${NEANT_MCP_CONFIG_UNSET:-manifest.json}",
-        MCP_PIDS: "${NEANT_MCP_CONFIG_HOME}/pids",
-        MCP_CALLS: "${NEANT_MCP_CONFIG_HOME}/calls",
+        MCP_MANIFEST: "${RUKIE_MCP_CONFIG_HOME}/${RUKIE_MCP_CONFIG_UNSET:-manifest.json}",
+        MCP_PIDS: "${RUKIE_MCP_CONFIG_HOME}/pids",
+        MCP_CALLS: "${RUKIE_MCP_CONFIG_HOME}/calls",
       },
     },
   });
@@ -144,23 +144,23 @@ test.each(["url", "headers", "env"])(
   "a missing variable in %s names the variable and leaves other servers usable",
   async (field) => {
     dirs = await tempDirs();
-    setEnvironment("NEANT_MCP_CONFIG_UNSET", undefined);
+    setEnvironment("RUKIE_MCP_CONFIG_UNSET", undefined);
     const { server } = httpServer();
     try {
       await writeConfig({
         healthy: { type: "http", url: server.url.href },
         missing:
           field === "env"
-            ? { command: "never-started", env: { SECRET: "${NEANT_MCP_CONFIG_UNSET}" } }
+            ? { command: "never-started", env: { SECRET: "${RUKIE_MCP_CONFIG_UNSET}" } }
             : {
                 type: "http",
-                url: field === "url" ? "${NEANT_MCP_CONFIG_UNSET}" : server.url.href,
-                headers: field === "headers" ? { Secret: "${NEANT_MCP_CONFIG_UNSET}" } : {},
+                url: field === "url" ? "${RUKIE_MCP_CONFIG_UNSET}" : server.url.href,
+                headers: field === "headers" ? { Secret: "${RUKIE_MCP_CONFIG_UNSET}" } : {},
               },
       });
       const { events, tools, result } = await runConfigured();
       expect(events.filter((event) => event.type === "mcp_server_error")).toMatchObject([
-        { server: "missing", error: expect.stringContaining("NEANT_MCP_CONFIG_UNSET") },
+        { server: "missing", error: expect.stringContaining("RUKIE_MCP_CONFIG_UNSET") },
       ]);
       expect(tools).toContain("mcp__healthy__echo");
       expect(result.success).toBe(true);
@@ -234,22 +234,22 @@ test.each([false, true])(
   async (trusted) => {
     dirs = await tempDirs();
     const { server, requests } = httpServer();
-    setEnvironment("NEANT_MCP_CONFIG_URL", server.url.href);
-    setEnvironment("NEANT_MCP_CONFIG_TOKEN", "project-secret");
+    setEnvironment("RUKIE_MCP_CONFIG_URL", server.url.href);
+    setEnvironment("RUKIE_MCP_CONFIG_TOKEN", "project-secret");
     try {
       await writeConfig(
         {
           project: {
             type: "http",
-            url: "${NEANT_MCP_CONFIG_URL}",
-            headers: { Authorization: "Bearer ${NEANT_MCP_CONFIG_TOKEN}" },
+            url: "${RUKIE_MCP_CONFIG_URL}",
+            headers: { Authorization: "Bearer ${RUKIE_MCP_CONFIG_TOKEN}" },
             oauth: { clientId: "project-client" },
           },
-          missing: { type: "http", url: "${NEANT_MCP_CONFIG_UNSET}" },
+          missing: { type: "http", url: "${RUKIE_MCP_CONFIG_UNSET}" },
         },
         true,
       );
-      setEnvironment("NEANT_MCP_CONFIG_UNSET", undefined);
+      setEnvironment("RUKIE_MCP_CONFIG_UNSET", undefined);
       const { events, tools } = await runConfigured(trusted);
       expect(tools?.includes("mcp__project__echo")).toBe(trusted);
       expect(events.filter((event) => event.type === "mcp_server_error")).toHaveLength(

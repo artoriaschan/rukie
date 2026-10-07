@@ -15,7 +15,7 @@ afterEach(async () => {
 
 test("startup removes expired session backups and keeps recent directories and the 30-day boundary", async () => {
   dirs = await tempDirs();
-  const history = join(dirs.homeDir, ".neant", "file-history");
+  const history = join(dirs.homeDir, ".rukie", "file-history");
   const now = new Date("2026-10-05T00:00:00Z");
   for (const [id, modified] of [
     ["expired", "2026-09-04T23:59:59Z"],
@@ -55,7 +55,7 @@ test("resuming an expired Session preserves its backups and can still rewind its
   });
   sessions.push(original);
   await original.run("change file");
-  const history = join(dirs.homeDir, ".neant", "file-history");
+  const history = join(dirs.homeDir, ".rukie", "file-history");
   const old = new Date("2026-08-01T00:00:00Z");
   await utimes(join(history, original.id), old, old);
   await Bun.write(join(history, "other-expired", "backup"), "expired");
@@ -88,12 +88,12 @@ test("a new Session without backups starts silently and does not create backup s
   });
   sessions.push(session);
   expect(warnings).toEqual([]);
-  await expect(access(join(dirs.homeDir, ".neant", "file-history"))).rejects.toMatchObject({
+  await expect(access(join(dirs.homeDir, ".rukie", "file-history"))).rejects.toMatchObject({
     code: "ENOENT",
   });
   await session.run("hello");
   expect(session.messages.at(-1)).toMatchObject({ role: "assistant" });
-  await expect(access(join(dirs.homeDir, ".neant", "file-history"))).rejects.toMatchObject({
+  await expect(access(join(dirs.homeDir, ".rukie", "file-history"))).rejects.toMatchObject({
     code: "ENOENT",
   });
 });
@@ -119,19 +119,19 @@ test("resuming a Session without backups starts silently and does not create bac
   sessions.push(resumed);
   expect(resumed.id).toBe(original.id);
   expect(warnings).toEqual([]);
-  await expect(access(join(dirs.homeDir, ".neant", "file-history"))).rejects.toMatchObject({
+  await expect(access(join(dirs.homeDir, ".rukie", "file-history"))).rejects.toMatchObject({
     code: "ENOENT",
   });
   await resumed.run("continue");
   expect(resumed.messages.at(-1)).toMatchObject({ role: "assistant" });
-  await expect(access(join(dirs.homeDir, ".neant", "file-history"))).rejects.toMatchObject({
+  await expect(access(join(dirs.homeDir, ".rukie", "file-history"))).rejects.toMatchObject({
     code: "ENOENT",
   });
 });
 
 test("an invalid backup directory warns without preventing the Session from running", async () => {
   dirs = await tempDirs({ fileHistory: false });
-  const history = join(dirs.homeDir, ".neant", "file-history");
+  const history = join(dirs.homeDir, ".rukie", "file-history");
   await Bun.write(history, "not a directory");
   const warnings: string[] = [];
   const session = await createSession({
@@ -150,7 +150,7 @@ test("an invalid backup directory warns without preventing the Session from runn
 
 test("a failed deletion warns without preventing startup or cleanup of other expired backups", async () => {
   dirs = await tempDirs();
-  const history = join(dirs.homeDir, ".neant", "file-history");
+  const history = join(dirs.homeDir, ".rukie", "file-history");
   const blocked = join(history, "a-blocked");
   const old = new Date("2026-08-01T00:00:00Z");
   await Bun.write(join(blocked, "backup"), "keep");
@@ -181,7 +181,7 @@ test("a failed deletion warns without preventing startup or cleanup of other exp
 
 test("startup leaves non-directory entries and linked directories untouched", async () => {
   dirs = await tempDirs();
-  const history = join(dirs.homeDir, ".neant", "file-history");
+  const history = join(dirs.homeDir, ".rukie", "file-history");
   await Bun.write(join(history, "stray-file"), "keep file");
   const old = new Date("2026-08-01T00:00:00Z");
   await utimes(join(history, "stray-file"), old, old);

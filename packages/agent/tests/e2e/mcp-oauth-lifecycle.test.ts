@@ -19,7 +19,7 @@ async function paste({ authorizationUrl }: McpAuthRequest): Promise<McpAuthReply
 }
 
 async function configure(dirs: Awaited<ReturnType<typeof tempDirs>>, servers: object) {
-  await Bun.write(join(dirs.homeDir, ".neant/mcp.json"), JSON.stringify({ mcpServers: servers }));
+  await Bun.write(join(dirs.homeDir, ".rukie/mcp.json"), JSON.stringify({ mcpServers: servers }));
 }
 
 async function login(dirs: Awaited<ReturnType<typeof tempDirs>>) {
@@ -87,7 +87,7 @@ test.each([false, true])(
         expect((await session.mcpServers()).servers[0]).toMatchObject({
           status: revoked ? "needs-auth" : "connected",
           scope: "user",
-          configPath: join(dirs.homeDir, ".neant/mcp.json"),
+          configPath: join(dirs.homeDir, ".rukie/mcp.json"),
           url: server.url,
           tools: revoked ? [] : [{ name: "echo" }],
           toolCount: revoked ? 0 : 1,
@@ -160,7 +160,7 @@ test.each([false, true])(
         expect((await session.mcpServers()).servers[0]).toMatchObject({
           status: "needs-auth",
           scope: "user",
-          configPath: join(dirs.homeDir, ".neant/mcp.json"),
+          configPath: join(dirs.homeDir, ".rukie/mcp.json"),
           url: server.url,
           tools: [],
           toolCount: 0,
@@ -421,7 +421,7 @@ test.each(["url", "headers"])(
     const second = mcpOAuthServer();
     try {
       await configure(dirs, {
-        srv: { url: first.url, headers: { "X-Account": "${NEANT_MCP_OAUTH_TEST_ACCOUNT:-first}" } },
+        srv: { url: first.url, headers: { "X-Account": "${RUKIE_MCP_OAUTH_TEST_ACCOUNT:-first}" } },
       });
       await login(dirs);
       await configure(dirs, {
@@ -461,7 +461,7 @@ test("credential identity uses expanded header values across Sessions", async ()
   const server = mcpOAuthServer();
   try {
     await configure(dirs, {
-      srv: { url: server.url, headers: { "X-Account": "${NEANT_MCP_OAUTH_TEST_ACCOUNT:-first}" } },
+      srv: { url: server.url, headers: { "X-Account": "${RUKIE_MCP_OAUTH_TEST_ACCOUNT:-first}" } },
     });
     await login(dirs);
     await configure(dirs, { srv: { url: server.url, headers: { "X-Account": "first" } } });
@@ -590,7 +590,7 @@ test("scope step-up immediately after the first OAuth login in the same Run rest
       for (const snapshot of snapshots)
         expect(snapshot.servers[0]).toMatchObject({
           scope: "user",
-          configPath: join(dirs.homeDir, ".neant/mcp.json"),
+          configPath: join(dirs.homeDir, ".rukie/mcp.json"),
           url: server.url,
           tools: snapshot.servers[0]?.status === "connected" ? [{ name: "echo" }] : [],
         });
@@ -609,7 +609,7 @@ test("scope step-up immediately after the first OAuth login in the same Run rest
       expect((await session.mcpServers()).servers[0]).toMatchObject({
         status: "connected",
         scope: "user",
-        configPath: join(dirs.homeDir, ".neant/mcp.json"),
+        configPath: join(dirs.homeDir, ".rukie/mcp.json"),
         url: server.url,
         tools: [
           {

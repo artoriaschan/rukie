@@ -131,10 +131,10 @@ test("each Run refreshes available types and bad files warn without preventing d
     onWarning: (warning) => warnings.push(warning),
   });
   await session.run("first");
-  const bad = join(dirs.cwd, ".neant/agents/bad.md");
+  const bad = join(dirs.cwd, ".rukie/agents/bad.md");
   await Bun.write(bad, "---\nname: bad\ntools: [read]\n---\nMissing description");
   await Bun.write(
-    join(dirs.cwd, ".neant/agents/added.md"),
+    join(dirs.cwd, ".rukie/agents/added.md"),
     "---\nname: added\ndescription: Newly added\n---\nNew body",
   );
   const result = await session.run("second");
@@ -179,11 +179,11 @@ test.each(["parent", "settings", "type"])(
   "child model comes from %s at the configured priority",
   async (source) => {
     dirs = await tempDirs();
-    const previous = process.env.NEANT_SUBAGENT_MODEL_TEST_KEY;
-    process.env.NEANT_SUBAGENT_MODEL_TEST_KEY = "fake-key";
+    const previous = process.env.RUKIE_SUBAGENT_MODEL_TEST_KEY;
+    process.env.RUKIE_SUBAGENT_MODEL_TEST_KEY = "fake-key";
     try {
       await Bun.write(
-        join(dirs.cwd, ".neant/agents/custom.md"),
+        join(dirs.cwd, ".rukie/agents/custom.md"),
         `---\nname: custom\ndescription: Custom\n${source === "type" ? "model: local/type\n" : ""}---\nCustom body`,
       );
       const fake = fakeModel([
@@ -210,7 +210,7 @@ test.each(["parent", "settings", "type"])(
               id: "local",
               api: "openai-completions",
               baseUrl: "http://127.0.0.1:1/v1",
-              apiKeyEnv: "NEANT_SUBAGENT_MODEL_TEST_KEY",
+              apiKeyEnv: "RUKIE_SUBAGENT_MODEL_TEST_KEY",
               models: [{ id: "settings" }, { id: "type" }],
             },
           ],
@@ -228,8 +228,8 @@ test.each(["parent", "settings", "type"])(
         `${fake.model.provider}/${fake.model.id}`,
       ]);
     } finally {
-      if (previous === undefined) delete process.env.NEANT_SUBAGENT_MODEL_TEST_KEY;
-      else process.env.NEANT_SUBAGENT_MODEL_TEST_KEY = previous;
+      if (previous === undefined) delete process.env.RUKIE_SUBAGENT_MODEL_TEST_KEY;
+      else process.env.RUKIE_SUBAGENT_MODEL_TEST_KEY = previous;
     }
   },
 );
@@ -239,7 +239,7 @@ test.each(["type", "settings"])(
   async (source) => {
     dirs = await tempDirs();
     await Bun.write(
-      join(dirs.cwd, ".neant/agents/custom.md"),
+      join(dirs.cwd, ".rukie/agents/custom.md"),
       `---\nname: custom\ndescription: Custom\n${source === "type" ? "model: missing/type\n" : ""}---\nBody`,
     );
     const fake = fakeModel([
@@ -278,7 +278,7 @@ test.each([
   "---\nname: [broken\n---\nBody",
 ])("malformed custom type is skipped with a path warning: %j", async (raw) => {
   dirs = await tempDirs();
-  const path = join(dirs.homeDir, ".neant/agents/bad.md");
+  const path = join(dirs.homeDir, ".rukie/agents/bad.md");
   await Bun.write(path, raw);
   const warnings: string[] = [];
   const fake = fakeModel([fauxAssistantMessage("parent")]);
@@ -301,7 +301,7 @@ test("custom tools include connected parent MCP tools without initial false warn
   const manifest = join(dirs.homeDir, "manifest.json");
   await Bun.write(manifest, JSON.stringify({ tools: ["echo"] }));
   await Bun.write(
-    join(dirs.homeDir, ".neant/mcp.json"),
+    join(dirs.homeDir, ".rukie/mcp.json"),
     JSON.stringify({
       mcpServers: {
         local: {
@@ -317,7 +317,7 @@ test("custom tools include connected parent MCP tools without initial false warn
     }),
   );
   await Bun.write(
-    join(dirs.cwd, ".neant/agents/custom.md"),
+    join(dirs.cwd, ".rukie/agents/custom.md"),
     "---\nname: custom\ndescription: MCP explorer\ntools: [mcp__local__echo]\n---\nInspect MCP",
   );
   const warnings: string[] = [];
@@ -352,7 +352,7 @@ test("custom tools include connected parent MCP tools without initial false warn
 
 test("fork is reserved for subagent_fork and a custom definition cannot create a restricted ordinary child", async () => {
   dirs = await tempDirs();
-  const path = join(dirs.cwd, ".neant/agents/fork.md");
+  const path = join(dirs.cwd, ".rukie/agents/fork.md");
   await Bun.write(
     path,
     "---\nname: fork\ndescription: Restricted custom fork\ntools: [read]\n---\nCustom fork body",

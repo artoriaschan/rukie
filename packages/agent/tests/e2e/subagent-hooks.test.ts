@@ -377,7 +377,7 @@ test("parent cancellation during SubagentStop feedback prevents another child mo
 test("type frontmatter hooks add to inherited hooks only in that child; tool hooks include child identity", async () => {
   dirs = await tempDirs();
   await Bun.write(
-    join(dirs.homeDir, ".neant/agents/custom.md"),
+    join(dirs.homeDir, ".rukie/agents/custom.md"),
     `---\n${JSON.stringify({
       name: "custom",
       description: "Custom",

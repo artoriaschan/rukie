@@ -50,7 +50,7 @@ test("dispose interrupts an active Run and closes its MCP process", async () => 
   dirs = await tempDirs();
   await Bun.write(join(dirs.homeDir, "manifest.json"), JSON.stringify({ tools: ["echo"] }));
   await Bun.write(
-    join(dirs.homeDir, ".neant/mcp.json"),
+    join(dirs.homeDir, ".rukie/mcp.json"),
     JSON.stringify({
       mcpServers: {
         local: {

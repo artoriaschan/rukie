@@ -1,5 +1,5 @@
 import type { McpClient } from "@earendil-works/pi-mcp";
-import { createUserVisibleError, type HookHandler } from "@neant/shared";
+import { createUserVisibleError, type HookHandler } from "@rukie/shared";
 import type { CommandOutput } from "./command.ts";
 
 export type CallMcpHookTool = (

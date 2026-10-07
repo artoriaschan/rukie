@@ -185,7 +185,7 @@ test.each([
     ]);
     const session = await createSession({ ...dirs, ...fake });
     await session.run("plan");
-    const root = join(dirs.homeDir, ".neant/sessions");
+    const root = join(dirs.homeDir, ".rukie/sessions");
     const files = (await readdir(root, { recursive: true })).filter((file) =>
       file.endsWith(".jsonl"),
     );

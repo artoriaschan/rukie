@@ -7,7 +7,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { join } from "node:path";
 import { createSession, type SessionEvent } from "../../src/index.ts";
-import type { HookHandler } from "@neant/shared";
+import type { HookHandler } from "@rukie/shared";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 

@@ -185,7 +185,7 @@ test("reviewModel selects a separate model with temperature zero using the Sessi
     temperature = options?.temperature;
     return reviewStream(model, context, options);
   });
-  const env = "NEANT_PERMISSION_REVIEW_TEST_KEY";
+  const env = "RUKIE_PERMISSION_REVIEW_TEST_KEY";
   process.env[env] = "test-key";
   try {
     const session = await createSession({

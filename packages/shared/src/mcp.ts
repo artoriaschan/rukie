@@ -1,7 +1,7 @@
 import type { UserVisibleErrorData } from "./errors.ts";
 
 export interface McpToolView {
-  /** Original MCP protocol name, without Neant's server prefix. */
+  /** Original MCP protocol name, without Rukie's server prefix. */
   name: string;
   description: string;
   inputSchema: unknown;

@@ -26,7 +26,7 @@ import {
   type McpServerView,
   type McpConfigError,
   type UserVisibleErrorData,
-} from "@neant/shared";
+} from "@rukie/shared";
 import { isTrustedProject } from "../config/index.ts";
 import { requestInteraction, type OnInteractionStart } from "../interaction/index.ts";
 import { preserveErrorDetails } from "../tools/runtime.ts";
@@ -93,7 +93,7 @@ function expandValues(values: Record<string, string> | undefined) {
 /** Redact literal URL secrets without expanding configuration expressions. */
 function displayUrl(value: string): string {
   const expressions: string[] = [];
-  let marker = "NEANTEXPRESSION";
+  let marker = "RUKIEEXPRESSION";
   while (value.includes(marker)) marker += "_";
   const protectedValue = value.replace(
     /\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^{}]*))?\}/g,
@@ -186,7 +186,7 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
   const report = (server: string, error: unknown) => {
     if (failed.has(server)) return;
     failed.add(server);
-    // Neant creates coded Errors through createUserVisibleError, matching preserveErrorDetails.
+    // Rukie creates coded Errors through createUserVisibleError, matching preserveErrorDetails.
     const errorData =
       error instanceof Error && "code" in error && "params" in error
         ? ({
@@ -319,7 +319,7 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
       loadOnly?: boolean;
       reconnect?: boolean;
     }) {
-      const userPath = join(options.homeDir, ".neant/mcp.json");
+      const userPath = join(options.homeDir, ".rukie/mcp.json");
       const projectPath = join(options.cwd, ".mcp.json");
       const servers = new Map<
         string,
@@ -363,7 +363,7 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
           auth: "none",
         });
         const client = new McpClient({
-          name: "neant",
+          name: "rukie",
           title: server,
           version: "0.1.0",
         });
@@ -572,7 +572,7 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
                 const provider = createOAuthProvider({
                   serverUrl: entry.url,
                   redirectUrl: callback.redirectUrl,
-                  clientMetadata: { client_name: "Neant" },
+                  clientMetadata: { client_name: "Rukie" },
                   clientId: entry.oauth?.clientId,
                   clientSecret: entry.oauth?.clientSecret,
                   store,
@@ -671,7 +671,7 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
                 callback = undefined;
                 guard();
                 const authenticated = new McpClient({
-                  name: "neant",
+                  name: "rukie",
                   title: server,
                   version: "0.1.0",
                 });
@@ -785,7 +785,7 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
             provider = createOAuthProvider({
               serverUrl: entry.url,
               redirectUrl: "http://localhost/callback",
-              clientMetadata: { client_name: "Neant" },
+              clientMetadata: { client_name: "Rukie" },
               clientId: entry.oauth?.clientId,
               clientSecret: entry.oauth?.clientSecret,
               store,

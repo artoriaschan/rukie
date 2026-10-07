@@ -110,12 +110,12 @@ test.each(["untrusted", "settings", "flag", "project-self-trust"])(
     );
     if (trust === "settings")
       await Bun.write(
-        join(dirs.homeDir, ".neant/settings.json"),
+        join(dirs.homeDir, ".rukie/settings.json"),
         JSON.stringify({ trustedProjects: [dirs.cwd] }),
       );
     if (trust === "project-self-trust")
       await Bun.write(
-        join(dirs.cwd, ".neant/settings.json"),
+        join(dirs.cwd, ".rukie/settings.json"),
         JSON.stringify({ trustedProjects: [dirs.cwd] }),
       );
     const { settings } = await loadSettings(dirs);
@@ -257,7 +257,7 @@ async function stdioConfig(manifest: object = { instructions: "Use echo for test
 }
 
 async function userConfig(servers: object) {
-  await Bun.write(join(dirs.homeDir, ".neant/mcp.json"), JSON.stringify({ mcpServers: servers }));
+  await Bun.write(join(dirs.homeDir, ".rukie/mcp.json"), JSON.stringify({ mcpServers: servers }));
 }
 
 async function expectClosed() {
@@ -267,7 +267,7 @@ async function expectClosed() {
 }
 
 async function transcript() {
-  const root = join(dirs.homeDir, ".neant/sessions");
+  const root = join(dirs.homeDir, ".rukie/sessions");
   const path = (await readdir(root, { recursive: true })).find((path) => path.endsWith(".jsonl"))!;
   return Bun.file(join(root, path)).text();
 }
@@ -310,7 +310,7 @@ test("resume preserves context and Transcript prefixes and reminders track chang
   expect(updates[0]!.content).toContain("Updated instructions.");
   expect(updates[0]!.content).toContain("mcp__local__added");
   expect(updates[0]!.content).not.toContain("mcp__local__echo");
-  await rm(join(dirs.homeDir, ".neant/mcp.json"));
+  await rm(join(dirs.homeDir, ".rukie/mcp.json"));
   events.length = 0;
   await resumed.run("removed", {
     onEvent: (event) => {

@@ -97,7 +97,7 @@ export function createCheckpoints({
         }
         if (bytes !== undefined) {
           const hash = createHash("sha256").update(bytes).digest("hex");
-          backup = join(homeDir, ".neant", "file-history", sessionId, hash);
+          backup = join(homeDir, ".rukie", "file-history", sessionId, hash);
           if (!(await Bun.file(backup).exists())) await Bun.write(backup, bytes);
         }
         current.files.push({ path, backup });

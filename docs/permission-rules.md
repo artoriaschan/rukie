@@ -25,7 +25,7 @@ Permission Rule 按 `deny` → `ask` → `allow` 的顺序匹配。显式 `deny`
 Headless CLI 没有审批回调，默认拒绝 `web_fetch`。可在仓库根目录运行以下命令，显式授权指定域名；需要已配置的 provider 凭据：
 
 ```sh
-bun apps/neant-cli/src/main.ts -p "Read https://docs.python.org/3/" --allow-tools 'web_fetch(domain:docs.python.org)'
+bun packages/coding-agent/src/main.ts -p "Read https://docs.python.org/3/" --allow-tools 'web_fetch(domain:docs.python.org)'
 ```
 
 `--permission-mode full-access` 也可放行未命中显式 `deny` / `ask` 的调用。域名规则和 Hook 都不能绕过 `web_fetch` 的地址检查。直接请求会拒绝域名解析出的任一非公网地址，并把连接钉定在已校验的地址上；需要走 `HTTP_PROXY` / `HTTPS_PROXY` 时，域名解析与目标地址约束交由环境代理负责，Agent Core 不校验或钉定代理解析出的地址。非公网 IP 字面量在两条路径中都会被拒绝；`NO_PROXY` 匹配的请求采用直接请求的检查。

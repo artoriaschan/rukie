@@ -29,7 +29,7 @@ export async function request(
       redirect: "manual",
       signal,
       headers: {
-        "User-Agent": `Neant/${version}`,
+        "User-Agent": `Rukie/${version}`,
         Accept: "text/markdown, text/html;q=0.9, */*;q=0.8",
       },
     });

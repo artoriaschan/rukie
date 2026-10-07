@@ -6,7 +6,7 @@ import {
 } from "@earendil-works/pi-mcp/oauth";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import { createUserVisibleError } from "@neant/shared";
+import { createUserVisibleError } from "@rukie/shared";
 
 const Strings = Type.Array(Type.String());
 export const OAuthMetadata = Type.Object({
@@ -22,7 +22,7 @@ export const OAuthMetadata = Type.Object({
   client_id_metadata_document_supported: Type.Optional(Type.Boolean()),
 });
 
-/** Apply Neant's configured client authentication method to every token request. */
+/** Apply Rukie's configured client authentication method to every token request. */
 export function createOAuthProvider(options: McpOAuthProviderOptions) {
   const provider = new McpOAuthProvider(options);
   const { clientId, clientSecret } = options;

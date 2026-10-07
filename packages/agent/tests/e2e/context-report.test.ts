@@ -36,7 +36,7 @@ test("context report separates current memory files and skill catalog from messa
     {
       role: "system-reminder",
       source: "user-instructions",
-      content: "Project Instructions (/home/.neant/AGENTS.md):\nefghijkl",
+      content: "Project Instructions (/home/.rukie/AGENTS.md):\nefghijkl",
       timestamp: 2,
     },
     {
@@ -55,7 +55,7 @@ test("context report separates current memory files and skill catalog from messa
   const report = session.contextReport();
   expect(report).toMatchObject({ model: "faux/faux-1", window: 1000, used: 43 });
   expect(report.memoryFiles).toEqual([
-    { path: "/home/.neant/AGENTS.md", tokens: 14 },
+    { path: "/home/.rukie/AGENTS.md", tokens: 14 },
     { path: "/project/AGENTS.md", tokens: 12 },
   ]);
   expect(report.skills).toEqual([
@@ -222,8 +222,8 @@ test("context reports use live response input and invalidate that count after ma
 
 test("context reports use the newly selected model window and clear counts from the previous model", async () => {
   dirs = await tempDirs();
-  const previousKey = process.env.NEANT_CONTEXT_REPORT_KEY;
-  process.env.NEANT_CONTEXT_REPORT_KEY = "test-key";
+  const previousKey = process.env.RUKIE_CONTEXT_REPORT_KEY;
+  process.env.RUKIE_CONTEXT_REPORT_KEY = "test-key";
   try {
     const session = await createSession({
       ...dirs,
@@ -234,7 +234,7 @@ test("context reports use the newly selected model window and clear counts from 
             id: "report",
             api: "openai-completions",
             baseUrl: "http://localhost:1/v1",
-            apiKeyEnv: "NEANT_CONTEXT_REPORT_KEY",
+            apiKeyEnv: "RUKIE_CONTEXT_REPORT_KEY",
             models: [{ id: "large", contextWindow: 1000000 }],
           },
         ],
@@ -266,8 +266,8 @@ test("context reports use the newly selected model window and clear counts from 
       tokens: 200000,
     });
   } finally {
-    if (previousKey === undefined) delete process.env.NEANT_CONTEXT_REPORT_KEY;
-    else process.env.NEANT_CONTEXT_REPORT_KEY = previousKey;
+    if (previousKey === undefined) delete process.env.RUKIE_CONTEXT_REPORT_KEY;
+    else process.env.RUKIE_CONTEXT_REPORT_KEY = previousKey;
   }
 });
 
@@ -276,7 +276,7 @@ test("context reports rediscovered MCP definitions and restores exact server ide
   const manifest = join(dirs.homeDir, "manifest.json");
   await Bun.write(manifest, JSON.stringify({ tools: ["old"], instructions: "Inspect widgets." }));
   await Bun.write(
-    join(dirs.homeDir, ".neant/mcp.json"),
+    join(dirs.homeDir, ".rukie/mcp.json"),
     JSON.stringify({
       mcpServers: {
         team__docs: {

@@ -1,5 +1,5 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { RunResult } from "@neant/shared";
+import type { RunResult } from "@rukie/shared";
 import type { Session, SessionEvent } from "../../session/index.ts";
 import type { SubagentIdentity, SubagentRun } from "./state.ts";
 import type { SubagentType } from "./types.ts";
@@ -7,7 +7,7 @@ import type { SubagentType } from "./types.ts";
 export const SUBAGENT_PROMPT =
   "You are a subagent delegated by a parent session. Work on the assigned prompt; your final reply will be delivered to the parent. You cannot expand the parent session permissions or create other subagents.";
 
-/** The pseudo-type of a fork delegation; `.neant/agents` cannot define `fork`. */
+/** The pseudo-type of a fork delegation; `.rukie/agents` cannot define `fork`. */
 const FORK_TYPE: SubagentType = {
   name: "fork",
   description: "Fork of the parent session",
