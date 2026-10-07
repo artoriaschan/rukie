@@ -222,7 +222,7 @@ test("a manual title before the first prompt suppresses all automatic generation
     await session.run("A different title");
     expect(session.title).toBe("Chosen name");
     expect(generated).toBe(false);
-    expect(() => session.rename("\x1b[31m\x1b[0m\n")).toThrow("empty");
+    await expect(session.rename("\x1b[31m\x1b[0m\n")).rejects.toThrow("empty");
     expect(session.title).toBe("Chosen name");
   } finally {
     await session.close();

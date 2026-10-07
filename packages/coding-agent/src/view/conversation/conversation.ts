@@ -772,18 +772,10 @@ function reduceEvent(
         subagents,
         background: event.background,
         running: event.run !== undefined,
-        usage: {
-          input: Object.values(event.usage.models).reduce((sum, usage) => sum + usage.input, 0),
-          output: Object.values(event.usage.models).reduce((sum, usage) => sum + usage.output, 0),
-          cacheRead: Object.values(event.usage.models).reduce(
-            (sum, usage) => sum + usage.cacheRead,
-            0,
-          ),
-          cacheWrite: Object.values(event.usage.models).reduce(
-            (sum, usage) => sum + usage.cacheWrite,
-            0,
-          ),
-        },
+        // Footer usage belongs to Runs observed by this frontend instance.
+        // Durable totals remain available through Session context reports;
+        // replaying a snapshot must not count them again at Run settlement.
+        usage: state.usage,
       };
     }
     case "subagent_event": {

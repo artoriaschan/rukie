@@ -68,6 +68,7 @@ test("resume replays stored text before input and appends the next Run to the sa
       await session.run("stored prompt 中");
       id = session.id;
       argv.push("--resume", id);
+      await session.close();
     },
   });
   try {
@@ -108,19 +109,36 @@ test("resume replays stored text before input and appends the next Run to the sa
 
     app.stdin.write("continuation\r");
     await app.waitFor(() => app.calls.length === 1);
-    expect(app.calls[0]!.context.messages.slice(-5)).toMatchObject([
-      { role: "user", content: [{ type: "text", text: "stored prompt 中" }] },
-      { role: "assistant", content: [{ type: "text", text: storedReply }] },
-      {
-        role: "system",
-        toolsAdded: expect.arrayContaining([
-          expect.objectContaining({ name: "ask_user_question" }),
-          expect.objectContaining({ name: "exit_plan_mode" }),
-        ]),
-      },
-      { role: "user", content: [{ type: "text", text: expect.stringContaining("[状态栏]") }] },
-      { role: "user", content: [{ type: "text", text: "continuation" }] },
-    ]);
+    const context = app.calls[0]!.context.messages;
+    expect(context).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "user",
+          content: [{ type: "text", text: "stored prompt 中" }],
+        }),
+        expect.objectContaining({
+          role: "assistant",
+          content: [{ type: "text", text: storedReply }],
+        }),
+        expect.objectContaining({
+          role: "system",
+          toolsAdded: expect.arrayContaining([
+            expect.objectContaining({ name: "ask_user_question" }),
+            expect.objectContaining({ name: "exit_plan_mode" }),
+          ]),
+        }),
+      ]),
+    );
+    expect(context.findLast((message) => message.role === "user")).toMatchObject({
+      role: "user",
+      content: [{ type: "text", text: "continuation" }],
+    });
+    expect(
+      context.filter(
+        (message) =>
+          message.role === "user" && JSON.stringify(message.content).includes("[状态栏]"),
+      ),
+    ).toHaveLength(1);
     app.calls[0]!.delta("resumed reply\n".repeat(12));
     app.calls[0]!.finish();
     await app.waitFor(
@@ -139,12 +157,21 @@ test("resume replays stored text before input and appends the next Run to the sa
     );
     expect(app.allLines()[1]).toBe(lines[0]);
     expect(app.allLines().filter((line) => line.slice(42) === logoTop)).toHaveLength(1);
+    await app.shutdown();
     const resumed = await createSession({ cwd: root, homeDir: root, ...app, resumeId: id });
     expect(resumed.id).toBe(id);
-    expect(resumed.messages.slice(-2)).toMatchObject([
+    expect(
+      resumed.messages
+        .filter(
+          (message) =>
+            message.role === "assistant" || (message.role === "user" && !("source" in message)),
+        )
+        .slice(-2),
+    ).toMatchObject([
       { role: "user", content: [{ type: "text", text: "continuation" }] },
       { role: "assistant", content: [{ type: "text", text: "resumed reply\n".repeat(12) }] },
     ]);
+    await resumed.close();
     const replay = await start(["--resume", id], {
       session: { cwd: root, homeDir: root },
       advanceTimers: (ms) => testClock.advanceTimersByTime(ms),
@@ -209,6 +236,7 @@ test("resume replays each tool's collapsed result and error preview without remi
       });
       await session.run("stored tools");
       argv.push("--resume", session.id);
+      await session.close();
     },
   });
   try {
@@ -263,14 +291,17 @@ test("resume replays the restored compaction suffix without exposing its summary
   const argv: string[] = [];
   const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
   original.setResponses([
-    fauxAssistantMessage("old transcript ".repeat(2000)),
-    fauxAssistantMessage("hidden compaction summary"),
+    fauxAssistantMessage(fauxToolCall("read", { path: "old.txt" }), { stopReason: "toolUse" }),
+    fauxAssistantMessage("old transcript"),
+    fauxAssistantMessage(fauxToolCall("read", { path: "old.txt" }), { stopReason: "toolUse" }),
+    fauxAssistantMessage("second old transcript"),
     fauxAssistantMessage("retained reply"),
+    fauxAssistantMessage("hidden compaction summary"),
   ]);
   const app = await start(argv, {
     prepare: async (root) => {
       const model = original.getModel();
-      model.contextWindow = 4000;
+      await Bun.write(join(root, "old.txt"), "OLD_EVIDENCE widget contract ".repeat(2000));
       const session = await createSession({
         cwd: root,
         homeDir: root,
@@ -280,8 +311,11 @@ test("resume replays the restored compaction suffix without exposing its summary
         ),
       });
       await session.run("old prompt");
+      await session.run("second old prompt");
       await session.run("retained prompt");
+      await session.compact();
       argv.push("--resume", session.id);
+      await session.close();
     },
   });
   try {
@@ -294,7 +328,8 @@ test("resume replays the restored compaction suffix without exposing its summary
       "",
       `${assistant} retained reply`,
     ]);
-    expect(app.allLines().join("\n")).not.toContain("old transcript");
+    // Native compaction retains committed Transcript while shortening model context.
+    expect(app.allLines()).toContain(`${assistant} second old transcript`);
     expect(app.allLines().join("\n")).not.toContain("hidden compaction summary");
     expect(app.allLines().join("\n")).not.toContain("system-reminder");
     expect(app.calls).toHaveLength(0);
@@ -307,10 +342,12 @@ test("resume hides a skill reminder retained by compaction while preserving user
   const argv: string[] = [];
   const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
   original.setResponses([
-    fauxAssistantMessage("old work ".repeat(15000)),
-    fauxAssistantMessage("y".repeat(10000)),
-    fauxAssistantMessage("Summary."),
+    fauxAssistantMessage(fauxToolCall("read", { path: "old.txt" }), { stopReason: "toolUse" }),
+    fauxAssistantMessage("first evidence"),
+    fauxAssistantMessage(fauxToolCall("read", { path: "old.txt" }), { stopReason: "toolUse" }),
+    fauxAssistantMessage("second evidence"),
     fauxAssistantMessage("done"),
+    fauxAssistantMessage("Summary."),
   ]);
   const prompt = "next <system-reminder>user-authored</system-reminder>";
   const app = await start(argv, {
@@ -321,7 +358,7 @@ test("resume hides a skill reminder retained by compaction while preserving user
           "x".repeat(7000),
       );
       const model = original.getModel();
-      model.contextWindow = 400000;
+      await Bun.write(join(root, "old.txt"), "OLD_EVIDENCE widget contract ".repeat(2000));
       const session = await createSession({
         cwd: root,
         homeDir: root,
@@ -332,9 +369,10 @@ test("resume hides a skill reminder retained by compaction while preserving user
       });
       await session.run("first");
       await session.run("/plan task");
-      model.contextWindow = 16000;
       await session.run(prompt);
+      await session.compact();
       argv.push("--resume", session.id);
+      await session.close();
     },
   });
   try {
@@ -381,6 +419,7 @@ test("--resume rejects a child session before requesting a model turn", async ()
       });
       await session.run("delegate");
       argv.push("--resume", childId);
+      await session.close();
     },
   });
   try {
