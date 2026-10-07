@@ -30,9 +30,10 @@ export async function start(
   const terminal = createTerminal(options.columns, options.rows, options.advanceTimers);
   const fake = controlledModel(options.controlReviews, options.controlTitles);
   let stderr = "";
+  const lifetime = new AbortController();
   const exit = main(argv, {
     ...terminal,
-    signal: options.signal,
+    signal: options.signal ? AbortSignal.any([options.signal, lifetime.signal]) : lifetime.signal,
     env: options.env ?? { LANG: "zh_CN.UTF-8" },
     host: {
       hasClipboardImage: async () => false,
@@ -56,18 +57,9 @@ export async function start(
     exit,
     stderr: () => stderr,
     async cleanup() {
-      await terminal.waitFor(() => exited || terminal.stdin.isRaw);
-      // Close views, decline interactions and interrupt Runs through terminal input.
-      // Wait for each painted response: views can hide activity while children settle.
-      while (!exited && terminal.stdin.isRaw) {
-        const beforeInterrupt = terminal.output();
-        terminal.stdin.write("\x03\x03\x03");
-        await terminal.waitFor(
-          () => exited || !terminal.stdin.isRaw || terminal.output() !== beforeInterrupt,
-        );
-      }
-      // Terminal restoration can precede Session close and process escalation.
-      // Keep driving virtual timers until main's completion signal settles.
+      // Process shutdown closes the durable owner even after a failed storage invocation.
+      lifetime.abort();
+      // Terminal restoration can precede Session close; drive timers until main settles.
       await terminal.waitFor(() => exited, 5000);
       await exit;
       terminal.dispose();
