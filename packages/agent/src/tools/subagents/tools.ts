@@ -1,4 +1,5 @@
-import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
+import type { AgentToolResult } from "@earendil-works/pi-agent-core";
+import type { PresentedTool } from "../presentation.ts";
 import { Type } from "typebox";
 import type {
   createSubagentController,
@@ -49,8 +50,20 @@ function sendResult(fact: SubagentSendFact): AgentToolResult<object> {
 
 /** The four Subagent model tools; the controller owns every execution fact they render. */
 export function createSubagentTools(subagents: ReturnType<typeof createSubagentController>) {
-  const delegate: AgentTool<typeof delegateParameters> = {
+  const delegate: PresentedTool<typeof delegateParameters> = {
     name: "subagent",
+    presentCall: (args) => ({
+      card: "generic",
+      kind: "task",
+      displayKey: "tool.subagent",
+      rawInput: args,
+    }),
+    presentResult: (_args, text) => ({
+      card: "generic",
+      kind: "task",
+      displayKey: "tool.subagent",
+      text,
+    }),
     label: "Subagent",
     // Discovery refreshes the available types per Run, so the declaration reads them now.
     get description() {
@@ -77,8 +90,20 @@ export function createSubagentTools(subagents: ReturnType<typeof createSubagentC
       );
     },
   };
-  const fork: AgentTool<typeof forkParameters> = {
+  const fork: PresentedTool<typeof forkParameters> = {
     name: "subagent_fork",
+    presentCall: (args) => ({
+      card: "generic",
+      kind: "task",
+      displayKey: "tool.subagent_fork",
+      rawInput: args,
+    }),
+    presentResult: (_args, text) => ({
+      card: "generic",
+      kind: "task",
+      displayKey: "tool.subagent_fork",
+      text,
+    }),
     label: "Fork Subagent",
     description:
       "Delegate a prompt to a fork of this session through its last completed Turn, excluding the current Turn. Inherits the parent model and tools; runs in the background by default.",
@@ -89,8 +114,20 @@ export function createSubagentTools(subagents: ReturnType<typeof createSubagentC
       );
     },
   };
-  const send: AgentTool<typeof sendParameters> = {
+  const send: PresentedTool<typeof sendParameters> = {
     name: "send_message",
+    presentCall: (args) => ({
+      card: "generic",
+      kind: "task",
+      displayKey: "tool.send_message",
+      rawInput: args,
+    }),
+    presentResult: (_args, text) => ({
+      card: "generic",
+      kind: "task",
+      displayKey: "tool.send_message",
+      text,
+    }),
     label: "Send Message",
     description:
       "Send instructions to one of this session's subagents. Steers an active Run or starts a new background Run for an idle child.",
@@ -99,8 +136,20 @@ export function createSubagentTools(subagents: ReturnType<typeof createSubagentC
       return sendResult(await subagents.send(agent_id, message));
     },
   };
-  const list: AgentTool = {
+  const list: PresentedTool = {
     name: "list_agents",
+    presentCall: (args) => ({
+      card: "generic",
+      kind: "task",
+      displayKey: "tool.list_agents",
+      rawInput: args,
+    }),
+    presentResult: (_args, text) => ({
+      card: "generic",
+      kind: "task",
+      displayKey: "tool.list_agents",
+      text,
+    }),
     label: "List Agents",
     description: "List this session's subagents, their Run status and descriptions.",
     parameters: Type.Object({}),

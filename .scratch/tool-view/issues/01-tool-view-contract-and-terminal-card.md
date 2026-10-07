@@ -31,3 +31,8 @@ Tool View schema 与纯 presenter 包装已接入 Session 工具事件和 `messa
 - `rtk proxy bunx --no -- tsc -b`、`oxlint`、`knip` 和 `git diff --check` 均通过。格式检查最后发现一个断言换行，交付前修复并复验。
 - 原有 bash 顽固进程中止场景约 3.02s，验证真实子进程的 SIGTERM→SIGKILL 升级契约，虚拟父进程时钟无法替代它。
 - 自分支确认基于 `codex/tool-view`，交付前合并 integration tip（Already up to date）。
+
+### Review 修复验证（2026-10-07）
+
+- todo、question、plan、subagent / fork / send / list 的 start/end/resume view 均带 `kind: task` 与 displayKey。read 截断、继续读取 offset 和 bash 完整输出路径是结构化事实，保持模型文本不变。`task-views.test.ts` 8 项与 `truncated-tool-views.test.ts` 4 项通过。
+- `bun run check:dev` 通过；最终 aggregate 在 integration branch 统一执行，结果由 spec 验证记录补充。

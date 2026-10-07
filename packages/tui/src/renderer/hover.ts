@@ -43,7 +43,7 @@ export function createHover() {
         const chain =
           node.props.onMouseEnter ||
           node.props.onMouseLeave ||
-          node.props.onClick ||
+          (node.type !== "tui-text" && node.props.onClick) ||
           node.props.onWheel
             ? [node.source, ...ancestors]
             : ancestors;
@@ -56,6 +56,31 @@ export function createHover() {
         };
         if (rectangle.left >= rectangle.right || rectangle.top >= rectangle.bottom) return;
         rectangles.push(rectangle);
+        if (node.type === "tui-text" && node.props.onClick) {
+          for (const [row, line] of (node.lines ?? []).entries()) {
+            let column = 0;
+            for (const glyph of line) {
+              const left = Math.max(rectangle.left, node.x + column);
+              const right = Math.min(rectangle.right, node.x + column + glyph.width);
+              const top = node.y - offset + row - (node.textTop ?? 0);
+              if (
+                glyph.text.trim() &&
+                left < right &&
+                top >= rectangle.top &&
+                top < rectangle.bottom
+              )
+                rectangles.push({
+                  left,
+                  right,
+                  top,
+                  bottom: top + 1,
+                  ancestors: [node.source, ...chain],
+                });
+              column += glyph.width;
+            }
+          }
+        }
+        if (node.type === "tui-text") return;
         for (const child of node.children)
           visit(child, node.type === "tui-scroll" ? rectangle : clip, chain);
       }

@@ -1,3 +1,4 @@
+import { completedEntryVisible } from "./completed-visibility";
 import type { Locale } from "@neant/i18n";
 import { createTuiI18n } from "../../i18n";
 import type { createConversation } from "./conversation";
@@ -5,6 +6,8 @@ import {
   toolCardTitle,
   toolCardBody,
   toolCardName,
+  toolCardNotices,
+  toolCardDiff,
   type ToolCardSource,
 } from "../../components/tool-call/presentation";
 import { unifiedDiffLines } from "../../components/tool-call/diff-lines";
@@ -49,13 +52,7 @@ export function transcriptMatches(
     const title = toolCardTitle(source);
     const name = toolCardName(source, locale);
     text(name ? `${name}(${title})` : title, `tool-${id}-header`, { toolId: id, part: "header" });
-    const diff = !source.isError
-      ? source.resultView?.card === "diff"
-        ? source.resultView
-        : !source.resultView && source.callView?.card === "diff"
-          ? source.callView
-          : undefined
-      : undefined;
+    const diff = toolCardDiff(source);
     const diffLines = diff ? unifiedDiffLines(diff) : undefined;
     const split =
       diffLines && (layout === "split" || (layout !== "unified" && columns >= 110))
@@ -102,7 +99,6 @@ export function transcriptMatches(
         ? [
             view.exitCode !== undefined ? t("tool.exit-code", { code: view.exitCode }) : undefined,
             view.signal ? t("tool.signal", { signal: view.signal }) : undefined,
-            view.outputUnavailable ? t("tool.output-unavailable") : undefined,
           ]
             .filter(Boolean)
             .join("\n")
@@ -111,9 +107,13 @@ export function transcriptMatches(
             view.total > (view.shape === "paths" ? view.paths.length : view.matches.length)
           ? t("tool.search-total", { count: view.total })
           : "";
-    if (notes) text(notes, `tool-${id}-verdict`);
+    text(
+      [notes, ...toolCardNotices(view, locale)].filter(Boolean).join("\n"),
+      `tool-${id}-verdict`,
+    );
   }
   state.completed.forEach((entry, index) => {
+    if (!completedEntryVisible(state, index)) return;
     const anchor = entry.anchorId ?? `row-${index}`;
     switch (entry.type) {
       case "tool":
@@ -165,6 +165,6 @@ export function transcriptMatches(
   });
   if (state.reasoning) text(state.reasoning, `${state.assistantAnchor}-thinking`);
   if (state.assistant) text(state.assistant, state.assistantAnchor);
-  state.tools.forEach((call) => tool(call, call.id));
+  state.tools.forEach((call) => tool({ ...call, isRunning: true }, call.id));
   return matches;
 }

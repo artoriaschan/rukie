@@ -1,4 +1,5 @@
 import type { Locale } from "@neant/i18n";
+import { createTuiI18n } from "../../i18n";
 import { appCopy } from "../../i18n/locales";
 import type { ToolCallView, ToolResultView } from "@neant/shared";
 export interface ToolCardSource {
@@ -9,9 +10,16 @@ export interface ToolCardSource {
   result?: string;
   error?: string;
   isError?: boolean;
+  isRunning?: boolean;
 }
 /** Full display source shared by rendering and transcript search, without event metadata. */
-export function toolCardTitle({ args, callView }: ToolCardSource): string {
+export function toolCardTitle({
+  args,
+  callView: declaredCallView,
+  resultView,
+  isRunning,
+}: ToolCardSource): string {
+  const callView = isRunning || resultView ? declaredCallView : undefined;
   return callView?.card === "terminal"
     ? callView.command
     : callView?.card === "diff"
@@ -24,7 +32,7 @@ export function toolCardTitle({ args, callView }: ToolCardSource): string {
             "");
 }
 export function toolCardBody(source: ToolCardSource): string | undefined {
-  const { resultView: view, callView, result, error, isError } = source;
+  const { resultView: view, result, error, isError } = source;
   if (isError) return error ?? (view?.card === "terminal" ? view.output : undefined);
   switch (view?.card) {
     case "read":
@@ -46,7 +54,7 @@ export function toolCardBody(source: ToolCardSource): string | undefined {
       return [...groups].flatMap(([path, lines]) => [path, ...lines]).join("\n");
     }
     default:
-      return callView?.card === "diff" ? undefined : result;
+      return result;
   }
 }
 
@@ -56,5 +64,30 @@ export function toolCardName(source: ToolCardSource, locale: Locale): string | u
     ? appCopy[locale][key as keyof typeof appCopy.zh]
     : source.name
       ? source.name[0]!.toUpperCase() + source.name.slice(1)
+      : undefined;
+}
+
+/** Durable output notices remain outside the body fold and search window. */
+export function toolCardNotices(view: ToolResultView | undefined, locale: Locale): string[] {
+  const t = createTuiI18n(locale);
+  if (view?.card !== "read" && view?.card !== "terminal") return [];
+  return [
+    view.outputUnavailable ? t("tool.output-unavailable") : undefined,
+    view.card === "terminal" && view.fullOutputPath
+      ? t("tool.full-output", { path: view.fullOutputPath })
+      : undefined,
+    view.card === "read" && view.nextOffset !== undefined
+      ? t("tool.read-continue", { offset: view.nextOffset })
+      : undefined,
+  ].filter((line): line is string => line !== undefined);
+}
+
+/** Proposed replacements are only meaningful while execution is pending. */
+export function toolCardDiff(source: ToolCardSource) {
+  if (source.isError) return undefined;
+  return source.resultView?.card === "diff"
+    ? source.resultView
+    : source.isRunning && source.callView?.card === "diff"
+      ? source.callView
       : undefined;
 }

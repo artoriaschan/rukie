@@ -75,6 +75,8 @@ const zh = {
   "tool.exit-code": "退出码：{{code}}",
   "tool.signal": "信号：{{signal}}",
   "tool.output-unavailable": "完整输出不可用",
+  "tool.full-output": "完整输出：{{path}}",
+  "tool.read-continue": "使用 offset={{offset}} 继续读取",
 
   "mcp.panel.status.connected": "已连接",
   "mcp.panel.status.needs-auth": "需要授权",
@@ -500,6 +502,8 @@ const en = {
   "tool.exit-code": "Exit code: {{code}}",
   "tool.signal": "Signal: {{signal}}",
   "tool.output-unavailable": "Full output unavailable",
+  "tool.full-output": "Full output: {{path}}",
+  "tool.read-continue": "Use offset={{offset}} to continue",
 
   "mcp.panel.status.connected": "connected",
   "mcp.panel.status.needs-auth": "needs auth",

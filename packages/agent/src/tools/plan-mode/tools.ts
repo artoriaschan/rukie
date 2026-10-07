@@ -1,4 +1,4 @@
-import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { PresentedTool } from "../presentation.ts";
 import { Type } from "typebox";
 import { requestInteraction, type OnInteractionStart } from "../../interaction/index.ts";
 
@@ -23,9 +23,21 @@ const reviewParameters = Type.Object({ plan: Type.String({ minLength: 1 }) });
 export function createEnterPlanModeTool(plan: {
   getActive(): boolean;
   setMode(on: boolean): Promise<void>;
-}): AgentTool<typeof enterParameters> {
+}): PresentedTool<typeof enterParameters> {
   return {
     name: "enter_plan_mode",
+    presentCall: (args) => ({
+      card: "generic",
+      kind: "task",
+      displayKey: "tool.enter_plan_mode",
+      rawInput: args,
+    }),
+    presentResult: (_args, text) => ({
+      card: "generic",
+      kind: "task",
+      displayKey: "tool.enter_plan_mode",
+      text,
+    }),
     label: "Enter Plan Mode",
     description:
       "Request permission to enter Plan Mode before exploring and planning a larger task.",
@@ -51,9 +63,21 @@ export function createExitPlanModeTool(
   planMode: { getActive(): boolean; setMode(on: boolean): Promise<void> },
   onPlanReview: OnPlanReview,
   onInteractionStart?: OnInteractionStart,
-): AgentTool<typeof reviewParameters> {
+): PresentedTool<typeof reviewParameters> {
   return {
     name: "exit_plan_mode",
+    presentCall: (args) => ({
+      card: "generic",
+      kind: "task",
+      displayKey: "tool.exit_plan_mode",
+      rawInput: args,
+    }),
+    presentResult: (_args, text) => ({
+      card: "generic",
+      kind: "task",
+      displayKey: "tool.exit_plan_mode",
+      text,
+    }),
     label: "Review plan",
     description: "Submit a markdown plan for user review. Only available in Plan Mode.",
     parameters: reviewParameters,

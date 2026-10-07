@@ -23,3 +23,8 @@
 - Public verification: start + headless terminal tests cover successful/failed todo and question live/resume, approved/revised plan expansion and replay, all four subagent tool names (new fork/list/failed-send live/resume case), detail tools, resize/focus/reading-position, goal generic summaries and full web body.
 - Red: successful todo e2e reproduced the duplicate card (2 failures, 455ms). Green: 57 relevant tests across 7 files passed in 10.12s; the new fork/list/failed-send replay test took 155.66ms. Updated legacy write/resume assertions to the integrated diff path-title and thinking rows; focused checks passed. All new/modified tests are under one second.
 - Integration sync: merged ticket06 tip c187ae6 and ticket07 tip 6aabdda, preserving presenter bodies, unified diffs and syntax highlighting. Reinstalled locked dependencies. Post-sync check:dev passed; 15 child-detail/remaining-view/syntax tests passed in 3.96s. Final aggregate gate is owned by the integration branch coordinator.
+
+### Review 修复验证（2026-10-07）
+
+- 全部 8 个 special built-ins 的 call/result presenter 声明 `kind: task`，不改变 TUI 专用组件分流与执行。`task-views.test.ts` 通过公开 Session start/end/resume 验证分类。
+- `bun run check:dev` 通过；最终 aggregate 在 integration branch 统一执行，结果由 spec 验证记录补充。

@@ -51,6 +51,9 @@ export function createBashTool(cwd: string, jobs: Jobs): PresentedTool<typeof sc
           : {}),
         ...("signal" in facts && typeof facts.signal === "string" ? { signal: facts.signal } : {}),
         ...("truncation" in facts ? { outputUnavailable: true } : {}),
+        ...("fullOutputPath" in facts && typeof facts.fullOutputPath === "string"
+          ? { fullOutputPath: facts.fullOutputPath }
+          : {}),
       };
     },
     label: "bash",

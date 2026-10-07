@@ -22,3 +22,8 @@
 - Green public `start`/headless terminal coverage: all 9 search cases pass, including RGB highlight, repeated >400-row matches, split old/new matches on one row, >480-character title, bold Markdown source mapping, displayed context and background headings, during-Run zh/en, draft/slash restoration, and streaming reading anchors. Individual cases 62–274 ms in the final run. New timers have no fixed waits; the background test uses real child output and completion predicates to cover delivery.
 - After merging integration `cf8d58e`, focused search/context/background verification: 27 pass / 189 assertions / 9.76 s. The two unchanged background process cases take 2.16/3.28 s; own tests remain below one second. Focused diff/web/tooltip/reveal/file-actions/expansion/scroll verification: 46 pass / 170 assertions / 5.63 s.
 - `bunx --no -- oxfmt --check`, `bunx --no -- oxlint`, `bunx --no -- tsc -b`, `bunx --no -- knip`, and `git diff --check` pass (all via RTK). Aggregate validation remains the integration owner's single final gate.
+
+### Review 修复验证（2026-10-07）
+
+- 共享 completedEntryVisible 投影排除同一 Subagent 的旧 continuation 行。公开 headless continuation 搜索从 3 个（含不可见项）修正为 2 个可见匹配；legacy edit 原始结果搜索与 notices projection 一致。transcript-search/subagent-card 回归通过。
+- `bun run check:dev` 通过；最终 aggregate 在 integration branch 统一执行，结果由 spec 验证记录补充。

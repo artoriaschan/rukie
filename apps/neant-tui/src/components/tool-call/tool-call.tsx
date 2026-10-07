@@ -1,4 +1,10 @@
-import { toolCardTitle, toolCardBody, toolCardName } from "./presentation";
+import {
+  toolCardTitle,
+  toolCardBody,
+  toolCardName,
+  toolCardNotices,
+  toolCardDiff,
+} from "./presentation";
 import { useSmoothReveal } from "./use-smooth-reveal";
 import { useDiffLayout } from "./diff-layout";
 import { Markdown } from "../markdown";
@@ -87,21 +93,22 @@ export function ToolCall({
   const kind = resultView?.kind ?? callView?.kind;
   const color = toolKindColor(kind);
   const displayName = toolCardName({ name, callView, resultView }, locale);
-  const title = toolCardTitle({ args, callView });
+  const title = toolCardTitle({ args, callView, resultView, isRunning: status === "running" });
+  const titleView = status === "running" || resultView ? callView : undefined;
   const path =
     resultView?.card === "read"
       ? resultView.path
-      : callView?.card === "generic" && ["read", "edit"].includes(callView.kind)
-        ? callView.title
-        : callView?.card === "diff"
-          ? callView.diffs[0]?.path
+      : titleView?.card === "generic" && ["read", "edit"].includes(titleView.kind)
+        ? titleView.title
+        : titleView?.card === "diff"
+          ? titleView.diffs[0]?.path
           : undefined;
   const pathOffset = path ? title.indexOf(path) : -1;
   const jsonTitle =
-    callView?.card !== "terminal" &&
-    callView?.card !== "diff" &&
-    !(callView?.card === "generic" && (callView.title || (callView.server && callView.tool)));
-  const commandLines = callView?.card === "terminal" ? title.split(/\r?\n/) : undefined;
+    titleView?.card !== "terminal" &&
+    titleView?.card !== "diff" &&
+    !(titleView?.card === "generic" && (titleView.title || (titleView.server && titleView.tool)));
+  const commandLines = titleView?.card === "terminal" ? title.split(/\r?\n/) : undefined;
   const hiddenLines =
     foldTerminalCommand && commandLines
       ? Math.max(0, commandLines.length - 1 - Number(title.endsWith("\n")))
@@ -130,7 +137,7 @@ export function ToolCall({
         )
       : 0;
   const clippedTitle =
-    callView?.card === "terminal"
+    titleView?.card === "terminal"
       ? shownTitle.slice(titleStart)
       : shownTitle.slice(titleStart, titleStart + 480);
   const pathLeft =
@@ -156,14 +163,12 @@ export function ToolCall({
   const seconds = Math.max(0, Math.floor((Date.now() - (startedAt ?? Date.now())) / 1000));
   const terminal = resultView?.card === "terminal" ? resultView : undefined;
   const output = toolCardBody({ callView, resultView, result, error, isError: status === "error" });
-  const diffView =
-    status !== "error"
-      ? resultView?.card === "diff"
-        ? resultView
-        : !resultView && callView?.card === "diff"
-          ? callView
-          : undefined
-      : undefined;
+  const diffView = toolCardDiff({
+    callView,
+    resultView,
+    isError: status === "error",
+    isRunning: status === "running",
+  });
   const diffLines = useMemo(() => (diffView ? unifiedDiffLines(diffView) : undefined), [diffView]);
   const splitRows = useMemo(
     () =>
@@ -321,7 +326,7 @@ export function ToolCall({
                 flexDirection="column"
                 flexGrow={1}
               >
-                <Markdown text={shown.join("\n")} />
+                <Markdown text={shown.join("\n")} onClick={toggle} />
               </ThemedBox>
             </ThemedBox>
           ) : (
@@ -422,9 +427,9 @@ export function ToolCall({
         {terminal?.signal && (
           <ThemedText color="error">{`   ${t("tool.signal", { signal: terminal.signal })}`}</ThemedText>
         )}
-        {terminal?.outputUnavailable && (
-          <ThemedText dimColor>{`   ${t("tool.output-unavailable")}`}</ThemedText>
-        )}
+        {toolCardNotices(resultView, locale).map((notice) => (
+          <ThemedText key={notice} dimColor>{`   ${notice}`}</ThemedText>
+        ))}
       </ThemedBox>
       {!!images?.length && (
         <ImageGallery

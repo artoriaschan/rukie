@@ -1,3 +1,4 @@
+import { completedEntryVisible } from "./completed-visibility";
 import { transcriptMatches } from "./transcript-search";
 import { TextInput } from "@neant/tui";
 import { DiffLayoutProvider, useDiffLayout } from "../../components/tool-call/diff-layout";
@@ -1815,6 +1816,7 @@ function Chat({
   const completed = useMemo(
     () =>
       state.completed.map((entry, index) => {
+        if (!completedEntryVisible(state, index)) return null;
         const hasJob = (candidate: typeof entry | undefined) =>
           candidate?.type === "tool" && candidate.jobId && state.jobs[candidate.jobId];
         if (hasJob(entry)) {
@@ -1941,10 +1943,7 @@ function Chat({
               />
             );
           case "subagent":
-            return state.subagents[entry.agentId] &&
-              state.completed.findLastIndex(
-                (candidate) => candidate.type === "subagent" && candidate.agentId === entry.agentId,
-              ) === index ? (
+            return state.subagents[entry.agentId] ? (
               <SubagentMessage
                 key={index}
                 subagent={state.subagents[entry.agentId]!}

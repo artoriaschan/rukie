@@ -295,6 +295,15 @@ test("an idle child's continuation retains exactly one dedicated row", async () 
     expect(cards).toHaveLength(1);
     expect(rows.join("\n")).not.toContain(`delivered to ${id}`);
     expect(rows[cards[0]!]).toContain("运行中");
+    child.finish();
+    const parent = app.calls[4] === child ? app.calls[3]! : app.calls[4]!;
+    parent.finish();
+    await app.waitFor(() => app.calls.length === 6);
+    app.calls[5]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    app.stdin.write("\x0f/Continue investigation\r");
+    await app.waitFor(() => screen().includes("1/"));
+    expect(screen()).toContain("1/2");
   } finally {
     await app.cleanup();
   }

@@ -1,4 +1,4 @@
-import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { PresentedTool } from "./presentation.ts";
 import { Type, type Static } from "typebox";
 import { requestInteraction, type OnInteractionStart } from "../interaction/index.ts";
 
@@ -30,9 +30,21 @@ export type OnQuestion = (request: QuestionRequest) => Promise<QuestionReply>;
 export function createQuestionTool(
   onQuestion: OnQuestion,
   onInteractionStart?: OnInteractionStart,
-): AgentTool<typeof parameters> {
+): PresentedTool<typeof parameters> {
   return {
     name: "ask_user_question",
+    presentCall: (args) => ({
+      card: "generic",
+      kind: "task",
+      displayKey: "tool.ask_user_question",
+      rawInput: args,
+    }),
+    presentResult: (_args, text) => ({
+      card: "generic",
+      kind: "task",
+      displayKey: "tool.ask_user_question",
+      text,
+    }),
     label: "Ask user question",
     description:
       "Ask the user 1–4 questions with 2–4 choices each. The frontend automatically adds an Other choice for free text; do not add it yourself.",
