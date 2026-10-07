@@ -890,6 +890,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     });
     const mcpAuthState = createMcpAuthState();
     const mcp = createMcpConnections(mcpAuthState);
+    const reconnectMcpServers = new Set<string>();
     const mcpManager = createMcpManager({
       createConnections: () => createMcpConnections(mcpAuthState),
       connectOptions: () => ({
@@ -903,7 +904,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         onWarning: warn,
       }),
       getRunning: () => !!observation?.running(),
-      getBusy: () => selectingModel || foregroundAdmission,
+      getBusy: () => selectingModel || foregroundAdmission || manualCompaction,
       onChange: () => custom({ type: "mcp_servers_changed" }),
     });
     const jobHistory = await fullHistory(ROOT_CONVERSATION_ID);
@@ -3203,6 +3204,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
       async reconnectMcp(name) {
         await mcpManager.reconnect(name);
+        reconnectMcpServers.add(name);
       },
       async compact(input) {
         assertAvailable(true);
@@ -3501,7 +3503,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           : () => {};
         try {
           await rebuildTools();
-          await mcp.connect({
+          const connectionOptions: Parameters<typeof mcp.connect>[0] = {
             cwd,
             homeDir: options.homeDir,
             settings,
@@ -3519,7 +3521,12 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               custom(event);
               mcpManager.adopt(mcp.snapshot());
             },
-          });
+          };
+          for (const name of reconnectMcpServers) {
+            await mcp.connect({ ...connectionOptions, onlyServer: name, reconnect: true });
+            reconnectMcpServers.delete(name);
+          }
+          await mcp.connect(connectionOptions);
           mcpManager.adopt(mcp.snapshot());
           await rebuildTools(true);
           input.signal?.throwIfAborted();
