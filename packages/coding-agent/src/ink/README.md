@@ -123,4 +123,4 @@ ScrollBox 的 DECSTBM 快速路径使用实际滚动内容高度判断纯滚动�
 - App.tsx/hit-test.ts 保留 SGR hover 的原始 button modifier，孤立 release 不重放旧 click。Alt 拖拽结束的产品通知在 commit 后交给仍存活的同一输入 lease；延迟 hover handler 错误归所属 renderer。
 - ink.tsx/App.tsx 在真实进程退出或 signal-exit 中恢复各自终端；stdout 持续写入失败仍释放输入/raw mode 并拒绝 early/late exit wait。React insertion 中的写失败延迟给所属 root 处理，退出后的 rerender 不再输出。ConPTY 同尺寸 resize 擦除是其启动 capability 对应的原生规则，其他终端同尺寸通知保持静默。
 
-- selection.ts 为 held wheel 移出的选中行记录 normalized source 的实际 glyph 范围，在复制前用所属 root 的存活源重新核验；ANSI/style、选区外同一行更新和相同字节的 Text remount 不改变内容指纹，选中范围替换仍拒绝读取。向反方向滚回时以 virtual endpoints 弹出 capture debt，避免重复行或丢失原选中文字。
+- selection.ts 为 held wheel 移出的选中行记录 normalized source 的实际 glyph 范围，内部校验必须传入所属 root，在复制前用该 root 的存活源重新核验；来源片段和绘制 cell 以 NFC glyph 进行匹配，保留 display-cell 偏移与来源片段自身字节，组合字符的替换仍会被捕获，规范等价的表示不误判为变更；ANSI/style、选区外同一行更新和相同字节的 Text remount 不改变内容指纹，选中范围替换仍拒绝读取。向反方向滚回时以 virtual endpoints 弹出 capture debt，避免重复行或丢失原选中文字。

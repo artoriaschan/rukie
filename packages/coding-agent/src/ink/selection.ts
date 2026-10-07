@@ -1473,8 +1473,12 @@ function paintedSourceRows(s: SelectionState, screen: Screen, root: DOMElement):
       // A selected trailing blank also owns the line boundary: inserting
       // text there must invalidate a captured empty source fragment.
       const boundary = localCol === stringWidth(line) && cell.char.trim() === ''
-      if (!boundary && (cell.char === '' || stripAnsi(sliceAnsi(line, localCol, localCol + stringWidth(cell.char))) !== cell.char)) continue
-      const selectedText = boundary ? '' : cell.char
+      const fragment = stripAnsi(sliceAnsi(line, localCol, localCol + stringWidth(cell.char)))
+      // Wrapping canonically composes plain text, while ANSI restoration can
+      // retain its original combining bytes in the painted grapheme. Compare
+      // their displayed glyph, then retain the source fragment's own bytes.
+      if (!boundary && (cell.char === '' || fragment.normalize('NFC') !== cell.char.normalize('NFC'))) continue
+      const selectedText = boundary ? '' : fragment
       const segments = result.get(row) ?? []
       segments.push({
         path: source.path,
@@ -1552,10 +1556,10 @@ export function refreshSelectionFingerprint(
   s: SelectionState,
   screen: Screen,
   coordinated: boolean,
-  root?: DOMElement,
+  root: DOMElement,
 ): boolean {
   if (s.stale) return false
-  if (root && !capturedSourcesValid(s, root)) {
+  if (!capturedSourcesValid(s, root)) {
     s.stale = true
     return true
   }
@@ -1567,7 +1571,7 @@ export function refreshSelectionFingerprint(
     s.coveredSourceRows = undefined
     return false
   }
-  if (root) s.coveredSourceRows = paintedSourceRows(s, screen, root)
+  s.coveredSourceRows = paintedSourceRows(s, screen, root)
   // Any geometry change re-baselines: drag motion, word/line extension,
   // keyboard pan, multi-click — the user redefined what is highlighted, so
   // the next copy legitimately reads the new band's CURRENT text. Only a

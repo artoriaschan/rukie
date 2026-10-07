@@ -147,3 +147,28 @@ for (const kind of [
     }
   });
 }
+
+test.each(["a", "é"])(
+  "captured decomposed grapheme validates displayed source against %s",
+  async (replacement) => {
+    const initial = rows(10).replace("row-2", "e\u0301ow-2");
+    const f = await mountRows({ text: initial });
+    try {
+      f.terminal.stdin.write("\x1b[<0;1;4M\x1b[<32;5;5M");
+      await f.terminal.waitFor(
+        () => !f.terminal.terminal.buffer.active.getLine(3)!.getCell(0)!.isBgDefault(),
+      );
+      f.terminal.stdin.write("\x1b[<65;5;5M");
+      await f.terminal.waitFor(() => f.terminal.screen()[1] === "row-3");
+      f.replace(initial.replace("e\u0301ow-2", `${replacement}ow-2`));
+      await f.terminal.waitFor(() => f.terminal.screen()[0] === "changed");
+      await release(f);
+      expect(f.selection().getState()?.stale).toBe(replacement === "a");
+      expect(f.selection().readSelectionText()).toBe(
+        replacement === "a" ? "" : "e\u0301ow-2\nrow-3",
+      );
+    } finally {
+      await f.dispose();
+    }
+  },
+);
