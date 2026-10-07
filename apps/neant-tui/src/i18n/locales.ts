@@ -154,6 +154,7 @@ const zh = {
   "jobs.notice.killed": "后台任务已停止：{{label}}（{{id}} · 用时 {{duration}}）",
 
   "selection.copied": "已复制",
+  "selection.sent": "已向终端发送剪贴板请求",
   "selection.unavailable": "无法复制：剪贴板不可用",
   "selection.stale": "所选内容已变化，请重新选择",
   "image.clipboard-tip": "剪贴板中有图片 · ctrl+v 粘贴",
@@ -589,6 +590,7 @@ const en = {
   "jobs.notice.killed": "Background job stopped: {{label}} ({{id}} · {{duration}})",
 
   "selection.copied": "Copied",
+  "selection.sent": "Clipboard request sent to terminal",
   "selection.unavailable": "Cannot copy: clipboard is unavailable",
   "selection.stale": "Selected content changed. Select it again.",
   "image.clipboard-tip": "Image in clipboard · ctrl+v to paste",

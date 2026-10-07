@@ -102,7 +102,9 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
   let t = argvT;
   let app: ReturnType<typeof render> | undefined;
   let chat: Awaited<ReturnType<typeof createChat>> | undefined;
-  const defaultHost = io.host ? undefined : createDefaultHost();
+  const defaultHost = io.host
+    ? undefined
+    : createDefaultHost({ env, writeTerminal: (text) => io.stdout.write(text) });
   let closing = false;
   const close = () => {
     closing = true;

@@ -391,8 +391,12 @@ function Chat({
     try {
       if (index === 0) await host.openExternal(menu.path);
       else if (index === 1) await host.reveal(menu.path);
-      else if (!(await host.writeClipboard(menu.path)))
-        throw new Error(t("file-actions.copy-unavailable"));
+      else {
+        const copied = await host.writeClipboard(menu.path);
+        if (!copied) throw new Error(t("file-actions.copy-unavailable"));
+        if (copied === "sent" && pasteOwner.current)
+          conversation.notify(t("selection.sent"), "info");
+      }
     } catch (error) {
       if (pasteOwner.current)
         conversation.notify(t("file-actions.failed", { error: formatError(error, t) }), "error");
@@ -2145,14 +2149,22 @@ function Chat({
   return (
     <Box flexDirection="column" height={rows}>
       <ScrollBox
-        textSelection={{
-          key: session.id,
-          backgroundColor: theme.badgeBackground,
-          onCopy: (text) => host.writeClipboard(text),
-          onResult: (result) => {
-            if (pasteOwner.current) notifyImage(t(`selection.${result}`), result !== "copied");
-          },
-        }}
+        textSelection={
+          small || pendingInteraction || preview || imagePreviewBlocked()
+            ? false
+            : {
+                key: session.id,
+                backgroundColor: theme.badgeBackground,
+                onCopy: (text) => host.writeClipboard(text),
+                onResult: (result) => {
+                  if (pasteOwner.current)
+                    notifyImage(
+                      t(`selection.${result}`),
+                      result === "unavailable" || result === "stale",
+                    );
+                },
+              }
+        }
         textSearch={
           expanded && transcriptSearch.query
             ? {

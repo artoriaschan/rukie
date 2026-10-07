@@ -207,7 +207,8 @@ export function render(element: ReactNode, options: RenderOptions) {
       if (event.button === 0 && selection.move(event.x, event.y)) container.hover.cancelPress();
       container.hover.move(event.x, event.y);
     } else if (event.type === "mouse") {
-      if (event.button === 0 && event.action === "press") selection.press(event.x, event.y);
+      if (event.button === 0 && event.action === "press")
+        selection.press(event.x, event.y, event.shift || event.alt || event.ctrl);
       if (event.button === 0 && event.action === "release" && selection.release())
         container.hover.cancelPress();
       container.hover[event.action](event.x, event.y, event.button);
@@ -219,6 +220,16 @@ export function render(element: ReactNode, options: RenderOptions) {
       selection.clear();
       container.hover.cancelPress();
     } else if (event.type === "key" && selection.hasSelection()) {
+      if (
+        event.key.shift &&
+        !event.key.ctrl &&
+        !event.key.alt &&
+        selection.extend(event.key.name)
+      ) {
+        event.handled = true;
+        container.hover.cancelPress();
+        return;
+      }
       selection.clear();
       container.hover.cancelPress();
       if (event.key.name === "escape") event.handled = true;
