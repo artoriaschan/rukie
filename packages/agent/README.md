@@ -26,6 +26,8 @@ stdout 与 stderr 分别保存在带绝对字节偏移的内存 ring，合计保
 
 # Subagent observation
 
-`session.readSubagent(id)` 返回当前父 Session 所属子 Session 的只读快照：按真实消息顺序的 `PresentedMessage`、可获得的模型，以及最近一次 `SubagentRun`。活跃子 Session 从内存读取；已卸载子 Session 经 `SessionStore.find/openReadonly` 核对工作目录与父子归属后读取 main 分支，并在完成或失败时关闭句柄。未知或不属于父 Session 的 id 返回 `undefined`；缺少只读存储能力或读取失败时拒绝 Promise。读取不创建 Session、不修复存储、不发起 Run，也不改变模型或权限。
+`session.readSubagent(id)` 返回当前父 Session 所属子 Session 的只读快照：按真实消息顺序的 `PresentedMessage`、可获得的模型，以及最近一次 `SubagentRun`。活跃子 Session 通过自己的串行存储 lease 读取已提交的 main 分支；空闲子 Session 使用 `openReadonly`。已卸载子 Session 经 `SessionStore.find/openReadonly` 核对工作目录与父子归属后读取，并在完成或失败时关闭句柄。未知或不属于父 Session 的 id 返回 `undefined`；缺少只读存储能力或读取失败时拒绝 Promise。读取不创建 Session、不修复存储、不发起 Run，也不改变模型或权限。
+
+快照的 `historyMessages` 在最近 Run 的原生开始事实存在时，提供该事实之前的已提交上下文；它由 Transcript 条目顺序重建，排除当前 Run 的所有 Turn。Frontend 将这段旧历史与已观察到的当前事件各呈现一次；provider 消息 timestamp 不用于判定 Run 归属。原生 Unknown Tool Outcome 保留未知状态，不能由 `isError=false` 推断成功。
 
 子 Run 保存实际模型、`RunResult.durationMs` 和 `usage.totalTokens`，历史缺少的可选字段保持缺失。Run Outcome 表示这次运行的结束原因，委派任务是否完成由父代理判断；无当前活动不代表成功。恢复与归属规则见 [ADR-0009](../../docs/adr/0009-subagent-resume-outcomes.md)。

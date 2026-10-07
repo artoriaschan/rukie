@@ -42,6 +42,7 @@ test("read-only child snapshots preserve actual model, usage, outcome and ordere
     try {
       const snapshot = await resumed.readSubagent(id);
       expect(snapshot?.messages).toEqual(live?.messages);
+      expect(snapshot?.historyMessages).toEqual(live?.historyMessages);
       expect(snapshot?.run).toEqual(live?.run);
       expect(resumed.running).toBe(false);
       expect(await resumed.readSubagent("unrelated-id")).toBeUndefined();
