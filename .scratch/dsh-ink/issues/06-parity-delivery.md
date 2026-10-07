@@ -19,3 +19,10 @@ Type: task
 ## Claim
 
 04/05 已由父集成提交 2562b3f resolved。06 由 acceptance owner 牵头：renderer/scroll 九个旧测试文件、共享终端 helpers、文档与 manifest 审计；APP 负责 input/resize/text-style/lifecycle 四文件及 Text 显式 false 修复；images 负责 graphics。保留公开行为覆盖；review 与最后 aggregate gate 由父任务完成，当前不 resolve。
+
+### 06 early public scroll acceptance
+
+- Migrated source identity coverage to actual product `reading-position` hooks plus injected native ScrollBox: contraction, text remount, deferred element geometry, and containing-card fold fallback. The last case reproduced tail-21 instead of card-header before the owning fallback fix.
+- Native DECSTBM scrolling reproduced a mismatch between painted row-1 and hit row-3; synchronize retained cached geometry and remove outgoing cache. Original click, clip, resize cancellation and hover assertions remain in `renderer/scroll-hit-geometry.test.tsx`.
+- Shared terminal `waitFor` now has a real hrtime failure bound under virtual clocks, matching the bounded parse flush.
+- Focused public helper/runtime/scroll-hit/source identity: 11 pass, 58 assertions, 428 ms; no aggregate gate yet. The remaining legacy migration, selection source-validation gaps, docs, review and final gate remain active.

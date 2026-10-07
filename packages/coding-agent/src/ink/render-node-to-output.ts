@@ -2076,6 +2076,23 @@ function renderNodeToOutput(
               )
               output.unclip()
             }
+            // The terminal's shifted pixels also move hit-test geometry. Edge
+            // rendering alone leaves stable rows' cached bounds at their old
+            // screen coordinates, so clicks would target different text.
+            for (const child of content.childNodes) {
+              if (child.nodeName === '#text') continue
+              const element = child as DOMElement
+              const rect = nodeCache.get(element)
+              const layout = element.yogaNode
+              if (!rect || !layout) continue
+              const childTop = layout.getComputedTop()
+              const childHeight = layout.getComputedHeight()
+              if (childTop + childHeight <= scrollTop || childTop >= scrollTop + innerHeight) {
+                dropSubtreeCache(element)
+              } else {
+                moveSubtreeCache(element, contentY + childTop - rect.y)
+              }
+            }
           } else {
             // Full path. Two sub-cases:
             //
@@ -2463,6 +2480,17 @@ function renderScrolledChildren(
     if (wasDirty) {
       seenDirtyChild = true
     }
+  }
+}
+
+/** Move cached geometry for cells preserved by a terminal scroll operation. */
+function moveSubtreeCache(node: DOMElement, deltaY: number): void {
+  if (deltaY === 0) return
+  const rect = nodeCache.get(node)
+  if (rect) rect.y += deltaY
+  if (node.scrollViewportTop !== undefined) node.scrollViewportTop += deltaY
+  for (const child of node.childNodes) {
+    if (child.nodeName !== '#text') moveSubtreeCache(child as DOMElement, deltaY)
   }
 }
 
