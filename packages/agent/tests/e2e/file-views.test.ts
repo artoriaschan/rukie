@@ -118,7 +118,7 @@ test("failed file tools preserve errors without claiming a successful diff", asy
   const ends = events.filter((event) => event.type === "tool_execution_end");
   expect(ends).toHaveLength(2);
   for (const end of ends) {
-    expect(end.result.isError).toBe(true);
+    expect(end.result?.isError).toBe(true);
     expect(end.view).toBeUndefined();
   }
   await session.close();
