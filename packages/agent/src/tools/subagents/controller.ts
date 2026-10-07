@@ -42,6 +42,17 @@ export interface SubagentControllerOptions {
   forkAt(): EntryId | undefined;
   /** Install child capability extensions before returning its explicit agent config. */
   childAgent(type: SubagentType, conversation: Conversation): Promise<AgentChange>;
+  beforeStart?(
+    request: {
+      agentId: string;
+      description: string;
+      type: string;
+      prompt: string;
+      background: boolean;
+    },
+    conversation: Conversation,
+    context: Context,
+  ): Promise<{ stop: string } | undefined>;
 }
 export type SubagentDelegationFact =
   | { kind: "started"; agentId: string; childSessionId: string; reused: boolean }
@@ -142,6 +153,38 @@ export function createSubagentController(options: SubagentControllerOptions) {
           if (!conversation) throw new Error("Subagent conversation is missing.");
           const type = typeFor(task.input.type);
           if (!type) throw new Error(`Subagent type ${task.input.type} is unavailable.`);
+          const decision = await options.beforeStart?.(
+            { ...task.input, agentId: row.id },
+            conversation,
+            context,
+          );
+          if (decision) {
+            const result = resultError(decision.stop, task.input.startedAt, runtime.now());
+            await runtime.commit(async (tx) => {
+              const doc = await tx.doc(state.document, parent.id);
+              const current = parseSubagentIdentities(doc.value ?? [], parentSessionId);
+              const identity = current.find((item) => item.driverTaskId === task.id);
+              if (!identity?.latestRun) throw new Error("Subagent Run identity is missing.");
+              identity.active = false;
+              identity.latestRun = {
+                ...identity.latestRun,
+                endedAt: result.endedAt,
+                durationMs: result.durationMs,
+                tokens: 0,
+                outcome: "hook_stopped",
+                reason: decision.stop,
+              };
+              doc.value = current;
+              (await tx.doc(subagentRunState.document, childId)).value = identity.latestRun;
+              return task.input.background
+                ? {
+                    status: "running",
+                    checkpoint: { phase: "report", childId, agentId: row.id, result },
+                  }
+                : { status: "terminal", outcome: { status: "completed", result } };
+            }, context);
+            return;
+          }
           const change = await options.childAgent(type, conversation);
           const parentAgent = await runtime.agent(context);
           const selection = change.tools;
@@ -274,9 +317,18 @@ export function createSubagentController(options: SubagentControllerOptions) {
         const endedAt = runtime.now();
         const result: Result = {
           text:
-            message?.content
-              .flatMap((block) => (block.type === "text" ? [block.text] : []))
-              .join("") ?? "",
+            view.entries
+              .filter(
+                (entry) => entry.id >= (childRow(task.id).latestRun?.promptEntryId ?? Infinity),
+              )
+              .flatMap((entry) => entry.model ?? [])
+              .filter((message) => message.role === "assistant")
+              .map((message) =>
+                message.content
+                  .flatMap((block) => (block.type === "text" ? [block.text] : []))
+                  .join(""),
+              )
+              .findLast((text) => text.trim().length > 0) ?? "",
           success: outcome === "completed",
           usage,
           endedAt,
