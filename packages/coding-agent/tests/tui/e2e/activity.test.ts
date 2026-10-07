@@ -1,3 +1,4 @@
+import { testClock } from "../helpers/test-clock";
 import { startWithClock } from "../helpers/clock-app";
 import { expect, test } from "bun:test";
 import { start } from "../helpers/app";
@@ -139,7 +140,7 @@ test("Esc cancels in-flight review and the next Run starts without stale REVIEW 
 });
 
 test("a tool Run shows live tokens and approval, then hides activity until the next submit", async () => {
-  const app = await start();
+  const app = await startWithClock();
   const screen = () => app.screen().join("\n");
   try {
     await app.waitFor(() => screen().includes("❯"));
@@ -174,7 +175,7 @@ test("a tool Run shows live tokens and approval, then hides activity until the n
     expect(screen()).not.toContain("esc 中断");
     expect(screen()).toContain("32→14");
     expect(screen()).not.toContain("Running");
-    await Bun.sleep(120);
+    testClock.advanceTimersByTime(120);
     await app.flush();
     expect(screen()).not.toContain("tokens");
     app.stdin.write("again\r");
