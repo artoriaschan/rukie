@@ -79,7 +79,7 @@ function Text({ children, ref, wrap = 'wrap', color, backgroundColor,
 }: Props) {
   const textStyles = React.useMemo<TextStyles>(() => {
     const values = { color, backgroundColor, bold, dim, italic, underline, strikethrough, inverse }
-    return Object.fromEntries(Object.entries(values).filter(([, value]) => Boolean(value)))
+    return Object.fromEntries(Object.entries(values).filter(([, value]) => value !== undefined))
   }, [color, backgroundColor, bold, dim, italic, underline, strikethrough, inverse])
   // A decorated leaf cannot share the wrapStyles cache. This hook must run
   // on every render: one instance can gain or lose its decoration (a code

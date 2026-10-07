@@ -1,5 +1,6 @@
 import type { DOMElement } from './dom.js'
 import type { TextStyles } from './styles.js'
+import { getGraphemeSegmenter } from './utils/intl.js'
 
 /**
  * A segment of text with its associated styles.
@@ -37,8 +38,25 @@ export function squashTextNodesToSegments(
 
     if (childNode.nodeName === '#text') {
       if (childNode.nodeValue.length > 0) {
-        out.push({
-          text: childNode.nodeValue,
+        // One terminal glyph has one style owner. Join a cluster across
+        // inline span boundaries before ANSI tokenization can discard its
+        // isolated combining marks or split a ZWJ sequence.
+        let text = childNode.nodeValue
+        const previous = out[out.length - 1]
+        if (previous !== undefined) {
+          const segmenter = getGraphemeSegmenter()
+          const tail = segmenter.segment(previous.text).containing(previous.text.length - 1)?.segment
+          if (tail !== undefined) {
+            const head = segmenter.segment(tail + text)[Symbol.iterator]().next().value?.segment
+            if (head !== undefined && head.length > tail.length) {
+              const continuation = head.slice(tail.length)
+              previous.text += continuation
+              text = text.slice(continuation.length)
+            }
+          }
+        }
+        if (text.length > 0) out.push({
+          text,
           styles: mergedStyles,
           hyperlink: inheritedHyperlink,
         })

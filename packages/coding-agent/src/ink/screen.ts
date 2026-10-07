@@ -226,6 +226,9 @@ const YELLOW_FG_CODE: AnsiCode = {
  * encodes whether the style is visible on space characters; IDs are valid
  * across all screens sharing this pool.
  */
+// Capture terminal color policy once; image protocol payloads never enter this cell style pool.
+const noColor = Boolean(process.env.NO_COLOR)
+
 export class StylePool {
   private ids = new Map<string, number>()
   private styles: AnsiCode[][] = []
@@ -247,6 +250,9 @@ export class StylePool {
    * @returns the interned style ID.
    */
   intern(styles: AnsiCode[]): number {
+    // Color-plane admission covers Text, borders, fills and preformatted ANSI
+    // consistently. Intensity and other emphasis codes retain their semantics.
+    if (noColor) styles = styles.filter(style => style.endCode !== '\x1b[39m' && style.endCode !== '\x1b[49m')
     const key = styles.length === 0 ? '' : styles.map(s => s.code).join('\0')
     return this.internWithKey(styles, key)
   }
