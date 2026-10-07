@@ -27,3 +27,5 @@ Blocked by: 01
 - TDD：公开 start／startWithClock 回归先验证 Unicode 长行与尾部换行预算失败、原基线脚本展开／换行失败、空搜索结果失败、1000 字符 emoji 边界失败、目录菜单失败，再验证修复；复用同名并发、退出码／信号、错误、未知、MCP、路径与恢复场景。集中 14 文件 87 tests／463 assertions 通过（16.44s）；`bunx --no -- tsc -b`、作用域 oxlint 与 `git diff --check` 通过。整个规范最终完整检查由集成分支统一执行。
 - 已有验收断言同步固定参考的路径标题与三格 gutter；恢复测试检查渲染后的 Markdown，同时保留 Transcript 原始内容和仅呈现一次的断言。成功 Todo 场景等已保存事实与动画尾部都完成再读屏。compaction 数据保持足量实际上下文，改为多逻辑行避免把单行视觉换行当正文折叠。
 - 性能：阅读锚点／展开用例原 1137ms，改用 startWithClock 后 256ms；其余新增用例均小于 250ms。没有增加真实 sleep。
+
+- 合入 02 的 `d836e97` 后核对恢复 thinking 标题，保留其真实锚点和 Ctrl+O 提示。额外 public terminal cell 回归验证没有专用分类的 generic 工具标题为 accent；fetch／task／unknown 与 read／search 共用 accent，执行 cyan，文件变更 gold，对齐参考 category 分支。

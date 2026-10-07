@@ -175,7 +175,7 @@ test("resume replays each tool's collapsed result and error preview without remi
     expect(restored).toBeGreaterThanOrEqual(0);
     expect(lines.slice(restored, restored + 3)).toEqual([
       "❯ stored tools",
-      "▾ 思考",
+      "⚓ 思考 （Ctrl+O 展开）",
       `${assistant} before tools`,
     ]);
     expect(lines.filter((line) => line.startsWith("• 读取 first.txt"))).toHaveLength(1);

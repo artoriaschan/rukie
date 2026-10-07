@@ -137,7 +137,9 @@ test("generic arguments beyond 480 characters expose the full JSON only in a too
     await app.waitFor(() => app.calls.length === 2);
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
-    const header = app.screen().find((line) => line.includes("Unknown_tool("))!;
+    const headerRow = app.screen().findIndex((line) => line.includes("Unknown_tool("));
+    const header = app.screen()[headerRow]!;
+    expect(app.terminal.buffer.active.getLine(headerRow)!.getCell(2)!.getFgColor()).toBe(0x7da1de);
     expect(header).toContain("…");
     expect(header).not.toContain("JSON_END_MARKER");
     hover(app, "Unknown_tool(");
