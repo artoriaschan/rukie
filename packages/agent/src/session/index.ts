@@ -1438,7 +1438,14 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             await checkpoints.record(call, cwd, options.homeDir);
             await options.onToolCallAllowed?.(call);
           },
-          onEvent: (event) => custom(event),
+          onEvent: (event) =>
+            custom({
+              type: "subagent_event",
+              agentId: childId,
+              description,
+              subagentType: type.name,
+              event: { ...event, sessionId: childId },
+            }),
           setMode: (value) => {
             permissionMode = value;
           },
