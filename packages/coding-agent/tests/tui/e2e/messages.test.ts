@@ -229,8 +229,15 @@ test("assistant search uses visible Markdown text without phantom formatting mat
     const row = app.screen().findIndex((line) => line.includes("visible and α"));
     expect(row).toBeGreaterThanOrEqual(0);
     const line = app.terminal.buffer.active.getLine(row)!;
-    const cell = line.getCell(line.translateToString().indexOf("α"))!;
-    expect(cell.isBgDefault()).toBe(false);
+    const col = line.translateToString().indexOf("α");
+    await app.waitFor(
+      () =>
+        app.terminal.buffer.active.getLine(row)!.getCell(col)!.isInverse() &&
+        app.terminal.buffer.active.getLine(row)!.getCell(col)!.getFgColor() === 3,
+    );
+    const cell = app.terminal.buffer.active.getLine(row)!.getCell(col)!;
+    expect(cell.isInverse()).toBeTruthy();
+    expect(cell.getFgColor()).toBe(3);
     expect(app.calls).toHaveLength(1);
   } finally {
     await app.cleanup();

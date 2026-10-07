@@ -110,6 +110,15 @@ export function sourceTop(element: DOMElement): number {
   }
   return top;
 }
+export function sourceLeft(element: DOMElement): number {
+  let left = 0;
+  let current: DOMElement | undefined = element;
+  while (current && current.style.overflowY !== "scroll") {
+    left += current.yogaNode?.getComputedLeft() ?? 0;
+    current = current.parentNode;
+  }
+  return left;
+}
 export function sourcePositions(sources: Sources) {
   return Array.from(sources.elements, ([id, element]) => ({
     id,
