@@ -1,4 +1,4 @@
-Status: claimed
+Status: resolved
 
 # Spec: 渲染栈改用 dsh-TUI 的 ink
 
@@ -24,3 +24,7 @@ Status: claimed
 ## Out of Scope
 
 - dsh-TUI 的 `components/`、`screens/`、主题与偏好体系。
+
+## Delivery
+
+全部六张工单 resolved，最终验收与清理见 [06 交付记录](issues/06-parity-delivery.md#answer)。集成分支为 `codex/dsh-ink`；固定来源、原生 runtime、Rukie 产品接线与文档一致。最终 `env -u NO_COLOR bun run check` 通过：2885 tests、16517 assertions、0 fail。双轴审查问题已修复，本任务的实现工作树与已合入辅助分支已清理。
