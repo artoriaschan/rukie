@@ -37,6 +37,7 @@ export async function start(
       readClipboard: async () => ({ unavailable: true }),
       writeClipboard: async () => false,
       openExternal: async () => {},
+      reveal: async () => {},
       ...options.host,
     },
     stderr: (text) => (stderr += text),
