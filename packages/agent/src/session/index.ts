@@ -9,6 +9,7 @@ import {
   defineDoc,
   hook,
   GenerationTask,
+  CompactionTask,
   ToolTask,
   LiveDoc,
   type SubmissionId,
@@ -294,6 +295,20 @@ const RequestDoc = defineDoc<{
   >;
 }>({
   kind: "rukie.requests",
+  version: 1,
+  scope: "session",
+  initial: () => ({ requests: {} }),
+});
+const CompactHookContextDoc = defineDoc<{ pending: string[] }>({
+  kind: "rukie.compact-hook-context",
+  version: 1,
+  scope: "conversation",
+  history: "rewindable",
+  fork: "asOf",
+  initial: () => ({ pending: [] }),
+});
+const PlanTakeoverDoc = defineDoc<{ requests: Record<string, true> }>({
+  kind: "rukie.plan-takeovers",
   version: 1,
   scope: "session",
   initial: () => ({ requests: {} }),
@@ -711,7 +726,30 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         if (users?.length) promptFacts.set(String(entry.id), users.map(textOf).join(""));
       }
     };
-    rememberPrompts(await fullHistory());
+    const initialHistory = await fullHistory();
+    rememberPrompts(initialHistory);
+    const readRunSummaries = (entries: readonly EntryRecord[]): RunSummaryFact[] =>
+      entries.flatMap((entry) => {
+        const value = entry.data;
+        return entry.kind === "rukie.run-summary" &&
+          value &&
+          typeof value === "object" &&
+          !Array.isArray(value) &&
+          typeof value.afterMessage === "number" &&
+          typeof value.durationMs === "number" &&
+          typeof value.endedAt === "number" &&
+          typeof value.success === "boolean"
+          ? [
+              {
+                afterMessage: value.afterMessage,
+                durationMs: value.durationMs,
+                endedAt: value.endedAt,
+                success: value.success,
+              },
+            ]
+          : [];
+      });
+    runSummaries = readRunSummaries(initialHistory);
     const checkpoints = createCheckpoints({
       homeDir: options.homeDir,
       sessionId: lease.id,
@@ -1654,7 +1692,65 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         await resource.jobs.dispose(true);
       }
     });
-    async function prepareReminders(ctx = context) {
+    const pendingCompactions = new Map<number, EntryRecord>();
+    const compactFocus = new Map<number, string>();
+    let compactionHooks = Promise.resolve();
+    const processCompactionHooks = () => {
+      compactionHooks = compactionHooks.then(async () => {
+        for (const [id, entry] of pendingCompactions) {
+          pendingCompactions.delete(id);
+          const data = entry.data;
+          if (
+            !data ||
+            typeof data !== "object" ||
+            Array.isArray(data) ||
+            typeof data.reason !== "string"
+          )
+            continue;
+          const text = entry.model?.map(textOf).join("") ?? "";
+          const start = text.indexOf("<summary>\n");
+          const end = text.lastIndexOf("\n</summary>");
+          const summary = start >= 0 && end > start ? text.slice(start + 10, end) : text;
+          const inputs = hookInput({
+            trigger: data.reason === "manual" ? "manual" : "auto",
+            custom_instructions: compactFocus.get(Number(entry.byTaskId)) ?? "",
+            compact_summary: summary,
+          });
+          const post = await hooks.run("PostCompact", inputs, {
+            matchQuery: inputs.trigger as string,
+          });
+          const startup = await hooks.run("SessionStart", hookInput({ source: "compact" }), {
+            matchQuery: "compact",
+          });
+          for (const result of [post, startup]) {
+            for (const message of result.systemMessages)
+              await appendNotice({ kind: "hook_message", message });
+            await conversation.commit(async (tx) => {
+              const context = await tx.doc(CompactHookContextDoc, conversation.id);
+              context.pending.push(...result.additionalContext);
+            }, context);
+          }
+          await prepareReminders(context, false);
+        }
+      });
+      return compactionHooks;
+    };
+    async function prepareReminders(ctx = context, includeHookContext = true) {
+      if (includeHookContext)
+        await conversation.commit(async (tx) => {
+          const owned = await tx.doc(CompactHookContextDoc, conversation.id);
+          for (const content of owned.pending)
+            await tx.appendEntry(
+              conversation.id,
+              reminderEntry({
+                role: "system-reminder",
+                source: "hook:SessionStart",
+                content,
+                timestamp: Date.now(),
+              }),
+            );
+          owned.pending = [];
+        }, ctx);
       const sources: ReminderSource[] = [
         { source: "skills", currentContent: () => skillsReminder(skills) },
         {
@@ -1757,6 +1853,22 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         name: "rukie.session",
         tools,
         hooks: [
+          hook(CompactionTask, {
+            beforeCompact: async (compaction, api, ctx) => {
+              compactFocus.set(Number(api.taskId), compaction.instructions ?? "");
+              if (compaction.reason === "manual") return undefined;
+              const result = await hooks.run(
+                "PreCompact",
+                hookInput({ trigger: "auto", custom_instructions: compaction.instructions ?? "" }),
+                { signal: ctx.abortSignal, matchQuery: "auto" },
+              );
+              if (result.continue === false || result.decision === "block") {
+                warn(result.stopReason ?? result.reason ?? "Compaction declined by hook.");
+                return { decline: true };
+              }
+              return undefined;
+            },
+          }),
           hook(ToolTask, {
             beforeTool: serializePermissionChecks(gate.beforeTool),
             afterTool: async (call, result, api, ctx) => {
@@ -1798,6 +1910,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           }),
           hook(GenerationTask, {
             beforeRequest: async (_request, api, ctx) => {
+              await processCompactionHooks();
               const live = await harness.snapshot(LiveDoc, conversation.id, ctx);
               if (live?.run) {
                 if (goal.view()?.armed)
@@ -1928,6 +2041,32 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 ),
               );
               mcpManager.adopt(mcp.snapshot());
+              const takeover = committed.some((value) =>
+                value?.entry.model?.some((message) => {
+                  if (message.role !== "toolResult" || message.toolName !== "exit_plan_mode")
+                    return false;
+                  const details = message.details;
+                  return (
+                    details &&
+                    typeof details === "object" &&
+                    !Array.isArray(details) &&
+                    "kind" in details &&
+                    details.kind === "takeover"
+                  );
+                }),
+              );
+              if (takeover) {
+                const live = await harness.snapshot(LiveDoc, conversation.id, ctx);
+                const first = live?.run?.inputs[0];
+                const input =
+                  first === undefined ? undefined : await lease.storage.submission(first, ctx);
+                await conversation.commit(async (tx) => {
+                  const taken = await tx.doc(PlanTakeoverDoc);
+                  if (input?.requestId) taken.requests[input.requestId] = true;
+                }, ctx);
+                await conversation.abort(ctx);
+                return;
+              }
               if (stopped && hookStopReason) {
                 const live = await harness.snapshot(LiveDoc, conversation.id, ctx);
                 const first = live?.run?.inputs[0];
@@ -2095,6 +2234,12 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       adopt: (publication) => {
         state.adopt(publication);
         for (const change of publication.changes) {
+          if (
+            change.type === "entry" &&
+            change.value.conversationId === conversation.id &&
+            change.value.kind === "pi.compaction"
+          )
+            pendingCompactions.set(Number(change.value.id), change.value);
           if (
             change.type === "document" &&
             change.conversationId === conversation.id &&
@@ -2311,6 +2456,14 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           .join("") ?? "";
       const request = await readRequest(requestId);
       await observation.flush();
+      if ((await harness.snapshot(PlanTakeoverDoc, context))?.requests[requestId])
+        return {
+          requestId,
+          text: "",
+          success: true,
+          usage,
+          durationMs: Date.now() - (request?.startedAt ?? Date.now()),
+        };
       const persistedStop = (await harness.snapshot(HookStopsDoc, context))?.requests[requestId];
       if (persistedStop)
         return {
@@ -2686,8 +2839,30 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
       async compact(input) {
         assertAvailable(true);
+        const pre = await hooks.run(
+          "PreCompact",
+          hookInput({ trigger: "manual", custom_instructions: input?.instructions ?? "" }),
+          { matchQuery: "manual" },
+        );
+        if (pre.continue === false)
+          throw pre.stopReason
+            ? createUserVisibleError(pre.stopReason, {
+                code: "compaction-hook-stopped-reason",
+                params: { reason: pre.stopReason },
+              })
+            : createUserVisibleError("Compaction stopped by hook.", {
+                code: "compaction-hook-stopped",
+                params: {},
+              });
+        if (pre.decision === "block")
+          throw createUserVisibleError(pre.reason ?? "Compaction blocked by hook.", {
+            code: "hook-compaction-blocked",
+            params: { reason: pre.reason ?? "" },
+          });
         const id = await conversation.compact(input?.instructions, context);
+        compactFocus.set(Number(id), input?.instructions ?? "");
         await harness.waitForTask(id, context);
+        await processCompactionHooks();
         contextMessages = (await conversation.context(context)).messages;
         await observation.flush();
       },
@@ -2706,15 +2881,23 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           const index = entries.findIndex((entry) => String(entry.id) === id);
           const previous = entries[index - 1];
           if (!previous) throw new Error("Checkpoint has no prior entry anchor.");
-          const fork = await conversation.fork(
-            previous.id,
-            { ownership: { kind: "ownerless" } },
-            context,
-          );
+          const forkRecord = await conversation.commit(async (tx) => {
+            const active = await tx.doc(SessionMetadataDoc);
+            const fork = await tx.forkConversation(conversation.id, previous.id, {
+              ownership: { kind: "ownerless" },
+            });
+            active.activeConversationId = Number(fork.id);
+            active.updatedAt = Date.now();
+            return fork;
+          }, context);
+          const fork = await harness.conversation(forkRecord.id, context);
+          if (!fork) throw new Error("Committed rewind conversation is missing.");
           await observation.close();
           conversation = fork;
+          runSummaries = readRunSummaries(await fullHistory());
           await writeMetadata();
           state = await createToolState(definitions, harness, conversation, context);
+          await subagents.rebindParent(conversation, context);
           plan.restore();
           tracking.restore(state.get("file-tracking"));
           goal.disarm();

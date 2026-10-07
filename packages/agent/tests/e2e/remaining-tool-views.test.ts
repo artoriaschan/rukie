@@ -57,7 +57,7 @@ test("read, grep and glob expose structured facts live and after Session Resume"
       paths: ["source.ts"],
       total: 1,
     });
-    await session.dispose();
+    await session.close();
     resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
     const results = resumed.messages.filter((message) => message.role === "toolResult");
     for (const message of results)
@@ -65,8 +65,8 @@ test("read, grep and glob expose structured facts live and after Session Resume"
         ends.find((event) => event.toolCallId === message.toolCallId)?.view,
       );
   } finally {
-    await resumed?.dispose();
-    await session.dispose();
+    await resumed?.close();
+    await session.close();
     await dirs.cleanup();
   }
 });
@@ -115,7 +115,7 @@ test("web results preserve Markdown separately from model notices and HTTP metad
       },
     });
   } finally {
-    await session.dispose();
+    await session.close();
     server.stop(true);
     await dirs.cleanup();
   }
@@ -167,7 +167,7 @@ test("goal and job controls expose compact generic summaries", async () => {
       },
     });
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });
@@ -219,15 +219,15 @@ test("MCP views carry server and tool facts and disappear safely when resumed of
     expect(events.find((event) => event.type === "tool_execution_end")).toMatchObject({
       view: { card: "generic", kind: "other", text: "MCP: hello" },
     });
-    await session.dispose();
+    await session.close();
     await Bun.write(join(dirs.homeDir, ".rukie", "mcp.json"), "{}");
     resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
     const result = resumed.messages.find((message) => message.role === "toolResult");
     expect(result?.view).toBeUndefined();
     expect(JSON.stringify(result)).toContain("MCP: hello");
   } finally {
-    await resumed?.dispose();
-    await session.dispose();
+    await resumed?.close();
+    await session.close();
     await dirs.cleanup();
   }
 });
@@ -254,7 +254,7 @@ test("truncated search views retain the total without replaying the filesystem",
       result.view,
     );
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });
@@ -289,7 +289,7 @@ test("background bash and job output and cancellation retain generic views", asy
       view: { card: "generic", kind: "execute", displayKey: "tool.bash" },
     });
     expect(ends.find((event) => event.toolName === "job_output")).toMatchObject({
-      isError: false,
+      result: { isError: false },
       view: {
         card: "generic",
         kind: "execute",
@@ -298,11 +298,11 @@ test("background bash and job output and cancellation retain generic views", asy
       },
     });
     expect(ends.find((event) => event.toolName === "job_kill")).toMatchObject({
-      isError: false,
+      result: { isError: false },
       view: { card: "generic", kind: "execute", displayKey: "tool.job_kill" },
     });
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });
@@ -325,7 +325,7 @@ test("grep keeps colon-containing file paths separate from match line numbers", 
       matches: [{ path: "part:12:name.ts", line: 1, text: "needle" }],
     });
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });
