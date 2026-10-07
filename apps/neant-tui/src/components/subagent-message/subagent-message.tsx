@@ -1,4 +1,4 @@
-import type { ToolCallView } from "@neant/shared";
+import type { ToolCallView, ToolResultView } from "@neant/shared";
 // Presentation adapted from dsh-TUI src/components/Chat/SubagentMessage.tsx (MIT).
 // https://github.com/ccch1mneyyy/dsh-TUI
 /*
@@ -76,6 +76,10 @@ export interface SubagentView {
     name: string;
     argsPreview: string;
     view?: ToolCallView;
+    args?: unknown;
+    resultView?: ToolResultView;
+    result?: string;
+    endedAt?: number;
     status: "running" | "completed" | "failed";
     startedAt?: number;
     durationMs?: number;

@@ -62,7 +62,7 @@ test.each(["zh", "en"] as const)(
       await app.waitFor(() => app.calls.length === 2);
       app.calls[1]!.finish();
       await app.waitFor(() => !app.isWorking());
-      const expected = [locale === "zh" ? "• 提问" : "• Questions", "⎿ Which storage? → Postgres"];
+      const expected = ["Which storage? → Postgres"];
       expect(app.allLines()).toEqual(expect.arrayContaining(expected));
       expect(app.allLines().join("\n")).not.toContain("ask_user_question");
       const replay = await resume();
@@ -99,8 +99,8 @@ test.each(["zh", "en"] as const)(
       await app.waitFor(() => !app.isWorking());
       const expected =
         locale === "zh"
-          ? ["• 提问", "⎿ Which storage? → 未回答", "  Which theme? → 未回答"]
-          : ["• Questions", "⎿ Which storage? → Unanswered", "  Which theme? → Unanswered"];
+          ? ["Which storage? → 未回答", "Which theme? → 未回答"]
+          : ["Which storage? → Unanswered", "Which theme? → Unanswered"];
       expect(app.allLines()).toEqual(expect.arrayContaining(expected));
       expect(app.allLines().join("\n")).not.toContain("The user declined");
       const replay = await resume();
@@ -148,10 +148,9 @@ test("multiline questions and labels, repeated questions, multiple choices and c
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
     const expected = [
-      "• Questions",
-      "⎿ Which → storage? Local or remote? → SQLite; note → first",
-      "  Which features? → Cache → fast v3, Replicas; replicas → second",
-      "  Which features? → Replicas",
+      "Which → storage? Local or remote? → SQLite; note → first",
+      "Which features? → Cache → fast v3, Replicas; replicas → second",
+      "Which features? → Replicas",
     ];
     expect(app.allLines()).toEqual(expect.arrayContaining(expected));
     const replay = await resume();
@@ -178,7 +177,7 @@ test("multiline questions and labels, repeated questions, multiple choices and c
 });
 
 test.each(["zh", "en"] as const)(
-  "%s interrupted questions keep the ordinary error card live and after resume",
+  "%s interrupted questions show a failure record live and after resume",
   async (locale) => {
     const { app, replay: resume } = await startSession(locale);
     try {
@@ -190,17 +189,14 @@ test.each(["zh", "en"] as const)(
       app.stdin.write("\x03\x03");
       await app.waitFor(() => !app.isWorking());
       const lines = app.allLines();
-      const index = lines.findIndex((line) =>
-        line.startsWith(locale === "zh" ? "✗ 提问(" : "✗ Question("),
-      );
-      expect(index).toBeGreaterThanOrEqual(0);
-      expect(lines[index + 1]).toMatch(/^⎿ .+/);
-      expect(lines).not.toContain(locale === "zh" ? "• 提问" : "• Questions");
-      expect(lines.join("\n")).not.toContain(locale === "zh" ? "未回答" : "Unanswered");
+      expect(lines.join("\n")).toContain("aborted");
+      expect(
+        lines.some((line) => line.startsWith("✗ Question(") || line.startsWith("✗ 提问(")),
+      ).toBe(false);
       const replay = await resume();
       try {
         await replay.waitFor(() => replay.screen().includes("❯"));
-        expect(replay.allLines()).toEqual(expect.arrayContaining(lines.slice(index, index + 2)));
+        expect(replay.allLines().join("\n")).toContain("aborted");
       } finally {
         await replay.cleanup();
       }
@@ -210,7 +206,7 @@ test.each(["zh", "en"] as const)(
   },
 );
 
-test("question parameter errors keep the ordinary error card", async () => {
+test("question parameter errors show a failure record", async () => {
   const app = await start(["ask"], { env: { LANG: "en_US.UTF-8" } });
   try {
     await app.waitFor(() => app.calls.length === 1);
@@ -219,7 +215,7 @@ test("question parameter errors keep the ordinary error card", async () => {
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
     expect(app.allLines().some((line) => line.startsWith('✗ Question({"questions":[]})'))).toBe(
-      true,
+      false,
     );
     expect(app.allLines().join("\n")).toContain("Validation failed");
     expect(app.allLines()).not.toContain("• Questions");
@@ -234,13 +230,13 @@ test.each([
     "a selected label containing the next question's full prefix",
     'chosen\n"Second?" → fake',
     "alternative",
-    '⎿ First? → chosen "Second?" → fake',
+    'First? → chosen "Second?" → fake',
   ],
   [
     "an unselected longer label overlapping the next question's prefix",
     "chosen\nlocal",
     'chosen\nlocal\n"Second?" → custom → actual',
-    "⎿ First? → chosen local",
+    "First? → chosen local",
   ],
 ])("%s keeps each answer on its own row", async (_name, selected, other, firstRow) => {
   const { app, replay: resume } = await startSession("en");
@@ -266,7 +262,7 @@ test.each([
     await app.waitFor(() => app.calls.length === 2);
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
-    const expected = ["• Questions", firstRow!, "  Second? → custom → actual"];
+    const expected = [firstRow!, "Second? → custom → actual"];
     expect(app.allLines()).toEqual(expect.arrayContaining(expected));
     const replay = await resume();
     try {

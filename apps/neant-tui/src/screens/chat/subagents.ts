@@ -98,10 +98,9 @@ function toolResultPreview(result: unknown): string | undefined {
         ? [item.text]
         : [],
     )
-    .join(" ")
-    .replace(/\s+/g, " ")
+    .join("\n")
     .trim();
-  return text ? (text.length > 80 ? text.slice(0, 80) + "…" : text) : undefined;
+  return text || undefined;
 }
 
 /** Fold child events separately from the parent transcript and activity. */
@@ -145,6 +144,7 @@ export function reduceSubagent(
             id: event.toolCallId,
             name: event.toolName,
             argsPreview,
+            args: event.args,
             view: event.view,
             status: "running",
             startedAt: now,
@@ -163,6 +163,9 @@ export function reduceSubagent(
                 ...tool,
                 status: event.isError ? "failed" : "completed",
                 durationMs: Math.max(0, now - (tool.startedAt ?? now)),
+                resultView: event.view,
+                endedAt: now,
+                result: event.isError ? undefined : preview,
                 resultPreview: event.isError ? undefined : preview,
                 error: event.isError ? preview : undefined,
               }

@@ -7,7 +7,6 @@ import type { PromptImage } from "@neant/agent";
 import { ImageGallery } from "../image-gallery";
 import type { Locale } from "@neant/i18n";
 import { createTuiI18n } from "../../i18n";
-import { Markdown } from "../markdown";
 import {
   toolKindColor,
   useAnimationFrame,
@@ -34,7 +33,6 @@ export function ToolCall({
   onImageOpen,
   imagesSuspended,
   error,
-  planReview,
   expanded: globalExpanded = false,
   onToggle,
   locale = "zh",
@@ -58,7 +56,6 @@ export function ToolCall({
   imagesSuspended?: boolean;
   error?: string;
   locale?: Locale;
-  planReview?: { plan: string; kind: "approve" | "revise" | "takeover"; feedback?: string };
 }) {
   const [localExpanded, setExpanded] = useState(false);
   const expanded = globalExpanded || localExpanded;
@@ -86,21 +83,6 @@ export function ToolCall({
   const header = displayName ? `${displayName}(${title.slice(0, 480)})` : summary;
   const seconds = Math.max(0, Math.floor((Date.now() - (startedAt ?? Date.now())) / 1000));
   const terminal = resultView?.card === "terminal" ? resultView : undefined;
-  if (planReview)
-    return (
-      <ThemedBox flexDirection="column">
-        <ThemedBox onClick={() => setExpanded((value) => !value)}>
-          <ThemedText
-            color="plan"
-            wrap="truncate"
-          >{`${planReview.kind === "approve" ? (expanded ? "▾" : "▸") : "▾"} ${t(planReview.kind === "approve" ? "plan.review.approved" : planReview.kind === "revise" ? "plan.review.revised" : "plan.review.takeover")}${planReview.kind === "approve" ? ` · ${t(expanded ? "plan.review.collapse" : "plan.review.expand")}` : ""}`}</ThemedText>
-        </ThemedBox>
-        {(expanded || planReview.kind !== "approve") && <Markdown text={planReview.plan} />}
-        {planReview.kind === "revise" && (
-          <ThemedText>{`${t("plan.review.feedback")}: ${planReview.feedback ?? ""}`}</ThemedText>
-        )}
-      </ThemedBox>
-    );
   const output = status === "error" ? (error ?? terminal?.output) : (terminal?.output ?? result);
   const diffView =
     status !== "error"

@@ -1,3 +1,5 @@
+import { PlanReviewRow } from "../../components/plan-review/plan-review-row";
+import { showsToolCard } from "./conversation";
 import { ThinkingRow } from "../../components/thinking-row";
 import { realpath } from "node:fs/promises";
 import { relative, join } from "node:path";
@@ -1713,7 +1715,6 @@ function Chat({
                 <ToolCall
                   expanded={expanded || expandedRows.has(entry.id ?? `row-${index}`)}
                   onToggle={() => toggleRow(entry.id ?? `row-${index}`)}
-                  planReview={entry.planReview}
                   locale={locale}
                   summary={entry.summary}
                   id={entry.id}
@@ -1741,21 +1742,34 @@ function Chat({
                     locale={locale}
                   />
                 )}
-                {entry.agentId &&
-                  state.subagents[entry.agentId] &&
-                  state.completed.findLastIndex(
-                    (candidate) => candidate.type === "tool" && candidate.agentId === entry.agentId,
-                  ) === index && (
-                    <SubagentMessage
-                      subagent={state.subagents[entry.agentId]!}
-                      columns={columns}
-                      effort={thinking}
-                      locale={locale}
-                      onClick={() => openDetail(entry.agentId!, "chat")}
-                    />
-                  )}
               </Box>
             );
+          case "question":
+            return <ThemedText key={index}>{entry.text}</ThemedText>;
+          case "plan-review":
+            return (
+              <PlanReviewRow
+                key={index}
+                {...entry}
+                locale={locale}
+                expanded={expanded || expandedRows.has(entry.id)}
+                onToggle={() => toggleRow(entry.id)}
+              />
+            );
+          case "subagent":
+            return state.subagents[entry.agentId] &&
+              state.completed.findLastIndex(
+                (candidate) => candidate.type === "subagent" && candidate.agentId === entry.agentId,
+              ) === index ? (
+              <SubagentMessage
+                key={index}
+                subagent={state.subagents[entry.agentId]!}
+                columns={columns}
+                effort={thinking}
+                locale={locale}
+                onClick={() => openDetail(entry.agentId, "chat")}
+              />
+            ) : null;
           case "context-report":
             return (
               <ContextVisualization
@@ -1852,6 +1866,7 @@ function Chat({
         subagent={selectedSubagent}
         page={page}
         thinkingOpen={thinkingOpen}
+        expanded={expanded}
         scrollRef={subagentScroll}
         rows={rows}
         locale={locale}
@@ -1913,21 +1928,23 @@ function Chat({
             <AssistantMessage text={state.assistant} />
           </Box>
         )}
-        {state.tools.map((tool) => (
-          <ToolCall
-            key={tool.id}
-            expanded={expanded || expandedRows.has(tool.id)}
-            onToggle={() => toggleRow(tool.id)}
-            id={tool.id}
-            name={tool.name}
-            args={tool.args}
-            callView={tool.callView}
-            startedAt={tool.startedAt}
-            locale={locale}
-            summary={tool.summary}
-            status="running"
-          />
-        ))}
+        {state.tools
+          .filter((tool) => showsToolCard(tool.name))
+          .map((tool) => (
+            <ToolCall
+              key={tool.id}
+              expanded={expanded || expandedRows.has(tool.id)}
+              onToggle={() => toggleRow(tool.id)}
+              id={tool.id}
+              name={tool.name}
+              args={tool.args}
+              callView={tool.callView}
+              startedAt={tool.startedAt}
+              locale={locale}
+              summary={tool.summary}
+              status="running"
+            />
+          ))}
         {state.error && <Notice kind="error" text={state.error} />}
       </ScrollBox>
       {preview && (

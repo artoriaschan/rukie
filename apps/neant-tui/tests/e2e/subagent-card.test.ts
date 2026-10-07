@@ -31,7 +31,7 @@ test("a delegated Subagent renders its running card under the initiating tool", 
     const rows = app.screen();
     const card = rows.findIndex((line) => line.includes("子代理：Investigate renderer"));
     expect(rows[card]).toMatch(/faux\/faux-1.*high.*0 tok.*0 tools.*运行中/);
-    expect(rows[card - 1]).toContain("started subagent");
+    expect(rows.join("\n")).not.toContain("started subagent");
     expect(rows.slice(card + 1, card + 5)).toEqual([
       "",
       "    │ first output",
@@ -293,7 +293,7 @@ test("an idle child's continuation card attaches only to its latest send_message
       .map((row, index) => (row.includes("子代理：Continue investigation") ? index : -1))
       .filter((index) => index >= 0);
     expect(cards).toHaveLength(1);
-    expect(rows[cards[0]! - 1]).toContain(`delivered to ${id}`);
+    expect(rows.join("\n")).not.toContain(`delivered to ${id}`);
     expect(rows[cards[0]!]).toContain("运行中");
   } finally {
     await app.cleanup();
@@ -356,9 +356,8 @@ test("parent resume initializes its persisted child card as idle before cold con
     child.delta("cold output");
     await app.waitFor(() => screen().includes("│ cold output"));
     const rows = app.screen();
-    const card = rows.findIndex((row) => row.includes("子代理：Stored child"));
     expect(rows.filter((row) => row.includes("子代理：Stored child"))).toHaveLength(1);
-    expect(rows[card - 1]).toContain(`delivered to ${id}`);
+    expect(rows.join("\n")).not.toContain(`delivered to ${id}`);
   } finally {
     await app.cleanup();
   }
