@@ -71,6 +71,7 @@
 | 类型                                        | @types/react 19.3.0、@types/react-reconciler 0.33.1（目前发布的类型版本，覆盖 0.34.0 使用的接口） |
 | 假终端（仅 devDependency）                  | @xterm/headless 6.0.0                                                                             |
 | 假终端 Unicode（TUI app，仅 devDependency） | @xterm/addon-unicode11 0.9.0（月相 emoji 按 2 列解释）                                            |
+| 工具代码语法高亮                            | highlight.js 11.12.0（直接将 lexer 输出映射到主题 token，无 ANSI 桥接依赖）                       |
 | TUI Markdown                                | mdast-util-from-markdown 2.1.0（micromark 解析 CommonMark，自研终端 React 渲染）                  |
 | 布局                                        | dsh-TUI 的纯 TS Yoga，commit `646740f12c34546d6c195f5b7031be0dc67421a5`，拷入包内，不对外导出     |
 
