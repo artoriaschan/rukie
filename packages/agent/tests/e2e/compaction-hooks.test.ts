@@ -163,11 +163,14 @@ test.each(["json", "exit"])(
     };
     expect((await session.run("second", { onEvent })).text).toBe("without compaction");
     expect(JSON.stringify(fake.contexts[1])).toContain("old work old work");
+    // A declined native CompactionTask still has lifecycle events; only a
+    // committed compaction changes the durable Transcript.
     expect(
-      events.filter(
-        (event) => event.type === "compaction_start" || event.type === "compaction_end",
+      session.messages.filter(
+        (message) => message.role === "session-notice" && message.notice.kind === "compaction",
       ),
     ).toHaveLength(0);
+    expect(fake.contexts).toHaveLength(2);
     expect(events.filter((event) => event.type === "hook_warning")).toMatchObject([
       {
         event: "PreCompact",
@@ -463,17 +466,17 @@ test("compact SessionStart context attaches to the next Stop feedback user in th
 test("compact SessionStart context attaches to the next child notification user in the same Run", async () => {
   dirs = await tempDirs();
   const childRelease = Promise.withResolvers<void>();
-  const parentWaiting = Promise.withResolvers<void>();
+  const childStarted = Promise.withResolvers<void>();
   const reply: Parameters<typeof fakeModel>[0][number] = async (context) => {
-    const isChild = !context.messages.some(
+    const isChild = context.messages.some(
       (message) =>
-        message.role === "system" && message.toolsAdded?.some((tool) => tool.name === "subagent"),
+        message.role === "user" && JSON.stringify(message.content).includes("inspect project"),
     );
     if (isChild) {
+      childStarted.resolve();
       await childRelease.promise;
       return fauxAssistantMessage("child finished");
     }
-    parentWaiting.resolve();
     return fauxAssistantMessage("parent waiting");
   };
   const fake = fakeModel([
@@ -504,7 +507,7 @@ test("compact SessionStart context attaches to the next child notification user 
   });
   await session.run("first");
   const run = session.run("second");
-  await parentWaiting.promise;
+  await childStarted.promise;
   childRelease.resolve();
   await run;
   expect(await session.waitForRequest(session.currentRequestId!)).toMatchObject({

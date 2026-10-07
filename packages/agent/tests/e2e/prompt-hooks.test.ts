@@ -148,20 +148,20 @@ test("fork SessionStart matches its source, while child prompts and completion n
     "cat >> starts.jsonl\necho >> starts.jsonl\necho fork-project-state\n",
   );
   const childRelease = Promise.withResolvers<void>();
-  const parentWaiting = Promise.withResolvers<void>();
+  const childStarted = Promise.withResolvers<void>();
   const reply: Parameters<typeof fakeModel>[0][number] = async (context) => {
-    const isChild = !context.messages.some(
+    const isChild = context.messages.some(
       (message) =>
-        message.role === "system" && message.toolsAdded?.some((tool) => tool.name === "subagent"),
+        message.role === "user" && JSON.stringify(message.content).includes("child prompt"),
     );
     if (isChild) {
       expect(JSON.stringify(context.messages)).toContain(
         "<system-reminder>\\nfork-project-state\\n</system-reminder>",
       );
+      childStarted.resolve();
       await childRelease.promise;
       return fauxAssistantMessage("child finished");
     }
-    parentWaiting.resolve();
     return fauxAssistantMessage("parent finished");
   };
   const fake = fakeModel([
@@ -169,7 +169,7 @@ test("fork SessionStart matches its source, while child prompts and completion n
       fauxToolCall("subagent_fork", {
         description: "Fork",
         prompt: "child prompt",
-        run_in_background: false,
+        run_in_background: true,
       }),
       { stopReason: "toolUse" },
     ),
@@ -188,7 +188,7 @@ test("fork SessionStart matches its source, while child prompts and completion n
     },
   });
   const run = session.run("parent prompt");
-  await parentWaiting.promise;
+  await childStarted.promise;
   childRelease.resolve();
   expect((await run).text).toBe("parent finished");
   await session.waitForRequest(session.currentRequestId!);
