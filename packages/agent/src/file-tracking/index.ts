@@ -1,4 +1,4 @@
-import type { ToolRegistration } from "@earendil-works/pi-durable";
+import type { EntryRecord, ToolRegistration } from "@earendil-works/pi-durable";
 import type { JsonValue } from "@earendil-works/chord";
 import type { TranscriptMessage } from "../session/messages.ts";
 import { createHash } from "node:crypto";
@@ -10,20 +10,28 @@ import { Value } from "typebox/value";
 import type { ReminderSource } from "../reminders/index.ts";
 import { defineToolState, type ToolStateDefinition } from "../tool-state/index.ts";
 
+const trackedFileSchema = Type.Object(
+  {
+    path: Type.String({ minLength: 1 }),
+    mtimeMs: Type.Number(),
+    size: Type.Integer({ minimum: 0 }),
+    hash: Type.String({ pattern: "^[a-fA-F0-9]{64}$" }),
+    stale: Type.Boolean(),
+  },
+  { additionalProperties: false },
+);
+const candidateSchema = Type.Object(
+  {
+    callId: Type.String({ minLength: 1 }),
+    toolName: Type.Union([Type.Literal("read"), Type.Literal("write"), Type.Literal("edit")]),
+    file: trackedFileSchema,
+  },
+  { additionalProperties: false },
+);
 const trackingSchema = Type.Object(
   {
-    files: Type.Array(
-      Type.Object(
-        {
-          path: Type.String({ minLength: 1 }),
-          mtimeMs: Type.Number(),
-          size: Type.Integer({ minimum: 0 }),
-          hash: Type.String({ pattern: "^[a-fA-F0-9]{64}$" }),
-          stale: Type.Boolean(),
-        },
-        { additionalProperties: false },
-      ),
-    ),
+    files: Type.Array(trackedFileSchema),
+    lastResultEntryId: Type.Optional(Type.Integer({ minimum: 1 })),
   },
   { additionalProperties: false },
 );
@@ -98,13 +106,16 @@ export function createFileTracking(
     Map<string, { previous: TrackedFile; current?: TrackedFile }>
   >();
   const toolCandidates = new Map<string, TrackedFile>();
+  let lastResultEntryId = 0;
   let requestRemaining = 16000;
   const restore = (snapshot: unknown) => {
     const previous = new Map(files);
     files.clear();
+    lastResultEntryId = 0;
     pendingReminders.clear();
     requestRemaining = 16000;
     if (!validSnapshot(snapshot)) return;
+    lastResultEntryId = snapshot.lastResultEntryId ?? 0;
     for (const file of snapshot.files) {
       const known = previous.get(file.path);
       files.set(file.path, {
@@ -122,6 +133,7 @@ export function createFileTracking(
   ) =>
     options.persist(
       {
+        ...(lastResultEntryId ? { lastResultEntryId } : {}),
         files: Array.from(files.values(), ({ path, mtimeMs, size, hash, stale }) => ({
           path,
           mtimeMs,
@@ -264,10 +276,58 @@ export function createFileTracking(
       }
     },
   };
+  /** The immutable successful receipt, rather than a staged candidate, advances knowledge. */
+  async function commitResults(entries: readonly EntryRecord[]) {
+    const candidates = new Map<string, Static<typeof candidateSchema>>();
+    const previous = new Map(files);
+    const previousResultEntryId = lastResultEntryId;
+    const next = new Map(files);
+    let nextResultEntryId = lastResultEntryId;
+    const learned: string[] = [];
+    for (const entry of entries) {
+      if (entry.kind === "rukie.file-baseline") {
+        if (
+          !Value.Check(candidateSchema, entry.data) ||
+          !isAbsolute(entry.data.file.path) ||
+          !Number.isFinite(entry.data.file.mtimeMs)
+        )
+          throw new Error("Invalid committed file baseline candidate.");
+        candidates.set(entry.data.callId, entry.data);
+      }
+      if (Number(entry.id) <= previousResultEntryId) continue;
+      for (const message of entry.model ?? []) {
+        if (message.role !== "toolResult") continue;
+        const candidate = candidates.get(message.toolCallId);
+        if (!candidate || candidate.toolName !== message.toolName || message.isError) continue;
+        const warm = toolCandidates.get(message.toolCallId);
+        next.set(
+          candidate.file.path,
+          warm?.hash === candidate.file.hash ? warm : { ...candidate.file },
+        );
+        nextResultEntryId = Number(entry.id);
+        learned.push(message.toolCallId);
+      }
+    }
+    if (!learned.length) return;
+    files.clear();
+    for (const [path, file] of next) files.set(path, file);
+    lastResultEntryId = nextResultEntryId;
+    try {
+      await persist();
+      for (const id of learned) toolCandidates.delete(id);
+    } catch (error) {
+      files.clear();
+      for (const [path, file] of previous) files.set(path, file);
+      lastResultEntryId = previousResultEntryId;
+      throw error;
+    }
+  }
   return {
     reminderSource,
     /** Replace a Tool State projection; retain bytes only when their hash still matches. */
     restore,
+    /** Reconcile saved successful receipts before native task recovery can execute another tool. */
+    restoreCommitted: commitResults,
     /** Commit the staged knowledge and its reminder together; failures leave both undelivered. */
     async persistReminder(reminder: Extract<TranscriptMessage, { role: "system-reminder" }>) {
       const known = pendingReminders.get(reminder.content);
@@ -292,21 +352,7 @@ export function createFileTracking(
       }
     },
     /** Learn only from native result entries already committed, before the next provider request. */
-    async commitResults(callIds: readonly string[]) {
-      const previous = new Map(files);
-      for (const id of callIds) {
-        const candidate = toolCandidates.get(id);
-        if (candidate) files.set(candidate.path, candidate);
-      }
-      try {
-        await persist();
-        for (const id of callIds) toolCandidates.delete(id);
-      } catch (error) {
-        files.clear();
-        for (const [path, value] of previous) files.set(path, value);
-        throw error;
-      }
-    },
+    commitResults,
     /** Prompt collection and request preparation share a budget until this request is prepared. */
     finishRequest() {
       requestRemaining = 16000;
@@ -354,7 +400,23 @@ export function createFileTracking(
             } catch {
               // A successful tool result remains successful when its file disappears before tracking.
             }
-            if (current) toolCandidates.set(args[1].callId, current);
+            if (current) {
+              const { path, mtimeMs, size, hash, stale } = current;
+              const api = args[1];
+              await api.commit(
+                (tx) =>
+                  tx.appendEntry(api.conversationId, {
+                    kind: "rukie.file-baseline",
+                    data: {
+                      callId: api.callId,
+                      toolName: tool.name,
+                      file: { path, mtimeMs, size, hash, stale },
+                    },
+                  }),
+                args[2],
+              );
+              toolCandidates.set(api.callId, current);
+            }
           }
 
           return result;
