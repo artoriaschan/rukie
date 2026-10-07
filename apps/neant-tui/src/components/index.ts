@@ -35,3 +35,5 @@ export { McpPanel } from "./mcp-panel";
 export { JobCard, JobGroupHeader } from "./job-card";
 
 export { JobsPanel } from "./jobs-panel";
+
+export { TimelineRail } from "./timeline/timeline-rail";

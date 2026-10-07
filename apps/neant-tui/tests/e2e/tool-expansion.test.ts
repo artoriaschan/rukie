@@ -1,7 +1,7 @@
 import { createFauxCore, fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { createSession } from "@neant/agent";
 import { withAuxiliaryRequests } from "../helpers/auxiliary-model";
-import { expect, test } from "bun:test";
+import { expect, test, jest } from "bun:test";
 import { start } from "../helpers/app";
 import { startWithClock } from "../helpers/clock-app";
 
@@ -18,7 +18,7 @@ function click(app: Awaited<ReturnType<typeof start>>, x: number, y: number) {
 }
 
 test("cards expand individually, ignore blank clicks, and union with transcript expansion", async () => {
-  const app = await start(["--yolo", "expand"], { rows: 40, env: { LANG: "en" } });
+  const app = await startWithClock(["--yolo", "expand"], { rows: 40, env: { LANG: "en" } });
   try {
     await outputCard(app, "first\\nsecond\\nthird\\nfourth\\nfifth");
     await app.waitFor(() => app.screen().join("\n").includes("+2 lines"));
@@ -39,6 +39,7 @@ test("cards expand individually, ignore blank clicks, and union with transcript 
     );
     app.stdin.write("\x0f");
     await app.flush();
+    jest.advanceTimersByTime(500);
     click(app, 3, header());
     await app.flush();
     expect(app.screen()).toContain("   fifth");
@@ -104,15 +105,18 @@ test("expansion preserves an earlier reading position and bottom following", asy
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking() && app.screen().join("\n").includes("response-39"));
     app.stdin.write("\x1b[5~");
-    await app.waitFor(() => app.screen().some((line) => line.startsWith("• Bash(")));
-    const earlier = app.screen().slice(0, 5);
+    await app.waitFor(
+      () =>
+        app.screen()[0]?.trim() === "" && app.screen().some((line) => line.startsWith("• Bash(")),
+    );
+    const earlier = app.screen().slice(1, 6);
     app.stdin.write("\x0f");
     await app.waitFor(() => app.screen().includes("   fifth"));
-    expect(app.screen().slice(0, 5)).toEqual(earlier);
+    expect(app.screen().slice(1, 6)).toEqual(earlier);
     expect(app.screen().join("\n")).not.toContain("response-39");
     app.stdin.write("\x0f");
     await app.waitFor(() => app.screen().join("\n").includes("+2 lines"));
-    expect(app.screen().slice(0, 5)).toEqual(earlier);
+    expect(app.screen().slice(1, 6)).toEqual(earlier);
     app.stdin.write("\x1b[6~\x1b[6~");
     await app.waitFor(() => app.screen().join("\n").includes("response-39"));
     app.stdin.write("\x0f");

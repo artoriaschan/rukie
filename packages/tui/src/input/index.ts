@@ -188,7 +188,7 @@ export function listenInput(
           if (!/^[0-9;]*$/.test(parameters)) continue;
           const [code = 1, modifiers = 1] = parameters.split(";").map(Number);
           if (final === "u" || (final === "~" && code === 27)) {
-            const point = code === 27 ? Number(parameters.split(";")[2]) : code;
+            const point = final === "~" && code === 27 ? Number(parameters.split(";")[2]) : code;
             const special: Record<number, string> = {
               9: "tab",
               13: "enter",

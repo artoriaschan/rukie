@@ -118,3 +118,24 @@ test("delayed escape fragments keep paste atomic, and common Shift+Enter encodin
     terminal.dispose();
   }
 });
+
+test("Kitty and modifyOtherKeys Escape reach public frontend handlers", async () => {
+  const terminal = createTerminal();
+  const events: InputEvent[] = [];
+  function View() {
+    useInput((event) => events.push(event));
+    return <Text>ready</Text>;
+  }
+  const app = render(<View />, { ...terminal, fullscreen: true });
+  try {
+    terminal.stdin.write("\x1b[27u\x1b[27;1;27~");
+    expect(events).toEqual([
+      { type: "key", input: "", key: { name: "escape", ctrl: false, shift: false, alt: false } },
+      { type: "key", input: "", key: { name: "escape", ctrl: false, shift: false, alt: false } },
+    ]);
+  } finally {
+    app.unmount();
+    await app.waitUntilExit();
+    terminal.dispose();
+  }
+});

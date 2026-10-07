@@ -142,23 +142,24 @@ function paintGrid(root: LayoutNode, columns: number, rows: number): Cell[][] {
           put(col, row, " ");
     }
     if (node.props.borderStyle && width >= 2 && height >= 2) {
+      const style = { color: node.props.borderColor };
       for (let col = 1; col < width - 1; col++) {
-        put(x + col, y, "─");
-        put(x + col, y + height - 1, "─");
+        put(x + col, y, "─", 1, style);
+        put(x + col, y + height - 1, "─", 1, style);
       }
       for (
         let row = Math.max(1, clip.top - y);
         row < Math.min(height - 1, clip.bottom - y);
         row++
       ) {
-        put(x, y + row, "│");
-        put(x + width - 1, y + row, "│");
+        put(x, y + row, "│", 1, style);
+        put(x + width - 1, y + row, "│", 1, style);
       }
       const round = node.props.borderStyle === "round";
-      put(x, y, round ? "╭" : "┌");
-      put(x + width - 1, y, round ? "╮" : "┐");
-      put(x, y + height - 1, round ? "╰" : "└");
-      put(x + width - 1, y + height - 1, round ? "╯" : "┘");
+      put(x, y, round ? "╭" : "┌", 1, style);
+      put(x + width - 1, y, round ? "╮" : "┐", 1, style);
+      put(x, y + height - 1, round ? "╰" : "└", 1, style);
+      put(x + width - 1, y + height - 1, round ? "╯" : "┘", 1, style);
     }
     if (node.type === "tui-text") {
       const matches: { start: number; end: number }[] = [];

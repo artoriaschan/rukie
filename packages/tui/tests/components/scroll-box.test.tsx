@@ -52,3 +52,135 @@ test.each([true, false])(
     }
   },
 );
+
+test("same-width contraction above the viewport retains its stable visible source", async () => {
+  const terminal = createTerminal(40, 8);
+  const scroll = createRef<ScrollHandle>();
+  let collapse = () => {};
+  function View() {
+    const [expanded, setExpanded] = useState(true);
+    collapse = () => setExpanded(false);
+    return (
+      <Box height={8} flexDirection="column">
+        <Text>fixed header</Text>
+        <ScrollBox ref={scroll} initialFollow={false} followOnReachBottom={false} initialTop={25}>
+          <Box scrollAnchorId="preceding-card">
+            <Text>
+              {Array.from({ length: expanded ? 20 : 3 }, (_, i) => `card-${i}`).join("\n")}
+            </Text>
+          </Box>
+          <Box scrollAnchorId="reading-message">
+            <Text>{Array.from({ length: 30 }, (_, i) => `reader-${i}`).join("\n")}</Text>
+          </Box>
+        </ScrollBox>
+        <Text>fixed footer</Text>
+      </Box>
+    );
+  }
+  const app = render(<View />, { ...terminal, fullscreen: true });
+  try {
+    await terminal.waitFor(() => terminal.screen()[1] === "reader-5");
+    const before = terminal.screen().slice(1, 7);
+    collapse();
+    await terminal.waitFor(() => scroll.current?.getSnapshot().total === 33);
+    expect(terminal.screen().slice(1, 7)).toEqual(before);
+  } finally {
+    app.unmount();
+    await app.waitUntilExit();
+    terminal.dispose();
+  }
+});
+
+test("public anchor geometry and deferred seek follow current wrapped content", async () => {
+  const terminal = createTerminal(20, 6);
+  const scroll = createRef<ScrollHandle>();
+  const app = render(
+    <ScrollBox ref={scroll} initialFollow={false}>
+      <Box scrollAnchorId="first">
+        <Text>{"prefix\n".repeat(10)}</Text>
+      </Box>
+      <Box scrollAnchorId="second">
+        <Text>target 界面</Text>
+      </Box>
+      <Text>{"tail\n".repeat(10)}</Text>
+    </ScrollBox>,
+    { ...terminal, fullscreen: true },
+  );
+  try {
+    await terminal.flush();
+    expect(
+      scroll.current?.getSnapshot().anchors?.find((anchor) => anchor.id === "second")?.top,
+    ).toBe(11);
+    scroll.current!.scrollToAnchor("second");
+    await terminal.waitFor(() => terminal.screen()[0] === "target 界面");
+    expect(scroll.current!.getSnapshot().following).toBe(false);
+  } finally {
+    app.unmount();
+    await app.waitUntilExit();
+    terminal.dispose();
+  }
+});
+
+test("stable box identity retains source when a preceding card contracts and text remounts", async () => {
+  const terminal = createTerminal(20, 6);
+  let shrink = () => {};
+  const scroll = createRef<ScrollHandle>();
+  function View() {
+    const [count, setCount] = useState(20);
+    shrink = () => setCount(3);
+    return (
+      <ScrollBox ref={scroll} initialFollow={false} initialTop={25} followOnReachBottom={false}>
+        <Text>{Array.from({ length: count }, (_, i) => `card-${i}`).join("\n")}</Text>
+        <Box scrollAnchorId="reader">
+          <Text key={count}>{Array.from({ length: 30 }, (_, i) => `reader-${i}`).join("\n")}</Text>
+        </Box>
+      </ScrollBox>
+    );
+  }
+  const app = render(<View />, { ...terminal, fullscreen: true });
+  try {
+    await terminal.waitFor(() => terminal.screen()[0] === "reader-5");
+    shrink();
+    await terminal.waitFor(() => scroll.current?.getSnapshot().total === 33);
+    expect(terminal.screen()[0]).toBe("reader-5");
+  } finally {
+    app.unmount();
+    await app.waitUntilExit();
+    terminal.dispose();
+  }
+});
+
+test("folding away the visible source stays on its containing card", async () => {
+  const terminal = createTerminal(20, 6);
+  const scroll = createRef<ScrollHandle>();
+  let fold = () => {};
+  function View() {
+    const [expanded, setExpanded] = useState(true);
+    fold = () => setExpanded(false);
+    return (
+      <ScrollBox ref={scroll} initialFollow={false} initialTop={25} followOnReachBottom={false}>
+        <Text>{Array.from({ length: expanded ? 20 : 3 }, (_, i) => `prior-${i}`).join("\n")}</Text>
+        <Box scrollAnchorId="card" flexDirection="column">
+          <Text>card-header</Text>
+          {expanded && (
+            <Box scrollAnchorId="card-body">
+              <Text>{Array.from({ length: 20 }, (_, i) => `body-${i}`).join("\n")}</Text>
+            </Box>
+          )}
+        </Box>
+        <Text>{Array.from({ length: 30 }, (_, i) => `tail-${i}`).join("\n")}</Text>
+      </ScrollBox>
+    );
+  }
+  const app = render(<View />, { ...terminal, fullscreen: true });
+  try {
+    await terminal.waitFor(() => terminal.screen()[0] === "body-4");
+    fold();
+    await terminal.waitFor(() => scroll.current?.getSnapshot().total === 34);
+    expect(terminal.screen()[0]).toBe("card-header");
+  } finally {
+    app.unmount();
+    await app.waitUntilExit();
+    terminal.dispose();
+  }
+});
