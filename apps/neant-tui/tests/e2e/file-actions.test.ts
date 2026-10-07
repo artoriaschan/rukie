@@ -1,0 +1,165 @@
+import { expect, test } from "bun:test";
+import { writeFile, mkdir } from "node:fs/promises";
+import { join } from "node:path";
+import type { SessionOptions } from "@neant/agent";
+import { start } from "../helpers/app";
+
+function clickText(app: Awaited<ReturnType<typeof start>>, label: string, occurrence = 0) {
+  const matching = app
+    .screen()
+    .flatMap((line, row) => (line.includes(label) ? [{ line, row }] : []));
+  const hit = matching[occurrence]!;
+  if (!hit) throw new Error(`Missing ${label}: ${app.screen().join("\n")}`);
+  const column = Bun.stringWidth(hit.line.slice(0, hit.line.indexOf(label))) + 1;
+  app.stdin.write(`\x1b[<0;${column};${hit.row + 1}M\x1b[<0;${column};${hit.row + 1}m`);
+}
+
+test("clicking a card path opens the file menu without expanding its body", async () => {
+  const opened: string[] = [];
+  const path = "review file.txt";
+  const app = await start(["inspect"], {
+    columns: 100,
+    rows: 40,
+    env: { LANG: "en_US.UTF-8" },
+    prepare: (root) => writeFile(join(root, path), "one\ntwo\nthree\nfour\nfive\n"),
+    host: {
+      openExternal: async (target) => {
+        opened.push(target);
+      },
+    },
+  });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("read", { path });
+    await app.waitFor(() => app.calls.length === 2);
+    app.calls[1]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    clickText(app, path);
+    await app.waitFor(() => app.screen().join("\n").includes("File actions"));
+    app.stdin.write("\r");
+    await app.waitFor(() => opened.length === 1);
+    expect(opened).toEqual([join(app.root, path)]);
+    await app.waitFor(() => !app.screen().join("\n").includes("File actions"));
+    expect(app.screen().join("\n")).not.toContain("five");
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test.each(["en", "zh"] as const)(
+  "%s file menu supports keyboard, mouse, Escape and Session cwd",
+  async (locale) => {
+    const actions: [string, string][] = [];
+    const session: Partial<SessionOptions> = {};
+    const path = "记录 file.txt";
+    const labels =
+      locale === "zh"
+        ? ["文件操作", "打开文件", "在文件管理器中显示", "复制路径"]
+        : ["File actions", "Open file", "Reveal in file manager", "Copy path"];
+    const app = await start(["inspect"], {
+      columns: 100,
+      rows: 40,
+      session,
+      env: { LANG: locale === "zh" ? "zh_CN.UTF-8" : "en_US.UTF-8" },
+      async prepare(root) {
+        session.cwd = join(root, "workspace");
+        await mkdir(session.cwd);
+        await writeFile(join(session.cwd, path), "one\ntwo\nthree\nfour\nfive\n");
+      },
+      host: {
+        openExternal: async (target) => {
+          actions.push(["open", target]);
+        },
+        reveal: async (target) => {
+          actions.push(["reveal", target]);
+        },
+        writeClipboard: async (target) => {
+          actions.push(["copy", target]);
+          return true;
+        },
+      },
+    });
+    const screen = () => app.screen().join("\n");
+    const openMenu = async () => {
+      clickText(app, path);
+      await app.waitFor(() => screen().includes(labels[0]!));
+    };
+    try {
+      await app.waitFor(() => app.calls.length === 1);
+      app.calls[0]!.tool("read", { path });
+      await app.waitFor(() => app.calls.length === 2);
+      app.calls[1]!.finish();
+      await app.waitFor(() => !app.isWorking());
+      const row = app.screen().findIndex((line) => line.includes(path));
+      const column = Bun.stringWidth(app.screen()[row]!.split(path)[0]!);
+      expect(app.terminal.buffer.active.getLine(row)!.getCell(column)!.isUnderline()).toBeTruthy();
+      await openMenu();
+      app.stdin.write("/should not become a draft\x0f\x1b");
+      await app.waitFor(() => !screen().includes(labels[0]!));
+      expect(screen()).not.toContain("should not become");
+      expect(screen()).not.toContain("five");
+      await openMenu();
+      app.stdin.write("\r");
+      await app.waitFor(() => actions.length === 1 && !screen().includes(labels[0]!));
+      await openMenu();
+      app.stdin.write("\x1b[B\r");
+      await app.waitFor(() => actions.length === 2 && !screen().includes(labels[0]!));
+      await openMenu();
+      clickText(app, labels[3]!);
+      await app.waitFor(() => actions.length === 3 && !screen().includes(labels[0]!));
+      expect(actions).toEqual([
+        ["open", join(session.cwd!, path)],
+        ["reveal", join(session.cwd!, path)],
+        ["copy", join(session.cwd!, path)],
+      ]);
+    } finally {
+      await app.cleanup();
+    }
+  },
+);
+
+test("unified diff paths open actions without toggling the card and the menu fits after shrinking", async () => {
+  const copied: string[] = [];
+  const path = "new.txt";
+  const app = await start(["--permission-mode", "full-access", "write"], {
+    columns: 80,
+    rows: 40,
+    env: { LANG: "en_US.UTF-8" },
+    host: {
+      writeClipboard: async (target) => {
+        copied.push(target);
+        return true;
+      },
+    },
+  });
+  const screen = () => app.screen().join("\n");
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("write", {
+      path,
+      content: Array.from({ length: 15 }, (_, i) => `line ${i}`).join("\n"),
+    });
+    await app.waitFor(() => app.calls.length === 2);
+    app.calls[1]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    const before = screen();
+    expect(before).not.toContain("line 14");
+    clickText(app, path, 1);
+    await app.waitFor(() => screen().includes("File actions"));
+    app.resize(28, 6);
+    await app.waitFor(
+      () =>
+        screen().includes("Open file") &&
+        screen().includes("Reveal in file manag") &&
+        screen().includes("Copy path"),
+    );
+    app.stdin.write("\x1b[B\x1b[B\r");
+    await app.waitFor(() => copied.length === 1);
+    expect(copied).toEqual([join(app.root, path)]);
+    app.resize(80, 40);
+    await app.waitFor(() => screen().includes("line 0"));
+    expect(screen()).not.toContain("line 14");
+  } finally {
+    await app.cleanup();
+  }
+});

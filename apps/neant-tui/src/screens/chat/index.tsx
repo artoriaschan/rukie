@@ -1,8 +1,9 @@
+import { FileActionsPanel } from "../../components/file-actions-panel";
 import { PlanReviewRow } from "../../components/plan-review/plan-review-row";
 import { showsToolCard } from "./conversation";
 import { ThinkingRow } from "../../components/thinking-row";
 import { realpath } from "node:fs/promises";
-import { relative, join } from "node:path";
+import { relative, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import {
   Fragment,
@@ -334,6 +335,32 @@ function Chat({
   useEffect(() => () => clearTimeout(modelImageNoticeTimer.current), []);
   const state = useSyncExternalStore(conversation.subscribe, conversation.getSnapshot);
   const promptNotice = imageNotice ?? state.notification;
+  type FileActions = { path: string; focus: number };
+  const [fileActions, setFileActions] = useState<FileActions>();
+  const fileActionsRef = useRef<FileActions | undefined>(undefined);
+  const showFileActions = (next: FileActions | undefined) => {
+    pasteEpoch.current++;
+    fileActionsRef.current = next;
+    setFileActions(next);
+  };
+  const openFileActions = (path: string) => {
+    if (interactions.getSnapshot() || previewRef.current) return;
+    showFileActions({ path: resolve(cwd, path), focus: 0 });
+  };
+  const pickFileAction = async (index: number) => {
+    const menu = fileActionsRef.current;
+    if (!menu) return;
+    showFileActions(undefined);
+    try {
+      if (index === 0) await host.openExternal(menu.path);
+      else if (index === 1) await host.reveal(menu.path);
+      else if (!(await host.writeClipboard(menu.path)))
+        throw new Error(t("file-actions.copy-unavailable"));
+    } catch (error) {
+      if (pasteOwner.current)
+        conversation.notify(t("file-actions.failed", { error: formatError(error, t) }), "error");
+    }
+  };
   type Preview = { images: readonly PromptImage[]; index: number };
   const [preview, setPreview] = useState<Preview>();
   const previewRef = useRef<Preview | undefined>(undefined);
@@ -372,7 +399,10 @@ function Chat({
     () =>
       session.subscribe((event) => {
         if (event.type === "session_title_changed") setTitle(event.title);
-        if (event.type === "conversation_rewound") showPreview(undefined);
+        if (event.type === "conversation_rewound") {
+          showPreview(undefined);
+          showFileActions(undefined);
+        }
       }),
     [session],
   );
@@ -402,7 +432,10 @@ function Chat({
   useEffect(() => () => sideController.current?.abort(), [session]);
   const pendingInteraction = useSyncExternalStore(interactions.subscribe, interactions.getSnapshot);
   useLayoutEffect(() => {
-    if (pendingInteraction) showPreview(undefined);
+    if (pendingInteraction) {
+      showPreview(undefined);
+      showFileActions(undefined);
+    }
   }, [pendingInteraction?.request]);
   const interaction = side ? undefined : pendingInteraction;
   const question = interaction?.kind === "permission" ? interaction : undefined;
@@ -1214,6 +1247,24 @@ function Chat({
   const todoMaxHeight = hasTodos ? panelHeights[0]! + goalRows : 1;
   const subagentMaxHeight = hasSubagents ? panelHeights[Number(hasTodos)]! : 1;
   useInput((event) => {
+    const fileMenu = fileActionsRef.current;
+    if (fileMenu) {
+      handledInput.current.add(event);
+      if (event.type !== "key") return;
+      const { key } = event;
+      if (key.name === "escape" || (key.ctrl && key.name === "c")) showFileActions(undefined);
+      else if (!key.ctrl && !key.alt && !key.shift) {
+        if (key.name === "up" || key.name === "down")
+          showFileActions({
+            ...fileMenu,
+            focus: (fileMenu.focus + (key.name === "up" ? 2 : 1)) % 3,
+          });
+        else if (key.name === "enter") void pickFileAction(fileMenu.focus);
+        else if (["1", "2", "3"].includes(event.input))
+          void pickFileAction(Number(event.input) - 1);
+      }
+      return;
+    }
     const currentMcp = mcpPanel.getSnapshot();
     if (currentMcp && !interactions.getSnapshot()) {
       handledInput.current.add(event);
@@ -1682,6 +1733,7 @@ function Chat({
                   group.map(({ entry: member, job, index: at }) => (
                     <Box key={at} flexDirection="column">
                       <ToolCall
+                        onPathClick={openFileActions}
                         expanded={expanded || expandedRows.has(member.id ?? `row-${at}`)}
                         onToggle={() => toggleRow(member.id ?? `row-${at}`)}
                         locale={locale}
@@ -1713,6 +1765,7 @@ function Chat({
             return (
               <Box key={index} flexDirection="column">
                 <ToolCall
+                  onPathClick={openFileActions}
                   expanded={expanded || expandedRows.has(entry.id ?? `row-${index}`)}
                   onToggle={() => toggleRow(entry.id ?? `row-${index}`)}
                   locale={locale}
@@ -1862,21 +1915,34 @@ function Chat({
     );
   if (typeof view === "object" && selectedSubagent)
     return (
-      <SubagentDetailScene
-        subagent={selectedSubagent}
-        page={page}
-        thinkingOpen={thinkingOpen}
-        expanded={expanded}
-        scrollRef={subagentScroll}
-        rows={rows}
-        locale={locale}
-        onBack={closeView}
-        onPage={turnPage}
-        onInterrupt={() => session.interruptSubagent(selectedSubagent.agentId)}
-      />
+      <Box height={rows} flexDirection="column">
+        <SubagentDetailScene
+          subagent={selectedSubagent}
+          onPathClick={openFileActions}
+          page={page}
+          thinkingOpen={thinkingOpen}
+          expanded={expanded}
+          scrollRef={subagentScroll}
+          rows={rows}
+          locale={locale}
+          onBack={closeView}
+          onPage={turnPage}
+          onInterrupt={() => session.interruptSubagent(selectedSubagent.agentId)}
+        />
+        {fileActions && (
+          <FileActionsPanel
+            {...fileActions}
+            columns={columns}
+            rows={rows}
+            locale={locale}
+            onPick={(index) => void pickFileAction(index)}
+          />
+        )}
+      </Box>
     );
   const promptReadOnly =
     !!mcp ||
+    !!fileActions ||
     !!preview ||
     modelPicker !== undefined ||
     !!resumePicker ||
@@ -1933,6 +1999,7 @@ function Chat({
           .map((tool) => (
             <ToolCall
               key={tool.id}
+              onPathClick={openFileActions}
               expanded={expanded || expandedRows.has(tool.id)}
               onToggle={() => toggleRow(tool.id)}
               id={tool.id}
@@ -2266,7 +2333,12 @@ function Chat({
                 pasteEpoch.current++;
               }}
               filterInput={(event, insert) => {
-                if (mcpPanel.getSnapshot() || previewRef.current || handledInput.current.has(event))
+                if (
+                  fileActionsRef.current ||
+                  mcpPanel.getSnapshot() ||
+                  previewRef.current ||
+                  handledInput.current.has(event)
+                )
                   return false;
                 if (
                   event.type === "key" &&
@@ -2319,7 +2391,7 @@ function Chat({
                 .map((range) => ({ ...range, color: theme.suggestion }))}
               atomicRanges={composer.ranges(input)}
               onPaste={(text, insert) => {
-                if (mcpPanel.getSnapshot() || previewRef.current) return;
+                if (fileActionsRef.current || mcpPanel.getSnapshot() || previewRef.current) return;
                 const epoch = pasteEpoch.current;
                 const path = pastedImagePath(text, homeDir ?? "");
                 if (!path) {
@@ -2340,6 +2412,7 @@ function Chat({
               onChange={(value, edit) => {
                 const pending = sideController.current ? undefined : interactions.getSnapshot();
                 if (
+                  fileActionsRef.current ||
                   mcpPanel.getSnapshot() ||
                   viewRef.current !== "chat" ||
                   rewindRef.current ||
@@ -2352,6 +2425,7 @@ function Chat({
               onSubmit={(prompt) => {
                 const pending = sideController.current ? undefined : interactions.getSnapshot();
                 if (
+                  fileActionsRef.current ||
                   mcpPanel.getSnapshot() ||
                   viewRef.current !== "chat" ||
                   rewindRef.current ||
@@ -2385,6 +2459,15 @@ function Chat({
           </>
         )}
       </Box>
+      {fileActions && (
+        <FileActionsPanel
+          {...fileActions}
+          columns={columns}
+          rows={rows}
+          locale={locale}
+          onPick={(index) => void pickFileAction(index)}
+        />
+      )}
     </Box>
   );
 }

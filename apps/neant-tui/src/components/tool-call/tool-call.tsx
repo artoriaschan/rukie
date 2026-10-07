@@ -38,10 +38,12 @@ export function ToolCall({
   error,
   expanded: globalExpanded = false,
   onToggle,
+  onPathClick,
   locale = "zh",
 }: {
   expanded?: boolean;
   onToggle?(): void;
+  onPathClick?(path: string): void;
   summary: string;
   id?: string;
   name?: string;
@@ -86,6 +88,24 @@ export function ToolCall({
           ? callView.title
           : (JSON.stringify(callView?.card === "generic" ? (callView.rawInput ?? args) : args) ??
             "");
+  const path =
+    resultView?.card === "read"
+      ? resultView.path
+      : callView?.card === "generic" && ["read", "edit"].includes(callView.kind)
+        ? callView.title
+        : callView?.card === "diff"
+          ? callView.diffs[0]?.path
+          : undefined;
+  const pathOffset = path ? title.indexOf(path) : -1;
+  const pathLeft =
+    2 +
+    Bun.stringWidth(displayName ?? "") +
+    1 +
+    (pathOffset >= 0 ? Bun.stringWidth(title.slice(0, pathOffset)) : 0);
+  const pathWidth =
+    path && pathOffset >= 0
+      ? Math.max(0, Math.min(Bun.stringWidth(path), columns - pathLeft, 480 - pathOffset))
+      : 0;
   const jsonTitle =
     callView?.card !== "terminal" &&
     !(callView?.card === "generic" && (callView.title || (callView.server && callView.tool)));
@@ -158,6 +178,12 @@ export function ToolCall({
               (
               {jsonTitle ? (
                 <SyntaxHighlightedText text={title.slice(0, 480)} language="json" />
+              ) : path && pathOffset >= 0 ? (
+                <>
+                  {title.slice(0, pathOffset)}
+                  <ThemedText underline>{path.slice(0, 480 - pathOffset)}</ThemedText>
+                  {title.slice(pathOffset + path.length, 480)}
+                </>
               ) : (
                 title.slice(0, 480)
               )}
@@ -170,6 +196,16 @@ export function ToolCall({
             >{` · ${fmtDuration(Math.max(0, endedAt - startedAt), locale)}`}</ThemedText>
           )}
         </ThemedText>
+        {onPathClick && path && pathWidth > 0 && (
+          <ThemedBox
+            position="absolute"
+            left={pathLeft}
+            top={0}
+            width={pathWidth}
+            height={1}
+            onClick={() => onPathClick(path)}
+          />
+        )}
       </ThemedBox>
       {(output || diffView || status === "running") && (
         <ThemedBox flexDirection="column" color={status === "error" ? "error" : "text"}>
@@ -210,9 +246,22 @@ export function ToolCall({
                   ) : highlightedLines ? (
                     <SyntaxHighlightedText runs={highlightedLines[index]} />
                   ) : (
-                    line
+                    <ThemedText underline={diffLines?.[index]?.tone === "path"}>{line}</ThemedText>
                   )}
                 </ThemedText>
+                {onPathClick && diffLines?.[index]?.tone === "path" && diffLines[index]!.path && (
+                  <ThemedBox
+                    position="absolute"
+                    left={index === 0 ? 2 : name ? 3 : 2}
+                    top={0}
+                    width={Math.min(
+                      columns - (index === 0 ? 2 : name ? 3 : 2),
+                      Bun.stringWidth(line),
+                    )}
+                    height={1}
+                    onClick={() => onPathClick(diffLines[index]!.path!)}
+                  />
+                )}
               </ThemedBox>
             ))
           )}
