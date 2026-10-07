@@ -70,7 +70,14 @@ export function toolCardName(source: ToolCardSource, locale: Locale): string | u
 /** Durable output notices remain outside the body fold and search window. */
 export function toolCardNotices(view: ToolResultView | undefined, locale: Locale): string[] {
   const t = createTuiI18n(locale);
-  if (view?.card !== "read" && view?.card !== "terminal") return [];
+  if (view?.card === "diff") {
+    return view.diffs.some((diff) => "patch" in diff) ? [t("tool.diff-source-partial")] : [];
+  }
+  if (view?.card === "search") {
+    const retained = view.shape === "paths" ? view.paths.length : view.matches.length;
+    return view.total !== undefined && view.total > retained ? [t("tool.output-unavailable")] : [];
+  }
+  if (view?.card !== "read" && view?.card !== "terminal" && view?.card !== "web") return [];
   return [
     view.outputUnavailable ? t("tool.output-unavailable") : undefined,
     view.card === "terminal" && view.fullOutputPath

@@ -131,3 +131,5 @@ The implementation independently follows [Kitty's protocol](https://sw.kovidgoya
 Release clears highlighting and calls the frontend's `onCopy(text): Promise<boolean>`. `onResult` reports `copied`, `unavailable` (including rejected transport), or `stale` if selected bytes changed before release. Selection suppresses the pressed card action after pointer movement. Wheel, resize, focus loss and keyboard input clear the gesture; Escape consumes an active gesture before frontend key handlers. A changed region `key` or unmount invalidates the gesture and pending result feedback. Selection starts empty after mount and does not persist across Sessions.
 
 `Markdown` accepts `dimColor` to dim all body text, including syntax highlighted code, while preserving Markdown emphasis and token colors.
+
+`alignSplitDiff` returns each aligned row's `sourceLines` identities so callers can retain source positions when switching unified/split layouts. `SplitDiffView` accepts both `scrollAnchorId` and `alternateScrollAnchorId` for paired old/new source rows; pane separators are excluded from selection while source text remains selectable.

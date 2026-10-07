@@ -76,6 +76,7 @@ export const ToolResultViewSchema = Type.Union([
   Type.Object({
     ...common,
     card: Type.Literal("web"),
+    outputUnavailable: Type.Optional(Type.Boolean()),
     url: Type.String(),
     markdown: Type.String(),
   }),

@@ -194,9 +194,9 @@ test("dragging on a tool path suppresses its file action while a normal click st
     await app.waitFor(() => app.calls.length === 2);
     app.calls[1]!.finish();
     await app.waitFor(
-      () => !app.isWorking() && app.screen().some((line) => line.includes("Read(file.txt)")),
+      () => !app.isWorking() && app.screen().some((line) => line.includes("Read file.txt")),
     );
-    const y = app.screen().findIndex((line) => line.includes("Read(file.txt)"));
+    const y = app.screen().findIndex((line) => line.includes("Read file.txt"));
     const x = Bun.stringWidth(app.screen()[y]!.slice(0, app.screen()[y]!.indexOf("file.txt")));
     const end = { x: x + 4, y };
     gesture(app, { x, y }, end);

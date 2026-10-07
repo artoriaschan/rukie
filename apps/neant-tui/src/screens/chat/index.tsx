@@ -3,6 +3,10 @@ import { transcriptMatches } from "./transcript-search";
 import { TextInput } from "@neant/tui";
 import { DiffLayoutProvider, useDiffLayout } from "../../components/tool-call/diff-layout";
 import { SmoothRevealProvider } from "@neant/tui";
+import {
+  ToolWindowProvider,
+  useToolWindowNavigation,
+} from "../../components/tool-call/window-navigation";
 import { FileActionsPanel } from "../../components/file-actions-panel";
 import { PlanReviewRow } from "../../components/plan-review/plan-review-row";
 import { showsToolCard } from "./conversation";
@@ -195,28 +199,30 @@ export async function createChat(
       return (
         <DiffLayoutProvider value={options.settings?.diffLayout}>
           <SmoothRevealProvider key={current.session.id}>
-            <Chat
-              key={current.session.id}
-              session={current.session}
-              conversation={current.conversation}
-              history={inputHistory}
-              imageViewer={imageViewer}
-              host={host}
-              submit={submit}
-              interactions={interactions}
-              homeDir={options.homeDir}
-              cwd={options.cwd}
-              checkpointCwd={checkpointCwd}
-              foldTerminalCommand={options.settings?.foldTerminalCommand ?? true}
-              thinking={options.settings?.thinking}
-              locale={locale}
-              onExit={onExit}
-              models={models}
-              sessions={() => listSessions(options)}
-              skills={skills}
-              replaceSession={replaceSession}
-              writeTitle={writeTitle}
-            />
+            <ToolWindowProvider>
+              <Chat
+                key={current.session.id}
+                session={current.session}
+                conversation={current.conversation}
+                history={inputHistory}
+                imageViewer={imageViewer}
+                host={host}
+                submit={submit}
+                interactions={interactions}
+                homeDir={options.homeDir}
+                cwd={options.cwd}
+                checkpointCwd={checkpointCwd}
+                foldTerminalCommand={options.settings?.foldTerminalCommand ?? true}
+                thinking={options.settings?.thinking}
+                locale={locale}
+                onExit={onExit}
+                models={models}
+                sessions={() => listSessions(options)}
+                skills={skills}
+                replaceSession={replaceSession}
+                writeTitle={writeTitle}
+              />
+            </ToolWindowProvider>
           </SmoothRevealProvider>
         </DiffLayoutProvider>
       );
@@ -364,6 +370,7 @@ function Chat({
   };
   useEffect(() => () => clearTimeout(modelImageNoticeTimer.current), []);
   const state = useSyncExternalStore(conversation.subscribe, conversation.getSnapshot);
+  const toolWindows = useToolWindowNavigation();
   const promptNotice = imageNotice ?? state.notification;
   type FileActions = { path: string; focus: number; directory: boolean };
   const [fileActions, setFileActions] = useState<FileActions>();
@@ -1622,6 +1629,17 @@ function Chat({
         if (picker.confirm) void executeRewind(picker);
         else showRewind({ ...picker, confirm: true, mode: 0 });
       }
+      return;
+    }
+    if (
+      !small &&
+      !interactions.getSnapshot() &&
+      !sideController.current &&
+      !previewRef.current &&
+      !searchRef.current.editing &&
+      toolWindows?.handle(event)
+    ) {
+      handledInput.current.add(event);
       return;
     }
     if (

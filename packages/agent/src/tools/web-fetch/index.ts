@@ -7,7 +7,11 @@ const parameters = Type.Object(
   { url: Type.String({ minLength: 1 }) },
   { additionalProperties: false },
 );
-const facts = Type.Object({ url: Type.String(), markdown: Type.String() });
+const facts = Type.Object({
+  url: Type.String(),
+  markdown: Type.String(),
+  truncated: Type.Boolean(),
+});
 export function createWebFetchTool(options?: WebFetchOptions): PresentedTool<typeof parameters> {
   return {
     name: "web_fetch",
@@ -29,6 +33,7 @@ export function createWebFetchTool(options?: WebFetchOptions): PresentedTool<typ
             displayKey: "tool.web_fetch",
             url: details.url,
             markdown: details.markdown,
+            outputUnavailable: details.truncated,
           }
         : undefined,
     async execute(_id, { url }, signal) {
