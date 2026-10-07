@@ -52,6 +52,7 @@ import {
 import { createToolState } from "../tool-state/index.ts";
 import {
   createPermissionGate,
+  createPermissionBatch,
   parsePermissionRules,
   type PermissionAskRequest,
   type SessionAllowRule,
@@ -495,25 +496,6 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     let permissionMode = options.permissionMode ?? settings.permissionMode ?? "ask";
     const sessionAllowRules = options.sessionAllowRules ?? [];
     const sessionGrantListeners = new Set<() => void>();
-    const permissionChecks = new Map<number, Promise<void>>();
-    const serializePermissionChecks =
-      (
-        check: ReturnType<typeof createPermissionGate>["beforeTool"],
-        conversationId: number,
-      ): typeof check =>
-      (...args) => {
-        const checked = (permissionChecks.get(conversationId) ?? Promise.resolve()).then(() =>
-          check(...args),
-        );
-        permissionChecks.set(
-          conversationId,
-          checked.then(
-            () => {},
-            () => {},
-          ),
-        );
-        return checked;
-      };
     let observation: Awaited<ReturnType<typeof createConversationObservation>>;
     let storageFailure: unknown;
     const storageFault = Promise.withResolvers<never>();
@@ -559,7 +541,14 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
       context,
     );
-    failedCleanup.push(() => harness.close(context));
+    const permissionBatch = createPermissionBatch(harness);
+    failedCleanup.push(async () => {
+      try {
+        await harness.close(context);
+      } finally {
+        permissionBatch.close();
+      }
+    });
     let conversation = await harness.root(context, {
       agent: {
         model: { provider: model.provider, modelId: model.id },
@@ -1620,7 +1609,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           tools: childTools,
           hooks: [
             hook(ToolTask, {
-              beforeTool: serializePermissionChecks(childGate.beforeTool, Number(child.id)),
+              beforeTool: permissionBatch.wrap(childGate.beforeTool, () =>
+                childStopped ? (childStopReason ?? "Stopped by hook.") : undefined,
+              ),
               afterTool: async (call, result, _api, ctx) => {
                 const changed = await childHooks.run(
                   result.isError ? "PostToolUseFailure" : "PostToolUse",
@@ -2217,7 +2208,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             },
           }),
           hook(ToolTask, {
-            beforeTool: serializePermissionChecks(gate.beforeTool, Number(conversation.id)),
+            beforeTool: permissionBatch.wrap(gate.beforeTool, () =>
+              stopped ? (hookStopReason ?? "Stopped by hook.") : undefined,
+            ),
             afterTool: async (call, result, api, ctx) => {
               const changed = await hooks.run(
                 result.isError ? "PostToolUseFailure" : "PostToolUse",
@@ -3792,6 +3785,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           });
           await release(() => plan.settleWrites());
           await release(() => harness.close(context));
+          permissionBatch.close();
           await release(() => observation.close());
           subagents.close();
           for (const owner of childHookOwners.values()) owner.dispose();

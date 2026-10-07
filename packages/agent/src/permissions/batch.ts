@@ -19,7 +19,10 @@ export function createPermissionBatch(harness: Harness) {
   const cancellations = new Set<() => void>();
   let closed = false;
 
-  function wrap(check: ToolHooks["beforeTool"]): ToolHooks["beforeTool"] {
+  function wrap(
+    check: ToolHooks["beforeTool"],
+    stopped?: () => string | undefined,
+  ): ToolHooks["beforeTool"] {
     return async (call, api, context) => {
       if (closed) throw new Error("Permission batch is closed.");
       const watch = await harness.watchDoc(LiveDoc, api.conversationId, context);
@@ -78,7 +81,11 @@ export function createPermissionBatch(harness: Harness) {
         }
         // A block has no effects to hold back. A stop cancels the native Context,
         // releasing permitted siblings without waiting for their task completion.
-        if (result?.block === undefined) await awaitWithContext(ready.promise, context);
+        if (result?.block === undefined) {
+          await awaitWithContext(ready.promise, context);
+          const reason = stopped?.();
+          if (reason !== undefined) return { block: reason };
+        }
         return result;
       } finally {
         current.listeners.delete(update);
