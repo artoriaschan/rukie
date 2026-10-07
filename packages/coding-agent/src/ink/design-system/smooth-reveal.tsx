@@ -102,11 +102,15 @@ export function useSmoothReveal(key: string, total: number, enabled: boolean): n
       active.add(cursor);
       schedule();
     }
-    return () => {
+  }, [cursor, enabled, key, total, completed]);
+  // Data updates retain the shared interval's phase; only cursor disposal releases it.
+  useEffect(
+    () => () => {
       active.delete(cursor);
       stopIfIdle();
-    };
-  }, [cursor, enabled, key, total, completed]);
+    },
+    [cursor],
+  );
   return shown;
 }
 
@@ -172,11 +176,14 @@ export function useSmoothText(
       active.add(cursor);
       schedule();
     }
-    return () => {
+  }, [cursor, key, memory, text, enabled]);
+  useEffect(
+    () => () => {
       active.delete(cursor);
       stopIfIdle();
-    };
-  }, [cursor, key, memory, text, enabled]);
+    },
+    [cursor],
+  );
   // A reveal boundary must never feed an unpaired surrogate to Markdown/layout.
   const end =
     shown > 0 && shown < text.length && /[\uD800-\uDBFF]/.test(text[shown - 1]!)

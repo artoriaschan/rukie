@@ -1,8 +1,24 @@
-import { expect, spyOn, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { start } from "../../helpers/app";
+import { startWithClock } from "../../helpers/clock-app";
+import { testClock } from "../../helpers/test-clock";
 import { createSession } from "@rukie/agent";
 import { controlledModel } from "../../helpers/model";
 import { dark } from "../../../../src/ink/index.ts";
+
+function goalFixtureModel() {
+  const fake = controlledModel();
+  const called = Promise.withResolvers<void>();
+  return {
+    ...fake,
+    firstCall: called.promise,
+    streamFn(...args: Parameters<typeof fake.streamFn>) {
+      const stream = fake.streamFn(...args);
+      if (fake.calls.length) called.resolve();
+      return stream;
+    },
+  };
+}
 
 const screen = (app: Awaited<ReturnType<typeof start>>) => app.screen().join("\n");
 async function ready(options: Parameters<typeof start>[1] = {}) {
@@ -100,11 +116,11 @@ test("goal chip preserves permission and plan labels in a 40-column status line"
 
 test("a persisted complete goal freezes elapsed time and edit starts a fresh goal", async () => {
   const argv: string[] = [];
-  const app = await start(argv, {
+  const app = await startWithClock(argv, {
     env: { LANG: "en_US.UTF-8" },
     rows: 36,
     prepare: async (root) => {
-      const fake = controlledModel();
+      const fake = goalFixtureModel();
       const session = await createSession({
         cwd: root,
         homeDir: root,
@@ -117,7 +133,7 @@ test("a persisted complete goal freezes elapsed time and edit starts a fresh goa
         }),
       );
       await session.createGoal("finished migration");
-      while (!fake.calls.length) await Bun.sleep(1);
+      await fake.firstCall;
       fake.calls[0]!.fail("fixture stops scheduling");
       await finished;
       await session.dispose();
@@ -157,15 +173,13 @@ test("a persisted complete goal freezes elapsed time and edit starts a fresh goa
       argv.push("--resume", session.id);
     },
   });
-  let clock: ReturnType<typeof spyOn> | undefined;
   try {
     await app.waitFor(() => screen(app).includes("✓ complete · 1/256 · 0s"));
     expect(app.calls).toHaveLength(0);
-    clock = spyOn(Date, "now").mockReturnValue(Date.now() + 72_000);
+    testClock.advanceTimersByTime(72_000);
     app.resize(80, 40);
     await app.waitFor(() => app.screen().length === 40);
     expect(screen(app)).toContain("✓ complete · 1/256 · 0s");
-    clock.mockRestore();
     app.stdin.write("/goal\r");
     await app.waitFor(() => screen(app).includes("/goal <objective>, /goal clear"));
     app.stdin.write("/goal edit next migration\r");
@@ -175,7 +189,6 @@ test("a persisted complete goal freezes elapsed time and edit starts a fresh goa
     await app.waitFor(() => screen(app).includes("⏸ paused"));
     app.calls[0]!.finish();
   } finally {
-    clock?.mockRestore();
     await app.cleanup();
   }
 });
@@ -186,7 +199,7 @@ test("an errored goal refreshes activation and resumed active goals stay disarme
     rows: 36,
     env: { LANG: "en_US.UTF-8" },
     prepare: async (root) => {
-      const fake = controlledModel();
+      const fake = goalFixtureModel();
       const session = await createSession({
         cwd: root,
         homeDir: root,
@@ -199,7 +212,7 @@ test("an errored goal refreshes activation and resumed active goals stay disarme
         }),
       );
       await session.createGoal("repair widgets");
-      while (!fake.calls.length) await Bun.sleep(1);
+      await fake.firstCall;
       fake.calls[0]!.fail("provider unavailable");
       await finished;
       argv.push("--resume", session.id);
@@ -224,20 +237,17 @@ test("an errored goal refreshes activation and resumed active goals stay disarme
 });
 
 test("goal keeps the Todo section with all completed idle rows and its elapsed clock ticks locally", async () => {
-  const interval = spyOn(globalThis, "setInterval");
-  const app = await ready({ rows: 36, session: { permissionMode: "full-access" } });
-  let clock: ReturnType<typeof spyOn> | undefined;
+  const app = await startWithClock([], {
+    rows: 36,
+    env: { LANG: "en_US.UTF-8" },
+    session: { permissionMode: "full-access" },
+  });
   try {
-    const now = Date.now();
-    clock = spyOn(Date, "now").mockReturnValue(now);
+    await app.waitFor(() => app.screen().some((line) => line.startsWith("╭")));
     app.stdin.write("/goal migrate\r");
     await app.waitFor(() => app.calls.length === 1 && screen(app).includes("● active · 1/256"));
-    const tick = interval.mock.calls.find((call) => call[1] === 1000)?.[0];
-    expect(tick).toBeDefined();
-    clock.mockReturnValue(now + 72_000);
-    if (typeof tick === "function") tick();
+    testClock.advanceTimersByTime(72_000);
     await app.waitFor(() => screen(app).includes("1m12s"));
-    clock.mockRestore();
     app.calls[0]!.tool("todo_write", { todos: [{ content: "done", status: "completed" }] });
     await app.waitFor(() => app.calls.length === 2 && screen(app).includes("✓ 1/1"));
     app.stdin.write("/goal pause\r");
@@ -250,8 +260,6 @@ test("goal keeps the Todo section with all completed idle rows and its elapsed c
     await app.waitFor(() => screen(app).includes("▸ ✓ 1/1"));
     expect(screen(app)).toContain("🎯 migrate");
   } finally {
-    clock?.mockRestore();
-    interval.mockRestore();
     await app.cleanup();
   }
 });
@@ -354,7 +362,7 @@ test.each(["question", "permission"])(
       rows: 12,
       env: { LANG: "en_US.UTF-8" },
       prepare: async (root) => {
-        const fake = controlledModel();
+        const fake = goalFixtureModel();
         const session = await createSession({
           cwd: root,
           homeDir: root,
@@ -372,7 +380,7 @@ test.each(["question", "permission"])(
           }),
         );
         await session.createGoal("migrate " + "界".repeat(50), { maxRounds: 1 });
-        while (!fake.calls.length) await Bun.sleep(1);
+        await fake.firstCall;
         fake.calls[0]!.delta("Saved progress.");
         fake.calls[0]!.finish();
         await blocked;

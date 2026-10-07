@@ -17,7 +17,7 @@ export function Notice({
   /** Frontend-local report: command heading and indented multiline output. */
   report?: string;
   truncate?: boolean;
-  /** Transcript-level auxiliary row, distinct from transient status notices. */
+  /** Transcript auxiliary row. Explicit lines remain separate, each clipped to its width. */
   divider?: boolean;
 }) {
   if (report)
@@ -33,26 +33,42 @@ export function Notice({
     );
   if (divider)
     return (
-      <Box flexShrink={0} marginTop={1}>
-        <Divider title={text} />
+      <Box width="100%" flexShrink={0} marginTop={1} flexDirection="column">
+        {text.split("\n").map((line, index) =>
+          text.includes("\n") ? (
+            <Box key={index} width="100%" minHeight={1} flexShrink={0}>
+              <ThemedText dim wrap="truncate">
+                {index === 0 ? `─ ${line}` : line}
+              </ThemedText>
+            </Box>
+          ) : (
+            <Divider key={index} title={line} />
+          ),
+        )}
       </Box>
     );
   return (
-    <ThemedText
-      color={
-        color ??
-        (kind === "error"
-          ? "error"
-          : kind === "success"
-            ? "text"
-            : kind === "dim"
-              ? undefined
-              : "warning")
-      }
-      dim={kind === "dim"}
-      wrap={kind === "error" && !truncate ? "wrap" : "truncate"}
-    >
-      {text}
-    </ThemedText>
+    <Box width="100%" flexShrink={0} flexDirection="column">
+      {text.split("\n").map((line, index) => (
+        <Box key={index} width="100%" minHeight={1} flexShrink={0}>
+          <ThemedText
+            color={
+              color ??
+              (kind === "error"
+                ? "error"
+                : kind === "success"
+                  ? "text"
+                  : kind === "dim"
+                    ? undefined
+                    : "warning")
+            }
+            dim={kind === "dim"}
+            wrap={kind === "error" && !truncate ? "wrap" : "truncate"}
+          >
+            {line}
+          </ThemedText>
+        </Box>
+      ))}
+    </Box>
   );
 }
