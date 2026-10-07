@@ -112,7 +112,7 @@ type Props = {
 	// Dispatch hover (onMouseEnter/onMouseLeave) as the pointer moves over
 	// DOM elements. Called for mode-1003 motion events with no button held.
 	// No-op outside fullscreen (Ink.dispatchHover gates on altScreenActive).
-	readonly onHoverAt: (col: number, row: number) => void;
+	readonly onHoverAt: (col: number, row: number, button?: number) => void;
 	// Route a wheel event by pointer position: hit-test (col, row) and
 	// dispatch onWheel on the deepest scroll container under the cursor.
 	// Returns true when an onWheel handler consumed the event — the caller
@@ -339,12 +339,12 @@ export default class App extends PureComponent<Props, State> {
 	 * pointer position so consumers aren't left with an orphan session.
 	 * A session that never started (press without movement) ends silently.
 	 */
-	finishDragSession(): void {
+	finishDragSession(dispatch = this.props.onDragDispatch): void {
 		const session = this.dragSession;
 		if (!session) return;
 		this.dragSession = null;
 		if (session.started) {
-			this.props.onDragDispatch?.(
+			dispatch?.(
 				session.target,
 				new DragEvent(
 					"dragend",
@@ -365,7 +365,7 @@ export default class App extends PureComponent<Props, State> {
 	 * a stale clickCount could turn the first click on a fresh screen into
 	 * a double-click).
 	 */
-	resetPointerState(cancelSelection = false): void {
+	resetPointerState(cancelSelection = false, dispatchDrag = this.props.onDragDispatch): void {
 		this.lastClickRegion = null;
 		this.clickCount = 0;
 		this.lastClickTime = 0;
@@ -380,7 +380,7 @@ export default class App extends PureComponent<Props, State> {
 		// DECRQM) must stay barred until a confirmed termination signal:
 		// release, no-button motion, or focus-out. Unlatching here let the
 		// resize handler's own probe write mid-gesture.
-		this.finishDragSession();
+		this.finishDragSession(dispatchDrag);
 		if (this.pendingHyperlinkTimer) {
 			clearTimeout(this.pendingHyperlinkTimer);
 			this.pendingHyperlinkTimer = null;
@@ -488,10 +488,11 @@ export default class App extends PureComponent<Props, State> {
 		}
 	}
 	override componentWillUnmount() {
-		if (this.props.stdout.isTTY) {
-			this.props.stdout.write(SHOW_CURSOR);
+		try {
+			if (this.props.stdout.isTTY) this.props.stdout.write(SHOW_CURSOR);
+		} finally {
+			this.detachForShutdown();
 		}
-		this.detachForShutdown();
 	}
 
 	/** Release timers and stdin ownership without requiring a React unmount. */
@@ -645,17 +646,20 @@ export default class App extends PureComponent<Props, State> {
 
 		// Disable raw mode only when no components left that are using it
 		if (--this.rawModeEnabledCount === 0) {
-			this.props.stdout.write(DISABLE_MODIFY_OTHER_KEYS);
-			this.props.stdout.write(DISABLE_KITTY_KEYBOARD);
-			// No-op on terminals that never entered win32-input-mode
-			this.props.stdout.write(DISABLE_WIN32_INPUT_MODE);
-			// Disable terminal focus reporting (DECSET 1004)
-			this.props.stdout.write(DFE);
-			// Disable bracketed paste mode
-			this.props.stdout.write(DBP);
-			stdin.setRawMode(false);
-			stdin.removeListener("readable", this.handleReadable);
-			stdin.unref();
+			try {
+				this.props.stdout.write(DISABLE_MODIFY_OTHER_KEYS);
+				this.props.stdout.write(DISABLE_KITTY_KEYBOARD);
+				// No-op on terminals that never entered win32-input-mode
+				this.props.stdout.write(DISABLE_WIN32_INPUT_MODE);
+				// Disable terminal focus reporting (DECSET 1004)
+				this.props.stdout.write(DFE);
+				// Disable bracketed paste mode
+				this.props.stdout.write(DBP);
+			} finally {
+				stdin.setRawMode(false);
+				stdin.removeListener("readable", this.handleReadable);
+				stdin.unref();
+			}
 		}
 	};
 
@@ -1147,7 +1151,7 @@ export function handleMouseEvent(app: App, m: ParsedMouse): void {
 			if (col === app.lastHoverCol && row === app.lastHoverRow) return;
 			app.lastHoverCol = col;
 			app.lastHoverRow = row;
-			app.props.onHoverAt(col, row);
+			app.props.onHoverAt(col, row, m.button);
 			return;
 		}
 		// X10 cannot report releases. A fresh button press after a captured
@@ -1349,7 +1353,9 @@ export function handleMouseEvent(app: App, m: ParsedMouse): void {
 		// active, pair that generic release with it and continue through the normal
 		// click/selection tail; an unrelated middle/right release has no active
 		// selection and remains inert.
-		if (baseButton !== 0 && !replayedDormantDrag && !sel.isDragging) return;
+		// A completed selection retains its anchor for copy/inspection. Only a
+		// live press (or the captured dormant drag replay) admits this release.
+		if (!replayedDormantDrag && !sel.isDragging) return;
 		finishSelection(sel);
 		// NOTE: unlike the old release-based detection we do NOT reset clickCount
 		// on release-after-drag. This aligns with NSEvent.clickCount semantics:

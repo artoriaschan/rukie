@@ -310,9 +310,16 @@ export default class Ink {
     this.isUnmounted = false;
 
     // Unmount when process exits
-    this.unsubscribeExit = onExit(this.unmount, {
+    const unsubscribeSignalExit = onExit(this.unmount, {
       alwaysLast: false
     });
+    // Bun's uncaught-exception exit dispatches the native exit event without
+    // signal-exit's process.emit wrapper. Both routes share idempotent unmount.
+    process.on('exit', this.unmount);
+    this.unsubscribeExit = () => {
+      process.off('exit', this.unmount);
+      unsubscribeSignalExit();
+    };
     if (options.stdout.isTTY) {
       options.stdout.on('resize', this.handleResize);
       process.on('SIGCONT', this.handleResume);
@@ -444,6 +451,7 @@ export default class Ink {
         !this.isPaused && !this.isUnmounted && !this.needsSurfaceRepaint
       ) {
         this.needsSurfaceRepaint = true;
+        this.needsEraseBeforePaint = true;
         this.scheduleRender();
       }
       return;
@@ -1373,22 +1381,28 @@ export default class Ink {
     if (this.altScreenActive === active) return;
     const generation = ++this.pointerContextGeneration;
     const resetOldPointerContext = (): void => {
-      // Fire leave handlers before dropping the set — a bare clear strands
-      // old rows with hovered=true. resetPointerState also emits dragend for
-      // a captured drag before its geometry disappears.
+      // Clear old hover and drag ownership before its geometry disappears;
+      // notify retained component owners after the insertion commit.
       clearHovered(this.hoveredNodes, -1, -1, (node, notify) => {
         // AlternateScreen switches during an insertion effect: clear ownership now,
         // then notify retained React owners after commit. A new hover lease wins.
         queueMicrotask(() => {
           if (this.isUnmounted || generation !== this.pointerContextGeneration || !node.parentNode || this.hoveredNodes.has(node)) return;
-          notify();
+          try { notify(); } catch (error) { this.handleFatalError(error); }
         });
       });
-      this.app?.resetPointerState();
+      this.app?.resetPointerState(false, (target, event) => {
+        // The insertion-phase reset clears the captured drag synchronously;
+        // notify its retained owner after commit, unless a new lease won.
+        queueMicrotask(() => {
+          if (this.isUnmounted || generation !== this.pointerContextGeneration || !target.parentNode || this.app?.dragSession?.target === target) return;
+          try { bubbleDragEvent(target, event); } catch (error) { this.handleFatalError(error); }
+        });
+      });
       invalidateNoInterestRect();
     };
-    // Leaving must settle dragend WHILE the dispatch gate is still active;
-    // flipping altScreenActive first would silently drop the cleanup event.
+    // Capture the old context before the gate changes. Deferred notifications
+    // target that captured owner directly, rather than the new screen gate.
     if (!active) {
       resetOldPointerContext();
       const deleteImages = this.kittyGraphicsManager.deleteAll() + this.sixelGraphicsManager.clear();
@@ -2439,13 +2453,13 @@ export default class Ink {
     }
     return handled;
   }
-  dispatchHover(col: number, row: number): void {
+  dispatchHover(col: number, row: number, button = 0): void {
     // Safe-boundary probe (skipMouseReassert — see dispatchClick). Hover is
     // no-button motion; App already cleared the gesture latch before routing
     // here, so no button can be held.
     this.probeAltScreenHealth({ skipMouseReassert: true });
     if (!this.altScreenActive) return;
-    dispatchHover(this.rootNode, col, row, this.hoveredNodes);
+    dispatchHover(this.rootNode, col, row, this.hoveredNodes, button);
   }
   /**
    * Drag protocol entry: find the drag target at an unmodified left
@@ -2682,7 +2696,11 @@ export default class Ink {
     if (data.includes('\x1b[?1049')) {
       logMouseDebug('stdout:1049', { len: data.length, head: data.slice(0, 60) });
     }
-    this.options.stdout.write(data);
+    // Mode writes can originate in an insertion effect before App mounts.
+    // Route failures to this root after commit instead of throwing through
+    // React's commit-phase recovery for a not-yet-mounted ancestor.
+    try { this.options.stdout.write(data); }
+    catch (error) { this.handleFatalError(error); }
   }
   private setCursorDeclaration: CursorDeclarationSetter = (decl, clearIfNode) => {
     if (decl === null && clearIfNode !== undefined && this.cursorDeclaration?.node !== clearIfNode) {
@@ -2706,6 +2724,7 @@ export default class Ink {
     }
   };
   render(node: ReactNode): void {
+    if (this.isUnmounted) return;
     this.currentNode = node;
     const tree = <App renderer={this} ref={this.setAppRef} stdin={this.options.stdin} stdout={this.options.stdout} stderr={this.options.stderr} exitOnCtrlC={this.options.exitOnCtrlC} onExit={this.unmount} terminalColumns={this.terminalColumns} terminalRows={this.terminalRows} selection={this.selection} onSelectionChange={this.notifySelectionChange} onClickAt={this.dispatchClick} onContextMenuAt={this.dispatchContextMenu} onHoverAt={this.dispatchHover} onWheelAt={this.dispatchWheelAt} getHyperlinkAt={this.getHyperlinkAt} onOpenHyperlink={this.openHyperlink} onMultiClick={this.handleMultiClick} onSelectionStart={this.handleSelectionStart} onSelectionDrag={this.handleSelectionDrag} onDragTargetAt={this.findDragTargetAt} onDragDispatch={this.dispatchDrag} onPointerGestureChange={this.setPointerGestureActive} onProtocolCandidateChange={this.setProtocolCandidateActive} onReleaseTail={this.drainReleaseTail} onClickProbe={this.clickProbeAtBatchTail} onStdinResume={this.reassertTerminalModes} onTerminalFocus={this.handleTerminalFocusProbe} onCursorDeclaration={this.setCursorDeclaration} dispatchKeyboardEvent={this.dispatchKeyboardEvent}>
         <TerminalWriteProvider value={this.writeRaw}>
@@ -2735,7 +2754,10 @@ export default class Ink {
     } catch (renderError) {
       logError(renderError instanceof Error ? renderError : new Error(String(renderError)));
     }
-    this.unsubscribeExit();
+    // signal-exit iterates its live listener array. Removing this callback
+    // during process-exit dispatch would skip the next mounted root.
+    if (typeof error === 'number' || error === null) queueMicrotask(this.unsubscribeExit);
+    else this.unsubscribeExit();
     if (typeof this.restoreConsole === 'function') {
       this.restoreConsole();
     }
@@ -2763,9 +2785,16 @@ export default class Ink {
       // doesn't declare it, hence the local intersection cast.
       const stdoutWithFd = this.options.stdout as NodeJS.WriteStream & { fd?: number | null };
       // Port: custom streams have no fd; restoration belongs to the injected stream.
-      const writeRestore = (data: string) => typeof stdoutWithFd.fd === 'number'
-        ? writeSync(stdoutWithFd.fd, data)
-        : this.options.stdout.write(data);
+      const writeRestore = (data: string) => {
+        try {
+          if (typeof stdoutWithFd.fd === 'number') writeSync(stdoutWithFd.fd, data);
+          else this.options.stdout.write(data);
+        } catch (writeError) {
+          // A revoked/broken output cannot accept restoration bytes, but
+          // must not prevent stdin/resource disposal or owning exit settlement.
+          if (!(error instanceof Error)) error = writeError instanceof Error ? writeError : new Error(String(writeError));
+        }
+      };
       // The last frame must land on the ALT screen while it is still up:
       // writing it through the async stream would race the synchronous
       // EXIT_ALT_SCREEN below and the frame bytes would arrive AFTER the
@@ -2807,6 +2836,11 @@ export default class Ink {
     }
     /* eslint-enable custom-rules/no-sync-fs */
 
+    // Process exit cannot wait for React's unmount effects. Release the
+    // owned readable pump and raw-mode borrowers synchronously as well.
+    try { this.app?.detachForShutdown(); } catch (detachError) {
+      if (!(error instanceof Error)) error = detachError instanceof Error ? detachError : new Error(String(detachError));
+    }
     this.isUnmounted = true;
 
     this.terminalImageListeners.clear();
