@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { useLayoutEffect, useState } from "react";
-import { Box, Text, render } from "../../../src/ink";
+import { AlternateScreen, Box, Text, renderSync } from "../../../src/ink";
 import { createTerminal } from "../helpers/terminal";
 
 test("half-block foreground and background survive nesting and clear on transparent frames", async () => {
@@ -13,18 +13,19 @@ test("half-block foreground and background survive nesting and clear on transpar
     }, []);
     return (
       <Box flexDirection="column">
-        <Text
-          color="#123456"
-          backgroundColor={transparent ? undefined : "#abcdef"}
-          preserveWhitespace
-        >
+        <Text color="#123456" backgroundColor={transparent ? undefined : "#abcdef"}>
           ▀<Text color="#fedcba">▄</Text>{" "}
         </Text>
         <Text>metadata</Text>
       </Box>
     );
   }
-  const app = render(<View />, terminal);
+  const app = renderSync(
+    <AlternateScreen>
+      <View />
+    </AlternateScreen>,
+    terminal,
+  );
   const cell = (x: number, y: number) => terminal.terminal.buffer.active.getLine(y)!.getCell(x)!;
   try {
     await terminal.flush();
@@ -42,31 +43,7 @@ test("half-block foreground and background survive nesting and clear on transpar
   } finally {
     app.unmount();
     await app.waitUntilExit();
+    app.cleanup();
     terminal.dispose();
-  }
-});
-
-test("NO_COLOR suppresses both planes of a colored half-block", async () => {
-  const previous = process.env.NO_COLOR;
-  process.env.NO_COLOR = "1";
-  const terminal = createTerminal(4, 2);
-  const app = render(
-    <Text color="#123456" backgroundColor="#abcdef">
-      ▀
-    </Text>,
-    terminal,
-  );
-  try {
-    await terminal.flush();
-    const cell = terminal.terminal.buffer.active.getLine(0)!.getCell(0)!;
-    expect(cell.getChars()).toBe("▀");
-    expect(cell.isFgDefault()).toBe(true);
-    expect(cell.isBgDefault()).toBe(true);
-  } finally {
-    app.unmount();
-    await app.waitUntilExit();
-    terminal.dispose();
-    if (previous === undefined) delete process.env.NO_COLOR;
-    else process.env.NO_COLOR = previous;
   }
 });

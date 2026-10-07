@@ -1,44 +1,121 @@
-import { createRef, useState } from "react";
-import { expect, jest, test } from "bun:test";
-import { Box, ScrollBox, Text, render, type ScrollHandle } from "../../../src/ink";
+import { expect, test } from "bun:test";
+import FakeTimers from "@sinonjs/fake-timers";
+import { createRef, useState, useLayoutEffect } from "react";
+import {
+  AlternateScreen,
+  Box,
+  ScrollBox,
+  Text,
+  renderSync,
+  useInput,
+  useSelection,
+  type ScrollBoxHandle,
+} from "../../../src/ink";
 import { createTerminal } from "../helpers/terminal";
 
+const rows = (count: number) => Array.from({ length: count }, (_, i) => `row-${i}`).join("\n");
+// The oracle reads the root's public selection state/text. It never writes a clipboard.
+async function mountRows({
+  text = rows(10),
+  columns = 20,
+  top = 0,
+  following = false,
+  singleRowWheel = false,
+  gutter = false,
+} = {}) {
+  const clock = FakeTimers.install({
+    now: 1000,
+    toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+  });
+  const terminal = createTerminal(columns, 6, (ms) => clock.tick(ms));
+  const scroll = createRef<ScrollBoxHandle>();
+  let selection!: ReturnType<typeof useSelection>;
+  let replace = (_text: string) => {};
+  function Screen() {
+    useInput(() => {});
+    selection = useSelection();
+    useLayoutEffect(() => {
+      selection.setSelectionBgColor("#345678");
+    }, [selection]);
+    const [value, setValue] = useState(text);
+    replace = setValue;
+    return (
+      <AlternateScreen>
+        <Box height={6} flexDirection="column">
+          <Text>{value === text ? "header" : "changed"}</Text>
+          <ScrollBox height={4} ref={scroll} stickyScroll={following}>
+            <Box
+              flexShrink={0}
+              onWheel={
+                singleRowWheel
+                  ? (event) => {
+                      scroll.current?.scrollBy(Math.sign(event.deltaY));
+                      event.stopImmediatePropagation();
+                    }
+                  : undefined
+              }
+            >
+              <Text>{value}</Text>
+              {gutter && (
+                <Box position="absolute" top={0} left={0} width={1} height={1} noSelect>
+                  <Text>│</Text>
+                </Box>
+              )}
+            </Box>
+          </ScrollBox>
+          <Text>footer</Text>
+        </Box>
+      </AlternateScreen>
+    );
+  }
+  const app = renderSync(<Screen />, { ...terminal, selectionIncludeNoSelectCells: false });
+  try {
+    await terminal.flush();
+    if (top) {
+      scroll.current!.scrollTo(top);
+      await terminal.waitFor(
+        () => scroll.current!.getScrollTop() === top && terminal.screen()[1] === `row-${top}`,
+      );
+    }
+  } catch (error) {
+    app.unmount();
+    try {
+      await app.waitUntilExit();
+    } finally {
+      app.cleanup();
+      terminal.dispose();
+      clock.uninstall();
+    }
+    throw error;
+  }
+  return {
+    terminal,
+    scroll,
+    selection: () => selection,
+    replace: (value: string) => replace(value),
+    async dispose() {
+      app.unmount();
+      await app.waitUntilExit();
+      app.cleanup();
+      terminal.dispose();
+      clock.uninstall();
+    },
+  };
+}
+async function release(fixture: Awaited<ReturnType<typeof mountRows>>, x = 5, y = 5) {
+  fixture.terminal.stdin.write(`\x1b[<0;${x};${y}m`);
+  await fixture.terminal.waitFor(() => fixture.selection().getState()?.isDragging === false);
+}
 for (const [name, anchorRow, expected, wheel, moveAfterWheel] of [
   ["within viewport", 4, "row-3", true, false],
   ["one selected outgoing row", 3, "row-2\nrow-3", true, false],
   ["new pointer movement extends", 3, "row-2\nrow-3\nrow-4\nrow-5\nrow-6", true, true],
   ["control without wheel", 3, "row-2\nrow-3", false, false],
-] as const) {
-  test(`held drag survives wheel down with ${name} and copies original painted text`, async () => {
-    jest.useFakeTimers();
-    const terminal = createTerminal(20, 6, (ms) => jest.advanceTimersByTime(ms));
-    const scroll = createRef<ScrollHandle>();
-    const copied: string[] = [];
-    const results: string[] = [];
-    const app = render(
-      <Box height={6} flexDirection="column">
-        <Text>header</Text>
-        <ScrollBox
-          ref={scroll}
-          initialFollow={false}
-          onWheel={(event) => scroll.current?.scrollBy(event.delta * 3)}
-          textSelection={{
-            key: "wheel-fixture",
-            onCopy: async (text) => {
-              copied.push(text);
-              return true;
-            },
-            onResult: (result) => results.push(result),
-          }}
-        >
-          <Text>{Array.from({ length: 10 }, (_, i) => `row-${i}`).join("\n")}</Text>
-        </ScrollBox>
-        <Text>footer</Text>
-      </Box>,
-      { ...terminal, fullscreen: true },
-    );
+] as const)
+  test(`held drag survives wheel down with ${name} and retains original painted text`, async () => {
+    const f = await mountRows();
+    const { terminal } = f;
     try {
-      await terminal.waitFor(() => terminal.screen()[1] === "row-0");
       expect(terminal.screen()).toEqual(["header", "row-0", "row-1", "row-2", "row-3", "footer"]);
       terminal.stdin.write(`\x1b[<0;1;${anchorRow + 1}M\x1b[<32;5;5M`);
       await terminal.waitFor(
@@ -50,357 +127,134 @@ for (const [name, anchorRow, expected, wheel, moveAfterWheel] of [
         expect(terminal.screen()).toEqual(["header", "row-3", "row-4", "row-5", "row-6", "footer"]);
       }
       if (moveAfterWheel) terminal.stdin.write("\x1b[<32;5;5M");
-      terminal.stdin.write("\x1b[<0;5;5m");
-      jest.advanceTimersByTime(32);
-      await terminal.flush();
-      // Release is a synchronous renderer boundary; captured host bytes prove the gesture survived.
-      expect(copied).toEqual([expected]);
-      expect(results).toEqual(["copied"]);
+      await release(f);
+      expect(f.selection().readSelectionText()).toBe(expected);
     } finally {
-      app.unmount();
-      await app.waitUntilExit();
-      terminal.dispose();
-      jest.useRealTimers();
+      await f.dispose();
     }
   });
-}
-
 for (const selectedChanges of [true, false])
-  test(`${selectedChanges ? "Changing captured source refuses copy" : "Updating outside captured source keeps copy safe"}`, async () => {
-    jest.useFakeTimers();
-    const terminal = createTerminal(20, 6, (ms) => jest.advanceTimersByTime(ms));
-    const scroll = createRef<ScrollHandle>();
-    const copied: string[] = [];
-    const results: string[] = [];
-    let replace = (_text: string) => {};
-    function View() {
-      const [text, setText] = useState(Array.from({ length: 10 }, (_, i) => `row-${i}`).join("\n"));
-      replace = setText;
-      return (
-        <Box height={6} flexDirection="column">
-          <Text>{text.includes("OTHER") ? "changed" : "header"}</Text>
-          <ScrollBox
-            ref={scroll}
-            initialFollow={false}
-            onWheel={(event) => scroll.current?.scrollBy(event.delta * 3)}
-            textSelection={{
-              key: "mutable",
-              onCopy: async (value) => {
-                copied.push(value);
-                return true;
-              },
-              onResult: (value) => results.push(value),
-            }}
-          >
-            <Text>{text}</Text>
-          </ScrollBox>
-          <Text>footer</Text>
-        </Box>
-      );
-    }
-    const app = render(<View />, { ...terminal, fullscreen: true });
-    try {
-      await terminal.waitFor(() => terminal.screen()[1] === "row-0");
-      terminal.stdin.write("\x1b[<0;1;4M\x1b[<32;5;5M");
-      await terminal.waitFor(
-        () => !terminal.terminal.buffer.active.getLine(3)!.getCell(0)!.isBgDefault(),
-      );
-      terminal.stdin.write("\x1b[<65;5;5M");
-      await terminal.waitFor(() => terminal.screen()[1] === "row-3");
-      replace(
-        Array.from({ length: 10 }, (_, i) =>
-          i === (selectedChanges ? 2 : 9) ? "OTHER" : `row-${i}`,
-        ).join("\n"),
-      );
-      await terminal.waitFor(() => terminal.screen()[0] === "changed");
-      terminal.stdin.write("\x1b[<0;5;5m");
-      jest.advanceTimersByTime(32);
-      await terminal.flush();
-      expect(copied).toEqual(selectedChanges ? [] : ["row-2\nrow-3"]);
-      expect(results).toEqual([selectedChanges ? "stale" : "copied"]);
-    } finally {
-      app.unmount();
-      await app.waitUntilExit();
-      terminal.dispose();
-      jest.useRealTimers();
-    }
-  });
-
-test("held drag can scroll down twice and back without duplicating captured rows", async () => {
-  jest.useFakeTimers();
-  const terminal = createTerminal(20, 6, (ms) => jest.advanceTimersByTime(ms));
-  const scroll = createRef<ScrollHandle>();
-  const copied: string[] = [];
-  const app = render(
-    <Box height={6} flexDirection="column">
-      <Text>header</Text>
-      <ScrollBox
-        ref={scroll}
-        initialFollow={false}
-        onWheel={(event) => scroll.current?.scrollBy(event.delta * 3)}
-        textSelection={{
-          onCopy: async (value) => {
-            copied.push(value);
-            return true;
-          },
-          onResult: () => {},
-        }}
-      >
-        <Text>{Array.from({ length: 12 }, (_, i) => `row-${i}`).join("\n")}</Text>
-      </ScrollBox>
-      <Text>footer</Text>
-    </Box>,
-    { ...terminal, fullscreen: true },
+  test(
+    selectedChanges
+      ? "changing captured source refuses extraction"
+      : "updating outside captured source keeps extraction safe",
+    async () => {
+      const f = await mountRows();
+      const { terminal } = f;
+      try {
+        terminal.stdin.write("\x1b[<0;1;4M\x1b[<32;5;5M");
+        await terminal.waitFor(
+          () => !terminal.terminal.buffer.active.getLine(3)!.getCell(0)!.isBgDefault(),
+        );
+        terminal.stdin.write("\x1b[<65;5;5M");
+        await terminal.waitFor(() => terminal.screen()[1] === "row-3");
+        f.replace(
+          Array.from({ length: 10 }, (_, i) =>
+            i === (selectedChanges ? 2 : 9) ? "OTHER" : `row-${i}`,
+          ).join("\n"),
+        );
+        await terminal.waitFor(() => terminal.screen()[0] === "changed");
+        await release(f);
+        expect(f.selection().readSelectionText()).toBe(selectedChanges ? "" : "row-2\nrow-3");
+        expect(f.selection().getState()?.stale).toBe(selectedChanges);
+      } finally {
+        await f.dispose();
+      }
+    },
   );
+test("held drag scrolls down twice and back without duplicating captured rows", async () => {
+  const f = await mountRows({ text: rows(12) });
+  const { terminal } = f;
   try {
-    await terminal.waitFor(() => terminal.screen()[1] === "row-0");
     terminal.stdin.write("\x1b[<0;1;4M\x1b[<32;5;5M\x1b[<65;5;5M");
     await terminal.waitFor(() => terminal.screen()[1] === "row-3");
     terminal.stdin.write("\x1b[<65;5;5M");
     await terminal.waitFor(() => terminal.screen()[1] === "row-6");
     terminal.stdin.write("\x1b[<64;5;5M");
     await terminal.waitFor(() => terminal.screen()[1] === "row-3");
-    terminal.stdin.write("\x1b[<0;5;5m");
-    jest.advanceTimersByTime(32);
-    await terminal.flush();
-    expect(copied).toEqual(["row-2\nrow-3"]);
+    await release(f);
+    expect(f.selection().readSelectionText()).toBe("row-2\nrow-3");
   } finally {
-    app.unmount();
-    await app.waitUntilExit();
-    terminal.dispose();
-    jest.useRealTimers();
+    await f.dispose();
   }
 });
-
 test("upward held drag captures selected outgoing bottom rows", async () => {
-  jest.useFakeTimers();
-  const terminal = createTerminal(20, 6, (ms) => jest.advanceTimersByTime(ms));
-  const scroll = createRef<ScrollHandle>();
-  const copied: string[] = [];
-  const app = render(
-    <Box height={6} flexDirection="column">
-      <Text>header</Text>
-      <ScrollBox
-        ref={scroll}
-        initialTop={3}
-        initialFollow={false}
-        onWheel={(event) => scroll.current?.scrollBy(event.delta * 3)}
-        textSelection={{
-          onCopy: async (value) => {
-            copied.push(value);
-            return true;
-          },
-          onResult: () => {},
-        }}
-      >
-        <Text>{Array.from({ length: 10 }, (_, i) => `row-${i}`).join("\n")}</Text>
-      </ScrollBox>
-      <Text>footer</Text>
-    </Box>,
-    { ...terminal, fullscreen: true },
-  );
+  const f = await mountRows({ top: 3 });
+  const { terminal } = f;
   try {
-    await terminal.waitFor(() => terminal.screen()[1] === "row-3");
+    expect(terminal.screen()[1]).toBe("row-3");
     terminal.stdin.write("\x1b[<0;5;5M\x1b[<32;1;2M\x1b[<64;1;2M");
     await terminal.waitFor(() => terminal.screen()[1] === "row-0");
-    terminal.stdin.write("\x1b[<0;1;3m");
-    jest.advanceTimersByTime(32);
-    await terminal.flush();
-    expect(copied).toEqual(["row-3\nrow-4\nrow-5\nrow-6"]);
+    await release(f, 1, 3);
+    expect(f.selection().readSelectionText()).toBe("row-3\nrow-4\nrow-5\nrow-6");
   } finally {
-    app.unmount();
-    await app.waitUntilExit();
-    terminal.dispose();
-    jest.useRealTimers();
+    await f.dispose();
   }
 });
-
 test("auto-follow preserves the held anchor and captures rows as a stream grows", async () => {
-  jest.useFakeTimers();
-  const terminal = createTerminal(20, 6, (ms) => jest.advanceTimersByTime(ms));
-  const copied: string[] = [];
-  let grow = (_count: number) => {};
-  function View() {
-    const [count, setCount] = useState(6);
-    grow = setCount;
-    return (
-      <Box height={6} flexDirection="column">
-        <Text>header</Text>
-        <ScrollBox
-          textSelection={{
-            onCopy: async (value) => {
-              copied.push(value);
-              return true;
-            },
-            onResult: () => {},
-          }}
-        >
-          <Text>{Array.from({ length: count }, (_, i) => `row-${i}`).join("\n")}</Text>
-        </ScrollBox>
-        <Text>footer</Text>
-      </Box>
-    );
-  }
-  const app = render(<View />, { ...terminal, fullscreen: true });
+  const f = await mountRows({ text: rows(6), following: true });
+  const { terminal } = f;
   try {
-    await terminal.waitFor(() => terminal.screen()[1] === "row-2");
+    expect(terminal.screen()[1]).toBe("row-2");
     terminal.stdin.write("\x1b[<0;1;3M\x1b[<32;5;5M");
     await terminal.waitFor(
       () => !terminal.terminal.buffer.active.getLine(2)!.getCell(0)!.isBgDefault(),
     );
-    grow(8);
+    f.replace(rows(8));
     await terminal.waitFor(() => terminal.screen()[1] === "row-4");
-    terminal.stdin.write("\x1b[<0;5;5m");
-    jest.advanceTimersByTime(32);
-    await terminal.flush();
-    expect(copied).toEqual(["row-3\nrow-4\nrow-5"]);
+    await release(f);
+    expect(f.selection().readSelectionText()).toBe("row-3\nrow-4\nrow-5");
   } finally {
-    app.unmount();
-    await app.waitUntilExit();
-    terminal.dispose();
-    jest.useRealTimers();
+    await f.dispose();
   }
 });
-
 test("a held selection fully scrolled off the same edge is discarded only on release", async () => {
-  jest.useFakeTimers();
-  const terminal = createTerminal(20, 6, (ms) => jest.advanceTimersByTime(ms));
-  const scroll = createRef<ScrollHandle>();
-  const copied: string[] = [],
-    results: string[] = [];
-  const app = render(
-    <Box height={6} flexDirection="column">
-      <Text>header</Text>
-      <ScrollBox
-        ref={scroll}
-        initialFollow={false}
-        onWheel={(event) => scroll.current?.scrollBy(event.delta * 3)}
-        textSelection={{
-          onCopy: async (value) => {
-            copied.push(value);
-            return true;
-          },
-          onResult: (value) => results.push(value),
-        }}
-      >
-        <Text>{Array.from({ length: 12 }, (_, i) => `row-${i}`).join("\n")}</Text>
-      </ScrollBox>
-      <Text>footer</Text>
-    </Box>,
-    { ...terminal, fullscreen: true },
-  );
+  const f = await mountRows({ text: rows(12) });
+  const { terminal } = f;
   try {
-    await terminal.waitFor(() => terminal.screen()[1] === "row-0");
     terminal.stdin.write("\x1b[<0;1;4M\x1b[<32;5;5M\x1b[<65;5;5M");
     await terminal.waitFor(() => terminal.screen()[1] === "row-3");
     terminal.stdin.write("\x1b[<65;5;5M");
     await terminal.waitFor(() => terminal.screen()[1] === "row-6");
-    terminal.stdin.write("\x1b[<0;5;5m");
-    jest.advanceTimersByTime(32);
-    await terminal.flush();
-    expect(copied).toEqual([]);
-    expect(results).toEqual([]);
+    expect(f.selection().getState()?.isDragging).toBe(true);
+    await release(f);
+    expect(f.selection().readSelectionText()).toBe("");
     expect(terminal.terminal.buffer.active.getLine(1)!.getCell(0)!.isBgDefault()).toBe(true);
   } finally {
-    app.unmount();
-    await app.waitUntilExit();
-    terminal.dispose();
-    jest.useRealTimers();
+    await f.dispose();
   }
 });
-
-test("captured Unicode soft wraps copy whole glyphs and exclude decorated gutters", async () => {
-  jest.useFakeTimers();
-  const terminal = createTerminal(10, 6, (ms) => jest.advanceTimersByTime(ms));
-  const scroll = createRef<ScrollHandle>();
-  const copied: string[] = [];
-  const app = render(
-    <Box height={6} flexDirection="column">
-      <Text>header</Text>
-      <ScrollBox
-        ref={scroll}
-        initialFollow={false}
-        onWheel={(event) => scroll.current?.scrollBy(event.delta)}
-        textSelection={{
-          onCopy: async (value) => {
-            copied.push(value);
-            return true;
-          },
-          onResult: () => {},
-        }}
-      >
-        <Text>
-          <Text selectable={false}>│</Text>
-          {"中🐋hello worldabcdefgh\nB\nC\nD\nE"}
-        </Text>
-      </ScrollBox>
-      <Text>footer</Text>
-    </Box>,
-    { ...terminal, fullscreen: true },
-  );
+test("captured Unicode soft wraps retain whole glyphs and exclude decorated gutters", async () => {
+  const f = await mountRows({
+    columns: 10,
+    text: "│中🐋hello worldabcdefgh\nB\nC\nD\nE",
+    singleRowWheel: true,
+    gutter: true,
+  });
+  const { terminal } = f;
   try {
-    await terminal.waitFor(() => terminal.screen()[1] === "│中🐋hello");
-    terminal.stdin.write("\x1b[<0;3;2M\x1b[<32;10;3M\x1b[<65;10;3M");
-    await terminal.waitFor(() => terminal.screen()[1] === "worldabcde");
-    terminal.stdin.write("\x1b[<0;10;3m");
-    jest.advanceTimersByTime(32);
-    await terminal.flush();
-    expect(copied).toEqual(["中🐋hello worldabcde"]);
+    expect(terminal.screen()[1]).toBe("│中🐋hello");
+    terminal.stdin.write("\x1b[<0;3;2M\x1b[<32;1;4M\x1b[<65;10;3M");
+    await terminal.waitFor(() => terminal.screen()[1] === " worldabcd");
+    await release(f, 1, 3);
+    expect(f.selection().readSelectionText()).toBe("中🐋hello worldabcde");
   } finally {
-    app.unmount();
-    await app.waitUntilExit();
-    terminal.dispose();
-    jest.useRealTimers();
+    await f.dispose();
   }
 });
-
 test("captured wide glyph continuation remains subject to source validation", async () => {
-  jest.useFakeTimers();
-  const terminal = createTerminal(10, 6, (ms) => jest.advanceTimersByTime(ms));
-  const scroll = createRef<ScrollHandle>();
-  const copied: string[] = [],
-    results: string[] = [];
-  let replace = () => {};
-  function View() {
-    const [changed, setChanged] = useState(false);
-    replace = () => setChanged(true);
-    return (
-      <Box height={6} flexDirection="column">
-        <Text>{changed ? "changed" : "header"}</Text>
-        <ScrollBox
-          ref={scroll}
-          initialFollow={false}
-          onWheel={(event) => scroll.current?.scrollBy(event.delta)}
-          textSelection={{
-            onCopy: async (value) => {
-              copied.push(value);
-              return true;
-            },
-            onResult: (value) => results.push(value),
-          }}
-        >
-          <Text>{`${changed ? "另" : "中"}\nNEXT\nfoo\nbar\nz`}</Text>
-        </ScrollBox>
-        <Text>footer</Text>
-      </Box>
-    );
-  }
-  const app = render(<View />, { ...terminal, fullscreen: true });
+  const f = await mountRows({ columns: 10, text: "中\nNEXT\nfoo\nbar\nz", singleRowWheel: true });
+  const { terminal } = f;
   try {
-    await terminal.waitFor(() => terminal.screen()[1] === "中");
+    expect(terminal.screen()[1]).toBe("中");
     terminal.stdin.write("\x1b[<0;2;2M\x1b[<32;1;3M\x1b[<65;1;3M");
     await terminal.waitFor(() => terminal.screen()[1] === "NEXT");
-    replace();
+    f.replace("另\nNEXT\nfoo\nbar\nz");
     await terminal.waitFor(() => terminal.screen()[0] === "changed");
-    terminal.stdin.write("\x1b[<0;1;3m");
-    jest.advanceTimersByTime(32);
-    await terminal.flush();
-    expect(copied).toEqual([]);
-    expect(results).toEqual(["stale"]);
+    await release(f, 1, 3);
+    expect(f.selection().readSelectionText()).toBe("");
+    expect(f.selection().getState()?.stale).toBe(true);
   } finally {
-    app.unmount();
-    await app.waitUntilExit();
-    terminal.dispose();
-    jest.useRealTimers();
+    await f.dispose();
   }
 });

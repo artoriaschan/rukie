@@ -7,6 +7,7 @@ import {
   Text,
   renderSync,
   type ScrollBoxHandle,
+  useInput,
 } from "../../../src/ink/index.ts";
 import {
   captureSourcePosition,
@@ -70,6 +71,7 @@ test("public source geometry and deferred element seek follow wrapped content", 
   const scroll = createRef<ScrollBoxHandle>();
   let sources!: Sources;
   function Reader() {
+    useInput(() => {});
     sources = useSources();
     return (
       <AlternateScreen>
@@ -141,6 +143,180 @@ test("folding away a visible source restores its containing card", async () => {
     await terminal.waitFor(() => scroll.current?.getScrollHeight() === 34);
     restoreSourcePosition(scroll.current, sources, position);
     await terminal.waitFor(() => terminal.screen()[0] === "card-header");
+  } finally {
+    app.unmount();
+    await app.waitUntilExit();
+    app.cleanup();
+    terminal.dispose();
+  }
+});
+
+test("width reflow restores the visible source offset while browsing", async () => {
+  const terminal = createTerminal(20, 4);
+  const scroll = createRef<ScrollBoxHandle>();
+  let sources!: Sources;
+  function Reader() {
+    useInput(() => {});
+    sources = useSources();
+    return (
+      <AlternateScreen>
+        <ScrollBox height={3} ref={scroll}>
+          <Box flexShrink={0} width="100%" ref={sources.ref("reader")}>
+            <Text>
+              AA BB CC DD EE FF GG HH II JJ KK LL MM NN OO PP QQ RR SS TT UU VV WW XX YY ZZ
+            </Text>
+          </Box>
+          <Box flexShrink={0}>
+            <Text>last message</Text>
+          </Box>
+        </ScrollBox>
+        <Text>dock</Text>
+      </AlternateScreen>
+    );
+  }
+  const app = renderSync(<Reader />, terminal);
+  try {
+    await terminal.flush();
+    scroll.current!.scrollTo(1);
+    await terminal.waitFor(() => terminal.screen()[0]?.trim() === "HH II JJ KK LL MM");
+    const saved = captureSourcePosition(readPosition(scroll.current, 20)!, sources);
+    terminal.resize(14, 4);
+    await terminal.waitFor(
+      () => sources.elements.get("reader")?.yogaNode?.getComputedWidth() === 14,
+    );
+    restoreSourcePosition(scroll.current, sources, saved);
+    await terminal.waitFor(() => terminal.screen()[0] === " FF GG HH II");
+    expect(terminal.screen()[3]).toBe("dock");
+    expect(scroll.current!.isSticky()).toBe(false);
+  } finally {
+    app.unmount();
+    await app.waitUntilExit();
+    app.cleanup();
+    terminal.dispose();
+  }
+});
+
+test("resize preserves a source reading position on an empty line", async () => {
+  const terminal = createTerminal(20, 4);
+  const scroll = createRef<ScrollBoxHandle>();
+  let sources!: Sources;
+  function Reader() {
+    useInput(() => {});
+    sources = useSources();
+    return (
+      <AlternateScreen>
+        <ScrollBox height={3} ref={scroll}>
+          <Box flexShrink={0} width="100%" ref={sources.ref("reader")}>
+            <Text>{"first\n\nthird\nfourth\nfifth\nsixth\nseventh"}</Text>
+          </Box>
+        </ScrollBox>
+        <Text>dock</Text>
+      </AlternateScreen>
+    );
+  }
+  const app = renderSync(<Reader />, terminal);
+  try {
+    await terminal.flush();
+    scroll.current!.scrollTo(1);
+    await terminal.waitFor(() => terminal.screen()[1] === "third");
+    expect(terminal.screen()).toEqual(["", "third", "fourth", "dock"]);
+    const saved = captureSourcePosition(readPosition(scroll.current, 20)!, sources);
+    terminal.resize(14, 4);
+    await terminal.waitFor(
+      () => sources.elements.get("reader")?.yogaNode?.getComputedWidth() === 14,
+    );
+    restoreSourcePosition(scroll.current, sources, saved);
+    await terminal.flush();
+    expect(terminal.screen()).toEqual(["", "third", "fourth", "dock"]);
+  } finally {
+    app.unmount();
+    await app.waitUntilExit();
+    app.cleanup();
+    terminal.dispose();
+  }
+});
+
+test("portable product source identity distinguishes duplicate content after remount and reflow with top fallback and follow", async () => {
+  const terminal = createTerminal(20, 4);
+  const scroll = createRef<ScrollBoxHandle>();
+  let sources!: Sources;
+  const duplicate = "AA BB CC DD EE FF GG HH II JJ KK LL MM NN OO PP QQ RR SS TT UU VV WW XX YY ZZ";
+  function Reader({ first = true, second = true }: { first?: boolean; second?: boolean }) {
+    useInput(() => {});
+    sources = useSources();
+    return (
+      <AlternateScreen>
+        <ScrollBox height={3} ref={scroll} stickyScroll>
+          {first && (
+            <Box flexShrink={0} width="100%" ref={sources.ref("first")}>
+              <Text>{duplicate}</Text>
+            </Box>
+          )}
+          {second && (
+            <Box flexShrink={0} width="100%" ref={sources.ref("second")}>
+              <Box width={2}>
+                <Text>❯</Text>
+              </Box>
+              <Box flexGrow={1}>
+                <Text>{duplicate}</Text>
+              </Box>
+            </Box>
+          )}
+          <Box flexShrink={0}>
+            <Text>{"end-1\nend-2\nend-3\nend-4\nend-5\nend-6\nend-7\nend-8"}</Text>
+          </Box>
+        </ScrollBox>
+        <Text>dock</Text>
+      </AlternateScreen>
+    );
+  }
+  const app = renderSync(<Reader />, terminal);
+  try {
+    await terminal.waitFor(() => terminal.screen()[2] === "end-8");
+    const following = captureSourcePosition(readPosition(scroll.current, 20)!, sources);
+    expect(following.following).toBe(true);
+    app.rerender(
+      <AlternateScreen>
+        <Text>panel</Text>
+      </AlternateScreen>,
+    );
+    await terminal.waitFor(() => terminal.screen()[0] === "panel");
+    app.rerender(<Reader />);
+    await terminal.waitFor(() => terminal.screen()[2] === "end-8");
+    restoreSourcePosition(scroll.current, sources, following);
+    await terminal.flush();
+    expect(terminal.screen()[2]).toBe("end-8");
+    scroll.current!.scrollTo(5);
+    await terminal.waitFor(() => terminal.screen()[0] === "  GG HH II JJ KK LL");
+    const saved = captureSourcePosition(readPosition(scroll.current, 20)!, sources);
+    expect(saved.anchor?.id).toBe("second");
+    expect(saved.following).toBe(false);
+    app.rerender(
+      <AlternateScreen>
+        <Text>panel</Text>
+      </AlternateScreen>,
+    );
+    await terminal.waitFor(() => terminal.screen()[0] === "panel");
+    terminal.resize(14, 4);
+    app.rerender(<Reader first={false} />);
+    await terminal.waitFor(
+      () =>
+        sources.elements.has("second") &&
+        sources.elements.get("second")?.yogaNode?.getComputedWidth() === 14,
+    );
+    restoreSourcePosition(scroll.current, sources, saved);
+    await terminal.waitFor(() => terminal.screen()[0] === "  EE FF GG HH");
+    const fallback = captureSourcePosition(readPosition(scroll.current, 14)!, sources);
+    app.rerender(
+      <AlternateScreen>
+        <Text>panel</Text>
+      </AlternateScreen>,
+    );
+    await terminal.waitFor(() => terminal.screen()[0] === "panel");
+    app.rerender(<Reader first={false} second={false} />);
+    await terminal.waitFor(() => scroll.current?.getScrollHeight() === 8);
+    restoreSourcePosition(scroll.current, sources, fallback);
+    await terminal.waitFor(() => terminal.screen()[0] === `end-${fallback.top + 1}`);
   } finally {
     app.unmount();
     await app.waitUntilExit();

@@ -151,9 +151,9 @@ Session Resume 通过只读观察核对子 Run 与父子归属，不自动恢复
 
 coding-agent 的 screens（`src/tui/screens/`）连接 Session、提供 Interaction 回调并读取图片 metadata；components（`src/tui/components/<area>/`）接收 props，对 Agent Core 只导入类型。终端无关的对话状态、活动、Slash Command、Transcript 搜索、Markdown 文本投影、工具与任务呈现位于 `src/view/`，供 Frontend 使用；view 对 Agent Core 只导入类型，不依赖 React、终端层或 Node API。持久化 Session Notice 与思考时长仍由 Agent Core 的同一组 decoder 读取，screen 将这些 helper 传给 conversation。
 
-终端 UI 通过 `src/ink/index.ts` 使用 design system（`src/ink/design-system/`）和 renderer primitives（`src/ink/primitives/`）；ink 不依赖 Agent Core、本地化或上层目录。Markdown 的 React 部件由 TUI components 拥有，解析与源行投影由 view 拥有。Oxlint 强制这些依赖方向，Headless 不导入 TUI、ink 或 React。各 UI 区域经 `index.ts` 暴露并汇总到 `components/index.ts`。Slash Command 由 frontend 解析，未匹配输入交回 Agent Core；命令语法不进入 Session 的领域接口。
+终端 UI 通过 `src/ink/index.ts` 使用 design system（`src/ink/design-system/`）和原生组件（`src/ink/components/`）；ink 不依赖 Agent Core、本地化或上层目录。Markdown 的 React 部件由 TUI components 拥有，解析与源行投影由 view 拥有。上层依赖方向由 Oxlint 检查；ink 的 imports、reexports 与 dynamic imports 由 `scripts/check-ink-boundaries.ts` 的 AST 检查约束。Headless 不导入 TUI、ink 或 React。各 UI 区域经 `index.ts` 暴露并汇总到 `components/index.ts`。Slash Command 由 frontend 解析，未匹配输入交回 Agent Core；命令语法不进入 Session 的领域接口。
 
-终端管线是 React reconciler → 纯 TypeScript Yoga 布局 → cell 网格 → 帧差分 → ANSI。只有 layout 使用 vendored Yoga；渲染器支持注入 stdin/stdout，并负责 Kitty PNG 图形能力协商、图片 placement、视口裁剪及资源清理。通用终端 API、绘制、输入与清理语义由 [renderer README](../packages/coding-agent/src/ink/README.md)维护，来源与复用决定见 [ADR-0005](adr/0005-own-tui-renderer.md)。
+终端管线是 React reconciler → 纯 TypeScript Yoga 布局 → cell 网格 → 帧差分 → ANSI。ink runtime 内部使用 `native-ts/yoga-layout`；渲染器支持注入 stdin/stdout，并负责 Kitty RGBA 与 sixel 图形能力协商、immutable RGBA 图片 placement、视口裁剪及资源清理。应用拥有图片解码、缩放与裁切。通用终端 API、绘制、输入与清理语义由 [renderer README](../packages/coding-agent/src/ink/README.md)维护，固定来源与本地修改边界见 [ADR-0013](adr/0013-adopt-dsh-tui-ink.md)。
 
 TUI 使用 alternate screen，消息区独立滚动，输入与交互区固定底部；应用管理阅读位置、跟随和面板组合，渲染器负责终端模式与光标恢复。全屏行为和项目输入历史见 [ADR-0006](adr/0006-fullscreen-tui.md)。输入历史不属于模型上下文或 Transcript。
 

@@ -5,5 +5,6 @@
     "packages/coding-agent": {
       "entry": ["src/ink/index.ts", "tests/fixtures/runtime-default-streams.tsx"]
     }
-  }
+  },
+  "ignoreDependencies": ["supports-hyperlinks"]
 }
