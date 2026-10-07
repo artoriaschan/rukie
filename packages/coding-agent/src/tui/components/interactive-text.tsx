@@ -46,6 +46,7 @@ export function InteractiveText({
         onClick
           ? (event) => {
               if (
+                !event.cellIsBlank &&
                 hit(event.localCol, event.localRow) &&
                 hit(event.pressLocalCol, event.pressLocalRow)
               )
