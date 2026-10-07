@@ -831,7 +831,7 @@ test.each(["prompt", "stdin", "stdin-stream-json", "goal", "goal-interrupted"])(
           .trim()
           .split("\n")
           .map((line) => JSON.parse(line));
-        expect(events.filter((event) => event.type === "request_settled")).toHaveLength(2);
+        expect(events.filter((event) => event.type === "request_settled")).toHaveLength(1);
         expect(
           events.filter(
             (event) =>
@@ -840,8 +840,7 @@ test.each(["prompt", "stdin", "stdin-stream-json", "goal", "goal-interrupted"])(
           ),
         ).toHaveLength(1);
         expect(JSON.stringify(events[0].messages)).toContain("startup-background-failure");
-      } else
-        expect(stdout).toBe(source === "goal" ? "autorun done\ngoal wrapup\n" : "human done\n");
+      } else expect(stdout).toBe(source === "goal" ? "goal wrapup\n" : "human done\n");
       expect(stderr).not.toContain("Session already has an active Run");
     } finally {
       firstReply.resolve();
@@ -896,9 +895,7 @@ test.each(["text", "stream-json"])(
               "type" in event &&
               event.type === "mcp_server_error",
           ),
-        ).toMatchObject([
-          { server: "srv", error: "needs authentication; run /mcp login srv in the TUI" },
-        ]);
+        ).toHaveLength(0);
         expect(stdout).not.toContain("mcp__srv__authenticate");
         expect(
           events.findLast(

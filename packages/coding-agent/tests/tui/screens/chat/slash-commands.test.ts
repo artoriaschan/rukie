@@ -64,7 +64,7 @@ test("compact summarizes with focus, shows shared progress and rejects while bus
     await app.waitFor(() => /Packing up context|Tidying the context/.test(screen(app)));
     app.calls[summary]!.delta("Widget summary.");
     app.calls[summary]!.finish();
-    await app.waitFor(() => screen(app).includes("Context compacted"));
+    await app.waitFor(() => screen(app).includes("Context compacted") && !app.isWorking());
     app.stdin.write("continue\r");
     await app.waitFor(() => app.calls.length === summary + 2);
     expect(JSON.stringify(app.calls[summary + 1]!.context)).toContain("Widget summary.");
