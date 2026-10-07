@@ -47,8 +47,9 @@ test("prompt hooks block a user prompt using one standalone review request", asy
     },
   });
   expect(await session.run("secret")).toMatchObject({
-    success: false,
-    error: "protected prompt",
+    success: true,
+    stopReason: "hook_blocked",
+    reason: "protected prompt",
   });
   expect(fake.contexts).toHaveLength(1);
   expect(JSON.stringify(fake.contexts[0])).toContain("Check this input:");
@@ -98,8 +99,9 @@ test("agent hooks inspect files with only read, glob and grep, without copying r
     },
   });
   expect(await session.run("perform action")).toMatchObject({
-    success: false,
-    error: "policy check failed",
+    success: true,
+    stopReason: "hook_blocked",
+    reason: "policy check failed",
   });
   expect(fake.contexts).toHaveLength(2);
   expect(JSON.stringify(session.messages)).not.toContain("review-read");
