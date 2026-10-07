@@ -1,4 +1,5 @@
 import type { Session, SessionEvent, SessionRecovery, SubagentIdentity } from "@neant/agent";
+import { isUnknownToolOutcome } from "@neant/shared";
 import type { SubagentView, SubagentOutput } from "../../components/subagent-message";
 
 export interface SubagentState extends SubagentView {
@@ -275,12 +276,13 @@ export function projectSubagent(
       const index = tools.findIndex((tool) => tool.id === message.toolCallId);
       if (index >= 0) {
         const text = toolResultText(message);
+        const unknown = isUnknownToolOutcome(message.details);
         tools[index] = {
           ...tools[index]!,
-          status: message.isError ? "failed" : "completed",
+          status: unknown ? "unknown" : message.isError ? "failed" : "completed",
           resultView: message.view,
-          result: message.isError ? undefined : text,
-          error: message.isError ? text : undefined,
+          result: unknown || message.isError ? undefined : text,
+          error: !unknown && message.isError ? text : undefined,
         };
       }
     }
