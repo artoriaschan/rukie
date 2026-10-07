@@ -1828,35 +1828,37 @@ function Chat({
           disarmKill();
           pageReader(jobsScroll.current, event.keypress.name === "pageup");
         } else if (!key.ctrl && !key.meta && !key.shift) {
-          const selected = Object.values(conversation.getSnapshot().jobs)[jobFocusRef.current];
-          if (
-            event.input === "k" &&
-            selected &&
-            (selected.status === "running" || selected.status === "stopping")
-          ) {
+          for (const input of event.input) {
+            const selected = Object.values(conversation.getSnapshot().jobs)[jobFocusRef.current];
             if (
-              killArmRef.current?.id === selected.id &&
-              performance.now() < killArmRef.current.until
+              input === "k" &&
+              selected &&
+              (selected.status === "running" || selected.status === "stopping")
             ) {
-              disarmKill();
-              const stopping = session.killJob(selected.id);
-              conversation.refreshJobs();
-              void stopping.catch((error: unknown) =>
-                conversation.notice(formatError(error, t), true),
-              );
+              if (
+                killArmRef.current?.id === selected.id &&
+                performance.now() < killArmRef.current.until
+              ) {
+                disarmKill();
+                const stopping = session.killJob(selected.id);
+                conversation.refreshJobs();
+                void stopping.catch((error: unknown) =>
+                  conversation.notice(formatError(error, t), true),
+                );
+              } else {
+                killArmRef.current = { id: selected.id, until: performance.now() + 4000 };
+                setKillArmed(killArmRef.current);
+              }
             } else {
-              killArmRef.current = { id: selected.id, until: performance.now() + 4000 };
-              setKillArmed(killArmRef.current);
+              disarmKill();
+              if (input === "e" && selected)
+                setJobDetails((previous) => {
+                  const next = new Set(previous);
+                  if (next.has(selected.id)) next.delete(selected.id);
+                  else next.add(selected.id);
+                  return next;
+                });
             }
-          } else {
-            disarmKill();
-            if (event.input === "e" && selected)
-              setJobDetails((previous) => {
-                const next = new Set(previous);
-                if (next.has(selected.id)) next.delete(selected.id);
-                else next.add(selected.id);
-                return next;
-              });
           }
         } else disarmKill();
         return;

@@ -163,6 +163,10 @@ export function TextInput({
     setAnchor(current.anchor);
     current.cursor = offset;
     setCursor(offset);
+    if (reportedCursor.current !== offset) {
+      reportedCursor.current = offset;
+      onCursorChange?.(offset);
+    }
   };
   useInput(
     (input, key, event) => {

@@ -85,7 +85,7 @@
         "@types/react-reconciler": "0.33.1",
         "@types/semver": "7.8.0",
         "@types/stack-utils": "2.0.3",
-        "@xterm/addon-unicode11": "0.9.0",
+        "@xterm/addon-unicode-graphemes": "0.4.0",
         "@xterm/headless": "6.0.0",
         "typebox": "1.3.27",
       },
@@ -582,7 +582,7 @@
 
     "@vscode/ripgrep-win32-x64": ["@vscode/ripgrep-win32-x64@1.18.0", "https://registry.npmmirror.com/@vscode/ripgrep-win32-x64/-/ripgrep-win32-x64-1.18.0.tgz", { "os": "win32", "cpu": "x64" }, "sha512-KNPvtElldqILHdnAetujPaowkNbpqJy3ssIGGN6F6Kve9Qi+nNLI2DN01O83JjCEVQbCzl8Ov3QZ9Eov3BR8Dg=="],
 
-    "@xterm/addon-unicode11": ["@xterm/addon-unicode11@0.9.0", "https://registry.npmmirror.com/@xterm/addon-unicode11/-/addon-unicode11-0.9.0.tgz", {}, "sha512-FxDnYcyuXhNl+XSqGZL/t0U9eiNb/q3EWT5rYkQT/zuig8Gz/VagnQANKHdDWFM2lTMk9ly0EFQxxxtZUoRetw=="],
+    "@xterm/addon-unicode-graphemes": ["@xterm/addon-unicode-graphemes@0.4.0", "https://registry.npmmirror.com/@xterm/addon-unicode-graphemes/-/addon-unicode-graphemes-0.4.0.tgz", {}, "sha512-9+/CqwbKcnlkJU4d3wIgO+wjsL8f6vyz+UwUWLu6nADQz8Gr8ONqGCJfdDjIdI+yYZLABQqQy47FzEM6AWELjw=="],
 
     "@xterm/headless": ["@xterm/headless@6.0.0", "https://registry.npmmirror.com/@xterm/headless/-/headless-6.0.0.tgz", {}, "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw=="],
 
