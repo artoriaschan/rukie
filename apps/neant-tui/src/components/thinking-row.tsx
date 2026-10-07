@@ -80,7 +80,7 @@ export function ThinkingRow({
       >
         <Box width={streaming ? 2 : 3} flexShrink={0} selectable={false}>
           <ThemedText color={streaming ? pulseColor : undefined} dimColor={!streaming}>
-            {streaming ? "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"[frame % 10] : "⚓"}
+            {streaming ? "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"[frame % 10] : "🧠"}
           </ThemedText>
         </Box>
         <ThemedText dimColor={!hovered} italic>

@@ -23,7 +23,7 @@ Blocked by: 01
 ## Implementation and verification
 
 - 默认思考 ticker 保持三行，长行按 grapheme 显示宽度裁剪。最后一个实际内容行保留最新 token；只有一行时仍如此，其余行填充空格。固定参考将截断起点硬编码在第三物理行，导致一行长文本的最新 token 被裁掉；此处按父规范的最新 token 条件修正该边界。
-- 标题使用 80ms braille、蓝色 pulse、settled ⚓、斜体标签与中英文 Ctrl+O 提示；点击热区仅标题，全文/预览正文保留选择边界。首次正文或工具 input 收起 preview，单行 full 跨工具与多个 Turn 保留，Run 结束清除单行 full；全局详情继续由现有 Ctrl+O 管理。
+- 标题使用 80ms braille、蓝色 pulse、settled 🧠、斜体标签与中英文 Ctrl+O 提示；点击热区仅标题，全文/预览正文保留选择边界。首次正文或工具 input 收起 preview，单行 full 跨工具与多个 Turn 保留，Run 结束清除单行 full；全局详情继续由现有 Ctrl+O 管理。
 - 对照参考 MessageList 1418–1450 的 reasoning reveal，live full 使用共享 useSmoothText，ticker 使用已到达原文；phase settle 后 full 继续追赶尾部，历史/无 live cursor 的展开立即显示。Markdown 新增 dimColor，代码语法色与 dim 同时保留。
 - Agent Core 保存实际观察到的阶段墙钟耗时 `neantThinkingDurationMs`，首次非空思考至首个正文 token / tool input / assistant settlement；公开 `assistantThinkingDuration` 校验 native assistant metadata。单一路径随 Transcript 保存，模型边界剥离，正常/error/aborted 的已提交消息在 Resume 一致。锁定 pi 未提供思考 token count，省略该未知字段。
 - 模型 fake fixture 保留真实工具消息中的先前思考，使跨 Turn 生命周期由真实 Session Run 驱动。
@@ -38,3 +38,5 @@ Blocked by: 01
 - Fixed-reference `MessageList.tsx:1821–1841` separates live `streamViewToggledRows` from manual `expandedRows`; fixed-reference `Chat.tsx` clears manual expansion for new/clear/session changes, not ordinary Run end. Neant now keeps separate manual historical expansion and active Run thinking toggles. Completed thinking tracks the Frontend's current Run lifetime through subsequent Turns; all idle/error cleanup paths settle that flag. Run end folds only live toggles; historical clicks before or during a later Run persist. Global Ctrl+O and Session remount defaults keep their existing paths.
 - Worktree `/tmp/neant-streaming-thinking-history`, branch `codex/streaming-parity-thinking-history`, baseline integration `994fbaa`. No timestamp-correlation change: the requested same-timestamp scenarios did not reproduce mislabeling.
 - Focused verification: Thinking, auxiliary messages and Core thinking suites: 20 pass, 112 assertions, 2.16s. New historical cases use the owned virtual clock and public terminal predicates; 124ms/123ms. Existing tests prove preview settlement, current Run full fold, tool Turn continuity, native abort/error recovery and default Resume fold. `bun run check:dev` passes; full aggregate gate remains owned by integration.
+
+- 2026-10-07：按用户要求将已完成思考图标改为 🧠；实时动画保留。`thinking.test.ts` 与 `resume.test.ts` 共 13 pass / 0 fail，94 assertions；格式与 diff 检查通过，未运行全量测试。

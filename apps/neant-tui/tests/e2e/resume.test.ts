@@ -183,7 +183,7 @@ test("resume replays each tool's collapsed result and error preview without remi
     expect(lines.slice(restored, restored + 5)).toEqual([
       "❯ stored tools",
       "",
-      "⚓ 思考 （Ctrl+O 展开）",
+      "🧠 思考 （Ctrl+O 展开）",
       "",
       `${assistant} before tools`,
     ]);

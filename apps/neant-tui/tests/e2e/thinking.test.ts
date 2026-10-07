@@ -30,7 +30,7 @@ test("thinking preview holds three rows, keeps newest Unicode and folds on first
     expect(app.screen().join("\n")).not.toContain("newest🐋");
     app.calls[0]!.finish();
     await app.waitFor(() => !app.isWorking());
-    expect(app.screen().join("\n")).toContain("⚓ Thinking");
+    expect(app.screen().join("\n")).toContain("🧠 Thinking");
     expect(app.stderr()).toBe("");
   } finally {
     await app.cleanup();
