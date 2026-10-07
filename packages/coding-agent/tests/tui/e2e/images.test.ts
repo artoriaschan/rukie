@@ -13,6 +13,34 @@ const png =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jV2UAAAAASUVORK5CYII=";
 const paste = (text: string) => `\x1b[200~${text}\x1b[201~`;
 
+// Observe the frontend's admitted timeout; image I/O and completed terminal paints stay public signals.
+function observeImageNoticeDeadline() {
+  let expiresAt = 0;
+  let expired = false;
+  const nativeTimeout = globalThis.setTimeout;
+  const trackedTimeout = Object.assign((...parameters: Parameters<typeof setTimeout>) => {
+    const [handler, delay, ...args] = parameters;
+    if (delay !== 2500) return nativeTimeout(handler, delay, ...args);
+    expiresAt = Date.now() + delay;
+    return nativeTimeout(() => {
+      expired = true;
+      handler(...args);
+    }, delay);
+  }, nativeTimeout);
+  const timer = spyOn(globalThis, "setTimeout").mockImplementation(trackedTimeout);
+  return {
+    beforeExpiry() {
+      testClock.advanceTimersByTime(expiresAt - Date.now() - 1);
+      expect(expired).toBe(false);
+    },
+    expire() {
+      testClock.advanceTimersByTime(1);
+      expect(expired).toBe(true);
+    },
+    restore: () => timer.mockRestore(),
+  };
+}
+
 async function openOriginal(app: Awaited<ReturnType<typeof start>>) {
   await app.waitFor(() =>
     app.screen().some((line) => line.includes("打开原图") || line.includes("Open original")),
@@ -542,12 +570,17 @@ test.skipIf(process.platform === "win32").each(["session", "exit"])(
 test.each(["zh_CN.UTF-8", "en_US.UTF-8"])(
   "%s image success notice expires while keeping the draft",
   async (lang) => {
-    const app = await start([], {
+    let advance = true;
+    const app = await startWithClock([], {
       env: { LANG: lang },
+      advanceTimers: (ms) => {
+        if (advance) testClock.advanceTimersByTime(ms);
+      },
       prepare: async (root) => {
         await Bun.write(`${root}/shot.png`, Buffer.from(png, "base64"));
       },
     });
+    const deadline = observeImageNoticeDeadline();
     try {
       await app.waitFor(() => app.screen().includes("❯"));
       app.stdin.write(paste(`${app.root}/shot.png`));
@@ -560,9 +593,16 @@ test.each(["zh_CN.UTF-8", "en_US.UTF-8"])(
           .getCell(app.screen()[row]!.indexOf(copy))!
           .getFgColor(),
       ).toBe(parseInt(dark.text.slice(1), 16));
-      await app.waitFor(() => !app.screen().join("\n").includes(copy), 3500);
+      advance = false;
+      deadline.beforeExpiry();
+      expect(app.screen().join("\n")).toContain(copy);
+      deadline.expire();
+      // Commit the expiry paint after asserting the exact business deadline.
+      advance = true;
+      await app.waitFor(() => !app.screen().join("\n").includes(copy));
       expect(app.screen().join("\n")).toContain("❯ [Image #1]");
     } finally {
+      deadline.restore();
       await app.cleanup();
     }
   },
@@ -579,19 +619,7 @@ test("an image notice remains visible while reading history without moving the r
       await Bun.write(`${root}/shot.png`, Buffer.from(png, "base64"));
     },
   });
-  let expiresAt = 0;
-  let expired = false;
-  const nativeTimeout = globalThis.setTimeout;
-  const trackedTimeout = Object.assign((...parameters: Parameters<typeof setTimeout>) => {
-    const [handler, delay, ...args] = parameters;
-    if (delay !== 2500) return nativeTimeout(handler, delay, ...args);
-    expiresAt = Date.now() + delay;
-    return nativeTimeout(() => {
-      expired = true;
-      handler(...args);
-    }, delay);
-  }, nativeTimeout);
-  const timer = spyOn(globalThis, "setTimeout").mockImplementation(trackedTimeout);
+  const deadline = observeImageNoticeDeadline();
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.delta(
@@ -611,17 +639,15 @@ test("an image notice remains visible while reading history without moving the r
     expect(app.screen().slice(0, 5)).toEqual(before);
     expect(app.screen().join("\n")).toContain("❯ [Image #1]");
     advance = false;
-    testClock.advanceTimersByTime(expiresAt - Date.now() - 1);
-    expect(expired).toBe(false);
+    deadline.beforeExpiry();
     expect(app.screen().join("\n")).toContain("Pasted image [Image #1]");
-    testClock.advanceTimersByTime(1);
-    expect(expired).toBe(true);
+    deadline.expire();
     // Timer expiry is exact; completing the resulting terminal paint advances renderer frames.
     advance = true;
     await app.waitFor(() => !app.screen().some((line) => line.includes("Pasted image [Image #1]")));
     expect(app.screen().slice(0, 5)).toEqual(before);
   } finally {
-    timer.mockRestore();
+    deadline.restore();
     await app.cleanup();
   }
 });
