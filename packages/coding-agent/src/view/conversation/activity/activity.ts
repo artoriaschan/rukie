@@ -266,10 +266,7 @@ export function reduce(
         ...state,
         compactionStartedAt: undefined,
         pending: {
-          line:
-            "tokensBefore" in event
-              ? `${pickPhrase(pools.COMPACT_PHRASES, random)} · ${fmtTokens(event.tokensBefore)}→${fmtTokens(event.tokensAfter)}`
-              : pickPhrase(pools.COMPACT_PHRASES, random),
+          line: pickPhrase(pools.COMPACT_PHRASES, random),
           until: now + 6000,
         },
       };

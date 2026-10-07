@@ -804,18 +804,6 @@ function reduceEvent(
               ),
             }
           : state;
-    case "session_start":
-      return {
-        ...state,
-        model: event.model,
-        running: true,
-        error: undefined,
-        input: 0,
-        output: 0,
-        activityInput: 0,
-        streamedChars: 0,
-        decode: { tokens: 0, ms: 0 },
-      };
     case "context_usage":
       return { ...state, contextUsage: event };
     case "turn_start":
@@ -1197,35 +1185,9 @@ export function createConversation(
       },
       true,
     );
-  const childReconciliations = new Map<string, symbol>();
   let stopped = false;
-  const reconcileChild = async (id: string, token: symbol) => {
-    const snapshot = await session.readSubagent(id);
-    const row = state.subagents[id];
-    if (!snapshot || !row || childReconciliations.get(id) !== token) return;
-    update({
-      ...state,
-      subagents: {
-        ...state.subagents,
-        [id]: { ...projectSubagent(row, snapshot), historyLoaded: true },
-      },
-    });
-  };
   const onEvent = (event: SessionEvent) => {
     if (stopped) return;
-    if (event.type === "subagent_event") {
-      if (event.event.type === "session_start") childReconciliations.delete(event.agentId);
-      if (!stopped && event.event.type === "conversation_reconciled") {
-        // Re-read the committed child branch even if its earlier history was loaded.
-        // A later Run invalidates this read before it can replace newer streaming output.
-        const token = Symbol();
-        childReconciliations.set(event.agentId, token);
-        void reconcileChild(event.agentId, token).catch((error) => {
-          if (childReconciliations.get(event.agentId) === token)
-            notify(formatError(error, t), "error");
-        });
-      }
-    }
     mcpNotice(event);
     const now = Date.now();
     if (event.type === "job_event") {
@@ -1257,8 +1219,7 @@ export function createConversation(
       update({ ...state, jobs: { ...state.jobs, [job.id]: job }, jobNotice }, true);
       return;
     }
-    if (event.type === "conversation_rewound" || event.type === "conversation_reconciled") {
-      childReconciliations.clear();
+    if (event.type === "conversation_rewound") {
       const restored = createViewState(session, state.model, locale, facts);
       update({
         ...restored,
@@ -1283,7 +1244,7 @@ export function createConversation(
               ? (event.value as GoalView | undefined)
               : state.goal,
         activity: reduce(
-          (event.type === "session_start" || event.type === "run_start") && !state.running
+          event.type === "run_start" && !state.running
             ? reduce(state.activity, { type: "submit" }, now)
             : state.activity,
           event,
@@ -1454,7 +1415,6 @@ export function createConversation(
     },
     async stop() {
       stopped = true;
-      childReconciliations.clear();
       unsubscribe();
       clearTimeout(noticeTimer);
       clearTimeout(jobNoticeTimer);
