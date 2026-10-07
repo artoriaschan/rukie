@@ -4,6 +4,8 @@ status: accepted
 
 # Agent Core 发起 Interaction，Plan Mode 独立于权限模式
 
+新决定扩展跨进程交互恢复：未完成请求重新判定并重新发起，旧回调失效。Frontend 回调、安全默认和 Plan Mode 独立于权限的决定继续有效。替代关系见 [ADR-0024](0024-adopt-pi-durable-harness.md)。新决定已接受，实施尚未开始；下文记录迁移前义务，当前进度见[规格与票据](../../.scratch/pi-durable-migration/spec.md)。
+
 ## 问题
 
 Agent Core 同时服务交互式与非交互式 Frontend，不能直接操作终端，也不能在无人回应时永久挂起。规划意图与动作授权需要分别表达。

@@ -4,6 +4,8 @@ status: accepted
 
 # Tool State 保存完整事实快照，模型上下文按当前分支投影
 
+本决定的完整状态消息快照、旧分支投影和进程内续跑开关由新决定部分替代；能力事实所有权、当前上下文与完整 Transcript 的区别继续有效。替代关系见 [ADR-0024](0024-adopt-pi-durable-harness.md)。新决定已接受，实施尚未开始；下文记录迁移前义务，当前进度见[规格与票据](../../.scratch/pi-durable-migration/spec.md)。
+
 ## 问题
 
 工具状态需要跨 Run、Resume 和 Compaction 保留，但历史事实、当前模型上下文与进程活动的寿命不同。仅从自然语言结果恢复状态容易遗漏或误判。

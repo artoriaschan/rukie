@@ -30,7 +30,7 @@ ADR 保存长期架构决定、真实备选方案和代价。当前运行行为�
 <!-- ADR_INDEX_START -->
 
 - [0001 Agent 运行在 Bun sidecar 进程，而不是 Electron main](0001-agent-runs-in-bun-sidecar.md) — `accepted`
-- [0002 复用 pi-agent-core 的 harness 组件，不用 pi-coding-agent，也不完全自研](0002-reuse-pi-agent-core-harness.md) — `accepted`
+- [0002 复用 pi-agent-core 的 harness 组件，不用 pi-coding-agent，也不完全自研](0002-reuse-pi-agent-core-harness.md) — `superseded`
 - [0003 Session Store：headless 用 JSONL，桌面端用 SQLite，两者共用一个接口](0003-dual-session-store.md) — `accepted`
 - [0004 测试跑在生产代码所在的运行时上：Bun 代码用 bun:test，Electron 和渲染进程用 Vitest](0004-test-runner-per-runtime.md) — `accepted`
 - [0005 TUI 渲染器自研：React reconciler → 纯 TS Yoga → cell 网格 → 帧差分 → ANSI](0005-own-tui-renderer.md) — `superseded`
@@ -52,5 +52,6 @@ ADR 保存长期架构决定、真实备选方案和代价。当前运行行为�
 - [0021 图片输入保存原生内容块，Frontend 管理附件交互与终端资源](0021-native-image-input-persistence.md) — `accepted`
 - [0022 WebFetch 在执行层限制公网请求，跨源跳转重新授权](0022-public-web-fetch-network-boundary.md) — `accepted`
 - [0023 coding-agent 通过 npm 分发 Bun 可执行文件，以 Release PR 控制发布](0023-npm-cli-distribution.md) — `accepted`
+- [0024 采用 pi-durable 原生执行与恢复，移除旧 harness 和数据兼容](0024-adopt-pi-durable-harness.md) — `accepted`
 
 <!-- ADR_INDEX_END -->

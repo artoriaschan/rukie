@@ -4,6 +4,8 @@ status: accepted
 
 # Checkpoint 归真实用户输入，Rewind 保留对话分支
 
+本决定的 main branch tip 与旧恢复引擎约定由新决定部分替代；真实用户输入锚点、文件备份范围和保留原历史继续有效。替代关系见 [ADR-0024](0024-adopt-pi-durable-harness.md)。新决定已接受，实施尚未开始；下文记录迁移前义务，当前进度见[规格与票据](../../.scratch/pi-durable-migration/spec.md)。
+
 ## 问题
 
 用户需要同时或分别撤回代码与对话；子代理和内部续跑也会修改文件。使用项目 Git 无法可靠覆盖未跟踪文件，还会影响用户已有工作区状态。
