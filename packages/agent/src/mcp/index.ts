@@ -240,7 +240,7 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
       ...(errorData && { errorData }),
     });
     onEvent?.(errors.at(-1)!);
-    onWarning?.(`MCP ${server}: ${error instanceof Error ? error.message : String(error)}`);
+    onWarning?.(`MCP server ${server}: ${error instanceof Error ? error.message : String(error)}`);
   };
   const close = () => {
     closing = true;
