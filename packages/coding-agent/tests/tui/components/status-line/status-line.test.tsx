@@ -1,6 +1,7 @@
+import { renderComponent } from "../../helpers/render-component";
 import { afterEach, expect, test } from "bun:test";
 import { useState } from "react";
-import { Box, ThemedText, dark, render, ThemeProvider } from "../../../../src/ink/index.ts";
+import { Box, ThemedText, dark, ThemeProvider } from "../../../../src/ink/index.ts";
 import { StatusLine } from "../../../../src/tui/components";
 import type { StatusLineProps, TpsSample } from "../../../../src/tui/components/status-line";
 import { createTerminal } from "../../helpers/terminal";
@@ -45,7 +46,7 @@ async function mount(overrides: Partial<StatusLineProps> = {}) {
       </ThemeProvider>
     );
   }
-  const app = render(<View />, { ...terminal, fullscreen: true });
+  const app = renderComponent(<View />, { ...terminal });
   cleanups.push(async () => {
     app.unmount();
     await app.waitUntilExit();

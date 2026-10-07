@@ -1,4 +1,4 @@
-import { jest } from "bun:test";
+import { testClock } from "./test-clock";
 import { start } from "./app";
 
 /** Own the virtual clock for the entire app lifecycle, including renderer timers. */
@@ -6,11 +6,11 @@ export async function startWithClock(
   argv: Parameters<typeof start>[0] = [],
   options: Parameters<typeof start>[1] = {},
 ) {
-  jest.useFakeTimers();
+  testClock.useFakeTimers();
   try {
     const app = await start(argv, {
       ...options,
-      advanceTimers: (ms) => jest.advanceTimersByTime(ms),
+      advanceTimers: (ms) => testClock.advanceTimersByTime(ms),
     });
     return {
       ...app,
@@ -18,12 +18,12 @@ export async function startWithClock(
         try {
           await app.cleanup();
         } finally {
-          jest.useRealTimers();
+          testClock.useRealTimers();
         }
       },
     };
   } catch (error) {
-    jest.useRealTimers();
+    testClock.useRealTimers();
     throw error;
   }
 }

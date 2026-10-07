@@ -1,3 +1,4 @@
+import { renderComponent } from "../../helpers/render-component";
 import { afterEach, expect, test } from "bun:test";
 import { createRef, useState } from "react";
 import {
@@ -6,9 +7,8 @@ import {
   ThemeProvider,
   dark,
   light,
-  render,
   useInput,
-  type ScrollHandle,
+  type ScrollBoxHandle,
 } from "../../../../src/ink/index.ts";
 import type { McpServerView } from "@rukie/shared";
 import { McpPanel, GoalTodoPanel, SubagentPanel } from "../../../../src/tui/components";
@@ -103,13 +103,15 @@ async function mount(overrides: Partial<McpPanelProps> = {}, columns = 80, rows 
       ...overrides,
     });
     update = (patch) => setProps((current) => ({ ...current, ...patch }));
-    useInput((event) => {
-      if (event.type !== "key" || !["up", "down"].includes(event.key.name)) return;
+    useInput((_input, _key, event) => {
+      if (event.isPasted || !["up", "down"].includes(event.keypress.name ?? "")) return;
       setProps((current) => {
         const choices = mcpPanelChoices(current.page);
         const index = choices.indexOf(current.selected);
         const selected =
-          choices[(index + (event.key.name === "down" ? 1 : -1) + choices.length) % choices.length];
+          choices[
+            (index + (event.keypress.name === "down" ? 1 : -1) + choices.length) % choices.length
+          ];
         return selected ? { ...current, selected } : current;
       });
     });
@@ -122,7 +124,7 @@ async function mount(overrides: Partial<McpPanelProps> = {}, columns = 80, rows 
       </ThemeProvider>
     );
   }
-  const app = render(<View />, { ...terminal, fullscreen: true });
+  const app = renderComponent(<View />, { ...terminal });
   cleanups.push(async () => {
     app.unmount();
     await app.waitUntilExit();
@@ -193,7 +195,7 @@ test("a bounded focus window stays in the screen budget and hover only activates
 });
 
 test("server details localize authentication failures, pin actions and expose a separate body reader", async () => {
-  const scrollRef = createRef<ScrollHandle>();
+  const scrollRef = createRef<ScrollBoxHandle>();
   const remote: McpServerView = {
     ...server("remote"),
     transport: "http",
@@ -233,7 +235,7 @@ test("server details localize authentication failures, pin actions and expose a 
 });
 
 test("tool details retain full description and formatted schema while scrolling, resizing and updating", async () => {
-  const scrollRef = createRef<ScrollHandle>();
+  const scrollRef = createRef<ScrollBoxHandle>();
   const tool = {
     name: "long-schema",
     description: Array.from({ length: 20 }, (_, i) => `description-${i}`).join("\n"),
@@ -249,7 +251,6 @@ test("tool details retain full description and formatted schema while scrolling,
       scrollRef,
       focus: "body",
       maxHeight: 9,
-      onBodyWheel: (delta) => scrollRef.current!.scrollBy(delta),
     },
     40,
     12,
@@ -259,12 +260,16 @@ test("tool details retain full description and formatted schema while scrolling,
   const title = terminal.screen().findIndex((line) => line.includes("long-schema"));
   const back = terminal.screen().findIndex((line) => line.trim() === "Back");
   scrollRef.current!.scrollBy(8);
-  await terminal.waitFor(() => terminal.screen().join("\n").includes("description-8"));
-  const top = scrollRef.current!.getSnapshot().top;
+  await terminal.waitFor(
+    () =>
+      terminal.screen().join("\n").includes("description-8") &&
+      scrollRef.current!.getScrollTop() === 8,
+  );
+  const top = scrollRef.current!.getScrollTop();
   terminal.resize(60, 18);
   terminal.update({ columns: 60, maxHeight: 12 });
-  await terminal.waitFor(() => scrollRef.current!.getSnapshot().width === 56);
-  expect(scrollRef.current!.getSnapshot().top).toBe(top);
+  await terminal.waitFor(() => scrollRef.current!.getViewportHeight() === 6);
+  expect(scrollRef.current!.getScrollTop()).toBe(top);
   scrollRef.current!.scrollToBottom();
   await terminal.waitFor(() => terminal.screen().join("\n").includes('"required": ['));
   scrollRef.current!.scrollBy(-5);
@@ -278,7 +283,7 @@ test("tool details retain full description and formatted schema while scrolling,
     },
   });
   await terminal.waitFor(() => terminal.screen().join("\n").includes("short description"));
-  expect(scrollRef.current!.getSnapshot().top).toBe(0);
+  expect(scrollRef.current!.getScrollTop()).toBe(0);
   expect(title).toBe(3);
   expect(back).toBe(7);
 });
@@ -341,7 +346,8 @@ test("busy management cannot repeat while tool browsing and mouse back remain av
   const click = (label: string) => {
     const y = terminal.screen().findIndex((line) => line.includes(label));
     expect(y).toBeGreaterThan(0);
-    terminal.stdin.write(`\x1b[<0;5;${y + 1}M\x1b[<0;5;${y + 1}m`);
+    const x = terminal.screen()[y]!.indexOf(label) + (label === "Reconnect" ? label.length - 1 : 0);
+    terminal.stdin.write(`\x1b[<0;${x + 1};${y + 1}M\x1b[<0;${x + 1};${y + 1}m`);
   };
   expect(terminal.screen().join("\n")).toContain("Working…");
   click("Reconnect");
@@ -357,7 +363,7 @@ test("busy management cannot repeat while tool browsing and mouse back remain av
 });
 
 test("body wheel uses the reader rectangle, saved top restores on return, and paused callbacks stay inactive", async () => {
-  const scrollRef = createRef<ScrollHandle>();
+  const scrollRef = createRef<ScrollBoxHandle>();
   const tool = {
     name: "reader",
     description: Array.from({ length: 20 }, (_, i) => `line-${i}`).join("\n"),
@@ -373,14 +379,13 @@ test("body wheel uses the reader rectangle, saved top restores on return, and pa
     scrollRef,
     onBodyWheel: (delta) => {
       wheels.push(delta);
-      scrollRef.current!.scrollBy(delta);
     },
   });
-  const bodyY = scrollRef.current!.getSnapshot().y;
+  const bodyY = scrollRef.current!.getViewportTop();
   terminal.stdin.write(`\x1b[<65;5;${bodyY + 1}M`);
   await terminal.waitFor(() => terminal.screen().join("\n").includes("line-1"));
-  expect(wheels).toEqual([1]);
-  scrollRef.current!.scrollBy(7);
+  expect(wheels).toEqual([3]);
+  scrollRef.current!.scrollBy(5);
   await terminal.waitFor(() => terminal.screen().join("\n").includes("line-8"));
   terminal.update({ page: { kind: "server", server: server("local") } });
   await terminal.waitFor(() => terminal.screen().join("\n").includes("Status:"));
@@ -393,9 +398,9 @@ test("body wheel uses the reader rectangle, saved top restores on return, and pa
   terminal.update({ interactive: true, focus: "actions" });
   await terminal.waitFor(() => terminal.screen().join("\n").includes("❯ Back"));
   terminal.stdin.write(`\x1b[<65;5;${bodyY + 1}M`);
-  await terminal.waitFor(() => wheels.length === 2);
-  expect(scrollRef.current!.getSnapshot().top).toBe(9);
-  expect(wheels).toEqual([1, 1]);
+  await terminal.waitFor(() => wheels.length === 2 && scrollRef.current!.getScrollTop() === 11);
+  expect(scrollRef.current!.getScrollTop()).toBe(11);
+  expect(wheels).toEqual([3, 3]);
   expect(terminal.activated).toEqual([]);
 });
 
@@ -426,7 +431,7 @@ test.each([
 ])(
   "five rows retain reading and mouse actions with $feedback",
   async ({ busy, result, feedback }) => {
-    const scrollRef = createRef<ScrollHandle>();
+    const scrollRef = createRef<ScrollBoxHandle>();
     const terminal = await mount(
       {
         page: {
@@ -467,8 +472,8 @@ test.each([
     expect(screen()).toContain(feedback);
     terminal.resize(60, 18);
     terminal.update({ columns: 60, maxHeight: 8 });
-    await terminal.waitFor(() => scrollRef.current!.getSnapshot().width === 58);
-    expect(scrollRef.current!.getSnapshot().top).toBe(1);
+    await terminal.waitFor(() => terminal.screen().some((row) => row.includes("Transport: stdio")));
+    expect(scrollRef.current!.getScrollTop()).toBe(1);
     terminal.resize(40, 12);
     terminal.update({ columns: 40, maxHeight: 5, focus: "actions" });
     await terminal.waitFor(() => screen().includes("❯ View tools"));
@@ -500,7 +505,7 @@ test("a 40 by 12 allocation keeps MCP, Goal, Todo, Subagent previews and prompt 
     selected: "server:long-server-name-1",
     onActivate() {},
   };
-  const app = render(
+  const app = renderComponent(
     <ThemeProvider theme={light}>
       <Box flexDirection="column">
         <Box height={12 - mcpPanelHeight(props) - 5}>
@@ -548,7 +553,7 @@ test("a 40 by 12 allocation keeps MCP, Goal, Todo, Subagent previews and prompt 
         <ThemedText>❯ draft</ThemedText>
       </Box>
     </ThemeProvider>,
-    { ...terminal, fullscreen: true },
+    { ...terminal },
   );
   cleanups.push(async () => {
     app.unmount();
@@ -575,7 +580,7 @@ test("a 40 by 12 allocation keeps MCP, Goal, Todo, Subagent previews and prompt 
 });
 
 test("a growing tool schema retains its reading position after a previously fitting body", async () => {
-  const scrollRef = createRef<ScrollHandle>();
+  const scrollRef = createRef<ScrollBoxHandle>();
   const tool = { name: "growing", description: "short", inputSchema: {} };
   const terminal = await mount({
     page: { kind: "tool", server: server("local"), tool },
@@ -583,7 +588,7 @@ test("a growing tool schema retains its reading position after a previously fitt
     focus: "body",
   });
   expect(terminal.screen().join("\n")).toContain("short");
-  expect(scrollRef.current!.getSnapshot().top).toBe(0);
+  expect(scrollRef.current!.getScrollTop()).toBe(0);
   terminal.update({
     page: {
       kind: "tool",
@@ -594,8 +599,8 @@ test("a growing tool schema retains its reading position after a previously fitt
       },
     },
   });
-  await terminal.waitFor(() => scrollRef.current!.getSnapshot().total > 30);
-  expect(scrollRef.current!.getSnapshot().top).toBe(0);
+  await terminal.waitFor(() => scrollRef.current!.getScrollHeight() > 30);
+  expect(scrollRef.current!.getScrollTop()).toBe(0);
   expect(terminal.screen().join("\n")).toContain("expanded-0");
 });
 

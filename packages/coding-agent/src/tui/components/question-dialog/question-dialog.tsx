@@ -31,7 +31,7 @@ import {
   ThemedBox,
   ThemedText,
   ThemedTextInput,
-  type ScrollHandle,
+  type ScrollBoxHandle,
 } from "../../../ink/index.ts";
 import type { Question, QuestionRequest } from "@rukie/agent";
 import type { Locale } from "@rukie/i18n";
@@ -85,7 +85,7 @@ export function QuestionDialog({
   locale: Locale;
   origin?: QuestionRequest["origin"];
   /** Frontend OAuth uses the same choice/editor surface with a scrollable URL body. */
-  auth?: { detail: string; scrollRef: Ref<ScrollHandle> };
+  auth?: { detail: string; scrollRef: Ref<ScrollBoxHandle> };
 }) {
   const t = createTuiI18n(locale);
   const [hovered, setHovered] = useState<number>();
@@ -109,8 +109,9 @@ export function QuestionDialog({
     " ";
   if (collapsed)
     return (
-      <Box flexDirection="column" paddingX={2} marginTop={maxHeight >= 3 ? 1 : 0}>
+      <Box flexShrink={0} flexDirection="column" paddingX={2} marginTop={maxHeight >= 3 ? 1 : 0}>
         <ThemedBox
+          flexShrink={0}
           height={1}
           onClick={onToggle}
           onMouseEnter={() => setHovered(-1)}
@@ -118,13 +119,13 @@ export function QuestionDialog({
           backgroundColor={hovered === -1 ? "badgeHoverBackground" : undefined}
         >
           <ThemedText wrap="truncate">
-            <ThemedText dimColor>{`▸ ${heading} `}</ThemedText>
+            <ThemedText dim>{`▸ ${heading} `}</ThemedText>
             {question.question.split("\n")[0]?.replace(/\s+/gu, " ").trim()}
           </ThemedText>
         </ThemedBox>
         <ThemedText wrap="truncate">
           {blink ? "⏸ " : "  "}
-          <ThemedText dimColor>{`${t("question.waiting")} — ${t("question.expand")}`}</ThemedText>
+          <ThemedText dim>{`${t("question.waiting")} — ${t("question.expand")}`}</ThemedText>
         </ThemedText>
       </Box>
     );
@@ -206,8 +207,9 @@ export function QuestionDialog({
     Math.min(focus - Math.floor(visibleCount / 2), question.options.length - visibleCount),
   );
   return (
-    <Box flexDirection="column" paddingX={2} marginTop={gap}>
+    <Box flexShrink={0} flexDirection="column" paddingX={2} marginTop={gap}>
       <ThemedBox
+        flexShrink={0}
         height={1}
         onClick={onToggle}
         onMouseEnter={() => setHovered(-1)}
@@ -219,9 +221,9 @@ export function QuestionDialog({
           color={auth ? "suggestion" : "permission"}
         />
       </ThemedBox>
-      <Box flexDirection="column" marginTop={gap}>
+      <Box flexShrink={0} flexDirection="column" marginTop={gap}>
         {chipHeight > 0 && (
-          <Box height={1}>
+          <Box flexShrink={0} height={1}>
             <ThemedText
               bold
               color={auth ? "suggestion" : "permission"}
@@ -229,7 +231,7 @@ export function QuestionDialog({
             >{`◈ ${singleLine(question.header)}`}</ThemedText>
           </Box>
         )}
-        <Box height={questionHeight}>
+        <Box flexShrink={0} height={questionHeight}>
           <ThemedText bold wrap={spacious || auth ? "wrap" : "truncate"}>
             {spacious || auth ? question.question : singleLine(question.question)}
           </ThemedText>
@@ -237,20 +239,21 @@ export function QuestionDialog({
       </Box>
       {auth && (
         <Box height={detailHeight} flexShrink={0}>
-          <ScrollBox ref={auth.scrollRef} initialFollow={false}>
-            <ThemedText dimColor wrap="wrap">
+          <ScrollBox ref={auth.scrollRef} stickyScroll={false}>
+            <ThemedText dim wrap="wrap">
               {auth.detail}
             </ThemedText>
           </ScrollBox>
         </Box>
       )}
-      <Box flexDirection="column" marginTop={gap}>
+      <Box flexShrink={0} flexDirection="column" marginTop={gap}>
         {question.options.slice(first, first + visibleCount).map((option, offset) => {
           const index = first + offset;
           const focused = selected === index;
           const active = question.multiSelect ? checked.includes(index) : focused;
           return (
             <ThemedBox
+              flexShrink={0}
               key={index}
               height={windowed ? rowHeight : optionHeights[index]}
               onClick={() => onOption(index)}
@@ -258,7 +261,7 @@ export function QuestionDialog({
               onMouseLeave={() => setHovered(undefined)}
               backgroundColor={hovered === index && !focused ? "badgeHoverBackground" : undefined}
             >
-              <Box width={1}>
+              <Box flexShrink={0} width={1}>
                 <ThemedText color={focused ? "accent" : undefined} bold={focused}>
                   {focused
                     ? "❯"
@@ -269,12 +272,12 @@ export function QuestionDialog({
                         : " "}
                 </ThemedText>
               </Box>
-              <Box width={1}>
+              <Box flexShrink={0} width={1}>
                 <ThemedText color={focused ? "accent" : undefined} bold={active}>
                   {question.multiSelect ? (active ? "◉" : "○") : focused ? "●" : "○"}
                 </ThemedText>
               </Box>
-              <Box flexDirection="column" marginLeft={1} flexGrow={1}>
+              <Box flexShrink={0} flexDirection="column" marginLeft={1} flexGrow={1}>
                 <ThemedText
                   bold={focused || active}
                   color={focused ? "accent" : undefined}
@@ -283,7 +286,7 @@ export function QuestionDialog({
                   {windowed ? singleLine(option.label) : option.label}
                 </ThemedText>
                 {(!windowed || rowHeight > 1) && option.description && (
-                  <ThemedText dimColor wrap={windowed ? "truncate" : "wrap"}>
+                  <ThemedText dim wrap={windowed ? "truncate" : "wrap"}>
                     {windowed ? singleLine(option.description) : option.description}
                   </ThemedText>
                 )}
@@ -292,6 +295,7 @@ export function QuestionDialog({
           );
         })}
         <ThemedBox
+          flexShrink={0}
           height={1}
           onClick={() => onSelect(question.options.length)}
           backgroundColor={
@@ -302,12 +306,12 @@ export function QuestionDialog({
           onMouseEnter={() => setHovered(question.options.length)}
           onMouseLeave={() => setHovered(undefined)}
         >
-          <Box width={1}>
+          <Box flexShrink={0} width={1}>
             <ThemedText color="accent" bold={inputFocused}>
               {inputFocused ? "❯" : " "}
             </ThemedText>
           </Box>
-          <Box width={1}>
+          <Box flexShrink={0} width={1}>
             <ThemedText color={inputFocused ? "accent" : "permission"}>✎</ThemedText>
           </Box>
           <Box marginLeft={1} width={prefixWidth} flexShrink={0}>
@@ -320,7 +324,7 @@ export function QuestionDialog({
                   {t("question.attached", { label: singleLine(question.options[attached]!.label) })}
                 </ThemedText>
               )}
-              <ThemedText dimColor>：</ThemedText>
+              <ThemedText dim>：</ThemedText>
             </ThemedText>
           </Box>
           {!custom && !inputFocused ? (
@@ -333,7 +337,7 @@ export function QuestionDialog({
                 columns={1}
                 maxLines={1}
               />
-              <ThemedText dimColor wrap="truncate">
+              <ThemedText dim wrap="truncate">
                 {t(auth ? "mcp.auth.placeholder" : "question.placeholder")}
               </ThemedText>
             </>
@@ -351,6 +355,7 @@ export function QuestionDialog({
         </ThemedBox>
         {submitHeight > 0 && (
           <ThemedBox
+            flexShrink={0}
             height={1}
             marginTop={gap}
             onClick={onSubmit}
@@ -358,22 +363,22 @@ export function QuestionDialog({
             onMouseLeave={() => setHovered(undefined)}
             backgroundColor={hovered === -2 ? "badgeHoverBackground" : undefined}
           >
-            <Box width={2}>
+            <Box flexShrink={0} width={2}>
               <ThemedText color="accent">✓</ThemedText>
             </Box>
-            <ThemedText dimColor>{t("question.submit")}</ThemedText>
+            <ThemedText dim>{t("question.submit")}</ThemedText>
           </ThemedBox>
         )}
       </Box>
       {error && (
-        <Box height={1} marginTop={gap}>
+        <Box flexShrink={0} height={1} marginTop={gap}>
           <ThemedText color="error" wrap="truncate">
             {t(`question.error.${error}`, { count: 8000 })}
           </ThemedText>
         </Box>
       )}
-      <Box height={hintHeight} marginTop={gap}>
-        <ThemedText dimColor wrap={spacious ? "wrap" : "truncate"}>
+      <Box flexShrink={0} height={hintHeight} marginTop={gap}>
+        <ThemedText dim wrap={spacious ? "wrap" : "truncate"}>
           {hints}
         </ThemedText>
       </Box>

@@ -1,5 +1,6 @@
+import { renderComponent } from "../helpers/render-component";
 import { expect, test } from "bun:test";
-import { Box, render } from "../../../src/ink/index.ts";
+import { Box } from "../../../src/ink/index.ts";
 import { TimelineRail } from "../../../src/tui/components";
 import { createTerminal } from "../helpers/terminal";
 
@@ -11,7 +12,7 @@ test("large input timeline centers its active tick and strict chevrons seek reac
     text: `prompt-${i}`,
     top: i * 10,
   }));
-  const app = render(
+  const app = renderComponent(
     <Box height={7}>
       <TimelineRail
         inputs={inputs}
@@ -20,14 +21,16 @@ test("large input timeline centers its active tick and strict chevrons seek reac
         onSeek={(id) => seeks.push(id)}
       />
     </Box>,
-    { ...terminal, fullscreen: true },
+    { ...terminal },
   );
   try {
     await terminal.flush();
     expect(terminal.screen()).toEqual([" ▴", " ─", " ─", "━━", " ─", " ─", " ▾"]);
     terminal.stdin.write("\x1b[<0;1;1M\x1b[<0;1;1m");
+    await terminal.flush();
     expect(seeks).toEqual(["input-499"]);
     terminal.stdin.write("\x1b[<0;1;7M\x1b[<0;1;7m");
+    await terminal.flush();
     expect(seeks).toEqual(["input-499", "input-501"]);
   } finally {
     app.unmount();
@@ -41,7 +44,7 @@ test.each([true, false])(
   async (enabled) => {
     const terminal = createTerminal(2, 7);
     const seeks: string[] = [];
-    const app = render(
+    const app = renderComponent(
       <Box height={7}>
         <TimelineRail
           inputs={[
@@ -54,13 +57,15 @@ test.each([true, false])(
           onSeek={(id) => seeks.push(id)}
         />
       </Box>,
-      { ...terminal, fullscreen: true },
+      { ...terminal },
     );
     try {
       await terminal.flush();
       terminal.stdin.write("\x1b[<0;1;6M\x1b[<0;1;6m");
+      await terminal.flush();
       expect(seeks).toEqual([]);
       terminal.stdin.write("\x1b[<0;1;2M\x1b[<0;1;2m");
+      await terminal.flush();
       expect(seeks).toEqual(enabled ? ["first"] : []);
     } finally {
       app.unmount();

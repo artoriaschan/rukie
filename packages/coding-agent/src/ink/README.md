@@ -52,17 +52,21 @@ SplitDiffView 的 `onSourceMount(id, DOMElement | null)` 将稳定源行身份�
 - `src/ink/components/App.tsx`
 - `src/ink/components/AppContext.ts`
 - `src/ink/components/ScrollBox.tsx`
+- `src/ink/dom.ts`
 - `src/ink/events/click-event.ts`
 - `src/ink/events/dispatcher.ts`
 - `src/ink/hit-test.ts`
+- `src/ink/hooks/use-input.ts`
 - `src/ink/hooks/use-search-highlight.ts`
 - `src/ink/hooks/use-selection.ts`
 - `src/ink/ink.tsx`
 - `src/ink/layout/yoga.ts`
 - `src/ink/log-update.ts`
-- `src/ink/parse-keypress.ts`
 - `src/ink/output.ts`
+- `src/ink/parse-keypress.ts`
 - `src/ink/reconciler.ts`
+- `src/ink/render-border.ts`
+- `src/ink/render-node-to-output.ts`
 - `src/ink/render-to-screen.ts`
 - `src/ink/renderer.ts`
 - `src/ink/root.ts`
@@ -75,8 +79,15 @@ SplitDiffView 的 `onSourceMount(id, DOMElement | null)` 将稳定源行身份�
 - `src/ink/update-overflow-guard.ts`
 - `src/ink/warn.ts`
 - `src/ink/wrap-text.ts`
+- `src/native-ts/yoga-layout/enums.ts`
+- `src/native-ts/yoga-layout/index.ts`
 
 - 05 应用原生输入与复制接线：`hooks/use-input.ts` 在 layout effect 同步注册输入 listener，与 raw mode 启用同一 commit，避免首批输入窗口；`hooks/use-selection.ts`、`ink.tsx` 暴露 `readSelectionText()`，仅核验并读取最后绘制的选中文字，无原生或 OSC clipboard 副作用。TUI 的异步 host 独立拥有 copied/sent/unavailable/stale 与 Session/modal 生命周期。
 - 05 保留产品 editor 组合增加可选 `getValue()`，在原生同批键事件前读应用的即时 controlled value，保留 submit/clear 后紧接输入的公共行为；它不改变原生 renderer/input protocol。
 
 - 05 原生 source seek 修复：`components/ScrollBox.tsx`、`dom.ts`、`render-node-to-output.ts` 为显式 `scrollTo` / `scrollToElement` 保留一次绘制的 seek 优先级，内容同批增长不会误恢复底部跟随；元素定位累加到所属 ScrollBox 的 Yoga 祖先偏移，越界元素不改变位置。后续 `scrollToBottom` 和滚轮到达底部仍恢复跟随。
+
+- 05 选择一致性：`selection.ts` 对双列 owner/tail 采用同一行区间扩展，绘制、高亮、读取及源指纹一致；纯 viewport 平移或混合 origin/height resize 保留选中文字并比较原始指纹，覆盖文字替换拒绝复制。完全 noSelect 的装饰行不进入复制，实际空白正文行仍保留。
+- 05 装饰边框：`output.ts`、`render-border.ts` 仅在 border 写入时保留该行已有 soft-wrap 元数据；普通文字和背景替换仍清除旧 wrap，产品 CodeBlock 框架由 noSelect Box 排除。
+- 05 原生滚轮：`components/ScrollBox.tsx` 的 `wheelEnabled` 默认为 true；false 消费自己的命中 wheel，既不滚动自己也不漏给外层。重新启用仍由原生自动路由一次。
+- 05 退出边界：`ink.tsx` 把 React uncaught 和 scheduled paint 错误交给所属 root；一次 microtask 退出避免 final paint 递归，early/late waitUntilExit 均拒绝原始错误，保留既有 #185 overflow 恢复。terminal resize 同步取消旧几何的拖拽选择，不发布完成复制；其他 screen swap 保留原先结束语义。

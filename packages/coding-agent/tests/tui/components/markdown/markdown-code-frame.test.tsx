@@ -1,11 +1,12 @@
+import { renderComponent } from "../../helpers/render-component";
 import { expect, test } from "bun:test";
-import { Box, render } from "../../../../src/ink";
+import { Box } from "../../../../src/ink";
 import { Markdown } from "../../../../src/tui/components/markdown";
 import { createTerminal } from "../../../ink/helpers/terminal";
 
 test("a code frame uses its containing width and clips an oversized language label", async () => {
   const terminal = createTerminal(80, 12);
-  const app = render(
+  const app = renderComponent(
     <Box width={24} flexDirection="column">
       <Markdown text={"```" + "language".repeat(8) + "\n" + "界🐋".repeat(12) + "TAIL\n```"} />
     </Box>,

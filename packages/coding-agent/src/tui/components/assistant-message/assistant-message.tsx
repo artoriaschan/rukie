@@ -19,8 +19,8 @@ export function AssistantMessage({
     .replace(/^(?:[ \t]*\r?\n)+/, "");
   if (!body.trim()) return null;
   return (
-    <Box>
-      <Box width={2} flexShrink={0} selectable={false}>
+    <Box flexShrink={0}>
+      <Box width={2} flexShrink={0} noSelect>
         <ThemedText color="text">{figures.assistant}</ThemedText>
       </Box>
       <Box flexGrow={1} flexShrink={1}>

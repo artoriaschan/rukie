@@ -18,7 +18,7 @@ import type { CursorDeclaration, CursorDeclarationSetter } from './components/Cu
 import { FRAME_INTERVAL_MS, PTY_BACKLOG_BYTES } from './constants.js';
 import * as dom from './dom.js';
 import { beginGeometryFrame, endGeometryFrame, GEOMETRY_TRACE_ENABLED, noteFrameCause } from './geometry-trace.js';
-import { callWithUpdateOverflowGuard, installNestedUpdateOverflowProcessGuard } from './update-overflow-guard.js';
+import { callWithUpdateOverflowGuard, installNestedUpdateOverflowProcessGuard, swallowNestedUpdateOverflow } from './update-overflow-guard.js';
 import { KeyboardEvent } from './events/keyboard-event.js';
 import type { DragEvent } from './events/drag-event.js';
 import { FocusManager } from './focus.js';
@@ -356,7 +356,7 @@ export default class Ink {
 
     // @ts-ignore -- runtime/type-definition mismatch: @types/react-reconciler@0.32.3 declares 11 args with transitionCallbacks,
     // but react-reconciler 0.33.0 source only accepts 10 args (no transitionCallbacks)
-    this.container = reconciler.createContainer(this.rootNode, ConcurrentRoot, null, false, null, 'id', noop,
+    this.container = reconciler.createContainer(this.rootNode, ConcurrentRoot, null, false, null, 'id', this.handleFatalError,
     // onUncaughtError
     noop,
     // onCaughtError
@@ -460,7 +460,7 @@ export default class Ink {
     // from scratch. (Coordinates in in-flight events are clamped at the
     // App boundary against the new dimensions.)
     clearHovered(this.hoveredNodes);
-    this.app?.resetPointerState();
+    this.app?.resetPointerState(true);
     // Same geometry wholesale-change: the cached no-interest hover rect
     // (hit-test.ts) was computed against pre-resize rects — drop it.
     invalidateNoInterestRect();
@@ -691,7 +691,20 @@ export default class Ink {
     this.drainTimer = setTimeout(this.renderNow, FRAME_INTERVAL_MS >> 2);
   }
 
+  private fatalPaintPending = false;
+  private handleFatalError(error: unknown): void {
+    if (swallowNestedUpdateOverflow(error, 'ink.paint')) return;
+    if (this.isUnmounted || this.fatalPaintPending) return;
+    this.fatalPaintPending = true;
+    const failure = error instanceof Error ? error : new Error(String(error));
+    // React may report from a commit; dispose after that commit completes.
+    queueMicrotask(() => this.unmount(failure));
+  }
   onRender() {
+    if (this.fatalPaintPending) return;
+    try { this.renderFrame(); } catch (error) { this.handleFatalError(error); }
+  }
+  private renderFrame() {
     if (this.isUnmounted || this.isPaused) {
       return;
     }

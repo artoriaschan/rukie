@@ -1,5 +1,6 @@
+import { testClock } from "../helpers/test-clock";
 import { start } from "../helpers/app";
-import { expect, jest, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { startWithClock } from "../helpers/clock-app";
 
@@ -21,12 +22,12 @@ test("pending edit call rows reveal in frames and completing the result snaps ev
     app.calls[0]!.tool("edit", { path: "code.txt", edits: [{ oldText, newText }] });
     await app.waitFor(() => app.screen().some((row) => row.includes("Edit ")));
     expect(app.screen().join("\n")).not.toContain("+after-2");
-    jest.advanceTimersByTime(32);
+    testClock.advanceTimersByTime(32);
     await app.flush();
     expect(app.screen().join("\n")).not.toContain("-before-0");
-    jest.advanceTimersByTime(2);
+    testClock.advanceTimersByTime(2);
     await app.flush();
-    jest.advanceTimersByTime(16);
+    testClock.advanceTimersByTime(16);
     await app.flush();
     expect(app.screen().filter((row) => /^ ⎿|^   [-+]/.test(row))).toHaveLength(3);
     expect(app.screen().join("\n")).toContain("before-1");
@@ -69,7 +70,7 @@ test.each(["card", "transcript"] as const)(
       await app.waitFor(() => app.screen().join("\n").includes("+after-2"));
       toggle();
       // Let the renderer commit at its paint boundary, without advancing another reveal frame.
-      jest.advanceTimersByTime(16);
+      testClock.advanceTimersByTime(16);
       await app.flush();
       expect(app.screen().join("\n")).toContain("+after-2");
       permission.resolve("deny");
@@ -101,7 +102,7 @@ test("pending cards share a reveal phase across apps and a denied result appears
       env: { LANG: "en_US.UTF-8" },
       prepare,
       session: { onPermissionAsk: () => second.promise },
-      advanceTimers: (ms) => jest.advanceTimersByTime(ms),
+      advanceTimers: (ms) => testClock.advanceTimersByTime(ms),
     });
     await a.waitFor(() => a.calls.length === 1);
     await b.waitFor(() => b!.calls.length === 1);
@@ -111,10 +112,10 @@ test("pending cards share a reveal phase across apps and a denied result appears
     await b.waitFor(() => b!.screen().some((row) => row.includes("Edit ")));
     expect(a.screen().join("\n")).not.toContain("+after-2");
     expect(b.screen().join("\n")).not.toContain("+after-2");
-    jest.advanceTimersByTime(34);
+    testClock.advanceTimersByTime(34);
     await a.flush();
     await b.flush();
-    jest.advanceTimersByTime(16);
+    testClock.advanceTimersByTime(16);
     await a.flush();
     await b.flush();
     expect(a.screen().filter((row) => row.includes("-before-1"))).toHaveLength(1);
@@ -155,17 +156,17 @@ test("split pending rows reveal together and resize never restarts a caught-up c
     app.calls[0]!.tool("edit", { path: "code.txt", edits: [{ oldText, newText }] });
     await app.waitFor(() => app.screen().some((row) => row.includes("Edit ")));
     expect(app.screen().join("\n")).not.toContain("+after-2");
-    jest.advanceTimersByTime(34);
+    testClock.advanceTimersByTime(34);
     await app.flush();
-    jest.advanceTimersByTime(16);
+    testClock.advanceTimersByTime(16);
     await app.flush();
     expect(app.screen().some((row) => row.includes("-before-1") && row.includes("+after-1"))).toBe(
       true,
     );
     expect(app.screen().join("\n")).not.toContain("+after-2");
-    jest.advanceTimersByTime(34);
+    testClock.advanceTimersByTime(34);
     await app.flush();
-    jest.advanceTimersByTime(16);
+    testClock.advanceTimersByTime(16);
     await app.flush();
     expect(app.screen().some((row) => row.includes("-before-2") && row.includes("+after-2"))).toBe(
       true,

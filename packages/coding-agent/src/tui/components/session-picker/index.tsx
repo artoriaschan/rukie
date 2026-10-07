@@ -49,7 +49,7 @@ export function SessionPicker({
           description={`${date.format(session.updatedAt)} · ${t("resume.messages", { count: session.messageCount })} · ${session.model}`}
           onClick={() => onPick(start + index)}
         >
-          <ThemedText dimColor={session.titleSource === "prompt"} wrap="truncate">
+          <ThemedText dim={session.titleSource === "prompt"} wrap="truncate">
             {session.title}
           </ThemedText>
         </ListItem>

@@ -1,3 +1,5 @@
+import { usePanelScroll } from "../../hooks/reading-position";
+import { InteractiveText } from "../interactive-text";
 import { useState, type Ref } from "react";
 import type { Locale } from "@rukie/i18n";
 import {
@@ -6,7 +8,7 @@ import {
   ScrollBox,
   ThemedBox,
   ThemedText,
-  type ScrollHandle,
+  type ScrollBoxHandle,
 } from "../../../ink/index.ts";
 import { createTuiI18n } from "../../../view/i18n";
 import {
@@ -19,11 +21,15 @@ import {
 export function ExitButton({ onClick }: { onClick(): void }) {
   const [hovered, setHovered] = useState(false);
   return (
-    <Box onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
-      <ThemedText selectable={false} onClick={onClick} color={hovered ? "text" : "subtle"}>
+    <Box
+      flexShrink={0}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <InteractiveText noSelect onClick={onClick} color={hovered ? "text" : "subtle"}>
         {" "}
         ✕
-      </ThemedText>
+      </InteractiveText>
     </Box>
   );
 }
@@ -41,7 +47,7 @@ export function SubagentDashboard({
 }: {
   subagents: readonly SubagentView[];
   focusIndex: number;
-  scrollRef: Ref<ScrollHandle>;
+  scrollRef: Ref<ScrollBoxHandle>;
   rows: number;
   columns: number;
   locale: Locale;
@@ -49,6 +55,7 @@ export function SubagentDashboard({
   onClose(): void;
   onSelect(id: string): void;
 }) {
+  const panelScroll = usePanelScroll(scrollRef, initialTop);
   const t = createTuiI18n(locale);
   const failed = subagents.filter(
     (row) =>
@@ -58,14 +65,14 @@ export function SubagentDashboard({
       row.runOutcome === "aborted",
   ).length;
   return (
-    <Box height={rows} flexDirection="column" paddingX={2} paddingY={1}>
+    <Box flexShrink={0} height={rows} flexDirection="column" paddingX={2} paddingY={1}>
       <Divider color="accent" title={t("subagent.dashboard")} />
       <Box marginY={1} gap={3} flexShrink={0}>
         <ThemedText>
           <ThemedText color="accent">
             {subagents.filter((row) => row.status === "running").length}
           </ThemedText>
-          <ThemedText dimColor> {t("subagent.status.running")}</ThemedText>
+          <ThemedText dim> {t("subagent.status.running")}</ThemedText>
         </ThemedText>
         <ThemedText>
           <ThemedText color="success">
@@ -76,33 +83,32 @@ export function SubagentDashboard({
               ).length
             }
           </ThemedText>
-          <ThemedText dimColor> {t("subagent.status.completed")}</ThemedText>
+          <ThemedText dim> {t("subagent.status.completed")}</ThemedText>
         </ThemedText>
         {failed > 0 && (
           <ThemedText>
             <ThemedText color="error">{failed}</ThemedText>
-            <ThemedText dimColor> {t("subagent.status.failed")}</ThemedText>
+            <ThemedText dim> {t("subagent.status.failed")}</ThemedText>
           </ThemedText>
         )}
-        <Box flexGrow={1} />
+        <Box flexShrink={0} flexGrow={1} />
         <ExitButton onClick={onClose} />
       </Box>
       <ScrollBox
-        ref={scrollRef}
-        initialFollow={false}
-        initialTop={initialTop}
+        ref={panelScroll}
+        stickyScroll={false}
         height={Math.max(1, rows - 10)}
         flexGrow={0}
       >
         {subagents.length === 0 ? (
-          <Box flexDirection="column" marginTop={2}>
-            <ThemedText dimColor>○</ThemedText>
-            <ThemedText dimColor>{t("subagent.none")}</ThemedText>
-            <ThemedText dimColor>{t("subagent.empty-hint")}</ThemedText>
+          <Box flexShrink={0} flexDirection="column" marginTop={2}>
+            <ThemedText dim>○</ThemedText>
+            <ThemedText dim>{t("subagent.none")}</ThemedText>
+            <ThemedText dim>{t("subagent.empty-hint")}</ThemedText>
           </Box>
         ) : (
           subagents.map((subagent, index) => (
-            <Box key={subagent.agentId} flexDirection="column">
+            <Box flexShrink={0} key={subagent.agentId} flexDirection="column">
               <DashboardCard
                 subagent={subagent}
                 focused={focusIndex === index}
@@ -110,16 +116,14 @@ export function SubagentDashboard({
                 onClick={() => onSelect(subagent.agentId)}
               />
               {index < subagents.length - 1 && (
-                <ThemedText dimColor>
-                  {"─".repeat(Math.max(1, Math.min(72, columns - 6)))}
-                </ThemedText>
+                <ThemedText dim>{"─".repeat(Math.max(1, Math.min(72, columns - 6)))}</ThemedText>
               )}
             </Box>
           ))
         )}
       </ScrollBox>
       <Divider />
-      <ThemedText dimColor>{t("subagent.dashboard-hint")}</ThemedText>
+      <ThemedText dim>{t("subagent.dashboard-hint")}</ThemedText>
     </Box>
   );
 }
@@ -136,11 +140,13 @@ function DashboardCard({
   onClick(): void;
 }) {
   const [hovered, setHovered] = useState(false);
+
   const t = createTuiI18n(locale);
   const { color, glyph } = subagentAppearance(subagent);
   const elapsed = subagentElapsed(subagent);
   return (
     <ThemedBox
+      flexShrink={0}
       paddingLeft={1}
       marginBottom={1}
       flexDirection="column"
@@ -148,21 +154,21 @@ function DashboardCard({
       onMouseLeave={() => setHovered(false)}
       backgroundColor={hovered && !focused ? "badgeHoverBackground" : undefined}
     >
-      <ThemedText wrap="truncate" onClick={onClick}>
+      <InteractiveText wrap="truncate" onClick={onClick}>
         <ThemedText color={color}>{glyph} </ThemedText>
         <ThemedText bold color={focused ? "accent" : undefined}>
           {t("subagent.prefix")}
           {subagent.description}
         </ThemedText>
         {subagent.status !== "running" && (
-          <ThemedText dimColor>{` · ${t(subagentStatusKey(subagent))}`}</ThemedText>
+          <ThemedText dim>{` · ${t(subagentStatusKey(subagent))}`}</ThemedText>
         )}
         <ThemedText
-          dimColor
+          dim
         >{`${subagent.model ? ` · ${subagent.model}` : ""}${elapsed === undefined ? "" : ` · ${Math.floor(elapsed / 1000)}s`}${subagent.tokens === undefined ? "" : ` · ${subagent.tokens} tok`} · ${subagent.toolCalls.length} tools`}</ThemedText>
-      </ThemedText>
+      </InteractiveText>
       {subagent.status === "running" && subagent.outputLines.length > 0 && (
-        <ThemedText dimColor wrap="truncate">{`  │ ${subagent.outputLines.at(-1)}`}</ThemedText>
+        <ThemedText dim wrap="truncate">{`  │ ${subagent.outputLines.at(-1)}`}</ThemedText>
       )}
     </ThemedBox>
   );

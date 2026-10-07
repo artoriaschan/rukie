@@ -1,4 +1,5 @@
-import { expect, jest, test } from "bun:test";
+import { testClock } from "../helpers/test-clock";
+import { expect, test } from "bun:test";
 import { createFauxCore, fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { createSession } from "@rukie/agent";
 import { start } from "../helpers/app";
@@ -40,7 +41,7 @@ async function seeded(
         columns: 80,
         rows: 40,
         env,
-        advanceTimers: (ms) => jest.advanceTimersByTime(ms),
+        advanceTimers: (ms) => testClock.advanceTimersByTime(ms),
         session: { cwd: app.root, homeDir: app.root },
       });
     },
@@ -187,7 +188,7 @@ test.each(["assistant", "toolResult"] as const)(
       const restored = await start(argv, {
         rows: 40,
         env: { LANG: "en" },
-        advanceTimers: (ms) => jest.advanceTimersByTime(ms),
+        advanceTimers: (ms) => testClock.advanceTimersByTime(ms),
         session: { cwd: app.root, homeDir: app.root },
       });
       try {

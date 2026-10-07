@@ -92,6 +92,7 @@ export function CommandSuggestions({
   const border = planMode ? "plan" : "promptBorder";
   return (
     <Box
+      flexShrink={0}
       position="absolute"
       top={-height}
       left={0}
@@ -115,6 +116,7 @@ export function CommandSuggestions({
           token && item.name.toLowerCase().startsWith(token.toLowerCase()) ? token.length : 0;
         return (
           <Box
+            flexShrink={0}
             key={offset}
             height={1}
             width={columns}
@@ -124,6 +126,7 @@ export function CommandSuggestions({
           >
             <ThemedText color={border}>│</ThemedText>
             <ThemedBox
+              flexShrink={0}
               width={inner}
               backgroundColor={hovered === offset ? "badgeHoverBackground" : undefined}
             >
@@ -148,9 +151,9 @@ export function CommandSuggestions({
         );
       })}
       {footer && (
-        <Box height={1} width={columns}>
+        <Box flexShrink={0} height={1} width={columns}>
           <ThemedText color={border}>│</ThemedText>
-          <Box width={inner}>
+          <Box flexShrink={0} width={inner}>
             <ThemedText
               color="inactive"
               wrap="truncate"

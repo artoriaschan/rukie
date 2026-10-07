@@ -22,10 +22,10 @@ export function Notice({
 }) {
   if (report)
     return (
-      <Box flexDirection="column" marginTop={1}>
+      <Box flexShrink={0} flexDirection="column" marginTop={1}>
         <ThemedText color="bashBorder" wrap="wrap">{`! ${report}`}</ThemedText>
-        <Box paddingLeft={2}>
-          <ThemedText dimColor wrap="wrap">
+        <Box flexShrink={0} paddingLeft={2}>
+          <ThemedText dim wrap="wrap">
             {text}
           </ThemedText>
         </Box>
@@ -33,7 +33,7 @@ export function Notice({
     );
   if (divider)
     return (
-      <Box marginTop={1}>
+      <Box flexShrink={0} marginTop={1}>
         <Divider title={text} />
       </Box>
     );
@@ -49,7 +49,7 @@ export function Notice({
               ? undefined
               : "warning")
       }
-      dimColor={kind === "dim"}
+      dim={kind === "dim"}
       wrap={kind === "error" && !truncate ? "wrap" : "truncate"}
     >
       {text}

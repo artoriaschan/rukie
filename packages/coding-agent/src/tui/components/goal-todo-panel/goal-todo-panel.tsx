@@ -80,10 +80,10 @@ export function GoalTodoPanel({
   const visible = folded ? (preview && rowBudget >= 2 ? [preview] : []) : remaining.slice(0, limit);
   const hidden = folded ? 0 : remaining.length - visible.length;
   return (
-    <Box flexDirection="column" paddingX={2} paddingTop={paddingTop}>
+    <Box flexShrink={0} flexDirection="column" paddingX={2} paddingTop={paddingTop}>
       {goal && (
         <Box flexDirection="column" flexShrink={0}>
-          <Box height={1} flexDirection="row">
+          <Box flexShrink={0} height={1} flexDirection="row">
             <Box width={3} flexShrink={0}>
               <ThemedText color="suggestion">🎯</ThemedText>
             </Box>
@@ -93,13 +93,13 @@ export function GoalTodoPanel({
               </ThemedText>
             </Box>
             <Box marginLeft={1} flexShrink={0}>
-              <ThemedText color={phase?.color} dimColor={phase?.dimColor} wrap="truncate">
+              <ThemedText color={phase?.color} dim={phase?.dimColor} wrap="truncate">
                 {`${phase?.glyph} ${goal.phase} · ${goal.roundsStarted}/${goal.maxRounds} · ${elapsed}`}
               </ThemedText>
             </Box>
           </Box>
           {goal.phase === "blocked" && (
-            <Box height={1}>
+            <Box flexShrink={0} height={1}>
               <ThemedText
                 color="error"
                 wrap="truncate"
@@ -108,15 +108,16 @@ export function GoalTodoPanel({
           )}
         </Box>
       )}
-      <Box flexDirection="column">
+      <Box flexShrink={0} flexDirection="column">
         <ThemedBox
+          flexShrink={0}
           height={1}
           onClick={onToggle}
           onMouseEnter={() => setHeaderHovered(true)}
           onMouseLeave={() => setHeaderHovered(false)}
           backgroundColor={headerHovered ? "badgeHoverBackground" : undefined}
         >
-          <ThemedText dimColor wrap="truncate">
+          <ThemedText dim wrap="truncate">
             {`${folded ? "▸" : "▾"} ✓ ${done}/${todos.length}`}
             {compact && preview
               ? `  ${preview.status === "in_progress" ? "●" : "○"} ${preview.content.replace(/[\r\n]+/g, " ")}`
@@ -124,14 +125,14 @@ export function GoalTodoPanel({
           </ThemedText>
         </ThemedBox>
         {visible.map((todo, index) => (
-          <Box key={index} height={1}>
-            <ThemedText wrap="truncate" dimColor={todo.status === "completed"}>
-              <ThemedText dimColor>
+          <Box flexShrink={0} key={index} height={1}>
+            <ThemedText wrap="truncate" dim={todo.status === "completed"}>
+              <ThemedText dim>
                 {index === visible.length - 1 && hidden === 0 ? "└─ " : "├─ "}
               </ThemedText>
               <ThemedText
                 color={todo.status === "in_progress" ? "accent" : undefined}
-                dimColor={todo.status !== "in_progress"}
+                dim={todo.status !== "in_progress"}
               >
                 {todo.status === "in_progress" ? "● " : todo.status === "completed" ? "✓ " : "○ "}
               </ThemedText>
@@ -140,16 +141,16 @@ export function GoalTodoPanel({
           </Box>
         ))}
         {hidden > 0 && rowBudget >= 2 && (
-          <Box height={1}>
-            <ThemedText dimColor wrap="truncate">
+          <Box flexShrink={0} height={1}>
+            <ThemedText dim wrap="truncate">
               {`└─ ${t("todo.more", { count: hidden })}`}
               {hintHeight === 0 ? `  ${t("todo.fold")}` : ""}
             </ThemedText>
           </Box>
         )}
         {hintHeight > 0 && (
-          <Box height={1}>
-            <ThemedText dimColor wrap="truncate">{`  ${t("todo.fold")}`}</ThemedText>
+          <Box flexShrink={0} height={1}>
+            <ThemedText dim wrap="truncate">{`  ${t("todo.fold")}`}</ThemedText>
           </Box>
         )}
       </Box>

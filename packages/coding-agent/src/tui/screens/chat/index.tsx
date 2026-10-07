@@ -1,3 +1,13 @@
+import { useHostSelection } from "../../hooks/host-selection";
+import {
+  readPosition,
+  useSources,
+  SourceContext,
+  captureSourcePosition,
+  restoreSourcePosition,
+  usePanelScroll,
+  type ReadingPosition,
+} from "../../hooks/reading-position";
 import { createImagePresentation } from "./image-metadata";
 import { alignSplitDiff } from "../../../ink/index.ts";
 import { readSessionNotice, sessionNoticeFromHook, assistantThinkingDuration } from "@rukie/agent";
@@ -47,12 +57,13 @@ import {
   ScrollBox,
   ThemedText,
   createTextInputHistory,
+  useApp,
   useInput,
+  useSearchHighlight,
   useTerminalSize,
   useDismissTooltip,
   useTheme,
-  type ScrollHandle,
-  type ScrollSnapshot,
+  type ScrollBoxHandle,
 } from "../../../ink/index.ts";
 import {
   allocatePanelHeights,
@@ -483,7 +494,7 @@ function Chat({
     done: boolean;
   }>();
   const sideController = useRef<AbortController | undefined>(undefined);
-  const sideScroll = useRef<ScrollHandle>(null);
+  const sideScroll = useRef<ScrollBoxHandle>(null);
   const closeSide = () => {
     sideController.current?.abort();
     sideController.current = undefined;
@@ -502,7 +513,7 @@ function Chat({
   const planReview = interaction?.kind === "plan" ? interaction : undefined;
   const userQuestion = interaction?.kind === "question" ? interaction : undefined;
   const currentQuestion = userQuestion?.drafts[userQuestion.questionIndex];
-  const authDetails = useRef<ScrollHandle>(null);
+  const authDetails = useRef<ScrollBoxHandle>(null);
   const isCurrentQuestion = () => {
     const live = interactions.getSnapshot();
     return (
@@ -532,23 +543,23 @@ function Chat({
   const [page, setPage] = useState<DetailPage>("summary");
   const pageRef = useRef<DetailPage>("summary");
   const [thinkingOpen, setThinkingOpen] = useState(false);
-  const subagentScroll = useRef<ScrollHandle>(null);
-  const savedChatScroll = useRef<ScrollSnapshot | undefined>(undefined);
-  const savedDashboardScroll = useRef<ScrollSnapshot | undefined>(undefined);
+  const subagentScroll = useRef<ScrollBoxHandle>(null);
+  const savedChatScroll = useRef<ReadingPosition | undefined>(undefined);
+  const savedDashboardScroll = useRef<ReadingPosition | undefined>(undefined);
   const [jobFocus, setJobFocus] = useState(0);
   const jobFocusRef = useRef(0);
   const [jobDetails, setJobDetails] = useState<ReadonlySet<string>>(new Set());
   const [killArmed, setKillArmed] = useState<{ id: string; until: number }>();
   const killArmRef = useRef<{ id: string; until: number } | undefined>(undefined);
-  const jobsScroll = useRef<ScrollHandle>(null);
-  const interruptedViewScroll = useRef<{ view: View; snapshot?: ScrollSnapshot } | undefined>(
+  const jobsScroll = useRef<ScrollBoxHandle>(null);
+  const interruptedViewScroll = useRef<{ view: View; snapshot?: ReadingPosition } | undefined>(
     undefined,
   );
   if (interaction && view !== "chat" && interruptedViewScroll.current?.view !== view) {
     toolWindows?.beginSuspend();
     interruptedViewScroll.current = {
       view,
-      snapshot: (view === "jobs" ? jobsScroll : subagentScroll).current?.getSnapshot(),
+      snapshot: readPosition((view === "jobs" ? jobsScroll : subagentScroll).current),
     };
   }
   const restoredViewScroll =
@@ -592,13 +603,17 @@ function Chat({
       ),
     );
     setJobDetails(new Set(id ? [id] : []));
-    savedChatScroll.current = body.current?.getSnapshot();
+    savedChatScroll.current = captureSourcePosition(readPosition(body.current, columns)!, sources);
     switchView("jobs");
   };
   const openDetail = (id: string, from: "chat" | "dashboard", agentView = false) => {
     if (previewRef.current || mcpPanel.getSnapshot()) return;
-    if (from === "chat") savedChatScroll.current = body.current?.getSnapshot();
-    else savedDashboardScroll.current = subagentScroll.current?.getSnapshot();
+    if (from === "chat")
+      savedChatScroll.current = captureSourcePosition(
+        readPosition(body.current, columns)!,
+        sources,
+      );
+    else savedDashboardScroll.current = readPosition(subagentScroll.current, columns);
     pageRef.current = agentView ? "output" : "summary";
     setPage(agentView ? "output" : "summary");
     setThinkingOpen(false);
@@ -638,7 +653,7 @@ function Chat({
     [mcpCommands, cwd, homeDir, locale],
   );
   const mcp = useSyncExternalStore(mcpPanel.subscribe, mcpPanel.getSnapshot);
-  const mcpBody = useRef<ScrollHandle>(null);
+  const mcpBody = useRef<ScrollBoxHandle>(null);
   const mcpOpening = useRef(false);
   useLayoutEffect(() => () => mcpPanel.stop(), [mcpPanel]);
   const mcpCanInteract = () =>
@@ -809,9 +824,51 @@ function Chat({
     interaction?.request,
     userQuestion?.collapsed,
   ]);
-  const body = useRef<ScrollHandle>(null);
-  const details = useRef<ScrollHandle>(null);
-  const [bodyScroll, setBodyScroll] = useState<ScrollSnapshot>();
+  const body = useRef<ScrollBoxHandle>(null);
+  const sources = useSources();
+  const pendingSearchSeek = useRef<(() => boolean) | undefined>(undefined);
+  const { renderer: frameRenderer } = useApp();
+  useLayoutEffect(
+    () =>
+      frameRenderer?.subscribeFrame(() => {
+        if (pendingSearchSeek.current) {
+          const seek = pendingSearchSeek.current;
+          if (seek()) pendingSearchSeek.current = undefined;
+        }
+      }),
+    [frameRenderer],
+  );
+  const selection = useHostSelection(
+    !small && !pendingInteraction && !preview && !imagePreviewBlocked(),
+    `${session.id}:${typeof view === "object" ? view.detail : view}`,
+    `${columns}:${rows}`,
+    theme.badgeBackground,
+    host,
+    (result) =>
+      notifyImage(t(`selection.${result}`), result === "unavailable" || result === "stale"),
+  );
+  const details = useRef<ScrollBoxHandle>(null);
+  const [bodyScroll, setBodyScroll] = useState<ReadingPosition>();
+  const paintedChat = useRef<ReadingPosition | undefined>(undefined);
+  const pendingRestore = useRef<ReadingPosition | undefined>(undefined);
+  const previousWidth = useRef(columns);
+  if (columns !== previousWidth.current) {
+    pendingRestore.current = paintedChat.current;
+    previousWidth.current = columns;
+  }
+  const chatScrollRef = usePanelScroll(body, savedChatScroll.current, columns, (position) => {
+    if (pendingRestore.current) {
+      const saved = pendingRestore.current;
+      pendingRestore.current = undefined;
+      restoreSourcePosition(body.current, sources, saved);
+      return;
+    }
+    const next = captureSourcePosition(position, sources);
+    paintedChat.current = next;
+    setBodyScroll((previous) =>
+      JSON.stringify(previous) === JSON.stringify(next) ? previous : next,
+    );
+  });
   useEffect(() => {
     if (view !== "chat" && view !== "dashboard" && page === "output")
       subagentScroll.current?.scrollBy(-Infinity);
@@ -825,10 +882,16 @@ function Chat({
       selectedSubagent?.status !== "running"
     )
       return;
-    if (subagentScroll.current?.getSnapshot().following) subagentScroll.current.scrollToBottom();
+    if (readPosition(subagentScroll.current, columns)?.following)
+      subagentScroll.current?.scrollToBottom();
   }, [view, page, selectedSubagent?.output, selectedSubagent?.status]);
 
-  const [scrollFocus, setScrollFocus] = useState<"body" | "details">("body");
+  const [scrollFocus, updateScrollFocus] = useState<"body" | "details">("body");
+  const scrollFocusRef = useRef(scrollFocus);
+  const setScrollFocus = (focus: "body" | "details") => {
+    scrollFocusRef.current = focus;
+    updateScrollFocus(focus);
+  };
   const [unread, setUnread] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [transcriptSearch, setTranscriptSearch] = useState<{
@@ -842,6 +905,7 @@ function Chat({
   const expandedRef = useRef(expanded);
   expandedRef.current = expanded;
   const diffSearchLayout = useDiffLayout();
+  const searchHighlight = useSearchHighlight();
   const searchMatches = useMemo(
     () =>
       transcriptMatches(
@@ -864,13 +928,19 @@ function Chat({
     setExpanded(false);
     updateSearch({ editing: false, draft: "", query: "", index: 0 });
   };
-  useEffect(() => {
-    if (expanded && currentMatch && !transcriptSearch.editing)
-      body.current?.scrollToText(
-        currentMatch.anchorId,
-        transcriptSearch.query,
-        currentMatch.occurrence,
-      );
+  useLayoutEffect(() => {
+    if (!expanded || !currentMatch || transcriptSearch.editing) return;
+    searchHighlight.setQuery(transcriptSearch.query);
+    // Search paints the newly admitted product source before scanning its native subtree.
+    pendingSearchSeek.current = () => {
+      const element = sources.elements.get(currentMatch.anchorId);
+      if (!element) return false;
+      const position = searchHighlight.scanElement(element)[currentMatch.occurrence];
+      if (!position) return false;
+      body.current?.scrollToElement(element, position.row);
+      return true;
+    };
+    body.current?.scrollBy(0);
   }, [
     expanded,
     currentMatch?.anchorId,
@@ -1094,6 +1164,14 @@ function Chat({
       .catch(() => {
         if (owned()) notifyImage(t("image.clipboard-error"), true);
       });
+  };
+  useEffect(() => {
+    searchHighlight.setQuery(expanded ? transcriptSearch.query : "");
+    return () => searchHighlight.setQuery("");
+  }, [expanded, transcriptSearch.query, searchHighlight]);
+  const seekSource = (id: string) => {
+    const element = sources.elements.get(id);
+    if (element) body.current?.scrollToElement(element);
   };
   const returnToBottom = () => {
     body.current?.scrollToBottom();
@@ -1507,602 +1585,666 @@ function Chat({
     !imagePreviewBlocked() &&
     !(composerDismissed && composerImageDismissed(caretImage)) &&
     caretImage;
-  useInput((event) => {
-    if (event.handled) return;
-    const fileMenu = fileActionsRef.current;
-    if (fileMenu) {
-      handledInput.current.add(event);
-      if (event.type !== "key") return;
-      const { key } = event;
-      if (key.name === "escape" || (key.ctrl && key.name === "c")) showFileActions(undefined);
-      else if (!key.ctrl && !key.alt && !key.shift) {
-        if (key.name === "up" || key.name === "down")
-          showFileActions({
-            ...fileMenu,
-            focus: (fileMenu.focus + (key.name === "up" ? 2 : 1)) % 3,
-          });
-        else if (key.name === "enter") void pickFileAction(fileMenu.focus);
-        else if (["1", "2", "3"].includes(event.input))
-          void pickFileAction(Number(event.input) - 1);
-      }
-      return;
-    }
-    const currentCaretImage = composer.atCursor(draft.current, composerCursorRef.current);
-    if (
-      event.type === "key" &&
-      event.key.name === "escape" &&
-      !previewRef.current &&
-      !expandedRef.current &&
-      !small &&
-      !imagePreviewBlocked() &&
-      currentCaretImage &&
-      !composerImageDismissed(currentCaretImage)
-    ) {
-      dismissedComposerImage.current = currentCaretImage;
-      setComposerDismissed(true);
-      handledInput.current.add(event);
-      return;
-    }
-    const currentMcp = mcpPanel.getSnapshot();
-    if (currentMcp && !interactions.getSnapshot()) {
-      handledInput.current.add(event);
-      if (event.type !== "key") return;
-      const { key } = event;
-      if (mcpOpening.current && key.name === "enter") return;
-      if (key.ctrl && key.name === "c") {
-        if (conversation.isRunning()) conversation.interrupt();
-        mcpPanel.close();
-      } else if (key.ctrl && key.name === "d" && !conversation.isRunning()) {
-        mcpPanel.close();
-        onExit();
-      } else if (key.name === "escape") mcpPanel.back();
-      else if (!small && !key.ctrl && !key.alt && !key.shift) {
-        if (key.name === "tab" && currentMcp.page.kind === "server") mcpPanel.focus();
-        else if (key.name === "pageup" || key.name === "pagedown")
-          mcpBody.current?.scrollBy(
-            Math.max(1, (mcpBody.current.getSnapshot().height ?? 1) - 1) *
-              (key.name === "pageup" ? -1 : 1),
-          );
-        else if (key.name === "up" || key.name === "down") {
-          if (currentMcp.page.kind === "tool" || currentMcp.focus === "body")
-            mcpBody.current?.scrollBy(key.name === "up" ? -1 : 1);
-          else mcpPanel.move(key.name === "up" ? -1 : 1);
-        } else if (
-          key.name === "enter" &&
-          (currentMcp.page.kind !== "server" || currentMcp.focus === "actions")
-        )
-          mcpPanel.activate(currentMcp.selected);
-      }
-      return;
-    }
-    if (previewRef.current && !interactions.getSnapshot()) {
-      handledInput.current.add(event);
-      if (event.type === "key") {
-        const { key } = event;
-        if (
-          key.name === "escape" ||
-          (key.ctrl && key.name === "c") ||
-          (!key.ctrl && !key.alt && !key.shift && key.name === "enter")
-        )
-          showPreview(undefined);
-        else if (
-          !key.ctrl &&
-          !key.alt &&
-          !key.shift &&
-          (key.name === "left" || key.name === "right")
-        )
-          stepImage(key.name === "left" ? -1 : 1);
-      }
-      return;
-    }
-    if (sideController.current && event.type === "key") {
-      const { key } = event;
-      if (key.name === "escape" || (key.ctrl && key.name === "c")) {
-        handledInput.current.add(event);
-        closeSide();
+  const searchEditorMounted = useRef(false);
+  useLayoutEffect(() => {
+    searchEditorMounted.current = transcriptSearch.editing;
+  }, [transcriptSearch.editing]);
+  useInput(
+    (_input, _key, event) => {
+      if (event.didStopImmediatePropagation()) return;
+      if (event.key.escape && selection.hasSelection()) {
+        selection.clearSelection();
+        event.stopImmediatePropagation();
         return;
       }
       if (
-        !draft.current &&
-        !key.ctrl &&
-        !key.alt &&
-        !key.shift &&
-        ["up", "down"].includes(key.name)
+        selection.getState()?.isDragging &&
+        event.key.shift &&
+        !event.key.ctrl &&
+        !event.key.meta
+      ) {
+        const move = event.key.leftArrow
+          ? "left"
+          : event.key.rightArrow
+            ? "right"
+            : event.key.upArrow
+              ? "up"
+              : event.key.downArrow
+                ? "down"
+                : event.key.home
+                  ? "lineStart"
+                  : event.key.end
+                    ? "lineEnd"
+                    : undefined;
+        if (move) {
+          selection.moveFocus(move);
+          event.stopImmediatePropagation();
+          return;
+        }
+      }
+      const fileMenu = fileActionsRef.current;
+      if (fileMenu) {
+        handledInput.current.add(event);
+        if (event.isPasted) return;
+        const { key } = event;
+        if (event.keypress.name === "escape" || (key.ctrl && event.keypress.name === "c"))
+          showFileActions(undefined);
+        else if (!key.ctrl && !key.meta && !key.shift) {
+          if (event.keypress.name === "up" || event.keypress.name === "down")
+            showFileActions({
+              ...fileMenu,
+              focus: (fileMenu.focus + (event.keypress.name === "up" ? 2 : 1)) % 3,
+            });
+          else if (event.keypress.name === "return") void pickFileAction(fileMenu.focus);
+          else if (["1", "2", "3"].includes(event.input))
+            void pickFileAction(Number(event.input) - 1);
+        }
+        return;
+      }
+      const currentCaretImage = composer.atCursor(draft.current, composerCursorRef.current);
+      if (
+        !event.isPasted &&
+        event.keypress.name === "escape" &&
+        !previewRef.current &&
+        !expandedRef.current &&
+        !small &&
+        !imagePreviewBlocked() &&
+        currentCaretImage &&
+        !composerImageDismissed(currentCaretImage)
+      ) {
+        dismissedComposerImage.current = currentCaretImage;
+        setComposerDismissed(true);
+        handledInput.current.add(event);
+        return;
+      }
+      const currentMcp = mcpPanel.getSnapshot();
+      if (currentMcp && !interactions.getSnapshot()) {
+        handledInput.current.add(event);
+        if (event.isPasted) return;
+        const { key } = event;
+        if (mcpOpening.current && event.keypress.name === "return") return;
+        if (key.ctrl && event.keypress.name === "c") {
+          if (conversation.isRunning()) conversation.interrupt();
+          mcpPanel.close();
+        } else if (key.ctrl && event.keypress.name === "d" && !conversation.isRunning()) {
+          mcpPanel.close();
+          onExit();
+        } else if (event.keypress.name === "escape") mcpPanel.back();
+        else if (!small && !key.ctrl && !key.meta && !key.shift) {
+          if (event.keypress.name === "tab" && currentMcp.page.kind === "server") mcpPanel.focus();
+          else if (event.keypress.name === "pageup" || event.keypress.name === "pagedown")
+            mcpBody.current?.scrollBy(
+              Math.max(1, (readPosition(mcpBody.current, columns)!.height ?? 1) - 1) *
+                (event.keypress.name === "pageup" ? -1 : 1),
+            );
+          else if (event.keypress.name === "up" || event.keypress.name === "down") {
+            if (currentMcp.page.kind === "tool" || currentMcp.focus === "body")
+              mcpBody.current?.scrollBy(event.keypress.name === "up" ? -1 : 1);
+            else mcpPanel.move(event.keypress.name === "up" ? -1 : 1);
+          } else if (
+            event.keypress.name === "return" &&
+            (currentMcp.page.kind !== "server" || currentMcp.focus === "actions")
+          )
+            mcpPanel.activate(currentMcp.selected);
+        }
+        return;
+      }
+      if (previewRef.current && !interactions.getSnapshot()) {
+        handledInput.current.add(event);
+        if (!event.isPasted) {
+          const { key } = event;
+          if (
+            event.keypress.name === "escape" ||
+            (key.ctrl && event.keypress.name === "c") ||
+            (!key.ctrl && !key.meta && !key.shift && event.keypress.name === "return")
+          )
+            showPreview(undefined);
+          else if (
+            !key.ctrl &&
+            !key.meta &&
+            !key.shift &&
+            (event.keypress.name === "left" || event.keypress.name === "right")
+          )
+            stepImage(event.keypress.name === "left" ? -1 : 1);
+        }
+        return;
+      }
+      if (sideController.current && !event.isPasted) {
+        const { key } = event;
+        if (event.keypress.name === "escape" || (key.ctrl && event.keypress.name === "c")) {
+          handledInput.current.add(event);
+          closeSide();
+          return;
+        }
+        if (
+          !draft.current &&
+          !key.ctrl &&
+          !key.meta &&
+          !key.shift &&
+          ["up", "down"].includes(event.keypress.name ?? "")
+        ) {
+          handledInput.current.add(event);
+          sideScroll.current?.scrollBy(event.keypress.name === "up" ? -3 : 3);
+          return;
+        }
+      }
+      const resume = resumePickerRef.current;
+      if (resume) {
+        if (event.isPasted) return;
+        handledInput.current.add(event);
+        const { key } = event;
+        if (event.keypress.name === "escape" || (key.ctrl && event.keypress.name === "c")) {
+          if (!resume.busy || !resume.sessions.length) showResumePicker(undefined);
+        } else if (!resume.busy && !small && !key.ctrl && !key.meta && !key.shift) {
+          if (event.keypress.name === "up" || event.keypress.name === "down")
+            showResumePicker({
+              ...resume,
+              focus:
+                (resume.focus + (event.keypress.name === "up" ? resume.sessions.length - 1 : 1)) %
+                resume.sessions.length,
+            });
+          else if (event.keypress.name === "return") void resumeSession(resume.focus);
+        }
+        return;
+      }
+      const modelFocus = modelPickerRef.current;
+      if (modelFocus !== undefined) {
+        if (event.isPasted) return;
+        handledInput.current.add(event);
+        const { key } = event;
+        if (event.keypress.name === "escape" || (key.ctrl && event.keypress.name === "c"))
+          showModelPicker(undefined);
+        else if (!small && !key.ctrl && !key.meta && !key.shift) {
+          if (event.keypress.name === "up" || event.keypress.name === "down")
+            showModelPicker(
+              (modelFocus + (event.keypress.name === "up" ? models.length - 1 : 1)) % models.length,
+            );
+          else if (event.keypress.name === "return") selectModel(modelFocus);
+        }
+        return;
+      }
+      // A parent request temporarily owns a full-screen view without changing its return target.
+      const currentView = interactions.getSnapshot() ? "chat" : viewRef.current;
+      if (currentView === "jobs") {
+        handledInput.current.add(event);
+        if (event.isPasted) return;
+        const { key } = event;
+        if (event.keypress.name === "escape" || (key.ctrl && event.keypress.name === "c"))
+          closeView();
+        else if (event.keypress.name === "up" || event.keypress.name === "down") {
+          const jobs = Object.values(conversation.getSnapshot().jobs);
+          selectJob(
+            Math.max(
+              0,
+              Math.min(
+                jobs.length - 1,
+                jobFocusRef.current + (event.keypress.name === "up" ? -1 : 1),
+              ),
+            ),
+          );
+        } else if (event.keypress.name === "pageup" || event.keypress.name === "pagedown") {
+          disarmKill();
+          jobsScroll.current?.scrollBy(
+            (readPosition(jobsScroll.current, columns)!.height - 1) *
+              (event.keypress.name === "pageup" ? -1 : 1),
+          );
+        } else if (!key.ctrl && !key.meta && !key.shift) {
+          const selected = Object.values(conversation.getSnapshot().jobs)[jobFocusRef.current];
+          if (
+            event.input === "k" &&
+            selected &&
+            (selected.status === "running" || selected.status === "stopping")
+          ) {
+            if (
+              killArmRef.current?.id === selected.id &&
+              performance.now() < killArmRef.current.until
+            ) {
+              disarmKill();
+              const stopping = session.killJob(selected.id);
+              conversation.refreshJobs();
+              void stopping.catch((error: unknown) =>
+                conversation.notice(formatError(error, t), true),
+              );
+            } else {
+              killArmRef.current = { id: selected.id, until: performance.now() + 4000 };
+              setKillArmed(killArmRef.current);
+            }
+          } else {
+            disarmKill();
+            if (event.input === "e" && selected)
+              setJobDetails((previous) => {
+                const next = new Set(previous);
+                if (next.has(selected.id)) next.delete(selected.id);
+                else next.add(selected.id);
+                return next;
+              });
+          }
+        } else disarmKill();
+        return;
+      }
+      if (currentView === "settings") return;
+      if (currentView !== "chat") {
+        if (!small && typeof currentView === "object" && toolWindows?.handle(event)) {
+          handledInput.current.add(event);
+          return;
+        }
+        if (event.isPasted) return;
+        const { key } = event;
+        if (event.keypress.name === "escape" || (key.ctrl && event.keypress.name === "c")) {
+          closeView();
+          return;
+        }
+        if (currentView === "dashboard") {
+          const agents = Object.values(conversation.getSnapshot().subagents);
+          if (event.keypress.name === "up" || event.keypress.name === "down") {
+            focusRef.current = Math.max(
+              0,
+              Math.min(
+                agents.length - 1,
+                focusRef.current + (event.keypress.name === "up" ? -1 : 1),
+              ),
+            );
+            setFocusIndex(focusRef.current);
+            const viewport = readPosition(subagentScroll.current, columns);
+            const selected = agents[focusRef.current];
+            if (viewport && selected) {
+              const preview = (agent: typeof selected) =>
+                Number(agent.status === "running" && agent.outputLines.length > 0);
+              const top = agents
+                .slice(0, focusRef.current)
+                .reduce((sum, agent) => sum + 3 + preview(agent), 0);
+              const bottom = top + 1 + preview(selected);
+              if (top < viewport.top) subagentScroll.current?.scrollBy(top - viewport.top);
+              else if (bottom > viewport.top + viewport.height)
+                subagentScroll.current?.scrollBy(bottom - viewport.top - viewport.height);
+            }
+          } else if (event.keypress.name === "return" && !key.ctrl && !key.meta && !key.shift) {
+            const selected = agents[focusRef.current];
+            if (selected) openDetail(selected.agentId, "dashboard");
+          }
+        } else {
+          if (
+            !currentView.agentView &&
+            (event.keypress.name === "left" || event.keypress.name === "right")
+          ) {
+            const pages: DetailPage[] = ["summary", "output", "tools"];
+            turnPage(
+              pages[
+                (pages.indexOf(pageRef.current) + (event.keypress.name === "left" ? 2 : 1)) % 3
+              ]!,
+            );
+          } else if (event.keypress.name === "up" || event.keypress.name === "down")
+            subagentScroll.current?.scrollBy(event.keypress.name === "up" ? -3 : 3);
+          else if (event.keypress.name === "pageup" || event.keypress.name === "pagedown")
+            subagentScroll.current?.scrollBy(
+              (readPosition(subagentScroll.current, columns)!.height - 1) *
+                (event.keypress.name === "pageup" ? -1 : 1),
+            );
+          else if (event.keypress.name === "home" || event.keypress.name === "end")
+            subagentScroll.current?.scrollBy(event.keypress.name === "home" ? -Infinity : Infinity);
+          else if (
+            !currentView.agentView &&
+            !key.ctrl &&
+            !key.meta &&
+            event.input.toLowerCase() === "x"
+          )
+            session.interruptSubagent(currentView.detail);
+          else if (event.keypress.name === "return" && !key.ctrl && !key.meta && !key.shift) {
+            if (pageRef.current === "output") setThinkingOpen((open) => !open);
+            else closeView();
+          }
+        }
+        return;
+      }
+      const picker = rewindRef.current;
+      if (picker && !interactions.getSnapshot()) {
+        if (event.isPasted || picker.busy) return;
+        const { key } = event;
+        if (small && event.keypress.name !== "escape" && !(key.ctrl && event.keypress.name === "c"))
+          return;
+        if (event.keypress.name === "escape" || (key.ctrl && event.keypress.name === "c")) {
+          showRewind(picker.confirm && !key.ctrl ? { ...picker, confirm: false } : undefined);
+        } else if (event.keypress.name === "up" || event.keypress.name === "down") {
+          const count = picker.confirm ? rewindModes(picker).length : picker.entries.length;
+          const field = picker.confirm ? "mode" : "focus";
+          showRewind({
+            ...picker,
+            [field]: (picker[field] + (event.keypress.name === "up" ? count - 1 : 1)) % count,
+          });
+        } else if (event.keypress.name === "return" && !key.ctrl && !key.meta && !key.shift) {
+          if (picker.confirm) void executeRewind(picker);
+          else showRewind({ ...picker, confirm: true, mode: 0 });
+        }
+        return;
+      }
+      if (
+        !small &&
+        !interactions.getSnapshot() &&
+        !sideController.current &&
+        !previewRef.current &&
+        !searchRef.current.editing &&
+        toolWindows?.handle(event)
       ) {
         handledInput.current.add(event);
-        sideScroll.current?.scrollBy(key.name === "up" ? -3 : 3);
         return;
       }
-    }
-    const resume = resumePickerRef.current;
-    if (resume) {
-      if (event.type !== "key") return;
-      handledInput.current.add(event);
-      const { key } = event;
-      if (key.name === "escape" || (key.ctrl && key.name === "c")) {
-        if (!resume.busy || !resume.sessions.length) showResumePicker(undefined);
-      } else if (!resume.busy && !small && !key.ctrl && !key.alt && !key.shift) {
-        if (key.name === "up" || key.name === "down")
-          showResumePicker({
-            ...resume,
-            focus:
-              (resume.focus + (key.name === "up" ? resume.sessions.length - 1 : 1)) %
-              resume.sessions.length,
-          });
-        else if (key.name === "enter") void resumeSession(resume.focus);
-      }
-      return;
-    }
-    const modelFocus = modelPickerRef.current;
-    if (modelFocus !== undefined) {
-      if (event.type !== "key") return;
-      handledInput.current.add(event);
-      const { key } = event;
-      if (key.name === "escape" || (key.ctrl && key.name === "c")) showModelPicker(undefined);
-      else if (!small && !key.ctrl && !key.alt && !key.shift) {
-        if (key.name === "up" || key.name === "down")
-          showModelPicker(
-            (modelFocus + (key.name === "up" ? models.length - 1 : 1)) % models.length,
-          );
-        else if (key.name === "enter") selectModel(modelFocus);
-      }
-      return;
-    }
-    // A parent request temporarily owns a full-screen view without changing its return target.
-    const currentView = interactions.getSnapshot() ? "chat" : viewRef.current;
-    if (currentView === "jobs") {
-      handledInput.current.add(event);
-      if (event.type === "wheel") {
-        disarmKill();
-        jobsScroll.current?.scrollBy(event.delta * 3);
-      }
-      if (event.type !== "key") return;
-      const { key } = event;
-      if (key.name === "escape" || (key.ctrl && key.name === "c")) closeView();
-      else if (key.name === "up" || key.name === "down") {
-        const jobs = Object.values(conversation.getSnapshot().jobs);
-        selectJob(
-          Math.max(
-            0,
-            Math.min(jobs.length - 1, jobFocusRef.current + (key.name === "up" ? -1 : 1)),
-          ),
-        );
-      } else if (key.name === "pageup" || key.name === "pagedown") {
-        disarmKill();
-        jobsScroll.current?.scrollBy(
-          (jobsScroll.current.getSnapshot().height - 1) * (key.name === "pageup" ? -1 : 1),
-        );
-      } else if (!key.ctrl && !key.alt && !key.shift) {
-        const selected = Object.values(conversation.getSnapshot().jobs)[jobFocusRef.current];
-        if (
-          event.input === "k" &&
-          selected &&
-          (selected.status === "running" || selected.status === "stopping")
-        ) {
-          if (
-            killArmRef.current?.id === selected.id &&
-            performance.now() < killArmRef.current.until
-          ) {
-            disarmKill();
-            const stopping = session.killJob(selected.id);
-            conversation.refreshJobs();
-            void stopping.catch((error: unknown) =>
-              conversation.notice(formatError(error, t), true),
-            );
-          } else {
-            killArmRef.current = { id: selected.id, until: performance.now() + 4000 };
-            setKillArmed(killArmRef.current);
-          }
-        } else {
-          disarmKill();
-          if (event.input === "e" && selected)
-            setJobDetails((previous) => {
-              const next = new Set(previous);
-              if (next.has(selected.id)) next.delete(selected.id);
-              else next.add(selected.id);
-              return next;
-            });
-        }
-      } else disarmKill();
-      return;
-    }
-    if (currentView === "settings") return;
-    if (currentView !== "chat") {
-      if (!small && typeof currentView === "object" && toolWindows?.handle(event)) {
-        handledInput.current.add(event);
-        return;
-      }
-      if (event.type === "wheel") subagentScroll.current?.scrollBy(event.delta * 3);
-      if (event.type !== "key") return;
-      const { key } = event;
-      if (key.name === "escape" || (key.ctrl && key.name === "c")) {
-        closeView();
-        return;
-      }
-      if (currentView === "dashboard") {
-        const agents = Object.values(conversation.getSnapshot().subagents);
-        if (key.name === "up" || key.name === "down") {
-          focusRef.current = Math.max(
-            0,
-            Math.min(agents.length - 1, focusRef.current + (key.name === "up" ? -1 : 1)),
-          );
-          setFocusIndex(focusRef.current);
-          const viewport = subagentScroll.current?.getSnapshot();
-          const selected = agents[focusRef.current];
-          if (viewport && selected) {
-            const preview = (agent: typeof selected) =>
-              Number(agent.status === "running" && agent.outputLines.length > 0);
-            const top = agents
-              .slice(0, focusRef.current)
-              .reduce((sum, agent) => sum + 3 + preview(agent), 0);
-            const bottom = top + 1 + preview(selected);
-            if (top < viewport.top) subagentScroll.current?.scrollBy(top - viewport.top);
-            else if (bottom > viewport.top + viewport.height)
-              subagentScroll.current?.scrollBy(bottom - viewport.top - viewport.height);
-          }
-        } else if (key.name === "enter" && !key.ctrl && !key.alt && !key.shift) {
-          const selected = agents[focusRef.current];
-          if (selected) openDetail(selected.agentId, "dashboard");
-        }
-      } else {
-        if (!currentView.agentView && (key.name === "left" || key.name === "right")) {
-          const pages: DetailPage[] = ["summary", "output", "tools"];
-          turnPage(pages[(pages.indexOf(pageRef.current) + (key.name === "left" ? 2 : 1)) % 3]!);
-        } else if (key.name === "up" || key.name === "down")
-          subagentScroll.current?.scrollBy(key.name === "up" ? -3 : 3);
-        else if (key.name === "pageup" || key.name === "pagedown")
-          subagentScroll.current?.scrollBy(
-            (subagentScroll.current.getSnapshot().height - 1) * (key.name === "pageup" ? -1 : 1),
-          );
-        else if (key.name === "home" || key.name === "end")
-          subagentScroll.current?.scrollBy(key.name === "home" ? -Infinity : Infinity);
-        else if (
-          !currentView.agentView &&
-          !key.ctrl &&
-          !key.alt &&
-          event.input.toLowerCase() === "x"
-        )
-          session.interruptSubagent(currentView.detail);
-        else if (key.name === "enter" && !key.ctrl && !key.alt && !key.shift) {
-          if (pageRef.current === "output") setThinkingOpen((open) => !open);
-          else closeView();
-        }
-      }
-      return;
-    }
-    const picker = rewindRef.current;
-    if (picker && !interactions.getSnapshot()) {
-      if (event.type !== "key" || picker.busy) return;
-      const { key } = event;
-      if (small && key.name !== "escape" && !(key.ctrl && key.name === "c")) return;
-      if (key.name === "escape" || (key.ctrl && key.name === "c")) {
-        showRewind(picker.confirm && !key.ctrl ? { ...picker, confirm: false } : undefined);
-      } else if (key.name === "up" || key.name === "down") {
-        const count = picker.confirm ? rewindModes(picker).length : picker.entries.length;
-        const field = picker.confirm ? "mode" : "focus";
-        showRewind({
-          ...picker,
-          [field]: (picker[field] + (key.name === "up" ? count - 1 : 1)) % count,
-        });
-      } else if (key.name === "enter" && !key.ctrl && !key.alt && !key.shift) {
-        if (picker.confirm) void executeRewind(picker);
-        else showRewind({ ...picker, confirm: true, mode: 0 });
-      }
-      return;
-    }
-    if (
-      !small &&
-      !interactions.getSnapshot() &&
-      !sideController.current &&
-      !previewRef.current &&
-      !searchRef.current.editing &&
-      toolWindows?.handle(event)
-    ) {
-      handledInput.current.add(event);
-      return;
-    }
-    if (
-      !small &&
-      !interactions.getSnapshot() &&
-      !sideController.current &&
-      !previewRef.current &&
-      !searchRef.current.editing &&
-      viewRef.current === "chat" &&
-      event.type === "key"
-    ) {
-      const { key } = event;
-      const selectedMessage = selectedMessageRef.current;
-      if (!key.ctrl && !key.alt && ((key.shift && key.name === "up") || selectedMessage)) {
-        const index = messageRows.findIndex((row) => row.anchorId === selectedMessage);
-        const row = selectedMessage ? messageRows[index] : messageRows.at(-1);
-        if (key.name === "escape") selectMessage(undefined);
-        else if (key.name === "enter" && row?.expansionId) {
-          if (row.liveThinking) toggleStreamThinking(row.expansionId);
-          else toggleRow(row.expansionId);
-        } else if (["up", "down", "left", "right"].includes(key.name)) {
-          const next = selectedMessage
-            ? messageRows[
-                Math.max(
-                  0,
-                  Math.min(
-                    messageRows.length - 1,
-                    index + (key.name === "up" || key.name === "left" ? -1 : 1),
-                  ),
-                )
-              ]
-            : row;
-          selectMessage(next?.anchorId);
-          if (next) body.current?.scrollToAnchor(next.anchorId);
-        } else if (key.name !== "enter") return;
-        handledInput.current.add(event);
-        return;
-      }
-    }
-    if (
-      event.type === "key" &&
-      event.key.ctrl &&
-      event.key.name === "o" &&
-      !event.key.alt &&
-      !event.key.shift &&
-      !small &&
-      !interactions.getSnapshot() &&
-      !sideController.current &&
-      !previewRef.current
-    ) {
-      handledInput.current.add(event);
-      selectMessage(undefined);
-      if (expandedRef.current) closeTranscript();
-      else {
-        expandedRef.current = true;
-        setExpanded(true);
-      }
-      return;
-    }
-    if (
-      expandedRef.current &&
-      !interactions.getSnapshot() &&
-      !sideController.current &&
-      !previewRef.current &&
-      !small
-    ) {
-      if (event.type === "key" && event.key.name === "escape") {
-        handledInput.current.add(event);
-        closeTranscript();
-        return;
-      }
-      if (searchRef.current.editing && (event.type === "key" || event.type === "paste")) {
-        handledInput.current.add(event);
-        searchInputEvents.current.add(event);
-        return;
-      }
-      if (!searchRef.current.editing && event.type === "key" && !event.key.ctrl && !event.key.alt) {
-        if (event.input === "/") {
-          handledInput.current.add(event);
-          updateSearch({ ...searchRef.current, editing: true, draft: "" });
-          dismissTooltip?.();
-          return;
-        }
-        if ((event.input === "n" || event.input === "N") && searchRef.current.query) {
-          handledInput.current.add(event);
-          const count = searchMatches.length;
-          updateSearch({
-            ...searchRef.current,
-            index: count
-              ? (searchRef.current.index + (event.input === "N" ? count - 1 : 1)) % count
-              : 0,
-          });
-          return;
-        }
-      }
-    }
-    if (
-      event.type === "key" &&
-      event.key.ctrl &&
-      event.key.name === "a" &&
-      !interactions.getSnapshot() &&
-      !event.key.alt &&
-      !event.key.shift
-    ) {
-      savedChatScroll.current = body.current?.getSnapshot();
-      savedDashboardScroll.current = undefined;
-      focusRef.current = 0;
-      setFocusIndex(0);
-      switchView("dashboard");
-      return;
-    }
-    if (event.type === "move") return;
-    if (event.type === "wheel") {
-      if (handledInput.current.has(event)) return;
-      if (small) return;
-      const viewport = details.current?.getSnapshot();
       if (
-        (question || planReview) &&
-        viewport &&
-        event.x >= viewport.x &&
-        event.x < viewport.x + viewport.width &&
-        event.y >= viewport.y &&
-        event.y < viewport.y + viewport.height
-      )
-        details.current?.scrollBy(event.delta * 3);
-      else if (bodyScroll && event.y >= bodyScroll.y && event.y < bodyScroll.y + bodyScroll.height)
-        body.current?.scrollBy(event.delta * 3);
-      armExit();
-      return;
-    }
-    if (
-      !sideController.current &&
-      event.type === "paste" &&
-      interactions.getSnapshot()?.kind === "plan"
-    ) {
-      if (!small) interactions.planInput(event);
-      return;
-    }
-    if (
-      !sideController.current &&
-      event.type === "paste" &&
-      interactions.getSnapshot()?.kind === "question"
-    ) {
-      if (!small) interactions.questionInput(event);
-      return;
-    }
-    if (event.type !== "key") {
-      armExit();
-      return;
-    }
-    if (handledInput.current.has(event)) return;
-    const { key } = event;
-    const pendingInteraction = sideController.current ? undefined : interactions.getSnapshot();
-    if (
-      !small &&
-      !pendingInteraction &&
-      !key.ctrl &&
-      !key.alt &&
-      !key.shift &&
-      (key.name === "end" || (key.name === "enter" && !matches(draft.current).length)) &&
-      body.current &&
-      !body.current.getSnapshot().following
-    ) {
-      returnToBottom();
-      // Return also reaches the editor/menu, as in the fixed reference.
-      if (key.name === "end") {
+        !small &&
+        !interactions.getSnapshot() &&
+        !sideController.current &&
+        !previewRef.current &&
+        !searchRef.current.editing &&
+        viewRef.current === "chat" &&
+        !event.isPasted
+      ) {
+        const { key } = event;
+        const selectedMessage = selectedMessageRef.current;
+        if (
+          !key.ctrl &&
+          (!key.meta || (key.escape && !event.keypress.meta && !event.keypress.option)) &&
+          ((key.shift && event.keypress.name === "up") || selectedMessage)
+        ) {
+          const index = messageRows.findIndex((row) => row.anchorId === selectedMessage);
+          const row = selectedMessage ? messageRows[index] : messageRows.at(-1);
+          if (event.keypress.name === "escape") selectMessage(undefined);
+          else if (event.keypress.name === "return" && row?.expansionId) {
+            if (row.liveThinking) toggleStreamThinking(row.expansionId);
+            else toggleRow(row.expansionId);
+          } else if (["up", "down", "left", "right"].includes(event.keypress.name ?? "")) {
+            const next = selectedMessage
+              ? messageRows[
+                  Math.max(
+                    0,
+                    Math.min(
+                      messageRows.length - 1,
+                      index +
+                        (event.keypress.name === "up" || event.keypress.name === "left" ? -1 : 1),
+                    ),
+                  )
+                ]
+              : row;
+            selectMessage(next?.anchorId);
+            if (next) seekSource(next.anchorId);
+          } else if (event.keypress.name !== "enter") return;
+          handledInput.current.add(event);
+          return;
+        }
+      }
+      if (
+        !event.isPasted &&
+        event.key.ctrl &&
+        event.keypress.name === "o" &&
+        !event.key.meta &&
+        !event.key.shift &&
+        !small &&
+        !interactions.getSnapshot() &&
+        !sideController.current &&
+        !previewRef.current
+      ) {
         handledInput.current.add(event);
+        selectMessage(undefined);
+        if (expandedRef.current) closeTranscript();
+        else {
+          expandedRef.current = true;
+          setExpanded(true);
+        }
         return;
       }
-    }
-    if (pendingInteraction || key.name !== "escape") armRewind();
-    const menu = !pendingInteraction && !small ? matches(draft.current) : [];
-    if (menu.length && key.name === "tab" && key.shift && !key.ctrl && !key.alt) {
-      handledInput.current.add(event);
-      return;
-    }
-    if (menu.length && !key.ctrl && !key.alt && !key.shift) {
-      if ((key.name === "up" || key.name === "down") && !history.isBrowsing()) {
-        handledInput.current.add(event);
-        commandSelectionRef.current =
-          (commandSelectionRef.current + (key.name === "up" ? menu.length - 1 : 1)) % menu.length;
-        setCommandSelection(commandSelectionRef.current);
-        return;
-      }
-      if (key.name === "tab" || key.name === "enter") {
-        handledInput.current.add(event);
-        const item = menu[commandSelectionRef.current % menu.length]!;
-        pickCommand(item, key.name === "enter");
-        return;
-      }
-      if (key.name === "escape") {
-        dismissedMenu.current = draft.current;
-        setMenuDismissed(true);
-        return;
-      }
-    }
-    const pending = pendingInteraction?.kind === "permission" ? pendingInteraction : undefined;
-    if (key.ctrl && key.name === "q" && !key.alt && !key.shift) {
-      toggleTodos();
-      armExit();
-      return;
-    }
-    if (
-      key.name === "tab" &&
-      key.shift &&
-      !key.ctrl &&
-      !key.alt &&
-      pendingInteraction?.kind !== "question"
-    ) {
-      armExit();
-      if (!pendingInteraction && !small) {
-        const next =
-          PERMISSION_MODES[
-            (PERMISSION_MODES.indexOf(session.permissionMode) + 1) % PERMISSION_MODES.length
-          ]!;
-        session.setPermissionMode(next);
-        setMode(next);
-      }
-      return;
-    }
-    if (!small && key.ctrl && key.name === "end") {
-      returnToBottom();
-      return;
-    }
-    if (!small && pending && key.name === "tab") {
-      setScrollFocus((focus) => (focus === "body" ? "details" : "body"));
-      armExit();
-      return;
-    }
-    if (!small && (key.name === "pageup" || key.name === "pagedown")) {
-      const viewport =
-        pendingInteraction?.kind === "question" && pendingInteraction.oauth
-          ? authDetails.current
-          : pendingInteraction?.kind === "plan" || (pending && scrollFocus === "details")
-            ? details.current
-            : body.current;
-      viewport?.scrollBy(
-        Math.max(1, (viewport.getSnapshot().height ?? 1) - 1) * (key.name === "pageup" ? -1 : 1),
-      );
-      armExit();
-      return;
-    }
-    if (small && key.name !== "escape" && !(key.ctrl && (key.name === "c" || key.name === "d")))
-      return;
-    if (pendingInteraction?.kind === "plan" && !(key.ctrl && key.name === "c")) {
-      armExit();
-      interactions.planInput(event);
-      return;
-    }
-    if (pendingInteraction?.kind === "question") {
-      armExit();
-      interactions.questionInput(event);
-      return;
-    }
-    if (!small && pending && !(key.ctrl && key.name === "c")) {
-      armExit();
-      if (key.name === "escape") interactions.denyPermission();
-      else if (!key.ctrl && !key.alt && !key.shift) {
-        if (key.name === "enter") interactions.confirmPermission();
-        else if (key.name === "up" || key.name === "left")
-          interactions.selectPermission(pending.selected - 1);
-        else if (key.name === "down" || key.name === "right")
-          interactions.selectPermission(pending.selected + 1);
-        else if (
-          /^[1-3]$/.test(event.input) &&
-          Number(event.input) <= permissionChoices(pending.request.mode).length
-        )
-          interactions.selectPermission(Number(event.input) - 1);
-      }
-      return;
-    }
-    if (key.name === "escape" || (key.ctrl && key.name === "c")) {
-      if (conversation.isRunning()) {
-        armRewind();
-        conversation.interrupt();
-        armExit();
-      } else if (!key.ctrl) {
-        if (draft.current) {
-          history.reset();
-          change("");
-        } else if (!small) {
-          const now = performance.now();
-          if (isRewindArmed(now)) {
-            armRewind();
-            openRewind();
-          } else {
-            armRewind(now);
+      if (
+        expandedRef.current &&
+        !interactions.getSnapshot() &&
+        !sideController.current &&
+        !previewRef.current &&
+        !small
+      ) {
+        if (!event.isPasted && event.keypress.name === "escape") {
+          handledInput.current.add(event);
+          closeTranscript();
+          return;
+        }
+        if (searchRef.current.editing) {
+          handledInput.current.add(event);
+          if (!searchEditorMounted.current) {
+            const current = searchRef.current;
+            if (event.key.return && !event.isPasted)
+              updateSearch({
+                editing: false,
+                draft: current.draft,
+                query: current.draft.trim(),
+                index: 0,
+              });
+            else if (event.key.backspace)
+              updateSearch({ ...current, draft: Array.from(current.draft).slice(0, -1).join("") });
+            else if (event.input && !event.key.ctrl && !event.key.meta)
+              updateSearch({ ...current, draft: current.draft + event.input });
+          } else searchInputEvents.current.add(event);
+          return;
+        }
+        if (!searchRef.current.editing && !event.isPasted && !event.key.ctrl && !event.key.meta) {
+          if (event.input.startsWith("/")) {
+            handledInput.current.add(event);
+            updateSearch({ ...searchRef.current, editing: true, draft: event.input.slice(1) });
+            dismissTooltip?.();
+            return;
           }
-          body.current?.scrollToBottom();
-        }
-      } else if (key.ctrl) {
-        if (draft.current) {
-          history.reset();
-          change("");
-        } else {
-          const now = performance.now();
-          if (isExitArmed(now)) onExit();
-          else armExit(now);
+          if ((event.input === "n" || event.input === "N") && searchRef.current.query) {
+            handledInput.current.add(event);
+            const count = searchMatches.length;
+            updateSearch({
+              ...searchRef.current,
+              index: count
+                ? (searchRef.current.index + (event.input === "N" ? count - 1 : 1)) % count
+                : 0,
+            });
+            return;
+          }
         }
       }
-    } else if (key.ctrl && key.name === "d" && !draft.current) {
-      if (!conversation.isRunning()) onExit();
-    } else armExit();
-  });
+      if (
+        !event.isPasted &&
+        event.key.ctrl &&
+        event.keypress.name === "a" &&
+        !interactions.getSnapshot() &&
+        !event.key.meta &&
+        !event.key.shift
+      ) {
+        savedChatScroll.current = captureSourcePosition(
+          readPosition(body.current, columns)!,
+          sources,
+        );
+        savedDashboardScroll.current = undefined;
+        focusRef.current = 0;
+        setFocusIndex(0);
+        switchView("dashboard");
+        return;
+      }
+      if (
+        !sideController.current &&
+        event.isPasted &&
+        interactions.getSnapshot()?.kind === "plan"
+      ) {
+        if (!small) interactions.planInput(event);
+        return;
+      }
+      if (
+        !sideController.current &&
+        event.isPasted &&
+        interactions.getSnapshot()?.kind === "question"
+      ) {
+        if (!small) interactions.questionInput(event);
+        return;
+      }
+      if (event.isPasted) {
+        armExit();
+        return;
+      }
+      if (handledInput.current.has(event)) return;
+      const { key } = event;
+      const pendingInteraction = sideController.current ? undefined : interactions.getSnapshot();
+      if (
+        !small &&
+        !pendingInteraction &&
+        !key.ctrl &&
+        !key.meta &&
+        !key.shift &&
+        (event.keypress.name === "end" ||
+          (event.keypress.name === "return" && !matches(draft.current).length)) &&
+        body.current &&
+        !captureSourcePosition(readPosition(body.current, columns)!, sources)!.following
+      ) {
+        returnToBottom();
+        // Return also reaches the editor/menu, as in the fixed reference.
+        if (event.keypress.name === "end") {
+          handledInput.current.add(event);
+          return;
+        }
+      }
+      if (pendingInteraction || event.keypress.name !== "escape") armRewind();
+      const menu = !pendingInteraction && !small ? matches(draft.current) : [];
+      if (menu.length && event.keypress.name === "tab" && key.shift && !key.ctrl && !key.meta) {
+        handledInput.current.add(event);
+        return;
+      }
+      if (menu.length && !key.ctrl && !key.meta && !key.shift) {
+        if (
+          (event.keypress.name === "up" || event.keypress.name === "down") &&
+          !history.isBrowsing()
+        ) {
+          handledInput.current.add(event);
+          commandSelectionRef.current =
+            (commandSelectionRef.current + (event.keypress.name === "up" ? menu.length - 1 : 1)) %
+            menu.length;
+          setCommandSelection(commandSelectionRef.current);
+          return;
+        }
+        if (event.keypress.name === "tab" || event.keypress.name === "return") {
+          handledInput.current.add(event);
+          const item = menu[commandSelectionRef.current % menu.length]!;
+          pickCommand(item, event.keypress.name === "return");
+          return;
+        }
+        if (event.keypress.name === "escape") {
+          dismissedMenu.current = draft.current;
+          setMenuDismissed(true);
+          return;
+        }
+      }
+      const pending = pendingInteraction?.kind === "permission" ? pendingInteraction : undefined;
+      if (key.ctrl && event.keypress.name === "q" && !key.meta && !key.shift) {
+        toggleTodos();
+        armExit();
+        return;
+      }
+      if (
+        event.keypress.name === "tab" &&
+        key.shift &&
+        !key.ctrl &&
+        !key.meta &&
+        pendingInteraction?.kind !== "question"
+      ) {
+        armExit();
+        if (!pendingInteraction && !small) {
+          const next =
+            PERMISSION_MODES[
+              (PERMISSION_MODES.indexOf(session.permissionMode) + 1) % PERMISSION_MODES.length
+            ]!;
+          session.setPermissionMode(next);
+          setMode(next);
+        }
+        return;
+      }
+      if (!small && key.ctrl && event.keypress.name === "end") {
+        returnToBottom();
+        return;
+      }
+      if (!small && pending && event.keypress.name === "tab") {
+        setScrollFocus(scrollFocusRef.current === "body" ? "details" : "body");
+        armExit();
+        return;
+      }
+      if (!small && (event.keypress.name === "pageup" || event.keypress.name === "pagedown")) {
+        const viewport =
+          pendingInteraction?.kind === "question" && pendingInteraction.oauth
+            ? authDetails.current
+            : pendingInteraction?.kind === "plan" ||
+                (pending && scrollFocusRef.current === "details")
+              ? details.current
+              : body.current;
+        viewport?.scrollBy(
+          Math.max(1, (viewport.getViewportHeight() ?? 1) - 1) *
+            (event.keypress.name === "pageup" ? -1 : 1),
+        );
+        armExit();
+        return;
+      }
+      if (
+        small &&
+        event.keypress.name !== "escape" &&
+        !(key.ctrl && (event.keypress.name === "c" || event.keypress.name === "d"))
+      )
+        return;
+      if (pendingInteraction?.kind === "plan" && !(key.ctrl && event.keypress.name === "c")) {
+        armExit();
+        interactions.planInput(event);
+        return;
+      }
+      if (pendingInteraction?.kind === "question") {
+        armExit();
+        interactions.questionInput(event);
+        return;
+      }
+      if (!small && pending && !(key.ctrl && event.keypress.name === "c")) {
+        armExit();
+        if (event.keypress.name === "escape") interactions.denyPermission();
+        else if (!key.ctrl && !key.meta && !key.shift) {
+          if (event.keypress.name === "return") interactions.confirmPermission();
+          else if (event.keypress.name === "up" || event.keypress.name === "left")
+            interactions.selectPermission(pending.selected - 1);
+          else if (event.keypress.name === "down" || event.keypress.name === "right")
+            interactions.selectPermission(pending.selected + 1);
+          else if (
+            /^[1-3]$/.test(event.input) &&
+            Number(event.input) <= permissionChoices(pending.request.mode).length
+          )
+            interactions.selectPermission(Number(event.input) - 1);
+        }
+        return;
+      }
+      if (event.keypress.name === "escape" || (key.ctrl && event.keypress.name === "c")) {
+        if (conversation.isRunning()) {
+          armRewind();
+          conversation.interrupt();
+          armExit();
+        } else if (!key.ctrl) {
+          if (draft.current) {
+            history.reset();
+            change("");
+          } else if (!small) {
+            const now = performance.now();
+            if (isRewindArmed(now)) {
+              armRewind();
+              openRewind();
+            } else {
+              armRewind(now);
+            }
+            body.current?.scrollToBottom();
+          }
+        } else if (key.ctrl) {
+          if (draft.current) {
+            history.reset();
+            change("");
+          } else {
+            const now = performance.now();
+            if (isExitArmed(now)) onExit();
+            else armExit(now);
+          }
+        }
+      } else if (key.ctrl && event.keypress.name === "d" && !draft.current) {
+        if (!conversation.isRunning()) onExit();
+      } else armExit();
+    },
+    { prepend: true },
+  );
   const completed = useMemo(
     () =>
       state.completed.map((entry, index) => {
@@ -2126,7 +2268,7 @@ function Chat({
                 (group.length >= 3 &&
                   group.every(({ job }) => job.status !== "running" && job.status !== "stopping")));
             return (
-              <Box key={index} flexDirection="column">
+              <Box flexShrink={0} key={index} flexDirection="column">
                 <JobGroupHeader
                   jobs={group.map(({ job }) => job)}
                   folded={folded}
@@ -2137,9 +2279,9 @@ function Chat({
                   }
                 />
                 {!folded && (
-                  <Box flexDirection="column">
+                  <Box flexShrink={0} flexDirection="column">
                     {group.map(({ job, index: at }, position) => (
-                      <Box key={at} flexDirection="column">
+                      <Box flexShrink={0} key={at} flexDirection="column">
                         <JobCard
                           job={job}
                           output={job.output}
@@ -2180,7 +2322,7 @@ function Chat({
                 />
               );
             return (
-              <Box key={index} flexDirection="column">
+              <Box flexShrink={0} key={index} flexDirection="column">
                 <ToolCall
                   onPathClick={openFileActions}
                   foldTerminalCommand={foldTerminalCommand}
@@ -2422,7 +2564,7 @@ function Chat({
   );
   if (interaction && view !== "chat")
     return (
-      <Box height={rows} flexDirection="column">
+      <Box flexShrink={0} height={rows} flexDirection="column">
         {small ? <ThemedText wrap="truncate">{t("window.small")}</ThemedText> : interactionPanel}
       </Box>
     );
@@ -2458,7 +2600,7 @@ function Chat({
     );
   if (typeof view === "object" && selectedSubagent)
     return (
-      <Box height={rows} flexDirection="column">
+      <Box flexShrink={0} height={rows} flexDirection="column">
         <SubagentDetailScene
           subagent={selectedSubagent}
           agentView={typeof view === "object" && view.agentView}
@@ -2506,7 +2648,7 @@ function Chat({
     if (!navigationEnabled) return;
     selectMessage(undefined);
     toolWindows?.clear();
-    body.current?.scrollToAnchor(id);
+    seekSource(id);
   };
   const promptReadOnly =
     !!selectedMessage ||
@@ -2519,646 +2661,633 @@ function Chat({
     !!rewind ||
     (!!interaction && !userQuestion?.collapsed);
   return (
-    <Box flexDirection="column" height={rows}>
-      {pinnedHeight > 0 && (
+    <SourceContext.Provider value={sources}>
+      <Box flexShrink={0} opaque flexDirection="column" height={rows}>
+        {pinnedHeight > 0 && (
+          <Box
+            height={1}
+            flexShrink={0}
+            noSelect
+            onClick={pinnedInput && navigationEnabled ? () => seekInput(pinnedInput.id) : undefined}
+          >
+            <ThemedText color="userPromptLabel" bold wrap="truncate">
+              {pinnedInput ? `❯ ${pinnedInput.text.replace(/\s+/gu, " ").trim()}` : " "}
+            </ThemedText>
+          </Box>
+        )}
         <Box
-          height={1}
-          flexShrink={0}
-          selectable={false}
-          onClick={pinnedInput && navigationEnabled ? () => seekInput(pinnedInput.id) : undefined}
-        >
-          <ThemedText color="userPromptLabel" bold wrap="truncate">
-            {pinnedInput ? `❯ ${pinnedInput.text.replace(/\s+/gu, " ").trim()}` : " "}
-          </ThemedText>
-        </Box>
-      )}
-      <Box
-        flexGrow={small && !preview ? 0 : 1}
-        flexShrink={1}
-        height={small && !preview ? 0 : undefined}
-      >
-        <ScrollBox
-          textSelection={
-            small || pendingInteraction || preview || imagePreviewBlocked()
-              ? false
-              : {
-                  key: session.id,
-                  backgroundColor: theme.badgeBackground,
-                  onCopy: (text) => host.writeClipboard(text),
-                  onResult: (result) => {
-                    if (pasteOwner.current)
-                      notifyImage(
-                        t(`selection.${result}`),
-                        result === "unavailable" || result === "stale",
-                      );
-                  },
-                }
-          }
-          textSearch={
-            expanded && transcriptSearch.query
-              ? {
-                  query: transcriptSearch.query,
-                  color: theme.inverseText,
-                  backgroundColor: theme.badgeBackground,
-                }
-              : undefined
-          }
-          ref={body}
-          onScroll={setBodyScroll}
-          initialFollow={savedChatScroll.current?.following ?? true}
-          initialTop={savedChatScroll.current?.top ?? 0}
-          initialAnchor={savedChatScroll.current?.anchor}
-          height={small && !preview ? 0 : undefined}
           flexGrow={small && !preview ? 0 : 1}
+          flexShrink={1}
+          height={small && !preview ? 0 : undefined}
         >
-          <Logo
-            locale={locale}
-            key="startup-logo"
-            model={state.model}
-            cwd={cwd}
-            thinking={thinking}
-            working={state.running}
-            suspended={!!preview || !!composerPreview}
-          />
-          <Box flexDirection="column" gap={1}>
-            {completed.map(
-              (entry, index) =>
-                entry && (
-                  <Box
-                    key={index}
-                    backgroundColor={
-                      selectedMessage ===
-                      (state.completed[index]?.type === "tool" && state.completed[index].id
-                        ? `tool-${state.completed[index].id}-header`
-                        : (state.completed[index]?.anchorId ?? `row-${index}`))
-                        ? theme.messageActionsBackground
-                        : undefined
-                    }
-                    scrollAnchorId={state.completed[index]?.anchorId ?? `row-${index}`}
-                    flexDirection="column"
-                  >
-                    {entry}
-                  </Box>
-                ),
-            )}
-            {state.reasoning && (
-              <Box
-                backgroundColor={
-                  selectedMessage === `${state.assistantAnchor}-thinking`
-                    ? theme.messageActionsBackground
-                    : undefined
-                }
-                scrollAnchorId={`${state.assistantAnchor}-thinking`}
-                flexDirection="column"
-              >
-                <ThinkingRow
-                  text={state.reasoning}
-                  durationMs={state.reasoningDurationMs}
-                  streaming={!state.reasoningSettled}
-                  preview={!state.reasoningSettled}
-                  revealKey={`${state.assistantAnchor}-thinking`}
-                  locale={locale}
-                  expanded={expanded || streamThinkingRows.has(`${state.assistantAnchor}-thinking`)}
-                  onToggle={() => toggleStreamThinking(`${state.assistantAnchor}-thinking`)}
-                />
-              </Box>
-            )}
-            {state.assistant && (
-              <Box
-                backgroundColor={
-                  selectedMessage === state.assistantAnchor
-                    ? theme.messageActionsBackground
-                    : undefined
-                }
-                scrollAnchorId={state.assistantAnchor}
-                flexDirection="column"
-              >
-                <AssistantMessage
-                  text={state.assistant}
-                  revealKey={state.assistantAnchor}
-                  streaming
-                />
-              </Box>
-            )}
-            {state.tools
-              .filter((tool) => showsToolCard(tool.name))
-              .map((tool) => (
+          <ScrollBox
+            ref={chatScrollRef}
+            stickyScroll={savedChatScroll.current?.following ?? true}
+            height={small && !preview ? 0 : undefined}
+            flexGrow={small && !preview ? 0 : 1}
+          >
+            <Logo
+              locale={locale}
+              key="startup-logo"
+              model={state.model}
+              cwd={cwd}
+              thinking={thinking}
+              working={state.running}
+              suspended={!!preview || !!composerPreview}
+            />
+            <Box flexShrink={0} flexDirection="column" gap={1}>
+              {completed.map(
+                (entry, index) =>
+                  entry && (
+                    <Box
+                      flexShrink={0}
+                      key={index}
+                      backgroundColor={
+                        selectedMessage ===
+                        (state.completed[index]?.type === "tool" && state.completed[index].id
+                          ? `tool-${state.completed[index].id}-header`
+                          : (state.completed[index]?.anchorId ?? `row-${index}`))
+                          ? theme.messageActionsBackground
+                          : undefined
+                      }
+                      ref={sources.ref(state.completed[index]?.anchorId ?? `row-${index}`)}
+                      flexDirection="column"
+                    >
+                      {entry}
+                    </Box>
+                  ),
+              )}
+              {state.reasoning && (
                 <Box
-                  key={tool.id}
+                  flexShrink={0}
                   backgroundColor={
-                    selectedMessage === `tool-${tool.id}-header`
+                    selectedMessage === `${state.assistantAnchor}-thinking`
                       ? theme.messageActionsBackground
                       : undefined
                   }
+                  ref={sources.ref(`${state.assistantAnchor}-thinking`)}
                   flexDirection="column"
                 >
-                  <ToolCall
-                    foldTerminalCommand={foldTerminalCommand}
-                    key={tool.id}
-                    onPathClick={openFileActions}
-                    expanded={expanded || expandedRows.has(tool.id)}
-                    onToggle={() => toggleRow(tool.id)}
-                    id={tool.id}
-                    searchLocation={
-                      currentMatch?.toolId === tool.id
-                        ? {
-                            part: currentMatch.part!,
-                            line: currentMatch.line,
-                            offset: currentMatch.offset,
-                          }
-                        : undefined
-                    }
-                    name={tool.name}
-                    args={tool.args}
-                    callView={tool.callView}
-                    startedAt={tool.startedAt}
+                  <ThinkingRow
+                    text={state.reasoning}
+                    durationMs={state.reasoningDurationMs}
+                    streaming={!state.reasoningSettled}
+                    preview={!state.reasoningSettled}
+                    revealKey={`${state.assistantAnchor}-thinking`}
                     locale={locale}
-                    summary={tool.summary}
-                    status="running"
+                    expanded={
+                      expanded || streamThinkingRows.has(`${state.assistantAnchor}-thinking`)
+                    }
+                    onToggle={() => toggleStreamThinking(`${state.assistantAnchor}-thinking`)}
                   />
                 </Box>
-              ))}
-            {state.error && <Notice kind="error" text={state.error} />}
-          </Box>
-        </ScrollBox>
-        {railVisible && bodyScroll && (
-          <TimelineRail
-            inputs={timelineInputs}
-            snapshot={bodyScroll}
-            enabled={navigationEnabled}
-            onSeek={seekInput}
+              )}
+              {state.assistant && (
+                <Box
+                  flexShrink={0}
+                  backgroundColor={
+                    selectedMessage === state.assistantAnchor
+                      ? theme.messageActionsBackground
+                      : undefined
+                  }
+                  ref={sources.ref(state.assistantAnchor)}
+                  flexDirection="column"
+                >
+                  <AssistantMessage
+                    text={state.assistant}
+                    revealKey={state.assistantAnchor}
+                    streaming
+                  />
+                </Box>
+              )}
+              {state.tools
+                .filter((tool) => showsToolCard(tool.name))
+                .map((tool) => (
+                  <Box
+                    flexShrink={0}
+                    key={tool.id}
+                    backgroundColor={
+                      selectedMessage === `tool-${tool.id}-header`
+                        ? theme.messageActionsBackground
+                        : undefined
+                    }
+                    flexDirection="column"
+                  >
+                    <ToolCall
+                      foldTerminalCommand={foldTerminalCommand}
+                      key={tool.id}
+                      onPathClick={openFileActions}
+                      expanded={expanded || expandedRows.has(tool.id)}
+                      onToggle={() => toggleRow(tool.id)}
+                      id={tool.id}
+                      searchLocation={
+                        currentMatch?.toolId === tool.id
+                          ? {
+                              part: currentMatch.part!,
+                              line: currentMatch.line,
+                              offset: currentMatch.offset,
+                            }
+                          : undefined
+                      }
+                      name={tool.name}
+                      args={tool.args}
+                      callView={tool.callView}
+                      startedAt={tool.startedAt}
+                      locale={locale}
+                      summary={tool.summary}
+                      status="running"
+                    />
+                  </Box>
+                ))}
+              {state.error && <Notice kind="error" text={state.error} />}
+            </Box>
+          </ScrollBox>
+          {railVisible && bodyScroll && (
+            <TimelineRail
+              inputs={timelineInputs}
+              snapshot={bodyScroll}
+              enabled={navigationEnabled}
+              onSeek={seekInput}
+            />
+          )}
+        </Box>
+        {composerPreview && (
+          <ImagePreview
+            key={`composer-${composerPreview.token}-${composerPreview.start}`}
+            passive
+            image={presentImage(composerPreview.image)}
+            index={composerPreview.index}
+            total={1}
+            width={columns}
+            height={bodyScroll?.height ?? Math.max(1, rows - promptHeight - footerHeight)}
+            locale={locale}
+          />
+        )}
+        {preview && (
+          <ImagePreview
+            key={preview.index}
+            image={presentImage(preview.images[preview.index]!)}
+            index={preview.index}
+            total={preview.images.length}
+            width={columns}
+            height={
+              small
+                ? Math.max(1, rows - 1)
+                : (bodyScroll?.height ?? Math.max(1, rows - promptHeight - footerHeight))
+            }
+            locale={locale}
+            onClose={() => showPreview(undefined)}
+            onStep={stepImage}
+            onOriginal={async (image) => {
+              try {
+                await imageViewer.open(image);
+              } catch (error) {
+                if (pasteOwner.current)
+                  notifyImage(t("image.open-error", { error: formatError(error, t) }), true);
+                throw error;
+              }
+            }}
+          />
+        )}
+        <Box flexDirection="column" flexShrink={0}>
+          {!small && state.jobNotice && (
+            <Notice kind={state.jobNotice.kind} text={state.jobNotice.text} truncate />
+          )}
+          {small ? (
+            <ThemedText wrap="truncate">{t("window.small")}</ThemedText>
+          ) : (
+            <>
+              {showReturnControl && (
+                <ScrollToBottom
+                  locale={locale}
+                  columns={columns}
+                  unread={unread}
+                  onClick={() => {
+                    if (!previewRef.current && !mcpPanel.getSnapshot()) returnToBottom();
+                  }}
+                  compact={compactReturn}
+                />
+              )}
+              {showActivity && (
+                <ActivityLine
+                  locale={locale}
+                  phase={
+                    (state.waitingSubagents > 0 && !approvalOpen) || activity.phase === "idle"
+                      ? "waiting"
+                      : activity.phase
+                  }
+                  warnPct={
+                    state.contextUsage && state.contextUsage.window > 0
+                      ? Math.round((state.contextUsage.used / state.contextUsage.window) * 100)
+                      : undefined
+                  }
+                  line={
+                    state.waitingSubagents > 0 && !approvalOpen
+                      ? t("subagent.waiting", { count: state.waitingSubagents })
+                      : activity.line
+                  }
+                  suffix={` · ↑ ${fmtTokens(state.activityInput)} · ↓ ${fmtTokens(state.output + Math.ceil(state.streamedChars / 4))} tokens`}
+                />
+              )}
+              <GoalTodoPanel
+                goal={state.goal}
+                todos={state.todos}
+                working={state.running}
+                collapsed={todosCollapsed}
+                onToggle={toggleTodos}
+                locale={locale}
+                maxHeight={todoMaxHeight}
+              />
+              <SubagentPanel
+                subagents={panelSubagents}
+                collapsed={subagentsCollapsed}
+                onToggle={() => {
+                  if (!previewRef.current && !mcpPanel.getSnapshot())
+                    setSubagentsCollapsed((collapsed) => !collapsed);
+                }}
+                onOpen={(id) => openDetail(id, "chat")}
+                locale={locale}
+                maxHeight={subagentMaxHeight}
+              />
+              {interactionPanel}
+              {rewind && (
+                <RewindPicker
+                  entries={rewind.entries}
+                  focus={rewind.focus}
+                  confirm={rewind.confirm}
+                  mode={rewind.mode}
+                  modes={rewindModes(rewind)}
+                  files={rewindFiles(rewind).map((file) => ({
+                    ...file,
+                    path: relative(checkpointCwd, file.path),
+                  }))}
+                  busy={rewind.busy}
+                  maxHeight={rewindMaxHeight}
+                  columns={columns}
+                  locale={locale}
+                  onFocus={(focus) => {
+                    const picker = rewindRef.current;
+                    if (picker && !picker.busy) showRewind({ ...picker, focus });
+                  }}
+                  onMode={(mode) => {
+                    const picker = rewindRef.current;
+                    if (picker && !picker.busy) void executeRewind({ ...picker, mode });
+                  }}
+                />
+              )}
+              {modelPicker !== undefined && (
+                <ModelPicker
+                  models={models}
+                  focus={modelPicker}
+                  current={session.model}
+                  maxHeight={modelPickerHeight}
+                  locale={locale}
+                  onPick={selectModel}
+                />
+              )}
+              {side && (
+                <SideQuestionPanel
+                  {...side}
+                  height={sideHeight}
+                  locale={locale}
+                  scrollRef={sideScroll}
+                />
+              )}
+              {resumePicker && (
+                <SessionPicker
+                  sessions={resumePicker.sessions}
+                  focus={resumePicker.focus}
+                  maxHeight={resumePickerHeight}
+                  locale={locale}
+                  onPick={(index) => {
+                    void resumeSession(index);
+                  }}
+                />
+              )}
+              {mcpVisible && mcp && (
+                <McpPanel
+                  page={mcp.page}
+                  selected={mcp.selected}
+                  focus={mcp.focus}
+                  result={mcp.result}
+                  busy={mcp.busy}
+                  columns={columns}
+                  maxHeight={mcpMaxHeight}
+                  locale={locale}
+                  interactive={!small && !interaction}
+                  scrollRef={mcpBody}
+                  initialTop={mcpPanel.top()}
+                  onScroll={(snapshot) => mcpPanel.scroll(snapshot.top)}
+                  onActivate={(key) => {
+                    if (mcpCanInteract()) mcpPanel.activate(key);
+                  }}
+                  onListWheel={(delta) => {
+                    if (mcpCanInteract()) mcpPanel.move(delta > 0 ? 1 : -1);
+                  }}
+                  onBodyFocus={() => {
+                    if (mcpCanInteract()) mcpPanel.focus(true);
+                  }}
+                  onBodyWheel={() => {
+                    if (mcpCanInteract()) {
+                      mcpPanel.focus(true);
+                    }
+                  }}
+                />
+              )}
+              {expanded && (
+                <Box flexShrink={0} flexDirection="column">
+                  <ThemedText color="accent">
+                    {transcriptSearch.editing
+                      ? t("transcript.search-input")
+                      : transcriptSearch.query
+                        ? searchMatches.length
+                          ? t("transcript.search-count", {
+                              index: (transcriptSearch.index % searchMatches.length) + 1,
+                              count: searchMatches.length,
+                              query: transcriptSearch.query,
+                            })
+                          : t("transcript.search-none", { query: transcriptSearch.query })
+                        : t("transcript.mode")}
+                  </ThemedText>
+                  {transcriptSearch.editing && (
+                    <TextInput
+                      isActive={!small && !interaction && !side && !preview && !fileActions && !mcp}
+                      value={transcriptSearch.draft}
+                      onChange={(draft) => updateSearch({ ...searchRef.current, draft })}
+                      onSubmit={(query) =>
+                        updateSearch({
+                          editing: false,
+                          draft: query,
+                          query: query.trim(),
+                          index: 0,
+                        })
+                      }
+                      filterInput={(event) =>
+                        !handledInput.current.has(event) || searchInputEvents.current.has(event)
+                      }
+                    />
+                  )}
+                </Box>
+              )}
+              <PromptInput
+                suggestions={
+                  !expanded &&
+                  !!commandMatches.length &&
+                  !mcp &&
+                  !preview &&
+                  !interaction &&
+                  !rewind &&
+                  !resumePicker &&
+                  modelPicker === undefined ? (
+                    <CommandSuggestions
+                      key={promptRevision}
+                      items={commandMatches}
+                      selected={commandSelection % commandMatches.length}
+                      maxHeight={commandMenuHeight}
+                      columns={columns}
+                      query={input}
+                      locale={locale}
+                      planMode={state.planMode}
+                      onPick={(index) => pickCommand(commandMatches[index]!, true)}
+                      onWheel={(event) => {
+                        handledInput.current.add(event);
+                        commandSelectionRef.current = Math.max(
+                          0,
+                          Math.min(
+                            commandMatches.length - 1,
+                            commandSelectionRef.current + (event.deltaY > 0 ? 1 : -1),
+                          ),
+                        );
+                        setCommandSelection(commandSelectionRef.current);
+                      }}
+                    />
+                  ) : undefined
+                }
+                notice={promptNotice}
+                warning={wrappedModelNotice}
+                tip={
+                  exitArmedAt !== undefined
+                    ? t("exit.again")
+                    : rewindArmedAt !== undefined
+                      ? t("rewind.again")
+                      : rewindEmpty
+                        ? t("rewind.empty")
+                        : clipboardImage && !promptReadOnly
+                          ? t("image.clipboard-tip")
+                          : undefined
+                }
+                initialCursorOffset={composerCursor}
+                inputRevision={promptRevision}
+                readOnly={promptReadOnly}
+                compact={compactPrompt}
+                maxLines={compactPrompt ? 1 : promptMaxLines}
+                columns={columns}
+                working={state.running}
+                planMode={state.planMode}
+                history={history}
+                onHistoryRecall={() => {
+                  if (mcpPanel.getSnapshot()) return;
+                  composer.clear();
+                  pasteEpoch.current++;
+                }}
+                filterInput={(event, insert) => {
+                  if (
+                    selectedMessageRef.current ||
+                    (!event.isPasted &&
+                      event.key.shift &&
+                      !event.key.ctrl &&
+                      !event.key.meta &&
+                      event.keypress.name === "up" &&
+                      !interactions.getSnapshot() &&
+                      !small)
+                  )
+                    return false;
+                  if (
+                    expandedRef.current &&
+                    !event.isPasted &&
+                    !event.key.ctrl &&
+                    !event.key.meta &&
+                    (event.input === "/" ||
+                      (searchRef.current.query && (event.input === "n" || event.input === "N")) ||
+                      event.keypress.name === "escape")
+                  )
+                    return false;
+                  if (searchRef.current.editing) return false;
+                  if (
+                    !interactions.getSnapshot() &&
+                    !small &&
+                    !event.isPasted &&
+                    !event.key.ctrl &&
+                    !event.key.meta &&
+                    !event.key.shift &&
+                    event.keypress.name === "end" &&
+                    body.current &&
+                    !captureSourcePosition(readPosition(body.current, columns)!, sources)!.following
+                  )
+                    return false;
+                  if (
+                    fileActionsRef.current ||
+                    mcpPanel.getSnapshot() ||
+                    previewRef.current ||
+                    handledInput.current.has(event)
+                  )
+                    return false;
+                  if (
+                    !event.isPasted &&
+                    !event.key.ctrl &&
+                    !event.key.meta &&
+                    !event.key.shift &&
+                    ["up", "down"].includes(event.keypress.name ?? "") &&
+                    history.isBrowsing() &&
+                    viewRef.current === "chat" &&
+                    modelPickerRef.current === undefined &&
+                    resumePickerRef.current === undefined &&
+                    !handledInput.current.has(event)
+                  ) {
+                    // History may restore a slash draft and end its walk during this key.
+                    // Let the editor consume it without navigating the newly opened menu.
+                    handledInput.current.add(event);
+                    return true;
+                  }
+                  if (
+                    !event.isPasted &&
+                    event.key.ctrl &&
+                    event.keypress.name === "v" &&
+                    viewRef.current === "chat" &&
+                    modelPickerRef.current === undefined &&
+                    resumePickerRef.current === undefined &&
+                    !handledInput.current.has(event)
+                  ) {
+                    pasteClipboard(insert);
+                    return false;
+                  }
+                  return (
+                    viewRef.current === "chat" &&
+                    modelPickerRef.current === undefined &&
+                    resumePickerRef.current === undefined &&
+                    !handledInput.current.has(event) &&
+                    !(
+                      !event.isPasted &&
+                      !event.key.ctrl &&
+                      !event.key.meta &&
+                      !event.key.shift &&
+                      (!interactions.getSnapshot() || !!sideController.current) &&
+                      matches(draft.current).length &&
+                      (["tab", "return"].includes(event.keypress.name ?? "") ||
+                        (!history.isBrowsing() &&
+                          ["up", "down"].includes(event.keypress.name ?? "")))
+                    )
+                  );
+                }}
+                onCursorChange={updateComposerCursor}
+                onAtomicRangeClick={
+                  !expanded && !small && !preview && !imagePreviewBlocked()
+                    ? (offset) => {
+                        if (previewRef.current || imagePreviewBlocked()) return;
+                        const selected = composer.atCursor(draft.current, offset);
+                        if (!selected) return;
+                        const images = composer.ordered(draft.current);
+                        updateComposerCursor(offset);
+                        // Closing this modal must not immediately reveal the caret card underneath.
+                        dismissedComposerImage.current = selected;
+                        setComposerDismissed(true);
+                        showPreview({
+                          images,
+                          index: images.indexOf(selected.image),
+                          composer: true,
+                        });
+                      }
+                    : undefined
+                }
+                highlightRanges={composer.ranges(input).map((range) => ({
+                  ...range,
+                  color: theme.suggestion,
+                  inverse: preview?.composer
+                    ? composer.atCursor(input, range.start)?.image === preview.images[preview.index]
+                    : !!composerPreview && range.start === composerCursor,
+                }))}
+                atomicRanges={composer.ranges(input)}
+                onPaste={(text, insert) => {
+                  if (fileActionsRef.current || mcpPanel.getSnapshot() || previewRef.current)
+                    return;
+                  const epoch = pasteEpoch.current;
+                  const path = pastedImagePath(text, homeDir ?? "");
+                  if (!path) {
+                    insert(text);
+                    return;
+                  }
+                  void stageImage(path, insert, epoch).catch((error: unknown) => {
+                    if (!pasteOwner.current || epoch !== pasteEpoch.current) return;
+                    if (
+                      error instanceof ImageValidationError &&
+                      ["image-too-large", "image-dimensions"].includes(error.code)
+                    )
+                      notifyImage(t("image.paste-error", { error: formatError(error, t) }), true);
+                    else insert(text);
+                  });
+                }}
+                value={input}
+                getValue={() => draft.current}
+                onChange={(value, edit) => {
+                  const pending = sideController.current ? undefined : interactions.getSnapshot();
+                  if (
+                    fileActionsRef.current ||
+                    mcpPanel.getSnapshot() ||
+                    viewRef.current !== "chat" ||
+                    rewindRef.current ||
+                    previewRef.current
+                  )
+                    return;
+                  if (!pending || (pending.kind === "question" && pending.collapsed))
+                    change(value, edit);
+                }}
+                onSubmit={(prompt) => {
+                  const pending = sideController.current ? undefined : interactions.getSnapshot();
+                  if (
+                    fileActionsRef.current ||
+                    mcpPanel.getSnapshot() ||
+                    viewRef.current !== "chat" ||
+                    rewindRef.current ||
+                    previewRef.current
+                  )
+                    return;
+                  if (pending && (pending.kind !== "question" || !pending.collapsed)) return;
+                  sendInput(prompt);
+                }}
+              />
+              <StatusLine
+                jobs={Object.values(state.jobs)}
+                showContextBar={showContextBar}
+                goal={state.goal}
+                locale={locale}
+                columns={columns}
+                mode={mode}
+                planMode={state.planMode}
+                model={state.model.slice(state.model.indexOf("/") + 1)}
+                provider={state.model.split("/")[0]!}
+                contextUsage={state.contextUsage}
+                thinking={thinking}
+                tps={speed.value}
+                tpsSamples={state.tpsSamples}
+                now={currentTime}
+                usage={state.usage}
+                gitBranch={state.activity.gitBranch}
+                cwd={cwd}
+                working={state.running}
+              />
+            </>
+          )}
+        </Box>
+        {fileActions && (
+          <FileActionsPanel
+            {...fileActions}
+            columns={columns}
+            rows={rows}
+            locale={locale}
+            onPick={(index) => void pickFileAction(index)}
           />
         )}
       </Box>
-      {composerPreview && (
-        <ImagePreview
-          key={`composer-${composerPreview.token}-${composerPreview.start}`}
-          passive
-          image={presentImage(composerPreview.image)}
-          index={composerPreview.index}
-          total={1}
-          width={columns}
-          height={bodyScroll?.height ?? Math.max(1, rows - promptHeight - footerHeight)}
-          locale={locale}
-        />
-      )}
-      {preview && (
-        <ImagePreview
-          key={preview.index}
-          image={presentImage(preview.images[preview.index]!)}
-          index={preview.index}
-          total={preview.images.length}
-          width={columns}
-          height={
-            small
-              ? Math.max(1, rows - 1)
-              : (bodyScroll?.height ?? Math.max(1, rows - promptHeight - footerHeight))
-          }
-          locale={locale}
-          onClose={() => showPreview(undefined)}
-          onStep={stepImage}
-          onOriginal={async (image) => {
-            try {
-              await imageViewer.open(image);
-            } catch (error) {
-              if (pasteOwner.current)
-                notifyImage(t("image.open-error", { error: formatError(error, t) }), true);
-              throw error;
-            }
-          }}
-        />
-      )}
-      <Box flexDirection="column" flexShrink={0}>
-        {!small && state.jobNotice && (
-          <Notice kind={state.jobNotice.kind} text={state.jobNotice.text} truncate />
-        )}
-        {small ? (
-          <ThemedText wrap="truncate">{t("window.small")}</ThemedText>
-        ) : (
-          <>
-            {showReturnControl && (
-              <ScrollToBottom
-                locale={locale}
-                columns={columns}
-                unread={unread}
-                onClick={() => {
-                  if (!previewRef.current && !mcpPanel.getSnapshot()) returnToBottom();
-                }}
-                compact={compactReturn}
-              />
-            )}
-            {showActivity && (
-              <ActivityLine
-                locale={locale}
-                phase={
-                  (state.waitingSubagents > 0 && !approvalOpen) || activity.phase === "idle"
-                    ? "waiting"
-                    : activity.phase
-                }
-                warnPct={
-                  state.contextUsage && state.contextUsage.window > 0
-                    ? Math.round((state.contextUsage.used / state.contextUsage.window) * 100)
-                    : undefined
-                }
-                line={
-                  state.waitingSubagents > 0 && !approvalOpen
-                    ? t("subagent.waiting", { count: state.waitingSubagents })
-                    : activity.line
-                }
-                suffix={` · ↑ ${fmtTokens(state.activityInput)} · ↓ ${fmtTokens(state.output + Math.ceil(state.streamedChars / 4))} tokens`}
-              />
-            )}
-            <GoalTodoPanel
-              goal={state.goal}
-              todos={state.todos}
-              working={state.running}
-              collapsed={todosCollapsed}
-              onToggle={toggleTodos}
-              locale={locale}
-              maxHeight={todoMaxHeight}
-            />
-            <SubagentPanel
-              subagents={panelSubagents}
-              collapsed={subagentsCollapsed}
-              onToggle={() => {
-                if (!previewRef.current && !mcpPanel.getSnapshot())
-                  setSubagentsCollapsed((collapsed) => !collapsed);
-              }}
-              onOpen={(id) => openDetail(id, "chat")}
-              locale={locale}
-              maxHeight={subagentMaxHeight}
-            />
-            {interactionPanel}
-            {rewind && (
-              <RewindPicker
-                entries={rewind.entries}
-                focus={rewind.focus}
-                confirm={rewind.confirm}
-                mode={rewind.mode}
-                modes={rewindModes(rewind)}
-                files={rewindFiles(rewind).map((file) => ({
-                  ...file,
-                  path: relative(checkpointCwd, file.path),
-                }))}
-                busy={rewind.busy}
-                maxHeight={rewindMaxHeight}
-                columns={columns}
-                locale={locale}
-                onFocus={(focus) => {
-                  const picker = rewindRef.current;
-                  if (picker && !picker.busy) showRewind({ ...picker, focus });
-                }}
-                onMode={(mode) => {
-                  const picker = rewindRef.current;
-                  if (picker && !picker.busy) void executeRewind({ ...picker, mode });
-                }}
-              />
-            )}
-            {modelPicker !== undefined && (
-              <ModelPicker
-                models={models}
-                focus={modelPicker}
-                current={session.model}
-                maxHeight={modelPickerHeight}
-                locale={locale}
-                onPick={selectModel}
-              />
-            )}
-            {side && (
-              <SideQuestionPanel
-                {...side}
-                height={sideHeight}
-                locale={locale}
-                scrollRef={sideScroll}
-              />
-            )}
-            {resumePicker && (
-              <SessionPicker
-                sessions={resumePicker.sessions}
-                focus={resumePicker.focus}
-                maxHeight={resumePickerHeight}
-                locale={locale}
-                onPick={(index) => {
-                  void resumeSession(index);
-                }}
-              />
-            )}
-            {mcpVisible && mcp && (
-              <McpPanel
-                page={mcp.page}
-                selected={mcp.selected}
-                focus={mcp.focus}
-                result={mcp.result}
-                busy={mcp.busy}
-                columns={columns}
-                maxHeight={mcpMaxHeight}
-                locale={locale}
-                interactive={!small && !interaction}
-                scrollRef={mcpBody}
-                initialTop={mcpPanel.top()}
-                onScroll={(snapshot) => mcpPanel.scroll(snapshot.top)}
-                onActivate={(key) => {
-                  if (mcpCanInteract()) mcpPanel.activate(key);
-                }}
-                onListWheel={(delta) => {
-                  if (mcpCanInteract()) mcpPanel.move(delta > 0 ? 1 : -1);
-                }}
-                onBodyFocus={() => {
-                  if (mcpCanInteract()) mcpPanel.focus(true);
-                }}
-                onBodyWheel={(delta) => {
-                  if (mcpCanInteract()) {
-                    mcpPanel.focus(true);
-                    mcpBody.current?.scrollBy(delta * 3);
-                  }
-                }}
-              />
-            )}
-            {expanded && (
-              <Box flexDirection="column">
-                <ThemedText color="accent">
-                  {transcriptSearch.editing
-                    ? t("transcript.search-input")
-                    : transcriptSearch.query
-                      ? searchMatches.length
-                        ? t("transcript.search-count", {
-                            index: (transcriptSearch.index % searchMatches.length) + 1,
-                            count: searchMatches.length,
-                            query: transcriptSearch.query,
-                          })
-                        : t("transcript.search-none", { query: transcriptSearch.query })
-                      : t("transcript.mode")}
-                </ThemedText>
-                {transcriptSearch.editing && (
-                  <TextInput
-                    isActive={!small && !interaction && !side && !preview && !fileActions && !mcp}
-                    value={transcriptSearch.draft}
-                    onChange={(draft) => updateSearch({ ...searchRef.current, draft })}
-                    onSubmit={(query) =>
-                      updateSearch({ editing: false, draft: query, query: query.trim(), index: 0 })
-                    }
-                    filterInput={(event) =>
-                      !handledInput.current.has(event) || searchInputEvents.current.has(event)
-                    }
-                  />
-                )}
-              </Box>
-            )}
-            <PromptInput
-              suggestions={
-                !expanded &&
-                !!commandMatches.length &&
-                !mcp &&
-                !preview &&
-                !interaction &&
-                !rewind &&
-                !resumePicker &&
-                modelPicker === undefined ? (
-                  <CommandSuggestions
-                    key={promptRevision}
-                    items={commandMatches}
-                    selected={commandSelection % commandMatches.length}
-                    maxHeight={commandMenuHeight}
-                    columns={columns}
-                    query={input}
-                    locale={locale}
-                    planMode={state.planMode}
-                    onPick={(index) => pickCommand(commandMatches[index]!, true)}
-                    onWheel={(event) => {
-                      handledInput.current.add(event);
-                      commandSelectionRef.current = Math.max(
-                        0,
-                        Math.min(
-                          commandMatches.length - 1,
-                          commandSelectionRef.current + (event.delta > 0 ? 1 : -1),
-                        ),
-                      );
-                      setCommandSelection(commandSelectionRef.current);
-                    }}
-                  />
-                ) : undefined
-              }
-              notice={promptNotice}
-              warning={wrappedModelNotice}
-              tip={
-                exitArmedAt !== undefined
-                  ? t("exit.again")
-                  : rewindArmedAt !== undefined
-                    ? t("rewind.again")
-                    : rewindEmpty
-                      ? t("rewind.empty")
-                      : clipboardImage && !promptReadOnly
-                        ? t("image.clipboard-tip")
-                        : undefined
-              }
-              initialCursorOffset={composerCursor}
-              inputRevision={promptRevision}
-              readOnly={promptReadOnly}
-              compact={compactPrompt}
-              maxLines={compactPrompt ? 1 : promptMaxLines}
-              columns={columns}
-              working={state.running}
-              planMode={state.planMode}
-              history={history}
-              onHistoryRecall={() => {
-                if (mcpPanel.getSnapshot()) return;
-                composer.clear();
-                pasteEpoch.current++;
-              }}
-              filterInput={(event, insert) => {
-                if (
-                  selectedMessageRef.current ||
-                  (event.type === "key" &&
-                    event.key.shift &&
-                    !event.key.ctrl &&
-                    !event.key.alt &&
-                    event.key.name === "up" &&
-                    !interactions.getSnapshot() &&
-                    !small)
-                )
-                  return false;
-                if (
-                  expandedRef.current &&
-                  event.type === "key" &&
-                  !event.key.ctrl &&
-                  !event.key.alt &&
-                  (event.input === "/" ||
-                    (searchRef.current.query && (event.input === "n" || event.input === "N")) ||
-                    event.key.name === "escape")
-                )
-                  return false;
-                if (searchRef.current.editing) return false;
-                if (
-                  !interactions.getSnapshot() &&
-                  !small &&
-                  event.type === "key" &&
-                  !event.key.ctrl &&
-                  !event.key.alt &&
-                  !event.key.shift &&
-                  event.key.name === "end" &&
-                  body.current &&
-                  !body.current.getSnapshot().following
-                )
-                  return false;
-                if (
-                  fileActionsRef.current ||
-                  mcpPanel.getSnapshot() ||
-                  previewRef.current ||
-                  handledInput.current.has(event)
-                )
-                  return false;
-                if (
-                  event.type === "key" &&
-                  !event.key.ctrl &&
-                  !event.key.alt &&
-                  !event.key.shift &&
-                  ["up", "down"].includes(event.key.name) &&
-                  history.isBrowsing() &&
-                  viewRef.current === "chat" &&
-                  modelPickerRef.current === undefined &&
-                  resumePickerRef.current === undefined &&
-                  !handledInput.current.has(event)
-                ) {
-                  // History may restore a slash draft and end its walk during this key.
-                  // Let the editor consume it without navigating the newly opened menu.
-                  handledInput.current.add(event);
-                  return true;
-                }
-                if (
-                  event.type === "key" &&
-                  event.key.ctrl &&
-                  event.key.name === "v" &&
-                  viewRef.current === "chat" &&
-                  modelPickerRef.current === undefined &&
-                  resumePickerRef.current === undefined &&
-                  !handledInput.current.has(event)
-                ) {
-                  pasteClipboard(insert);
-                  return false;
-                }
-                return (
-                  viewRef.current === "chat" &&
-                  modelPickerRef.current === undefined &&
-                  resumePickerRef.current === undefined &&
-                  !handledInput.current.has(event) &&
-                  !(
-                    event.type === "key" &&
-                    !event.key.ctrl &&
-                    !event.key.alt &&
-                    !event.key.shift &&
-                    (!interactions.getSnapshot() || !!sideController.current) &&
-                    matches(draft.current).length &&
-                    (["tab", "enter"].includes(event.key.name) ||
-                      (!history.isBrowsing() && ["up", "down"].includes(event.key.name)))
-                  )
-                );
-              }}
-              onCursorChange={updateComposerCursor}
-              onAtomicRangeClick={
-                !expanded && !small && !preview && !imagePreviewBlocked()
-                  ? (offset) => {
-                      if (previewRef.current || imagePreviewBlocked()) return;
-                      const selected = composer.atCursor(draft.current, offset);
-                      if (!selected) return;
-                      const images = composer.ordered(draft.current);
-                      updateComposerCursor(offset);
-                      // Closing this modal must not immediately reveal the caret card underneath.
-                      dismissedComposerImage.current = selected;
-                      setComposerDismissed(true);
-                      showPreview({
-                        images,
-                        index: images.indexOf(selected.image),
-                        composer: true,
-                      });
-                    }
-                  : undefined
-              }
-              highlightRanges={composer.ranges(input).map((range) => ({
-                ...range,
-                color: theme.suggestion,
-                inverse: preview?.composer
-                  ? composer.atCursor(input, range.start)?.image === preview.images[preview.index]
-                  : !!composerPreview && range.start === composerCursor,
-              }))}
-              atomicRanges={composer.ranges(input)}
-              onPaste={(text, insert) => {
-                if (fileActionsRef.current || mcpPanel.getSnapshot() || previewRef.current) return;
-                const epoch = pasteEpoch.current;
-                const path = pastedImagePath(text, homeDir ?? "");
-                if (!path) {
-                  insert(text);
-                  return;
-                }
-                void stageImage(path, insert, epoch).catch((error: unknown) => {
-                  if (!pasteOwner.current || epoch !== pasteEpoch.current) return;
-                  if (
-                    error instanceof ImageValidationError &&
-                    ["image-too-large", "image-dimensions"].includes(error.code)
-                  )
-                    notifyImage(t("image.paste-error", { error: formatError(error, t) }), true);
-                  else insert(text);
-                });
-              }}
-              value={input}
-              onChange={(value, edit) => {
-                const pending = sideController.current ? undefined : interactions.getSnapshot();
-                if (
-                  fileActionsRef.current ||
-                  mcpPanel.getSnapshot() ||
-                  viewRef.current !== "chat" ||
-                  rewindRef.current ||
-                  previewRef.current
-                )
-                  return;
-                if (!pending || (pending.kind === "question" && pending.collapsed))
-                  change(value, edit);
-              }}
-              onSubmit={(prompt) => {
-                const pending = sideController.current ? undefined : interactions.getSnapshot();
-                if (
-                  fileActionsRef.current ||
-                  mcpPanel.getSnapshot() ||
-                  viewRef.current !== "chat" ||
-                  rewindRef.current ||
-                  previewRef.current
-                )
-                  return;
-                if (pending && (pending.kind !== "question" || !pending.collapsed)) return;
-                sendInput(prompt);
-              }}
-            />
-            <StatusLine
-              jobs={Object.values(state.jobs)}
-              showContextBar={showContextBar}
-              goal={state.goal}
-              locale={locale}
-              columns={columns}
-              mode={mode}
-              planMode={state.planMode}
-              model={state.model.slice(state.model.indexOf("/") + 1)}
-              provider={state.model.split("/")[0]!}
-              contextUsage={state.contextUsage}
-              thinking={thinking}
-              tps={speed.value}
-              tpsSamples={state.tpsSamples}
-              now={currentTime}
-              usage={state.usage}
-              gitBranch={state.activity.gitBranch}
-              cwd={cwd}
-              working={state.running}
-            />
-          </>
-        )}
-      </Box>
-      {fileActions && (
-        <FileActionsPanel
-          {...fileActions}
-          columns={columns}
-          rows={rows}
-          locale={locale}
-          onPick={(index) => void pickFileAction(index)}
-        />
-      )}
-    </Box>
+    </SourceContext.Provider>
   );
 }

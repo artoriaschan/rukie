@@ -1,5 +1,6 @@
+import { testClock } from "../helpers/test-clock";
 import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
-import { expect, test, jest } from "bun:test";
+import { expect, test } from "bun:test";
 import { startWithClock as start } from "../helpers/clock-app";
 
 test("a delegated Subagent renders only its dedicated running row", async () => {
@@ -464,7 +465,7 @@ test("fork, agent listing and failed messaging use dedicated rows live and after
       rows: 50,
       env: { LANG: "en_US.UTF-8" },
       session: { cwd: root, homeDir: root },
-      advanceTimers: (ms) => jest.advanceTimersByTime(ms),
+      advanceTimers: (ms) => testClock.advanceTimersByTime(ms),
     });
     try {
       await replay.waitFor(() => replay.screen().includes("❯"));

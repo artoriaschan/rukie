@@ -1,4 +1,5 @@
-import { expect, jest, test } from "bun:test";
+import { testClock } from "../helpers/test-clock";
+import { expect, test } from "bun:test";
 import { startWithClock } from "../helpers/clock-app";
 import { start } from "../helpers/app";
 import { controlledModel } from "../helpers/model";
@@ -179,7 +180,7 @@ test.each(["future", "past"] as const)(
           columns: 100,
           rows: 40,
           env: { LANG: "en" },
-          advanceTimers: (ms) => jest.advanceTimersByTime(ms),
+          advanceTimers: (ms) => testClock.advanceTimersByTime(ms),
           session: { cwd: app.root, homeDir: app.root },
         });
         try {

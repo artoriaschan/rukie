@@ -1,11 +1,12 @@
 #!/usr/bin/env bun
+import { Writable } from "node:stream";
 import { homedir } from "node:os";
 import { loadSettings } from "@rukie/agent";
 import { resolveLocale } from "@rukie/i18n";
 import type { PermissionMode, ThinkingLevel } from "@rukie/shared";
 import type { CliOptions } from "../cli";
 import type { TuiIo } from "../io";
-import { render, ThemeProvider, TooltipProvider } from "../ink/index.ts";
+import { renderSync, AlternateScreen, ThemeProvider, TooltipProvider } from "../ink/index.ts";
 import { createDefaultHost } from "./host";
 import { createChat } from "./screens/chat";
 import { createTuiI18n, formatError } from "../view/i18n";
@@ -18,7 +19,7 @@ export async function runTui(options: CliOptions, io: TuiIo): Promise<number> {
   const environmentLocale = resolveLocale([env.LC_ALL, env.LC_MESSAGES, env.LANG]);
   const argvT = createTuiI18n(environmentLocale);
   let t = argvT;
-  let app: ReturnType<typeof render> | undefined;
+  let app: ReturnType<typeof renderSync> | undefined;
   let chat: Awaited<ReturnType<typeof createChat>> | undefined;
   const defaultHost = io.host
     ? undefined
@@ -85,13 +86,27 @@ export async function runTui(options: CliOptions, io: TuiIo): Promise<number> {
       locale,
       (title) => io.stdout.write(`\x1b]0;${title}\x07`),
     );
-    app = render(
-      <ThemeProvider>
-        <TooltipProvider>
-          <chat.Chat onExit={() => app?.unmount()} />
-        </TooltipProvider>
-      </ThemeProvider>,
-      { ...io, fullscreen: true },
+    app = renderSync(
+      <AlternateScreen>
+        <ThemeProvider>
+          <TooltipProvider>
+            <chat.Chat onExit={() => app?.unmount()} />
+          </TooltipProvider>
+        </ThemeProvider>
+      </AlternateScreen>,
+      {
+        stdin: io.stdin,
+        stdout: io.stdout,
+        stderr: new Writable({
+          write(chunk, _encoding, callback) {
+            io.stderr(chunk.toString());
+            callback();
+          },
+        }) as NodeJS.WriteStream,
+        exitOnCtrlC: false,
+        selectionIncludeNoSelectCells: false,
+        patchConsole: false,
+      },
     );
     if (closing) app.unmount();
     else if (prompt !== undefined) chat.submitInitial(prompt);
@@ -103,6 +118,7 @@ export async function runTui(options: CliOptions, io: TuiIo): Promise<number> {
     return 1;
   } finally {
     app?.unmount();
+    app?.cleanup();
     try {
       await chat?.stop();
     } finally {

@@ -1,6 +1,8 @@
-import { expect, jest, test } from "bun:test";
+import { renderComponent } from "../../helpers/render-component";
+import { testClock } from "../../helpers/test-clock";
+import { expect, test } from "bun:test";
 import { useLayoutEffect, useState } from "react";
-import { Box, Text, ThemeProvider, dark, light, render } from "../../../../src/ink/index.ts";
+import { Box, Text, ThemeProvider, dark, light } from "../../../../src/ink/index.ts";
 import { PromptInput } from "../../../../src/tui/components/prompt-input/prompt-input";
 import { createTerminal } from "../../helpers/terminal";
 
@@ -24,7 +26,7 @@ test("the prompt matches dsh's rounded edges, gap, themed text and working prefi
       />
     );
   }
-  const app = render(
+  const app = renderComponent(
     <ThemeProvider theme={{ ...dark, text: "#112233", promptBorder: "#445566" }}>
       <View />
     </ThemeProvider>,
@@ -64,7 +66,7 @@ test.each([
   [light, 0x7856a8],
 ] as const)("Plan Mode uses the palette's plan border color", async (theme, expected) => {
   const terminal = createTerminal(40, 12);
-  const app = render(
+  const app = renderComponent(
     <ThemeProvider theme={theme}>
       <PromptInput
         columns={40}
@@ -113,7 +115,7 @@ test.each([false, true])(
         </Box>
       );
     }
-    const app = render(<View />, terminal);
+    const app = renderComponent(<View />, terminal);
     try {
       await terminal.flush();
       const row = compact ? 0 : 1;
@@ -137,8 +139,8 @@ test.each([false, true])(
 );
 
 test("replacing a tip starts a fresh lifetime without an old timeout hiding it or moving the editor", async () => {
-  jest.useFakeTimers();
-  const terminal = createTerminal(40, 12, (ms) => jest.advanceTimersByTime(ms));
+  testClock.useFakeTimers();
+  const terminal = createTerminal(40, 12, (ms) => testClock.advanceTimersByTime(ms));
   let replace = (_tip?: string) => {};
   let notify = (_notice?: { text: string; warning: boolean }) => {};
   function View() {
@@ -164,7 +166,7 @@ test("replacing a tip starts a fresh lifetime without an old timeout hiding it o
       </Box>
     );
   }
-  const app = render(<View />, terminal);
+  const app = renderComponent(<View />, terminal);
   try {
     await terminal.waitFor(() => terminal.screen()[0]!.includes("First tip"));
     const shownAt = performance.now();
@@ -191,6 +193,6 @@ test("replacing a tip starts a fresh lifetime without an old timeout hiding it o
     app.unmount();
     await app.waitUntilExit();
     terminal.dispose();
-    jest.useRealTimers();
+    testClock.useRealTimers();
   }
 }, 15000);

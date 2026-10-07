@@ -1,5 +1,6 @@
+import { renderComponent } from "../../helpers/render-component";
 import { expect, test } from "bun:test";
-import { dark, render, ThemeProvider } from "../../../../src/ink/index.ts";
+import { dark, ThemeProvider } from "../../../../src/ink/index.ts";
 import { ActivityLine } from "../../../../src/tui/components/activity-line";
 import { createTerminal } from "../../helpers/terminal";
 
@@ -10,7 +11,7 @@ for (const [warnPct, color] of [
 ] as const) {
   test(`activity context pressure at ${warnPct}% uses the threshold color`, async () => {
     const terminal = createTerminal(80, 3);
-    const app = render(
+    const app = renderComponent(
       <ThemeProvider>
         <ActivityLine phase="thinking" line="脑子在冒烟" suffix=" · tokens" warnPct={warnPct} />
       </ThemeProvider>,
@@ -36,7 +37,7 @@ for (const [warnPct, color] of [
 
 test("activity paints a moon, bold text and subtle suffix on one truncated line", async () => {
   const terminal = createTerminal(22, 3);
-  const app = render(
+  const app = renderComponent(
     <ThemeProvider>
       <ActivityLine phase="thinking" line="脑子在冒烟" suffix=" · ↑ 8 · ↓ 4 tokens" />
     </ThemeProvider>,
@@ -61,7 +62,7 @@ test("activity paints a moon, bold text and subtle suffix on one truncated line"
 
 test("done paints accent text without a moon or animation", async () => {
   const terminal = createTerminal(80, 3);
-  const app = render(
+  const app = renderComponent(
     <ThemeProvider>
       <ActivityLine phase="done" line="齐活 · 1 工具" suffix=" · ↑ 11 · ↓ 5 tokens" />
     </ThemeProvider>,

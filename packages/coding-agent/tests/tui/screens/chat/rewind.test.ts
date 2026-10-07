@@ -1,6 +1,7 @@
+import { testClock } from "../../helpers/test-clock";
 import { startWithClock } from "../../helpers/clock-app";
 import { withAuxiliaryRequests } from "../../helpers/auxiliary-model.ts";
-import { expect, jest, spyOn, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { createSession } from "@rukie/agent";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { join } from "node:path";
@@ -962,7 +963,7 @@ test("armed rewind tip expires without leaving a transcript entry", async () => 
   try {
     app.stdin.write(esc);
     await app.waitFor(() => text(app).includes("Press Esc again to rewind"));
-    jest.advanceTimersByTime(3050);
+    testClock.advanceTimersByTime(3050);
     await app.waitFor(() => !text(app).includes("Press Esc again to rewind"));
     expect(app.allLines().join("\n")).not.toContain("Press Esc again to rewind");
     app.stdin.write(esc);

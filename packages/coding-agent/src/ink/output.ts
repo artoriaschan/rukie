@@ -243,6 +243,7 @@ type WriteOperation = {
    * replaced whatever was there — see the write case in `get()`.
    */
   softWrap?: boolean[]
+  preserveSoftWrap?: boolean
 }
 
 type ClipOperation = {
@@ -1013,7 +1014,7 @@ export default class Output {
    * @param softWrap - per-line soft-wrap flags parallel to text.split('\n').
    * @param lines - optional pre-split physical lines, exactly text.split('\n').
    */
-  write(x: number, y: number, text: string, softWrap?: boolean[], lines?: readonly string[]): void {
+  write(x: number, y: number, text: string, softWrap?: boolean[], lines?: readonly string[], preserveSoftWrap = false): void {
     if (!text) {
       return
     }
@@ -1025,6 +1026,7 @@ export default class Output {
       text,
       softWrap,
       lines,
+      preserveSoftWrap,
     })
   }
 
@@ -1298,7 +1300,7 @@ export default class Output {
               const isSW = softWrap[swFrom + offsetY] === true
               swBits[lineY] = isSW ? prevContentEnd : 0
               prevContentEnd = contentEnd
-            } else {
+            } else if (!operation.preserveSoftWrap) {
               // Paint order: a producer that doesn't track wrapping (fills,
               // raw-ansi, overlays) still replaces the row it paints, so a
               // continuation marker an earlier softWrapRow set for this row

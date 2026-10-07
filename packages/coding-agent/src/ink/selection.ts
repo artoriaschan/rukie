@@ -1068,6 +1068,21 @@ export function shiftSelectionForViewportResize(
     return
   }
   if (oldTop > oldBottom) return
+  // A simultaneous origin move and size change first resizes in the old
+  // coordinate plane, capturing covered source rows before chrome replaces
+  // them, then translates both text endpoints into the new plane.
+  const originDelta = newTop - oldTop
+  if (originDelta !== 0) {
+    shiftSelectionForViewportResize(s, screen, oldTop, oldBottom, oldTop, newBottom - originDelta)
+    if (!s.anchor) return
+    if (s.focus) shiftSelection(s, originDelta, newTop, newBottom, screen.width)
+    else {
+      const raw = (s.virtualAnchorRow ?? s.anchor.row) + originDelta
+      s.anchor = { col: s.anchor.col, row: clamp(raw, newTop, newBottom) }
+      s.virtualAnchorRow = raw < newTop || raw > newBottom ? raw : undefined
+    }
+    return
+  }
   // Re-widening edges (chrome unmounted): rows the chrome previously
   // covered return to the viewport. shiftSelection measures debt against
   // the NEW bounds only — correct for keyboard scroll, whose bounds stay
@@ -1204,13 +1219,27 @@ export function isCellSelected(
  *  clamp to that content-end column and skip the trailing trim so the
  *  word-separator space survives the join. See Screen.softWrap for why the
  *  clamp is necessary. */
+/** Expand a selected row interval to complete wide-cell owners, inside its selection fence. */
+function atomicRowRange(screen: Screen, row: number, start: number, end: number, fence?: SelectionState['fence']): [number, number] {
+  const minimum = Math.max(0, fence?.colStart ?? 0)
+  const maximum = Math.min(screen.width - 1, fence?.colEnd ?? screen.width - 1)
+  start = Math.max(minimum, start)
+  end = Math.min(maximum, end)
+  if (row < 0 || row >= screen.height || start > end) return [start, end]
+  if (start > minimum && cellAt(screen, start, row)?.width === CellWidth.SpacerTail) start--
+  if (end < maximum && cellAt(screen, end, row)?.width === CellWidth.Wide) end++
+  return [start, end]
+}
+
 function extractRowText(
   screen: Screen,
   row: number,
   colStart: number,
   colEnd: number,
   includeNoSelect = false,
+  fence?: SelectionState['fence'],
 ): SelectionRow {
+  [colStart, colEnd] = atomicRowRange(screen, row, colStart, colEnd, fence)
   const noSelect = screen.noSelect
   const copyRegion = screen.copyRegion
   const rowOff = row * screen.width
@@ -1394,10 +1423,15 @@ export function refreshSelectionFingerprint(
   // the next copy legitimately reads the new band's CURRENT text. Only a
   // stationary highlight can go stale.
   const geometry = `${b.start.row}:${b.start.col}-${b.end.row}:${b.end.col}`
+  const previous = s.coveredGeometry?.match(/^(\d+):(\d+)-(\d+):(\d+)$/)
+  const translatedRange = coordinated && previous !== undefined && previous !== null &&
+    Number(previous[2]) === b.start.col && Number(previous[4]) === b.end.col &&
+    Number(previous[3]) - Number(previous[1]) === b.end.row - b.start.row
   if (geometry !== s.coveredGeometry) {
     s.coveredGeometry = geometry
-    s.coveredFingerprint = null
-    s.coveredText = null
+    // Translation preserves highlighted source bytes. User motion or an
+    // expanding wheel range defines a new selection and may re-baseline.
+    if (!translatedRange) { s.coveredFingerprint = null; s.coveredText = null }
   }
   const { cells, noSelect, width, height, charPool, softWrap } = screen
   const copyRegion = screen.copyRegion
@@ -1421,6 +1455,7 @@ export function refreshSelectionFingerprint(
       colEnd = Math.min(colEnd, s.fence.colEnd)
       if (colStart > colEnd) continue
     }
+    [colStart, colEnd] = atomicRowRange(screen, row, colStart, colEnd, s.fence)
     for (let col = colStart; col <= colEnd; col++) {
       const ci = (rowOff + col) * 2
       // word1's low 2 bits are the cell width; SpacerTail/SpacerHead carry
@@ -1507,7 +1542,7 @@ export function refreshSelectionFingerprint(
   }
   s.coveredFingerprint = h
   s.coveredText = text
-  if (coordinated) return false
+  if (coordinated && !translatedRange) return false
   s.stale = true
   return true
 }
@@ -1548,7 +1583,12 @@ export function getSelectedText(s: SelectionState, screen: Screen): string {
       rowEnd = Math.min(rowEnd, s.fence.colEnd)
       if (rowStart > rowEnd) continue
     }
-    rows.push(extractRowText(screen, row, rowStart, rowEnd, s.includeNoSelectCells))
+    // Excluded decoration-only rows contribute no source newline; real blank
+    // text rows remain selectable and retain their line breaks.
+    if (!s.includeNoSelectCells && row >= 0 && row < screen.height &&
+      Array.from({ length: Math.max(0, rowEnd - rowStart + 1) }, (_, index) => rowStart + index)
+        .every(col => screen.noSelect[row * screen.width + col] === 1)) continue
+    rows.push(extractRowText(screen, row, rowStart, rowEnd, s.includeNoSelectCells, s.fence))
   }
 
   for (let i = 0; i < s.scrolledOffBelow.length; i++) {
@@ -1604,7 +1644,7 @@ export function captureScrolledRows(
     const colStart = row === start.row ? start.col : 0
     const colEnd = row === end.row ? end.col : width - 1
     const screenRow = row - screenRowOffset
-    captured.push(extractRowText(screen, screenRow, colStart, colEnd, s.includeNoSelectCells))
+    captured.push(extractRowText(screen, screenRow, colStart, colEnd, s.includeNoSelectCells, s.fence))
   }
 
   if (side === 'above') {
@@ -1683,6 +1723,7 @@ export function applySelectionOverlay(
       colEnd = Math.min(colEnd, selection.fence.colEnd)
       if (colStart > colEnd) continue
     }
+    [colStart, colEnd] = atomicRowRange(screen, row, colStart, colEnd, selection.fence)
     const rowOff = row * width
     for (let col = colStart; col <= colEnd; col++) {
       const idx = rowOff + col

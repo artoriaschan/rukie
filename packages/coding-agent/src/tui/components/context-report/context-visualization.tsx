@@ -77,11 +77,11 @@ export function ContextVisualization({
   return (
     <Box flexDirection="column" flexShrink={0}>
       <UserMessage text={display.command} locale={locale} />
-      <Box paddingLeft={2}>
+      <Box flexShrink={0} paddingLeft={2}>
         <ThemedText color={text} bold>{`└ ${display.title}`}</ThemedText>
       </Box>
-      <Box flexDirection="column" paddingLeft={5}>
-        <Box flexDirection={sideBySide ? "row" : "column"} gap={sideBySide ? 2 : 1}>
+      <Box flexShrink={0} flexDirection="column" paddingLeft={5}>
+        <Box flexShrink={0} flexDirection={sideBySide ? "row" : "column"} gap={sideBySide ? 2 : 1}>
           <Box flexDirection="column" width={width * 2} flexShrink={0}>
             {Array.from({ length: height }, (_, row) => (
               <ThemedText key={row} wrap="truncate">
@@ -95,7 +95,7 @@ export function ContextVisualization({
             <ThemedText color={muted}>{display.model}</ThemedText>
             <ThemedText color={muted}>{display.modelId}</ThemedText>
             <ThemedText color={muted}>{display.total}</ThemedText>
-            <Box flexDirection="column" marginTop={1}>
+            <Box flexShrink={0} flexDirection="column" marginTop={1}>
               <ThemedText color={muted} italic>
                 {display.estimated}
               </ThemedText>
@@ -104,7 +104,7 @@ export function ContextVisualization({
           </Box>
         </Box>
         {display.groups.map((group) => (
-          <Box key={group.name} flexDirection="column" marginTop={1}>
+          <Box flexShrink={0} key={group.name} flexDirection="column" marginTop={1}>
             <ThemedText color={text}>
               <ThemedText bold>{group.label}</ThemedText>
               <ThemedText color={muted}>{` · ${group.command}`}</ThemedText>
@@ -119,7 +119,7 @@ export function ContextVisualization({
           </Box>
         ))}
         {!expanded && (
-          <Box marginTop={1}>
+          <Box flexShrink={0} marginTop={1}>
             <ThemedText color={muted}>{display.expand}</ThemedText>
           </Box>
         )}

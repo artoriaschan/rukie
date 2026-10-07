@@ -1,5 +1,6 @@
+import type { ReadingPosition } from "../../hooks/reading-position";
 import { useEffect, useRef, useState } from "react";
-import { Box, ThemedBox, ThemedText, type ScrollSnapshot } from "../../../ink/index.ts";
+import { Box, ThemedBox, ThemedText } from "../../../ink/index.ts";
 export interface TimelineInput {
   id: string;
   text: string;
@@ -13,7 +14,7 @@ export function TimelineRail({
   onSeek,
 }: {
   inputs: readonly TimelineInput[];
-  snapshot: ScrollSnapshot;
+  snapshot: ReadingPosition;
   enabled: boolean;
   onSeek(id: string): void;
 }) {
@@ -48,6 +49,7 @@ export function TimelineRail({
   useEffect(() => () => clearTimeout(timer.current), []);
   const tick = (input: TimelineInput, index: number) => (
     <ThemedBox
+      flexShrink={0}
       key={input.id}
       height={1}
       width={2}
@@ -63,10 +65,7 @@ export function TimelineRail({
       }}
       onMouseLeave={clear}
     >
-      <ThemedText
-        preserveWhitespace
-        color={index === active || hover === input.id ? undefined : "subtle"}
-      >
+      <ThemedText color={index === active || hover === input.id ? undefined : "subtle"}>
         {index === active ? "━━" : hover === input.id ? "──" : " ─"}
       </ThemedText>
     </ThemedBox>
@@ -90,7 +89,7 @@ export function TimelineRail({
   );
   return (
     <Box
-      selectable={false}
+      noSelect
       width={2}
       height={snapshot.height}
       flexShrink={0}
@@ -99,6 +98,7 @@ export function TimelineRail({
       onWheel={clear}
     >
       <ThemedBox
+        flexShrink={0}
         height={1}
         width={2}
         onClick={() => {
@@ -110,16 +110,11 @@ export function TimelineRail({
         }}
         onMouseLeave={clear}
       >
-        <ThemedText
-          preserveWhitespace
-          color={!up ? "subtle" : hover === "$up" ? "text" : "inactive"}
-        >
-          {" "}
-          ▴
-        </ThemedText>
+        <ThemedText color={!up ? "subtle" : hover === "$up" ? "text" : "inactive"}> ▴</ThemedText>
       </ThemedBox>
       {inputs.slice(start, start + count).map((input, index) => tick(input, start + index))}
       <ThemedBox
+        flexShrink={0}
         height={1}
         width={2}
         onClick={() => {
@@ -131,16 +126,14 @@ export function TimelineRail({
         }}
         onMouseLeave={clear}
       >
-        <ThemedText
-          preserveWhitespace
-          color={!down ? "subtle" : hover === "$down" ? "text" : "inactive"}
-        >
+        <ThemedText color={!down ? "subtle" : hover === "$down" ? "text" : "inactive"}>
           {" "}
           ▾
         </ThemedText>
       </ThemedBox>
       {shownPreview && enabled && previewHeight <= snapshot.height && (
         <ThemedBox
+          flexShrink={0}
           position="absolute"
           right={3}
           top={previewTop}
@@ -148,7 +141,7 @@ export function TimelineRail({
           height={previewHeight}
           flexDirection="column"
           borderColor="inactive"
-          textSelection={false}
+          noSelect
           paddingX={1}
           borderStyle="round"
           backgroundColor="toolCardBackground"

@@ -35,8 +35,9 @@ export function SubagentPanel({
   const nodeLabel = (agent: SubagentView) =>
     `${SUBAGENT_APPEARANCE[agent.status].glyph} [${agent.subagentType}] ${agent.description.replace(/[\r\n]+/g, " ")}`;
   return (
-    <Box flexDirection="column" paddingX={2} paddingTop={paddingTop}>
+    <Box flexShrink={0} flexDirection="column" paddingX={2} paddingTop={paddingTop}>
       <ThemedBox
+        flexShrink={0}
         height={1}
         onClick={onToggle}
         onMouseEnter={() => setHeaderHovered(true)}
@@ -44,20 +45,20 @@ export function SubagentPanel({
         backgroundColor={headerHovered ? "badgeHoverBackground" : undefined}
       >
         <Box flexShrink={0}>
-          <ThemedText dimColor wrap="truncate">
+          <ThemedText dim wrap="truncate">
             {`${folded ? "▸" : "▾"} ${t("subagent.panel")} ${running}/${subagents.length}`}
           </ThemedText>
         </Box>
         {compact && preview && (
-          <Box flexGrow={1} onClick={() => onOpen(preview.agentId)}>
-            <ThemedText dimColor wrap="truncate">{`  ${nodeLabel(preview)}`}</ThemedText>
+          <Box flexShrink={0} flexGrow={1} onClick={() => onOpen(preview.agentId)}>
+            <ThemedText dim wrap="truncate">{`  ${nodeLabel(preview)}`}</ThemedText>
           </Box>
         )}
       </ThemedBox>
       {visible.map((agent, index) => (
-        <Box key={agent.agentId} height={1} onClick={() => onOpen(agent.agentId)}>
+        <Box flexShrink={0} key={agent.agentId} height={1} onClick={() => onOpen(agent.agentId)}>
           <ThemedText wrap="truncate">
-            <ThemedText dimColor>
+            <ThemedText dim>
               {index === visible.length - 1 && hidden === 0 ? "└─ " : "├─ "}
             </ThemedText>
             <ThemedText color={SUBAGENT_APPEARANCE[agent.status].color}>
@@ -67,9 +68,9 @@ export function SubagentPanel({
         </Box>
       ))}
       {hidden > 0 && rowBudget >= 2 && (
-        <Box height={1}>
+        <Box flexShrink={0} height={1}>
           <ThemedText
-            dimColor
+            dim
             wrap="truncate"
           >{`└─ ${t("subagent.more", { count: hidden })}`}</ThemedText>
         </Box>

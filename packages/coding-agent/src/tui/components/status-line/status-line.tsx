@@ -141,11 +141,11 @@ export function StatusLine(props: StatusLineProps) {
   const peak = Math.max(40, speed, ...props.tpsSamples.map(({ value }) => value));
   const meter = gauge(speed / peak, 11);
   const samples = props.tpsSamples.slice(-12);
-  const speedParts: { text: string; color?: ThemeColor; dimColor?: boolean }[] = props.working
+  const speedParts: { text: string; color?: ThemeColor; dim?: boolean }[] = props.working
     ? [
         { text: "▕" },
         { text: meter.fill, color: speedColor(speed) },
-        { text: meter.track, dimColor: true },
+        { text: meter.track, dim: true },
         { text: "▏ " },
       ]
     : [...sparkline(samples)].map((text, index) => ({
@@ -161,14 +161,14 @@ export function StatusLine(props: StatusLineProps) {
   } else {
     speedParts.push({
       text: `${Math.round(speed)} ${t(props.working ? "status.tps" : "status.tps-idle")}`,
-      dimColor: true,
+      dim: true,
     });
   }
   const speedText = speedParts.map(({ text }) => text).join("");
   const speedView = (
     <ThemedText>
-      {speedParts.map(({ text, color, dimColor }, index) => (
-        <ThemedText key={index} color={color} dimColor={dimColor}>
+      {speedParts.map(({ text, color, dim }, index) => (
+        <ThemedText key={index} color={color} dim={dim}>
           {text}
         </ThemedText>
       ))}
@@ -290,7 +290,7 @@ export function StatusLine(props: StatusLineProps) {
           ) <= budget,
       ) ?? forms[2]!;
     detail = (
-      <Box width={budget}>
+      <Box flexShrink={0} width={budget}>
         <ThemedText wrap="truncate">
           {segments.map(({ key, name, short, color }, index) => (
             <ThemedText key={key}>
@@ -365,7 +365,7 @@ export function StatusLine(props: StatusLineProps) {
     >
       {showBar && (
         <Box height={1} flexShrink={0} {...hoverProps("bar")}>
-          <ThemedText preserveWhitespace wrap="truncate">
+          <ThemedText wrap="truncate">
             {segments.map(({ key, color }, index) => (
               <ThemedText key={key} backgroundColor={color}>
                 {" ".repeat(widths[index] ?? 0)}
@@ -407,7 +407,7 @@ export function StatusLine(props: StatusLineProps) {
                                 ? "error"
                                 : undefined
                       }
-                      dimColor={id === "goal" && goalPhase?.dimColor}
+                      dim={id === "goal" && goalPhase?.dimColor}
                       wrap="truncate"
                     >
                       {content}
@@ -416,7 +416,7 @@ export function StatusLine(props: StatusLineProps) {
                 </Box>
               ),
           )}
-          <Box flexGrow={1} />
+          <Box flexShrink={0} flexGrow={1} />
         </Box>
         {ctx && <Box width={1} flexShrink={0} />}
         <Box width={ctxWidth} flexShrink={0} {...(usage ? hoverProps("ctx") : {})}>

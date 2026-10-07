@@ -70,6 +70,8 @@ export type ScrollBoxProps = Except<Styles, 'textWrap' | 'overflow' | 'overflowX
    * grows. Unset manually via scrollTo/scrollBy to break the stickiness.
    */
   stickyScroll?: boolean;
+  /** Disable pointer-wheel scrolling and consume the event in this viewport. */
+  wheelEnabled?: boolean;
 };
 
 /**
@@ -86,6 +88,7 @@ function ScrollBox({
   children,
   ref,
   stickyScroll,
+  wheelEnabled = true,
   ...style
 }: PropsWithChildren<ScrollBoxProps>): React.ReactNode {
   const domRef = useRef<DOMElement>(null);
@@ -248,6 +251,7 @@ function ScrollBox({
     scrollToBottom() {
       const el = domRef.current;
       if (!el) return;
+      el.scrollExplicitSeek = undefined;
       el.scrollAnchor = undefined;
       const viewportH = el.scrollViewportHeight ?? 0;
       const maxScroll = Math.max(0, (el.scrollHeight ?? 0) - viewportH);
@@ -322,8 +326,10 @@ function ScrollBox({
   // subscriber notify all apply. Horizontal wheel (deltaX) has no renderer
   // support yet (no scrollLeft in the DOM model) and is ignored.
   const handleWheel = useCallback((e: WheelEvent) => {
+    if (!wheelEnabled) { e.stopPropagation(); return; }
     if (e.deltaY !== 0) handleRef.current?.scrollBy(e.deltaY);
-  }, []);
+    e.stopPropagation();
+  }, [wheelEnabled]);
   // Keep the host ref attached across updates. A new callback would detach
   // it before children's layout effects publish their clamp bounds, making
   // setClampBounds silently miss the commit (child effects run first).

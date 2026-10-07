@@ -1,3 +1,4 @@
+import { InteractiveText } from "../interactive-text";
 // Presentation adapted from dsh-TUI src/components/Chat/SubagentMessage.tsx (MIT).
 // https://github.com/ccch1mneyyy/dsh-TUI
 /*
@@ -105,48 +106,46 @@ export function SubagentMessage({
   const rowWidth = Math.max(0, columns - 6);
   return (
     <ThemedBox
+      flexShrink={0}
       flexDirection="column"
       width={columns}
       paddingLeft={2}
       onMouseEnter={onClick ? () => setHovered(true) : undefined}
       onMouseLeave={onClick ? () => setHovered(false) : undefined}
     >
-      <Box>
+      <Box flexShrink={0}>
         <Box width={Math.max(1, columns - 5)} flexShrink={1}>
-          <ThemedText wrap="truncate" onClick={onClick}>
-            <ThemedText selectable={false} color={hovered ? "accent" : color}>
-              {glyph}{" "}
-            </ThemedText>
+          <InteractiveText wrap="truncate" onClick={onClick}>
+            <ThemedText color={hovered ? "accent" : color}>{glyph} </ThemedText>
             <ThemedText bold color={hovered ? "accent" : undefined}>
               {t("subagent.prefix")}
               {singleLine(subagent.description)}
             </ThemedText>
             {subagent.model && (
               <>
-                <ThemedText dimColor> · </ThemedText>
+                <ThemedText dim> · </ThemedText>
                 {singleLine(subagent.model)}
               </>
             )}
-            {effort && <ThemedText dimColor>{` · ${effort}`}</ThemedText>}
+            {effort && <ThemedText dim>{` · ${effort}`}</ThemedText>}
             <ThemedText
-              dimColor
+              dim
             >{`${duration === undefined ? "" : ` · ${duration}`}${subagent.tokens === undefined ? "" : ` · ${subagent.tokens} tok`} · ${subagent.toolCalls.length} tools · `}</ThemedText>
             <ThemedText color={color}>{t(subagentStatusKey(subagent))}</ThemedText>
-          </ThemedText>
+          </InteractiveText>
         </Box>
         {onOpenView && (
-          <ThemedText selectable={false} onClick={onOpenView} color={hovered ? "accent" : "subtle"}>
+          <InteractiveText noSelect onClick={onOpenView} color={hovered ? "accent" : "subtle"}>
             {" ⤢"}
-          </ThemedText>
+          </InteractiveText>
         )}
       </Box>
       {running && (
-        <ThemedText wrap="truncate" onClick={onClick}>
+        <InteractiveText wrap="truncate" onClick={onClick}>
           {previous && (
             <>
-              <ThemedText dimColor>{"  · "}</ThemedText>
+              <ThemedText dim>{"  · "}</ThemedText>
               <ThemedText
-                selectable={false}
                 color={
                   previous.status === "failed"
                     ? "error"
@@ -162,30 +161,30 @@ export function SubagentMessage({
           )}
           {active && (
             <>
-              {previous && <ThemedText dimColor>{" · "}</ThemedText>}
+              {previous && <ThemedText dim>{" · "}</ThemedText>}
               <ThemedText color={toolKindColor(active.view?.kind)}>{active.name}</ThemedText>
             </>
           )}
           {latestTool?.argsPreview && (
             <ThemedText
-              dimColor
+              dim
             >{` (${clip(latestTool.argsPreview, Math.max(0, rowWidth - latestTool.name.length - 6))})`}</ThemedText>
           )}
           {!active && !previous && " "}
-        </ThemedText>
+        </InteractiveText>
       )}
       {running &&
         Array.from({ length: 3 }, (_, index) => (
-          <ThemedText key={index} dimColor wrap="truncate" onClick={onClick}>
-            <ThemedText selectable={false}>{"  │ "}</ThemedText>
+          <InteractiveText key={index} dim wrap="truncate" onClick={onClick}>
+            <ThemedText>{"  │ "}</ThemedText>
             {clip(subagent.outputLines.slice(-3)[index] ?? "", rowWidth)}
-          </ThemedText>
+          </InteractiveText>
         ))}
       {(subagent.status === "failed" || subagent.runOutcome === "error") && subagent.error && (
-        <ThemedText color="error" wrap="truncate" onClick={onClick}>
-          <ThemedText selectable={false}>{"  └ "}</ThemedText>
+        <InteractiveText color="error" wrap="truncate" onClick={onClick}>
+          <ThemedText>{"  └ "}</ThemedText>
           {clip(subagent.error, rowWidth)}
-        </ThemedText>
+        </InteractiveText>
       )}
     </ThemedBox>
   );

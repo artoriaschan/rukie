@@ -1,4 +1,5 @@
-import { expect, jest, test } from "bun:test";
+import { testClock } from "../helpers/test-clock";
+import { expect, test } from "bun:test";
 import { startWithClock } from "../helpers/clock-app";
 
 function hover(app: Awaited<ReturnType<typeof startWithClock>>, title: string) {
@@ -18,10 +19,10 @@ test("folded command shows full title and wall-clock metadata only after 600ms h
     expect(app.screen().join("\n")).toContain("+1 lines");
     expect(app.screen().join("\n")).not.toContain("hidden-script-title");
     hover(app, "Bash(true");
-    jest.advanceTimersByTime(599);
+    testClock.advanceTimersByTime(599);
     await app.flush();
     expect(app.screen().join("\n")).not.toContain("Started:");
-    jest.advanceTimersByTime(1);
+    testClock.advanceTimersByTime(1);
     await app.waitFor(() => app.screen().some((line) => line.includes("Started:")));
     const text = app.screen().join("\n");
     expect(text).toContain("hidden-script-title");
@@ -45,13 +46,13 @@ test("fully visible titles stay tooltip-silent, and leaving cancels a pending to
     app.calls[2]!.finish();
     await app.waitFor(() => !app.isWorking());
     hover(app, "Bash(true)");
-    jest.advanceTimersByTime(700);
+    testClock.advanceTimersByTime(700);
     await app.flush();
     expect(app.screen().join("\n")).not.toContain("Started:");
     hover(app, "+1 lines");
-    jest.advanceTimersByTime(300);
+    testClock.advanceTimersByTime(300);
     app.stdin.write("\x1b[<35;79;39M");
-    jest.advanceTimersByTime(400);
+    testClock.advanceTimersByTime(400);
     await app.flush();
     expect(app.screen().join("\n")).not.toContain("pending-title");
     expect(app.screen().join("\n")).not.toContain("Started:");
@@ -81,7 +82,7 @@ test("foldTerminalCommand false keeps all source lines visible", async () => {
     expect(app.screen().join("\n")).toContain("visible-script-title");
     expect(app.screen().join("\n")).not.toContain("+1 lines");
     hover(app, "Bash(true");
-    jest.advanceTimersByTime(700);
+    testClock.advanceTimersByTime(700);
     await app.flush();
     expect(app.screen().join("\n")).not.toContain("Started:");
   } finally {
@@ -102,7 +103,7 @@ test("width-hidden Unicode title tooltip fits a small viewport and clears on foc
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
     hover(app, "Unknown_tool(");
-    jest.advanceTimersByTime(600);
+    testClock.advanceTimersByTime(600);
     await app.waitFor(() => app.screen().some((line) => line.includes("Started:")));
     expect(app.screen().every((line) => Bun.stringWidth(line) <= 40)).toBe(true);
     expect(app.screen().length).toBe(12);
@@ -111,10 +112,10 @@ test("width-hidden Unicode title tooltip fits a small viewport and clears on foc
     app.stdin.write("\x1b[I");
     app.stdin.write("\x1b[<35;39;11M");
     hover(app, "Unknown_tool(");
-    jest.advanceTimersByTime(600);
+    testClock.advanceTimersByTime(600);
     await app.waitFor(() => app.screen().some((line) => line.includes("Started:")));
     app.resize(2, 2);
-    jest.advanceTimersByTime(16);
+    testClock.advanceTimersByTime(16);
     await app.flush();
     expect(app.screen().join("\n")).not.toContain("╭");
     app.resize(80, 40);
@@ -143,7 +144,7 @@ test("generic arguments beyond 480 characters expose the full JSON only in a too
     expect(header).toContain("…");
     expect(header).not.toContain("JSON_END_MARKER");
     hover(app, "Unknown_tool(");
-    jest.advanceTimersByTime(600);
+    testClock.advanceTimersByTime(600);
     await app.waitFor(() => app.screen().some((line) => line.includes("JSON_END_MARKER")));
     const screen = app.screen();
     const firstBorder = screen.findIndex((line) => line.includes("╭"));
@@ -168,7 +169,7 @@ test("failed command tooltip carries wall-clock times, exit code and kill signal
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
     hover(app, "Bash(kill");
-    jest.advanceTimersByTime(600);
+    testClock.advanceTimersByTime(600);
     await app.waitFor(() => app.screen().some((line) => line.includes("Started:")));
     const screen = app.screen();
     const firstBorder = screen.findIndex((line) => line.includes("╭"));
@@ -205,7 +206,7 @@ test("expanding a command reveals its full script and wrapped titles do not clai
     await app.waitFor(() => app.screen().join("\n").includes("script-tail"));
     expect(app.screen().join("\n")).not.toContain("+1 lines");
     hover(app, "Bash(true");
-    jest.advanceTimersByTime(600);
+    testClock.advanceTimersByTime(600);
     await app.flush();
     expect(app.screen().join("\n")).not.toContain("Started:");
   } finally {

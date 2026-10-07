@@ -174,24 +174,24 @@ export function createInteractions(
     },
     planInput(event: InputEvent) {
       const item = pending[0];
-      if (item?.kind !== "plan" || (event.type !== "key" && event.type !== "paste")) return;
+      if (item?.kind !== "plan") return;
       const current = item.interaction;
-      if (event.type === "key") {
+      if (!event.isPasted) {
         const { key } = event;
-        if (key.name === "escape") {
+        if (event.keypress.name === "escape") {
           item.finish({ kind: "takeover" });
           return;
         }
-        if (key.ctrl || key.alt) return;
-        if (key.name === "enter") {
+        if (key.ctrl || key.meta) return;
+        if (event.keypress.name === "return") {
           this.confirmPlan();
           return;
         }
-        if (key.name === "up" || key.name === "down") {
-          this.selectPlan(current.selected + (key.name === "up" ? -1 : 1));
+        if (event.keypress.name === "up" || event.keypress.name === "down") {
+          this.selectPlan(current.selected + (event.keypress.name === "up" ? -1 : 1));
           return;
         }
-        if (key.name === "tab") {
+        if (event.keypress.name === "tab") {
           this.selectPlan(2);
           return;
         }
@@ -209,16 +209,16 @@ export function createInteractions(
       ];
       const before = boundaries.findLast((value) => value < current.cursor) ?? 0;
       const after = boundaries.find((value) => value > current.cursor) ?? current.feedback.length;
-      if (event.type === "key" && ["left", "right", "home", "end"].includes(event.key.name)) {
+      if (!event.isPasted && ["left", "right", "home", "end"].includes(event.keypress.name ?? "")) {
         item.interaction = {
           ...current,
           selected: 2,
           cursor:
-            event.key.name === "home"
+            event.keypress.name === "home"
               ? 0
-              : event.key.name === "end"
+              : event.keypress.name === "end"
                 ? current.feedback.length
-                : event.key.name === "left"
+                : event.keypress.name === "left"
                   ? before
                   : after,
         };
@@ -227,9 +227,9 @@ export function createInteractions(
       }
       const input =
         // oxlint-disable-next-line no-control-regex -- Feedback is a single input row.
-        event.type === "paste" ? event.input.replace(/[\x00-\x1f\x7f]+/g, " ") : event.input;
-      const backspace = event.type === "key" && event.key.name === "backspace";
-      const deletion = event.type === "key" && event.key.name === "delete";
+        event.isPasted ? event.input.replace(/[\x00-\x1f\x7f]+/g, " ") : event.input;
+      const backspace = !event.isPasted && event.keypress.name === "backspace";
+      const deletion = !event.isPasted && event.keypress.name === "delete";
       if (!input && !backspace && !deletion) return;
       const start = backspace ? before : current.cursor;
       const end = deletion ? after : current.cursor;
@@ -445,33 +445,37 @@ export function createInteractions(
       };
       notify();
     },
-    questionInput(event: InputEvent, pasteAtCaret?: boolean) {
+    questionInput(
+      event: Pick<InputEvent, "input" | "isPasted" | "key" | "keypress">,
+      pasteAtCaret?: boolean,
+    ) {
       const item = pending[0];
-      if (item?.kind !== "question" || (event.type !== "key" && event.type !== "paste")) return;
-      if (event.type === "paste" && !questionEditingEnabled) return;
+      if (item?.kind !== "question") return;
+      if (event.isPasted && !questionEditingEnabled) return;
       const live = item.interaction;
       const current = live.drafts[live.questionIndex]!;
       const question = live.request.questions[live.questionIndex]!;
-      if (event.type === "key") {
+      if (!event.isPasted) {
         const { key } = event;
-        if (key.ctrl && key.name === "k" && !key.alt && !key.shift) {
+        if (key.ctrl && event.keypress.name === "k" && !key.meta && !key.shift) {
           this.toggleQuestionFold();
           return;
         }
         if (live.collapsed) {
-          if (key.name === "escape" || (key.ctrl && key.name === "c")) this.toggleQuestionFold();
+          if (event.keypress.name === "escape" || (key.ctrl && event.keypress.name === "c"))
+            this.toggleQuestionFold();
           return;
         }
-        if (key.ctrl && key.name === "c") {
+        if (key.ctrl && event.keypress.name === "c") {
           item.finish("declined");
           return;
         }
-        if (key.name === "escape") {
+        if (event.keypress.name === "escape") {
           if (live.questionIndex > 0) this.switchQuestion(-1);
           else item.finish("declined");
           return;
         }
-        if (key.name.toLowerCase() === "v" && (key.ctrl || key.alt) && !key.shift) {
+        if (event.keypress.name?.toLowerCase() === "v" && (key.ctrl || key.meta) && !key.shift) {
           if (clipboardBusy && clipboardOwner === item) return;
           const pasteToken = Symbol();
           clipboardBusy = pasteToken;
@@ -492,7 +496,7 @@ export function createInteractions(
                 return;
               const text = "text" in content ? content.text : undefined;
               if (!text?.trim()) updateQuestion((draft) => ({ ...draft, error: "clipboard" }));
-              else this.questionInput({ type: "paste", input: text }, atCaret);
+              else this.questionInput({ ...event, input: text, isPasted: true }, atCaret);
             })
             .finally(() => {
               if (clipboardBusy === pasteToken) clipboardBusy = undefined;
@@ -500,25 +504,28 @@ export function createInteractions(
           return;
         }
         if (
-          (key.ctrl || key.alt) &&
-          !(current.selected === question.options.length && ["left", "right"].includes(key.name))
+          (key.ctrl || key.meta) &&
+          !(
+            current.selected === question.options.length &&
+            ["left", "right"].includes(event.keypress.name ?? "")
+          )
         )
           return;
-        if (key.name === "enter" && !key.shift) {
+        if (event.keypress.name === "return" && !key.shift) {
           this.answerQuestion();
           return;
         }
-        if (key.name === "tab") {
+        if (event.keypress.name === "tab") {
           this.selectQuestion(question.options.length);
           return;
         }
-        if (key.name === "up" || key.name === "down") {
-          this.selectQuestion(current.selected + (key.name === "up" ? -1 : 1));
+        if (event.keypress.name === "up" || event.keypress.name === "down") {
+          this.selectQuestion(current.selected + (event.keypress.name === "up" ? -1 : 1));
           return;
         }
         if (current.selected < question.options.length) {
-          if (!key.shift && (key.name === "left" || key.name === "right")) {
-            this.switchQuestion(key.name === "left" ? -1 : 1);
+          if (!key.shift && (event.keypress.name === "left" || event.keypress.name === "right")) {
+            this.switchQuestion(event.keypress.name === "left" ? -1 : 1);
             return;
           }
           if (event.input === " " && question.multiSelect) {
@@ -528,7 +535,7 @@ export function createInteractions(
         }
       } else if (live.collapsed && pasteAtCaret === undefined) return;
       const focused =
-        event.type === "paste" && pasteAtCaret !== undefined
+        event.isPasted && pasteAtCaret !== undefined
           ? pasteAtCaret
           : current.selected === question.options.length;
       const boundaries = [
@@ -538,33 +545,34 @@ export function createInteractions(
           ({ index, segment }) => index + segment.length,
         ),
       ];
-      const editingKey = event.type === "key" && ["backspace", "delete"].includes(event.key.name);
-      if (!focused && event.type === "key" && event.key.name === "delete") return;
+      const editingKey =
+        !event.isPasted && ["backspace", "delete"].includes(event.keypress.name ?? "");
+      if (!focused && !event.isPasted && event.keypress.name === "delete") return;
       const cursor = focused || editingKey ? current.cursor : current.custom.length;
       const before = boundaries.findLast((value) => value < cursor) ?? 0;
       const after = boundaries.find((value) => value > cursor) ?? current.custom.length;
-      if (event.type === "key") {
+      if (!event.isPasted) {
         const { key } = event;
-        if (["left", "right", "home", "end"].includes(key.name)) {
+        if (["left", "right", "home", "end"].includes(event.keypress.name ?? "")) {
           if (!focused) return;
           if (
             !key.shift &&
             !key.ctrl &&
-            !key.alt &&
-            ((key.name === "left" && cursor === 0) ||
-              (key.name === "right" && cursor === current.custom.length))
+            !key.meta &&
+            ((event.keypress.name === "left" && cursor === 0) ||
+              (event.keypress.name === "right" && cursor === current.custom.length))
           ) {
-            this.switchQuestion(key.name === "left" ? -1 : 1);
+            this.switchQuestion(event.keypress.name === "left" ? -1 : 1);
             return;
           }
           updateQuestion((draft) => ({
             ...draft,
             cursor:
-              key.name === "home"
+              event.keypress.name === "home"
                 ? 0
-                : key.name === "end"
+                : event.keypress.name === "end"
                   ? draft.custom.length
-                  : key.name === "left"
+                  : event.keypress.name === "left"
                     ? before
                     : after,
           }));
@@ -573,14 +581,14 @@ export function createInteractions(
       }
       const input =
         // oxlint-disable-next-line no-control-regex -- Answer fields flatten pasted control characters.
-        event.type === "paste" ? event.input.replace(/[\x00-\x1f\x7f]+/g, " ") : event.input;
-      if (event.type === "paste" && !input.trim()) return;
-      if (event.type === "paste" && Array.from(input).length > 8000) {
+        event.isPasted ? event.input.replace(/[\x00-\x1f\x7f]+/g, " ") : event.input;
+      if (event.isPasted && !input.trim()) return;
+      if (event.isPasted && Array.from(input).length > 8000) {
         updateQuestion((draft) => ({ ...draft, error: "paste" }));
         return;
       }
-      const backspace = event.type === "key" && event.key.name === "backspace";
-      const deletion = event.type === "key" && event.key.name === "delete";
+      const backspace = !event.isPasted && event.keypress.name === "backspace";
+      const deletion = !event.isPasted && event.keypress.name === "delete";
       if (!input && !backspace && !deletion) return;
       const start = backspace ? before : cursor;
       const end = deletion ? after : cursor;

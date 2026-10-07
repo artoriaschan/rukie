@@ -53,7 +53,7 @@ test("mouse motion between consecutive Ctrl+C presses does not cancel idle exit"
   try {
     await app.waitFor(() => app.stdin.isRaw);
     app.stdin.write("\x03\x1b[<35;5;2M\x03");
-    await Bun.sleep(25);
+    await app.flush();
     await app.flush();
     expect(app.terminal.buffer.active.type).toBe("normal");
     expect(await app.exit).toBe(0);
@@ -73,7 +73,7 @@ test("startup header receives the configured thinking level and shows cwd on its
   try {
     await app.waitFor(() => app.screen().some((line) => line.includes("推理强度：高")));
     const row = app.screen().findIndex((line) => line.includes("推理强度：高"));
-    expect(app.screen()[row + 1]?.slice(42)).toBe(cwd.slice(0, 38));
+    expect(app.screen()[row + 1]?.slice(42)).toBe(`${cwd.slice(0, 37)}…`);
     expect(app.screen().join("\n")).not.toMatch(/提示|Tip:|\/tips/);
   } finally {
     await app.cleanup();
@@ -118,21 +118,21 @@ test("a fatal paint IO error restores the terminal before stderr and aborts the 
   const fake = controlledModel();
   let fail = false;
   const emissions: string[] = [];
+  const originalWrite = terminal.stdout.write.bind(terminal.stdout);
   const exit = main(["hello"], {
     ...terminal,
-    stdout: {
-      isTTY: true,
-      columns: 80,
-      rows: 24,
-      write(text) {
+    stdout: Object.assign(terminal.stdout, {
+      write(...args: Parameters<typeof terminal.stdout.write>) {
+        const text = args[0];
         if (fail) {
           fail = false;
           throw new Error("paint IO failed");
         }
-        emissions.push(text);
-        return terminal.stdout.write(text);
+        const chunk = typeof text === "string" ? text : new TextDecoder().decode(text);
+        emissions.push(chunk);
+        return originalWrite(...args);
       },
-    },
+    }),
     stderr(text) {
       expect(terminal.stdin.isRaw).toBe(false);
       emissions.push(`stderr:${text}`);
@@ -205,7 +205,7 @@ test("small windows suspend editing and restore the draft while a Run continues"
     app.resize(39, 11);
     await app.waitFor(() => app.screen().some((line) => line.includes("请调整窗口")));
     app.stdin.write("ignored\r");
-    await Bun.sleep(25);
+    await app.flush();
     expect(app.calls).toHaveLength(1);
     expect(app.calls[0]!.signal!.aborted).toBe(false);
     app.resize(40, 12);
@@ -255,8 +255,7 @@ test("Home and End use the available input columns rather than the longest draft
     await app.waitFor(() => app.screen().includes("❯ AAAA"));
     const row = app.screen().indexOf("❯ AAAA");
     app.stdin.write("\x1b[H\x1b[A\x1b[F");
-    await Bun.sleep(25);
-    await app.flush();
+    await app.waitFor(() => app.terminal.buffer.active.cursorX === 6);
     expect(app.terminal.buffer.active.cursorX).toBe(6);
     expect(app.terminal.buffer.active.cursorY).toBe(row);
   } finally {
@@ -280,7 +279,7 @@ test("approval details scroll independently with pinned choices and preserve the
     app.resize(39, 11);
     await app.waitFor(() => app.screen().some((line) => line.includes("请调整窗口")));
     app.stdin.write("\r");
-    await Bun.sleep(25);
+    await app.flush();
     expect(app.calls).toHaveLength(1);
     app.resize(40, 12);
     await app.waitFor(() => app.screen().some((line) => line.includes("等待审批 · write")));
@@ -292,7 +291,7 @@ test("approval details scroll independently with pinned choices and preserve the
     expect(app.screen().length - 5 - divider).toBeLessThanOrEqual(6);
     expect(app.screen().at(-2)).toContain("ctx ");
     app.stdin.write("\x1b[<64;5;6M");
-    await Bun.sleep(25);
+    await app.flush();
     expect(app.screen().map((line) => line.trimStart())).toContain("❯ 1. 允许（仅本次）");
     app.stdin.write("\x1b");
     await app.waitFor(() => app.calls.length === 2);

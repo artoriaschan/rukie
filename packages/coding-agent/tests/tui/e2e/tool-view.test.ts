@@ -1,4 +1,5 @@
-import { expect, test, jest } from "bun:test";
+import { testClock } from "../helpers/test-clock";
+import { expect, test } from "bun:test";
 import { start } from "../helpers/app";
 import { join } from "node:path";
 import { startWithClock } from "../helpers/clock-app";
@@ -56,7 +57,7 @@ test.each([
       await app.waitFor(() => cards().every((line) => line.startsWith(`  ${name}(`)));
       app.stdin.write("\x1b[O");
       await app.waitFor(() => cards().every((line) => line.startsWith(`${dot} ${name}(`)));
-      jest.advanceTimersByTime(1200);
+      testClock.advanceTimersByTime(1200);
       await app.flush();
       expect(cards().every((line) => line.startsWith(`${dot} ${name}(`))).toBe(true);
       expect(app.output()).toContain("\x1b[?1004h");

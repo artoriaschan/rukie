@@ -119,14 +119,18 @@ export function RewindPicker({
   return (
     <Box flexDirection="column" flexShrink={0} paddingTop={layout.top}>
       <Divider color="permission" />
-      <Box flexDirection="column" paddingX={padding}>
-        <Box flexDirection={confirm ? "row" : "column"} marginBottom={layout.headerGap}>
+      <Box flexShrink={0} flexDirection="column" paddingX={padding}>
+        <Box
+          flexShrink={0}
+          flexDirection={confirm ? "row" : "column"}
+          marginBottom={layout.headerGap}
+        >
           <ThemedText bold color="remember" wrap="truncate">
             {t(confirm ? "rewind.confirm" : "rewind.title")}
           </ThemedText>
           {!layout.plain && (
             <Box flexShrink={1}>
-              <ThemedText dimColor wrap="truncate">
+              <ThemedText dim wrap="truncate">
                 {confirm ? ` ${preview(entry.preview)}` : t("rewind.subtitle")}
               </ThemedText>
             </Box>
@@ -193,8 +197,9 @@ export function RewindPicker({
             {showFiles && (
               <>
                 {shownFiles.map((file) => (
-                  <Box key={file.path} height={1}>
+                  <Box flexShrink={0} key={file.path} height={1}>
                     <Box
+                      flexShrink={0}
                       width={
                         contentWidth -
                         (layout.fileRows === 1 && files.length > 1
@@ -202,7 +207,7 @@ export function RewindPicker({
                           : 0)
                       }
                     >
-                      <ThemedText dimColor wrap="truncate">
+                      <ThemedText dim wrap="truncate">
                         {t(file.backup === null ? "rewind.delete" : "rewind.restore", {
                           path: file.path,
                         })}
@@ -210,25 +215,25 @@ export function RewindPicker({
                     </Box>
                     {layout.fileRows === 1 && files.length > 1 && (
                       <ThemedText
-                        dimColor
+                        dim
                         wrap="truncate"
                       >{` · ${t("rewind.more", { count: files.length - 1 })}`}</ThemedText>
                     )}
                   </Box>
                 ))}
                 {layout.fileRows > 1 && files.length > shownFiles.length && (
-                  <ThemedText dimColor wrap="truncate">
+                  <ThemedText dim wrap="truncate">
                     {t("rewind.more", { count: files.length - shownFiles.length })}
                   </ThemedText>
                 )}
-                <ThemedText dimColor wrap="truncate">
+                <ThemedText dim wrap="truncate">
                   {t("rewind.bash")}
                 </ThemedText>
               </>
             )}
           </Box>
         )}
-        <ThemedText dimColor italic wrap="truncate">
+        <ThemedText dim italic wrap="truncate">
           {t(confirm ? "rewind.confirm-hint" : "rewind.hint")}
         </ThemedText>
       </Box>

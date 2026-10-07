@@ -243,19 +243,19 @@ const renderBorder = (
     const offsetY = showTopBorder ? 1 : 0
 
     if (topBorder) {
-      output.write(x, y, topBorder)
+      output.write(x, y, topBorder, undefined, undefined, true)
     }
 
     if (showLeftBorder) {
-      output.write(x, y + offsetY, leftBorder)
+      output.write(x, y + offsetY, leftBorder, undefined, undefined, true)
     }
 
     if (showRightBorder) {
-      output.write(x + width - 1, y + offsetY, rightBorder)
+      output.write(x + width - 1, y + offsetY, rightBorder, undefined, undefined, true)
     }
 
     if (bottomBorder) {
-      output.write(x, y + height - 1, bottomBorder)
+      output.write(x, y + height - 1, bottomBorder, undefined, undefined, true)
     }
   }
 }

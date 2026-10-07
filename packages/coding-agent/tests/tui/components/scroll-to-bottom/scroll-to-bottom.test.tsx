@@ -1,5 +1,6 @@
+import { renderComponent } from "../../helpers/render-component";
 import { expect, test } from "bun:test";
-import { Box, ThemedText, ThemeProvider, render } from "../../../../src/ink/index.ts";
+import { Box, ThemedText, ThemeProvider } from "../../../../src/ink/index.ts";
 import { ScrollToBottom } from "../../../../src/tui/components";
 import { createTerminal } from "../../helpers/terminal";
 
@@ -15,14 +16,14 @@ test.each([
   async (columns, left, unread) => {
     const terminal = createTerminal(columns, 4);
     let clicks = 0;
-    const app = render(
+    const app = renderComponent(
       <ThemeProvider>
         <Box flexDirection="column">
           <ScrollToBottom columns={columns} unread={unread} onClick={() => clicks++} />
           <ThemedText>input below</ThemedText>
         </Box>
       </ThemeProvider>,
-      { ...terminal, fullscreen: true },
+      { ...terminal },
     );
     try {
       await terminal.flush();

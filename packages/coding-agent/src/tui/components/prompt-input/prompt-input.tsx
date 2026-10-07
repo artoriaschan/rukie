@@ -12,6 +12,7 @@ export function PromptInput({
   value,
   onChange,
   onSubmit,
+  getValue,
   columns,
   maxLines,
   working = false,
@@ -36,6 +37,7 @@ export function PromptInput({
   value: string;
   onChange: TextInputProps["onChange"];
   onSubmit(prompt: string): void;
+  getValue?(): string;
   columns: number;
   maxLines: number;
   working?: boolean;
@@ -72,7 +74,7 @@ export function PromptInput({
   const activeTip = visibleTip === tip ? visibleTip : undefined;
   const edge = "─".repeat(Math.max(0, columns - 2));
   return (
-    <Box flexDirection="column" marginTop={compact && !notice ? 0 : 1}>
+    <Box flexShrink={0} flexDirection="column" marginTop={compact && !notice ? 0 : 1}>
       {suggestions}
       {warning && <ThemedText color="warning">{warning}</ThemedText>}
       {!compact && (
@@ -81,16 +83,17 @@ export function PromptInput({
           wrap="truncate"
         >{`╭${edge}╮`}</ThemedText>
       )}
-      <Box paddingRight={1}>
+      <Box flexShrink={0} paddingRight={1}>
         <Box width={2} flexShrink={0}>
-          <ThemedText dimColor={working}>{`${figures.user} `}</ThemedText>
+          <ThemedText dim={working}>{`${figures.user} `}</ThemedText>
         </Box>
-        <Box flexGrow={1}>
+        <Box flexShrink={0} flexGrow={1}>
           <ThemedTextInput
             key={inputRevision}
             isActive={!readOnly}
             readOnly={readOnly}
             value={value}
+            getValue={getValue}
             onChange={onChange}
             onSubmit={onSubmit}
             maxLines={maxLines}
@@ -119,6 +122,7 @@ export function PromptInput({
       )}
       {(notice || activeTip) && (
         <Box
+          flexShrink={0}
           position="absolute"
           top={-1}
           right={1}
@@ -132,7 +136,7 @@ export function PromptInput({
               text={notice.text}
             />
           ) : (
-            <ThemedText dimColor wrap="truncate">
+            <ThemedText dim wrap="truncate">
               {activeTip}
             </ThemedText>
           )}

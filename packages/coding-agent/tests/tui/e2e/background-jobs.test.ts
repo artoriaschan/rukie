@@ -1,5 +1,6 @@
+import { testClock } from "../helpers/test-clock";
 import { startWithClock } from "../helpers/clock-app";
-import { expect, jest, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { start } from "../helpers/app";
 import { withAuxiliaryRequests } from "../helpers/auxiliary-model";
@@ -610,12 +611,12 @@ test("job elapsed time advances on the display clock and freezes after settlemen
     });
     await app.waitFor(() => app.calls.length === 2 && card()?.includes("running") === true);
     const before = card();
-    jest.advanceTimersByTime(1000);
+    testClock.advanceTimersByTime(1000);
     await app.waitFor(() => card() !== before);
     app.calls[1]!.tool("job_kill", { job_id: "bash-1" });
     await app.waitFor(() => app.calls.length === 3 && card()?.includes("stopped") === true);
     const settled = card();
-    jest.advanceTimersByTime(2000);
+    testClock.advanceTimersByTime(2000);
     await app.flush();
     expect(card()).toBe(settled);
     expect(app.stderr()).toBe("");

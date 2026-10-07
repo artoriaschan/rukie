@@ -1,4 +1,5 @@
-import { expect, jest, test } from "bun:test";
+import { testClock } from "../helpers/test-clock";
+import { expect, test } from "bun:test";
 import { startWithClock } from "../helpers/clock-app";
 
 function click(app: Awaited<ReturnType<typeof startWithClock>>, x: number, y: number) {
@@ -95,7 +96,7 @@ test("thinking preview settles on streamed tool input and measured duration is d
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.thinking("最新思考🐋");
     await app.waitFor(() => app.screen().join("\n").includes("最新思考🐋"));
-    jest.advanceTimersByTime(2500);
+    testClock.advanceTimersByTime(2500);
     await app.flush();
     app.calls[0]!.toolDelta("{");
     await app.waitFor(() => !app.screen().join("\n").includes("最新思考🐋"));

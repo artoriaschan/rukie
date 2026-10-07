@@ -41,7 +41,7 @@ export function Logo({
   const pose = useAvatarPose(showArt && !portrait && !suspended, working);
   const rows = renderBigText("RUKIE", theme.logoFrom, theme.logoTo);
   return (
-    <Box flexDirection="row" width={columns} gap={showArt ? 2 : 0}>
+    <Box flexShrink={0} flexDirection="row" width={columns} gap={showArt ? 2 : 0}>
       {showArt &&
         (portrait && suspended ? (
           <Box width={AVATAR_WIDTH} height={AVATAR_HEIGHT} flexShrink={0} />

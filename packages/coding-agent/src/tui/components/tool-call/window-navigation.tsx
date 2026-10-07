@@ -59,21 +59,13 @@ export function ToolWindowProvider({ children }: { children: ReactNode }) {
       },
       handle(event) {
         if (!owner.current) return false;
-        if (event.type !== "key") {
-          if (
-            (event.type === "mouse" && event.action === "press") ||
-            (event.type === "move" && event.button === 0) ||
-            event.type === "wheel" ||
-            event.type === "paste" ||
-            (event.type === "focus" && !event.focused)
-          ) {
-            owner.current = undefined;
-            setActive(undefined);
-          }
+        if (event.isPasted) {
+          owner.current = undefined;
+          setActive(undefined);
           return false;
         }
         const { key } = event;
-        if (key.name === "escape") {
+        if (event.keypress.name === "escape") {
           owner.current = undefined;
           setActive(undefined);
           return true;
@@ -86,8 +78,8 @@ export function ToolWindowProvider({ children }: { children: ReactNode }) {
           home: "first",
           end: "last",
         };
-        const direction = moves[key.name];
-        if (!key.ctrl && !key.alt && !key.shift && direction !== undefined) {
+        const direction = moves[event.keypress.name ?? ""];
+        if (!key.ctrl && !key.meta && !key.shift && direction !== undefined) {
           owner.current.move(direction);
           return true;
         }

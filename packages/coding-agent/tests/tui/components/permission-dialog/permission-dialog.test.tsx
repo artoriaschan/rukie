@@ -1,14 +1,15 @@
+import { renderComponent } from "../../helpers/render-component";
 import { expect, test } from "bun:test";
-import { Box, ThemedText, render } from "../../../../src/ink/index.ts";
+import { Box, ThemedText } from "../../../../src/ink/index.ts";
 import { createRef, useState } from "react";
 import { useInput } from "../../../../src/ink/index.ts";
-import type { ScrollHandle } from "../../../../src/ink/index.ts";
+import type { ScrollBoxHandle } from "../../../../src/ink/index.ts";
 import { PermissionDialog } from "../../../../src/tui/components";
 import { createTerminal } from "../../helpers/terminal";
 
 test("permission panel groups a tool heading, command and question above its focused choice", async () => {
   const terminal = createTerminal(80, 13);
-  const app = render(
+  const app = renderComponent(
     <Box flexDirection="column">
       <PermissionDialog
         toolName="bash"
@@ -73,8 +74,8 @@ test.each(["ask", "auto-review"] as const)(
     function Panel() {
       const [selected, select] = useState(0);
       const count = mode === "ask" ? 3 : 2;
-      useInput((event) => {
-        if (event.type === "key" && event.key.name === "down")
+      useInput((_input, _key, event) => {
+        if (!event.isPasted && event.keypress.name === "down")
           select((index) => (index + 1) % count);
       });
       return (
@@ -88,7 +89,7 @@ test.each(["ask", "auto-review"] as const)(
         />
       );
     }
-    const app = render(<Panel />, terminal);
+    const app = renderComponent(<Panel />, terminal);
     const optionRows = () =>
       terminal.screen().flatMap((line, row) => (/[1-3]\. /.test(line) ? [row] : []));
     try {
@@ -119,13 +120,13 @@ test.each(["ask", "auto-review"] as const)(
 
 test("review reasons wrap and scroll with details while the two decisions stay pinned", async () => {
   const terminal = createTerminal(40, 13);
-  const details = createRef<ScrollHandle>();
+  const details = createRef<ScrollBoxHandle>();
   const reason = [
     "需要确认部署目标",
     ...Array.from({ length: 15 }, (_, i) => `审查原因第${i}行`),
     "reason-tail",
   ].join("\n");
-  const app = render(
+  const app = renderComponent(
     <PermissionDialog
       toolName="bash"
       sessionAllow={{ kind: "command", rule: "bash(printf hello)" }}
@@ -173,7 +174,7 @@ test.each([
   ["domain", "en", "Allow this domain for this session"],
 ] as const)("session %s label in %s", async (kind, locale, label) => {
   const terminal = createTerminal(80, 13);
-  const app = render(
+  const app = renderComponent(
     <PermissionDialog
       toolName="example"
       args={{}}
@@ -198,7 +199,7 @@ test.each(["command", "directory", "tool"] as const)(
   "auto-review hides the %s session choice",
   async (kind) => {
     const terminal = createTerminal(80, 13);
-    const app = render(
+    const app = renderComponent(
       <PermissionDialog
         toolName="tool"
         args={{}}

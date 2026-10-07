@@ -1,3 +1,5 @@
+import { usePanelScroll } from "../../hooks/reading-position";
+import type { ReadingPosition } from "../../hooks/reading-position";
 import {
   Box,
   HintLine,
@@ -5,8 +7,7 @@ import {
   ScrollBox,
   ThemedText,
   useTerminalSize,
-  type ScrollHandle,
-  type ScrollSnapshot,
+  type ScrollBoxHandle,
 } from "../../../ink/index.ts";
 import { useCallback, useState, type Ref } from "react";
 import type { PermissionAskRequest } from "@rukie/agent";
@@ -46,7 +47,7 @@ export function PermissionDialog({
   args: unknown;
   selected: number;
   maxHeight: number;
-  scrollRef?: Ref<ScrollHandle>;
+  scrollRef?: Ref<ScrollBoxHandle>;
   scrollFocused?: boolean;
   mode?: PermissionMode;
   locale?: Locale;
@@ -60,7 +61,7 @@ export function PermissionDialog({
   const spacious = maxHeight >= choices.length + 6;
   const showQuestion = maxHeight >= choices.length + 4;
   const [detailHeight, setDetailHeight] = useState(1);
-  const measureDetails = useCallback(({ total, width }: ScrollSnapshot) => {
+  const measureDetails = useCallback(({ total, width }: ReadingPosition) => {
     if (width > 0) setDetailHeight(total);
   }, []);
   // Only details consume the remaining budget; selection never changes the fixed rows.
@@ -85,31 +86,44 @@ export function PermissionDialog({
       : Object.fromEntries(
           Object.entries(args ?? {}).filter(([key]) => key !== "command" && key !== "description"),
         );
+  const panelScroll = usePanelScroll(scrollRef, undefined, columns, measureDetails);
   return (
-    <Box flexDirection="column" height={height} paddingX={2} marginBottom={bottomGap}>
+    <Box
+      flexShrink={0}
+      flexDirection="column"
+      height={height}
+      paddingX={2}
+      marginBottom={bottomGap}
+    >
       <ThemedText color="permission" wrap="truncate">
         {`${"─".repeat(Math.floor(ruleWidth / 2))}${title}${"─".repeat(Math.ceil(ruleWidth / 2))}`}
       </ThemedText>
       {spacious && <Box height={1} flexShrink={0} />}
-      <ScrollBox ref={scrollRef} initialFollow={false} onScroll={measureDetails}>
+      <ScrollBox
+        ref={panelScroll}
+        stickyScroll={false}
+        height={Math.max(1, height - fixedHeight)}
+        flexGrow={0}
+        flexShrink={0}
+      >
         {command !== undefined && (
-          <Box paddingX={2}>
-            <ThemedText dimColor preserveWhitespace>
-              {command}
-            </ThemedText>
+          <Box flexShrink={0} paddingX={2}>
+            <ThemedText dim>{command}</ThemedText>
           </Box>
         )}
         {(command === undefined || Object.keys(parameters ?? {}).length > 0) && (
-          <Box paddingX={2}>
-            <ThemedText dimColor preserveWhitespace>
-              {JSON.stringify(parameters, null, 2)}
-            </ThemedText>
+          <Box flexShrink={0} paddingX={2}>
+            <ThemedText dim>{JSON.stringify(parameters, null, 2)}</ThemedText>
           </Box>
         )}
-        {reason !== undefined && <ThemedText dimColor>{reason}</ThemedText>}
+        {reason !== undefined && (
+          <Box flexShrink={0}>
+            <ThemedText dim>{reason}</ThemedText>
+          </Box>
+        )}
       </ScrollBox>
       {showQuestion && (
-        <ThemedText dimColor wrap="truncate">
+        <ThemedText dim wrap="truncate">
           {t("dialog.question")}
         </ThemedText>
       )}
@@ -118,7 +132,7 @@ export function PermissionDialog({
           <ListItem
             key={label}
             focused={selected === index}
-            singleLine={maxHeight < 6}
+            singleLine
           >{`${index + 1}. ${label}`}</ListItem>
         ))}
       </Box>

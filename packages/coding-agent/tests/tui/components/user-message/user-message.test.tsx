@@ -1,11 +1,12 @@
+import { renderComponent } from "../../helpers/render-component";
 import { expect, test } from "bun:test";
-import { Box, ThemedText, ThemeProvider, dark, render } from "../../../../src/ink/index.ts";
+import { Box, ThemedText, ThemeProvider, dark } from "../../../../src/ink/index.ts";
 import { UserMessage } from "../../../../src/tui/components/user-message";
 import { createTerminal } from "../../helpers/terminal";
 
 test("user prompts match dsh's bold gold text, unfilled background and hanging indentation", async () => {
   const terminal = createTerminal(12, 6);
-  const app = render(
+  const app = renderComponent(
     <ThemeProvider>
       <Box flexDirection="column">
         <UserMessage text={"abcdefghijk\n中é😀\n  code"} />
@@ -39,14 +40,14 @@ test("user prompts match dsh's bold gold text, unfilled background and hanging i
 
 test("user prompts resolve provider colors and keep indentation when resized", async () => {
   const terminal = createTerminal(12, 6);
-  const app = render(
+  const app = renderComponent(
     <ThemeProvider theme={{ ...dark, userPromptLabel: "#123456" }}>
       <Box flexDirection="column">
         <UserMessage text="abcdefghijk" />
         <ThemedText>after</ThemedText>
       </Box>
     </ThemeProvider>,
-    { ...terminal, fullscreen: true },
+    { ...terminal },
   );
   try {
     await terminal.flush();
@@ -69,7 +70,7 @@ test.each([
   ["en", "Stop hook feedback"],
 ] as const)("%s labels Stop feedback next to the injected user message", async (locale, label) => {
   const terminal = createTerminal(60, 6);
-  const app = render(
+  const app = renderComponent(
     <ThemeProvider>
       <UserMessage text="verify tests" source="stop_hook" locale={locale} />
     </ThemeProvider>,

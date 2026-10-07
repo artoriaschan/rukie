@@ -1,4 +1,5 @@
-import { expect, jest, test } from "bun:test";
+import { testClock } from "../helpers/test-clock";
+import { expect, test } from "bun:test";
 import { figures } from "../../../src/ink/index.ts";
 import { startWithClock } from "../helpers/clock-app";
 
@@ -72,12 +73,12 @@ test("a burst reveals at 30fps and keeps chasing the saved reply after Run compl
     app.calls[0]!.delta("你好🐋" + "x".repeat(180) + " tail");
     await app.flush();
     // Commit the event projection before the first reveal frame.
-    jest.advanceTimersByTime(16);
+    testClock.advanceTimersByTime(16);
     await app.flush();
     expect(app.screen().join("\n")).not.toContain("tail");
-    jest.advanceTimersByTime(18);
+    testClock.advanceTimersByTime(18);
     await app.flush();
-    jest.advanceTimersByTime(16);
+    testClock.advanceTimersByTime(16);
     await app.flush();
     expect(app.screen().join("\n")).toContain("你好🐋");
     expect(app.screen().join("\n")).not.toContain("tail");
@@ -195,7 +196,7 @@ test("a caught-up live identity does not restart and a non-prefix final replacem
     await app.waitFor(() => app.screen().join("\n").includes("caught up"));
     app.calls[0]!.delta(" later " + "x".repeat(180) + " immediate-tail");
     await app.flush();
-    jest.advanceTimersByTime(16);
+    testClock.advanceTimersByTime(16);
     await app.flush();
     expect(app.screen().join("\n")).toContain("immediate-tail");
     app.calls[0]!.reply("replacement **final**");

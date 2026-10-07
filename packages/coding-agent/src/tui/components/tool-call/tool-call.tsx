@@ -1,3 +1,5 @@
+import { useSourceMount } from "../../hooks/reading-position";
+import { InteractiveText } from "../interactive-text";
 import {
   toolCardTitle,
   toolCardBody,
@@ -81,6 +83,7 @@ export function ToolCall({
   error?: string;
   locale?: Locale;
 }) {
+  const mountSource = useSourceMount();
   const fallbackId = useId();
   const navigation = useToolWindowNavigation();
   const identity = id ?? fallbackId;
@@ -305,6 +308,7 @@ export function ToolCall({
     .join("\n");
   return (
     <ThemedBox
+      flexShrink={0}
       flexDirection="column"
       backgroundColor={hovered ? "toolCardBackground" : undefined}
       onClick={toggle}
@@ -312,17 +316,15 @@ export function ToolCall({
       onMouseLeave={() => setHovered(false)}
     >
       <Tooltip
-        scrollAnchorId={id ? `tool-${id}-header` : undefined}
+        flexShrink={0}
+        ref={(element) => mountSource?.(id ? `tool-${id}-header` : "", element)}
         content={titleHidden ? `${fullHeader}\n${metadata}` : undefined}
         disabled={imagesSuspended}
         onClick={toggle}
       >
         <ThemedBox flexGrow={1} flexShrink={1}>
-          <ThemedBox selectable={false} width={2} flexShrink={0}>
-            <ThemedText
-              preserveWhitespace
-              color={outcomeUnknown ? "warning" : status === "error" ? "error" : color}
-            >
+          <ThemedBox noSelect width={2} flexShrink={0}>
+            <ThemedText color={outcomeUnknown ? "warning" : status === "error" ? "error" : color}>
               {outcomeUnknown
                 ? "?"
                 : status === "error"
@@ -360,24 +362,21 @@ export function ToolCall({
                   {parenthesized ? ")" : ""}
                 </ThemedText>
               )}
-              <ThemedText selectable={false}>{titleHint}</ThemedText>
+              <ThemedText>{titleHint}</ThemedText>
             </ThemedText>
           </ThemedBox>
           {status !== "running" && name && startedAt !== undefined && endedAt !== undefined && (
             <ThemedBox width={Bun.stringWidth(duration)} flexShrink={0}>
-              <ThemedText preserveWhitespace dimColor={!hovered}>
-                {duration}
-              </ThemedText>
+              <ThemedText dim={!hovered}>{duration}</ThemedText>
             </ThemedBox>
           )}
-          <ThemedBox selectable={false} width={2} flexShrink={0}>
-            <ThemedText preserveWhitespace dimColor>
-              {hovered ? (expanded ? " ▴" : " ▾") : "  "}
-            </ThemedText>
+          <ThemedBox noSelect width={2} flexShrink={0}>
+            <ThemedText dim>{hovered ? (expanded ? " ▴" : " ▾") : "  "}</ThemedText>
           </ThemedBox>
         </ThemedBox>
         {onPathClick && path && pathWidth > 0 && (
           <ThemedBox
+            flexShrink={0}
             position="absolute"
             left={pathLeft}
             top={0}
@@ -388,11 +387,16 @@ export function ToolCall({
         )}
       </Tooltip>
       {(output || diffView || status === "running") && (
-        <ThemedBox flexDirection="column" color={status === "error" ? "error" : "text"}>
+        <ThemedBox
+          flexShrink={0}
+          flexDirection="column"
+          color={status === "error" ? "error" : "text"}
+        >
           {splitRows ? (
-            <ThemedBox>
-              <ThemedText selectable={false} preserveWhitespace>{` ${figures.result} `}</ThemedText>
+            <ThemedBox flexShrink={0}>
+              <InteractiveText noSelect>{` ${figures.result} `}</InteractiveText>
               <SplitDiffView
+                onSourceMount={mountSource}
                 rows={splitRows.slice(windowStart, windowStart + visible).map((row, index) => ({
                   ...row,
                   scrollAnchorId: id
@@ -409,14 +413,11 @@ export function ToolCall({
               />
             </ThemedBox>
           ) : resultView?.card === "web" && status !== "error" ? (
-            <ThemedBox>
-              <ThemedText
-                selectable={false}
-                dimColor
-                preserveWhitespace
-              >{` ${figures.result} `}</ThemedText>
+            <ThemedBox flexShrink={0}>
+              <InteractiveText noSelect dim>{` ${figures.result} `}</InteractiveText>
               <ThemedBox
-                scrollAnchorId={id ? `tool-${id}-body` : undefined}
+                flexShrink={0}
+                ref={(element) => mountSource?.(id ? `tool-${id}-body` : "", element)}
                 flexDirection="column"
                 flexGrow={1}
               >
@@ -429,15 +430,16 @@ export function ToolCall({
               : shown
             ).map((line, index) => (
               <ThemedBox
-                scrollAnchorId={id ? `tool-${id}-line-${windowStart + index}` : undefined}
+                flexShrink={0}
+                ref={(element) =>
+                  mountSource?.(id ? `tool-${id}-line-${windowStart + index}` : "", element)
+                }
                 key={windowStart + index}
                 width={hitWidth(`   ${line.trimEnd()}`)}
                 onClick={line.trim() ? toggle : undefined}
               >
-                <ThemedBox selectable={false} width={3} flexShrink={0}>
-                  <ThemedText dimColor preserveWhitespace>
-                    {index === 0 ? ` ${figures.result} ` : "   "}
-                  </ThemedText>
+                <ThemedBox noSelect width={3} flexShrink={0}>
+                  <ThemedText dim>{index === 0 ? ` ${figures.result} ` : "   "}</ThemedText>
                 </ThemedBox>
                 <ThemedBox flexGrow={1} flexShrink={1}>
                   <ThemedText
@@ -473,8 +475,7 @@ export function ToolCall({
                     )}
                     {!!shownRows[index]?.hidden && (
                       <ThemedText
-                        selectable={false}
-                        dimColor
+                        dim
                       >{` ${t("tool.command-chars", { count: shownRows[index]!.hidden })}`}</ThemedText>
                     )}
                   </ThemedText>
@@ -483,6 +484,7 @@ export function ToolCall({
                   diffLines?.[windowStart + index]?.tone === "path" &&
                   diffLines[windowStart + index]!.path && (
                     <ThemedBox
+                      flexShrink={0}
                       position="absolute"
                       left={3}
                       top={0}
@@ -500,25 +502,33 @@ export function ToolCall({
               (resultView.shape === "paths"
                 ? resultView.paths.length
                 : resultView.matches.length) && (
-              <ThemedBox scrollAnchorId={id ? `tool-${id}-verdict` : undefined}>
+              <ThemedBox
+                flexShrink={0}
+                ref={(element) => mountSource?.(id ? `tool-${id}-verdict` : "", element)}
+              >
                 <ThemedText
-                  dimColor
+                  dim
                 >{`   ${t("tool.search-total", { count: resultView.total })}`}</ThemedText>
               </ThemedBox>
             )}
           {folded && !expanded && (
             <ThemedBox
+              flexShrink={0}
               width={hitWidth(`   ${t("tool.fold", { count: lines.length - limit })}`)}
               onClick={toggle}
             >
               <ThemedText
-                dimColor={!hovered}
+                dim={!hovered}
               >{`   ${t("tool.fold", { count: lines.length - limit })}`}</ThemedText>
             </ThemedBox>
           )}
           {expanded && lines.length > 400 && (
-            <ThemedBox scrollAnchorId={id ? `tool-${id}-window` : undefined} flexDirection="column">
-              <ThemedText selectable={false} dimColor={!hovered}>
+            <ThemedBox
+              flexShrink={0}
+              ref={(element) => mountSource?.(id ? `tool-${id}-window` : "", element)}
+              flexDirection="column"
+            >
+              <InteractiveText noSelect dim={!hovered}>
                 {splitRows
                   ? t("tool.diff-window", {
                       start: windowStart + 1,
@@ -533,38 +543,42 @@ export function ToolCall({
                         total: lines.length,
                       })
                     : t("tool.window", { shown: 400, total: lines.length })}
-              </ThemedText>
-              <ThemedBox>
+              </InteractiveText>
+              <ThemedBox flexShrink={0}>
                 <ThemedBox
+                  flexShrink={0}
                   width={hitWidth(t("tool.window-previous"))}
                   onClick={windowStart > 0 ? () => focusWindow(-400) : undefined}
                 >
-                  <ThemedText selectable={false} dimColor={windowStart === 0}>
+                  <InteractiveText noSelect dim={windowStart === 0}>
                     {t("tool.window-previous")}
-                  </ThemedText>
+                  </InteractiveText>
                 </ThemedBox>
-                <ThemedText selectable={false} preserveWhitespace>
-                  {"  "}
-                </ThemedText>
+                <InteractiveText noSelect>{"  "}</InteractiveText>
                 <ThemedBox
+                  flexShrink={0}
                   width={hitWidth(t("tool.window-next"))}
                   onClick={windowStart + 400 < lines.length ? () => focusWindow(400) : undefined}
                 >
-                  <ThemedText selectable={false} dimColor={windowStart + 400 >= lines.length}>
+                  <InteractiveText noSelect dim={windowStart + 400 >= lines.length}>
                     {t("tool.window-next")}
-                  </ThemedText>
+                  </InteractiveText>
                 </ThemedBox>
               </ThemedBox>
               {navigation?.active === identity && (
-                <ThemedText selectable={false} dimColor>
+                <InteractiveText noSelect dim>
                   {t("tool.window-focused")}
-                </ThemedText>
+                </InteractiveText>
               )}
             </ThemedBox>
           )}
         </ThemedBox>
       )}
-      <ThemedBox scrollAnchorId={id ? `tool-${id}-verdict` : undefined} flexDirection="column">
+      <ThemedBox
+        flexShrink={0}
+        ref={(element) => mountSource?.(id ? `tool-${id}-verdict` : "", element)}
+        flexDirection="column"
+      >
         {terminal?.exitCode !== undefined && terminal.exitCode !== 0 && (
           <ThemedText
             color={terminal.exitCode ? "error" : "subtle"}
@@ -574,7 +588,7 @@ export function ToolCall({
           <ThemedText color="error">{`   ${t("tool.signal", { signal: terminal.signal })}`}</ThemedText>
         )}
         {toolCardNotices(resultView, locale).map((notice) => (
-          <ThemedText key={notice} dimColor>{`   ${notice}`}</ThemedText>
+          <ThemedText key={notice} dim>{`   ${notice}`}</ThemedText>
         ))}
       </ThemedBox>
       {!!images?.length && (

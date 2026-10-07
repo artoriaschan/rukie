@@ -1,4 +1,6 @@
-import type { Ref } from "react";
+import { usePanelScroll } from "../../hooks/reading-position";
+import type { ReadingPosition } from "../../hooks/reading-position";
+import { useCallback, useLayoutEffect, useRef, type Ref } from "react";
 import type { Locale } from "@rukie/i18n";
 import type { McpServerView, McpSnapshot, McpToolView } from "@rukie/shared";
 import {
@@ -7,8 +9,7 @@ import {
   HintLine,
   ListItem,
   ThemedText,
-  type ScrollHandle,
-  type ScrollSnapshot,
+  type ScrollBoxHandle,
   StatusIcon,
   ScrollBox,
 } from "../../../ink/index.ts";
@@ -41,14 +42,14 @@ export interface McpPanelProps {
   interactive?: boolean;
   /** Already localized operation outcome or page-change notice. */
   result?: string;
-  scrollRef?: Ref<ScrollHandle>;
+  scrollRef?: Ref<ScrollBoxHandle>;
   /** Mount-time restoration; save the handle's top before leaving a reading page. */
   initialTop?: number;
-  onScroll?(snapshot: ScrollSnapshot): void;
+  onScroll?(snapshot: ReadingPosition): void;
   onActivate(key: string): void;
   onListWheel?(delta: number): void;
   onBodyFocus?(): void;
-  /** Routed body wheel: scroll the exposed handle here and avoid a second global wheel handler. */
+  /** Native ScrollBox owns wheel scrolling; this callback changes product focus only. */
   onBodyWheel?(delta: number): void;
 }
 
@@ -248,9 +249,36 @@ export function mcpPanelHeight(props: McpPanelProps): number {
 }
 
 export function McpPanel(props: McpPanelProps) {
+  const panelScroll = usePanelScroll(
+    props.scrollRef,
+    props.initialTop ?? 0,
+    props.columns,
+    props.onScroll,
+  );
   const { page, selected, onActivate, interactive = true } = props;
   const t = createTuiI18n(props.locale);
   const view = presentation(page, t);
+  const reader = useRef<ScrollBoxHandle | null>(null);
+  const readerMount = useCallback(
+    (handle: ScrollBoxHandle | null) => {
+      reader.current = handle;
+      panelScroll(handle);
+    },
+    [panelScroll],
+  );
+  const readerIdentity =
+    page.kind === "tool"
+      ? JSON.stringify([page.kind, page.server.name, page.tool.name])
+      : page.kind === "server"
+        ? `${page.kind}:${page.server.name}`
+        : page.kind;
+  const previousReader = useRef(readerIdentity);
+  const readingTop = reader.current?.getScrollTop() ?? props.initialTop ?? 0;
+  // Management readers retain their position when discovery or tool schemas grow.
+  useLayoutEffect(() => {
+    if (previousReader.current === readerIdentity) reader.current?.scrollTo(readingTop);
+    previousReader.current = readerIdentity;
+  }, [view.body, readerIdentity]);
   const { top, padding, width, bodyRows, actionRows, resultRows, dividerResult, height } = layout(
     props,
     view,
@@ -301,7 +329,7 @@ export function McpPanel(props: McpPanelProps) {
   return (
     <Box flexDirection="column" flexShrink={0} height={height} paddingTop={top}>
       <Divider color="permission" title={dividerResult ? result : undefined} />
-      <Box flexDirection="column" paddingX={padding}>
+      <Box flexShrink={0} flexDirection="column" paddingX={padding}>
         <ThemedText color="remember" bold wrap="truncate">
           {singleLine(view.title)}
         </ThemedText>
@@ -311,7 +339,7 @@ export function McpPanel(props: McpPanelProps) {
               flexDirection="column"
               height={bodyRows}
               flexShrink={0}
-              onWheel={interactive ? (event) => props.onListWheel?.(event.delta) : undefined}
+              onWheel={interactive ? (event) => props.onListWheel?.(event.deltaY) : undefined}
             >
               {view.rows.slice(window.start, window.end).map((row, index) => (
                 <Box
@@ -370,40 +398,38 @@ export function McpPanel(props: McpPanelProps) {
               ))}
             </Box>
           ) : (
-            <ScrollBox
-              key={
-                page.kind === "tool"
-                  ? JSON.stringify(["tool", page.server.name, page.tool.name])
-                  : page.kind === "server"
-                    ? `server:${page.server.name}`
-                    : page.kind
-              }
-              height={bodyRows}
-              flexGrow={0}
-              ref={props.scrollRef}
-              initialFollow={false}
-              followOnReachBottom={false}
-              initialTop={props.initialTop}
-              onScroll={props.onScroll}
+            <Box
+              flexShrink={0}
               onClick={interactive ? props.onBodyFocus : undefined}
-              onWheel={
-                interactive
-                  ? (event) => {
-                      // The renderer owns clamping; screen keyboard readers use the same exposed handle.
-                      props.onBodyWheel?.(event.delta);
-                    }
-                  : undefined
-              }
+              onWheel={interactive ? (event) => props.onBodyWheel?.(event.deltaY) : undefined}
+              flexDirection="column"
             >
-              <ThemedText preserveWhitespace>{view.body}</ThemedText>
-            </ScrollBox>
+              <ScrollBox
+                key={
+                  page.kind === "tool"
+                    ? JSON.stringify(["tool", page.server.name, page.tool.name])
+                    : page.kind === "server"
+                      ? `server:${page.server.name}`
+                      : page.kind
+                }
+                height={bodyRows}
+                flexGrow={0}
+                ref={readerMount}
+                stickyScroll={false}
+                wheelEnabled={interactive}
+              >
+                <Box flexShrink={0}>
+                  <ThemedText>{view.body}</ThemedText>
+                </Box>
+              </ScrollBox>
+            </Box>
           ))}
         {actionRows > 0 && (
           <Box
             flexDirection="column"
             height={actionRows}
             flexShrink={0}
-            onWheel={interactive ? (event) => props.onListWheel?.(event.delta) : undefined}
+            onWheel={interactive ? (event) => props.onListWheel?.(event.deltaY) : undefined}
           >
             {actions.slice(actionWindow.start, actionWindow.end).map((row, index) => (
               <ListItem

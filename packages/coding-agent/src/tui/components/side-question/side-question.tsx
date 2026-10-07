@@ -4,7 +4,7 @@ import {
   ScrollBox,
   Spinner,
   ThemedText,
-  type ScrollHandle,
+  type ScrollBoxHandle,
 } from "../../../ink/index.ts";
 import type { RefObject } from "react";
 import type { Locale } from "@rukie/i18n";
@@ -27,7 +27,7 @@ export function SideQuestionPanel({
   done: boolean;
   height: number;
   locale: Locale;
-  scrollRef: RefObject<ScrollHandle | null>;
+  scrollRef: RefObject<ScrollBoxHandle | null>;
 }) {
   const t = createTuiI18n(locale);
   return (
@@ -39,7 +39,7 @@ export function SideQuestionPanel({
         ) : answer ? (
           <Markdown text={answer} />
         ) : !done ? (
-          <Box>
+          <Box flexShrink={0}>
             <Spinner />
             <ThemedText color="permission">{` ${t("btw.answering")}`}</ThemedText>
           </Box>

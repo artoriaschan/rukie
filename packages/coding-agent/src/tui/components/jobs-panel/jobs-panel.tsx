@@ -1,15 +1,10 @@
+import { usePanelScroll, readPosition } from "../../hooks/reading-position";
+import type { ReadingPosition } from "../../hooks/reading-position";
 import type { Ref } from "react";
 import { useLayoutEffect } from "react";
 import { fmtDuration, type Locale } from "@rukie/i18n";
 import type { JobView } from "@rukie/shared";
-import {
-  Box,
-  Divider,
-  ScrollBox,
-  ThemedText,
-  type ScrollHandle,
-  type ScrollSnapshot,
-} from "../../../ink/index.ts";
+import { Box, Divider, ScrollBox, ThemedText, type ScrollBoxHandle } from "../../../ink/index.ts";
 import { createTuiI18n } from "../../../view/i18n";
 import { cleanJobText, jobOutputRows } from "../../../view/transcript/job-output";
 
@@ -34,10 +29,11 @@ export function JobsPanel({
   focusIndex: number;
   expanded: ReadonlySet<string>;
   armed?: string;
-  scrollRef: Ref<ScrollHandle>;
-  initialScroll?: ScrollSnapshot;
+  scrollRef: Ref<ScrollBoxHandle>;
+  initialScroll?: ReadingPosition;
   onSelect(index: number): void;
 }) {
+  const panelScroll = usePanelScroll(scrollRef, initialScroll);
   const t = createTuiI18n(locale);
   const width = Math.max(1, columns - 2);
   const outputLimit = Math.max(1, Math.min(8, rows - 13));
@@ -74,7 +70,7 @@ export function JobsPanel({
   useLayoutEffect(() => {
     if (!scrollRef || typeof scrollRef !== "object" || !scrollRef.current) return;
     const scroll = scrollRef.current;
-    const snapshot = scroll.getSnapshot();
+    const snapshot = readPosition(scroll, columns)!;
     // Initial layout restores focusedTop; scrolling an unmeasured viewport
     // would turn the initial reading state into bottom follow.
     if (snapshot.height === 0) return;
@@ -87,24 +83,22 @@ export function JobsPanel({
   const failed = jobs.filter((job) => job.status === "failed").length;
   const killed = jobs.filter((job) => job.status === "killed").length;
   return (
-    <Box height={rows} flexDirection="column" paddingX={1}>
+    <Box flexShrink={0} height={rows} flexDirection="column" paddingX={1}>
       <Divider title={t("jobs.panel.title")} />
       <ThemedText
-        dimColor
+        dim
         wrap="truncate"
       >{`${live} ${t("jobs.status.running")} · ${complete} ${t("jobs.status.completed")} · ${failed} ${t("jobs.status.failed")} · ${killed} ${t("jobs.status.killed")}`}</ThemedText>
       <ScrollBox
-        initialTop={initialScroll?.top ?? focusedTop}
-        initialAnchor={initialScroll?.anchor}
-        initialFollow={initialScroll?.following ?? false}
+        stickyScroll={initialScroll?.following ?? false}
         key={[...expanded].join(",")}
-        ref={scrollRef}
+        ref={panelScroll}
       >
         {jobs.length === 0 ? (
           <ThemedText>{t("jobs.panel.empty")}</ThemedText>
         ) : (
           jobs.map((job, index) => (
-            <Box key={job.id} flexDirection="column" onClick={() => onSelect(index)}>
+            <Box flexShrink={0} key={job.id} flexDirection="column" onClick={() => onSelect(index)}>
               <ThemedText
                 color={
                   index === focusIndex
@@ -116,7 +110,7 @@ export function JobsPanel({
                 wrap="truncate"
               >{`${index === focusIndex ? "❯" : " "} ${job.id} · ${t(`jobs.status.${job.status}`)} · ${fmtDuration(Math.max(0, (job.endedAt ?? Date.now()) - job.startedAt), locale)} · ${cleanJobText(job.label).replace(/\n/g, " ")}`}</ThemedText>
               {details[index]!.map((line, at) => (
-                <ThemedText key={at} dimColor wrap="truncate">
+                <ThemedText key={at} dim wrap="truncate">
                   {line}
                 </ThemedText>
               ))}
@@ -127,7 +121,7 @@ export function JobsPanel({
       <ThemedText color="warning" wrap="truncate">
         {armed ? t("jobs.panel.confirm", { id: armed }) : ""}
       </ThemedText>
-      <ThemedText dimColor wrap="truncate">
+      <ThemedText dim wrap="truncate">
         {t("jobs.panel.hint")}
       </ThemedText>
     </Box>

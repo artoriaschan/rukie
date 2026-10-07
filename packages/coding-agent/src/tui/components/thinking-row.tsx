@@ -72,36 +72,37 @@ export function ThinkingRow({
   const lines = text.split("\n");
   const rows = lines.slice(-3);
   return (
-    <Box flexDirection="column" gap={expanded ? 1 : 0}>
+    <Box flexShrink={0} flexDirection="column" gap={expanded ? 1 : 0}>
       <Box
+        flexShrink={0}
         onClick={onToggle}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
       >
-        <Box width={streaming ? 2 : 3} flexShrink={0} selectable={false}>
-          <ThemedText color={streaming ? pulseColor : undefined} dimColor={!streaming}>
+        <Box width={streaming ? 2 : 3} flexShrink={0} noSelect>
+          <ThemedText color={streaming ? pulseColor : undefined} dim={!streaming}>
             {streaming ? "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"[frame % 10] : "🧠"}
           </ThemedText>
         </Box>
-        <ThemedText dimColor={!hovered} italic>
+        <ThemedText dim={!hovered} italic>
           {title}
         </ThemedText>
       </Box>
       {expanded ? (
-        <Box paddingLeft={2}>
-          <Markdown text={shown} dimColor />
+        <Box flexShrink={0} paddingLeft={2}>
+          <Markdown text={shown} dim />
         </Box>
       ) : (
         preview && (
           <Box flexDirection="column" height={3} flexShrink={0} paddingLeft={2}>
             {Array.from({ length: 3 }, (_, index) => (
-              <Box key={index} height={1}>
-                <Box width={2} flexShrink={0} selectable={false}>
-                  <ThemedText dimColor italic>
+              <Box flexShrink={0} key={index} height={1}>
+                <Box width={2} flexShrink={0} noSelect>
+                  <ThemedText dim italic>
                     {"│"}
                   </ThemedText>
                 </Box>
-                <ThemedText dimColor italic wrap="truncate">
+                <ThemedText dim italic wrap="truncate">
                   {clip(
                     index === 0 && lines.length > 3 ? `…${rows[index]}` : (rows[index] ?? " "),
                     Math.max(1, columns - 4),

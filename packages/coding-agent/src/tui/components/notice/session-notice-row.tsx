@@ -21,14 +21,14 @@ export function SessionNoticeRow({ notice, locale }: { notice: SessionNotice; lo
     );
   if (notice.kind === "interrupted")
     return (
-      <Box flexDirection="column" marginTop={1}>
-        <ThemedText dimColor>{t("notice.interrupted")}</ThemedText>
-        <ThemedText dimColor>{t("notice.interrupted-next")}</ThemedText>
+      <Box flexShrink={0} flexDirection="column" marginTop={1}>
+        <ThemedText dim>{t("notice.interrupted")}</ThemedText>
+        <ThemedText dim>{t("notice.interrupted-next")}</ThemedText>
       </Box>
     );
   if (notice.kind === "error")
     return (
-      <Box marginTop={1}>
+      <Box flexShrink={0} marginTop={1}>
         <Notice kind="error" text={`✗ ${formatError({ message: notice.reason ?? "" }, t)}`} />
       </Box>
     );

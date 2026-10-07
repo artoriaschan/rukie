@@ -1,4 +1,5 @@
-import { expect, jest, test } from "bun:test";
+import { testClock } from "../helpers/test-clock";
+import { expect, test } from "bun:test";
 import { watch } from "node:fs";
 import { mkdtemp, chmod, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -156,7 +157,7 @@ test("a stalled native clipboard helper is bounded at 2000ms and reports only th
       if (name === "ready") resolve();
     });
   });
-  jest.useFakeTimers();
+  testClock.useFakeTimers();
   const instance = createDefaultHost({ env: { PATH: root }, writeTerminal: () => {} });
   try {
     let done = false;
@@ -166,9 +167,9 @@ test("a stalled native clipboard helper is bounded at 2000ms and reports only th
     });
     // Await the child's actual ready signal; only the parent deadline uses virtual time.
     await started;
-    jest.advanceTimersByTime(1999);
+    testClock.advanceTimersByTime(1999);
     expect(done).toBe(false);
-    jest.advanceTimersByTime(1);
+    testClock.advanceTimersByTime(1);
     expect(await completion).toBe("sent");
     const output: string[] = [];
     const closing = createDefaultHost({
@@ -184,7 +185,7 @@ test("a stalled native clipboard helper is bounded at 2000ms and reports only th
     expect(await closing.host.writeClipboard("x")).toBe(false);
   } finally {
     observe!.close();
-    jest.useRealTimers();
+    testClock.useRealTimers();
     await instance.dispose();
     await rm(root, { recursive: true, force: true });
   }

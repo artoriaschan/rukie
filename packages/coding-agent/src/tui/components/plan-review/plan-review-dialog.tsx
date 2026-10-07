@@ -6,7 +6,7 @@ import {
   ThemedBox,
   ThemedText,
   ThemedTextInput,
-  type ScrollHandle,
+  type ScrollBoxHandle,
 } from "../../../ink/index.ts";
 import type { Locale } from "@rukie/i18n";
 import { createTuiI18n } from "../../../view/i18n";
@@ -31,20 +31,20 @@ export function PlanReviewDialog({
   maxHeight: number;
   columns: number;
   locale: Locale;
-  scrollRef: RefObject<ScrollHandle | null>;
+  scrollRef: RefObject<ScrollBoxHandle | null>;
   onSelect(index: number): void;
   onOption(index: number): void;
 }) {
   const t = createTuiI18n(locale);
   const prefix = `${t("plan.review.feedback")}: `;
   return (
-    <Box flexDirection="column" paddingX={2} height={maxHeight}>
+    <Box flexShrink={0} flexDirection="column" paddingX={2} height={maxHeight}>
       <Divider title={t("plan.review.heading")} color="plan" />
-      <ScrollBox ref={scrollRef} height={Math.max(1, maxHeight - 5)} initialFollow={false}>
+      <ScrollBox ref={scrollRef} height={Math.max(1, maxHeight - 5)} stickyScroll={false}>
         <Markdown text={plan} />
       </ScrollBox>
       {["plan.review.approve", "plan.review.revise"].map((key, index) => (
-        <ThemedBox key={key} height={1} onClick={() => onOption(index)}>
+        <ThemedBox flexShrink={0} key={key} height={1} onClick={() => onOption(index)}>
           <ThemedText
             color={selected === index ? "plan" : undefined}
             bold={selected === index}
@@ -52,7 +52,7 @@ export function PlanReviewDialog({
           >{`${selected === index ? "❯" : " "} ${index + 1} ${t(key as "plan.review.approve" | "plan.review.revise")}`}</ThemedText>
         </ThemedBox>
       ))}
-      <ThemedBox height={1} onClick={() => onSelect(2)}>
+      <ThemedBox flexShrink={0} height={1} onClick={() => onSelect(2)}>
         <ThemedText
           color={selected === 2 ? "plan" : undefined}
         >{`${selected === 2 ? "❯" : " "} ${prefix}`}</ThemedText>
@@ -66,7 +66,7 @@ export function PlanReviewDialog({
           maxLines={1}
         />
       </ThemedBox>
-      <ThemedText dimColor wrap="truncate">
+      <ThemedText dim wrap="truncate">
         {t("plan.review.hint")}
       </ThemedText>
     </Box>

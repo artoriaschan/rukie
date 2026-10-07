@@ -1,5 +1,6 @@
+import { testClock } from "../helpers/test-clock";
 import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
-import { expect, test, jest } from "bun:test";
+import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { createSession } from "@rukie/agent";
@@ -110,7 +111,7 @@ test("resume replays stored text before input and appends the next Run to the sa
     ]);
     const replay = await start(["--resume", id], {
       session: { cwd: root, homeDir: root },
-      advanceTimers: (ms) => jest.advanceTimersByTime(ms),
+      advanceTimers: (ms) => testClock.advanceTimersByTime(ms),
     });
     try {
       await replay.waitFor(() => replay.screen().includes("❯"));

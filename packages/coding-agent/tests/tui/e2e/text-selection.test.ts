@@ -1,4 +1,5 @@
-import { expect, jest, test } from "bun:test";
+import { testClock } from "../helpers/test-clock";
+import { expect, test } from "bun:test";
 import { startWithClock } from "../helpers/clock-app";
 
 function gesture(
@@ -45,7 +46,7 @@ test("drag copies painted multiline Unicode Markdown without assistant decoratio
     expect(copied[1]).toBe("Alpha 中文🐋\nsecond value");
     gesture(app, { x: 50, y }, { x: 60, y });
     release(app, { x: 60, y });
-    jest.advanceTimersByTime(20);
+    testClock.advanceTimersByTime(20);
     expect(copied.length).toBe(2);
     expect(app.terminal.buffer.active.getLine(y)!.getCell(2)!.isBgDefault()).toBe(true);
     expect(app.stderr()).toBe("");
@@ -160,7 +161,7 @@ test("resize and Escape discard gestures while a clamped wheel keeps selection w
     gesture(app, at, { ...at, x: 9 });
     await app.waitFor(() => !app.terminal.buffer.active.getLine(at.y)!.getCell(2)!.isBgDefault());
     app.stdin.write("\x1b");
-    jest.advanceTimersByTime(31);
+    testClock.advanceTimersByTime(31);
     await app.flush();
     await app.waitFor(() => app.terminal.buffer.active.getLine(at.y)!.getCell(2)!.isBgDefault());
     release(app, { ...at, x: 9 });
@@ -207,7 +208,7 @@ test("dragging on a tool path suppresses its file action while a normal click st
     await app.waitFor(() => copied.length === 1);
     expect(copied).toEqual(["file."]);
     expect(app.screen().join("\n")).not.toContain("Copy path");
-    jest.advanceTimersByTime(500);
+    testClock.advanceTimersByTime(500);
     app.stdin.write(`\x1b[<0;${x + 1};${y + 1}M\x1b[<0;${x + 1};${y + 1}m`);
     await app.waitFor(() => app.screen().join("\n").includes("Copy path"));
     expect(copied).toHaveLength(1);
@@ -282,7 +283,7 @@ test("a late clipboard result belongs to its original Session and does not notif
     await app.waitFor(() => !app.screen().some((line) => line.includes("selected text")));
     pending.resolve(true);
     await app.flush();
-    jest.advanceTimersByTime(32);
+    testClock.advanceTimersByTime(32);
     await app.flush();
     expect(app.screen().join("\n")).not.toContain("Copied");
     expect(copied).toEqual(["selected"]);

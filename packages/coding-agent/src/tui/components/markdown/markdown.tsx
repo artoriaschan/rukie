@@ -1,3 +1,4 @@
+import { InteractiveText } from "../interactive-text";
 import { createContext, useContext, useMemo, type ComponentProps, type ReactNode } from "react";
 import {
   Box,
@@ -19,12 +20,12 @@ import {
 
 const DimContext = createContext(false);
 function ThemedText(props: ComponentProps<typeof StyledText>) {
-  const dimColor = useContext(DimContext);
-  return <StyledText {...props} dimColor={props.dimColor ?? dimColor} />;
+  const dim = useContext(DimContext);
+  return <StyledText {...props} dim={props.dim ?? dim} />;
 }
 function SyntaxHighlightedText(props: ComponentProps<typeof HighlightedText>) {
-  const dimColor = useContext(DimContext);
-  return <HighlightedText {...props} dimColor={props.dimColor ?? dimColor} />;
+  const dim = useContext(DimContext);
+  return <HighlightedText {...props} dim={props.dim ?? dim} />;
 }
 
 type Node = ReturnType<typeof parseMarkdown>["children"][number];
@@ -100,16 +101,23 @@ function blocks(
         )
           return <EnvironmentBlock key={index} text={literal} onClick={onClick} />;
         return (
-          <Box key={index} marginBottom={tight || index === nodes.length - 1 ? 0 : 1}>
-            <ThemedText onClick={onClick}>{inline(node.children, source)}</ThemedText>
+          <Box
+            flexShrink={0}
+            key={index}
+            marginBottom={tight || index === nodes.length - 1 ? 0 : 1}
+          >
+            <InteractiveText onClick={onClick}>{inline(node.children, source)}</InteractiveText>
           </Box>
         );
       }
       case "heading":
         return (
-          <Box key={index} marginBottom={tight || index === nodes.length - 1 ? 0 : 1}>
-            <ThemedText
-              onClick={onClick}
+          <Box
+            flexShrink={0}
+            key={index}
+            marginBottom={tight || index === nodes.length - 1 ? 0 : 1}
+          >
+            <InteractiveText
               bold={node.depth <= 4}
               underline={node.depth === 1}
               italic={node.depth === 4 || node.depth === 5}
@@ -124,7 +132,7 @@ function blocks(
               }
             >
               {inline(node.children, source)}
-            </ThemedText>
+            </InteractiveText>
           </Box>
         );
       case "code":
@@ -132,12 +140,13 @@ function blocks(
       case "list":
         return (
           <Box
+            flexShrink={0}
             key={index}
             flexDirection="column"
             marginBottom={tight || index === nodes.length - 1 ? 0 : 1}
           >
             {node.children.map((item, itemIndex) => (
-              <Box key={itemIndex}>
+              <Box flexShrink={0} key={itemIndex}>
                 <Box
                   width={node.ordered ? String((node.start ?? 1) + itemIndex).length + 2 : 2}
                   flexShrink={0}
@@ -146,15 +155,15 @@ function blocks(
                     {node.ordered ? `${(node.start ?? 1) + itemIndex}. ` : "- "}
                   </ThemedText>
                 </Box>
-                <Box flexDirection="column" flexGrow={1}>
+                <Box flexShrink={0} flexDirection="column" flexGrow={1}>
                   {item.checked == null ? (
                     blocks(item.children, onClick, !node.spread, source)
                   ) : (
-                    <Box>
+                    <Box flexShrink={0}>
                       <Box width={4} flexShrink={0}>
                         <ThemedText>{item.checked ? "[x]" : "[ ]"}</ThemedText>
                       </Box>
-                      <Box flexDirection="column" flexGrow={1}>
+                      <Box flexShrink={0} flexDirection="column" flexGrow={1}>
                         {blocks(item.children, onClick, !node.spread, source)}
                       </Box>
                     </Box>
@@ -166,28 +175,28 @@ function blocks(
         );
       case "blockquote":
         return (
-          <Box key={index}>
+          <Box flexShrink={0} key={index}>
             <Box width={2} flexShrink={0}>
-              <ThemedText color="subtle" selectable={false}>
+              <InteractiveText color="subtle" noSelect>
                 ▎
-              </ThemedText>
+              </InteractiveText>
             </Box>
-            <Box flexDirection="column" flexGrow={1}>
+            <Box flexShrink={0} flexDirection="column" flexGrow={1}>
               {blocks(node.children, onClick, false, source)}
             </Box>
           </Box>
         );
       case "thematicBreak":
         return (
-          <ThemedText key={index} onClick={onClick} dimColor>
+          <InteractiveText key={index} onClick={onClick} dim>
             ───
-          </ThemedText>
+          </InteractiveText>
         );
       case "html":
         return (
-          <ThemedText key={index} onClick={onClick}>
+          <InteractiveText key={index} onClick={onClick}>
             {node.value}
-          </ThemedText>
+          </InteractiveText>
         );
       default:
         return null;
@@ -210,11 +219,7 @@ function EnvironmentBlock({ text, onClick }: { text: string; onClick?: () => voi
   const name = /^\\begin\{([^}]+)\}/.exec(text)?.[1];
   const rendered = name && text.endsWith(`\\end{${name}}`) ? renderFormula(text, true) : undefined;
   const fits = rendered && rendered.split("\n").every((row) => Bun.stringWidth(row) <= columns - 4);
-  return (
-    <ThemedText onClick={onClick} preserveWhitespace>
-      {fits ? rendered : text}
-    </ThemedText>
-  );
+  return <InteractiveText onClick={onClick}>{fits ? rendered : text}</InteractiveText>;
 }
 function MathBlock({
   node,
@@ -226,11 +231,7 @@ function MathBlock({
   onClick?: () => void;
 }) {
   const { columns } = useTerminalSize();
-  return (
-    <ThemedText onClick={onClick} preserveWhitespace>
-      {mathText(node, source, columns)}
-    </ThemedText>
-  );
+  return <InteractiveText onClick={onClick}>{mathText(node, source, columns)}</InteractiveText>;
 }
 function CodeBlock({
   node,
@@ -254,9 +255,9 @@ function CodeBlock({
   const diagram = art && art.width <= columns - 4;
   if (diagram)
     return (
-      <Box flexDirection="column">
+      <Box flexShrink={0} flexDirection="column">
         {art.styled.map((row, index) => (
-          <ThemedText key={index} onClick={onClick} preserveWhitespace>
+          <InteractiveText key={index} onClick={onClick}>
             {row.map((run, at) => (
               <ThemedText
                 key={at}
@@ -265,31 +266,41 @@ function CodeBlock({
                 {run.text}
               </ThemedText>
             ))}
-          </ThemedText>
+          </InteractiveText>
         ))}
       </Box>
     );
   if (columns - 6 < 8)
     return (
-      <Box flexDirection="column">
-        <ThemedText color="subtle" selectable={false}>{`\`\`\`${label}`}</ThemedText>
-        <Box paddingLeft={2}>
-          <SyntaxHighlightedText
-            text={node.value}
-            language={node.lang ?? undefined}
-            onClick={onClick}
-            preserveWhitespace
-          />
+      <Box flexShrink={0} flexDirection="column">
+        <InteractiveText color="subtle" noSelect>{`\`\`\`${label}`}</InteractiveText>
+        <Box flexShrink={0} paddingLeft={2} onClick={onClick}>
+          <SyntaxHighlightedText text={node.value} language={node.lang ?? undefined} />
         </Box>
       </Box>
     );
   return (
-    <ThemedBox borderStyle="single" borderColor="subtle" flexDirection="column" paddingX={1}>
-      <Box position="absolute" left={1} right={1} top={-1} height={1} selectable={false}>
+    <Box flexShrink={0} width="100%" flexDirection="column">
+      <ThemedBox
+        flexShrink={0}
+        width="100%"
+        borderStyle="single"
+        borderColor="subtle"
+        flexDirection="column"
+        paddingX={1}
+      >
+        <Box flexShrink={0} onClick={onClick}>
+          <SyntaxHighlightedText runs={highlighted} />
+        </Box>
+      </ThemedBox>
+      <Box position="absolute" left={2} right={1} top={0} height={1} noSelect>
         <ThemedText color="subtle" wrap="truncate">{` ${label} `}</ThemedText>
       </Box>
-      <SyntaxHighlightedText runs={highlighted} onClick={onClick} preserveWhitespace />
-    </ThemedBox>
+      <Box position="absolute" left={0} right={0} top={0} height={1} noSelect />
+      <Box position="absolute" left={0} right={0} bottom={0} height={1} noSelect />
+      <Box position="absolute" left={0} top={1} bottom={1} width={2} noSelect />
+      <Box position="absolute" right={0} top={1} bottom={1} width={2} noSelect />
+    </Box>
   );
 }
 function TableBlock({
@@ -337,14 +348,14 @@ function TableBlock({
     wrapped.some((row) => row.some((cell) => cell.length > 4));
   if (vertical)
     return (
-      <Box flexDirection="column">
+      <Box flexShrink={0} flexDirection="column">
         {node.children.slice(1).map((row, index) => (
-          <Box key={index} flexDirection="column" marginTop={index ? 1 : 0}>
+          <Box flexShrink={0} key={index} flexDirection="column" marginTop={index ? 1 : 0}>
             {row.children.map((cell, i) => (
-              <ThemedText key={i} onClick={onClick}>
+              <InteractiveText key={i} onClick={onClick}>
                 <ThemedText bold>{values[0]?.[i] ?? `Column ${i + 1}`}: </ThemedText>
                 {inline(cell.children, source)}
-              </ThemedText>
+              </InteractiveText>
             ))}
           </Box>
         ))}
@@ -353,19 +364,19 @@ function TableBlock({
   const border = (left: string, join: string, right: string) =>
     left + widths.map((width) => "─".repeat(width + 2)).join(join) + right;
   return (
-    <Box flexDirection="column">
-      <ThemedText color="subtle" selectable={false}>
+    <Box flexShrink={0} flexDirection="column">
+      <InteractiveText color="subtle" noSelect>
         {border("┌", "┬", "┐")}
-      </ThemedText>
+      </InteractiveText>
       {wrapped.map((row, index) => {
         const height = Math.max(1, ...row.map((cell) => cell.length));
         return (
-          <Box key={index} flexDirection="column">
+          <Box flexShrink={0} key={index} flexDirection="column">
             {Array.from({ length: height }, (_, line) => (
-              <Box key={line}>
-                <ThemedText color="subtle" selectable={false}>
+              <Box flexShrink={0} key={line}>
+                <InteractiveText color="subtle" noSelect>
                   │
-                </ThemedText>
+                </InteractiveText>
                 {row.map((cell, i) => {
                   const offset = Math.floor((height - cell.length) / 2);
                   const value = cell[line - offset] ?? "";
@@ -374,33 +385,33 @@ function TableBlock({
                   const before =
                     alignment === "right" ? gap : alignment === "center" ? Math.floor(gap / 2) : 0;
                   return (
-                    <Box key={i}>
-                      <ThemedText onClick={onClick} bold={index === 0} preserveWhitespace>
+                    <Box flexShrink={0} key={i}>
+                      <InteractiveText onClick={onClick} bold={index === 0}>
                         {" ".repeat(before + 1)}
                         {cell.length === 1 && line === offset
                           ? inline(node.children[index]!.children[i]!.children, source)
                           : value}
                         {" ".repeat(gap - before + 1)}
-                      </ThemedText>
-                      <ThemedText color="subtle" selectable={false}>
+                      </InteractiveText>
+                      <InteractiveText color="subtle" noSelect>
                         │
-                      </ThemedText>
+                      </InteractiveText>
                     </Box>
                   );
                 })}
               </Box>
             ))}
             {index < wrapped.length - 1 && (
-              <ThemedText color="subtle" selectable={false}>
+              <InteractiveText color="subtle" noSelect>
                 {border("├", "┼", "┤")}
-              </ThemedText>
+              </InteractiveText>
             )}
           </Box>
         );
       })}
-      <ThemedText color="subtle" selectable={false}>
+      <InteractiveText color="subtle" noSelect>
         {border("└", "┴", "┘")}
-      </ThemedText>
+      </InteractiveText>
     </Box>
   );
 }
@@ -409,15 +420,15 @@ function TableBlock({
 export function Markdown({
   text,
   onClick,
-  dimColor = false,
+  dim = false,
 }: {
   text: string;
   onClick?(): void;
-  dimColor?: boolean;
+  dim?: boolean;
 }) {
   const document = useMemo(() => parseMarkdown(text), [text]);
   return (
-    <DimContext.Provider value={dimColor}>
+    <DimContext.Provider value={dim}>
       <Box flexDirection="column" flexGrow={1} flexShrink={1}>
         {blocks(document.children, onClick, false, text)}
       </Box>

@@ -1,5 +1,6 @@
+import { renderComponent } from "../../helpers/render-component";
 import { expect, test } from "bun:test";
-import { dark, render, ThemeProvider, ThemedText } from "../../../../src/ink/index.ts";
+import { dark, ThemeProvider, ThemedText } from "../../../../src/ink/index.ts";
 import {
   SubagentMessage,
   type SubagentView,
@@ -25,7 +26,7 @@ for (const columns of [40, 80]) {
         { id: "2", name: "bash", argsPreview: "宽\n".repeat(60), status: "running" },
       ],
     };
-    const app = render(
+    const app = renderComponent(
       <ThemeProvider>
         <SubagentMessage subagent={row} columns={columns} />
         <ThemedText>after card</ThemedText>
@@ -80,7 +81,7 @@ for (const [status, color, glyph] of [
       toolCalls: [],
       outputLines: [],
     };
-    const app = render(
+    const app = renderComponent(
       <ThemeProvider>
         <SubagentMessage subagent={row} columns={100} locale="en" onClick={() => clicked++} />
       </ThemeProvider>,
@@ -153,7 +154,7 @@ for (const [previous, active, previousColor, activeColor] of [
         },
       ],
     };
-    const app = render(
+    const app = renderComponent(
       <ThemeProvider>
         <SubagentMessage subagent={row} columns={100} />
       </ThemeProvider>,

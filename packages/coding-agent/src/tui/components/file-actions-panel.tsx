@@ -25,6 +25,7 @@ export function FileActionsPanel({
   const start = Math.min(3 - count, Math.max(0, focus - count + 1));
   return (
     <ThemedBox
+      flexShrink={0}
       position="absolute"
       top={0}
       left={0}
@@ -41,7 +42,7 @@ export function FileActionsPanel({
         </ThemedText>
       )}
       {titleRows > 1 && (
-        <ThemedText dimColor wrap="truncate">
+        <ThemedText dim wrap="truncate">
           {Bun.stripANSI(path).replace(/[\r\n\t]/g, " ")}
         </ThemedText>
       )}
@@ -54,7 +55,7 @@ export function FileActionsPanel({
         .map((key, offset) => {
           const index = start + offset;
           return (
-            <ThemedBox key={key} height={1} onClick={() => onPick(index)}>
+            <ThemedBox flexShrink={0} key={key} height={1} onClick={() => onPick(index)}>
               <ThemedText
                 color={focus === index ? "accent" : undefined}
                 bold={focus === index}
@@ -66,7 +67,7 @@ export function FileActionsPanel({
           );
         })}
       {rows > titleRows + count && (
-        <ThemedText dimColor wrap="truncate">
+        <ThemedText dim wrap="truncate">
           {t("file-actions.hint")}
         </ThemedText>
       )}

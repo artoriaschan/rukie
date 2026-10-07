@@ -1,3 +1,6 @@
+import chalk from "chalk";
+let previousColorLevel = chalk.level;
+let activeTerminals = 0;
 import { PassThrough, Writable } from "node:stream";
 import { setImmediate } from "node:timers/promises";
 import { setTimeout as ioTimeout, clearTimeout as ioClearTimeout } from "node:timers";
@@ -6,6 +9,8 @@ import unicode11 from "@xterm/addon-unicode11";
 
 /** Interpret the frontend's ANSI output at its terminal IO seam. */
 export function createTerminal(columns = 80, rows = 24, advanceTimers?: (ms: number) => void) {
+  if (activeTerminals++ === 0) previousColorLevel = chalk.level;
+  chalk.level = 3;
   const terminal = new xterm.Terminal({ cols: columns, rows, allowProposedApi: true });
   // xterm defaults to Unicode 6, where moon emoji occupy one column.
   terminal.loadAddon(new unicode11.Unicode11Addon());
@@ -94,19 +99,17 @@ export function createTerminal(columns = 80, rows = 24, advanceTimers?: (ms: num
       ).concat(screen());
     },
     async waitFor(predicate: () => boolean, timeoutMs = 2000) {
-      const deadline = performance.now() + timeoutMs;
-      // Virtual clocks also replace performance.now; bound I/O yields separately.
-      let remainingYields = timeoutMs * 100;
+      const deadline = process.hrtime.bigint() + BigInt(timeoutMs) * 1_000_000n;
       do {
         await flush();
         if (predicate()) return;
         advanceTimers?.(16);
-        if (advanceTimers) await setImmediate();
-        else await setImmediate();
-      } while (advanceTimers ? --remainingYields > 0 : performance.now() < deadline);
+        await setImmediate();
+      } while (process.hrtime.bigint() < deadline);
       throw new Error(`Terminal did not reach expected state:\n${screen().join("\n")}`);
     },
     dispose() {
+      if (--activeTerminals === 0) chalk.level = previousColorLevel;
       stdin.destroy();
       stdout.destroy();
       terminal.dispose();

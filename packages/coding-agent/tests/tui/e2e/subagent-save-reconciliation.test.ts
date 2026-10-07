@@ -1,8 +1,8 @@
+import { testClock } from "../helpers/test-clock";
 import { test, expect } from "bun:test";
 import { createJsonlStore, createSession } from "@rukie/agent";
 import { controlledModel } from "../helpers/model";
 import { start } from "../helpers/app";
-import { jest } from "bun:test";
 import { startWithClock } from "../helpers/clock-app";
 
 test.each(["assistant", "toolResult"] as const)(
@@ -132,7 +132,7 @@ test.each(["assistant", "toolResult"] as const)(
         columns: 120,
         rows: 40,
         env: { LANG: "en" },
-        advanceTimers: (ms) => jest.advanceTimersByTime(ms),
+        advanceTimers: (ms) => testClock.advanceTimersByTime(ms),
         session: { cwd: app.root, homeDir: app.root },
       });
       try {

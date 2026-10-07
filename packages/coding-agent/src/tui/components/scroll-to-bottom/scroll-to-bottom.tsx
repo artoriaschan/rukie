@@ -33,6 +33,7 @@ export function ScrollToBottom({
     >
       <Box width={Math.floor((available - width) / 2)} flexShrink={0} />
       <ThemedBox
+        flexShrink={0}
         width={width}
         height={1}
         color="inverseText"
@@ -41,7 +42,7 @@ export function ScrollToBottom({
         onMouseLeave={() => setHovered(false)}
         onClick={onClick}
       >
-        <ThemedText bold preserveWhitespace wrap="truncate">
+        <ThemedText bold wrap="truncate">
           {label}
         </ThemedText>
       </ThemedBox>

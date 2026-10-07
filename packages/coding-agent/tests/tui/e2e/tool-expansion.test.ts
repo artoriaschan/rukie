@@ -1,7 +1,8 @@
+import { testClock } from "../helpers/test-clock";
 import { createFauxCore, fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { createSession } from "@rukie/agent";
 import { withAuxiliaryRequests } from "../helpers/auxiliary-model";
-import { expect, test, jest } from "bun:test";
+import { expect, test } from "bun:test";
 import { start } from "../helpers/app";
 import { startWithClock } from "../helpers/clock-app";
 
@@ -26,7 +27,7 @@ test("cards toggle from header and body whitespace and union with transcript exp
     click(app, 79, header());
     await app.waitFor(() => app.screen().includes("   fifth"));
     expect(app.screen()).toContain("   fifth");
-    jest.advanceTimersByTime(500);
+    testClock.advanceTimersByTime(500);
     const body = header() + 2;
     expect(app.screen()[body]!.trim()).toBe("");
     click(app, 79, body);
@@ -44,7 +45,7 @@ test("cards toggle from header and body whitespace and union with transcript exp
     );
     app.stdin.write("\x0f");
     await app.flush();
-    jest.advanceTimersByTime(500);
+    testClock.advanceTimersByTime(500);
     click(app, 3, header());
     await app.flush();
     expect(app.screen()).toContain("   fifth");
@@ -52,10 +53,10 @@ test("cards toggle from header and body whitespace and union with transcript exp
     await app.waitFor(() => app.screen().join("\n").includes("+2 lines"));
     app.resize(40, 40);
     await app.waitFor(() => app.screen().every((line) => Bun.stringWidth(line) <= 40));
-    jest.advanceTimersByTime(500);
+    testClock.advanceTimersByTime(500);
     click(app, 39, header() + 2);
     await app.waitFor(() => app.screen().includes("   fifth"));
-    jest.advanceTimersByTime(500);
+    testClock.advanceTimersByTime(500);
     click(app, 39, header() - 1);
     await app.flush();
     expect(app.screen()).toContain("   fifth");

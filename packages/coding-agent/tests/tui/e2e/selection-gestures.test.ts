@@ -1,3 +1,4 @@
+import { testClock } from "../helpers/test-clock";
 import { expect, jest, test } from "bun:test";
 import { startWithClock } from "../helpers/clock-app";
 
@@ -30,7 +31,7 @@ test("double press highlights a Unicode path immediately, release copies; triple
     const y = app.screen().findIndex((line) => line.includes("Read /tmp/中文-file.ts please"));
     press(app, 8, y);
     release(app, 8, y);
-    jest.advanceTimersByTime(499);
+    testClock.advanceTimersByTime(499);
     press(app, 8, y);
     await app.waitFor(() => !app.terminal.buffer.active.getLine(y)!.getCell(7)!.isBgDefault());
     expect(copied).toEqual([]);

@@ -1,3 +1,5 @@
+import { useSourceMount } from "../../hooks/reading-position";
+import { InteractiveText } from "../interactive-text";
 import type { JobView } from "@rukie/shared";
 import { fmtDuration, type Locale } from "@rukie/i18n";
 import { useState } from "react";
@@ -29,6 +31,7 @@ export function JobCard({
   const contentColumns = groupPosition ? Math.max(1, columns - 1) : columns;
   const [commandOpen, setCommandOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
+  const mountSource = useSourceMount();
   const t = createTuiI18n(locale);
   const glyph = live ? "●" : job.status === "completed" ? "✓" : "✗";
   const duration = fmtDuration(Math.max(0, (job.endedAt ?? Date.now()) - job.startedAt), locale);
@@ -38,9 +41,9 @@ export function JobCard({
   const commandRows = rows.slice(1, -2);
   const railRows = 3 + commandRows.length + (dropped ? 1 : 0);
   return (
-    <Box>
+    <Box flexShrink={0}>
       {groupPosition && (
-        <ThemedText color="inactive" selectable={false}>
+        <InteractiveText color="inactive" noSelect>
           {Array.from({ length: railRows }, (_, index) =>
             index === 0 && groupPosition === "first"
               ? "╭"
@@ -48,17 +51,19 @@ export function JobCard({
                 ? "╰"
                 : "│",
           ).join("\n")}
-        </ThemedText>
+        </InteractiveText>
       )}
       <Box
+        flexShrink={0}
         flexDirection="column"
         width={contentColumns}
         paddingLeft={2}
-        scrollAnchorId={`job-${job.id}`}
+        ref={(element) => mountSource?.(`job-${job.id}`, element)}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
       >
         <Box
+          flexShrink={0}
           width={Bun.stringWidth(rows[0] ?? "")}
           onClick={onOpen ? () => onOpen(job.id) : undefined}
         >
@@ -68,18 +73,15 @@ export function JobCard({
               {t("jobs.card.prefix")}
               {job.id}
             </ThemedText>{" "}
-            <ThemedText dimColor>{job.kind}</ThemedText>{" "}
-            <ThemedText dimColor>{duration}</ThemedText>{" "}
+            <ThemedText dim>{job.kind}</ThemedText> <ThemedText dim>{duration}</ThemedText>{" "}
             <ThemedText color={color}>{t(`jobs.status.${job.status}`)}</ThemedText>
           </ThemedText>
         </Box>
-        <Box flexDirection="column" onClick={() => setCommandOpen((open) => !open)}>
+        <Box flexShrink={0} flexDirection="column" onClick={() => setCommandOpen((open) => !open)}>
           {commandRows.map((line, index) => (
             <ThemedText key={index} wrap="truncate">
-              <ThemedText color="accent" selectable={false}>
-                │
-              </ThemedText>
-              <ThemedText dimColor>{line.slice(1)}</ThemedText>
+              <ThemedText color="accent">│</ThemedText>
+              <ThemedText dim>{line.slice(1)}</ThemedText>
             </ThemedText>
           ))}
         </Box>
@@ -90,10 +92,8 @@ export function JobCard({
         )}
         {Array.from({ length: 2 }, (_, index) => (
           <ThemedText key={index} wrap="truncate">
-            <ThemedText color="success" selectable={false}>
-              │
-            </ThemedText>
-            <ThemedText dimColor>{rows[rows.length - 2 + index]?.slice(1)}</ThemedText>
+            <ThemedText color="success">│</ThemedText>
+            <ThemedText dim>{rows[rows.length - 2 + index]?.slice(1)}</ThemedText>
           </ThemedText>
         ))}
       </Box>
@@ -130,13 +130,14 @@ export function JobGroupHeader({
   const separator = columns < 60 ? "·" : " · ";
   return (
     <Box
+      flexShrink={0}
       onClick={onToggle}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
       <ThemedText wrap="truncate">
         <ThemedText
-          dimColor={!hovered}
+          dim={!hovered}
           color={hovered ? "accent" : undefined}
         >{`${folded ? "▸" : "▾"} ${t(folded ? "jobs.group.folded" : "jobs.group.title", { count: jobs.length })}`}</ThemedText>
         {statuses.map((status) => {
@@ -156,8 +157,8 @@ export function JobGroupHeader({
             </ThemedText>
           ) : null;
         })}
-        <ThemedText dimColor>{`${separator}${duration}`}</ThemedText>
-        {folded && <ThemedText dimColor>{`${separator}${t("jobs.group.hint")}`}</ThemedText>}
+        <ThemedText dim>{`${separator}${duration}`}</ThemedText>
+        {folded && <ThemedText dim>{`${separator}${t("jobs.group.hint")}`}</ThemedText>}
       </ThemedText>
     </Box>
   );

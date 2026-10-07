@@ -31,7 +31,11 @@ test("transcript search jumps distinct matches beyond the 400-line tool window",
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
     app.stdin.write("\x0f/needle\r");
-    await app.waitFor(() => app.screen().some((line) => line.includes("1/3")));
+    await app.waitFor(
+      () =>
+        app.screen().some((line) => line.includes("1/3")) &&
+        app.screen().some((line) => line.includes("needle first")),
+    );
     expect(app.screen().join("\n")).toContain("needle first");
     const row = app.screen().findIndex((line) => line.includes("needle first"));
     const line = app.terminal.buffer.active.getLine(row)!;
@@ -161,7 +165,11 @@ test("split diff search navigates old and new occurrences in the same aligned ro
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
     app.stdin.write("\x0f/needle\r");
-    await app.waitFor(() => app.screen().some((line) => line.includes("1/2")));
+    await app.waitFor(
+      () =>
+        app.screen().some((line) => line.includes("1/2")) &&
+        app.screen().some((line) => line.includes("needle old") && line.includes("needle new")),
+    );
     expect(
       app.screen().some((line) => line.includes("needle old") && line.includes("needle new")),
     ).toBe(true);

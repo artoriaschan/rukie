@@ -1,4 +1,5 @@
-import { expect, jest, test } from "bun:test";
+import { testClock } from "../helpers/test-clock";
+import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { createJsonlStore, createSession } from "@rukie/agent";
@@ -180,7 +181,7 @@ test.each([
         columns: 100,
         env,
         session: { cwd: app.root, homeDir: app.root },
-        advanceTimers: (ms) => jest.advanceTimersByTime(ms),
+        advanceTimers: (ms) => testClock.advanceTimersByTime(ms),
         host: { writeClipboard: async (text) => (copied.push(text), true) },
       });
       try {
@@ -334,7 +335,7 @@ test("a failed write result keeps earlier mixed facts and an honest unknown outc
       columns: 100,
       env: { LANG: "en" },
       session: { cwd: app.root, homeDir: app.root },
-      advanceTimers: (ms) => jest.advanceTimersByTime(ms),
+      advanceTimers: (ms) => testClock.advanceTimersByTime(ms),
     });
     try {
       await replay.waitFor(() => replay.screen().join("\n").includes("mixed write save failed"));
@@ -392,7 +393,7 @@ test("cold mixed history starts at the bottom with fresh message navigation", as
       rows: 24,
       env: { LANG: "en" },
       session: { cwd: app.root, homeDir: app.root },
-      advanceTimers: (ms) => jest.advanceTimersByTime(ms),
+      advanceTimers: (ms) => testClock.advanceTimersByTime(ms),
     });
     try {
       await replay.waitFor(() => replay.screen().join("\n").includes("saved-tail-44"));

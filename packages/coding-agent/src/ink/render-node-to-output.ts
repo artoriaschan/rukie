@@ -1670,7 +1670,7 @@ function renderNodeToOutput(
         // issue #421; repro-resize-blank). Clamping a sticky view to the shrunken
         // maxScroll is exactly its contract — show the bottom.
         let scrollTop =
-          shrunk && !sticky ? cur : Math.max(0, Math.min(cur, maxScroll))
+          shrunk && !sticky && !explicitSeek ? cur : Math.max(0, Math.min(cur, maxScroll))
         // Virtual-scroll clamp: if scrollTop raced past the currently-mounted
         // range (burst PageUp before React re-renders), render at the EDGE of
         // the mounted children instead of blank spacer. Do NOT write back to

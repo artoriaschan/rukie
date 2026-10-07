@@ -26,6 +26,7 @@ import {
 import reconciler from "../reconciler.js";
 import {
 	finishSelection,
+	clearSelection,
 	hasSelection,
 	type SelectionState,
 } from "../selection.js";
@@ -364,7 +365,7 @@ export default class App extends PureComponent<Props, State> {
 	 * a stale clickCount could turn the first click on a fresh screen into
 	 * a double-click).
 	 */
-	resetPointerState(): void {
+	resetPointerState(cancelSelection = false): void {
 		this.clickCount = 0;
 		this.lastClickTime = 0;
 		this.lastClickCol = -1;
@@ -387,7 +388,10 @@ export default class App extends PureComponent<Props, State> {
 		// the selection so copy-on-select fires rather than orphaning
 		// isDragging with its drag-to-scroll timer running.
 		const sel = this.props.selection;
-		if (sel.isDragging) {
+		if (cancelSelection) {
+			clearSelection(sel);
+			this.props.onSelectionChange();
+		} else if (sel.isDragging) {
 			finishSelection(sel);
 			this.props.onSelectionChange();
 		}

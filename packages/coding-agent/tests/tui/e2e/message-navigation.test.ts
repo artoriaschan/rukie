@@ -1,4 +1,5 @@
-import { expect, test, jest } from "bun:test";
+import { testClock } from "../helpers/test-clock";
+import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { startWithClock } from "../helpers/clock-app";
 
@@ -256,10 +257,10 @@ test("timeline hover preview waits120ms and scroll clears it while Session clear
     const row = app.screen().findIndex((line) => line.endsWith(" ─"));
     app.stdin.write(`\x1b[<35;79;${row + 1}M`);
     await app.flush();
-    jest.advanceTimersByTime(119);
+    testClock.advanceTimersByTime(119);
     await app.flush();
     expect(app.screen().join("\n")).not.toContain("preview-unique");
-    jest.advanceTimersByTime(1);
+    testClock.advanceTimersByTime(1);
     await app.waitFor(() => app.screen().join("\n").includes("preview-unique"));
     expect(app.screen().join("\n")).not.toContain("second source line");
     const previewRow = app

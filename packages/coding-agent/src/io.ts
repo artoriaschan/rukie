@@ -14,7 +14,7 @@ interface CommonIo {
 /** Input/output adapters shared by both dispatch modes. Print callers may supply a callback sink. */
 export interface CodingAgentIo extends CommonIo {
   stdin?: RenderOptions["stdin"];
-  stdout: RenderOptions["stdout"] | ((text: string) => void);
+  stdout: NonNullable<RenderOptions["stdout"]> | ((text: string) => void);
   readStdin?: () => Promise<string>;
   host?: TuiHost;
   term?: string;
@@ -26,6 +26,6 @@ export interface PrintIo extends CodingAgentIo {
 }
 
 export interface TuiIo extends CodingAgentIo {
-  stdin: RenderOptions["stdin"];
-  stdout: RenderOptions["stdout"];
+  stdin: NonNullable<RenderOptions["stdin"]>;
+  stdout: NonNullable<RenderOptions["stdout"]>;
 }
