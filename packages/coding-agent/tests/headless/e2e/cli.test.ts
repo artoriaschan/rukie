@@ -61,7 +61,7 @@ test.each([
   faux.setResponses([
     fauxAssistantMessage(fauxToolCall("web_fetch", { url }), { stopReason: "toolUse" }),
     (context) => {
-      const result = context.messages.at(-1)!;
+      const result = context.messages.findLast((message) => message.role === "toolResult")!;
       expect(result).toMatchObject({
         role: "toolResult",
         toolName: "web_fetch",
