@@ -14,7 +14,19 @@ export interface BackgroundActivity {
 }
 
 type CommittedEvent<E extends AgentEvent = AgentEvent> = E extends { type: "snapshot" }
-  ? E & { messages: readonly TranscriptMessage[]; background: readonly BackgroundActivity[] }
+  ? E & {
+      messages: readonly TranscriptMessage[];
+      background: readonly BackgroundActivity[];
+      toolStates: Readonly<Record<string, unknown>>;
+      runSummaries: readonly {
+        afterMessage: number;
+        durationMs: number;
+        endedAt: number;
+        success: boolean;
+      }[];
+      model: string;
+      planMode: boolean;
+    }
   : E extends { type: "message_end" }
     ? E & { entryId: string; messages: readonly TranscriptMessage[] }
     : E extends { type: "message_update" }
