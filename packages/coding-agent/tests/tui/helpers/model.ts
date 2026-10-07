@@ -150,6 +150,7 @@ export function controlledModel(controlReviews = false, controlTitles = false) {
     return stream;
   };
   const models = createModels();
-  models.setProvider({ ...faux.provider, streamSimple: stream });
-  return { model, models, calls, reviews, titles, sideQuestions };
+  const provider = { ...faux.provider, streamSimple: stream };
+  models.setProvider(provider);
+  return { model, models, provider, calls, reviews, titles, sideQuestions };
 }

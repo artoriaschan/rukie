@@ -128,6 +128,7 @@ function toolEntry(
   result: Pick<ToolResultMessage, "content" | "details"> & {
     view?: ToolResultView;
     timestamp?: number;
+    outcomeUnknown?: boolean;
   },
   t: ReturnType<typeof createTuiI18n>,
 ): CompletedEntry | undefined {
@@ -225,26 +226,28 @@ function toolEntry(
           : {}),
       })),
     summary: tool.summary,
-    isError,
-    result: isError ? undefined : resultText(result),
-    error: isError
-      ? hook !== undefined
-        ? t("tool.hook-denied", {
-            hook,
-            reason: resultText(result)
-              .split("\n")[0]!
-              .replace(/^Denied by hook: /, ""),
-          })
-        : rule !== undefined
-          ? t("tool.rule-denied", { rule })
-          : formatError(
-              {
-                ...(typeof result.details === "object" && result.details),
-                message: resultText(result),
-              },
-              t,
-            )
-      : undefined,
+    isError: isError && !result.outcomeUnknown,
+    outcomeUnknown: result.outcomeUnknown,
+    result: isError || result.outcomeUnknown ? undefined : resultText(result),
+    error:
+      isError && !result.outcomeUnknown
+        ? hook !== undefined
+          ? t("tool.hook-denied", {
+              hook,
+              reason: resultText(result)
+                .split("\n")[0]!
+                .replace(/^Denied by hook: /, ""),
+            })
+          : rule !== undefined
+            ? t("tool.rule-denied", { rule })
+            : formatError(
+                {
+                  ...(typeof result.details === "object" && result.details),
+                  message: resultText(result),
+                },
+                t,
+              )
+        : undefined,
   };
 }
 
@@ -760,7 +763,18 @@ function reduceEvent(
       };
     }
     case "run_start":
-      return { ...state, running: true, error: undefined };
+      return {
+        ...state,
+        running: true,
+        error: undefined,
+        input: 0,
+        output: 0,
+        activityInput: 0,
+        streamedChars: 0,
+        decode: { tokens: 0, ms: 0 },
+        assistant: "",
+        reasoning: "",
+      };
     case "run_end":
       return { ...state, running: false };
     case "tool_state_changed":

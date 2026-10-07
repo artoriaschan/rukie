@@ -144,7 +144,7 @@ test("context reports use live response input and invalidate that count after ma
   fake.models = withModelStream(
     fake.models,
     withAuxiliaryRequests(() => {
-      const reply = fauxAssistantMessage(calls++ === 0 ? "old fact ".repeat(9000) : "summary");
+      const reply = fauxAssistantMessage(calls++ === 0 ? "reply" : "summary");
       reply.usage = { ...reply.usage, input: 700, cacheRead: 30, cacheWrite: 20, output: 9000 };
       const stream = createAssistantMessageEventStream();
       stream.push({ type: "done", reason: "stop", message: reply });
@@ -165,7 +165,7 @@ test("context reports use live response input and invalidate that count after ma
   });
   expect(observed).toBe(750);
   expect(session.contextReport().used).toBe(750);
-  await session.run("recent retained task");
+  await session.run("recent retained task " + "retained fact ".repeat(6000));
   await session.compact();
   expect(session.contextReport().used).not.toBe(750);
   expect(session.contextReport().used).toBe(

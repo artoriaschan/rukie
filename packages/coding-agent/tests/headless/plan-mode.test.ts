@@ -49,9 +49,11 @@ test.each(["ask", "auto-review", "full-access"])(
         .trim()
         .split("\n")
         .map((line) => JSON.parse(line))
-        .find((event) => event.type === "session_start");
+        .find((event) => event.type === "snapshot");
       expect(started).toBeDefined();
-      expect(started.tools).not.toContain("enter_plan_mode");
+      expect(started.tools.map((tool: { name: string }) => tool.name)).not.toContain(
+        "enter_plan_mode",
+      );
     } finally {
       await rm(root, { recursive: true, force: true });
     }

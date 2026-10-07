@@ -61,14 +61,22 @@ test("signal exit preserves pending work and Resume continues it before a new pr
       await app.waitFor(() => app.calls.length === 2);
       expect(resumed.currentRequestId).toBeDefined();
       expect(JSON.stringify(app.calls[1]!.context.messages)).toContain("interrupted prompt");
-      // The committed partial belongs to the resumed generation attempt, not a fabricated assistant completion.
+      // Native resume archives the prior partial attempt before retrying the same submission.
       expect(
         resumed.messages.filter(
           (message) => message.role === "assistant" && message.stopReason === "aborted",
         ),
-      ).toHaveLength(0);
+      ).toHaveLength(1);
+      const requestId = resumed.currentRequestId!;
+      const settled: string[] = [];
+      const unsubscribe = resumed.subscribe((event) => {
+        if (event.type === "request_settled") settled.push(event.requestId);
+      });
       app.calls[1]!.reply("resumed pending answer");
-      await resumed.waitForRequest(resumed.currentRequestId!);
+      const resumedResult = await resumed.waitForRequest(requestId);
+      expect(resumedResult.requestId).toBe(requestId);
+      expect(settled).toEqual([requestId]);
+      unsubscribe();
       const result = resumed.run("continue");
       await app.waitFor(() => app.calls.length === 3);
       expect(JSON.stringify(app.calls[2]!.context.messages)).toContain("resumed pending answer");

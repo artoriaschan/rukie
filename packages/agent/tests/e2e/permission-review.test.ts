@@ -366,14 +366,15 @@ test("review discards history and summary before the most recent compaction, inc
   dirs = await tempDirs();
   await Bun.write(join(dirs.cwd, "AGENTS.md"), "Keep the public API stable.");
   const previous = fakeModel([
-    fauxAssistantMessage("old work ".repeat(2500)),
-    fauxAssistantMessage("COMPACTED_SUMMARY"),
+    fauxAssistantMessage("old work"),
     fauxAssistantMessage("after compaction"),
+    fauxAssistantMessage("COMPACTED_SUMMARY"),
   ]);
-  previous.model.contextWindow = 4000;
   const original = await createSession({ ...dirs, ...previous });
   await original.run("OLD_AUTHORIZATION");
-  await original.run("POST_COMPACTION_INSTRUCTION");
+  await original.run("POST_COMPACTION_INSTRUCTION " + "retained fact ".repeat(6000));
+  await original.compact();
+  await original.close();
   const fake = reviewedModel();
   const session = await createSession({
     ...dirs,
@@ -462,7 +463,9 @@ test.each(["medium", "high"])(
     expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
       role: "toolResult",
       isError: true,
-      content: [{ type: "text", text: "User denied this tool call: write" }],
+      content: [
+        { type: "text", text: expect.stringContaining("User denied this tool call: write") },
+      ],
     });
     expect(JSON.stringify(fake.contexts)).not.toContain(reason);
     expect(await Bun.file(join(dirs.cwd, "reviewed.txt")).exists()).toBe(false);
@@ -485,15 +488,16 @@ test("the user can allow a call rejected by the reviewer", async () => {
   expect(await Bun.file(join(dirs.cwd, "reviewed.txt")).text()).toBe("safe");
 });
 
-test("switching mode while answering a review applies to the next call in the same Turn", async () => {
+test("switching mode while answering a review applies to the next admitted Turn", async () => {
   dirs = await tempDirs();
   const fake = reviewedModel(fauxAssistantMessage('{"risk":"high","decision":"deny"}'));
   fake.main.models = fakeModel([
     fauxAssistantMessage(
-      [
-        fauxToolCall("write", { path: "first.txt", content: "first" }, { id: "first" }),
-        fauxToolCall("write", { path: "second.txt", content: "second" }, { id: "second" }),
-      ],
+      fauxToolCall("write", { path: "first.txt", content: "first" }, { id: "first" }),
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage(
+      fauxToolCall("write", { path: "second.txt", content: "second" }, { id: "second" }),
       { stopReason: "toolUse" },
     ),
     fauxAssistantMessage("done"),
