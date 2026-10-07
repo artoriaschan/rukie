@@ -68,8 +68,16 @@ test("creating a Goal immediately runs rounds up to its cap without user prompt 
   expect(session.checkpoints()).toEqual([]);
   expect(session.title).toBe("");
   expect(
-    events.filter((event) => event.type === "tool_state_changed" && event.name === "goal"),
-  ).toHaveLength(4);
+    events.flatMap((event) =>
+      event.type === "tool_state_changed" && event.name === "goal" ? [event.value] : [],
+    ),
+  ).toMatchObject([
+    { roundsStarted: 0, armed: false },
+    { roundsStarted: 1, armed: false },
+    { roundsStarted: 1, armed: true },
+    { roundsStarted: 2, armed: true },
+    { roundsStarted: 2, phase: "blocked", armed: false },
+  ]);
 });
 
 test.each(["pause", "clear"] as const)(

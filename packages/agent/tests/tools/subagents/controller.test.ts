@@ -100,6 +100,20 @@ test.each(["stop", "error", "aborted", "length"] as const)(
       });
       expect((await harness.inspect(context)).tasks).toHaveLength(0);
       if (stopReason === "stop") {
+        const completed = (await parent.context(context)).entries.findLast((entry) =>
+          entry.model?.some(
+            (message) => message.role === "assistant" && message.stopReason === "stop",
+          ),
+        );
+        if (!completed) throw new Error("Missing committed closing parent answer.");
+        const retained = await parent.fork(
+          completed.id,
+          { ownership: { kind: "ownerless" } },
+          context,
+        );
+        expect(
+          await harness.snapshot(subagentsState("product").document, retained.id, context),
+        ).toEqual({ value: rows });
         const anchor = (await parent.context(context)).entries.find((entry) =>
           entry.model?.some((message) => message.role === "user"),
         );
@@ -314,6 +328,15 @@ test("idle send keeps logical identity and runs an owned native fork with prior 
     expect(row.id).toBe(first.id);
     expect(row.conversationId).not.toBe(first.conversationId);
     expect(row.active).toBe(false);
+    // The controller validates saved conversation IDs as positive native integers.
+    const ownedFork = await harness.conversation(
+      Number(row.conversationId) as typeof parent.id,
+      context,
+    );
+    if (!ownedFork) throw new Error("Missing admitted child fork.");
+    expect(
+      await harness.snapshot(subagentsState("product").document, ownedFork.id, context),
+    ).toEqual({ value: [] });
     const child = await controller.readChild(agentId, context);
     expect(
       child?.messages

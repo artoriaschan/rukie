@@ -1,600 +1,401 @@
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
-import { readdir } from "node:fs/promises";
 import { join } from "node:path";
+import { readdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { fauxAssistantMessage, fauxToolCall, getCurrentTools } from "@earendil-works/pi-ai";
-import { MemorySessionRepo } from "@earendil-works/pi-agent-core/harness/session";
-import { createSession, type SessionEvent } from "../../src/index.ts";
+import {
+  fauxAssistantMessage,
+  fauxToolCall,
+  getCurrentTools,
+  type FauxResponseStep,
+} from "@earendil-works/pi-ai";
+import {
+  createJsonlStore,
+  createSession as createSessionImpl,
+  type Session,
+  type SessionEvent,
+} from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
-import { tempDirs } from "../helpers/temp-dirs.ts";
 import { abortingModel } from "../helpers/aborting-model.ts";
+import { modelStream, withModelStream, withModelAlias } from "../helpers/auxiliary-model.ts";
+import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
-afterEach(() => dirs?.cleanup());
-
-test("manual compaction summarizes small idle conversations and keeps focus out of the transcript", async () => {
-  dirs = await tempDirs();
+const sessions: Session[] = [];
+async function createSession(options: Parameters<typeof createSessionImpl>[0]) {
+  const session = await createSessionImpl(options);
+  sessions.push(session);
+  return session;
+}
+afterEach(async () => {
+  await Promise.all(sessions.splice(0).map((session) => session.close()));
+  await dirs?.cleanup();
+});
+function publishedReminders(events: readonly SessionEvent[]) {
+  return events.flatMap((event) =>
+    event.type === "message_end"
+      ? event.messages.flatMap((message) =>
+          message.role === "system-reminder"
+            ? [{ source: message.source, content: message.content }]
+            : [],
+        )
+      : [],
+  );
+}
+function readOld() {
+  return fauxAssistantMessage(fauxToolCall("read", { path: "old.txt" }), { stopReason: "toolUse" });
+}
+function historyModel(replies: FauxResponseStep[]) {
   const fake = fakeModel([
-    fauxAssistantMessage("Widget behavior to preserve."),
+    readOld(),
+    fauxAssistantMessage("older evidence recorded"),
+    readOld(),
+    fauxAssistantMessage("second evidence recorded"),
+    fauxAssistantMessage("recent protected reply"),
+    ...replies,
+  ]);
+  const models = withModelAlias(fake.models, "compact-window", ["large"], {
+    contextWindow: 128000,
+  });
+  const provider = models.getProviders().find((provider) => provider.id === "compact-window");
+  const large = provider?.getModels()[0];
+  if (!provider || !large) throw new Error("Missing fixture provider.");
+  models.setProvider({
+    ...provider,
+    getModels: () => [large, { ...large, id: "small", contextWindow: 16000 }],
+  });
+  return { ...fake, models, settings: { model: "compact-window/large" } };
+}
+/** Real old tool evidence gives the locked native compactor an eligible prefix and a protected recent Run. */
+async function seedHistory(session: Session) {
+  await Bun.write(join(dirs.cwd, "old.txt"), "OLD_EVIDENCE widget contract ".repeat(2000));
+  await session.run("inspect old widgets");
+  await session.run("inspect second evidence");
+  await session.run("recent retained task");
+}
+async function nativeJournal() {
+  const root = join(dirs.homeDir, ".rukie/durable-sessions");
+  const paths = (await readdir(root, { recursive: true })).filter((path) =>
+    path.endsWith("/main.jsonl"),
+  );
+  expect(paths).toHaveLength(1);
+  return Bun.file(join(root, paths[0]!)).text();
+}
+function committedCompactions(journal: string) {
+  const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === "object" && value !== null;
+  return journal
+    .split("\n")
+    .filter(Boolean)
+    .flatMap((line) => {
+      const commit: unknown = JSON.parse(line);
+      if (!isRecord(commit) || !Array.isArray(commit.writes)) return [];
+      return commit.writes.filter(
+        (write: unknown) =>
+          isRecord(write) &&
+          write.type === "entry" &&
+          isRecord(write.value) &&
+          write.value.kind === "pi.compaction",
+      );
+    });
+}
+
+test("manual Compaction summarizes eligible history, keeps focus outside model Transcript and resumes the committed context", async () => {
+  dirs = await tempDirs();
+  const fake = historyModel([
     fauxAssistantMessage("Focused widget summary."),
     fauxAssistantMessage("continued"),
   ]);
   const session = await createSession({ ...dirs, ...fake });
-  await session.run("inspect widgets");
+  await seedHistory(session);
   const events: SessionEvent[] = [];
   session.subscribe((event) => events.push(event));
   await session.compact({ instructions: "FOCUS_KEEP_WIDGET_CONTRACT" });
-  expect(JSON.stringify(fake.contexts[1])).toContain("FOCUS_KEEP_WIDGET_CONTRACT");
-  expect(JSON.stringify(session.messages)).toContain("Focused widget summary.");
-  expect(await transcript()).not.toContain("FOCUS_KEEP_WIDGET_CONTRACT");
+  expect(JSON.stringify(fake.contexts[5])).toContain("FOCUS_KEEP_WIDGET_CONTRACT");
+  expect(JSON.stringify(fake.contexts[5])).toContain("OLD_EVIDENCE");
+  expect(JSON.stringify(session.messages)).not.toContain("FOCUS_KEEP_WIDGET_CONTRACT");
   expect(events.filter((event) => event.type.startsWith("compaction_"))).toMatchObject([
-    { type: "compaction_start", trigger: "manual" },
-    { type: "compaction_end", trigger: "manual" },
+    { type: "compaction_start", reason: "manual" },
+    { type: "compaction_end", reason: "manual" },
   ]);
-  const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
-  expect(resumed.messages).toEqual(session.messages);
+  expect(session.messages).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        role: "session-notice",
+        notice: { kind: "compaction", reason: "manual" },
+      }),
+    ]),
+  );
   await session.run("continue");
-  expect(JSON.stringify(fake.contexts[2])).toContain("Focused widget summary.");
+  expect(JSON.stringify(fake.contexts.at(-1))).toContain("Focused widget summary.");
+  const messages = structuredClone(session.messages);
+  await session.close();
+  const untouched = fakeModel([]);
+  const restored = await createSession({ ...dirs, ...untouched, resumeId: session.id });
+  expect(restored.messages).toEqual(messages);
+  expect(untouched.contexts).toHaveLength(0);
 });
 
-test("manual compaction rejects empty history and an active Run without changing messages", async () => {
+test("manual Compaction rejects an active Run; empty and tiny history do not request a summary", async () => {
   dirs = await tempDirs();
   const fake = abortingModel();
   const session = await createSession({ ...dirs, ...fake });
-  await expect(session.compact()).rejects.toThrow("no compactable conversation history");
+  await session.compact();
   const run = session.run("pending work");
   await fake.started;
   const before = structuredClone(session.messages);
-  await expect(session.compact()).rejects.toMatchObject({ code: "session-run-active", params: {} });
+  await expect(session.compact()).rejects.toThrow("idle");
   expect(session.messages).toEqual(before);
-  session.interruptRun();
+  await session.abort();
   await expect(run).rejects.toThrow();
+  await session.close();
+  const tiny = fakeModel([fauxAssistantMessage("short answer")]);
+  const small = await createSession({ ...dirs, ...tiny });
+  await small.run("tiny history");
+  const messages = structuredClone(small.messages);
+  await small.compact();
+  expect(tiny.contexts).toHaveLength(1);
+  expect(small.messages).toEqual(messages);
 });
 
-test("manual compaction owns its idle operation and interruption leaves history resumable", async () => {
-  dirs = await tempDirs();
-  const fake = fakeModel([fauxAssistantMessage("original conversation")]);
-  const summary = abortingModel();
-  const primary = fake.streamFn;
-  fake.streamFn = (model, context, options) =>
-    context.messages.some(
-      (message) =>
-        message.role === "system" &&
-        JSON.stringify(message).includes("context summarization assistant"),
-    )
-      ? summary.streamFn(model, context, options)
-      : primary(model, context, options);
-  const session = await createSession({ ...dirs, ...fake });
-  await session.run("work");
-  const before = structuredClone(session.messages);
-  const compact = session.compact();
-  void compact.catch(() => {});
-  await summary.started;
-  await expect(session.run("competing prompt")).rejects.toMatchObject({
-    code: "session-compacting",
-    params: {},
-  });
-  await expect(session.compact()).rejects.toMatchObject({ code: "session-compacting", params: {} });
-  await expect(session.setModel("missing/model")).rejects.toMatchObject({
-    code: "model-switch-busy",
-    params: {},
-  });
-  await expect(session.setPlanMode(true)).rejects.toMatchObject({
-    code: "session-compacting",
-    params: {},
-  });
-  session.interruptRun();
-  await expect(compact).rejects.toThrow();
-  expect(session.messages).toEqual(before);
-  expect(await transcript()).not.toContain('"type":"compaction"');
-  const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
-  expect(resumed.messages).toEqual(before);
-});
+test.each(["abort", "close"] as const)(
+  "%s cancels an eligible manual summary and releases its native operation",
+  async (action) => {
+    dirs = await tempDirs();
+    const fake = historyModel([]);
+    const summary = abortingModel();
+    const primary = modelStream(fake.models);
+    fake.models = withModelStream(fake.models, (model, context, options) =>
+      JSON.stringify(context.messages).includes("context summarization assistant")
+        ? modelStream(summary.models)(summary.model, context, options)
+        : primary(model, context, options),
+    );
+    const session = await createSession({ ...dirs, ...fake });
+    await seedHistory(session);
+    const before = structuredClone(session.messages);
+    const compact = session.compact();
+    const rejected = compact.catch((error: unknown) => error);
+    await summary.started;
+    await expect(session.run("competing prompt")).rejects.toThrow();
+    await expect(session.compact()).rejects.toThrow();
+    await expect(session.setModel("missing/model")).rejects.toThrow();
+    if (action === "abort") await session.abort();
+    else await session.close();
+    expect(await rejected).toBeInstanceOf(Error);
+    expect(session.messages).toEqual(before);
+    expect(committedCompactions(await nativeJournal())).toEqual([]);
+    await session.close();
+    const replies = fakeModel([fauxAssistantMessage("recovered summary")]);
+    const restored = await createSession({ ...dirs, ...replies, resumeId: session.id });
+    await restored.waitForIdle();
+    if (action === "abort") {
+      expect(replies.contexts).toHaveLength(0);
+      expect(restored.messages).toEqual(before);
+    } else {
+      expect(replies.contexts).toHaveLength(1);
+      expect(restored.messages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: "session-notice",
+            notice: { kind: "compaction", reason: "manual" },
+          }),
+        ]),
+      );
+    }
+  },
+);
 
-test("disposing during manual summary cancels it before the session finishes disposing", async () => {
-  dirs = await tempDirs();
-  const fake = fakeModel([fauxAssistantMessage("original conversation")]);
-  const summary = abortingModel();
-  const primary = fake.streamFn;
-  fake.streamFn = (model, context, options) =>
-    context.messages.some(
-      (message) =>
-        message.role === "system" &&
-        JSON.stringify(message).includes("context summarization assistant"),
-    )
-      ? summary.streamFn(model, context, options)
-      : primary(model, context, options);
-  const session = await createSession({ ...dirs, ...fake });
-  await session.run("work");
-  let settled = false;
-  const compact = session.compact().finally(() => {
-    settled = true;
-  });
-  void compact.catch(() => {});
-  await summary.started;
-  await session.dispose();
-  expect(settled).toBe(true);
-  await expect(compact).rejects.toThrow();
-  expect(await transcript()).not.toContain('"type":"compaction"');
-});
-
-test("manual compaction immediately after resume refreshes project, skill, plan and frontend reminders", async () => {
+test("manual Compaction after cold reopen refreshes current project, skill, Plan Mode and frontend guidance", async () => {
   dirs = await tempDirs();
   await Bun.write(join(dirs.cwd, "AGENTS.md"), "Original project contract.");
-  const original = await createSession({
-    ...dirs,
-    ...fakeModel([fauxAssistantMessage("old work")]),
-  });
-  await original.run("first");
+  const original = await createSession({ ...dirs, ...historyModel([]) });
+  await seedHistory(original);
   await original.setPlanMode(true);
+  await original.close();
   await Bun.write(join(dirs.cwd, "AGENTS.md"), "Updated project contract.");
   await Bun.write(
     join(dirs.cwd, ".agents/skills/new-skill/SKILL.md"),
-    "---\nname: new-skill\ndescription: New review skill\n---\nReview widgets.\n",
+    "---\nname: new-skill\ndescription: New review skill\n---\nReview widgets.",
   );
   const fake = fakeModel([
     fauxAssistantMessage("Refreshed summary."),
     fauxAssistantMessage("continued"),
+    fauxAssistantMessage("changed"),
   ]);
+  let frontend = "Current frontend state.";
   const session = await createSession({
     ...dirs,
     ...fake,
     resumeId: original.id,
-    reminderSources: [{ source: "frontend", currentContent: () => "Current frontend state." }],
-  });
-  const events: SessionEvent[] = [];
-  session.subscribe((event) => events.push(event));
-  await session.compact();
-  const context = JSON.stringify(session.messages);
-  expect(context).toContain("Updated project contract.");
-  expect(context).toContain("New review skill");
-  expect(context).toContain("Current frontend state.");
-  expect(
-    session.messages.some(
-      (message) => message.role === "system-reminder" && message.source === "plan-mode",
-    ),
-  ).toBe(true);
-  expect(context).not.toContain("git branch:");
-  await expect(session.compact()).rejects.toThrow("no compactable conversation history");
-  events.length = 0;
-  await session.run("continue");
-  expect(events.filter((event) => event.type === "reminder_injected")).toHaveLength(0);
-  const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
-  expect(resumed.messages).toEqual(session.messages);
-});
-
-test("Compaction restores current Project Instructions, skills and frontend reminders before the retained request", async () => {
-  dirs = await tempDirs();
-  await Bun.write(join(dirs.homeDir, ".rukie/AGENTS.md"), "Use personal conventions.");
-  await Bun.write(join(dirs.cwd, "AGENTS.md"), "Preserve the widget contract.");
-  await Bun.write(
-    join(dirs.cwd, ".agents/skills/review/SKILL.md"),
-    "---\nname: review\ndescription: Review widget changes\n---\nInspect the diff.\n",
-  );
-  const fake = fakeModel([
-    fauxAssistantMessage("old work ".repeat(2500)),
-    fauxAssistantMessage("Summary of old work."),
-    fauxAssistantMessage("continued"),
-  ]);
-  fake.model.contextWindow = 4000;
-  const session = await createSession({
-    ...dirs,
-    ...fake,
-    now: () => new Date("2026-10-01T12:00:00Z"),
-    reminderSources: [{ source: "frontend", currentContent: () => "Describe active work." }],
-  });
-  await session.run("start");
-  const events: SessionEvent[] = [];
-  let compactedMessages: (typeof session.messages)[number][] = [];
-  await session.run("continue", {
-    onEvent: (event) => {
-      events.push(event);
-      if (event.type === "compaction_end")
-        compactedMessages = structuredClone([...session.messages]);
-    },
-  });
-
-  const request = JSON.stringify(fake.contexts[2]!.messages);
-  expect(request).toContain("Preserve the widget contract.");
-  expect(request).toContain("Use personal conventions.");
-  expect(request).toContain("Review widget changes");
-  expect(request).toContain("Current date: 2026-10-01");
-  expect(request).toContain("Describe active work.");
-  expect(request).not.toContain("git branch:");
-  expect(
-    events.filter((event) => event.type === "reminder_injected").map((event) => event.source),
-  ).toEqual(["date", "user-instructions", "project-instructions", "skills", "frontend"]);
-  expect(session.messages.slice(2, -2)).toMatchObject([
-    { role: "system-reminder", source: "date" },
-    { role: "system-reminder", source: "user-instructions" },
-    { role: "system-reminder", source: "project-instructions" },
-    { role: "system-reminder", source: "skills" },
-    { role: "system-reminder", source: "frontend" },
-  ]);
-  expect(session.messages.at(-2)).toMatchObject({
-    role: "user",
-    content: [{ type: "text", text: "continue" }],
-  });
-  const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
-  expect(resumed.messages).toEqual(session.messages);
-  expect(resumed.messages.slice(0, -1)).toEqual(compactedMessages);
-});
-
-test("the Run after Compaction skips unchanged reminders and sends changed current content", async () => {
-  dirs = await tempDirs();
-  await Bun.write(join(dirs.cwd, "AGENTS.md"), "Original project conventions.");
-  let frontend = "Describe active work.";
-  let date = new Date("2026-10-01T12:00:00Z");
-  const fake = fakeModel([
-    fauxAssistantMessage("old work ".repeat(2500)),
-    fauxAssistantMessage("Summary of old work."),
-    fauxAssistantMessage("continued"),
-    fauxAssistantMessage("unchanged"),
-    fauxAssistantMessage("updated"),
-  ]);
-  fake.model.contextWindow = 4000;
-  const session = await createSession({
-    ...dirs,
-    ...fake,
-    now: () => date,
     reminderSources: [{ source: "frontend", currentContent: () => frontend }],
   });
-  await session.run("start");
-  await session.run("compact");
-  const next = fakeModel([]);
-  const resumed = await createSession({ ...dirs, ...next, resumeId: session.id });
-  expect(resumed.messages).toEqual(session.messages);
-  expect(resumed.messages.slice(2, -2)).toMatchObject([
-    { role: "system-reminder", source: "date" },
-    { role: "system-reminder", source: "project-instructions" },
-    { role: "system-reminder", source: "skills" },
-    { role: "system-reminder", source: "frontend" },
-  ]);
-
+  await session.compact();
+  const messages = JSON.stringify(session.messages);
+  for (const text of [
+    "Updated project contract.",
+    "New review skill",
+    "Current frontend state.",
+    "plan-mode",
+  ])
+    expect(messages).toContain(text);
+  expect(messages).not.toContain("git branch:");
   const events: SessionEvent[] = [];
-  const onEvent = (event: SessionEvent) => {
-    events.push(event);
-  };
-  await session.run("unchanged", { onEvent });
-  expect(events.filter((event) => event.type === "reminder_injected")).toEqual([]);
-
-  frontend = "Describe completed work.";
-  date = new Date("2026-10-02T12:00:00Z");
-  await Bun.write(join(dirs.cwd, "AGENTS.md"), "Updated project conventions.");
-  await Bun.write(
-    join(dirs.cwd, ".agents/skills/review/SKILL.md"),
-    "---\nname: review\ndescription: Review widget changes\n---\nInspect the diff.\n",
-  );
+  session.subscribe((event) => events.push(event));
+  await session.run("continue");
+  expect(publishedReminders(events)).toEqual([]);
+  frontend = "Updated frontend state.";
+  await Bun.write(join(dirs.cwd, "AGENTS.md"), "Latest project contract.");
   events.length = 0;
-  await session.run("changed", { onEvent });
-  expect(
-    events.filter((event) => event.type === "reminder_injected").map((event) => event.source),
-  ).toEqual(["date", "project-instructions", "skills", "frontend"]);
-  const request = JSON.stringify(fake.contexts.at(-1)!.messages);
-  expect(request).toContain("Current date: 2026-10-02");
-  expect(request).toContain("Updated project conventions.");
-  expect(request).toContain("Review widget changes");
-  expect(request).toContain("Describe completed work.");
+  await session.run("changed");
+  expect(publishedReminders(events).map((message) => message.source)).toEqual([
+    "project-instructions",
+    "frontend",
+  ]);
+  expect(JSON.stringify(fake.contexts.at(-1))).toContain("Latest project contract.");
+  expect(JSON.stringify(fake.contexts.at(-1))).toContain("Updated frontend state.");
 });
 
-test("only a Turn above the context threshold compacts before answering", async () => {
+test("native Compaction is appended without deleting historical evidence and cold reopen preserves the current suffix", async () => {
   dirs = await tempDirs();
-  await Bun.write(join(dirs.cwd, "AGENTS.md"), "Preserve the widget contract.");
-  const fake = fakeModel([
-    fauxAssistantMessage("old work ".repeat(2500)),
-    fauxAssistantMessage("Summary of old work."),
-    fauxAssistantMessage("continued"),
-  ]);
-  fake.model.contextWindow = 4000;
-  const session = await createSession({ ...dirs, ...fake });
-  const events: SessionEvent[] = [];
-  const onEvent = (event: SessionEvent) => {
-    events.push(event);
-    if (event.type === "compaction_start") expect(fake.contexts).toHaveLength(1);
-    if (event.type === "compaction_end") expect(fake.contexts).toHaveLength(2);
-  };
-
-  await session.run("start", { onEvent });
-  expect(
-    events.filter((event) => event.type === "compaction_start" || event.type === "compaction_end"),
-  ).toEqual([]);
-  expect(fake.contexts).toHaveLength(1);
-
-  const result = await session.run("continue", { onEvent });
-  expect(result.text).toBe("continued");
-  const compactions = events.filter(
-    (event) => event.type === "compaction_start" || event.type === "compaction_end",
-  );
-  expect(compactions).toEqual([
-    {
-      type: "compaction_start",
-      trigger: "auto",
-      sessionId: session.id,
-      tokensBefore: expect.any(Number),
-    },
-    {
-      type: "compaction_end",
-      trigger: "auto",
-      sessionId: session.id,
-      summary: expect.stringContaining("Summary of old work."),
-      tokensBefore: expect.any(Number),
-      tokensAfter: expect.any(Number),
-    },
-  ]);
-  const ended = compactions.find((event) => event.type === "compaction_end")!;
-  expect(compactions[0]).toMatchObject({ tokensBefore: ended.tokensBefore });
-  expect(ended.tokensAfter).toBeLessThan(ended.tokensBefore);
-  expect(JSON.stringify(fake.contexts[1])).toContain("old work");
-  expect(JSON.stringify(fake.contexts[1])).toContain("Preserve the widget contract.");
-  expect(JSON.stringify(fake.contexts[2])).toContain("Summary of old work.");
-  expect(JSON.stringify(fake.contexts[2])).not.toContain("old work old work");
-  expect(fake.contexts[2]!.messages.at(-1)).toMatchObject({
-    role: "user",
-    content: [{ type: "text", text: "continue" }],
-  });
-});
-
-test("a request above the threshold emits no compaction events when no work remains to compress", async () => {
-  dirs = await tempDirs();
-  const fake = fakeModel([
-    fauxAssistantMessage("old work ".repeat(2500)),
-    fauxAssistantMessage("Summary of old work."),
-    fauxAssistantMessage("answered"),
-  ]);
-  fake.model.contextWindow = 4000;
-  const session = await createSession({ ...dirs, ...fake });
-  await session.run("first");
-  // Leave the Transcript at a completed compaction, before any new model work.
-  await expect(
-    session.run("compact", {
-      onEvent: (event) => {
-        if (event.type === "compaction_end") throw new Error("pause after compaction");
-      },
-    }),
-  ).rejects.toThrow("pause after compaction");
-  const events: SessionEvent[] = [];
-  const result = await session.run("pending request ".repeat(2500), {
-    onEvent: (event) => {
-      events.push(event);
-    },
-  });
-  expect(result.text).toBe("answered");
-  expect(fake.contexts).toHaveLength(3);
-  expect(
-    events.filter((event) => event.type === "compaction_start" || event.type === "compaction_end"),
-  ).toEqual([]);
-});
-
-test("compaction appends a native Transcript entry and resume restores summary plus suffix", async () => {
-  dirs = await tempDirs();
-  const original = "original reply ".repeat(2000);
-  const fake = fakeModel([
-    fauxAssistantMessage(original),
+  const fake = historyModel([
     fauxAssistantMessage("Saved summary."),
     fauxAssistantMessage("after summary"),
   ]);
-  fake.model.contextWindow = 4000;
   const session = await createSession({ ...dirs, ...fake });
-  await session.run("original prompt");
-  const before = await transcript();
-  const events: SessionEvent[] = [];
-  await session.run("next prompt", {
-    onEvent: async (event) => {
-      events.push(event);
-      if (event.type === "compaction_end")
-        expect(await transcript()).toContain('"type":"compaction"');
-    },
-  });
-  const after = await transcript();
+  await seedHistory(session);
+  const before = await nativeJournal();
+  await session.compact();
+  await session.run("next prompt");
+  const after = await nativeJournal();
   expect(after).toStartWith(before);
-  expect(after).toContain(original);
-  const records = after
-    .trim()
-    .split("\n")
-    .map((line) => JSON.parse(line));
-  const compacted = records
-    .flatMap((record) => (Array.isArray(record) ? record : []))
-    .find((write) => write.kind === "entry" && write.type === "compaction");
-  expect(compacted).toMatchObject({
-    summary: expect.stringContaining("Saved summary."),
-    retainedTail: [{ role: "user", content: [{ type: "text", text: "next prompt" }] }],
-  });
+  expect(after).toContain("OLD_EVIDENCE widget contract OLD_EVIDENCE");
+  expect(committedCompactions(after)).toHaveLength(1);
+  expect(JSON.stringify(fake.contexts.at(-1))).toContain("Saved summary.");
+  expect(JSON.stringify(fake.contexts.at(-1))).toContain("recent retained task");
+  const messages = structuredClone(session.messages);
+  await session.close();
   const next = fakeModel([fauxAssistantMessage("resumed")]);
-  next.model.contextWindow = 4000;
-  const resumed = await createSession({ ...dirs, ...next, resumeId: session.id });
-  expect(resumed.messages).toEqual(session.messages);
-  expect(JSON.stringify(resumed.messages)).toContain("Saved summary.");
-  expect(JSON.stringify(resumed.messages)).not.toContain(original);
-  const resumedEvents: SessionEvent[] = [];
-  await resumed.run("resume prompt", {
-    onEvent: (event) => {
-      resumedEvents.push(event);
-    },
-  });
-  expect(next.contexts[0]!.messages.slice(0, -2)).toEqual(fake.contexts.at(-1)!.messages);
-  expect(next.contexts[0]!.messages.slice(-2)).toMatchObject([
-    { role: "assistant", content: [{ type: "text", text: "after summary" }] },
-    { role: "user", content: [{ type: "text", text: "resume prompt" }] },
-  ]);
-  expect(resumedEvents.filter((event) => event.type === "reminder_injected")).toEqual([]);
-  expect(events.at(-1)).toMatchObject({ type: "result", success: true });
+  const restored = await createSession({ ...dirs, ...next, resumeId: session.id });
+  expect(restored.messages).toEqual(messages);
+  await restored.run("resume prompt");
+  const request = JSON.stringify(next.contexts[0]);
+  for (const text of ["Saved summary.", "after summary", "resume prompt"])
+    expect(request).toContain(text);
 });
 
-test("a large tool result compacts before the next Turn within the same Run", async () => {
+test("a summarizer failure reports failure without placing a Compaction and a later cold retry preserves its source", async () => {
   dirs = await tempDirs();
-  await Bun.write(join(dirs.cwd, "large.txt"), "tool output ".repeat(2500));
-  const fake = fakeModel([
-    fauxAssistantMessage(fauxToolCall("read", { path: "large.txt" }, { id: "read-1" }), {
-      stopReason: "toolUse",
-    }),
-    fauxAssistantMessage("The file contained large tool output."),
-    fauxAssistantMessage("finished"),
-  ]);
-  fake.model.contextWindow = 4000;
-  const session = await createSession({ ...dirs, ...fake });
-  const events: SessionEvent[] = [];
-  expect(
-    (
-      await session.run("read the file", {
-        onEvent: (event) => {
-          events.push(event);
-        },
-      })
-    ).text,
-  ).toBe("finished");
-  expect(events.filter((event) => event.type === "compaction_end")).toHaveLength(1);
-  expect(JSON.stringify(fake.contexts[1])).toContain("tool output tool output");
-  expect(JSON.stringify(fake.contexts.at(-1))).not.toContain("tool output tool output");
-  expect(JSON.stringify(fake.contexts.at(-1))).toContain("The file contained large tool output.");
-});
-
-test("an injected Session Store resumes through multiple compactions using the previous summary", async () => {
-  dirs = await tempDirs();
-  const store = new MemorySessionRepo();
-  const fake = fakeModel([
-    fauxAssistantMessage("first history ".repeat(2000)),
-    fauxAssistantMessage("First summary."),
-    fauxAssistantMessage("second history ".repeat(2000)),
-    fauxAssistantMessage("Updated summary."),
-    fauxAssistantMessage("short reply"),
-  ]);
-  fake.model.contextWindow = 4000;
-  const session = await createSession({ ...dirs, ...fake, store });
-  await session.run("first");
-  await session.run("second");
-  await session.run("third");
-  expect(JSON.stringify(fake.contexts[3])).toContain("First summary.");
-  expect(JSON.stringify(fake.contexts[3])).toContain("second history");
-  const next = fakeModel([fauxAssistantMessage("resumed")]);
-  next.model.contextWindow = 4000;
-  const resumed = await createSession({ ...dirs, ...next, store, resumeId: session.id });
-  await resumed.run("fourth");
-  expect(JSON.stringify(next.contexts[0])).toContain("Updated summary.");
-  expect(JSON.stringify(next.contexts[0])).not.toContain("First summary.");
-  expect(JSON.stringify(next.contexts[0])).not.toContain("first history first history");
-});
-
-test.each(["oversized batch", "split prefix"])(
-  "repeated compaction within an ongoing Run preserves the previous goal: %s",
-  async (shape) => {
-    dirs = await tempDirs();
-    const split = shape === "split prefix";
-    const paths = split ? ["a.txt", "b.txt", "c.txt"] : ["a.txt", "b.txt", "c.txt", "d.txt"];
-    for (const path of paths)
-      await Bun.write(join(dirs.cwd, path), "x".repeat(split ? 10_000 : 4000));
-    if (split) await Bun.write(join(dirs.cwd, "last.txt"), "y".repeat(6000));
-    const fake = fakeModel([
-      fauxAssistantMessage("old work ".repeat(7000)),
-      fauxAssistantMessage("CRITICAL PREVIOUS GOAL: preserve the public interface."),
-      fauxAssistantMessage(
-        paths.map((path, index) => fauxToolCall("read", { path }, { id: `read-${index}` })),
-        { stopReason: "toolUse" },
-      ),
-      ...(split
-        ? [
-            fauxAssistantMessage(fauxToolCall("read", { path: "last.txt" }, { id: "read-last" }), {
-              stopReason: "toolUse",
-            }),
-          ]
-        : []),
-      fauxAssistantMessage(
-        "Updated summary: preserve the public interface and finish the file work.",
-      ),
-      ...(split ? [fauxAssistantMessage("Split-turn summary: finish the file work.")] : []),
-      fauxAssistantMessage("finished"),
-    ]);
-    // Keep the first read batch below the threshold and the last result above it, including builtin tool declarations.
-    fake.model.contextWindow = split ? 14_000 : 4000;
-    const session = await createSession({ ...dirs, ...fake });
-    await session.run("first");
-    const events: SessionEvent[] = [];
-    expect(
-      (
-        await session.run("read the files", {
-          onEvent: (event) => {
-            events.push(event);
-          },
-        })
-      ).text,
-    ).toBe("finished");
-    expect(events.filter((event) => event.type === "compaction_end")).toHaveLength(2);
-    const updatedRequest = fake.contexts[split ? 4 : 3]!;
-    expect(JSON.stringify(updatedRequest)).toContain("CRITICAL PREVIOUS GOAL");
-    expect(JSON.stringify(fake.contexts.at(-1))).toContain("Updated summary");
-    expect(JSON.stringify(fake.contexts.at(-1))).not.toContain("x".repeat(4000));
-    const next = fakeModel([fauxAssistantMessage("resumed")]);
-    next.model.contextWindow = fake.model.contextWindow;
-    const resumed = await createSession({ ...dirs, ...next, resumeId: session.id });
-    await resumed.run("continue");
-    expect(next.contexts[0]!.messages.slice(0, -2)).toEqual(fake.contexts.at(-1)!.messages);
-  },
-);
-
-test("failed summarization preserves the Transcript for a later resume", async () => {
-  dirs = await tempDirs();
-  const original = "recoverable history ".repeat(2000);
-  const fake = fakeModel([
-    fauxAssistantMessage(original),
+  const fake = historyModel([
     fauxAssistantMessage("", { stopReason: "error", errorMessage: "summary unavailable" }),
   ]);
-  fake.model.contextWindow = 4000;
   const session = await createSession({ ...dirs, ...fake });
-  await session.run("first");
-  const events: SessionEvent[] = [];
-  await expect(
-    session.run("second", {
-      onEvent: (event) => {
-        events.push(event);
-      },
-    }),
-  ).rejects.toThrow("summary unavailable");
-  expect(events.filter((event) => event.type === "compaction_start")).toEqual([
-    {
-      type: "compaction_start",
-      trigger: "auto",
-      sessionId: session.id,
-      tokensBefore: expect.any(Number),
-    },
-  ]);
-  expect(events.filter((event) => event.type === "compaction_end")).toEqual([]);
-  expect(events.at(-1)).toMatchObject({ type: "result", success: false });
-  expect(await transcript()).not.toContain('"type":"compaction"');
+  await seedHistory(session);
+  const before = structuredClone(session.messages);
+  await expect(session.compact()).rejects.toThrow("summary unavailable");
+  expect(session.messages).toEqual(before);
+  expect(committedCompactions(await nativeJournal())).toEqual([]);
+  await session.close();
   const next = fakeModel([
     fauxAssistantMessage("Recovered summary."),
     fauxAssistantMessage("recovered"),
   ]);
-  next.model.contextWindow = 4000;
-  const resumed = await createSession({ ...dirs, ...next, resumeId: session.id });
-  await resumed.run("recover");
-  expect(JSON.stringify(next.contexts[0])).toContain(original);
+  const restored = await createSession({ ...dirs, ...next, resumeId: session.id });
+  await restored.compact();
+  expect(JSON.stringify(next.contexts[0])).toContain("OLD_EVIDENCE");
+  await restored.run("recover");
+  expect(JSON.stringify(next.contexts.at(-1))).toContain("Recovered summary.");
 });
 
-test("an oversized tail keeps the pending user prompt together with its Skill Invocation", async () => {
+test("an injected native Session Store preserves the previous summary through a second Compaction and reopen", async () => {
   dirs = await tempDirs();
-  await Bun.write(
-    join(dirs.cwd, ".rukie/skills/plan/SKILL.md"),
-    "---\nname: plan\ndescription: Plan the work.\n---\nKeep the plan concise.",
+  const store = createJsonlStore(dirs);
+  const fake = historyModel([
+    fauxAssistantMessage("CRITICAL PREVIOUS GOAL: preserve the public interface."),
+    readOld(),
+    fauxAssistantMessage("new evidence recorded"),
+    readOld(),
+    fauxAssistantMessage("second new evidence recorded"),
+    fauxAssistantMessage("recent task complete"),
+    fauxAssistantMessage("Updated summary preserves the public interface."),
+    fauxAssistantMessage("continued"),
+  ]);
+  const session = await createSession({ ...dirs, ...fake, store });
+  await seedHistory(session);
+  await session.compact();
+  await session.run("more evidence");
+  await session.run("second more evidence");
+  await session.run("recent next task");
+  await session.compact();
+  expect(JSON.stringify(fake.contexts.at(-1))).toContain("CRITICAL PREVIOUS GOAL");
+  await session.run("continue");
+  expect(JSON.stringify(fake.contexts.at(-1))).toContain(
+    "Updated summary preserves the public interface.",
   );
-  const fake = fakeModel([
-    fauxAssistantMessage("old history ".repeat(2500)),
-    fauxAssistantMessage("Old work summary."),
-    fauxAssistantMessage("planned"),
-  ]);
-  fake.model.contextWindow = 4000;
-  const session = await createSession({ ...dirs, ...fake });
-  await session.run("first");
-  await session.run("/plan the next task");
-  expect(fake.contexts.at(-1)!.messages.slice(-2)).toMatchObject([
-    { role: "user", content: [{ type: "text", text: "/plan the next task" }] },
-    {
-      role: "user",
-      content: [{ type: "text", text: expect.stringContaining("Keep the plan concise.") }],
-    },
-  ]);
+  await session.close();
+  const next = fakeModel([fauxAssistantMessage("resumed")]);
+  const restored = await createSession({ ...dirs, ...next, store, resumeId: session.id });
+  await restored.run("reopen");
+  expect(JSON.stringify(next.contexts[0])).toContain(
+    "Updated summary preserves the public interface.",
+  );
 });
 
-test("compaction preserves effective MCP tool declarations and resume replays that exact context", async () => {
+test.each(["normal prompt", "oversized Skill Invocation"] as const)(
+  "a native threshold Compaction preserves the admitted %s and current guidance",
+  async (shape) => {
+    dirs = await tempDirs();
+    await Bun.write(join(dirs.cwd, "AGENTS.md"), "Preserve the widget contract.");
+    await Bun.write(
+      join(dirs.cwd, ".agents/skills/plan/SKILL.md"),
+      "---\nname: plan\ndescription: Plan the work\n---\nKeep the plan concise.",
+    );
+    const fake = historyModel([
+      fauxAssistantMessage("Summary of old work."),
+      fauxAssistantMessage("continued"),
+    ]);
+    const session = await createSession({
+      ...dirs,
+      ...fake,
+      now: () => new Date("2026-10-01T12:00:00Z"),
+      reminderSources: [{ source: "frontend", currentContent: () => "Describe active work." }],
+    });
+    const events: SessionEvent[] = [];
+    session.subscribe((event) => events.push(event));
+    await seedHistory(session);
+    expect(events.filter((event) => event.type === "compaction_end")).toHaveLength(0);
+    await session.setModel("compact-window/small");
+    events.length = 0;
+    const prompt =
+      shape === "normal prompt"
+        ? "continue the task"
+        : "/plan pending task " + "TAIL_KEEP ".repeat(3000);
+    expect(await session.run(prompt)).toMatchObject({ text: "continued" });
+    expect(events.filter((event) => event.type === "compaction_start")).toMatchObject([
+      { reason: "threshold" },
+    ]);
+    expect(events.filter((event) => event.type === "compaction_end")).toHaveLength(1);
+    const request = JSON.stringify(fake.contexts.at(-1));
+    for (const text of [
+      "Summary of old work.",
+      "Preserve the widget contract.",
+      "Current date: 2026-10-01",
+      "Describe active work.",
+      prompt,
+    ])
+      expect(request).toContain(text);
+    if (shape === "oversized Skill Invocation") expect(request).toContain("Keep the plan concise.");
+    const calls = fake.contexts
+      .at(-1)!
+      .messages.flatMap((message) =>
+        message.role === "assistant"
+          ? message.content.filter((part) => part.type === "toolCall").map((part) => part.id)
+          : [],
+      );
+    for (const message of fake.contexts.at(-1)!.messages)
+      if (message.role === "toolResult") expect(calls).toContain(message.toolCallId);
+  },
+);
+
+test("native Compaction preserves current MCP declarations and instructions across cold reopen", async () => {
   dirs = await tempDirs();
   const manifest = join(dirs.homeDir, "manifest.json");
   await Bun.write(
@@ -617,14 +418,13 @@ test("compaction preserves effective MCP tool declarations and resume replays th
       },
     }),
   );
-  const fake = fakeModel([
-    fauxAssistantMessage("old work ".repeat(2500)),
-    fauxAssistantMessage("MCP work summary."),
-    fauxAssistantMessage("done"),
-  ]);
-  fake.model.contextWindow = 4000;
-  const session = await createSession({ ...dirs, ...fake });
-  await session.run("first");
+  const original = await createSession({ ...dirs, ...historyModel([]) });
+  await seedHistory(original);
+  await original.close();
+  const fake = fakeModel([fauxAssistantMessage("MCP work summary."), fauxAssistantMessage("done")]);
+  const models = withModelAlias(fake.models, "compact-window", ["large"], {
+    contextWindow: 128000,
+  });
   await Bun.write(
     manifest,
     JSON.stringify({
@@ -632,93 +432,114 @@ test("compaction preserves effective MCP tool declarations and resume replays th
       instructions: "Inspect widgets through this MCP server.",
     }),
   );
-  const events: SessionEvent[] = [];
-  await session.run("second", {
-    onEvent: (event) => {
-      events.push(event);
-    },
-  });
-  expect(
-    events.filter((event) => event.type === "reminder_injected" && event.source === "mcp"),
-  ).toHaveLength(2);
-  expect(JSON.stringify(fake.contexts.at(-1)!.messages)).toContain(
-    "Inspect widgets through this MCP server.",
-  );
-  const toolNames = getCurrentTools(fake.contexts.at(-1)!.messages).map((tool) => tool.name);
-  expect(toolNames).toContain("mcp__local__current");
-  expect(toolNames).not.toContain("mcp__local__old");
+  const session = await createSession({ ...dirs, ...fake, models, resumeId: original.id });
+  await session.compact();
+  await session.run("continue");
+  const request = fake.contexts.at(-1)!.messages;
+  expect(JSON.stringify(request)).toContain("Inspect widgets through this MCP server.");
+  const tools = getCurrentTools(request).map((tool) => tool.name);
+  expect(tools).toContain("mcp__local__current");
+  expect(tools).not.toContain("mcp__local__old");
+  const messages = structuredClone(session.messages);
+  await session.close();
   const next = fakeModel([fauxAssistantMessage("resumed")]);
-  next.model.contextWindow = 4000;
-  const resumed = await createSession({ ...dirs, ...next, resumeId: session.id });
-  expect(resumed.messages).toEqual(session.messages);
-  const resumedEvents: SessionEvent[] = [];
-  await resumed.run("continue", {
-    onEvent: (event) => {
-      resumedEvents.push(event);
-    },
+  const restored = await createSession({
+    ...dirs,
+    ...next,
+    models: withModelAlias(next.models, "compact-window", ["large"], { contextWindow: 128000 }),
+    resumeId: session.id,
   });
-  expect(resumedEvents.filter((event) => event.type === "reminder_injected")).toEqual([]);
-  expect(next.contexts[0]!.messages.slice(0, -2)).toEqual(fake.contexts.at(-1)!.messages);
-  expect(getCurrentTools(next.contexts[0]!.messages).map((tool) => tool.name)).toEqual(toolNames);
+  expect(restored.messages).toEqual(messages);
+  await restored.run("cold continue");
+  expect(getCurrentTools(next.contexts[0]!.messages).map((tool) => tool.name)).toEqual(tools);
+  expect(JSON.stringify(next.contexts[0])).toContain("Inspect widgets through this MCP server.");
 });
 
-test("aborting summary generation cancels its provider request without persisting a compaction", async () => {
+test("aborting native threshold Compaction preserves its admitted prompt without committing a partial summary", async () => {
   dirs = await tempDirs();
-  const original = "history before cancellation ".repeat(2000);
-  const fake = fakeModel([fauxAssistantMessage(original)]);
+  const fake = historyModel([]);
   const summary = abortingModel();
-  const streamFn = fake.streamFn;
-  fake.streamFn = withAuxiliaryRequests((model, context, options) =>
-    context.messages.some(
-      (message) =>
-        message.role === "system" &&
-        JSON.stringify(message).includes("context summarization assistant"),
-    )
-      ? summary.streamFn(model, context, options)
-      : streamFn(model, context, options),
+  const primary = modelStream(fake.models);
+  fake.models = withModelStream(fake.models, (model, context, options) =>
+    JSON.stringify(context.messages).includes("context summarization assistant")
+      ? modelStream(summary.models)(summary.model, context, options)
+      : primary(model, context, options),
   );
-  fake.model.contextWindow = 4000;
   const session = await createSession({ ...dirs, ...fake });
-  await session.run("first");
-  const controller = new AbortController();
-  const events: SessionEvent[] = [];
-  const run = session.run("second", {
-    signal: controller.signal,
-    onEvent: (event) => {
-      events.push(event);
-    },
-  });
-  void run.catch(() => {});
+  await seedHistory(session);
+  await session.setModel("compact-window/small");
+  const pending = session.run("PRESERVE_ABORTED_THRESHOLD_PROMPT");
+  const rejected = pending.catch((error: unknown) => error);
   await summary.started;
-  expect(events.at(-1)).toMatchObject({ type: "compaction_start" });
-  controller.abort(new Error("cancel summary"));
-  await expect(run).rejects.toThrow("cancel summary");
-  expect(events.at(-1)).toMatchObject({ type: "result", success: false });
-  expect(events.filter((event) => event.type === "compaction_start")).toEqual([
-    {
-      type: "compaction_start",
-      trigger: "auto",
-      sessionId: session.id,
-      tokensBefore: expect.any(Number),
-    },
-  ]);
-  expect(events.filter((event) => event.type === "compaction_end")).toEqual([]);
-  expect(await transcript()).not.toContain('"type":"compaction"');
+  await session.abort();
+  expect(await rejected).toBeInstanceOf(Error);
+  expect(committedCompactions(await nativeJournal())).toEqual([]);
+  expect(JSON.stringify(session.messages)).toContain("PRESERVE_ABORTED_THRESHOLD_PROMPT");
+  await session.close();
   const next = fakeModel([
-    fauxAssistantMessage("Recovered summary."),
-    fauxAssistantMessage("recovered"),
+    fauxAssistantMessage("Successful retry summary."),
+    fauxAssistantMessage("continued"),
   ]);
-  next.model.contextWindow = 4000;
-  const resumed = await createSession({ ...dirs, ...next, resumeId: session.id });
-  expect((await resumed.run("recover")).text).toBe("recovered");
-  expect(JSON.stringify(next.contexts[0])).toContain(original);
+  const models = withModelAlias(next.models, "compact-window", ["small"], { contextWindow: 16000 });
+  const restored = await createSession({ ...dirs, ...next, models, resumeId: session.id });
+  await restored.waitForIdle();
+  expect(next.contexts).toHaveLength(0);
+  await restored.run("explicit retry");
+  expect(JSON.stringify(next.contexts[0])).toContain("OLD_EVIDENCE");
+  expect(JSON.stringify(next.contexts.at(-1))).toContain("Successful retry summary.");
+  expect(JSON.stringify(next.contexts.at(-1))).toContain("explicit retry");
 });
 
-async function transcript() {
-  const root = join(dirs.homeDir, ".rukie/sessions");
-  const files = (await readdir(root, { recursive: true })).filter((file) =>
-    file.endsWith(".jsonl"),
+test("threshold Compaction keeps large parallel Tool Calls paired with their Tool Results within the current Run", async () => {
+  dirs = await tempDirs();
+  const fake = historyModel([
+    fauxAssistantMessage(
+      [fauxToolCall("read", { path: "old.txt" }), fauxToolCall("read", { path: "old.txt" })],
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage("large tool batch inspected"),
+  ]);
+  const summaries = fakeModel(
+    Array.from({ length: 4 }, () => fauxAssistantMessage("Prior work summary.")),
   );
-  expect(files).toHaveLength(1);
-  return Bun.file(join(root, files[0]!)).text();
-}
+  const primary = modelStream(fake.models);
+  fake.models = withModelStream(fake.models, (model, context, options) =>
+    JSON.stringify(context.messages).includes("context summarization assistant")
+      ? modelStream(summaries.models)(summaries.model, context, options)
+      : primary(model, context, options),
+  );
+  const session = await createSession({ ...dirs, ...fake });
+  await seedHistory(session);
+  await session.setModel("compact-window/small");
+  const result = await session.run("Inspect both current tool outputs before answering.");
+  expect(result.text).toBe("large tool batch inspected");
+  expect(summaries.contexts).toHaveLength(2);
+  const request = fake.contexts.at(-1)!;
+  const calls = request.messages.flatMap((message) =>
+    message.role === "assistant"
+      ? message.content.filter((part) => part.type === "toolCall").map((part) => part.id)
+      : [],
+  );
+  const results = request.messages.filter((message) => message.role === "toolResult");
+  expect(results.length).toBeGreaterThanOrEqual(2);
+  for (const message of results) expect(calls).toContain(message.toolCallId);
+  expect(JSON.stringify(request)).toContain("OLD_EVIDENCE");
+  expect(JSON.stringify(fake.contexts[5])).toContain(
+    "Inspect both current tool outputs before answering.",
+  );
+  expect(JSON.stringify(summaries.contexts[1])).toContain(
+    "Inspect both current tool outputs before answering.",
+  );
+  expect(JSON.stringify(request)).toContain("Prior work summary.");
+  const restoredMessages = structuredClone(session.messages);
+  await session.close();
+  const next = fakeModel([]);
+  const restored = await createSession({
+    ...dirs,
+    ...next,
+    models: withModelAlias(next.models, "compact-window", ["small"], { contextWindow: 16000 }),
+    resumeId: session.id,
+  });
+  expect(restored.messages).toEqual(restoredMessages);
+  expect(next.contexts).toHaveLength(0);
+});
