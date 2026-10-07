@@ -1,16 +1,12 @@
-import chalk from "chalk";
-let previousColorLevel = chalk.level;
-let activeTerminals = 0;
 import { PassThrough, Writable } from "node:stream";
 import { setImmediate } from "node:timers/promises";
-import { setTimeout as ioTimeout, clearTimeout as ioClearTimeout } from "node:timers";
+import { acquireTerminalColor, writeTerminal, flushTerminal } from "../../helpers/terminal-io";
 import xterm from "@xterm/headless";
 import unicodeGraphemes from "@xterm/addon-unicode-graphemes";
 
 /** Interpret the frontend's ANSI output at its terminal IO seam. */
 export function createTerminal(columns = 80, rows = 24, advanceTimers?: (ms: number) => void) {
-  if (activeTerminals++ === 0) previousColorLevel = chalk.level;
-  chalk.level = 3;
+  const releaseColor = acquireTerminalColor();
   const terminal = new xterm.Terminal({ cols: columns, rows, allowProposedApi: true });
   // Interpret complete Unicode graphemes, including ZWJ owners and their wide tail cells.
   terminal.loadAddon(new unicodeGraphemes.UnicodeGraphemesAddon());
@@ -35,37 +31,18 @@ export function createTerminal(columns = 80, rows = 24, advanceTimers?: (ms: num
         output += chunk.toString();
         // xterm parsing is an I/O completion queue, not a frontend deadline. Keep its zero-delay
         // scheduler real so a timer created inside a virtual tick cannot strand callback flushes.
-        const frontendTimeout = globalThis.setTimeout;
-        const frontendClearTimeout = globalThis.clearTimeout;
-        try {
-          globalThis.setTimeout = ioTimeout as typeof setTimeout;
-          globalThis.clearTimeout = ioClearTimeout as typeof clearTimeout;
-          terminal.write(chunk, callback);
-        } finally {
-          globalThis.setTimeout = frontendTimeout;
-          globalThis.clearTimeout = frontendClearTimeout;
-        }
+        writeTerminal(terminal, chunk, callback);
       },
     }),
     { columns, rows, isTTY: true },
   );
-  const flush = async () => {
-    let parsed = false;
-    const flushed = new Promise<void>((resolve) =>
-      stdout.write("", () => {
-        parsed = true;
-        resolve();
-      }),
+  const flush = () =>
+    flushTerminal(
+      stdout,
+      () =>
+        `cursor=${terminal.buffer.active.cursorX},${terminal.buffer.active.cursorY}; screen=${screen().join("|")}`,
+      advanceTimers,
     );
-    // xterm schedules parsing with a zero-delay timer, including under a virtual clock.
-    if (advanceTimers) {
-      while (!parsed) {
-        advanceTimers(0);
-        await setImmediate();
-      }
-    }
-    return flushed;
-  };
   function screen() {
     const buffer = terminal.buffer.active;
     return Array.from({ length: rows }, (_, y) =>
@@ -77,6 +54,8 @@ export function createTerminal(columns = 80, rows = 24, advanceTimers?: (ms: num
   }
   return {
     term: "xterm-256color",
+    // Injected Node stream contract: PassThrough supplies readable events;
+    // the attached raw/ref methods and TTY dimensions cover Ink's consumed API.
     stdin: stdin as typeof stdin & NodeJS.ReadStream,
     stdout: stdout as typeof stdout & NodeJS.WriteStream,
     terminal,
@@ -108,7 +87,7 @@ export function createTerminal(columns = 80, rows = 24, advanceTimers?: (ms: num
       throw new Error(`Terminal did not reach expected state:\n${screen().join("\n")}`);
     },
     dispose() {
-      if (--activeTerminals === 0) chalk.level = previousColorLevel;
+      releaseColor();
       stdin.destroy();
       stdout.destroy();
       terminal.dispose();

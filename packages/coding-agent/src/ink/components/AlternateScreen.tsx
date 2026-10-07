@@ -28,7 +28,7 @@ export function AlternateScreen({ children, mouseTracking = true }: Props) {
   const adopting = handoffAckArmed()
   useInsertionEffect(() => {
     if (!write) return
-    // Custom streams are supported only when a single renderer can be identified.
+    // Context binds these mode changes to the renderer owning the injected streams.
     logMouseDebug('alt-screen enter', { mouseTracking, inkFound: !!renderer, adopting })
     write((adopting ? '' : ENTER_ALT_SCREEN) + '\x1b[2J\x1b[H' + (mouseTracking ? ENABLE_MOUSE_TRACKING : ''))
     renderer?.setAltScreenActive(true, mouseTracking)

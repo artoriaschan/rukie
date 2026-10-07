@@ -97,6 +97,8 @@ export async function runTui(options: CliOptions, io: TuiIo): Promise<number> {
       {
         stdin: io.stdin,
         stdout: io.stdout,
+        // Ink consumes stderr.write with patchConsole disabled. This Writable
+        // is a diagnostic sink; it has no TTY dimensions or physical file descriptor.
         stderr: new Writable({
           write(chunk, _encoding, callback) {
             io.stderr(chunk.toString());

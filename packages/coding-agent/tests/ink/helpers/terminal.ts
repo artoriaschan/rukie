@@ -1,9 +1,6 @@
 import { setImmediate } from "node:timers/promises";
-import { setTimeout as ioTimeout, clearTimeout as ioClearTimeout } from "node:timers";
+import { acquireTerminalColor, writeTerminal, flushTerminal } from "../../helpers/terminal-io";
 import { PassThrough, Writable } from "node:stream";
-import chalk from "chalk";
-let previousColorLevel = chalk.level;
-let activeTerminals = 0;
 import type { RenderOptions } from "../../../src/ink";
 import xterm from "@xterm/headless";
 import unicodeGraphemes from "@xterm/addon-unicode-graphemes";
@@ -11,8 +8,7 @@ import unicodeGraphemes from "@xterm/addon-unicode-graphemes";
 /** Real ANSI interpretation at the renderer's IO boundary, with deterministic dimensions. */
 export function createTerminal(columns = 20, rows = 8, advanceTimers?: (ms: number) => void) {
   // All injected xterm roots share the runner but support truecolor. Restore when released.
-  if (activeTerminals++ === 0) previousColorLevel = chalk.level;
-  chalk.level = 3;
+  const releaseColor = acquireTerminalColor();
   const terminal = new xterm.Terminal({ cols: columns, rows, allowProposedApi: true });
   terminal.loadAddon(new unicodeGraphemes.UnicodeGraphemesAddon());
   const stdin = Object.assign(new PassThrough(), {
@@ -39,16 +35,7 @@ export function createTerminal(columns = 20, rows = 8, advanceTimers?: (ms: numb
         output += chunk.toString();
         if (chunk.length) writes.push({ text: chunk.toString(), time: performance.now() });
         // xterm's parse queue is real I/O; frontend clocks must not strand its completion.
-        const frontendTimeout = globalThis.setTimeout;
-        const frontendClearTimeout = globalThis.clearTimeout;
-        try {
-          globalThis.setTimeout = ioTimeout as typeof setTimeout;
-          globalThis.clearTimeout = ioClearTimeout as typeof clearTimeout;
-          terminal.write(chunk, callback);
-        } finally {
-          globalThis.setTimeout = frontendTimeout;
-          globalThis.clearTimeout = frontendClearTimeout;
-        }
+        writeTerminal(terminal, chunk, callback);
       },
     }),
     { isTTY: true, columns, rows },
@@ -57,22 +44,12 @@ export function createTerminal(columns = 20, rows = 8, advanceTimers?: (ms: numb
     await Promise.resolve();
     advanceTimers?.(0);
     await setImmediate();
-    let parsed = false;
-    let error: Error | null | undefined;
-    stdout.write("", (failure) => {
-      error = failure;
-      parsed = true;
-    });
-    const deadline = process.hrtime.bigint() + 1_000_000_000n;
-    while (!parsed) {
-      if (process.hrtime.bigint() >= deadline)
-        throw new Error(
-          `Terminal parse did not complete: bytes=${bytesWritten}; cursor=${terminal.buffer.active.cursorX},${terminal.buffer.active.cursorY}`,
-        );
-      advanceTimers?.(0);
-      await setImmediate();
-    }
-    if (error) throw error;
+    await flushTerminal(
+      stdout,
+      () =>
+        `bytes=${bytesWritten}; cursor=${terminal.buffer.active.cursorX},${terminal.buffer.active.cursorY}`,
+      advanceTimers,
+    );
   }
   return {
     // Injected Node stream invariants: writable TTY dimensions and readable raw mode.
@@ -127,7 +104,7 @@ export function createTerminal(columns = 20, rows = 8, advanceTimers?: (ms: numb
       );
     },
     dispose() {
-      if (--activeTerminals === 0) chalk.level = previousColorLevel;
+      releaseColor();
       stdin.destroy();
       stdout.destroy();
       terminal.dispose();
