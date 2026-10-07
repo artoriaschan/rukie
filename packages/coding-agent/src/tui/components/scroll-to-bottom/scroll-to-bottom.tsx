@@ -1,5 +1,5 @@
 import type { Locale } from "@neant/i18n";
-import { createTuiI18n } from "../../i18n";
+import { createTuiI18n } from "../../../view/i18n";
 import { useState } from "react";
 import { Box, ThemedBox, ThemedText } from "../../../ink/index.ts";
 

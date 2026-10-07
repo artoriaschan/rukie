@@ -1,4 +1,4 @@
-import type { createTuiI18n } from "../../i18n";
+import type { createTuiI18n } from "../../../view/i18n";
 
 export function commandCatalog(t: ReturnType<typeof createTuiI18n>) {
   return (

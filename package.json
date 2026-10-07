@@ -6,7 +6,7 @@
   ],
   "type": "module",
   "scripts": {
-    "dev": "bun packages/coding-agent/src/tui/main.tsx",
+    "dev": "bun packages/coding-agent/src/main.ts",
     "check:dev": "oxfmt --check && oxlint && tsc -b && knip && bun run check:scratch",
     "check:scratch": "bun scripts/check-scratch.ts",
     "check": "bun run check:dev && bun run test",

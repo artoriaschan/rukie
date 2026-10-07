@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { appCopy } from "../../../src/tui/i18n/locales";
-import { createTuiI18n, formatError } from "../../../src/tui/i18n/index";
+import { appCopy } from "../../../src/view/i18n/locales";
+import { createTuiI18n, formatError } from "../../../src/view/i18n/index";
 
 const placeholders = (text: string) =>
   [...new Set([...text.matchAll(/\{\{(\w+)\}\}/g)].map((match) => match[1]))].sort();

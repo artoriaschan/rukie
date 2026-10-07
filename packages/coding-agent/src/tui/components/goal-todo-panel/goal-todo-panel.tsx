@@ -27,7 +27,7 @@ import type { GoalView, TodoItem } from "@neant/agent";
 import type { Locale } from "@neant/i18n";
 import { useEffect, useRef, useState } from "react";
 import { Box, ThemedBox, ThemedText } from "../../../ink/index.ts";
-import { createTuiI18n } from "../../i18n";
+import { createTuiI18n } from "../../../view/i18n";
 import { goalPhasePresentation } from "../goal-phase";
 
 export function GoalTodoPanel({

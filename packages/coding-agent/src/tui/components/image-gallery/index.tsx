@@ -8,7 +8,7 @@ import {
   useTerminalGraphics,
   useTerminalSize,
 } from "../../../ink/index.ts";
-import { createTuiI18n } from "../../i18n";
+import { createTuiI18n } from "../../../view/i18n";
 
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 

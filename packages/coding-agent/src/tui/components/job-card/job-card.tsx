@@ -2,7 +2,7 @@ import type { JobView } from "@neant/shared";
 import { fmtDuration, type Locale } from "@neant/i18n";
 import { useState } from "react";
 import { Box, ThemedText, useAnimationFrame } from "../../../ink/index.ts";
-import { createTuiI18n } from "../../i18n";
+import { createTuiI18n } from "../../../view/i18n";
 
 import { cleanJobText, jobOutputRows } from "./output";
 

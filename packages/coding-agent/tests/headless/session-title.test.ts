@@ -3,7 +3,16 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createSession } from "@neant/agent";
-import { main } from "../../src/headless/main.ts";
+import { main as entryMain, type PrintIo } from "../../src/index.ts";
+function main(argv: string[], io: PrintIo) {
+  return entryMain(
+    argv.includes("--goal") || argv.includes("-p") || argv.includes("--print")
+      ? argv
+      : ["-p", ...argv],
+    { env: { LANG: "en" }, ...io },
+  );
+}
+
 import { echoModel } from "./helpers/echo-model.ts";
 
 test("Headless titles its persisted session and keeps the auxiliary response out of stdout", async () => {

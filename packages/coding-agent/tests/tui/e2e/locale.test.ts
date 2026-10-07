@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { start } from "../helpers/app";
 import { createTerminal } from "../helpers/terminal";
-import { main } from "../../../src/tui/main";
+import { main } from "../../../src/index.ts";
 
 test.each([
   [{ LANG: "en_US.UTF-8" }, undefined, "Ask", "Allow once", "Deny"],
@@ -138,9 +138,9 @@ test.each([
         session: { cwd: root, homeDir: root },
         stderr: (text) => (stderr += text),
       }),
-    ).toBe(1);
+    ).toBe(2);
     expect(stderr).toContain(message);
-    expect(stderr).toContain("neant-cli");
+    expect(stderr).toContain("neant -p");
     expect(terminal.output()).toBe("");
   } finally {
     terminal.dispose();
@@ -266,7 +266,7 @@ test("English welcome header localizes configured effort", async () => {
 test("user locale overrides environment for non-interactive terminal guidance", async () => {
   const root = await mkdtemp(join(tmpdir(), "neant-locale-terminal-"));
   const terminal = createTerminal();
-  terminal.stdin.isTTY = false;
+  terminal.stdout.isTTY = false;
   let stderr = "";
   try {
     await Bun.write(join(root, ".neant/settings.json"), '{"locale":"zh"}');

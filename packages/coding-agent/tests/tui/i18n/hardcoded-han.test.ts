@@ -15,6 +15,7 @@ async function sourceTree(files: Record<string, string>): Promise<string> {
   fixtures.push(root);
   for (const directory of [
     "packages/coding-agent/src/tui",
+    "packages/coding-agent/src/view",
     "packages/agent/src",
     "packages/coding-agent/src/ink",
   ])
@@ -44,7 +45,7 @@ test("hardcoded Han in TUI and Agent Core fails with every file and one-based li
 
 test("only the exact TUI dictionary and activity phrase pool may contain Han", async () => {
   const root = await sourceTree({
-    "packages/coding-agent/src/tui/i18n/locales.ts": 'export const zh = { ready: "准备好了" };\n',
+    "packages/coding-agent/src/view/i18n/locales.ts": 'export const zh = { ready: "准备好了" };\n',
     "packages/coding-agent/src/tui/screens/chat/activity/phrases.ts":
       'export const phrases = ["在想了"];\n',
     "packages/coding-agent/tests/tui/example.test.ts": 'const fixture = "测试";\n',
@@ -55,7 +56,7 @@ test("only the exact TUI dictionary and activity phrase pool may contain Han", a
 
 test("new files beside dictionaries and phrase pools cannot bypass the scan", async () => {
   const root = await sourceTree({
-    "packages/coding-agent/src/tui/i18n/extra.ts": 'export const label = "中文";\n',
+    "packages/coding-agent/src/view/i18n/extra.ts": 'export const label = "中文";\n',
     "packages/coding-agent/src/tui/screens/chat/activity/extra.ts":
       'export const label = "中文";\n',
     "packages/coding-agent/src/tui/components/phrases.ts": 'export const label = "中文";\n',
@@ -65,8 +66,8 @@ test("new files beside dictionaries and phrase pools cannot bypass the scan", as
   await expect(assertNoHardcodedHan(root)).rejects.toThrow(
     "Hardcoded Han found (including comments):\n" +
       "packages/coding-agent/src/tui/components/phrases.ts:1\n" +
-      "packages/coding-agent/src/tui/i18n/extra.ts:1\n" +
       "packages/coding-agent/src/tui/screens/chat/activity/extra.ts:1\n" +
+      "packages/coding-agent/src/view/i18n/extra.ts:1\n" +
       "packages/agent/src/i18n/locales.ts:1\n" +
       "packages/coding-agent/src/ink/.copy.json:1",
   );

@@ -1,117 +1,36 @@
 #!/usr/bin/env bun
 import { homedir } from "node:os";
-import { parseArgs } from "node:util";
-import { loadSettings, parsePermissionRules, type SessionOptions } from "@neant/agent";
+import { loadSettings } from "@neant/agent";
 import { resolveLocale } from "@neant/i18n";
-import {
-  PERMISSION_MODES,
-  THINKING_LEVELS,
-  type PermissionMode,
-  type ThinkingLevel,
-} from "@neant/shared";
-import { render, ThemeProvider, TooltipProvider, type RenderOptions } from "../ink/index.ts";
-import { createDefaultHost, type TuiHost } from "./host";
+import type { PermissionMode, ThinkingLevel } from "@neant/shared";
+import type { CliOptions } from "../cli";
+import type { TuiIo } from "../io";
+import { render, ThemeProvider, TooltipProvider } from "../ink/index.ts";
+import { createDefaultHost } from "./host";
 import { createChat } from "./screens/chat";
-import { createTuiI18n, formatError } from "./i18n";
-
-export interface TuiIo extends RenderOptions {
-  /** Host capabilities; defaults to the platform clipboard and external viewer. */
-  host?: TuiHost;
-  term?: string;
-  env?: Record<string, string | undefined>;
-  stderr(text: string): void;
-  /** Session overrides; in-process tests inject a model and streamFn. */
-  session?: Partial<SessionOptions>;
-}
+import { createTuiI18n, formatError } from "../view/i18n";
 
 /** Run the interactive frontend and resolve to its process exit code. */
-export async function main(argv: string[], io: TuiIo): Promise<number> {
+export async function runTui(options: CliOptions, io: TuiIo): Promise<number> {
+  if (io.signal?.aborted) return 0;
+  const { values, prompt } = options;
   const env = io.env ?? process.env;
   const environmentLocale = resolveLocale([env.LC_ALL, env.LC_MESSAGES, env.LANG]);
   const argvT = createTuiI18n(environmentLocale);
-  let values;
-  let prompt: string | undefined;
-  try {
-    const parsed = parseArgs({
-      args: argv,
-      tokens: true,
-      allowPositionals: true,
-      options: {
-        model: { type: "string" },
-        thinking: { type: "string" },
-        resume: { type: "string" },
-        "allow-tools": { type: "string", multiple: true },
-        "permission-mode": { type: "string" },
-        yolo: { type: "boolean" },
-        "trust-project-mcp": { type: "boolean" },
-      },
-    });
-    values = parsed.values;
-    let collectingTools = false;
-    for (const token of parsed.tokens) {
-      if (token.kind === "option") collectingTools = token.name === "allow-tools";
-      else if (token.kind === "positional" && collectingTools)
-        values["allow-tools"]!.push(token.value);
-      else if (token.kind === "positional" && prompt === undefined) prompt = token.value;
-      else if (token.kind === "positional")
-        throw new Error(argvT("argv.unexpected", { argument: token.value }));
-      else collectingTools = false;
-    }
-    parsePermissionRules({ allow: values["allow-tools"] }, "--allow-tools");
-    if (
-      values["permission-mode"] !== undefined &&
-      !PERMISSION_MODES.includes(values["permission-mode"] as PermissionMode)
-    ) {
-      throw new Error(argvT("argv.permission-mode", { values: PERMISSION_MODES.join(", ") }));
-    }
-    if (
-      values.yolo &&
-      values["permission-mode"] !== undefined &&
-      values["permission-mode"] !== "full-access"
-    ) {
-      throw new Error(argvT("argv.yolo-conflict"));
-    }
-    if (values.model !== undefined && !/^[^/]+\/.+/.test(values.model)) {
-      throw new Error(argvT("argv.model", { model: values.model }));
-    }
-    if (
-      values.thinking !== undefined &&
-      !THINKING_LEVELS.includes(values.thinking as ThinkingLevel)
-    ) {
-      throw new Error(argvT("argv.thinking", { values: THINKING_LEVELS.join(", ") }));
-    }
-  } catch (error) {
-    const failure = error as Error & { code?: string };
-    const option = /'([^']+)'/.exec(failure.message)?.[1] ?? "";
-    const message =
-      failure.code === "ERR_PARSE_ARGS_UNKNOWN_OPTION"
-        ? argvT("argv.unknown-option", { option })
-        : failure.code === "ERR_PARSE_ARGS_INVALID_OPTION_VALUE"
-          ? argvT(
-              failure.message.includes("argument missing")
-                ? "argv.missing-value"
-                : failure.message.includes("does not take an argument")
-                  ? "argv.unexpected-value"
-                  : "argv.invalid-value",
-              { option },
-            )
-          : formatError(error, argvT);
-    io.stderr(`${message}\n`);
-    return 2;
-  }
   let t = argvT;
   let app: ReturnType<typeof render> | undefined;
   let chat: Awaited<ReturnType<typeof createChat>> | undefined;
   const defaultHost = io.host
     ? undefined
     : createDefaultHost({ env, writeTerminal: (text) => io.stdout.write(text) });
-  let closing = false;
+  let closing = io.signal?.aborted ?? false;
   const close = () => {
     closing = true;
     app?.unmount();
   };
   // Own process signals until Agent Core's parent and child Runs have settled.
   // Terminal restoration alone must not terminate the process before saving.
+  io.signal?.addEventListener("abort", close);
   process.on("SIGINT", close);
   process.on("SIGTERM", close);
   try {
@@ -190,17 +109,10 @@ export async function main(argv: string[], io: TuiIo): Promise<number> {
       try {
         await defaultHost?.dispose();
       } finally {
+        io.signal?.removeEventListener("abort", close);
         process.off("SIGINT", close);
         process.off("SIGTERM", close);
       }
     }
   }
-}
-
-if (import.meta.main) {
-  process.exitCode = await main(Bun.argv.slice(2), {
-    stdin: process.stdin,
-    stdout: process.stdout,
-    stderr: (text) => process.stderr.write(text),
-  });
 }

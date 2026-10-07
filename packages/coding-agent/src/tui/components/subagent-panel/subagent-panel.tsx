@@ -1,7 +1,7 @@
 import type { Locale } from "@neant/i18n";
 import { Box, ThemedBox, ThemedText } from "../../../ink/index.ts";
 import { useState } from "react";
-import { createTuiI18n } from "../../i18n";
+import { createTuiI18n } from "../../../view/i18n";
 import { SUBAGENT_APPEARANCE, type SubagentView } from "../subagent-message";
 
 export function SubagentPanel({

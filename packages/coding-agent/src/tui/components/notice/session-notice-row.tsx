@@ -1,7 +1,7 @@
 import { Box, ThemedText } from "../../../ink/index.ts";
 import type { Locale } from "@neant/i18n";
 import type { SessionNotice } from "@neant/agent";
-import { createTuiI18n, formatError } from "../../i18n";
+import { createTuiI18n, formatError } from "../../../view/i18n";
 import { Notice } from "./notice";
 
 export function SessionNoticeRow({ notice, locale }: { notice: SessionNotice; locale: Locale }) {

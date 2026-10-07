@@ -25,7 +25,7 @@
 import { useState } from "react";
 import { Box, ThemedBox, ThemedText, type BoxProps } from "../../../ink/index.ts";
 import type { Locale } from "@neant/i18n";
-import { createTuiI18n } from "../../i18n";
+import { createTuiI18n } from "../../../view/i18n";
 
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 function truncate(text: string, width: number) {

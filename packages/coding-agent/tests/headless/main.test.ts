@@ -5,7 +5,16 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createSession } from "@neant/agent";
-import { main } from "../../src/headless/main.ts";
+import { main as entryMain, type PrintIo } from "../../src/index.ts";
+function main(argv: string[], io: PrintIo) {
+  return entryMain(
+    argv.includes("--goal") || argv.includes("-p") || argv.includes("--print")
+      ? argv
+      : ["-p", ...argv],
+    { env: { LANG: "en" }, ...io },
+  );
+}
+
 // Load the owned HTTP fixture at runtime: CLI's composite TypeScript project excludes agent tests.
 const {
   mcpOAuthServer,
@@ -213,7 +222,7 @@ test.each(["text", "stream-json"])(
   },
 );
 
-test("reads the prompt from stdin when -p is absent", async () => {
+test("print reads stdin when the positional prompt is absent", async () => {
   const { exitCode, stdout } = await run([], "from pipe\n");
   expect(exitCode).toBe(0);
   expect(stdout).toBe('echo: [{"type":"text","text":"from pipe"}]\n');

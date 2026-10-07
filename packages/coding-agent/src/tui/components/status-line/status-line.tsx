@@ -446,4 +446,4 @@ export function StatusLine(props: StatusLineProps) {
   );
 }
 import { fmtDuration, type Locale } from "@neant/i18n";
-import { createTuiI18n } from "../../i18n";
+import { createTuiI18n } from "../../../view/i18n";

@@ -1,6 +1,6 @@
 import type { Locale } from "@neant/i18n";
-import { createTuiI18n } from "../../i18n";
-import { appCopy } from "../../i18n/locales";
+import { createTuiI18n } from "../../../view/i18n";
+import { appCopy } from "../../../view/i18n/locales";
 import type { ToolCallView, ToolResultView } from "@neant/shared";
 export interface ToolCardSource {
   name?: string;

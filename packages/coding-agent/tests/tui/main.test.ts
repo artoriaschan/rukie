@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createSession } from "@neant/agent";
-import { main } from "../../src/tui/main";
+import { main } from "../../src/index.ts";
 import { controlledModel } from "./helpers/model";
 import { createTerminal } from "./helpers/terminal";
 import { start } from "./helpers/app";

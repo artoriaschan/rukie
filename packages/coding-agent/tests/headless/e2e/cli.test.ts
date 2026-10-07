@@ -8,12 +8,21 @@ import { SettingsSchema } from "@neant/shared";
 import { Value } from "typebox/value";
 import { fakeOpenAI, type FakeOpenAIOptions } from "../helpers/fake-openai.ts";
 import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { main } from "../../../src/headless/main.ts";
+import { main as entryMain, type PrintIo } from "../../../src/index.ts";
+function main(argv: string[], io: PrintIo) {
+  return entryMain(
+    argv.includes("--goal") || argv.includes("-p") || argv.includes("--print")
+      ? argv
+      : ["-p", ...argv],
+    { env: { LANG: "en" }, ...io },
+  );
+}
+
 import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 
 isolateProxyEnvironment();
 
-const MAIN = join(import.meta.dir, "../../../src/headless/main.ts");
+const MAIN = join(import.meta.dir, "../../../src/main.ts");
 const cleanups: (() => unknown)[] = [];
 
 function parseEvents(stdout: string) {
@@ -310,9 +319,19 @@ async function neant(
   args: string[],
   opts: { home: string; cwd: string; key?: string; input?: string; env?: Record<string, string> },
 ) {
-  const proc = Bun.spawn([process.execPath, MAIN, ...args], {
+  const flags =
+    args.includes("--goal") || args.includes("-p") || args.includes("--print")
+      ? args
+      : ["-p", ...args];
+  const proc = Bun.spawn([process.execPath, MAIN, ...flags], {
     cwd: opts.cwd,
-    env: { PATH: process.env.PATH, HOME: opts.home, FAKE_API_KEY: opts.key, ...opts.env },
+    env: {
+      LANG: "en",
+      PATH: process.env.PATH,
+      HOME: opts.home,
+      FAKE_API_KEY: opts.key,
+      ...opts.env,
+    },
     stdin: opts.input === undefined ? "ignore" : "pipe",
     stdout: "pipe",
     stderr: "pipe",
@@ -405,7 +424,7 @@ test("--goal prints every round in order, including its final wrapup", async () 
 
 test.each([
   [["--goal", "objective", "-p", "prompt"], "conflicts"],
-  [["--goal", "objective", "--prompt", ""], "conflicts"],
+  [["--goal", "objective", "--print"], "conflicts"],
   [["--goal", " "], "objective cannot be empty"],
   [["--max-goal-rounds", "1"], "requires --goal"],
   ...["0", "-1", "1.5", "NaN", "Infinity", "1e2", "9007199254740992", ""].map(
@@ -1073,7 +1092,7 @@ test.each(["prompt", "goal-wrapup"])(
 
 test("SIGINT exits 130 while stdin is still open", async () => {
   const { server, ...dirs } = await setup();
-  const proc = Bun.spawn(["bun", MAIN], {
+  const proc = Bun.spawn(["bun", MAIN, "-p"], {
     cwd: dirs.cwd,
     env: { PATH: process.env.PATH, HOME: dirs.home, FAKE_API_KEY: "sk-test" },
     stdin: "pipe",
@@ -1181,7 +1200,7 @@ test.each([
   [["--nope"]],
   [["--allow-tools"]],
   [["--allow-tools="]],
-  [["unexpected"]],
+  [["unexpected", "extra"]],
   [["-p", "hi", "--thinking", "extreme"]],
   [["-p", "hi", "--model", "m"]],
   [["-p", "hi", "--output-format", "json"]],

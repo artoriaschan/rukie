@@ -84,9 +84,9 @@ import {
   SessionPicker,
 } from "../../components";
 import { rewindLayout, type RewindEntry, type RewindMode } from "../../components/rewind-picker";
-import { formatError } from "../../i18n";
+import { formatError } from "../../../view/i18n";
 import type { DetailPage } from "../../components/subagent-detail";
-import { createTuiI18n } from "../../i18n";
+import { createTuiI18n } from "../../../view/i18n";
 import { createImageViewer, type TuiHost } from "../../host";
 import { createInputHistory } from "../../input-history";
 import { createComposerImages, pastedImagePath } from "./composer-images";

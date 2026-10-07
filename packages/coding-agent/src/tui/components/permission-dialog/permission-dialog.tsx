@@ -12,7 +12,7 @@ import { useCallback, useState, type Ref } from "react";
 import type { PermissionAskRequest } from "@neant/agent";
 import type { PermissionMode } from "@neant/shared";
 import type { Locale } from "@neant/i18n";
-import { createTuiI18n } from "../../i18n";
+import { createTuiI18n } from "../../../view/i18n";
 
 /** The visible choices also define the keyboard decisions for this request. */
 export function permissionChoices(

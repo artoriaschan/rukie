@@ -2,7 +2,7 @@ import { Box, ThemedBox, ThemedText, figures } from "../../../ink/index.ts";
 import type { PromptImage } from "@neant/agent";
 import type { Locale } from "@neant/i18n";
 import { ImageGallery } from "../image-gallery";
-import { createTuiI18n } from "../../i18n";
+import { createTuiI18n } from "../../../view/i18n";
 
 export function UserMessage({
   text,

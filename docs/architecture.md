@@ -32,9 +32,11 @@ flowchart TD
 
 ## 应用启动与 Session
 
-Headless CLI 从[入口](../packages/coding-agent/src/headless/main.ts)解析 argv 或 stdin，读取合并设置、创建或恢复 Session。普通 prompt 调用 `Session.run`；`--goal "<objective>"` 调用 `Session.createGoal`，等待自动续跑和收尾完成，再释放 Session。`--max-goal-rounds N` 限制 Goal 轮次；`--goal` 与 `-p` 互斥。Goal 完成退出 0，受阻或达到轮次上限退出 1；恢复到已有未完成 Goal 的 Session 时拒绝覆盖，用户通过 TUI 处理。它不提供 Interaction 回调：依赖回调的工具不进入模型工具集；权限询问等 Agent Core 请求采用安全默认值。
+[`main`](../packages/coding-agent/src/main.ts) 用 [`cli/`](../packages/coding-agent/src/cli/index.ts) 的一份参数表解析并校验 argv，按模式动态加载 Frontend。`neant` 与 `neant "问题"` 启动 TUI；后者自动提交首条 prompt。`neant -p "问题"`、`cat x | neant -p` 或 `neant --goal "目标"` 启动 Headless CLI；`-p` / `--print` 是布尔开关，prompt 来自位置参数，缺省时读取 stdin。不带 print / goal 且 stdin 非 TTY 时返回 2，并提示使用 `-p`。参数错误依据启动环境的 locale 显示。`--output-format` 与 `--max-goal-rounds` 仅用于 Headless 模式；rounds 还要求 `--goal`。Headless 启动不加载 React 或终端 renderer。
 
-TUI 从[入口](../packages/coding-agent/src/tui/main.tsx)解析参数与 locale，建立[聊天界面](../packages/coding-agent/src/tui/screens/chat/index.tsx)，为 Session 提供权限、问题与计划评审回调。界面在同一 Session 中接收多次输入；切换 Session 时释放旧的绑定，重建对话呈现，项目输入历史独立保留。
+Headless CLI 的 [`runHeadless`](../packages/coding-agent/src/headless/main.ts) 读取合并设置，创建或恢复 Session。普通 prompt 调用 `Session.run`；Goal 调用 `Session.createGoal`，等待自动续跑和收尾完成，再释放 Session。`--goal` 与 `-p` / `--print` 互斥，也不接受额外的 prompt。Goal 完成退出 0，受阻或达到轮次上限退出 1；恢复到已有未完成 Goal 的 Session 时拒绝覆盖，用户通过 TUI 处理。它不提供 Interaction 回调：依赖回调的工具不进入模型工具集；权限询问等 Agent Core 请求采用安全默认值。
+
+TUI 的 [`runTui`](../packages/coding-agent/src/tui/main.tsx) 建立[聊天界面](../packages/coding-agent/src/tui/screens/chat/index.tsx)，为 Session 提供权限、问题与计划评审回调。界面在同一 Session 中接收多次输入；切换 Session 时释放旧的绑定，重建对话呈现，项目输入历史独立保留。stdout 非 TTY 或 TERM 为 dumb 时仍由 TUI 拒绝启动并返回 1。公开包入口导出 `main` 与 IO 类型；IO 可使用终端流，或在 Headless 调用中注入 stdout 回调和异步 stdin 读取。
 
 [`createSession`](../packages/agent/src/session/index.ts)解析工作目录、创建或打开存储、投影当前分支，并恢复模型选择、Plan Mode、Tool State 与对话上下文。指定的恢复目标不存在或父子归属不符时失败，不改为新建 Session。Session Resume 重建已保存的事实，本身不续跑历史 Subagent。
 

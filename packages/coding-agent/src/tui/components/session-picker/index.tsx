@@ -1,7 +1,7 @@
 import { HintLine, ListItem, ThemedBox, ThemedText } from "../../../ink/index.ts";
 import type { SessionSummary } from "@neant/agent";
 import type { Locale } from "@neant/i18n";
-import { createTuiI18n } from "../../i18n";
+import { createTuiI18n } from "../../../view/i18n";
 
 /** Two-line rows stay bounded and keep the focused session visible. */
 export function SessionPicker({

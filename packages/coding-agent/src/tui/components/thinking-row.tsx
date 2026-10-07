@@ -12,7 +12,7 @@ import {
 } from "../../ink/index.ts";
 import type { Locale } from "@neant/i18n";
 import { fmtDuration } from "@neant/i18n";
-import { createTuiI18n } from "../i18n";
+import { createTuiI18n } from "../../view/i18n";
 
 /** Clip by grapheme width; the ticker's final row preserves newly arrived tokens. */
 function clip(text: string, width: number, fromStart = false) {

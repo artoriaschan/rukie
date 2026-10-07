@@ -277,6 +277,26 @@
           }
         ]
       }
+    },
+    {
+      "files": ["packages/coding-agent/src/main.ts", "packages/coding-agent/src/cli/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@neant/coding-agent", "@neant/coding-agent/**"],
+                "message": "Use relative imports inside coding-agent."
+              },
+              {
+                "group": ["**/tui", "**/tui/**", "**/ink", "**/ink/**", "react", "react/**"],
+                "message": "Entry and argument parsing must load terminal modes dynamically."
+              }
+            ]
+          }
+        ]
+      }
     }
   ]
 }

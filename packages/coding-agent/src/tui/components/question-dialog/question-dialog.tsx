@@ -35,7 +35,7 @@ import {
 } from "../../../ink/index.ts";
 import type { Question, QuestionRequest } from "@neant/agent";
 import type { Locale } from "@neant/i18n";
-import { createTuiI18n } from "../../i18n";
+import { createTuiI18n } from "../../../view/i18n";
 
 const singleLine = (text: string) => text.replace(/[\r\n]+/g, " ");
 const wrappedRows = (text: string, width: number) =>

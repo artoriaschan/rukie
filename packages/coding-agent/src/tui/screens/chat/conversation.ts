@@ -2,7 +2,7 @@ import { readSessionNotice, sessionNoticeFromHook, type SessionNotice } from "@n
 import { assistantThinkingDuration } from "@neant/agent";
 import { basename } from "node:path";
 import { fmtDuration, type Locale } from "@neant/i18n";
-import { createTuiI18n, formatError } from "../../i18n";
+import { createTuiI18n, formatError } from "../../../view/i18n";
 import type {
   PromptImage,
   GoalView,

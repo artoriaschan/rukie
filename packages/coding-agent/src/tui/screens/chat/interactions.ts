@@ -10,7 +10,7 @@ import type {
 import type { TuiHost } from "../../host";
 import type { InputEvent } from "../../../ink/index.ts";
 import { permissionChoices } from "../../components/permission-dialog";
-import { createTuiI18n } from "../../i18n";
+import { createTuiI18n } from "../../../view/i18n";
 import type { Locale } from "@neant/i18n";
 
 interface PermissionInteraction {

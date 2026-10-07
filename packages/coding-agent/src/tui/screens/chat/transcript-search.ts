@@ -1,6 +1,6 @@
 import { completedEntryVisible } from "./completed-visibility";
 import type { Locale } from "@neant/i18n";
-import { createTuiI18n } from "../../i18n";
+import { createTuiI18n } from "../../../view/i18n";
 import type { createConversation } from "./conversation";
 import {
   toolCardTitle,

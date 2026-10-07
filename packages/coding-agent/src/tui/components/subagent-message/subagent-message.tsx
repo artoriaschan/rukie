@@ -34,7 +34,7 @@ import {
   useAnimationFrame,
   toolKindColor,
 } from "../../../ink/index.ts";
-import { createTuiI18n } from "../../i18n";
+import { createTuiI18n } from "../../../view/i18n";
 import { subagentStatusKey, subagentElapsed, subagentAppearance } from "./presentation";
 
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });

@@ -9,7 +9,7 @@ import {
   useTerminalGraphics,
   useTheme,
 } from "../../../ink/index.ts";
-import { createTuiI18n, formatError } from "../../i18n";
+import { createTuiI18n, formatError } from "../../../view/i18n";
 import { imageMetadata, imageName } from "../image-gallery";
 
 /** Card lives only in the message viewport; controls never execute Session actions. */

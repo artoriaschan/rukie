@@ -23,7 +23,7 @@ Bun manages the `packages/*` workspaces. Run commands from the repository root.
 ```sh
 bun install                                      # install workspace dependencies
 bun run dev                                      # TUI; requires an interactive terminal and provider credentials
-bun packages/coding-agent/src/headless/main.ts -p "task" # Headless CLI; requires credentials
+bun run dev -- -p "task"                        # Headless CLI; requires configured credentials
 bun run test:agent                               # Agent Core tests
 bun run test:coding-agent                        # Headless CLI, TUI and renderer tests
 bun test <file-or-directory>                     # narrower tests for the affected behavior

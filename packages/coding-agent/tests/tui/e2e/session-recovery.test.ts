@@ -78,7 +78,7 @@ for (const [lang, notice, unknown, guide] of [
 test("SIGTERM lets the actual TUI process save an active child Run before reporting exit", async () => {
   const root = await mkdtemp(join(tmpdir(), "neant-close-"));
   const script = `
-    import { main } from ${JSON.stringify(join(import.meta.dir, "../../../src/tui/main.tsx"))};
+    import { main } from ${JSON.stringify(join(import.meta.dir, "../../../src/index.ts"))};
     import { controlledModel } from ${JSON.stringify(join(import.meta.dir, "../helpers/model.ts"))};
     import { createTerminal } from ${JSON.stringify(join(import.meta.dir, "../helpers/terminal.ts"))};
     import { getCurrentSystemMessage } from "@earendil-works/pi-ai";

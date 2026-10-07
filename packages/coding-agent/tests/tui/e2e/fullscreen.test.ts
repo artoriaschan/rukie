@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { main } from "../../../src/tui/main";
+import { main } from "../../../src/index.ts";
 import { start } from "../helpers/app";
 
 test.each(["ask", "auto-review"])(
@@ -101,8 +101,8 @@ test("non-interactive terminals fail before rendering or requesting a model", as
             stderr += text;
           },
         }),
-      ).toBe(1);
-      expect(stderr).toContain("neant-cli");
+      ).toBe(stdin ? 1 : 2);
+      expect(stderr).toContain("neant -p");
       expect(terminal.output()).toBe("");
       expect(terminal.stdin.isRaw).toBe(false);
     } finally {

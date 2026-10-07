@@ -17,7 +17,7 @@ import { useId, useState, useMemo, useLayoutEffect, useRef } from "react";
 import type { PromptImage } from "@neant/agent";
 import { ImageGallery } from "../image-gallery";
 import type { Locale } from "@neant/i18n";
-import { createTuiI18n } from "../../i18n";
+import { createTuiI18n } from "../../../view/i18n";
 import {
   SplitDiffView,
   alignSplitDiff,

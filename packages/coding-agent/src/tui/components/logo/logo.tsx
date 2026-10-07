@@ -1,5 +1,5 @@
 import type { Locale } from "@neant/i18n";
-import { createTuiI18n } from "../../i18n";
+import { createTuiI18n } from "../../../view/i18n";
 import { Box, ThemedText, useTerminalSize, useTheme } from "../../../ink/index.ts";
 import type { ThinkingLevel } from "@neant/shared";
 import { mergeColoredCells, renderBigText } from "./bigfont";

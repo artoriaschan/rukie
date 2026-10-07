@@ -12,7 +12,7 @@ import {
   StatusIcon,
   ScrollBox,
 } from "../../../ink/index.ts";
-import { createTuiI18n, formatError } from "../../i18n";
+import { createTuiI18n, formatError } from "../../../view/i18n";
 
 export type McpPanelPage =
   | {

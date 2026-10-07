@@ -10,7 +10,7 @@ import {
   type ScrollHandle,
   type ScrollSnapshot,
 } from "../../../ink/index.ts";
-import { createTuiI18n } from "../../i18n";
+import { createTuiI18n } from "../../../view/i18n";
 import { cleanJobText, jobOutputRows } from "../job-card/output";
 
 type PanelJob = JobView & { output: string; dropped: boolean; promotedAt?: number };

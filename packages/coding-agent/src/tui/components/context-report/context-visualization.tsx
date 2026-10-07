@@ -1,7 +1,7 @@
 import { Box, ThemedText, type ThemeColor } from "../../../ink/index.ts";
 import type { ContextCategory, ContextReport } from "@neant/shared";
 import type { Locale } from "@neant/i18n";
-import { createTuiI18n } from "../../i18n";
+import { createTuiI18n } from "../../../view/i18n";
 import { UserMessage } from "../user-message";
 
 // Local reference palette: /context does not recolor the rest of the TUI.

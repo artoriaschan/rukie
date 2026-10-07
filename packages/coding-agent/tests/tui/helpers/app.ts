@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SessionOptions } from "@neant/agent";
-import { main, type TuiIo } from "../../../src/tui/main";
+import { main, type TuiIo } from "../../../src/index.ts";
 import { controlledModel } from "./model";
 import { createTerminal } from "./terminal";
 
@@ -10,6 +10,7 @@ export async function start(
   argv: string[] = [],
   options: {
     session?: Partial<SessionOptions>;
+    signal?: AbortSignal;
     prepare?(root: string): Promise<void>;
     columns?: number;
     rows?: number;
@@ -31,6 +32,7 @@ export async function start(
   let stderr = "";
   const exit = main(argv, {
     ...terminal,
+    signal: options.signal,
     env: options.env ?? { LANG: "zh_CN.UTF-8" },
     host: {
       hasClipboardImage: async () => false,
