@@ -1,7 +1,16 @@
-import { expect, spyOn, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { start } from "../helpers/app";
 import { startWithClock } from "../helpers/clock-app";
+import { testClock } from "../helpers/test-clock";
 import { dark } from "../../../src/ink/index.ts";
+
+// Metric samples own their exact wall-time deadline. Renderer completion advances
+// the same clock's timers without moving that sample's Date beyond the assertion.
+function paintAtSampleTime(ms: number) {
+  const now = Date.now();
+  testClock.advanceTimersByTime(ms);
+  testClock.setSystemTime(now);
+}
 
 for (const columns of [80, 60, 40]) {
   test(`Chat places fields below input until context is available at ${columns} columns`, async () => {
@@ -59,9 +68,8 @@ for (const columns of [80, 60, 40]) {
 }
 
 test("tps starts after 500ms of decoding and final usage corrects the Run sample", async () => {
-  let now = Date.UTC(2026, 9, 2);
-  const clock = spyOn(Date, "now").mockImplementation(() => now);
-  const app = await startWithClock(["decode"]);
+  const app = await startWithClock(["decode"], { advanceTimers: paintAtSampleTime });
+  let now = Date.now();
   const hoverSpeed = () => {
     const fields = app.screen().at(-2)!;
     const prefix = fields.slice(0, fields.indexOf("▕"));
@@ -70,18 +78,22 @@ test("tps starts after 500ms of decoding and final usage corrects the Run sample
   try {
     await app.waitFor(() => app.calls.length === 1 && app.screen().at(-1)?.trim() === "esc 中断");
     now += 5000; // Waiting for the first delta must not count as decode time.
+    testClock.setSystemTime(now);
     app.calls[0]!.thinking("x".repeat(800));
     await app.waitFor(() => app.screen().join("\n").includes("↓ 200 tokens"));
     hoverSpeed();
     await app.waitFor(() => app.screen().at(-1)?.includes("tps 0 · avg60 0.0") === true);
     now += 499;
+    testClock.setSystemTime(now);
     app.calls[0]!.delta("abcd");
     await app.waitFor(() => app.screen().join("\n").includes("↓ 201 tokens"));
     expect(app.screen().at(-1)).toContain("tps 0 ·");
     now += 1;
+    testClock.setSystemTime(now);
     app.calls[0]!.delta("efgh");
     await app.waitFor(() => app.screen().at(-1)?.includes("tps 404 ·") === true);
     now += 500;
+    testClock.setSystemTime(now);
     app.calls[0]!.finish(1000, 50);
     await app.waitFor(() => !app.isWorking());
     // The idle sparkline occupies the same field, and moving away/back tests fresh hover.
@@ -95,34 +107,39 @@ test("tps starts after 500ms of decoding and final usage corrects the Run sample
     );
   } finally {
     await app.cleanup();
-    clock.mockRestore();
   }
 });
 
 test("tps includes tool-call deltas and completed Turns while excluding time between Turns", async () => {
-  let now = Date.UTC(2026, 9, 2);
-  const clock = spyOn(Date, "now").mockImplementation(() => now);
   const app = await startWithClock(["tool decode"], {
+    advanceTimers: paintAtSampleTime,
     columns: 120,
     session: { permissionMode: "full-access" },
   });
+  let now = Date.now();
   try {
     await app.waitFor(() => app.calls.length === 1);
+    testClock.setSystemTime(now);
     app.calls[0]!.toolDelta("x".repeat(800));
     await app.flush();
     now += 500;
+    testClock.setSystemTime(now);
     app.calls[0]!.toolDelta("abcd");
     await app.waitFor(() => app.screen().at(-2)?.includes("402 tps") === true);
     now += 500;
+    testClock.setSystemTime(now);
     app.calls[0]!.tool("bash", { command: "printf ok", description: "Run test command" });
     await app.waitFor(() => app.calls.length === 2);
     now += 10000;
+    testClock.setSystemTime(now);
     app.calls[1]!.delta("x".repeat(800));
     await app.waitFor(() => app.screen().join("\n").includes("↓ 205 tokens"));
     now += 500;
+    testClock.setSystemTime(now);
     app.calls[1]!.delta("abcd");
     await app.waitFor(() => app.screen().at(-2)?.includes("137 tps") === true);
     now += 500;
+    testClock.setSystemTime(now);
     app.calls[1]!.finish(21, 95);
     await app.waitFor(() => !app.isWorking() && app.screen().at(-2)?.includes("▅ 50 tps") === true);
     const fields = app.screen().at(-2)!;
@@ -133,7 +150,6 @@ test("tps includes tool-call deltas and completed Turns while excluding time bet
     );
   } finally {
     await app.cleanup();
-    clock.mockRestore();
   }
 });
 
@@ -162,17 +178,18 @@ test("Session cache counters accumulate across Runs in hover details", async () 
 });
 
 test("tps hover summarizes completed Run samples", async () => {
-  let now = Date.UTC(2026, 9, 2);
-  const clock = spyOn(Date, "now").mockImplementation(() => now);
-  const app = await startWithClock([]);
+  const app = await startWithClock([], { advanceTimers: paintAtSampleTime });
+  let now = Date.now();
   try {
     await app.waitFor(() => app.stdin.isRaw);
     for (let run = 0; run < 12; run++) {
       app.stdin.write(`run ${run}\r`);
       await app.waitFor(() => app.calls.length === run + 1 && app.isWorking());
+      now = Date.now();
       app.calls[run]!.thinking("x");
       await app.waitFor(() => app.screen().join("\n").includes("↓ 1 tokens"));
       now += 1000;
+      testClock.setSystemTime(now);
       app.calls[run]!.finish(1, 50);
       await app.waitFor(() => !app.isWorking());
     }
@@ -187,13 +204,12 @@ test("tps hover summarizes completed Run samples", async () => {
     try {
       await app.cleanup();
     } finally {
-      clock.mockRestore();
     }
   }
 }, 60000);
 
 test("centered return button sits above activity and input, survives footer hover, and clicks restore following", async () => {
-  const app = await start(["long reply"]);
+  const app = await startWithClock(["long reply"]);
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.delta(Array.from({ length: 50 }, (_, i) => `line-${i}`).join("\n"));
@@ -242,7 +258,9 @@ test("centered return button sits above activity and input, survives footer hove
     expect(app.screen()[pillY]).toContain("有新输出");
     const x = Bun.stringWidth(app.screen()[pillY]!.split("↓")[0]!) + 1;
     app.stdin.write(`\x1b[<0;${x};${pillY + 1}M\x1b[<0;${x};${pillY + 1}m`);
-    await app.waitFor(() => app.screen().includes("  new output"));
+    await app.waitFor(
+      () => app.screen().includes("  new output") && !app.screen().join("\n").includes("回到底部"),
+    );
     expect(app.screen().join("\n")).not.toContain("回到底部");
     expect(app.screen().join("\n")).toContain("keep draft");
     expect(app.calls).toHaveLength(1);
@@ -257,7 +275,10 @@ test("centered return button sits above activity and input, survives footer hove
 test.each(["idle", "approval"] as const)(
   "return button also works while %s without confirming permission",
   async (phase) => {
-    const app = await start(["long reply"], { columns: 40, rows: phase === "approval" ? 24 : 12 });
+    const app = await startWithClock(["long reply"], {
+      columns: 40,
+      rows: phase === "approval" ? 24 : 12,
+    });
     try {
       await app.waitFor(() => app.calls.length === 1);
       app.calls[0]!.delta(Array.from({ length: 50 }, (_, i) => `line-${i}`).join("\n"));
