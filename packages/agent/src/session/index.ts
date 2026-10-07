@@ -3294,6 +3294,16 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         assertAvailable(true);
         manualCompaction = true;
         try {
+          const history = await conversation.context(context);
+          if (
+            !history.entries.some(
+              (entry) => entry.kind !== "rukie.reminder" && (entry.model?.length ?? 0) > 0,
+            )
+          )
+            throw createUserVisibleError("No conversation history to compact.", {
+              code: "compaction-no-history",
+              params: {},
+            });
           const pre = await hooks.run(
             "PreCompact",
             hookInput({ trigger: "manual", custom_instructions: input?.instructions ?? "" }),
