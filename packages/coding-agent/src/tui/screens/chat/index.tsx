@@ -170,8 +170,8 @@ export async function createChat(
   };
   const replaceSession = async (resumeId?: string) => {
     const branch = conversation.getSnapshot().activity.gitBranch;
-    await session.dispose("other");
     await conversation.stop();
+    await session.close("other");
     session = await createSession({ ...sessionOptions, resumeId });
     conversation = createConversation(session, model, conversationFacts, locale);
     if (branch) conversation.dispatchActivity({ type: "git-branch", branch });
@@ -199,8 +199,8 @@ export async function createChat(
     submitInitial: (prompt: string) => submit(prompt, true),
     async stop() {
       try {
-        await session.dispose();
         await conversation.stop();
+        await session.close();
       } finally {
         try {
           await history.flush();
@@ -1275,7 +1275,6 @@ function Chat({
         ].join("\n"),
       );
     else if (command.name === "exit") {
-      conversation.interrupt();
       void conversation.stop().then(onExit);
     } else if (command.name === "plan") {
       const on = !session.planMode;
@@ -1476,7 +1475,8 @@ function Chat({
   const mcpVisible = !!mcp && !interaction;
   const showContextBar = !(state.goal && interaction && rows < 16) && !(mcpVisible && rows < 20);
   const statusHeight = showContextBar && state.contextUsage && columns - 2 >= 14 ? 3 : 2;
-  const hasActivity = state.running && (activity.phase !== "idle" || state.waitingSubagents > 0);
+  const backgroundCount = state.background.filter((task) => task.active).length;
+  const hasActivity = (state.running && activity.phase !== "idle") || backgroundCount > 0;
   const promptMaxLines = Math.max(1, Math.min(6, Math.floor(rows / 3)) - 3);
   const hasTodos =
     !!state.goal || state.todos.some((todo) => state.running || todo.status !== "completed");
@@ -2931,7 +2931,8 @@ function Chat({
                 <ActivityLine
                   locale={locale}
                   phase={
-                    (state.waitingSubagents > 0 && !approvalOpen) || activity.phase === "idle"
+                    (backgroundCount > 0 && !state.running && !approvalOpen) ||
+                    activity.phase === "idle"
                       ? "waiting"
                       : activity.phase
                   }
@@ -2941,8 +2942,8 @@ function Chat({
                       : undefined
                   }
                   line={
-                    state.waitingSubagents > 0 && !approvalOpen
-                      ? t("subagent.waiting", { count: state.waitingSubagents })
+                    backgroundCount > 0 && !state.running && !approvalOpen
+                      ? t("subagent.background", { count: backgroundCount })
                       : activity.line
                   }
                   suffix={` · ↑ ${fmtTokens(state.activityInput)} · ↓ ${fmtTokens(state.output + Math.ceil(state.streamedChars / 4))} tokens`}

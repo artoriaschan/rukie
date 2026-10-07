@@ -126,7 +126,7 @@ test.each(["assistant", "toolResult"] as const)(
           expect(await Bun.file(app.root + "/child-effect.txt").text()).toBe("saved effect");
         }
       } finally {
-        await restored.dispose();
+        await restored.close();
       }
       const replay = await start(["--resume", parentId], {
         columns: 120,

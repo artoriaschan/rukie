@@ -1,10 +1,11 @@
+import { failingStorage } from "../../helpers/native-storage-failure";
 import { testClock } from "../helpers/test-clock";
 import { expect, test } from "bun:test";
-import { createFauxCore, fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { fauxProvider, fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { createSession } from "@rukie/agent";
 import { start } from "../helpers/app";
 import { startWithClock } from "../helpers/clock-app";
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model";
+import { auxiliaryModels } from "../helpers/auxiliary-model";
 
 async function seeded(
   locale: "en" | "zh",
@@ -18,25 +19,27 @@ async function seeded(
     rows: 40,
     env,
     prepare: async (root) => {
-      const model = createFauxCore({ api: "faux", provider: "faux" });
+      const model = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
       model.setResponses([fauxAssistantMessage("seed reply")]);
       const session = await createSession({
         cwd: root,
         homeDir: root,
         model: model.getModel(),
-        streamFn: withAuxiliaryRequests((m, c, o) => model.streamSimple(m, c, o)),
+        models: auxiliaryModels((m, c, o) => model.provider.streamSimple(m, c, o)),
       });
       try {
         await session.run("seed prompt");
         argv.push("--resume", session.id);
       } finally {
-        await session.dispose();
+        await session.close();
       }
     },
   });
   return {
     app,
     async replay() {
+      app.stdin.write("/exit\r");
+      await app.exit;
       return start(argv, {
         columns: 80,
         rows: 40,
@@ -94,72 +97,48 @@ for (const locale of ["en", "zh"] as const) {
 test.each(["assistant", "toolResult"] as const)(
   "a %s persistence failure reconciles committed history live and after Resume",
   async (failure) => {
-    const { createJsonlStore } = await import("@rukie/agent");
     const argv: string[] = [];
-    let store: ReturnType<typeof createJsonlStore>;
     let rejected = false;
     const options: NonNullable<Parameters<typeof startWithClock>[1]> = {
       rows: 40,
       env: { LANG: "en" },
       session: { permissionMode: "full-access" },
       prepare: async (root) => {
-        store = createJsonlStore({ cwd: root, homeDir: root });
-        const model = createFauxCore({ api: "faux", provider: "faux" });
+        const model = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
         model.setResponses([fauxAssistantMessage("seed reply")]);
         const seed = await createSession({
           cwd: root,
           homeDir: root,
           model: model.getModel(),
-          streamFn: withAuxiliaryRequests((m, c, o) => model.streamSimple(m, c, o)),
+          models: auxiliaryModels((m, c, o) => model.provider.streamSimple(m, c, o)),
         });
         try {
           await seed.run("seed prompt");
           argv.push("--resume", seed.id);
         } finally {
-          await seed.dispose();
+          await seed.close();
         }
-        options.session!.store = {
-          ...store,
-          async open(...args) {
-            const stored = await store.open(...args);
-            return new Proxy(stored, {
-              get(target, key) {
-                if (key === "branch")
-                  return async (...branchArgs: Parameters<typeof stored.branch>) => {
-                    const branch = await target.branch(...branchArgs);
-                    if (!branch) return branch;
-                    return new Proxy(branch, {
-                      get(owner, method) {
-                        if (method === "appendMessage")
-                          return async (
-                            ...messageArgs: Parameters<typeof branch.appendMessage>
-                          ) => {
-                            const message = messageArgs[0];
-                            if (
-                              !rejected &&
-                              ((failure === "assistant" &&
-                                message.role === "assistant" &&
-                                JSON.stringify(message).includes("ghost-tail")) ||
-                                (failure === "toolResult" &&
-                                  message.role === "toolResult" &&
-                                  message.toolName === "write"))
-                            ) {
-                              rejected = true;
-                              throw new Error(`${failure} save failed`);
-                            }
-                            return owner.appendMessage(...messageArgs);
-                          };
-                        const value = Reflect.get(owner, method);
-                        return typeof value === "function" ? value.bind(owner) : value;
-                      },
-                    });
-                  };
-                const value = Reflect.get(target, key);
-                return typeof value === "function" ? value.bind(target) : value;
-              },
-            });
-          },
-        };
+        options.session!.store = failingStorage(root, (writes) => {
+          if (
+            rejected ||
+            !writes.some(
+              (write) =>
+                write.type === "entry" &&
+                write.value.model?.some(
+                  (message) =>
+                    (failure === "assistant" &&
+                      message.role === "assistant" &&
+                      JSON.stringify(message).includes("ghost-tail")) ||
+                    (failure === "toolResult" &&
+                      message.role === "toolResult" &&
+                      message.toolName === "write"),
+                ),
+            )
+          )
+            return;
+          rejected = true;
+          return new Error(`${failure} save failed`);
+        });
       },
     };
     const app = await startWithClock(argv, options);
@@ -174,7 +153,7 @@ test.each(["assistant", "toolResult"] as const)(
       } else {
         app.calls[0]!.tool("write", { path: "executed.txt", content: "actual side effect" });
       }
-      app.calls[0]!.finish();
+      if (failure === "assistant") app.calls[0]!.finish();
       await app.waitFor(() => !app.isWorking());
       await app.waitFor(() => app.screen().join("\n").includes(`${failure} save failed`));
       expect(app.screen().join("\n")).not.toContain("ghost-tail");
@@ -185,6 +164,8 @@ test.each(["assistant", "toolResult"] as const)(
         expect(app.calls).toHaveLength(1);
       }
       expect(app.screen().join("\n")).toContain("seed reply");
+      app.stdin.write("/exit\r");
+      await app.exit;
       const restored = await start(argv, {
         rows: 40,
         env: { LANG: "en" },
@@ -192,24 +173,28 @@ test.each(["assistant", "toolResult"] as const)(
         session: { cwd: app.root, homeDir: app.root },
       });
       try {
-        await restored.waitFor(() => restored.screen().includes("❯"));
-        expect(restored.screen().join("\n")).toContain(`${failure} save failed`);
-        expect(restored.screen().join("\n")).not.toContain("ghost-tail");
-        expect(restored.screen().join("\n")).not.toContain("ghost-thinking");
+        await restored.waitFor(() => restored.calls.length === 1);
+        const recoveryContext = JSON.stringify(restored.calls[0]!.context.messages);
+        expect(recoveryContext).not.toContain("session-notice");
+        expect(recoveryContext).not.toContain("unknown-tool-outcome");
         if (failure === "toolResult") {
-          expect(restored.screen().join("\n")).toContain("Outcome unknown");
-          expect(restored.calls).toHaveLength(0);
+          expect(recoveryContext).toContain("may have partially run");
           expect(await Bun.file(`${app.root}/executed.txt`).text()).toBe("actual side effect");
         }
+        restored.calls[0]!.reply("recovered conclusion");
+        await restored.waitFor(() => !restored.isWorking());
+        expect(restored.screen().join("\n")).toContain("seed reply");
+        expect(
+          restored.screen().filter((line) => line.includes("recovered conclusion")),
+        ).toHaveLength(1);
+        expect(restored.screen().join("\n")).not.toContain("ghost-tail");
+        expect(restored.screen().join("\n")).not.toContain("ghost-thinking");
         restored.stdin.write("continue\r");
-        await restored.waitFor(() => restored.calls.length === 1);
-        expect(JSON.stringify(restored.calls[0]!.context.messages)).not.toContain("ghost-tail");
-        expect(JSON.stringify(restored.calls[0]!.context.messages)).not.toContain("session-notice");
-        if (failure === "toolResult")
-          expect(JSON.stringify(restored.calls[0]!.context.messages)).toContain(
-            "unknown-tool-outcome",
-          );
-        restored.calls[0]!.finish();
+        await restored.waitFor(() => restored.calls.length === 2);
+        expect(JSON.stringify(restored.calls[1]!.context.messages)).toContain(
+          "recovered conclusion",
+        );
+        restored.calls[1]!.finish();
       } finally {
         await restored.cleanup();
       }

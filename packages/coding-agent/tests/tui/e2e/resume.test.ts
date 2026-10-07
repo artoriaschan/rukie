@@ -1,8 +1,8 @@
 import { testClock } from "../helpers/test-clock";
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
+import { auxiliaryModels } from "../helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
 import { join } from "node:path";
-import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { fauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { createSession } from "@rukie/agent";
 import { start } from "../helpers/app";
 import { startWithClock } from "../helpers/clock-app";
@@ -11,7 +11,7 @@ const assistant = process.platform === "darwin" ? "⏺" : "●";
 
 test("resume rebuilds the footer context preview before submitting a new prompt", async () => {
   const argv: string[] = [];
-  const original = createFauxCore({ api: "faux", provider: "faux" });
+  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
   original.setResponses([fauxAssistantMessage("restored context ".repeat(100))]);
   const app = await startWithClock(argv, {
     rows: 24,
@@ -21,13 +21,13 @@ test("resume rebuilds the footer context preview before submitting a new prompt"
         cwd: root,
         homeDir: root,
         model: original.getModel(),
-        streamFn: withAuxiliaryRequests((model, context, options) =>
-          original.streamSimple(model, context, options),
+        models: auxiliaryModels((model, context, options) =>
+          original.provider.streamSimple(model, context, options),
         ),
       });
       await session.run("saved prompt");
       argv.push("--resume", session.id);
-      await session.dispose();
+      await session.close();
     },
   });
   try {
@@ -49,7 +49,7 @@ test("resume replays stored text before input and appends the next Run to the sa
   const argv: string[] = [];
   let root = "";
   let id = "";
-  const original = createFauxCore({ api: "faux", provider: "faux" });
+  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
   const storedReply = "⏵ 查一下报错原因\n**stored reply** 中\n⏵ 给补丁跑个验证\nsecond line";
   original.setResponses([fauxAssistantMessage(storedReply)]);
   const app = await startWithClock(argv, {
@@ -61,8 +61,8 @@ test("resume replays stored text before input and appends the next Run to the sa
         cwd: root,
         homeDir: root,
         model: original.getModel(),
-        streamFn: withAuxiliaryRequests((model, context, options) =>
-          original.streamSimple(model, context, options),
+        models: auxiliaryModels((model, context, options) =>
+          original.provider.streamSimple(model, context, options),
         ),
       });
       await session.run("stored prompt 中");
@@ -171,7 +171,7 @@ test("resume replays stored text before input and appends the next Run to the sa
 
 test("resume replays each tool's collapsed result and error preview without reminders", async () => {
   const argv: string[] = [];
-  const original = createFauxCore({ api: "faux", provider: "faux" });
+  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
   original.setResponses([
     fauxAssistantMessage(
       [
@@ -202,8 +202,8 @@ test("resume replays each tool's collapsed result and error preview without remi
         cwd: root,
         homeDir: root,
         model: original.getModel(),
-        streamFn: withAuxiliaryRequests((model, context, options) =>
-          original.streamSimple(model, context, options),
+        models: auxiliaryModels((model, context, options) =>
+          original.provider.streamSimple(model, context, options),
         ),
         permissionMode: "full-access",
       });
@@ -261,7 +261,7 @@ test("resume replays each tool's collapsed result and error preview without remi
 
 test("resume replays the restored compaction suffix without exposing its summary", async () => {
   const argv: string[] = [];
-  const original = createFauxCore({ api: "faux", provider: "faux" });
+  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
   original.setResponses([
     fauxAssistantMessage("old transcript ".repeat(2000)),
     fauxAssistantMessage("hidden compaction summary"),
@@ -275,8 +275,8 @@ test("resume replays the restored compaction suffix without exposing its summary
         cwd: root,
         homeDir: root,
         model,
-        streamFn: withAuxiliaryRequests((model, context, options) =>
-          original.streamSimple(model, context, options),
+        models: auxiliaryModels((model, context, options) =>
+          original.provider.streamSimple(model, context, options),
         ),
       });
       await session.run("old prompt");
@@ -305,7 +305,7 @@ test("resume replays the restored compaction suffix without exposing its summary
 
 test("resume hides a skill reminder retained by compaction while preserving user-authored tags", async () => {
   const argv: string[] = [];
-  const original = createFauxCore({ api: "faux", provider: "faux" });
+  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
   original.setResponses([
     fauxAssistantMessage("old work ".repeat(15000)),
     fauxAssistantMessage("y".repeat(10000)),
@@ -326,8 +326,8 @@ test("resume hides a skill reminder retained by compaction while preserving user
         cwd: root,
         homeDir: root,
         model,
-        streamFn: withAuxiliaryRequests((model, context, options) =>
-          original.streamSimple(model, context, options),
+        models: auxiliaryModels((model, context, options) =>
+          original.provider.streamSimple(model, context, options),
         ),
       });
       await session.run("first");
@@ -359,7 +359,7 @@ test("resume hides a skill reminder retained by compaction while preserving user
 test("--resume rejects a child session before requesting a model turn", async () => {
   const argv: string[] = [];
   let childId = "";
-  const faux = createFauxCore({ api: "faux", provider: "faux" });
+  const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
   faux.setResponses([
     fauxAssistantMessage(
       fauxToolCall("subagent", { description: "Child", prompt: "child", run_in_background: false }),
@@ -374,13 +374,12 @@ test("--resume rejects a child session before requesting a model turn", async ()
         cwd: root,
         homeDir: root,
         model: faux.getModel(),
-        streamFn: withAuxiliaryRequests(faux.streamSimple),
+        models: auxiliaryModels(faux.provider.streamSimple),
       });
-      await session.run("delegate", {
-        onEvent(event) {
-          if (event.type === "subagent_event") childId = event.agentId;
-        },
+      session.subscribe((event) => {
+        if (event.type === "subagent_event") childId = event.agentId;
       });
+      await session.run("delegate");
       argv.push("--resume", childId);
     },
   });

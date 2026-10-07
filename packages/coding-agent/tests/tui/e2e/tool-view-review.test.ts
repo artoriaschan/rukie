@@ -65,19 +65,19 @@ test("read upstream truncation disclosure must remain outside fold", async () =>
 });
 import { createSession } from "@rukie/agent";
 import {
-  createFauxCore,
+  fauxProvider,
   fauxAssistantMessage,
   fauxToolCall,
   type FauxResponseStep,
 } from "@earendil-works/pi-ai";
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model";
+import { auxiliaryModels } from "../helpers/auxiliary-model";
 function fakeModel(replies: FauxResponseStep[]) {
-  const core = createFauxCore({ api: "faux", provider: "faux" });
+  const core = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
   core.setResponses(replies);
   return {
     model: core.getModel(),
-    streamFn: withAuxiliaryRequests((model, context, options) =>
-      core.streamSimple(model, context, options),
+    models: auxiliaryModels((model, context, options) =>
+      core.provider.streamSimple(model, context, options),
     ),
   };
 }
@@ -123,7 +123,7 @@ test("resumed missing edit facts falls back to raw result", async () => {
         ]),
       });
       await session.run("edit");
-      await session.dispose();
+      await session.close();
       const files = await readdir(`${root}/.rukie/sessions`, { recursive: true });
       for (const file of files.filter((f) => f.endsWith(".jsonl"))) {
         const path = `${root}/.rukie/sessions/${file}`;

@@ -123,14 +123,15 @@ function delta(
     type: "message_update",
     sessionId,
     message,
-    assistantMessageEvent: { type, contentIndex: 0, delta: text, partial: message },
+    usage: message.usage,
+    changes: [{ type, contentIndex: 0, delta: text }],
   };
 }
 
 function toolStart(
   id: string,
   toolName = "read",
-  args: unknown = { path: "src/a.ts" },
+  args: { [key: string]: string } = { path: "src/a.ts" },
 ): SessionEvent {
   return { type: "tool_execution_start", sessionId, toolCallId: id, toolName, args };
 }
@@ -141,8 +142,14 @@ function toolEnd(id: string, isError = false): SessionEvent {
     sessionId,
     toolCallId: id,
     toolName: "read",
-    result: {},
-    isError,
+    result: {
+      role: "toolResult",
+      toolCallId: id,
+      toolName: "read",
+      content: [],
+      timestamp: 0,
+      isError,
+    },
   };
 }
 
@@ -503,4 +510,48 @@ test("failed tools show a failure quip instead of a success checkmark", () => {
   state = reduce(state, toolStart("a"), start, random);
   state = reduce(state, toolEnd("a", true), start + 87, random);
   expect(render(state, start + 87).line).toBe("✗ 翻车了 · 翻翻文档 src/a.ts · 87ms · 总0s");
+});
+
+test("a committed snapshot restores active generation and a batched delta retains all narration", () => {
+  const snapshot: SessionEvent = {
+    type: "snapshot",
+    sessionId,
+    entries: [],
+    run: { inputs: [] },
+    generation: { attempt: 1, message: fauxAssistantMessage("partial") },
+    tools: [],
+    compactions: [],
+    inbox: [],
+    agent: {},
+    usage: { models: {}, tools: {} },
+    messages: [],
+    background: [],
+    toolStates: {},
+    runSummaries: [],
+    model: "faux/faux-1",
+    planMode: false,
+  };
+  const restored = reduce(createActivity("en"), snapshot, 1000);
+  expect(restored.phase).toBe("thinking");
+  const message = fauxAssistantMessage("I am reading the source");
+  const next = reduce(
+    restored,
+    {
+      type: "message_update",
+      sessionId,
+      message,
+      usage: message.usage,
+      changes: [
+        { type: "text_delta", contentIndex: 0, delta: "I am reading " },
+        { type: "thinking_delta", contentIndex: 1, delta: "inspect" },
+        { type: "text_delta", contentIndex: 0, delta: "the source" },
+      ],
+    },
+    1100,
+  );
+  expect(next.streamLine).toBe("I am reading the source");
+  expect(next.lastChunkAt).toBe(1100);
+  expect(reduce(next, { ...snapshot, run: undefined, generation: undefined }, 1200).phase).toBe(
+    "idle",
+  );
 });

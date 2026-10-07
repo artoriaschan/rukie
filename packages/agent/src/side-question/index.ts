@@ -61,13 +61,35 @@ export async function* sideQuestion(options: {
   running: ReadonlySet<string>;
   signal?: AbortSignal;
 }): AsyncGenerator<string> {
+  const missingResult = (message: Message) =>
+    message.role === "toolResult" &&
+    typeof message.details === "object" &&
+    message.details !== null &&
+    !Array.isArray(message.details) &&
+    "reason" in message.details &&
+    message.details.reason === "missing_result";
   const answered = new Set(
     options.messages.flatMap((message) =>
-      message.role === "toolResult" ? [message.toolCallId] : [],
+      message.role === "toolResult" && !missingResult(message) ? [message.toolCallId] : [],
     ),
   );
   const pending: ToolCall[] = [];
   const messages = options.messages.flatMap((message): Message[] => {
+    if (message.role === "toolResult" && missingResult(message)) {
+      if (options.running.has(message.toolCallId)) return [];
+      return [
+        {
+          role: "user",
+          timestamp: message.timestamp,
+          content: [
+            {
+              type: "text",
+              text: `<system-reminder>\n${message.toolName}: ${message.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n")}\n</system-reminder>`,
+            },
+          ],
+        },
+      ];
+    }
     if (message.role === "system") {
       const { toolsAdded: _added, toolsRemoved: _removed, ...withoutTools } = message;
       return [withoutTools];

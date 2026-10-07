@@ -3,7 +3,7 @@ import { startWithClock } from "../helpers/clock-app";
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { start } from "../helpers/app";
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model";
+import { auxiliaryModels } from "../helpers/auxiliary-model";
 import { dark } from "../../../src/ink/index.ts";
 
 test("background bash renders its card and idle job chip without consuming model output", async () => {
@@ -197,7 +197,7 @@ test("stopping jobs remain counted until they settle", async () => {
 
 test("resume never attaches a historical bash job result to a new job with the same command", async () => {
   const { createSession } = await import("@rukie/agent");
-  const { createFauxCore, fauxAssistantMessage, fauxToolCall } =
+  const { fauxProvider, fauxAssistantMessage, fauxToolCall } =
     await import("@earendil-works/pi-ai");
   const argv: string[] = [];
   const command = "printf 'ready\\n'; while :; do sleep 0.01; done";
@@ -205,7 +205,7 @@ test("resume never attaches a historical bash job result to a new job with the s
     columns: 120,
     rows: 40,
     prepare: async (root) => {
-      const model = createFauxCore({ api: "faux", provider: "faux" });
+      const model = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
       model.setResponses([
         fauxAssistantMessage(
           fauxToolCall("bash", {
@@ -222,13 +222,13 @@ test("resume never attaches a historical bash job result to a new job with the s
         homeDir: root,
         permissionMode: "full-access",
         model: model.getModel(),
-        streamFn: withAuxiliaryRequests(model.streamSimple),
+        models: auxiliaryModels(model.provider.streamSimple),
       });
       try {
         await session.run("historical launch");
         argv.push("--resume", session.id, "--permission-mode", "full-access");
       } finally {
-        await session.dispose();
+        await session.close();
       }
     },
   });

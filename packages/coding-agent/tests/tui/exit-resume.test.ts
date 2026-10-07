@@ -23,13 +23,13 @@ test.each(["zh", "en"] as const)(
         cwd: app.root,
         homeDir: app.root,
         model: app.model,
-        streamFn: app.streamFn,
+        models: app.models,
         resumeId: session!.id,
       });
       try {
         expect(resumed.id).toBe(session!.id);
       } finally {
-        await resumed.dispose();
+        await resumed.close();
       }
     } finally {
       await app.cleanup();
@@ -37,12 +37,13 @@ test.each(["zh", "en"] as const)(
   },
 );
 
-test("signal exit saves an interrupted Run before displaying its resume command", async () => {
+test("signal exit preserves pending work and Resume continues it before a new prompt", async () => {
   const controller = new AbortController();
   const app = await startWithClock(["interrupted prompt"], { signal: controller.signal });
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.delta("partial reply");
+    await app.waitFor(() => app.screen().join("\n").includes("partial reply"));
     const [session] = await listSessions({ cwd: app.root, homeDir: app.root });
     controller.abort();
     await app.waitFor(() => !app.stdin.isRaw);
@@ -53,18 +54,28 @@ test("signal exit saves an interrupted Run before displaying its resume command"
       cwd: app.root,
       homeDir: app.root,
       model: app.model,
-      streamFn: app.streamFn,
+      models: app.models,
       resumeId: session!.id,
     });
     try {
-      const result = resumed.run("continue");
       await app.waitFor(() => app.calls.length === 2);
+      expect(resumed.currentRequestId).toBeDefined();
       expect(JSON.stringify(app.calls[1]!.context.messages)).toContain("interrupted prompt");
-      expect(JSON.stringify(app.calls[1]!.context.messages)).toContain("partial reply");
-      app.calls[1]!.reply("continued");
+      // The committed partial belongs to the resumed generation attempt, not a fabricated assistant completion.
+      expect(
+        resumed.messages.filter(
+          (message) => message.role === "assistant" && message.stopReason === "aborted",
+        ),
+      ).toHaveLength(0);
+      app.calls[1]!.reply("resumed pending answer");
+      await resumed.waitForRequest(resumed.currentRequestId!);
+      const result = resumed.run("continue");
+      await app.waitFor(() => app.calls.length === 3);
+      expect(JSON.stringify(app.calls[2]!.context.messages)).toContain("resumed pending answer");
+      app.calls[2]!.reply("continued");
       await result;
     } finally {
-      await resumed.dispose();
+      await resumed.close();
     }
   } finally {
     await app.cleanup();

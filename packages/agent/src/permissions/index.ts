@@ -520,6 +520,15 @@ export function createPermissionGate(options: PermissionGateOptions) {
       api: HookApi | ToolExecutionApi,
       context: Context,
     ) {
+      const tool = options.getTools().find((candidate) => candidate.name === call.name);
+      if (!tool) throw new Error(`Tool unavailable: ${call.name}`);
+      // Native recovery reuses committed intent without running preparation again.
+      // A changed tool definition must still reject input outside its current schema.
+      const [invalid] = Value.Errors(tool.parameters, args);
+      if (invalid)
+        throw new Error(
+          `Invalid recovered tool input: ${invalid.instancePath || "/"} ${invalid.message}`,
+        );
       const grants = invocationGrants.get(context);
       const granted = grants?.get(api.taskId);
       grants?.delete(api.taskId);

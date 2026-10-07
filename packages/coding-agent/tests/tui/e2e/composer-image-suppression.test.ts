@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import { createFauxCore, fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { fauxProvider, fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { createSession } from "@rukie/agent";
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model";
+import { auxiliaryModels } from "../helpers/auxiliary-model";
 import { start } from "../helpers/app";
 
 const png =
@@ -142,18 +142,18 @@ test.each([
       ...options,
       prepare: async (root) => {
         await options.prepare(root);
-        const faux = createFauxCore({ api: "faux", provider: "faux" });
+        const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
         faux.setResponses([fauxAssistantMessage("stored response")]);
         const previous = await createSession({
           cwd: root,
           homeDir: root,
           model: faux.getModel(),
-          streamFn: withAuxiliaryRequests(faux.streamSimple),
+          models: auxiliaryModels(faux.provider.streamSimple),
         });
         try {
           await previous.run("previous session");
         } finally {
-          await previous.dispose();
+          await previous.close();
         }
       },
     });

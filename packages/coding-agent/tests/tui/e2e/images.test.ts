@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
 import { stat, readFile, access, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { createFauxCore, fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { fauxProvider, fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { createSession } from "@rukie/agent";
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model";
+import { auxiliaryModels } from "../helpers/auxiliary-model";
 import { dark } from "../../../src/ink/index.ts";
 import { start } from "../helpers/app";
 import { startWithClock } from "../helpers/clock-app";
@@ -631,13 +631,13 @@ test("restored image galleries use localized dim labels within their thumbnail s
     columns: 120,
     rows: 32,
     prepare: async (root) => {
-      const fake = createFauxCore({ api: "faux", provider: "faux" });
+      const fake = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
       fake.setResponses([fauxAssistantMessage("done")]);
       const session = await createSession({
         cwd: root,
         homeDir: root,
         model: fake.getModel(),
-        streamFn: withAuxiliaryRequests(fake.streamSimple),
+        models: auxiliaryModels(fake.provider.streamSimple),
       });
       await session.run("stored images", {
         images: [
@@ -646,7 +646,7 @@ test("restored image galleries use localized dim labels within their thumbnail s
         ],
       });
       argv.push("--resume", session.id);
-      await session.dispose();
+      await session.close();
     },
   });
   try {

@@ -44,8 +44,7 @@ export interface SubagentView {
   error?: string;
 }
 
-import type { Session, SessionEvent, SessionRecovery, SubagentIdentity } from "@rukie/agent";
-import { isUnknownToolOutcome } from "@rukie/shared";
+import type { Session, SessionEvent, SubagentIdentity, TranscriptMessage } from "@rukie/agent";
 
 export interface SubagentState extends SubagentView {
   output: readonly { type: "user" | "text" | "thinking" | "tool"; text: string; toolId?: string }[];
@@ -76,10 +75,7 @@ function createRow(
 }
 
 /** Read-only recovery refines durable history without creating a current Run. */
-export function restoreSubagents(
-  value: unknown,
-  recovery?: SessionRecovery,
-): Readonly<Record<string, SubagentState>> {
+export function restoreSubagents(value: unknown): Readonly<Record<string, SubagentState>> {
   if (!Array.isArray(value)) return {};
   return Object.fromEntries(
     value.flatMap((row) => {
@@ -91,9 +87,6 @@ export function restoreSubagents(
       )
         return [];
       const run = (row as SubagentIdentity).latestRun;
-      const observed = recovery?.history?.find(
-        (child) => child.id === row.id && child.runId === run?.id,
-      );
       return [
         [
           row.id,
@@ -106,8 +99,8 @@ export function restoreSubagents(
             model: run?.model,
             tokens: run?.tokens,
             error: run?.error,
-            runOutcome: observed?.outcome ?? run?.outcome ?? "unknown",
-            runReason: observed?.reason ?? run?.reason ?? run?.error,
+            runOutcome: run?.outcome ?? "unknown",
+            runReason: run?.reason ?? run?.error,
           },
         ],
       ];
@@ -154,9 +147,7 @@ function toolResultText(result: unknown): string | undefined {
   return text || undefined;
 }
 
-function userOutput(
-  message: Extract<SessionEvent, { type: "message_end" }>["message"],
-): SubagentOutput | undefined {
+function userOutput(message: TranscriptMessage): SubagentOutput | undefined {
   if (message.role !== "user" || "source" in message) return undefined;
   return {
     type: "user",
@@ -164,6 +155,37 @@ function userOutput(
       typeof message.content === "string"
         ? message.content
         : message.content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join(""),
+  };
+}
+
+function commitMessage(row: SubagentState, message: TranscriptMessage): SubagentState {
+  const user = userOutput(message);
+  if (user) return { ...row, output: [...row.output, user] };
+  if (message.role !== "assistant") return row;
+  const blocks = message.content.flatMap<SubagentOutput>((block) =>
+    block.type === "text" || block.type === "thinking"
+      ? [{ type: block.type, text: block.type === "text" ? block.text : block.thinking }]
+      : block.type === "toolCall"
+        ? [
+            {
+              type: "tool" as const,
+              toolId: block.id,
+              text: `${block.name} ${JSON.stringify(block.arguments)}`,
+            },
+          ]
+        : [],
+  );
+  const output = [...row.output.slice(0, row.messageOutputStart ?? row.output.length), ...blocks];
+  return {
+    ...row,
+    output,
+    outputLines: output
+      .filter((block) => block.type === "text" || block.type === "thinking")
+      .flatMap((block) => block.text.split(/\r?\n/)),
+    streamedKind: undefined,
+    tokens: (row.tokens ?? 0) + message.usage.totalTokens,
+    status: message.stopReason === "aborted" ? "aborted" : row.status,
+    error: message.errorMessage ?? row.error,
   };
 }
 
@@ -196,12 +218,15 @@ export function reduceSubagent(
           }
         : row;
     case "message_update": {
-      const delta = event.assistantMessageEvent;
-      return delta.type === "text_delta"
-        ? appendOutput(row, "text", delta.delta)
-        : delta.type === "thinking_delta"
-          ? appendOutput(row, "thinking", delta.delta)
-          : row;
+      return event.changes.reduce(
+        (next, delta) =>
+          delta.type === "text_delta"
+            ? appendOutput(next, "text", delta.delta)
+            : delta.type === "thinking_delta"
+              ? appendOutput(next, "thinking", delta.delta)
+              : next,
+        row,
+      );
     }
     case "tool_execution_start": {
       const argsPreview = JSON.stringify(event.args).replace(/\s+/g, " ");
@@ -235,51 +260,46 @@ export function reduceSubagent(
           tool.id === event.toolCallId
             ? {
                 ...tool,
-                status: event.isError ? "failed" : "completed",
+                status: event.result?.isError ? "failed" : "completed",
                 durationMs: Math.max(0, now - (tool.startedAt ?? now)),
-                resultView: event.view,
+                resultView: event.result?.view,
                 endedAt: now,
-                result: event.isError ? undefined : preview,
-                resultPreview: event.isError ? undefined : preview,
-                error: event.isError ? preview : undefined,
+                result: event.result?.isError ? undefined : preview,
+                resultPreview: event.result?.isError ? undefined : preview,
+                error: event.result?.isError ? preview : undefined,
               }
             : tool,
         ),
       };
     }
     case "message_end": {
-      const user = userOutput(event.message);
-      if (user) return { ...row, output: [...row.output, user] };
-      if (event.message.role !== "assistant") return row;
-      const blocks = event.message.content.flatMap<SubagentOutput>((block) =>
-        block.type === "text" || block.type === "thinking"
-          ? [{ type: block.type, text: block.type === "text" ? block.text : block.thinking }]
-          : block.type === "toolCall"
-            ? [
-                {
-                  type: "tool" as const,
-                  toolId: block.id,
-                  text: `${block.name} ${JSON.stringify(block.arguments)}`,
-                },
-              ]
-            : [],
-      );
-      const output = [
-        ...row.output.slice(0, row.messageOutputStart ?? row.output.length),
-        ...blocks,
-      ];
-      return {
-        ...row,
-        output,
-        outputLines: output
-          .filter((block) => block.type === "text" || block.type === "thinking")
-          .flatMap((block) => block.text.split(/\r?\n/)),
-        streamedKind: undefined,
-        tokens: (row.tokens ?? 0) + event.message.usage.totalTokens,
-        status: event.message.stopReason === "aborted" ? "aborted" : row.status,
-        error: event.message.errorMessage ?? row.error,
-      };
+      return event.messages.reduce((next, message) => commitMessage(next, message), row);
     }
+    case "snapshot": {
+      const committed = projectSubagent(
+        { ...row, output: [], toolCalls: [], outputLines: [] },
+        {
+          messages: event.messages,
+          model: event.model,
+        },
+      );
+      const partial = event.generation?.message;
+      let next: SubagentState = {
+        ...committed,
+        status: event.run ? ("running" as const) : ("idle" as const),
+        messageOutputStart: committed.output.length,
+      };
+      if (partial)
+        for (const block of partial.content) {
+          if (block.type === "text") next = appendOutput(next, "text", block.text);
+          if (block.type === "thinking") next = appendOutput(next, "thinking", block.thinking);
+        }
+      return next;
+    }
+    case "run_start":
+      return { ...row, status: "running", startedAt: now };
+    case "run_end":
+      return { ...row, status: "idle" };
     case "result":
       return {
         ...row,
@@ -297,7 +317,10 @@ export function reduceSubagent(
 /** Replay actual saved child messages, preserving provider block and tool-result order. */
 export function projectSubagent(
   row: SubagentState,
-  snapshot: NonNullable<Awaited<ReturnType<Session["readSubagent"]>>>,
+  snapshot: Pick<
+    NonNullable<Awaited<ReturnType<Session["readSubagent"]>>>,
+    "messages" | "model"
+  > & { run?: NonNullable<Awaited<ReturnType<Session["readSubagent"]>>>["run"] },
 ): SubagentState {
   const output: SubagentState["output"][number][] = [];
   const tools: SubagentView["toolCalls"][number][] = [];
@@ -328,13 +351,12 @@ export function projectSubagent(
       const index = tools.findIndex((tool) => tool.id === message.toolCallId);
       if (index >= 0) {
         const text = toolResultText(message);
-        const unknown = isUnknownToolOutcome(message.details);
         tools[index] = {
           ...tools[index]!,
-          status: unknown ? "unknown" : message.isError ? "failed" : "completed",
+          status: message.isError ? "failed" : "completed",
           resultView: message.view,
-          result: unknown || message.isError ? undefined : text,
-          error: !unknown && message.isError ? text : undefined,
+          result: message.isError ? undefined : text,
+          error: message.isError ? text : undefined,
         };
       }
     }

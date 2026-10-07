@@ -1,8 +1,8 @@
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
+import { auxiliaryModels } from "../helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
 import { dark } from "../../../src/ink/index.ts";
 import { createSession } from "@rukie/agent";
-import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { fauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { start } from "../helpers/app";
 
 function click(app: Awaited<ReturnType<typeof start>>, text: string) {
@@ -64,7 +64,7 @@ test.each(["completed", "failed", "aborted"] as const)(
 
 async function resumeWithChild(checkpoint = false) {
   const argv: string[] = [];
-  const original = createFauxCore({ api: "faux", provider: "faux" });
+  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
   original.setResponses([
     fauxAssistantMessage(
       [
@@ -92,8 +92,8 @@ async function resumeWithChild(checkpoint = false) {
         cwd: root,
         homeDir: root,
         model: original.getModel(),
-        streamFn: withAuxiliaryRequests((model, context, options) =>
-          original.streamSimple(model, context, options),
+        models: auxiliaryModels((model, context, options) =>
+          original.provider.streamSimple(model, context, options),
         ),
       });
       await session.run("save child");
@@ -475,7 +475,7 @@ for (const [lang, label, completed, unknown, error] of [
       rows: 12,
       env: { LANG: lang },
       prepare: async (root) => {
-        const fake = createFauxCore({ api: "faux", provider: "faux" });
+        const fake = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
         fake.setResponses([
           fauxAssistantMessage(
             fauxToolCall("subagent", {
@@ -501,12 +501,12 @@ for (const [lang, label, completed, unknown, error] of [
           cwd: root,
           homeDir: root,
           model: fake.getModel(),
-          streamFn: withAuxiliaryRequests((model, context, options) =>
-            fake.streamSimple(model, context, options),
+          models: auxiliaryModels((model, context, options) =>
+            fake.provider.streamSimple(model, context, options),
           ),
         });
         await parent.run("delegate");
-        await parent.dispose();
+        await parent.close();
         // Native JSONL fixture: append an old identity to the latest saved parent snapshot.
         for await (const path of new Bun.Glob(`**/*_${parent.id}.jsonl`).scan({
           cwd: `${root}/.rukie/sessions`,

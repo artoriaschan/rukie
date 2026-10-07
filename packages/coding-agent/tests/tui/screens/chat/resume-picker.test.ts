@@ -3,10 +3,10 @@ import { afterEach, expect, test } from "bun:test";
 import { createSession, createJsonlStore, type SessionOptions } from "@rukie/agent";
 import {
   createAssistantMessageEventStream,
-  createFauxCore,
+  fauxProvider,
   fauxAssistantMessage,
 } from "@earendil-works/pi-ai";
-import { withAuxiliaryRequests } from "../../helpers/auxiliary-model.ts";
+import { auxiliaryModels } from "../../helpers/auxiliary-model.ts";
 import { start } from "../../helpers/app";
 
 const previousKey = process.env.RUKIE_RESUME_TUI_KEY;
@@ -21,27 +21,27 @@ test("a 40 by 12 picker scrolls two-row entries and dims a prompt fallback", asy
     rows: 12,
     env: { LANG: "en_US.UTF-8" },
     prepare: async (root) => {
-      const faux = createFauxCore({ api: "faux", provider: "faux" });
+      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
       faux.setResponses([fauxAssistantMessage("Stored answer")]);
       const fallback = await createSession({
         cwd: root,
         homeDir: root,
         model: faux.getModel(),
-        streamFn: withAuxiliaryRequests(faux.streamSimple, {
+        models: auxiliaryModels(faux.provider.streamSimple, {
           titles: () => createAssistantMessageEventStream(),
         }),
       });
       await fallback.run("Prompt session");
-      await fallback.dispose();
+      await fallback.close();
       for (const name of ["Middle session", "Latest session"]) {
         const seed = await createSession({
           cwd: root,
           homeDir: root,
           model: faux.getModel(),
-          streamFn: withAuxiliaryRequests(faux.streamSimple),
+          models: auxiliaryModels(faux.provider.streamSimple),
         });
         await seed.rename(name);
-        await seed.dispose();
+        await seed.close();
       }
     },
   });
@@ -119,22 +119,22 @@ test("/resume displays two-row session metadata, Escape preserves the current ch
     session: sessionOptions,
     prepare: async (root) => {
       await Bun.write(`${root}/.rukie/settings.json`, JSON.stringify(settings));
-      const faux = createFauxCore({ api: "faux", provider: "faux" });
+      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
       faux.setResponses([fauxAssistantMessage("Stored answer")]);
       const seed = await createSession({
         cwd: root,
         homeDir: root,
         settings,
-        streamFn: withAuxiliaryRequests(faux.streamSimple),
+        models: auxiliaryModels(faux.provider.streamSimple),
       });
       await seed.rename("Stored session");
       await seed.run("Stored prompt");
       await seed.setModel("resume-test/second");
-      await seed.dispose();
+      await seed.close();
       const store = createJsonlStore({ cwd: root, homeDir: root });
       let lists = 0;
       sessionOptions.store = {
-        create: (...args) => store.create(...args),
+        key: store.key,
         open: (...args) => store.open(...args),
         async list(...args) {
           if (++lists === 2) {

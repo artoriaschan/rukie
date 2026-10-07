@@ -1,19 +1,19 @@
+import { failingStorage } from "../../helpers/native-storage-failure";
 import { testClock } from "../helpers/test-clock";
 import { expect, test } from "bun:test";
 import { join } from "node:path";
-import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { createJsonlStore, createSession } from "@rukie/agent";
-import { isUnknownToolOutcome } from "@rukie/shared";
+import { fauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { createSession } from "@rukie/agent";
 import { start } from "../helpers/app";
 import { startWithClock } from "../helpers/clock-app";
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model";
+import { auxiliaryModels } from "../helpers/auxiliary-model";
 
 const todos = [{ content: "Saved mixed task", status: "pending" }];
 
 async function saveMixedSession(root: string) {
   let childId = "";
   await Bun.write(join(root, "mixed.txt"), "read-one\nread-two\nread-three\nread-four\nread-five");
-  const original = createFauxCore({ api: "faux", provider: "faux" });
+  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
   original.setResponses([
     fauxAssistantMessage(
       [
@@ -54,22 +54,21 @@ async function saveMixedSession(root: string) {
     cwd: root,
     homeDir: root,
     model: original.getModel(),
-    streamFn: withAuxiliaryRequests((m, c, o) => original.streamSimple(m, c, o)),
+    models: auxiliaryModels((m, c, o) => original.provider.streamSimple(m, c, o)),
     permissionMode: "full-access",
     onQuestion: async () => ({ answers: [{ selected: ["Keep"] }] }),
   });
   try {
-    await session.run("mixed saved prompt", {
-      onEvent(event) {
-        if (event.type === "subagent_event") childId = event.agentId;
-      },
+    session.subscribe((event) => {
+      if (event.type === "subagent_event") childId = event.agentId;
     });
+    await session.run("mixed saved prompt");
     expect(childId).not.toBe("");
     expect(session.toolState("todo")).toEqual(todos);
     expect((await session.readSubagent(childId))!.run?.outcome).toBe("completed");
     return { id: session.id, childId };
   } finally {
-    await session.dispose();
+    await session.close();
   }
 }
 
@@ -130,14 +129,16 @@ test.each([
         expect(text).not.toContain("system-reminder");
       };
       checkOrder(app.screen().join("\n"));
+      app.stdin.write("/exit\r");
+      await app.exit;
       const saved = await createSession({
         cwd: app.root,
         homeDir: app.root,
         resumeId: argv[1],
         model: app.model,
-        streamFn: () => {
+        models: auxiliaryModels(() => {
           throw new Error("observation cannot request a model");
-        },
+        }),
       });
       try {
         expect(saved.toolState("todo")).toEqual(todos);
@@ -157,7 +158,7 @@ test.each([
         expect(JSON.stringify(child!.messages)).toContain("actual mixed child input");
         expect(JSON.stringify(child!.messages)).toContain("saved child answer");
       } finally {
-        await saved.dispose();
+        await saved.close();
       }
 
       app.stdin.write("\x0f");
@@ -246,43 +247,21 @@ test("a failed write result keeps earlier mixed facts and an honest unknown outc
       const saved = await saveMixedSession(root);
       childId = saved.childId;
       argv.push("--resume", saved.id);
-      const store = createJsonlStore({ cwd: root, homeDir: root });
-      options.session!.store = {
-        ...store,
-        async open(...args) {
-          const stored = await store.open(...args);
-          return new Proxy(stored, {
-            get(target, key) {
-              if (key === "branch")
-                return async (...args: Parameters<typeof stored.branch>) => {
-                  const branch = await target.branch(...args);
-                  if (!branch) return branch;
-                  return new Proxy(branch, {
-                    get(owner, method) {
-                      if (method === "appendMessage")
-                        return async (...args: Parameters<typeof branch.appendMessage>) => {
-                          const message = args[0];
-                          if (
-                            !rejected &&
-                            message.role === "toolResult" &&
-                            message.toolName === "write"
-                          ) {
-                            rejected = true;
-                            throw new Error("mixed write save failed");
-                          }
-                          return owner.appendMessage(...args);
-                        };
-                      const value = Reflect.get(owner, method);
-                      return typeof value === "function" ? value.bind(owner) : value;
-                    },
-                  });
-                };
-              const value = Reflect.get(target, key);
-              return typeof value === "function" ? value.bind(target) : value;
-            },
-          });
-        },
-      };
+      options.session!.store = failingStorage(root, (writes) => {
+        if (
+          rejected ||
+          !writes.some(
+            (write) =>
+              write.type === "entry" &&
+              write.value.model?.some(
+                (message) => message.role === "toolResult" && message.toolName === "write",
+              ),
+          )
+        )
+          return;
+        rejected = true;
+        return new Error("mixed write save failed");
+      });
     },
   };
   const app = await startWithClock(argv, options);
@@ -301,38 +280,40 @@ test("a failed write result keeps earlier mixed facts and an honest unknown outc
         "Mixed choice? → Keep",
         "Mixed saved child",
         "saved mixed conclusion",
-        "Outcome unknown",
-        "✗ mixed write save failed",
       ])
         expect(text.split(marker), marker).toHaveLength(2);
       expect(text).not.toContain("Wrote 1 lines");
       expect(text).not.toContain("running");
     };
     assertHistory(app.screen().join("\n"));
+    expect(app.screen().join("\n")).toContain("Outcome unknown");
     expect(app.calls).toHaveLength(1);
     expect(await Bun.file(join(app.root, "effect.txt")).text()).toBe("side effect ran once");
+    app.stdin.write("/exit\r");
+    await app.exit;
+    const recovered = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+    recovered.setResponses([fauxAssistantMessage("recovered mixed conclusion")]);
     const saved = await createSession({
       cwd: app.root,
       homeDir: app.root,
       resumeId: argv[1],
-      model: app.model,
-      streamFn: () => {
-        throw new Error("Resume must not replay a tool or child");
-      },
+      model: recovered.getModel(),
+      models: auxiliaryModels(recovered.provider.streamSimple),
     });
     try {
+      await saved.waitForIdle();
       const writeResult = saved.messages.findLast(
         (message) => message.role === "toolResult" && message.toolName === "write",
       );
-      expect(writeResult?.role === "toolResult" && isUnknownToolOutcome(writeResult.details)).toBe(
-        true,
-      );
+      expect(writeResult?.role === "toolResult" && writeResult.isError).toBe(true);
+      expect(JSON.stringify(writeResult)).toContain("may have partially run");
+      expect(JSON.stringify(writeResult)).not.toContain("unknown-tool-outcome");
       expect(saved.toolState("todo")).toEqual(todos);
       expect(saved.jobs()).toEqual([]);
       expect((await saved.readSubagent(childId))!.run!.outcome).toBe("completed");
       expect(JSON.stringify(saved.messages)).toContain("committed write reasoning");
     } finally {
-      await saved.dispose();
+      await saved.close();
     }
     const replay = await start(argv, {
       rows: 60,
@@ -342,13 +323,13 @@ test("a failed write result keeps earlier mixed facts and an honest unknown outc
       advanceTimers: (ms) => testClock.advanceTimersByTime(ms),
     });
     try {
-      await replay.waitFor(() => replay.screen().join("\n").includes("mixed write save failed"));
+      await replay.waitFor(() => replay.screen().join("\n").includes("recovered mixed conclusion"));
       assertHistory(replay.screen().join("\n"));
       expect(replay.calls).toHaveLength(0);
       expect(await Bun.file(join(app.root, "effect.txt")).text()).toBe("side effect ran once");
       replay.stdin.write("continue explicitly\r");
       await replay.waitFor(() => replay.calls.length === 1);
-      expect(JSON.stringify(replay.calls[0]!.context.messages)).toContain("unknown-tool-outcome");
+      expect(JSON.stringify(replay.calls[0]!.context.messages)).toContain("may have partially run");
       expect(JSON.stringify(replay.calls[0]!.context.messages)).toContain("saved mixed conclusion");
       expect(JSON.stringify(replay.calls[0]!.context.messages)).not.toContain("session-notice");
       replay.calls[0]!.finish();

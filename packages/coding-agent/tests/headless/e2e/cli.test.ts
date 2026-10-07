@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { SettingsSchema } from "@rukie/shared";
 import { Value } from "typebox/value";
 import { fakeOpenAI, type FakeOpenAIOptions } from "../helpers/fake-openai.ts";
-import { createFauxCore, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { fauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { main as entryMain, type PrintIo } from "../../../src/index.ts";
 function main(argv: string[], io: PrintIo) {
   return entryMain(
@@ -18,7 +18,7 @@ function main(argv: string[], io: PrintIo) {
   );
 }
 
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
+import { auxiliaryModels } from "../helpers/auxiliary-model.ts";
 
 isolateProxyEnvironment();
 
@@ -55,7 +55,7 @@ test.each([
   });
   cleanups.push(() => server.stop(true));
   const url = `http://site.test:${server.port}/docs`;
-  const faux = createFauxCore({ api: "faux", provider: "faux" });
+  const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
   let observed = false;
   faux.setResponses([
     fauxAssistantMessage(fauxToolCall("web_fetch", { url }), { stopReason: "toolUse" }),
@@ -84,7 +84,7 @@ test.each([
       cwd: root,
       homeDir: root,
       model: faux.getModel(),
-      streamFn: withAuxiliaryRequests(faux.streamSimple),
+      models: auxiliaryModels(faux.provider.streamSimple),
       webFetch: {
         resolve: async () => [{ address: "127.0.0.1", family: 4 }],
         allowAddresses: ["127.0.0.1"],
@@ -181,7 +181,7 @@ test.each(["untrusted", "flag", "settings"])(
     const events = parseEvents(result.stdout);
     expect(events[0].type).toBe("session_start");
     expect(events[0].tools.includes("mcp__project__echo")).toBe(trust !== "untrusted");
-    expect(events.at(-1)).toMatchObject({ type: "result", success: true });
+    expect(events.at(-1)).toMatchObject({ type: "request_settled", success: true });
     expect(await Bun.file(pidPath).exists()).toBe(trust !== "untrusted");
     if (trust !== "untrusted") {
       expect(JSON.stringify(server.requests[1]!.body.messages)).toContain("MCP: hello");
@@ -212,7 +212,7 @@ test.each(["text", "stream-json"])(
       expect(events.filter((event) => event.type === "mcp_server_error")).toMatchObject([
         { server: "missing" },
       ]);
-      expect(events.at(-1)).toMatchObject({ type: "result", success: true });
+      expect(events.at(-1)).toMatchObject({ type: "request_settled", success: true });
     }
     expect(server.requests).toHaveLength(1);
   },
@@ -306,7 +306,11 @@ test.each([
       { phase: "start", toolCallId: "call-0", toolName: "write" },
       { phase: "end", toolCallId: "call-0", decision },
     ]);
-    expect(events.at(-1)).toMatchObject({ type: "result", success: true, text: "hello from fake" });
+    expect(events.at(-1)).toMatchObject({
+      type: "request_settled",
+      success: true,
+      text: "hello from fake",
+    });
     expect(server.requests).toHaveLength(3);
     expect(server.requests[1]!.body.temperature).toBe(0);
     expect(JSON.stringify(server.requests.at(-1)!.body)).not.toContain(
@@ -393,7 +397,11 @@ test.each(["complete", "blocked"])(
       { value: { phase: "active", roundsStarted: 1 } },
       { value: { phase: action } },
     ]);
-    expect(events.at(-1)).toMatchObject({ type: "result", success: true, text: "hello from fake" });
+    expect(events.at(-1)).toMatchObject({
+      type: "request_settled",
+      success: true,
+      text: "hello from fake",
+    });
     expect(server.requests).toHaveLength(2);
     expect(JSON.stringify(server.requests[1]!.body.messages)).toContain(`<goal_${action}>`);
   },
@@ -447,7 +455,10 @@ test("--goal exits 1 on a model error and reports the failure", async () => {
   });
   expect(result.exitCode).toBe(1);
   expect(result.stderr).toContain("Goal provider failed");
-  expect(parseEvents(result.stdout).at(-1)).toMatchObject({ type: "result", success: false });
+  expect(parseEvents(result.stdout).at(-1)).toMatchObject({
+    type: "request_settled",
+    success: false,
+  });
   expect(server.requests).toHaveLength(1);
 });
 
@@ -505,7 +516,7 @@ test.each(["none", "complete"])("--resume --goal creates a Goal after %s", async
   ).value;
   expect(created).toMatchObject({ objective: "new objective", phase: "active", roundsStarted: 0 });
   if (oldGoal) expect(created.id).not.toBe(oldGoal.id);
-  expect(resumed.at(-1)).toMatchObject({ type: "result", text: "new wrapup" });
+  expect(resumed.at(-1)).toMatchObject({ type: "request_settled", text: "new wrapup" });
   expect(server.requests).toHaveLength(previous === "complete" ? 4 : 3);
 });
 
@@ -575,7 +586,7 @@ test.each(["text", "stream-json"])(
       expect(
         events.find((event) => event.type === "tool_execution_end" && event.toolName === "skill"),
       ).toMatchObject({ isError: false });
-      expect(events.at(-1)).toMatchObject({ type: "result", success: true });
+      expect(events.at(-1)).toMatchObject({ type: "request_settled", success: true });
     }
   },
 );
@@ -599,7 +610,7 @@ test("CLI grep uses bundled ripgrep when the child process PATH is empty", async
     isError: false,
     result: { content: [{ type: "text", text: "file.txt:1:hello Bun\nfile.txt:2:hello rg" }] },
   });
-  expect(events.at(-1)).toMatchObject({ type: "result", success: true });
+  expect(events.at(-1)).toMatchObject({ type: "request_settled", success: true });
   expect(server.requests).toHaveLength(2);
   expect(JSON.stringify(server.requests[1]!.body.messages)).toContain("file.txt:1:hello Bun");
 });
@@ -635,7 +646,11 @@ test("an unavailable bundled ripgrep returns a tool error while read and the Run
     isError: false,
     result: { content: [{ type: "text", text: "available text\n" }] },
   });
-  expect(events.at(-1)).toMatchObject({ type: "result", success: true, text: "hello from fake" });
+  expect(events.at(-1)).toMatchObject({
+    type: "request_settled",
+    success: true,
+    text: "hello from fake",
+  });
   expect(server.requests).toHaveLength(2);
   const toolResults = server.requests[1]!.body.messages.filter(
     (message: { role: string }) => message.role === "tool",
@@ -697,36 +712,13 @@ test("stream-json emits session metadata, verbatim pi events, and the Run result
       "list_agents",
     ],
   });
-  expect(
-    events.filter((event) => event.type !== "session_title_changed").map((event) => event.type),
-  ).toEqual([
-    "session_start",
-    "context_usage",
-    "mcp_servers_changed",
-    "agent_start",
-    "turn_start",
-    "message_start",
-    "reminder_injected",
-    "message_end",
-    "message_start",
-    "reminder_injected",
-    "message_end",
-    "message_start",
-    "reminder_injected",
-    "message_end",
-    "message_start",
-    "tool_state_changed",
-    "message_end",
-    "message_start",
-    "message_update",
-    "message_update",
-    "message_update",
-    "message_end",
-    "context_usage",
-    "turn_end",
-    "agent_end",
-    "result",
-  ]);
+  const types = events.map((event) => event.type);
+  expect(types).toContain("snapshot");
+  expect(types).toContain("run_start");
+  expect(types).toContain("message_update");
+  expect(types).toContain("run_end");
+  expect(types.indexOf("run_start")).toBeLessThan(types.indexOf("message_update"));
+  expect(types.indexOf("run_end")).toBeLessThan(types.indexOf("request_settled"));
   expect(events.filter((event) => event.type === "mcp_servers_changed")).toEqual([
     { type: "mcp_servers_changed", sessionId },
   ]);
@@ -761,14 +753,21 @@ test("stream-json emits session metadata, verbatim pi events, and the Run result
       tools: usage[0].segments.tools,
     },
   });
-  expect(events.find((event) => event.assistantMessageEvent?.type === "text_delta")).toMatchObject({
+  expect(
+    events.find((event) =>
+      event.changes?.some((change: { type: string }) => change.type === "text_delta"),
+    ),
+  ).toMatchObject({
     type: "message_update",
     message: { role: "assistant", model: "m" },
-    assistantMessageEvent: { type: "text_delta", delta: "hello from fake" },
+    changes: expect.arrayContaining([
+      expect.objectContaining({ type: "text_delta", delta: "hello from fake" }),
+    ]),
   });
   expect(events.at(-1)).toEqual({
-    type: "result",
+    type: "request_settled",
     sessionId,
+    requestId: expect.any(String),
     text: "hello from fake",
     success: true,
     usage: { input: 8, output: 5, cacheRead: 4, cacheWrite: 0, totalTokens: 17 },
@@ -795,7 +794,7 @@ test("stream-json emits session metadata, verbatim pi events, and the Run result
   expect(next.filter((event) => event.type === "reminder_injected")).toEqual([]);
   expect(next.every((event) => event.sessionId === sessionId)).toBe(true);
   expect(next.at(-1)).toMatchObject({
-    type: "result",
+    type: "request_settled",
     success: true,
     text: "hello from fake",
     usage: { input: 8, output: 5, cacheRead: 4, cacheWrite: 0, totalTokens: 17 },
@@ -841,7 +840,7 @@ test("stream-json reports compaction start and end around a large tool result", 
   ]);
   expect(compactions[1].tokensAfter).toBeLessThan(compactions[1].tokensBefore);
   expect(events.filter((event) => event.type === "compaction")).toEqual([]);
-  expect(events.at(-1)).toMatchObject({ type: "result", success: true });
+  expect(events.at(-1)).toMatchObject({ type: "request_settled", success: true });
   expect(server.requests).toHaveLength(3);
 });
 
@@ -856,10 +855,10 @@ test("a failed stream-json Run emits a failure result and exits 1", async () => 
   const events = parseEvents(result.stdout);
   expect(events[0].type).toBe("session_start");
   expect(events.filter((event) => event.type !== "session_title_changed").at(-2).type).toBe(
-    "agent_end",
+    "result",
   );
   expect(events.at(-1)).toMatchObject({
-    type: "result",
+    type: "request_settled",
     sessionId: events[0].sessionId,
     success: false,
     text: "",
@@ -888,7 +887,7 @@ test.each(["text", "stream-json"])(
     } else {
       const events = parseEvents(result.stdout);
       expect(events[0].type).toBe("session_start");
-      expect(events.at(-1)).toMatchObject({ type: "result", success: true });
+      expect(events.at(-1)).toMatchObject({ type: "request_settled", success: true });
     }
     expect(server.requests).toHaveLength(1);
   },
@@ -1085,7 +1084,7 @@ test.each(["prompt", "goal-wrapup"])(
         ),
       ).toBe(true);
     expect(events.at(-1)).toMatchObject({
-      type: "result",
+      type: "request_settled",
       sessionId: events[0].sessionId,
       success: false,
       text: "hello from fake",

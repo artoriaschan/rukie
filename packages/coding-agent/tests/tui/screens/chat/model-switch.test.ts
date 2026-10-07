@@ -1,6 +1,7 @@
+import { auxiliaryModels } from "../../helpers/auxiliary-model";
 import { afterEach, expect, test } from "bun:test";
 import { createSession } from "@rukie/agent";
-import { createFauxCore } from "@earendil-works/pi-ai";
+import { fauxProvider } from "@earendil-works/pi-ai";
 import { startWithClock as start } from "../../helpers/clock-app";
 
 const originalKey = process.env.RUKIE_MODEL_TUI_KEY;
@@ -91,15 +92,15 @@ test("a resumed session displays its persisted model before sending another prom
     env: { LANG: "en_US.UTF-8" },
     session: { model: undefined },
     prepare: async (root) => {
-      const faux = createFauxCore({ api: "faux", provider: "faux" });
+      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
       const seed = await createSession({
         cwd: root,
         homeDir: root,
         settings,
-        streamFn: faux.streamSimple,
+        models: auxiliaryModels(faux.provider.streamSimple),
       });
       await seed.setModel("test-model/second");
-      await seed.dispose();
+      await seed.close();
       argv.push("--resume", seed.id);
       await Bun.write(
         `${root}/.rukie/settings.json`,
