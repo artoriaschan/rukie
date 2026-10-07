@@ -571,6 +571,8 @@ export async function createConversationObservation(options: ConversationObserva
   return {
     snapshot: () => snapshot,
     messages: () => messages,
+    // Present fresh committed DTOs without replacing this observation's captured frame.
+    present: (input: readonly TranscriptMessage[]) => input.map(enrich),
     running: () => parts(current).live.run !== undefined,
     view: () => current,
     flush: () =>
