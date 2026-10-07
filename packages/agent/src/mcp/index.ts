@@ -922,3 +922,5 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
     close,
   };
 }
+
+export { createMcpManager } from "./manager.ts";
