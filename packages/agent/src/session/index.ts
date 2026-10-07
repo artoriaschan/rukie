@@ -398,6 +398,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     let wrapup: string | undefined;
     let permissionMode = options.permissionMode ?? settings.permissionMode ?? "ask";
     let observation: Awaited<ReturnType<typeof createConversationObservation>>;
+    let storageFailure: unknown;
     const storageFault = Promise.withResolvers<never>();
     void storageFault.promise.catch(() => {});
     const commitStorage = lease.storage.commit.bind(lease.storage);
@@ -410,6 +411,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             try {
               return await commitStorage(...args);
             } catch (error) {
+              storageFailure = error;
               storageFault.reject(error);
               throw error;
             }
@@ -497,6 +499,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     await writeMetadata();
     const assertAvailable = (idle = false) => {
       if (closed) throw new Error("Session is closed.");
+      if (storageFailure !== undefined) throw storageFailure;
       if (idle && observation?.running()) throw new Error("Session is busy.");
     };
     const hooks = createHooks({
@@ -1686,7 +1689,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     }
     const session: Session = {
       get running() {
-        return observation.running();
+        return !closed && storageFailure === undefined && observation.running();
       },
       get currentRequestId() {
         return currentRequestId;
