@@ -7,6 +7,9 @@ export type SubagentRun = {
   parentSessionId: string;
   startedAt: number;
   endedAt?: number;
+  model?: string;
+  durationMs?: number;
+  tokens?: number;
   outcome?: "completed" | "aborted" | "error" | "length" | "hook_stopped" | "hook_blocked";
   error?: string;
   reason?: string;
@@ -46,6 +49,19 @@ function parseRun(value: unknown): SubagentRun {
       throw new Error("Invalid subagent Run outcome.");
     run.outcome = value.outcome as SubagentRun["outcome"];
     run.endedAt = value.endedAt;
+  }
+  for (const key of ["durationMs", "tokens"] as const) {
+    const number = Reflect.get(value, key);
+    if (number !== undefined) {
+      if (typeof number !== "number" || !Number.isFinite(number) || number < 0)
+        throw new Error("Invalid subagent Run metric.");
+      run[key] = number;
+    }
+  }
+  const model = Reflect.get(value, "model");
+  if (model !== undefined) {
+    if (typeof model !== "string") throw new Error("Invalid subagent Run model.");
+    run.model = model;
   }
   for (const key of ["error", "reason"] as const) {
     const reason = Reflect.get(value, key);

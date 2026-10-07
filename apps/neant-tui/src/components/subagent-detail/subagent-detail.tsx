@@ -2,7 +2,13 @@ import type { Ref } from "react";
 import type { Locale } from "@neant/i18n";
 import { Box, ScrollBox, ThemedText, type ScrollHandle } from "@neant/tui";
 import { createTuiI18n } from "../../i18n";
-import { SUBAGENT_APPEARANCE, subagentStatusKey, type SubagentView } from "../subagent-message";
+import {
+  subagentAppearance,
+  subagentElapsed,
+  type SubagentOutput,
+  subagentStatusKey,
+  type SubagentView,
+} from "../subagent-message";
 import { ToolCall } from "../tool-call";
 import { Markdown } from "@neant/tui";
 import { ExitButton } from "../subagent-dashboard";
@@ -17,7 +23,7 @@ function formatDuration(elapsed: number) {
 
 export type DetailPage = "summary" | "output" | "tools";
 interface SubagentDetailView extends SubagentView {
-  output: readonly { type: "text" | "thinking" | "tool"; text: string }[];
+  output: readonly SubagentOutput[];
 }
 
 export function SubagentDetailScene({
@@ -33,8 +39,10 @@ export function SubagentDetailScene({
   onPathClick,
   onPage,
   onInterrupt,
+  agentView = false,
 }: {
   subagent: SubagentDetailView;
+  agentView?: boolean;
   page: DetailPage;
   thinkingOpen: boolean;
   expanded?: boolean;
@@ -48,14 +56,11 @@ export function SubagentDetailScene({
   onInterrupt(): void;
 }) {
   const t = createTuiI18n(locale);
-  const { color, glyph } = SUBAGENT_APPEARANCE[subagent.status];
-  const elapsed =
-    subagent.status === "running"
-      ? Math.max(0, Date.now() - subagent.startedAt)
-      : subagent.durationMs;
-  const duration = formatDuration(elapsed);
+  const { color, glyph } = subagentAppearance(subagent);
+  const elapsed = subagentElapsed(subagent);
+  const duration = elapsed === undefined ? undefined : formatDuration(elapsed);
   const reason = subagent.runReason ?? subagent.error;
-  const outputBlocks: { type: "text" | "thinking" | "tool"; text: string }[] = [];
+  const outputBlocks: SubagentOutput[] = [];
   for (const line of subagent.output) {
     const previous = outputBlocks.at(-1);
     if (previous && line.type !== "tool" && previous.type === line.type)
@@ -67,15 +72,38 @@ export function SubagentDetailScene({
     subagent.status !== "running"
       ? outputBlocks.findLastIndex((block) => block.type === "text" && block.text.trim())
       : -1;
-  const timestamp = (time: number) =>
+  const timestamp = (time?: number) =>
     time ? new Date(time).toLocaleTimeString(locale === "zh" ? "zh-CN" : "en-US") : "—";
+  const renderTool = (tool: SubagentView["toolCalls"][number]) => (
+    <ToolCall
+      foldTerminalCommand={foldTerminalCommand}
+      key={tool.id}
+      onPathClick={onPathClick}
+      id={`${subagent.agentId}:${tool.id}`}
+      name={tool.name}
+      args={tool.args}
+      summary={`${tool.name} ${tool.argsPreview}`}
+      callView={tool.view}
+      resultView={tool.resultView}
+      startedAt={tool.startedAt}
+      endedAt={tool.endedAt}
+      expanded={expanded}
+      status={
+        tool.status === "running" ? "running" : tool.status === "failed" ? "error" : "success"
+      }
+      result={tool.result ?? tool.resultPreview}
+      error={tool.error}
+      outcomeUnknown={tool.status === "unknown"}
+      locale={locale}
+    />
+  );
   return (
     <Box height={rows} paddingX={2} paddingY={1} flexDirection="column">
       <Box flexShrink={0}>
         <ThemedText wrap="truncate">
           <ThemedText color={color}>{glyph} </ThemedText>
           <ThemedText bold>
-            {t("subagent.prefix")}
+            {agentView ? `${t("subagent.agent-view")} · ` : t("subagent.prefix")}
             {subagent.description}
           </ThemedText>
           <ThemedText dimColor> · </ThemedText>
@@ -85,40 +113,42 @@ export function SubagentDetailScene({
         <ExitButton onClick={onBack} />
       </Box>
       <ThemedText wrap="truncate">
-        {subagent.model ?? t("subagent.default-model")}
+        {subagent.model}
         <ThemedText
           dimColor
-        >{` · ${duration} · ${subagent.tokens} tok · ${subagent.toolCalls.length} tools`}</ThemedText>
+        >{`${duration === undefined ? "" : ` · ${duration}`}${subagent.tokens === undefined ? "" : ` · ${subagent.tokens} tok`} · ${subagent.toolCalls.length} tools`}</ThemedText>
       </ThemedText>
       <ThemedText
         dimColor
         wrap="truncate"
       >{`id ${subagent.agentId.slice(0, 8)} · ${t("subagent.started")} ${timestamp(subagent.startedAt)}${subagent.completedAt ? ` · ${t("subagent.ended")} ${timestamp(subagent.completedAt)}` : ""}`}</ThemedText>
       {reason && <ThemedText color="error">{reason}</ThemedText>}
-      <Box marginTop={1} flexShrink={0}>
-        {(["summary", "output", "tools"] as const).map((tab, index) => (
-          <Box key={tab}>
-            <Box onClick={() => onPage(tab)}>
-              <ThemedText
-                bold={page === tab}
-                inverse={page === tab}
-                color={page === tab ? "accent" : undefined}
-              >{` ${t(`subagent.${tab}`)} `}</ThemedText>
+      {!agentView && (
+        <Box marginTop={1} flexShrink={0}>
+          {(["summary", "output", "tools"] as const).map((tab, index) => (
+            <Box key={tab}>
+              <Box onClick={() => onPage(tab)}>
+                <ThemedText
+                  bold={page === tab}
+                  inverse={page === tab}
+                  color={page === tab ? "accent" : undefined}
+                >{` ${t(`subagent.${tab}`)} `}</ThemedText>
+              </Box>
+              {index < 2 && <ThemedText dimColor>│</ThemedText>}
             </Box>
-            {index < 2 && <ThemedText dimColor>│</ThemedText>}
-          </Box>
-        ))}
-        <ThemedText
-          dimColor
-        >{`  ${["summary", "output", "tools"].indexOf(page) + 1}/3`}</ThemedText>
-      </Box>
+          ))}
+          <ThemedText
+            dimColor
+          >{`  ${["summary", "output", "tools"].indexOf(page) + 1}/3`}</ThemedText>
+        </Box>
+      )}
       <ThemedText dimColor wrap="truncate">
         {"─".repeat(72)}
       </ThemedText>
       <ScrollBox
         key={page}
         ref={scrollRef}
-        initialFollow={false}
+        initialFollow={subagent.status === "running" && page === "output"}
         height={Math.max(1, rows - 14)}
         flexGrow={0}
         paddingX={1}
@@ -127,9 +157,9 @@ export function SubagentDetailScene({
           <Box flexDirection="column">
             {[
               [t("subagent.status"), t(subagentStatusKey(subagent))],
-              [t("subagent.model"), subagent.model ?? t("subagent.default-model")],
-              [t("subagent.duration"), duration],
-              ["tokens", `${subagent.tokens}`],
+              ...(subagent.model ? [[t("subagent.model"), subagent.model]] : []),
+              ...(duration === undefined ? [] : [[t("subagent.duration"), duration]]),
+              ...(subagent.tokens === undefined ? [] : [["tokens", `${subagent.tokens}`]]),
               [t("subagent.tools"), `${subagent.toolCalls.length}`],
               [t("subagent.started"), timestamp(subagent.startedAt)],
               ...(subagent.completedAt
@@ -162,13 +192,22 @@ export function SubagentDetailScene({
                 )}
                 {line.type === "text" ? (
                   <Markdown text={line.text} />
+                ) : line.type === "user" ? (
+                  <ThemedText>
+                    <ThemedText selectable={false} color="warning">
+                      {"❯ "}
+                    </ThemedText>
+                    {line.text}
+                  </ThemedText>
                 ) : line.type === "thinking" ? (
                   <Box flexDirection="column">
                     <ThemedText
                       dimColor
                     >{`${thinkingOpen ? "▾" : "▸"} ${t("subagent.thinking")}`}</ThemedText>
-                    {thinkingOpen && <ThemedText dimColor>{line.text}</ThemedText>}
+                    {thinkingOpen && <Markdown text={line.text} dimColor />}
                   </Box>
+                ) : subagent.toolCalls.find((tool) => tool.id === line.toolId) ? (
+                  renderTool(subagent.toolCalls.find((tool) => tool.id === line.toolId)!)
                 ) : (
                   <ThemedText color="accent">{`● ${line.text}`}</ThemedText>
                 )}
@@ -179,32 +218,7 @@ export function SubagentDetailScene({
           ))}
         {page === "tools" &&
           (subagent.toolCalls.length ? (
-            subagent.toolCalls.map((tool) => (
-              <ToolCall
-                foldTerminalCommand={foldTerminalCommand}
-                key={tool.id}
-                onPathClick={onPathClick}
-                id={`${subagent.agentId}:${tool.id}`}
-                name={tool.name}
-                args={tool.args}
-                summary={`${tool.name} ${tool.argsPreview}`}
-                callView={tool.view}
-                resultView={tool.resultView}
-                startedAt={tool.startedAt}
-                endedAt={tool.endedAt}
-                expanded={expanded}
-                status={
-                  tool.status === "running"
-                    ? "running"
-                    : tool.status === "failed"
-                      ? "error"
-                      : "success"
-                }
-                result={tool.result ?? tool.resultPreview}
-                error={tool.error}
-                locale={locale}
-              />
-            ))
+            subagent.toolCalls.map(renderTool)
           ) : (
             <ThemedText dimColor>{t("subagent.no-tools")}</ThemedText>
           ))}
@@ -213,9 +227,11 @@ export function SubagentDetailScene({
         {"─".repeat(72)}
       </ThemedText>
       <Box flexShrink={0}>
-        <ThemedText dimColor>{t("subagent.detail-hint")}</ThemedText>
+        <ThemedText dimColor>
+          {agentView ? t("subagent.readonly-hint") : t("subagent.detail-hint")}
+        </ThemedText>
         <Box flexGrow={1} />
-        {subagent.status === "running" && (
+        {!agentView && subagent.status === "running" && (
           <Box onClick={onInterrupt}>
             <ThemedText color="error">{t("subagent.interrupt")}</ThemedText>
           </Box>

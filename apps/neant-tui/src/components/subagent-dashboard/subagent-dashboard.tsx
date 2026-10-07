@@ -2,17 +2,21 @@ import { useState, type Ref } from "react";
 import type { Locale } from "@neant/i18n";
 import { Box, Divider, ScrollBox, ThemedBox, ThemedText, type ScrollHandle } from "@neant/tui";
 import { createTuiI18n } from "../../i18n";
-import { SUBAGENT_APPEARANCE, subagentStatusKey, type SubagentView } from "../subagent-message";
+import {
+  subagentAppearance,
+  subagentElapsed,
+  subagentStatusKey,
+  type SubagentView,
+} from "../subagent-message";
 
 export function ExitButton({ onClick }: { onClick(): void }) {
   const [hovered, setHovered] = useState(false);
   return (
-    <Box
-      onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      <ThemedText color={hovered ? "text" : "subtle"}> ✕</ThemedText>
+    <Box onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
+      <ThemedText selectable={false} onClick={onClick} color={hovered ? "text" : "subtle"}>
+        {" "}
+        ✕
+      </ThemedText>
     </Box>
   );
 }
@@ -40,7 +44,11 @@ export function SubagentDashboard({
 }) {
   const t = createTuiI18n(locale);
   const failed = subagents.filter(
-    (row) => row.status === "failed" || row.status === "aborted",
+    (row) =>
+      row.status === "failed" ||
+      row.status === "aborted" ||
+      row.runOutcome === "error" ||
+      row.runOutcome === "aborted",
   ).length;
   return (
     <Box height={rows} flexDirection="column" paddingX={2} paddingY={1}>
@@ -122,18 +130,18 @@ function DashboardCard({
 }) {
   const [hovered, setHovered] = useState(false);
   const t = createTuiI18n(locale);
-  const { color, glyph } = SUBAGENT_APPEARANCE[subagent.status];
+  const { color, glyph } = subagentAppearance(subagent);
+  const elapsed = subagentElapsed(subagent);
   return (
     <ThemedBox
       paddingLeft={1}
       marginBottom={1}
       flexDirection="column"
-      onClick={onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       backgroundColor={hovered && !focused ? "badgeHoverBackground" : undefined}
     >
-      <ThemedText wrap="truncate">
+      <ThemedText wrap="truncate" onClick={onClick}>
         <ThemedText color={color}>{glyph} </ThemedText>
         <ThemedText bold color={focused ? "accent" : undefined}>
           {t("subagent.prefix")}
@@ -144,7 +152,7 @@ function DashboardCard({
         )}
         <ThemedText
           dimColor
-        >{` · ${subagent.model ?? t("subagent.default-model")} · ${Math.floor((subagent.status === "running" ? Date.now() - subagent.startedAt : subagent.durationMs) / 1000)}s · ${subagent.tokens} tok · ${subagent.toolCalls.length} tools`}</ThemedText>
+        >{`${subagent.model ? ` · ${subagent.model}` : ""}${elapsed === undefined ? "" : ` · ${Math.floor(elapsed / 1000)}s`}${subagent.tokens === undefined ? "" : ` · ${subagent.tokens} tok`} · ${subagent.toolCalls.length} tools`}</ThemedText>
       </ThemedText>
       {subagent.status === "running" && subagent.outputLines.length > 0 && (
         <ThemedText dimColor wrap="truncate">{`  │ ${subagent.outputLines.at(-1)}`}</ThemedText>

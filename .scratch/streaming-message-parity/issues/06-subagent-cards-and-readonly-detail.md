@@ -1,6 +1,6 @@
 # 06: Subagent 卡与只读详情
 
-Status: ready-for-agent
+Status: claimed
 Blocked by: 03
 
 **What to build:** 用户能观察 Subagent 的真实当前活动，进入工具详情或主屏只读视图，并清楚区分运行结束、错误和委派任务判断。

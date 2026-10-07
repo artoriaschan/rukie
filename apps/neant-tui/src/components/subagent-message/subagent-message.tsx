@@ -26,8 +26,9 @@ SOFTWARE.
 */
 import { useState } from "react";
 import type { Locale } from "@neant/i18n";
-import { figures, ThemedBox, ThemedText, useAnimationFrame, toolKindColor } from "@neant/tui";
+import { Box, figures, ThemedBox, ThemedText, useAnimationFrame, toolKindColor } from "@neant/tui";
 import { createTuiI18n } from "../../i18n";
+import { subagentStatusKey, subagentElapsed, subagentAppearance } from "./presentation";
 
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 function singleLine(text: string) {
@@ -51,6 +52,11 @@ function clip(text: string, width: number) {
   return width > 0 ? result + "…" : "";
 }
 
+export interface SubagentOutput {
+  type: "user" | "text" | "thinking" | "tool";
+  text: string;
+  toolId?: string;
+}
 export interface SubagentView {
   agentId: string;
   childSessionId: string;
@@ -64,13 +70,14 @@ export interface SubagentView {
     | "length"
     | "hook_stopped"
     | "hook_blocked"
+    | "interrupted"
     | "unknown";
   runReason?: string;
   model?: string;
-  startedAt: number;
+  startedAt?: number;
   completedAt?: number;
-  durationMs: number;
-  tokens: number;
+  durationMs?: number;
+  tokens?: number;
   toolCalls: readonly {
     id: string;
     name: string;
@@ -80,7 +87,7 @@ export interface SubagentView {
     resultView?: ToolResultView;
     result?: string;
     endedAt?: number;
-    status: "running" | "completed" | "failed";
+    status: "running" | "completed" | "failed" | "unknown";
     startedAt?: number;
     durationMs?: number;
     resultPreview?: string;
@@ -96,30 +103,32 @@ export function SubagentMessage({
   effort,
   locale = "zh",
   onClick,
+  onOpenView,
 }: {
   subagent: SubagentView;
   columns: number;
   effort?: string;
   locale?: Locale;
   onClick?(): void;
+  onOpenView?(): void;
 }) {
   const t = createTuiI18n(locale);
   const running = subagent.status === "running";
   const [, time] = useAnimationFrame(running ? 120 : null);
   const [hovered, setHovered] = useState(false);
-  const failed = subagent.status === "failed" || subagent.status === "aborted";
-  const color = failed ? "error" : subagent.status === "completed" ? "success" : "warning";
+  const { color, glyph: settledGlyph } = subagentAppearance(subagent);
   const { frames, intervalMs } = figures.activityFrames;
   const glyph = running
     ? ` ${frames[Math.floor(time / intervalMs) % frames.length]}`
-    : failed
-      ? "🔴"
-      : subagent.status === "idle"
-        ? "·"
-        : "🟢";
-  const elapsed = running ? Math.max(0, Date.now() - subagent.startedAt) : subagent.durationMs;
-  const seconds = Math.floor(elapsed / 1000);
-  const duration = seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m${seconds % 60}s`;
+    : settledGlyph;
+  const elapsed = subagentElapsed(subagent);
+  const seconds = elapsed === undefined ? undefined : Math.floor(elapsed / 1000);
+  const duration =
+    seconds === undefined
+      ? undefined
+      : seconds < 60
+        ? `${seconds}s`
+        : `${Math.floor(seconds / 60)}m${seconds % 60}s`;
   const active = subagent.toolCalls.findLast((tool) => tool.status === "running");
   const previous = active
     ? subagent.toolCalls[subagent.toolCalls.indexOf(active) - 1]
@@ -131,30 +140,55 @@ export function SubagentMessage({
       flexDirection="column"
       width={columns}
       paddingLeft={2}
-      onClick={onClick}
       onMouseEnter={onClick ? () => setHovered(true) : undefined}
       onMouseLeave={onClick ? () => setHovered(false) : undefined}
     >
-      <ThemedText wrap="truncate">
-        <ThemedText color={hovered ? "accent" : color}>{glyph} </ThemedText>
-        <ThemedText bold color={hovered ? "accent" : undefined}>
-          {t("subagent.prefix")}
-          {singleLine(subagent.description)}
-        </ThemedText>
-        <ThemedText dimColor> · </ThemedText>
-        {singleLine(subagent.model ?? t("subagent.default-model"))}
-        {effort && <ThemedText dimColor>{` · ${effort}`}</ThemedText>}
-        <ThemedText
-          dimColor
-        >{` · ${duration} · ${subagent.tokens} tok · ${subagent.toolCalls.length} tools · `}</ThemedText>
-        <ThemedText color={color}>{t(`subagent.status.${subagent.status}`)}</ThemedText>
-      </ThemedText>
+      <Box>
+        <Box width={Math.max(1, columns - 5)} flexShrink={1}>
+          <ThemedText wrap="truncate" onClick={onClick}>
+            <ThemedText selectable={false} color={hovered ? "accent" : color}>
+              {glyph}{" "}
+            </ThemedText>
+            <ThemedText bold color={hovered ? "accent" : undefined}>
+              {t("subagent.prefix")}
+              {singleLine(subagent.description)}
+            </ThemedText>
+            {subagent.model && (
+              <>
+                <ThemedText dimColor> · </ThemedText>
+                {singleLine(subagent.model)}
+              </>
+            )}
+            {effort && <ThemedText dimColor>{` · ${effort}`}</ThemedText>}
+            <ThemedText
+              dimColor
+            >{`${duration === undefined ? "" : ` · ${duration}`}${subagent.tokens === undefined ? "" : ` · ${subagent.tokens} tok`} · ${subagent.toolCalls.length} tools · `}</ThemedText>
+            <ThemedText color={color}>{t(subagentStatusKey(subagent))}</ThemedText>
+          </ThemedText>
+        </Box>
+        {onOpenView && (
+          <ThemedText selectable={false} onClick={onOpenView} color={hovered ? "accent" : "subtle"}>
+            {" ⤢"}
+          </ThemedText>
+        )}
+      </Box>
       {running && (
-        <ThemedText wrap="truncate">
+        <ThemedText wrap="truncate" onClick={onClick}>
           {previous && (
             <>
               <ThemedText dimColor>{"  · "}</ThemedText>
-              <ThemedText color="success">✓</ThemedText>
+              <ThemedText
+                selectable={false}
+                color={
+                  previous.status === "failed"
+                    ? "error"
+                    : previous.status === "unknown"
+                      ? "subtle"
+                      : "success"
+                }
+              >
+                {previous.status === "failed" ? "✗" : previous.status === "unknown" ? "?" : "✓"}
+              </ThemedText>
               <ThemedText color={toolKindColor(previous.view?.kind)}>{previous.name}</ThemedText>
             </>
           )}
@@ -174,17 +208,16 @@ export function SubagentMessage({
       )}
       {running &&
         Array.from({ length: 3 }, (_, index) => (
-          <ThemedText
-            key={index}
-            dimColor
-            wrap="truncate"
-          >{`  │ ${clip(subagent.outputLines.slice(-3)[index] ?? "", rowWidth)}`}</ThemedText>
+          <ThemedText key={index} dimColor wrap="truncate" onClick={onClick}>
+            <ThemedText selectable={false}>{"  │ "}</ThemedText>
+            {clip(subagent.outputLines.slice(-3)[index] ?? "", rowWidth)}
+          </ThemedText>
         ))}
-      {subagent.status === "failed" && subagent.error && (
-        <ThemedText
-          color="error"
-          wrap="truncate"
-        >{`  └ ${clip(subagent.error, rowWidth)}`}</ThemedText>
+      {(subagent.status === "failed" || subagent.runOutcome === "error") && subagent.error && (
+        <ThemedText color="error" wrap="truncate" onClick={onClick}>
+          <ThemedText selectable={false}>{"  └ "}</ThemedText>
+          {clip(subagent.error, rowWidth)}
+        </ThemedText>
       )}
     </ThemedBox>
   );

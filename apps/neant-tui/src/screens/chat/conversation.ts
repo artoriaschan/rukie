@@ -20,7 +20,7 @@ import {
   type ToolResultView,
 } from "@neant/shared";
 import type { TpsSample } from "../../components/status-line";
-import { reduceSubagent, restoreSubagents, type SubagentState } from "./subagents";
+import { reduceSubagent, restoreSubagents, projectSubagent, type SubagentState } from "./subagents";
 import { createActivity, reduce } from "./activity/activity";
 import type { NoticeKind } from "../../components/notice";
 
@@ -1122,6 +1122,44 @@ export function createConversation(session: Session, model: string, locale: Loca
       });
       active = { controller, promise };
       return promise;
+    },
+    async loadSubagent(id: string) {
+      const owner = state.subagents[id];
+      if (!owner || owner.historyLoaded) return;
+      const snapshot = await session.readSubagent(id);
+      const row = state.subagents[id];
+      if (!snapshot || !row || row.historyLoaded || row.startedAt !== owner.startedAt) return;
+      if (row.status === "running") {
+        if (!snapshot.run || snapshot.run.endedAt !== undefined) return;
+        const startedAt = snapshot.run.startedAt;
+        const history = projectSubagent(row, {
+          ...snapshot,
+          messages: snapshot.messages.filter(
+            (message) => message.timestamp < startedAt || message.role === "user",
+          ),
+        });
+        update({
+          ...state,
+          subagents: {
+            ...state.subagents,
+            [id]: {
+              ...row,
+              output: [...history.output, ...row.output],
+              toolCalls: [...history.toolCalls, ...row.toolCalls],
+              messageOutputStart: (row.messageOutputStart ?? 0) + history.output.length,
+              historyLoaded: true,
+            },
+          },
+        });
+      } else {
+        update({
+          ...state,
+          subagents: {
+            ...state.subagents,
+            [id]: { ...projectSubagent(row, snapshot), historyLoaded: true },
+          },
+        });
+      }
     },
     isRunning: () => active !== undefined || session.running,
     interrupt() {

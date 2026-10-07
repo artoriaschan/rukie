@@ -277,6 +277,12 @@ export interface Session {
     promptEntryId: string,
     options: { code: boolean; conversation: boolean },
   ): Promise<RewindResult>;
+  /** Read a known child's current Transcript and Run facts without starting or repairing it. */
+  readSubagent(
+    id: string,
+  ): Promise<
+    { messages: readonly PresentedMessage[]; model?: string; run?: SubagentRun } | undefined
+  >;
   /** Interrupt a child Run; missing and idle children are a no-op. */
   interruptSubagent(id: string): void;
   /** Ends the Session once, cancelling its Run and releasing external resources. */
@@ -1489,6 +1495,38 @@ async function createSessionInternal(
     return true;
   };
   let rewakeObserver: ((event: SessionEvent) => void | Promise<void>) | undefined;
+  function presentMessages(messages: readonly AgentMessage[]) {
+    const calls = new Map<string, { name: string; args: unknown }>();
+    return messages.map((message): PresentedMessage => {
+      if (message.role === "assistant")
+        return {
+          ...message,
+          content: message.content.map((block) => {
+            if (block.type !== "toolCall") return block;
+            calls.set(block.id, { name: block.name, args: block.arguments });
+            return {
+              ...block,
+              view: presentCall(
+                agent.state.tools.find((tool) => tool.name === block.name),
+                block.arguments,
+              ),
+            };
+          }),
+        };
+      if (message.role === "toolResult") {
+        const call = calls.get(message.toolCallId);
+        return {
+          ...message,
+          view: presentResult(
+            agent.state.tools.find((tool) => tool.name === message.toolName),
+            call?.args,
+            message,
+          ),
+        };
+      }
+      return message;
+    });
+  }
   const session = {
     get running() {
       return running;
@@ -1828,36 +1866,45 @@ async function createSessionInternal(
       );
     },
     get messages() {
-      const calls = new Map<string, { name: string; args: unknown }>();
-      return agent.state.messages.map((message): PresentedMessage => {
-        if (message.role === "assistant")
-          return {
-            ...message,
-            content: message.content.map((block) => {
-              if (block.type !== "toolCall") return block;
-              calls.set(block.id, { name: block.name, args: block.arguments });
-              return {
-                ...block,
-                view: presentCall(
-                  agent.state.tools.find((tool) => tool.name === block.name),
-                  block.arguments,
-                ),
-              };
-            }),
-          };
-        if (message.role === "toolResult") {
-          const call = calls.get(message.toolCallId);
-          return {
-            ...message,
-            view: presentResult(
-              agent.state.tools.find((tool) => tool.name === message.toolName),
-              call?.args,
-              message,
-            ),
-          };
-        }
-        return message;
-      });
+      return presentMessages(agent.state.messages);
+    },
+    async readSubagent(id: string) {
+      if (!subagents.list().some((child) => child.id === id)) return undefined;
+      const live = [...childSessions].find((child) => child.id === id);
+      if (live)
+        return {
+          messages: live.messages,
+          model: live.model,
+          run: live.toolState("subagent-run") as SubagentRun | undefined,
+        };
+      if (!store.find || !store.openReadonly)
+        throw new Error("Store has no read-only observation capability.");
+      const metadata = await store.find(id, { cwd }, BACKGROUND_CONTEXT);
+      if (!metadata || metadata.cwd !== cwd || metadata.parentSessionId !== stored.metadata.id)
+        return undefined;
+      const observed = await store.openReadonly(metadata, BACKGROUND_CONTEXT);
+      try {
+        const branch = await observed.branch("main", BACKGROUND_CONTEXT);
+        if (!branch) return undefined;
+        const entries = await branch.findEntries({ order: "oldestFirst" }, BACKGROUND_CONTEXT);
+        const facts = createToolState([subagentRunState, modelState], entries, (warning) => {
+          throw new Error(warning);
+        });
+        const run = facts.get("subagent-run") as SubagentRun | undefined;
+        if (run && (run.sessionId !== id || run.parentSessionId !== stored.metadata.id))
+          return undefined;
+        const messages = presentMessages(projectBranch(entries).messages);
+        const last = messages.findLast((message) => message.role === "assistant");
+        return {
+          messages,
+          model:
+            (facts.get("model") as string | undefined) ??
+            (last?.role === "assistant" ? `${last.provider}/${last.model}` : undefined),
+          run,
+        };
+      } finally {
+        await observed.close(BACKGROUND_CONTEXT);
+      }
     },
     toolState: (name) =>
       name === "plan" && (internal.plan || toolState.get("plan") !== undefined)
@@ -2137,6 +2184,7 @@ async function createSessionInternal(
             sessionId: stored.metadata.id,
             parentSessionId: internal.parentSessionId,
             startedAt: Date.now(),
+            model: `${model.provider}/${model.id}`,
           }
         : undefined;
       let childRunSaved = false;
@@ -2675,6 +2723,8 @@ async function createSessionInternal(
             await persistChildRun({
               ...childRun,
               endedAt: Date.now(),
+              durationMs: result.durationMs,
+              tokens: result.usage.totalTokens,
               outcome: signal?.aborted
                 ? "aborted"
                 : (result.stopReason ?? childModelStop ?? (result.success ? "completed" : "error")),
