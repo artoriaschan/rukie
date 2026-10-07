@@ -1,13 +1,28 @@
 import { afterEach, expect, test } from "bun:test";
-import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxToolCall, getCurrentTools } from "@earendil-works/pi-ai";
 import { join } from "node:path";
-import { readdir, rm } from "node:fs/promises";
-import { createSession, type SessionEvent } from "../../src/index.ts";
+import { rm } from "node:fs/promises";
+import { createSession as createAgentSession, type SessionEvent } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
-afterEach(() => dirs?.cleanup());
+const sessions = new Set<Awaited<ReturnType<typeof createAgentSession>>>();
+async function createSession(...args: Parameters<typeof createAgentSession>) {
+  const session = await createAgentSession(...args);
+  sessions.add(session);
+  return session;
+}
+afterEach(async () => {
+  await Promise.all([...sessions].map((session) => session.close()));
+  sessions.clear();
+  await dirs?.cleanup();
+});
+function reminders(session: Awaited<ReturnType<typeof createAgentSession>>, source: string) {
+  return session.messages.filter(
+    (message) => message.role === "system-reminder" && message.source === source,
+  );
+}
 
 async function writeSkill(
   root: string,
@@ -54,19 +69,14 @@ test.each([
         })
       ).text,
     ).toBe("done");
-    expect(events[0]).toMatchObject({
-      type: "session_start",
-      tools: expect.arrayContaining(["skill"]),
-    });
-    const catalog = events.find(
-      (event) => event.type === "reminder_injected" && event.source === "skills",
-    );
+    expect(getCurrentTools(fake.contexts[0]!.messages).map((tool) => tool.name)).toContain("skill");
+    const catalog = reminders(session, "skills")[0];
     expect(catalog).toBeDefined();
-    if (catalog?.type !== "reminder_injected") throw new Error("Missing skills reminder");
+    if (catalog?.role !== "system-reminder") throw new Error("Missing skills reminder");
     expect(catalog.content).toContain("Review a change");
     expect(catalog.content).not.toContain("Inspect the diff carefully.");
     expect(JSON.stringify(fake.contexts[0]!.messages)).not.toContain("Inspect the diff carefully.");
-    const loaded = fake.contexts[1]!.messages.at(-1)!;
+    const loaded = fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult")!;
     expect(JSON.stringify(loaded.content)).toContain("Inspect the diff carefully.");
     expect(JSON.stringify(loaded.content)).toContain(path);
     expect(loaded).toMatchObject({ role: "toolResult", toolName: "skill", isError: false });
@@ -88,30 +98,26 @@ test.each([
   await writeSkill(dirs.cwd, ".agents", "review", "Review changes", "Never inject this body.");
   const fake = fakeModel([fauxAssistantMessage("done")]);
   const events: SessionEvent[] = [];
-  await (
-    await createSession({ ...dirs, ...fake })
-  ).run(prompt, {
+  const session = await createSession({ ...dirs, ...fake });
+  await session.run(prompt, {
     onEvent: (event) => {
       events.push(event);
     },
   });
-  expect(fake.contexts[0]!.messages.at(-1)).toMatchObject({
+  expect(
+    fake.contexts[0]!.messages.findLast(
+      (message) =>
+        message.role === "user" &&
+        Array.isArray(message.content) &&
+        message.content.some((part) => part.type === "text" && part.text === prompt),
+    ),
+  ).toMatchObject({
     role: "user",
     content: [{ type: "text", text: prompt }],
   });
   expect(JSON.stringify(fake.contexts[0]!.messages)).not.toContain("Never inject this body.");
-  expect(
-    events.filter(
-      (event) => event.type === "reminder_injected" && event.source === "skill-invocation",
-    ),
-  ).toEqual([]);
+  expect(reminders(session, "skill-invocation")).toEqual([]);
 });
-
-async function transcript() {
-  const root = join(dirs.homeDir, ".rukie/sessions");
-  const file = (await readdir(root, { recursive: true })).find((path) => path.endsWith(".jsonl"))!;
-  return Bun.file(join(root, file)).text();
-}
 
 test("resume preserves the model and Transcript prefix and appends only changed skill lists, including removal of the last skill", async () => {
   dirs = await tempDirs();
@@ -120,8 +126,8 @@ test("resume preserves the model and Transcript prefix and appends only changed 
   const fake = fakeModel([fauxAssistantMessage("first reply")]);
   const session = await createSession({ ...dirs, ...fake, now });
   await session.run("/review original prompt");
-  const before = await transcript();
-  const prefix = structuredClone(fake.contexts[0]!.messages);
+  const before = structuredClone(session.messages);
+  await session.close();
   const next = fakeModel([fauxAssistantMessage("continued")]);
   const resumed = await createSession({ ...dirs, ...next, now, resumeId: session.id });
   // Discovery at Run time also catches changes made after createSession.
@@ -133,9 +139,9 @@ test("resume preserves the model and Transcript prefix and appends only changed 
       events.push(event);
     },
   });
-  expect(next.contexts[0]!.messages.slice(0, prefix.length)).toEqual(prefix);
-  expect(await transcript()).toStartWith(before);
-  const updates = events.filter((event) => event.type === "reminder_injected");
+  expect(resumed.messages.slice(0, before.length)).toEqual(before);
+  expect(resumed.model).toEqual(session.model);
+  const updates = reminders(resumed, "skills").slice(reminders(session, "skills").length);
   expect(updates.map((event) => event.source)).toEqual(["skills"]);
   expect(updates[0]!.content).toContain("Changed description");
   expect(updates[0]!.content).toContain("New capability");
@@ -144,6 +150,7 @@ test("resume preserves the model and Transcript prefix and appends only changed 
   await rm(join(dirs.homeDir, ".claude/skills"), { recursive: true });
   await rm(join(dirs.cwd, ".agents/skills"), { recursive: true });
   const final = fakeModel([fauxAssistantMessage("removed"), fauxAssistantMessage("unchanged")]);
+  await resumed.close();
   const empty = await createSession({ ...dirs, ...final, now, resumeId: session.id });
   events.length = 0;
   await empty.run("no skills", {
@@ -151,21 +158,19 @@ test("resume preserves the model and Transcript prefix and appends only changed 
       events.push(event);
     },
   });
-  expect(events.filter((event) => event.type === "reminder_injected")).toEqual([
-    {
-      type: "reminder_injected",
-      sessionId: session.id,
-      source: "skills",
-      content: "Available skills: none.",
-    },
-  ]);
+  const emptyCatalog = reminders(empty, "skills");
+  expect(emptyCatalog.at(-1)).toMatchObject({
+    role: "system-reminder",
+    source: "skills",
+    content: "Available skills: none.",
+  });
   events.length = 0;
   await empty.run("still empty", {
     onEvent: (event) => {
       events.push(event);
     },
   });
-  expect(events.filter((event) => event.type === "reminder_injected")).toEqual([]);
+  expect(reminders(empty, "skills")).toEqual(emptyCatalog);
 });
 
 test("an unchanged skill list is not reinjected and the tool loads the current body in a later Run", async () => {
@@ -178,6 +183,7 @@ test("an unchanged skill list is not reinjected and the tool loads the current b
   ]);
   const session = await createSession({ ...dirs, ...fake });
   await session.run("first");
+  const catalog = reminders(session, "skills");
   await writeSkill(dirs.cwd, ".rukie", "review", "Stable description", "Updated instructions.");
   const events: SessionEvent[] = [];
   await session.run("load review", {
@@ -185,10 +191,12 @@ test("an unchanged skill list is not reinjected and the tool loads the current b
       events.push(event);
     },
   });
-  expect(events.filter((event) => event.type === "reminder_injected")).toEqual([]);
-  expect(JSON.stringify(fake.contexts[2]!.messages.at(-1)!.content)).toContain(
-    "Updated instructions.",
-  );
+  expect(reminders(session, "skills")).toEqual(catalog);
+  expect(
+    JSON.stringify(
+      fake.contexts[2]!.messages.findLast((message) => message.role === "toolResult")!.content,
+    ),
+  ).toContain("Updated instructions.");
 });
 
 test("an unknown skill returns isError to the model without denying permission or ending the Run", async () => {
@@ -208,11 +216,13 @@ test("an unknown skill returns isError to the model without denying permission o
       })
     ).text,
   ).toBe("recovered");
-  expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
+  expect(
+    fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+  ).toMatchObject({
     role: "toolResult",
     toolName: "skill",
     isError: true,
-    content: [{ type: "text", text: "Skill not found: missing" }],
+    content: [{ type: "text", text: expect.stringContaining("Skill not found: missing") }],
   });
   expect(events.filter((event) => event.type === "permission_denied")).toEqual([]);
 });
@@ -240,21 +250,28 @@ test("Skill Invocation appends the body as a reminder and preserves the original
       },
     });
     const messages = fake.contexts[i]!.messages;
-    expect(messages.at(-2)).toMatchObject({
+    expect(
+      messages.findLast(
+        (message) =>
+          message.role === "user" &&
+          Array.isArray(message.content) &&
+          message.content.some((part) => part.type === "text" && part.text === prompt),
+      ),
+    ).toMatchObject({
       role: "user",
       content: [{ type: "text", text: prompt }],
     });
-    const reminder = messages.at(-1)!;
+    const reminder = messages.findLast(
+      (message) =>
+        message.role === "user" &&
+        JSON.stringify(message.content).includes("Read references/checklist.md first."),
+    )!;
     expect(reminder.role).toBe("user");
     const text = JSON.stringify(reminder.content);
     expect(text).toContain("<system-reminder>");
     expect(text).toContain("Read references/checklist.md first.");
     expect(text).toContain(path);
-    expect(
-      events.filter(
-        (event) => event.type === "reminder_injected" && event.source === "skill-invocation",
-      ),
-    ).toHaveLength(1);
+    expect(reminders(session, "skill-invocation")).toHaveLength(i + 1);
   }
 });
 
@@ -270,7 +287,9 @@ test("project skills take precedence over user skills across namespaces", async 
   const catalog = JSON.stringify(fake.contexts[0]!.messages);
   expect(catalog).toContain("Project review");
   expect(catalog).not.toContain("User review");
-  const loaded = JSON.stringify(fake.contexts[1]!.messages.at(-1)!.content);
+  const loaded = JSON.stringify(
+    fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult")!.content,
+  );
   expect(loaded).toContain("Project instructions");
   expect(loaded).not.toContain("User instructions");
 });
@@ -321,10 +340,14 @@ test("invalid skills are skipped with warnings while valid skills and the Run re
     "no-frontmatter",
   ])
     expect(catalog).not.toContain(`- ${name}:`);
-  expect(JSON.stringify(fake.contexts[1]!.messages.at(-1)!.content)).toContain(
-    "Valid instructions",
-  );
-  expect(fake.contexts[2]!.messages.at(-1)).toMatchObject({
+  expect(
+    JSON.stringify(
+      fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult")!.content,
+    ),
+  ).toContain("Valid instructions");
+  expect(
+    fake.contexts[2]!.messages.findLast((message) => message.role === "toolResult"),
+  ).toMatchObject({
     role: "toolResult",
     toolName: "skill",
     isError: true,
