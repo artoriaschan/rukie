@@ -1,5 +1,5 @@
 import type { LayoutNode } from "../layout";
-import { textCursor, textLines, type TextStyle } from "../text";
+import { textCursor, textLines, sanitizeText, type TextStyle } from "../text";
 
 interface Cell {
   text: string;
@@ -58,6 +58,7 @@ function paintGrid(root: LayoutNode, columns: number, rows: number): Cell[][] {
   );
   let clip = { left: 0, top: 0, right: columns, bottom: rows };
   let background: TextStyle["backgroundColor"];
+  let textSearch: LayoutNode["props"]["textSearch"];
   function put(x: number, y: number, text: string, width = 1, style: TextStyle = {}) {
     if (x < clip.left || y < clip.top || y >= clip.bottom || x + width > clip.right) return;
     const codes = sgr(
@@ -73,6 +74,8 @@ function paintGrid(root: LayoutNode, columns: number, rows: number): Cell[][] {
     const y = node.y - Math.max(0, root.height - rows);
     if (y + height <= clip.top || y >= clip.bottom || x + width <= clip.left || x >= clip.right)
       return;
+    const previousSearch = textSearch;
+    textSearch = node.props.textSearch ?? textSearch;
     const previousBackground = background;
     background = node.props.backgroundColor ?? background;
     if (node.type !== "tui-text" && node.props.backgroundColor) {
@@ -100,6 +103,16 @@ function paintGrid(root: LayoutNode, columns: number, rows: number): Cell[][] {
       put(x + width - 1, y + height - 1, round ? "╯" : "┘");
     }
     if (node.type === "tui-text") {
+      const matches: { start: number; end: number }[] = [];
+      const query = textSearch?.query.toLowerCase();
+      const original = sanitizeText(node.spans.map((span) => span.text).join("")).toLowerCase();
+      if (query)
+        for (
+          let at = original.indexOf(query);
+          at !== -1;
+          at = original.indexOf(query, at + query.length)
+        )
+          matches.push({ start: at, end: at + query.length });
       const top = node.textTop ?? 0;
       const caret =
         node.props.cursorStyle === "block" && node.props.cursorOffset !== undefined
@@ -123,13 +136,24 @@ function paintGrid(root: LayoutNode, columns: number, rows: number): Cell[][] {
           for (const glyph of line) {
             if (!glyph.width) continue;
             if (col + glyph.width > width) break;
+            const match = matches.some(
+              (range) => glyph.offset >= range.start && glyph.offset < range.end,
+            );
+            const highlighted = match
+              ? {
+                  ...glyph.style,
+                  color: textSearch?.color,
+                  backgroundColor: textSearch?.backgroundColor,
+                  dimColor: false,
+                }
+              : glyph.style;
             const atCaret = caret?.x === col && caret.y === top + first + row;
             put(
               x + col,
               y + first + row,
               glyph.text,
               glyph.width,
-              atCaret ? { ...glyph.style, inverse: true } : glyph.style,
+              atCaret ? { ...highlighted, inverse: true } : highlighted,
             );
             col += glyph.width;
           }
@@ -153,6 +177,7 @@ function paintGrid(root: LayoutNode, columns: number, rows: number): Cell[][] {
     node.children.forEach(paint);
     clip = previousClip;
     background = previousBackground;
+    textSearch = previousSearch;
   }
   paint(root);
   return grid;

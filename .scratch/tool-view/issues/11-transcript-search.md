@@ -4,7 +4,7 @@
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] transcript 模式下 `/` 进入搜索输入，回车后高亮匹配并跳到第一处
 - [ ] `n` / `N` 前后跳转，无匹配时显示提示

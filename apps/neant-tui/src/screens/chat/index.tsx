@@ -1,4 +1,6 @@
-import { DiffLayoutProvider } from "../../components/tool-call/diff-layout";
+import { transcriptMatches } from "./transcript-search";
+import { TextInput } from "@neant/tui";
+import { DiffLayoutProvider, useDiffLayout } from "../../components/tool-call/diff-layout";
 import { PlanReviewRow } from "../../components/plan-review/plan-review-row";
 import { showsToolCard } from "./conversation";
 import { ThinkingRow } from "../../components/thinking-row";
@@ -721,6 +723,46 @@ function Chat({
   const [scrollFocus, setScrollFocus] = useState<"body" | "details">("body");
   const [unread, setUnread] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [transcriptSearch, setTranscriptSearch] = useState<{
+    editing: boolean;
+    draft: string;
+    query: string;
+    index: number;
+  }>({ editing: false, draft: "", query: "", index: 0 });
+  const searchRef = useRef(transcriptSearch);
+  const searchInputEvents = useRef(new WeakSet<object>());
+  const expandedRef = useRef(expanded);
+  expandedRef.current = expanded;
+  const diffSearchLayout = useDiffLayout();
+  const searchMatches = useMemo(
+    () => transcriptMatches(state, transcriptSearch.query, columns, diffSearchLayout, locale),
+    [state, transcriptSearch.query, columns, diffSearchLayout, locale],
+  );
+  const currentMatch = searchMatches[transcriptSearch.index % Math.max(1, searchMatches.length)];
+  const updateSearch = (next: typeof transcriptSearch) => {
+    searchRef.current = next;
+    setTranscriptSearch(next);
+  };
+  const closeTranscript = () => {
+    expandedRef.current = false;
+    setExpanded(false);
+    updateSearch({ editing: false, draft: "", query: "", index: 0 });
+  };
+  useEffect(() => {
+    if (expanded && currentMatch && !transcriptSearch.editing)
+      body.current?.scrollToText(
+        currentMatch.anchorId,
+        transcriptSearch.query,
+        currentMatch.occurrence,
+      );
+  }, [
+    expanded,
+    currentMatch?.anchorId,
+    currentMatch?.occurrence,
+    currentMatch?.line,
+    transcriptSearch.query,
+    transcriptSearch.editing,
+  ]);
   const [expandedRows, setExpandedRows] = useState<ReadonlySet<string>>(new Set());
   const toggleRow = (id: string) =>
     setExpandedRows((rows) => {
@@ -1161,7 +1203,9 @@ function Chat({
     (!!interaction &&
       rows - footerHeight - minimumDialogHeight - dialogGap - panelMinimum < promptMaxLines + 3);
   const promptHeight =
-    (compactPrompt ? 1 + Number(!!promptNotice) : promptMaxLines + 3) + modelNoticeHeight;
+    Number(expanded) * (transcriptSearch.editing ? 2 : 1) +
+    (compactPrompt ? 1 + Number(!!promptNotice) : promptMaxLines + 3) +
+    modelNoticeHeight;
   const transcriptHeight = rewind
     ? Number(!compactPrompt)
     : interaction
@@ -1478,8 +1522,49 @@ function Chat({
       !previewRef.current
     ) {
       handledInput.current.add(event);
-      setExpanded((expanded) => !expanded);
+      if (expandedRef.current) closeTranscript();
+      else {
+        expandedRef.current = true;
+        setExpanded(true);
+      }
       return;
+    }
+    if (
+      expandedRef.current &&
+      !interactions.getSnapshot() &&
+      !sideController.current &&
+      !previewRef.current &&
+      !small
+    ) {
+      if (event.type === "key" && event.key.name === "escape") {
+        handledInput.current.add(event);
+        closeTranscript();
+        return;
+      }
+      if (searchRef.current.editing && (event.type === "key" || event.type === "paste")) {
+        handledInput.current.add(event);
+        searchInputEvents.current.add(event);
+        return;
+      }
+      if (!searchRef.current.editing && event.type === "key" && !event.key.ctrl && !event.key.alt) {
+        if (event.input === "/") {
+          handledInput.current.add(event);
+          updateSearch({ ...searchRef.current, editing: true, draft: "" });
+          dismissTooltip?.();
+          return;
+        }
+        if ((event.input === "n" || event.input === "N") && searchRef.current.query) {
+          handledInput.current.add(event);
+          const count = searchMatches.length;
+          updateSearch({
+            ...searchRef.current,
+            index: count
+              ? (searchRef.current.index + (event.input === "N" ? count - 1 : 1)) % count
+              : 0,
+          });
+          return;
+        }
+      }
     }
     if (
       event.type === "key" &&
@@ -1703,6 +1788,16 @@ function Chat({
                   group.map(({ entry: member, job, index: at }) => (
                     <Box key={at} flexDirection="column">
                       <ToolCall
+                        id={member.id ?? `row-${at}`}
+                        searchLocation={
+                          currentMatch?.toolId === (member.id ?? `row-${at}`)
+                            ? {
+                                part: currentMatch.part!,
+                                line: currentMatch.line,
+                                offset: currentMatch.offset,
+                              }
+                            : undefined
+                        }
                         foldTerminalCommand={foldTerminalCommand}
                         expanded={expanded || expandedRows.has(member.id ?? `row-${at}`)}
                         onToggle={() => toggleRow(member.id ?? `row-${at}`)}
@@ -1740,7 +1835,16 @@ function Chat({
                   onToggle={() => toggleRow(entry.id ?? `row-${index}`)}
                   locale={locale}
                   summary={entry.summary}
-                  id={entry.id}
+                  id={entry.id ?? `row-${index}`}
+                  searchLocation={
+                    currentMatch?.toolId === (entry.id ?? `row-${index}`)
+                      ? {
+                          part: currentMatch.part!,
+                          line: currentMatch.line,
+                          offset: currentMatch.offset,
+                        }
+                      : undefined
+                  }
                   name={entry.name}
                   args={entry.args}
                   callView={entry.callView}
@@ -1851,6 +1955,7 @@ function Chat({
       columns,
       thinking,
       foldTerminalCommand,
+      currentMatch,
       locale,
       !!preview,
     ],
@@ -1901,6 +2006,7 @@ function Chat({
       />
     );
   const promptReadOnly =
+    transcriptSearch.editing ||
     !!mcp ||
     !!preview ||
     modelPicker !== undefined ||
@@ -1910,6 +2016,15 @@ function Chat({
   return (
     <Box flexDirection="column" height={rows}>
       <ScrollBox
+        textSearch={
+          expanded && transcriptSearch.query
+            ? {
+                query: transcriptSearch.query,
+                color: theme.inverseText,
+                backgroundColor: theme.badgeBackground,
+              }
+            : undefined
+        }
         ref={body}
         onScroll={setBodyScroll}
         initialFollow={savedChatScroll.current?.following ?? true}
@@ -1931,7 +2046,7 @@ function Chat({
             entry && (
               <Box
                 key={index}
-                scrollAnchorId={state.completed[index]?.anchorId}
+                scrollAnchorId={state.completed[index]?.anchorId ?? `row-${index}`}
                 flexDirection="column"
               >
                 {entry}
@@ -1962,6 +2077,15 @@ function Chat({
               expanded={expanded || expandedRows.has(tool.id)}
               onToggle={() => toggleRow(tool.id)}
               id={tool.id}
+              searchLocation={
+                currentMatch?.toolId === tool.id
+                  ? {
+                      part: currentMatch.part!,
+                      line: currentMatch.line,
+                      offset: currentMatch.offset,
+                    }
+                  : undefined
+              }
               name={tool.name}
               args={tool.args}
               callView={tool.callView}
@@ -2232,8 +2356,38 @@ function Chat({
                 }}
               />
             )}
+            {expanded && (
+              <Box flexDirection="column">
+                <ThemedText color="accent">
+                  {transcriptSearch.editing
+                    ? t("transcript.search-input")
+                    : transcriptSearch.query
+                      ? searchMatches.length
+                        ? t("transcript.search-count", {
+                            index: (transcriptSearch.index % searchMatches.length) + 1,
+                            count: searchMatches.length,
+                            query: transcriptSearch.query,
+                          })
+                        : t("transcript.search-none", { query: transcriptSearch.query })
+                      : t("transcript.mode")}
+                </ThemedText>
+                {transcriptSearch.editing && (
+                  <TextInput
+                    value={transcriptSearch.draft}
+                    onChange={(draft) => updateSearch({ ...searchRef.current, draft })}
+                    onSubmit={(query) =>
+                      updateSearch({ editing: false, draft: query, query: query.trim(), index: 0 })
+                    }
+                    filterInput={(event) =>
+                      !handledInput.current.has(event) || searchInputEvents.current.has(event)
+                    }
+                  />
+                )}
+              </Box>
+            )}
             <PromptInput
               suggestions={
+                !expanded &&
                 !!commandMatches.length &&
                 !mcp &&
                 !preview &&
@@ -2292,6 +2446,17 @@ function Chat({
                 pasteEpoch.current++;
               }}
               filterInput={(event, insert) => {
+                if (
+                  expandedRef.current &&
+                  event.type === "key" &&
+                  !event.key.ctrl &&
+                  !event.key.alt &&
+                  (event.input === "/" ||
+                    (searchRef.current.query && (event.input === "n" || event.input === "N")) ||
+                    event.key.name === "escape")
+                )
+                  return false;
+                if (searchRef.current.editing) return false;
                 if (mcpPanel.getSnapshot() || previewRef.current || handledInput.current.has(event))
                   return false;
                 if (

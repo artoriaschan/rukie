@@ -12,9 +12,10 @@ export interface SplitDiffLine {
 interface WordRun extends SyntaxRun {
   changed?: boolean;
 }
-export type SplitDiffRow =
+export type SplitDiffRow = { scrollAnchorId?: string } & (
   | { text: string; path?: string }
-  | { old?: WordRun[]; new?: WordRun[]; oldChanged?: boolean; newChanged?: boolean };
+  | { old?: WordRun[]; new?: WordRun[]; oldChanged?: boolean; newChanged?: boolean }
+);
 
 function sourceRuns(line: SplitDiffLine): SyntaxRun[] {
   const runs = line.runs ?? [{ text: line.text }];
@@ -158,6 +159,7 @@ export function SplitDiffView({
         "text" in row ? (
           <ThemedBox
             key={index}
+            scrollAnchorId={row.scrollAnchorId}
             width={Math.min(width, Bun.stringWidth(row.text))}
             onClick={row.path && onPathClick ? () => onPathClick(row.path!) : onToggle}
           >
@@ -166,7 +168,7 @@ export function SplitDiffView({
             </ThemedText>
           </ThemedBox>
         ) : (
-          <ThemedBox key={index} height={1}>
+          <ThemedBox key={index} scrollAnchorId={row.scrollAnchorId} height={1}>
             <ThemedBox width={left}>
               <ThemedBox width={hitWidth(row.old, left)} onClick={row.old ? onToggle : undefined}>
                 <Pane runs={row.old} side="old" changed={row.oldChanged} />

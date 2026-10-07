@@ -60,7 +60,7 @@ function fitLine(glyphs: Glyph[], columns: number, wrap: boolean): Glyph[][] {
   return lines;
 }
 
-function sanitizeText(text: string) {
+export function sanitizeText(text: string) {
   // oxlint-disable-next-line no-control-regex -- literal control bytes must not reach the terminal
   return text.replace(/[\x00-\x09\x0b-\x1f\x7f-\x9f]/g, "");
 }

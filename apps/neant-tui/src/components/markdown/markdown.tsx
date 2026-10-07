@@ -117,3 +117,22 @@ export function Markdown({ text }: { text: string }) {
   const document = useMemo(() => fromMarkdown(text), [text]);
   return <Box flexDirection="column">{blocks(document.children)}</Box>;
 }
+
+/** Plain text emitted by Markdown, excluding formatting delimiters. */
+export function markdownText(source: string): string {
+  type Tree = {
+    type: string;
+    value?: string;
+    url?: string;
+    alt?: string | null;
+    children?: Tree[];
+  };
+  function visit(node: Tree): string {
+    if (node.type === "image") return node.alt ?? node.url ?? "";
+    if (node.value !== undefined) return node.value;
+    const separator = ["root", "list", "listItem", "blockquote"].includes(node.type) ? "\n" : "";
+    const body = node.children?.map(visit).join(separator) ?? "";
+    return node.type === "link" ? `${body} (${node.url})` : body;
+  }
+  return visit(fromMarkdown(source));
+}

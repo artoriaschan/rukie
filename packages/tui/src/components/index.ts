@@ -14,6 +14,12 @@ export { ScrollBox, type ScrollBoxProps } from "./scroll-box";
 
 export interface BoxProps {
   children?: ReactNode;
+  /** Highlight literal matches in descendant text without changing layout. */
+  textSearch?: {
+    query: string;
+    color?: TextStyle["color"];
+    backgroundColor?: TextStyle["backgroundColor"];
+  };
   /** Unique identity within a ScrollBox; keep descendant structure stable when restoring. */
   scrollAnchorId?: string;
   position?: "relative" | "absolute";
