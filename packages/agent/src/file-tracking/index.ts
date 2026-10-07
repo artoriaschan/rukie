@@ -97,6 +97,7 @@ export function createFileTracking(
     string,
     Map<string, { previous: TrackedFile; current?: TrackedFile }>
   >();
+  const toolCandidates = new Map<string, TrackedFile>();
   let requestRemaining = 16000;
   const restore = (snapshot: unknown) => {
     const previous = new Map(files);
@@ -290,6 +291,22 @@ export function createFileTracking(
         throw error;
       }
     },
+    /** Learn only from native result entries already committed, before the next provider request. */
+    async commitResults(callIds: readonly string[]) {
+      const previous = new Map(files);
+      for (const id of callIds) {
+        const candidate = toolCandidates.get(id);
+        if (candidate) files.set(candidate.path, candidate);
+      }
+      try {
+        await persist();
+        for (const id of callIds) toolCandidates.delete(id);
+      } catch (error) {
+        files.clear();
+        for (const [path, value] of previous) files.set(path, value);
+        throw error;
+      }
+    },
     /** Prompt collection and request preparation share a budget until this request is prepared. */
     finishRequest() {
       requestRemaining = 16000;
@@ -337,18 +354,9 @@ export function createFileTracking(
             } catch {
               // A successful tool result remains successful when its file disappears before tracking.
             }
-            if (current) {
-              const previous = files.get(path);
-              files.set(path, current);
-              try {
-                await persist();
-              } catch (error) {
-                // Failed knowledge persistence cannot grant permission to overwrite unknown bytes.
-                files.set(path, previous ?? { ...current, content: undefined, stale: true });
-                throw error;
-              }
-            }
+            if (current) toolCandidates.set(args[1].callId, current);
           }
+
           return result;
         },
       };

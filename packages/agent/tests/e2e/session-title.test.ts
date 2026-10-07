@@ -495,15 +495,18 @@ test("rename persists while a manual summary is pending and survives compacted r
   const dirs = await tempDirs();
   const summarizing = Promise.withResolvers<void>();
   const finish = Promise.withResolvers<void>();
-  const fake = fakeModel([
-    fauxAssistantMessage("Work completed " + "old fact ".repeat(9000)),
-    fauxAssistantMessage("Recent retained answer"),
-    async () => {
-      summarizing.resolve();
-      await finish.promise;
-      return fauxAssistantMessage("Summary of the completed work.");
-    },
-  ]);
+  const fake = fakeModel(
+    [
+      fauxAssistantMessage("Work completed " + "old fact ".repeat(9000)),
+      fauxAssistantMessage("Recent retained answer"),
+      async () => {
+        summarizing.resolve();
+        await finish.promise;
+        return fauxAssistantMessage("Summary of the completed work.");
+      },
+    ],
+    { chunkTokens: 30000 },
+  );
   const title = createAssistantMessageEventStream();
   const session = await createSession({
     ...dirs,

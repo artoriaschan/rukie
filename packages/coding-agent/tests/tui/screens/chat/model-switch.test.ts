@@ -92,7 +92,7 @@ test("a resumed session displays its persisted model before sending another prom
     env: { LANG: "en_US.UTF-8" },
     session: { model: undefined },
     prepare: async (root) => {
-      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
       const seed = await createSession({
         cwd: root,
         homeDir: root,

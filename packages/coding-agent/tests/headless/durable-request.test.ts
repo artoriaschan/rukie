@@ -11,7 +11,7 @@ test("Headless waits past parent idle for the background request's committed clo
   const childStarted = Promise.withResolvers<void>();
   const parentIdle = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
-  const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+  const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
   const respond: Parameters<typeof faux.setResponses>[0][number] = async (context) => {
     const latest = context.messages.findLast((message) => message.role === "user");
     if (JSON.stringify(latest?.content).includes("controlled-child-prompt")) {

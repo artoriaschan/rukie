@@ -152,14 +152,17 @@ test("side questions snapshot the restored compaction context before later main 
   dirs = await tempDirs();
   const original = await createSession({
     ...dirs,
-    ...fakeModel([
-      fauxAssistantMessage("OLD_HISTORY_REMOVED " + "old fact ".repeat(9000)),
-      fauxAssistantMessage("Recent retained answer."),
-      fauxAssistantMessage("Restored widget summary."),
-    ]),
+    ...fakeModel(
+      [
+        fauxAssistantMessage("OLD_HISTORY_REMOVED"),
+        fauxAssistantMessage("Recent retained answer."),
+        fauxAssistantMessage("Restored widget summary."),
+      ],
+      { chunkTokens: 30000 },
+    ),
   });
   await original.run("old main prompt");
-  await original.run("recent retained prompt");
+  await original.run("recent retained prompt " + "retained fact ".repeat(6000));
   await original.compact();
   await original.close();
   const fake = fakeModel([fauxAssistantMessage("LATER_MAIN_RESPONSE")]);

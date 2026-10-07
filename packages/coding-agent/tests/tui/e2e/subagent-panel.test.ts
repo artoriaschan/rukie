@@ -64,7 +64,7 @@ test.each(["completed", "failed", "aborted"] as const)(
 
 async function resumeWithChild(checkpoint = false) {
   const argv: string[] = [];
-  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
   original.setResponses([
     fauxAssistantMessage(
       [
@@ -475,7 +475,7 @@ for (const [lang, label, completed, unknown, error] of [
       rows: 12,
       env: { LANG: lang },
       prepare: async (root) => {
-        const fake = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+        const fake = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
         fake.setResponses([
           fauxAssistantMessage(
             fauxToolCall("subagent", {

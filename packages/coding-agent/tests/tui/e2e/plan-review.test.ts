@@ -235,7 +235,7 @@ test("resume renders the persisted approved plan as a collapsible card", async (
   const argv: string[] = [];
   const app = await start(argv, {
     prepare: async (root) => {
-      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+      const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
       faux.setResponses([
         fauxAssistantMessage(fauxToolCall("exit_plan_mode", { plan }), { stopReason: "toolUse" }),
         fauxAssistantMessage("Executed."),

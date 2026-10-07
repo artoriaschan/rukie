@@ -53,13 +53,25 @@ test("conversation retains the latest 500 observed TPS samples and wires an actu
     });
     conversation = createConversation(source, "faux/faux-1", conversationFacts);
     const events: SessionEvent[] = [];
+    let waitingForThinking = true;
+    const advance = (event: SessionEvent) => {
+      if (event.type === "run_start") waitingForThinking = true;
+      const message =
+        event.type === "message_start" || event.type === "message_update"
+          ? event.message
+          : undefined;
+      if (
+        waitingForThinking &&
+        message?.role === "assistant" &&
+        message.content.some((block) => block.type === "thinking" && block.thinking.length > 0)
+      ) {
+        waitingForThinking = false;
+        now += 1000;
+      }
+    };
     session.subscribe((event) => {
       events.push(event);
-      if (
-        event.type === "message_update" &&
-        event.changes.some((change) => change.type === "thinking_delta")
-      )
-        now += 1000;
+      advance(event);
     });
     for (let run = 0; run < 501; run++) {
       if (run === 0) await session.run("first actual Run");
@@ -81,11 +93,7 @@ test("conversation retains the latest 500 observed TPS samples and wires an actu
                   }
                 : saved;
           observe!(event);
-          if (
-            event.type === "message_update" &&
-            event.changes.some((change) => change.type === "thinking_delta")
-          )
-            now += 1000;
+          advance(event);
         }
       const samples = conversation.getSnapshot().tpsSamples;
       expect(samples).toHaveLength(Math.min(run + 1, 500));

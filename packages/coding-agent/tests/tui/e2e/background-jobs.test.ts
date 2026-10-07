@@ -205,7 +205,7 @@ test("resume never attaches a historical bash job result to a new job with the s
     columns: 120,
     rows: 40,
     prepare: async (root) => {
-      const model = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+      const model = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
       model.setResponses([
         fauxAssistantMessage(
           fauxToolCall("bash", {

@@ -25,7 +25,7 @@ test("a Session commits input, real file tool output and final answer before bec
       { role: "toolResult", toolName: "read", content: [{ type: "text", text: "hello durable" }] },
     ]);
   } finally {
-    await session.dispose();
+    await session.close();
     await dirs.cleanup();
   }
 });

@@ -631,7 +631,7 @@ test("restored image galleries use localized dim labels within their thumbnail s
     columns: 120,
     rows: 32,
     prepare: async (root) => {
-      const fake = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+      const fake = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
       fake.setResponses([fauxAssistantMessage("done")]);
       const session = await createSession({
         cwd: root,

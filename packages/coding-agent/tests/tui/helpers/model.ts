@@ -12,7 +12,7 @@ import type { Provider } from "@earendil-works/pi-ai/models";
 
 /** Model boundary controlled by the test, including streamed text and cancellation. */
 export function controlledModel(controlReviews = false, controlTitles = false) {
-  const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+  const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
   const model = faux.getModel();
   const calls: {
     context: TranscriptContext;

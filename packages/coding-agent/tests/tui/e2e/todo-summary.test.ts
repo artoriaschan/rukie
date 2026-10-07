@@ -42,7 +42,7 @@ test.each(["zh", "en"] as const)(
 async function startSession(locale: "zh" | "en") {
   const argv: string[] = [];
   let root = "";
-  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: Infinity });
+  const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
   original.setResponses([fauxAssistantMessage("seed reply")]);
   const options = {
     rows: 40,
