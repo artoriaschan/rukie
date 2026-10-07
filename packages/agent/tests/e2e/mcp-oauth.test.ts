@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { stat } from "node:fs/promises";
-import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxToolCall, getCurrentTools } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import {
@@ -561,7 +561,7 @@ test("OAuth servers require authentication without opening an interaction and ar
         ),
       ),
     ).toEqual([["mcp__srv__authenticate"], ["mcp__srv__authenticate"]]);
-    expect(events.filter((event) => event.type === "mcp_auth_required")).toHaveLength(2);
+    expect(events.filter((event) => event.type === "mcp_auth_required")).toHaveLength(1);
     expect(events.filter((event) => event.type === "mcp_server_error")).toEqual([]);
     expect(server.requests.filter((request) => request.path === "/mcp")).toHaveLength(1);
     expect(server.requests.filter((request) => request.path === "/authorize")).toEqual([]);
