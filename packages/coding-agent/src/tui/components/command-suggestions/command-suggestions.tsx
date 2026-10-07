@@ -143,7 +143,16 @@ export function CommandSuggestions({
                 )}
                 {tag && <ThemedText color="inactive">{tag}</ThemedText>}
                 <ThemedText color={focused ? "suggestion" : "inactive"}>{description}</ThemedText>
-                {" ".repeat(inner)}
+                {" ".repeat(
+                  Math.max(
+                    0,
+                    inner -
+                      3 -
+                      Math.max(nameWidth, Bun.stringWidth(item.name)) -
+                      Bun.stringWidth(tag) -
+                      Bun.stringWidth(description),
+                  ),
+                )}
               </ThemedText>
             </ThemedBox>
             <ThemedText color={border}>│</ThemedText>
@@ -157,7 +166,7 @@ export function CommandSuggestions({
             <ThemedText
               color="inactive"
               wrap="truncate"
-            >{` ${footer}${" ".repeat(inner)}`}</ThemedText>
+            >{` ${footer}${" ".repeat(Math.max(0, inner - Bun.stringWidth(` ${footer}`)))}`}</ThemedText>
           </Box>
           <ThemedText color={border}>│</ThemedText>
         </Box>
