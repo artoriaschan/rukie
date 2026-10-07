@@ -953,7 +953,34 @@ export function createConversation(session: Session, model: string, locale: Loca
       },
       true,
     );
+  const childReconciliations = new Map<string, symbol>();
+  let stopped = false;
+  const reconcileChild = async (id: string, token: symbol) => {
+    const snapshot = await session.readSubagent(id);
+    const row = state.subagents[id];
+    if (!snapshot || !row || childReconciliations.get(id) !== token) return;
+    update({
+      ...state,
+      subagents: {
+        ...state.subagents,
+        [id]: { ...projectSubagent(row, snapshot), historyLoaded: true },
+      },
+    });
+  };
   const onEvent = (event: SessionEvent) => {
+    if (event.type === "subagent_event") {
+      if (event.event.type === "session_start") childReconciliations.delete(event.agentId);
+      if (!stopped && event.event.type === "conversation_reconciled") {
+        // Re-read the committed child branch even if its earlier history was loaded.
+        // A later Run invalidates this read before it can replace newer streaming output.
+        const token = Symbol();
+        childReconciliations.set(event.agentId, token);
+        void reconcileChild(event.agentId, token).catch((error) => {
+          if (childReconciliations.get(event.agentId) === token)
+            notify(formatError(error, t), "error");
+        });
+      }
+    }
     mcpNotice(event);
     const now = Date.now();
     if (event.type === "job_event") {
@@ -986,6 +1013,7 @@ export function createConversation(session: Session, model: string, locale: Loca
       return;
     }
     if (event.type === "conversation_rewound" || event.type === "conversation_reconciled") {
+      childReconciliations.clear();
       const restored = createViewState(session, state.model, locale);
       update({
         ...restored,
@@ -1229,6 +1257,8 @@ export function createConversation(session: Session, model: string, locale: Loca
       active?.controller.abort();
     },
     async stop() {
+      stopped = true;
+      childReconciliations.clear();
       const pending = active;
       session.interruptRun();
       pending?.controller.abort();

@@ -76,7 +76,7 @@ export function JobCard({
   return (
     <Box>
       {groupPosition && (
-        <ThemedText color="inactive">
+        <ThemedText color="inactive" selectable={false}>
           {Array.from({ length: railRows }, (_, index) =>
             index === 0 && groupPosition === "first"
               ? "╭"
@@ -112,7 +112,9 @@ export function JobCard({
         <Box flexDirection="column" onClick={() => setCommandOpen((open) => !open)}>
           {commandRows.map((line, index) => (
             <ThemedText key={index} wrap="truncate">
-              <ThemedText color="accent">│</ThemedText>
+              <ThemedText color="accent" selectable={false}>
+                │
+              </ThemedText>
               <ThemedText dimColor>{line.slice(1)}</ThemedText>
             </ThemedText>
           ))}
@@ -124,7 +126,9 @@ export function JobCard({
         )}
         {Array.from({ length: 2 }, (_, index) => (
           <ThemedText key={index} wrap="truncate">
-            <ThemedText color="success">│</ThemedText>
+            <ThemedText color="success" selectable={false}>
+              │
+            </ThemedText>
             <ThemedText dimColor>{rows[rows.length - 2 + index]?.slice(1)}</ThemedText>
           </ThemedText>
         ))}
