@@ -21,6 +21,7 @@ import {
 import type { Context } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { RunResult } from "@rukie/shared";
+import { projectCommittedOutcomeFacts } from "../../session/observation.ts";
 import { transcriptMessages } from "../../session/messages.ts";
 import type { ToolStateDefinition } from "../../tool-state/index.ts";
 import {
@@ -745,19 +746,27 @@ export function createSubagentController(options: SubagentControllerOptions) {
         history.push(...page.items);
         cursor = page.next;
       } while (cursor !== undefined);
+      const historyEntries = history
+        .filter(
+          (entry) =>
+            row.latestRun?.promptEntryId === undefined || entry.id < row.latestRun.promptEntryId,
+        )
+        .sort((a, b) => a.id - b.id);
       return {
         id,
         conversation,
-        messages: transcriptMessages(frame.entries),
+        messages: await projectCommittedOutcomeFacts(
+          transcriptMessages(frame.entries),
+          frame.entries,
+          harness,
+          context,
+        ),
         generation: live.generation,
-        historyMessages: transcriptMessages(
-          history
-            .filter(
-              (entry) =>
-                row.latestRun?.promptEntryId === undefined ||
-                entry.id < row.latestRun.promptEntryId,
-            )
-            .sort((a, b) => a.id - b.id),
+        historyMessages: await projectCommittedOutcomeFacts(
+          transcriptMessages(historyEntries),
+          historyEntries,
+          harness,
+          context,
         ),
         model: agent.model ? `${agent.model.provider}/${agent.model.modelId}` : "",
         run: row.latestRun,
