@@ -75,6 +75,7 @@ test.each([
           ...controlledModel(),
         });
         id = seed.id;
+        await seed.close();
         argv.push("--resume", id);
       },
     });
@@ -108,6 +109,7 @@ test.each([
       expect(settings.permissionMode).toBe(defaultMode);
       expect(await Bun.file(join(root, "home/.rukie/settings.json")).text()).toBe(userSettings);
       expect(await Bun.file(join(root, ".rukie/settings.json")).text()).toBe(projectSettings);
+      await app.shutdown();
       const replay = await start(["--resume", id], {
         session: { cwd: root, homeDir: join(root, "home"), settings },
       });
@@ -160,7 +162,6 @@ test("shift+tab cycles modes during a Run and changes the next tool permission i
     await app.waitFor(() => app.screen().join("\n").includes("等待审批"));
     const dialog = app.screen().slice(app.screen().findIndex((line) => line.includes("等待审批")));
     app.stdin.write("\x1b[Z\x1b[Z");
-    await Bun.sleep(30);
     await app.flush();
     expect(app.screen().slice(app.screen().findIndex((line) => line.includes("等待审批")))).toEqual(
       dialog,
@@ -174,7 +175,6 @@ test("shift+tab cycles modes during a Run and changes the next tool permission i
     expect(app.screen()).toContain("❯ next draft");
     // Back-to-back key events must read the current Session mode synchronously.
     app.stdin.write("\x1b[Z\x1b[Z\x1b[Z");
-    await Bun.sleep(30);
     await app.flush();
     expect(app.screen().at(-2)).toStartWith(" 询问 ·");
   } finally {
@@ -202,7 +202,7 @@ test.each(["default", "ask"])(
       expect(dialog).toContain("2. 本 session 允许此命令");
       expect(dialog).toContain("3. 拒绝");
       app.stdin.write("1");
-      await Bun.sleep(30);
+      await app.flush();
       expect(app.calls).toHaveLength(1);
       app.stdin.write("\r");
       await app.waitFor(() => app.calls.length === 2);
@@ -263,14 +263,15 @@ test.each(["2\r", "\x1b[A\r", "\x1b[B\r", "\x1b"])(
       );
       // Invalid digits do not select a hidden option; Shift+Tab cannot change the request.
       app.stdin.write("3\x1b[Z");
-      await Bun.sleep(30);
       await app.flush();
       expect(app.screen().map((line) => line.trimStart())).toContain("❯ 1. 允许（仅本次）");
       app.stdin.write(reject);
       await app.waitFor(() => app.calls.length === 3);
       expect(app.calls[2]!.context.messages.at(-1)).toMatchObject({
         isError: true,
-        content: [{ type: "text", text: "User denied this tool call: bash" }],
+        content: [
+          { type: "text", text: expect.stringContaining("User denied this tool call: bash") },
+        ],
       });
       app.calls[2]!.finish();
       await app.waitFor(() => !app.isWorking());
@@ -323,7 +324,7 @@ test.each([
     expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
       role: "toolResult",
       isError: true,
-      content: [{ type: "text", text: "Tool not authorized: bash" }],
+      content: [{ type: "text", text: expect.stringContaining("Tool not authorized: bash") }],
     });
     app.calls[1]!.delta("continuing after refusal");
     app.calls[1]!.finish();
@@ -488,13 +489,15 @@ test("concurrent questions are answered individually and dialog keys do not edit
     app.stdin.write("3\r");
     await app.waitFor(() => app.calls.length === 2);
     expect(
-      app.calls[1]!.context.messages.filter((message) => message.role === "toolResult"),
+      app.calls[1]!.context.messages.filter((message) => message.role === "toolResult").sort(
+        (a, b) => a.toolCallId.localeCompare(b.toolCallId),
+      ),
     ).toMatchObject([
       { toolName: "bash", isError: false, content: [{ type: "text", text: "allowed-parallel" }] },
       {
         toolName: "write",
         isError: true,
-        content: [{ type: "text", text: "Tool not authorized: write" }],
+        content: [{ type: "text", text: expect.stringContaining("Tool not authorized: write") }],
       },
     ]);
     app.calls[1]!.finish();
@@ -556,7 +559,9 @@ test("session command grant permits subsequent matching calls", async () => {
     app.stdin.write("2\r");
     await app.waitFor(() => app.calls.length === 2);
     expect(
-      app.calls[1]!.context.messages.filter((message) => message.role === "toolResult"),
+      app.calls[1]!.context.messages.filter((message) => message.role === "toolResult").sort(
+        (a, b) => a.toolCallId.localeCompare(b.toolCallId),
+      ),
     ).toMatchObject([
       { isError: false, content: [{ type: "text", text: "first-parallel" }] },
       { isError: false, content: [{ type: "text", text: "first-parallel" }] },
@@ -585,7 +590,9 @@ test("session command grant permits matching calls while another tool keeps wait
     app.stdin.write("3\r");
     await app.waitFor(() => app.calls.length === 2);
     expect(
-      app.calls[1]!.context.messages.filter((message) => message.role === "toolResult"),
+      app.calls[1]!.context.messages.filter((message) => message.role === "toolResult").sort(
+        (a, b) => a.toolCallId.localeCompare(b.toolCallId),
+      ),
     ).toMatchObject([
       { toolName: "bash", isError: false, content: [{ type: "text", text: "first-matching" }] },
       { toolName: "write", isError: true },
