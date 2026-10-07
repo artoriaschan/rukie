@@ -124,4 +124,10 @@ The implementation independently follows [Kitty's protocol](https://sw.kovidgoya
 
 `SmoothRevealProvider` 为一个显示 Session 保存游标身份；`useSmoothText(key, text, active, enabled = true)` 只为 live 或 fresh 内容创建文本游标，已存在的游标在 `active` 变为 false 后仍追赶到最终内容，非前缀替换立即显示。历史以 `active = false` 初次呈现时直接显示；`enabled = false` 将已有游标收束。`useSmoothReveal(key, total, enabled)` 保留工具行数的同一节拍。两者共享约 30fps 的自适应调度，所有订阅释放或游标追赶完成后停止定时器；已完成的身份不重新播放。
 
+### Painted text selection
+
+`Box` and `ScrollBox` opt a viewport into primary drag selection with `textSelection={{ key, backgroundColor, onCopy, onResult }}`. The renderer selects only the last painted, clipped glyphs; Unicode graphemes remain whole, logical newlines are preserved, and soft wraps are joined. `Text`/`Box selectable={false}` excludes inherited decorations, including nested inline Text. `Text softWrap` marks prewrapped rows that continue the preceding logical line. `textSelection={false}` fences an overlay out of an underlying selection region. These APIs have no Agent Core dependency.
+
+Release clears highlighting and calls the frontend's `onCopy(text): Promise<boolean>`. `onResult` reports `copied`, `unavailable` (including rejected transport), or `stale` if selected bytes changed before release. Selection suppresses the pressed card action after pointer movement. Wheel, resize, focus loss and keyboard input clear the gesture; Escape consumes an active gesture before frontend key handlers. A changed region `key` or unmount invalidates the gesture and pending result feedback. Selection starts empty after mount and does not persist across Sessions.
+
 `Markdown` accepts `dimColor` to dim all body text, including syntax highlighted code, while preserving Markdown emphasis and token colors.

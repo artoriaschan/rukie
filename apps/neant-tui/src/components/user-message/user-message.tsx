@@ -29,7 +29,7 @@ export function UserMessage({
       )}
       {text.trim() && (
         <ThemedBox color="userPromptLabel" paddingRight={3}>
-          <Box width={2} flexShrink={0}>
+          <Box width={2} flexShrink={0} selectable={false}>
             <ThemedText bold>{figures.user}</ThemedText>
           </Box>
           <Box flexGrow={1} flexShrink={1}>

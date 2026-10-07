@@ -151,6 +151,9 @@ const zh = {
   "jobs.notice.failed": "后台任务失败：{{label}}（{{id}} · 用时 {{duration}}）",
   "jobs.notice.killed": "后台任务已停止：{{label}}（{{id}} · 用时 {{duration}}）",
 
+  "selection.copied": "已复制",
+  "selection.unavailable": "无法复制：剪贴板不可用",
+  "selection.stale": "所选内容已变化，请重新选择",
   "image.clipboard-tip": "剪贴板中有图片 · ctrl+v 粘贴",
   "image.label": "图片",
   "image.preview-title": "图片 #{{index}}",
@@ -581,6 +584,9 @@ const en = {
   "jobs.notice.failed": "Background job failed: {{label}} ({{id}} · {{duration}})",
   "jobs.notice.killed": "Background job stopped: {{label}} ({{id}} · {{duration}})",
 
+  "selection.copied": "Copied",
+  "selection.unavailable": "Cannot copy: clipboard is unavailable",
+  "selection.stale": "Selected content changed. Select it again.",
   "image.clipboard-tip": "Image in clipboard · ctrl+v to paste",
   "image.label": "Image",
   "image.preview-title": "Image #{{index}}",

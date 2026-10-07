@@ -8,13 +8,16 @@ export interface Key {
   alt: boolean;
 }
 
-export type InputEvent =
+export type InputEvent = (
   | { type: "focus"; focused: boolean }
   | { type: "key"; input: string; key: Key }
   | { type: "wheel"; input: ""; x: number; y: number; delta: number }
   | { type: "move"; x: number; y: number; button?: number }
   | { type: "mouse"; action: "press" | "release"; button: number; x: number; y: number }
-  | { type: "paste"; input: string };
+  | { type: "paste"; input: string }
+) & {
+  /** A renderer-owned gesture can consume input before frontend handlers. */ handled?: boolean;
+};
 
 const names: Record<string, string> = {
   A: "up",
