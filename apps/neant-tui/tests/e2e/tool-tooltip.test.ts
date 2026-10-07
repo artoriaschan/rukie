@@ -156,3 +156,28 @@ test("generic arguments beyond 480 characters expose the full JSON only in a too
     await app.cleanup();
   }
 });
+
+test("failed command tooltip carries wall-clock times, exit code and kill signal", async () => {
+  const app = await startWithClock(["--yolo", "run"], { rows: 40, env: { LANG: "en_US.UTF-8" } });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("bash", { command: "kill -TERM $$\n# killed-command", description: "Run" });
+    await app.waitFor(() => app.calls.length === 2);
+    app.calls[1]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    hover(app, "Bash(kill");
+    jest.advanceTimersByTime(600);
+    await app.waitFor(() => app.screen().some((line) => line.includes("Started:")));
+    const screen = app.screen();
+    const firstBorder = screen.findIndex((line) => line.includes("╭"));
+    const end = screen.findIndex((line, index) => index > firstBorder && line.includes("╰"));
+    const tooltip = screen.slice(firstBorder, end + 1).join("\n");
+    expect(tooltip).toMatch(/Started: \d{2}:\d{2}:\d{2}/);
+    expect(tooltip).toMatch(/Finished: \d{2}:\d{2}:\d{2}/);
+    expect(tooltip).toContain("Exit code: 143");
+    expect(tooltip).toContain("Signal: SIGTERM");
+    expect(tooltip).not.toContain(" · ");
+  } finally {
+    await app.cleanup();
+  }
+});
