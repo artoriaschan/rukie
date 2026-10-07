@@ -44,7 +44,7 @@ env -u NO_COLOR bun run check                     # format → lint → types �
 
 - Fix the cause in the module that owns the behavior. Deliver the smallest working end-to-end change, then extend it only for requirements in scope.
 - Prefer one representation and one execution path. When changing an internal interface, update all repository consumers and remove obsolete code, configuration, tests, and docs in the same change.
-- Keep compatibility only for a verified external consumer, persisted user data, or a required staged rollout. Isolate it, document the constraint and removal condition, and preserve recoverability for storage migrations.
+- Do not preserve backward compatibility unless the user asks for it.
 - Add abstractions for current use cases. Before adding a helper or dependency, inspect existing packages, their APIs, and types; choose the option that reduces total implementation and maintenance cost.
 - Keep TypeScript strict. Parse untrusted settings, tool/model JSON, files, and process or wire inputs as `unknown`, then validate and narrow them. Trust typed internal calls; use assertions only with a checked or documented invariant, and explain unavoidable `any`.
 - Name the behavior precisely. Comments and JSDoc explain caller obligations, timing, ownership, failure behavior, or a reason the code cannot express. Keep them local and update them with the implementation.
