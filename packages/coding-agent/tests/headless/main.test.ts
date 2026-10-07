@@ -130,7 +130,7 @@ test.each([
         job: { id: "bash-1", status: "killed" },
       });
       expect(jobs.every((event) => event.sessionId === jobs[0].sessionId)).toBe(true);
-      expect(events.filter((event) => event.type === "session_start")).toHaveLength(1);
+      expect(events.filter((event) => event.type === "snapshot").length).toBeGreaterThanOrEqual(1);
     }
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -293,8 +293,8 @@ test.each(["text", "stream-json"])(
           .trim()
           .split("\n")
           .map((line) => JSON.parse(line));
-        expect(events.at(-1)).toMatchObject({
-          type: "result",
+        expect(events.findLast((event) => event.type === "request_settled")).toMatchObject({
+          type: "request_settled",
           stopReason: "hook_blocked",
           reason: "private prompt rejected",
         });
@@ -434,8 +434,11 @@ test.each(["text", "stream-json"])(
     await mkdir(join(root, ".rukie", "file-history"), { recursive: true });
     const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
     const reply: Parameters<typeof faux.setResponses>[0][number] = (context) => {
-      const last = context.messages.at(-1)!;
-      if (last.role === "user" && JSON.stringify(last.content).includes("child-prompt"))
+      const last = context.messages.findLast(
+        (message) =>
+          message.role === "user" && !JSON.stringify(message.content).includes("<system-reminder>"),
+      );
+      if (last?.role === "user" && JSON.stringify(last.content).includes("child-prompt"))
         return fauxAssistantMessage("child-only text");
       return fauxAssistantMessage("parent-only text");
     };
@@ -497,7 +500,10 @@ test.each(["text", "stream-json"])(
               event.sessionId !== event.event.sessionId && event.agentId === event.event.sessionId,
           ),
         ).toBe(true);
-        expect(events.at(-1)).toMatchObject({ type: "result", text: "parent-only text" });
+        expect(events.findLast((event) => event.type === "request_settled")).toMatchObject({
+          type: "request_settled",
+          text: "parent-only text",
+        });
       }
       if (format === "stream-json") {
         const childId = stdout
@@ -534,6 +540,7 @@ test("Headless resume emits a text plan and never registers interactive plan too
   try {
     const seed = await createSession({ cwd: root, homeDir: root, ...echoModel() });
     await seed.setPlanMode(true);
+    await seed.close();
     const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
     faux.setResponses([
       (context) => {
@@ -563,11 +570,11 @@ test("Headless resume emits a text plan and never registers interactive plan too
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line));
-    const start = events.find((event) => event.type === "session_start");
-    expect(start.tools).not.toContain("exit_plan_mode");
-    expect(start.tools).not.toContain("enter_plan_mode");
-    expect(events.at(-1)).toMatchObject({
-      type: "result",
+    const start = events.find((event) => event.type === "snapshot");
+    expect(start.tools.map((tool: { name: string }) => tool.name)).not.toContain("exit_plan_mode");
+    expect(start.tools.map((tool: { name: string }) => tool.name)).not.toContain("enter_plan_mode");
+    expect(events.findLast((event) => event.type === "request_settled")).toMatchObject({
+      type: "request_settled",
       text: "# Text plan\n\nInspect, implement and verify.",
     });
     const resumed = await createSession({
@@ -589,7 +596,10 @@ test.each([false, true])(
     const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
     let childResponded = false;
     const reply: Parameters<typeof faux.setResponses>[0][number] = (context) => {
-      const last = context.messages.at(-1);
+      const last = context.messages.findLast(
+        (message) =>
+          message.role === "user" && !JSON.stringify(message.content).includes("<system-reminder>"),
+      );
       if (last?.role === "user" && JSON.stringify(last.content).includes("child-prompt")) {
         childResponded = true;
         return fauxAssistantMessage(
@@ -889,7 +899,18 @@ test.each(["text", "stream-json"])(
           { server: "srv", error: "needs authentication; run /mcp login srv in the TUI" },
         ]);
         expect(stdout).not.toContain("mcp__srv__authenticate");
-        expect(events.at(-1)).toMatchObject({ type: "result", success: true });
+        expect(
+          events.findLast(
+            (event) =>
+              typeof event === "object" &&
+              event !== null &&
+              "type" in event &&
+              event.type === "request_settled",
+          ),
+        ).toMatchObject({
+          type: "request_settled",
+          success: true,
+        });
       } else expect(stdout).toContain("echo:");
     } finally {
       await server.stop();

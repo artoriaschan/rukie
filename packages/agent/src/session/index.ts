@@ -232,6 +232,10 @@ export interface Session {
         title: string;
         description: string;
         historyMessages?: readonly TranscriptMessage[];
+        generation?: {
+          attempt: number;
+          message?: import("./messages.ts").TranscriptAssistantMessage;
+        };
         model?: string;
         run?: SubagentRun;
       }
@@ -489,17 +493,14 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       subagentsDefinition,
     ];
     let state = await createToolState(definitions, harness, conversation, context);
-    const writeMetadata = async (
-      title = metadata?.title ?? "",
-      source: TitleSource = metadata?.titleSource ?? "prompt",
-    ) => {
+    const writeMetadata = async (title?: string, source?: TitleSource) => {
       await harness.commit(async (tx) => {
         const doc = await tx.doc(SessionMetadataDoc);
         Object.assign(doc, {
           id: lease.id,
           cwd,
-          title,
-          titleSource: source,
+          title: title ?? doc.title ?? "",
+          titleSource: source ?? doc.titleSource ?? "prompt",
           model: `${model.provider}/${model.id}`,
           activeConversationId: Number(conversation.id),
           updatedAt: Date.now(),
@@ -623,6 +624,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     });
     const activation = await harness.snapshot(GoalActivationDoc, conversation.id, context);
     const nativeLive = await harness.snapshot(LiveDoc, conversation.id, context);
+    let activationTaskFact = activation?.taskId ?? null;
+    let liveTaskFact = nativeLive?.run ? Number(nativeLive.run.taskId) : null;
     const goal = createGoalController({
       initialArmed: !!nativeLive?.run && activation?.taskId === Number(nativeLive.run.taskId),
       getSnapshot: () => state.get("goal"),
@@ -1284,6 +1287,15 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               );
             },
             onYield: async (_answer, api, ctx) => {
+              if (_answer.stopReason !== "stop") {
+                goal.disarm();
+                await conversation.commit(async (tx) => {
+                  const activation = await tx.doc(GoalActivationDoc, conversation.id);
+                  activation.taskId = null;
+                  activation.requestId = null;
+                }, ctx);
+                return undefined;
+              }
               const continuation = async (content: string, source: string) => {
                 await conversation.commit(
                   (tx) =>
@@ -1301,24 +1313,27 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 return continuation(content, "goal");
               }
               const hookState = await harness.snapshot(HookContinuationDoc, conversation.id, ctx);
-              const count = hookState?.taskId === Number(api.taskId) ? hookState.count : 0;
+              const live = await harness.snapshot(LiveDoc, conversation.id, ctx);
+              const runAnchor = Number(live?.run?.inputs[0]);
+              const count = hookState?.taskId === runAnchor ? hookState.count : 0;
               const result = await hooks.run("Stop", hookInput({ stop_hook_active: count > 0 }), {
                 signal: ctx.abortSignal,
               });
               await applyHookResult(result, "hook:Stop", ctx);
               if (result.decision === "block" && result.reason) {
                 if (count >= 8) {
+                  warn("Stop hook reached the 8 continuation limit");
                   custom({
                     type: "hook_warning",
                     event: "Stop",
                     hook: "continuation",
-                    message: "Stop hook continuation limit reached (8).",
+                    message: "Stop hook reached the 8 continuation limit",
                   });
                   return undefined;
                 }
                 await conversation.commit(async (tx) => {
                   const state = await tx.doc(HookContinuationDoc, conversation.id);
-                  state.taskId = Number(api.taskId);
+                  state.taskId = runAnchor;
                   state.count = count + 1;
                 }, ctx);
                 custom({ type: "hook_continued", event: "Stop", reason: result.reason });
@@ -1397,11 +1412,26 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           if (
             change.type === "document" &&
             change.conversationId === conversation.id &&
+            change.record.kind === "rukie.goal-activation"
+          ) {
+            const task = change.value?.taskId;
+            activationTaskFact = typeof task === "number" ? task : null;
+          }
+          if (
+            change.type === "document" &&
+            change.conversationId === conversation.id &&
             change.record.kind === "pi.live" &&
             change.value
           ) {
             const value = change.value;
             const run = value.run;
+            liveTaskFact =
+              run &&
+              typeof run === "object" &&
+              !Array.isArray(run) &&
+              typeof run.taskId === "number"
+                ? run.taskId
+                : null;
             const generation = value.generation;
             if (
               run &&
@@ -1469,7 +1499,15 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         }
       },
       facts: () => ({
-        toolStates: state.snapshot(),
+        toolStates: {
+          ...state.snapshot(),
+          goal: state.get("goal")
+            ? {
+                ...(state.get("goal") as Omit<GoalView, "armed">),
+                armed: activationTaskFact !== null && liveTaskFact !== null,
+              }
+            : null,
+        },
         runSummaries,
         model: modelFact,
         planMode: !!(state.get("plan") as { active?: boolean } | undefined)?.active,
@@ -1558,8 +1596,15 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         receipt.status === "done" && receipt.type === "input"
           ? await lease.storage.entry(receipt.answer, context)
           : undefined;
+      const terminal =
+        (answer?.entry.model ?? []).findLast((message) => message.role === "assistant") ??
+        view.entries
+          .flatMap((entry) =>
+            receipt.entry && entry.id >= receipt.entry ? (entry.model ?? []) : [],
+          )
+          .findLast((message) => message.role === "assistant");
       const text =
-        answer?.entry.model
+        (answer?.entry.model ?? (terminal ? [terminal] : undefined))
           ?.filter((message) => message.role === "assistant")
           .map(textOf)
           .join("") ?? "";
@@ -1568,10 +1613,20 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       return {
         requestId,
         text,
-        success: receipt.status === "done",
+        success:
+          receipt.status === "done" &&
+          (terminal?.role !== "assistant" || terminal.stopReason === "stop"),
         usage,
         durationMs: Date.now() - (request?.startedAt ?? Date.now()),
-        ...(receipt.status === "unanswered" ? { error: receipt.reason } : {}),
+        ...(receipt.status === "unanswered"
+          ? { error: typeof receipt.detail === "string" ? receipt.detail : receipt.reason }
+          : terminal?.role === "assistant" && terminal.stopReason !== "stop"
+            ? {
+                error:
+                  terminal.errorMessage ??
+                  `Model response ended with stop reason ${terminal.stopReason}`,
+              }
+            : {}),
       };
     };
     async function submit(
@@ -1866,6 +1921,16 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
       async authenticateMcp(name) {
         assertAvailable(true);
+        await mcp.connect({
+          cwd,
+          homeDir: options.homeDir,
+          settings,
+          trustProjectMcp: options.trustProjectMcp,
+          interactive: !!options.onMcpAuth,
+          onMcpAuth: options.onMcpAuth,
+          onInteractionStart: notifyInteraction,
+          onWarning: warn,
+        });
         const result = await mcp.authenticate(name);
         await rebuildTools();
         return result;
@@ -2062,6 +2127,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           title: facts?.title ?? child.description,
           description: child.description,
           model: child.model,
+          ...(child.generation?.message
+            ? { generation: { ...child.generation, message: child.generation.message } }
+            : {}),
           run: child.run,
         };
       },
@@ -2104,6 +2172,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             interactive: !!options.onMcpAuth,
             onMcpAuth: options.onMcpAuth,
             onInteractionStart: notifyInteraction,
+            getOrigin: (conversationId) => {
+              const row = subagents.list().find((row) => row.conversationId === conversationId);
+              return row ? { agentId: row.id, description: row.description } : undefined;
+            },
             onWarning: warn,
           });
           for (const event of [...mcp.errors, ...mcp.authRequired]) custom(event);
@@ -2253,9 +2325,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           subagents.close();
           for (const resource of childResources.values()) {
             await release(() => resource.observation.close());
-            await release(() => resource.jobs.dispose(true));
+            await release(() => resource.jobs.dispose());
           }
-          await release(() => jobs.dispose(true));
+          await release(() => jobs.dispose());
           await release(() => mcp.close());
           await release(() => env.cleanup(context));
           unregister();

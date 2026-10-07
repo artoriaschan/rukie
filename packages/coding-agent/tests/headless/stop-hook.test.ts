@@ -29,26 +29,25 @@ test.each(["text", "stream-json"])(
         join(root, "stop.sh"),
         `cat >/dev/null\necho '{"decision":"block","reason":"verify tests"}'\n`,
       );
-      expect(
-        await main(["-p", "finish", "--output-format", format], {
-          readStdin: async () => "",
-          stdout: (text) => {
-            stdout += text;
+      const code = await main(["-p", "finish", "--output-format", format], {
+        readStdin: async () => "",
+        stdout: (text) => {
+          stdout += text;
+        },
+        stderr: (text) => {
+          stderr += text;
+        },
+        session: {
+          cwd: root,
+          homeDir: root,
+          model: faux.getModel(),
+          models: auxiliaryModels(faux.provider.streamSimple),
+          settings: {
+            hooks: { Stop: [{ hooks: [{ type: "command", command: "sh stop.sh" }] }] },
           },
-          stderr: (text) => {
-            stderr += text;
-          },
-          session: {
-            cwd: root,
-            homeDir: root,
-            model: faux.getModel(),
-            models: auxiliaryModels(faux.provider.streamSimple),
-            settings: {
-              hooks: { Stop: [{ hooks: [{ type: "command", command: "sh stop.sh" }] }] },
-            },
-          },
-        }),
-      ).toBe(0);
+        },
+      });
+      expect(code, stderr).toBe(0);
       expect(stderr).toContain("Stop hook reached the 8 continuation limit");
       if (format === "text") expect(stdout).toBe("conclusion 8\n");
       else {
@@ -73,8 +72,8 @@ test.each(["text", "stream-json"])(
         expect(events.filter((event) => event.type === "hook_warning")).toMatchObject([
           { event: "Stop", error: { code: "hook-continuation-limit" } },
         ]);
-        expect(events.at(-1)).toMatchObject({
-          type: "result",
+        expect(events.findLast((event) => event.type === "request_settled")).toMatchObject({
+          type: "request_settled",
           text: "conclusion 8",
           success: true,
         });
