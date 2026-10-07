@@ -6,6 +6,7 @@ export interface JobView {
   command: string;
   status: "running" | "stopping" | "completed" | "failed" | "killed";
   exitCode?: number;
+  signal?: string;
   startedAt: number;
   endedAt?: number;
   spillPath?: string;

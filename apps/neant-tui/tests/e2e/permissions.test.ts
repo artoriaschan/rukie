@@ -196,9 +196,7 @@ test.each(["default", "ask"])(
       });
       await app.waitFor(() => app.screen().some((line) => line.includes("等待审批")));
       const dialog = app.screen().join("\n");
-      expect(dialog).toContain(
-        'bash {"command":"printf first-permitted","description":"Run test command"}',
-      );
+      expect(dialog).toContain("执行(printf first-permitted)");
       expect(dialog).toContain("1. 允许（仅本次）");
       expect(dialog).toContain("2. 本 session 允许此命令");
       expect(dialog).toContain("3. 拒绝");
@@ -444,7 +442,7 @@ test("session allow remembers only this command across Runs and leaves settings 
     expect(app.screen().join("\n")).not.toContain("等待审批");
     app.calls[3]!.tool("write", { path: "other.txt", content: "other tool" });
     await app.waitFor(() => app.screen().join("\n").includes("等待审批"));
-    expect(app.screen().join("\n")).toContain("write ");
+    expect(app.screen().join("\n")).toContain("写入(");
     app.stdin.write("\x1b");
     await app.waitFor(() => app.calls.length === 5);
     app.calls[4]!.finish();
@@ -524,9 +522,7 @@ test("the question stays visible above a multiline draft and restores the draft 
     });
     await app.waitFor(() => app.screen().join("\n").includes("等待审批"));
     const dialog = app.screen().join("\n");
-    expect(dialog).toContain(
-      'bash {"command":"printf visible-request","description":"Run test command"}',
-    );
+    expect(dialog).toContain("执行(printf visible-request)");
     expect(dialog).toContain("1. 允许（仅本次）");
     expect(dialog).toContain("2. 本 session 允许此命令");
     expect(dialog).toContain("3. 拒绝");

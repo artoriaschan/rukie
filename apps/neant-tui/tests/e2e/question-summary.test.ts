@@ -190,7 +190,9 @@ test.each(["zh", "en"] as const)(
       app.stdin.write("\x03\x03");
       await app.waitFor(() => !app.isWorking());
       const lines = app.allLines();
-      const index = lines.findIndex((line) => line.startsWith("✗ ask_user_question "));
+      const index = lines.findIndex((line) =>
+        line.startsWith(locale === "zh" ? "✗ 提问(" : "✗ Question("),
+      );
       expect(index).toBeGreaterThanOrEqual(0);
       expect(lines[index + 1]).toMatch(/^⎿ .+/);
       expect(lines).not.toContain(locale === "zh" ? "• 提问" : "• Questions");
@@ -216,7 +218,9 @@ test("question parameter errors keep the ordinary error card", async () => {
     await app.waitFor(() => app.calls.length === 2);
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
-    expect(app.allLines()).toContain('✗ ask_user_question {"questions":[]}');
+    expect(app.allLines().some((line) => line.startsWith('✗ Question({"questions":[]})'))).toBe(
+      true,
+    );
     expect(app.allLines().join("\n")).toContain("Validation failed");
     expect(app.allLines()).not.toContain("• Questions");
     expect(app.allLines().join("\n")).not.toContain("Unanswered");

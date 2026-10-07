@@ -611,3 +611,54 @@ test("parent cancellation during child creation settles the late child without a
   const stored = await store.list({ cwd: dirs.cwd }, BACKGROUND_CONTEXT);
   expect(stored.filter((item) => item.parentSessionId === session.id)).toHaveLength(1);
 });
+
+test("subagent_event forwards the child's terminal Tool Views", async () => {
+  dirs = await tempDirs();
+  const reply: Parameters<typeof fakeModel>[0][number] = (context) => {
+    const child = !context.messages.some(
+      (message) =>
+        message.role === "system" && message.toolsAdded?.some((tool) => tool.name === "subagent"),
+    );
+    if (
+      child &&
+      !context.messages.some(
+        (message) => message.role === "toolResult" && message.toolName === "bash",
+      )
+    )
+      return fauxAssistantMessage(
+        fauxToolCall("bash", { command: "printf child-view", description: "Print child output" }),
+        { stopReason: "toolUse" },
+      );
+    return fauxAssistantMessage(child ? "child done" : "parent done");
+  };
+  const fake = fakeModel([
+    fauxAssistantMessage(fauxToolCall("subagent", { description: "Inspect", prompt: "child" }), {
+      stopReason: "toolUse",
+    }),
+    reply,
+    reply,
+    reply,
+    reply,
+  ]);
+  const session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
+  const events: SessionEvent[] = [];
+  try {
+    await session.run("delegate", {
+      onEvent(event) {
+        events.push(event);
+      },
+    });
+    const childTools = events.flatMap((event) =>
+      event.type === "subagent_event" &&
+      (event.event.type === "tool_execution_start" || event.event.type === "tool_execution_end")
+        ? [event.event]
+        : [],
+    );
+    expect(childTools).toMatchObject([
+      { view: { card: "terminal", command: "printf child-view" } },
+      { view: { card: "terminal", output: "child-view", exitCode: 0 } },
+    ]);
+  } finally {
+    await session.dispose();
+  }
+});

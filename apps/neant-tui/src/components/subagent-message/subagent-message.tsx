@@ -1,3 +1,4 @@
+import type { ToolCallView } from "@neant/shared";
 // Presentation adapted from dsh-TUI src/components/Chat/SubagentMessage.tsx (MIT).
 // https://github.com/ccch1mneyyy/dsh-TUI
 /*
@@ -25,7 +26,7 @@ SOFTWARE.
 */
 import { useState } from "react";
 import type { Locale } from "@neant/i18n";
-import { figures, ThemedBox, ThemedText, useAnimationFrame, toolNameColor } from "@neant/tui";
+import { figures, ThemedBox, ThemedText, useAnimationFrame, toolKindColor } from "@neant/tui";
 import { createTuiI18n } from "../../i18n";
 
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
@@ -74,6 +75,7 @@ export interface SubagentView {
     id: string;
     name: string;
     argsPreview: string;
+    view?: ToolCallView;
     status: "running" | "completed" | "failed";
     startedAt?: number;
     durationMs?: number;
@@ -149,13 +151,13 @@ export function SubagentMessage({
             <>
               <ThemedText dimColor>{"  · "}</ThemedText>
               <ThemedText color="success">✓</ThemedText>
-              <ThemedText color={toolNameColor(previous.name)}>{previous.name}</ThemedText>
+              <ThemedText color={toolKindColor(previous.view?.kind)}>{previous.name}</ThemedText>
             </>
           )}
           {active && (
             <>
               {previous && <ThemedText dimColor>{" · "}</ThemedText>}
-              <ThemedText color={toolNameColor(active.name)}>{active.name}</ThemedText>
+              <ThemedText color={toolKindColor(active.view?.kind)}>{active.name}</ThemedText>
             </>
           )}
           {latestTool?.argsPreview && (

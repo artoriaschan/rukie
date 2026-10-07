@@ -9,6 +9,7 @@ export interface Key {
 }
 
 export type InputEvent =
+  | { type: "focus"; focused: boolean }
   | { type: "key"; input: string; key: Key }
   | { type: "wheel"; input: ""; x: number; y: number; delta: number }
   | { type: "move"; x: number; y: number; button?: number }
@@ -88,6 +89,10 @@ export function listenInput(
           if (!sequence) return;
           buffer = buffer.slice(sequence[0].length);
           const [, parameters = "", , final = ""] = sequence;
+          if ((final === "I" || final === "O") && !parameters) {
+            emit({ type: "focus", focused: final === "I" });
+            continue;
+          }
           if (final === "t") {
             control?.(sequence[0]);
             continue;

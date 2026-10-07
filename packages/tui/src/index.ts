@@ -20,6 +20,7 @@ export { render, type RenderOptions } from "./renderer";
 export {
   useInput,
   useTerminalSize,
+  useTerminalFocus,
   useTerminalGraphics,
   ClockProvider,
   useAnimationFrame,
@@ -32,7 +33,7 @@ export {
   ThemeProvider,
   useTheme,
   figures,
-  toolNameColor,
+  toolKindColor,
   rgb,
   hex,
   interpolateColor,

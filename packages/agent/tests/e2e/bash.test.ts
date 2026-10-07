@@ -1,4 +1,5 @@
-import { afterEach, expect, test } from "bun:test";
+import * as bashFactory from "../../src/tools/bash/index.ts";
+import { afterEach, expect, test, spyOn } from "bun:test";
 import {
   fauxAssistantMessage,
   fauxToolCall,
@@ -29,7 +30,27 @@ test("bash resolves workdir relative to the Session cwd", async () => {
     fauxAssistantMessage("done"),
   ]);
   const session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
-  await session.run("inspect nested file");
+  const views: unknown[] = [];
+  await session.run("inspect nested file", {
+    onEvent(event) {
+      if (event.type === "tool_execution_start" || event.type === "tool_execution_end")
+        views.push(event);
+    },
+  });
+  expect(views).toMatchObject([
+    {
+      view: {
+        card: "terminal",
+        kind: "execute",
+        displayKey: "tool.bash",
+        command: "cat value.txt",
+      },
+    },
+    { view: { card: "terminal", kind: "execute", output: "nested output", exitCode: 0 } },
+  ]);
+  expect(session.messages.find((message) => message.role === "toolResult")).toMatchObject({
+    view: { card: "terminal", exitCode: 0 },
+  });
   expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
     role: "toolResult",
     isError: false,
@@ -46,7 +67,14 @@ test("bash rejects a missing description without executing the command", async (
     fauxAssistantMessage("recovered"),
   ]);
   const session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
-  await session.run("run command");
+  const events: unknown[] = [];
+  await session.run("run command", {
+    onEvent(event) {
+      if (event.type === "tool_execution_start" || event.type === "tool_execution_end")
+        events.push(event);
+    },
+  });
+  expect(events).toMatchObject([{ view: undefined }, { view: undefined }]);
   const result = fake.contexts[1]!.messages.at(-1);
   expect(result).toMatchObject({ role: "toolResult", isError: true });
   expect(JSON.stringify(result)).toContain("description");
@@ -73,6 +101,10 @@ test.each([
     ]);
     const session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
     await session.run("run command");
+    expect(session.messages.find((message) => message.role === "toolResult")).toMatchObject({
+      details: { exitCode: command.includes("exit 7") ? 7 : command.includes("TERM") ? 143 : 0 },
+      view: { card: "terminal", ...(command.includes("TERM") ? { signal: "SIGTERM" } : {}) },
+    });
     expect(fake.contexts[1]!.messages.at(-1)).toMatchObject({
       role: "toolResult",
       isError,
@@ -201,4 +233,102 @@ test("bash escalates cancellation when a process handles SIGTERM without exiting
   await expect(run).rejects.toThrow("stop stubborn process");
   expect(await Bun.file(join(dirs.cwd, "term-marker")).text()).toBe("received");
   expect(() => process.kill(pid, 0)).toThrow();
+});
+
+test("Tool Views are recomputed from persisted facts after Session resume", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([
+    fauxAssistantMessage(
+      fauxToolCall("bash", { command: "printf replay; exit 7", description: "Print replay" }),
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage("done"),
+  ]);
+  const session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
+  await session.run("run command");
+  const before = session.messages;
+  await session.dispose();
+  const resumed = await createSession({ ...dirs, ...fake, resumeId: session.id });
+  try {
+    expect(resumed.messages).toEqual(before);
+    expect(resumed.messages.find((message) => message.role === "toolResult")).toMatchObject({
+      view: { card: "terminal", exitCode: 7, output: "replay\n\nCommand exited with code 7" },
+    });
+    const files = new Bun.Glob("**/*.jsonl");
+    for await (const path of files.scan({ cwd: dirs.homeDir, absolute: true })) {
+      const stored = await Bun.file(path).text();
+      expect(stored).not.toContain('"view":');
+    }
+  } finally {
+    await resumed.dispose();
+  }
+});
+
+test("unknown tools produce no Tool View and retain their normal error result", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([
+    fauxAssistantMessage(fauxToolCall("removed_tool", {}), { stopReason: "toolUse" }),
+    fauxAssistantMessage("done"),
+  ]);
+  const session = await createSession({ ...dirs, ...fake });
+  const events: unknown[] = [];
+  try {
+    await session.run("run", {
+      onEvent(event) {
+        if (event.type === "tool_execution_start" || event.type === "tool_execution_end")
+          events.push(event);
+      },
+    });
+    expect(events).toMatchObject([{ view: undefined }, { view: undefined, isError: true }]);
+    expect(session.messages.find((message) => message.role === "toolResult")).toMatchObject({
+      isError: true,
+      view: undefined,
+    });
+  } finally {
+    await session.dispose();
+  }
+});
+
+test("a tool author's throwing presenters cannot fail a Session Run", async () => {
+  dirs = await tempDirs();
+  const create = bashFactory.createBashTool;
+  // Inject an author-supplied presenter at the existing tool factory; execute remains real.
+  const factory = spyOn(bashFactory, "createBashTool").mockImplementation((cwd, jobs) => ({
+    ...create(cwd, jobs),
+    presentCall() {
+      throw new Error("broken call presenter");
+    },
+    presentResult() {
+      throw new Error("broken result presenter");
+    },
+  }));
+  const fake = fakeModel([
+    fauxAssistantMessage(
+      fauxToolCall("bash", { command: "printf survived", description: "Print" }),
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage("done"),
+  ]);
+  const session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
+  try {
+    const events: unknown[] = [];
+    expect(
+      (
+        await session.run("run", {
+          onEvent(event) {
+            if (event.type === "tool_execution_start" || event.type === "tool_execution_end")
+              events.push(event);
+          },
+        })
+      ).success,
+    ).toBe(true);
+    expect(events).toMatchObject([{ view: undefined }, { view: undefined, isError: false }]);
+    expect(session.messages.find((message) => message.role === "toolResult")).toMatchObject({
+      content: [{ text: "survived" }],
+      view: undefined,
+    });
+  } finally {
+    factory.mockRestore();
+    await session.dispose();
+  }
 });

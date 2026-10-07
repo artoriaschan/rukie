@@ -1,6 +1,6 @@
 import type { Ref } from "react";
 import type { Locale } from "@neant/i18n";
-import { Box, ScrollBox, ThemedText, toolNameColor, type ScrollHandle } from "@neant/tui";
+import { Box, ScrollBox, ThemedText, toolKindColor, type ScrollHandle } from "@neant/tui";
 import { createTuiI18n } from "../../i18n";
 import { SUBAGENT_APPEARANCE, subagentStatusKey, type SubagentView } from "../subagent-message";
 import { Markdown } from "../markdown";
@@ -186,7 +186,7 @@ export function SubagentDetailScene({
                   >
                     {tool.status === "running" ? "·" : tool.status === "completed" ? "✓" : "×"}{" "}
                   </ThemedText>
-                  <ThemedText color={toolNameColor(tool.name)}>{tool.name}</ThemedText>
+                  <ThemedText color={toolKindColor(tool.view?.kind)}>{tool.name}</ThemedText>
                   {tool.durationMs !== undefined && (
                     <ThemedText dimColor>{` ${formatDuration(tool.durationMs)}`}</ThemedText>
                   )}

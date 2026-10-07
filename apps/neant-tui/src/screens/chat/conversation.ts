@@ -15,6 +15,8 @@ import {
   type RunResult,
   type ContextReport,
   type JobView,
+  type ToolCallView,
+  type ToolResultView,
 } from "@neant/shared";
 import type { TpsSample } from "../../components/status-line";
 import { goalPhasePresentation } from "../../components";
@@ -27,6 +29,8 @@ interface ToolCall {
   name: string;
   args: unknown;
   summary: string;
+  callView?: ToolCallView;
+  startedAt?: number;
   rule?: string;
   hook?: string;
 }
@@ -41,6 +45,14 @@ type CompletedEntry = { anchorId?: string } & (
     }
   | {
       type: "tool";
+      id?: string;
+      name?: string;
+      args?: unknown;
+      callView?: ToolCallView;
+      resultView?: ToolResultView;
+      startedAt?: number;
+      endedAt?: number;
+      replayed?: boolean;
       jobId?: string;
       summary: string;
       isError: boolean;
@@ -79,11 +91,17 @@ function toolSummary(name: string, args: unknown) {
 }
 
 function toolEntry(
-  tool: Pick<ToolCall, "id" | "name" | "args" | "summary" | "rule" | "hook">,
+  tool: Pick<
+    ToolCall,
+    "id" | "name" | "args" | "summary" | "rule" | "hook" | "callView" | "startedAt"
+  >,
   isError: boolean,
-  result: Pick<ToolResultMessage, "content" | "details">,
+  result: Pick<ToolResultMessage, "content" | "details"> & {
+    view?: ToolResultView;
+    timestamp?: number;
+  },
   t: ReturnType<typeof createTuiI18n>,
-): CompletedEntry {
+): Extract<CompletedEntry, { type: "tool" }> {
   if (isUnknownToolOutcome(result.details))
     return {
       type: "tool",
@@ -138,6 +156,16 @@ function toolEntry(
   const todo = tool.name === "todo_write" && !isError ? todoSummary(tool.args, t) : undefined;
   return {
     type: "tool",
+    id: tool.id,
+    name:
+      goal !== undefined || todo !== undefined || (tool.name === "ask_user_question" && !isError)
+        ? undefined
+        : tool.name,
+    args: tool.args,
+    callView: tool.callView,
+    resultView: result.view,
+    startedAt: tool.startedAt,
+    endedAt: result.timestamp,
     jobId:
       tool.name === "bash" &&
       !isError &&
@@ -368,6 +396,7 @@ interface ViewState {
   tools: ToolCall[];
   assistant: string;
   assistantAnchor: string;
+  assistantTimestamp?: number;
   model: string;
   running: boolean;
   input: number;
@@ -429,6 +458,8 @@ function replayMessages(
             name: content.name,
             args: content.arguments,
             summary: toolSummary(content.name, content.arguments),
+            callView: content.view,
+            startedAt: message.timestamp,
           });
       }
       return text ? [{ type: "message", role: "assistant", text }] : [];
@@ -441,7 +472,7 @@ function replayMessages(
         summary: message.toolName,
       };
       tools.delete(message.toolCallId);
-      return [toolEntry(tool, message.isError, message, t)];
+      return [{ ...toolEntry(tool, message.isError, message, t), replayed: true }];
     }
     return [];
   });
@@ -570,6 +601,17 @@ function reduceEvent(
           completed: [...state.completed, userMessageEntry(event.message)],
         };
       }
+      if (event.message.role === "toolResult") {
+        const result = event.message;
+        return {
+          ...state,
+          completed: state.completed.map((entry) =>
+            entry.type === "tool" && entry.id === result.toolCallId
+              ? { ...entry, endedAt: result.timestamp }
+              : entry,
+          ),
+        };
+      }
       if (event.message.role !== "assistant") return state;
       const step = state.decode.step;
       return {
@@ -581,6 +623,7 @@ function reduceEvent(
             ]
           : state.completed,
         assistant: "",
+        assistantTimestamp: event.message.timestamp,
         assistantAnchor: crypto.randomUUID(),
         input: state.input + event.message.usage.input,
         output: state.output + event.message.usage.output,
@@ -602,6 +645,8 @@ function reduceEvent(
             name: event.toolName,
             args: event.args,
             summary: toolSummary(event.toolName, event.args),
+            callView: event.view,
+            startedAt: state.assistantTimestamp,
           },
         ],
       };
@@ -623,7 +668,7 @@ function reduceEvent(
     case "tool_execution_end": {
       const tool = state.tools.find((tool) => tool.id === event.toolCallId);
       if (!tool) return state;
-      const entry = toolEntry(tool, event.isError, event.result, t);
+      const entry = toolEntry(tool, event.isError, { ...event.result, view: event.view }, t);
       const job = entry.type === "tool" && entry.jobId ? state.jobs[entry.jobId] : undefined;
       const explicit =
         tool.args !== null &&

@@ -176,6 +176,7 @@ export function createJobs(
       proc.once("close", (code, signal) => {
         const exitCode = code ?? (signal ? 128 + (constants.signals[signal] ?? 0) : 1);
         view.exitCode = exitCode;
+        if (signal) view.signal = signal;
         view.endedAt = Date.now();
         view.status =
           view.status === "stopping"

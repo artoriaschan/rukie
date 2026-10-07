@@ -91,6 +91,8 @@ frontend prompt / Hook 内部输入 / Goal round
   → 发布 result，解除运行占用
 ```
 
+Tool View 的 schema 由 `@neant/shared` 定义，工具在自身模块声明纯 presenter，Session 在工具开始与结束事件上附加调用或结果 view。`Session.messages` 为工具调用和结果重算 view；它只读取参数、结果与持久化 details，presenter 缺失、参数非法或抛错时省略 view，由 frontend 使用通用卡。View 不进入 Transcript，也不进入模型上下文。
+
 Session 在 pi 的请求准备、工具前后回调和消息事件上接入这些行为。模型流式增量用于实时呈现，完成消息用于 Transcript 追加；frontend 收到的所有运行事件并不都作为持久化条目保存。
 
 中断通过 AbortSignal 传播到模型、工具与挂起的 Interaction。清理在成功、失败和取消路径上执行；已完成的消息与状态写入使用独立的存储上下文，不因 Run 已取消而跳过。`result` 位于本次资源清理之后。`dispose` 释放 Session 资源，但不能一律等待调用它的 Run；frontend 关闭时还要从 Run 回调之外等待运行收束，使用 `waitForIdle` 或已有的 Run Promise，避免等待自己的回调。

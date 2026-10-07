@@ -4,6 +4,7 @@
   "type": "module",
   "exports": "./src/index.ts",
   "dependencies": {
+    "@neant/shared": "workspace:*",
     "react": "19.3.0",
     "react-reconciler": "0.34.0"
   },

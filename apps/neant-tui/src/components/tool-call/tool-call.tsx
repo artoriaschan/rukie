@@ -1,13 +1,30 @@
+import type { ToolCallView, ToolResultView } from "@neant/shared";
+import { fmtDuration } from "@neant/i18n";
+import { appCopy } from "../../i18n/locales";
 import { useState } from "react";
 import type { PromptImage } from "@neant/agent";
 import { ImageGallery } from "../image-gallery";
 import type { Locale } from "@neant/i18n";
 import { createTuiI18n } from "../../i18n";
 import { Markdown } from "../markdown";
-import { StatusIcon, ThemedBox, ThemedText, figures, type StatusIconProps } from "@neant/tui";
+import {
+  toolKindColor,
+  useAnimationFrame,
+  useTerminalFocus,
+  ThemedBox,
+  ThemedText,
+  figures,
+  type StatusIconProps,
+} from "@neant/tui";
 
 export function ToolCall({
   summary,
+  name,
+  args,
+  callView,
+  resultView,
+  startedAt,
+  endedAt,
   status,
   outcomeUnknown = false,
   result,
@@ -19,6 +36,14 @@ export function ToolCall({
   locale = "zh",
 }: {
   summary: string;
+  id?: string;
+  name?: string;
+  args?: unknown;
+  callView?: ToolCallView;
+  resultView?: ToolResultView;
+  startedAt?: number;
+  endedAt?: number;
+  replayed?: boolean;
   status: StatusIconProps["status"];
   outcomeUnknown?: boolean;
   result?: string;
@@ -31,6 +56,25 @@ export function ToolCall({
 }) {
   const [expanded, setExpanded] = useState(false);
   const t = createTuiI18n(locale);
+  const focused = useTerminalFocus();
+  const [, time] = useAnimationFrame(status === "running" && focused ? 16 : null);
+  const kind = resultView?.kind ?? callView?.kind;
+  const color = toolKindColor(kind);
+  const key = callView?.displayKey ?? resultView?.displayKey ?? `tool.${name}`;
+  const displayName = Object.hasOwn(appCopy[locale], key)
+    ? appCopy[locale][key as keyof typeof appCopy.zh]
+    : name
+      ? name[0]!.toUpperCase() + name.slice(1)
+      : undefined;
+  const title =
+    callView?.card === "terminal"
+      ? callView.command
+      : callView?.card === "generic" && callView.title
+        ? callView.title
+        : (JSON.stringify(callView?.card === "generic" ? (callView.rawInput ?? args) : args) ?? "");
+  const header = displayName ? `${displayName}(${title.slice(0, 480)})` : summary;
+  const seconds = Math.max(0, Math.floor((Date.now() - (startedAt ?? Date.now())) / 1000));
+  const terminal = resultView?.card === "terminal" ? resultView : undefined;
   if (planReview)
     return (
       <ThemedBox flexDirection="column">
@@ -46,24 +90,61 @@ export function ToolCall({
         )}
       </ThemedBox>
     );
-  const output = status === "error" ? error?.split(/\r?\n/).slice(0, 3).join("\n") : result;
+  const output = status === "error" ? (error ?? terminal?.output) : (terminal?.output ?? result);
+  const lines = output?.split(/\r?\n/) ?? [];
+  const folded = lines.length > 4;
+  const shown = folded ? lines.slice(0, 3) : lines;
   return (
     <ThemedBox flexDirection="column">
       <ThemedText wrap="truncate">
-        {outcomeUnknown ? (
-          <ThemedText color="warning">?</ThemedText>
-        ) : (
-          <StatusIcon status={status} />
-        )}{" "}
-        {summary}
+        <ThemedText color={outcomeUnknown ? "warning" : status === "error" ? "error" : color}>
+          {outcomeUnknown
+            ? "?"
+            : status === "error"
+              ? "✗"
+              : status === "running"
+                ? focused && Math.floor(time / 600) % 2
+                  ? " "
+                  : process.platform === "darwin"
+                    ? "⏺"
+                    : "●"
+                : "•"}
+        </ThemedText>{" "}
+        <ThemedText bold color={color}>
+          {displayName ?? header}
+        </ThemedText>
+        {displayName ? `(${title.slice(0, 480)})` : ""}
+        {status !== "running" && name && startedAt !== undefined && endedAt !== undefined && (
+          <ThemedText
+            dimColor
+          >{` · ${fmtDuration(Math.max(0, endedAt - startedAt), locale)}`}</ThemedText>
+        )}
       </ThemedText>
-      {status !== "running" && output && (
-        <ThemedBox color={status === "error" ? "error" : "text"}>
-          <ThemedBox width={2}>
-            <ThemedText>{figures.result}</ThemedText>
-          </ThemedBox>
-          <ThemedText wrap="truncate">{output}</ThemedText>
+      {(output || status === "running") && (
+        <ThemedBox flexDirection="column" color={status === "error" ? "error" : "text"}>
+          {(status === "running" && !output ? [t("tool.running", { seconds })] : shown).map(
+            (line, index) => (
+              <ThemedText
+                key={index}
+                wrap="truncate"
+              >{`${index === 0 ? `${figures.result} ` : name ? "   " : "  "}${line}`}</ThemedText>
+            ),
+          )}
+          {folded && (
+            <ThemedText dimColor>{`   ${t("tool.fold", { count: lines.length - 3 })}`}</ThemedText>
+          )}
         </ThemedBox>
+      )}
+      {terminal?.exitCode !== undefined && (
+        <ThemedText
+          color={terminal.exitCode ? "error" : "subtle"}
+        >{`   ${t("tool.exit-code", { code: terminal.exitCode })}`}</ThemedText>
+      )}
+      {terminal?.signal && (
+        <ThemedText color="error">{`   ${t("tool.signal", { signal: terminal.signal })}`}</ThemedText>
+      )}
+      {terminal?.outputUnavailable && (
+        <ThemedText dimColor>{`   ${t("tool.output-unavailable")}`}</ThemedText>
       )}
       {!!images?.length && (
         <ImageGallery

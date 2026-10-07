@@ -23,3 +23,9 @@ export function useTerminalGraphics() {
   const terminal = useTerminal();
   return useSyncExternalStore(terminal.subscribeGraphics, terminal.getGraphics);
 }
+
+/** Last reported terminal focus, shared by both mounted and newly mounted animations. */
+export function useTerminalFocus() {
+  const terminal = useTerminal();
+  return useSyncExternalStore(terminal.subscribeFocus, terminal.getFocus);
+}

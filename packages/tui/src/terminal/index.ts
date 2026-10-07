@@ -43,6 +43,8 @@ export function createTerminalSession(
 ) {
   const inputs = new Set<(event: InputEvent) => void>();
   const sizes = new Set<() => void>();
+  const focusListeners = new Set<() => void>();
+  let focused = true;
   const graphicsListeners = new Set<() => void>();
   const graphicsEnabled =
     fullscreen && !env.TMUX && !env.STY && !/^(screen|tmux)/.test(env.TERM ?? "");
@@ -100,18 +102,25 @@ export function createTerminalSession(
     if (paused) stdin.pause();
     stdout.write(
       "\x1b[0m\x1b[?7h\x1b[?25h\x1b[?2004l" +
-        (fullscreen ? "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1049l" : ""),
+        (fullscreen ? "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1004l\x1b[?1049l" : ""),
     );
   }
   try {
     stdin.setRawMode?.(true);
     stdout.write(
-      (fullscreen ? "\x1b[?1049h\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1006h" : "") +
+      (fullscreen ? "\x1b[?1049h\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1006h\x1b[?1004h" : "") +
         "\x1b[?25l\x1b[?2004h",
     );
     stopInput = listenInput(
       stdin,
-      (event) => dispatchInput(() => inputs.forEach((listener) => listener(event))),
+      (event) =>
+        dispatchInput(() => {
+          if (event.type === "focus" && event.focused !== focused) {
+            focused = event.focused;
+            focusListeners.forEach((listener) => listener());
+          }
+          inputs.forEach((listener) => listener(event));
+        }),
       control,
     );
     if (graphicsEnabled) stdout.write("\x1b_Gi=2147483647,a=q,t=d,f=24,s=1,v=1;AAAA\x1b\\\x1b[16t");
@@ -131,6 +140,13 @@ export function createTerminalSession(
     dispose,
     redraw,
     getSize: () => size,
+    getFocus: () => focused,
+    subscribeFocus(listener: () => void) {
+      focusListeners.add(listener);
+      return () => {
+        focusListeners.delete(listener);
+      };
+    },
     getGraphics: () => graphics,
     subscribeGraphics(listener: () => void) {
       graphicsListeners.add(listener);

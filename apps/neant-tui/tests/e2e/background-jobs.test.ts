@@ -136,7 +136,7 @@ test("a narrow folded group keeps failure visible and opens with its header", as
     app.calls[1]!.tools(
       ["bash-1", "bash-2"].map((job_id) => ({ name: "job_output", args: { job_id, wait: true } })),
     );
-    await app.waitFor(() => screen().includes("job_output"));
+    await app.waitFor(() => screen().includes("任务输出"));
     await Bun.write(join(app.root, "go"), "");
     await app.waitFor(() => app.calls.length === 3 && screen().includes("已折叠 2 个后台任务"));
     app.calls[2]!.finish();
