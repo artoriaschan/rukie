@@ -51,7 +51,12 @@ export function createBashTool(cwd: string, jobs: Jobs): PresentedTool<typeof sc
     },
     description: `Execute a bash command. Returns combined stdout and stderr, truncated to the last ${DEFAULT_MAX_LINES} lines or ${DEFAULT_MAX_BYTES / 1024}KB. If truncated, full output is saved to a temp file. Timeout defaults to 120 seconds (maximum: 600); commands still running at the timeout move to background jobs. Set run_in_background to start a job without a timeout; use job_output, job_list, and job_kill to manage it.`,
     parameters: schema,
-    outputLimits: { maxBytes: DEFAULT_MAX_BYTES, maxLines: DEFAULT_MAX_LINES, retain: "tail" },
+    // The owned capture bounds process output; reserve room for its spill receipt.
+    outputLimits: {
+      maxBytes: DEFAULT_MAX_BYTES + 4096,
+      maxLines: DEFAULT_MAX_LINES + 16,
+      retain: "tail",
+    },
     async execute(
       { command, description, timeout = 120, workdir, run_in_background = false },
       api,
@@ -135,6 +140,7 @@ export function createBashTool(cwd: string, jobs: Jobs): PresentedTool<typeof sc
         let text = output.text;
         let details;
         if (output.truncation.truncated) {
+          if (text.endsWith("\n")) text = text.slice(0, -1);
           details = { truncation: output.truncation, fullOutputPath: output.spillPath };
           const start = output.truncation.totalLines - output.truncation.outputLines + 1;
           const end = output.truncation.totalLines;

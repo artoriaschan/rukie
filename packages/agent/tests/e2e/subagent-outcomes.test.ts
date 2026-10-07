@@ -1,8 +1,8 @@
+import { runRequest } from "../helpers/crashed-subagents.ts";
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall, getCurrentSystemMessage } from "@earendil-works/pi-ai";
-import { createSession, createJsonlStore, type SubagentIdentity } from "../../src/index.ts";
-import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
-import { branchTip, insertEntry, setValue } from "@earendil-works/pi-agent-core/harness/session";
+import { createSession, type SubagentIdentity } from "../../src/index.ts";
+import { parseSubagentIdentities } from "../../src/tools/subagents/state.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
@@ -19,48 +19,30 @@ test("a completed child Run keeps its own durable facts and settled parent histo
     fauxAssistantMessage("parent answer"),
   ]);
   const parent = await createSession({ ...dirs, ...fake });
-  await parent.run("delegate");
+  await runRequest(parent, "delegate");
   const summary = parent.toolState("subagents") as {
     id: string;
     latestRun?: { id: string; outcome: string };
   }[];
   expect(summary[0]?.latestRun).toMatchObject({ outcome: "completed" });
-  const store = createJsonlStore(dirs);
-  const metadata = (await store.list({ cwd: dirs.cwd }, BACKGROUND_CONTEXT)).find(
-    (row) => row.id === summary[0]!.id,
-  )!;
-  const child = await store.open(metadata, BACKGROUND_CONTEXT);
-  try {
-    const entries = await (await child.branch("main", BACKGROUND_CONTEXT))!.findEntries(
-      { order: "oldestFirst" },
-      BACKGROUND_CONTEXT,
-    );
-    const facts = entries.filter(
-      (entry) => entry.type === "custom" && entry.customType === "tool-state/subagent-run",
-    );
-    expect(facts).toMatchObject([
-      {
-        data: {
-          version: 1,
-          value: {
-            id: summary[0]!.latestRun!.id,
-            sessionId: summary[0]!.id,
-            parentSessionId: parent.id,
-          },
-        },
-      },
-      { data: { version: 1, value: { id: summary[0]!.latestRun!.id, outcome: "completed" } } },
-    ]);
-  } finally {
-    await child.close(BACKGROUND_CONTEXT);
-  }
-  await parent.dispose();
+  const child = await parent.readSubagent(summary[0]!.id);
+  expect(child?.run).toMatchObject({
+    id: summary[0]!.latestRun!.id,
+    sessionId: summary[0]!.id,
+    parentSessionId: parent.id,
+    outcome: "completed",
+  });
+  expect(child?.messages.at(-1)).toMatchObject({
+    role: "assistant",
+    content: [{ type: "text", text: "child answer" }],
+  });
+  await parent.close();
   const untouched = fakeModel([]);
   const restored = await createSession({ ...dirs, ...untouched, resumeId: parent.id });
   expect(restored.toolState("subagents")).toEqual(summary);
   expect(restored.running).toBe(false);
   expect(untouched.contexts).toHaveLength(0);
-  await restored.dispose();
+  await restored.close();
 });
 
 test.each(["error", "aborted", "length"] as const)(
@@ -76,8 +58,8 @@ test.each(["error", "aborted", "length"] as const)(
       fauxAssistantMessage("parent done"),
     ]);
     const parent = await createSession({ ...dirs, ...fake });
-    await parent.run("delegate");
-    await parent.dispose();
+    await runRequest(parent, "delegate");
+    await parent.close();
     const cold = fakeModel([]);
     const resumed = await createSession({ ...dirs, ...cold, resumeId: parent.id });
     expect(resumed.toolState("subagents")).toMatchObject([
@@ -89,7 +71,7 @@ test.each(["error", "aborted", "length"] as const)(
       },
     ]);
     expect(cold.contexts).toHaveLength(0);
-    await resumed.dispose();
+    await resumed.close();
   },
 );
 
@@ -101,9 +83,9 @@ test("send_message starts a new child Run, preserves old facts, and Rewind resto
     fauxAssistantMessage("parent answer"),
   ]);
   const parent = await createSession({ ...dirs, ...first });
-  await parent.run("delegate");
+  await runRequest(parent, "delegate");
   const original = (parent.toolState("subagents") as SubagentIdentity[])[0]!;
-  await parent.dispose();
+  await parent.close();
   let resumed: Awaited<ReturnType<typeof createSession>>;
   const reply: Parameters<typeof fakeModel>[0][number] = (context) => {
     const isChild = !getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
@@ -129,104 +111,58 @@ test("send_message starts a new child Run, preserves old facts, and Rewind resto
     reply,
   ]);
   resumed = await createSession({ ...dirs, ...next, resumeId: parent.id });
-  await resumed.run("continue");
+  await runRequest(resumed, "continue");
   const latest = (resumed.toolState("subagents") as SubagentIdentity[])[0]!;
   expect(latest).toMatchObject({
     id: original.id,
     latestRun: { outcome: "error", error: "second failure" },
   });
-  const store = createJsonlStore(dirs);
-  const metadata = (await store.list({ cwd: dirs.cwd }, BACKGROUND_CONTEXT)).find(
-    (row) => row.id === original.id,
-  )!;
-  const child = await store.open(metadata, BACKGROUND_CONTEXT);
-  try {
-    const entries = await (await child.branch("main", BACKGROUND_CONTEXT))!.findEntries(
-      { order: "oldestFirst" },
-      BACKGROUND_CONTEXT,
-    );
-    expect(
-      entries.filter(
-        (entry) => entry.type === "custom" && entry.customType === "tool-state/subagent-run",
-      ),
-    ).toMatchObject([
-      { data: { value: { id: original.latestRun!.id } } },
-      { data: { value: { id: original.latestRun!.id, outcome: "completed" } } },
-      { data: { value: { id: latest.latestRun!.id } } },
-      { data: { value: { id: latest.latestRun!.id, outcome: "error" } } },
-    ]);
-  } finally {
-    await child.close(BACKGROUND_CONTEXT);
-  }
+  const child = await resumed.readSubagent(original.id);
+  expect(
+    child?.historyMessages?.some(
+      (message) =>
+        message.role === "assistant" && JSON.stringify(message.content).includes("first answer"),
+    ),
+  ).toBe(true);
+  expect(child?.run).toMatchObject({ id: latest.latestRun!.id, outcome: "error" });
   await resumed.rewind(resumed.checkpoints()[1]!.promptEntryId, {
     code: false,
     conversation: true,
   });
   expect(resumed.toolState("subagents")).toEqual([original]);
-  await resumed.dispose();
+  await resumed.close();
   const untouched = fakeModel([]);
   const rewound = await createSession({ ...dirs, ...untouched, resumeId: parent.id });
   expect(rewound.toolState("subagents")).toEqual([original]);
   expect(untouched.contexts).toHaveLength(0);
-  await rewound.dispose();
+  await rewound.close();
 });
 
-for (const fixture of ["legacy", "unsettled", "foreign"] as const) {
-  test(`resume keeps ${fixture} child history unknown and list_agents idle without requesting a child`, async () => {
-    dirs = await tempDirs();
-    const store = createJsonlStore(dirs);
-    const stored = await store.create({ cwd: dirs.cwd }, BACKGROUND_CONTEXT);
-    await stored.createBranch("main", null, BACKGROUND_CONTEXT);
-    const id = stored.idGenerator.next();
-    const identity = { id: "historical-child", description: "Old reader", type: "general-purpose" };
-    const run = {
-      id: "saved-run",
-      sessionId: identity.id,
-      parentSessionId: fixture === "foreign" ? "another-parent" : stored.metadata.id,
-      startedAt: 10,
-      ...(fixture === "foreign" && { outcome: "completed", endedAt: 20 }),
-    };
-    await stored.mutate(
-      (mutator) =>
-        mutator.commit(
-          [
-            insertEntry({
-              id,
-              parentId: null,
-              type: "custom",
-              customType: "tool-state/subagents",
-              data: {
-                version: fixture === "legacy" ? 1 : 2,
-                value: [{ ...identity, ...(fixture !== "legacy" && { latestRun: run }) }],
-              },
-            }),
-            setValue(branchTip("main"), id),
-          ],
-          BACKGROUND_CONTEXT,
-        ),
-      BACKGROUND_CONTEXT,
-    );
-    await stored.close(BACKGROUND_CONTEXT);
-    const fake = fakeModel([
-      call("list_agents"),
-      (context) => {
-        expect(JSON.stringify(context.messages.at(-1))).toContain(
-          "historical-child [idle] — Old reader",
-        );
-        return fauxAssistantMessage("parent continues");
+test.each(["missing-native-identity", "foreign-child", "foreign-parent"] as const)(
+  "current native directory rejects %s instead of inventing a historical outcome",
+  (fixture) => {
+    const identity = {
+      id: "child",
+      description: "Reader",
+      type: "general-purpose",
+      conversationId: 3,
+      driverTaskId: 2,
+      originToolTaskId: 1,
+      active: false,
+      latestRun: {
+        id: "2",
+        sessionId: fixture === "foreign-child" ? "foreign" : "child",
+        parentSessionId: fixture === "foreign-parent" ? "foreign" : "parent",
+        startedAt: 10,
       },
-    ]);
-    const parent = await createSession({ ...dirs, ...fake, resumeId: stored.metadata.id });
-    const identities = parent.toolState("subagents") as SubagentIdentity[];
-    expect(identities[0]).toMatchObject(identity);
-    expect(identities[0]!.latestRun?.outcome).toBeUndefined();
-    expect(parent.running).toBe(false);
-    expect(fake.contexts).toHaveLength(0);
-    await parent.run("list old child");
-    expect(fake.contexts).toHaveLength(2);
-    await parent.dispose();
-  });
-}
+    };
+    const row =
+      fixture === "missing-native-identity"
+        ? { id: "child", description: "Reader", type: "general-purpose" }
+        : identity;
+    expect(() => parseSubagentIdentities([row], "parent")).toThrow();
+  },
+);
 
 test("a Hook-stopped child Run preserves its distinct reason without a child model request", async () => {
   dirs = await tempDirs();
@@ -252,14 +188,14 @@ test("a Hook-stopped child Run preserves its distinct reason without a child mod
       },
     },
   });
-  await parent.run("delegate");
+  await runRequest(parent, "delegate");
   expect(fake.contexts).toHaveLength(2);
-  await parent.dispose();
+  await parent.close();
   const untouched = fakeModel([]);
   const resumed = await createSession({ ...dirs, ...untouched, resumeId: parent.id });
   expect(resumed.toolState("subagents")).toMatchObject([
     { latestRun: { outcome: "hook_stopped", reason: "human review required" } },
   ]);
   expect(untouched.contexts).toHaveLength(0);
-  await resumed.dispose();
+  await resumed.close();
 });

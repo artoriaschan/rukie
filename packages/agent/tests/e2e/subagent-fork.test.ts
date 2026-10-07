@@ -1,9 +1,9 @@
-import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
+import { runRequest } from "../helpers/crashed-subagents.ts";
+import { withAuxiliaryRequests, modelStream, withModelStream } from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall, getCurrentSystemMessage } from "@earendil-works/pi-ai";
 import { join } from "node:path";
-import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
-import { createSession, createJsonlStore, type SessionEvent } from "../../src/index.ts";
+import { createSession, type SessionEvent } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
@@ -45,7 +45,7 @@ test.each(["ask", "auto-review", "full-access"] as const)(
     const session = await createSession({ ...dirs, ...fake, permissionMode });
     expect(
       (
-        await session.run("current parent prompt", {
+        await runRequest(session, "current parent prompt", {
           onEvent: (event) => {
             events.push(event);
           },
@@ -118,8 +118,9 @@ test.each(["same Run", "previous Run"])(
     fake.model.contextWindow = 100_000;
     const session = await createSession({ ...dirs, ...fake });
     const events: SessionEvent[] = [];
-    if (history === "previous Run") await session.run("completed parent prompt");
-    await session.run(
+    if (history === "previous Run") await runRequest(session, "completed parent prompt");
+    await runRequest(
+      session,
       history === "previous Run" ? "current parent prompt" : "completed parent prompt",
       {
         onEvent(event) {
@@ -130,28 +131,22 @@ test.each(["same Run", "previous Run"])(
     const childEvent = events.find((event) => event.type === "subagent_event");
     expect(childEvent?.type).toBe("subagent_event");
     if (childEvent?.type !== "subagent_event") throw new Error("Missing fork event");
-    const store = createJsonlStore(dirs);
-    const metadata = await store.list({ cwd: dirs.cwd }, BACKGROUND_CONTEXT);
-    const child = metadata.find((item) => item.id === childEvent.agentId)!;
-    const stored = await store.open(child, BACKGROUND_CONTEXT);
+    const snapshot = await session.readSubagent(childEvent.agentId);
+    const messages = snapshot?.messages ?? [];
+    expect(JSON.stringify(messages)).toContain("completed parent thought");
+    expect(
+      messages.some(
+        (message) => message.role === "toolResult" && message.toolName === "todo_write",
+      ),
+    ).toBe(true);
+    expect(JSON.stringify(messages)).not.toContain("unfinished fork thought");
+    expect(JSON.stringify(messages)).toContain("fork conclusion");
+    await session.close();
+    const resumed = await createSession({ ...dirs, ...fakeModel([]), resumeId: session.id });
     try {
-      const entries = await (await stored.branch("main", BACKGROUND_CONTEXT))!.findEntries(
-        { order: "oldestFirst" },
-        BACKGROUND_CONTEXT,
-      );
-      const messages = entries.flatMap((entry) =>
-        entry.type === "message" ? [entry.message] : [],
-      );
-      expect(JSON.stringify(messages)).toContain("completed parent thought");
-      expect(
-        messages.some(
-          (message) => message.role === "toolResult" && message.toolName === "todo_write",
-        ),
-      ).toBe(true);
-      expect(JSON.stringify(messages)).not.toContain("unfinished fork thought");
-      expect(JSON.stringify(messages)).toContain("fork conclusion");
+      expect((await resumed.readSubagent(childEvent.agentId))?.messages).toEqual(messages);
     } finally {
-      await stored.close(BACKGROUND_CONTEXT);
+      await resumed.close();
     }
   },
 );
@@ -208,14 +203,17 @@ test("fork inherits the parent model, system prompt and tools despite model sett
     ...dirs,
     ...fake,
     settings: { subagentModel: "missing/settings", thinking: "low" },
-    streamFn: withAuxiliaryRequests((model, context, options) => {
-      models.push(`${model.provider}/${model.id}`);
-      expect(options?.reasoning).toBe("low");
-      return fake.streamFn(model, context, options);
-    }),
+    models: withModelStream(
+      fake.models,
+      withAuxiliaryRequests((model, context, options) => {
+        models.push(`${model.provider}/${model.id}`);
+        expect(options?.reasoning).toBe("low");
+        return modelStream(fake.models)(model, context, options);
+      }),
+    ),
   });
-  await session.run("completed prompt");
-  await session.run("fork now");
+  await runRequest(session, "completed prompt");
+  await runRequest(session, "fork now");
   expect(models).toEqual(
     Array.from({ length: 4 }, () => `${fake.model.provider}/${fake.model.id}`),
   );
