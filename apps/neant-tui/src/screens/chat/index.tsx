@@ -1,3 +1,4 @@
+import { DiffLayoutProvider } from "../../components/tool-call/diff-layout";
 import { PlanReviewRow } from "../../components/plan-review/plan-review-row";
 import { showsToolCard } from "./conversation";
 import { ThinkingRow } from "../../components/thinking-row";
@@ -185,27 +186,29 @@ export async function createChat(
         () => binding,
       );
       return (
-        <Chat
-          key={current.session.id}
-          session={current.session}
-          conversation={current.conversation}
-          history={inputHistory}
-          imageViewer={imageViewer}
-          host={host}
-          submit={submit}
-          interactions={interactions}
-          homeDir={options.homeDir}
-          cwd={options.cwd}
-          checkpointCwd={checkpointCwd}
-          thinking={options.settings?.thinking}
-          locale={locale}
-          onExit={onExit}
-          models={models}
-          sessions={() => listSessions(options)}
-          skills={skills}
-          replaceSession={replaceSession}
-          writeTitle={writeTitle}
-        />
+        <DiffLayoutProvider value={options.settings?.diffLayout}>
+          <Chat
+            key={current.session.id}
+            session={current.session}
+            conversation={current.conversation}
+            history={inputHistory}
+            imageViewer={imageViewer}
+            host={host}
+            submit={submit}
+            interactions={interactions}
+            homeDir={options.homeDir}
+            cwd={options.cwd}
+            checkpointCwd={checkpointCwd}
+            thinking={options.settings?.thinking}
+            locale={locale}
+            onExit={onExit}
+            models={models}
+            sessions={() => listSessions(options)}
+            skills={skills}
+            replaceSession={replaceSession}
+            writeTitle={writeTitle}
+          />
+        </DiffLayoutProvider>
       );
     },
   };
