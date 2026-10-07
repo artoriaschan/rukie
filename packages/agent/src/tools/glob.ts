@@ -1,8 +1,12 @@
-import type { AgentTool } from "@earendil-works/pi-agent-core";
+import { truncateHead } from "@earendil-works/pi-agent-core";
+import { Value } from "typebox/value";
+import type { PresentedTool } from "./presentation.ts";
 import { lstat } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import ignore, { type Ignore } from "ignore";
 import { Type } from "typebox";
+
+const facts = Type.Object({ paths: Type.Array(Type.String()), total: Type.Number() });
 
 const schema = Type.Object({
   pattern: Type.String({ description: "File glob pattern relative to path (e.g. **/*.ts)." }),
@@ -48,13 +52,23 @@ async function repositoryRoot(
   return parent === directory ? undefined : repositoryRoot(parent, signal);
 }
 
-export function createGlobTool(cwd: string): AgentTool<typeof schema> {
+export function createGlobTool(cwd: string): PresentedTool<typeof schema> {
   return {
     name: "glob",
     label: "glob",
     description:
       "Find files by glob, including dotfiles, respecting nested .gitignore files. Skips .git and directory symlinks.",
     parameters: schema,
+    presentCall: (args) => ({
+      card: "generic",
+      kind: "search",
+      displayKey: "tool.glob",
+      rawInput: args,
+    }),
+    presentResult: (_args, _text, details) =>
+      Value.Check(facts, details)
+        ? { card: "search", kind: "search", displayKey: "tool.glob", shape: "paths", ...details }
+        : undefined,
     async execute(_id, { pattern, path }, signal) {
       const root = resolve(cwd, path ?? ".");
       const glob = new Bun.Glob(pattern);
@@ -70,7 +84,10 @@ export function createGlobTool(cwd: string): AgentTool<typeof schema> {
           ancestors = await loadRules(directory, ancestors);
           directory = join(directory, segment);
           if (segment === ".git" || isIgnored(directory, true, ancestors)) {
-            return { content: [{ type: "text", text: "No matching files." }], details: undefined };
+            return {
+              content: [{ type: "text", text: "No matching files." }],
+              details: { paths: [], total: 0 },
+            };
           }
         }
       }
@@ -95,9 +112,21 @@ export function createGlobTool(cwd: string): AgentTool<typeof schema> {
         }
       }
       await walk(root, ancestors);
+      const output = truncateHead(matches.sort().join("\n"));
+      // A byte cutoff may leave an incomplete final path; show only complete facts.
+      const paths = output.content ? output.content.split("\n") : [];
+      if (output.truncated && output.truncatedBy === "bytes") paths.pop();
       return {
-        content: [{ type: "text", text: matches.sort().join("\n") || "No matching files." }],
-        details: undefined,
+        content: [
+          {
+            type: "text",
+            text:
+              paths.join("\n") +
+                (output.truncated ? "\n[Output truncated; narrow the search.]" : "") ||
+              "No matching files.",
+          },
+        ],
+        details: { paths, total: matches.length },
       };
     },
   };
