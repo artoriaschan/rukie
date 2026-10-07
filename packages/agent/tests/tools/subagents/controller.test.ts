@@ -99,6 +99,25 @@ test.each(["stop", "error", "aborted", "length"] as const)(
         content: [{ type: "text", text: "child answer" }],
       });
       expect((await harness.inspect(context)).tasks).toHaveLength(0);
+      if (stopReason === "stop") {
+        const anchor = (await parent.context(context)).entries.find((entry) =>
+          entry.model?.some((message) => message.role === "user"),
+        );
+        if (!anchor) throw new Error("Missing committed parent prompt.");
+        const rewound = await parent.fork(anchor.id, { ownership: { kind: "ownerless" } }, context);
+        await controller.rebindParent(rewound, context);
+        expect(controller.list()).toEqual([]);
+        await parent.commit(async (tx) => {
+          const doc = await tx.doc(subagentsState("product").document, parent.id);
+          doc.value = [];
+        }, context);
+        expect(controller.list()).toEqual([]);
+        await rewound.commit(async (tx) => {
+          const doc = await tx.doc(subagentsState("product").document, rewound.id);
+          doc.value = rows;
+        }, context);
+        expect(controller.list()).toEqual(rows);
+      }
       controller.close();
     } finally {
       await harness.close(context);

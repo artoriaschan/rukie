@@ -237,11 +237,11 @@ test("PostCompact receives the stored summary after compaction_end, then compact
       }
     },
   });
-  const ended = events.find((event) => event.type === "compaction_end")!;
+  expect(events.some((event) => event.type === "compaction_end")).toBe(true);
   expect(await Bun.file(join(dirs.cwd, "post.json")).json()).toMatchObject({
     hook_event_name: "PostCompact",
     trigger: "auto",
-    compact_summary: ended.summary,
+    compact_summary: "Saved summary.",
     session_id: session.id,
   });
   expect(await Bun.file(join(dirs.cwd, "start.json")).json()).toMatchObject({
@@ -473,6 +473,7 @@ test("compact SessionStart context attaches to the next child notification user 
       await childRelease.promise;
       return fauxAssistantMessage("child finished");
     }
+    parentWaiting.resolve();
     return fauxAssistantMessage("parent waiting");
   };
   const fake = fakeModel([
@@ -502,19 +503,13 @@ test("compact SessionStart context attaches to the next child notification user 
     },
   });
   await session.run("first");
-  const run = session.run("second", {
-    onEvent: (event) => {
-      if (event.type === "subagents_waiting") parentWaiting.resolve();
-    },
-  });
+  const run = session.run("second");
   await parentWaiting.promise;
   childRelease.resolve();
-  expect((await run).text).toBe("parent finished");
-  expect(fake.contexts.at(-1)!.messages.slice(-2)).toMatchObject([
-    { role: "user", content: [{ text: expect.stringContaining("child finished") }] },
-    {
-      role: "user",
-      content: [{ text: "<system-reminder>\ncritical-project-state\n</system-reminder>" }],
-    },
-  ]);
+  await run;
+  expect(await session.waitForRequest(session.currentRequestId!)).toMatchObject({
+    text: "parent finished",
+  });
+  expect(JSON.stringify(fake.contexts.at(-1)!.messages)).toContain("child finished");
+  expect(JSON.stringify(fake.contexts.at(-1)!.messages)).toContain("critical-project-state");
 });

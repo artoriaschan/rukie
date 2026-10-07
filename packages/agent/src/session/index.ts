@@ -9,6 +9,7 @@ import {
   defineDoc,
   hook,
   GenerationTask,
+  CompactionTask,
   ToolTask,
   LiveDoc,
   type SubmissionId,
@@ -86,7 +87,7 @@ import {
 } from "../tools/goal/index.ts";
 import { subagentsState, subagentRunState, type SubagentRun } from "../tools/subagents/state.ts";
 import type { QuestionReply, QuestionRequest } from "../tools/question.ts";
-import { createHooks, type CommonHookResult, type HookInput } from "../hooks/index.ts";
+import { mergeHooks, createHooks, type CommonHookResult, type HookInput } from "../hooks/index.ts";
 import type { WebFetchOptions } from "../tools/web-fetch/index.ts";
 import { validateImage, type PromptImage } from "../images/index.ts";
 import { SYSTEM_PROMPT } from "../prompt/index.ts";
@@ -298,6 +299,20 @@ const RequestDoc = defineDoc<{
   scope: "session",
   initial: () => ({ requests: {} }),
 });
+const CompactHookContextDoc = defineDoc<{ pending: string[] }>({
+  kind: "rukie.compact-hook-context",
+  version: 1,
+  scope: "conversation",
+  history: "rewindable",
+  fork: "asOf",
+  initial: () => ({ pending: [] }),
+});
+const PlanTakeoverDoc = defineDoc<{ requests: Record<string, true> }>({
+  kind: "rukie.plan-takeovers",
+  version: 1,
+  scope: "session",
+  initial: () => ({ requests: {} }),
+});
 const HookStopsDoc = defineDoc<{ requests: Record<string, string> }>({
   kind: "rukie.hook-stops",
   version: 1,
@@ -432,6 +447,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     let stopped = false;
     let hookStopReason: string | undefined;
     const toolDurations = new Map<string, number>();
+    const executedInputs = new Map<string, Record<string, unknown>>();
     let startupStopReason: string | undefined;
     let selectingModel = false;
     let foregroundAdmission = false;
@@ -582,16 +598,26 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             : model,
       },
       onWarning: warn,
-      onEvent: (event) => custom(event),
+      onEvent: async (event) => {
+        custom(event);
+        if (event.type === "hook_warning")
+          await appendNotice({
+            kind: "hook_warning",
+            event: event.event,
+            hook: event.hook,
+            message: event.message,
+            ...(event.error ? { error: event.error } : {}),
+          });
+      },
       onAsyncResult: (result, reason) => {
         asyncAdmissions = asyncAdmissions
           .then(async () => {
             if (closed) return;
-            await applyHookResult(result, "hook-async");
+            await applyHookResult(result, "async-hook");
             for (const content of result.systemMessages)
               await appendReminder({
                 role: "system-reminder",
-                source: "hook-async",
+                source: "async-hook",
                 content,
                 timestamp: Date.now(),
               });
@@ -700,7 +726,30 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         if (users?.length) promptFacts.set(String(entry.id), users.map(textOf).join(""));
       }
     };
-    rememberPrompts(await fullHistory());
+    const initialHistory = await fullHistory();
+    rememberPrompts(initialHistory);
+    const readRunSummaries = (entries: readonly EntryRecord[]): RunSummaryFact[] =>
+      entries.flatMap((entry) => {
+        const value = entry.data;
+        return entry.kind === "rukie.run-summary" &&
+          value &&
+          typeof value === "object" &&
+          !Array.isArray(value) &&
+          typeof value.afterMessage === "number" &&
+          typeof value.durationMs === "number" &&
+          typeof value.endedAt === "number" &&
+          typeof value.success === "boolean"
+          ? [
+              {
+                afterMessage: value.afterMessage,
+                durationMs: value.durationMs,
+                endedAt: value.endedAt,
+                success: value.success,
+              },
+            ]
+          : [];
+      });
+    runSummaries = readRunSummaries(initialHistory);
     const checkpoints = createCheckpoints({
       homeDir: options.homeDir,
       sessionId: lease.id,
@@ -967,6 +1016,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           { signal, matchQuery: call.toolCall.name },
         ),
     });
+    const childHookOwners = new Map<number, ReturnType<typeof createHooks>>();
     const childJobRegistries = new Map<string, ReturnType<typeof createJobs>>();
     const childResources = new Map<
       number,
@@ -1020,7 +1070,11 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               ),
             ctx,
           );
-        await applyHookResult({ ...result, additionalContext: [] }, "hook:SubagentStart", ctx);
+        await applyHookResult(
+          { systemMessages: result.systemMessages, additionalContext: [] },
+          "hook:SubagentStart",
+          ctx,
+        );
         return result.continue === false
           ? { stop: result.stopReason ?? "Stopped by SubagentStart hook." }
           : undefined;
@@ -1049,6 +1103,117 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         const directory = subagents.list().find((row) => row.conversationId === Number(child.id));
         const description = directory?.description ?? type.description;
         const childId = directory?.id ?? String(child.id);
+        const childInput = (extra: Record<string, unknown> = {}): HookInput =>
+          hookInput({
+            session_id: childId,
+            agent_id: childId,
+            agent_type: type.name,
+            model: `${selected.provider}/${selected.id}`,
+            ...extra,
+          });
+        const applyChildHook = async (result: CommonHookResult, source: string, ctx = context) => {
+          for (const message of result.systemMessages)
+            await child.commit(
+              (tx) =>
+                tx.appendEntry(child.id, {
+                  kind: "rukie.notice",
+                  data: {
+                    role: "session-notice",
+                    notice: { kind: "hook_message", message },
+                    timestamp: Date.now(),
+                  },
+                }),
+              ctx,
+            );
+          for (const content of result.additionalContext)
+            await child.commit(
+              (tx) =>
+                tx.appendEntry(
+                  child.id,
+                  reminderEntry({
+                    role: "system-reminder",
+                    source,
+                    content,
+                    timestamp: Date.now(),
+                  }),
+                ),
+              ctx,
+            );
+          if (result.continue === false) {
+            childStopped = true;
+            childStopReason = result.stopReason;
+          }
+        };
+        let ownedHooks = childHookOwners.get(Number(child.id));
+        const firstAttachment = !ownedHooks;
+        if (!ownedHooks) {
+          ownedHooks = createHooks({
+            settings: mergeHooks(settings.hooks, type.hooks),
+            cwd,
+            homeDir: options.homeDir,
+            projectDir: cwd,
+            model: {
+              models,
+              getModel: async (requested) =>
+                requested || settings.reviewModel
+                  ? selectedModel(requested ?? settings.reviewModel!)
+                  : selected,
+            },
+            callMcpTool: (...args) => mcp.callHookTool(...args),
+            onWarning: warn,
+            onEvent: (event) =>
+              custom({
+                type: "subagent_event",
+                agentId: childId,
+                description,
+                subagentType: type.name,
+                event: { ...event, sessionId: childId },
+              }),
+            onAsyncResult: (result, reason) => {
+              asyncAdmissions = asyncAdmissions
+                .then(async () => {
+                  if (closed) return;
+                  await applyChildHook(result, "async-hook");
+                  for (const content of result.systemMessages)
+                    await child.commit(
+                      (tx) =>
+                        tx.appendEntry(
+                          child.id,
+                          reminderEntry({
+                            role: "system-reminder",
+                            source: "async-hook",
+                            content,
+                            timestamp: Date.now(),
+                          }),
+                        ),
+                      context,
+                    );
+                  if (reason) {
+                    const requestId = `hook:${childId}:${randomUUID()}`;
+                    const submitted = await submit(reason, [], "followUp", requestId);
+                    void resultFor(requestId, submitted.id)
+                      .then(async (result) => {
+                        custom({ type: "result", ...result });
+                        await session.waitForRequest(requestId);
+                      })
+                      .catch(warn);
+                  }
+                })
+                .catch(warn);
+            },
+          });
+          childHookOwners.set(Number(child.id), ownedHooks);
+        }
+        const childHooks = ownedHooks;
+        const childNotify: import("../interaction/index.ts").OnInteractionStart = async (
+          notification,
+        ) => {
+          const result = await childHooks.run("Notification", childInput({ ...notification }), {
+            signal: AbortSignal.any([auxiliaryLifetime.signal, notificationLifetime.signal]),
+            matchQuery: notification.notification_type,
+          });
+          await applyChildHook(result, "hook:Notification");
+        };
         const childState = await createToolState(definitions, harness, child, context);
         await child.commit(async (tx) => {
           const facts = await tx.doc(ChildFactsDoc, child.id);
@@ -1138,7 +1303,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             ? (request) =>
                 options.onPermissionAsk!({ ...request, origin: { agentId: childId, description } })
             : undefined,
-          onInteractionStart: notifyInteraction,
+          onInteractionStart: childNotify,
           onToolCallAllowed: async (call) => {
             await checkpoints.record(call, cwd, options.homeDir);
             await options.onToolCallAllowed?.(call);
@@ -1155,9 +1320,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           },
           isMcpAuthTool: (name) => mcp.authTools.has(name),
           preToolUse: async (call, signal) => {
-            const result = await hooks.run(
+            const result = await childHooks.run(
               "PreToolUse",
-              hookInput({
+              childInput({
                 agent_id: childId,
                 agent_type: type.name,
                 tool_name: call.toolCall.name,
@@ -1183,9 +1348,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             return result;
           },
           permissionRequest: (call, suggestions, signal) =>
-            hooks.run(
+            childHooks.run(
               "PermissionRequest",
-              hookInput({
+              childInput({
                 agent_id: childId,
                 agent_type: type.name,
                 tool_name: call.toolCall.name,
@@ -1195,9 +1360,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               { signal, matchQuery: call.toolCall.name },
             ),
           permissionDenied: (call, denial, signal) =>
-            hooks.run(
+            childHooks.run(
               "PermissionDenied",
-              hookInput({
+              childInput({
                 agent_id: childId,
                 agent_type: type.name,
                 tool_name: call.toolCall.name,
@@ -1235,7 +1400,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             await childState.set("todo", todos, context);
           },
           onQuestion: options.onQuestion,
-          onInteractionStart: notifyInteraction,
+          onInteractionStart: childNotify,
           webFetch: options.webFetch,
           fileTracking: childTracking,
         });
@@ -1256,6 +1421,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                   api,
                   ctx,
                 );
+                executedInputs.set(api.callId, args as Record<string, unknown>);
+                executedInputs.set(api.callId, args as Record<string, unknown>);
                 const started = performance.now();
                 try {
                   return await tool.execute(args, api, ctx);
@@ -1270,7 +1437,45 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           name: `rukie.child.${child.id}`,
           tools: childTools,
           hooks: [
-            hook(ToolTask, { beforeTool: childGate.beforeTool }),
+            hook(ToolTask, {
+              beforeTool: serializePermissionChecks(childGate.beforeTool),
+              afterTool: async (call, result, _api, ctx) => {
+                const changed = await childHooks.run(
+                  result.isError ? "PostToolUseFailure" : "PostToolUse",
+                  childInput({
+                    tool_name: call.name,
+                    tool_input: executedInputs.get(call.id) ?? call.arguments,
+                    tool_response: { content: result.content, details: result.details },
+                    ...(result.isError
+                      ? {
+                          error: (result.content ?? [])
+                            .flatMap((part) => (part.type === "text" ? [part.text] : []))
+                            .join(""),
+                          is_interrupt: ctx.abortSignal?.aborted ?? false,
+                        }
+                      : {}),
+                    tool_use_id: call.id,
+                    duration_ms: toolDurations.get(call.id) ?? 0,
+                  }),
+                  { signal: ctx.abortSignal, matchQuery: call.name },
+                );
+                await applyChildHook(changed, "hook:PostToolUse", ctx);
+                if ("decision" in changed && changed.decision === "block" && changed.reason)
+                  return {
+                    ...result,
+                    content: [
+                      ...(result.content ?? []),
+                      {
+                        type: "text" as const,
+                        text: `<system-reminder>\n${changed.reason}\n</system-reminder>`,
+                      },
+                    ],
+                  };
+                return "updatedToolOutput" in changed && changed.updatedToolOutput
+                  ? { ...result, content: changed.updatedToolOutput }
+                  : result;
+              },
+            }),
             hook(GenerationTask, {
               beforeRequest: async (_request, _api, ctx) => {
                 const view = await child.context(ctx);
@@ -1299,6 +1504,92 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                     );
                 childTracking.finishRequest();
                 return { messages: (await child.context(ctx)).messages };
+              },
+              onYield: async (answer, api, ctx) => {
+                if (answer.stopReason !== "stop") return undefined;
+                const live = await harness.snapshot(LiveDoc, child.id, ctx);
+                const anchor = Number(live?.run?.inputs[0]);
+                const previous = await harness.snapshot(HookContinuationDoc, child.id, ctx);
+                const count = previous?.taskId === anchor ? previous.count : 0;
+                const result = await childHooks.run(
+                  "SubagentStop",
+                  childInput({
+                    stop_hook_active: count > 0,
+                    last_assistant_message: textOf(answer),
+                  }),
+                  { signal: ctx.abortSignal, matchQuery: type.name },
+                );
+                await applyChildHook(result, "hook:SubagentStop", ctx);
+                if (result.continue === false) {
+                  await child.commit(
+                    (tx) =>
+                      tx.appendEntry(child.id, {
+                        kind: "rukie.notice",
+                        data: {
+                          role: "session-notice",
+                          notice: {
+                            kind: "hook_stopped",
+                            reason: result.stopReason ?? "Stopped by hook.",
+                          },
+                          timestamp: Date.now(),
+                        },
+                      }),
+                    ctx,
+                  );
+                  return undefined;
+                }
+                if (result.decision !== "block" || !result.reason) return undefined;
+                if (count >= 8) {
+                  await child.commit(
+                    (tx) =>
+                      tx.appendEntry(child.id, {
+                        kind: "rukie.notice",
+                        data: {
+                          role: "session-notice",
+                          notice: {
+                            kind: "hook_warning",
+                            event: "SubagentStop",
+                            hook: "continuation",
+                            message: "SubagentStop hook reached the 8 continuation limit",
+                            error: {
+                              code: "hook-continuation-limit",
+                              params: { event: "SubagentStop", limit: "8" },
+                            },
+                          },
+                          timestamp: Date.now(),
+                        },
+                      }),
+                    ctx,
+                  );
+                  return undefined;
+                }
+                const reason = result.reason;
+                await child.commit(async (tx) => {
+                  const state = await tx.doc(HookContinuationDoc, child.id);
+                  state.taskId = anchor;
+                  state.count = count + 1;
+                  await tx.appendEntry(child.id, {
+                    kind: "rukie.message-facts",
+                    data: {
+                      taskId: Number(api.taskId),
+                      content: reason,
+                      source: "stop_hook",
+                    },
+                  });
+                }, ctx);
+                custom({
+                  type: "subagent_event",
+                  agentId: childId,
+                  description,
+                  subagentType: type.name,
+                  event: {
+                    type: "hook_continued",
+                    event: "SubagentStop",
+                    reason: result.reason,
+                    sessionId: childId,
+                  },
+                });
+                return { continue: result.reason };
               },
               afterTools: async (_assistant, results, _api, ctx) => {
                 const committed = await Promise.all(
@@ -1345,6 +1636,13 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           ],
         };
         registry.install(extension);
+        if (firstAttachment) {
+          const source = type.name === "fork" ? "fork" : selection.retained ? "resume" : "startup";
+          await applyChildHook(
+            await childHooks.run("SessionStart", childInput({ source }), { matchQuery: source }),
+            "hook:SessionStart",
+          );
+        }
         const previous = childResources.get(Number(child.id));
         if (!previous) {
           const childObservation = await createConversationObservation({
@@ -1388,12 +1686,71 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     });
     failedCleanup.push(async () => {
       subagents.close();
+      for (const owner of childHookOwners.values()) owner.dispose();
       for (const resource of childResources.values()) {
         await resource.observation.close();
         await resource.jobs.dispose(true);
       }
     });
-    async function prepareReminders(ctx = context) {
+    const pendingCompactions = new Map<number, EntryRecord>();
+    const compactFocus = new Map<number, string>();
+    let compactionHooks = Promise.resolve();
+    const processCompactionHooks = () => {
+      compactionHooks = compactionHooks.then(async () => {
+        for (const [id, entry] of pendingCompactions) {
+          pendingCompactions.delete(id);
+          const data = entry.data;
+          if (
+            !data ||
+            typeof data !== "object" ||
+            Array.isArray(data) ||
+            typeof data.reason !== "string"
+          )
+            continue;
+          const text = entry.model?.map(textOf).join("") ?? "";
+          const start = text.indexOf("<summary>\n");
+          const end = text.lastIndexOf("\n</summary>");
+          const summary = start >= 0 && end > start ? text.slice(start + 10, end) : text;
+          const inputs = hookInput({
+            trigger: data.reason === "manual" ? "manual" : "auto",
+            custom_instructions: compactFocus.get(Number(entry.byTaskId)) ?? "",
+            compact_summary: summary,
+          });
+          const post = await hooks.run("PostCompact", inputs, {
+            matchQuery: inputs.trigger as string,
+          });
+          const startup = await hooks.run("SessionStart", hookInput({ source: "compact" }), {
+            matchQuery: "compact",
+          });
+          for (const result of [post, startup]) {
+            for (const message of result.systemMessages)
+              await appendNotice({ kind: "hook_message", message });
+            await conversation.commit(async (tx) => {
+              const context = await tx.doc(CompactHookContextDoc, conversation.id);
+              context.pending.push(...result.additionalContext);
+            }, context);
+          }
+          await prepareReminders(context, false);
+        }
+      });
+      return compactionHooks;
+    };
+    async function prepareReminders(ctx = context, includeHookContext = true) {
+      if (includeHookContext)
+        await conversation.commit(async (tx) => {
+          const owned = await tx.doc(CompactHookContextDoc, conversation.id);
+          for (const content of owned.pending)
+            await tx.appendEntry(
+              conversation.id,
+              reminderEntry({
+                role: "system-reminder",
+                source: "hook:SessionStart",
+                content,
+                timestamp: Date.now(),
+              }),
+            );
+          owned.pending = [];
+        }, ctx);
       const sources: ReminderSource[] = [
         { source: "skills", currentContent: () => skillsReminder(skills) },
         {
@@ -1483,13 +1840,35 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             arguments: args as Record<string, JsonValue>,
           };
           await gate.authorizeExecute(call, args as Record<string, unknown>, api, ctx);
-          return tool.execute(args, api, ctx);
+          executedInputs.set(api.callId, args as Record<string, unknown>);
+          const started = performance.now();
+          try {
+            return await tool.execute(args, api, ctx);
+          } finally {
+            toolDurations.set(api.callId, performance.now() - started);
+          }
         },
       }));
       const extension = {
         name: "rukie.session",
         tools,
         hooks: [
+          hook(CompactionTask, {
+            beforeCompact: async (compaction, api, ctx) => {
+              compactFocus.set(Number(api.taskId), compaction.instructions ?? "");
+              if (compaction.reason === "manual") return undefined;
+              const result = await hooks.run(
+                "PreCompact",
+                hookInput({ trigger: "auto", custom_instructions: compaction.instructions ?? "" }),
+                { signal: ctx.abortSignal, matchQuery: "auto" },
+              );
+              if (result.continue === false || result.decision === "block") {
+                warn(result.stopReason ?? result.reason ?? "Compaction declined by hook.");
+                return { decline: true };
+              }
+              return undefined;
+            },
+          }),
           hook(ToolTask, {
             beforeTool: serializePermissionChecks(gate.beforeTool),
             afterTool: async (call, result, api, ctx) => {
@@ -1497,8 +1876,16 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 result.isError ? "PostToolUseFailure" : "PostToolUse",
                 hookInput({
                   tool_name: call.name,
-                  tool_input: call.arguments,
-                  tool_response: result.content,
+                  tool_input: executedInputs.get(call.id) ?? call.arguments,
+                  tool_response: { content: result.content, details: result.details },
+                  ...(result.isError
+                    ? {
+                        error: (result.content ?? [])
+                          .flatMap((part) => (part.type === "text" ? [part.text] : []))
+                          .join(""),
+                        is_interrupt: ctx.abortSignal?.aborted ?? false,
+                      }
+                    : {}),
                   tool_use_id: call.id,
                   duration_ms: toolDurations.get(call.id) ?? 0,
                 }),
@@ -1523,6 +1910,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           }),
           hook(GenerationTask, {
             beforeRequest: async (_request, api, ctx) => {
+              await processCompactionHooks();
               const live = await harness.snapshot(LiveDoc, conversation.id, ctx);
               if (live?.run) {
                 if (goal.view()?.armed)
@@ -1653,6 +2041,32 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 ),
               );
               mcpManager.adopt(mcp.snapshot());
+              const takeover = committed.some((value) =>
+                value?.entry.model?.some((message) => {
+                  if (message.role !== "toolResult" || message.toolName !== "exit_plan_mode")
+                    return false;
+                  const details = message.details;
+                  return (
+                    details &&
+                    typeof details === "object" &&
+                    !Array.isArray(details) &&
+                    "kind" in details &&
+                    details.kind === "takeover"
+                  );
+                }),
+              );
+              if (takeover) {
+                const live = await harness.snapshot(LiveDoc, conversation.id, ctx);
+                const first = live?.run?.inputs[0];
+                const input =
+                  first === undefined ? undefined : await lease.storage.submission(first, ctx);
+                await conversation.commit(async (tx) => {
+                  const taken = await tx.doc(PlanTakeoverDoc);
+                  if (input?.requestId) taken.requests[input.requestId] = true;
+                }, ctx);
+                await conversation.abort(ctx);
+                return;
+              }
               if (stopped && hookStopReason) {
                 const live = await harness.snapshot(LiveDoc, conversation.id, ctx);
                 const first = live?.run?.inputs[0];
@@ -1723,6 +2137,26 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 },
               );
               await applyHookResult(result, "hook:Stop", ctx);
+              if (result.continue === false) {
+                const input =
+                  live?.run?.inputs[0] === undefined
+                    ? undefined
+                    : await lease.storage.submission(live.run.inputs[0], ctx);
+                const reason = result.stopReason ?? "Stopped by hook.";
+                await conversation.commit(async (tx) => {
+                  const stops = await tx.doc(HookStopsDoc);
+                  if (input?.requestId) stops.requests[input.requestId] = reason;
+                  await tx.appendEntry(conversation.id, {
+                    kind: "rukie.notice",
+                    data: {
+                      role: "session-notice",
+                      notice: { kind: "hook_stopped", reason },
+                      timestamp: Date.now(),
+                    },
+                  });
+                }, ctx);
+                return undefined;
+              }
               if (result.decision === "block" && result.reason) {
                 if (count >= 8) {
                   warn("Stop hook reached the 8 continuation limit");
@@ -1731,6 +2165,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                     event: "Stop",
                     hook: "continuation",
                     message: "Stop hook reached the 8 continuation limit",
+                    error: {
+                      code: "hook-continuation-limit",
+                      params: { event: "Stop", limit: "8" },
+                    },
                   });
                   return undefined;
                 }
@@ -1796,6 +2234,12 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       adopt: (publication) => {
         state.adopt(publication);
         for (const change of publication.changes) {
+          if (
+            change.type === "entry" &&
+            change.value.conversationId === conversation.id &&
+            change.value.kind === "pi.compaction"
+          )
+            pendingCompactions.set(Number(change.value.id), change.value);
           if (
             change.type === "document" &&
             change.conversationId === conversation.id &&
@@ -2012,6 +2456,14 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           .join("") ?? "";
       const request = await readRequest(requestId);
       await observation.flush();
+      if ((await harness.snapshot(PlanTakeoverDoc, context))?.requests[requestId])
+        return {
+          requestId,
+          text: "",
+          success: true,
+          usage,
+          durationMs: Date.now() - (request?.startedAt ?? Date.now()),
+        };
       const persistedStop = (await harness.snapshot(HookStopsDoc, context))?.requests[requestId];
       if (persistedStop)
         return {
@@ -2387,8 +2839,30 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
       async compact(input) {
         assertAvailable(true);
+        const pre = await hooks.run(
+          "PreCompact",
+          hookInput({ trigger: "manual", custom_instructions: input?.instructions ?? "" }),
+          { matchQuery: "manual" },
+        );
+        if (pre.continue === false)
+          throw pre.stopReason
+            ? createUserVisibleError(pre.stopReason, {
+                code: "compaction-hook-stopped-reason",
+                params: { reason: pre.stopReason },
+              })
+            : createUserVisibleError("Compaction stopped by hook.", {
+                code: "compaction-hook-stopped",
+                params: {},
+              });
+        if (pre.decision === "block")
+          throw createUserVisibleError(pre.reason ?? "Compaction blocked by hook.", {
+            code: "hook-compaction-blocked",
+            params: { reason: pre.reason ?? "" },
+          });
         const id = await conversation.compact(input?.instructions, context);
+        compactFocus.set(Number(id), input?.instructions ?? "");
         await harness.waitForTask(id, context);
+        await processCompactionHooks();
         contextMessages = (await conversation.context(context)).messages;
         await observation.flush();
       },
@@ -2407,15 +2881,23 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           const index = entries.findIndex((entry) => String(entry.id) === id);
           const previous = entries[index - 1];
           if (!previous) throw new Error("Checkpoint has no prior entry anchor.");
-          const fork = await conversation.fork(
-            previous.id,
-            { ownership: { kind: "ownerless" } },
-            context,
-          );
+          const forkRecord = await conversation.commit(async (tx) => {
+            const active = await tx.doc(SessionMetadataDoc);
+            const fork = await tx.forkConversation(conversation.id, previous.id, {
+              ownership: { kind: "ownerless" },
+            });
+            active.activeConversationId = Number(fork.id);
+            active.updatedAt = Date.now();
+            return fork;
+          }, context);
+          const fork = await harness.conversation(forkRecord.id, context);
+          if (!fork) throw new Error("Committed rewind conversation is missing.");
           await observation.close();
           conversation = fork;
+          runSummaries = readRunSummaries(await fullHistory());
           await writeMetadata();
           state = await createToolState(definitions, harness, conversation, context);
+          await subagents.rebindParent(conversation, context);
           plan.restore();
           tracking.restore(state.get("file-tracking"));
           goal.disarm();
@@ -2798,6 +3280,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           await release(() => harness.close(context));
           await release(() => observation.close());
           subagents.close();
+          for (const owner of childHookOwners.values()) owner.dispose();
           for (const resource of childResources.values()) {
             await release(() => resource.observation.close());
             await release(() => resource.jobs.dispose());
