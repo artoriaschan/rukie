@@ -148,7 +148,7 @@ test.each([80, 120])(
       expect(before).not.toContain("line 14");
       const pathRow = app
         .screen()
-        .findIndex((line) => line.includes(path) && !line.includes("Write("));
+        .findIndex((line) => line.includes(path) && !line.includes("Write "));
       const pathColumn = Bun.stringWidth(app.screen()[pathRow]!.split(path)[0]!);
       expect(
         app.terminal.buffer.active.getLine(pathRow)!.getCell(pathColumn)!.isUnderline(),
@@ -196,8 +196,8 @@ test("edit headers expose their path as an underlined action segment", async () 
     await app.waitFor(() => app.calls.length === 3);
     app.calls[2]!.finish();
     await app.waitFor(() => !app.isWorking());
-    const row = app.screen().findIndex((line) => line.includes("Edit("));
-    expect(app.screen()[row]).toContain("Edit(edit.txt)");
+    const row = app.screen().findIndex((line) => line.includes("Edit "));
+    expect(app.screen()[row]).toContain("Edit edit.txt");
     const column = Bun.stringWidth(app.screen()[row]!.split(path)[0]!);
     expect(app.terminal.buffer.active.getLine(row)!.getCell(column)!.isUnderline()).toBeTruthy();
     app.stdin.write(`\x1b[<0;${column + 1};${row + 1}M\x1b[<0;${column + 1};${row + 1}m`);
@@ -249,6 +249,38 @@ test("resumed card paths retain actions and report unavailable clipboard", async
     expect(app.screen().join("\n")).not.toContain("File actions");
     expect(app.screen().join("\n")).not.toContain("five");
     expect(app.calls).toHaveLength(0);
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("directory paths keep their own actions on failed reads without changing the verdict", async () => {
+  const opened: string[] = [];
+  const app = await start(["--yolo", "inspect directory"], {
+    rows: 40,
+    env: { LANG: "en" },
+    prepare: (root) => mkdir(join(root, "folder")),
+    host: {
+      openExternal: async (path) => {
+        opened.push(path);
+      },
+    },
+  });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("read", { path: "folder" });
+    await app.waitFor(() => app.calls.length === 2);
+    app.calls[1]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    expect(app.screen().some((line) => line.startsWith("✗ Read folder"))).toBe(true);
+    clickText(app, "folder", 1);
+    await app.waitFor(() => app.screen().join("\n").includes("Open folder"));
+    app.stdin.write("\r");
+    await app.waitFor(
+      () => opened.length === 1 && app.screen().some((line) => line.startsWith("✗ Read folder")),
+    );
+    expect(opened).toEqual([join(app.root, "folder")]);
+    expect(app.screen().some((line) => line.startsWith("✗ Read folder"))).toBe(true);
   } finally {
     await app.cleanup();
   }

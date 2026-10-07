@@ -1,5 +1,5 @@
 import type { ToolKind } from "@neant/shared";
-/** Category colors depend on the Tool View's facts, shared by names and status dots. */
+/** Tool View facts choose mutation gold or execution cyan; all other tools use the accent family. */
 export function toolKindColor(kind?: ToolKind) {
   switch (kind) {
     case "execute":
@@ -12,10 +12,8 @@ export function toolKindColor(kind?: ToolKind) {
     case "move":
       return "toolDotWrite";
     case "fetch":
-      return "toolDotWeb";
     case "task":
-      return "toolDotTask";
     default:
-      return "text";
+      return "toolDotRead";
   }
 }

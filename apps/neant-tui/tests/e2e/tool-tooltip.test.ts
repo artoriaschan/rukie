@@ -97,11 +97,11 @@ test("width-hidden Unicode title tooltip fits a small viewport and clears on foc
   });
   try {
     await app.waitFor(() => app.calls.length === 1);
-    app.calls[0]!.tool("bash", { command: `true # ${"界🧑‍💻".repeat(15)}`, description: "Run" });
+    app.calls[0]!.tool("unknown_tool", { label: "界🧑‍💻".repeat(15) });
     await app.waitFor(() => app.calls.length === 2);
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
-    hover(app, "Bash(true");
+    hover(app, "Unknown_tool(");
     jest.advanceTimersByTime(600);
     await app.waitFor(() => app.screen().some((line) => line.includes("Started:")));
     expect(app.screen().every((line) => Bun.stringWidth(line) <= 40)).toBe(true);
@@ -110,7 +110,7 @@ test("width-hidden Unicode title tooltip fits a small viewport and clears on foc
     await app.waitFor(() => !app.screen().some((line) => line.includes("Started:")));
     app.stdin.write("\x1b[I");
     app.stdin.write("\x1b[<35;39;11M");
-    hover(app, "Bash(true");
+    hover(app, "Unknown_tool(");
     jest.advanceTimersByTime(600);
     await app.waitFor(() => app.screen().some((line) => line.includes("Started:")));
     app.resize(2, 2);
@@ -118,7 +118,7 @@ test("width-hidden Unicode title tooltip fits a small viewport and clears on foc
     await app.flush();
     expect(app.screen().join("\n")).not.toContain("╭");
     app.resize(80, 40);
-    await app.waitFor(() => app.screen().some((line) => line.includes("Bash(true")));
+    await app.waitFor(() => app.screen().some((line) => line.includes("Unknown_tool(")));
     expect(app.screen().join("\n")).not.toContain("Started:");
   } finally {
     await app.cleanup();
@@ -137,7 +137,9 @@ test("generic arguments beyond 480 characters expose the full JSON only in a too
     await app.waitFor(() => app.calls.length === 2);
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
-    const header = app.screen().find((line) => line.includes("Unknown_tool("))!;
+    const headerRow = app.screen().findIndex((line) => line.includes("Unknown_tool("));
+    const header = app.screen()[headerRow]!;
+    expect(app.terminal.buffer.active.getLine(headerRow)!.getCell(2)!.getFgColor()).toBe(0x7da1de);
     expect(header).toContain("…");
     expect(header).not.toContain("JSON_END_MARKER");
     hover(app, "Unknown_tool(");
@@ -177,6 +179,57 @@ test("failed command tooltip carries wall-clock times, exit code and kill signal
     expect(tooltip).toContain("Exit code: 143");
     expect(tooltip).toContain("Signal: SIGTERM");
     expect(tooltip).not.toContain(" · ");
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("expanding a command reveals its full script and wrapped titles do not claim hidden content", async () => {
+  const app = await startWithClock(["--yolo", "run"], {
+    columns: 40,
+    rows: 40,
+    env: { LANG: "en" },
+  });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("bash", {
+      command: `true # ${"界".repeat(25)}END\n# script-tail`,
+      description: "Wrapped script",
+    });
+    await app.waitFor(() => app.calls.length === 2);
+    app.calls[1]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    expect(app.screen().join("\n")).toContain("END");
+    expect(app.screen().join("\n")).not.toContain("script-tail");
+    app.stdin.write("\x0f");
+    await app.waitFor(() => app.screen().join("\n").includes("script-tail"));
+    expect(app.screen().join("\n")).not.toContain("+1 lines");
+    hover(app, "Bash(true");
+    jest.advanceTimersByTime(600);
+    await app.flush();
+    expect(app.screen().join("\n")).not.toContain("Started:");
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("collapsed terminal titles disclose clipped UTF-16 characters and expansion preserves the emoji", async () => {
+  const app = await startWithClock(["--yolo", "run"], { rows: 80, env: { LANG: "en" } });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("bash", {
+      command: `true # ${"x".repeat(992)}😀TAIL`,
+      description: "Long title",
+    });
+    await app.waitFor(() => app.calls.length === 2);
+    app.calls[1]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    expect(app.screen().join("\n")).toContain("+6 characters");
+    expect(app.screen().join("\n")).not.toContain("TAIL");
+    expect(app.screen().join("\n")).not.toContain("�");
+    app.stdin.write("\x0f");
+    await app.waitFor(() => app.screen().join("\n").includes("😀TAIL"));
+    expect(app.screen().join("\n")).not.toContain("+6 characters");
   } finally {
     await app.cleanup();
   }

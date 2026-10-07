@@ -33,25 +33,25 @@ export function toolCardTitle({
 }
 export function toolCardBody(source: ToolCardSource): string | undefined {
   const { resultView: view, result, error, isError } = source;
-  if (isError) return error ?? (view?.card === "terminal" ? view.output : undefined);
+  if (isError) return error ?? result ?? (view?.card === "terminal" ? view.output : undefined);
   switch (view?.card) {
     case "read":
       return view.content;
     case "web":
       return view.markdown;
     case "generic":
-      return view.text;
+      return view.text || result;
     case "terminal":
       return view.output;
     case "search": {
-      if (view.shape === "paths") return view.paths.join("\n");
+      if (view.shape === "paths") return view.paths.join("\n") || result;
       const groups = new Map<string, string[]>();
       for (const match of view.matches) {
         const lines = groups.get(match.path) ?? [];
         if (!groups.has(match.path)) groups.set(match.path, lines);
         lines.push(`${match.line === undefined ? "" : `${match.line}: `}${match.text}`);
       }
-      return [...groups].flatMap(([path, lines]) => [path, ...lines]).join("\n");
+      return [...groups].flatMap(([path, lines]) => [path, ...lines]).join("\n") || result;
     }
     default:
       return result;

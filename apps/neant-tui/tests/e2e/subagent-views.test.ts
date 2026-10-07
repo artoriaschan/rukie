@@ -347,10 +347,10 @@ for (const failed of [false, true]) {
       await app.waitFor(() => screen().includes("id "));
       click(app, "Tools");
       await app.waitFor(
-        () => screen().includes("3/3") && screen().includes(failed ? "✗ Read(" : "• Bash("),
+        () => screen().includes("3/3") && screen().includes(failed ? "✗ Read " : "• Bash("),
       );
       expect(screen()).toContain(failed ? "ENOENT" : "⎿ tool-completed-output");
-      const row = app.screen().find((line) => line.includes(failed ? "✗ Read(" : "• Bash("))!;
+      const row = app.screen().find((line) => line.includes(failed ? "✗ Read " : "• Bash("))!;
       expect(row).toMatch(/ · \d+(?:\.\d+)?(?:ms|s|m\d+s)$/);
     } finally {
       await app.cleanup();

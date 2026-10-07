@@ -31,7 +31,7 @@ test("read paths, grouped search matches, and web Markdown render through Tool V
     app.calls[0]!.tool("read", { path: "source.ts" });
     await app.waitFor(() => app.calls.length === 2);
     await app.waitFor(() => app.allLines().join("\n").includes("⎿ needle first"));
-    expect(app.allLines().join("\n")).toContain("读取(source.ts)");
+    expect(app.allLines().join("\n")).toContain("读取 source.ts");
     expect(app.allLines().join("\n")).toContain("⎿ needle first");
     app.calls[1]!.tool("grep", { pattern: "needle", path: "source.ts" });
     await app.waitFor(() => app.calls.length === 3);

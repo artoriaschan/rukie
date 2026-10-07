@@ -8,6 +8,7 @@ import { PlanReviewRow } from "../../components/plan-review/plan-review-row";
 import { showsToolCard } from "./conversation";
 import { ThinkingRow } from "../../components/thinking-row";
 import { realpath } from "node:fs/promises";
+import { statSync } from "node:fs";
 import { relative, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import {
@@ -364,7 +365,7 @@ function Chat({
   useEffect(() => () => clearTimeout(modelImageNoticeTimer.current), []);
   const state = useSyncExternalStore(conversation.subscribe, conversation.getSnapshot);
   const promptNotice = imageNotice ?? state.notification;
-  type FileActions = { path: string; focus: number };
+  type FileActions = { path: string; focus: number; directory: boolean };
   const [fileActions, setFileActions] = useState<FileActions>();
   const fileActionsRef = useRef<FileActions | undefined>(undefined);
   const showFileActions = (next: FileActions | undefined) => {
@@ -374,7 +375,14 @@ function Chat({
   };
   const openFileActions = (path: string) => {
     if (interactions.getSnapshot() || previewRef.current) return;
-    showFileActions({ path: resolve(cwd, path), focus: 0 });
+    const absolute = resolve(cwd, path);
+    let directory = false;
+    try {
+      directory = statSync(absolute, { throwIfNoEntry: false })?.isDirectory() ?? false;
+    } catch {
+      /* Host actions report inaccessible paths. */
+    }
+    showFileActions({ path: absolute, focus: 0, directory });
   };
   const pickFileAction = async (index: number) => {
     const menu = fileActionsRef.current;
