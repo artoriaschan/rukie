@@ -10,12 +10,15 @@ import { dark } from "../../../../src/ink/index.ts";
 function goalFixtureModel() {
   const fake = controlledModel();
   const called = Promise.withResolvers<void>();
+  const continued = Promise.withResolvers<void>();
   return {
     ...fake,
     firstCall: called.promise,
+    secondCall: continued.promise,
     models: auxiliaryModels((...args) => {
       const stream = fake.provider.streamSimple(...args);
       if (fake.calls.length) called.resolve();
+      if (fake.calls.length >= 2) continued.resolve();
       return stream;
     }),
   };
@@ -128,49 +131,13 @@ test("a persisted complete goal freezes elapsed time and edit starts a fresh goa
         permissionMode: "full-access",
         ...fake,
       });
-      const finished = new Promise<void>((resolve) =>
-        session.subscribe((event) => {
-          if (event.type === "result") resolve();
-        }),
-      );
-      await session.createGoal("finished migration");
+      const goal = await session.createGoal("finished migration");
       await fake.firstCall;
-      fake.calls[0]!.fail("fixture stops scheduling");
-      await finished;
+      fake.calls[0]!.tool("update_goal", { action: "complete" });
+      await fake.secondCall;
+      fake.calls[1]!.reply("Migration complete.");
+      await session.waitForRequest(goal.requestId);
       await session.close();
-      // A native persisted Goal fixture allows complete replay without model-tool ownership.
-      for await (const path of new Bun.Glob(`**/*_${session.id}.jsonl`).scan({
-        cwd: `${root}/.rukie/sessions`,
-        absolute: true,
-      })) {
-        const records: unknown[] = (await Bun.file(path).text())
-          .trimEnd()
-          .split("\n")
-          .map((line) => JSON.parse(line));
-        for (const entry of records.flatMap((record) =>
-          Array.isArray(record) ? record : [record],
-        )) {
-          if (
-            typeof entry !== "object" ||
-            entry === null ||
-            !("customType" in entry) ||
-            entry.customType !== "tool-state/goal" ||
-            !("data" in entry)
-          )
-            continue;
-          const data: unknown = entry.data;
-          if (
-            typeof data !== "object" ||
-            data === null ||
-            !("value" in data) ||
-            typeof data.value !== "object" ||
-            data.value === null
-          )
-            continue;
-          data.value = { ...data.value, phase: "complete" };
-        }
-        await Bun.write(path, records.map((record) => JSON.stringify(record)).join("\n") + "\n");
-      }
       argv.push("--resume", session.id);
     },
   });
@@ -207,15 +174,10 @@ test("an errored goal refreshes activation and resumed active goals stay disarme
         permissionMode: "full-access",
         ...fake,
       });
-      const finished = new Promise<void>((resolve) =>
-        session.subscribe((event) => {
-          if (event.type === "result") resolve();
-        }),
-      );
-      await session.createGoal("repair widgets");
+      const goal = await session.createGoal("repair widgets");
       await fake.firstCall;
       fake.calls[0]!.fail("provider unavailable");
-      await finished;
+      await session.waitForRequest(goal.requestId);
       argv.push("--resume", session.id);
       await session.close();
     },
