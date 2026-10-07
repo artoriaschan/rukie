@@ -20,13 +20,27 @@ import {
   BACKGROUND_CONTEXT,
 } from "@earendil-works/chord/context";
 import { join } from "node:path";
-import { createSession, type PermissionAskRequest, type SessionEvent } from "../../src/index.ts";
+import {
+  createSession as createSessionImpl,
+  type Session,
+  type PermissionAskRequest,
+  type SessionEvent,
+} from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 import { abortingModel } from "../helpers/aborting-model.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
-afterEach(() => dirs?.cleanup());
+const sessions: Session[] = [];
+async function createSession(options: Parameters<typeof createSessionImpl>[0]) {
+  const session = await createSessionImpl(options);
+  sessions.push(session);
+  return session;
+}
+afterEach(async () => {
+  await Promise.all(sessions.splice(0).map((session) => session.close()));
+  await dirs?.cleanup();
+});
 
 function reviewedModel(review = fauxAssistantMessage('{"risk":"low","decision":"allow"}')) {
   const main = fakeModel([
@@ -411,7 +425,7 @@ test("review discards history and summary before the most recent compaction, inc
 test("parallel tool calls start their reviews before either review completes", async () => {
   dirs = await tempDirs();
   const fake = reviewedModel();
-  fake.main.models = fakeModel([
+  const main = fakeModel([
     fauxAssistantMessage(
       [
         fauxToolCall("write", { path: "a.txt", content: "a" }, { id: "a" }),
@@ -420,7 +434,7 @@ test("parallel tool calls start their reviews before either review completes", a
       { stopReason: "toolUse" },
     ),
     fauxAssistantMessage("done"),
-  ]).models;
+  ]);
   const both = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
   let started = 0;
@@ -438,7 +452,17 @@ test("parallel tool calls start their reviews before either review completes", a
       ),
     ),
   );
-  const session = await createSession({ ...dirs, ...fake, permissionMode: "auto-review" });
+  const models = withModelStream(
+    main.models,
+    withAuxiliaryRequests((model, context, options) =>
+      context.messages.some(
+        (message) => message.role === "system" && JSON.stringify(message).includes("REVIEW_POLICY"),
+      )
+        ? modelStream(fake.reviewer.models)(model, context, options)
+        : modelStream(main.models)(model, context, options),
+    ),
+  );
+  const session = await createSession({ ...dirs, ...main, models, permissionMode: "auto-review" });
   const controller = new AbortController();
   const run = session.run("create both files", { signal: controller.signal });
   void run.catch(() => {});
@@ -448,6 +472,10 @@ test("parallel tool calls start their reviews before either review completes", a
       both.promise,
       withAbortSignal(AbortSignal.timeout(300), BACKGROUND_CONTEXT),
     );
+  } catch (error) {
+    throw new Error(`Only ${started} permission reviews started before completion`, {
+      cause: error,
+    });
   } finally {
     release.resolve();
     if (started !== 2) controller.abort();
