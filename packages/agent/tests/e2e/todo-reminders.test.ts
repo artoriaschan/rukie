@@ -39,7 +39,7 @@ function windowModels(fake: ReturnType<typeof fakeModel>) {
   if (!provider || !large) throw new Error("Missing fixture provider model.");
   models.setProvider({
     ...provider,
-    getModels: () => [large, { ...large, id: "small", contextWindow: 4000 }],
+    getModels: () => [large, { ...large, id: "small", contextWindow: 16000 }],
   });
   return { models, settings: { model: "todo-window/large" } };
 }

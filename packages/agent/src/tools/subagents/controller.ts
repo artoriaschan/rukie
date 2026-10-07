@@ -19,7 +19,7 @@ import {
   type SubmissionId,
 } from "@earendil-works/pi-durable";
 import type { Context } from "@earendil-works/chord";
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { BACKGROUND_CONTEXT, awaitWithContext } from "@earendil-works/chord/context";
 import type { RunResult } from "@rukie/shared";
 import { projectCommittedOutcomeFacts } from "../../session/observation.ts";
 import { transcriptMessages } from "../../session/messages.ts";
@@ -47,6 +47,7 @@ export interface SubagentControllerOptions {
   parentSessionId: string;
   state: ToolStateDefinition;
   restored?: readonly SubagentIdentity[];
+  onWarning?(warning: string): void;
   forkAt(): EntryId | undefined;
   /** Install child capability extensions before returning its explicit agent config. */
   childAgent(
@@ -129,8 +130,20 @@ export function createSubagentController(options: SubagentControllerOptions) {
   let parent = options.parent;
   let types = new Map<string, SubagentType>();
   let identities = [...(options.restored ?? [])];
-  const typeFor = (name: string) =>
-    name === "fork" ? FORK_TYPE : (types.get(name) ?? types.get("general-purpose"));
+  const warnedTypes = new Set<string>();
+  const typeFor = (name: string) => {
+    if (name === "fork") return FORK_TYPE;
+    const type = types.get(name);
+    if (type) return type;
+    const fallback = types.get("general-purpose");
+    if (fallback && !warnedTypes.has(name)) {
+      warnedTypes.add(name);
+      options.onWarning?.(
+        `Subagent type "${name}" is unavailable; falling back to general-purpose.`,
+      );
+    }
+    return fallback;
+  };
   function adopt(publication: CommitPublication) {
     for (const change of publication.changes) {
       if (
@@ -150,6 +163,42 @@ export function createSubagentController(options: SubagentControllerOptions) {
     return raw?.value === undefined || raw.value === null
       ? []
       : parseSubagentIdentities(raw.value, parentSessionId);
+  }
+  async function waitForInput(
+    agentId: string,
+    driverTaskId: number,
+    api: ToolExecutionApi,
+    context: Context,
+  ) {
+    const watch = await api.watchDoc(state.document, parent.id, context);
+    if (!watch) throw new Error("Subagent directory is missing.");
+    const ready = Promise.withResolvers<void>();
+    const check = (value: typeof watch.value) => {
+      const row = parseSubagentIdentities(value?.value ?? [], parentSessionId).find(
+        (row) => row.id === agentId,
+      );
+      if (!row || row.driverTaskId !== driverTaskId)
+        throw new Error("Subagent Run changed before steering.");
+      if (!row.active || row.latestRun?.outcome)
+        throw new Error("Subagent Run ended before steering.");
+      if (row.latestRun?.inputSubmissionId !== undefined) ready.resolve();
+    };
+    try {
+      check(watch.value);
+      watch.start(async (value) => {
+        try {
+          check(value);
+        } catch (error) {
+          ready.reject(error);
+        }
+      });
+      void watch.closed.then((end) =>
+        ready.reject(new Error(`Subagent input watch ${end.reason}.`)),
+      );
+      await awaitWithContext(ready.promise, context);
+    } finally {
+      await watch.stop();
+    }
   }
   function childRow(taskId: TaskId) {
     const row = identities.find((row) => row.driverTaskId === taskId);
@@ -338,6 +387,7 @@ export function createSubagentController(options: SubagentControllerOptions) {
           const current = parseSubagentIdentities(doc.value ?? [], parentSessionId);
           const row = current.find((row) => row.id === agentId);
           if (!row?.latestRun) throw new Error("Subagent Run identity is missing.");
+          row.latestRun.inputSubmissionId = Number(request.id);
           if (admitted.entry !== undefined) row.latestRun.promptEntryId = admitted.entry;
           if (agent?.model) row.latestRun.model = `${agent.model.provider}/${agent.model.modelId}`;
           doc.value = current;
@@ -635,6 +685,7 @@ export function createSubagentController(options: SubagentControllerOptions) {
       return { id, taskId };
     }, context);
     if ("steerConversationId" in created && created.steerConversationId !== undefined) {
+      await waitForInput(created.id, Number(created.taskId), api, context);
       const child = await api.conversation(created.steerConversationId, context);
       if (!child) throw new Error("Subagent conversation is missing.");
       await child.submit(
@@ -722,6 +773,7 @@ export function createSubagentController(options: SubagentControllerOptions) {
       );
       if (!conversation) throw new Error("Subagent conversation is missing.");
       if (child.active) {
+        await waitForInput(child.id, child.driverTaskId, api, context);
         await conversation.submit(
           {
             type: "input",
