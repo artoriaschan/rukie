@@ -629,6 +629,7 @@ function Chat({
     const current = viewRef.current;
     const next = typeof current === "object" ? current.from : "chat";
     disarmKill();
+    if (next === "chat") pendingRestore.current = savedChatScroll.current;
     switchView(next);
   };
   const turnPage = (next: DetailPage) => {
@@ -859,6 +860,17 @@ function Chat({
     pendingRestore.current = paintedChat.current;
     previousWidth.current = columns;
   }
+  useLayoutEffect(() => {
+    const saved = pendingRestore.current;
+    if (view !== "chat" || !saved || saved.width !== columns) return;
+    // Same-width panel return preserves the source row before the first paint.
+    // The native handle resolves the element position in the fresh layout.
+    restoreSourcePosition(body.current, sources, {
+      ...saved,
+      anchor: saved.anchor ? { ...saved.anchor, sourceOffset: undefined } : undefined,
+    });
+    pendingRestore.current = undefined;
+  }, [view, columns, sources]);
   const chatScrollRef = usePanelScroll(body, savedChatScroll.current, columns, (position) => {
     if (pendingRestore.current) {
       const saved = pendingRestore.current;
