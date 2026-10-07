@@ -556,6 +556,7 @@ test("an undersized terminal pauses question paste editing until it is resized b
     app.resize(39, 12);
     await app.waitFor(() => app.screen().some((line) => line.includes("请调整窗口")));
     app.stdin.write("\x1b[200~hidden draft\x1b[201~");
+    await app.flush();
     app.resize(40, 12);
     await app.waitFor(() => app.screen().some((line) => line.includes("Which storage?")));
     app.stdin.write("\r");

@@ -475,7 +475,11 @@ export function createInteractions(
           else item.finish("declined");
           return;
         }
-        if (event.keypress.name?.toLowerCase() === "v" && (key.ctrl || key.meta) && !key.shift) {
+        if (
+          (event.keypress.name || event.input).toLowerCase() === "v" &&
+          (key.ctrl || key.meta) &&
+          !key.shift
+        ) {
           if (clipboardBusy && clipboardOwner === item) return;
           const pasteToken = Symbol();
           clipboardBusy = pasteToken;
@@ -528,8 +532,10 @@ export function createInteractions(
             this.switchQuestion(event.keypress.name === "left" ? -1 : 1);
             return;
           }
-          if (event.input === " " && question.multiSelect) {
+          if (event.input.startsWith(" ") && question.multiSelect) {
             this.toggleQuestion();
+            if (event.input.length > 1)
+              this.questionInput({ ...event, input: event.input.slice(1) });
             return;
           }
         }
