@@ -10,6 +10,14 @@
  * the cursor is now). The rendered highlight normalizes to start ≤ end.
  */
 
+import stripAnsi from 'strip-ansi'
+import type { DOMElement } from './dom.js'
+import { hitTest } from './hit-test.js'
+import { nodeCache, textPaintCache } from './node-cache.js'
+import squashTextNodes from './squash-text-nodes.js'
+import sliceAnsi from './utils/sliceAnsi.js'
+import wrapText from './wrap-text.js'
+import { stringWidth } from './stringWidth.js'
 import { clamp } from './layout/geometry.js'
 import type { Screen, StylePool } from './screen.js'
 import type { TerminalImagePlacement } from './terminal-image.js'
@@ -30,6 +38,17 @@ export type SelectionRegion = {
   readonly text: string
 }
 
+type SelectedSourceSegment = {
+  readonly path: readonly number[]
+  readonly row: number
+  readonly start: number
+  readonly end: number
+  readonly width: number
+  readonly wrap: DOMElement['style']['textWrap']
+  readonly text: string
+  readonly col: number
+}
+
 /**
  * Text extracted from one screen row plus the copy regions it touched.
  * Regions travel OUTSIDE `text` on purpose: a row's characters are model
@@ -45,6 +64,8 @@ export type SelectionRow = {
   readonly sw: boolean
   /** Region insertions, ascending by `at`. */
   readonly regions: readonly SelectionRegion[]
+  /** Exact selected source bytes, retained only for captured rows. */
+  readonly sources?: readonly SelectedSourceSegment[]
 }
 
 /**
@@ -122,6 +143,8 @@ export type SelectionState = {
    *  guard only ever indicts a STATIONARY highlight whose text was
    *  swapped underneath. Owned by refreshSelectionFingerprint. */
   coveredGeometry: string | null
+  /** Painted source spans of the last frame, consumed before rows scroll out. */
+  coveredSourceRows?: Map<number, SelectedSourceSegment[]>
   /** Sticky once the covered rows changed without follow coordination.
    *  Commit-time copy (copySelectionNoClear) refuses and clears instead
    *  of shipping the replaced text. Cleared on start/clear. */
@@ -227,6 +250,7 @@ export function startSelection(
   s.coveredFingerprint = null
   s.coveredText = null
   s.coveredGeometry = null
+  s.coveredSourceRows = undefined
   s.stale = false
 }
 
@@ -303,6 +327,7 @@ export function clearSelection(s: SelectionState): void {
   s.coveredFingerprint = null
   s.coveredText = null
   s.coveredGeometry = null
+  s.coveredSourceRows = undefined
   s.stale = false
   s.includeNoSelectCells = false
   s.fence = undefined
@@ -891,6 +916,16 @@ export function shiftSelectionForFollow(
     clearSelection(s)
     return true
   }
+  // Reverse scrolling returns the newest captured rows to the viewport.
+  // Keep only the rows still represented by virtual endpoint debt.
+  if (rawFocus !== undefined) {
+    const aboveDebt = Math.max(0, minRow - Math.min(rawAnchor, rawFocus))
+    const belowDebt = Math.max(0, Math.max(rawAnchor, rawFocus) - maxRow)
+    s.scrolledOffAbove.length = Math.min(s.scrolledOffAbove.length, aboveDebt)
+    if (s.scrolledOffBelow.length > belowDebt) {
+      s.scrolledOffBelow.splice(0, s.scrolledOffBelow.length - belowDebt)
+    }
+  }
   // Clamp from raw, not p.row+dRow — so a virtual position coming back
   // in-bounds lands at the TRUE position, not the stale clamped one.
   s.anchor = { col: s.anchor.col, row: clamp(rawAnchor, minRow, maxRow) }
@@ -1192,6 +1227,14 @@ export function selectionBounds(s: SelectionState): {
   return { start, end }
 }
 
+/** Source endpoints before viewport clamping; edge cells are not substitute source rows. */
+function sourceSelectionBounds(s: SelectionState): ReturnType<typeof selectionBounds> {
+  if (!s.anchor || !s.focus) return null
+  const anchor = { ...s.anchor, row: s.virtualAnchorRow ?? s.anchor.row }
+  const focus = { ...s.focus, row: s.virtualFocusRow ?? s.focus.row }
+  return comparePoints(anchor, focus) <= 0 ? { start: anchor, end: focus } : { start: focus, end: anchor }
+}
+
 /**
  * Check if a cell at (col, row) is within the current selection range.
  * Used by the renderer to apply inverse style.
@@ -1349,6 +1392,106 @@ function joinRows(
   }
 }
 
+/** Resolve the same native tree slot, accepting remounts only when selected bytes survive. */
+function sourceAt(root: DOMElement, path: readonly number[]): DOMElement | undefined {
+  let node = root
+  for (const index of path) {
+    const child = node.childNodes[index]
+    if (!child || child.nodeName === '#text') return undefined
+    node = child
+  }
+  return node.nodeName === 'ink-text' ? node : undefined
+}
+
+function capturedSourcesValid(s: SelectionState, root: DOMElement): boolean {
+  const texts = new Map<DOMElement, Map<string, string[]>>()
+  for (const row of [...s.scrolledOffAbove, ...s.scrolledOffBelow]) {
+    for (const source of row.sources ?? []) {
+      const node = sourceAt(root, source.path)
+      if (!node) return false
+      let wraps = texts.get(node)
+      if (!wraps) {
+        wraps = new Map()
+        texts.set(node, wraps)
+      }
+      const key = `${source.width}:${source.wrap}`
+      let lines = wraps.get(key)
+      if (!lines) {
+        lines = wrapText(stripAnsi(squashTextNodes(node)), source.width, source.wrap).split('\n')
+        wraps.set(key, lines)
+      }
+      const line = lines[source.row]
+      if (line === undefined || stripAnsi(sliceAnsi(line, source.start, source.end)) !== source.text) return false
+    }
+  }
+  return true
+}
+
+/** Snapshot only glyph-owned source spans; style and unselected suffixes never invalidate them. */
+function paintedSourceRows(s: SelectionState, screen: Screen, root: DOMElement): Map<number, SelectedSourceSegment[]> {
+  const result = new Map<number, SelectedSourceSegment[]>()
+  const bounds = selectionBounds(s)
+  if (!bounds) return result
+  const sources = new Map<DOMElement, { path: number[]; lines: string[] }>()
+  for (let row = Math.max(0, bounds.start.row); row <= Math.min(screen.height - 1, bounds.end.row); row++) {
+    let start = row === bounds.start.row ? bounds.start.col : 0
+    let end = row === bounds.end.row ? bounds.end.col : screen.width - 1
+    if (s.fence) {
+      start = Math.max(start, s.fence.colStart)
+      end = Math.min(end, s.fence.colEnd)
+    }
+    ;[start, end] = atomicRowRange(screen, row, start, end, s.fence)
+    for (let col = start; col <= end; col++) {
+      if (!s.includeNoSelectCells && screen.noSelect[row * screen.width + col] === 1) continue
+      const cell = cellAt(screen, col, row)
+      if (!cell || cell.width >= CellWidth.SpacerTail) continue
+      let node = hitTest(root, col, row)
+      while (node && node.nodeName !== 'ink-text') node = node.parentNode ?? null
+      if (!node) continue
+      const rect = nodeCache.get(node)
+      const prepared = textPaintCache.get(node)
+      if (!rect || !prepared) continue
+      let source = sources.get(node)
+      if (!source) {
+        const path: number[] = []
+        let ancestor = node
+        while (ancestor.parentNode) {
+          path.unshift(ancestor.parentNode.childNodes.indexOf(ancestor))
+          ancestor = ancestor.parentNode
+        }
+        if (ancestor !== root) continue
+        const raw = stripAnsi(squashTextNodes(node))
+        const lines = wrapText(raw, prepared.maxWidth, node.style.textWrap ?? 'wrap').split('\n')
+        source = { path, lines }
+        sources.set(node, source)
+      }
+      const localRow = row - Math.floor(rect.y) - prepared.paddingTop
+      const line = source.lines[localRow]
+      if (line === undefined) continue
+      const localCol = col - Math.floor(rect.x) - prepared.paddingLeft
+      if (localCol < 0) continue
+      // A selected trailing blank also owns the line boundary: inserting
+      // text there must invalidate a captured empty source fragment.
+      const boundary = localCol === stringWidth(line) && cell.char.trim() === ''
+      if (!boundary && (cell.char === '' || stripAnsi(sliceAnsi(line, localCol, localCol + stringWidth(cell.char))) !== cell.char)) continue
+      const selectedText = boundary ? '' : cell.char
+      const segments = result.get(row) ?? []
+      segments.push({
+        path: source.path,
+        row: localRow,
+        start: localCol,
+        end: localCol + (boundary ? 1 : stringWidth(cell.char)),
+        width: prepared.maxWidth,
+        wrap: node.style.textWrap ?? 'wrap',
+        text: selectedText,
+        col,
+      })
+      result.set(row, segments)
+    }
+  }
+  return result
+}
+
 /**
  * Rehash the rows under the highlight and latch `stale` when they changed
  * without a coordinated shift this frame.
@@ -1409,15 +1552,22 @@ export function refreshSelectionFingerprint(
   s: SelectionState,
   screen: Screen,
   coordinated: boolean,
+  root?: DOMElement,
 ): boolean {
   if (s.stale) return false
+  if (root && !capturedSourcesValid(s, root)) {
+    s.stale = true
+    return true
+  }
   const b = selectionBounds(s)
   if (!b) {
     s.coveredFingerprint = null
     s.coveredText = null
     s.coveredGeometry = null
+    s.coveredSourceRows = undefined
     return false
   }
+  if (root) s.coveredSourceRows = paintedSourceRows(s, screen, root)
   // Any geometry change re-baselines: drag motion, word/line extension,
   // keyboard pan, multi-click — the user redefined what is highlighted, so
   // the next copy legitimately reads the new band's CURRENT text. Only a
@@ -1573,7 +1723,9 @@ export function getSelectedText(s: SelectionState, screen: Screen): string {
     rows.push(s.scrolledOffAbove[i]!)
   }
 
-  for (let row = start.row; row <= end.row; row++) {
+  const sourceBounds = sourceSelectionBounds(s)!
+  const fullyClamped = sourceBounds.end.row < start.row || sourceBounds.start.row > end.row
+  for (let row = start.row; !fullyClamped && row <= end.row; row++) {
     let rowStart = row === start.row ? start.col : 0
     let rowEnd = row === end.row ? end.col : screen.width - 1
     // Fence (panel-origin gestures) applies to EVERY row, not just the
@@ -1629,7 +1781,7 @@ export function captureScrolledRows(
   side: 'above' | 'below',
   screenRowOffset = 0,
 ): void {
-  const b = selectionBounds(s)
+  const b = sourceSelectionBounds(s)
   if (!b || firstRow > lastRow) return
   const { start, end } = b
   // Intersect [firstRow, lastRow] with [start.row, end.row]. Rows outside
@@ -1644,7 +1796,9 @@ export function captureScrolledRows(
     const colStart = row === start.row ? start.col : 0
     const colEnd = row === end.row ? end.col : width - 1
     const screenRow = row - screenRowOffset
-    captured.push(extractRowText(screen, screenRow, colStart, colEnd, s.includeNoSelectCells, s.fence))
+    const extracted = extractRowText(screen, screenRow, colStart, colEnd, s.includeNoSelectCells, s.fence)
+    const [firstCol, lastCol] = atomicRowRange(screen, screenRow, colStart, colEnd, s.fence)
+    captured.push({ ...extracted, sources: s.coveredSourceRows?.get(screenRow)?.filter(source => source.col >= firstCol && source.col <= lastCol) })
   }
 
   if (side === 'above') {
