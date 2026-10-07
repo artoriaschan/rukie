@@ -149,7 +149,6 @@ test("a 100×100 prompt image adds fourteen estimated tokens to Context Usage an
     });
     expect(events.find((event) => event.type === "context_usage")?.segments).toMatchObject({
       prompt: 15,
-      tools: 0,
     });
   } finally {
     await session.dispose();
@@ -175,7 +174,8 @@ test("read image tokens belong to tools and appear in the live Context Report", 
         events.push(event);
       },
     });
-    expect(events.findLast((event) => event.type === "context_usage")?.segments.tools).toBe(21);
+    const usage = events.filter((event) => event.type === "context_usage");
+    expect(usage.at(-1)!.segments.tools - usage[0]!.segments.tools).toBe(21);
     // Prompt 1 + tool call 7 + read text 7 + image 14 + assistant 1 + environment/skills reminders.
     const report = session.contextReport();
     expect(
@@ -408,8 +408,13 @@ test.each(["large", "unparseable", "zero"])(
       });
       expect(events.find((event) => event.type === "context_usage")?.segments).toMatchObject({
         prompt: 1601,
-        tools: 1600,
       });
+      const declarations = session
+        .contextReport()
+        .categories.find((category) => category.name === "system-tools")!.tokens;
+      expect(
+        events.find((event) => event.type === "context_usage")!.segments.tools - declarations,
+      ).toBe(1600);
     } finally {
       await session.dispose();
       await dirs.cleanup();

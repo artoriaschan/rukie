@@ -17,6 +17,7 @@ const imageTokens = (data: string) => {
 /**
  * Recompute from restored context; historical provider counts are never summed here.
  * Images use ceil(width × height / 750), capped at 1600; unreadable headers use that cap.
+ * Tools include current declarations and tool-result content, including MCP tools.
  * Provider input tokens override only the total, retaining estimates for attribution.
  */
 export function contextUsage(
@@ -36,6 +37,8 @@ export function contextUsage(
       if (section) segments.system += tokens(section);
     }
   }
+  for (const tool of getCurrentTools(messages))
+    segments.tools += tokens(JSON.stringify(toToolDeclaration(tool)));
   for (const message of messages) {
     if (message.role === "system-reminder") {
       segments.prompt += tokens(message.content);

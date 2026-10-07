@@ -33,6 +33,7 @@ export interface ContextUsageEvent {
     prompt: number;
     assistant: number;
     thinking: number;
+    /** Current tool declarations (built-in and MCP) plus tool-result content. */
     tools: number;
   };
 }

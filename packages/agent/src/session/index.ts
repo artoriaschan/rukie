@@ -290,7 +290,7 @@ export interface Session {
   setPermissionMode(mode: PermissionMode): void;
   /** Snapshot the restored context; usable while idle or running. */
   contextReport(): ContextReport;
-  /** Snapshot current usage; restored context is estimated until a new provider response. */
+  /** Snapshot current usage, retaining the latest provider input count on resume. */
   contextUsage(): ContextUsageEvent;
   /** Completed Runs anchored after a one-based message position in the current restored context. */
   runSummaries(): readonly RunSummaryFact[];
@@ -1369,14 +1369,19 @@ async function createSessionInternal(
     },
     schedule: () => scheduleRewake?.(),
   });
-  let inputTokens: number | undefined;
-  // Preserve context_usage's existing resume estimate while reports can display
-  // the last stored provider count until an operation invalidates it.
-  const lastResponse = initialBranch.messages.findLast((message) => message.role === "assistant");
-  let reportInputTokens =
-    lastResponse?.role === "assistant"
-      ? lastResponse.usage.input + lastResponse.usage.cacheRead + lastResponse.usage.cacheWrite ||
-        undefined
+  // Resume retains the last response's input count, just like a live Session.
+  const lastCompaction = entries.findLastIndex((entry) => entry.type === "compaction");
+  const lastResponse = entries
+    .slice(lastCompaction + 1)
+    .findLast((entry) => entry.type === "message" && entry.message.role === "assistant");
+  let inputTokens =
+    lastResponse?.type === "message" &&
+    lastResponse.message.role === "assistant" &&
+    lastResponse.message.model === model.id &&
+    lastResponse.message.provider === model.provider
+      ? lastResponse.message.usage.input +
+          lastResponse.message.usage.cacheRead +
+          lastResponse.message.usage.cacheWrite || undefined
       : undefined;
   let sessionStartControl: CommonHookResult | undefined = await hooks.run(
     "SessionStart",
@@ -1540,7 +1545,6 @@ async function createSessionInternal(
     agent.state.messages = restored;
     if (trigger === "manual") completedMessages = structuredClone(restored);
     inputTokens = undefined;
-    reportInputTokens = undefined;
     await emit({
       type: "compaction_end",
       trigger,
@@ -1725,7 +1729,6 @@ async function createSessionInternal(
         streamFn = selected.streamFn;
         agent.state.model = model;
         inputTokens = undefined;
-        reportInputTokens = undefined;
         broadcast({
           type: "tool_state_changed",
           name: "model",
@@ -1870,7 +1873,7 @@ async function createSessionInternal(
         messages: agent.state.messages,
         model: `${model.provider}/${model.id}`,
         window: model.contextWindow,
-        inputTokens: inputTokens ?? reportInputTokens,
+        inputTokens,
         mcpServers: mcpToolServers,
       });
     },
@@ -2103,7 +2106,6 @@ async function createSessionInternal(
           agent.state.messages = restoredBranch.messages;
           completedMessages = structuredClone(agent.state.messages);
           inputTokens = undefined;
-          reportInputTokens = undefined;
           for (const change of changes)
             broadcast({ type: "tool_state_changed", ...change, sessionId: session.id });
           broadcast({ type: "conversation_rewound", promptEntryId, sessionId: session.id });
@@ -2688,7 +2690,6 @@ async function createSessionInternal(
             if (event.type === "message_end" && event.message.role === "assistant") {
               const { input, cacheRead, cacheWrite } = event.message.usage;
               inputTokens = input + cacheRead + cacheWrite || undefined;
-              reportInputTokens = inputTokens;
             }
             await emit(presentedEvent);
             if (event.type === "message_end" && event.message.role === "assistant")

@@ -735,11 +735,18 @@ test("stream-json emits session metadata, verbatim pi events, and the Run result
   expect(usage[0]).toEqual({
     type: "context_usage",
     sessionId,
-    used: usage[0].segments.system,
+    used: usage[0].segments.system + usage[0].segments.tools,
     window: expect.any(Number),
-    segments: { system: expect.any(Number), prompt: 0, assistant: 0, thinking: 0, tools: 0 },
+    segments: {
+      system: expect.any(Number),
+      prompt: 0,
+      assistant: 0,
+      thinking: 0,
+      tools: expect.any(Number),
+    },
   });
   expect(usage[0].used).toBeGreaterThan(0);
+  expect(usage[0].segments.tools).toBeGreaterThan(0);
   expect(usage[0].window).toBeGreaterThan(0);
   expect(usage[1]).toEqual({
     type: "context_usage",
@@ -751,7 +758,7 @@ test("stream-json emits session metadata, verbatim pi events, and the Run result
       prompt: expect.any(Number),
       assistant: 4,
       thinking: 0,
-      tools: 0,
+      tools: usage[0].segments.tools,
     },
   });
   expect(events.find((event) => event.assistantMessageEvent?.type === "text_delta")).toMatchObject({

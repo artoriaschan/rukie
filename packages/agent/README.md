@@ -6,7 +6,7 @@ View 不写入 Transcript，也不进入模型上下文。`Session.messages` 在
 
 # Context Usage
 
-`session.contextUsage()` 同步返回当前模型上下文的占用及分段快照，不发起模型请求、不写入 Transcript。Session Resume 按恢复的当前上下文重新估算；活跃 Session 收到新回复后，总占用采用最近 provider 输入计数，分段仍按当前上下文估算。Frontend 可在恢复视图时读取该快照，并继续消费 `context_usage` 事件更新预览。分类报告使用 `session.contextReport()`，其恢复后的历史 provider 计数规则独立于该占用预览。
+`session.contextUsage()` 同步返回当前模型上下文的占用及分段快照，不发起模型请求、不写入 Transcript。总占用采用最近一轮 provider 输入计数（含 cacheRead 与 cacheWrite），Session Resume 从恢复的当前上下文读取该计数；没有输入计数时按当前上下文估算。分段始终为估算值，其中 tools 包含当前内置和 MCP 工具定义，以及工具返回内容；已被移除或替换的定义不重复计入。Compaction、Rewind 或模型切换使旧计数失效，随后恢复估算，直到收到新回复。Frontend 可在恢复视图时读取该快照，并继续消费 `context_usage` 事件更新预览。分类报告使用 `session.contextReport()`，采用相同的总占用计数。
 
 # Run summary
 
