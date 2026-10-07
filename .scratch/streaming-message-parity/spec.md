@@ -1,6 +1,6 @@
 # dsh-TUI 流式会话消息与交互复刻
 
-Status: ready-for-agent
+Status: claimed
 
 ## Problem Statement
 
@@ -140,3 +140,7 @@ Neant 的会话区已经具备部分工具、Background Job 和 Subagent 呈现�
 固定参考版本可定位消息列表、流式 Markdown、思考、工具、jobs 和 Subagent 的呈现与投影代码。实施时应从该版本核对行为，形成差异及验收证据；不要跟随参考仓库后续变更而扩大范围。此前调查是源码证据，不是 Neant 行为测试通过的证据。
 
 已接受的差异包括 Neant 品牌与 Locale、领域和生命周期语义、缺失数据处理、小终端规则、已持久化的中断输出保留，以及不考虑老会话。发现这些边界以外的真实冲突时记录并解决，不默默降低复刻范围。
+
+## Comments
+
+- 2026-10-07：按 implement-spec 开始实施，集成分支 `codex/streaming-message-parity`，基线 `b48c548`；按票据依赖调度独立 worktree，最终进行 Standards／Spec 审阅和完整验证。

@@ -24,7 +24,7 @@ test("MCP panels retain input ownership beside background cards, jobs and comple
     expect(screen()).toContain("Manage MCP servers (0)");
     expect(screen()).toContain("● 1");
     expect(app.calls).toHaveLength(2);
-    const row = app.screen().findIndex((line) => line.includes("● bash-1"));
+    const row = app.screen().findIndex((line) => line.includes("● job: bash-1"));
     expect(row).toBeGreaterThanOrEqual(0);
     app.stdin.write(`\x1b[<0;4;${row + 1}M\x1b[<0;4;${row + 1}m/jobs\r`);
     await app.flush();
@@ -144,7 +144,7 @@ test("panel navigation disarms stop, confirmation expires, and idle stop waits f
         },
       })),
     );
-    await app.waitFor(() => app.calls.length === 2 && screen().includes("● bash-2"));
+    await app.waitFor(() => app.calls.length === 2 && screen().includes("● job: bash-2"));
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
     app.stdin.write("/jobs\r");
@@ -168,7 +168,7 @@ test("panel navigation disarms stop, confirmation expires, and idle stop waits f
     expect(screen()).not.toContain("k again within");
     expect(app.calls).toHaveLength(2);
     app.stdin.write("\x1b");
-    await app.waitFor(() => screen().includes("✗ bash-2"));
+    await app.waitFor(() => screen().includes("✗ job: bash-2"));
     app.stdin.write("collect\r");
     await app.waitFor(() => app.calls.length === 3);
     expect(JSON.stringify(app.calls[2]!.context.messages)).toContain("User stopped background job");
@@ -213,10 +213,9 @@ test("card clicks focus exact jobs and expanded promoted details show bounded ou
     await app.waitFor(() => !app.isWorking());
     app.stdin.write("saved draft");
     await app.waitFor(() => screen().includes("saved draft"));
-    const row = app.screen().findIndex((line) => line.includes("● bash-2"));
+    const row = app.screen().findIndex((line) => line.includes("● job: bash-2"));
     app.stdin.write(`\x1b[<0;4;${row + 1}M\x1b[<0;4;${row + 1}m`);
     await app.waitFor(() => screen().includes("❯ bash-2"));
-    app.stdin.write("e");
     await app.waitFor(
       () =>
         screen().includes("Started") &&
@@ -239,11 +238,10 @@ test("card clicks focus exact jobs and expanded promoted details show bounded ou
     app.stdin.write("\x1b");
     await app.waitFor(() => screen().includes("saved draft"));
     app.stdin.write("\x0f");
-    await app.waitFor(() => screen().includes("✓ bash-1"));
-    const first = app.screen().findIndex((line) => line.includes("✓ bash-1"));
+    await app.waitFor(() => screen().includes("✓ job: bash-1"));
+    const first = app.screen().findIndex((line) => line.includes("✓ job: bash-1"));
     app.stdin.write(`\x1b[<0;4;${first + 1}M\x1b[<0;4;${first + 1}m`);
     await app.waitFor(() => screen().includes("❯ bash-1"));
-    app.stdin.write("e");
     await app.waitFor(() => screen().includes("Started") && screen().includes("first"));
     expect(screen()).not.toContain("Promoted ·");
     app.stdin.write("\x1b");
@@ -371,8 +369,8 @@ test("Chinese command completion and single job details fit 40×12 through resiz
       description: "中文输出任务",
       run_in_background: true,
     });
-    await app.waitFor(() => app.calls.length === 2 && screen().includes("● bash-1"));
-    const card = app.screen().findIndex((line) => line.includes("● bash-1"));
+    await app.waitFor(() => app.calls.length === 2 && screen().includes("● 任务：bash-1"));
+    const card = app.screen().findIndex((line) => line.includes("● 任务：bash-1"));
     app.stdin.write(`\x1b[<0;4;${card + 1}M\x1b[<0;4;${card + 1}m`);
     await app.waitFor(() => screen().includes("❯ bash-1"));
     app.calls[1]!.tool("ask_user_question", {
@@ -388,7 +386,6 @@ test("Chinese command completion and single job details fit 40×12 through resiz
         },
       ],
     });
-    app.stdin.write("e");
     await app.waitFor(() => screen().includes("启动"));
     app.stdin.write("\x1b[6~");
     await app.waitFor(() => screen().includes("SAFE-TAIL"));
@@ -423,7 +420,7 @@ test("a promoted job retains its timeline after conversation Rewind removes its 
       description: "Promotion survives rewind",
       timeout: 0.05,
     });
-    await app.waitFor(() => app.calls.length === 2 && screen().includes("● bash-1"));
+    await app.waitFor(() => app.calls.length === 2 && screen().includes("● job: bash-1"));
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
     app.stdin.write("/jobs\r");
@@ -432,7 +429,7 @@ test("a promoted job retains its timeline after conversation Rewind removes its 
     await app.waitFor(() => screen().includes("Promoted ·"));
     const promotion = app.screen().find((line) => line.includes("Promoted ·"));
     app.stdin.write("\x1b");
-    await app.waitFor(() => screen().includes("● bash-1"));
+    await app.waitFor(() => screen().includes("● job: bash-1"));
     app.stdin.write("/rewind\r");
     await app.waitFor(() => screen().includes("Pick a message to rewind to"));
     app.stdin.write("\r");
@@ -482,7 +479,39 @@ test("a narrow jobs list starts at the focused first job and follows keyboard se
     await app.waitFor(() => screen().includes("❯ bash-1 ·"));
     expect(app.screen().at(-1)).toContain("Esc");
     app.stdin.write("\x1b");
-    await app.waitFor(() => screen().includes("● bash-10 · running"));
+    await app.waitFor(() => /● job: bash-10 bash \S+ running/.test(screen()));
+    expect(app.stderr()).toBe("");
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("stopped job details disclose the real terminating signal", async () => {
+  const app = await start(["--permission-mode", "full-access", "launch"], {
+    columns: 100,
+    rows: 28,
+    env: { LANG: "en_US.UTF-8" },
+  });
+  const screen = () => app.screen().join("\n");
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("bash", {
+      command: "printf armed; while :; do sleep 0.01; done",
+      description: "Signal fixture",
+      run_in_background: true,
+    });
+    await app.waitFor(() => app.calls.length === 2 && screen().includes("│ ≡ armed"));
+    app.stdin.write("/jobs\re");
+    await app.waitFor(() => screen().includes("Output tail"));
+    app.stdin.write("kk");
+    await app.waitFor(() => screen().includes("bash-1 · stopped"));
+    expect(screen()).toContain("signal: SIGTERM");
+    expect(screen()).toContain("1 stopped");
+    app.stdin.write("\x1b");
+    app.calls[1]!.finish();
+    await app.waitFor(() => app.calls.length === 3 || !app.isWorking());
+    if (app.calls.length === 3) app.calls[2]!.finish();
+    await app.waitFor(() => !app.isWorking());
     expect(app.stderr()).toBe("");
   } finally {
     await app.cleanup();

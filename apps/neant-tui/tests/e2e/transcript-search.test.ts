@@ -255,7 +255,7 @@ test("search indexes the displayed background job tail", async () => {
     await app.waitFor(
       () => !app.isWorking() && app.screen().some((line) => line.includes("JOB_NEEDLE")),
     );
-    app.stdin.write("\x0f/● bash-1 · running\r");
+    app.stdin.write("\x0f/● job: bash-1 bash\r");
     await app.waitFor(() => app.screen().some((line) => / · 1\/1 · /.test(line)));
     expect(app.screen().join("\n")).toContain("JOB_NEEDLE");
   } finally {
