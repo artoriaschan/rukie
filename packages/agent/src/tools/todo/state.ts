@@ -1,6 +1,6 @@
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
-import type { ToolStateDefinition } from "../../tool-state/index.ts";
+import { defineToolState, type ToolStateDefinition } from "../../tool-state/index.ts";
 
 export const todoSchema = Type.Array(
   Type.Object(
@@ -17,7 +17,9 @@ export const todoSchema = Type.Array(
 );
 export type TodoItem = Static<typeof todoSchema>[number];
 
-export const todoState: ToolStateDefinition = {
+export const todoState: ToolStateDefinition = defineToolState({
+  history: "rewindable",
+  fork: "asOf",
   name: "todo",
   version: 1,
   parse(version, value) {
@@ -31,4 +33,4 @@ export const todoState: ToolStateDefinition = {
     const markers = { pending: "○", in_progress: "●", completed: "✓" };
     return `Current todo list:\n${value.map((item) => `${markers[item.status]} ${item.content}`).join("\n")}\nUpdate the todo list as needed.`;
   },
-};
+});

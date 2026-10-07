@@ -1,45 +1,106 @@
-import { formatSkillInvocation, loadSkills, type Skill } from "@earendil-works/pi-agent-core";
-import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core/harness/context";
-import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
-import { join } from "node:path";
+import { readdir, readFile, stat } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
+import ignore from "ignore";
+
+export interface Skill {
+  name: string;
+  description: string;
+  content: string;
+  filePath: string;
+  disableModelInvocation?: boolean;
+}
+
+export function formatSkillInvocation(skill: Skill): string {
+  return `<skill name="${skill.name}" location="${skill.filePath}">\nReferences are relative to ${dirname(skill.filePath)}.\n\n${skill.content}\n</skill>`;
+}
 
 export async function discoverSkills(cwd: string, homeDir: string) {
-  const env = new NodeExecutionEnv({ cwd });
+  const warnings: string[] = [];
+  const skills = new Map<string, Skill>();
+  const invocable = new Map<string, { name: string; description: string }>();
   const paths = [homeDir, cwd].flatMap((root) =>
     [".rukie", ".claude", ".agents"].map((namespace) => join(root, namespace, "skills")),
   );
-  const loaded = await loadSkills(env, paths, BACKGROUND_CONTEXT);
-  const warnings = loaded.diagnostics.map(
-    (diagnostic) => `${diagnostic.path}: ${diagnostic.message}`,
-  );
-  // pi returns some invalid skills alongside diagnostics; Rukie skips them.
-  const invalidPaths = new Set(loaded.diagnostics.map((diagnostic) => diagnostic.path));
-  const skills = new Map<string, Skill>();
-  const invocable = new Map<string, { name: string; description: string }>();
-  for (const skill of loaded.skills) {
-    if (invalidPaths.has(skill.filePath)) continue;
-    try {
-      // pi falls back to the directory name when frontmatter.name is absent.
-      // Agent Skills requires an explicit name, so check that field as well.
-      const raw = await Bun.file(skill.filePath).text();
-      const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(raw)?.[1];
-      const metadata = frontmatter === undefined ? undefined : Bun.YAML.parse(frontmatter);
-      if (
-        !metadata ||
-        typeof metadata !== "object" ||
-        !("name" in metadata) ||
-        metadata.name !== skill.name
-      ) {
-        warnings.push(`${skill.filePath}: frontmatter.name is required and must be a string`);
-        continue;
+  for (const root of paths) {
+    const visited = new Set<string>();
+    const matcher = ignore();
+    async function walk(path: string, relative: string) {
+      let entries;
+      try {
+        entries = await readdir(path, { withFileTypes: true });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT")
+          warnings.push(`${path}: ${String(error)}`);
+        return;
       }
-      skills.set(skill.name, skill);
-      if (!("user-invocable" in metadata) || metadata["user-invocable"] !== false)
-        invocable.set(skill.name, { name: skill.name, description: skill.description });
-      else invocable.delete(skill.name);
-    } catch (error) {
-      warnings.push(`${skill.filePath}: ${error instanceof Error ? error.message : String(error)}`);
+      for (const name of [".gitignore", ".ignore", ".fdignore"]) {
+        try {
+          matcher.add(await readFile(join(path, name), "utf8"));
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT")
+            warnings.push(`${join(path, name)}: ${String(error)}`);
+        }
+      }
+      for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+        if (entry.name.startsWith(".")) continue;
+        const next = join(path, entry.name),
+          rel = relative ? `${relative}/${entry.name}` : entry.name;
+        if (matcher.ignores(rel)) continue;
+        if (entry.isDirectory() || entry.isSymbolicLink()) {
+          try {
+            const info = await stat(next);
+            if (!info.isDirectory()) continue;
+            const key = `${info.dev}:${info.ino}`;
+            if (visited.has(key)) continue;
+            visited.add(key);
+            await walk(next, rel);
+          } catch (error) {
+            warnings.push(`${next}: ${String(error)}`);
+          }
+          continue;
+        }
+        if (entry.name !== "SKILL.md" && (relative || !entry.name.endsWith(".md"))) continue;
+        try {
+          const raw = await readFile(next, "utf8");
+          const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)([\s\S]*)$/.exec(raw);
+          if (!match) throw new Error("Required skill frontmatter is missing.");
+          const metadata: unknown = Bun.YAML.parse(match[1]!);
+          if (
+            !metadata ||
+            typeof metadata !== "object" ||
+            !("name" in metadata) ||
+            typeof metadata.name !== "string" ||
+            !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(metadata.name) ||
+            metadata.name.length > 64
+          )
+            throw new Error("Invalid skill name.");
+          if (entry.name === "SKILL.md" && metadata.name !== basename(path))
+            throw new Error("Skill name must match its directory.");
+          if (
+            !("description" in metadata) ||
+            typeof metadata.description !== "string" ||
+            !metadata.description.trim() ||
+            metadata.description.length > 1024
+          )
+            throw new Error("Invalid skill description.");
+          const skill: Skill = {
+            name: metadata.name,
+            description: metadata.description,
+            content: match[2]!.trim(),
+            filePath: next,
+            ...("disable-model-invocation" in metadata &&
+              metadata["disable-model-invocation"] === true && { disableModelInvocation: true }),
+          };
+          skills.set(skill.name, skill);
+          if (!("user-invocable" in metadata) || metadata["user-invocable"] !== false)
+            invocable.set(skill.name, { name: skill.name, description: skill.description });
+          else invocable.delete(skill.name);
+        } catch (error) {
+          warnings.push(`${next}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
     }
+    await walk(root, "");
   }
   return { skills, warnings, invocable: [...invocable.values()] };
 }
