@@ -1,6 +1,7 @@
 import { testClock } from "../helpers/test-clock";
-import { expect, test } from "bun:test";
+import { expect, test, spyOn } from "bun:test";
 import { startWithClock } from "../helpers/clock-app";
+import { start } from "../helpers/app";
 
 function click(app: Awaited<ReturnType<typeof startWithClock>>, x: number, y: number) {
   app.stdin.write(`\x1b[<0;${x + 1};${y + 1}M\x1b[<0;${x + 1};${y + 1}m`);
@@ -116,7 +117,9 @@ test("resumed thinking paints its full Markdown immediately with saved duration 
     await import("@earendil-works/pi-ai");
   const { auxiliaryModels } = await import("../helpers/auxiliary-model");
   const argv: string[] = [];
-  const app = await startWithClock(argv, {
+  // This case reads committed timing through an injected Session clock; it asserts
+  // static restored cells and clicks, and does not advance frontend animation time.
+  const app = await start(argv, {
     rows: 40,
     env: { LANG: "en" },
     prepare: async (root) => {
@@ -131,6 +134,7 @@ test("resumed thinking paints its full Markdown immediately with saved duration 
       );
       const stream = createAssistantMessageEventStream();
       let clock = 1000;
+      const monotonic = spyOn(performance, "now").mockImplementation(() => clock);
       const session = await createSession({
         cwd: root,
         homeDir: root,
@@ -153,7 +157,11 @@ test("resumed thinking paints its full Markdown immediately with saved duration 
       });
       try {
         session.subscribe((event) => {
-          if (event.type !== "message_update") return;
+          if (
+            event.type !== "message_update" &&
+            !(event.type === "message_start" && event.message.role === "assistant")
+          )
+            return;
           clock = 3500;
           const final = { ...partial, stopReason: "stop" as const };
           stream.push({ type: "done", reason: "stop", message: final });
@@ -163,6 +171,7 @@ test("resumed thinking paints its full Markdown immediately with saved duration 
         argv.push("--resume", session.id);
       } finally {
         await session.close();
+        monotonic.mockRestore();
       }
     },
   });

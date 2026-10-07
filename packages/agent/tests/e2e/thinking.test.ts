@@ -51,7 +51,8 @@ test("observed thinking phase duration stops at first text and survives Session 
           stream.push({ type: "text_delta", contentIndex: 1, delta: "answer", partial: text });
         } else if (event.message.content.some((block) => block.type === "text" && block.text)) {
           clock = 9000;
-          const final = { ...event.message, stopReason: "stop" as const };
+          // The provider publishes native protocol data; observed presentation facts stay in Core.
+          const final = { ...partial, content: event.message.content, stopReason: "stop" as const };
           stream.push({ type: "done", reason: "stop", message: final });
           stream.end(final);
         }

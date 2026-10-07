@@ -2677,6 +2677,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       conversation,
       sessionId: lease.id,
       tools: () => tools,
+      liveAssistantFacts: () =>
+        thinking.duration() !== undefined ? { rukieThinkingDurationMs: thinking.duration() } : {},
       adopt: (publication) => {
         state.adopt(publication);
         for (const change of publication.changes) {
@@ -3378,6 +3380,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             conversation,
             sessionId: lease.id,
             tools: () => tools,
+            liveAssistantFacts: () =>
+              thinking.duration() !== undefined
+                ? { rukieThinkingDurationMs: thinking.duration() }
+                : {},
             adopt: (publication) => {
               state.adopt(publication);
               for (const change of publication.changes) {
