@@ -6,7 +6,7 @@ export async function crashUnsafeEffect(root: string, child = false) {
     crashUnsafeEffect(
       root: string,
       child?: boolean,
-    ): Promise<{ sessionId: string; childId: string | undefined }>;
+    ): Promise<{ sessionId: string; childId: string | undefined; effectModifiedAt: number }>;
   } = await import(join(import.meta.dir, "../../../../agent/tests/helpers/native-recovery.ts"));
   return fixture.crashUnsafeEffect(root, child);
 }

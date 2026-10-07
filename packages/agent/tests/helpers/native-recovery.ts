@@ -4,6 +4,7 @@ import {
   withAbortSignal,
 } from "@earendil-works/chord/context";
 import { join } from "node:path";
+import { stat } from "node:fs/promises";
 
 /** A real process dies after an unsafe effect, before its native ToolResult commit is acknowledged. */
 export async function crashUnsafeEffect(root: string, child = false) {
@@ -94,7 +95,11 @@ export async function crashUnsafeEffect(root: string, child = false) {
     await process.exited;
     const stderr = await errors;
     if (stderr) throw new Error(stderr);
-    return { sessionId: value.sessionId, childId };
+    return {
+      sessionId: value.sessionId,
+      childId,
+      effectModifiedAt: (await stat(join(root, "uncertain-effect.txt"))).mtimeMs,
+    };
   } finally {
     process.kill();
     process.stdin.end();
