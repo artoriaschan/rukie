@@ -831,14 +831,15 @@ test.each(["prompt", "stdin", "stdin-stream-json", "goal", "goal-interrupted"])(
           .trim()
           .split("\n")
           .map((line) => JSON.parse(line));
-        expect(events.filter((event) => event.type === "result")).toHaveLength(2);
+        expect(events.filter((event) => event.type === "request_settled")).toHaveLength(2);
         expect(
           events.filter(
             (event) =>
               event.type === "message_end" &&
               event.messages.some((message: { role: string }) => message.role === "user"),
           ),
-        ).toHaveLength(2);
+        ).toHaveLength(1);
+        expect(JSON.stringify(events[0].messages)).toContain("startup-background-failure");
       } else
         expect(stdout).toBe(source === "goal" ? "autorun done\ngoal wrapup\n" : "human done\n");
       expect(stderr).not.toContain("Session already has an active Run");

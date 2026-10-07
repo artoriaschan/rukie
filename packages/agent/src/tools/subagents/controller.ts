@@ -49,7 +49,11 @@ export interface SubagentControllerOptions {
   restored?: readonly SubagentIdentity[];
   forkAt(): EntryId | undefined;
   /** Install child capability extensions before returning its explicit agent config. */
-  childAgent(type: SubagentType, conversation: Conversation): Promise<AgentChange>;
+  childAgent(
+    type: SubagentType,
+    conversation: Conversation,
+    selection: { retained: boolean },
+  ): Promise<AgentChange>;
   /** Settle child resources and end hooks before exposing its terminal receipt. */
   afterRun?(
     request: {
@@ -106,6 +110,7 @@ type Input = {
   background: boolean;
   originToolTaskId: TaskId;
   startedAt: number;
+  retained?: boolean;
 };
 type Phase =
   | { phase: "configure" }
@@ -237,7 +242,14 @@ export function createSubagentController(options: SubagentControllerOptions) {
             }, context);
             return;
           }
-          const change = await options.childAgent(type, conversation);
+          const inherited = task.input.retained
+            ? await runtime.snapshot(AgentDoc, childId, context)
+            : undefined;
+          if (task.input.retained && !inherited?.model)
+            throw new Error("Retained subagent model is missing.");
+          const change = await options.childAgent(type, conversation, {
+            retained: task.input.retained === true,
+          });
           const parentAgent = await runtime.agent(context);
           const selection = change.tools;
           const selected =
@@ -253,6 +265,9 @@ export function createSubagentController(options: SubagentControllerOptions) {
           await runtime.commit(async (tx) => {
             await configure(tx, childId, {
               ...change,
+              ...(inherited?.model
+                ? { model: inherited.model, thinkingLevel: inherited.thinkingLevel }
+                : {}),
               tools: selectedTools,
               instructions: [change.instructions ?? "", SUBAGENT_PROMPT, type.prompt]
                 .filter(Boolean)
@@ -586,7 +601,12 @@ export function createSubagentController(options: SubagentControllerOptions) {
         throw new Error("At most 8 subagents can run at once.");
       const taskId = await tx.createTask(
         driver,
-        { ...request, originToolTaskId: api.taskId, startedAt },
+        {
+          ...request,
+          originToolTaskId: api.taskId,
+          startedAt,
+          ...(existing ? { retained: true } : {}),
+        },
         request.background
           ? { ownership: { kind: "conversation" }, conversationId: parent.id, background: true }
           : { ownership: { kind: "task", taskId: api.taskId } },
@@ -721,7 +741,7 @@ export function createSubagentController(options: SubagentControllerOptions) {
           context,
         );
         const type = typeFor(row.type);
-        if (conversation && type) await options.childAgent(type, conversation);
+        if (conversation && type) await options.childAgent(type, conversation, { retained: true });
       }
     },
     async readChild(id: string, context: Context = BACKGROUND_CONTEXT) {

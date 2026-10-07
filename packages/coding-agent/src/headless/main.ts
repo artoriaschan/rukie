@@ -65,6 +65,7 @@ export async function runHeadless(options: CliOptions, io: PrintIo): Promise<num
         }
       }
     });
+    const startupRequestId = session.currentRequestId;
     if (values.goal !== undefined) {
       if (session.goal && session.goal.phase !== "complete")
         throw new Error(
@@ -77,7 +78,8 @@ export async function runHeadless(options: CliOptions, io: PrintIo): Promise<num
       io.signal?.throwIfAborted();
       // SessionStart hooks may already have started an internal Run. Preserve the
       // supplied objective until that Run settles, then use the idle-only API.
-      await session.waitForIdle();
+      if (startupRequestId) await session.waitForRequest(startupRequestId);
+      else await session.waitForIdle();
       io.signal?.throwIfAborted();
       const goal = await session.createGoal(values.goal, {
         maxRounds:
@@ -94,7 +96,8 @@ export async function runHeadless(options: CliOptions, io: PrintIo): Promise<num
     io.signal?.addEventListener("abort", interrupt);
     io.signal?.throwIfAborted();
     if (prompt) {
-      await session.waitForIdle();
+      if (startupRequestId) await session.waitForRequest(startupRequestId);
+      else await session.waitForIdle();
       io.signal?.throwIfAborted();
     }
     let requestId = !prompt ? session.currentRequestId : undefined;
