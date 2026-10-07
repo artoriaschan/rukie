@@ -30,6 +30,16 @@ export async function start(
   const terminal = createTerminal(options.columns, options.rows, options.advanceTimers);
   const fake = controlledModel(options.controlReviews, options.controlTitles);
   const session: SessionOptions = { cwd: root, homeDir: root, ...fake, ...options.session };
+  if (session.model && session.models === fake.models && session.model !== fake.model) {
+    // Explicit fixture model metadata must agree with the native provider catalog.
+    const fixtureModel = session.model;
+    fake.models.setProvider({
+      ...fake.provider,
+      id: fixtureModel.provider,
+      getModels: () => [fixtureModel],
+      getAllModels: () => [fixtureModel],
+    });
+  }
   // Clearing only the model requests configured metadata with the controlled provider.
   // Clearing both native inputs deliberately retains the real SDK/configuration seam.
   if (!session.model && session.models === fake.models) {
