@@ -1,3 +1,4 @@
+import { useDiffLayout } from "./diff-layout";
 import { unifiedDiffLines } from "./diff-lines";
 import type { ToolCallView, ToolResultView } from "@neant/shared";
 import { fmtDuration } from "@neant/i18n";
@@ -9,6 +10,8 @@ import type { Locale } from "@neant/i18n";
 import { createTuiI18n } from "../../i18n";
 import { Markdown } from "../markdown";
 import {
+  SplitDiffView,
+  alignSplitDiff,
   toolKindColor,
   SyntaxHighlightedText,
   highlightSyntax,
@@ -67,6 +70,7 @@ export function ToolCall({
   const toggle = onToggle ?? (() => setExpanded((value) => !value));
   const [hovered, setHovered] = useState(false);
   const { columns } = useTerminalSize();
+  const diffLayout = useDiffLayout();
   const hitWidth = (text: string) => Math.min(columns, Math.max(1, Bun.stringWidth(text)));
   const t = createTuiI18n(locale);
   const focused = useTerminalFocus();
@@ -129,7 +133,15 @@ export function ToolCall({
           : undefined
       : undefined;
   const diffLines = diffView ? unifiedDiffLines(diffView) : undefined;
-  const lines = diffLines?.map((line) => line.text) ?? output?.split(/\r?\n/) ?? [];
+  const splitRows =
+    diffLines && (diffLayout === "split" || (diffLayout === "auto" && columns >= 110))
+      ? alignSplitDiff(diffLines)
+      : undefined;
+  const lines =
+    splitRows?.map((row) => ("text" in row ? row.text : "")) ??
+    diffLines?.map((line) => line.text) ??
+    output?.split(/\r?\n/) ??
+    [];
   const highlightedLines =
     resultView?.card === "read" && status !== "error"
       ? highlightSyntax(resultView.content, { path: resultView.path })
@@ -190,7 +202,22 @@ export function ToolCall({
       </ThemedBox>
       {(output || diffView || status === "running") && (
         <ThemedBox flexDirection="column" color={status === "error" ? "error" : "text"}>
-          {resultView?.card === "web" && status !== "error" ? (
+          {splitRows ? (
+            <ThemedBox>
+              <ThemedText preserveWhitespace>{`${figures.result} `}</ThemedText>
+              <SplitDiffView
+                rows={
+                  expanded
+                    ? splitRows.slice(0, 400)
+                    : folded
+                      ? splitRows.slice(0, limit)
+                      : splitRows
+                }
+                width={Math.max(0, columns - 3)}
+                onToggle={toggle}
+              />
+            </ThemedBox>
+          ) : resultView?.card === "web" && status !== "error" ? (
             <ThemedBox>
               <ThemedText>{`${figures.result} `}</ThemedText>
               <ThemedBox flexDirection="column" flexGrow={1}>

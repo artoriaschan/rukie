@@ -134,6 +134,8 @@ export const SettingsSchema = Type.Object({
   locale: Type.Optional(Type.String()),
   permissionMode: Type.Optional(Type.Enum([...PERMISSION_MODES])),
   thinking: Type.Optional(Type.Enum([...THINKING_LEVELS])),
+  /** Frontend diff presentation; omitted means auto. */
+  diffLayout: Type.Optional(Type.Enum(["auto", "unified", "split"])),
   providers: Type.Optional(Type.Array(CustomProvider)),
   permissions: Type.Optional(
     Type.Object({
