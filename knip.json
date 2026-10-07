@@ -4,6 +4,11 @@
   "workspaces": {
     "packages/coding-agent": {
       "entry": ["src/ink/index.ts", "tests/fixtures/runtime-default-streams.tsx"]
+    },
+    ".scratch/pi-durable-migration/probe": {
+      "entry": ["worker.ts"],
+      "project": ["*.ts"],
+      "ignoreDependencies": ["@earendil-works/pi-mcp"]
     }
   },
   "ignoreDependencies": ["supports-hyperlinks"]

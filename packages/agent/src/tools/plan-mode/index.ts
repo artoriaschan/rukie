@@ -1,5 +1,5 @@
 export { createPlanModeController, type PlanModeController } from "./controller.ts";
-export { planState, planModeReminder, PLAN_MODE_EXIT } from "./state.ts";
+export { planState, planModeReminder } from "./state.ts";
 export {
   createEnterPlanModeTool,
   createExitPlanModeTool,

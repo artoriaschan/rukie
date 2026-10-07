@@ -23,9 +23,6 @@ export const planState: ToolStateDefinition = defineToolState({
   },
 });
 
-export const PLAN_MODE_EXIT =
-  "You have exited Plan Mode. You may now execute the plan. Permissions still apply as usual.";
-
 /** Guidance follows the tool set available to this session, including headless resumes. */
 export function planModeReminder(canSubmit: boolean): string {
   return (
