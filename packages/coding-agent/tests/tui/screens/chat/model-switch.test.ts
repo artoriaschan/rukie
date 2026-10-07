@@ -1,3 +1,4 @@
+import { controlledModel } from "../../helpers/model";
 import { auxiliaryModels } from "../../helpers/auxiliary-model";
 import { afterEach, expect, test } from "bun:test";
 import { createSession } from "@rukie/agent";
@@ -38,7 +39,7 @@ test("direct /model switches the idle status, reports errors and refuses switchi
     expect(app.screen().at(-2)).toContain("second");
     expect(app.calls).toHaveLength(0);
     app.stdin.write("/model test-model/unknown\r");
-    await app.waitFor(() => screen(app).includes('Unknown model "test-model/unknown"'));
+    await app.waitFor(() => screen(app).includes("Unknown model: test-model/unknown"));
     expect(app.screen().at(-2)).toContain("second");
     app.stdin.write("question\r");
     await app.waitFor(() => app.calls.length === 1);
@@ -93,11 +94,14 @@ test("a resumed session displays its persisted model before sending another prom
     session: { model: undefined },
     prepare: async (root) => {
       const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
+      const catalog = controlledModel();
+      const model = catalog.configuredModel(settings);
       const seed = await createSession({
         cwd: root,
         homeDir: root,
         settings,
-        models: auxiliaryModels(faux.provider.streamSimple),
+        model,
+        models: auxiliaryModels(faux.provider.streamSimple, { models: catalog.models }),
       });
       await seed.setModel("test-model/second");
       await seed.close();

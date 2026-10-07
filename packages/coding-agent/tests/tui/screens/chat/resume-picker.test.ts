@@ -1,3 +1,4 @@
+import { controlledModel } from "../../helpers/model";
 import { startWithClock } from "../../helpers/clock-app";
 import { afterEach, expect, test } from "bun:test";
 import { createSession, createJsonlStore, type SessionOptions } from "@rukie/agent";
@@ -121,11 +122,14 @@ test("/resume displays two-row session metadata, Escape preserves the current ch
       await Bun.write(`${root}/.rukie/settings.json`, JSON.stringify(settings));
       const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
       faux.setResponses([fauxAssistantMessage("Stored answer")]);
+      const catalog = controlledModel();
+      const model = catalog.configuredModel(settings);
       const seed = await createSession({
         cwd: root,
         homeDir: root,
         settings,
-        models: auxiliaryModels(faux.provider.streamSimple),
+        model,
+        models: auxiliaryModels(faux.provider.streamSimple, { models: catalog.models }),
       });
       await seed.rename("Stored session");
       await seed.run("Stored prompt");
