@@ -429,7 +429,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
   const context = BACKGROUND_CONTEXT;
   const settings = options.settings ?? {};
   const cwd = resolve(options.cwd);
-  const warn = options.onWarning ?? console.warn;
+  const warn = (warning: unknown) => (options.onWarning ?? console.warn)(String(warning));
   if (options.allowRules) parsePermissionRules({ allow: options.allowRules }, "--allow-tools");
   const permissionRules = parsePermissionRules({
     ...settings.permissions,
