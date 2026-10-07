@@ -4,8 +4,8 @@ import type {
   UserMessage,
   ToolResultMessage,
 } from "@earendil-works/pi-ai";
-import type { ToolCallView, ToolResultView } from "@rukie/shared";
-import type { ContextView, EntryRecord } from "@earendil-works/pi-durable";
+import type { CustomSessionEvent, ToolCallView, ToolResultView } from "@rukie/shared";
+import type { ContextView, EntryRecord, JsonObject, TaskId } from "@earendil-works/pi-durable";
 import type { SystemReminder } from "../reminders/index.ts";
 import type { SessionNoticeMessage } from "./session-notice.ts";
 import { readSessionNotice } from "./session-notice.ts";
@@ -18,7 +18,46 @@ export type TranscriptToolResult = ToolResultMessage & {
   view?: ToolResultView;
   /** The native tool task was interrupted after execution may have started. */
   outcomeUnknown?: boolean;
+  /** Committed permission owner decision for this exact native tool task. */
+  permissionDenial?: PermissionDenial;
 };
+
+type PermissionDenial = Pick<
+  Extract<CustomSessionEvent, { type: "permission_denied" }>,
+  "by" | "rule" | "hook" | "reason"
+>;
+
+/** Session persists this owner fact before the native blocked result is committed. */
+export function permissionDenialFacts(
+  toolTaskId: TaskId,
+  event: Extract<CustomSessionEvent, { type: "permission_denied" }>,
+): JsonObject {
+  return {
+    toolTaskId: Number(toolTaskId),
+    permissionDenial: {
+      by: event.by,
+      ...(event.rule !== undefined && { rule: event.rule }),
+      ...(event.hook !== undefined && { hook: event.hook }),
+      ...(event.reason !== undefined && { reason: event.reason }),
+    },
+  };
+}
+
+function readPermissionDenial(value: unknown): PermissionDenial | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  if (!("by" in value)) return undefined;
+  const by = value.by;
+  if (by !== "rule" && by !== "user" && by !== "review" && by !== "hook") return undefined;
+  if ("rule" in value && typeof value.rule !== "string") return undefined;
+  if ("hook" in value && typeof value.hook !== "string") return undefined;
+  if ("reason" in value && typeof value.reason !== "string") return undefined;
+  return {
+    by,
+    ...("rule" in value && typeof value.rule === "string" && { rule: value.rule }),
+    ...("hook" in value && typeof value.hook === "string" && { hook: value.hook }),
+    ...("reason" in value && typeof value.reason === "string" && { reason: value.reason }),
+  };
+}
 
 type TranscriptMessageContent =
   | Exclude<Message, UserMessage | AssistantMessage | ToolResultMessage>
@@ -151,6 +190,17 @@ export function transcriptMessages(entries: readonly EntryRecord[]): TranscriptM
         entryId: String(entry.id),
       };
       for (const fact of facts) {
+        if (
+          projected.role === "toolResult" &&
+          typeof fact.toolTaskId === "number" &&
+          Number.isSafeInteger(fact.toolTaskId) &&
+          fact.toolTaskId > 0 &&
+          entry.byTaskId !== undefined &&
+          fact.toolTaskId === Number(entry.byTaskId)
+        ) {
+          const denial = readPermissionDenial(fact.permissionDenial);
+          if (denial) projected.permissionDenial = denial;
+        }
         const matches =
           fact.entryId === Number(entry.id) ||
           (fact.taskId === Number(entry.byTaskId) &&
