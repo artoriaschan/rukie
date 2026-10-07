@@ -108,3 +108,5 @@ SplitDiffView 的 `onSourceMount(id, DOMElement | null)` 将稳定源行身份�
 - 05 Yoga 容器回填：`native-ts/yoga-layout/index.ts` 的历史多入口尺寸缓存只用于测量或 leaf layout；容器 layout 保留最新 layout fast path，历史尺寸不能替代子树几何递归。公共 6→1→6 viewport 分配覆盖默认高度与 100% 高度，关闭菜单后同次完成绘制恢复子视口与底部跟随。
 
 TextInput 的 `onCursorChange` 对已接纳输入批次中的每次移动同步报告 offset，包含同批次离开再返回同一 atomic token；layout effect 继续报告外部 value/cursor 重置，避免只看到最终 React render 而丢失产品预览的离开语义。Tooltip 在失焦与 resize 取消请求；重新聚焦后的同批次 hover 请求保留其原始 600ms 截止时间。
+
+AlternateScreen 保持 insertion effect 中的 pre-paint 终端模式所有权。`ink.tsx`/`hit-test.ts` 在该边界同步清除旧 hover geometry/owner，再于 commit 后 microtask 通知捕获的旧 React leave handler；普通 pointer leave 仍同步。根局部 dispatch generation 与新 hover lease 防止旧通知取消重新进入的 hover，双根互不影响。
