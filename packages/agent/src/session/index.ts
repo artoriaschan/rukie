@@ -14,6 +14,7 @@ import {
   type SubmissionId,
   type ToolRegistration,
   type EntryDraft,
+  type Storage,
 } from "@earendil-works/pi-durable";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import {
@@ -397,8 +398,28 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     let wrapup: string | undefined;
     let permissionMode = options.permissionMode ?? settings.permissionMode ?? "ask";
     let observation: Awaited<ReturnType<typeof createConversationObservation>>;
+    const storageFault = Promise.withResolvers<never>();
+    void storageFault.promise.catch(() => {});
+    const commitStorage = lease.storage.commit.bind(lease.storage);
+    // A failed backend admission poisons native ownership and must wake local callers
+    // even though no durable submission receipt can be fabricated for that failure.
+    const observedStorage = new Proxy(lease.storage, {
+      get(target, key) {
+        if (key === "commit")
+          return async (...args: Parameters<Storage["commit"]>) => {
+            try {
+              return await commitStorage(...args);
+            } catch (error) {
+              storageFault.reject(error);
+              throw error;
+            }
+          };
+        const value = Reflect.get(target, key, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
     const harness = await Harness.open(
-      lease.storage,
+      observedStorage,
       {
         models,
         registry,
@@ -532,6 +553,19 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         );
       if (result.continue === false) stopped = true;
     }
+    const notifyInteraction: import("../interaction/index.ts").OnInteractionStart = async (
+      notification,
+      signal,
+    ) => {
+      const result = await hooks.run("Notification", hookInput({ ...notification }), {
+        signal,
+        matchQuery: notification.notification_type,
+      });
+      await applyHookResult(
+        { systemMessages: result.systemMessages, additionalContext: result.additionalContext },
+        "hook:Notification",
+      );
+    };
     const checkpoints = createCheckpoints({
       homeDir: options.homeDir,
       sessionId: lease.id,
@@ -589,9 +623,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       changed: () => {},
       assertAvailable,
       warn: () => {},
-      schedule: () => {
-        if (!observation?.running()) void startGoal().catch(warn);
-      },
+      // Public Session admissions and native onYield own Goal scheduling.
+      schedule: () => {},
     });
     const title = createSessionTitle({
       title: metadata?.title,
@@ -673,6 +706,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         settings.reviewModel ? selectedModel(settings.reviewModel) : model,
       models,
       onPermissionAsk: options.onPermissionAsk,
+      onInteractionStart: notifyInteraction,
       onToolCallAllowed: async (call) => {
         await checkpoints.record(call, cwd, options.homeDir);
         await options.onToolCallAllowed?.(call);
@@ -836,6 +870,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             settings.reviewModel ? selectedModel(settings.reviewModel) : selected,
           models,
           onPermissionAsk: options.onPermissionAsk,
+          onInteractionStart: notifyInteraction,
           onToolCallAllowed: async (call) => {
             await checkpoints.record(call, cwd, options.homeDir);
             await options.onToolCallAllowed?.(call);
@@ -875,6 +910,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               await childState.set("todo", todos, context);
             },
             onQuestion: options.onQuestion,
+            onInteractionStart: notifyInteraction,
             webFetch: options.webFetch,
             fileTracking: childTracking,
           }),
@@ -1053,10 +1089,15 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             await state.set("todo", todos, context);
           },
           onQuestion: options.onQuestion,
+          onInteractionStart: notifyInteraction,
           webFetch: options.webFetch,
           fileTracking: tracking,
         },
-        planMode: { controller: plan, onPlanReview: options.onPlanReview },
+        planMode: {
+          controller: plan,
+          onPlanReview: options.onPlanReview,
+          onInteractionStart: notifyInteraction,
+        },
         goal: {
           controller: goal,
           execution: {
@@ -1103,6 +1144,17 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 { signal: ctx.abortSignal, matchQuery: call.name },
               );
               await applyHookResult(changed, "hook:PostToolUse", ctx);
+              if (changed.decision === "block" && changed.reason)
+                return {
+                  ...result,
+                  content: [
+                    ...result.content,
+                    {
+                      type: "text" as const,
+                      text: `<system-reminder>\n${changed.reason}\n</system-reminder>`,
+                    },
+                  ],
+                };
               return "updatedToolOutput" in changed && changed.updatedToolOutput
                 ? { ...result, content: changed.updatedToolOutput }
                 : result;
@@ -1135,12 +1187,13 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                     }
                     await harness.commit(async (tx) => {
                       const doc = await tx.doc(RequestDoc);
-                      const request = (doc.requests[requestId] ??= {
+                      doc.requests[requestId] ??= {
                         submissions: [],
                         tasks: [],
                         startedAt: Date.now(),
                         result: null,
-                      });
+                      };
+                      const request = doc.requests[requestId]!;
                       if (!request.submissions.includes(Number(record.id)))
                         request.submissions.push(Number(record.id));
                       if (!request.tasks.includes(Number(live.run!.taskId)))
@@ -1431,12 +1484,13 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     const registerSubmission = async (requestId: string, submissionId: SubmissionId) => {
       await harness.commit(async (tx) => {
         const doc = await tx.doc(RequestDoc);
-        const request = (doc.requests[requestId] ??= {
+        doc.requests[requestId] ??= {
           submissions: [],
           tasks: [],
           startedAt: Date.now(),
           result: null,
-        });
+        };
+        const request = doc.requests[requestId]!;
         if (!request.submissions.includes(Number(submissionId)))
           request.submissions.push(Number(submissionId));
       }, context);
@@ -1447,7 +1501,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     ): Promise<RequestResult> => {
       const submission = await harness.submission(submissionId, context);
       if (!submission) throw new Error(`Request submission missing: ${requestId}`);
-      const receipt = await submission.wait(context);
+      const receipt = await Promise.race([submission.wait(context), storageFault.promise]);
       const view = await conversation.context(context);
       contextMessages = view.messages;
       const usage = zeroUsage();
@@ -1675,8 +1729,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         return goal.view();
       },
       createGoal: async (objective, input) => {
-        const value = await goal.create(objective, input);
-        return { ...value, requestId: `goal:${value.id}` };
+        await goal.create(objective, input);
+        const requestId = await startGoal();
+        if (!requestId) throw new Error("Created Goal did not admit its initial request.");
+        return { ...goal.view()!, requestId };
       },
       editGoal: (objective) => goal.edit(objective),
       pauseGoal: () => goal.pause(),
@@ -2002,6 +2058,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             trustProjectMcp: options.trustProjectMcp,
             interactive: !!options.onMcpAuth,
             onMcpAuth: options.onMcpAuth,
+            onInteractionStart: notifyInteraction,
             onWarning: warn,
           });
           for (const event of [...mcp.errors, ...mcp.authRequired]) custom(event);
@@ -2069,7 +2126,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             )
               drivers.push(task);
           for (const driver of drivers) {
-            const receipt = await harness.waitForTask(driver.id, context);
+            const receipt = await Promise.race([
+              harness.waitForTask(driver.id, context),
+              storageFault.promise,
+            ]);
             childReceipts.set(Number(driver.id), receipt);
           }
           const fresh = await readRequest(requestId);
