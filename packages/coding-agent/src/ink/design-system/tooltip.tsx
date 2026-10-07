@@ -55,7 +55,10 @@ export function TooltipProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     hide();
     return hide;
-  }, [columns, rows, focused, hide]);
+  }, [columns, rows, hide]);
+  useEffect(() => {
+    if (!focused) hide();
+  }, [focused, hide]);
   useInput(() => hide());
   const innerWidth = Math.max(1, Math.min(76, columns - 2));
   const wrapped = visible

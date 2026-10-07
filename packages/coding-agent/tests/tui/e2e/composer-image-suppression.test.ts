@@ -166,6 +166,10 @@ test.each([
       app.stdin.write(`/${command} `);
       await app.waitFor(() => screen().includes(`❯ /${command} [Image #1]`));
       app.stdin.write("\r");
+      if (command === "rewind") {
+        await app.waitFor(() => screen().includes("Pick a message to rewind to"));
+        app.stdin.write("\r");
+      }
       await app.waitFor(() => screen().includes(title!));
       expect(screen()).not.toContain("Image #1 · PNG");
       app.stdin.write(command === "rewind" ? "\x03" : "\x1b");
