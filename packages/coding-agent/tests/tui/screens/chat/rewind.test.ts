@@ -118,7 +118,7 @@ async function open(app: Awaited<ReturnType<typeof start>>) {
 test.each([24, 48, 100].flatMap((rows) => [1, 2, 20].map((count) => [rows, count] as const)))(
   "rewind at %i rows with %i prompts grows naturally and stops at fourteen rows",
   async (rows, count) => {
-    const app = await ready({ rows });
+    const app = await ready({ rows }, true);
     try {
       for (let index = 0; index < count; index++) await prompt(app, `prompt ${index}`);
       await open(app);
@@ -354,7 +354,7 @@ test("picker cells match dsh title, focus, description, hover and native cursor"
 });
 
 test("focus-centered window balances both sides and puts scroll indicators in the left gutter", async () => {
-  const app = await ready({ rows: 48 });
+  const app = await ready({ rows: 48 }, true);
   try {
     for (let index = 0; index < 20; index++) await prompt(app, `window ${index}`);
     await open(app);
@@ -456,7 +456,7 @@ test.each([
 ] as const)(
   "windowed CJK picker at %i×%i keeps focus and chrome visible",
   async (columns, rows) => {
-    const app = await ready({ columns, rows });
+    const app = await ready({ columns, rows }, true);
     try {
       for (let i = 0; i < 12; i++) await prompt(app, `消息${i} 中文长预览`.repeat(3));
       await open(app);

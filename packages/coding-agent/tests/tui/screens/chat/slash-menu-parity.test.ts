@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { dark } from "../../../../src/ink/index.ts";
-import { start } from "../../helpers/app";
+import { startWithClock as start } from "../../helpers/clock-app";
 
 type App = Awaited<ReturnType<typeof start>>;
 const text = (app: App) => app.screen().join("\n");
