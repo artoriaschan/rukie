@@ -22,11 +22,13 @@ export interface TextStyle {
 }
 
 export interface TextSpan {
+  selectable?: boolean;
   text: string;
   style: TextStyle;
 }
 
 export interface Glyph {
+  selectable?: boolean;
   text: string;
   width: number;
   style: TextStyle;
@@ -131,6 +133,7 @@ function layoutText(
         text: segment,
         width: Bun.stringWidth(segment),
         style: sanitized[spanIndex]!.style,
+        selectable: sanitized[spanIndex]!.selectable,
         offset: index,
         atomic,
       });

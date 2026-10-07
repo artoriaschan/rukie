@@ -2128,6 +2128,14 @@ function Chat({
   return (
     <Box flexDirection="column" height={rows}>
       <ScrollBox
+        textSelection={{
+          key: session.id,
+          backgroundColor: theme.badgeBackground,
+          onCopy: (text) => host.writeClipboard(text),
+          onResult: (result) => {
+            if (pasteOwner.current) notifyImage(t(`selection.${result}`), result !== "copied");
+          },
+        }}
         textSearch={
           expanded && transcriptSearch.query
             ? {

@@ -52,8 +52,9 @@ export interface LayoutNode {
   children: LayoutNode[];
 }
 
-function content(node: HostNode, inherited: TextStyle = {}): TextSpan[] {
-  if (node.type === "raw") return [{ text: node.text, style: inherited }];
+function content(node: HostNode, inherited: TextStyle = {}, selectable = true): TextSpan[] {
+  selectable = node.props.selectable ?? selectable;
+  if (node.type === "raw") return [{ text: node.text, style: inherited, selectable }];
   const style: TextStyle = {
     color: node.props.color ?? inherited.color,
     backgroundColor: node.props.backgroundColor ?? inherited.backgroundColor,
@@ -64,7 +65,7 @@ function content(node: HostNode, inherited: TextStyle = {}): TextSpan[] {
     underline: node.props.underline ?? inherited.underline,
     strikethrough: node.props.strikethrough ?? inherited.strikethrough,
   };
-  return node.children.flatMap((child) => content(child, style));
+  return node.children.flatMap((child) => content(child, style, selectable));
 }
 
 function dirty(node: HostNode) {

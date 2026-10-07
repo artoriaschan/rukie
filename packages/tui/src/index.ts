@@ -72,3 +72,5 @@ export {
 } from "./design-system";
 
 export type { TerminalGraphics } from "./terminal";
+
+export type { TextSelectionOptions, TextSelectionResult } from "./selection";

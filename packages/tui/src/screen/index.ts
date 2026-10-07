@@ -1,3 +1,4 @@
+import type { createSelection, SelectionMetadata } from "../selection";
 import type { LayoutNode } from "../layout";
 import { textCursor, textLines, sanitizeText, type TextStyle } from "../text";
 
@@ -5,6 +6,8 @@ interface Cell {
   text: string;
   width: number;
   style: string;
+  paintStyle?: TextStyle;
+  selection?: SelectionMetadata;
 }
 
 const colors = {
@@ -59,22 +62,62 @@ function paintGrid(root: LayoutNode, columns: number, rows: number): Cell[][] {
   );
   let clip = { left: 0, top: 0, right: columns, bottom: rows };
   let background: TextStyle["backgroundColor"];
+  let region:
+    | {
+        source: LayoutNode["source"];
+        options: NonNullable<Exclude<LayoutNode["props"]["textSelection"], false>>;
+      }
+    | undefined;
+  let selectable = true;
   let textSearch: LayoutNode["props"]["textSearch"];
-  function put(x: number, y: number, text: string, width = 1, style: TextStyle = {}) {
+  function put(
+    x: number,
+    y: number,
+    text: string,
+    width = 1,
+    style: TextStyle = {},
+    selection?: SelectionMetadata,
+  ) {
     if (x < clip.left || y < clip.top || y >= clip.bottom || x + width > clip.right) return;
     const codes = sgr(
       background && style.backgroundColor === undefined
         ? { ...style, backgroundColor: background }
         : style,
     );
-    grid[y]![x] = { text, width, style: codes };
-    if (width === 2) grid[y]![x + 1] = { text: "", width: 0, style: codes };
+    const paintStyle =
+      background && style.backgroundColor === undefined
+        ? { ...style, backgroundColor: background }
+        : style;
+    const metadata =
+      selection ??
+      (region ? { region: region.source, options: region.options, selectable: false } : undefined);
+    grid[y]![x] = { text, width, style: codes, paintStyle, selection: metadata };
+    if (width === 2)
+      grid[y]![x + 1] = { text: "", width: 0, style: codes, paintStyle, selection: metadata };
   }
   function paint(node: LayoutNode) {
     const { x, width, height } = node;
     const y = node.y - Math.max(0, root.height - rows);
     if (y + height <= clip.top || y >= clip.bottom || x + width <= clip.left || x >= clip.right)
       return;
+    const previousRegion = region,
+      previousSelectable = selectable;
+    if (node.props.textSelection !== undefined)
+      region =
+        node.props.textSelection === false
+          ? undefined
+          : { source: node.source, options: node.props.textSelection };
+    selectable = node.props.selectable ?? selectable;
+    if (node.props.textSelection !== undefined)
+      for (let row = Math.max(y, clip.top); row < Math.min(y + height, clip.bottom); row++)
+        for (let col = Math.max(x, clip.left); col < Math.min(x + width, clip.right); col++)
+          grid[row]![col]!.selection = region
+            ? {
+                region: region.source,
+                options: region.options,
+                selectable: false,
+              }
+            : undefined;
     const previousSearch = textSearch;
     textSearch = node.props.textSearch ?? textSearch;
     const previousBackground = background;
@@ -106,7 +149,8 @@ function paintGrid(root: LayoutNode, columns: number, rows: number): Cell[][] {
     if (node.type === "tui-text") {
       const matches: { start: number; end: number }[] = [];
       const query = textSearch?.query.toLowerCase();
-      const original = sanitizeText(node.spans.map((span) => span.text).join("")).toLowerCase();
+      const sourceText = sanitizeText(node.spans.map((span) => span.text).join(""));
+      const original = sourceText.toLowerCase();
       if (query)
         for (
           let at = original.indexOf(query);
@@ -133,6 +177,18 @@ function paintGrid(root: LayoutNode, columns: number, rows: number): Cell[][] {
       )
         .slice(top + first, top + end)
         .forEach((line, row) => {
+          const previousGlyph = node.lines?.[top + first + row - 1]?.findLast(
+            (glyph) => glyph.width > 0,
+          );
+          const firstGlyph = line.find((glyph) => glyph.width > 0);
+          const softWrap =
+            top + first + row > 0
+              ? !!previousGlyph &&
+                !!firstGlyph &&
+                !sourceText
+                  .slice(previousGlyph.offset + previousGlyph.text.length, firstGlyph.offset)
+                  .includes("\n")
+              : node.props.softWrap;
           let col = 0;
           for (const glyph of line) {
             if (!glyph.width) continue;
@@ -157,6 +213,17 @@ function paintGrid(root: LayoutNode, columns: number, rows: number): Cell[][] {
               glyph.text,
               glyph.width,
               atCaret ? { ...highlighted, inverse: true } : highlighted,
+              region && !node.props.input
+                ? {
+                    region: region.source,
+                    options: region.options,
+                    selectable: selectable && glyph.selectable !== false,
+                    owner: node.source,
+                    source: sourceText,
+                    offset: glyph.offset,
+                    softWrap,
+                  }
+                : undefined,
             );
             col += glyph.width;
           }
@@ -181,13 +248,15 @@ function paintGrid(root: LayoutNode, columns: number, rows: number): Cell[][] {
     clip = previousClip;
     background = previousBackground;
     textSearch = previousSearch;
+    region = previousRegion;
+    selectable = previousSelectable;
   }
   paint(root);
   return grid;
 }
 
 /** Each mounted renderer owns its previous viewport; only changed cells are written. */
-export function createScreen(fullscreen = false) {
+export function createScreen(fullscreen = false, selection?: ReturnType<typeof createSelection>) {
   let previous: Cell[][] | undefined;
   let previousColumns = 0;
   let previousRows = 0;
@@ -243,6 +312,13 @@ export function createScreen(fullscreen = false) {
       currentRow = endRow;
     }
     const grid = paintGrid(root, columns, height);
+    selection?.record(grid);
+    for (let y = 0; y < grid.length; y++)
+      for (let x = 0; x < grid[y]!.length; x++) {
+        const cell = grid[y]![x]!;
+        const highlight = selection?.selected(x, y, cell);
+        if (highlight) cell.style = sgr({ ...cell.paintStyle, backgroundColor: highlight });
+      }
     const full = !previous || resized;
     const move = (y: number, x: number) => {
       if (fullscreen) return `\x1b[${y + 1};${x + 1}H`;

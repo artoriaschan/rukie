@@ -6,6 +6,7 @@ import {
   useRef,
   type ReactNode,
 } from "react";
+import type { TextSelectionOptions } from "../selection";
 import type { TextStyle } from "../text";
 import type { InputEvent } from "../input";
 import { useAnimationFrame } from "../hooks/animation-frame";
@@ -13,6 +14,10 @@ export { TextInput, createTextInputHistory, type TextInputProps } from "./text-i
 export { ScrollBox, type ScrollBoxProps } from "./scroll-box";
 
 export interface BoxProps {
+  /** Opt in descendant painted text to renderer-owned drag selection. false fences overlays. */
+  textSelection?: TextSelectionOptions | false;
+  /** Decorative descendants remain painted but are excluded from copied text. */
+  selectable?: boolean;
   children?: ReactNode;
   /** Highlight literal matches in descendant text without changing layout. */
   textSearch?: {
@@ -73,6 +78,9 @@ export function Image(props: ImageProps) {
 }
 
 export interface TextProps extends TextStyle {
+  selectable?: boolean;
+  /** A prewrapped visual row continues the preceding source line. */
+  softWrap?: boolean;
   /** Primary click on a painted non-whitespace glyph; blank cells do not activate text. */
   onClick?(): void;
   children?: ReactNode;

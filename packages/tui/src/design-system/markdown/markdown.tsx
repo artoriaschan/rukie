@@ -197,7 +197,9 @@ function blocks(
         return (
           <Box key={index}>
             <Box width={2} flexShrink={0}>
-              <ThemedText color="subtle">▎</ThemedText>
+              <ThemedText color="subtle" selectable={false}>
+                ▎
+              </ThemedText>
             </Box>
             <Box flexDirection="column" flexGrow={1}>
               {blocks(node.children, onClick, false, source)}
@@ -334,7 +336,7 @@ function CodeBlock({
   if (columns - 6 < 8)
     return (
       <Box flexDirection="column">
-        <ThemedText color="subtle">{`\`\`\`${label}`}</ThemedText>
+        <ThemedText color="subtle" selectable={false}>{`\`\`\`${label}`}</ThemedText>
         <Box paddingLeft={2}>
           <SyntaxHighlightedText
             text={node.value}
@@ -347,12 +349,17 @@ function CodeBlock({
     );
   return (
     <Box flexDirection="column">
-      <ThemedText color="subtle">{`┌─ ${label}${columns >= 60 ? " " + "─".repeat(Math.max(0, columns - 8 - label.length)) : ""}`}</ThemedText>
+      <ThemedText
+        color="subtle"
+        selectable={false}
+      >{`┌─ ${label}${columns >= 60 ? " " + "─".repeat(Math.max(0, columns - 8 - label.length)) : ""}`}</ThemedText>
       {node.value &&
         lines.map((row, index) => (
           <Box key={index}>
             <Box width={2} flexShrink={0}>
-              <ThemedText color="subtle">│</ThemedText>
+              <ThemedText color="subtle" selectable={false}>
+                │
+              </ThemedText>
             </Box>
             <SyntaxHighlightedText
               runs={runs(
@@ -361,6 +368,7 @@ function CodeBlock({
               )}
               onClick={onClick}
               preserveWhitespace
+              softWrap={index > 0 && !lines[index - 1]!.some((glyph) => glyph.lineBreak)}
             />
           </Box>
         ))}
@@ -429,14 +437,18 @@ function TableBlock({
     left + widths.map((width) => "─".repeat(width + 2)).join(join) + right;
   return (
     <Box flexDirection="column">
-      <ThemedText color="subtle">{border("┌", "┬", "┐")}</ThemedText>
+      <ThemedText color="subtle" selectable={false}>
+        {border("┌", "┬", "┐")}
+      </ThemedText>
       {wrapped.map((row, index) => {
         const height = Math.max(1, ...row.map((cell) => cell.length));
         return (
           <Box key={index} flexDirection="column">
             {Array.from({ length: height }, (_, line) => (
               <Box key={line}>
-                <ThemedText color="subtle">│</ThemedText>
+                <ThemedText color="subtle" selectable={false}>
+                  │
+                </ThemedText>
                 {row.map((cell, i) => {
                   const offset = Math.floor((height - cell.length) / 2);
                   const value = cell[line - offset] ?? "";
@@ -453,19 +465,25 @@ function TableBlock({
                           : value}
                         {" ".repeat(gap - before + 1)}
                       </ThemedText>
-                      <ThemedText color="subtle">│</ThemedText>
+                      <ThemedText color="subtle" selectable={false}>
+                        │
+                      </ThemedText>
                     </Box>
                   );
                 })}
               </Box>
             ))}
             {index < wrapped.length - 1 && (
-              <ThemedText color="subtle">{border("├", "┼", "┤")}</ThemedText>
+              <ThemedText color="subtle" selectable={false}>
+                {border("├", "┼", "┤")}
+              </ThemedText>
             )}
           </Box>
         );
       })}
-      <ThemedText color="subtle">{border("└", "┴", "┘")}</ThemedText>
+      <ThemedText color="subtle" selectable={false}>
+        {border("└", "┴", "┘")}
+      </ThemedText>
     </Box>
   );
 }
