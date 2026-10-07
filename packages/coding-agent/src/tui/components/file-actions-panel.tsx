@@ -23,6 +23,14 @@ export function FileActionsPanel({
   const titleRows = rows >= 5 ? 2 : rows >= 4 ? 1 : 0;
   const count = Math.max(1, Math.min(3, rows - titleRows));
   const start = Math.min(3 - count, Math.max(0, focus - count + 1));
+  const actions = [
+    directory ? "file-actions.open-folder" : "file-actions.open",
+    "file-actions.reveal",
+    "file-actions.copy",
+  ] as const;
+  // Reserve the marker and action number before spending space on side padding.
+  const labelWidth = Math.max(...actions.map((key) => Bun.stringWidth(t(key))));
+  const paddingX = Math.max(0, Math.min(2, Math.floor((columns - labelWidth - 4) / 2)));
   return (
     <ThemedBox
       flexShrink={0}
@@ -32,7 +40,7 @@ export function FileActionsPanel({
       width={columns}
       height={rows}
       flexDirection="column"
-      paddingX={columns >= 8 ? 2 : 0}
+      paddingX={paddingX}
       backgroundColor="inverseText"
       onClick={() => {}}
     >
@@ -46,26 +54,20 @@ export function FileActionsPanel({
           {Bun.stripANSI(path).replace(/[\r\n\t]/g, " ")}
         </ThemedText>
       )}
-      {[
-        directory ? "file-actions.open-folder" : "file-actions.open",
-        "file-actions.reveal",
-        "file-actions.copy",
-      ]
-        .slice(start, start + count)
-        .map((key, offset) => {
-          const index = start + offset;
-          return (
-            <ThemedBox flexShrink={0} key={key} height={1} onClick={() => onPick(index)}>
-              <ThemedText
-                color={focus === index ? "accent" : undefined}
-                bold={focus === index}
-                wrap="truncate"
-              >
-                {`${focus === index ? "❯" : " "} ${index + 1} ${t(key as "file-actions.open" | "file-actions.open-folder" | "file-actions.reveal" | "file-actions.copy")}`}
-              </ThemedText>
-            </ThemedBox>
-          );
-        })}
+      {actions.slice(start, start + count).map((key, offset) => {
+        const index = start + offset;
+        return (
+          <ThemedBox flexShrink={0} key={key} height={1} onClick={() => onPick(index)}>
+            <ThemedText
+              color={focus === index ? "accent" : undefined}
+              bold={focus === index}
+              wrap="truncate"
+            >
+              {`${focus === index ? "❯" : " "} ${index + 1} ${t(key)}`}
+            </ThemedText>
+          </ThemedBox>
+        );
+      })}
       {rows > titleRows + count && (
         <ThemedText dim wrap="truncate">
           {t("file-actions.hint")}

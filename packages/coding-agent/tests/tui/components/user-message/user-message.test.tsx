@@ -17,7 +17,13 @@ test("user prompts match dsh's bold gold text, unfilled background and hanging i
   );
   try {
     await terminal.flush();
-    expect(terminal.screen()).toEqual(["❯ abcdefg", "  hijk", "  中é😀", "    code", "after", ""]);
+    // Native wrap-ansi normalizes decomposed input to NFC without changing its grapheme.
+    expect(terminal.screen()).toEqual(["❯ abcdefg", "  hijk", "  中é😀", "    code", "after", ""]);
+    const combined = terminal.terminal.buffer.active.getLine(2)!.getCell(4)!;
+    expect(combined.getChars()).toBe("é");
+    expect(combined.getWidth()).toBe(1);
+    expect(combined.getFgColor()).toBe(0xffdf80);
+    expect(combined.isBold()).toBeTruthy();
     for (let y = 0; y < 4; y++) {
       for (let x = 0; x < 12; x++) {
         const cell = terminal.terminal.buffer.active.getLine(y)!.getCell(x)!;
@@ -34,6 +40,7 @@ test("user prompts match dsh's bold gold text, unfilled background and hanging i
   } finally {
     app.unmount();
     await app.waitUntilExit();
+    app.cleanup();
     terminal.dispose();
   }
 });
@@ -61,6 +68,7 @@ test("user prompts resolve provider colors and keep indentation when resized", a
   } finally {
     app.unmount();
     await app.waitUntilExit();
+    app.cleanup();
     terminal.dispose();
   }
 });
@@ -83,6 +91,7 @@ test.each([
   } finally {
     app.unmount();
     await app.waitUntilExit();
+    app.cleanup();
     terminal.dispose();
   }
 });
