@@ -24,7 +24,13 @@ import {
   type ToolResultView,
 } from "@rukie/shared";
 import type { TpsSample } from "../transcript/metrics";
-import { reduceSubagent, restoreSubagents, projectSubagent, type SubagentState } from "./subagents";
+import {
+  reduceSubagent,
+  restoreSubagents,
+  projectSubagent,
+  reconcileSubagentIdentity,
+  type SubagentState,
+} from "./subagents";
 import { createActivity, reduce } from "./activity/activity";
 export type NoticeKind = "info" | "error" | "success" | "warning" | "dim";
 
@@ -721,30 +727,16 @@ function reduceEvent(
       const subagents = Object.fromEntries(
         Object.entries(restoreSubagents(event.toolStates.subagents)).map(([id, row]) => {
           const previous = state.subagents[id];
-          // Parent snapshots carry child identity and Run facts. Child transcript
-          // snapshots own the output already observed for each retained identity.
-          return [
-            id,
-            previous
-              ? {
-                  ...row,
-                  childSessionId: previous.childSessionId,
-                  historyLoaded: previous.historyLoaded,
-                  toolCalls: previous.toolCalls,
-                  output: previous.output,
-                  outputLines: previous.outputLines,
-                  messageOutputStart: previous.messageOutputStart,
-                  streamedText: previous.streamedText,
-                  streamedKind: previous.streamedKind,
-                }
-              : row,
-          ];
+          return [id, reconcileSubagentIdentity(previous, row)];
         }),
       );
       for (const background of event.background) {
         const row = subagents[background.id];
         if (row)
-          subagents[background.id] = { ...row, status: background.active ? "running" : row.status };
+          subagents[background.id] = {
+            ...row,
+            status: background.active && row.completedAt === undefined ? "running" : row.status,
+          };
       }
       const tools = event.tools
         .filter((slot) => slot.status === "running" || slot.status === "pending")
@@ -829,13 +821,7 @@ function reduceEvent(
               subagents: Object.fromEntries(
                 Object.entries(restoreSubagents(event.value)).map(([id, row]) => [
                   id,
-                  state.subagents[id]
-                    ? {
-                        ...state.subagents[id]!,
-                        runOutcome: row.runOutcome,
-                        runReason: row.runReason,
-                      }
-                    : row,
+                  reconcileSubagentIdentity(state.subagents[id], row),
                 ]),
               ),
             }

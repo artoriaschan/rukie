@@ -50,6 +50,7 @@ export interface SubagentState extends SubagentView {
   output: readonly { type: "user" | "text" | "thinking" | "tool"; text: string; toolId?: string }[];
   messageOutputStart?: number;
   historyLoaded?: boolean;
+  observedRun?: boolean;
   streamedText: boolean;
   streamedKind?: "text" | "thinking";
 }
@@ -71,6 +72,39 @@ function createRow(
     outputLines: [],
     output: [],
     streamedText: false,
+  };
+}
+
+/** Parent identity facts settle only a child Run observed by this frontend. */
+export function reconcileSubagentIdentity(
+  previous: SubagentState | undefined,
+  row: SubagentState,
+): SubagentState {
+  if (!previous) return row;
+  const ended =
+    (previous.observedRun || previous.status === "running") &&
+    row.completedAt !== undefined &&
+    row.completedAt >= (previous.startedAt ?? 0);
+  const status =
+    ended && row.runOutcome && row.runOutcome !== "unknown"
+      ? row.runOutcome === "completed"
+        ? "completed"
+        : row.runOutcome === "aborted"
+          ? "aborted"
+          : "failed"
+      : previous.status;
+  return {
+    ...row,
+    status,
+    observedRun: previous.observedRun,
+    childSessionId: previous.childSessionId,
+    historyLoaded: previous.historyLoaded,
+    toolCalls: previous.toolCalls,
+    output: previous.output,
+    outputLines: previous.outputLines,
+    messageOutputStart: previous.messageOutputStart,
+    streamedText: previous.streamedText,
+    streamedKind: previous.streamedKind,
   };
 }
 
@@ -286,7 +320,8 @@ export function reduceSubagent(
       const partial = event.generation?.message;
       let next: SubagentState = {
         ...committed,
-        status: event.run ? ("running" as const) : ("idle" as const),
+        status: event.run ? "running" : row.status,
+        observedRun: row.observedRun || event.run !== undefined,
         messageOutputStart: committed.output.length,
       };
       if (partial)
@@ -297,9 +332,10 @@ export function reduceSubagent(
       return next;
     }
     case "run_start":
-      return { ...row, status: "running", startedAt: now };
+      return { ...row, status: "running", observedRun: true, startedAt: now };
     case "run_end":
-      return { ...row, status: "idle" };
+      // The committed snapshot carries this Run's terminal summary; keep its row until then.
+      return row;
     case "result":
       return {
         ...row,
