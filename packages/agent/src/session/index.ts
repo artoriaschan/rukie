@@ -1287,6 +1287,15 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               );
             },
             onYield: async (_answer, api, ctx) => {
+              if (_answer.stopReason !== "stop") {
+                goal.disarm();
+                await conversation.commit(async (tx) => {
+                  const activation = await tx.doc(GoalActivationDoc, conversation.id);
+                  activation.taskId = null;
+                  activation.requestId = null;
+                }, ctx);
+                return undefined;
+              }
               const continuation = async (content: string, source: string) => {
                 await conversation.commit(
                   (tx) =>
@@ -1587,8 +1596,15 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         receipt.status === "done" && receipt.type === "input"
           ? await lease.storage.entry(receipt.answer, context)
           : undefined;
+      const terminal =
+        (answer?.entry.model ?? []).findLast((message) => message.role === "assistant") ??
+        view.entries
+          .flatMap((entry) =>
+            receipt.entry && entry.id >= receipt.entry ? (entry.model ?? []) : [],
+          )
+          .findLast((message) => message.role === "assistant");
       const text =
-        answer?.entry.model
+        (answer?.entry.model ?? (terminal ? [terminal] : undefined))
           ?.filter((message) => message.role === "assistant")
           .map(textOf)
           .join("") ?? "";
@@ -1597,10 +1613,20 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       return {
         requestId,
         text,
-        success: receipt.status === "done",
+        success:
+          receipt.status === "done" &&
+          (terminal?.role !== "assistant" || terminal.stopReason === "stop"),
         usage,
         durationMs: Date.now() - (request?.startedAt ?? Date.now()),
-        ...(receipt.status === "unanswered" ? { error: receipt.reason } : {}),
+        ...(receipt.status === "unanswered"
+          ? { error: typeof receipt.detail === "string" ? receipt.detail : receipt.reason }
+          : terminal?.role === "assistant" && terminal.stopReason !== "stop"
+            ? {
+                error:
+                  terminal.errorMessage ??
+                  `Model response ended with stop reason ${terminal.stopReason}`,
+              }
+            : {}),
       };
     };
     async function submit(
@@ -1895,6 +1921,16 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
       async authenticateMcp(name) {
         assertAvailable(true);
+        await mcp.connect({
+          cwd,
+          homeDir: options.homeDir,
+          settings,
+          trustProjectMcp: options.trustProjectMcp,
+          interactive: !!options.onMcpAuth,
+          onMcpAuth: options.onMcpAuth,
+          onInteractionStart: notifyInteraction,
+          onWarning: warn,
+        });
         const result = await mcp.authenticate(name);
         await rebuildTools();
         return result;
@@ -2136,6 +2172,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             interactive: !!options.onMcpAuth,
             onMcpAuth: options.onMcpAuth,
             onInteractionStart: notifyInteraction,
+            getOrigin: (conversationId) => {
+              const row = subagents.list().find((row) => row.conversationId === conversationId);
+              return row ? { agentId: row.id, description: row.description } : undefined;
+            },
             onWarning: warn,
           });
           for (const event of [...mcp.errors, ...mcp.authRequired]) custom(event);
