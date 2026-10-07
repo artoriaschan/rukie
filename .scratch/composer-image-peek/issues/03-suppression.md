@@ -4,7 +4,7 @@
 
 **Blocked by:** 01: 光标停在 token 上显示预览
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] 小终端（`columns < 40 || rows < 12`）不显示；resize 回正常尺寸后光标仍在 token 上即显示
 - [ ] 待处理审批或提问交互时不显示，交互结束后恢复

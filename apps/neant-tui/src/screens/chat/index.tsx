@@ -340,16 +340,17 @@ function Chat({
     previewRef.current = next;
     setPreview(next);
   };
-  const openImage = (entryIndex: number, imageIndex: number) => {
-    if (
+  const imagePreviewBlocked = () =>
+    !!(
       interactions.getSnapshot() ||
       viewRef.current !== "chat" ||
       rewindRef.current ||
       mcpPanel.getSnapshot() ||
       modelPickerRef.current !== undefined ||
       resumePickerRef.current
-    )
-      return;
+    );
+  const openImage = (entryIndex: number, imageIndex: number) => {
+    if (imagePreviewBlocked()) return;
     const entries = conversation.getSnapshot().completed;
     const images = entries.flatMap((entry) => ("images" in entry ? (entry.images ?? []) : []));
     const before = entries
@@ -1824,7 +1825,7 @@ function Chat({
       />
     );
   const caretImage = composer.atCursor(input, composerCursor);
-  const composerPreview = !preview && !small && caretImage;
+  const composerPreview = !preview && !small && !imagePreviewBlocked() && caretImage;
   const promptReadOnly =
     !!mcp ||
     !!preview ||
@@ -2190,6 +2191,7 @@ function Chat({
                         ? t("image.clipboard-tip")
                         : undefined
               }
+              initialCursorOffset={composerCursor}
               inputRevision={promptRevision}
               readOnly={promptReadOnly}
               compact={compactPrompt}
