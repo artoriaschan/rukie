@@ -40,7 +40,7 @@ export function FileActionsPanel({
       )}
       {titleRows > 1 && (
         <ThemedText dimColor wrap="truncate">
-          {path}
+          {Bun.stripANSI(path).replace(/[\r\n\t]/g, " ")}
         </ThemedText>
       )}
       {["file-actions.open", "file-actions.reveal", "file-actions.copy"]

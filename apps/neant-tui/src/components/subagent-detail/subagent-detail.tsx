@@ -25,6 +25,7 @@ export function SubagentDetailScene({
   page,
   thinkingOpen,
   expanded = false,
+  foldTerminalCommand = true,
   scrollRef,
   rows,
   locale,
@@ -37,6 +38,7 @@ export function SubagentDetailScene({
   page: DetailPage;
   thinkingOpen: boolean;
   expanded?: boolean;
+  foldTerminalCommand?: boolean;
   scrollRef: Ref<ScrollHandle>;
   rows: number;
   locale: Locale;
@@ -179,6 +181,7 @@ export function SubagentDetailScene({
           (subagent.toolCalls.length ? (
             subagent.toolCalls.map((tool) => (
               <ToolCall
+                foldTerminalCommand={foldTerminalCommand}
                 key={tool.id}
                 onPathClick={onPathClick}
                 id={tool.id}

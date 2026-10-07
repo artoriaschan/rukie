@@ -1,4 +1,5 @@
 import { FileActionsPanel } from "../../components/file-actions-panel";
+import { DiffLayoutProvider } from "../../components/tool-call/diff-layout";
 import { PlanReviewRow } from "../../components/plan-review/plan-review-row";
 import { showsToolCard } from "./conversation";
 import { ThinkingRow } from "../../components/thinking-row";
@@ -34,6 +35,7 @@ import {
   createTextInputHistory,
   useInput,
   useTerminalSize,
+  useDismissTooltip,
   useTheme,
   type ScrollHandle,
   type ScrollSnapshot,
@@ -186,27 +188,30 @@ export async function createChat(
         () => binding,
       );
       return (
-        <Chat
-          key={current.session.id}
-          session={current.session}
-          conversation={current.conversation}
-          history={inputHistory}
-          imageViewer={imageViewer}
-          host={host}
-          submit={submit}
-          interactions={interactions}
-          homeDir={options.homeDir}
-          cwd={options.cwd}
-          checkpointCwd={checkpointCwd}
-          thinking={options.settings?.thinking}
-          locale={locale}
-          onExit={onExit}
-          models={models}
-          sessions={() => listSessions(options)}
-          skills={skills}
-          replaceSession={replaceSession}
-          writeTitle={writeTitle}
-        />
+        <DiffLayoutProvider value={options.settings?.diffLayout}>
+          <Chat
+            key={current.session.id}
+            session={current.session}
+            conversation={current.conversation}
+            history={inputHistory}
+            imageViewer={imageViewer}
+            host={host}
+            submit={submit}
+            interactions={interactions}
+            homeDir={options.homeDir}
+            cwd={options.cwd}
+            checkpointCwd={checkpointCwd}
+            foldTerminalCommand={options.settings?.foldTerminalCommand ?? true}
+            thinking={options.settings?.thinking}
+            locale={locale}
+            onExit={onExit}
+            models={models}
+            sessions={() => listSessions(options)}
+            skills={skills}
+            replaceSession={replaceSession}
+            writeTitle={writeTitle}
+          />
+        </DiffLayoutProvider>
       );
     },
   };
@@ -251,6 +256,7 @@ function Chat({
   homeDir,
   checkpointCwd,
   thinking,
+  foldTerminalCommand,
   locale,
   onExit,
   skills,
@@ -270,6 +276,7 @@ function Chat({
   homeDir?: string;
   checkpointCwd: string;
   thinking?: ThinkingLevel;
+  foldTerminalCommand: boolean;
   locale: Locale;
   onExit(): void;
   models: Readonly<ReturnType<typeof listModels>>;
@@ -698,6 +705,21 @@ function Chat({
   const [mode, setMode] = useState(session.permissionMode);
   const { columns, rows } = useTerminalSize();
   const small = columns < 40 || rows < 12;
+  const dismissTooltip = useDismissTooltip();
+  useEffect(() => {
+    dismissTooltip?.();
+  }, [
+    dismissTooltip,
+    small,
+    view,
+    preview,
+    fileActions,
+    mcp,
+    modelPicker,
+    resumePicker,
+    rewind,
+    interaction?.request,
+  ]);
   useLayoutEffect(() => interactions.setQuestionEditingEnabled(!small), [interactions, small]);
   useLayoutEffect(() => {
     pasteEpoch.current++;
@@ -1734,6 +1756,7 @@ function Chat({
                     <Box key={at} flexDirection="column">
                       <ToolCall
                         onPathClick={openFileActions}
+                        foldTerminalCommand={foldTerminalCommand}
                         expanded={expanded || expandedRows.has(member.id ?? `row-${at}`)}
                         onToggle={() => toggleRow(member.id ?? `row-${at}`)}
                         locale={locale}
@@ -1766,6 +1789,7 @@ function Chat({
               <Box key={index} flexDirection="column">
                 <ToolCall
                   onPathClick={openFileActions}
+                  foldTerminalCommand={foldTerminalCommand}
                   expanded={expanded || expandedRows.has(entry.id ?? `row-${index}`)}
                   onToggle={() => toggleRow(entry.id ?? `row-${index}`)}
                   locale={locale}
@@ -1880,6 +1904,7 @@ function Chat({
       expandedRows,
       columns,
       thinking,
+      foldTerminalCommand,
       locale,
       !!preview,
     ],
@@ -1919,6 +1944,7 @@ function Chat({
         <SubagentDetailScene
           subagent={selectedSubagent}
           onPathClick={openFileActions}
+          foldTerminalCommand={foldTerminalCommand}
           page={page}
           thinkingOpen={thinkingOpen}
           expanded={expanded}
@@ -1998,6 +2024,7 @@ function Chat({
           .filter((tool) => showsToolCard(tool.name))
           .map((tool) => (
             <ToolCall
+              foldTerminalCommand={foldTerminalCommand}
               key={tool.id}
               onPathClick={openFileActions}
               expanded={expanded || expandedRows.has(tool.id)}

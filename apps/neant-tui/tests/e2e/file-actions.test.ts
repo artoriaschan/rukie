@@ -118,48 +118,58 @@ test.each(["en", "zh"] as const)(
   },
 );
 
-test("unified diff paths open actions without toggling the card and the menu fits after shrinking", async () => {
-  const copied: string[] = [];
-  const path = "new.txt";
-  const app = await start(["--permission-mode", "full-access", "write"], {
-    columns: 80,
-    rows: 40,
-    env: { LANG: "en_US.UTF-8" },
-    host: {
-      writeClipboard: async (target) => {
-        copied.push(target);
-        return true;
+test.each([80, 120])(
+  "diff paths at %i columns open actions without toggling the card and the menu fits after shrinking",
+  async (columns) => {
+    const copied: string[] = [];
+    const path = "new.txt";
+    const app = await start(["--permission-mode", "full-access", "write"], {
+      columns,
+      rows: 40,
+      env: { LANG: "en_US.UTF-8" },
+      host: {
+        writeClipboard: async (target) => {
+          copied.push(target);
+          return true;
+        },
       },
-    },
-  });
-  const screen = () => app.screen().join("\n");
-  try {
-    await app.waitFor(() => app.calls.length === 1);
-    app.calls[0]!.tool("write", {
-      path,
-      content: Array.from({ length: 15 }, (_, i) => `line ${i}`).join("\n"),
     });
-    await app.waitFor(() => app.calls.length === 2);
-    app.calls[1]!.finish();
-    await app.waitFor(() => !app.isWorking());
-    const before = screen();
-    expect(before).not.toContain("line 14");
-    clickText(app, path, 1);
-    await app.waitFor(() => screen().includes("File actions"));
-    app.resize(28, 6);
-    await app.waitFor(
-      () =>
-        screen().includes("Open file") &&
-        screen().includes("Reveal in file manag") &&
-        screen().includes("Copy path"),
-    );
-    app.stdin.write("\x1b[B\x1b[B\r");
-    await app.waitFor(() => copied.length === 1);
-    expect(copied).toEqual([join(app.root, path)]);
-    app.resize(80, 40);
-    await app.waitFor(() => screen().includes("line 0"));
-    expect(screen()).not.toContain("line 14");
-  } finally {
-    await app.cleanup();
-  }
-});
+    const screen = () => app.screen().join("\n");
+    try {
+      await app.waitFor(() => app.calls.length === 1);
+      app.calls[0]!.tool("write", {
+        path,
+        content: Array.from({ length: 15 }, (_, i) => `line ${i}`).join("\n"),
+      });
+      await app.waitFor(() => app.calls.length === 2);
+      app.calls[1]!.finish();
+      await app.waitFor(() => !app.isWorking());
+      const before = screen();
+      expect(before).not.toContain("line 14");
+      const pathRow = app
+        .screen()
+        .findIndex((line) => line.includes(path) && !line.includes("Write("));
+      const pathColumn = Bun.stringWidth(app.screen()[pathRow]!.split(path)[0]!);
+      expect(
+        app.terminal.buffer.active.getLine(pathRow)!.getCell(pathColumn)!.isUnderline(),
+      ).toBeTruthy();
+      clickText(app, path, 1);
+      await app.waitFor(() => screen().includes("File actions"));
+      app.resize(28, 6);
+      await app.waitFor(
+        () =>
+          screen().includes("Open file") &&
+          screen().includes("Reveal in file manag") &&
+          screen().includes("Copy path"),
+      );
+      app.stdin.write("\x1b[B\x1b[B\r");
+      await app.waitFor(() => copied.length === 1);
+      expect(copied).toEqual([join(app.root, path)]);
+      app.resize(columns, 40);
+      await app.waitFor(() => screen().includes("line 0"));
+      expect(screen()).not.toContain("line 14");
+    } finally {
+      await app.cleanup();
+    }
+  },
+);

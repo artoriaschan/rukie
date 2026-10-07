@@ -43,7 +43,8 @@ export interface BoxProps {
   marginBottom?: number;
   gap?: number;
   borderStyle?: "single" | "round";
-  onMouseEnter?(): void;
+  /** Mouse entry coordinates refer to the last painted terminal viewport. */
+  onMouseEnter?(position: { x: number; y: number }): void;
   onMouseLeave?(): void;
   /** Primary mouse press and release on this box activate it once. */
   onClick?(): void;

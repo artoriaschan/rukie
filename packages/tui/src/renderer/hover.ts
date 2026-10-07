@@ -27,7 +27,7 @@ export function createHover() {
       if (!next.has(node)) node.props.onMouseLeave?.();
     }
     for (const node of next) {
-      if (!previous.has(node)) node.props.onMouseEnter?.();
+      if (!previous.has(node)) if (position) node.props.onMouseEnter?.(position);
     }
   }
 
