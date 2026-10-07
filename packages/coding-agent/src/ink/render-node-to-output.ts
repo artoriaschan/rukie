@@ -1851,9 +1851,10 @@ function renderNodeToOutput(
           // doesn't match the scroll delta — fall back to the full path so
           // removed children don't leave stale cells and shifted siblings
           // render at their new positions.
-          const scrollHeight = contentYoga.getComputedHeight()
-          const prevHeight = contentCached?.height ?? scrollHeight
-          const heightDelta = scrollHeight - prevHeight
+          // The content wrapper can stay viewport-height while overflowing
+          // children grow or shrink. Its Yoga height cannot identify a safe
+          // row shift; compare the measured scroll extent across paints.
+          const heightDelta = scrollHeight - prevScrollHeight
           // NOTE: scroll-up + streaming growth (delta < 0, heightDelta > 0)
           // deliberately stays OUT of the fast path. Virtualization moves the
           // topPad spacer on the same frame (every mounted row's yogaTop

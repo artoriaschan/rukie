@@ -26,3 +26,5 @@ Type: task
 - Native DECSTBM scrolling reproduced a mismatch between painted row-1 and hit row-3; synchronize retained cached geometry and remove outgoing cache. Original click, clip, resize cancellation and hover assertions remain in `renderer/scroll-hit-geometry.test.tsx`.
 - Shared terminal `waitFor` now has a real hrtime failure bound under virtual clocks, matching the bounded parse flush.
 - Focused public helper/runtime/scroll-hit/source identity: 11 pass, 58 assertions, 428 ms; no aggregate gate yet. The remaining legacy migration, selection source-validation gaps, docs, review and final gate remain active.
+
+- ScrollBox public growth → contraction → regrowth 迁移保留空白行和无 shell scrollback 断言。RED: 8×3 viewport 收缩为 `short` 后残留旧 `new3`；原因是 DECSTBM guard 比较恒为 viewport 高度的包装 Box，而不是实际 scroll extent。使用 `scrollHeight - prevScrollHeight` 后 7 个 ScrollBox + 2 个已迁移 scroll hit 测试 9/46 GREEN（288ms），无 Output/terminal facade。

@@ -112,3 +112,5 @@ TextInput 的 `onCursorChange` 对已接纳输入批次中的每次移动同步�
 AlternateScreen 保持 insertion effect 中的 pre-paint 终端模式所有权。`ink.tsx`/`hit-test.ts` 在该边界同步清除旧 hover geometry/owner，再于 commit 后 microtask 通知捕获的旧 React leave handler；普通 pointer leave 仍同步。根局部 dispatch generation 与新 hover lease 防止旧通知取消重新进入的 hover，双根互不影响。
 
 06 的公开滚动验收补充：`render-node-to-output.ts` 在 DECSTBM blit/shift 后同步保留子树的屏幕命中矩形，并丢弃已离开 viewport 的缓存；移动后的字符与鼠标命中保持一致，嵌套 ScrollBox 的 viewport origin 同步移动。应用的读取位置模块在原来源因 fold 消失时，优先恢复保存的存活父来源，再使用绝对 top 回退；这些稳定产品身份不进入原生 ScrollBox props。
+
+ScrollBox 的 DECSTBM 快速路径使用实际滚动内容高度判断纯滚动和尾部追加；内容包装 Box 的 Yoga 高度可能一直等于 viewport，不能用于识别内容收缩。收缩进入完整绘制，避免把旧行移回空白区域。
