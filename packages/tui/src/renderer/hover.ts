@@ -60,12 +60,15 @@ export function createHover() {
           for (const [row, line] of (node.lines ?? []).entries()) {
             let column = 0;
             for (const glyph of line) {
-              const left = Math.max(rectangle.left, node.x + column);
-              const right = Math.min(rectangle.right, node.x + column + glyph.width);
+              // The painter omits an entire glyph when any of its cells cross the clip.
+              const left = node.x + column;
+              const right = left + glyph.width;
               const top = node.y - offset + row - (node.textTop ?? 0);
               if (
                 glyph.text.trim() &&
-                left < right &&
+                glyph.width > 0 &&
+                left >= rectangle.left &&
+                right <= rectangle.right &&
                 top >= rectangle.top &&
                 top < rectangle.bottom
               )

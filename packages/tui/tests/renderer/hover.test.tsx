@@ -358,3 +358,25 @@ test("Text clicks target painted graphemes and exclude whitespace after wrapping
     terminal.dispose();
   }
 });
+
+test("Text clicks exclude wide glyphs omitted at a ScrollBox clip boundary", async () => {
+  const terminal = createTerminal(8, 4);
+  let clicks = 0;
+  const app = render(
+    <ScrollBox width={1} height={1}>
+      <Box width={2}>
+        <Text onClick={() => clicks++}>界</Text>
+      </Box>
+    </ScrollBox>,
+    { ...terminal, fullscreen: true },
+  );
+  try {
+    await terminal.flush();
+    expect(terminal.screen()[0]).not.toContain("界");
+    terminal.stdin.write("\x1b[<0;1;1M\x1b[<0;1;1m");
+    expect(clicks).toBe(0);
+  } finally {
+    app.unmount();
+    terminal.dispose();
+  }
+});
