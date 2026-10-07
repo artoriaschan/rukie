@@ -238,6 +238,7 @@ test("context reports rediscovered MCP definitions and restores exact server ide
     manifest,
     JSON.stringify({ tools: ["find__item"], instructions: "Inspect widgets." }),
   );
+  await session.reconnectMcp("team__docs");
   await session.run("refresh");
   const current = session.contextReport().mcpTools;
   expect(current).toMatchObject([{ server: "team__docs", name: "find__item" }]);
