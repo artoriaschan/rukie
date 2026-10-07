@@ -4,6 +4,8 @@ import {
   UsageDoc,
   AgentDoc,
   type AgentChange,
+  type AgentState,
+  type LiveState,
   type CommitPublication,
   type Conversation,
   type ConversationId,
@@ -657,7 +659,13 @@ export function createSubagentController(options: SubagentControllerOptions) {
         context,
       );
       if (!conversation) return;
-      const active = await conversation.context(context);
+      const attached = await conversation.viewState(context);
+      const frame = attached.value;
+      attached.dispose();
+      // These reserved native documents are validated by Durable. Keep model,
+      // committed messages and live generation in the same immutable frame.
+      const agent = frame.docs["pi.agent"] as AgentState;
+      const live = frame.docs["pi.live"] as LiveState;
       const history: EntryRecord[] = [];
       let cursor: Cursor | undefined;
       do {
@@ -665,11 +673,11 @@ export function createSubagentController(options: SubagentControllerOptions) {
         history.push(...page.items);
         cursor = page.next;
       } while (cursor !== undefined);
-      const agent = await conversation.agent(context);
       return {
         id,
         conversation,
-        messages: transcriptMessages(active.entries),
+        messages: transcriptMessages(frame.entries),
+        generation: live.generation,
         historyMessages: transcriptMessages(
           history
             .filter(
