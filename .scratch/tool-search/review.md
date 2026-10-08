@@ -12,3 +12,5 @@
 
 - 集成 aggregate 发现声明消费者旧断言：tool-declarations.test.ts 的 later Run 子类型刷新仍期待整表移除／重加，而新 planner 保留未变化声明，只移除旧 subagent 后追加更新声明。最小单例 RED（110.97ms）确认；仅更新断言为 subagent 差异与存活工具原位、更新 subagent 末尾顺序，同时保留新类型精确 description 校验，未修改生产代码。
 - 该局部修正验证：env -u NO_COLOR bun test packages/agent/tests/e2e/tool-declarations.test.ts packages/agent/tests/e2e/tool-search.test.ts packages/agent/tests/e2e/tool-search-children.test.ts：43 pass、0 fail、129 assertions，4.70s，修正用例 54.69ms；bun run check:dev 与 git diff --check 通过。此次 focused 结果不替代或更改集成 aggregate 的实际失败记录，最终验收由集成分支处理。
+
+- 最终集成验收：完整 aggregate 3096 pass、1 旧断言 fail（108.93s），修正消费者后相关 43 tests 与 check:dev 通过。未修改生产代码或重复完整检查；原始失败保留于交付记录。双轴发现均已解决，ADR 覆盖审阅完成，spec 和 03 票在同一交付提交关闭。

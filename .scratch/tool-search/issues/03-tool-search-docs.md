@@ -4,7 +4,7 @@
 
 Blocked by: 02
 
-Status: claimed
+Status: resolved
 
 - [x] `docs/mcp.md`：`toolSearch` 三种取值、10% 阈值、compat 门槛、`authenticate` 例外
 - [x] `docs/architecture.md`：工具组装与增量 loadout
@@ -17,3 +17,5 @@ Status: claimed
 - ADR coverage 交付审阅：客户端检索与 Transcript 唯一发现事实沿用 ADR-0025；原生工具差异提交、Compaction 工具基线和 lifecycle 沿用 ADR-0024；当前上下文投影与完整 Transcript 的区分沿用 ADR-0016 的仍有效部分。保留声明位置和无基线时完整分支重建是上述决定的实现约束，没有第二套持久化状态或 harness；权限、信任、凭据与 Interaction 门槛不改变。配置值与查询细节为局部能力行为，无需新增 ADR；spec 覆盖表与最终实现一致，无冲突或遗漏。
 
 - 2026-10-08：文档实施已完成；票据保留 claimed 至集成审查和完整验证结束，与 spec 在同一交付提交关闭。
+
+- 2026-10-08：集成审查与验证收尾完成，03 与 spec 同时 resolved。完整检查的实际失败、旧断言修正及聚焦通过证据见 [spec Delivery Evidence](../spec.md#delivery-evidence) 与 [review](../review.md)，没有未解决实现问题。

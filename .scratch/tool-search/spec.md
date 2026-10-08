@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 
 # Spec: Tool Search
 
@@ -104,3 +104,11 @@ MCP 工具定义的估算 token 超过模型上下文窗口 10% 时（或用户�
 2026-10-08：对照 01/02 实现、03 文档与 ADR Coverage，确认模块所有权、完整 registry 与 offered loadout 分离、原生工具追加、Transcript 发现集、Compaction 无基线分支重建、Rewind 与独立子 Session 均受 ADR-0025、ADR-0024 及 ADR-0016 仍有效部分覆盖。晚出现 ToolSearch 服从存活声明保留位置，名单增量从持久化来源文本重建，不增加 Tool State。既有授权、MCP 信任与凭据、Interaction 门槛不变；设置和查询语法为局部行为，无需额外 ADR。未发现既有 ADR 冲突或遗漏的长期取舍；整体 spec 状态待集成分支最终验证和 code review 后关闭。
 
 2026-10-08 code review 修正：启用条件要求允许目录中存在 ToolSearch，避免受限子类型只有 MCP 工具但无法搜索其定义。该条件落实既有子 Session allowlist 与授权边界，为局部启用条件，无需新增 ADR；ADR-0025 的客户端检索与 Transcript 发现集决定不变。Session 工具组合位置文档更新为 tools.ts 组装内置能力工具、index.ts 协调 MCP、ToolSearch、完整工具目录与 loadout，符合 ADR-0011 的 Session 组合职责。spec 仍等待集成分支最终验收。
+
+## Delivery Evidence
+
+- 2026-10-08：三个实施票在 `codex/tool-search` 集成；Settings、ToolSearch、增量 loadout/reminder、权限与 hooks、恢复与独立子 Session 的行为及使用文档一致。
+- 双轴 code review：Standards 1 项（工具组合位置文档）、Spec 1 项（受限子代理没有搜索入口），均修复；ADR Coverage 与最终 diff 核对完成，无未解决发现。
+- 集成分支执行一次 `env -u NO_COLOR bun run check`：静态、tracker、docs、ink boundaries 通过；测试 3096 pass、1 fail、17770 assertions，282 files，108.93s。失败是 `tool-declarations.test.ts` 的旧整表重写断言，已最小复现并改为只重定义变化的 subagent、保留其他声明位置及精确新描述。
+- 修正后 `env -u NO_COLOR bun test packages/agent/tests/e2e/tool-declarations.test.ts packages/agent/tests/e2e/tool-search.test.ts packages/agent/tests/e2e/tool-search-children.test.ts`：43 pass、0 fail、129 assertions，4.70s；`bun run check:dev` 通过。最后只改测试消费者与交付文档，未改变生产代码；按根规则复用其余完整测试证据，不重复 aggregate，也不将首次失败描述为完整通过。
+- 工单与 spec 在本提交同时关闭；仅清理本次创建、干净且已合入集成分支的实现 worktrees，集成分支保留供后续合并。
