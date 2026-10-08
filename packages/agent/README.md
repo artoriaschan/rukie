@@ -86,3 +86,11 @@ stdout 与 stderr 分别保存在带绝对字节偏移的内存 ring，合计保
 快照的 `historyMessages` 在最近 Run 的原生开始事实存在时，提供该事实之前的已提交上下文；它由 Transcript 条目顺序重建，排除当前 Run 的所有 Turn。Frontend 将这段旧历史与已观察到的当前事件各呈现一次；provider 消息 timestamp 不用于判定 Run 归属。原生 Unknown Tool Outcome 保留未知状态，不能由 `isError=false` 推断成功。
 
 子 Run 保存实际模型、`RunResult.durationMs` 和 `usage.totalTokens`，历史缺少的可选字段保持缺失。Run Outcome 表示这次运行的结束原因，委派任务是否完成由父代理判断；无当前活动不代表成功。恢复与归属规则见 [ADR-0009](../../docs/adr/0009-subagent-resume-outcomes.md)。
+
+后台 Subagent 使用持久化 driver 与 owned Conversation，父级普通 `run` 可先返回；`abort` 不取消后台 child。`close` 关闭当前 invocation 和 OS／连接资源，未结算 child 与 reporter 在重开时继续。已结束或明确取消的 driver 不重新创建；Run Outcome 仍不代表父级已验收委派任务。`subagent` 创建新身份，`subagent_fork` 继承已完成 Turn；`send_message` 向原 child 发送，活动时 steer，空闲时启动新的 child Run。子代理不能递归委派，类型、当前权限、MCP 过滤、共享 Plan Mode 与 Interaction 来源继续生效。
+
+`await session.interruptSubagent(id)` 取消所选活动 child 的 ownership，并等待原生 driver 终态，包括其取消通知处理；不影响 sibling。已结算 child 为 no-op；child 已停止但 reporter 未结算时，重复停止仍等待同一终态，不重复改变 Run Outcome。未知 id 拒绝 Promise。Frontend 不等待停止时也须处理该 Promise 的失败。存储或关闭错误会传播，不把请求取消标记当作已停止。
+
+`session.currentRequestId` 是产品请求身份；`await session.waitForRequest(id)` 等待该请求已接受的 root 输入、相关 child Run、reporter 与通知引发的后续处理。它沿已提交原生 ownership 和 ToolTask／Submission 身份收敛因果范围，处理后来新增的相关 child；向已有活动 child 发送消息的请求也等待该 driver 与报告处理。空闲 anchor、历史 child 与无关运行不属于该范围。`SubagentRun.id` 是 driver task id，provider 的 tool call id 和 SDK `StreamOptions.sessionId` 都不是产品请求 id。SDK Session 身份由原生 Conversation 持久化，重试和恢复沿用；新 fork 获得独立身份。
+
+child 结束事实、稳定 reporter 输入和父级回答分别提交。恢复 child done、reporter pending 或父级处理未结算的窗口，复用相同逻辑身份，不重复输入或重建已结束 child；重试可能再次调用模型，不能据此承诺网络请求或外部副作用 exactly-once。原始消息、已提交工具进度与未知结果保留，子视图及来源事件采用已提交事实。

@@ -35,7 +35,7 @@ _Avoid_: history, log
 _Avoid_: step, round
 
 **Run**:
-处理一条 prompt，直到 agent 停下为止。prompt 来自用户，或（对 subagent 而言）来自父代理。一个 run 包含一个或多个 turn；父 run 要等它名下运行中的 subagent 全部结束才算结束。
+处理一条 prompt，直到 agent 停下为止。prompt 来自用户，或（对 subagent 而言）来自父代理。一个 run 包含一个或多个 turn；父 Run 可以先于后台 Subagent 结束；一次请求的因果结算另行等待其子 Run、reporter 与结果引发的处理，不包括无关后台工作。
 _Avoid_: task, job（job 专指 Background Job）
 
 **Subagent**:
@@ -51,7 +51,7 @@ _Avoid_: task completion, Run Outcome
 _Avoid_: task completion, Subagent Activity
 
 **Session Resume**:
-使用原 Session 的身份和 Transcript 恢复对话。恢复本身不执行新的 Run，也不自动续跑它的 Subagent。
+使用原 Session 的身份和 Transcript 恢复对话。打开时按原生任务继续已接受且未结算的工作，包括后台子 Run 和 reporter；已结束或取消的历史事实不会自行创建新工作。列表和只读查询不启动恢复。
 _Avoid_: restart task, automatic continuation
 
 **Background Job**:

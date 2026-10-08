@@ -4,7 +4,7 @@ status: accepted
 
 # Subagent 恢复保留对话与结束原因，续跑由新消息触发
 
-本决定的不自动续跑约束与旧缺失工具结果修复策略由新决定部分替代；Subagent Activity、Run Outcome 与委派验收结论的区别继续有效。替代关系见 [ADR-0024](0024-adopt-pi-durable-harness.md)。新决定已接受，实施尚未开始；下文记录迁移前义务，当前进度见[规格与票据](../../.scratch/pi-durable-migration/spec.md)。
+本决定的不自动续跑约束与旧缺失工具结果修复策略由新决定部分替代；Subagent Activity、Run Outcome 与委派验收结论的区别继续有效。替代关系见 [ADR-0024](0024-adopt-pi-durable-harness.md)。下文记录被替代部分的历史理由与持续有效的领域区别；当前恢复与完成契约见 [Subagent observation](../../packages/agent/README.md#subagent-observation)，迁移范围见[规格与票据](../../.scratch/pi-durable-migration/spec.md)。
 
 ## 问题
 

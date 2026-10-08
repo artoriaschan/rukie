@@ -697,7 +697,7 @@ export function createSubagentController(options: SubagentControllerOptions) {
           type: "input",
           content: request.prompt,
           whenBusy: "steer",
-          requestId: `subagent-send:${api.callId}`,
+          requestId: `subagent-send:${api.taskId}`,
         },
         context,
       );
@@ -802,7 +802,7 @@ export function createSubagentController(options: SubagentControllerOptions) {
             type: "input",
             content: message,
             whenBusy: "steer",
-            requestId: `subagent-send:${api.callId}`,
+            requestId: `subagent-send:${api.taskId}`,
           },
           context,
         );
@@ -885,8 +885,10 @@ export function createSubagentController(options: SubagentControllerOptions) {
     async interrupt(id: string, context: Context = BACKGROUND_CONTEXT) {
       const row = identities.find((row) => row.id === id);
       if (!row) throw new Error(`Unknown subagent: ${id}`);
-      if (!row.active) return;
-      await harness.abortTask(row.driverTaskId as TaskId, context);
+      const taskId = row.driverTaskId as TaskId;
+      if (row.active) await harness.abortTask(taskId, context);
+      // Activity ends before reporter settlement. Repeated stops still join that same native terminal.
+      await harness.waitForTask(taskId, context);
     },
     close() {
       unsubscribe();

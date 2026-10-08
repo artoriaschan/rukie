@@ -519,7 +519,7 @@ test("interruptSubagent aborts only the selected child and delivers an aborted n
     reply,
   ]);
   const session = await createSession({ ...dirs, ...fake });
-  session.interruptSubagent("missing");
+  await expect(session.interruptSubagent("missing")).rejects.toThrow("Unknown subagent");
   const run = runRequest(session, "delegate", {
     onEvent(event) {
       if (event.type === "subagent_event") childId = event.agentId;
@@ -527,9 +527,9 @@ test("interruptSubagent aborts only the selected child and delivers an aborted n
     },
   });
   await Promise.all([started.promise, waiting.promise]);
-  session.interruptSubagent(childId);
+  await session.interruptSubagent(childId);
   expect((await run).text).toBe("parent continues");
-  session.interruptSubagent(childId);
+  await session.interruptSubagent(childId);
 });
 
 test("failed background child configuration releases every native run slot and reports each failure", async () => {

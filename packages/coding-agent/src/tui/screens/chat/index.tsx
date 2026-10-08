@@ -1940,7 +1940,9 @@ function Chat({
             !key.meta &&
             event.input.toLowerCase() === "x"
           )
-            session.interruptSubagent(currentView.detail);
+            void session
+              .interruptSubagent(currentView.detail)
+              .catch((error: unknown) => conversation.notice(formatError(error, t), true));
           else if (event.keypress.name === "return" && !key.ctrl && !key.meta && !key.shift) {
             if (pageRef.current === "output") setThinkingOpen((open) => !open);
             else closeView();
@@ -2685,7 +2687,11 @@ function Chat({
           locale={locale}
           onBack={closeView}
           onPage={turnPage}
-          onInterrupt={() => session.interruptSubagent(selectedSubagent.agentId)}
+          onInterrupt={() => {
+            void session
+              .interruptSubagent(selectedSubagent.agentId)
+              .catch((error: unknown) => conversation.notice(formatError(error, t), true));
+          }}
         />
         {fileActions && (
           <FileActionsPanel

@@ -40,7 +40,7 @@ TUI 的 [`runTui`](../packages/coding-agent/src/tui/main.tsx) 建立[聊天界�
 
 TUI 退出时先恢复终端并等待 Session 保存、资源释放，再显示当前 Session 的 `rukie --resume <id>` 命令。在原项目目录执行该命令可继续会话；通过 `/new` 或会话选择器切换后，提示使用退出时的 Session。信号中断也显示恢复命令；尚未创建 Session 的启动失败不显示。
 
-[`createSession`](../packages/agent/src/session/index.ts)解析工作目录、创建或打开存储、投影当前分支，并恢复模型选择、Plan Mode、Tool State 与对话上下文。指定的恢复目标不存在或父子归属不符时失败，不改为新建 Session。Session Resume 重建已保存的事实，本身不续跑历史 Subagent。
+[`createSession`](../packages/agent/src/session/index.ts)解析工作目录、创建或打开存储、投影当前分支，并恢复模型选择、Plan Mode、Tool State 与对话上下文。指定的恢复目标不存在或父子归属不符时失败，不改为新建 Session。Session Resume 恢复已接受而未结算的原生工作，包括后台 Subagent 和 reporter；历史身份与已结束事实不创建新工作。
 
 Session 对 frontend 暴露运行、事件订阅、中断、steer、Goal、上下文查询、compaction、Rewind 等能力；完整接口由源码定义。`run` 的 `onEvent` 接收该次 Run 的有序事件，`subscribe` 观察 Session 中包括 Hook 与 Goal 内部续跑在内的事件；TUI 通过订阅跟踪持续变化。
 
@@ -143,9 +143,9 @@ Checkpoint 在真实用户 prompt 上建立锚点，授权后备份 write/edit �
 
 父 Session 创建子 Session 来执行委派输入：`subagent` 从空历史开始，`subagent_fork` 带入父代理已完成的 Turn，`send_message` 可以续跑同一子 Session。子代理共享父级权限与 Plan Mode，类型配置只能收窄能力，子代理不能再创建子代理。
 
-子 Run 默认后台执行，事件带子代理身份转给父级观察者；结束通知作为消息交回父模型。子 Session 的 Background Job 独立归属，任务事件沿同一包装转发；子 Run 发布结果前清理自己的任务与输出，保留可由 `send_message` 续跑的 Session。父 Run 在子代理仍运行时等待，收到通知后继续。子 Run 的结束原因是持久化事实，委派任务是否完成仍需父代理根据工作结果判断。
+子 Run 默认后台执行，事件带子代理身份转给父级观察者；结束通知作为消息交回父模型。子 Session 的 Background Job 独立归属，任务事件沿同一包装转发；子 Run 发布结果前清理自己的任务与输出，保留可由 `send_message` 续跑的 Session。父 Run 可以先结束，普通父级 abort 不跨后台 ownership 取消 child；一次请求的因果结算另行等待其子 Run、reporter 与结果引发的处理。子 Run 的结束原因是持久化事实，委派任务是否完成仍需父代理根据工作结果判断。
 
-Session Resume 通过只读观察核对子 Run 与父子归属，不自动恢复运行。缺少足够证据时报告未知，而不是把进程不活跃解释成任务完成。恢复摘要在后续输入中提供给模型，父代理可以决定用原 id 续跑。完整恢复决定见 [ADR-0009](adr/0009-subagent-resume-outcomes.md)。
+Session Resume 复用已提交 child、driver、输入与 reporter 身份继续未结算工作；已完成或明确取消的工作不因打开而重建。报告提交与父级处理分别持久化，稳定 requestId 防止逻辑重复投递；SDK 请求可能重试，不承诺外部副作用 exactly-once。显式停止等待原生终态，资源关闭仍清理 OS 进程和连接，恢复不重建旧 Job。公开观测、完成与失败契约见 [Agent README](../packages/agent/README.md#subagent-observation)，长期决定见 [ADR-0024](adr/0024-adopt-pi-durable-harness.md)。
 
 ## TUI 与本地化
 
