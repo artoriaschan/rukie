@@ -1889,7 +1889,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                       (tx) => tx.appendEntry(child.id, reminderEntry(reminder)),
                       ctx,
                     );
-                return { messages: (await child.context(ctx)).messages };
+                return { messages: modelContextMessages(await child.context(ctx)) };
               },
               afterResponse: async () => {
                 childTracking.finishRequest();

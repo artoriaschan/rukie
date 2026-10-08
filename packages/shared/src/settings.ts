@@ -1,4 +1,5 @@
 import { Type, type Static } from "typebox";
+import { ModelCompatSchema } from "./model-compat.ts";
 
 export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
@@ -111,6 +112,7 @@ const CustomModel = Type.Object({
   reasoning: Type.Optional(Type.Boolean()),
   contextWindow: Type.Optional(Type.Integer({ minimum: 1 })),
   maxTokens: Type.Optional(Type.Integer({ minimum: 1 })),
+  compat: Type.Optional(ModelCompatSchema),
 });
 
 const CustomProvider = Type.Object({

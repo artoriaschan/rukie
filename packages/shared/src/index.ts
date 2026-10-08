@@ -37,3 +37,5 @@ export {
   type ToolResultView,
   type ToolKind,
 } from "./tool-view.ts";
+
+export { ModelCompatSchemas } from "./model-compat.ts";

@@ -106,7 +106,6 @@ export function modelContextMessages(view: ContextView): readonly Message[] {
       ? [...(contributions.get(entry) ?? [])]
       : [];
   });
-  if (!moved.length) return view.messages;
   const remaining = view.messages.filter((message) => !moved.includes(message));
   for (const anchor of ordered.filter((entry) => entry.kind === "pi.compaction")) {
     const group = ordered.flatMap((entry) => {
@@ -123,6 +122,13 @@ export function modelContextMessages(view: ContextView): readonly Message[] {
     const index = summary === undefined ? -1 : remaining.indexOf(summary);
     if (index >= 0) remaining.splice(index + 1, 0, ...group);
     else remaining.push(...group);
+  }
+  // Native adapters identify the initial tool baseline from the first message.
+  // Owner reminders may precede its committed entry; later system deltas stay in place.
+  const baselineIndex = remaining.findIndex((message) => message.role === "system");
+  if (baselineIndex > 0) {
+    const [baseline] = remaining.splice(baselineIndex, 1);
+    if (baseline) remaining.unshift(baseline);
   }
   return remaining;
 }

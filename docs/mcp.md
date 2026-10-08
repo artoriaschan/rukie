@@ -47,6 +47,40 @@ Agent Core 用 `toolSearch` 控制 MCP 工具定义是否延迟提供给模型�
 
 模型的 compat 必须声明 `supportsMidConvoToolChanges` 或 `supportsToolSearch` 为真；两者均未启用时，即使设为 `on` 也不启用 Tool Search。候选只包含 MCP 工具，排除 `mcp__<server>__authenticate`；该授权工具遵守既有 Interaction 门槛，在 TUI 可见，在没有授权回调的 Headless CLI 中仍隐藏。内置工具不成为 Deferred Tool。阈值固定，不提供按 server 设置或语义检索。
 
+### 自定义模型的 compat
+
+用户可在 `~/.rukie/settings.json` 的 `providers[].models[].compat` 配置所选 API 的兼容性字段。字段按 provider 的 `api` 校验，未知字段、错误类型或其他 API 的字段会报告配置文件及字段路径；完整字段见 [ModelCompatSchemas](../packages/shared/src/model-compat.ts)。未设置的字段沿用适配器默认行为，显式 `false` 会原样传入。项目配置不能定义或覆盖 provider。
+
+支持原生对话内工具追加的 Anthropic Messages 服务可使用以下配置；`baseUrl`、环境变量名与模型 ID 换成服务实际值，环境变量中保存 API key：
+
+```json
+{
+  "model": "custom/my-model",
+  "toolSearch": "on",
+  "providers": [
+    {
+      "id": "custom",
+      "api": "anthropic-messages",
+      "baseUrl": "https://api.example.com",
+      "apiKeyEnv": "CUSTOM_API_KEY",
+      "models": [
+        {
+          "id": "my-model",
+          "compat": {
+            "supportsMidConvoSystemMessages": true,
+            "supportsMidConvoToolChanges": true
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+对支持原生 Tool Search 的 `openai-responses` 服务，将对应模型的 `compat` 设为 `{ "supportsToolSearch": true }`。`openai-completions` 的兼容性字段也可配置，例如 `{ "maxTokensField": "max_tokens", "supportsStore": false }`；该 API 不支持这里的 Tool Search。声明必须匹配服务端实际协议能力，Rukie 不会根据自定义模型名称自动开启这些能力，也不会将 Chat Completions 服务转换成 Messages 或 Responses 服务。
+
+修改配置后启动新 Session 验证：在 `toolSearch: "on"` 且存在 MCP 候选时，初始工具列表包含 `ToolSearch`，MCP 工具在搜索发现后才向模型声明。
+
 启用时，模型先通过 `deferred-tools` System Reminder 得到 Deferred Tool 名单，通过 `ToolSearch` 加载需要的定义。名单首次完整提供，之后只追加新增／移除差异；已可用工具从名单移除，Compaction 后补充当前完整名单。`ToolSearch` 的定义固定，不包含这份名单。
 
 `ToolSearch` 接受字符串 `query` 和可选整数 `max_results`（默认 5，范围 1–20）：

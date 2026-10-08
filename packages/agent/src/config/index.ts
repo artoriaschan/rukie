@@ -13,6 +13,7 @@ import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import {
   createUserVisibleError,
   SettingsSchema,
+  ModelCompatSchemas,
   type Settings,
   type CustomSessionEvent,
 } from "@rukie/shared";
@@ -54,6 +55,16 @@ function validate(
   const [first] = Value.Errors(SettingsSchema, data);
   if (first) throw new Error(`${path}: ${first.instancePath || "/"} ${first.message}`);
   const settings = data as Settings;
+  for (const [providerIndex, provider] of (settings.providers ?? []).entries()) {
+    for (const [modelIndex, model] of provider.models.entries()) {
+      if (model.compat === undefined) continue;
+      const [error] = Value.Errors(ModelCompatSchemas[provider.api], model.compat);
+      if (error)
+        throw new Error(
+          `${path}: /providers/${providerIndex}/models/${modelIndex}/compat${error.instancePath} ${error.message}`,
+        );
+    }
+  }
   parsePermissionRules(settings.permissions, path);
   validateHooks(settings.hooks, path, (warning) => {
     warnings.push(warning.message);
@@ -210,6 +221,7 @@ function modelRegistry(settings: Settings) {
           // ponytail: generic defaults; per-model limits come from settings when they matter
           contextWindow: m.contextWindow ?? 128_000,
           maxTokens: m.maxTokens ?? 16_384,
+          ...(m.compat === undefined ? {} : { compat: m.compat }),
         })),
       }),
     );
