@@ -45,13 +45,13 @@ Agent Core 用 `toolSearch` 控制 MCP 工具定义是否延迟提供给模型�
 | `on`           | 有候选工具时启用。                                                                                                  |
 | `off`          | 不延迟新到达的工具。                                                                                                |
 
-Tool Search 使用普通工具调用，不要求模型声明原生工具追加能力。未声明原生能力或显式关闭该能力时，适配器将已加载工具加入下一次请求的顶层 `tools` 列表；声明支持原生追加时，适配器使用对应协议格式发送定义。`compat` 选择传输方式，不决定 Tool Search 是否启用。
+Tool Search 使用普通工具调用，不要求模型声明原生工具追加能力。Responses 和 Messages 的原生追加能力未声明时，Rukie 在第一次需要追加工具的请求前独立探测，确认支持才使用原生格式；显式关闭、检测不支持或结果未知时，适配器将已加载工具加入下一次请求的顶层 `tools` 列表。显式完整开启能力时跳过探测。`compat` 选择传输方式，不决定 Tool Search 是否启用。
 
 候选只包含 MCP 工具，排除 `mcp__<server>__authenticate`；该授权工具遵守既有 Interaction 门槛，在 TUI 可见，在没有授权回调的 Headless CLI 中仍隐藏。内置工具不成为 Deferred Tool。阈值固定，不提供按 server 设置或语义检索。
 
 ### 自定义模型的 compat
 
-用户可在 `~/.rukie/settings.json` 的 `providers[].models[].compat` 配置所选 API 的兼容性字段。字段按 provider 的 `api` 校验，未知字段、错误类型或其他 API 的字段会报告配置文件及字段路径；完整字段见 [ModelCompatSchemas](../packages/shared/src/model-compat.ts)。未设置的字段沿用适配器默认行为，显式 `false` 会原样传入。项目配置不能定义或覆盖 provider。
+用户可在 `~/.rukie/settings.json` 的 `providers[].models[].compat` 配置所选 API 的兼容性字段。字段按 provider 的 `api` 校验，未知字段、错误类型或其他 API 的字段会报告配置文件及字段路径；完整字段见 [ModelCompatSchemas](../packages/shared/src/model-compat.ts)。除下文的原生追加检测外，未设置字段沿用适配器默认行为；显式值优先于推断，显式 `false` 可关闭对应能力。项目配置不能定义或覆盖 provider。
 
 支持原生对话内工具追加的 Anthropic Messages 服务可使用以下配置；`baseUrl`、环境变量名与模型 ID 换成服务实际值，环境变量中保存 API key：
 
@@ -79,7 +79,15 @@ Tool Search 使用普通工具调用，不要求模型声明原生工具追加�
 }
 ```
 
-对支持原生 Tool Search 追加格式的 `openai-responses` 服务，将对应模型的 `compat` 设为 `{ "supportsToolSearch": true, "supportsMidConvoSystemMessages": true }`。`openai-completions` 的兼容性字段也可配置，例如 `{ "maxTokensField": "max_tokens", "supportsStore": false }`；使用普通 `tools` 列表的 Tool Search 无需这些能力标记。原生能力声明必须匹配服务端实际协议，Rukie 不会仅根据协议或自定义模型名称默认打开原生能力，也不会将 Chat Completions 服务转换成 Messages 或 Responses 服务。
+对支持原生 Tool Search 追加格式的 `openai-responses` 服务，将对应模型的 `compat` 设为 `{ "supportsToolSearch": true, "supportsMidConvoSystemMessages": true }`。`openai-completions` 的兼容性字段也可配置，例如 `{ "maxTokensField": "max_tokens", "supportsStore": false }`；使用普通 `tools` 列表的 Tool Search 无需这些能力标记。这些字段可省略，让 Rukie 按实际响应检测。显式声明应匹配服务端实际协议，Rukie 不会将 Chat Completions 服务转换成 Messages 或 Responses 服务。
+
+### 原生追加能力检测
+
+探测是独立模型请求，不进入 Session Transcript、恢复输入、任务遥测回调或 Session 用量。它发送合成工具追加并要求调用新增工具，收到对应调用才确认支持；探测工具不会执行。只有 Responses 和 Messages 在确实需要追加工具时触发，普通聊天不会探测。首次检测会增加一次模型请求和服务端费用，最长等待 10 秒；取消任务也取消探测。
+
+检测结果与探测 token／费用估算单独保存在 `~/.rukie/model-capabilities.json`，按 endpoint、API、provider、model、凭据和 headers 指纹隔离。同进程并发共享检测；支持缓存 24 小时、不支持缓存 1 小时、未知缓存 60 秒，取消不形成有效缓存。文件不保存凭据、endpoint 或原始错误响应；缓存损坏或不可写时提示警告并继续任务。
+
+只有 HTTP 400/422 明确拒绝原生追加或对话内 system 格式才判定不支持。网络、认证、限流、服务端错误或未调用探测工具只记为未知，当前请求回退到普通 `tools`；缓存过期后可重新探测。真实任务请求在输出内容前遇到明确的原生格式拒绝时，回退重试一次；其他错误、已有输出或取消不触发该重试。相关所有权与恢复边界见 [ADR-0027](adr/0027-native-tool-capability-probing.md)。
 
 修改配置后启动新 Session 验证：在 `toolSearch: "on"` 且存在 MCP 候选时，初始工具列表包含 `ToolSearch`，MCP 工具在搜索发现后才向模型声明。
 

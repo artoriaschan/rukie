@@ -16,6 +16,8 @@ Tool Search 的启用只取决于 `auto/on/off`、候选工具、上下文容量
 
 本决定部分替代 ADR-0025 的原生能力门槛和顶层工具列表始终固定的要求；保留其客户端检索、发现事实归 Transcript、声明顺序及 MCP 候选范围。Resume、Compaction、Rewind 和子 Session 继续使用当前分支的原生投影。设置和协议能力的使用说明归 [MCP Tool Search](../mcp.md#tool-search)。
 
+未声明原生能力的选择规则由 [ADR-0027](0027-native-tool-capability-probing.md) 部分替代：Responses 和 Messages 在需要追加时通过独立请求探测，失败则使用普通声明；本记录的启用条件与工具发现事实归属继续有效。
+
 ## 备选方案
 
 - 按协议默认打开原生追加能力：配置简单，但会向仅部分兼容的模型或网关发送无法接受或被忽略的格式。

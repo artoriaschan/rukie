@@ -20,6 +20,7 @@ import {
 import { parsePermissionRules } from "../permissions/index.ts";
 import { mergeHooks, validateHooks } from "../hooks/index.ts";
 import { Value } from "typebox/value";
+import { withToolCapabilityDetection } from "./tool-capabilities.ts";
 
 /** Parses one settings file; a missing file is `{}`. */
 async function readJson(path: string): Promise<Record<string, unknown>> {
@@ -172,6 +173,7 @@ const customApis = {
 export async function resolveModel(
   settings: Settings,
   homeDir: string,
+  onWarning: (message: string) => void = console.warn,
 ): Promise<{ model: Model<Api>; models: Models }> {
   if (!settings.model) {
     const settingsPath = join(homeDir, ".rukie/settings.json");
@@ -181,6 +183,8 @@ export async function resolveModel(
     });
   }
   const models = modelRegistry(settings);
+  for (const provider of models.getProviders())
+    models.setProvider(withToolCapabilityDetection(provider, homeDir, onWarning));
   const slash = settings.model.indexOf("/");
   const providerId = settings.model.slice(0, slash);
   const model =

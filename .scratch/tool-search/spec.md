@@ -2,7 +2,7 @@ Status: resolved
 
 # Spec: Tool Search
 
-本文件记录首次交付的规范；原生能力启用门槛及固定顶层工具列表的要求已由 [ADR-0026](../../docs/adr/0026-protocol-independent-tool-search.md) 替代，当前行为见 [MCP Tool Search](../../docs/mcp.md#tool-search)。
+本文件记录首次交付的规范；原生能力启用门槛及固定顶层工具列表的要求已由 [ADR-0026](../../docs/adr/0026-protocol-independent-tool-search.md) 替代，原生追加能力的独立自动检测由 [ADR-0027](../../docs/adr/0027-native-tool-capability-probing.md) 规定，当前行为见 [MCP Tool Search](../../docs/mcp.md#tool-search)。
 
 术语见 `CONTEXT.md` 的 Tool、MCP Server、Deferred Tool、Tool Search、Transcript、Compaction、Rewind。架构决定见 [ADR-0025](../../docs/adr/0025-client-side-tool-search.md)。参考：Claude Code `ToolSearch`（`select:` 与关键词查询语法）。
 
@@ -114,3 +114,11 @@ MCP 工具定义的估算 token 超过模型上下文窗口 10% 时（或用户�
 - 集成分支执行一次 `env -u NO_COLOR bun run check`：静态、tracker、docs、ink boundaries 通过；测试 3096 pass、1 fail、17770 assertions，282 files，108.93s。失败是 `tool-declarations.test.ts` 的旧整表重写断言，已最小复现并改为只重定义变化的 subagent、保留其他声明位置及精确新描述。
 - 修正后 `env -u NO_COLOR bun test packages/agent/tests/e2e/tool-declarations.test.ts packages/agent/tests/e2e/tool-search.test.ts packages/agent/tests/e2e/tool-search-children.test.ts`：43 pass、0 fail、129 assertions，4.70s；`bun run check:dev` 通过。最后只改测试消费者与交付文档，未改变生产代码；按根规则复用其余完整测试证据，不重复 aggregate，也不将首次失败描述为完整通过。
 - 工单与 spec 在本提交同时关闭；仅清理本次创建、干净且已合入集成分支的实现 worktrees，集成分支保留供后续合并。
+
+## Native Capability Detection Follow-up
+
+2026-10-09：按用户确认的自动嗅探与通用回退方案追加交付。配置模块包装 pi-ai Provider，仅在 Responses/Messages 请求包含后续工具追加且能力未明确配置时探测。合成调用不经过 Session/Harness，不执行工具，消息、回调和用量不混入任务 Transcript 或统计。推断使用模型副本，显式 compat 优先；普通聊天不探测。缓存按 endpoint/API/provider/model/凭据/headers 的摘要隔离，支持 24h、不支持 1h、未知 60s，取消可重试；单独保存探测用量并避免存储凭据与错误原文。
+
+ADR coverage：新增 ADR-0027，部分替代 ADR-0026 的未声明原生能力选择规则；Tool Search 启用条件、pi-ai 协议投影、Transcript 工具发现事实、恢复与权限边界不变。已审阅标准和最终请求行为，无未解决发现。真实任务仅在输出前收到 HTTP 400/422 明确原生格式拒绝时回退一次；其他错误不重放。
+
+验证：新增两种协议的 Session + 真实 SDK/HTTP/MCP 测试首次 RED（预期 1 次探测、实际 0 次），实施后 GREEN；取消后并发复用旧探测的回归先 RED，再修复并通过。相关配置和协议行为 104 tests、0 fail，1.389s；新增 Provider 用例约 3–26ms，两种协议 Session 用例约 114ms。check:dev 通过。一次最终 `env -u NO_COLOR bun run check`：3133 pass、0 fail、17922 assertions，286 files，108.67s；格式、lint、tsc、Knip、tracker、docs、ink boundaries 均通过。探测用量回调隔离、认证/限流/服务端未知结果、明确拒绝回退、显式配置、取消、并发、过期、凭据隔离及 Resume 均有覆盖。未在真实远端服务执行本次自动检测；当前证据来自生产 SDK 与本地可控 HTTP 服务。

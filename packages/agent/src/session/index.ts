@@ -459,7 +459,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
   const resolved =
     options.model && options.models
       ? { model: options.model, models: options.models }
-      : await resolveModel(settings, options.homeDir);
+      : await resolveModel(settings, options.homeDir, warn);
   let model = resolved.model;
   const models = resolved.models;
   const selectedModel = (spec: string) => {
