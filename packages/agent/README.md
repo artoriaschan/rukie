@@ -26,8 +26,16 @@ Question 和 Plan Review 在原生执行意图之前收集回复；计划批准�
 | [子代理目录](src/tools/subagents/state.ts)                                                                   | rewindable / initial | 新 fork 不继承拥有的子代理目录；顶层 Rewind 按目标位置重新建立可观察身份 |
 | [模型选择事实](src/config/model-state.ts)、[标题来源](src/session-title/index.ts)                            | rewindable / asOf    | 保留所选位置的产品事实；实际模型配置从原生 Agent document 恢复           |
 | 原生 `pi.agent`                                                                                              | rewindable / asOf    | 保存模型与 Agent 配置；Session 索引用于列表展示                          |
-| [Goal 激活、待提交输入事实、子代理描述](src/session/index.ts)                                                | latest / initial     | 当前活动事实不复制到新 fork                                              |
+| [Goal 激活](src/tools/goal/driver.ts)、[待提交输入事实、子代理描述](src/session/index.ts)                    | latest / initial     | 当前活动事实不复制到新 fork                                              |
 | [Session 索引](src/store/index.ts)                                                                           | Session scope        | 保存持久化身份及当前选中 Conversation，不参与对话 fork                   |
+
+# Goal continuation
+
+Goal facts 与已接受的续跑授权分开。真实用户创建或重新开启 Goal 时，Goal document、激活身份、原生 `rukie.goal-driver` task 和因果请求收据在同一事务中提交；只有顶层 Conversation 拥有该 task。driver 保存下一轮 reservation，使用由 task 和 round 组成的稳定 request id 通过原生 inbox 提交输入，等待该轮及相关 child/reporters 的收据，再保留下一轮 reservation。实际输入被原生放置后才增加一次轮次；reservation、Human 输入、Hook continue 和报告不消费轮次。
+
+`createGoal` 返回已接受激活的 `requestId`，第一条输入尚未提交时也能调用 `waitForRequest`。结算包含全部相关轮次及结果处理，以最终回答和不重复的 usage 返回；Human 模型工具创建的激活纳入该 Human 请求，历史目标与无关任务不纳入。`close` 保留已接受 task，重新打开继续同一轮；输入提交确认丢失时重新取得原生 submission 收据。暂停、受阻、完成、上限、清除、显式 abort 或模型错误停止后续 admission，保留已提交事实。暂停或清除不会取消当前工具结果或其回答；未放置的 reservation 不消费轮次。停止状态的重新开启仍需真实用户授权，历史 Goal facts 或终态 task 不构成授权。
+
+Rewind 要求原生任务已结算；fork 按 document 策略保留 Goal facts，但激活 document 使用 initial 策略，原生 tasks 不复制。轮次执行及恢复规则由 [`tools/goal/driver.ts`](src/tools/goal/driver.ts) 拥有；Session 只提供原生提交、因果收据和观测的组合入口。决定见 [ADR-0024](../../docs/adr/0024-adopt-pi-durable-harness.md)。
 
 # Transcript and context
 

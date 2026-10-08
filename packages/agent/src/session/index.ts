@@ -2,7 +2,11 @@ import { withHookTranscript, writeHookTranscript } from "../hooks/transcript.ts"
 import { randomUUID } from "node:crypto";
 import { declarationsEqual } from "@earendil-works/pi-ai/utils/transcript";
 import { join, resolve } from "node:path";
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import {
+  BACKGROUND_CONTEXT,
+  awaitWithContext,
+  withAbortSignal,
+} from "@earendil-works/chord/context";
 import type { Context, JsonValue } from "@earendil-works/chord";
 import {
   getCurrentTools,
@@ -23,7 +27,6 @@ import {
   CompactionTask,
   ToolTask,
   LiveDoc,
-  InboxDoc,
   type SubmissionId,
   type TaskId,
   type ToolRegistration,
@@ -107,7 +110,12 @@ import {
 import {
   createGoalController,
   goalState,
-  renderGoalRoundPrompt,
+  createGoalDriver,
+  GoalActivationDoc,
+  readGoalActivation,
+  placedGoalRound,
+  revokeGoalActivation,
+  preservePlacedGoalRounds,
   type GoalView,
 } from "../tools/goal/index.ts";
 import { subagentsState, subagentRunState, type SubagentRun } from "../tools/subagents/state.ts";
@@ -200,7 +208,7 @@ export interface Session {
   setModel(spec: string): Promise<void>;
   readonly permissionMode: PermissionMode;
   readonly planMode: boolean;
-  /** Persisted Goal plus process-local activation; restored Sessions are always disarmed. */
+  /** Persisted Goal facts and authorization from its accepted native continuation task. */
   readonly goal: GoalView | undefined;
   /** Idle only. Creates and arms a Goal, immediately starting its first internal Run. */
   createGoal(
@@ -289,14 +297,6 @@ export interface Session {
   ): Promise<RequestResult>;
 }
 
-const GoalActivationDoc = defineDoc<{ taskId: number | null; requestId: string | null }>({
-  kind: "rukie.goal-activation",
-  version: 1,
-  scope: "conversation",
-  history: "latest",
-  fork: "initial",
-  initial: () => ({ taskId: null, requestId: null }),
-});
 const HookContinuationDoc = defineDoc<{ taskId: number | null; count: number }>({
   kind: "rukie.hook-continuation",
   version: 1,
@@ -872,23 +872,113 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
       changed: () => {},
     });
-    const activation = await harness.snapshot(GoalActivationDoc, conversation.id, context);
-    const nativeLive = await harness.snapshot(LiveDoc, conversation.id, context);
+    const activation = readGoalActivation(
+      await harness.snapshot(GoalActivationDoc, conversation.id, context),
+    );
+    if (activation.taskId !== null) {
+      const tasks = await lease.storage.scanTasks({}, 100000, undefined, context);
+      const accepted = tasks.items.find((task) => Number(task.id) === activation.taskId);
+      const input = accepted?.input;
+      const goalFact = state.get("goal");
+      if (
+        !accepted ||
+        accepted.kind !== "rukie.goal-driver" ||
+        !input ||
+        typeof input !== "object" ||
+        Array.isArray(input) ||
+        input.requestId !== activation.requestId ||
+        !goalFact ||
+        typeof goalFact !== "object" ||
+        Array.isArray(goalFact) ||
+        !("id" in goalFact) ||
+        input.goalId !== goalFact.id
+      )
+        throw new Error("Invalid Goal activation task.");
+      if (accepted.state.status === "terminal") {
+        await conversation.commit(async (tx) => {
+          (await tx.doc(GoalActivationDoc, conversation.id)).taskId = null;
+        }, context);
+        activation.taskId = null;
+      }
+    }
     let activationTaskFact = activation?.taskId ?? null;
-    let liveTaskFact = nativeLive?.run ? Number(nativeLive.run.taskId) : null;
+    let goalRequestId = activation?.requestId ?? undefined;
+    const goalDriver = createGoalDriver({
+      submit: async (prompt, requestId, ctx) =>
+        (await awaitWithContext(submit(prompt, [], "followUp", requestId, ctx.abortSignal), ctx))
+          .id,
+      settle: async (requestId, ctx) => awaitWithContext(session.waitForRequest(requestId), ctx),
+      settleCancelled: async (requestId, submissionId, ctx) =>
+        awaitWithContext(resultFor(requestId, submissionId), ctx),
+      recoverSubmission: async (requestId, ctx) => {
+        const inputs = await lease.storage.scanSubmissions({}, 100000, undefined, ctx);
+        const found = inputs.items.find(
+          (input) => input.conversationId === conversation.id && input.requestId === requestId,
+        );
+        if (!found) return undefined;
+        await registerSubmission(requestId, found.id);
+        if (found.entry)
+          await conversation.commit(
+            (tx) =>
+              tx.appendEntry(conversation.id, {
+                kind: "rukie.message-facts",
+                model: [],
+                data: { entryId: Number(found.entry), source: "goal" },
+              }),
+            ctx,
+          );
+        return found.id;
+      },
+    });
+    const goalExtension = { name: "rukie.goal-runtime", tasks: [goalDriver] };
     const goal = createGoalController({
-      initialArmed: !!nativeLive?.run && activation?.taskId === Number(nativeLive.run.taskId),
+      isArmed: () => activationTaskFact !== null,
       getSnapshot: () => state.get("goal"),
       persist: async (value, armed) => {
+        const humanCause = currentRequestId?.startsWith("human:") ? currentRequestId : undefined;
+        let acceptedRequest: string | undefined;
+        if (!armed && (value === null || value.phase === "paused")) {
+          const active = await harness.snapshot(GoalActivationDoc, conversation.id, context);
+          const tasks = await lease.storage.scanTasks({}, 100000, undefined, context);
+          const driver = tasks.items.find(
+            (task) => Number(task.id) === active?.taskId && task.kind === "rukie.goal-driver",
+          );
+          // The driver owns admission, not the native Run or its current ToolResult.
+          if (driver) await harness.abortTask(driver.id, context);
+        }
         await conversation.commit(async (tx) => {
-          (await tx.doc(goalState.document, conversation.id)).value = value;
-          const activation = await tx.doc(GoalActivationDoc, conversation.id);
-          const live = await tx.doc(LiveDoc, conversation.id);
-          activation.taskId = armed && live.run ? Number(live.run.taskId) : null;
-          activation.requestId = armed ? (currentRequestId ?? null) : null;
+          const active = await tx.doc(GoalActivationDoc, conversation.id);
+          const snapshot = await tx.doc(goalState.document, conversation.id);
+          snapshot.value = preservePlacedGoalRounds(snapshot.value, value);
+          if (armed && value && active.taskId === null) {
+            const requestId = `goal:${value.id}:activation:${randomUUID()}`;
+            const taskId = await tx.createTask(
+              goalDriver,
+              { goalId: value.id, requestId, initialRound: value.roundsStarted + 1 },
+              { ownership: { kind: "conversation" }, conversationId: conversation.id },
+            );
+            active.taskId = Number(taskId);
+            active.requestId = requestId;
+            active.countedRound = value.roundsStarted;
+            const requests = await tx.doc(RequestDoc);
+            requests.requests[requestId] = {
+              submissions: [],
+              tasks: [Number(taskId)],
+              startedAt: Date.now(),
+              result: null,
+            };
+            if (humanCause && requests.requests[humanCause])
+              requests.requests[humanCause]!.tasks.push(Number(taskId));
+            acceptedRequest = requestId;
+          } else if (!armed) {
+            await revokeGoalActivation(tx, conversation.id);
+          }
         }, context);
+        if (acceptedRequest) {
+          goalRequestId = acceptedRequest;
+          if (!humanCause) currentRequestId = acceptedRequest;
+        }
       },
-      changed: () => {},
       assertAvailable,
       warn: () => {
         if (permissionMode === "ask")
@@ -2399,15 +2489,47 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               }
               await processCompactionHooks(ctx);
               if (live?.run) {
-                if (goal.view()?.armed)
-                  await conversation.commit(async (tx) => {
-                    const activation = await tx.doc(GoalActivationDoc, conversation.id);
-                    activation.taskId = Number(live.run!.taskId);
-                    activation.requestId = currentRequestId ?? null;
-                  }, ctx);
                 const placed = await Promise.all(
                   live.run.inputs.map((id) => lease.storage.submission(id, ctx)),
                 );
+                if (
+                  placed.some(
+                    (record) =>
+                      record?.requestId?.startsWith("goal:") &&
+                      /:round:\d+:\d+$/.test(record.requestId),
+                  )
+                )
+                  goalRound = true;
+                const activation = await harness.snapshot(GoalActivationDoc, conversation.id, ctx);
+                const roundInput =
+                  activation?.taskId && activation.requestId
+                    ? placed.find((record) =>
+                        record?.requestId?.startsWith(
+                          `${activation.requestId}:round:${activation.taskId}:`,
+                        ),
+                      )
+                    : undefined;
+                if (roundInput?.requestId) {
+                  const round = Number(roundInput.requestId.split(":").at(-1));
+                  if (!Number.isSafeInteger(round) || round < 1)
+                    throw new Error("Invalid accepted Goal round identity.");
+                  goalRound = true;
+                  await conversation.commit(async (tx) => {
+                    const active = await tx.doc(GoalActivationDoc, conversation.id);
+                    const snapshot = await tx.doc(goalState.document, conversation.id);
+                    const value = snapshot.value;
+                    if (
+                      active.taskId === activation!.taskId &&
+                      active.countedRound < round &&
+                      value &&
+                      typeof value === "object" &&
+                      !Array.isArray(value)
+                    ) {
+                      snapshot.value = placedGoalRound(value, round);
+                      active.countedRound = round;
+                    }
+                  }, ctx);
+                }
                 const current = await conversation.context(ctx);
                 const latestInput = current.entries.findLast(
                   (entry) =>
@@ -2595,7 +2717,6 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 );
               }
               if (message.stopReason === "error" || message.stopReason === "aborted") {
-                goal.disarm();
                 await conversation.commit(async (tx) => {
                   const activation = await tx.doc(GoalActivationDoc, conversation.id);
                   activation.taskId = null;
@@ -2692,7 +2813,6 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               // Complete host admission before the native final boundary selects its inbox.
               await Promise.allSettled(steeringAdmissions);
               if (_answer.stopReason !== "stop") {
-                goal.disarm();
                 await conversation.commit(async (tx) => {
                   const activation = await tx.doc(GoalActivationDoc, conversation.id);
                   activation.taskId = null;
@@ -2700,7 +2820,24 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 }, ctx);
                 return undefined;
               }
-              if (subagents.list().some((child) => child.active)) return undefined;
+              const yielding = await harness.snapshot(LiveDoc, conversation.id, ctx);
+              const inputs = await Promise.all(
+                (yielding?.run?.inputs ?? []).map((id) => lease.storage.submission(id, ctx)),
+              );
+              const requestIds = new Set(
+                inputs.flatMap((input) => (input?.requestId ? [input.requestId] : [])),
+              );
+              const tasks = (await lease.storage.scanTasks({}, 100000, undefined, ctx)).items;
+              const causes = await requestCausesForTasks(tasks);
+              if (
+                tasks.some(
+                  (task) =>
+                    task.kind === "rukie.subagent-driver" &&
+                    task.state.status !== "terminal" &&
+                    [...causes(task)].some((id) => requestIds.has(id)),
+                )
+              )
+                return undefined;
               const continuation = async (content: string, source: string) => {
                 await conversation.commit(
                   (tx) =>
@@ -2797,28 +2934,16 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 custom({ type: "hook_continued", event: "Stop", reason: result.reason });
                 return continuation(result.reason, "stop_hook");
               }
-              const active = goal.view();
-              if (active?.armed && active.phase === "active" && !stopped) {
-                // Native final-boundary placement takes precedence over onYield continuations.
-                // Do not consume a Goal round that the queued human input will replace.
-                const inbox = await harness.snapshot(InboxDoc, conversation.id, ctx);
-                if (inbox?.items.some((item) => item.mode !== "write")) return undefined;
-                const content = renderGoalRoundPrompt(active);
-                await goal.startRound();
-                if (goal.view()?.phase === "active") {
-                  goalRound = true;
-                  return continuation(content, "goal");
-                }
-              }
               return undefined;
             },
           }),
         ],
       };
+      registry.install(goalExtension);
       registry.install(subagents.extension);
       registry.install(extension);
       await conversation.configure(
-        { extensions: [extension, subagents.extension], tools },
+        { extensions: [extension, subagents.extension, goalExtension], tools },
         context,
       );
     };
@@ -2873,13 +2998,6 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           ) {
             const value = change.value;
             const run = value.run;
-            liveTaskFact =
-              run &&
-              typeof run === "object" &&
-              !Array.isArray(run) &&
-              typeof run.taskId === "number"
-                ? run.taskId
-                : null;
             const generation = value.generation;
             if (
               run &&
@@ -2952,7 +3070,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           goal: state.get("goal")
             ? {
                 ...(state.get("goal") as Omit<GoalView, "armed">),
-                armed: activationTaskFact !== null && liveTaskFact !== null,
+                armed: activationTaskFact !== null,
               }
             : null,
         },
@@ -3011,6 +3129,37 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           request.submissions.push(Number(submissionId));
       }, context);
     };
+    const receiptEntries = async (
+      receipt: import("@earendil-works/pi-durable").SettledSubmissionRecord,
+    ) => {
+      if (receipt.type !== "input" || !receipt.entry) return [];
+      const history = await fullHistory();
+      const nextInput =
+        receipt.status === "done"
+          ? undefined
+          : history.find((entry) => entry.id > receipt.entry! && entry.kind === "input");
+      const end = receipt.status === "done" ? receipt.answer : nextInput?.id;
+      return history.filter(
+        (entry) =>
+          entry.id >= receipt.entry! &&
+          (end === undefined || (receipt.status === "done" ? entry.id <= end : entry.id < end)),
+      );
+    };
+    const entryUsage = (entries: Iterable<EntryRecord>) => {
+      const usage = zeroUsage();
+      for (const entry of entries)
+        for (const message of entry.model ?? [])
+          if (message.role === "assistant")
+            for (const key of [
+              "input",
+              "output",
+              "cacheRead",
+              "cacheWrite",
+              "totalTokens",
+            ] as const)
+              usage[key] += message.usage[key];
+      return usage;
+    };
     const resultFor = async (
       requestId: string,
       submissionId: SubmissionId,
@@ -3018,37 +3167,19 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       const submission = await harness.submission(submissionId, context);
       if (!submission) throw new Error(`Request submission missing: ${requestId}`);
       const receipt = await Promise.race([submission.wait(context), storageFault.promise]);
-      if (receipt.status === "unanswered" && goal.view()?.armed) {
-        goal.disarm();
-        await conversation.commit(async (tx) => {
-          const activation = await tx.doc(GoalActivationDoc, conversation.id);
-          activation.taskId = null;
-          activation.requestId = null;
-        }, context);
-      }
+
       const view = await conversation.context(context);
       contextMessages = view.messages;
-      const usage = zeroUsage();
-      for (const entry of view.entries)
-        if (receipt.entry && entry.id >= receipt.entry)
-          for (const message of entry.model ?? [])
-            if (message.role === "assistant") {
-              usage.input += message.usage.input;
-              usage.output += message.usage.output;
-              usage.cacheRead += message.usage.cacheRead;
-              usage.cacheWrite += message.usage.cacheWrite;
-              usage.totalTokens += message.usage.totalTokens;
-            }
+      const entries = await receiptEntries(receipt);
+      const usage = entryUsage(entries);
       const answer =
         receipt.status === "done" && receipt.type === "input"
           ? await lease.storage.entry(receipt.answer, context)
           : undefined;
       const terminal =
         (answer?.entry.model ?? []).findLast((message) => message.role === "assistant") ??
-        view.entries
-          .flatMap((entry) =>
-            receipt.entry && entry.id >= receipt.entry ? (entry.model ?? []) : [],
-          )
+        entries
+          .flatMap((entry) => entry.model ?? [])
           .findLast((message) => message.role === "assistant");
       const text =
         (answer?.entry.model ?? (terminal ? [terminal] : undefined))
@@ -3147,7 +3278,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         await writeHookTranscript(hookTranscriptPath(lease.id), await fullHistory());
         throw new PromptHookBlocked(result);
       }
-      await prepareReminders(context, true, undefined, requestId);
+      const admissionContext = signal ? withAbortSignal(signal, context) : context;
+      await prepareReminders(admissionContext, true, undefined, requestId);
+      signal?.throwIfAborted();
       if (requestId.startsWith("human:")) await title.firstPrompt(prompt);
       const invocation = skillInvocation(prompt, skills);
       if (invocation)
@@ -3167,9 +3300,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       ];
       const submitted = await conversation.submit(
         { type: "input", content, requestId, whenBusy },
-        context,
+        admissionContext,
       );
-      currentRequestId = requestId;
+      if (!/:round:\d+:\d+$/.test(requestId)) currentRequestId = requestId;
       await registerSubmission(requestId, submitted.id);
       const record = await submitted.status(context);
       if (images.length || invocation || !requestId.startsWith("human:")) {
@@ -3197,16 +3330,6 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         }, context);
       }
       return submitted;
-    }
-    async function startGoal() {
-      const active = goal.view();
-      if (!active?.armed || active.phase !== "active") return;
-      goalRound = true;
-      const requestId = `goal:${active.id}:${active.roundsStarted + 1}`;
-      const prompt = renderGoalRoundPrompt(active);
-      await goal.startRound();
-      await submit(prompt, [], "followUp", requestId);
-      return requestId;
     }
     function modelMessages(): readonly Message[] {
       return observation.view().entries.flatMap((entry) => entry.model ?? []);
@@ -3375,20 +3498,20 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
       createGoal: async (objective, input) => {
         await goal.create(objective, input);
-        const requestId = await startGoal();
-        if (!requestId) throw new Error("Created Goal did not admit its initial request.");
+        const requestId = goalRequestId;
+        if (!requestId) throw new Error("Created Goal has no accepted driver.");
         return { ...goal.view()!, requestId };
       },
       editGoal: async (objective) => {
         const prior = goal.view();
         const value = await goal.edit(objective);
-        const requestId = prior?.phase === "complete" ? await startGoal() : undefined;
+        const requestId = prior?.phase === "complete" ? goalRequestId : undefined;
         return { ...value, ...(requestId ? { requestId } : {}) };
       },
       pauseGoal: () => goal.pause(),
       resumeGoal: async () => {
         const value = await goal.resume();
-        const requestId = await startGoal();
+        const requestId = goalRequestId;
         return { ...value, ...(requestId ? { requestId } : {}) };
       },
       clearGoal: () => goal.clear(),
@@ -3587,7 +3710,6 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           plan.restore();
           tracking.restore(state.get("file-tracking"));
           await tracking.restoreCommitted(await fullHistory());
-          goal.disarm();
           await rebuildTools();
           const rewindEvents: SessionEvent[] = [];
           let rewindInstalled = false;
@@ -3757,9 +3879,18 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         notificationLifetime.abort();
         notificationLifetime = new AbortController();
         stopped = true;
-        goal.disarm();
+        const active = await harness.snapshot(GoalActivationDoc, conversation.id, context);
+        let goalAbort: ReturnType<typeof harness.abortTask> | undefined;
+        if (active?.taskId) {
+          const tasks = (await lease.storage.scanTasks({}, 100000, undefined, context)).items;
+          const driver = tasks.find(
+            (task) => Number(task.id) === active.taskId && task.kind === "rukie.goal-driver",
+          );
+          if (driver) goalAbort = harness.abortTask(driver.id, context);
+        }
         if (manualCompactionTask) await harness.abortTask(manualCompactionTask, context);
         await conversation.abort(context);
+        await goalAbort;
         await observation.flush();
       },
       async steer(prompt, input) {
@@ -3797,7 +3928,6 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           notificationLifetime.abort();
           notificationLifetime = new AbortController();
           stopped = true;
-          goal.disarm();
           void conversation.abort(context).catch((error) => {
             if (!closed) warn(error);
           });
@@ -3857,7 +3987,45 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           assertAvailable();
           const restored = await readRequest(requestId);
           if (restored?.result) return storedRequestResult(restored.result)!;
+          const tasks = (await lease.storage.scanTasks({}, 100000, undefined, context)).items;
+          const acceptedGoal = tasks.find(
+            (task) =>
+              task.kind === "rukie.goal-driver" && restored?.tasks.includes(Number(task.id)),
+          );
+          if (acceptedGoal && !restored?.submissions.length) {
+            const receipt = await Promise.race([
+              harness.waitForTask(acceptedGoal.id, context),
+              storageFault.promise,
+            ]);
+            const outcome = receipt.state.outcome;
+            const value = "result" in outcome ? outcome.result : undefined;
+            const settled =
+              value && typeof value === "object" && !Array.isArray(value)
+                ? storedRequestResult({ ...value, requestId })!
+                : {
+                    requestId,
+                    text: "",
+                    success: false,
+                    error: "Goal continuation cancelled",
+                    usage: zeroUsage(),
+                    durationMs: 0,
+                  };
+            await harness.commit(async (tx) => {
+              (await tx.doc(RequestDoc)).requests[requestId]!.result = {
+                ...settled,
+                usage: { ...settled.usage },
+              };
+            }, context);
+            await observation.flush();
+            custom({ type: "request_settled", ...settled });
+            return settled;
+          }
           let result: RequestResult | undefined;
+          const goalReceipts = new Map<
+            number,
+            import("@earendil-works/pi-durable").SettledTask<JsonValue>
+          >();
+          const parentEntries = new Map<number, EntryRecord>();
           const childReceipts = new Map<
             number,
             import("@earendil-works/pi-durable").TaskRecord<JsonValue, JsonValue, JsonValue>
@@ -3872,6 +4040,12 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             if (!ids.length) throw new Error("Request has no submitted inputs.");
             const results = await Promise.all(ids.map((id) => resultFor(requestId, id)));
             result = results.at(-1)!;
+            for (const id of ids) {
+              const submission = await harness.submission(id, context);
+              if (!submission) throw new Error(`Request submission missing: ${id}`);
+              for (const entry of await receiptEntries(await submission.wait(context)))
+                parentEntries.set(Number(entry.id), entry);
+            }
             const tasks = (await lease.storage.scanTasks({}, 100000, undefined, context)).items;
             const drivers = [];
             const causes = await requestCausesForTasks(tasks);
@@ -3885,6 +4059,14 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               ]);
               childReceipts.set(Number(driver.id), receipt);
             }
+            for (const driver of tasks.filter(
+              (task) =>
+                task.kind === "rukie.goal-driver" && request.tasks.includes(Number(task.id)),
+            ))
+              goalReceipts.set(
+                Number(driver.id),
+                await Promise.race([harness.waitForTask(driver.id, context), storageFault.promise]),
+              );
             const fresh = await readRequest(requestId);
             if (
               fresh &&
@@ -3893,7 +4075,44 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             )
               break;
           }
-          const usage = { ...result!.usage };
+          // Linked Goal rounds may share a native answer with a Human child report.
+          // Union their committed entries before summing; a receipt's spend is not an independent bucket.
+          const allTasks = (await lease.storage.scanTasks({}, 100000, undefined, context)).items;
+          const allInputs = (await lease.storage.scanSubmissions({}, 100000, undefined, context))
+            .items;
+          const goalRequests = new Set<string>();
+          for (const driver of goalReceipts.values()) {
+            if (
+              !driver.input ||
+              typeof driver.input !== "object" ||
+              Array.isArray(driver.input) ||
+              typeof driver.input.requestId !== "string"
+            )
+              throw new Error("Invalid accepted Goal request identity.");
+            const prefix = `${driver.input.requestId}:round:${driver.id}:`;
+            for (const input of allInputs.filter((input) => input.requestId?.startsWith(prefix))) {
+              goalRequests.add(input.requestId!);
+              const roundRequest = await readRequest(input.requestId!);
+              const ids = roundRequest?.submissions ?? [Number(input.id)];
+              for (const id of ids) {
+                const record = allInputs.find((record) => Number(record.id) === id);
+                if (!record) throw new Error(`Goal submission missing: ${id}`);
+                const submission = await harness.submission(record.id, context);
+                if (!submission) throw new Error(`Goal submission missing: ${id}`);
+                for (const entry of await receiptEntries(await submission.wait(context)))
+                  parentEntries.set(Number(entry.id), entry);
+              }
+            }
+          }
+          const causes = await requestCausesForTasks(allTasks);
+          for (const child of allTasks)
+            if (
+              child.kind === "rukie.subagent-driver" &&
+              child.state.status === "terminal" &&
+              [...causes(child)].some((request) => goalRequests.has(request))
+            )
+              childReceipts.set(Number(child.id), child);
+          const usage = entryUsage(parentEntries.values());
           let answerId: number | undefined;
           for (const receipt of childReceipts.values()) {
             const outcome = receipt.state.outcome;
@@ -3922,13 +4141,33 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 .map(textOf)
                 .join("");
           }
-          const settled = { ...result!, text, usage };
+          let settled = { ...result!, text, usage };
+          for (const receipt of goalReceipts.values()) {
+            const outcome = receipt.state.outcome;
+            const value = "result" in outcome ? outcome.result : undefined;
+            const goalResult =
+              value && typeof value === "object" && !Array.isArray(value)
+                ? storedRequestResult({ ...value, requestId })
+                : undefined;
+            if (goalResult) {
+              settled = {
+                ...goalResult,
+                usage,
+                durationMs: settled.durationMs + goalResult.durationMs,
+              };
+            } else settled = { ...settled, success: false, error: "Goal continuation cancelled" };
+          }
+          const latestAnswer = [...parentEntries.values()]
+            .sort((left, right) => Number(left.id) - Number(right.id))
+            .flatMap((entry) => entry.model ?? [])
+            .findLast((message) => message.role === "assistant");
+          if (goalReceipts.size && latestAnswer) settled.text = textOf(latestAnswer);
           await harness.commit(async (tx) => {
             const doc = await tx.doc(RequestDoc);
             doc.requests[requestId]!.result = { ...settled, usage: { ...settled.usage } };
           }, context);
           await observation.flush();
-          custom({ type: "request_settled", ...settled });
+          if (!/:round:\d+:\d+$/.test(requestId)) custom({ type: "request_settled", ...settled });
           return settled;
         })();
         requestWaiters.set(requestId, waiting);
@@ -4015,6 +4254,14 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       const causes = await requestCausesForTasks(allTasks);
       for (const task of recovering.tasks)
         for (const id of causes(task.record)) currentRequestId = id;
+    }
+    if (activationTaskFact !== null && goalRequestId) {
+      const taskId = activationTaskFact;
+      const human = Object.entries(requestValues).find(
+        ([id, request]) =>
+          id.startsWith("human:") && request.result === null && request.tasks.includes(taskId),
+      );
+      currentRequestId = human?.[0] ?? goalRequestId;
     }
     harness.resume();
     return session;

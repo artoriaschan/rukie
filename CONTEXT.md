@@ -95,7 +95,7 @@ _Avoid_: language（会和模型回复语言混淆）, i18n
 _Avoid_: command（会和 bash 命令混淆）
 
 **Goal**:
-用户为 session 设定的目标。设定后 agent 在每个 run 结束时自动续跑，直到模型判定目标完成或受阻、用户暂停，或达到续跑上限。
+用户为 Session 设定的目标事实。真实用户接受的自动续跑由原生 task 保存并驱动，实际放置的 Goal 输入消费轮次；close/reopen 继续已接受工作，历史事实本身不提供执行授权。模型判定完成或受阻、用户暂停、取消或达到上限后停止，重新开启需真实用户授权。
 _Avoid_: task, objective
 
 **Side Question**:

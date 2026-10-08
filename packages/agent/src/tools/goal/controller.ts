@@ -20,18 +20,16 @@ export function renderGoalRoundPrompt(goal: GoalView): string {
 
 /** Goal mutations serialize independently of event observers, which may call back into Session. */
 export function createGoalController(options: {
-  initialArmed?: boolean;
+  isArmed(): boolean;
   getSnapshot(): unknown;
   persist(value: GoalSnapshot | null, armed: boolean): Promise<void>;
-  changed(value: GoalSnapshot | null): void | Promise<void>;
   assertAvailable(idle: boolean): void;
   warn(): void;
 }) {
-  let armed = options.initialArmed ?? false;
   let writes = Promise.resolve();
   const view = (): GoalView | undefined => {
     const value = options.getSnapshot();
-    return Value.Check(goalSchema, value) ? { ...value, armed } : undefined;
+    return Value.Check(goalSchema, value) ? { ...value, armed: options.isArmed() } : undefined;
   };
   const error = (
     code: Exclude<Extract<UserVisibleErrorCode, `goal-${string}`>, `goal-tool-${string}`>,
@@ -43,31 +41,19 @@ export function createGoalController(options: {
       () => {},
       () => {},
     );
-    return operation.then(async (snapshot) => {
-      if (snapshot !== undefined) await options.changed(snapshot);
-    });
+    return operation.then(() => undefined);
   };
   const requireGoal = () => {
     const current = view();
     if (!current) throw error("goal-missing", "No Goal exists in this Session.");
     return current;
   };
-  const persist = async (snapshot: GoalSnapshot | null, nextArmed = armed) => {
-    const previous = armed;
-    armed = nextArmed;
-    try {
-      await options.persist(snapshot, nextArmed);
-    } catch (cause) {
-      armed = previous;
-      throw cause;
-    }
+  const persist = async (snapshot: GoalSnapshot | null, nextArmed = options.isArmed()) => {
+    await options.persist(snapshot, nextArmed);
     return snapshot;
   };
   const controller = {
     view,
-    disarm() {
-      armed = false;
-    },
     settle() {
       return writes;
     },
@@ -160,25 +146,6 @@ export function createGoalController(options: {
         );
       });
       return view()!;
-    },
-    async startRound() {
-      await change(async () => {
-        const current = view();
-        if (!current || current.phase !== "active" || !armed) return;
-        const { armed: _armed, ...snapshot } = current;
-        if (current.roundsStarted >= current.maxRounds) {
-          return persist(
-            {
-              ...snapshot,
-              phase: "blocked",
-              blockedReason: `Goal reached its ${current.maxRounds} round limit. Start a new Goal to continue.`,
-            },
-            false,
-          );
-        } else {
-          return persist({ ...snapshot, roundsStarted: current.roundsStarted + 1 });
-        }
-      });
     },
   };
   return controller;

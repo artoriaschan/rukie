@@ -5,6 +5,7 @@
     "packages/agent": {
       "entry": [
         "tests/helpers/session-store-worker.ts",
+        "tests/helpers/goal-crash-worker.ts",
         "tests/helpers/subagent-recovery-worker.ts"
       ]
     },

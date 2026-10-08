@@ -72,8 +72,7 @@ test("creating a Goal immediately runs rounds up to its cap without user prompt 
       event.type === "tool_state_changed" && event.name === "goal" ? [event.value] : [],
     ),
   ).toMatchObject([
-    { roundsStarted: 0, armed: false },
-    { roundsStarted: 1, armed: false },
+    { roundsStarted: 0, armed: true },
     { roundsStarted: 1, armed: true },
     { roundsStarted: 2, armed: true },
     { roundsStarted: 2, phase: "blocked", armed: false },
@@ -210,7 +209,7 @@ test.each(["abort", "close"] as const)(
   },
 );
 
-test("resume restores an active Goal without autorun, and conversation rewind restores its earlier state", async () => {
+test("resume restores disarmed Goal facts without autorun, and conversation rewind restores earlier facts", async () => {
   dirs = await tempDirs();
   const fake = fakeModel([
     fauxAssistantMessage("before"),
@@ -547,13 +546,13 @@ test("manual Compaction immediately restores Goal reminder and unchanged followi
   expect(JSON.stringify(fake.contexts.at(-1))).toContain("retain the objective");
 });
 
-test("pausing immediately after creation still counts the current Goal round", async () => {
+test("pausing an accepted Goal before its first placement consumes no round", async () => {
   dirs = await tempDirs();
   const fake = fakeModel([fauxAssistantMessage("current round")]);
   const session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
   await session.createGoal("finish current round");
   await session.pauseGoal();
   await session.waitForIdle();
-  expect(fake.contexts).toHaveLength(1);
-  expect(session.goal).toMatchObject({ phase: "paused", roundsStarted: 1, armed: false });
+  expect(fake.contexts).toHaveLength(0);
+  expect(session.goal).toMatchObject({ phase: "paused", roundsStarted: 0, armed: false });
 });

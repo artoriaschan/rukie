@@ -65,7 +65,7 @@ Session 持有自己的 Background Job registry。bash 使用同一条进程组�
 | [`tools/subagents/`](../packages/agent/src/tools/subagents/index.ts)、`session-resume/`、`unknown-tool-outcomes/` | 管理子 Session 与 Run，核对恢复事实，处理缺少确定结果的工具调用              |
 | `session-title/`、`side-question/`                                                                                | 管理标题与独立侧问                                                           |
 | [`tools/plan-mode/`](../packages/agent/src/tools/plan-mode/index.ts)                                              | 管理 Plan Mode 快照、引导与 Enter/Exit 工具，Session 协调存储与状态事件      |
-| [`tools/goal/`](../packages/agent/src/tools/goal/index.ts)                                                        | 管理 Goal 快照、模型工具授权与续跑提示，Session 协调自动续跑                 |
+| [`tools/goal/`](../packages/agent/src/tools/goal/index.ts)                                                        | 管理 Goal 快照、模型工具授权及原生续跑 task，Session 注入提交与因果收据      |
 
 模型 Hook 通过 [`tools/readonly.ts`](../packages/agent/src/tools/readonly.ts) 构造 read、glob、grep，只加载这些只读能力及共享运行时适配，不加载完整内置工厂。
 
@@ -103,7 +103,7 @@ Session 在 pi 的请求准备、工具前后回调和消息事件上接入这�
 
 Hooks 可以向下一次请求提供上下文、阻止工具或结束 Run，也可以在停止阶段要求继续。异步 Hook 的 `asyncRewake` 能向进行中的 Run steer，或在空闲时启动内部 Run；所以 frontend 不能仅以自己调用过的 `run` 判断 Session 是否正在执行。完整 Hook 协议与限制见 [hooks.md](hooks.md)。
 
-Goal 只属于顶层 Session。用户通过 TUI `/goal`、Headless `--goal` 或模型工具 `create_goal` 设定目标；Session 在 Stop Hook 放行、子代理结束及待处理的异步 Hook 和用户输入完成后启动下一轮。只有带 Goal 来源的内部输入计入轮次，内部 round 与收尾消息不创建 Checkpoint、不用于标题，也不呈现为用户气泡。`update_goal` 完成或受阻会停止自动续跑，并在 Goal round 内向模型提供同一 Run 的收尾指令；出错、中止或 token 超限只停止自动续跑，保留 Goal 供用户恢复。Goal 不改变 Permission Mode。
+Goal 只属于顶层 Session。用户通过 TUI `/goal`、Headless `--goal` 或模型工具 `create_goal` 设定目标；Goal 能力的原生 driver 在前一轮及相关 child/reporters 结算后提交下一轮；Human 输入、Hook continue 与通知沿原生 inbox 处理。只有带 Goal 来源的内部输入计入轮次，内部 round 与收尾消息不创建 Checkpoint、不用于标题，也不呈现为用户气泡。`update_goal` 完成或受阻会停止自动续跑，并在 Goal round 内向模型提供同一 Run 的收尾指令；出错、中止或 token 超限只停止自动续跑，保留 Goal 供用户恢复。Goal 不改变 Permission Mode。
 
 ## 工具、权限与交互
 
