@@ -1,3 +1,8 @@
+import {
+  planToolSearchLoadout,
+  createToolSearchTool,
+  deferredToolsReminder,
+} from "../tools/tool-search/index.ts";
 import { stopHookContinuation } from "../hooks/index.ts";
 import { validateSessionDocument, validateSessionDocuments } from "./documents.ts";
 import { withHookTranscript, writeHookTranscript } from "../hooks/transcript.ts";
@@ -815,6 +820,16 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         cursor = page.next;
       } while (cursor);
       return entries.reverse();
+    };
+    // A new compaction head has no tool baseline until native preparation runs.
+    // Recover its offered tools from the selected branch's complete Transcript.
+    const currentConversationTools = async (target = conversation, ctx = context) => {
+      const view = await target.context(ctx);
+      return getCurrentTools(
+        view.messages.some((message) => message.role === "system")
+          ? view.messages
+          : (await fullHistory(target.id)).flatMap((entry) => entry.model ?? []),
+      );
     };
     const promptFacts = new Map<string, string>();
     const rememberPrompts = (entries: readonly EntryRecord[]) => {
@@ -1703,7 +1718,16 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           fileTracking: childTracking,
         });
         const refreshChildTools = () => {
-          childTools = [...builtinTools, ...mcp.tools]
+          childTools = [
+            ...builtinTools,
+            ...mcp.tools,
+            createToolSearchTool({
+              catalog: () =>
+                mcp.tools.filter((tool) => !type.tools || type.tools.includes(tool.name)),
+              visibleNames: async () =>
+                (await currentConversationTools(child)).map((tool) => tool.name),
+            }),
+          ]
             .filter((tool) => !type.tools || type.tools.includes(tool.name))
             .map((tool) => ({
               ...tool,
@@ -1745,6 +1769,22 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             }));
         };
         refreshChildTools();
+        const childLoadout = async (fresh = false, ctx = context) =>
+          planToolSearchLoadout({
+            tools: childTools,
+            currentTools: fresh ? [] : await currentConversationTools(child, ctx),
+            model: selected,
+            mode: settings.toolSearch,
+          });
+        const childDeferredSource: ReminderSource = {
+          source: "deferred-tools",
+          compareContent: false,
+          currentContent: async (history) =>
+            deferredToolsReminder(
+              (await childLoadout()).deferred.map((tool) => tool.name),
+              history ?? [],
+            ),
+        };
         const extension = {
           name: `rukie.child.${child.id}`,
           tools: childTools,
@@ -1819,12 +1859,20 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 }, ctx);
                 const view = await child.context(ctx);
                 const reminders = await collectReminders({
-                  messages: transcriptMessages(view.entries),
+                  messages: transcriptMessages(
+                    view.entries.filter(
+                      (entry) =>
+                        entry.kind !== "rukie.reminder" ||
+                        entryData(entry)?.source !== "deferred-tools" ||
+                        Number(entry.conversationId) === Number(child.id),
+                    ),
+                  ),
                   cwd,
                   homeDir: options.homeDir,
                   now: options.now?.() ?? new Date(),
                   sources: [
                     ...childState.reminderSources,
+                    childDeferredSource,
                     childTracking.reminderSource,
                     {
                       source: "plan-mode",
@@ -1967,13 +2015,13 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                   await child.abort(ctx);
                   return;
                 }
-                const previousNames = childTools.map((tool) => tool.name).join("\n");
                 refreshChildTools();
-                if (previousNames !== childTools.map((tool) => tool.name).join("\n")) {
-                  const updated = { ...extension, tools: childTools };
-                  registry.install(updated);
-                  await child.configure({ extensions: [updated], tools: childTools }, ctx);
-                }
+                const updated = { ...extension, tools: childTools };
+                registry.install(updated);
+                await child.configure(
+                  { extensions: [updated], tools: (await childLoadout(false, ctx)).tools },
+                  ctx,
+                );
               },
             }),
           ],
@@ -2025,7 +2073,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           cwd,
           instructions: SYSTEM_PROMPT,
           extensions: [extension],
-          tools: childTools,
+          tools: (await childLoadout(!selection.retained)).tools,
         };
       },
     });
@@ -2155,7 +2203,23 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           owned.afterEntry = null;
         }, ctx);
       }
+      const currentTools = await currentConversationTools(conversation, ctx);
+      const deferred = planToolSearchLoadout({
+        tools,
+        currentTools,
+        model,
+        mode: settings.toolSearch,
+      }).deferred;
       const sources: ReminderSource[] = [
+        {
+          source: "deferred-tools",
+          compareContent: false,
+          currentContent: (history) =>
+            deferredToolsReminder(
+              deferred.map((tool) => tool.name),
+              history ?? [],
+            ),
+        },
         { source: "skills", currentContent: () => skillsReminder(skills) },
         {
           source: "mcp",
@@ -2307,11 +2371,15 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           },
         },
       });
+      const toolSearch = createToolSearchTool({
+        catalog: () => mcp.tools,
+        visibleNames: async () => (await currentConversationTools()).map((tool) => tool.name),
+      });
       await refreshSubagentTypes({
         cwd,
         homeDir: options.homeDir,
         trusted: isTrustedProject(cwd, settings),
-        tools: [...base, ...mcp.tools].filter(
+        tools: [...base, ...mcp.tools, toolSearch].filter(
           (tool) =>
             ![
               "subagent",
@@ -2350,6 +2418,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         ...base,
         ...createSubagentTools({ isChild: false, controller: subagents }),
         ...mcp.tools,
+        toolSearch,
       ].map((tool) => ({
         ...tool,
         async execute(args, api, ctx) {
@@ -2661,8 +2730,13 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 wrapup = undefined;
               }
               await prepareReminders(ctx);
-              const offered = getCurrentTools((await conversation.context(ctx)).messages);
-              const desired = tools.map(toToolDeclaration);
+              const offered = await currentConversationTools(conversation, ctx);
+              const desired = planToolSearchLoadout({
+                tools,
+                currentTools: offered,
+                model,
+                mode: settings.toolSearch,
+              }).tools.map(toToolDeclaration);
               const wanted = new Map(desired.map((tool) => [tool.name, tool]));
               const retained = offered.filter((tool) => {
                 const next = wanted.get(tool.name);
@@ -2945,8 +3019,14 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       registry.install(goalExtension);
       registry.install(subagents.extension);
       registry.install(extension);
+      const offered = planToolSearchLoadout({
+        tools,
+        currentTools: await currentConversationTools(),
+        model,
+        mode: settings.toolSearch,
+      }).tools;
       await conversation.configure(
-        { extensions: [extension, subagents.extension, goalExtension], tools },
+        { extensions: [extension, subagents.extension, goalExtension], tools: offered },
         context,
       );
     };

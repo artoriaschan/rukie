@@ -4,13 +4,18 @@ import {
   fauxProvider,
   type FauxResponseStep,
   type TranscriptContext,
+  type Model,
+  type Api,
 } from "@earendil-works/pi-ai";
 
 /**
  * Scripted model: replies with `responses` in order and records every context it receives.
  * The only test double for the model side (Seam 1).
  */
-export function fakeModel(responses: FauxResponseStep[], options: { chunkTokens?: number } = {}) {
+export function fakeModel(
+  responses: FauxResponseStep[],
+  options: { chunkTokens?: number; model?: Partial<Model<Api>> } = {},
+) {
   const faux = fauxProvider({
     api: "faux",
     provider: "faux",
@@ -27,6 +32,7 @@ export function fakeModel(responses: FauxResponseStep[], options: { chunkTokens?
     return faux.provider.streamSimple(model, context, options);
   });
   const models = createModels();
-  models.setProvider({ ...faux.provider, streamSimple: stream });
-  return { models, model: faux.getModel(), contexts };
+  const model = { ...faux.getModel(), ...options.model };
+  models.setProvider({ ...faux.provider, getModels: () => [model], streamSimple: stream });
+  return { models, model, contexts };
 }

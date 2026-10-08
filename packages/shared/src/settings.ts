@@ -135,6 +135,7 @@ export const SettingsSchema = Type.Object({
   permissionMode: Type.Optional(Type.Enum([...PERMISSION_MODES])),
   /** Collapse multiline terminal tool titles to the first source line; defaults to true. */
   foldTerminalCommand: Type.Optional(Type.Boolean()),
+  toolSearch: Type.Optional(Type.Enum(["auto", "on", "off"])),
   thinking: Type.Optional(Type.Enum([...THINKING_LEVELS])),
   /** Frontend diff presentation; omitted means auto. */
   diffLayout: Type.Optional(Type.Enum(["auto", "unified", "split"])),

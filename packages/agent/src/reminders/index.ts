@@ -9,10 +9,12 @@ export interface SystemReminder {
   timestamp: number;
 }
 
-/** A new source only supplies its current content; comparison is owned here. */
+/** Sources supply content; incremental sources compare their own persisted history. */
 export interface ReminderSource {
   source: string;
-  currentContent: () => string | undefined | Promise<string | undefined>;
+  currentContent: (history?: readonly string[]) => string | undefined | Promise<string | undefined>;
+  /** Incremental sources compare their complete source history themselves. */
+  compareContent?: boolean;
 }
 
 async function optionalText(path: string): Promise<string | undefined> {
@@ -105,8 +107,17 @@ async function collectSourceReminders(
   const latest = latestReminderContents(messages);
   const reminders: SystemReminder[] = [];
   for (const source of sources) {
-    const content = await source.currentContent();
-    if (content === undefined || latest.get(source.source) === content) continue;
+    const history = messages.flatMap((message) =>
+      message.role === "system-reminder" && message.source === source.source
+        ? [message.content]
+        : [],
+    );
+    const content = await source.currentContent(history);
+    if (
+      content === undefined ||
+      (source.compareContent !== false && latest.get(source.source) === content)
+    )
+      continue;
     reminders.push({
       role: "system-reminder",
       source: source.source,

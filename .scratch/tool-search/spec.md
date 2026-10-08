@@ -44,7 +44,7 @@ MCP 工具定义的估算 token 超过模型上下文窗口 10% 时（或用户�
 ### 已发现集与工具顺序
 
 - 已发现集从当前对话的 Transcript 推导：当前对话可见工具（`getCurrentTools`）中的 MCP 工具即为已可见集合；不另存 Tool State。
-- 期望工具集顺序：始终可见工具 → 已可见 MCP 工具（按其在对话中出现的顺序）→ 本次新可见的工具。必须满足 pi-durable `planTools` 的"保留原位 + 追加"条件，否则会整表移除重加。
+- 初始期望工具集顺序：始终可见工具 → 本次新可见的 MCP 工具。后续请求优先保留所有仍有效声明的 Transcript 位置，再追加本次新可见工具；已有 MCP 声明按对话出现顺序保留，晚出现的 `ToolSearch` 追加在它们之后。同名声明变化移除后追加该声明；MCP 目录重新排序不移动已可见声明。必须满足 pi-durable `planTools` 的"保留原位 + 追加"条件，否则会整表移除重加。
 - Session 的 loadout 同步（`session/index.ts` `beforeRequest` 中 `rukie.mcp-loadout`）改为只写差异：移除不再存在的工具、追加新工具；不再整表移除重加。
 - MCP server 移除某工具：从可见集移除；重新出现时按当前判定决定是否延迟。
 - Compaction：pi-durable 在新 head 后写完整基线，基线取当前期望工具集，已发现工具因此保留。

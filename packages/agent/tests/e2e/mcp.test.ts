@@ -136,14 +136,19 @@ test.each(["last", "first", "order"] as const)(
             ]
           : [],
     );
-    expect(changes).toEqual([
-      change === "last"
-        ? { added: ["mcp__local__keep"], removed: ["mcp__local__keep"] }
-        : { added: nextNames, removed: initialNames },
-    ]);
-    expect(nextNames).toEqual(
+    expect(changes).toEqual(
       change === "order"
-        ? [...initialNames.slice(0, -2), "mcp__local__keep", "mcp__local__echo"]
+        ? []
+        : [
+            {
+              added: [`mcp__local__${changedName}`],
+              removed: [`mcp__local__${changedName}`],
+            },
+          ],
+    );
+    expect(nextNames).toEqual(
+      change === "first"
+        ? [...initialNames.filter((name) => name !== "mcp__local__echo"), "mcp__local__echo"]
         : initialNames,
     );
     if (change !== "order")
