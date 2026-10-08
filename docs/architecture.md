@@ -48,7 +48,7 @@ Session 的 Background Job registry 管理 Bash 进程组、输出和游标。�
 
 ## Agent Core 的职责分配
 
-下表描述当前代码的落点。[ADR-0011](adr/0011-agent-module-ownership.md) 将 `tools/` 定义为内置工具及其关联能力的集合：按能力聚合协议适配、执行、状态与资源管理，Session 可以直接调用能力接口；[`session/tools.ts`](../packages/agent/src/session/tools.ts) 组装内置与 MCP 工具，[`session/index.ts`](../packages/agent/src/session/index.ts) 协调 ToolSearch、完整工具目录和每次请求的模型可见 loadout。
+下表描述当前代码的落点。[ADR-0011](adr/0011-agent-module-ownership.md) 将 `tools/` 定义为内置工具及其关联能力的集合：按能力聚合协议适配、执行、状态与资源管理，Session 可以直接调用能力接口；[`session/tools.ts`](../packages/agent/src/session/tools.ts) 组装内置能力工具，[`session/index.ts`](../packages/agent/src/session/index.ts) 协调 MCP、ToolSearch、完整工具目录和每次请求的模型可见 loadout。
 
 | 模块                                                                     | 责任                                                                         |
 | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
