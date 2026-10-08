@@ -29,6 +29,38 @@ Agent Core 读取用户的 `~/.rukie/mcp.json`。项目 `.mcp.json` 只在 Trust
 
 http 的可选 `oauth` 配置接受 `clientId`、`clientSecret`、`callbackPort` 和 `authServerMetadataUrl`。`clientId` 用于预注册客户端，配合 `clientSecret` 使用 `client_secret_post`。`callbackPort` 必须是 1–65535 的整数；省略时使用随机端口。`authServerMetadataUrl` 必须使用 HTTPS。stdio 不接受 `oauth`。
 
+## Tool Search
+
+Agent Core 用 `toolSearch` 控制 MCP 工具定义是否延迟提供给模型。该字段写在用户 `~/.rukie/settings.json` 或项目 `.rukie/settings.json`，与 `mcp.json` 分开；项目值覆盖用户值，即使项目尚未成为 Trusted Project 也生效。它只控制工具定义的上下文占用，不改变 MCP 配置的信任要求或工具权限。
+
+```json
+{
+  "toolSearch": "auto"
+}
+```
+
+| 值             | 行为                                                                                                                |
+| -------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `auto`（缺省） | 候选工具声明的估算 token **超过**模型上下文窗口的 10% 时启用；恰好 10% 不启用。估算为各声明 JSON 字符数之和除以 4。 |
+| `on`           | 有候选工具且模型兼容时启用。                                                                                        |
+| `off`          | 不延迟新到达的工具。                                                                                                |
+
+模型的 compat 必须声明 `supportsMidConvoToolChanges` 或 `supportsToolSearch` 为真；两者均未启用时，即使设为 `on` 也不启用 Tool Search。候选只包含 MCP 工具，排除 `mcp__<server>__authenticate`；该授权工具遵守既有 Interaction 门槛，在 TUI 可见，在没有授权回调的 Headless CLI 中仍隐藏。内置工具不成为 Deferred Tool。阈值固定，不提供按 server 设置或语义检索。
+
+启用时，模型先通过 `deferred-tools` System Reminder 得到 Deferred Tool 名单，通过 `ToolSearch` 加载需要的定义。名单首次完整提供，之后只追加新增／移除差异；已可用工具从名单移除，Compaction 后补充当前完整名单。`ToolSearch` 的定义固定，不包含这份名单。
+
+`ToolSearch` 接受字符串 `query` 和可选整数 `max_results`（默认 5，范围 1–20）：
+
+- `select:mcp__server__tool,mcp__server__other` 按完整工具名精确选择，不受 `max_results` 数量限制；未知名字列在结果中。
+- 其他查询按空白拆成关键词，不区分大小写，在名字与描述中检索；名字命中权重更高，工具名按下划线拆分。`+term` 要求名字包含该词，例如 `+github issue`。
+- 结果只列工具名和加载／已可用标记，不复述 schema；无匹配时提示用 `select:`。命中的 Deferred Tool 经 pi 原生工具变更加入当前对话，后续请求可直接调用。
+
+`ToolSearch` 不需要 Interaction 回调，在 Headless CLI 中也可用。它按只读工具处理，Permission Mode 本身不要求询问，显式 Permission Rule 和 hooks 仍生效；搜索只加载定义，调用找到的 MCP 工具仍走正常 Permission Decision。
+
+每次模型请求前重新判定设置、模型和当前候选，只决定尚未可见的工具是否延迟；候选定义占比降低、关闭 Tool Search 或切换模型不会收回已可见的 MCP 工具。`ToolSearch` 一旦出现，在该对话中保留。工具从 MCP 目录移除时也从可见集移除，重新出现时按当时的判定处理；同名定义更新移除旧声明后追加新声明，目录重新排序不移动已有声明。
+
+已可见工具从当前分支的 Transcript 推导，不另存 Tool State。Resume 和 Compaction 保留已发现集，Rewind 回到选定位置的工具可见状态；每个子 Session 独立判定和发现，受自己的工具 allowlist 限制，不继承父 Session 的发现集。资源连接与 OAuth 的生命周期仍遵循下文约定；架构取舍见 [ADR-0025](adr/0025-client-side-tool-search.md)。
+
 ## 登录与连接
 
 TUI 中使用 `/mcp` 打开服务器列表，逐层进入服务器详情、工具列表和工具详情，查看生效配置来源、连接状态、描述与输入 JSON Schema。首次读取显示 loading，完成后自动展示列表；配置文件读取失败与合法服务器同时保留，可在空闲时选择重试。键盘、鼠标、正文阅读和输入锁的用法见 [TUI README](../packages/coding-agent/src/tui/README.md#mcp-管理与授权)。浏览可在 Run 中使用；详情中的登录、登出、重连及配置重试只在空闲时执行，Run 中显示 busy。动作结束后保留详情并显示成功、失败或取消结果。已有 `/mcp login <server>`、`/mcp logout <server>`、`/mcp reconnect <server>` 子命令继续提供相同管理操作。

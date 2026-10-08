@@ -50,22 +50,23 @@ Session 的 Background Job registry 管理 Bash 进程组、输出和游标。�
 
 下表描述当前代码的落点。[ADR-0011](adr/0011-agent-module-ownership.md) 将 `tools/` 定义为内置工具及其关联能力的集合：按能力聚合协议适配、执行、状态与资源管理，Session 可以直接调用能力接口，并只在 [`session/tools.ts`](../packages/agent/src/session/tools.ts) 组装模型工具集。
 
-| 模块                                                                 | 责任                                                                         |
-| -------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `session/`                                                           | 组合能力、协调 Run、事件、取消、存储操作与 frontend 接口                     |
-| `config/`、`prompt/`                                                 | 合并设置、解析模型与凭据，建立 System Prompt                                 |
-| `tools/`、`skills/`、`mcp/`                                          | 构造模型工具集、加载 Skill 内容、连接外部工具                                |
-| [`tools/bash/`](../packages/agent/src/tools/bash/index.ts)           | 执行 Bash 调用、后台启动与超时提升，拥有输出采集与截断                       |
-| [`tools/jobs/`](../packages/agent/src/tools/jobs/index.ts)           | 持有 Session 的 Bash 进程组、输出与模型游标，提供后台任务工具                |
-| [`images/`](../packages/agent/src/images/index.ts)                   | 为 Session 与 read 共享图片准入校验，读取 header metadata                    |
-| `permissions/`、`hooks/`、`interaction/`                             | 决定执行是否允许（含独立模型评审），运行生命周期扩展，并协调可取消的用户交互 |
-| `reminders/`、`context-usage/`                                       | 注入有来源的上下文、报告原生 Compaction 后的上下文占用                       |
-| `store/`、`tool-state/`、`checkpoint/`                               | 接入原生 Storage 与 typed documents、保存和恢复文件修改前内容                |
-| `file-tracking/`                                                     | 跟踪文件工具的内容基线、检测外部变化、拒绝未经重读的过期写入                 |
-| [`tools/subagents/`](../packages/agent/src/tools/subagents/index.ts) | 管理 owned child、原生 driver/reporter、恢复与请求因果关联                   |
-| `session-title/`、`side-question/`                                   | 管理标题与独立侧问                                                           |
-| [`tools/plan-mode/`](../packages/agent/src/tools/plan-mode/index.ts) | 管理 Plan Mode 快照、引导与 Enter/Exit 工具，Session 协调存储与状态事件      |
-| [`tools/goal/`](../packages/agent/src/tools/goal/index.ts)           | 管理 Goal 快照、模型工具授权及原生续跑 task，Session 注入提交与因果收据      |
+| 模块                                                                     | 责任                                                                         |
+| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| `session/`                                                               | 组合能力、协调 Run、事件、取消、存储操作与 frontend 接口                     |
+| `config/`、`prompt/`                                                     | 合并设置、解析模型与凭据，建立 System Prompt                                 |
+| `tools/`、`skills/`、`mcp/`                                              | 构造模型工具集、加载 Skill 内容、连接外部工具                                |
+| [`tools/bash/`](../packages/agent/src/tools/bash/index.ts)               | 执行 Bash 调用、后台启动与超时提升，拥有输出采集与截断                       |
+| [`tools/tool-search/`](../packages/agent/src/tools/tool-search/index.ts) | 拥有 Deferred Tool 启用判定、保留顺序规划、查询与名单 reminder 差异          |
+| [`tools/jobs/`](../packages/agent/src/tools/jobs/index.ts)               | 持有 Session 的 Bash 进程组、输出与模型游标，提供后台任务工具                |
+| [`images/`](../packages/agent/src/images/index.ts)                       | 为 Session 与 read 共享图片准入校验，读取 header metadata                    |
+| `permissions/`、`hooks/`、`interaction/`                                 | 决定执行是否允许（含独立模型评审），运行生命周期扩展，并协调可取消的用户交互 |
+| `reminders/`、`context-usage/`                                           | 注入有来源的上下文、报告原生 Compaction 后的上下文占用                       |
+| `store/`、`tool-state/`、`checkpoint/`                                   | 接入原生 Storage 与 typed documents、保存和恢复文件修改前内容                |
+| `file-tracking/`                                                         | 跟踪文件工具的内容基线、检测外部变化、拒绝未经重读的过期写入                 |
+| [`tools/subagents/`](../packages/agent/src/tools/subagents/index.ts)     | 管理 owned child、原生 driver/reporter、恢复与请求因果关联                   |
+| `session-title/`、`side-question/`                                       | 管理标题与独立侧问                                                           |
+| [`tools/plan-mode/`](../packages/agent/src/tools/plan-mode/index.ts)     | 管理 Plan Mode 快照、引导与 Enter/Exit 工具，Session 协调存储与状态事件      |
+| [`tools/goal/`](../packages/agent/src/tools/goal/index.ts)               | 管理 Goal 快照、模型工具授权及原生续跑 task，Session 注入提交与因果收据      |
 
 模型 Hook 通过 [`tools/readonly.ts`](../packages/agent/src/tools/readonly.ts) 构造 read、glob、grep，只加载这些只读能力及共享运行时适配，不加载完整内置工厂。
 
@@ -109,6 +110,8 @@ Goal 只属于顶层 Session。用户通过 TUI `/goal`、Headless `--goal` 或�
 
 read/write/edit 经适配连接 pi 的执行环境与 Rukie 的 AbortSignal；bash 由 Session 的 job registry 启动独立进程组；前台调用等待完成，显式后台调用立即返回 id。Run 结束或取消保留后台任务，Session close 清理进程组与输出；终止先发 SIGTERM，3 秒后升级为 SIGKILL。后台工具的读取与生命周期见 [`tools/jobs/`](../packages/agent/README.md)。Skill 加载工具、结构化提问、Todo、计划评审与 Subagent 工具由所属能力模块构造，Session 按身份、子类型与当前 MCP 发现组装成运行工具集。MCP 发现的工具也转换为原生 ToolRegistration，再进入共同的授权流程。完整工具声明以构造模块和当前运行发现结果为准。
 
+[`tools/tool-search/`](../packages/agent/src/tools/tool-search/index.ts) 区分完整可执行工具目录和模型当前可见的 loadout：MCP 工具注册保留，Deferred Tool 暂不提供声明，`ToolSearch` 命中后经原生 `ToolControl.addTools` 加载。Session 每次请求前协调当前配置、目录与 Transcript，保留仍有效声明的位置，只移除失效或变更的声明并追加新声明；晚出现的 `ToolSearch` 也追加在已有声明之后。这样原生工具变更保留对话前缀，不用每次整表移除重加。已发现集属于当前分支的 Transcript，不另立 Tool State；子 Session 使用自己的工具目录约束和 Transcript。配置、兼容条件与查询语法见 [MCP Tool Search](mcp.md#tool-search)，长期取舍见 [ADR-0025](adr/0025-client-side-tool-search.md)。
+
 权限能力在原生 `beforeTool` preflight 与实际执行路径检查当前决策；safe replay 不会绕过 execute 授权。它协调 Hook、显式规则、Permission Mode 和必要的 frontend 询问；Hook 改写的输入重新校验，路径匹配与实际执行使用同一规范化目标。显式 deny/ask 不被 full-access 或 Hook allow 越过。规则语法、顺序及限制由 [permission-rules.md](permission-rules.md) 维护。
 
 auto-review 通过独立模型调用判断权限；评审拒绝或失败转为用户询问。Plan Mode 控制模型的计划引导与评审流程，并不限制可执行工具，也不替代权限判定。二者的决策见 [ADR-0007](adr/0007-auto-review-llm-only.md) 和领域词汇表。
@@ -120,6 +123,8 @@ Interaction 由 Agent Core 发起，frontend 提供响应回调。[`interaction/
 System Prompt 提供固定行为指令；System Reminder 承载日期、项目说明、Skill 目录或正文、MCP 描述以及其他有来源的上下文。用户说明读取 `~/.rukie/AGENTS.md`；项目说明优先读取项目根的 `AGENTS.md`，缺失时读取 `CLAUDE.md`。[`reminders/`](../packages/agent/src/reminders/index.ts)按来源与最近持久化内容比较，仅提交需要更新的提醒，通过可追溯模型投影贡献上下文。
 
 Compaction 在请求前自动检查，也可由空闲 Session 手动执行。它追加原生 compaction 记录，模型上下文由 System Prompt、摘要、保留尾部与之后的消息重建；原始 Transcript 仍保留。压缩后重新建立当前提醒来源，后续请求和恢复走相同的上下文投影。
+
+原生准备在新 head 建立当前工具的完整基线；新投影尚无 system 工具基线时，Session 先从选中分支的完整 Transcript 重建可见工具，再规划基线，避免丢失已发现的 MCP 工具。已有基线时使用当前投影，Rewind 也沿选中分支恢复。`deferred-tools` reminder 从当前投影中的来源文本重建名单差异，压缩后重新提供完整名单。
 
 `Session.messages` 是选中对话的完整已提交消息投影，Compaction 前的消息仍按原顺序呈现；当前模型上下文由原生 head、摘要与保留尾部构造，二者分别读取。Context Usage 与 Context Report 是观测结果，不追加为模型内容；实际 provider 用量与分类估算的区别见 `CONTEXT.md`。Side Question 使用独立、无工具的单轮调用，不修改主 Run 或 Transcript。
 

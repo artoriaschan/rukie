@@ -147,11 +147,11 @@ _Avoid_: plugin, recipe
 _Avoid_: connector, integration
 
 **Deferred Tool**:
-模型一开始看不到其定义、需要先经 Tool Search 找到才能调用的工具。只有 MCP 工具会成为 Deferred Tool，内置工具始终可见。一旦被找到，它在该对话后续轮次中保持可调用；哪些已被找到由 transcript 决定。
+尚未向模型提供定义、需要先经 Tool Search 找到才能调用的工具。只有 MCP 工具（不含 authenticate）会成为 Deferred Tool，内置工具不延迟。一旦被找到，只要工具仍存在，它在该对话后续轮次中保持可调用；当前可见集由该分支的 Transcript 推导，子 Session 独立维护。
 _Avoid_: lazy tool, hidden tool
 
 **Tool Search**:
-模型按查询从 Deferred Tool 中找出匹配者并使其可调用的动作。只在 Deferred Tool 足够多、值得省下其定义占用的上下文时启用；否则所有工具照常可见。
+模型按查询检索 MCP 工具并加载匹配的 Deferred Tool 定义的动作。只在模型支持对话中工具变更时启用；设置可强制开启、关闭或按候选定义的上下文占比自动判定。已可见的工具不因判定变化而收回，搜索不替代执行工具时的 Permission Decision。
 _Avoid_: tool discovery, tool lookup
 
 **MCP Credential**:
