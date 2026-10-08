@@ -296,3 +296,58 @@ test("completion after a human pause in the automatic round requires no extra hu
     { source: "goal" },
   ]);
 });
+
+test("a Human request waits for the Goal activation it accepts, including its final round", async () => {
+  dirs = await tempDirs();
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const fake = fakeModel([
+    call("create_goal", { objective: "Finish the accepted work", max_goal_rounds: 2 }),
+    fauxAssistantMessage("accepted work"),
+    async () => {
+      entered.resolve();
+      await release.promise;
+      return fauxAssistantMessage("round one");
+    },
+    fauxAssistantMessage("final round"),
+  ]);
+  const session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
+  try {
+    const parent = await session.run("Continue until both rounds finish");
+    await entered.promise;
+    const waiting = session.waitForRequest(parent.requestId);
+    session.contextReport();
+    release.resolve();
+    expect(await waiting).toMatchObject({ text: "final round", success: true });
+    expect(session.goal).toMatchObject({ phase: "blocked", roundsStarted: 2, armed: false });
+  } finally {
+    release.resolve();
+  }
+});
+
+test("a waiter opened before Human model acceptance discovers its later Goal driver", async () => {
+  dirs = await tempDirs();
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const fake = fakeModel([
+    async () => {
+      entered.resolve();
+      await release.promise;
+      return call("create_goal", { objective: "Finish later accepted work", max_goal_rounds: 1 });
+    },
+    fauxAssistantMessage("accepted Human answer"),
+    fauxAssistantMessage("accepted Goal answer"),
+  ]);
+  const session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
+  try {
+    const running = session.run("Continue the work");
+    await entered.promise;
+    const waiting = session.waitForRequest(session.currentRequestId!);
+    release.resolve();
+    await running;
+    expect(await waiting).toMatchObject({ text: "accepted Goal answer", success: true });
+    expect(session.goal).toMatchObject({ phase: "blocked", roundsStarted: 1 });
+  } finally {
+    release.resolve();
+  }
+});

@@ -4,7 +4,7 @@ status: accepted
 
 # Goal 持久化目标事实，自动续跑只由当前进程显式开启
 
-本决定的进程内 armed、Resume 不续跑及旧 idle scheduler 由新决定部分替代；真实用户授权、目标事实、暂停/受阻/完成/上限与轮次义务继续有效。替代关系见 [ADR-0024](0024-adopt-pi-durable-harness.md)。新决定已接受，实施尚未开始；下文记录迁移前义务，当前进度见[规格与票据](../../.scratch/pi-durable-migration/spec.md)。
+本决定的进程内 armed、Resume 不续跑及旧 idle scheduler 由新决定部分替代；真实用户授权、目标事实、暂停/受阻/完成/上限与轮次义务继续有效。替代关系见 [ADR-0024](0024-adopt-pi-durable-harness.md)。下文记录被部分替代的历史决定；当前续跑与恢复契约见 [Agent README](../../packages/agent/README.md#goal-continuation)。
 
 ## 问题
 

@@ -9,7 +9,7 @@ import { renderWrapupContext, type createGoalController } from "./controller.ts"
 /** Guidance adapted from DSH tool-goal: no get_goal, revision/CAS or blocked-round threshold. */
 const guidance =
   "create_goal may infer goal intent from a direct human request in any language. " +
-  "After Session Resume or fork, an active Goal is disarmed: when a human asks to continue " +
+  "Session Resume continues only an already accepted Goal task. Historical Goal facts and forks grant no execution authority: when a human asks to continue " +
   "or resume in any wording or language, use update_goal action resume to rearm it. " +
   "Create, edit, pause and resume require direct human input in the current Run. " +
   "The model cannot resume a paused Goal; the user must resume it. " +
