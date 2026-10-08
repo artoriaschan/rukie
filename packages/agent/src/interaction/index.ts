@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { Context } from "@earendil-works/chord";
-import type { HookApi } from "@earendil-works/pi-durable";
+import type { JsonValue, Context } from "@earendil-works/chord";
+import type { HookApi, TaskRecord } from "@earendil-works/pi-durable";
 
 /** Stable native request identity plus one invocation's callback ownership. */
 export interface InteractionIdentity {
@@ -81,4 +81,40 @@ export async function createInteractionIdentity(
     conversationId: expected.conversationId,
     epoch: randomUUID(),
   };
+}
+
+/** Only a live, unexecuted native authentication request may require transport declarations before resume. */
+export function hasPendingMcpInteraction(
+  task: TaskRecord<JsonValue, JsonValue, JsonValue>,
+): boolean {
+  if (
+    task.kind !== "pi.tool" ||
+    task.abortRequested ||
+    task.state.status === "terminal" ||
+    task.state.status === "completing"
+  )
+    return false;
+  const checkpoint = task.state.checkpoint;
+  if (
+    !checkpoint ||
+    typeof checkpoint !== "object" ||
+    Array.isArray(checkpoint) ||
+    checkpoint.phase !== "call"
+  )
+    return false;
+  return Object.entries(task.memos ?? {}).some(([name, value]) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const kind = value.kind;
+    return (
+      typeof kind === "string" &&
+      kind.startsWith("mcp__") &&
+      kind.endsWith("__authenticate") &&
+      name === `rukie.interaction.${kind}` &&
+      value.version === 1 &&
+      value.phase === "pending" &&
+      value.taskId === Number(task.id) &&
+      value.conversationId === Number(task.conversationId) &&
+      value.requestId === `interaction:${Number(task.id)}:${kind}`
+    );
+  });
 }

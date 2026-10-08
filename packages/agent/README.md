@@ -6,6 +6,14 @@
 
 原生 JSONL 启用 sidecar fsync，[存储文件适配器](src/store/files.ts)在成功追加后 flush 文件，包括 main 提交标记；提交确认后才采用状态和发布对应成功事实。写入或 flush 失败会向调用方传播；原生 Storage 进入 poisoned 状态时须 `await session.close()` 后重开。flush 发生在追加之后，拒绝确认不等于磁盘字节回滚，重新打开时以原生已提交事实为准。进程强制退出测试验证租约释放和恢复，不代表断电测试。
 
+# Pending interactions
+
+Permission、Question 和 Plan Review 的 Frontend 请求包含 `identity`：原生 task／conversation 身份和按交互种类区分的稳定 request id，以及当前 callback 的 epoch。OAuth 由原生工具发起时也包含该身份；管理面板发起的登录使用管理操作自身的生命周期。回调必须观察 request signal，及时撤回 UI；Core 自身也限制等待并检查取消，旧回调晚到不能授权恢复后的任务。
+
+原生 task 的未执行阶段与已提交 pending memo 支持 close/reopen 后按当前信任、规则、Hook、参数和 Frontend 能力重新判定、重新发起请求。close 撤回当前 callback，保留未执行的逻辑请求；明确 deny、decline 或 abort 产生的终态不会重新等待。临时 allow 和 callback 回复留在当前 invocation，不恢复。无相应回调时依赖交互的工具不可用，冷恢复生成真实不可用结果而不等待不可达 Frontend。
+
+Question 和 Plan Review 在原生执行意图之前收集回复；计划批准后的状态变更仍属于普通 unsafe 执行。OAuth 的挑战、listener 与授权等待可重发，替换请求使用新的 state／verifier；code exchange 只在原生 unsafe 执行意图提交后开始。进入执行后关闭或崩溃仍遵守 Unknown Tool Outcome，不能因旧 pending memo 自动重放业务变更或一次性授权 code。客户端注册和远端授权不承诺崩溃下 exactly-once。OAuth 配置、凭据归属及管理操作见 [MCP](../../docs/mcp.md)。
+
 # Document policies
 
 能力通过 typed documents 保存事实，版本与内容校验失败阻止恢复，不跳过坏值继续运行。Tool State document 的初始 `value: null` 表示尚未建立该状态；拥有者规定清空方式，例如 Todo 使用空数组、Plan 使用 `{ active: false }`，Goal 清空使用 null。声明和校验由各能力源码负责，注册层在同一原生事务中提交状态与必要提醒。

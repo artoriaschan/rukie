@@ -36,3 +36,7 @@ Blocked by: none
 2026-10-08：03 独立集成并 resolved 于 `1a47e87a`；04 在 `codex/pi-durable-04-interactions` 从该精确基线认领。按已确认的公开 createSession／原生 Storage fault seams 逐个 red→green，设计笔记位于 `/tmp/pi-durable-ticket04-acceptance.md`。
 
 2026-10-08：Plan Review pending close/reopen 实际 RED（replacement 未调用，100ms）后迁移 capability preflight，整个工具仍 unsafe；旧 approve 不能退出规划，新 revise 与稳定 native 请求身份／fresh epoch 可见。Permission 身份 tracer RED（83ms）后共用 kind-scoped native memo；旧 allow-session 晚到无效，冷 current deny 不问 Frontend 且留下真实 typed rule denial。相关 permissions／plan-review／permission-hooks／subagent-permissions／native batch：94 PASS、331 assertions、5.23s。Question 受影响两例 2 PASS／12 assertions／273ms；TUI FIFO 1 PASS／8 assertions／118ms。全仓 tsc 和影响文件 lint 通过；OAuth 新 pending 恢复仍未实施。
+
+2026-10-08：OAuth pending close/reopen tracer RED（105ms）后把原有单一 flow 停在 signal-bound beforeExchange，原生 unsafe execute 意图之后才释放；只对 live call-phase 的 validated kind-scoped memo 加载当前 MCP 声明再 resume，无历史自动登录。新 listener/state/verifier 不沿用旧 callback，保留精确 endpoint 归属。真实 HTTP + public Storage commit 证明 native intent 前 token 请求为零，进入 exchange 后 close 冷恢复留下 outcomeUnknown、不重发 code。当前 endpoint 变化与 Headless 冷恢复同样通过。四个新用例 4 PASS／27 assertions／433ms；原 mcp-oauth + subagent-mcp-oauth 25 PASS／119 assertions／1.91s（新增边界前测得）。尚待完整相关 focused 验证与文档／静态检查，无 package/aggregate。
+
+2026-10-08：包含新边界用例的 mcp-oauth／subagent-mcp-oauth／mcp-oauth-lifecycle 三文件 43 PASS、202 assertions、3.30s，exit 0；`bun run check:dev` 完整静态／tracker／docs／ink boundaries exit 0。公开文档补充 pending 请求身份、close/abort 区别及 OAuth unsafe exchange 边界；未运行 package/aggregate。

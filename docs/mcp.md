@@ -58,3 +58,5 @@ Session 暴露 `mcpServers()`、`authenticateMcp(name)`、`clearMcpAuth(name)`�
 公开事件 `mcp_servers_changed` 表示新快照已提交，不携带工具 schema；Frontend 收到事件后调用普通 `mcpServers()` 读取缓存。文件级诊断与服务器状态、工具的实际变化都可触发事件；相同快照和缓存读取不重复通知。面板通过这些事件更新，无轮询或后台重连。稳定服务器名与协议工具名保留导航身份；当前工具消失时退回仍有效的工具列表，没有工具时退回服务器详情，服务器消失时退回服务器列表，并显示变化提示。
 
 Frontend 提供 `onMcpAuth` 以显示 Interaction；没有回调时主动登录被拒绝，模型也看不到登录工具。管理面板、选择、阅读位置、结果和授权 UI 都属于 Frontend 本地状态，不写 Transcript、Tool State 或 reminder；Session Resume 不恢复面板。Interaction FIFO 临时接管面板输入，队列处理完后恢复有效页面。关闭、Session 替换或退出清理面板订阅，晚到结果不能重新打开面板或更新另一 Session。
+
+原生认证工具挂起时 close/reopen 会按当前信任和精确 endpoint／headers 配置重新发起授权，替换 listener、state 与 verifier；旧 callback 不能完成新授权。code exchange 开始后仍采用 unsafe 中断语义，不能自动重发已使用或结果未知的 code。请求身份与取消契约见 [Agent Core pending interactions](../packages/agent/README.md#pending-interactions)。
