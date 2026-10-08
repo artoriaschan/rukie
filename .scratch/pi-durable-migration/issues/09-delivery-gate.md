@@ -46,3 +46,5 @@ ADR Coverage：逐项核对0024完整／部分替代与0015扩展，更新0002�
 2026-10-08：当前准备提交仅文档与票据／coverage；最终review、唯一aggregate、09/spec同时resolved及cleanup仍待后续交付。
 
 当前验证：`bun run docs:update`／`bun run check:docs`（46维护Markdown）／`bun run check:scratch`／`bun run check:ink-boundaries` 全部exit0；修改Markdown oxfmt与`git diff --check`通过。目标故事原文46条／retained13项、coverage本地链接、manifest124文件与39修改清单、CLAUDE→AGENTS symlink分别核对。`codex/pi-durable-migration` 合并为 Already up to date；无生产／测试变更，无package或aggregate执行。
+
+2026-10-08 独立文档／audit merger：审阅 `7870851e` 相对08集成 `b6c4becc` 的17个文档／tracker文件，核对46条故事原文与顺序、13项保留能力、229个仓库内覆盖引用目标、ADR-0024的完整／部分替代和继续有效的ownership／授权／终端决定。重新计算manifest124文件与39个实际SHA256差异，和renderer README清单逐项相符；CLAUDE保持相对AGENTS symlink，当前非文档依赖／消费者扫描无旧引擎入口。纠正architecture一处历史预算表述：普通provider响应也结束本次共享文件提醒预算，Compaction只有实际提交才触发额外重置；依据Session.afterResponse与已提交Compaction观测，不改执行行为。已独立合并当前文档／audit，09与spec仍claimed，整体两轴代码审查、修正及唯一隔离HOME aggregate尚未执行；不将本次文档验收写成全部AC或全量测试通过。集成docs／tracker、受影响Markdown格式、AST边界与diff检查通过。首次集成AST检查因现有TypeScript模块缺少ScriptTarget而exit1；隔离HOME运行frozen install（315 packages，2.30s）刷新锁定依赖后，实际TypeScript6.0.3与ScriptTarget.Latest解析正常，AST检查exit0，未改脚本或生产源码。未运行package/full。

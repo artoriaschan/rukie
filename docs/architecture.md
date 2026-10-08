@@ -129,7 +129,7 @@ Compaction 在请求前自动检查，也可由空闲 Session 手动执行。它
 
 Tool State 由所属能力声明原生 typed documents，选择 latest 或 rewindable 历史以及 fork 策略；注册层协调已提交读写和提醒，不重放旧状态消息。版本或内容非法时打开失败。模型选择由原生 Agent document 保存，Session 索引提供展示元数据；Todo、Goal、Plan Mode、子代理目录、Checkpoint 与文件跟踪的具体策略见 [Agent README](../packages/agent/README.md#document-policies)。Rewind 要求相关原生任务已结算，按文档历史恢复 Goal 事实；fork 的激活使用 initial 策略，不继承后来的任务。
 
-文件跟踪通过 Tool State 保存路径、元数据、内容 hash 与是否需要重读，不保存文件内容。Session Resume 重建跟踪集，之后发现的外部变化仅提示路径并要求重读。外部变化的 System Reminder 与对应的最终基线或删除记录，在同一次原生存储事务中提交；此前保存旧基线与保守的过期标记。事务未确认时不推进模型已知基线、不发布成功提醒；存储错误向调用方传播，仍拒绝覆盖未确认的文件。原生存储若进入 poisoned 状态，调用方须关闭后重开；追加后 flush 失败不保证磁盘记录不存在。请求预算在实际 Compaction 模型请求完成后重置，未发生压缩时不重置。
+文件跟踪通过 Tool State 保存路径、元数据、内容 hash 与是否需要重读，不保存文件内容。Session Resume 重建跟踪集，之后发现的外部变化仅提示路径并要求重读。外部变化的 System Reminder 与对应的最终基线或删除记录，在同一次原生存储事务中提交；此前保存旧基线与保守的过期标记。事务未确认时不推进模型已知基线、不发布成功提醒；存储错误向调用方传播，仍拒绝覆盖未确认的文件。原生存储若进入 poisoned 状态，调用方须关闭后重开；追加后 flush 失败不保证磁盘记录不存在。一次模型请求的文件变化提醒共享预算，在该请求的实际模型响应后重置；该预算与产品请求的因果结算范围独立。Compaction 引起的重置只在压缩真正提交后发生，未发生压缩时不额外重置。
 
 Compaction 保留当前进程的文件跟踪集与已知内容，后续变化仍可生成 diff；已报告的文件变化事件不因压缩重新注入。对话 Rewind 同步恢复文件跟踪的 Tool State，只保留 hash 与恢复快照一致的内存内容；只恢复代码时，保留的对话会在下一次模型请求获知文件变化。每个子 Session 独立跟踪其读写；子代理对父 Session 已跟踪文件的写入，由父 Session 在下一次请求前检测。
 
