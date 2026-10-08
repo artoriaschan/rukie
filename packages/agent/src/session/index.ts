@@ -2663,12 +2663,23 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               await prepareReminders(ctx);
               const offered = getCurrentTools((await conversation.context(ctx)).messages);
               const desired = tools.map(toToolDeclaration);
-              if (
-                offered.length !== desired.length ||
-                offered.some(
-                  (tool, index) => !desired[index] || !declarationsEqual(tool, desired[index]!),
-                )
-              )
+              const wanted = new Map(desired.map((tool) => [tool.name, tool]));
+              const retained = offered.filter((tool) => {
+                const next = wanted.get(tool.name);
+                return next !== undefined && declarationsEqual(tool, next);
+              });
+              const retainedNames = new Set(retained.map((tool) => tool.name));
+              const added = desired.filter((tool) => !retainedNames.has(tool.name));
+              // Replay retains tools in place and appends additions. Match native planTools:
+              // replace the complete loadout only when that cannot produce the desired order.
+              const replace = [...retained, ...added].some(
+                (tool, index) => tool.name !== desired[index]!.name,
+              );
+              const toolsRemoved = (
+                replace ? offered : offered.filter((tool) => !retainedNames.has(tool.name))
+              ).map((tool) => ({ name: tool.name }));
+              const toolsAdded = replace ? desired : added;
+              if (toolsRemoved.length || toolsAdded.length)
                 // Native preparation precedes beforeRequest. A late MCP refresh must publish
                 // its actual positional loadout before replacing this request's messages.
                 await conversation.commit(
@@ -2680,8 +2691,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                           role: "system",
                           content: "",
                           timestamp: Date.now(),
-                          toolsRemoved: offered.map((tool) => ({ name: tool.name })),
-                          toolsAdded: desired,
+                          ...(toolsRemoved.length ? { toolsRemoved } : {}),
+                          ...(toolsAdded.length ? { toolsAdded } : {}),
                         },
                       ],
                     }),
