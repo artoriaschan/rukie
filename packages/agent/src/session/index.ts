@@ -4075,6 +4075,43 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             )
               break;
           }
+          // Linked Goal rounds may share a native answer with a Human child report.
+          // Union their committed entries before summing; a receipt's spend is not an independent bucket.
+          const allTasks = (await lease.storage.scanTasks({}, 100000, undefined, context)).items;
+          const allInputs = (await lease.storage.scanSubmissions({}, 100000, undefined, context))
+            .items;
+          const goalRequests = new Set<string>();
+          for (const driver of goalReceipts.values()) {
+            if (
+              !driver.input ||
+              typeof driver.input !== "object" ||
+              Array.isArray(driver.input) ||
+              typeof driver.input.requestId !== "string"
+            )
+              throw new Error("Invalid accepted Goal request identity.");
+            const prefix = `${driver.input.requestId}:round:${driver.id}:`;
+            for (const input of allInputs.filter((input) => input.requestId?.startsWith(prefix))) {
+              goalRequests.add(input.requestId!);
+              const roundRequest = await readRequest(input.requestId!);
+              const ids = roundRequest?.submissions ?? [Number(input.id)];
+              for (const id of ids) {
+                const record = allInputs.find((record) => Number(record.id) === id);
+                if (!record) throw new Error(`Goal submission missing: ${id}`);
+                const submission = await harness.submission(record.id, context);
+                if (!submission) throw new Error(`Goal submission missing: ${id}`);
+                for (const entry of await receiptEntries(await submission.wait(context)))
+                  parentEntries.set(Number(entry.id), entry);
+              }
+            }
+          }
+          const causes = await requestCausesForTasks(allTasks);
+          for (const child of allTasks)
+            if (
+              child.kind === "rukie.subagent-driver" &&
+              child.state.status === "terminal" &&
+              [...causes(child)].some((request) => goalRequests.has(request))
+            )
+              childReceipts.set(Number(child.id), child);
           const usage = entryUsage(parentEntries.values());
           let answerId: number | undefined;
           for (const receipt of childReceipts.values()) {
@@ -4113,14 +4150,6 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 ? storedRequestResult({ ...value, requestId })
                 : undefined;
             if (goalResult) {
-              for (const key of [
-                "input",
-                "output",
-                "cacheRead",
-                "cacheWrite",
-                "totalTokens",
-              ] as const)
-                usage[key] += goalResult.usage[key];
               settled = {
                 ...goalResult,
                 usage,
@@ -4128,6 +4157,11 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               };
             } else settled = { ...settled, success: false, error: "Goal continuation cancelled" };
           }
+          const latestAnswer = [...parentEntries.values()]
+            .sort((left, right) => Number(left.id) - Number(right.id))
+            .flatMap((entry) => entry.model ?? [])
+            .findLast((message) => message.role === "assistant");
+          if (goalReceipts.size && latestAnswer) settled.text = textOf(latestAnswer);
           await harness.commit(async (tx) => {
             const doc = await tx.doc(RequestDoc);
             doc.requests[requestId]!.result = { ...settled, usage: { ...settled.usage } };

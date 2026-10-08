@@ -568,3 +568,210 @@ test("Goal causal usage includes initial parent, held child and delivered report
     await dirs.cleanup();
   }
 });
+
+test("Human-created Goal and child share reporter usage without double counting", async () => {
+  const dirs = await tempDirs();
+  let session: Awaited<ReturnType<typeof createSession>> | undefined;
+  const childStarted = Promise.withResolvers<void>();
+  const releaseChild = Promise.withResolvers<void>();
+  const roundStarted = Promise.withResolvers<void>();
+  const releaseRound = Promise.withResolvers<void>();
+  const reportQueued = Promise.withResolvers<void>();
+  const store = createJsonlStore(dirs);
+  const response: Parameters<typeof fakeModel>[0][number] = async (context) => {
+    if (
+      !getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
+        (tool) => tool.name === "subagent",
+      )
+    ) {
+      childStarted.resolve();
+      await releaseChild.promise;
+      return fauxAssistantMessage("shared child evidence");
+    }
+    const latest = context.messages
+      .filter(
+        (message) =>
+          message.role === "user" && !JSON.stringify(message.content).includes("<system-reminder>"),
+      )
+      .at(-1);
+    if (JSON.stringify(latest?.content).includes("<goal_round>")) {
+      roundStarted.resolve();
+      await releaseRound.promise;
+      return fauxAssistantMessage("Goal round evidence");
+    }
+    return fauxAssistantMessage(
+      JSON.stringify(latest?.content).includes("Subagent")
+        ? "shared report final"
+        : "Human accepted",
+    );
+  };
+  try {
+    const fake = fakeModel([
+      fauxAssistantMessage(
+        [
+          fauxToolCall("create_goal", { objective: "Use the child evidence", max_goal_rounds: 1 }),
+          fauxToolCall("subagent", {
+            description: "Shared child",
+            prompt: "child work",
+            run_in_background: true,
+          }),
+        ],
+        { stopReason: "toolUse" },
+      ),
+      response,
+      response,
+      response,
+      response,
+      response,
+    ]);
+    session = await createSession({
+      ...dirs,
+      ...fake,
+      permissionMode: "full-access",
+      store: {
+        ...store,
+        async open(...args) {
+          const lease = await store.open(...args);
+          return {
+            ...lease,
+            storage: new Proxy(lease.storage, {
+              get(target, key) {
+                if (key === "commit")
+                  return async (...args: Parameters<typeof target.commit>) => {
+                    const seq = await target.commit(...args);
+                    if (
+                      args[0].some(
+                        (write) =>
+                          write.type === "submission" &&
+                          write.value.requestId?.endsWith(":report") &&
+                          write.value.status === "queued",
+                      )
+                    )
+                      reportQueued.resolve();
+                    return seq;
+                  };
+                const value = Reflect.get(target, key);
+                return typeof value === "function" ? value.bind(target) : value;
+              },
+            }),
+          };
+        },
+      },
+    });
+    await session.rename("shared usage fixture");
+    const human = await session.run("Create a Goal and delegate its evidence");
+    await childStarted.promise;
+    await roundStarted.promise;
+    const waiting = session.waitForRequest(human.requestId);
+    releaseChild.resolve();
+    await reportQueued.promise;
+    releaseRound.resolve();
+    const result = await waiting;
+    const directory = session.toolState("subagents");
+    if (!Array.isArray(directory) || !directory[0] || typeof directory[0].id !== "string")
+      throw new Error("Expected shared child identity");
+    const child = await session.readSubagent(directory[0].id);
+    const expected = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 };
+    for (const message of [...session.messages, ...(child?.messages ?? [])])
+      if (message.role === "assistant")
+        for (const key of ["input", "output", "cacheRead", "cacheWrite", "totalTokens"] as const)
+          expected[key] += message.usage[key];
+    expect(result.usage).toEqual(expected);
+    expect(result.text).toBe("shared report final");
+    expect(session.goal).toMatchObject({ phase: "blocked", roundsStarted: 1, armed: false });
+  } finally {
+    releaseChild.resolve();
+    releaseRound.resolve();
+    await session?.close();
+    await dirs.cleanup();
+  }
+});
+
+test("Human-created Goal includes its round's later child report receipt", async () => {
+  const dirs = await tempDirs();
+  let session: Awaited<ReturnType<typeof createSession>> | undefined;
+  const childStarted = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const roundEnded = Promise.withResolvers<void>();
+  let roundActive = false;
+  const response: Parameters<typeof fakeModel>[0][number] = async (context) => {
+    if (
+      !getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
+        (tool) => tool.name === "subagent",
+      )
+    ) {
+      childStarted.resolve();
+      await release.promise;
+      return fauxAssistantMessage("round child evidence");
+    }
+    const latest = context.messages
+      .filter(
+        (message) =>
+          message.role === "user" && !JSON.stringify(message.content).includes("<system-reminder>"),
+      )
+      .at(-1);
+    if (JSON.stringify(latest?.content).includes("<goal_round>")) {
+      roundActive = true;
+      if (
+        !context.messages.some(
+          (message) => message.role === "toolResult" && message.toolName === "subagent",
+        )
+      )
+        return fauxAssistantMessage(
+          fauxToolCall("subagent", {
+            description: "Round child",
+            prompt: "child work",
+            run_in_background: true,
+          }),
+          { stopReason: "toolUse" },
+        );
+      return fauxAssistantMessage("round awaiting child");
+    }
+    return fauxAssistantMessage(
+      JSON.stringify(latest?.content).includes("Subagent")
+        ? "round report final"
+        : "Human accepted",
+    );
+  };
+  try {
+    const fake = fakeModel([
+      fauxAssistantMessage(
+        fauxToolCall("create_goal", { objective: "Delegate in the round", max_goal_rounds: 1 }),
+        { stopReason: "toolUse" },
+      ),
+      response,
+      response,
+      response,
+      response,
+      response,
+    ]);
+    session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
+    await session.rename("round reporter fixture");
+    session.subscribe((event) => {
+      if (event.type === "run_end" && event.sessionId === session!.id && roundActive)
+        roundEnded.resolve();
+    });
+    const human = await session.run("Create a Goal to collect evidence");
+    await childStarted.promise;
+    await roundEnded.promise;
+    const waiting = session.waitForRequest(human.requestId);
+    release.resolve();
+    const result = await waiting;
+    const directory = session.toolState("subagents");
+    if (!Array.isArray(directory) || !directory[0] || typeof directory[0].id !== "string")
+      throw new Error("Expected round child identity");
+    const child = await session.readSubagent(directory[0].id);
+    const expected = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 };
+    for (const message of [...session.messages, ...(child?.messages ?? [])])
+      if (message.role === "assistant")
+        for (const key of ["input", "output", "cacheRead", "cacheWrite", "totalTokens"] as const)
+          expected[key] += message.usage[key];
+    expect(result.usage).toEqual(expected);
+    expect(result.text).toBe("round report final");
+    expect(session.goal).toMatchObject({ phase: "blocked", roundsStarted: 1, armed: false });
+  } finally {
+    release.resolve();
+    await session?.close();
+    await dirs.cleanup();
+  }
+});

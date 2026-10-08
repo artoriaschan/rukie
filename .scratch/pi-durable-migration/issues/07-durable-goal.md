@@ -48,3 +48,7 @@ ADR Coverage：ADR-0024 已明确原生持久化 Goal task 与停止/授权边�
 ## Comments
 
 2026-10-07：从已确认的 grill-with-docs 决策生成；用户已确认测试入口。依赖票未 resolved 前不开展生产迁移。
+
+2026-10-08 独立 review 纠正：补充两个组合因果公开场景。Human 同一 Run 创建 Goal 与 child，child report 在 Goal round 中排队时，原结算错误覆盖后来 report 的回答（返回 Goal round evidence 而非 shared report final，127ms RED）；此排队场景 usage 已正确，未把它声称为 double-spend RED。第二场景由 Human 创建 Goal、Goal round 创建 held child，原 round answer 先提交、child 后报告；仅按 round requestId 前缀收集原 input 会丢失 reporter receipt 的 spend（19846 对 23159 tokens，143ms RED）。现在以每轮 RequestDoc.submissions 取得包含 report 的实际 receipts，把 Human／Goal／report entries 按 native EntryId 合并，child spend 按 native driver TaskId 去重，最终回答取组合范围中实际最后的 assistant entry。仅对有 accepted Goal driver 的请求覆盖最终 text，保留无 Goal 的 PlanTakeover 等既有输出语义。
+
+纠正后 focused `goal-recovery`／`goal`／`goal-tools`／`mcp-goal`／`subagent-identities`／`subagent-report-recovery` 六文件：68 PASS、341 assertions、6.78s（`/tmp/pi-durable-07-review-focus.log`）；Headless Goal 九例：9 PASS、41 assertions、778ms（`/tmp/pi-durable-07-review-headless.log`）；`bun run check:dev` 全部通过（`/tmp/pi-durable-07-review-static.log`）。均 exit0，未运行 package 或 aggregate。
