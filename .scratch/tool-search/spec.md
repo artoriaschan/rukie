@@ -97,3 +97,7 @@ MCP 工具定义的估算 token 超过模型上下文窗口 10% 时（或用户�
 | 构建于 pi-durable `ToolControl` 与 pi-ai 工具变更 | 沿用 [ADR-0024](../../docs/adr/0024-adopt-pi-durable-harness.md)                                                                           | 复用锁定 harness API                  |
 | `toolSearch` 设置字段                             | 无需 ADR                                                                                                                                   | 普通用户偏好字段，不涉及信任或凭据    |
 | `ToolSearch` 查询语法与默认数量                   | 无需 ADR                                                                                                                                   | 局部工具行为，可随时调整              |
+
+## Delivery ADR Review
+
+2026-10-08：对照 01/02 实现、03 文档与 ADR Coverage，确认模块所有权、完整 registry 与 offered loadout 分离、原生工具追加、Transcript 发现集、Compaction 无基线分支重建、Rewind 与独立子 Session 均受 ADR-0025、ADR-0024 及 ADR-0016 仍有效部分覆盖。晚出现 ToolSearch 服从存活声明保留位置，名单增量从持久化来源文本重建，不增加 Tool State。既有授权、MCP 信任与凭据、Interaction 门槛不变；设置和查询语法为局部行为，无需额外 ADR。未发现既有 ADR 冲突或遗漏的长期取舍；整体 spec 状态待集成分支最终验证和 code review 后关闭。
