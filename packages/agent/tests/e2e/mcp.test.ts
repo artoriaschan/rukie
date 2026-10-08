@@ -65,6 +65,95 @@ test.each(["instructions", "tools"])("only changed MCP %s reinject a reminder", 
   await expectClosed();
 });
 
+test("Goal round MCP drift publishes only removed and appended declarations", async () => {
+  dirs = await tempDirs();
+  await userConfig({ local: await stdioConfig({ tools: ["echo", "keep"] }) });
+  const fake = fakeModel([
+    async () => {
+      const config = await stdioConfig({ tools: ["keep", "added"] });
+      await userConfig({ local: { ...config, env: { ...config.env, MCP_REVISION: "2" } } });
+      return fauxAssistantMessage("first round");
+    },
+    fauxAssistantMessage("second round"),
+  ]);
+  const session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
+  await session.createGoal("Check refreshed MCP tools", { maxRounds: 2 });
+  await session.waitForIdle();
+  expect(fake.contexts).toHaveLength(2);
+  const changes = fake.contexts[1]!.messages.slice(fake.contexts[0]!.messages.length).flatMap(
+    (message) =>
+      message.role === "system" && (message.toolsAdded || message.toolsRemoved)
+        ? [
+            {
+              added: (message.toolsAdded ?? []).map((tool) => tool.name),
+              removed: (message.toolsRemoved ?? []).map((tool) => tool.name),
+            },
+          ]
+        : [],
+  );
+  expect(changes).toEqual([{ added: ["mcp__local__added"], removed: ["mcp__local__echo"] }]);
+  expect(getCurrentTools(fake.contexts[1]!.messages).map((tool) => tool.name)).toEqual([
+    ...getCurrentTools(fake.contexts[0]!.messages)
+      .filter((tool) => tool.name !== "mcp__local__echo")
+      .map((tool) => tool.name),
+    "mcp__local__added",
+  ]);
+  await expectClosed();
+});
+
+test.each(["last", "first", "order"] as const)(
+  "late MCP %s declaration changes retain order or replace when necessary",
+  async (change) => {
+    dirs = await tempDirs();
+    await userConfig({ local: await stdioConfig({ tools: ["echo", "keep"] }) });
+    const changedName = change === "first" ? "echo" : "keep";
+    const fake = fakeModel([
+      async () => {
+        const config = await stdioConfig({
+          tools: change === "order" ? ["keep", "echo"] : ["echo", "keep"],
+          ...(change === "order" ? {} : { toolDescriptions: { [changedName]: "Updated tool" } }),
+        });
+        await userConfig({ local: { ...config, env: { ...config.env, MCP_REVISION: "2" } } });
+        return fauxAssistantMessage("first round");
+      },
+      fauxAssistantMessage("second round"),
+    ]);
+    const session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
+    await session.createGoal("Check refreshed declarations", { maxRounds: 2 });
+    await session.waitForIdle();
+    expect(fake.contexts).toHaveLength(2);
+    const initialNames = getCurrentTools(fake.contexts[0]!.messages).map((tool) => tool.name);
+    const nextTools = getCurrentTools(fake.contexts[1]!.messages);
+    const nextNames = nextTools.map((tool) => tool.name);
+    const changes = fake.contexts[1]!.messages.slice(fake.contexts[0]!.messages.length).flatMap(
+      (message) =>
+        message.role === "system" && (message.toolsAdded || message.toolsRemoved)
+          ? [
+              {
+                added: (message.toolsAdded ?? []).map((tool) => tool.name),
+                removed: (message.toolsRemoved ?? []).map((tool) => tool.name),
+              },
+            ]
+          : [],
+    );
+    expect(changes).toEqual([
+      change === "last"
+        ? { added: ["mcp__local__keep"], removed: ["mcp__local__keep"] }
+        : { added: nextNames, removed: initialNames },
+    ]);
+    expect(nextNames).toEqual(
+      change === "order"
+        ? [...initialNames.slice(0, -2), "mcp__local__keep", "mcp__local__echo"]
+        : initialNames,
+    );
+    if (change !== "order")
+      expect(
+        nextTools.find((tool) => tool.name === `mcp__local__${changedName}`)?.description,
+      ).toBe("Updated tool");
+    await expectClosed();
+  },
+);
+
 test.each(["model-error", "event-error"])(
   "a failed Run (%s) still closes MCP after Session close",
   async (failure) => {

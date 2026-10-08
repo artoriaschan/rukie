@@ -508,6 +508,21 @@ test("model authorization replaces authentication with executable tools in the n
       expect(getCurrentTools(fake.contexts[1]!.messages).map((tool) => tool.name)).not.toContain(
         "mcp__srv__authenticate",
       );
+      const loadoutChanges = fake.contexts[1]!.messages.slice(
+        fake.contexts[0]!.messages.length,
+      ).flatMap((message) =>
+        message.role === "system" && (message.toolsAdded || message.toolsRemoved)
+          ? [
+              {
+                added: (message.toolsAdded ?? []).map((tool) => tool.name),
+                removed: (message.toolsRemoved ?? []).map((tool) => tool.name),
+              },
+            ]
+          : [],
+      );
+      expect(loadoutChanges).toEqual([
+        { added: ["mcp__srv__echo"], removed: ["mcp__srv__authenticate"] },
+      ]);
       expect(
         fake.contexts[2]!.messages.findLast((message) => message.role === "toolResult"),
       ).toMatchObject({ isError: false, content: [{ type: "text", text: "OAuth MCP: called" }] });

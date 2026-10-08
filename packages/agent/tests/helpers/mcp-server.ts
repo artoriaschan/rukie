@@ -24,7 +24,7 @@ for await (const line of lines) {
       result = {
         tools: (manifest.tools ?? ["echo"]).map((name: string) => ({
           name,
-          description: `Test ${name}`,
+          description: manifest.toolDescriptions?.[name] ?? `Test ${name}`,
           inputSchema: { type: "object", properties: { text: { type: "string" } } },
         })),
       };
