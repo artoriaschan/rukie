@@ -138,6 +138,8 @@ interface RunSummaryFact {
   success: boolean;
 }
 export interface SessionOptions {
+  /** Bounds initialization resources only; after opening, the host owns Session.close(). */
+  initializationSignal?: AbortSignal;
   /** Test network boundary overrides; production frontends leave this unset. */
   webFetch?: WebFetchOptions;
   /** Project directory the session works in. */
@@ -445,6 +447,7 @@ function storedRequestResult(value: JsonValue | null): RequestResult | undefined
 
 /** One native Harness owns every request, task, entry and conversation of this Session. */
 export async function createSession(options: SessionOptions): Promise<Session> {
+  options.initializationSignal?.throwIfAborted();
   const context = BACKGROUND_CONTEXT;
   const settings = options.settings ?? {};
   const cwd = resolve(options.cwd);
@@ -3113,6 +3116,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         model: value.model,
       };
     });
+    failedCleanup.push(async () => {
+      unregister();
+      await observation.close();
+    });
     const readRequest = async (requestId: string) =>
       (await harness.snapshot(RequestDoc, context))?.requests[requestId];
     const registerSubmission = async (requestId: string, submissionId: SubmissionId) => {
@@ -4236,8 +4243,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     const startup = await hooks.run(
       "SessionStart",
       hookInput({ source: options.resumeId ? "resume" : "startup" }),
-      { matchQuery: options.resumeId ? "resume" : "startup" },
+      { signal: options.initializationSignal, matchQuery: options.resumeId ? "resume" : "startup" },
     );
+    options.initializationSignal?.throwIfAborted();
     await applyHookResult(startup, "hook:SessionStart");
     if (startup.continue === false) startupStopReason = startup.stopReason ?? "Stopped by hook.";
     await asyncAdmissions;
@@ -4263,6 +4271,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       );
       currentRequestId = human?.[0] ?? goalRequestId;
     }
+    options.initializationSignal?.throwIfAborted();
     harness.resume();
     return session;
   } catch (error) {

@@ -47,10 +47,17 @@ export async function main(argv: string[], io: CodingAgentIo): Promise<number> {
 
 if (import.meta.main) {
   const controller = new AbortController();
-  const interrupt = () => controller.abort();
-  process.on("SIGINT", interrupt);
+  let interrupted: "SIGINT" | "SIGTERM" | undefined;
+  const interrupt = (signal: "SIGINT" | "SIGTERM") => {
+    interrupted ??= signal;
+    controller.abort();
+  };
+  const onSigint = () => interrupt("SIGINT");
+  const onSigterm = () => interrupt("SIGTERM");
+  process.on("SIGINT", onSigint);
+  process.on("SIGTERM", onSigterm);
   try {
-    process.exitCode = await main(Bun.argv.slice(2), {
+    const code = await main(Bun.argv.slice(2), {
       signal: controller.signal,
       stdin: process.stdin,
       stdout: process.stdout,
@@ -59,7 +66,9 @@ if (import.meta.main) {
       },
       readStdin: () => text(addAbortSignal(controller.signal, process.stdin)),
     });
+    process.exitCode = interrupted === "SIGTERM" && code === 130 ? 143 : code;
   } finally {
-    process.off("SIGINT", interrupt);
+    process.off("SIGINT", onSigint);
+    process.off("SIGTERM", onSigterm);
   }
 }
