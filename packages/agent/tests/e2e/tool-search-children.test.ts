@@ -41,12 +41,15 @@ const search = (query: string) =>
   fauxAssistantMessage(fauxToolCall("ToolSearch", { query }), { stopReason: "toolUse" });
 const names = (messages: Parameters<typeof getCurrentTools>[0]) =>
   getCurrentTools(messages).map((tool) => tool.name);
-async function open(responses: Parameters<typeof fakeModel>[0]) {
+async function open(
+  responses: Parameters<typeof fakeModel>[0],
+  extra: Partial<Parameters<typeof createSession>[0]> = {},
+) {
   const fake = fakeModel(responses, {
     model: { contextWindow: 100000, compat: { supportsMidConvoToolChanges: true } },
   });
   const { settings } = await loadSettings(dirs);
-  const session = await createSession({ ...dirs, ...fake, settings });
+  const session = await createSession({ ...dirs, ...fake, settings, ...extra });
   sessions.push(session);
   return { session, fake };
 }
@@ -164,6 +167,55 @@ test("an explicit child tool allowlist limits ToolSearch candidates", async () =
   ]);
   await runRequest(session, "delegate restricted search");
 });
+
+test.each([false, true])(
+  "a child allowlist without ToolSearch keeps MCP eager and respects deny=%s",
+  async (denied) => {
+    await fixture();
+    await Bun.write(
+      join(dirs.homeDir, ".rukie/agents/eager.md"),
+      "---\nname: eager\ndescription: Restricted MCP invocation\ntools: [mcp__local__echo]\n---\nOnly echo is permitted.",
+    );
+    const { session, fake } = await open(
+      [
+        fauxAssistantMessage(
+          fauxToolCall("subagent", {
+            description: "Eager",
+            prompt: "invoke echo",
+            subagent_type: "eager",
+            run_in_background: false,
+          }),
+          { stopReason: "toolUse" },
+        ),
+        fauxAssistantMessage(fauxToolCall("mcp__local__echo", { text: "echo" }), {
+          stopReason: "toolUse",
+        }),
+        fauxAssistantMessage("restricted child done"),
+        fauxAssistantMessage("parent done"),
+      ],
+      {
+        permissionMode: "full-access",
+        settings: {
+          toolSearch: "on",
+          permissions: { deny: denied ? ["mcp__local__echo"] : [] },
+        },
+      },
+    );
+    await runRequest(session, "delegate eager invocation");
+    expect(names(fake.contexts[1]!.messages)).toEqual(["mcp__local__echo"]);
+    expect(JSON.stringify(fake.contexts[1]!.messages)).not.toContain("Deferred MCP tools");
+    expect(names(fake.contexts[2]!.messages)).toEqual(["mcp__local__echo"]);
+    expect(
+      fake.contexts[2]!.messages.findLast((message) => message.role === "toolResult"),
+    ).toMatchObject({ toolName: "mcp__local__echo", isError: denied });
+    expect(fake.contexts).toHaveLength(4);
+    expect(names(fake.contexts[0]!.messages)).toContain("ToolSearch");
+    expect(names(fake.contexts[0]!.messages)).not.toContain("mcp__local__echo");
+    const calls = Bun.file(join(dirs.homeDir, "calls"));
+    if (denied) expect(await calls.exists()).toBe(false);
+    else expect(await calls.text()).toBe("echo\n");
+  },
+);
 
 test("Compaction retains discovered declarations and restores the complete deferred reminder", async () => {
   await fixture();

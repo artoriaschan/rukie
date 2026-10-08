@@ -26,6 +26,7 @@ export function planToolSearchLoadout(input: {
     0,
   );
   const enabled =
+    input.tools.some((tool) => tool.name === "ToolSearch") &&
     supported &&
     candidates.length > 0 &&
     mode !== "off" &&
