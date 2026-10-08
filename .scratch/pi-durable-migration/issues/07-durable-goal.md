@@ -1,6 +1,6 @@
 # 07: Goal 续跑改为可恢复的原生任务
 
-Status: claimed
+Status: resolved
 Blocked by: none
 
 ## What to build
@@ -24,7 +24,7 @@ Blocked by: none
 
 ## Verification
 
-2026-10-08：基于已独立集成的 06 `06bcd201` 实施，仍为 claimed，等待独立 merger 复核与关闭。
+2026-10-08：基于已独立集成的 06 `06bcd201` 实施，已由独立 merger 复核并集成关闭。
 
 - `tools/goal/driver.ts` 拥有原生 `rukie.goal-driver`、持久化 activation、稳定 round reservation 与因果结果；Session 只注入原生 submission/receipt 接口。删除进程 armed/startRound/idle scheduler，Generation 仍是唯一模型执行器。
 - 初始/后来 reservation、已放置但 driver ACK 丢失三个窗口使用独立 Bun 进程、真实 JSONL commit 与 SIGKILL。原实现初始/后来两个公开用例 RED（0 pass / 2 fail，512ms）：计数先行，恢复没有相应 prompt。新实现以 Task input/checkpoint 固定 round，实际 Input 放置后计数，三窗口恢复不重复身份/计数；第二次 reopen 产生零模型调用。
@@ -52,3 +52,5 @@ ADR Coverage：ADR-0024 已明确原生持久化 Goal task 与停止/授权边�
 2026-10-08 独立 review 纠正：补充两个组合因果公开场景。Human 同一 Run 创建 Goal 与 child，child report 在 Goal round 中排队时，原结算错误覆盖后来 report 的回答（返回 Goal round evidence 而非 shared report final，127ms RED）；此排队场景 usage 已正确，未把它声称为 double-spend RED。第二场景由 Human 创建 Goal、Goal round 创建 held child，原 round answer 先提交、child 后报告；仅按 round requestId 前缀收集原 input 会丢失 reporter receipt 的 spend（19846 对 23159 tokens，143ms RED）。现在以每轮 RequestDoc.submissions 取得包含 report 的实际 receipts，把 Human／Goal／report entries 按 native EntryId 合并，child spend 按 native driver TaskId 去重，最终回答取组合范围中实际最后的 assistant entry。仅对有 accepted Goal driver 的请求覆盖最终 text，保留无 Goal 的 PlanTakeover 等既有输出语义。
 
 纠正后 focused `goal-recovery`／`goal`／`goal-tools`／`mcp-goal`／`subagent-identities`／`subagent-report-recovery` 六文件：68 PASS、341 assertions、6.78s（`/tmp/pi-durable-07-review-focus.log`）；Headless Goal 九例：9 PASS、41 assertions、778ms（`/tmp/pi-durable-07-review-headless.log`）；`bun run check:dev` 全部通过（`/tmp/pi-durable-07-review-static.log`）。均 exit0，未运行 package 或 aggregate。
+
+2026-10-08 独立 merger 验收：审核实现 `39e61614` 与 review 纠正 `6ea96e6f`，检查 locked pi-durable 1.0.4 原生 TaskRuntime／Tx／Submission／Inbox 与 Run inputs 语义。六项 AC 已满足：持久化 reservation 与真实输入预算、同事务撤销 queued 输入、旧 receipt／abort 不撤销新 activation、停止态不新建授权、顶层 task 与 fork／Rewind 边界、因果 child/report 与 Headless 结果。review 发现的两个组合范围缺口已由实际公开 RED→GREEN 修正；round RequestDoc 包含后来报告，EntryId／driver TaskId 联合去重，最终文本按实际提交顺序，非 Goal 输出语义保持。沿用 ADR-0024／0018 替代关系，无新增长期决定；架构全文与 Frontend 验收仍由08／09完成。独立 merger 将实现合并至 `codex/pi-durable-migration`；集成后 tracker／docs／目标 Markdown format／diff 检查通过，未运行 package／aggregate。

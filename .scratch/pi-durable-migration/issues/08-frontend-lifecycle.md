@@ -1,7 +1,7 @@
 # 08: TUI/Headless 恢复、输出与退出边界
 
 Status: ready-for-agent
-Blocked by: 07
+Blocked by: none
 
 ## What to build
 
