@@ -1,7 +1,7 @@
 # 06: 后台 Subagent ownership 与持久化结果通知
 
 Status: ready-for-agent
-Blocked by: 05
+Blocked by: none
 
 ## What to build
 

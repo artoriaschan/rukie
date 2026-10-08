@@ -1,6 +1,6 @@
 # 05: 自有工具、MCP、图片与 OS 资源适配
 
-Status: claimed
+Status: resolved
 Blocked by: none
 
 ## What to build
@@ -25,7 +25,7 @@ Blocked by: none
 
 ## Verification
 
-基线为独立合并的 04 `6bc92383`；05 独立 worktree 为 `/tmp/rukie-pi-durable-05`，分支 `codex/pi-durable-05`。自有生产能力已由 02–04 迁移到目标 runtime；本票新增实际崩溃验收和资源释放证明，更新能力文档，没有修改生产工具实现或引入第二套执行路径。状态保持 claimed，等待独立 merger 核对并关闭。
+基线为独立合并的 04 `6bc92383`；05 独立 worktree 为 `/tmp/rukie-pi-durable-05`，分支 `codex/pi-durable-05`。自有生产能力已由 02–04 迁移到目标 runtime；本票新增实际崩溃验收和资源释放证明，更新能力文档，没有修改生产工具实现或引入第二套执行路径。独立 merger 已核对实现、日志与七项验收，状态为 resolved。
 
 ### Acceptance evidence
 
@@ -60,3 +60,5 @@ Blocked by: none
 ## Comments
 
 2026-10-07：从已确认的 grill-with-docs 决策生成；用户已确认测试入口。依赖票未 resolved 前不开展生产迁移。
+
+2026-10-08 独立 merger 验收：review implementation `48c2f048` 对基线 `6bc92383` 的六文件 diff、真实 Storage.task execute/unsafe 屏障、SIGKILL 后两次冷打开和 MCP annotations 变化、Job spill close/history 边界；确认没有生产执行路径变更，初始 fixture 修正没有被误报为 runtime 修复。逐项核对 478 个 focused 用例及当前 check:dev 日志，接受七项 AC 与 ADR coverage；合并实现后单独关闭票据。集成后的 tracker、docs、受影响 Markdown format 和 diff 检查通过；未重跑 package 或 aggregate。06 的更深稳定身份／reporter 窗口与07 Goal 激活验收仍待各自交付。
