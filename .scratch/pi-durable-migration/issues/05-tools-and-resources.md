@@ -1,7 +1,7 @@
 # 05: 自有工具、MCP、图片与 OS 资源适配
 
 Status: ready-for-agent
-Blocked by: 04
+Blocked by: none
 
 ## What to build
 

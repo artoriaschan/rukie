@@ -4,7 +4,7 @@ status: accepted
 
 # Agent Core 发起 Interaction，Plan Mode 独立于权限模式
 
-新决定扩展跨进程交互恢复：未完成请求重新判定并重新发起，旧回调失效。Frontend 回调、安全默认和 Plan Mode 独立于权限的决定继续有效。替代关系见 [ADR-0024](0024-adopt-pi-durable-harness.md)。新决定已接受，实施尚未开始；下文记录迁移前义务，当前进度见[规格与票据](../../.scratch/pi-durable-migration/spec.md)。
+新决定扩展跨进程交互恢复：未完成请求重新判定并重新发起，旧回调失效。Frontend 回调、安全默认和 Plan Mode 独立于权限的决定继续有效。替代关系见 [ADR-0024](0024-adopt-pi-durable-harness.md)。下文保留 Frontend 与 Plan Mode 的持续义务；当前恢复与取消契约见 [pending interactions](../../packages/agent/README.md#pending-interactions)，迁移其余范围见[规格与票据](../../.scratch/pi-durable-migration/spec.md)。
 
 ## 问题
 

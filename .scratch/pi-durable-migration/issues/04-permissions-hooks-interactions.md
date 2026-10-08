@@ -1,6 +1,6 @@
 # 04: 权限、Hook 协议与中断交互恢复
 
-Status: claimed
+Status: resolved
 Blocked by: none
 
 ## What to build
@@ -25,13 +25,13 @@ Blocked by: none
 
 ## Verification
 
-04 实现已完成，待独立 merger 审核；Status 保持 claimed。公开 createSession tracer 分别复现 Question（101ms）、Plan Review（100ms）、Permission 身份（83ms）和 OAuth（105ms）旧行为 RED，当前实现 GREEN。native Task memo 仅保存 kind-scoped 请求身份／pending，native call/execute/terminal phase 决定恢复；回复、epoch 和临时授权仅属当前 invocation。OAuth 沿用同一 flow，真实 HTTP／Storage commit 证明 token exchange 发生于 unsafe execute 意图之后；该边界后 close 留下真实 outcomeUnknown，不重发 code。
+04 实现已由独立 merger 审核并集成；七项验收均满足。公开 createSession tracer 分别复现 Question（101ms）、Plan Review（100ms）、Permission 身份（83ms）和 OAuth（105ms）旧行为 RED，当前实现 GREEN。native Task memo 仅保存 kind-scoped 请求身份／pending，native call/execute/terminal phase 决定恢复；回复、epoch 和临时授权仅属当前 invocation。OAuth 沿用同一 flow，真实 HTTP／Storage commit 证明 token exchange 发生于 unsafe execute 意图之后；该边界后 close 留下真实 outcomeUnknown，不重发 code。
 
 当前 focused interaction matrix（questions、plan-review、permissions、permission-review、permission-hooks、subagent-permissions、permissions/batch、mcp-oauth、subagent-mcp-oauth、mcp-oauth-lifecycle）：193 PASS、731 assertions、10.16s。覆盖 pending close/reopen、明确 abort 冷恢复不重问、旧 callback 和 HTTP state 失效、用户撤销项目信任、当前 endpoint／deny／safe replay 重新授权、Headless 默认及 child origin。相关 Hook／Plan／rules／unknown-outcome 八文件首次 132 PASS／1 FAIL（仅 MCP／skill 并行 denial 顺序断言）；改为精确排序集合后该例 1 PASS／3 assertions／245ms。其余 132 例包括 Hook 协议、Stop 继续、子代理 Hook、真实 ready-file／PID 进程清理，均通过。
 
 TUI Question／Plan Review／OAuth／child Interaction／FIFO 五文件首次 64 PASS／1 FAIL，揭示 identity memo yield 与 sibling session grant 的真实竞态；权限能力将 memo await 放到 listener 安装前并重新判定 current grant，保留原 FIFO 断言后公开 reproducer GREEN（529ms）。后续本地复验结果见 Comments。`bun run check:dev` 在模块 ownership／epoch guard 修正后 exit 0；最终新增局部修正后再次 `bun run check:dev` exit 0（types／lint／Knip／format／tracker／docs／ink boundaries）；`git diff --check` 通过。未运行 package 或 aggregate；最终统一 gate 由总集成负责，历史失败结果未被 focused 通过替代。
 
-ADR coverage：ADR-0024 已规定 native 生命周期、pending 恢复与 close/abort 分离；本实现具体化其宿主 preflight，不改变决策。ADR-0011 的能力归属落实为 owning Question／Plan／MCP preflight，generic Interaction 只持有身份与 callback 等待。ADR-0014／0015 保留 Hook 协议与权限阶段，ADR-0019 保留 Plan Mode 独立与父子共享；ADR-0009 的 unsafe 未知结果不自动重放。无需新增 ADR；Agent README 与 MCP 文档同步了稳定身份、fresh callback、当前 trust/config 和 unsafe exchange 边界。
+ADR coverage：ADR-0024 已规定 native 生命周期、pending 恢复与 close/abort 分离；本实现具体化其宿主 preflight，不改变决策。ADR-0011 的能力归属落实为 owning Question／Plan／MCP preflight，generic Interaction 只持有身份与 callback 等待。ADR-0014 保留当前权限规则与用户信任边界，ADR-0015 保留 Frontend 安全默认、Plan Mode 独立与父子共享，ADR-0019 保留精确 MCP endpoint／headers 凭据归属；ADR-0009 的 unsafe 未知结果不自动重放。无需新增 ADR；Agent README 与 MCP 文档同步了稳定身份、fresh callback、当前 trust/config 和 unsafe exchange 边界。
 
 ## Comments
 
@@ -46,3 +46,5 @@ ADR coverage：ADR-0024 已规定 native 生命周期、pending 恢复与 close/
 2026-10-08：包含新边界用例的 mcp-oauth／subagent-mcp-oauth／mcp-oauth-lifecycle 三文件 43 PASS、202 assertions、3.30s，exit 0；`bun run check:dev` 完整静态／tracker／docs／ink boundaries exit 0。公开文档补充 pending 请求身份、close/abort 区别及 OAuth unsafe exchange 边界；未运行 package/aggregate。
 
 2026-10-08：最终 epoch／signal ownership guards 与 capability boundary 调整后 interaction matrix 193 PASS／731 assertions／10.16s。修复身份 memo yield 的 session-grant 竞态后 permissions／permission-review／permission-hooks／subagent-permissions／native batch 107 PASS／383 assertions／5.91s；TUI Question／Plan Review／OAuth／child Interaction／FIFO 65 PASS／190 assertions／9.56s。Hooks 并行 denial 消费者按精确集合断言，原效应阻止与 typed provenance 断言保留。当前 integration `1a47e87a` merge 已 up to date；无 package／aggregate。
+
+2026-10-08：独立 merger 核对实现 `34a9cbdb` 与 locked pi-durable 1.0.4 源码：native 参数校验先于 beforeTool，preflight 等待不跨 execute intent；unsafe 恢复不重发业务动作／OAuth code，safe replay 仍由 owning permission gate 检查当前规则。OAuth execute 检查当前 signal 归属及取消；MCP preload 只加载当前声明，不主动兑换 code。memo yield 后重新检查 sibling grant，未放宽 Hook ask／deny。七项验收与上述聚焦证据相符；合并到 `codex/pi-durable-migration`，ADR Coverage 经人工复核无遗漏。修正 ADR-0015 过时实施状态，最终 aggregate 仍属 09。集成后的 `bun run docs:update`、`bun run check:scratch`、`bun run check:docs`、三个修改 Markdown 的 `oxfmt --check` 与 `git diff --check` 均 exit 0；未运行 package／aggregate。
