@@ -1,6 +1,6 @@
 # 03: 原生 JSONL、documents、上下文与 Rewind
 
-Status: claimed
+Status: resolved
 Blocked by: none
 
 ## What to build
@@ -26,7 +26,7 @@ Blocked by: none
 
 ## Verification
 
-实施分支基于 02 独立集成提交 `d3e15957`。状态保持 claimed，待独立审阅和集成确认；没有运行 package 或 aggregate 测试。
+实施分支基于 02 独立集成提交 `d3e15957`。实现提交 `df9ad909` 已经独立审阅并合并为 `b113553f`；八项验收的公开证据、实际 diff 与 ADR coverage 一致，状态 resolved。没有运行 package 或 aggregate 测试。
 
 ### Acceptance evidence
 
@@ -64,3 +64,5 @@ Fsync adapter 提取保留了 02 的已交付 flush 行为；RED 验证的是直
 2026-10-07：从已确认的 grill-with-docs 决策生成；用户已确认测试入口。依赖票未 resolved 前不开展生产迁移。
 
 2026-10-08：02 已独立集成于 d3e15957；03 在 `codex/pi-durable-03-storage-context` 认领实施，公开验收与 focused 验证进行中。
+
+2026-10-08：独立 merger 核对全部八项 AC、原生 Storage／内核租约／metadata 变更及公开测试，确认 evidence 与最终实现一致；集成 `b113553f`，文档／tracker／格式／diff 检查通过。沿用上述 ADR，无新增取舍；保留 macOS、断电与后续执行票的验证限制。03 resolved，04 可从当前集成基线认领。
