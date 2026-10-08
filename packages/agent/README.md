@@ -63,19 +63,21 @@ Session 持有一个 registry；所有 bash 使用同一条进程组启动路径
 
 `job_list` 列出当前 Session 的后台任务。`job_output { job_id, wait?, timeout_ms? }` 消费模型游标之后的 stdout，再返回独立的 `[stderr]` 段与状态行；没有新输出时显示 `(no new output)`。`wait` 等待新输出或完成，默认 30 秒，最长 10 分钟；取消等待不杀进程、不移动游标。完成后的 `wait` 收集和模型 `job_kill` 会标记结束通知已被抑制。未知 id 的错误说明后台任务不跨 Session 重启。这三个工具直接通过 Permission Mode，仍经过权限规则与 hooks；bash 的后台参数沿用普通 bash 的授权路径。
 
-后台任务完成后，Session 通过现有 rewake 通道向模型发送 `background job <id> (bash: <label>) finished [status: …]. Read its output with job_output.`。正在运行时通知进入下一次模型请求；空闲时通知开启内部 Run，并保留上次 Run 的 observer。新输出不触发通知，父 Run 不等待后台任务；完成后的 `wait` 收集、模型停止和 teardown 抑制通知，取消等待仍保留通知资格。内部通知不触发 `UserPromptSubmit`。
+后台任务完成后，Session 将 `background job <id> (bash: <label>) finished [status: …]. Read its output with job_output.` 提交为原生会话输入。正在运行时通知追加到当前上下文，供后续模型请求读取；空闲时提交 follow-up，开启内部 Run。使用 `session.subscribe` 观察跨 Run 的任务通知。新输出不触发通知，父 Run 不等待后台任务；完成后的 `wait` 收集、模型停止和 teardown 抑制通知，取消等待仍保留通知资格。内部通知不触发 `UserPromptSubmit`。
 
 Frontend 使用 `session.jobs()` 获取本 Session 的后台任务快照，包括已结束的记录；`session.readJob(id, offset)` 从 stdout 与 stderr 共用的绝对 UTF-8 字节偏移读取，返回 `stdout`、`stderr`、`nextOffset`、`dropped`，不消费模型游标。首次读取传 `0`，后续增量读取传上次 `nextOffset`；多个观察者分别保存自己的偏移。偏移必须是非负安全整数；未知 id 报错。`JobView`、`JobOutput`、`JobEvent` 由 `@rukie/shared` 定义，`@rukie/agent` 同时导出。
 
-`session.subscribe` 在 Run 内外接收 `job_event`：显式后台启动或超时转后台时发送 `started`；输出按约 150 ms 合并发送 `output`，事件只带任务视图，Frontend 用 `readJob` 拉取内容；最终输出先发送，再发送 `settled`。前台任务不可见，也不发事件。活跃 Run 的 `onEvent` 同样接收这些事件；输出观察者不阻塞进程 drain，可以在回调中 await `dispose()`。普通 bash 工具结果的 `details.jobId` 将当前 registry 的任务关联到发起调用，恢复时不凭历史结果重建任务。恢复后的编号从已保存的 bash 调用和结果继续，扫描包括 compaction 和 Rewind 的历史；缺少结果或未获授权的调用可以留下编号空隙。
+`session.subscribe` 在 Run 内外接收 `job_event`：显式后台启动或超时转后台时发送 `started`；输出按约 150 ms 合并发送 `output`，事件只带任务视图，Frontend 用 `readJob` 拉取内容；最终输出先发送，再发送 `settled`。前台任务不可见，也不发事件。活跃 Run 的 `onEvent` 同样接收这些事件；输出观察者不阻塞进程 drain，可以在回调中 await `session.close()`。普通 bash 工具结果的 `details.jobId` 将当前 registry 的任务关联到发起调用，恢复时不凭历史结果重建任务。恢复后的编号从已保存的 bash 调用和结果继续，扫描包括 compaction 和 Rewind 的历史；缺少结果或未获授权的调用可以留下编号空隙。
 
-`await session.killJob(id)` 请求终止后台任务，先抑制结束通知，再发送信号；重复停止或停止已结束任务是 no-op。正在执行 Run 时，`User stopped background job <id> (<label>).` 作为 steer 输入交给模型；空闲时消息排队到下一条人类 prompt 前，不唤醒模型。尚未投递的停止消息在取消 Run 后仍保留。Headless CLI 原样输出 stream-json 任务事件，text 只输出正常结果；普通 prompt 或 Goal 结束后调用 Session dispose，终止所有后台任务。
+`await session.killJob(id)` 请求终止后台任务，先抑制结束通知，再发送信号；重复停止或停止已结束任务是 no-op。正在执行 Run 时，`User stopped background job <id> (<label>).` 作为 steer 输入交给模型；空闲时消息排队到下一条人类 prompt 前，不唤醒模型。尚未投递的停止消息在取消 Run 后仍保留。Headless CLI 原样输出 stream-json 任务事件，text 只输出正常结果；普通 prompt 或 Goal 的因果请求结算后调用 `session.close()`，终止所有后台任务。
 
-stdout 与 stderr 分别保存在带绝对字节偏移的内存 ring，合计保留 256 KiB；任务结束后合计保留 16 KiB，始终在 UTF-8 字符边界截断。完整原始输出写入 Session 专属的 0700 临时目录，日志权限为 0600。发生内存丢弃时，模型输出附带完整日志路径。
+stdout 与 stderr 分别保存在带绝对字节偏移的内存 ring，合计保留 256 KiB；任务结束后合计保留 16 KiB，始终在 UTF-8 字符边界截断。完整原始输出写入 Session 专属的 0700 临时目录，日志权限为 0600。发生内存丢弃时，模型输出附带完整日志路径。宿主关闭移除这些输出资源；恢复后仍能读取已提交的工具结果文本和 details，历史路径不表示日志文件仍存在。
 
 子 Session 拥有独立 registry 与 10 个后台任务名额，`job_*` 只操作自己的任务，完成通知只交给子模型；`job_event` 沿现有 `subagent_event` 转给父观察者，父 `jobs()` 与 `job_list` 不含子任务。子 Run 成功、失败或中止时，在发布 `result` 与解除运行占用前清理自己的任务；父任务继续运行。清理不发送任务事件、结束通知或唤醒输入，`send_message` 续跑同一子 Session 时旧任务 id 已不存在，新编号继续递增。
 
-`clear()` 终止任务、移除输出记录与目录，registry 可继续用于子 Run；`dispose()` 永久关闭 registry。清理先抑制全部任务的结束通知，子 Session 清理还关闭输出与事件回调；普通 Session dispose 保留任务结束事件。随后向拥有的进程组发 SIGTERM，3 秒后升级 SIGKILL，输出 drain 最长 3.1 秒；并发清理共用一次收束。进程 `exit` 回调同步向所有仍活跃的进程组发 SIGKILL；自行脱离进程组的后代不在终止范围内，清理会断开它继承的输出管道以避免挂起。前台 shell 已完成但仍活跃的同组后代也保留清理归属。
+`clear()` 终止任务、移除输出记录与目录，registry 可继续用于子 Run；`dispose()` 永久关闭 registry。清理先抑制全部任务的结束通知，子 Session 清理还关闭输出与事件回调；普通 `session.close()` 保留任务结束事件。随后向拥有的进程组发 SIGTERM，3 秒后升级 SIGKILL，输出 drain 最长 3.1 秒；并发清理共用一次收束。进程 `exit` 回调同步向所有仍活跃的进程组发 SIGKILL；自行脱离进程组的后代不在终止范围内，清理会断开它继承的输出管道以避免挂起。前台 shell 已完成但仍活跃的同组后代也保留清理归属。
+
+工具执行使用原生 ToolRegistration。bash、文件操作、web fetch 与 MCP 工具采用 unsafe replay；工具结果提交前发生中断时，恢复记录未知结果，不重新执行副作用。MCP 的 read-only 或 idempotent 提示不改变该策略，当前配置也不能把已提交的 unsafe intent 变成 safe。Job 属于宿主 OS 资源，不是 durable Task；恢复不会重建旧进程或当前 Job 列表。
 
 # Subagent observation
 
