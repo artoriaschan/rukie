@@ -98,6 +98,7 @@ export async function loadSettings(options: { cwd: string; homeDir: string }) {
   if (project.titleModel !== undefined) settings.titleModel = project.titleModel;
   if (project.reviewModel !== undefined) settings.reviewModel = project.reviewModel;
   if (project.subagentModel !== undefined) settings.subagentModel = project.subagentModel;
+  if (project.toolSearch !== undefined) settings.toolSearch = project.toolSearch;
   const trusted = isTrustedProject(options.cwd, user);
   if (project.hooks !== undefined && !trusted) {
     warnings.push(`${projectFile}: ignoring "hooks"; only trusted projects can define hooks.`);

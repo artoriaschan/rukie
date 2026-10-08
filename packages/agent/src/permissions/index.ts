@@ -69,6 +69,7 @@ function decidePermission({ mode, toolName }: PermissionOptions): PermissionDeci
   if (
     mode === "full-access" ||
     [
+      "ToolSearch",
       "read",
       "glob",
       "grep",

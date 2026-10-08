@@ -18,3 +18,5 @@ Status: resolved
 - 验证：`env -u NO_COLOR bun test --parallel=4 packages/agent/tests/e2e/mcp.test.ts packages/agent/tests/e2e/mcp-oauth.test.ts packages/agent/tests/e2e/tool-declarations.test.ts packages/agent/tests/e2e/compaction.test.ts packages/agent/tests/e2e/compaction-hooks.test.ts`，90 pass、0 fail、515 assertions，2.86s。新增四例约 100–135ms，无固定等待；等待 Goal idle 和 MCP 进程结束完成清理。
 - `bun run check:dev` 与 `git diff --check` 通过。完整 aggregate 留给集成分支最终运行一次。
 - ADR coverage：沿用 spec 的 ADR-0025（增量 loadout 与前缀缓存）及 ADR-0024（复用 harness 工具变更规则），未引入额外所有权、持久化或协议取舍。
+
+- 2026-10-08（02 集成澄清）：[核心工单](02-tool-search-core.md) 的期望工具集按 Transcript 存活声明顺序规划，因此 MCP 目录重新排序不再移动已可见声明；首部同名声明变化只移除并追加该声明。以上覆盖本票中间实现对首部/目录顺序变化的整表替换预期，原验证历史保留。原生差异提交仍保留无法经保留和追加表达的实际 loadout 变更 fallback。
