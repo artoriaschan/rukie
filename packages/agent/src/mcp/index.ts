@@ -1,5 +1,7 @@
+import { awaitWithContext } from "@earendil-works/chord/context";
+import type { PreflightTool } from "../tools/preflight.ts";
 import type { PresentedTool } from "../tools/presentation.ts";
-import type { ToolRegistration } from "@earendil-works/pi-durable";
+import type { ToolRegistration, TaskRecord } from "@earendil-works/pi-durable";
 import type { JsonValue } from "@earendil-works/chord";
 import {
   McpClient,
@@ -29,12 +31,18 @@ import {
   type UserVisibleErrorData,
 } from "@rukie/shared";
 import { isTrustedProject } from "../config/index.ts";
-import { requestInteraction, type OnInteractionStart } from "../interaction/index.ts";
+import {
+  requestInteraction,
+  type OnInteractionStart,
+  type InteractionIdentity,
+} from "../interaction/index.ts";
 import { preserveErrorDetails } from "../tools/runtime.ts";
 import { credentialKey, credentialStore } from "./credentials.ts";
 import { configureOAuthMetadata, createOAuthProvider } from "./oauth.ts";
 
 export interface McpAuthRequest {
+  /** Present for an authentication initiated by a native tool; management operations have their own lifetime. */
+  identity?: InteractionIdentity;
   server: string;
   authorizationUrl: string;
   origin?: { agentId: string; description: string };
@@ -617,6 +625,7 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
             const authenticate = (
               toolSignal?: AbortSignal,
               origin?: { agentId: string; description: string },
+              boundary?: { identity: InteractionIdentity; beforeExchange(): Promise<void> },
             ): Promise<McpAuthOutcome> => {
               const onMcpAuth = options.onMcpAuth;
               if (!key || !("url" in entry) || !store || !onMcpAuth)
@@ -663,6 +672,12 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
                     port: entry.oauth?.callbackPort,
                     timeoutMs: 300_000,
                   });
+                  guard();
+                  // A replacement listener never accepts the previous flow's state/code.
+                  const prior = { ...(await store.load()), serverUrl: entry.url };
+                  delete prior.oauthState;
+                  delete prior.codeVerifier;
+                  await store.save(prior);
                   guard();
                   let authorizationUrl: string | undefined;
                   const provider = createOAuthProvider({
@@ -716,6 +731,7 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
                       {
                         server,
                         authorizationUrl,
+                        ...(boundary && { identity: boundary.identity }),
                         signal: interactionSignal,
                         ...(origin && { origin }),
                       },
@@ -766,6 +782,8 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
                       );
                     code = pasted;
                   }
+                  // Native tool execute releases this only after its unsafe intent is committed.
+                  await boundary?.beforeExchange();
                   guard();
                   await authorizeMcp(provider, {
                     serverUrl: entry.url,
@@ -850,32 +868,89 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
                 return;
               }
               const name = `mcp__${server}__authenticate`;
-              replaceTools([
-                preserveErrorDetails({
-                  name,
-                  description: `The ${server} MCP server is installed but requires authentication. Call this tool to start the OAuth flow; the user completes it in their browser and the server's real tools become available in your next turn.`,
-                  parameters: Type.Object({}),
-                  async execute(_args, api, context) {
-                    const outcome = await authenticate(
-                      context.abortSignal,
-                      options.getOrigin?.(Number(api.conversationId)),
-                    );
-                    return {
-                      content: [
-                        {
-                          type: "text",
-                          text:
-                            outcome.type === "authenticated"
-                              ? `Authenticated ${server}; its tools are now available.`
-                              : `User did not complete authentication for ${server}.`,
-                        },
-                      ],
-                      details: outcome,
-                      isError: false,
-                    };
-                  },
-                }),
-              ]);
+              const parameters = Type.Object({});
+              const pending = new Map<
+                number,
+                {
+                  epoch: string;
+                  signal: AbortSignal | undefined;
+                  proceed(): void;
+                  result: Promise<McpAuthOutcome>;
+                }
+              >();
+              const authTool: PreflightTool<typeof parameters> = {
+                name,
+                description: `The ${server} MCP server is installed but requires authentication. Call this tool to start the OAuth flow; the user completes it in their browser and the server's real tools become available in your next turn.`,
+                parameters,
+                async preflight(_args, api, context, _callId, identity) {
+                  const ready = Promise.withResolvers<void>();
+                  const allowed = Promise.withResolvers<void>();
+                  const result = authenticate(
+                    context.abortSignal,
+                    options.getOrigin?.(Number(api.conversationId)),
+                    {
+                      identity,
+                      async beforeExchange() {
+                        if (pending.get(Number(api.taskId))?.epoch !== identity.epoch)
+                          throw new Error("MCP callback ownership changed.");
+                        context.abortSignal?.throwIfAborted();
+                        ready.resolve();
+                        await awaitWithContext(allowed.promise, context);
+                      },
+                    },
+                  );
+                  pending.set(Number(api.taskId), {
+                    epoch: identity.epoch,
+                    signal: context.abortSignal,
+                    proceed: () => allowed.resolve(),
+                    result,
+                  });
+                  context.abortSignal?.addEventListener(
+                    "abort",
+                    () => {
+                      if (pending.get(Number(api.taskId))?.epoch === identity.epoch)
+                        pending.delete(Number(api.taskId));
+                    },
+                    { once: true },
+                  );
+                  // Preparation errors/cancellation still become the real tool result in execute.
+                  await Promise.race([
+                    ready.promise,
+                    result.then(
+                      () => {},
+                      () => {},
+                    ),
+                  ]);
+                  context.abortSignal?.throwIfAborted();
+                },
+                async execute(_args, api, context) {
+                  context.abortSignal?.throwIfAborted();
+                  const prepared = pending.get(Number(api.taskId));
+                  pending.delete(Number(api.taskId));
+                  if (
+                    !prepared ||
+                    prepared.signal !== context.abortSignal ||
+                    prepared.signal?.aborted
+                  )
+                    throw new Error("MCP authentication has no current prepared interaction.");
+                  prepared.proceed();
+                  const outcome = await prepared.result;
+                  return {
+                    content: [
+                      {
+                        type: "text",
+                        text:
+                          outcome.type === "authenticated"
+                            ? `Authenticated ${server}; its tools are now available.`
+                            : `User did not complete authentication for ${server}.`,
+                      },
+                    ],
+                    details: outcome,
+                    isError: false,
+                  };
+                },
+              };
+              replaceTools([preserveErrorDetails(authTool)]);
               authTools.add(name);
               toolServers.set(name, server);
               descriptions.set(server, `${server}: requires authentication. Tools: ${name}`);
@@ -936,3 +1011,39 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
 }
 
 export { createMcpManager } from "./manager.ts";
+
+/** Only a live, unexecuted native authentication request may require transport declarations before resume. */
+export function hasPendingMcpInteraction(
+  task: TaskRecord<JsonValue, JsonValue, JsonValue>,
+): boolean {
+  if (
+    task.kind !== "pi.tool" ||
+    task.abortRequested ||
+    task.state.status === "terminal" ||
+    task.state.status === "completing"
+  )
+    return false;
+  const checkpoint = task.state.checkpoint;
+  if (
+    !checkpoint ||
+    typeof checkpoint !== "object" ||
+    Array.isArray(checkpoint) ||
+    checkpoint.phase !== "call"
+  )
+    return false;
+  return Object.entries(task.memos ?? {}).some(([name, value]) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const kind = value.kind;
+    return (
+      typeof kind === "string" &&
+      kind.startsWith("mcp__") &&
+      kind.endsWith("__authenticate") &&
+      name === `rukie.interaction.${kind}` &&
+      value.version === 1 &&
+      value.phase === "pending" &&
+      value.taskId === Number(task.id) &&
+      value.conversationId === Number(task.conversationId) &&
+      value.requestId === `interaction:${Number(task.id)}:${kind}`
+    );
+  });
+}

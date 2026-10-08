@@ -57,6 +57,8 @@ const entryData = (entry: EntryRecord | undefined) => {
   return value && typeof value === "object" && !Array.isArray(value) ? value : undefined;
 };
 import { createJobs } from "../tools/jobs/index.ts";
+import { preflightTool } from "../tools/preflight.ts";
+import { hasPendingMcpInteraction } from "../mcp/index.ts";
 import { resolveModel, isTrustedProject, modelState } from "../config/index.ts";
 import {
   createJsonlStore,
@@ -1648,9 +1650,20 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           tools: childTools,
           hooks: [
             hook(ToolTask, {
-              beforeTool: permissionBatch.wrap(childGate.beforeTool, () =>
-                childStopped ? (childStopReason ?? "Stopped by hook.") : undefined,
-              ),
+              beforeTool: async (call, api, ctx) => {
+                const decision = await permissionBatch.wrap(childGate.beforeTool, () =>
+                  childStopped ? (childStopReason ?? "Stopped by hook.") : undefined,
+                )(call, api, ctx);
+                if (decision?.block === undefined)
+                  await preflightTool(
+                    childTools.find((tool) => tool.name === call.name),
+                    decision?.arguments ?? call.arguments,
+                    api,
+                    ctx,
+                    call.id,
+                  );
+                return decision;
+              },
               afterTool: async (call, result, _api, ctx) => {
                 const changed = await childHooks.run(
                   result.isError ? "PostToolUseFailure" : "PostToolUse",
@@ -2317,9 +2330,20 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             },
           }),
           hook(ToolTask, {
-            beforeTool: permissionBatch.wrap(gate.beforeTool, () =>
-              stopped ? (hookStopReason ?? "Stopped by hook.") : undefined,
-            ),
+            beforeTool: async (call, api, ctx) => {
+              const decision = await permissionBatch.wrap(gate.beforeTool, () =>
+                stopped ? (hookStopReason ?? "Stopped by hook.") : undefined,
+              )(call, api, ctx);
+              if (decision?.block === undefined)
+                await preflightTool(
+                  tools.find((tool) => tool.name === call.name),
+                  decision?.arguments ?? call.arguments,
+                  api,
+                  ctx,
+                  call.id,
+                );
+              return decision;
+            },
             afterTool: async (call, result, api, ctx) => {
               const changed = await hooks.run(
                 result.isError ? "PostToolUseFailure" : "PostToolUse",
@@ -3955,6 +3979,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     await applyHookResult(startup, "hook:SessionStart");
     if (startup.continue === false) startupStopReason = startup.stopReason ?? "Stopped by hook.";
     await asyncAdmissions;
+    const pendingRecovery = await harness.inspect(context);
+    if (pendingRecovery.tasks.some((task) => hasPendingMcpInteraction(task.record)))
+      await refreshMcp(context.abortSignal);
     await subagents.prepareChildren(context);
     const recovering = await harness.inspect(context);
     const requestValues = (await harness.snapshot(RequestDoc, context))?.requests ?? {};

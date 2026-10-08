@@ -1,5 +1,10 @@
 import { afterEach, expect, test } from "bun:test";
-import { fauxAssistantMessage, fauxToolCall, getCurrentSystemMessage } from "@earendil-works/pi-ai";
+import {
+  fauxAssistantMessage,
+  fauxToolCall,
+  getCurrentSystemMessage,
+  getCurrentTools,
+} from "@earendil-works/pi-ai";
 import { join } from "node:path";
 import {
   createSession as createSessionImpl,
@@ -304,4 +309,128 @@ test("four questions with four options preserve question order in the result", a
       },
     ],
   });
+});
+
+test("a Question pending at close is reissued on cold reopen and its old callback cannot answer it", async () => {
+  dirs = await tempDirs();
+  const entered = Promise.withResolvers<QuestionRequest>();
+  const oldReply = Promise.withResolvers<QuestionReply>();
+  const warm = fakeModel([
+    fauxAssistantMessage(
+      fauxToolCall("ask_user_question", { questions: [question] }, { id: "reused-call" }),
+      { stopReason: "toolUse" },
+    ),
+  ]);
+  const session = await createSession({
+    ...dirs,
+    ...warm,
+    onQuestion: (request) => {
+      entered.resolve(request);
+      return oldReply.promise;
+    },
+  });
+  const running = session.run("choose storage after restart").catch(() => undefined);
+  const old = await entered.promise;
+  await session.close();
+  await running;
+  expect(old.signal.aborted).toBe(true);
+  let replacement: QuestionRequest | undefined;
+  const cold = fakeModel([fauxAssistantMessage("replacement answer accepted")]);
+  const resumed = await createSession({
+    ...dirs,
+    ...cold,
+    resumeId: session.id,
+    onQuestion: async (request) => {
+      replacement = request;
+      oldReply.resolve({ answers: [{ selected: ["SQLite"] }] });
+      return { answers: [{ selected: ["Postgres"] }] };
+    },
+  });
+  await resumed.waitForIdle();
+  expect(replacement?.questions).toEqual([question]);
+  expect(replacement?.signal).not.toBe(old.signal);
+  expect(old.identity?.requestId).toBeString();
+  expect(replacement?.identity?.requestId).toBe(old.identity?.requestId);
+  expect(replacement?.identity?.epoch).not.toBe(old.identity?.epoch);
+  expect(
+    cold.contexts[0]?.messages.findLast((message) => message.role === "toolResult"),
+  ).toMatchObject({
+    isError: false,
+    content: [{ type: "text", text: '"Which storage?" → Postgres' }],
+  });
+  expect(JSON.stringify(resumed.messages)).not.toContain("may have partially run");
+});
+
+test("an explicitly aborted Question stays terminal on cold reopen", async () => {
+  dirs = await tempDirs();
+  const entered = Promise.withResolvers<QuestionRequest>();
+  const reply = Promise.withResolvers<QuestionReply>();
+  const session = await createSession({
+    ...dirs,
+    ...fakeModel([
+      fauxAssistantMessage(fauxToolCall("ask_user_question", { questions: [question] }), {
+        stopReason: "toolUse",
+      }),
+    ]),
+    onQuestion: (request) => {
+      entered.resolve(request);
+      return reply.promise;
+    },
+  });
+  const running = session.run("cancel this question").catch(() => undefined);
+  const old = await entered.promise;
+  await session.abort();
+  await running;
+  await session.close();
+  let asked = 0;
+  const cold = fakeModel([fauxAssistantMessage("new unrelated answer")]);
+  const resumed = await createSession({
+    ...dirs,
+    ...cold,
+    resumeId: session.id,
+    onQuestion: async () => {
+      asked++;
+      return "declined";
+    },
+  });
+  reply.resolve({ answers: [{ selected: ["SQLite"] }] });
+  await resumed.waitForIdle();
+  expect(old.signal.aborted).toBe(true);
+  expect(asked).toBe(0);
+  expect(JSON.stringify(resumed.messages)).not.toContain("→ SQLite");
+  expect((await resumed.run("an unrelated new prompt")).text).toBe("new unrelated answer");
+});
+
+test("a pending Question cold-opened without a frontend settles safely", async () => {
+  dirs = await tempDirs();
+  const entered = Promise.withResolvers<QuestionRequest>();
+  const reply = Promise.withResolvers<QuestionReply>();
+  const session = await createSession({
+    ...dirs,
+    ...fakeModel([
+      fauxAssistantMessage(fauxToolCall("ask_user_question", { questions: [question] }), {
+        stopReason: "toolUse",
+      }),
+    ]),
+    onQuestion: (request) => {
+      entered.resolve(request);
+      return reply.promise;
+    },
+  });
+  const running = session.run("question before Headless resume").catch(() => undefined);
+  const old = await entered.promise;
+  await session.close();
+  await running;
+  const cold = fakeModel([fauxAssistantMessage("Headless continued safely")]);
+  const resumed = await createSession({ ...dirs, ...cold, resumeId: session.id });
+  reply.resolve({ answers: [{ selected: ["SQLite"] }] });
+  await resumed.waitForIdle();
+  expect(old.signal.aborted).toBe(true);
+  expect(resumed.messages.findLast((message) => message.role === "toolResult")).toMatchObject({
+    isError: true,
+  });
+  expect(JSON.stringify(resumed.messages)).not.toContain("→ SQLite");
+  expect(getCurrentTools(cold.contexts[0]!.messages).map((tool) => tool.name)).not.toContain(
+    "ask_user_question",
+  );
 });

@@ -1,8 +1,14 @@
 import type { PresentedTool } from "../presentation.ts";
+import type { PreflightTool } from "../preflight.ts";
 import { Type } from "typebox";
-import { requestInteraction, type OnInteractionStart } from "../../interaction/index.ts";
+import {
+  requestInteraction,
+  type OnInteractionStart,
+  type InteractionIdentity,
+} from "../../interaction/index.ts";
 
 export interface PlanReviewRequest {
+  identity: InteractionIdentity;
   plan: string;
   toolCallId: string;
   signal: AbortSignal;
@@ -63,7 +69,11 @@ export function createExitPlanModeTool(
   planMode: { getActive(): boolean; setMode(on: boolean): Promise<void> },
   onPlanReview: OnPlanReview,
   onInteractionStart?: OnInteractionStart,
-): PresentedTool<typeof reviewParameters> {
+): PresentedTool<typeof reviewParameters> & PreflightTool<typeof reviewParameters> {
+  const replies = new Map<
+    number,
+    { epoch: string; signal: AbortSignal; reply?: PlanReviewResult }
+  >();
   return {
     name: "exit_plan_mode",
     presentCall: (args) => ({
@@ -80,12 +90,24 @@ export function createExitPlanModeTool(
     }),
     description: "Submit a markdown plan for user review. Only available in Plan Mode.",
     parameters: reviewParameters,
-    async execute({ plan }, api, context) {
-      const toolCallId = api.callId;
+    async preflight({ plan }, api, context, toolCallId, identity) {
       const signal = context.abortSignal ?? new AbortController().signal;
+      const taskId = Number(api.taskId);
+      const slot: { epoch: string; signal: AbortSignal; reply?: PlanReviewResult } = {
+        epoch: identity.epoch,
+        signal,
+      };
+      replies.set(taskId, slot);
+      signal.addEventListener(
+        "abort",
+        () => {
+          if (replies.get(taskId)?.epoch === slot.epoch) replies.delete(taskId);
+        },
+        { once: true },
+      );
       if (!planMode.getActive()) throw new Error("Not in plan mode.");
       if (!plan.trim()) throw new Error("Plan must not be empty.");
-      const request: PlanReviewRequest = { toolCallId, plan, signal };
+      const request: PlanReviewRequest = { toolCallId, plan, signal, identity };
       const reply = await requestInteraction<PlanReviewRequest, PlanReviewResult | undefined>(
         request,
         (request) => onPlanReview(request, signal),
@@ -101,6 +123,19 @@ export function createExitPlanModeTool(
       );
       signal.throwIfAborted();
       if (!reply) throw new Error("Plan review cancelled.");
+      if (replies.get(taskId)?.epoch !== identity.epoch)
+        throw new Error("Interaction callback ownership changed.");
+      slot.reply = reply;
+    },
+    async execute(_args, api, context) {
+      context.abortSignal?.throwIfAborted();
+      const slot = replies.get(Number(api.taskId));
+      replies.delete(Number(api.taskId));
+      if (!slot || slot.signal !== context.abortSignal || slot.signal.aborted)
+        throw new Error("Interaction callback ownership changed.");
+      const reply = slot.reply;
+      if (!reply) throw new Error("Plan Review has no current frontend reply.");
+      if (!planMode.getActive()) throw new Error("Not in plan mode.");
       if (reply.kind === "approve") await planMode.setMode(false);
       const text =
         reply.kind === "approve"

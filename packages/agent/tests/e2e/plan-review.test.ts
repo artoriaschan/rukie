@@ -330,3 +330,95 @@ test("takeover leaves its background child active and the next user Run remains 
     release.resolve();
   }
 });
+
+test("a Plan Review pending at close is reissued and stale approval cannot exit planning", async () => {
+  dirs = await tempDirs();
+  const entered = Promise.withResolvers<PlanReviewRequest>();
+  const oldReply = Promise.withResolvers<PlanReviewResult>();
+  const session = await createSession({
+    ...dirs,
+    ...fakeModel([submit()]),
+    onPlanReview: (request) => {
+      entered.resolve(request);
+      return oldReply.promise;
+    },
+  });
+  await session.setPlanMode(true);
+  const running = session.run("review this plan after restart").catch(() => undefined);
+  const old = await entered.promise;
+  await session.close();
+  await running;
+  expect(old.signal.aborted).toBe(true);
+  let replacement: PlanReviewRequest | undefined;
+  const cold = fakeModel([fauxAssistantMessage("revising the plan")]);
+  const resumed = await createSession({
+    ...dirs,
+    ...cold,
+    resumeId: session.id,
+    onPlanReview: async (request) => {
+      replacement = request;
+      oldReply.resolve({ kind: "approve" });
+      return { kind: "revise", feedback: "Keep planning with the replacement reviewer" };
+    },
+  });
+  await resumed.waitForIdle();
+  expect(replacement?.plan).toBe(plan);
+  expect(old.identity.requestId).toBeString();
+  expect(replacement?.identity.requestId).toBe(old.identity.requestId);
+  expect(replacement?.identity.epoch).not.toBe(old.identity.epoch);
+  expect(resumed.planMode).toBe(true);
+  expect(
+    JSON.stringify(cold.contexts[0]?.messages.findLast((message) => message.role === "toolResult")),
+  ).toContain("replacement reviewer");
+  expect(JSON.stringify(resumed.messages)).not.toContain("may have partially run");
+});
+
+test.each(["abort", "Headless"])(
+  "pending Plan Review preserves planning across %s cold reopen",
+  async (mode) => {
+    dirs = await tempDirs();
+    const entered = Promise.withResolvers<PlanReviewRequest>();
+    const reply = Promise.withResolvers<PlanReviewResult>();
+    const session = await createSession({
+      ...dirs,
+      ...fakeModel([submit()]),
+      onPlanReview: (request) => {
+        entered.resolve(request);
+        return reply.promise;
+      },
+    });
+    await session.setPlanMode(true);
+    const running = session.run("pending planning review").catch(() => undefined);
+    const old = await entered.promise;
+    if (mode === "abort") await session.abort();
+    await session.close();
+    await running;
+    let asked = 0;
+    const cold = fakeModel([fauxAssistantMessage("new planning answer")]);
+    const resumed = await createSession({
+      ...dirs,
+      ...cold,
+      resumeId: session.id,
+      ...(mode === "abort"
+        ? {
+            onPlanReview: async () => {
+              asked++;
+              return { kind: "approve" as const };
+            },
+          }
+        : {}),
+    });
+    reply.resolve({ kind: "approve" });
+    await resumed.waitForIdle();
+    expect(old.signal.aborted).toBe(true);
+    expect(asked).toBe(0);
+    expect(resumed.planMode).toBe(true);
+    expect(resumed.messages.findLast((message) => message.role === "toolResult")).toMatchObject({
+      isError: true,
+    });
+    if (mode === "abort")
+      expect((await resumed.run("new independent planning input")).text).toBe(
+        "new planning answer",
+      );
+  },
+);

@@ -6,6 +6,7 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import {
   createSession,
+  createJsonlStore,
   type SessionEvent,
   type McpAuthRequest,
   type McpAuthReply,
@@ -240,6 +241,29 @@ test("Run abort closes the pending frontend and callback and records a native ab
       expect(await Bun.file(join(dirs.homeDir, ".rukie/credentials.json")).text()).not.toContain(
         "access_token",
       );
+      await session.close();
+      let reissued = 0;
+      const cold = fakeModel([]);
+      const resumed = await createSession({
+        ...dirs,
+        ...cold,
+        resumeId: session.id,
+        onMcpAuth: async (request) => {
+          reissued++;
+          return paste(request);
+        },
+      });
+      try {
+        await resumed.waitForIdle();
+        expect(reissued).toBe(0);
+        expect(cold.contexts).toEqual([]);
+        expect(server.requests.filter((request) => request.path === "/token")).toHaveLength(0);
+        expect(resumed.messages.findLast((message) => message.role === "toolResult")).toMatchObject(
+          { isError: true },
+        );
+      } finally {
+        await resumed.close();
+      }
     } finally {
       await session.close();
     }
@@ -714,3 +738,234 @@ test("needs-auth memory belongs to the exact server endpoint and follows project
     await dirs.cleanup();
   }
 });
+
+test("OAuth pending at close restarts its listener and ignores an old authorization reply", async () => {
+  const dirs = await tempDirs();
+  const server = mcpOAuthServer();
+  let first: Awaited<ReturnType<typeof createSession>> | undefined;
+  let resumed: Awaited<ReturnType<typeof createSession>> | undefined;
+  try {
+    await configure(dirs, { srv: { url: server.url } });
+    const entered = Promise.withResolvers<McpAuthRequest>();
+    const oldReply = Promise.withResolvers<McpAuthReply>();
+    first = await createSession({
+      ...dirs,
+      ...fakeModel([
+        fauxAssistantMessage(fauxToolCall("mcp__srv__authenticate", {}), { stopReason: "toolUse" }),
+      ]),
+      onMcpAuth: (request) => {
+        entered.resolve(request);
+        return oldReply.promise;
+      },
+    });
+    const running = first.run("finish login after restart").catch(() => undefined);
+    const old = await entered.promise;
+    const oldCallback = await paste(old);
+    await first.close();
+    await running;
+    expect(old.signal.aborted).toBe(true);
+    expect(server.requests.filter((request) => request.path === "/token")).toHaveLength(0);
+    let replacement: McpAuthRequest | undefined;
+    const cold = fakeModel([fauxAssistantMessage("cold authorization completed")]);
+    resumed = await createSession({
+      ...dirs,
+      ...cold,
+      resumeId: first.id,
+      onMcpAuth: async (request) => {
+        replacement = request;
+        oldReply.resolve(oldCallback);
+        if (oldCallback.type !== "callback-url")
+          throw new Error("Missing obsolete callback fixture");
+        const replacementListener = new URL(
+          new URL(request.authorizationUrl).searchParams.get("redirect_uri")!,
+        );
+        replacementListener.search = new URL(oldCallback.url).search;
+        expect((await fetch(replacementListener)).status).toBe(400);
+        return paste(request);
+      },
+    });
+    await resumed.waitForIdle();
+    expect(replacement?.server).toBe("srv");
+    expect(old.identity?.requestId).toBeString();
+    expect(replacement?.identity?.requestId).toBe(old.identity?.requestId);
+    expect(replacement?.identity?.epoch).not.toBe(old.identity?.epoch);
+    expect(new URL(replacement!.authorizationUrl).searchParams.get("state")).not.toBe(
+      new URL(old.authorizationUrl).searchParams.get("state"),
+    );
+    expect(server.requests.filter((request) => request.path === "/token")).toHaveLength(1);
+    expect(
+      JSON.stringify(
+        cold.contexts[0]?.messages.findLast((message) => message.role === "toolResult"),
+      ),
+    ).toContain("Authenticated srv");
+    expect(JSON.stringify(resumed.messages)).not.toContain("may have partially run");
+  } finally {
+    await resumed?.close();
+    await first?.close();
+    await server.stop();
+    await dirs.cleanup();
+  }
+});
+
+test("OAuth exchanges only after native unsafe intent and close during exchange retains unknown outcome", async () => {
+  const dirs = await tempDirs();
+  const exchanging = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const server = mcpOAuthServer({
+    beforeTokenResponse: async () => {
+      exchanging.resolve();
+      await release.promise;
+    },
+  });
+  let session: Awaited<ReturnType<typeof createSession>> | undefined;
+  let resumed: Awaited<ReturnType<typeof createSession>> | undefined;
+  try {
+    await configure(dirs, { srv: { url: server.url } });
+    const store = createJsonlStore(dirs);
+    const open = store.open.bind(store);
+    let intentObserved = false;
+    store.open = async (...args) => {
+      const lease = await open(...args);
+      const commit = lease.storage.commit.bind(lease.storage);
+      lease.storage.commit = async (writes, context) => {
+        const intent = writes.find(
+          (write) =>
+            write.type === "task" &&
+            write.value.kind === "pi.tool" &&
+            write.value.state.status === "running" &&
+            write.value.state.checkpoint &&
+            typeof write.value.state.checkpoint === "object" &&
+            !Array.isArray(write.value.state.checkpoint) &&
+            write.value.state.checkpoint.phase === "execute",
+        );
+        if (intent) {
+          expect(server.requests.filter((request) => request.path === "/token")).toHaveLength(0);
+          intentObserved = true;
+        }
+        return commit(writes, context);
+      };
+      return lease;
+    };
+    session = await createSession({
+      ...dirs,
+      store,
+      ...fakeModel([
+        fauxAssistantMessage(fauxToolCall("mcp__srv__authenticate", {}), { stopReason: "toolUse" }),
+      ]),
+      onMcpAuth: paste,
+    });
+    const running = session.run("login interrupted during exchange").catch(() => undefined);
+    await exchanging.promise;
+    expect(intentObserved).toBe(true);
+    await session.close();
+    await running;
+    release.resolve();
+    let asked = 0;
+    const cold = fakeModel([fauxAssistantMessage("inspect uncertain authorization")]);
+    resumed = await createSession({
+      ...dirs,
+      ...cold,
+      resumeId: session.id,
+      onMcpAuth: async (request) => {
+        asked++;
+        return paste(request);
+      },
+    });
+    await resumed.waitForIdle();
+    expect(asked).toBe(0);
+    expect(server.requests.filter((request) => request.path === "/token")).toHaveLength(1);
+    expect(resumed.messages.findLast((message) => message.role === "toolResult")).toMatchObject({
+      isError: true,
+      outcomeUnknown: true,
+    });
+    expect(await Bun.file(join(dirs.homeDir, ".rukie/credentials.json")).text()).not.toContain(
+      "access_token",
+    );
+  } finally {
+    release.resolve();
+    await resumed?.close();
+    await session?.close();
+    await server.stop();
+    await dirs.cleanup();
+  }
+});
+
+test.each(["new endpoint", "Headless", "revoked project trust"])(
+  "pending OAuth reopens under current %s configuration",
+  async (mode) => {
+    const dirs = await tempDirs();
+    const original = mcpOAuthServer();
+    const current = mcpOAuthServer();
+    let first: Awaited<ReturnType<typeof createSession>> | undefined;
+    let resumed: Awaited<ReturnType<typeof createSession>> | undefined;
+    try {
+      if (mode === "revoked project trust")
+        await Bun.write(
+          join(dirs.cwd, ".mcp.json"),
+          JSON.stringify({ mcpServers: { srv: { url: original.url } } }),
+        );
+      else await configure(dirs, { srv: { url: original.url } });
+      const entered = Promise.withResolvers<McpAuthRequest>();
+      const oldReply = Promise.withResolvers<McpAuthReply>();
+      first = await createSession({
+        ...dirs,
+        ...(mode === "revoked project trust" && { settings: { trustedProjects: [dirs.cwd] } }),
+        ...fakeModel([
+          fauxAssistantMessage(fauxToolCall("mcp__srv__authenticate", {}), {
+            stopReason: "toolUse",
+          }),
+        ]),
+        onMcpAuth: (request) => {
+          entered.resolve(request);
+          return oldReply.promise;
+        },
+      });
+      const running = first.run("authorize current server").catch(() => undefined);
+      const old = await entered.promise;
+      const obsolete = await paste(old);
+      await first.close();
+      await running;
+      if (mode === "new endpoint") await configure(dirs, { srv: { url: current.url } });
+      const beforeReopen = original.requests.length;
+      let asked = 0;
+      const cold = fakeModel([fauxAssistantMessage("current authentication policy settled")]);
+      resumed = await createSession({
+        ...dirs,
+        ...cold,
+        resumeId: first.id,
+        ...(mode === "revoked project trust" && { settings: { trustedProjects: [] } }),
+        ...(mode !== "Headless"
+          ? {
+              onMcpAuth: async (request: McpAuthRequest) => {
+                asked++;
+                if (mode === "new endpoint")
+                  expect(new URL(request.authorizationUrl).origin).toBe(
+                    new URL(current.url).origin,
+                  );
+                oldReply.resolve(obsolete);
+                return paste(request);
+              },
+            }
+          : {}),
+      });
+      oldReply.resolve(obsolete);
+      await resumed.waitForIdle();
+      expect(old.signal.aborted).toBe(true);
+      if (mode === "revoked project trust") expect(original.requests).toHaveLength(beforeReopen);
+      expect(original.requests.filter((request) => request.path === "/token")).toHaveLength(0);
+      expect(asked).toBe(mode === "new endpoint" ? 1 : 0);
+      expect(current.requests.filter((request) => request.path === "/token")).toHaveLength(
+        mode === "new endpoint" ? 1 : 0,
+      );
+      expect(resumed.messages.findLast((message) => message.role === "toolResult")).toMatchObject({
+        isError: mode !== "new endpoint",
+      });
+    } finally {
+      await resumed?.close();
+      await first?.close();
+      await original.stop();
+      await current.stop();
+      await dirs.cleanup();
+    }
+  },
+);

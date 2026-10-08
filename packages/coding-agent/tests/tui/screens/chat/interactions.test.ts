@@ -2,11 +2,18 @@ import { expect, test } from "bun:test";
 import type { PermissionAskRequest } from "@rukie/agent";
 import { createInteractions } from "../../../../src/tui/screens/chat/interactions";
 
+let taskId = 0;
 const request = (
   id: string,
   signal: AbortSignal,
   command = "printf shared",
 ): PermissionAskRequest => ({
+  identity: {
+    requestId: `interaction:${++taskId}:permission`,
+    taskId,
+    conversationId: 1,
+    epoch: `fixture:${id}`,
+  },
   toolCallId: id,
   toolName: "bash",
   args: { command },
