@@ -25,12 +25,14 @@ export async function runTui(options: CliOptions, io: TuiIo): Promise<number> {
     ? undefined
     : createDefaultHost({ env, writeTerminal: (text) => io.stdout.write(text) });
   let closing = io.signal?.aborted ?? false;
+  const initialization = new AbortController();
   const close = () => {
     closing = true;
+    initialization.abort();
     app?.unmount();
   };
-  // Own process signals until Agent Core's parent and child Runs have settled.
-  // Terminal restoration alone must not terminate the process before saving.
+  // Own signals through initialization cancellation, Session.close(), and terminal cleanup.
+  // Closing the host preserves pending native tasks for reopening.
   io.signal?.addEventListener("abort", close);
   process.on("SIGINT", close);
   process.on("SIGTERM", close);
@@ -73,6 +75,7 @@ export async function runTui(options: CliOptions, io: TuiIo): Promise<number> {
             io.stderr(`${t("startup.warning", { warning: localized })}\n`);
         },
         ...io.session,
+        initializationSignal: initialization.signal,
         resumeId: values.resume,
         allowRules: [...(io.session?.allowRules ?? []), ...(values["allow-tools"] ?? [])],
         permissionMode: values.yolo
@@ -116,6 +119,7 @@ export async function runTui(options: CliOptions, io: TuiIo): Promise<number> {
     return 0;
   } catch (error) {
     app?.unmount();
+    if (closing && !chat && error === initialization.signal.reason) return 0;
     io.stderr(`${formatError(error, t)}\n`);
     return 1;
   } finally {

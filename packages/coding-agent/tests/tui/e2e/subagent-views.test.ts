@@ -377,3 +377,45 @@ for (const failed of [false, true]) {
     }
   });
 }
+
+test("ordinary chat Escape cancels the foreground Run while its background child remains usable", async () => {
+  const app = await startWithClock(["--permission-mode", "full-access", "parent escape boundary"], {
+    rows: 24,
+    env: { LANG: "en" },
+  });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tool("subagent", {
+      description: "Escape survivor",
+      prompt: "child survives ordinary Escape",
+      run_in_background: true,
+    });
+    await app.waitFor(() => app.calls.length === 3);
+    const child = app.calls.find((call) =>
+      call.context.messages.some(
+        (message) =>
+          message.role === "user" &&
+          JSON.stringify(message.content).includes("child survives ordinary Escape"),
+      ),
+    )!;
+    const parent = app.calls.find((call, index) => index > 0 && call !== child)!;
+    parent.delta("foreground partial before Escape");
+    await app.waitFor(() => app.screen().join("\n").includes("foreground partial before Escape"));
+    app.stdin.write("\x1b");
+    await app.waitFor(
+      () =>
+        parent.signal!.aborted && app.screen().join("\n").includes("background tasks: 1 subagents"),
+    );
+    expect(child.signal!.aborted).toBe(false);
+    child.delta("child continues after Escape");
+    app.stdin.write("\x01\r\x1b[C");
+    await app.waitFor(() => app.screen().join("\n").includes("child continues after Escape"));
+    child.reply("child completed after Escape");
+    await app.waitFor(() => app.calls.length === 4);
+    app.calls[3]!.reply("report processed after ordinary Escape");
+    await app.waitFor(() => app.screen().join("\n").includes("Conclusion"));
+    expect(app.screen()).toHaveLength(24);
+  } finally {
+    await app.cleanup();
+  }
+});

@@ -38,6 +38,7 @@ export async function runHeadless(options: CliOptions, io: PrintIo): Promise<num
       settings,
       onWarning: (warning) => io.stderr(`Warning: ${warning}\n`),
       ...io.session,
+      initializationSignal: io.signal ?? io.session?.initializationSignal,
       resumeId: values.resume,
       allowRules: [...(io.session?.allowRules ?? []), ...(values["allow-tools"] ?? [])],
       permissionMode: values.yolo

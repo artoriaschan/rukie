@@ -12,7 +12,11 @@
 
 用户中断或 provider 错误保留已提交的部分正文与思考，并显示结束原因。Session Resume 按保存顺序重建正文、工具、已回答问题、Todo 与子代理事实；思考与工具采用默认折叠，正文立即显示。界面展开、选区、悬停、消息选择、阅读位置与 Tool View 不写入 Transcript。
 
-保存失败时，实时会话以 Agent Core 恢复的已提交事实收束，未保存的临时尾部消失。已保存调用缺少结果时显示 Outcome unknown；副作用可能已经发生，用户应核实实际状态后再决定是否重试。查看恢复历史不执行工具、不重新启动 Background Job 或自动续跑 Subagent；完整工具源或历史元数据缺失时保留相应未知说明。后台任务与只读子代理的操作见各自章节。
+保存失败时，实时会话以 Agent Core 恢复的已提交事实收束，未保存的临时尾部消失。已保存调用缺少结果时显示 Outcome unknown；副作用可能已经发生，用户应核实实际状态后再决定是否重试。列表、预览与只读子视图不启动模型或工具；打开选中的 Session 后，Core 自动继续已接受而未结算的原生工作，包括 child 和 reporter。恢复不重新启动 Background Job；完整工具源或历史元数据缺失时保留相应未知说明。后台任务与只读子代理的操作见各自章节。
+
+正常退出调用 `session.close()`，保存未结算工作并等待宿主资源关闭；终端 renderer 的 unmount、waitUntilExit 与 cleanup 分别完成后输出当前 Session 的恢复命令。终端已恢复不代表存储已关闭。重开先用一致 snapshot 恢复历史与后台活动，再消费 committed updates。普通 chat Esc 中止前台 Run，默认不取消后台 child；只有所选子代理的停止动作取消它的 ownership，并等待 native driver 终态。只有后台 child 活跃时仍显示后台活动，不把父 Run idle 作为整次请求完成。
+
+挂起的审批、Question、Plan Review 和模型 OAuth 在恢复后按当前权限、信任与能力重新发起，Frontend 使用新 callback 和 signal 接管 FIFO。关闭、取消或换 Session 后，旧输入和晚到 callback 不能批准新请求；安全默认与身份合同由 [Agent Core](../../../agent/README.md#pending-interactions) 维护。
 
 ## 消息导航
 
@@ -118,6 +122,8 @@ Ctrl+O 展开整段对话后，按 `/` 输入搜索词，Enter 高亮并跳到�
 
 运行卡保留当前工具和三行截断输出；正常结束收起，错误原因保留。标题展示实际模型、可获得的耗时和 token，历史缺失字段不显示。Run Outcome 与当前活动分别处理，Run 正常结束不宣称委派任务完成。
 
-点击卡片文字打开摘要、正文和工具详情；右侧 `⤢` 独立打开主屏 Agent View。Agent View 按真实子 Session 消息顺序展示输入、Markdown、可展开思考和复用的 ToolCall，键盘与粘贴输入不能提交 Run，也不能中断子代理。↑↓、PageUp/PageDown、Home/End 与滚轮用于阅读，Esc/Ctrl+C 返回父视图并恢复阅读位置与草稿。手动离开底部后新输出保持阅读位置；恢复后首次打开从只读快照加载历史，不自动续跑。子 Session 保存失败时，已打开的 Agent View 和卡片也重新读取已提交分支，保留已保存部分与未知工具结果，移除未保存尾部；之后的新 Run 不受较早只读请求影响。
+点击卡片文字打开摘要、正文和工具详情；右侧 `⤢` 独立打开主屏 Agent View。Agent View 按真实子 Session 消息顺序展示输入、Markdown、可展开思考和复用的 ToolCall，键盘与粘贴输入不能提交 Run，也不能中断子代理。↑↓、PageUp/PageDown、Home/End 与滚轮用于阅读，Esc/Ctrl+C 返回父视图并恢复阅读位置与草稿。手动离开底部后新输出保持阅读位置；恢复后首次打开从已提交快照加载历史；只读页面本身不发起续跑，未结算工作由 Session 打开时的原生恢复继续。子 Session 保存失败时，已打开的 Agent View 和卡片也重新读取已提交分支，保留已保存部分与未知工具结果，移除未保存尾部；之后的新 Run 不受较早只读请求影响。
 
 子代理正文在实时观察与恢复后都保留实际用户输入，按已完成消息顺序显示一次；带有内部 `source` 的提醒消息不作为用户输入呈现。卡片的三行预览仍显示子代理输出。
+
+启动期间关闭宿主会取消 SessionStart Hook，并等待初始化观察者、连接、Hook 进程及存储租约释放；Session 打开后，退出仍通过 `session.close()` 保留已接受的原生工作。初始化信号不会成为 Run 或后台 child 的取消信号。

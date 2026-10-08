@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { isolateProxyEnvironment } from "../helpers/proxy-env.ts";
 import { mkdir, mkdtemp, rm, realpath } from "node:fs/promises";
+import { watch } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -989,9 +990,14 @@ test("an unknown --resume id exits 1 with a clear error", async () => {
   expect(server.requests).toHaveLength(0);
 });
 
-test.each(["prompt", "goal"])(
-  "SIGINT in %s exits 130 and another CLI process resumes the accepted request",
-  async (source) => {
+test.each([
+  ["prompt", "SIGINT", 130],
+  ["goal", "SIGINT", 130],
+  ["prompt", "SIGTERM", 143],
+  ["goal", "SIGTERM", 143],
+] as const)(
+  "%s interrupted by %s exits %i and another CLI process resumes the accepted request",
+  async (source, signal, exitCode) => {
     const transport: FakeOpenAIOptions = { holdOpen: true };
     const { server, ...dirs } = await setup({}, transport);
     const proc = Bun.spawn(
@@ -1010,8 +1016,8 @@ test.each(["prompt", "goal"])(
     const output = new Response(proc.stdout).text();
     const errors = new Response(proc.stderr).text();
     await server.received;
-    proc.kill("SIGINT");
-    expect(await proc.exited).toBe(130);
+    proc.kill(signal);
+    expect(await proc.exited).toBe(exitCode);
     expect(await output).toBe("");
     expect(await errors).toContain("Interrupted");
 
@@ -1038,6 +1044,114 @@ test.each(["prompt", "goal"])(
     });
     expect(JSON.stringify(server.requests[1]!.body.messages)).toContain("interrupted prompt");
     expect(server.requests).toHaveLength(source === "goal" ? 3 : 2);
+  },
+);
+
+test.each(["PreToolUse", "SessionStart"] as const)(
+  "SIGTERM closes a pending %s Hook process group before another CLI acquires the Session",
+  async (event) => {
+    const transport: FakeOpenAIOptions = {
+      toolCalls: [
+        {
+          name: "bash",
+          arguments: { command: "touch tool-effect", description: "Signal fixture" },
+        },
+      ],
+    };
+    const { server, ...dirs } = await setup({}, transport);
+    const script = join(dirs.cwd, "pending-hook.sh");
+    await Bun.write(
+      script,
+      "cat > hook-input\nsleep 30 &\nchild=$!\nprintf '%s %s\\n' $$ $child > hook.pid.tmp\nmv hook.pid.tmp hook.pid\nwait $child\ntouch late-hook\n",
+    );
+    const settingsPath = join(dirs.home, ".rukie/settings.json");
+    const settings = await Bun.file(settingsPath).json();
+    await Bun.write(
+      settingsPath,
+      JSON.stringify({
+        ...settings,
+        hooks: { [event]: [{ hooks: [{ type: "command", command: `sh ${script}` }] }] },
+      }),
+    );
+    const ready = Promise.withResolvers<number[]>();
+    const watcher = watch(dirs.cwd, (_event, filename) => {
+      if (filename !== "hook.pid") return;
+      void Bun.file(join(dirs.cwd, "hook.pid"))
+        .text()
+        .then((text) => {
+          const pids = text.trim().split(/\s+/u).map(Number);
+          if (pids.length !== 2 || pids.some((pid) => !Number.isSafeInteger(pid) || pid <= 0))
+            throw new Error(`Invalid Hook ready PIDs: ${text}`);
+          ready.resolve(pids);
+        })
+        .catch(ready.reject);
+    });
+    watcher.on("error", ready.reject);
+    // Actual shell/child startup and file notification run outside the parent clock.
+    const deadline = AbortSignal.timeout(3000);
+    const expired = Promise.withResolvers<never>();
+    const expire = () => expired.reject(deadline.reason);
+    deadline.addEventListener("abort", expire, { once: true });
+    const proc = Bun.spawn(
+      [process.execPath, MAIN, "-p", "pending Hook signal", "--permission-mode", "full-access"],
+      {
+        cwd: dirs.cwd,
+        env: { PATH: process.env.PATH, HOME: dirs.home, FAKE_API_KEY: "sk-test" },
+        stdin: "ignore",
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
+    const output = new Response(proc.stdout).text();
+    const errors = new Response(proc.stderr).text();
+    let pids: number[] = [];
+    try {
+      pids = await Promise.race([ready.promise, expired.promise]);
+      expect(server.requests).toHaveLength(event === "SessionStart" ? 0 : 1);
+      proc.kill("SIGTERM");
+      expect(await Promise.race([proc.exited, expired.promise])).toBe(143);
+      expect(await output).toBe("");
+      for (const pid of pids) expect(() => process.kill(pid, 0)).toThrow();
+      expect(await errors).toContain("Interrupted");
+      expect(await Bun.file(join(dirs.cwd, "late-hook")).exists()).toBe(false);
+      expect(await Bun.file(join(dirs.cwd, "tool-effect")).exists()).toBe(false);
+      const [session] = await listSessions({ cwd: dirs.cwd, homeDir: dirs.home });
+      if (!session) throw new Error("Missing accepted Session after signal close");
+      await Bun.write(settingsPath, JSON.stringify(settings));
+      const resumed = await rukie(
+        [
+          "--resume",
+          session.id,
+          "-p",
+          event === "SessionStart" ? "pending Hook signal" : "",
+          "--permission-mode",
+          "full-access",
+          "--output-format",
+          "stream-json",
+        ],
+        { ...dirs, key: "sk-test" },
+      );
+      expect(resumed).toMatchObject({ exitCode: 0, stderr: "" });
+      const events = parseEvents(resumed.stdout);
+      expect(events.filter((event) => event.type === "request_settled")).toHaveLength(1);
+      expect(events.at(-1)).toMatchObject({ type: "request_settled", text: "hello from fake" });
+      expect(await Bun.file(join(dirs.cwd, "tool-effect")).exists()).toBe(true);
+      expect(JSON.stringify(server.requests.at(-1)!.body.messages)).toContain(
+        "pending Hook signal",
+      );
+    } finally {
+      deadline.removeEventListener("abort", expire);
+      watcher.close();
+      if (proc.exitCode === null) proc.kill("SIGKILL");
+      await proc.exited;
+      for (const pid of pids.toReversed()) {
+        try {
+          process.kill(pid, "SIGKILL");
+        } catch {
+          /* Fixture process already closed. */
+        }
+      }
+    }
   },
 );
 

@@ -6,6 +6,8 @@
 
 原生 JSONL 启用 sidecar fsync，[存储文件适配器](src/store/files.ts)在成功追加后 flush 文件，包括 main 提交标记；提交确认后才采用状态和发布对应成功事实。写入或 flush 失败会向调用方传播；原生 Storage 进入 poisoned 状态时须 `await session.close()` 后重开。flush 发生在追加之后，拒绝确认不等于磁盘字节回滚，重新打开时以原生已提交事实为准。进程强制退出测试验证租约释放和恢复，不代表断电测试。
 
+`createSession({ initializationSignal })` 可取消打开过程中的 SessionStart Hook 和初始化资源；失败返回前关闭观察者、连接、进程与存储租约。该信号仅约束初始化，Session 返回后取消它不会取消已接受的 Run 或后台任务；宿主退出须调用并等待 `session.close()`。
+
 # Pending interactions
 
 Permission、Question 和 Plan Review 的 Frontend 请求包含 `identity`：原生 task／conversation 身份和按交互种类区分的稳定 request id，以及当前 callback 的 epoch。OAuth 由原生工具发起时也包含该身份；管理面板发起的登录使用管理操作自身的生命周期。回调必须观察 request signal，及时撤回 UI；Core 自身也限制等待并检查取消，旧回调晚到不能授权恢复后的任务。
