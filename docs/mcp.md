@@ -37,7 +37,7 @@ TUI 中使用 `/mcp` 打开服务器列表，逐层进入服务器详情、工�
 
 授权面板和审批、问题共用 FIFO 交互队列。面板自动打开浏览器，显示完整 URL，允许复制链接、重新打开浏览器、取消，或粘贴完整回调 URL。本地回调到达时面板自动关闭；回调监听在 `127.0.0.1`，redirect URI 使用 `http://localhost:<port>/callback`。授权等待最多五分钟；取消或 Run 中止按未完成授权处理。授权开始触发 `Notification` hook，`notification_type` 为 `mcp_auth`。
 
-Headless CLI 不提供授权交互，也不向模型暴露 `authenticate` 工具。它提示在 TUI 登录并继续使用其他 server；stream-json 输出 `mcp_auth_required` 和带登录提示的 `mcp_server_error`。TUI 获得的 MCP Credential 可被后续 Headless Run 复用。
+Headless CLI 不提供授权交互，也不向模型暴露 `authenticate` 工具。它提示在 TUI 登录并继续使用其他 server；stream-json 输出 `mcp_auth_required`，登录提示写入 stderr。预期的授权需求不作为 `mcp_server_error`；实际连接或工具错误仍发布该事件。TUI 获得的 MCP Credential 可被后续 Headless Run 复用。
 
 ## MCP Credential
 
@@ -45,7 +45,9 @@ MCP Credential 存在 Session 的 `homeDir` 下的 `.rukie/credentials.json`，�
 
 写入使用临时文件和 rename。损坏 JSON 被视为空并告警，直到下一次成功写入前保留原文件。pi-mcp 负责 token 刷新；授权失效或需要额外 scopes 时重新回到 `needs-auth`。登出删除本地凭据，不向授权服务器撤销 token。
 
-连接属于 Run：结束时关闭，下次 Run 重新发现工具。Session 记住需要授权的 server，避免每次 Run 重复发起未授权请求；登录、登出或重连更新这份状态。子代理的授权交互经父 Session 转发，带上 origin。
+运行连接属于 Session 宿主，Run 结束后保留未变化的连接。后续 Run 读取当前配置，关闭被移除或配置变化的 server，并更新模型能力；外部 server 自身改变工具或说明时使用显式重连。Session 记住需要授权的 server，避免每次 Run 重复发起未授权请求；登录、登出或重连更新这份状态。子代理的授权交互经父 Session 转发，带上 origin。`session.close()` 关闭连接和未完成的宿主授权资源；Resume 按当前配置建立新连接，不恢复旧 transport。
+
+普通 MCP 工具使用原生 unsafe replay，read-only 或 idempotent 提示不授予自动重放。工具执行后、结果提交前中断时，恢复保留未知结果，不重新调用 server；改变当前工具说明、schema 或提示也不能提升已提交 intent 的重放权限。
 
 ## Frontend 接口
 
@@ -53,7 +55,7 @@ Session 暴露 `mcpServers()`、`authenticateMcp(name)`、`clearMcpAuth(name)`�
 
 `mcpServers()` 返回独立副本 `McpSnapshot`，包含 `servers` 与配置文件级 `configErrors`。服务器记录提供生效配置的 `scope`、`configPath`、HTTP `url` 或 stdio `command`，以及真实 MCP 工具的协议名称、完整描述和原始输入 JSON Schema。URL 保留环境变量配置表达式，移除 userinfo、query 和 fragment；快照不包含 headers、env、args、clientSecret 或 MCP Credential。failed/needs-auth 的工具数组为空，`toolCount` 与真实工具数组一致。损坏文件记录来源、路径和错误；缺失文件不算错误，其他合法来源仍可使用，Run 保持 fail-open 和现有警告行为。
 
-快照返回最新提交的状态，包括 Run 连接、同一 Run 授权或失效、管理操作与显式刷新。没有记录时，并发读取复用一次独立探测，发现工具后关闭资源；已有记录时只读缓存，不重新连接或请求工具。调用方修改返回值不会改变 Session 或模型工具声明。`mcpServers({ refresh: true })` 只在空闲时重新读取完整配置并探测，并发刷新复用在途请求；它不自动启动 OAuth 或更改 MCP Credential。Run 中显式刷新及三个管理方法返回 busy 错误。Session 取消或 dispose 负责收束探测与管理资源，晚到探测不能覆盖较新的 Run 快照。
+快照返回最新提交的状态，包括 Run 连接、同一 Run 授权或失效、管理操作与显式刷新。没有记录时，并发读取复用一次独立探测，发现工具后关闭资源；已有记录时只读缓存，不重新连接或请求工具。调用方修改返回值不会改变 Session 或模型工具声明。`mcpServers({ refresh: true })` 只在空闲时重新读取完整配置并探测，并发刷新复用在途请求；它不自动启动 OAuth 或更改 MCP Credential。Run 中显式刷新及三个管理方法返回 busy 错误。调用方取消管理操作或 `session.close()` 负责收束探测与管理资源，晚到探测不能覆盖较新的 Run 快照。
 
 公开事件 `mcp_servers_changed` 表示新快照已提交，不携带工具 schema；Frontend 收到事件后调用普通 `mcpServers()` 读取缓存。文件级诊断与服务器状态、工具的实际变化都可触发事件；相同快照和缓存读取不重复通知。面板通过这些事件更新，无轮询或后台重连。稳定服务器名与协议工具名保留导航身份；当前工具消失时退回仍有效的工具列表，没有工具时退回服务器详情，服务器消失时退回服务器列表，并显示变化提示。
 

@@ -20,6 +20,7 @@ export function mcpOAuthServer(
     beforeTokenResponse?: () => Promise<void>;
     tokenEndpointAuthMethods?: string[];
     beforeInitialize?: () => Promise<void>;
+    beforeToolResponse?: () => Promise<void>;
   } = {},
 ) {
   const requests: {
@@ -180,6 +181,7 @@ export function mcpOAuthServer(
           if (!Value.Check(Rpc, body)) return new Response(null, { status: 400 });
           if (body.id === undefined) return new Response(null, { status: 202 });
           if (body.method === "initialize") await options.beforeInitialize?.();
+          if (body.method === "tools/call") await options.beforeToolResponse?.();
           const result =
             body.method === "initialize"
               ? {

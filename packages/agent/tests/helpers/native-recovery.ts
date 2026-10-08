@@ -1,3 +1,4 @@
+import type { JsonValue } from "@earendil-works/chord";
 import {
   awaitWithContext,
   BACKGROUND_CONTEXT,
@@ -10,7 +11,11 @@ import { stat } from "node:fs/promises";
 export function crashUnsafeEffect(
   root: string,
   child = false,
-  options: { priorTurns?: { prompt: string; reply: string }[]; completedReads?: boolean } = {},
+  options: {
+    priorTurns?: { prompt: string; reply: string }[];
+    completedReads?: boolean;
+    unsafeCall?: { name: string; args: Record<string, JsonValue> };
+  } = {},
 ) {
   return crashToolReceipt(root, child, { ...options, safeDelegation: false });
 }
@@ -27,6 +32,7 @@ async function crashToolReceipt(
     priorTurns?: { prompt: string; reply: string }[];
     completedReads?: boolean;
     safeDelegation: boolean;
+    unsafeCall?: { name: string; args: Record<string, JsonValue> };
   },
 ) {
   const script = `
@@ -61,10 +67,15 @@ async function crashToolReceipt(
       const lease = await store.open(...args);
       return { ...lease, storage: new Proxy(lease.storage, { get(target, key) {
         if (key === "commit") return async (writes, context) => {
-          if (crashArmed && writes.some(write => write.type === "entry" && write.value.model?.some(message => message.role === "toolResult" && message.toolName === ${JSON.stringify(options.safeDelegation ? "subagent" : "write")}))) {
+          if (crashArmed && writes.some(write => write.type === "entry" && write.value.model?.some(message => message.role === "toolResult" && message.toolName === ${JSON.stringify(options.safeDelegation ? "subagent" : (options.unsafeCall?.name ?? "write"))}))) {
+            const result = writes.find(write => write.type === "entry" && write.value.model?.some(message => message.role === "toolResult" && message.toolName === ${JSON.stringify(options.safeDelegation ? "subagent" : (options.unsafeCall?.name ?? "write"))}));
+            const toolTaskId = result?.value.byTaskId;
+            const task = toolTaskId === undefined ? undefined : await target.task(toolTaskId, context);
+            const checkpoint = task?.state.status === "running" ? task.state.checkpoint : undefined;
+            if (checkpoint?.phase !== "execute" || checkpoint.replay !== ${JSON.stringify(options.safeDelegation ? "safe" : "unsafe")}) throw new Error("Expected committed execution intent at receipt barrier: " + JSON.stringify({toolTaskId, task, result}));
             const identities = session.toolState("subagents");
             const childId = Array.isArray(identities) ? identities.find(row => row.description === "Unknown child")?.id : undefined;
-            process.stdout.write("READY " + JSON.stringify({ sessionId: session.id, childId }) + "\\n");
+            process.stdout.write("READY " + JSON.stringify({ sessionId: session.id, childId, toolTaskId, replay: checkpoint.replay }) + "\\n");
             return await new Promise(() => {});
           }
           return target.commit(writes, context);
@@ -96,16 +107,16 @@ async function crashToolReceipt(
     }
     crashArmed = true;
     const initial = fake.calls.length;
-    void session.run("fixture parent").catch(error => { process.stderr.write(String(error)); process.exitCode = 1; });
+    void session.run("fixture parent").catch(error => { process.stderr.write(String(error)); process.exit(1); });
     await until(() => fake.calls.length > initial);
     const effect = { path: "uncertain-effect.txt", content: "saved effect" };
     if (${child}) {
       fake.calls[initial].tool("subagent", { description: "Unknown child", prompt: "native unsafe child", run_in_background: true });
       await until(() => fake.calls.some(call => call.context.messages.some(message => message.role === "user" && JSON.stringify(message.content).includes("native unsafe child"))));
       const childCall = fake.calls.find(call => call.context.messages.some(message => message.role === "user" && JSON.stringify(message.content).includes("native unsafe child")));
-      childCall.tool("write", effect);
+      childCall.tool(${JSON.stringify(options.unsafeCall?.name ?? "write")}, ${options.unsafeCall ? JSON.stringify(options.unsafeCall.args) : "effect"});
     } else if (${options.safeDelegation}) fake.calls[initial].tool("subagent", { description: "Unknown child", prompt: "accepted safe child", run_in_background: true });
-    else fake.calls[initial].tool("write", effect);
+    else fake.calls[initial].tool(${JSON.stringify(options.unsafeCall?.name ?? "write")}, ${options.unsafeCall ? JSON.stringify(options.unsafeCall.args) : "effect"});
   `;
   const process = Bun.spawn([globalThis.process.execPath, "-e", script], {
     cwd: join(import.meta.dir, "../.."),
@@ -134,6 +145,13 @@ async function crashToolReceipt(
       typeof value.sessionId !== "string"
     )
       throw new Error("Invalid native crash fixture identity");
+    if (
+      !("toolTaskId" in value) ||
+      !Number.isSafeInteger(value.toolTaskId) ||
+      !("replay" in value) ||
+      value.replay !== (options.safeDelegation ? "safe" : "unsafe")
+    )
+      throw new Error("Invalid committed tool execution intent");
     const childId =
       "childId" in value && typeof value.childId === "string" ? value.childId : undefined;
     if (child && !childId) throw new Error("Native child identity missing at effect commit");
@@ -146,6 +164,11 @@ async function crashToolReceipt(
       childId,
       effectModifiedAt: (await stat(join(root, "uncertain-effect.txt"))).mtimeMs,
     };
+  } catch (error) {
+    process.kill("SIGKILL");
+    await process.exited;
+    const stderr = await errors;
+    throw new Error(`Native crash fixture failed: ${stderr || String(error)}`, { cause: error });
   } finally {
     process.kill();
     process.stdin.end();
