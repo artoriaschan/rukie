@@ -127,7 +127,10 @@ test("job settlement notice coexists with a question and footer at 40×12", asyn
 });
 
 test("a narrow folded group keeps failure visible and opens with its header", async () => {
+  const notifications = committedJobNotifications();
   const app = await start(["--permission-mode", "full-access", "launch"], {
+    session: notifications.session,
+    prepare: notifications.prepare,
     columns: 40,
     rows: 32,
   });
@@ -145,16 +148,20 @@ test("a narrow folded group keeps failure visible and opens with its header", as
       })),
     );
     await app.waitFor(() => app.calls.length === 2 && screen().includes("后台任务 ×3"));
-    app.calls[1]!.tools(
-      ["bash-1", "bash-2", "bash-3"].map((job_id) => ({
-        name: "job_output",
-        args: { job_id, wait: true },
-      })),
-    );
-    await app.waitFor(() => screen().includes("任务输出"));
+    // Commit all three real completion notifications behind the group before
+    // opening it. Their wrapped rows expose bottom-follow hiding the selected
+    // header and failed middle card when the group expands.
+    expect(
+      app.calls[1]!.context.messages.filter(
+        (message) => message.role === "toolResult" && message.toolName === "bash",
+      ),
+    ).toHaveLength(3);
     await Bun.write(join(app.root, "go"), "");
-    await app.waitFor(() => app.calls.length === 3 && screen().includes("已折叠 3 个后台任务"));
-    app.calls[2]!.finish();
+    await app.waitFor(
+      () => notifications.count() === 3 && screen().includes("已折叠 3 个后台任务"),
+    );
+    expect(app.calls).toHaveLength(2);
+    app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
     const header = app.screen().findIndex((row) => row.includes("已折叠 3 个后台任务"));
     const row = app.screen()[header]!;
@@ -166,6 +173,7 @@ test("a narrow folded group keeps failure visible and opens with its header", as
     );
     app.stdin.write(`\x1b[<0;2;${header + 1}M\x1b[<0;2;${header + 1}m`);
     await app.waitFor(() => /✗ 任务：bash-2 bash \S+ 失败/.test(screen()));
+    expect(screen()).toContain("后台任务 ×3");
     app.stdin.write("\x1b[5~");
     await app.waitFor(() => /✓ 任务：bash-1 bash \S+ 已完成/.test(screen()));
     expect(app.screen().every((line) => Bun.stringWidth(line) <= 40)).toBe(true);

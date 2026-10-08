@@ -999,6 +999,7 @@ function Chat({
     });
   }, [expanded, transcriptSearch.editing, currentMatch, bodyScroll, searchHighlight, sources]);
   const [jobGroupFolds, setJobGroupFolds] = useState<ReadonlyMap<string, boolean>>(new Map());
+  const pendingJobGroup = useRef<string | undefined>(undefined);
   const [expandedRows, setExpandedRows] = useState<ReadonlySet<string>>(new Set());
   const [streamThinkingRows, setStreamThinkingRows] = useState<ReadonlySet<string>>(new Set());
   useEffect(() => {
@@ -1223,6 +1224,12 @@ function Chat({
     const element = sources.elements.get(id);
     if (element) body.current?.scrollToElement(element);
   };
+  useLayoutEffect(() => {
+    if (!pendingJobGroup.current) return;
+    // Seek after React expands the group, before the next terminal paint.
+    seekSource(pendingJobGroup.current);
+    pendingJobGroup.current = undefined;
+  }, [jobGroupFolds]);
   const returnToBottom = () => {
     body.current?.scrollToBottom();
     armExit();
@@ -2331,9 +2338,12 @@ function Chat({
                   folded={folded}
                   columns={columns}
                   locale={locale}
-                  onToggle={() =>
-                    setJobGroupFolds((previous) => new Map(previous).set(groupId, !folded))
-                  }
+                  onToggle={() => {
+                    // Keep the selected header in view when the group grows;
+                    // bottom-follow would hide it behind later notifications.
+                    if (folded) pendingJobGroup.current = entry.anchorId ?? `row-${index}`;
+                    setJobGroupFolds((previous) => new Map(previous).set(groupId, !folded));
+                  }}
                 />
                 {!folded && (
                   <Box flexShrink={0} flexDirection="column">
