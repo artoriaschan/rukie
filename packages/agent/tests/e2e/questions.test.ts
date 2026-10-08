@@ -1,5 +1,10 @@
 import { afterEach, expect, test } from "bun:test";
-import { fauxAssistantMessage, fauxToolCall, getCurrentSystemMessage } from "@earendil-works/pi-ai";
+import {
+  fauxAssistantMessage,
+  fauxToolCall,
+  getCurrentSystemMessage,
+  getCurrentTools,
+} from "@earendil-works/pi-ai";
 import { join } from "node:path";
 import {
   createSession as createSessionImpl,
@@ -394,4 +399,38 @@ test("an explicitly aborted Question stays terminal on cold reopen", async () =>
   expect(asked).toBe(0);
   expect(JSON.stringify(resumed.messages)).not.toContain("→ SQLite");
   expect((await resumed.run("an unrelated new prompt")).text).toBe("new unrelated answer");
+});
+
+test("a pending Question cold-opened without a frontend settles safely", async () => {
+  dirs = await tempDirs();
+  const entered = Promise.withResolvers<QuestionRequest>();
+  const reply = Promise.withResolvers<QuestionReply>();
+  const session = await createSession({
+    ...dirs,
+    ...fakeModel([
+      fauxAssistantMessage(fauxToolCall("ask_user_question", { questions: [question] }), {
+        stopReason: "toolUse",
+      }),
+    ]),
+    onQuestion: (request) => {
+      entered.resolve(request);
+      return reply.promise;
+    },
+  });
+  const running = session.run("question before Headless resume").catch(() => undefined);
+  const old = await entered.promise;
+  await session.close();
+  await running;
+  const cold = fakeModel([fauxAssistantMessage("Headless continued safely")]);
+  const resumed = await createSession({ ...dirs, ...cold, resumeId: session.id });
+  reply.resolve({ answers: [{ selected: ["SQLite"] }] });
+  await resumed.waitForIdle();
+  expect(old.signal.aborted).toBe(true);
+  expect(resumed.messages.findLast((message) => message.role === "toolResult")).toMatchObject({
+    isError: true,
+  });
+  expect(JSON.stringify(resumed.messages)).not.toContain("→ SQLite");
+  expect(getCurrentTools(cold.contexts[0]!.messages).map((tool) => tool.name)).not.toContain(
+    "ask_user_question",
+  );
 });

@@ -241,6 +241,29 @@ test("Run abort closes the pending frontend and callback and records a native ab
       expect(await Bun.file(join(dirs.homeDir, ".rukie/credentials.json")).text()).not.toContain(
         "access_token",
       );
+      await session.close();
+      let reissued = 0;
+      const cold = fakeModel([]);
+      const resumed = await createSession({
+        ...dirs,
+        ...cold,
+        resumeId: session.id,
+        onMcpAuth: async (request) => {
+          reissued++;
+          return paste(request);
+        },
+      });
+      try {
+        await resumed.waitForIdle();
+        expect(reissued).toBe(0);
+        expect(cold.contexts).toEqual([]);
+        expect(server.requests.filter((request) => request.path === "/token")).toHaveLength(0);
+        expect(resumed.messages.findLast((message) => message.role === "toolResult")).toMatchObject(
+          { isError: true },
+        );
+      } finally {
+        await resumed.close();
+      }
     } finally {
       await session.close();
     }
@@ -751,6 +774,13 @@ test("OAuth pending at close restarts its listener and ignores an old authorizat
       onMcpAuth: async (request) => {
         replacement = request;
         oldReply.resolve(oldCallback);
+        if (oldCallback.type !== "callback-url")
+          throw new Error("Missing obsolete callback fixture");
+        const replacementListener = new URL(
+          new URL(request.authorizationUrl).searchParams.get("redirect_uri")!,
+        );
+        replacementListener.search = new URL(oldCallback.url).search;
+        expect((await fetch(replacementListener)).status).toBe(400);
         return paste(request);
       },
     });
@@ -860,7 +890,7 @@ test("OAuth exchanges only after native unsafe intent and close during exchange 
   }
 });
 
-test.each(["new endpoint", "Headless"])(
+test.each(["new endpoint", "Headless", "revoked project trust"])(
   "pending OAuth reopens under current %s configuration",
   async (mode) => {
     const dirs = await tempDirs();
@@ -869,11 +899,17 @@ test.each(["new endpoint", "Headless"])(
     let first: Awaited<ReturnType<typeof createSession>> | undefined;
     let resumed: Awaited<ReturnType<typeof createSession>> | undefined;
     try {
-      await configure(dirs, { srv: { url: original.url } });
+      if (mode === "revoked project trust")
+        await Bun.write(
+          join(dirs.cwd, ".mcp.json"),
+          JSON.stringify({ mcpServers: { srv: { url: original.url } } }),
+        );
+      else await configure(dirs, { srv: { url: original.url } });
       const entered = Promise.withResolvers<McpAuthRequest>();
       const oldReply = Promise.withResolvers<McpAuthReply>();
       first = await createSession({
         ...dirs,
+        ...(mode === "revoked project trust" && { settings: { trustedProjects: [dirs.cwd] } }),
         ...fakeModel([
           fauxAssistantMessage(fauxToolCall("mcp__srv__authenticate", {}), {
             stopReason: "toolUse",
@@ -890,17 +926,22 @@ test.each(["new endpoint", "Headless"])(
       await first.close();
       await running;
       if (mode === "new endpoint") await configure(dirs, { srv: { url: current.url } });
+      const beforeReopen = original.requests.length;
       let asked = 0;
       const cold = fakeModel([fauxAssistantMessage("current authentication policy settled")]);
       resumed = await createSession({
         ...dirs,
         ...cold,
         resumeId: first.id,
-        ...(mode === "new endpoint"
+        ...(mode === "revoked project trust" && { settings: { trustedProjects: [] } }),
+        ...(mode !== "Headless"
           ? {
               onMcpAuth: async (request: McpAuthRequest) => {
                 asked++;
-                expect(new URL(request.authorizationUrl).origin).toBe(new URL(current.url).origin);
+                if (mode === "new endpoint")
+                  expect(new URL(request.authorizationUrl).origin).toBe(
+                    new URL(current.url).origin,
+                  );
                 oldReply.resolve(obsolete);
                 return paste(request);
               },
@@ -910,13 +951,14 @@ test.each(["new endpoint", "Headless"])(
       oldReply.resolve(obsolete);
       await resumed.waitForIdle();
       expect(old.signal.aborted).toBe(true);
+      if (mode === "revoked project trust") expect(original.requests).toHaveLength(beforeReopen);
       expect(original.requests.filter((request) => request.path === "/token")).toHaveLength(0);
       expect(asked).toBe(mode === "new endpoint" ? 1 : 0);
       expect(current.requests.filter((request) => request.path === "/token")).toHaveLength(
         mode === "new endpoint" ? 1 : 0,
       );
       expect(resumed.messages.findLast((message) => message.role === "toolResult")).toMatchObject({
-        isError: mode === "Headless",
+        isError: mode !== "new endpoint",
       });
     } finally {
       await resumed?.close();

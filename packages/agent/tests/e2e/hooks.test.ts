@@ -564,9 +564,13 @@ test("MCP and skill tools pass through PreToolUse hooks", async () => {
       events.push(event);
     },
   });
-  expect(events.filter((event) => event.type === "permission_denied")).toMatchObject([
-    { by: "hook", toolName: "skill" },
+  expect(
+    events
+      .filter((event) => event.type === "permission_denied")
+      .sort((a, b) => a.toolName.localeCompare(b.toolName)),
+  ).toMatchObject([
     { by: "hook", toolName: "mcp__local__echo" },
+    { by: "hook", toolName: "skill" },
   ]);
   expect(JSON.stringify(fake.contexts[1]!.messages)).not.toContain("Sensitive instructions");
   expect(await Bun.file(join(dirs.homeDir, "calls")).exists()).toBe(false);

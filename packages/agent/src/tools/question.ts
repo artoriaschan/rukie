@@ -37,7 +37,7 @@ export function createQuestionTool(
   onQuestion: OnQuestion,
   onInteractionStart?: OnInteractionStart,
 ): PresentedTool<typeof parameters> & PreflightTool<typeof parameters> {
-  const replies = new Map<number, QuestionReply>();
+  const replies = new Map<number, { epoch: string; signal: AbortSignal; reply?: QuestionReply }>();
   return {
     name: "ask_user_question",
     presentCall: (args) => ({
@@ -57,6 +57,19 @@ export function createQuestionTool(
     parameters,
     async preflight({ questions }, api, context, toolCallId, identity) {
       const signal = context.abortSignal ?? new AbortController().signal;
+      const taskId = Number(api.taskId);
+      const slot: { epoch: string; signal: AbortSignal; reply?: QuestionReply } = {
+        epoch: identity.epoch,
+        signal,
+      };
+      replies.set(taskId, slot);
+      signal.addEventListener(
+        "abort",
+        () => {
+          if (replies.get(taskId)?.epoch === slot.epoch) replies.delete(taskId);
+        },
+        { once: true },
+      );
       const reply = await requestInteraction<QuestionRequest, QuestionReply | undefined>(
         { toolCallId, questions, signal, identity },
         onQuestion,
@@ -72,13 +85,17 @@ export function createQuestionTool(
       );
       signal.throwIfAborted();
       if (reply === undefined) throw new Error("Question cancelled.");
-      replies.set(Number(api.taskId), reply);
-      signal.addEventListener("abort", () => replies.delete(Number(api.taskId)), { once: true });
+      if (replies.get(taskId)?.epoch !== identity.epoch)
+        throw new Error("Interaction callback ownership changed.");
+      slot.reply = reply;
     },
     async execute({ questions }, api, context) {
       context.abortSignal?.throwIfAborted();
-      const reply = replies.get(Number(api.taskId));
+      const slot = replies.get(Number(api.taskId));
       replies.delete(Number(api.taskId));
+      if (!slot || slot.signal !== context.abortSignal || slot.signal.aborted)
+        throw new Error("Interaction callback ownership changed.");
+      const reply = slot.reply;
       if (reply === undefined) throw new Error("Question has no current frontend reply.");
       const text =
         reply === "declined"

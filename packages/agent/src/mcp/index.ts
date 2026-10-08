@@ -1,7 +1,7 @@
 import { awaitWithContext } from "@earendil-works/chord/context";
 import type { PreflightTool } from "../tools/preflight.ts";
 import type { PresentedTool } from "../tools/presentation.ts";
-import type { ToolRegistration } from "@earendil-works/pi-durable";
+import type { ToolRegistration, TaskRecord } from "@earendil-works/pi-durable";
 import type { JsonValue } from "@earendil-works/chord";
 import {
   McpClient,
@@ -871,7 +871,12 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
               const parameters = Type.Object({});
               const pending = new Map<
                 number,
-                { proceed(): void; result: Promise<McpAuthOutcome> }
+                {
+                  epoch: string;
+                  signal: AbortSignal | undefined;
+                  proceed(): void;
+                  result: Promise<McpAuthOutcome>;
+                }
               >();
               const authTool: PreflightTool<typeof parameters> = {
                 name,
@@ -886,15 +891,26 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
                     {
                       identity,
                       async beforeExchange() {
+                        if (pending.get(Number(api.taskId))?.epoch !== identity.epoch)
+                          throw new Error("MCP callback ownership changed.");
+                        context.abortSignal?.throwIfAborted();
                         ready.resolve();
                         await awaitWithContext(allowed.promise, context);
                       },
                     },
                   );
-                  pending.set(Number(api.taskId), { proceed: () => allowed.resolve(), result });
+                  pending.set(Number(api.taskId), {
+                    epoch: identity.epoch,
+                    signal: context.abortSignal,
+                    proceed: () => allowed.resolve(),
+                    result,
+                  });
                   context.abortSignal?.addEventListener(
                     "abort",
-                    () => pending.delete(Number(api.taskId)),
+                    () => {
+                      if (pending.get(Number(api.taskId))?.epoch === identity.epoch)
+                        pending.delete(Number(api.taskId));
+                    },
                     { once: true },
                   );
                   // Preparation errors/cancellation still become the real tool result in execute.
@@ -911,7 +927,11 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
                   context.abortSignal?.throwIfAborted();
                   const prepared = pending.get(Number(api.taskId));
                   pending.delete(Number(api.taskId));
-                  if (!prepared)
+                  if (
+                    !prepared ||
+                    prepared.signal !== context.abortSignal ||
+                    prepared.signal?.aborted
+                  )
                     throw new Error("MCP authentication has no current prepared interaction.");
                   prepared.proceed();
                   const outcome = await prepared.result;
@@ -991,3 +1011,39 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
 }
 
 export { createMcpManager } from "./manager.ts";
+
+/** Only a live, unexecuted native authentication request may require transport declarations before resume. */
+export function hasPendingMcpInteraction(
+  task: TaskRecord<JsonValue, JsonValue, JsonValue>,
+): boolean {
+  if (
+    task.kind !== "pi.tool" ||
+    task.abortRequested ||
+    task.state.status === "terminal" ||
+    task.state.status === "completing"
+  )
+    return false;
+  const checkpoint = task.state.checkpoint;
+  if (
+    !checkpoint ||
+    typeof checkpoint !== "object" ||
+    Array.isArray(checkpoint) ||
+    checkpoint.phase !== "call"
+  )
+    return false;
+  return Object.entries(task.memos ?? {}).some(([name, value]) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const kind = value.kind;
+    return (
+      typeof kind === "string" &&
+      kind.startsWith("mcp__") &&
+      kind.endsWith("__authenticate") &&
+      name === `rukie.interaction.${kind}` &&
+      value.version === 1 &&
+      value.phase === "pending" &&
+      value.taskId === Number(task.id) &&
+      value.conversationId === Number(task.conversationId) &&
+      value.requestId === `interaction:${Number(task.id)}:${kind}`
+    );
+  });
+}

@@ -378,6 +378,11 @@ export function createPermissionGate(options: PermissionGateOptions) {
         ...(decision.hook !== undefined && { hook: decision.hook }),
       };
     }
+    const identity = await context.identify();
+    // Memo persistence may yield while a sibling grants this command. Recheck before
+    // installing the withdrawal listener; thereafter reply and withdrawal race together.
+    if (decision.by !== "hook" && evaluateRuleStage(toolCall.name, args)?.decision === "allow")
+      return { decision: "allow" };
     const controller = new AbortController();
     const abort = () => controller.abort();
     if (signal.aborted) controller.abort();
@@ -397,7 +402,7 @@ export function createPermissionGate(options: PermissionGateOptions) {
       reply = await Promise.race([
         requestInteraction(
           {
-            identity: await context.identify(),
+            identity,
             toolCallId: toolCall.id,
             toolName: toolCall.name,
             args,

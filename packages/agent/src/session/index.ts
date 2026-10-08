@@ -58,7 +58,7 @@ const entryData = (entry: EntryRecord | undefined) => {
 };
 import { createJobs } from "../tools/jobs/index.ts";
 import { preflightTool } from "../tools/preflight.ts";
-import { hasPendingMcpInteraction } from "../interaction/index.ts";
+import { hasPendingMcpInteraction } from "../mcp/index.ts";
 import { resolveModel, isTrustedProject, modelState } from "../config/index.ts";
 import {
   createJsonlStore,

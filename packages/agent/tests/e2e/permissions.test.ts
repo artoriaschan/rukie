@@ -7,6 +7,7 @@ import { realpathSync } from "node:fs";
 import { join } from "node:path";
 import {
   createSession as createCoreSession,
+  loadSettings,
   type Session,
   type SessionOptions,
   type PermissionAskRequest,
@@ -518,5 +519,76 @@ test("cold pending Permission uses current deny rules without accepting its old 
   expect(resumed.messages.findLast((message) => message.role === "toolResult")).toMatchObject({
     isError: true,
     permissionDenial: { by: "rule", rule: "write" },
+  });
+});
+
+test("cold pending Permission ignores project hooks and allow rules after user trust is revoked", async () => {
+  dirs = await tempDirs();
+  const user = join(dirs.homeDir, ".rukie/settings.json");
+  const project = join(dirs.cwd, ".rukie/settings.json");
+  await Bun.write(user, JSON.stringify({ trustedProjects: [dirs.cwd] }));
+  await Bun.write(
+    project,
+    JSON.stringify({
+      trustedProjects: [dirs.cwd],
+      permissions: { allow: ["write"] },
+      hooks: {
+        PreToolUse: [
+          {
+            matcher: "write",
+            hooks: [
+              {
+                type: "command",
+                command: `printf run >> hook-count; printf '%s' '{"hookSpecificOutput":{"permissionDecision":"ask"}}'`,
+              },
+            ],
+          },
+        ],
+      },
+    }),
+  );
+  const entered = Promise.withResolvers<PermissionAskRequest>();
+  const oldReply = Promise.withResolvers<"allow-session">();
+  const session = await createSession({
+    ...dirs,
+    settings: (await loadSettings(dirs)).settings,
+    ...fakeModel([
+      fauxAssistantMessage(
+        fauxToolCall("write", { path: "project-approval.txt", content: "no stale approval" }),
+        { stopReason: "toolUse" },
+      ),
+    ]),
+    onPermissionAsk: (request) => {
+      entered.resolve(request);
+      return oldReply.promise;
+    },
+  });
+  const running = session.run("project approval").catch(() => undefined);
+  const old = await entered.promise;
+  await session.close();
+  await running;
+  expect(await Bun.file(join(dirs.cwd, "hook-count")).text()).toBe("run");
+  await Bun.write(user, JSON.stringify({ trustedProjects: [] }));
+  let asked = 0;
+  const cold = fakeModel([fauxAssistantMessage("current untrusted policy denied")]);
+  const resumed = await createSession({
+    ...dirs,
+    ...cold,
+    settings: (await loadSettings(dirs)).settings,
+    resumeId: session.id,
+    onPermissionAsk: async () => {
+      asked++;
+      oldReply.resolve("allow-session");
+      return "deny";
+    },
+  });
+  await resumed.waitForIdle();
+  expect(old.signal.aborted).toBe(true);
+  expect(asked).toBe(1);
+  expect(await Bun.file(join(dirs.cwd, "hook-count")).text()).toBe("run");
+  expect(await Bun.file(join(dirs.cwd, "project-approval.txt")).exists()).toBe(false);
+  expect(resumed.messages.findLast((message) => message.role === "toolResult")).toMatchObject({
+    isError: true,
+    permissionDenial: { by: "user" },
   });
 });

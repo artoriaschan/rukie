@@ -5,6 +5,7 @@ import {
   type Session,
   type PermissionAskRequest,
   type QuestionRequest,
+  type QuestionReply,
 } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
@@ -274,4 +275,50 @@ test("session grants from one child also cover sibling calls", async () => {
     })
   ).run("delegate");
   expect(asked).toBe(1);
+});
+
+test("a child's pending Question cold-reopens with the same origin and fresh callback ownership", async () => {
+  dirs = await tempDirs();
+  const entered = Promise.withResolvers<QuestionRequest>();
+  const oldReply = Promise.withResolvers<QuestionReply>();
+  const session = await createSession({
+    ...dirs,
+    ...fakeModel([delegate(), askQuestion()]),
+    onQuestion: (request) => {
+      entered.resolve(request);
+      return oldReply.promise;
+    },
+  });
+  const running = session.run("delegated question before restart").catch(() => undefined);
+  const old = await entered.promise;
+  await session.close();
+  await running;
+  let replacement: QuestionRequest | undefined;
+  const cold = fakeModel([
+    fauxAssistantMessage("child replacement complete"),
+    fauxAssistantMessage("parent received replacement"),
+  ]);
+  const resumed = await createSession({
+    ...dirs,
+    ...cold,
+    resumeId: session.id,
+    onQuestion: async (request) => {
+      replacement = request;
+      oldReply.resolve({ answers: [{ selected: ["No"] }] });
+      return { answers: [{ selected: ["Yes"] }] };
+    },
+  });
+  await resumed.waitForIdle();
+  expect(replacement?.origin).toEqual(old.origin);
+  expect(replacement?.identity.requestId).toBe(old.identity.requestId);
+  expect(replacement?.identity.epoch).not.toBe(old.identity.epoch);
+  expect(old.signal.aborted).toBe(true);
+  const child = await resumed.readSubagent(old.origin!.agentId);
+  expect(JSON.stringify(child?.messages)).toContain("→ Yes");
+  expect(JSON.stringify(child?.messages)).not.toContain("→ No");
+  expect(
+    resumed.messages.filter(
+      (message) => message.role === "toolResult" && message.toolName === "subagent",
+    ),
+  ).toHaveLength(1);
 });
