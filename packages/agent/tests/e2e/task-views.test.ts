@@ -49,6 +49,7 @@ test.each(cases)(
     const session = await createSession({ ...options, ...fakeModel(replies) });
     let resumed: Awaited<ReturnType<typeof createSession>> | undefined;
     try {
+      if (name === "exit_plan_mode") await session.setPlanMode(true);
       const events: SessionEvent[] = [];
       await session.run("inspect", {
         onEvent: (event) => {
@@ -75,3 +76,63 @@ test.each(cases)(
     }
   },
 );
+
+test("inactive exit_plan_mode keeps its preflight receipt classification on Resume without execution start", async () => {
+  const dirs = await tempDirs();
+  const options = {
+    ...dirs,
+    onPlanReview: async () => {
+      throw new Error("Inactive Plan must not open review");
+    },
+  };
+  const session = await createSession({
+    ...options,
+    ...fakeModel([
+      fauxAssistantMessage(fauxToolCall("exit_plan_mode", { plan: "Plan" }), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("preflight rejected"),
+    ]),
+  });
+  let resumed: Awaited<ReturnType<typeof createSession>> | undefined;
+  const events: SessionEvent[] = [];
+  try {
+    await session.run("review outside Plan Mode", {
+      onEvent: (event) => {
+        events.push(event);
+      },
+    });
+    expect(
+      events.filter(
+        (event) => event.type === "tool_execution_start" && event.toolName === "exit_plan_mode",
+      ),
+    ).toEqual([]);
+    expect(
+      events.find(
+        (event) => event.type === "tool_execution_end" && event.toolName === "exit_plan_mode",
+      ),
+    ).toMatchObject({
+      result: { isError: true },
+      view: { kind: "task", displayKey: "tool.exit_plan_mode" },
+    });
+    const result = session.messages.find(
+      (message) => message.role === "toolResult" && message.toolName === "exit_plan_mode",
+    );
+    expect(result).toMatchObject({
+      isError: true,
+      view: { kind: "task", displayKey: "tool.exit_plan_mode" },
+    });
+    expect(JSON.stringify(result)).toContain("Not in plan mode.");
+    await session.close();
+    resumed = await createSession({ ...options, ...fakeModel([]), resumeId: session.id });
+    expect(
+      resumed.messages.find(
+        (message) => message.role === "toolResult" && message.toolName === "exit_plan_mode",
+      ),
+    ).toEqual(result);
+  } finally {
+    await resumed?.close();
+    await session.close();
+    await dirs.cleanup();
+  }
+});

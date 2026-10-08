@@ -693,8 +693,19 @@ test("job_output consumes stdout and stderr once, waits for completion, and repo
   await waitFile("second-ready");
   await session.run("read second");
   expect(resultText(session.messages)).toBe("[stderr]\nsecond\n[status: running]");
+  const collectingStarted = Promise.withResolvers<void>();
+  const collecting = session.run("collect", {
+    onEvent(event) {
+      if (event.type === "tool_execution_start" && event.toolName === "job_output")
+        collectingStarted.resolve();
+    },
+  });
+  // Wait for this Run's real collector admission before releasing the OS process;
+  // finishing while idle correctly starts an independent completion-notification Run.
+  await collectingStarted.promise;
+  expect(session.running).toBe(true);
   await Bun.write(join(dirs.cwd, "go"), "");
-  await session.run("collect");
+  await collecting;
   expect(resultText(session.messages)).toBe("(no new output)\n[status: failed, exit code: 7]");
   await session.run("kill finished");
   expect(resultText(session.messages)).toBe(

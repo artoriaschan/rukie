@@ -215,7 +215,12 @@ test.each(["default", "ask"])(
         command: "printf second-permitted",
         description: "Run test command",
       });
-      await app.waitFor(() => app.screen().join("\n").includes("second-permitted"));
+      // The pending tool heading appears before the dialog owns input; wait for its command body.
+      await app.waitFor(
+        () =>
+          app.screen().join("\n").includes("等待审批") &&
+          app.screen().some((line) => line.trim() === "printf second-permitted"),
+      );
       expect(app.screen().join("\n")).toContain("等待审批");
       expect(app.calls).toHaveLength(2);
       app.stdin.write("1\r");
@@ -484,7 +489,11 @@ test("concurrent questions are answered individually and dialog keys do not edit
     await app.waitFor(() => app.screen().join("\n").includes("等待审批"));
     expect(app.screen().join("\n")).toContain("allowed-parallel");
     app.stdin.write("ignored\x1b[200~pasted\x1b[201~1\r");
-    await app.waitFor(() => app.screen().join("\n").includes("refused.txt"));
+    // Both tool headings may already be present; wait for the second FIFO request's actual panel.
+    await app.waitFor(() => {
+      const screen = app.screen().join("\n");
+      return screen.includes("等待审批 · write") && screen.includes("本 session 允许此目录");
+    });
     expect(app.screen().join("\n")).toContain("等待审批");
     app.stdin.write("3\r");
     await app.waitFor(() => app.calls.length === 2);
@@ -500,6 +509,7 @@ test("concurrent questions are answered individually and dialog keys do not edit
         content: [{ type: "text", text: expect.stringContaining("Tool not authorized: write") }],
       },
     ]);
+    expect(await Bun.file(join(app.root, "refused.txt")).exists()).toBe(false);
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
     expect(app.screen()).toContain("❯ next draft");
