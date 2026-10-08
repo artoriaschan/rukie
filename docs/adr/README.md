@@ -53,5 +53,6 @@ ADR 保存长期架构决定、真实备选方案和代价。当前运行行为�
 - [0022 WebFetch 在执行层限制公网请求，跨源跳转重新授权](0022-public-web-fetch-network-boundary.md) — `accepted`
 - [0023 coding-agent 通过 npm 分发 Bun 可执行文件，以 Release PR 控制发布](0023-npm-cli-distribution.md) — `accepted`
 - [0024 采用 pi-durable 原生执行与恢复，移除旧 harness 和数据兼容](0024-adopt-pi-durable-harness.md) — `accepted`
+- [0025 Tool Search 在客户端执行，经 pi 原生工具变更加载 Deferred Tool](0025-client-side-tool-search.md) — `accepted`
 
 <!-- ADR_INDEX_END -->

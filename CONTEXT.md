@@ -146,6 +146,14 @@ _Avoid_: plugin, recipe
 通过 Model Context Protocol 提供工具的外部进程或 endpoint。它的工具命名为 `mcp__<server>__<tool>`。远程 server 可能要求 OAuth 授权：未授权时它的真实工具不可用，只暴露一个 `authenticate` 工具供模型发起授权。
 _Avoid_: connector, integration
 
+**Deferred Tool**:
+模型一开始看不到其定义、需要先经 Tool Search 找到才能调用的工具。只有 MCP 工具会成为 Deferred Tool，内置工具始终可见。一旦被找到，它在该对话后续轮次中保持可调用；哪些已被找到由 transcript 决定。
+_Avoid_: lazy tool, hidden tool
+
+**Tool Search**:
+模型按查询从 Deferred Tool 中找出匹配者并使其可调用的动作。只在 Deferred Tool 足够多、值得省下其定义占用的上下文时启用；否则所有工具照常可见。
+_Avoid_: tool discovery, tool lookup
+
 **MCP Credential**:
 用户为某个 MCP Server 完成 OAuth 授权后得到的凭据。属于用户，所有 session 与项目共用；按 server 名、url 与 headers 识别，同名但指向别处的 server 拿不到它，项目配置因此不能借用户身份连到别的地址。
 _Avoid_: token, auth, session
