@@ -9,3 +9,6 @@
 - ADR coverage：受限子类型例外是既有 allowlist 边界下的局部启用条件，无需新增 ADR；工具组合文档更正符合 ADR-0011，ADR-0025 的客户端检索、Transcript 发现集和 ADR-0024 的原生 harness 复用决定不变。
 
 - P3 最终核对：session/tools.ts 不组装 MCP 工具，修正职责表述为内置能力工具；MCP 组合归 session/index.ts 协调。文档局部修正以 check:docs、oxfmt 与 diff 检查验收，不重复 aggregate。
+
+- 集成 aggregate 发现声明消费者旧断言：tool-declarations.test.ts 的 later Run 子类型刷新仍期待整表移除／重加，而新 planner 保留未变化声明，只移除旧 subagent 后追加更新声明。最小单例 RED（110.97ms）确认；仅更新断言为 subagent 差异与存活工具原位、更新 subagent 末尾顺序，同时保留新类型精确 description 校验，未修改生产代码。
+- 该局部修正验证：env -u NO_COLOR bun test packages/agent/tests/e2e/tool-declarations.test.ts packages/agent/tests/e2e/tool-search.test.ts packages/agent/tests/e2e/tool-search-children.test.ts：43 pass、0 fail、129 assertions，4.70s，修正用例 54.69ms；bun run check:dev 与 git diff --check 通过。此次 focused 结果不替代或更改集成 aggregate 的实际失败记录，最终验收由集成分支处理。
