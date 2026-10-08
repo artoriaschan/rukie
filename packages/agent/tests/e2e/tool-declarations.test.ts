@@ -824,15 +824,15 @@ test("a later Run rebuilds the subagent declaration from the latest discovered t
     "---\nname: added\ndescription: Newly added\n---\nNew body",
   );
   await session.run("second");
-  // Native agent reconfiguration republishes its complete declaration atomically.
+  // Native reconfiguration replaces only the changed subagent declaration.
   expect(deltas(fake.contexts[1]!)).toEqual([
     ...deltas(fake.contexts[0]!),
-    { added: topLevelTools, removed: topLevelTools },
+    { added: ["subagent"], removed: ["subagent"] },
   ]);
   const subagent = BASELINE.subagent!;
-  // Reconfiguration retains executable ordering and updates the discovered type description.
+  // Surviving declarations keep their positions; the updated description is appended.
   expect(declared(fake.contexts[1]!)).toEqual(
-    expected(topLevelTools).map((tool) =>
+    expected([...topLevelTools.filter((name) => name !== "subagent"), "subagent"]).map((tool) =>
       tool.name === "subagent"
         ? { ...tool, description: `${subagent.description}\nadded: Newly added` }
         : tool,
