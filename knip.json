@@ -3,7 +3,10 @@
   "ignore": ["packages/coding-agent/src/ink/**"],
   "workspaces": {
     "packages/agent": {
-      "entry": ["tests/helpers/session-store-worker.ts"]
+      "entry": [
+        "tests/helpers/session-store-worker.ts",
+        "tests/helpers/subagent-recovery-worker.ts"
+      ]
     },
     "packages/coding-agent": {
       "entry": ["src/ink/index.ts", "tests/fixtures/runtime-default-streams.tsx"]

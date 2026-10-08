@@ -271,8 +271,8 @@ export interface Session {
       }
     | undefined
   >;
-  /** Interrupt a child Run; missing and idle children are a no-op. */
-  interruptSubagent(id: string): void;
+  /** Cancel the selected active child ownership and await its native terminal settlement. */
+  interruptSubagent(id: string): Promise<void>;
   /** Closes the owner once; pending native work remains resumable while host resources are released. */
   close(reason?: "exit" | "other"): Promise<void>;
   /** Wait for native foreground idle and host admission release; background children may remain active. */
@@ -2466,29 +2466,31 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 }
                 for (const record of placed)
                   if (record?.requestId) {
-                    let requestId = record.requestId;
-                    const report = /^subagent:(\d+):report$/.exec(requestId);
+                    let requestIds = [record.requestId];
+                    const report = /^subagent:(\d+):report$/.exec(record.requestId);
                     if (report) {
                       const all = await lease.storage.scanTasks({}, 100000, undefined, ctx);
                       const driver = all.items.find(
                         (task) => Number(task.id) === Number(report[1]),
                       );
-                      const original = driver && (await causalRequestForTask(driver, all.items));
-                      if (original) requestId = original;
+                      const originals = driver && (await requestCausesForTasks(all.items))(driver);
+                      if (originals?.size) requestIds = [...originals];
                     }
                     await harness.commit(async (tx) => {
                       const doc = await tx.doc(RequestDoc);
-                      doc.requests[requestId] ??= {
-                        submissions: [],
-                        tasks: [],
-                        startedAt: Date.now(),
-                        result: null,
-                      };
-                      const request = doc.requests[requestId]!;
-                      if (!request.submissions.includes(Number(record.id)))
-                        request.submissions.push(Number(record.id));
-                      if (!request.tasks.includes(Number(live.run!.taskId)))
-                        request.tasks.push(Number(live.run!.taskId));
+                      for (const requestId of requestIds) {
+                        doc.requests[requestId] ??= {
+                          submissions: [],
+                          tasks: [],
+                          startedAt: Date.now(),
+                          result: null,
+                        };
+                        const request = doc.requests[requestId]!;
+                        if (!request.submissions.includes(Number(record.id)))
+                          request.submissions.push(Number(record.id));
+                        if (!request.tasks.includes(Number(live.run!.taskId)))
+                          request.tasks.push(Number(live.run!.taskId));
+                      }
                     }, ctx);
                   }
               }
@@ -3251,8 +3253,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           ? last.usage.input + last.usage.cacheRead + last.usage.cacheWrite || undefined
           : undefined;
     }
-    async function causalRequestForTask(
-      task: import("@earendil-works/pi-durable").TaskRecord<JsonValue, JsonValue, JsonValue>,
+    /** Follow committed native ownership and accepted steer identities, including multiple callers. */
+    async function requestCausesForTasks(
       tasks: readonly import("@earendil-works/pi-durable").TaskRecord<
         JsonValue,
         JsonValue,
@@ -3260,27 +3262,50 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       >[],
     ) {
       const requests = (await harness.snapshot(RequestDoc, context))?.requests ?? {};
-      let current: typeof task | undefined = task;
-      const visited = new Set<number>();
-      while (current && !visited.has(Number(current.id))) {
-        visited.add(Number(current.id));
-        for (const [id, request] of Object.entries(requests))
-          if (request.tasks.includes(Number(current.id))) return id;
-        const input: JsonValue = current.input;
-        const origin: number | undefined =
-          input &&
-          typeof input === "object" &&
-          !Array.isArray(input) &&
-          typeof input.originToolTaskId === "number"
-            ? input.originToolTaskId
-            : undefined;
-        const parent: number | undefined = current.owner ?? origin;
-        current =
-          parent === undefined
-            ? undefined
-            : tasks.find((record) => Number(record.id) === Number(parent));
-      }
-      return undefined;
+      const submissions = (await lease.storage.scanSubmissions({}, 100000, undefined, context))
+        .items;
+      const conversations = (await lease.storage.scanConversations({}, 100000, undefined, context))
+        .items;
+      const byId = new Map(tasks.map((record) => [Number(record.id), record]));
+      return (task: (typeof tasks)[number]) => {
+        const found = new Set<string>();
+        const pending = [Number(task.id)];
+        const visited = new Set<number>();
+        while (pending.length) {
+          const id = pending.pop()!;
+          if (visited.has(id)) continue;
+          visited.add(id);
+          const current = byId.get(id);
+          if (!current) continue;
+          for (const [requestId, request] of Object.entries(requests))
+            if (request.tasks.includes(id)) found.add(requestId);
+          const input: JsonValue = current.input;
+          const origin =
+            input &&
+            typeof input === "object" &&
+            !Array.isArray(input) &&
+            typeof input.originToolTaskId === "number"
+              ? input.originToolTaskId
+              : undefined;
+          if (current.owner !== undefined) pending.push(Number(current.owner));
+          if (origin !== undefined) pending.push(origin);
+          if (current.kind === "rukie.subagent-driver") {
+            // The child Conversation owner fixes which driver accepted this input. A provider callId
+            // is not a causal edge: only the committed native ToolTask-derived request identity is.
+            const children = new Set(
+              conversations
+                .filter((child) => Number(child.owner?.taskId) === id)
+                .map((child) => Number(child.id)),
+            );
+            for (const submission of submissions) {
+              if (!children.has(Number(submission.conversationId))) continue;
+              const send = /^subagent-send:(\d+)$/.exec(submission.requestId ?? "");
+              if (send) pending.push(Number(send[1]));
+            }
+          }
+        }
+        return found;
+      };
     }
     const session: Session = {
       get running() {
@@ -3725,7 +3750,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         };
       },
       interruptSubagent(id) {
-        void subagents.interrupt(id, context).catch(warn);
+        return subagents.interrupt(id, context);
       },
       async abort() {
         assertAvailable();
@@ -3849,11 +3874,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             result = results.at(-1)!;
             const tasks = (await lease.storage.scanTasks({}, 100000, undefined, context)).items;
             const drivers = [];
+            const causes = await requestCausesForTasks(tasks);
             for (const task of tasks)
-              if (
-                task.kind === "rukie.subagent-driver" &&
-                (await causalRequestForTask(task, tasks)) === requestId
-              )
+              if (task.kind === "rukie.subagent-driver" && causes(task).has(requestId))
                 drivers.push(task);
             for (const driver of drivers) {
               const receipt = await Promise.race([
@@ -3988,11 +4011,11 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     const allTasks = (await lease.storage.scanTasks({}, 100000, undefined, context)).items;
     for (const record of recovering.submissions)
       if (record.requestId && requestValues[record.requestId]) currentRequestId = record.requestId;
-    if (!currentRequestId)
-      for (const task of recovering.tasks) {
-        const id = await causalRequestForTask(task.record, allTasks);
-        if (id) currentRequestId = id;
-      }
+    if (!currentRequestId) {
+      const causes = await requestCausesForTasks(allTasks);
+      for (const task of recovering.tasks)
+        for (const id of causes(task.record)) currentRequestId = id;
+    }
     harness.resume();
     return session;
   } catch (error) {
