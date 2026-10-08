@@ -59,6 +59,7 @@ import type { SessionEvent } from "./events.ts";
 import {
   permissionDenialFacts,
   modelContextMessages,
+  visibleReminderContents,
   transcriptMessages,
   type TranscriptMessage,
 } from "./messages.ts";
@@ -1873,6 +1874,16 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                   sources: [
                     ...childState.reminderSources,
                     childDeferredSource,
+                    {
+                      source: "skills",
+                      compareContent: false,
+                      currentContent: () =>
+                        skillsReminder(
+                          skills,
+                          visibleReminderContents(view, "skills"),
+                          childTools.some((tool) => tool.name === "skill"),
+                        ),
+                    },
                     childTracking.reminderSource,
                     {
                       source: "plan-mode",
@@ -2203,6 +2214,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           owned.afterEntry = null;
         }, ctx);
       }
+      const visibleContext = await conversation.context(ctx);
       const currentTools = await currentConversationTools(conversation, ctx);
       const deferred = planToolSearchLoadout({
         tools,
@@ -2220,7 +2232,16 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               history ?? [],
             ),
         },
-        { source: "skills", currentContent: () => skillsReminder(skills) },
+        {
+          source: "skills",
+          compareContent: false,
+          currentContent: () =>
+            skillsReminder(
+              skills,
+              visibleReminderContents(visibleContext, "skills"),
+              tools.some((tool) => tool.name === "skill"),
+            ),
+        },
         {
           source: "mcp",
           currentContent: () =>

@@ -241,3 +241,15 @@ export function transcriptMessages(entries: readonly EntryRecord[]): TranscriptM
     });
   });
 }
+
+/** Reminder history whose native model contributions survive the current context projection. */
+export function visibleReminderContents(view: ContextView, source: string): string[] {
+  return transcriptMessages(
+    view.entries.filter(
+      (entry, index) =>
+        entry.kind === "rukie.reminder" && (view.contributions[index]?.length ?? 0) > 0,
+    ),
+  ).flatMap((message) =>
+    message.role === "system-reminder" && message.source === source ? [message.content] : [],
+  );
+}

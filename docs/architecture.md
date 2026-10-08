@@ -54,7 +54,7 @@ Session 的 Background Job registry 管理 Bash 进程组、输出和游标。�
 | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
 | `session/`                                                               | 组合能力、协调 Run、事件、取消、存储操作与 frontend 接口                     |
 | `config/`、`prompt/`                                                     | 合并设置、解析模型与凭据，建立 System Prompt                                 |
-| `tools/`、`skills/`、`mcp/`                                              | 构造模型工具集、加载 Skill 内容、连接外部工具                                |
+| `tools/`、`skills/`、`mcp/`                                              | 构造模型工具集、发布精简 Skill 目录并按需加载正文、连接外部工具              |
 | [`tools/bash/`](../packages/agent/src/tools/bash/index.ts)               | 执行 Bash 调用、后台启动与超时提升，拥有输出采集与截断                       |
 | [`tools/tool-search/`](../packages/agent/src/tools/tool-search/index.ts) | 拥有 Deferred Tool 启用判定、保留顺序规划、查询与名单 reminder 差异          |
 | [`tools/jobs/`](../packages/agent/src/tools/jobs/index.ts)               | 持有 Session 的 Bash 进程组、输出与模型游标，提供后台任务工具                |

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import ignore from "ignore";
@@ -8,6 +9,7 @@ export interface Skill {
   content: string;
   filePath: string;
   disableModelInvocation?: boolean;
+  userInvocable?: boolean;
 }
 
 export function formatSkillInvocation(skill: Skill): string {
@@ -90,6 +92,8 @@ export async function discoverSkills(cwd: string, homeDir: string) {
             filePath: next,
             ...("disable-model-invocation" in metadata &&
               metadata["disable-model-invocation"] === true && { disableModelInvocation: true }),
+            ...("user-invocable" in metadata &&
+              metadata["user-invocable"] === false && { userInvocable: false }),
           };
           skills.set(skill.name, skill);
           if (!("user-invocable" in metadata) || metadata["user-invocable"] !== false)
@@ -110,15 +114,49 @@ export async function listSkills(options: { cwd: string; homeDir: string }) {
   return (await discoverSkills(options.cwd, options.homeDir)).invocable;
 }
 
-export function skillsReminder(skills: ReadonlyMap<string, Skill>): string {
-  if (skills.size === 0) return "Available skills: none.";
-  return (
-    "Available skills (use the skill tool to load instructions by name):\n" +
-    [...skills.values()]
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .map((skill) => `- ${skill.name}: ${skill.description}`)
-      .join("\n")
+/** Compare only model-visible catalogs; publish a complete replacement when entries change. */
+export function skillsReminder(
+  skills: ReadonlyMap<string, Skill>,
+  history: readonly string[],
+  toolVisible: boolean,
+): string | undefined {
+  const entries = toolVisible
+    ? [...skills.values()]
+        .filter((skill) => !skill.disableModelInvocation)
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((skill) => {
+          const normalized = skill.description.replace(/\s+/g, " ").trim();
+          return [
+            skill.name,
+            normalized.length <= 500 ? normalized : `${normalized.slice(0, 497)}...`,
+          ] as const;
+        })
+    : [];
+  const lines = entries.map(
+    ([name, description]) =>
+      `- ${name}: ${description.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")}`,
   );
+  const digest = (values: readonly string[]) =>
+    createHash("sha256").update(JSON.stringify(values)).digest("hex");
+  const previous = history.at(-1);
+  const priorEntries = /<available_skills>\n([\s\S]*?)<\/available_skills>/.exec(
+    previous ?? "",
+  )?.[1];
+  if (
+    priorEntries !== undefined &&
+    digest(priorEntries.trimEnd().split("\n").filter(Boolean)) === digest(lines)
+  )
+    return undefined;
+  if (entries.length === 0 && previous === undefined) return undefined;
+  return [
+    "Available skills: this complete catalog replaces every earlier skill catalog.",
+    "<available_skills>",
+    ...lines,
+    "</available_skills>",
+    entries.length
+      ? "Use the skill tool to load full instructions by name."
+      : "No skills are available through the skill tool. Do not use names from earlier catalogs.",
+  ].join("\n");
 }
 
 export function skillInvocation(
@@ -127,5 +165,7 @@ export function skillInvocation(
 ): string | undefined {
   const name = /^\/([a-z0-9]+(?:-[a-z0-9]+)*)(?=\s|$)/.exec(prompt)?.[1];
   const skill = name ? skills.get(name) : undefined;
-  return skill ? formatSkillInvocation(skill) : undefined;
+  return skill && skill.userInvocable !== false
+    ? `The user invoked this skill directly; its full instructions are already included. Follow them and do not call the skill tool again for ${skill.name}.\n\n${formatSkillInvocation(skill)}`
+    : undefined;
 }

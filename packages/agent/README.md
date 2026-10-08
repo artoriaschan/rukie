@@ -57,6 +57,16 @@ Rewind 要求原生任务已结算；fork 按 document 策略保留 Goal facts�
 
 View 不写入 Transcript，也不进入模型上下文。`Session.messages` 在读取时重算调用与结果 view；恢复时使用当前内置 presenter，未连接的 MCP 工具没有 view。Presenter 只能读取参数、结果文本及 details，不查询当前文件或运行状态。前台 bash details 保存退出码与信号；write 保存写入前后内容，超过 50 KiB 的文件保存 unified patch，edit 保存实际修改 patch，以便恢复后重算 diff。
 
+# Skills
+
+Agent Core 从用户目录和当前项目的 `.rukie/skills`、`.claude/skills`、`.agents/skills` 发现 `SKILL.md`，项目同名技能覆盖用户技能；无效定义发出警告并跳过。Frontend 可通过 `listSkills({ cwd, homeDir })` 获取用户可调用的名称与描述；`user-invocable: false` 不进入该列表，也不展开 `/name`，但仍可供模型加载。
+
+模型目录只提供技能摘要。条目只包含名称和描述，不包含正文、绝对路径或 `whenToUse`；连续空白合并为单个空格，去掉首尾空白，每条描述最多 500 个字符，超出时保留前 497 个字符并追加 `...`。`disable-model-invocation: true` 的技能不进入模型目录，也不能经 `skill` 工具加载。目录为空或当前工具集没有 `skill` 时，不发布初始目录；子 Session 按自己的工具白名单判断。
+
+模型调用 `skill({ name })` 才收到完整正文及文件位置、相对引用基准；工具调用照常受权限和 Hook 约束。用户在 prompt 开头直接输入 `/name` 时，程序保留原 prompt，并将正文作为 `skill-invocation` System Reminder 注入，提醒模型正文已提供、不要再次调用 `skill` 加载。这仍可调用禁止模型主动加载的技能；未知名称和 `user-invocable: false` 保持普通文字。
+
+目录的规范化条目经过摘要比较，历史只取原生当前模型上下文中仍可见的技能目录。条目未变就不追加，正文、文件路径或被截掉的描述尾部变化不导致目录更新；可见条目改变时发布完整替换目录，明确停用旧名单，最后一个条目移除时发布空替换。Compaction 后目录已不再可见时重新发布，仍可见时复用；Resume 与 Rewind 使用各自当前分支的可见上下文，不保存另一个进程内“已发布”状态。
+
 # Context Usage
 
 `session.contextUsage()` 同步返回当前模型上下文的占用及分段快照，不发起模型请求、不写入 Transcript。总占用采用最近一轮 provider 输入计数（含 cacheRead 与 cacheWrite），Session Resume 从恢复的当前上下文读取该计数；没有输入计数时按当前上下文估算。分段始终为估算值，其中 tools 包含当前内置和 MCP 工具定义，以及工具返回内容；已被移除或替换的定义不重复计入。Compaction、Rewind 或模型切换使旧计数失效，随后恢复估算，直到收到新回复。Frontend 可在恢复视图时读取该快照，并继续消费 `context_usage` 事件更新预览。分类报告使用 `session.contextReport()`，采用相同的总占用计数。

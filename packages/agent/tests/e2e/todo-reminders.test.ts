@@ -275,10 +275,6 @@ test("Compaction immediately persists the current Todo List after the summary fo
   expect(session.messages[summary + 1]).toMatchObject({ role: "system-reminder", source: "date" });
   expect(session.messages[summary + 2]).toMatchObject({
     role: "system-reminder",
-    source: "skills",
-  });
-  expect(session.messages[summary + 3]).toMatchObject({
-    role: "system-reminder",
     source: "todo",
     content: expect.stringContaining("● Review"),
   });
@@ -299,6 +295,10 @@ test("Compaction immediately persists the current Todo List after the summary fo
 
 test("unchanged Todo List and skills reminders are re-injected after each Compaction", async () => {
   dirs = await tempDirs();
+  await Bun.write(
+    join(dirs.cwd, ".agents/skills/review/SKILL.md"),
+    "---\nname: review\ndescription: Review changes\n---\nReview instructions.\n",
+  );
   await evidenceFile();
   const todos = [{ content: "Review", status: "pending" }];
   const fake = fakeModel([

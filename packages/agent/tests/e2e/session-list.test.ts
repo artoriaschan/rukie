@@ -95,7 +95,7 @@ test("lists the current project's named sessions by native modification time", a
       "titleSource",
       "updatedAt",
     ]);
-    expect(sessions[0]!.messageCount).toBe(6);
+    expect(sessions[0]!.messageCount).toBe(5);
     expect(sessions[0]!.updatedAt).toBeGreaterThanOrEqual(sessions[1]!.updatedAt);
     expect(await listSessions({ ...dirs, cwd: dirs.homeDir })).toEqual([]);
   } finally {
@@ -203,7 +203,7 @@ test("a MemoryStorage backend lists committed Session metadata without JSONL pat
     expect(sessions.map(({ id }) => id)).toEqual([latest.id, first.id]);
     expect(sessions[0]).toMatchObject({
       title: "Latest",
-      messageCount: 6,
+      messageCount: 5,
       model: "faux/faux-1",
     });
     expect(sessions[0]!.updatedAt).toBeGreaterThanOrEqual(sessions[1]!.updatedAt);

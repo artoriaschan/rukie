@@ -162,7 +162,7 @@ test("resume preserves the model and Transcript prefix and appends only changed 
   expect(emptyCatalog.at(-1)).toMatchObject({
     role: "system-reminder",
     source: "skills",
-    content: "Available skills: none.",
+    content: expect.stringContaining("No skills are available through the skill tool."),
   });
   events.length = 0;
   await empty.run("still empty", {
@@ -352,4 +352,159 @@ test("invalid skills are skipped with warnings while valid skills and the Run re
     toolName: "skill",
     isError: true,
   });
+});
+
+test("catalog descriptions collapse whitespace, fit 500 characters, and ignore unrendered changes", async () => {
+  dirs = await tempDirs();
+  const description = `  Review\n\t changes   ${"x".repeat(600)}`;
+  const path = await writeSkill(
+    dirs.cwd,
+    ".agents",
+    "review",
+    JSON.stringify(description),
+    "PRIVATE_BODY",
+  );
+  const fake = fakeModel([fauxAssistantMessage("first"), fauxAssistantMessage("second")]);
+  const session = await createSession({ ...dirs, ...fake });
+  await session.run("first");
+  const catalog = reminders(session, "skills")[0]!;
+  const line = catalog.content.split("\n").find((line) => line.startsWith("- review:"))!;
+  const rendered = line.slice("- review: ".length);
+  expect(rendered).toHaveLength(500);
+  expect(rendered).toStartWith("Review changes ");
+  expect(rendered).toEndWith("...");
+  expect(catalog.content).not.toContain(path);
+  expect(catalog.content).not.toContain("PRIVATE_BODY");
+  const normalized = `Review changes ${"x".repeat(600)}TAIL`;
+  await writeSkill(
+    dirs.cwd,
+    ".agents",
+    "review",
+    JSON.stringify(normalized),
+    "UPDATED_PRIVATE_BODY",
+  );
+  await session.run("second");
+  expect(reminders(session, "skills")).toHaveLength(1);
+});
+
+test("user-only skills stay out of the model catalog and loader but slash invocation supplies instructions once", async () => {
+  dirs = await tempDirs();
+  const path = await writeSkill(dirs.cwd, ".agents", "manual", "Manual only", "MANUAL_BODY");
+  await Bun.write(
+    path,
+    "---\nname: manual\ndescription: Manual only\ndisable-model-invocation: true\nwhenToUse: NEVER_CATALOG\n---\nMANUAL_BODY\n",
+  );
+  await writeSkill(dirs.cwd, ".agents", "review", "Review changes", "REVIEW_BODY");
+  const fake = fakeModel([
+    fauxAssistantMessage(fauxToolCall("skill", { name: "manual" }), { stopReason: "toolUse" }),
+    fauxAssistantMessage("first"),
+    fauxAssistantMessage("second"),
+  ]);
+  const session = await createSession({ ...dirs, ...fake });
+  await session.run("load manual");
+  expect(reminders(session, "skills")[0]!.content).not.toContain("manual");
+  expect(JSON.stringify(fake.contexts[0]!.messages)).not.toContain("MANUAL_BODY");
+  expect(
+    fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
+  ).toMatchObject({ isError: true });
+  await session.run("/manual requested by user");
+  expect(JSON.stringify(fake.contexts[2]!.messages)).toContain("MANUAL_BODY");
+  expect(reminders(session, "skill-invocation").at(-1)!.content).toContain(
+    "do not call the skill tool again",
+  );
+  expect(reminders(session, "skills")).toHaveLength(1);
+});
+
+test("no callable skills means no initial directory", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel([fauxAssistantMessage("done")]);
+  const session = await createSession({ ...dirs, ...fake });
+  await session.run("hello");
+  expect(reminders(session, "skills")).toEqual([]);
+});
+
+test.each([true, false])(
+  "child skill directory follows skill tool visibility=%s",
+  async (visible) => {
+    dirs = await tempDirs();
+    await writeSkill(dirs.cwd, ".agents", "review", "UNIQUE_SKILL_CATALOG", "PRIVATE_BODY");
+    await Bun.write(
+      join(dirs.cwd, ".rukie/agents/limited.md"),
+      `---\nname: limited\ndescription: Limited\ntools: [${visible ? "skill" : "read"}]\n---\nInspect only.\n`,
+    );
+    const fake = fakeModel([
+      fauxAssistantMessage(
+        fauxToolCall("subagent", {
+          subagent_type: "limited",
+          description: "inspect",
+          prompt: "inspect",
+          run_in_background: false,
+        }),
+        { stopReason: "toolUse" },
+      ),
+      (context) => {
+        expect(getCurrentTools(context.messages).some((tool) => tool.name === "skill")).toBe(
+          visible,
+        );
+        expect(JSON.stringify(context.messages).includes("UNIQUE_SKILL_CATALOG")).toBe(visible);
+        return fauxAssistantMessage("child done");
+      },
+      fauxAssistantMessage("parent done"),
+    ]);
+    expect((await (await createSession({ ...dirs, ...fake })).run("delegate")).text).toBe(
+      "parent done",
+    );
+  },
+);
+
+test("a compacted-away directory is republished once, then unchanged requests and resume reuse it", async () => {
+  dirs = await tempDirs();
+  await writeSkill(dirs.cwd, ".agents", "review", "POST_COMPACTION_SKILL", "PRIVATE_BODY");
+  await Bun.write(join(dirs.cwd, "evidence.txt"), "OLD_EVIDENCE ".repeat(4500));
+  const fake = fakeModel([
+    fauxAssistantMessage(fauxToolCall("read", { path: "evidence.txt" }), { stopReason: "toolUse" }),
+    fauxAssistantMessage("old evidence"),
+    fauxAssistantMessage(fauxToolCall("read", { path: "evidence.txt" }), { stopReason: "toolUse" }),
+    fauxAssistantMessage("second old evidence"),
+    fauxAssistantMessage("recent reply"),
+    fauxAssistantMessage("Summary only."),
+    fauxAssistantMessage("continued"),
+    fauxAssistantMessage("again"),
+  ]);
+  let session = await createSession({ ...dirs, ...fake });
+  await session.run("old task");
+  await session.run("second old task");
+  await session.run("recent task");
+  await session.compact();
+  await session.run("continue");
+  expect(JSON.stringify(fake.contexts.at(-1)!.messages)).toContain("Summary only.");
+  expect(JSON.stringify(fake.contexts.at(-1)!.messages)).toContain("POST_COMPACTION_SKILL");
+  expect(reminders(session, "skills")).toHaveLength(2);
+  await session.run("again");
+  expect(reminders(session, "skills")).toHaveLength(2);
+  const resumeId = session.id;
+  await session.close();
+  const next = fakeModel([fauxAssistantMessage("resumed")]);
+  session = await createSession({ ...dirs, ...next, resumeId });
+  await session.run("resume");
+  expect(reminders(session, "skills")).toHaveLength(2);
+  expect(JSON.stringify(next.contexts[0]!.messages)).toContain("POST_COMPACTION_SKILL");
+});
+
+test("user-invocable false skills remain model-callable but do not expand slash prompts", async () => {
+  dirs = await tempDirs();
+  await Bun.write(
+    join(dirs.cwd, ".agents/skills/model-only/SKILL.md"),
+    "---\nname: model-only\ndescription: Model only\nuser-invocable: false\n---\nMODEL_ONLY_BODY\n",
+  );
+  const fake = fakeModel([
+    fauxAssistantMessage(fauxToolCall("skill", { name: "model-only" }), { stopReason: "toolUse" }),
+    fauxAssistantMessage("done"),
+  ]);
+  const session = await createSession({ ...dirs, ...fake });
+  await session.run("/model-only ordinary text");
+  expect(reminders(session, "skill-invocation")).toHaveLength(0);
+  expect(reminders(session, "skills")[0]!.content).toContain("model-only");
+  expect(JSON.stringify(fake.contexts[0]!.messages)).not.toContain("MODEL_ONLY_BODY");
+  expect(JSON.stringify(fake.contexts[1]!.messages)).toContain("MODEL_ONLY_BODY");
 });

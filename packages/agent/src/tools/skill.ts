@@ -16,6 +16,8 @@ export function createSkillTool(
       signal?.throwIfAborted();
       const skill = getSkill(name);
       if (!skill) throw new Error(`Skill not found: ${name}`);
+      if (skill.disableModelInvocation)
+        throw new Error(`Skill is not available for model invocation: ${name}`);
       return {
         content: [{ type: "text", text: formatSkillInvocation(skill) }],
         details: undefined,

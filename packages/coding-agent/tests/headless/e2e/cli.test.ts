@@ -779,7 +779,6 @@ test("stream-json emits session metadata, verbatim pi events, and the Run result
   ).toMatchObject([
     { source: "environment", content: expect.stringContaining(`cwd: ${await realpath(dirs.cwd)}`) },
     { source: "date", content: expect.stringContaining("Current date:") },
-    { source: "skills", content: "Available skills: none." },
   ]);
   expect(server.requests).toHaveLength(1);
 
@@ -944,12 +943,6 @@ test("reads a piped prompt and completes normally", async () => {
       role: "user",
       content: [
         { type: "text", text: expect.stringContaining("<system-reminder>\nCurrent date:") },
-      ],
-    },
-    {
-      role: "user",
-      content: [
-        { type: "text", text: "<system-reminder>\nAvailable skills: none.\n</system-reminder>" },
       ],
     },
     { role: "user", content: [{ type: "text", text: "from pipe" }] },

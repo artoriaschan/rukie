@@ -139,7 +139,7 @@ _Avoid_: usage event, transcript statistics
 _Avoid_: function, command
 
 **Skill**:
-由 `SKILL.md` 定义的一个指令目录，遵循 Agent Skills 规范。模型一开始只看到它的 name 和 description，需要时才加载正文。
+由 `SKILL.md` 定义的一个指令目录，遵循 Agent Skills 规范。模型目录只展示模型可调用技能的 name 和规范化 description，正文通过 skill 工具或用户的 Skill Invocation 按需提供。目录以当前模型可见上下文为准，内容变化时完整替换，不重复追加未变条目。
 _Avoid_: plugin, recipe
 
 **MCP Server**:

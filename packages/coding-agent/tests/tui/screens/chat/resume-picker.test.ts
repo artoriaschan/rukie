@@ -56,7 +56,7 @@ test("a 40 by 12 picker scrolls two-row entries and dims a prompt fallback", asy
     app.stdin.write("\x1b[A");
     await app.waitFor(() => screen(app).includes("Prompt session"));
     const row = app.screen().findIndex((line) => line.includes("Prompt session"));
-    expect(app.screen()[row + 1]).toContain("6 messages");
+    expect(app.screen()[row + 1]).toContain("5 messages");
     const column = app.screen()[row]!.indexOf("Prompt session");
     expect(
       app.terminal.buffer.active
@@ -163,7 +163,7 @@ test("/resume displays two-row session metadata, Escape preserves the current ch
     await app.waitFor(() => screen(app).includes("❯ Stored session"));
     const row = app.screen().findIndex((line) => line.includes("Stored session"));
     expect(row).toBeGreaterThanOrEqual(0);
-    expect(app.screen()[row + 1]).toContain("6 messages · resume-test/second");
+    expect(app.screen()[row + 1]).toContain("5 messages · resume-test/second");
     expect(app.screen()[row + 1]).toMatch(/\d{2}\/\d{2}/);
     app.stdin.write("\x1b");
     await app.waitFor(() => !screen(app).includes("Resume session"));
