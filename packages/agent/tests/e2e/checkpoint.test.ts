@@ -5,7 +5,7 @@ import { ROOT_CONVERSATION_ID } from "@earendil-works/pi-durable";
 import type { SessionStorageLease } from "../../src/store/index.ts";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { realpath, rm, symlink } from "node:fs/promises";
+import { mkdir, realpath, rm, symlink } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import {
   createJsonlStore,
@@ -661,6 +661,87 @@ test("combined rewind restores code before publishing the restored conversation"
     deleted: [],
   });
   expect(observed).toEqual([{ content: "original", checkpointCount: 0, hasUser: false }]);
+});
+
+test("a file restore I/O failure leaves the selected conversation and Checkpoints intact across reopen", async () => {
+  dirs = await tempDirs();
+  const path = join(dirs.cwd, "target.txt");
+  await Bun.write(path, "original");
+  const fake = fakeModel([
+    fauxAssistantMessage(fauxToolCall("write", { path: "target.txt", content: "changed" }), {
+      stopReason: "toolUse",
+    }),
+    fauxAssistantMessage("change committed"),
+  ]);
+  const session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
+  await session.run("change target");
+  const checkpoints = session.checkpoints();
+  const messages = structuredClone(session.messages);
+  await rm(path);
+  await mkdir(path);
+  const snapshots: SessionEvent[] = [];
+  session.subscribe((event) => {
+    if (event.type === "snapshot") snapshots.push(event);
+  });
+  snapshots.length = 0;
+  await expect(
+    session.rewind(checkpoints[0]!.promptEntryId, { code: true, conversation: true }),
+  ).rejects.toThrow();
+  expect(session.messages).toEqual(messages);
+  expect(session.checkpoints()).toEqual(checkpoints);
+  expect(snapshots).toEqual([]);
+  expect(fake.contexts).toHaveLength(2);
+  await session.close();
+  const cold = fakeModel([]);
+  const resumed = await createSession({ ...dirs, ...cold, resumeId: session.id });
+  expect(resumed.messages).toEqual(messages);
+  expect(resumed.checkpoints()).toEqual(checkpoints);
+  expect(cold.contexts).toEqual([]);
+});
+
+test("conversation rewind keeps the original image entries observable without restoring discarded messages to model context", async () => {
+  dirs = await tempDirs();
+  const png =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aSf8AAAAASUVORK5CYII=";
+  const store = createJsonlStore(dirs);
+  let lease: SessionStorageLease | undefined;
+  const open = store.open.bind(store);
+  store.open = async (...args) => {
+    lease = await open(...args);
+    return lease;
+  };
+  const fake = fakeModel([
+    fauxAssistantMessage("image answer"),
+    fauxAssistantMessage("discarded answer"),
+  ]);
+  const session = await createSession({ ...dirs, store, ...fake });
+  await session.run("inspect image", { images: [{ data: png, mimeType: "image/png" }] });
+  await session.run("discard this later prompt");
+  const original = await lease!.storage.scanEntries(
+    { conversationId: ROOT_CONVERSATION_ID },
+    1000,
+    undefined,
+    BACKGROUND_CONTEXT,
+  );
+  const image = original.items.find(
+    (entry) => entry.model && JSON.stringify(entry.model).includes(png),
+  );
+  expect(image).toBeDefined();
+  await session.rewind(session.checkpoints()[1]!.promptEntryId, {
+    code: false,
+    conversation: true,
+  });
+  expect(JSON.stringify(session.messages)).toContain(png);
+  expect(JSON.stringify(session.messages)).not.toContain("discarded answer");
+  expect((await lease!.storage.entry(image!.id, BACKGROUND_CONTEXT))!.entry).toEqual(image!);
+  await session.close();
+  const cold = fakeModel([fauxAssistantMessage("replacement answer")]);
+  const resumed = await createSession({ ...dirs, ...cold, resumeId: session.id });
+  expect(JSON.stringify(resumed.messages)).toContain(png);
+  await resumed.run("replacement prompt");
+  expect(JSON.stringify(cold.contexts[0])).toContain(png);
+  expect(JSON.stringify(cold.contexts[0])).not.toContain("discarded answer");
+  expect(JSON.stringify(cold.contexts[0])).not.toContain("discard this later prompt");
 });
 
 test.each(["live", "resumed"])(

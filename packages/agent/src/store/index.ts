@@ -13,19 +13,31 @@ import {
 import { JsonlStorage } from "@earendil-works/pi-durable/storage/jsonl";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { err, ok, FileError, type FileSystem } from "@earendil-works/pi-durable/env";
+import { Type, type Static } from "typebox";
+import { Value } from "typebox/value";
 import { createUserVisibleError, type Settings } from "@rukie/shared";
 import type { TitleSource } from "../session-title/index.ts";
+import { CommittedFiles } from "./files.ts";
 
-export const SessionMetadataDoc = defineDoc<{
-  id: string;
-  cwd: string;
-  title: string;
-  titleSource: TitleSource;
-  model: string;
-  activeConversationId: number;
-  updatedAt: number;
-  messageCount: number;
-}>({
+const metadataSchema = Type.Object(
+  {
+    id: Type.String({ minLength: 1 }),
+    cwd: Type.String({ minLength: 1 }),
+    title: Type.String(),
+    titleSource: Type.Union([Type.Literal("prompt"), Type.Literal("model"), Type.Literal("user")]),
+    model: Type.String({ minLength: 1 }),
+    activeConversationId: Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER }),
+    updatedAt: Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
+    messageCount: Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
+  },
+  { additionalProperties: false },
+);
+/** Validate persisted index facts; native typed access separately rejects unsupported document versions. */
+export function parseSessionMetadata(value: unknown): Static<typeof metadataSchema> {
+  if (!Value.Check(metadataSchema, value)) throw new Error("Invalid Session metadata.");
+  return value;
+}
+export const SessionMetadataDoc = defineDoc<Static<typeof metadataSchema>>({
   kind: "rukie.session",
   version: 1,
   scope: "session",
@@ -74,13 +86,6 @@ export function registerSessionReader(
   };
 }
 
-/** Native fsync flushes sidecars; main append must also finish its flush before adoption. */
-class CommittedFiles extends NodeExecutionEnv {
-  override async appendFile(...args: Parameters<NodeExecutionEnv["appendFile"]>) {
-    const result = await super.appendFile(...args);
-    return result.ok ? this.flushFile(args[0], args[2]) : result;
-  }
-}
 function readonlyFiles(files: FileSystem): FileSystem {
   const mutations = new Set<PropertyKey>([
     "writeFile",
@@ -141,9 +146,10 @@ export function createJsonlStore(options: { cwd: string; homeDir: string }): Ses
       await mkdir(directory, { recursive: true });
       // This database contains no Session records; its kernel lease protects native JSONL.
       // Retain its inode forever: unlinking permits a second owner to lock another inode.
+      // A writer reservation excludes other hosts without competing EXCLUSIVE lock upgrades.
       const lease = new Database(join(directory, "host-lease.sqlite"), { create: true });
       try {
-        lease.exec("PRAGMA busy_timeout = 0; BEGIN EXCLUSIVE;");
+        lease.exec("PRAGMA busy_timeout = 0; BEGIN IMMEDIATE;");
       } catch (error) {
         lease.close();
         throw new Error(`Session already open: ${sessionId}`, { cause: error });
@@ -189,13 +195,20 @@ export function createJsonlStore(options: { cwd: string; homeDir: string }): Ses
         }
         if (!(await Bun.file(join(key(directory.name), "main.jsonl")).exists())) continue;
         const files = new NodeExecutionEnv({ cwd });
-        const storage = await JsonlStorage.open(key(directory.name), readonlyFiles(files), context);
-        // The storage kernel reads committed documents without Harness recovery,
-        // which may append retry/uncertainty facts for unfinished native work.
-        const nativeSession = createNativeSession(storage);
+        let nativeSession: ReturnType<typeof createNativeSession> | undefined;
         try {
-          const metadata = await nativeSession.snapshot(SessionMetadataDoc, context);
-          if (!metadata || metadata.cwd !== cwd || metadata.id !== directory.name) continue;
+          const storage = await JsonlStorage.open(
+            key(directory.name),
+            readonlyFiles(files),
+            context,
+          );
+          // The storage kernel reads committed documents without Harness recovery,
+          // which may append retry/uncertainty facts for unfinished native work.
+          nativeSession = createNativeSession(storage);
+          const snapshot = await nativeSession.snapshot(SessionMetadataDoc, context);
+          if (!snapshot) continue;
+          const metadata = parseSessionMetadata(snapshot);
+          if (metadata.cwd !== cwd || metadata.id !== directory.name) continue;
           results.push({
             id: metadata.id,
             title: metadata.title,
@@ -205,8 +218,11 @@ export function createJsonlStore(options: { cwd: string; homeDir: string }): Ses
             messageCount: metadata.messageCount,
           });
         } finally {
-          await nativeSession.close(BACKGROUND_CONTEXT);
-          await files.cleanup(BACKGROUND_CONTEXT);
+          try {
+            await nativeSession?.close(BACKGROUND_CONTEXT);
+          } finally {
+            await files.cleanup(BACKGROUND_CONTEXT);
+          }
         }
       }
       return results.sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));

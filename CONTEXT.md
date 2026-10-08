@@ -27,7 +27,7 @@ _Avoid_: CLI, REPL
 _Avoid_: conversation, thread, chat
 
 **Transcript**:
-一个 session 中按顺序排列的消息与 Tool State 记录，只追加不修改。模型当时看到的内容，原样记录在里面。
+一个 Session 的有序追加事实，包括原始消息、工具结果、提醒与上下文边界。Tool State 由独立的 typed documents 持久化。Compaction 和上下文 reset 改变后续模型可见的投影，不删除原始事实；Rewind 保留原对话。`Session.messages` 呈现当前选中对话的完整消息序列，包括已压缩的旧消息，不等同于当前模型上下文，也不包含所有被回退的对话。
 _Avoid_: history, log
 
 **Turn**:
@@ -63,7 +63,7 @@ Transcript 中存在 Tool 调用，但没有可确认的结果。不能据此判
 _Avoid_: tool failure, unexecuted tool
 
 **Tool State**:
-由工具或 Agent Core 维护、随 transcript 持久化、resume 时重建的 session 级状态，如 todo 列表、Goal。每次变化记一份完整快照，取最后一条有效快照为当前状态。只记录 resume 后仍需看到的事实；"当前进程正在做什么"（如 Goal 是否正在续跑）不属于 Tool State。
+由所属能力维护、经原生 typed documents 持久化的事实，如 Todo List、Goal 和文件基线。能力声明版本、校验、历史与 fork 策略；恢复读取已提交值，坏状态或不支持的版本阻止打开。清空与初始值由能力定义。运行活动由原生 tasks 及其 ownership 保存，与这些事实分开。
 _Avoid_: tool data, session state
 
 **Tool View**:
@@ -75,15 +75,15 @@ _Avoid_: tool card, tool presentation
 _Avoid_: task list, plan
 
 **Checkpoint**:
-某条真实 user prompt 之前、文件工具 `write` / `edit` 首次写入每个文件前的原样内容。每条真实 user prompt 一个；内部续跑与通知不另建。以 prompt 的 transcript entry id 为锚点，文件路径经权限相同的 realpath 规范化，引用作为 Tool State `checkpoint` 持久化。备份存放在 Session 的 homeDir 下 `~/.rukie/file-history/<sessionId>/`；bash 与 MCP 工具造成的改动不在其中。子代理与父 session 共用记录器，写入归父 session 当前 Checkpoint 和父 transcript；子 session 不建自己的 Checkpoint。
+某条真实 user prompt 之前、文件工具 `write` / `edit` 首次写入每个文件前的原样内容。每条真实 user prompt 一个；内部续跑与通知不另建。以 prompt 的 transcript entry id 为锚点，文件路径经权限相同的 realpath 规范化，引用作为 Tool State `checkpoint` 持久化。备份存放在 Session 的 homeDir 下 `~/.rukie/file-history/<sessionId>/`；bash 与 MCP 工具造成的改动不在其中。子代理与父 Session 共用记录器，备份引用归父级当前 Checkpoint document；工具消息留在实际执行的子对话中。子 Session 不建自己的 Checkpoint。
 _Avoid_: snapshot, backup, undo point
 
 **Rewind**:
-回到某个 Checkpoint 的动作，可选只回代码、只回对话或两者都回。回对话是把 transcript 分支移回那条 user prompt 之前，原分支仍保留；回代码是把文件还原成 Checkpoint 内容，覆盖之后的任何改动。只在 session 空闲时可用。
+回到某个 Checkpoint 的动作，可选只回代码、只回对话或两者都回。回对话在那条真实 prompt 之前创建原生 fork，按能力的历史策略恢复 documents，保留原对话与消息；不复制后来的任务活动。回代码还原 Checkpoint 文件内容，可能覆盖后续改动。父子均无活跃工作时才可用；两者同时恢复先执行文件恢复，失败不切换对话，已发生的文件写入不保证整体回滚。
 _Avoid_: undo, revert, rollback
 
 **Session Store**:
-transcript 的持久化位置。Headless CLI 和 TUI 存成 JSONL 文件，桌面端存到 SQLite。
+Transcript、documents、任务与父子 ownership 的持久化位置。Headless CLI 和 TUI 使用启用 fsync 的原生 JSONL 目录；宿主保证单个写者，关闭或进程退出释放租约。新目录和索引与旧 Session 文件隔离，不自动导入旧数据。列表与只读查询不启动模型或调度恢复；SQLite 数据后端属于未来桌面方向。
 _Avoid_: database, history store
 
 **Locale**:

@@ -121,21 +121,21 @@ System Prompt 提供固定行为指令；System Reminder 承载日期、项目�
 
 Compaction 在请求前自动检查，也可由空闲 Session 手动执行。它追加原生 compaction 记录，模型上下文由 System Prompt、摘要、保留尾部与之后的消息重建；原始 Transcript 仍保留。压缩后重新建立当前提醒来源，后续请求和恢复走相同的上下文投影。
 
-`Session.messages` 表示当前恢复或压缩后的模型上下文，不是完整 Transcript 的同义词。Context Usage 与 Context Report 是观测结果，不追加为模型内容；实际 provider 用量与分类估算的区别见 `CONTEXT.md`。Side Question 使用独立、无工具的单轮调用，不修改主 Run 或 Transcript。
+`Session.messages` 是选中对话的完整已提交消息投影，Compaction 前的消息仍按原顺序呈现；当前模型上下文由原生 head、摘要与保留尾部构造，二者分别读取。Context Usage 与 Context Report 是观测结果，不追加为模型内容；实际 provider 用量与分类估算的区别见 `CONTEXT.md`。Side Question 使用独立、无工具的单轮调用，不修改主 Run 或 Transcript。
 
 ## Transcript、Tool State 与 Rewind
 
-[`store/`](../packages/agent/src/store/index.ts)把 pi 的原生 JSONL repo 接入 SessionStore，提供创建、打开和枚举，并支持定向查询及只读观察。存储格式与选型见 [ADR-0003](adr/0003-dual-session-store.md)。存储位置、项目 slug 与文件命名由这个实现及 pi 管理，架构不维护第二份命名规则。
+[`store/`](../packages/agent/src/store/index.ts)把原生 JSONL Storage 接入 SessionStore；一个目录同时保存父子对话、documents 与 tasks。宿主持有内核写者租约，拒绝重复打开，关闭或进程死亡释放；锁文件保留，恢复不删除租约文件。原生 sidecar fsync 与宿主追加 flush 共同覆盖提交确认。新目录与旧文件隔离；列表从已提交索引读取，不启动 Harness scheduler，不允许存储修复。格式决定见 [ADR-0024](adr/0024-adopt-pi-durable-harness.md)，路径、故障及调用方义务由 [Agent README](../packages/agent/README.md#session-store)维护。
 
-当前分支包含消息、compaction 和自定义 Tool State 记录。Tool State 按名称与版本校验完整快照，重放时取该分支最后一条有效值；无效记录告警并跳过。Todo、Goal、计划状态、模型选择和子代理身份等通过这条路径恢复，Permission Mode 与临时 session allow 规则保留在内存中。Goal 是否正在自动续跑只保留在内存中；Session Resume 与对话 Rewind 恢复目标和轮次但不会自动开跑。未完成 Goal 通过 Tool State reminder 进入模型上下文，Compaction 后重新注入。
+Tool State 由所属能力声明原生 typed documents，选择 latest 或 rewindable 历史以及 fork 策略；注册层协调已提交读写和提醒，不重放旧状态消息。版本或内容非法时打开失败。模型选择由原生 Agent document 保存，Session 索引提供展示元数据；Todo、Goal、Plan Mode、子代理目录、Checkpoint 与文件跟踪的具体策略见 [Agent README](../packages/agent/README.md#document-policies)。Rewind 恢复 Goal 事实并解除自动续跑的激活，不继承后来的任务。
 
-文件跟踪通过 Tool State 保存路径、元数据、内容 hash 与是否需要重读，不保存文件内容。Session Resume 重建跟踪集，之后发现的外部变化仅提示路径并要求重读。外部变化的 System Reminder 与对应的最终基线或删除记录，在同一次原生存储事务中提交；此前保存旧基线与保守的过期标记。事务失败时保留未送达的变化用于重试，清除 pi 内存中未落盘的提醒并释放其预算；存储错误向调用方传播，仍拒绝覆盖未确认的文件。请求预算在实际 Compaction 模型请求完成后重置，未发生压缩时不重置。
+文件跟踪通过 Tool State 保存路径、元数据、内容 hash 与是否需要重读，不保存文件内容。Session Resume 重建跟踪集，之后发现的外部变化仅提示路径并要求重读。外部变化的 System Reminder 与对应的最终基线或删除记录，在同一次原生存储事务中提交；此前保存旧基线与保守的过期标记。事务未确认时不推进模型已知基线、不发布成功提醒；存储错误向调用方传播，仍拒绝覆盖未确认的文件。原生存储若进入 poisoned 状态，调用方须关闭后重开；追加后 flush 失败不保证磁盘记录不存在。请求预算在实际 Compaction 模型请求完成后重置，未发生压缩时不重置。
 
 Compaction 保留当前进程的文件跟踪集与已知内容，后续变化仍可生成 diff；已报告的文件变化事件不因压缩重新注入。对话 Rewind 同步恢复文件跟踪的 Tool State，只保留 hash 与恢复快照一致的内存内容；只恢复代码时，保留的对话会在下一次模型请求获知文件变化。每个子 Session 独立跟踪其读写；子代理对父 Session 已跟踪文件的写入，由父 Session 在下一次请求前检测。
 
 Session 的 run 和 steer 接收 [`PromptImage`](../packages/agent/src/images/index.ts)，校验后将原生 inline image blocks 保存到用户消息；read 的图片结果也保留在 Transcript 中，恢复后可继续作为模型输入。图片名称仅供 frontend 展示，作为消息 metadata 保存，并在模型边界剥离。
 
-Checkpoint 在真实用户 prompt 上建立锚点，记录文件工具首次修改前的原样内容；子代理共用父 Session 的记录器。它不记录 bash 或 MCP 的文件副作用。Rewind 仅在空闲时恢复文件和/或对话：对话恢复保留原分支，再移动 `main` 到锚点之前，并重建上下文与 Tool State。文件恢复可能覆盖之后的修改；定义与使用限制由 `CONTEXT.md` 和 [`checkpoint/`](../packages/agent/src/checkpoint/index.ts)负责。
+Checkpoint 在真实用户 prompt 上建立锚点，授权后备份 write/edit 首次修改的最终路径；子代理共用父级记录器，不记录 bash 或 MCP 的副作用。Rewind 拒绝父子活跃工作，先验证并恢复文件，再在 prompt 之前创建原生 fork 和提交选中对话。原对话、图片与消息保留，documents 按历史策略恢复，后来的任务不复制。文件恢复失败不切换对话，但不承诺撤销已经恢复的文件；定义与限制见 `CONTEXT.md` 和 [Agent README](../packages/agent/README.md#checkpoint-and-rewind)。
 
 恢复遇到只有调用而没有确定结果的工具时，将其作为 Unknown Tool Outcome 处理。它既不能证明调用失败，也不能证明尚未执行；恢复不能据此重放可能产生副作用的操作。
 
