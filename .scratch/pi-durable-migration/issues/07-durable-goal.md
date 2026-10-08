@@ -1,7 +1,7 @@
 # 07: Goal 续跑改为可恢复的原生任务
 
 Status: ready-for-agent
-Blocked by: 06
+Blocked by: none
 
 ## What to build
 

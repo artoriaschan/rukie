@@ -1,6 +1,6 @@
 # 06: 后台 Subagent ownership 与持久化结果通知
 
-Status: claimed
+Status: resolved
 Blocked by: none
 
 ## What to build
@@ -25,7 +25,7 @@ Blocked by: none
 
 ## Verification
 
-实现完成，待独立 merger 审核；Status 保持 claimed。从精确 `044fad3f` 开始。公开测试先复现两个不同 send_message 复用 provider callId 丢失第二条输入（164ms RED）、interruptSubagent 返回 void（117ms RED）、第二次人类发送请求在 child 活动时提前结算（164ms RED）。发送与 idle→active 复用分支的 requestId 改用原生 ToolTask 身份；不增加按描述复用 subagent 的新产品语义。显式停止返回 Promise，并等待 native driver terminal；未知 id 拒绝，空闲为 no-op。Frontend 的两个停止入口处理失败。
+实现完成并经独立 merger 验收，Status 为 resolved。从精确 `044fad3f` 开始。公开测试先复现两个不同 send_message 复用 provider callId 丢失第二条输入（164ms RED）、interruptSubagent 返回 void（117ms RED）、第二次人类发送请求在 child 活动时提前结算（164ms RED）。发送与 idle→active 复用分支的 requestId 改用原生 ToolTask 身份；不增加按描述复用 subagent 的新产品语义。显式停止返回 Promise，并等待 native driver terminal；未知 id 拒绝，空闲为 no-op。Frontend 的两个停止入口处理失败。
 
 请求因果范围沿已提交 native owner、origin ToolTask 和 child Submission 的 ToolTask-derived 身份计算，可关联多个请求；reporter 处理一次事务登记全部关联根请求。新发送请求等待原活动 driver 的报告，后续报告产生的新 child 纳入稳定收敛，空闲／历史／无关工作不因身份存在而加入。SDK provider Session 身份直接从实际 StreamOptions.sessionId 捕获，按初次输入确认父子身份，后续仅按已学身份驱动；不按上下文中的旧 Human 文字猜测 reporter。
 
@@ -46,3 +46,5 @@ ADR Coverage：沿用 ADR-0024 的唯一 native 执行、后台 ownership、稳�
 2026-10-08：后续公开 tracer 发现重复 stop 在 Activity 已 false、reporter 仍运行时提前返回（native status running，128ms RED）。停止能力仍仅取消活动 child，但所有调用都 join 同一 driver terminal；不将取消通知提交等同于终结。修正后 stop／身份／late-descendant 两文件3 PASS／44 assertions／562ms，冷恢复验证取消 child 不重跑、sibling 沿原 SDK身份恢复。late descendant 使用真实 subagent_fork，确认继承已完成父输入且获独立 provider身份，增强后 identities2 PASS／33 assertions／445ms。
 
 2026-10-08：同事务登记多根因果关联与每轮复用原生记录查询后，三个新增文件7 PASS／91 assertions／2.14s；safe／unsafe native未知结果及真实 receipt-loss replay 当前授权六例6 PASS／49 assertions／2.35s。最终当前 `bun run check:dev` exit0：format、lint、TypeScript、Knip、tracker、docs 与 ink boundaries 全部通过（`/tmp/pi-durable-06-static-final.log`）。`git diff --check` 通过；再次合并 `codex/pi-durable-migration` 为 Already up to date。工作树 `/tmp/rukie-pi-durable-06`，分支 `codex/pi-durable-06-subagent-recovery`。未运行 package／aggregate。只在当前 macOS 上验证真实 SIGKILL，不将其扩大为断电或跨平台证据。
+
+2026-10-08 独立 merger 验收：审阅 `58cf3fb1` 相对精确基线 `044fad3f` 的16文件 diff、actual Storage commit 后 acknowledgement loss 四窗口、独立 worker 冷恢复，以及 native ToolTask-derived send 身份、多根因果边与显式 stop Promise。确认请求收束纳入 later descendant 并排除 unrelated held child，重复 stop join 相同 driver terminal；取消事实、委派验收和 OS 资源仍保持各自语义。核对七项 AC、当前 focused/static 日志及 ADR coverage 后独立合并并关闭06，解除07阻塞。集成后的 tracker、docs、受影响 Markdown format 和 diff 检查通过；未重复 package 或 aggregate，08 Frontend 和09统一 gate 仍待交付。
