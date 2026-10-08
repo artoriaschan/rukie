@@ -1,5 +1,4 @@
-import { randomUUID } from "node:crypto";
-import type { InteractionIdentity } from "../interaction/index.ts";
+import { createInteractionIdentity, type InteractionIdentity } from "../interaction/index.ts";
 import type { Context } from "@earendil-works/chord";
 import type { HookApi, ToolRegistration } from "@earendil-works/pi-durable";
 import type { Static, TSchema } from "typebox";
@@ -31,35 +30,7 @@ export async function preflightTool(
     !Value.Check(tool.parameters, args)
   )
     return;
-  const expected = {
-    version: 1,
-    kind: tool.name,
-    phase: "pending",
-    taskId: Number(api.taskId),
-    conversationId: Number(api.conversationId),
-    requestId: `interaction:${Number(api.taskId)}`,
-  };
-  const stored = await api.memo("rukie.interaction", expected, context);
-  // Memo data is persisted JSON, not trusted merely because this writer has a schema.
-  if (
-    !stored ||
-    typeof stored !== "object" ||
-    Array.isArray(stored) ||
-    stored.version !== 1 ||
-    stored.kind !== expected.kind ||
-    stored.phase !== "pending" ||
-    stored.taskId !== expected.taskId ||
-    stored.conversationId !== expected.conversationId ||
-    stored.requestId !== expected.requestId
-  )
-    throw new Error("Invalid native interaction identity.");
-  const identity: InteractionIdentity = {
-    requestId: expected.requestId,
-    taskId: expected.taskId,
-    conversationId: expected.conversationId,
-    epoch: randomUUID(),
-  };
-  context.abortSignal?.throwIfAborted();
+  const identity = await createInteractionIdentity(api, tool.name, context);
   // Registrations with this capability declare the same schema for execute and preflight.
   await (tool as PreflightTool).preflight(args, api, context, callId, identity);
   context.abortSignal?.throwIfAborted();

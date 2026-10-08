@@ -34,3 +34,5 @@ Blocked by: none
 2026-10-07：从已确认的 grill-with-docs 决策生成；用户已确认测试入口。依赖票未 resolved 前不开展生产迁移。
 
 2026-10-08：03 独立集成并 resolved 于 `1a47e87a`；04 在 `codex/pi-durable-04-interactions` 从该精确基线认领。按已确认的公开 createSession／原生 Storage fault seams 逐个 red→green，设计笔记位于 `/tmp/pi-durable-ticket04-acceptance.md`。
+
+2026-10-08：Plan Review pending close/reopen 实际 RED（replacement 未调用，100ms）后迁移 capability preflight，整个工具仍 unsafe；旧 approve 不能退出规划，新 revise 与稳定 native 请求身份／fresh epoch 可见。Permission 身份 tracer RED（83ms）后共用 kind-scoped native memo；旧 allow-session 晚到无效，冷 current deny 不问 Frontend 且留下真实 typed rule denial。相关 permissions／plan-review／permission-hooks／subagent-permissions／native batch：94 PASS、331 assertions、5.23s。Question 受影响两例 2 PASS／12 assertions／273ms；TUI FIFO 1 PASS／8 assertions／118ms。全仓 tsc 和影响文件 lint 通过；OAuth 新 pending 恢复仍未实施。

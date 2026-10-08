@@ -31,7 +31,8 @@ interface QuestionDraft {
 
 interface QuestionInteraction {
   kind: "question";
-  request: QuestionRequest;
+  // OAuth reuses question presentation without claiming a native Question task.
+  request: Omit<QuestionRequest, "identity">;
   questionIndex: number;
   drafts: QuestionDraft[];
   collapsed: boolean;

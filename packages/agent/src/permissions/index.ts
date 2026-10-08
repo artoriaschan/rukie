@@ -20,7 +20,12 @@ export { parsePermissionRules, evaluatePermissionRules } from "./rules.ts";
 export { resolvePermissionPath } from "./path.ts";
 import { sessionAllowRule, type SessionAllow, type SessionAllowRule } from "./session-rules.ts";
 export type { SessionAllowRule } from "./session-rules.ts";
-import { requestInteraction, type OnInteractionStart } from "../interaction/index.ts";
+import {
+  requestInteraction,
+  createInteractionIdentity,
+  type InteractionIdentity,
+  type OnInteractionStart,
+} from "../interaction/index.ts";
 import { reviewPermission, type ReviewResult } from "./review.ts";
 import type {
   PreToolUseResult,
@@ -30,6 +35,7 @@ import type {
 import { Value } from "typebox/value";
 
 export interface PermissionAskRequest {
+  identity: InteractionIdentity;
   toolCallId: string;
   toolName: string;
   /** Validated arguments for this tool call. */
@@ -143,7 +149,11 @@ export interface ToolCallContext {
   toolCall: ToolCall;
   args: Record<string, unknown>;
 }
-type PermissionCall = ToolCallContext & { mode: PermissionMode; signal: AbortSignal };
+type PermissionCall = ToolCallContext & {
+  mode: PermissionMode;
+  signal: AbortSignal;
+  identify(): Promise<InteractionIdentity>;
+};
 
 /** Owns fixed permission stages and review lifetime; Session supplies current context. */
 export function createPermissionGate(options: PermissionGateOptions) {
@@ -387,6 +397,7 @@ export function createPermissionGate(options: PermissionGateOptions) {
       reply = await Promise.race([
         requestInteraction(
           {
+            identity: await context.identify(),
             toolCallId: toolCall.id,
             toolName: toolCall.name,
             args,
@@ -426,11 +437,16 @@ export function createPermissionGate(options: PermissionGateOptions) {
       : { decision: "deny", reason: denialReason(context), by: "user" };
   }
 
-  const authorize = async (call: ToolCallContext, signal?: AbortSignal) => {
+  const authorize = async (
+    call: ToolCallContext,
+    invocation: Context,
+    api: HookApi | ToolExecutionApi,
+  ) => {
     const context = {
       ...call,
       mode: options.getMode(),
-      signal: signal ?? new AbortController().signal,
+      signal: invocation.abortSignal ?? new AbortController().signal,
+      identify: () => createInteractionIdentity(api, "permission", invocation),
     };
     if (options.isRunStopped?.())
       return { block: true, terminate: true, reason: "Stopped by hook" };
@@ -517,7 +533,7 @@ export function createPermissionGate(options: PermissionGateOptions) {
     beforeTool: (async (call, api, context) => {
       // Native arguments are JSON; structuredClone gives this gate an owned mutable tree.
       const facts = { toolCall: call, args: structuredClone(call.arguments) as JsonObject };
-      const decision = await authorize(facts, context.abortSignal);
+      const decision = await authorize(facts, context, api);
       if (decision?.block) return { block: decision.reason };
       let grants = invocationGrants.get(context);
       if (!grants) invocationGrants.set(context, (grants = new Map()));
@@ -544,7 +560,7 @@ export function createPermissionGate(options: PermissionGateOptions) {
       grants?.delete(api.taskId);
       if (granted === JSON.stringify(args)) return;
       const original = JSON.stringify(args);
-      const decision = await authorize({ toolCall: call, args }, context.abortSignal);
+      const decision = await authorize({ toolCall: call, args }, context, api);
       if (decision?.block) throw new Error(decision.reason);
       if (original !== JSON.stringify(args))
         throw new Error("Recovered tool input was changed by a hook; submit a new tool call.");
