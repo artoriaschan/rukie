@@ -6,7 +6,7 @@
 
 原生 JSONL 启用 sidecar fsync，[存储文件适配器](src/store/files.ts)在成功追加后 flush 文件，包括 main 提交标记；提交确认后才采用状态和发布对应成功事实。写入或 flush 失败会向调用方传播；原生 Storage 进入 poisoned 状态时须 `await session.close()` 后重开。flush 发生在追加之后，拒绝确认不等于磁盘字节回滚，重新打开时以原生已提交事实为准。进程强制退出测试验证租约释放和恢复，不代表断电测试。
 
-`createSession({ initializationSignal })` 可取消打开过程中的 SessionStart Hook 和初始化资源；失败返回前关闭观察者、连接、进程与存储租约。该信号仅约束初始化，Session 返回后取消它不会取消已接受的 Run 或后台任务；宿主退出须调用并等待 `session.close()`。
+`SessionOptions.initializationSignal` 可取消 SessionStart Hook 与打开过程，失败时关闭 observation、撤销注册读者并释放 Hook／连接／存储租约。这个信号只约束初始化，Session 返回后不会取消 Run；原生 Harness 的上下文独立于它。已打开宿主通过 `await session.close()` 保存 pending work 并等待释放；`abort()` 取消当前普通 ownership，`interruptSubagent()` 取消选中的 child。Frontend 的进程信号及输出边界见 [Headless README](../coding-agent/src/headless/README.md) 与 [TUI README](../coding-agent/src/tui/README.md)。
 
 # Pending interactions
 
@@ -63,7 +63,7 @@ View 不写入 Transcript，也不进入模型上下文。`Session.messages` 在
 
 # Run summary
 
-Run 的 `result` 携带总执行时长 `durationMs` 和完成时间 `endedAt`。Session 在完成边界保存独立的 `run-summary` 自定义条目，记录时长、完成时间、成功状态及消息边界；元数据不进入模型上下文。`session.runSummaries()` 返回当前恢复上下文中可定位的摘要，`afterMessage` 是 `Session.messages` 中一基消息位置。Frontend 在该消息后绘制摘要，Rewind 丢弃被回退的摘要，Compaction 后仅保留仍可定位的边界。旧历史没有完成记录时不推算耗时；非法记录忽略，摘要保存失败报告 warning，不改变 Run 结果。
+公开 `run()` 的 `result` 携带执行时长 `durationMs`；完成时间 `endedAt` 保存在对应摘要事实中。Session 在完成边界保存独立的 `run-summary` 自定义条目，记录时长、完成时间、成功状态及消息边界；元数据不进入模型上下文。`session.runSummaries()` 返回当前恢复上下文中可定位的摘要，`afterMessage` 是 `Session.messages` 中一基消息位置。Frontend 在该消息后绘制摘要；Compaction 保留完整 Transcript 与可定位摘要，Rewind 的选中分支仅显示 cutoff 内的摘要。旧历史没有完成记录时不推算耗时；非法记录忽略，摘要提交失败向调用方传播实际存储错误。
 
 TUI 在每个结束的 Run 消息底部显示摘要，完成时间使用本地时区。成功显示完成，失败或中断显示结束；摘要不参与消息选择或复制。实时结束与 Resume 使用同一记录语义。
 

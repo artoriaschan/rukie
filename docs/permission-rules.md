@@ -4,6 +4,8 @@ Permission Rule 按 `deny` → `ask` → `allow` 的顺序匹配。显式 `deny`
 
 `job_list`、`job_output`、`job_kill` 只管理当前 owner 的 Background Job，不请求审批：显式 `ask` 与 PreToolUse 的 `ask` 不进入 PermissionRequest 或 Frontend Interaction。显式 `deny`、Hook 拒绝与参数校验仍生效；普通工具 hooks 照常执行。`bash`（包括后台启动）仍按完整权限流程判定。
 
+恢复未结算的调用时，Agent Core 重新读取当前规则、Trusted Project、Hook 和工具参数。审批的稳定请求身份可恢复，但 callback epoch、signal 与 session 临时 allow 不恢复；旧回复不能授权新阶段。原生 safe replay 的 execute 路径也经过当前授权，unsafe intent 不因当前规则放宽而重跑。Plan Mode 提供规划上下文，始终独立于 Permission Mode。请求恢复与执行阶段见 [Agent Core](../packages/agent/README.md#pending-interactions)。
+
 ## Web fetch 域名规则
 
 在 settings 中允许常用文档站、询问特定站点或拒绝某个域名：

@@ -4,7 +4,7 @@ status: accepted
 
 # Tool State 保存完整事实快照，模型上下文按当前分支投影
 
-本决定的完整状态消息快照、旧分支投影和进程内续跑开关由新决定部分替代；能力事实所有权、当前上下文与完整 Transcript 的区别继续有效。替代关系见 [ADR-0024](0024-adopt-pi-durable-harness.md)。新决定已接受，实施尚未开始；下文记录迁移前义务，当前进度见[规格与票据](../../.scratch/pi-durable-migration/spec.md)。
+本决定的完整状态消息快照、旧分支投影和进程内续跑开关由新决定部分替代；能力事实所有权、当前上下文与完整 Transcript 的区别继续有效。替代关系见 [ADR-0024](0024-adopt-pi-durable-harness.md)。下文记录被部分替代的历史决定；当前契约见 [Agent README](../../packages/agent/README.md#document-policies)，整体交付验收见[规格与票据](../../.scratch/pi-durable-migration/spec.md)。
 
 ## 问题
 

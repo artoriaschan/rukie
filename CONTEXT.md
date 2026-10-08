@@ -1,6 +1,6 @@
 # Rukie
 
-Rukie 是 coding agent。Agent Core 负责 agent loop、工具、MCP、skills 和上下文注入；Headless CLI、TUI 和以后的桌面端都是驱动它的 frontend。
+Rukie 是 coding agent。Agent Core 组合原生 durable 执行、工具、MCP、skills 和上下文注入；Headless CLI、TUI 和以后的桌面端都是驱动它的 frontend。
 
 ## Language
 
@@ -15,7 +15,7 @@ _Avoid_: engine, backend
 _Avoid_: client, UI
 
 **Headless CLI**:
-`rukie -p` 或 `rukie --goal` 启动的非交互 frontend：读入一条 prompt 执行一个 run，或设定 Goal 并等待自动续跑结束，输出文本或 stream-json 后退出。不提供任何 Interaction 回调：依赖交互的工具不暴露给模型，Agent Core 自身发起的交互取各自的安全默认值。
+`rukie -p` 或 `rukie --goal` 启动的非交互 frontend：读入一条 prompt 或设定 Goal，等待该请求引发的 Run、后台子代理及报告处理结算，输出文本或 stream-json 后退出。不提供任何 Interaction 回调：依赖交互的工具不暴露给模型，Agent Core 自身发起的交互取各自的安全默认值。
 _Avoid_: CLI（会和 TUI 混淆）
 
 **TUI**:
@@ -35,7 +35,7 @@ _Avoid_: history, log
 _Avoid_: step, round
 
 **Run**:
-处理一条 prompt，直到 agent 停下为止。prompt 来自用户，或（对 subagent 而言）来自父代理。一个 run 包含一个或多个 turn；父 Run 可以先于后台 Subagent 结束；一次请求的因果结算另行等待其子 Run、reporter 与结果引发的处理，不包括无关后台工作。
+原生 Conversation 从接受输入到停止的一段执行，可在执行边界纳入后续输入。输入来自用户、父代理、Hook、Goal 或通知。一个 Run 包含一个或多个 Turn；父 Run 可以先于后台 Subagent 结束；一次请求的因果结算另行等待其子 Run、reporter 与结果引发的处理，不包括无关后台工作。
 _Avoid_: task, job（job 专指 Background Job）
 
 **Subagent**:

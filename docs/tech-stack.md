@@ -38,6 +38,8 @@
 | 输入校验  | ⚠️ typebox 跟随 pi 的版本，目前是 1.3.27，不用 1.3.34。保证依赖树里只有一份，否则 schema 类型对不上                                                                |
 | 存储      | 原生 durable JSONL（启用 fsync）；`bun:sqlite` 独占事务持有宿主 lease（[ADR-0024](adr/0024-adopt-pi-durable-harness.md)）                                          |
 
+Pi 的直接依赖和解析到的支撑包统一为 1.0.4，TypeBox 为 1.3.27；根 `overrides` 约束上游宽版本声明，`bun.lock` 保存实际解析。当前依赖树不包含 pi-agent-core 或 pi-coding-agent。JSONL 保存 Session 数据；SQLite 事务仅持有宿主写者 lease，不是已实现的桌面数据后端。
+
 ## 桌面端
 
 | 用途                 | 选型                     |

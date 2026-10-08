@@ -20,7 +20,7 @@ Bash、Web Fetch、Todo、Goal、Jobs、Subagent、Plan Mode 分别归 tools 内
 
 本决定替代此前允许内置工具在所属领域、tools 或 Session 多处构造的组织约定，不替代 ADR-0002、ADR-0003、ADR-0009、ADR-0010 的运行、存储与恢复决定。迁移保留包公开接口、工具声明和结果、事件、Frontend 行为、Transcript 格式、取消和恢复时序。
 
-本记录的公开协议与恢复兼容要求属于上述模块归属重构，不约束新的 harness 迁移。[ADR-0024](0024-adopt-pi-durable-harness.md) 已接受 API、数据与执行语义变更；本记录的能力归属、协议与执行职责及目录依赖方向继续生效。新迁移尚未实施，状态见[对应规格](../../.scratch/pi-durable-migration/spec.md)。
+本记录的公开协议与恢复兼容要求属于上述模块归属重构，不约束新的 harness 迁移。[ADR-0024](0024-adopt-pi-durable-harness.md) 已接受 API、数据与执行语义变更；本记录的能力归属、协议与执行职责及目录依赖方向继续生效。当前组合采用原生 Harness，公开行为见 [Agent README](../../packages/agent/README.md)，整体交付验收见[对应规格](../../.scratch/pi-durable-migration/spec.md)。
 
 ### 实现位置
 
