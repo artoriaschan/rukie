@@ -59,7 +59,7 @@ Agent Core 用 `toolSearch` 控制 MCP 工具定义是否延迟提供给模型�
 
 每次模型请求前重新判定设置、模型和当前候选，只决定尚未可见的工具是否延迟；候选定义占比降低、关闭 Tool Search 或切换模型不会收回已可见的 MCP 工具。`ToolSearch` 一旦出现，在该对话中保留。工具从 MCP 目录移除时也从可见集移除，重新出现时按当时的判定处理；同名定义更新移除旧声明后追加新声明，目录重新排序不移动已有声明。
 
-已可见工具从当前分支的 Transcript 推导，不另存 Tool State。Resume 和 Compaction 保留已发现集，Rewind 回到选定位置的工具可见状态；每个子 Session 独立判定和发现，受自己的工具 allowlist 限制，不继承父 Session 的发现集。资源连接与 OAuth 的生命周期仍遵循下文约定；架构取舍见 [ADR-0025](adr/0025-client-side-tool-search.md)。
+已可见工具从当前分支的 Transcript 推导，不另存 Tool State。Resume 和 Compaction 保留已发现集，Rewind 回到选定位置的工具可见状态；每个子 Session 独立判定和发现，受自己的工具 allowlist 限制，不继承父 Session 的发现集。启用还要求当前允许的工具目录包含 `ToolSearch`；子类型白名单未允许 `ToolSearch` 时，即使设置为 `on`，白名单允许的 MCP 工具也直接提供给模型，不产生 Deferred Tool 名单，不扩大执行权限。资源连接与 OAuth 的生命周期仍遵循下文约定；架构取舍见 [ADR-0025](adr/0025-client-side-tool-search.md)。
 
 ## 登录与连接
 

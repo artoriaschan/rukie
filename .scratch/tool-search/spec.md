@@ -35,7 +35,8 @@ MCP 工具定义的估算 token 超过模型上下文窗口 10% 时（或用户�
 
 ### 启用判定
 
-- 候选集合：当前所有 MCP 工具，排除 `authenticate`。
+- 候选集合：当前允许的 MCP 工具，排除 `authenticate`。
+- 当前允许的工具目录必须注册 `ToolSearch` 才能启用；子类型工具白名单未允许 `ToolSearch` 时，即使设置为 `on`，其允许的 MCP 工具也直接可见，不生成 Deferred Tool reminder，不扩大白名单或执行权限。
 - 模型 compat 无 `supportsMidConvoToolChanges` 且无 `supportsToolSearch` 时：一律不启用（含 `on`）。
 - `off`：不启用；`on`：有候选即启用；`auto`：候选定义估算 token（声明 JSON 长度 / 4）> `contextWindow × 10%` 时启用。
 - 每次请求前重新判定。判定只决定**新到达**的候选是否延迟；已在对话中可见的 MCP 工具不收回。启用后才出现、并且判定为启用的候选成为 Deferred Tool；判定为不启用时新到达的候选直接可见。
@@ -75,7 +76,7 @@ MCP 工具定义的估算 token 超过模型上下文窗口 10% 时（或用户�
 - MCP 工具晚到：首次请求无 MCP 工具，之后到达超阈值的工具成为 Deferred；已可见工具不收回。
 - MCP 移除已发现工具；重新出现时回到 Deferred。
 - resume 后已发现集一致；compaction 后已发现工具仍可见、名单 reminder 补完整；rewind 到发现前回到 Deferred。
-- 子 Session 独立已发现集。
+- 子 Session 独立已发现集；白名单不含 `ToolSearch` 时允许的 MCP 工具直接可见、无 Deferred Tool reminder，实际调用仍受 deny 规则约束。
 - `authenticate` 始终可见；发现后的工具仍经权限判定（deny 规则生效）。
 - Headless：无 Interaction 回调时 `ToolSearch` 可用。
 - 设置解析：非法 `toolSearch` 值被拒绝；项目级覆盖用户级。
@@ -101,3 +102,5 @@ MCP 工具定义的估算 token 超过模型上下文窗口 10% 时（或用户�
 ## Delivery ADR Review
 
 2026-10-08：对照 01/02 实现、03 文档与 ADR Coverage，确认模块所有权、完整 registry 与 offered loadout 分离、原生工具追加、Transcript 发现集、Compaction 无基线分支重建、Rewind 与独立子 Session 均受 ADR-0025、ADR-0024 及 ADR-0016 仍有效部分覆盖。晚出现 ToolSearch 服从存活声明保留位置，名单增量从持久化来源文本重建，不增加 Tool State。既有授权、MCP 信任与凭据、Interaction 门槛不变；设置和查询语法为局部行为，无需额外 ADR。未发现既有 ADR 冲突或遗漏的长期取舍；整体 spec 状态待集成分支最终验证和 code review 后关闭。
+
+2026-10-08 code review 修正：启用条件要求允许目录中存在 ToolSearch，避免受限子类型只有 MCP 工具但无法搜索其定义。该条件落实既有子 Session allowlist 与授权边界，为局部启用条件，无需新增 ADR；ADR-0025 的客户端检索与 Transcript 发现集决定不变。Session 工具组合位置文档更新为 tools.ts 组装基础目录、index.ts 协调 ToolSearch 与 loadout，符合 ADR-0011 的 Session 组合职责。spec 仍等待集成分支最终验收。
