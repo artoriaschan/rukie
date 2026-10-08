@@ -151,7 +151,7 @@ _Avoid_: connector, integration
 _Avoid_: lazy tool, hidden tool
 
 **Tool Search**:
-模型按查询检索 MCP 工具并加载匹配的 Deferred Tool 定义的动作。只在模型支持对话中工具变更时启用；设置可强制开启、关闭或按候选定义的上下文占比自动判定。已可见的工具不因判定变化而收回，搜索不替代执行工具时的 Permission Decision。
+模型按查询检索 MCP 工具并加载匹配的 Deferred Tool 定义的动作。设置可强制开启、关闭或按候选定义的上下文占比自动判定，不要求模型支持原生对话中工具追加。适配器根据模型能力将已加载定义放入下一次请求的工具列表或原生追加格式。已可见的工具不因判定变化而收回，搜索不替代执行工具时的 Permission Decision。
 _Avoid_: tool discovery, tool lookup
 
 **MCP Credential**:

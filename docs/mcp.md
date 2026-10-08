@@ -42,10 +42,12 @@ Agent Core 用 `toolSearch` 控制 MCP 工具定义是否延迟提供给模型�
 | 值             | 行为                                                                                                                |
 | -------------- | ------------------------------------------------------------------------------------------------------------------- |
 | `auto`（缺省） | 候选工具声明的估算 token **超过**模型上下文窗口的 10% 时启用；恰好 10% 不启用。估算为各声明 JSON 字符数之和除以 4。 |
-| `on`           | 有候选工具且模型兼容时启用。                                                                                        |
+| `on`           | 有候选工具时启用。                                                                                                  |
 | `off`          | 不延迟新到达的工具。                                                                                                |
 
-模型的 compat 必须声明 `supportsMidConvoToolChanges` 或 `supportsToolSearch` 为真；两者均未启用时，即使设为 `on` 也不启用 Tool Search。候选只包含 MCP 工具，排除 `mcp__<server>__authenticate`；该授权工具遵守既有 Interaction 门槛，在 TUI 可见，在没有授权回调的 Headless CLI 中仍隐藏。内置工具不成为 Deferred Tool。阈值固定，不提供按 server 设置或语义检索。
+Tool Search 使用普通工具调用，不要求模型声明原生工具追加能力。未声明原生能力或显式关闭该能力时，适配器将已加载工具加入下一次请求的顶层 `tools` 列表；声明支持原生追加时，适配器使用对应协议格式发送定义。`compat` 选择传输方式，不决定 Tool Search 是否启用。
+
+候选只包含 MCP 工具，排除 `mcp__<server>__authenticate`；该授权工具遵守既有 Interaction 门槛，在 TUI 可见，在没有授权回调的 Headless CLI 中仍隐藏。内置工具不成为 Deferred Tool。阈值固定，不提供按 server 设置或语义检索。
 
 ### 自定义模型的 compat
 
@@ -77,7 +79,7 @@ Agent Core 用 `toolSearch` 控制 MCP 工具定义是否延迟提供给模型�
 }
 ```
 
-对支持原生 Tool Search 的 `openai-responses` 服务，将对应模型的 `compat` 设为 `{ "supportsToolSearch": true }`。`openai-completions` 的兼容性字段也可配置，例如 `{ "maxTokensField": "max_tokens", "supportsStore": false }`；该 API 不支持这里的 Tool Search。声明必须匹配服务端实际协议能力，Rukie 不会根据自定义模型名称自动开启这些能力，也不会将 Chat Completions 服务转换成 Messages 或 Responses 服务。
+对支持原生 Tool Search 追加格式的 `openai-responses` 服务，将对应模型的 `compat` 设为 `{ "supportsToolSearch": true, "supportsMidConvoSystemMessages": true }`。`openai-completions` 的兼容性字段也可配置，例如 `{ "maxTokensField": "max_tokens", "supportsStore": false }`；使用普通 `tools` 列表的 Tool Search 无需这些能力标记。原生能力声明必须匹配服务端实际协议，Rukie 不会仅根据协议或自定义模型名称默认打开原生能力，也不会将 Chat Completions 服务转换成 Messages 或 Responses 服务。
 
 修改配置后启动新 Session 验证：在 `toolSearch: "on"` 且存在 MCP 候选时，初始工具列表包含 `ToolSearch`，MCP 工具在搜索发现后才向模型声明。
 
@@ -93,7 +95,7 @@ Agent Core 用 `toolSearch` 控制 MCP 工具定义是否延迟提供给模型�
 
 每次模型请求前重新判定设置、模型和当前候选，只决定尚未可见的工具是否延迟；候选定义占比降低、关闭 Tool Search 或切换模型不会收回已可见的 MCP 工具。`ToolSearch` 一旦出现，在该对话中保留。工具从 MCP 目录移除时也从可见集移除，重新出现时按当时的判定处理；同名定义更新移除旧声明后追加新声明，目录重新排序不移动已有声明。
 
-已可见工具从当前分支的 Transcript 推导，不另存 Tool State。Resume 和 Compaction 保留已发现集，Rewind 回到选定位置的工具可见状态；每个子 Session 独立判定和发现，受自己的工具 allowlist 限制，不继承父 Session 的发现集。启用还要求当前允许的工具目录包含 `ToolSearch`；子类型白名单未允许 `ToolSearch` 时，即使设置为 `on`，白名单允许的 MCP 工具也直接提供给模型，不产生 Deferred Tool 名单，不扩大执行权限。资源连接与 OAuth 的生命周期仍遵循下文约定；架构取舍见 [ADR-0025](adr/0025-client-side-tool-search.md)。
+已可见工具从当前分支的 Transcript 推导，不另存 Tool State。Resume 和 Compaction 保留已发现集，Rewind 回到选定位置的工具可见状态；每个子 Session 独立判定和发现，受自己的工具 allowlist 限制，不继承父 Session 的发现集。启用还要求当前允许的工具目录包含 `ToolSearch`；子类型白名单未允许 `ToolSearch` 时，即使设置为 `on`，白名单允许的 MCP 工具也直接提供给模型，不产生 Deferred Tool 名单，不扩大执行权限。资源连接与 OAuth 的生命周期仍遵循下文约定；架构取舍见 [ADR-0025](adr/0025-client-side-tool-search.md) 与 [ADR-0026](adr/0026-protocol-independent-tool-search.md)。
 
 ## 登录与连接
 

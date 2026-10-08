@@ -10,16 +10,10 @@ export function isDeferredToolCandidate(tool: { name: string }): boolean {
 export function planToolSearchLoadout(input: {
   tools: readonly ToolRegistration[];
   currentTools: readonly Tool[];
-  model: Pick<Model<Api>, "contextWindow" | "compat">;
+  model: Pick<Model<Api>, "contextWindow">;
   mode?: "auto" | "on" | "off";
 }): { enabled: boolean; tools: ToolRegistration[]; deferred: ToolRegistration[] } {
   const candidates = input.tools.filter(isDeferredToolCandidate);
-  const compat = input.model.compat;
-  const supported = Boolean(
-    compat &&
-    (("supportsMidConvoToolChanges" in compat && compat.supportsMidConvoToolChanges) ||
-      ("supportsToolSearch" in compat && compat.supportsToolSearch)),
-  );
   const mode = input.mode ?? "auto";
   const estimatedTokens = candidates.reduce(
     (sum, tool) => sum + JSON.stringify(toToolDeclaration(tool)).length / 4,
@@ -27,7 +21,6 @@ export function planToolSearchLoadout(input: {
   );
   const enabled =
     input.tools.some((tool) => tool.name === "ToolSearch") &&
-    supported &&
     candidates.length > 0 &&
     mode !== "off" &&
     (mode === "on" || estimatedTokens > input.model.contextWindow * 0.1);

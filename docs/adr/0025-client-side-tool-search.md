@@ -10,6 +10,8 @@ MCP 工具数量随用户配置增长，全部工具定义常驻模型上下文�
 
 ## 决定
 
+[ADR-0026](0026-protocol-independent-tool-search.md) 部分替代下述原生能力门槛与顶层工具列表固定的要求；客户端检索、Transcript 作为发现事实来源以及工具顺序约束继续有效。
+
 Rukie 提供客户端 `ToolSearch` 工具：在本地检索 Deferred Tool，命中后由工具结果的 `ToolControl.addTools` 加入当前对话的可用工具；pi-ai 在 Anthropic 用 `tool_addition` 块、在 OpenAI Responses 用 transcript 锚定的 `tool_search_output` 送达定义。顶层工具列表在对话中保持不变，新增定义只追加在发现位置之后。
 
 已发现集只由 Transcript 中的工具变更推导，不另存 Tool State；compaction 基线、Rewind 和子 Session 因此各自得到一致结果。只有 MCP 工具（不含 `authenticate`）可成为 Deferred Tool。

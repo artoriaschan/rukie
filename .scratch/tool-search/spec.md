@@ -2,6 +2,8 @@ Status: resolved
 
 # Spec: Tool Search
 
+本文件记录首次交付的规范；原生能力启用门槛及固定顶层工具列表的要求已由 [ADR-0026](../../docs/adr/0026-protocol-independent-tool-search.md) 替代，当前行为见 [MCP Tool Search](../../docs/mcp.md#tool-search)。
+
 术语见 `CONTEXT.md` 的 Tool、MCP Server、Deferred Tool、Tool Search、Transcript、Compaction、Rewind。架构决定见 [ADR-0025](../../docs/adr/0025-client-side-tool-search.md)。参考：Claude Code `ToolSearch`（`select:` 与关键词查询语法）。
 
 ## Problem Statement

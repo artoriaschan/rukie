@@ -110,7 +110,7 @@ Goal 只属于顶层 Session。用户通过 TUI `/goal`、Headless `--goal` 或�
 
 read/write/edit 经适配连接 pi 的执行环境与 Rukie 的 AbortSignal；bash 由 Session 的 job registry 启动独立进程组；前台调用等待完成，显式后台调用立即返回 id。Run 结束或取消保留后台任务，Session close 清理进程组与输出；终止先发 SIGTERM，3 秒后升级为 SIGKILL。后台工具的读取与生命周期见 [`tools/jobs/`](../packages/agent/README.md)。Skill 加载工具、结构化提问、Todo、计划评审与 Subagent 工具由所属能力模块构造，Session 按身份、子类型与当前 MCP 发现组装成运行工具集。MCP 发现的工具也转换为原生 ToolRegistration，再进入共同的授权流程。完整工具声明以构造模块和当前运行发现结果为准。
 
-[`tools/tool-search/`](../packages/agent/src/tools/tool-search/index.ts) 区分完整可执行工具目录和模型当前可见的 loadout：MCP 工具注册保留，Deferred Tool 暂不提供声明，`ToolSearch` 命中后经原生 `ToolControl.addTools` 加载。Session 每次请求前协调当前配置、目录与 Transcript，保留仍有效声明的位置，只移除失效或变更的声明并追加新声明；晚出现的 `ToolSearch` 也追加在已有声明之后。这样原生工具变更保留对话前缀，不用每次整表移除重加。已发现集属于当前分支的 Transcript，不另立 Tool State；子 Session 使用自己的工具目录约束和 Transcript。配置、兼容条件与查询语法见 [MCP Tool Search](mcp.md#tool-search)，长期取舍见 [ADR-0025](adr/0025-client-side-tool-search.md)。
+[`tools/tool-search/`](../packages/agent/src/tools/tool-search/index.ts) 区分完整可执行工具目录和模型当前可见的 loadout：MCP 工具注册保留，Deferred Tool 暂不提供声明，`ToolSearch` 命中后经原生 `ToolControl.addTools` 加载。Session 每次请求前协调当前配置、目录与 Transcript，保留仍有效声明的位置，只移除失效或变更的声明并追加新声明；晚出现的 `ToolSearch` 也追加在已有声明之后。pi-ai 根据模型 compat 使用原生追加格式或将当前已加载定义放入下一次请求的普通工具列表；原生追加路径可保留对话前缀。已发现集属于当前分支的 Transcript，不另立 Tool State；子 Session 使用自己的工具目录约束和 Transcript。配置、兼容条件与查询语法见 [MCP Tool Search](mcp.md#tool-search)，长期取舍见 [ADR-0025](adr/0025-client-side-tool-search.md) 与 [ADR-0026](adr/0026-protocol-independent-tool-search.md)。
 
 权限能力在原生 `beforeTool` preflight 与实际执行路径检查当前决策；safe replay 不会绕过 execute 授权。它协调 Hook、显式规则、Permission Mode 和必要的 frontend 询问；Hook 改写的输入重新校验，路径匹配与实际执行使用同一规范化目标。显式 deny/ask 不被 full-access 或 Hook allow 越过。规则语法、顺序及限制由 [permission-rules.md](permission-rules.md) 维护。
 

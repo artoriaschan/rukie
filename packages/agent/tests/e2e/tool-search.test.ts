@@ -120,9 +120,10 @@ test("Headless ToolSearch loads one MCP declaration through an append-only nativ
 test.each([
   ["on", true, 100000, true],
   ["off", true, 100000, false],
-  ["on", false, 100000, false],
+  ["on", false, 100000, true],
   ["auto", true, 100000, false],
   ["auto", true, 100000, true],
+  ["auto", false, 100000, true],
 ] as const)(
   "%s with compat %s and window %s enables search %s",
   async (mode, supported, window, enabled) => {
