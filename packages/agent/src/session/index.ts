@@ -1,3 +1,5 @@
+import { stopHookContinuation } from "../hooks/index.ts";
+import { validateSessionDocument, validateSessionDocuments } from "./documents.ts";
 import { withHookTranscript, writeHookTranscript } from "../hooks/transcript.ts";
 import { randomUUID } from "node:crypto";
 import { declarationsEqual } from "@earendil-works/pi-ai/utils/transcript";
@@ -299,14 +301,6 @@ export interface Session {
   ): Promise<RequestResult>;
 }
 
-const HookContinuationDoc = defineDoc<{ taskId: number | null; count: number }>({
-  kind: "rukie.hook-continuation",
-  version: 1,
-  scope: "conversation",
-  history: "latest",
-  fork: "initial",
-  initial: () => ({ taskId: null, count: 0 }),
-});
 const ChildFactsDoc = defineDoc<{ title: string; description: string }>({
   kind: "rukie.child-facts",
   version: 1,
@@ -473,6 +467,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
   const lease = await store.open({ id: options.resumeId }, context);
   const failedCleanup: (() => Promise<void>)[] = [lease.release];
   try {
+    await validateSessionDocuments(lease.storage, context);
     const registry = createRegistry();
     const env = new NodeExecutionEnv({ cwd });
     failedCleanup.push(() => env.cleanup(context));
@@ -526,9 +521,21 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     // even though no durable submission receipt can be fabricated for that failure.
     const observedStorage = new Proxy(lease.storage, {
       get(target, key) {
+        if (key === "document")
+          return async (...args: Parameters<Storage["document"]>) => {
+            const document = await target.document(...args);
+            validateSessionDocument(document);
+            return document;
+          };
         if (key === "commit")
           return async (...args: Parameters<Storage["commit"]>) => {
             try {
+              // Native fork copies are definition-free; validate their exact historical source before admission.
+              for (const write of args[0])
+                if (write.type === "document.copy")
+                  validateSessionDocument(
+                    await target.document(write.source.id, write.source.at, args[1]),
+                  );
               return await commitStorage(...args);
             } catch (error) {
               storageFailure = error;
@@ -1843,12 +1850,17 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 if (answer.stopReason !== "stop") return undefined;
                 const live = await harness.snapshot(LiveDoc, child.id, ctx);
                 const anchor = Number(live?.run?.inputs[0]);
-                const previous = await harness.snapshot(HookContinuationDoc, child.id, ctx);
-                const count = previous?.taskId === anchor ? previous.count : 0;
+                const continuationPolicy = await stopHookContinuation(
+                  harness,
+                  child.id,
+                  anchor,
+                  "SubagentStop",
+                  ctx,
+                );
                 const result = await childHooks.run(
                   "SubagentStop",
                   childInput({
-                    stop_hook_active: count > 0,
+                    stop_hook_active: continuationPolicy.active,
                     last_assistant_message: textOf(answer),
                   }),
                   { signal: ctx.abortSignal, matchQuery: type.name },
@@ -1873,8 +1885,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                   return undefined;
                 }
                 if (result.decision !== "block" || !result.reason) return undefined;
-                if (count >= 8) {
-                  warn("SubagentStop hook reached the 8 continuation limit");
+                if (continuationPolicy.warning) {
+                  warn(continuationPolicy.warning.message);
                   await child.commit(
                     (tx) =>
                       tx.appendEntry(child.id, {
@@ -1883,13 +1895,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                           role: "session-notice",
                           notice: {
                             kind: "hook_warning",
-                            event: "SubagentStop",
-                            hook: "continuation",
-                            message: "SubagentStop hook reached the 8 continuation limit",
-                            error: {
-                              code: "hook-continuation-limit",
-                              params: { event: "SubagentStop", limit: "8" },
-                            },
+                            ...continuationPolicy.warning,
                           },
                           timestamp: Date.now(),
                         },
@@ -1903,13 +1909,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                     subagentType: type.name,
                     event: {
                       type: "hook_warning",
-                      event: "SubagentStop",
-                      hook: "continuation",
-                      message: "SubagentStop hook reached the 8 continuation limit",
-                      error: {
-                        code: "hook-continuation-limit",
-                        params: { event: "SubagentStop", limit: "8" },
-                      },
+                      ...continuationPolicy.warning,
                       sessionId: childId,
                     },
                   });
@@ -1917,9 +1917,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 }
                 const reason = result.reason;
                 await child.commit(async (tx) => {
-                  const state = await tx.doc(HookContinuationDoc, child.id);
-                  state.taskId = anchor;
-                  state.count = count + 1;
+                  await continuationPolicy.advance(tx);
                   await tx.appendEntry(child.id, {
                     kind: "rukie.message-facts",
                     data: {
@@ -2857,16 +2855,21 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 wrapup = undefined;
                 return continuation(content, "goal");
               }
-              const hookState = await harness.snapshot(HookContinuationDoc, conversation.id, ctx);
               const live = await harness.snapshot(LiveDoc, conversation.id, ctx);
               const runAnchor = Number(live?.run?.inputs[0]);
-              const count = hookState?.taskId === runAnchor ? hookState.count : 0;
+              const continuationPolicy = await stopHookContinuation(
+                harness,
+                conversation.id,
+                runAnchor,
+                "Stop",
+                ctx,
+              );
               checkingStop = runAnchor;
               const result = await hooks
                 .run(
                   "Stop",
                   hookInput({
-                    stop_hook_active: count > 0,
+                    stop_hook_active: continuationPolicy.active,
                     last_assistant_message: textOf(_answer),
                   }),
                   {
@@ -2902,37 +2905,23 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               if (repairs?.runAnchor === runAnchor && repairs.pending.length)
                 return continuation(repairs.pending.join("\n\n"), "async-hook");
               if (result.decision === "block" && result.reason) {
-                if (count >= 8) {
-                  warn("Stop hook reached the 8 continuation limit");
+                if (continuationPolicy.warning) {
+                  warn(continuationPolicy.warning.message);
                   await appendNotice(
                     {
                       kind: "hook_warning",
-                      event: "Stop",
-                      hook: "continuation",
-                      message: "Stop hook reached the 8 continuation limit",
-                      error: {
-                        code: "hook-continuation-limit",
-                        params: { event: "Stop", limit: "8" },
-                      },
+                      ...continuationPolicy.warning,
                     },
                     ctx,
                   );
                   custom({
                     type: "hook_warning",
-                    event: "Stop",
-                    hook: "continuation",
-                    message: "Stop hook reached the 8 continuation limit",
-                    error: {
-                      code: "hook-continuation-limit",
-                      params: { event: "Stop", limit: "8" },
-                    },
+                    ...continuationPolicy.warning,
                   });
                   return undefined;
                 }
                 await conversation.commit(async (tx) => {
-                  const state = await tx.doc(HookContinuationDoc, conversation.id);
-                  state.taskId = runAnchor;
-                  state.count = count + 1;
+                  await continuationPolicy.advance(tx);
                 }, ctx);
                 custom({ type: "hook_continued", event: "Stop", reason: result.reason });
                 return continuation(result.reason, "stop_hook");

@@ -18,7 +18,7 @@ Question 和 Plan Review 在原生执行意图之前收集回复；计划批准�
 
 # Document policies
 
-能力通过 typed documents 保存事实，版本与内容校验失败阻止恢复，不跳过坏值继续运行。Tool State document 的初始 `value: null` 表示尚未建立该状态；拥有者规定清空方式，例如 Todo 使用空数组、Plan 使用 `{ active: false }`，Goal 清空使用 null。声明和校验由各能力源码负责，注册层在同一原生事务中提交状态与必要提醒。
+能力通过 typed documents 保存事实，版本与内容校验失败阻止恢复，不跳过坏值继续运行。Session 协调事实在 Harness／启动 Hook 之前校验父子 Conversation 中的当前内容，每次原生 document 读取和 definition-free fork copy 也校验精确来源及历史版本；损坏的历史内容不会因当前值已修复而获准复制。fork admission 失败遵守原生 poisoned Session 合同，须 close 后重开，不写入成功复制或默认状态。Tool State document 的初始 `value: null` 表示尚未建立该状态；拥有者规定清空方式，例如 Todo 使用空数组、Plan 使用 `{ active: false }`，Goal 清空使用 null。声明和校验由各能力源码负责，注册层在同一原生事务中提交状态与必要提醒。
 
 | 事实及声明处                                                                                                 | 历史 / fork          | 恢复与 Rewind                                                            |
 | ------------------------------------------------------------------------------------------------------------ | -------------------- | ------------------------------------------------------------------------ |

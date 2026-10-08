@@ -204,7 +204,6 @@ export async function createConversationObservation(options: ConversationObserva
   let projectedEntries: readonly EntryRecord[] | undefined;
   let messagesByEntry = new Map<string, TranscriptMessage[]>();
   let messages: readonly TranscriptMessage[] = [];
-  let callArgs = new Map<string, { name: string; args: unknown }>();
   let facts = structuredClone(options.facts());
   const held = new Set<TaskId>();
   let closed = false;
@@ -232,7 +231,10 @@ export async function createConversationObservation(options: ConversationObserva
   function liveAssistant(message: AssistantMessage): TranscriptAssistantMessage {
     return { ...assistant(message), ...options.liveAssistantFacts?.() };
   }
-  function enrich(message: TranscriptMessage, calls = callArgs): TranscriptMessage {
+  function enrich(
+    message: TranscriptMessage,
+    calls: ReadonlyMap<string, { name: string; args: unknown }>,
+  ): TranscriptMessage {
     if (message.role === "assistant") return { ...assistant(message), entryId: message.entryId };
     if (message.role !== "toolResult") return message;
     const call = calls.get(message.toolCallId);
@@ -243,20 +245,23 @@ export async function createConversationObservation(options: ConversationObserva
       ...(view ? { view } : {}),
     };
   }
+  function presentChronologically(input: readonly TranscriptMessage[]): TranscriptMessage[] {
+    const calls = new Map<string, { name: string; args: unknown }>();
+    return input.map((message) => {
+      if (message.role === "assistant")
+        for (const block of message.content)
+          if (block.type === "toolCall")
+            calls.set(block.id, { name: block.name, args: block.arguments });
+      // Provider IDs may repeat in later Turns; enrich before a later call can replace its arguments.
+      return enrich(message, calls);
+    });
+  }
   function project(view: ConversationView) {
     const entries = options.history ? transcriptEntries : view.entries;
     if (projectedEntries === entries) return;
     projectedEntries = entries;
     const raw = transcriptMessages(entries);
-    callArgs = new Map();
-    for (const message of raw) {
-      if (message.role !== "assistant") continue;
-      for (const block of message.content) {
-        if (block.type === "toolCall")
-          callArgs.set(block.id, { name: block.name, args: block.arguments });
-      }
-    }
-    messages = raw.map((message) => enrich(message));
+    messages = presentChronologically(raw);
     messagesByEntry = new Map();
     for (const message of messages) {
       if (!message.entryId) continue;
@@ -604,16 +609,7 @@ export async function createConversationObservation(options: ConversationObserva
     snapshot: () => snapshot,
     messages: () => messages,
     // Present fresh committed DTOs without replacing this observation's captured frame.
-    present: (input: readonly TranscriptMessage[]) => {
-      const calls = new Map(callArgs);
-      for (const message of input) {
-        if (message.role !== "assistant") continue;
-        for (const block of message.content)
-          if (block.type === "toolCall")
-            calls.set(block.id, { name: block.name, args: block.arguments });
-      }
-      return input.map((message) => enrich(message, calls));
-    },
+    present: presentChronologically,
     running: () => parts(current).live.run !== undefined,
     view: () => current,
     flush: () =>
