@@ -1,6 +1,6 @@
 # 05: 自有工具、MCP、图片与 OS 资源适配
 
-Status: ready-for-agent
+Status: claimed
 Blocked by: none
 
 ## What to build
