@@ -3,7 +3,8 @@ import { expect, test } from "bun:test";
 import { startWithClock } from "../helpers/clock-app";
 import { start } from "../helpers/app";
 import { controlledModel } from "../helpers/model";
-import { createSession } from "@rukie/agent";
+import { createSession, createJsonlStore, type SessionOptions } from "@rukie/agent";
+import type { Storage } from "@earendil-works/pi-durable";
 import { fakeModel } from "../helpers/agent-fixtures";
 import { crashUnsafeEffect } from "../helpers/native-recovery";
 import {
@@ -232,18 +233,64 @@ test("read-only child history retains an unknown Tool outcome without success, f
     () => fauxAssistantMessage("restored history reviewed"),
     () => fauxAssistantMessage("restored history reviewed"),
   ]);
+  const session: Partial<SessionOptions> = { ...fake };
+  let reporterSettled = false;
+  let childId: string | undefined;
   const app = await start(argv, {
-    session: fake,
+    session,
     columns: 100,
     rows: 40,
     env: { LANG: "en" },
     async prepare(root) {
-      const { sessionId } = await crashUnsafeEffect(root, true);
-      argv.push("--resume", sessionId);
+      const crashed = await crashUnsafeEffect(root, true);
+      childId = crashed.childId;
+      argv.push("--resume", crashed.sessionId);
+      const store = createJsonlStore({ cwd: root, homeDir: root });
+      session.store = {
+        ...store,
+        async open(...args) {
+          const lease = await store.open(...args);
+          return {
+            ...lease,
+            storage: new Proxy(lease.storage, {
+              get(target, key) {
+                if (key === "commit")
+                  return async (...commit: Parameters<Storage["commit"]>) => {
+                    const result = await target.commit(...commit);
+                    // Parent idle does not settle the recovered child/report chain.
+                    // This exact native driver ends only after its reporter receipt.
+                    if (
+                      commit[0].some(
+                        (write) =>
+                          write.type === "task" &&
+                          write.value.kind === "rukie.subagent-driver" &&
+                          write.value.state.status === "terminal",
+                      )
+                    )
+                      reporterSettled = true;
+                    return result;
+                  };
+                const value = Reflect.get(target, key);
+                return typeof value === "function" ? value.bind(target) : value;
+              },
+            }),
+          };
+        },
+      };
     },
   });
   try {
-    await app.waitFor(() => app.screen().includes("❯") && !app.isWorking());
+    await app.waitFor(() => reporterSettled && app.screen().includes("❯") && !app.isWorking());
+    expect(
+      fake.contexts
+        .at(-1)
+        ?.messages.some(
+          (message) =>
+            message.role === "user" &&
+            typeof message.content === "string" &&
+            message.content.startsWith(`Subagent ${childId} (Unknown child) finished.`),
+        ),
+    ).toBe(true);
     const requests = fake.contexts.length;
     app.stdin.write("\x01\r");
     await app.waitFor(() => app.screen().join("\n").includes("id "));
