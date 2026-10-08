@@ -1,7 +1,7 @@
 # 04: 权限、Hook 协议与中断交互恢复
 
-Status: ready-for-agent
-Blocked by: 03
+Status: claimed
+Blocked by: none
 
 ## What to build
 
@@ -25,8 +25,12 @@ Blocked by: 03
 
 ## Verification
 
-尚未实施。执行时追加实际命令、退出码、公开行为证据、focused timing 与未验证范围；不得用文档检查冒充代码验收。
+进行中。首个公开 Question close/reopen tracer 在旧实现 RED（replacement callback 未调用，101ms）；能力 preflight 后 GREEN。持久 native Task memo 标记未执行交互身份／pending，原生 task phase 与 terminal receipt 决定恢复或取消；callback epoch 和 reply 仅属当前 invocation，不保存临时授权。
+
+`env -u NO_COLOR bun test packages/agent/tests/e2e/questions.test.ts packages/agent/tests/e2e/subagent-permissions.test.ts`：27 PASS、84 assertions、1.82s，exit 0。覆盖关闭后重新询问、旧 callback 晚到、稳定请求身份／新 epoch、显式 abort 后冷恢复不再等待，以及父子来源、权限和无 callback。Permission、Plan Review、OAuth 的新挂起恢复验收尚未完成；未运行 package 或 aggregate。
 
 ## Comments
 
 2026-10-07：从已确认的 grill-with-docs 决策生成；用户已确认测试入口。依赖票未 resolved 前不开展生产迁移。
+
+2026-10-08：03 独立集成并 resolved 于 `1a47e87a`；04 在 `codex/pi-durable-04-interactions` 从该精确基线认领。按已确认的公开 createSession／原生 Storage fault seams 逐个 red→green，设计笔记位于 `/tmp/pi-durable-ticket04-acceptance.md`。

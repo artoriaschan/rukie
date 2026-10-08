@@ -1,3 +1,11 @@
+/** Stable native request identity plus one invocation's callback ownership. */
+export interface InteractionIdentity {
+  requestId: string;
+  taskId: number;
+  conversationId: number;
+  epoch: string;
+}
+
 export interface InteractionNotification {
   message: string;
   title: string;
