@@ -4,6 +4,7 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import {
   createSession as createNativeSession,
   ROOT_CONVERSATION_ID,
+  type StorageWrite,
 } from "@earendil-works/pi-durable";
 import { fileTrackingState } from "../../src/file-tracking/index.ts";
 import { mkdir, rm, stat, symlink, utimes } from "node:fs/promises";
@@ -117,6 +118,76 @@ function failingFileTrackingStore() {
     },
   };
 }
+
+test("external modification and deletion reminders share their native commit with the file baseline document", async () => {
+  dirs = await tempDirs();
+  const path = join(dirs.cwd, "atomic.txt");
+  await Bun.write(path, "original");
+  const base = createJsonlStore(dirs);
+  const batches: (readonly StorageWrite[])[] = [];
+  const tracked = new Set<number>();
+  const store: SessionStore = {
+    ...base,
+    async open(...args) {
+      const lease = await base.open(...args);
+      const commit = lease.storage.commit.bind(lease.storage);
+      lease.storage.commit = async (writes, context) => {
+        const sequence = await commit(writes, context);
+        for (const write of writes) {
+          if (write.type === "document.create" && write.record.kind === "rukie.file-tracking")
+            tracked.add(write.record.id);
+        }
+        if (
+          writes.some(
+            (write) =>
+              write.type === "entry" &&
+              write.value.kind === "rukie.reminder" &&
+              write.value.data &&
+              typeof write.value.data === "object" &&
+              !Array.isArray(write.value.data) &&
+              write.value.data.source === "file-changes",
+          )
+        )
+          batches.push(structuredClone(writes));
+        return sequence;
+      };
+      return lease;
+    },
+  };
+  const events: SessionEvent[] = [];
+  const fake = fakeModel([
+    call("read", { path: "atomic.txt" }),
+    fauxAssistantMessage("read saved"),
+    fauxAssistantMessage("change known"),
+    fauxAssistantMessage("deletion known"),
+  ]);
+  const session = await createSession({ ...dirs, store, ...fake });
+  await session.run("read original");
+  await changeFile(path, "external edit");
+  await session.run("observe modification", {
+    onEvent: (event) => {
+      events.push(event);
+    },
+  });
+  await rm(path);
+  await session.run("observe deletion", {
+    onEvent: (event) => {
+      events.push(event);
+    },
+  });
+  expect(batches).toHaveLength(2);
+  for (const writes of batches) {
+    expect(writes.some((write) => write.type === "document.change" && tracked.has(write.id))).toBe(
+      true,
+    );
+  }
+  expect(changes(events).map((message) => message.content)).toEqual([
+    expect.stringContaining("Index: atomic.txt"),
+    expect.stringContaining("Deleted: atomic.txt"),
+  ]);
+  expect(JSON.stringify(fake.contexts[2])).toContain("Index: atomic.txt");
+  expect(JSON.stringify(fake.contexts[3])).toContain("Deleted: atomic.txt");
+});
 
 test.each([{ add: true }, { add: false }])(
   "a UTF-8 BOM-only change appears in the diff (add: $add)",

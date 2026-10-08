@@ -273,6 +273,11 @@ test("native Compaction is appended without deleting historical evidence and col
   await seedHistory(session);
   const before = await nativeJournal();
   const previousTranscript = structuredClone(session.messages);
+  const firstRead = previousTranscript.find(
+    (message) => message.role === "toolResult" && message.toolName === "read",
+  );
+  if (!firstRead || firstRead.role !== "toolResult")
+    throw new Error("Missing real old Read receipt");
   await session.compact();
   expect(session.messages.slice(0, previousTranscript.length)).toEqual([...previousTranscript]);
   const divider = session.messages.findIndex(
@@ -287,6 +292,14 @@ test("native Compaction is appended without deleting historical evidence and col
   expect(committedCompactions(after)).toHaveLength(1);
   expect(JSON.stringify(fake.contexts.at(-1))).toContain("Saved summary.");
   expect(JSON.stringify(fake.contexts.at(-1))).toContain("recent retained task");
+  expect(JSON.stringify(fake.contexts.at(-1))).not.toContain("inspect old widgets");
+  expect(
+    fake.contexts
+      .at(-1)!
+      .messages.some(
+        (message) => message.role === "toolResult" && message.toolCallId === firstRead.toolCallId,
+      ),
+  ).toBe(false);
   const messages = structuredClone(session.messages);
   await session.close();
   const next = fakeModel([fauxAssistantMessage("resumed")]);
@@ -294,6 +307,12 @@ test("native Compaction is appended without deleting historical evidence and col
   expect(restored.messages).toEqual(messages);
   await restored.run("resume prompt");
   const request = JSON.stringify(next.contexts[0]);
+  expect(request).not.toContain("inspect old widgets");
+  expect(
+    next.contexts[0]!.messages.some(
+      (message) => message.role === "toolResult" && message.toolCallId === firstRead.toolCallId,
+    ),
+  ).toBe(false);
   for (const text of ["Saved summary.", "after summary", "resume prompt"])
     expect(request).toContain(text);
 });

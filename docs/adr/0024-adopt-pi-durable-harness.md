@@ -14,7 +14,7 @@ Rukie 使用 pi-agent-core 的旧 harness 能力，而 pi 1.0.4 已移除这些�
 
 Agent Core 采用 pi-durable Harness 作为唯一执行与持久化基座，移除 pi-agent-core，不引入 pi-coding-agent SDK。所需 pi-ai、pi-mcp、pi-durable、Chord 及 Pi 支撑包精确对齐到已选择的 1.0.4，具体依赖事实归 [技术栈](../tech-stack.md)。API 可重写，所有仓库消费者一起更新，不维护旧接口 shim、旧 harness fallback 或数据迁移器。
 
-本决定已接受，尚未实施。迁移范围和验证归 [实施规范](../../.scratch/pi-durable-migration/spec.md)及其票据；当前运行行为仍以源码和拥有该能力的使用文档为准，不能以 ADR 的 accepted 状态推断升级已完成。
+本决定已接受；迁移范围、已交付边界和验证归 [实施规范](../../.scratch/pi-durable-migration/spec.md)及其票据；当前运行行为仍以源码和拥有该能力的使用文档为准，不能以 ADR 的 accepted 状态推断升级已完成。
 
 ### 执行与恢复
 

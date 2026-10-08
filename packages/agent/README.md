@@ -1,3 +1,38 @@
+# Session Store
+
+`createSession` 默认使用原生 JSONL Storage，同一目录保存父子 Conversation、entries、documents 和 tasks。`SessionStore` 提供 `open`、`list` 与身份 `key`；自定义后端返回 Storage 和可重复调用的 `release`，Session 关闭时释放资源。默认路径由 [`store/`](src/store/index.ts)按解析后的工作目录生成，位于 `homeDir/.rukie/durable-sessions/`；`rukie.session` document 保存 id、名称、模型与选中对话等索引事实。旧 `.rukie/sessions/` 文件不枚举、不读取、不改写，旧 id 打开返回 `session-not-found`。
+
+一个宿主持有一个目录的写者租约。默认实现通过独立 SQLite 文件的 `BEGIN IMMEDIATE` 事务持有内核锁；该文件不存 Session 记录，也不删除或替换。另一个进程或宿主打开同一 id 立即失败，正常关闭和进程死亡释放锁。恢复无需 PID 检查或清理旧租约。列表可以观察活跃目录：当前宿主借用已注册读者，独立查询仅打开原生存储内核读取索引，不启动模型或 Harness scheduler，也不执行任务恢复。需要截断或修复的存储拒绝只读观察。
+
+原生 JSONL 启用 sidecar fsync，[存储文件适配器](src/store/files.ts)在成功追加后 flush 文件，包括 main 提交标记；提交确认后才采用状态和发布对应成功事实。写入或 flush 失败会向调用方传播；原生 Storage 进入 poisoned 状态时须 `await session.close()` 后重开。flush 发生在追加之后，拒绝确认不等于磁盘字节回滚，重新打开时以原生已提交事实为准。进程强制退出测试验证租约释放和恢复，不代表断电测试。
+
+# Document policies
+
+能力通过 typed documents 保存事实，版本与内容校验失败阻止恢复，不跳过坏值继续运行。Tool State document 的初始 `value: null` 表示尚未建立该状态；拥有者规定清空方式，例如 Todo 使用空数组、Plan 使用 `{ active: false }`，Goal 清空使用 null。声明和校验由各能力源码负责，注册层在同一原生事务中提交状态与必要提醒。
+
+| 事实及声明处                                                                                                 | 历史 / fork          | 恢复与 Rewind                                                            |
+| ------------------------------------------------------------------------------------------------------------ | -------------------- | ------------------------------------------------------------------------ |
+| [Todo](src/tools/todo/state.ts)、[Goal facts](src/tools/goal/state.ts)、[Plan](src/tools/plan-mode/state.ts) | rewindable / asOf    | 恢复锚点时的事实；Goal 事实不代表激活自动续跑                            |
+| [Checkpoint](src/checkpoint/index.ts)、[文件跟踪](src/file-tracking/index.ts)                                | rewindable / asOf    | 恢复原输入锚点及模型已知基线                                             |
+| [子代理 Run](src/tools/subagents/state.ts)                                                                   | rewindable / asOf    | 保存历史 Run Outcome，与当前任务活动区分                                 |
+| [子代理目录](src/tools/subagents/state.ts)                                                                   | rewindable / initial | 新 fork 不继承拥有的子代理目录；顶层 Rewind 按目标位置重新建立可观察身份 |
+| [模型选择事实](src/config/model-state.ts)、[标题来源](src/session-title/index.ts)                            | rewindable / asOf    | 保留所选位置的产品事实；实际模型配置从原生 Agent document 恢复           |
+| 原生 `pi.agent`                                                                                              | rewindable / asOf    | 保存模型与 Agent 配置；Session 索引用于列表展示                          |
+| [Goal 激活、待提交输入事实、子代理描述](src/session/index.ts)                                                | latest / initial     | 当前活动事实不复制到新 fork                                              |
+| [Session 索引](src/store/index.ts)                                                                           | Session scope        | 保存持久化身份及当前选中 Conversation，不参与对话 fork                   |
+
+# Transcript and context
+
+`Session.messages` 是当前选中对话的完整已提交消息投影，保留 Compaction 前的消息、原始图片和按时间顺序追加的 Compaction notice。原生当前模型上下文从最新 head、摘要、保留尾部和新消息构造，可以排除仍可观察的旧消息；相同内容在保留尾部再次出现时仍然可见。底层 Storage 的公开 entries 和 Conversation 查询保留被 Rewind 放弃的原对话。原生 reset 接收 handoff 并更新上下文 head，既不删除旧 entries，也不清空 Tool State documents；Session 不另外提供一条 reset 执行路径。
+
+状态 reminders 按来源比较当前内容与已持久化贡献，Compaction 后按当前 document 重建；未经确认的提醒不推进模型已知状态。文件变化提醒与最终基线或删除事实同事务提交。冷恢复不保留进程内已读文件内容；检测到变化后要求重读，再允许覆盖。
+
+# Checkpoint and Rewind
+
+`session.checkpoints()` 返回真实人类输入的 entry 锚点。授权后首次 write/edit 最终路径的修改保存原字节或不存在事实，父子共用父级 Checkpoint；bash 与 MCP 副作用不在备份范围。`session.rewind(id, { code, conversation })` 在父子均无活跃原生任务时可用。对话恢复在目标 prompt 之前创建 fork，按 document 策略恢复事实并切换选中对话，保留原历史；后来的 tasks、Goal 激活和子代理活动不复制到新对话。
+
+同时恢复代码与对话时，先验证全部所需备份，再恢复文件，最后发布对话切换。备份缺失时不写文件；实际文件 I/O 失败时不切换对话、不发布恢复快照，但先前成功恢复的文件可能已改变，调用方应检查真实文件状态。只恢复代码保留对话，后续模型请求会获知检测到的文件变化。范围与决定见 [ADR-0017](../../docs/adr/0017-checkpoint-and-branch-rewind.md)和 [ADR-0024](../../docs/adr/0024-adopt-pi-durable-harness.md)。
+
 # Tool View
 
 工具可声明纯函数 `presentCall` 和 `presentResult`，分别从调用参数及持久化结果事实生成 `@rukie/shared` 的 Tool View。`tool_execution_start` / `tool_execution_end` 携带对应 view，子 Session 事件沿 `subagent_event` 保留它；Headless stream-json 原样输出事件，text 输出行为不变。Presenter 参数或输出不合法、抛错，或工具不可用时，view 为 `undefined`，Frontend 使用原始参数与结果回退显示，呈现失败不影响执行。
@@ -36,7 +71,7 @@ stdout 与 stderr 分别保存在带绝对字节偏移的内存 ring，合计保
 
 # Subagent observation
 
-`session.readSubagent(id)` 返回当前父 Session 所属子 Session 的只读快照：按真实消息顺序的 `PresentedMessage`、可获得的模型，以及最近一次 `SubagentRun`。活跃子 Session 通过自己的串行存储 lease 读取已提交的 main 分支；空闲子 Session 使用 `openReadonly`。已卸载子 Session 经 `SessionStore.find/openReadonly` 核对工作目录与父子归属后读取，并在完成或失败时关闭句柄。未知或不属于父 Session 的 id 返回 `undefined`；缺少只读存储能力或读取失败时拒绝 Promise。读取不创建 Session、不修复存储、不发起 Run，也不改变模型或权限。
+`session.readSubagent(id)` 返回当前父 Session 所属子 Session 的只读快照：真实顺序的消息、模型、描述与最近一次 `SubagentRun`。它在父级已打开的同一原生 Storage 中核对目录和 ownership，读取已提交事实，不为子代理另开存储租约、不创建 Session、不修复存储、不发起 Run。未知或不属于父 Session 的 id 返回 `undefined`，读取失败拒绝 Promise。
 
 快照的 `historyMessages` 在最近 Run 的原生开始事实存在时，提供该事实之前的已提交上下文；它由 Transcript 条目顺序重建，排除当前 Run 的所有 Turn。Frontend 将这段旧历史与已观察到的当前事件各呈现一次；provider 消息 timestamp 不用于判定 Run 归属。原生 Unknown Tool Outcome 保留未知状态，不能由 `isError=false` 推断成功。
 

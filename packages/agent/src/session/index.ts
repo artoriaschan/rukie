@@ -62,6 +62,7 @@ import {
   createJsonlStore,
   registerSessionReader,
   SessionMetadataDoc,
+  parseSessionMetadata,
   type SessionStore,
 } from "../store/index.ts";
 import { createToolState } from "../tool-state/index.ts";
@@ -576,6 +577,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
     });
     let metadata = await harness.snapshot(SessionMetadataDoc, context);
+    if (metadata) metadata = parseSessionMetadata(metadata);
     if (metadata?.id && metadata.id !== lease.id)
       throw new Error("Session metadata identity does not match storage.");
     if (metadata?.activeConversationId) {
