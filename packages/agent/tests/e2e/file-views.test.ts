@@ -123,3 +123,128 @@ test("failed file tools preserve errors without claiming a successful diff", asy
   }
   await session.close();
 });
+
+test("reused provider call IDs preserve each committed result's chronological file view", async () => {
+  dirs = await tempDirs();
+  await Bun.write(join(dirs.cwd, "first.txt"), "one\ntwo\nthree\n");
+  await Bun.write(join(dirs.cwd, "second.txt"), "alpha\nbeta\ngamma\ndelta\n");
+  const call = (name: string, args: Record<string, import("@earendil-works/chord").JsonValue>) =>
+    fauxAssistantMessage(fauxToolCall(name, args, { id: "reused-id" }), { stopReason: "toolUse" });
+  const fake = fakeModel([
+    call("read", { path: "first.txt", offset: 2, limit: 1 }),
+    call("read", { path: "second.txt", offset: 3, limit: 1 }),
+    call("bash", { command: "printf other-tool", description: "Different tool same ID" }),
+    fauxAssistantMessage("finished"),
+  ]);
+  const session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
+  const events: SessionEvent[] = [];
+  const unsubscribe = session.subscribe((event) => {
+    events.push(event);
+  });
+  function check(messages: readonly import("../../src/index.ts").TranscriptMessage[]) {
+    const reads = messages.filter(
+      (message) => message.role === "toolResult" && message.toolName === "read",
+    );
+    expect(reads).toHaveLength(2);
+    expect(reads[0]).toMatchObject({ view: { card: "read", path: "first.txt", offset: 2 } });
+    expect(reads[1]).toMatchObject({ view: { card: "read", path: "second.txt", offset: 3 } });
+  }
+  try {
+    await session.run("read two different slices then run another tool");
+    check(session.messages);
+    const delivered: SessionEvent[] = [];
+    const stop = session.subscribe((event) => {
+      delivered.push(event);
+    });
+    stop();
+    const snapshot = delivered.find((event) => event.type === "snapshot");
+    if (snapshot?.type !== "snapshot") throw new Error("Missing public snapshot");
+    check(snapshot.messages);
+    const endings = events
+      .filter((event) => event.type === "message_end")
+      .flatMap((event) => event.messages);
+    check(endings);
+    expect(fake.contexts).toHaveLength(4);
+    await session.close();
+    const cold = fakeModel([]);
+    const resumed = await createSession({ ...dirs, ...cold, resumeId: session.id });
+    try {
+      check(resumed.messages);
+      expect(cold.contexts).toHaveLength(0);
+    } finally {
+      await resumed.close();
+    }
+  } finally {
+    unsubscribe();
+    await session.close();
+  }
+});
+
+test("fresh child presentation preserves chronological views when a provider reuses call IDs", async () => {
+  dirs = await tempDirs();
+  await Bun.write(join(dirs.cwd, "child-first.txt"), "one\ntwo\nthree\n");
+  await Bun.write(join(dirs.cwd, "child-second.txt"), "alpha\nbeta\ngamma\n");
+  const fake = fakeModel([
+    fauxAssistantMessage(
+      fauxToolCall("subagent", {
+        description: "Reader",
+        prompt: "child reads",
+        run_in_background: false,
+      }),
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage(
+      fauxToolCall("read", { path: "child-first.txt", offset: 2, limit: 1 }, { id: "repeated" }),
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage(
+      fauxToolCall("read", { path: "child-second.txt", offset: 3, limit: 1 }, { id: "repeated" }),
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage(
+      fauxToolCall(
+        "bash",
+        { command: "printf child-other", description: "Other tool" },
+        { id: "repeated" },
+      ),
+      { stopReason: "toolUse" },
+    ),
+    fauxAssistantMessage("child complete"),
+    fauxAssistantMessage("parent complete"),
+  ]);
+  const session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
+  let childId = "";
+  const unsubscribe = session.subscribe((event) => {
+    if (event.type === "subagent_event") childId = event.agentId;
+  });
+  async function check(owner: typeof session) {
+    const child = await owner.readSubagent(childId);
+    const reads = child?.messages.filter(
+      (message) => message.role === "toolResult" && message.toolName === "read",
+    );
+    expect(reads).toHaveLength(2);
+    expect(reads?.[0]).toMatchObject({
+      view: { card: "read", path: "child-first.txt", offset: 2 },
+    });
+    expect(reads?.[1]).toMatchObject({
+      view: { card: "read", path: "child-second.txt", offset: 3 },
+    });
+  }
+  try {
+    await session.run("delegate reader");
+    await check(session);
+    expect(fake.contexts).toHaveLength(6);
+    await session.close();
+    const cold = fakeModel([]);
+    const restored = await createSession({ ...dirs, ...cold, resumeId: session.id });
+    try {
+      await check(restored);
+      expect(cold.contexts).toHaveLength(0);
+    } finally {
+      await restored.close();
+    }
+  } finally {
+    unsubscribe();
+    await session.close();
+  }
+});

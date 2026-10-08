@@ -1,3 +1,4 @@
+export { stopHookContinuation } from "./continuation.ts";
 import {
   HOOK_EVENTS,
   createUserVisibleError,
