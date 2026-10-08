@@ -1,4 +1,4 @@
-Status: claimed
+Status: resolved
 
 # Spec: pi 1.0.4 与 pi-durable 全面迁移
 
@@ -183,3 +183,5 @@ Q1–Q3：全面 durable，接受实验性与 API 破坏；执行逻辑按 durab
 2026-10-07 代码更新后刷新：当前基线 92d17ca1（dsh ink merged-main 记录）；核对本地依赖、ADR-0013、renderer README、测试 helpers 与变更范围，补充新 Frontend seam、Sinon 时钟、真实 Hook readiness、ink AST 边界与依赖分类。Q1–Q9 和九票顺序依赖不变，全部仍 ready-for-agent；未开始生产迁移或重跑业务测试。
 
 刷新验证：`rtk proxy bun run check:docs`（45 个维护 Markdown 文件）、`rtk proxy bun run check:scratch`、`rtk proxy bunx --no -- oxfmt --check .scratch/pi-durable-migration docs/adr/0024-adopt-pi-durable-harness.md`（11 个文件）和 `git diff --check` 均退出码 0；本 effort 的 52 个本地链接、九票顺序依赖及 46 条用户故事通过逐项检查。收尾核对 HEAD 仍为 92d17ca1。本次只刷新规格、六张相关票据与 ADR-0024，未运行业务测试。
+
+2026-10-08 实施闭环：01–09依赖顺序交付、独立审查与集成完成；本spec与09在同一验收提交置resolved。当前46故事与13保留能力见 [coverage](coverage.md)，双轴review／三项finding及后续实际失败修正见 [review](review.md)。最终干净代码 `88f8b7667ef2e349f33815f98329cd0878f3f0a0` 的隔离HOME aggregate exit0：3061 PASS／0 FAIL／17634 assertions，280文件，测试102.23s／real105.52s，命令、完整日志、前三次FAILED、重跑依据和验证限制见 [09最终验收](issues/09-delivery-gate.md#comments)。gate后仅验收文档变更，不重跑全量；交付在codex/pi-durable-migration，不含main／PR，后续清理由协调者处理。

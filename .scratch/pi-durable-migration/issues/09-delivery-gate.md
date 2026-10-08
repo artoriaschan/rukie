@@ -1,6 +1,6 @@
 # 09: 当前文档、ADR 覆盖、最终审查与验收
 
-Status: claimed
+Status: resolved
 Blocked by: none
 
 ## What to build
@@ -11,13 +11,13 @@ Blocked by: none
 
 ## Acceptance Criteria
 
-- [ ] 当前 aggregate 包含 check:ink-boundaries；vendored runtime 边界以该 AST 检查验证，不以 lint/Knip 豁免推断。依赖树、源码/测试/配置消费者没有 pi-agent-core、旧 harness 私有入口、旧 repo adapter、旧模型 loop 或旧数据兼容代码；没有引入 pi-coding-agent SDK。
+- [x] 当前 aggregate 包含 check:ink-boundaries；vendored runtime 边界以该 AST 检查验证，不以 lint/Knip 豁免推断。依赖树、源码/测试/配置消费者没有 pi-agent-core、旧 harness 私有入口、旧 repo adapter、旧模型 loop 或旧数据兼容代码；没有引入 pi-coding-agent SDK。
 - [x] 功能覆盖表逐项对应 retained capabilities、原生行为变化、用户故事和 01–08 证据；移除仅保护已放弃语义的测试，仍保留授权与能力行为覆盖。
 - [x] CONTEXT、architecture、tech-stack、包 README、权限/hooks/MCP 和 Frontend 用法/输出示例描述已实施事实；Session Resume、Run/Turn、Tool State、Goal、Rewind 与 Job 术语映射一致。
-- [ ] ADR-0024 与旧 ADR 替代关系对照最终 diff 审阅，沿用决定未被隐式覆盖；若实现改变长期取舍先修正 coverage 与决定，再闭票。
-- [ ] 公开恢复、unsafe interrupted/safe replay、交互失效、Headless 结算、子 reporter、资源关闭和文件状态事务有当前代码证据，无真实用户配置被读写；沿用 dsh ink 的固定来源 diff、本地改动记录和当前公开 API，如有必要局部 runtime 修改，renderer README 与来源差异一致。
-- [ ] focused checks 和性能审阅完成后运行一次 env -u NO_COLOR bun run check，实际命令、退出码、用例数、用时及限制记入本票；它包含全量 tests，不重复全量验证同一代码。
-- [ ] 九张票的状态/验收和证据与结果一致，最后一票关闭的同一改动将 spec 置 resolved；未满足标准不得因时间或试验成功提前关闭。
+- [x] ADR-0024 与旧 ADR 替代关系对照最终 diff 审阅，沿用决定未被隐式覆盖；若实现改变长期取舍先修正 coverage 与决定，再闭票。
+- [x] 公开恢复、unsafe interrupted/safe replay、交互失效、Headless 结算、子 reporter、资源关闭和文件状态事务有当前代码证据，无真实用户配置被读写；沿用 dsh ink 的固定来源 diff、本地改动记录和当前公开 API，如有必要局部 runtime 修改，renderer README 与来源差异一致。
+- [x] focused checks 和性能审阅完成后运行一次 env -u NO_COLOR bun run check，实际命令、退出码、用例数、用时及限制记入本票；它包含全量 tests，不重复全量验证同一代码。
+- [x] 九张票的状态/验收和证据与结果一致，最后一票关闭的同一改动将 spec 置 resolved；未满足标准不得因时间或试验成功提前关闭。
 
 ## Testing Decisions
 
@@ -64,3 +64,13 @@ ADR Coverage：逐项核对0024完整／部分替代与0015扩展，更新0002�
 2026-10-08 第三次aggregate真实结果：集成7f5879f1，**exit1，FAILED**，3060 PASS／1 FAIL／17632 assertions，3061 tests／280 files，测试102.89s／总106.55s；`/tmp/pi-durable-final-check-03.log` 保留。前八修正和窄屏Chat分组本次通过；剩余只读子历史case用parentidle记录请求数2，正常恢复reporter随后发起第三次请求。最小公开RED555.48ms的provider上下文证明第三次是实际稳定childID的结束报告，不是打开视图执行。fixture在公共Storage成功commit观察该恢复driver的原生终态（reportreceipt之后），并断言实际report上下文，才记录只读导航前请求数；原count不变、unknown显示而非success/failure、真实saved-effect内容断言均保留，无固定3替换／扩timeout／生产／共享helper变化。详细证据见 [review](../review.md#third-aggregate-failure-and-recovered-reporter-completion-barrier)。09/spec仍claimed，三次FAILED均不以focused通过改写；本implementer没有package／aggregate重跑。
 
 当前第三次follow-up公开两文件5 PASS／66 assertions／2.29s，修正case375.13ms，future／past timestamp边界和cold只读Agent View历史保留通过，`/tmp/pi-durable-followup03-focused.log`。隔离HOME当前check:dev exit0，`/tmp/pi-durable-followup03-static.log`，包括format／lint／types／Knip／tracker／46 Markdown／ink AST；随后证据文档的docs／tracker／目标格式／diff检查通过。只改一个consumer测试与review／09记录，当前7f5879f1已同步；等待独立审查，不关闭09/spec或改写全量失败。
+
+2026-10-08 最终交付验收：协调者在干净集成 `88f8b7667ef2e349f33815f98329cd0878f3f0a0` 执行 `rtk proxy /usr/bin/time -p env -u NO_COLOR HOME=/tmp/rukie-pi-durable-final-home.Ych0rF bun run check > /tmp/pi-durable-final-check-04.log 2>&1`，**exit0，PASS**：3061 PASS／0 FAIL／17634 assertions，3061 tests／280 files，测试102.23s／real105.52s／user395.06s／sys184.21s。check:dev 全部通过，包含908文件格式、lint、types、Knip、tracker、46 Markdown及真实ink AST边界。完整日志 `/tmp/pi-durable-final-check-04.log` 保留；生产代码在该gate之后没有变化。
+
+前三次aggregate仍是实际FAILED：c6617173的3052 PASS／8 FAIL／114.09s，33bdbf80的3060 PASS／1 FAIL／107.14s，7f5879f1的3060 PASS／1 FAIL／106.55s；原日志与各次最小RED、修正及focused证据保留在 [独立review](../review.md)。额外全量分别针对已证实的四worker FIFO／OS完成与native admission调度、Chat分组展开与通知的共享读位、恢复reporter晚于parentidle的全仓调度交互；不是同一代码盲目重试。最终一次覆盖这些修正后的全仓组合。
+
+两条独立review轴的三项finding均已修正并独立复核接纳；后续consumer／Chat修正也经独立merger审阅。46条原文故事、13项保留能力、01–08公开源码／测试证据及ADR-0024完整／部分替代和继续有效决定已核对。无旧执行引擎或数据兼容路径，无新的信任／凭据／replay授权取舍；固定ink来源124文件与39项差异匹配README，AST不是豁免推断。真实崩溃／进程与signal证据限当前macOS，不扩大为断电、所有文件系统或跨平台保证；外部生产provider凭据不纳入isolatedHOME测试。历史失败不因最终PASS改写。
+
+本次只改四个验收Markdown，在同一提交将09与spec置resolved并完成所有AC；不提交到main、不创建PR、不再运行测试／package／aggregate。协调者已逐个重新核对clean状态及相对已测88f8b766的ancestor／无独有patch，使用普通git worktree remove清理15个明确归属的/private/tmp/rukie-pi-durable-*工作树，无force；02 policy／tools非ancestor但patch等价。分支refs、日志和5c23集成、main418及无关2fe8／65b8／9c4c均保留。隔离最终HOME待本提交后清理。
+
+结项文档检查：`rtk proxy bun run docs:update`、`rtk proxy bun run check:docs`（46 Markdown）、`rtk proxy bun run check:scratch`、四个结项Markdown的 `rtk proxy bunx --no -- oxfmt --check` 与 `rtk proxy git diff --check` 均exit0。逐项确认46条故事原文未变、13能力表保留、01–09状态resolved，09所有AC已勾选；生产和测试没有gate后的修改。
