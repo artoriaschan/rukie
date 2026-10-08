@@ -62,3 +62,5 @@ Session 暴露 `mcpServers()`、`authenticateMcp(name)`、`clearMcpAuth(name)`�
 Frontend 提供 `onMcpAuth` 以显示 Interaction；没有回调时主动登录被拒绝，模型也看不到登录工具。管理面板、选择、阅读位置、结果和授权 UI 都属于 Frontend 本地状态，不写 Transcript、Tool State 或 reminder；Session Resume 不恢复面板。Interaction FIFO 临时接管面板输入，队列处理完后恢复有效页面。关闭、Session 替换或退出清理面板订阅，晚到结果不能重新打开面板或更新另一 Session。
 
 原生认证工具挂起时 close/reopen 会按当前信任和精确 endpoint／headers 配置重新发起授权，替换 listener、state 与 verifier；旧 callback 不能完成新授权。code exchange 开始后仍采用 unsafe 中断语义，不能自动重发已使用或结果未知的 code。请求身份与取消契约见 [Agent Core pending interactions](../packages/agent/README.md#pending-interactions)。
+
+MCP transport 是宿主资源；创建失败、初始化取消和正常 close 均释放已建立的连接。`SessionOptions.initializationSignal` 只约束打开过程，打开后的 transport 生命周期仍由 Session close 和对应操作 signal 管理；不会用启动 signal 取消已接受的后台工作。

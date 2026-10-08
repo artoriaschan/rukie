@@ -12,13 +12,13 @@ status: accepted
 
 公开 `@rukie/coding-agent` 命令行包，首版支持 macOS arm64/x64。主包使用 Node launcher，按平台启动编入 Bun 运行时的可执行文件；两个平台包通过精确版本的 optionalDependencies 安装。用户安装需要 Node/npm，运行 Agent Core 不需要另装 Bun。Agent Core、shared、i18n 保持私有 workspace；首版只承诺 CLI，不提供公开 SDK。
 
-内部开发继续直接消费 TypeScript，构建时生成分发 manifest、资源和 npm tarball。产品版本由 coding-agent manifest 提供，所有发布包与用户可见版本保持一致。每个目标平台对实际安装包进行运行验收；构建成功不能代替安装验收。Headless CLI 与 TUI 保持 [ADR-0012](0012-single-coding-agent-package.md) 的共用入口与动态加载边界，Bun 运行时和 pi 复用分别沿用 [ADR-0001](0001-agent-runs-in-bun-sidecar.md) 和 [ADR-0002](0002-reuse-pi-agent-core-harness.md)。
+内部开发继续直接消费 TypeScript，构建时生成分发 manifest、资源和 npm tarball。产品版本由 coding-agent manifest 提供，所有发布包与用户可见版本保持一致。每个目标平台对实际安装包进行运行验收；构建成功不能代替安装验收。Headless CLI 与 TUI 保持 [ADR-0012](0012-single-coding-agent-package.md) 的共用入口与动态加载边界，Bun 运行时和 pi 复用分别沿用 [ADR-0001](0001-agent-runs-in-bun-sidecar.md) 和 [ADR-0024](0024-adopt-pi-durable-harness.md)。
 
 Release Please 根据整个产品的 Conventional Commits 准备版本、Changelog 和 Release PR，由维护者合并 Release PR 决定发版。初始版本为 0.1.0；0.x 兼容变更升 patch，不兼容变更升 minor，beta 使用 next。GitHub App 创建 PR、版本 tag 和 Release，npm OIDC 负责 registry 写入。PR/main 检查、版本准备和 tag 发布使用独立 workflow。
 
 所有平台安装验收通过后保存发布 tarball。发布阶段使用已经验收的同一份产物，先发布平台包再发布主包；正式主包经过 candidate 的 registry 安装验收后才推进 latest。发布串行，失败保留旧 latest；恢复核对已发布版本和产物身份，续发缺失包。同版本内容冲突时停止，不尝试覆盖；旧版本恢复不能意外倒退 dist-tag。
 
-项目自有代码采用 MIT，并分发第三方许可声明。本次发布保留当前 vendored Yoga，不进行替换或来源调查。这是用户确认的范围例外，部分替代 [ADR-0005](0005-own-tui-renderer.md) 关于本次对外分发必须替换 Yoga 的条件；该 ADR 其他渲染管线决定继续有效。此例外不表示来源问题已解决，也不接受仍处于 proposed 的 [ADR-0013](0013-adopt-dsh-tui-ink.md)。
+项目自有代码采用 MIT，并分发第三方许可声明。本次发布保留当前 vendored Yoga，不进行替换或来源调查。这是用户确认的范围例外，部分替代 [ADR-0005](0005-own-tui-renderer.md) 关于本次对外分发必须替换 Yoga 的条件；该 ADR 其他渲染管线决定继续有效。此例外不表示来源问题已解决。当时的分发范围不构成对 renderer 选型的接受；之后接受并实施的 [ADR-0013](0013-adopt-dsh-tui-ink.md) 独立拥有固定来源 dsh ink／Yoga 的决定，当前分发须沿用该来源及许可边界。
 
 ## 备选方案
 

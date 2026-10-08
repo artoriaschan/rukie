@@ -52,7 +52,7 @@ SplitDiffView 的 `onSourceMount(id, DOMElement | null)` 将稳定源行身份�
 
 ### 与 manifest 不同的原始路径
 
-124 个来源文件全部保留；当前 37 个文件包含上文说明的本地改动。以下路径沿用 manifest 的来源路径，`src/native-ts/` 在本仓库映射到 `ink/native-ts/`。
+124 个来源文件全部保留；当前 39 个文件包含上文说明的本地改动。以下路径沿用 manifest 的来源路径，`src/native-ts/` 在本仓库映射到 `ink/native-ts/`。
 
 - `src/ink/components/AlternateScreen.tsx`
 - `src/ink/components/App.tsx`
@@ -68,6 +68,7 @@ SplitDiffView 的 `onSourceMount(id, DOMElement | null)` 将稳定源行身份�
 - `src/ink/hooks/use-selection.ts`
 - `src/ink/ink.tsx`
 - `src/ink/input-suppression.ts`
+- `src/ink/kitty-graphics.ts`
 - `src/ink/layout/yoga.ts`
 - `src/ink/log-update.ts`
 - `src/ink/node-cache.ts`
@@ -84,6 +85,7 @@ SplitDiffView 的 `onSourceMount(id, DOMElement | null)` 将稳定源行身份�
 - `src/ink/sixel-codec.ts`
 - `src/ink/squash-text-nodes.ts`
 - `src/ink/stringWidth.ts`
+- `src/ink/terminal-querier.ts`
 - `src/ink/terminal.ts`
 - `src/ink/termio/osc.ts`
 - `src/ink/termio/parser.ts`

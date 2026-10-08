@@ -75,7 +75,7 @@ PreToolUse 的 `additionalContext` 附在本次工具结果的 `<system-reminder
 | SubagentStop       | `agent_type`        | 子代理真正结束前，另含 `agent_transcript_path`；行为同 Stop。                                             |
 | PreCompact         | `trigger`           | 自动压缩前，`trigger: "auto"`、`custom_instructions: null`；block / exit 2 跳过并告警，下次阈值仍会重试。 |
 | PostCompact        | `trigger`           | 压缩后，含 `compact_summary`；随后触发 SessionStart(compact)。                                            |
-| SessionEnd         | `reason`            | dispose 时触发，exit / other；输出丢弃。                                                                  |
+| SessionEnd         | `reason`            | close 时触发，exit / other；输出丢弃。                                                                    |
 | Notification       | `notification_type` | 每次交互开始即触发，不等待结果；只显示 `systemMessage`。                                                  |
 
 SessionStart(compact) 的上下文也会附到同一 run 的下一条 user 消息，例如 Stop 反馈或子代理结束通知。Agent Core 自己生成的续跑、通知和后台唤醒消息不触发 UserPromptSubmit。
@@ -139,9 +139,9 @@ Notification 输入含 `message`、`title`、`notification_type`，类型为 per
 
 `agents/*.md` frontmatter 可声明相同格式的 `hooks`；仅在该子代理中与父配置合并，`Stop` 自动改为 `SubagentStop`。用户目录中的类型 hooks 可加载；项目 `.rukie` / `.claude` / `.agents` 中的类型 hooks 同样受 Trusted Project 限制，未信任时只丢弃 hooks，保留类型其他定义并告警。
 
-调用 `await session.dispose(reason)` 统一收尾：中止当前 run 与后台 hooks、触发 SessionEnd、关闭 MCP，并清理子代理 session。默认 reason 为 exit，也可用 other；调用幂等。CLI finally 与 TUI 退出已接入。
+调用 `await session.close(reason)` 撤回当前 invocation，保留已接受但未结算的原生任务，触发 SessionEnd 并等待 Hook、MCP、OS Job 与存储关闭。默认 reason 为 exit，也可用 other；并发调用共用关闭结果。SessionEnd 有独立的 1.5 秒预算，不继承当前 Run 的已取消 signal。正常 CLI／TUI 退出和进程中断都等待 close；明确取消当前普通工作使用 `session.abort()`。
 
-前端可用 `session.subscribe(onEvent)` 观察普通及后台自动 run，返回取消订阅函数；首个订阅者也收到首次自动 run 的缓存事件。`session.running` 和 `session.interruptRun()` 提供运行状态与当前 run 的取消入口。后台启动 run 已活跃时，外部用户任务等待它真实结束后正常提交，初始 TUI / CLI 任务不会丢失；普通用户 run 仍拒绝重入。
+Frontend 通过 `session.subscribe(onEvent)` 先收到一致 committed snapshot，再观察普通 Run、后台工作与 Hook 事件，返回取消订阅函数。`session.running` 观察普通工作；后台 child 还需目录活动事实。`session.abort()` 默认不跨 background ownership，`await session.interruptSubagent(id)` 只停止所选 child 并等待终态。`waitForRequest` 观察关联 child/report 与后来处理，不能以父 Run idle 判定整次请求结束。
 
 hook_warning、hook_message、hook_continued 进入 stream-json。TUI 按所选语言显示结构化告警、hook 拒绝来源和 Stop 反馈；text CLI 将告警、系统消息和停止原因写入 stderr。
 
@@ -153,4 +153,6 @@ Run 期间显示的 `hook_message` 和 `hook_warning` 作为不进入模型输�
 
 工具真正执行失败时触发 `PostToolUseFailure`，输入包含 `error`、`is_interrupt`、`duration_ms`，事件输出只接受 `additionalContext`，通用控制字段仍有效。参数校验失败和权限拒绝不会触发此事件。子代理同样触发这两种事件，并携带其 `agent_id` 与 `agent_type`。
 
-取消工具后的失败 hook 仍会完成，按自身 `timeout` 或执行器默认预算收尾，使其上下文能随该工具结果写入 transcript；这可能延后取消完成。`Session.dispose()` 可随时中止此收尾 hook。
+取消工具后的失败 hook 仍会完成，按自身 `timeout` 或执行器默认预算收尾，使其上下文能随该工具结果写入 transcript；这可能延后取消完成。`session.close()` 撤回宿主拥有的收尾 Hook，并等待进程与输出释放。
+
+Session 创建期间的 `initializationSignal` 只取消 SessionStart Hook 与打开过程；初始化失败先撤销注册观察者／读者，再释放资源。打开后该 signal 不取消模型或后台 child，宿主退出使用 close。启动 Hook 尚未接受的 prompt 不会被伪造为 pending 输入；运行中 Hook 关闭则保留此前真实接受的输入，下一次恢复重新按当前信任与协议处理。

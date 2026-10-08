@@ -4,7 +4,7 @@ status: superseded
 
 # 复用 pi-agent-core 的 harness 组件，不用 pi-coding-agent，也不完全自研
 
-本决定已由 [ADR-0024](0024-adopt-pi-durable-harness.md) 替代：采用原生 durable 执行与恢复，移除旧 harness 和数据兼容。新决定已接受，实施尚未开始；当前迁移状态见[规格与票据](../../.scratch/pi-durable-migration/spec.md)。下文保留历史取舍。
+本决定已由 [ADR-0024](0024-adopt-pi-durable-harness.md) 替代：采用原生 durable 执行与恢复，移除旧 harness 和数据兼容。当前执行与持久化契约见 [Agent README](../../packages/agent/README.md#session-store)，整体交付验收见[规格与票据](../../.scratch/pi-durable-migration/spec.md)。下文保留历史取舍。
 
 ## 问题
 

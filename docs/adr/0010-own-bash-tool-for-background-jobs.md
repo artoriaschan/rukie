@@ -4,7 +4,7 @@ status: accepted
 
 # bash 工具改为自研，以支持 Background Job
 
-本决定的宿主退出和子 Run 收尾协调由新决定部分替代；自研 bash、OS Background Job ownership、进程清理与 Resume 不重建进程继续有效。替代关系见 [ADR-0024](0024-adopt-pi-durable-harness.md)。新决定已接受，实施尚未开始；下文记录迁移前义务，当前进度见[规格与票据](../../.scratch/pi-durable-migration/spec.md)。
+本决定的宿主退出和子 Run 收尾协调由新决定部分替代；自研 bash、OS Background Job ownership、进程清理与 Resume 不重建进程继续有效。替代关系见 [ADR-0024](0024-adopt-pi-durable-harness.md)。下文记录被部分替代的历史决定；当前契约见 [Agent README](../../packages/agent/README.md#background-job)，整体交付验收见[规格与票据](../../.scratch/pi-durable-migration/spec.md)。
 
 ## 问题
 
