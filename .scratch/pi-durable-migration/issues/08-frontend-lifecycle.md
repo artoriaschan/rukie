@@ -1,6 +1,6 @@
 # 08: TUI/Headless 恢复、输出与退出边界
 
-Status: claimed
+Status: resolved
 Blocked by: none
 
 ## What to build
@@ -26,7 +26,7 @@ Blocked by: none
 
 ## Verification
 
-实现完成，待独立 merger；Status 保持 claimed。新工作树从精确已 resolved07 `fe7554eb` 开始，frozen install 通过。公开真实 CLI SIGTERM prompt／Goal tracer 首次 RED：进程默认死亡，没有 Interrupted 收束（2 FAIL／678ms）。入口把 SIGTERM 接入现有 host signal／awaited Session.close 路径，保留 SIGINT130；SIGTERM 的 Headless 中断映射为143。实际 Hook shell／child atomic ready-PID tracer 在基线 RED（410ms，进程退出后 shell PID 仍活跃）；修正后两 PID 均已结束、未执行 pending Bash、无 late marker，并可同一 accepted request 冷恢复。没有通过 lease 自动释放或进程死亡推断 graceful teardown。
+实现完成并经独立 merger 验收；Status 为 resolved。新工作树从精确已 resolved07 `fe7554eb` 开始，frozen install 通过。公开真实 CLI SIGTERM prompt／Goal tracer 首次 RED：进程默认死亡，没有 Interrupted 收束（2 FAIL／678ms）。入口把 SIGTERM 接入现有 host signal／awaited Session.close 路径，保留 SIGINT130；SIGTERM 的 Headless 中断映射为143。实际 Hook shell／child atomic ready-PID tracer 在基线 RED（410ms，进程退出后 shell PID 仍活跃）；修正后两 PID 均已结束、未执行 pending Bash、无 late marker，并可同一 accepted request 冷恢复。没有通过 lease 自动释放或进程死亡推断 graceful teardown。
 
 ### Acceptance evidence
 
@@ -73,3 +73,5 @@ ADR-0024已有nativeclose/abort、恢复与因果结算决定，本票接入可�
 2026-10-07 基线刷新：上述 API、时钟和退出义务来自当前 92d17ca1 的 dsh ink 交付结果，本票只适配 durable，不重复 renderer 迁移。
 
 2026-10-08：07 已独立 resolved；08 新工作树 `/tmp/rukie-pi-durable-08`，分支 `codex/pi-durable-08-frontends`，精确基线 `fe7554eb`。沿已确认的 headless main／实际 CLI 子进程／TUI start 与 terminal predicates 公共 seam 执行 tdd；旧准备日志不作为当前验收通过。
+
+2026-10-08 独立 merger 验收：审阅 `ca8a9591` 相对精确07集成 `fe7554eb` 的12文件 diff、全部八项 AC 与当前 focused／static 证据。确认 SIGTERM 沿既有 awaited close 路径释放真实 Hook shell／child 和 Session 资源，Headless130／143 与嵌入 host signal 合同一致；初始化取消只约束 SessionStart／打开边界，原生 Harness 使用 BACKGROUND_CONTEXT，返回后信号不授权 Run abort。失败初始化先撤销已注册 reader／observer，再释放连接、Hook 与存储；普通 Esc、显式 child stop、normal exit/cold snapshot、fresh Question FIFO、小终端与 immutable RGBA 保持各自所有者边界。未改变 ink生产代码，未重跑 package/full。独立合并于 `04639950` 并关闭08、解除09阻塞；集成 tracker/docs、受影响 Markdown format 与 diff 检查通过。09仍负责统一文档审阅、固定来源 inventory 和唯一最终 aggregate gate。

@@ -1,7 +1,7 @@
 # 09: 当前文档、ADR 覆盖、最终审查与验收
 
 Status: ready-for-agent
-Blocked by: 08
+Blocked by: none
 
 ## What to build
 
