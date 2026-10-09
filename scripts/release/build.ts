@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { chmod, cp, mkdir, readFile, realpath, rm } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { parseArgs } from "node:util";
 import { generateNotices } from "./notices.ts";
 
@@ -118,6 +118,31 @@ export async function buildRelease(output: string, platformId: ReleasePlatform =
             loader: "ts",
             contents: `import { registerBunOAuthFlows } from "@earendil-works/pi-ai/bun-oauth";\nimport { bedrockProviderModule } from "@earendil-works/pi-ai/bedrock-provider";\nimport { setBedrockProviderModule } from "@earendil-works/pi-ai/api/bedrock-converse-stream.lazy";\nregisterBunOAuthFlows();\nsetBedrockProviderModule(bedrockProviderModule);\n${(await Bun.file(path).text()).replace(/^#![^\n]*\n/, "")}`,
           }));
+          build.onLoad({ filter: /[/]sixel-graphics\.ts$/ }, async ({ path }) => {
+            const source = await Bun.file(path).text();
+            const reference = "new URL('./sixel-worker.js', import.meta.url)";
+            if (!source.includes(reference))
+              throw new Error("Sixel worker locator changed; update the release adapter");
+            // Bun merges the owner module into the primary entry, while the extra worker retains ink/.
+            return {
+              loader: "ts",
+              contents: source.replace(
+                reference,
+                "new URL('./ink/sixel-worker.js', import.meta.url)",
+              ),
+            };
+          });
+          build.onLoad({ filter: /[/]sixel[/]upng\.js$/ }, async ({ path }) => {
+            const source = await Bun.file(path).text();
+            const reference = "module.exports = UPNG = {};";
+            if (!source.includes(reference))
+              throw new Error("Sixel UPNG declaration changed; update the release adapter");
+            // The pinned CommonJS source assigns an undeclared global; strict compiled workers reject it.
+            return {
+              loader: "js",
+              contents: source.replace(reference, "var UPNG = module.exports = {};"),
+            };
+          });
           build.onLoad({ filter: /[/]avatar-portrait\.ts$/ }, async ({ path }) => {
             const source = await Bun.file(path).text();
             const reference =
@@ -141,6 +166,16 @@ export async function buildRelease(output: string, platformId: ReleasePlatform =
   if (!result.success) throw new AggregateError(result.logs, "Release compilation failed");
   await Promise.all([chmod(join(bin, "rukie"), 0o755), chmod(join(bin, "rg"), 0o755)]);
   if (!result.metafile) throw new Error("Release compilation did not produce its module graph");
+  const modules = Object.keys(result.metafile.inputs)
+    .map((path) => {
+      const local = relative(root, resolve(root, path));
+      if (local === ".." || local.startsWith(`..${sep}`))
+        throw new Error("Release module is outside the repository");
+      return local.split(sep).join("/");
+    })
+    .sort();
+  // This audit is embedding evidence only, separate from tarball identity and publisher authorization.
+  await Bun.write(join(out, "release-modules.json"), `${JSON.stringify(modules, null, 2)}\n`);
   const notices = join(staging, "THIRD_PARTY_NOTICES.md");
   await generateNotices(
     root,
