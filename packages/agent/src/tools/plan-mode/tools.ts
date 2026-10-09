@@ -1,5 +1,5 @@
-import type { PresentedTool } from "../presentation.ts";
-import type { PreflightTool } from "../preflight.ts";
+import type { PresentedTool } from "../support/presentation.ts";
+import type { PreflightTool } from "../support/preflight.ts";
 import { Type } from "typebox";
 import {
   requestInteraction,

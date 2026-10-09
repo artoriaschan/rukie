@@ -25,7 +25,7 @@ test("isolated model hooks load only the read-only tool capabilities", async () 
   expect(result.success).toBe(true);
   expect(loaded.has("tools/glob.ts")).toBe(true);
   expect(loaded.has("tools/grep.ts")).toBe(true);
-  expect(loaded.has("tools/runtime.ts")).toBe(true);
+  expect(loaded.has("tools/support/runtime.ts")).toBe(true);
   expect(
     [...loaded].filter((path) =>
       /^tools\/(?:builtin\.ts|(?:bash|jobs|todo|web-fetch)\/|(?:question|skill)\.ts)/.test(path),

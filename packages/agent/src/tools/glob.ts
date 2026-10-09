@@ -1,6 +1,6 @@
-import { truncateHead } from "./runtime.ts";
+import { truncateHead } from "./support/runtime.ts";
 import { Value } from "typebox/value";
-import type { PresentedTool } from "./presentation.ts";
+import type { PresentedTool } from "./support/presentation.ts";
 import { lstat } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import ignore, { type Ignore } from "ignore";

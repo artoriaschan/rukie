@@ -1,8 +1,8 @@
-import { truncateHead } from "./runtime.ts";
+import { truncateHead } from "./support/runtime.ts";
 import { createUserVisibleError } from "@rukie/shared";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import type { PresentedTool } from "./presentation.ts";
+import type { PresentedTool } from "./support/presentation.ts";
 
 const facts = Type.Object({
   matches: Type.Array(

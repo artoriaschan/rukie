@@ -33,7 +33,7 @@ Question 和 Plan Review 在原生执行意图之前收集回复；计划批准�
 
 # Goal continuation
 
-Goal facts 与已接受的续跑授权分开。真实用户创建或重新开启 Goal 时，Goal document、激活身份、原生 `rukie.goal-driver` task 和因果请求收据在同一事务中提交；只有顶层 Conversation 拥有该 task。driver 保存下一轮 reservation，使用由 task 和 round 组成的稳定 request id 通过原生 inbox 提交输入，等待该轮及相关 child/reporters 的收据，再保留下一轮 reservation。实际输入被原生放置后才增加一次轮次；reservation、Human 输入、Hook continue 和报告不消费轮次。
+[`Goal runtime`](src/tools/goal/runtime.ts) 管理 Goal facts 与已接受的续跑授权，二者分开。真实用户创建或重新开启 Goal 时，Goal document、激活身份、原生 `rukie.goal-driver` task 和因果请求收据在同一事务中提交；只有顶层 Conversation 拥有该 task。driver 保存下一轮 reservation，使用由 task 和 round 组成的稳定 request id 通过原生 inbox 提交输入，等待该轮及相关 child/reporters 的收据，再保留下一轮 reservation。实际输入被原生放置后才增加一次轮次；reservation、Human 输入、Hook continue 和报告不消费轮次。
 
 `createGoal` 返回已接受激活的 `requestId`，第一条输入尚未提交时也能调用 `waitForRequest`。结算包含全部相关轮次及结果处理，以最终回答和不重复的 usage 返回；Human 模型工具创建的激活纳入该 Human 请求，历史目标与无关任务不纳入。`close` 保留已接受 task，重新打开继续同一轮；输入提交确认丢失时重新取得原生 submission 收据。暂停、受阻、完成、上限、清除、显式 abort 或模型错误停止后续 admission，保留已提交事实。暂停或清除不会取消当前工具结果或其回答；未放置的 reservation 不消费轮次。停止状态的重新开启仍需真实用户授权，历史 Goal facts 或终态 task 不构成授权。
 

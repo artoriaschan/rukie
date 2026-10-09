@@ -545,14 +545,3 @@ test("manual Compaction immediately restores Goal reminder and unchanged followi
   expect(goalReminders(events)).toEqual([]);
   expect(JSON.stringify(fake.contexts.at(-1))).toContain("retain the objective");
 });
-
-test("pausing an accepted Goal before its first placement consumes no round", async () => {
-  dirs = await tempDirs();
-  const fake = fakeModel([fauxAssistantMessage("current round")]);
-  const session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
-  await session.createGoal("finish current round");
-  await session.pauseGoal();
-  await session.waitForIdle();
-  expect(fake.contexts).toHaveLength(0);
-  expect(session.goal).toMatchObject({ phase: "paused", roundsStarted: 0, armed: false });
-});

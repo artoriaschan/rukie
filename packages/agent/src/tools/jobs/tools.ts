@@ -1,6 +1,6 @@
 import type { ToolRegistration } from "@earendil-works/pi-durable";
 import { Type } from "typebox";
-import type { PresentedTool } from "../presentation.ts";
+import type { PresentedTool } from "../support/presentation.ts";
 import { jobStatus, type Jobs } from "./registry.ts";
 
 const outputSchema = Type.Object({

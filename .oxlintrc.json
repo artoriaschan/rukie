@@ -60,7 +60,9 @@
         "packages/agent/src/tools/*/content.ts",
         "packages/agent/src/tools/*/proxy.ts",
         "packages/agent/src/tools/*/addresses.ts",
-        "packages/agent/src/tools/*/output-capture.ts"
+        "packages/agent/src/tools/*/output-capture.ts",
+        "packages/agent/src/tools/*/runtime.ts",
+        "packages/agent/src/tools/*/driver.ts"
       ],
       "rules": {
         "no-restricted-imports": [
@@ -75,15 +77,17 @@
                 "group": [
                   "./tools.ts",
                   "./tool.ts",
-                  "../runtime.ts",
-                  "../../tools/runtime.ts",
                   "../index.ts",
                   "../../tools/index.ts",
                   "../builtin.ts",
                   "../../tools/builtin.ts",
                   "../readonly.ts",
                   "../../tools/readonly.ts",
-                  "../../session/tools.ts"
+                  "../../session/tools.ts",
+                  "../support/runtime.ts",
+                  "../../support/runtime.ts",
+                  "../../tools/support/runtime.ts",
+                  "**/support/runtime.ts"
                 ],
                 "message": "A capability execution module must not import its own protocol adapter, the shared tool-runtime adaptation layer, or the global tools entry."
               }

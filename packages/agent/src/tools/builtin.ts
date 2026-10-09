@@ -17,7 +17,7 @@ import { createSkillTool } from "./skill.ts";
 import { createQuestionTool, type OnQuestion } from "./question.ts";
 import { createTodoTool, type TodoItem } from "./todo/index.ts";
 import { createWebFetchTool } from "./web-fetch/index.ts";
-import { preserveErrorDetails } from "./runtime.ts";
+import { preserveErrorDetails } from "./support/runtime.ts";
 
 export interface BuiltinToolsOptions {
   cwd: string;

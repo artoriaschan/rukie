@@ -1,9 +1,9 @@
-import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES } from "../runtime.ts";
+import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES } from "../support/runtime.ts";
 import { formatSize } from "./output-capture.ts";
 import { resolve } from "node:path";
 import type { Jobs } from "../jobs/index.ts";
 import { Type } from "typebox";
-import type { PresentedTool } from "../presentation.ts";
+import type { PresentedTool } from "../support/presentation.ts";
 import { OutputCapture } from "./output-capture.ts";
 
 const schema = Type.Object({

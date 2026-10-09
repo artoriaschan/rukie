@@ -3,10 +3,10 @@ import type { ToolRegistration } from "@earendil-works/pi-durable";
 import type { JsonValue } from "@earendil-works/chord";
 import { createReadTool } from "@earendil-works/pi-durable/tools";
 import { detectReadImageMimeType, validateImageBytes } from "../images/index.ts";
-import { normalizeFileTool } from "./runtime.ts";
+import { normalizeFileTool } from "./support/runtime.ts";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
-import type { PresentedTool } from "./presentation.ts";
+import type { PresentedTool } from "./support/presentation.ts";
 
 const truncationDetails = Type.Object({
   truncation: Type.Object({

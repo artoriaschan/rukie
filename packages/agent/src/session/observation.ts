@@ -24,7 +24,7 @@ import {
   type TranscriptMessage,
   type TranscriptAssistantMessage,
 } from "./messages.ts";
-import { presentCall, presentResult } from "../tools/presentation.ts";
+import { presentCall, presentResult } from "../tools/support/presentation.ts";
 
 type WithoutSessionId<E = SessionEvent> = E extends { sessionId: string }
   ? Omit<E, "sessionId">

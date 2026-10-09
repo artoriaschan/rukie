@@ -1,3 +1,4 @@
+import { requestIds } from "../../requests/index.ts";
 import {
   defineDoc,
   defineTask,
@@ -84,7 +85,7 @@ export async function revokeGoalActivation(tx: Tx, conversationId: ConversationI
   active.taskId = null;
 }
 const goalRoundRequest = (requestId: string, taskId: number, round: number) =>
-  `${requestId}:round:${taskId}:${round}`;
+  requestIds.goalRound(requestId, Number(taskId), round);
 type Input = { goalId: string; requestId: string; initialRound: number };
 type State =
   | { phase: "admit"; round: number; result: RunResult }

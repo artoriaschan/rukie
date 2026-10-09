@@ -45,7 +45,7 @@ export {
   type ImageValidationCode,
 } from "./images/index.ts";
 
-export type { PresentedTool } from "./tools/presentation.ts";
+export type { PresentedTool } from "./tools/support/presentation.ts";
 
 export { assistantThinkingDuration } from "./session/thinking.ts";
 

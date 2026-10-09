@@ -196,7 +196,10 @@ test("panel navigation disarms stop, confirmation expires, and idle stop waits f
 }, 15000);
 
 test("card clicks focus exact jobs and expanded promoted details show bounded output, times, spill and dropped data", async () => {
+  const notifications = committedJobNotifications();
   const app = await start(["--permission-mode", "full-access", "launch"], {
+    session: notifications.session,
+    prepare: notifications.prepare,
     env: { LANG: "en_US.UTF-8" },
     columns: 100,
     rows: 28,
@@ -246,12 +249,18 @@ test("card clicks focus exact jobs and expanded promoted details show bounded ou
     await app.waitFor(
       () => screen().includes("Settled") && screen().includes("bash-2 · completed"),
     );
-    if (app.calls.length === 3) {
-      app.calls[2]!.finish();
-      await app.waitFor(() => !app.isWorking());
+    // Job settlement precedes notification admission. Drain both committed inputs before
+    // capturing terminal coordinates; reporter Runs can otherwise reflow the Transcript later.
+    await app.waitFor(() => notifications.admitted() === 2);
+    for (let index = 2; index < 4; index++) {
+      await app.waitFor(() => app.calls.length > index || notifications.pendingTasks() === 0);
+      if (notifications.pendingTasks() === 0) break;
+      app.calls[index]!.finish();
     }
+    await app.waitFor(() => notifications.pendingTasks() === 0);
     app.stdin.write("\x1b");
     await app.waitFor(() => screen().includes("saved draft"));
+    await app.waitFor(() => !app.isWorking() && !screen().includes("esc interrupt"));
     app.stdin.write("\x0f");
     await app.waitFor(() => screen().includes("Transcript ·"));
     // Saved Run summaries can place the first card above the bottom viewport.
@@ -319,7 +328,8 @@ test("reading position and follow state survive settlement and group folding abo
     await app.waitFor(() => notifications.count() === 2);
     app.calls[1]!.delta("\ncontinued-stream");
     app.calls[1]!.finish();
-    await app.waitFor(() => !app.isWorking());
+    // The Jobs panel can hide the activity spinner; native task commits witness settlement.
+    await app.waitFor(() => notifications.pendingTasks() === 0);
     expect(app.calls).toHaveLength(2);
     app.stdin.write("\x1b");
     await app.waitFor(() => screen().includes("Back to bottom"));
@@ -330,6 +340,8 @@ test("reading position and follow state survive settlement and group folding abo
     await app.waitFor(
       () => screen().includes("continued-stream") && !screen().includes("Back to bottom"),
     );
+    // The visible idle footer also witnesses release of the Frontend's submit admission.
+    await app.waitFor(() => !app.isWorking() && !screen().includes("esc interrupt"));
     app.stdin.write("continue follow\r");
     await app.waitFor(() => app.calls.length === 3);
     expect(JSON.stringify(app.calls[2]!.context.messages)).toContain("background job bash-1");

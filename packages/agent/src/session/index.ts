@@ -1,13 +1,11 @@
-import {
-  planToolSearchLoadout,
-  createToolSearchTool,
-  deferredToolsReminder,
-} from "../tools/tool-search/index.ts";
+import { createConversationRuntime, createConversationRuntimePool } from "./conversation/index.ts";
+import { readGoalReceipt } from "../tools/goal/index.ts";
+import { readSubagentReceipt } from "../tools/subagents/index.ts";
+import { createRequestLedger, parseRequestId, requestKind, requestIds } from "../requests/index.ts";
+import { deferredToolsReminder } from "../tools/tool-search/index.ts";
 import { stopHookContinuation } from "../hooks/index.ts";
 import { validateSessionDocument, validateSessionDocuments } from "./documents.ts";
-import { withHookTranscript, writeHookTranscript } from "../hooks/transcript.ts";
-import { randomUUID } from "node:crypto";
-import { declarationsEqual } from "@earendil-works/pi-ai/utils/transcript";
+import { writeHookTranscript } from "../hooks/transcript.ts";
 import { join, resolve } from "node:path";
 import {
   BACKGROUND_CONTEXT,
@@ -16,13 +14,10 @@ import {
 } from "@earendil-works/chord/context";
 import type { Context, JsonValue } from "@earendil-works/chord";
 import {
-  getCurrentTools,
-  toToolDeclaration,
   type Api,
   type Model,
   type Models,
   type Message,
-  type ToolCall,
   type UserMessage,
 } from "@earendil-works/pi-ai";
 import {
@@ -34,9 +29,7 @@ import {
   CompactionTask,
   ToolTask,
   LiveDoc,
-  type SubmissionId,
   type TaskId,
-  type ToolRegistration,
   type EntryDraft,
   type Storage,
   type EntryRecord,
@@ -67,9 +60,8 @@ const entryData = (entry: EntryRecord | undefined) => {
   const value = entry?.data;
   return value && typeof value === "object" && !Array.isArray(value) ? value : undefined;
 };
-import { createJobs } from "../tools/jobs/index.ts";
-import { preflightTool } from "../tools/preflight.ts";
-import { hasPendingMcpInteraction } from "../mcp/index.ts";
+import { isMcpAuthenticationInteraction } from "../mcp/index.ts";
+import { hasPendingInteraction } from "../interaction/index.ts";
 import { resolveModel, isTrustedProject, modelState } from "../config/index.ts";
 import {
   createJsonlStore,
@@ -80,7 +72,6 @@ import {
 } from "../store/index.ts";
 import { createToolState } from "../tool-state/index.ts";
 import {
-  createPermissionGate,
   createPermissionBatch,
   parsePermissionRules,
   type PermissionAskRequest,
@@ -88,7 +79,7 @@ import {
   type OnToolCallAllowed,
 } from "../permissions/index.ts";
 export type { PermissionAskRequest, SessionAllowRule } from "../permissions/index.ts";
-import { createFileTracking, fileTrackingState } from "../file-tracking/index.ts";
+import { fileTrackingState } from "../file-tracking/index.ts";
 import { collectReminders, type ReminderSource, type SystemReminder } from "../reminders/index.ts";
 import { discoverSkills, skillInvocation, skillsReminder } from "../skills/index.ts";
 import {
@@ -118,24 +109,18 @@ import {
 import {
   createGoalController,
   goalState,
-  createGoalDriver,
-  GoalActivationDoc,
-  readGoalActivation,
-  placedGoalRound,
-  revokeGoalActivation,
-  preservePlacedGoalRounds,
+  createGoalRuntime,
   type GoalView,
 } from "../tools/goal/index.ts";
-import { subagentsState, subagentRunState, type SubagentRun } from "../tools/subagents/state.ts";
+import { subagentsState, subagentRunState, type SubagentRun } from "../tools/subagents/index.ts";
 import type { QuestionReply, QuestionRequest } from "../tools/question.ts";
-import { mergeHooks, createHooks, type CommonHookResult, type HookInput } from "../hooks/index.ts";
+import { mergeHooks, type CommonHookResult, type HookInput } from "../hooks/index.ts";
 import type { WebFetchOptions } from "../tools/web-fetch/index.ts";
 import { validateImage, type PromptImage } from "../images/index.ts";
-import { SYSTEM_PROMPT } from "../prompt/index.ts";
+import { SYSTEM_PROMPT } from "./prompt.ts";
 import { createThinkingTiming } from "./thinking.ts";
-import { createBuiltinTools } from "../tools/builtin.ts";
 import { createSubagentController } from "../tools/subagents/index.ts";
-import { createBaseTools, createSubagentTools, refreshSubagentTypes } from "./tools.ts";
+import { createToolLoadout } from "./tools.ts";
 import { createConversationObservation } from "./observation.ts";
 
 type RequestResult = RunResult & { requestId: string };
@@ -315,17 +300,6 @@ const ChildFactsDoc = defineDoc<{ title: string; description: string }>({
   fork: "initial",
   initial: () => ({ title: "", description: "" }),
 });
-const RequestDoc = defineDoc<{
-  requests: Record<
-    string,
-    { submissions: number[]; tasks: number[]; startedAt: number; result: JsonValue | null }
-  >;
-}>({
-  kind: "rukie.requests",
-  version: 1,
-  scope: "session",
-  initial: () => ({ requests: {} }),
-});
 const CompactHookContextDoc = defineDoc<{ pending: string[]; afterEntry: number | null }>({
   kind: "rukie.compact-hook-context",
   version: 1,
@@ -349,18 +323,6 @@ const JobStopsDoc = defineDoc<{ pending: Record<string, string> }>({
   history: "rewindable",
   fork: "initial",
   initial: () => ({ pending: {} }),
-});
-const PlanTakeoverDoc = defineDoc<{ requests: Record<string, true> }>({
-  kind: "rukie.plan-takeovers",
-  version: 1,
-  scope: "session",
-  initial: () => ({ requests: {} }),
-});
-const HookStopsDoc = defineDoc<{ requests: Record<string, string> }>({
-  kind: "rukie.hook-stops",
-  version: 1,
-  scope: "session",
-  initial: () => ({ requests: {} }),
 });
 const PendingInputFactsDoc = defineDoc<{ inputs: Record<string, Record<string, JsonValue>> }>({
   kind: "rukie.pending-input-facts",
@@ -407,43 +369,6 @@ const zeroUsage = (): RunResult["usage"] => ({
   cacheWrite: 0,
   totalTokens: 0,
 });
-
-function storedRequestResult(value: JsonValue | null): RequestResult | undefined {
-  if (value === null) return;
-  if (
-    typeof value !== "object" ||
-    Array.isArray(value) ||
-    typeof value.requestId !== "string" ||
-    typeof value.text !== "string" ||
-    typeof value.success !== "boolean" ||
-    typeof value.durationMs !== "number" ||
-    !value.usage ||
-    typeof value.usage !== "object" ||
-    Array.isArray(value.usage)
-  )
-    throw new Error("Invalid persisted request result.");
-  const usage = zeroUsage();
-  for (const key of ["input", "output", "cacheRead", "cacheWrite", "totalTokens"] as const) {
-    const count = value.usage[key];
-    if (typeof count !== "number" || !Number.isFinite(count) || count < 0)
-      throw new Error("Invalid persisted request usage.");
-    usage[key] = count;
-  }
-  if (value.error !== undefined && typeof value.error !== "string")
-    throw new Error("Invalid persisted request error.");
-  return {
-    ...(value.stopReason === "hook_blocked" || value.stopReason === "hook_stopped"
-      ? { stopReason: value.stopReason }
-      : {}),
-    ...(typeof value.reason === "string" ? { reason: value.reason } : {}),
-    requestId: value.requestId,
-    text: value.text,
-    success: value.success,
-    durationMs: value.durationMs,
-    usage,
-    ...(typeof value.error === "string" ? { error: value.error } : {}),
-  };
-}
 
 /** One native Harness owns every request, task, entry and conversation of this Session. */
 export async function createSession(options: SessionOptions): Promise<Session> {
@@ -493,8 +418,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     const custom = (event: EventPayload) => emit({ ...event, sessionId: lease.id } as SessionEvent);
     let closed = false;
     let closing: Promise<void> | undefined;
-    let currentRequestId: string | undefined;
-    const requestWaiters = new Map<string, Promise<RequestResult>>();
+    let ledger: ReturnType<typeof createRequestLedger>;
     let contextMessages: readonly Message[] = [];
     let runSummaries: RunSummaryFact[] = [];
     const thinking = createThinkingTiming(() => performance.now());
@@ -502,10 +426,6 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     let modelFact = `${model.provider}/${model.id}`;
     const auxiliaryLifetime = new AbortController();
     let notificationLifetime = new AbortController();
-    let stopped = false;
-    let hookStopReason: string | undefined;
-    const toolDurations = new Map<string, number>();
-    const executedInputs = new Map<string, Record<string, unknown>>();
     let startupStopReason: string | undefined;
     let selectingModel = false;
     let foregroundAdmission: Promise<void> | undefined;
@@ -514,7 +434,6 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     let goalRound = false;
     const steeringAdmissions = new Set<Promise<void>>();
     let checkingStop: number | undefined;
-    let wrapup: string | undefined;
     let permissionMode = options.permissionMode ?? settings.permissionMode ?? "ask";
     const sessionAllowRules = options.sessionAllowRules ?? [];
     const sessionGrantListeners = new Set<() => void>();
@@ -576,6 +495,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       context,
     );
     const permissionBatch = createPermissionBatch(harness);
+    const runtime = createConversationRuntime({
+      lifetime: auxiliaryLifetime.signal,
+      isClosed: () => closed,
+    });
     failedCleanup.push(async () => {
       try {
         await harness.close(context);
@@ -658,7 +581,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     };
     let asyncAdmissions = Promise.resolve();
     const shutdownPublications = new Set<Promise<void>>();
-    const rootHookRuntime = createHooks({
+    runtime.createHooks({
       callMcpTool: (...args) => mcp.callHookTool(...args),
       settings: settings.hooks,
       cwd,
@@ -712,8 +635,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               }, context);
               return;
             }
-            const parentRequestId = live?.run ? currentRequestId : undefined;
-            const requestId = `hook:${randomUUID()}`;
+            const parentRequestId = live?.run ? ledger.currentRequestId : undefined;
+            const requestId = requestIds.hook();
             const submitted = await conversation.submit(
               {
                 type: "input",
@@ -723,10 +646,11 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               },
               context,
             );
-            if (!parentRequestId) currentRequestId = requestId;
-            await registerSubmission(parentRequestId ?? requestId, submitted.id);
+            if (!parentRequestId) ledger.setForeground(requestId);
+            await ledger.registerSubmission(parentRequestId ?? requestId, submitted.id);
             if (!parentRequestId)
-              void resultFor(requestId, submitted.id)
+              void ledger
+                .resultFor(requestId, submitted.id)
                 .then(async (result) => {
                   custom({ type: "result", ...result });
                   await session.waitForRequest(requestId);
@@ -748,13 +672,12 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     });
     const hookTranscriptPath = (id: string) =>
       join(store.key(lease.id), "hook-transcripts", `${encodeURIComponent(id)}.jsonl`);
-    const hooks = withHookTranscript(
-      rootHookRuntime,
-      () => hookTranscriptPath(lease.id),
-      async () => fullHistory(),
-      !!settings.hooks && Object.values(settings.hooks).some((groups) => groups.length > 0),
-      () => !closed,
-    );
+    const hooks = runtime.hookTranscript({
+      path: () => hookTranscriptPath(lease.id),
+      history: async () => fullHistory(),
+      enabled:
+        !!settings.hooks && Object.values(settings.hooks).some((groups) => groups.length > 0),
+    });
     const hookInput = (extra: Record<string, unknown> = {}): HookInput => ({
       session_id: lease.id,
       transcript_path: hookTranscriptPath(lease.id),
@@ -793,8 +716,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           ctx,
         );
       if (result.continue === false) {
-        stopped = true;
-        hookStopReason = result.stopReason ?? "Stopped by hook.";
+        runtime.stopped = true;
+        runtime.stopReason = result.stopReason ?? "Stopped by hook.";
       }
     }
     const notifyInteraction: import("../interaction/index.ts").OnInteractionStart = async (
@@ -821,16 +744,6 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         cursor = page.next;
       } while (cursor);
       return entries.reverse();
-    };
-    // A new compaction head has no tool baseline until native preparation runs.
-    // Recover its offered tools from the selected branch's complete Transcript.
-    const currentConversationTools = async (target = conversation, ctx = context) => {
-      const view = await target.context(ctx);
-      return getCurrentTools(
-        view.messages.some((message) => message.role === "system")
-          ? view.messages
-          : (await fullHistory(target.id)).flatMap((entry) => entry.model ?? []),
-      );
     };
     const promptFacts = new Map<string, string>();
     const rememberPrompts = (entries: readonly EntryRecord[]) => {
@@ -872,7 +785,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
       getPrompt: (id) => promptFacts.get(id),
     });
-    const tracking = createFileTracking(cwd, {
+    const tracking = runtime.createFileTracking(cwd, {
       initialState: state.get("file-tracking"),
       previousReminder: transcriptMessages((await conversation.context(context)).entries)
         .flatMap((message) =>
@@ -898,113 +811,24 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
       changed: () => {},
     });
-    const activation = readGoalActivation(
-      await harness.snapshot(GoalActivationDoc, conversation.id, context),
-    );
-    if (activation.taskId !== null) {
-      const tasks = await lease.storage.scanTasks({}, 100000, undefined, context);
-      const accepted = tasks.items.find((task) => Number(task.id) === activation.taskId);
-      const input = accepted?.input;
-      const goalFact = state.get("goal");
-      if (
-        !accepted ||
-        accepted.kind !== "rukie.goal-driver" ||
-        !input ||
-        typeof input !== "object" ||
-        Array.isArray(input) ||
-        input.requestId !== activation.requestId ||
-        !goalFact ||
-        typeof goalFact !== "object" ||
-        Array.isArray(goalFact) ||
-        !("id" in goalFact) ||
-        input.goalId !== goalFact.id
-      )
-        throw new Error("Invalid Goal activation task.");
-      if (accepted.state.status === "terminal") {
-        await conversation.commit(async (tx) => {
-          (await tx.doc(GoalActivationDoc, conversation.id)).taskId = null;
-        }, context);
-        activation.taskId = null;
-      }
-    }
-    let activationTaskFact = activation?.taskId ?? null;
-    let goalRequestId = activation?.requestId ?? undefined;
-    const goalDriver = createGoalDriver({
+    const goalRuntime = createGoalRuntime({
+      harness,
+      storage: lease.storage,
+      conversation: () => conversation,
+      context,
+      ledger: () => ledger,
       submit: async (prompt, requestId, ctx) =>
         (await awaitWithContext(submit(prompt, [], "followUp", requestId, ctx.abortSignal), ctx))
           .id,
       settle: async (requestId, ctx) => awaitWithContext(session.waitForRequest(requestId), ctx),
       settleCancelled: async (requestId, submissionId, ctx) =>
-        awaitWithContext(resultFor(requestId, submissionId), ctx),
-      recoverSubmission: async (requestId, ctx) => {
-        const inputs = await lease.storage.scanSubmissions({}, 100000, undefined, ctx);
-        const found = inputs.items.find(
-          (input) => input.conversationId === conversation.id && input.requestId === requestId,
-        );
-        if (!found) return undefined;
-        await registerSubmission(requestId, found.id);
-        if (found.entry)
-          await conversation.commit(
-            (tx) =>
-              tx.appendEntry(conversation.id, {
-                kind: "rukie.message-facts",
-                model: [],
-                data: { entryId: Number(found.entry), source: "goal" },
-              }),
-            ctx,
-          );
-        return found.id;
-      },
+        awaitWithContext(ledger.resultFor(requestId, submissionId), ctx),
     });
-    const goalExtension = { name: "rukie.goal-runtime", tasks: [goalDriver] };
+    await goalRuntime.restore(state.get("goal"));
     const goal = createGoalController({
-      isArmed: () => activationTaskFact !== null,
+      isArmed: goalRuntime.isArmed,
       getSnapshot: () => state.get("goal"),
-      persist: async (value, armed) => {
-        const humanCause = currentRequestId?.startsWith("human:") ? currentRequestId : undefined;
-        let acceptedRequest: string | undefined;
-        if (!armed && (value === null || value.phase === "paused")) {
-          const active = await harness.snapshot(GoalActivationDoc, conversation.id, context);
-          const tasks = await lease.storage.scanTasks({}, 100000, undefined, context);
-          const driver = tasks.items.find(
-            (task) => Number(task.id) === active?.taskId && task.kind === "rukie.goal-driver",
-          );
-          // The driver owns admission, not the native Run or its current ToolResult.
-          if (driver) await harness.abortTask(driver.id, context);
-        }
-        await conversation.commit(async (tx) => {
-          const active = await tx.doc(GoalActivationDoc, conversation.id);
-          const snapshot = await tx.doc(goalState.document, conversation.id);
-          snapshot.value = preservePlacedGoalRounds(snapshot.value, value);
-          if (armed && value && active.taskId === null) {
-            const requestId = `goal:${value.id}:activation:${randomUUID()}`;
-            const taskId = await tx.createTask(
-              goalDriver,
-              { goalId: value.id, requestId, initialRound: value.roundsStarted + 1 },
-              { ownership: { kind: "conversation" }, conversationId: conversation.id },
-            );
-            active.taskId = Number(taskId);
-            active.requestId = requestId;
-            active.countedRound = value.roundsStarted;
-            const requests = await tx.doc(RequestDoc);
-            requests.requests[requestId] = {
-              submissions: [],
-              tasks: [Number(taskId)],
-              startedAt: Date.now(),
-              result: null,
-            };
-            if (humanCause && requests.requests[humanCause])
-              requests.requests[humanCause]!.tasks.push(Number(taskId));
-            acceptedRequest = requestId;
-          } else if (!armed) {
-            await revokeGoalActivation(tx, conversation.id);
-          }
-        }, context);
-        if (acceptedRequest) {
-          goalRequestId = acceptedRequest;
-          if (!humanCause) currentRequestId = acceptedRequest;
-        }
-      },
+      persist: goalRuntime.persist,
       assertAvailable,
       warn: () => {
         if (permissionMode === "ask")
@@ -1077,7 +901,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     }
     const userStoppedJobs = new Set<string>();
     let jobAdmissions = Promise.resolve();
-    const jobs = createJobs({
+    const jobs = runtime.createJobs({
       initialSequence: initialJobSequence,
       onEvent: (event) => custom(event),
       onNotify: (job) => {
@@ -1104,10 +928,11 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 });
               }, context);
             } else {
-              stopped = false;
-              const requestId = `job:${job.id}:${job.startedAt}`;
+              runtime.stopped = false;
+              const requestId = requestIds.job(job.id, job.startedAt);
               const submitted = await submit(content, [], "followUp", requestId);
-              void resultFor(requestId, submitted.id)
+              void ledger
+                .resultFor(requestId, submitted.id)
                 .then(async (result) => {
                   custom({ type: "result", ...result });
                   await session.waitForRequest(requestId);
@@ -1119,10 +944,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
     });
     failedCleanup.push(async () => {
-      await jobs.dispose(true);
+      await runtime.disposeJobs(true);
       await mcpManager.close();
       await mcp.close();
-      hooks.dispose();
+      runtime.disposeHooks();
     });
     const reportedSkillWarnings = new Set<string>();
     const loadSkills = async () => {
@@ -1135,7 +960,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       return discovered.skills;
     };
     let skills = await loadSkills();
-    let tools: ToolRegistration[] = [];
+    let toolLoadout: ReturnType<typeof createToolLoadout>;
     async function persistDenial(
       owner: typeof conversation,
       event: Parameters<typeof permissionDenialFacts>[1],
@@ -1153,120 +978,87 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         context,
       );
     }
-    const gate = createPermissionGate({
-      cwd,
-      homeDir: options.homeDir,
-      rules: permissionRules,
-      sessionAllowRules,
-      sessionGrantListeners,
-      getMode: () => permissionMode,
-      getTools: () => tools,
-      getMessages: async () => {
-        const view = await conversation.context(context);
-        const submissions = await lease.storage.scanSubmissions(
-          { conversationId: conversation.id },
-          100000,
-          undefined,
-          context,
-        );
-        const human = new Set(
-          submissions.items.flatMap((record) =>
-            record.type === "input" && record.requestId?.startsWith("human:") && record.entry
-              ? [record.entry]
-              : [],
-          ),
-        );
-        return view.entries.flatMap((entry) =>
-          (entry.model ?? []).filter(
-            (message) =>
-              message.role === "assistant" || (message.role === "user" && human.has(entry.id)),
-          ),
-        );
-      },
-      getProjectInstructions: () =>
-        observation
-          .messages()
-          .flatMap((message) =>
-            message.role === "system-reminder" &&
-            (message.source === "project-instructions" || message.source === "user-instructions")
-              ? [message.content]
-              : [],
-          ),
-      getReviewModel: () => async () =>
-        settings.reviewModel ? selectedModel(settings.reviewModel) : model,
-      models,
-      onPermissionAsk: options.onPermissionAsk,
-      onInteractionStart: notifyInteraction,
-      onToolCallAllowed: async (call) => {
-        await checkpoints.record(call, cwd, options.homeDir);
-        await options.onToolCallAllowed?.(call);
-      },
-      onEvent: async (event) => {
-        if (event.type === "permission_denied") await persistDenial(conversation, event);
-        custom(event);
-      },
-      setMode: (value) => {
-        permissionMode = value;
-      },
-      onHookWarning: async (field, hook = "permission") => {
-        const warning = {
-          kind: "hook_warning" as const,
-          event: "PermissionRequest" as const,
-          hook,
-          message: `Ignoring invalid or unsupported hook output field: ${field}`,
-          error: { code: "hook-output-ignored" as const, params: { field } },
-        };
-        warn(warning.message);
-        await appendNotice(warning);
-        custom({ ...warning, type: "hook_warning" });
-      },
-      isRunStopped: () => stopped,
-      stopRun: (reason) => {
-        stopped = true;
-        hookStopReason = reason ?? "Stopped by hook.";
-      },
-      isMcpAuthTool: (name) => mcp.authTools.has(name),
-      preToolUse: async (call, signal) => {
-        const result = await hooks.run(
-          "PreToolUse",
-          hookInput({
-            tool_name: call.toolCall.name,
-            tool_input: call.args,
-            tool_use_id: call.toolCall.id,
-          }),
-          { signal, matchQuery: call.toolCall.name },
-        );
-        await applyHookResult(result, "hook:PreToolUse");
-        return result;
-      },
-      permissionRequest: (call, suggestions, signal) =>
-        hooks.run(
-          "PermissionRequest",
-          hookInput({
-            tool_name: call.toolCall.name,
-            tool_input: call.args,
-            permission_suggestions: suggestions,
-          }),
-          { signal, matchQuery: call.toolCall.name },
-        ),
-      permissionDenied: async (call, denial, signal) => {
-        const result = await hooks.run(
-          "PermissionDenied",
-          hookInput({
-            tool_name: call.toolCall.name,
-            tool_input: call.args,
-            tool_use_id: call.toolCall.id,
-            by: denial.by,
-            reason: denial.reason,
-            ...(denial.rule ? { rule: denial.rule } : {}),
-          }),
-          { signal, matchQuery: call.toolCall.name },
-        );
-        await applyHookResult(result, "hook:PermissionDenied");
-        return result;
+    runtime.configurePolicy({
+      hooks: hooks,
+      input: hookInput,
+      apply: applyHookResult,
+      batch: permissionBatch,
+      permission: {
+        cwd,
+        homeDir: options.homeDir,
+        rules: permissionRules,
+        sessionAllowRules,
+        sessionGrantListeners,
+        getMode: () => permissionMode,
+        getTools: () => toolLoadout?.registrations ?? [],
+        getMessages: async () => {
+          const view = await conversation.context(context);
+          const submissions = await lease.storage.scanSubmissions(
+            { conversationId: conversation.id },
+            100000,
+            undefined,
+            context,
+          );
+          const human = new Set(
+            submissions.items.flatMap((record) =>
+              record.type === "input" && requestKind(record.requestId) === "human" && record.entry
+                ? [record.entry]
+                : [],
+            ),
+          );
+          return view.entries.flatMap((entry) =>
+            (entry.model ?? []).filter(
+              (message) =>
+                message.role === "assistant" || (message.role === "user" && human.has(entry.id)),
+            ),
+          );
+        },
+        getProjectInstructions: () =>
+          observation
+            .messages()
+            .flatMap((message) =>
+              message.role === "system-reminder" &&
+              (message.source === "project-instructions" || message.source === "user-instructions")
+                ? [message.content]
+                : [],
+            ),
+        getReviewModel: () => async () =>
+          settings.reviewModel ? selectedModel(settings.reviewModel) : model,
+        models,
+        onPermissionAsk: options.onPermissionAsk,
+        onInteractionStart: notifyInteraction,
+        onToolCallAllowed: async (call) => {
+          await checkpoints.record(call, cwd, options.homeDir);
+          await options.onToolCallAllowed?.(call);
+        },
+        onEvent: async (event) => {
+          if (event.type === "permission_denied") await persistDenial(conversation, event);
+          custom(event);
+        },
+        setMode: (value) => {
+          permissionMode = value;
+        },
+        onHookWarning: async (field, hook = "permission") => {
+          const warning = {
+            kind: "hook_warning" as const,
+            event: "PermissionRequest" as const,
+            hook,
+            message: `Ignoring invalid or unsupported hook output field: ${field}`,
+            error: { code: "hook-output-ignored" as const, params: { field } },
+          };
+          warn(warning.message);
+          await appendNotice(warning);
+          custom({ ...warning, type: "hook_warning" });
+        },
+
+        isMcpAuthTool: (name) => mcp.authTools.has(name),
       },
     });
-    const childHookOwners = new Map<number, ReturnType<typeof createHooks>>();
+    const childRuntimes = createConversationRuntimePool({
+      lifetime: auxiliaryLifetime.signal,
+      isClosed: () => closed,
+    });
+    const childRuntimeFor = childRuntimes.forConversation;
     const childHookStarted = new Set<number>();
     const persistChildHook = async (
       child: Parameters<Parameters<typeof createSubagentController>[0]["childAgent"]>[1],
@@ -1303,9 +1095,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       childId: string,
       description: string,
     ) => {
-      const previous = childHookOwners.get(Number(child.id));
-      if (previous) return previous;
-      let owner = createHooks({
+      childRuntimeFor(Number(child.id), { agentId: childId, description }).createHooks({
         settings: mergeHooks(settings.hooks, type.hooks),
         cwd,
         homeDir: options.homeDir,
@@ -1347,9 +1137,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                   context,
                 );
               if (reason) {
-                const requestId = `hook:${childId}:${randomUUID()}`;
+                const requestId = requestIds.hook(childId);
                 const submitted = await submit(reason, [], "followUp", requestId);
-                void resultFor(requestId, submitted.id)
+                void ledger
+                  .resultFor(requestId, submitted.id)
                   .then(async (result) => {
                     custom({ type: "result", ...result });
                     await session.waitForRequest(requestId);
@@ -1361,22 +1152,18 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         },
       });
 
-      owner = withHookTranscript(
-        owner,
-        () => hookTranscriptPath(childId),
-        async () => fullHistory(child.id),
-        Object.values(mergeHooks(settings.hooks, type.hooks)).some((groups) => groups.length > 0),
-        () => !closed,
-      );
-      childHookOwners.set(Number(child.id), owner);
-      return owner;
+      return childRuntimeFor(Number(child.id), { agentId: childId, description }).hookTranscript({
+        path: () => hookTranscriptPath(childId),
+        history: async () => fullHistory(child.id),
+        enabled: Object.values(mergeHooks(settings.hooks, type.hooks)).some(
+          (groups) => groups.length > 0,
+        ),
+      });
     };
-    const childJobRegistries = new Map<string, ReturnType<typeof createJobs>>();
     const childResources = new Map<
       number,
       {
         observation: Awaited<ReturnType<typeof createConversationObservation>>;
-        jobs: ReturnType<typeof createJobs>;
       }
     >();
     const subagents = createSubagentController({
@@ -1386,36 +1173,13 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       parentSessionId: lease.id,
       state: subagentsDefinition,
       restored: state.get("subagents") as
-        | import("../tools/subagents/state.ts").SubagentIdentity[]
+        | import("../tools/subagents/index.ts").SubagentIdentity[]
         | undefined,
-      forkAt: () => {
-        const entries = observation?.view().entries ?? [];
-        const current = entries.findLast((entry) =>
-          entry.model?.some((message) => message.role === "assistant"),
-        );
-        return entries.findLast((entry) =>
-          entry.model?.some(
-            (message) =>
-              (message.role === "assistant" && message.stopReason === "stop") ||
-              (message.role === "toolResult" && (!current || entry.id < current.id)),
-          ),
-        )?.id;
-      },
-      async beforeStart(request, child, ctx) {
-        const type =
-          subagents.types().find((type) => type.name === request.type) ??
-          subagents.types().find((type) => type.name === "general-purpose");
-        if (!type) throw new Error("Subagent type is unavailable.");
-        const saved = (await child.agent(ctx)).model;
-        const selected = saved
-          ? selectedModel(`${saved.provider}/${saved.modelId}`)
-          : type.name === "fork"
-            ? model
-            : type.model
-              ? selectedModel(type.model)
-              : settings.subagentModel
-                ? selectedModel(settings.subagentModel)
-                : model;
+      models,
+      parentModel: () => model,
+      subagentModel: settings.subagentModel,
+      async beforeStart(request, child, ctx, selection) {
+        const { type, model: selected } = selection;
         const owner = ownedChildHooks(type, child, selected, request.agentId, request.description);
         const result = await owner.run(
           "SubagentStart",
@@ -1436,29 +1200,15 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           : undefined;
       },
       async afterRun(_request, child) {
-        await childResources.get(Number(child.id))?.jobs.clear(true);
+        await childRuntimes.get(Number(child.id))?.clearJobs();
       },
       async childAgent(type, child, selection) {
-        const inherited = selection.retained ? (await child.agent(context)).model : undefined;
-        const retainedModel = inherited
-          ? models.getModel(inherited.provider, inherited.modelId)
-          : undefined;
-        if (inherited && !retainedModel)
-          throw new Error(
-            `Unknown retained child model: ${inherited.provider}/${inherited.modelId}`,
-          );
-        const selected =
-          retainedModel ??
-          (type.name === "fork"
-            ? model
-            : type.model
-              ? selectedModel(type.model)
-              : settings.subagentModel
-                ? selectedModel(settings.subagentModel)
-                : model);
+        const selected = selection.model;
         const directory = subagents.list().find((row) => row.conversationId === Number(child.id));
         const description = directory?.description ?? type.description;
         const childId = directory?.id ?? String(child.id);
+        const childRuntime = childRuntimeFor(Number(child.id), { agentId: childId, description });
+        childRuntime.reset();
         const childInput = (extra: Record<string, unknown> = {}): HookInput =>
           hookInput({
             session_id: childId,
@@ -1472,8 +1222,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         const applyChildHook = async (result: CommonHookResult, source: string, ctx = context) => {
           await persistChildHook(child, result, source, ctx);
           if (result.continue === false) {
-            childStopped = true;
-            childStopReason = result.stopReason;
+            childRuntime.stopped = true;
+            childRuntime.stopReason = result.stopReason;
           }
         };
         const firstAttachment = !childHookStarted.has(Number(child.id));
@@ -1493,38 +1243,35 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           facts.title ||= description;
           facts.description = description;
         }, context);
-        const childJobs =
-          childJobRegistries.get(childId) ??
-          createJobs({
-            onEvent: (event) =>
-              custom({
-                type: "subagent_event",
-                agentId: childId,
-                description,
-                subagentType: type.name,
-                event: { ...event, sessionId: childId },
-              }),
-            onNotify: (job) => {
-              if (!closed)
-                void child
-                  .commit(
-                    (tx) =>
-                      tx.appendEntry(
-                        child.id,
-                        reminderEntry({
-                          role: "system-reminder",
-                          source: `job:${job.id}`,
-                          content: `background job ${job.id} (${job.kind}: ${job.label}) finished [status: ${job.status}, exit code: ${job.exitCode ?? "unknown"}]. Read its output with job_output.`,
-                          timestamp: Date.now(),
-                        }),
-                      ),
-                    context,
-                  )
-                  .catch(warn);
-            },
-          });
-        childJobRegistries.set(childId, childJobs);
-        const childTracking = createFileTracking(cwd, {
+        const childJobs = childRuntime.createJobs({
+          onEvent: (event) =>
+            custom({
+              type: "subagent_event",
+              agentId: childId,
+              description,
+              subagentType: type.name,
+              event: { ...event, sessionId: childId },
+            }),
+          onNotify: (job) => {
+            if (!closed)
+              void child
+                .commit(
+                  (tx) =>
+                    tx.appendEntry(
+                      child.id,
+                      reminderEntry({
+                        role: "system-reminder",
+                        source: `job:${job.id}`,
+                        content: `background job ${job.id} (${job.kind}: ${job.label}) finished [status: ${job.status}, exit code: ${job.exitCode ?? "unknown"}]. Read its output with job_output.`,
+                        timestamp: Date.now(),
+                      }),
+                    ),
+                  context,
+                )
+                .catch(warn);
+          },
+        });
+        const childTracking = childRuntime.createFileTracking(cwd, {
           initialState: childState.get("file-tracking"),
           persist: async (value, reminder) => {
             await childState.set(
@@ -1536,154 +1283,94 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           },
         });
         await childTracking.restoreCommitted(await fullHistory(child.id));
-        let childTools: ToolRegistration[] = [];
-        let childStopped = false;
-        let childStopReason: string | undefined;
-        const childGate = createPermissionGate({
-          cwd,
-          homeDir: options.homeDir,
-          rules: parsePermissionRules({
-            ...settings.permissions,
-            allow: [...(settings.permissions?.allow ?? []), ...(options.allowRules ?? [])],
-          }),
-          sessionAllowRules,
-          sessionGrantListeners,
-          getMode: () => permissionMode,
-          getTools: () => childTools,
-          getMessages: async () => {
-            const view = await conversation.context(context);
-            const inputs = await lease.storage.scanSubmissions(
-              { conversationId: conversation.id },
-              100000,
-              undefined,
-              context,
-            );
-            const human = new Set(
-              inputs.items.flatMap((record) =>
-                record.requestId?.startsWith("human:") && record.entry ? [record.entry] : [],
-              ),
-            );
-            return view.entries.flatMap((entry) =>
-              (entry.model ?? []).filter(
-                (message) =>
-                  message.role === "assistant" || (message.role === "user" && human.has(entry.id)),
-              ),
-            );
-          },
-          getProjectInstructions: () => [],
-          getReviewModel: () => async () =>
-            settings.reviewModel ? selectedModel(settings.reviewModel) : selected,
-          models,
-          onPermissionAsk: options.onPermissionAsk
-            ? (request) =>
-                options.onPermissionAsk!({ ...request, origin: { agentId: childId, description } })
-            : undefined,
-          onInteractionStart: childNotify,
-          onToolCallAllowed: async (call) => {
-            await checkpoints.record(call, cwd, options.homeDir);
-            await options.onToolCallAllowed?.(call);
-          },
-          onEvent: async (event) => {
-            if (event.type === "permission_denied") await persistDenial(child, event);
-            custom({
-              type: "subagent_event",
-              agentId: childId,
-              description,
-              subagentType: type.name,
-              event: { ...event, sessionId: childId },
-            });
-          },
-          setMode: (value) => {
-            permissionMode = value;
-          },
-          onHookWarning: async (field, hook = "permission") => {
-            const warning = {
-              kind: "hook_warning" as const,
-              event: "PermissionRequest" as const,
-              hook,
-              message: `Ignoring invalid or unsupported hook output field: ${field}`,
-              error: { code: "hook-output-ignored" as const, params: { field } },
-            };
-            warn(warning.message);
-            await child.commit(
-              (tx) =>
-                tx.appendEntry(child.id, {
-                  kind: "rukie.notice",
-                  data: { role: "session-notice", notice: warning, timestamp: Date.now() },
-                }),
-              context,
-            );
-            custom({
-              type: "subagent_event",
-              agentId: childId,
-              description,
-              subagentType: type.name,
-              event: { ...warning, type: "hook_warning", sessionId: childId },
-            });
-          },
-          isRunStopped: () => childStopped,
-          stopRun: (reason) => {
-            childStopped = true;
-            childStopReason = reason;
-          },
-          isMcpAuthTool: (name) => mcp.authTools.has(name),
-          preToolUse: async (call, signal) => {
-            const result = await childHooks.run(
-              "PreToolUse",
-              childInput({
-                agent_id: childId,
-                agent_type: type.name,
-                tool_name: call.toolCall.name,
-                tool_input: call.args,
-                tool_use_id: call.toolCall.id,
-              }),
-              { signal, matchQuery: call.toolCall.name },
-            );
-            for (const content of result.additionalContext)
-              await child.commit(
-                (tx) =>
-                  tx.appendEntry(
-                    child.id,
-                    reminderEntry({
-                      role: "system-reminder",
-                      source: "hook:PreToolUse",
-                      content,
-                      timestamp: Date.now(),
-                    }),
-                  ),
+        let childLoadout: ReturnType<typeof createToolLoadout>;
+        childRuntime.configurePolicy({
+          hooks: childHooks,
+          input: childInput,
+          apply: applyChildHook,
+          batch: permissionBatch,
+          permission: {
+            cwd,
+            homeDir: options.homeDir,
+            rules: parsePermissionRules({
+              ...settings.permissions,
+              allow: [...(settings.permissions?.allow ?? []), ...(options.allowRules ?? [])],
+            }),
+            sessionAllowRules,
+            sessionGrantListeners,
+            getMode: () => permissionMode,
+            getTools: () => childLoadout.registrations,
+            getMessages: async () => {
+              const view = await conversation.context(context);
+              const inputs = await lease.storage.scanSubmissions(
+                { conversationId: conversation.id },
+                100000,
+                undefined,
                 context,
               );
-            return result;
-          },
-          permissionRequest: (call, suggestions, signal) =>
-            childHooks.run(
-              "PermissionRequest",
-              childInput({
-                agent_id: childId,
-                agent_type: type.name,
-                tool_name: call.toolCall.name,
-                tool_input: call.args,
-                permission_suggestions: suggestions,
-              }),
-              { signal, matchQuery: call.toolCall.name },
-            ),
-          permissionDenied: async (call, denial, signal) => {
-            const result = await childHooks.run(
-              "PermissionDenied",
-              childInput({
-                agent_id: childId,
-                agent_type: type.name,
-                tool_name: call.toolCall.name,
-                tool_input: call.args,
-                tool_use_id: call.toolCall.id,
-                by: denial.by,
-                reason: denial.reason,
-                ...(denial.rule ? { rule: denial.rule } : {}),
-              }),
-              { signal, matchQuery: call.toolCall.name },
-            );
-            await applyChildHook(result, "hook:PermissionDenied");
-            return result;
+              const human = new Set(
+                inputs.items.flatMap((record) =>
+                  requestKind(record.requestId) === "human" && record.entry ? [record.entry] : [],
+                ),
+              );
+              return view.entries.flatMap((entry) =>
+                (entry.model ?? []).filter(
+                  (message) =>
+                    message.role === "assistant" ||
+                    (message.role === "user" && human.has(entry.id)),
+                ),
+              );
+            },
+            getProjectInstructions: () => [],
+            getReviewModel: () => async () =>
+              settings.reviewModel ? selectedModel(settings.reviewModel) : selected,
+            models,
+            onPermissionAsk: options.onPermissionAsk,
+            onInteractionStart: childNotify,
+            onToolCallAllowed: async (call) => {
+              await checkpoints.record(call, cwd, options.homeDir);
+              await options.onToolCallAllowed?.(call);
+            },
+            onEvent: async (event) => {
+              if (event.type === "permission_denied") await persistDenial(child, event);
+              custom({
+                type: "subagent_event",
+                agentId: childId,
+                description,
+                subagentType: type.name,
+                event: { ...event, sessionId: childId },
+              });
+            },
+            setMode: (value) => {
+              permissionMode = value;
+            },
+            onHookWarning: async (field, hook = "permission") => {
+              const warning = {
+                kind: "hook_warning" as const,
+                event: "PermissionRequest" as const,
+                hook,
+                message: `Ignoring invalid or unsupported hook output field: ${field}`,
+                error: { code: "hook-output-ignored" as const, params: { field } },
+              };
+              warn(warning.message);
+              await child.commit(
+                (tx) =>
+                  tx.appendEntry(child.id, {
+                    kind: "rukie.notice",
+                    data: { role: "session-notice", notice: warning, timestamp: Date.now() },
+                  }),
+                context,
+              );
+              custom({
+                type: "subagent_event",
+                agentId: childId,
+                description,
+                subagentType: type.name,
+                event: { ...warning, type: "hook_warning", sessionId: childId },
+              });
+            },
+
+            isMcpAuthTool: (name) => mcp.authTools.has(name),
           },
         });
         const beforeInput = await child.context(context);
@@ -1702,145 +1389,50 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           ],
         }))
           await child.commit((tx) => tx.appendEntry(child.id, reminderEntry(reminder)), context);
-        const builtinTools = createBuiltinTools({
-          cwd,
-          homeDir: options.homeDir,
-          jobs: childJobs,
-          getSkill: (name) => skills.get(name),
-          setTodo: async (todos) => {
-            await childState.set("todo", todos, context);
-          },
-          onQuestion: options.onQuestion
-            ? (request) =>
-                options.onQuestion!({ ...request, origin: { agentId: childId, description } })
-            : undefined,
-          onInteractionStart: childNotify,
-          webFetch: options.webFetch,
-          fileTracking: childTracking,
+        childLoadout = createToolLoadout({
+          kind: "child",
+          builtin: () => ({
+            cwd,
+            homeDir: options.homeDir,
+            jobs: childJobs,
+            getSkill: (name) => skills.get(name),
+            setTodo: async (todos) => {
+              await childState.set("todo", todos, context);
+            },
+            onQuestion: options.onQuestion
+              ? (request) =>
+                  options.onQuestion!({ ...request, origin: { agentId: childId, description } })
+              : undefined,
+            onInteractionStart: childNotify,
+            webFetch: options.webFetch,
+            fileTracking: childTracking,
+          }),
+          allowed: type.tools,
+          conversation: () => child,
+          history: () => fullHistory(child.id),
+          context,
+          model: () => selected,
+          mode: settings.toolSearch,
+          mcp: () => mcp.tools,
+          wrap: (tools) => childRuntime.wrapTools(tools),
         });
-        const refreshChildTools = () => {
-          childTools = [
-            ...builtinTools,
-            ...mcp.tools,
-            createToolSearchTool({
-              catalog: () =>
-                mcp.tools.filter((tool) => !type.tools || type.tools.includes(tool.name)),
-              visibleNames: async () =>
-                (await currentConversationTools(child)).map((tool) => tool.name),
-            }),
-          ]
-            .filter((tool) => !type.tools || type.tools.includes(tool.name))
-            .map((tool) => ({
-              ...tool,
-              async execute(args, api, ctx) {
-                await childGate.authorizeExecute(
-                  {
-                    type: "toolCall",
-                    id: api.callId,
-                    name: tool.name,
-                    arguments: args as Record<string, JsonValue>,
-                  },
-                  args as Record<string, unknown>,
-                  api,
-                  ctx,
-                );
-                executedInputs.set(api.callId, args as Record<string, unknown>);
-                const started = performance.now();
-                try {
-                  return await tool.execute(args, api, ctx);
-                } finally {
-                  toolDurations.set(api.callId, performance.now() - started);
-                  if (ctx.abortSignal?.aborted && !closed) {
-                    const result = await childHooks.run(
-                      "PostToolUseFailure",
-                      childInput({
-                        tool_name: tool.name,
-                        tool_input: args,
-                        tool_use_id: api.callId,
-                        error: String(ctx.abortSignal.reason ?? "Tool interrupted"),
-                        is_interrupt: true,
-                        duration_ms: toolDurations.get(api.callId),
-                      }),
-                      { signal: auxiliaryLifetime.signal, matchQuery: tool.name },
-                    );
-                    if (!closed) await applyChildHook(result, "hook:PostToolUseFailure");
-                  }
-                }
-              },
-            }));
-        };
-        refreshChildTools();
-        const childLoadout = async (fresh = false, ctx = context) =>
-          planToolSearchLoadout({
-            tools: childTools,
-            currentTools: fresh ? [] : await currentConversationTools(child, ctx),
-            model: selected,
-            mode: settings.toolSearch,
-          });
+        await childLoadout.refresh();
         const childDeferredSource: ReminderSource = {
           source: "deferred-tools",
           compareContent: false,
           currentContent: async (history) =>
             deferredToolsReminder(
-              (await childLoadout()).deferred.map((tool) => tool.name),
+              (await childLoadout.plan()).deferred.map((tool) => tool.name),
               history ?? [],
             ),
         };
         const extension = {
           name: `rukie.child.${child.id}`,
-          tools: childTools,
+          tools: childLoadout.registrations,
           hooks: [
             hook(ToolTask, {
-              beforeTool: async (call, api, ctx) => {
-                const decision = await permissionBatch.wrap(childGate.beforeTool, () =>
-                  childStopped ? (childStopReason ?? "Stopped by hook.") : undefined,
-                )(call, api, ctx);
-                if (decision?.block === undefined)
-                  await preflightTool(
-                    childTools.find((tool) => tool.name === call.name),
-                    decision?.arguments ?? call.arguments,
-                    api,
-                    ctx,
-                    call.id,
-                  );
-                return decision;
-              },
-              afterTool: async (call, result, _api, ctx) => {
-                const changed = await childHooks.run(
-                  result.isError ? "PostToolUseFailure" : "PostToolUse",
-                  childInput({
-                    tool_name: call.name,
-                    tool_input: executedInputs.get(call.id) ?? call.arguments,
-                    tool_response: { content: result.content, details: result.details },
-                    ...(result.isError
-                      ? {
-                          error: (result.content ?? [])
-                            .flatMap((part) => (part.type === "text" ? [part.text] : []))
-                            .join(""),
-                          is_interrupt: ctx.abortSignal?.aborted ?? false,
-                        }
-                      : {}),
-                    tool_use_id: call.id,
-                    duration_ms: toolDurations.get(call.id) ?? 0,
-                  }),
-                  { signal: ctx.abortSignal, matchQuery: call.name },
-                );
-                await applyChildHook(changed, "hook:PostToolUse", ctx);
-                if ("decision" in changed && changed.decision === "block" && changed.reason)
-                  return {
-                    ...result,
-                    content: [
-                      ...(result.content ?? []),
-                      {
-                        type: "text" as const,
-                        text: `<system-reminder>\n${changed.reason}\n</system-reminder>`,
-                      },
-                    ],
-                  };
-                return "updatedToolOutput" in changed && changed.updatedToolOutput
-                  ? { ...result, content: changed.updatedToolOutput }
-                  : result;
-              },
+              beforeTool: childRuntime.beforeTool,
+              afterTool: childRuntime.afterTool,
             }),
             hook(GenerationTask, {
               beforeRequest: async (_request, _api, ctx) => {
@@ -1881,7 +1473,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                         skillsReminder(
                           skills,
                           visibleReminderContents(view, "skills"),
-                          childTools.some((tool) => tool.name === "skill"),
+                          childLoadout.registrations.some((tool) => tool.name === "skill"),
                         ),
                     },
                     childTracking.reminderSource,
@@ -2007,7 +1599,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 await childTracking.commitResults(
                   committed.flatMap((value) => (value ? [value.entry] : [])),
                 );
-                if (childStopped) {
+                if (childRuntime.stopped) {
                   await child.commit(
                     (tx) =>
                       tx.appendEntry(child.id, {
@@ -2016,7 +1608,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                           role: "session-notice",
                           notice: {
                             kind: "hook_stopped",
-                            reason: childStopReason ?? "Stopped by hook.",
+                            reason: childRuntime.stopReason ?? "Stopped by hook.",
                           },
                           timestamp: Date.now(),
                         },
@@ -2026,11 +1618,11 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                   await child.abort(ctx);
                   return;
                 }
-                refreshChildTools();
-                const updated = { ...extension, tools: childTools };
+                await childLoadout.refresh();
+                const updated = { ...extension, tools: childLoadout.registrations };
                 registry.install(updated);
                 await child.configure(
-                  { extensions: [updated], tools: (await childLoadout(false, ctx)).tools },
+                  { extensions: [updated], tools: (await childLoadout.plan(false, ctx)).tools },
                   ctx,
                 );
               },
@@ -2053,7 +1645,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             conversation: child,
             sessionId: childId,
             history: () => fullHistory(child.id),
-            tools: () => childTools,
+            tools: () => childLoadout.registrations,
             adopt: (publication) => {
               childState.adopt(publication);
             },
@@ -2076,7 +1668,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                   });
             },
           });
-          childResources.set(Number(child.id), { observation: childObservation, jobs: childJobs });
+          childResources.set(Number(child.id), { observation: childObservation });
         }
         return {
           model: { provider: selected.provider, modelId: selected.id },
@@ -2084,29 +1676,24 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           cwd,
           instructions: SYSTEM_PROMPT,
           extensions: [extension],
-          tools: (await childLoadout(!selection.retained)).tools,
+          tools: (await childLoadout.plan(!selection.retained)).tools,
         };
       },
     });
     failedCleanup.push(async () => {
       subagents.close();
-      for (const owner of childHookOwners.values()) owner.dispose();
+      for (const owner of childRuntimes.values()) owner.disposeHooks();
       for (const resource of childResources.values()) {
         await resource.observation.close();
-        await resource.jobs.dispose(true);
       }
+      for (const owner of childRuntimes.values()) await owner.disposeJobs(true);
     });
     const pendingCompactions = new Map<number, EntryRecord>();
     const compactFocus = new Map<number, string>();
     let compactionHooks = Promise.resolve();
     const stopCompactionByHook = async (reason: string, caller = context) => {
-      const live = await harness.snapshot(LiveDoc, conversation.id, context);
-      const first = live?.run?.inputs[0];
-      const input =
-        first === undefined ? undefined : await lease.storage.submission(first, context);
       await conversation.commit(async (tx) => {
-        const stops = await tx.doc(HookStopsDoc);
-        if (input?.requestId) stops.requests[input.requestId] = reason;
+        await ledger.recordOutcome(tx, conversation.id, { kind: "hook-stop", reason });
         await tx.appendEntry(conversation.id, {
           kind: "rukie.notice",
           data: {
@@ -2116,8 +1703,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           },
         });
       }, context);
-      stopped = true;
-      hookStopReason = reason;
+      runtime.stopped = true;
+      runtime.stopReason = reason;
       try {
         await conversation.abort(caller);
       } catch (error) {
@@ -2215,13 +1802,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         }, ctx);
       }
       const visibleContext = await conversation.context(ctx);
-      const currentTools = await currentConversationTools(conversation, ctx);
-      const deferred = planToolSearchLoadout({
-        tools,
-        currentTools,
-        model,
-        mode: settings.toolSearch,
-      }).deferred;
+      const deferred = (await toolLoadout.plan(false, ctx)).deferred;
       const sources: ReminderSource[] = [
         {
           source: "deferred-tools",
@@ -2239,7 +1820,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             skillsReminder(
               skills,
               visibleReminderContents(visibleContext, "skills"),
-              tools.some((tool) => tool.name === "skill"),
+              toolLoadout.registrations.some((tool) => tool.name === "skill"),
             ),
         },
         {
@@ -2359,9 +1940,19 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       mcpManager.adopt(mcp.snapshot());
       await rebuildTools(true);
     };
-    const rebuildTools = async (reportDiscovery = false) => {
-      skills = await loadSkills();
-      const base = createBaseTools({
+    toolLoadout = createToolLoadout({
+      kind: "root",
+      conversation: () => conversation,
+      history: () => fullHistory(),
+      context,
+      model: () => model,
+      mode: settings.toolSearch,
+      mcp: () => mcp.tools,
+      wrap: (tools) => runtime.wrapTools(tools),
+      refreshSkills: async () => {
+        skills = await loadSkills();
+      },
+      base: () => ({
         isChild: false,
         builtin: {
           cwd,
@@ -2387,670 +1978,430 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             directHuman: () => !goalRound,
             goalRound: () => goalRound,
             wrapup: (text) => {
-              wrapup = text;
+              goalRuntime.queueWrapup(text);
             },
           },
         },
-      });
-      const toolSearch = createToolSearchTool({
-        catalog: () => mcp.tools,
-        visibleNames: async () => (await currentConversationTools()).map((tool) => tool.name),
-      });
-      await refreshSubagentTypes({
+      }),
+      controller: subagents,
+      discovery: {
         cwd,
         homeDir: options.homeDir,
         trusted: isTrustedProject(cwd, settings),
-        tools: [...base, ...mcp.tools, toolSearch].filter(
-          (tool) =>
-            ![
-              "subagent",
-              "subagent_fork",
-              "send_message",
-              "list_agents",
-              "goal",
-              "enter_plan_mode",
-              "exit_plan_mode",
-            ].includes(tool.name),
-        ),
-        controller: subagents,
-        report: reportDiscovery
-          ? async (discovery) => {
-              for (const warning of discovery.warnings) warn(warning);
-              for (const warning of discovery.hookWarnings) {
-                await appendNotice({
-                  kind: "hook_warning",
-                  event: "SubagentStart",
-                  hook: warning.source,
-                  message: warning.message,
-                  error: warning.error,
-                });
-                custom({
-                  type: "hook_warning",
-                  event: "SubagentStart",
-                  hook: warning.source,
-                  message: warning.message,
-                  error: warning.error,
-                });
-              }
-            }
-          : undefined,
-      });
-      tools = [
-        ...base,
-        ...createSubagentTools({ isChild: false, controller: subagents }),
-        ...mcp.tools,
-        toolSearch,
-      ].map((tool) => ({
-        ...tool,
-        async execute(args, api, ctx) {
-          const call: ToolCall = {
-            type: "toolCall",
-            id: api.callId,
-            name: tool.name,
-            arguments: args as Record<string, JsonValue>,
-          };
-          await gate.authorizeExecute(call, args as Record<string, unknown>, api, ctx);
-          executedInputs.set(api.callId, args as Record<string, unknown>);
-          const started = performance.now();
-          try {
-            return await tool.execute(args, api, ctx);
-          } finally {
-            toolDurations.set(api.callId, performance.now() - started);
-            if (ctx.abortSignal?.aborted && !closed) {
-              const result = await hooks.run(
-                "PostToolUseFailure",
-                hookInput({
-                  tool_name: tool.name,
-                  tool_input: args,
-                  tool_use_id: api.callId,
-                  error: String(ctx.abortSignal.reason ?? "Tool interrupted"),
-                  is_interrupt: true,
-                  duration_ms: toolDurations.get(api.callId),
-                }),
-                { signal: auxiliaryLifetime.signal, matchQuery: tool.name },
-              );
-              if (!closed) await applyHookResult(result, "hook:PostToolUseFailure");
-            }
+        report: async (discovery) => {
+          for (const warning of discovery.warnings) warn(warning);
+          for (const warning of discovery.hookWarnings) {
+            await appendNotice({
+              kind: "hook_warning",
+              event: "SubagentStart",
+              hook: warning.source,
+              message: warning.message,
+              error: warning.error,
+            });
+            custom({
+              type: "hook_warning",
+              event: "SubagentStart",
+              hook: warning.source,
+              message: warning.message,
+              error: warning.error,
+            });
           }
         },
-      }));
-      const extension = {
-        name: "rukie.session",
-        tools,
-        hooks: [
-          hook(CompactionTask, {
-            beforeCompact: async (compaction, api, ctx) => {
-              compactFocus.set(Number(api.taskId), compaction.instructions ?? "");
-              if (compaction.reason === "manual") return undefined;
-              const result = await hooks.run(
-                "PreCompact",
-                hookInput({
-                  trigger: "auto",
-                  custom_instructions: compaction.instructions ?? null,
-                }),
-                { signal: ctx.abortSignal, matchQuery: "auto" },
-              );
-              if (result.continue === false) {
-                await stopCompactionByHook(result.stopReason ?? "Stopped by hook.", ctx);
-                return { decline: true };
-              }
-              if (result.decision === "block") {
-                const reason = result.reason ?? "Compaction declined by hook.";
-                const warning = {
-                  event: "PreCompact" as const,
-                  hook: "compaction",
-                  message: reason,
-                  error: { code: "hook-compaction-blocked" as const, params: { reason } },
-                };
-                await appendNotice({ kind: "hook_warning", ...warning });
-                custom({ type: "hook_warning", ...warning });
-                warn(reason);
-                return { decline: true };
-              }
-              return undefined;
-            },
-          }),
-          hook(ToolTask, {
-            beforeTool: async (call, api, ctx) => {
-              const decision = await permissionBatch.wrap(gate.beforeTool, () =>
-                stopped ? (hookStopReason ?? "Stopped by hook.") : undefined,
-              )(call, api, ctx);
-              if (decision?.block === undefined)
-                await preflightTool(
-                  tools.find((tool) => tool.name === call.name),
-                  decision?.arguments ?? call.arguments,
-                  api,
-                  ctx,
-                  call.id,
+      },
+      install: async (_registrations, offered, ctx) => {
+        const extension = {
+          name: "rukie.session",
+          tools: toolLoadout.registrations,
+          hooks: [
+            hook(CompactionTask, {
+              beforeCompact: async (compaction, api, ctx) => {
+                compactFocus.set(Number(api.taskId), compaction.instructions ?? "");
+                if (compaction.reason === "manual") return undefined;
+                const result = await hooks.run(
+                  "PreCompact",
+                  hookInput({
+                    trigger: "auto",
+                    custom_instructions: compaction.instructions ?? null,
+                  }),
+                  { signal: ctx.abortSignal, matchQuery: "auto" },
                 );
-              return decision;
-            },
-            afterTool: async (call, result, api, ctx) => {
-              const changed = await hooks.run(
-                result.isError ? "PostToolUseFailure" : "PostToolUse",
-                hookInput({
-                  tool_name: call.name,
-                  tool_input: executedInputs.get(call.id) ?? call.arguments,
-                  tool_response: { content: result.content, details: result.details },
-                  ...(result.isError
-                    ? {
-                        error: (result.content ?? [])
-                          .flatMap((part) => (part.type === "text" ? [part.text] : []))
-                          .join(""),
-                        is_interrupt: ctx.abortSignal?.aborted ?? false,
-                      }
-                    : {}),
-                  tool_use_id: call.id,
-                  duration_ms: toolDurations.get(call.id) ?? 0,
-                }),
-                { signal: ctx.abortSignal, matchQuery: call.name },
-              );
-              await applyHookResult(changed, "hook:PostToolUse", ctx);
-              if ("decision" in changed && changed.decision === "block" && changed.reason)
-                return {
-                  ...result,
-                  content: [
-                    ...(result.content ?? []),
-                    {
-                      type: "text" as const,
-                      text: `<system-reminder>\n${changed.reason}\n</system-reminder>`,
-                    },
-                  ],
-                };
-              return "updatedToolOutput" in changed && changed.updatedToolOutput
-                ? { ...result, content: changed.updatedToolOutput }
-                : result;
-            },
-          }),
-          hook(GenerationTask, {
-            beforeRequest: async (_request, api, ctx) => {
-              const live = await harness.snapshot(LiveDoc, conversation.id, ctx);
-              if (live?.run && preparedMcpRun !== Number(live.run.taskId)) {
-                const inputs = await Promise.all(
-                  live.run.inputs.map((id) => lease.storage.submission(id, ctx)),
-                );
-                // Human Runs already discover MCP before admission, including cancellation.
-                // Goal rounds and reporters refresh once at their native Run boundary.
-                if (
-                  preparedMcpRequestId === undefined ||
-                  !inputs.some((input) => input?.requestId === preparedMcpRequestId)
-                )
-                  await refreshMcp(ctx.abortSignal);
-                preparedMcpRun = Number(live.run.taskId);
-              }
-              await processCompactionHooks(ctx);
-              if (live?.run) {
-                const placed = await Promise.all(
-                  live.run.inputs.map((id) => lease.storage.submission(id, ctx)),
-                );
-                if (
-                  placed.some(
-                    (record) =>
-                      record?.requestId?.startsWith("goal:") &&
-                      /:round:\d+:\d+$/.test(record.requestId),
-                  )
-                )
-                  goalRound = true;
-                const activation = await harness.snapshot(GoalActivationDoc, conversation.id, ctx);
-                const roundInput =
-                  activation?.taskId && activation.requestId
-                    ? placed.find((record) =>
-                        record?.requestId?.startsWith(
-                          `${activation.requestId}:round:${activation.taskId}:`,
-                        ),
-                      )
-                    : undefined;
-                if (roundInput?.requestId) {
-                  const round = Number(roundInput.requestId.split(":").at(-1));
-                  if (!Number.isSafeInteger(round) || round < 1)
-                    throw new Error("Invalid accepted Goal round identity.");
-                  goalRound = true;
-                  await conversation.commit(async (tx) => {
-                    const active = await tx.doc(GoalActivationDoc, conversation.id);
-                    const snapshot = await tx.doc(goalState.document, conversation.id);
-                    const value = snapshot.value;
-                    if (
-                      active.taskId === activation!.taskId &&
-                      active.countedRound < round &&
-                      value &&
-                      typeof value === "object" &&
-                      !Array.isArray(value)
-                    ) {
-                      snapshot.value = placedGoalRound(value, round);
-                      active.countedRound = round;
-                    }
-                  }, ctx);
+                if (result.continue === false) {
+                  await stopCompactionByHook(result.stopReason ?? "Stopped by hook.", ctx);
+                  return { decline: true };
                 }
-                const current = await conversation.context(ctx);
-                const latestInput = current.entries.findLast(
-                  (entry) =>
-                    entry.kind !== "rukie.reminder" &&
-                    (entry.model ?? []).some((message) => message.role === "user"),
-                );
-                const repairs = await harness.snapshot(HookYieldDoc, conversation.id, ctx);
-                if (
-                  repairs?.pending.length &&
-                  latestInput?.model?.some(
-                    (message) =>
-                      message.role === "user" && textOf(message) === repairs.pending.join("\n\n"),
-                  )
-                )
-                  await conversation.commit(async (tx) => {
-                    const pending = await tx.doc(HookYieldDoc, conversation.id);
-                    pending.pending = [];
-                    pending.runAnchor = null;
-                  }, ctx);
-                if (
-                  placed.some(
-                    (record) =>
-                      record?.requestId?.startsWith("human:") && record.entry === latestInput?.id,
-                  )
-                )
-                  goalRound = false;
-                const humanInput = placed.findLast(
-                  (record) =>
-                    record?.requestId?.startsWith("human:") && record.entry === latestInput?.id,
-                );
-                if (
-                  humanInput &&
-                  latestInput?.model?.some(
-                    (message) => message.role === "user" && textOf(message).startsWith("/"),
-                  )
-                ) {
-                  const facts = (await fullHistory()).findLast(
-                    (entry) =>
-                      entry.kind === "rukie.message-facts" &&
-                      entryData(entry)?.entryId === Number(humanInput.entry),
+                if (result.decision === "block") {
+                  const reason = result.reason ?? "Compaction declined by hook.";
+                  const warning = {
+                    event: "PreCompact" as const,
+                    hook: "compaction",
+                    message: reason,
+                    error: { code: "hook-compaction-blocked" as const, params: { reason } },
+                  };
+                  await appendNotice({ kind: "hook_warning", ...warning });
+                  custom({ type: "hook_warning", ...warning });
+                  warn(reason);
+                  return { decline: true };
+                }
+                return undefined;
+              },
+            }),
+            hook(ToolTask, { beforeTool: runtime.beforeTool, afterTool: runtime.afterTool }),
+            hook(GenerationTask, {
+              beforeRequest: async (_request, api, ctx) => {
+                const live = await harness.snapshot(LiveDoc, conversation.id, ctx);
+                if (live?.run && preparedMcpRun !== Number(live.run.taskId)) {
+                  const inputs = await Promise.all(
+                    live.run.inputs.map((id) => lease.storage.submission(id, ctx)),
                   );
-                  const invocation = entryData(facts)?.skillInvocation;
+                  // Human Runs already discover MCP before admission, including cancellation.
+                  // Goal rounds and reporters refresh once at their native Run boundary.
                   if (
-                    typeof invocation === "string" &&
-                    !current.messages.some((message) => textOf(message).includes(invocation))
+                    preparedMcpRequestId === undefined ||
+                    !inputs.some((input) => input?.requestId === preparedMcpRequestId)
                   )
-                    await appendReminder(
-                      {
-                        role: "system-reminder",
-                        source: "skill-invocation",
-                        content: invocation,
+                    await refreshMcp(ctx.abortSignal);
+                  preparedMcpRun = Number(live.run.taskId);
+                }
+                await processCompactionHooks(ctx);
+                if (live?.run) {
+                  const placed = await Promise.all(
+                    live.run.inputs.map((id) => lease.storage.submission(id, ctx)),
+                  );
+                  if (await goalRuntime.beforeRequest(placed, ctx)) goalRound = true;
+                  const current = await conversation.context(ctx);
+                  const latestInput = current.entries.findLast(
+                    (entry) =>
+                      entry.kind !== "rukie.reminder" &&
+                      (entry.model ?? []).some((message) => message.role === "user"),
+                  );
+                  const repairs = await harness.snapshot(HookYieldDoc, conversation.id, ctx);
+                  if (
+                    repairs?.pending.length &&
+                    latestInput?.model?.some(
+                      (message) =>
+                        message.role === "user" && textOf(message) === repairs.pending.join("\n\n"),
+                    )
+                  )
+                    await conversation.commit(async (tx) => {
+                      const pending = await tx.doc(HookYieldDoc, conversation.id);
+                      pending.pending = [];
+                      pending.runAnchor = null;
+                    }, ctx);
+                  if (
+                    placed.some(
+                      (record) =>
+                        record &&
+                        requestKind(record.requestId) === "human" &&
+                        record.entry === latestInput?.id,
+                    )
+                  )
+                    goalRound = false;
+                  const humanInput = placed.findLast(
+                    (record) =>
+                      record &&
+                      requestKind(record.requestId) === "human" &&
+                      record.entry === latestInput?.id,
+                  );
+                  if (
+                    humanInput &&
+                    latestInput?.model?.some(
+                      (message) => message.role === "user" && textOf(message).startsWith("/"),
+                    )
+                  ) {
+                    const facts = (await fullHistory()).findLast(
+                      (entry) =>
+                        entry.kind === "rukie.message-facts" &&
+                        entryData(entry)?.entryId === Number(humanInput.entry),
+                    );
+                    const invocation = entryData(facts)?.skillInvocation;
+                    if (
+                      typeof invocation === "string" &&
+                      !current.messages.some((message) => textOf(message).includes(invocation))
+                    )
+                      await appendReminder(
+                        {
+                          role: "system-reminder",
+                          source: "skill-invocation",
+                          content: invocation,
+                          timestamp: Date.now(),
+                        },
+                        ctx,
+                      );
+                  }
+                  for (const record of placed)
+                    if (record?.requestId) {
+                      let requestIds = [record.requestId];
+                      const identity = parseRequestId(record.requestId);
+                      const report = identity.kind === "subagent-report" ? identity : undefined;
+                      if (report) {
+                        const all = await lease.storage.scanTasks({}, 100000, undefined, ctx);
+                        const driver = all.items.find((task) => Number(task.id) === report.taskId);
+                        const originals =
+                          driver && (await ledger.requestCausesForTasks(all.items))(driver);
+                        if (originals?.size) requestIds = [...originals];
+                      }
+                      await harness.commit(async (tx) => {
+                        for (const requestId of requestIds)
+                          await ledger.bind(tx, requestId, {
+                            submissionId: Number(record.id),
+                            taskId: Number(live.run!.taskId),
+                          });
+                      }, ctx);
+                    }
+                }
+                for (const id of live?.run?.inputs ?? []) {
+                  const record = await lease.storage.submission(id, ctx);
+                  if (record?.entry)
+                    await conversation.commit(async (tx) => {
+                      const pending = await tx.doc(PendingInputFactsDoc, conversation.id);
+                      const facts = pending.inputs[String(id)];
+                      if (!facts) return;
+                      await tx.appendEntry(conversation.id, {
+                        kind: "rukie.message-facts",
+                        data: { ...facts, entryId: Number(record.entry) },
+                      });
+                      delete pending.inputs[String(id)];
+                    }, ctx);
+                  if (
+                    record &&
+                    requestKind(record.requestId) === "human" &&
+                    record.status !== "queued" &&
+                    record.entry &&
+                    !checkpoints
+                      .list()
+                      .some((checkpoint) => checkpoint.promptEntryId === String(record.entry))
+                  ) {
+                    const persisted = await lease.storage.entry(record.entry, ctx);
+                    if (persisted) rememberPrompts([persisted.entry]);
+                    await checkpoints.start(String(record.entry));
+                  }
+                }
+                await goalRuntime.prepareWrapup(ctx);
+                await prepareReminders(ctx);
+                await toolLoadout.publish(ctx);
+                contextMessages = modelContextMessages(await conversation.context(ctx));
+                await observation.flush();
+                custom(contextUsage(contextMessages, model.contextWindow, latestInputTokens()));
+                return { messages: contextMessages };
+              },
+              afterResponse: async (message, api, ctx) => {
+                tracking.finishRequest();
+                const inputTokens =
+                  message.usage.input + message.usage.cacheRead + message.usage.cacheWrite;
+                // Stop hooks can remain pending before the native assistant entry is appended.
+                // Persist provider measurements first so observers never see uncommitted usage.
+                if (Number.isFinite(inputTokens) && inputTokens >= 0) {
+                  await conversation.commit(
+                    (tx) =>
+                      tx.appendEntry(conversation.id, {
+                        kind: "rukie.message-facts",
+                        data: {
+                          taskId: Number(api.taskId),
+                          provider: message.provider,
+                          model: message.model,
+                          inputTokens,
+                        },
+                      }),
+                    ctx,
+                  );
+                  await observation.flush();
+                  custom(
+                    contextUsage(contextMessages, model.contextWindow, inputTokens || undefined),
+                  );
+                }
+                if (message.stopReason === "error" || message.stopReason === "aborted") {
+                  await goalRuntime.clearActivation(ctx);
+                }
+                const measured = {
+                  content: structuredClone(message.content),
+                  rukieThinkingDurationMs: undefined as number | undefined,
+                };
+                thinking.update(measured);
+                thinking.settle(measured);
+                if (measured.rukieThinkingDurationMs !== undefined)
+                  await conversation.commit(
+                    (tx) =>
+                      tx.appendEntry(conversation.id, {
+                        kind: "rukie.message-facts",
+                        data: {
+                          taskId: Number(api.taskId),
+                          timestamp: message.timestamp,
+                          thinkingDurationMs: measured.rukieThinkingDurationMs!,
+                        },
+                      }),
+                    ctx,
+                  );
+              },
+              afterTools: async (_assistant, results, _api, ctx) => {
+                const committed = await Promise.all(
+                  results.map((id) => lease.storage.entry(id, ctx)),
+                );
+                await tracking.commitResults(
+                  committed.flatMap((value) => (value ? [value.entry] : [])),
+                );
+                mcpManager.adopt(mcp.snapshot());
+                const takeover = committed.some((value) =>
+                  value?.entry.model?.some((message) => {
+                    if (message.role !== "toolResult" || message.toolName !== "exit_plan_mode")
+                      return false;
+                    const details = message.details;
+                    return (
+                      details &&
+                      typeof details === "object" &&
+                      !Array.isArray(details) &&
+                      "kind" in details &&
+                      details.kind === "takeover"
+                    );
+                  }),
+                );
+                if (takeover) {
+                  await conversation.commit(async (tx) => {
+                    await ledger.recordOutcome(tx, conversation.id, { kind: "plan-takeover" }, ctx);
+                  }, ctx);
+                  await conversation.abort(ctx);
+                  return;
+                }
+                if (runtime.stopped && runtime.stopReason) {
+                  const reason = runtime.stopReason;
+                  await conversation.commit(async (tx) => {
+                    await ledger.recordOutcome(tx, conversation.id, { kind: "hook-stop", reason });
+                    await tx.appendEntry(conversation.id, {
+                      kind: "rukie.notice",
+                      data: {
+                        role: "session-notice",
+                        notice: { kind: "hook_stopped", reason },
                         timestamp: Date.now(),
+                      },
+                    });
+                  }, ctx);
+                  await conversation.abort(ctx);
+                  return;
+                }
+                if (toolLoadout.hasMcpDrift()) await rebuildTools();
+              },
+              onYield: async (_answer, api, ctx) => {
+                // A caller may start steering before releasing an in-flight model.
+                // Complete host admission before the native final boundary selects its inbox.
+                await Promise.allSettled(steeringAdmissions);
+                if (_answer.stopReason !== "stop") {
+                  await goalRuntime.clearActivation(ctx);
+                  return undefined;
+                }
+                const yielding = await harness.snapshot(LiveDoc, conversation.id, ctx);
+                const inputs = await Promise.all(
+                  (yielding?.run?.inputs ?? []).map((id) => lease.storage.submission(id, ctx)),
+                );
+                const requestIds = new Set(
+                  inputs.flatMap((input) => (input?.requestId ? [input.requestId] : [])),
+                );
+                const tasks = (await lease.storage.scanTasks({}, 100000, undefined, ctx)).items;
+                const causes = await ledger.requestCausesForTasks(tasks);
+                if (
+                  tasks.some(
+                    (task) =>
+                      task.kind === "rukie.subagent-driver" &&
+                      task.state.status !== "terminal" &&
+                      [...causes(task)].some((id) => requestIds.has(id)),
+                  )
+                )
+                  return undefined;
+                const continuation = async (content: string, source: string) => {
+                  await conversation.commit(
+                    (tx) =>
+                      tx.appendEntry(conversation.id, {
+                        kind: "rukie.message-facts",
+                        data: { taskId: Number(api.taskId), content, source },
+                      }),
+                    ctx,
+                  );
+                  return { continue: content };
+                };
+                const goalWrapup = await goalRuntime.yieldWrapup(Number(api.taskId), ctx);
+                if (goalWrapup) return goalWrapup;
+                const live = await harness.snapshot(LiveDoc, conversation.id, ctx);
+                const runAnchor = Number(live?.run?.inputs[0]);
+                const continuationPolicy = await stopHookContinuation(
+                  harness,
+                  conversation.id,
+                  runAnchor,
+                  "Stop",
+                  ctx,
+                );
+                checkingStop = runAnchor;
+                const result = await hooks
+                  .run(
+                    "Stop",
+                    hookInput({
+                      stop_hook_active: continuationPolicy.active,
+                      last_assistant_message: textOf(_answer),
+                    }),
+                    {
+                      signal: ctx.abortSignal,
+                    },
+                  )
+                  .finally(async () => {
+                    await asyncAdmissions;
+                    checkingStop = undefined;
+                  });
+                await applyHookResult(result, "hook:Stop", ctx);
+                if (result.continue === false) {
+                  const reason = result.stopReason ?? "Stopped by hook.";
+                  await conversation.commit(async (tx) => {
+                    await ledger.recordOutcome(tx, conversation.id, { kind: "hook-stop", reason });
+                    await tx.appendEntry(conversation.id, {
+                      kind: "rukie.notice",
+                      data: {
+                        role: "session-notice",
+                        notice: { kind: "hook_stopped", reason },
+                        timestamp: Date.now(),
+                      },
+                    });
+                  }, ctx);
+                  return undefined;
+                }
+                const repairs = await harness.snapshot(HookYieldDoc, conversation.id, ctx);
+                if (repairs?.runAnchor === runAnchor && repairs.pending.length)
+                  return continuation(repairs.pending.join("\n\n"), "async-hook");
+                if (result.decision === "block" && result.reason) {
+                  if (continuationPolicy.warning) {
+                    warn(continuationPolicy.warning.message);
+                    await appendNotice(
+                      {
+                        kind: "hook_warning",
+                        ...continuationPolicy.warning,
                       },
                       ctx,
                     );
-                }
-                for (const record of placed)
-                  if (record?.requestId) {
-                    let requestIds = [record.requestId];
-                    const report = /^subagent:(\d+):report$/.exec(record.requestId);
-                    if (report) {
-                      const all = await lease.storage.scanTasks({}, 100000, undefined, ctx);
-                      const driver = all.items.find(
-                        (task) => Number(task.id) === Number(report[1]),
-                      );
-                      const originals = driver && (await requestCausesForTasks(all.items))(driver);
-                      if (originals?.size) requestIds = [...originals];
-                    }
-                    await harness.commit(async (tx) => {
-                      const doc = await tx.doc(RequestDoc);
-                      for (const requestId of requestIds) {
-                        doc.requests[requestId] ??= {
-                          submissions: [],
-                          tasks: [],
-                          startedAt: Date.now(),
-                          result: null,
-                        };
-                        const request = doc.requests[requestId]!;
-                        if (!request.submissions.includes(Number(record.id)))
-                          request.submissions.push(Number(record.id));
-                        if (!request.tasks.includes(Number(live.run!.taskId)))
-                          request.tasks.push(Number(live.run!.taskId));
-                      }
-                    }, ctx);
-                  }
-              }
-              for (const id of live?.run?.inputs ?? []) {
-                const record = await lease.storage.submission(id, ctx);
-                if (record?.entry)
-                  await conversation.commit(async (tx) => {
-                    const pending = await tx.doc(PendingInputFactsDoc, conversation.id);
-                    const facts = pending.inputs[String(id)];
-                    if (!facts) return;
-                    await tx.appendEntry(conversation.id, {
-                      kind: "rukie.message-facts",
-                      data: { ...facts, entryId: Number(record.entry) },
-                    });
-                    delete pending.inputs[String(id)];
-                  }, ctx);
-                if (
-                  record?.requestId?.startsWith("human:") &&
-                  record.status !== "queued" &&
-                  record.entry &&
-                  !checkpoints
-                    .list()
-                    .some((checkpoint) => checkpoint.promptEntryId === String(record.entry))
-                ) {
-                  const persisted = await lease.storage.entry(record.entry, ctx);
-                  if (persisted) rememberPrompts([persisted.entry]);
-                  await checkpoints.start(String(record.entry));
-                }
-              }
-              if (wrapup) {
-                const content = wrapup;
-                const timestamp = Date.now();
-                await conversation.commit(async (tx) => {
-                  const placed = await tx.appendEntry(conversation.id, {
-                    kind: "rukie.goal-wrapup",
-                    model: [
-                      { role: "user", content: [{ type: "text", text: content }], timestamp },
-                    ],
-                  });
-                  await tx.appendEntry(conversation.id, {
-                    kind: "rukie.message-facts",
-                    data: { entryId: Number(placed.id), source: "goal" },
-                  });
-                }, ctx);
-                wrapup = undefined;
-              }
-              await prepareReminders(ctx);
-              const offered = await currentConversationTools(conversation, ctx);
-              const desired = planToolSearchLoadout({
-                tools,
-                currentTools: offered,
-                model,
-                mode: settings.toolSearch,
-              }).tools.map(toToolDeclaration);
-              const wanted = new Map(desired.map((tool) => [tool.name, tool]));
-              const retained = offered.filter((tool) => {
-                const next = wanted.get(tool.name);
-                return next !== undefined && declarationsEqual(tool, next);
-              });
-              const retainedNames = new Set(retained.map((tool) => tool.name));
-              const added = desired.filter((tool) => !retainedNames.has(tool.name));
-              // Replay retains tools in place and appends additions. Match native planTools:
-              // replace the complete loadout only when that cannot produce the desired order.
-              const replace = [...retained, ...added].some(
-                (tool, index) => tool.name !== desired[index]!.name,
-              );
-              const toolsRemoved = (
-                replace ? offered : offered.filter((tool) => !retainedNames.has(tool.name))
-              ).map((tool) => ({ name: tool.name }));
-              const toolsAdded = replace ? desired : added;
-              if (toolsRemoved.length || toolsAdded.length)
-                // Native preparation precedes beforeRequest. A late MCP refresh must publish
-                // its actual positional loadout before replacing this request's messages.
-                await conversation.commit(
-                  (tx) =>
-                    tx.appendEntry(conversation.id, {
-                      kind: "rukie.mcp-loadout",
-                      model: [
-                        {
-                          role: "system",
-                          content: "",
-                          timestamp: Date.now(),
-                          ...(toolsRemoved.length ? { toolsRemoved } : {}),
-                          ...(toolsAdded.length ? { toolsAdded } : {}),
-                        },
-                      ],
-                    }),
-                  ctx,
-                );
-              contextMessages = modelContextMessages(await conversation.context(ctx));
-              await observation.flush();
-              custom(contextUsage(contextMessages, model.contextWindow, latestInputTokens()));
-              return { messages: contextMessages };
-            },
-            afterResponse: async (message, api, ctx) => {
-              tracking.finishRequest();
-              const inputTokens =
-                message.usage.input + message.usage.cacheRead + message.usage.cacheWrite;
-              // Stop hooks can remain pending before the native assistant entry is appended.
-              // Persist provider measurements first so observers never see uncommitted usage.
-              if (Number.isFinite(inputTokens) && inputTokens >= 0) {
-                await conversation.commit(
-                  (tx) =>
-                    tx.appendEntry(conversation.id, {
-                      kind: "rukie.message-facts",
-                      data: {
-                        taskId: Number(api.taskId),
-                        provider: message.provider,
-                        model: message.model,
-                        inputTokens,
-                      },
-                    }),
-                  ctx,
-                );
-                await observation.flush();
-                custom(
-                  contextUsage(contextMessages, model.contextWindow, inputTokens || undefined),
-                );
-              }
-              if (message.stopReason === "error" || message.stopReason === "aborted") {
-                await conversation.commit(async (tx) => {
-                  const activation = await tx.doc(GoalActivationDoc, conversation.id);
-                  activation.taskId = null;
-                  activation.requestId = null;
-                }, ctx);
-              }
-              const measured = {
-                content: structuredClone(message.content),
-                rukieThinkingDurationMs: undefined as number | undefined,
-              };
-              thinking.update(measured);
-              thinking.settle(measured);
-              if (measured.rukieThinkingDurationMs !== undefined)
-                await conversation.commit(
-                  (tx) =>
-                    tx.appendEntry(conversation.id, {
-                      kind: "rukie.message-facts",
-                      data: {
-                        taskId: Number(api.taskId),
-                        timestamp: message.timestamp,
-                        thinkingDurationMs: measured.rukieThinkingDurationMs!,
-                      },
-                    }),
-                  ctx,
-                );
-            },
-            afterTools: async (_assistant, results, _api, ctx) => {
-              const committed = await Promise.all(
-                results.map((id) => lease.storage.entry(id, ctx)),
-              );
-              await tracking.commitResults(
-                committed.flatMap((value) => (value ? [value.entry] : [])),
-              );
-              mcpManager.adopt(mcp.snapshot());
-              const takeover = committed.some((value) =>
-                value?.entry.model?.some((message) => {
-                  if (message.role !== "toolResult" || message.toolName !== "exit_plan_mode")
-                    return false;
-                  const details = message.details;
-                  return (
-                    details &&
-                    typeof details === "object" &&
-                    !Array.isArray(details) &&
-                    "kind" in details &&
-                    details.kind === "takeover"
-                  );
-                }),
-              );
-              if (takeover) {
-                const live = await harness.snapshot(LiveDoc, conversation.id, ctx);
-                const first = live?.run?.inputs[0];
-                const input =
-                  first === undefined ? undefined : await lease.storage.submission(first, ctx);
-                await conversation.commit(async (tx) => {
-                  const taken = await tx.doc(PlanTakeoverDoc);
-                  if (input?.requestId) taken.requests[input.requestId] = true;
-                }, ctx);
-                await conversation.abort(ctx);
-                return;
-              }
-              if (stopped && hookStopReason) {
-                const live = await harness.snapshot(LiveDoc, conversation.id, ctx);
-                const first = live?.run?.inputs[0];
-                const input =
-                  first === undefined ? undefined : await lease.storage.submission(first, ctx);
-                const reason = hookStopReason;
-                await conversation.commit(async (tx) => {
-                  const stopped = await tx.doc(HookStopsDoc);
-                  if (input?.requestId) stopped.requests[input.requestId] = reason;
-                  await tx.appendEntry(conversation.id, {
-                    kind: "rukie.notice",
-                    data: {
-                      role: "session-notice",
-                      notice: { kind: "hook_stopped", reason },
-                      timestamp: Date.now(),
-                    },
-                  });
-                }, ctx);
-                await conversation.abort(ctx);
-                return;
-              }
-              const availableMcp = new Set(mcp.tools.map((tool) => tool.name));
-              const publishedMcp = tools
-                .filter((tool) => tool.name.startsWith("mcp__"))
-                .map((tool) => tool.name);
-              if (
-                publishedMcp.length !== availableMcp.size ||
-                publishedMcp.some((name) => !availableMcp.has(name))
-              )
-                await rebuildTools();
-            },
-            onYield: async (_answer, api, ctx) => {
-              // A caller may start steering before releasing an in-flight model.
-              // Complete host admission before the native final boundary selects its inbox.
-              await Promise.allSettled(steeringAdmissions);
-              if (_answer.stopReason !== "stop") {
-                await conversation.commit(async (tx) => {
-                  const activation = await tx.doc(GoalActivationDoc, conversation.id);
-                  activation.taskId = null;
-                  activation.requestId = null;
-                }, ctx);
-                return undefined;
-              }
-              const yielding = await harness.snapshot(LiveDoc, conversation.id, ctx);
-              const inputs = await Promise.all(
-                (yielding?.run?.inputs ?? []).map((id) => lease.storage.submission(id, ctx)),
-              );
-              const requestIds = new Set(
-                inputs.flatMap((input) => (input?.requestId ? [input.requestId] : [])),
-              );
-              const tasks = (await lease.storage.scanTasks({}, 100000, undefined, ctx)).items;
-              const causes = await requestCausesForTasks(tasks);
-              if (
-                tasks.some(
-                  (task) =>
-                    task.kind === "rukie.subagent-driver" &&
-                    task.state.status !== "terminal" &&
-                    [...causes(task)].some((id) => requestIds.has(id)),
-                )
-              )
-                return undefined;
-              const continuation = async (content: string, source: string) => {
-                await conversation.commit(
-                  (tx) =>
-                    tx.appendEntry(conversation.id, {
-                      kind: "rukie.message-facts",
-                      data: { taskId: Number(api.taskId), content, source },
-                    }),
-                  ctx,
-                );
-                return { continue: content };
-              };
-              if (wrapup) {
-                const content = wrapup;
-                wrapup = undefined;
-                return continuation(content, "goal");
-              }
-              const live = await harness.snapshot(LiveDoc, conversation.id, ctx);
-              const runAnchor = Number(live?.run?.inputs[0]);
-              const continuationPolicy = await stopHookContinuation(
-                harness,
-                conversation.id,
-                runAnchor,
-                "Stop",
-                ctx,
-              );
-              checkingStop = runAnchor;
-              const result = await hooks
-                .run(
-                  "Stop",
-                  hookInput({
-                    stop_hook_active: continuationPolicy.active,
-                    last_assistant_message: textOf(_answer),
-                  }),
-                  {
-                    signal: ctx.abortSignal,
-                  },
-                )
-                .finally(async () => {
-                  await asyncAdmissions;
-                  checkingStop = undefined;
-                });
-              await applyHookResult(result, "hook:Stop", ctx);
-              if (result.continue === false) {
-                const input =
-                  live?.run?.inputs[0] === undefined
-                    ? undefined
-                    : await lease.storage.submission(live.run.inputs[0], ctx);
-                const reason = result.stopReason ?? "Stopped by hook.";
-                await conversation.commit(async (tx) => {
-                  const stops = await tx.doc(HookStopsDoc);
-                  if (input?.requestId) stops.requests[input.requestId] = reason;
-                  await tx.appendEntry(conversation.id, {
-                    kind: "rukie.notice",
-                    data: {
-                      role: "session-notice",
-                      notice: { kind: "hook_stopped", reason },
-                      timestamp: Date.now(),
-                    },
-                  });
-                }, ctx);
-                return undefined;
-              }
-              const repairs = await harness.snapshot(HookYieldDoc, conversation.id, ctx);
-              if (repairs?.runAnchor === runAnchor && repairs.pending.length)
-                return continuation(repairs.pending.join("\n\n"), "async-hook");
-              if (result.decision === "block" && result.reason) {
-                if (continuationPolicy.warning) {
-                  warn(continuationPolicy.warning.message);
-                  await appendNotice(
-                    {
-                      kind: "hook_warning",
+                    custom({
+                      type: "hook_warning",
                       ...continuationPolicy.warning,
-                    },
-                    ctx,
-                  );
-                  custom({
-                    type: "hook_warning",
-                    ...continuationPolicy.warning,
-                  });
-                  return undefined;
+                    });
+                    return undefined;
+                  }
+                  await conversation.commit(async (tx) => {
+                    await continuationPolicy.advance(tx);
+                  }, ctx);
+                  custom({ type: "hook_continued", event: "Stop", reason: result.reason });
+                  return continuation(result.reason, "stop_hook");
                 }
-                await conversation.commit(async (tx) => {
-                  await continuationPolicy.advance(tx);
-                }, ctx);
-                custom({ type: "hook_continued", event: "Stop", reason: result.reason });
-                return continuation(result.reason, "stop_hook");
-              }
-              return undefined;
-            },
-          }),
-        ],
-      };
-      registry.install(goalExtension);
-      registry.install(subagents.extension);
-      registry.install(extension);
-      const offered = planToolSearchLoadout({
-        tools,
-        currentTools: await currentConversationTools(),
-        model,
-        mode: settings.toolSearch,
-      }).tools;
-      await conversation.configure(
-        { extensions: [extension, subagents.extension, goalExtension], tools: offered },
-        context,
-      );
-    };
+                return undefined;
+              },
+            }),
+          ],
+        };
+        registry.install(goalRuntime.extension);
+        registry.install(subagents.extension);
+        registry.install(extension);
+        await conversation.configure(
+          {
+            extensions: [extension, subagents.extension, goalRuntime.extension],
+            tools: [...offered],
+          },
+          ctx,
+        );
+      },
+    });
+    const rebuildTools = toolLoadout.rebuild;
     await rebuildTools();
     contextMessages = (await conversation.context(context)).messages;
     observation = await createConversationObservation({
@@ -3058,7 +2409,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       conversation,
       sessionId: lease.id,
       history: () => fullHistory(),
-      tools: () => tools,
+      tools: () => toolLoadout.registrations,
       liveAssistantFacts: () =>
         thinking.duration() !== undefined ? { rukieThinkingDurationMs: thinking.duration() } : {},
       adopt: (publication) => {
@@ -3086,14 +2437,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             )
               modelFact = `${stored.provider}/${stored.modelId}`;
           }
-          if (
-            change.type === "document" &&
-            change.conversationId === conversation.id &&
-            change.record.kind === "rukie.goal-activation"
-          ) {
-            const task = change.value?.taskId;
-            activationTaskFact = typeof task === "number" ? task : null;
-          }
+          goalRuntime.observe(change);
           if (
             change.type === "document" &&
             change.conversationId === conversation.id &&
@@ -3174,7 +2518,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           goal: state.get("goal")
             ? {
                 ...(state.get("goal") as Omit<GoalView, "armed">),
-                armed: activationTaskFact !== null,
+                armed: goalRuntime.isArmed(),
               }
             : null,
         },
@@ -3221,131 +2565,35 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       unregister();
       await observation.close();
     });
-    const readRequest = async (requestId: string) =>
-      (await harness.snapshot(RequestDoc, context))?.requests[requestId];
-    const registerSubmission = async (requestId: string, submissionId: SubmissionId) => {
-      await harness.commit(async (tx) => {
-        const doc = await tx.doc(RequestDoc);
-        doc.requests[requestId] ??= {
-          submissions: [],
-          tasks: [],
-          startedAt: Date.now(),
-          result: null,
-        };
-        const request = doc.requests[requestId]!;
-        if (!request.submissions.includes(Number(submissionId)))
-          request.submissions.push(Number(submissionId));
-      }, context);
-    };
-    const receiptEntries = async (
-      receipt: import("@earendil-works/pi-durable").SettledSubmissionRecord,
-    ) => {
-      if (receipt.type !== "input" || !receipt.entry) return [];
-      const history = await fullHistory();
-      const nextInput =
-        receipt.status === "done"
-          ? undefined
-          : history.find((entry) => entry.id > receipt.entry! && entry.kind === "input");
-      const end = receipt.status === "done" ? receipt.answer : nextInput?.id;
-      return history.filter(
-        (entry) =>
-          entry.id >= receipt.entry! &&
-          (end === undefined || (receipt.status === "done" ? entry.id <= end : entry.id < end)),
-      );
-    };
-    const entryUsage = (entries: Iterable<EntryRecord>) => {
-      const usage = zeroUsage();
-      for (const entry of entries)
-        for (const message of entry.model ?? [])
-          if (message.role === "assistant")
-            for (const key of [
-              "input",
-              "output",
-              "cacheRead",
-              "cacheWrite",
-              "totalTokens",
-            ] as const)
-              usage[key] += message.usage[key];
-      return usage;
-    };
-    const resultFor = async (
-      requestId: string,
-      submissionId: SubmissionId,
-    ): Promise<RequestResult> => {
-      const submission = await harness.submission(submissionId, context);
-      if (!submission) throw new Error(`Request submission missing: ${requestId}`);
-      const receipt = await Promise.race([submission.wait(context), storageFault.promise]);
-
-      const view = await conversation.context(context);
-      contextMessages = view.messages;
-      const entries = await receiptEntries(receipt);
-      const usage = entryUsage(entries);
-      const answer =
-        receipt.status === "done" && receipt.type === "input"
-          ? await lease.storage.entry(receipt.answer, context)
-          : undefined;
-      const terminal =
-        (answer?.entry.model ?? []).findLast((message) => message.role === "assistant") ??
-        entries
-          .flatMap((entry) => entry.model ?? [])
-          .findLast((message) => message.role === "assistant");
-      const text =
-        (answer?.entry.model ?? (terminal ? [terminal] : undefined))
-          ?.filter((message) => message.role === "assistant")
-          .map(textOf)
-          .join("") ?? "";
-      const request = await readRequest(requestId);
-      await observation.flush();
-      if ((await harness.snapshot(PlanTakeoverDoc, context))?.requests[requestId])
-        return {
-          requestId,
-          text: "",
-          success: true,
-          usage,
-          durationMs: Date.now() - (request?.startedAt ?? Date.now()),
-        };
-      const persistedStop = (await harness.snapshot(HookStopsDoc, context))?.requests[requestId];
-      if (persistedStop)
-        return {
-          requestId,
-          text,
-          success: true,
-          stopReason: "hook_stopped",
-          reason: persistedStop,
-          usage,
-          durationMs: Date.now() - (request?.startedAt ?? Date.now()),
-        };
-      return {
-        requestId,
-        text,
-        success:
-          receipt.status === "done" &&
-          (terminal?.role !== "assistant" || terminal.stopReason === "stop"),
-        usage,
-        durationMs: Date.now() - (request?.startedAt ?? Date.now()),
-        ...(receipt.status === "unanswered"
-          ? { error: typeof receipt.detail === "string" ? receipt.detail : receipt.reason }
-          : terminal?.role === "assistant" && terminal.stopReason !== "stop"
-            ? {
-                error:
-                  terminal.errorMessage ??
-                  `Model response ended with stop reason ${terminal.stopReason}`,
-              }
-            : {}),
-      };
-    };
+    ledger = createRequestLedger({
+      harness,
+      storage: lease.storage,
+      context,
+      conversation: () => conversation,
+      history: fullHistory,
+      flush: () => observation.flush(),
+      updateContext: (messages) => {
+        contextMessages = messages;
+      },
+      fault: storageFault.promise,
+      assertAvailable,
+      goalReceipt: readGoalReceipt,
+      subagentReceipt: readSubagentReceipt,
+      publish: (result) => custom({ type: "request_settled", ...result }),
+    });
     async function submit(
       prompt: string,
       images: PromptImage[] = [],
       whenBusy: "reject" | "steer" | "followUp" = "reject",
-      requestId = `human:${randomUUID()}`,
+      requestId = requestIds.human(),
       signal?: AbortSignal,
     ) {
       assertAvailable();
       images.forEach(validateImage);
-      const hookResult = requestId.startsWith("human:")
-        ? await hooks.run("UserPromptSubmit", hookInput({ prompt }), { signal })
-        : { systemMessages: [], additionalContext: [] };
+      const hookResult =
+        requestKind(requestId) === "human"
+          ? await hooks.run("UserPromptSubmit", hookInput({ prompt }), { signal })
+          : { systemMessages: [], additionalContext: [] };
       signal?.throwIfAborted();
       await applyHookResult(hookResult, "hook:UserPromptSubmit");
       if (hookResult.decision === "block" || hookResult.continue === false || startupStopReason) {
@@ -3367,13 +2615,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           durationMs: 0,
         };
         await harness.commit(async (tx) => {
-          const requests = await tx.doc(RequestDoc);
-          requests.requests[requestId] = {
-            submissions: [],
-            tasks: [],
-            startedAt: Date.now(),
-            result: { ...result, usage: { ...result.usage } },
-          };
+          await ledger.recordResult(tx, result);
           await tx.appendEntry(conversation.id, {
             kind: "rukie.notice",
             data: {
@@ -3389,7 +2631,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       const admissionContext = signal ? withAbortSignal(signal, context) : context;
       await prepareReminders(admissionContext, true, undefined, requestId);
       signal?.throwIfAborted();
-      if (requestId.startsWith("human:")) await title.firstPrompt(prompt);
+      if (requestKind(requestId) === "human") await title.firstPrompt(prompt);
       const invocation = skillInvocation(prompt, skills);
       if (invocation)
         await appendReminder({
@@ -3410,20 +2652,22 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         { type: "input", content, requestId, whenBusy },
         admissionContext,
       );
-      if (!/:round:\d+:\d+$/.test(requestId)) currentRequestId = requestId;
-      await registerSubmission(requestId, submitted.id);
+      if (requestKind(requestId) !== "goal-round") ledger.setForeground(requestId);
+      await ledger.registerSubmission(requestId, submitted.id);
       const record = await submitted.status(context);
-      if (images.length || invocation || !requestId.startsWith("human:")) {
+      if (images.length || invocation || !(requestKind(requestId) === "human")) {
         const facts: Record<string, JsonValue> = {
           ...(images.length ? { imageNames: images.map((image) => image.name ?? null) } : {}),
           ...(invocation ? { skillInvocation: invocation } : {}),
-          ...(!requestId.startsWith("human:")
+          ...(!(requestKind(requestId) === "human")
             ? {
-                source: requestId.startsWith("goal:")
-                  ? "goal"
-                  : requestId.startsWith("job:")
-                    ? "job"
-                    : "hook",
+                source:
+                  requestKind(requestId) === "goal-round" ||
+                  requestKind(requestId) === "goal-activation"
+                    ? "goal"
+                    : requestKind(requestId) === "job"
+                      ? "job"
+                      : "hook",
               }
             : {}),
         };
@@ -3484,60 +2728,6 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           ? last.usage.input + last.usage.cacheRead + last.usage.cacheWrite || undefined
           : undefined;
     }
-    /** Follow committed native ownership and accepted steer identities, including multiple callers. */
-    async function requestCausesForTasks(
-      tasks: readonly import("@earendil-works/pi-durable").TaskRecord<
-        JsonValue,
-        JsonValue,
-        JsonValue
-      >[],
-    ) {
-      const requests = (await harness.snapshot(RequestDoc, context))?.requests ?? {};
-      const submissions = (await lease.storage.scanSubmissions({}, 100000, undefined, context))
-        .items;
-      const conversations = (await lease.storage.scanConversations({}, 100000, undefined, context))
-        .items;
-      const byId = new Map(tasks.map((record) => [Number(record.id), record]));
-      return (task: (typeof tasks)[number]) => {
-        const found = new Set<string>();
-        const pending = [Number(task.id)];
-        const visited = new Set<number>();
-        while (pending.length) {
-          const id = pending.pop()!;
-          if (visited.has(id)) continue;
-          visited.add(id);
-          const current = byId.get(id);
-          if (!current) continue;
-          for (const [requestId, request] of Object.entries(requests))
-            if (request.tasks.includes(id)) found.add(requestId);
-          const input: JsonValue = current.input;
-          const origin =
-            input &&
-            typeof input === "object" &&
-            !Array.isArray(input) &&
-            typeof input.originToolTaskId === "number"
-              ? input.originToolTaskId
-              : undefined;
-          if (current.owner !== undefined) pending.push(Number(current.owner));
-          if (origin !== undefined) pending.push(origin);
-          if (current.kind === "rukie.subagent-driver") {
-            // The child Conversation owner fixes which driver accepted this input. A provider callId
-            // is not a causal edge: only the committed native ToolTask-derived request identity is.
-            const children = new Set(
-              conversations
-                .filter((child) => Number(child.owner?.taskId) === id)
-                .map((child) => Number(child.id)),
-            );
-            for (const submission of submissions) {
-              if (!children.has(Number(submission.conversationId))) continue;
-              const send = /^subagent-send:(\d+)$/.exec(submission.requestId ?? "");
-              if (send) pending.push(Number(send[1]));
-            }
-          }
-        }
-        return found;
-      };
-    }
     const session: Session = {
       get running() {
         return (
@@ -3547,7 +2737,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         );
       },
       get currentRequestId() {
-        return currentRequestId;
+        return ledger.currentRequestId;
       },
       id: lease.id,
       get title() {
@@ -3606,20 +2796,21 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
       createGoal: async (objective, input) => {
         await goal.create(objective, input);
-        const requestId = goalRequestId;
+        const requestId = goalRuntime.activation.requestId;
         if (!requestId) throw new Error("Created Goal has no accepted driver.");
         return { ...goal.view()!, requestId };
       },
       editGoal: async (objective) => {
         const prior = goal.view();
         const value = await goal.edit(objective);
-        const requestId = prior?.phase === "complete" ? goalRequestId : undefined;
+        const requestId =
+          prior?.phase === "complete" ? goalRuntime.activation.requestId : undefined;
         return { ...value, ...(requestId ? { requestId } : {}) };
       },
       pauseGoal: () => goal.pause(),
       resumeGoal: async () => {
         const value = await goal.resume();
-        const requestId = goalRequestId;
+        const requestId = goalRuntime.activation.requestId;
         return { ...value, ...(requestId ? { requestId } : {}) };
       },
       clearGoal: () => goal.clear(),
@@ -3636,7 +2827,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       contextUsage: () =>
         contextUsage(modelMessages(), model.contextWindow, latestInputTokens(), {
           instructions: SYSTEM_PROMPT,
-          tools,
+          tools: toolLoadout.registrations,
         }),
       contextReport: () =>
         contextReport({
@@ -3646,7 +2837,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           model: `${model.provider}/${model.id}`,
           window: model.contextWindow,
           mcpServers: mcp.toolServers,
-          configured: { instructions: SYSTEM_PROMPT, tools },
+          configured: { instructions: SYSTEM_PROMPT, tools: toolLoadout.registrations },
         }),
       sideQuestion(question, input) {
         assertAvailable();
@@ -3694,14 +2885,14 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         await job.completed;
         const content = `User stopped background job ${id} (${job.view.label}).`;
         if (observation.running()) {
-          const parent = currentRequestId;
-          const requestId = `job:stopped:${id}:${job.view.startedAt}`;
+          const parent = ledger.currentRequestId;
+          const requestId = requestIds.jobStopped(id, job.view.startedAt);
           await conversation.commit(async (tx) => {
             const pending = await tx.doc(JobStopsDoc, conversation.id);
             pending.pending[requestId] = content;
           }, context);
           const submitted = await submit(content, [], "steer", requestId);
-          if (parent) await registerSubmission(parent, submitted.id);
+          if (parent) await ledger.registerSubmission(parent, submitted.id);
         } else
           await appendReminder({
             role: "system-reminder",
@@ -3826,7 +3017,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             conversation,
             sessionId: lease.id,
             history: () => fullHistory(),
-            tools: () => tools,
+            tools: () => toolLoadout.registrations,
             liveAssistantFacts: () =>
               thinking.duration() !== undefined
                 ? { rukieThinkingDurationMs: thinking.duration() }
@@ -3986,26 +3177,18 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         assertAvailable();
         notificationLifetime.abort();
         notificationLifetime = new AbortController();
-        stopped = true;
-        const active = await harness.snapshot(GoalActivationDoc, conversation.id, context);
-        let goalAbort: ReturnType<typeof harness.abortTask> | undefined;
-        if (active?.taskId) {
-          const tasks = (await lease.storage.scanTasks({}, 100000, undefined, context)).items;
-          const driver = tasks.find(
-            (task) => Number(task.id) === active.taskId && task.kind === "rukie.goal-driver",
-          );
-          if (driver) goalAbort = harness.abortTask(driver.id, context);
-        }
+        runtime.stopped = true;
+        const goalAbort = goalRuntime.abort(context);
         if (manualCompactionTask) await harness.abortTask(manualCompactionTask, context);
         await conversation.abort(context);
         await goalAbort;
         await observation.flush();
       },
       async steer(prompt, input) {
-        const parentRequestId = currentRequestId;
+        const parentRequestId = ledger.currentRequestId;
         const admission = (async () => {
           const submitted = await submit(prompt, input?.images, "steer");
-          if (parentRequestId) await registerSubmission(parentRequestId, submitted.id);
+          if (parentRequestId) await ledger.registerSubmission(parentRequestId, submitted.id);
         })();
         steeringAdmissions.add(admission);
         try {
@@ -4016,7 +3199,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
       async run(prompt, input = {}) {
         input.signal?.throwIfAborted();
-        if (observation.running() && currentRequestId?.startsWith("hook:")) {
+        if (observation.running() && requestKind(ledger.currentRequestId) === "hook") {
           const cancelled = Promise.withResolvers<never>();
           const cancelWaiting = () => cancelled.reject(input.signal?.reason);
           input.signal?.addEventListener("abort", cancelWaiting, { once: true });
@@ -4029,13 +3212,13 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         assertAvailable(true);
         const admissionFinished = Promise.withResolvers<void>();
         foregroundAdmission = admissionFinished.promise;
-        stopped = false;
-        hookStopReason = undefined;
+        runtime.stopped = false;
+        runtime.stopReason = undefined;
         goalRound = false;
         const abort = () => {
           notificationLifetime.abort();
           notificationLifetime = new AbortController();
-          stopped = true;
+          runtime.stopped = true;
           void conversation.abort(context).catch((error) => {
             if (!closed) warn(error);
           });
@@ -4050,10 +3233,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           await rebuildTools();
           await refreshMcp(input.signal);
           input.signal?.throwIfAborted();
-          const requestId = `human:${randomUUID()}`;
+          const requestId = requestIds.human();
           preparedMcpRequestId = requestId;
           const submission = await submit(prompt, input.images, "reject", requestId, input.signal);
-          const result = await resultFor(requestId, submission.id);
+          const result = await ledger.resultFor(requestId, submission.id);
           await conversation.commit(
             (tx) =>
               tx.appendEntry(conversation.id, {
@@ -4077,7 +3260,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           if (input.signal?.aborted) throw input.signal.reason;
           if (error instanceof PromptHookBlocked) {
             custom({ type: "result", ...error.result });
-            custom({ type: "request_settled", ...error.result });
+            ledger.publishSettled(error.result);
             return error.result;
           }
           throw error;
@@ -4088,199 +3271,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           input.signal?.removeEventListener("abort", abort);
         }
       },
-      waitForRequest(requestId) {
-        const existing = requestWaiters.get(requestId);
-        if (existing) return existing;
-        const waiting = (async () => {
-          assertAvailable();
-          const restored = await readRequest(requestId);
-          if (restored?.result) return storedRequestResult(restored.result)!;
-          const tasks = (await lease.storage.scanTasks({}, 100000, undefined, context)).items;
-          const acceptedGoal = tasks.find(
-            (task) =>
-              task.kind === "rukie.goal-driver" && restored?.tasks.includes(Number(task.id)),
-          );
-          if (acceptedGoal && !restored?.submissions.length) {
-            const receipt = await Promise.race([
-              harness.waitForTask(acceptedGoal.id, context),
-              storageFault.promise,
-            ]);
-            const outcome = receipt.state.outcome;
-            const value = "result" in outcome ? outcome.result : undefined;
-            const settled =
-              value && typeof value === "object" && !Array.isArray(value)
-                ? storedRequestResult({ ...value, requestId })!
-                : {
-                    requestId,
-                    text: "",
-                    success: false,
-                    error: "Goal continuation cancelled",
-                    usage: zeroUsage(),
-                    durationMs: 0,
-                  };
-            await harness.commit(async (tx) => {
-              (await tx.doc(RequestDoc)).requests[requestId]!.result = {
-                ...settled,
-                usage: { ...settled.usage },
-              };
-            }, context);
-            await observation.flush();
-            custom({ type: "request_settled", ...settled });
-            return settled;
-          }
-          let result: RequestResult | undefined;
-          const goalReceipts = new Map<
-            number,
-            import("@earendil-works/pi-durable").SettledTask<JsonValue>
-          >();
-          const parentEntries = new Map<number, EntryRecord>();
-          const childReceipts = new Map<
-            number,
-            import("@earendil-works/pi-durable").TaskRecord<JsonValue, JsonValue, JsonValue>
-          >();
-          for (;;) {
-            const request = await readRequest(requestId);
-            if (!request) throw new Error(`Unknown request: ${requestId}`);
-            const submissions = await lease.storage.scanSubmissions({}, 100000, undefined, context);
-            const ids = submissions.items
-              .filter((record) => request.submissions.includes(Number(record.id)))
-              .map((record) => record.id);
-            if (!ids.length) throw new Error("Request has no submitted inputs.");
-            const results = await Promise.all(ids.map((id) => resultFor(requestId, id)));
-            result = results.at(-1)!;
-            for (const id of ids) {
-              const submission = await harness.submission(id, context);
-              if (!submission) throw new Error(`Request submission missing: ${id}`);
-              for (const entry of await receiptEntries(await submission.wait(context)))
-                parentEntries.set(Number(entry.id), entry);
-            }
-            const tasks = (await lease.storage.scanTasks({}, 100000, undefined, context)).items;
-            const drivers = [];
-            const causes = await requestCausesForTasks(tasks);
-            for (const task of tasks)
-              if (task.kind === "rukie.subagent-driver" && causes(task).has(requestId))
-                drivers.push(task);
-            for (const driver of drivers) {
-              const receipt = await Promise.race([
-                harness.waitForTask(driver.id, context),
-                storageFault.promise,
-              ]);
-              childReceipts.set(Number(driver.id), receipt);
-            }
-            for (const driver of tasks.filter(
-              (task) =>
-                task.kind === "rukie.goal-driver" && request.tasks.includes(Number(task.id)),
-            ))
-              goalReceipts.set(
-                Number(driver.id),
-                await Promise.race([harness.waitForTask(driver.id, context), storageFault.promise]),
-              );
-            const fresh = await readRequest(requestId);
-            if (
-              fresh &&
-              fresh.submissions.length === request.submissions.length &&
-              fresh.tasks.length === request.tasks.length
-            )
-              break;
-          }
-          // Linked Goal rounds may share a native answer with a Human child report.
-          // Union their committed entries before summing; a receipt's spend is not an independent bucket.
-          const allTasks = (await lease.storage.scanTasks({}, 100000, undefined, context)).items;
-          const allInputs = (await lease.storage.scanSubmissions({}, 100000, undefined, context))
-            .items;
-          const goalRequests = new Set<string>();
-          for (const driver of goalReceipts.values()) {
-            if (
-              !driver.input ||
-              typeof driver.input !== "object" ||
-              Array.isArray(driver.input) ||
-              typeof driver.input.requestId !== "string"
-            )
-              throw new Error("Invalid accepted Goal request identity.");
-            const prefix = `${driver.input.requestId}:round:${driver.id}:`;
-            for (const input of allInputs.filter((input) => input.requestId?.startsWith(prefix))) {
-              goalRequests.add(input.requestId!);
-              const roundRequest = await readRequest(input.requestId!);
-              const ids = roundRequest?.submissions ?? [Number(input.id)];
-              for (const id of ids) {
-                const record = allInputs.find((record) => Number(record.id) === id);
-                if (!record) throw new Error(`Goal submission missing: ${id}`);
-                const submission = await harness.submission(record.id, context);
-                if (!submission) throw new Error(`Goal submission missing: ${id}`);
-                for (const entry of await receiptEntries(await submission.wait(context)))
-                  parentEntries.set(Number(entry.id), entry);
-              }
-            }
-          }
-          const causes = await requestCausesForTasks(allTasks);
-          for (const child of allTasks)
-            if (
-              child.kind === "rukie.subagent-driver" &&
-              child.state.status === "terminal" &&
-              [...causes(child)].some((request) => goalRequests.has(request))
-            )
-              childReceipts.set(Number(child.id), child);
-          const usage = entryUsage(parentEntries.values());
-          let answerId: number | undefined;
-          for (const receipt of childReceipts.values()) {
-            const outcome = receipt.state.outcome;
-            const value = outcome && "result" in outcome ? outcome.result : undefined;
-            if (!value || typeof value !== "object" || Array.isArray(value)) continue;
-            if (typeof value.parentAnswer === "number")
-              answerId = Math.max(answerId ?? 0, value.parentAnswer);
-            const spend = value.usage;
-            if (spend && typeof spend === "object" && !Array.isArray(spend))
-              for (const key of [
-                "input",
-                "output",
-                "cacheRead",
-                "cacheWrite",
-                "totalTokens",
-              ] as const)
-                if (typeof spend[key] === "number") usage[key] += spend[key];
-          }
-          let text = result!.text;
-          if (answerId !== undefined) {
-            const view = await conversation.context(context);
-            const entry = view.entries.find((entry) => Number(entry.id) === answerId);
-            if (entry)
-              text = (entry.model ?? [])
-                .filter((message) => message.role === "assistant")
-                .map(textOf)
-                .join("");
-          }
-          let settled = { ...result!, text, usage };
-          for (const receipt of goalReceipts.values()) {
-            const outcome = receipt.state.outcome;
-            const value = "result" in outcome ? outcome.result : undefined;
-            const goalResult =
-              value && typeof value === "object" && !Array.isArray(value)
-                ? storedRequestResult({ ...value, requestId })
-                : undefined;
-            if (goalResult) {
-              settled = {
-                ...goalResult,
-                usage,
-                durationMs: settled.durationMs + goalResult.durationMs,
-              };
-            } else settled = { ...settled, success: false, error: "Goal continuation cancelled" };
-          }
-          const latestAnswer = [...parentEntries.values()]
-            .sort((left, right) => Number(left.id) - Number(right.id))
-            .flatMap((entry) => entry.model ?? [])
-            .findLast((message) => message.role === "assistant");
-          if (goalReceipts.size && latestAnswer) settled.text = textOf(latestAnswer);
-          await harness.commit(async (tx) => {
-            const doc = await tx.doc(RequestDoc);
-            doc.requests[requestId]!.result = { ...settled, usage: { ...settled.usage } };
-          }, context);
-          await observation.flush();
-          if (!/:round:\d+:\d+$/.test(requestId)) custom({ type: "request_settled", ...settled });
-          return settled;
-        })();
-        requestWaiters.set(requestId, waiting);
-        return waiting;
-      },
+      waitForRequest: (requestId) => ledger.waitForRequest(requestId),
       async waitForIdle() {
         // A native Run can settle before its host receipt/metadata commit releases
         // foreground admission. Readiness includes that owned completion boundary.
@@ -4311,7 +3302,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             });
             await applyHookResult(result, "hook:SessionEnd");
           });
-          hooks.dispose();
+          runtime.disposeHooks();
           await release(async () => {
             await Promise.all(shutdownPublications);
           });
@@ -4320,12 +3311,12 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           permissionBatch.close();
           await release(() => observation.close());
           subagents.close();
-          for (const owner of childHookOwners.values()) owner.dispose();
+          for (const owner of childRuntimes.values()) owner.disposeHooks();
           for (const resource of childResources.values()) {
             await release(() => resource.observation.close());
-            await release(() => resource.jobs.dispose());
           }
-          await release(() => jobs.dispose());
+          for (const owner of childRuntimes.values()) await release(() => owner.disposeJobs());
+          await release(() => runtime.disposeJobs());
           await release(() => mcp.close());
           await release(() => env.cleanup(context));
           unregister();
@@ -4351,27 +3342,19 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     if (startup.continue === false) startupStopReason = startup.stopReason ?? "Stopped by hook.";
     await asyncAdmissions;
     const pendingRecovery = await harness.inspect(context);
-    if (pendingRecovery.tasks.some((task) => hasPendingMcpInteraction(task.record)))
+    if (
+      pendingRecovery.tasks.some((task) =>
+        hasPendingInteraction(task.record, isMcpAuthenticationInteraction),
+      )
+    )
       await refreshMcp(context.abortSignal);
     await subagents.prepareChildren(context);
     const recovering = await harness.inspect(context);
-    const requestValues = (await harness.snapshot(RequestDoc, context))?.requests ?? {};
-    const allTasks = (await lease.storage.scanTasks({}, 100000, undefined, context)).items;
-    for (const record of recovering.submissions)
-      if (record.requestId && requestValues[record.requestId]) currentRequestId = record.requestId;
-    if (!currentRequestId) {
-      const causes = await requestCausesForTasks(allTasks);
-      for (const task of recovering.tasks)
-        for (const id of causes(task.record)) currentRequestId = id;
-    }
-    if (activationTaskFact !== null && goalRequestId) {
-      const taskId = activationTaskFact;
-      const human = Object.entries(requestValues).find(
-        ([id, request]) =>
-          id.startsWith("human:") && request.result === null && request.tasks.includes(taskId),
-      );
-      currentRequestId = human?.[0] ?? goalRequestId;
-    }
+    await ledger.recover(
+      recovering,
+      goalRuntime.activation.taskId,
+      goalRuntime.activation.requestId,
+    );
     options.initializationSignal?.throwIfAborted();
     harness.resume();
     return session;

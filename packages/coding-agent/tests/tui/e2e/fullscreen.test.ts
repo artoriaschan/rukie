@@ -179,7 +179,10 @@ test("Chat fills the alternate screen, scrolls its body and clears the UI on exi
     await app.waitFor(() => app.screen().some((line) => line.includes("有新输出")));
     expect(app.screen().slice(0, bodyHeight)).toEqual(reading);
     app.stdin.write("\x1b[1;5F");
-    await app.waitFor(() => app.screen().includes("  new output"));
+    // Tail placement and the following-state hint can publish on separate frames.
+    await app.waitFor(
+      () => app.screen().includes("  new output") && !app.screen().join("\n").includes("回到底部"),
+    );
     expect(app.screen().join("\n")).not.toContain("回到底部");
     app.calls[0]!.finish();
     await app.waitFor(() => !app.isWorking());

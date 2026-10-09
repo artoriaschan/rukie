@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { Context } from "@earendil-works/chord";
-import type { HookApi } from "@earendil-works/pi-durable";
+import type { Context, JsonValue } from "@earendil-works/chord";
+import type { HookApi, TaskRecord } from "@earendil-works/pi-durable";
 
 /** Stable native request identity plus one invocation's callback ownership. */
 export interface InteractionIdentity {
@@ -47,32 +47,78 @@ export async function requestInteraction<Request extends { signal: AbortSignal }
   }
 }
 
+function pendingIdentity(taskId: number, conversationId: number, kind: string) {
+  return {
+    version: 1,
+    kind,
+    phase: "pending",
+    taskId,
+    conversationId,
+    requestId: `interaction:${taskId}:${kind}`,
+  };
+}
+
+function matchesPendingIdentity(
+  value: JsonValue | undefined,
+  expected: ReturnType<typeof pendingIdentity>,
+): boolean {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    value.version === expected.version &&
+    value.kind === expected.kind &&
+    value.phase === expected.phase &&
+    value.taskId === expected.taskId &&
+    value.conversationId === expected.conversationId &&
+    value.requestId === expected.requestId
+  );
+}
+
+/** Native phase and terminal receipt override the immutable interaction memo. */
+export function hasPendingInteraction(
+  task: TaskRecord<JsonValue, JsonValue, JsonValue>,
+  matchesKind: (kind: string) => boolean,
+): boolean {
+  if (
+    task.kind !== "pi.tool" ||
+    task.abortRequested ||
+    task.state.status === "terminal" ||
+    task.state.status === "completing"
+  )
+    return false;
+  const checkpoint = task.state.checkpoint;
+  if (
+    !checkpoint ||
+    typeof checkpoint !== "object" ||
+    Array.isArray(checkpoint) ||
+    checkpoint.phase !== "call"
+  )
+    return false;
+  return Object.entries(task.memos ?? {}).some(([name, value]) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const kind = value.kind;
+    return (
+      typeof kind === "string" &&
+      matchesKind(kind) &&
+      name === `rukie.interaction.${kind}` &&
+      matchesPendingIdentity(
+        value,
+        pendingIdentity(Number(task.id), Number(task.conversationId), kind),
+      )
+    );
+  });
+}
+
 /** Native phase/terminal receipt is authoritative; this immutable memo identifies its pending interaction. */
 export async function createInteractionIdentity(
   api: Pick<HookApi, "taskId" | "conversationId" | "memo">,
   kind: string,
   context: Context,
 ): Promise<InteractionIdentity> {
-  const expected = {
-    version: 1,
-    kind,
-    phase: "pending",
-    taskId: Number(api.taskId),
-    conversationId: Number(api.conversationId),
-    requestId: `interaction:${Number(api.taskId)}:${kind}`,
-  };
+  const expected = pendingIdentity(Number(api.taskId), Number(api.conversationId), kind);
   const stored = await api.memo(`rukie.interaction.${kind}`, expected, context);
-  if (
-    !stored ||
-    typeof stored !== "object" ||
-    Array.isArray(stored) ||
-    stored.version !== 1 ||
-    stored.kind !== expected.kind ||
-    stored.phase !== "pending" ||
-    stored.taskId !== expected.taskId ||
-    stored.conversationId !== expected.conversationId ||
-    stored.requestId !== expected.requestId
-  )
+  if (!matchesPendingIdentity(stored, expected))
     throw new Error("Invalid native interaction identity.");
   context.abortSignal?.throwIfAborted();
   return {

@@ -197,6 +197,11 @@ test("a caught-up live identity does not restart and a non-prefix final replacem
     app.calls[0]!.delta("caught up");
     await app.waitFor(() => app.screen().join("\n").includes("caught up"));
     app.calls[0]!.delta(" later " + "x".repeat(180) + " immediate-tail");
+    // Terminal flush drains accepted output, not the durable partial's asynchronous commit.
+    // Activity estimates use the full admitted text independently of smooth reveal's cursor.
+    await app.waitFor(() =>
+      app.screen().some((line) => Number(/↓ (\d+) tokens/.exec(line)?.[1] ?? 0) > 3),
+    );
     await app.flush();
     testClock.advanceTimersByTime(16);
     await app.flush();

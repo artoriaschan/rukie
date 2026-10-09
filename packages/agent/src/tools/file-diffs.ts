@@ -1,7 +1,7 @@
 import { createEditTool, createWriteTool } from "@earendil-works/pi-durable/tools";
 import { createTwoFilesPatch } from "diff";
-import { normalizeFileTool } from "./runtime.ts";
-import type { PresentedTool } from "./presentation.ts";
+import { normalizeFileTool } from "./support/runtime.ts";
+import type { PresentedTool } from "./support/presentation.ts";
 import type { ToolResultView } from "@rukie/shared";
 const DIFF_TEXT_LIMIT = 50 * 1024;
 type WriteFacts = { path: string } & (

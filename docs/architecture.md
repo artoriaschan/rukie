@@ -48,27 +48,35 @@ Session 的 Background Job registry 管理 Bash 进程组、输出和游标。�
 
 ## Agent Core 的职责分配
 
-下表描述当前代码的落点。[ADR-0011](adr/0011-agent-module-ownership.md) 将 `tools/` 定义为内置工具及其关联能力的集合：按能力聚合协议适配、执行、状态与资源管理，Session 可以直接调用能力接口；[`session/tools.ts`](../packages/agent/src/session/tools.ts) 组装内置能力工具，[`session/index.ts`](../packages/agent/src/session/index.ts) 协调 MCP、ToolSearch、完整工具目录和每次请求的模型可见 loadout。
+下表描述当前代码的落点。[ADR-0011](adr/0011-agent-module-ownership.md) 将 `tools/` 定义为内置工具及其关联能力的集合：按能力聚合协议适配、执行、状态与资源管理，Session 可以直接调用能力接口；[`session/tools.ts`](../packages/agent/src/session/tools.ts) 的 Tool Loadout 统一组装 root 与 child 工具、规划模型可见声明及发布 MCP drift，[`session/index.ts`](../packages/agent/src/session/index.ts) 连接能力与原生 Harness 生命周期。
 
-| 模块                                                                     | 责任                                                                         |
-| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
-| `session/`                                                               | 组合能力、协调 Run、事件、取消、存储操作与 frontend 接口                     |
-| `config/`、`prompt/`                                                     | 合并设置、解析模型与凭据，建立 System Prompt                                 |
-| `tools/`、`skills/`、`mcp/`                                              | 构造模型工具集、发布精简 Skill 目录并按需加载正文、连接外部工具              |
-| [`tools/bash/`](../packages/agent/src/tools/bash/index.ts)               | 执行 Bash 调用、后台启动与超时提升，拥有输出采集与截断                       |
-| [`tools/tool-search/`](../packages/agent/src/tools/tool-search/index.ts) | 拥有 Deferred Tool 启用判定、保留顺序规划、查询与名单 reminder 差异          |
-| [`tools/jobs/`](../packages/agent/src/tools/jobs/index.ts)               | 持有 Session 的 Bash 进程组、输出与模型游标，提供后台任务工具                |
-| [`images/`](../packages/agent/src/images/index.ts)                       | 为 Session 与 read 共享图片准入校验，读取 header metadata                    |
-| `permissions/`、`hooks/`、`interaction/`                                 | 决定执行是否允许（含独立模型评审），运行生命周期扩展，并协调可取消的用户交互 |
-| `reminders/`、`context-usage/`                                           | 注入有来源的上下文、报告原生 Compaction 后的上下文占用                       |
-| `store/`、`tool-state/`、`checkpoint/`                                   | 接入原生 Storage 与 typed documents、保存和恢复文件修改前内容                |
-| `file-tracking/`                                                         | 跟踪文件工具的内容基线、检测外部变化、拒绝未经重读的过期写入                 |
-| [`tools/subagents/`](../packages/agent/src/tools/subagents/index.ts)     | 管理 owned child、原生 driver/reporter、恢复与请求因果关联                   |
-| `session-title/`、`side-question/`                                       | 管理标题与独立侧问                                                           |
-| [`tools/plan-mode/`](../packages/agent/src/tools/plan-mode/index.ts)     | 管理 Plan Mode 快照、引导与 Enter/Exit 工具，Session 协调存储与状态事件      |
-| [`tools/goal/`](../packages/agent/src/tools/goal/index.ts)               | 管理 Goal 快照、模型工具授权及原生续跑 task，Session 注入提交与因果收据      |
+| 模块                                                                           | 责任                                                                                                              |
+| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `session/`                                                                     | 组合能力、协调 Run、事件、取消、存储操作与 frontend 接口                                                          |
+| [`requests/`](../packages/agent/src/requests/index.ts)                         | Request 身份、提交与任务绑定、因果结算、当前前台身份及启动恢复                                                    |
+| [`session/conversation/`](../packages/agent/src/session/conversation/index.ts) | root 与 child 共享的权限、Tool Hook、Job 与文件跟踪运行时                                                         |
+| [`session/tools.ts`](../packages/agent/src/session/tools.ts)                   | Tool Loadout 组装、声明差异、Deferred Tool 规划及 child 工具限制                                                  |
+| [`tools/support/`](../packages/agent/src/tools/support/)                       | 工具路径规范化、运行时包装、preflight 与纯呈现支撑                                                                |
+| `config/`、[`session/prompt.ts`](../packages/agent/src/session/prompt.ts)      | 合并设置、解析模型与凭据，提供共享 System Prompt                                                                  |
+| `tools/`、`skills/`、`mcp/`                                                    | 构造模型工具集、发布精简 Skill 目录并按需加载正文、连接外部工具                                                   |
+| [`tools/bash/`](../packages/agent/src/tools/bash/index.ts)                     | 执行 Bash 调用、后台启动与超时提升，拥有输出采集与截断                                                            |
+| [`tools/tool-search/`](../packages/agent/src/tools/tool-search/index.ts)       | 拥有 Deferred Tool 启用判定、保留顺序规划、查询与名单 reminder 差异                                               |
+| [`tools/jobs/`](../packages/agent/src/tools/jobs/index.ts)                     | 持有 Session 的 Bash 进程组、输出与模型游标，提供后台任务工具                                                     |
+| [`images/`](../packages/agent/src/images/index.ts)                             | 为 Session 与 read 共享图片准入校验，读取 header metadata                                                         |
+| `permissions/`、`hooks/`、`interaction/`                                       | 决定执行是否允许（含独立模型评审），运行生命周期扩展，并协调可取消的用户交互及 pending interaction 身份写入和识别 |
+| `reminders/`、`context-usage/`                                                 | 注入有来源的上下文、报告原生 Compaction 后的上下文占用                                                            |
+| `store/`、`tool-state/`、`checkpoint/`                                         | 接入原生 Storage 与 typed documents、保存和恢复文件修改前内容                                                     |
+| `file-tracking/`                                                               | 跟踪文件工具的内容基线、检测外部变化、拒绝未经重读的过期写入                                                      |
+| [`tools/subagents/`](../packages/agent/src/tools/subagents/index.ts)           | 管理 owned child、原生 driver/reporter、恢复与请求因果关联                                                        |
+| `session-title/`、`side-question/`                                             | 管理标题与独立侧问                                                                                                |
+| [`tools/plan-mode/`](../packages/agent/src/tools/plan-mode/index.ts)           | 管理 Plan Mode 快照、引导与 Enter/Exit 工具，Session 协调存储与状态事件                                           |
+| [`tools/goal/`](../packages/agent/src/tools/goal/index.ts)                     | 管理 Goal 快照、激活校验、续跑 task、轮次与收尾，Session 注入提交与结算 adapter                                   |
 
-模型 Hook 通过 [`tools/readonly.ts`](../packages/agent/src/tools/readonly.ts) 构造 read、glob、grep，只加载这些只读能力及共享运行时适配，不加载完整内置工厂。
+模型 Hook 通过 [`tools/readonly.ts`](../packages/agent/src/tools/readonly.ts) 构造 read、glob、grep，只加载这些只读能力及 `tools/support/` 支撑，不加载完整内置工厂。`tools/builtin.ts` 保留为具体工具组装入口；read、write/edit、问题与 Skill 的协议适配仍归具体工具，不属于共享支撑。
+
+Request Ledger 判定因果工作何时结算、持久化结果并发布一次 `request_settled`；结果组装是纯函数，Goal 与 Subagent 各自读取其 driver 回执。Hook stop 与 Plan takeover 按 Request 写入 Ledger，调用方在同一事务中追加 Notice；是否停止仍由 Conversation 的运行策略决定。
+
+Conversation Runtime 为每个原生 Conversation 分别保存权限策略、Hook 与文件跟踪；逻辑 Subagent 的 Background Job owner 在空闲 `send_message` 创建新原生 Conversation 后继续复用。child Run 结算前清空 Job 和输出，保留该逻辑 owner 的 Job 序号，并将通知绑定到当前 Conversation。工具权限与 Hook 执行由 Conversation Runtime 统一处理，原生 Generation、Tool 与 Compaction hook 仍在 Session 的固定入口按顺序调用能力接口，能力不另注册这些 hook，见 [ADR-0028](adr/0028-single-session-harness-hook-entry.md)。
 
 模块之间通过各自 `index.ts` 协作；frontend 使用包级公开入口，不读取 Agent Core 的私有运行状态。
 

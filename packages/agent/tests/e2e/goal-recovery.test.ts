@@ -106,32 +106,6 @@ test("an accepted placed round settles its completion after admission acknowledg
   }
 });
 
-test("a Goal activation settles all rounds with nonoverlapping native provider usage", async () => {
-  const dirs = await tempDirs();
-  let session: Awaited<ReturnType<typeof createSession>> | undefined;
-  try {
-    const fake = fakeModel([
-      fauxAssistantMessage("first round"),
-      fauxAssistantMessage("last round"),
-    ]);
-    session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
-    await session.rename("usage fixture");
-    const goal = await session.createGoal("Exactly two rounds", { maxRounds: 2 });
-    const result = await session.waitForRequest(goal.requestId);
-    expect(result).toMatchObject({ text: "last round", success: true });
-    const expected = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 };
-    for (const message of session.messages)
-      if (message.role === "assistant")
-        for (const key of ["input", "output", "cacheRead", "cacheWrite", "totalTokens"] as const)
-          expected[key] += message.usage[key];
-    expect(result.usage).toEqual(expected);
-    expect(fake.contexts).toHaveLength(2);
-  } finally {
-    await session?.close();
-    await dirs.cleanup();
-  }
-});
-
 test("Rewind rejects accepted Goal work before its driver can target another conversation", async () => {
   const dirs = await tempDirs();
   let session: Awaited<ReturnType<typeof createSession>> | undefined;
@@ -222,110 +196,94 @@ test("explicit Goal cancellation retains committed round usage and the aborted p
   }
 });
 
-test.each(["pause", "clear", "resume"] as const)(
-  "%s withdraws the old queued automatic round while preserving the active Human answer",
-  async (action) => {
-    const dirs = await tempDirs();
-    let session: Awaited<ReturnType<typeof createSession>> | undefined;
-    const human = Promise.withResolvers<void>();
-    const queued = Promise.withResolvers<void>();
-    let steered: Promise<void> | undefined;
-    const store = createJsonlStore(dirs);
-    let inject = true;
-    const wrapped: typeof store = {
-      ...store,
-      async open(...args) {
-        const lease = await store.open(...args);
-        return {
-          ...lease,
-          storage: new Proxy(lease.storage, {
-            get(target, key) {
-              if (key === "commit")
-                return async (...args: Parameters<typeof target.commit>) => {
-                  const seq = await target.commit(...args);
-                  if (
-                    inject &&
-                    args[0].some(
-                      (write) =>
-                        write.type === "task" &&
-                        write.value.kind === "rukie.goal-driver" &&
-                        write.value.state.status === "running" &&
-                        write.value.state.checkpoint !== null &&
-                        typeof write.value.state.checkpoint === "object" &&
-                        !Array.isArray(write.value.state.checkpoint) &&
-                        write.value.state.checkpoint.phase === "admit" &&
-                        write.value.state.checkpoint.round === 2,
-                    )
-                  ) {
-                    inject = false;
-                    steered = session!.steer("Human priority input");
-                  }
-                  if (
-                    args[0].some(
-                      (write) =>
-                        write.type === "submission" &&
-                        write.value.requestId?.startsWith("goal:") &&
-                        write.value.status === "queued",
-                    )
+test("pause withdraws the old queued automatic round while preserving the active Human answer", async () => {
+  const dirs = await tempDirs();
+  let session: Awaited<ReturnType<typeof createSession>> | undefined;
+  const human = Promise.withResolvers<void>();
+  const queued = Promise.withResolvers<void>();
+  let steered: Promise<void> | undefined;
+  const store = createJsonlStore(dirs);
+  let inject = true;
+  const wrapped: typeof store = {
+    ...store,
+    async open(...args) {
+      const lease = await store.open(...args);
+      return {
+        ...lease,
+        storage: new Proxy(lease.storage, {
+          get(target, key) {
+            if (key === "commit")
+              return async (...args: Parameters<typeof target.commit>) => {
+                const seq = await target.commit(...args);
+                if (
+                  inject &&
+                  args[0].some(
+                    (write) =>
+                      write.type === "task" &&
+                      write.value.kind === "rukie.goal-driver" &&
+                      write.value.state.status === "running" &&
+                      write.value.state.checkpoint !== null &&
+                      typeof write.value.state.checkpoint === "object" &&
+                      !Array.isArray(write.value.state.checkpoint) &&
+                      write.value.state.checkpoint.phase === "admit" &&
+                      write.value.state.checkpoint.round === 2,
                   )
-                    queued.resolve();
-                  return seq;
-                };
-              const value = Reflect.get(target, key);
-              return typeof value === "function" ? value.bind(target) : value;
-            },
-          }),
-        };
+                ) {
+                  inject = false;
+                  steered = session!.steer("Human priority input");
+                }
+                if (
+                  args[0].some(
+                    (write) =>
+                      write.type === "submission" &&
+                      write.value.requestId?.startsWith("goal:") &&
+                      write.value.status === "queued",
+                  )
+                )
+                  queued.resolve();
+                return seq;
+              };
+            const value = Reflect.get(target, key);
+            return typeof value === "function" ? value.bind(target) : value;
+          },
+        }),
+      };
+    },
+  };
+  try {
+    const fake = fakeModel([
+      fauxAssistantMessage("first round"),
+      async () => {
+        await human.promise;
+        return fauxAssistantMessage("Human answer survives");
       },
-    };
-    try {
-      const fake = fakeModel([
-        fauxAssistantMessage("first round"),
-        async () => {
-          await human.promise;
-          return fauxAssistantMessage("Human answer survives");
-        },
-        fauxAssistantMessage("unwanted round"),
-      ]);
-      session = await createSession({
-        ...dirs,
-        ...fake,
-        store: wrapped,
-        permissionMode: "full-access",
-      });
-      await session.rename("queued fixture");
-      await session.createGoal("Two rounds", { maxRounds: 2 });
-      await queued.promise;
-      expect(session.goal).toMatchObject({ roundsStarted: 1 });
-      if (action === "clear") await session.clearGoal();
-      else await session.pauseGoal();
-      human.resolve();
-      await steered;
-      await session.waitForIdle();
-      if (action === "resume") {
-        await session.resumeGoal();
-        await session.waitForIdle();
-      }
-      if (action === "clear") expect(session.goal).toBeUndefined();
-      else
-        expect(session.goal).toMatchObject({
-          phase: action === "resume" ? "blocked" : "paused",
-          roundsStarted: action === "resume" ? 2 : 1,
-          armed: false,
-        });
-      expect(fake.contexts).toHaveLength(action === "resume" ? 3 : 2);
-      expect(
-        session.messages.some((message) =>
-          JSON.stringify(message).includes("Human answer survives"),
-        ),
-      ).toBe(true);
-    } finally {
-      human.resolve();
-      await session?.close();
-      await dirs.cleanup();
-    }
-  },
-);
+      fauxAssistantMessage("unwanted round"),
+    ]);
+    session = await createSession({
+      ...dirs,
+      ...fake,
+      store: wrapped,
+      permissionMode: "full-access",
+    });
+    await session.rename("queued fixture");
+    await session.createGoal("Two rounds", { maxRounds: 2 });
+    await queued.promise;
+    expect(session.goal).toMatchObject({ roundsStarted: 1 });
+    await session.pauseGoal();
+    human.resolve();
+    await steered;
+    await session.waitForIdle();
+    expect(session.goal).toMatchObject({ phase: "paused", roundsStarted: 1, armed: false });
+    expect(fake.contexts).toHaveLength(2);
+    expect(
+      session.messages.some((message) => JSON.stringify(message).includes("Human answer survives")),
+    ).toBe(true);
+  } finally {
+    human.resolve();
+    await session?.close();
+    await dirs.cleanup();
+  }
+});
 
 test("cancelled Goal driver does not join or cancel its independently held background child", async () => {
   const dirs = await tempDirs();

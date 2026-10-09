@@ -44,7 +44,8 @@ test.each(["stop", "error", "aborted", "length"] as const)(
         parent,
         parentSessionId: "product",
         state: subagentsState("product"),
-        forkAt: () => undefined,
+        models: fake.models,
+        parentModel: () => fake.model,
         afterRun: async (request, child, result) => {
           expect(request.agentId).toBe(controller.list()[0]!.id);
           expect(Number(child.id)).toBe(controller.list()[0]!.conversationId);
@@ -194,7 +195,8 @@ test("interrupt explicitly aborts a native background child and commits its outc
       parent,
       parentSessionId: "product",
       state: subagentsState("product"),
-      forkAt: () => undefined,
+      models: fake.models,
+      parentModel: () => fake.model,
       afterRun: async (_request, _child, result) => {
         expect(result.outcome).toBe("aborted");
         expect(controller.list()[0]!.active).toBe(true);
@@ -300,7 +302,8 @@ test("idle send keeps logical identity and runs an owned native fork with prior 
       parent,
       parentSessionId: "product",
       state: subagentsState("product"),
-      forkAt: () => undefined,
+      models: fake.models,
+      parentModel: () => fake.model,
       childAgent: async () => ({
         model: {
           provider: fake.model.provider,
@@ -406,7 +409,8 @@ test("background native child survives ordinary parent abort and its durable rep
       parent,
       parentSessionId: "product",
       state: subagentsState("product"),
-      forkAt: () => undefined,
+      models: fake.models,
+      parentModel: () => fake.model,
       childAgent: async () => ({
         model: { provider: fake.model.provider, modelId: fake.model.id },
         extensions: [],
@@ -492,7 +496,8 @@ test.each([false, true])(
         parent,
         parentSessionId: "product",
         state: subagentsState("product"),
-        forkAt: () => undefined,
+        models: fake.models,
+        parentModel: () => fake.model,
         async beforeStart(request, child) {
           expect(controller.list()[0]?.id).toBe(request.agentId);
           expect((await child.context(context)).entries).toHaveLength(0);
@@ -561,7 +566,8 @@ test.each([false, true])(
         parent,
         parentSessionId: "product",
         state: subagentsState("product"),
-        forkAt: () => undefined,
+        models: fake.models,
+        parentModel: () => fake.model,
         childAgent: async () => ({
           model: { provider: fake.model.provider, modelId: fake.model.id },
           tools: [],
