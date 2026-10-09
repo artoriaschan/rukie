@@ -2209,6 +2209,7 @@ function Chat({
         !key.meta &&
         pendingInteraction?.kind !== "question"
       ) {
+        handledInput.current.add(event);
         armExit();
         if (!pendingInteraction && !small) {
           const next =

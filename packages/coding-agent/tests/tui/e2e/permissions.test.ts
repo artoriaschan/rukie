@@ -615,3 +615,26 @@ test("session command grant permits matching calls while another tool keeps wait
     await app.cleanup();
   }
 });
+
+test.each(["\x1b[Z", "\x1b[9;2u"])(
+  "shift+tab switches mode without modifying the submitted draft: %j",
+  async (key) => {
+    const app = await start([], { env: { LANG: "en_US.UTF-8" } });
+    try {
+      await app.waitFor(() => app.screen().at(-2)?.startsWith(" Ask ·") === true);
+      app.stdin.write("draft" + key);
+      await app.waitFor(() => app.screen().at(-2)?.startsWith(" Auto review ·") === true);
+      app.stdin.write(" after\r");
+      await app.waitFor(() => app.calls.length === 1);
+      const input = app.calls[0]!.context.messages.findLast((message) => message.role === "user");
+      expect(input).toMatchObject({
+        role: "user",
+        content: [{ type: "text", text: "draft after" }],
+      });
+      app.calls[0]!.finish();
+      await app.waitFor(() => !app.isWorking());
+    } finally {
+      await app.cleanup();
+    }
+  },
+);

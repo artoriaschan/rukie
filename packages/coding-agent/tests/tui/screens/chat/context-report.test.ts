@@ -289,3 +289,62 @@ test("context summaries and expansion use the startup Chinese locale", async () 
     await app.cleanup();
   }
 });
+
+test("local context reports keep their position as new committed messages arrive", async () => {
+  const app = await start([], { rows: 100, env: { LANG: "en_US.UTF-8" } });
+  const commandRows = () =>
+    app.screen().flatMap((line, index) => (line.includes("❯ /context") ? [index] : []));
+  const row = (text: string) => app.screen().findIndex((line) => line.includes(text));
+  try {
+    await app.waitFor(() => screen(app).includes("╭"));
+    app.stdin.write("/context\r");
+    await app.waitFor(() => screen(app).includes("Estimated usage by category"));
+    app.stdin.write("first order question\r");
+    await app.waitFor(() => app.calls.length === 1 && row("❯ first order question") >= 0);
+    expect(commandRows()[0]!).toBeLessThan(row("❯ first order question"));
+    app.calls[0]!.delta("first order answer");
+    app.calls[0]!.finish();
+    await app.waitFor(() => !app.isWorking() && row("first order answer") >= 0);
+    app.stdin.write("/context all\r");
+    await app.waitFor(() => commandRows().length === 2);
+    expect(commandRows()[1]!).toBeGreaterThan(row("first order answer"));
+    app.stdin.write("second order question\r");
+    await app.waitFor(() => app.calls.length === 2 && row("❯ second order question") >= 0);
+    expect(commandRows()[0]!).toBeLessThan(row("❯ first order question"));
+    expect(commandRows()[1]!).toBeGreaterThan(row("first order answer"));
+    expect(commandRows()[1]!).toBeLessThan(row("❯ second order question"));
+    expect(JSON.stringify(app.calls[1]!.context)).not.toContain("Estimated usage by category");
+    app.calls[1]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    expect(commandRows()[1]!).toBeLessThan(row("❯ second order question"));
+    app.resize(40, 120);
+    await app.waitFor(() => commandRows().length === 2 && row("❯ second order question") >= 0);
+    expect(commandRows()[0]!).toBeLessThan(row("❯ first order question"));
+    expect(commandRows()[1]!).toBeLessThan(row("❯ second order question"));
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("a context report created during streaming keeps its boundary when the reply commits", async () => {
+  const app = await start(["streaming boundary question"], {
+    rows: 80,
+    env: { LANG: "en_US.UTF-8" },
+  });
+  const row = (text: string) => app.screen().findIndex((line) => line.includes(text));
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.stdin.write("/context\r");
+    await app.waitFor(() => row("Estimated usage by category") >= 0);
+    app.calls[0]!.delta("streaming boundary answer");
+    await app.waitFor(() => row("streaming boundary answer") >= 0);
+    expect(row("❯ /context")).toBeGreaterThan(row("❯ streaming boundary question"));
+    expect(row("❯ /context")).toBeLessThan(row("streaming boundary answer"));
+    app.calls[0]!.finish();
+    await app.waitFor(() => !app.isWorking());
+    expect(row("❯ /context")).toBeGreaterThan(row("❯ streaming boundary question"));
+    expect(row("❯ /context")).toBeLessThan(row("streaming boundary answer"));
+  } finally {
+    await app.cleanup();
+  }
+});

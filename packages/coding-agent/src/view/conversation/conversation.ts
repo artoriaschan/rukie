@@ -676,6 +676,33 @@ function reduceMessageEnd(
   };
 }
 
+/** Keep frontend-only entries at their prior boundary when committed history is rebuilt. */
+function retainLocalEntries(
+  previous: readonly CompletedEntry[],
+  committed: readonly CompletedEntry[],
+): CompletedEntry[] {
+  const key = (entry: CompletedEntry) =>
+    entry.type === "run-summary" ? `run-${entry.endedAt}` : entry.anchorId;
+  const positions = new Map(committed.map((entry, index) => [key(entry), index + 1]));
+  const local = new Map<number, CompletedEntry[]>();
+  let boundary = 0;
+  for (const entry of previous) {
+    if (entry.type === "context-report" || (entry.type === "notice" && !entry.sourceEntryId)) {
+      const group = local.get(boundary) ?? [];
+      group.push(entry);
+      local.set(boundary, group);
+    } else {
+      const anchor = key(entry);
+      const position = anchor === undefined ? undefined : positions.get(anchor);
+      if (position !== undefined) boundary = position;
+    }
+  }
+  return [
+    ...committed.flatMap((entry, index) => [...(local.get(index) ?? []), entry]),
+    ...(local.get(committed.length) ?? []),
+  ];
+}
+
 function reduceEvent(
   state: ViewState,
   event: SessionEvent,
@@ -751,13 +778,7 @@ function reduceEvent(
         );
       return {
         ...state,
-        completed: [
-          ...anchored,
-          ...state.completed.filter(
-            (entry) =>
-              entry.type === "context-report" || (entry.type === "notice" && !entry.sourceEntryId),
-          ),
-        ],
+        completed: retainLocalEntries(state.completed, anchored),
         tools,
         announcedTools: [...knownCalls.values()],
         assistant: partial ? messageText(partial) : "",
