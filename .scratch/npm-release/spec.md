@@ -1,6 +1,6 @@
 # coding-agent npm 发布流程
 
-Status: ready-for-agent
+Status: resolved
 
 ## Problem Statement
 
@@ -183,3 +183,7 @@ arm64 在实机上验收，交叉编译不代替运行。复用构建与安装 f
 - 2026-10-07：按 to-spec 整理标准模板，保留已确认测试入口，补齐 58 条用户故事，更新为 ready-for-agent；不重新访谈或创建重复规格。
 
 - 2026-10-09：09 实施后的 ADR Coverage 已复核：产品版本与 Release PR、tarball/平台身份、实际内容恢复、原资产审计及独立 rollback 属于 ADR-0023；唯一命令/动态加载沿用 ADR-0012，当前 pi harness 沿用 ADR-0024，固定来源 ink/Yoga 沿用 ADR-0013。本次 Yoga 范围例外与 CLI-only 保持，无公开 SDK、平台扩展或新的 auth 面。父规格继续开放，最终两轴审阅和唯一聚合检查由主协调线程完成；本地证据不替代真实 CI/registry/OIDC。
+
+- 2026-10-09：01–09 全部集成至 `codex/npm-release`。主协调逐项完成最终 ADR Coverage 审阅，最终两轴审查各一项发现均修复并分别复核关闭；分发/版本准备/审计/恢复归 ADR-0023，Bun、当前 pi harness、唯一 Frontend 与固定来源 ink 分别沿用 ADR-0001/0024/0012/0013，CLI-only 与 Yoga 范围例外保持，没有未确认的架构取舍。
+- 2026-10-09：干净代码提交 `dcc80c6716972afee05147e8008161988f587bcf` 的唯一最终 `env -u NO_COLOR bun run check` 通过全部静态检查及3324 tests / 0 fail / 18769 assertions / 307 files；测试192.29s、总计203.78s。实际 Node24.15.0/npm11.21.0/Bun1.4.2、隔离 HOME，复用同一份0.1.0 darwin-arm64 clean产物。产物身份、成本、日志及专项测试归 [09交付证据](issues/09-publication-recovery-and-delivery.md)。最终关闭只修改文档和tracker状态，不重复聚合检查。
+- 2026-10-09：本地实现完成；Git remote 尚未配置，真实 CI/App、npm scope/Trusted Publisher/OIDC/provenance、远程 OAuth和正式 npm 首发未执行。维护者须按发布指南完成外部配置并记录真实运行；正式首发保持单独明确操作。父规格与最后工单同一提交 resolved，不将本地验收冒充外部成功。

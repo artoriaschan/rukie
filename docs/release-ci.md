@@ -21,9 +21,9 @@
 
 CI 将输出写入 runner 的临时目录，先构建一次，再以当前 `GITHUB_SHA` 和 clean metadata 运行[产物身份验证](release-building.md#核对产物身份)。`RUKIE_RELEASE_ARTIFACTS` 让完整 `bun run check` 内的产物、Headless、TUI 和 provider/auth 测试复用这些 tarball；完整检查包含实际 npm 离线安装、隔离 HOME 和假协议服务。验收不读取真实用户凭据，也不请求真实 provider。实际 provider/OAuth 服务可用性与此本地协议证明不同。
 
-完整检查完成后，[审计脚本](../scripts/release/ci-audit.ts) 再次检查源码 HEAD、源码干净状态及 tarball 身份，生成 `ci-acceptance.json`。它记录仓库、run id、run attempt、event、提交、平台、构建清单 SHA-256 和每个包的 digest。单独调用审计脚本不会执行源码测试；消费者还必须核对对应 CI run 成功。
+完整检查完成后，[审计脚本](../scripts/release/ci-audit.ts) 再次检查源码 HEAD、源码干净状态及 tarball 身份，生成 `ci-acceptance.json`。它记录仓库、run id、run attempt、event、提交、平台、构建清单与模块清单的 SHA-256 和每个包的 digest。单独调用审计脚本不会执行源码测试；消费者还必须核对对应 CI run 成功。
 
-成功运行上传名为 `rukie-darwin-arm64-SHA-RUN_ID-RUN_ATTEMPT` 的 artifact，保存 14 天，内容只有两个 `.tgz`、`release-build.json` 和 `ci-acceptance.json`。下载时指定准确 workflow run 和 attempt，核对审计中的身份，使用 `release:verify --require-clean --commit EXPECTED_SHA` 验证 tarball。不要以 artifact 的显示名称或过期成功状态代替身份核对。runner 的 staging 树、测试 HOME 与 Session 数据不会上传。
+成功运行上传名为 `rukie-darwin-arm64-SHA-RUN_ID-RUN_ATTEMPT` 的 artifact，保存 14 天，内容为两个 `.tgz`、`release-build.json`、`release-modules.json` 和 `ci-acceptance.json`。下载时指定准确 workflow run 和 attempt，核对审计中的身份及模块清单哈希，使用 `release:verify --require-clean --commit EXPECTED_SHA` 验证 tarball。模块清单供下载后的完整 provider/auth 安装验收复用；不重新构建清单来替代原始证据。不要以 artifact 的显示名称或过期成功状态代替身份核对。runner 的 staging 树、测试 HOME 与 Session 数据不会上传。
 
 ## 本地验证与恢复
 
