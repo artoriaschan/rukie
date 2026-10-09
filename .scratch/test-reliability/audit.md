@@ -8,6 +8,8 @@
 
 人工核查覆盖固定延时、直接耗时上限、时间合同、全局 env/mock/clock 的恢复、网络 fixture 关闭、共享临时目录、子进程 READY/exit、后台提交与通知、端到端覆盖成本以及上次完整运行中所有超过一秒的用例类别。检查实际 Bun 并行脚本及三个 macOS CI shard；审阅所有机械扫描命中的同步与关闭模式。全量扫描不等于所有断言与所有交错都已穷尽，当前证据不声称百分之百无 flake。
 
+对 2023 个源码 test 定义额外做 AST 用例检查（参数化展开数不同），定位 100 个时间信号、1356 个资源信号及 13 个没有 inline expect 的定义。后者逐项核实为 helper 内断言或终端状态 predicate，不将字符串搜索误判为没有验证。
+
 ## 发现与处理
 
 | 问题                                         | 修复与证明                                                                                                                                              |
@@ -22,6 +24,7 @@
 | env 原来缺失时恢复为 undefined 字符串        | PATH 按原始存在性恢复                                                                                                                                   |
 | 提示过期和停止确认只探测虚拟经过时间         | MCP notice、Job notice 与 stop confirmation 观察已注册的目标 timeout，在截止前保持内容、截止时触发，再等待呈现结果；renderer 和进程清理仍完成自己的工作 |
 | 原位重写 PID marker 被读取到中间字节         | 完成临时文件后 rename 原子发布；观测初始非法值的 barrier 保留，PID 从完整的新文件读取                                                                   |
+| 输入框就绪被误当作历史恢复完成               | 同一组 resume 用例分别等待已呈现的历史、工具输出与 context 页脚；移除无时间合同的虚拟时钟                                                               |
 | 同类缺陷可再次引入                           | AST 门禁进入 check:dev；负样本证明固定 sleep、timer resolver、focused spec 与跨 spec 导入被拒绝                                                         |
 
 ## 保留项与成本
@@ -44,6 +47,12 @@
 - 执行 gate 的 corpus negative control 被正确拒绝，临时违规文件已删除。
 - 完整本机检查实际结果：3335 pass / 1 fail，204.51 秒。唯一失败是未发布 PID fixture 将长字符串原位覆盖为短 PID，reader 读到新旧字节拼接；修正为临时文件完成写入后 rename 原子发布。该测试文件的 focused 验证代替完整重跑，其他 full-run 结果保留。
 - PID/readiness focused 连续 10 轮通过，完整 CI 在推送后的提交上验收；不得把本机完整检查描述为绿色。
+
+## 首次 PR CI 与修正
+
+`79a4e1fd` 的 CI `37947926647`：构建、源码门禁、shard 1 与 shard 3 通过；shard 2 为 1018 pass / 1 fail。失败为 compaction resume 用例在空输入框出现后立即断言历史，收到 restored index -1。目标历史在稍后的呈现中才完成，通用输入就绪不能证明这个结果。
+
+修正整组六个 resume 用例的等待对象并移除该组虚拟时钟。Focused 六个用例 6 pass / 0 fail，2.08 秒；四个相关文件按四 worker 执行 58 pass / 0 fail，6.01 秒；check:dev 通过。修改不影响共享 fixture 与实现，因此不再运行本机完整检查；推送修正提交后用新的完整 CI 验收，不重跑旧提交求绿。
 
 ## 架构与限制
 

@@ -237,7 +237,7 @@ packages/coding-agent/tests/tui/e2e/question-summary.test.ts	e2e	none	2609ad3f73
 packages/coding-agent/tests/tui/e2e/questions.test.ts	e2e	none	6bb96d6195ada841e1e553df5c41858c16abde3abbe18f36f979063c61c54b24
 packages/coding-agent/tests/tui/e2e/recovery-history.test.ts	e2e	none	6f304089702e5073ca2587df628cad3578c313b761a416ac061216689bddb16d
 packages/coding-agent/tests/tui/e2e/remaining-tool-views.test.ts	e2e	process,network	77afef186e66bdedecab23adac1321ad5dd0d6bf6ed4c05f0b200e70bb1a5c54
-packages/coding-agent/tests/tui/e2e/resume.test.ts	e2e	clock,cost	65f05dc89d3bd173b7d8b4e69f8831561df51df5f40764aad5be431a7c79e0d4
+packages/coding-agent/tests/tui/e2e/resume.test.ts	e2e	cost	f8710afc6180dd333f0a0505a683904a131e30fb763510248e6fcc5106c61c44
 packages/coding-agent/tests/tui/e2e/run-summary.test.ts	e2e	clock	77bbd46aad84b88b6f05ab904373b6f72262701e8eae17368a0a6e9e7473e1f8
 packages/coding-agent/tests/tui/e2e/selection-gestures.test.ts	e2e	clock	33618dfe657468dfcb90a4cc01a9c4d288511252845474e2879b383830c05baf
 packages/coding-agent/tests/tui/e2e/session-recovery.test.ts	e2e	process	e7b7a80a0c7ff533688892a55e1e09cee74411e607aac550631bbc0c6148a515

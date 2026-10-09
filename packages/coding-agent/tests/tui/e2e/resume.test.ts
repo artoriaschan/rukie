@@ -1,11 +1,9 @@
-import { testClock } from "../helpers/test-clock";
 import { auxiliaryModels } from "../helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { fauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { createSession } from "@rukie/agent";
 import { start } from "../helpers/app";
-import { startWithClock } from "../helpers/clock-app";
 
 const assistant = process.platform === "darwin" ? "⏺" : "●";
 
@@ -13,7 +11,7 @@ test("resume rebuilds the footer context preview before submitting a new prompt"
   const argv: string[] = [];
   const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
   original.setResponses([fauxAssistantMessage("restored context ".repeat(100))]);
-  const app = await startWithClock(argv, {
+  const app = await start(argv, {
     rows: 24,
     env: { LANG: "en" },
     prepare: async (root) => {
@@ -31,13 +29,19 @@ test("resume rebuilds the footer context preview before submitting a new prompt"
     },
   });
   try {
-    await app.waitFor(() => app.screen().includes("❯"));
+    await app.waitFor(
+      () => app.screen().includes("❯") && app.screen().join("\n").includes("/128k"),
+    );
     expect(app.screen().join("\n")).toContain("/128k");
     expect(app.screen().at(-2)).toContain("0→0");
     expect(app.calls).toHaveLength(0);
-    const before = app.output();
     app.resize(40, 12);
-    await app.waitFor(() => app.output() !== before);
+    await app.waitFor(
+      () =>
+        app.terminal.cols === 40 &&
+        app.screen().length === 12 &&
+        app.screen().join("\n").includes("/128k"),
+    );
     expect(app.screen().join("\n")).toContain("/128k");
     expect(app.calls).toHaveLength(0);
   } finally {
@@ -52,7 +56,7 @@ test("resume replays stored text before input and appends the next Run to the sa
   const original = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
   const storedReply = "⏵ 查一下报错原因\n**stored reply** 中\n⏵ 给补丁跑个验证\nsecond line";
   original.setResponses([fauxAssistantMessage(storedReply)]);
-  const app = await startWithClock(argv, {
+  const app = await start(argv, {
     rows: 28,
     prepare: async (directory) => {
       root = directory;
@@ -72,7 +76,7 @@ test("resume replays stored text before input and appends the next Run to the sa
     },
   });
   try {
-    await app.waitFor(() => app.screen().includes("❯"));
+    await app.waitFor(() => app.screen().includes("❯") && app.allLines().includes("  second line"));
     expect(app.screen().at(-2)).toContain("0→0");
     expect(app.screen().join("\n")).not.toContain("tokens");
     expect(app.calls).toHaveLength(0);
@@ -175,10 +179,13 @@ test("resume replays stored text before input and appends the next Run to the sa
     await resumed.close();
     const replay = await start(["--resume", id], {
       session: { cwd: root, homeDir: root },
-      advanceTimers: (ms) => testClock.advanceTimersByTime(ms),
     });
     try {
-      await replay.waitFor(() => replay.screen().includes("❯"));
+      await replay.waitFor(
+        () =>
+          replay.screen().includes("❯") &&
+          replay.allLines().some((line) => line.includes("resumed reply")),
+      );
       expect(replay.allLines().join("\n")).not.toContain("⏵");
       replay.stdin.write("resume again\r");
       await replay.waitFor(() => replay.calls.length === 1);
@@ -241,7 +248,9 @@ test("resume replays each tool's collapsed result and error preview without remi
     },
   });
   try {
-    await app.waitFor(() => app.screen().includes("❯"));
+    await app.waitFor(
+      () => app.screen().includes("❯") && app.allLines().includes(`${assistant} after tools`),
+    );
     expect(app.calls).toHaveLength(0);
     const lines = app.allLines();
     const restored = lines.indexOf("❯ stored tools");
@@ -320,7 +329,15 @@ test("resume replays the restored compaction suffix without exposing its summary
     },
   });
   try {
-    await app.waitFor(() => app.screen().includes("❯"));
+    await app.waitFor(() => {
+      const lines = app.allLines();
+      return (
+        app.screen().includes("❯") &&
+        lines.includes("❯ retained prompt") &&
+        lines.includes(`${assistant} retained reply`) &&
+        lines.includes(`${assistant} second old transcript`)
+      );
+    });
     const lines = app.allLines();
     const restored = lines.indexOf("❯ retained prompt");
     expect(restored).toBeGreaterThanOrEqual(0);
@@ -377,7 +394,12 @@ test("resume hides a skill reminder retained by compaction while preserving user
     },
   });
   try {
-    await app.waitFor(() => app.screen().includes("❯"));
+    await app.waitFor(
+      () =>
+        app.screen().includes("❯") &&
+        app.allLines().includes(`❯ ${prompt}`) &&
+        app.allLines().includes(`${assistant} done`),
+    );
     expect(app.allLines().join("\n")).not.toContain("Hidden skill instructions.");
     expect(app.allLines()).not.toContain("❯ <system-reminder>");
     expect(app.allLines()).toContain(`❯ ${prompt}`);
