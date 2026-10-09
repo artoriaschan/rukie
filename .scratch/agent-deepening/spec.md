@@ -60,6 +60,14 @@ TUI 失败属于重构前已存在的测试同步不足：`app.flush()` 仅完�
 
 修正仅涉及测试：全部 PID 标记使用 `waitForPidFile` 等待正的 safe integer；通用 readiness 标记仍接受空文件。共享 waiter 用文件事件等待发布，保持 2s failure bound，并在成功或失败时清除 timer、关闭 watcher；缺失目录在创建 watcher 时直接失败。受控文件 read gate 先确认空、0、负数、小数、NaN、越界整数尚未放行，再发布有效 PID；整个回归不发送信号、不使用固定等待。7 项 publication/readiness 回归 GREEN（189ms）；完整 background jobs、subagent jobs、Conversation Runtime 58 pass / 0 fail（9.61s）。共享 waiter 的既有 MCP、network hooks、Session disposal 调用方 59 pass / 0 fail（35.58s），其中 30.19s 保留真实 SDK 30s deadline 合约。escaped descendant 的真实跨进程输出 draining 合约保持原有等待，3.17s。`bun run check:dev` 通过；未重跑 aggregate，spec 保持 claimed，最终集成验收由 integration branch 协调。没有产品 cleanup 算法或架构变化，无需新增 ADR。
 
+### 第四轮 aggregate 与 Jobs panel 空闲同步修正
+
+第四轮完整检查在 `36017bb` 实际失败：3190 pass / 1 fail，3191 tests / 294 files，106.97s；前述回归均通过，唯一失败为 Jobs panel 的 reading position / follow state 用例。失败在提交 `continue follow` 后等待第三次 model call；终端已显示 `continued-stream` 和完成摘要，prompt 保留 `continue follow`。该 aggregate 保留为失败，focused 检查不替代其结果。
+
+`app.isWorking()` 只判断终端中是否绘制 moon spinner；Jobs panel 会隐藏该行，因此 panel 打开时 absence 不代表 Session 或 Frontend 空闲。通过公开 Storage commit gate，在最终 model entry 已提交后挂起 Run summary commit 的完成，可确定性让原用例提前提交输入；此时 `createConversation` 的 active promise 尚未释放，普通 Enter 被拒绝。收到 prompt 保留输入的可观察信号后释放 gate，当前版本与重构前 `306cd9a7` 均出现与第四轮相同的完成画面和缺少第三次 model call，RED 分别 2.54s / 2.87s。该因果链属于既有测试同步缺陷；未修改产品行为。
+
+最小修正使用现有 `committedJobNotifications.pendingTasks() === 0` 确认 panel 打开期间 native driver/generation 的 terminal commits；关闭 panel、返回底部后，再确认可见 spinner 与 `esc interrupt` footer 均消失，见证 Frontend 的 submit admission 已解除，再提交后续输入。受控 gate 验证后者等待时 spinner 确实可见，释放 gate 后原阅读锚点、folding、context notification 和 `followed-stream` 断言全通过，GREEN 621ms。修正后的最小用例重复 20 次：20 pass / 0 fail（7.09s）；Jobs panel、concurrent parity 和 messages 三个相关文件 21 pass / 0 fail（6.95s）。`bun run check:dev` 通过。未添加固定等待、扩大超时或保留诊断 hook；spec 保持 claimed，最终集成验收由 integration branch 协调。无架构决定变化，无需新增 ADR。
+
 ## Out of Scope
 
 - MCP catalog/OAuth 拆深。

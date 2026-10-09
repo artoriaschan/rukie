@@ -319,7 +319,8 @@ test("reading position and follow state survive settlement and group folding abo
     await app.waitFor(() => notifications.count() === 2);
     app.calls[1]!.delta("\ncontinued-stream");
     app.calls[1]!.finish();
-    await app.waitFor(() => !app.isWorking());
+    // The Jobs panel can hide the activity spinner; native task commits witness settlement.
+    await app.waitFor(() => notifications.pendingTasks() === 0);
     expect(app.calls).toHaveLength(2);
     app.stdin.write("\x1b");
     await app.waitFor(() => screen().includes("Back to bottom"));
@@ -330,6 +331,8 @@ test("reading position and follow state survive settlement and group folding abo
     await app.waitFor(
       () => screen().includes("continued-stream") && !screen().includes("Back to bottom"),
     );
+    // The visible idle footer also witnesses release of the Frontend's submit admission.
+    await app.waitFor(() => !app.isWorking() && !screen().includes("esc interrupt"));
     app.stdin.write("continue follow\r");
     await app.waitFor(() => app.calls.length === 3);
     expect(JSON.stringify(app.calls[2]!.context.messages)).toContain("background job bash-1");
