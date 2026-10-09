@@ -6,7 +6,7 @@ import { createPermissionGate, type createPermissionBatch } from "../../permissi
 import { createHooks, type CommonHookResult, type HookInput } from "../../hooks/index.ts";
 import { createJobs } from "../../tools/jobs/index.ts";
 import { createFileTracking } from "../../file-tracking/index.ts";
-import { preflightTool } from "../../tools/preflight.ts";
+import { preflightTool } from "../../tools/support/preflight.ts";
 
 type GateOptions = Parameters<typeof createPermissionGate>[0];
 type HookRuntime = ReturnType<typeof createHooks>;

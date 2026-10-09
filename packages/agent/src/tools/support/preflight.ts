@@ -1,4 +1,4 @@
-import { createInteractionIdentity, type InteractionIdentity } from "../interaction/index.ts";
+import { createInteractionIdentity, type InteractionIdentity } from "../../interaction/index.ts";
 import type { Context } from "@earendil-works/chord";
 import type { HookApi, ToolRegistration } from "@earendil-works/pi-durable";
 import type { Static, TSchema } from "typebox";

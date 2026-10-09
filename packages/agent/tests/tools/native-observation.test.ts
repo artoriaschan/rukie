@@ -17,7 +17,7 @@ import { Type } from "typebox";
 import { createConversationObservation } from "../../src/session/observation.ts";
 import type { TranscriptMessage } from "../../src/session/messages.ts";
 import type { SessionEvent } from "../../src/session/events.ts";
-import type { PresentedTool } from "../../src/tools/presentation.ts";
+import type { PresentedTool } from "../../src/tools/support/presentation.ts";
 import { withModelAlias } from "../helpers/auxiliary-model.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 

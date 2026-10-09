@@ -1,4 +1,4 @@
-import type { PresentedTool } from "../presentation.ts";
+import type { PresentedTool } from "../support/presentation.ts";
 import { Type } from "typebox";
 import { todoSchema, type TodoItem } from "./state.ts";
 

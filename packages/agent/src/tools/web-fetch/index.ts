@@ -1,4 +1,4 @@
-import type { PresentedTool } from "../presentation.ts";
+import type { PresentedTool } from "../support/presentation.ts";
 import { Value } from "typebox/value";
 import { Type } from "typebox";
 import { fetchWeb, type WebFetchOptions } from "./fetch.ts";

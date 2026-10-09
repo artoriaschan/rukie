@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: claimed
 
 # Spec: Agent Core 深化重构
 
@@ -52,9 +52,15 @@ MCP 拆深（catalog 与 OAuth 授权）不在本 spec 范围，另行立项。
 
 ## ADR Coverage
 
-| 决定或修改                            | 归属                                                                      | 理由                                                                        |
-| ------------------------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| 能力目录与 Session 组合               | 沿用 [ADR-0011](../../docs/adr/0011-agent-module-ownership.md)            | 新 module 遵循能力不依赖 Session、Session 组合能力的方向                    |
-| durable 执行与恢复                    | 沿用 [ADR-0024](../../docs/adr/0024-adopt-pi-durable-harness.md)          | 不改变执行、持久化与恢复语义，Request 编码保持不变                          |
-| 原生 hook 只由 Session extension 注册 | 新增 [ADR-0028](../../docs/adr/0028-single-session-harness-hook-entry.md) | `onYield` 无否决、优先级隐含于注册顺序，能力改为提供接口由 Session 按序调用 |
-| Tool Loadout 无缓存                   | 沿用 [ADR-0026](../../docs/adr/0026-protocol-independent-tool-search.md)  | loadout 仍由 Transcript 推导，装配位置仍在 `session/tools.ts`               |
+| 决定或修改                            | 归属                                                                                                                                       | 理由                                                                                      |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| 能力目录与 Session 组合               | 沿用 [ADR-0011](../../docs/adr/0011-agent-module-ownership.md)                                                                             | 新 module 遵循能力不依赖 Session、Session 组合能力的方向                                  |
+| durable 执行与恢复                    | 沿用 [ADR-0024](../../docs/adr/0024-adopt-pi-durable-harness.md)                                                                           | 不改变执行、持久化与恢复语义，Request 编码保持不变                                        |
+| 原生 hook 只由 Session extension 注册 | 新增 [ADR-0028](../../docs/adr/0028-single-session-harness-hook-entry.md)                                                                  | `onYield` 无否决、优先级隐含于注册顺序，能力改为提供接口由 Session 按序调用               |
+| Tool Loadout 无缓存                   | 沿用 [ADR-0026](../../docs/adr/0026-protocol-independent-tool-search.md)                                                                   | loadout 仍由 Transcript 推导，装配位置仍在 `session/tools.ts`                             |
+| Interaction pending 身份归属          | 沿用 [ADR-0024](../../docs/adr/0024-adopt-pi-durable-harness.md) 与 [ADR-0015](../../docs/adr/0015-frontend-interactions-and-plan-mode.md) | Interaction 识别原生阶段与 memo，恢复依据当前配置重新发起，保留取消与缺失回调的安全默认值 |
+| 共享 support 与 System Prompt 归属    | 沿用 [ADR-0011](../../docs/adr/0011-agent-module-ownership.md)                                                                             | 支撑与具体协议工厂分开，Prompt 归 Session；不改变 API、持久化或运行行为                   |
+
+## Implementation ADR Review
+
+六项实施决定已逐项对照源码：Request Ledger 与能力 receipt reader 保持单向依赖；Goal runtime 提供普通续跑接口；Conversation Runtime 统一 root/child 工具策略；Tool Loadout 从当前 Transcript 和输入规划；Interaction 持有 pending 身份格式；共享支撑与 Prompt 按能力依赖方向归位。原生 hook 仍由 Session 在固定入口注册，没有新增能力原生 hook。Request 编码及 document version 不变，未引入缓存、MCP catalog/OAuth 拆分或 Frontend API 变化。ADR-0011/0024/0026/0028 覆盖实施决定，Interaction 同时沿用 ADR-0015；未发现需要替代既有决定的架构变更。此记录为实施覆盖审阅，最终代码审阅和 aggregate 验证完成后才关闭 spec。

@@ -1,5 +1,5 @@
 import type { ToolExecutionResult } from "@earendil-works/pi-durable";
-import type { PresentedTool } from "../presentation.ts";
+import type { PresentedTool } from "../support/presentation.ts";
 import { Type } from "typebox";
 import type {
   createSubagentController,

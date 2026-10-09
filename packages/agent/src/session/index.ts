@@ -117,7 +117,7 @@ import type { QuestionReply, QuestionRequest } from "../tools/question.ts";
 import { mergeHooks, type CommonHookResult, type HookInput } from "../hooks/index.ts";
 import type { WebFetchOptions } from "../tools/web-fetch/index.ts";
 import { validateImage, type PromptImage } from "../images/index.ts";
-import { SYSTEM_PROMPT } from "../prompt/index.ts";
+import { SYSTEM_PROMPT } from "./prompt.ts";
 import { createThinkingTiming } from "./thinking.ts";
 import { createSubagentController } from "../tools/subagents/index.ts";
 import { createToolLoadout } from "./tools.ts";

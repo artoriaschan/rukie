@@ -9,7 +9,7 @@ import { tempDirs } from "../helpers/temp-dirs.ts";
 import { createBashTool } from "../../src/tools/bash/index.ts";
 import { createJobs } from "../../src/tools/jobs/index.ts";
 import { createImageReadTool } from "../../src/tools/read.ts";
-import { preserveErrorDetails } from "../../src/tools/runtime.ts";
+import { preserveErrorDetails } from "../../src/tools/support/runtime.ts";
 
 test("native file tools write, edit and preserve result diffs", async () => {
   const dirs = await tempDirs();

@@ -1,9 +1,9 @@
 import type { ToolRegistration } from "@earendil-works/pi-durable";
-import type { PresentedTool } from "../presentation.ts";
+import type { PresentedTool } from "../support/presentation.ts";
 import { Value } from "typebox/value";
 import { createUserVisibleError } from "@rukie/shared";
 import { Type } from "typebox";
-import { preserveErrorDetails } from "../runtime.ts";
+import { preserveErrorDetails } from "../support/runtime.ts";
 import { renderWrapupContext, type createGoalController } from "./controller.ts";
 
 /** Guidance adapted from DSH tool-goal: no get_goal, revision/CAS or blocked-round threshold. */

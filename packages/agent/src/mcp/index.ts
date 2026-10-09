@@ -1,6 +1,6 @@
 import { awaitWithContext } from "@earendil-works/chord/context";
-import type { PreflightTool } from "../tools/preflight.ts";
-import type { PresentedTool } from "../tools/presentation.ts";
+import type { PreflightTool } from "../tools/support/preflight.ts";
+import type { PresentedTool } from "../tools/support/presentation.ts";
 import type { ToolRegistration } from "@earendil-works/pi-durable";
 import type { JsonValue } from "@earendil-works/chord";
 import {
@@ -36,7 +36,7 @@ import {
   type OnInteractionStart,
   type InteractionIdentity,
 } from "../interaction/index.ts";
-import { preserveErrorDetails } from "../tools/runtime.ts";
+import { preserveErrorDetails } from "../tools/support/runtime.ts";
 import { credentialKey, credentialStore } from "./credentials.ts";
 import { configureOAuthMetadata, createOAuthProvider } from "./oauth.ts";
 
