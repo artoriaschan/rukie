@@ -132,3 +132,5 @@ ScrollBox 的 DECSTBM 快速路径使用实际滚动内容高度判断纯滚动�
 ScrollBox 的显式 `stickyScroll` bottom-follow 意图在响应式内容真实收缩时仍跟随新最大 top；手动浏览或显式 source seek 不因收缩重新获得跟随权。此区别保留 Run summary 在收窄窗口后的可见性，同时保持历史阅读位置。
 
 TextInput 的 `noSelect` 默认 true，编辑器调用方可为可编辑 composer 显式传 false；read-only 仍排除选区与 caret 点击。PromptInput 的复制选项通过应用唯一的 host-selection owner 读取根选区，composer 与 Transcript 共用该 owner，不创建重复订阅；选区 key、异步传输与 copied/sent/unavailable/stale 反馈归 Frontend。
+
+App.tsx 对同一输入批次内、同一按钮与 modifier 的连续文字拖选 motion 只绘制最后一个位置。release、滚轮、键盘、hover 和组件 drag 保持各自的事件顺序，松开仍同步校验并读取选区。selection.ts 按已有 textPaintCache 的版本缓存原文行及 grapheme 的显示列映射，避免每个选中 cell 反复分词和截取整行；文本或 wrapping 更新后使用新版本，旧缓存随 prepared text 释放。滚出视口的来源仍在每帧从当前 DOM 重新校验，选中原文被替换时继续拒绝复制。

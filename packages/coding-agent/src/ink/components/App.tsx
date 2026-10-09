@@ -922,7 +922,22 @@ function processKeysInBatch(
 		updateLastInteractionTime();
 	}
 	for (let i = 0; i < items.length; i++) {
-		const item = items[i]!;
+		let item = items[i]!;
+		// Only the latest point of an uninterrupted text drag needs painting.
+		// Keep releases, wheel/key boundaries, hover and component drags in order.
+		if (
+			item.kind === "mouse" &&
+			(item.button & 0x23) === 0x20 &&
+			app.props.selection.isDragging &&
+			!app.dragSession
+		) {
+			while (i + 1 < items.length) {
+				const next = items[i + 1]!;
+				if (next.kind !== "mouse" || next.button !== item.button || next.action !== item.action) break;
+				item = next;
+				i++;
+			}
+		}
 		// Terminal responses (DECRPM, DA1, OSC replies, etc.) are not user
 		// input — route them to the querier to resolve pending promises.
 		if (item.kind === "response") {

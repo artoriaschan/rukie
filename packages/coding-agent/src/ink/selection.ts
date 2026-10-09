@@ -16,6 +16,7 @@ import { hitTest } from './hit-test.js'
 import { nodeCache, textPaintCache } from './node-cache.js'
 import squashTextNodes from './squash-text-nodes.js'
 import sliceAnsi from './utils/sliceAnsi.js'
+import { getGraphemeSegmenter } from './utils/intl.js'
 import wrapText from './wrap-text.js'
 import { stringWidth } from './stringWidth.js'
 import { clamp } from './layout/geometry.js'
@@ -1427,12 +1428,30 @@ function capturedSourcesValid(s: SelectionState, root: DOMElement): boolean {
   return true
 }
 
+type SourceLine = { width: number; glyphs: Map<number, string> }
+
+// Prepared text changes when its source or wrapping changes. Reuse its
+// source columns across drag frames; each row is segmented only once.
+const sourceColumns = new WeakMap<object, { lines: string[]; rows: Map<number, SourceLine> }>()
+
+function sourceLine(line: string): SourceLine {
+  const glyphs = new Map<number, string>()
+  let width = 0
+  for (const { segment } of getGraphemeSegmenter().segment(line)) {
+    const columns = stringWidth(segment)
+    if (columns === 0) continue
+    glyphs.set(width, segment)
+    width += columns
+  }
+  return { width, glyphs }
+}
+
 /** Snapshot only glyph-owned source spans; style and unselected suffixes never invalidate them. */
 function paintedSourceRows(s: SelectionState, screen: Screen, root: DOMElement): Map<number, SelectedSourceSegment[]> {
   const result = new Map<number, SelectedSourceSegment[]>()
   const bounds = selectionBounds(s)
   if (!bounds) return result
-  const sources = new Map<DOMElement, { path: number[]; lines: string[] }>()
+  const sources = new Map<DOMElement, { path: number[]; lines: string[]; rows: Map<number, SourceLine> }>()
   for (let row = Math.max(0, bounds.start.row); row <= Math.min(screen.height - 1, bounds.end.row); row++) {
     let start = row === bounds.start.row ? bounds.start.col : 0
     let end = row === bounds.end.row ? bounds.end.col : screen.width - 1
@@ -1460,24 +1479,33 @@ function paintedSourceRows(s: SelectionState, screen: Screen, root: DOMElement):
           ancestor = ancestor.parentNode
         }
         if (ancestor !== root) continue
-        const raw = stripAnsi(squashTextNodes(node))
-        const lines = wrapText(raw, prepared.maxWidth, node.style.textWrap ?? 'wrap').split('\n')
-        source = { path, lines }
+        let columns = sourceColumns.get(prepared)
+        if (!columns) {
+          const raw = stripAnsi(squashTextNodes(node))
+          columns = { lines: wrapText(raw, prepared.maxWidth, node.style.textWrap ?? 'wrap').split('\n'), rows: new Map() }
+          sourceColumns.set(prepared, columns)
+        }
+        source = { path, ...columns }
         sources.set(node, source)
       }
       const localRow = row - Math.floor(rect.y) - prepared.paddingTop
       const line = source.lines[localRow]
       if (line === undefined) continue
+      let columns = source.rows.get(localRow)
+      if (!columns) {
+        columns = sourceLine(line)
+        source.rows.set(localRow, columns)
+      }
       const localCol = col - Math.floor(rect.x) - prepared.paddingLeft
       if (localCol < 0) continue
       // A selected trailing blank also owns the line boundary: inserting
       // text there must invalidate a captured empty source fragment.
-      const boundary = localCol === stringWidth(line) && cell.char.trim() === ''
-      const fragment = stripAnsi(sliceAnsi(line, localCol, localCol + stringWidth(cell.char)))
+      const boundary = localCol === columns.width && cell.char.trim() === ''
+      const fragment = columns.glyphs.get(localCol) ?? ''
       // Wrapping canonically composes plain text, while ANSI restoration can
       // retain its original combining bytes in the painted grapheme. Compare
       // their displayed glyph, then retain the source fragment's own bytes.
-      if (!boundary && (cell.char === '' || fragment.normalize('NFC') !== cell.char.normalize('NFC'))) continue
+      if (!boundary && (cell.char === '' || (fragment !== cell.char && fragment.normalize('NFC') !== cell.char.normalize('NFC')))) continue
       const selectedText = boundary ? '' : fragment
       const segments = result.get(row) ?? []
       segments.push({
