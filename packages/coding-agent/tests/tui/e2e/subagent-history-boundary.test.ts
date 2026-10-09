@@ -193,11 +193,18 @@ test.each(["future", "past"] as const)(
           session: { cwd: app.root, homeDir: app.root },
         });
         try {
-          await replay.waitFor(() => replay.screen().includes("❯"));
-          const y = replay
-            .screen()
-            .findIndex((line) => line.includes("Subagent: Same clock child"));
-          const x = Bun.stringWidth(replay.screen()[y]!.split("⤢")[0]!) + 1;
+          // The idle composer can paint before the restored card's expand target.
+          let card = "";
+          let y = -1;
+          await replay.waitFor(() => {
+            const lines = replay.screen();
+            y = lines.findIndex(
+              (line) => line.includes("Subagent: Same clock child") && line.includes("⤢"),
+            );
+            card = lines[y] ?? "";
+            return lines.includes("❯") && y >= 0;
+          });
+          const x = Bun.stringWidth(card.split("⤢")[0]!) + 1;
           replay.stdin.write(`\x1b[<0;${x};${y + 1}M\x1b[<0;${x};${y + 1}m`);
           await replay.waitFor(() => replay.screen().join("\n").includes("Agent View"));
           await replay.waitFor(() =>
