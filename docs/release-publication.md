@@ -12,6 +12,20 @@ GitHub 仓库的 immutable Releases 必须关闭：准备流程先建立已发�
 
 首次建立包需要维护者另行明确授权，以经过同样验收的正式版本、public access 和显式 candidate 或 next 建立两个包，再配置上述信任。不要上传占位版本；自动工作流不以存储 npm token 回退。若首次版本已经写入 registry，保留其原始 tarball、清单和验收资料，不用重新构建的文件覆盖。当前已有版本入口会停下并要求内容核对恢复。配置后的 Trusted Publisher 必须在两天内首次成功自动发布；首次人工 bootstrap 已存在的同版本上传核对或跳过不能证明 OIDC 激活。应在下一次实际新版本自动上传时核对两个包的信任状态与 provenance，超过窗口时按 npm 提示重新配置。此激活尚未在真实 registry 验证。
 
+## 首次包建立
+
+首次包建立是独立的正式 registry 写入，需要维护者明确授权和自己的 npm scope 权限。可以先运行选定 tag 的 publication workflow，让只读验收及原始资产保存完成；尚无 Trusted Publisher 时预期 npm 自动写入失败。随后从该 Release 下载已保存的原始文件，检出同一 tag，核对完整身份和可信验收 job，按[分发教程](release-building.md)复验原始文件；不能为 bootstrap 另行 pack。
+
+在上述外部授权后，维护者通过 `npm login` 登录具有两个包 public publish 权限的账户，使用自己的 MFA 完成首次建立。以下是稳定版0.1.0的示例，只能使用该 tag 保存并验收的原始文件；beta 将 candidate 改为 next。
+
+```sh
+npm publish ./rukie-coding-agent-darwin-arm64-0.1.0.tgz --access public --tag candidate --ignore-scripts
+npm publish ./rukie-coding-agent-0.1.0.tgz --access public --tag candidate --ignore-scripts
+npm view @rukie/coding-agent@0.1.0 optionalDependencies --json
+```
+
+核对主包精确依赖平台0.1.0后，在两个已存在包的 Settings 配置上述 Trusted Publisher。人工建立不会将稳定版变成 latest，也不会激活自动发布身份；内容核对恢复必须再完成 registry 安装验收才推进通道。下一次真正上传新版本时核对两包自动发布是否在激活窗口内成功，不将重复版本核对当作 OIDC 上传证明。本仓库没有执行这些正式操作。
+
 ## 操作
 
 1. 合并经 CI 校验的 Release PR，由准备流程产生 `coding-agent-vVERSION` tag。tag 对应的 commit 必须可从 `origin/main` 到达，且其提交内产品版本与 tag 完全相同。
