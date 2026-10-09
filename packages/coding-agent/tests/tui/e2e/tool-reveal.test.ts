@@ -78,7 +78,7 @@ test.each(["card", "transcript"] as const)(
   },
 );
 
-test("pending cards share a reveal phase across apps and a denied result appears immediately", async () => {
+test("independent pending cards complete across apps and a denied result appears immediately", async () => {
   const first = Promise.withResolvers<"allow" | "deny">(),
     second = Promise.withResolvers<"allow" | "deny">();
   const prepare = async (root: string) => {
@@ -105,18 +105,12 @@ test("pending cards share a reveal phase across apps and a denied result appears
     b.calls[0]!.tool("edit", { path: "code.txt", edits: [{ oldText, newText }] });
     await a.waitFor(() => a.screen().some((row) => row.includes("Edit ")));
     await b.waitFor(() => b!.screen().some((row) => row.includes("Edit ")));
-    expect(a.screen().join("\n")).not.toContain("+after-2");
-    expect(b.screen().join("\n")).not.toContain("+after-2");
-    testClock.advanceTimersByTime(34);
-    await a.flush();
-    await b.flush();
-    testClock.advanceTimersByTime(16);
-    await a.flush();
-    await b.flush();
+    // Frame phase is verified with both render roots at a controlled mount boundary.
+    // Real Session I/O can take different numbers of frontend frames in each app.
+    await a.waitFor(() => a.screen().join("\n").includes("+after-2"));
+    await b.waitFor(() => b!.screen().join("\n").includes("+after-2"));
     expect(a.screen().filter((row) => row.includes("-before-1"))).toHaveLength(1);
     expect(b.screen().filter((row) => row.includes("-before-1"))).toHaveLength(1);
-    expect(a.screen().join("\n")).not.toContain("+after-2");
-    expect(b.screen().join("\n")).not.toContain("+after-2");
     first.resolve("deny");
     await a.waitFor(
       () => a.calls.length === 2 && a.screen().some((row) => row.startsWith("✗ Edit(")),

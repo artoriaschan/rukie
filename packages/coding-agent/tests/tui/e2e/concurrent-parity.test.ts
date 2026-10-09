@@ -257,15 +257,24 @@ test("mixed parent, two Jobs and two Subagents preserve reading, copy and Intera
     completed.add(childB);
     answer.reply("JOINED ACTIVITIES");
     completed.add(answer);
-    while (app.isWorking()) {
-      await waitFor(() => !app.isWorking() || roots().some((call) => !completed.has(call)));
-      for (const call of roots().filter((call) => !completed.has(call))) {
+    // Idle is temporary until child drivers and their reporter generations settle.
+    // Keep answering actual parent calls while waiting for those terminal commits.
+    await waitFor(() => {
+      const pending = roots().filter((call) => !completed.has(call));
+      for (const call of pending) {
         call.reply("All activities observed");
         completed.add(call);
       }
-    }
-    await waitFor(() => screen().includes("✓ job: bash-1") && screen().includes("✗ job: bash-2"));
-    await waitFor(() => !app.isWorking() && app.screen().at(-1)?.trim() === "");
+      return (
+        pending.length === 0 &&
+        commits.pendingTasks() === 0 &&
+        roots().some((call) => hasPrompt(call, "(Mixed child B) finished.")) &&
+        !app.isWorking() &&
+        app.screen().at(-1)?.trim() === "" &&
+        screen().includes("✓ job: bash-1") &&
+        screen().includes("✗ job: bash-2")
+      );
+    });
     const jobSource = app.screen().slice(1, 6);
     const failedJobRow = app.screen().findIndex((line) => line.includes("✗ job: bash-2"));
     click(app.screen()[failedJobRow]!.indexOf("bash-2"), failedJobRow);

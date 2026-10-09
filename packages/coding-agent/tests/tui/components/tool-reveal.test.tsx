@@ -6,6 +6,86 @@ import { renderComponent } from "../helpers/render-component";
 import { createTerminal } from "../helpers/terminal";
 import FakeTimers from "@sinonjs/fake-timers";
 
+test("pending cards in independent apps share the same reveal deadline", async () => {
+  const clock = FakeTimers.install({
+    now: 1000,
+    toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+  });
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const terminals = [
+    createTerminal(80, 20, (ms) => act(() => clock.tick(ms))),
+    createTerminal(80, 20, (ms) => act(() => clock.tick(ms))),
+  ];
+  const apps: ReturnType<typeof renderComponent>[] = [];
+  const card = (
+    <Box width={80} flexDirection="column">
+      <SmoothRevealProvider>
+        <ToolCall
+          id="pending"
+          name="edit"
+          summary="Edit"
+          status="running"
+          locale="en"
+          callView={{
+            kind: "edit",
+            card: "diff",
+            diffs: [
+              {
+                path: "code.txt",
+                oldText: "before-0\nbefore-1\nbefore-2\n",
+                newText: "after-0\nafter-1\nafter-2\n",
+              },
+            ],
+          }}
+        />
+      </SmoothRevealProvider>
+    </Box>
+  );
+  const flush = () => Promise.all(terminals.map((terminal) => terminal.flush()));
+  try {
+    // act commits both roots at frozen time; no Session filesystem work advances the clock.
+    act(() => {
+      for (const terminal of terminals)
+        apps.push(renderComponent(card, { ...terminal, patchConsole: false }));
+    });
+    await flush();
+    act(() => clock.tick(32));
+    await flush();
+    for (const terminal of terminals)
+      expect(terminal.screen().join("\n")).not.toContain("before-0");
+    act(() => clock.tick(1));
+    // Both focused renderers paint the shared reveal update on their next 16ms frame.
+    act(() => clock.tick(16));
+    const deadline = process.hrtime.bigint() + 1_000_000_000n;
+    while (
+      !terminals.every((terminal) => terminal.screen().some((row) => row.includes("before-1")))
+    ) {
+      if (process.hrtime.bigint() >= deadline)
+        throw new Error(
+          `Both cards did not paint at the shared deadline: ${terminals.map((t) => t.screen().join("\n")).join("\nNEXT\n")}`,
+        );
+      await flush();
+    }
+    for (const terminal of terminals) {
+      expect(terminal.screen().filter((row) => /^ ⎿|^   [-+]/.test(row))).toHaveLength(3);
+      expect(terminal.screen().join("\n")).not.toContain("after-2");
+    }
+    expect(terminals[0]!.screen()).toEqual(terminals[1]!.screen());
+  } finally {
+    try {
+      act(() => {
+        for (const app of apps) app.unmount();
+      });
+      await Promise.all(apps.map((app) => app.waitUntilExit()));
+      for (const app of apps) app.cleanup();
+    } finally {
+      clock.uninstall();
+      Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: false });
+      for (const terminal of terminals) terminal.dispose();
+    }
+  }
+});
+
 test.each([80, 120])("pending card paints reveal boundaries at %s columns", async (columns) => {
   const clock = FakeTimers.install({
     now: 1000,

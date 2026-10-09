@@ -201,10 +201,20 @@ test("permission, questions and OAuth take FIFO ownership while a scrolled MCP r
     expect(screen(app)).not.toContain("复制授权链接");
     app.stdin.write("\r");
     await app.waitFor(() => opened.length === 1 && screen(app).includes("复制授权链接"));
-    expect(screen(app)).toContain("Parent FIFO question? → Yes");
+    // OAuth can occupy enough rows to scroll the preceding question result offscreen.
+    // Verify the completed answer through the next actual model request below.
     expect(screen(app)).not.toContain("Stable reader");
     await callback(app, opened[0]!);
     await app.waitFor(() => app.calls.length === 2 && screen(app).includes("Stable reader 12"));
+    const parentAnswer = app.calls[1]!.context.messages.findLast(
+      (message) => message.role === "toolResult" && message.toolName === "ask_user_question",
+    );
+    expect(parentAnswer).toMatchObject({
+      isError: false,
+      content: expect.arrayContaining([
+        expect.objectContaining({ type: "text", text: '"Parent FIFO question?" → Yes' }),
+      ]),
+    });
     expect(app.screen().filter((line) => line.includes("Stable reader"))).toEqual(readerLines);
     expect(discoveries(server)).toBe(listRequests);
     app.calls[1]!.tool("subagent", { description: "FIFO child", prompt: "child FIFO marker" });
