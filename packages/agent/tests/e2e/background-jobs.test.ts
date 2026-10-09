@@ -1,3 +1,4 @@
+import { waitForFile, waitForPidFile } from "../helpers/wait-for-file.ts";
 import { withModelStream, modelStream } from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
@@ -24,17 +25,12 @@ function resultText(messages: Session["messages"]) {
 
 async function waitFile(name: string) {
   const path = join(dirs.cwd, name);
-  const deadline = Date.now() + 2000;
-  while (true) {
-    if (await Bun.file(path).exists()) {
-      const text = await Bun.file(path).text();
-      // The child creates pid before its write completes; process.kill(0) probes
-      // the test's process group, so wait for the actual positive process id.
-      if (name !== "pid" || Number(text) > 0) return text;
-    }
-    if (Date.now() > deadline) throw new Error(`Missing command marker ${name}`);
-    await new Promise<void>((resolve) => setImmediate(resolve));
-  }
+  await waitForFile(path);
+  return Bun.file(path).text();
+}
+
+function waitPid(name: string) {
+  return waitForPidFile(join(dirs.cwd, name));
 }
 
 async function expectDead(pid: number) {
@@ -89,7 +85,7 @@ test("aborting a job_output wait leaves the background process alive for the nex
   expect(session.messages.find((message) => message.role === "toolResult")).toMatchObject({
     view: { card: "generic", kind: "execute" },
   });
-  const pid = Number(await waitFile("pid"));
+  const pid = await waitPid("pid");
   const controller = new AbortController();
   const waiting = Promise.withResolvers<void>();
   const collected = Promise.withResolvers<void>();
@@ -136,9 +132,7 @@ test.each(["job_kill", "dispose"])(
     ]);
     session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
     await session.run("start tree");
-    const pids = await Promise.all(
-      ["parent", "child", "grandchild"].map(async (name) => Number(await waitFile(name))),
-    );
+    const pids = await Promise.all(["parent", "child", "grandchild"].map(waitPid));
     for (const pid of pids) expect(() => process.kill(pid, 0)).not.toThrow();
     if (action === "dispose") await session.close();
     else {
@@ -221,7 +215,7 @@ test("dispose cleans a foreground descendant even after its shell closes its out
   ]);
   session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
   await session.run("start foreground");
-  const pid = Number(await waitFile("child"));
+  const pid = await waitPid("child");
   try {
     expect(resultText(session.messages)).toBe("(no background jobs)");
     await session.close();
@@ -552,7 +546,7 @@ spawn("bash", ["-c", "printf '%s' $$ > escaped; while [ ! -e go ]; do sleep 0.01
   ]);
   session = await createSession({ ...dirs, ...fake, allowRules: ["bash"] });
   await session.run("start");
-  const pid = Number(await waitFile("escaped"));
+  const pid = await waitPid("escaped");
   try {
     const start = Date.now();
     await session.close();
@@ -589,7 +583,7 @@ test("a settled job retains only a 16 KiB tail but spills its complete stdout an
     if (event.type === "result" && ++results === 2) collected.resolve();
   });
   await session.run("start");
-  const pid = Number(await waitFile("pid"));
+  const pid = await waitPid("pid");
   await waitFile("ready");
   await Bun.write(join(dirs.cwd, "go"), "");
   await expectDead(pid);
@@ -747,7 +741,7 @@ test("timeout promotion hands off newer output and job_kill terminates the conti
   expect(resultText(session.messages)).toBe(
     "bash-1 [bash] running — Produce output across timeout",
   );
-  const pid = Number(await waitFile("pid"));
+  const pid = await waitPid("pid");
   expect(() => process.kill(pid, 0)).not.toThrow();
   await Bun.write(join(dirs.cwd, "next"), "");
   await waitFile("ready");
@@ -818,7 +812,7 @@ test("aborting the Run after timeout promotion leaves the job available to the n
   });
   void run.catch(() => {});
   await waiting.promise;
-  const pid = Number(await waitFile("pid"));
+  const pid = await waitPid("pid");
   controller.abort(new Error("interrupt promoted Run"));
   await expect(run).rejects.toThrow("interrupt promoted Run");
   expect(() => process.kill(pid, 0)).not.toThrow();
@@ -894,7 +888,7 @@ test("a timeout-promoted job completing while idle notifies a new Run and preser
   });
   await session.run("start slow command");
   expect(results).toBe(1);
-  const pid = Number(await waitFile("pid"));
+  const pid = await waitPid("pid");
   expect(() => process.kill(pid, 0)).not.toThrow();
   await Bun.write(join(dirs.cwd, "go"), "");
   await notified.promise;
@@ -912,4 +906,35 @@ test("a timeout-promoted job completing while idle notifies a new Run and preser
   expect(resultText(session.messages)).toBe("final\n[status: completed, exit code: 0]");
   expect(results).toBe(2);
   await expectDead(pid);
+});
+
+test.each(["", "0", "-1", "1.5", "NaN", "9007199254740992"])(
+  "unpublished escaped PID marker %j cannot authorize process-group cleanup",
+  async (unpublished) => {
+    dirs = await tempDirs();
+    const path = join(dirs.cwd, "escaped");
+    await Bun.write(path, unpublished);
+    const observed = Promise.withResolvers<void>();
+    let settled = false;
+    const waiting = waitForPidFile(path, async (path) => {
+      const text = await Bun.file(path).text();
+      if (text === unpublished) observed.resolve();
+      return text;
+    }).then((pid) => {
+      settled = true;
+      return pid;
+    });
+    await observed.promise;
+    // Read completion witnesses the incomplete publication phase; no process.kill is invoked.
+    expect(await Bun.file(path).text()).toBe(unpublished);
+    expect(settled).toBe(false);
+    await Bun.write(path, String(process.pid));
+    expect(await waiting).toBe(process.pid);
+  },
+);
+
+test("empty command readiness markers remain valid", async () => {
+  dirs = await tempDirs();
+  await Bun.write(join(dirs.cwd, "ready"), "");
+  expect(await waitFile("ready")).toBe("");
 });

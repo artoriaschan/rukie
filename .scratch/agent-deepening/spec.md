@@ -52,6 +52,14 @@ TUI 失败属于重构前已存在的测试同步不足：`app.flush()` 仅完�
 
 仅在该测试的 model.delta 后增加有界 `app.waitFor`，确认活动栏原始输出估计大于初始 3，再保留原有 16ms、立即 tail 与最终替换断言。没有产品修改或新增测试专用 API；这是完成 final gate 所需的受影响测试消费者修正，无需新增 ADR。TDD evidence：受控 replay 在 baseline/current 上证明原同步为 RED，修正后独立送达屏障与原断言为 GREEN；最小用例重复 20 次，20 pass / 0 fail，2.76s。messages、smooth-reveal、activity-line、activity 四个相关文件共 23 pass / 0 fail，2.92s；`bun run check:dev` 与 `git diff --check` 通过。Spec 保持 claimed，最终 aggregate 与关闭由 integration branch 协调。
 
+### 第三轮 aggregate 与 PID 发布夹具修正
+
+第三轮完整检查在 `8732eaa0` 实际失败：3146 pass / 1 fail，3147 tests / 294 files，105.03s；前两轮回归均通过，唯一失败为 `background-jobs.test.ts` worker 被 SIGKILL，没有 assertion failure。日志未捕获实际 `process.kill` 参数，不能将下述安全复现等同于该次 worker 的已捕获调用。
+
+安全最小复现证明已有夹具缺陷：创建空的 `escaped` PID 文件后，原 `waitFile` 立即返回空字符串，`Number` 转换为 0，正 PID 断言 RED（1.59ms）；复现没有调用 `process.kill`。重构前 `306cd9a7` 的 helper 含同样的按文件名只校验 `pid` 的逻辑。原 escaped 用例随后在 finally 调用 `process.kill(-pid, "SIGKILL")`，若读到空发布阶段则目标为进程组 0，符合 worker 自杀的可能路径；此前 focused 的 exit 137 也出现在同一用例之前，但两次日志均未记录信号调用，保留这一证据边界。
+
+修正仅涉及测试：全部 PID 标记使用 `waitForPidFile` 等待正的 safe integer；通用 readiness 标记仍接受空文件。共享 waiter 用文件事件等待发布，保持 2s failure bound，并在成功或失败时清除 timer、关闭 watcher；缺失目录在创建 watcher 时直接失败。受控文件 read gate 先确认空、0、负数、小数、NaN、越界整数尚未放行，再发布有效 PID；整个回归不发送信号、不使用固定等待。7 项 publication/readiness 回归 GREEN（189ms）；完整 background jobs、subagent jobs、Conversation Runtime 58 pass / 0 fail（9.61s）。共享 waiter 的既有 MCP、network hooks、Session disposal 调用方 59 pass / 0 fail（35.58s），其中 30.19s 保留真实 SDK 30s deadline 合约。escaped descendant 的真实跨进程输出 draining 合约保持原有等待，3.17s。`bun run check:dev` 通过；未重跑 aggregate，spec 保持 claimed，最终集成验收由 integration branch 协调。没有产品 cleanup 算法或架构变化，无需新增 ADR。
+
 ## Out of Scope
 
 - MCP catalog/OAuth 拆深。
