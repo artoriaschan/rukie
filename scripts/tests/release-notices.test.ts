@@ -68,3 +68,26 @@ test("release generation rejects a dependency whose original notice is unavailab
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("a sibling license is labelled supplemental when the package omits its own notice", async () => {
+  const root = await mkdtemp(join(tmpdir(), "rukie-license-supplemental-"));
+  try {
+    const directory = join(root, "node_modules/proxy-agent-negotiate");
+    await mkdir(directory, { recursive: true });
+    await writeFile(
+      join(directory, "package.json"),
+      JSON.stringify({ name: "proxy-agent-negotiate", version: "1.1.0", license: "MIT" }),
+    );
+    await writeFile(join(directory, "index.js"), "export const value = 1;");
+    const destination = join(root, "notice.md");
+    await generateNotices(root, ["node_modules/proxy-agent-negotiate/index.js"], [], destination);
+    const notice = await readFile(destination, "utf8");
+    expect(notice).toContain("Its own original license notice is unavailable");
+    expect(notice).toContain("Supplemental context only");
+    expect(notice).toContain(
+      "does not establish that the sibling copyright applies to this package",
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
