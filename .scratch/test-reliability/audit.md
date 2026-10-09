@@ -54,6 +54,14 @@
 
 修正整组六个 resume 用例的等待对象并移除该组虚拟时钟。Focused 六个用例 6 pass / 0 fail，2.08 秒；四个相关文件按四 worker 执行 58 pass / 0 fail，6.01 秒；check:dev 通过。修改不影响共享 fixture 与实现，因此不再运行本机完整检查；推送修正提交后用新的完整 CI 验收，不重跑旧提交求绿。
 
+## 第二次 PR CI 与修正
+
+`123b8aa2` 的 CI `37949526438`：构建与 shard 2 通过；shard 1 为 1156 pass / 1 fail，shard 3 为 1160 pass / 1 fail。MCP 用例在 Tab 后等待操作前已存在的 Transport 字段，断言读到旧焦点；图片草稿与搜索组合用例在搜索计数出现后立即点击，尚未等待搜索高亮呈现。
+
+MCP 改为等待 Body 焦点提示和目标尺寸的布局结果；搜索等待匹配文字的终端反色高亮，再读取卡片点击坐标。保留原来的焦点、菜单及图片恢复断言，不增加 sleep、retry 或 timeout。搜索单例 1 pass / 0 fail，0.68 秒；MCP、图片、搜索和文件操作四个相关文件以四 worker 执行 41 pass / 0 fail，3.44 秒。审查了该 MCP 文件及 TUI e2e 的 resize 等待点；宽度、文本和通用就绪条件是否足以证明完成仍需人工判断，AST 门禁不能证明其因果关系。
+
+上次完整 CI 的两个失败都由测试等待对象引起；本次只修改两个测试文件的结果谓词，不改变共享 helper 或生产代码。相关验证通过后推送新提交，由新代码的 CI 验收，不重跑失败的旧提交。
+
 ## 架构与限制
 
 本次改变测试规则、fixture 与门禁，不改变 Session、Frontend、存储或发布架构，因此无需新 ADR。规则归属 [docs/testing.md](../../docs/testing.md)，根 AGENTS 只保留强制读取入口。参考 DeepSeek Harness 的测试策略与 CI reliability 技能内容，未引入其 Vitest、100% coverage、snapshot profile 或真实模型成本策略。

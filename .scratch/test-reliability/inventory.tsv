@@ -196,7 +196,7 @@ packages/coding-agent/tests/tui/e2e/clipboard-image-tip.test.ts	e2e	clock	a86f41
 packages/coding-agent/tests/tui/e2e/composer-image-click.test.ts	e2e	none	ed64a51dd99ba98aa85f1f58d3559172d2668111f0d22c0733f9efaaed6fe63f
 packages/coding-agent/tests/tui/e2e/composer-image-dismiss.test.ts	e2e	none	91dcb69dde8dbab11e9d87b4d5c9f5f05c2c7a889aeba7687258841d0d342f1d
 packages/coding-agent/tests/tui/e2e/composer-image-peek.test.ts	e2e	none	92058d6221c93097c02e413e549a95d5bd6835e01dc19c2217f4b2a995b52766
-packages/coding-agent/tests/tui/e2e/composer-image-suppression.test.ts	e2e	none	eaff08fe31835edd5ad593605c8321bcb574c22ed40551ede36eef9c647d2635
+packages/coding-agent/tests/tui/e2e/composer-image-suppression.test.ts	e2e	none	0fa84f00175f4747e83de424ef340daacc72c2f157b1fef0c18fcfb31b7c9bd7
 packages/coding-agent/tests/tui/e2e/concurrent-parity.test.ts	e2e	none	120391d3837b56cc2502852a02ba653d22928c0ec75167d2797053af64516b28
 packages/coding-agent/tests/tui/e2e/ctrl-c-exit-tip.test.ts	e2e	clock	1414713b7f7fb4108fd7508f05909cc17bbd8e8d4e32ad4ded98ed5acfbc4e09
 packages/coding-agent/tests/tui/e2e/durable-stream.test.ts	e2e	none	376719e451b3525905dc782b9480a21e0a83313c563c625f59f5d07590922366
@@ -221,7 +221,7 @@ packages/coding-agent/tests/tui/e2e/markdown-code-frame.test.ts	e2e	clock	bc1578
 packages/coding-agent/tests/tui/e2e/mcp-auth.test.ts	e2e	clock,network	44cd2e00c949dd4d0486c98a7ab2f1cc8155f619151e5cc4549d114e0d3dc7db
 packages/coding-agent/tests/tui/e2e/mcp-command.test.ts	e2e	network	e10adce50a45b21cd8ab7c7b311a50f79b230c37251a676e56ecd1168f6751d4
 packages/coding-agent/tests/tui/e2e/mcp-panel-acceptance.test.ts	e2e	network	6a82ae5f11b4fda6709edc27aa470908135903d081d64f103aeb599b8df5197a
-packages/coding-agent/tests/tui/e2e/mcp-panel.test.ts	e2e	clock,process,network	6c54b2a94ab4b3dc9df61a3006f16c61e730e15965f3e06a95093951a90e78fa
+packages/coding-agent/tests/tui/e2e/mcp-panel.test.ts	e2e	clock,process,network	ceea60668d2c3987fea22a72883bbaf8950691f7bd7047a89ebd04cc96893dc3
 packages/coding-agent/tests/tui/e2e/message-flow.test.ts	e2e	clock	ad067e6f88048e7e0ecdf6d472b4a60031e31924785ccaee26754d262cb3ff71
 packages/coding-agent/tests/tui/e2e/message-navigation.test.ts	e2e	clock	0abfb21cf1c959f8e2d216926c8ea3e88c16b00af39b77aed76443335338ddd7
 packages/coding-agent/tests/tui/e2e/message-spacing.test.ts	e2e	clock	55081c7c2bc678885ae058fc28b2ed007d86e69516abd16f83c423cb8721885d
