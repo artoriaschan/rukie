@@ -21,6 +21,10 @@
 
 CI 将输出写入 runner 的临时目录，先构建一次，再以当前 `GITHUB_SHA` 和 clean metadata 运行[产物身份验证](release-building.md#核对产物身份)。`RUKIE_RELEASE_ARTIFACTS` 让完整 `bun run check` 内的产物、Headless、TUI 和 provider/auth 测试复用这些 tarball；完整检查包含实际 npm 离线安装、隔离 HOME 和假协议服务。验收不读取真实用户凭据，也不请求真实 provider。实际 provider/OAuth 服务可用性与此本地协议证明不同。
 
+源码 CI 与发布验收设置 `RUKIE_TEST_WORKERS=1`，让测试文件逐个运行并保留 Bun 的文件隔离，避免 renderer、安装验收和真实子进程测试同时争抢 runner 资源。完整测试入口默认仍使用四个 worker；本机复现 CI 调度时运行 `RUKIE_TEST_WORKERS=1 env -u NO_COLOR bun run check`。此配置只调整调度，测试范围和超时不变。
+
+完整检查的输出保存在 `source-check-RUN_ID-RUN_ATTEMPT` artifact，保留一天。Actions 页面成功时显示最后八行，失败时显示最后一百二十行；查看具体失败的断言与上下文时下载完整日志。测试失败仍会阻止审计和成功产物上传。
+
 完整检查完成后，[审计脚本](../scripts/release/ci-audit.ts) 再次检查源码 HEAD、源码干净状态及 tarball 身份，生成 `ci-acceptance.json`。它记录仓库、run id、run attempt、event、提交、平台、构建清单与模块清单的 SHA-256 和每个包的 digest。单独调用审计脚本不会执行源码测试；消费者还必须核对对应 CI run 成功。
 
 成功运行上传名为 `rukie-darwin-arm64-SHA-RUN_ID-RUN_ATTEMPT` 的 artifact，保存 14 天，内容为两个 `.tgz`、`release-build.json`、`release-modules.json` 和 `ci-acceptance.json`。下载时指定准确 workflow run 和 attempt，核对审计中的身份及模块清单哈希，使用 `release:verify --require-clean --commit EXPECTED_SHA` 验证 tarball。模块清单供下载后的完整 provider/auth 安装验收复用；不重新构建清单来替代原始证据。不要以 artifact 的显示名称或过期成功状态代替身份核对。runner 的 staging 树、测试 HOME 与 Session 数据不会上传。

@@ -194,6 +194,7 @@ test("TUI signal cancellation closes the active Run and restores its terminal", 
     controller.abort();
     expect(await app.exit).toBe(0);
     expect(app.stdin.isRaw).toBe(false);
+    await app.flush();
     expect(app.screen().join("\n")).not.toContain("active");
   } finally {
     await app.cleanup();

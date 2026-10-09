@@ -19,6 +19,7 @@ test("tag and same-tag manual publication serialize exact artifacts across least
   expect(jobs.verify).toMatchObject({
     needs: "resolve",
     permissions: { contents: "read", actions: "read" },
+    env: { RUKIE_TEST_WORKERS: 1 },
   });
   expect(jobs.preserve).toMatchObject({
     needs: ["resolve", "verify"],

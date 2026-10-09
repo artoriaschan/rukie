@@ -67,6 +67,7 @@ jobs:
       RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
       RELEASE_COMMIT: ${{ needs.resolve.outputs.commit }}
       GH_TOKEN: ${{ github.token }}
+      RUKIE_TEST_WORKERS: 1
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:

@@ -15,7 +15,7 @@ test("contributors get CI for main PR changes, title edits, main pushes and manu
       workflow_dispatch: null,
     },
     permissions: { contents: "read" },
-    jobs: { verify: { "runs-on": "macos-15" } },
+    jobs: { verify: { "runs-on": "macos-15", env: { RUKIE_TEST_WORKERS: 1 } } },
   });
   expect(source).not.toMatch(
     /pull_request_target|paths:|paths-ignore:|id-token:|secrets\.|npm publish|npm dist-tag/,

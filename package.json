@@ -13,7 +13,7 @@
     "check:dev": "bun run docs:update && oxfmt --check && oxlint && tsc -b && knip && bun run check:scratch && bun run check:docs && bun run check:ink-boundaries",
     "check:scratch": "bun scripts/check-scratch.ts",
     "check": "bun run check:dev && bun run test",
-    "test": "bun test --parallel=4",
+    "test": "bun test --parallel=${RUKIE_TEST_WORKERS:-4}",
     "test:agent": "env -u NO_COLOR bun test --parallel=4 packages/agent/tests",
     "prepare": "husky",
     "test:coding-agent": "env -u NO_COLOR bun test --parallel=4 packages/coding-agent/tests",
