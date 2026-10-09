@@ -53,7 +53,7 @@ test("read paths, grouped search matches, and web Markdown render through Tool V
     expect(text).toContain("ctrl+o");
   } finally {
     await app.cleanup();
-    server.stop(true);
+    await server.stop(true);
   }
 });
 

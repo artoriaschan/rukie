@@ -135,7 +135,7 @@ test("context reports during a Run stay local and keep their original provider t
   } finally {
     release.resolve(Response.json({}));
     await app.cleanup();
-    server.stop(true);
+    await server.stop(true);
   }
 });
 

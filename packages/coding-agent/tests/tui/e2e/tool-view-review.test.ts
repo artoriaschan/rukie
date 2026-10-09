@@ -34,7 +34,7 @@ test("web body whitespace click expands and text click collapses", async () => {
     expect(app.screen().join("\n")).not.toContain("body9");
   } finally {
     await app.cleanup();
-    server.stop(true);
+    await server.stop(true);
   }
 });
 test("read upstream truncation disclosure must remain outside fold", async () => {

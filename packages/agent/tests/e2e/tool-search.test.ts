@@ -467,6 +467,6 @@ test("aborting ToolSearch during preflight leaves its candidate deferred", async
     expect(names(fake.contexts.at(-1)!.messages)).not.toContain("mcp__local__echo");
   } finally {
     release.resolve();
-    hookServer.stop(true);
+    await hookServer.stop(true);
   }
 });

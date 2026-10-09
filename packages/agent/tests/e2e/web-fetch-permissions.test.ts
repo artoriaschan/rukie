@@ -31,7 +31,7 @@ function server(
     },
   });
   resources.push(() => {
-    instance.stop(true);
+    return instance.stop(true);
   });
   return {
     url: (host = "site.test", path = "/") => `http://${host}:${instance.port}${path}`,

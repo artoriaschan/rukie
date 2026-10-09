@@ -45,7 +45,7 @@ test.each([
     await app.waitFor(() => !app.isWorking());
   } finally {
     await app.cleanup();
-    server.stop(true);
+    await server.stop(true);
   }
 });
 

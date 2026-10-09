@@ -207,7 +207,8 @@ test("grep searches with bundled ripgrep when PATH contains no rg", async () => 
     process.env.PATH = dirs.cwd;
     expect((await session.run("search")).text).toBe("done");
   } finally {
-    process.env.PATH = originalPath;
+    if (originalPath === undefined) delete process.env.PATH;
+    else process.env.PATH = originalPath;
   }
   const result = fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult")!;
   expect(result).toMatchObject({ role: "toolResult", isError: false });

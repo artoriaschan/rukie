@@ -3,7 +3,7 @@ import { withModelStream, modelStream } from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { dirname, join } from "node:path";
-import { stat } from "node:fs/promises";
+import { rename, stat } from "node:fs/promises";
 import { createSession, type Session } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
@@ -928,7 +928,10 @@ test.each(["", "0", "-1", "1.5", "NaN", "9007199254740992"])(
     // Read completion witnesses the incomplete publication phase; no process.kill is invoked.
     expect(await Bun.file(path).text()).toBe(unpublished);
     expect(settled).toBe(false);
-    await Bun.write(path, String(process.pid));
+    // Publish a complete replacement: polling must not observe new digits plus an old tail.
+    const published = `${path}.published`;
+    await Bun.write(published, String(process.pid));
+    await rename(published, path);
     expect(await waiting).toBe(process.pid);
   },
 );

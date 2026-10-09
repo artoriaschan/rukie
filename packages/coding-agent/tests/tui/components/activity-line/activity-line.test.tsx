@@ -3,6 +3,7 @@ import { expect, test } from "bun:test";
 import { dark, ThemeProvider } from "../../../../src/ink/index.ts";
 import { ActivityLine } from "../../../../src/tui/components/activity-line";
 import { createTerminal } from "../../helpers/terminal";
+import { testClock } from "../../helpers/test-clock";
 
 for (const [warnPct, color] of [
   [79, undefined],
@@ -61,6 +62,7 @@ test("activity paints a moon, bold text and subtle suffix on one truncated line"
 });
 
 test("done paints accent text without a moon or animation", async () => {
+  testClock.useFakeTimers();
   const terminal = createTerminal(80, 3);
   const app = renderComponent(
     <ThemeProvider>
@@ -74,12 +76,13 @@ test("done paints accent text without a moon or animation", async () => {
     const cell = terminal.terminal.buffer.active.getLine(0)!.getCell(0)!;
     expect(cell.getFgColor()).toBe(Number.parseInt(dark.accent.slice(1), 16));
     const output = terminal.output();
-    await Bun.sleep(150);
+    testClock.advanceTimersByTime(150);
     await terminal.flush();
     expect(terminal.output()).toBe(output);
   } finally {
     app.unmount();
     await app.waitUntilExit();
     terminal.dispose();
+    testClock.useRealTimers();
   }
 });

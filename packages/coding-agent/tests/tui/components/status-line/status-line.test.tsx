@@ -277,15 +277,25 @@ test("idle sparkline colors each sample independently and keeps the current spee
   expect(row.getCell(x + 7)!.getFgColor()).toBe(rgb(dark.text));
 });
 
-async function move(terminal: Awaited<ReturnType<typeof mount>>, x: number, y: number) {
+async function move(
+  terminal: Awaited<ReturnType<typeof mount>>,
+  x: number,
+  y: number,
+  hint: string | RegExp,
+) {
   terminal.stdin.write(`\x1b[<35;${x + 1};${y + 1}M`);
-  await Bun.sleep(25);
-  await terminal.flush();
+  await terminal.waitFor(() => {
+    const painted = terminal.screen()[2] ?? "";
+    return (
+      terminal.stdin.readableLength === 0 &&
+      (typeof hint === "string" ? painted === hint : hint.test(painted))
+    );
+  });
 }
 
 test("mode hover explains the current policy and shortcut, then restores the hint", async () => {
   const terminal = await mount({ columns: 160 });
-  await move(terminal, 1, 1);
+  await move(terminal, 1, 1, /模式 询问.*shift\+tab/);
   expect(terminal.screen()[2]).toBe(
     " 模式 询问 · 只读工具直接允许，其余请求批准 · shift+tab 切换模式",
   );
@@ -299,7 +309,7 @@ test("mode hover explains the current policy and shortcut, then restores the hin
   expect(terminal.screen()[2]).toBe(
     " 模式 完全访问 · 允许所有工具调用，无权限拦截 · shift+tab 切换模式",
   );
-  await move(terminal, 0, 4);
+  await move(terminal, 0, 4, " esc 中断");
   expect(terminal.screen()[2]).toBe(" esc 中断");
 });
 
@@ -314,7 +324,7 @@ test.each([40, 60, 80])(
     ] as const) {
       terminal.rerender({ mode });
       await terminal.waitFor(() => terminal.screen()[1]!.startsWith(` ${label}`));
-      await move(terminal, 1, 1);
+      await move(terminal, 1, 1, /shift\+tab/);
       expect(terminal.screen()[2]).toContain("shift+tab");
       expect(terminal.screen()[2]).toMatch(explanation);
     }
@@ -345,7 +355,7 @@ test("motion swaps ctx in place, shows ctx/bar/cache details, and restores the i
   const terminal = await mount({ columns: 160 });
   const initial = terminal.screen()[1]!;
   const x = initial.indexOf("ctx ");
-  await move(terminal, Bun.stringWidth(initial.slice(0, x)), 1);
+  await move(terminal, Bun.stringWidth(initial.slice(0, x)), 1, /剩余 52k/);
   expect(terminal.screen()[1]!.indexOf("ctx ")).toBe(x);
   expect(terminal.screen()[1]!.length).toBe(initial.length);
   expect(terminal.screen()[1]).toContain("▕");
@@ -353,14 +363,14 @@ test("motion swaps ctx in place, shows ctx/bar/cache details, and restores the i
     " 20% · 13k/64k · 剩余 52k · sys 1.0k · pr 2.0k · ast 3.0k · th 4.0k · tl 2.5k",
   );
   expect(terminal.screen()[3]).toBe("after footer");
-  await move(terminal, 2, 0);
+  await move(terminal, 2, 0, /^ ■ 系统/);
   expect(terminal.screen()[1]).toBe(initial);
   expect(terminal.screen()[2]).toBe(
     " ■ 系统 1.0k · ■ 提示词 2.0k · ■ 助手 3.0k · ■ 思考 4.0k · ■ 工具 2.5k",
   );
-  await move(terminal, columnOf(initial, "缓存"), 1);
+  await move(terminal, columnOf(initial, "缓存"), 1, /^ 缓存 62.5%/);
   expect(terminal.screen()[2]).toBe(" 缓存 62.5% · 读取 20k · 写入 0 · 输入 12k");
-  await move(terminal, 0, 4);
+  await move(terminal, 0, 4, " esc 中断");
   expect(terminal.screen()[2]).toBe(" esc 中断");
   terminal.rerender({ working: false });
   await terminal.waitFor(() => terminal.screen()[2] === "");
@@ -425,12 +435,17 @@ test("hover details expose provider, full token numbers, speed statistics, branc
     ["main", "git main"],
     ["Rukie", "cwd /work/Rukie"],
   ]) {
-    await move(terminal, Bun.stringWidth(initial.slice(0, initial.indexOf(field!))), 1);
+    await move(
+      terminal,
+      Bun.stringWidth(initial.slice(0, initial.indexOf(field!))),
+      1,
+      ` ${detail}`,
+    );
     expect(terminal.screen()[2]).toBe(` ${detail}`);
     const row = terminal.terminal.buffer.active.getLine(2)!;
     expect(row.getCell(1)!.getFgColor()).toBe(rgb(dark.subtle));
   }
-  await move(terminal, Bun.stringWidth(initial.slice(0, initial.indexOf("high"))), 1);
+  await move(terminal, Bun.stringWidth(initial.slice(0, initial.indexOf("high"))), 1, " esc 中断");
   expect(terminal.screen()[2]).toBe(" esc 中断");
 });
 
@@ -445,7 +460,7 @@ test.each([
   });
   const initial = terminal.screen()[1]!;
   const x = Bun.stringWidth(initial.slice(0, initial.indexOf("ctx ")));
-  await move(terminal, x, 1);
+  await move(terminal, x, 1, /剩余/);
   expect(Bun.stringWidth(terminal.screen()[1]!)).toBe(159);
   expect(terminal.screen()[1]!.indexOf("ctx ")).toBe(initial.indexOf("ctx "));
   expect(
@@ -462,7 +477,7 @@ test.each([
   [60, "■ sys 1.0k ■ pr 2.0k ■ ast 3.0k ■ th 4.0k ■ tl 2.5k"],
 ])("bar hover degrades its separators and names at %s columns", async (columns, detail) => {
   const terminal = await mount({ columns, locale: "en" });
-  await move(terminal, 2, 0);
+  await move(terminal, 2, 0, ` ${detail}`);
   expect(terminal.screen()[2]).toBe(` ${detail}`);
   expect(terminal.terminal.buffer.active.getLine(2)!.getCell(1)!.getFgColor()).toBe(
     rgb(dark.barSystem),

@@ -88,6 +88,8 @@ Frontends supply Interaction callbacks. Headless CLI supplies none: dependent to
 
 ## Tests and verification
 
+Read [testing strategy and reliability constraints](docs/testing.md) before adding, modifying, reviewing or diagnosing tests. Its tier selection, isolation, synchronization, cleanup and flake rules are binding; `check:test-policy` enforces the mechanical subset.
+
 - Tests live in each package's `tests/`, mirroring `src/`. Cross-concept scenarios live in `tests/e2e/`; reusable fixtures live in `tests/helpers/`.
 - Follow the production runtime (ADR-0004): current Bun code uses `bun:test`; Electron main and renderer will use Vitest when introduced.
 - Test observable behavior through public entry points. For Agent Core, use `createSession` with the existing fake model helpers; for TUI, use the app `start` helper and injected/headless terminals. Prefer explicit model replies, events, idle/completion signals, or terminal predicates over timing guesses.

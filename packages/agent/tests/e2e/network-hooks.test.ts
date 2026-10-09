@@ -341,7 +341,7 @@ test("HTTP connection errors warn and fail open", async () => {
   dirs = await tempDirs();
   const server = Bun.serve({ port: 0, fetch: () => Response.json({}) });
   const url = server.url.href;
-  server.stop(true);
+  await server.stop(true);
   const result = await runHook({ type: "http", url });
   expect(result.executed).toBe(true);
   expect(result.events.filter((event) => event.type === "hook_warning")).toMatchObject([

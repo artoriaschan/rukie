@@ -116,7 +116,7 @@ test("web results preserve Markdown separately from model notices and HTTP metad
     });
   } finally {
     await session.close();
-    server.stop(true);
+    await server.stop(true);
     await dirs.cleanup();
   }
 });

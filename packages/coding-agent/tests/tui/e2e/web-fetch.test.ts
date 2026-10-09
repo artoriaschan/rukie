@@ -35,7 +35,7 @@ test.each([120, 60])("web_fetch shows its URL and Markdown body at %s columns", 
     expect(app.screen().every((line) => Bun.stringWidth(line) <= columns)).toBe(true);
   } finally {
     await app.cleanup();
-    server.stop(true);
+    await server.stop(true);
   }
 });
 

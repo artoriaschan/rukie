@@ -9,7 +9,7 @@ let server: ReturnType<typeof Bun.serve> | undefined;
 const key = "RUKIE_PROBE_TEST_KEY";
 const previousKey = process.env[key];
 afterEach(async () => {
-  server?.stop(true);
+  await server?.stop(true);
   if (previousKey === undefined) delete process.env[key];
   else process.env[key] = previousKey;
   await dirs?.cleanup();

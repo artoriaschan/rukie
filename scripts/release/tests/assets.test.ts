@@ -152,7 +152,7 @@ async function fixture() {
       immutable = true;
     },
     cleanup: async () => {
-      server.stop(true);
+      await server.stop(true);
       await rm(root, { recursive: true, force: true });
     },
   };

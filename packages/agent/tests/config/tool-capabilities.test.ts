@@ -12,7 +12,7 @@ const key = "RUKIE_CAPABILITY_TEST_KEY";
 const previous = process.env[key];
 afterEach(async () => {
   setSystemTime();
-  server?.stop(true);
+  await server?.stop(true);
   if (previous === undefined) delete process.env[key];
   else process.env[key] = previous;
   await dirs?.cleanup();

@@ -14,7 +14,7 @@ export function webFetchFixture() {
   function server(handler: (request: Request) => Response | Promise<Response>) {
     const instance = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: handler });
     resources.push(() => {
-      instance.stop(true);
+      return instance.stop(true);
     });
     return `http://site.test:${instance.port}`;
   }

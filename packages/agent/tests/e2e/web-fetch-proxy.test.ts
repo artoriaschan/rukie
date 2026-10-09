@@ -25,7 +25,7 @@ function proxy(
     },
   });
   resources.push(() => {
-    server.stop(true);
+    return server.stop(true);
   });
   return { url: `http://127.0.0.1:${server.port}`, requests };
 }
@@ -209,7 +209,7 @@ test.each(["bare", "bracketed", "matching-port", "different-port"])(
       },
     });
     resources.push(() => {
-      target.stop(true);
+      return target.stop(true);
     });
     const local = proxy();
     process.env.HTTP_PROXY = local.url;

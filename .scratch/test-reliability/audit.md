@@ -1,0 +1,50 @@
+# 测试可靠性审计
+
+日期：2026-10-09。基线：`4febcdd72a9e44a67d7880755cba9e7515321b6b`，包含上一轮尚未提交的六个测试文件修复。目标为 PR #2 的测试可靠性与执行成本，不修改产品行为、发布版本或 CI worker/shard 数量。
+
+## 范围与方法
+
+对现有 308 个 spec 以及新增门禁 spec 做全量语法与风险模式扫描；[inventory.tsv](inventory.tsv) 列出每个文件、层级、风险信号和源码 SHA-256。机械门禁同时扫描 helper，共 354 个测试与 fixture 文件。清单的风险标记是人工定位入口，不代表存在缺陷或完成了逐行人工审阅。
+
+人工核查覆盖固定延时、直接耗时上限、时间合同、全局 env/mock/clock 的恢复、网络 fixture 关闭、共享临时目录、子进程 READY/exit、后台提交与通知、端到端覆盖成本以及上次完整运行中所有超过一秒的用例类别。检查实际 Bun 并行脚本及三个 macOS CI shard；审阅所有机械扫描命中的同步与关闭模式。全量扫描不等于所有断言与所有交错都已穷尽，当前证据不声称百分之百无 flake。
+
+## 发现与处理
+
+| 问题                                         | 修复与证明                                                                                                                                              |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 固定延时等待输入、hover、审批或退出          | 六个 TUI 文件改为呈现、输入消费、授权回调和 exit；审批等待不使用尚未执行的整批工具副作用                                                                |
+| 混合真实 I/O 与自动推进虚拟时间              | 综合并发和历史恢复使用真实 app；真实时间不作为成功条件，后台等待提交与结算                                                                              |
+| 历史边界混合鼠标坐标与分页呈现               | 键盘打开指定 child 的 Output，等待页码与内容；公开恢复 snapshot 验证 continuation 唯一性，鼠标保留独立 views 覆盖                                       |
+| Session close 与宽 HTML 处理依赖机器速度     | 删除非时间合同的 1 秒上限，保留完成、取消、诊断、文件副作用与后续可用性断言                                                                             |
+| 重定向通过 120ms + 120ms 对抗 200ms deadline | 实际服务器第二跳 barrier 到达后触发受控 AbortSignal；证明仅创建一个 deadline 并输出 timeout，不依赖处理速度                                             |
+| 交互取消的结果与 200ms 哨兵竞速              | 等待实际 cancellation Promise，框架 timeout 只作为失败上限                                                                                              |
+| 网络 fixture 发起关闭后立刻结束              | 18 个文件返回或 await 服务停止 Promise；随后关闭 Session、删除目录或恢复状态                                                                            |
+| env 原来缺失时恢复为 undefined 字符串        | PATH 按原始存在性恢复                                                                                                                                   |
+| 提示过期和停止确认只探测虚拟经过时间         | MCP notice、Job notice 与 stop confirmation 观察已注册的目标 timeout，在截止前保持内容、截止时触发，再等待呈现结果；renderer 和进程清理仍完成自己的工作 |
+| 原位重写 PID marker 被读取到中间字节         | 完成临时文件后 rename 原子发布；观测初始非法值的 barrier 保留，PID 从完整的新文件读取                                                                   |
+| 同类缺陷可再次引入                           | AST 门禁进入 check:dev；负样本证明固定 sleep、timer resolver、focused spec 与跨 spec 导入被拒绝                                                         |
+
+## 保留项与成本
+
+- renderer、动画、Ctrl+C、提示期限和双击窗口属于实际时间行为，保留隔离虚拟时钟；数据格式测试保留固定数值。并发 fixture 不使用固定延时判定完成。
+- MCP 子进程的 `delay_ms` 是测试请求声明的服务端传输行为，保留一处带理由的 transport-delay 例外。
+- SessionEnd 总共 1.5 秒的真实 Hook 终止预算保留唯一真实经过时间上限及旁注，因为它验证实际多进程关闭的总预算；其他 close 用例只验证结果。父虚拟时钟不能代表子进程退出。
+- OAuth 配置固定 callback port 的用例先让 OS 选 ephemeral port 再交给 SDK 重新绑定，仍有极小的重新分配窗口；这是显式非零端口配置合同，不能改成 0 就声称同一覆盖成立。其失败必须报端口争用，不能靠 retry 掩盖。其他 live listener 直接绑定 0。
+- publication、registry recovery 和安装用例保留真实 npm 子进程、私有 registry 和已构建包，因其拥有发布恢复与交付入口合同；不将其降成 mock 或提高 retry 数。
+- 大样本与保留上限在 owner 测试中验证；综合并发的原样本数保留，因为减小它会改变阅读锚点与选区替换的可观察布局。它约 3 秒完成，15 秒仅是整个组合场景的失败上限。
+
+## 验证
+
+- 第一批 Agent Core 修改：52 pass / 0 fail，4.21 秒；受控重定向不再等待两次 120ms。
+- 三类期限场景：45 pass / 0 fail，15.89 秒，保留两个真实子进程及服务生命周期的必要集成成本。
+- 门禁：9 pass / 0 fail；拒绝样本与 inert 字符串示例均已验证。
+- 网络 fixture 清理与共享 Web Fetch：295 pass / 0 fail，19 个文件，95.39 秒。
+- 最终门禁与 SessionEnd focused：17 pass / 0 fail，2.14 秒；check:dev 和 git diff --check 通过。
+- 两个独立进程同时运行重定向 fixture：各 14 pass / 0 fail，端口和全局 deadline mock 独立。
+- 执行 gate 的 corpus negative control 被正确拒绝，临时违规文件已删除。
+- 完整本机检查实际结果：3335 pass / 1 fail，204.51 秒。唯一失败是未发布 PID fixture 将长字符串原位覆盖为短 PID，reader 读到新旧字节拼接；修正为临时文件完成写入后 rename 原子发布。该测试文件的 focused 验证代替完整重跑，其他 full-run 结果保留。
+- PID/readiness focused 连续 10 轮通过，完整 CI 在推送后的提交上验收；不得把本机完整检查描述为绿色。
+
+## 架构与限制
+
+本次改变测试规则、fixture 与门禁，不改变 Session、Frontend、存储或发布架构，因此无需新 ADR。规则归属 [docs/testing.md](../../docs/testing.md)，根 AGENTS 只保留强制读取入口。参考 DeepSeek Harness 的测试策略与 CI reliability 技能内容，未引入其 Vitest、100% coverage、snapshot profile 或真实模型成本策略。

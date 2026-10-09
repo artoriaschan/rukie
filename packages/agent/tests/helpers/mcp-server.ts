@@ -36,6 +36,7 @@ for await (const line of lines) {
       if (request.params.name === "hang") continue;
       if (request.params.name === "crash") process.exit(1);
       if (request.params.name === "delayed-json")
+        // test-policy: transport-delay MCP child emulates server latency requested by the transport test.
         await Bun.sleep(request.params.arguments.delay_ms);
       result = {
         content: [

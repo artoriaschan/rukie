@@ -1,3 +1,5 @@
+import { testClock } from "../helpers/test-clock";
+import { observeTimeoutDeadline } from "../helpers/timeout-deadline";
 import { committedJobNotifications } from "../helpers/job-notifications";
 import { startWithClock } from "../helpers/clock-app";
 import { expect, test } from "bun:test";
@@ -141,12 +143,17 @@ test("/jobs opens an empty fullscreen panel during a Run and returns without int
 });
 
 test("panel navigation disarms stop, confirmation expires, and idle stop waits for the next human prompt", async () => {
+  let holdClock = false;
   const app = await startWithClock(["--permission-mode", "full-access", "launch"], {
+    advanceTimers: (ms) => {
+      if (!holdClock) testClock.advanceTimersByTime(ms);
+    },
     env: { LANG: "en_US.UTF-8" },
     columns: 100,
     rows: 28,
   });
   const screen = () => app.screen().join("\n");
+  const expiry = observeTimeoutDeadline(4000);
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.tools(
@@ -169,9 +176,13 @@ test("panel navigation disarms stop, confirmation expires, and idle stop waits f
     app.stdin.write("\x1b[Bk");
     await app.waitFor(() => screen().includes("k again within 4s: stop bash-2"));
     expect(screen()).not.toContain("stopping");
-    const armedAt = performance.now();
-    await app.waitFor(() => !screen().includes("k again within"), 5000);
-    expect(performance.now() - armedAt).toBeGreaterThan(3900);
+    holdClock = true;
+    expiry.beforeExpiry();
+    await app.flush();
+    expect(screen()).toContain("k again within 4s: stop bash-2");
+    expiry.expire();
+    holdClock = false;
+    await app.waitFor(() => !screen().includes("k again within"));
     app.stdin.write("k");
     await app.waitFor(() => screen().includes("k again within 4s: stop bash-2"));
     expect(screen()).not.toContain("stopping");
@@ -191,6 +202,8 @@ test("panel navigation disarms stop, confirmation expires, and idle stop waits f
     await app.waitFor(() => !app.isWorking());
     expect(app.stderr()).toBe("");
   } finally {
+    holdClock = false;
+    expiry.restore();
     await app.cleanup();
   }
 }, 15000);

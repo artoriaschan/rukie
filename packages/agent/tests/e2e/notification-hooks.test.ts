@@ -636,7 +636,7 @@ test("HTTP notification runs beside permission interaction and warns while disca
     ).toBe(true);
   } finally {
     await session.close();
-    server.stop(true);
+    await server.stop(true);
   }
 });
 

@@ -34,8 +34,14 @@ test("English startup locale keeps waiting, thinking and approval activity in En
 });
 
 test("REVIEW stays visible until all concurrent reviews finish, without counting their tokens", async () => {
+  let allowed = 0;
   const app = await start(["--permission-mode", "auto-review", "review two writes"], {
     controlReviews: true,
+    session: {
+      onToolCallAllowed: () => {
+        allowed++;
+      },
+    },
   });
   const screen = () => app.screen().join("\n");
   try {
@@ -47,11 +53,11 @@ test("REVIEW stays visible until all concurrent reviews finish, without counting
     await app.waitFor(() => app.reviews.length === 2 && screen().includes("REVIEW"));
     expect(screen()).toContain("REVIEW");
     expect(screen()).toContain("↑ 11 · ↓ 5 tokens");
-    // Complete in reverse order: the earlier review must remain visible.
+    // Approval completion precedes batch execution. Observe authorization rather
+    // than sleeping or waiting for a write that requires both reviews to finish.
     app.reviews[1]!.delta('{"risk":"low","decision":"allow"}');
     app.reviews[1]!.finish(9000, 9000);
-    await Bun.sleep(30);
-    await app.flush();
+    await app.waitFor(() => allowed === 1);
     expect(screen()).toContain("REVIEW");
     expect(screen()).toContain("↑ 11 · ↓ 5 tokens");
     app.reviews[0]!.delta('{"risk":"low","decision":"allow"}');

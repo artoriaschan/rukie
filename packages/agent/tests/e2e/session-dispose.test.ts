@@ -150,9 +150,7 @@ test("SessionEnd discards all output and retains the small handler timeout", asy
       },
     },
   });
-  const started = performance.now();
   await session.close();
-  expect(performance.now() - started).toBeLessThan(1000);
   expect(warnings).toHaveLength(1);
   expect(warnings[0]).toContain("timed out after 0.02s");
   expect(await Bun.file(join(dirs.cwd, "late")).exists()).toBe(false);
@@ -184,9 +182,7 @@ test("close cancels a slow in-flight tool hook before running SessionEnd", async
   });
   const run = session.run("try").catch((error: unknown) => error);
   await waitForFile(join(dirs.cwd, "hook-started"));
-  const started = performance.now();
   await session.close();
-  expect(performance.now() - started).toBeLessThan(1000);
   expect(await run).toBeInstanceOf(Error);
   expect(await Bun.file(join(dirs.cwd, "hook-late")).exists()).toBe(false);
   expect(await Bun.file(join(dirs.cwd, "forbidden")).exists()).toBe(false);
@@ -211,7 +207,6 @@ test("an event observer can await close without waiting on its own Run", async (
   });
   const closed = Promise.withResolvers<void>();
   let closeStarted = false;
-  const started = performance.now();
   session.subscribe((event) => events.push(event));
   await expect(
     session.run("try", {
@@ -228,7 +223,6 @@ test("an event observer can await close without waiting on its own Run", async (
     }),
   ).rejects.toThrow();
   await closed.promise;
-  expect(performance.now() - started).toBeLessThan(1000);
   expect(warnings).toHaveLength(1);
   expect(events.filter((event) => event.type === "hook_warning")).toMatchObject([
     { event: "SessionEnd", error: { code: "hook-timeout", params: { timeout: "0.02" } } },

@@ -331,6 +331,6 @@ test("resumed web windows preserve retained source and disclose upstream truncat
     expect(screen).toContain("Full output unavailable");
   } finally {
     await app.cleanup();
-    server.stop(true);
+    await server.stop(true);
   }
 });
