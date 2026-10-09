@@ -1,5 +1,6 @@
+import { runPty } from "./pty.ts";
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { chmod, mkdtemp, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { buildRelease } from "../build.ts";
@@ -210,3 +211,100 @@ test("release build embeds every locked API family and all nine model OAuth flow
     ).toBe(true);
   }
 });
+
+// Reuse Agent Core's real HTTP/OAuth fixture across project roots.
+const {
+  mcpOAuthServer,
+}: {
+  mcpOAuthServer: () => {
+    url: string;
+    requests: { path: string; authorization: string | null; body: unknown }[];
+    stop(): Promise<void>;
+  };
+} = await import(
+  new URL("../../../packages/agent/tests/helpers/mcp-oauth-server.ts", import.meta.url).href
+);
+
+test("installed TUI MCP login persists credentials, reconnects, logs out and cancels authorization", async () => {
+  const model = providerProtocol("openai-responses");
+  const oauth = mcpOAuthServer();
+  const browser = join(fixture.env.PATH.split(":")[0]!, "open");
+  const browserLog = join(fixture.root, "local-browser.json");
+  try {
+    await configure("openai-responses", model.baseUrl);
+    await Bun.write(
+      join(fixture.homeDir, ".rukie/mcp.json"),
+      JSON.stringify({ mcpServers: { srv: { url: oauth.url } } }),
+    );
+    // Replace only the OS browser boundary. The installed product performs all OAuth itself.
+    // Every initial URL and redirect is checked before issuing a request.
+    await Bun.write(
+      browser,
+      `#!/usr/bin/env node
+const {existsSync,writeFileSync}=require("node:fs");
+(async()=>{const log=${JSON.stringify(browserLog)};if(existsSync(log))process.exit(1);const url=new URL(process.argv[2]);if(url.origin!==${JSON.stringify(new URL(oauth.url).origin)}||url.pathname!=="/authorize")throw Error("Nonlocal authorization URL");const auth=await fetch(url,{redirect:"manual",signal:AbortSignal.timeout(5000)});const callback=new URL(auth.headers.get("location"));if(!["localhost","127.0.0.1"].includes(callback.hostname)||callback.protocol!=="http:"||callback.pathname!=="/callback")throw Error("Nonlocal callback");writeFileSync(log,JSON.stringify({authorization:url.href,callback:callback.href}));const result=await fetch(callback,{signal:AbortSignal.timeout(5000)});if(!result.ok)throw Error("Callback failed");})().catch(()=>process.exitCode=1);
+`,
+    );
+    await chmod(browser, 0o755);
+    const first = await runPty(fixture, {
+      actions: [
+        { when: /Ask[\s\S]*project with spaces/, send: "/mcp login srv\r" },
+        { when: "Signed in to MCP server srv", send: "\x04" },
+      ],
+    });
+    expect(first.code).toBe(0);
+    expect(first.restoredFullTermios).toBe(true);
+    const browserResult: unknown = await Bun.file(browserLog).json();
+    expect(browserResult).toEqual(
+      expect.objectContaining({
+        authorization: expect.stringContaining("code_challenge_method=S256"),
+        callback: expect.stringContaining("/callback?state="),
+      }),
+    );
+    expect(oauth.requests.some((r) => r.path === "/register")).toBe(true);
+    const token = oauth.requests.find((r) => r.path === "/token");
+    expect(token?.body).toEqual(
+      expect.objectContaining({
+        grant_type: "authorization_code",
+        code_verifier: expect.any(String),
+      }),
+    );
+    // A second process must use the persisted credentials, rather than in-memory state.
+    const second = await runPty(fixture, {
+      actions: [
+        { when: /Ask[\s\S]*project with spaces/, send: "/mcp reconnect srv\r" },
+        { when: "Reconnected the MCP server srv", send: "\x04" },
+      ],
+    });
+    expect(second.code).toBe(0);
+    expect(second.restoredFullTermios).toBe(true);
+    const logout = await runPty(fixture, {
+      actions: [
+        { when: /Ask[\s\S]*project with spaces/, send: "/mcp logout srv\r" },
+        { when: "Signed out of MCP server srv", send: "\x04" },
+      ],
+    });
+    expect(logout.code).toBe(0);
+    expect(logout.restoredFullTermios).toBe(true);
+    const cancelled = await runPty(fixture, {
+      actions: [
+        { when: /Ask[\s\S]*project with spaces/, send: "/mcp login srv\r" },
+        { when: "Copy authorization link", send: "\x1b" },
+        { when: "MCP authorization cancelled", send: "\x04" },
+      ],
+    });
+    expect(cancelled.code).toBe(0);
+    expect(cancelled.restoredFullTermios).toBe(true);
+    expect(
+      oauth.requests.some(
+        (r) => r.path === "/mcp" && r.authorization?.startsWith("Bearer access-"),
+      ),
+    ).toBe(true);
+    expect(oauth.requests.filter((r) => r.path === "/token")).toHaveLength(1);
+    expect(second.transcript).not.toContain("Cannot find module");
+  } finally {
+    await rm(browser, { force: true });
+    await rm(join(fixture.homeDir, ".rukie/mcp.json"), { force: true });
+    await Promise.all([oauth.stop(), Promise.resolve(model.stop())]);
+  }
+}, 40_000);

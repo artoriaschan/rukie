@@ -10,6 +10,7 @@ const child = Bun.spawn(
     "test",
     "scripts/release/tests/installation.test.ts",
     "scripts/release/tests/tui.test.ts",
+    "scripts/release/tests/providers.test.ts",
   ],
   {
     cwd: resolve(import.meta.dir, "../.."),

@@ -27,7 +27,7 @@
 
 Rukie 当前调用 `builtinModels()`，没有注入持久化模型 CredentialStore，也没有模型登录命令或交互界面。上游默认模型凭据存储位于内存。编译入口通过上游 `registerBunOAuthFlows()` 静态注册 Anthropic、OpenAI Codex、OpenAI ChatGPT、GitHub Copilot、OpenRouter、Kimi Coding、Meta、xAI、Radius 九条 OAuth flow，保证分发包含现有能力。这是模块包含与注册证据，不等于用户通过 Rukie 完成远程模型登录。
 
-MCP OAuth 是现有公开用户路径：TUI 的 `/mcp login <server>`、`/mcp logout <server>`、`/mcp reconnect <server>` 通过 Session 调用 pi-mcp 的 OAuth 发现、授权、令牌和重连。MCP 凭据保存在用户 HOME；Headless 没有授权 Interaction，提示在 TUI 登录，不自动打开浏览器或接受授权。配置与生命周期由 [MCP 参考](mcp.md) 拥有。
+MCP OAuth 是现有公开用户路径：TUI 的 `/mcp login <server>`、`/mcp logout <server>`、`/mcp reconnect <server>` 通过 Session 调用 pi-mcp 的 OAuth 发现、授权、令牌和重连。安装产物验收通过本地 OAuth 服务和隔离 PATH 的浏览器命令替身，验证真实 PKCE 登录、另一个进程复用持久化令牌重连、登出与取消；四次 PTY 启动分别观察结果和终端恢复。浏览器替身只在请求前校验 loopback 授权与 callback URL，不替代产品 OAuth 流程。MCP 凭据保存在用户 HOME；Headless 没有授权 Interaction，提示在 TUI 登录，不自动打开浏览器或接受授权。配置与生命周期由 [MCP 参考](mcp.md) 拥有。
 
 ## 执行安装验收
 
