@@ -1,12 +1,12 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
 import { buildRelease } from "../build.ts";
 import { releaseObject, publishRelease } from "../publication.ts";
 import { requireUnpublished } from "../tag.ts";
-import { createRegistry } from "./registry.ts";
+import { registryFixture } from "./registry.ts";
 
 let artifacts: string;
 let owned: string | undefined;
@@ -26,36 +26,8 @@ afterAll(async () => {
   if (owned) await rm(owned, { recursive: true, force: true });
 });
 
-async function context() {
-  const registry = createRegistry();
-  const root = await mkdtemp(join(tmpdir(), "rukie publication npm "));
-  const home = join(root, "home");
-  await mkdir(home);
-  const npmrc = join(root, "npmrc");
-  const globalrc = join(root, "globalrc");
-  await Bun.write(globalrc, "");
-  await Bun.write(
-    npmrc,
-    `registry=${registry.url}\n@rukie:registry=${registry.url}\n//${new URL(registry.url).host}/:_authToken=local-fabricated\n`,
-  );
-  return {
-    registry,
-    env: {
-      ...process.env,
-      HOME: home,
-      NPM_CONFIG_USERCONFIG: npmrc,
-      NPM_CONFIG_GLOBALCONFIG: globalrc,
-      NPM_CONFIG_CACHE: join(root, "cache"),
-    },
-    cleanup: async () => {
-      registry.stop();
-      await rm(root, { recursive: true, force: true });
-    },
-  };
-}
-
 test("real npm publication installs the registry's exact dependencies and validates a Session before stable latest or validates beta next", async () => {
-  const ctx = await context();
+  const ctx = await registryFixture();
   try {
     const receipt = await publishRelease({
       artifactDirectory: artifacts,
@@ -86,7 +58,7 @@ test("real npm publication installs the registry's exact dependencies and valida
 }, 120_000);
 
 test("failed main upload leaves the platform and does not expose latest", async () => {
-  const ctx = await context();
+  const ctx = await registryFixture();
   ctx.registry.failUpload("@rukie/coding-agent");
   try {
     await expect(
@@ -104,7 +76,7 @@ test("failed main upload leaves the platform and does not expose latest", async 
 }, 120_000);
 
 test("a real registry Session rejection leaves the uploaded package and latest unchanged", async () => {
-  const ctx = await context();
+  const ctx = await registryFixture();
   try {
     const { acceptRegistryRelease } = await import("../publication.ts");
     await expect(
@@ -123,7 +95,7 @@ test("a real registry Session rejection leaves the uploaded package and latest u
 }, 120_000);
 
 test("fabricated inherited npm auth and registry configuration cannot override the loopback destination", async () => {
-  const ctx = await context();
+  const ctx = await registryFixture();
   try {
     const env = {
       ...ctx.env,
@@ -143,7 +115,7 @@ test("fabricated inherited npm auth and registry configuration cannot override t
 }, 120_000);
 
 test("npm12.1 is rejected before any registry upload", async () => {
-  const ctx = await context();
+  const ctx = await registryFixture();
   const directory = await mkdtemp(join(tmpdir(), "rukie unsupported npm "));
   try {
     const npm = join(directory, "npm");
@@ -162,5 +134,29 @@ test("npm12.1 is rejected before any registry upload", async () => {
   } finally {
     await ctx.cleanup();
     await rm(directory, { recursive: true, force: true });
+  }
+}, 120_000);
+
+test("matching partial publication resumes only the missing main package", async () => {
+  const ctx = await registryFixture();
+  ctx.registry.failUpload("@rukie/coding-agent");
+  try {
+    await expect(
+      publishRelease({
+        artifactDirectory: artifacts,
+        registry: ctx.registry.url,
+        env: ctx.env,
+        accept: async () => {},
+      }),
+    ).rejects.toThrow();
+    const receipt = await publishRelease({
+      artifactDirectory: artifacts,
+      registry: ctx.registry.url,
+      env: ctx.env,
+    });
+    expect(ctx.registry.tags("@rukie/coding-agent")[channel]).toBe(receipt.version);
+    expect(ctx.registry.bytes("@rukie/coding-agent-darwin-arm64", receipt.version)).toBeDefined();
+  } finally {
+    await ctx.cleanup();
   }
 }, 120_000);

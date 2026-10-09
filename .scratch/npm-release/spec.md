@@ -177,3 +177,5 @@ arm64 在实机上验收，交叉编译不代替运行。复用构建与安装 f
 - 2026-10-09：用户决定首版只支持 macOS arm64，x64 移入 Out of Scope；03 改为产物身份与平台边界，04–06、08 的双架构验收改为 arm64。
 - 2026-10-09：桌面端 sidecar 打包调研（`.scratch/desktop/research/sidecar-packaging.md`）在 Bun 1.4.2 编译产物上实测：`import("@vscode/ripgrep")` 因 `/$bunfs` 路径必然失败，嵌入的 `rg` 无法 `posix_spawn`；产物默认从 cwd 加载 `.env` 与 `bunfig.toml`。据此修正实现决定 6（去掉“嵌入资源”定位 ripgrep）并新增 7，后续编号顺延；02、03 验收同步。桌面 sidecar 复用同一布局与定位。
 - 2026-10-07：按 to-spec 整理标准模板，保留已确认测试入口，补齐 58 条用户故事，更新为 ready-for-agent；不重新访谈或创建重复规格。
+
+- 2026-10-09：09 实施后的 ADR Coverage 已复核：产品版本与 Release PR、tarball/平台身份、实际内容恢复、原资产审计及独立 rollback 属于 ADR-0023；唯一命令/动态加载沿用 ADR-0012，当前 pi harness 沿用 ADR-0024，固定来源 ink/Yoga 沿用 ADR-0013。本次 Yoga 范围例外与 CLI-only 保持，无公开 SDK、平台扩展或新的 auth 面。父规格继续开放，最终两轴审阅和唯一聚合检查由主协调线程完成；本地证据不替代真实 CI/registry/OIDC。

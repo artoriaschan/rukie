@@ -18,7 +18,7 @@ Release Please 根据整个产品的 Conventional Commits 准备版本、Changel
 
 版本准备只接受当前 main push commit 的必要 CI 成功，以该不可变 SHA 的完整产品历史和文件调用官方 Release Please 规划接口；版本 PR 的 Git commit parent 固定到该 SHA。合并后的产品 tag 还需其自身 merge SHA 的成功 CI，既有 tag 必须解析到同一 commit，不能通过移动 main 或旧成功状态放行。具体操作归属[版本准备](../release-preparation.md)。
 
-所有平台安装验收通过后保存发布 tarball。发布阶段使用已经验收的同一份产物，先发布平台包再发布主包；正式主包经过 candidate 的 registry 安装验收后才推进 latest。发布串行，失败保留旧 latest；恢复核对已发布版本和产物身份，续发缺失包。同版本内容冲突时停止，不尝试覆盖；旧版本恢复不能意外倒退 dist-tag。
+所有平台安装验收通过后保存发布 tarball。发布阶段使用已经验收的同一份产物，先发布平台包再发布主包；正式主包经过 candidate 的 registry 安装验收后才推进 latest。发布串行，失败保留旧 latest；恢复先核对 registry 元数据、依赖和实际下载 tarball 的 SHA256/SHA512，匹配才续发缺失包或恢复验收；HTTP 失败不代表写入未发生，响应丢失后重新核对实际状态。同版本内容冲突时停止，使用新版本修复，不尝试覆盖。旧版本恢复不能意外倒退 latest/next，beta 在任何 next 上传前检查新旧顺序。显式人工回退使用独立操作、同一串行和精确 tag 验收门槛，只移动已完整存在且验收通过的主包通道，不重新构建、打包或上传。原 producing run 的资产审计不被恢复 run 改写，当前成功的只读验收 job 提供另一个见证。具体恢复和回退操作见[维护者发布指南](../release-publication.md)。
 
 项目自有代码采用 MIT，并分发第三方许可声明。本次发布保留当前 vendored Yoga，不进行替换或来源调查。这是用户确认的范围例外，部分替代 [ADR-0005](0005-own-tui-renderer.md) 关于本次对外分发必须替换 Yoga 的条件；该 ADR 其他渲染管线决定继续有效。此例外不表示来源问题已解决。当时的分发范围不构成对 renderer 选型的接受；之后接受并实施的 [ADR-0013](0013-adopt-dsh-tui-ink.md) 独立拥有固定来源 dsh ink／Yoga 的决定，当前分发须沿用该来源及许可边界。
 

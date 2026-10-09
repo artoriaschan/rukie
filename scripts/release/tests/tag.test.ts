@@ -63,3 +63,32 @@ test("only an existing version tag whose commit belongs to main can enter public
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("rollback shares exact-tag read-only gates and publication concurrency while refusing a first build", async () => {
+  const source = await Bun.file(
+    new URL("../../../.github/workflows/release-publish.yml", import.meta.url),
+  ).text();
+  const parsed: unknown = Bun.YAML.parse(source);
+  expect(parsed).toMatchObject({
+    on: {
+      workflow_dispatch: {
+        inputs: {
+          operation: { type: "choice", default: "publish", options: ["publish", "rollback"] },
+        },
+      },
+    },
+    concurrency: { group: "npm-publication", "cancel-in-progress": false },
+    jobs: {
+      verify: { permissions: { contents: "read", actions: "read" } },
+      publish: {
+        needs: ["resolve", "verify", "preserve"],
+        permissions: { contents: "read", actions: "read", "id-token": "write" },
+      },
+    },
+  });
+  expect(source).toContain('test "$GITHUB_REF" = "refs/tags/$RELEASE_TAG"');
+  const refuse = source.indexOf('if [ "$RELEASE_OPERATION" = rollback ]');
+  expect(refuse).toBeGreaterThan(0);
+  expect(source.indexOf("bun run release:build")).toBeGreaterThan(refuse);
+  expect(source).toContain('--operation "$RELEASE_OPERATION"');
+});

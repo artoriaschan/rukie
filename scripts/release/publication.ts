@@ -2,11 +2,11 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { parseArgs } from "node:util";
-import { gt, satisfies } from "semver";
+import { isDeepStrictEqual, parseArgs } from "node:util";
+import { gt, satisfies, valid } from "semver";
 import { verifyReleaseArtifacts } from "./verify.ts";
 import { releaseCommand, verifyReleaseTag } from "./tag.ts";
-import { MAIN_PACKAGE, releasePlatforms } from "./platforms.ts";
+import { MAIN_PACKAGE } from "./platforms.ts";
 import { installRelease } from "./tests/installed-fixture.ts";
 import { providerProtocol } from "./tests/provider-protocol.ts";
 
@@ -57,8 +57,9 @@ export async function verifyPublicationArtifacts(
   commit?: string,
   repository?: string,
   requireClean = true,
+  sourceRoot = resolve(import.meta.dir, "../.."),
 ) {
-  const root = resolve(import.meta.dir, "../..");
+  const root = resolve(sourceRoot);
   if (commit && (await releaseCommand(["git", "rev-parse", "HEAD"], root)) !== commit)
     throw new Error("Publication checkout differs from accepted commit");
   const metadata = await verifyReleaseArtifacts(directory, {
@@ -91,6 +92,7 @@ export type RegistryAcceptance = {
   registry: string;
   npm: string;
   env: NodeJS.ProcessEnv;
+  sourceRoot?: string;
 };
 
 /** Fresh npm cache and isolated runtime exercise the registry's bytes through the normal launcher. */
@@ -99,6 +101,7 @@ export async function acceptRegistryRelease(options: RegistryAcceptance, protoco
     registry: options.registry,
     npm: options.npm,
     npmEnv: options.env,
+    sourceRoot: options.sourceRoot,
   });
   const provider = providerProtocol("openai-responses", { error: protocolError });
   try {
@@ -149,6 +152,9 @@ export type PublicationOptions = {
   commit?: string;
   repository?: string;
   tag?: string;
+  /** Caller-owned source checkout for loopback integration; production always uses its exact tag checkout. */
+  sourceRoot?: string;
+  operation?: "publish" | "rollback";
   /** Trusted caller must resolve only after exact-version installed command and Session acceptance. */
   accept?: (options: RegistryAcceptance) => Promise<void>;
 };
@@ -156,8 +162,15 @@ export type PublicationOptions = {
 export async function publishRelease(options: PublicationOptions) {
   const registry = options.registry ?? "https://registry.npmjs.org/";
   const local = localRegistry(registry);
+  const operation = options.operation ?? "publish";
+  if (!["publish", "rollback"].includes(operation))
+    throw new Error("Unknown publication operation");
   const inherited = options.env ?? process.env;
   if (!local) {
+    if (options.sourceRoot && resolve(options.sourceRoot) !== resolve(import.meta.dir, "../.."))
+      throw new Error("Production source root cannot be overridden");
+    if (operation === "rollback" && inherited.GITHUB_EVENT_NAME !== "workflow_dispatch")
+      throw new Error("Rollback requires explicit manual dispatch");
     if (
       !options.commit ||
       !options.repository ||
@@ -190,6 +203,7 @@ export async function publishRelease(options: PublicationOptions) {
     options.commit,
     options.repository,
     !local,
+    options.sourceRoot,
   );
   if (!local) {
     const { verifyAcceptanceWitness, verifyOriginalAssetEquality } = await import("./assets.ts");
@@ -240,114 +254,186 @@ export async function publishRelease(options: PublicationOptions) {
     const packages = [...metadata.packages].sort(
       (left, right) => Number(left.name === MAIN_PACKAGE) - Number(right.name === MAIN_PACKAGE),
     );
-    // Existing versions are a recovery operation, never blind duplicate PUTs.
-    for (const pkg of packages) {
-      const response = await fetch(new URL(encodeURIComponent(pkg.name), registry), {
+    const request = async (path: string) =>
+      fetch(new URL(path, registry), {
+        cache: "no-store",
+        redirect: "error",
         signal: AbortSignal.timeout(30_000),
       });
-      if (response.status !== 404) {
-        if (!response.ok) throw new Error(`Registry lookup failed (${response.status})`);
-        const doc = releaseObject(await response.json());
-        const next = releaseObject(doc["dist-tags"]).next;
-        if (channel === "next" && typeof next === "string" && gt(next, metadata.version))
-          throw new Error(
-            "Beta publication is superseded by newer next; no upload can regress that channel",
-          );
-        if (releaseObject(doc.versions)[metadata.version])
-          throw new Error(
-            `Existing ${pkg.name}@${metadata.version}; use content-checked recovery instead of duplicate publication`,
-          );
-      }
-    }
-    for (const pkg of packages) {
-      await releaseCommand(
-        [
-          npm,
-          "publish",
-          join(directory, pkg.tarball),
-          "--registry",
-          registry,
-          "--access",
-          "public",
-          "--tag",
-          uploadTag,
-          "--ignore-scripts",
-          ...(local ? ["--provenance=false"] : ["--provenance=true"]),
-        ],
-        root,
-        env,
-      );
-      const doc = releaseObject(
-        JSON.parse(
-          await releaseCommand(
-            [npm, "view", `${pkg.name}@${metadata.version}`, "--json", "--registry", registry],
-            root,
-            env,
+    const channelVersion = (value: unknown) => {
+      if (value === undefined) return undefined;
+      if (typeof value !== "string" || valid(value) !== value)
+        throw new Error("Invalid registry channel version");
+      return value;
+    };
+    const expected = new Map<string, Record<string, unknown>>();
+    for (const pkg of packages)
+      expected.set(
+        pkg.name,
+        releaseObject(
+          JSON.parse(
+            await releaseCommand(
+              ["tar", "-xOf", join(directory, pkg.tarball), "package/package.json"],
+              root,
+            ),
           ),
         ),
       );
-      if (doc.name !== pkg.name || doc.version !== metadata.version)
-        throw new Error("Registry package identity mismatch");
-      if (
-        pkg.name === MAIN_PACKAGE &&
-        JSON.stringify(releaseObject(doc.optionalDependencies)) !==
-          JSON.stringify({ [releasePlatforms[metadata.platform].packageName]: metadata.version })
-      )
-        throw new Error("Registry platform dependency mismatch");
-      const dist = releaseObject(doc.dist);
+    // Registry metadata affects installation independently of the tarball's package.json.
+    const identityFields = [
+      "name",
+      "version",
+      "repository",
+      "os",
+      "cpu",
+      "engines",
+      "bin",
+      "dependencies",
+      "optionalDependencies",
+      "peerDependencies",
+      "peerDependenciesMeta",
+      "bundledDependencies",
+      "bundleDependencies",
+      "scripts",
+      "exports",
+      "main",
+      "type",
+      "overrides",
+    ];
+    async function inspect(pkg: (typeof packages)[number]) {
+      const response = await request(encodeURIComponent(pkg.name));
+      if (response.status === 404) return { present: false, next: undefined };
+      if (!response.ok)
+        throw new Error(`Registry lookup uncertain (${response.status}); no write is safe`);
+      const doc = releaseObject(await response.json());
+      const next = channelVersion(releaseObject(doc["dist-tags"]).next);
+      const value = releaseObject(doc.versions)[metadata.version];
+      if (value === undefined) return { present: false, next };
+      const manifest = releaseObject(value);
+      const original = expected.get(pkg.name)!;
+      for (const field of identityFields)
+        if (!isDeepStrictEqual(manifest[field], original[field]))
+          throw new Error(`Registry ${pkg.name} identity conflict (${field}); use a new version`);
+      const dist = releaseObject(manifest.dist);
       if (typeof dist.tarball !== "string" || dist.integrity !== pkg.integrity)
-        throw new Error("Registry tarball metadata mismatch");
+        throw new Error(`Registry ${pkg.name} tarball metadata conflict; use a new version`);
       const url = new URL(dist.tarball);
-      if (url.host !== new URL(registry).host || url.username || url.password)
+      if (
+        url.host !== new URL(registry).host ||
+        url.username ||
+        url.password ||
+        url.hash ||
+        url.search ||
+        (local && url.protocol !== "http:")
+      )
         throw new Error("Registry tarball origin mismatch");
       if (!local) url.protocol = "https:";
-      const response = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(30_000) });
-      if (!response.ok) throw new Error("Registry tarball download failed");
-      const bytes = await releaseBytes(response);
+      const download = await fetch(url, {
+        cache: "no-store",
+        redirect: "error",
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!download.ok) throw new Error("Registry tarball download uncertain; no write is safe");
+      const bytes = await releaseBytes(download);
       if (
         createHash("sha256").update(bytes).digest("hex") !== pkg.sha256 ||
         `sha512-${createHash("sha512").update(bytes).digest("base64")}` !== pkg.integrity
       )
-        throw new Error("Registry stored bytes differ from accepted tarball");
+        throw new Error(`Registry ${pkg.name} stored bytes conflict; use a new version`);
+      return { present: true, next };
+    }
+    const existing = new Map<string, Awaited<ReturnType<typeof inspect>>>();
+    for (const pkg of packages) existing.set(pkg.name, await inspect(pkg));
+    if (operation === "rollback" && [...existing.values()].some((state) => !state.present))
+      throw new Error(
+        "Rollback requires both complete existing registry packages; it never uploads",
+      );
+    const newerNext = [...existing.values()].some(
+      (state) => state.next && gt(state.next, metadata.version),
+    );
+    if (channel === "next" && newerNext && [...existing.values()].some((state) => !state.present))
+      throw new Error(
+        "Beta publication is superseded by newer next; no upload can regress that channel",
+      );
+    for (const pkg of packages) {
+      if (existing.get(pkg.name)!.present) continue;
+      try {
+        await releaseCommand(
+          [
+            npm,
+            "publish",
+            join(directory, pkg.tarball),
+            "--registry",
+            registry,
+            "--access",
+            "public",
+            "--tag",
+            uploadTag,
+            "--ignore-scripts",
+            ...(local ? ["--provenance=false"] : ["--provenance=true"]),
+          ],
+          root,
+          env,
+        );
+      } catch {
+        // A failed CLI exit can mean the server accepted the PUT before losing its response.
+        if (!(await inspect(pkg)).present)
+          throw new Error(
+            `Publication outcome for ${pkg.name} is not stored; rerun with preserved originals after reconciling registry state`,
+          );
+        continue;
+      }
+      if (!(await inspect(pkg)).present)
+        throw new Error("Registry did not retain the uploaded package");
     }
     await (options.accept ?? acceptRegistryRelease)({
       artifactDirectory: directory,
       registry,
       npm,
       env,
+      sourceRoot: options.sourceRoot,
     });
-    const beforeResponse = await fetch(
-      new URL(`-/package/${encodeURIComponent(MAIN_PACKAGE)}/dist-tags`, registry),
-      { signal: AbortSignal.timeout(30_000) },
-    );
-    if (!beforeResponse.ok) throw new Error("Registry channel lookup failed");
-    const before = releaseObject(await beforeResponse.json());
-    const current = before[channel];
-    const superseded = typeof current === "string" && gt(current, metadata.version);
-    if (channel === "latest" && !superseded)
-      await releaseCommand(
-        [
-          npm,
-          "dist-tag",
-          "add",
-          `${MAIN_PACKAGE}@${metadata.version}`,
-          channel,
-          "--registry",
-          registry,
-        ],
-        root,
-        env,
-      );
-    const tagsResponse = await fetch(
-      new URL(`-/package/${encodeURIComponent(MAIN_PACKAGE)}/dist-tags`, registry),
-      { signal: AbortSignal.timeout(30_000) },
-    );
-    if (!tagsResponse.ok) throw new Error("Registry channel verification failed");
-    const tags = releaseObject(await tagsResponse.json());
+    const readTags = async () => {
+      const response = await request(`-/package/${encodeURIComponent(MAIN_PACKAGE)}/dist-tags`);
+      if (!response.ok) throw new Error("Registry channel lookup uncertain");
+      return releaseObject(await response.json());
+    };
+    const before = await readTags();
+    const current = channelVersion(before[channel]);
+    let superseded =
+      operation !== "rollback" && typeof current === "string" && gt(current, metadata.version);
+    if (!superseded && current !== metadata.version) {
+      try {
+        await releaseCommand(
+          [
+            npm,
+            "dist-tag",
+            "add",
+            `${MAIN_PACKAGE}@${metadata.version}`,
+            channel,
+            "--registry",
+            registry,
+          ],
+          root,
+          env,
+        );
+      } catch {
+        const actual = channelVersion((await readTags())[channel]);
+        superseded =
+          operation !== "rollback" && typeof actual === "string" && gt(actual, metadata.version);
+        if (!superseded && actual !== metadata.version)
+          throw new Error(
+            "Channel update outcome has not reached target; rerun preserved originals and acceptance before retrying",
+          );
+      }
+    }
+    const tags = await readTags();
     if (!superseded && tags[channel] !== metadata.version)
       throw new Error("Registry channel verification failed");
     const receipt = {
       schemaVersion: 1,
+      operation,
+      previousVersion: current ?? null,
       commit: metadata.commit,
       version: metadata.version,
       platform: metadata.platform,
@@ -373,16 +459,20 @@ if (import.meta.main) {
       "artifact-dir": { type: "string" },
       commit: { type: "string" },
       tag: { type: "string" },
+      operation: { type: "string", default: "publish" },
     },
   });
   if (!values["artifact-dir"] || !values.commit || !values.tag)
     throw new Error("--artifact-dir, --commit and --tag are required");
+  if (values.operation !== "publish" && values.operation !== "rollback")
+    throw new Error("--operation must be publish or rollback");
   console.log(
     JSON.stringify(
       await publishRelease({
         artifactDirectory: values["artifact-dir"],
         commit: values.commit,
         tag: values.tag,
+        operation: values.operation,
         repository: process.env.GITHUB_REPOSITORY,
       }),
     ),

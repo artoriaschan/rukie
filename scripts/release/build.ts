@@ -14,11 +14,9 @@ import {
 } from "./platforms.ts";
 export { BUILD_BUN_VERSION, MAIN_PACKAGE } from "./platforms.ts";
 export const PLATFORM_PACKAGE = releasePlatforms[DEFAULT_PLATFORM].packageName;
-const root = resolve(import.meta.dir, "../..");
-const coding = join(root, "packages/coding-agent");
-const agent = join(root, "packages/agent");
+const defaultRoot = resolve(import.meta.dir, "../..");
 
-async function run(argv: string[], cwd = root) {
+async function run(argv: string[], cwd = defaultRoot) {
   const child = Bun.spawn(argv, { cwd, stdout: "pipe", stderr: "pipe" });
   const [code, stdout, stderr] = await Promise.all([
     child.exited,
@@ -42,7 +40,14 @@ function productManifest(value: unknown): { version: string } {
 }
 
 /** Build and pack only; writes no registry state. The output directory must be task-owned. */
-export async function buildRelease(output: string, platformId: ReleasePlatform = DEFAULT_PLATFORM) {
+export async function buildRelease(
+  output: string,
+  platformId: ReleasePlatform = DEFAULT_PLATFORM,
+  sourceRoot = defaultRoot,
+) {
+  const root = await realpath(resolve(sourceRoot));
+  const coding = join(root, "packages/coding-agent");
+  const agent = join(root, "packages/agent");
   const target = releasePlatforms[platformId];
   const startedAt = performance.now();
   if (Bun.version !== BUILD_BUN_VERSION)
@@ -63,8 +68,8 @@ export async function buildRelease(output: string, platformId: ReleasePlatform =
     mkdir(bin, { recursive: true }),
   ]);
   const { version } = productManifest(await Bun.file(join(coding, "package.json")).json());
-  const commit = await run(["git", "rev-parse", "HEAD"]);
-  const dirty = (await run(["git", "status", "--porcelain"])).length > 0;
+  const commit = await run(["git", "rev-parse", "HEAD"], root);
+  const dirty = (await run(["git", "status", "--porcelain"], root)).length > 0;
   const avatar = join(root, "brand/rukie-avatar.png");
   const avatarBytes = await readFile(avatar);
   if (avatarBytes.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a")
@@ -168,7 +173,7 @@ export async function buildRelease(output: string, platformId: ReleasePlatform =
   if (!result.metafile) throw new Error("Release compilation did not produce its module graph");
   const modules = Object.keys(result.metafile.inputs)
     .map((path) => {
-      const local = relative(root, resolve(root, path));
+      const local = relative(root, resolve(path));
       if (local === ".." || local.startsWith(`..${sep}`))
         throw new Error("Release module is outside the repository");
       return local.split(sep).join("/");
@@ -177,12 +182,7 @@ export async function buildRelease(output: string, platformId: ReleasePlatform =
   // This audit is embedding evidence only, separate from tarball identity and publisher authorization.
   await Bun.write(join(out, "release-modules.json"), `${JSON.stringify(modules, null, 2)}\n`);
   const notices = join(staging, "THIRD_PARTY_NOTICES.md");
-  await generateNotices(
-    root,
-    Object.keys(result.metafile.inputs),
-    [rgRoot, nativeRoot, vipsRoot],
-    notices,
-  );
+  await generateNotices(root, modules, [rgRoot, nativeRoot, vipsRoot], notices);
   for (const directory of [main, platform]) {
     await cp(join(root, "LICENSE"), join(directory, "LICENSE"));
     await cp(notices, join(directory, "THIRD_PARTY_NOTICES.md"));
@@ -262,8 +262,8 @@ export async function buildRelease(output: string, platformId: ReleasePlatform =
     bunVersion: Bun.version,
     compileDurationMs,
     buildDurationMs: Math.round(performance.now() - startedAt),
-    nodeVersion: await run(["node", "--version"]),
-    npmVersion: await run(["npm", "--version"]),
+    nodeVersion: await run(["node", "--version"], root),
+    npmVersion: await run(["npm", "--version"], root),
     avatarSha256: createHash("sha256").update(avatarBytes).digest("hex"),
     packages,
   };

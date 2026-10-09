@@ -9,6 +9,15 @@ on:
         description: Existing product tag; select this same tag as the workflow ref
         required: true
         type: string
+      operation:
+        description: Ordinary publication recovery, or explicit rollback of a complete existing version
+        required: true
+        type: choice
+        default: publish
+        options: [publish, rollback]
+
+env:
+  RELEASE_OPERATION: ${{ github.event_name == 'workflow_dispatch' && inputs.operation || 'publish' }}
 
 permissions:
   contents: read
@@ -80,6 +89,10 @@ jobs:
           echo "RUKIE_RELEASE_ARTIFACTS=$RUNNER_TEMP/rukie-release" >> "$GITHUB_ENV"
           state=$(bun scripts/release/assets.ts --mode download --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT" --artifact-dir "$RUNNER_TEMP/rukie-release")
           if [ "$state" = new ]; then
+            if [ "$RELEASE_OPERATION" = rollback ]; then
+              echo "Rollback requires preserved original assets; it never builds or uploads packages" >&2
+              exit 1
+            fi
             bun scripts/release/tag.ts --tag "$RELEASE_TAG" --require-unpublished
             bun run release:build --out "$RUNNER_TEMP/rukie-release" --platform darwin-arm64
           fi
@@ -168,7 +181,7 @@ jobs:
           name: accepted-${{ needs.resolve.outputs.commit }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/rukie-release
       - run: echo "RUKIE_RELEASE_ARTIFACTS=$RUNNER_TEMP/rukie-release" >> "$GITHUB_ENV"
-      - run: bun run release:publish --artifact-dir "$RUKIE_RELEASE_ARTIFACTS" --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT"
+      - run: bun run release:publish --artifact-dir "$RUKIE_RELEASE_ARTIFACTS" --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT" --operation "$RELEASE_OPERATION"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: npm-result-${{ github.run_id }}-${{ github.run_attempt }}

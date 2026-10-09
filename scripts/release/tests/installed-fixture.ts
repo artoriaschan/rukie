@@ -6,9 +6,14 @@ import { verifyReleaseArtifacts } from "../verify.ts";
 
 export async function installRelease(
   artifactDirectory: string,
-  options: { registry?: string; npm?: string; npmEnv?: Record<string, string | undefined> } = {},
+  options: {
+    registry?: string;
+    npm?: string;
+    npmEnv?: Record<string, string | undefined>;
+    sourceRoot?: string;
+  } = {},
 ) {
-  const metadata = await verifyReleaseArtifacts(artifactDirectory);
+  const metadata = await verifyReleaseArtifacts(artifactDirectory, { root: options.sourceRoot });
   const version = metadata.version;
   const packages = metadata.packages.map((value) => join(artifactDirectory, value.tarball));
   const root = await realpath(await mkdtemp(join(tmpdir(), "rukie installed release ")));

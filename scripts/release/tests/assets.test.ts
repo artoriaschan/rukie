@@ -58,6 +58,8 @@ async function fixture() {
     await Bun.write(join(root, name), JSON.stringify(audit));
   const stored = new Map<number, { name: string; bytes: Uint8Array }>();
   let immutable = false;
+  let assetState = "uploaded";
+  let sizeOffset = 0;
   let success = true;
   let runCommit = metadata.commit;
   const tag = `coding-agent-v${metadata.version}`;
@@ -76,13 +78,15 @@ async function fixture() {
           assets: [...stored].map(([id, value]) => ({
             id,
             name: value.name,
-            size: value.bytes.length,
+            size: value.bytes.length + sizeOffset,
+            state: assetState,
           })),
         });
-      if (path.endsWith("/attempts/1"))
+      const attempt = /\/attempts\/(\d+)(?:\/jobs)?$/.exec(path)?.[1];
+      if (attempt && !path.endsWith("/jobs"))
         return Response.json({
           id: 123,
-          run_attempt: 1,
+          run_attempt: Number(attempt),
           head_sha: runCommit,
           repository: { full_name: "example/rukie" },
           path: ".github/workflows/release-publish.yml",
@@ -90,7 +94,7 @@ async function fixture() {
           status: "in_progress",
           conclusion: null,
         });
-      if (path.endsWith("/attempts/1/jobs"))
+      if (attempt && path.endsWith("/jobs"))
         return Response.json({
           jobs: [
             {
@@ -127,6 +131,12 @@ async function fixture() {
       api: server.url.origin,
       runId: "123",
       runAttempt: "1",
+    },
+    incompleteAsset() {
+      assetState = "starter";
+    },
+    wrongSize() {
+      sizeOffset = 1;
     },
     failJob() {
       success = false;
@@ -211,6 +221,47 @@ test("conflicting preserved bytes are never overwritten by a newly accepted uplo
     const corrupted = createHash("sha256").update(asset.bytes).digest("hex");
     await expect(preserveOriginalAssets(value.context, value.root)).rejects.toThrow();
     expect(createHash("sha256").update(asset.bytes).digest("hex")).toBe(corrupted);
+    expect(value.stored.size).toBe(4);
+  } finally {
+    await value.cleanup();
+  }
+}, 120_000);
+
+for (const failure of ["incompleteAsset", "wrongSize"] as const)
+  test(`original assets reject ${failure} before accepting replay`, async () => {
+    const value = await fixture();
+    try {
+      await preserveOriginalAssets(value.context, value.root);
+      value[failure]();
+      await expect(
+        downloadOriginalAssets(value.context, join(value.root, "download")),
+      ).rejects.toThrow(failure === "incompleteAsset" ? "incomplete" : "size mismatch");
+      expect(value.stored.size).toBe(4);
+    } finally {
+      await value.cleanup();
+    }
+  }, 120_000);
+
+test("a later successful verification witness preserves the original producing attempt", async () => {
+  const value = await fixture();
+  try {
+    await preserveOriginalAssets(value.context, value.root);
+    const original = [...value.stored.values()].find(
+      (asset) => asset.name === "ci-acceptance.json",
+    )!;
+    const bytes = Buffer.from(original.bytes);
+    const current = releaseObject(
+      await Bun.file(join(value.root, "current-acceptance.json")).json(),
+    );
+    current.runAttempt = "2";
+    await Bun.write(join(value.root, "current-acceptance.json"), JSON.stringify(current));
+    await preserveOriginalAssets({ ...value.context, runAttempt: "2" }, value.root);
+    expect(Buffer.from(original.bytes).equals(bytes)).toBe(true);
+    expect(releaseObject(JSON.parse(Buffer.from(original.bytes).toString())).runAttempt).toBe("1");
+    value.failJob();
+    await expect(
+      preserveOriginalAssets({ ...value.context, runAttempt: "2" }, value.root),
+    ).rejects.toThrow("has not succeeded");
     expect(value.stored.size).toBe(4);
   } finally {
     await value.cleanup();

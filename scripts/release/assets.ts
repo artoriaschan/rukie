@@ -137,7 +137,7 @@ export async function verifyAcceptanceWitness(
 }
 
 async function downloadAsset(context: ReleaseAssetContext, id: unknown) {
-  if (!Number.isSafeInteger(id)) throw new Error("Invalid release asset ID");
+  if (!Number.isSafeInteger(id) || Number(id) <= 0) throw new Error("Invalid release asset ID");
   const { request, local } = client(context);
   let response = await request(`/releases/assets/${id}`, {
     headers: { accept: "application/octet-stream" },
@@ -183,9 +183,19 @@ export async function downloadOriginalAssets(context: ReleaseAssetContext, direc
     throw new Error(
       "Partial original Release assets; restore the accepted originals, never rebuild after partial publication",
     );
+  if (
+    selected.some(
+      (asset) =>
+        asset.state !== "uploaded" || !Number.isSafeInteger(asset.size) || Number(asset.size) <= 0,
+    )
+  )
+    throw new Error("Original Release asset upload is incomplete");
   await mkdir(directory, { recursive: true });
-  for (const asset of selected)
-    await Bun.write(join(directory, String(asset.name)), await downloadAsset(context, asset.id));
+  for (const asset of selected) {
+    const bytes = await downloadAsset(context, asset.id);
+    if (bytes.length !== asset.size) throw new Error("Original Release asset size mismatch");
+    await Bun.write(join(directory, String(asset.name)), bytes);
+  }
   await verifyAcceptanceWitness(context, directory);
   return true;
 }
