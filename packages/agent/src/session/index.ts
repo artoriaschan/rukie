@@ -70,7 +70,8 @@ const entryData = (entry: EntryRecord | undefined) => {
 };
 import { createJobs } from "../tools/jobs/index.ts";
 import { preflightTool } from "../tools/preflight.ts";
-import { hasPendingMcpInteraction } from "../mcp/index.ts";
+import { isMcpAuthenticationInteraction } from "../mcp/index.ts";
+import { hasPendingInteraction } from "../interaction/index.ts";
 import { resolveModel, isTrustedProject, modelState } from "../config/index.ts";
 import {
   createJsonlStore,
@@ -3751,7 +3752,11 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     if (startup.continue === false) startupStopReason = startup.stopReason ?? "Stopped by hook.";
     await asyncAdmissions;
     const pendingRecovery = await harness.inspect(context);
-    if (pendingRecovery.tasks.some((task) => hasPendingMcpInteraction(task.record)))
+    if (
+      pendingRecovery.tasks.some((task) =>
+        hasPendingInteraction(task.record, isMcpAuthenticationInteraction),
+      )
+    )
       await refreshMcp(context.abortSignal);
     await subagents.prepareChildren(context);
     const recovering = await harness.inspect(context);

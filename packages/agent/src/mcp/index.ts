@@ -1,7 +1,7 @@
 import { awaitWithContext } from "@earendil-works/chord/context";
 import type { PreflightTool } from "../tools/preflight.ts";
 import type { PresentedTool } from "../tools/presentation.ts";
-import type { ToolRegistration, TaskRecord } from "@earendil-works/pi-durable";
+import type { ToolRegistration } from "@earendil-works/pi-durable";
 import type { JsonValue } from "@earendil-works/chord";
 import {
   McpClient,
@@ -1012,38 +1012,7 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
 
 export { createMcpManager } from "./manager.ts";
 
-/** Only a live, unexecuted native authentication request may require transport declarations before resume. */
-export function hasPendingMcpInteraction(
-  task: TaskRecord<JsonValue, JsonValue, JsonValue>,
-): boolean {
-  if (
-    task.kind !== "pi.tool" ||
-    task.abortRequested ||
-    task.state.status === "terminal" ||
-    task.state.status === "completing"
-  )
-    return false;
-  const checkpoint = task.state.checkpoint;
-  if (
-    !checkpoint ||
-    typeof checkpoint !== "object" ||
-    Array.isArray(checkpoint) ||
-    checkpoint.phase !== "call"
-  )
-    return false;
-  return Object.entries(task.memos ?? {}).some(([name, value]) => {
-    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-    const kind = value.kind;
-    return (
-      typeof kind === "string" &&
-      kind.startsWith("mcp__") &&
-      kind.endsWith("__authenticate") &&
-      name === `rukie.interaction.${kind}` &&
-      value.version === 1 &&
-      value.phase === "pending" &&
-      value.taskId === Number(task.id) &&
-      value.conversationId === Number(task.conversationId) &&
-      value.requestId === `interaction:${Number(task.id)}:${kind}`
-    );
-  });
+/** Authentication interactions need MCP transport declarations before resuming. */
+export function isMcpAuthenticationInteraction(kind: string): boolean {
+  return kind.startsWith("mcp__") && kind.endsWith("__authenticate");
 }
