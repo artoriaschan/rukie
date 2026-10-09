@@ -7,7 +7,7 @@ import { verifyReleaseArtifacts } from "./verify.ts";
 const root = resolve(import.meta.dir, "../..");
 const { values } = parseArgs({
   args: Bun.argv.slice(2),
-  options: { "artifact-dir": { type: "string" } },
+  options: { "artifact-dir": { type: "string" }, output: { type: "string" } },
 });
 const commit = process.env.GITHUB_SHA;
 const repository = process.env.GITHUB_REPOSITORY;
@@ -60,7 +60,7 @@ const metadata = await verifyReleaseArtifacts(directory, {
 // This records identity after the workflow's source/installed gate. It does not
 // independently claim that invoking this script ran those checks.
 await Bun.write(
-  join(directory, "ci-acceptance.json"),
+  values.output ? resolve(values.output) : join(directory, "ci-acceptance.json"),
   JSON.stringify(
     {
       schemaVersion: 1,

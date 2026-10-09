@@ -4,7 +4,10 @@ import { tmpdir } from "node:os";
 import { MAIN_PACKAGE, PLATFORM_PACKAGE } from "../build.ts";
 import { verifyReleaseArtifacts } from "../verify.ts";
 
-export async function installRelease(artifactDirectory: string) {
+export async function installRelease(
+  artifactDirectory: string,
+  options: { registry?: string; npm?: string; npmEnv?: Record<string, string | undefined> } = {},
+) {
   const metadata = await verifyReleaseArtifacts(artifactDirectory);
   const version = metadata.version;
   const packages = metadata.packages.map((value) => join(artifactDirectory, value.tarball));
@@ -30,18 +33,20 @@ export async function installRelease(artifactDirectory: string) {
     await symlink(await realpath(node), join(pathDir, "node"));
     const installer = Bun.spawn(
       [
-        "npm",
+        options.npm ?? "npm",
         "install",
         "--prefix",
         prefix,
-        "--offline",
+        ...(options.registry
+          ? ["--registry", options.registry, "--cache", join(root, "registry cache")]
+          : ["--offline"]),
         "--ignore-scripts",
         "--no-audit",
         "--no-fund",
-        ...packages,
+        ...(options.registry ? [`${MAIN_PACKAGE}@${version}`] : packages),
       ],
       {
-        env: { ...process.env, HOME: homeDir },
+        env: { ...process.env, ...options.npmEnv, HOME: homeDir },
         stdout: "pipe",
         stderr: "pipe",
         signal: AbortSignal.timeout(30_000),

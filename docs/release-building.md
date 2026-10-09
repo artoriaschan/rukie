@@ -68,3 +68,5 @@ bun run release:verify --artifact-dir dist/release --require-clean --commit "$(g
 构建附带 `release-modules.json`，列出实际 Bun 模块图的排序后仓库相对路径；该文件留在构建输出目录，不进入 tarball。它是模块嵌入审计证据，不代表远程认证成功，也不参与发布授权或代替 tarball 身份校验。
 
 远程源码检查与成功产物的配置见 [CI 教程](release-ci.md)。
+
+发布入口与外部身份配置见[发布 npm 产品版本](release-publication.md)。

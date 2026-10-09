@@ -125,6 +125,6 @@ Headless CLI、TUI 与 renderer 的依赖统一归 `packages/coding-agent/packag
 
 ## npm CLI 分发工具链
 
-本地构建固定使用 Bun 1.4.2（[.bun-version](../.bun-version)），只生成 macOS arm64 安装包。主包 launcher 要求 Node.js >=24.15.0，并通过 POSIX execve 启动内置 Bun 的平台执行文件；npm 用于 pack／install，实际使用版本记录在构建 metadata。原生 sidecar 使用锁文件中的 @vscode/ripgrep-darwin-arm64 1.18.0、@img/sharp-darwin-arm64 0.35.4 与 @img/sharp-libvips-darwin-arm64 1.3.3；构建和本地安装验收见[分发教程](release-building.md)。发布工作流的 npm/OIDC 工具版本由其配置与发布教程维护。
+本地构建固定使用 Bun 1.4.2（[.bun-version](../.bun-version)），只生成 macOS arm64 安装包。主包 launcher 要求 Node.js >=24.15.0，并通过 POSIX execve 启动内置 Bun 的平台执行文件；npm 用于 pack／install，实际使用版本记录在构建 metadata。原生 sidecar 使用锁文件中的 @vscode/ripgrep-darwin-arm64 1.18.0、@img/sharp-darwin-arm64 0.35.4 与 @img/sharp-libvips-darwin-arm64 1.3.3；构建和本地安装验收见[分发教程](release-building.md)。发布工作流的 npm/OIDC 工具版本由其配置与发布教程维护。发布脚本直接使用 root devDependency semver 7.8.5 与 @types/semver 7.8.0，校验 npm OIDC 版本范围及通道递增。
 
 Release PR 使用精确锁定的 `release-please@17.3.0`，由 Bun 执行官方 Manifest/Strategy/Changelog API；GitHub Actions 的不可变 commit 和工具版本见[版本准备 workflow](../.github/workflows/release-prepare.yml)。当前 commit CI 门槛、GitHub App 配置和 beta/稳定切换见[版本准备](release-preparation.md)。
