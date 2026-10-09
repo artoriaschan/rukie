@@ -118,3 +118,7 @@ child 结束事实、稳定 reporter 输入和父级回答分别提交。恢复 
 # Application identity
 
 Frontend 创建 Session 时通过 `SessionOptions.applicationVersion` 注入自身产品版本。Agent Core 不读取 Frontend manifest；父 Session 与子 Session 的 web_fetch 使用 `Rukie/<version>` User-Agent，MCP 初始连接、重连及 OAuth 后连接使用同一版本。该身份不写入 Transcript，Resume 使用当前宿主传入的版本。未提供版本的嵌入宿主使用 `Rukie` User-Agent 和 MCP `unversioned` 身份；coding-agent 总是提供自身 manifest 版本。模型 provider 的协议与 SDK 身份继续由锁定 pi-ai 管理。
+
+# grep runtime resource
+
+源码运行经 `@vscode/ripgrep` 的锁定平台包定位 rg。npm 编译产物由 release builder 的 `RUKIE_COMPILED` 常量选择平台执行文件 `realpath(process.execPath)` 同目录的 `rg`，避免 Bun 虚拟源码路径和用户 cwd 影响定位；二者使用同一 grep 工具和权限路径。缺失或不可执行的资源返回 `ripgrep-unavailable`；编译产物提示平台包不完整和重新安装 optionalDependencies。分发资源与验收见[构建教程](../../docs/release-building.md)。

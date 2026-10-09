@@ -3,6 +3,7 @@ import { main } from "../src/index.ts";
 import { mkdtemp, rm, readdir, mkdir, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { version } from "../package.json";
 import { echoModel } from "./headless/helpers/echo-model";
 const roots: string[] = [];
 afterEach(async () => {
@@ -225,7 +226,7 @@ for (const [lang, usage] of [
         }),
       ).toBe(0);
       expect(stderr).toBe("");
-      if (flag === "--version" || flag === "-v") expect(stdout).toBe("0.1.0\n");
+      if (flag === "--version" || flag === "-v") expect(stdout).toBe(`${version}\n`);
       else {
         expect(stdout).toContain(usage!);
         expect(stdout).toContain("--goal");
@@ -302,7 +303,7 @@ test("the executable information entry leaves isolated user settings and Session
       ]);
       expect(code).toBe(0);
       expect(stderr).toBe("");
-      expect(stdout).toContain(flag === "--version" ? "0.1.0" : "Usage:");
+      expect(stdout).toContain(flag === "--version" ? version : "Usage:");
       expect(await readdir(join(root, ".rukie"))).toEqual(["settings.json"]);
       expect(await readFile(join(root, ".rukie/settings.json"), "utf8")).toBe(
         "invalid settings sentinel",

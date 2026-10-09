@@ -122,3 +122,7 @@ Headless CLI、TUI 与 renderer 的依赖统一归 `packages/coding-agent/packag
 | `wrap-ansi`                | `10.0.2` |
 
 类型依赖：`@types/lodash-es` 4.17.12、`@types/semver` 7.8.0、`@types/stack-utils` 2.0.3。测试使用已有 `@xterm/headless` 6.0.0；原生渲染组合计时测试使用仅开发依赖 `@sinonjs/fake-timers` 15.4.0（自带类型），以零时推进完成 xterm I/O 时保持虚拟截止时间。
+
+## npm CLI 分发工具链
+
+本地构建固定使用 Bun 1.4.2（[.bun-version](../.bun-version)），只生成 macOS arm64 安装包。主包 launcher 要求 Node.js >=24.15.0，并通过 POSIX execve 启动内置 Bun 的平台执行文件；npm 用于 pack／install，实际使用版本记录在构建 metadata。原生 sidecar 使用锁文件中的 @vscode/ripgrep-darwin-arm64 1.18.0、@img/sharp-darwin-arm64 0.35.4 与 @img/sharp-libvips-darwin-arm64 1.3.3；构建和本地安装验收见[分发教程](release-building.md)。发布工作流的 npm/OIDC 工具版本由其配置与发布教程维护。

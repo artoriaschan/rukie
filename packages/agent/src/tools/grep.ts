@@ -1,8 +1,15 @@
+import { constants } from "node:fs";
+import { access, realpath } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { truncateHead } from "./support/runtime.ts";
 import { createUserVisibleError } from "@rukie/shared";
 import { Type } from "typebox";
 import { Value } from "typebox/value";
 import type { PresentedTool } from "./support/presentation.ts";
+
+// Replaced only by the release builder. Source runs keep the installed workspace locator.
+declare const RUKIE_COMPILED: boolean;
+const compiled = typeof RUKIE_COMPILED !== "undefined" && RUKIE_COMPILED;
 
 const facts = Type.Object({
   matches: Type.Array(
@@ -48,7 +55,10 @@ export function createGrepTool(cwd: string): PresentedTool<typeof schema> {
       signal?.throwIfAborted();
       let proc;
       try {
-        const { rgPath: rg } = await import("@vscode/ripgrep");
+        const rg = compiled
+          ? join(dirname(await realpath(process.execPath)), "rg")
+          : (await import("@vscode/ripgrep")).rgPath;
+        await access(rg, constants.X_OK);
         signal?.throwIfAborted();
         proc = Bun.spawn(
           [
@@ -77,7 +87,9 @@ export function createGrepTool(cwd: string): PresentedTool<typeof schema> {
         signal?.throwIfAborted();
         const cause = error instanceof Error ? error.message : String(error);
         throw createUserVisibleError(
-          `Bundled ripgrep is unavailable. Reinstall Rukie dependencies (including optionalDependencies) and check platform compatibility or binary execution permissions. Cause: ${cause}`,
+          compiled
+            ? `Bundled ripgrep is unavailable: the macOS arm64 platform package is incomplete. Reinstall @rukie/coding-agent with optional dependencies enabled and check binary execution permissions. Cause: ${cause}`
+            : `Bundled ripgrep is unavailable. Reinstall Rukie dependencies (including optionalDependencies) and check platform compatibility or binary execution permissions. Cause: ${cause}`,
           { code: "ripgrep-unavailable", params: { cause } },
           { cause: error },
         );
