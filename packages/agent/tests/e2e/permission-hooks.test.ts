@@ -1,10 +1,11 @@
 import { modelStream, withModelStream } from "../helpers/auxiliary-model.ts";
 import { withAuxiliaryRequests } from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
-import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxToolCall, getCurrentSystemMessage } from "@earendil-works/pi-ai";
 import { join } from "node:path";
 import {
   createSession as createSessionImpl,
+  readSessionNotice,
   type Session,
   type SessionEvent,
 } from "../../src/index.ts";
@@ -787,3 +788,96 @@ test("a malformed PermissionRequest rewrite cannot erase an earlier interrupting
   expect(fake.contexts).toHaveLength(1);
   expect(await Bun.file(join(dirs.cwd, "marker")).exists()).toBe(false);
 });
+
+test.each(["PreToolUse", "PermissionRequest", "PermissionDenied"] as const)(
+  "%s without stopReason ends the Request and retains its default Hook outcome on resume",
+  async (event) => {
+    dirs = await tempDirs();
+    const handler = await script(event, { continue: false });
+    const fake = toolModel();
+    const session = await createSession({
+      ...dirs,
+      ...fake,
+      settings: {
+        hooks: { [event]: [{ matcher: "bash", hooks: [handler] }] },
+        ...(event === "PermissionDenied" ? { permissions: { deny: ["bash"] } } : {}),
+      },
+    });
+    const expected = { stopReason: "hook_stopped", reason: "Stopped by hook." };
+    const result = await session.run("try");
+    expect(fake.contexts).toHaveLength(1);
+    expect(result).toMatchObject(expected);
+    const requestId = session.currentRequestId;
+    if (!requestId) throw new Error("Request identity was not admitted");
+    expect(await session.waitForRequest(requestId)).toMatchObject(expected);
+    expect(await Bun.file(join(dirs.cwd, "marker")).exists()).toBe(false);
+    const notice: NonNullable<ReturnType<typeof readSessionNotice>>[] = [
+      { kind: "hook_stopped", reason: "Stopped by hook." },
+    ];
+    expect(session.messages.flatMap((message) => readSessionNotice(message) ?? [])).toEqual(notice);
+    await session.close();
+    const cold = fakeModel([]);
+    const resumed = await createSession({ ...dirs, ...cold, resumeId: session.id });
+    expect(await resumed.waitForRequest(requestId)).toMatchObject(expected);
+    expect(resumed.messages.flatMap((message) => readSessionNotice(message) ?? [])).toEqual(notice);
+    expect(cold.contexts).toHaveLength(0);
+  },
+);
+
+test.each(["PreToolUse", "PermissionRequest", "PermissionDenied"] as const)(
+  "child %s without stopReason retains its default notice without stopping its parent",
+  async (event) => {
+    dirs = await tempDirs();
+    const handler = await script(event, { continue: false });
+    let childCalls = 0;
+    const reply: Parameters<typeof fakeModel>[0][number] = (context) => {
+      const parent = getCurrentSystemMessage(context.messages)?.toolsAdded?.some(
+        (tool) => tool.name === "subagent",
+      );
+      if (parent) return fauxAssistantMessage("parent done");
+      childCalls++;
+      return fauxAssistantMessage(
+        fauxToolCall("bash", { description: "Run child command", command: "touch marker" }),
+        { stopReason: "toolUse" },
+      );
+    };
+    const fake = fakeModel([
+      fauxAssistantMessage(
+        fauxToolCall("subagent", { description: "child", prompt: "try", run_in_background: false }),
+        { stopReason: "toolUse" },
+      ),
+      ...Array.from({ length: 6 }, () => reply),
+    ]);
+    const session = await createSession({
+      ...dirs,
+      ...fake,
+      settings: {
+        hooks: { [event]: [{ matcher: "bash", hooks: [handler] }] },
+        ...(event === "PermissionDenied" ? { permissions: { deny: ["bash"] } } : {}),
+      },
+    });
+    await session.run("delegate");
+    const requestId = session.currentRequestId;
+    if (!requestId) throw new Error("Request identity was not admitted");
+    expect(await session.waitForRequest(requestId)).toMatchObject({
+      success: true,
+      text: "parent done",
+    });
+    expect(childCalls).toBe(1);
+    expect(await Bun.file(join(dirs.cwd, "marker")).exists()).toBe(false);
+    const expected = [{ active: false, latestRun: { outcome: "aborted" } }];
+    expect(session.toolState("subagents")).toMatchObject(expected);
+    await session.close();
+    const cold = fakeModel([]);
+    const resumed = await createSession({ ...dirs, ...cold, resumeId: session.id });
+    expect(resumed.toolState("subagents")).toMatchObject(expected);
+    const children = resumed.toolState("subagents");
+    if (!Array.isArray(children) || typeof children[0]?.id !== "string")
+      throw new Error("Child identity was not committed");
+    const child = await resumed.readSubagent(children[0].id);
+    expect(child?.messages.flatMap((message) => readSessionNotice(message) ?? [])).toEqual([
+      { kind: "hook_stopped", reason: "Stopped by hook." },
+    ]);
+    expect(cold.contexts).toHaveLength(0);
+  },
+);

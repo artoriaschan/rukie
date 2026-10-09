@@ -63,7 +63,7 @@ export function createConversationRuntime(options: {
   const inputs = new Map<string, Record<string, unknown>>();
   const stop = (reason?: string) => {
     stopped = true;
-    stopReason = reason;
+    stopReason = reason ?? "Stopped by hook.";
   };
   function requirePolicy() {
     if (!policy || !gate) throw new Error("Conversation policy is not configured.");

@@ -26,3 +26,12 @@ Status: resolved
 - `bun run check:dev` passed. Aggregate validation belongs to final spec acceptance; no full check or push performed for this ticket.
 
 Integration: merged latest integration `a26aac55` (01/02/05), preserving extracted Goal abort and Conversation stop state and the new Interaction parser. Goal/child/runtime integration selection passed 53 tests in 3.99s; `bun run check:dev` and `git diff --check` passed after conflict resolution.
+
+## Review resolution
+
+- Standards and Spec review P1 resolved: `ConversationRuntime.stop` restores the existing `Stopped by hook.` fallback when the permission gate calls it without a reason, preserving the root Run stop policy and durable Request outcome.
+- RED through the public `createSession` seam: PreToolUse, PermissionRequest and PermissionDenied with `{ continue: false }` and omitted `stopReason` each made two model requests instead of one (3 failures, 354ms). GREEN after the one-line owner fix: all three stop before another model request, settle Run and Request as `hook_stopped`, and retain the default notice and Request result after Resume (3 passes, 325ms).
+- Shared child impact coverage verifies each of those Hook stages stops further child model requests, leaves the parent Request able to settle, and retains the default notice after Resume. Existing child directory classification for tool-stage stops remains `aborted`; changing that adjacent behavior is outside this refactor. The six added public Session cases passed in 599ms; every case stayed below one second.
+- Focused permissions, Conversation Runtime, permission-hooks, subagent-permissions and subagent-hooks selection: 192 tests passed across 9 files in 4.93s. Synchronization uses Run/Request completion and Session close; isolated temporary homes and projects are cleaned up.
+- `bun run check:dev` and `git diff --check` passed after correcting the test notice literal type; the initial static run identified only that new fixture type error.
+- Final aggregate gate remains the integration coordinator's responsibility; this review correction does not close ticket06 or the spec.
