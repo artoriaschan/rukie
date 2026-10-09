@@ -2,29 +2,12 @@ import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { MAIN_PACKAGE, PLATFORM_PACKAGE } from "../build.ts";
+import { verifyReleaseArtifacts } from "../verify.ts";
 
 export async function installRelease(artifactDirectory: string) {
-  const metadata: unknown = await Bun.file(join(artifactDirectory, "release-build.json")).json();
-  if (
-    !metadata ||
-    typeof metadata !== "object" ||
-    !("version" in metadata) ||
-    typeof metadata.version !== "string" ||
-    !("packages" in metadata) ||
-    !Array.isArray(metadata.packages)
-  )
-    throw new Error("Release artifact metadata missing packages");
+  const metadata = await verifyReleaseArtifacts(artifactDirectory);
   const version = metadata.version;
-  const packages = metadata.packages.map((value: unknown) => {
-    if (
-      !value ||
-      typeof value !== "object" ||
-      !("tarball" in value) ||
-      typeof value.tarball !== "string"
-    )
-      throw new Error("Invalid tarball metadata");
-    return join(artifactDirectory, value.tarball);
-  });
+  const packages = metadata.packages.map((value) => join(artifactDirectory, value.tarball));
   const root = await realpath(await mkdtemp(join(tmpdir(), "rukie installed release ")));
   try {
     const prefix = join(root, "npm prefix with spaces");

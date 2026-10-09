@@ -202,21 +202,28 @@ test("launcher diagnoses missing platform dependency and unsupported operating s
   for (const [platform, arch] of [
     ["linux", "arm64"],
     ["darwin", "x64"],
+    ["win32", "x64"],
   ]) {
-    const unsupported = Bun.spawn(
-      [
-        "node",
-        "-e",
-        `Object.defineProperty(process,"platform",{value:${JSON.stringify(platform)}});Object.defineProperty(process,"arch",{value:${JSON.stringify(arch)}});require(${JSON.stringify(fixture.launcher)});`,
-      ],
-      { stdout: "pipe", stderr: "pipe" },
-    );
-    const [code, stderr] = await Promise.all([
-      unsupported.exited,
-      new Response(unsupported.stderr).text(),
-    ]);
-    expect(code).toBe(1);
-    expect(stderr).toContain(`Unsupported platform ${platform}/${arch}`);
+    for (const locale of ["en_US.UTF-8", "zh_CN.UTF-8"]) {
+      const unsupported = Bun.spawn(
+        [
+          "node",
+          "-e",
+          `Object.defineProperty(process,"platform",{value:${JSON.stringify(platform)}});Object.defineProperty(process,"arch",{value:${JSON.stringify(arch)}});require(${JSON.stringify(fixture.launcher)});`,
+        ],
+        { env: { ...fixture.env, LC_ALL: locale }, stdout: "pipe", stderr: "pipe" },
+      );
+      const [code, stderr] = await Promise.all([
+        unsupported.exited,
+        new Response(unsupported.stderr).text(),
+      ]);
+      expect(code).toBe(1);
+      expect(stderr).toContain(
+        locale.startsWith("zh")
+          ? `不支持的平台 ${platform}/${arch}`
+          : `Unsupported platform ${platform}/${arch}`,
+      );
+    }
   }
   const oldNode = Bun.spawn(
     [

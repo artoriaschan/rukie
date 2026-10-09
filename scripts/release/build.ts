@@ -4,9 +4,16 @@ import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { generateNotices } from "./notices.ts";
 
-export const BUILD_BUN_VERSION = "1.4.2";
-export const MAIN_PACKAGE = "@rukie/coding-agent";
-export const PLATFORM_PACKAGE = "@rukie/coding-agent-darwin-arm64";
+import {
+  BUILD_BUN_VERSION,
+  DEFAULT_PLATFORM,
+  MAIN_PACKAGE,
+  isReleasePlatform,
+  releasePlatforms,
+  type ReleasePlatform,
+} from "./platforms.ts";
+export { BUILD_BUN_VERSION, MAIN_PACKAGE } from "./platforms.ts";
+export const PLATFORM_PACKAGE = releasePlatforms[DEFAULT_PLATFORM].packageName;
 const root = resolve(import.meta.dir, "../..");
 const coding = join(root, "packages/coding-agent");
 const agent = join(root, "packages/agent");
@@ -35,12 +42,13 @@ function productManifest(value: unknown): { version: string } {
 }
 
 /** Build and pack only; writes no registry state. The output directory must be task-owned. */
-export async function buildRelease(output: string) {
+export async function buildRelease(output: string, platformId: ReleasePlatform = DEFAULT_PLATFORM) {
+  const target = releasePlatforms[platformId];
   const startedAt = performance.now();
   if (Bun.version !== BUILD_BUN_VERSION)
     throw new Error(`Release builds require Bun ${BUILD_BUN_VERSION}; found ${Bun.version}`);
-  if (process.platform !== "darwin" || process.arch !== "arm64")
-    throw new Error("Release build requires a macOS arm64 host for native resource verification");
+  if (process.platform !== target.os || process.arch !== target.cpu)
+    throw new Error(`Release build requires a ${platformId} host for native resource verification`);
   const out = resolve(output);
   if (out === root || root.startsWith(`${out}/`))
     throw new Error("Release output cannot contain the source checkout");
@@ -48,7 +56,7 @@ export async function buildRelease(output: string) {
   const staging = join(out, "staging");
   await rm(staging, { recursive: true, force: true });
   const main = join(staging, "coding-agent");
-  const platform = join(staging, "coding-agent-darwin-arm64");
+  const platform = join(staging, target.packageName.replace("@rukie/", ""));
   const bin = join(platform, "bin");
   await Promise.all([
     mkdir(join(main, "bin"), { recursive: true }),
@@ -64,14 +72,12 @@ export async function buildRelease(output: string) {
   const sharpRoot = await realpath(join(coding, "node_modules/sharp"));
   const rgRoot = dirname(
     Bun.resolveSync(
-      "@vscode/ripgrep-darwin-arm64/package.json",
+      `${target.ripgrepPackage}/package.json`,
       await realpath(join(agent, "node_modules/@vscode/ripgrep")),
     ),
   );
-  const nativeRoot = dirname(Bun.resolveSync("@img/sharp-darwin-arm64/package.json", sharpRoot));
-  const vipsRoot = dirname(
-    Bun.resolveSync("@img/sharp-libvips-darwin-arm64/package.json", sharpRoot),
-  );
+  const nativeRoot = dirname(Bun.resolveSync(`${target.sharpPackage}/package.json`, sharpRoot));
+  const vipsRoot = dirname(Bun.resolveSync(`${target.vipsPackage}/package.json`, sharpRoot));
   const sharpManifest: unknown = await Bun.file(join(sharpRoot, "package.json")).json();
   if (
     !sharpManifest ||
@@ -82,10 +88,10 @@ export async function buildRelease(output: string) {
     throw new Error("Update the native release adapter when sharp changes from locked 0.35.4");
   await cp(join(rgRoot, "bin/rg"), join(bin, "rg"));
   await Promise.all([
-    cp(join(nativeRoot, "lib"), join(bin, "native/@img/sharp-darwin-arm64/lib"), {
+    cp(join(nativeRoot, "lib"), join(bin, "native", target.sharpPackage, "lib"), {
       recursive: true,
     }),
-    cp(join(vipsRoot, "lib"), join(bin, "native/@img/sharp-libvips-darwin-arm64/lib"), {
+    cp(join(vipsRoot, "lib"), join(bin, "native", target.vipsPackage, "lib"), {
       recursive: true,
     }),
   ]);
@@ -97,7 +103,7 @@ export async function buildRelease(output: string) {
     env: "disable",
     metafile: true,
     compile: {
-      target: "bun-darwin-arm64",
+      target: target.bunTarget,
       outfile: join(bin, "rukie"),
       autoloadDotenv: false,
       autoloadBunfig: false,
@@ -125,7 +131,7 @@ export async function buildRelease(output: string) {
           });
           build.onLoad({ filter: /[/]sharp[/]dist[/]sharp\.(mjs|cjs)$/ }, () => ({
             loader: "js",
-            contents: `import {realpathSync} from "node:fs"; import {dirname,join} from "node:path"; import {createRequire} from "node:module"; const require=createRequire(import.meta.url); export default require(join(dirname(realpathSync(process.execPath)),"native/@img/sharp-darwin-arm64/lib/sharp-darwin-arm64-0.35.4.node"));`,
+            contents: `import {realpathSync} from "node:fs"; import {dirname,join} from "node:path"; import {createRequire} from "node:module"; const require=createRequire(import.meta.url); export default require(join(dirname(realpathSync(process.execPath)),"native/${target.sharpPackage}/lib/${target.sharpBinary}"));`,
           }));
         },
       },
@@ -166,7 +172,7 @@ export async function buildRelease(output: string) {
         engines: { node: ">=24.15.0" },
         bin: { rukie: "bin/rukie.cjs" },
         files: ["bin/rukie.cjs", "LICENSE", "THIRD_PARTY_NOTICES.md"],
-        optionalDependencies: { [PLATFORM_PACKAGE]: version },
+        optionalDependencies: { [target.packageName]: version },
       },
       null,
       2,
@@ -177,10 +183,10 @@ export async function buildRelease(output: string) {
     JSON.stringify(
       {
         ...shared,
-        name: PLATFORM_PACKAGE,
+        name: target.packageName,
         description: "Rukie standalone Bun executable and native resources for macOS arm64",
-        os: ["darwin"],
-        cpu: ["arm64"],
+        os: [target.os],
+        cpu: [target.cpu],
         files: ["bin", "LICENSE", "THIRD_PARTY_NOTICES.md"],
       },
       null,
@@ -189,7 +195,7 @@ export async function buildRelease(output: string) {
   );
   const packages = [];
   for (const [name, directory] of [
-    [PLATFORM_PACKAGE, platform],
+    [target.packageName, platform],
     [MAIN_PACKAGE, main],
   ] as const) {
     const output = JSON.parse(
@@ -217,7 +223,7 @@ export async function buildRelease(output: string) {
     version,
     commit,
     dirty,
-    platform: "darwin-arm64",
+    platform: platformId,
     bunVersion: Bun.version,
     compileDurationMs,
     buildDurationMs: Math.round(performance.now() - startedAt),
@@ -233,7 +239,12 @@ export async function buildRelease(output: string) {
 if (import.meta.main) {
   const { values } = parseArgs({
     args: Bun.argv.slice(2),
-    options: { out: { type: "string", default: "dist/release" } },
+    options: {
+      out: { type: "string", default: "dist/release" },
+      platform: { type: "string", default: DEFAULT_PLATFORM },
+    },
   });
-  console.log(JSON.stringify(await buildRelease(values.out!), null, 2));
+  if (!isReleasePlatform(values.platform))
+    throw new Error(`Unsupported release build target: ${values.platform}`);
+  console.log(JSON.stringify(await buildRelease(values.out!, values.platform), null, 2));
 }
