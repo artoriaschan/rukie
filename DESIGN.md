@@ -6,13 +6,13 @@ This file is meant for coding agents. When generating or editing GUI code, follo
 
 ## Baseline
 
-The GUI is built from [beUI](https://beui.dev) components installed through the shadcn CLI (`shadcn add @beui/<name>`). beUI's default style is the baseline for component structure, radius, elevation, glass surfaces, and motion. Rukie changes that baseline only where this file says so:
+The GUI is built from [shadcn/ui](https://ui.shadcn.com) for standard components and [beUI](https://beui.dev) for motion, both installed through the shadcn CLI (sourcing rules: [AGENTS.md](AGENTS.md#ui-components)). shadcn/ui's default style is the visual baseline for every component, including beUI ones: structure, surfaces, borders, radius, and elevation. beUI contributes motion and transitions only. Rukie changes this baseline only where this file says so:
 
-- Colors come from GitHub Light and GitHub Dark (see [Themes](#themes)), not from beUI's `/theme.css` palette.
+- Colors come from GitHub Light and GitHub Dark (see [Themes](#themes)), not from the shadcn or beUI default palettes.
 - Interface font sizes use the `text-ui-*` scale (see [Typography](#typography)).
 - Copy is localized through `@rukie/i18n`; hard-coded English strings in copied components are replaced.
 
-When this file and a beUI default disagree, this file wins. When neither covers a need, update this file first instead of adding one-off values.
+When this file and a shadcn or beUI default disagree, this file wins. When neither covers a need, update this file first instead of adding one-off values.
 
 ## Product Character
 
@@ -31,7 +31,7 @@ Avoid oversized marketing-style spacing and full-surface brand fills.
 
 User-facing theme choices are System, Light, and Dark. Light uses GitHub Light and Dark uses GitHub Dark. Values are copied from the functional themes of `@primer/primitives` 11.10.0; Rukie does not depend on the package at runtime.
 
-The theme keeps beUI's token names (shadcn semantic tokens plus beUI extensions) and the `dark` class variant, so beUI components work unmodified.
+The theme keeps beUI's token names (shadcn semantic tokens plus beUI extensions) and the `dark` class variant, so shadcn and beUI components work unmodified.
 
 | Token                  | Light                     | Dark                      | Primer source                   |
 | ---------------------- | ------------------------- | ------------------------- | ------------------------------- |
@@ -83,15 +83,15 @@ Code blocks and diffs highlighted by shiki use the `github-light` and `github-da
 
 All interface typography uses the `text-ui-*` scale, derived from `--ui-font-size` (default `14px`):
 
-| Token          | Formula                | Default | Replaces beUI |
-| -------------- | ---------------------- | ------: | ------------- |
-| `text-ui-xl`   | `--ui-font-size + 4px` |    18px | `text-lg`     |
-| `text-ui-lg`   | `--ui-font-size + 2px` |    16px | `text-base`   |
-| `text-ui-base` | `--ui-font-size`       |    14px | `text-sm`     |
-| `text-ui-sm`   | `--ui-font-size - 2px` |    12px | `text-xs`     |
-| `text-ui-xs`   | `--ui-font-size - 4px` |    10px | —             |
+| Token          | Formula                | Default | Replaces    |
+| -------------- | ---------------------- | ------: | ----------- |
+| `text-ui-xl`   | `--ui-font-size + 4px` |    18px | `text-lg`   |
+| `text-ui-lg`   | `--ui-font-size + 2px` |    16px | `text-base` |
+| `text-ui-base` | `--ui-font-size`       |    14px | `text-sm`   |
+| `text-ui-sm`   | `--ui-font-size - 2px` |    12px | `text-xs`   |
+| `text-ui-xs`   | `--ui-font-size - 4px` |    10px | —           |
 
-At the default size the scale reproduces beUI's sizes, so copied components keep their look. When a beUI component is added, rewrite its Tailwind `text-*` size classes with the right column.
+At the default size the scale reproduces the Tailwind sizes used by shadcn and beUI, so copied components keep their look. When a registry component is added, rewrite its Tailwind `text-*` size classes with the right column.
 
 - Do not use Tailwind's built-in `text-xs`, `text-sm`, `text-base`, `text-lg`, arbitrary sizes such as `text-[13px]`, or inline `font-size` for interface text.
 - Interface font scaling changes only `--ui-font-size`; never change the root `html` font size. Icons, spacing, and radius do not scale with it.
@@ -116,22 +116,21 @@ At the default size the scale reproduces beUI's sizes, so copied components keep
 - Base spacing unit is `4px`; prefer the repeated rhythm `4px`, `8px`, `12px`, `16px`, `20px`–`24px`.
 - In flex layouts with text, add `min-w-0` where truncation or shrink is required; in nested scroll or split panels, add `min-h-0`.
 - `size-4` is the default icon size. Prefer fluid widths for content; fixed widths are acceptable for menus, popovers, dialogs, and side panels.
-- Avoid arbitrary `w-[...]`, `h-[...]`, and spacing values unless a beUI component already uses them.
+- Avoid arbitrary `w-[...]`, `h-[...]`, and spacing values unless a registry component already uses them.
 
 ## Radius, elevation, and motion
 
-These follow beUI defaults:
-
-- Keep the radius, shadow, glass utility (`glass`, `glass-strong`, `glass-thin`), and Motion spring settings of each copied component.
-- A new component borrows the radius, elevation, and motion of the closest beUI component instead of inventing values.
+- Standard components keep shadcn/ui's radius scale (`--radius`) and shadows; do not invent radii or shadows.
+- beUI components keep their Motion spring settings, but their surfaces follow shadcn: replace glass utilities (`glass`, `glass-strong`, `glass-thin`), backdrop blur, and neon accents with shadcn surfaces (`bg-card`, `bg-popover`, `border`) and theme colors.
+- A custom component borrows structure, radius, and elevation from the closest shadcn component, and motion from the closest beUI component.
 - Use beUI's easing tokens (`--ease-out`, `--ease-in-out`, `--ease-drawer`) for CSS transitions.
 - Respect `prefers-reduced-motion`: springs and decorative animations (`marquee`, `shimmer`) stop or reduce to an opacity change.
 - Long Transcripts must stay responsive; do not animate every streamed token or every row on scroll.
 
 ## Components
 
-- Install components from the `@beui` registry before writing new ones, and reuse installed ones before copying variants.
-- Use beUI's own primitives (Button, Select, Popover, and others) consistently; do not mix them with shadcn's official primitives for the same role.
+- Component sourcing (existing → shadcn/ui for standard components, beUI for motion, dedicated libraries for editors, terminals, diffs, and virtualization → custom) and the install workflow are defined in [AGENTS.md](AGENTS.md#ui-components).
+- Every copied or custom component uses theme tokens, `text-ui-*` sizes, and localized copy.
 - Keep a clear action hierarchy: one primary action per region; secondary, ghost, and destructive variants for the rest.
 - Menus and option lists stay dense and scannable. Interactive overlays render above passive tooltips.
 - Tool output, terminal-like blocks, paths, hashes, and commands use monospace.
@@ -142,7 +141,7 @@ These follow beUI defaults:
 - Keyboard navigation is a first-class path; every interactive element has visible focus using `--ring`.
 - Keep contrast safe in Light and Dark.
 - Prefer a text label over icon-only meaning when practical; icon-only buttons have an accessible name.
-- All user-visible copy, including copy inside copied beUI components, goes through `@rukie/i18n` with zh and en entries.
+- All user-visible copy, including copy inside copied registry components, goes through `@rukie/i18n` with zh and en entries.
 
 ## Responsive behavior
 

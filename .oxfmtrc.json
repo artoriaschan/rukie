@@ -1,3 +1,7 @@
 {
-  "ignorePatterns": ["packages/coding-agent/src/ink/**"]
+  "ignorePatterns": [
+    "packages/coding-agent/src/ink/**",
+    ".agents/skills/**",
+    "!.agents/skills/rukie-doc/**"
+  ]
 }

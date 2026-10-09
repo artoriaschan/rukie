@@ -1,6 +1,10 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "ignore": ["packages/coding-agent/src/ink/**", "scripts/release/launcher.cjs"],
+  "ignore": [
+    "packages/coding-agent/src/ink/**",
+    "scripts/release/launcher.cjs",
+    ".agents/skills/**"
+  ],
   "workspaces": {
     "packages/agent": {
       "entry": [

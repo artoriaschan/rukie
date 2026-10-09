@@ -1,0 +1,6 @@
+[mcp_servers.beui]
+url = "https://mcp.beui.dev/mcp"
+
+[mcp_servers.shadcn]
+command = "npx"
+args = ["shadcn@latest", "mcp"]
