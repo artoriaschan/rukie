@@ -25,11 +25,9 @@ export function commandCatalog(t: ReturnType<typeof createTuiI18n>) {
     parameters:
       name === "goal"
         ? "[<objective>|edit <objective>|pause|resume|clear]"
-        : name === "context"
-          ? "[all]"
-          : name === "mcp"
-            ? "[login|logout|reconnect <server>]"
-            : undefined,
+        : name === "mcp"
+          ? "[login|logout|reconnect <server>]"
+          : undefined,
     duringRun: ["exit", "help", "btw", "context", "rename", "goal", "mcp", "jobs"].includes(name),
   }));
 }

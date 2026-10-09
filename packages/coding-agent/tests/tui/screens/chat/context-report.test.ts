@@ -1,8 +1,28 @@
 import { join } from "node:path";
 import { expect, test } from "bun:test";
 import { fauxProvider } from "@earendil-works/pi-ai";
+import { listSessions } from "@rukie/agent";
 import { start } from "../../helpers/app";
+import { startWithClock } from "../../helpers/clock-app";
 const screen = (app: Awaited<ReturnType<typeof start>>) => app.screen().join("\n");
+
+test("context opens an expanded panel and returns without adding a chat message", async () => {
+  const app = await start([], { rows: 60, env: { LANG: "en_US.UTF-8" } });
+  try {
+    await app.waitFor(() => screen(app).includes("╭"));
+    app.stdin.write("/context\r");
+    await app.waitFor(() => screen(app).includes("Estimated usage by category"));
+    expect(screen(app)).toContain("└ general-purpose:");
+    expect(screen(app)).not.toContain("❯ /context");
+    expect(screen(app)).toContain("Esc / Ctrl+C");
+    app.stdin.write("\x1b");
+    await app.waitFor(() => screen(app).includes("╭"));
+    expect(screen(app)).not.toContain("Context Usage");
+    expect(app.calls).toHaveLength(0);
+  } finally {
+    await app.cleanup();
+  }
+});
 
 for (const [columns, window, gridColumns, gridRows] of [
   [80, 128000, 10, 10],
@@ -10,7 +30,7 @@ for (const [columns, window, gridColumns, gridRows] of [
   [120, 1000000, 20, 10],
   [60, 1000000, 5, 10],
 ] as const) {
-  test(`context report ${columns} columns / ${window} window is a local static grid snapshot`, async () => {
+  test(`context report ${columns} columns / ${window} window is an expanded panel snapshot`, async () => {
     const app = await start([], {
       columns,
       rows: 50,
@@ -26,10 +46,10 @@ for (const [columns, window, gridColumns, gridRows] of [
       await app.waitFor(() => screen(app).includes("╭"));
       app.stdin.write("/context\r");
       await app.waitFor(() => screen(app).includes("Estimated usage by category"));
-      expect(screen(app)).toContain("❯ /context");
+      expect(screen(app)).not.toContain("❯ /context");
       expect(screen(app)).toContain("└ Context Usage");
       expect(screen(app)).toContain("faux-1");
-      expect(screen(app)).toContain("/context all to expand");
+      expect(screen(app)).not.toContain("/context all");
       for (const label of ["System prompt", "System tools", "Free space", "Compaction reserve"])
         expect(screen(app)).toContain(label);
       const grid = app.screen().filter((line) => /^     [⛁⛀⛶⛝]( [⛁⛀⛶⛝]){4}/.test(line));
@@ -48,6 +68,8 @@ for (const [columns, window, gridColumns, gridRows] of [
       expect(grid.join("")).toContain("⛝");
       expect(grid.join("")).toContain("⛶");
       expect(app.calls).toHaveLength(0);
+      app.stdin.write("\x1b");
+      await app.waitFor(() => screen(app).includes("╭"));
       app.stdin.write("question\r");
       await app.waitFor(() => app.calls.length === 1);
       expect(JSON.stringify(app.calls[0]!.context)).not.toContain("Estimated usage by category");
@@ -96,12 +118,15 @@ test("context reports during a Run stay local and keep their original provider t
     await app.waitFor(() => screen(app).includes("750/128k tokens"));
     expect(app.calls).toHaveLength(2);
     app.calls[1]!.finish(1200, 2);
-    await app.waitFor(() => screen(app).includes("0.9%"));
     await app.waitFor(() => !app.isWorking());
     expect(screen(app)).toContain("750/128k tokens");
+    app.stdin.write("\x1b");
+    await app.waitFor(() => screen(app).includes("╭"));
     app.stdin.write("/context\r");
     await app.waitFor(() => screen(app).includes("1.2k/128k tokens"));
-    expect(screen(app)).toContain("750/128k tokens");
+    expect(screen(app)).not.toContain("750/128k tokens");
+    app.stdin.write("\x03");
+    await app.waitFor(() => screen(app).includes("╭"));
     app.stdin.write("third question\r");
     await app.waitFor(() => app.calls.length === 3);
     expect(JSON.stringify(app.calls[2]!.context)).not.toContain("Estimated usage by category");
@@ -139,7 +164,7 @@ test("context visualization paints full, partial, free and reserved cells with t
   }
 });
 
-test("context shows resource summaries below the grid and expands details locally during a Run", async () => {
+test("context panel shows resource summaries and all details locally during a Run", async () => {
   const app = await start([], {
     columns: 160,
     rows: 70,
@@ -168,36 +193,10 @@ test("context shows resource summaries below the grid and expands details locall
     expect(screen(app)).toContain("Skills · /skills");
     expect(screen(app)).toContain("└ 1 skill ·");
     expect(screen(app)).toContain("Custom agents · .agents/agents/");
-    expect(screen(app)).not.toContain("└ review:");
     const lines = app.screen();
-    const userY = lines.findIndex((line) => line === "❯ inspect widgets");
-    const userCell = app.terminal.buffer.active.getLine(userY)!.getCell(2)!;
-    const userStyle = { foreground: userCell.getFgColor(), bold: userCell.isBold() };
-    const commandY = lines.findIndex((line) => line === "❯ /context");
-    const commandLine = app.terminal.buffer.active.getLine(commandY)!;
-    for (const x of [0, 2, 9, 10]) {
-      const cell = commandLine.getCell(x)!;
-      expect(cell.isBgDefault()).toBe(true);
-      if (x < 10) {
-        expect(cell.getFgColor()).toBe(userStyle.foreground);
-        expect(cell.isBold()).toBe(userStyle.bold);
-      }
-    }
     expect(lines.findIndex((line) => line.includes("Memory files ·"))).toBeGreaterThan(
       lines.findLastIndex((line) => /^     [⛁⛀⛶⛝]( [⛁⛀⛶⛝]){4}/.test(line)),
     );
-    app.stdin.write("/context all\r");
-    await app.waitFor(() => screen(app).includes("└ review:"));
-    const expandedY = app.screen().findIndex((line) => line === "❯ /context all");
-    const expandedLine = app.terminal.buffer.active.getLine(expandedY)!;
-    for (const x of [0, 2, 13, 14]) {
-      const cell = expandedLine.getCell(x)!;
-      expect(cell.isBgDefault()).toBe(true);
-      if (x < 14) {
-        expect(cell.getFgColor()).toBe(userStyle.foreground);
-        expect(cell.isBold()).toBe(userStyle.bold);
-      }
-    }
     expect(screen(app)).toContain(`└ ${join(app.root, "AGENTS.md")}:`);
     expect(screen(app)).toContain(`└ ${join(app.root, ".rukie/AGENTS.md")}:`);
     expect(screen(app)).toContain("└ review:");
@@ -234,7 +233,7 @@ test("context uses colored symbols, muted values and an italic legend after resi
     app.stdin.write("inspect widgets\r");
     await app.waitFor(() => app.calls.length === 1);
     app.stdin.write("/context\r");
-    await app.waitFor(() => screen(app).includes("/context all to expand"));
+    await app.waitFor(() => screen(app).includes("Esc / Ctrl+C"));
     const lines = app.screen();
     const categoryY = lines.findIndex((line) => line.includes("⛁ Skills:"));
     const categoryX = lines[categoryY]!.indexOf("⛁ Skills:");
@@ -262,7 +261,7 @@ test("context uses colored symbols, muted values and an italic legend after resi
         const lines = app.screen();
         const gridY = lines.findIndex((line) => /^     [⛁⛀⛶⛝]( [⛁⛀⛶⛝]){4}/.test(line));
         const modelY = lines.findIndex((line) => line.includes("(1m context)"));
-        return gridY >= 0 && modelY > gridY + 9 && screen(app).includes("/context all to expand");
+        return gridY >= 0 && modelY > gridY + 9 && screen(app).includes("Esc / Ctrl+C");
       });
       expect(screen(app)).toContain("Skills · /skills");
       expect(screen(app)).toContain("1 skill ·");
@@ -274,76 +273,147 @@ test("context uses colored symbols, muted values and an italic legend after resi
   }
 });
 
-test("context summaries and expansion use the startup Chinese locale", async () => {
+test("context panel details and navigation use the startup Chinese locale", async () => {
   const app = await start([], { columns: 100, rows: 60 });
   try {
     await app.waitFor(() => screen(app).includes("╭"));
     app.stdin.write("/context\r");
-    await app.waitFor(() => screen(app).includes("/context all 展开详情"));
+    await app.waitFor(() => screen(app).includes("Esc / Ctrl+C 返回"));
     expect(screen(app)).toContain("└ 上下文占用");
     expect(screen(app)).toContain("└ 2 个代理 · 20 tokens");
-    app.stdin.write("/context all\r");
-    await app.waitFor(() => screen(app).includes("└ general-purpose: 12 tokens"));
+    expect(screen(app)).toContain("└ general-purpose: 12 tokens");
     expect(app.calls).toHaveLength(0);
   } finally {
     await app.cleanup();
   }
 });
 
-test("local context reports keep their position as new committed messages arrive", async () => {
-  const app = await start([], { rows: 100, env: { LANG: "en_US.UTF-8" } });
-  const commandRows = () =>
-    app.screen().flatMap((line, index) => (line.includes("❯ /context") ? [index] : []));
-  const row = (text: string) => app.screen().findIndex((line) => line.includes(text));
+test("context panel scrolls at 40×12, owns input and restores its position after approval", async () => {
+  const app = await start(["inspect panel"], {
+    columns: 40,
+    rows: 12,
+    env: { LANG: "en_US.UTF-8" },
+    prepare: async (root) => {
+      for (let index = 0; index < 20; index++) {
+        const name = `panel-skill-${String(index).padStart(2, "0")}`;
+        await Bun.write(
+          join(root, `.agents/skills/${name}/SKILL.md`),
+          `---\nname: ${name}\ndescription: Panel fixture\n---\nInspect.\n`,
+        );
+      }
+    },
+  });
   try {
-    await app.waitFor(() => screen(app).includes("╭"));
+    await app.waitFor(() => app.calls.length === 1);
     app.stdin.write("/context\r");
-    await app.waitFor(() => screen(app).includes("Estimated usage by category"));
-    app.stdin.write("first order question\r");
-    await app.waitFor(() => app.calls.length === 1 && row("❯ first order question") >= 0);
-    expect(commandRows()[0]!).toBeLessThan(row("❯ first order question"));
-    app.calls[0]!.delta("first order answer");
-    app.calls[0]!.finish();
-    await app.waitFor(() => !app.isWorking() && row("first order answer") >= 0);
-    app.stdin.write("/context all\r");
-    await app.waitFor(() => commandRows().length === 2);
-    expect(commandRows()[1]!).toBeGreaterThan(row("first order answer"));
-    app.stdin.write("second order question\r");
-    await app.waitFor(() => app.calls.length === 2 && row("❯ second order question") >= 0);
-    expect(commandRows()[0]!).toBeLessThan(row("❯ first order question"));
-    expect(commandRows()[1]!).toBeGreaterThan(row("first order answer"));
-    expect(commandRows()[1]!).toBeLessThan(row("❯ second order question"));
-    expect(JSON.stringify(app.calls[1]!.context)).not.toContain("Estimated usage by category");
+    await app.waitFor(() => screen(app).includes("Context Usage"));
+    expect(app.screen().at(-1)).toContain("Esc / Ctrl+C");
+    app.stdin.write("\x1b[<65;10;3M");
+    await app.waitFor(() => !screen(app).includes("Context Usage"));
+    app.stdin.write("\x1b[H");
+    await app.waitFor(() => screen(app).includes("Context Usage"));
+    app.stdin.write("\x1b[B\x1b[B");
+    await app.waitFor(() => !screen(app).includes("Context Usage"));
+    app.stdin.write("\x1b[A\x1b[A");
+    await app.waitFor(() => screen(app).includes("Context Usage"));
+    app.stdin.write("\x1b[6~");
+    await app.waitFor(() => !screen(app).includes("Context Usage"));
+    app.stdin.write("\x1b[F");
+    await app.waitFor(() => screen(app).includes("panel-skill-19:"));
+    const tail = app.screen().slice(1, -1);
+    app.stdin.write("ignored\x1b[200~paste ignored\x1b[201~\r");
+    await app.flush();
+    expect(app.screen().slice(1, -1)).toEqual(tail);
+    app.calls[0]!.tool("bash", {
+      command: "printf panel-approved",
+      description: "Approve panel fixture",
+    });
+    await app.waitFor(
+      () => !screen(app).includes("panel-skill-19:") && screen(app).includes("bash"),
+    );
+    app.stdin.write("\r");
+    await app.waitFor(() => app.calls.length === 2 && screen(app).includes("panel-skill-19:"));
+    expect(app.screen().slice(1, -1)).toEqual(tail);
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
-    expect(commandRows()[1]!).toBeLessThan(row("❯ second order question"));
-    app.resize(40, 120);
-    await app.waitFor(() => commandRows().length === 2 && row("❯ second order question") >= 0);
-    expect(commandRows()[0]!).toBeLessThan(row("❯ first order question"));
-    expect(commandRows()[1]!).toBeLessThan(row("❯ second order question"));
+    app.resize(80, 24);
+    await app.waitFor(() => app.screen().length === 24 && screen(app).includes("Esc / Ctrl+C"));
+    app.stdin.write("\x1b[H");
+    await app.waitFor(() => screen(app).includes("Context Usage"));
+    app.stdin.write("\x1b");
+    await app.waitFor(() => screen(app).includes("╭"));
+    app.stdin.write("clean question\r");
+    await app.waitFor(() => app.calls.length === 3);
+    expect(
+      app.calls[2]!.context.messages.findLast((message) => message.role === "user"),
+    ).toMatchObject({ content: [{ type: "text", text: "clean question" }] });
+    app.calls[2]!.finish();
   } finally {
     await app.cleanup();
   }
 });
 
-test("a context report created during streaming keeps its boundary when the reply commits", async () => {
-  const app = await start(["streaming boundary question"], {
-    rows: 80,
+test("resume restores chat history and context opens a fresh panel without historical reports", async () => {
+  const app = await start(["retained context question"], {
+    rows: 60,
     env: { LANG: "en_US.UTF-8" },
   });
-  const row = (text: string) => app.screen().findIndex((line) => line.includes(text));
   try {
     await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.delta("retained context answer");
+    app.calls[0]!.finish(700, 2);
+    await app.waitFor(() => !app.isWorking());
     app.stdin.write("/context\r");
-    await app.waitFor(() => row("Estimated usage by category") >= 0);
-    app.calls[0]!.delta("streaming boundary answer");
-    await app.waitFor(() => row("streaming boundary answer") >= 0);
-    expect(row("❯ /context")).toBeGreaterThan(row("❯ streaming boundary question"));
-    expect(row("❯ /context")).toBeLessThan(row("streaming boundary answer"));
+    await app.waitFor(() => screen(app).includes("700/128k tokens"));
+    await app.shutdown();
+    const [stored] = await listSessions({ cwd: app.root, homeDir: app.root });
+    const replay = await start(["--resume", stored!.id], {
+      session: { cwd: app.root, homeDir: app.root },
+      rows: 60,
+      env: { LANG: "en_US.UTF-8" },
+    });
+    try {
+      await replay.waitFor(() => screen(replay).includes("retained context answer"));
+      expect(screen(replay)).not.toContain("Context Usage");
+      expect(replay.calls).toHaveLength(0);
+      replay.stdin.write("/context\r");
+      await replay.waitFor(() => screen(replay).includes("700/128k tokens"));
+      expect(screen(replay)).toContain("└ general-purpose:");
+      replay.stdin.write("\x03");
+      await replay.waitFor(() => screen(replay).includes("retained context answer"));
+      expect(screen(replay)).not.toContain("Context Usage");
+    } finally {
+      await replay.cleanup();
+    }
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("closing context restores chat reading position while new reply text arrives", async () => {
+  const app = await startWithClock(["read earlier reply"], {
+    rows: 16,
+    env: { LANG: "en_US.UTF-8" },
+  });
+  try {
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.delta(
+      Array.from({ length: 20 }, (_, index) => `history-row-${index}`).join("\n"),
+    );
+    await app.waitFor(() => screen(app).includes("history-row-19"));
+    app.stdin.write("\x1b[5~");
+    await app.waitFor(() => !screen(app).includes("history-row-19"));
+    const before = app.screen().slice(0, 7);
+    app.stdin.write("/context\r");
+    await app.waitFor(() => screen(app).includes("Context Usage"));
+    app.calls[0]!.delta("\nnew reply tail");
+    app.stdin.write("\x1b");
+    await app.waitFor(() => screen(app).includes("╭"));
+    expect(app.screen().slice(0, 7)).toEqual(before);
+    expect(screen(app)).not.toContain("new reply tail");
+    expect(app.calls[0]!.signal!.aborted).toBe(false);
     app.calls[0]!.finish();
     await app.waitFor(() => !app.isWorking());
-    expect(row("❯ /context")).toBeGreaterThan(row("❯ streaming boundary question"));
-    expect(row("❯ /context")).toBeLessThan(row("streaming boundary answer"));
   } finally {
     await app.cleanup();
   }

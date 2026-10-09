@@ -21,7 +21,6 @@ function formatTokens(value: number) {
 
 export function contextPresentation(
   report: ContextReport,
-  expanded: boolean,
   modelName: string | undefined,
   locale: Locale,
 ) {
@@ -54,7 +53,6 @@ export function contextPresentation(
     { name: "skills" as const, command: "/skills", unit: "skill" as const, items: report.skills },
   ];
   return {
-    command: expanded ? "/context all" : "/context",
     title: t("context.title"),
     model: t("context.model", { model: modelName ?? modelId, window: formatTokens(report.window) }),
     modelId,
@@ -64,7 +62,6 @@ export function contextPresentation(
       percent: Math.round(report.window > 0 ? (report.used / report.window) * 100 : 0),
     }),
     estimated: t("context.estimated"),
-    expand: expanded ? "" : t("context.expand"),
     legend: order
       .flatMap((name) =>
         report.categories.filter((category) => category.name === name && category.tokens > 0),
@@ -90,38 +87,9 @@ export function contextPresentation(
               group.items.reduce((sum, item) => sum + item.tokens, 0),
           ),
         }),
-        details: expanded
-          ? group.items.map((item) =>
-              t("context.detail", { name: item.name, tokens: formatTokens(item.tokens) }),
-            )
-          : [],
+        details: group.items.map((item) =>
+          t("context.detail", { name: item.name, tokens: formatTokens(item.tokens) }),
+        ),
       })),
   };
 }
-export function contextText(
-  report: ContextReport,
-  expanded: boolean,
-  modelName: string | undefined,
-  locale: Locale,
-): string {
-  const display = contextPresentation(report, expanded, modelName, locale);
-  return [
-    display.command,
-    display.title,
-    display.model,
-    display.modelId,
-    display.total,
-    display.estimated,
-    ...display.legend.map((row) => `${row.label}: ${row.usage}`),
-    ...display.groups.flatMap((group) => [
-      `${group.label} · ${group.command}`,
-      group.summary,
-      ...group.details,
-    ]),
-    display.expand,
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
-/** Local snapshot; provider totals and category estimates retain their separate meanings. */

@@ -18,7 +18,6 @@ import type {
 import {
   type ContextUsageEvent,
   type RunResult,
-  type ContextReport,
   type JobView,
   type ToolCallView,
   type ToolResultView,
@@ -96,7 +95,6 @@ type CompletedEntry = { anchorId?: string; sourceEntryId?: string } & (
     }
   | { type: "session-notice"; notice: SessionNotice; assistantTimestamp?: number }
   | { type: "notice"; text: string; report?: string }
-  | { type: "context-report"; report: ContextReport; expanded: boolean; modelName?: string }
   | { type: "run-summary"; durationMs: number; endedAt: number; success: boolean }
 );
 
@@ -687,7 +685,7 @@ function retainLocalEntries(
   const local = new Map<number, CompletedEntry[]>();
   let boundary = 0;
   for (const entry of previous) {
-    if (entry.type === "context-report" || (entry.type === "notice" && !entry.sourceEntryId)) {
+    if (entry.type === "notice" && !entry.sourceEntryId) {
       const group = local.get(boundary) ?? [];
       group.push(entry);
       local.set(boundary, group);
@@ -1341,15 +1339,6 @@ export function createConversation(
               completed: [...state.completed, { type: "notice", text }],
             },
       );
-    },
-    contextReport(report: ContextReport, expanded = false, modelName?: string) {
-      update({
-        ...state,
-        completed: [
-          ...state.completed,
-          { type: "context-report", report: structuredClone(report), expanded, modelName },
-        ],
-      });
     },
     getSnapshot: () => state,
     getTpsMetrics: (now: number) => decodeMetrics(state, now),

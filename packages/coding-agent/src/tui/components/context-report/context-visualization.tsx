@@ -1,7 +1,6 @@
 import { Box, ThemedText, type ThemeColor } from "../../../ink/index.ts";
 import type { ContextCategory, ContextReport } from "@rukie/shared";
 import type { Locale } from "@rukie/i18n";
-import { UserMessage } from "../user-message";
 
 // Local reference palette: /context does not recolor the rest of the TUI.
 const text = "#999999";
@@ -22,16 +21,14 @@ export function ContextVisualization({
   report,
   columns,
   locale,
-  expanded = false,
   modelName,
 }: {
   report: ContextReport;
   columns: number;
   locale: Locale;
-  expanded?: boolean;
   modelName?: string;
 }) {
-  const display = contextPresentation(report, expanded, modelName, locale);
+  const display = contextPresentation(report, modelName, locale);
   const million = report.window >= 1_000_000;
   const width = columns < 80 ? 5 : million ? 20 : 10;
   const height = columns < 80 && !million ? 5 : 10;
@@ -76,7 +73,6 @@ export function ContextVisualization({
   const sideBySide = columns >= 80 && columns >= width * 2 + 7 + legendWidth;
   return (
     <Box flexDirection="column" flexShrink={0}>
-      <UserMessage text={display.command} locale={locale} />
       <Box flexShrink={0} paddingLeft={2}>
         <ThemedText color={text} bold>{`└ ${display.title}`}</ThemedText>
       </Box>
@@ -110,19 +106,13 @@ export function ContextVisualization({
               <ThemedText color={muted}>{` · ${group.command}`}</ThemedText>
             </ThemedText>
             <ThemedText color={muted}>{group.summary}</ThemedText>
-            {expanded &&
-              group.details.map((detail) => (
-                <ThemedText key={detail} color={muted} wrap="wrap">
-                  {detail}
-                </ThemedText>
-              ))}
+            {group.details.map((detail) => (
+              <ThemedText key={detail} color={muted} wrap="wrap">
+                {detail}
+              </ThemedText>
+            ))}
           </Box>
         ))}
-        {!expanded && (
-          <Box flexShrink={0} marginTop={1}>
-            <ThemedText color={muted}>{display.expand}</ThemedText>
-          </Box>
-        )}
       </Box>
     </Box>
   );

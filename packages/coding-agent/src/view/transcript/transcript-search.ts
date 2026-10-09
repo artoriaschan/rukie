@@ -12,7 +12,6 @@ import {
 } from "./tool-presentation";
 import { unifiedDiffLines } from "./diff-lines";
 import { markdownText, markdownProjection } from "./markdown";
-import { contextText } from "./context";
 import { jobCardRows } from "./job-card";
 import type { Settings } from "@rukie/shared";
 
@@ -137,9 +136,6 @@ export function transcriptMatches(
             : entry.text,
           anchor,
         );
-        break;
-      case "context-report":
-        text(contextText(entry.report, entry.expanded, entry.modelName, locale), anchor);
         break;
       case "thinking":
       case "question":

@@ -1,1 +1,1 @@
-export { ContextVisualization } from "./context-visualization";
+export { ContextPanel } from "./context-panel";

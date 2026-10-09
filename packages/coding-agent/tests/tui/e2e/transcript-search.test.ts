@@ -232,7 +232,7 @@ test("Markdown search maps repeated visible text back to source rows beyond its 
   }
 });
 
-test("search includes the displayed context snapshot without scanning hidden metadata", async () => {
+test("context panel owns search keys and its report is absent from transcript search", async () => {
   const app = await start([], { env: { LANG: "en_US.UTF-8" } });
   try {
     app.stdin.write("/context\r");
@@ -240,8 +240,14 @@ test("search includes the displayed context snapshot without scanning hidden met
       app.screen().some((line) => line.includes("Estimated usage by category")),
     );
     app.stdin.write("\x0f/Estimated usage by category\r");
-    await app.waitFor(() => app.screen().some((line) => / · 1\/1 · /.test(line)));
+    await app.flush();
     expect(app.screen().join("\n")).toContain("Estimated usage by category");
+    expect(app.screen().join("\n")).not.toContain("Transcript ·");
+    app.stdin.write("\x1b");
+    await app.waitFor(() => app.screen().some((line) => line.includes("╭")));
+    app.stdin.write("\x0f/Estimated usage by category\r");
+    await app.waitFor(() => app.screen().some((line) => line.includes("No matches")));
+    expect(app.calls).toHaveLength(0);
   } finally {
     await app.cleanup();
   }

@@ -53,7 +53,7 @@ import {
   type SessionOptions,
 } from "@rukie/agent";
 import type { Locale } from "@rukie/i18n";
-import { PERMISSION_MODES, type ThinkingLevel } from "@rukie/shared";
+import { PERMISSION_MODES, type ThinkingLevel, type ContextReport } from "@rukie/shared";
 import {
   Box,
   ScrollBox,
@@ -72,7 +72,7 @@ import {
   ImageGallery,
   ImagePreview,
   AssistantMessage,
-  ContextVisualization,
+  ContextPanel,
   ActivityLine,
   GoalTodoPanel,
   Logo,
@@ -530,6 +530,7 @@ function Chat({
     | "dashboard"
     | "settings"
     | "jobs"
+    | "context"
     | { detail: string; from: "chat" | "dashboard"; agentView?: boolean };
   const [view, setView] = useState<View>("chat");
   const viewRef = useRef<View>("chat");
@@ -555,6 +556,11 @@ function Chat({
   const [killArmed, setKillArmed] = useState<{ id: string; until: number }>();
   const killArmRef = useRef<{ id: string; until: number } | undefined>(undefined);
   const jobsScroll = useRef<ScrollBoxHandle>(null);
+  const contextScroll = useRef<ScrollBoxHandle>(null);
+  const [contextSnapshot, setContextSnapshot] = useState<{
+    report: ContextReport;
+    modelName?: string;
+  }>();
   const interruptedViewScroll = useRef<{ view: View; snapshot?: ReadingPosition } | undefined>(
     undefined,
   );
@@ -562,7 +568,10 @@ function Chat({
     toolWindows?.beginSuspend();
     interruptedViewScroll.current = {
       view,
-      snapshot: readPosition((view === "jobs" ? jobsScroll : subagentScroll).current),
+      snapshot: readPosition(
+        (view === "jobs" ? jobsScroll : view === "context" ? contextScroll : subagentScroll)
+          .current,
+      ),
     };
   }
   const restoredViewScroll =
@@ -1441,13 +1450,17 @@ function Chat({
       void conversation
         .compact(prompt.slice(parsed![0].length).trim() || undefined)
         .catch((error: unknown) => conversation.notice(formatError(error, t), true));
-    else if (command.name === "context")
-      conversation.contextReport(
-        session.contextReport(),
-        prompt.slice(parsed![0].length).trim() === "all",
-        models.find((choice) => choice.spec === session.model)?.name,
+    else if (command.name === "context") {
+      setContextSnapshot({
+        report: structuredClone(session.contextReport()),
+        modelName: models.find((choice) => choice.spec === session.model)?.name,
+      });
+      savedChatScroll.current = captureSourcePosition(
+        readPosition(body.current, columns)!,
+        sources,
       );
-    else if (command.name === "rewind") openRewind();
+      switchView("context");
+    } else if (command.name === "rewind") openRewind();
     else if (command.name === "clear")
       void replaceSession().catch((error: unknown) =>
         conversation.notice(formatError(error, t), true),
@@ -1458,7 +1471,8 @@ function Chat({
   const sendInput = (prompt: string) => {
     if (previewRef.current) return;
     if (executeCommand(prompt)) {
-      if (!mcpPanel.getSnapshot() && viewRef.current !== "jobs") body.current?.scrollToBottom();
+      if (!mcpPanel.getSnapshot() && viewRef.current !== "jobs" && viewRef.current !== "context")
+        body.current?.scrollToBottom();
       change("");
       composer.clear();
     }
@@ -1828,6 +1842,20 @@ function Chat({
       }
       // A parent request temporarily owns a full-screen view without changing its return target.
       const currentView = interactions.getSnapshot() ? "chat" : viewRef.current;
+      if (currentView === "context") {
+        const { key } = event;
+        handledInput.current.add(event);
+        if (event.isPasted) return;
+        const name = event.keypress.name;
+        if (name === "escape" || (key.ctrl && name === "c")) closeView();
+        else if (name === "pageup" || name === "pagedown")
+          pageReader(contextScroll.current, name === "pageup");
+        else if (name === "up" || name === "down")
+          contextScroll.current?.scrollBy(name === "up" ? -1 : 1);
+        else if (name === "home") contextScroll.current?.scrollTo(0);
+        else if (name === "end") contextScroll.current?.scrollToBottom();
+        return;
+      }
       if (currentView === "jobs") {
         handledInput.current.add(event);
         if (event.isPasted) return;
@@ -2449,17 +2477,6 @@ function Chat({
                 onOpenView={() => openDetail(entry.agentId, "chat", true)}
               />
             ) : null;
-          case "context-report":
-            return (
-              <ContextVisualization
-                key={index}
-                report={entry.report}
-                expanded={entry.expanded}
-                modelName={entry.modelName}
-                columns={columns}
-                locale={locale}
-              />
-            );
           case "thinking":
             return (
               <ThinkingRow
@@ -2650,6 +2667,18 @@ function Chat({
       <Box flexShrink={0} height={rows} flexDirection="column">
         {small ? <ThemedText wrap="truncate">{t("window.small")}</ThemedText> : interactionPanel}
       </Box>
+    );
+  if (view === "context" && contextSnapshot)
+    return (
+      <ContextPanel
+        {...contextSnapshot}
+        rows={rows}
+        columns={columns}
+        locale={locale}
+        scrollRef={contextScroll}
+        initialScroll={restoredViewScroll}
+        onClose={closeView}
+      />
     );
   if (view === "jobs")
     return (
