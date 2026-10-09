@@ -372,7 +372,12 @@ test("adding an image warning preserves the history reading position and return 
     await app.waitFor(() => app.screen().some((line) => line.includes("New output")));
     expect(app.screen().slice(0, returnRow - 1)).toEqual(reading);
     app.stdin.write("\x1b[1;5F");
-    await app.waitFor(() => app.screen().includes("  new output"));
+    // Tail placement and the following-state hint can publish on separate frames.
+    await app.waitFor(
+      () =>
+        app.screen().includes("  new output") &&
+        !app.screen().join("\n").includes("Back to bottom"),
+    );
     expect(app.screen().join("\n")).not.toContain("Back to bottom");
   } finally {
     await app.cleanup();
