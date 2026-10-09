@@ -8,6 +8,7 @@ const child = Bun.spawn(
   [
     process.execPath,
     "test",
+    "scripts/release/tests/artifacts.test.ts",
     "scripts/release/tests/installation.test.ts",
     "scripts/release/tests/tui.test.ts",
     "scripts/release/tests/providers.test.ts",
