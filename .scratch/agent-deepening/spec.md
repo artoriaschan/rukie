@@ -84,6 +84,16 @@ TUI 失败属于重构前已存在的测试同步不足：`app.flush()` 仅完�
 
 最终修正仅同步本测试的静态 dashboard 准备：test-local public Store wrapper 在实际 commit 返回后计入八个不同 partial document；打开原 100×16 dashboard，确认 preview 与 accent 焦点已绘制，再完成 mixed child Runs，并等到目标状态。七次 Down 的可见焦点、Enter detail、Esc 返回后 selection/scroll geometry 及两次 Up 断言保持不变；live preview 断言移到 mixed completion 之前，避免假定它一定落在后续短 viewport 内。没有新增产品 API、固定等待、扩大 timeout 或改变窗口大小。prepared 双参数 40 次 40 pass / 0 fail（16.02s）；baseline prepared 两例通过（1.219s）。Subagent views、Subagent panel、concurrent parity 三个相关文件 32 pass / 0 fail（11.69s）；其中未修改的 mixed concurrent integration 用例 1.61s，保留实际多 child/Job native commit 成本。`bun run check:dev`、文档、格式与 diff 检查通过。Spec 保持 claimed，最终集成验收由 integration branch 协调；没有架构决定变化，无需新增 ADR。
 
+### 第七轮 aggregate 与通知 Run 后的鼠标坐标同步
+
+第七轮完整检查在 `007e499` 实际失败：3190 pass / 2 fail，3192 tests / 294 files，122.84s；失败为 fullscreen 读位用例与 Jobs panel card-click 用例。此记录对应后者；fullscreen 修正由独立提交 `63a396cf` 提供，其证据来自 aggregate 直接失败，未捕获 focused RED；两个等价 predicate 的作用域调整已独立审阅。Jobs 用例在点击 bash-1 后等 exact job focus 时失败，终端仍为 Transcript，迟到的 background notification Run 已活动；aggregate 保留为失败。
+
+最小用例独立通过（1.16s），原用例 10 次 focused 也通过（8.72s）。公开 Store admission gate 提供确定性证据：挂起首个 idle job 的 `pi.user` 提交，两个 job 已绘制为 settled 时原 `if (app.calls.length === 3)` 仍看到两次调用，跳过 reporter drain。捕获 bash-1 header 的 row 6 后释放 admission，该 Run 将 header 移出 viewport（重新读取 row 为 -1），旧坐标点击无法打开 Jobs，当前与 `306cd9a7` baseline 同类 RED 分别 3.082s / 3.095s。该夹具缺陷在 baseline 可复现；没有产品鼠标或通知逻辑变化。
+
+修正使用已有 test-local notification Store observer，新增计数覆盖实际 committed idle `pi.user` 与 active `rukie.job-notification` 输入。等待两个 job 通知 admission 后，以 native pending task 状态排空至多两个已知 reporter generation；关闭 Jobs，再等可见 Frontend idle，才打开 Transcript 并捕获坐标。bash-2 与 bash-1 的 exact mouse focus、时间、spill file、16 KiB bounded output、dropped 与首个 job 无 promotion 断言均保留。baseline 受控 admission gate GREEN（1.193s）；current 10 次 10 pass / 0 fail（9.46s），Jobs panel 与 concurrent parity 13 pass / 0 fail（6.35s），其余 helper 消费者所在 background jobs 文件 14 pass / 0 fail（7.56s）。`bun run check:dev`、文档与 diff 检查通过。用例保留真实 background promotion 和 400KB 输出/私有文件集成成本，单次 focused 约 0.9–1.2s，没有扩大 timeout 或新增固定等待。
+
+影响检查覆盖全部 notification helper 消费者。其余 pointer capture 用例在已知 model call 持续活动或 job 尚未释放 go 时操作，不处于本例 post-settlement optional-admission 边界；stopped-job signal 用例的可选第三次调用后只进入 cleanup，没有后续坐标或空闲行为断言，未扩大修正。Spec 保持 claimed，最终集成验收由 integration branch 协调；没有架构决定变化，无需新增 ADR。
+
 ## Out of Scope
 
 - MCP catalog/OAuth 拆深。

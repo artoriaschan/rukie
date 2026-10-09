@@ -196,7 +196,10 @@ test("panel navigation disarms stop, confirmation expires, and idle stop waits f
 }, 15000);
 
 test("card clicks focus exact jobs and expanded promoted details show bounded output, times, spill and dropped data", async () => {
+  const notifications = committedJobNotifications();
   const app = await start(["--permission-mode", "full-access", "launch"], {
+    session: notifications.session,
+    prepare: notifications.prepare,
     env: { LANG: "en_US.UTF-8" },
     columns: 100,
     rows: 28,
@@ -246,12 +249,18 @@ test("card clicks focus exact jobs and expanded promoted details show bounded ou
     await app.waitFor(
       () => screen().includes("Settled") && screen().includes("bash-2 · completed"),
     );
-    if (app.calls.length === 3) {
-      app.calls[2]!.finish();
-      await app.waitFor(() => !app.isWorking());
+    // Job settlement precedes notification admission. Drain both committed inputs before
+    // capturing terminal coordinates; reporter Runs can otherwise reflow the Transcript later.
+    await app.waitFor(() => notifications.admitted() === 2);
+    for (let index = 2; index < 4; index++) {
+      await app.waitFor(() => app.calls.length > index || notifications.pendingTasks() === 0);
+      if (notifications.pendingTasks() === 0) break;
+      app.calls[index]!.finish();
     }
+    await app.waitFor(() => notifications.pendingTasks() === 0);
     app.stdin.write("\x1b");
     await app.waitFor(() => screen().includes("saved draft"));
+    await app.waitFor(() => !app.isWorking() && !screen().includes("esc interrupt"));
     app.stdin.write("\x0f");
     await app.waitFor(() => screen().includes("Transcript ·"));
     // Saved Run summaries can place the first card above the bottom viewport.
