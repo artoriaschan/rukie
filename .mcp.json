@@ -3,6 +3,10 @@
     "beui": {
       "type": "http",
       "url": "https://mcp.beui.dev/mcp"
+    },
+    "shadcn": {
+      "command": "npx",
+      "args": ["shadcn@latest", "mcp"]
     }
   }
 }
