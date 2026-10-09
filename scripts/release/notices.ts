@@ -102,6 +102,10 @@ export async function generateNotices(
       texts.unshift(
         "The npm package declares MIT; the matching upstream release repository declares Apache-2.0. Both declarations are retained here.",
       );
+    if (dependency.name === "proxy-agent-negotiate" && dependency.version === "1.1.0")
+      texts.unshift(
+        "Its own original license notice is unavailable in the npm package and the inspected upstream release source. Supplemental context only: the following text belongs to sibling package http-proxy-agent@9.1.0; the shared repository and author does not establish that the sibling copyright applies to this package. The package's own MIT declaration is recorded above; no package-specific copyright notice is inferred.",
+      );
     if (dependency.name.startsWith("@img/sharp-libvips-"))
       texts.push(await snapshot("lgpl-3.0.txt"));
     sections.push(
