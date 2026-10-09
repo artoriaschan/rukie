@@ -44,6 +44,14 @@ MCP 拆深（catalog 与 OAuth 授权）不在本 spec 范围，另行立项。
 
 分支 `refactor/agent-deepening`，每票一个 Conventional Commit，不 push。
 
+### Aggregate 验证与测试同步修正
+
+第一轮完整 `env -u NO_COLOR bun run check` 实际失败：3181 pass / 1 fail，3182 tests / 294 files，104.80s；唯一失败为 `send_message reuses the child Session with no old jobs, output or reused ids`。修复 child jobs 的逻辑 ownership 后，第二轮完整检查仍实际失败：3183 pass / 1 fail，3184 tests / 294 files，103.84s；前次 jobs 用例通过，唯一新失败为 `a caught-up live identity does not restart and a non-prefix final replacement snaps`。两轮失败均保留，focused 通过不将它们记作 aggregate 通过。
+
+TUI 失败属于重构前已存在的测试同步不足：`app.flush()` 仅完成已接收的终端写入解析，不等待模型 delta 的原生 timer、durable commit/fsync 和 committed event 发布。在当前 `a3d4aa06` 与重构前 `306cd9a7` 上，通过 Storage.commit gate 挂起含 `immediate-tail` 的 partial，可确定性复现原断言：两次 terminal flush 与 16ms 后 commit 尚未完成，屏幕仍只有 `caught up`、活动估计为 3 tokens。释放 gate，并等待活动栏完整输入的 token 估计增加后，tail 在 16ms 前已可见，最终非前缀替换也立即显示。此信号独立于 smooth reveal 的游标；没有等待 tail 本身或扩大超时。
+
+仅在该测试的 model.delta 后增加有界 `app.waitFor`，确认活动栏原始输出估计大于初始 3，再保留原有 16ms、立即 tail 与最终替换断言。没有产品修改或新增测试专用 API；这是完成 final gate 所需的受影响测试消费者修正，无需新增 ADR。TDD evidence：受控 replay 在 baseline/current 上证明原同步为 RED，修正后独立送达屏障与原断言为 GREEN；最小用例重复 20 次，20 pass / 0 fail，2.76s。messages、smooth-reveal、activity-line、activity 四个相关文件共 23 pass / 0 fail，2.92s；`bun run check:dev` 与 `git diff --check` 通过。Spec 保持 claimed，最终 aggregate 与关闭由 integration branch 协调。
+
 ## Out of Scope
 
 - MCP catalog/OAuth 拆深。
