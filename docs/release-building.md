@@ -53,8 +53,16 @@ bun run release:verify --artifact-dir dist/release --require-clean --commit "$(g
 
 平台包 `bin/rukie` 的同目录包含 `rg` 及 `native/@img/`。编译产物的 grep 使用构建期常量选择 `realpath(process.execPath)` 同目录的 `rg`；源码运行继续经 `@vscode/ripgrep` 解析。npm bin 链接和用户软链接都不会改变资源目录。`rg` 缺失或不可执行产生 `ripgrep-unavailable`，说明平台包不完整。
 
-头像 PNG 嵌入执行文件；真实 sharp JS 能力保持原样，构建 adapter 只将原生 addon 定位到同目录的固定资源布局，libvips 沿上游相对目录加载。原始 sixel worker 作为附加编译入口保留。release builder 静态注册锁定 pi 的 OAuth flows 和 Bedrock provider；没有添加第二条 Session 业务执行路径。当前 bash 输出捕获属于 Rukie 自有模块，不使用旧 pi capture shim。
+头像 PNG 嵌入执行文件；真实 sharp JS 能力保持原样，构建 adapter 只将原生 addon 定位到同目录的固定资源布局，libvips 沿上游相对目录加载。原始 sixel worker 作为附加编译入口保留；构建 adapter 将 worker 相对位置改为编译文件中的 `ink/sixel-worker.js`，并为锁定 sixel 的 UPNG CommonJS 赋值声明局部变量，避免严格编译 worker 中的未声明全局错误。两个替换均核对原始片段，来源变更会使命令失败；源码 renderer 与 Yoga 保持原样。release builder 静态注册锁定 pi 的 OAuth flows 和 Bedrock provider；没有添加第二条 Session 业务执行路径。当前 bash 输出捕获属于 Rukie 自有模块，不使用旧 pi capture shim。
 
 编译关闭 `.env`、`bunfig.toml`、`tsconfig.json` 与 `package.json` 的运行时自动加载。用户工作目录中的 Bun preload 不会改写产品配置或执行代码；显式传入的环境变量仍完整保留。产品设置继续由现有用户设置、项目信任和权限机制控制。
 
 两个 tarball 都携带项目 [MIT 许可](../LICENSE) 和第三方声明。声明根据实际编译模块图及手工列明的 rg／sharp／libvips 资源生成，包含固定 Bun 运行时及 vendored renderer 的上游原始声明，并明确列出部分 npm 包缺少原始 notice 或声明不一致的事实；同仓库包的补充文本不构成该包版权归属的证明。执行文件包含的第三方代码按各自声明列明。Yoga 维持 [ADR-0013](adr/0013-adopt-dsh-tui-ink.md) 与 ADR-0023 的既有来源和用户确认范围，本次不调查或替换其来源。
+
+## 安装后的交互终端
+
+在配置好 provider 的项目目录运行 `rukie` 进入 TUI；输入任务并按 Enter 提交。空闲且输入为空时 Ctrl-D 退出；SIGINT 或 SIGTERM 退出会等待 Session 保存与资源释放，恢复 canonical／echo 模式、光标及备用屏幕。有对话内容时，退出输出 `rukie --resume <session-id>`；使用该命令恢复同一 Session。终端过小时显示尺寸要求，调整窗口后继续操作。头像使用内嵌 PNG 与分发的原生 sharp，按终端能力使用 Kitty 或 Sixel。
+
+`release:accept` 还用真实 macOS PTY 启动离线安装后的入口，通过正常用户设置连接 loopback fake provider，验证输入／响应、退出后的可见 Resume 命令、信号、resize、小终端，以及完整 Kitty 上传和 Sixel worker raster。PTY harness 保留会话拥有者直到产品退出，随后核对完整 termios 状态与屏幕／光标恢复；超时会报告当前等待的动作与终端输出，并清理拥有的进程组。Python 3 仅是维护者 PTY 验收工具，安装后的产品不需要它。
+
+构建附带 `release-modules.json`，列出实际 Bun 模块图的排序后仓库相对路径；该文件留在构建输出目录，不进入 tarball。它是模块嵌入审计证据，不代表远程认证成功，也不参与发布授权或代替 tarball 身份校验。
