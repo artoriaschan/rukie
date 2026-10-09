@@ -1,5 +1,4 @@
 name: Publish npm release
-
 on:
   push:
     tags: [coding-agent-v*]
@@ -15,17 +14,13 @@ on:
         type: choice
         default: publish
         options: [publish, rollback]
-
 env:
   RELEASE_OPERATION: ${{ github.event_name == 'workflow_dispatch' && inputs.operation || 'publish' }}
-
 permissions:
   contents: read
-
 concurrency:
   group: npm-publication
   cancel-in-progress: false
-
 jobs:
   resolve:
     name: Resolve exact product tag
@@ -55,8 +50,8 @@ jobs:
           test "$GITHUB_REF" = "refs/tags/$RELEASE_TAG"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           bun scripts/release/tag.ts --tag "$RELEASE_TAG"
-  verify:
-    name: Verify source and installed darwin-arm64
+  build:
+    name: Check source and select exact tagged packages
     needs: resolve
     runs-on: macos-15
     timeout-minutes: 30
@@ -97,17 +92,79 @@ jobs:
             bun scripts/release/tag.ts --tag "$RELEASE_TAG" --require-unpublished
             bun run release:build --out "$RUNNER_TEMP/rukie-release" --platform darwin-arm64
           fi
-      - name: Verify exact clean source and repository identity
-        run: bun scripts/release/tag.ts --tag "$RELEASE_TAG" --artifact-dir "$RUKIE_RELEASE_ARTIFACTS"
-      - name: Check source and all installed scenarios using original files
+      - name: Check source constraints
         id: check
         run: |
-          if env -u NO_COLOR bun run check > "$RUNNER_TEMP/rukie-check.log" 2>&1; then
+          if env -u NO_COLOR bun run check:dev > "$RUNNER_TEMP/rukie-check.log" 2>&1; then
             tail -n 8 "$RUNNER_TEMP/rukie-check.log"
           else
             tail -n 120 "$RUNNER_TEMP/rukie-check.log"
             exit 1
           fi
+      - name: Verify exact clean source and repository identity
+        run: bun scripts/release/tag.ts --tag "$RELEASE_TAG" --artifact-dir "$RUKIE_RELEASE_ARTIFACTS"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: candidate-${{ needs.resolve.outputs.commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ env.RUKIE_RELEASE_ARTIFACTS }}/*.tgz
+            ${{ env.RUKIE_RELEASE_ARTIFACTS }}/release-build.json
+            ${{ env.RUKIE_RELEASE_ARTIFACTS }}/release-modules.json
+            ${{ env.RUKIE_RELEASE_ARTIFACTS }}/ci-acceptance.json
+          if-no-files-found: error
+          retention-days: 1
+      - name: Preserve complete check log
+        if: ${{ !cancelled() && steps.check.outcome != 'skipped' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: source-check-static-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/rukie-check.log
+          if-no-files-found: warn
+          retention-days: 1
+  tests:
+    needs: [resolve, build]
+    uses: ./.github/workflows/release-tests.yml
+    with:
+      artifact: candidate-${{ needs.resolve.outputs.commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+      commit: ${{ needs.resolve.outputs.commit }}
+    permissions:
+      contents: read
+      actions: read
+  verify:
+    name: Verify source and installed darwin-arm64
+    needs: [resolve, build, tests]
+    runs-on: macos-15
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    env:
+      RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+      RELEASE_COMMIT: ${{ needs.resolve.outputs.commit }}
+      GH_TOKEN: ${{ github.token }}
+      RUKIE_TEST_WORKERS: 1
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.resolve.outputs.commit }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24.15.0
+      - run: |
+          npm install --global npm@11.21.0
+          bun install --frozen-lockfile
+      - run: echo "RUKIE_RELEASE_ARTIFACTS=$RUNNER_TEMP/rukie-release" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: candidate-${{ needs.resolve.outputs.commit }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/rukie-release
+      - name: Verify exact clean source and repository identity
+        run: bun scripts/release/tag.ts --tag "$RELEASE_TAG" --artifact-dir "$RUKIE_RELEASE_ARTIFACTS"
       - name: Record this run without overwriting original acceptance
         run: |
           bun scripts/release/ci-audit.ts --artifact-dir "$RUKIE_RELEASE_ARTIFACTS" --output "$RUKIE_RELEASE_ARTIFACTS/current-acceptance.json"
@@ -124,14 +181,6 @@ jobs:
             ${{ env.RUKIE_RELEASE_ARTIFACTS }}/ci-acceptance.json
             ${{ env.RUKIE_RELEASE_ARTIFACTS }}/current-acceptance.json
           if-no-files-found: error
-      - name: Preserve complete check log
-        if: ${{ !cancelled() && steps.check.outcome != 'skipped' }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: source-check-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/rukie-check.log
-          if-no-files-found: warn
-          retention-days: 1
   preserve:
     name: Preserve original accepted assets
     needs: [resolve, verify]

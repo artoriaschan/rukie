@@ -108,15 +108,15 @@ echo '{"continue":false,"systemMessage":"background notice","hookSpecificOutput"
       },
     },
   });
-  const first = await session.run("first", {
-    onEvent: (event) => {
-      if (event.type === "hook_message") completed.resolve();
-    },
+  const unsubscribe = session.subscribe((event) => {
+    if (event.type === "hook_message") completed.resolve();
   });
+  const first = await session.run("first");
   expect(first).toMatchObject({ success: true });
   expect(await Bun.file(join(dirs.cwd, "release")).exists()).toBe(true);
   expect(warnings).toEqual([]);
   await completion(completed.promise);
+  unsubscribe();
   await session.run("second");
   expect(modelText(fake.contexts[2]!.messages)).toContain("background context");
   expect(modelText(fake.contexts[2]!.messages)).toContain("background notice");

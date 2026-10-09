@@ -42,9 +42,10 @@ beforeAll(async () => {
   ];
 }, 120_000);
 afterAll(async () => {
-  for (const fixture of versions) await fixture.cleanup();
+  await Promise.all(versions.map((fixture) => fixture.cleanup()));
   if (owned) await rm(owned, { recursive: true, force: true });
-});
+  // Removing independent source checkouts and dependency trees is real filesystem I/O.
+}, 120_000);
 const main = "@rukie/coding-agent",
   platform = "@rukie/coding-agent-darwin-arm64";
 async function publish(

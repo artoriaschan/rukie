@@ -17,7 +17,7 @@ test("tag and same-tag manual publication serialize exact artifacts across least
   });
   const jobs = releaseObject(workflow.jobs);
   expect(jobs.verify).toMatchObject({
-    needs: "resolve",
+    needs: ["resolve", "build", "tests"],
     permissions: { contents: "read", actions: "read" },
     env: { RUKIE_TEST_WORKERS: 1 },
   });
@@ -30,6 +30,15 @@ test("tag and same-tag manual publication serialize exact artifacts across least
     permissions: { contents: "read", actions: "read", "id-token": "write" },
   });
   for (const [name, job] of Object.entries(jobs)) {
+    if (name === "tests") {
+      expect(job).toMatchObject({
+        needs: ["resolve", "build"],
+        uses: "./.github/workflows/release-tests.yml",
+        permissions: { contents: "read", actions: "read" },
+        with: { commit: "${{ needs.resolve.outputs.commit }}" },
+      });
+      continue;
+    }
     const steps = releaseObject(job).steps;
     if (!Array.isArray(steps)) throw new Error("Missing job steps");
     const commands = steps
@@ -48,16 +57,16 @@ test("tag and same-tag manual publication serialize exact artifacts across least
           "persist-credentials": false,
         });
     }
-    if (name !== "verify") expect(commands.join("\n")).not.toMatch(/release:build|npm pack/);
+    if (name !== "build") expect(commands.join("\n")).not.toMatch(/release:build|npm pack/);
     if (name === "resolve")
       expect(commands.join("\n")).toContain('test "$GITHUB_REF" = "refs/tags/$RELEASE_TAG"');
-    if (name === "verify") {
+    if (name === "build") {
       expect(commands.filter((value) => value.includes("release:build"))).toHaveLength(1);
       expect(commands.join("\n")).toContain("--require-unpublished");
       expect(commands.join("\n")).toContain(
-        'env -u NO_COLOR bun run check > "$RUNNER_TEMP/rukie-check.log" 2>&1',
+        'env -u NO_COLOR bun run check:dev > "$RUNNER_TEMP/rukie-check.log" 2>&1',
       );
-      expect(commands.join("\n")).toContain("current-acceptance.json");
+      expect(commands.join("\n")).not.toContain("current-acceptance.json");
       const upload = steps
         .map(releaseObject)
         .find(
@@ -67,5 +76,8 @@ test("tag and same-tag manual publication serialize exact artifacts across least
       expect(releaseObject(upload?.with).path).toContain("/release-modules.json");
     }
   }
+  expect(releaseObject(jobs.verify).if).toBeUndefined();
+  expect(JSON.stringify(jobs.verify)).toContain("current-acceptance.json");
+  expect(jobs.build).toMatchObject({ needs: "resolve" });
   expect(source).not.toMatch(/NPM_TOKEN|NODE_AUTH_TOKEN|secrets\./);
 });

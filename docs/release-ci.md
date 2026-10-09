@@ -4,7 +4,7 @@
 
 ## 前提
 
-将仓库推送到实际 GitHub remote，并将默认分支设为 main。在仓库 Actions 设置中允许工作流使用固定提交的 checkout、setup-node、setup-bun 与 upload-artifact。工具链版本由 [CI workflow](../.github/workflows/ci.yml) 固定；依赖通过 `bun install --frozen-lockfile` 安装。首版 runner 为 GitHub-hosted `macos-15`，工作流会检查宿主确实是 darwin-arm64；其他架构不在当前支持范围。
+将仓库推送到实际 GitHub remote，并将默认分支设为 main。在仓库 Actions 设置中允许工作流使用固定提交的 checkout、setup-node、setup-bun、download-artifact 与 upload-artifact。工具链版本由 [CI workflow](../.github/workflows/ci.yml) 固定；依赖通过 `bun install --frozen-lockfile` 安装。首版 runner 为 GitHub-hosted `macos-15`，工作流会检查宿主确实是 darwin-arm64；其他架构不在当前支持范围。
 
 普通 CI 的 token 只有 `contents: read`，checkout 不保留凭据。此工作流不配置 GitHub App、npm token、OIDC 或 registry 写入权限。Fork PR 可以执行相同验收，但不获得发布身份。仓库尚未建立实际 remote 或远程 CI 配置时，本地检查不能证明 GitHub 已运行成功。
 
@@ -19,11 +19,11 @@
 
 ## 核对产物
 
-CI 将输出写入 runner 的临时目录，先构建一次，再以当前 `GITHUB_SHA` 和 clean metadata 运行[产物身份验证](release-building.md#核对产物身份)。`RUKIE_RELEASE_ARTIFACTS` 让完整 `bun run check` 内的产物、Headless、TUI 和 provider/auth 测试复用这些 tarball；完整检查包含实际 npm 离线安装、隔离 HOME 和假协议服务。验收不读取真实用户凭据，也不请求真实 provider。实际 provider/OAuth 服务可用性与此本地协议证明不同。
+CI 将输出写入 runner 的临时目录，先构建一次，再以当前 `GITHUB_SHA` 和 clean metadata 运行[产物身份验证](release-building.md#核对产物身份)。`RUKIE_RELEASE_ARTIFACTS` 让全部产物、Headless、TUI 和 provider/auth 测试复用这些 tarball；完整检查包含实际 npm 离线安装、隔离 HOME 和假协议服务。验收不读取真实用户凭据，也不请求真实 provider。实际 provider/OAuth 服务可用性与此本地协议证明不同。
 
-源码 CI 与发布验收设置 `RUKIE_TEST_WORKERS=1`，让测试文件逐个运行并保留 Bun 的文件隔离，避免 renderer、安装验收和真实子进程测试同时争抢 runner 资源。完整测试入口默认仍使用四个 worker；本机复现 CI 调度时运行 `RUKIE_TEST_WORKERS=1 env -u NO_COLOR bun run check`。此配置只调整调度，测试范围和超时不变。
+源码约束由构建 job 执行一次 `bun run check:dev`。随后[共用测试工作流](../.github/workflows/release-tests.yml)用 Bun 原生 `--shard=1/3`、`2/3`、`3/3` 自动分配全部测试文件，三个独立的标准 macOS runner 各设置 `RUKIE_TEST_WORKERS=1`，避免同机真实子进程和 renderer 测试争抢资源。每个分片下载同一份候选 tarball，并核对准确源码提交和产物身份。所有分片成功后，最终验收 job 才生成审计与成功产物；任一失败或取消都会阻止发布。候选产物保留一天，不携带新验收记录。本地完整检查默认仍用四个 worker；复现某个分片时运行 `RUKIE_TEST_WORKERS=1 env -u NO_COLOR bun run test --shard=1/3`，并提供同一份 `RUKIE_RELEASE_ARTIFACTS`。
 
-完整检查的输出保存在 `source-check-RUN_ID-RUN_ATTEMPT` artifact，保留一天。Actions 页面成功时显示最后八行，失败时显示最后一百二十行；查看具体失败的断言与上下文时下载完整日志。测试失败仍会阻止审计和成功产物上传。
+源码约束日志保存为 `source-check-static-RUN_ID-RUN_ATTEMPT`，每个测试分片日志保存为 `source-check-shard-N-RUN_ID-RUN_ATTEMPT`，均保留一天。Actions 页面成功时显示最后八行，失败时显示最后一百二十行；查看具体断言与上下文时下载对应完整日志。测试失败仍会阻止审计和成功产物上传。
 
 完整检查完成后，[审计脚本](../scripts/release/ci-audit.ts) 再次检查源码 HEAD、源码干净状态及 tarball 身份，生成 `ci-acceptance.json`。它记录仓库、run id、run attempt、event、提交、平台、构建清单与模块清单的 SHA-256 和每个包的 digest。单独调用审计脚本不会执行源码测试；消费者还必须核对对应 CI run 成功。
 
@@ -35,4 +35,4 @@ CI 将输出写入 runner 的临时目录，先构建一次，再以当前 `GITH
 
 workflow 的本地契约测试为 `bun test scripts/release/tests/workflows.test.ts`，包括触发范围、权限、准确提交、单次构建复用、成功后上传和标题命令的数据边界。另用官方 actionlint 1.7.12 检查 YAML、Actions 输入与表达式上下文；下载固定 release 并核对官方 SHA-256 后执行 `actionlint .github/workflows/ci.yml`。此静态验证不触发 CI，也不证明 runner、App 或 npm 的外部配置成功。
 
-构建失败时查看 `Build the installed artifacts once`；身份失败查看 `Verify clean source and artifact identity`；源码或具体安装行为失败查看 `Check source and all installed scenarios using those artifacts` 中的测试名称。检查意外改写受版本控制的文件或产生未跟踪文件时，审计步骤会拒绝保存成功身份。修复源码后重新运行对应提交，不复用失败运行的 tarball。artifact 过期后在准确提交重新验收，不能把新提交的构建冒充旧提交。
+构建失败时查看 `Build the installed artifacts once`；身份失败查看 `Verify clean source and artifact identity`；源码或具体安装行为失败查看 `Test shard N of 3` 中的测试名称。检查意外改写受版本控制的文件或产生未跟踪文件时，审计步骤会拒绝保存成功身份。修复源码后重新运行对应提交，不复用失败运行的 tarball。artifact 过期后在准确提交重新验收，不能把新提交的构建冒充旧提交。

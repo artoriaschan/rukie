@@ -15,7 +15,10 @@ test("contributors get CI for main PR changes, title edits, main pushes and manu
       workflow_dispatch: null,
     },
     permissions: { contents: "read" },
-    jobs: { verify: { "runs-on": "macos-15", env: { RUKIE_TEST_WORKERS: 1 } } },
+    jobs: {
+      build: { "runs-on": "macos-15" },
+      verify: { needs: ["build", "tests"], "runs-on": "macos-15" },
+    },
   });
   expect(source).not.toMatch(
     /pull_request_target|paths:|paths-ignore:|id-token:|secrets\.|npm publish|npm dist-tag/,
@@ -61,66 +64,109 @@ async function ciSteps() {
   const workflow = object(
     Bun.YAML.parse(await readFile(resolve(root, ".github/workflows/ci.yml"), "utf8")),
   );
-  const steps = object(object(workflow.jobs).verify).steps;
+  const steps = object(object(workflow.jobs).build).steps;
   if (!Array.isArray(steps)) throw new Error("Expected CI steps");
   return steps.map(object);
 }
 
-test("a successful CI run uploads the exact once-built artifacts after the full installed gate, bound to its SHA", async () => {
+test("CI accepts the once-built packages only after every full-suite shard succeeds", async () => {
+  const workflow = object(
+    Bun.YAML.parse(await readFile(resolve(root, ".github/workflows/ci.yml"), "utf8")),
+  );
+  const jobs = object(workflow.jobs);
   const steps = await ciSteps();
   const commands = steps.map((step) => (typeof step.run === "string" ? step.run : ""));
   expect(commands.filter((command) => command.includes("release:build"))).toHaveLength(1);
-  const build = commands.findIndex((command) => command.includes("release:build"));
-  const verify = commands.findIndex((command) => command.includes("release:verify"));
-  const check = commands.findIndex((command) => command.includes("bun run check"));
-  const audit = commands.findIndex((command) => command.includes("ci-audit.ts"));
-  const upload = steps.findIndex(
+  expect(commands.join("\n")).toContain("env -u NO_COLOR bun run check:dev");
+  expect(commands.join("\n")).toContain('--require-clean --commit "$GITHUB_SHA"');
+  expect(commands.join("\n")).not.toContain("ci-audit.ts");
+  const candidate = steps.find(
     (step) => typeof step.uses === "string" && step.uses.startsWith("actions/upload-artifact@"),
   );
-  expect(build).toBeGreaterThan(0);
-  expect(verify).toBeGreaterThan(build);
-  expect(check).toBeGreaterThan(verify);
-  expect(audit).toBeGreaterThan(check);
+  expect(candidate).toMatchObject({ with: { "retention-days": 1, "if-no-files-found": "error" } });
+  expect(object(candidate?.with).path).not.toContain("ci-acceptance.json");
+  expect(jobs.tests).toMatchObject({
+    needs: "build",
+    uses: "./.github/workflows/release-tests.yml",
+    permissions: { contents: "read", actions: "read" },
+    with: { commit: "${{ github.sha }}", artifact: object(candidate?.with).name },
+  });
+  expect(jobs.verify).toMatchObject({
+    needs: ["build", "tests"],
+    name: "Source and installed darwin-arm64",
+  });
+  expect(object(jobs.verify).if).toBeUndefined();
+  const accepted = object(jobs.verify).steps;
+  if (!Array.isArray(accepted)) throw new Error("Missing acceptance steps");
+  const audit = accepted
+    .map(object)
+    .findIndex((step) => typeof step.run === "string" && step.run.includes("ci-audit.ts"));
+  const upload = accepted
+    .map(object)
+    .findIndex(
+      (step) => typeof step.uses === "string" && step.uses.startsWith("actions/upload-artifact@"),
+    );
+  expect(audit).toBeGreaterThan(0);
   expect(upload).toBeGreaterThan(audit);
-  expect(commands[verify]).toContain('--require-clean --commit "$GITHUB_SHA"');
-  expect(commands[build]).toContain('--out "$RUKIE_RELEASE_ARTIFACTS" --platform darwin-arm64');
-  expect(commands[check]).toContain(
-    'env -u NO_COLOR bun run check > "$RUNNER_TEMP/rukie-check.log" 2>&1',
+  expect(accepted[upload]).toMatchObject({
+    with: { "retention-days": 14, "if-no-files-found": "error" },
+  });
+  expect(object(object(accepted[upload]).with).path).toContain("/ci-acceptance.json");
+});
+
+test("all three shards test the same exact packages with one worker and no acceptance authority", async () => {
+  const source = await readFile(resolve(root, ".github/workflows/release-tests.yml"), "utf8");
+  const workflow = object(Bun.YAML.parse(source));
+  const job = object(object(workflow.jobs).test);
+  expect(workflow.permissions).toEqual({ contents: "read", actions: "read" });
+  expect(job).toMatchObject({
+    strategy: { "fail-fast": false, matrix: { shard: [1, 2, 3] } },
+    env: { RUKIE_TEST_WORKERS: 1, RELEASE_COMMIT: "${{ inputs.commit }}" },
+  });
+  if (!Array.isArray(job.steps)) throw new Error("Missing shard steps");
+  const steps = job.steps.map(object);
+  expect(steps[0]).toMatchObject({
+    with: { ref: "${{ inputs.commit }}", "persist-credentials": false },
+  });
+  const commands = steps.map((step) => (typeof step.run === "string" ? step.run : ""));
+  expect(commands.join("\n")).toContain('--require-clean --commit "$RELEASE_COMMIT"');
+  expect(commands.join("\n")).toContain('bun run test --shard="$TEST_SHARD/3"');
+  const check = steps.findIndex((step) => step.id === "check");
+  const after = steps.findIndex(
+    (step) => step.name === "Verify tests preserved clean source and original packages",
   );
-  expect(
-    commands.some((command) =>
-      command.includes("RUKIE_RELEASE_ARTIFACTS=$RUNNER_TEMP/rukie-release"),
-    ),
-  ).toBe(true);
-  expect(
-    commands.some(
-      (command) => command.includes("git rev-parse HEAD") && command.includes("$GITHUB_SHA"),
-    ),
-  ).toBe(true);
-  expect(steps[upload]).toMatchObject({ with: { "if-no-files-found": "error" } });
-  expect(object(steps[upload]!.with).path).toBe(
-    "${{ env.RUKIE_RELEASE_ARTIFACTS }}/*.tgz\n${{ env.RUKIE_RELEASE_ARTIFACTS }}/release-build.json\n${{ env.RUKIE_RELEASE_ARTIFACTS }}/release-modules.json\n${{ env.RUKIE_RELEASE_ARTIFACTS }}/ci-acceptance.json\n",
+  expect(after).toBeGreaterThan(check);
+  expect(commands[after]).toContain("git status --porcelain --untracked-files=normal");
+  expect(commands[after]).toContain('--require-clean --commit "$RELEASE_COMMIT"');
+  expect(source).not.toMatch(
+    /ci-audit|release:build|id-token|secrets\.|continue-on-error|test-name-pattern/,
   );
-  for (const step of steps) {
+  for (const step of steps)
     if (typeof step.uses === "string") expect(step.uses).toMatch(/@[a-f0-9]{40}$/);
-    expect(step.if).not.toBe("always()");
-  }
 });
 
 test("both source gates keep full logs and fail closed while bounding Actions output", async () => {
   const directory = await mkdtemp(resolve(tmpdir(), "rukie-check-log-"));
   try {
-    for (const name of ["ci.yml", "release-publish.yml"]) {
+    for (const name of ["ci.yml", "release-publish.yml", "release-tests.yml"]) {
       const workflow = object(
         Bun.YAML.parse(await readFile(resolve(root, ".github/workflows", name), "utf8")),
       );
-      const steps = object(object(workflow.jobs).verify).steps;
+      const steps = object(
+        object(workflow.jobs)[name === "release-tests.yml" ? "test" : "build"],
+      ).steps;
       if (!Array.isArray(steps)) throw new Error("Expected verification steps");
       const gate = steps.map(object).find((step) => step.id === "check");
       if (typeof gate?.run !== "string") throw new Error("Missing source check gate");
       const logUpload = steps
         .map(object)
-        .find((step) => step.name === "Preserve complete check log");
+        .find(
+          (step) =>
+            step.name ===
+            (name === "release-tests.yml"
+              ? "Preserve complete shard log"
+              : "Preserve complete check log"),
+        );
       expect(logUpload).toMatchObject({
         if: "${{ !cancelled() && steps.check.outcome != 'skipped' }}",
         with: { path: "${{ runner.temp }}/rukie-check.log", "retention-days": 1 },
@@ -128,7 +174,9 @@ test("both source gates keep full logs and fail closed while bounding Actions ou
       for (const code of [0, 7]) {
         // Exercise the workflow shell around a controlled check result, including stderr.
         const command = gate.run.replace(
-          "env -u NO_COLOR bun run check",
+          name === "release-tests.yml"
+            ? 'env -u NO_COLOR bun run test --shard="$TEST_SHARD/3"'
+            : "env -u NO_COLOR bun run check:dev",
           `(i=0; while [ "$i" -lt 200 ]; do echo "result-$i"; i=$((i+1)); done; echo check-stderr >&2; exit ${code})`,
         );
         const child = Bun.spawn(["sh", "-e", "-c", command], {

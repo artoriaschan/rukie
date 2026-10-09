@@ -186,7 +186,7 @@ test.each([
     terminal,
   );
   try {
-    await terminal.flush();
+    await terminal.waitFor(() => terminal.screen().join("\n").includes(label));
     expect(terminal.screen().join("\n")).toContain(label);
   } finally {
     app.unmount();

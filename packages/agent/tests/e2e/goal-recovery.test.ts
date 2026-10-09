@@ -196,14 +196,15 @@ test("explicit Goal cancellation retains committed round usage and the aborted p
   }
 });
 
-test("pause withdraws the old queued automatic round while preserving the active Human answer", async () => {
+test("pause prevents the next automatic round while preserving the active Human answer", async () => {
   const dirs = await tempDirs();
   let session: Awaited<ReturnType<typeof createSession>> | undefined;
   const human = Promise.withResolvers<void>();
-  const queued = Promise.withResolvers<void>();
+  const humanStarted = Promise.withResolvers<void>();
   let steered: Promise<void> | undefined;
   const store = createJsonlStore(dirs);
   let inject = true;
+  let holdNextLookup = false;
   const wrapped: typeof store = {
     ...store,
     async open(...args) {
@@ -230,18 +231,19 @@ test("pause withdraws the old queued automatic round while preserving the active
                   )
                 ) {
                   inject = false;
+                  holdNextLookup = true;
                   steered = session!.steer("Human priority input");
                 }
-                if (
-                  args[0].some(
-                    (write) =>
-                      write.type === "submission" &&
-                      write.value.requestId?.startsWith("goal:") &&
-                      write.value.status === "queued",
-                  )
-                )
-                  queued.resolve();
                 return seq;
+              };
+            if (key === "scanSubmissions")
+              return async (...args: Parameters<typeof target.scanSubmissions>) => {
+                if (holdNextLookup && Object.keys(args[0]).length === 0) {
+                  holdNextLookup = false;
+                  // Gate the next driver lookup outside the serialized commit queue.
+                  await humanStarted.promise;
+                }
+                return target.scanSubmissions(...args);
               };
             const value = Reflect.get(target, key);
             return typeof value === "function" ? value.bind(target) : value;
@@ -254,6 +256,7 @@ test("pause withdraws the old queued automatic round while preserving the active
     const fake = fakeModel([
       fauxAssistantMessage("first round"),
       async () => {
+        humanStarted.resolve();
         await human.promise;
         return fauxAssistantMessage("Human answer survives");
       },
@@ -267,7 +270,10 @@ test("pause withdraws the old queued automatic round while preserving the active
     });
     await session.rename("queued fixture");
     await session.createGoal("Two rounds", { maxRounds: 2 });
-    await queued.promise;
+    // The driver may wait for the Human Run before admitting its next input at all.
+    await humanStarted.promise;
+    await steered;
+    expect(JSON.stringify(fake.contexts[1]!.messages)).toContain("Human priority input");
     expect(session.goal).toMatchObject({ roundsStarted: 1 });
     await session.pauseGoal();
     human.resolve();
@@ -279,6 +285,7 @@ test("pause withdraws the old queued automatic round while preserving the active
       session.messages.some((message) => JSON.stringify(message).includes("Human answer survives")),
     ).toBe(true);
   } finally {
+    humanStarted.resolve();
     human.resolve();
     await session?.close();
     await dirs.cleanup();
