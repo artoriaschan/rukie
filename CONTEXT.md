@@ -38,6 +38,10 @@ _Avoid_: step, round
 原生 Conversation 从接受输入到停止的一段执行，可在执行边界纳入后续输入。输入来自用户、父代理、Hook、Goal 或通知。一个 Run 包含一个或多个 Turn；父 Run 可以先于后台 Subagent 结束；一次请求的因果结算另行等待其子 Run、reporter 与结果引发的处理，不包括无关后台工作。
 _Avoid_: task, job（job 专指 Background Job）
 
+**Request**:
+一次进入 Session 的外部输入及其因果引发的全部工作。来源包括用户 prompt、Goal 激活与续跑轮次、子代理报告、发往子代理的消息和 Hook。Request 的结算等待它引发的 Run、后台子 Run、reporter 与结果处理，不包括无关后台工作；一个 Request 可以跨多个 Run。
+_Avoid_: interaction, submission, prompt
+
 **Subagent**:
 由父 session 的模型经 `subagent` / `subagent_fork` 创建的子 session，可在父 session 内经 `send_message` 续跑。每个 run 默认在后台进行，父代理继续工作；结束时其最终文本作为一条消息交回父代理。`subagent` 从空历史开始，`subagent_fork` 带着父代理已完成的 turn 开始。判定配置与父 session 共享，只能收窄；不能再创建 subagent。
 _Avoid_: task, worker, child agent, job（job 专指 Background Job）

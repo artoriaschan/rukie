@@ -56,5 +56,6 @@ ADR 保存长期架构决定、真实备选方案和代价。当前运行行为�
 - [0025 Tool Search 在客户端执行，经 pi 原生工具变更加载 Deferred Tool](0025-client-side-tool-search.md) — `accepted`
 - [0026 Tool Search 独立于原生追加能力，按模型 compat 选择工具声明格式](0026-protocol-independent-tool-search.md) — `accepted`
 - [0027 原生工具追加能力通过独立请求探测，失败时使用普通工具声明](0027-native-tool-capability-probing.md) — `accepted`
+- [0028 Session extension 是原生 Generation 与 Tool hook 的唯一入口](0028-single-session-harness-hook-entry.md) — `accepted`
 
 <!-- ADR_INDEX_END -->
