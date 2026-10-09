@@ -1,13 +1,6 @@
 import { readGoalReceipt } from "../tools/goal/index.ts";
 import { readSubagentReceipt } from "../tools/subagents/index.ts";
-import {
-  createRequestLedger,
-  parseRequestId,
-  requestKind,
-  requestIds,
-  isGoalRound,
-  goalRoundNumber,
-} from "../requests/index.ts";
+import { createRequestLedger, parseRequestId, requestKind, requestIds } from "../requests/index.ts";
 import {
   planToolSearchLoadout,
   createToolSearchTool,
@@ -126,12 +119,7 @@ import {
 import {
   createGoalController,
   goalState,
-  createGoalDriver,
-  GoalActivationDoc,
-  readGoalActivation,
-  placedGoalRound,
-  revokeGoalActivation,
-  preservePlacedGoalRounds,
+  createGoalRuntime,
   type GoalView,
 } from "../tools/goal/index.ts";
 import { subagentsState, subagentRunState, type SubagentRun } from "../tools/subagents/state.ts";
@@ -461,7 +449,6 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     let goalRound = false;
     const steeringAdmissions = new Set<Promise<void>>();
     let checkingStop: number | undefined;
-    let wrapup: string | undefined;
     let permissionMode = options.permissionMode ?? settings.permissionMode ?? "ask";
     const sessionAllowRules = options.sessionAllowRules ?? [];
     const sessionGrantListeners = new Set<() => void>();
@@ -846,108 +833,24 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
       changed: () => {},
     });
-    const activation = readGoalActivation(
-      await harness.snapshot(GoalActivationDoc, conversation.id, context),
-    );
-    if (activation.taskId !== null) {
-      const tasks = await lease.storage.scanTasks({}, 100000, undefined, context);
-      const accepted = tasks.items.find((task) => Number(task.id) === activation.taskId);
-      const input = accepted?.input;
-      const goalFact = state.get("goal");
-      if (
-        !accepted ||
-        accepted.kind !== "rukie.goal-driver" ||
-        !input ||
-        typeof input !== "object" ||
-        Array.isArray(input) ||
-        input.requestId !== activation.requestId ||
-        !goalFact ||
-        typeof goalFact !== "object" ||
-        Array.isArray(goalFact) ||
-        !("id" in goalFact) ||
-        input.goalId !== goalFact.id
-      )
-        throw new Error("Invalid Goal activation task.");
-      if (accepted.state.status === "terminal") {
-        await conversation.commit(async (tx) => {
-          (await tx.doc(GoalActivationDoc, conversation.id)).taskId = null;
-        }, context);
-        activation.taskId = null;
-      }
-    }
-    let activationTaskFact = activation?.taskId ?? null;
-    let goalRequestId = activation?.requestId ?? undefined;
-    const goalDriver = createGoalDriver({
+    const goalRuntime = createGoalRuntime({
+      harness,
+      storage: lease.storage,
+      conversation: () => conversation,
+      context,
+      ledger: () => ledger,
       submit: async (prompt, requestId, ctx) =>
         (await awaitWithContext(submit(prompt, [], "followUp", requestId, ctx.abortSignal), ctx))
           .id,
       settle: async (requestId, ctx) => awaitWithContext(session.waitForRequest(requestId), ctx),
       settleCancelled: async (requestId, submissionId, ctx) =>
         awaitWithContext(ledger.resultFor(requestId, submissionId), ctx),
-      recoverSubmission: async (requestId, ctx) => {
-        const inputs = await lease.storage.scanSubmissions({}, 100000, undefined, ctx);
-        const found = inputs.items.find(
-          (input) => input.conversationId === conversation.id && input.requestId === requestId,
-        );
-        if (!found) return undefined;
-        await ledger.registerSubmission(requestId, found.id);
-        if (found.entry)
-          await conversation.commit(
-            (tx) =>
-              tx.appendEntry(conversation.id, {
-                kind: "rukie.message-facts",
-                model: [],
-                data: { entryId: Number(found.entry), source: "goal" },
-              }),
-            ctx,
-          );
-        return found.id;
-      },
     });
-    const goalExtension = { name: "rukie.goal-runtime", tasks: [goalDriver] };
+    await goalRuntime.restore(state.get("goal"));
     const goal = createGoalController({
-      isArmed: () => activationTaskFact !== null,
+      isArmed: goalRuntime.isArmed,
       getSnapshot: () => state.get("goal"),
-      persist: async (value, armed) => {
-        const humanCause =
-          requestKind(ledger.currentRequestId) === "human" ? ledger.currentRequestId : undefined;
-        let acceptedRequest: string | undefined;
-        if (!armed && (value === null || value.phase === "paused")) {
-          const active = await harness.snapshot(GoalActivationDoc, conversation.id, context);
-          const tasks = await lease.storage.scanTasks({}, 100000, undefined, context);
-          const driver = tasks.items.find(
-            (task) => Number(task.id) === active?.taskId && task.kind === "rukie.goal-driver",
-          );
-          // The driver owns admission, not the native Run or its current ToolResult.
-          if (driver) await harness.abortTask(driver.id, context);
-        }
-        await conversation.commit(async (tx) => {
-          const active = await tx.doc(GoalActivationDoc, conversation.id);
-          const snapshot = await tx.doc(goalState.document, conversation.id);
-          snapshot.value = preservePlacedGoalRounds(snapshot.value, value);
-          if (armed && value && active.taskId === null) {
-            const requestId = requestIds.goalActivation(value.id);
-            const taskId = await tx.createTask(
-              goalDriver,
-              { goalId: value.id, requestId, initialRound: value.roundsStarted + 1 },
-              { ownership: { kind: "conversation" }, conversationId: conversation.id },
-            );
-            active.taskId = Number(taskId);
-            active.requestId = requestId;
-            active.countedRound = value.roundsStarted;
-            await ledger.bind(tx, requestId, { taskId: Number(taskId), replace: true });
-            if (humanCause)
-              await ledger.bind(tx, humanCause, { taskId: Number(taskId), onlyExisting: true });
-            acceptedRequest = requestId;
-          } else if (!armed) {
-            await revokeGoalActivation(tx, conversation.id);
-          }
-        }, context);
-        if (acceptedRequest) {
-          goalRequestId = acceptedRequest;
-          if (!humanCause) ledger.setForeground(acceptedRequest);
-        }
-      },
+      persist: goalRuntime.persist,
       assertAvailable,
       warn: () => {
         if (permissionMode === "ask")
@@ -2327,7 +2230,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             directHuman: () => !goalRound,
             goalRound: () => goalRound,
             wrapup: (text) => {
-              wrapup = text;
+              goalRuntime.queueWrapup(text);
             },
           },
         },
@@ -2523,36 +2426,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 const placed = await Promise.all(
                   live.run.inputs.map((id) => lease.storage.submission(id, ctx)),
                 );
-                if (placed.some((record) => requestKind(record?.requestId) === "goal-round"))
-                  goalRound = true;
-                const activation = await harness.snapshot(GoalActivationDoc, conversation.id, ctx);
-                const roundInput =
-                  activation?.taskId && activation.requestId
-                    ? placed.find((record) =>
-                        isGoalRound(record?.requestId, activation.requestId!, activation.taskId!),
-                      )
-                    : undefined;
-                if (roundInput?.requestId) {
-                  const round = goalRoundNumber(roundInput.requestId);
-                  if (!Number.isSafeInteger(round) || round < 1)
-                    throw new Error("Invalid accepted Goal round identity.");
-                  goalRound = true;
-                  await conversation.commit(async (tx) => {
-                    const active = await tx.doc(GoalActivationDoc, conversation.id);
-                    const snapshot = await tx.doc(goalState.document, conversation.id);
-                    const value = snapshot.value;
-                    if (
-                      active.taskId === activation!.taskId &&
-                      active.countedRound < round &&
-                      value &&
-                      typeof value === "object" &&
-                      !Array.isArray(value)
-                    ) {
-                      snapshot.value = placedGoalRound(value, round);
-                      active.countedRound = round;
-                    }
-                  }, ctx);
-                }
+                if (await goalRuntime.beforeRequest(placed, ctx)) goalRound = true;
                 const current = await conversation.context(ctx);
                 const latestInput = current.entries.findLast(
                   (entry) =>
@@ -2661,23 +2535,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                   await checkpoints.start(String(record.entry));
                 }
               }
-              if (wrapup) {
-                const content = wrapup;
-                const timestamp = Date.now();
-                await conversation.commit(async (tx) => {
-                  const placed = await tx.appendEntry(conversation.id, {
-                    kind: "rukie.goal-wrapup",
-                    model: [
-                      { role: "user", content: [{ type: "text", text: content }], timestamp },
-                    ],
-                  });
-                  await tx.appendEntry(conversation.id, {
-                    kind: "rukie.message-facts",
-                    data: { entryId: Number(placed.id), source: "goal" },
-                  });
-                }, ctx);
-                wrapup = undefined;
-              }
+              await goalRuntime.prepareWrapup(ctx);
               await prepareReminders(ctx);
               const offered = await currentConversationTools(conversation, ctx);
               const desired = planToolSearchLoadout({
@@ -2752,11 +2610,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 );
               }
               if (message.stopReason === "error" || message.stopReason === "aborted") {
-                await conversation.commit(async (tx) => {
-                  const activation = await tx.doc(GoalActivationDoc, conversation.id);
-                  activation.taskId = null;
-                  activation.requestId = null;
-                }, ctx);
+                await goalRuntime.clearActivation(ctx);
               }
               const measured = {
                 content: structuredClone(message.content),
@@ -2838,11 +2692,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               // Complete host admission before the native final boundary selects its inbox.
               await Promise.allSettled(steeringAdmissions);
               if (_answer.stopReason !== "stop") {
-                await conversation.commit(async (tx) => {
-                  const activation = await tx.doc(GoalActivationDoc, conversation.id);
-                  activation.taskId = null;
-                  activation.requestId = null;
-                }, ctx);
+                await goalRuntime.clearActivation(ctx);
                 return undefined;
               }
               const yielding = await harness.snapshot(LiveDoc, conversation.id, ctx);
@@ -2874,11 +2724,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 );
                 return { continue: content };
               };
-              if (wrapup) {
-                const content = wrapup;
-                wrapup = undefined;
-                return continuation(content, "goal");
-              }
+              const goalWrapup = await goalRuntime.yieldWrapup(Number(api.taskId), ctx);
+              if (goalWrapup) return goalWrapup;
               const live = await harness.snapshot(LiveDoc, conversation.id, ctx);
               const runAnchor = Number(live?.run?.inputs[0]);
               const continuationPolicy = await stopHookContinuation(
@@ -2950,7 +2797,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           }),
         ],
       };
-      registry.install(goalExtension);
+      registry.install(goalRuntime.extension);
       registry.install(subagents.extension);
       registry.install(extension);
       const offered = planToolSearchLoadout({
@@ -2960,7 +2807,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         mode: settings.toolSearch,
       }).tools;
       await conversation.configure(
-        { extensions: [extension, subagents.extension, goalExtension], tools: offered },
+        { extensions: [extension, subagents.extension, goalRuntime.extension], tools: offered },
         context,
       );
     };
@@ -2999,14 +2846,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             )
               modelFact = `${stored.provider}/${stored.modelId}`;
           }
-          if (
-            change.type === "document" &&
-            change.conversationId === conversation.id &&
-            change.record.kind === "rukie.goal-activation"
-          ) {
-            const task = change.value?.taskId;
-            activationTaskFact = typeof task === "number" ? task : null;
-          }
+          goalRuntime.observe(change);
           if (
             change.type === "document" &&
             change.conversationId === conversation.id &&
@@ -3087,7 +2927,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           goal: state.get("goal")
             ? {
                 ...(state.get("goal") as Omit<GoalView, "armed">),
-                armed: activationTaskFact !== null,
+                armed: goalRuntime.isArmed(),
               }
             : null,
         },
@@ -3365,20 +3205,21 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
       createGoal: async (objective, input) => {
         await goal.create(objective, input);
-        const requestId = goalRequestId;
+        const requestId = goalRuntime.activation.requestId;
         if (!requestId) throw new Error("Created Goal has no accepted driver.");
         return { ...goal.view()!, requestId };
       },
       editGoal: async (objective) => {
         const prior = goal.view();
         const value = await goal.edit(objective);
-        const requestId = prior?.phase === "complete" ? goalRequestId : undefined;
+        const requestId =
+          prior?.phase === "complete" ? goalRuntime.activation.requestId : undefined;
         return { ...value, ...(requestId ? { requestId } : {}) };
       },
       pauseGoal: () => goal.pause(),
       resumeGoal: async () => {
         const value = await goal.resume();
-        const requestId = goalRequestId;
+        const requestId = goalRuntime.activation.requestId;
         return { ...value, ...(requestId ? { requestId } : {}) };
       },
       clearGoal: () => goal.clear(),
@@ -3746,15 +3587,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         notificationLifetime.abort();
         notificationLifetime = new AbortController();
         stopped = true;
-        const active = await harness.snapshot(GoalActivationDoc, conversation.id, context);
-        let goalAbort: ReturnType<typeof harness.abortTask> | undefined;
-        if (active?.taskId) {
-          const tasks = (await lease.storage.scanTasks({}, 100000, undefined, context)).items;
-          const driver = tasks.find(
-            (task) => Number(task.id) === active.taskId && task.kind === "rukie.goal-driver",
-          );
-          if (driver) goalAbort = harness.abortTask(driver.id, context);
-        }
+        const goalAbort = goalRuntime.abort(context);
         if (manualCompactionTask) await harness.abortTask(manualCompactionTask, context);
         await conversation.abort(context);
         await goalAbort;
@@ -3922,7 +3755,11 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       await refreshMcp(context.abortSignal);
     await subagents.prepareChildren(context);
     const recovering = await harness.inspect(context);
-    await ledger.recover(recovering, activationTaskFact, goalRequestId);
+    await ledger.recover(
+      recovering,
+      goalRuntime.activation.taskId,
+      goalRuntime.activation.requestId,
+    );
     options.initializationSignal?.throwIfAborted();
     harness.resume();
     return session;
