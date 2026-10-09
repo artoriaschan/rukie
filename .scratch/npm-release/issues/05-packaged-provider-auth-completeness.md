@@ -1,6 +1,6 @@
 # 05：provider/auth 分发完整性
 
-Status: ready-for-agent
+Status: claimed
 Blocked by: 03
 
 ## What to build
@@ -26,3 +26,5 @@ Blocked by: 03
 
 - 2026-10-09：首版只支持 macOS arm64，双架构要求改为 arm64，见父规格 Out of Scope。
 - 2026-10-07：拆分已确认。模块加载成功不等于真实 OAuth 或模型服务已验证。
+
+- 2026-10-09：基于 621ba48c 集成基线开发；预先确认的安装命令 seam，新增 Responses / Anthropic / 内置 Azure 实际 Session，Bedrock loopback 签名和错误、Responses SIGINT 取消。旧产物 focused 7/7 通过；模块图清单测试先因缺少 release-modules.json 失败，等待 04 构建审计输出与共享 PTY 后完成认证验收。
