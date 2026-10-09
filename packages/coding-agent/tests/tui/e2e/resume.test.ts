@@ -155,7 +155,8 @@ test("resume replays stored text before input and appends the next Run to the sa
     expect(app.allLines().filter((line) => line === `${assistant} stored reply 中`)).toHaveLength(
       1,
     );
-    expect(app.allLines()[1]).toBe(lines[0]);
+    // The added Logo/message gap changes the initial bottom-follow crop.
+    expect(app.allLines()).toContain(lines[0]!);
     expect(app.allLines().filter((line) => line.slice(42) === logoTop)).toHaveLength(1);
     await app.shutdown();
     const resumed = await createSession({ cwd: root, homeDir: root, ...app, resumeId: id });

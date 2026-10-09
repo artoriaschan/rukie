@@ -2812,12 +2812,21 @@ function Chat({
               working={state.running}
               suspended={!!preview || !!composerPreview}
             />
-            <Box flexShrink={0} flexDirection="column" gap={1}>
+            <Box flexShrink={0} flexDirection="column" marginTop={1}>
               {completed.map(
                 (entry, index) =>
                   entry && (
                     <Box
                       flexShrink={0}
+                      marginTop={
+                        index > 0 &&
+                        !(
+                          state.completed[index - 1]?.type === "thinking" &&
+                          state.completed[index]?.type === "tool"
+                        )
+                          ? 1
+                          : 0
+                      }
                       key={index}
                       backgroundColor={
                         selectedMessage ===
@@ -2837,6 +2846,7 @@ function Chat({
               {state.reasoning && (
                 <Box
                   flexShrink={0}
+                  marginTop={completed.some(Boolean) ? 1 : 0}
                   backgroundColor={
                     selectedMessage === `${state.assistantAnchor}-thinking`
                       ? theme.messageActionsBackground
@@ -2862,6 +2872,7 @@ function Chat({
               {state.assistant && (
                 <Box
                   flexShrink={0}
+                  marginTop={state.reasoning || completed.some(Boolean) ? 1 : 0}
                   backgroundColor={
                     selectedMessage === state.assistantAnchor
                       ? theme.messageActionsBackground
@@ -2879,9 +2890,18 @@ function Chat({
               )}
               {state.tools
                 .filter((tool) => showsToolCard(tool.name))
-                .map((tool) => (
+                .map((tool, index) => (
                   <Box
                     flexShrink={0}
+                    marginTop={
+                      index > 0 ||
+                      state.assistant ||
+                      (!state.reasoning &&
+                        completed.some(Boolean) &&
+                        state.completed.at(-1)?.type !== "thinking")
+                        ? 1
+                        : 0
+                    }
                     key={tool.id}
                     backgroundColor={
                       selectedMessage === `tool-${tool.id}-header`
@@ -2916,7 +2936,11 @@ function Chat({
                     />
                   </Box>
                 ))}
-              {state.error && <Notice kind="error" text={state.error} />}
+              {state.error && (
+                <Box flexShrink={0} marginTop={1}>
+                  <Notice kind="error" text={state.error} />
+                </Box>
+              )}
             </Box>
           </ScrollBox>
           {railVisible && bodyScroll && (

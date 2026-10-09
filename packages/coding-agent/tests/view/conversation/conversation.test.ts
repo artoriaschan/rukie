@@ -168,3 +168,80 @@ test("conversation retains the latest 500 observed TPS samples and wires an actu
     }
   }
 });
+
+test.each(["block", "abort"])(
+  "submitted preview is local and removed after %s admission",
+  async (ending) => {
+    const root = await mkdtemp(join(tmpdir(), "rukie-input-preview-"));
+    const fake = controlledModel();
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const session = await createSession({
+      cwd: root,
+      homeDir: root,
+      ...fake,
+      settings:
+        ending === "block"
+          ? {
+              hooks: {
+                UserPromptSubmit: [
+                  {
+                    hooks: [
+                      {
+                        type: "command",
+                        command: `cat >/dev/null; printf '{"decision":"block","reason":"rejected input"}'`,
+                      },
+                    ],
+                  },
+                ],
+              },
+            }
+          : undefined,
+    });
+    const source = new Proxy(session, {
+      get(target, key) {
+        if (key === "run")
+          return async (...args: Parameters<Session["run"]>) => {
+            entered.resolve();
+            await release.promise;
+            args[1]?.signal?.throwIfAborted();
+            return target.run(...args);
+          };
+        const value = Reflect.get(target, key);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    const conversation = createConversation(source, "faux/faux-1", conversationFacts);
+    const settled = Promise.withResolvers<void>();
+    let submitted = false;
+    const off = conversation.subscribe(() => {
+      if (submitted && !conversation.isRunning()) settled.resolve();
+    });
+    try {
+      expect(conversation.submit("pending input")).toBe(true);
+      submitted = true;
+      await entered.promise;
+      expect(conversation.getSnapshot().completed).toContainEqual(
+        expect.objectContaining({ type: "message", text: "pending input", pending: true }),
+      );
+      expect(session.messages.some((message) => message.role === "user")).toBe(false);
+      expect(conversation.submit("rejected busy input")).toBe(false);
+      if (ending === "abort") conversation.interrupt();
+      release.resolve();
+      await settled.promise;
+      expect(
+        conversation
+          .getSnapshot()
+          .completed.some((entry) => entry.type === "message" && entry.pending),
+      ).toBe(false);
+      expect(session.messages.some((message) => message.role === "user")).toBe(false);
+      expect(fake.calls).toHaveLength(0);
+    } finally {
+      release.resolve();
+      off();
+      await conversation.stop();
+      await session.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);

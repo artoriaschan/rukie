@@ -58,6 +58,8 @@ type CompletedEntry = { anchorId?: string; sourceEntryId?: string } & (
       source?: string;
       images?: PromptImage[];
       fresh?: boolean;
+      /** Frontend preview until Session commits this submitted input. */
+      pending?: boolean;
     }
   | {
       type: "tool";
@@ -685,7 +687,10 @@ function retainLocalEntries(
   const local = new Map<number, CompletedEntry[]>();
   let boundary = 0;
   for (const entry of previous) {
-    if (entry.type === "notice" && !entry.sourceEntryId) {
+    if (
+      (entry.type === "notice" && !entry.sourceEntryId) ||
+      (entry.type === "message" && entry.pending)
+    ) {
       const group = local.get(boundary) ?? [];
       group.push(entry);
       local.set(boundary, group);
@@ -1146,6 +1151,10 @@ export function createConversation(
   let notificationTimer: ReturnType<typeof setTimeout> | undefined;
   let noticeTimer: ReturnType<typeof setTimeout> | undefined;
   const authRequired = new Set<string>();
+  const pendingInputs = new Map<string, { text: string; images: PromptImage[] }>();
+  const observedUsers = new Set(
+    session.messages.filter((message) => message.role === "user").map((message) => message.entryId),
+  );
   const update = (next: ViewState, deferNotification = false) => {
     if (
       !next.running &&
@@ -1184,6 +1193,22 @@ export function createConversation(
   };
   const dispatchActivity = (event: Parameters<typeof reduce>[1]) => {
     update({ ...state, activity: reduce(state.activity, event, Date.now()) });
+  };
+  const previewInput = (text: string, images: PromptImage[]) => {
+    const anchorId = crypto.randomUUID();
+    pendingInputs.set(anchorId, { text, images });
+    update({
+      ...state,
+      completed: [
+        ...state.completed,
+        { type: "message", role: "user", text, images, pending: true, anchorId },
+      ],
+    });
+    return anchorId;
+  };
+  const clearPreview = (anchorId: string) => {
+    if (!pendingInputs.delete(anchorId)) return;
+    update({ ...state, completed: state.completed.filter((entry) => entry.anchorId !== anchorId) });
   };
   const notify = (text: string, kind: NoticeKind, durationMs = 4000) => {
     clearTimeout(noticeTimer);
@@ -1277,6 +1302,7 @@ export function createConversation(
       return;
     }
     if (event.type === "conversation_rewound") {
+      pendingInputs.clear();
       const restored = createViewState(session, state.model, locale, facts);
       update({
         ...restored,
@@ -1292,6 +1318,32 @@ export function createConversation(
       refreshJobs();
     }
     if (event.type === "result" && active) pendingResult = { event, at: now };
+    if (event.type === "snapshot" || event.type === "message_end") {
+      for (const message of event.type === "message_end" ? event.messages : session.messages) {
+        if (message.role !== "user" || observedUsers.has(message.entryId)) continue;
+        observedUsers.add(message.entryId);
+        if ("source" in message && message.source) continue;
+        const images =
+          typeof message.content === "string"
+            ? []
+            : message.content.filter((block) => block.type === "image");
+        const pending = [...pendingInputs].find(
+          ([, input]) =>
+            input.text === messageText(message) &&
+            input.images.length === images.length &&
+            input.images.every(
+              (image, index) =>
+                image.data === images[index]?.data && image.mimeType === images[index]?.mimeType,
+            ),
+        )?.[0];
+        if (!pending) continue;
+        pendingInputs.delete(pending);
+        state = {
+          ...state,
+          completed: state.completed.filter((entry) => entry.anchorId !== pending),
+        };
+      }
+    }
     if (event.type === "run_start") pendingResult = undefined;
     const settling =
       active && (event.type === "result" || (event.type === "snapshot" && !event.run));
@@ -1358,11 +1410,16 @@ export function createConversation(
       const awaitIdle = !active && !state.running && session.running && !initial;
       if (active || (session.running && !initial && !awaitIdle)) {
         if (!images.length && !prompt.startsWith("/")) return false;
-        void session.steer(prompt, { images }).catch((error: unknown) => {
-          if (!stopped) notify(formatError(error, t), "error");
-        });
+        const preview = previewInput(prompt, images);
+        void session
+          .steer(prompt, { images })
+          .catch((error: unknown) => {
+            if (!stopped) notify(formatError(error, t), "error");
+          })
+          .finally(() => clearPreview(preview));
         return true;
       }
+      const preview = previewInput(prompt, images);
       if (!session.running || awaitIdle)
         update({
           ...state,
@@ -1380,7 +1437,7 @@ export function createConversation(
       const promise = (async () => {
         if (awaitIdle) await session.waitForIdle();
         if (stopped || input.signal.aborted) return;
-        return session.run(prompt, { images });
+        return session.run(prompt, { images, signal: input.signal });
       })()
         .catch((error: unknown) => {
           if (stopped) return;
@@ -1423,6 +1480,7 @@ export function createConversation(
           }
         })
         .finally(() => {
+          clearPreview(preview);
           active = undefined;
           if (!stopped && !session.running)
             update({
@@ -1483,7 +1541,9 @@ export function createConversation(
     },
     async stop() {
       stopped = true;
-      active?.input?.abort();
+      // Closing the frontend suspends durable work; only unstarted input is
+      // cancelled here. Explicit interruption owns aborting an active Run.
+      if (!session.running) active?.input?.abort();
       unsubscribe();
       clearTimeout(noticeTimer);
       clearTimeout(jobNoticeTimer);

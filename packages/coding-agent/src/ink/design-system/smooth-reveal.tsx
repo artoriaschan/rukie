@@ -152,7 +152,10 @@ export function useSmoothText(
     return created;
   }, [key, memory, texts]);
   if (cursor.text !== text) {
-    if (!text.startsWith(cursor.text ?? "")) complete(cursor);
+    // A paint can expose the caught-up cursor before its passive effect records
+    // completion. Preserve that state before a prefix update changes the total.
+    if (!text.startsWith(cursor.text ?? "") || (cursor.total > 0 && cursor.shown >= cursor.total))
+      complete(cursor);
     cursor.text = text;
     cursor.total = text.length;
   }

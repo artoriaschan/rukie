@@ -3,9 +3,8 @@ import type { Locale } from "@rukie/i18n";
 import { createTuiI18n } from "../i18n";
 import type { createConversation } from "../conversation/conversation";
 import {
-  toolCardTitle,
+  toolCardHeader,
   toolCardBody,
-  toolCardName,
   toolCardNotices,
   toolCardDiff,
   type ToolCardSource,
@@ -50,9 +49,7 @@ export function transcriptMatches(
     }
   }
   function tool(source: ToolCardSource, id: string) {
-    const title = toolCardTitle(source);
-    const name = toolCardName(source, locale);
-    text(name ? `${name}(${title})` : title, `tool-${id}-header`, { toolId: id, part: "header" });
+    text(toolCardHeader(source, locale), `tool-${id}-header`, { toolId: id, part: "header" });
     const diff = toolCardDiff(source);
     const diffLines = diff ? unifiedDiffLines(diff) : undefined;
     const split =

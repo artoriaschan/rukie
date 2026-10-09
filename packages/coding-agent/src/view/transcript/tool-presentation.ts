@@ -12,24 +12,26 @@ export interface ToolCardSource {
   isError?: boolean;
   isRunning?: boolean;
 }
+function mcpIdentity(source: ToolCardSource) {
+  if (source.callView?.card === "generic" && source.callView.server && source.callView.tool)
+    return { server: source.callView.server, tool: source.callView.tool };
+  const match = source.name?.match(/^mcp__(.+?)__(.+)$/);
+  return match ? { server: match[1]!, tool: match[2]! } : undefined;
+}
+
 /** Full display source shared by rendering and transcript search, without event metadata. */
-export function toolCardTitle({
-  args,
-  callView: declaredCallView,
-  resultView,
-  isRunning,
-}: ToolCardSource): string {
+export function toolCardTitle(source: ToolCardSource): string {
+  const identity = mcpIdentity(source);
+  if (identity) return `› ${identity.tool}`;
+  const { args, callView: declaredCallView, resultView, isRunning } = source;
   const callView = isRunning || resultView ? declaredCallView : undefined;
   return callView?.card === "terminal"
     ? callView.command
     : callView?.card === "diff"
       ? (callView.diffs[0]?.path ?? "")
-      : callView?.card === "generic" && callView.server && callView.tool
-        ? `${callView.server} › ${callView.tool}`
-        : callView?.card === "generic" && callView.title
-          ? callView.title
-          : (JSON.stringify(callView?.card === "generic" ? (callView.rawInput ?? args) : args) ??
-            "");
+      : callView?.card === "generic" && callView.title
+        ? callView.title
+        : (JSON.stringify(callView?.card === "generic" ? (callView.rawInput ?? args) : args) ?? "");
 }
 export function toolCardBody(source: ToolCardSource): string | undefined {
   const { resultView: view, result, error, isError } = source;
@@ -59,12 +61,24 @@ export function toolCardBody(source: ToolCardSource): string | undefined {
 }
 
 export function toolCardName(source: ToolCardSource, locale: Locale): string | undefined {
+  const identity = mcpIdentity(source);
+  if (identity) return identity.server;
   const key = source.callView?.displayKey ?? source.resultView?.displayKey ?? `tool.${source.name}`;
   return Object.hasOwn(appCopy[locale], key)
     ? appCopy[locale][key as keyof typeof appCopy.zh]
     : source.name
       ? source.name[0]!.toUpperCase() + source.name.slice(1)
       : undefined;
+}
+
+/** Search uses the same readable header as a fully revealed tool card. */
+export function toolCardHeader(source: ToolCardSource, locale: Locale): string {
+  const name = toolCardName(source, locale);
+  const title = toolCardTitle(source);
+  const view = source.isRunning || source.resultView ? source.callView : undefined;
+  const parentheses =
+    !mcpIdentity(source) && view?.card !== "diff" && !(view?.card === "generic" && view.title);
+  return name ? `${name}${parentheses ? "(" : " "}${title}${parentheses ? ")" : ""}` : title;
 }
 
 /** Durable output notices remain outside the body fold and search window. */

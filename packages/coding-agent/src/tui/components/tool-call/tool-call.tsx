@@ -2,6 +2,7 @@ import { useSourceMount } from "../../hooks/reading-position";
 import { InteractiveText } from "../interactive-text";
 import {
   toolCardTitle,
+  toolCardHeader,
   toolCardBody,
   toolCardName,
   toolCardNotices,
@@ -121,7 +122,13 @@ export function ToolCall({
   const kind = resultView?.kind ?? callView?.kind;
   const color = toolKindColor(kind);
   const displayName = toolCardName({ name, callView, resultView }, locale);
-  const title = toolCardTitle({ args, callView, resultView, isRunning: status === "running" });
+  const title = toolCardTitle({
+    name,
+    args,
+    callView,
+    resultView,
+    isRunning: status === "running",
+  });
   const titleView = status === "running" || resultView ? callView : undefined;
   const path =
     resultView?.card === "read"
@@ -133,6 +140,7 @@ export function ToolCall({
           : undefined;
   const pathOffset = path ? title.indexOf(path) : -1;
   const jsonTitle =
+    !name?.match(/^mcp__(.+?)__(.+)$/) &&
     titleView?.card !== "terminal" &&
     titleView?.card !== "diff" &&
     !(titleView?.card === "generic" && (titleView.title || (titleView.server && titleView.tool)));
@@ -209,9 +217,9 @@ export function ToolCall({
     : summary;
   const headerWidth = hitWidth(`• ${header}${duration} ▾`);
   const titleWidth = Math.max(0, headerWidth - 4 - Bun.stringWidth(duration));
-  const fullHeader = displayName
-    ? `${displayName}${parenthesized ? "(" : " "}${title}${parenthesized ? ")" : ""}`
-    : summary;
+  const fullHeader =
+    toolCardHeader({ name, args, callView, resultView, isRunning: status === "running" }, locale) ||
+    summary;
 
   const seconds = Math.max(0, Math.floor((Date.now() - (startedAt ?? Date.now())) / 1000));
   const terminal = resultView?.card === "terminal" ? resultView : undefined;

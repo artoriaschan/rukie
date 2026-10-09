@@ -93,6 +93,7 @@ test("MCP identity, path lists and goal summaries render as their declared views
       () => app.calls.length === 2 && app.allLines().join("\n").includes("MCP: hello"),
     );
     expect(app.allLines().join("\n")).toContain("local › echo");
+    expect(app.allLines().join("\n")).not.toContain("Mcp__local__echo");
     app.calls[1]!.tool("glob", { pattern: "*.ts" });
     await app.waitFor(
       () => app.calls.length === 3 && app.allLines().join("\n").includes("⎿ source.ts"),

@@ -14,7 +14,7 @@
 
 `design-system/` 保留 Rukie 主题、TextInput、Spinner、tooltip 与 smooth reveal，经 `index.ts` 导出。ThemedBox/ThemedText 接受原生 Box/Text props：弱化文字用 `dim`，不可选择区域用 Box 的 `noSelect`，ANSI 名称颜色用 `ansi:blue` 等原生 Color。ThemedText 不提供旧 inline click、softWrap 或 border props；点击区域由拥有实际可见 glyph 的 Box 管理。
 
-Smooth reveal 的共享 30fps 节拍在行数增长或文本前缀增长时保持原截止时间；更新内容只同步 cursor，禁用、完成或卸载才释放活动 cursor。
+Smooth reveal 的共享 30fps 节拍在行数增长或文本前缀增长时保持原截止时间；更新内容只同步 cursor，禁用、完成或卸载才释放活动 cursor。文本已追平当前内容时，后续前缀更新在改变总长度前记录完成，避免 paint 早于 passive effect 时重新启动渐进显示。
 
 TextInput 用原生 Box/Text/useInput/useDeclaredCursor 组合，产品 props 保留 controlled value、history、atomicRanges、highlightRanges、cursorStyle、maxLines 与编辑回调。没有显式 columns 时测量所在 Box 的宽度；grapheme 编辑、完整原子单位替换与块光标采用同一产品布局，物理光标用于 IME。`onPaste(input, insert)` 的 insert 在调用时读取当前 caret，并一次归一化 CRLF 后提交；异步调用方负责在编辑器被替换或所属 Session 改变后丢弃旧 admission。atomic click 要求 press/release 位于同一实际原子 Box，普通 glyph、padding 和跨单位手势不激活。
 
