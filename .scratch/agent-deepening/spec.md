@@ -76,6 +76,14 @@ TUI 失败属于重构前已存在的测试同步不足：`app.flush()` 仅完�
 
 仅 PID 内容 waiter 改为有界状态谓词：每个 I/O turn 重新读取实际文件，仍只接受正的 safe integer，monotonic deadline 保持 2s。`setImmediate` 仅让出 I/O 以观察真实发布状态，不引入固定等待或延长 failure bound；此路径不分配 watcher/timer。通用空 readiness 文件仍使用原 `waitForFile` 的文件事件实现，原函数体恢复，减少共享影响。受控 no-further-event case 与六个无效 PID、空 readiness case 重复 30 次，240 pass / 0 fail（362ms）。完整 background jobs、subagent jobs、Conversation Runtime 59 pass / 0 fail（8.53s）；共享 readiness 调用方的 MCP、network hooks、Session disposal 取消与关闭场景 9 pass / 0 fail（737ms）。首轮 `check:dev` 报 `no-constant-condition`，将循环条件改为 monotonic deadline 谓词后，8 项 PID/readiness focused 用例通过（149ms），最终 `bun run check:dev`、文档与 diff 检查通过。没有产品改动、放宽校验或 atomic rename 绕过真实 shell 发布；spec 保持 claimed，最终集成验收由 integration branch 协调。无架构决定变化，无需新增 ADR。
 
+### 第六轮 aggregate 与八卡 dashboard 夹具同步
+
+第六轮完整检查在 `433af2a` 实际失败：3191 pass / 1 fail，3192 tests / 294 files，105.30s；前述回归均通过，唯一失败为八卡 Subagent dashboard 的键盘选择用例，在 Down 后等待新焦点。原最小用例独立通过；current 120 次双参数 focused 执行 114 pass / 6 fail（47.28s），其中一次捕获同类焦点失败：running-only case 的第 3 个 Down 后选中 Child 3，终端只显示 Child 1/2，没有可见 accent 焦点，其余五次为 mixed case 的 preview 等待。原夹具发送八个 delta 后只等待一个 preview，不能见证所有 native partial commit 与卡片高度都已发布；mixed case 完成顺序还可能令短 viewport 的前三张卡全部 completed，从而没有可见 live preview。
+
+重构前 `306cd9a7` 双参数 60 次 57 pass / 3 fail（25.38s）复现 mixed preview viewport 假设；running-only 120 次通过，没有捕获相同 keyboard-focus 失败。Dashboard 与 keyboard scroll 产品实现未变，但这些证据不将 exact focus failure 自动归为已经在 baseline 复现的产品缺陷。暂时 tall-window 准备与单 child staged probe 均未提供有效 gate（前者引入 resize reading-position 变化），已丢弃；不扩大产品修复范围。
+
+最终修正仅同步本测试的静态 dashboard 准备：test-local public Store wrapper 在实际 commit 返回后计入八个不同 partial document；打开原 100×16 dashboard，确认 preview 与 accent 焦点已绘制，再完成 mixed child Runs，并等到目标状态。七次 Down 的可见焦点、Enter detail、Esc 返回后 selection/scroll geometry 及两次 Up 断言保持不变；live preview 断言移到 mixed completion 之前，避免假定它一定落在后续短 viewport 内。没有新增产品 API、固定等待、扩大 timeout 或改变窗口大小。prepared 双参数 40 次 40 pass / 0 fail（16.02s）；baseline prepared 两例通过（1.219s）。Subagent views、Subagent panel、concurrent parity 三个相关文件 32 pass / 0 fail（11.69s）；其中未修改的 mixed concurrent integration 用例 1.61s，保留实际多 child/Job native commit 成本。`bun run check:dev`、文档、格式与 diff 检查通过。Spec 保持 claimed，最终集成验收由 integration branch 协调；没有架构决定变化，无需新增 ADR。
+
 ## Out of Scope
 
 - MCP catalog/OAuth 拆深。

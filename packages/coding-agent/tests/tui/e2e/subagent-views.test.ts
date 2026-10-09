@@ -1,3 +1,5 @@
+import { createJsonlStore, type SessionOptions } from "@rukie/agent";
+import type { Storage } from "@earendil-works/pi-durable";
 import { expect, test } from "bun:test";
 import { startWithClock as start } from "../helpers/clock-app";
 import { startWithClock } from "../helpers/clock-app";
@@ -200,7 +202,41 @@ test("dashboard cards, tabs, interrupt and close buttons work with the mouse and
 test.each([false, true])(
   "eight cards (mixed=%s) keep keyboard focus visible in a short dashboard and preserve its selection and scroll on return",
   async (mixed) => {
+    const session: Partial<SessionOptions> = {};
+    // Observe each native partial commit before measuring keyboard scroll geometry.
+    const previews = new Set<number>();
+    const prepare = async (root: string) => {
+      const store = createJsonlStore({ cwd: root, homeDir: root });
+      session.store = {
+        ...store,
+        async open(...args) {
+          const lease = await store.open(...args);
+          return {
+            ...lease,
+            storage: new Proxy(lease.storage, {
+              get(target, key) {
+                if (key === "commit")
+                  return async (...args: Parameters<Storage["commit"]>) => {
+                    const result = await target.commit(...args);
+                    for (const write of args[0])
+                      if (
+                        write.type === "document.change" &&
+                        JSON.stringify(write.content).includes("live preview")
+                      )
+                        previews.add(write.id);
+                    return result;
+                  };
+                const value = Reflect.get(target, key);
+                return typeof value === "function" ? value.bind(target) : value;
+              },
+            }),
+          };
+        },
+      };
+    };
     const app = await start(["--permission-mode", "full-access", "delegate"], {
+      session,
+      prepare,
       columns: 100,
       rows: 16,
       env: { LANG: "en_US.UTF-8" },
@@ -232,18 +268,20 @@ test.each([false, true])(
             message.role === "user" && JSON.stringify(message.content).includes("child mixed"),
         ),
       );
-      for (const [index, child] of children.entries()) {
-        child.delta("live preview");
-        if (mixed && index % 2 === 0) child.finish();
-      }
+      // All eight card heights must be published; one visible preview is insufficient.
+      for (const child of children) child.delta("live preview");
+      await app.waitFor(() => previews.size === 8);
       app.stdin.write("\x01");
+      await app.waitFor(
+        () => screen().includes("─ Subagents ") && screen().includes("live preview") && !!focused(),
+      );
+      for (const [index, child] of children.entries()) if (mixed && index % 2 === 0) child.finish();
       await app.waitFor(
         () =>
           screen().includes("─ Subagents ") &&
           screen().includes(mixed ? "4 completed" : "8 running") &&
           !!focused(),
       );
-      await app.waitFor(() => screen().includes("live preview"));
       let previous = focused();
       for (let index = 0; index < 7; index++) {
         app.stdin.write("\x1b[B");
