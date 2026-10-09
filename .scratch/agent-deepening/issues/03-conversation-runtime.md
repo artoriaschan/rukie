@@ -35,3 +35,13 @@ Integration: merged latest integration `a26aac55` (01/02/05), preserving extract
 - Focused permissions, Conversation Runtime, permission-hooks, subagent-permissions and subagent-hooks selection: 192 tests passed across 9 files in 4.93s. Synchronization uses Run/Request completion and Session close; isolated temporary homes and projects are cleaned up.
 - `bun run check:dev` and `git diff --check` passed after correcting the test notice literal type; the initial static run identified only that new fixture type error.
 - Final aggregate gate remains the integration coordinator's responsibility; this review correction does not close ticket06 or the spec.
+
+## Aggregate acceptance correction: logical Child Jobs owner
+
+The first aggregate on integration `2466af46` actually failed: 3181 pass / 1 fail across 3182 tests and 294 files in 104.80s. The sole failure was `subagent-jobs` idle `send_message` continuation reusing `bash-1` instead of allocating `bash-2`. Current-tree minimal reproduction failed (219.33ms); the same test on pre-refactor baseline `306cd9a7` passed (228.72ms). This was a deterministic refactor regression, not a suite-only flake.
+
+Root cause: idle send forks a new native Conversation while retaining logical Subagent identity. Runtime retained Jobs by native Conversation ID; the baseline retained its registry by logical child ID. `createConversationRuntimePool` now owns separate native Conversation policy/hook/tracking instances and shared logical Subagent Jobs owners. Silent cleanup still clears old jobs/output before the driver publishes its receipt without resetting the logical sequence. Jobs event/notification adapters rebind to the current native attachment, so the continuing owner does not notify the previous native Conversation.
+
+Regression evidence: public failing case now passed (221.68ms); new module continuity/cleared output/sibling isolation/notification-binding test passed (8.28ms, actual processes synchronized on completion). Six affected Runtime/Subagent Jobs/hooks/permissions/checkpoint/delegation files passed 64 tests in 7.27s; `bun run check:dev` and `git diff --check` passed. Baseline diagnosis worktree removed. No second aggregate was run by this implementation subagent; the first aggregate remains recorded as failed, and corrected final acceptance is owned by the integration workflow.
+
+Root Jobs coverage also passed all 38 cases in 7.74s after logical ownership repair; duplicate attachment disposal is covered through shared-owner process completion and events.

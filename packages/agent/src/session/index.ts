@@ -1,4 +1,4 @@
-import { createConversationRuntime } from "./conversation/index.ts";
+import { createConversationRuntime, createConversationRuntimePool } from "./conversation/index.ts";
 import { readGoalReceipt } from "../tools/goal/index.ts";
 import { readSubagentReceipt } from "../tools/subagents/index.ts";
 import { createRequestLedger, parseRequestId, requestKind, requestIds } from "../requests/index.ts";
@@ -1054,19 +1054,11 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         isMcpAuthTool: (name) => mcp.authTools.has(name),
       },
     });
-    const childRuntimes = new Map<number, ReturnType<typeof createConversationRuntime>>();
-    const childRuntimeFor = (childId: number, origin: { agentId: string; description: string }) => {
-      let owner = childRuntimes.get(childId);
-      if (!owner) {
-        owner = createConversationRuntime({
-          origin,
-          lifetime: auxiliaryLifetime.signal,
-          isClosed: () => closed,
-        });
-        childRuntimes.set(childId, owner);
-      }
-      return owner;
-    };
+    const childRuntimes = createConversationRuntimePool({
+      lifetime: auxiliaryLifetime.signal,
+      isClosed: () => closed,
+    });
+    const childRuntimeFor = childRuntimes.forConversation;
     const childHookStarted = new Set<number>();
     const persistChildHook = async (
       child: Parameters<Parameters<typeof createSubagentController>[0]["childAgent"]>[1],

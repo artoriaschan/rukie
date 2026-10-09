@@ -74,7 +74,9 @@ Session 的 Background Job registry 管理 Bash 进程组、输出和游标。�
 
 模型 Hook 通过 [`tools/readonly.ts`](../packages/agent/src/tools/readonly.ts) 构造 read、glob、grep，只加载这些只读能力及 `tools/support/` 支撑，不加载完整内置工厂。`tools/builtin.ts` 保留为具体工具组装入口；read、write/edit、问题与 Skill 的协议适配仍归具体工具，不属于共享支撑。
 
-Request Ledger 判定因果工作何时结算、持久化结果并发布一次 `request_settled`；结果组装是纯函数，Goal 与 Subagent 各自读取其 driver 回执。Hook stop 与 Plan takeover 按 Request 写入 Ledger，调用方在同一事务中追加 Notice；是否停止仍由 Conversation 的运行策略决定。工具权限与 Hook 执行由 Conversation Runtime 统一处理，原生 Generation、Tool 与 Compaction hook 仍在 Session 的固定入口按顺序调用能力接口，能力不另注册这些 hook，见 [ADR-0028](adr/0028-single-session-harness-hook-entry.md)。
+Request Ledger 判定因果工作何时结算、持久化结果并发布一次 `request_settled`；结果组装是纯函数，Goal 与 Subagent 各自读取其 driver 回执。Hook stop 与 Plan takeover 按 Request 写入 Ledger，调用方在同一事务中追加 Notice；是否停止仍由 Conversation 的运行策略决定。
+
+Conversation Runtime 为每个原生 Conversation 分别保存权限策略、Hook 与文件跟踪；逻辑 Subagent 的 Background Job owner 在空闲 `send_message` 创建新原生 Conversation 后继续复用。child Run 结算前清空 Job 和输出，保留该逻辑 owner 的 Job 序号，并将通知绑定到当前 Conversation。工具权限与 Hook 执行由 Conversation Runtime 统一处理，原生 Generation、Tool 与 Compaction hook 仍在 Session 的固定入口按顺序调用能力接口，能力不另注册这些 hook，见 [ADR-0028](adr/0028-single-session-harness-hook-entry.md)。
 
 模块之间通过各自 `index.ts` 协作；frontend 使用包级公开入口，不读取 Agent Core 的私有运行状态。
 

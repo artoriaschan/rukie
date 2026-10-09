@@ -45,17 +45,70 @@ export interface ConversationRuntime {
   afterTool: ToolHooks["afterTool"];
 }
 
+function createJobsOwner() {
+  let jobs: ReturnType<typeof createJobs> | undefined;
+  let callbacks: Parameters<typeof createJobs>[0] = {};
+  return {
+    // After previous Run cleanup, notifications must target the current native attachment.
+    bind(input: Parameters<typeof createJobs>[0]) {
+      callbacks = input;
+      return (jobs ??= createJobs({
+        ...input,
+        onEvent: (event) => callbacks?.onEvent?.(event),
+        onNotify: (job) => callbacks?.onNotify?.(job),
+      }));
+    },
+    async clear() {
+      await jobs?.clear(true);
+    },
+    async dispose(silent = false) {
+      await jobs?.dispose(silent);
+    },
+  };
+}
+
+/** Native Conversation policy is distinct; idle forks retain the logical Subagent's Jobs owner. */
+export function createConversationRuntimePool(options: {
+  lifetime: AbortSignal;
+  isClosed(): boolean;
+}) {
+  const runtimes = new Map<number, ConversationRuntime>();
+  const jobs = new Map<string, ReturnType<typeof createJobsOwner>>();
+  return {
+    forConversation(id: number, origin: { agentId: string; description: string }) {
+      let runtime = runtimes.get(id);
+      if (!runtime) {
+        let jobOwner = jobs.get(origin.agentId);
+        if (!jobOwner) {
+          jobOwner = createJobsOwner();
+          jobs.set(origin.agentId, jobOwner);
+        }
+        runtime = createConversationRuntime({ ...options, origin, jobOwner });
+        runtimes.set(id, runtime);
+      }
+      return runtime;
+    },
+    get(id: number) {
+      return runtimes.get(id);
+    },
+    values() {
+      return runtimes.values();
+    },
+  };
+}
+
 /** A Conversation owns policy state and host resources; Session supplies durable admission adapters. */
 export function createConversationRuntime(options: {
   origin?: { agentId: string; description: string };
   lifetime: AbortSignal;
   isClosed(): boolean;
+  jobOwner?: ReturnType<typeof createJobsOwner>;
 }): ConversationRuntime {
   let stopped = false;
   let stopReason: string | undefined;
   let policy: Policy | undefined;
   let gate: ReturnType<typeof createPermissionGate> | undefined;
-  let jobs: ReturnType<typeof createJobs> | undefined;
+  const jobOwner = options.jobOwner ?? createJobsOwner();
   let tracking: ReturnType<typeof createFileTracking> | undefined;
   let hooks: HookRuntime | undefined;
   let transcriptAttached = false;
@@ -109,7 +162,7 @@ export function createConversationRuntime(options: {
       return (hooks ??= createHooks(input));
     },
     createJobs(input: Parameters<typeof createJobs>[0]) {
-      return (jobs ??= createJobs(input));
+      return jobOwner.bind(input);
     },
     createFileTracking(...args: Parameters<typeof createFileTracking>) {
       return (tracking ??= createFileTracking(...args));
@@ -132,10 +185,10 @@ export function createConversationRuntime(options: {
       hooks?.dispose();
     },
     async clearJobs() {
-      await jobs?.clear(true);
+      await jobOwner.clear();
     },
     async disposeJobs(silent = false) {
-      await jobs?.dispose(silent);
+      await jobOwner.dispose(silent);
     },
     configurePolicy(input: Policy) {
       policy = input;
