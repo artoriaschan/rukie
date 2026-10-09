@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
 const root = resolve(import.meta.dir, "../../..");
@@ -83,7 +84,9 @@ test("a successful CI run uploads the exact once-built artifacts after the full 
   expect(upload).toBeGreaterThan(audit);
   expect(commands[verify]).toContain('--require-clean --commit "$GITHUB_SHA"');
   expect(commands[build]).toContain('--out "$RUKIE_RELEASE_ARTIFACTS" --platform darwin-arm64');
-  expect(commands[check]).toBe("env -u NO_COLOR bun run check");
+  expect(commands[check]).toContain(
+    'env -u NO_COLOR bun run check > "$RUNNER_TEMP/rukie-check.log" 2>&1',
+  );
   expect(
     commands.some((command) =>
       command.includes("RUKIE_RELEASE_ARTIFACTS=$RUNNER_TEMP/rukie-release"),
@@ -101,6 +104,55 @@ test("a successful CI run uploads the exact once-built artifacts after the full 
   for (const step of steps) {
     if (typeof step.uses === "string") expect(step.uses).toMatch(/@[a-f0-9]{40}$/);
     expect(step.if).not.toBe("always()");
+  }
+});
+
+test("both source gates keep full logs and fail closed while bounding Actions output", async () => {
+  const directory = await mkdtemp(resolve(tmpdir(), "rukie-check-log-"));
+  try {
+    for (const name of ["ci.yml", "release-publish.yml"]) {
+      const workflow = object(
+        Bun.YAML.parse(await readFile(resolve(root, ".github/workflows", name), "utf8")),
+      );
+      const steps = object(object(workflow.jobs).verify).steps;
+      if (!Array.isArray(steps)) throw new Error("Expected verification steps");
+      const gate = steps.map(object).find((step) => step.id === "check");
+      if (typeof gate?.run !== "string") throw new Error("Missing source check gate");
+      const logUpload = steps
+        .map(object)
+        .find((step) => step.name === "Preserve complete check log");
+      expect(logUpload).toMatchObject({
+        if: "${{ !cancelled() && steps.check.outcome != 'skipped' }}",
+        with: { path: "${{ runner.temp }}/rukie-check.log", "retention-days": 1 },
+      });
+      for (const code of [0, 7]) {
+        // Exercise the workflow shell around a controlled check result, including stderr.
+        const command = gate.run.replace(
+          "env -u NO_COLOR bun run check",
+          `(i=0; while [ "$i" -lt 200 ]; do echo "result-$i"; i=$((i+1)); done; echo check-stderr >&2; exit ${code})`,
+        );
+        const child = Bun.spawn(["sh", "-e", "-c", command], {
+          env: { ...process.env, RUNNER_TEMP: directory },
+          stdout: "pipe",
+          stderr: "pipe",
+          signal: AbortSignal.timeout(10_000),
+        });
+        const [exit, stdout, stderr] = await Promise.all([
+          child.exited,
+          new Response(child.stdout).text(),
+          new Response(child.stderr).text(),
+        ]);
+        expect(exit).toBe(code === 0 ? 0 : 1);
+        expect(stderr).toBe("");
+        expect(stdout.trimEnd().split("\n")).toHaveLength(code === 0 ? 8 : 120);
+        const log = await readFile(resolve(directory, "rukie-check.log"), "utf8");
+        expect(log).toStartWith("result-0\n");
+        expect(log).toEndWith("check-stderr\n");
+        expect(log.trimEnd().split("\n")).toHaveLength(201);
+      }
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
   }
 });
 

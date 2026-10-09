@@ -82,7 +82,8 @@ for (const signal of [undefined, "SIGINT", "SIGTERM"] as const) {
       const result = await runPty(fixture, {
         actions: [
           { when: ready, send: `interactive ${signal ?? "normal"} question\r` },
-          { when: /Baked[\s\S]*ZQX/, ...(signal ? { signal } : { send: "\x04" }) },
+          // Delta rendering may paint the reply before the completed Run summary.
+          { when: /Baked[\s\S]*ZQX|ZQX[\s\S]*Baked/, ...(signal ? { signal } : { send: "\x04" }) },
         ],
       });
       restored(result);

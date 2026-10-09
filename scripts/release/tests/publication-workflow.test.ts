@@ -53,7 +53,9 @@ test("tag and same-tag manual publication serialize exact artifacts across least
     if (name === "verify") {
       expect(commands.filter((value) => value.includes("release:build"))).toHaveLength(1);
       expect(commands.join("\n")).toContain("--require-unpublished");
-      expect(commands).toContain("env -u NO_COLOR bun run check");
+      expect(commands.join("\n")).toContain(
+        'env -u NO_COLOR bun run check > "$RUNNER_TEMP/rukie-check.log" 2>&1',
+      );
       expect(commands.join("\n")).toContain("current-acceptance.json");
       const upload = steps
         .map(releaseObject)

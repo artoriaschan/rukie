@@ -99,7 +99,14 @@ jobs:
       - name: Verify exact clean source and repository identity
         run: bun scripts/release/tag.ts --tag "$RELEASE_TAG" --artifact-dir "$RUKIE_RELEASE_ARTIFACTS"
       - name: Check source and all installed scenarios using original files
-        run: env -u NO_COLOR bun run check
+        id: check
+        run: |
+          if env -u NO_COLOR bun run check > "$RUNNER_TEMP/rukie-check.log" 2>&1; then
+            tail -n 8 "$RUNNER_TEMP/rukie-check.log"
+          else
+            tail -n 120 "$RUNNER_TEMP/rukie-check.log"
+            exit 1
+          fi
       - name: Record this run without overwriting original acceptance
         run: |
           bun scripts/release/ci-audit.ts --artifact-dir "$RUKIE_RELEASE_ARTIFACTS" --output "$RUKIE_RELEASE_ARTIFACTS/current-acceptance.json"
@@ -116,6 +123,14 @@ jobs:
             ${{ env.RUKIE_RELEASE_ARTIFACTS }}/ci-acceptance.json
             ${{ env.RUKIE_RELEASE_ARTIFACTS }}/current-acceptance.json
           if-no-files-found: error
+      - name: Preserve complete check log
+        if: ${{ !cancelled() && steps.check.outcome != 'skipped' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: source-check-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/rukie-check.log
+          if-no-files-found: warn
+          retention-days: 1
   preserve:
     name: Preserve original accepted assets
     needs: [resolve, verify]

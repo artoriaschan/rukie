@@ -56,7 +56,14 @@ jobs:
       - name: Verify clean source and artifact identity
         run: bun run release:verify --artifact-dir "$RUKIE_RELEASE_ARTIFACTS" --require-clean --commit "$GITHUB_SHA"
       - name: Check source and all installed scenarios using those artifacts
-        run: env -u NO_COLOR bun run check
+        id: check
+        run: |
+          if env -u NO_COLOR bun run check > "$RUNNER_TEMP/rukie-check.log" 2>&1; then
+            tail -n 8 "$RUNNER_TEMP/rukie-check.log"
+          else
+            tail -n 120 "$RUNNER_TEMP/rukie-check.log"
+            exit 1
+          fi
       - name: Record accepted artifact identity
         run: bun scripts/release/ci-audit.ts --artifact-dir "$RUKIE_RELEASE_ARTIFACTS"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -69,3 +76,11 @@ jobs:
             ${{ env.RUKIE_RELEASE_ARTIFACTS }}/ci-acceptance.json
           if-no-files-found: error
           retention-days: 14
+      - name: Preserve complete check log
+        if: ${{ !cancelled() && steps.check.outcome != 'skipped' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: source-check-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/rukie-check.log
+          if-no-files-found: warn
+          retention-days: 1
