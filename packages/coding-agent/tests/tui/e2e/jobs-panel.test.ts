@@ -263,16 +263,15 @@ test("card clicks focus exact jobs and expanded promoted details show bounded ou
     await app.waitFor(() => !app.isWorking() && !screen().includes("esc interrupt"));
     app.stdin.write("\x0f");
     await app.waitFor(() => screen().includes("Transcript ·"));
-    // Saved Run summaries can place the first card above the bottom viewport.
-    // Reveal its painted header before capturing physical pointer coordinates.
-    for (let notches = 0; notches < 12 && !screen().includes("✓ job: bash-1"); notches++) {
-      const before = app.screen().slice(0, 3).join("\n");
-      app.stdin.write("\x1b[<64;10;2M");
-      await app.waitFor(
-        () => screen().includes("✓ job: bash-1") || app.screen().slice(0, 3).join("\n") !== before,
-      );
-    }
-    await app.waitFor(() => screen().includes("✓ job: bash-1"));
+    // Seek the settled source explicitly: a visible header during wheel scrolling can
+    // still move on the next frame before the physical pointer is dispatched.
+    app.stdin.write("/launch\r");
+    await app.waitFor(
+      () =>
+        screen().includes("1/1") &&
+        app.screen()[1] === "❯ launch" &&
+        screen().includes("✓ job: bash-1"),
+    );
     const first = app.screen().findIndex((line) => line.includes("✓ job: bash-1"));
     app.stdin.write(`\x1b[<0;4;${first + 1}M\x1b[<0;4;${first + 1}m`);
     await app.waitFor(() => screen().includes("❯ bash-1"));
