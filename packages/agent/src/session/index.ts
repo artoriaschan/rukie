@@ -1,3 +1,4 @@
+import { createConversationRuntime } from "./conversation/index.ts";
 import { readGoalReceipt } from "../tools/goal/index.ts";
 import { readSubagentReceipt } from "../tools/subagents/index.ts";
 import {
@@ -15,7 +16,7 @@ import {
 } from "../tools/tool-search/index.ts";
 import { stopHookContinuation } from "../hooks/index.ts";
 import { validateSessionDocument, validateSessionDocuments } from "./documents.ts";
-import { withHookTranscript, writeHookTranscript } from "../hooks/transcript.ts";
+import { writeHookTranscript } from "../hooks/transcript.ts";
 import { declarationsEqual } from "@earendil-works/pi-ai/utils/transcript";
 import { join, resolve } from "node:path";
 import {
@@ -31,7 +32,6 @@ import {
   type Model,
   type Models,
   type Message,
-  type ToolCall,
   type UserMessage,
 } from "@earendil-works/pi-ai";
 import {
@@ -75,8 +75,6 @@ const entryData = (entry: EntryRecord | undefined) => {
   const value = entry?.data;
   return value && typeof value === "object" && !Array.isArray(value) ? value : undefined;
 };
-import { createJobs } from "../tools/jobs/index.ts";
-import { preflightTool } from "../tools/preflight.ts";
 import { hasPendingMcpInteraction } from "../mcp/index.ts";
 import { resolveModel, isTrustedProject, modelState } from "../config/index.ts";
 import {
@@ -88,7 +86,6 @@ import {
 } from "../store/index.ts";
 import { createToolState } from "../tool-state/index.ts";
 import {
-  createPermissionGate,
   createPermissionBatch,
   parsePermissionRules,
   type PermissionAskRequest,
@@ -96,7 +93,7 @@ import {
   type OnToolCallAllowed,
 } from "../permissions/index.ts";
 export type { PermissionAskRequest, SessionAllowRule } from "../permissions/index.ts";
-import { createFileTracking, fileTrackingState } from "../file-tracking/index.ts";
+import { fileTrackingState } from "../file-tracking/index.ts";
 import { collectReminders, type ReminderSource, type SystemReminder } from "../reminders/index.ts";
 import { discoverSkills, skillInvocation, skillsReminder } from "../skills/index.ts";
 import {
@@ -134,9 +131,9 @@ import {
   preservePlacedGoalRounds,
   type GoalView,
 } from "../tools/goal/index.ts";
-import { subagentsState, subagentRunState, type SubagentRun } from "../tools/subagents/state.ts";
+import { subagentsState, subagentRunState, type SubagentRun } from "../tools/subagents/index.ts";
 import type { QuestionReply, QuestionRequest } from "../tools/question.ts";
-import { mergeHooks, createHooks, type CommonHookResult, type HookInput } from "../hooks/index.ts";
+import { mergeHooks, type CommonHookResult, type HookInput } from "../hooks/index.ts";
 import type { WebFetchOptions } from "../tools/web-fetch/index.ts";
 import { validateImage, type PromptImage } from "../images/index.ts";
 import { SYSTEM_PROMPT } from "../prompt/index.ts";
@@ -449,10 +446,6 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     let modelFact = `${model.provider}/${model.id}`;
     const auxiliaryLifetime = new AbortController();
     let notificationLifetime = new AbortController();
-    let stopped = false;
-    let hookStopReason: string | undefined;
-    const toolDurations = new Map<string, number>();
-    const executedInputs = new Map<string, Record<string, unknown>>();
     let startupStopReason: string | undefined;
     let selectingModel = false;
     let foregroundAdmission: Promise<void> | undefined;
@@ -523,6 +516,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       context,
     );
     const permissionBatch = createPermissionBatch(harness);
+    const runtime = createConversationRuntime({
+      lifetime: auxiliaryLifetime.signal,
+      isClosed: () => closed,
+    });
     failedCleanup.push(async () => {
       try {
         await harness.close(context);
@@ -605,7 +602,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     };
     let asyncAdmissions = Promise.resolve();
     const shutdownPublications = new Set<Promise<void>>();
-    const rootHookRuntime = createHooks({
+    runtime.createHooks({
       callMcpTool: (...args) => mcp.callHookTool(...args),
       settings: settings.hooks,
       cwd,
@@ -696,13 +693,12 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     });
     const hookTranscriptPath = (id: string) =>
       join(store.key(lease.id), "hook-transcripts", `${encodeURIComponent(id)}.jsonl`);
-    const hooks = withHookTranscript(
-      rootHookRuntime,
-      () => hookTranscriptPath(lease.id),
-      async () => fullHistory(),
-      !!settings.hooks && Object.values(settings.hooks).some((groups) => groups.length > 0),
-      () => !closed,
-    );
+    const hooks = runtime.hookTranscript({
+      path: () => hookTranscriptPath(lease.id),
+      history: async () => fullHistory(),
+      enabled:
+        !!settings.hooks && Object.values(settings.hooks).some((groups) => groups.length > 0),
+    });
     const hookInput = (extra: Record<string, unknown> = {}): HookInput => ({
       session_id: lease.id,
       transcript_path: hookTranscriptPath(lease.id),
@@ -741,8 +737,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           ctx,
         );
       if (result.continue === false) {
-        stopped = true;
-        hookStopReason = result.stopReason ?? "Stopped by hook.";
+        runtime.stopped = true;
+        runtime.stopReason = result.stopReason ?? "Stopped by hook.";
       }
     }
     const notifyInteraction: import("../interaction/index.ts").OnInteractionStart = async (
@@ -820,7 +816,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
       getPrompt: (id) => promptFacts.get(id),
     });
-    const tracking = createFileTracking(cwd, {
+    const tracking = runtime.createFileTracking(cwd, {
       initialState: state.get("file-tracking"),
       previousReminder: transcriptMessages((await conversation.context(context)).entries)
         .flatMap((message) =>
@@ -1020,7 +1016,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     }
     const userStoppedJobs = new Set<string>();
     let jobAdmissions = Promise.resolve();
-    const jobs = createJobs({
+    const jobs = runtime.createJobs({
       initialSequence: initialJobSequence,
       onEvent: (event) => custom(event),
       onNotify: (job) => {
@@ -1047,7 +1043,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 });
               }, context);
             } else {
-              stopped = false;
+              runtime.stopped = false;
               const requestId = requestIds.job(job.id, job.startedAt);
               const submitted = await submit(content, [], "followUp", requestId);
               void ledger
@@ -1063,10 +1059,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
     });
     failedCleanup.push(async () => {
-      await jobs.dispose(true);
+      await runtime.disposeJobs(true);
       await mcpManager.close();
       await mcp.close();
-      hooks.dispose();
+      runtime.disposeHooks();
     });
     const reportedSkillWarnings = new Set<string>();
     const loadSkills = async () => {
@@ -1097,120 +1093,95 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         context,
       );
     }
-    const gate = createPermissionGate({
-      cwd,
-      homeDir: options.homeDir,
-      rules: permissionRules,
-      sessionAllowRules,
-      sessionGrantListeners,
-      getMode: () => permissionMode,
-      getTools: () => tools,
-      getMessages: async () => {
-        const view = await conversation.context(context);
-        const submissions = await lease.storage.scanSubmissions(
-          { conversationId: conversation.id },
-          100000,
-          undefined,
-          context,
-        );
-        const human = new Set(
-          submissions.items.flatMap((record) =>
-            record.type === "input" && requestKind(record.requestId) === "human" && record.entry
-              ? [record.entry]
-              : [],
-          ),
-        );
-        return view.entries.flatMap((entry) =>
-          (entry.model ?? []).filter(
-            (message) =>
-              message.role === "assistant" || (message.role === "user" && human.has(entry.id)),
-          ),
-        );
-      },
-      getProjectInstructions: () =>
-        observation
-          .messages()
-          .flatMap((message) =>
-            message.role === "system-reminder" &&
-            (message.source === "project-instructions" || message.source === "user-instructions")
-              ? [message.content]
-              : [],
-          ),
-      getReviewModel: () => async () =>
-        settings.reviewModel ? selectedModel(settings.reviewModel) : model,
-      models,
-      onPermissionAsk: options.onPermissionAsk,
-      onInteractionStart: notifyInteraction,
-      onToolCallAllowed: async (call) => {
-        await checkpoints.record(call, cwd, options.homeDir);
-        await options.onToolCallAllowed?.(call);
-      },
-      onEvent: async (event) => {
-        if (event.type === "permission_denied") await persistDenial(conversation, event);
-        custom(event);
-      },
-      setMode: (value) => {
-        permissionMode = value;
-      },
-      onHookWarning: async (field, hook = "permission") => {
-        const warning = {
-          kind: "hook_warning" as const,
-          event: "PermissionRequest" as const,
-          hook,
-          message: `Ignoring invalid or unsupported hook output field: ${field}`,
-          error: { code: "hook-output-ignored" as const, params: { field } },
-        };
-        warn(warning.message);
-        await appendNotice(warning);
-        custom({ ...warning, type: "hook_warning" });
-      },
-      isRunStopped: () => stopped,
-      stopRun: (reason) => {
-        stopped = true;
-        hookStopReason = reason ?? "Stopped by hook.";
-      },
-      isMcpAuthTool: (name) => mcp.authTools.has(name),
-      preToolUse: async (call, signal) => {
-        const result = await hooks.run(
-          "PreToolUse",
-          hookInput({
-            tool_name: call.toolCall.name,
-            tool_input: call.args,
-            tool_use_id: call.toolCall.id,
-          }),
-          { signal, matchQuery: call.toolCall.name },
-        );
-        await applyHookResult(result, "hook:PreToolUse");
-        return result;
-      },
-      permissionRequest: (call, suggestions, signal) =>
-        hooks.run(
-          "PermissionRequest",
-          hookInput({
-            tool_name: call.toolCall.name,
-            tool_input: call.args,
-            permission_suggestions: suggestions,
-          }),
-          { signal, matchQuery: call.toolCall.name },
-        ),
-      permissionDenied: async (call, denial, signal) => {
-        const result = await hooks.run(
-          "PermissionDenied",
-          hookInput({
-            tool_name: call.toolCall.name,
-            tool_input: call.args,
-            tool_use_id: call.toolCall.id,
-            by: denial.by,
-            reason: denial.reason,
-            ...(denial.rule ? { rule: denial.rule } : {}),
-          }),
-          { signal, matchQuery: call.toolCall.name },
-        );
-        await applyHookResult(result, "hook:PermissionDenied");
-        return result;
+    runtime.configurePolicy({
+      hooks: hooks,
+      input: hookInput,
+      apply: applyHookResult,
+      batch: permissionBatch,
+      permission: {
+        cwd,
+        homeDir: options.homeDir,
+        rules: permissionRules,
+        sessionAllowRules,
+        sessionGrantListeners,
+        getMode: () => permissionMode,
+        getTools: () => tools,
+        getMessages: async () => {
+          const view = await conversation.context(context);
+          const submissions = await lease.storage.scanSubmissions(
+            { conversationId: conversation.id },
+            100000,
+            undefined,
+            context,
+          );
+          const human = new Set(
+            submissions.items.flatMap((record) =>
+              record.type === "input" && requestKind(record.requestId) === "human" && record.entry
+                ? [record.entry]
+                : [],
+            ),
+          );
+          return view.entries.flatMap((entry) =>
+            (entry.model ?? []).filter(
+              (message) =>
+                message.role === "assistant" || (message.role === "user" && human.has(entry.id)),
+            ),
+          );
+        },
+        getProjectInstructions: () =>
+          observation
+            .messages()
+            .flatMap((message) =>
+              message.role === "system-reminder" &&
+              (message.source === "project-instructions" || message.source === "user-instructions")
+                ? [message.content]
+                : [],
+            ),
+        getReviewModel: () => async () =>
+          settings.reviewModel ? selectedModel(settings.reviewModel) : model,
+        models,
+        onPermissionAsk: options.onPermissionAsk,
+        onInteractionStart: notifyInteraction,
+        onToolCallAllowed: async (call) => {
+          await checkpoints.record(call, cwd, options.homeDir);
+          await options.onToolCallAllowed?.(call);
+        },
+        onEvent: async (event) => {
+          if (event.type === "permission_denied") await persistDenial(conversation, event);
+          custom(event);
+        },
+        setMode: (value) => {
+          permissionMode = value;
+        },
+        onHookWarning: async (field, hook = "permission") => {
+          const warning = {
+            kind: "hook_warning" as const,
+            event: "PermissionRequest" as const,
+            hook,
+            message: `Ignoring invalid or unsupported hook output field: ${field}`,
+            error: { code: "hook-output-ignored" as const, params: { field } },
+          };
+          warn(warning.message);
+          await appendNotice(warning);
+          custom({ ...warning, type: "hook_warning" });
+        },
+
+        isMcpAuthTool: (name) => mcp.authTools.has(name),
       },
     });
-    const childHookOwners = new Map<number, ReturnType<typeof createHooks>>();
+    const childRuntimes = new Map<number, ReturnType<typeof createConversationRuntime>>();
+    const childRuntimeFor = (childId: number, origin: { agentId: string; description: string }) => {
+      let owner = childRuntimes.get(childId);
+      if (!owner) {
+        owner = createConversationRuntime({
+          origin,
+          lifetime: auxiliaryLifetime.signal,
+          isClosed: () => closed,
+        });
+        childRuntimes.set(childId, owner);
+      }
+      return owner;
+    };
     const childHookStarted = new Set<number>();
     const persistChildHook = async (
       child: Parameters<Parameters<typeof createSubagentController>[0]["childAgent"]>[1],
@@ -1247,9 +1218,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       childId: string,
       description: string,
     ) => {
-      const previous = childHookOwners.get(Number(child.id));
-      if (previous) return previous;
-      let owner = createHooks({
+      childRuntimeFor(Number(child.id), { agentId: childId, description }).createHooks({
         settings: mergeHooks(settings.hooks, type.hooks),
         cwd,
         homeDir: options.homeDir,
@@ -1306,22 +1275,18 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         },
       });
 
-      owner = withHookTranscript(
-        owner,
-        () => hookTranscriptPath(childId),
-        async () => fullHistory(child.id),
-        Object.values(mergeHooks(settings.hooks, type.hooks)).some((groups) => groups.length > 0),
-        () => !closed,
-      );
-      childHookOwners.set(Number(child.id), owner);
-      return owner;
+      return childRuntimeFor(Number(child.id), { agentId: childId, description }).hookTranscript({
+        path: () => hookTranscriptPath(childId),
+        history: async () => fullHistory(child.id),
+        enabled: Object.values(mergeHooks(settings.hooks, type.hooks)).some(
+          (groups) => groups.length > 0,
+        ),
+      });
     };
-    const childJobRegistries = new Map<string, ReturnType<typeof createJobs>>();
     const childResources = new Map<
       number,
       {
         observation: Awaited<ReturnType<typeof createConversationObservation>>;
-        jobs: ReturnType<typeof createJobs>;
       }
     >();
     const subagents = createSubagentController({
@@ -1331,36 +1296,13 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       parentSessionId: lease.id,
       state: subagentsDefinition,
       restored: state.get("subagents") as
-        | import("../tools/subagents/state.ts").SubagentIdentity[]
+        | import("../tools/subagents/index.ts").SubagentIdentity[]
         | undefined,
-      forkAt: () => {
-        const entries = observation?.view().entries ?? [];
-        const current = entries.findLast((entry) =>
-          entry.model?.some((message) => message.role === "assistant"),
-        );
-        return entries.findLast((entry) =>
-          entry.model?.some(
-            (message) =>
-              (message.role === "assistant" && message.stopReason === "stop") ||
-              (message.role === "toolResult" && (!current || entry.id < current.id)),
-          ),
-        )?.id;
-      },
-      async beforeStart(request, child, ctx) {
-        const type =
-          subagents.types().find((type) => type.name === request.type) ??
-          subagents.types().find((type) => type.name === "general-purpose");
-        if (!type) throw new Error("Subagent type is unavailable.");
-        const saved = (await child.agent(ctx)).model;
-        const selected = saved
-          ? selectedModel(`${saved.provider}/${saved.modelId}`)
-          : type.name === "fork"
-            ? model
-            : type.model
-              ? selectedModel(type.model)
-              : settings.subagentModel
-                ? selectedModel(settings.subagentModel)
-                : model;
+      models,
+      parentModel: () => model,
+      subagentModel: settings.subagentModel,
+      async beforeStart(request, child, ctx, selection) {
+        const { type, model: selected } = selection;
         const owner = ownedChildHooks(type, child, selected, request.agentId, request.description);
         const result = await owner.run(
           "SubagentStart",
@@ -1381,29 +1323,15 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           : undefined;
       },
       async afterRun(_request, child) {
-        await childResources.get(Number(child.id))?.jobs.clear(true);
+        await childRuntimes.get(Number(child.id))?.clearJobs();
       },
       async childAgent(type, child, selection) {
-        const inherited = selection.retained ? (await child.agent(context)).model : undefined;
-        const retainedModel = inherited
-          ? models.getModel(inherited.provider, inherited.modelId)
-          : undefined;
-        if (inherited && !retainedModel)
-          throw new Error(
-            `Unknown retained child model: ${inherited.provider}/${inherited.modelId}`,
-          );
-        const selected =
-          retainedModel ??
-          (type.name === "fork"
-            ? model
-            : type.model
-              ? selectedModel(type.model)
-              : settings.subagentModel
-                ? selectedModel(settings.subagentModel)
-                : model);
+        const selected = selection.model;
         const directory = subagents.list().find((row) => row.conversationId === Number(child.id));
         const description = directory?.description ?? type.description;
         const childId = directory?.id ?? String(child.id);
+        const childRuntime = childRuntimeFor(Number(child.id), { agentId: childId, description });
+        childRuntime.reset();
         const childInput = (extra: Record<string, unknown> = {}): HookInput =>
           hookInput({
             session_id: childId,
@@ -1417,8 +1345,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         const applyChildHook = async (result: CommonHookResult, source: string, ctx = context) => {
           await persistChildHook(child, result, source, ctx);
           if (result.continue === false) {
-            childStopped = true;
-            childStopReason = result.stopReason;
+            childRuntime.stopped = true;
+            childRuntime.stopReason = result.stopReason;
           }
         };
         const firstAttachment = !childHookStarted.has(Number(child.id));
@@ -1438,38 +1366,35 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           facts.title ||= description;
           facts.description = description;
         }, context);
-        const childJobs =
-          childJobRegistries.get(childId) ??
-          createJobs({
-            onEvent: (event) =>
-              custom({
-                type: "subagent_event",
-                agentId: childId,
-                description,
-                subagentType: type.name,
-                event: { ...event, sessionId: childId },
-              }),
-            onNotify: (job) => {
-              if (!closed)
-                void child
-                  .commit(
-                    (tx) =>
-                      tx.appendEntry(
-                        child.id,
-                        reminderEntry({
-                          role: "system-reminder",
-                          source: `job:${job.id}`,
-                          content: `background job ${job.id} (${job.kind}: ${job.label}) finished [status: ${job.status}, exit code: ${job.exitCode ?? "unknown"}]. Read its output with job_output.`,
-                          timestamp: Date.now(),
-                        }),
-                      ),
-                    context,
-                  )
-                  .catch(warn);
-            },
-          });
-        childJobRegistries.set(childId, childJobs);
-        const childTracking = createFileTracking(cwd, {
+        const childJobs = childRuntime.createJobs({
+          onEvent: (event) =>
+            custom({
+              type: "subagent_event",
+              agentId: childId,
+              description,
+              subagentType: type.name,
+              event: { ...event, sessionId: childId },
+            }),
+          onNotify: (job) => {
+            if (!closed)
+              void child
+                .commit(
+                  (tx) =>
+                    tx.appendEntry(
+                      child.id,
+                      reminderEntry({
+                        role: "system-reminder",
+                        source: `job:${job.id}`,
+                        content: `background job ${job.id} (${job.kind}: ${job.label}) finished [status: ${job.status}, exit code: ${job.exitCode ?? "unknown"}]. Read its output with job_output.`,
+                        timestamp: Date.now(),
+                      }),
+                    ),
+                  context,
+                )
+                .catch(warn);
+          },
+        });
+        const childTracking = childRuntime.createFileTracking(cwd, {
           initialState: childState.get("file-tracking"),
           persist: async (value, reminder) => {
             await childState.set(
@@ -1482,153 +1407,93 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         });
         await childTracking.restoreCommitted(await fullHistory(child.id));
         let childTools: ToolRegistration[] = [];
-        let childStopped = false;
-        let childStopReason: string | undefined;
-        const childGate = createPermissionGate({
-          cwd,
-          homeDir: options.homeDir,
-          rules: parsePermissionRules({
-            ...settings.permissions,
-            allow: [...(settings.permissions?.allow ?? []), ...(options.allowRules ?? [])],
-          }),
-          sessionAllowRules,
-          sessionGrantListeners,
-          getMode: () => permissionMode,
-          getTools: () => childTools,
-          getMessages: async () => {
-            const view = await conversation.context(context);
-            const inputs = await lease.storage.scanSubmissions(
-              { conversationId: conversation.id },
-              100000,
-              undefined,
-              context,
-            );
-            const human = new Set(
-              inputs.items.flatMap((record) =>
-                requestKind(record.requestId) === "human" && record.entry ? [record.entry] : [],
-              ),
-            );
-            return view.entries.flatMap((entry) =>
-              (entry.model ?? []).filter(
-                (message) =>
-                  message.role === "assistant" || (message.role === "user" && human.has(entry.id)),
-              ),
-            );
-          },
-          getProjectInstructions: () => [],
-          getReviewModel: () => async () =>
-            settings.reviewModel ? selectedModel(settings.reviewModel) : selected,
-          models,
-          onPermissionAsk: options.onPermissionAsk
-            ? (request) =>
-                options.onPermissionAsk!({ ...request, origin: { agentId: childId, description } })
-            : undefined,
-          onInteractionStart: childNotify,
-          onToolCallAllowed: async (call) => {
-            await checkpoints.record(call, cwd, options.homeDir);
-            await options.onToolCallAllowed?.(call);
-          },
-          onEvent: async (event) => {
-            if (event.type === "permission_denied") await persistDenial(child, event);
-            custom({
-              type: "subagent_event",
-              agentId: childId,
-              description,
-              subagentType: type.name,
-              event: { ...event, sessionId: childId },
-            });
-          },
-          setMode: (value) => {
-            permissionMode = value;
-          },
-          onHookWarning: async (field, hook = "permission") => {
-            const warning = {
-              kind: "hook_warning" as const,
-              event: "PermissionRequest" as const,
-              hook,
-              message: `Ignoring invalid or unsupported hook output field: ${field}`,
-              error: { code: "hook-output-ignored" as const, params: { field } },
-            };
-            warn(warning.message);
-            await child.commit(
-              (tx) =>
-                tx.appendEntry(child.id, {
-                  kind: "rukie.notice",
-                  data: { role: "session-notice", notice: warning, timestamp: Date.now() },
-                }),
-              context,
-            );
-            custom({
-              type: "subagent_event",
-              agentId: childId,
-              description,
-              subagentType: type.name,
-              event: { ...warning, type: "hook_warning", sessionId: childId },
-            });
-          },
-          isRunStopped: () => childStopped,
-          stopRun: (reason) => {
-            childStopped = true;
-            childStopReason = reason;
-          },
-          isMcpAuthTool: (name) => mcp.authTools.has(name),
-          preToolUse: async (call, signal) => {
-            const result = await childHooks.run(
-              "PreToolUse",
-              childInput({
-                agent_id: childId,
-                agent_type: type.name,
-                tool_name: call.toolCall.name,
-                tool_input: call.args,
-                tool_use_id: call.toolCall.id,
-              }),
-              { signal, matchQuery: call.toolCall.name },
-            );
-            for (const content of result.additionalContext)
-              await child.commit(
-                (tx) =>
-                  tx.appendEntry(
-                    child.id,
-                    reminderEntry({
-                      role: "system-reminder",
-                      source: "hook:PreToolUse",
-                      content,
-                      timestamp: Date.now(),
-                    }),
-                  ),
+        childRuntime.configurePolicy({
+          hooks: childHooks,
+          input: childInput,
+          apply: applyChildHook,
+          batch: permissionBatch,
+          permission: {
+            cwd,
+            homeDir: options.homeDir,
+            rules: parsePermissionRules({
+              ...settings.permissions,
+              allow: [...(settings.permissions?.allow ?? []), ...(options.allowRules ?? [])],
+            }),
+            sessionAllowRules,
+            sessionGrantListeners,
+            getMode: () => permissionMode,
+            getTools: () => childTools,
+            getMessages: async () => {
+              const view = await conversation.context(context);
+              const inputs = await lease.storage.scanSubmissions(
+                { conversationId: conversation.id },
+                100000,
+                undefined,
                 context,
               );
-            return result;
-          },
-          permissionRequest: (call, suggestions, signal) =>
-            childHooks.run(
-              "PermissionRequest",
-              childInput({
-                agent_id: childId,
-                agent_type: type.name,
-                tool_name: call.toolCall.name,
-                tool_input: call.args,
-                permission_suggestions: suggestions,
-              }),
-              { signal, matchQuery: call.toolCall.name },
-            ),
-          permissionDenied: async (call, denial, signal) => {
-            const result = await childHooks.run(
-              "PermissionDenied",
-              childInput({
-                agent_id: childId,
-                agent_type: type.name,
-                tool_name: call.toolCall.name,
-                tool_input: call.args,
-                tool_use_id: call.toolCall.id,
-                by: denial.by,
-                reason: denial.reason,
-                ...(denial.rule ? { rule: denial.rule } : {}),
-              }),
-              { signal, matchQuery: call.toolCall.name },
-            );
-            await applyChildHook(result, "hook:PermissionDenied");
-            return result;
+              const human = new Set(
+                inputs.items.flatMap((record) =>
+                  requestKind(record.requestId) === "human" && record.entry ? [record.entry] : [],
+                ),
+              );
+              return view.entries.flatMap((entry) =>
+                (entry.model ?? []).filter(
+                  (message) =>
+                    message.role === "assistant" ||
+                    (message.role === "user" && human.has(entry.id)),
+                ),
+              );
+            },
+            getProjectInstructions: () => [],
+            getReviewModel: () => async () =>
+              settings.reviewModel ? selectedModel(settings.reviewModel) : selected,
+            models,
+            onPermissionAsk: options.onPermissionAsk,
+            onInteractionStart: childNotify,
+            onToolCallAllowed: async (call) => {
+              await checkpoints.record(call, cwd, options.homeDir);
+              await options.onToolCallAllowed?.(call);
+            },
+            onEvent: async (event) => {
+              if (event.type === "permission_denied") await persistDenial(child, event);
+              custom({
+                type: "subagent_event",
+                agentId: childId,
+                description,
+                subagentType: type.name,
+                event: { ...event, sessionId: childId },
+              });
+            },
+            setMode: (value) => {
+              permissionMode = value;
+            },
+            onHookWarning: async (field, hook = "permission") => {
+              const warning = {
+                kind: "hook_warning" as const,
+                event: "PermissionRequest" as const,
+                hook,
+                message: `Ignoring invalid or unsupported hook output field: ${field}`,
+                error: { code: "hook-output-ignored" as const, params: { field } },
+              };
+              warn(warning.message);
+              await child.commit(
+                (tx) =>
+                  tx.appendEntry(child.id, {
+                    kind: "rukie.notice",
+                    data: { role: "session-notice", notice: warning, timestamp: Date.now() },
+                  }),
+                context,
+              );
+              custom({
+                type: "subagent_event",
+                agentId: childId,
+                description,
+                subagentType: type.name,
+                event: { ...warning, type: "hook_warning", sessionId: childId },
+              });
+            },
+
+            isMcpAuthTool: (name) => mcp.authTools.has(name),
           },
         });
         const beforeInput = await child.context(context);
@@ -1664,55 +1529,18 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           fileTracking: childTracking,
         });
         const refreshChildTools = () => {
-          childTools = [
-            ...builtinTools,
-            ...mcp.tools,
-            createToolSearchTool({
-              catalog: () =>
-                mcp.tools.filter((tool) => !type.tools || type.tools.includes(tool.name)),
-              visibleNames: async () =>
-                (await currentConversationTools(child)).map((tool) => tool.name),
-            }),
-          ]
-            .filter((tool) => !type.tools || type.tools.includes(tool.name))
-            .map((tool) => ({
-              ...tool,
-              async execute(args, api, ctx) {
-                await childGate.authorizeExecute(
-                  {
-                    type: "toolCall",
-                    id: api.callId,
-                    name: tool.name,
-                    arguments: args as Record<string, JsonValue>,
-                  },
-                  args as Record<string, unknown>,
-                  api,
-                  ctx,
-                );
-                executedInputs.set(api.callId, args as Record<string, unknown>);
-                const started = performance.now();
-                try {
-                  return await tool.execute(args, api, ctx);
-                } finally {
-                  toolDurations.set(api.callId, performance.now() - started);
-                  if (ctx.abortSignal?.aborted && !closed) {
-                    const result = await childHooks.run(
-                      "PostToolUseFailure",
-                      childInput({
-                        tool_name: tool.name,
-                        tool_input: args,
-                        tool_use_id: api.callId,
-                        error: String(ctx.abortSignal.reason ?? "Tool interrupted"),
-                        is_interrupt: true,
-                        duration_ms: toolDurations.get(api.callId),
-                      }),
-                      { signal: auxiliaryLifetime.signal, matchQuery: tool.name },
-                    );
-                    if (!closed) await applyChildHook(result, "hook:PostToolUseFailure");
-                  }
-                }
-              },
-            }));
+          childTools = childRuntime.wrapTools(
+            [
+              ...builtinTools,
+              ...mcp.tools,
+              createToolSearchTool({
+                catalog: () =>
+                  mcp.tools.filter((tool) => !type.tools || type.tools.includes(tool.name)),
+                visibleNames: async () =>
+                  (await currentConversationTools(child)).map((tool) => tool.name),
+              }),
+            ].filter((tool) => !type.tools || type.tools.includes(tool.name)),
+          );
         };
         refreshChildTools();
         const childLoadout = async (fresh = false, ctx = context) =>
@@ -1736,56 +1564,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           tools: childTools,
           hooks: [
             hook(ToolTask, {
-              beforeTool: async (call, api, ctx) => {
-                const decision = await permissionBatch.wrap(childGate.beforeTool, () =>
-                  childStopped ? (childStopReason ?? "Stopped by hook.") : undefined,
-                )(call, api, ctx);
-                if (decision?.block === undefined)
-                  await preflightTool(
-                    childTools.find((tool) => tool.name === call.name),
-                    decision?.arguments ?? call.arguments,
-                    api,
-                    ctx,
-                    call.id,
-                  );
-                return decision;
-              },
-              afterTool: async (call, result, _api, ctx) => {
-                const changed = await childHooks.run(
-                  result.isError ? "PostToolUseFailure" : "PostToolUse",
-                  childInput({
-                    tool_name: call.name,
-                    tool_input: executedInputs.get(call.id) ?? call.arguments,
-                    tool_response: { content: result.content, details: result.details },
-                    ...(result.isError
-                      ? {
-                          error: (result.content ?? [])
-                            .flatMap((part) => (part.type === "text" ? [part.text] : []))
-                            .join(""),
-                          is_interrupt: ctx.abortSignal?.aborted ?? false,
-                        }
-                      : {}),
-                    tool_use_id: call.id,
-                    duration_ms: toolDurations.get(call.id) ?? 0,
-                  }),
-                  { signal: ctx.abortSignal, matchQuery: call.name },
-                );
-                await applyChildHook(changed, "hook:PostToolUse", ctx);
-                if ("decision" in changed && changed.decision === "block" && changed.reason)
-                  return {
-                    ...result,
-                    content: [
-                      ...(result.content ?? []),
-                      {
-                        type: "text" as const,
-                        text: `<system-reminder>\n${changed.reason}\n</system-reminder>`,
-                      },
-                    ],
-                  };
-                return "updatedToolOutput" in changed && changed.updatedToolOutput
-                  ? { ...result, content: changed.updatedToolOutput }
-                  : result;
-              },
+              beforeTool: childRuntime.beforeTool,
+              afterTool: childRuntime.afterTool,
             }),
             hook(GenerationTask, {
               beforeRequest: async (_request, _api, ctx) => {
@@ -1952,7 +1732,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 await childTracking.commitResults(
                   committed.flatMap((value) => (value ? [value.entry] : [])),
                 );
-                if (childStopped) {
+                if (childRuntime.stopped) {
                   await child.commit(
                     (tx) =>
                       tx.appendEntry(child.id, {
@@ -1961,7 +1741,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                           role: "session-notice",
                           notice: {
                             kind: "hook_stopped",
-                            reason: childStopReason ?? "Stopped by hook.",
+                            reason: childRuntime.stopReason ?? "Stopped by hook.",
                           },
                           timestamp: Date.now(),
                         },
@@ -2021,7 +1801,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                   });
             },
           });
-          childResources.set(Number(child.id), { observation: childObservation, jobs: childJobs });
+          childResources.set(Number(child.id), { observation: childObservation });
         }
         return {
           model: { provider: selected.provider, modelId: selected.id },
@@ -2035,11 +1815,11 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     });
     failedCleanup.push(async () => {
       subagents.close();
-      for (const owner of childHookOwners.values()) owner.dispose();
+      for (const owner of childRuntimes.values()) owner.disposeHooks();
       for (const resource of childResources.values()) {
         await resource.observation.close();
-        await resource.jobs.dispose(true);
       }
+      for (const owner of childRuntimes.values()) await owner.disposeJobs(true);
     });
     const pendingCompactions = new Map<number, EntryRecord>();
     const compactFocus = new Map<number, string>();
@@ -2056,8 +1836,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           },
         });
       }, context);
-      stopped = true;
-      hookStopReason = reason;
+      runtime.stopped = true;
+      runtime.stopReason = reason;
       try {
         await conversation.abort(caller);
       } catch (error) {
@@ -2375,45 +2155,12 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             }
           : undefined,
       });
-      tools = [
+      tools = runtime.wrapTools([
         ...base,
         ...createSubagentTools({ isChild: false, controller: subagents }),
         ...mcp.tools,
         toolSearch,
-      ].map((tool) => ({
-        ...tool,
-        async execute(args, api, ctx) {
-          const call: ToolCall = {
-            type: "toolCall",
-            id: api.callId,
-            name: tool.name,
-            arguments: args as Record<string, JsonValue>,
-          };
-          await gate.authorizeExecute(call, args as Record<string, unknown>, api, ctx);
-          executedInputs.set(api.callId, args as Record<string, unknown>);
-          const started = performance.now();
-          try {
-            return await tool.execute(args, api, ctx);
-          } finally {
-            toolDurations.set(api.callId, performance.now() - started);
-            if (ctx.abortSignal?.aborted && !closed) {
-              const result = await hooks.run(
-                "PostToolUseFailure",
-                hookInput({
-                  tool_name: tool.name,
-                  tool_input: args,
-                  tool_use_id: api.callId,
-                  error: String(ctx.abortSignal.reason ?? "Tool interrupted"),
-                  is_interrupt: true,
-                  duration_ms: toolDurations.get(api.callId),
-                }),
-                { signal: auxiliaryLifetime.signal, matchQuery: tool.name },
-              );
-              if (!closed) await applyHookResult(result, "hook:PostToolUseFailure");
-            }
-          }
-        },
-      }));
+      ]);
       const extension = {
         name: "rukie.session",
         tools,
@@ -2450,58 +2197,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               return undefined;
             },
           }),
-          hook(ToolTask, {
-            beforeTool: async (call, api, ctx) => {
-              const decision = await permissionBatch.wrap(gate.beforeTool, () =>
-                stopped ? (hookStopReason ?? "Stopped by hook.") : undefined,
-              )(call, api, ctx);
-              if (decision?.block === undefined)
-                await preflightTool(
-                  tools.find((tool) => tool.name === call.name),
-                  decision?.arguments ?? call.arguments,
-                  api,
-                  ctx,
-                  call.id,
-                );
-              return decision;
-            },
-            afterTool: async (call, result, api, ctx) => {
-              const changed = await hooks.run(
-                result.isError ? "PostToolUseFailure" : "PostToolUse",
-                hookInput({
-                  tool_name: call.name,
-                  tool_input: executedInputs.get(call.id) ?? call.arguments,
-                  tool_response: { content: result.content, details: result.details },
-                  ...(result.isError
-                    ? {
-                        error: (result.content ?? [])
-                          .flatMap((part) => (part.type === "text" ? [part.text] : []))
-                          .join(""),
-                        is_interrupt: ctx.abortSignal?.aborted ?? false,
-                      }
-                    : {}),
-                  tool_use_id: call.id,
-                  duration_ms: toolDurations.get(call.id) ?? 0,
-                }),
-                { signal: ctx.abortSignal, matchQuery: call.name },
-              );
-              await applyHookResult(changed, "hook:PostToolUse", ctx);
-              if ("decision" in changed && changed.decision === "block" && changed.reason)
-                return {
-                  ...result,
-                  content: [
-                    ...(result.content ?? []),
-                    {
-                      type: "text" as const,
-                      text: `<system-reminder>\n${changed.reason}\n</system-reminder>`,
-                    },
-                  ],
-                };
-              return "updatedToolOutput" in changed && changed.updatedToolOutput
-                ? { ...result, content: changed.updatedToolOutput }
-                : result;
-            },
-          }),
+          hook(ToolTask, { beforeTool: runtime.beforeTool, afterTool: runtime.afterTool }),
           hook(GenerationTask, {
             beforeRequest: async (_request, api, ctx) => {
               const live = await harness.snapshot(LiveDoc, conversation.id, ctx);
@@ -2807,8 +2503,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 await conversation.abort(ctx);
                 return;
               }
-              if (stopped && hookStopReason) {
-                const reason = hookStopReason;
+              if (runtime.stopped && runtime.stopReason) {
+                const reason = runtime.stopReason;
                 await conversation.commit(async (tx) => {
                   await ledger.recordOutcome(tx, conversation.id, { kind: "hook-stop", reason });
                   await tx.appendEntry(conversation.id, {
@@ -3745,7 +3441,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         assertAvailable();
         notificationLifetime.abort();
         notificationLifetime = new AbortController();
-        stopped = true;
+        runtime.stopped = true;
         const active = await harness.snapshot(GoalActivationDoc, conversation.id, context);
         let goalAbort: ReturnType<typeof harness.abortTask> | undefined;
         if (active?.taskId) {
@@ -3788,13 +3484,13 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         assertAvailable(true);
         const admissionFinished = Promise.withResolvers<void>();
         foregroundAdmission = admissionFinished.promise;
-        stopped = false;
-        hookStopReason = undefined;
+        runtime.stopped = false;
+        runtime.stopReason = undefined;
         goalRound = false;
         const abort = () => {
           notificationLifetime.abort();
           notificationLifetime = new AbortController();
-          stopped = true;
+          runtime.stopped = true;
           void conversation.abort(context).catch((error) => {
             if (!closed) warn(error);
           });
@@ -3878,7 +3574,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             });
             await applyHookResult(result, "hook:SessionEnd");
           });
-          hooks.dispose();
+          runtime.disposeHooks();
           await release(async () => {
             await Promise.all(shutdownPublications);
           });
@@ -3887,12 +3583,12 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           permissionBatch.close();
           await release(() => observation.close());
           subagents.close();
-          for (const owner of childHookOwners.values()) owner.dispose();
+          for (const owner of childRuntimes.values()) owner.disposeHooks();
           for (const resource of childResources.values()) {
             await release(() => resource.observation.close());
-            await release(() => resource.jobs.dispose());
           }
-          await release(() => jobs.dispose());
+          for (const owner of childRuntimes.values()) await release(() => owner.disposeJobs());
+          await release(() => runtime.disposeJobs());
           await release(() => mcp.close());
           await release(() => env.cleanup(context));
           unregister();

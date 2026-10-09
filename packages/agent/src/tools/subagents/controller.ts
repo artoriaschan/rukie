@@ -1,3 +1,4 @@
+import type { Api, Model, Models } from "@earendil-works/pi-ai";
 import { requestIds } from "../../requests/index.ts";
 import {
   defineTask,
@@ -51,12 +52,14 @@ export interface SubagentControllerOptions {
   state: ToolStateDefinition;
   restored?: readonly SubagentIdentity[];
   onWarning?(warning: string): void;
-  forkAt(): EntryId | undefined;
+  models: Models;
+  parentModel(): Model<Api>;
+  subagentModel?: string;
   /** Install child capability extensions before returning its explicit agent config. */
   childAgent(
     type: SubagentType,
     conversation: Conversation,
-    selection: { retained: boolean },
+    selection: { retained: boolean; model: Model<Api> },
   ): Promise<AgentChange>;
   /** Settle child resources and end hooks before exposing its terminal receipt. */
   afterRun?(
@@ -81,6 +84,7 @@ export interface SubagentControllerOptions {
     },
     conversation: Conversation,
     context: Context,
+    selection: { type: SubagentType; model: Model<Api> },
   ): Promise<{ stop: string } | undefined>;
 }
 export type SubagentDelegationFact =
@@ -146,6 +150,39 @@ export function createSubagentController(options: SubagentControllerOptions) {
     }
     return fallback;
   };
+  async function selectModel(
+    type: SubagentType,
+    child: Conversation,
+    retained: boolean,
+    context: Context,
+  ) {
+    const saved = retained ? (await child.agent(context)).model : undefined;
+    if (saved) {
+      const model = options.models.getModel(saved.provider, saved.modelId);
+      if (!model)
+        throw new Error(`Unknown retained child model: ${saved.provider}/${saved.modelId}`);
+      return model;
+    }
+    const requested = type.name === "fork" ? undefined : (type.model ?? options.subagentModel);
+    if (!requested) return options.parentModel();
+    const slash = requested.indexOf("/");
+    const model = options.models.getModel(requested.slice(0, slash), requested.slice(slash + 1));
+    if (!model) throw new Error(`Unknown model: ${requested}`);
+    return model;
+  }
+  async function forkAt(context: Context) {
+    const entries = (await parent.context(context)).entries;
+    const current = entries.findLast((entry) =>
+      entry.model?.some((message) => message.role === "assistant"),
+    );
+    return entries.findLast((entry) =>
+      entry.model?.some(
+        (message) =>
+          (message.role === "assistant" && message.stopReason === "stop") ||
+          (message.role === "toolResult" && (!current || entry.id < current.id)),
+      ),
+    )?.id;
+  }
   function adopt(publication: CommitPublication) {
     for (const change of publication.changes) {
       if (
@@ -262,10 +299,17 @@ export function createSubagentController(options: SubagentControllerOptions) {
           if (!conversation) throw new Error("Subagent conversation is missing.");
           const type = typeFor(task.input.type);
           if (!type) throw new Error(`Subagent type ${task.input.type} is unavailable.`);
+          const model = await selectModel(
+            type,
+            conversation,
+            task.input.retained === true,
+            context,
+          );
           const decision = await options.beforeStart?.(
             { ...task.input, agentId: row.id },
             conversation,
             context,
+            { type, model },
           );
           if (decision) {
             const result = resultError(decision.stop, task.input.startedAt, runtime.now());
@@ -301,6 +345,7 @@ export function createSubagentController(options: SubagentControllerOptions) {
             throw new Error("Retained subagent model is missing.");
           const change = await options.childAgent(type, conversation, {
             retained: task.input.retained === true,
+            model,
           });
           const parentAgent = await runtime.agent(context);
           const selection = change.tools;
@@ -776,12 +821,12 @@ export function createSubagentController(options: SubagentControllerOptions) {
         );
       return start(request, api, context);
     },
-    fork(
+    async fork(
       request: { description: string; prompt: string; background: boolean },
       api: ToolExecutionApi,
       context: Context,
     ) {
-      return start({ ...request, type: "fork" }, api, context, options.forkAt());
+      return start({ ...request, type: "fork" }, api, context, await forkAt(context));
     },
     async send(
       agentId: string,
@@ -828,7 +873,11 @@ export function createSubagentController(options: SubagentControllerOptions) {
           context,
         );
         const type = typeFor(row.type);
-        if (conversation && type) await options.childAgent(type, conversation, { retained: true });
+        if (conversation && type)
+          await options.childAgent(type, conversation, {
+            retained: true,
+            model: await selectModel(type, conversation, true, context),
+          });
       }
     },
     async readChild(id: string, context: Context = BACKGROUND_CONTEXT) {
