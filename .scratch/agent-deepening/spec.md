@@ -124,3 +124,13 @@ TUI 失败属于重构前已存在的测试同步不足：`app.flush()` 仅完�
 双轴代码审阅发现的 omitted Hook stop reason P1 已修正并复审通过；逻辑 child Jobs ownership 修正及每项测试同步修正均经增量审阅，无未解决 finding。验收覆盖公开 Session 的 root/child、恢复与结算、Goal、工具声明与 Interaction，以及相关终端交互；没有 registry 发布或外部服务上线证据。本次不 push。
 
 01–06 票据全部 resolved；第 06 票与 spec 在同一关闭修改中更新。最终验收后的变更仅为状态与交付记录，通过文档、tracker、格式及 diff 检查，复用上述代码完整验收结果。
+
+## Main integration acceptance
+
+按用户要求合入 main：`b61c6417` 同时保留原 main 的 TUI 消息流／MCP 卡片提交 `0463b6ec` 与本 spec 的交付分支 `486012bc`，无冲突。由于合并后的 TUI 代码不同于第八轮验收，先验证 8 个相关文件的 66 项测试（13.15s），再使用隔离 HOME 验证完整 main。
+
+第一次 main 完整检查实际失败：3198 pass / 2 fail，3200 tests / 295 files，123.29s。失败为 `active continuation history remains exact with future colliding provider timestamps` 与 `card clicks focus exact jobs and expanded promoted details show bounded output, times, spill and dropped data`。前者重放时只等待 composer 即读取卡片坐标；修正等待精确卡片及展开按钮，并从同一就绪帧计算坐标。全量未记录当时坐标，focused 原用例通过，因此提前读取目标仍为推断，未声称确定性复现。相关历史／卡片／mixed Resume 18 pass（4.88s），历史断言保持不变。
+
+Jobs 用例在 focused 第 13 次捕获相同失败：读取的卡片 header 位于零基 row 1，输入派发时该位置已变为 Background Jobs 分组 header，卡片移到 row 2；之前的通知 admission 与 Frontend idle 屏障均已满足。修正通过现有 Transcript search 定位 `launch`，等待唯一搜索结果、已绘制来源与卡片后，再按原坐标点击，保留精确 job 选择、时间、output spill、截断与 dropped 输出断言。15 次 focused 通过（15.42s），Jobs／concurrent parity／Transcript search 22 pass（9.16s）；两个修正均为测试准备，未改产品代码或扩大超时。增量审阅无 finding。
+
+修正提交 `c9a72104`、`b104c325` 合入 main 后，第二次完整 `env -u NO_COLOR bun run check` 在 `b104c325` 通过：3200 pass / 0 fail，3200 tests / 295 files，118.74s，18186 assertions；format、lint、TypeScript、Knip、scratch/docs 与 ink boundaries 同时通过。日志保存在 `/tmp/neant-agent-deepening-main-check.log` 与 `/tmp/neant-agent-deepening-main-check-2.log`。此后只追加本记录，复用该代码状态的完整验收；原 main 提交与重构分支均保留在 main 历史中。未 push。
