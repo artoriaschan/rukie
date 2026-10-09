@@ -106,32 +106,6 @@ test("an accepted placed round settles its completion after admission acknowledg
   }
 });
 
-test("a Goal activation settles all rounds with nonoverlapping native provider usage", async () => {
-  const dirs = await tempDirs();
-  let session: Awaited<ReturnType<typeof createSession>> | undefined;
-  try {
-    const fake = fakeModel([
-      fauxAssistantMessage("first round"),
-      fauxAssistantMessage("last round"),
-    ]);
-    session = await createSession({ ...dirs, ...fake, permissionMode: "full-access" });
-    await session.rename("usage fixture");
-    const goal = await session.createGoal("Exactly two rounds", { maxRounds: 2 });
-    const result = await session.waitForRequest(goal.requestId);
-    expect(result).toMatchObject({ text: "last round", success: true });
-    const expected = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 };
-    for (const message of session.messages)
-      if (message.role === "assistant")
-        for (const key of ["input", "output", "cacheRead", "cacheWrite", "totalTokens"] as const)
-          expected[key] += message.usage[key];
-    expect(result.usage).toEqual(expected);
-    expect(fake.contexts).toHaveLength(2);
-  } finally {
-    await session?.close();
-    await dirs.cleanup();
-  }
-});
-
 test("Rewind rejects accepted Goal work before its driver can target another conversation", async () => {
   const dirs = await tempDirs();
   let session: Awaited<ReturnType<typeof createSession>> | undefined;

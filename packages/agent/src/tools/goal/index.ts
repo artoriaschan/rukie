@@ -9,3 +9,5 @@ export {
   revokeGoalActivation,
   preservePlacedGoalRounds,
 } from "./driver.ts";
+
+export { readGoalReceipt } from "./results.ts";

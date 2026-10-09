@@ -1,3 +1,13 @@
+import { readGoalReceipt } from "../tools/goal/index.ts";
+import { readSubagentReceipt } from "../tools/subagents/index.ts";
+import {
+  createRequestLedger,
+  parseRequestId,
+  requestKind,
+  requestIds,
+  isGoalRound,
+  goalRoundNumber,
+} from "../requests/index.ts";
 import {
   planToolSearchLoadout,
   createToolSearchTool,
@@ -6,7 +16,6 @@ import {
 import { stopHookContinuation } from "../hooks/index.ts";
 import { validateSessionDocument, validateSessionDocuments } from "./documents.ts";
 import { withHookTranscript, writeHookTranscript } from "../hooks/transcript.ts";
-import { randomUUID } from "node:crypto";
 import { declarationsEqual } from "@earendil-works/pi-ai/utils/transcript";
 import { join, resolve } from "node:path";
 import {
@@ -34,7 +43,6 @@ import {
   CompactionTask,
   ToolTask,
   LiveDoc,
-  type SubmissionId,
   type TaskId,
   type ToolRegistration,
   type EntryDraft,
@@ -315,17 +323,6 @@ const ChildFactsDoc = defineDoc<{ title: string; description: string }>({
   fork: "initial",
   initial: () => ({ title: "", description: "" }),
 });
-const RequestDoc = defineDoc<{
-  requests: Record<
-    string,
-    { submissions: number[]; tasks: number[]; startedAt: number; result: JsonValue | null }
-  >;
-}>({
-  kind: "rukie.requests",
-  version: 1,
-  scope: "session",
-  initial: () => ({ requests: {} }),
-});
 const CompactHookContextDoc = defineDoc<{ pending: string[]; afterEntry: number | null }>({
   kind: "rukie.compact-hook-context",
   version: 1,
@@ -349,18 +346,6 @@ const JobStopsDoc = defineDoc<{ pending: Record<string, string> }>({
   history: "rewindable",
   fork: "initial",
   initial: () => ({ pending: {} }),
-});
-const PlanTakeoverDoc = defineDoc<{ requests: Record<string, true> }>({
-  kind: "rukie.plan-takeovers",
-  version: 1,
-  scope: "session",
-  initial: () => ({ requests: {} }),
-});
-const HookStopsDoc = defineDoc<{ requests: Record<string, string> }>({
-  kind: "rukie.hook-stops",
-  version: 1,
-  scope: "session",
-  initial: () => ({ requests: {} }),
 });
 const PendingInputFactsDoc = defineDoc<{ inputs: Record<string, Record<string, JsonValue>> }>({
   kind: "rukie.pending-input-facts",
@@ -407,43 +392,6 @@ const zeroUsage = (): RunResult["usage"] => ({
   cacheWrite: 0,
   totalTokens: 0,
 });
-
-function storedRequestResult(value: JsonValue | null): RequestResult | undefined {
-  if (value === null) return;
-  if (
-    typeof value !== "object" ||
-    Array.isArray(value) ||
-    typeof value.requestId !== "string" ||
-    typeof value.text !== "string" ||
-    typeof value.success !== "boolean" ||
-    typeof value.durationMs !== "number" ||
-    !value.usage ||
-    typeof value.usage !== "object" ||
-    Array.isArray(value.usage)
-  )
-    throw new Error("Invalid persisted request result.");
-  const usage = zeroUsage();
-  for (const key of ["input", "output", "cacheRead", "cacheWrite", "totalTokens"] as const) {
-    const count = value.usage[key];
-    if (typeof count !== "number" || !Number.isFinite(count) || count < 0)
-      throw new Error("Invalid persisted request usage.");
-    usage[key] = count;
-  }
-  if (value.error !== undefined && typeof value.error !== "string")
-    throw new Error("Invalid persisted request error.");
-  return {
-    ...(value.stopReason === "hook_blocked" || value.stopReason === "hook_stopped"
-      ? { stopReason: value.stopReason }
-      : {}),
-    ...(typeof value.reason === "string" ? { reason: value.reason } : {}),
-    requestId: value.requestId,
-    text: value.text,
-    success: value.success,
-    durationMs: value.durationMs,
-    usage,
-    ...(typeof value.error === "string" ? { error: value.error } : {}),
-  };
-}
 
 /** One native Harness owns every request, task, entry and conversation of this Session. */
 export async function createSession(options: SessionOptions): Promise<Session> {
@@ -493,8 +441,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     const custom = (event: EventPayload) => emit({ ...event, sessionId: lease.id } as SessionEvent);
     let closed = false;
     let closing: Promise<void> | undefined;
-    let currentRequestId: string | undefined;
-    const requestWaiters = new Map<string, Promise<RequestResult>>();
+    let ledger: ReturnType<typeof createRequestLedger>;
     let contextMessages: readonly Message[] = [];
     let runSummaries: RunSummaryFact[] = [];
     const thinking = createThinkingTiming(() => performance.now());
@@ -712,8 +659,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               }, context);
               return;
             }
-            const parentRequestId = live?.run ? currentRequestId : undefined;
-            const requestId = `hook:${randomUUID()}`;
+            const parentRequestId = live?.run ? ledger.currentRequestId : undefined;
+            const requestId = requestIds.hook();
             const submitted = await conversation.submit(
               {
                 type: "input",
@@ -723,10 +670,11 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               },
               context,
             );
-            if (!parentRequestId) currentRequestId = requestId;
-            await registerSubmission(parentRequestId ?? requestId, submitted.id);
+            if (!parentRequestId) ledger.setForeground(requestId);
+            await ledger.registerSubmission(parentRequestId ?? requestId, submitted.id);
             if (!parentRequestId)
-              void resultFor(requestId, submitted.id)
+              void ledger
+                .resultFor(requestId, submitted.id)
                 .then(async (result) => {
                   custom({ type: "result", ...result });
                   await session.waitForRequest(requestId);
@@ -935,14 +883,14 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           .id,
       settle: async (requestId, ctx) => awaitWithContext(session.waitForRequest(requestId), ctx),
       settleCancelled: async (requestId, submissionId, ctx) =>
-        awaitWithContext(resultFor(requestId, submissionId), ctx),
+        awaitWithContext(ledger.resultFor(requestId, submissionId), ctx),
       recoverSubmission: async (requestId, ctx) => {
         const inputs = await lease.storage.scanSubmissions({}, 100000, undefined, ctx);
         const found = inputs.items.find(
           (input) => input.conversationId === conversation.id && input.requestId === requestId,
         );
         if (!found) return undefined;
-        await registerSubmission(requestId, found.id);
+        await ledger.registerSubmission(requestId, found.id);
         if (found.entry)
           await conversation.commit(
             (tx) =>
@@ -961,7 +909,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       isArmed: () => activationTaskFact !== null,
       getSnapshot: () => state.get("goal"),
       persist: async (value, armed) => {
-        const humanCause = currentRequestId?.startsWith("human:") ? currentRequestId : undefined;
+        const humanCause =
+          requestKind(ledger.currentRequestId) === "human" ? ledger.currentRequestId : undefined;
         let acceptedRequest: string | undefined;
         if (!armed && (value === null || value.phase === "paused")) {
           const active = await harness.snapshot(GoalActivationDoc, conversation.id, context);
@@ -977,7 +926,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           const snapshot = await tx.doc(goalState.document, conversation.id);
           snapshot.value = preservePlacedGoalRounds(snapshot.value, value);
           if (armed && value && active.taskId === null) {
-            const requestId = `goal:${value.id}:activation:${randomUUID()}`;
+            const requestId = requestIds.goalActivation(value.id);
             const taskId = await tx.createTask(
               goalDriver,
               { goalId: value.id, requestId, initialRound: value.roundsStarted + 1 },
@@ -986,15 +935,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             active.taskId = Number(taskId);
             active.requestId = requestId;
             active.countedRound = value.roundsStarted;
-            const requests = await tx.doc(RequestDoc);
-            requests.requests[requestId] = {
-              submissions: [],
-              tasks: [Number(taskId)],
-              startedAt: Date.now(),
-              result: null,
-            };
-            if (humanCause && requests.requests[humanCause])
-              requests.requests[humanCause]!.tasks.push(Number(taskId));
+            await ledger.bind(tx, requestId, { taskId: Number(taskId), replace: true });
+            if (humanCause)
+              await ledger.bind(tx, humanCause, { taskId: Number(taskId), onlyExisting: true });
             acceptedRequest = requestId;
           } else if (!armed) {
             await revokeGoalActivation(tx, conversation.id);
@@ -1002,7 +945,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         }, context);
         if (acceptedRequest) {
           goalRequestId = acceptedRequest;
-          if (!humanCause) currentRequestId = acceptedRequest;
+          if (!humanCause) ledger.setForeground(acceptedRequest);
         }
       },
       assertAvailable,
@@ -1105,9 +1048,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               }, context);
             } else {
               stopped = false;
-              const requestId = `job:${job.id}:${job.startedAt}`;
+              const requestId = requestIds.job(job.id, job.startedAt);
               const submitted = await submit(content, [], "followUp", requestId);
-              void resultFor(requestId, submitted.id)
+              void ledger
+                .resultFor(requestId, submitted.id)
                 .then(async (result) => {
                   custom({ type: "result", ...result });
                   await session.waitForRequest(requestId);
@@ -1171,7 +1115,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         );
         const human = new Set(
           submissions.items.flatMap((record) =>
-            record.type === "input" && record.requestId?.startsWith("human:") && record.entry
+            record.type === "input" && requestKind(record.requestId) === "human" && record.entry
               ? [record.entry]
               : [],
           ),
@@ -1347,9 +1291,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                   context,
                 );
               if (reason) {
-                const requestId = `hook:${childId}:${randomUUID()}`;
+                const requestId = requestIds.hook(childId);
                 const submitted = await submit(reason, [], "followUp", requestId);
-                void resultFor(requestId, submitted.id)
+                void ledger
+                  .resultFor(requestId, submitted.id)
                   .then(async (result) => {
                     custom({ type: "result", ...result });
                     await session.waitForRequest(requestId);
@@ -1560,7 +1505,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             );
             const human = new Set(
               inputs.items.flatMap((record) =>
-                record.requestId?.startsWith("human:") && record.entry ? [record.entry] : [],
+                requestKind(record.requestId) === "human" && record.entry ? [record.entry] : [],
               ),
             );
             return view.entries.flatMap((entry) =>
@@ -2100,13 +2045,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     const compactFocus = new Map<number, string>();
     let compactionHooks = Promise.resolve();
     const stopCompactionByHook = async (reason: string, caller = context) => {
-      const live = await harness.snapshot(LiveDoc, conversation.id, context);
-      const first = live?.run?.inputs[0];
-      const input =
-        first === undefined ? undefined : await lease.storage.submission(first, context);
       await conversation.commit(async (tx) => {
-        const stops = await tx.doc(HookStopsDoc);
-        if (input?.requestId) stops.requests[input.requestId] = reason;
+        await ledger.recordOutcome(tx, conversation.id, { kind: "hook-stop", reason });
         await tx.appendEntry(conversation.id, {
           kind: "rukie.notice",
           data: {
@@ -2583,25 +2523,17 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 const placed = await Promise.all(
                   live.run.inputs.map((id) => lease.storage.submission(id, ctx)),
                 );
-                if (
-                  placed.some(
-                    (record) =>
-                      record?.requestId?.startsWith("goal:") &&
-                      /:round:\d+:\d+$/.test(record.requestId),
-                  )
-                )
+                if (placed.some((record) => requestKind(record?.requestId) === "goal-round"))
                   goalRound = true;
                 const activation = await harness.snapshot(GoalActivationDoc, conversation.id, ctx);
                 const roundInput =
                   activation?.taskId && activation.requestId
                     ? placed.find((record) =>
-                        record?.requestId?.startsWith(
-                          `${activation.requestId}:round:${activation.taskId}:`,
-                        ),
+                        isGoalRound(record?.requestId, activation.requestId!, activation.taskId!),
                       )
                     : undefined;
                 if (roundInput?.requestId) {
-                  const round = Number(roundInput.requestId.split(":").at(-1));
+                  const round = goalRoundNumber(roundInput.requestId);
                   if (!Number.isSafeInteger(round) || round < 1)
                     throw new Error("Invalid accepted Goal round identity.");
                   goalRound = true;
@@ -2643,13 +2575,17 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 if (
                   placed.some(
                     (record) =>
-                      record?.requestId?.startsWith("human:") && record.entry === latestInput?.id,
+                      record &&
+                      requestKind(record.requestId) === "human" &&
+                      record.entry === latestInput?.id,
                   )
                 )
                   goalRound = false;
                 const humanInput = placed.findLast(
                   (record) =>
-                    record?.requestId?.startsWith("human:") && record.entry === latestInput?.id,
+                    record &&
+                    requestKind(record.requestId) === "human" &&
+                    record.entry === latestInput?.id,
                 );
                 if (
                   humanInput &&
@@ -2680,30 +2616,21 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 for (const record of placed)
                   if (record?.requestId) {
                     let requestIds = [record.requestId];
-                    const report = /^subagent:(\d+):report$/.exec(record.requestId);
+                    const identity = parseRequestId(record.requestId);
+                    const report = identity.kind === "subagent-report" ? identity : undefined;
                     if (report) {
                       const all = await lease.storage.scanTasks({}, 100000, undefined, ctx);
-                      const driver = all.items.find(
-                        (task) => Number(task.id) === Number(report[1]),
-                      );
-                      const originals = driver && (await requestCausesForTasks(all.items))(driver);
+                      const driver = all.items.find((task) => Number(task.id) === report.taskId);
+                      const originals =
+                        driver && (await ledger.requestCausesForTasks(all.items))(driver);
                       if (originals?.size) requestIds = [...originals];
                     }
                     await harness.commit(async (tx) => {
-                      const doc = await tx.doc(RequestDoc);
-                      for (const requestId of requestIds) {
-                        doc.requests[requestId] ??= {
-                          submissions: [],
-                          tasks: [],
-                          startedAt: Date.now(),
-                          result: null,
-                        };
-                        const request = doc.requests[requestId]!;
-                        if (!request.submissions.includes(Number(record.id)))
-                          request.submissions.push(Number(record.id));
-                        if (!request.tasks.includes(Number(live.run!.taskId)))
-                          request.tasks.push(Number(live.run!.taskId));
-                      }
+                      for (const requestId of requestIds)
+                        await ledger.bind(tx, requestId, {
+                          submissionId: Number(record.id),
+                          taskId: Number(live.run!.taskId),
+                        });
                     }, ctx);
                   }
               }
@@ -2721,7 +2648,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                     delete pending.inputs[String(id)];
                   }, ctx);
                 if (
-                  record?.requestId?.startsWith("human:") &&
+                  record &&
+                  requestKind(record.requestId) === "human" &&
                   record.status !== "queued" &&
                   record.entry &&
                   !checkpoints
@@ -2873,26 +2801,16 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 }),
               );
               if (takeover) {
-                const live = await harness.snapshot(LiveDoc, conversation.id, ctx);
-                const first = live?.run?.inputs[0];
-                const input =
-                  first === undefined ? undefined : await lease.storage.submission(first, ctx);
                 await conversation.commit(async (tx) => {
-                  const taken = await tx.doc(PlanTakeoverDoc);
-                  if (input?.requestId) taken.requests[input.requestId] = true;
+                  await ledger.recordOutcome(tx, conversation.id, { kind: "plan-takeover" }, ctx);
                 }, ctx);
                 await conversation.abort(ctx);
                 return;
               }
               if (stopped && hookStopReason) {
-                const live = await harness.snapshot(LiveDoc, conversation.id, ctx);
-                const first = live?.run?.inputs[0];
-                const input =
-                  first === undefined ? undefined : await lease.storage.submission(first, ctx);
                 const reason = hookStopReason;
                 await conversation.commit(async (tx) => {
-                  const stopped = await tx.doc(HookStopsDoc);
-                  if (input?.requestId) stopped.requests[input.requestId] = reason;
+                  await ledger.recordOutcome(tx, conversation.id, { kind: "hook-stop", reason });
                   await tx.appendEntry(conversation.id, {
                     kind: "rukie.notice",
                     data: {
@@ -2935,7 +2853,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 inputs.flatMap((input) => (input?.requestId ? [input.requestId] : [])),
               );
               const tasks = (await lease.storage.scanTasks({}, 100000, undefined, ctx)).items;
-              const causes = await requestCausesForTasks(tasks);
+              const causes = await ledger.requestCausesForTasks(tasks);
               if (
                 tasks.some(
                   (task) =>
@@ -2988,14 +2906,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                 });
               await applyHookResult(result, "hook:Stop", ctx);
               if (result.continue === false) {
-                const input =
-                  live?.run?.inputs[0] === undefined
-                    ? undefined
-                    : await lease.storage.submission(live.run.inputs[0], ctx);
                 const reason = result.stopReason ?? "Stopped by hook.";
                 await conversation.commit(async (tx) => {
-                  const stops = await tx.doc(HookStopsDoc);
-                  if (input?.requestId) stops.requests[input.requestId] = reason;
+                  await ledger.recordOutcome(tx, conversation.id, { kind: "hook-stop", reason });
                   await tx.appendEntry(conversation.id, {
                     kind: "rukie.notice",
                     data: {
@@ -3221,131 +3134,35 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       unregister();
       await observation.close();
     });
-    const readRequest = async (requestId: string) =>
-      (await harness.snapshot(RequestDoc, context))?.requests[requestId];
-    const registerSubmission = async (requestId: string, submissionId: SubmissionId) => {
-      await harness.commit(async (tx) => {
-        const doc = await tx.doc(RequestDoc);
-        doc.requests[requestId] ??= {
-          submissions: [],
-          tasks: [],
-          startedAt: Date.now(),
-          result: null,
-        };
-        const request = doc.requests[requestId]!;
-        if (!request.submissions.includes(Number(submissionId)))
-          request.submissions.push(Number(submissionId));
-      }, context);
-    };
-    const receiptEntries = async (
-      receipt: import("@earendil-works/pi-durable").SettledSubmissionRecord,
-    ) => {
-      if (receipt.type !== "input" || !receipt.entry) return [];
-      const history = await fullHistory();
-      const nextInput =
-        receipt.status === "done"
-          ? undefined
-          : history.find((entry) => entry.id > receipt.entry! && entry.kind === "input");
-      const end = receipt.status === "done" ? receipt.answer : nextInput?.id;
-      return history.filter(
-        (entry) =>
-          entry.id >= receipt.entry! &&
-          (end === undefined || (receipt.status === "done" ? entry.id <= end : entry.id < end)),
-      );
-    };
-    const entryUsage = (entries: Iterable<EntryRecord>) => {
-      const usage = zeroUsage();
-      for (const entry of entries)
-        for (const message of entry.model ?? [])
-          if (message.role === "assistant")
-            for (const key of [
-              "input",
-              "output",
-              "cacheRead",
-              "cacheWrite",
-              "totalTokens",
-            ] as const)
-              usage[key] += message.usage[key];
-      return usage;
-    };
-    const resultFor = async (
-      requestId: string,
-      submissionId: SubmissionId,
-    ): Promise<RequestResult> => {
-      const submission = await harness.submission(submissionId, context);
-      if (!submission) throw new Error(`Request submission missing: ${requestId}`);
-      const receipt = await Promise.race([submission.wait(context), storageFault.promise]);
-
-      const view = await conversation.context(context);
-      contextMessages = view.messages;
-      const entries = await receiptEntries(receipt);
-      const usage = entryUsage(entries);
-      const answer =
-        receipt.status === "done" && receipt.type === "input"
-          ? await lease.storage.entry(receipt.answer, context)
-          : undefined;
-      const terminal =
-        (answer?.entry.model ?? []).findLast((message) => message.role === "assistant") ??
-        entries
-          .flatMap((entry) => entry.model ?? [])
-          .findLast((message) => message.role === "assistant");
-      const text =
-        (answer?.entry.model ?? (terminal ? [terminal] : undefined))
-          ?.filter((message) => message.role === "assistant")
-          .map(textOf)
-          .join("") ?? "";
-      const request = await readRequest(requestId);
-      await observation.flush();
-      if ((await harness.snapshot(PlanTakeoverDoc, context))?.requests[requestId])
-        return {
-          requestId,
-          text: "",
-          success: true,
-          usage,
-          durationMs: Date.now() - (request?.startedAt ?? Date.now()),
-        };
-      const persistedStop = (await harness.snapshot(HookStopsDoc, context))?.requests[requestId];
-      if (persistedStop)
-        return {
-          requestId,
-          text,
-          success: true,
-          stopReason: "hook_stopped",
-          reason: persistedStop,
-          usage,
-          durationMs: Date.now() - (request?.startedAt ?? Date.now()),
-        };
-      return {
-        requestId,
-        text,
-        success:
-          receipt.status === "done" &&
-          (terminal?.role !== "assistant" || terminal.stopReason === "stop"),
-        usage,
-        durationMs: Date.now() - (request?.startedAt ?? Date.now()),
-        ...(receipt.status === "unanswered"
-          ? { error: typeof receipt.detail === "string" ? receipt.detail : receipt.reason }
-          : terminal?.role === "assistant" && terminal.stopReason !== "stop"
-            ? {
-                error:
-                  terminal.errorMessage ??
-                  `Model response ended with stop reason ${terminal.stopReason}`,
-              }
-            : {}),
-      };
-    };
+    ledger = createRequestLedger({
+      harness,
+      storage: lease.storage,
+      context,
+      conversation: () => conversation,
+      history: fullHistory,
+      flush: () => observation.flush(),
+      updateContext: (messages) => {
+        contextMessages = messages;
+      },
+      fault: storageFault.promise,
+      assertAvailable,
+      goalReceipt: readGoalReceipt,
+      subagentReceipt: readSubagentReceipt,
+      publish: (result) => custom({ type: "request_settled", ...result }),
+    });
     async function submit(
       prompt: string,
       images: PromptImage[] = [],
       whenBusy: "reject" | "steer" | "followUp" = "reject",
-      requestId = `human:${randomUUID()}`,
+      requestId = requestIds.human(),
       signal?: AbortSignal,
     ) {
       assertAvailable();
       images.forEach(validateImage);
-      const hookResult = requestId.startsWith("human:")
-        ? await hooks.run("UserPromptSubmit", hookInput({ prompt }), { signal })
-        : { systemMessages: [], additionalContext: [] };
+      const hookResult =
+        requestKind(requestId) === "human"
+          ? await hooks.run("UserPromptSubmit", hookInput({ prompt }), { signal })
+          : { systemMessages: [], additionalContext: [] };
       signal?.throwIfAborted();
       await applyHookResult(hookResult, "hook:UserPromptSubmit");
       if (hookResult.decision === "block" || hookResult.continue === false || startupStopReason) {
@@ -3367,13 +3184,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           durationMs: 0,
         };
         await harness.commit(async (tx) => {
-          const requests = await tx.doc(RequestDoc);
-          requests.requests[requestId] = {
-            submissions: [],
-            tasks: [],
-            startedAt: Date.now(),
-            result: { ...result, usage: { ...result.usage } },
-          };
+          await ledger.recordResult(tx, result);
           await tx.appendEntry(conversation.id, {
             kind: "rukie.notice",
             data: {
@@ -3389,7 +3200,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       const admissionContext = signal ? withAbortSignal(signal, context) : context;
       await prepareReminders(admissionContext, true, undefined, requestId);
       signal?.throwIfAborted();
-      if (requestId.startsWith("human:")) await title.firstPrompt(prompt);
+      if (requestKind(requestId) === "human") await title.firstPrompt(prompt);
       const invocation = skillInvocation(prompt, skills);
       if (invocation)
         await appendReminder({
@@ -3410,20 +3221,22 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         { type: "input", content, requestId, whenBusy },
         admissionContext,
       );
-      if (!/:round:\d+:\d+$/.test(requestId)) currentRequestId = requestId;
-      await registerSubmission(requestId, submitted.id);
+      if (requestKind(requestId) !== "goal-round") ledger.setForeground(requestId);
+      await ledger.registerSubmission(requestId, submitted.id);
       const record = await submitted.status(context);
-      if (images.length || invocation || !requestId.startsWith("human:")) {
+      if (images.length || invocation || !(requestKind(requestId) === "human")) {
         const facts: Record<string, JsonValue> = {
           ...(images.length ? { imageNames: images.map((image) => image.name ?? null) } : {}),
           ...(invocation ? { skillInvocation: invocation } : {}),
-          ...(!requestId.startsWith("human:")
+          ...(!(requestKind(requestId) === "human")
             ? {
-                source: requestId.startsWith("goal:")
-                  ? "goal"
-                  : requestId.startsWith("job:")
-                    ? "job"
-                    : "hook",
+                source:
+                  requestKind(requestId) === "goal-round" ||
+                  requestKind(requestId) === "goal-activation"
+                    ? "goal"
+                    : requestKind(requestId) === "job"
+                      ? "job"
+                      : "hook",
               }
             : {}),
         };
@@ -3484,60 +3297,6 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           ? last.usage.input + last.usage.cacheRead + last.usage.cacheWrite || undefined
           : undefined;
     }
-    /** Follow committed native ownership and accepted steer identities, including multiple callers. */
-    async function requestCausesForTasks(
-      tasks: readonly import("@earendil-works/pi-durable").TaskRecord<
-        JsonValue,
-        JsonValue,
-        JsonValue
-      >[],
-    ) {
-      const requests = (await harness.snapshot(RequestDoc, context))?.requests ?? {};
-      const submissions = (await lease.storage.scanSubmissions({}, 100000, undefined, context))
-        .items;
-      const conversations = (await lease.storage.scanConversations({}, 100000, undefined, context))
-        .items;
-      const byId = new Map(tasks.map((record) => [Number(record.id), record]));
-      return (task: (typeof tasks)[number]) => {
-        const found = new Set<string>();
-        const pending = [Number(task.id)];
-        const visited = new Set<number>();
-        while (pending.length) {
-          const id = pending.pop()!;
-          if (visited.has(id)) continue;
-          visited.add(id);
-          const current = byId.get(id);
-          if (!current) continue;
-          for (const [requestId, request] of Object.entries(requests))
-            if (request.tasks.includes(id)) found.add(requestId);
-          const input: JsonValue = current.input;
-          const origin =
-            input &&
-            typeof input === "object" &&
-            !Array.isArray(input) &&
-            typeof input.originToolTaskId === "number"
-              ? input.originToolTaskId
-              : undefined;
-          if (current.owner !== undefined) pending.push(Number(current.owner));
-          if (origin !== undefined) pending.push(origin);
-          if (current.kind === "rukie.subagent-driver") {
-            // The child Conversation owner fixes which driver accepted this input. A provider callId
-            // is not a causal edge: only the committed native ToolTask-derived request identity is.
-            const children = new Set(
-              conversations
-                .filter((child) => Number(child.owner?.taskId) === id)
-                .map((child) => Number(child.id)),
-            );
-            for (const submission of submissions) {
-              if (!children.has(Number(submission.conversationId))) continue;
-              const send = /^subagent-send:(\d+)$/.exec(submission.requestId ?? "");
-              if (send) pending.push(Number(send[1]));
-            }
-          }
-        }
-        return found;
-      };
-    }
     const session: Session = {
       get running() {
         return (
@@ -3547,7 +3306,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         );
       },
       get currentRequestId() {
-        return currentRequestId;
+        return ledger.currentRequestId;
       },
       id: lease.id,
       get title() {
@@ -3694,14 +3453,14 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         await job.completed;
         const content = `User stopped background job ${id} (${job.view.label}).`;
         if (observation.running()) {
-          const parent = currentRequestId;
-          const requestId = `job:stopped:${id}:${job.view.startedAt}`;
+          const parent = ledger.currentRequestId;
+          const requestId = requestIds.jobStopped(id, job.view.startedAt);
           await conversation.commit(async (tx) => {
             const pending = await tx.doc(JobStopsDoc, conversation.id);
             pending.pending[requestId] = content;
           }, context);
           const submitted = await submit(content, [], "steer", requestId);
-          if (parent) await registerSubmission(parent, submitted.id);
+          if (parent) await ledger.registerSubmission(parent, submitted.id);
         } else
           await appendReminder({
             role: "system-reminder",
@@ -4002,10 +3761,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         await observation.flush();
       },
       async steer(prompt, input) {
-        const parentRequestId = currentRequestId;
+        const parentRequestId = ledger.currentRequestId;
         const admission = (async () => {
           const submitted = await submit(prompt, input?.images, "steer");
-          if (parentRequestId) await registerSubmission(parentRequestId, submitted.id);
+          if (parentRequestId) await ledger.registerSubmission(parentRequestId, submitted.id);
         })();
         steeringAdmissions.add(admission);
         try {
@@ -4016,7 +3775,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
       async run(prompt, input = {}) {
         input.signal?.throwIfAborted();
-        if (observation.running() && currentRequestId?.startsWith("hook:")) {
+        if (observation.running() && requestKind(ledger.currentRequestId) === "hook") {
           const cancelled = Promise.withResolvers<never>();
           const cancelWaiting = () => cancelled.reject(input.signal?.reason);
           input.signal?.addEventListener("abort", cancelWaiting, { once: true });
@@ -4050,10 +3809,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           await rebuildTools();
           await refreshMcp(input.signal);
           input.signal?.throwIfAborted();
-          const requestId = `human:${randomUUID()}`;
+          const requestId = requestIds.human();
           preparedMcpRequestId = requestId;
           const submission = await submit(prompt, input.images, "reject", requestId, input.signal);
-          const result = await resultFor(requestId, submission.id);
+          const result = await ledger.resultFor(requestId, submission.id);
           await conversation.commit(
             (tx) =>
               tx.appendEntry(conversation.id, {
@@ -4077,7 +3836,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           if (input.signal?.aborted) throw input.signal.reason;
           if (error instanceof PromptHookBlocked) {
             custom({ type: "result", ...error.result });
-            custom({ type: "request_settled", ...error.result });
+            ledger.publishSettled(error.result);
             return error.result;
           }
           throw error;
@@ -4088,199 +3847,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           input.signal?.removeEventListener("abort", abort);
         }
       },
-      waitForRequest(requestId) {
-        const existing = requestWaiters.get(requestId);
-        if (existing) return existing;
-        const waiting = (async () => {
-          assertAvailable();
-          const restored = await readRequest(requestId);
-          if (restored?.result) return storedRequestResult(restored.result)!;
-          const tasks = (await lease.storage.scanTasks({}, 100000, undefined, context)).items;
-          const acceptedGoal = tasks.find(
-            (task) =>
-              task.kind === "rukie.goal-driver" && restored?.tasks.includes(Number(task.id)),
-          );
-          if (acceptedGoal && !restored?.submissions.length) {
-            const receipt = await Promise.race([
-              harness.waitForTask(acceptedGoal.id, context),
-              storageFault.promise,
-            ]);
-            const outcome = receipt.state.outcome;
-            const value = "result" in outcome ? outcome.result : undefined;
-            const settled =
-              value && typeof value === "object" && !Array.isArray(value)
-                ? storedRequestResult({ ...value, requestId })!
-                : {
-                    requestId,
-                    text: "",
-                    success: false,
-                    error: "Goal continuation cancelled",
-                    usage: zeroUsage(),
-                    durationMs: 0,
-                  };
-            await harness.commit(async (tx) => {
-              (await tx.doc(RequestDoc)).requests[requestId]!.result = {
-                ...settled,
-                usage: { ...settled.usage },
-              };
-            }, context);
-            await observation.flush();
-            custom({ type: "request_settled", ...settled });
-            return settled;
-          }
-          let result: RequestResult | undefined;
-          const goalReceipts = new Map<
-            number,
-            import("@earendil-works/pi-durable").SettledTask<JsonValue>
-          >();
-          const parentEntries = new Map<number, EntryRecord>();
-          const childReceipts = new Map<
-            number,
-            import("@earendil-works/pi-durable").TaskRecord<JsonValue, JsonValue, JsonValue>
-          >();
-          for (;;) {
-            const request = await readRequest(requestId);
-            if (!request) throw new Error(`Unknown request: ${requestId}`);
-            const submissions = await lease.storage.scanSubmissions({}, 100000, undefined, context);
-            const ids = submissions.items
-              .filter((record) => request.submissions.includes(Number(record.id)))
-              .map((record) => record.id);
-            if (!ids.length) throw new Error("Request has no submitted inputs.");
-            const results = await Promise.all(ids.map((id) => resultFor(requestId, id)));
-            result = results.at(-1)!;
-            for (const id of ids) {
-              const submission = await harness.submission(id, context);
-              if (!submission) throw new Error(`Request submission missing: ${id}`);
-              for (const entry of await receiptEntries(await submission.wait(context)))
-                parentEntries.set(Number(entry.id), entry);
-            }
-            const tasks = (await lease.storage.scanTasks({}, 100000, undefined, context)).items;
-            const drivers = [];
-            const causes = await requestCausesForTasks(tasks);
-            for (const task of tasks)
-              if (task.kind === "rukie.subagent-driver" && causes(task).has(requestId))
-                drivers.push(task);
-            for (const driver of drivers) {
-              const receipt = await Promise.race([
-                harness.waitForTask(driver.id, context),
-                storageFault.promise,
-              ]);
-              childReceipts.set(Number(driver.id), receipt);
-            }
-            for (const driver of tasks.filter(
-              (task) =>
-                task.kind === "rukie.goal-driver" && request.tasks.includes(Number(task.id)),
-            ))
-              goalReceipts.set(
-                Number(driver.id),
-                await Promise.race([harness.waitForTask(driver.id, context), storageFault.promise]),
-              );
-            const fresh = await readRequest(requestId);
-            if (
-              fresh &&
-              fresh.submissions.length === request.submissions.length &&
-              fresh.tasks.length === request.tasks.length
-            )
-              break;
-          }
-          // Linked Goal rounds may share a native answer with a Human child report.
-          // Union their committed entries before summing; a receipt's spend is not an independent bucket.
-          const allTasks = (await lease.storage.scanTasks({}, 100000, undefined, context)).items;
-          const allInputs = (await lease.storage.scanSubmissions({}, 100000, undefined, context))
-            .items;
-          const goalRequests = new Set<string>();
-          for (const driver of goalReceipts.values()) {
-            if (
-              !driver.input ||
-              typeof driver.input !== "object" ||
-              Array.isArray(driver.input) ||
-              typeof driver.input.requestId !== "string"
-            )
-              throw new Error("Invalid accepted Goal request identity.");
-            const prefix = `${driver.input.requestId}:round:${driver.id}:`;
-            for (const input of allInputs.filter((input) => input.requestId?.startsWith(prefix))) {
-              goalRequests.add(input.requestId!);
-              const roundRequest = await readRequest(input.requestId!);
-              const ids = roundRequest?.submissions ?? [Number(input.id)];
-              for (const id of ids) {
-                const record = allInputs.find((record) => Number(record.id) === id);
-                if (!record) throw new Error(`Goal submission missing: ${id}`);
-                const submission = await harness.submission(record.id, context);
-                if (!submission) throw new Error(`Goal submission missing: ${id}`);
-                for (const entry of await receiptEntries(await submission.wait(context)))
-                  parentEntries.set(Number(entry.id), entry);
-              }
-            }
-          }
-          const causes = await requestCausesForTasks(allTasks);
-          for (const child of allTasks)
-            if (
-              child.kind === "rukie.subagent-driver" &&
-              child.state.status === "terminal" &&
-              [...causes(child)].some((request) => goalRequests.has(request))
-            )
-              childReceipts.set(Number(child.id), child);
-          const usage = entryUsage(parentEntries.values());
-          let answerId: number | undefined;
-          for (const receipt of childReceipts.values()) {
-            const outcome = receipt.state.outcome;
-            const value = outcome && "result" in outcome ? outcome.result : undefined;
-            if (!value || typeof value !== "object" || Array.isArray(value)) continue;
-            if (typeof value.parentAnswer === "number")
-              answerId = Math.max(answerId ?? 0, value.parentAnswer);
-            const spend = value.usage;
-            if (spend && typeof spend === "object" && !Array.isArray(spend))
-              for (const key of [
-                "input",
-                "output",
-                "cacheRead",
-                "cacheWrite",
-                "totalTokens",
-              ] as const)
-                if (typeof spend[key] === "number") usage[key] += spend[key];
-          }
-          let text = result!.text;
-          if (answerId !== undefined) {
-            const view = await conversation.context(context);
-            const entry = view.entries.find((entry) => Number(entry.id) === answerId);
-            if (entry)
-              text = (entry.model ?? [])
-                .filter((message) => message.role === "assistant")
-                .map(textOf)
-                .join("");
-          }
-          let settled = { ...result!, text, usage };
-          for (const receipt of goalReceipts.values()) {
-            const outcome = receipt.state.outcome;
-            const value = "result" in outcome ? outcome.result : undefined;
-            const goalResult =
-              value && typeof value === "object" && !Array.isArray(value)
-                ? storedRequestResult({ ...value, requestId })
-                : undefined;
-            if (goalResult) {
-              settled = {
-                ...goalResult,
-                usage,
-                durationMs: settled.durationMs + goalResult.durationMs,
-              };
-            } else settled = { ...settled, success: false, error: "Goal continuation cancelled" };
-          }
-          const latestAnswer = [...parentEntries.values()]
-            .sort((left, right) => Number(left.id) - Number(right.id))
-            .flatMap((entry) => entry.model ?? [])
-            .findLast((message) => message.role === "assistant");
-          if (goalReceipts.size && latestAnswer) settled.text = textOf(latestAnswer);
-          await harness.commit(async (tx) => {
-            const doc = await tx.doc(RequestDoc);
-            doc.requests[requestId]!.result = { ...settled, usage: { ...settled.usage } };
-          }, context);
-          await observation.flush();
-          if (!/:round:\d+:\d+$/.test(requestId)) custom({ type: "request_settled", ...settled });
-          return settled;
-        })();
-        requestWaiters.set(requestId, waiting);
-        return waiting;
-      },
+      waitForRequest: (requestId) => ledger.waitForRequest(requestId),
       async waitForIdle() {
         // A native Run can settle before its host receipt/metadata commit releases
         // foreground admission. Readiness includes that owned completion boundary.
@@ -4355,23 +3922,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       await refreshMcp(context.abortSignal);
     await subagents.prepareChildren(context);
     const recovering = await harness.inspect(context);
-    const requestValues = (await harness.snapshot(RequestDoc, context))?.requests ?? {};
-    const allTasks = (await lease.storage.scanTasks({}, 100000, undefined, context)).items;
-    for (const record of recovering.submissions)
-      if (record.requestId && requestValues[record.requestId]) currentRequestId = record.requestId;
-    if (!currentRequestId) {
-      const causes = await requestCausesForTasks(allTasks);
-      for (const task of recovering.tasks)
-        for (const id of causes(task.record)) currentRequestId = id;
-    }
-    if (activationTaskFact !== null && goalRequestId) {
-      const taskId = activationTaskFact;
-      const human = Object.entries(requestValues).find(
-        ([id, request]) =>
-          id.startsWith("human:") && request.result === null && request.tasks.includes(taskId),
-      );
-      currentRequestId = human?.[0] ?? goalRequestId;
-    }
+    await ledger.recover(recovering, activationTaskFact, goalRequestId);
     options.initializationSignal?.throwIfAborted();
     harness.resume();
     return session;

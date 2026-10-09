@@ -1,3 +1,4 @@
+import { requestIds } from "../../requests/index.ts";
 import {
   defineTask,
   configure,
@@ -376,7 +377,7 @@ export function createSubagentController(options: SubagentControllerOptions) {
           {
             type: "input",
             content: task.input.prompt,
-            requestId: `subagent:${task.id}:input`,
+            requestId: requestIds.subagentInput(Number(task.id)),
             whenBusy: "followUp",
           },
           context,
@@ -492,7 +493,7 @@ export function createSubagentController(options: SubagentControllerOptions) {
           {
             type: "input",
             whenBusy: "followUp",
-            requestId: `subagent:${task.id}:report`,
+            requestId: requestIds.subagentReport(Number(task.id)),
             content: `Subagent ${agentId} (${task.input.description}) ${result.success ? "finished" : `failed: ${result.error ?? "unknown error"}`}.${result.text.trim() ? ` Its closing message:\n${result.text}` : ""}`,
           },
           context,
@@ -582,7 +583,7 @@ export function createSubagentController(options: SubagentControllerOptions) {
           {
             type: "input",
             whenBusy: "followUp",
-            requestId: `subagent:${task.id}:report`,
+            requestId: requestIds.subagentReport(Number(task.id)),
             content: result.driverFailure
               ? `Subagent ${row.id} (${task.input.description}) failed: ${result.driverFailure}.`
               : `Subagent ${row.id} (${task.input.description}) aborted.`,
@@ -697,7 +698,7 @@ export function createSubagentController(options: SubagentControllerOptions) {
           type: "input",
           content: request.prompt,
           whenBusy: "steer",
-          requestId: `subagent-send:${api.taskId}`,
+          requestId: requestIds.subagentSend(Number(api.taskId)),
         },
         context,
       );
@@ -802,7 +803,7 @@ export function createSubagentController(options: SubagentControllerOptions) {
             type: "input",
             content: message,
             whenBusy: "steer",
-            requestId: `subagent-send:${api.taskId}`,
+            requestId: requestIds.subagentSend(Number(api.taskId)),
           },
           context,
         );
