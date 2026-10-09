@@ -12,7 +12,6 @@
 
 import stripAnsi from 'strip-ansi'
 import type { DOMElement } from './dom.js'
-import { hitTest } from './hit-test.js'
 import { nodeCache, textPaintCache } from './node-cache.js'
 import squashTextNodes from './squash-text-nodes.js'
 import sliceAnsi from './utils/sliceAnsi.js'
@@ -1446,11 +1445,44 @@ function sourceLine(line: string): SourceLine {
   return { width, glyphs }
 }
 
+/** Resolve selected cells in one tree walk, preserving hitTest reverse paint
+ * order and overflow clipping. Per-cell hitTest repeats the entire mounted
+ * transcript for every glyph; this frame-local index costs one traversal.
+ */
+function selectedCellOwners(root: DOMElement, screen: Screen, firstRow: number, lastRow: number): (DOMElement | undefined)[] {
+  const owners: (DOMElement | undefined)[] = new Array(screen.width * screen.height)
+  function visit(node: DOMElement, left: number, top: number, right: number, bottom: number): void {
+    const rect = nodeCache.get(node)
+    if (!rect) return
+    const x0 = Math.max(left, Math.ceil(rect.x))
+    const y0 = Math.max(top, Math.ceil(rect.y))
+    const x1 = Math.min(right, Math.ceil(rect.x + rect.width))
+    const y1 = Math.min(bottom, Math.ceil(rect.y + rect.height))
+    const overflowX = node.style.overflowX ?? node.style.overflow
+    const overflowY = node.style.overflowY ?? node.style.overflow
+    const clipped = overflowX === 'hidden' || overflowX === 'scroll' || overflowY === 'hidden' || overflowY === 'scroll'
+    if (clipped && (x0 >= x1 || y0 >= y1)) return
+    for (let i = node.childNodes.length - 1; i >= 0; i--) {
+      const child = node.childNodes[i]!
+      if (child.nodeName !== '#text') visit(child, clipped ? x0 : left, clipped ? y0 : top, clipped ? x1 : right, clipped ? y1 : bottom)
+    }
+    for (let row = y0; row < y1; row++) {
+      for (let col = x0; col < x1; col++) {
+        const index = row * screen.width + col
+        owners[index] ??= node
+      }
+    }
+  }
+  visit(root, 0, Math.max(0, firstRow), screen.width, Math.min(screen.height, lastRow + 1))
+  return owners
+}
+
 /** Snapshot only glyph-owned source spans; style and unselected suffixes never invalidate them. */
 function paintedSourceRows(s: SelectionState, screen: Screen, root: DOMElement): Map<number, SelectedSourceSegment[]> {
   const result = new Map<number, SelectedSourceSegment[]>()
   const bounds = selectionBounds(s)
   if (!bounds) return result
+  const owners = selectedCellOwners(root, screen, bounds.start.row, bounds.end.row)
   const sources = new Map<DOMElement, { path: number[]; lines: string[]; rows: Map<number, SourceLine> }>()
   for (let row = Math.max(0, bounds.start.row); row <= Math.min(screen.height - 1, bounds.end.row); row++) {
     let start = row === bounds.start.row ? bounds.start.col : 0
@@ -1464,7 +1496,7 @@ function paintedSourceRows(s: SelectionState, screen: Screen, root: DOMElement):
       if (!s.includeNoSelectCells && screen.noSelect[row * screen.width + col] === 1) continue
       const cell = cellAt(screen, col, row)
       if (!cell || cell.width >= CellWidth.SpacerTail) continue
-      let node = hitTest(root, col, row)
+      let node = owners[row * screen.width + col] ?? null
       while (node && node.nodeName !== 'ink-text') node = node.parentNode ?? null
       if (!node) continue
       const rect = nodeCache.get(node)

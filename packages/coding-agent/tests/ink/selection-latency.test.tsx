@@ -1,12 +1,18 @@
 import {
   AlternateScreen,
+  Box,
   ScrollBox,
   Text,
   renderSync,
   useInput,
   useSelection,
+  type DOMElement,
+  type ScrollBoxHandle,
 } from "../../src/ink";
 import { createTerminal } from "./helpers/terminal";
+
+import FakeTimers from "@sinonjs/fake-timers";
+import { createRef, useState } from "react";
 
 import { expect, test } from "bun:test";
 
@@ -91,5 +97,84 @@ test("drag coalescing keeps release and the next gesture distinct in one input b
     await app.waitUntilExit();
     app.cleanup();
     terminal.dispose();
+  }
+});
+
+test("separate drag motions over a fragmented transcript avoid per-glyph tree walks", async () => {
+  const clock = FakeTimers.install({
+    now: 1000,
+    toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+  });
+  const terminal = createTerminal(160, 50, (ms) => clock.tick(ms));
+  const transcript = createRef<DOMElement>();
+  const scroll = createRef<ScrollBoxHandle>();
+  let replaceFirst = (_value: string) => {};
+  let restoreRows = () => {};
+  let selection!: ReturnType<typeof useSelection>;
+  function Fixture() {
+    useInput(() => {});
+    const [first, setFirst] = useState("row-0 ");
+    replaceFirst = setFirst;
+    selection = useSelection();
+    return (
+      <AlternateScreen>
+        <ScrollBox ref={scroll} height={50} stickyScroll={false}>
+          <Box ref={transcript} flexDirection="column" flexShrink={0}>
+            {Array.from({ length: 2000 }, (_, i) => (
+              <Text key={i}>{(i === 0 ? first : `row-${i} `) + "abcdefghij".repeat(14)}</Text>
+            ))}
+          </Box>
+        </ScrollBox>
+      </AlternateScreen>
+    );
+  }
+  const app = renderSync(<Fixture />, terminal);
+  try {
+    await terminal.waitFor(() => terminal.screen()[0]?.startsWith("row-0") === true);
+    terminal.stdin.write("\x1b[<0;1;1M");
+    await terminal.flush();
+    if (!transcript.current) throw new Error("Transcript did not mount");
+    const owner = transcript.current;
+    const children = owner.childNodes;
+    let reads = 0;
+    // Count mounted-row visits at the public Box ref. This pins the cost
+    // without a machine-dependent wall-clock threshold or mocked renderer.
+    Object.defineProperty(owner, "childNodes", {
+      configurable: true,
+      get() {
+        reads++;
+        return children;
+      },
+    });
+    restoreRows = () =>
+      Object.defineProperty(owner, "childNodes", {
+        configurable: true,
+        writable: true,
+        value: children,
+      });
+    for (let i = 0; i < 8; i++) {
+      reads = 0;
+      terminal.stdin.write(`\x1b[<32;140;${35 + i}M`);
+      await terminal.waitFor(() => selection.getState()?.focus?.row === 34 + i);
+      expect(reads).toBeLessThan(20000);
+    }
+    expect(terminal.terminal.buffer.active.getLine(41)!.getCell(139)!.isInverse()).toBeTruthy();
+    expect(terminal.terminal.buffer.active.getLine(41)!.getCell(140)!.isInverse()).toBeFalsy();
+    expect(selection.readSelectionText()).toContain("row-41");
+    terminal.stdin.write("\x1b[<65;140;42M");
+    await terminal.waitFor(() => terminal.screen()[0]?.startsWith("row-3 ") === true);
+    expect(selection.readSelectionText()).toContain("row-0");
+    replaceFirst("changed-0 ");
+    await terminal.waitFor(() => selection.getState()?.stale === true);
+    terminal.stdin.write("\x1b[<0;140;42m");
+    await terminal.waitFor(() => selection.getState()?.isDragging === false);
+    expect(selection.readSelectionText()).toBe("");
+  } finally {
+    restoreRows();
+    app.unmount();
+    await app.waitUntilExit();
+    app.cleanup();
+    terminal.dispose();
+    clock.uninstall();
   }
 });
