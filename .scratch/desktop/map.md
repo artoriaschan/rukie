@@ -23,10 +23,12 @@
 - [06: 本机 server 的 WS 鉴权方式](issues/06-research-local-server-auth.md#answer): token 走 WS subprotocol，升级前中间件精确校验 Host/Origin/token；生产 Origin 为 `app://rukie`，token 经 preload `getConnection()` IPC 获取；开发模式直连 sidecar，token 走 URL fragment。
 - [11: Bun sidecar 的打包与分发](issues/11-research-sidecar-packaging.md#answer): 每平台 `bun build --compile` 经 extraResources 放在 asar 外；`rg` 作为旁置文件传绝对路径；macOS 必须 `allow-jit`；fuses 2.0.0 需在 afterPack 调用；sidecar 关闭 dotenv/bunfig 自动加载并剔除危险环境变量。
 - [05: Session store 写者 lease 的并发打开](issues/05-research-store-lease-concurrency.md#answer): lease 按 Session 粒度、同 id 后到者立即失败、崩溃由内核释放；server 需单飞打开并共享 Session，Agent Core 需类型化 busy 错误与容错 `list()`，孤儿 Background Job 待定。
+- [12: Agent Core 在 server 中的直接调用](issues/12-research-agent-core-in-server.md#answer): `@rukie/agent` 可直接 import，按 Session 传 cwd/homeDir 支持多项目；server 负责 Interaction 桥接回调、单飞打开与 `onWarning`；Agent Core 需先类型化 busy 错误并让 `list()` 容错。
 
 ## Not yet specified
 
 - 需要新增或修改的 ADR 清单（推翻 ADR-0012 “view 抽成 UI 包”、Effect 在 server 的定位、shared 中的 wire 协议），在协议与研究结论之后统一起草。
+- ADR-0003 与现状冲突：它写“桌面端用 SQLite”，但 ADR-0024 下 SQLite 只持有写者 lease。待确认桌面端是否沿用同一 JSONL store（TUI 与桌面端互见 Session、共享单写者 lease），并将 ADR-0003 标为被 ADR-0024 替代。
 - `packages/ui` 内部分层（组件、Zustand store、server client、host 接口）与 lint 边界规则。
 - Vitest 引入方式：`ui` 的 browser mode、`desktop` main 的 Node 测试，以及与根 `bun run check` 的集成。
 - spec 撰写与实现工单切分顺序。
