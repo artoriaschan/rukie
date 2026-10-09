@@ -4,6 +4,7 @@ import { text } from "node:stream/consumers";
 import { resolveLocale } from "@rukie/i18n";
 import { parseCli, formatArgvError } from "./cli";
 import { createTuiI18n } from "./view/i18n";
+import { productVersion } from "./version";
 import type { CodingAgentIo, TuiIo } from "./io";
 
 function isTuiIo(io: CodingAgentIo): io is TuiIo {
@@ -20,6 +21,12 @@ export async function main(argv: string[], io: CodingAgentIo): Promise<number> {
   } catch (error) {
     io.stderr(`${formatArgvError(error, t)}\n`);
     return 2;
+  }
+  if (options.mode === "help" || options.mode === "version") {
+    const output = options.mode === "help" ? t("argv.help") : productVersion;
+    if (typeof io.stdout === "function") io.stdout(`${output}\n`);
+    else io.stdout.write(`${output}\n`);
+    return 0;
   }
   if (options.mode === "headless") {
     const { runHeadless } = await import("./headless/main.ts");

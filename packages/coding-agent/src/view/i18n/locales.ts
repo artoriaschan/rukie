@@ -469,6 +469,9 @@ const zh = {
   "startup.terminal": "rukie 需要交互式终端。管道或非交互式输出请使用 rukie -p。",
   "startup.warning": "警告：{{warning}}",
   "exit.resume": "继续此会话：",
+  "argv.help":
+    "用法：\n  rukie [选项] [prompt]                    启动交互式 TUI（需要终端）\n  rukie -p [选项] [prompt]                 输出一次回复；省略 prompt 时读取 stdin\n  rukie --goal <目标> [选项]                执行 Goal\n  rukie --help | --version                 显示帮助或版本（必须单独使用）\n\n选项：\n  -h, --help                              显示帮助\n  -v, --version                           显示产品版本\n  -p, --print                             使用 Headless CLI\n  --goal <目标>                            设置 Headless Goal\n  --max-goal-rounds <正整数>                限制 Goal 轮数（需要 --goal）\n  --output-format <text|stream-json>        Headless 输出格式（默认 text）\n  --model <provider/id>                    选择模型\n  --thinking <off|minimal|low|medium|high|xhigh|max>  选择思考级别\n  --resume <Session ID>                    恢复 Session\n  --allow-tools <规则>...                   允许匹配工具；用 -- 分隔后续 prompt\n  --permission-mode <ask|auto-review|full-access>  选择权限模式\n  --yolo                                  使用 full-access\n  --trust-project-mcp                     信任此项目的 MCP 配置\n  --                                      结束选项解析",
+  "argv.information-exclusive": "--help 或 --version 必须单独使用，不能与其他选项或 prompt 组合",
   "argv.goal-print": "--goal 与 -p / --print 冲突",
   "argv.goal-empty": "--goal 目标不能为空",
   "argv.rounds-goal": "--max-goal-rounds 需要 --goal",
@@ -928,6 +931,10 @@ const en = {
     "rukie requires an interactive terminal. Use rukie -p for piped or non-interactive output.",
   "startup.warning": "Warning: {{warning}}",
   "exit.resume": "Resume this session:",
+  "argv.help":
+    "Usage:\n  rukie [options] [prompt]                 Start the interactive TUI (requires a terminal)\n  rukie -p [options] [prompt]              Print one reply; read stdin when prompt is omitted\n  rukie --goal <objective> [options]       Execute a Goal\n  rukie --help | --version                 Show help or version (must be used alone)\n\nOptions:\n  -h, --help                              Show help\n  -v, --version                           Show product version\n  -p, --print                             Use the Headless CLI\n  --goal <objective>                      Set a Headless Goal\n  --max-goal-rounds <positive integer>     Limit Goal rounds (requires --goal)\n  --output-format <text|stream-json>       Headless output format (default text)\n  --model <provider/id>                    Select model\n  --thinking <off|minimal|low|medium|high|xhigh|max>  Select thinking level\n  --resume <Session ID>                    Resume a Session\n  --allow-tools <rule>...                  Allow matching tools; separate a prompt with --\n  --permission-mode <ask|auto-review|full-access>  Select permission mode\n  --yolo                                  Use full-access\n  --trust-project-mcp                     Trust project MCP configuration\n  --                                      End option parsing",
+  "argv.information-exclusive":
+    "--help or --version must be used alone, without other options or a prompt",
   "argv.goal-print": "--goal conflicts with -p / --print",
   "argv.goal-empty": "--goal objective cannot be empty",
   "argv.rounds-goal": "--max-goal-rounds requires --goal",

@@ -192,7 +192,10 @@ export function createMcpAuthState() {
 }
 
 /** The Session owns these connections; discovery cancellation ends when connect settles. */
-export function createMcpConnections(authState: ReturnType<typeof createMcpAuthState>) {
+export function createMcpConnections(
+  authState: ReturnType<typeof createMcpAuthState>,
+  applicationVersion?: string,
+) {
   const clients: McpClient[] = [];
   const connected = new Map<string, McpClient>();
   const views = new Map<string, McpServerView>();
@@ -463,7 +466,7 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
           const client = new McpClient({
             name: "rukie",
             title: server,
-            version: "0.1.0",
+            version: applicationVersion ?? "unversioned",
           });
           let ready = false;
           let requireAuth: (() => void) | undefined;
@@ -797,7 +800,7 @@ export function createMcpConnections(authState: ReturnType<typeof createMcpAuthS
                   const authenticated = new McpClient({
                     name: "rukie",
                     title: server,
-                    version: "0.1.0",
+                    version: applicationVersion ?? "unversioned",
                   });
                   clients.push(authenticated);
                   await authenticated.connect(

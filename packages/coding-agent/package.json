@@ -1,5 +1,6 @@
 {
   "name": "@rukie/coding-agent",
+  "version": "0.1.0",
   "private": true,
   "bin": {
     "rukie": "./src/main.ts"

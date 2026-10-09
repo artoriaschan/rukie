@@ -2,6 +2,7 @@
 import { homedir } from "node:os";
 import { createSession, loadSettings, type Session } from "@rukie/agent";
 import type { PermissionMode, ThinkingLevel } from "@rukie/shared";
+import { productVersion } from "../version";
 import type { CliOptions } from "../cli";
 import type { PrintIo } from "../io";
 
@@ -38,6 +39,7 @@ export async function runHeadless(options: CliOptions, io: PrintIo): Promise<num
       settings,
       onWarning: (warning) => io.stderr(`Warning: ${warning}\n`),
       ...io.session,
+      applicationVersion: productVersion,
       initializationSignal: io.signal ?? io.session?.initializationSignal,
       resumeId: values.resume,
       allowRules: [...(io.session?.allowRules ?? []), ...(values["allow-tools"] ?? [])],

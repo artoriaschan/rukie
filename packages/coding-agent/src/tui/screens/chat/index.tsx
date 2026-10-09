@@ -1,3 +1,4 @@
+import { productVersion } from "../../../version";
 import { useHostSelection } from "../../hooks/host-selection";
 import {
   readPosition,
@@ -143,6 +144,7 @@ export async function createChat(
   const interactions = createInteractions(host, locale);
   const sessionOptions: SessionOptions = {
     ...options,
+    applicationVersion: productVersion,
     reminderSources: [
       ...(options.reminderSources ?? []),
       { source: "narration", currentContent: () => t("narrate-instruction") },

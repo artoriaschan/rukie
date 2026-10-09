@@ -30,6 +30,7 @@ export interface BuiltinToolsOptions {
   homeDir?: string;
   onInteractionStart?: OnInteractionStart;
   webFetch?: WebFetchOptions;
+  applicationVersion?: string;
   fileTracking?: ReturnType<typeof createFileTracking>;
 }
 
@@ -51,7 +52,7 @@ export function createBuiltinTools(options: BuiltinToolsOptions): ToolRegistrati
     preserveErrorDetails(createGrepTool(cwd)),
     createSkillTool(getSkill),
     createTodoTool(setTodo),
-    createWebFetchTool(webFetch),
+    createWebFetchTool(webFetch, options.applicationVersion),
     ...(onQuestion ? [createQuestionTool(onQuestion, onInteractionStart)] : []),
   ];
 }

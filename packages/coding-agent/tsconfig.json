@@ -5,7 +5,7 @@
     "jsx": "react-jsx",
     "outDir": "../../node_modules/.cache/tsc/coding-agent"
   },
-  "include": ["src", "tests"],
+  "include": ["src", "tests", "package.json"],
   "references": [
     {
       "path": "../shared"

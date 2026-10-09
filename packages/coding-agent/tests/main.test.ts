@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { main } from "../src/index.ts";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, readdir, mkdir, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { echoModel } from "./headless/helpers/echo-model";
@@ -198,3 +198,118 @@ test("TUI signal cancellation closes the active Run and restores its terminal", 
     await app.cleanup();
   }
 });
+
+for (const [lang, usage] of [
+  ["en", "Usage:"],
+  ["zh", "用法："],
+]) {
+  for (const flag of ["--help", "-h", "--version", "-v"]) {
+    test(`${lang}: ${flag} returns information without Session or stdin side effects`, async () => {
+      const root = await mkdtemp(join(tmpdir(), "rukie-info-"));
+      roots.push(root);
+      let stdout = "";
+      let stderr = "";
+      expect(
+        await main([flag], {
+          env: { LANG: lang },
+          session: { cwd: root, homeDir: root },
+          readStdin: async () => {
+            throw new Error("information must not read stdin");
+          },
+          stdout: (value) => {
+            stdout += value;
+          },
+          stderr: (value) => {
+            stderr += value;
+          },
+        }),
+      ).toBe(0);
+      expect(stderr).toBe("");
+      if (flag === "--version" || flag === "-v") expect(stdout).toBe("0.1.0\n");
+      else {
+        expect(stdout).toContain(usage!);
+        expect(stdout).toContain("--goal");
+        expect(stdout).toContain("--allow-tools");
+      }
+      expect(await readdir(root)).toEqual([]);
+    });
+  }
+}
+
+for (const [lang, expected] of [
+  ["en", "must be used alone"],
+  ["zh", "必须单独使用"],
+]) {
+  for (const argv of [
+    ["--help", "--version"],
+    ["-h", "-p"],
+    ["-v", "prompt"],
+    ["--help", "--model", "provider/model"],
+  ]) {
+    test(`${lang}: information rejects combinations ${argv.join(" ")}`, async () => {
+      let stderr = "";
+      expect(
+        await main(argv, {
+          env: { LANG: lang },
+          stdout: () => {
+            throw new Error("invalid arguments must not output information");
+          },
+          stderr: (value) => {
+            stderr += value;
+          },
+        }),
+      ).toBe(2);
+      expect(stderr).toContain(expected!);
+    });
+  }
+}
+
+for (const argv of [["--help", "--unknown"], ["--version=true"], ["--help", "--model"]])
+  test(`information still validates ${argv.join(" ")}`, async () => {
+    let stderr = "";
+    expect(
+      await main(argv, {
+        env: { LANG: "en" },
+        stdout: () => {},
+        stderr: (value) => {
+          stderr += value;
+        },
+      }),
+    ).toBe(2);
+    expect(stderr).not.toBe("");
+  });
+
+test("the executable information entry leaves isolated user settings and Sessions untouched", async () => {
+  const root = await mkdtemp(join(tmpdir(), "rukie-info-command-"));
+  roots.push(root);
+  await mkdir(join(root, ".rukie"));
+  await writeFile(join(root, ".rukie/settings.json"), "invalid settings sentinel");
+  // Real child-process startup verifies the executable entry, independently of the injected main IO.
+  for (const flag of ["--version", "--help"]) {
+    const child = Bun.spawn([process.execPath, join(import.meta.dir, "../src/main.ts"), flag], {
+      cwd: root,
+      env: { PATH: process.env.PATH, HOME: root, LANG: "en", LC_ALL: "en" },
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "pipe",
+      signal: AbortSignal.timeout(4000),
+    });
+    try {
+      const [code, stdout, stderr] = await Promise.all([
+        child.exited,
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+      ]);
+      expect(code).toBe(0);
+      expect(stderr).toBe("");
+      expect(stdout).toContain(flag === "--version" ? "0.1.0" : "Usage:");
+      expect(await readdir(join(root, ".rukie"))).toEqual(["settings.json"]);
+      expect(await readFile(join(root, ".rukie/settings.json"), "utf8")).toBe(
+        "invalid settings sentinel",
+      );
+    } finally {
+      child.kill();
+      await child.exited;
+    }
+  }
+}, 5000);

@@ -12,7 +12,10 @@ const facts = Type.Object({
   markdown: Type.String(),
   truncated: Type.Boolean(),
 });
-export function createWebFetchTool(options?: WebFetchOptions): PresentedTool<typeof parameters> {
+export function createWebFetchTool(
+  options?: WebFetchOptions,
+  applicationVersion?: string,
+): PresentedTool<typeof parameters> {
   return {
     name: "web_fetch",
     description:
@@ -38,7 +41,7 @@ export function createWebFetchTool(options?: WebFetchOptions): PresentedTool<typ
     async execute({ url }, _api, context) {
       const signal = context.abortSignal;
       try {
-        const result = await fetchWeb(url, signal, options);
+        const result = await fetchWeb(url, signal, options, applicationVersion);
         return { ...result, details: { ...result.details, category: "web" } };
       } catch (error) {
         if (signal?.aborted) throw error;

@@ -9,6 +9,8 @@ import {
 import { createTuiI18n, formatError } from "../view/i18n";
 
 const options = {
+  help: { type: "boolean", short: "h" },
+  version: { type: "boolean", short: "v" },
   print: { type: "boolean", short: "p" },
   goal: { type: "string" },
   "max-goal-rounds": { type: "string" },
@@ -38,6 +40,17 @@ export function parseCli(argv: string[], t: ReturnType<typeof createTuiI18n>) {
     else if (token.kind === "positional")
       throw new Error(t("argv.unexpected", { argument: token.value }));
     else collectingTools = false;
+  }
+  if (values.help || values.version) {
+    const information = values.help ? "help" : "version";
+    if (
+      parsed.tokens.some(
+        (token) =>
+          token.kind === "positional" || (token.kind === "option" && token.name !== information),
+      )
+    )
+      throw new Error(t("argv.information-exclusive"));
+    return { values, prompt, mode: information };
   }
   parsePermissionRules({ allow: values["allow-tools"] }, "--allow-tools");
   if (values.goal !== undefined && values.print) throw new Error(t("argv.goal-print"));

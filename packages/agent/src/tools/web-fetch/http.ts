@@ -1,7 +1,6 @@
 // Bun substitutes the bare undici import with a stub that ignores connect.lookup.
 // Bun's global fetch also ignores dispatcher; use the real package's fetch and Agent.
 import { Agent, EnvHttpProxyAgent, fetch } from "undici/index.js";
-import { version } from "../../../package.json";
 import type { Address } from "./addresses.ts";
 import type { ProxyOptions } from "./proxy.ts";
 
@@ -21,6 +20,7 @@ export async function request(
   addresses: Address[],
   signal: AbortSignal,
   proxy?: ProxyOptions,
+  applicationVersion?: string,
 ) {
   const agent = proxy ? new EnvHttpProxyAgent(proxy) : directAgent(addresses);
   try {
@@ -29,7 +29,7 @@ export async function request(
       redirect: "manual",
       signal,
       headers: {
-        "User-Agent": `Rukie/${version}`,
+        "User-Agent": applicationVersion ? `Rukie/${applicationVersion}` : "Rukie",
         Accept: "text/markdown, text/html;q=0.9, */*;q=0.8",
       },
     });

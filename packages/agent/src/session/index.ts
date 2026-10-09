@@ -131,6 +131,8 @@ interface RunSummaryFact {
   success: boolean;
 }
 export interface SessionOptions {
+  /** Frontend product version for application requests; omitted hosts identify as Rukie without a version. */
+  applicationVersion?: string;
   /** Bounds initialization resources only; after opening, the host owns Session.close(). */
   initializationSignal?: AbortSignal;
   /** Test network boundary overrides; production frontends leave this unset. */
@@ -853,10 +855,10 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       warning: warn,
     });
     const mcpAuthState = createMcpAuthState();
-    const mcp = createMcpConnections(mcpAuthState);
+    const mcp = createMcpConnections(mcpAuthState, options.applicationVersion);
     const reconnectMcpServers = new Set<string>();
     const mcpManager = createMcpManager({
-      createConnections: () => createMcpConnections(mcpAuthState),
+      createConnections: () => createMcpConnections(mcpAuthState, options.applicationVersion),
       connectOptions: () => ({
         cwd,
         homeDir: options.homeDir,
@@ -1405,6 +1407,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
               : undefined,
             onInteractionStart: childNotify,
             webFetch: options.webFetch,
+            applicationVersion: options.applicationVersion,
             fileTracking: childTracking,
           }),
           allowed: type.tools,
@@ -1965,6 +1968,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           onQuestion: options.onQuestion,
           onInteractionStart: notifyInteraction,
           webFetch: options.webFetch,
+          applicationVersion: options.applicationVersion,
           fileTracking: tracking,
         },
         planMode: {

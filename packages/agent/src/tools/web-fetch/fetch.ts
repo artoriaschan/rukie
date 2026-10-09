@@ -17,6 +17,7 @@ export async function fetchWeb(
   input: string,
   runSignal?: AbortSignal,
   options: WebFetchOptions = {},
+  applicationVersion?: string,
 ) {
   const timeout = AbortSignal.timeout(options.timeoutMs ?? 30_000);
   const signal = runSignal ? AbortSignal.any([runSignal, timeout]) : timeout;
@@ -26,7 +27,7 @@ export async function fetchWeb(
     while (true) {
       const proxy = proxyFor(url);
       const addresses = await abortable(resolveAddresses(url, options, !!proxy), signal);
-      const { response, close } = await request(url, addresses, signal, proxy);
+      const { response, close } = await request(url, addresses, signal, proxy, applicationVersion);
       try {
         const location = response.headers.get("location");
         if (response.status >= 300 && response.status < 400 && location) {

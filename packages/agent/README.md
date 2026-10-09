@@ -114,3 +114,7 @@ stdout 与 stderr 分别保存在带绝对字节偏移的内存 ring，合计保
 `session.currentRequestId` 是产品请求身份；`await session.waitForRequest(id)` 等待该请求已接受的 root 输入、相关 child Run、reporter 与通知引发的后续处理。它沿已提交原生 ownership 和 ToolTask／Submission 身份收敛因果范围，处理后来新增的相关 child；向已有活动 child 发送消息的请求也等待该 driver 与报告处理。空闲 anchor、历史 child 与无关运行不属于该范围。`SubagentRun.id` 是 driver task id，provider 的 tool call id 和 SDK `StreamOptions.sessionId` 都不是产品请求 id。SDK Session 身份由原生 Conversation 持久化，重试和恢复沿用；新 fork 获得独立身份。
 
 child 结束事实、稳定 reporter 输入和父级回答分别提交。恢复 child done、reporter pending 或父级处理未结算的窗口，复用相同逻辑身份，不重复输入或重建已结束 child；重试可能再次调用模型，不能据此承诺网络请求或外部副作用 exactly-once。原始消息、已提交工具进度与未知结果保留，子视图及来源事件采用已提交事实。
+
+# Application identity
+
+Frontend 创建 Session 时通过 `SessionOptions.applicationVersion` 注入自身产品版本。Agent Core 不读取 Frontend manifest；父 Session 与子 Session 的 web_fetch 使用 `Rukie/<version>` User-Agent，MCP 初始连接、重连及 OAuth 后连接使用同一版本。该身份不写入 Transcript，Resume 使用当前宿主传入的版本。未提供版本的嵌入宿主使用 `Rukie` User-Agent 和 MCP `unversioned` 身份；coding-agent 总是提供自身 manifest 版本。模型 provider 的协议与 SDK 身份继续由锁定 pi-ai 管理。

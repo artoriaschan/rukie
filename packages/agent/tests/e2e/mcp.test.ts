@@ -260,6 +260,7 @@ test.each(["success", "server-error"])(
   async (mode) => {
     dirs = await tempDirs();
     const requests: { method: string; authorization: string | null }[] = [];
+    let clientInfo: unknown;
     const server = Bun.serve({
       port: 0,
       async fetch(request) {
@@ -272,8 +273,9 @@ test.each(["success", "server-error"])(
         const rpc = (await request.json()) as {
           id?: number;
           method: string;
-          params: { protocolVersion: string; arguments: { text: string } };
+          params: { protocolVersion: string; arguments: { text: string }; clientInfo?: unknown };
         };
+        if (rpc.method === "initialize") clientInfo = rpc.params.clientInfo;
         if (rpc.id === undefined) return new Response(null, { status: 202 });
         if (rpc.method === "tools/call" && mode === "server-error")
           return new Response("server unavailable", { status: 503 });
@@ -318,6 +320,7 @@ test.each(["success", "server-error"])(
       const events: SessionEvent[] = [];
       await (
         await createSession({
+          applicationVersion: "9.8.7",
           ...dirs,
           ...fake,
           allowRules: ["mcp__remote__*"],
@@ -328,6 +331,7 @@ test.each(["success", "server-error"])(
           events.push(event);
         },
       });
+      expect(clientInfo).toMatchObject({ name: "rukie", version: "9.8.7" });
       expect(JSON.stringify(fake.contexts[0]!.messages)).toContain("Remote server instructions.");
       expect(
         fake.contexts[1]!.messages.findLast((message) => message.role === "toolResult"),
