@@ -5,12 +5,12 @@ Blocked by: 07
 
 ## What to build
 
-维护者通过产品版本 tag 或人工指定已有 tag，完成校验、双架构验收、平台包及主包发布。稳定版从 candidate 的 registry 安装验收通过后成为 latest，beta 则进入 next。
+维护者通过产品版本 tag 或人工指定已有 tag，完成校验、arm64 验收、平台包及主包发布。稳定版从 candidate 的 registry 安装验收通过后成为 latest，beta 则进入 next。
 
 ## Acceptance criteria
 
 - [ ] 产品 tag 和人工指定已有 tag 触发发布，检出准确 commit，校验版本、tag 规范、可达性和产物身份；任意分支或不匹配版本不能发布。
-- [ ] 人工触发不绕过完整检查与双架构安装验收，所有平台通过后才进入有写权限的发布阶段。
+- [ ] 人工触发不绕过完整检查与 arm64 安装验收，所有平台通过后才进入有写权限的发布阶段。
 - [ ] 发布消费同一次已验证的 tarball 与清单，上传前核对身份；写 registry 阶段不重新构建、pack 或生成 manifest。
 - [ ] 发布任务串行，不取消已经写 registry 的旧任务；明确区分构建/验收权限和 npm OIDC 写入权限。
 - [ ] 先发布平台包，再发布精确依赖这些版本的主包；显式指定所有发布标签，不提前改变 latest。
@@ -26,4 +26,5 @@ Blocked by: 07
 
 ## Comments
 
+- 2026-10-09：首版只支持 macOS arm64，双架构要求改为 arm64，见父规格 Out of Scope。
 - 2026-10-07：拆分已确认。真实 npm 身份验证和正式发布属于外部配置后的明确操作，本地 registry 证明发布行为而不写真实 npm。

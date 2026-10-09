@@ -10,7 +10,7 @@ status: accepted
 
 ## 决定
 
-公开 `@rukie/coding-agent` 命令行包，首版支持 macOS arm64/x64。主包使用 Node launcher，按平台启动编入 Bun 运行时的可执行文件；两个平台包通过精确版本的 optionalDependencies 安装。用户安装需要 Node/npm，运行 Agent Core 不需要另装 Bun。Agent Core、shared、i18n 保持私有 workspace；首版只承诺 CLI，不提供公开 SDK。
+公开 `@rukie/coding-agent` 命令行包，首版只支持 macOS arm64。主包使用 Node launcher，按平台启动编入 Bun 运行时的可执行文件；平台包通过精确版本的 optionalDependencies 安装，后续架构以新增平台包扩展。macOS x64 因缺少匹配的运行验收环境暂不发布，launcher 对其给出明确的不支持提示。用户安装需要 Node/npm，运行 Agent Core 不需要另装 Bun。Agent Core、shared、i18n 保持私有 workspace；首版只承诺 CLI，不提供公开 SDK。
 
 内部开发继续直接消费 TypeScript，构建时生成分发 manifest、资源和 npm tarball。产品版本由 coding-agent manifest 提供，所有发布包与用户可见版本保持一致。每个目标平台对实际安装包进行运行验收；构建成功不能代替安装验收。Headless CLI 与 TUI 保持 [ADR-0012](0012-single-coding-agent-package.md) 的共用入口与动态加载边界，Bun 运行时和 pi 复用分别沿用 [ADR-0001](0001-agent-runs-in-bun-sidecar.md) 和 [ADR-0024](0024-adopt-pi-durable-harness.md)。
 
@@ -30,6 +30,6 @@ Release Please 根据整个产品的 Conventional Commits 准备版本、Changel
 
 ## 影响
 
-降低用户运行环境要求并保持内部模块边界，代价是维护两个平台包、launcher、编译资源定位与平台运行验收。optionalDependencies 可被省略或安装失败，launcher 必须给出明确修复提示。发布包包含代码与运行时资源，许可声明随之维护；现有 Yoga 的来源问题不在本次解决范围。
+降低用户运行环境要求并保持内部模块边界，代价是维护平台包、launcher、编译资源定位与平台运行验收。optionalDependencies 可被省略或安装失败，launcher 必须给出明确修复提示。发布包包含代码与运行时资源，许可声明随之维护；现有 Yoga 的来源问题不在本次解决范围。
 
 外部 GitHub 仓库、App、npm scope 和 Trusted Publisher 配置属于真实 CI/发布前提；本地验证不证明外部服务可用。正式发布首个 npm 版本需要单独明确的操作。设计接受不表示实现或发布已经完成，实施范围及证据见 [npm 发布规格](../../.scratch/npm-release/spec.md)。

@@ -5,13 +5,13 @@ Blocked by: 04, 05
 
 ## What to build
 
-贡献者创建或更新 main 目标 PR 时自动获得源码和双架构安装验收结果，维护者在 main 合并后获得对应 commit 的完整检查状态与已验证 tarball。普通 CI 不向 npm 发布。
+贡献者创建或更新 main 目标 PR 时自动获得源码和 arm64 安装验收结果，维护者在 main 合并后获得对应 commit 的完整检查状态与已验证 tarball。普通 CI 不向 npm 发布。
 
 ## Acceptance criteria
 
 - [ ] PR 创建、提交更新、重开、push 到 main 和人工运行触发验证，首版不使用路径过滤漏掉内部包或构建变更。
 - [ ] 固定 Bun 与依赖安装方式，执行仓库要求的完整检查，并验证开发 PR 的 Conventional Commit 标题。
-- [ ] 双架构在匹配 macOS runtime 执行实际安装包的 Headless、TUI 与 provider/auth 验收；reuse fixtures 避免重复构建和完整初始化。
+- [ ] arm64 在 macOS arm64 runner 执行实际安装包的 Headless、TUI 与 provider/auth 验收；reuse fixtures 避免重复构建和完整初始化。
 - [ ] 所有必要检查绑定当前 commit，成功状态不能来自无关旧 commit。
 - [ ] 保存实际验证的主包/平台 tarball 及身份清单，后续发布可消费相同产物，不将源码检查代替安装验收。
 - [ ] 普通 PR 验证不需要 GitHub App/npm 发布凭据，无 registry 写入权限，不触发发布。
@@ -24,4 +24,5 @@ Blocked by: 04, 05
 
 ## Comments
 
+- 2026-10-09：首版只支持 macOS arm64，双架构要求改为 arm64，见父规格 Out of Scope。
 - 2026-10-07：拆分已确认。本地 workflow 契约检查和 GitHub 实际运行证据分别记录。
