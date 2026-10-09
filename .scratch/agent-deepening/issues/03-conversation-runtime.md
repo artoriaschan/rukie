@@ -24,3 +24,5 @@ Status: resolved
 - Combined Jobs selection exited 137 after passing 27 Jobs cases, with no assertion failure. The exact interrupted drain case passed individually (3.19s), then the complete Jobs file passed all 38 cases (7.36s). Kernel logs provided no memory-pressure/Bun-kill evidence; interruption cause remains unconfirmed. Jobs signaling algorithms and original silent cleanup policy were preserved.
 - The drain integration test necessarily keeps real OS process-group/pipe lifetime coverage; module cases complete below 30ms and other affected cases below one second.
 - `bun run check:dev` passed. Aggregate validation belongs to final spec acceptance; no full check or push performed for this ticket.
+
+Integration: merged latest integration `a26aac55` (01/02/05), preserving extracted Goal abort and Conversation stop state and the new Interaction parser. Goal/child/runtime integration selection passed 53 tests in 3.99s; `bun run check:dev` and `git diff --check` passed after conflict resolution.
