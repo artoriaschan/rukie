@@ -1,4 +1,4 @@
-Status: claimed
+Status: resolved
 
 # Spec: Agent Core 深化重构
 
@@ -48,7 +48,7 @@ MCP 拆深（catalog 与 OAuth 授权）不在本 spec 范围，另行立项。
 
 第一轮完整 `env -u NO_COLOR bun run check` 实际失败：3181 pass / 1 fail，3182 tests / 294 files，104.80s；唯一失败为 `send_message reuses the child Session with no old jobs, output or reused ids`。修复 child jobs 的逻辑 ownership 后，第二轮完整检查仍实际失败：3183 pass / 1 fail，3184 tests / 294 files，103.84s；前次 jobs 用例通过，唯一新失败为 `a caught-up live identity does not restart and a non-prefix final replacement snaps`。两轮失败均保留，focused 通过不将它们记作 aggregate 通过。
 
-TUI 失败属于重构前已存在的测试同步不足：`app.flush()` 仅完成已接收的终端写入解析，不等待模型 delta 的原生 timer、durable commit/fsync 和 committed event 发布。在当前 `a3d4aa06` 与重构前 `306cd9a7` 上，通过 Storage.commit gate 挂起含 `immediate-tail` 的 partial，可确定性复现原断言：两次 terminal flush 与 16ms 后 commit 尚未完成，屏幕仍只有 `caught up`、活动估计为 3 tokens。释放 gate，并等待活动栏完整输入的 token 估计增加后，tail 在 16ms 前已可见，最终非前缀替换也立即显示。此信号独立于 smooth reveal 的游标；没有等待 tail 本身或扩大超时。
+TUI 失败属于重构前已存在的测试同步不足：`app.flush()` 仅完成已接收的终端写入解析，不等待模型 delta 的原生 timer、durable commit/fsync 和 committed event 发布。在当前 `a3d4aa06` 与重构前 `306cd9a7` 上，通过 Storage.commit gate 挂起含 `immediate-tail` 的 partial，可确定性复现原断言：两次 terminal flush 与 16ms 后 commit 尚未完成，屏幕仍只有 `caught up`、活动估计为 3 tokens。释放 gate，并等待活动栏原始输出的 token 估计增加后，tail 在 16ms 前已可见，最终非前缀替换也立即显示。此信号独立于 smooth reveal 的游标；没有等待 tail 本身或扩大超时。
 
 仅在该测试的 model.delta 后增加有界 `app.waitFor`，确认活动栏原始输出估计大于初始 3，再保留原有 16ms、立即 tail 与最终替换断言。没有产品修改或新增测试专用 API；这是完成 final gate 所需的受影响测试消费者修正，无需新增 ADR。TDD evidence：受控 replay 在 baseline/current 上证明原同步为 RED，修正后独立送达屏障与原断言为 GREEN；最小用例重复 20 次，20 pass / 0 fail，2.76s。messages、smooth-reveal、activity-line、activity 四个相关文件共 23 pass / 0 fail，2.92s；`bun run check:dev` 与 `git diff --check` 通过。Spec 保持 claimed，最终 aggregate 与关闭由 integration branch 协调。
 
@@ -102,15 +102,25 @@ TUI 失败属于重构前已存在的测试同步不足：`app.flush()` 仅完�
 
 ## ADR Coverage
 
-| 决定或修改                            | 归属                                                                                                                                       | 理由                                                                                      |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
-| 能力目录与 Session 组合               | 沿用 [ADR-0011](../../docs/adr/0011-agent-module-ownership.md)                                                                             | 新 module 遵循能力不依赖 Session、Session 组合能力的方向                                  |
-| durable 执行与恢复                    | 沿用 [ADR-0024](../../docs/adr/0024-adopt-pi-durable-harness.md)                                                                           | 不改变执行、持久化与恢复语义，Request 编码保持不变                                        |
-| 原生 hook 只由 Session extension 注册 | 新增 [ADR-0028](../../docs/adr/0028-single-session-harness-hook-entry.md)                                                                  | `onYield` 无否决、优先级隐含于注册顺序，能力改为提供接口由 Session 按序调用               |
-| Tool Loadout 无缓存                   | 沿用 [ADR-0026](../../docs/adr/0026-protocol-independent-tool-search.md)                                                                   | loadout 仍由 Transcript 推导，装配位置仍在 `session/tools.ts`                             |
-| Interaction pending 身份归属          | 沿用 [ADR-0024](../../docs/adr/0024-adopt-pi-durable-harness.md) 与 [ADR-0015](../../docs/adr/0015-frontend-interactions-and-plan-mode.md) | Interaction 识别原生阶段与 memo，恢复依据当前配置重新发起，保留取消与缺失回调的安全默认值 |
-| 共享 support 与 System Prompt 归属    | 沿用 [ADR-0011](../../docs/adr/0011-agent-module-ownership.md)                                                                             | 支撑与具体协议工厂分开，Prompt 归 Session；不改变 API、持久化或运行行为                   |
+| 决定或修改                            | 归属                                                                                                                                       | 理由                                                                                       |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| 能力目录与 Session 组合               | 沿用 [ADR-0011](../../docs/adr/0011-agent-module-ownership.md)                                                                             | 新 module 遵循能力不依赖 Session、Session 组合能力的方向                                   |
+| durable 执行与恢复                    | 沿用 [ADR-0024](../../docs/adr/0024-adopt-pi-durable-harness.md)                                                                           | 不改变执行、持久化与恢复语义，Request 编码保持不变                                         |
+| 原生 hook 只由 Session extension 注册 | 新增 [ADR-0028](../../docs/adr/0028-single-session-harness-hook-entry.md)                                                                  | `onYield` 无否决、优先级隐含于注册顺序，能力改为提供接口由 Session 按序调用                |
+| Tool Loadout 无缓存                   | 沿用 [ADR-0026](../../docs/adr/0026-protocol-independent-tool-search.md)                                                                   | loadout 仍由 Transcript 推导，装配位置仍在 `session/tools.ts`                              |
+| Interaction pending 身份归属          | 沿用 [ADR-0024](../../docs/adr/0024-adopt-pi-durable-harness.md) 与 [ADR-0015](../../docs/adr/0015-frontend-interactions-and-plan-mode.md) | Interaction 识别原生阶段与 memo，恢复依据当前配置重新发起，保留取消与缺失回调的安全默认值  |
+| 共享 support 与 System Prompt 归属    | 沿用 [ADR-0011](../../docs/adr/0011-agent-module-ownership.md)                                                                             | 支撑与具体协议工厂分开，Prompt 归 Session；不改变 API、持久化或运行行为                    |
+| 逻辑 Subagent 的 Jobs 资源生命周期    | 沿用 [ADR-0010](../../docs/adr/0010-own-bash-tool-for-background-jobs.md) 与 [ADR-0024](../../docs/adr/0024-adopt-pi-durable-harness.md)   | 原生 Conversation 保持独立策略与 tracking；逻辑 child 保留 Jobs 序列，发布回执前清理旧资源 |
+| 验收测试的提交、输入与 PID 同步       | 无需 ADR                                                                                                                                   | 仅修正测试等待与准备，不改变产品 API、协议、持久化或清理算法                               |
 
 ## Implementation ADR Review
 
-六项实施决定已逐项对照源码：Request Ledger 与能力 receipt reader 保持单向依赖；Goal runtime 提供普通续跑接口；Conversation Runtime 统一 root/child 工具策略；Tool Loadout 从当前 Transcript 和输入规划；Interaction 持有 pending 身份格式；共享支撑与 Prompt 按能力依赖方向归位。原生 hook 仍由 Session 在固定入口注册，没有新增能力原生 hook。Request 编码及 document version 不变，未引入缓存、MCP catalog/OAuth 拆分或 Frontend API 变化。ADR-0011/0024/0026/0028 覆盖实施决定，Interaction 同时沿用 ADR-0015；未发现需要替代既有决定的架构变更。此记录为实施覆盖审阅，最终代码审阅和 aggregate 验证完成后才关闭 spec。
+六项实施决定已逐项对照源码：Request Ledger 与能力 receipt reader 保持单向依赖；Goal runtime 提供普通续跑接口；Conversation Runtime 统一 root/child 工具策略；Tool Loadout 从当前 Transcript 和输入规划；Interaction 持有 pending 身份格式；共享支撑与 Prompt 按能力依赖方向归位。原生 hook 仍由 Session 在固定入口注册，没有新增能力原生 hook。Request 编码及 document version 不变，未引入缓存、MCP catalog/OAuth 拆分或 Frontend API 变化。ADR-0011/0024/0026/0028 覆盖实施决定，Interaction 同时沿用 ADR-0015；逻辑 child 的 Jobs ownership 修正沿用 ADR-0010/0024。最终 Standards、Spec 与增量审阅未发现未解决问题，未发现需要替代既有决定的架构变更；覆盖审阅与完整验收完成后关闭 spec。
+
+## Final acceptance
+
+在 integration commit `9ad8b980` 上，第八轮 `env -u NO_COLOR bun run check` 使用隔离 HOME 完整通过：3192 pass / 0 fail，3192 tests / 294 files，105.78s，18146 assertions；format、lint、TypeScript、Knip、scratch/docs 与 ink dependency boundaries 同时通过。前七轮的失败与对应修正保留在上述记录中，不以 focused 通过改写失败结果。完整日志保存为 `/tmp/neant-agent-deepening-final-check-8.log`。
+
+双轴代码审阅发现的 omitted Hook stop reason P1 已修正并复审通过；逻辑 child Jobs ownership 修正及每项测试同步修正均经增量审阅，无未解决 finding。验收覆盖公开 Session 的 root/child、恢复与结算、Goal、工具声明与 Interaction，以及相关终端交互；没有 registry 发布或外部服务上线证据。本次不 push。
+
+01–06 票据全部 resolved；第 06 票与 spec 在同一关闭修改中更新。最终验收后的变更仅为状态与交付记录，通过文档、tracker、格式及 diff 检查，复用上述代码完整验收结果。
