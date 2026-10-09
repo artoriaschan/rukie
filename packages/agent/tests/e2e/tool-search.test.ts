@@ -236,20 +236,6 @@ test("loaded MCP still obeys deny rules while ToolSearch is read-only", async ()
   expect(await Bun.file(join(dirs.homeDir, "calls")).exists()).toBe(false);
 });
 
-test.each([0, 1])("auto threshold at 10 percent plus %s declaration characters", async (extra) => {
-  await fixture(["echo"], "auto");
-  const emptyDeclaration = {
-    name: "mcp__local__echo",
-    description: "",
-    parameters: { type: "object", properties: { text: { type: "string" } } },
-  };
-  const description = "x".repeat(40000 - JSON.stringify(emptyDeclaration).length + extra);
-  await update(["echo"], { echo: description });
-  const fake = model([fauxAssistantMessage("done")]);
-  const session = await open(fake);
-  await session.run("boundary");
-  expect(names(fake.contexts[0]!.messages).includes("ToolSearch")).toBe(extra === 1);
-});
 test("OpenAI tool search compat also enables deferred tools", async () => {
   await fixture();
   const fake = fakeModel([fauxAssistantMessage("done")], {

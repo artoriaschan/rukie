@@ -2,15 +2,10 @@ import { createConversationRuntime } from "./conversation/index.ts";
 import { readGoalReceipt } from "../tools/goal/index.ts";
 import { readSubagentReceipt } from "../tools/subagents/index.ts";
 import { createRequestLedger, parseRequestId, requestKind, requestIds } from "../requests/index.ts";
-import {
-  planToolSearchLoadout,
-  createToolSearchTool,
-  deferredToolsReminder,
-} from "../tools/tool-search/index.ts";
+import { deferredToolsReminder } from "../tools/tool-search/index.ts";
 import { stopHookContinuation } from "../hooks/index.ts";
 import { validateSessionDocument, validateSessionDocuments } from "./documents.ts";
 import { writeHookTranscript } from "../hooks/transcript.ts";
-import { declarationsEqual } from "@earendil-works/pi-ai/utils/transcript";
 import { join, resolve } from "node:path";
 import {
   BACKGROUND_CONTEXT,
@@ -19,8 +14,6 @@ import {
 } from "@earendil-works/chord/context";
 import type { Context, JsonValue } from "@earendil-works/chord";
 import {
-  getCurrentTools,
-  toToolDeclaration,
   type Api,
   type Model,
   type Models,
@@ -37,7 +30,6 @@ import {
   ToolTask,
   LiveDoc,
   type TaskId,
-  type ToolRegistration,
   type EntryDraft,
   type Storage,
   type EntryRecord,
@@ -127,9 +119,8 @@ import type { WebFetchOptions } from "../tools/web-fetch/index.ts";
 import { validateImage, type PromptImage } from "../images/index.ts";
 import { SYSTEM_PROMPT } from "../prompt/index.ts";
 import { createThinkingTiming } from "./thinking.ts";
-import { createBuiltinTools } from "../tools/builtin.ts";
 import { createSubagentController } from "../tools/subagents/index.ts";
-import { createBaseTools, createSubagentTools, refreshSubagentTypes } from "./tools.ts";
+import { createToolLoadout } from "./tools.ts";
 import { createConversationObservation } from "./observation.ts";
 
 type RequestResult = RunResult & { requestId: string };
@@ -754,16 +745,6 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       } while (cursor);
       return entries.reverse();
     };
-    // A new compaction head has no tool baseline until native preparation runs.
-    // Recover its offered tools from the selected branch's complete Transcript.
-    const currentConversationTools = async (target = conversation, ctx = context) => {
-      const view = await target.context(ctx);
-      return getCurrentTools(
-        view.messages.some((message) => message.role === "system")
-          ? view.messages
-          : (await fullHistory(target.id)).flatMap((entry) => entry.model ?? []),
-      );
-    };
     const promptFacts = new Map<string, string>();
     const rememberPrompts = (entries: readonly EntryRecord[]) => {
       for (const entry of entries) {
@@ -979,7 +960,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       return discovered.skills;
     };
     let skills = await loadSkills();
-    let tools: ToolRegistration[] = [];
+    let toolLoadout: ReturnType<typeof createToolLoadout>;
     async function persistDenial(
       owner: typeof conversation,
       event: Parameters<typeof permissionDenialFacts>[1],
@@ -1009,7 +990,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         sessionAllowRules,
         sessionGrantListeners,
         getMode: () => permissionMode,
-        getTools: () => tools,
+        getTools: () => toolLoadout?.registrations ?? [],
         getMessages: async () => {
           const view = await conversation.context(context);
           const submissions = await lease.storage.scanSubmissions(
@@ -1310,7 +1291,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           },
         });
         await childTracking.restoreCommitted(await fullHistory(child.id));
-        let childTools: ToolRegistration[] = [];
+        let childLoadout: ReturnType<typeof createToolLoadout>;
         childRuntime.configurePolicy({
           hooks: childHooks,
           input: childInput,
@@ -1326,7 +1307,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             sessionAllowRules,
             sessionGrantListeners,
             getMode: () => permissionMode,
-            getTools: () => childTools,
+            getTools: () => childLoadout.registrations,
             getMessages: async () => {
               const view = await conversation.context(context);
               const inputs = await lease.storage.scanSubmissions(
@@ -1416,56 +1397,46 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           ],
         }))
           await child.commit((tx) => tx.appendEntry(child.id, reminderEntry(reminder)), context);
-        const builtinTools = createBuiltinTools({
-          cwd,
-          homeDir: options.homeDir,
-          jobs: childJobs,
-          getSkill: (name) => skills.get(name),
-          setTodo: async (todos) => {
-            await childState.set("todo", todos, context);
-          },
-          onQuestion: options.onQuestion
-            ? (request) =>
-                options.onQuestion!({ ...request, origin: { agentId: childId, description } })
-            : undefined,
-          onInteractionStart: childNotify,
-          webFetch: options.webFetch,
-          fileTracking: childTracking,
+        childLoadout = createToolLoadout({
+          kind: "child",
+          builtin: () => ({
+            cwd,
+            homeDir: options.homeDir,
+            jobs: childJobs,
+            getSkill: (name) => skills.get(name),
+            setTodo: async (todos) => {
+              await childState.set("todo", todos, context);
+            },
+            onQuestion: options.onQuestion
+              ? (request) =>
+                  options.onQuestion!({ ...request, origin: { agentId: childId, description } })
+              : undefined,
+            onInteractionStart: childNotify,
+            webFetch: options.webFetch,
+            fileTracking: childTracking,
+          }),
+          allowed: type.tools,
+          conversation: () => child,
+          history: () => fullHistory(child.id),
+          context,
+          model: () => selected,
+          mode: settings.toolSearch,
+          mcp: () => mcp.tools,
+          wrap: (tools) => childRuntime.wrapTools(tools),
         });
-        const refreshChildTools = () => {
-          childTools = childRuntime.wrapTools(
-            [
-              ...builtinTools,
-              ...mcp.tools,
-              createToolSearchTool({
-                catalog: () =>
-                  mcp.tools.filter((tool) => !type.tools || type.tools.includes(tool.name)),
-                visibleNames: async () =>
-                  (await currentConversationTools(child)).map((tool) => tool.name),
-              }),
-            ].filter((tool) => !type.tools || type.tools.includes(tool.name)),
-          );
-        };
-        refreshChildTools();
-        const childLoadout = async (fresh = false, ctx = context) =>
-          planToolSearchLoadout({
-            tools: childTools,
-            currentTools: fresh ? [] : await currentConversationTools(child, ctx),
-            model: selected,
-            mode: settings.toolSearch,
-          });
+        await childLoadout.refresh();
         const childDeferredSource: ReminderSource = {
           source: "deferred-tools",
           compareContent: false,
           currentContent: async (history) =>
             deferredToolsReminder(
-              (await childLoadout()).deferred.map((tool) => tool.name),
+              (await childLoadout.plan()).deferred.map((tool) => tool.name),
               history ?? [],
             ),
         };
         const extension = {
           name: `rukie.child.${child.id}`,
-          tools: childTools,
+          tools: childLoadout.registrations,
           hooks: [
             hook(ToolTask, {
               beforeTool: childRuntime.beforeTool,
@@ -1510,7 +1481,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                         skillsReminder(
                           skills,
                           visibleReminderContents(view, "skills"),
-                          childTools.some((tool) => tool.name === "skill"),
+                          childLoadout.registrations.some((tool) => tool.name === "skill"),
                         ),
                     },
                     childTracking.reminderSource,
@@ -1655,11 +1626,11 @@ export async function createSession(options: SessionOptions): Promise<Session> {
                   await child.abort(ctx);
                   return;
                 }
-                refreshChildTools();
-                const updated = { ...extension, tools: childTools };
+                await childLoadout.refresh();
+                const updated = { ...extension, tools: childLoadout.registrations };
                 registry.install(updated);
                 await child.configure(
-                  { extensions: [updated], tools: (await childLoadout(false, ctx)).tools },
+                  { extensions: [updated], tools: (await childLoadout.plan(false, ctx)).tools },
                   ctx,
                 );
               },
@@ -1682,7 +1653,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             conversation: child,
             sessionId: childId,
             history: () => fullHistory(child.id),
-            tools: () => childTools,
+            tools: () => childLoadout.registrations,
             adopt: (publication) => {
               childState.adopt(publication);
             },
@@ -1713,7 +1684,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           cwd,
           instructions: SYSTEM_PROMPT,
           extensions: [extension],
-          tools: (await childLoadout(!selection.retained)).tools,
+          tools: (await childLoadout.plan(!selection.retained)).tools,
         };
       },
     });
@@ -1839,13 +1810,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         }, ctx);
       }
       const visibleContext = await conversation.context(ctx);
-      const currentTools = await currentConversationTools(conversation, ctx);
-      const deferred = planToolSearchLoadout({
-        tools,
-        currentTools,
-        model,
-        mode: settings.toolSearch,
-      }).deferred;
+      const deferred = (await toolLoadout.plan(false, ctx)).deferred;
       const sources: ReminderSource[] = [
         {
           source: "deferred-tools",
@@ -1863,7 +1828,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             skillsReminder(
               skills,
               visibleReminderContents(visibleContext, "skills"),
-              tools.some((tool) => tool.name === "skill"),
+              toolLoadout.registrations.some((tool) => tool.name === "skill"),
             ),
         },
         {
@@ -1983,9 +1948,19 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       mcpManager.adopt(mcp.snapshot());
       await rebuildTools(true);
     };
-    const rebuildTools = async (reportDiscovery = false) => {
-      skills = await loadSkills();
-      const base = createBaseTools({
+    toolLoadout = createToolLoadout({
+      kind: "root",
+      conversation: () => conversation,
+      history: () => fullHistory(),
+      context,
+      model: () => model,
+      mode: settings.toolSearch,
+      mcp: () => mcp.tools,
+      wrap: (tools) => runtime.wrapTools(tools),
+      refreshSkills: async () => {
+        skills = await loadSkills();
+      },
+      base: () => ({
         isChild: false,
         builtin: {
           cwd,
@@ -2015,499 +1990,426 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             },
           },
         },
-      });
-      const toolSearch = createToolSearchTool({
-        catalog: () => mcp.tools,
-        visibleNames: async () => (await currentConversationTools()).map((tool) => tool.name),
-      });
-      await refreshSubagentTypes({
+      }),
+      controller: subagents,
+      discovery: {
         cwd,
         homeDir: options.homeDir,
         trusted: isTrustedProject(cwd, settings),
-        tools: [...base, ...mcp.tools, toolSearch].filter(
-          (tool) =>
-            ![
-              "subagent",
-              "subagent_fork",
-              "send_message",
-              "list_agents",
-              "goal",
-              "enter_plan_mode",
-              "exit_plan_mode",
-            ].includes(tool.name),
-        ),
-        controller: subagents,
-        report: reportDiscovery
-          ? async (discovery) => {
-              for (const warning of discovery.warnings) warn(warning);
-              for (const warning of discovery.hookWarnings) {
-                await appendNotice({
-                  kind: "hook_warning",
-                  event: "SubagentStart",
-                  hook: warning.source,
-                  message: warning.message,
-                  error: warning.error,
-                });
-                custom({
-                  type: "hook_warning",
-                  event: "SubagentStart",
-                  hook: warning.source,
-                  message: warning.message,
-                  error: warning.error,
-                });
-              }
-            }
-          : undefined,
-      });
-      tools = runtime.wrapTools([
-        ...base,
-        ...createSubagentTools({ isChild: false, controller: subagents }),
-        ...mcp.tools,
-        toolSearch,
-      ]);
-      const extension = {
-        name: "rukie.session",
-        tools,
-        hooks: [
-          hook(CompactionTask, {
-            beforeCompact: async (compaction, api, ctx) => {
-              compactFocus.set(Number(api.taskId), compaction.instructions ?? "");
-              if (compaction.reason === "manual") return undefined;
-              const result = await hooks.run(
-                "PreCompact",
-                hookInput({
-                  trigger: "auto",
-                  custom_instructions: compaction.instructions ?? null,
-                }),
-                { signal: ctx.abortSignal, matchQuery: "auto" },
-              );
-              if (result.continue === false) {
-                await stopCompactionByHook(result.stopReason ?? "Stopped by hook.", ctx);
-                return { decline: true };
-              }
-              if (result.decision === "block") {
-                const reason = result.reason ?? "Compaction declined by hook.";
-                const warning = {
-                  event: "PreCompact" as const,
-                  hook: "compaction",
-                  message: reason,
-                  error: { code: "hook-compaction-blocked" as const, params: { reason } },
-                };
-                await appendNotice({ kind: "hook_warning", ...warning });
-                custom({ type: "hook_warning", ...warning });
-                warn(reason);
-                return { decline: true };
-              }
-              return undefined;
-            },
-          }),
-          hook(ToolTask, { beforeTool: runtime.beforeTool, afterTool: runtime.afterTool }),
-          hook(GenerationTask, {
-            beforeRequest: async (_request, api, ctx) => {
-              const live = await harness.snapshot(LiveDoc, conversation.id, ctx);
-              if (live?.run && preparedMcpRun !== Number(live.run.taskId)) {
-                const inputs = await Promise.all(
-                  live.run.inputs.map((id) => lease.storage.submission(id, ctx)),
+        report: async (discovery) => {
+          for (const warning of discovery.warnings) warn(warning);
+          for (const warning of discovery.hookWarnings) {
+            await appendNotice({
+              kind: "hook_warning",
+              event: "SubagentStart",
+              hook: warning.source,
+              message: warning.message,
+              error: warning.error,
+            });
+            custom({
+              type: "hook_warning",
+              event: "SubagentStart",
+              hook: warning.source,
+              message: warning.message,
+              error: warning.error,
+            });
+          }
+        },
+      },
+      install: async (_registrations, offered, ctx) => {
+        const extension = {
+          name: "rukie.session",
+          tools: toolLoadout.registrations,
+          hooks: [
+            hook(CompactionTask, {
+              beforeCompact: async (compaction, api, ctx) => {
+                compactFocus.set(Number(api.taskId), compaction.instructions ?? "");
+                if (compaction.reason === "manual") return undefined;
+                const result = await hooks.run(
+                  "PreCompact",
+                  hookInput({
+                    trigger: "auto",
+                    custom_instructions: compaction.instructions ?? null,
+                  }),
+                  { signal: ctx.abortSignal, matchQuery: "auto" },
                 );
-                // Human Runs already discover MCP before admission, including cancellation.
-                // Goal rounds and reporters refresh once at their native Run boundary.
-                if (
-                  preparedMcpRequestId === undefined ||
-                  !inputs.some((input) => input?.requestId === preparedMcpRequestId)
-                )
-                  await refreshMcp(ctx.abortSignal);
-                preparedMcpRun = Number(live.run.taskId);
-              }
-              await processCompactionHooks(ctx);
-              if (live?.run) {
-                const placed = await Promise.all(
-                  live.run.inputs.map((id) => lease.storage.submission(id, ctx)),
-                );
-                if (await goalRuntime.beforeRequest(placed, ctx)) goalRound = true;
-                const current = await conversation.context(ctx);
-                const latestInput = current.entries.findLast(
-                  (entry) =>
-                    entry.kind !== "rukie.reminder" &&
-                    (entry.model ?? []).some((message) => message.role === "user"),
-                );
-                const repairs = await harness.snapshot(HookYieldDoc, conversation.id, ctx);
-                if (
-                  repairs?.pending.length &&
-                  latestInput?.model?.some(
-                    (message) =>
-                      message.role === "user" && textOf(message) === repairs.pending.join("\n\n"),
+                if (result.continue === false) {
+                  await stopCompactionByHook(result.stopReason ?? "Stopped by hook.", ctx);
+                  return { decline: true };
+                }
+                if (result.decision === "block") {
+                  const reason = result.reason ?? "Compaction declined by hook.";
+                  const warning = {
+                    event: "PreCompact" as const,
+                    hook: "compaction",
+                    message: reason,
+                    error: { code: "hook-compaction-blocked" as const, params: { reason } },
+                  };
+                  await appendNotice({ kind: "hook_warning", ...warning });
+                  custom({ type: "hook_warning", ...warning });
+                  warn(reason);
+                  return { decline: true };
+                }
+                return undefined;
+              },
+            }),
+            hook(ToolTask, { beforeTool: runtime.beforeTool, afterTool: runtime.afterTool }),
+            hook(GenerationTask, {
+              beforeRequest: async (_request, api, ctx) => {
+                const live = await harness.snapshot(LiveDoc, conversation.id, ctx);
+                if (live?.run && preparedMcpRun !== Number(live.run.taskId)) {
+                  const inputs = await Promise.all(
+                    live.run.inputs.map((id) => lease.storage.submission(id, ctx)),
+                  );
+                  // Human Runs already discover MCP before admission, including cancellation.
+                  // Goal rounds and reporters refresh once at their native Run boundary.
+                  if (
+                    preparedMcpRequestId === undefined ||
+                    !inputs.some((input) => input?.requestId === preparedMcpRequestId)
                   )
-                )
-                  await conversation.commit(async (tx) => {
-                    const pending = await tx.doc(HookYieldDoc, conversation.id);
-                    pending.pending = [];
-                    pending.runAnchor = null;
-                  }, ctx);
-                if (
-                  placed.some(
+                    await refreshMcp(ctx.abortSignal);
+                  preparedMcpRun = Number(live.run.taskId);
+                }
+                await processCompactionHooks(ctx);
+                if (live?.run) {
+                  const placed = await Promise.all(
+                    live.run.inputs.map((id) => lease.storage.submission(id, ctx)),
+                  );
+                  if (await goalRuntime.beforeRequest(placed, ctx)) goalRound = true;
+                  const current = await conversation.context(ctx);
+                  const latestInput = current.entries.findLast(
+                    (entry) =>
+                      entry.kind !== "rukie.reminder" &&
+                      (entry.model ?? []).some((message) => message.role === "user"),
+                  );
+                  const repairs = await harness.snapshot(HookYieldDoc, conversation.id, ctx);
+                  if (
+                    repairs?.pending.length &&
+                    latestInput?.model?.some(
+                      (message) =>
+                        message.role === "user" && textOf(message) === repairs.pending.join("\n\n"),
+                    )
+                  )
+                    await conversation.commit(async (tx) => {
+                      const pending = await tx.doc(HookYieldDoc, conversation.id);
+                      pending.pending = [];
+                      pending.runAnchor = null;
+                    }, ctx);
+                  if (
+                    placed.some(
+                      (record) =>
+                        record &&
+                        requestKind(record.requestId) === "human" &&
+                        record.entry === latestInput?.id,
+                    )
+                  )
+                    goalRound = false;
+                  const humanInput = placed.findLast(
                     (record) =>
                       record &&
                       requestKind(record.requestId) === "human" &&
                       record.entry === latestInput?.id,
-                  )
-                )
-                  goalRound = false;
-                const humanInput = placed.findLast(
-                  (record) =>
+                  );
+                  if (
+                    humanInput &&
+                    latestInput?.model?.some(
+                      (message) => message.role === "user" && textOf(message).startsWith("/"),
+                    )
+                  ) {
+                    const facts = (await fullHistory()).findLast(
+                      (entry) =>
+                        entry.kind === "rukie.message-facts" &&
+                        entryData(entry)?.entryId === Number(humanInput.entry),
+                    );
+                    const invocation = entryData(facts)?.skillInvocation;
+                    if (
+                      typeof invocation === "string" &&
+                      !current.messages.some((message) => textOf(message).includes(invocation))
+                    )
+                      await appendReminder(
+                        {
+                          role: "system-reminder",
+                          source: "skill-invocation",
+                          content: invocation,
+                          timestamp: Date.now(),
+                        },
+                        ctx,
+                      );
+                  }
+                  for (const record of placed)
+                    if (record?.requestId) {
+                      let requestIds = [record.requestId];
+                      const identity = parseRequestId(record.requestId);
+                      const report = identity.kind === "subagent-report" ? identity : undefined;
+                      if (report) {
+                        const all = await lease.storage.scanTasks({}, 100000, undefined, ctx);
+                        const driver = all.items.find((task) => Number(task.id) === report.taskId);
+                        const originals =
+                          driver && (await ledger.requestCausesForTasks(all.items))(driver);
+                        if (originals?.size) requestIds = [...originals];
+                      }
+                      await harness.commit(async (tx) => {
+                        for (const requestId of requestIds)
+                          await ledger.bind(tx, requestId, {
+                            submissionId: Number(record.id),
+                            taskId: Number(live.run!.taskId),
+                          });
+                      }, ctx);
+                    }
+                }
+                for (const id of live?.run?.inputs ?? []) {
+                  const record = await lease.storage.submission(id, ctx);
+                  if (record?.entry)
+                    await conversation.commit(async (tx) => {
+                      const pending = await tx.doc(PendingInputFactsDoc, conversation.id);
+                      const facts = pending.inputs[String(id)];
+                      if (!facts) return;
+                      await tx.appendEntry(conversation.id, {
+                        kind: "rukie.message-facts",
+                        data: { ...facts, entryId: Number(record.entry) },
+                      });
+                      delete pending.inputs[String(id)];
+                    }, ctx);
+                  if (
                     record &&
                     requestKind(record.requestId) === "human" &&
-                    record.entry === latestInput?.id,
-                );
-                if (
-                  humanInput &&
-                  latestInput?.model?.some(
-                    (message) => message.role === "user" && textOf(message).startsWith("/"),
-                  )
-                ) {
-                  const facts = (await fullHistory()).findLast(
-                    (entry) =>
-                      entry.kind === "rukie.message-facts" &&
-                      entryData(entry)?.entryId === Number(humanInput.entry),
+                    record.status !== "queued" &&
+                    record.entry &&
+                    !checkpoints
+                      .list()
+                      .some((checkpoint) => checkpoint.promptEntryId === String(record.entry))
+                  ) {
+                    const persisted = await lease.storage.entry(record.entry, ctx);
+                    if (persisted) rememberPrompts([persisted.entry]);
+                    await checkpoints.start(String(record.entry));
+                  }
+                }
+                await goalRuntime.prepareWrapup(ctx);
+                await prepareReminders(ctx);
+                await toolLoadout.publish(ctx);
+                contextMessages = modelContextMessages(await conversation.context(ctx));
+                await observation.flush();
+                custom(contextUsage(contextMessages, model.contextWindow, latestInputTokens()));
+                return { messages: contextMessages };
+              },
+              afterResponse: async (message, api, ctx) => {
+                tracking.finishRequest();
+                const inputTokens =
+                  message.usage.input + message.usage.cacheRead + message.usage.cacheWrite;
+                // Stop hooks can remain pending before the native assistant entry is appended.
+                // Persist provider measurements first so observers never see uncommitted usage.
+                if (Number.isFinite(inputTokens) && inputTokens >= 0) {
+                  await conversation.commit(
+                    (tx) =>
+                      tx.appendEntry(conversation.id, {
+                        kind: "rukie.message-facts",
+                        data: {
+                          taskId: Number(api.taskId),
+                          provider: message.provider,
+                          model: message.model,
+                          inputTokens,
+                        },
+                      }),
+                    ctx,
                   );
-                  const invocation = entryData(facts)?.skillInvocation;
-                  if (
-                    typeof invocation === "string" &&
-                    !current.messages.some((message) => textOf(message).includes(invocation))
-                  )
-                    await appendReminder(
-                      {
-                        role: "system-reminder",
-                        source: "skill-invocation",
-                        content: invocation,
+                  await observation.flush();
+                  custom(
+                    contextUsage(contextMessages, model.contextWindow, inputTokens || undefined),
+                  );
+                }
+                if (message.stopReason === "error" || message.stopReason === "aborted") {
+                  await goalRuntime.clearActivation(ctx);
+                }
+                const measured = {
+                  content: structuredClone(message.content),
+                  rukieThinkingDurationMs: undefined as number | undefined,
+                };
+                thinking.update(measured);
+                thinking.settle(measured);
+                if (measured.rukieThinkingDurationMs !== undefined)
+                  await conversation.commit(
+                    (tx) =>
+                      tx.appendEntry(conversation.id, {
+                        kind: "rukie.message-facts",
+                        data: {
+                          taskId: Number(api.taskId),
+                          timestamp: message.timestamp,
+                          thinkingDurationMs: measured.rukieThinkingDurationMs!,
+                        },
+                      }),
+                    ctx,
+                  );
+              },
+              afterTools: async (_assistant, results, _api, ctx) => {
+                const committed = await Promise.all(
+                  results.map((id) => lease.storage.entry(id, ctx)),
+                );
+                await tracking.commitResults(
+                  committed.flatMap((value) => (value ? [value.entry] : [])),
+                );
+                mcpManager.adopt(mcp.snapshot());
+                const takeover = committed.some((value) =>
+                  value?.entry.model?.some((message) => {
+                    if (message.role !== "toolResult" || message.toolName !== "exit_plan_mode")
+                      return false;
+                    const details = message.details;
+                    return (
+                      details &&
+                      typeof details === "object" &&
+                      !Array.isArray(details) &&
+                      "kind" in details &&
+                      details.kind === "takeover"
+                    );
+                  }),
+                );
+                if (takeover) {
+                  await conversation.commit(async (tx) => {
+                    await ledger.recordOutcome(tx, conversation.id, { kind: "plan-takeover" }, ctx);
+                  }, ctx);
+                  await conversation.abort(ctx);
+                  return;
+                }
+                if (runtime.stopped && runtime.stopReason) {
+                  const reason = runtime.stopReason;
+                  await conversation.commit(async (tx) => {
+                    await ledger.recordOutcome(tx, conversation.id, { kind: "hook-stop", reason });
+                    await tx.appendEntry(conversation.id, {
+                      kind: "rukie.notice",
+                      data: {
+                        role: "session-notice",
+                        notice: { kind: "hook_stopped", reason },
                         timestamp: Date.now(),
+                      },
+                    });
+                  }, ctx);
+                  await conversation.abort(ctx);
+                  return;
+                }
+                if (toolLoadout.hasMcpDrift()) await rebuildTools();
+              },
+              onYield: async (_answer, api, ctx) => {
+                // A caller may start steering before releasing an in-flight model.
+                // Complete host admission before the native final boundary selects its inbox.
+                await Promise.allSettled(steeringAdmissions);
+                if (_answer.stopReason !== "stop") {
+                  await goalRuntime.clearActivation(ctx);
+                  return undefined;
+                }
+                const yielding = await harness.snapshot(LiveDoc, conversation.id, ctx);
+                const inputs = await Promise.all(
+                  (yielding?.run?.inputs ?? []).map((id) => lease.storage.submission(id, ctx)),
+                );
+                const requestIds = new Set(
+                  inputs.flatMap((input) => (input?.requestId ? [input.requestId] : [])),
+                );
+                const tasks = (await lease.storage.scanTasks({}, 100000, undefined, ctx)).items;
+                const causes = await ledger.requestCausesForTasks(tasks);
+                if (
+                  tasks.some(
+                    (task) =>
+                      task.kind === "rukie.subagent-driver" &&
+                      task.state.status !== "terminal" &&
+                      [...causes(task)].some((id) => requestIds.has(id)),
+                  )
+                )
+                  return undefined;
+                const continuation = async (content: string, source: string) => {
+                  await conversation.commit(
+                    (tx) =>
+                      tx.appendEntry(conversation.id, {
+                        kind: "rukie.message-facts",
+                        data: { taskId: Number(api.taskId), content, source },
+                      }),
+                    ctx,
+                  );
+                  return { continue: content };
+                };
+                const goalWrapup = await goalRuntime.yieldWrapup(Number(api.taskId), ctx);
+                if (goalWrapup) return goalWrapup;
+                const live = await harness.snapshot(LiveDoc, conversation.id, ctx);
+                const runAnchor = Number(live?.run?.inputs[0]);
+                const continuationPolicy = await stopHookContinuation(
+                  harness,
+                  conversation.id,
+                  runAnchor,
+                  "Stop",
+                  ctx,
+                );
+                checkingStop = runAnchor;
+                const result = await hooks
+                  .run(
+                    "Stop",
+                    hookInput({
+                      stop_hook_active: continuationPolicy.active,
+                      last_assistant_message: textOf(_answer),
+                    }),
+                    {
+                      signal: ctx.abortSignal,
+                    },
+                  )
+                  .finally(async () => {
+                    await asyncAdmissions;
+                    checkingStop = undefined;
+                  });
+                await applyHookResult(result, "hook:Stop", ctx);
+                if (result.continue === false) {
+                  const reason = result.stopReason ?? "Stopped by hook.";
+                  await conversation.commit(async (tx) => {
+                    await ledger.recordOutcome(tx, conversation.id, { kind: "hook-stop", reason });
+                    await tx.appendEntry(conversation.id, {
+                      kind: "rukie.notice",
+                      data: {
+                        role: "session-notice",
+                        notice: { kind: "hook_stopped", reason },
+                        timestamp: Date.now(),
+                      },
+                    });
+                  }, ctx);
+                  return undefined;
+                }
+                const repairs = await harness.snapshot(HookYieldDoc, conversation.id, ctx);
+                if (repairs?.runAnchor === runAnchor && repairs.pending.length)
+                  return continuation(repairs.pending.join("\n\n"), "async-hook");
+                if (result.decision === "block" && result.reason) {
+                  if (continuationPolicy.warning) {
+                    warn(continuationPolicy.warning.message);
+                    await appendNotice(
+                      {
+                        kind: "hook_warning",
+                        ...continuationPolicy.warning,
                       },
                       ctx,
                     );
-                }
-                for (const record of placed)
-                  if (record?.requestId) {
-                    let requestIds = [record.requestId];
-                    const identity = parseRequestId(record.requestId);
-                    const report = identity.kind === "subagent-report" ? identity : undefined;
-                    if (report) {
-                      const all = await lease.storage.scanTasks({}, 100000, undefined, ctx);
-                      const driver = all.items.find((task) => Number(task.id) === report.taskId);
-                      const originals =
-                        driver && (await ledger.requestCausesForTasks(all.items))(driver);
-                      if (originals?.size) requestIds = [...originals];
-                    }
-                    await harness.commit(async (tx) => {
-                      for (const requestId of requestIds)
-                        await ledger.bind(tx, requestId, {
-                          submissionId: Number(record.id),
-                          taskId: Number(live.run!.taskId),
-                        });
-                    }, ctx);
-                  }
-              }
-              for (const id of live?.run?.inputs ?? []) {
-                const record = await lease.storage.submission(id, ctx);
-                if (record?.entry)
-                  await conversation.commit(async (tx) => {
-                    const pending = await tx.doc(PendingInputFactsDoc, conversation.id);
-                    const facts = pending.inputs[String(id)];
-                    if (!facts) return;
-                    await tx.appendEntry(conversation.id, {
-                      kind: "rukie.message-facts",
-                      data: { ...facts, entryId: Number(record.entry) },
-                    });
-                    delete pending.inputs[String(id)];
-                  }, ctx);
-                if (
-                  record &&
-                  requestKind(record.requestId) === "human" &&
-                  record.status !== "queued" &&
-                  record.entry &&
-                  !checkpoints
-                    .list()
-                    .some((checkpoint) => checkpoint.promptEntryId === String(record.entry))
-                ) {
-                  const persisted = await lease.storage.entry(record.entry, ctx);
-                  if (persisted) rememberPrompts([persisted.entry]);
-                  await checkpoints.start(String(record.entry));
-                }
-              }
-              await goalRuntime.prepareWrapup(ctx);
-              await prepareReminders(ctx);
-              const offered = await currentConversationTools(conversation, ctx);
-              const desired = planToolSearchLoadout({
-                tools,
-                currentTools: offered,
-                model,
-                mode: settings.toolSearch,
-              }).tools.map(toToolDeclaration);
-              const wanted = new Map(desired.map((tool) => [tool.name, tool]));
-              const retained = offered.filter((tool) => {
-                const next = wanted.get(tool.name);
-                return next !== undefined && declarationsEqual(tool, next);
-              });
-              const retainedNames = new Set(retained.map((tool) => tool.name));
-              const added = desired.filter((tool) => !retainedNames.has(tool.name));
-              // Replay retains tools in place and appends additions. Match native planTools:
-              // replace the complete loadout only when that cannot produce the desired order.
-              const replace = [...retained, ...added].some(
-                (tool, index) => tool.name !== desired[index]!.name,
-              );
-              const toolsRemoved = (
-                replace ? offered : offered.filter((tool) => !retainedNames.has(tool.name))
-              ).map((tool) => ({ name: tool.name }));
-              const toolsAdded = replace ? desired : added;
-              if (toolsRemoved.length || toolsAdded.length)
-                // Native preparation precedes beforeRequest. A late MCP refresh must publish
-                // its actual positional loadout before replacing this request's messages.
-                await conversation.commit(
-                  (tx) =>
-                    tx.appendEntry(conversation.id, {
-                      kind: "rukie.mcp-loadout",
-                      model: [
-                        {
-                          role: "system",
-                          content: "",
-                          timestamp: Date.now(),
-                          ...(toolsRemoved.length ? { toolsRemoved } : {}),
-                          ...(toolsAdded.length ? { toolsAdded } : {}),
-                        },
-                      ],
-                    }),
-                  ctx,
-                );
-              contextMessages = modelContextMessages(await conversation.context(ctx));
-              await observation.flush();
-              custom(contextUsage(contextMessages, model.contextWindow, latestInputTokens()));
-              return { messages: contextMessages };
-            },
-            afterResponse: async (message, api, ctx) => {
-              tracking.finishRequest();
-              const inputTokens =
-                message.usage.input + message.usage.cacheRead + message.usage.cacheWrite;
-              // Stop hooks can remain pending before the native assistant entry is appended.
-              // Persist provider measurements first so observers never see uncommitted usage.
-              if (Number.isFinite(inputTokens) && inputTokens >= 0) {
-                await conversation.commit(
-                  (tx) =>
-                    tx.appendEntry(conversation.id, {
-                      kind: "rukie.message-facts",
-                      data: {
-                        taskId: Number(api.taskId),
-                        provider: message.provider,
-                        model: message.model,
-                        inputTokens,
-                      },
-                    }),
-                  ctx,
-                );
-                await observation.flush();
-                custom(
-                  contextUsage(contextMessages, model.contextWindow, inputTokens || undefined),
-                );
-              }
-              if (message.stopReason === "error" || message.stopReason === "aborted") {
-                await goalRuntime.clearActivation(ctx);
-              }
-              const measured = {
-                content: structuredClone(message.content),
-                rukieThinkingDurationMs: undefined as number | undefined,
-              };
-              thinking.update(measured);
-              thinking.settle(measured);
-              if (measured.rukieThinkingDurationMs !== undefined)
-                await conversation.commit(
-                  (tx) =>
-                    tx.appendEntry(conversation.id, {
-                      kind: "rukie.message-facts",
-                      data: {
-                        taskId: Number(api.taskId),
-                        timestamp: message.timestamp,
-                        thinkingDurationMs: measured.rukieThinkingDurationMs!,
-                      },
-                    }),
-                  ctx,
-                );
-            },
-            afterTools: async (_assistant, results, _api, ctx) => {
-              const committed = await Promise.all(
-                results.map((id) => lease.storage.entry(id, ctx)),
-              );
-              await tracking.commitResults(
-                committed.flatMap((value) => (value ? [value.entry] : [])),
-              );
-              mcpManager.adopt(mcp.snapshot());
-              const takeover = committed.some((value) =>
-                value?.entry.model?.some((message) => {
-                  if (message.role !== "toolResult" || message.toolName !== "exit_plan_mode")
-                    return false;
-                  const details = message.details;
-                  return (
-                    details &&
-                    typeof details === "object" &&
-                    !Array.isArray(details) &&
-                    "kind" in details &&
-                    details.kind === "takeover"
-                  );
-                }),
-              );
-              if (takeover) {
-                await conversation.commit(async (tx) => {
-                  await ledger.recordOutcome(tx, conversation.id, { kind: "plan-takeover" }, ctx);
-                }, ctx);
-                await conversation.abort(ctx);
-                return;
-              }
-              if (runtime.stopped && runtime.stopReason) {
-                const reason = runtime.stopReason;
-                await conversation.commit(async (tx) => {
-                  await ledger.recordOutcome(tx, conversation.id, { kind: "hook-stop", reason });
-                  await tx.appendEntry(conversation.id, {
-                    kind: "rukie.notice",
-                    data: {
-                      role: "session-notice",
-                      notice: { kind: "hook_stopped", reason },
-                      timestamp: Date.now(),
-                    },
-                  });
-                }, ctx);
-                await conversation.abort(ctx);
-                return;
-              }
-              const availableMcp = new Set(mcp.tools.map((tool) => tool.name));
-              const publishedMcp = tools
-                .filter((tool) => tool.name.startsWith("mcp__"))
-                .map((tool) => tool.name);
-              if (
-                publishedMcp.length !== availableMcp.size ||
-                publishedMcp.some((name) => !availableMcp.has(name))
-              )
-                await rebuildTools();
-            },
-            onYield: async (_answer, api, ctx) => {
-              // A caller may start steering before releasing an in-flight model.
-              // Complete host admission before the native final boundary selects its inbox.
-              await Promise.allSettled(steeringAdmissions);
-              if (_answer.stopReason !== "stop") {
-                await goalRuntime.clearActivation(ctx);
-                return undefined;
-              }
-              const yielding = await harness.snapshot(LiveDoc, conversation.id, ctx);
-              const inputs = await Promise.all(
-                (yielding?.run?.inputs ?? []).map((id) => lease.storage.submission(id, ctx)),
-              );
-              const requestIds = new Set(
-                inputs.flatMap((input) => (input?.requestId ? [input.requestId] : [])),
-              );
-              const tasks = (await lease.storage.scanTasks({}, 100000, undefined, ctx)).items;
-              const causes = await ledger.requestCausesForTasks(tasks);
-              if (
-                tasks.some(
-                  (task) =>
-                    task.kind === "rukie.subagent-driver" &&
-                    task.state.status !== "terminal" &&
-                    [...causes(task)].some((id) => requestIds.has(id)),
-                )
-              )
-                return undefined;
-              const continuation = async (content: string, source: string) => {
-                await conversation.commit(
-                  (tx) =>
-                    tx.appendEntry(conversation.id, {
-                      kind: "rukie.message-facts",
-                      data: { taskId: Number(api.taskId), content, source },
-                    }),
-                  ctx,
-                );
-                return { continue: content };
-              };
-              const goalWrapup = await goalRuntime.yieldWrapup(Number(api.taskId), ctx);
-              if (goalWrapup) return goalWrapup;
-              const live = await harness.snapshot(LiveDoc, conversation.id, ctx);
-              const runAnchor = Number(live?.run?.inputs[0]);
-              const continuationPolicy = await stopHookContinuation(
-                harness,
-                conversation.id,
-                runAnchor,
-                "Stop",
-                ctx,
-              );
-              checkingStop = runAnchor;
-              const result = await hooks
-                .run(
-                  "Stop",
-                  hookInput({
-                    stop_hook_active: continuationPolicy.active,
-                    last_assistant_message: textOf(_answer),
-                  }),
-                  {
-                    signal: ctx.abortSignal,
-                  },
-                )
-                .finally(async () => {
-                  await asyncAdmissions;
-                  checkingStop = undefined;
-                });
-              await applyHookResult(result, "hook:Stop", ctx);
-              if (result.continue === false) {
-                const reason = result.stopReason ?? "Stopped by hook.";
-                await conversation.commit(async (tx) => {
-                  await ledger.recordOutcome(tx, conversation.id, { kind: "hook-stop", reason });
-                  await tx.appendEntry(conversation.id, {
-                    kind: "rukie.notice",
-                    data: {
-                      role: "session-notice",
-                      notice: { kind: "hook_stopped", reason },
-                      timestamp: Date.now(),
-                    },
-                  });
-                }, ctx);
-                return undefined;
-              }
-              const repairs = await harness.snapshot(HookYieldDoc, conversation.id, ctx);
-              if (repairs?.runAnchor === runAnchor && repairs.pending.length)
-                return continuation(repairs.pending.join("\n\n"), "async-hook");
-              if (result.decision === "block" && result.reason) {
-                if (continuationPolicy.warning) {
-                  warn(continuationPolicy.warning.message);
-                  await appendNotice(
-                    {
-                      kind: "hook_warning",
+                    custom({
+                      type: "hook_warning",
                       ...continuationPolicy.warning,
-                    },
-                    ctx,
-                  );
-                  custom({
-                    type: "hook_warning",
-                    ...continuationPolicy.warning,
-                  });
-                  return undefined;
+                    });
+                    return undefined;
+                  }
+                  await conversation.commit(async (tx) => {
+                    await continuationPolicy.advance(tx);
+                  }, ctx);
+                  custom({ type: "hook_continued", event: "Stop", reason: result.reason });
+                  return continuation(result.reason, "stop_hook");
                 }
-                await conversation.commit(async (tx) => {
-                  await continuationPolicy.advance(tx);
-                }, ctx);
-                custom({ type: "hook_continued", event: "Stop", reason: result.reason });
-                return continuation(result.reason, "stop_hook");
-              }
-              return undefined;
-            },
-          }),
-        ],
-      };
-      registry.install(goalRuntime.extension);
-      registry.install(subagents.extension);
-      registry.install(extension);
-      const offered = planToolSearchLoadout({
-        tools,
-        currentTools: await currentConversationTools(),
-        model,
-        mode: settings.toolSearch,
-      }).tools;
-      await conversation.configure(
-        { extensions: [extension, subagents.extension, goalRuntime.extension], tools: offered },
-        context,
-      );
-    };
+                return undefined;
+              },
+            }),
+          ],
+        };
+        registry.install(goalRuntime.extension);
+        registry.install(subagents.extension);
+        registry.install(extension);
+        await conversation.configure(
+          {
+            extensions: [extension, subagents.extension, goalRuntime.extension],
+            tools: [...offered],
+          },
+          ctx,
+        );
+      },
+    });
+    const rebuildTools = toolLoadout.rebuild;
     await rebuildTools();
     contextMessages = (await conversation.context(context)).messages;
     observation = await createConversationObservation({
@@ -2515,7 +2417,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       conversation,
       sessionId: lease.id,
       history: () => fullHistory(),
-      tools: () => tools,
+      tools: () => toolLoadout.registrations,
       liveAssistantFacts: () =>
         thinking.duration() !== undefined ? { rukieThinkingDurationMs: thinking.duration() } : {},
       adopt: (publication) => {
@@ -2933,7 +2835,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       contextUsage: () =>
         contextUsage(modelMessages(), model.contextWindow, latestInputTokens(), {
           instructions: SYSTEM_PROMPT,
-          tools,
+          tools: toolLoadout.registrations,
         }),
       contextReport: () =>
         contextReport({
@@ -2943,7 +2845,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           model: `${model.provider}/${model.id}`,
           window: model.contextWindow,
           mcpServers: mcp.toolServers,
-          configured: { instructions: SYSTEM_PROMPT, tools },
+          configured: { instructions: SYSTEM_PROMPT, tools: toolLoadout.registrations },
         }),
       sideQuestion(question, input) {
         assertAvailable();
@@ -3123,7 +3025,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             conversation,
             sessionId: lease.id,
             history: () => fullHistory(),
-            tools: () => tools,
+            tools: () => toolLoadout.registrations,
             liveAssistantFacts: () =>
               thinking.duration() !== undefined
                 ? { rukieThinkingDurationMs: thinking.duration() }
