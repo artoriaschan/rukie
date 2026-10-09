@@ -938,3 +938,20 @@ test("empty command readiness markers remain valid", async () => {
   await Bun.write(join(dirs.cwd, "ready"), "");
   expect(await waitFile("ready")).toBe("");
 });
+
+test("PID publication is rechecked after an incomplete read without another directory event", async () => {
+  dirs = await tempDirs();
+  const path = join(dirs.cwd, "escaped");
+  await Bun.write(path, "");
+  const observed = Promise.withResolvers<void>();
+  let publication = "";
+  const waiting = waitForPidFile(path, async () => {
+    const sampled = publication;
+    observed.resolve();
+    return sampled;
+  });
+  await observed.promise;
+  // The read boundary publishes content after the initial sample, with no further fs.watch edge.
+  publication = String(process.pid);
+  expect(await waiting).toBe(process.pid);
+});

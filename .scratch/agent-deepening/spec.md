@@ -68,6 +68,14 @@ TUI 失败属于重构前已存在的测试同步不足：`app.flush()` 仅完�
 
 最小修正使用现有 `committedJobNotifications.pendingTasks() === 0` 确认 panel 打开期间 native driver/generation 的 terminal commits；关闭 panel、返回底部后，再确认可见 spinner 与 `esc interrupt` footer 均消失，见证 Frontend 的 submit admission 已解除，再提交后续输入。受控 gate 验证后者等待时 spinner 确实可见，释放 gate 后原阅读锚点、folding、context notification 和 `followed-stream` 断言全通过，GREEN 621ms。修正后的最小用例重复 20 次：20 pass / 0 fail（7.09s）；Jobs panel、concurrent parity 和 messages 三个相关文件 21 pass / 0 fail（6.95s）。`bun run check:dev` 通过。未添加固定等待、扩大超时或保留诊断 hook；spec 保持 claimed，最终集成验收由 integration branch 协调。无架构决定变化，无需新增 ADR。
 
+### 第五轮 aggregate 与 PID 内容等待修正
+
+第五轮完整检查在 `1ca06631` 实际失败：3190 pass / 1 fail，3191 tests / 294 files，105.56s；此前失败用例均通过，唯一失败为新增 PID publication 回归的 `9007199254740992` case（2003.60ms）。修正前该组 30 次 focused 重复 180 pass / 0 fail（2.32s），因此不将独立重复通过视为已证明没有 event race。
+
+事件驱动 helper 仅在 initial check 和目录 `fs.watch` edge 上读取 PID；shell redirection 打开文件后才完成写入，目录事件可能在内容就绪前到达或被合并。受控 existing read boundary 先返回空内容，观察到初次 sample 后发布正 PID，且不再产生目录事件，原 helper 确定性超时，RED 2007.52ms；不调用真实 kill。该回归证明内容最终就绪而缺少新 event 时 waiter 会漏掉状态；aggregate 没有捕获底层 event 序列，保留该证据边界。
+
+仅 PID 内容 waiter 改为有界状态谓词：每个 I/O turn 重新读取实际文件，仍只接受正的 safe integer，monotonic deadline 保持 2s。`setImmediate` 仅让出 I/O 以观察真实发布状态，不引入固定等待或延长 failure bound；此路径不分配 watcher/timer。通用空 readiness 文件仍使用原 `waitForFile` 的文件事件实现，原函数体恢复，减少共享影响。受控 no-further-event case 与六个无效 PID、空 readiness case 重复 30 次，240 pass / 0 fail（362ms）。完整 background jobs、subagent jobs、Conversation Runtime 59 pass / 0 fail（8.53s）；共享 readiness 调用方的 MCP、network hooks、Session disposal 取消与关闭场景 9 pass / 0 fail（737ms）。首轮 `check:dev` 报 `no-constant-condition`，将循环条件改为 monotonic deadline 谓词后，8 项 PID/readiness focused 用例通过（149ms），最终 `bun run check:dev`、文档与 diff 检查通过。没有产品改动、放宽校验或 atomic rename 绕过真实 shell 发布；spec 保持 claimed，最终集成验收由 integration branch 协调。无架构决定变化，无需新增 ADR。
+
 ## Out of Scope
 
 - MCP catalog/OAuth 拆深。

@@ -1,50 +1,47 @@
+import { setImmediate } from "node:timers/promises";
 import { watch } from "node:fs";
 import { dirname } from "node:path";
 
-async function observeFile<T>(
-  path: string,
-  read: () => Promise<{ value: T } | undefined>,
-): Promise<T> {
-  const ready = Promise.withResolvers<T>();
+/** Observe a child process's published file, with a failure bound and no polling. */
+export async function waitForFile(path: string): Promise<void> {
+  const ready = Promise.withResolvers<void>();
   const observer = watch(dirname(path), () => void check());
   observer.on("error", ready.reject);
   const timeout = setTimeout(() => ready.reject(new Error(`Timed out waiting for ${path}`)), 2000);
   async function check() {
     try {
-      const result = await read();
-      if (result) ready.resolve(result.value);
+      if (await Bun.file(path).exists()) ready.resolve();
     } catch (error) {
       ready.reject(error);
     }
   }
   try {
     await check();
-    return await ready.promise;
+    await ready.promise;
   } finally {
     clearTimeout(timeout);
     observer.close();
   }
 }
 
-/** Observe a child process's published file, with a failure bound and no polling. */
-export async function waitForFile(path: string): Promise<void> {
-  await observeFile(path, async () =>
-    (await Bun.file(path).exists()) ? { value: true } : undefined,
-  );
-}
-
 /**
- * Opening a PID marker precedes its write; only a positive safe integer authorizes process signaling.
- * The read boundary lets fixtures synchronize publication on an observed incomplete sample.
+ * Shell redirection opens the marker before writing. Directory events may be coalesced before
+ * content is ready, so recheck the positive PID state across I/O turns within the same 2s bound.
+ * The read boundary lets fixtures control incomplete publication without sending process signals.
  */
-export function waitForPidFile(
+export async function waitForPidFile(
   path: string,
   readText = (path: string) => Bun.file(path).text(),
 ): Promise<number> {
-  return observeFile(path, async () => {
-    if (!(await Bun.file(path).exists())) return undefined;
-    const text = await readText(path);
-    const pid = Number(text.trim());
-    return Number.isSafeInteger(pid) && pid > 0 ? { value: pid } : undefined;
-  });
+  const deadline = process.hrtime.bigint() + 2_000_000_000n;
+  do {
+    if (await Bun.file(path).exists()) {
+      const text = await readText(path);
+      const pid = Number(text.trim());
+      if (Number.isSafeInteger(pid) && pid > 0) return pid;
+    }
+    if (process.hrtime.bigint() >= deadline) break;
+    await setImmediate();
+  } while (process.hrtime.bigint() < deadline);
+  throw new Error(`Timed out waiting for ${path}`);
 }
