@@ -58,7 +58,7 @@ Pi 的直接依赖和解析到的支撑包统一为 1.0.4，TypeBox 为 1.3.27�
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | 框架     | React 19.3.0 + react-dom 19.3.0                                                                                                                 |
 | 样式     | Tailwind CSS 4.3.3                                                                                                                              |
-| 组件原语 | shadcn + ai-elements                                                                                                                            |
+| 组件原语 | shadcn + beUI：shadcn 提供标准组件与默认风格，beUI 提供动效与 Agent 执行反馈；均经 shadcn CLI 安装                                              |
 | 类名工具 | class-variance-authority 0.7.1 处理变体；clsx 2.1.1 加 tailwind-merge 3.7.0 组成 `cn()`；用 `extendTailwindMerge` 让 `text-ui-*` 也参与冲突合并 |
 | 图标     | lucide-react 1.48.0                                                                                                                             |
 | Markdown | micromark 解析 + 自研的 mdast→React 渲染 + shiki/katex                                                                                          |

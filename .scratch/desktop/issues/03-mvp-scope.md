@@ -19,3 +19,7 @@ Status: resolved
 - 凭据与 provider 设置沿用现有用户设置，MVP 无设置界面。
 - UI 组件采用 shadcn/beui 的默认风格（调研见 [07](07-research-beui.md)），界面布局参考 Pencil 视觉稿（见 [08](08-task-pencil-design-source.md)）。
 - `packages/ui` 从一开始接入 `@rukie/i18n`，同步维护 zh/en。
+
+## Comments
+
+- 2026-10-09：用户调整 UI 风格：全部组件采用 shadcn 默认风格，beUI 只提供动效与 Agent 执行反馈；tech-stack「组件原语」改为 shadcn + beUI。上文“shadcn/beui 的默认风格”以此为准。
