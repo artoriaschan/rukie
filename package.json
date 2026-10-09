@@ -32,6 +32,7 @@
     "mdast-util-from-markdown": "2.1.0",
     "oxfmt": "0.71.0",
     "oxlint": "1.86.0",
+    "release-please": "17.3.0",
     "typescript": "6.0.3"
   },
   "overrides": {

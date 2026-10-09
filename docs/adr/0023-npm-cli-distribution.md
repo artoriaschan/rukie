@@ -16,6 +16,8 @@ status: accepted
 
 Release Please 根据整个产品的 Conventional Commits 准备版本、Changelog 和 Release PR，由维护者合并 Release PR 决定发版。初始版本为 0.1.0；0.x 兼容变更升 patch，不兼容变更升 minor，beta 使用 next。GitHub App 创建 PR、版本 tag 和 Release，npm OIDC 负责 registry 写入。PR/main 检查、版本准备和 tag 发布使用独立 workflow。
 
+版本准备只接受当前 main push commit 的必要 CI 成功，以该不可变 SHA 的完整产品历史和文件调用官方 Release Please 规划接口；版本 PR 的 Git commit parent 固定到该 SHA。合并后的产品 tag 还需其自身 merge SHA 的成功 CI，既有 tag 必须解析到同一 commit，不能通过移动 main 或旧成功状态放行。具体操作归属[版本准备](../release-preparation.md)。
+
 所有平台安装验收通过后保存发布 tarball。发布阶段使用已经验收的同一份产物，先发布平台包再发布主包；正式主包经过 candidate 的 registry 安装验收后才推进 latest。发布串行，失败保留旧 latest；恢复核对已发布版本和产物身份，续发缺失包。同版本内容冲突时停止，不尝试覆盖；旧版本恢复不能意外倒退 dist-tag。
 
 项目自有代码采用 MIT，并分发第三方许可声明。本次发布保留当前 vendored Yoga，不进行替换或来源调查。这是用户确认的范围例外，部分替代 [ADR-0005](0005-own-tui-renderer.md) 关于本次对外分发必须替换 Yoga 的条件；该 ADR 其他渲染管线决定继续有效。此例外不表示来源问题已解决。当时的分发范围不构成对 renderer 选型的接受；之后接受并实施的 [ADR-0013](0013-adopt-dsh-tui-ink.md) 独立拥有固定来源 dsh ink／Yoga 的决定，当前分发须沿用该来源及许可边界。
