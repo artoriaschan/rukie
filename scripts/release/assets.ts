@@ -49,6 +49,7 @@ function files(tag: string) {
     `rukie-coding-agent-${version}.tgz`,
     `rukie-coding-agent-darwin-arm64-${version}.tgz`,
     "release-build.json",
+    "release-modules.json",
     "ci-acceptance.json",
   ];
 }
@@ -87,12 +88,16 @@ export async function verifyAcceptanceWitness(
   const metadataHash = createHash("sha256")
     .update(await readFile(join(directory, "release-build.json")))
     .digest("hex");
+  const modulesHash = createHash("sha256")
+    .update(await readFile(join(directory, "release-modules.json")))
+    .digest("hex");
   if (
     audit.schemaVersion !== 1 ||
     audit.commit !== context.commit ||
     audit.repository !== context.repository ||
     audit.platform !== metadata.platform ||
     audit.releaseBuildSha256 !== metadataHash ||
+    audit.releaseModulesSha256 !== modulesHash ||
     JSON.stringify(audit.packages) !== JSON.stringify(metadata.packages) ||
     typeof audit.runId !== "string" ||
     !/^[1-9]\d*$/.test(audit.runId) ||
@@ -367,20 +372,7 @@ if (import.meta.main) {
   else if (values.mode === "preserve") await preserveOriginalAssets(context, directory);
   else if (values.mode === "verify") {
     await verifyAcceptanceWitness(context, directory, "current-acceptance.json", true);
-    const scratch = join(directory, "original-assets-check");
-    try {
-      if (!(await downloadOriginalAssets(context, scratch)))
-        throw new Error("Original accepted assets are not preserved");
-      for (const name of files(context.tag))
-        if (
-          !Buffer.from(await readFile(join(directory, name))).equals(
-            await readFile(join(scratch, name)),
-          )
-        )
-          throw new Error("Original asset conflict before publication");
-    } finally {
-      await rm(scratch, { recursive: true, force: true });
-    }
+    await verifyOriginalAssetEquality(context, directory);
   } else if (values.mode === "receipt") await attachPublicationReceipt(context, directory);
   else throw new Error("--mode must be download, preserve, verify or receipt");
 }

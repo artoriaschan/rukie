@@ -73,6 +73,9 @@ await Bun.write(
       releaseBuildSha256: createHash("sha256")
         .update(await readFile(join(directory, "release-build.json")))
         .digest("hex"),
+      releaseModulesSha256: createHash("sha256")
+        .update(await readFile(join(directory, "release-modules.json")))
+        .digest("hex"),
       packages: metadata.packages,
     },
     null,

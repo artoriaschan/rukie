@@ -34,6 +34,7 @@ async function fixture() {
   const root = await mkdtemp(join(tmpdir(), "rukie Release asset fixture "));
   for (const name of [
     "release-build.json",
+    "release-modules.json",
     ...metadata.packages.map((value) => {
       const pkg = releaseObject(value);
       if (typeof pkg.tarball !== "string") throw new Error("Invalid fixture tarball");
@@ -51,6 +52,9 @@ async function fixture() {
     event: "push",
     releaseBuildSha256: createHash("sha256")
       .update(await readFile(join(root, "release-build.json")))
+      .digest("hex"),
+    releaseModulesSha256: createHash("sha256")
+      .update(await readFile(join(root, "release-modules.json")))
       .digest("hex"),
     packages: metadata.packages,
   };
@@ -158,12 +162,12 @@ test("original bytes are preserved only after exact completed read-only job conf
   const value = await fixture();
   try {
     await preserveOriginalAssets(value.context, value.root);
-    expect(value.stored.size).toBe(4);
+    expect(value.stored.size).toBe(5);
     const before = [...value.stored.values()].map((asset) =>
       createHash("sha256").update(asset.bytes).digest("hex"),
     );
     await preserveOriginalAssets(value.context, value.root);
-    expect(value.stored.size).toBe(4);
+    expect(value.stored.size).toBe(5);
     expect(
       [...value.stored.values()].map((asset) =>
         createHash("sha256").update(asset.bytes).digest("hex"),
@@ -221,7 +225,7 @@ test("conflicting preserved bytes are never overwritten by a newly accepted uplo
     const corrupted = createHash("sha256").update(asset.bytes).digest("hex");
     await expect(preserveOriginalAssets(value.context, value.root)).rejects.toThrow();
     expect(createHash("sha256").update(asset.bytes).digest("hex")).toBe(corrupted);
-    expect(value.stored.size).toBe(4);
+    expect(value.stored.size).toBe(5);
   } finally {
     await value.cleanup();
   }
@@ -236,7 +240,7 @@ for (const failure of ["incompleteAsset", "wrongSize"] as const)
       await expect(
         downloadOriginalAssets(value.context, join(value.root, "download")),
       ).rejects.toThrow(failure === "incompleteAsset" ? "incomplete" : "size mismatch");
-      expect(value.stored.size).toBe(4);
+      expect(value.stored.size).toBe(5);
     } finally {
       await value.cleanup();
     }
@@ -262,7 +266,50 @@ test("a later successful verification witness preserves the original producing a
     await expect(
       preserveOriginalAssets({ ...value.context, runAttempt: "2" }, value.root),
     ).rejects.toThrow("has not succeeded");
-    expect(value.stored.size).toBe(4);
+    expect(value.stored.size).toBe(5);
+  } finally {
+    await value.cleanup();
+  }
+}, 120_000);
+
+test("freshly downloaded originals pass the complete installed acceptance without rebuilding", async () => {
+  const value = await fixture();
+  try {
+    await preserveOriginalAssets(value.context, value.root);
+    const directory = join(value.root, "fresh-originals");
+    expect(await downloadOriginalAssets(value.context, directory)).toBe(true);
+    const child = Bun.spawn(["bun", "scripts/release/accept.ts", "--artifact-dir", directory], {
+      cwd: join(import.meta.dir, "../../.."),
+      env: { ...process.env, RUKIE_RELEASE_ARTIFACTS: directory },
+      stdout: "pipe",
+      stderr: "pipe",
+      signal: AbortSignal.timeout(120_000),
+    });
+    const [code, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ]);
+    if (code !== 0) throw new Error(`Preserved installed acceptance failed: ${stdout}\n${stderr}`);
+    expect(code).toBe(0);
+  } finally {
+    await value.cleanup();
+  }
+}, 120_000);
+
+test("downloaded module inventory is bound to the producing audit identity", async () => {
+  const value = await fixture();
+  try {
+    await preserveOriginalAssets(value.context, value.root);
+    const inventory = [...value.stored.values()].find(
+      (asset) => asset.name === "release-modules.json",
+    );
+    if (!inventory) throw new Error("Missing preserved module inventory");
+    inventory.bytes = new TextEncoder().encode('["fabricated/module.js"]\n');
+    await expect(
+      downloadOriginalAssets(value.context, join(value.root, "changed-inventory")),
+    ).rejects.toThrow("witness identity mismatch");
+    expect(value.stored.size).toBe(5);
   } finally {
     await value.cleanup();
   }

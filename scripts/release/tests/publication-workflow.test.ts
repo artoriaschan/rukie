@@ -55,6 +55,13 @@ test("tag and same-tag manual publication serialize exact artifacts across least
       expect(commands.join("\n")).toContain("--require-unpublished");
       expect(commands).toContain("env -u NO_COLOR bun run check");
       expect(commands.join("\n")).toContain("current-acceptance.json");
+      const upload = steps
+        .map(releaseObject)
+        .find(
+          (step) =>
+            typeof step.uses === "string" && step.uses.startsWith("actions/upload-artifact@"),
+        );
+      expect(releaseObject(upload?.with).path).toContain("/release-modules.json");
     }
   }
   expect(source).not.toMatch(/NPM_TOKEN|NODE_AUTH_TOKEN|secrets\./);

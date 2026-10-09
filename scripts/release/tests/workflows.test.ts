@@ -96,7 +96,7 @@ test("a successful CI run uploads the exact once-built artifacts after the full 
   ).toBe(true);
   expect(steps[upload]).toMatchObject({ with: { "if-no-files-found": "error" } });
   expect(object(steps[upload]!.with).path).toBe(
-    "${{ env.RUKIE_RELEASE_ARTIFACTS }}/*.tgz\n${{ env.RUKIE_RELEASE_ARTIFACTS }}/release-build.json\n${{ env.RUKIE_RELEASE_ARTIFACTS }}/ci-acceptance.json\n",
+    "${{ env.RUKIE_RELEASE_ARTIFACTS }}/*.tgz\n${{ env.RUKIE_RELEASE_ARTIFACTS }}/release-build.json\n${{ env.RUKIE_RELEASE_ARTIFACTS }}/release-modules.json\n${{ env.RUKIE_RELEASE_ARTIFACTS }}/ci-acceptance.json\n",
   );
   for (const step of steps) {
     if (typeof step.uses === "string") expect(step.uses).toMatch(/@[a-f0-9]{40}$/);

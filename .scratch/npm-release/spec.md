@@ -159,16 +159,20 @@ arm64 在实机上验收，交叉编译不代替运行。复用构建与安装 f
 
 ## ADR Coverage
 
-| 决定或修改                              | 归属                                                                                                                 | 理由                           |
-| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
-| Bun 编译产物运行 Agent Core 与 Frontend | 沿用 [ADR-0001](../../docs/adr/0001-agent-runs-in-bun-sidecar.md)                                                    | 保留 Bun 生产运行时            |
-| pi 能力与资源适配                       | 沿用 [ADR-0002](../../docs/adr/0002-reuse-pi-agent-core-harness.md)                                                  | 复用锁定 harness               |
-| 唯一命令及动态加载                      | 沿用 [ADR-0012](../../docs/adr/0012-single-coding-agent-package.md)                                                  | 保持 Frontend 边界             |
-| 产品版本、平台包、身份和恢复            | [ADR-0023](../../docs/adr/0023-npm-cli-distribution.md)                                                              | 长期对外分发契约               |
-| 本次不处理 Yoga                         | [ADR-0023](../../docs/adr/0023-npm-cli-distribution.md) 部分替代 [ADR-0005](../../docs/adr/0005-own-tui-renderer.md) | 用户明确范围例外，其余决定有效 |
-| help/version、本地化及许可清单          | 无需独立 ADR                                                                                                         | 不改变 Session 领域语义        |
-| 首版仅 macOS arm64                      | 更新 [ADR-0023](../../docs/adr/0023-npm-cli-distribution.md)                                                         | 缩小首版平台范围               |
-| ripgrep 旁置定位与 Bun 自动加载关闭     | 沿用 [ADR-0023](../../docs/adr/0023-npm-cli-distribution.md)                                                         | 属于既定编译产物资源与运行边界 |
+| 决定或修改                                                           | 归属                                                                                                                 | 理由                           |
+| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| Bun 编译产物运行 Agent Core 与 Frontend                              | 沿用 [ADR-0001](../../docs/adr/0001-agent-runs-in-bun-sidecar.md)                                                    | 保留 Bun 生产运行时            |
+| pi 能力与资源适配                                                    | 沿用 [ADR-0024](../../docs/adr/0024-adopt-pi-durable-harness.md)                                                     | 复用锁定 harness               |
+| 唯一命令、动态加载及 CLI-only                                        | 沿用 [ADR-0012](../../docs/adr/0012-single-coding-agent-package.md)                                                  | 保持 Frontend 边界             |
+| 产品版本、平台包、身份和恢复                                         | [ADR-0023](../../docs/adr/0023-npm-cli-distribution.md)                                                              | 长期对外分发契约               |
+| 冻结历史/文件的官方 Release Please 规划、精确 PR parent/merge CI/tag | [ADR-0023](../../docs/adr/0023-npm-cli-distribution.md)                                                              | 发布准备绑定不可变 commit      |
+| 原资产/模块清单审计与独立当前验收见证                                | [ADR-0023](../../docs/adr/0023-npm-cli-distribution.md)                                                              | 产物身份及验收边界             |
+| 内容核对恢复、未知写入协调、单调通道和显式 rollback                  | [ADR-0023](../../docs/adr/0023-npm-cli-distribution.md)                                                              | 已确认恢复与人工回退契约       |
+| 本次不处理 Yoga                                                      | [ADR-0023](../../docs/adr/0023-npm-cli-distribution.md) 部分替代 [ADR-0005](../../docs/adr/0005-own-tui-renderer.md) | 用户明确范围例外，其余决定有效 |
+| 当前固定来源 ink/Yoga 与分发许可边界                                 | 沿用 [ADR-0013](../../docs/adr/0013-adopt-dsh-tui-ink.md)                                                            | 保留既有来源及本次范围例外     |
+| help/version、本地化及许可清单                                       | 无需独立 ADR                                                                                                         | 不改变 Session 领域语义        |
+| 首版仅 macOS arm64                                                   | 更新 [ADR-0023](../../docs/adr/0023-npm-cli-distribution.md)                                                         | 缩小首版平台范围               |
+| ripgrep 旁置定位与 Bun 自动加载关闭                                  | 沿用 [ADR-0023](../../docs/adr/0023-npm-cli-distribution.md)                                                         | 属于既定编译产物资源与运行边界 |
 
 ## Comments
 

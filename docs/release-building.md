@@ -15,7 +15,7 @@ bun run release:verify --artifact-dir dist/release
 bun run release:accept --artifact-dir dist/release
 ```
 
-构建命令验证宿主架构与 Bun 版本，将原始产品入口及 sixel worker 编译为独立执行文件，生成两个仅含许可、声明、launcher 或平台资源的白名单 manifest，然后通过 `npm pack` 生成真实 tarball。`dist/release/release-build.json` 记录产品版本、构建时 Git commit、是否存在未提交改动、实际工具版本及 tarball SHA-256／SHA-512；本地未提交构建的 `dirty` 标记不能被解释为该 commit 的干净发布产物。默认输出在被忽略的 `dist/` 下；`--out` 必须指向维护者拥有的输出目录，其 `staging/` 会在重新构建时替换。
+构建命令验证宿主架构与 Bun 版本，将原始产品入口及 sixel worker 编译为独立执行文件，生成两个仅含许可、声明、launcher 或平台资源的白名单 manifest，然后通过 `npm pack` 生成真实 tarball。构建还生成 `release-modules.json`：排序的仓库相对模块路径清单，供 provider/API 与未接通 model OAuth 的 embedding 审阅使用，不放入 npm tarball。CI audit 记录其 SHA256，保存与恢复时沿用原清单，不将其解释为运行或远程认证成功。`dist/release/release-build.json` 记录产品版本、构建时 Git commit、是否存在未提交改动、实际工具版本及 tarball SHA-256／SHA-512；本地未提交构建的 `dirty` 标记不能被解释为该 commit 的干净发布产物。默认输出在被忽略的 `dist/` 下；`--out` 必须指向维护者拥有的输出目录，其 `staging/` 会在重新构建时替换。
 
 构建平台通过 `--platform` 指定；当前唯一可选值为 `darwin-arm64`，对应的编译目标、平台包名称、CPU 和原生资源来自 [平台描述](../scripts/release/platforms.ts)，不按宿主架构猜测 ripgrep。增加目标须先增加描述和该架构的实际安装验收；launcher 根据主包的精确 optionalDependencies 选择目标，Frontend 与 Session 执行入口共用。
 

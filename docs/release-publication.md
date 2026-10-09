@@ -31,7 +31,7 @@ npm view @rukie/coding-agent@0.1.0 optionalDependencies --json
 1. 合并经 CI 校验的 Release PR，由准备流程产生 `coding-agent-vVERSION` tag。tag 对应的 commit 必须可从 `origin/main` 到达，且其提交内产品版本与 tag 完全相同。
 2. tag push 启动 [publication workflow](../.github/workflows/release-publish.yml)。人工入口必须让 workflow 本身也运行于选定 tag，例如 `gh workflow run release-publish.yml --ref coding-agent-v0.1.0 -f tag=coding-agent-v0.1.0`。从默认 main 手工触发并填写另一个 tag 会失败；workflow SHA、provenance 和源码 commit 必须相同。
 3. 只读 job 检出准确 commit，下载完整原始 Release assets，或在该版本两包均未发布时构建一次。使用同一组文件运行完整源码检查、所有 arm64 安装场景和清单身份校验，记录本次验收 witness。
-4. 单独的 contents-write job 在 npm 写入前保存两个 `.tgz`、`release-build.json`、原始 `ci-acceptance.json`。它通过 GitHub API 核对原始及本次验收的 run、attempt、commit、成功的只读 job；整个工作流此时仍可处于 in-progress。文件名或自写 audit 不能单独证明验收。
+4. 单独的 contents-write job 在 npm 写入前保存五份原始资产：两个 `.tgz`、`release-build.json`、`release-modules.json`、原始 `ci-acceptance.json`。它通过 GitHub API 核对原始及本次验收的 run、attempt、commit、成功的只读 job；整个工作流此时仍可处于 in-progress。文件名或自写 audit 不能单独证明验收。
 5. 只有 publish job 获得 OIDC 写权限；它核对保存的原始字节，使用隔离 npm 配置，去除继承的 npm 配置覆盖，依次上传平台包和主包。稳定版显式进入 candidate，beta 显式进入 next；主包精确依赖同版本平台包。写入阶段不构建、不 pack、不重新生成 manifest。
 6. 从 registry 重新下载并核对 SHA256 与 SHA512，使用独立 fresh cache 安装精确主包版本，验证 `--help`、`--version` 和 loopback fake-provider Session。稳定版随后推进 latest；beta 保持 latest。已有更高通道版本不会被普通发布降级。
 
@@ -39,7 +39,7 @@ npm view @rukie/coding-agent@0.1.0 optionalDependencies --json
 
 工作流串行执行且不取消正在写 registry 的运行。GitHub Release 保留原始文件和原始验收身份，重跑生成单独的本次 witness；成功结果另附 `npm-publication-RUNID-ATTEMPT.json`。Release 存在并不表示 npm 成功。
 
-上传、依赖安装或 Session 验收失败不会推进 latest。完整原始 assets 的重跑先重新执行准确 tag 的全部只读验收，保留原 ci-acceptance.json 并生成单独 current-acceptance.json。逐包核对 name/version、repository、平台与 engines、安装入口、依赖及 npm scripts 等安装身份，并 fresh 下载实际 tarball，比较原始 SHA256 和 SHA512；只有匹配才跳过。所有已有包的核对先于任何缺失包上传，同版本冲突要求新版本修复，不能覆盖或 unpublish。
+上传、依赖安装或 Session 验收失败不会推进 latest。模块清单是实际构建的 sanitized embedding evidence，位于 npm tarball 外；audit 的 `releaseModulesSha256` 将其与同一次验收身份绑定。恢复下载该原清单，不重建或重新生成；它不替代实际 tarball 校验或远程 auth 证据。普通 CI 与发布 workflow 都保留同一清单。完整原始 assets 的重跑先重新执行准确 tag 的全部只读验收，保留原 ci-acceptance.json 并生成单独 current-acceptance.json。逐包核对 name/version、repository、平台与 engines、安装入口、依赖及 npm scripts 等安装身份，并 fresh 下载实际 tarball，比较原始 SHA256 和 SHA512；只有匹配才跳过。所有已有包的核对先于任何缺失包上传，同版本冲突要求新版本修复，不能覆盖或 unpublish。
 
 部分原始 assets、空 starter 上传或缺少原始 assets 的已有 registry 版本会停止，不能用重构建替换身份。恢复完整原始文件后重跑同一个已有 tag，例如 `gh workflow run release-publish.yml --ref coding-agent-v0.1.0 -f tag=coding-agent-v0.1.0 -f operation=publish`。读取401、503、无效 JSON 或 tarball 下载失败是未知状态，不是版本不存在；检查权限、网络与实际状态后再重跑。仅 registry 的404或完整合法 packument 中确实缺少目标版本表示当前不存在。
 

@@ -34,3 +34,7 @@ Blocked by: 08
 - 2026-10-09：仍保持 claimed，父规格保持开放，由主协调线程完成两轴审阅及一次最终聚合检查后统一关闭。以上是本地实际 npm 协议与安装/Session 证据，不是 GitHub hosted CI、真实 npm/OIDC/provenance 或远程 provider auth 成功。真实首发仍需明确操作及 App、npm scope/Trusted Publisher、arm64 runner、不可变 Release 关闭等外部配置。
 
 - 2026-10-09：补充资产/current attempt focused 8 tests / 59 assertions / 9.17s；`bun run check:dev` 全部静态、文档、tracker、边界检查通过，actionlint 与 git diff --check 通过。未运行聚合测试。
+
+- 2026-10-09：最终两轴审阅保持独立结果。Spec：一个 P1，原资产集合及普通 CI/发布 artifact 上传遗漏 `release-modules.json`，恢复跳过构建后 provider 验收 ENOENT。Standards：一个低优先级 Duplicated Code 启发式，assets CLI verify 重复原资产 equality 实现；无硬性规范违反。修复：五份原资产包含原模块清单，原/当前 audit 均以 SHA256 绑定；恢复沿用且完整 installed acceptance 通过；CLI 调用既有 equality 函数。规格 ADR table 已同步当前 ADR-0024 harness 与 07/08/09 的版本冻结、审计、恢复和 rollback 归属，保留 CLI-only/Yoga 范围。
+
+- 2026-10-09：review fix 的 public fresh-download → complete `release:accept` 红灯：23.89s，内部 33 pass/1 ENOENT fail；绿灯：24.48s，原资产下载后 34 个完整 installed/provider/TUI/Headless/identity 案例通过，无重新构建。该回归约24s成本由真实下载、tarball验证、fresh install、PTY 与 Session 子进程产生，独立临时 HOME/项目保证隔离；仅一个代表性完整恢复验收。其余资产/hash/witness/workflow focused：13 tests / 99 assertions / 11.17s（过滤已通过的昂贵完整恢复）；`check:dev`、actionlint、git diff --check 均通过。仍未运行聚合或真实外部发布。

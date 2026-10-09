@@ -112,6 +112,7 @@ jobs:
           path: |
             ${{ env.RUKIE_RELEASE_ARTIFACTS }}/*.tgz
             ${{ env.RUKIE_RELEASE_ARTIFACTS }}/release-build.json
+            ${{ env.RUKIE_RELEASE_ARTIFACTS }}/release-modules.json
             ${{ env.RUKIE_RELEASE_ARTIFACTS }}/ci-acceptance.json
             ${{ env.RUKIE_RELEASE_ARTIFACTS }}/current-acceptance.json
           if-no-files-found: error
