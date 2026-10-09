@@ -274,7 +274,7 @@ packages/coding-agent/tests/tui/host/clipboard.test.ts	component/owner	process	1
 packages/coding-agent/tests/tui/host/write-clipboard.test.ts	component/owner	clock,global	51d3fca2a7be324112b26c1676a3324d9a4c45b11a8e6bc00470f69b2e5ef0e5
 packages/coding-agent/tests/tui/input-history/input-history.test.ts	component/owner	none	c41ee508ebfc04470e9a952bb4ca898f3afbcec54fe3af541668e9c094557eca
 packages/coding-agent/tests/tui/main.test.ts	component/owner	clock,process	0538279bdd9fc3d77fbd5025c92c4109ce4d399516bdddf5f979c57e45bb8a37
-packages/coding-agent/tests/tui/screens/chat/context-report.test.ts	component/owner	clock,network	19f79c6d266740fdbc0671ad2ba8e462d3b2e184c432043cc95f0b84542faf4d
+packages/coding-agent/tests/tui/screens/chat/context-report.test.ts	component/owner	clock,network	1e598bcccdf9e879b6ead310e49db167307e4d8d6ec7d06b02d03d61c1525bfb
 packages/coding-agent/tests/tui/screens/chat/goal-tool-cards.test.ts	component/owner	clock	a4ffe7239b3850167bb19a95b49e0ffc652455e9acf4fe5307ec6e7207f922f5
 packages/coding-agent/tests/tui/screens/chat/goal.test.ts	component/owner	clock	904750ec1ee6c31b8c835c3f5808f2d6d6b3c9ff5d448ac28981301e6fd05ab2
 packages/coding-agent/tests/tui/screens/chat/interactions.test.ts	component/owner	none	8cb10db8dfeaeccde952b535f98ba52bf3f739135a99d9e3f00ca3177395c4de
