@@ -106,6 +106,14 @@ _Avoid_: task, objective
 基于 session 当前上下文的一次单轮简短回答。主 run 独立继续，侧问不带工具，问题与回答都不进入 transcript。
 _Avoid_: steer, follow-up turn
 
+**Model Selection**:
+Session 当前使用的模型（`provider/id`）与 Thinking Level，是 Session 状态的一部分。新 Session 取 settings 默认值；用户在 Session 空闲时切换后只对该 Session 生效，随 Rewind 回到当时的选择，resume 时恢复，不改写 settings。继承模型的 Subagent 取父 Session 当时的模型与 Thinking Level；显式指定模型的 Subagent 取 settings 默认 Thinking Level。
+_Avoid_: model route, active model, model switch（指动作时说"切换 Model Selection"）
+
+**Thinking Level**:
+请求模型时要求的推理强度档位，从 `off` 到 `max`。模型不支持 reasoning 时不可用；模型不支持所选档位时降到它支持的下一个较低档，没有更低档时取它支持的最低档，从不升档。
+_Avoid_: reasoning effort, effort, thinking budget
+
 ### 给模型的上下文
 
 **System Prompt**:
