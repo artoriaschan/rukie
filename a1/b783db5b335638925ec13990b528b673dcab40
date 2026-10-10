@@ -1,0 +1,19 @@
+AGENTS.md
+  s_ad6751597a49ec::t_6f2112f86e75da 130-138
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "a1b783db5b335638925ec13990b528b673dcab40",
+  "prompts": {},
+  "sessions": {
+    "s_ad6751597a49ec": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12400-2c54-7c80-aa9d-5fbc8ac6b4c6",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
