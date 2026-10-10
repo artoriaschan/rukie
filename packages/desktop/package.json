@@ -7,5 +7,7 @@
     "@rukie/shared": "workspace:*",
     "@rukie/ui": "workspace:*"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "electron": "41.0.3"
+  }
 }
