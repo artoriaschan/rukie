@@ -127,7 +127,15 @@ Single context: root `CONTEXT.md` plus `docs/adr/`. Update the glossary when ter
 
 - **Dependency order.** Honor ticket dependencies and requested integration order. Parallel work is suitable only for independent work after its shared baseline is verified and delegation is authorized.
 - **Single source.** Update affected contracts, examples, and docs with behavior changes. Keep version details in `docs/tech-stack.md`, domain definitions in `CONTEXT.md`, and detailed workflows in their linked documents.
-- **Git.** Review the diff and preserve unrelated user changes. When commits are requested, follow Conventional Commits; Husky runs lint-staged and commitlint. Follow the user's requested branch, integration, and worktree-cleanup scope.
+
+## Git workflow
+
+- **Task branches.** Start features, fixes, refactors, and documentation changes from the latest fetched `origin/main`, or continue the existing branch for the same task. Keep one independent task per branch and PR; follow explicit user instructions for a different base or integration order. Inspect the working tree first and preserve unrelated user changes. Develop on a task branch, never directly on `main`.
+- **Branch names.** Use `<type>/<short-kebab-case-description>` with `feat`, `fix`, `refactor`, `docs`, `test`, `perf`, `chore`, `build`, or `ci`; optionally include a ticket identifier before the description. Examples: `feat/custom-models`, `fix/session-resume`, and `docs/agent-git-workflow`. Do not use an agent or tool name as the prefix.
+- **Commits.** Complete the applicable verification above, review the diff, and stage only task-owned changes before committing. Follow Conventional Commits; Husky runs lint-staged and commitlint. Review any hook-generated edits and verify affected behavior when needed. Keep hooks enabled; do not bypass checks with `--no-verify` or `HUSKY=0`, or weaken checks to obtain a pass.
+- **Pull requests.** When delivering through Git, commit and push the task branch, then open or update its PR targeting `main`. Describe the problem, resulting behavior, verification results, and remaining limitations; link the local spec or tickets when present. Resolve review feedback and confirm required CI checks pass for the latest PR commit; pending, cancelled, skipped, or superseded checks do not establish success.
+- **Merge authority.** Leave the verified PR ready for user review. Merge only when the user explicitly authorizes it and required CI and review conditions are satisfied. Use Squash merge by default, with a Conventional Commit PR title representing the complete task. Never push task changes directly to `main` or bypass branch protection.
+- **Cleanup and delivery.** After confirming the PR is merged, update local `main` by fast-forward when safe and clean up task branches and temporary worktrees within the user's authorized cleanup scope; preserve unmerged work. Keep ticket evidence and status consistent with development, PR, and merge progress. Report the branch, PR, commit, actual checks, and whether the change is awaiting review or merged.
 
 ## Done
 
