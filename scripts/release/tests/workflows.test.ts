@@ -5,12 +5,12 @@ import { resolve } from "node:path";
 
 const root = resolve(import.meta.dir, "../../..");
 
-test("contributors get CI for main PR changes, title edits, main pushes and manual runs without publishing credentials", async () => {
+test("contributors get full CI for main PR changes, main pushes and manual runs without publishing credentials", async () => {
   const source = await readFile(resolve(root, ".github/workflows/ci.yml"), "utf8");
   const workflow: unknown = Bun.YAML.parse(source);
   expect(workflow).toMatchObject({
     on: {
-      pull_request: { branches: ["main"], types: ["opened", "synchronize", "reopened", "edited"] },
+      pull_request: { branches: ["main"], types: ["opened", "synchronize", "reopened"] },
       push: { branches: ["main"] },
       workflow_dispatch: null,
     },
@@ -205,12 +205,32 @@ test("both source gates keep full logs and fail closed while bounding Actions ou
 });
 
 test("PR titles remain data when the actual workflow invokes commitlint", async () => {
-  const step = (await ciSteps()).find(
-    (value) => value.name === "Check Conventional Commit PR title",
-  );
+  const source = await readFile(resolve(root, ".github/workflows/pr-title.yml"), "utf8");
+  const workflow = object(Bun.YAML.parse(source));
+  expect(workflow).toMatchObject({
+    on: {
+      pull_request: { branches: ["main"], types: ["opened", "synchronize", "reopened", "edited"] },
+    },
+    permissions: { contents: "read" },
+    concurrency: {
+      group: "pr-title-${{ github.event.pull_request.number }}",
+      "cancel-in-progress": true,
+    },
+  });
+  expect(source).not.toMatch(/pull_request_target|secrets\.|id-token:|release:build|bun run check/);
+  const job = object(object(workflow.jobs).title);
+  expect(job.name).toBe("Conventional Commit PR title");
+  if (!Array.isArray(job.steps)) throw new Error("Missing title steps");
+  const steps = job.steps.map(object);
+  expect(steps[0]).toMatchObject({ with: { "persist-credentials": false } });
+  for (const value of steps)
+    if (typeof value.uses === "string") expect(value.uses).toMatch(/@[a-f0-9]{40}$/);
+  expect(
+    (await ciSteps()).some((value) => value.name === "Check Conventional Commit PR title"),
+  ).toBe(false);
+  const step = steps.find((value) => value.name === "Check Conventional Commit PR title");
   if (!step || typeof step.run !== "string") throw new Error("Missing PR title gate");
   expect(step).toMatchObject({
-    if: "github.event_name == 'pull_request'",
     env: { PR_TITLE: "${{ github.event.pull_request.title }}" },
   });
   expect(step.run).not.toContain("${{");
@@ -229,4 +249,18 @@ test("PR titles remain data when the actual workflow invokes commitlint", async 
   ]);
   expect({ code, stdout, stderr }).toEqual({ code: 0, stdout: "", stderr: "" });
   expect(await Bun.file(marker).exists()).toBe(false);
+  const invalid = Bun.spawn(["sh", "-c", step.run], {
+    cwd: root,
+    env: { ...process.env, PR_TITLE: "invalid title" },
+    stdout: "pipe",
+    stderr: "pipe",
+    signal: AbortSignal.timeout(10_000),
+  });
+  const [invalidCode, invalidOutput] = await Promise.all([
+    invalid.exited,
+    new Response(invalid.stdout).text(),
+    new Response(invalid.stderr).text(),
+  ]);
+  expect(invalidCode).not.toBe(0);
+  expect(invalidOutput).toContain("type-empty");
 });

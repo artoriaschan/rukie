@@ -32,7 +32,7 @@ bunx --no -- oxfmt --check
 git diff --check
 ```
 
-仅文档变化运行这些检查。代码、配置、依赖或检查脚本一起变化时，先运行受影响测试与静态检查，再按根规则执行一次 `env -u NO_COLOR bun run check`，复用同一版本的结果。检查脚本测试入口为 `bun run test:docs`；它用临时目录验证合法文档与失败诊断，不修改用户配置。
+仅文档变化运行这些检查。代码、配置、依赖或检查脚本一起变化时，先运行受影响测试与静态检查，再按[根验证规则](../../AGENTS.md#tests-and-verification)选择本地验收范围；需要本地全量检查时复用同一版本的结果。检查脚本测试入口为 `bun run test:docs`；它用临时目录验证合法文档与失败诊断，不修改用户配置。
 
 `docs:update` 校验 ADR 并生成 `docs/adr/README.md` 标记内的索引，保留标记外正文；`check:dev` 在格式检查前自动执行它。`check:docs` 只读检查索引是否与文件、标题和状态一致，并扫描根 Markdown、`docs/`、`packages/` 和 `.agents/skills/` 的维护文档，校验 CommonMark 链接与图片目标、Markdown 标题及显式 HTML `id`/`name` 锚点、ADR 元数据和必需章节、skill 名称与描述。代码块和行内代码中的链接示例不参与校验；模板正文一同检查，代码块中的骨架示例不参与链接校验。`.scratch/` 历史正文不扫描，但维护文档指向历史记录的链接仍检查。
 
