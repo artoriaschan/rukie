@@ -1,7 +1,8 @@
-// PROTOTYPE in-memory state shared by every variant; no persistence, no server.
+// PROTOTYPE in-memory state; no persistence, no server.
 import { createContext, useContext } from "react";
 import type { Connection, PermissionMode, PermissionReply } from "./data";
 
+/** waiting: live Run blocked on the permission Interaction; idle: no live Run. */
 export type RunStatus = "running" | "waiting" | "idle";
 
 export interface ProtoState {

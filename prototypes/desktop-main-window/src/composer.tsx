@@ -1,57 +1,33 @@
-// PROTOTYPE composer, run status and session list.
-import { ArrowUp, Loader2, Shield, Square } from "lucide-react";
+// PROTOTYPE composer after the Codex reference: one rounded card, attach and permission mode on
+// the left, model and send/stop on the right. While a Run is live, Enter steers instead of queuing.
+import { ArrowUp, ChevronDown, Loader2, Plus, Shield, ShieldAlert, ShieldCheck, Square } from "lucide-react";
 import { useState } from "react";
-import { projects, type PermissionMode } from "./data";
+import type { PermissionMode } from "./data";
 import { useT } from "./i18n";
-import { useProto, type RunStatus } from "./state";
-import { Badge, Button, cn } from "./ui";
-
-export function RunStatusBadge({ status }: { status: RunStatus }) {
-  const t = useT();
-  if (status === "idle") return <Badge variant="secondary">{t("idle")}</Badge>;
-  if (status === "waiting")
-    return (
-      <Badge variant="warning">
-        <span className="size-1.5 rounded-full bg-warning" />
-        {t("waiting")}
-      </Badge>
-    );
-  return (
-    <Badge variant="outline">
-      <Loader2 className="animate-spin" />
-      {t("running")}
-    </Badge>
-  );
-}
-
-/** Turn indicator above the composer, after H08. Shimmer stops under reduced motion via index.css. */
-export function TurnIndicator() {
-  const t = useT();
-  const { status } = useProto();
-  if (status === "idle") return null;
-  return (
-    <div className="flex items-center gap-2 px-1 pb-2 text-ui-sm text-muted-foreground" aria-live="polite">
-      {status === "running" ? <Loader2 className="size-4 animate-spin" /> : <span className="size-2 rounded-full bg-warning" />}
-      <span>{status === "running" ? t("running") : t("waiting")}</span>
-      <span className="font-mono text-ui-xs">· 00:42 · 18.2k tokens</span>
-    </div>
-  );
-}
+import { useProto } from "./state";
+import { Button, cn } from "./ui";
 
 const modes: PermissionMode[] = ["ask", "auto-review", "full-access"];
+const modeStyle = {
+  ask: { icon: Shield, className: "text-muted-foreground" },
+  "auto-review": { icon: ShieldCheck, className: "text-accent" },
+  "full-access": { icon: ShieldAlert, className: "text-warning" },
+};
 
-export function Composer({ className }: { className?: string }) {
+export function Composer() {
   const t = useT();
   const { mode, setMode, status, stop, send, connection } = useProto();
   const [text, setText] = useState("");
   const busy = status !== "idle";
+  const offline = connection !== "connected";
   const submit = () => {
-    if (!text.trim()) return;
+    if (!text.trim() || offline) return;
     send(text.trim());
     setText("");
   };
+  const ModeIcon = modeStyle[mode].icon;
   return (
-    <div className={cn("rounded-xl border bg-background shadow-xs focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/30", className)}>
+    <div className="rounded-2xl border bg-background shadow-sm focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/30">
       <label className="sr-only" htmlFor="composer">
         {busy ? t("steer") : t("placeholder")}
       </label>
@@ -67,17 +43,16 @@ export function Composer({ className }: { className?: string }) {
           }
         }}
         placeholder={busy ? t("steer") : t("placeholder")}
-        className="block w-full resize-none bg-transparent px-3 pt-3 text-ui-base outline-none placeholder:text-muted-foreground"
+        className="block w-full resize-none bg-transparent px-4 pt-3 text-ui-base outline-none placeholder:text-muted-foreground"
       />
-      <div className="flex items-center gap-2 px-2 pb-2">
-        <label className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-ui-sm text-muted-foreground hover:bg-card">
-          <Shield className="size-4" />
-          <span className="sr-only">{t("mode")}</span>
-          <select
-            value={mode}
-            onChange={(e) => setMode(e.target.value as PermissionMode)}
-            className="bg-transparent text-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-          >
+      <div className="flex items-center gap-1 px-2 pb-2">
+        <Button size="icon-sm" variant="ghost" aria-label={t("attach")}>
+          <Plus />
+        </Button>
+        <label className={cn("relative inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-ui-sm hover:bg-card focus-within:ring-[3px] focus-within:ring-ring/50", modeStyle[mode].className)}>
+          <ModeIcon className="size-4" />
+          <span>{t(`mode.${mode}`)}</span>
+          <select aria-label={t("mode")} value={mode} onChange={(e) => setMode(e.target.value as PermissionMode)} className="absolute inset-0 cursor-pointer opacity-0">
             {modes.map((m) => (
               <option key={m} value={m}>
                 {t(`mode.${m}`)}
@@ -85,60 +60,22 @@ export function Composer({ className }: { className?: string }) {
             ))}
           </select>
         </label>
-        <span className="flex-1 truncate font-mono text-ui-xs text-muted-foreground">claude-sonnet-4.5 · high</span>
-        {busy && (
-          <Button size="icon-sm" variant="outline" aria-label={t("stop")} onClick={stop}>
-            <Square />
+        <span className="flex-1" />
+        {busy && <Loader2 className="size-4 animate-spin text-muted-foreground" aria-label={t("status.running")} />}
+        <button type="button" className="inline-flex h-8 items-center gap-1 rounded-md px-2 font-mono text-ui-sm hover:bg-card outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
+          claude-sonnet-4.5 <span className="text-muted-foreground">high</span>
+          <ChevronDown className="size-3.5 text-muted-foreground" />
+        </button>
+        {busy && !text.trim() ? (
+          <Button size="icon-sm" className="rounded-full" aria-label={t("stop")} onClick={stop}>
+            <Square className="fill-current" />
+          </Button>
+        ) : (
+          <Button size="icon-sm" className="rounded-full" aria-label={busy ? t("steer") : t("send")} disabled={!text.trim() || offline} onClick={submit}>
+            <ArrowUp />
           </Button>
         )}
-        <Button size="icon-sm" aria-label={busy ? t("steer") : t("send")} disabled={!text.trim() || connection !== "connected"} onClick={submit}>
-          <ArrowUp />
-        </Button>
       </div>
     </div>
-  );
-}
-
-export function SessionList({ dense = false }: { dense?: boolean }) {
-  const t = useT();
-  const { activeSession, setActiveSession, status } = useProto();
-  return (
-    <nav aria-label={t("sessions")} className="space-y-4">
-      {projects.map((project) => (
-        <div key={project.id}>
-          <div className="flex items-center gap-2 px-2 pb-1 text-ui-sm font-medium text-muted-foreground">
-            <span className="truncate">{project.name}</span>
-            {!dense && <span className="min-w-0 truncate font-mono text-ui-xs">{project.path}</span>}
-          </div>
-          <ul className="space-y-0.5">
-            {project.sessions.map((s) => {
-              const active = s.id === activeSession;
-              const dot = s.id === "s1" ? status : "idle";
-              return (
-                <li key={s.id}>
-                  <button
-                    type="button"
-                    aria-current={active ? "page" : undefined}
-                    onClick={() => setActiveSession(s.id)}
-                    className={cn(
-                      "flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-ui-base outline-none hover:bg-card focus-visible:ring-[3px] focus-visible:ring-ring/50",
-                      active && "bg-card font-medium",
-                    )}
-                  >
-                    <span
-                      aria-hidden
-                      className={cn("size-2 shrink-0 rounded-full", dot === "running" && "bg-accent animate-pulse", dot === "waiting" && "bg-warning", dot === "idle" && "bg-transparent")}
-                    />
-                    <span className="min-w-0 flex-1 truncate">{s.title}</span>
-                    {dot === "waiting" && <span className="sr-only">{t("waiting")}</span>}
-                    {!dense && <span className="shrink-0 text-ui-xs text-muted-foreground">{s.updated}</span>}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ))}
-    </nav>
   );
 }
