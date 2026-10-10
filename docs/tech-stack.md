@@ -136,4 +136,4 @@ CI 与发布 workflows 的官方 Actions 使用 Node.js 24 runtime：checkout 7.
 
 桌面三个 workspace 的协议与检查骨架已接入。测试工具为根 devDependency：vitest 5.0.3、@vitest/browser-playwright 5.0.3、playwright 1.64.0、vitest-browser-react 2.3.0、@vitejs/plugin-react 6.1.2、vite 8.3.1 和 @types/node 24.19.2。ui 精确声明 react/react-dom 19.3.0 的 peerDependencies，类型为 @types/react 19.3.0。server 与 ui 的 schema 测试复用 typebox 1.3.27。
 
-上述桌面壳、服务框架和其余 GUI 选型表包含后续实现的目标依赖；本骨架没有安装 Electron、Hono 或 Effect。以各包 manifest 和 lockfile 为已安装事实，测试准备和运行边界见[测试策略](testing.md#桌面测试入口)。
+上述桌面壳、服务框架和其余 GUI 选型表包含后续实现的目标依赖；已安装 Electron 41.0.3、Hono 和 Effect；其他目标依赖按相应工单接入。以各包 manifest 和 lockfile 为已安装事实，测试准备和运行边界见[测试策略](testing.md#桌面测试入口)。
