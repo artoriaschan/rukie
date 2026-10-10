@@ -94,7 +94,11 @@ test("bash rejects a missing description without executing the command", async (
 
 test.each([
   ["true", false, "(no output)"],
-  ["printf out; printf err >&2", false, "outerr"],
+  ["printf out", false, "out"],
+  ["printf err >&2", false, "err"],
+  // Separate pipes have no shared arrival order. Merge descriptors in the child
+  // when the scenario requires preserving the order of stdout/stderr writes.
+  ["exec 2>&1; printf out; printf err >&2", false, "outerr"],
   ["printf failure; exit 7", true, "failure\n\nCommand exited with code 7"],
   ["kill -TERM $$", true, "Command exited with code 143"],
 ] as const)(
