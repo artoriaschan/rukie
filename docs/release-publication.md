@@ -30,7 +30,7 @@ npm view @rukie/coding-agent@0.1.0 optionalDependencies --json
 
 1. 合并经 CI 校验的 Release PR，由准备流程产生 `coding-agent-vVERSION` tag。tag 对应的 commit 必须可从 `origin/main` 到达，且其提交内产品版本与 tag 完全相同。
 2. tag push 启动 [publication workflow](../.github/workflows/release-publish.yml)。人工入口必须让 workflow 本身也运行于选定 tag，例如 `gh workflow run release-publish.yml --ref coding-agent-v0.1.0 -f tag=coding-agent-v0.1.0`。从默认 main 手工触发并填写另一个 tag 会失败；workflow SHA、provenance 和源码 commit 必须相同。
-3. 只读 job 检出准确 commit，下载完整原始 Release assets，或在该版本两包均未发布时构建一次。源码约束检查后，[六个测试分片](release-ci.md#核对产物)下载同一组文件，运行全部源码测试、arm64 安装场景和清单身份校验；所有分片成功后才记录本次验收 witness。
+3. 只读 job 检出准确 commit，下载完整原始 Release assets，或在该版本两包均未发布时构建一次。源码约束检查后，[四个测试分片](release-ci.md#核对产物)下载同一组文件，运行全部源码测试、arm64 安装场景和清单身份校验；所有分片成功后才记录本次验收 witness。
 4. 单独的 contents-write job 在 npm 写入前保存五份原始资产：两个 `.tgz`、`release-build.json`、`release-modules.json`、原始 `ci-acceptance.json`。它通过 GitHub API 核对原始及本次验收的 run、attempt、commit、成功的只读 job；整个工作流此时仍可处于 in-progress。文件名或自写 audit 不能单独证明验收。
 5. 只有 publish job 获得 OIDC 写权限；它核对保存的原始字节，使用隔离 npm 配置，去除继承的 npm 配置覆盖，依次上传平台包和主包。稳定版显式进入 candidate，beta 显式进入 next；主包精确依赖同版本平台包。写入阶段不构建、不 pack、不重新生成 manifest。
 6. 从 registry 重新下载并核对 SHA256 与 SHA512，使用独立 fresh cache 安装精确主包版本，验证 `--help`、`--version` 和 loopback fake-provider Session。稳定版随后推进 latest；beta 保持 latest。已有更高通道版本不会被普通发布降级。

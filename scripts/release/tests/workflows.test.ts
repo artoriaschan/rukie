@@ -114,13 +114,13 @@ test("CI accepts the once-built packages only after every full-suite shard succe
   expect(object(object(accepted[upload]).with).path).toContain("/ci-acceptance.json");
 });
 
-test("all six shards test the same exact packages with one worker and no acceptance authority", async () => {
+test("all four shards test the same exact packages with one worker and no acceptance authority", async () => {
   const source = await readFile(resolve(root, ".github/workflows/release-tests.yml"), "utf8");
   const workflow = object(Bun.YAML.parse(source));
   const job = object(object(workflow.jobs).test);
   expect(workflow.permissions).toEqual({ contents: "read", actions: "read" });
   expect(job).toMatchObject({
-    strategy: { "fail-fast": false, matrix: { shard: [1, 2, 3, 4, 5, 6] } },
+    strategy: { "fail-fast": false, matrix: { shard: [1, 2, 3, 4] } },
     env: { RUKIE_TEST_WORKERS: 1, RELEASE_COMMIT: "${{ inputs.commit }}" },
   });
   if (!Array.isArray(job.steps)) throw new Error("Missing shard steps");
@@ -131,7 +131,7 @@ test("all six shards test the same exact packages with one worker and no accepta
   const commands = steps.map((step) => (typeof step.run === "string" ? step.run : ""));
   expect(commands.join("\n")).toContain('--require-clean --commit "$RELEASE_COMMIT"');
   expect(commands.join("\n")).toContain(
-    'bun run test --shard="$TEST_SHARD/6" --timings=scripts/test-timings.json',
+    'bun run test --shard="$TEST_SHARD/4" --timings=scripts/test-timings.json',
   );
   const timings = object(
     JSON.parse(await readFile(resolve(root, "scripts/test-timings.json"), "utf8")),
@@ -188,7 +188,7 @@ test("both source gates keep full logs and fail closed while bounding Actions ou
         // Exercise the workflow shell around a controlled check result, including stderr.
         const command = gate.run.replace(
           name === "release-tests.yml"
-            ? 'env -u NO_COLOR bun run test --shard="$TEST_SHARD/6" --timings=scripts/test-timings.json'
+            ? 'env -u NO_COLOR bun run test --shard="$TEST_SHARD/4" --timings=scripts/test-timings.json'
             : "env -u NO_COLOR bun run check:dev",
           `(i=0; while [ "$i" -lt 200 ]; do echo "result-$i"; i=$((i+1)); done; echo check-stderr >&2; exit ${code})`,
         );

@@ -21,7 +21,7 @@
 
 CI 将输出写入 runner 的临时目录，先构建一次，再以当前 `GITHUB_SHA` 和 clean metadata 运行[产物身份验证](release-building.md#核对产物身份)。`RUKIE_RELEASE_ARTIFACTS` 让全部产物、Headless、TUI 和 provider/auth 测试复用这些 tarball；完整检查包含实际 npm 离线安装、隔离 HOME 和假协议服务。验收不读取真实用户凭据，也不请求真实 provider。实际 provider/OAuth 服务可用性与此本地协议证明不同。
 
-源码约束由构建 job 执行一次 `bun run check:dev`。随后[共用测试工作流](../.github/workflows/release-tests.yml)用 Bun 原生 `--shard=N/6 --timings=scripts/test-timings.json` 按历史耗时分配全部测试文件，六个独立的标准 macOS runner 各设置 `RUKIE_TEST_WORKERS=1`。耗时较长的发布恢复、资产与安装场景参与同一套耗时分配，避免集中到一个 runner；文件是分配的最小单位，单个用例的超时仍须单独诊断。每个分片下载同一份候选 tarball，并核对准确源码提交和产物身份。所有分片成功后，最终验收 job 才生成审计与成功产物；任一失败或取消都会阻止发布。候选产物保留一天，不携带新验收记录。本地完整检查默认仍用四个 worker；复现某个分片时运行 `RUKIE_TEST_WORKERS=1 env -u NO_COLOR bun run test --shard=1/6 --timings=scripts/test-timings.json`，并提供同一份 `RUKIE_RELEASE_ARTIFACTS`。
+源码约束由构建 job 执行一次 `bun run check:dev`。随后[共用测试工作流](../.github/workflows/release-tests.yml)用 Bun 原生 `--shard=N/4 --timings=scripts/test-timings.json` 按历史耗时分配全部测试文件，四个独立的标准 macOS runner 各设置 `RUKIE_TEST_WORKERS=1`。耗时较长的发布恢复、资产与安装场景参与同一套耗时分配，避免集中到一个 runner；文件是分配的最小单位，单个用例的超时仍须单独诊断。每个分片下载同一份候选 tarball，并核对准确源码提交和产物身份。所有分片成功后，最终验收 job 才生成审计与成功产物；任一失败或取消都会阻止发布。候选产物保留一天，不携带新验收记录。本地完整检查默认仍用四个 worker；复现某个分片时运行 `RUKIE_TEST_WORKERS=1 env -u NO_COLOR bun run test --shard=1/4 --timings=scripts/test-timings.json`，并提供同一份 `RUKIE_RELEASE_ARTIFACTS`。
 
 [耗时基线](../scripts/test-timings.json)使用 Bun 的 version 1 格式，以仓库相对测试路径映射到毫秒。初始值来自 CI run `38035281713` 的三个完整分片日志，按每个文件的用例耗时求和，作为分配估计而非性能门槛；未记录的新文件仍由 Bun 纳入分配。所有分片必须读取同一份基线。更新时使用准确提交、相同工具链和安装产物执行各分片，在临时目录用 `--timings=PATH --update-timings` 保存实测文件耗时，收齐所有分片后合并 `files` 并通过 PR 更新仓库基线；不要在 CI 中直接改写受版本控制的文件。
 
@@ -37,4 +37,4 @@ CI 将输出写入 runner 的临时目录，先构建一次，再以当前 `GITH
 
 workflow 的本地契约测试为 `bun test scripts/release/tests/workflows.test.ts`，包括触发范围、权限、准确提交、单次构建复用、成功后上传和标题命令的数据边界。另用官方 actionlint 1.7.12 检查 YAML、Actions 输入与表达式上下文；下载固定 release 并核对官方 SHA-256 后执行 `actionlint .github/workflows/ci.yml .github/workflows/pr-title.yml`。此静态验证不触发 CI，也不证明 runner、App 或 npm 的外部配置成功。
 
-构建失败时查看 `Build the installed artifacts once`；身份失败查看 `Verify clean source and artifact identity`；源码或具体安装行为失败查看 `Test shard N of 6` 中的测试名称。检查意外改写受版本控制的文件或产生未跟踪文件时，审计步骤会拒绝保存成功身份。修复源码后重新运行对应提交，不复用失败运行的 tarball。artifact 过期后在准确提交重新验收，不能把新提交的构建冒充旧提交。
+构建失败时查看 `Build the installed artifacts once`；身份失败查看 `Verify clean source and artifact identity`；源码或具体安装行为失败查看 `Test shard N of 4` 中的测试名称。检查意外改写受版本控制的文件或产生未跟踪文件时，审计步骤会拒绝保存成功身份。修复源码后重新运行对应提交，不复用失败运行的 tarball。artifact 过期后在准确提交重新验收，不能把新提交的构建冒充旧提交。

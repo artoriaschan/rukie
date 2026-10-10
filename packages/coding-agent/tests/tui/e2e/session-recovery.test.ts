@@ -35,8 +35,15 @@ for (const [lang, unknown] of [
               /verify first|"next"/.test(JSON.stringify(message.content)),
           );
           if (!manual) {
+            const reportingChild = context.messages.some(
+              (message) =>
+                message.role === "user" &&
+                JSON.stringify(message.content).includes("Its closing message:"),
+            );
             const stream = createAssistantMessageEventStream();
-            const message = fauxAssistantMessage("restored history reviewed");
+            const message = fauxAssistantMessage(
+              reportingChild ? "restored child report reviewed" : "restored history reviewed",
+            );
             stream.push({ type: "done", reason: "stop", message });
             stream.end(message);
             return stream;
@@ -55,34 +62,52 @@ for (const [lang, unknown] of [
         },
       });
       try {
-        await app.waitFor(() => app.screen().includes("❯") && !app.isWorking());
+        // Resume completes the interrupted parent Run and then the child Reporter Run.
+        // A prompt can paint between those Runs; wait for both replies before manual input.
+        await app.waitFor(
+          () =>
+            app.screen().includes("❯") &&
+            !app.isWorking() &&
+            app.allLines().join("\n").includes("restored child report reviewed"),
+          5000,
+        );
         expect(fake.calls).toHaveLength(0);
         app.resize(80, 24);
         app.stdin.write("\x01\r");
-        await app.waitFor(() => app.screen().join("\n").includes("id "));
+        await app.waitFor(() => app.screen().some((line) => /^\s*id \S+ ·/.test(line)));
         app.stdin.write("\x1b[C\x1b[C");
         await app.waitFor(() => app.screen().join("\n").includes("uncertain-effect.txt"));
         const history = app.screen().join("\n");
         expect(history).toContain(unknown);
         expect(history).toMatch(/\? (?:Write|write|写入)/);
         expect(await Bun.file(join(app.root, "uncertain-effect.txt")).text()).toBe("saved effect");
-        app.stdin.write("\x1b\x1b");
-        await app.waitFor(() => app.screen().includes("❯"));
+        // A complete Escape report cannot leave an ESC prefix pending when text arrives.
+        app.stdin.write("\x1b[27u");
+        await app.waitFor(() => !app.screen().join("\n").includes("uncertain-effect.txt"));
+        app.stdin.write("\x1b[27u");
+        await app.waitFor(
+          () =>
+            app.screen().includes("❯") &&
+            !app.isWorking() &&
+            !app.screen().some((line) => /^\s*id \S+ ·/.test(line)),
+        );
         app.resize(columns, rows);
-        app.stdin.write("verify first\r");
-        await app.waitFor(() => fake.calls.length === 1);
+        app.stdin.write("verify first");
+        await app.waitFor(() => app.screen().some((line) => line.includes("❯ verify first")));
+        app.stdin.write("\r");
+        await app.waitFor(() => fake.calls.length === 1, 5000);
         fake.calls[0]!.reply("checked");
         await app.waitFor(() => !app.isWorking() && app.allLines().join("\n").includes("checked"));
         expect(app.screen()).toContain("❯");
         app.stdin.write("next\r");
-        await app.waitFor(() => fake.calls.length === 2);
+        await app.waitFor(() => fake.calls.length === 2, 5000);
         fake.calls[1]!.finish();
         await app.waitFor(() => !app.isWorking());
         expect(app.stderr()).toBe("");
       } finally {
         await app.cleanup();
       }
-    });
+    }, 10000);
 
 test("SIGTERM lets the actual TUI process suspend an active native child before reporting exit", async () => {
   const root = await mkdtemp(join(tmpdir(), "rukie-close-"));

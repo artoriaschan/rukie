@@ -14,10 +14,12 @@ test.each(["question", "permission", "decline", "plan"] as const)(
       if (kind === "plan") {
         await app.waitFor(() => app.screen().join("\n").includes("❯"));
         app.stdin.write("/plan\r");
-        await app.waitFor(() => app.screen().at(-2)?.includes("plan") ?? false);
+        await app.waitFor(() => app.screen().join("\n").includes("Entered Plan Mode"));
         app.stdin.write("delegate\r");
       }
-      await app.waitFor(() => app.calls.length === 1);
+      // Model requests cross real Session persistence before the controlled provider;
+      // give that I/O a bounded deadline separate from in-memory screen transitions.
+      await app.waitFor(() => app.calls.length === 1, 5000);
       app.calls[0]!.tool("subagent", {
         description: "Interaction reader",
         prompt: "child interaction-only",
@@ -27,6 +29,7 @@ test.each(["question", "permission", "decline", "plan"] as const)(
         () =>
           app.calls.length === 3 &&
           app.screen().some((line) => line.includes("Subagent: Interaction reader")),
+        5000,
       );
       const child = app.calls.find((call) =>
         call.context.messages.some(
@@ -90,6 +93,7 @@ test.each(["question", "permission", "decline", "plan"] as const)(
       app.stdin.write(kind === "decline" ? "\x1b[27u" : kind === "plan" ? "1" : "\x1b[B\r");
       await app.waitFor(
         () => app.calls.length === 4 && app.screen().join("\n").includes("Agent View"),
+        5000,
       );
       expect(
         app.calls[3]!.context.messages.findLast((message) => message.role === "toolResult"),
@@ -105,6 +109,7 @@ test.each(["question", "permission", "decline", "plan"] as const)(
       await app.cleanup();
     }
   },
+  10000,
 );
 
 test("a parent question temporarily replaces the jobs panel and returns its focused details", async () => {
@@ -117,7 +122,8 @@ test("a parent question temporarily replaces the jobs panel and returns its focu
     env: { LANG: "zh" },
   });
   try {
-    await app.waitFor(() => app.calls.length === 1);
+    // The first request crosses real Session persistence before the controlled provider.
+    await app.waitFor(() => app.calls.length === 1, 5000);
     app.calls[0]!.tools([
       {
         name: "bash",
@@ -139,8 +145,11 @@ test("a parent question temporarily replaces the jobs panel and returns its focu
     ]);
     await app.waitFor(
       () => app.calls.length === 2 && app.screen().join("\n").includes("worker ready"),
+      5000,
     );
     app.stdin.write("saved draft");
+    // Draft painting can move the card; click coordinates from the resulting frame.
+    await app.waitFor(() => app.screen().some((line) => line.includes("❯ saved draft")));
     const y = app.screen().findIndex((line) => line.includes("bash-1"));
     app.stdin.write(`\x1b[<0;5;${y + 1}M\x1b[<0;5;${y + 1}m`);
     await app.waitFor(() => app.screen().some((line) => line.includes("❯ bash-1")));
@@ -176,6 +185,7 @@ test("a parent question temporarily replaces the jobs panel and returns its focu
         app.calls.length === 3 &&
         !app.screen().join("\n").includes("Which job owner?") &&
         app.screen().some((line) => line.includes("worker ready")),
+      5000,
     );
     expect(JSON.stringify(app.calls[2]!.context.messages.at(-1))).toContain("Second");
     expect(
@@ -198,7 +208,7 @@ test("a parent question temporarily replaces the jobs panel and returns its focu
   } finally {
     await app.cleanup();
   }
-});
+}, 10000);
 
 test("a pending parent request owns Escape before a focused child tool window", async () => {
   const app = await start(["--yolo", "delegate"], {

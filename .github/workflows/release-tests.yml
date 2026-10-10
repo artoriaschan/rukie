@@ -16,13 +16,13 @@ permissions:
 
 jobs:
   test:
-    name: Test shard ${{ matrix.shard }} of 6
+    name: Test shard ${{ matrix.shard }} of 4
     runs-on: macos-15
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2, 3, 4]
     env:
       RUKIE_TEST_WORKERS: 1
       TEST_SHARD: ${{ matrix.shard }}
@@ -53,7 +53,7 @@ jobs:
       - name: Run this source and installed test shard
         id: check
         run: |
-          if env -u NO_COLOR bun run test --shard="$TEST_SHARD/6" --timings=scripts/test-timings.json > "$RUNNER_TEMP/rukie-check.log" 2>&1; then
+          if env -u NO_COLOR bun run test --shard="$TEST_SHARD/4" --timings=scripts/test-timings.json > "$RUNNER_TEMP/rukie-check.log" 2>&1; then
             tail -n 8 "$RUNNER_TEMP/rukie-check.log"
           else
             tail -n 120 "$RUNNER_TEMP/rukie-check.log"
