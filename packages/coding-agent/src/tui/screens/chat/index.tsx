@@ -1,4 +1,8 @@
-import { modelProviderTabs, modelSelectionNotice } from "../../../view/model-picker";
+import {
+  filterModelTabs,
+  modelProviderTabs,
+  modelSelectionNotice,
+} from "../../../view/model-picker";
 import { productVersion } from "../../../version";
 import { useHostSelection } from "../../hooks/host-selection";
 import {
@@ -718,6 +722,8 @@ function Chat({
     thinkingLevel: ThinkingLevel;
     tab: number;
     focuses: number[];
+    query: string;
+    filterFocus: number;
     loading: boolean;
     failed: boolean;
     notice?: string;
@@ -1302,7 +1308,11 @@ function Chat({
   };
   const selectModel = (index: number) => {
     const picker = modelPickerRef.current;
-    const selected = picker && modelTabs[picker.tab]?.models[index];
+    const selected =
+      picker &&
+      (picker.query ? filterModelTabs(modelTabs, picker.query) : modelTabs[picker.tab]?.models)?.[
+        index
+      ];
     if (!picker || picker.loading || picker.failed || !selected) return;
     if (selected.custom && !selected.authenticated) {
       showModelPicker({
@@ -1425,6 +1435,8 @@ function Chat({
           const loading = {
             tab: 0,
             focuses: [],
+            query: "",
+            filterFocus: 0,
             loading: true,
             failed: false,
             thinkingLevel: session.thinkingLevel,
@@ -1449,6 +1461,8 @@ function Chat({
                     provider.models.findIndex((model) => model.spec === session.model),
                   ),
                 ),
+                query: "",
+                filterFocus: 0,
                 loading: false,
                 failed: false,
               });
@@ -1892,30 +1906,48 @@ function Chat({
       }
       const modelCursor = modelPickerRef.current;
       if (modelCursor !== undefined) {
-        if (event.isPasted) return;
         handledInput.current.add(event);
         const { key } = event;
         const name = event.keypress.name;
-        if (name === "escape" || (key.ctrl && name === "c")) showModelPicker(undefined);
+        const updateQuery = (query: string) =>
+          showModelPicker({ ...modelCursor, query, filterFocus: 0, notice: undefined });
+        if (!event.isPasted && name === "escape") {
+          if (modelCursor.query) updateQuery("");
+          else showModelPicker(undefined);
+        } else if (!event.isPasted && key.ctrl && name === "c") showModelPicker(undefined);
         else if (!small && !key.ctrl && !key.meta && !modelCursor.loading && !modelCursor.failed) {
-          if (name === "tab" && modelTabs.length)
+          if (event.isPasted) updateQuery(modelCursor.query + event.input);
+          else if (name === "backspace")
+            updateQuery(Array.from(modelCursor.query).slice(0, -1).join(""));
+          else if (name === "tab" && !modelCursor.query && modelTabs.length)
             showModelPicker({
               ...modelCursor,
               tab: (modelCursor.tab + (key.shift ? modelTabs.length - 1 : 1)) % modelTabs.length,
               notice: undefined,
             });
           else if (!key.shift && (name === "up" || name === "down")) {
-            const count = modelTabs[modelCursor.tab]?.models.length ?? 0;
+            const count = modelCursor.query
+              ? filterModelTabs(modelTabs, modelCursor.query).length
+              : (modelTabs[modelCursor.tab]?.models.length ?? 0);
             if (count) {
+              const focus = modelCursor.query
+                ? modelCursor.filterFocus
+                : (modelCursor.focuses[modelCursor.tab] ?? 0);
+              const next = (focus + (name === "up" ? count - 1 : 1)) % count;
               const focuses = [...modelCursor.focuses];
-              focuses[modelCursor.tab] =
-                ((focuses[modelCursor.tab] ?? 0) + (name === "up" ? count - 1 : 1)) % count;
-              showModelPicker({ ...modelCursor, focuses, notice: undefined });
+              if (!modelCursor.query) focuses[modelCursor.tab] = next;
+              showModelPicker({
+                ...modelCursor,
+                focuses,
+                filterFocus: modelCursor.query ? next : modelCursor.filterFocus,
+                notice: undefined,
+              });
             }
           } else if (!key.shift && (name === "left" || name === "right")) {
-            const levels =
-              modelTabs[modelCursor.tab]?.models[modelCursor.focuses[modelCursor.tab] ?? 0]
-                ?.thinkingLevels ?? [];
+            const focused = modelCursor.query
+              ? filterModelTabs(modelTabs, modelCursor.query)[modelCursor.filterFocus]
+              : modelTabs[modelCursor.tab]?.models[modelCursor.focuses[modelCursor.tab] ?? 0];
+            const levels = focused?.thinkingLevels ?? [];
             if (levels.length > 1) {
               const index = levels.indexOf(modelCursor.thinkingLevel);
               const next =
@@ -1927,7 +1959,19 @@ function Chat({
               showModelPicker({ ...modelCursor, thinkingLevel: levels[next]!, notice: undefined });
             }
           } else if (!key.shift && name === "return")
-            selectModel(modelCursor.focuses[modelCursor.tab] ?? 0);
+            selectModel(
+              modelCursor.query
+                ? modelCursor.filterFocus
+                : (modelCursor.focuses[modelCursor.tab] ?? 0),
+            );
+          else if (
+            event.input &&
+            Array.from(event.input).every((character) => {
+              const code = character.charCodeAt(0);
+              return code >= 32 && code !== 127;
+            })
+          )
+            updateQuery(modelCursor.query + event.input);
         }
         return;
       }
@@ -3177,7 +3221,13 @@ function Chat({
                     if (picker) showModelPicker({ ...picker, thinkingLevel, notice: undefined });
                   }}
                   tab={modelPicker.tab}
-                  focus={modelPicker.focuses[modelPicker.tab] ?? 0}
+                  focus={
+                    modelPicker.query
+                      ? modelPicker.filterFocus
+                      : (modelPicker.focuses[modelPicker.tab] ?? 0)
+                  }
+                  query={modelPicker.query}
+                  filteredModels={filterModelTabs(modelTabs, modelPicker.query)}
                   loading={modelPicker.loading}
                   failed={modelPicker.failed}
                   notice={modelPicker.notice}

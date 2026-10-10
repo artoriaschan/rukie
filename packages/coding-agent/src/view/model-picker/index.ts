@@ -106,3 +106,18 @@ export function modelSelectionNotice(
   if (line) lines.push(line.trimEnd());
   return lines.join("\n");
 }
+
+/** Search the visible catalog in provider order without changing tab-local focus. */
+export function filterModelTabs(
+  tabs: readonly ModelProviderTab[],
+  query: string,
+): ModelCatalogEntry[] {
+  const needle = query.toLowerCase();
+  return tabs.flatMap((tab) =>
+    tab.models.filter((model) =>
+      [model.name, model.spec, model.providerName].some((value) =>
+        value.toLowerCase().includes(needle),
+      ),
+    ),
+  );
+}

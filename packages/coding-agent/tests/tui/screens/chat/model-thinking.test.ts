@@ -85,7 +85,7 @@ test("Escape discards thinking edits; a non-reasoning model confirms with one mo
     expect(app.screen().at(-2)).toContain("low");
     app.stdin.write("/model\r");
     await app.waitFor(() => screen(app).includes("[low]"));
-    app.stdin.write("\x1b[C\x1b[C\x1b[A");
+    app.stdin.write("\x1b[C\x1b[Cplain\x1b[C");
     await app.waitFor(() => screen(app).includes("Thinking unavailable"));
     app.stdin.write("\r");
     await app.waitFor(() => screen(app).includes("reduced high → off"));

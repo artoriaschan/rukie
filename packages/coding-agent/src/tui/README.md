@@ -20,7 +20,7 @@
 
 ## 模型选择
 
-空闲时输入 `/model` 打开 provider tabs；`/model <spec>` 直接选择模型。面板只列出已检测到凭据的 provider、当前模型的 provider 和用户 settings 中的自定义 provider，自定义 provider 排在前面。Tab / Shift+Tab 循环切换 provider，↑/↓ 选择模型，各 tab 分别记住焦点；打开时定位当前模型。←/→ 在焦点模型支持的 Thinking Level 中调整草稿，Enter 将模型与档位一起确认；Esc 放弃全部草稿。不支持 reasoning 的模型显示档位不可用。自定义模型没有凭据时置灰并标注，Enter 只提示缺少凭据。
+空闲时输入 `/model` 打开 provider tabs；`/model <spec>` 直接选择模型。面板只列出已检测到凭据的 provider、当前模型的 provider 和用户 settings 中的自定义 provider，自定义 provider 排在前面。Tab / Shift+Tab 循环切换 provider，↑/↓ 选择模型，各 tab 分别记住焦点；打开时定位当前模型。直接输入或粘贴文字按名称、spec 或 provider 显示名做不区分大小写的子串过滤，结果跨 tab 平铺；Backspace 清空后回到原 tab 及焦点。←/→ 在焦点模型支持的 Thinking Level 中调整草稿，Enter 将模型与档位一起确认；有过滤输入时 Esc 先清空，再按 Esc 放弃全部草稿。不支持 reasoning 的模型显示档位不可用。自定义模型没有凭据时置灰并标注，Enter 只提示缺少凭据。
 
 模型行显示名称与灰色完整 spec，当前模型标 ✓；名称与 spec 相同则只显示 spec，宽度不足时先截名称。空间允许时显示输入能力、reasoning 与 context window。目录加载中显示加载提示，加载失败保留错误提示及 `/model <spec>` 的直接切换方式；关闭加载中的面板不会因目录晚到而重新打开。
 

@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import type { ModelCatalogEntry } from "@rukie/agent";
 import {
+  filterModelTabs,
   modelProviderTabs,
   modelRowText,
   modelSelectionNotice,
@@ -65,4 +66,22 @@ test("selection notices omit unchanged facts and preserve downgrade explanations
     { columns: 30, measure: (text) => text.length },
   );
   expect(text).toBe("Model changed to Bee (b/b)\n· thinking off\n· reduced high → off");
+});
+
+test("filter matches model names, specs and provider display names across visible tabs", () => {
+  const tabs = modelProviderTabs(
+    [
+      { ...model("alpha", true, true), providerName: "Team Gateway" },
+      { ...model("beta", true, true), name: "Reasoner" },
+      model("hidden", false, false),
+    ],
+    "alpha/same",
+  );
+  expect(filterModelTabs(tabs, "TEAM").map((entry) => entry.spec)).toEqual(["alpha/same"]);
+  expect(filterModelTabs(tabs, "REASON").map((entry) => entry.spec)).toEqual(["beta/same"]);
+  expect(filterModelTabs(tabs, "/SAME").map((entry) => entry.spec)).toEqual([
+    "beta/same",
+    "alpha/same",
+  ]);
+  expect(filterModelTabs(tabs, "hidden")).toEqual([]);
 });
