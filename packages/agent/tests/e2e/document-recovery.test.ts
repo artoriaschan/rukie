@@ -90,7 +90,7 @@ test.each(["checkpoint schema", "checkpoint version", "directory schema", "direc
   },
 );
 
-test("a malformed new Session index fails listing and opening without repair, then releases its lease", async () => {
+test("a malformed new Session index warns during listing and rejects opening without repair, then releases its lease", async () => {
   const dirs = await tempDirs();
   const store = createJsonlStore(dirs);
   const session = await createSession({ ...dirs, store, ...fakeModel([]) });
@@ -118,7 +118,13 @@ test("a malformed new Session index fails listing and opening without repair, th
     await title(42);
     const main = join(store.key(session.id), "main.jsonl");
     const before = await Bun.file(main).bytes();
-    await expect(listSessions({ ...dirs, store })).rejects.toThrow("Invalid Session metadata");
+    const warnings: string[] = [];
+    expect(
+      await listSessions({ ...dirs, store, onWarning: (warning) => warnings.push(warning) }),
+    ).toEqual([]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain(session.id);
+    expect(warnings[0]).toContain("Invalid Session metadata");
     const cold = fakeModel([]);
     await expect(createSession({ ...dirs, store, ...cold, resumeId: session.id })).rejects.toThrow(
       "Invalid Session metadata",
