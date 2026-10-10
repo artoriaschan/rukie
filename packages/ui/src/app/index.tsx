@@ -5,6 +5,7 @@ import {
   useState,
   useSyncExternalStore,
   type ComponentType,
+  type SetStateAction,
 } from "react";
 import {
   Folder,
@@ -31,6 +32,8 @@ import { Input } from "../components/motion/input";
 import * as Menu from "../components/ui/dropdown-menu";
 import { UiLocaleProvider, useAppText } from "../lib/i18n";
 import { cn } from "../lib/utils";
+import type { PermissionDecision } from "../lib/transcript";
+import { AppConversation } from "./conversation";
 
 export type AppHost = Pick<DesktopHost, "getConnection"> &
   Partial<Omit<DesktopHost, "getConnection">>;
@@ -42,16 +45,24 @@ export interface ConversationProps {
   onCloseSummary: () => void;
   request: (command: ClientCommand) => Promise<unknown>;
   draft: string;
-  onDraft: (text: string) => void;
+  onDraft: (text: SetStateAction<string>) => void;
   images: PromptImages;
-  onImages: (images: PromptImages) => void;
+  onImages: (images: SetStateAction<PromptImages>) => void;
+  onInteractionResolved: (epoch: string, decision?: PermissionDecision) => void;
 }
 export interface AppProps {
   host: AppHost;
   locale?: Locale;
   Conversation?: ComponentType<ConversationProps>;
 }
-const emptyView: SessionViewState = { events: [], interactions: {}, busy: false };
+const emptyView: SessionViewState = { interactions: {}, busy: false };
+interface InputDraft {
+  text: string;
+  images: PromptImages;
+  textRevision: number;
+  imageRevision: number;
+}
+const emptyDraft: InputDraft = { text: "", images: [], textRevision: 0, imageRevision: 0 };
 export function App({ locale = "en", ...props }: AppProps) {
   return (
     <UiLocaleProvider locale={locale}>
@@ -59,7 +70,7 @@ export function App({ locale = "en", ...props }: AppProps) {
     </UiLocaleProvider>
   );
 }
-function DesktopApp({ host, Conversation }: Omit<AppProps, "locale">) {
+function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "locale">) {
   const t = useAppText();
   const [store] = useState(createDesktopStore);
   const [client] = useState(() => createWireClient(host));
@@ -71,8 +82,38 @@ function DesktopApp({ host, Conversation }: Omit<AppProps, "locale">) {
   const [pathOpen, setPathOpen] = useState(false);
   const [path, setPath] = useState("");
   const [error, setError] = useState("");
-  const [draft, setDraft] = useState("");
-  const [images, setImages] = useState<PromptImages>([]);
+  const [drafts, setDrafts] = useState<Record<string, InputDraft>>({});
+  const newDraftSequence = useRef(0);
+  const [newDraftKey, setNewDraftKey] = useState("new-0");
+  const draftKey = state.selected ?? newDraftKey;
+  const inputDraft = drafts[draftKey] ?? emptyDraft;
+  const draft = inputDraft.text;
+  const images = inputDraft.images;
+  // Each callback owns its originating Session or new-chat draft across async responses.
+  const setDraft = (next: SetStateAction<string>) =>
+    setDrafts((previous) => {
+      const current = previous[draftKey] ?? emptyDraft;
+      return {
+        ...previous,
+        [draftKey]: {
+          ...current,
+          text: typeof next === "function" ? next(current.text) : next,
+          textRevision: current.textRevision + 1,
+        },
+      };
+    });
+  const setImages = (next: SetStateAction<PromptImages>) =>
+    setDrafts((previous) => {
+      const current = previous[draftKey] ?? emptyDraft;
+      return {
+        ...previous,
+        [draftKey]: {
+          ...current,
+          images: typeof next === "function" ? next(current.images) : next,
+          imageRevision: current.imageRevision + 1,
+        },
+      };
+    });
   const [permission, setPermission] = useState<PermissionMode>("ask");
   const [model, setModel] = useState<ModelSelection>();
   const [sending, setSending] = useState(false);
@@ -110,8 +151,8 @@ function DesktopApp({ host, Conversation }: Omit<AppProps, "locale">) {
     const previous = store.getState().selected;
     if (previous) safe(() => client.unsubscribe(previous));
     store.select(null, project);
-    setDraft("");
-    setImages([]);
+    newDraftSequence.current++;
+    setNewDraftKey(`new-${newDraftSequence.current}`);
     setError("");
     setSummary(false);
     if (!matchMedia("(min-width: 768px)").matches) setSidebar(false);
@@ -137,7 +178,7 @@ function DesktopApp({ host, Conversation }: Omit<AppProps, "locale">) {
     const offState = client.subscribeState(() => {
       store.setState({
         connection: client.getState(),
-        ...(client.getState() !== "connected"
+        ...(client.getState() === "connected"
           ? {
               views: Object.fromEntries(
                 Object.entries(store.getState().views).map(([id, view]) => [
@@ -217,6 +258,7 @@ function DesktopApp({ host, Conversation }: Omit<AppProps, "locale">) {
     const text = draft.trim();
     const attachments = images;
     try {
+      let createdSessionId: string | undefined;
       if (state.selected)
         await client.request({
           type: "prompt",
@@ -239,10 +281,27 @@ function DesktopApp({ host, Conversation }: Omit<AppProps, "locale">) {
           "sessionId" in result &&
           typeof result.sessionId === "string"
         )
-          await select(result.sessionId);
+          createdSessionId = result.sessionId;
+        else throw new WireError("invalid_command");
       }
-      setDraft("");
-      setImages([]);
+      const targetKey = createdSessionId ?? draftKey;
+      setDrafts((previous) => {
+        const current = previous[draftKey] ?? emptyDraft;
+        const next = {
+          ...current,
+          text: current.textRevision === inputDraft.textRevision ? "" : current.text,
+          images: current.imageRevision === inputDraft.imageRevision ? [] : current.images,
+        };
+        const updated = { ...previous, [targetKey]: next };
+        if (createdSessionId) delete updated[draftKey];
+        return updated;
+      });
+      if (
+        createdSessionId &&
+        store.getState().selected === null &&
+        draftKey === `new-${newDraftSequence.current}`
+      )
+        await select(createdSessionId);
     } finally {
       setSending(false);
     }
@@ -322,7 +381,7 @@ function DesktopApp({ host, Conversation }: Omit<AppProps, "locale">) {
     opener.current?.focus();
   };
   const markdown = () =>
-    view.snapshot?.messages
+    view.transcript?.committed
       .map((message) => {
         if (typeof message !== "object" || message === null || !("content" in message)) return "";
         const content = message.content;
@@ -520,12 +579,16 @@ function DesktopApp({ host, Conversation }: Omit<AppProps, "locale">) {
               <div className="flex min-h-0 flex-1 flex-col">
                 {Conversation ? (
                   <Conversation
+                    key={state.selected}
                     sessionId={state.selected}
                     view={view}
                     connected={connected}
                     summaryOpen={summary}
                     onCloseSummary={() => setSummary(false)}
                     request={client.request}
+                    onInteractionResolved={(epoch, decision) =>
+                      store.resolveInteraction(state.selected!, epoch, decision)
+                    }
                     draft={draft}
                     onDraft={setDraft}
                     images={images}
@@ -652,7 +715,8 @@ function DesktopApp({ host, Conversation }: Omit<AppProps, "locale">) {
                   images={images}
                   onDraft={setDraft}
                   onImages={setImages}
-                  disabled={!connected || sending}
+                  disabled={!connected}
+                  submitting={sending}
                   running={Boolean(view.running)}
                   permissionMode={view.permissionMode ?? permission}
                   onPermission={setMode}

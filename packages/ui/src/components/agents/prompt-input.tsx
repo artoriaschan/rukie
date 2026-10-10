@@ -55,6 +55,7 @@ export interface PromptInputProps extends Omit<
   onAction?: (action: string) => void;
   onSubmit?: (value: string, model?: string) => void | Promise<void>;
   loading?: boolean;
+  submitting?: boolean;
   onStop?: () => void;
   minRows?: number;
   maxRows?: number;
@@ -75,6 +76,7 @@ export function PromptInput({
   onAction,
   onSubmit,
   loading = false,
+  submitting = false,
   onStop,
   minRows = 2,
   maxRows = 8,
@@ -100,7 +102,7 @@ export function PromptInput({
   const currentValue = value ?? internalValue;
   const currentModelValue = model ?? internalModel;
   const currentModel = models.find((option) => option.value === currentModelValue);
-  const canSubmit = Boolean(currentValue.trim()) && !disabled && !loading;
+  const canSubmit = Boolean(currentValue.trim()) && !disabled && !loading && !submitting;
 
   const resizeTextarea = useCallback(() => {
     const textarea = textareaRef.current;
@@ -141,7 +143,7 @@ export function PromptInput({
   const submit = (event?: FormEvent) => {
     event?.preventDefault();
     const prompt = currentValue.trim();
-    if (!prompt || disabled || loading) return;
+    if (!prompt || disabled || loading || submitting) return;
 
     onSubmit?.(prompt, currentModelValue);
     if (value === undefined) setInternalValue("");

@@ -244,7 +244,7 @@ export function ToolResult({
           {icon ?? <KindIcon kind={kind} />}
         </span>
         <span className="flex min-w-0 flex-1 items-baseline gap-2">
-          <span className="min-w-0 truncate font-medium text-foreground/90">
+          <span className="min-w-0 truncate font-mono text-foreground/90">
             <ActionSwapRollText value={titleKey}>{title}</ActionSwapRollText>
           </span>
           {meta ? (
@@ -252,7 +252,7 @@ export function ToolResult({
               <ActionSwapRollText value={metaKey}>{meta}</ActionSwapRollText>
             </span>
           ) : null}
-          <span className="min-w-0 truncate font-mono text-ui-caption text-muted-foreground/55">
+          <span className="min-w-0 truncate text-ui-sm text-muted-foreground">
             <ActionSwapRollText value={toolKey}>{tool}</ActionSwapRollText>
           </span>
         </span>
@@ -278,13 +278,7 @@ export function ToolResult({
       <AgentDisclosure id={contentId} role="region" aria-labelledby={triggerId} open={currentOpen}>
         <div className="pl-6 pt-1.5">
           <div className="overflow-hidden rounded-xl bg-muted/80">
-            <div
-              ref={viewportRef}
-              role="log"
-              aria-live="polite"
-              className="scrollbar-hide overflow-y-auto"
-              style={{ maxHeight }}
-            >
+            <div ref={viewportRef} className="scrollbar-hide overflow-y-auto" style={{ maxHeight }}>
               <div className={cn("p-3", contentClassName)}>{children}</div>
             </div>
 
