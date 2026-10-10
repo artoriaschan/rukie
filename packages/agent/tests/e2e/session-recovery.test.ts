@@ -153,6 +153,7 @@ test.each(["child-answer", "parent-notification"] as const)(
   async (phase) => {
     dirs = await tempDirs();
     const store = createJsonlStore(dirs);
+    const injectedFailure = new Error(`injected ${phase} failure`);
     let reject = true;
     const failingStore = {
       ...store,
@@ -177,7 +178,7 @@ test.each(["child-answer", "parent-notification"] as const)(
                   );
                   if (reject && hit) {
                     reject = false;
-                    throw new Error(`injected ${phase} failure`);
+                    throw injectedFailure;
                   }
                   return target.commit(...args);
                 };
@@ -204,7 +205,11 @@ test.each(["child-answer", "parent-notification"] as const)(
       ...Array.from({ length: 5 }, () => reply),
     ]);
     const session = await createSession({ ...dirs, ...fake, store: failingStore, onWarning() {} });
-    await expect(runRequest(session, "delegate")).rejects.toThrow(`injected ${phase} failure`);
+    const failure: unknown = await runRequest(session, "delegate").catch((error: unknown) => error);
+    // The child fault can surface directly or through the native poisoned-session guard.
+    // Both paths must retain this exact storage failure, independent of parent completion order.
+    expect(failure instanceof Error ? (failure.cause ?? failure) : failure).toBe(injectedFailure);
+    await expect(session.run("must remain unavailable")).rejects.toBe(injectedFailure);
     expect(reject).toBe(false);
     const requestId = session.currentRequestId;
     if (!requestId) throw new Error("accepted request lost before failed commit");
