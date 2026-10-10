@@ -1,5 +1,8 @@
 export const componentCopy = {
   zh: {
+    "component.message-from": "{{sender}}消息",
+    "component.view-citation": "查看引用 {{index}}",
+    "component.progress-label": "{{label}}，进行中",
     "component.close": "关闭",
     "component.close-modal": "关闭对话框",
     "component.dismiss-modal": "关闭对话框",
@@ -117,6 +120,9 @@ export const componentCopy = {
     "component.user": "用户",
   },
   en: {
+    "component.message-from": "{{sender}} message",
+    "component.view-citation": "View citation {{index}}",
+    "component.progress-label": "{{label}}, in progress",
     "component.close": "Close",
     "component.close-modal": "Close modal",
     "component.dismiss-modal": "Dismiss modal",

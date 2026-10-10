@@ -524,3 +524,67 @@ test("new-session creation hands edited input to the created Session without sel
     await commands.stopWire(connection.port);
   }
 });
+
+test("navigation previews escape the scroll rail and current response stays highlighted after jumping elsewhere", async () => {
+  await page.viewport(1280, 900);
+  const connection = await commands.startWire();
+  const screen = await render(<App host={{ getConnection: async () => connection }} />);
+  try {
+    await screen
+      .getByRole("button", { name: /Fix compiler/ })
+      .first()
+      .click();
+    await fetch(`http://127.0.0.1:${connection.port}/message`, {
+      method: "POST",
+      body: JSON.stringify({
+        type: "snapshot",
+        sessionId: "one",
+        model: "test/script",
+        compactions: [],
+        messages: [
+          { role: "user", entryId: "u1", timestamp: 1, content: "First question" },
+          {
+            role: "assistant",
+            entryId: "a1",
+            timestamp: 2,
+            content: [{ type: "text", text: "First final reply" }],
+          },
+          { role: "user", entryId: "u2", timestamp: 3, content: "Current question" },
+        ],
+        run: { inputs: [] },
+        toolStates: {},
+      }),
+    });
+    const current = screen.getByRole("button", { name: "Jump to response 2", exact: true });
+    await expect.element(current).toHaveAttribute("aria-current", "location");
+    const old = screen.getByRole("button", { name: "Jump to response 1", exact: true });
+    await old.click();
+    await userEvent.keyboard("{Tab}");
+    old.element().focus();
+    await expect
+      .poll(() => document.querySelector('[data-slot="preview-rail-card"]')?.textContent)
+      .toContain("First final reply");
+    const card = document.querySelector<HTMLElement>('[data-slot="preview-rail-card"]')!;
+    expect(card.getBoundingClientRect().width).toBeGreaterThan(200);
+    expect(card.getBoundingClientRect().left).toBeGreaterThanOrEqual(8);
+    expect(card.getBoundingClientRect().right).toBeLessThanOrEqual(innerWidth - 8);
+    expect(card.getBoundingClientRect().top).toBeGreaterThanOrEqual(8);
+    expect(card.getBoundingClientRect().bottom).toBeLessThanOrEqual(innerHeight - 8);
+    expect(card.closest('[class*="overflow-y-auto"]')).toBeNull();
+    await userEvent.keyboard("{Escape}");
+    await expect.poll(() => document.querySelector('[data-slot="preview-rail-card"]')).toBeNull();
+    await expect.element(current).toHaveAttribute("aria-current", "location");
+    await expect
+      .poll(
+        () =>
+          current
+            .element()
+            .querySelector('[data-slot="preview-rail-tick"]')!
+            .getBoundingClientRect().width,
+      )
+      .toBeGreaterThan(40);
+  } finally {
+    await screen.unmount();
+    await commands.stopWire(connection.port);
+  }
+});

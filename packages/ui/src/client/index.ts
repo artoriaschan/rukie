@@ -8,7 +8,10 @@ export type ClientCommand = WireCommand extends infer C
     : never
   : never;
 export class WireError extends Error {
-  constructor(readonly code: WireErrorCode | "disconnected" | "superseded") {
+  constructor(
+    readonly code: WireErrorCode | "disconnected" | "superseded",
+    readonly params?: Record<string, string | number>,
+  ) {
     super(code);
   }
 }
@@ -91,7 +94,11 @@ export function createWireClient(host: Pick<DesktopHost, "getConnection">) {
               typeof message.error.code === "string"
             ) {
               const code = message.error.code;
-              waiter.reject(new WireError(isErrorCode(code) ? code : "invalid_command"));
+              const params =
+                "params" in message.error && isErrorParams(message.error.params)
+                  ? message.error.params
+                  : undefined;
+              waiter.reject(new WireError(isErrorCode(code) ? code : "invalid_command", params));
             } else waiter.resolve("result" in message ? message.result : undefined);
           } else for (const listener of messageListeners) listener(message);
         });
@@ -189,5 +196,14 @@ function isErrorCode(code: string): code is WireErrorCode {
     code === "not_queued" ||
     code === "interaction_stale" ||
     code === "internal"
+  );
+}
+
+function isErrorParams(value: unknown): value is Record<string, string | number> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.values(value).every((item) => typeof item === "string" || typeof item === "number")
   );
 }

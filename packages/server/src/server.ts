@@ -190,10 +190,12 @@ export async function startServer(options: ServerOptions) {
                   sessionId,
                   identity: request.identity,
                 });
+              void changed().catch((error) => warning(String(error)));
               resolve(reply);
             };
             const cancel = () => settle("deny");
             pending.set(request.identity.epoch, { sessionId, request: payload, settle });
+            void changed().catch((error) => warning(String(error)));
             signal.addEventListener("abort", cancel, { once: true });
             if (signal.aborted) cancel();
             else if (active)

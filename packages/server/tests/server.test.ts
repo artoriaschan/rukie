@@ -739,3 +739,54 @@ test("a session grant settles other pending permission cards covered by its rule
     await rm(homeDir, { recursive: true, force: true });
   }
 }, 5000);
+
+test("unsubscribed Sessions publish permission creation, reconnect state and cancellation summaries", async () => {
+  const homeDir = await mkdtemp(join(tmpdir(), "rukie-sidebar-permission-"));
+  const reply = Promise.withResolvers<ReturnType<typeof fauxAssistantMessage>>();
+  const fake = fakeModel([() => reply.promise, fauxAssistantMessage("done")]);
+  const server = await startServer({
+    homeDir,
+    sessionOptions: { ...fake, settings: { permissionMode: "ask" } },
+    onHandshake: () => {},
+  });
+  const first = await connect(server);
+  const summary = (
+    message: Record<string, unknown>,
+    id: string,
+    waiting: boolean,
+    running = true,
+  ) =>
+    message.type === "sessions_changed" &&
+    Array.isArray(message.sessions) &&
+    message.sessions.some(
+      (item) => item.id === id && item.waitingPermission === waiting && item.running === running,
+    );
+  try {
+    const created = await first.command("session.create", { project: null, text: "write file" });
+    const sessionId = (created.result as { sessionId: string }).sessionId;
+    await first.command("session.unsubscribe", { sessionId });
+    await first.next((m) => summary(m, sessionId, false));
+    first.messages.length = 0;
+    reply.resolve(
+      fauxAssistantMessage(fauxToolCall("write", { path: "first.txt", content: "one" }), {
+        stopReason: "toolUse",
+      }),
+    );
+    await first.next((m) => m.type === "interaction_requested");
+    await first.next((m) => summary(m, sessionId, true));
+    const replacement = await connect(server);
+    try {
+      await replacement.next((m) => summary(m, sessionId, true));
+      await replacement.command("abort", { sessionId });
+      await replacement.next((m) => summary(m, sessionId, false, false));
+      expect(replacement.messages.some((m) => m.type === "interaction_settled")).toBe(true);
+    } finally {
+      replacement.socket.close();
+    }
+  } finally {
+    reply.resolve(fauxAssistantMessage("cleanup"));
+    first.socket.close();
+    await server.close();
+    await rm(homeDir, { recursive: true, force: true });
+  }
+}, 5000);

@@ -96,3 +96,29 @@ test("unrecognized wire error codes settle requests as invalid_command", async (
     await server.close();
   }
 });
+
+test("wire errors retain validated presentation parameters", async () => {
+  const server = await startWireFixture();
+  const client = createWireClient({ getConnection: async () => server.connection });
+  try {
+    await client.connect();
+    await fetch(`http://127.0.0.1:${server.connection.port}/hold`);
+    const result = client.request({ type: "models.list" });
+    const rejection = expect(result).rejects.toMatchObject({
+      code: "session_busy",
+      params: { id: "one", count: 2 },
+    });
+    await expect.poll(async () => (await server.commands()).length).toBe(1);
+    const [command] = await server.commands();
+    if (!command) throw new Error("Expected held command");
+    await server.send({
+      type: "response",
+      id: command.id,
+      error: { code: "session_busy", params: { id: "one", count: 2 } },
+    });
+    await rejection;
+  } finally {
+    client.close();
+    await server.close();
+  }
+});
