@@ -6,9 +6,12 @@ import { fauxProvider } from "@earendil-works/pi-ai";
 import { startWithClock as start } from "../../helpers/clock-app";
 
 const originalKey = process.env.RUKIE_MODEL_TUI_KEY;
+const originalMissingKey = process.env.RUKIE_MODEL_MISSING_TUI_KEY;
 afterEach(() => {
   if (originalKey === undefined) delete process.env.RUKIE_MODEL_TUI_KEY;
   else process.env.RUKIE_MODEL_TUI_KEY = originalKey;
+  if (originalMissingKey === undefined) delete process.env.RUKIE_MODEL_MISSING_TUI_KEY;
+  else process.env.RUKIE_MODEL_MISSING_TUI_KEY = originalMissingKey;
 });
 const settings = {
   model: "test-model/first",
@@ -155,6 +158,7 @@ test("provider tabs wrap and preserve each provider's focused model", async () =
     app.stdin.write("\x1b[B\t");
     await app.waitFor(() => screen(app).includes("other/first"));
     expect(screen(app)).toContain("first other/first");
+    expect(screen(app)).toContain("Text input · No reasoning · context 128,000");
     expect(screen(app)).toContain("other/second");
     app.stdin.write("\x1b[Z\r");
     await app.waitFor(
@@ -167,6 +171,7 @@ test("provider tabs wrap and preserve each provider's focused model", async () =
 
 test("custom models without credentials remain visible and Enter only reports missing credentials", async () => {
   process.env.RUKIE_MODEL_TUI_KEY = "test-key";
+  delete process.env.RUKIE_MODEL_MISSING_TUI_KEY;
   const tabSettings = {
     ...settings,
     providers: [
@@ -198,6 +203,7 @@ test("custom models without credentials remain visible and Enter only reports mi
     app.stdin.write("\x1b");
     await app.waitFor(() => !screen(app).includes("Select model"));
     expect(app.screen().at(-2)).toContain("first");
+    expect(screen(app)).toContain("test-model/first");
     expect(app.calls).toHaveLength(0);
   } finally {
     await app.cleanup();
