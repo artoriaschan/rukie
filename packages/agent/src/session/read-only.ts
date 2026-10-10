@@ -21,6 +21,8 @@ import { committedSnapshot, projectCommittedOutcomeFacts } from "./observation.t
 /** One committed, lease-free view. Never recovers tasks, runs hooks, or modifies storage. */
 export async function readSessionSnapshot(options: { cwd: string; homeDir: string; id: string }) {
   options = { ...options, cwd: resolve(options.cwd) };
+  // JsonlStorage.open recovers once into private MemoryStorage. Its reads never
+  // refresh from disk, so transcript and document reads share that committed frame.
   return readSessionStorage(options, async (storage) => {
     const kernel = createKernel(storage);
     try {

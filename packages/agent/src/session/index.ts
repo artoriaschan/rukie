@@ -3473,7 +3473,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           await release(() => plan.settleWrites());
           // Settled human receipts finish before storage closes; active admissions
           // remain durable for resume rather than blocking Session.close.
-          if (!observation.running())
+          if (!observation.running() && observation.snapshot().queuedInputs.length === 0)
             await release(async () => {
               await Promise.all(humanCompletions.values());
             });
