@@ -1,0 +1,3 @@
+[test]
+# ADR-0004: renderer and Electron tests run under Vitest.
+pathIgnorePatterns = ["packages/ui/**", "packages/desktop/**"]

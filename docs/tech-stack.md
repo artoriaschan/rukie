@@ -8,7 +8,7 @@
 | ------------------ | ------------------------------------------------------------------------------------------- |
 | 包管理、workspaces | Bun 1.4.2                                                                                   |
 | 语言               | TypeScript 6.0.3，Bun 类型 @types/bun 1.4.2                                                 |
-| 测试               | ⚠️ 按运行时选择（ADR-0004）：Bun 代码用 `bun:test`；Electron main 和渲染进程用 Vitest 5.0.1 |
+| 测试               | ⚠️ 按运行时选择（ADR-0004）：Bun 代码用 `bun:test`；Electron main 和渲染进程用 Vitest 5.0.3 |
 
 ## Agent
 
@@ -130,3 +130,9 @@ Headless CLI、TUI 与 renderer 的依赖统一归 `packages/coding-agent/packag
 Release PR 使用精确锁定的 `release-please@17.3.0`，由 Bun 执行官方 Manifest/Strategy/Changelog API；GitHub Actions 的不可变 commit 和工具版本见[版本准备 workflow](../.github/workflows/release-prepare.yml)。当前 commit CI 门槛、GitHub App 配置和 beta/稳定切换见[版本准备](release-preparation.md)。
 
 CI 与发布 workflows 的官方 Actions 使用 Node.js 24 runtime：checkout 7.0.1、setup-node 7.1.0、upload-artifact 7.0.2、download-artifact 8.0.2，均固定到完整 commit SHA。该 runtime 与 setup-node 为源码和安装包验收配置的 Node.js 版本分别由 Actions 声明和 workflow 输入决定。
+
+## 桌面测试与骨架的已安装依赖
+
+桌面三个 workspace 的协议与检查骨架已接入。测试工具为根 devDependency：vitest 5.0.3、@vitest/browser-playwright 5.0.3、playwright 1.64.0、vitest-browser-react 2.3.0、@vitejs/plugin-react 6.1.2、vite 8.3.1 和 @types/node 24.19.2。ui 精确声明 react/react-dom 19.3.0 的 peerDependencies，类型为 @types/react 19.3.0。server 与 ui 的 schema 测试复用 typebox 1.3.27。
+
+上述桌面壳、服务框架和其余 GUI 选型表包含后续实现的目标依赖；本骨架没有安装 Electron、Hono 或 Effect。以各包 manifest 和 lockfile 为已安装事实，测试准备和运行边界见[测试策略](testing.md#桌面测试入口)。

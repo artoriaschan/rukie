@@ -28,6 +28,8 @@ flowchart TD
 | `@rukie/shared`       | 提供运行时无关的公共类型、schema 与纯函数                                                                      |
 | `@rukie/i18n`         | 提供运行时无关的通用文案与 locale 能力，只依赖 shared                                                          |
 
+桌面端有 `@rukie/ui`、`@rukie/server`、`@rukie/desktop` 三个 workspace 骨架。ui 的 app/components/store/client/host 分层由 lint 约束，server 的入口校验 shared 的 TypeBox wire 命令，desktop 引用注入的 host 类型；React DOM 界面与 sidecar 运行接线在各自能力内实现。包方向见 [ADR-0029](adr/0029-desktop-package-structure.md)，测试运行时见 [ADR-0004](adr/0004-test-runner-per-runtime.md)。
+
 公共内部包直接导出 TypeScript 源码，跨包消费者通过工作区包名导入；coding-agent 包内使用相对路径，TUI 只经 `ink/index.ts` 使用终端能力。具体依赖与脚本由各包 `package.json` 定义；技术版本由 [tech-stack.md](tech-stack.md) 维护。
 
 ## 应用启动与 Session

@@ -1,0 +1,17 @@
+{
+  "name": "@rukie/ui",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@rukie/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "typebox": "1.3.27"
+  },
+  "peerDependencies": {
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  }
+}

@@ -39,3 +39,5 @@ export {
 } from "./tool-view.ts";
 
 export { ModelCompatSchemas } from "./model-compat.ts";
+
+export { WIRE_SUBPROTOCOL, WireCommandSchema, type WireCommand } from "./wire.ts";
