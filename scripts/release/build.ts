@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { chmod, cp, mkdir, readFile, realpath, rm } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { parseArgs } from "node:util";
+import { compiledBunOptions } from "../compiled-bun.ts";
 import { generateNotices } from "./notices.ts";
 
 import {
@@ -103,18 +104,8 @@ export async function buildRelease(
   const compileStartedAt = performance.now();
   const result = await Bun.build({
     entrypoints: [join(coding, "src/main.ts"), join(coding, "src/ink/sixel-worker.ts")],
-    target: "bun",
-    define: { RUKIE_COMPILED: "true" },
-    env: "disable",
+    ...compiledBunOptions(target.bunTarget, join(bin, "rukie")),
     metafile: true,
-    compile: {
-      target: target.bunTarget,
-      outfile: join(bin, "rukie"),
-      autoloadDotenv: false,
-      autoloadBunfig: false,
-      autoloadPackageJson: false,
-      autoloadTsconfig: false,
-    },
     plugins: [
       {
         name: "release-resources",

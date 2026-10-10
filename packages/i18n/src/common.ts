@@ -64,7 +64,7 @@ const zh = {
   "api-key.environment-default": "该提供方的标准环境变量",
   "error.background-job-limit": "后台任务数量已达上限（{{limit}}）；请先停止已有任务。",
   "error.ripgrep-unavailable":
-    "内置 ripgrep 不可用。请重新安装 Rukie 的依赖（包含 optionalDependencies），并检查平台兼容性或二进制执行权限。原因：{{cause}}",
+    "内置 ripgrep 不可用。请恢复完整的 Rukie 安装，并检查内置二进制的执行权限。原因：{{cause}}",
   "error.allow-tools-retired": "{{source}}: allowTools 已移除，请迁移到 permissions.allow。",
   "error.permission-rule-invalid": '{{source}}: 无效的权限规则 "{{rule}}"',
   "error.unknown-model": '未知模型 "{{model}}"。',
@@ -180,7 +180,7 @@ const en = {
   "error.background-job-limit":
     "Background job limit reached ({{limit}}); stop an existing job first.",
   "error.ripgrep-unavailable":
-    "Bundled ripgrep is unavailable. Reinstall Rukie dependencies (including optionalDependencies) and check platform compatibility or binary execution permissions. Cause: {{cause}}",
+    "Bundled ripgrep is unavailable. Restore the complete Rukie installation and check bundled binary execution permissions. Cause: {{cause}}",
   "error.allow-tools-retired":
     '{{source}}: "allowTools" has been removed; migrate to "permissions.allow".',
   "error.permission-rule-invalid": '{{source}}: invalid permission rule "{{rule}}"',
