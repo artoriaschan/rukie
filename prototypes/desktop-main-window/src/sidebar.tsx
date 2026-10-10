@@ -109,7 +109,7 @@ function Empty({ children, indent = false }: { children: ReactNode; indent?: boo
   return <li className={cn("px-2 py-1 text-ui-sm text-muted-foreground", indent && "pl-8")}>{children}</li>;
 }
 
-export function Sidebar() {
+export function Sidebar({ onSearch }: { onSearch: () => void }) {
   const t = useT();
   const { sessions, selection, select } = useProto();
   const ctrl = useCtrlHeld();
@@ -132,17 +132,15 @@ export function Sidebar() {
 
   return (
     <aside className="flex h-full w-64 shrink-0 flex-col border-r bg-background">
-      <div className="space-y-0.5 px-2 pt-2">
-        <button type="button" aria-current={newActive ? "page" : undefined} onClick={() => select({ kind: "new", projectId: null })} className={cn(row, newActive && "bg-card font-medium")}>
+      <div className="flex items-center gap-1 px-2 pt-2">
+        <button type="button" aria-current={newActive ? "page" : undefined} onClick={() => select({ kind: "new", projectId: null })} className={cn(row, "min-w-0 flex-1", newActive && "bg-card font-medium")}>
           <SquarePen className="size-4 text-muted-foreground" />
           <span className="flex-1">{t("newChat")}</span>
           <Kbd>⌘N</Kbd>
         </button>
-        <button type="button" className={row}>
-          <Search className="size-4 text-muted-foreground" />
-          <span className="flex-1">{t("search")}</span>
-          <Kbd>⌘K</Kbd>
-        </button>
+        <Button size="icon-sm" variant="ghost" className="rounded-lg text-muted-foreground" aria-label={`${t("search")} (⌘K)`} title={`${t("search")} ⌘K`} aria-haspopup="dialog" onClick={onSearch}>
+          <Search />
+        </Button>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">

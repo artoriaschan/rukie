@@ -14,6 +14,7 @@ import { useProto } from "./state";
 import { SummaryPanel } from "./summary";
 import { Button, cn } from "./ui";
 import { Welcome } from "./welcome";
+import { SearchDialog } from "./search";
 
 /** Created in this page: its id starts with "n" (see Root.send). */
 const isCreated = (id: string) => id.startsWith("n");
@@ -93,6 +94,24 @@ export function App() {
   const { selection, sessions } = useProto();
   const [sidebar, setSidebar] = useState(() => matchMedia("(min-width: 768px)").matches);
   const [summaryOpen, setSummaryOpen] = useState(() => matchMedia("(min-width: 1024px)").matches);
+  const [search, setSearch] = useState<HTMLElement | null>(null);
+
+  // ⌘K / Ctrl+K opens search even while the sidebar is hidden; focus returns to the opener.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSearch((cur) => cur ?? (document.activeElement as HTMLElement | null) ?? document.body);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  const closeSearch = () => {
+    const opener = search;
+    setSearch(null);
+    opener?.focus();
+  };
 
   const session = selection.kind === "session" ? sessions.find((s) => s.id === selection.id) : undefined;
   const project = session?.projectId ? projects.find((p) => p.id === session.projectId) : undefined;
@@ -141,7 +160,7 @@ export function App() {
         <div className="relative flex min-w-0 flex-1 overflow-hidden rounded-tl-xl border-t border-l bg-background">
           {sidebar && (
             <div className="contents max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-30 max-md:block max-md:shadow-lg">
-              <Sidebar />
+              <Sidebar onSearch={() => setSearch(document.activeElement as HTMLElement)} />
             </div>
           )}
           <main className="relative flex min-w-0 flex-1 flex-col">
@@ -161,6 +180,7 @@ export function App() {
           </main>
         </div>
       </div>
+      {search && <SearchDialog onClose={closeSearch} />}
     </div>
   );
 }
