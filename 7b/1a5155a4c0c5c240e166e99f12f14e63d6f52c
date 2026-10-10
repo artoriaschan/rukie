@@ -1,0 +1,47 @@
+prototypes/desktop-main-window/src/main.tsx
+  s_2f9b11742bfb62::t_e66de023c0e9dc 1-93,95-97,99-127
+  s_2f9b11742bfb62::t_d108e1caef48cb 94
+  s_2f9b11742bfb62::t_11e6833fd5a6ff 98
+prototypes/desktop-main-window/src/ui.tsx
+  s_2f9b11742bfb62::t_24015fcf6401ce 1-92
+prototypes/desktop-main-window/vite.config.ts
+  s_2f9b11742bfb62::t_672383f1049c42 1-5
+prototypes/desktop-main-window/src/composer.tsx
+  s_2f9b11742bfb62::t_1e8b989d89a387 1-144
+prototypes/desktop-main-window/src/blocks.tsx
+  s_2f9b11742bfb62::t_9de94ef401e8a5 1-152
+prototypes/desktop-main-window/index.html
+  s_2f9b11742bfb62::t_2bb08cdcefe24d 1-13
+prototypes/desktop-main-window/src/i18n.ts
+  s_2f9b11742bfb62::t_79da6b100bb740 1-103
+prototypes/desktop-main-window/src/data.ts
+  s_2f9b11742bfb62::t_2d90ce23754724 1-75
+prototypes/desktop-main-window/src/variant-a.tsx
+  s_2f9b11742bfb62::t_ae453f158d3198 1-16,19-96
+  s_2f9b11742bfb62::t_6ae74e80772566 17-18
+prototypes/desktop-main-window/src/state.ts
+  s_2f9b11742bfb62::t_5450ff1df66880 1-27
+prototypes/desktop-main-window/src/variant-b.tsx
+  s_2f9b11742bfb62::t_8200265fd016c6 1-178
+prototypes/desktop-main-window/src/variant-c.tsx
+  s_2f9b11742bfb62::t_81606cc4530581 1-172
+prototypes/desktop-main-window/src/index.css
+  s_2f9b11742bfb62::t_75c48514242dc1 1-94,96,101-114
+  s_2f9b11742bfb62::t_7fc324a73aaa04 95,97-100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "7b1a5155a4c0c5c240e166e99f12f14e63d6f52c",
+  "prompts": {},
+  "sessions": {
+    "s_2f9b11742bfb62": {
+      "agent_id": {
+        "tool": "chengxiaobang",
+        "id": "s_ud9hgzuuustw",
+        "model": "kr-claude-opus-5.5[1M]"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
