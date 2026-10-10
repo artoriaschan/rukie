@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: claimed
 
 # Spec: 桌面端 MVP
 
