@@ -3,7 +3,6 @@ import {
   createProvider,
   envApiKeyAuth,
   getSupportedThinkingLevels,
-  type ModelThinkingLevel,
   type Api,
   type Model,
   type Models,
@@ -237,19 +236,7 @@ function modelRegistry(settings: Settings) {
 
 export { modelState } from "./model-state.ts";
 
-export interface ModelCatalogEntry {
-  spec: string;
-  id: string;
-  name: string;
-  providerId: string;
-  providerName: string;
-  input: ("text" | "image")[];
-  reasoning: boolean;
-  thinkingLevels: ModelThinkingLevel[];
-  contextWindow: number;
-  custom: boolean;
-  authenticated: boolean;
-}
+export type ModelCatalogEntry = import("@rukie/shared").WireModelCatalogEntry;
 
 /** Checks local credential configuration through pi's public auth-check API. */
 async function getAuthenticatedProviders(models: Models): Promise<Set<string>> {
@@ -268,8 +255,10 @@ async function getAuthenticatedProviders(models: Models): Promise<Set<string>> {
  * Lists all last-known models and local credential facts without refreshing models or OAuth.
  * Frontends own provider visibility; unauthenticated entries remain in this catalog.
  */
-export async function listModelCatalog(settings: Settings = {}): Promise<ModelCatalogEntry[]> {
-  const models = modelRegistry(settings);
+export async function listModelCatalog(
+  settings: Settings = {},
+  models: Models = modelRegistry(settings),
+): Promise<ModelCatalogEntry[]> {
   const authenticated = await getAuthenticatedProviders(models);
   const custom = new Set(settings.providers?.map((provider) => provider.id));
   return models

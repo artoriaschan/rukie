@@ -33,7 +33,7 @@ Question 和 Plan Review 在原生执行意图之前收集回复；计划批准�
 
 # Queued Input
 
-Run 进行中调用 `session.followUp(prompt, { images? })`，返回稳定 `requestId`；输入在当前 Run 回答后的原生边界按发送顺序逐条放入，每条是独立用户消息并开始下一 Run。空闲时调用会直接启动 Run。`session.queuedInputs` 与 `snapshot.queuedInputs` 提供原文、图片数据、MIME 与名称；`queued_inputs_update` 提供已提交队列的新投影。队列使用原生 `pi.inbox` 持久化，崩溃后 Resume 显示尚未放入的输入并继续原顺序。
+Run 进行中调用 `session.followUp(prompt, { images? })`，返回稳定 `requestId`；输入在当前 Run 回答后的原生边界按发送顺序逐条放入，每条是独立用户消息并开始下一 Run。空闲时调用会直接启动 Run。`followUp` 和 `run` 共用已放入的人类请求完成路径，提交 Run Summary 并发布一次 `result`；`waitForRequest` 等待该提交完成。撤回尚未放入的输入不会生成 Turn Summary。`session.queuedInputs` 与 `snapshot.queuedInputs` 提供原文、图片数据、MIME 与名称；`queued_inputs_update` 提供已提交队列的新投影。队列使用原生 `pi.inbox` 持久化，崩溃后 Resume 显示尚未放入的输入并继续原顺序。
 
 `session.withdraw(requestId)` 在放入前原子撤回，返回 `{ status: "withdrawn", input }`；身份不存在、已放入或已撤回时返回 `{ status: "not_queued" }`。`session.steerNow(requestId)` 把所选输入改为在当前工具轮完成后放入，返回 `steered` 或 `not_queued`，保留 requestId。`session.abort()` 等待正在接受的输入，原子撤回全部 Queued Input，再停止当前 Run，返回按排队顺序排列的原文与附件数组，Frontend 负责交还输入框。`close()` 保留已接受输入，供下次 Resume 继续；`steer(prompt)` 仍接受新指令并在工具边界放入。
 
@@ -140,3 +140,7 @@ Frontend 创建 Session 时通过 `SessionOptions.applicationVersion` 注入自�
 ## 模型目录
 
 `await listModelCatalog(settings)` 返回内置与自定义 provider 的全部已知聊天模型，以及 provider 显示名、输入能力、reasoning、支持的 Thinking Level、context window、自定义来源和本地凭据是否配置的事实。目录不刷新模型、不刷新 OAuth，也不发送模型请求；无凭据模型仍保留，由 Frontend 决定显示哪些 provider。每次调用重新检测凭据，失败向调用方传播；目录不会改写 settings 或 Session。
+
+`readSessionSnapshot({ cwd, homeDir, id })` 提供不取得写者 lease 的单次已提交快照，可显示其他进程占用的 Session。它复用原生只读 storage kernel 与 Transcript 投影，不启动 Harness 恢复、Hooks 或模型，不修复损坏文件；需要修复时返回错误。快照包括消息、原生 live/inbox 状态、Run Summaries 与 Todo/Plan/Goal/子代理目录，进程内 Job 和子代理活动不由只读访问重建；它不提供订阅或 Interaction 回复能力。
+
+`listSessions` 的 `createdAt` 是 Session store 目录的文件系统出生时间，与持久化元数据里的 `updatedAt` 独立；它支持桌面端按创建时间或更新时间排序，不新增 JSONL 元数据字段。复制或重建存储目录会改变这个时间。

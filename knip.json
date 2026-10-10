@@ -20,6 +20,9 @@
       "entry": ["worker.ts"],
       "project": ["*.ts"],
       "ignoreDependencies": ["@earendil-works/pi-mcp"]
+    },
+    "packages/server": {
+      "entry": ["tests/helpers/signal-server.ts", "src/main.ts"]
     }
   },
   "ignoreDependencies": ["supports-hyperlinks"]

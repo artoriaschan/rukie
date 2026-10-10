@@ -59,7 +59,7 @@ export interface ConversationObservationOptions {
   publish(events: readonly SessionEvent[]): void;
 }
 
-function parts(view: ConversationView) {
+function parts(view: Pick<ConversationView, "docs">) {
   // Durable creates and validates these reserved documents with its public built-in
   // tokens. ConversationView preserves their JSON representation and immutable frame.
   return {
@@ -166,7 +166,12 @@ function unknownOutcome(
 
 async function readUnknownOutcomes(
   entries: readonly EntryRecord[],
-  harness: Harness,
+  harness: {
+    getTask(
+      id: TaskId,
+      context: Context,
+    ): Promise<TaskRecord<JsonValue, JsonValue, unknown> | undefined>;
+  },
   context: Context,
 ) {
   const outcomes = new Set<string>();
@@ -188,7 +193,12 @@ async function readUnknownOutcomes(
 export async function projectCommittedOutcomeFacts(
   messages: readonly TranscriptMessage[],
   entries: readonly EntryRecord[],
-  harness: Harness,
+  harness: {
+    getTask(
+      id: TaskId,
+      context: Context,
+    ): Promise<TaskRecord<JsonValue, JsonValue, unknown> | undefined>;
+  },
   context: Context,
 ): Promise<readonly TranscriptMessage[]> {
   const outcomes = await readUnknownOutcomes(entries, harness, context);
@@ -289,35 +299,9 @@ export async function createConversationObservation(options: ConversationObserva
     return messagesByEntry.get(String(entry.id)) ?? [];
   }
   function capture(view: ConversationView): Snapshot {
-    const { live, inbox, agent, usage } = parts(view);
-    return {
-      type: "snapshot",
-      sessionId,
-      entries: view.entries,
-      messages,
-      ...(live.run ? { run: { inputs: live.run.inputs } } : {}),
-      ...(live.generation
-        ? {
-            generation: {
-              ...live.generation,
-              ...(live.generation.message
-                ? { message: liveAssistant(live.generation.message) }
-                : {}),
-            },
-          }
-        : {}),
-      tools: live.tools ?? [],
-      compactions: live.compactions ?? [],
-      inbox: queued(inbox),
-      queuedInputs: queuedInputProjection(
-        parts(view).inbox,
-        view.docs["rukie.pending-input-facts"] as PendingInputFacts | undefined,
-      ),
-      agent,
-      usage,
-      ...facts,
-    };
+    return committedSnapshot(sessionId, view, messages, facts, liveAssistant);
   }
+
   project(current);
   let snapshot = capture(current);
 
@@ -653,5 +637,41 @@ export async function createConversationObservation(options: ConversationObserva
       stop();
       unsubscribeClose();
     },
+  };
+}
+
+/** Shared snapshot frame for live observation and lease-free committed reads. */
+export function committedSnapshot(
+  sessionId: string,
+  view: Pick<ConversationView, "entries" | "docs">,
+  messages: readonly TranscriptMessage[],
+  facts: Facts,
+  assistant: (message: AssistantMessage) => TranscriptAssistantMessage = (message) => message,
+): Snapshot {
+  const { live, inbox, agent, usage } = parts(view);
+  return {
+    type: "snapshot",
+    sessionId,
+    entries: view.entries,
+    messages,
+    ...(live.run ? { run: { inputs: live.run.inputs } } : {}),
+    ...(live.generation
+      ? {
+          generation: {
+            ...live.generation,
+            ...(live.generation.message ? { message: assistant(live.generation.message) } : {}),
+          },
+        }
+      : {}),
+    tools: live.tools ?? [],
+    compactions: live.compactions ?? [],
+    inbox: queued(inbox),
+    queuedInputs: queuedInputProjection(
+      inbox,
+      view.docs["rukie.pending-input-facts"] as PendingInputFacts | undefined,
+    ),
+    agent,
+    usage,
+    ...facts,
   };
 }

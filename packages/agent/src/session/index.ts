@@ -1,3 +1,4 @@
+import { readTranscript, readRunSummaries } from "./history.ts";
 import { PendingInputFactsDoc, queuedInputProjection, type QueuedInput } from "./queued-inputs.ts";
 export type { QueuedInput } from "./queued-inputs.ts";
 import { createConversationRuntime, createConversationRuntimePool } from "./conversation/index.ts";
@@ -37,7 +38,6 @@ import {
   type EntryDraft,
   type Storage,
   type EntryRecord,
-  type Cursor,
   ROOT_CONVERSATION_ID,
 } from "@earendil-works/pi-durable";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
@@ -774,16 +774,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         "hook:Notification",
       );
     };
-    const fullHistory = async (id = conversation.id) => {
-      const entries: EntryRecord[] = [];
-      let cursor: Cursor | undefined;
-      do {
-        const page = await lease.storage.scanEntries({ conversationId: id }, 256, cursor, context);
-        entries.push(...page.items);
-        cursor = page.next;
-      } while (cursor);
-      return entries.reverse();
-    };
+    const fullHistory = (id = conversation.id) => readTranscript(lease.storage, id, context);
     const promptFacts = new Map<string, string>();
     const rememberPrompts = (entries: readonly EntryRecord[]) => {
       for (const entry of entries) {
@@ -793,27 +784,6 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     };
     const initialHistory = await fullHistory();
     rememberPrompts(initialHistory);
-    const readRunSummaries = (entries: readonly EntryRecord[]): RunSummaryFact[] =>
-      entries.flatMap((entry) => {
-        const value = entry.data;
-        return entry.kind === "rukie.run-summary" &&
-          value &&
-          typeof value === "object" &&
-          !Array.isArray(value) &&
-          typeof value.afterMessage === "number" &&
-          typeof value.durationMs === "number" &&
-          typeof value.endedAt === "number" &&
-          typeof value.success === "boolean"
-          ? [
-              {
-                afterMessage: value.afterMessage,
-                durationMs: value.durationMs,
-                endedAt: value.endedAt,
-                success: value.success,
-              },
-            ]
-          : [];
-      });
     runSummaries = readRunSummaries(initialHistory);
     const checkpoints = createCheckpoints({
       homeDir: options.homeDir,
@@ -2729,6 +2699,65 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       }
       return submitted;
     }
+    const humanCompletions = new Map<string, Promise<RequestResult>>();
+    const completedBoundaries = new Set<number>();
+    let completionWrites = Promise.resolve();
+    function completeHumanRequest(
+      requestId: string,
+      submissionId: Parameters<typeof ledger.resultFor>[1],
+    ) {
+      const existing = humanCompletions.get(requestId);
+      if (existing) return existing;
+      const completion = ledger.resultFor(requestId, submissionId).then(async (result) => {
+        const record = await lease.storage.submission(submissionId, context);
+        // Withdrawal before placement is a queue outcome, never a completed Turn.
+        if (!record?.entry) return result;
+        const history = await fullHistory();
+        const nextInput = history.find(
+          (entry) => entry.id > record.entry! && entry.kind === "input",
+        );
+        const end =
+          record.status === "done" && record.type === "input" ? record.answer : nextInput?.id;
+        const finished = history.filter(
+          (entry) =>
+            end === undefined || (record.status === "done" ? entry.id <= end : entry.id < end),
+        );
+        const afterMessage = transcriptMessages(finished).length;
+        const boundary = finished.at(-1)?.id;
+        if (boundary === undefined) return result;
+        const write = completionWrites.then(async () => {
+          if (completedBoundaries.has(boundary)) return;
+          await conversation.commit(
+            (tx) =>
+              tx.appendEntry(conversation.id, {
+                kind: "rukie.run-summary",
+                data: {
+                  afterMessage,
+                  durationMs: result.durationMs,
+                  endedAt: Date.now(),
+                  success: result.success,
+                },
+              }),
+            context,
+          );
+          completedBoundaries.add(boundary);
+          await writeMetadata();
+          custom({ type: "result", ...result });
+        });
+        completionWrites = write.catch(() => {});
+        await write;
+        return result;
+      });
+      humanCompletions.set(requestId, completion);
+      void completion.then(
+        () => humanCompletions.delete(requestId),
+        (error) => {
+          humanCompletions.delete(requestId);
+          if (!closed) warn(error);
+        },
+      );
+      return completion;
+    }
     function modelMessages(): readonly Message[] {
       return observation.view().entries.flatMap((entry) => entry.model ?? []);
     }
@@ -3252,8 +3281,14 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         queuedAdmission = admission.catch(() => {});
         steeringAdmissions.add(admission);
         try {
-          await admission;
+          const submission = await admission;
+          completeHumanRequest(requestId, submission.id);
           await observation.flush();
+          return requestId;
+        } catch (error) {
+          if (!(error instanceof PromptHookBlocked)) throw error;
+          custom({ type: "result", ...error.result });
+          ledger.publishSettled(error.result);
           return requestId;
         } finally {
           steeringAdmissions.delete(admission);
@@ -3319,6 +3354,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         if (manualCompactionTask) await harness.abortTask(manualCompactionTask, context);
         await conversation.abort(context);
         await goalAbort;
+        await Promise.all(humanCompletions.values());
         await observation.flush();
         return withdrawn;
       },
@@ -3374,22 +3410,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           const requestId = requestIds.human();
           preparedMcpRequestId = requestId;
           const submission = await submit(prompt, input.images, "reject", requestId, input.signal);
-          const result = await ledger.resultFor(requestId, submission.id);
-          await conversation.commit(
-            (tx) =>
-              tx.appendEntry(conversation.id, {
-                kind: "rukie.run-summary",
-                data: {
-                  afterMessage: observation.messages().length,
-                  durationMs: result.durationMs,
-                  endedAt: Date.now(),
-                  success: result.success,
-                },
-              }),
-            context,
-          );
-          await writeMetadata();
-          custom({ type: "result", ...result });
+          const result = await completeHumanRequest(requestId, submission.id);
           if (input.signal?.aborted) throw input.signal.reason;
           if (!result.success) throw new Error(result.error ?? "Run failed.");
           return result;
@@ -3409,7 +3430,11 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           input.signal?.removeEventListener("abort", abort);
         }
       },
-      waitForRequest: (requestId) => ledger.waitForRequest(requestId),
+      async waitForRequest(requestId) {
+        const result = await ledger.waitForRequest(requestId);
+        await humanCompletions.get(requestId);
+        return result;
+      },
       async waitForIdle() {
         // A native Run can settle before its host receipt/metadata commit releases
         // foreground admission. Readiness includes that owned completion boundary.
@@ -3417,6 +3442,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         await mcpManager.waitForIdle();
         await jobAdmissions;
         await conversation.waitForIdle(context);
+        await Promise.all(humanCompletions.values());
         await observation.flush();
       },
       close(reason = "exit") {
@@ -3445,6 +3471,13 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             await Promise.all(shutdownPublications);
           });
           await release(() => plan.settleWrites());
+          // Settled human receipts finish before storage closes; active admissions
+          // remain durable for resume rather than blocking Session.close.
+          if (!observation.running() && observation.snapshot().queuedInputs.length === 0)
+            await release(async () => {
+              await Promise.all(humanCompletions.values());
+            });
+          await release(() => completionWrites);
           await release(() => harness.close(context));
           permissionBatch.close();
           await release(() => observation.close());
@@ -3494,6 +3527,24 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       goalRuntime.activation.requestId,
     );
     options.initializationSignal?.throwIfAborted();
+    // Recovered admissions have the same completion owner as inputs accepted by this host.
+    const pendingHumans = (
+      await lease.storage.scanSubmissions(
+        { conversationId: conversation.id },
+        100000,
+        undefined,
+        context,
+      )
+    ).items;
+    for (const input of pendingHumans) {
+      if (
+        input.type === "input" &&
+        (input.status === "queued" || input.status === "placed") &&
+        input.requestId &&
+        requestKind(input.requestId) === "human"
+      )
+        completeHumanRequest(input.requestId, input.id);
+    }
     harness.resume();
     return session;
   } catch (error) {
