@@ -121,3 +121,7 @@ Agent Core 用一个统一入口同时修改模型和 Thinking Level，切换只
 | 面板文案只在 frontend                                                 | 沿用 [ADR-0008](../../docs/adr/0008-locale-agnostic-agent-core.md) | Agent Core 只返回事实（目录、实际生效的选择），文案由 TUI 生成                                                          |
 | 小终端降级与阅读位置                                                  | 沿用 [ADR-0006](../../docs/adr/0006-fullscreen-tui.md)             | 面板高度预算不破坏 bottom-follow 和小终端处理                                                                           |
 | 只对 Session 生效、只往低档降、去掉 Recent Models                     | 无需 ADR                                                           | 均可低成本撤回，不涉及模块所有权或持久化格式的长期取舍；术语已记录在 CONTEXT.md                                         |
+
+## Code review evidence
+
+Review fixes count ModelPicker chrome within its allocation, add actual terminal-height and 40×12 persistent-panel coverage, and update four thinking fixtures to reasoning-capable per-case metadata. Detailed red/green, synchronization correction, timings and ADR assessment are recorded in ticket 07. Integration acceptance and closure remain with the integration owner.

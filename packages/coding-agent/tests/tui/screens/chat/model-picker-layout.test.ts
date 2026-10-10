@@ -144,3 +144,41 @@ test("picker close and resize preserve historical reading and bottom follow", as
     await app.cleanup();
   }
 });
+
+test("picker fits 40×12 with persistent Todo and Subagent panels", async () => {
+  const app = await launch();
+  try {
+    app.stdin.write("populate panels\r");
+    await app.waitFor(() => app.calls.length === 1);
+    app.calls[0]!.tools([
+      { name: "todo_write", args: { todos: [{ content: "keep task", status: "pending" }] } },
+      { name: "subagent", args: { description: "Keep child", prompt: "child work" } },
+    ]);
+    await app.waitFor(() => app.calls.length === 3);
+    app.calls
+      .find(
+        (call, index) =>
+          index > 0 &&
+          !call.context.messages.some(
+            (message) =>
+              message.role === "user" && JSON.stringify(message.content).includes("child work"),
+          ),
+      )!
+      .finish();
+    await app.waitFor(() => screen(app).includes("background tasks: 1 subagents"));
+    app.resize(40, 12);
+    await app.waitFor(() => app.screen().length === 12);
+    app.stdin.write("/model\r");
+    await app.waitFor(
+      () => screen(app).includes("alpha/first") && screen(app).includes("Enter · Esc"),
+    );
+    expect(screen(app)).toContain("keep task");
+    expect(screen(app)).toContain("Subagents");
+    expect(app.screen().at(-2)).toContain("Ask");
+    expect(screen(app)).toContain("alpha/first");
+    app.stdin.write("\x1b[B\r");
+    await app.waitFor(() => screen(app).includes("Model changed to fourth"));
+  } finally {
+    await app.cleanup();
+  }
+});

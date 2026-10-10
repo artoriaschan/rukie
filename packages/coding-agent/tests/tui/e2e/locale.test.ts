@@ -1,3 +1,4 @@
+import { controlledModel } from "../helpers/model";
 import { startWithClock } from "../helpers/clock-app";
 import { expect, test } from "bun:test";
 import { join } from "node:path";
@@ -257,7 +258,10 @@ test("Chinese context segment names use Chinese while technical abbreviations st
 });
 
 test("English welcome header localizes configured effort", async () => {
-  const app = await start(["--thinking", "high"], { env: { LANG: "en" } });
+  const app = await start(["--thinking", "high"], {
+    session: { model: { ...controlledModel().model, reasoning: true } },
+    env: { LANG: "en" },
+  });
   try {
     await app.waitFor(() => app.screen().some((line) => line.includes("High effort")));
     expect(app.screen().join("\n")).not.toContain("推理强度");
