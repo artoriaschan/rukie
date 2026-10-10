@@ -2,7 +2,7 @@
 
 ## Destination
 
-桌面端 MVP 的 `spec.md` 与实现工单：架构、包边界、wire 协议、sidecar 生命周期、UI 选型与主界面布局全部锁定，可直接按工单开工。
+桌面端 MVP 的 `spec.md` 与实现工单：架构、包边界、wire 协议、sidecar 生命周期、UI 选型与主界面布局全部锁定，可直接按工单开工。MVP 只支持 macOS arm64，在本地编译出 ad-hoc 签名的 `.app`，不接入 GitHub Actions。
 
 ## Notes
 
@@ -16,7 +16,7 @@
 
 - [01: 包结构与 Effect 边界](issues/01-packages-and-effect-boundary.md#answer): 新建 `ui`/`server`/`desktop` 三包，`coding-agent/src/view/` 不抽取；Hono 做接入层，Effect 只在 server 内做业务运行层。
 - [02: 连接与进程语义](issues/02-connection-and-process-semantics.md#answer): 单 sidecar 多 Session，token + Origin/Host 校验，断连不结算 Interaction，随机端口握手与崩溃重启一次。
-- [03: MVP 范围与产品约束](issues/03-mvp-scope.md#answer): 目的地是 spec；浏览器仅作开发模式；最小闭环功能；沿用 Electron 选型；beUI 默认风格（shadcn 补位，见 07 的 2026-10-10 调整）+ Pencil 视觉稿布局；从一开始接 zh/en。
+- [03: MVP 范围与产品约束](issues/03-mvp-scope.md#answer): 目的地是 spec；浏览器仅作开发模式；最小闭环功能；只支持 macOS arm64，本地编译 ad-hoc 签名 `.app`，不接入 GitHub Actions（2026-10-10 调整）；沿用 Electron 选型；beUI 默认风格（shadcn 补位，见 07 的 2026-10-10 调整）+ Pencil 视觉稿布局；从一开始接 zh/en。
 - [08: 确定 Pencil 视觉稿来源](issues/08-task-pencil-design-source.md#answer): `~/Desktop/rukie.pen`，MVP 参照外壳、会话侧栏、新会话、输入框与权限模式、Turn 指示器画板；工具调用块与权限审批卡片无画板，由粗稿补齐。
 - [07: shadcn/beui 组件库](issues/07-research-beui.md#answer): beUI（`@beui` registry，MIT）经 shadcn CLI 安装，替代 ai-elements；2026-10-10 改为 beUI 优先、shadcn 补位；覆盖 MVP 主要组件，缺 Markdown 渲染与 i18n，Vite 8 构建未实测。
 - [04: Effect 版本与 Bun、Hono 集成](issues/04-research-effect-on-bun.md#answer): 锁定 `effect` 4.0.2，暂不用 platform-bun；进程级 ManagedRuntime + Layer，Run 存于 server 级 FiberMap，中断经 AbortSignal 传给 Agent Core；TypeBox 校验后以 Static 类型进入 Effect。
@@ -26,15 +26,24 @@
 - [12: Agent Core 在 server 中的直接调用](issues/12-research-agent-core-in-server.md#answer): `@rukie/agent` 可直接 import，按 Session 传 cwd/homeDir 支持多项目；server 负责 Interaction 桥接回调、单飞打开与 `onWarning`；Agent Core 需先类型化 busy 错误并让 `list()` 容错。
 - [09: 主界面粗稿](issues/09-prototype-main-window.md#answer): 第九轮粗稿已确认：Codex 式外壳、四分组侧栏、折叠 Turn 对话流、输入框上方停靠审批、上下文环与模型详情；组件来源同时改为 beUI 优先、shadcn 补位。
 - [10: wire 协议消息清单](issues/10-wire-protocol-messages.md#answer): 单窗口单 WS 按 `sessionId` 复用、新连接接管旧连接，命令全走 WS 并带错误码；SessionEvent 原样转发、Headless 不改，命令用 TypeBox；`InteractionIdentity.epoch` 作关联 ID 并在订阅时补发；运行中发送走原生 `followUp` 成为 Queued Input，可立即发送或撤回，停止时回填输入框；项目与置顶由桌面端注册表维护。
+- [18: 孤儿 Background Job 的回收](issues/18-orphan-background-jobs.md#answer): MVP 不回收，记为已知限制，Agent Core 不持久化 pgid；desktop main 停 sidecar 先 SIGTERM、宽限期后 SIGKILL，sidecar 收到 SIGTERM 关闭全部 Session；崩溃后不提示遗留 Job。
+- [13: Vitest 在 ui 与 desktop 的接入](issues/13-research-vitest-setup.md#answer): ui 用 Vitest browser mode（Playwright Chromium headless shell + `vitest-browser-react`），desktop main 用 Node 环境 + `vi.mock("electron")`；根 `bunfig.toml` 排除两包使 `bun test` 与 CI 分片不收集；`test:desktop` 只进本地 `check`；test-policy 加 runner 边界；vitest 5.0.3。
+- [16: Electron `app://rukie` 文件服务](issues/16-research-electron-app-scheme.md#answer): `ready` 前注册 standard + secure + supportFetchAPI，`loadURL` 前在窗口 session 上 `protocol.handle`，只认 host `rukie`、解码后防越界、SPA 回退、显式 content-type 与 CSP；WS 与 fetch 的 Origin 实测为 `app://rukie`；fuses 全开可用。
+- [17: 本地 macOS 打包与签名](issues/17-research-packaging-details.md#answer): `mac.identity: "-"` ad-hoc + hardened runtime，`afterSign` 给 sidecar 只留 `allow-jit`、`rg` 无 entitlement 并重封；构建脚本经 `BUN_BE_BUN=1` 断言 JIT；`rg` 用锁定的 `@vscode/ripgrep` 放 sidecar 旁；本地构建无 quarantine，spctl 不进验收。
+- [14: 专用库](issues/14-research-specialized-libraries.md#answer): Transcript 按 Turn 用 `@tanstack/react-virtual` 3.14.14 虚拟化并底部跟随；命令输出 `anser` 2.3.5 + React；diff 用 `diff` 8.0.4 与改造后的 beUI `file-diff`；shiki 4.5.0 `shiki/core` + `@shikijs/stream`；MVP 无编辑器与交互终端。
+- [15: beUI 安装实测](issues/15-research-beui-install.md#answer): shadcn CLI 4.21.4 安装 23 个 beUI 组件可构建（需修一处自引用）；点击菜单用 shadcn `dropdown-menu` 补位；主题以 beUI `theme.css` 换 DESIGN.md 值，`text-ui-*` 在 `@theme inline` 定义且 `cn` 必须 `extendTailwindMerge`；拷入后约 100 处字号、90 条文案需改写，正则 lint 可禁非 `text-ui-*` 字号。
+
+- [19: `packages/ui` 分层](issues/19-ui-package-layering.md#answer): `app`/`components`/`store`/`client`/`host` 五层单向依赖，oxlint `no-restricted-imports` 强制；ui 只 `import type` Agent Core 类型；SessionEvent 归约、diff 行与 Markdown 在 ui 重写，不复用 `coding-agent/src/view/`；字典在 `packages/ui/src/i18n/`；host 只有连接、选文件夹、在 Finder 显示、在终端打开四项。
+- [20: ADR 清单](issues/20-adr-list.md#answer): 新增四个 ADR（桌面端包结构、server 技术栈、wire 协议与本机鉴权、桌面端存储），部分替代 ADR-0012、整份替代 ADR-0003；ADR-0001、ADR-0004 只更新事实；平台范围、孤儿 Job、签名、专用库不写 ADR。正文在 `/to-spec` 阶段与 spec 一起起草。
 
 ## Not yet specified
 
-- spec 细节（由 `/to-spec` 直接定，不另开工单）：桌面端注册表的文件位置、格式与默认工作区目录；Session 空闲关闭的宽限期；sidecar 重启超时与次数。
-- Agent Core 前置改动的落地方式（方向已定于 05、10、12：busy 错误带 code、`list()` 按目录容错、公开 Queued Input），作为 spec 的第一批实现工单；孤儿 Background Job 是否并入取决于 18。
-- spec 撰写与实现工单切分顺序：13–20 结题后进入 `/to-spec`。
+<!-- 目的地已到达：[spec.md](spec.md) 与实现工单 21–30 已切出（2026-10-10）。原 fog 全部归入 spec：DESIGN.md 与 tech-stack 修订、beUI 组件改造进 27 与 29，本地测试与交付规则进 23，打包遗留进 30，待实测项进 27–29 的 GUI 浏览器验证，虚拟列表无障碍记为 spec 已知限制，会话内搜索移出 MVP。 -->
 
 ## Out of scope
 
 - Web 产品（远程访问、部署、多用户认证）：以后另开 effort 复用 `packages/ui`。
 - Agent Core 迁移到 Effect：与 ADR-0024 大面积交叉，另开 effort。
+- Windows、Linux、macOS x64 与 universal 构建，Developer ID 签名、公证与 Windows 签名：MVP 只在本地构建 macOS arm64 的 ad-hoc 签名 `.app`（[03](issues/03-mvp-scope.md#comments) 2026-10-10）。
+- 桌面端接入 GitHub Actions（构建、测试分片、打包与发布）：MVP 只在本地编译与验证（[03](issues/03-mvp-scope.md#comments) 2026-10-10）。
 - MVP 之外的 TUI 对等能力（Plan Mode、Rewind、Background Jobs 视图、MCP 面板、Goal、slash commands 等）与桌面设置界面。

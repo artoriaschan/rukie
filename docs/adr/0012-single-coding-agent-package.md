@@ -12,7 +12,7 @@ Headless CLI、TUI 和只服务 TUI 的渲染栈分散在多个包，增加应�
 
 `apps/neant-cli`、`apps/neant-tui` 与 `packages/tui` 合并为 `packages/coding-agent`，提供唯一的可执行程序：`-p` 或 `--goal` 进入 Headless CLI，否则进入 TUI，用法对齐 Claude Code。Agent Core 仍是 `packages/agent`，`apps/` 不再存在。两种模式共享一份参数解析，再按模式动态加载，Headless CLI 不加载 React 与终端渲染栈。
 
-终端渲染栈目前只服务 TUI，将来的 web 与桌面端也复用不到终端 cell 网格和 ANSI 输出，单独成包只增加维护成本。它们能复用的是与终端无关的呈现逻辑，因此包内分出 `view/`，在引入 web 或桌面端时整体抽成 UI 包。
+终端渲染栈目前只服务 TUI，将来的 web 与桌面端也复用不到终端 cell 网格和 ANSI 输出，单独成包只增加维护成本。包内分出与终端无关的 `view/`，供 TUI 与 Headless CLI 共用。原记录还写道“在引入 web 或桌面端时整体抽成 UI 包”，这一句已由 [ADR-0029](0029-desktop-package-structure.md) 替代：GUI 不复用 `view/`，跨端只共享 `@rukie/shared` 的协议类型。本决定的其余内容继续有效。
 
 包内按目录分层，依赖只向下；上层由 Oxlint `no-restricted-imports` 检查，ink 由 `scripts/check-ink-boundaries.ts` 的 AST 检查 imports、reexports 与 dynamic imports：
 
@@ -33,4 +33,4 @@ Headless CLI、TUI 和只服务 TUI 的渲染栈分散在多个包，增加应�
 
 ## 影响
 
-渲染栈隔离从包边界变为目录边界，依赖 lint 与 ink 的 AST 导入检查维持；跨端复用以终端无关的 view 为基础。
+渲染栈隔离从包边界变为目录边界，依赖 lint 与 ink 的 AST 导入检查维持；`view/` 只在 TUI 与 Headless CLI 之间复用，桌面端见 ADR-0029。
