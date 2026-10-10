@@ -51,14 +51,12 @@ export const WireCommandSchema = Type.Union([
         {
           provider: id,
           modelId: id,
-          thinkingLevel: Type.Optional(
-            Type.Union(THINKING_LEVELS.map((value) => Type.Literal(value))),
-          ),
+          thinkingLevel: Type.Optional(Type.Enum([...THINKING_LEVELS])),
         },
         { additionalProperties: false },
       ),
     ),
-    permissionMode: Type.Optional(Type.Union(PERMISSION_MODES.map((value) => Type.Literal(value)))),
+    permissionMode: Type.Optional(Type.Enum([...PERMISSION_MODES])),
   }),
   command("session.subscribe", session),
   command("session.unsubscribe", session),
@@ -73,11 +71,11 @@ export const WireCommandSchema = Type.Union([
     ...session,
     provider: id,
     modelId: id,
-    thinkingLevel: Type.Optional(Type.Union(THINKING_LEVELS.map((value) => Type.Literal(value)))),
+    thinkingLevel: Type.Optional(Type.Enum([...THINKING_LEVELS])),
   }),
   command("session.set_permission_mode", {
     ...session,
-    mode: Type.Union(PERMISSION_MODES.map((value) => Type.Literal(value))),
+    mode: Type.Enum([...PERMISSION_MODES]),
   }),
   command("interaction.reply", {
     identity,

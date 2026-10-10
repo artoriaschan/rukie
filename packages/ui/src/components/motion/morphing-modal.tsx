@@ -2,9 +2,10 @@ import { useComponentText } from "@/lib/i18n";
 // beui.dev/components/motion/morphing-modal
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { type ReactNode, useEffect } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import { EASE_OUT, SPRING_PANEL } from "@/lib/ease";
 import { PresenceGate } from "@/lib/presence-gate";
+import { useModalFocus } from "@/lib/hooks/use-modal-focus";
 import { cn } from "@/lib/utils";
 
 export interface MorphingModalProps {
@@ -15,6 +16,7 @@ export interface MorphingModalProps {
   /** "bottom" anchors to the viewport bottom (mobile-like). "center" centers vertically. */
   placement?: "bottom" | "center";
   className?: string;
+  label?: string;
 }
 
 export function MorphingModal({
@@ -23,10 +25,13 @@ export function MorphingModal({
   children,
   placement = "bottom",
   className,
+  label,
 }: MorphingModalProps) {
   const componentText = useComponentText();
 
   const open = viewId !== null;
+  const panel = useRef<HTMLDivElement>(null);
+  useModalFocus(open, panel);
   const reduce = useReducedMotion();
   const enterY = reduce ? 0 : placement === "bottom" ? 40 : 20;
   const enterScale = reduce ? 1 : 0.97;
@@ -81,6 +86,16 @@ export function MorphingModal({
             >
               <motion.div
                 key="panel"
+                ref={panel}
+                role="dialog"
+                aria-modal="true"
+                aria-label={label ?? componentText("component.close-modal")}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    onClose();
+                  }
+                }}
                 layout
                 initial={{ opacity: 0, y: enterY, scale: enterScale }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
