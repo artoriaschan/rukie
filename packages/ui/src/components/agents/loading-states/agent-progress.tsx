@@ -66,7 +66,7 @@ export function AgentProgress({
   return (
     <span
       role="status"
-      aria-label={`${label}, in progress`}
+      aria-label={componentText("component.progress-label", { label })}
       className={cn(
         "inline-flex items-center gap-3 font-mono text-ui-base text-muted-foreground",
         className,

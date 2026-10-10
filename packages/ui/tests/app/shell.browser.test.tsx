@@ -285,3 +285,106 @@ test("stopping hands queued text and named images back before the current draft"
     await commands.stopWire(connection.port);
   }
 });
+
+test("Chinese project errors and disconnected pending sends present localized actionable copy", async () => {
+  await page.viewport(1280, 900);
+  const connection = await commands.startWire();
+  const screen = await render(<App host={{ getConnection: async () => connection }} locale="zh" />);
+  const url = `http://127.0.0.1:${connection.port}`;
+  try {
+    await screen.getByRole("button", { name: "添加项目", exact: true }).click();
+    await screen.getByRole("textbox", { name: "项目文件夹路径" }).fill("/missing");
+    await fetch(`${url}/error`, {
+      method: "POST",
+      body: JSON.stringify({ type: "project.add", code: "project_not_found" }),
+    });
+    await screen.getByRole("button", { name: "添加", exact: true }).click();
+    await expect
+      .element(screen.getByRole("alert"))
+      .toHaveTextContent("操作失败：项目文件夹不存在，请重新选择。");
+    await fetch(`${url}/error`, {
+      method: "POST",
+      body: JSON.stringify({ type: "project.add", code: "unsafe-code-secret" }),
+    });
+    await screen.getByRole("button", { name: "添加", exact: true }).click();
+    await expect
+      .element(screen.getByRole("alert"))
+      .toHaveTextContent("操作失败：无法处理此操作，请重试。");
+    await screen.getByRole("button", { name: "取消", exact: true }).click();
+    await fetch(`${url}/hold`);
+    await screen.getByRole("textbox", { name: "输入消息", exact: true }).fill("等待回复");
+    await userEvent.keyboard("{Enter}");
+    await expect
+      .poll(async () =>
+        (await (await fetch(`${url}/commands`)).json()).some(
+          (c: { type: string }) => c.type === "session.create",
+        ),
+      )
+      .toBe(true);
+    window.dispatchEvent(new CustomEvent("rukie:connection-change", { detail: "disconnected" }));
+    await expect
+      .element(screen.getByRole("alert"))
+      .toHaveTextContent("操作失败：连接已断开，请重试。");
+    expect(screen.getByRole("alert").element().textContent).not.toContain("disconnected");
+  } finally {
+    await screen.unmount();
+    await commands.stopWire(connection.port);
+  }
+});
+
+test("sidebar status follows fresh summaries across unselected permission waits and completion", async () => {
+  await page.viewport(1280, 900);
+  const connection = await commands.startWire();
+  const screen = await render(<App host={{ getConnection: async () => connection }} />);
+  const send = async (message: object) =>
+    fetch(`http://127.0.0.1:${connection.port}/message`, {
+      method: "POST",
+      body: JSON.stringify(message),
+    });
+  const summary = (running: boolean, waitingPermission: boolean) => ({
+    type: "sessions_changed",
+    sessions: [
+      {
+        id: "one",
+        title: "Fix compiler with a very long Session title ".repeat(8),
+        titleSource: "prompt",
+        createdAt: 1,
+        updatedAt: 2,
+        messageCount: 1,
+        model: "test/script",
+        cwd: "/project",
+        running,
+        waitingPermission,
+      },
+    ],
+    projects: [
+      { id: "long", path: "/project", name: "Project with a long folder name ".repeat(8) },
+    ],
+    pinned: [],
+    preferences: {},
+  });
+  try {
+    await expect.element(screen.getByText("Fix compiler").first()).toBeVisible();
+    await send(summary(true, true));
+    await expect.element(screen.getByLabelText("Waiting for confirmation").first()).toBeVisible();
+    expect(screen.getByLabelText("Running").elements()).toHaveLength(0);
+    await screen
+      .getByRole("button", { name: /Fix compiler/ })
+      .first()
+      .click();
+    await send({ type: "run_start", sessionId: "one", inputs: [] });
+    await screen.getByRole("button", { name: "New chat", exact: true }).click();
+    await send(summary(false, false));
+    await expect.poll(() => screen.getByLabelText("Running").elements().length).toBe(0);
+    expect(screen.getByLabelText("Waiting for confirmation").elements()).toHaveLength(0);
+    const sidebar = screen.getByRole("complementary", { name: "Home", exact: true }).element();
+    expect(sidebar.scrollWidth).toBeLessThanOrEqual(sidebar.clientWidth);
+    for (const child of sidebar.querySelectorAll("div")) {
+      if (getComputedStyle(child).overflowY === "auto")
+        expect(child.scrollWidth).toBeLessThanOrEqual(child.clientWidth);
+    }
+  } finally {
+    await screen.unmount();
+    await commands.stopWire(connection.port);
+  }
+});

@@ -13,7 +13,7 @@ status: accepted
 Hono 负责 HTTP 与 WebSocket 接入：路由、中间件、请求校验与响应。Effect 4.0.2 负责 server 内的业务编排、依赖注入、类型化错误、并发任务与资源生命周期。
 
 - 进程级只有一个 `ManagedRuntime`，Agent Core、桌面端注册表与 Run registry 以 Layer 注入。
-- Run 存在 server 级 `FiberMap` 中，按 Session 区分。WS 关闭不中断 Run；abort 命令移除对应 Fiber；graceful shutdown 时释放 runtime，中断全部 Run。
+- Agent Core 拥有 Run 与人类输入的完成记录；server 用 requestId 键控的 `FiberMap` 等待输入回执。WS 关闭只释放订阅，abort 调用 Session 并等待结算；这一资源归属部分由 [ADR-0033](0033-desktop-request-receipt-ownership.md) 替代原来的 Session-keyed Run Fiber 决定。
 - 调用 Agent Core 时包在 `Effect.promise((signal) => …)` 或 `Effect.tryPromise` 中，Fiber 中断经 AbortSignal 传给 Agent Core。
 - TypeBox 是唯一的 wire schema。Hono 把输入当作 `unknown` 校验，Effect 服务只接收校验后的 `Static` 类型。
 

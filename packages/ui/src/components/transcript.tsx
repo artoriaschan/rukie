@@ -169,7 +169,8 @@ export function Transcript({
   const t = useAppText();
   const viewport = useRef<HTMLDivElement>(null);
   const [following, setFollowing] = useState(true);
-  const [selected, setSelected] = useState<string>();
+  const currentGroup =
+    state.groups.findLast((group) => group.status === "running") ?? state.groups.at(-1);
   const virtual = useVirtualizer({
     count: state.groups.length,
     getScrollElement: () => viewport.current,
@@ -233,11 +234,11 @@ export function Transcript({
                 </div>
               ),
             }))}
-            activeId={selected}
+            activeId={currentGroup?.id}
+            highlightActive
             label={t("conversation.navigation")}
             itemSize={12}
             onItemSelect={(item) => {
-              setSelected(item.id);
               virtual.scrollToIndex(
                 state.groups.findIndex((group) => group.id === item.id),
                 { align: "start" },

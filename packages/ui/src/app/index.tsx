@@ -34,6 +34,7 @@ import { UiLocaleProvider, useAppText } from "../lib/i18n";
 import { cn } from "../lib/utils";
 import type { PermissionDecision } from "../lib/transcript";
 import { AppConversation } from "./conversation";
+import { useErrorText } from "./error";
 
 export type AppHost = Pick<DesktopHost, "getConnection"> &
   Partial<Omit<DesktopHost, "getConnection">>;
@@ -72,6 +73,7 @@ export function App({ locale = "en", ...props }: AppProps) {
 }
 function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "locale">) {
   const t = useAppText();
+  const errorText = useErrorText();
   const [store] = useState(createDesktopStore);
   const [client] = useState(() => createWireClient(host));
   const state = useSyncExternalStore(store.subscribe, store.getState, store.getState);
@@ -125,11 +127,7 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
   const currentProject = state.projects.find((project) => project.path === current?.cwd);
   const connected = state.connection === "connected";
   const safe = (action: () => Promise<unknown>) => {
-    void action().catch((reason) =>
-      setError(
-        t("app.error", { message: reason instanceof Error ? reason.message : String(reason) }),
-      ),
-    );
+    void action().catch((reason) => setError(t("app.error", { message: errorText(reason) })));
   };
   const select = async (sessionId: string) => {
     const previous = store.getState().selected;
@@ -401,16 +399,6 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
             : "";
       })
       .join("\n\n") ?? "";
-  const status = Object.fromEntries(
-    Object.entries(state.views).map(([id, value]) => [
-      id,
-      Object.keys(value.interactions).length
-        ? ("waiting" as const)
-        : value.running
-          ? ("running" as const)
-          : undefined,
-    ]),
-  );
   return (
     <div className="flex h-dvh min-h-0 flex-col bg-card text-ui-base text-foreground">
       <header className="flex h-11 shrink-0 items-center [-webkit-app-region:drag]">
@@ -563,7 +551,6 @@ function DesktopApp({ host, Conversation = AppConversation }: Omit<AppProps, "lo
                   preferences={state.preferences}
                   selected={state.selected}
                   ctrl={ctrl}
-                  status={status}
                   onSelect={(id) => safe(() => select(id))}
                   onNew={newChat}
                   onSearch={openSearch}

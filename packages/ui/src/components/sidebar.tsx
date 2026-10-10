@@ -24,7 +24,6 @@ export interface SidebarProps {
   preferences: WirePreferences;
   selected: string | null;
   ctrl: boolean;
-  status: Record<string, "running" | "waiting" | undefined>;
   onSelect: (id: string) => void;
   onNew: (project: string | null) => void;
   onSearch: () => void;
@@ -60,12 +59,12 @@ export function Sidebar(props: SidebarProps) {
           className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-2 text-left text-ui-base outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-current={props.selected === session.id ? "page" : undefined}
         >
-          {props.status[session.id] === "running" ? (
+          {session.running && !session.waitingPermission ? (
             <LoaderCircle
               aria-label={t("app.running")}
               className="size-3 shrink-0 animate-spin motion-reduce:animate-none"
             />
-          ) : props.status[session.id] === "waiting" ? (
+          ) : session.waitingPermission ? (
             <span
               aria-label={t("app.waiting")}
               className="size-2 shrink-0 rounded-full bg-warning"

@@ -5,6 +5,7 @@ import { WireError } from "../client";
 import { Transcript } from "../components/transcript";
 import { PermissionDock, QueuedInputs, Summary } from "../components/conversation-dock";
 import { useAppText } from "../lib/i18n";
+import { useErrorText } from "./error";
 import type { QueuedInput } from "@rukie/agent";
 function queued(value: unknown): value is QueuedInput {
   return (
@@ -38,6 +39,7 @@ export function AppConversation({
   onInteractionResolved,
 }: ConversationProps) {
   const t = useAppText();
+  const errorText = useErrorText();
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState("");
   const state = view.transcript;
@@ -84,7 +86,7 @@ export function AppConversation({
     } catch (reason) {
       if (reason instanceof WireError && reason.code === "interaction_stale")
         onInteractionResolved(epoch);
-      else setError(reason instanceof Error ? reason.message : String(reason));
+      else setError(errorText(reason));
     } finally {
       setPending(null);
     }
@@ -108,7 +110,7 @@ export function AppConversation({
       }
     } catch (reason) {
       if (!(reason instanceof WireError && reason.code === "not_queued"))
-        setError(reason instanceof Error ? reason.message : String(reason));
+        setError(errorText(reason));
     } finally {
       setPending(null);
     }

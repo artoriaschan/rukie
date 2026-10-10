@@ -76,6 +76,7 @@ export function Message({
   ...props
 }: MessageProps) {
   const reduce = useReducedMotion() ?? false;
+  const componentText = useComponentText();
 
   return (
     <MessageSideContext.Provider value={from === "user" ? "end" : "start"}>
@@ -83,7 +84,12 @@ export function Message({
         <motion.article
           data-slot="message"
           data-from={from}
-          aria-label={props["aria-label"] ?? `${from} message`}
+          aria-label={
+            props["aria-label"] ??
+            componentText("component.message-from", {
+              sender: componentText(from === "user" ? "component.user" : "component.assistant"),
+            })
+          }
           initial={
             initial ??
             (animateIn && !reduce
