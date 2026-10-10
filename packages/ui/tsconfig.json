@@ -4,9 +4,12 @@
     "outDir": "../../node_modules/.cache/tsc/ui",
     "types": ["vitest/browser"],
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
   },
-  "include": ["src", "tests", "vitest.config.ts"],
+  "include": ["src", "tests", "vitest.config.ts", "vite.config.ts"],
   "references": [
     {
       "path": "../shared"
