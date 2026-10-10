@@ -4,7 +4,7 @@
 
 Blocked by: 21, 23
 
-Status: claimed
+Status: resolved
 
 - [x] 只监听 `127.0.0.1` 随机端口，stdout 输出 `{port, token}`；Host、Origin、token 任一不符都拒绝升级，`rukie.v1` 为回显的 subprotocol
 - [x] 开发标志下额外放行 Vite 地址，非开发模式拒绝
@@ -23,3 +23,9 @@ Status: claimed
 - `bun run check:dev` passed including TypeScript, Knip, docs, test policy and package boundary checks. No full suite run.
 - ADR coverage: follows 0029–0032 without changing decisions. Permission/queued-input/idle lifecycle are issue25. Current session.create response has sessionId; requestId responses are explicitly pending issue25.
 - Status remains claimed pending integration review and final acceptance.
+
+## Answer
+
+随机 loopback 端口、Host/Origin/token 校验、单连接接管、Session 单飞与 snapshot 订阅已接入，真实 WS 鉴权和断连继续测试通过。
+
+最终代码集成 `8af81b85`；独立双轴评审、后续修复、适用本地验证和 ADR Coverage 结论见 [spec 的交付证据](../spec.md#delivery-evidence)。本地工作已完成，最终推送的 CI 尚待验收；此状态不表示 PR 已合并。

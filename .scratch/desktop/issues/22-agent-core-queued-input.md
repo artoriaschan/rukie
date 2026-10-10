@@ -4,7 +4,7 @@
 
 Blocked by: None (can start immediately)
 
-Status: claimed
+Status: resolved
 
 - [x] `followUp(prompt, {images?})` 在 Run 进行中返回 `requestId`，输入在当前 Run 停止调用工具后放入，多条按发送顺序各自形成一次用户消息
 - [x] 按 `requestId` 撤回返回原文与附件；目标已放入对话时返回可区分的结果（供 server 映射为 `not_queued`）
@@ -23,3 +23,9 @@ Issue 22 专用子代理实施；保持 claimed，等待集成分支评审与最
 - 本地验证：`bun test packages/agent/tests/e2e/queued-input.test.ts packages/agent/tests/e2e/images.test.ts packages/agent/tests/session packages/coding-agent/tests/view/conversation/activity/activity.test.ts`：69 pass / 0 fail / 5 files，1.024s 总计；新增队列文件 4 pass，470ms，总体每例少于 1s。实际子进程恢复覆盖已确认队列、原顺序、图片及名称。
 - `bun run check:dev` 通过（format、lint、types、Knip、scratch、docs、ink boundaries、test policy）。不运行全套；集成负责人负责最终聚合验收。
 - 文档：沿用 rukie-doc skill 更新 Agent README 的 Queued Input API 和取消/恢复义务。ADR 归属沿用 spec 中 ADR-0024 原生 inbox/恢复以及 ADR-0032 共享 JSONL，没有第二套队列或新持久化后端。
+
+## Answer
+
+Queued Input 原文、图片与 requestId 公开；followUp、立即发送、撤回及 abort 有序回填使用原生 inbox 和完成记录，恢复与同 Run steering 回归通过。
+
+最终代码集成 `8af81b85`；独立双轴评审、后续修复、适用本地验证和 ADR Coverage 结论见 [spec 的交付证据](../spec.md#delivery-evidence)。本地工作已完成，最终推送的 CI 尚待验收；此状态不表示 PR 已合并。

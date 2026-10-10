@@ -4,7 +4,7 @@
 
 Blocked by: 25, 28
 
-Status: claimed
+Status: resolved
 
 - [x] `store` 的 SessionEvent 归约（snapshot + 实时事件）用 Vitest Node 环境测试，含流式文本、工具开始与结束、中止与 Interaction
 - [x] Transcript 按 Turn 用 `@tanstack/react-virtual` 虚拟化，底部跟随，上翻停止跟随，`role="feed"`；Turn 折叠、中止与当前 Turn 状态；Turn 刻度跳转与预览
@@ -38,3 +38,9 @@ Status: claimed
 - 完整聚合检查与独立代码审查由 spec 主线程统一完成，本票保持 claimed，未关闭 spec、未推送或声明远端 CI 通过。
 
 - 已将当前集成基线 74a2aaa 合入本票分支（df617f46，无冲突），该树的 test:desktop 45 项通过（5.38s）及 check:dev 通过。随后仅收紧实际读取的 Transcript 身份/可选字段验证，非法 entryId 不进入呈现；Node store 两文件 9 项通过（215ms），check:dev 再通过，合法原生 GUI 行为未变。
+
+## Answer
+
+原生 Transcript、PromptGroup 虚拟化、Markdown/高亮/ANSI/diff、权限 Dock、队列和草稿所有权已完成；当前长刻度及 portal 预览修复通过实际 Electron hover/focus/键盘/窄窗口验收。
+
+最终代码集成 `8af81b85`；独立双轴评审、后续修复、适用本地验证和 ADR Coverage 结论见 [spec 的交付证据](../spec.md#delivery-evidence)。本地工作已完成，最终推送的 CI 尚待验收；此状态不表示 PR 已合并。

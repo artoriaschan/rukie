@@ -4,7 +4,7 @@
 
 Blocked by: 25, 26, 29
 
-Status: claimed
+Status: resolved
 
 - [x] sidecar 用 `bun build --compile`，注入 `RUKIE_COMPILED=true` 并关闭 dotenv/bunfig 自动加载，编译设置与 `scripts/release/build.ts` 共用
 - [x] sidecar 与锁定的 `@vscode/ripgrep-darwin-arm64` 的 `rg` 经 `extraResources` 放到 `Contents/Resources/sidecar/`；grep 工具在打包后找到 `rg`；编译版缺 ripgrep 的报错不再提 npm optionalDependencies
@@ -31,3 +31,9 @@ Status: claimed
 最终 aggregate 发现 TUI live error 与已安装 CLI ripgrep 错误断言仍要求旧 npm 安装措辞。公共行为已按本票统一为恢复完整 Rukie 安装并检查内置二进制执行权限；断言现在分别要求本地化恢复提示、执行权限提示、模型收到英文工具错误，以及 stream-json 的 `ripgrep-unavailable`，保留真实缺失/不可执行二进制测试。聚焦安装、TUI 错误、Conversation 集合 40 pass / 1187 assertions（13.81 s）；安装入口真实编译和进程清理成本保留，其余修复用例均低于 1 秒。
 
 产物适用性核对：保留的 `/tmp/rukie-desktop-artifacts/desktop-build.json` 记录源码提交 `1374619ae50331f5ee009c73701ce74c23d08351`。本次修复相对该提交的 Agent/Core、shared/i18n、ui/server/desktop、编译设置、desktop build 脚本、根 package.json 和 lockfile diff 为空；唯一生产变化位于不进入 sidecar 或 renderer 的 TUI Conversation。原产物、签名/JIT 与 review-fixes 打包冒烟证据继续适用，本次没有重复构建或伪称新增打包验收。
+
+## Answer
+
+一条本地 macOS arm64 构建命令生成真实 ad-hoc app；sidecar/rg 外置、精确签名、fuses、strict deep codesign 与 JIT 自检通过。真实编译产物完成流式/审批/bash/rg/Transcript 和进程退出验收。
+
+最终代码集成 `8af81b85`；独立双轴评审、后续修复、适用本地验证和 ADR Coverage 结论见 [spec 的交付证据](../spec.md#delivery-evidence)。本地工作已完成，最终推送的 CI 尚待验收；此状态不表示 PR 已合并。

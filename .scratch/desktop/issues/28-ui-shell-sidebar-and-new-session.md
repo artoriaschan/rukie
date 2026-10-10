@@ -4,7 +4,7 @@
 
 Blocked by: 24, 27
 
-Status: claimed
+Status: resolved
 
 - [x] `client`：连接、重连（每次重新 `getConnection`）、请求 `id` 关联、订阅与 `superseded` 处理；`store`：Session 列表、注册表偏好与连接状态归约；两者用 Vitest Node 环境测试
 - [x] 外壳、导航栏（只有首页）、侧栏四分组、折叠、显示与排序菜单、⌃1–⌃9、⌘N、⌘K 搜索浮层、置顶，偏好经 `preferences.set` 保存
@@ -27,3 +27,9 @@ Status: claimed
 - README 精确 Vite 命令运行通过，实际打印 `http://localhost:5173/`，严格固定 port 避免 Origin 不匹配。`bunx --no vite build --config packages/ui/vite.config.ts packages/ui` 通过；658.70 kB 单 JS bundle / gzip 206.50 kB 的 Vite chunk warning 保留，没有隐瞒构建提示。
 - 一次具名 `agent-browser --session rukie-desktop-28` 交付验收：真实 Vite localhost entry → 实际 server + fakeModel，临时 HOME；手动添加项目、first-send 持久化 Session、搜索与 Ctrl+1、native-less 菜单、draft 最终断开保留及 Retry，Light/Dark/420×800 无横向溢出。生产 bundle 再用 desktop 实际 `serveAppFile` 的 CSP 提供资源，scripts self / styles self+unsafe-inline，JS/CSS 200、无 inline script、无页面错误或 CSP violation。console 仅 Vite/React 开发信息及 reduced-motion 提示。浏览器与服务退出，临时 HOME 已删除；截图在工作树外 `/tmp/rukie-desktop-28-acceptance/light.png`、`dark.png`、`narrow.png`、`compiled-csp.png`。此为浏览器 acceptance，打包 Electron 验证属于 30。
 - 等待独立 review 与集成；当前 checkbox 表示实现者已验证，尚未将 issue 标成 done。
+
+## Answer
+
+项目与 Session 侧栏、首发创建、输入/模型/权限模式、偏好及连接恢复已完成；侧栏摘要为权威状态，后台运行/审批/结算与重载回归通过。
+
+最终代码集成 `8af81b85`；独立双轴评审、后续修复、适用本地验证和 ADR Coverage 结论见 [spec 的交付证据](../spec.md#delivery-evidence)。本地工作已完成，最终推送的 CI 尚待验收；此状态不表示 PR 已合并。

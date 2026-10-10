@@ -1,4 +1,4 @@
-Status: claimed
+Status: resolved
 
 # Spec: 桌面端 MVP
 
@@ -339,7 +339,7 @@ host 接口只有四个方法：`getConnection()`、`pickProjectFolder()`、`rev
   - Playwright 的 Chromium（156）和 Electron 41.0.3 内置的 Chromium（146）版本不同，browser mode 测试不能代替 Electron renderer 的验证。
 - **ad-hoc 签名**：
   - 本地构建产物没有 quarantine 属性，可以直接打开；拷到别的机器上，或经浏览器下载后会被 Gatekeeper 拦截。
-  - ad-hoc 签名的 `.app` 启动时会打印一条「Keychain lookup failed」，不影响功能。
+  - 隔离 HOME 的验收启动曾在 Chromium Keychain 初始化阶段等待系统授权；验收使用 `--use-mock-keychain` 测试启动参数，生产 Cookie Encryption 保持启用。不能据此保证所有环境的钥匙串提示均不影响启动。
 - 实现工单见 `issues/21` 到 `issues/30`。
 
 ## ADR Coverage
@@ -365,3 +365,32 @@ host 接口只有四个方法：`getConnection()`、`pickProjectFolder()`、`rev
 | 孤儿 Background Job 作为已知限制                                  | 无需 ADR                                                                                                                                              | 维持现有语义，日后补回收不难逆转                                                      |
 | 签名、fuses、JIT 检查细节                                         | 无需 ADR                                                                                                                                              | 构建配置，随工具版本调整                                                              |
 | 专用库与 beUI 安装方式                                            | 无需 ADR                                                                                                                                              | 依赖选型记在 tech-stack 与 DESIGN.md，可替换                                          |
+
+## Delivery evidence
+
+2026-10-11：21–30 每个工单均由新的实现子代理执行，独立 worktree 按依赖顺序集成至 `feat/desktop-mvp`；没有复用工单实现代理。代码集成提交 `8af81b85`，PR [#13](https://github.com/artoriaschan/rukie/pull/13) 待最终推送与 CI 验收，未合并。
+
+### Review and corrections
+
+固定比较基点 `3e89e0bc`，规范与 spec 由两个新的独立子代理评审。规范轴发现 wire 错误和组件可访问名称未本地化，以及 Fiber 所有权文档不一致；spec 轴发现后台侧栏状态遗漏/陈旧、Turn 预览裁切和当前刻度未持续加长。六项均由一个新的修复子代理集中修正，公开回归与真实浏览器/Electron 验收通过；favicon 404 也已消除。
+
+首轮 aggregate 为失败，实际结果是 3,392 pass / 26 fail，165.78 秒，desktop 阶段未执行。失败归因：四处旧 ripgrep 文案消费者（含完整安装验收的嵌套失败）、一次 TUI abort/close 竞争、两次继承 DeepSeek 凭据导致的 provider-tab 假设，以及十九次本机 npm 11.19.1 不满足既有 11.21.0 条件。聚焦组合另暴露窄屏断言依赖中间帧；基点组合通过、当前组合失败的对照已记录，修正为通知所在物理行和相邻下一行的完整文本断言，不平坦化全屏、不增加超时。TUI stop 现在等待自己拥有的显式中断完成后关闭 Session。没有以聚焦通过改写首次 aggregate 结果，也没有在相同代码状态重复全套。
+
+### Local verification
+
+- 最终 `coding-agent` 整包：隔离 HOME、清除 NO_COLOR 和继承 DeepSeek 凭据，1,524 pass / 0 fail、10,731 assertions、179 files，67.28 秒；覆盖共用 stop 生命周期的全部 TUI/CLI/renderer 消费者。
+- 最终修复聚焦六文件：53 pass / 1,259 assertions，14.86 秒；额外 main/退出恢复 57 pass、timeout cleanup 4 pass。收窄通知断言后的原失败组合 9 pass / 1,048 assertions，1.15 秒。
+- server 16 pass；桌面 Vitest 50 pass / 14 files，6.86 秒；对应合并树与被验证源码树一致，后续仅 TUI/测试/交付文档变化，复用结果。各实现及修复提交的 `check:dev`、diff checks 和 hooks 通过。
+- 本机 npm 未全局改动；临时目录的 npm 11.21.0 使原样的 publication/recovery 聚焦测试 20 pass / 0 fail，110.52 秒。原始基点与当前集成树的模型选择文件在隔离凭据后均 5 pass。
+
+### Packaged acceptance
+
+保留 app `/tmp/rukie-desktop-artifacts/package/mac-arm64/Rukie.app`，`desktop-build.json` 对应干净源码 `1374619a`。最新代码对该产物的 Agent/shared/i18n/ui/server/desktop/编译与构建输入没有差异；后续唯一生产修复位于 TUI Conversation。strict deep codesign、runtime/entitlement、实际 ElectronAsarIntegrity/fuses 和 DFG JIT count=1 均通过，禁用 JIT 的负向探针按预期退出 1。
+
+真实 Electron 验收使用编译 sidecar、隔离 HOME/user-data 及现有 fakeModel 的外部传输桥接：原始工单覆盖原生文件夹 picker；修复后复验流式 partial、后台运行/审批状态、实际 bash 文件写入与 bundled rg、第二次回答、轨道 hover/focus/Enter/Esc、Light/Dark/480px/reduced-motion 和重载摘要。实际退出后公开只读 snapshot 保存 11 messages / 2 successful Run Summaries，Electron/Helpers/sidecar 与桥接均退出，隔离目录已清理。最终 evidence `/tmp/rukie-desktop-evidence/review-fixes/acceptance.md`；console/errors 空，捕获范围内资源请求成功，Vite 大 chunk warning 保留。
+
+### ADR coverage review
+
+对照最终 diff 和实施票核对模块所有权、依赖方向、授权/信任、持久化/恢复、资源生命周期和 wire 协议。ADR-0029–0032 覆盖三包、五层、Hono/Effect、loopback 认证与共享 JSONL；ADR-0033 部分替代 ADR-0030 的 Session-keyed Run Fiber 规则，明确 Core 完成、请求回执等待和 Session.abort。其余表列取舍与最终实现一致，替代关系和链接完整，没有交付依赖的未确认决定。局部 consumer/文案/中断等待修复没有新增持久化格式或架构边界，无需额外 ADR。
+
+21–30 与 spec 在本次同一变更设为 resolved，含义仅为实现、受影响文档、评审修复和适用本地验证完成。最终推送的 CI 仍待验收，结果保留于 PR checks/描述与交付回复；本记录不证明 CI、公证、分发或合并。

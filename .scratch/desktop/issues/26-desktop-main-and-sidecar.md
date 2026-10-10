@@ -4,13 +4,13 @@
 
 Blocked by: 23, 24
 
-Status: claimed
+Status: resolved
 
 - [x] `ready` 前注册 `app` scheme（standard、secure、supportFetchAPI）；`loadURL` 前在窗口 session 上 `protocol.handle`；只认 host `rukie`，解码后防越界，SPA 回退 `index.html`，显式 content-type，HTML 附 CSP（`connect-src ws://127.0.0.1:*`）
 - [x] preload 经 `contextBridge` 暴露 `getConnection`、`pickProjectFolder`、`revealPath`、`openInTerminal`，main 校验调用来源为 `app://rukie`
 - [x] 启动 sidecar 时剔除 `BUN_BE_BUN`、`BUN_OPTIONS`、`DYLD_*`、`NODE_OPTIONS`；10 秒无握手判定失败
 - [x] 停止一律 SIGTERM，5 秒后 SIGKILL；意外退出通知 renderer 并自动重启一次，第二次后不再重启，由「重试」手动重启
-- [ ] 窗口关闭时 abort 仍在运行的 Run
+- [x] 窗口关闭时 abort 仍在运行的 Run
 - [x] 接缝：Vitest Node + `vi.mock("electron")` 驱动假 sidecar 脚本
 
 ## Implementation evidence
@@ -22,3 +22,9 @@ Window close and application quit wait for sidecar SIGTERM shutdown, escalating 
 Approved seams: Node Vitest mock Electron and a real fake-sidecar subprocess. Red evidence was the absent main/sidecar/protocol modules; green evidence covers validated handshake/environment, the exact 10-second deadline, TERM at shutdown and KILL only at 5 seconds, automatic recovery once plus manual retry, missing executable cleanup, trusted IPC sender, four preload methods, window close and path containment. Parent timers use fake clocks, subprocess cleanup waits actual exit. Focused desktop: 10 tests pass, about 0.55 seconds; all tests are below one second, and real subprocess startup/exit is required integration evidence. `bunx --no -- playwright install --only-shell chromium` passed. `bun run test:desktop`: 7 files / 12 tests pass (553 ms). `bun run check:dev` passed after code and documentation edits. No local full Bun suite or packaged Electron smoke claimed; issue 30 owns packaged smoke.
 
 ADR Coverage: follows spec's existing ADR-0001 (Bun sidecar), ADR-0031 (loopback/authenticated connection), and ADR-0032 (server-owned settings/store). Native capability ownership and app protocol retain the accepted decisions, with no new architecture trade-off. Ticket stays claimed for independent review and integration.
+
+## Answer
+
+四方法 preload、app scheme/CSP/路径校验、sidecar 握手/环境剔除/重启与退出生命周期已完成。窗口关闭通过 SIGTERM shutdown 先 abort 活跃 Run，再关闭 Session；公开 signal 回归及真实打包退出证据闭合此项。
+
+最终代码集成 `8af81b85`；独立双轴评审、后续修复、适用本地验证和 ADR Coverage 结论见 [spec 的交付证据](../spec.md#delivery-evidence)。本地工作已完成，最终推送的 CI 尚待验收；此状态不表示 PR 已合并。

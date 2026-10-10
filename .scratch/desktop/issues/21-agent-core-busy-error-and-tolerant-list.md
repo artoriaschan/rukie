@@ -4,7 +4,7 @@
 
 Blocked by: None (can start immediately)
 
-Status: claimed
+Status: resolved
 
 - [x] 另一个进程持有 lease 时打开 Session，得到带 code 的 user-visible error（含 zh/en 文案），不再是普通 `Error("Session already open")`
 - [x] 同进程重复打开同一 Session 的报错同样带 code
@@ -32,3 +32,9 @@ Status: claimed
 - Green: recovery and listing files together give 24 pass, 0 fail, 154 assertions in 1.052 s; corrected case takes 11.97 ms. Status remains claimed pending integration acceptance. ADR coverage is unchanged: this correction aligns an existing consumer with the issue 21 contract and adds no architectural decision.
 - Correction validation: `bun run check:dev` passes formatting, lint, types, Knip, scratch, docs, dependency boundaries, test policy and UI typography. `git diff --check` passes. No full-suite run was made for this test-only correction.
 - Rebased evidence by merging latest desktop integration `77341c00` into correction branch (merge `215b6243`): recovery/listing remain 24 pass, 0 fail (1.053 s; changed case 14.63 ms), and `bun run check:dev` passes on the merged tree. Commit hooks stay enabled; the working tree is clean after recording evidence.
+
+## Answer
+
+类型化 Session busy 错误、zh/en 呈现与按单个索引容错的列举已完成；真实 lease、warnings、只读列举及恢复消费者均已验证。
+
+最终代码集成 `8af81b85`；独立双轴评审、后续修复、适用本地验证和 ADR Coverage 结论见 [spec 的交付证据](../spec.md#delivery-evidence)。本地工作已完成，最终推送的 CI 尚待验收；此状态不表示 PR 已合并。

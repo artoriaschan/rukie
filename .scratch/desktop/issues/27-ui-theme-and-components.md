@@ -4,7 +4,7 @@
 
 Blocked by: 23
 
-Status: claimed
+Status: resolved
 
 - [x] shadcn CLI 4.21.4 安装所需 beUI 组件与 `dropdown-menu`，修正 `@/lib/text-shimmer` 自引用，删除 `cn` 包与 Geist 字体，全部依赖精确锁定
 - [x] 主题 CSS 以 beUI `theme.css` 为模板换 GitHub Light/Dark 值，`text-ui-*` 定义在 `@theme inline`，`cn()` 用 `extendTailwindMerge` 且 shadcn 组件引用它；`text-ui-sm` 与颜色类合并不丢失有测试
@@ -29,3 +29,9 @@ Status: claimed
 - Integration baseline `8493da9a` merged into this issue branch; lockfile and tech-stack resolution preserves server/Electron dependencies alongside UI dependencies. Merged-tree `bun run test:desktop`: 9 files / 17 tests passed, 1.31s; merged-tree `bun run check:dev` passed. Hooks remain enabled.
 
 - Final broader style policy was also applied to the production gallery server. CodeBlock visibly preserves syntax colors (computed `const` rgb(215,58,73), `ready`/`true` rgb(0,92,197)); no app exceptions or console errors. Screenshot `/tmp/rukie-desktop-evidence/issue27/production-final-csp.png`. The earlier element-only/attribute-blocking result covers dropdown/popover only, not all 23 registry roles or Shiki HTML rendering. Issue 30 must verify the actual packaged UI under the final app: policy.
+
+## Answer
+
+beUI 优先、shadcn 补位的组件安装与 GitHub Light/Dark、text-ui 字号、zh/en、减少动态效果已完成。剩余可访问名称本地化和真实 CSP、窄窗口验收已修正并验证。
+
+最终代码集成 `8af81b85`；独立双轴评审、后续修复、适用本地验证和 ADR Coverage 结论见 [spec 的交付证据](../spec.md#delivery-evidence)。本地工作已完成，最终推送的 CI 尚待验收；此状态不表示 PR 已合并。

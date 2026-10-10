@@ -4,7 +4,7 @@
 
 Blocked by: None (can start immediately)
 
-Status: claimed
+Status: resolved
 
 - [x] `packages/ui`、`packages/server`、`packages/desktop` 以 `workspace:*` 互相引用，`tsc -b`、`knip` 通过
 - [x] `.oxlintrc.json` 按目录强制 ui 五层依赖方向，以及 ui 禁止值导入 `@rukie/agent`、禁止 `@rukie/coding-agent`、`electron`、`node:*`、`bun`、`bun:*`；各有一条违规样例被拦截
@@ -29,3 +29,9 @@ Status remains `claimed` until integrated review and acceptance. Scope follows A
 - Updated AGENTS.md, testing/architecture/tech-stack and ADR-0004 facts; root CLAUDE.md symlink remains unchanged. The spec's ADR Coverage already owns these choices and final review remains with integration.
 
 Integrated `feat/desktop-mvp` through `019beae0` before handoff. Added optional image `name` matching PromptImage after reproducing rejection through public wire parsing; focused wire tests now pass both named and unnamed images.
+
+## Answer
+
+ui/server/desktop workspace、五层导入和字号检查、Bun/Vitest 收集边界已接入；桌面测试仅进入本地 check，不进入 CI 分片。
+
+最终代码集成 `8af81b85`；独立双轴评审、后续修复、适用本地验证和 ADR Coverage 结论见 [spec 的交付证据](../spec.md#delivery-evidence)。本地工作已完成，最终推送的 CI 尚待验收；此状态不表示 PR 已合并。

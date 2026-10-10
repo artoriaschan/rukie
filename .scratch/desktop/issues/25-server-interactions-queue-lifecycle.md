@@ -4,7 +4,7 @@
 
 Blocked by: 22, 24
 
-Status: claimed
+Status: resolved
 
 - [x] `onPermissionAsk` 桥接：`interaction_requested` 带 identity 与去掉 `signal` 的负载；`interaction.reply` 按 epoch 结算，epoch 不符返回 `interaction_stale`；取消或被规则覆盖时发 `interaction_settled`
 - [x] 订阅时补发挂起的 Interaction；新连接接管后补发给新连接
@@ -50,3 +50,9 @@ Status: claimed
 最终聚焦集在隔离 HOME、移除继承的 DEEPSEEK_API_KEY 下 53 pass / 1259 assertions（14.86 s，六个文件），包含 40 例安装/错误/Conversation 集合与完整 model-switch、exit/resume、Interaction。`bun run check:dev` 再次通过。首次 aggregate 两个 provider-tab 失败来自额外的本机凭据标签，模型目录筛选和测试源码与初始基线一致；基线与当前独立文件在清除该凭据后都 5 pass，没有更改生产模型目录。
 
 合并核查发现上一版通知 helper 实际拼接了所有屏幕行，与上述相邻行证据不符。补正后以 `─ Model changed to second (test-model/` 定位已呈现通知，仅去除该行及紧邻下一物理行的末尾填充，再拼接这两行；内部空格保留。完整模型标识、picker 关闭和零 provider 调用的要求继续成立。相同隔离 HOME 与清除凭据的 Conversation + model-switch 组合为 9 pass / 1048 assertions（1.15 s，窄终端例 44.64 ms）；只修改测试观察和本票证据，产品及打包源未改动。
+
+## Answer
+
+权限 identity/epoch 桥接、取消与规则覆盖、队列、模型/模式/注册表及空闲关闭已完成。后台权限摘要广播、Core 完成回执和 TUI 中断等待修复已集成，SIGTERM 实际进程退出与持久化均已验证。
+
+最终代码集成 `8af81b85`；独立双轴评审、后续修复、适用本地验证和 ADR Coverage 结论见 [spec 的交付证据](../spec.md#delivery-evidence)。本地工作已完成，最终推送的 CI 尚待验收；此状态不表示 PR 已合并。
