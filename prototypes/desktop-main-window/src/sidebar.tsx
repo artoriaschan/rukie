@@ -5,7 +5,7 @@ import { ArrowDownUp, ChevronDown, ChevronRight, Ellipsis, Folder, FolderOpen, F
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Menu } from "./menu";
 import { projects, type SessionItem } from "./data";
-import { useAgo, useT } from "./i18n";
+import { useT } from "./i18n";
 import { useProto } from "./state";
 import { Button, cn, Kbd } from "./ui";
 
@@ -67,7 +67,6 @@ function Group({ id, title, open, onToggle, actions, pinActions = false, childre
 
 function SessionRow({ session, shortcut, indent = false, ctrl }: { session: SessionItem; shortcut?: number; indent?: boolean; ctrl: boolean }) {
   const t = useT();
-  const ago = useAgo();
   const { selection, select, statusOf, togglePin } = useProto();
   const active = selection.kind === "session" && selection.id === session.id;
   const status = statusOf(session.id);
@@ -77,7 +76,7 @@ function SessionRow({ session, shortcut, indent = false, ctrl }: { session: Sess
         type="button"
         aria-current={active ? "page" : undefined}
         onClick={() => select({ kind: "session", id: session.id })}
-        className={cn(row, "pr-14", indent && "pl-8", active && "bg-card font-medium")}
+        className={cn(row, "pr-9", indent && "pl-8", active && "bg-card font-medium")}
       >
         <span className="min-w-0 flex-1 truncate">{session.title}</span>
       </button>
@@ -88,9 +87,7 @@ function SessionRow({ session, shortcut, indent = false, ctrl }: { session: Sess
           <Loader2 className="size-3.5 animate-spin text-muted-foreground" aria-label={t("status.running")} />
         ) : status === "waiting" ? (
           <span className="size-2 rounded-full bg-warning" role="img" aria-label={t("waiting")} />
-        ) : (
-          <span className="text-ui-xs text-muted-foreground">{ago(session.updatedMin)}</span>
-        )}
+        ) : null}
       </span>
       <button
         type="button"
