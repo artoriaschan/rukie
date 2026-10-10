@@ -98,3 +98,13 @@ Focused 分组：后台/Jobs/Subagent Views/生命周期 39 pass（8.70 秒）�
 本机强制父 Run idle 后才释放子进程，并等待独立 Reporter 模型调用到达，稳定复现与 CI 一致的视口和错误（2.58 秒）。这不是没有输出，而是测试没有控制被断言视口的因果顺序。修复保持父 Run 活动，先验证 `worker done` 与两个通知提交，再完成父回复、等待 native tasks 清零和 idle footer，断言没有额外 Reporter 调用。
 
 同步审阅其他释放 job 后完成回复的场景：40×12 question/notice 用例也改为等待通知提交后完成父回复，并移除“额外调用或瞬时 idle 任一成立”的竞速分支；其他相关用例已有通知提交 barrier，专门 idle Reporter 用例保留真实 Reporter 驱动。修正后四个相关文件 35 pass / 0 fail（8.64 秒），静态检查通过。第二次推送只修改这两个测试的顺序和相关规则/证据，不修改已验收的共享清理 helper 与产品实现；不重复本机完整检查，也不重跑首轮 workflow。
+
+### PR #3 第二轮：回归夹具的准备边界
+
+`f470d2b7` 的 CI `38015672317`：构建与 shard 1/2 通过，Reporter 修正用例 0.40 秒、第二分片 938 pass / 0 fail；shard 3 为 1211 pass / 2 fail / 1 between-tests error。两条新生命周期回归把初始化放在故意的 1 秒失败界限内，CI 超时发生在进入悬置测试体前；后续等待一个从未进入的 finally，另一次未写入 owner marker。前轮曾通过不说明这个设计合理。
+
+夹具准备改放 `beforeEach`，只有已经悬置的测试体触发真实 Bun 超时。独立 process setup probe 证明 hook 的完成不受 body 的短失败界限约束。故意超时的界限缩到 1ms，因为测试体始终未完成，界限不再约束任何成功结果的启动速度；原产品用例和清理界限不增加。外层 runner、输出流和目录也登记幂等 `onTestFinished` 收尾，放弃的父测试体不再执行迟到断言。
+
+进一步增加第三种受控交错：prepare 仍悬置时令 owner 超时，下一例安装时钟后释放旧 prepare。关闭初始化恢复时会产生迟到 AbortError 的问题在 negative control 稳定复现；helper 在已结束的 owner 下释放资源后停止初始化，正常 prepare 错误仍抛出。回归覆盖 ready-body 悬置、终端 predicate、pending prepare 和正常 prepare 失败。四例 focused 4 pass / 0 fail（1.40 秒）；同样的 GitHub Actions reporter 环境 4 pass / 0 fail（1.38 秒），整个 TUI 范围 1077 pass / 0 fail（130 文件，69.00 秒），静态检查通过。
+
+此前完整本机检查为 3340 pass / 0 fail。该轮只增加 test-only app 初始化被放弃时的 catch 分支及 runner 回归，正常 app/Session 路径和其他包不变；以整个 TUI 影响范围、静态检查和新提交的 CI 覆盖，不重复原完整检查求绿。

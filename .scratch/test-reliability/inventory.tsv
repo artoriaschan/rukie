@@ -205,7 +205,7 @@ packages/coding-agent/tests/tui/e2e/errors.test.ts	e2e	global	e2d06f8967ffe0c8ef
 packages/coding-agent/tests/tui/e2e/file-actions.test.ts	e2e	none	77ca348ef0965b3a7b968c22db96c70dd66a979b4622304f77c548ab0634a0ba
 packages/coding-agent/tests/tui/e2e/file-diff.test.ts	e2e	none	98adcb53eb43ba3cf47c8761be86e4a991f84230ed1b6bfac790b06e5cb25fca
 packages/coding-agent/tests/tui/e2e/fullscreen.test.ts	e2e	clock	768d591b1b02159a074b5405d89cdacebf8d57a3debf1cc09ea738ca298fe320
-packages/coding-agent/tests/tui/e2e/harness-lifecycle.test.ts	e2e	clock,process	eae6b861ac00cb4e9a53bdaeaff90aaddc8ca78c88bc76a797a1cfee0fffc0f5
+packages/coding-agent/tests/tui/e2e/harness-lifecycle.test.ts	e2e	clock,process	ae3e7ed06c972c214136e80e06cc4d08d2a6ec093131a47c4eb4b5557c3eaef6
 packages/coding-agent/tests/tui/e2e/image-clipboard.test.ts	e2e	none	7eff3ce4ecc1de66c83ed4328558774fd4518e76c6a0caab5557f08863d7a221
 packages/coding-agent/tests/tui/e2e/image-errors.test.ts	e2e	none	db1f07fae6322df1d609f8500df97fa5212a9c00af11a1e3a4a39e13b5d8c05a
 packages/coding-agent/tests/tui/e2e/image-model-notice.test.ts	e2e	clock	78ffc4d9617883f7cb120a5f016df88418c605e5b22128a3eacf1f53e78e9580

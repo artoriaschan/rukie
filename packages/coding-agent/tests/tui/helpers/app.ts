@@ -41,8 +41,12 @@ export async function start(
         }
       }
     })());
+  let finished = false;
   // The runner awaits this even when a timed-out test body is still suspended.
-  onTestFinished(cleanup);
+  onTestFinished(() => {
+    finished = true;
+    return cleanup();
+  });
   try {
     await options.prepare?.(root);
     lifetime.signal.throwIfAborted();
@@ -126,6 +130,9 @@ export async function start(
     };
   } catch (error) {
     await cleanup();
+    // Setup may resume after the runner abandoned its owner. It must release
+    // resources without rejecting a stale test body or creating a new app.
+    if (finished) return new Promise<never>(() => {});
     throw error;
   }
 }
