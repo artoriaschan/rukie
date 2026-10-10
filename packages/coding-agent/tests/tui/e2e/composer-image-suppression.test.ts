@@ -206,15 +206,17 @@ test("transcript search and file actions retain focus over a caret image draft",
     app.stdin.write("/");
     await app.waitFor(() => screen().includes("Search transcript"));
     app.stdin.write("searchable\r");
-    // Search status can precede the matching card paint. Wait for its visible
-    // highlight before capturing the card path hit coordinates.
+    // Inverse marks visible matches before the frame subscriber seeks to the
+    // selected match. Its bold underline is painted after that seek; capture
+    // pointer coordinates from this committed view, not the earlier scan.
     await app.waitFor(() => {
       if (!screen().includes("Search transcript: searchable · 1/1")) return false;
       const row = app.screen().findIndex((line) => line.includes("⎿ searchable text"));
       if (row < 0) return false;
       const line = app.terminal.buffer.active.getLine(row)!;
       const column = line.translateToString().indexOf("searchable");
-      return Boolean(line.getCell(column)?.isInverse());
+      const cell = line.getCell(column);
+      return Boolean(cell?.isInverse() && cell.isBold() && cell.isUnderline());
     });
     const row = app.screen().findIndex((line) => line.includes("review.txt"));
     expect(row).toBeGreaterThanOrEqual(0);

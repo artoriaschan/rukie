@@ -2511,4 +2511,48 @@ function dropSubtreeCache(node: DOMElement): void {
 // Exported for testing
 export { buildCharToSegmentMap, applyStylesToWrappedText }
 
+/** Paint a search buffer without changing live layout caches or frame geometry. */
+export function renderNodeForScan(
+  node: DOMElement,
+  output: Output,
+  options: { offsetX: number; offsetY: number; prevScreen: undefined },
+): void {
+  // Yoga's computed layout is read-only during paint. Disposable DOM nodes
+  // keep the paint path identical while owning all mutable node/cache state.
+  function copy(element: DOMElement, parentNode?: DOMElement): DOMElement {
+    const cloned: DOMElement = {
+      ...element,
+      parentNode,
+      childNodes: [],
+      onStickyRestore: undefined,
+      onViewportHeightChange: undefined,
+    }
+    cloned.childNodes = element.childNodes.map(child =>
+      child.nodeName === '#text'
+        ? { ...child, parentNode: cloned }
+        : copy(child, cloned),
+    )
+    return cloned
+  }
+  const saved = {
+    layoutShifted, scrollHint, scrollDrainNode, followScrolls, viewportResizes,
+    absoluteRectsPrev, absoluteRectsCur, absoluteHitList,
+    occlusionSurfacesPrev, occlusionSurfacesCur,
+  }
+  absoluteRectsPrev = []
+  absoluteRectsCur = []
+  absoluteHitList = []
+  occlusionSurfacesPrev = []
+  occlusionSurfacesCur = []
+  followScrolls = []
+  viewportResizes = []
+  try {
+    renderNodeToOutput(copy(node), output, options)
+  } finally {
+    ;({ layoutShifted, scrollHint, scrollDrainNode, followScrolls, viewportResizes,
+      absoluteRectsPrev, absoluteRectsCur, absoluteHitList,
+      occlusionSurfacesPrev, occlusionSurfacesCur } = saved)
+  }
+}
+
 export default renderNodeToOutput
