@@ -29,3 +29,5 @@ Status: claimed
 验证：`bun run test:desktop` 14 files / 45 tests 通过（5.25 s）；i18n 文案先复现 2 个失败，再 `env -u NO_COLOR bun test packages/i18n/tests/i18n.test.ts packages/agent/tests/e2e/tools.test.ts` 37 pass / 211 assertions（1.134 s，真实工具集成），`bun run check:dev` 通过。最终提交与产物源码身份记录在外部 desktop-build.json；交付前合入当前集成分支并补充 focused/static 验证。
 
 最终 aggregate 发现 TUI live error 与已安装 CLI ripgrep 错误断言仍要求旧 npm 安装措辞。公共行为已按本票统一为恢复完整 Rukie 安装并检查内置二进制执行权限；断言现在分别要求本地化恢复提示、执行权限提示、模型收到英文工具错误，以及 stream-json 的 `ripgrep-unavailable`，保留真实缺失/不可执行二进制测试。聚焦安装、TUI 错误、Conversation 集合 40 pass / 1187 assertions（13.81 s）；安装入口真实编译和进程清理成本保留，其余修复用例均低于 1 秒。
+
+产物适用性核对：保留的 `/tmp/rukie-desktop-artifacts/desktop-build.json` 记录源码提交 `1374619ae50331f5ee009c73701ce74c23d08351`。本次修复相对该提交的 Agent/Core、shared/i18n、ui/server/desktop、编译设置、desktop build 脚本、根 package.json 和 lockfile diff 为空；唯一生产变化位于不进入 sidecar 或 renderer 的 TUI Conversation。原产物、签名/JIT 与 review-fixes 打包冒烟证据继续适用，本次没有重复构建或伪称新增打包验收。
