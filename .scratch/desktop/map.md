@@ -25,21 +25,13 @@
 - [05: Session store 写者 lease 的并发打开](issues/05-research-store-lease-concurrency.md#answer): lease 按 Session 粒度、同 id 后到者立即失败、崩溃由内核释放；server 需单飞打开并共享 Session，Agent Core 需类型化 busy 错误与容错 `list()`，孤儿 Background Job 待定。
 - [12: Agent Core 在 server 中的直接调用](issues/12-research-agent-core-in-server.md#answer): `@rukie/agent` 可直接 import，按 Session 传 cwd/homeDir 支持多项目；server 负责 Interaction 桥接回调、单飞打开与 `onWarning`；Agent Core 需先类型化 busy 错误并让 `list()` 容错。
 - [09: 主界面粗稿](issues/09-prototype-main-window.md#answer): 第九轮粗稿已确认：Codex 式外壳、四分组侧栏、折叠 Turn 对话流、输入框上方停靠审批、上下文环与模型详情；组件来源同时改为 beUI 优先、shadcn 补位。
+- [10: wire 协议消息清单](issues/10-wire-protocol-messages.md#answer): 单窗口单 WS 按 `sessionId` 复用、新连接接管旧连接，命令全走 WS 并带错误码；SessionEvent 原样转发、Headless 不改，命令用 TypeBox；`InteractionIdentity.epoch` 作关联 ID 并在订阅时补发；运行中发送走原生 `followUp` 成为 Queued Input，可立即发送或撤回，停止时回填输入框；项目与置顶由桌面端注册表维护。
 
 ## Not yet specified
 
-- 需要新增或修改的 ADR 清单（推翻 ADR-0012 “view 抽成 UI 包”、Effect 在 server 的定位、shared 中的 wire 协议），在协议与研究结论之后统一起草。
-- ADR-0003 与现状冲突：它写“桌面端用 SQLite”，但 ADR-0024 下 SQLite 只持有写者 lease。待确认桌面端是否沿用同一 JSONL store（TUI 与桌面端互见 Session、共享单写者 lease），并将 ADR-0003 标为被 ADR-0024 替代。
-- `packages/ui` 内部分层（组件、Zustand store、server client、host 接口）与 lint 边界规则。
-- Vitest 引入方式：`ui` 的 browser mode、`desktop` main 的 Node 测试，以及与根 `bun run check` 的集成。
-- spec 撰写与实现工单切分顺序。
-- 编辑器、终端、diff、虚拟列表各用哪个专用库（tech-stack「组件原语」已改为 beUI 优先 + shadcn 补位，不再使用 ai-elements）。
-- DESIGN.md 落地：主题 CSS（beUI token 名 + GitHub Light/Dark 取值）、`text-ui-*` 的 Tailwind 定义与 `--ui-font-size`、beUI 组件拷入时的字号与文案改写方式，以及可否用 lint 检查禁用的字号类。
-- 桌面端前置的 Agent Core 改动：`Session already open` 改为带 code 的 user-visible error（含 zh/en），`list()` 按目录容错；是否持久化 Background Job pgid 并在打开时回收孤儿进程组。
-- 打包细节：universal 还是分架构构建；sidecar entitlements 沿用 Helper 还是 `afterSign` 单独重签；发布检查如何验证 JIT 生效；真实签名、公证与 Windows 签名的验证方式。
-- 编译产物中 `rg` 的查找方式由 Agent Core 与 npm 分发共用，需与 `.scratch/npm-release/` 02/03 协调归属与顺序。
-- Electron `app://rukie` 自定义 scheme 的文件服务方式（实验中 `loadURL` 报 `ERR_FAILED (-2)`），以及在锁定的 Electron 41.0.3 上复核 Origin 行为。
-- beUI 组件的引入方式：拷入源码后的 i18n 改造、Markdown 接入点、shiki 语言扩展，以及 tech-stack 依赖更新。
+- spec 细节（由 `/to-spec` 直接定，不另开工单）：桌面端注册表的文件位置、格式与默认工作区目录；Session 空闲关闭的宽限期；sidecar 重启超时与次数。
+- Agent Core 前置改动的落地方式（方向已定于 05、10、12：busy 错误带 code、`list()` 按目录容错、公开 Queued Input），作为 spec 的第一批实现工单；孤儿 Background Job 是否并入取决于 18。
+- spec 撰写与实现工单切分顺序：13–20 结题后进入 `/to-spec`。
 
 ## Out of scope
 
