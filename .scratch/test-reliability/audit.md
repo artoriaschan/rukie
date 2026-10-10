@@ -74,3 +74,19 @@ MCP 改为等待 Body 焦点提示和目标尺寸的布局结果；搜索等待�
 ## 架构与限制
 
 本次改变测试规则、fixture 与门禁，不改变 Session、Frontend、存储或发布架构，因此无需新 ADR。规则归属 [docs/testing.md](../../docs/testing.md)，根 AGENTS 只保留强制读取入口。参考 DeepSeek Harness 的测试策略与 CI reliability 技能内容，未引入其 Vitest、100% coverage、snapshot profile 或真实模型成本策略。
+
+## 合并 main 后的后台输出与超时清理
+
+2026-10-10，main `9384cd58` 的 CI `38012651950`：静态检查、构建与 shard 2/3 通过；shard 1 为 1155 pass / 2 fail / 1 error。后台输出/流式阅读场景先达到 Bun 5 秒失败界限，迟到的终端等待报错，下一例因虚拟时钟尚未恢复而失败。合并树没有修改该用例及对应实现。本机原单例 1.356 秒通过，整文件 14 pass / 0 fail；没有将本机通过描述成已复现第一次 CI 超时。
+
+受控回归在独立 Bun runner 中令应用测试确实超时：旧 fixture 稳定出现第二例 `A virtual clock is already active`。加入 runner 收尾后，又验证了旧终端 predicate 在清理后继续写已销毁流的 `Unhandled error between tests`；仅在取消时抛 AbortError 仍会成为 Bun 已放弃测试体的未处理错误，不能算修复。
+
+共享 app 在获得目录时登记 `onTestFinished`，与手动清理共享一个幂等 Promise。清理先停止拥有的 predicate，再 abort 并等待应用退出，最后释放终端和目录；初始化失败也释放已获得资源。虚拟时钟在拥有的 app 关闭后恢复，迟到的 finally 不再重复恢复下一例的时钟。Bun 放弃的测试体不会获得一个虚假的 predicate 成功或迟到的错误：其等待停止调度并保持悬置，资源由 runner 收尾独立释放。普通未完成 predicate 的失败界限和错误诊断保留。
+
+新增独立 runner 回归覆盖悬置测试体、正在轮询的终端等待、下一例时钟所有权、迟到 finally、无 between-tests 错误及目录删除；另覆盖 prepare 失败。两个 runner 的真实 1 秒 timeout 是被测 Bun 生命周期合同，父虚拟时钟无法替代；各约 1.2 秒，非一般同步延时。
+
+人工同类审阅覆盖后台任务、Jobs 面板、Job 选择、Subagent 卡片/面板/持久化拒绝、Interaction View、MCP 阅读锚点和 Transcript 搜索十个文件。非时间合同使用真实 app；保留 elapsed 显示、notice 期限、stop confirmation 的隔离虚拟时间断言。其余带时间行为的 activity、图片 notice、timeline hover 与混合恢复场景核查保留理由，不声称所有交错穷尽。
+
+原后台输出用例保留 350 行布局边界、草稿、未读、阅读位置和 resize 断言；350 个等价 delta 改为 10 个代表性 burst，专门 streaming-burst 用例仍覆盖逐 delta/microtask 更新。真实子进程在 FIFO read 上等待父端释放，移除 shell polling；PageUp 已呈现且未读清零后才允许新的输出。移除不属于该合同的自动虚拟时间推进。Focused 用例约 2.02 秒（旧 1.356 秒）：真实 renderer/reveal 和子进程 I/O 不再用加速显示时钟代替，未提高任何原 timeout。首次 CI 超时的完整交错尚未在本机稳定复现，因此以新提交的 CI 验收，不把时钟混用或更新成本假设表述为已证实的产品缺陷。
+
+Focused 分组：后台/Jobs/Subagent Views/生命周期 39 pass（8.70 秒）；Job 选择、Subagent 卡片/拒绝持久化/Agent View 与生命周期 19 pass（2.98 秒）；Interaction/MCP/搜索 31 pass（4.54 秒）；最终生命周期 3 pass（2.56 秒）。整个 TUI 影响范围 1076 pass / 0 fail（130 文件，68.72 秒）；静态检查通过。一次完整 `env -u NO_COLOR bun run check` 通过：3340 pass / 0 fail，310 文件，201.93 秒；原后台场景 2.12 秒、清理回归约 1.23/1.25 秒。本机隔离 HOME 并复用已验收的 0.1.0 包（产品源码未改变）；PR CI 重建当前提交的精确包，远端结果在交付回复中报告。未改产品代码、CI shard/worker、retry 或发布状态，无需新 ADR。

@@ -1,8 +1,7 @@
 import { createJsonlStore, type SessionOptions } from "@rukie/agent";
 import type { Storage } from "@earendil-works/pi-durable";
 import { expect, test } from "bun:test";
-import { startWithClock as start } from "../helpers/clock-app";
-import { startWithClock } from "../helpers/clock-app";
+import { start } from "../helpers/app";
 
 for (const [lang, title, summary] of [
   ["en_US.UTF-8", "Subagents", "Summary"],
@@ -315,7 +314,7 @@ test.each([false, true])(
 );
 
 test("eight child Runs stream in chat before any Subagent view opens", async () => {
-  const app = await startWithClock(["--permission-mode", "full-access", "delegate"], {
+  const app = await start(["--permission-mode", "full-access", "delegate"], {
     columns: 100,
     rows: 16,
     env: { LANG: "en_US.UTF-8" },
@@ -417,7 +416,7 @@ for (const failed of [false, true]) {
 }
 
 test("ordinary chat Escape cancels the foreground Run while its background child remains usable", async () => {
-  const app = await startWithClock(["--permission-mode", "full-access", "parent escape boundary"], {
+  const app = await start(["--permission-mode", "full-access", "parent escape boundary"], {
     rows: 24,
     env: { LANG: "en" },
   });

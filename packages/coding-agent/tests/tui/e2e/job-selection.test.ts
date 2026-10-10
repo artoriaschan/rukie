@@ -1,10 +1,10 @@
 import { test, expect } from "bun:test";
-import { startWithClock } from "../helpers/clock-app";
+import { start } from "../helpers/app";
 test.each([false, true])(
   "Job output and command copy exclude section and group borders (grouped=%s)",
   async (grouped) => {
     const copied: string[] = [];
-    const app = await startWithClock(["--yolo", "launch"], {
+    const app = await start(["--yolo", "launch"], {
       columns: 120,
       rows: 40,
       env: { LANG: "en" },
@@ -23,8 +23,7 @@ test.each([false, true])(
         description: "copy fixture",
         run_in_background: true,
       };
-      // A real child shell stays open until an explicit file signal; the virtual
-      // parent clock cannot drive process timers. No fixed wait synchronizes it.
+      // The real child shell stays open until an explicit file signal.
       app.calls[0]!.tools(
         Array.from({ length: grouped ? 2 : 1 }, () => ({ name: "bash", args: job })),
       );

@@ -76,14 +76,23 @@ export function createTerminal(columns = 80, rows = 24, advanceTimers?: (ms: num
         buffer.getLine(y)!.translateToString(true).trimEnd(),
       ).concat(screen());
     },
-    async waitFor(predicate: () => boolean, timeoutMs = 2000) {
+    async waitFor(predicate: () => boolean, timeoutMs = 2000, signal?: AbortSignal) {
       const deadline = process.hrtime.bigint() + BigInt(timeoutMs) * 1_000_000n;
+      signal?.throwIfAborted();
       do {
+        if (signal?.aborted) break;
         await flush();
+        if (signal?.aborted) break;
         if (predicate()) return;
         advanceTimers?.(16);
         await setImmediate();
       } while (process.hrtime.bigint() < deadline);
+      if (signal?.aborted) {
+        // Bun has already completed this owner on timeout. Stop polling without
+        // completing its stale assertion or rejecting an abandoned test body;
+        // the runner-owned app cleanup independently releases all resources.
+        return new Promise<never>(() => {});
+      }
       throw new Error(`Terminal did not reach expected state:\n${screen().join("\n")}`);
     },
     dispose() {
