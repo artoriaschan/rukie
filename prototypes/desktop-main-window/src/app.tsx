@@ -2,8 +2,8 @@
 // main area. The main area shows the welcome page for a new Session (figure 1) or the selected
 // Session's Transcript (figure 2), both with the composer docked at the bottom.
 import { AnimatePresence } from "motion/react";
-import { Ellipsis, Folder, ListTree, MessageSquare, PanelLeft } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Archive, Copy, Ellipsis, Folder, ListTree, MessageSquare, PanelLeft, Pencil, Pin, PinOff, SquareArrowOutUpRight, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ConnectionNotice, PermissionDock } from "./blocks";
 import { Composer } from "./composer";
 import { Conversation, TurnRail, turnsOf } from "./conversation";
@@ -14,6 +14,7 @@ import { useProto } from "./state";
 import { SummaryPanel } from "./summary";
 import { Button, cn, Tooltip } from "./ui";
 import { Welcome } from "./welcome";
+import { Menu } from "./menu";
 import { SearchDialog } from "./search";
 
 /** Created in this page: its id starts with "n" (see Root.send). */
@@ -91,7 +92,9 @@ function TrafficLights() {
 
 export function App() {
   const t = useT();
-  const { selection, sessions } = useProto();
+  const { selection, sessions, togglePin } = useProto();
+  const [moreMenu, setMoreMenu] = useState<{ anchor: HTMLElement; keyboard: boolean } | null>(null);
+  const closeMoreMenu = useCallback(() => setMoreMenu(null), []);
   const [sidebar, setSidebar] = useState(() => matchMedia("(min-width: 768px)").matches);
   const [summaryOpen, setSummaryOpen] = useState(() => matchMedia("(min-width: 1024px)").matches);
   const [search, setSearch] = useState<HTMLElement | null>(null);
@@ -123,7 +126,7 @@ export function App() {
       <header className="flex h-11 shrink-0 items-center [-webkit-app-region:drag]">
         <div className={cn("flex h-full shrink-0 items-center gap-1 px-3 [-webkit-app-region:no-drag]", sidebar && "w-[305px] max-md:w-auto")}>
           <TrafficLights />
-          <Button size="icon-sm" variant="ghost" aria-label={t("toggleSidebar")} aria-pressed={sidebar} onClick={() => setSidebar(!sidebar)}>
+          <Button size="icon-sm" variant="ghost" tip={t("toggleSidebar")} aria-pressed={sidebar} onClick={() => setSidebar(!sidebar)}>
             <PanelLeft />
           </Button>
         </div>
@@ -138,14 +141,22 @@ export function App() {
               </Tooltip>
               <h1 className="min-w-0 truncate text-ui-base font-medium">{session.title}</h1>
               <span className="flex-1" />
-              <Button size="icon-sm" variant="ghost" aria-label={t("more")}>
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                tip={t("sessionMore")}
+                aria-haspopup="menu"
+                aria-expanded={moreMenu !== null}
+                onClick={(e) => setMoreMenu(moreMenu ? null : { anchor: e.currentTarget, keyboard: e.detail === 0 })}
+                className={cn(moreMenu && "bg-background")}
+              >
                 <Ellipsis />
               </Button>
               {session.id === "s1" && (
                 <Button
                   size="icon-sm"
                   variant="ghost"
-                  aria-label={t("summary")}
+                  tip={t("summary")}
                   aria-expanded={summaryOpen}
                   aria-controls="session-summary"
                   onClick={() => setSummaryOpen(!summaryOpen)}
@@ -185,6 +196,44 @@ export function App() {
         </div>
       </div>
       {search && <SearchDialog onClose={closeSearch} />}
+      {moreMenu && session && (
+        // MVP subset of the Codex Session menu: side chat, fork, scheduled tasks, share and new
+        // window have no Agent Core or MVP counterpart yet.
+        <Menu
+          anchor={moreMenu.anchor}
+          keyboard={moreMenu.keyboard}
+          align="end"
+          label={t("sessionMore")}
+          onClose={closeMoreMenu}
+          entries={[
+            { kind: "item", label: t("rename"), icon: Pencil, hint: "⌥⌘R", onSelect: () => {} },
+            { kind: "item", label: session.pinned ? t("unpin") : t("pin"), icon: session.pinned ? PinOff : Pin, hint: "⌥⌘P", onSelect: () => togglePin(session.id) },
+            { kind: "separator" },
+            {
+              kind: "sub",
+              label: t("copy"),
+              icon: Copy,
+              entries: [
+                { kind: "item", label: t("copySessionId"), onSelect: () => {} },
+                { kind: "item", label: t("copyCwd"), onSelect: () => {} },
+                { kind: "item", label: t("copyMarkdown"), onSelect: () => {} },
+              ],
+            },
+            {
+              kind: "sub",
+              label: t("openIn"),
+              icon: SquareArrowOutUpRight,
+              entries: [
+                { kind: "item", label: t("revealInFinder"), onSelect: () => {} },
+                { kind: "item", label: t("openInTerminal"), onSelect: () => {} },
+              ],
+            },
+            { kind: "separator" },
+            { kind: "item", label: t("archive"), icon: Archive, hint: "⇧⌘A", onSelect: () => {} },
+            { kind: "item", label: t("deleteForever"), icon: Trash2, destructive: true, onSelect: () => {} },
+          ]}
+        />
+      )}
     </div>
   );
 }

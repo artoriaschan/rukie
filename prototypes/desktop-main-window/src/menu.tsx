@@ -7,8 +7,8 @@ import { createPortal } from "react-dom";
 import { cn } from "./ui";
 
 export type MenuEntry =
-  | { kind: "item"; label: string; icon?: LucideIcon; onSelect: () => void }
-  | { kind: "check"; label: string; checked: boolean; radio?: boolean; onSelect: () => void }
+  | { kind: "item"; label: string; icon?: LucideIcon; hint?: string; destructive?: boolean; onSelect: () => void }
+  | { kind: "check"; label: string; icon?: LucideIcon; description?: string; className?: string; checked: boolean; radio?: boolean; onSelect: () => void }
   | { kind: "sub"; label: string; icon?: LucideIcon; entries: MenuEntry[] }
   | { kind: "label"; label: string }
   | { kind: "separator" };
@@ -107,15 +107,21 @@ function Panel({ entries, label, autoFocus, onDone, onBack }: { entries: MenuEnt
             </div>
           );
         }
-        if (entry.kind === "check")
+        if (entry.kind === "check") {
+          const Icon = entry.icon;
           return (
             <div key={index}>
-              <button type="button" role={entry.radio ? "menuitemradio" : "menuitemcheckbox"} aria-checked={entry.checked} onMouseEnter={hover} onClick={entry.onSelect} className={itemClass}>
-                <span className="flex-1">{entry.label}</span>
-                {entry.checked && <Check />}
+              <button type="button" role={entry.radio ? "menuitemradio" : "menuitemcheckbox"} aria-checked={entry.checked} onMouseEnter={hover} onClick={entry.onSelect} className={cn(itemClass, entry.description && "items-start", entry.className)}>
+                {Icon && <Icon className={cn(entry.description && "mt-0.5")} />}
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span>{entry.label}</span>
+                  {entry.description && <span className="text-ui-sm text-muted-foreground">{entry.description}</span>}
+                </span>
+                {entry.checked && <Check className={cn(entry.description && "mt-0.5")} />}
               </button>
             </div>
           );
+        }
         const Icon = entry.icon;
         return (
           <div key={index}>
@@ -127,10 +133,11 @@ function Panel({ entries, label, autoFocus, onDone, onBack }: { entries: MenuEnt
                 entry.onSelect();
                 onDone();
               }}
-              className={itemClass}
+              className={cn(itemClass, entry.destructive && "text-destructive focus:text-destructive")}
             >
-              {Icon && <Icon className="text-muted-foreground" />}
+              {Icon && <Icon className={entry.destructive ? "text-destructive" : "text-muted-foreground"} />}
               <span className="flex-1">{entry.label}</span>
+              {entry.hint && <span className="ml-4 text-ui-sm tracking-widest text-muted-foreground">{entry.hint}</span>}
             </button>
           </div>
         );
@@ -141,9 +148,10 @@ function Panel({ entries, label, autoFocus, onDone, onBack }: { entries: MenuEnt
 
 /**
  * Opens below `anchor`, flipping above it when the viewport lacks room, and stays inside the
- * viewport; closes on outside press, Esc, or a plain item.
+ * viewport; `align` lines up the panel's start or end edge with the anchor's. Closes on outside
+ * press, Esc, or a plain item.
  */
-export function Menu({ anchor, entries, label, keyboard, onClose }: { anchor: HTMLElement; entries: MenuEntry[]; label: string; keyboard: boolean; onClose: () => void }) {
+export function Menu({ anchor, entries, label, keyboard, align = "start", onClose }: { anchor: HTMLElement; entries: MenuEntry[]; label: string; keyboard: boolean; align?: "start" | "end"; onClose: () => void }) {
   const root = useRef<HTMLDivElement>(null);
   const rect = anchor.getBoundingClientRect();
   const [pos, setPos] = useState({ top: rect.bottom + 4, left: Math.max(8, rect.left - 8), ready: false });
@@ -157,8 +165,18 @@ export function Menu({ anchor, entries, label, keyboard, onClose }: { anchor: HT
       const target = e.target as Node;
       if (!root.current?.contains(target) && !anchor.contains(target)) onClose();
     };
+    // Esc also closes a menu opened by pointer, where focus stays on the trigger.
+    const escape = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      onClose();
+      anchor.focus();
+    };
     window.addEventListener("mousedown", outside);
-    return () => window.removeEventListener("mousedown", outside);
+    window.addEventListener("keydown", escape);
+    return () => {
+      window.removeEventListener("mousedown", outside);
+      window.removeEventListener("keydown", escape);
+    };
   }, [anchor, onClose]);
 
   useLayoutEffect(() => {
@@ -166,7 +184,8 @@ export function Menu({ anchor, entries, label, keyboard, onClose }: { anchor: HT
     if (!panel) return;
     const below = rect.bottom + 4;
     const top = below + panel.height > innerHeight - 8 ? Math.max(8, rect.top - 4 - panel.height) : below;
-    setPos({ top, left: Math.min(Math.max(8, rect.left - 8), innerWidth - panel.width - 8), ready: true });
+    const left = align === "end" ? rect.right - panel.width : rect.left - 8;
+    setPos({ top, left: Math.min(Math.max(8, left), innerWidth - panel.width - 8), ready: true });
   }, []);
 
   return createPortal(

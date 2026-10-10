@@ -2,7 +2,8 @@
 // with DESIGN.md tokens and the text-ui-* scale. Real code installs them through the shadcn CLI.
 import { clsx, type ClassValue } from "clsx";
 import { FileText, Pencil, Search, SquareTerminal } from "lucide-react";
-import { useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { extendTailwindMerge } from "tailwind-merge";
 
 const twMerge = extendTailwindMerge({
@@ -29,17 +30,23 @@ const buttonSizes = {
   "icon-sm": "size-8",
 };
 
+/** `tip` labels an icon-only button: it becomes the accessible name and a hover/focus tooltip. */
 export function Button({
   variant = "default",
   size = "default",
   className,
+  tip,
+  tipSide,
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: keyof typeof buttonVariants;
   size?: keyof typeof buttonSizes;
+  tip?: string;
+  tipSide?: "top" | "bottom" | "right";
 }) {
-  return (
+  const button = (
     <button
+      aria-label={tip}
       className={cn(
         "inline-flex shrink-0 items-center justify-center rounded-md text-ui-base font-medium whitespace-nowrap transition-all outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
         buttonVariants[variant],
@@ -48,6 +55,13 @@ export function Button({
       )}
       {...props}
     />
+  );
+  return tip ? (
+    <Tooltip label={tip} side={tipSide}>
+      {button}
+    </Tooltip>
+  ) : (
+    button
   );
 }
 
@@ -93,40 +107,87 @@ export const toolIcons = { Read: FileText, Bash: SquareTerminal, Edit: Pencil, G
 
 /**
  * PROTOTYPE tooltip in shadcn/ui Tooltip style (inverted pill, short delay); real code installs
- * shadcn's tooltip. Opens on hover or keyboard focus, closes on leave, blur, or Esc.
+ * shadcn's tooltip. Opens on hover or keyboard focus, closes on leave, blur, press, or Esc.
+ * Rendered in a portal so scroll containers and overflow-hidden sheets cannot clip it.
  */
-export function Tooltip({ label, children }: { label: string; children: ReactNode }) {
+export function Tooltip({ label, side = "bottom", children }: { label: string; side?: "top" | "bottom" | "right"; children: ReactNode }) {
   const id = useId();
-  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLSpanElement>(null);
+  const [at, setAt] = useState<DOMRect | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const open = () => box.current && setAt(box.current.getBoundingClientRect());
   const show = () => {
     clearTimeout(timer.current);
-    timer.current = setTimeout(() => setOpen(true), 300);
+    timer.current = setTimeout(open, 300);
   };
   const hide = () => {
     clearTimeout(timer.current);
-    setOpen(false);
+    setAt(null);
   };
   useEffect(() => () => clearTimeout(timer.current), []);
+  const style =
+    at &&
+    (side === "right"
+      ? { top: at.top + at.height / 2, left: at.right + 8, transform: "translateY(-50%)" }
+      : side === "top"
+        ? { top: at.top - 8, left: at.left + at.width / 2, transform: "translate(-50%, -100%)" }
+        : { top: at.bottom + 8, left: at.left + at.width / 2, transform: "translateX(-50%)" });
   return (
     <span
-      className="relative inline-flex"
+      ref={box}
+      className="inline-flex"
       onMouseEnter={show}
       onMouseLeave={hide}
-      onFocus={() => {
-        clearTimeout(timer.current);
-        setOpen(true);
-      }}
+      onPointerDown={hide}
+      onFocus={(e) => e.target.matches(":focus-visible") && open()}
       onBlur={hide}
       onKeyDown={(e) => e.key === "Escape" && hide()}
-      aria-describedby={open ? id : undefined}
+      aria-describedby={at ? id : undefined}
     >
       {children}
-      {open && (
-        <span id={id} role="tooltip" className="pointer-events-none absolute top-full left-1/2 z-50 mt-2 -translate-x-1/2 rounded-md bg-foreground px-3 py-1.5 text-ui-sm whitespace-nowrap text-background shadow-md">
-          {label}
-        </span>
-      )}
+      {style &&
+        createPortal(
+          <span id={id} role="tooltip" style={style} className="pointer-events-none fixed z-[60] rounded-md bg-foreground px-3 py-1.5 text-ui-sm whitespace-nowrap text-background shadow-md">
+            {label}
+          </span>,
+          document.body,
+        )}
     </span>
+  );
+}
+
+/**
+ * PROTOTYPE popover in shadcn/ui Popover style; real code installs shadcn's popover. Opens above
+ * `anchor` aligned to its start edge, kept inside the viewport; closes on outside press or Esc.
+ */
+export function Popover({ anchor, label, onClose, children }: { anchor: HTMLElement; label: string; onClose: () => void; children: ReactNode }) {
+  const root = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  useLayoutEffect(() => {
+    const a = anchor.getBoundingClientRect();
+    const p = root.current?.getBoundingClientRect();
+    if (!p) return;
+    const top = a.top - 8 - p.height < 8 ? a.bottom + 8 : a.top - 8 - p.height;
+    setPos({ top, left: Math.min(Math.max(8, a.left - 8), innerWidth - p.width - 8) });
+  }, [anchor]);
+  useEffect(() => {
+    const outside = (e: MouseEvent) => !root.current?.contains(e.target as Node) && !anchor.contains(e.target as Node) && onClose();
+    const escape = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      onClose();
+      anchor.focus();
+    };
+    window.addEventListener("mousedown", outside);
+    window.addEventListener("keydown", escape);
+    return () => {
+      window.removeEventListener("mousedown", outside);
+      window.removeEventListener("keydown", escape);
+    };
+  }, [anchor, onClose]);
+  return createPortal(
+    <div ref={root} role="dialog" aria-label={label} style={pos ?? { top: 0, left: 0 }} className={cn("fixed z-50 rounded-xl border bg-popover p-4 text-foreground shadow-md outline-none", !pos && "opacity-0")}>
+      {children}
+    </div>,
+    document.body,
   );
 }

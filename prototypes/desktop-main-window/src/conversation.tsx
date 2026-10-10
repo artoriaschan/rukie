@@ -96,22 +96,35 @@ function TurnView({ turn, index, status }: { turn: Turn; index: number; status: 
   );
 }
 
+/** Dash rail; hovering or focusing a dash previews that Turn's prompt and last reply (Pencil H08). */
 export function TurnRail({ turns, active, onJump }: { turns: Turn[]; active: number; onJump: (i: number) => void }) {
   const t = useT();
+  const [preview, setPreview] = useState<number | null>(null);
   if (turns.length < 2) return null;
+  const shown = preview === null ? undefined : turns[preview];
+  const reply = shown?.items.filter((i) => i.kind === "text").at(-1);
   return (
-    <nav aria-label={t("turnNav")} className="absolute top-1/2 left-3 z-10 flex -translate-y-1/2 flex-col gap-1.5 max-md:hidden">
+    <nav aria-label={t("turnNav")} onMouseLeave={() => setPreview(null)} className="absolute top-1/2 left-3 z-10 flex -translate-y-1/2 flex-col gap-1.5 max-md:hidden">
       {turns.map((turn, i) => (
         <button
           key={turn.id}
           type="button"
           aria-label={t("turnN", { n: i + 1, prompt: turn.prompt })}
           aria-current={i === active ? "true" : undefined}
-          title={turn.prompt}
+          onMouseEnter={() => setPreview(i)}
+          onFocus={() => setPreview(i)}
+          onBlur={() => setPreview(null)}
+          onKeyDown={(e) => e.key === "Escape" && setPreview(null)}
           onClick={() => onJump(i)}
           className={cn("h-0.5 w-3 rounded-full outline-none transition-all hover:w-5 hover:bg-foreground focus-visible:ring-2 focus-visible:ring-ring", i === active ? "w-5 bg-foreground" : "bg-border-strong")}
         />
       ))}
+      {shown && (
+        <div role="tooltip" aria-label={t("turnPreview", { n: (preview ?? 0) + 1 })} className="pointer-events-none absolute top-1/2 left-full ml-3 w-80 -translate-y-1/2 space-y-1.5 rounded-xl border bg-popover p-3 shadow-md">
+          <p className="truncate text-ui-sm">{shown.prompt}</p>
+          {reply?.kind === "text" && <p className="line-clamp-3 text-ui-sm text-muted-foreground">{reply.text.replace(/`/g, "")}</p>}
+        </div>
+      )}
     </nav>
   );
 }

@@ -130,3 +130,28 @@ export const summary = {
   subagents: { done: 2, running: 1 },
   sources: ["docs/adr/0009-subagent-resume-outcomes.md", "packages/agent/tests/session/resume.test.ts"],
 };
+
+/** Thinking levels the model accepts, a subset of Agent Core's THINKING_LEVELS. */
+export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+
+/** Model catalog row; provider definitions come from user settings, the composer only lists them. */
+export interface ModelItem {
+  id: string;
+  name: string;
+  provider: string;
+  descriptionKey: "model.sonnet" | "model.opus" | "model.haiku" | "model.gpt" | "model.deepseek";
+  contextWindow: number;
+  input: ("text" | "image")[];
+  thinking: ThinkingLevel[];
+}
+
+export const models: ModelItem[] = [
+  { id: "claude-sonnet-5-5", name: "Claude Sonnet 5.5", provider: "Anthropic", descriptionKey: "model.sonnet", contextWindow: 1_000_000, input: ["text", "image"], thinking: ["off", "low", "medium", "high", "max"] },
+  { id: "claude-opus-5-5", name: "Claude Opus 5.5", provider: "Anthropic", descriptionKey: "model.opus", contextWindow: 1_000_000, input: ["text", "image"], thinking: ["off", "low", "medium", "high", "max"] },
+  { id: "claude-haiku-4-5", name: "Claude Haiku 4.5", provider: "Anthropic", descriptionKey: "model.haiku", contextWindow: 200_000, input: ["text", "image"], thinking: ["off", "low", "medium", "high"] },
+  { id: "gpt-6", name: "GPT-6", provider: "OpenAI", descriptionKey: "model.gpt", contextWindow: 400_000, input: ["text", "image"], thinking: ["minimal", "low", "medium", "high", "xhigh"] },
+  { id: "deepseek-v4", name: "DeepSeek V4", provider: "DeepSeek", descriptionKey: "model.deepseek", contextWindow: 128_000, input: ["text"], thinking: ["off", "high"] },
+];
+
+/** Context usage for the scripted Session, split the way Pencil C08 shows it. */
+export const contextUsage = { system: 5_200, tools: 7_400, toolCount: 23, messages: 228_000, opening: 16_000, compactAt: 0.8 };
