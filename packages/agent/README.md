@@ -115,6 +115,8 @@ stdout 与 stderr 分别保存在带绝对字节偏移的内存 ring，合计保
 
 后台 Subagent 使用持久化 driver 与 owned Conversation，父级普通 `run` 可先返回；`abort` 不取消后台 child。`close` 关闭当前 invocation 和 OS／连接资源，未结算 child 与 reporter 在重开时继续。已结束或明确取消的 driver 不重新创建；Run Outcome 仍不代表父级已验收委派任务。`subagent` 创建新身份，`subagent_fork` 继承已完成 Turn；`send_message` 向原 child 发送，活动时 steer，空闲时启动新的 child Run。子代理不能递归委派，类型、当前权限、MCP 过滤、共享 Plan Mode 与 Interaction 来源继续生效。
 
+新建的非 fork 子代理未显式指定模型时，继承父 Session 当前的模型与 Thinking Level；类型 `model` 优先于 `settings.subagentModel`，两者显式指定模型时从 `settings.thinking` 默认档位按子模型的支持范围向下降档。`subagent_fork` 保持原有选择规则；retained 子代理通过 `send_message` 续跑时恢复自己保存的模型与档位，不应用父级当前选择或新的 settings 默认值。
+
 `await session.interruptSubagent(id)` 取消所选活动 child 的 ownership，并等待原生 driver 终态，包括其取消通知处理；不影响 sibling。已结算 child 为 no-op；child 已停止但 reporter 未结算时，重复停止仍等待同一终态，不重复改变 Run Outcome。未知 id 拒绝 Promise。Frontend 不等待停止时也须处理该 Promise 的失败。存储或关闭错误会传播，不把请求取消标记当作已停止。
 
 `session.currentRequestId` 是产品请求身份；`await session.waitForRequest(id)` 等待该请求已接受的 root 输入、相关 child Run、reporter 与通知引发的后续处理。它沿已提交原生 ownership 和 ToolTask／Submission 身份收敛因果范围，处理后来新增的相关 child；向已有活动 child 发送消息的请求也等待该 driver 与报告处理。空闲 anchor、历史 child 与无关运行不属于该范围。`SubagentRun.id` 是 driver task id，provider 的 tool call id 和 SDK `StreamOptions.sessionId` 都不是产品请求 id。SDK Session 身份由原生 Conversation 持久化，重试和恢复沿用；新 fork 获得独立身份。

@@ -1706,7 +1706,11 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         }
         return {
           model: { provider: selected.provider, modelId: selected.id },
-          ...(settings.thinking ? { thinkingLevel: settings.thinking } : {}),
+          ...(type.name === "fork"
+            ? settings.thinking
+              ? { thinkingLevel: settings.thinking }
+              : {}
+            : { thinkingLevel: supportedThinkingLevel(selected, settings.thinking ?? "off") }),
           cwd,
           instructions: SYSTEM_PROMPT,
           extensions: [extension],
