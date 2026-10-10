@@ -28,7 +28,7 @@ Status: claimed
 
 ## Verification evidence
 
-- `bun run test:desktop`：14 个文件、45 项通过，5.28s；该 issue Node 3 项与 Chromium App 7 项覆盖原生增量、权限键盘/settled/stale/断连重放、steer/withdraw、停止回填归属、pending prompt 重输同值、新 Session 交接、摘要宽/窄布局与焦点、实际虚拟行测量，以及虚拟时钟耗时边界。7 项浏览器 focused 2.77s；单个浏览器场景所需真实 WS 子进程与 Chromium 布局测量属于接缝 3 集成成本，无固定等待。
+- `bun run test:desktop`：14 个文件、45 项通过，5.38s；该 issue Node 3 项与 Chromium App 7 项覆盖原生增量、权限键盘/settled/stale/断连重放、steer/withdraw、停止回填归属、pending prompt 重输同值、新 Session 交接、摘要宽/窄布局与焦点、实际虚拟行测量，以及虚拟时钟耗时边界。7 项浏览器 focused 2.77s；单个浏览器场景所需真实 WS 子进程与 Chromium 布局测量属于接缝 3 集成成本，无固定等待。
 - `bun run check:dev` 通过。`bunx --no vite build --config packages/ui/vite.config.ts packages/ui` 通过；主 chunk 864.25kB、按需语法引擎 959.38kB，仍有 Vite >500kB 的体积 warning，未弱化检查。
 - 已执行 agent-browser CLI core 工作流与命名会话 desktop29，真实 startServer + 既有 fakeModel，隔离 HOME；开发模式与通过实际 serveAppFile 提供的生产 CSP 均验证。写入和 bash 两次权限默认焦点/Enter、最终回复折叠、diff 与 ANSI 展开、高亮 Light/Dark、480px 摘要全宽/Esc、持续真实 Session Run、刻度跳转与阅读位置均正常。生产 CSP 保持 script-src self、style-src self unsafe-inline，实际语法引擎成功加载；浏览器错误与 console error 为 0，代码/CSS/高亮引擎资源请求为 200；浏览器默认 favicon 请求为 404（本票不新增应用图标）。
 - Chromium CLI 渲染实测：10 个回复组仅挂载 5 个 article；上翻至 scrollTop=0 后第 11 组追加仍为 0；scrollToIndex 跳至第 5 组，article y=45、scrollTop=1088；第一组展开从 272px 增至 448px；第 12 组流式末行从 104px 增至 256px，完成为 272px，最终底部 gap=0。自动浏览器同时覆盖 80 组只渲染少量行、流式大段增高、展开与 resize。
@@ -36,3 +36,5 @@ Status: claimed
 - GUI 证据 `/tmp/rukie-desktop-evidence/issue29/`：permission-light.png、transcript-light.png、transcript-dark.png、transcript-narrow-light.png、transcript-narrow-dark.png、summary-narrow-dark.png、virtual-jump-expand-light.png、stream-measurements.json、highlight-measurements.json、browser-errors.txt、browser-console.txt、browser-network.txt、production-csp.txt、provider-error-light.png。浏览器会话、Vite、真实 server 与 CSP 资源服务已关闭；所有隔离 HOME 与 handshake credential 已清理。
 - Provider failure 补验：最新 Node + Chromium focused 2 文件 10 项通过（2.69s），check:dev 通过；实际 fakeModel stopReason=error 在生产 CSP 页显示失败状态、Provider unavailable 警告，feed busy=false，浏览器错误为 0；补验服务、会话和 HOME 已关闭并清理。
 - 完整聚合检查与独立代码审查由 spec 主线程统一完成，本票保持 claimed，未关闭 spec、未推送或声明远端 CI 通过。
+
+- 已将当前集成基线 74a2aaa 合入本票分支（df617f46，无冲突），该树的 test:desktop 45 项通过（5.38s）及 check:dev 通过。随后仅收紧实际读取的 Transcript 身份/可选字段验证，非法 entryId 不进入呈现；Node store 两文件 9 项通过（215ms），check:dev 再通过，合法原生 GUI 行为未变。

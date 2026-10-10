@@ -104,6 +104,11 @@ test("wire presentation rejects malformed blocks and queues without corrupting c
   expect(store.getState().views.a?.transcript?.groups).toHaveLength(1);
   for (const event of [
     {
+      type: "message_end",
+      entryId: "bad",
+      messages: [{ role: "user", entryId: {}, timestamp: 2, content: "Corrupt identity" }],
+    },
+    {
       type: "message_update",
       message: {
         role: "assistant",

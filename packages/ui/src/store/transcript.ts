@@ -19,7 +19,23 @@ function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 function message(value: unknown): value is TranscriptMessage {
-  if (!record(value) || typeof value.role !== "string" || typeof value.timestamp !== "number")
+  if (
+    !record(value) ||
+    typeof value.role !== "string" ||
+    typeof value.timestamp !== "number" ||
+    !Number.isFinite(value.timestamp)
+  )
+    return false;
+  if (value.entryId !== undefined && typeof value.entryId !== "string") return false;
+  if (value.source !== undefined && typeof value.source !== "string") return false;
+  if (value.errorMessage !== undefined && typeof value.errorMessage !== "string") return false;
+  if (value.stopReason !== undefined && typeof value.stopReason !== "string") return false;
+  if (value.outcomeUnknown !== undefined && typeof value.outcomeUnknown !== "boolean") return false;
+  if (
+    value.imageNames !== undefined &&
+    (!Array.isArray(value.imageNames) ||
+      !value.imageNames.every((name) => name === null || typeof name === "string"))
+  )
     return false;
   if (value.role === "session-notice")
     return record(value.notice) && typeof value.notice.kind === "string";
