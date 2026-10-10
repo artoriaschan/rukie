@@ -60,12 +60,23 @@ test("picker height degradation removes spacing and explanation, shortens hints,
     await terminal.waitFor(() => !text().includes("Text input · Reasoning"));
     expect(text()).not.toContain("Text input · Reasoning");
     expect(text()).toContain("[low]");
+    app.rerender(picker(7, 40));
+    await terminal.waitFor(() => !text().includes("[low]"));
+    expect(
+      terminal.screen().findLastIndex((line) => line.trim().length > 0) + 1,
+    ).toBeLessThanOrEqual(7);
     app.rerender(picker(3));
     await terminal.waitFor(() => text().includes("[low]"));
+    expect(
+      terminal.screen().findLastIndex((line) => line.trim().length > 0) + 1,
+    ).toBeLessThanOrEqual(3);
     app.rerender(picker(2));
     await terminal.waitFor(() => !text().includes("[low]"));
     expect(text()).toContain("test/model");
     expect(text()).toContain("Enter · Esc");
+    expect(
+      terminal.screen().findLastIndex((line) => line.trim().length > 0) + 1,
+    ).toBeLessThanOrEqual(2);
   } finally {
     app.unmount();
     await app.waitUntilExit();

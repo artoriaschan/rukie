@@ -49,7 +49,15 @@ export function ModelPicker({
   const spacious = maxHeight >= 14 && Bun.stringWidth(t("model.hint")) <= width;
   const shortHint = maxHeight < 9 || Bun.stringWidth(t("model.hint")) > width;
   const capabilities = maxHeight >= 9;
-  const count = Math.max(1, Math.floor((maxHeight - (spacious ? 10 : 7)) / (capabilities ? 2 : 1)));
+  // Borders and fixed chrome share the caller's budget with selectable rows.
+  // Tiny allocations retain the focused model and keyboard operation without a frame.
+  const minimal = maxHeight < 7;
+  const showThinking = minimal ? maxHeight >= 3 : maxHeight >= 8;
+  const chromeHeight = minimal ? Number(maxHeight >= 2) : spacious ? 9 : 6;
+  const count = Math.max(
+    1,
+    Math.floor((maxHeight - chromeHeight - Number(showThinking)) / (capabilities ? 2 : 1)),
+  );
   const providerWindow = stripWindow(
     tabs.map((provider) => provider.name),
     tab,
@@ -58,54 +66,66 @@ export function ModelPicker({
   const levels = models[focus]?.thinkingLevels ?? [];
   const levelWindow = stripWindow(levels, Math.max(0, levels.indexOf(thinkingLevel)), width);
   const start = Math.max(0, Math.min(models.length - count, focus - Math.floor(count / 2)));
+  if (maxHeight <= 0) return null;
   return (
     <ThemedBox
       flexDirection="column"
-      borderStyle="single"
+      borderStyle={minimal ? undefined : "single"}
       color="permission"
       paddingX={1}
       flexShrink={0}
       onWheel={(event) => onWheel(event.deltaY)}
     >
-      <ThemedText color="permission" bold wrap="truncate">
-        {t("model.title")}
-      </ThemedText>
+      {!minimal && (
+        <ThemedText color="permission" bold wrap="truncate">
+          {t("model.title")}
+        </ThemedText>
+      )}
       {loading ? (
-        <ThemedText>{t("model.loading")}</ThemedText>
+        <ThemedText wrap="truncate">{t("model.loading")}</ThemedText>
       ) : failed ? (
         <ThemedText color="error" wrap="truncate">
           {t("model.load-failed")}
         </ThemedText>
       ) : (
         <>
-          <HintLine>{t(shortHint ? "model.hint-short" : "model.hint")}</HintLine>
-          {spacious && <ThemedBox height={1} />}
-          {query ? (
-            <ThemedText wrap="truncate">{t("model.filter", { query })}</ThemedText>
-          ) : (
-            <ThemedBox flexDirection="row" height={1} flexShrink={0}>
-              {providerWindow.start > 0 && <ThemedText color="subtle">‹ </ThemedText>}
-              {tabs.slice(providerWindow.start, providerWindow.end).map((provider, offset) => {
-                const index = providerWindow.start + offset;
-                return (
-                  <ThemedBox
-                    key={provider.id}
-                    onClick={() => onTab(index)}
-                    flexShrink={0}
-                    width={Math.min(width - 4, Bun.stringWidth(provider.name) + 3)}
-                  >
-                    <ThemedText
-                      bold={index === tab}
-                      color={index === tab ? "suggestion" : "subtle"}
-                      wrap="truncate"
-                    >{`${index === tab ? "[" : " "}${provider.name}${index === tab ? "]" : " "} `}</ThemedText>
-                  </ThemedBox>
-                );
-              })}
-              {providerWindow.end < tabs.length && <ThemedText color="subtle">›</ThemedText>}
-            </ThemedBox>
+          {maxHeight >= 2 && (
+            <HintLine>
+              {minimal && notice ? notice : t(shortHint ? "model.hint-short" : "model.hint")}
+            </HintLine>
           )}
-          {models.length === 0 && <ThemedText color="subtle">{t("model.empty")}</ThemedText>}
+          {spacious && <ThemedBox height={1} />}
+          {!minimal &&
+            (query ? (
+              <ThemedText wrap="truncate">{t("model.filter", { query })}</ThemedText>
+            ) : (
+              <ThemedBox flexDirection="row" height={1} flexShrink={0}>
+                {providerWindow.start > 0 && <ThemedText color="subtle">‹ </ThemedText>}
+                {tabs.slice(providerWindow.start, providerWindow.end).map((provider, offset) => {
+                  const index = providerWindow.start + offset;
+                  return (
+                    <ThemedBox
+                      key={provider.id}
+                      onClick={() => onTab(index)}
+                      flexShrink={0}
+                      width={Math.min(width - 4, Bun.stringWidth(provider.name) + 3)}
+                    >
+                      <ThemedText
+                        bold={index === tab}
+                        color={index === tab ? "suggestion" : "subtle"}
+                        wrap="truncate"
+                      >{`${index === tab ? "[" : " "}${provider.name}${index === tab ? "]" : " "} `}</ThemedText>
+                    </ThemedBox>
+                  );
+                })}
+                {providerWindow.end < tabs.length && <ThemedText color="subtle">›</ThemedText>}
+              </ThemedBox>
+            ))}
+          {models.length === 0 && (
+            <ThemedText color="subtle" wrap="truncate">
+              {t("model.empty")}
+            </ThemedText>
+          )}
           {models.slice(start, start + count).map((model, index) => {
             const missing = model.custom && !model.authenticated;
             const prefix = model.spec === current ? "✓ " : "";
@@ -148,7 +168,7 @@ export function ModelPicker({
             );
           })}
           {spacious && <ThemedBox height={1} />}
-          {maxHeight >= 3 &&
+          {showThinking &&
             (models[focus]?.reasoning ? (
               <ThemedBox flexDirection="row" height={1} flexShrink={0}>
                 {levelWindow.start > 0 && <ThemedText color="subtle">‹ </ThemedText>}
@@ -171,13 +191,15 @@ export function ModelPicker({
                 {levelWindow.end < levels.length && <ThemedText color="subtle">›</ThemedText>}
               </ThemedBox>
             ) : (
-              <ThemedText color="inactive">{t("model.thinking-disabled")}</ThemedText>
+              <ThemedText color="inactive" wrap="truncate">
+                {t("model.thinking-disabled")}
+              </ThemedText>
             ))}
           {spacious && <HintLine>{t("model.thinking-description")}</HintLine>}
-          <HintLine>{notice ?? t("model.providers-note")}</HintLine>
+          {!minimal && <HintLine>{notice ?? t("model.providers-note")}</HintLine>}
         </>
       )}
-      {(loading || failed) && <HintLine>{t("model.hint-short")}</HintLine>}
+      {(loading || failed) && maxHeight >= 2 && <HintLine>{t("model.hint-short")}</HintLine>}
     </ThemedBox>
   );
 }
