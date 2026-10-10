@@ -1,0 +1,21 @@
+.scratch/model-switching/issues/07-picker-small-terminal-and-mouse.md
+  s_d978fde46482cc::t_1777ad2fa9ffb3 3,46-50
+.scratch/model-switching/spec.md
+  s_d978fde46482cc::t_1777ad2fa9ffb3 1,128-137
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "68242c64fc71d957d075bc529c6c22947f6c1ef2",
+  "prompts": {},
+  "sessions": {
+    "s_d978fde46482cc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12432-458f-78c1-8179-498b8ca39f9e",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
