@@ -346,7 +346,7 @@ test("switching a model clears staged images and resets numbering", async () => 
     await app.waitFor(() => app.screen().some((line) => line.includes("❯ [Image #1]")));
     app.stdin.write("\x03/model token-model/second\r");
     await app.waitFor(() =>
-      app.screen().join("\n").includes("Model changed to token-model/second"),
+      app.screen().join("\n").includes("Model changed to second (token-model/second)"),
     );
     app.stdin.write("[Image #1]\r");
     await app.waitFor(() => app.calls.length === 1);

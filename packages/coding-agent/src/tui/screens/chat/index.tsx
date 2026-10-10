@@ -2962,7 +2962,7 @@ function Chat({
               key="startup-logo"
               model={state.model}
               cwd={cwd}
-              thinking={thinking}
+              thinking={thinking === "off" ? undefined : thinking}
               working={state.running}
               suspended={!!preview || !!composerPreview}
             />
