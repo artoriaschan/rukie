@@ -1,0 +1,22 @@
+packages/coding-agent/tests/tui/e2e/concurrent-parity.test.ts
+  s_38a204b3e8b16e::t_30c1b768c47b07 207-211
+  s_38a204b3e8b16e::t_d598b389a58687 205-206
+docs/tech-stack.md
+  s_38a204b3e8b16e::t_d598b389a58687 131-132
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "9e166383efeb9a1465cadc7570b32b4b2df3edb7",
+  "prompts": {},
+  "sessions": {
+    "s_38a204b3e8b16e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1243d-c8fe-7fe1-b525-d913b3332f89",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
