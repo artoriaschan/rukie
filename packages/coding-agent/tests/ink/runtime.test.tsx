@@ -214,19 +214,37 @@ test("independent roots bind selection/search and restore their own terminal", a
     search: ReturnType<typeof useSearchHighlight>;
     element: () => DOMElement | null;
     exit: (error?: Error) => void;
+    click: (column: number, row: number) => boolean;
   };
   const controls: Controls[] = [];
+  const clicks = [0, 0];
   function Screen({ label, index }: { label: string; index: number }) {
     useInput(() => {});
     const ref = useRef<DOMElement>(null);
     const selection = useSelection();
     const search = useSearchHighlight();
-    const { exit } = useApp();
-    controls[index] = { selection, search, element: () => ref.current, exit };
+    const { exit, renderer } = useApp();
+    controls[index] = {
+      selection,
+      search,
+      element: () => ref.current,
+      exit,
+      click: (column, row) => renderer?.dispatchClick(column, row) ?? false,
+    };
     return (
       <AlternateScreen>
-        <Box ref={ref}>
+        <Box ref={ref} marginLeft={3} marginTop={1} width={10} height={1}>
           <Text>{label}</Text>
+          <Box
+            position="absolute"
+            left={0}
+            top={0}
+            width={5}
+            height={1}
+            onClick={() => {
+              clicks[index] = clicks[index]! + 1;
+            }}
+          />
         </Box>
       </AlternateScreen>
     );
@@ -245,6 +263,11 @@ test("independent roots bind selection/search and restore their own terminal", a
     expect(controls[1]!.search.scanElement(controls[1]!.element()!)).toHaveLength(1);
     expect(controls[0]!.search.scanElement(controls[1]!.element()!)).toHaveLength(0);
     expect(controls[1]!.search.scanElement(controls[0]!.element()!)).toHaveLength(0);
+    // Scanning either root must preserve the painted pointer geometry before
+    // another frame has a chance to repair it.
+    expect(controls[0]!.click(3, 1)).toBe(true);
+    expect(controls[1]!.click(3, 1)).toBe(true);
+    expect(clicks).toEqual([1, 1]);
     const selected = new Promise<void>((resolve) => {
       const unsubscribe = controls[0]!.selection.subscribe(() => {
         if (controls[0]!.selection.hasSelection()) {
@@ -253,7 +276,7 @@ test("independent roots bind selection/search and restore their own terminal", a
         }
       });
     });
-    first.stdin.write("\x1b[<0;1;1M\x1b[<32;5;1M\x1b[<0;5;1m");
+    first.stdin.write("\x1b[<0;4;2M\x1b[<32;8;2M\x1b[<0;8;2m");
     await selected;
     expect(controls[0]!.selection.copySelectionNoClear()).toBe("alpha");
     expect(controls[1]!.selection.hasSelection()).toBe(false);

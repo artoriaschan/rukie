@@ -29,6 +29,7 @@ SplitDiffView 的 `onSourceMount(id, DOMElement | null)` 将稳定源行身份�
 - ink.tsx：stdout 恢复不回退 fd=1；退出保存完成状态与 Error，修复首次 late wait；将 renderer 传给 App。
 - App.tsx/AppContext.ts：提供根自己的 stdout 和 renderer。use-selection/use-search-highlight/AlternateScreen 不使用 process.stdout 全局或单根 fallback。
 - render-node-to-output.ts/renderer.ts/hit-test.ts：绝对覆盖层的绘制区域、命中列表和 image occlusion 历史属于各自根；另一根绘制不会改变当前根的点击目标或覆盖层修复判断。output.ts 的绝对区域 clear 只排除其之前的旧区域 blit，之后绘制的当前子树 border、header、首 glyph 和 prompt 保留。
+- ink.tsx/render-node-to-output.ts：搜索扫描复用当前 Yoga 布局，但在一次性 DOM 副本和独立帧状态中绘制；扫描不改写正常帧的节点坐标缓存、鼠标命中区域、滚动或覆盖层历史，扫描后无需等待下一帧即可点击原位置。
 - node-cache.ts/renderer.ts：绝对浮层移除标记按 root 保存在 WeakSet 中，仅由所属 root 消耗；另一 root 先绘制不会抢走禁用旧帧 blit 的标记，移除后的首帧完整恢复底层字形。
 - App.tsx/ink.tsx/hit-test.ts/events/click-event.ts：click 事件携带 press 的屏幕和目标局部坐标；通用 click 路由语义不变，产品编辑器校验 press/release 位于同一原子单位。
 - root.ts/ink.tsx/selection.ts：selectionIncludeNoSelectCells 每根可选择原始区域 fence 或严格装饰排除，char/word/line 由同一起点策略初始化；默认保持 dsh 行为。
