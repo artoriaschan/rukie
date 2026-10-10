@@ -176,3 +176,56 @@ async function crashToolReceipt(
     reader.releaseLock();
   }
 }
+
+/** Kill the existing native recovery worker after public queue admission is acknowledged. */
+export async function crashQueuedInputs(cwd: string, homeDir: string) {
+  const child = Bun.spawn(
+    [
+      process.execPath,
+      join(import.meta.dir, "subagent-recovery-worker.ts"),
+      "queued-input",
+      cwd,
+      homeDir,
+      "queued",
+    ],
+    { stdin: "pipe", stdout: "pipe", stderr: "pipe" },
+  );
+  const errors = new Response(child.stderr).text();
+  const reader = child.stdout.getReader();
+  // Actual child process and transport bound; a parent clock cannot advance it.
+  const context = withAbortSignal(AbortSignal.timeout(5000), BACKGROUND_CONTEXT);
+  let output = "";
+  try {
+    for (;;) {
+      const line = output
+        .split("\n")
+        .slice(0, -1)
+        .find((line) => line.startsWith("READY "));
+      if (line) {
+        const value: unknown = JSON.parse(line.slice(6));
+        if (
+          !value ||
+          typeof value !== "object" ||
+          !("sessionId" in value) ||
+          typeof value.sessionId !== "string" ||
+          !("requestId" in value) ||
+          typeof value.requestId !== "string"
+        )
+          throw new Error("Invalid queued input crash identity");
+        child.kill("SIGKILL");
+        await awaitWithContext(child.exited, context);
+        const stderr = await errors;
+        if (stderr) throw new Error(stderr);
+        return { sessionId: value.sessionId, requestId: value.requestId };
+      }
+      const next = await awaitWithContext(reader.read(), context);
+      if (next.done) throw new Error(`Queue worker exited before admission: ${await errors}`);
+      output += new TextDecoder().decode(next.value);
+    }
+  } finally {
+    child.kill("SIGKILL");
+    child.stdin.end();
+    await child.exited;
+    reader.releaseLock();
+  }
+}

@@ -31,6 +31,12 @@ Question 和 Plan Review 在原生执行意图之前收集回复；计划批准�
 | [Goal 激活](src/tools/goal/driver.ts)、[待提交输入事实、子代理描述](src/session/index.ts)                    | latest / initial     | 当前活动事实不复制到新 fork                                                  |
 | [Session 索引](src/store/index.ts)                                                                           | Session scope        | 保存持久化身份及当前选中 Conversation，不参与对话 fork                       |
 
+# Queued Input
+
+Run 进行中调用 `session.followUp(prompt, { images? })`，返回稳定 `requestId`；输入在当前 Run 回答后的原生边界按发送顺序逐条放入，每条是独立用户消息并开始下一 Run。空闲时调用会直接启动 Run。`session.queuedInputs` 与 `snapshot.queuedInputs` 提供原文、图片数据、MIME 与名称；`queued_inputs_update` 提供已提交队列的新投影。队列使用原生 `pi.inbox` 持久化，崩溃后 Resume 显示尚未放入的输入并继续原顺序。
+
+`session.withdraw(requestId)` 在放入前原子撤回，返回 `{ status: "withdrawn", input }`；身份不存在、已放入或已撤回时返回 `{ status: "not_queued" }`。`session.steerNow(requestId)` 把所选输入改为在当前工具轮完成后放入，返回 `steered` 或 `not_queued`，保留 requestId。`session.abort()` 等待正在接受的输入，原子撤回全部 Queued Input，再停止当前 Run，返回按排队顺序排列的原文与附件数组，Frontend 负责交还输入框。`close()` 保留已接受输入，供下次 Resume 继续；`steer(prompt)` 仍接受新指令并在工具边界放入。
+
 # Model Selection
 
 `session.setModelSelection({ model?, thinkingLevel? })` 在 Session 空闲时原地切换；省略的字段沿用当前选择。返回实际生效的 `{ model, thinkingLevel, clampedFrom? }`，`session.model` 与 `session.thinkingLevel` 提供只读当前值。Thinking Level 取不高于请求档位的最高支持档，没有更低档时取最低支持档；不支持 reasoning 的模型使用 `off`。Run 进行中或另一选择尚未完成时拒绝切换，凭据缺失返回 `no-api-key`，失败不改写选择或用户 settings。

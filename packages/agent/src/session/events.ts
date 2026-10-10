@@ -1,3 +1,4 @@
+import type { QueuedInput } from "./index.ts";
 import type { AgentEvent } from "@earendil-works/pi-durable";
 import type { RunResult, SessionEvent as SharedSessionEvent } from "@rukie/shared";
 import type {
@@ -15,6 +16,7 @@ export interface BackgroundActivity {
 
 type CommittedEvent<E extends AgentEvent = AgentEvent> = E extends { type: "snapshot" }
   ? E & {
+      queuedInputs: readonly QueuedInput[];
       messages: readonly TranscriptMessage[];
       background: readonly BackgroundActivity[];
       toolStates: Readonly<Record<string, unknown>>;
@@ -38,6 +40,7 @@ type CommittedEvent<E extends AgentEvent = AgentEvent> = E extends { type: "snap
 /** Parent Run boundaries and causal request settlement are separate published facts. */
 export type SessionEvent =
   | SharedSessionEvent<CommittedEvent>
+  | { type: "queued_inputs_update"; sessionId: string; items: readonly QueuedInput[] }
   | ({
       type: "request_settled";
       sessionId: string;

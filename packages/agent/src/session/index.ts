@@ -1,3 +1,5 @@
+import { PendingInputFactsDoc, queuedInputProjection, type QueuedInput } from "./queued-inputs.ts";
+export type { QueuedInput } from "./queued-inputs.ts";
 import { createConversationRuntime, createConversationRuntimePool } from "./conversation/index.ts";
 import { readGoalReceipt } from "../tools/goal/index.ts";
 import { readSubagentReceipt } from "../tools/subagents/index.ts";
@@ -30,6 +32,7 @@ import {
   CompactionTask,
   ToolTask,
   LiveDoc,
+  InboxDoc,
   type TaskId,
   type EntryDraft,
   type Storage,
@@ -187,8 +190,18 @@ export interface SessionOptions {
 export interface Session {
   /** Foreground admission, native parent Runs and manual Compaction; background children are independent. */
   readonly running: boolean;
-  /** Cancels the current run, including one started without a frontend controller. */
-  abort(): Promise<void>;
+  /** Cancel the current Run and return atomically withdrawn queued inputs in admission order. */
+  abort(): Promise<QueuedInput[]>;
+  /** Current durable user inputs awaiting placement; includes original attachment names. */
+  readonly queuedInputs: readonly QueuedInput[];
+  /** Admit a durable user input after the current Run answers; each input starts its own Run. */
+  followUp(prompt: string, options?: { images?: PromptImage[] }): Promise<string>;
+  /** Withdraw only before placement; a missing, placed or previously withdrawn identity is not_queued. */
+  withdraw(
+    requestId: string,
+  ): Promise<{ status: "withdrawn"; input: QueuedInput } | { status: "not_queued" }>;
+  /** Place a selected queued input after the current tool round instead of the final boundary. */
+  steerNow(requestId: string): Promise<{ status: "steered" | "not_queued" }>;
   /** Queue another user instruction for the current Run, including Skill Invocation. */
   steer(prompt: string, options?: { images?: PromptImage[] }): Promise<void>;
   /** Receive a committed snapshot followed by live updates, including active startup autoruns. */
@@ -337,14 +350,6 @@ const JobStopsDoc = defineDoc<{ pending: Record<string, string> }>({
   fork: "initial",
   initial: () => ({ pending: {} }),
 });
-const PendingInputFactsDoc = defineDoc<{ inputs: Record<string, Record<string, JsonValue>> }>({
-  kind: "rukie.pending-input-facts",
-  version: 1,
-  scope: "conversation",
-  history: "latest",
-  fork: "initial",
-  initial: () => ({ inputs: {} }),
-});
 const ChildHookContextDoc = defineDoc<{ pending: { source: string; content: string }[] }>({
   kind: "rukie.child-hook-context",
   version: 1,
@@ -446,7 +451,8 @@ export async function createSession(options: SessionOptions): Promise<Session> {
     let manualCompaction = false;
     let manualCompactionTask: TaskId | undefined;
     let goalRound = false;
-    const steeringAdmissions = new Set<Promise<void>>();
+    const steeringAdmissions = new Set<Promise<unknown>>();
+    let queuedAdmission: Promise<unknown> = Promise.resolve();
     let checkingStop: number | undefined;
     let permissionMode = options.permissionMode ?? settings.permissionMode ?? "ask";
     const sessionAllowRules = options.sessionAllowRules ?? [];
@@ -1692,7 +1698,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             }),
             publish: (events) => {
               for (const event of events)
-                if (event.type !== "request_settled")
+                if (event.type !== "request_settled" && event.type !== "queued_inputs_update")
                   custom({
                     type: "subagent_event",
                     agentId: childId,
@@ -2694,8 +2700,9 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       if (requestKind(requestId) !== "goal-round") ledger.setForeground(requestId);
       await ledger.registerSubmission(requestId, submitted.id);
       const record = await submitted.status(context);
-      if (images.length || invocation || !(requestKind(requestId) === "human")) {
+      {
         const facts: Record<string, JsonValue> = {
+          requestId,
           ...(images.length ? { imageNames: images.map((image) => image.name ?? null) } : {}),
           ...(invocation ? { skillInvocation: invocation } : {}),
           ...(!(requestKind(requestId) === "human")
@@ -3234,8 +3241,77 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       interruptSubagent(id) {
         return subagents.interrupt(id, context);
       },
+      get queuedInputs() {
+        return observation.snapshot().queuedInputs;
+      },
+      async followUp(prompt, input) {
+        const requestId = requestIds.human();
+        const admission = queuedAdmission.then(() =>
+          submit(prompt, input?.images, "followUp", requestId),
+        );
+        queuedAdmission = admission.catch(() => {});
+        steeringAdmissions.add(admission);
+        try {
+          await admission;
+          await observation.flush();
+          return requestId;
+        } finally {
+          steeringAdmissions.delete(admission);
+        }
+      },
+      async withdraw(requestId) {
+        assertAvailable();
+        const record = await lease.storage.submissionByRequest(conversation.id, requestId, context);
+        if (!record) return { status: "not_queued" };
+        const input = await conversation.commit(async (tx) => {
+          const inbox = await tx.doc(InboxDoc, conversation.id);
+          const facts = await tx.doc(PendingInputFactsDoc, conversation.id);
+          const input = queuedInputProjection(inbox, facts).find(
+            (item) => item.requestId === requestId,
+          );
+          if (!input) return undefined;
+          tx.settleSubmission(record.id, { status: "unanswered", reason: "aborted" });
+          inbox.items = inbox.items.filter((item) => item.id !== record.id);
+          delete facts.inputs[String(record.id)];
+          return input;
+        }, context);
+        await observation.flush();
+        return input ? { status: "withdrawn", input } : { status: "not_queued" };
+      },
+      async steerNow(requestId) {
+        assertAvailable();
+        const record = await lease.storage.submissionByRequest(conversation.id, requestId, context);
+        if (!record) return { status: "not_queued" };
+        const changed = await conversation.commit(async (tx) => {
+          const inbox = await tx.doc(InboxDoc, conversation.id);
+          const item = inbox.items.find((item) => item.id === record.id && item.mode !== "write");
+          if (!item) return false;
+          item.mode = "steer";
+          return true;
+        }, context);
+        await observation.flush();
+        return { status: changed ? "steered" : "not_queued" };
+      },
       async abort() {
         assertAvailable();
+        await Promise.allSettled(steeringAdmissions);
+        const withdrawn = await conversation.commit(async (tx) => {
+          const inbox = await tx.doc(InboxDoc, conversation.id);
+          const facts = await tx.doc(PendingInputFactsDoc, conversation.id);
+          const inputs = queuedInputProjection(inbox, facts);
+          const ids = new Set(inputs.map((input) => input.requestId));
+          const removed = inbox.items.filter(
+            (item) =>
+              item.mode !== "write" && ids.has(String(facts.inputs[String(item.id)]?.requestId)),
+          );
+          for (const item of removed) {
+            tx.settleSubmission(item.id, { status: "unanswered", reason: "aborted" });
+            delete facts.inputs[String(item.id)];
+          }
+          const removedIds = new Set(removed.map((item) => item.id));
+          inbox.items = inbox.items.filter((item) => !removedIds.has(item.id));
+          return inputs;
+        }, context);
         notificationLifetime.abort();
         notificationLifetime = new AbortController();
         runtime.stopped = true;
@@ -3244,6 +3320,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         await conversation.abort(context);
         await goalAbort;
         await observation.flush();
+        return withdrawn;
       },
       async steer(prompt, input) {
         const parentRequestId = ledger.currentRequestId;

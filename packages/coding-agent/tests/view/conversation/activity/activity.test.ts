@@ -518,6 +518,7 @@ test("a committed snapshot restores active generation and a batched delta retain
     tools: [],
     compactions: [],
     inbox: [],
+    queuedInputs: [],
     agent: {},
     usage: { models: {}, tools: {} },
     messages: [],

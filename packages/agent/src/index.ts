@@ -9,6 +9,7 @@ export {
   createSession,
   type Session,
   type SessionOptions,
+  type QueuedInput,
   type PermissionAskRequest,
   type SessionAllowRule,
 } from "./session/index.ts";
