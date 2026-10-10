@@ -1,0 +1,27 @@
+.scratch/desktop/issues/09-prototype-main-window.md
+  s_2f9b11742bfb62::t_5f853442f41d7e 18
+  s_2f9b11742bfb62::t_6bae81c847bca8 12-15
+  s_2f9b11742bfb62::t_548359d78809e1 17
+  s_2f9b11742bfb62::t_72e63d8de99852 21
+  s_2f9b11742bfb62::t_7716702a57577c 7
+  s_2f9b11742bfb62::t_af549ab39531d3 20
+  s_2f9b11742bfb62::t_129da47099c888 22
+  s_2f9b11742bfb62::t_0a9e1ce1bdb59d 19
+  s_2f9b11742bfb62::t_d4c381405772d7 16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "517c5d389099c00f2bcbe14500dc453285637e88",
+  "prompts": {},
+  "sessions": {
+    "s_2f9b11742bfb62": {
+      "agent_id": {
+        "tool": "chengxiaobang",
+        "id": "s_ud9hgzuuustw",
+        "model": "kr-claude-opus-5.5[1M]"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
