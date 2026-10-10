@@ -830,8 +830,14 @@ function reduceEvent(
     case "run_end":
       return { ...state, running: false };
     case "tool_state_changed":
-      if (event.name === "model" && typeof event.value === "string")
-        return { ...state, model: event.value, contextUsage: undefined };
+      if (
+        event.name === "model" &&
+        event.value &&
+        typeof event.value === "object" &&
+        "model" in event.value &&
+        typeof event.value.model === "string"
+      )
+        return { ...state, model: event.value.model, contextUsage: undefined };
       if (event.name === "plan")
         return {
           ...state,

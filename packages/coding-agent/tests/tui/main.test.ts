@@ -545,7 +545,9 @@ for (const [mode, argv, session] of [
 }
 
 test("--thinking is forwarded to the model request", async () => {
-  const app = await start(["--thinking", "high", "think"]);
+  const app = await start(["--thinking", "high", "think"], {
+    session: { model: { ...controlledModel().model, reasoning: true } },
+  });
   try {
     await app.waitFor(() => app.calls.length === 1);
     expect(app.calls[0]!.reasoning).toBe("high");

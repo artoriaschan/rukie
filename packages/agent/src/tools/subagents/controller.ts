@@ -364,7 +364,9 @@ export function createSubagentController(options: SubagentControllerOptions) {
               ...change,
               ...(inherited?.model
                 ? { model: inherited.model, thinkingLevel: inherited.thinkingLevel }
-                : {}),
+                : type.name !== "fork" && !type.model && !options.subagentModel
+                  ? { thinkingLevel: parentAgent.thinkingLevel }
+                  : {}),
               tools: selectedTools,
               instructions: [change.instructions ?? "", SUBAGENT_PROMPT, type.prompt]
                 .filter(Boolean)

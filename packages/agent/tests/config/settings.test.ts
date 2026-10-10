@@ -1,6 +1,8 @@
 import { afterEach, expect, test } from "bun:test";
+import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
+import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import { join } from "node:path";
-import { createSession, listModels, loadSettings } from "../../src/index.ts";
+import { createSession, listModelCatalog, loadSettings } from "../../src/index.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
 let dirs: Awaited<ReturnType<typeof tempDirs>>;
@@ -380,7 +382,9 @@ test.each(
   );
   const { settings } = await loadSettings(dirs);
   expect(settings.providers?.[0]?.models[0]).toEqual({ id: "m", input });
-  expect(listModels(settings)).toContainEqual({ spec: "vision/m", name: "m", input });
+  expect(await listModelCatalog(settings)).toContainEqual(
+    expect.objectContaining({ spec: "vision/m", name: "m", input }),
+  );
 });
 
 test("custom models without input default to text while built-in vision models keep their modalities", async () => {
@@ -392,13 +396,17 @@ test("custom models without input default to text while built-in vision models k
     }),
   );
   const { settings } = await loadSettings(dirs);
-  const choices = listModels(settings);
-  expect(choices).toContainEqual({ spec: "legacy/m", name: "m", input: ["text"] });
-  expect(choices).toContainEqual({
-    spec: "anthropic/claude-sonnet-4-5-20250929",
-    name: "Claude Sonnet 4.5",
-    input: ["text", "image"],
-  });
+  const choices = await listModelCatalog(settings);
+  expect(choices).toContainEqual(
+    expect.objectContaining({ spec: "legacy/m", name: "m", input: ["text"] }),
+  );
+  expect(choices).toContainEqual(
+    expect.objectContaining({
+      spec: "anthropic/claude-sonnet-4-5-20250929",
+      name: "Claude Sonnet 4.5",
+      input: ["text", "image"],
+    }),
+  );
 });
 
 test("Rukie settings load while malformed legacy product settings are ignored", async () => {
@@ -431,4 +439,73 @@ test("legacy-only settings are ignored without compatibility loading", async () 
   for (const root of [dirs.homeDir, dirs.cwd])
     await Bun.write(join(root, ".neant/settings.json"), JSON.stringify({ model: "legacy/m" }));
   expect(await loadSettings(dirs)).toEqual({ settings: {}, warnings: [] });
+});
+
+test("model catalog reports credentials without requiring them or making a request", async () => {
+  const key = "RUKIE_MODEL_CATALOG_TEST_KEY";
+  const previous = process.env[key];
+  try {
+    delete process.env[key];
+    const settings = { providers: [{ ...provider("catalog"), apiKeyEnv: key }] };
+    expect((await listModelCatalog(settings)).find((model) => model.spec === "catalog/m")).toEqual({
+      spec: "catalog/m",
+      id: "m",
+      name: "m",
+      providerId: "catalog",
+      providerName: "catalog",
+      input: ["text"],
+      reasoning: false,
+      thinkingLevels: ["off"],
+      contextWindow: 128_000,
+      custom: true,
+      authenticated: false,
+    });
+    process.env[key] = "fixture-key";
+    expect(
+      (await listModelCatalog(settings)).find((model) => model.spec === "catalog/m")?.authenticated,
+    ).toBe(true);
+  } finally {
+    if (previous === undefined) delete process.env[key];
+    else process.env[key] = previous;
+  }
+});
+
+test("model catalog exposes the supported thinking levels and built-in provider names", async () => {
+  const catalog = await listModelCatalog({
+    providers: [{ ...provider("reasoning"), models: [{ id: "m", reasoning: true }] }],
+  });
+  expect(catalog.find((entry) => entry.spec === "reasoning/m")?.thinkingLevels).toEqual([
+    "off",
+    "minimal",
+    "low",
+    "medium",
+    "high",
+  ]);
+  const models = builtinModels();
+  const builtin = models.getModel("anthropic", "claude-sonnet-4-5-20250929")!;
+  expect(
+    catalog.find((entry) => entry.spec === "anthropic/claude-sonnet-4-5-20250929"),
+  ).toMatchObject({
+    providerName: models.getProvider("anthropic")!.name,
+    custom: false,
+    thinkingLevels: getSupportedThinkingLevels(builtin),
+  });
+});
+
+test("model catalog detects built-in credentials from the current environment", async () => {
+  const key = "ANTHROPIC_API_KEY";
+  const previous = process.env[key];
+  try {
+    delete process.env[key];
+    expect(
+      (await listModelCatalog()).find((entry) => entry.providerId === "anthropic")?.authenticated,
+    ).toBe(false);
+    process.env[key] = "catalog-fixture-key";
+    expect(
+      (await listModelCatalog()).find((entry) => entry.providerId === "anthropic")?.authenticated,
+    ).toBe(true);
+  } finally {
+    if (previous === undefined) delete process.env[key];
+    else process.env[key] = previous;
+  }
 });

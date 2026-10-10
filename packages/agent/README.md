@@ -20,16 +20,22 @@ Question 和 Plan Review 在原生执行意图之前收集回复；计划批准�
 
 能力通过 typed documents 保存事实，版本与内容校验失败阻止恢复，不跳过坏值继续运行。Session 协调事实在 Harness／启动 Hook 之前校验父子 Conversation 中的当前内容，每次原生 document 读取和 definition-free fork copy 也校验精确来源及历史版本；损坏的历史内容不会因当前值已修复而获准复制。fork admission 失败遵守原生 poisoned Session 合同，须 close 后重开，不写入成功复制或默认状态。Tool State document 的初始 `value: null` 表示尚未建立该状态；拥有者规定清空方式，例如 Todo 使用空数组、Plan 使用 `{ active: false }`，Goal 清空使用 null。声明和校验由各能力源码负责，注册层在同一原生事务中提交状态与必要提醒。
 
-| 事实及声明处                                                                                                 | 历史 / fork          | 恢复与 Rewind                                                            |
-| ------------------------------------------------------------------------------------------------------------ | -------------------- | ------------------------------------------------------------------------ |
-| [Todo](src/tools/todo/state.ts)、[Goal facts](src/tools/goal/state.ts)、[Plan](src/tools/plan-mode/state.ts) | rewindable / asOf    | 恢复锚点时的事实；Goal 事实不代表激活自动续跑                            |
-| [Checkpoint](src/checkpoint/index.ts)、[文件跟踪](src/file-tracking/index.ts)                                | rewindable / asOf    | 恢复原输入锚点及模型已知基线                                             |
-| [子代理 Run](src/tools/subagents/state.ts)                                                                   | rewindable / asOf    | 保存历史 Run Outcome，与当前任务活动区分                                 |
-| [子代理目录](src/tools/subagents/state.ts)                                                                   | rewindable / initial | 新 fork 不继承拥有的子代理目录；顶层 Rewind 按目标位置重新建立可观察身份 |
-| [模型选择事实](src/config/model-state.ts)、[标题来源](src/session-title/index.ts)                            | rewindable / asOf    | 保留所选位置的产品事实；实际模型配置从原生 Agent document 恢复           |
-| 原生 `pi.agent`                                                                                              | rewindable / asOf    | 保存模型与 Agent 配置；Session 索引用于列表展示                          |
-| [Goal 激活](src/tools/goal/driver.ts)、[待提交输入事实、子代理描述](src/session/index.ts)                    | latest / initial     | 当前活动事实不复制到新 fork                                              |
-| [Session 索引](src/store/index.ts)                                                                           | Session scope        | 保存持久化身份及当前选中 Conversation，不参与对话 fork                   |
+| 事实及声明处                                                                                                 | 历史 / fork          | 恢复与 Rewind                                                                |
+| ------------------------------------------------------------------------------------------------------------ | -------------------- | ---------------------------------------------------------------------------- |
+| [Todo](src/tools/todo/state.ts)、[Goal facts](src/tools/goal/state.ts)、[Plan](src/tools/plan-mode/state.ts) | rewindable / asOf    | 恢复锚点时的事实；Goal 事实不代表激活自动续跑                                |
+| [Checkpoint](src/checkpoint/index.ts)、[文件跟踪](src/file-tracking/index.ts)                                | rewindable / asOf    | 恢复原输入锚点及模型已知基线                                                 |
+| [子代理 Run](src/tools/subagents/state.ts)                                                                   | rewindable / asOf    | 保存历史 Run Outcome，与当前任务活动区分                                     |
+| [子代理目录](src/tools/subagents/state.ts)                                                                   | rewindable / initial | 新 fork 不继承拥有的子代理目录；顶层 Rewind 按目标位置重新建立可观察身份     |
+| [模型选择事实](src/config/model-state.ts)、[标题来源](src/session-title/index.ts)                            | rewindable / asOf    | 保留所选位置的产品事实；实际模型与 Thinking Level 从原生 Agent document 恢复 |
+| 原生 `pi.agent`                                                                                              | rewindable / asOf    | 保存 Model Selection 与 Agent 配置；Session 索引用于列表展示                 |
+| [Goal 激活](src/tools/goal/driver.ts)、[待提交输入事实、子代理描述](src/session/index.ts)                    | latest / initial     | 当前活动事实不复制到新 fork                                                  |
+| [Session 索引](src/store/index.ts)                                                                           | Session scope        | 保存持久化身份及当前选中 Conversation，不参与对话 fork                       |
+
+# Model Selection
+
+`session.setModelSelection({ model?, thinkingLevel? })` 在 Session 空闲时原地切换；省略的字段沿用当前选择。返回实际生效的 `{ model, thinkingLevel, clampedFrom? }`，`session.model` 与 `session.thinkingLevel` 提供只读当前值。Thinking Level 取不高于请求档位的最高支持档，没有更低档时取最低支持档；不支持 reasoning 的模型使用 `off`。Run 进行中或另一选择尚未完成时拒绝切换，凭据缺失返回 `no-api-key`，失败不改写选择或用户 settings。
+
+原生 `pi.agent` 是 Model Selection 的恢复来源；模型和档位与 version 2 的 `rukie.model` 镜像在同一事务内保存。Resume 与对话 Rewind 从选中 Conversation 恢复两者，忽略新的 settings 默认档位。version 1 的字符串镜像仍可读取，迁移时用原生 Agent document 的选择补齐档位，不另建恢复来源。
 
 # Goal continuation
 
@@ -109,6 +115,8 @@ stdout 与 stderr 分别保存在带绝对字节偏移的内存 ring，合计保
 
 后台 Subagent 使用持久化 driver 与 owned Conversation，父级普通 `run` 可先返回；`abort` 不取消后台 child。`close` 关闭当前 invocation 和 OS／连接资源，未结算 child 与 reporter 在重开时继续。已结束或明确取消的 driver 不重新创建；Run Outcome 仍不代表父级已验收委派任务。`subagent` 创建新身份，`subagent_fork` 继承已完成 Turn；`send_message` 向原 child 发送，活动时 steer，空闲时启动新的 child Run。子代理不能递归委派，类型、当前权限、MCP 过滤、共享 Plan Mode 与 Interaction 来源继续生效。
 
+新建的非 fork 子代理未显式指定模型时，继承父 Session 当前的模型与 Thinking Level；类型 `model` 优先于 `settings.subagentModel`，两者显式指定模型时从 `settings.thinking` 默认档位按子模型的支持范围向下降档。`subagent_fork` 保持原有选择规则；retained 子代理通过 `send_message` 续跑时恢复自己保存的模型与档位，不应用父级当前选择或新的 settings 默认值。
+
 `await session.interruptSubagent(id)` 取消所选活动 child 的 ownership，并等待原生 driver 终态，包括其取消通知处理；不影响 sibling。已结算 child 为 no-op；child 已停止但 reporter 未结算时，重复停止仍等待同一终态，不重复改变 Run Outcome。未知 id 拒绝 Promise。Frontend 不等待停止时也须处理该 Promise 的失败。存储或关闭错误会传播，不把请求取消标记当作已停止。
 
 `session.currentRequestId` 是产品请求身份；`await session.waitForRequest(id)` 等待该请求已接受的 root 输入、相关 child Run、reporter 与通知引发的后续处理。它沿已提交原生 ownership 和 ToolTask／Submission 身份收敛因果范围，处理后来新增的相关 child；向已有活动 child 发送消息的请求也等待该 driver 与报告处理。空闲 anchor、历史 child 与无关运行不属于该范围。`SubagentRun.id` 是 driver task id，provider 的 tool call id 和 SDK `StreamOptions.sessionId` 都不是产品请求 id。SDK Session 身份由原生 Conversation 持久化，重试和恢复沿用；新 fork 获得独立身份。
@@ -122,3 +130,7 @@ Frontend 创建 Session 时通过 `SessionOptions.applicationVersion` 注入自�
 # grep runtime resource
 
 源码运行经 `@vscode/ripgrep` 的锁定平台包定位 rg。npm 编译产物由 release builder 的 `RUKIE_COMPILED` 常量选择平台执行文件 `realpath(process.execPath)` 同目录的 `rg`，避免 Bun 虚拟源码路径和用户 cwd 影响定位；二者使用同一 grep 工具和权限路径。缺失或不可执行的资源返回 `ripgrep-unavailable`；编译产物提示平台包不完整和重新安装 optionalDependencies。分发资源与验收见[构建教程](../../docs/release-building.md)。
+
+## 模型目录
+
+`await listModelCatalog(settings)` 返回内置与自定义 provider 的全部已知聊天模型，以及 provider 显示名、输入能力、reasoning、支持的 Thinking Level、context window、自定义来源和本地凭据是否配置的事实。目录不刷新模型、不刷新 OAuth，也不发送模型请求；无凭据模型仍保留，由 Frontend 决定显示哪些 provider。每次调用重新检测凭据，失败向调用方传播；目录不会改写 settings 或 Session。

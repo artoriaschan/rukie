@@ -6,9 +6,12 @@ import { fauxProvider } from "@earendil-works/pi-ai";
 import { startWithClock as start } from "../../helpers/clock-app";
 
 const originalKey = process.env.RUKIE_MODEL_TUI_KEY;
+const originalMissingKey = process.env.RUKIE_MODEL_MISSING_TUI_KEY;
 afterEach(() => {
   if (originalKey === undefined) delete process.env.RUKIE_MODEL_TUI_KEY;
   else process.env.RUKIE_MODEL_TUI_KEY = originalKey;
+  if (originalMissingKey === undefined) delete process.env.RUKIE_MODEL_MISSING_TUI_KEY;
+  else process.env.RUKIE_MODEL_MISSING_TUI_KEY = originalMissingKey;
 });
 const settings = {
   model: "test-model/first",
@@ -35,7 +38,7 @@ test("direct /model switches the idle status, reports errors and refuses switchi
   try {
     await app.waitFor(() => screen(app).includes("test-model/first"));
     app.stdin.write("/model test-model/second\r");
-    await app.waitFor(() => screen(app).includes("Model changed to test-model/second"));
+    await app.waitFor(() => screen(app).includes("Model changed to second (test-model/second)"));
     expect(app.screen().at(-2)).toContain("second");
     expect(app.calls).toHaveLength(0);
     app.stdin.write("/model test-model/unknown\r");
@@ -68,7 +71,7 @@ test("/model opens a focused picker, Escape preserves the model and Enter select
     await app.waitFor(() => app.screen().some((line) => line.startsWith("╭")));
     app.stdin.write("/model\r");
     await app.waitFor(() => screen(app).includes("Select model"));
-    expect(screen(app)).toContain("✓ test-model/first");
+    expect(screen(app)).toContain("✓ first test-model/first");
     app.stdin.write("\x1b[B");
     await app.waitFor(() => screen(app).includes("test-model/second"));
     app.stdin.write("\x1b");
@@ -95,7 +98,7 @@ test("a resumed session displays its persisted model before sending another prom
     prepare: async (root) => {
       const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
       const catalog = controlledModel();
-      const model = catalog.configuredModel(settings);
+      const model = await catalog.configuredModel(settings);
       const seed = await createSession({
         cwd: root,
         homeDir: root,
@@ -103,7 +106,7 @@ test("a resumed session displays its persisted model before sending another prom
         model,
         models: auxiliaryModels(faux.provider.streamSimple, { models: catalog.models }),
       });
-      await seed.setModel("test-model/second");
+      await seed.setModelSelection({ model: "test-model/second" });
       await seed.close();
       argv.push("--resume", seed.id);
       await Bun.write(
@@ -115,6 +118,92 @@ test("a resumed session displays its persisted model before sending another prom
   try {
     await app.waitFor(() => screen(app).includes("test-model/second"));
     expect(app.screen().at(-2)).toContain("second");
+    expect(app.calls).toHaveLength(0);
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("provider tabs wrap and preserve each provider's focused model", async () => {
+  process.env.RUKIE_MODEL_TUI_KEY = "test-key";
+  const tabSettings = {
+    ...settings,
+    providers: [
+      ...settings.providers,
+      {
+        ...settings.providers[0]!,
+        id: "other",
+        models: [
+          { id: "first", name: "Same Name" },
+          { id: "second", name: "Same Name" },
+        ],
+      },
+    ],
+  };
+  const app = await start([], {
+    env: { LANG: "en_US.UTF-8" },
+    session: { model: undefined },
+    prepare: (root) =>
+      Bun.write(`${root}/.rukie/settings.json`, JSON.stringify(tabSettings)).then(() => {}),
+  });
+  try {
+    await app.waitFor(() => screen(app).includes("test-model/first"));
+    app.stdin.write("/model\r");
+    await app.waitFor(() => screen(app).includes("Select model"));
+    expect(screen(app)).toContain("Only providers with configured credentials are shown");
+    const output = Bun.stripANSI(app.output());
+    expect(output).toContain("Loading…");
+    expect(output.indexOf("Loading…")).toBeLessThan(output.indexOf("[test-model]"));
+    expect(screen(app)).not.toContain("anthropic/");
+    app.stdin.write("\x1b[B\t");
+    await app.waitFor(() => screen(app).includes("other/first"));
+    expect(screen(app)).toContain("first other/first");
+    expect(screen(app)).toContain("Text input · No reasoning · context 128,000");
+    expect(screen(app)).toContain("other/second");
+    app.stdin.write("\x1b[Z\r");
+    await app.waitFor(
+      () => !screen(app).includes("Select model") && screen(app).includes("test-model/second"),
+    );
+  } finally {
+    await app.cleanup();
+  }
+});
+
+test("custom models without credentials remain visible and Enter only reports missing credentials", async () => {
+  process.env.RUKIE_MODEL_TUI_KEY = "test-key";
+  delete process.env.RUKIE_MODEL_MISSING_TUI_KEY;
+  const tabSettings = {
+    ...settings,
+    providers: [
+      ...settings.providers,
+      {
+        ...settings.providers[0]!,
+        id: "missing",
+        apiKeyEnv: "RUKIE_MODEL_MISSING_TUI_KEY",
+        models: [{ id: "first" }],
+      },
+    ],
+  };
+  const app = await start([], {
+    env: { LANG: "en_US.UTF-8" },
+    session: { model: undefined },
+    prepare: (root) =>
+      Bun.write(`${root}/.rukie/settings.json`, JSON.stringify(tabSettings)).then(() => {}),
+  });
+  try {
+    await app.waitFor(() => screen(app).includes("test-model/first"));
+    app.stdin.write("/model\r");
+    await app.waitFor(() => screen(app).includes("Select model"));
+    app.stdin.write("\t");
+    await app.waitFor(() => screen(app).includes("missing/first"));
+    expect(screen(app)).toContain("No credentials");
+    app.stdin.write("\r");
+    await app.waitFor(() => screen(app).includes("No credentials: missing/first"));
+    expect(screen(app)).toContain("Select model");
+    app.stdin.write("\x1b");
+    await app.waitFor(() => !screen(app).includes("Select model"));
+    expect(app.screen().at(-2)).toContain("first");
+    expect(screen(app)).toContain("test-model/first");
     expect(app.calls).toHaveLength(0);
   } finally {
     await app.cleanup();

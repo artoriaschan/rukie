@@ -147,7 +147,7 @@ test("Compaction places the current Todo List before the retained conversation t
   const session = await openSession({ ...dirs, ...fake, ...windowModels(fake) });
   await session.run("read older evidence");
   await session.run("recent retained task");
-  await session.setModel("todo-window/small");
+  await session.setModelSelection({ model: "todo-window/small" });
   const events: SessionEvent[] = [];
   await session.run("continue", {
     onEvent: (event) => {
@@ -259,7 +259,7 @@ test("Compaction immediately persists the current Todo List after the summary fo
   const session = await openSession({ ...dirs, ...fake, ...models });
   await session.run("old evidence");
   await session.run("current task");
-  await session.setModel("todo-window/small");
+  await session.setModelSelection({ model: "todo-window/small" });
   const events: SessionEvent[] = [];
   await session.run("continue", {
     onEvent: (event) => {
@@ -319,7 +319,7 @@ test("unchanged Todo List and skills reminders are re-injected after each Compac
   const session = await openSession({ ...dirs, ...fake, ...models });
   await session.run("first older evidence");
   await session.run("current task");
-  await session.setModel("todo-window/small");
+  await session.setModelSelection({ model: "todo-window/small" });
   const first: SessionEvent[] = [];
   await session.run("first continuation", {
     onEvent: (event) => {
@@ -327,10 +327,10 @@ test("unchanged Todo List and skills reminders are re-injected after each Compac
     },
   });
   const firstContext = structuredClone(fake.contexts.at(-1)!.messages);
-  await session.setModel("todo-window/large");
+  await session.setModelSelection({ model: "todo-window/large" });
   await session.run("second older evidence");
   await session.run("second protected task");
-  await session.setModel("todo-window/small");
+  await session.setModelSelection({ model: "todo-window/small" });
   const second: SessionEvent[] = [];
   await session.run("second continuation", {
     onEvent: (event) => {
@@ -388,7 +388,7 @@ test.each([
     const session = await openSession({ ...dirs, ...fake, ...models });
     await session.run("old evidence");
     await session.run("finish tasks");
-    await session.setModel("todo-window/small");
+    await session.setModelSelection({ model: "todo-window/small" });
     const events: SessionEvent[] = [];
     await session.run("continue", {
       onEvent: (event) => {

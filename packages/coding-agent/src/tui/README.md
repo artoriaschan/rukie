@@ -20,6 +20,16 @@
 
 挂起的审批、Question、Plan Review 和模型 OAuth 在恢复后按当前权限、信任与能力重新发起，Frontend 使用新 callback 和 signal 接管 FIFO。关闭、取消或换 Session 后，旧输入和晚到 callback 不能批准新请求；安全默认与身份合同由 [Agent Core](../../../agent/README.md#pending-interactions) 维护。
 
+## 模型选择
+
+空闲时输入 `/model` 打开 provider tabs；`/model <spec>` 直接选择模型。面板只列出已检测到凭据的 provider、当前模型的 provider 和用户 settings 中的自定义 provider，自定义 provider 排在前面。Tab / Shift+Tab 循环切换 provider，↑/↓ 选择模型，各 tab 分别记住焦点；打开时定位当前模型。直接输入或粘贴文字按名称、spec 或 provider 显示名做不区分大小写的子串过滤，结果跨 tab 平铺；Backspace 清空后回到原 tab 及焦点。←/→ 在焦点模型支持的 Thinking Level 中调整草稿，Enter 将模型与档位一起确认；有过滤输入时 Esc 先清空，再按 Esc 放弃全部草稿。不支持 reasoning 的模型显示档位不可用。自定义模型没有凭据时置灰并标注，Enter 只提示缺少凭据。
+
+模型行显示名称与灰色完整 spec，当前模型标 ✓；名称与 spec 相同则只显示 spec，宽度不足时先截名称。空间允许时显示输入能力、reasoning 与 context window。目录加载中显示加载提示，加载失败保留错误提示及 `/model <spec>` 的直接切换方式；关闭加载中的面板不会因目录晚到而重新打开。
+
+小终端按顺序移除分区空行和档位说明、将提示缩短为 `Enter · Esc`、隐藏能力摘要，边框、标题、提示、tab 与底部说明一起计入面板高度预算；固定内容与模型行放不下档位条时先隐藏它。预算小于 7 行时使用无边框的紧凑布局，保留焦点模型和必要按键提示；不足 3 行时隐藏档位条。tab 和档位条宽度不足时围绕焦点显示窗口，两端用 `‹ ›` 标记未显示项。鼠标可点击 tab、档位格和模型行；点击模型行直接确认当前档位草稿，滚轮移动模型焦点。小终端采用单行输入区；关闭面板及 resize 保留聊天的阅读锚点和底部跟随意图。
+
+切换后显示一条合并提示，只列变化的模型名称与 spec、Thinking Level，并在不支持请求档位时说明降档。`/model <spec>` 保留当前档位并由 Agent Core 按模型支持范围降档；状态栏显示 Session 当前非 off 的档位，随 Rewind 与 resume 恢复。Run 进行中 `/model` 立即拒绝，不延后执行。
+
 ## 消息导航
 
 普通 chat 中 Shift+Tab 循环切换 ask、auto-review 和 full-access 权限模式，并保留输入草稿。快捷键同时支持传统 backtab 与 CSI-u 编码，不向输入框写入文字；菜单和 Interaction 按各自的输入规则处理按键。
