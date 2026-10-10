@@ -61,6 +61,7 @@ test("picker thinking draft applies on Enter, updates the Session status and giv
     await app.waitFor(
       () => !screen(app).includes("Select model") && !!app.screen().at(-2)?.includes("low"),
     );
+    await app.waitFor(() => screen(app).includes("Thinking changed to low"));
     app.stdin.write("/rewind\r");
     await app.waitFor(() => screen(app).includes("Pick a message to rewind"));
     app.stdin.write("\r");
