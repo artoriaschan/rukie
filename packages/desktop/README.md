@@ -16,7 +16,7 @@ Electron host 启动 Bun sidecar，通过受来源校验的 preload 向 renderer
 
 关闭窗口或退出应用先发 SIGTERM，通过 server 的内部 shutdown 流程 abort 活跃 Run 并关闭 Session；5 秒未退出才 SIGKILL，等待实际进程退出后再关闭窗口。强杀或崩溃后的孤儿 Background Job 不回收，限制见[桌面端 spec](../../.scratch/desktop/spec.md)。
 
-[app handler](src/main/protocol.ts) 在 loadURL 前注册于窗口 session，路径解码后做目录与 realpath 包含性检查，拒绝 symlink 越界。无扩展名的 route 回退到 index.html，显式设置 MIME，HTML 附 CSP；当前 style-src 只允许 self，实际 UI 构建验证由界面与打包工单负责。
+[app handler](src/main/protocol.ts) 在 loadURL 前注册于窗口 session，路径解码后做目录与 realpath 包含性检查，拒绝 symlink 越界。无扩展名的 route 回退到 index.html，显式设置 MIME，HTML 附 CSP；style-src 允许 self 与 inline 样式，以支持 registry 浮层的滚动锁定与动态样式；script-src 仍只允许 self。生产 UI 浏览器证据见 [issue 27](../../.scratch/desktop/issues/27-ui-theme-and-components.md)，打包后的 app: 验收仍由打包工单负责。
 
 ## 验证
 

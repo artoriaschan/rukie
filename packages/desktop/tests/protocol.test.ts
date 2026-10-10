@@ -17,6 +17,10 @@ test("app files serve routes with CSP and reject decoded traversal and symlinks"
   expect(await route.text()).toBe("<main>rukie</main>");
   expect(route.headers.get("content-type")).toBe("text/html; charset=utf-8");
   expect(route.headers.get("content-security-policy")).toContain("connect-src ws://127.0.0.1:*");
+  const csp = route.headers.get("content-security-policy");
+  expect(csp).toContain("style-src 'self' 'unsafe-inline'");
+  expect(csp).toContain("script-src 'self';");
+  expect(csp).not.toContain("script-src 'self' 'unsafe-inline'");
   expect((await serveAppFile("app://rukie/main.js", root)).headers.get("content-type")).toBe(
     "text/javascript; charset=utf-8",
   );

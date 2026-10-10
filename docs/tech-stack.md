@@ -61,7 +61,7 @@ Pi 的直接依赖和解析到的支撑包统一为 1.0.4，TypeBox 为 1.3.27�
 | 样式     | Tailwind CSS 4.3.3                                                                                                                              |
 | 组件原语 | beUI 优先 + shadcn 补位：beUI 提供组件、原语、默认风格、动效与 Agent 执行反馈，beUI 未覆盖的角色用 shadcn；均经 shadcn CLI 安装                 |
 | 类名工具 | class-variance-authority 0.7.1 处理变体；clsx 2.1.1 加 tailwind-merge 3.7.0 组成 `cn()`；用 `extendTailwindMerge` 让 `text-ui-*` 也参与冲突合并 |
-| 图标     | lucide-react 1.48.0                                                                                                                             |
+| 图标     | lucide-react 1.55.0                                                                                                                             |
 | Markdown | micromark 解析 + 自研的 mdast→React 渲染 + shiki/katex                                                                                          |
 | 图表     | mermaid                                                                                                                                         |
 | 状态管理 | Zustand 5.0.12 + Immer 10.2.0                                                                                                                   |
@@ -137,3 +137,7 @@ CI 与发布 workflows 的官方 Actions 使用 Node.js 24 runtime：checkout 7.
 桌面三个 workspace 的协议与检查骨架已接入。测试工具为根 devDependency：vitest 5.0.3、@vitest/browser-playwright 5.0.3、playwright 1.64.0、vitest-browser-react 2.3.0、@vitejs/plugin-react 6.1.2、vite 8.3.1 和 @types/node 24.19.2。ui 精确声明 react/react-dom 19.3.0 的 peerDependencies，类型为 @types/react 19.3.0。server 与 ui 的 schema 测试复用 typebox 1.3.27。
 
 上述桌面壳、服务框架和其余 GUI 选型表包含后续实现的目标依赖；已安装 Electron 41.0.3、Hono 和 Effect；其他目标依赖按相应工单接入。以各包 manifest 和 lockfile 为已安装事实，测试准备和运行边界见[测试策略](testing.md#桌面测试入口)。
+
+### UI registry runtime
+
+`packages/ui` installs complete beUI source and shadcn dropdown-menu through shadcn CLI 4.21.4. Runtime dependencies are motion 14.1.0, @floating-ui/dom 1.8.0, shiki 4.5.0, radix-ui 1.7.0, tw-animate-css 1.4.0, clsx 2.1.1, tailwind-merge 3.7.0, lucide-react 1.55.0 and Tailwind CSS 4.3.3. The Vite Tailwind plugin is 4.3.3; React DOM declarations are @types/react-dom 19.2.3. Code highlighting imports five language modules and GitHub Light/Dark themes through shiki/core.
