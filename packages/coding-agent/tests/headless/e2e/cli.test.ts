@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { SettingsSchema } from "@rukie/shared";
-import { listSessions, createJsonlStore } from "@rukie/agent";
+import { listSessions, createJsonlStore, createSession } from "@rukie/agent";
 import { Value } from "typebox/value";
 import { fakeOpenAI, type FakeOpenAIOptions } from "../helpers/fake-openai.ts";
 import { fauxProvider, fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
@@ -1441,3 +1441,39 @@ test.each(["text", "stream-json"])(
     }
   },
 );
+
+test("Headless CLI preserves the busy Session error and does not start a Run", async () => {
+  const root = await mkdtemp(join(tmpdir(), "rukie-cli-busy-"));
+  cleanups.push(() => rm(root, { recursive: true, force: true }));
+  const fake = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
+  const sessionOptions = {
+    cwd: root,
+    homeDir: root,
+    model: fake.getModel(),
+    models: auxiliaryModels((model, context, options) =>
+      fake.provider.streamSimple(model, context, options),
+    ),
+  };
+  const owner = await createSession(sessionOptions);
+  let stderr = "";
+  let stdout = "";
+  try {
+    expect(
+      await main(["--resume", owner.id, "should not run"], {
+        readStdin: async () => "",
+        stdout: (text) => {
+          stdout += text;
+        },
+        stderr: (text) => {
+          stderr += text;
+        },
+        session: sessionOptions,
+      }),
+    ).toBe(1);
+    expect(stderr).toBe(`Session already open: ${owner.id}\n`);
+    expect(stdout).toBe("");
+    expect(owner.messages).toEqual([]);
+  } finally {
+    await owner.close();
+  }
+});

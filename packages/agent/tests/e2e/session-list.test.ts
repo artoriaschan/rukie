@@ -105,7 +105,7 @@ test("lists the current project's named sessions by native modification time", a
   }
 });
 
-test("listing refuses storage repair and keeps torn transcript bytes unchanged", async () => {
+test("listing skips unreadable Session indexes, warns and keeps torn transcript bytes unchanged", async () => {
   const dirs = await tempDirs();
   const store = createJsonlStore(dirs);
   const session = await createSession({
@@ -113,20 +113,27 @@ test("listing refuses storage repair and keeps torn transcript bytes unchanged",
     ...fakeModel([fauxAssistantMessage("Done")]),
     store,
   });
+  const healthy = await createSession({ ...dirs, ...fakeModel([]), store });
   try {
+    await healthy.rename("Healthy history");
+    await healthy.close();
     await session.rename("Read-only history");
     await session.run("Keep this history");
     await session.close();
     const path = join(store.key(session.id), "main.jsonl");
     await appendFile(path, '{"torn":');
     const before = await Bun.file(path).bytes();
-    await expect(listSessions({ ...dirs, store })).rejects.toMatchObject({
-      code: "session-observation-readonly",
-      params: {},
-    });
+    const warnings: string[] = [];
+    expect(
+      await listSessions({ ...dirs, store, onWarning: (warning) => warnings.push(warning) }),
+    ).toMatchObject([{ id: healthy.id, title: "Healthy history" }]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain(session.id);
+    expect(warnings[0]).toContain("Session history requires repair");
     expect(await Bun.file(path).bytes()).toEqual(before);
   } finally {
     await session.close();
+    await healthy.close();
     await dirs.cleanup();
   }
 });
