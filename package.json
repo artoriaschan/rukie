@@ -24,16 +24,19 @@
     "check:ink-boundaries": "bun scripts/check-ink-boundaries.ts",
     "release:publish": "bun scripts/release/publication.ts",
     "test:desktop": "env -u NO_COLOR vitest run",
-    "check:ui-typography": "bun scripts/check-ui-typography.ts"
+    "check:ui-typography": "bun scripts/check-ui-typography.ts",
+    "desktop:build": "bun scripts/desktop/build.ts"
   },
   "devDependencies": {
     "@commitlint/cli": "21.2.3",
     "@commitlint/config-conventional": "21.2.3",
+    "@electron/fuses": "2.0.0",
     "@types/bun": "1.4.2",
     "@types/node": "24.19.2",
     "@types/semver": "7.8.0",
     "@vitejs/plugin-react": "6.1.2",
     "@vitest/browser-playwright": "5.0.3",
+    "electron-builder": "26.15.3",
     "husky": "9.1.7",
     "knip": "6.37.0",
     "lint-staged": "17.5.1",

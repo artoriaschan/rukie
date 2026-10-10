@@ -159,7 +159,7 @@ test.each([
     expect(t("error.session-not-found", { id: "missing" })).toBe(session);
     const message = t("error.ripgrep-unavailable", { cause: "binary unavailable" });
     expect(message).toStartWith(grep);
-    expect(message).toContain("optionalDependencies");
+    expect(message).not.toContain("optionalDependencies");
     expect(message).toEndWith("binary unavailable");
   },
 );
