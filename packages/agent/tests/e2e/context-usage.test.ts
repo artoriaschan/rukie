@@ -78,7 +78,7 @@ test.each(["compaction", "model"])(
     if (invalidation === "compaction") {
       await session.run("recent retained prompt");
       await session.compact();
-    } else await session.setModel("other/small");
+    } else await session.setModelSelection({ model: "other/small" });
     await session.close();
     const next = providerModel([]);
     next.models = withModelAlias(next.models, "other", ["small"]);

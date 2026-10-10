@@ -22,6 +22,7 @@ import {
 } from "@earendil-works/pi-ai";
 import {
   Harness,
+  configure,
   createRegistry,
   defineDoc,
   hook,
@@ -40,6 +41,7 @@ import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import {
   createUserVisibleError,
   type PermissionMode,
+  type ThinkingLevel,
   type RunResult,
   type Settings,
   type ContextReport,
@@ -62,7 +64,12 @@ const entryData = (entry: EntryRecord | undefined) => {
 };
 import { isMcpAuthenticationInteraction } from "../mcp/index.ts";
 import { hasPendingInteraction } from "../interaction/index.ts";
-import { resolveModel, isTrustedProject, modelState } from "../config/index.ts";
+import {
+  resolveModel,
+  isTrustedProject,
+  modelState,
+  supportedThinkingLevel,
+} from "../config/index.ts";
 import {
   createJsonlStore,
   registerSessionReader,
@@ -201,8 +208,12 @@ export interface Session {
   rename(title: string): Promise<void>;
   /** Current model identity, including a restored session selection. */
   readonly model: string;
-  /** Persist a model selection for subsequent requests; requires idle state. */
-  setModel(spec: string): Promise<void>;
+  readonly thinkingLevel: ThinkingLevel;
+  /** Persist both selection fields atomically for subsequent requests; requires idle state. */
+  setModelSelection(selection: {
+    model?: string;
+    thinkingLevel?: ThinkingLevel;
+  }): Promise<{ model: string; thinkingLevel: ThinkingLevel; clampedFrom?: ThinkingLevel }>;
   readonly permissionMode: PermissionMode;
   readonly planMode: boolean;
   /** Persisted Goal facts and authorization from its accepted native continuation task. */
@@ -389,6 +400,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       ? { model: options.model, models: options.models }
       : await resolveModel(settings, options.homeDir, warn);
   let model = resolved.model;
+  let thinkingLevel = supportedThinkingLevel(model, settings.thinking ?? "off");
   const models = resolved.models;
   const selectedModel = (spec: string) => {
     const slash = spec.indexOf("/");
@@ -513,7 +525,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
         model: { provider: model.provider, modelId: model.id },
         cwd,
         instructions: SYSTEM_PROMPT,
-        ...(settings.thinking ? { thinkingLevel: settings.thinking } : {}),
+        thinkingLevel,
       },
       init: async (tx, id) => {
         await tx.appendEntry(id, { kind: "rukie.initial" });
@@ -531,13 +543,17 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       if (!found) throw new Error("Active conversation is missing.");
       conversation = (await harness.conversation(found.id, context))!;
     }
-    const savedModel = (await conversation.agent(context)).model;
+    const savedAgent = await conversation.agent(context);
+    const savedModel = savedAgent.model;
     if (savedModel) {
       const restored = models.getModel(savedModel.provider, savedModel.modelId);
       if (!restored)
         throw new Error(`Unknown restored model: ${savedModel.provider}/${savedModel.modelId}`);
       model = restored;
     }
+    thinkingLevel = supportedThinkingLevel(model, savedAgent.thinkingLevel);
+    if (thinkingLevel !== savedAgent.thinkingLevel)
+      await conversation.configure({ thinkingLevel }, context);
     modelFact = `${model.provider}/${model.id}`;
     const subagentsDefinition = subagentsState(lease.id);
     const definitions = [
@@ -552,6 +568,21 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       subagentsDefinition,
     ];
     let state = await createToolState(definitions, harness, conversation, context);
+    // AgentDoc owns selection; legacy product mirrors have no saved Thinking Level.
+    const synchronizeModelState = async () => {
+      const saved = state.get("model");
+      if (
+        saved !== undefined &&
+        JSON.stringify(saved) !==
+          JSON.stringify({ model: `${model.provider}/${model.id}`, thinkingLevel })
+      )
+        await state.set(
+          "model",
+          { model: `${model.provider}/${model.id}`, thinkingLevel },
+          context,
+        );
+    };
+    await synchronizeModelState();
     const writeMetadata = async (title?: string, source?: TitleSource) => {
       await harness.commit(async (tx) => {
         const doc = await tx.doc(SessionMetadataDoc);
@@ -2754,11 +2785,15 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       get model() {
         return `${model.provider}/${model.id}`;
       },
-      async setModel(spec) {
+      get thinkingLevel() {
+        return thinkingLevel;
+      },
+      async setModelSelection(selection) {
         assertAvailable(true);
-        const slash = spec.indexOf("/");
-        const next = models.getModel(spec.slice(0, slash), spec.slice(slash + 1));
-        if (!next) throw new Error(`Unknown model: ${spec}`);
+        const next = selection.model ? selectedModel(selection.model) : model;
+        const requested = selection.thinkingLevel ?? thinkingLevel;
+        const nextThinkingLevel = supportedThinkingLevel(next, requested);
+        const spec = `${next.provider}/${next.id}`;
         selectingModel = true;
         try {
           if (!(await models.checkAuth(next.provider, { signal: auxiliaryLifetime.signal }))) {
@@ -2774,13 +2809,25 @@ export async function createSession(options: SessionOptions): Promise<Session> {
             );
           }
           assertAvailable();
-          await conversation.configure(
-            { model: { provider: next.provider, modelId: next.id } },
-            context,
-          );
+          await conversation.commit(async (tx) => {
+            await configure(tx, conversation.id, {
+              model: { provider: next.provider, modelId: next.id },
+              thinkingLevel: nextThinkingLevel,
+            });
+            (await tx.doc(modelState.document, conversation.id)).value = {
+              model: spec,
+              thinkingLevel: nextThinkingLevel,
+            };
+          }, context);
           model = next;
-          await state.set("model", spec, context);
+          thinkingLevel = nextThinkingLevel;
+          await state.refresh();
           await writeMetadata();
+          return {
+            model: spec,
+            thinkingLevel,
+            ...(thinkingLevel !== requested ? { clampedFrom: requested } : {}),
+          };
         } finally {
           selectingModel = false;
         }
@@ -3006,9 +3053,15 @@ export async function createSession(options: SessionOptions): Promise<Session> {
           if (!fork) throw new Error("Committed rewind conversation is missing.");
           await observation.close();
           conversation = fork;
+          const restoredAgent = await conversation.agent(context);
+          if (restoredAgent.model)
+            model = selectedModel(`${restoredAgent.model.provider}/${restoredAgent.model.modelId}`);
+          thinkingLevel = restoredAgent.thinkingLevel;
+          modelFact = `${model.provider}/${model.id}`;
           runSummaries = readRunSummaries(await fullHistory());
           await writeMetadata();
           state = await createToolState(definitions, harness, conversation, context);
+          await synchronizeModelState();
           await subagents.rebindParent(conversation, context);
           plan.restore();
           tracking.restore(state.get("file-tracking"));

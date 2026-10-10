@@ -251,3 +251,5 @@ export function listModels(
     }))
     .sort((a, b) => a.spec.localeCompare(b.spec));
 }
+
+export { supportedThinkingLevel } from "./model-selection.ts";

@@ -208,7 +208,7 @@ test("context reports use the newly selected model window and clear counts from 
     const session = await createSession({ ...dirs, ...fake });
     await session.run("work");
     expect(session.contextReport().used).toBe(1234);
-    await session.setModel("report/large");
+    await session.setModelSelection({ model: "report/large" });
     expect(session.contextReport()).toMatchObject({
       model: "report/large",
       window: 1000000,

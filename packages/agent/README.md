@@ -20,16 +20,22 @@ Question 和 Plan Review 在原生执行意图之前收集回复；计划批准�
 
 能力通过 typed documents 保存事实，版本与内容校验失败阻止恢复，不跳过坏值继续运行。Session 协调事实在 Harness／启动 Hook 之前校验父子 Conversation 中的当前内容，每次原生 document 读取和 definition-free fork copy 也校验精确来源及历史版本；损坏的历史内容不会因当前值已修复而获准复制。fork admission 失败遵守原生 poisoned Session 合同，须 close 后重开，不写入成功复制或默认状态。Tool State document 的初始 `value: null` 表示尚未建立该状态；拥有者规定清空方式，例如 Todo 使用空数组、Plan 使用 `{ active: false }`，Goal 清空使用 null。声明和校验由各能力源码负责，注册层在同一原生事务中提交状态与必要提醒。
 
-| 事实及声明处                                                                                                 | 历史 / fork          | 恢复与 Rewind                                                            |
-| ------------------------------------------------------------------------------------------------------------ | -------------------- | ------------------------------------------------------------------------ |
-| [Todo](src/tools/todo/state.ts)、[Goal facts](src/tools/goal/state.ts)、[Plan](src/tools/plan-mode/state.ts) | rewindable / asOf    | 恢复锚点时的事实；Goal 事实不代表激活自动续跑                            |
-| [Checkpoint](src/checkpoint/index.ts)、[文件跟踪](src/file-tracking/index.ts)                                | rewindable / asOf    | 恢复原输入锚点及模型已知基线                                             |
-| [子代理 Run](src/tools/subagents/state.ts)                                                                   | rewindable / asOf    | 保存历史 Run Outcome，与当前任务活动区分                                 |
-| [子代理目录](src/tools/subagents/state.ts)                                                                   | rewindable / initial | 新 fork 不继承拥有的子代理目录；顶层 Rewind 按目标位置重新建立可观察身份 |
-| [模型选择事实](src/config/model-state.ts)、[标题来源](src/session-title/index.ts)                            | rewindable / asOf    | 保留所选位置的产品事实；实际模型配置从原生 Agent document 恢复           |
-| 原生 `pi.agent`                                                                                              | rewindable / asOf    | 保存模型与 Agent 配置；Session 索引用于列表展示                          |
-| [Goal 激活](src/tools/goal/driver.ts)、[待提交输入事实、子代理描述](src/session/index.ts)                    | latest / initial     | 当前活动事实不复制到新 fork                                              |
-| [Session 索引](src/store/index.ts)                                                                           | Session scope        | 保存持久化身份及当前选中 Conversation，不参与对话 fork                   |
+| 事实及声明处                                                                                                 | 历史 / fork          | 恢复与 Rewind                                                                |
+| ------------------------------------------------------------------------------------------------------------ | -------------------- | ---------------------------------------------------------------------------- |
+| [Todo](src/tools/todo/state.ts)、[Goal facts](src/tools/goal/state.ts)、[Plan](src/tools/plan-mode/state.ts) | rewindable / asOf    | 恢复锚点时的事实；Goal 事实不代表激活自动续跑                                |
+| [Checkpoint](src/checkpoint/index.ts)、[文件跟踪](src/file-tracking/index.ts)                                | rewindable / asOf    | 恢复原输入锚点及模型已知基线                                                 |
+| [子代理 Run](src/tools/subagents/state.ts)                                                                   | rewindable / asOf    | 保存历史 Run Outcome，与当前任务活动区分                                     |
+| [子代理目录](src/tools/subagents/state.ts)                                                                   | rewindable / initial | 新 fork 不继承拥有的子代理目录；顶层 Rewind 按目标位置重新建立可观察身份     |
+| [模型选择事实](src/config/model-state.ts)、[标题来源](src/session-title/index.ts)                            | rewindable / asOf    | 保留所选位置的产品事实；实际模型与 Thinking Level 从原生 Agent document 恢复 |
+| 原生 `pi.agent`                                                                                              | rewindable / asOf    | 保存 Model Selection 与 Agent 配置；Session 索引用于列表展示                 |
+| [Goal 激活](src/tools/goal/driver.ts)、[待提交输入事实、子代理描述](src/session/index.ts)                    | latest / initial     | 当前活动事实不复制到新 fork                                                  |
+| [Session 索引](src/store/index.ts)                                                                           | Session scope        | 保存持久化身份及当前选中 Conversation，不参与对话 fork                       |
+
+# Model Selection
+
+`session.setModelSelection({ model?, thinkingLevel? })` 在 Session 空闲时原地切换；省略的字段沿用当前选择。返回实际生效的 `{ model, thinkingLevel, clampedFrom? }`，`session.model` 与 `session.thinkingLevel` 提供只读当前值。Thinking Level 取不高于请求档位的最高支持档，没有更低档时取最低支持档；不支持 reasoning 的模型使用 `off`。Run 进行中或另一选择尚未完成时拒绝切换，凭据缺失返回 `no-api-key`，失败不改写选择或用户 settings。
+
+原生 `pi.agent` 是 Model Selection 的恢复来源；模型和档位与 version 2 的 `rukie.model` 镜像在同一事务内保存。Resume 与对话 Rewind 从选中 Conversation 恢复两者，忽略新的 settings 默认档位。version 1 的字符串镜像仍可读取，迁移时用原生 Agent document 的选择补齐档位，不另建恢复来源。
 
 # Goal continuation
 
