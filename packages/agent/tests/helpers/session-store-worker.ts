@@ -17,7 +17,8 @@ if (mode === "list") {
   try {
     session = await createSession({ cwd, homeDir, ...fake, ...(id ? { resumeId: id } : {}) });
   } catch (error) {
-    if (!(error instanceof Error) || !error.message.includes("Session already open:")) throw error;
+    if (!(error instanceof Error) || !("code" in error) || error.code !== "session-busy")
+      throw error;
     console.log("REJECT " + error.message);
     process.exit(0);
   }

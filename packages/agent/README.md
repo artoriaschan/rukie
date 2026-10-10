@@ -2,7 +2,7 @@
 
 `createSession` 默认使用原生 JSONL Storage，同一目录保存父子 Conversation、entries、documents 和 tasks。`SessionStore` 提供 `open`、`list` 与身份 `key`；自定义后端返回 Storage 和可重复调用的 `release`，Session 关闭时释放资源。默认路径由 [`store/`](src/store/index.ts)按解析后的工作目录生成，位于 `homeDir/.rukie/durable-sessions/`；`rukie.session` document 保存 id、名称、模型与选中对话等索引事实。旧 `.rukie/sessions/` 文件不枚举、不读取、不改写，旧 id 打开返回 `session-not-found`。
 
-一个宿主持有一个目录的写者租约。默认实现通过独立 SQLite 文件的 `BEGIN IMMEDIATE` 事务持有内核锁；该文件不存 Session 记录，也不删除或替换。另一个进程或宿主打开同一 id 立即失败，正常关闭和进程死亡释放锁。恢复无需 PID 检查或清理旧租约。列表可以观察活跃目录：当前宿主借用已注册读者，独立查询仅打开原生存储内核读取索引，不启动模型或 Harness scheduler，也不执行任务恢复。需要截断或修复的存储拒绝只读观察。
+一个宿主持有一个目录的写者租约。默认实现通过独立 SQLite 文件的 `BEGIN IMMEDIATE` 事务持有内核锁；该文件不存 Session 记录，也不删除或替换。另一个进程或宿主打开同一 id 立即失败，错误携带 `session-busy` 和 `{ id }`，同进程重复打开也使用该错误；正常关闭和进程死亡释放锁。恢复无需 PID 检查或清理旧租约。列表可以观察活跃目录：当前宿主借用已注册读者，独立查询仅打开原生存储内核读取索引，不启动模型或 Harness scheduler，也不执行任务恢复。`listSessions` 跳过索引读取失败的单个 Session，并经 `onWarning` 上报包含 id 与失败原因的警告；未提供回调时使用 `console.warn`，项目目录本身的读取失败仍向调用方传播。需要截断或修复的存储拒绝只读观察。
 
 原生 JSONL 启用 sidecar fsync，[存储文件适配器](src/store/files.ts)在成功追加后 flush 文件，包括 main 提交标记；提交确认后才采用状态和发布对应成功事实。写入或 flush 失败会向调用方传播；原生 Storage 进入 poisoned 状态时须 `await session.close()` 后重开。flush 发生在追加之后，拒绝确认不等于磁盘字节回滚，重新打开时以原生已提交事实为准。进程强制退出测试验证租约释放和恢复，不代表断电测试。
 
