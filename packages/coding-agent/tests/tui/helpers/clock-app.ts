@@ -1,3 +1,4 @@
+import { onTestFinished } from "bun:test";
 import { testClock } from "./test-clock";
 import { start } from "./app";
 
@@ -7,23 +8,26 @@ export async function startWithClock(
   options: Parameters<typeof start>[1] = {},
 ) {
   testClock.useFakeTimers();
+  let app: Awaited<ReturnType<typeof start>> | undefined;
+  let cleanupPromise: Promise<void> | undefined;
+  const cleanup = () =>
+    (cleanupPromise ??= (async () => {
+      try {
+        await app?.cleanup();
+      } finally {
+        testClock.useRealTimers();
+      }
+    })());
+  // Restore the clock after owned shutdown, including runner timeouts and failed setup.
+  onTestFinished(cleanup);
   try {
-    const app = await start(argv, {
+    app = await start(argv, {
       ...options,
       advanceTimers: options.advanceTimers ?? ((ms) => testClock.advanceTimersByTime(ms)),
     });
-    return {
-      ...app,
-      async cleanup() {
-        try {
-          await app.cleanup();
-        } finally {
-          testClock.useRealTimers();
-        }
-      },
-    };
+    return { ...app, cleanup };
   } catch (error) {
-    testClock.useRealTimers();
+    await cleanup();
     throw error;
   }
 }

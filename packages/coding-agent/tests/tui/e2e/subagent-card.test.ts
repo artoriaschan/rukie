@@ -1,7 +1,6 @@
-import { testClock } from "../helpers/test-clock";
 import { auxiliaryModels } from "../helpers/auxiliary-model.ts";
 import { expect, test } from "bun:test";
-import { startWithClock as start } from "../helpers/clock-app";
+import { start } from "../helpers/app";
 
 test("a delegated Subagent renders only its dedicated running row", async () => {
   const app = await start(["--permission-mode", "full-access", "--thinking", "high", "delegate"], {
@@ -461,7 +460,6 @@ test("fork, agent listing and failed messaging use dedicated rows live and after
       rows: 50,
       env: { LANG: "en_US.UTF-8" },
       session: { cwd: root, homeDir: root },
-      advanceTimers: (ms) => testClock.advanceTimersByTime(ms),
     });
     try {
       await replay.waitFor(() => replay.screen().includes("❯"));

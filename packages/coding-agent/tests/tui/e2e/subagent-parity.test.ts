@@ -1,11 +1,11 @@
 import { expect, test } from "bun:test";
-import { startWithClock } from "../helpers/clock-app";
-function click(app: Awaited<ReturnType<typeof startWithClock>>, x: number, y: number) {
+import { start } from "../helpers/app";
+function click(app: Awaited<ReturnType<typeof start>>, x: number, y: number) {
   app.stdin.write(`\x1b[<0;${x + 1};${y + 1}M\x1b[<0;${x + 1};${y + 1}m`);
 }
 
 test("Subagent card omits unobserved usage, ignores blank cells and exposes an independent read-only Agent View", async () => {
-  const app = await startWithClock(["--permission-mode", "full-access", "delegate"], {
+  const app = await start(["--permission-mode", "full-access", "delegate"], {
     columns: 120,
     rows: 40,
     env: { LANG: "en" },
@@ -69,7 +69,7 @@ test("Subagent card omits unobserved usage, ignores blank cells and exposes an i
 });
 
 test("read-only Agent View retains ToolCall window pointer and keyboard ownership", async () => {
-  const app = await startWithClock(["--yolo", "delegate"], {
+  const app = await start(["--yolo", "delegate"], {
     columns: 120,
     rows: 450,
     env: { LANG: "en" },

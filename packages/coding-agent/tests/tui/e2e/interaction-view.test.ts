@@ -1,11 +1,12 @@
 import { join } from "node:path";
 import { expect, test } from "bun:test";
-import { startWithClock } from "../helpers/clock-app";
+import { start } from "../helpers/app";
+import { committedJobNotifications } from "../helpers/job-notifications";
 
 test.each(["question", "permission", "decline", "plan"] as const)(
   "parent %s takes AgentView screen and keys, then restores child reading and parent draft",
   async (kind) => {
-    const app = await startWithClock(
+    const app = await start(
       kind === "plan" ? [] : kind === "permission" ? ["delegate"] : ["--yolo", "delegate"],
       { columns: 120, rows: 40, env: { LANG: "en" } },
     );
@@ -107,7 +108,10 @@ test.each(["question", "permission", "decline", "plan"] as const)(
 );
 
 test("a parent question temporarily replaces the jobs panel and returns its focused details", async () => {
-  const app = await startWithClock(["--yolo", "launch"], {
+  const notifications = committedJobNotifications();
+  const app = await start(["--yolo", "launch"], {
+    session: notifications.session,
+    prepare: notifications.prepare,
     columns: 80,
     rows: 24,
     env: { LANG: "zh" },
@@ -182,8 +186,14 @@ test("a parent question temporarily replaces the jobs panel and returns its focu
     app.stdin.write("\x1b[27u");
     await app.waitFor(() => app.screen().join("\n").includes("saved draft"));
     await Bun.write(join(app.root, "go"), "go");
-    app.calls[2]!.finish();
     await app.waitFor(() => app.screen().join("\n").includes("worker done"));
+    // Keep the parent Run active until both notifications commit. Otherwise an
+    // idle Reporter can add inputs and move the output card outside this viewport.
+    await app.waitFor(() => notifications.count() === 2);
+    app.calls[2]!.finish();
+    await app.waitFor(() => notifications.pendingTasks() === 0);
+    await app.waitFor(() => !app.isWorking() && !app.screen().join("\n").includes("esc 中断"));
+    expect(app.calls).toHaveLength(3);
     expect(app.stderr()).toBe("");
   } finally {
     await app.cleanup();
@@ -191,7 +201,7 @@ test("a parent question temporarily replaces the jobs panel and returns its focu
 });
 
 test("a pending parent request owns Escape before a focused child tool window", async () => {
-  const app = await startWithClock(["--yolo", "delegate"], {
+  const app = await start(["--yolo", "delegate"], {
     columns: 120,
     rows: 450,
     env: { LANG: "en" },

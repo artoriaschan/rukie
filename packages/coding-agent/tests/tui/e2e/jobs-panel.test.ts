@@ -299,9 +299,8 @@ test("card clicks focus exact jobs and expanded promoted details show bounded ou
 }, 15000);
 
 test("reading position and follow state survive settlement and group folding above the viewport while jobs is open", async () => {
-  // Frontend reveal is virtual; file barriers and output still observe real child completion.
   const notifications = committedJobNotifications();
-  const app = await startWithClock(["--permission-mode", "full-access", "launch"], {
+  const app = await start(["--permission-mode", "full-access", "launch"], {
     session: notifications.session,
     prepare: notifications.prepare,
     env: { LANG: "en_US.UTF-8" },
@@ -379,7 +378,7 @@ test("reading position and follow state survive settlement and group folding abo
 }, 15000);
 
 test("a streaming message keeps its reading anchor when it completes while the panel is open and resizes", async () => {
-  const app = await startWithClock(["working"], {
+  const app = await start(["working"], {
     env: { LANG: "en_US.UTF-8" },
     columns: 100,
     rows: 24,

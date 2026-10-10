@@ -1,8 +1,6 @@
-import { testClock } from "../helpers/test-clock";
 import { test, expect } from "bun:test";
 import { createSession } from "@rukie/agent";
 import { start } from "../helpers/app";
-import { startWithClock } from "../helpers/clock-app";
 import { failingStorage } from "../../helpers/native-storage-failure";
 import { fakeModel } from "../helpers/agent-fixtures";
 import { getCurrentTools } from "@earendil-works/pi-ai";
@@ -13,7 +11,7 @@ test.each(["assistant", "toolResult"] as const)(
     let rejected = false;
     let parentId = "";
     let childId = "";
-    const options: NonNullable<Parameters<typeof startWithClock>[1]> = {
+    const options: NonNullable<Parameters<typeof start>[1]> = {
       columns: 120,
       rows: 40,
       env: { LANG: "en" },
@@ -48,7 +46,7 @@ test.each(["assistant", "toolResult"] as const)(
         };
       },
     };
-    const app = await startWithClock(["delegate"], options);
+    const app = await start(["delegate"], options);
     try {
       await app.waitFor(() => app.calls.length === 1);
       app.calls[0]!.tool("subagent", {
@@ -116,7 +114,6 @@ test.each(["assistant", "toolResult"] as const)(
         columns: 120,
         rows: 40,
         env: { LANG: "en" },
-        advanceTimers: (ms) => testClock.advanceTimersByTime(ms),
         session: { cwd: app.root, homeDir: app.root },
       });
       try {

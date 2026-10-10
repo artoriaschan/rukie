@@ -4,6 +4,7 @@ import { testClock } from "../helpers/test-clock";
 import { startWithClock } from "../helpers/clock-app";
 import { expect, test } from "bun:test";
 import { join } from "node:path";
+import { writeFile } from "node:fs/promises";
 import { start } from "../helpers/app";
 import { auxiliaryModels } from "../helpers/auxiliary-model";
 import { dark } from "../../../src/ink/index.ts";
@@ -66,7 +67,10 @@ test("background bash renders its card and idle job chip without consuming model
 }, 15000);
 
 test("job settlement notice coexists with a question and footer at 40×12", async () => {
+  const notifications = committedJobNotifications();
   const app = await start(["--permission-mode", "full-access", "launch"], {
+    session: notifications.session,
+    prepare: notifications.prepare,
     columns: 40,
     rows: 12,
   });
@@ -104,12 +108,11 @@ test("job settlement notice coexists with a question and footer at 40×12", asyn
     const settled = app.screen();
     app.stdin.write("\r");
     await app.waitFor(() => app.calls.length === 3);
+    await app.waitFor(() => notifications.count() === 1);
     app.calls[2]!.finish();
-    await app.waitFor(() => app.calls.length === 4 || !app.isWorking());
-    if (app.calls.length === 4) {
-      app.calls[3]!.finish();
-      await app.waitFor(() => !app.isWorking());
-    }
+    await app.waitFor(() => notifications.pendingTasks() === 0);
+    await app.waitFor(() => !app.isWorking());
+    expect(app.calls).toHaveLength(3);
     expect(settled.at(-2)).toContain("完全访问");
     expect(settled.at(-1)?.trim()).toBe("esc 中断");
     expect(settled.join("\n")).toContain("❯● First");
@@ -276,10 +279,15 @@ test("resume never attaches a historical bash job result to a new job with the s
 });
 
 test("job output and streaming bursts preserve reading position, draft, and unread through resize", async () => {
-  const app = await startWithClock(["--permission-mode", "full-access", "history"], {
+  const app = await start(["--permission-mode", "full-access", "history"], {
     columns: 100,
     rows: 24,
     env: { LANG: "en_US.UTF-8" },
+    async prepare(root) {
+      // Pipe reads are causal barriers; child readiness never depends on polling speed.
+      const pipes = Bun.spawn(["mkfifo", join(root, "step"), join(root, "go")]);
+      expect(await pipes.exited).toBe(0);
+    },
   });
   const screen = () => app.screen().join("\n");
   try {
@@ -291,7 +299,7 @@ test("job output and streaming bursts preserve reading position, draft, and unre
     await app.waitFor(() => app.calls.length === 2);
     app.calls[1]!.tool("bash", {
       command:
-        "printf 'initial\\n'; while [ ! -e step ]; do sleep 0.01; done; printf 'new job output\\n'; while [ ! -e go ]; do sleep 0.01; done",
+        "printf 'initial\\n'; IFS= read -r signal < step; printf 'new job output\\n'; IFS= read -r signal < go",
       description: "Reading position watcher",
       run_in_background: true,
     });
@@ -299,10 +307,13 @@ test("job output and streaming bursts preserve reading position, draft, and unre
     app.stdin.write("saved draft\x1b[5~");
     await app.waitFor(() => screen().includes("Back to bottom"));
     const reading = app.screen().slice(0, 5);
-    for (let index = 0; index < 350; index++) {
-      app.calls[2]!.delta(`chunk-${index}\n`);
-      await Promise.resolve();
-      await Promise.resolve();
+    // Preserve the 350-line layout/window boundary with representative streamed bursts.
+    // Drain accepted terminal I/O between bursts; the final assertions witness rendering.
+    for (let first = 0; first < 350; first += 35) {
+      app.calls[2]!.delta(
+        Array.from({ length: 35 }, (_, index) => `chunk-${first + index}\n`).join(""),
+      );
+      await app.flush();
     }
     await app.waitFor(() => screen().includes("New output · Back to bottom"));
     expect(app.screen().slice(0, 5)).toEqual(reading);
@@ -314,7 +325,7 @@ test("job output and streaming bursts preserve reading position, draft, and unre
       () => screen().includes("Back to bottom") && !screen().includes("New output"),
     );
     const jobReading = app.screen().slice(0, 5);
-    await Bun.write(join(app.root, "step"), "");
+    await writeFile(join(app.root, "step"), "continue\n");
     await app.waitFor(() => screen().includes("New output · Back to bottom"));
     expect(app.screen().slice(0, 5)).toEqual(jobReading);
     app.resize(80, 24);
