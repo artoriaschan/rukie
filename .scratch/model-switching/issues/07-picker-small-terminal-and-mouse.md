@@ -1,6 +1,6 @@
 # 07: 面板小终端降级与鼠标
 
-Status: claimed
+Status: resolved
 
 Blocked by: 05, 06
 
@@ -43,3 +43,8 @@ tab 条和档位条放不下时，围绕焦点只显示一部分，两端用 `�
 - Impact discovery found all other exact model-switch notice consumers already use the new format. Related model-switch, image-model-notice and Logo cases passed; the expanded four-file run was 27 pass / 1 fail in 22.61s. The remaining model-thinking failure issued Rewind after a published low status but before setModelSelection completed. Its test now waits for the low completion notice, matching its existing high-selection synchronization.
 - check:dev passed before that final one-line test synchronization correction. Attempted non-off startup verification failed at an empty initial terminal frame with the existing terminal parse deadline, both alongside other acceptance checks and in isolation. The corrected model-thinking file then reported 2 pass / 1 fail in 3.67s with the same initial-frame parse failure, before exercising selection. These failures do not establish a green result for those cases; shared terminal-helper diagnosis remains with integration acceptance. Existing Logo high-effort component assertions pass.
 - Status remains claimed and the spec remains open. These changes preserve ADR-0006 terminal presentation and ADR-0008 locale ownership and introduce no new architectural decision. No additional full run was performed.
+
+### Integration closure
+
+- Closed with the spec after the final diff/ADR coverage review and [code acceptance CI](https://github.com/artoriaschan/rukie/actions/runs/38030185290) on `dff325b6`: all 3368 tests and source/installed acceptance passed. The original local full-run failure remains recorded above; subsequent focused and CI evidence is reported separately.
+- Standards findings are fixed, public terminal dimensions, mouse, reading/follow state and panel coexistence are covered, and no renderer lifecycle API changed. All completed task worktrees were cleaned up after verifying their commits are integrated. PR review and the latest documentation-commit CI remain the delivery gate.

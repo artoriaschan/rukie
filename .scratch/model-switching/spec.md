@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 
 # Spec: 模型切换面板（Model Selection）
 
@@ -125,3 +125,13 @@ Agent Core 用一个统一入口同时修改模型和 Thinking Level，切换只
 ## Code review evidence
 
 Review fixes count ModelPicker chrome within its allocation, add actual terminal-height and 40×12 persistent-panel coverage, and update four thinking fixtures to reasoning-capable per-case metadata. Detailed red/green, synchronization correction, timings and ADR assessment are recorded in ticket 07. Integration acceptance and closure remain with the integration owner.
+
+## Integration acceptance
+
+- All seven implementation tickets are integrated on `feat/model-switching`. Every ticket used a fresh implementer; completed worktrees were removed only after checking cleanliness and integration ancestry.
+- Two-axis review against `64f6a8ea`: Spec found no actionable discrepancy. Standards found two issues (allocated picker height and a non-reasoning Thinking fixture); both were corrected. Actual-height regressions cover 7, 3 and 2 rows and 40×12 with persistent Todo and Subagent panels. Additional affected Thinking fixtures were updated individually.
+- ADR coverage review compared the final diff with the decisions above: configuration owns catalog facts and supported levels; Session composes one atomic native configuration path; native AgentDoc remains the restore authority and v2 Tool State its mirror; subagent policy stays in its controller; visibility, text and localization stay in the frontend; renderer ownership and lifecycle APIs do not change. The tiny-budget fallback is a reversible presentation detail under ADR-0006. No new dependency, trust/credential ownership, external protocol, persistent resource or conflicting architectural decision was introduced.
+- One local full `env -u NO_COLOR bun run check` at `f1382b2e` had 3354 pass, 14 fail and 2 errors in 505.66s. This remains a failed full run. Two affected header/notice consumers were reproduced and corrected; their two files passed 19 tests. A new Thinking test now waits for the API completion notice before Rewind rather than the earlier committed status. No second local full run, retry, weakened timeout or weakened assertion was used.
+- The other 12 failing scenarios were checked once each on current code and the baseline: current 4 pass / 8 fail; baseline 10 pass / 2 fail. Two startup-helper failures also occur at baseline, while six current startup failures have unresolved local task causality. The two errors are late CLI assertions after timeout cleanup terminates child processes. Competing local test work was observed, but no causal claim is made.
+- [Code acceptance CI](https://github.com/artoriaschan/rukie/actions/runs/38030185290) passed for `dff325b6`: source constraints, exact darwin-arm64 package build, all three source/installed shards (1212 + 1107 + 1049 = 3368 tests, 0 fail), and final acceptance audit. CI validates the corrected code; it does not change the original local full-run result.
+- Ticket 07 and this spec close together after that code acceptance and ADR review. The PR remains unmerged for user review; its latest documentation commit is checked by the repository CI before marking it ready.
