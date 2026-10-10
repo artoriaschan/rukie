@@ -2,7 +2,7 @@
 // main area. The main area shows the welcome page for a new Session (figure 1) or the selected
 // Session's Transcript (figure 2), both with the composer docked at the bottom.
 import { AnimatePresence } from "motion/react";
-import { ArrowLeft, ArrowRight, Ellipsis, Folder, ListTree, MessageSquare, PanelLeft } from "lucide-react";
+import { Ellipsis, Folder, ListTree, MessageSquare, PanelLeft } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { ConnectionNotice, PermissionDock } from "./blocks";
 import { Composer } from "./composer";
@@ -104,12 +104,6 @@ export function App() {
       <header className="flex h-11 shrink-0 items-center [-webkit-app-region:drag]">
         <div className={cn("flex h-full shrink-0 items-center gap-1 px-3 [-webkit-app-region:no-drag]", sidebar && "w-[305px] max-md:w-auto")}>
           <TrafficLights />
-          <Button size="icon-sm" variant="ghost" aria-label={t("back")}>
-            <ArrowLeft />
-          </Button>
-          <Button size="icon-sm" variant="ghost" aria-label={t("forward")} disabled>
-            <ArrowRight />
-          </Button>
           <Button size="icon-sm" variant="ghost" aria-label={t("toggleSidebar")} aria-pressed={sidebar} onClick={() => setSidebar(!sidebar)}>
             <PanelLeft />
           </Button>

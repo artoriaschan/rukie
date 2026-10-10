@@ -121,20 +121,16 @@ export function Sidebar() {
 
   return (
     <aside className="flex h-full w-64 shrink-0 flex-col border-r bg-background">
-      <div className="flex h-12 shrink-0 items-center gap-1 px-3">
-        <button type="button" className={cn("flex items-center gap-1 rounded-md px-1 text-ui-lg font-semibold", focus)}>
-          {t("appName")} <ChevronDown className="size-4 text-muted-foreground" />
-        </button>
-        <span className="flex-1" />
-        <Button size="icon-sm" variant="ghost" aria-label={t("search")}>
-          <Search />
-        </Button>
-      </div>
-      <div className="px-2">
+      <div className="space-y-0.5 px-2 pt-2">
         <button type="button" aria-current={newActive ? "page" : undefined} onClick={() => select({ kind: "new", projectId: null })} className={cn(row, newActive && "bg-card font-medium")}>
           <SquarePen className="size-4 text-muted-foreground" />
           <span className="flex-1">{t("newChat")}</span>
           <Kbd>⌘N</Kbd>
+        </button>
+        <button type="button" className={row}>
+          <Search className="size-4 text-muted-foreground" />
+          <span className="flex-1">{t("search")}</span>
+          <Kbd>⌘K</Kbd>
         </button>
       </div>
 
