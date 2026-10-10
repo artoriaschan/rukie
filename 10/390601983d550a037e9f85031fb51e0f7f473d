@@ -1,0 +1,33 @@
+prototypes/desktop-main-window/src/conversation.tsx
+  s_2f9b11742bfb62::t_15d31b18c2aea2 1-3,7,9,12-29,56,99,101,119-120,124,127-135
+prototypes/desktop-main-window/src/sidebar.tsx
+  s_2f9b11742bfb62::t_3dcce3092cd0dc 1-7,29-73,75-104,108,110-121,123,125,134,136,140-160,162-163,165-166,169-184,187,193-199
+prototypes/desktop-main-window/src/state.ts
+  s_2f9b11742bfb62::t_9b1dff23b6a190 3,8-10,15-20,23-25
+prototypes/desktop-main-window/src/main.tsx
+  s_2f9b11742bfb62::t_f58311e1066c00 1,3,8,11,35-36,38-40,48-68,73-77,80-82,108-109,111-113
+prototypes/desktop-main-window/src/welcome.tsx
+  s_2f9b11742bfb62::t_9c45464536258b 1-103
+prototypes/desktop-main-window/src/i18n.ts
+  s_2f9b11742bfb62::t_cb0c738cdf72ab 8-12,14-20,22-26,28,54,72-75,80-84,86-92,94-98,100,126,144-147,157,159-170
+prototypes/desktop-main-window/src/composer.tsx
+  s_2f9b11742bfb62::t_a2fd0ad9ddc926 2-3,8,10,19,21,31,33-41,43-60,62-88
+prototypes/desktop-main-window/src/app.tsx
+  s_2f9b11742bfb62::t_efe28b11db5bce 1-3,5,9-10,12,16,18-25,28,32,46,48-87,91,93,98,104-127,130-133,135-142
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "10390601983d550a037e9f85031fb51e0f7f473d",
+  "prompts": {},
+  "sessions": {
+    "s_2f9b11742bfb62": {
+      "agent_id": {
+        "tool": "chengxiaobang",
+        "id": "s_ud9hgzuuustw",
+        "model": "kr-claude-opus-5.5[1M]"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
