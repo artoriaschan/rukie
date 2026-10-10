@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import type { WireCommand } from "@rukie/shared";
 import { parseWireCommand } from "../src/index.ts";
 
 test("wire validates an input request and rejects unknown commands and excess fields", () => {
@@ -15,7 +16,7 @@ test("wire validates an input request and rejects unknown commands and excess fi
 });
 
 test("wire preserves an optional image name in prompt input", () => {
-  const command = {
+  const command: WireCommand = {
     id: "image-1",
     type: "prompt",
     sessionId: "s",
