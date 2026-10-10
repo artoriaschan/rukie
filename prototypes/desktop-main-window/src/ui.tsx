@@ -2,7 +2,7 @@
 // with DESIGN.md tokens and the text-ui-* scale. Real code installs them through the shadcn CLI.
 import { clsx, type ClassValue } from "clsx";
 import { FileText, Pencil, Search, SquareTerminal } from "lucide-react";
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { extendTailwindMerge } from "tailwind-merge";
 
 const twMerge = extendTailwindMerge({
@@ -90,3 +90,43 @@ export function RichText({ text }: { text: string }) {
 }
 
 export const toolIcons = { Read: FileText, Bash: SquareTerminal, Edit: Pencil, Grep: Search };
+
+/**
+ * PROTOTYPE tooltip in shadcn/ui Tooltip style (inverted pill, short delay); real code installs
+ * shadcn's tooltip. Opens on hover or keyboard focus, closes on leave, blur, or Esc.
+ */
+export function Tooltip({ label, children }: { label: string; children: ReactNode }) {
+  const id = useId();
+  const [open, setOpen] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const show = () => {
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setOpen(true), 300);
+  };
+  const hide = () => {
+    clearTimeout(timer.current);
+    setOpen(false);
+  };
+  useEffect(() => () => clearTimeout(timer.current), []);
+  return (
+    <span
+      className="relative inline-flex"
+      onMouseEnter={show}
+      onMouseLeave={hide}
+      onFocus={() => {
+        clearTimeout(timer.current);
+        setOpen(true);
+      }}
+      onBlur={hide}
+      onKeyDown={(e) => e.key === "Escape" && hide()}
+      aria-describedby={open ? id : undefined}
+    >
+      {children}
+      {open && (
+        <span id={id} role="tooltip" className="pointer-events-none absolute top-full left-1/2 z-50 mt-2 -translate-x-1/2 rounded-md bg-foreground px-3 py-1.5 text-ui-sm whitespace-nowrap text-background shadow-md">
+          {label}
+        </span>
+      )}
+    </span>
+  );
+}

@@ -12,7 +12,7 @@ import { useT } from "./i18n";
 import { NavRail, Sidebar } from "./sidebar";
 import { useProto } from "./state";
 import { SummaryPanel } from "./summary";
-import { Button, cn } from "./ui";
+import { Button, cn, Tooltip } from "./ui";
 import { Welcome } from "./welcome";
 import { SearchDialog } from "./search";
 
@@ -130,8 +130,12 @@ export function App() {
         <div className={cn("flex h-full min-w-0 flex-1 items-center gap-2 pr-3 pl-3 [-webkit-app-region:no-drag]", sidebar && "md:border-l")}>
           {session && (
             <>
-              {project ? <Folder className="size-4 shrink-0 text-muted-foreground" /> : <MessageSquare className="size-4 shrink-0 text-muted-foreground" />}
-              <span className="shrink-0 text-ui-sm text-muted-foreground max-sm:hidden">{project ? project.name : t("chats")} /</span>
+              {/* The project lives in a tooltip on the icon so the title keeps the whole row. */}
+              <Tooltip label={project ? project.name : t("chats")}>
+                <span tabIndex={0} role="img" aria-label={project ? project.name : t("chats")} className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50">
+                  {project ? <Folder className="size-4" /> : <MessageSquare className="size-4" />}
+                </span>
+              </Tooltip>
               <h1 className="min-w-0 truncate text-ui-base font-medium">{session.title}</h1>
               <span className="flex-1" />
               <Button size="icon-sm" variant="ghost" aria-label={t("more")}>
