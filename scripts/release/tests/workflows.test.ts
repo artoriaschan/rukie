@@ -114,13 +114,13 @@ test("CI accepts the once-built packages only after every full-suite shard succe
   expect(object(object(accepted[upload]).with).path).toContain("/ci-acceptance.json");
 });
 
-test("all three shards test the same exact packages with one worker and no acceptance authority", async () => {
+test("all six shards test the same exact packages with one worker and no acceptance authority", async () => {
   const source = await readFile(resolve(root, ".github/workflows/release-tests.yml"), "utf8");
   const workflow = object(Bun.YAML.parse(source));
   const job = object(object(workflow.jobs).test);
   expect(workflow.permissions).toEqual({ contents: "read", actions: "read" });
   expect(job).toMatchObject({
-    strategy: { "fail-fast": false, matrix: { shard: [1, 2, 3] } },
+    strategy: { "fail-fast": false, matrix: { shard: [1, 2, 3, 4, 5, 6] } },
     env: { RUKIE_TEST_WORKERS: 1, RELEASE_COMMIT: "${{ inputs.commit }}" },
   });
   if (!Array.isArray(job.steps)) throw new Error("Missing shard steps");
@@ -130,7 +130,20 @@ test("all three shards test the same exact packages with one worker and no accep
   });
   const commands = steps.map((step) => (typeof step.run === "string" ? step.run : ""));
   expect(commands.join("\n")).toContain('--require-clean --commit "$RELEASE_COMMIT"');
-  expect(commands.join("\n")).toContain('bun run test --shard="$TEST_SHARD/3"');
+  expect(commands.join("\n")).toContain(
+    'bun run test --shard="$TEST_SHARD/6" --timings=scripts/test-timings.json',
+  );
+  const timings = object(
+    JSON.parse(await readFile(resolve(root, "scripts/test-timings.json"), "utf8")),
+  );
+  expect(timings.version).toBe(1);
+  for (const [path, duration] of Object.entries(object(timings.files))) {
+    expect(path).toMatch(/^(packages|scripts)\/.+\.test\.tsx?$/);
+    expect(typeof duration).toBe("number");
+    expect(Number.isFinite(duration)).toBe(true);
+    expect(duration).toBeGreaterThan(0);
+    expect(await Bun.file(resolve(root, path)).exists()).toBe(true);
+  }
   const check = steps.findIndex((step) => step.id === "check");
   const after = steps.findIndex(
     (step) => step.name === "Verify tests preserved clean source and original packages",
@@ -175,7 +188,7 @@ test("both source gates keep full logs and fail closed while bounding Actions ou
         // Exercise the workflow shell around a controlled check result, including stderr.
         const command = gate.run.replace(
           name === "release-tests.yml"
-            ? 'env -u NO_COLOR bun run test --shard="$TEST_SHARD/3"'
+            ? 'env -u NO_COLOR bun run test --shard="$TEST_SHARD/6" --timings=scripts/test-timings.json'
             : "env -u NO_COLOR bun run check:dev",
           `(i=0; while [ "$i" -lt 200 ]; do echo "result-$i"; i=$((i+1)); done; echo check-stderr >&2; exit ${code})`,
         );
@@ -237,7 +250,7 @@ test("PR titles remain data when the actual workflow invokes commitlint", async 
   const marker = resolve(root, "ci-title-must-not-execute");
   const child = Bun.spawn(["sh", "-c", step.run], {
     cwd: root,
-    env: { ...process.env, PR_TITLE: `fix: literal $(touch ${marker})` },
+    env: { ...process.env, PR_TITLE: "fix: literal $(touch ci-title-must-not-execute)" },
     stdout: "pipe",
     stderr: "pipe",
     signal: AbortSignal.timeout(10_000),
