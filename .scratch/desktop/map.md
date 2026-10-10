@@ -31,7 +31,7 @@
 
 - spec 细节（由 `/to-spec` 直接定，不另开工单）：桌面端注册表的文件位置、格式与默认工作区目录；Session 空闲关闭的宽限期；sidecar 重启超时与次数。
 - Agent Core 前置改动的落地方式（方向已定于 05、10、12：busy 错误带 code、`list()` 按目录容错、公开 Queued Input），作为 spec 的第一批实现工单；孤儿 Background Job 是否并入取决于 18。
-- spec 撰写与实现工单切分顺序：13–20 结题后进入 `/to-spec`。
+- spec 撰写与实现工单切分顺序：13–20 结题后进入 `/to-spec`。[spec.md](spec.md) 已先写入主窗口布局（来自 09，并按 10 调整）；布局「待定」中的入口在 `/to-spec` 时逐项确认。
 
 ## Out of scope
 
