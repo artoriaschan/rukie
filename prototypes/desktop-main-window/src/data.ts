@@ -14,6 +14,8 @@ export interface SessionItem {
   pinned: boolean;
   /** Minutes since last update; the Recent group sorts by this. */
   updatedMin: number;
+  /** Minutes since creation; the alternative Recent sort order. */
+  createdMin: number;
 }
 
 export interface Project {
@@ -61,14 +63,14 @@ export const projects: Project[] = [
 
 /** s1 is the fully scripted Session; the rest show a placeholder history. */
 export const initialSessions: SessionItem[] = [
-  { id: "s1", title: "修复 Session resume 后的 Todo 丢失", projectId: "rukie", pinned: true, updatedMin: 2 },
-  { id: "s2", title: "桌面端 wire 协议草稿", projectId: "rukie", pinned: false, updatedMin: 65 },
-  { id: "c1", title: "解释 Effect 的 Layer 与 ManagedRuntime", projectId: null, pinned: true, updatedMin: 180 },
-  { id: "s3", title: "TUI 小终端下的状态栏截断", projectId: "rukie", pinned: false, updatedMin: 1500 },
-  { id: "c2", title: "写一封周报邮件", projectId: null, pinned: false, updatedMin: 2900 },
-  { id: "s4", title: "梳理 pi-durable lease 实现", projectId: "pi", pinned: false, updatedMin: 4400 },
-  { id: "s5", title: "对照 dsh-TUI 滚动跟随行为", projectId: "dsh", pinned: false, updatedMin: 7300 },
-  { id: "c3", title: "比较 SQLite 与 JSONL 的写放大", projectId: null, pinned: false, updatedMin: 10100 },
+  { id: "s1", title: "修复 Session resume 后的 Todo 丢失", projectId: "rukie", pinned: true, updatedMin: 2, createdMin: 4300 },
+  { id: "s2", title: "桌面端 wire 协议草稿", projectId: "rukie", pinned: false, updatedMin: 65, createdMin: 900 },
+  { id: "c1", title: "解释 Effect 的 Layer 与 ManagedRuntime", projectId: null, pinned: true, updatedMin: 180, createdMin: 200 },
+  { id: "s3", title: "TUI 小终端下的状态栏截断", projectId: "rukie", pinned: false, updatedMin: 1500, createdMin: 8000 },
+  { id: "c2", title: "写一封周报邮件", projectId: null, pinned: false, updatedMin: 2900, createdMin: 2950 },
+  { id: "s4", title: "梳理 pi-durable lease 实现", projectId: "pi", pinned: false, updatedMin: 4400, createdMin: 4500 },
+  { id: "s5", title: "对照 dsh-TUI 滚动跟随行为", projectId: "dsh", pinned: false, updatedMin: 7300, createdMin: 12000 },
+  { id: "c3", title: "比较 SQLite 与 JSONL 的写放大", projectId: null, pinned: false, updatedMin: 10100, createdMin: 10200 },
 ];
 
 export const turns: Turn[] = [

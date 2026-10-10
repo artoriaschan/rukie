@@ -1,8 +1,9 @@
 // PROTOTYPE navigation after the Codex reference: a nav rail with only Home, and the Home sidebar
 // with New chat plus four collapsible groups. A Session may appear in several groups (Pinned and
 // Recent); ⌃1–⌃9 follow the Recent order so a shortcut means the same Session everywhere.
-import { ChevronDown, ChevronRight, Folder, FolderOpen, FolderPlus, House, Loader2, Pin, PinOff, Plus, Search, SquarePen } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { ArrowDownUp, ChevronDown, ChevronRight, Ellipsis, Folder, FolderOpen, FolderPlus, House, Loader2, PanelLeft, Pin, PinOff, Plus, Search, SquarePen } from "lucide-react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { Menu } from "./menu";
 import { projects, type SessionItem } from "./data";
 import { useAgo, useT } from "./i18n";
 import { useProto } from "./state";
@@ -44,15 +45,20 @@ export function NavRail() {
   );
 }
 
-function Group({ id, title, open, onToggle, action, children }: { id: string; title: string; open: boolean; onToggle: () => void; action?: ReactNode; children: ReactNode }) {
+/**
+ * Collapsible group. The chevron and header actions appear only while the header is hovered or
+ * holds focus; `pinActions` keeps the actions visible while one of them owns an open menu.
+ */
+function Group({ id, title, open, onToggle, actions, pinActions = false, children }: { id: string; title: string; open: boolean; onToggle: () => void; actions?: ReactNode; pinActions?: boolean; children: ReactNode }) {
+  const reveal = "opacity-0 transition-opacity group-hover/h:opacity-100 group-focus-within/h:opacity-100";
   return (
     <section aria-labelledby={`group-${id}`} className="pt-3">
-      <div className="group/h flex items-center px-2">
+      <div className="group/h flex h-7 items-center px-2">
         <button id={`group-${id}`} type="button" aria-expanded={open} onClick={onToggle} className={cn("flex min-w-0 flex-1 items-center gap-1 rounded-md py-1 text-ui-sm text-muted-foreground hover:text-foreground", focus)}>
           {title}
-          <ChevronDown className={cn("size-3.5 opacity-0 transition-transform group-hover/h:opacity-100", !open && "-rotate-90 opacity-100")} />
+          <ChevronDown className={cn("size-3.5 transition-transform", reveal, !open && "-rotate-90")} />
         </button>
-        {action}
+        {actions && <span className={cn("flex items-center gap-0.5", reveal, pinActions && "opacity-100")}>{actions}</span>}
       </div>
       {open && <ul className="space-y-0.5">{children}</ul>}
     </section>
@@ -109,8 +115,13 @@ export function Sidebar() {
   const ctrl = useCtrlHeld();
   const [open, setOpen] = useState<Record<string, boolean>>({ pinned: true, chats: true, projects: true, recent: true, "p:rukie": true });
   const toggle = (key: string) => setOpen((o) => ({ ...o, [key]: !(o[key] ?? false) }));
+  const [sort, setSort] = useState<"updated" | "created">("updated");
+  const [shown, setShown] = useState({ pinned: true, chats: true, projects: true });
+  const [menu, setMenu] = useState<{ anchor: HTMLElement; keyboard: boolean } | null>(null);
+  const closeMenu = useCallback(() => setMenu(null), []);
+  const setAll = (value: boolean) => setOpen((o) => ({ ...o, pinned: value, chats: value, projects: value, recent: value }));
 
-  const recent = [...sessions].sort((a, b) => a.updatedMin - b.updatedMin);
+  const recent = [...sessions].sort((a, b) => (sort === "updated" ? a.updatedMin - b.updatedMin : a.createdMin - b.createdMin));
   const shortcutOf = (id: string) => {
     const i = recent.findIndex((s) => s.id === id);
     return i >= 0 && i < 9 ? i + 1 : undefined;
@@ -135,21 +146,26 @@ export function Sidebar() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-        <Group id="pinned" title={t("pinned")} open={open.pinned} onToggle={() => toggle("pinned")}>
-          {pinned.length ? pinned.map((s) => <SessionRow key={s.id} session={s} shortcut={shortcutOf(s.id)} ctrl={ctrl} />) : <Empty>{t("noPinned")}</Empty>}
-        </Group>
+        {shown.pinned && (
+          <Group id="pinned" title={t("pinned")} open={open.pinned} onToggle={() => toggle("pinned")}>
+            {pinned.length ? pinned.map((s) => <SessionRow key={s.id} session={s} shortcut={shortcutOf(s.id)} ctrl={ctrl} />) : <Empty>{t("noPinned")}</Empty>}
+          </Group>
+        )}
 
-        <Group id="chats" title={t("chats")} open={open.chats} onToggle={() => toggle("chats")}>
-          {chats.length ? chats.map((s) => <SessionRow key={s.id} session={s} shortcut={shortcutOf(s.id)} ctrl={ctrl} />) : <Empty>{t("noSessions")}</Empty>}
-        </Group>
+        {shown.chats && (
+          <Group id="chats" title={t("chats")} open={open.chats} onToggle={() => toggle("chats")}>
+            {chats.length ? chats.map((s) => <SessionRow key={s.id} session={s} shortcut={shortcutOf(s.id)} ctrl={ctrl} />) : <Empty>{t("noSessions")}</Empty>}
+          </Group>
+        )}
 
+        {shown.projects && (
         <Group
           id="projects"
           title={t("projects")}
           open={open.projects}
           onToggle={() => toggle("projects")}
-          action={
-            <Button size="icon-sm" variant="ghost" className="size-6" aria-label={t("addProject")}>
+          actions={
+            <Button size="icon-sm" variant="ghost" className="size-6" aria-label={t("addProject")} title={t("addProject")}>
               <FolderPlus />
             </Button>
           }
@@ -187,13 +203,74 @@ export function Sidebar() {
             );
           })}
         </Group>
+        )}
 
-        <Group id="recent" title={t("recent")} open={open.recent} onToggle={() => toggle("recent")}>
+        <Group
+          id="recent"
+          title={t("recent")}
+          open={open.recent}
+          onToggle={() => toggle("recent")}
+          pinActions={menu !== null}
+          actions={
+            <>
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                className={cn("size-6", menu && "bg-card")}
+                aria-label={t("recentMore")}
+                title={t("recentMore")}
+                aria-haspopup="menu"
+                aria-expanded={menu !== null}
+                onClick={(e) => setMenu(menu ? null : { anchor: e.currentTarget, keyboard: e.detail === 0 })}
+              >
+                <Ellipsis />
+              </Button>
+              <Button size="icon-sm" variant="ghost" className="size-6" aria-label={t("newChat")} title={t("newChat")} onClick={() => select({ kind: "new", projectId: null })}>
+                <SquarePen />
+              </Button>
+            </>
+          }
+        >
           {recent.map((s) => (
             <SessionRow key={s.id} session={s} shortcut={shortcutOf(s.id)} ctrl={ctrl} />
           ))}
         </Group>
       </div>
+      {menu && (
+        <Menu
+          anchor={menu.anchor}
+          keyboard={menu.keyboard}
+          label={t("recentMore")}
+          onClose={closeMenu}
+          entries={[
+            {
+              kind: "sub",
+              label: t("organize"),
+              icon: PanelLeft,
+              entries: [
+                { kind: "item", label: t("expandAll"), onSelect: () => setAll(true) },
+                { kind: "item", label: t("collapseAll"), onSelect: () => setAll(false) },
+              ],
+            },
+            {
+              kind: "sub",
+              label: t("sortBy"),
+              icon: ArrowDownUp,
+              entries: [
+                { kind: "check", radio: true, label: t("sortUpdated"), checked: sort === "updated", onSelect: () => setSort("updated") },
+                { kind: "check", radio: true, label: t("sortCreated"), checked: sort === "created", onSelect: () => setSort("created") },
+              ],
+            },
+            { kind: "separator" },
+            { kind: "label", label: t("show") },
+            { kind: "check", label: t("pinned"), checked: shown.pinned, onSelect: () => setShown((v) => ({ ...v, pinned: !v.pinned })) },
+            { kind: "check", label: t("chats"), checked: shown.chats, onSelect: () => setShown((v) => ({ ...v, chats: !v.chats })) },
+            { kind: "check", label: t("projects"), checked: shown.projects, onSelect: () => setShown((v) => ({ ...v, projects: !v.projects })) },
+            { kind: "separator" },
+            { kind: "item", label: t("newSection"), icon: Plus, onSelect: () => {} },
+          ]}
+        />
+      )}
     </aside>
   );
 }

@@ -56,7 +56,7 @@ function Root() {
     if (selection.kind === "new") {
       id = `n${Date.now()}`;
       const title = text.length > 24 ? `${text.slice(0, 24)}…` : text;
-      setSessions((list) => [{ id, title, projectId: selection.projectId, pinned: false, updatedMin: 0 }, ...list]);
+      setSessions((list) => [{ id, title, projectId: selection.projectId, pinned: false, updatedMin: 0, createdMin: 0 }, ...list]);
       setCreated((list) => [...list, id]);
       select({ kind: "session", id });
     } else {
