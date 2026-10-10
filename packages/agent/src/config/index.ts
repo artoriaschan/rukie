@@ -289,3 +289,5 @@ export async function listModelCatalog(settings: Settings = {}): Promise<ModelCa
     }))
     .sort((a, b) => a.spec.localeCompare(b.spec));
 }
+
+export { supportedThinkingLevel } from "./model-selection.ts";

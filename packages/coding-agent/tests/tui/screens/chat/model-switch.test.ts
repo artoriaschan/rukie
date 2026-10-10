@@ -103,7 +103,7 @@ test("a resumed session displays its persisted model before sending another prom
         model,
         models: auxiliaryModels(faux.provider.streamSimple, { models: catalog.models }),
       });
-      await seed.setModel("test-model/second");
+      await seed.setModelSelection({ model: "test-model/second" });
       await seed.close();
       argv.push("--resume", seed.id);
       await Bun.write(

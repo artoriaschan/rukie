@@ -1278,7 +1278,7 @@ function Chat({
           (entry) => (entry.type === "message" || entry.type === "tool") && !!entry.images?.length,
         );
     try {
-      await session.setModel(spec);
+      await session.setModelSelection({ model: spec });
       composer.reset();
       pasteEpoch.current++;
       conversation.notice(t("model.changed", { model: session.model }));

@@ -185,7 +185,7 @@ test.each(["abort", "close"] as const)(
     expect(events.filter((event) => event.type === "compaction_end")).toHaveLength(0);
     await expect(session.run("competing prompt")).rejects.toThrow();
     await expect(session.compact()).rejects.toThrow();
-    await expect(session.setModel("missing/model")).rejects.toThrow();
+    await expect(session.setModelSelection({ model: "missing/model" })).rejects.toThrow();
     if (action === "abort") await session.abort();
     else await session.close();
     expect(await rejected).toBeInstanceOf(Error);
@@ -397,7 +397,7 @@ test.each(["normal prompt", "oversized Skill Invocation"] as const)(
     session.subscribe((event) => events.push(event));
     await seedHistory(session);
     expect(events.filter((event) => event.type === "compaction_end")).toHaveLength(0);
-    await session.setModel("compact-window/small");
+    await session.setModelSelection({ model: "compact-window/small" });
     events.length = 0;
     const prompt =
       shape === "normal prompt"
@@ -502,7 +502,7 @@ test("aborting native threshold Compaction preserves its admitted prompt without
   );
   const session = await createSession({ ...dirs, ...fake });
   await seedHistory(session);
-  await session.setModel("compact-window/small");
+  await session.setModelSelection({ model: "compact-window/small" });
   const pending = session.run("PRESERVE_ABORTED_THRESHOLD_PROMPT");
   const rejected = pending.catch((error: unknown) => error);
   await summary.started;
@@ -545,7 +545,7 @@ test("threshold Compaction keeps large parallel Tool Calls paired with their Too
   );
   const session = await createSession({ ...dirs, ...fake });
   await seedHistory(session);
-  await session.setModel("compact-window/small");
+  await session.setModelSelection({ model: "compact-window/small" });
   const result = await session.run("Inspect both current tool outputs before answering.");
   expect(result.text).toBe("large tool batch inspected");
   expect(summaries.contexts).toHaveLength(2);
