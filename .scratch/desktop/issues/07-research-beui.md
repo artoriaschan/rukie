@@ -24,3 +24,4 @@ beui 即 [starc007/ui-components](https://github.com/starc007/ui-components)（�
 ## Comments
 
 - 2026-10-09：分工调整为 shadcn 负责标准组件与默认风格、beUI 只负责动效；beUI 组件的 glass/neon 表面改用 shadcn 表面。ai-elements 不再使用。
+- 2026-10-10：分工再次调整为 beUI 优先：beUI 自带原语即项目的 Button/Select/Popover/Dialog 实现，保留 glass 表面与 neon，颜色取 GitHub token；beUI 未覆盖的角色（表单、表格、导航模式等）用 shadcn/ui，且不为 beUI 已有的角色再装 shadcn 原语。取代 2026-10-09 的分工。
