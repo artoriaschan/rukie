@@ -12,6 +12,7 @@ export interface UserVisibleErrorParams {
   "unknown-model": { model: string };
   "no-api-key": { provider: string; env: string };
   "session-not-found": { id: string };
+  "session-busy": { id: string };
   "session-observation-readonly": Record<string, never>;
   "compaction-no-history": Record<string, never>;
   "side-question-empty": Record<string, never>;

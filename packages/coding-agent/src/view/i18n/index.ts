@@ -65,6 +65,8 @@ export function formatError(error: unknown, t: ReturnType<typeof createTuiI18n>)
       return t("error.side-question-provider-failed", data.params);
     case "side-question-no-response":
       return t("error.side-question-no-response", data.params);
+    case "session-busy":
+      return t("error.session-busy", data.params);
     case "session-title-empty":
       return t("error.session-title-empty", data.params);
     case "model-switch-busy":
