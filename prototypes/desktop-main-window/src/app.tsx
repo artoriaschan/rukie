@@ -2,7 +2,7 @@
 // main area. The main area shows the welcome page for a new Session (figure 1) or the selected
 // Session's Transcript (figure 2), both with the composer docked at the bottom.
 import { AnimatePresence } from "motion/react";
-import { Ellipsis, Folder, ListTree, MessageSquare, PanelLeft } from "lucide-react";
+import { ArrowLeft, ArrowRight, Ellipsis, Folder, ListTree, MessageSquare, PanelLeft } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { ConnectionNotice, PermissionDock } from "./blocks";
 import { Composer } from "./composer";
@@ -77,6 +77,17 @@ function SessionView({ id, summaryOpen, onCloseSummary }: { id: string; summaryO
   );
 }
 
+/** Stand-in for the macOS traffic lights Electron draws with titleBarStyle "hiddenInset". */
+function TrafficLights() {
+  return (
+    <span aria-hidden className="flex w-[68px] shrink-0 items-center gap-2 pl-1">
+      <span className="size-3 rounded-full bg-[#ff5f57]" />
+      <span className="size-3 rounded-full bg-[#febc2e]" />
+      <span className="size-3 rounded-full bg-[#28c840]" />
+    </span>
+  );
+}
+
 export function App() {
   const t = useT();
   const { selection, sessions } = useProto();
@@ -87,20 +98,23 @@ export function App() {
   const project = session?.projectId ? projects.find((p) => p.id === session.projectId) : undefined;
 
   return (
-    <div className="flex h-full min-h-0">
-      <NavRail />
-      {sidebar && (
-        <div className="contents max-md:absolute max-md:inset-y-0 max-md:left-12 max-md:z-30 max-md:block max-md:shadow-lg">
-          <Sidebar onClose={() => setSidebar(false)} />
+    // Window chrome: the title bar and nav rail sit on the window background; the sidebar and
+    // main area form one sheet with a rounded top-left corner, split by a single hairline.
+    <div className="flex h-full min-h-0 flex-col bg-card">
+      <header className="flex h-11 shrink-0 items-center [-webkit-app-region:drag]">
+        <div className={cn("flex h-full shrink-0 items-center gap-1 px-3 [-webkit-app-region:no-drag]", sidebar && "w-[305px] max-md:w-auto")}>
+          <TrafficLights />
+          <Button size="icon-sm" variant="ghost" aria-label={t("back")}>
+            <ArrowLeft />
+          </Button>
+          <Button size="icon-sm" variant="ghost" aria-label={t("forward")} disabled>
+            <ArrowRight />
+          </Button>
+          <Button size="icon-sm" variant="ghost" aria-label={t("toggleSidebar")} aria-pressed={sidebar} onClick={() => setSidebar(!sidebar)}>
+            <PanelLeft />
+          </Button>
         </div>
-      )}
-      <main className="relative flex min-w-0 flex-1 flex-col border-l">
-        <header className={cn("flex h-12 shrink-0 items-center gap-2 px-3", session && "border-b")}>
-          {!sidebar && (
-            <Button size="icon-sm" variant="ghost" aria-label={t("toggleSidebar")} onClick={() => setSidebar(true)}>
-              <PanelLeft />
-            </Button>
-          )}
+        <div className={cn("flex h-full min-w-0 flex-1 items-center gap-2 pr-3 pl-3 [-webkit-app-region:no-drag]", sidebar && "md:border-l")}>
           {session && (
             <>
               {project ? <Folder className="size-4 shrink-0 text-muted-foreground" /> : <MessageSquare className="size-4 shrink-0 text-muted-foreground" />}
@@ -118,29 +132,41 @@ export function App() {
                   aria-expanded={summaryOpen}
                   aria-controls="session-summary"
                   onClick={() => setSummaryOpen(!summaryOpen)}
-                  className={cn(summaryOpen && "bg-card")}
+                  className={cn(summaryOpen && "bg-background")}
                 >
                   <ListTree />
                 </Button>
               )}
             </>
           )}
-        </header>
+        </div>
+      </header>
 
-        {selection.kind === "new" ? (
-          <>
-            <div className="min-h-0 flex-1">
-              <Welcome />
+      <div className="flex min-h-0 flex-1">
+        <NavRail />
+        <div className="relative flex min-w-0 flex-1 overflow-hidden rounded-tl-xl border-t border-l bg-background">
+          {sidebar && (
+            <div className="contents max-md:absolute max-md:inset-y-0 max-md:left-0 max-md:z-30 max-md:block max-md:shadow-lg">
+              <Sidebar />
             </div>
-            <div className="mx-auto w-full max-w-3xl space-y-2 px-6 pb-4">
-              <ConnectionNotice />
-              <Composer status="idle" onStop={() => {}} isNew />
-            </div>
-          </>
-        ) : (
-          <SessionView key={selection.id} id={selection.id} summaryOpen={summaryOpen} onCloseSummary={() => setSummaryOpen(false)} />
-        )}
-      </main>
+          )}
+          <main className="relative flex min-w-0 flex-1 flex-col">
+            {selection.kind === "new" ? (
+              <>
+                <div className="min-h-0 flex-1">
+                  <Welcome />
+                </div>
+                <div className="mx-auto w-full max-w-3xl space-y-2 px-6 pb-4">
+                  <ConnectionNotice />
+                  <Composer status="idle" onStop={() => {}} isNew />
+                </div>
+              </>
+            ) : (
+              <SessionView key={selection.id} id={selection.id} summaryOpen={summaryOpen} onCloseSummary={() => setSummaryOpen(false)} />
+            )}
+          </main>
+        </div>
+      </div>
     </div>
   );
 }

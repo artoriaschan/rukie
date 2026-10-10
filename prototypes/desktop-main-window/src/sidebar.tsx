@@ -1,7 +1,7 @@
 // PROTOTYPE navigation after the Codex reference: a nav rail with only Home, and the Home sidebar
 // with New chat plus four collapsible groups. A Session may appear in several groups (Pinned and
 // Recent); ⌃1–⌃9 follow the Recent order so a shortcut means the same Session everywhere.
-import { ChevronDown, ChevronRight, Folder, FolderOpen, FolderPlus, House, Loader2, PanelLeft, Pin, PinOff, Plus, Search, SquarePen } from "lucide-react";
+import { ChevronDown, ChevronRight, Folder, FolderOpen, FolderPlus, House, Loader2, Pin, PinOff, Plus, Search, SquarePen } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { projects, type SessionItem } from "./data";
 import { useAgo, useT } from "./i18n";
@@ -27,13 +27,13 @@ function useCtrlHeld() {
 }
 
 const focus = "outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50";
-const row = cn("flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-ui-base hover:bg-background/70", focus);
+const row = cn("flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-ui-base hover:bg-card", focus);
 
 export function NavRail() {
   const t = useT();
   return (
-    <nav aria-label={t("mainNav")} className="flex w-12 shrink-0 flex-col items-center gap-1 bg-card py-3">
-      <Button size="icon-sm" variant="ghost" aria-label={t("home")} aria-current="page" className="bg-background shadow-xs">
+    <nav aria-label={t("mainNav")} className="flex w-12 shrink-0 flex-col items-center gap-1 pt-1 pb-3">
+      <Button size="icon-sm" variant="ghost" aria-label={t("home")} aria-current="page" className="size-9 rounded-lg border bg-background">
         <House />
       </Button>
       <span className="flex-1" />
@@ -71,7 +71,7 @@ function SessionRow({ session, shortcut, indent = false, ctrl }: { session: Sess
         type="button"
         aria-current={active ? "page" : undefined}
         onClick={() => select({ kind: "session", id: session.id })}
-        className={cn(row, "pr-14", indent && "pl-8", active && "bg-background font-medium shadow-xs")}
+        className={cn(row, "pr-14", indent && "pl-8", active && "bg-card font-medium")}
       >
         <span className="min-w-0 flex-1 truncate">{session.title}</span>
       </button>
@@ -91,7 +91,7 @@ function SessionRow({ session, shortcut, indent = false, ctrl }: { session: Sess
         aria-label={session.pinned ? t("unpin") : t("pin")}
         title={session.pinned ? t("unpin") : t("pin")}
         onClick={() => togglePin(session.id)}
-        className={cn("absolute top-1/2 right-1 flex size-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground opacity-0 hover:bg-card hover:text-foreground group-focus-within/row:opacity-100 group-hover/row:opacity-100", focus)}
+        className={cn("absolute top-1/2 right-1 flex size-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground opacity-0 hover:bg-background hover:text-foreground group-focus-within/row:opacity-100 group-hover/row:opacity-100", focus)}
       >
         {session.pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
       </button>
@@ -103,7 +103,7 @@ function Empty({ children, indent = false }: { children: ReactNode; indent?: boo
   return <li className={cn("px-2 py-1 text-ui-sm text-muted-foreground", indent && "pl-8")}>{children}</li>;
 }
 
-export function Sidebar({ onClose }: { onClose: () => void }) {
+export function Sidebar() {
   const t = useT();
   const { sessions, selection, select } = useProto();
   const ctrl = useCtrlHeld();
@@ -120,18 +120,18 @@ export function Sidebar({ onClose }: { onClose: () => void }) {
   const newActive = selection.kind === "new" && selection.projectId === null;
 
   return (
-    <aside className="flex h-full w-64 shrink-0 flex-col border-l bg-card">
+    <aside className="flex h-full w-64 shrink-0 flex-col border-r bg-background">
       <div className="flex h-12 shrink-0 items-center gap-1 px-3">
-        <span className="flex-1 px-1 text-ui-lg font-semibold">{t("appName")}</span>
+        <button type="button" className={cn("flex items-center gap-1 rounded-md px-1 text-ui-lg font-semibold", focus)}>
+          {t("appName")} <ChevronDown className="size-4 text-muted-foreground" />
+        </button>
+        <span className="flex-1" />
         <Button size="icon-sm" variant="ghost" aria-label={t("search")}>
           <Search />
         </Button>
-        <Button size="icon-sm" variant="ghost" aria-label={t("toggleSidebar")} onClick={onClose}>
-          <PanelLeft />
-        </Button>
       </div>
       <div className="px-2">
-        <button type="button" aria-current={newActive ? "page" : undefined} onClick={() => select({ kind: "new", projectId: null })} className={cn(row, newActive && "bg-background font-medium shadow-xs")}>
+        <button type="button" aria-current={newActive ? "page" : undefined} onClick={() => select({ kind: "new", projectId: null })} className={cn(row, newActive && "bg-card font-medium")}>
           <SquarePen className="size-4 text-muted-foreground" />
           <span className="flex-1">{t("newChat")}</span>
           <Kbd>⌘N</Kbd>
@@ -167,7 +167,7 @@ export function Sidebar({ onClose }: { onClose: () => void }) {
             return (
               <li key={p.id}>
                 <div className="group/p relative">
-                  <button type="button" aria-expanded={expanded} title={p.path} onClick={() => toggle(key)} className={cn(row, "pr-9", newHere && "bg-background shadow-xs")}>
+                  <button type="button" aria-expanded={expanded} title={p.path} onClick={() => toggle(key)} className={cn(row, "pr-9", newHere && "bg-card")}>
                     <Icon className="size-4 shrink-0 text-muted-foreground" />
                     <span className="min-w-0 flex-1 truncate">{p.name}</span>
                     {!expanded && <ChevronRight className="size-3.5 text-muted-foreground" />}
@@ -177,7 +177,7 @@ export function Sidebar({ onClose }: { onClose: () => void }) {
                     aria-label={t("newInProject", { project: p.name })}
                     title={t("newInProject", { project: p.name })}
                     onClick={() => select({ kind: "new", projectId: p.id })}
-                    className={cn("absolute top-1/2 right-1 flex size-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground opacity-0 hover:bg-card hover:text-foreground group-focus-within/p:opacity-100 group-hover/p:opacity-100", focus)}
+                    className={cn("absolute top-1/2 right-1 flex size-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground opacity-0 hover:bg-background hover:text-foreground group-focus-within/p:opacity-100 group-hover/p:opacity-100", focus)}
                   >
                     <Plus className="size-3.5" />
                   </button>
