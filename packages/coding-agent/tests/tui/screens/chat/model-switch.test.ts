@@ -95,7 +95,7 @@ test("a resumed session displays its persisted model before sending another prom
     prepare: async (root) => {
       const faux = fauxProvider({ api: "faux", provider: "faux", tokensPerSecond: 0 });
       const catalog = controlledModel();
-      const model = catalog.configuredModel(settings);
+      const model = await catalog.configuredModel(settings);
       const seed = await createSession({
         cwd: root,
         homeDir: root,

@@ -79,7 +79,7 @@ export async function start(
             await listSessions({ cwd: session.cwd, homeDir: session.homeDir, store: session.store })
           ).find((entry) => entry.id === resumeId)
         : undefined;
-      session.model = fake.configuredModel({
+      session.model = await fake.configuredModel({
         ...settings,
         ...(stored ? { model: stored.model } : {}),
       });
