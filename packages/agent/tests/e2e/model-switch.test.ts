@@ -6,7 +6,7 @@ import {
 } from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { createSession, listModels, type SessionEvent } from "../../src/index.ts";
+import { createSession, listModelCatalog, type SessionEvent } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
@@ -89,11 +89,15 @@ test("changing a Session model affects the next request and survives resume with
   await resumed.close();
 });
 
-test("available models include custom and built-in provider entries without requiring credentials", () => {
+test("available models include custom and built-in provider entries without requiring credentials", async () => {
   delete process.env.RUKIE_SWITCH_TEST_KEY;
-  const choices = listModels(settings);
-  expect(choices).toContainEqual({ spec: "switch/first", name: "first", input: ["text"] });
-  expect(choices).toContainEqual({ spec: "switch/second", name: "second", input: ["text"] });
+  const choices = await listModelCatalog(settings);
+  expect(choices).toContainEqual(
+    expect.objectContaining({ spec: "switch/first", name: "first", input: ["text"] }),
+  );
+  expect(choices).toContainEqual(
+    expect.objectContaining({ spec: "switch/second", name: "second", input: ["text"] }),
+  );
   expect(choices.some((choice) => choice.spec.startsWith("anthropic/"))).toBe(true);
 });
 

@@ -2,6 +2,8 @@ import { join, resolve } from "node:path";
 import {
   createProvider,
   envApiKeyAuth,
+  getSupportedThinkingLevels,
+  type ModelThinkingLevel,
   type Api,
   type Model,
   type Models,
@@ -235,19 +237,55 @@ function modelRegistry(settings: Settings) {
 
 export { modelState } from "./model-state.ts";
 
+export interface ModelCatalogEntry {
+  spec: string;
+  id: string;
+  name: string;
+  providerId: string;
+  providerName: string;
+  input: ("text" | "image")[];
+  reasoning: boolean;
+  thinkingLevels: ModelThinkingLevel[];
+  contextWindow: number;
+  custom: boolean;
+  authenticated: boolean;
+}
+
+/** Checks local credential configuration through pi's public auth-check API. */
+async function getAuthenticatedProviders(models: Models): Promise<Set<string>> {
+  const checks = await Promise.all(
+    models.getProviders().map(async (provider) => ({
+      id: provider.id,
+      authenticated: (await models.checkAuth(provider.id)) !== undefined,
+    })),
+  );
+  return new Set(
+    checks.filter((provider) => provider.authenticated).map((provider) => provider.id),
+  );
+}
+
 /**
- * Lists models with their accepted input modalities without requiring credentials.
- * Uses resolution's registry and precedence; custom models default to text input.
+ * Lists all last-known models and local credential facts without refreshing models or OAuth.
+ * Frontends own provider visibility; unauthenticated entries remain in this catalog.
  */
-export function listModels(
-  settings: Settings = {},
-): { spec: string; name: string; input: ("text" | "image")[] }[] {
-  return modelRegistry(settings)
+export async function listModelCatalog(settings: Settings = {}): Promise<ModelCatalogEntry[]> {
+  const models = modelRegistry(settings);
+  const authenticated = await getAuthenticatedProviders(models);
+  const custom = new Set(settings.providers?.map((provider) => provider.id));
+  return models
     .getModels()
     .map((model) => ({
       spec: `${model.provider}/${model.id}`,
+      id: model.id,
       name: model.name,
+      providerId: model.provider,
+      providerName: models.getProvider(model.provider)?.name ?? model.provider,
       input: [...model.input],
+      reasoning: model.reasoning,
+      thinkingLevels: getSupportedThinkingLevels(model),
+      contextWindow: model.contextWindow,
+      custom: custom.has(model.provider),
+      authenticated: authenticated.has(model.provider),
     }))
     .sort((a, b) => a.spec.localeCompare(b.spec));
 }

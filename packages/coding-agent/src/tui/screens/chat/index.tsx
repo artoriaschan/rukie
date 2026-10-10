@@ -45,7 +45,7 @@ import {
 import {
   createSession,
   listSkills,
-  listModels,
+  listModelCatalog,
   listSessions,
   type SessionSummary,
   type PromptImage,
@@ -157,7 +157,8 @@ export async function createChat(
   let session = await createSession(sessionOptions);
   const checkpointCwd = await realpath(options.cwd);
   const skills = await listSkills(options);
-  const models = listModels(options.settings);
+  const loadModelCatalog = () => listModelCatalog(options.settings);
+  const models = await loadModelCatalog().catch(() => []);
   let conversation = createConversation(session, model, conversationFacts, locale);
   let binding = { session, conversation };
   const bindingListeners = new Set<() => void>();
@@ -242,6 +243,7 @@ export async function createChat(
                 locale={locale}
                 onExit={onExit}
                 models={models}
+                loadModelCatalog={loadModelCatalog}
                 sessions={() => listSessions(options)}
                 skills={skills}
                 replaceSession={replaceSession}
@@ -300,7 +302,8 @@ function Chat({
   skills,
   replaceSession,
   writeTitle,
-  models,
+  models: initialModels,
+  loadModelCatalog,
   sessions,
 }: {
   session: Session;
@@ -317,7 +320,8 @@ function Chat({
   foldTerminalCommand: boolean;
   locale: Locale;
   onExit(): void;
-  models: Readonly<ReturnType<typeof listModels>>;
+  models: Readonly<Awaited<ReturnType<typeof listModelCatalog>>>;
+  loadModelCatalog(): ReturnType<typeof listModelCatalog>;
   sessions(): Promise<SessionSummary[]>;
   skills: readonly { name: string; description: string }[];
   replaceSession(resumeId?: string): Promise<void>;
@@ -325,6 +329,7 @@ function Chat({
 }) {
   const t = createTuiI18n(locale);
   const theme = useTheme();
+  const [models, setModels] = useState(initialModels);
   const [clipboardImage, setClipboardImage] = useState(false);
   useEffect(() => {
     let active = true;
@@ -1386,14 +1391,19 @@ function Chat({
         modelPickerDraftImages.current = hadDraftImages;
         // Submit can run before Chat handles the same Enter event. Open after
         // that event finishes so it cannot also pick the current model.
-        queueMicrotask(() =>
-          showModelPicker(
-            Math.max(
-              0,
-              models.findIndex((model) => model.spec === session.model),
-            ),
-          ),
-        );
+        queueMicrotask(() => {
+          void loadModelCatalog()
+            .then((catalog) => {
+              setModels(catalog);
+              showModelPicker(
+                Math.max(
+                  0,
+                  catalog.findIndex((model) => model.spec === session.model),
+                ),
+              );
+            })
+            .catch((error: unknown) => conversation.notice(formatError(error, t), true));
+        });
       }
     } else if (command.name === "btw") {
       const question = prompt.slice(parsed![0].length).trim();

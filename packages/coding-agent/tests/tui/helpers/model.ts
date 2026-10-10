@@ -1,5 +1,5 @@
 import { transformMessages } from "@earendil-works/pi-ai/api/transform-messages";
-import { listModels, type SessionOptions } from "@rukie/agent";
+import { listModelCatalog, type SessionOptions } from "@rukie/agent";
 import {
   createAssistantMessageEventStream,
   createModels,
@@ -171,8 +171,8 @@ export function controlledModel(controlReviews = false, controlTitles = false) {
   const models = createModels();
   const provider = { ...faux.provider, streamSimple: stream };
   models.setProvider(provider);
-  function configuredModel(settings: NonNullable<SessionOptions["settings"]>) {
-    const catalog = listModels(settings);
+  async function configuredModel(settings: NonNullable<SessionOptions["settings"]>) {
+    const catalog = await listModelCatalog(settings);
     const providers = new Map<string, Model<string>[]>();
     for (const item of catalog) {
       const slash = item.spec.indexOf("/");
