@@ -4,7 +4,7 @@
 
 ## 审阅和合并
 
-[Release Please 配置](../release-please-config.json)把整个仓库作为一个产品收集 Conventional Commits。官方库生成产品 manifest、根 CHANGELOG.md 和自动化跟踪文件的更新。维护者在 Release PR 中审阅版本、修改发布文案，再合并 PR；普通功能合并只准备 PR。版本 PR 更新可能覆盖尚未合并的自动生成文件，文案最终修改应在最后一轮准备后进行。
+[Release Please 配置](../release-please-config.json)把整个仓库作为一个产品收集 Conventional Commits。官方库生成产品 manifest、根 CHANGELOG.md 和自动化跟踪文件的更新。准备脚本在 GitHub API 提交前用仓库锁定的 Oxfmt 格式化生成的 Markdown，满足 Release PR 的源码约束检查。维护者在 Release PR 中审阅版本、修改发布文案，再合并 PR；普通功能合并只准备 PR。版本 PR 更新可能覆盖尚未合并的自动生成文件，文案最终修改应在最后一轮准备后进行。
 
 产品版本唯一来源是 [coding-agent manifest](../packages/coding-agent/package.json)。`.release-please-manifest.json` 是自动化已释放版本记录，不能作为独立手工版本来源。首次没有产品 tag 时，记录的 `0.0.0` 表示未发布，官方 `initial-version` 生成首版 `0.1.0`。随后 Release PR 同时更新两者，不创建 `version.txt`，也不修改私有根 package.json 的版本。
 

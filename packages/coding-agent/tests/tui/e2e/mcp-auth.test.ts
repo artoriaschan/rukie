@@ -1,3 +1,5 @@
+import { testClock } from "../helpers/test-clock";
+import { observeTimeoutDeadline } from "../helpers/timeout-deadline";
 import { startWithClock } from "../helpers/clock-app";
 import { expect, test } from "bun:test";
 import { join } from "node:path";
@@ -387,8 +389,12 @@ test.each([
   async ({ mode, duration }) => {
     const server = mcpOAuthServer();
     let authorizationUrl = "";
+    let holdClock = false;
     const app = await startWithClock(["login"], {
       rows: 32,
+      advanceTimers: (ms) => {
+        if (!holdClock) testClock.advanceTimersByTime(ms);
+      },
       prepare: (root) =>
         Bun.write(
           join(root, ".rukie/mcp.json"),
@@ -400,21 +406,28 @@ test.each([
         },
       },
     });
+    const expiry = observeTimeoutDeadline(duration);
     try {
       await app.waitFor(() => app.calls.length === 1);
       app.calls[0]!.tool("mcp__srv__authenticate", {});
       await app.waitFor(
         () => authorizationUrl !== "" && app.screen().join("\n").includes("复制授权链接"),
       );
-      const startedAt = performance.now();
       if (mode === "success") await fetch(authorizationUrl);
       else app.stdin.write("\x1b[200~http://localhost/callback?code=bad&state=wrong\x1b[201~\r");
       const notice = mode === "success" ? "已登录 MCP 服务器 srv" : "OAuth 登录失败";
       await app.waitFor(() => app.calls.length === 2 && app.screen().join("\n").includes(notice));
-      await app.waitFor(() => !app.screen().join("\n").includes(notice), duration + 2000);
-      expect(performance.now() - startedAt).toBeGreaterThanOrEqual(duration - 100);
+      holdClock = true;
+      expiry.beforeExpiry();
+      await app.flush();
+      expect(app.screen().join("\n")).toContain(notice);
+      expiry.expire();
+      holdClock = false;
+      await app.waitFor(() => !app.screen().join("\n").includes(notice));
       app.calls[1]!.finish();
     } finally {
+      holdClock = false;
+      expiry.restore();
       try {
         await app.cleanup();
       } finally {

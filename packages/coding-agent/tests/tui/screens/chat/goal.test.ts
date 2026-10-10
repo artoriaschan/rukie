@@ -199,18 +199,15 @@ test("an errored goal refreshes activation and resumed active goals stay disarme
   }
 });
 
-test("goal keeps the Todo section with all completed idle rows and its elapsed clock ticks locally", async () => {
-  const app = await startWithClock([], {
+test("goal keeps the Todo section with all completed idle rows and Ctrl+Q folds it", async () => {
+  const app = await ready({
     rows: 36,
     env: { LANG: "en_US.UTF-8" },
     session: { permissionMode: "full-access" },
   });
   try {
-    await app.waitFor(() => app.screen().some((line) => line.startsWith("╭")));
     app.stdin.write("/goal migrate\r");
     await app.waitFor(() => app.calls.length === 1 && screen(app).includes("● active · 1/256"));
-    testClock.advanceTimersByTime(72_000);
-    await app.waitFor(() => screen(app).includes("1m12s"));
     app.calls[0]!.tool("todo_write", { todos: [{ content: "done", status: "completed" }] });
     await app.waitFor(() => app.calls.length === 2 && screen(app).includes("✓ 1/1"));
     app.stdin.write("/goal pause\r");

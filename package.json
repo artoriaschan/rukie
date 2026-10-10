@@ -10,7 +10,7 @@
     "release:build": "bun scripts/release/build.ts",
     "release:verify": "bun scripts/release/verify.ts",
     "release:accept": "bun scripts/release/accept.ts",
-    "check:dev": "bun run docs:update && oxfmt --check && oxlint && tsc -b && knip && bun run check:scratch && bun run check:docs && bun run check:ink-boundaries",
+    "check:dev": "bun run docs:update && oxfmt --check && oxlint && tsc -b && knip && bun run check:scratch && bun run check:docs && bun run check:ink-boundaries && bun run check:test-policy",
     "check:scratch": "bun scripts/check-scratch.ts",
     "check": "bun run check:dev && bun run test",
     "test": "bun test --parallel=${RUKIE_TEST_WORKERS:-4}",
@@ -20,6 +20,7 @@
     "check:docs": "bun scripts/check-docs.ts",
     "docs:update": "bun scripts/check-docs.ts --write",
     "test:docs": "bun test scripts/tests/check-docs.test.ts",
+    "check:test-policy": "bun scripts/check-test-policy.ts",
     "check:ink-boundaries": "bun scripts/check-ink-boundaries.ts",
     "release:publish": "bun scripts/release/publication.ts"
   },

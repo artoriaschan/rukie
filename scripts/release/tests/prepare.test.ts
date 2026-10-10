@@ -220,6 +220,22 @@ test("bootstrap plans0.1.0 and writes checked-parent tree through production ada
   expect(tree?.body).toMatchObject({ base_tree: C });
   expect(JSON.stringify(tree?.body)).toContain("0.1.0");
   expect(calls.some((call) => call.path.endsWith("/pulls") && call.method === "POST")).toBe(true);
+  const created = tree?.body as { tree: { path: string; content: string }[] };
+  const changelog = created.tree.find((entry) => entry.path === "CHANGELOG.md")!.content;
+  // Generated files must satisfy the same formatter as the PR's real CI gate.
+  const formatter = Bun.spawn(["bunx", "--no", "--", "oxfmt", "--stdin-filepath", "CHANGELOG.md"], {
+    cwd: new URL("../../../", import.meta.url).pathname,
+    stdin: new Blob([changelog]),
+    stdout: "pipe",
+    stderr: "pipe",
+    signal: AbortSignal.timeout(10_000),
+  });
+  const [formatted, code] = await Promise.all([
+    new Response(formatter.stdout).text(),
+    formatter.exited,
+  ]);
+  expect(code).toBe(0);
+  expect(changelog).toBe(formatted);
 });
 for (const moving of [1, 2, 3])
   test(`moving main at read${moving} skips branch/PR writes`, async () => {

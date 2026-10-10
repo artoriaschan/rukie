@@ -16,6 +16,7 @@
 | 包 README 与源码 JSDoc                                           | 包的用法、公开 API 的行为、失败方式、生命周期和限制 | 其他包的实现细节与全局决策理由               |
 | [tech-stack.md](tech-stack.md)                                   | 技术选型、精确版本及偏离原选型的说明                | 重复的依赖版本表                             |
 | [hooks.md](hooks.md)、[permission-rules.md](permission-rules.md) | 各自能力的配置、语义、示例与限制                    | 仓库全部架构与无关能力                       |
+| [testing.md](testing.md)                                         | 测试分层、可靠性约束与审查证据                      | 根文件的通用验证命令                         |
 | [agents/](agents/)                                               | Issue、triage、领域文档等代理工作流程               | 产品运行契约                                 |
 | [仓库 skills](../.agents/skills/rukie-doc/SKILL.md)              | 可复用的文档操作流程与按需读取的模板                | 产品运行契约与根文件已有规则                 |
 | `.scratch/<feature>/`                                            | 需求、访谈、调查证据、实施票与验证记录              | 已交付能力的唯一使用说明                     |

@@ -135,7 +135,7 @@ test("context reports during a Run stay local and keep their original provider t
   } finally {
     release.resolve(Response.json({}));
     await app.cleanup();
-    server.stop(true);
+    await server.stop(true);
   }
 });
 
@@ -334,14 +334,21 @@ test("context panel scrolls at 40×12, owns input and restores its position afte
     app.stdin.write("\r");
     await app.waitFor(() => app.calls.length === 2 && screen(app).includes("panel-skill-19:"));
     expect(app.screen().slice(1, -1)).toEqual(tail);
-    app.calls[1]!.finish();
-    await app.waitFor(() => !app.isWorking());
     app.resize(80, 24);
     await app.waitFor(() => app.screen().length === 24 && screen(app).includes("Esc / Ctrl+C"));
     app.stdin.write("\x1b[H");
     await app.waitFor(() => screen(app).includes("Context Usage"));
     app.stdin.write("\x1b");
-    await app.waitFor(() => screen(app).includes("╭"));
+    // Context hides the Run indicator. Observe the active chat before finishing
+    // the reply, then wait for its completion instead of treating hidden as idle.
+    await app.waitFor(() => screen(app).includes("╭") && app.isWorking());
+    app.calls[1]!.finish();
+    await app.waitFor(
+      () =>
+        !app.isWorking() &&
+        !screen(app).includes("esc interrupt") &&
+        screen(app).includes("✻ Baked for"),
+    );
     app.stdin.write("clean question\r");
     await app.waitFor(() => app.calls.length === 3);
     expect(

@@ -12,11 +12,10 @@ test.skipIf(process.platform !== "darwin")(
     const command = join(root, "osascript");
     await Bun.write(
       command,
-      `#!${process.execPath}
-import { appendFile } from "node:fs/promises";
-await appendFile(${JSON.stringify(calls)}, JSON.stringify(Bun.argv.slice(2)) + String.fromCharCode(10));
-if (Bun.argv[2] !== "-l" || Bun.argv[3] !== "JavaScript") process.exit(1);
-process.stdout.write(await Bun.file(${JSON.stringify(payload)}).text());
+      `#!/bin/sh
+printf '%s\\n' "$#:$1:$2:$3" >> "$RUKIE_CLIPBOARD_CALLS"
+[ "$#" = 4 ] && [ "$1" = -l ] && [ "$2" = JavaScript ] && [ "$3" = -e ] || exit 1
+cat "$RUKIE_CLIPBOARD_METADATA"
 `,
     );
     await chmod(command, 0o700);
@@ -29,7 +28,12 @@ catch (error) { result = {error: error.message}; }
 finally { await instance.dispose(); }
 console.log(JSON.stringify({...result, disposed: await instance.host.hasClipboardImage()}));`;
       const child = Bun.spawn([process.execPath, "-e", script], {
-        env: { ...process.env, PATH: `${root}:${process.env.PATH ?? ""}` },
+        env: {
+          ...process.env,
+          PATH: `${root}:${process.env.PATH ?? ""}`,
+          RUKIE_CLIPBOARD_CALLS: calls,
+          RUKIE_CLIPBOARD_METADATA: payload,
+        },
         stdout: "pipe",
         stderr: "pipe",
       });
@@ -55,7 +59,7 @@ console.log(JSON.stringify({...result, disposed: await instance.host.hasClipboar
       expect(await probe()).toEqual({ error: "Invalid clipboard metadata", disposed: false });
       const invoked = (await Bun.file(calls).text()).trim().split("\n");
       expect(invoked).toHaveLength(7);
-      expect(invoked.every((line) => line.startsWith('["-l","JavaScript","-e",'))).toBe(true);
+      expect(invoked.every((line) => line === "4:-l:JavaScript:-e")).toBe(true);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

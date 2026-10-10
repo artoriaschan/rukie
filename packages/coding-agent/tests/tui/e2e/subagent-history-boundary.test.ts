@@ -1,6 +1,4 @@
-import { testClock } from "../helpers/test-clock";
 import { expect, test } from "bun:test";
-import { startWithClock } from "../helpers/clock-app";
 import { start } from "../helpers/app";
 import { controlledModel } from "../helpers/model";
 import { createSession, createJsonlStore, type SessionOptions } from "@rukie/agent";
@@ -21,9 +19,9 @@ test.each(["future", "past"] as const)(
     const argv: string[] = [];
     let childId = "";
     const fake = controlledModel();
-    const timestamp = mode === "future" ? Date.now() + 10_000_000 : 123456;
+    const timestamp = mode === "future" ? 4_000_000_000_000 : 123456;
     const models = withTimestamps(fake.models, timestamp);
-    const app = await startWithClock(argv, {
+    const app = await start(argv, {
       columns: 100,
       rows: 40,
       env: { LANG: "en" },
@@ -174,6 +172,7 @@ test.each(["future", "past"] as const)(
           mode === "future" ? [timestamp, timestamp] : [timestamp, timestamp, timestamp],
         );
         expect(JSON.stringify(snapshot!.messages)).toContain("active current child marker");
+        expect(JSON.stringify(snapshot!.messages).split("new continuation marker")).toHaveLength(2);
         expect(JSON.stringify(snapshot!.historyMessages)).toContain("saved prior child marker");
         expect(JSON.stringify(snapshot!.historyMessages)).not.toContain(
           "active current child marker",
@@ -189,31 +188,23 @@ test.each(["future", "past"] as const)(
           columns: 100,
           rows: 40,
           env: { LANG: "en" },
-          advanceTimers: (ms) => testClock.advanceTimersByTime(ms),
           session: { cwd: app.root, homeDir: app.root },
         });
         try {
-          // The idle composer can paint before the restored card's expand target.
-          let card = "";
-          let y = -1;
+          // History boundaries are independent of pointer geometry; card clicks are
+          // covered by subagent-views. Open the same child's History through its dashboard.
+          await replay.waitFor(() => replay.screen().includes("❯"));
+          replay.stdin.write("\x01\r");
+          await replay.waitFor(() => replay.screen().join("\n").includes(`id ${childId} ·`));
+          replay.stdin.write("\x1b[C");
           await replay.waitFor(() => {
-            const lines = replay.screen();
-            y = lines.findIndex(
-              (line) => line.includes("Subagent: Same clock child") && line.includes("⤢"),
-            );
-            card = lines[y] ?? "";
-            return lines.includes("❯") && y >= 0;
+            const screen = replay.screen().join("\n");
+            return screen.includes("2/3") && screen.includes("active current child marker");
           });
-          const x = Bun.stringWidth(card.split("⤢")[0]!) + 1;
-          replay.stdin.write(`\x1b[<0;${x};${y + 1}M\x1b[<0;${x};${y + 1}m`);
-          await replay.waitFor(() => replay.screen().join("\n").includes("Agent View"));
-          await replay.waitFor(() =>
-            replay.screen().join("\n").includes("active current child marker"),
-          );
           expect(replay.screen().join("\n").split("❯ new continuation marker")).toHaveLength(2);
           expect(replay.calls).toHaveLength(0);
           replay.stdin.write("\x1b");
-          await replay.waitFor(() => !replay.screen().join("\n").includes("Agent View"));
+          await replay.waitFor(() => !replay.screen().join("\n").includes(`id ${childId} ·`));
           expect(replay.calls).toHaveLength(0);
         } finally {
           await replay.cleanup();

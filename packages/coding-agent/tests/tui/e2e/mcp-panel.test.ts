@@ -564,12 +564,18 @@ test("40x12 keeps the active MCP operable alongside real Goal, Todo and Subagent
     await app.waitFor(() => screen(app).includes("❯ View tools"));
     expect(screen(app)).toContain("Use /mcp after");
     app.resize(60, 20);
-    await app.waitFor(() => screen(app).includes("Status: connected"));
+    await app.waitFor(() =>
+      app.screen().some((line) => line.startsWith("╭") && Bun.stringWidth(line) === 60),
+    );
     app.stdin.write("\t" + down);
-    await app.waitFor(() => screen(app).includes("Transport: http"));
+    await app.waitFor(() => screen(app).includes("Tab Actions"));
+    expect(screen(app)).toContain("Transport: http");
     expect(screen(app)).not.toContain("❯ View tools");
     app.resize(40, 12);
-    await app.waitFor(() => screen(app).includes("Tab Actions"));
+    await app.waitFor(
+      () => screen(app).includes("🎯 migrate wid ● active") && screen(app).includes("Tab Actions"),
+    );
+    expect(screen(app)).toContain("Tab Actions");
     app.stdin.write("\t");
     await app.waitFor(() => screen(app).includes("❯ View tools"));
     app.stdin.write(up);

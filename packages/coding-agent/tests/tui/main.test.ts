@@ -218,7 +218,7 @@ test("Ctrl+C clears an idle draft, then two presses on empty input exit and rest
     app.stdin.write("\x03");
     await app.waitFor(() => !app.screen().join("\n").includes("discard draft"));
     app.stdin.write("\x03");
-    await Bun.sleep(30);
+    await app.waitFor(() => app.screen().join("\n").includes("再次按 Ctrl+C 退出"));
     expect(app.stdin.isRaw).toBe(true);
     app.stdin.write("\x03");
     expect(await app.exit).toBe(0);
@@ -289,9 +289,9 @@ test("Ctrl+D exits only on idle empty input", async () => {
     await app.waitFor(() => app.screen().includes("❯ keep draft"));
     expect(app.stdin.isRaw).toBe(true);
     app.stdin.write("\r");
-    await app.waitFor(() => app.calls.length === 1);
+    await app.waitFor(() => app.calls.length === 1 && app.isWorking());
     app.stdin.write("\x04");
-    await Bun.sleep(30);
+    await app.waitFor(() => app.stdin.readableLength === 0);
     expect(app.calls[0]!.signal!.aborted).toBe(false);
     expect(app.stdin.isRaw).toBe(true);
     app.calls[0]!.delta("done");
@@ -414,6 +414,7 @@ test("invalid settings reports the same configuration error before entering rend
 });
 
 test("--resume continues the existing Session context", async () => {
+  const lifetime = new AbortController();
   const root = await mkdtemp(join(tmpdir(), "rukie-tui-resume-"));
   await mkdir(join(root, ".rukie", "file-history"), { recursive: true });
   const terminal = createTerminal();
@@ -429,6 +430,7 @@ test("--resume continues the existing Session context", async () => {
     await run;
     await session.close();
     exit = main(["--resume", session.id, "continuation"], {
+      signal: lifetime.signal,
       ...terminal,
       env: { LANG: "zh_CN.UTF-8" },
       stderr: (text) => (stderr += text),
@@ -483,9 +485,7 @@ test("--resume continues the existing Session context", async () => {
     expect(await exit).toBe(0);
     expect(stderr).toBe("");
   } finally {
-    terminal.stdin.write("\x1b");
-    await Bun.sleep(40);
-    terminal.stdin.write("\x03\x03\x03");
+    lifetime.abort();
     await exit;
     terminal.dispose();
     await rm(root, { recursive: true, force: true });

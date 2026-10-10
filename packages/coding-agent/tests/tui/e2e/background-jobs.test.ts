@@ -1,3 +1,4 @@
+import { observeTimeoutDeadline } from "../helpers/timeout-deadline";
 import { committedJobNotifications } from "../helpers/job-notifications";
 import { testClock } from "../helpers/test-clock";
 import { startWithClock } from "../helpers/clock-app";
@@ -438,13 +439,18 @@ test("a promoted job shows the last visual output rows at 40×12 and after resiz
 
 test("a failed job notice stays one row at 40×12 and expires without removing other notices", async () => {
   const notifications = committedJobNotifications();
+  let holdClock = false;
   const app = await startWithClock(["--permission-mode", "full-access", "launch"], {
+    advanceTimers: (ms) => {
+      if (!holdClock) testClock.advanceTimersByTime(ms);
+    },
     session: notifications.session,
     prepare: notifications.prepare,
     columns: 40,
     rows: 12,
   });
   const screen = () => app.screen().join("\n");
+  const expiry = observeTimeoutDeadline(6000);
   try {
     await app.waitFor(() => app.calls.length === 1);
     app.calls[0]!.tool("bash", {
@@ -457,7 +463,6 @@ test("a failed job notice stays one row at 40×12 and expires without removing o
     await app.waitFor(() => screen().includes("用法：/btw"));
     await Bun.write(join(app.root, "go"), "");
     await app.waitFor(() => screen().includes("后台任务失败"));
-    const noticedAt = performance.now();
     await app.waitFor(() => notifications.count() === 1);
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
@@ -469,13 +474,20 @@ test("a failed job notice stays one row at 40×12 and expires without removing o
     app.stdin.write("\x1b[5~");
     await app.waitFor(() => screen().includes("回到底部"));
     const reading = app.screen().slice(0, 2);
-    await app.waitFor(() => !screen().includes("后台任务失败"), 7000);
-    expect(performance.now() - noticedAt).toBeGreaterThan(5500);
+    holdClock = true;
+    expiry.beforeExpiry();
+    await app.flush();
+    expect(screen()).toContain("后台任务失败");
+    expiry.expire();
+    holdClock = false;
+    await app.waitFor(() => !screen().includes("后台任务失败"));
     expect(app.screen().slice(0, 2)).toEqual(reading);
     app.resize(80, 24);
     await app.waitFor(() => screen().includes("用法：/btw"));
     expect(app.stderr()).toBe("");
   } finally {
+    holdClock = false;
+    expiry.restore();
     await app.cleanup();
   }
 }, 15000);

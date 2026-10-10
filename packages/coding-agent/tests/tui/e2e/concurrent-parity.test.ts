@@ -1,13 +1,13 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { getCurrentTools } from "@earendil-works/pi-ai";
-import { startWithClock } from "../helpers/clock-app";
+import { start } from "../helpers/app";
 import { committedJobNotifications } from "../helpers/job-notifications";
 
 test("mixed parent, two Jobs and two Subagents preserve reading, copy and Interaction ownership across microtasks", async () => {
   const copied: string[] = [];
   const commits = committedJobNotifications();
-  const app = await startWithClock(["--yolo", "历史 parent"], {
+  const app = await start(["--yolo", "历史 parent"], {
     columns: 80,
     rows: 60,
     env: { LANG: "en" },
@@ -336,7 +336,7 @@ test("mixed parent, two Jobs and two Subagents preserve reading, copy and Intera
       expect.stringMatching(/^  rukie --resume [\da-f-]+$/),
     ]);
   } finally {
-    // These gated bash loops exercise real process IO; the virtual clock owns only display timers.
+    // Real process IO and durable commits settle before the fixture is removed.
     await Promise.all(
       ["step-A", "step-B", "go-A", "go-B"].map((file) =>
         Bun.write(join(app.root, file), "").catch(() => {}),
@@ -344,4 +344,6 @@ test("mixed parent, two Jobs and two Subagents preserve reading, copy and Intera
     );
     await app.cleanup();
   }
-});
+  // This composed scenario owns multiple real processes and sequential interactions;
+  // the bound permits their completion, and does not decide any behavior assertion.
+}, 15_000);

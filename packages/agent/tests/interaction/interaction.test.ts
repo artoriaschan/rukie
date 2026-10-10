@@ -21,18 +21,11 @@ test("a notification that synchronously cancels an interaction returns cancellat
       notify: () => controller.abort(),
     },
   );
-  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const result = await Promise.race([
-      interaction,
-      new Promise<"pending">((resolve) => {
-        timer = setTimeout(() => resolve("pending"), 200);
-      }),
-    ]);
+    const result = await interaction;
     expect(result).toBe("deny");
     expect(requests).toBe(0);
   } finally {
-    clearTimeout(timer);
     reply.resolve("allow");
     await interaction;
   }

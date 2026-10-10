@@ -228,7 +228,7 @@ test("Markdown search maps repeated visible text back to source rows beyond its 
     expect(app.screen().join("\n")).not.toContain("**MARK_NEEDLE**");
   } finally {
     await app.cleanup();
-    server.stop(true);
+    await server.stop(true);
   }
 });
 

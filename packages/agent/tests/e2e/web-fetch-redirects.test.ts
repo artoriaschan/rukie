@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, spyOn, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { createSession, type SessionOptions } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
@@ -15,7 +15,7 @@ afterEach(async () => {
 function server(handler: (request: Request) => Response | Promise<Response>) {
   const instance = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: handler });
   resources.push(() => {
-    instance.stop(true);
+    return instance.stop(true);
   });
   return `http://site.test:${instance.port}`;
 }
@@ -194,25 +194,44 @@ test("redirect responses are cancelled before the next hop even when their bodie
 
 test("the total timeout spans multiple redirect hops rather than restarting at each response", async () => {
   const received: string[] = [];
-  const base = server(async (request) => {
+  const secondHop = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<Response>();
+  const deadline = new AbortController();
+  const nativeTimeout = AbortSignal.timeout.bind(AbortSignal);
+  let deadlines = 0;
+  const timeout = spyOn(AbortSignal, "timeout").mockImplementation((ms) => {
+    if (ms !== 200) return nativeTimeout(ms);
+    deadlines++;
+    return deadline.signal;
+  });
+  const base = server((request) => {
     const path = new URL(request.url).pathname;
     received.push(path);
-    // Each response is quicker than the deadline; their combined delay exceeds it.
-    await new Promise((resolve) => setTimeout(resolve, 120));
-    return path === "/old"
-      ? new Response(null, { status: 302, headers: { Location: "/new" } })
-      : new Response("Too late");
+    if (path === "/old") return new Response(null, { status: 302, headers: { Location: "/new" } });
+    secondHop.resolve();
+    return release.promise;
   });
-  const [result] = await fetchPages([`${base}/old`], {
+  const fetching = fetchPages([`${base}/old`], {
     webFetch: {
       resolve: async () => [{ address: "127.0.0.1", family: 4 }],
       allowAddresses: ["127.0.0.1"],
       timeoutMs: 200,
     },
   });
-  expect(result!.isError).toBe(true);
-  expect(text(result!)).toStartWith("Web fetch timeout:");
-  expect(received).toEqual(["/old", "/new"]);
+  try {
+    await secondHop.promise;
+    expect(received).toEqual(["/old", "/new"]);
+    expect(deadlines).toBe(1);
+    deadline.abort(new DOMException("Controlled total deadline", "TimeoutError"));
+    const [result] = await fetching;
+    expect(result!.isError).toBe(true);
+    expect(text(result!)).toStartWith("Web fetch timeout:");
+  } finally {
+    deadline.abort();
+    release.resolve(new Response("Too late"));
+    timeout.mockRestore();
+    await fetching;
+  }
 });
 
 test.each([

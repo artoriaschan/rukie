@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import { GitHub, Manifest } from "release-please";
 import { FilePullRequestOverflowHandler } from "release-please/build/src/util/pull-request-overflow-handler";
 import { FileNotFoundError } from "release-please/build/src/errors";
@@ -6,6 +7,23 @@ import type { Commit } from "release-please/build/src/commit";
 
 const historyLimit = 5000;
 const quiet = { info() {}, warn() {}, debug() {}, error() {}, trace() {} };
+
+async function formatReleaseMarkdown(path: string, content: string): Promise<string> {
+  const formatter = Bun.spawn(["bunx", "--no", "--", "oxfmt", "--stdin-filepath", path], {
+    cwd: fileURLToPath(new URL("../../", import.meta.url)),
+    stdin: new Blob([content]),
+    stdout: "pipe",
+    stderr: "pipe",
+    signal: AbortSignal.timeout(15_000),
+  });
+  const [output, error, code] = await Promise.all([
+    new Response(formatter.stdout).text(),
+    new Response(formatter.stderr).text(),
+    formatter.exited,
+  ]);
+  if (code !== 0) throw new Error(`Release Markdown formatting failed for ${path}: ${error}`);
+  return output;
+}
 function record(value: unknown): Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value))
     throw new Error("Expected GitHub object");
@@ -250,6 +268,13 @@ export async function prepareRelease(input: PreparationInput): Promise<"stale" |
         content: fullNotes,
         originalContent: null,
       });
+    // Git API writes bypass local hooks; format generated Markdown before committing it.
+    for (const [path, change] of changes)
+      if (path.endsWith(".md") && change.content !== null)
+        changes.set(path, {
+          ...change,
+          content: await formatReleaseMarkdown(path, change.content),
+        });
     const entries = [...changes].map(([path, change]) => ({
       path,
       mode: change.mode,
