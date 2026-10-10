@@ -189,6 +189,42 @@ test("unknown subagent type reports its name and the available types", async () 
   });
 });
 
+test("new child inherits the parent's current Thinking Level after a switch", async () => {
+  dirs = await tempDirs();
+  const fake = fakeModel(
+    [
+      fauxAssistantMessage(
+        fauxToolCall("subagent", {
+          description: "Inspect",
+          prompt: "inspect",
+          subagent_type: "explore",
+          run_in_background: false,
+        }),
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("child"),
+      fauxAssistantMessage("parent"),
+    ],
+    { model: { reasoning: true } },
+  );
+  const thinking: unknown[] = [];
+  const session = await createSession({
+    ...dirs,
+    ...fake,
+    settings: { thinking: "low" },
+    models: withModelStream(
+      fake.models,
+      withAuxiliaryRequests((model, context, options) => {
+        thinking.push(options?.reasoning);
+        return modelStream(fake.models)(model, context, options);
+      }),
+    ),
+  });
+  await session.setModelSelection({ thinkingLevel: "high" });
+  await runRequest(session, "delegate");
+  expect(thinking).toEqual(["high", "high", "high"]);
+});
+
 test.each(["parent", "settings", "type"])(
   "child model comes from %s at the configured priority",
   async (source) => {
@@ -200,20 +236,32 @@ test.each(["parent", "settings", "type"])(
         join(dirs.cwd, ".rukie/agents/custom.md"),
         `---\nname: custom\ndescription: Custom\n${source === "type" ? "model: local/type\n" : ""}---\nCustom body`,
       );
-      const fake = fakeModel([
-        fauxAssistantMessage(
-          fauxToolCall("subagent", {
-            description: "Custom",
-            prompt: "work",
-            subagent_type: "custom",
-            run_in_background: false,
-          }),
-          { stopReason: "toolUse" },
-        ),
-        fauxAssistantMessage("child"),
-        fauxAssistantMessage("parent"),
-      ]);
+      const fake = fakeModel(
+        [
+          fauxAssistantMessage(
+            fauxToolCall("subagent", {
+              description: "Custom",
+              prompt: "work",
+              subagent_type: "custom",
+              run_in_background: false,
+            }),
+            { stopReason: "toolUse" },
+          ),
+          fauxAssistantMessage("child"),
+          fauxAssistantMessage("parent"),
+        ],
+        { model: { reasoning: true } },
+      );
+      const aliases = withModelAlias(fake.models, "local", ["settings", "type"]);
+      const provider = aliases.getProviders().find((entry) => entry.id === "local")!;
+      const children = provider.getModels();
+      aliases.setProvider({
+        ...provider,
+        getModels: () =>
+          children.map((model) => ({ ...model, thinkingLevelMap: { medium: null } })),
+      });
       const models: string[] = [];
+      const thinking: unknown[] = [];
       const session = await createSession({
         ...dirs,
         ...fake,
@@ -228,28 +276,101 @@ test.each(["parent", "settings", "type"])(
               models: [{ id: "settings" }, { id: "type" }],
             },
           ],
-          thinking: "low",
+          thinking: "medium",
         },
         models: withModelStream(
-          withModelAlias(fake.models, "local", ["settings", "type"]),
+          aliases,
           withAuxiliaryRequests((model, context, options) => {
             models.push(`${model.provider}/${model.id}`);
+            thinking.push(options?.reasoning);
             return modelStream(fake.models)(fake.model, context, options);
           }),
         ),
       });
+      await session.setModelSelection({ thinkingLevel: "high" });
       await runRequest(session, "delegate");
       expect(models).toEqual([
         `${fake.model.provider}/${fake.model.id}`,
         source === "parent" ? `${fake.model.provider}/${fake.model.id}` : `local/${source}`,
         `${fake.model.provider}/${fake.model.id}`,
       ]);
+      expect(thinking).toEqual(["high", source === "parent" ? "high" : "low", "high"]);
     } finally {
       if (previous === undefined) delete process.env.RUKIE_SUBAGENT_MODEL_TEST_KEY;
       else process.env.RUKIE_SUBAGENT_MODEL_TEST_KEY = previous;
     }
   },
 );
+
+test("retained child resumes its saved selection after the parent changes Thinking Level", async () => {
+  dirs = await tempDirs();
+  let id = "";
+  const first = fakeModel(
+    [
+      fauxAssistantMessage(
+        fauxToolCall("subagent", {
+          description: "Inspect",
+          prompt: "inspect",
+          subagent_type: "explore",
+          run_in_background: false,
+        }),
+        { stopReason: "toolUse" },
+      ),
+      fauxAssistantMessage("child"),
+      (context) => {
+        const result = context.messages.findLast((message) => message.role === "toolResult");
+        const details: unknown = result?.role === "toolResult" ? result.details : undefined;
+        if (
+          !details ||
+          typeof details !== "object" ||
+          !("agentId" in details) ||
+          typeof details.agentId !== "string"
+        )
+          throw new Error("Expected child identity");
+        id = details.agentId;
+        return fauxAssistantMessage("parent");
+      },
+    ],
+    { model: { reasoning: true } },
+  );
+  const parent = await createSession({ ...dirs, ...first, settings: { thinking: "high" } });
+  await runRequest(parent, "delegate");
+  await parent.close();
+  const later = fakeModel(
+    [
+      fauxAssistantMessage(fauxToolCall("send_message", { agent_id: id, message: "continue" }), {
+        stopReason: "toolUse",
+      }),
+      fauxAssistantMessage("parent sent"),
+      fauxAssistantMessage("child continued"),
+      fauxAssistantMessage("parent done"),
+    ],
+    { model: { reasoning: true } },
+  );
+  const requested: { child: boolean; thinking: unknown }[] = [];
+  const resumed = await createSession({
+    ...dirs,
+    ...later,
+    resumeId: parent.id,
+    settings: { thinking: "medium" },
+    models: withModelStream(
+      later.models,
+      withAuxiliaryRequests((model, context, options) => {
+        requested.push({
+          child: !getCurrentTools(context.messages).some((tool) => tool.name === "subagent"),
+          thinking: options?.reasoning,
+        });
+        return modelStream(later.models)(model, context, options);
+      }),
+    ),
+  });
+  await resumed.setModelSelection({ thinkingLevel: "low" });
+  await runRequest(resumed, "continue child");
+  expect(requested.filter((request) => request.child)).toEqual([{ child: true, thinking: "high" }]);
+  expect(
+    requested.filter((request) => !request.child).every((request) => request.thinking === "low"),
+  ).toBe(true);
+});
 
 test.each(["type", "settings"])(
   "invalid %s model errors without a child request or model fallback",

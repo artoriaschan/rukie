@@ -157,46 +157,51 @@ test("fork inherits the parent model, system prompt and tools despite model sett
     join(dirs.cwd, ".rukie/agents/fork.md"),
     "---\nname: fork\ndescription: Custom fork\nmodel: missing/type\ntools: [read]\n---\nCustom fork instructions",
   );
-  const fake = fakeModel([
-    fauxAssistantMessage("completed"),
-    fauxAssistantMessage(
-      fauxToolCall("subagent_fork", {
-        description: "Fork",
-        prompt: "child prompt",
-        run_in_background: false,
-      }),
-      { stopReason: "toolUse" },
-    ),
-    (context) => {
-      const parent = getCurrentSystemMessage(fake.contexts[1]!.messages)!;
-      const child = getCurrentSystemMessage(context.messages)!;
-      expect(child.content).toEqual(parent.content);
-      expect(JSON.stringify(child.content)).not.toContain("Custom fork instructions");
-      const topLevelOnly = [
-        "subagent",
-        "subagent_fork",
-        "send_message",
-        "list_agents",
-        "create_goal",
-        "update_goal",
-      ];
-      const tools = child.toolsAdded!.map((tool) => tool.name);
-      expect(tools).toEqual(
-        parent.toolsAdded!.map((tool) => tool.name).filter((name) => !topLevelOnly.includes(name)),
-      );
-      expect(topLevelOnly.every((name) => !tools.includes(name))).toBe(true);
-      expect(tools).toContain("write");
-      return fauxAssistantMessage("child conclusion");
-    },
-    (context) => {
-      expect(context.messages.at(-1)).toMatchObject({
-        role: "toolResult",
-        isError: false,
-        content: [{ type: "text", text: "child conclusion" }],
-      });
-      return fauxAssistantMessage("parent conclusion");
-    },
-  ]);
+  const fake = fakeModel(
+    [
+      fauxAssistantMessage("completed"),
+      fauxAssistantMessage(
+        fauxToolCall("subagent_fork", {
+          description: "Fork",
+          prompt: "child prompt",
+          run_in_background: false,
+        }),
+        { stopReason: "toolUse" },
+      ),
+      (context) => {
+        const parent = getCurrentSystemMessage(fake.contexts[1]!.messages)!;
+        const child = getCurrentSystemMessage(context.messages)!;
+        expect(child.content).toEqual(parent.content);
+        expect(JSON.stringify(child.content)).not.toContain("Custom fork instructions");
+        const topLevelOnly = [
+          "subagent",
+          "subagent_fork",
+          "send_message",
+          "list_agents",
+          "create_goal",
+          "update_goal",
+        ];
+        const tools = child.toolsAdded!.map((tool) => tool.name);
+        expect(tools).toEqual(
+          parent
+            .toolsAdded!.map((tool) => tool.name)
+            .filter((name) => !topLevelOnly.includes(name)),
+        );
+        expect(topLevelOnly.every((name) => !tools.includes(name))).toBe(true);
+        expect(tools).toContain("write");
+        return fauxAssistantMessage("child conclusion");
+      },
+      (context) => {
+        expect(context.messages.at(-1)).toMatchObject({
+          role: "toolResult",
+          isError: false,
+          content: [{ type: "text", text: "child conclusion" }],
+        });
+        return fauxAssistantMessage("parent conclusion");
+      },
+    ],
+    { model: { reasoning: true } },
+  );
   fake.model.contextWindow = 100_000;
   const models: string[] = [];
   const session = await createSession({
