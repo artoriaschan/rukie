@@ -77,11 +77,16 @@ test.each([
 );
 
 test.each([
-  ["zh", "内置 ripgrep 不可用。"],
-  ["en", "Bundled ripgrep is unavailable."],
+  ["zh", "内置 ripgrep 不可用。", "恢复完整的 Rukie 安装", "执行权限"],
+  [
+    "en",
+    "Bundled ripgrep is unavailable.",
+    "Restore the complete Rukie installation",
+    "execution permissions",
+  ],
 ] as const)(
   "%s live tool error translates coded details while the model sees English",
-  async (locale, expected) => {
+  async (locale, expected, recovery, permissions) => {
     const app = await start(["search"], { columns: 300, env: { LANG: locale } });
     try {
       await app.waitFor(() => app.calls.length === 1);
@@ -95,7 +100,8 @@ test.each([
         spawn.mockRestore();
       }
       await app.waitFor(() => app.screen().join("\n").includes(expected));
-      expect(app.screen().join("\n")).toContain("optionalDependencies");
+      expect(app.screen().join("\n")).toContain(recovery);
+      expect(app.screen().join("\n")).toContain(permissions);
       expect(app.screen().join("\n")).toContain("test binary unavailable");
       expect(app.calls[1]!.context.messages.at(-1)).toMatchObject({
         role: "toolResult",
