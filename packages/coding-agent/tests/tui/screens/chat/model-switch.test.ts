@@ -38,7 +38,7 @@ test("direct /model switches the idle status, reports errors and refuses switchi
   try {
     await app.waitFor(() => screen(app).includes("test-model/first"));
     app.stdin.write("/model test-model/second\r");
-    await app.waitFor(() => screen(app).includes("Model changed to test-model/second"));
+    await app.waitFor(() => screen(app).includes("Model changed to second (test-model/second)"));
     expect(app.screen().at(-2)).toContain("second");
     expect(app.calls).toHaveLength(0);
     app.stdin.write("/model test-model/unknown\r");

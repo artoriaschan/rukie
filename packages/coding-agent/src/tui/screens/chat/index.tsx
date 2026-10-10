@@ -1,4 +1,8 @@
-import { filterModelTabs, modelProviderTabs } from "../../../view/model-picker";
+import {
+  filterModelTabs,
+  modelProviderTabs,
+  modelSelectionNotice,
+} from "../../../view/model-picker";
 import { productVersion } from "../../../version";
 import { useHostSelection } from "../../hooks/host-selection";
 import {
@@ -240,7 +244,6 @@ export async function createChat(
                 cwd={options.cwd}
                 checkpointCwd={checkpointCwd}
                 foldTerminalCommand={options.settings?.foldTerminalCommand ?? true}
-                thinking={options.settings?.thinking}
                 locale={locale}
                 onExit={onExit}
                 models={models}
@@ -296,7 +299,6 @@ function Chat({
   cwd,
   homeDir,
   checkpointCwd,
-  thinking,
   foldTerminalCommand,
   locale,
   onExit,
@@ -317,7 +319,6 @@ function Chat({
   cwd: string;
   homeDir?: string;
   checkpointCwd: string;
-  thinking?: ThinkingLevel;
   foldTerminalCommand: boolean;
   locale: Locale;
   onExit(): void;
@@ -716,7 +717,9 @@ function Chat({
     mode: number;
     busy: boolean;
   };
+  const thinking = session.thinkingLevel;
   type ModelPickerState = {
+    thinkingLevel: ThinkingLevel;
     tab: number;
     focuses: number[];
     query: string;
@@ -1270,7 +1273,11 @@ function Chat({
       ),
     );
   };
-  const switchModel = async (spec: string, hadDraftImages = false) => {
+  const switchModel = async (
+    spec: string,
+    hadDraftImages = false,
+    thinkingLevel?: ThinkingLevel,
+  ) => {
     const hadImages =
       hadDraftImages ||
       composer.ordered(draft.current).length > 0 ||
@@ -1280,10 +1287,18 @@ function Chat({
           (entry) => (entry.type === "message" || entry.type === "tool") && !!entry.images?.length,
         );
     try {
-      await session.setModelSelection({ model: spec });
+      const before = { model: session.model, thinkingLevel: session.thinkingLevel };
+      const selection = await session.setModelSelection({ model: spec, thinkingLevel });
       composer.reset();
       pasteEpoch.current++;
-      conversation.notice(t("model.changed", { model: session.model }));
+      const notice = modelSelectionNotice(
+        before,
+        selection,
+        models.find((model) => model.spec === selection.model)?.name,
+        locale,
+        { columns: Math.max(1, columns - 2), measure: Bun.stringWidth },
+      );
+      if (notice) conversation.notice(notice);
       clearTimeout(modelImageNoticeTimer.current);
       setModelImageNotice(undefined);
       if (hadImages) notifyModelImages();
@@ -1308,7 +1323,7 @@ function Chat({
     }
     const hadDraftImages = modelPickerDraftImages.current;
     showModelPicker(undefined);
-    void switchModel(selected.spec, hadDraftImages);
+    void switchModel(selected.spec, hadDraftImages, picker.thinkingLevel);
   };
   const executeCommand = (prompt: string) => {
     const parsed = /^\/([a-z0-9-]+)(?:\s|$)/.exec(prompt);
@@ -1424,6 +1439,7 @@ function Chat({
             filterFocus: 0,
             loading: true,
             failed: false,
+            thinkingLevel: session.thinkingLevel,
           };
           showModelPicker(loading);
           void loadModelCatalog()
@@ -1432,6 +1448,7 @@ function Chat({
               setModels(catalog);
               const tabs = modelProviderTabs(catalog, session.model);
               showModelPicker({
+                thinkingLevel: loading.thinkingLevel,
                 tab: Math.max(
                   0,
                   tabs.findIndex((provider) =>
@@ -1925,6 +1942,21 @@ function Chat({
                 filterFocus: modelCursor.query ? next : modelCursor.filterFocus,
                 notice: undefined,
               });
+            }
+          } else if (!key.shift && (name === "left" || name === "right")) {
+            const focused = modelCursor.query
+              ? filterModelTabs(modelTabs, modelCursor.query)[modelCursor.filterFocus]
+              : modelTabs[modelCursor.tab]?.models[modelCursor.focuses[modelCursor.tab] ?? 0];
+            const levels = focused?.thinkingLevels ?? [];
+            if (levels.length > 1) {
+              const index = levels.indexOf(modelCursor.thinkingLevel);
+              const next =
+                index < 0
+                  ? name === "left"
+                    ? levels.length - 1
+                    : 0
+                  : Math.max(0, Math.min(levels.length - 1, index + (name === "left" ? -1 : 1)));
+              showModelPicker({ ...modelCursor, thinkingLevel: levels[next]!, notice: undefined });
             }
           } else if (!key.shift && name === "return")
             selectModel(
@@ -3183,6 +3215,11 @@ function Chat({
               {modelPicker !== undefined && (
                 <ModelPicker
                   tabs={modelTabs}
+                  thinkingLevel={modelPicker.thinkingLevel}
+                  onThinking={(thinkingLevel) => {
+                    const picker = modelPickerRef.current;
+                    if (picker) showModelPicker({ ...picker, thinkingLevel, notice: undefined });
+                  }}
                   tab={modelPicker.tab}
                   focus={
                     modelPicker.query
