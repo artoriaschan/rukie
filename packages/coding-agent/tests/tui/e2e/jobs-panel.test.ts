@@ -233,13 +233,16 @@ test("card clicks focus exact jobs and expanded promoted details show bounded ou
         name: "bash",
         args: {
           command:
-            "printf 'EARLY\\n'; head -c 400000 /dev/zero | tr '\\0' x; printf '\\nLAST-TAIL\\n'; while [ ! -e go ]; do sleep 0.01; done",
+            "tail=LAST-TAIL; printf 'EARLY\\n'; while [ ! -e emit-tail ]; do sleep 0.01; done; head -c 400000 /dev/zero | tr '\\0' x; printf '\\n%s\\n' \"$tail\"; while [ ! -e go ]; do sleep 0.01; done",
           description: "Promoted watcher",
           timeout: 0.05,
         },
       },
     ]);
-    await app.waitFor(() => app.calls.length === 2 && screen().includes("LAST-TAIL"));
+    // Hold the large output until details are open; the command already names LAST-TAIL.
+    await app.waitFor(
+      () => app.calls.length === 2 && app.screen().some((line) => line.includes("│ ≡ EARLY")),
+    );
     app.calls[1]!.finish();
     await app.waitFor(() => !app.isWorking());
     app.stdin.write("saved draft");
@@ -252,8 +255,12 @@ test("card clicks focus exact jobs and expanded promoted details show bounded ou
         screen().includes("Started") &&
         screen().includes("Promoted") &&
         screen().includes("Output file:") &&
-        screen().includes("LAST-TAIL"),
+        app.screen().some((line) => line.trim() === "│ EARLY"),
     );
+    expect(screen()).not.toContain("Earlier output dropped");
+    await Bun.write(join(app.root, "emit-tail"), "");
+    // Match an output row, not the command, before asserting retention metadata.
+    await app.waitFor(() => app.screen().some((line) => line.trim() === "│ LAST-TAIL"));
     expect(screen()).toContain("Earlier output dropped");
     expect(screen()).not.toContain("│ EARLY");
     expect(screen()).toMatch(/Started.*\d\d:\d\d:\d\d/u);
