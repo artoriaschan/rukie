@@ -5,7 +5,7 @@ export const WIRE_SUBPROTOCOL = "rukie.v1";
 const id = Type.String({ minLength: 1 });
 const session = { sessionId: id };
 const image = Type.Object(
-  { data: Type.String(), mimeType: Type.String() },
+  { data: Type.String(), mimeType: Type.String(), name: Type.Optional(Type.String()) },
   { additionalProperties: false },
 );
 const prompt = { text: Type.String({ minLength: 1 }), images: Type.Optional(Type.Array(image)) };
