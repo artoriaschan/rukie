@@ -1,0 +1,114 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Values copied from DESIGN.md (GitHub Light / Dark via @primer/primitives 11.10.0). */
+:root {
+  --ui-font-size: 14px;
+  --radius: 0.625rem;
+  --background: #ffffff;
+  --foreground: #1f2328;
+  --card: #f6f8fa;
+  --muted-foreground: #59636e;
+  --border: #d1d9e0b3;
+  --border-strong: #d1d9e0;
+  --primary: #0969da;
+  --primary-foreground: #ffffff;
+  --accent: #0969da;
+  --accent-fg: #ffffff;
+  --ring: #0969da;
+  --danger: #d1242f;
+  --success: #1a7f37;
+  --warning: #9a6700;
+  --violet: #8250df;
+  --diff-added: #dafbe1;
+  --diff-removed: #ffebe9;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.dark {
+  --background: #0d1117;
+  --foreground: #f0f6fc;
+  --card: #151b23;
+  --muted-foreground: #9198a1;
+  --border: #3d444db3;
+  --border-strong: #3d444d;
+  --primary: #1f6feb;
+  --primary-foreground: #ffffff;
+  --accent: #4493f8;
+  --accent-fg: #0d1117;
+  --ring: #1f6feb;
+  --danger: #f85149;
+  --success: #3fb950;
+  --warning: #d29922;
+  --violet: #ab7df8;
+  --diff-added: #2ea04326;
+  --diff-removed: #f851491a;
+}
+
+@theme inline {
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-popover: var(--card);
+  --color-muted: var(--card);
+  --color-secondary: var(--card);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-input: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-fg);
+  --color-ring: var(--ring);
+  --color-danger: var(--danger);
+  --color-destructive: var(--danger);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-violet: var(--violet);
+  --color-diff-added: var(--diff-added);
+  --color-diff-removed: var(--diff-removed);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --text-ui-xl: calc(var(--ui-font-size) + 4px);
+  --text-ui-xl--line-height: 1.55;
+  --text-ui-lg: calc(var(--ui-font-size) + 2px);
+  --text-ui-lg--line-height: 1.5;
+  --text-ui-base: var(--ui-font-size);
+  --text-ui-base--line-height: 1.5;
+  --text-ui-sm: calc(var(--ui-font-size) - 2px);
+  --text-ui-sm--line-height: 1.4;
+  --text-ui-xs: calc(var(--ui-font-size) - 4px);
+  --text-ui-xs--line-height: 1.3;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html,
+  body {
+    height: 100%;
+  }
+  /* Leaves a 48px strip below the app for the prototype switcher so it never covers the composer. */
+  #root {
+    height: calc(100% - 48px);
+  }
+  body {
+    @apply bg-background text-foreground font-sans text-ui-base antialiased;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
