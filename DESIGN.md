@@ -66,7 +66,7 @@ Code blocks and diffs highlighted by shiki use the `github-light` and `github-da
 
 ### Color rules
 
-- Use theme tokens, not raw color values or ad hoc alpha fills such as `text-white/60`.
+- Use theme tokens, not raw color values. Registry interaction and hierarchy alpha values on `foreground`, `background`, and semantic state tokens are allowed; do not introduce raw alpha fills such as `text-white/60`.
 - Use semantic colors (`danger`, `success`, `warning`) only for real states, together with readable text.
 - Diff UI uses the `diff-*` tokens, not `success` or `destructive`.
 - Keep `primary` for the main action in a region; do not fill large surfaces with it.
@@ -83,13 +83,17 @@ Code blocks and diffs highlighted by shiki use the `github-light` and `github-da
 
 All interface typography uses the `text-ui-*` scale, derived from `--ui-font-size` (default `14px`):
 
-| Token          | Formula                | Default | Replaces    |
-| -------------- | ---------------------- | ------: | ----------- |
-| `text-ui-xl`   | `--ui-font-size + 4px` |    18px | `text-lg`   |
-| `text-ui-lg`   | `--ui-font-size + 2px` |    16px | `text-base` |
-| `text-ui-base` | `--ui-font-size`       |    14px | `text-sm`   |
-| `text-ui-sm`   | `--ui-font-size - 2px` |    12px | `text-xs`   |
-| `text-ui-xs`   | `--ui-font-size - 4px` |    10px | —           |
+| Token             | Formula                | Default | Replaces      |
+| ----------------- | ---------------------- | ------: | ------------- |
+| `text-ui-xl`      | `--ui-font-size + 4px` |    18px | `text-lg`     |
+| `text-ui-lg`      | `--ui-font-size + 2px` |    16px | `text-base`   |
+| `text-ui-base`    | `--ui-font-size`       |    14px | `text-sm`     |
+| `text-ui-sm`      | `--ui-font-size - 2px` |    12px | `text-xs`     |
+| `text-ui-xs`      | `--ui-font-size - 4px` |    10px | `text-[10px]` |
+| `text-ui-caption` | `--ui-font-size - 3px` |    11px | `text-[11px]` |
+| `text-ui-control` | `--ui-font-size - 1px` |    13px | `text-[13px]` |
+
+Line heights preserve Tailwind ratios: xl `1.75 / 1.125`, lg `1.5`, base `1.25 / 0.875`, sm `1 / 0.75`, xs and caption `1.4`, control `1.5`. Loader glyphs use `text-ui-loader`, whose `--loader-font-size` follows the registry glyph size rather than interface text.
 
 At the default size the scale reproduces the Tailwind sizes used by shadcn and beUI, so copied components keep their look. When a registry component is added, rewrite its Tailwind `text-*` size classes with the right column.
 
@@ -121,7 +125,7 @@ At the default size the scale reproduces the Tailwind sizes used by shadcn and b
 ## Radius, elevation, and motion
 
 - Components keep their registry's radius scale (`--radius`), shadows, and Motion spring settings; do not invent radii, shadows, or springs.
-- beUI surfaces stay as shipped: glass utilities (`glass`, `glass-strong`, `glass-thin`), their backdrop blur, and neon accents resolve to the GitHub-derived `--glass-*` and `--neon` tokens in [Themes](#themes). Do not add new blur levels or accent colors.
+- beUI surfaces keep their shipped `bg-card` / `bg-popover` tokens. Where a registry component uses glass utilities (`glass`, `glass-strong`, `glass-thin`), backdrop blur and neon accents resolve to the GitHub-derived `--glass-*` and `--neon` tokens in [Themes](#themes). Do not add new blur levels or accent colors.
 - A shadcn component used next to beUI ones keeps its structure but takes the matching beUI surface when one exists, so overlays and panels look the same wherever they come from.
 - A custom component borrows structure, surface, radius, elevation, and motion from the closest beUI component, falling back to the closest shadcn component.
 - Use beUI's easing tokens (`--ease-out`, `--ease-in-out`, `--ease-drawer`) for CSS transitions.
@@ -131,6 +135,7 @@ At the default size the scale reproduces the Tailwind sizes used by shadcn and b
 ## Components
 
 - Component sourcing (existing → beUI → shadcn/ui → dedicated libraries for editors, terminals, diffs, and virtualization → custom) and the install workflow are defined in [AGENTS.md](AGENTS.md#ui-components).
+- Click menus with submenus use shadcn `dropdown-menu`, because beUI context menus require right-click/long-press and bloom menus lack menu keyboard semantics. Its surface matches the beUI select panel.
 - Every copied or custom component uses theme tokens, `text-ui-*` sizes, and localized copy.
 - Keep a clear action hierarchy: one primary action per region; secondary, ghost, and destructive variants for the rest.
 - Menus and option lists stay dense and scannable. Interactive overlays render above passive tooltips.
@@ -147,3 +152,28 @@ At the default size the scale reproduces the Tailwind sizes used by shadcn and b
 ## Responsive behavior
 
 The product is desktop-first, but the UI remains functional in narrow windows and the browser development mode. Use breakpoints for layout, width, visibility, and density; do not change a component's meaning across breakpoints or hide core workflows.
+
+## ANSI output palette
+
+ANSI output preserves color meaning through `ansi-*` theme tokens. Bright variants use `ansi-bright-*`; diffs use dedicated `diff-added-fg` / `diff-removed-fg` tokens for text and counts. Values are GitHub syntax palette derivatives, owned by the theme CSS.
+
+| Token                   | Light     | Dark      |
+| ----------------------- | --------- | --------- |
+| `--ansi-black`          | `#24292f` | `#484f58` |
+| `--ansi-red`            | `#cf222e` | `#ff7b72` |
+| `--ansi-green`          | `#116329` | `#7ee787` |
+| `--ansi-yellow`         | `#4d2d00` | `#d29922` |
+| `--ansi-blue`           | `#0550ae` | `#79c0ff` |
+| `--ansi-magenta`        | `#8250df` | `#d2a8ff` |
+| `--ansi-cyan`           | `#1b7c83` | `#a5d6ff` |
+| `--ansi-white`          | `#6e7781` | `#b1bac4` |
+| `--ansi-bright-black`   | `#57606a` | `#6e7681` |
+| `--ansi-bright-red`     | `#a40e26` | `#ffa198` |
+| `--ansi-bright-green`   | `#1a7f37` | `#aff5b4` |
+| `--ansi-bright-yellow`  | `#633c01` | `#e3b341` |
+| `--ansi-bright-blue`    | `#0969da` | `#a5d6ff` |
+| `--ansi-bright-magenta` | `#a475f9` | `#e2c5ff` |
+| `--ansi-bright-cyan`    | `#3192aa` | `#b3f0ff` |
+| `--ansi-bright-white`   | `#1f2328` | `#f0f6fc` |
+| `--diff-added-fg`       | `#116329` | `#aff5b4` |
+| `--diff-removed-fg`     | `#82071e` | `#ffdcd7` |
