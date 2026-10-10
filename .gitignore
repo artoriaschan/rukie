@@ -1,3 +1,6 @@
 node_modules/
 *.tsbuildinfo
 dist/
+
+# Local Vitest browser failure artifacts
+.vitest/

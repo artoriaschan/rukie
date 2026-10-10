@@ -14,6 +14,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { Tooltip } from "@/components/motion/tooltip";
 import { Button } from "@/components/motion/button";
 import {
   MorphPopover,
@@ -58,6 +59,7 @@ export interface PromptInputProps extends Omit<
   minRows?: number;
   maxRows?: number;
   leadingAction?: ReactNode;
+  trailingAction?: ReactNode;
   className?: string;
 }
 
@@ -77,6 +79,7 @@ export function PromptInput({
   minRows = 2,
   maxRows = 8,
   leadingAction,
+  trailingAction,
   className,
   disabled,
   placeholder: placeholderProp,
@@ -198,7 +201,7 @@ export function PromptInput({
                 size="icon"
                 disabled={disabled || loading}
                 aria-label={componentText("component.add-to-prompt")}
-                className="size-8 rounded-full"
+                className={cn("size-8 rounded-full", !trailingAction && "ml-auto")}
               >
                 <motion.span
                   aria-hidden="true"
@@ -290,35 +293,40 @@ export function PromptInput({
           </Select>
         ) : null}
 
-        <Button
-          type={loading ? "button" : "submit"}
-          size="icon"
-          disabled={loading ? !onStop : !canSubmit}
-          aria-label={
-            loading
-              ? componentText("component.stop-generating")
-              : componentText("component.send-prompt")
-          }
-          onClick={loading ? onStop : undefined}
-          className="ml-auto size-8 rounded-full"
+        {trailingAction}
+        <Tooltip
+          content={componentText(loading ? "component.stop-generating" : "component.send-prompt")}
         >
-          <AnimatePresence initial={false} mode="popLayout">
-            <motion.span
-              key={loading ? "stop" : "send"}
-              initial={reduce ? { opacity: 1 } : { opacity: 0, y: 3, scale: 0.8 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={reduce ? { opacity: 0 } : { opacity: 0, y: -3, scale: 0.8 }}
-              transition={reduce ? { duration: 0 } : SPRING_SWAP}
-              className="grid place-items-center"
-            >
-              {loading ? (
-                <Square className="size-3 fill-current" />
-              ) : (
-                <ArrowUp className="size-4" />
-              )}
-            </motion.span>
-          </AnimatePresence>
-        </Button>
+          <Button
+            type={loading ? "button" : "submit"}
+            size="icon"
+            disabled={loading ? !onStop : !canSubmit}
+            aria-label={
+              loading
+                ? componentText("component.stop-generating")
+                : componentText("component.send-prompt")
+            }
+            onClick={loading ? onStop : undefined}
+            className={cn("size-8 rounded-full", !trailingAction && "ml-auto")}
+          >
+            <AnimatePresence initial={false} mode="popLayout">
+              <motion.span
+                key={loading ? "stop" : "send"}
+                initial={reduce ? { opacity: 1 } : { opacity: 0, y: 3, scale: 0.8 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={reduce ? { opacity: 0 } : { opacity: 0, y: -3, scale: 0.8 }}
+                transition={reduce ? { duration: 0 } : SPRING_SWAP}
+                className="grid place-items-center"
+              >
+                {loading ? (
+                  <Square className="size-3 fill-current" />
+                ) : (
+                  <ArrowUp className="size-4" />
+                )}
+              </motion.span>
+            </AnimatePresence>
+          </Button>
+        </Tooltip>
       </div>
     </form>
   );

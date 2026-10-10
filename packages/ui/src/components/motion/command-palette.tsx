@@ -10,6 +10,7 @@ import { useOnOpen } from "@/lib/hooks/use-on-open";
 import { useRowCursor } from "@/lib/hooks/use-row-cursor";
 import { useTouchCapable } from "@/lib/hooks/use-touch-capable";
 import { PresenceGate } from "@/lib/presence-gate";
+import { useModalFocus } from "@/lib/hooks/use-modal-focus";
 import { cn } from "@/lib/utils";
 import { searchCommands } from "@/lib/command-search";
 
@@ -26,6 +27,7 @@ export type CommandItem = {
 
 export interface CommandPaletteProps {
   items: CommandItem[];
+  emptyLimit?: number;
   /** Opens with Cmd/Ctrl + this key. Default: "k" */
   shortcut?: string;
   placeholder?: string;
@@ -45,6 +47,7 @@ const PANEL_SPRING = {
 
 export function CommandPalette({
   items,
+  emptyLimit,
   shortcut = "k",
   placeholder: placeholderProp,
   emptyMessage: emptyMessageProp,
@@ -74,11 +77,20 @@ export function CommandPalette({
   const reduce = useReducedMotion();
   const canTouch = useTouchCapable();
   const inputRef = useRef<HTMLInputElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  useModalFocus(open, panelRef);
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === shortcut.toLowerCase()) {
+        if (
+          !open &&
+          Array.from(document.querySelectorAll('[role="dialog"][aria-modal="true"]')).some(
+            (element) => !element.closest("[inert]"),
+          )
+        )
+          return;
         e.preventDefault();
         setOpen(!open);
         return;
@@ -105,7 +117,10 @@ export function CommandPalette({
     };
   }, [open]);
 
-  const filtered = useMemo(() => searchCommands(items, query), [items, query]);
+  const filtered = useMemo(() => {
+    const result = searchCommands(items, query);
+    return !query.trim() && emptyLimit ? result.slice(0, emptyLimit) : result;
+  }, [items, query, emptyLimit]);
 
   // Reserve the icon column only when at least one item brings an icon, so
   // icon-less lists don't render a dead gap before every label.
@@ -208,6 +223,7 @@ export function CommandPalette({
               className="pointer-events-none fixed inset-x-4 bottom-4 top-[18vh] z-[100] flex items-start justify-center"
             >
               <motion.div
+                ref={panelRef}
                 role="dialog"
                 aria-modal="true"
                 aria-label={componentText("component.command-palette")}

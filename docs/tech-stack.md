@@ -64,7 +64,7 @@ Pi 的直接依赖和解析到的支撑包统一为 1.0.4，TypeBox 为 1.3.27�
 | 图标     | lucide-react 1.55.0                                                                                                                             |
 | Markdown | micromark 解析 + 自研的 mdast→React 渲染 + shiki/katex                                                                                          |
 | 图表     | mermaid                                                                                                                                         |
-| 状态管理 | Zustand 5.0.12 + Immer 10.2.0                                                                                                                   |
+| 状态管理 | Zustand 5.0.15（已安装）；Immer 10.2.0 为后续选型，当前未安装                                                                                   |
 | 国际化   | 自研 `@rukie/i18n`：运行时无关的 zh / en locale 解析、通用文案、字典组合与插值、时长格式化；frontend 读取配置并选择 locale（ADR-0008）          |
 
 ## coding-agent 终端渲染器（ADR-0013）
@@ -141,3 +141,5 @@ CI 与发布 workflows 的官方 Actions 使用 Node.js 24 runtime：checkout 7.
 ### UI registry runtime
 
 `packages/ui` installs complete beUI source and shadcn dropdown-menu through shadcn CLI 4.21.4. Runtime dependencies are motion 14.1.0, @floating-ui/dom 1.8.0, shiki 4.5.0, radix-ui 1.7.0, tw-animate-css 1.4.0, clsx 2.1.1, tailwind-merge 3.7.0, lucide-react 1.55.0 and Tailwind CSS 4.3.3. The Vite Tailwind plugin is 4.3.3; React DOM declarations are @types/react-dom 19.2.3. Code highlighting imports five language modules and GitHub Light/Dark themes through shiki/core.
+
+ui 状态使用 Zustand vanilla store，React 订阅由 app 层的 `useSyncExternalStore` 接线，遵循 ADR-0029 的无 React store 边界。
