@@ -36,6 +36,7 @@
 | HTTP      | ⚠️ Hono 4.13.12（原清单为 4.13.9）                                                                                                                                 |
 | WebSocket | ⚠️ `@hono/bun` 1.0.0（peer 依赖 `hono >=4.13.9`）。从它引入 `upgradeWebSocket` 和 `websocket`；不要用 `hono/bun` 子路径，它从 4.13.10 起已标记弃用，Hono v5 会移除 |
 | 输入校验  | ⚠️ typebox 跟随 pi 的版本，目前是 1.3.27，不用 1.3.34。保证依赖树里只有一份，否则 schema 类型对不上                                                                |
+| 业务编排  | Effect 4.0.2，仅 server 内使用 ManagedRuntime、Layer 与 FiberMap（[ADR-0030](adr/0030-desktop-server-hono-and-effect.md)）                                         |
 | 存储      | 原生 durable JSONL（启用 fsync）；`bun:sqlite` 独占事务持有宿主 lease（[ADR-0024](adr/0024-adopt-pi-durable-harness.md)）                                          |
 
 Pi 的直接依赖和解析到的支撑包统一为 1.0.4，TypeBox 为 1.3.27；根 `overrides` 约束上游宽版本声明，`bun.lock` 保存实际解析。当前依赖树不包含 pi-agent-core 或 pi-coding-agent。JSONL 保存 Session 数据；SQLite 事务仅持有宿主写者 lease，不是已实现的桌面数据后端。
@@ -135,7 +136,7 @@ CI 与发布 workflows 的官方 Actions 使用 Node.js 24 runtime：checkout 7.
 
 桌面三个 workspace 的协议与检查骨架已接入。测试工具为根 devDependency：vitest 5.0.3、@vitest/browser-playwright 5.0.3、playwright 1.64.0、vitest-browser-react 2.3.0、@vitejs/plugin-react 6.1.2、vite 8.3.1 和 @types/node 24.19.2。ui 精确声明 react/react-dom 19.3.0 的 peerDependencies，类型为 @types/react 19.3.0。server 与 ui 的 schema 测试复用 typebox 1.3.27。
 
-上述桌面壳、服务框架和其余 GUI 选型表包含后续实现的目标依赖；本骨架没有安装 Electron、Hono 或 Effect。以各包 manifest 和 lockfile 为已安装事实，测试准备和运行边界见[测试策略](testing.md#桌面测试入口)。
+上述桌面壳、服务框架和其余 GUI 选型表包含后续实现的目标依赖；已安装 Electron 41.0.3、Hono 和 Effect；其他目标依赖按相应工单接入。以各包 manifest 和 lockfile 为已安装事实，测试准备和运行边界见[测试策略](testing.md#桌面测试入口)。
 
 ### UI registry runtime
 

@@ -63,3 +63,30 @@ export const WireCommandSchema = Type.Union([
   }),
 ]);
 export type WireCommand = Static<typeof WireCommandSchema>;
+
+export type WireErrorCode =
+  | "session_busy"
+  | "session_not_found"
+  | "project_not_found"
+  | "invalid_command"
+  | "not_queued"
+  | "interaction_stale"
+  | "internal";
+export type WireResponse<Result = unknown> = { type: "response"; id: string } & (
+  | { result: Result; error?: never }
+  | { error: { code: WireErrorCode; params?: Record<string, string | number> }; result?: never }
+);
+export interface WireProject {
+  id: string;
+  path: string;
+  name: string;
+}
+export interface WireSessionSummary {
+  id: string;
+  title: string;
+  titleSource: "prompt" | "model" | "user";
+  updatedAt: number;
+  messageCount: number;
+  model: string;
+  cwd: string;
+}

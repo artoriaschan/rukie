@@ -40,4 +40,12 @@ export {
 
 export { ModelCompatSchemas } from "./model-compat.ts";
 
-export { WIRE_SUBPROTOCOL, WireCommandSchema, type WireCommand } from "./wire.ts";
+export {
+  WIRE_SUBPROTOCOL,
+  WireCommandSchema,
+  type WireCommand,
+  type WireErrorCode,
+  type WireResponse,
+  type WireProject,
+  type WireSessionSummary,
+} from "./wire.ts";
