@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, onTestFinished, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import {
@@ -915,45 +915,107 @@ test("resume rejects a malformed native file-tracking document before model exec
 });
 
 test("resume preserves budget-deferred changes and deletions until each path is reported once", async () => {
-  dirs = await tempDirs();
-  const names = Array.from({ length: 90 }, (_, index) => `file-${index}-${"x".repeat(160)}.txt`);
-  for (const name of names) await Bun.write(join(dirs.cwd, name), "before\n");
-  const session = await createSession({
-    ...dirs,
-    ...fakeModel([
-      fauxAssistantMessage(
-        names.map((path) => fauxToolCall("read", { path })),
-        { stopReason: "toolUse" },
-      ),
-      fauxAssistantMessage("read"),
-      fauxAssistantMessage("first batch"),
-    ]),
-  });
-  await session.run("read");
-  for (const name of names.slice(0, 60))
-    await changeFile(join(dirs.cwd, name), "large external change\n".repeat(250));
-  for (const name of names.slice(60)) await rm(join(dirs.cwd, name));
-  const events: SessionEvent[] = [];
-  const onEvent = (event: SessionEvent) => {
-    events.push(event);
+  const fixture = await tempDirs();
+  const lifetime = new AbortController();
+  const ownedSessions: Session[] = [];
+  let pending: Promise<unknown> | undefined;
+  let cleanupPromise: Promise<void> | undefined;
+  const cleanup = () =>
+    (cleanupPromise ??= (async () => {
+      lifetime.abort(new Error("File changes fixture finished"));
+      try {
+        // Settle the Run before closing its Harness, including runner-enforced timeout.
+        await pending?.catch(() => {});
+      } finally {
+        try {
+          await Promise.all(ownedSessions.map((session) => session.close()));
+        } finally {
+          await fixture.cleanup();
+        }
+      }
+    })());
+  onTestFinished(cleanup);
+  const step = <T>(work: () => Promise<T>) => {
+    lifetime.signal.throwIfAborted();
+    const result = work();
+    pending = result;
+    return result;
   };
-  await session.run("first batch", { onEvent });
-  await session.close();
-  const resumed = await createSession({
-    ...dirs,
-    ...fakeModel(Array.from({ length: 3 }, () => fauxAssistantMessage("continued"))),
-    resumeId: session.id,
-  });
-  for (let request = 0; request < 3; request++) await resumed.run("continue", { onEvent });
-  const reminders = changes(events);
-  expect(reminders.length).toBeGreaterThan(1);
-  for (const [index, name] of names.entries()) {
-    const report = index < 60 ? `Externally modified: ${name}.` : `Deleted: ${name}`;
-    expect(
-      reminders.filter(
-        (event) => event.role === "system-reminder" && event.content.includes(report),
-      ),
-    ).toHaveLength(1);
+  const open = (options: Parameters<typeof createSessionImpl>[0]) =>
+    step(async () => {
+      const session = await createSessionImpl({
+        ...options,
+        initializationSignal: lifetime.signal,
+      });
+      ownedSessions.push(session);
+      lifetime.signal.throwIfAborted();
+      return session;
+    });
+  const run = (session: Session, prompt: string, onEvent?: (event: SessionEvent) => void) =>
+    step(async () => {
+      await session.run(prompt, { signal: lifetime.signal, onEvent });
+      lifetime.signal.throwIfAborted();
+    });
+  try {
+    // Long paths cross the 16,000-character report budget with fewer durable tool commits.
+    // Each segment and the absolute path stay within macOS filesystem limits.
+    const directory = join(...Array.from({ length: 3 }, () => "d".repeat(180)));
+    await step(() => mkdir(join(fixture.cwd, directory), { recursive: true }));
+    const names = Array.from({ length: 24 }, (_, index) =>
+      join(directory, `file-${index}-${"x".repeat(230)}.txt`),
+    );
+    for (const name of names) await step(() => Bun.write(join(fixture.cwd, name), "before\n"));
+    const session = await open({
+      ...fixture,
+      ...fakeModel([
+        fauxAssistantMessage(
+          names.map((path) => fauxToolCall("read", { path })),
+          { stopReason: "toolUse" },
+        ),
+        fauxAssistantMessage("read"),
+        fauxAssistantMessage("first batch"),
+      ]),
+    });
+    await run(session, "read");
+    for (const [index, name] of names.entries()) {
+      if (index % 2 === 0)
+        await step(() =>
+          changeFile(join(fixture.cwd, name), "large external change\n".repeat(250)),
+        );
+      else await step(() => rm(join(fixture.cwd, name)));
+    }
+    const events: SessionEvent[] = [];
+    const onEvent = (event: SessionEvent) => {
+      events.push(event);
+    };
+    await run(session, "first batch", onEvent);
+    const firstBatch = changes(events)
+      .map((event) => event.content)
+      .join("\n");
+    expect(firstBatch).not.toContain(names.at(-2)!);
+    expect(firstBatch).not.toContain(names.at(-1)!);
+    await step(() => session.close());
+    const resumed = await open({
+      ...fixture,
+      ...fakeModel(Array.from({ length: 3 }, () => fauxAssistantMessage("continued"))),
+      resumeId: session.id,
+    });
+    for (let request = 0; request < 3; request++) await run(resumed, "continue", onEvent);
+    const reminders = changes(events);
+    expect(reminders.length).toBeGreaterThan(1);
+    for (const [index, name] of names.entries()) {
+      const report = index % 2 === 0 ? `Externally modified: ${name}.` : `Deleted: ${name}`;
+      expect(
+        reminders.filter(
+          (event) => event.role === "system-reminder" && event.content.includes(report),
+        ),
+      ).toHaveLength(1);
+    }
+  } catch (error) {
+    // The runner already records a timeout; consume only its fixture cancellation.
+    if (!lifetime.signal.aborted) throw error;
+  } finally {
+    await cleanup();
   }
 });
 

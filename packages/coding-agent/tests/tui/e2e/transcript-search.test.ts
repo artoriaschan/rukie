@@ -108,11 +108,16 @@ test("search keeps earlier messages in view while a running response grows", asy
     await app.waitFor(
       () =>
         app.screen().some((line) => / · 1\/1 · /.test(line)) &&
-        app.screen().some((line) => line.includes("original needle")),
+        // The pinned input is also visible before the search seek finishes.
+        // Wait for the source at the top and its pinned duplicate to disappear.
+        app.screen()[0] === "" &&
+        app.screen()[1] === "❯ original needle" &&
+        app.screen()[3] === "⏺ stream-0",
     );
     const earlier = app.screen().slice(0, 4);
-    app.calls[0]!.delta("\nstream-50\nstream-51");
-    await app.waitFor(() => app.screen().some((line) => / · 1\/1 · /.test(line)));
+    app.calls[0]!.delta("\nstream-50\nstream-51 needle");
+    // A new offscreen match proves the growing response has reached the view.
+    await app.waitFor(() => app.screen().some((line) => / · 1\/2 · /.test(line)));
     expect(app.screen().slice(0, 4)).toEqual(earlier);
     expect(app.screen().join("\n")).not.toContain("stream-51");
     app.stdin.write("\x1b");
