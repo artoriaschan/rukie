@@ -48,3 +48,5 @@ Status: claimed
 任务暴露的 TUI consumer timing：基线 Conversation + model-switch 9 pass，集成原状态因 abort/close 与 40 列切换断言失败；修复 abort 后后者仍失败。最小三例为 parent/child snapshot、direct model switch、窄终端 picker。最终屏幕相邻两行是 `─ Model changed to second (test-model/se` 与 `cond)`，没有丢失模型标识；旧断言只接受单物理行完整 spec，依赖结算中间帧。断言现在定位 model-change 通知，只重组它所在行和紧邻下一行的已呈现单元格，要求完整 changed-to-second 提示、picker 已关闭且没有 provider 请求，不平坦化整个屏幕、不延长 timeout。旧三例组合 2 pass / 1 fail（2.52 s），改后 3 pass（523 ms，窄例 41.6 ms）；这是任务改变结算顺序后暴露的 consumer readiness 约束，不记录为无关历史问题。
 
 最终聚焦集在隔离 HOME、移除继承的 DEEPSEEK_API_KEY 下 53 pass / 1259 assertions（14.86 s，六个文件），包含 40 例安装/错误/Conversation 集合与完整 model-switch、exit/resume、Interaction。`bun run check:dev` 再次通过。首次 aggregate 两个 provider-tab 失败来自额外的本机凭据标签，模型目录筛选和测试源码与初始基线一致；基线与当前独立文件在清除该凭据后都 5 pass，没有更改生产模型目录。
+
+合并核查发现上一版通知 helper 实际拼接了所有屏幕行，与上述相邻行证据不符。补正后以 `─ Model changed to second (test-model/` 定位已呈现通知，仅去除该行及紧邻下一物理行的末尾填充，再拼接这两行；内部空格保留。完整模型标识、picker 关闭和零 provider 调用的要求继续成立。相同隔离 HOME 与清除凭据的 Conversation + model-switch 组合为 9 pass / 1048 assertions（1.15 s，窄终端例 44.64 ms）；只修改测试观察和本票证据，产品及打包源未改动。
