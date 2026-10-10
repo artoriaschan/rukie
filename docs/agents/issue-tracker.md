@@ -12,6 +12,8 @@ Issues and specs for this repo live as markdown files in `.scratch/`.
 - `bun run check:scratch` enforces these rules and runs in `check:dev`; `bun scripts/check-scratch.ts --report` prints per-feature progress and open tickets, so use it instead of grepping `.scratch/` for status
 - Comments and conversation history append to the bottom of the file under a `## Comments` heading
 
+`resolved` 表示实现、受影响文档、评审修复和适用的本地验证已经完成，不代表 CI 已通过或 PR 已合并。最终推送前在同一变更中关闭最后一个 ticket 和 spec，完成 ADR Coverage，并记录本地验证结果及 CI 待验收状态。推送后的 CI 结果保留在 PR checks、PR 描述或交付回复中；仅为补写成功结果无需再提交 tracker 文档。CI 失败后修复并重新验证；若失败暴露未完成的票内要求，将对应 ticket 和 spec 恢复为 `claimed`，直到要求完成。
+
 resolved 记录中的路径以当时的提交为准。
 
 ## ADR coverage before delivery

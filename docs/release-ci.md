@@ -10,9 +10,9 @@
 
 ## 启用与配置必要检查
 
-1. 推送含 workflow 的提交到 main，确认 Actions 页面出现名为 `CI` 的工作流。main push 会运行；也可以从 main 人工运行。PR 的创建、提交更新、重开和标题编辑都会刷新验收，首版没有路径过滤。
-2. 建立 main 分支 ruleset 或保护规则，要求 PR 合并前通过 `Source and installed darwin-arm64` 检查，并要求分支与 main 保持最新。检查来源选择此仓库的 GitHub Actions；不要用另一个提交的旧成功状态放行。首次成功运行后，GitHub 才能在设置中提供相应检查名称。
-3. 创建一个 main 目标 PR，使用符合 Conventional Commits 的标题，例如 `fix(cli): preserve installed cancellation`。失败时修改标题或提交，等待该次运行成功。PR 标题通过环境变量传给仓库已锁定的 commitlint，不进入 shell 源码。
+1. 推送含 workflow 的提交到 main，确认 Actions 页面出现名为 `CI` 的工作流。main push 会运行；也可以从 main 人工运行。PR 的创建、提交更新和重开刷新完整验收，没有路径过滤。[PR 标题工作流](../.github/workflows/pr-title.yml)独立响应这些事件及 PR 编辑；修改标题或描述只刷新标题检查，不重启完整验收。
+2. 建立 main 分支 ruleset 或保护规则，要求 PR 合并前通过 `Source and installed darwin-arm64` 和 `Conventional Commit PR title` 检查，并要求分支与 main 保持最新。检查来源选择此仓库的 GitHub Actions；不要用另一个提交的旧成功状态放行。首次成功运行后，GitHub 才能在设置中提供相应检查名称。
+3. 创建一个 main 目标 PR，使用符合 Conventional Commits 的标题，例如 `fix(cli): preserve installed cancellation`。标题失败时修改标题，只需等待标题检查通过；源码或安装验收失败时修复并提交，等待新提交的完整验收成功。PR 标题通过环境变量传给仓库已锁定的 commitlint，不进入 shell 源码。
 4. 合并后核对 main push 的准确 SHA 对应 CI 成功。PR 验收默认针对 GitHub 的临时 merge commit，main 验收针对 push commit；两者不是同一份源码身份。若人工运行其他分支，其成功记录也不能替代 main push 门槛。
 
 启用了 merge queue 的仓库需要先扩展当前 workflow 的 `merge_group` 验收，再启用队列；当前触发配置针对普通 PR 合并。CI 按 PR 或分支取消被新运行替代的旧验收；取消、失败或尚未完成的运行不提供可消费的成功产物。
@@ -33,6 +33,6 @@ CI 将输出写入 runner 的临时目录，先构建一次，再以当前 `GITH
 
 从 macOS arm64 仓库根目录构建并验证安装包，命令见[分发教程](release-building.md)。`bun run release:accept --artifact-dir PATH` 运行产物身份、Headless、TUI 与 provider/auth 的完整安装验收；它与源码完整检查分别承担安装行为和仓库整体约束。
 
-workflow 的本地契约测试为 `bun test scripts/release/tests/workflows.test.ts`，包括触发范围、权限、准确提交、单次构建复用、成功后上传和标题命令的数据边界。另用官方 actionlint 1.7.12 检查 YAML、Actions 输入与表达式上下文；下载固定 release 并核对官方 SHA-256 后执行 `actionlint .github/workflows/ci.yml`。此静态验证不触发 CI，也不证明 runner、App 或 npm 的外部配置成功。
+workflow 的本地契约测试为 `bun test scripts/release/tests/workflows.test.ts`，包括触发范围、权限、准确提交、单次构建复用、成功后上传和标题命令的数据边界。另用官方 actionlint 1.7.12 检查 YAML、Actions 输入与表达式上下文；下载固定 release 并核对官方 SHA-256 后执行 `actionlint .github/workflows/ci.yml .github/workflows/pr-title.yml`。此静态验证不触发 CI，也不证明 runner、App 或 npm 的外部配置成功。
 
 构建失败时查看 `Build the installed artifacts once`；身份失败查看 `Verify clean source and artifact identity`；源码或具体安装行为失败查看 `Test shard N of 3` 中的测试名称。检查意外改写受版本控制的文件或产生未跟踪文件时，审计步骤会拒绝保存成功身份。修复源码后重新运行对应提交，不复用失败运行的 tarball。artifact 过期后在准确提交重新验收，不能把新提交的构建冒充旧提交。

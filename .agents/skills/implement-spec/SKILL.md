@@ -35,6 +35,6 @@ Communication to and from subagents should be sparse. Communicate primarily thro
 
 7. Once all tickets are complete, call the Skill tool with `code-review` on the integration branch. Fix all issues raised by the code review in a single **implementer subagent**.
 
-8. If a draft PR exists, mark it ready for review. Otherwise, resolve each ticket the way the issue tracker closes work, and report the integration branch.
+8. Complete applicable local verification and resolve the tickets and spec together with their implementation evidence before the final push, following the issue tracker’s closure rules. If a draft PR exists, push the final changes and mark it ready for review; report the latest commit and actual CI state. Otherwise, report the integration branch. CI may be pending at handoff; follow the repository’s merge gate before merging.
 
 9. Clean up all **implementer subagent** worktrees.
