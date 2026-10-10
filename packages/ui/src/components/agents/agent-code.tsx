@@ -1,124 +1,92 @@
-import { type CSSProperties, Fragment, useEffect, useState } from "react";
-import { createHighlighterCore, type HighlighterCore } from "shiki/core";
-import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
-import lightTheme from "shiki/themes/github-light.mjs";
-import darkTheme from "shiki/themes/github-dark.mjs";
-import bash from "shiki/langs/bash.mjs";
-import diff from "shiki/langs/diff.mjs";
-import json from "shiki/langs/json.mjs";
-import tsx from "shiki/langs/tsx.mjs";
-import typescript from "shiki/langs/typescript.mjs";
+import { type CSSProperties, Fragment, useEffect, useRef, useState } from "react";
+import type { ThemedToken } from "shiki/core";
+// The Node builtin restriction matches the scoped basename; this package uses browser APIs only.
+// eslint-disable-next-line no-restricted-imports
+import { ShikiStreamTokenizer } from "@shikijs/stream";
+import {
+  canHighlight,
+  codeLanguage,
+  getHighlighter,
+  highlight,
+  highlightThemes,
+} from "@/lib/highlight";
 import { cn } from "@/lib/utils";
-
-export type AgentCodeLanguage = "bash" | "diff" | "json" | "text" | "tsx" | "typescript";
-
-interface AgentCodeToken {
-  content: string;
-  offset: number;
-  light?: string;
-  dark?: string;
-}
-
-type AgentCodeTokenLines = AgentCodeToken[][];
-
+export type AgentCodeLanguage = string;
+export type AgentCodeToken = ThemedToken;
 export interface AgentCodeProps {
   code: string;
   language?: AgentCodeLanguage;
   className?: string;
+  streaming?: boolean;
 }
-
 export interface AgentCodeLineProps {
   code: string;
   tokens?: AgentCodeToken[];
   className?: string;
 }
-
-const LIGHT_THEME = "github-light";
-const DARK_THEME = "github-dark";
-let agentCodeHighlighter: Promise<HighlighterCore> | null = null;
-const tokenCache = new Map<string, AgentCodeTokenLines>();
-
-function getAgentCodeHighlighter() {
-  if (!agentCodeHighlighter) {
-    agentCodeHighlighter = createHighlighterCore({
-      engine: createJavaScriptRegexEngine(),
-      themes: [lightTheme, darkTheme],
-      langs: [bash, diff, json, tsx, typescript],
-    });
-  }
-  return agentCodeHighlighter;
-}
-
-function tokenCacheKey(code: string, language: AgentCodeLanguage) {
-  return `${language}\u0000${code}`;
-}
-
-export function useAgentCodeTokens(code: string, language: AgentCodeLanguage) {
-  const key = tokenCacheKey(code, language);
-  const cached = tokenCache.get(key);
-  const [result, setResult] = useState<{
-    key: string;
-    code: string;
-    language: AgentCodeLanguage;
-    lines: AgentCodeTokenLines;
-  } | null>(cached ? { key, code, language, lines: cached } : null);
-
+export function useAgentCodeTokens(code: string, language: string, streaming = false) {
+  const [result, setResult] = useState<{ code: string; lines: ThemedToken[][] } | null>(null);
+  const stream = useRef<{ language: string; code: string; tokenizer: ShikiStreamTokenizer } | null>(
+    null,
+  );
+  const serial = useRef(Promise.resolve());
   useEffect(() => {
-    const current = tokenCache.get(key);
-    if (current) {
-      setResult({ key, code, language, lines: current });
-      return;
-    }
-
     let cancelled = false;
-    getAgentCodeHighlighter().then((highlighter) => {
-      if (cancelled) return;
-      const lines = highlighter
-        .codeToTokensWithThemes(code, {
-          lang: language,
-          themes: {
-            light: LIGHT_THEME,
-            dark: DARK_THEME,
-          },
-        })
-        .map((line) =>
-          line.map((token) => ({
-            content: token.content,
-            offset: token.offset,
-            light: token.variants.light?.color,
-            dark: token.variants.dark?.color,
-          })),
-        );
-      tokenCache.set(key, lines);
-      setResult({ key, code, language, lines });
-    });
+    serial.current = serial.current
+      .then(async () => {
+        if (cancelled) return;
+        if (!canHighlight(code)) {
+          stream.current = null;
+          setResult(null);
+          return;
+        }
+        if (!streaming) {
+          const lines = await highlight(code, language);
+          if (!cancelled) setResult(lines ? { code, lines } : null);
+          return;
+        }
+        const highlighter = await getHighlighter();
+        if (cancelled) return;
+        let current = stream.current;
+        if (!current || current.language !== language || !code.startsWith(current.code))
+          current = {
+            language,
+            code: "",
+            tokenizer: new ShikiStreamTokenizer({
+              highlighter,
+              lang: codeLanguage(language),
+              themes: highlightThemes,
+              defaultColor: false,
+            }),
+          };
+        await current.tokenizer.enqueue(code.slice(current.code.length));
+        current.code = code;
+        stream.current = current;
+        const lines: ThemedToken[][] = [[]];
+        for (const token of [
+          ...current.tokenizer.tokensStable,
+          ...current.tokenizer.tokensUnstable,
+        ]) {
+          if (token.content === "\n") lines.push([]);
+          else lines.at(-1)!.push(token);
+        }
+        if (!cancelled) setResult({ code, lines });
+      })
+      .catch(() => {
+        if (!cancelled) setResult(null);
+      });
     return () => {
       cancelled = true;
     };
-  }, [code, key, language]);
-
-  if (result?.key === key) return result.lines;
-  if (result?.language === language && code.startsWith(result.code)) {
-    return result.lines;
-  }
-  return null;
+  }, [code, language, streaming]);
+  return result?.code === code ? result.lines : null;
 }
-
 export function AgentCodeLine({ code, tokens, className }: AgentCodeLineProps) {
   return (
     <span className={className}>
       {tokens
-        ? tokens.map((token) => (
-            <span
-              key={`${token.offset}-${token.content}`}
-              style={
-                {
-                  "--agent-code-light": token.light ?? "currentColor",
-                  "--agent-code-dark": token.dark ?? token.light ?? "currentColor",
-                } as CSSProperties
-              }
-              className="text-[color:var(--agent-code-light)] dark:text-[color:var(--agent-code-dark)]"
-            >
+        ? tokens.map((token, index) => (
+            <span key={index} style={token.htmlStyle as CSSProperties} className="shiki-token">
               {token.content}
             </span>
           ))
@@ -126,28 +94,26 @@ export function AgentCodeLine({ code, tokens, className }: AgentCodeLineProps) {
     </span>
   );
 }
-
-export function AgentCode({ code, language = "bash", className }: AgentCodeProps) {
-  const tokens = useAgentCodeTokens(code, language);
-  let offset = 0;
-  const lines = code.split("\n").map((content) => {
-    const line = { content, offset };
-    offset += content.length + 1;
-    return line;
-  });
-
+export function AgentCode({
+  code,
+  language = "text",
+  className,
+  streaming = false,
+}: AgentCodeProps) {
+  const tokens = useAgentCodeTokens(code, language, streaming);
   return (
     <pre
+      data-highlight={canHighlight(code) ? "eligible" : "skipped"}
       className={cn(
         "m-0 overflow-x-auto whitespace-pre font-mono text-ui-sm leading-5 text-foreground/85",
         className,
       )}
     >
       <code>
-        {lines.map((line, index) => (
-          <Fragment key={line.offset}>
-            <AgentCodeLine code={line.content} tokens={tokens?.[index]} />
-            {index < lines.length - 1 ? "\n" : null}
+        {code.split("\n").map((line, index) => (
+          <Fragment key={index}>
+            <AgentCodeLine code={line} tokens={tokens?.[index]} />
+            {index < code.split("\n").length - 1 ? "\n" : null}
           </Fragment>
         ))}
       </code>

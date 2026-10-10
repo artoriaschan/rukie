@@ -85,7 +85,6 @@ test("Session snapshots replace deltas, preserve busy presentation and expire on
   });
   expect(store.getState().views.a).toMatchObject({
     busy: true,
-    events: [],
     interactions: { new: { toolName: "read" } },
     snapshot: { messages: [{ role: "assistant", content: "Done" }] },
   });

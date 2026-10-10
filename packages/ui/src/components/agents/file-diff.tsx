@@ -15,7 +15,7 @@ import {
 import {
   type AgentCodeLanguage,
   AgentCodeLine,
-  useAgentCodeTokens,
+  type AgentCodeToken,
 } from "@/components/agents/agent-code";
 import { AgentDisclosure } from "@/components/agents/agent-disclosure";
 import { SPRING_PRESS, SPRING_SWAP } from "@/lib/ease";
@@ -30,6 +30,7 @@ export interface FileDiffLine {
   oldLine?: number;
   newLine?: number;
   content: string;
+  tokens?: AgentCodeToken[];
 }
 
 export interface FileDiffProps {
@@ -71,7 +72,6 @@ export function FileDiff({
   onOpenChange,
   collapseOnComplete = true,
   maxHeight = 220,
-  language = "typescript",
   copyText,
   onCopy,
   className,
@@ -92,8 +92,6 @@ export function FileDiff({
   const additions = lines.filter((line) => line.type === "added").length;
   const deletions = lines.filter((line) => line.type === "removed").length;
   const canCopy = Boolean(copyText || onCopy);
-  const code = lines.map((line) => line.content).join("\n");
-  const tokens = useAgentCodeTokens(code, language);
 
   const setOpen = useCallback(
     (next: boolean) => {
@@ -191,13 +189,12 @@ export function FileDiff({
             <div
               ref={viewportRef}
               data-slot="file-diff-viewport"
-              aria-live="polite"
               className="scrollbar-hide overflow-auto"
               style={{ maxHeight }}
             >
               <div className="font-mono text-ui-sm leading-5">
                 <span className="sr-only">{componentText("component.file-changes")}</span>
-                {lines.map((line, index) => {
+                {lines.map((line) => {
                   const type = line.type ?? "context";
                   return (
                     <div
@@ -225,7 +222,7 @@ export function FileDiff({
                       </span>
                       <AgentCodeLine
                         code={line.content}
-                        tokens={tokens?.[index]}
+                        tokens={line.tokens}
                         className="min-w-0 whitespace-pre px-1.5"
                       />
                     </div>

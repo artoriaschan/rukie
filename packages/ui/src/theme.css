@@ -332,3 +332,10 @@
     --overlay: rgb(0 0 0 / 0.4);
   }
 }
+
+.shiki-token {
+  color: var(--shiki-light, currentColor);
+}
+.dark .shiki-token {
+  color: var(--shiki-dark, currentColor);
+}

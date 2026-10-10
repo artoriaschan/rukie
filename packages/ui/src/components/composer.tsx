@@ -29,6 +29,7 @@ export interface ComposerProps {
   onDraft: (text: string) => void;
   onImages: (images: PromptImages | ((previous: PromptImages) => PromptImages)) => void;
   disabled: boolean;
+  submitting?: boolean;
   running: boolean;
   permissionMode: PermissionMode;
   onPermission: (mode: PermissionMode) => void;
@@ -152,6 +153,7 @@ export function Composer(props: ComposerProps) {
         }}
         aria-label={t("app.prompt")}
         disabled={props.disabled}
+        submitting={props.submitting}
         loading={props.running && !props.draft.trim()}
         onStop={props.onStop}
         onSubmit={props.onSend}

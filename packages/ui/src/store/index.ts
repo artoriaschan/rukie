@@ -12,13 +12,18 @@ import type {
   ContextReport,
 } from "@rukie/shared";
 import { WireError, type ConnectionState } from "../client";
-import { THINKING_LEVELS, PERMISSION_MODES } from "@rukie/shared";
+import { Value } from "typebox/value";
+import { ToolCallViewSchema, THINKING_LEVELS, PERMISSION_MODES } from "@rukie/shared";
+
+import { reduceTranscript } from "./transcript";
+import type { TranscriptState, PermissionDecision } from "../lib/transcript";
 
 type SessionSnapshot = Extract<SessionEvent, { type: "snapshot" }>;
 export interface SessionViewState {
   snapshot?: SessionSnapshot;
-  events: SessionEvent[];
+  transcript?: TranscriptState;
   interactions: Record<string, WirePermissionRequest>;
+  permissionDecisions?: Record<string, PermissionDecision>;
   busy: boolean;
   running?: boolean;
   permissionMode?: PermissionMode;
@@ -66,7 +71,6 @@ export function createDesktopStore() {
     if (message.type === "response" || !("sessionId" in message)) return;
     const state = store.getState();
     const previous = state.views[message.sessionId] ?? {
-      events: [],
       interactions: {},
       busy: false,
     };
@@ -74,7 +78,10 @@ export function createDesktopStore() {
     if (message.type === "interaction_requested")
       next = {
         ...previous,
-        interactions: { ...previous.interactions, [message.identity.epoch]: message.request },
+        interactions: {
+          ...previous.interactions,
+          [message.identity.epoch]: { ...message.request, identity: message.identity },
+        },
       };
     else if (message.type === "interaction_settled") {
       const interactions = { ...previous.interactions };
@@ -96,17 +103,18 @@ export function createDesktopStore() {
             .reduce((total, category) => total + category.tokens, 0),
       };
     else if (message.type === "snapshot")
-      next = { ...previous, snapshot: message, events: [], running: Boolean(message.run) };
+      next = { ...previous, snapshot: message, running: Boolean(message.run) };
     else
       next = {
         ...previous,
-        events: [...previous.events, message],
         ...(message.type === "run_start"
           ? { running: true }
           : message.type === "run_end"
             ? { running: false }
             : {}),
       };
+    if (!["interaction_requested", "interaction_settled", "session_state"].includes(message.type))
+      next.transcript = reduceTranscript(previous.transcript, message as SessionEvent);
     store.setState({ views: { ...state.views, [message.sessionId]: next } });
   };
   const select = (selected: string | null, target: string | null = null) =>
@@ -118,7 +126,6 @@ export function createDesktopStore() {
         ...state.views,
         [sessionId]: {
           ...state.views[sessionId],
-          events: state.views[sessionId]?.events ?? [],
           interactions: state.views[sessionId]?.interactions ?? {},
           busy,
         },
@@ -129,7 +136,31 @@ export function createDesktopStore() {
     if (!Array.isArray(input) || !input.every(isModel)) throw new WireError("invalid_command");
     store.setState({ models: input });
   };
-  return { ...store, receive, select, setBusy, setModels };
+  const resolveInteraction = (sessionId: string, epoch: string, decision?: PermissionDecision) => {
+    const state = store.getState(),
+      previous = state.views[sessionId];
+    if (!previous) return;
+    const interactions = { ...previous.interactions };
+    delete interactions[epoch];
+    store.setState({
+      views: {
+        ...state.views,
+        [sessionId]: {
+          ...previous,
+          interactions,
+          ...(decision
+            ? {
+                permissionDecisions: {
+                  ...previous.permissionDecisions,
+                  [epoch]: decision,
+                },
+              }
+            : {}),
+        },
+      },
+    });
+  };
+  return { ...store, receive, select, setBusy, setModels, resolveInteraction };
 }
 export function recentSessions(state: Pick<DesktopState, "sessions" | "preferences">) {
   const field = state.preferences.sort === "created" ? "createdAt" : "updatedAt";
@@ -247,6 +278,13 @@ function validEnvelope(input: unknown): boolean {
       record(input.request) &&
       typeof input.request.toolName === "string" &&
       typeof input.request.toolCallId === "string" &&
+      (input.request.callView === undefined ||
+        Value.Check(ToolCallViewSchema, input.request.callView)) &&
+      (input.request.reason === undefined || typeof input.request.reason === "string") &&
+      (input.request.origin === undefined ||
+        (record(input.request.origin) &&
+          typeof input.request.origin.agentId === "string" &&
+          typeof input.request.origin.description === "string")) &&
       PERMISSION_MODES.some((mode) => record(input.request) && mode === input.request.mode) &&
       record(input.request.sessionAllow) &&
       ["tool", "command", "directory", "domain"].includes(
@@ -260,6 +298,6 @@ function validEnvelope(input: unknown): boolean {
       Array.isArray(input.compactions) &&
       typeof input.model === "string"
     );
-  // Session deltas are stored without inspecting their payload; Conversation owns validation before use.
+  // Transcript projection validates the fields it consumes from each native delta.
   return true;
 }

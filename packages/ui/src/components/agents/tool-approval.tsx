@@ -43,6 +43,10 @@ export interface ToolApprovalProps {
   onAlwaysAllow?: () => void;
   onDeny?: () => void;
   className?: string;
+  disabled?: boolean;
+  approveLabel?: ReactNode;
+  sessionAllowLabel?: ReactNode;
+  denyLabel?: ReactNode;
 }
 
 function getStatusCopy(componentText: ComponentTranslator, status: ToolApprovalStatus) {
@@ -96,6 +100,10 @@ export function ToolApproval({
   onAlwaysAllow,
   onDeny,
   className,
+  disabled = false,
+  approveLabel,
+  sessionAllowLabel,
+  denyLabel,
 }: ToolApprovalProps) {
   const componentText = useComponentText();
   const title = titleProp ?? componentText("component.allow-this-tool-to-run");
@@ -223,30 +231,34 @@ export function ToolApproval({
           >
             <motion.button
               type="button"
+              data-permission-primary
+              disabled={disabled}
               onClick={onApprove}
               whileTap={reduce ? undefined : { scale: 0.97 }}
               transition={SPRING_PRESS}
               className="rounded-xl bg-foreground px-3 py-1.5 text-ui-sm font-medium text-background outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
-              {componentText("component.allow-once")}
+              {approveLabel ?? componentText("component.allow-once")}
             </motion.button>
             {onAlwaysAllow ? (
               <motion.button
                 type="button"
+                disabled={disabled}
                 onClick={onAlwaysAllow}
                 whileTap={reduce ? undefined : { scale: 0.97 }}
                 transition={SPRING_PRESS}
                 className="rounded-xl border border-border/60 bg-background px-3 py-1.5 text-ui-sm font-medium text-foreground outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
               >
-                {componentText("component.always-allow")}
+                {sessionAllowLabel ?? componentText("component.always-allow")}
               </motion.button>
             ) : null}
             <button
               type="button"
+              disabled={disabled}
               onClick={onDeny}
               className="rounded-xl px-3 py-1.5 text-ui-sm font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
             >
-              {componentText("component.deny")}
+              {denyLabel ?? componentText("component.deny")}
             </button>
           </motion.div>
         ) : null}

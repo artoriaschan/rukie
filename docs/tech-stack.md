@@ -140,6 +140,6 @@ CI 与发布 workflows 的官方 Actions 使用 Node.js 24 runtime：checkout 7.
 
 ### UI registry runtime
 
-`packages/ui` installs complete beUI source and shadcn dropdown-menu through shadcn CLI 4.21.4. Runtime dependencies are motion 14.1.0, @floating-ui/dom 1.8.0, shiki 4.5.0, radix-ui 1.7.0, tw-animate-css 1.4.0, clsx 2.1.1, tailwind-merge 3.7.0, lucide-react 1.55.0 and Tailwind CSS 4.3.3. The Vite Tailwind plugin is 4.3.3; React DOM declarations are @types/react-dom 19.2.3. Code highlighting imports five language modules and GitHub Light/Dark themes through shiki/core.
+`packages/ui` installs complete beUI source and shadcn dropdown-menu through shadcn CLI 4.21.4. Runtime dependencies are motion 14.1.0, @floating-ui/dom 1.8.0, shiki 4.5.0, radix-ui 1.7.0, tw-animate-css 1.4.0, clsx 2.1.1, tailwind-merge 3.7.0, lucide-react 1.55.0 and Tailwind CSS 4.3.3. The Vite Tailwind plugin is 4.3.3; React DOM declarations are @types/react-dom 19.2.3. Code highlighting shares shiki/core with the JavaScript raw engine, @shikijs/langs-precompiled 4.5.0 and GitHub Light/Dark themes; streaming uses @shikijs/stream 4.5.0. Transcript virtualization uses @tanstack/react-virtual 3.14.14, ANSI output uses anser 2.3.5, unified diff uses diff 8.0.4, and React Markdown parsing uses mdast-util-from-markdown 2.1.0 with @types/mdast 4.0.4.
 
 ui 状态使用 Zustand vanilla store，React 订阅由 app 层的 `useSyncExternalStore` 接线，遵循 ADR-0029 的无 React store 边界。
