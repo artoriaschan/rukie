@@ -117,6 +117,7 @@ test("invalid and busy model changes preserve the current model and settings fil
   await expect(session.setModelSelection({ model: "switch/no-such-model" })).rejects.toThrow(
     "Unknown model",
   );
+  await expect(session.setModelSelection({ model: "" })).rejects.toThrow("Unknown model");
   expect(session.model).toBe("switch/first");
   expect(session.toolState("model")).toBeUndefined();
   delete process.env.RUKIE_SWITCH_TEST_KEY;

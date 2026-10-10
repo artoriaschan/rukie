@@ -2790,7 +2790,7 @@ export async function createSession(options: SessionOptions): Promise<Session> {
       },
       async setModelSelection(selection) {
         assertAvailable(true);
-        const next = selection.model ? selectedModel(selection.model) : model;
+        const next = selection.model === undefined ? model : selectedModel(selection.model);
         const requested = selection.thinkingLevel ?? thinkingLevel;
         const nextThinkingLevel = supportedThinkingLevel(next, requested);
         const spec = `${next.provider}/${next.id}`;
