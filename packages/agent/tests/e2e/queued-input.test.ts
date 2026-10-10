@@ -2,6 +2,7 @@ import { crashQueuedInputs } from "../helpers/native-recovery.ts";
 import { expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
+import { fakeModel } from "../helpers/fake-model.ts";
 import { createSession } from "../../src/index.ts";
 import { recordedNativeModel } from "../helpers/recorded-native-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
@@ -50,6 +51,11 @@ test("queued inputs keep their identity and each enters a separate user message 
     fake.calls[2]!.finish(fauxAssistantMessage("third reply"));
     await run;
     await session.waitForRequest(third);
+    expect(session.runSummaries()).toHaveLength(3);
+    expect(session.runSummaries().map((summary) => summary.afterMessage)).toEqual(
+      [...session.runSummaries()].map((summary) => summary.afterMessage).toSorted((a, b) => a - b),
+    );
+    expect(new Set(session.runSummaries().map((summary) => summary.afterMessage)).size).toBe(3);
     expect(session.queuedInputs).toEqual([]);
     expect(await session.withdraw(second)).toEqual({ status: "not_queued" });
   } finally {
@@ -118,6 +124,7 @@ test("a selected queued input can steer at the next tool boundary", async () => 
     fake.calls[1]!.finish(fauxAssistantMessage("steered"));
     await run;
     await session.waitForRequest(selected);
+    expect(session.runSummaries()).toHaveLength(1);
   } finally {
     await session.abort();
     await session.close();
@@ -155,7 +162,68 @@ test("crash recovery exposes acknowledged queued inputs and admits them in order
     await fake.until(() => fake.calls.length === 3, ctx);
     fake.calls[2]!.finish(fauxAssistantMessage("recovered second input"));
     await session.waitForRequest(accepted.requestId);
+    await session.waitForIdle();
+    expect(session.runSummaries()).toHaveLength(3);
     expect(session.queuedInputs).toEqual([]);
+  } finally {
+    await session.abort();
+    await session.close();
+    await dirs.cleanup();
+  }
+});
+
+test("idle followUp publishes one result and persisted summary just like run", async () => {
+  const dirs = await tempDirs();
+  const fake = fakeModel([
+    fauxAssistantMessage("first reply"),
+    fauxAssistantMessage("second reply"),
+  ]);
+  let session = await createSession({ ...dirs, ...fake });
+  const results: string[] = [];
+  session.subscribe((event) => {
+    if (event.type === "result") results.push(event.text);
+  });
+  try {
+    const first = await session.followUp("first");
+    await session.waitForIdle();
+    expect((await session.waitForRequest(first)).text).toBe("first reply");
+    expect(results).toEqual(["first reply"]);
+    expect(session.runSummaries()).toHaveLength(1);
+    await session.run("second");
+    expect(results).toHaveLength(2);
+    expect(session.runSummaries()).toHaveLength(2);
+    await session.close();
+    session = await createSession({ ...dirs, ...fake, resumeId: session.id });
+    expect(session.runSummaries()).toHaveLength(2);
+    const snapshots: string[] = [];
+    session.subscribe((event) => {
+      if (event.type === "snapshot")
+        snapshots.push(...event.messages.map((m) => JSON.stringify(m)));
+    });
+    expect(snapshots.join(" ")).toContain("first reply");
+    expect(snapshots.join(" ")).toContain("second reply");
+  } finally {
+    await session.abort();
+    await session.close();
+    await dirs.cleanup();
+  }
+});
+
+test("abort then close preserves a followUp terminal summary", async () => {
+  const dirs = await tempDirs();
+  const fake = recordedNativeModel();
+  const ctx = withAbortSignal(AbortSignal.timeout(5000), BACKGROUND_CONTEXT);
+  let session = await createSession({ ...dirs, ...fake });
+  session.subscribe(() => fake.notify());
+  try {
+    await session.followUp("abort this");
+    await fake.until(() => fake.calls.length === 1, ctx);
+    await session.abort();
+    expect(session.runSummaries()).toHaveLength(1);
+    await session.close();
+    session = await createSession({ ...dirs, ...fake, resumeId: session.id });
+    expect(session.runSummaries()).toHaveLength(1);
+    expect(session.runSummaries()[0]?.success).toBe(false);
   } finally {
     await session.abort();
     await session.close();

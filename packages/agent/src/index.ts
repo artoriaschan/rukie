@@ -66,3 +66,5 @@ export type { BackgroundActivity } from "./session/events.ts";
 export type { SessionEvent } from "./session/events.ts";
 
 export type { InteractionIdentity } from "./interaction/index.ts";
+
+export { readSessionSnapshot } from "./session/read-only.ts";

@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
-import { mkdir, readdir } from "node:fs/promises";
+import { mkdir, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -57,6 +57,8 @@ export interface SessionSummary {
   id: string;
   title: string;
   titleSource: TitleSource;
+  /** Birth time of the store directory; independent of subsequent Transcript updates. */
+  createdAt: number;
   updatedAt: number;
   messageCount: number;
   model: string;
@@ -73,11 +75,11 @@ export interface SessionStore {
   list(context: Context, onWarning?: (warning: string) => void): Promise<SessionSummary[]>;
   key(id: string): string;
 }
-const liveReaders = new Map<string, () => Promise<SessionSummary>>();
+const liveReaders = new Map<string, () => Promise<Omit<SessionSummary, "createdAt">>>();
 export function registerSessionReader(
   store: SessionStore,
   id: string,
-  read: () => Promise<SessionSummary>,
+  read: () => Promise<Omit<SessionSummary, "createdAt">>,
 ) {
   const key = store.key(id);
   if (liveReaders.has(key))
@@ -201,9 +203,10 @@ export function createJsonlStore(options: { cwd: string; homeDir: string }): Ses
       for (const directory of directories) {
         if (!directory.isDirectory()) continue;
         try {
+          const createdAt = (await stat(key(directory.name))).birthtimeMs;
           const reader = liveReaders.get(key(directory.name));
           if (reader) {
-            results.push(await reader());
+            results.push({ ...(await reader()), createdAt });
             continue;
           }
           if (!(await Bun.file(join(key(directory.name), "main.jsonl")).exists())) continue;
@@ -227,6 +230,7 @@ export function createJsonlStore(options: { cwd: string; homeDir: string }): Ses
               title: metadata.title,
               titleSource: metadata.titleSource,
               model: metadata.model,
+              createdAt,
               updatedAt: metadata.updatedAt,
               messageCount: metadata.messageCount,
             });
@@ -247,6 +251,32 @@ export function createJsonlStore(options: { cwd: string; homeDir: string }): Ses
     },
   };
 }
+/** Observe committed storage without acquiring a writer lease, recovery or repair. The callback must only read. */
+export async function readSessionStorage<T>(
+  options: { cwd: string; homeDir: string; id: string },
+  read: (storage: Storage) => Promise<T>,
+): Promise<T> {
+  validId(options.id);
+  const directory = createJsonlStore(options).key(options.id);
+  if (!(await Bun.file(join(directory, "main.jsonl")).exists()))
+    throw createUserVisibleError(`Session not found: ${options.id}`, {
+      code: "session-not-found",
+      params: { id: options.id },
+    });
+  const files = new NodeExecutionEnv({ cwd: options.cwd });
+  let storage: Storage | undefined;
+  try {
+    storage = await JsonlStorage.open(directory, readonlyFiles(files), BACKGROUND_CONTEXT);
+    return await read(storage);
+  } finally {
+    try {
+      await storage?.close(BACKGROUND_CONTEXT);
+    } finally {
+      await files.cleanup(BACKGROUND_CONTEXT);
+    }
+  }
+}
+
 export async function listSessions(options: {
   cwd: string;
   homeDir?: string;

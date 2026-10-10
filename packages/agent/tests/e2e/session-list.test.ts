@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, test, setSystemTime } from "bun:test";
 import {
   createAssistantMessageEventStream,
   fauxAssistantMessage,
@@ -21,6 +21,7 @@ import { tempDirs } from "../helpers/temp-dirs.ts";
 
 function memoryStore(): SessionStore & { close(): Promise<void> } {
   const storages = new Map<string, MemoryStorage>();
+  const created = new Map<string, number>();
   const root = crypto.randomUUID();
   const retained = (storage: MemoryStorage) =>
     new Proxy(storage, {
@@ -38,6 +39,7 @@ function memoryStore(): SessionStore & { close(): Promise<void> } {
     async open({ id = crypto.randomUUID() }) {
       const storage = storages.get(id) ?? new MemoryStorage();
       storages.set(id, storage);
+      if (!created.has(id)) created.set(id, Date.now());
       // The test backend owns the retained in-memory store across host leases.
       return {
         id,
@@ -53,7 +55,15 @@ function memoryStore(): SessionStore & { close(): Promise<void> } {
           const metadata = await native.snapshot(SessionMetadataDoc, context);
           if (metadata) {
             const { id, title, titleSource, model, updatedAt, messageCount } = metadata;
-            results.push({ id, title, titleSource, model, updatedAt, messageCount });
+            results.push({
+              id,
+              title,
+              titleSource,
+              model,
+              createdAt: created.get(id)!,
+              updatedAt,
+              messageCount,
+            });
           }
         } finally {
           await native.close(BACKGROUND_CONTEXT);
@@ -88,6 +98,7 @@ test("lists the current project's named sessions by native modification time", a
       model: "faux/faux-1",
     });
     expect(Object.keys(sessions[0]!).sort()).toEqual([
+      "createdAt",
       "id",
       "messageCount",
       "model",
@@ -308,6 +319,32 @@ test("listing borrows the live Session's native store while its Run and title ge
     title.push({ type: "done", reason: "stop", message: generatedTitle });
     title.end(generatedTitle);
     await session.close();
+    await dirs.cleanup();
+  }
+});
+
+test("creation time is the store directory birth time and remains distinct from updates", async () => {
+  const dirs = await tempDirs();
+  const fake = fakeModel([]);
+  const first = await createSession({ ...dirs, ...fake });
+  const second = await createSession({ ...dirs, ...fake });
+  try {
+    const initial = await listSessions(dirs);
+    const older = initial.find((summary) => summary.id === first.id)!;
+    const newer = initial.find((summary) => summary.id === second.id)!;
+    expect(older.createdAt).toBeLessThan(newer.createdAt);
+    setSystemTime(new Date(Math.max(older.updatedAt, newer.updatedAt) + 1000));
+    await first.rename("updated oldest");
+    const updated = await listSessions(dirs);
+    expect(updated.map((summary) => summary.id)).toEqual([first.id, second.id]);
+    expect(
+      updated.toSorted((a, b) => b.createdAt - a.createdAt).map((summary) => summary.id),
+    ).toEqual([second.id, first.id]);
+    expect(updated.find((summary) => summary.id === first.id)?.createdAt).toBe(older.createdAt);
+  } finally {
+    setSystemTime();
+    await first.close();
+    await second.close();
     await dirs.cleanup();
   }
 });
