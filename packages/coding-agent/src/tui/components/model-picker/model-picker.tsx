@@ -23,6 +23,7 @@ export function ModelPicker({
   notice,
   onPick,
   onTab,
+  onWheel,
 }: {
   tabs: readonly ModelProviderTab[];
   thinkingLevel: ThinkingLevel;
@@ -40,11 +41,22 @@ export function ModelPicker({
   notice?: string;
   onPick(index: number): void;
   onTab(index: number): void;
+  onWheel(delta: number): void;
 }) {
   const t = createTuiI18n(locale);
   const models = query ? filteredModels : (tabs[tab]?.models ?? []);
-  const capabilities = maxHeight >= 10;
-  const count = Math.max(1, Math.floor((maxHeight - 7) / (capabilities ? 2 : 1)));
+  const width = Math.max(1, columns - 4);
+  const spacious = maxHeight >= 14 && Bun.stringWidth(t("model.hint")) <= width;
+  const shortHint = maxHeight < 9 || Bun.stringWidth(t("model.hint")) > width;
+  const capabilities = maxHeight >= 9;
+  const count = Math.max(1, Math.floor((maxHeight - (spacious ? 10 : 7)) / (capabilities ? 2 : 1)));
+  const providerWindow = stripWindow(
+    tabs.map((provider) => provider.name),
+    tab,
+    width,
+  );
+  const levels = models[focus]?.thinkingLevels ?? [];
+  const levelWindow = stripWindow(levels, Math.max(0, levels.indexOf(thinkingLevel)), width);
   const start = Math.max(0, Math.min(models.length - count, focus - Math.floor(count / 2)));
   return (
     <ThemedBox
@@ -53,6 +65,7 @@ export function ModelPicker({
       color="permission"
       paddingX={1}
       flexShrink={0}
+      onWheel={(event) => onWheel(event.deltaY)}
     >
       <ThemedText color="permission" bold wrap="truncate">
         {t("model.title")}
@@ -65,19 +78,31 @@ export function ModelPicker({
         </ThemedText>
       ) : (
         <>
+          <HintLine>{t(shortHint ? "model.hint-short" : "model.hint")}</HintLine>
+          {spacious && <ThemedBox height={1} />}
           {query ? (
             <ThemedText wrap="truncate">{t("model.filter", { query })}</ThemedText>
           ) : (
             <ThemedBox flexDirection="row" height={1} flexShrink={0}>
-              {tabs.map((provider, index) => (
-                <ThemedBox key={provider.id} onClick={() => onTab(index)} flexShrink={1}>
-                  <ThemedText
-                    bold={index === tab}
-                    color={index === tab ? "suggestion" : "subtle"}
-                    wrap="truncate"
-                  >{`${index === tab ? "[" : " "}${provider.name}${index === tab ? "]" : " "} `}</ThemedText>
-                </ThemedBox>
-              ))}
+              {providerWindow.start > 0 && <ThemedText color="subtle">‹ </ThemedText>}
+              {tabs.slice(providerWindow.start, providerWindow.end).map((provider, offset) => {
+                const index = providerWindow.start + offset;
+                return (
+                  <ThemedBox
+                    key={provider.id}
+                    onClick={() => onTab(index)}
+                    flexShrink={0}
+                    width={Math.min(width - 4, Bun.stringWidth(provider.name) + 3)}
+                  >
+                    <ThemedText
+                      bold={index === tab}
+                      color={index === tab ? "suggestion" : "subtle"}
+                      wrap="truncate"
+                    >{`${index === tab ? "[" : " "}${provider.name}${index === tab ? "]" : " "} `}</ThemedText>
+                  </ThemedBox>
+                );
+              })}
+              {providerWindow.end < tabs.length && <ThemedText color="subtle">›</ThemedText>}
             </ThemedBox>
           )}
           {models.length === 0 && <ThemedText color="subtle">{t("model.empty")}</ThemedText>}
@@ -122,11 +147,18 @@ export function ModelPicker({
               </ListItem>
             );
           })}
+          {spacious && <ThemedBox height={1} />}
           {maxHeight >= 3 &&
             (models[focus]?.reasoning ? (
               <ThemedBox flexDirection="row" height={1} flexShrink={0}>
-                {models[focus]!.thinkingLevels.map((level) => (
-                  <ThemedBox key={level} onClick={() => onThinking(level)} flexShrink={1}>
+                {levelWindow.start > 0 && <ThemedText color="subtle">‹ </ThemedText>}
+                {levels.slice(levelWindow.start, levelWindow.end).map((level) => (
+                  <ThemedBox
+                    key={level}
+                    onClick={() => onThinking(level)}
+                    flexShrink={0}
+                    width={Bun.stringWidth(level) + 3}
+                  >
                     <ThemedText
                       color={level === thinkingLevel ? "suggestion" : "subtle"}
                       bold={level === thinkingLevel}
@@ -136,14 +168,42 @@ export function ModelPicker({
                     </ThemedText>
                   </ThemedBox>
                 ))}
+                {levelWindow.end < levels.length && <ThemedText color="subtle">›</ThemedText>}
               </ThemedBox>
             ) : (
               <ThemedText color="inactive">{t("model.thinking-disabled")}</ThemedText>
             ))}
+          {spacious && <HintLine>{t("model.thinking-description")}</HintLine>}
           <HintLine>{notice ?? t("model.providers-note")}</HintLine>
         </>
       )}
-      <HintLine>{t("model.hint")}</HintLine>
+      {(loading || failed) && <HintLine>{t("model.hint-short")}</HintLine>}
     </ThemedBox>
   );
+}
+
+/** Keep the focused cell intact; reserve the two continuation markers on overflow. */
+function stripWindow(labels: readonly string[], focus: number, width: number) {
+  const sizes = labels.map((label) => Bun.stringWidth(label) + 3);
+  if (sizes.reduce((sum, size) => sum + size, 0) <= width) return { start: 0, end: labels.length };
+  let start = focus;
+  let end = Math.min(labels.length, focus + 1);
+  let used = sizes[focus] ?? 0;
+  const budget = Math.max(1, width - 4);
+  while (start > 0 || end < labels.length) {
+    const left = start > 0 ? sizes[start - 1]! : Infinity;
+    const right = end < labels.length ? sizes[end]! : Infinity;
+    const preferLeft = focus - start <= end - focus - 1;
+    if (preferLeft && used + left <= budget) {
+      used += left;
+      start--;
+    } else if (used + right <= budget) {
+      used += right;
+      end++;
+    } else if (used + left <= budget) {
+      used += left;
+      start--;
+    } else break;
+  }
+  return { start, end };
 }
