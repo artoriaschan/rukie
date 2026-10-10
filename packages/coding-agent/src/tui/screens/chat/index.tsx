@@ -732,7 +732,17 @@ function Chat({
   const modelPickerRef = useRef<ModelPickerState | undefined>(undefined);
   const modelTabs = modelProviderTabs(models, session.model);
   const modelPickerDraftImages = useRef(false);
+  const modelPickerReading = useRef<ReadingPosition | undefined>(undefined);
   const showModelPicker = (next: ModelPickerState | undefined) => {
+    if (next && modelPickerRef.current === undefined && !modelPickerReading.current)
+      modelPickerReading.current = captureSourcePosition(
+        readPosition(body.current, columns)!,
+        sources,
+      );
+    if (!next && modelPickerRef.current !== undefined) {
+      pendingRestore.current = modelPickerReading.current;
+      modelPickerReading.current = undefined;
+    }
     modelPickerRef.current = next;
     if (next === undefined) modelPickerDraftImages.current = false;
     setModelPicker(next);
@@ -900,7 +910,7 @@ function Chat({
       anchor: saved.anchor ? { ...saved.anchor, sourceOffset: undefined } : undefined,
     });
     pendingRestore.current = undefined;
-  }, [view, columns, sources]);
+  }, [view, columns, sources, modelPicker]);
   const chatScrollRef = usePanelScroll(body, savedChatScroll.current, columns, (position) => {
     if (pendingRestore.current) {
       const saved = pendingRestore.current;
@@ -1429,6 +1439,10 @@ function Chat({
       if (spec) void switchModel(spec, hadDraftImages);
       else {
         modelPickerDraftImages.current = hadDraftImages;
+        modelPickerReading.current = captureSourcePosition(
+          readPosition(body.current, columns)!,
+          sources,
+        );
         // Submit can run before Chat handles the same Enter event. Open after
         // that event finishes so it cannot also pick the current model.
         queueMicrotask(() => {
@@ -1551,7 +1565,12 @@ function Chat({
   const sendInput = (prompt: string) => {
     if (previewRef.current) return;
     if (executeCommand(prompt)) {
-      if (!mcpPanel.getSnapshot() && viewRef.current !== "jobs" && viewRef.current !== "context")
+      if (
+        !modelPickerReading.current &&
+        !mcpPanel.getSnapshot() &&
+        viewRef.current !== "jobs" &&
+        viewRef.current !== "context"
+      )
         body.current?.scrollToBottom();
       change("");
       composer.clear();
@@ -1650,7 +1669,7 @@ function Chat({
     (modelNoticeHeight > 0 &&
       rows - pinnedHeight - footerHeight - panelMinimum - 1 <
         promptMaxLines + 3 + modelNoticeHeight) ||
-    ((!!side || !!rewind || !!resumePicker || mcpVisible) && rows < 20) ||
+    ((!!side || !!rewind || !!resumePicker || !!modelPicker || mcpVisible) && rows < 20) ||
     (!!interaction &&
       rows - pinnedHeight - footerHeight - minimumDialogHeight - dialogGap - panelMinimum <
         promptMaxLines + 3);
@@ -1709,7 +1728,7 @@ function Chat({
         rewindMaxHeight,
       ).height
     : 0;
-  const modelPickerHeight = modelPicker === undefined ? 0 : Math.min(12, available - panelMinimum);
+  const modelPickerHeight = modelPicker === undefined ? 0 : Math.min(14, available - panelMinimum);
   const resumePickerHeight = resumePicker ? Math.min(14, available - panelMinimum) : 0;
   const mcpMaxHeight = mcpVisible ? Math.max(0, Math.min(14, available - panelMinimum)) : 0;
   const mcpHeight = mcpVisible
@@ -3236,6 +3255,26 @@ function Chat({
                   maxHeight={modelPickerHeight}
                   locale={locale}
                   onPick={selectModel}
+                  onWheel={(delta) => {
+                    const picker = modelPickerRef.current;
+                    if (!picker || picker.loading || picker.failed) return;
+                    const count = picker.query
+                      ? filterModelTabs(modelTabs, picker.query).length
+                      : (modelTabs[picker.tab]?.models.length ?? 0);
+                    if (!count) return;
+                    const focus = picker.query
+                      ? picker.filterFocus
+                      : (picker.focuses[picker.tab] ?? 0);
+                    const next = Math.max(0, Math.min(count - 1, focus + (delta > 0 ? 1 : -1)));
+                    const focuses = [...picker.focuses];
+                    if (!picker.query) focuses[picker.tab] = next;
+                    showModelPicker({
+                      ...picker,
+                      focuses,
+                      filterFocus: picker.query ? next : picker.filterFocus,
+                      notice: undefined,
+                    });
+                  }}
                   onTab={(tab) =>
                     showModelPicker({ ...modelPickerRef.current!, tab, notice: undefined })
                   }
