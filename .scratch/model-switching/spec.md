@@ -115,9 +115,9 @@ Agent Core 用一个统一入口同时修改模型和 Thinking Level，切换只
 
 ## ADR Coverage
 
-| 决定或修改                                                            | 归属                                                               | 理由                                                                            |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
-| Model Selection 原地切换，由原生 Agent document 保存，不 fork Session | 沿用 [ADR-0024](../../docs/adr/0024-adopt-pi-durable-harness.md)   | 模型和档位继续由原生 AgentDoc 持有，Transcript 不分叉                           |
-| 面板文案只在 frontend                                                 | 沿用 [ADR-0008](../../docs/adr/0008-locale-agnostic-agent-core.md) | Agent Core 只返回事实（目录、实际生效的选择），文案由 TUI 生成                  |
-| 小终端降级与阅读位置                                                  | 沿用 [ADR-0006](../../docs/adr/0006-fullscreen-tui.md)             | 面板高度预算不破坏 bottom-follow 和小终端处理                                   |
-| 只对 Session 生效、只往低档降、去掉 Recent Models                     | 无需 ADR                                                           | 均可低成本撤回，不涉及模块所有权或持久化格式的长期取舍；术语已记录在 CONTEXT.md |
+| 决定或修改                                                            | 归属                                                               | 理由                                                                                                                    |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| Model Selection 原地切换，由原生 Agent document 保存，不 fork Session | 沿用 [ADR-0024](../../docs/adr/0024-adopt-pi-durable-harness.md)   | 模型和档位继续由原生 AgentDoc 持有，v2 Tool State 在同一事务写入镜像；Rewind/resume 从 AgentDoc 恢复，Transcript 不分叉 |
+| 面板文案只在 frontend                                                 | 沿用 [ADR-0008](../../docs/adr/0008-locale-agnostic-agent-core.md) | Agent Core 只返回事实（目录、实际生效的选择），文案由 TUI 生成                                                          |
+| 小终端降级与阅读位置                                                  | 沿用 [ADR-0006](../../docs/adr/0006-fullscreen-tui.md)             | 面板高度预算不破坏 bottom-follow 和小终端处理                                                                           |
+| 只对 Session 生效、只往低档降、去掉 Recent Models                     | 无需 ADR                                                           | 均可低成本撤回，不涉及模块所有权或持久化格式的长期取舍；术语已记录在 CONTEXT.md                                         |

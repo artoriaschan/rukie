@@ -133,7 +133,7 @@ test("/resume displays two-row session metadata, Escape preserves the current ch
       });
       await seed.rename("Stored session");
       await seed.run("Stored prompt");
-      await seed.setModel("resume-test/second");
+      await seed.setModelSelection({ model: "resume-test/second" });
       await seed.close();
       const store = createJsonlStore({ cwd: root, homeDir: root });
       let lists = 0;

@@ -36,7 +36,7 @@ async function seedHookHistory(session: Session) {
   await session.run("inspect old work");
   await session.run("inspect second work");
   await session.run("recent retained work");
-  await session.setModel("hook-window/small");
+  await session.setModelSelection({ model: "hook-window/small" });
 }
 
 test.each([undefined, "keep API details"])(
@@ -295,7 +295,7 @@ test("PostCompact receives the stored summary after compaction_end, then compact
     { event: "PostCompact", message: "summary saved" },
   ]);
   expect(JSON.stringify(fake.contexts[2])).not.toContain("critical-project-state");
-  await session.setModel("hook-window/large");
+  await session.setModelSelection({ model: "hook-window/large" });
   await session.run("third");
   expect(fake.contexts[3]!.messages.slice(-2)).toMatchObject([
     { role: "user", content: [{ text: "third" }] },
@@ -395,7 +395,7 @@ test.each(["PreCompact", "PostCompact", "SessionStart"] as const)(
             (message.stopReason === "error" || message.stopReason === "aborted"),
         ),
     ).toHaveLength(0);
-    await session.setModel("hook-window/large");
+    await session.setModelSelection({ model: "hook-window/large" });
     expect((await session.run("next prompt")).text).toBe("next answer");
   },
 );
