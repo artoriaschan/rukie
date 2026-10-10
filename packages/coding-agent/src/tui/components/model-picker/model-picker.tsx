@@ -1,4 +1,5 @@
 import { HintLine, ListItem, ThemedBox, ThemedText } from "../../../ink/index.ts";
+import type { ModelCatalogEntry } from "@rukie/agent";
 import type { Locale } from "@rukie/i18n";
 import { createTuiI18n } from "../../../view/i18n";
 import { modelRowText, type ModelProviderTab } from "../../../view/model-picker";
@@ -8,6 +9,8 @@ export function ModelPicker({
   tabs,
   tab,
   focus,
+  query,
+  filteredModels,
   current,
   maxHeight,
   columns,
@@ -21,6 +24,8 @@ export function ModelPicker({
   tabs: readonly ModelProviderTab[];
   tab: number;
   focus: number;
+  query: string;
+  filteredModels: readonly ModelCatalogEntry[];
   current: string;
   maxHeight: number;
   columns: number;
@@ -32,7 +37,7 @@ export function ModelPicker({
   onTab(index: number): void;
 }) {
   const t = createTuiI18n(locale);
-  const models = tabs[tab]?.models ?? [];
+  const models = query ? filteredModels : (tabs[tab]?.models ?? []);
   const capabilities = maxHeight >= 10;
   const count = Math.max(1, Math.floor((maxHeight - 6) / (capabilities ? 2 : 1)));
   const start = Math.max(0, Math.min(models.length - count, focus - Math.floor(count / 2)));
@@ -55,17 +60,22 @@ export function ModelPicker({
         </ThemedText>
       ) : (
         <>
-          <ThemedBox flexDirection="row" height={1} flexShrink={0}>
-            {tabs.map((provider, index) => (
-              <ThemedBox key={provider.id} onClick={() => onTab(index)} flexShrink={1}>
-                <ThemedText
-                  bold={index === tab}
-                  color={index === tab ? "suggestion" : "subtle"}
-                  wrap="truncate"
-                >{`${index === tab ? "[" : " "}${provider.name}${index === tab ? "]" : " "} `}</ThemedText>
-              </ThemedBox>
-            ))}
-          </ThemedBox>
+          {query ? (
+            <ThemedText wrap="truncate">{t("model.filter", { query })}</ThemedText>
+          ) : (
+            <ThemedBox flexDirection="row" height={1} flexShrink={0}>
+              {tabs.map((provider, index) => (
+                <ThemedBox key={provider.id} onClick={() => onTab(index)} flexShrink={1}>
+                  <ThemedText
+                    bold={index === tab}
+                    color={index === tab ? "suggestion" : "subtle"}
+                    wrap="truncate"
+                  >{`${index === tab ? "[" : " "}${provider.name}${index === tab ? "]" : " "} `}</ThemedText>
+                </ThemedBox>
+              ))}
+            </ThemedBox>
+          )}
+          {models.length === 0 && <ThemedText color="subtle">{t("model.empty")}</ThemedText>}
           {models.slice(start, start + count).map((model, index) => {
             const missing = model.custom && !model.authenticated;
             const prefix = model.spec === current ? "✓ " : "";

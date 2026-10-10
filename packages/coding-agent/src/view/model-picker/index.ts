@@ -56,3 +56,18 @@ export function modelRowText(
   const nameWidth = columns - measure(spec) - 1;
   return { name: model.name === model.spec ? "" : truncate(model.name, nameWidth), spec };
 }
+
+/** Search the visible catalog in provider order without changing tab-local focus. */
+export function filterModelTabs(
+  tabs: readonly ModelProviderTab[],
+  query: string,
+): ModelCatalogEntry[] {
+  const needle = query.toLowerCase();
+  return tabs.flatMap((tab) =>
+    tab.models.filter((model) =>
+      [model.name, model.spec, model.providerName].some((value) =>
+        value.toLowerCase().includes(needle),
+      ),
+    ),
+  );
+}
