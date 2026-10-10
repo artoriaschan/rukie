@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { ModelCatalogEntry } from "@rukie/agent";
-import { modelProviderTabs, modelRowText } from "../../../src/view/model-picker";
+import { filterModelTabs, modelProviderTabs, modelRowText } from "../../../src/view/model-picker";
 
 const model = (providerId: string, custom: boolean, authenticated: boolean): ModelCatalogEntry => ({
   spec: `${providerId}/same`,
@@ -34,4 +34,22 @@ test("row truncation preserves the distinguishing spec before the name", () => {
   expect(
     modelRowText({ name: "custom/same", spec: "custom/same" }, 10, (text) => text.length),
   ).toEqual({ name: "", spec: "custom/sa…" });
+});
+
+test("filter matches model names, specs and provider display names across visible tabs", () => {
+  const tabs = modelProviderTabs(
+    [
+      { ...model("alpha", true, true), providerName: "Team Gateway" },
+      { ...model("beta", true, true), name: "Reasoner" },
+      model("hidden", false, false),
+    ],
+    "alpha/same",
+  );
+  expect(filterModelTabs(tabs, "TEAM").map((entry) => entry.spec)).toEqual(["alpha/same"]);
+  expect(filterModelTabs(tabs, "REASON").map((entry) => entry.spec)).toEqual(["beta/same"]);
+  expect(filterModelTabs(tabs, "/SAME").map((entry) => entry.spec)).toEqual([
+    "beta/same",
+    "alpha/same",
+  ]);
+  expect(filterModelTabs(tabs, "hidden")).toEqual([]);
 });
