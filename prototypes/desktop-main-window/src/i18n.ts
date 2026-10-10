@@ -5,12 +5,27 @@ export type Lang = "zh" | "en";
 
 const zh = {
   appName: "Rukie",
-  newSession: "新会话",
-  addProject: "添加项目",
+  home: "首页",
+  mainNav: "主导航",
+  newChat: "新聊天",
+  pinned: "置顶",
+  chats: "对话",
   projects: "项目",
+  recent: "最近",
+  pin: "置顶会话",
+  unpin: "取消置顶",
+  noPinned: "还没有置顶的会话",
+  noSessions: "暂无会话",
+  addProject: "添加项目",
+  newInProject: "在 {project} 中新建会话",
   search: "搜索会话",
-  settings: "设置",
+  welcomeProject: "你想让我们在 {project} 中构建什么？",
+  welcomeChat: "今天想聊点什么？",
+  defaultWorkspace: "默认工作区",
+  noProjectHint: "不绑定项目目录",
+  chooseTarget: "选择会话位置",
   placeholder: "描述任务，Enter 发送，Shift+Enter 换行",
+  placeholderNew: "随心输入",
   steer: "补充说明，当前 Run 会读取",
   send: "发送",
   stop: "停止",
@@ -36,6 +51,7 @@ const zh = {
   elapsed: "用时 {time}",
   stoppedAfter: "你在 {time} 后停止了",
   working: "正在执行 · {time}",
+  starting: "正在开始…",
   waiting: "等待确认",
   connected: "已连接",
   reconnecting: "正在重新连接…",
@@ -53,16 +69,35 @@ const zh = {
   sources: "来源",
   turnNav: "跳转到 Turn",
   turnN: "第 {n} 轮：{prompt}",
+  "ago.now": "刚刚",
+  "ago.m": "{n} 分钟",
+  "ago.h": "{n} 小时",
+  "ago.d": "{n} 天",
 };
 
 const en: Record<keyof typeof zh, string> = {
   appName: "Rukie",
-  newSession: "New session",
-  addProject: "Add project",
+  home: "Home",
+  mainNav: "Main navigation",
+  newChat: "New chat",
+  pinned: "Pinned",
+  chats: "Chats",
   projects: "Projects",
+  recent: "Recent",
+  pin: "Pin session",
+  unpin: "Unpin session",
+  noPinned: "No pinned sessions",
+  noSessions: "No sessions",
+  addProject: "Add project",
+  newInProject: "New session in {project}",
   search: "Search sessions",
-  settings: "Settings",
+  welcomeProject: "What should we build in {project}?",
+  welcomeChat: "What's on your mind today?",
+  defaultWorkspace: "Default workspace",
+  noProjectHint: "Not bound to a project directory",
+  chooseTarget: "Choose where the session runs",
   placeholder: "Describe a task. Enter to send, Shift+Enter for a new line",
+  placeholderNew: "Ask anything",
   steer: "Add guidance for the current Run",
   send: "Send",
   stop: "Stop",
@@ -88,6 +123,7 @@ const en: Record<keyof typeof zh, string> = {
   elapsed: "Worked for {time}",
   stoppedAfter: "You stopped after {time}",
   working: "Working · {time}",
+  starting: "Starting…",
   waiting: "Waiting for approval",
   connected: "Connected",
   reconnecting: "Reconnecting…",
@@ -105,6 +141,10 @@ const en: Record<keyof typeof zh, string> = {
   sources: "Sources",
   turnNav: "Jump to Turn",
   turnN: "Turn {n}: {prompt}",
+  "ago.now": "now",
+  "ago.m": "{n}m",
+  "ago.h": "{n}h",
+  "ago.d": "{n}d",
 };
 
 export type MessageKey = keyof typeof zh;
@@ -114,6 +154,18 @@ export const LangContext = createContext<Lang>("zh");
 export function useT() {
   const lang = useContext(LangContext);
   const dict = lang === "zh" ? zh : en;
-  return (key: MessageKey, vars: Record<string, string | number> = {}) =>
+  const t = (key: MessageKey, vars: Record<string, string | number> = {}) =>
     dict[key].replace(/\{(\w+)\}/g, (_, name: string) => String(vars[name] ?? ""));
+  /** Splits a message around one placeholder so a component can be rendered in its place. */
+  t.parts = (key: MessageKey, name: string): [string, string] => {
+    const [before = "", after = ""] = dict[key].split(`{${name}}`);
+    return [before, after];
+  };
+  return t;
+}
+
+export function useAgo() {
+  const t = useT();
+  return (minutes: number) =>
+    minutes < 1 ? t("ago.now") : minutes < 60 ? t("ago.m", { n: minutes }) : minutes < 1440 ? t("ago.h", { n: Math.floor(minutes / 60) }) : t("ago.d", { n: Math.floor(minutes / 1440) });
 }

@@ -6,19 +6,20 @@ export type PermissionMode = "ask" | "auto-review" | "full-access";
 export type PermissionReply = "allow" | "deny" | "allow-session";
 export type Tool = "Read" | "Bash" | "Edit" | "Grep";
 
+/** projectId null: a chat in the default workspace, not bound to a project directory. */
 export interface SessionItem {
   id: string;
   title: string;
-  updated: string;
-  running?: boolean;
-  waiting?: boolean;
+  projectId: string | null;
+  pinned: boolean;
+  /** Minutes since last update; the Recent group sorts by this. */
+  updatedMin: number;
 }
 
 export interface Project {
   id: string;
   name: string;
   path: string;
-  sessions: SessionItem[];
 }
 
 export interface Step {
@@ -52,24 +53,22 @@ export interface Turn {
 }
 
 export const projects: Project[] = [
-  {
-    id: "rukie",
-    name: "rukie",
-    path: "~/Desktop/Work/person/rukie",
-    sessions: [
-      { id: "s1", title: "修复 Session resume 后的 Todo 丢失", updated: "2 分钟", running: true, waiting: true },
-      { id: "s2", title: "桌面端 wire 协议草稿", updated: "1 小时" },
-      { id: "s3", title: "TUI 小终端下的状态栏截断", updated: "昨天" },
-    ],
-  },
-  {
-    id: "pi",
-    name: "pi",
-    path: "~/Desktop/Work/open_sources/pi",
-    sessions: [{ id: "s4", title: "梳理 pi-durable lease 实现", updated: "3 天" }],
-  },
-  { id: "dsh", name: "dsh-TUI", path: "~/Desktop/Work/open_sources/dsh-TUI", sessions: [{ id: "s5", title: "对照滚动跟随行为", updated: "5 天" }] },
-  { id: "zcode", name: "ZCode", path: "~/Desktop/Work/open_sources/ZCode", sessions: [] },
+  { id: "rukie", name: "rukie", path: "~/Desktop/Work/person/rukie" },
+  { id: "pi", name: "pi", path: "~/Desktop/Work/open_sources/pi" },
+  { id: "dsh", name: "dsh-TUI", path: "~/Desktop/Work/open_sources/dsh-TUI" },
+  { id: "zcode", name: "ZCode", path: "~/Desktop/Work/open_sources/ZCode" },
+];
+
+/** s1 is the fully scripted Session; the rest show a placeholder history. */
+export const initialSessions: SessionItem[] = [
+  { id: "s1", title: "修复 Session resume 后的 Todo 丢失", projectId: "rukie", pinned: true, updatedMin: 2 },
+  { id: "s2", title: "桌面端 wire 协议草稿", projectId: "rukie", pinned: false, updatedMin: 65 },
+  { id: "c1", title: "解释 Effect 的 Layer 与 ManagedRuntime", projectId: null, pinned: true, updatedMin: 180 },
+  { id: "s3", title: "TUI 小终端下的状态栏截断", projectId: "rukie", pinned: false, updatedMin: 1500 },
+  { id: "c2", title: "写一封周报邮件", projectId: null, pinned: false, updatedMin: 2900 },
+  { id: "s4", title: "梳理 pi-durable lease 实现", projectId: "pi", pinned: false, updatedMin: 4400 },
+  { id: "s5", title: "对照 dsh-TUI 滚动跟随行为", projectId: "dsh", pinned: false, updatedMin: 7300 },
+  { id: "c3", title: "比较 SQLite 与 JSONL 的写放大", projectId: null, pinned: false, updatedMin: 10100 },
 ];
 
 export const turns: Turn[] = [

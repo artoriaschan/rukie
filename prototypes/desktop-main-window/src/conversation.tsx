@@ -1,13 +1,31 @@
-// PROTOTYPE conversation after the Codex reference: user prompts as right-aligned bubbles, each
-// finished Turn folded behind a "用时 …" rule showing only its final reply, the live Turn fully
-// expanded. A dash rail on the left edge jumps between Turns.
+// PROTOTYPE conversation after the Codex reference (figure 2): user prompts as right-aligned
+// bubbles, each finished Turn folded behind a "用时 …" rule showing only its final reply, the live
+// Turn fully expanded. A dash rail on the left edge jumps between Turns.
 import { ChevronRight, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { PermissionResult, StepRow } from "./blocks";
-import { turns, type Turn } from "./data";
+import { turns as scripted, type SessionItem, type Turn } from "./data";
 import { useT } from "./i18n";
-import { useProto } from "./state";
+import { useProto, type RunStatus } from "./state";
 import { cn, RichText } from "./ui";
+
+/** Scripted Transcript for s1; a one-Turn placeholder history for every other existing Session. */
+export function turnsOf(session: SessionItem, created: boolean): Turn[] {
+  if (session.id === "s1") return scripted;
+  if (created) return [];
+  return [
+    {
+      id: `${session.id}-t1`,
+      prompt: session.title,
+      status: "done",
+      elapsed: "2分钟 05秒",
+      items: [
+        { kind: "step", id: `${session.id}-r`, tool: "Read", title: "README.md", status: "done", ms: 30, output: ["… 86 行"] },
+        { kind: "text", id: `${session.id}-x`, text: `（原型占位）这是「${session.title}」的历史会话，展开“用时”可以看到步骤。` },
+      ],
+    },
+  ];
+}
 
 function Bubble({ text }: { text: string }) {
   return (
@@ -35,9 +53,8 @@ function TurnBody({ turn }: { turn: Turn }) {
   );
 }
 
-function TurnView({ turn, index }: { turn: Turn; index: number }) {
+function TurnView({ turn, index, status }: { turn: Turn; index: number; status: RunStatus }) {
   const t = useT();
-  const { status } = useProto();
   const live = turn.status === "live" && status !== "idle";
   const stopped = turn.status === "stopped" || (turn.status === "live" && status === "idle");
   const [open, setOpen] = useState(false);
@@ -79,8 +96,9 @@ function TurnView({ turn, index }: { turn: Turn; index: number }) {
   );
 }
 
-export function TurnRail({ active, onJump }: { active: number; onJump: (i: number) => void }) {
+export function TurnRail({ turns, active, onJump }: { turns: Turn[]; active: number; onJump: (i: number) => void }) {
   const t = useT();
+  if (turns.length < 2) return null;
   return (
     <nav aria-label={t("turnNav")} className="absolute top-1/2 left-3 z-10 flex -translate-y-1/2 flex-col gap-1.5 max-md:hidden">
       {turns.map((turn, i) => (
@@ -98,15 +116,23 @@ export function TurnRail({ active, onJump }: { active: number; onJump: (i: numbe
   );
 }
 
-export function Conversation() {
-  const { sent } = useProto();
+export function Conversation({ turns, sent, status }: { turns: Turn[]; sent: string[]; status: RunStatus }) {
+  const t = useT();
   return (
     <div className="mx-auto max-w-3xl space-y-10 px-6 pt-6 pb-8">
       {turns.map((turn, i) => (
-        <TurnView key={turn.id} turn={turn} index={i} />
+        <TurnView key={turn.id} turn={turn} index={i} status={status} />
       ))}
       {sent.map((text, i) => (
-        <Bubble key={i} text={text} />
+        <div key={i} className="space-y-4">
+          <Bubble text={text} />
+          {i === sent.length - 1 && status === "running" && turns.length === 0 && (
+            <div className="flex items-center gap-2 border-b pb-2 text-ui-sm text-muted-foreground" aria-live="polite">
+              <Loader2 className="size-3.5 animate-spin" />
+              {t("starting")}
+            </div>
+          )}
+        </div>
       ))}
     </div>
   );

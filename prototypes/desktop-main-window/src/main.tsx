@@ -1,14 +1,14 @@
-// PROTOTYPE: desktop main window, single layout after the Codex reference (ticket 09, round 2).
+// PROTOTYPE: desktop main window after the Codex reference (ticket 09, round 3).
 // Query params: ?theme=light|dark&lang=zh|en&conn=connected|reconnecting|disconnected.
-// The earlier A/B/C variants live in this branch's history (commit 7b1a5155).
+// Earlier rounds live in this branch's history (A/B/C variants: 7b1a5155; round 2: 4b6c9cc1).
 import { RotateCcw } from "lucide-react";
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./app";
-import type { Connection, PermissionMode, PermissionReply } from "./data";
+import { initialSessions, type Connection, type PermissionMode, type PermissionReply } from "./data";
 import { LangContext, type Lang } from "./i18n";
 import "./index.css";
-import { ProtoContext, type ProtoState } from "./state";
+import { ProtoContext, type ProtoState, type RunStatus, type Selection } from "./state";
 
 function useParam<T extends string>(name: string, allowed: readonly T[], fallback: T): [T, (v: T) => void] {
   const [value, setValue] = useState<T>(() => {
@@ -32,10 +32,12 @@ function Root() {
   const [lang, setLang] = useParam<Lang>("lang", ["zh", "en"], "zh");
   const [connection, setConnection] = useParam<Connection>("conn", connections, "connected");
   const [mode, setMode] = useState<PermissionMode>("ask");
+  const [sessions, setSessions] = useState(initialSessions);
+  const [selection, select] = useState<Selection>({ kind: "session", id: "s1" });
   const [reply, setReply] = useState<PermissionReply | null>(null);
-  const [stopped, setStopped] = useState(false);
-  const [activeSession, setActiveSession] = useState("s1");
-  const [sent, setSent] = useState<string[]>([]);
+  const [stopped, setStopped] = useState<Record<string, boolean>>({});
+  const [sent, setSent] = useState<Record<string, string[]>>({});
+  const [created, setCreated] = useState<string[]>([]);
   const [epoch, setEpoch] = useState(0);
 
   useEffect(() => {
@@ -43,18 +45,41 @@ function Root() {
     document.documentElement.lang = lang;
   }, [theme, lang]);
 
+  const statusOf = (id: string): RunStatus => {
+    if (stopped[id]) return "idle";
+    if (id === "s1") return reply ? "running" : "waiting";
+    return created.includes(id) ? "running" : "idle";
+  };
+
+  const send = (text: string) => {
+    let id: string;
+    if (selection.kind === "new") {
+      id = `n${Date.now()}`;
+      const title = text.length > 24 ? `${text.slice(0, 24)}…` : text;
+      setSessions((list) => [{ id, title, projectId: selection.projectId, pinned: false, updatedMin: 0 }, ...list]);
+      setCreated((list) => [...list, id]);
+      select({ kind: "session", id });
+    } else {
+      id = selection.id;
+      setSessions((list) => list.map((s) => (s.id === id ? { ...s, updatedMin: 0 } : s)));
+    }
+    setSent((all) => ({ ...all, [id]: [...(all[id] ?? []), text] }));
+  };
+
   const state: ProtoState = {
     connection,
     mode,
     setMode,
+    sessions,
+    selection,
+    select,
+    togglePin: (id) => setSessions((list) => list.map((s) => (s.id === id ? { ...s, pinned: !s.pinned } : s))),
+    statusOf,
     reply,
     answer: setReply,
-    status: stopped ? "idle" : reply ? "running" : "waiting",
-    stop: () => setStopped(true),
-    activeSession,
-    setActiveSession,
-    sent,
-    send: (text) => setSent((list) => [...list, text]),
+    stop: (id) => setStopped((all) => ({ ...all, [id]: true })),
+    sentOf: (id) => sent[id] ?? [],
+    send,
   };
 
   return (
@@ -80,9 +105,12 @@ function Root() {
             className={pill}
             aria-label="Reset prototype state"
             onClick={() => {
+              setSessions(initialSessions);
+              select({ kind: "session", id: "s1" });
               setReply(null);
-              setStopped(false);
-              setSent([]);
+              setStopped({});
+              setSent({});
+              setCreated([]);
               setEpoch((n) => n + 1);
             }}
           >
