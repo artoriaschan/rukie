@@ -176,6 +176,8 @@ test.each(["block", "abort"])(
     const fake = controlledModel();
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
+    const abortEntered = Promise.withResolvers<void>();
+    const releaseAbort = Promise.withResolvers<void>();
     const session = await createSession({
       cwd: root,
       homeDir: root,
@@ -200,6 +202,12 @@ test.each(["block", "abort"])(
     });
     const source = new Proxy(session, {
       get(target, key) {
+        if (key === "abort" && ending === "abort")
+          return async () => {
+            abortEntered.resolve();
+            await releaseAbort.promise;
+            return target.abort();
+          };
         if (key === "run")
           return async (...args: Parameters<Session["run"]>) => {
             entered.resolve();
@@ -236,8 +244,21 @@ test.each(["block", "abort"])(
       ).toBe(false);
       expect(session.messages.some((message) => message.role === "user")).toBe(false);
       expect(fake.calls).toHaveLength(0);
+      if (ending === "abort") {
+        await abortEntered.promise;
+        let stopped = false;
+        const stop = conversation.stop().then(() => {
+          stopped = true;
+        });
+        await Promise.resolve();
+        expect(stopped).toBe(false);
+        releaseAbort.resolve();
+        await stop;
+        expect(stopped).toBe(true);
+      }
     } finally {
       release.resolve();
+      releaseAbort.resolve();
       off();
       await conversation.stop();
       await session.close();

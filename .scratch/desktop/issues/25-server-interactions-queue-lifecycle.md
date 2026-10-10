@@ -38,3 +38,9 @@ Status: claimed
 ## ADR coverage
 
 沿用 ADR-0030 的 Hono/Effect 边界、ADR-0031 的 native Interaction identity 和单 WS、ADR-0032 的 JSONL / registry 归属、ADR-0011 的能力所有权、ADR-0024 的原生 Harness / lease / recovery。新增只读访问只组合已安装 native kernel 读路径，不启动 recovery，不产生新的持久化格式或跨能力依赖，无需新 ADR。工单保持 claimed，等待独立 review 与根集成交付；不提前关闭 spec。
+
+## 最终 aggregate 生命周期修复
+
+首个根 aggregate 暴露 TUI Conversation 中断与 Session close 的竞争：用户输入还未进入 Run 时，预览 admission 的 Promise 先结算，但显式 `session.abort()` 仍在清理；frontend stop 原先直接返回，调用方随即关闭 Session。Conversation 现在拥有每次中断的完成 Promise，stop 等待已有中断完成后再返回，保留正常退出暂停 durable Run 的语义。公共 Conversation 回归用 barrier 持有 abort，证明预览清除后 stop 尚未完成；解除 barrier 后 stop 才返回。原实现确定失败 `Session is closed`（157 ms），修复后两种 admission ending 均通过（167 ms）。没有改动 Core、desktop renderer 或编译 sidecar，已有打包 app 证据不受此 TUI 修复影响。
+
+补充修复验证：Conversation、TUI main、exit/resume 和 permission Interaction 57 pass / 1274 assertions（4.98 s），覆盖实际 Esc/Ctrl+C、SessionEnd、pending Question、background child、SessionStart hook group 和终端恢复；runner timeout/setup cleanup 4 pass / 29 assertions（1.243 s，框架超时触发与资源收尾的真实集成成本保留）。`bun run check:dev` 通过。首个 aggregate 仍是 3392 pass / 26 fail，聚焦通过不改写该结果；修复改变所有 TUI Frontend stop 的中断完成边界，首轮关于跨用例 teardown 顺序的证据不再适用，根代理决定是否按明确跨模块风险补做全量验证。

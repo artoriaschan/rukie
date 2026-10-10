@@ -27,3 +27,5 @@ Status: claimed
 环境限制：隔离 HOME 的首次启动卡在 Chromium Keychain 初始化（SecItemAdd → defaultKeychainUI → AuthorizationCopyRights），sample 已保存；验收使用 `--use-mock-keychain` 测试启动参数，生产加密 fuse 不变。外部桥的初始兼容配置、数组消息解析和默认 HTTP idle timeout 失败已诊断并修正，失败 Session 不作为验收。
 
 验证：`bun run test:desktop` 14 files / 45 tests 通过（5.25 s）；i18n 文案先复现 2 个失败，再 `env -u NO_COLOR bun test packages/i18n/tests/i18n.test.ts packages/agent/tests/e2e/tools.test.ts` 37 pass / 211 assertions（1.134 s，真实工具集成），`bun run check:dev` 通过。最终提交与产物源码身份记录在外部 desktop-build.json；交付前合入当前集成分支并补充 focused/static 验证。
+
+最终 aggregate 发现 TUI live error 与已安装 CLI ripgrep 错误断言仍要求旧 npm 安装措辞。公共行为已按本票统一为恢复完整 Rukie 安装并检查内置二进制执行权限；断言现在分别要求本地化恢复提示、执行权限提示、模型收到英文工具错误，以及 stream-json 的 `ripgrep-unavailable`，保留真实缺失/不可执行二进制测试。聚焦安装、TUI 错误、Conversation 集合 40 pass / 1187 assertions（13.81 s）；安装入口真实编译和进程清理成本保留，其余修复用例均低于 1 秒。
