@@ -1,0 +1,39 @@
+prototypes/desktop-main-window/src/summary.tsx
+  s_2f9b11742bfb62::t_b6ea26a96f158f 1-97
+prototypes/desktop-main-window/src/blocks.tsx
+  s_2f9b11742bfb62::t_31f674e841a7dd 1,3,5,8,10-11,14,23,26-30,32-33,35,40,42-47,56,58-60,68-69,71-78,82-83,85,87,97,101,103,105,107-118,124,129,132-134
+prototypes/desktop-main-window/src/app.tsx
+  s_2f9b11742bfb62::t_be3f3612b5c5f3 80,82-83
+  s_2f9b11742bfb62::t_af08e69db884c6 1-79,84-94,97-105
+prototypes/desktop-main-window/src/sidebar.tsx
+  s_2f9b11742bfb62::t_0afca7c5d0e076 1-113
+prototypes/desktop-main-window/src/composer.tsx
+  s_2f9b11742bfb62::t_fa47c8fa097719 1-3,5,7-8,11-15,17,22,24,28,30,46,48-55,63-75
+prototypes/desktop-main-window/src/i18n.ts
+  s_2f9b11742bfb62::t_56bc3b424128f9 12,14,17,26-39,43,46-55,64,66,69,78-91,95,98-107
+prototypes/desktop-main-window/src/main.tsx
+  s_2f9b11742bfb62::t_237b7c081d869a 1-4,7,14,17,27-28,30-31,33,39,51,63,67-68,75,78-88,99
+prototypes/desktop-main-window/src/state.ts
+  s_2f9b11742bfb62::t_0faae7a8c9aa89 1,5
+prototypes/desktop-main-window/src/conversation.tsx
+  s_2f9b11742bfb62::t_e487f6209b8d9a 1-113
+prototypes/desktop-main-window/src/data.ts
+  s_2f9b11742bfb62::t_46b19d73d5e04d 130
+  s_2f9b11742bfb62::t_f1032f689974d0 7,24-52,60-61,69,71-72,75,77-86,89-111,115-129,131
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "4b6c9cc19c2e16e6f1b6226357d9cf69822225ec",
+  "prompts": {},
+  "sessions": {
+    "s_2f9b11742bfb62": {
+      "agent_id": {
+        "tool": "chengxiaobang",
+        "id": "s_ud9hgzuuustw",
+        "model": "kr-claude-opus-5.5[1M]"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
