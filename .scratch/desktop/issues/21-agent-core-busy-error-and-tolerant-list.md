@@ -24,3 +24,11 @@ Status: claimed
 - Status remains claimed pending integrated review and acceptance.
 
 - Final local focused group: `env -u NO_COLOR bun test` over ownership, listing, TUI errors and view i18n: 39 pass, 0 fail (2.25 s); Headless busy case: 1 pass. `bun run check:dev` passes all format/lint/types/Knip/tracker/docs/boundary/test-policy checks. `git diff --check` passes. No full-suite run in this issue worktree.
+
+## Comments
+
+- Fresh issue 21 consumer-correction agent on `fix/desktop-21-consumers`: draft CI run `38070723950` at `f2b8246a` failed the pre-desktop document-recovery listing assertion. Reproduced locally on integration baseline `cfccbc73`: `env -u NO_COLOR bun test packages/agent/tests/e2e/document-recovery.test.ts` gave 16 pass, 1 fail at the obsolete `listSessions` rejection.
+- Updated that public recovery scenario to require an empty result and one warning identifying the malformed Session metadata. Preserved cold-opening rejection, no model calls, unchanged JSONL bytes, repair ownership acquisition, and successful restored opening. Existing session-list coverage already verifies healthy entries survive an unreadable neighbor; no duplicate Session fixture or production change is needed. Searched existing tests and docs for old listing-rejection contracts; no other obsolete consumer was found.
+- Green: recovery and listing files together give 24 pass, 0 fail, 154 assertions in 1.052 s; corrected case takes 11.97 ms. Status remains claimed pending integration acceptance. ADR coverage is unchanged: this correction aligns an existing consumer with the issue 21 contract and adds no architectural decision.
+- Correction validation: `bun run check:dev` passes formatting, lint, types, Knip, scratch, docs, dependency boundaries, test policy and UI typography. `git diff --check` passes. No full-suite run was made for this test-only correction.
+- Rebased evidence by merging latest desktop integration `77341c00` into correction branch (merge `215b6243`): recovery/listing remain 24 pass, 0 fail (1.053 s; changed case 14.63 ms), and `bun run check:dev` passes on the merged tree. Commit hooks stay enabled; the working tree is clean after recording evidence.
