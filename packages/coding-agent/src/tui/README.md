@@ -18,6 +18,12 @@
 
 挂起的审批、Question、Plan Review 和模型 OAuth 在恢复后按当前权限、信任与能力重新发起，Frontend 使用新 callback 和 signal 接管 FIFO。关闭、取消或换 Session 后，旧输入和晚到 callback 不能批准新请求；安全默认与身份合同由 [Agent Core](../../../agent/README.md#pending-interactions) 维护。
 
+## 模型选择
+
+空闲时输入 `/model` 打开 provider tabs；`/model <spec>` 直接选择模型。面板只列出已检测到凭据的 provider、当前模型的 provider 和用户 settings 中的自定义 provider，自定义 provider 排在前面。Tab / Shift+Tab 循环切换 provider，↑/↓ 选择模型，各 tab 分别记住焦点；打开时定位当前模型。Enter 确认，Esc 放弃。自定义模型没有凭据时置灰并标注，Enter 只提示缺少凭据。
+
+模型行显示名称与灰色完整 spec，当前模型标 ✓；名称与 spec 相同则只显示 spec，宽度不足时先截名称。空间允许时显示输入能力、reasoning 与 context window。目录加载中显示加载提示，加载失败保留错误提示及 `/model <spec>` 的直接切换方式；关闭加载中的面板不会因目录晚到而重新打开。
+
 ## 消息导航
 
 普通 chat 中 Shift+Tab 循环切换 ask、auto-review 和 full-access 权限模式，并保留输入草稿。快捷键同时支持传统 backtab 与 CSI-u 编码，不向输入框写入文字；菜单和 Interaction 按各自的输入规则处理按键。

@@ -1,6 +1,6 @@
 # 04: 面板 provider tabs 与模型行
 
-Status: ready-for-agent
+Status: claimed
 
 Blocked by: 03
 

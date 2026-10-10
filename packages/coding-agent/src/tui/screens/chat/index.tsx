@@ -1,3 +1,4 @@
+import { modelProviderTabs } from "../../../view/model-picker";
 import { productVersion } from "../../../version";
 import { useHostSelection } from "../../hooks/host-selection";
 import {
@@ -715,13 +716,21 @@ function Chat({
     mode: number;
     busy: boolean;
   };
-  const [modelPicker, setModelPicker] = useState<number>();
-  const modelPickerRef = useRef<number | undefined>(undefined);
+  type ModelPickerState = {
+    tab: number;
+    focuses: number[];
+    loading: boolean;
+    failed: boolean;
+    notice?: string;
+  };
+  const [modelPicker, setModelPicker] = useState<ModelPickerState>();
+  const modelPickerRef = useRef<ModelPickerState | undefined>(undefined);
+  const modelTabs = modelProviderTabs(models, session.model);
   const modelPickerDraftImages = useRef(false);
-  const showModelPicker = (focus: number | undefined) => {
-    modelPickerRef.current = focus;
-    if (focus === undefined) modelPickerDraftImages.current = false;
-    setModelPicker(focus);
+  const showModelPicker = (next: ModelPickerState | undefined) => {
+    modelPickerRef.current = next;
+    if (next === undefined) modelPickerDraftImages.current = false;
+    setModelPicker(next);
   };
   type ResumePicker = { sessions: readonly SessionSummary[]; focus: number; busy: boolean };
   const [resumePicker, setResumePicker] = useState<ResumePicker>();
@@ -1281,9 +1290,19 @@ function Chat({
     }
   };
   const selectModel = (index: number) => {
+    const picker = modelPickerRef.current;
+    const selected = picker && modelTabs[picker.tab]?.models[index];
+    if (!picker || picker.loading || picker.failed || !selected) return;
+    if (selected.custom && !selected.authenticated) {
+      showModelPicker({
+        ...picker,
+        notice: t("model.credentials-notice", { model: selected.spec }),
+      });
+      return;
+    }
     const hadDraftImages = modelPickerDraftImages.current;
     showModelPicker(undefined);
-    void switchModel(models[index]!.spec, hadDraftImages);
+    void switchModel(selected.spec, hadDraftImages);
   };
   const executeCommand = (prompt: string) => {
     const parsed = /^\/([a-z0-9-]+)(?:\s|$)/.exec(prompt);
@@ -1392,17 +1411,34 @@ function Chat({
         // Submit can run before Chat handles the same Enter event. Open after
         // that event finishes so it cannot also pick the current model.
         queueMicrotask(() => {
+          const loading = { tab: 0, focuses: [], loading: true, failed: false };
+          showModelPicker(loading);
           void loadModelCatalog()
             .then((catalog) => {
+              if (modelPickerRef.current !== loading) return;
               setModels(catalog);
-              showModelPicker(
-                Math.max(
+              const tabs = modelProviderTabs(catalog, session.model);
+              showModelPicker({
+                tab: Math.max(
                   0,
-                  catalog.findIndex((model) => model.spec === session.model),
+                  tabs.findIndex((provider) =>
+                    provider.models.some((model) => model.spec === session.model),
+                  ),
                 ),
-              );
+                focuses: tabs.map((provider) =>
+                  Math.max(
+                    0,
+                    provider.models.findIndex((model) => model.spec === session.model),
+                  ),
+                ),
+                loading: false,
+                failed: false,
+              });
             })
-            .catch((error: unknown) => conversation.notice(formatError(error, t), true));
+            .catch(() => {
+              if (modelPickerRef.current === loading)
+                showModelPicker({ ...loading, loading: false, failed: true });
+            });
         });
       }
     } else if (command.name === "btw") {
@@ -1836,19 +1872,30 @@ function Chat({
         }
         return;
       }
-      const modelFocus = modelPickerRef.current;
-      if (modelFocus !== undefined) {
+      const modelCursor = modelPickerRef.current;
+      if (modelCursor !== undefined) {
         if (event.isPasted) return;
         handledInput.current.add(event);
         const { key } = event;
-        if (event.keypress.name === "escape" || (key.ctrl && event.keypress.name === "c"))
-          showModelPicker(undefined);
-        else if (!small && !key.ctrl && !key.meta && !key.shift) {
-          if (event.keypress.name === "up" || event.keypress.name === "down")
-            showModelPicker(
-              (modelFocus + (event.keypress.name === "up" ? models.length - 1 : 1)) % models.length,
-            );
-          else if (event.keypress.name === "return") selectModel(modelFocus);
+        const name = event.keypress.name;
+        if (name === "escape" || (key.ctrl && name === "c")) showModelPicker(undefined);
+        else if (!small && !key.ctrl && !key.meta && !modelCursor.loading && !modelCursor.failed) {
+          if (name === "tab" && modelTabs.length)
+            showModelPicker({
+              ...modelCursor,
+              tab: (modelCursor.tab + (key.shift ? modelTabs.length - 1 : 1)) % modelTabs.length,
+              notice: undefined,
+            });
+          else if (!key.shift && (name === "up" || name === "down")) {
+            const count = modelTabs[modelCursor.tab]?.models.length ?? 0;
+            if (count) {
+              const focuses = [...modelCursor.focuses];
+              focuses[modelCursor.tab] =
+                ((focuses[modelCursor.tab] ?? 0) + (name === "up" ? count - 1 : 1)) % count;
+              showModelPicker({ ...modelCursor, focuses, notice: undefined });
+            }
+          } else if (!key.shift && name === "return")
+            selectModel(modelCursor.focuses[modelCursor.tab] ?? 0);
         }
         return;
       }
@@ -3091,12 +3138,20 @@ function Chat({
               )}
               {modelPicker !== undefined && (
                 <ModelPicker
-                  models={models}
-                  focus={modelPicker}
+                  tabs={modelTabs}
+                  tab={modelPicker.tab}
+                  focus={modelPicker.focuses[modelPicker.tab] ?? 0}
+                  loading={modelPicker.loading}
+                  failed={modelPicker.failed}
+                  notice={modelPicker.notice}
+                  columns={columns}
                   current={session.model}
                   maxHeight={modelPickerHeight}
                   locale={locale}
                   onPick={selectModel}
+                  onTab={(tab) =>
+                    showModelPicker({ ...modelPickerRef.current!, tab, notice: undefined })
+                  }
                 />
               )}
               {side && (
