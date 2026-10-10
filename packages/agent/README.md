@@ -2,7 +2,7 @@
 
 `createSession` 默认使用原生 JSONL Storage，同一目录保存父子 Conversation、entries、documents 和 tasks。`SessionStore` 提供 `open`、`list` 与身份 `key`；自定义后端返回 Storage 和可重复调用的 `release`，Session 关闭时释放资源。默认路径由 [`store/`](src/store/index.ts)按解析后的工作目录生成，位于 `homeDir/.rukie/durable-sessions/`；`rukie.session` document 保存 id、名称、模型与选中对话等索引事实。旧 `.rukie/sessions/` 文件不枚举、不读取、不改写，旧 id 打开返回 `session-not-found`。
 
-一个宿主持有一个目录的写者租约。默认实现通过独立 SQLite 文件的 `BEGIN IMMEDIATE` 事务持有内核锁；该文件不存 Session 记录，也不删除或替换。另一个进程或宿主打开同一 id 立即失败，正常关闭和进程死亡释放锁。恢复无需 PID 检查或清理旧租约。列表可以观察活跃目录：当前宿主借用已注册读者，独立查询仅打开原生存储内核读取索引，不启动模型或 Harness scheduler，也不执行任务恢复。需要截断或修复的存储拒绝只读观察。
+一个宿主持有一个目录的写者租约。默认实现通过独立 SQLite 文件的 `BEGIN IMMEDIATE` 事务持有内核锁；该文件不存 Session 记录，也不删除或替换。另一个进程或宿主打开同一 id 立即失败，错误携带 `session-busy` 和 `{ id }`，同进程重复打开也使用该错误；正常关闭和进程死亡释放锁。恢复无需 PID 检查或清理旧租约。列表可以观察活跃目录：当前宿主借用已注册读者，独立查询仅打开原生存储内核读取索引，不启动模型或 Harness scheduler，也不执行任务恢复。`listSessions` 跳过索引读取失败的单个 Session，并经 `onWarning` 上报包含 id 与失败原因的警告；未提供回调时使用 `console.warn`，项目目录本身的读取失败仍向调用方传播。需要截断或修复的存储拒绝只读观察。
 
 原生 JSONL 启用 sidecar fsync，[存储文件适配器](src/store/files.ts)在成功追加后 flush 文件，包括 main 提交标记；提交确认后才采用状态和发布对应成功事实。写入或 flush 失败会向调用方传播；原生 Storage 进入 poisoned 状态时须 `await session.close()` 后重开。flush 发生在追加之后，拒绝确认不等于磁盘字节回滚，重新打开时以原生已提交事实为准。进程强制退出测试验证租约释放和恢复，不代表断电测试。
 
@@ -30,6 +30,12 @@ Question 和 Plan Review 在原生执行意图之前收集回复；计划批准�
 | 原生 `pi.agent`                                                                                              | rewindable / asOf    | 保存 Model Selection 与 Agent 配置；Session 索引用于列表展示                 |
 | [Goal 激活](src/tools/goal/driver.ts)、[待提交输入事实、子代理描述](src/session/index.ts)                    | latest / initial     | 当前活动事实不复制到新 fork                                                  |
 | [Session 索引](src/store/index.ts)                                                                           | Session scope        | 保存持久化身份及当前选中 Conversation，不参与对话 fork                       |
+
+# Queued Input
+
+Run 进行中调用 `session.followUp(prompt, { images? })`，返回稳定 `requestId`；输入在当前 Run 回答后的原生边界按发送顺序逐条放入，每条是独立用户消息并开始下一 Run。空闲时调用会直接启动 Run。`session.queuedInputs` 与 `snapshot.queuedInputs` 提供原文、图片数据、MIME 与名称；`queued_inputs_update` 提供已提交队列的新投影。队列使用原生 `pi.inbox` 持久化，崩溃后 Resume 显示尚未放入的输入并继续原顺序。
+
+`session.withdraw(requestId)` 在放入前原子撤回，返回 `{ status: "withdrawn", input }`；身份不存在、已放入或已撤回时返回 `{ status: "not_queued" }`。`session.steerNow(requestId)` 把所选输入改为在当前工具轮完成后放入，返回 `steered` 或 `not_queued`，保留 requestId。`session.abort()` 等待正在接受的输入，原子撤回全部 Queued Input，再停止当前 Run，返回按排队顺序排列的原文与附件数组，Frontend 负责交还输入框。`close()` 保留已接受输入，供下次 Resume 继续；`steer(prompt)` 仍接受新指令并在工具边界放入。
 
 # Model Selection
 

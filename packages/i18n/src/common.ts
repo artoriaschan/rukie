@@ -70,6 +70,7 @@ const zh = {
   "error.unknown-model": '未知模型 "{{model}}"。',
   "error.no-api-key": '缺少 provider "{{provider}}" 的 API key。环境变量：{{env}}。',
   "error.session-not-found": "Session 不存在：{{id}}",
+  "error.session-busy": "Session 已被打开：{{id}}。请先关闭其他窗口或进程中的会话。",
   "error.session-observation-readonly": "会话记录需要修复，无法以只读方式查看。",
   "error.hook-invalid-json": "无效的 hook JSON：{{cause}}",
   "error.hook-exit": "Hook 退出码为 {{exitCode}}：{{stderr}}",
@@ -186,6 +187,8 @@ const en = {
   "error.unknown-model": 'Unknown model "{{model}}".',
   "error.no-api-key": 'No API key for provider "{{provider}}". Environment variable: {{env}}.',
   "error.session-not-found": "Session not found: {{id}}",
+  "error.session-busy":
+    "Session already open: {{id}}. Close it in the other window or process first.",
   "error.session-observation-readonly":
     "Session history requires repair and cannot be viewed read-only.",
   "error.hook-invalid-json": "Invalid hook JSON: {{cause}}",

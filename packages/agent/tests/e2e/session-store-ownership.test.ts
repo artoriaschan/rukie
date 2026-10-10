@@ -81,9 +81,11 @@ test("native JSONL rejects a live owner and crash contenders cannot replace the 
     const leaseFile = join(store.key(id), "host-lease.sqlite");
     const inode = (await stat(leaseFile)).ino;
     const fake = fakeModel([]);
-    await expect(createSession({ ...dirs, ...fake, resumeId: id })).rejects.toThrow(
-      "Session already open:",
-    );
+    await expect(createSession({ ...dirs, ...fake, resumeId: id })).rejects.toMatchObject({
+      code: "session-busy",
+      params: { id },
+      message: `Session already open: ${id}`,
+    });
     expect(fake.contexts).toEqual([]);
     expect(await listSessions(dirs)).toMatchObject([
       { id, title: expect.any(String), model: "faux/faux-1" },
@@ -179,3 +181,22 @@ test("cold listing of unfinished native child work does not recover tasks or mod
     await dirs.cleanup();
   }
 }, 10000);
+
+test("same-process duplicate Session open reports its busy identity and releases it on close", async () => {
+  const dirs = await tempDirs();
+  const fake = fakeModel([]);
+  const owner = await createSession({ ...dirs, ...fake });
+  try {
+    await expect(createSession({ ...dirs, ...fake, resumeId: owner.id })).rejects.toMatchObject({
+      code: "session-busy",
+      params: { id: owner.id },
+    });
+    expect(fake.contexts).toEqual([]);
+    await owner.close();
+    const reopened = await createSession({ ...dirs, ...fake, resumeId: owner.id });
+    await reopened.close();
+  } finally {
+    await owner.close();
+    await dirs.cleanup();
+  }
+});

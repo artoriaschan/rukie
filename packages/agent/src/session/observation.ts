@@ -1,3 +1,8 @@
+import {
+  PendingInputFactsDoc,
+  queuedInputProjection,
+  type PendingInputFacts,
+} from "./queued-inputs.ts";
 import { ToolTask, ToolResultEntry } from "@earendil-works/pi-durable";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type {
@@ -96,7 +101,10 @@ function adoptView(view: ConversationView, publication: CommitPublication): Conv
     )
       continue;
     const kind = change.record.kind;
-    if (!["pi.live", "pi.inbox", "pi.agent", "pi.usage"].includes(kind)) continue;
+    if (
+      !["pi.live", "pi.inbox", "pi.agent", "pi.usage", "rukie.pending-input-facts"].includes(kind)
+    )
+      continue;
     const next = { ...docs };
     if (change.value === null) delete next[kind];
     else next[kind] = change.value;
@@ -198,7 +206,14 @@ export async function createConversationObservation(options: ConversationObserva
   // Chord values deliver asynchronously, so later revisions come from the public
   // commit records themselves, never a potentially lagging state.value getter.
   const state = await conversation.viewState(BACKGROUND_CONTEXT);
-  let current = state.value;
+  const inputFacts = await harness.snapshot(
+    PendingInputFactsDoc,
+    conversation.id,
+    BACKGROUND_CONTEXT,
+  );
+  let current = inputFacts
+    ? { ...state.value, docs: { ...state.value.docs, "rukie.pending-input-facts": inputFacts } }
+    : state.value;
   let transcriptEntries = options.history ? await options.history() : current.entries;
   const unknownOutcomes = await readUnknownOutcomes(transcriptEntries, harness, BACKGROUND_CONTEXT);
   let projectedEntries: readonly EntryRecord[] | undefined;
@@ -294,6 +309,10 @@ export async function createConversationObservation(options: ConversationObserva
       tools: live.tools ?? [],
       compactions: live.compactions ?? [],
       inbox: queued(inbox),
+      queuedInputs: queuedInputProjection(
+        parts(view).inbox,
+        view.docs["rukie.pending-input-facts"] as PendingInputFacts | undefined,
+      ),
       agent,
       usage,
       ...facts,
@@ -504,6 +523,20 @@ export async function createConversationObservation(options: ConversationObserva
     submissions.sort((a, b) => a.value.id - b.value.id);
     for (const change of submissions) emit({ type: "submission", record: change.value });
     if (now.inbox !== was.inbox) emit({ type: "inbox_update", items: queued(now.inbox) });
+    const inputs = queuedInputProjection(
+      parts(current).inbox,
+      current.docs["rukie.pending-input-facts"] as PendingInputFacts | undefined,
+    );
+    if (
+      !isDeepStrictEqual(
+        inputs,
+        queuedInputProjection(
+          parts(before).inbox,
+          before.docs["rukie.pending-input-facts"] as PendingInputFacts | undefined,
+        ),
+      )
+    )
+      emit({ type: "queued_inputs_update", items: inputs });
     if (now.agent !== was.agent) emit({ type: "agent_changed", agent: now.agent });
     if (now.usage !== was.usage) emit({ type: "usage_changed", usage: now.usage });
     for (const item of compactions)
