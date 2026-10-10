@@ -1,0 +1,19 @@
+prototypes/desktop-main-window/src/menu.tsx
+  s_2f9b11742bfb62::t_489e3bc929666c 1-4,6-142,145-172,174-178
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "193d6d5f10ec289ee962a251204b6a4318a767d4",
+  "prompts": {},
+  "sessions": {
+    "s_2f9b11742bfb62": {
+      "agent_id": {
+        "tool": "chengxiaobang",
+        "id": "s_ud9hgzuuustw",
+        "model": "kr-claude-opus-5.5[1M]"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
