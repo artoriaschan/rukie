@@ -1,0 +1,38 @@
+.scratch/model-switching/issues/05-picker-filter.md
+  s_2ae83f41a44c32::t_915069c3254298 1-11
+.scratch/model-switching/issues/03-model-catalog.md
+  s_2ae83f41a44c32::t_8a15e79621d600 1-11
+.scratch/model-switching/issues/02-subagent-thinking-inheritance.md
+  s_2ae83f41a44c32::t_2dbc2187f1b82b 1-11
+.scratch/model-switching/issues/07-picker-small-terminal-and-mouse.md
+  s_2ae83f41a44c32::t_80c8bce1b406b3 1-17
+CONTEXT.md
+  s_2ae83f41a44c32::t_6094ec6b63b0b6 109,111-113,115-116
+  s_2ae83f41a44c32::t_dfc02e9f58a304 110
+  s_2ae83f41a44c32::t_f95c1ce737065c 114
+.scratch/model-switching/issues/01-model-selection-api.md
+  s_2ae83f41a44c32::t_1c3778409aee74 1-17
+.scratch/model-switching/issues/04-picker-tabs-and-rows.md
+  s_2ae83f41a44c32::t_325a1be6322100 1-18
+.scratch/model-switching/spec.md
+  s_2ae83f41a44c32::t_e665001f4878f1 1-81,83-113,115-117
+  s_2ae83f41a44c32::t_0d1b5fe212c6ab 82,114,118-123
+.scratch/model-switching/issues/06-picker-thinking-and-notice.md
+  s_2ae83f41a44c32::t_813a8a6c7b37ee 1-12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "6239eaff13d08475931777f7ad511e4a7168586c",
+  "prompts": {},
+  "sessions": {
+    "s_2ae83f41a44c32": {
+      "agent_id": {
+        "tool": "chengxiaobang",
+        "id": "s_hsz3td46gzyd",
+        "model": "kr-claude-opus-5.5"
+      },
+      "human_author": "artoriaschan <dalecracker@gmail.com>"
+    }
+  }
+}
