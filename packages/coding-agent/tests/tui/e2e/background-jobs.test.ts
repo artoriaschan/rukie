@@ -67,7 +67,10 @@ test("background bash renders its card and idle job chip without consuming model
 }, 15000);
 
 test("job settlement notice coexists with a question and footer at 40×12", async () => {
+  const notifications = committedJobNotifications();
   const app = await start(["--permission-mode", "full-access", "launch"], {
+    session: notifications.session,
+    prepare: notifications.prepare,
     columns: 40,
     rows: 12,
   });
@@ -105,12 +108,11 @@ test("job settlement notice coexists with a question and footer at 40×12", asyn
     const settled = app.screen();
     app.stdin.write("\r");
     await app.waitFor(() => app.calls.length === 3);
+    await app.waitFor(() => notifications.count() === 1);
     app.calls[2]!.finish();
-    await app.waitFor(() => app.calls.length === 4 || !app.isWorking());
-    if (app.calls.length === 4) {
-      app.calls[3]!.finish();
-      await app.waitFor(() => !app.isWorking());
-    }
+    await app.waitFor(() => notifications.pendingTasks() === 0);
+    await app.waitFor(() => !app.isWorking());
+    expect(app.calls).toHaveLength(3);
     expect(settled.at(-2)).toContain("完全访问");
     expect(settled.at(-1)?.trim()).toBe("esc 中断");
     expect(settled.join("\n")).toContain("❯● First");

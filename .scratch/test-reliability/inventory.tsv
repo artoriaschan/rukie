@@ -191,7 +191,7 @@ packages/coding-agent/tests/tui/components/user-message/user-message.test.tsx	co
 packages/coding-agent/tests/tui/e2e/activity.test.ts	e2e	clock,process	12583f4929c0e08e1bed68cf4d7b30e24ce7b144a31d8731cbbf7a2e09207aea
 packages/coding-agent/tests/tui/e2e/async-hooks.test.ts	e2e	clock	f0ba0223f4eb63ffc68c0e66fc0b829d539b49005cc23995dc8b5806b2e7c50b
 packages/coding-agent/tests/tui/e2e/auxiliary-messages.test.ts	e2e	clock,cost	5b545807b8accc23f7ab02370a1f0cd37444124c4c8558b0f181967a16be1787
-packages/coding-agent/tests/tui/e2e/background-jobs.test.ts	e2e	clock,process	f17e173cd4dd5d34c435b158e9989987e64ca2cdef51041712893c066e87bf36
+packages/coding-agent/tests/tui/e2e/background-jobs.test.ts	e2e	clock,process	6a095a455f1e276c2d502dc6f1b33dd10a365ba40f236c9f29739768f928442e
 packages/coding-agent/tests/tui/e2e/clipboard-image-tip.test.ts	e2e	clock	a86f41c8eb3516847f58e052c09aae3ae3acc941d95ac34f7f16409161d132b2
 packages/coding-agent/tests/tui/e2e/composer-image-click.test.ts	e2e	none	ed64a51dd99ba98aa85f1f58d3559172d2668111f0d22c0733f9efaaed6fe63f
 packages/coding-agent/tests/tui/e2e/composer-image-dismiss.test.ts	e2e	none	91dcb69dde8dbab11e9d87b4d5c9f5f05c2c7a889aeba7687258841d0d342f1d
@@ -213,7 +213,7 @@ packages/coding-agent/tests/tui/e2e/image-preview.test.ts	e2e	clock	1bd321085264
 packages/coding-agent/tests/tui/e2e/image-tokens.test.ts	e2e	process,global	f8e45a5e0b50008671bd4e5d267f9d18258d275372c0edd12bca15a6a553927d
 packages/coding-agent/tests/tui/e2e/images.test.ts	e2e	clock,process,cost	a2c0d2ad4dee7946c534b5683885897bc93bad3ac55998da0c2761452fd2bb4e
 packages/coding-agent/tests/tui/e2e/input-history.test.ts	e2e	none	aef286f401014262e5c33097e81dbb812f4970def27c02c65eda96a8071d7efd
-packages/coding-agent/tests/tui/e2e/interaction-view.test.ts	e2e	none	e2ad88dc42af12810e6050596030bfef4d19d40c115a904810b143b742789b7a
+packages/coding-agent/tests/tui/e2e/interaction-view.test.ts	e2e	none	8c019611b1609cb4d3dc5757f37cda136d5034eab4b3f10d1779b0e388ec91af
 packages/coding-agent/tests/tui/e2e/job-selection.test.ts	e2e	none	19dac035252f718667d27600d4da6a37f60925ba57841d8a3a306cd58ef21d77
 packages/coding-agent/tests/tui/e2e/jobs-panel.test.ts	e2e	clock	8bbb42bf598958c45281b9c95a6226b40873587604113b83b39290f687fd1c27
 packages/coding-agent/tests/tui/e2e/keyboard-pages.test.ts	e2e	clock	23ae989fb1c854f20b664e249dda264b38a8b0d8ea82dae5675b8518f39b2250

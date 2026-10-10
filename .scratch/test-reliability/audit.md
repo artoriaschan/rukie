@@ -90,3 +90,11 @@ MCP 改为等待 Body 焦点提示和目标尺寸的布局结果；搜索等待�
 原后台输出用例保留 350 行布局边界、草稿、未读、阅读位置和 resize 断言；350 个等价 delta 改为 10 个代表性 burst，专门 streaming-burst 用例仍覆盖逐 delta/microtask 更新。真实子进程在 FIFO read 上等待父端释放，移除 shell polling；PageUp 已呈现且未读清零后才允许新的输出。移除不属于该合同的自动虚拟时间推进。Focused 用例约 2.02 秒（旧 1.356 秒）：真实 renderer/reveal 和子进程 I/O 不再用加速显示时钟代替，未提高任何原 timeout。首次 CI 超时的完整交错尚未在本机稳定复现，因此以新提交的 CI 验收，不把时钟混用或更新成本假设表述为已证实的产品缺陷。
 
 Focused 分组：后台/Jobs/Subagent Views/生命周期 39 pass（8.70 秒）；Job 选择、Subagent 卡片/拒绝持久化/Agent View 与生命周期 19 pass（2.98 秒）；Interaction/MCP/搜索 31 pass（4.54 秒）；最终生命周期 3 pass（2.56 秒）。整个 TUI 影响范围 1076 pass / 0 fail（130 文件，68.72 秒）；静态检查通过。一次完整 `env -u NO_COLOR bun run check` 通过：3340 pass / 0 fail，310 文件，201.93 秒；原后台场景 2.12 秒、清理回归约 1.23/1.25 秒。本机隔离 HOME 并复用已验收的 0.1.0 包（产品源码未改变）；PR CI 重建当前提交的精确包，远端结果在交付回复中报告。未改产品代码、CI shard/worker、retry 或发布状态，无需新 ADR。
+
+### PR #3 首轮远端验收与 Reporter 顺序修正
+
+`de9b5662` 的 CI `38014876628`：构建通过；shard 2 为 937 pass / 1 fail，Interaction View 的 parent question 用例在结束父回复后等待 `worker done`。后台任务晚于父 Run 结束时，idle Reporter 追加两条输入，输出卡移出 24 行视口；没有出现时钟泄漏的级联错误。shard 1 为 1189 pass / 0 fail（原后台场景 2.65 秒），shard 3 为 1213 pass / 0 fail（三条清理回归通过）；首轮总计 3339 pass / 1 fail，最终 installed 验收因 shard 2 失败而跳过。
+
+本机强制父 Run idle 后才释放子进程，并等待独立 Reporter 模型调用到达，稳定复现与 CI 一致的视口和错误（2.58 秒）。这不是没有输出，而是测试没有控制被断言视口的因果顺序。修复保持父 Run 活动，先验证 `worker done` 与两个通知提交，再完成父回复、等待 native tasks 清零和 idle footer，断言没有额外 Reporter 调用。
+
+同步审阅其他释放 job 后完成回复的场景：40×12 question/notice 用例也改为等待通知提交后完成父回复，并移除“额外调用或瞬时 idle 任一成立”的竞速分支；其他相关用例已有通知提交 barrier，专门 idle Reporter 用例保留真实 Reporter 驱动。修正后四个相关文件 35 pass / 0 fail（8.64 秒），静态检查通过。第二次推送只修改这两个测试的顺序和相关规则/证据，不修改已验收的共享清理 helper 与产品实现；不重复本机完整检查，也不重跑首轮 workflow。
