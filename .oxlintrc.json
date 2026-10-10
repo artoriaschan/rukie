@@ -409,6 +409,306 @@
           "require"
         ]
       }
+    },
+    {
+      "files": ["packages/ui/src/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@rukie/agent", "@rukie/agent/**", "**/agent/**"],
+                "allowTypeImports": true,
+                "message": "UI may import only Agent Core types."
+              },
+              {
+                "group": [
+                  "@rukie/coding-agent",
+                  "@rukie/coding-agent/**",
+                  "**/coding-agent/**",
+                  "electron",
+                  "electron/**",
+                  "node:*",
+                  "bun",
+                  "bun:*",
+                  "{_http_agent,_http_client,_http_common,_http_incoming,_http_outgoing,_http_server,_stream_duplex,_stream_passthrough,_stream_readable,_stream_transform,_stream_wrap,_stream_writable,_tls_common,_tls_wrap,assert,async_hooks,buffer,child_process,cluster,console,constants,crypto,dgram,diagnostics_channel,dns,domain,events,fs,http,http2,https,inspector,module,net,os,path,perf_hooks,process,punycode,querystring,readline,repl,stream,string_decoder,sys,timers,tls,trace_events,tty,undici,url,util,v8,vm,wasi,worker_threads,ws,zlib}",
+                  "{_http_agent,_http_client,_http_common,_http_incoming,_http_outgoing,_http_server,_stream_duplex,_stream_passthrough,_stream_readable,_stream_transform,_stream_wrap,_stream_writable,_tls_common,_tls_wrap,assert,async_hooks,buffer,child_process,cluster,console,constants,crypto,dgram,diagnostics_channel,dns,domain,events,fs,http,http2,https,inspector,module,net,os,path,perf_hooks,process,punycode,querystring,readline,repl,stream,string_decoder,sys,timers,tls,trace_events,tty,undici,url,util,v8,vm,wasi,worker_threads,ws,zlib}/**",
+                  "@rukie/server",
+                  "@rukie/server/**",
+                  "@rukie/desktop",
+                  "@rukie/desktop/**",
+                  "**/server/**",
+                  "**/desktop/**"
+                ],
+                "message": "UI must stay browser-compatible."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/ui/src/app/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@rukie/agent", "@rukie/agent/**", "**/agent/**"],
+                "allowTypeImports": true,
+                "message": "UI may import only Agent Core types."
+              },
+              {
+                "group": [
+                  "@rukie/coding-agent",
+                  "@rukie/coding-agent/**",
+                  "**/coding-agent/**",
+                  "electron",
+                  "electron/**",
+                  "node:*",
+                  "bun",
+                  "bun:*",
+                  "{_http_agent,_http_client,_http_common,_http_incoming,_http_outgoing,_http_server,_stream_duplex,_stream_passthrough,_stream_readable,_stream_transform,_stream_wrap,_stream_writable,_tls_common,_tls_wrap,assert,async_hooks,buffer,child_process,cluster,console,constants,crypto,dgram,diagnostics_channel,dns,domain,events,fs,http,http2,https,inspector,module,net,os,path,perf_hooks,process,punycode,querystring,readline,repl,stream,string_decoder,sys,timers,tls,trace_events,tty,undici,url,util,v8,vm,wasi,worker_threads,ws,zlib}",
+                  "{_http_agent,_http_client,_http_common,_http_incoming,_http_outgoing,_http_server,_stream_duplex,_stream_passthrough,_stream_readable,_stream_transform,_stream_wrap,_stream_writable,_tls_common,_tls_wrap,assert,async_hooks,buffer,child_process,cluster,console,constants,crypto,dgram,diagnostics_channel,dns,domain,events,fs,http,http2,https,inspector,module,net,os,path,perf_hooks,process,punycode,querystring,readline,repl,stream,string_decoder,sys,timers,tls,trace_events,tty,undici,url,util,v8,vm,wasi,worker_threads,ws,zlib}/**",
+                  "@rukie/server",
+                  "@rukie/server/**",
+                  "@rukie/desktop",
+                  "@rukie/desktop/**",
+                  "**/server/**",
+                  "**/desktop/**"
+                ],
+                "message": "UI must stay browser-compatible."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/ui/src/components/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@rukie/agent", "@rukie/agent/**", "**/agent/**"],
+                "allowTypeImports": true,
+                "message": "UI may import only Agent Core types."
+              },
+              {
+                "group": [
+                  "@rukie/coding-agent",
+                  "@rukie/coding-agent/**",
+                  "**/coding-agent/**",
+                  "electron",
+                  "electron/**",
+                  "node:*",
+                  "bun",
+                  "bun:*",
+                  "{_http_agent,_http_client,_http_common,_http_incoming,_http_outgoing,_http_server,_stream_duplex,_stream_passthrough,_stream_readable,_stream_transform,_stream_wrap,_stream_writable,_tls_common,_tls_wrap,assert,async_hooks,buffer,child_process,cluster,console,constants,crypto,dgram,diagnostics_channel,dns,domain,events,fs,http,http2,https,inspector,module,net,os,path,perf_hooks,process,punycode,querystring,readline,repl,stream,string_decoder,sys,timers,tls,trace_events,tty,undici,url,util,v8,vm,wasi,worker_threads,ws,zlib}",
+                  "{_http_agent,_http_client,_http_common,_http_incoming,_http_outgoing,_http_server,_stream_duplex,_stream_passthrough,_stream_readable,_stream_transform,_stream_wrap,_stream_writable,_tls_common,_tls_wrap,assert,async_hooks,buffer,child_process,cluster,console,constants,crypto,dgram,diagnostics_channel,dns,domain,events,fs,http,http2,https,inspector,module,net,os,path,perf_hooks,process,punycode,querystring,readline,repl,stream,string_decoder,sys,timers,tls,trace_events,tty,undici,url,util,v8,vm,wasi,worker_threads,ws,zlib}/**",
+                  "@rukie/server",
+                  "@rukie/server/**",
+                  "@rukie/desktop",
+                  "@rukie/desktop/**",
+                  "**/server/**",
+                  "**/desktop/**"
+                ],
+                "message": "UI must stay browser-compatible."
+              },
+              {
+                "group": [
+                  "**/app",
+                  "**/store",
+                  "**/client",
+                  "**/host",
+                  "**/app/**",
+                  "**/store/**",
+                  "**/client/**",
+                  "**/host/**",
+                  "@rukie/ui",
+                  "@rukie/ui/**"
+                ],
+                "message": "Follow ADR-0029 UI layer dependency direction."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/ui/src/store/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@rukie/agent", "@rukie/agent/**", "**/agent/**"],
+                "allowTypeImports": true,
+                "message": "UI may import only Agent Core types."
+              },
+              {
+                "group": [
+                  "@rukie/coding-agent",
+                  "@rukie/coding-agent/**",
+                  "**/coding-agent/**",
+                  "electron",
+                  "electron/**",
+                  "node:*",
+                  "bun",
+                  "bun:*",
+                  "{_http_agent,_http_client,_http_common,_http_incoming,_http_outgoing,_http_server,_stream_duplex,_stream_passthrough,_stream_readable,_stream_transform,_stream_wrap,_stream_writable,_tls_common,_tls_wrap,assert,async_hooks,buffer,child_process,cluster,console,constants,crypto,dgram,diagnostics_channel,dns,domain,events,fs,http,http2,https,inspector,module,net,os,path,perf_hooks,process,punycode,querystring,readline,repl,stream,string_decoder,sys,timers,tls,trace_events,tty,undici,url,util,v8,vm,wasi,worker_threads,ws,zlib}",
+                  "{_http_agent,_http_client,_http_common,_http_incoming,_http_outgoing,_http_server,_stream_duplex,_stream_passthrough,_stream_readable,_stream_transform,_stream_wrap,_stream_writable,_tls_common,_tls_wrap,assert,async_hooks,buffer,child_process,cluster,console,constants,crypto,dgram,diagnostics_channel,dns,domain,events,fs,http,http2,https,inspector,module,net,os,path,perf_hooks,process,punycode,querystring,readline,repl,stream,string_decoder,sys,timers,tls,trace_events,tty,undici,url,util,v8,vm,wasi,worker_threads,ws,zlib}/**",
+                  "@rukie/server",
+                  "@rukie/server/**",
+                  "@rukie/desktop",
+                  "@rukie/desktop/**",
+                  "**/server/**",
+                  "**/desktop/**"
+                ],
+                "message": "UI must stay browser-compatible."
+              },
+              {
+                "group": [
+                  "**/app",
+                  "**/components",
+                  "**/host",
+                  "**/app/**",
+                  "**/components/**",
+                  "**/host/**",
+                  "@rukie/ui",
+                  "@rukie/ui/**",
+                  "react",
+                  "react/**",
+                  "react-dom",
+                  "react-dom/**"
+                ],
+                "message": "Follow ADR-0029 UI layer dependency direction."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/ui/src/client/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@rukie/agent", "@rukie/agent/**", "**/agent/**"],
+                "allowTypeImports": true,
+                "message": "UI may import only Agent Core types."
+              },
+              {
+                "group": [
+                  "@rukie/coding-agent",
+                  "@rukie/coding-agent/**",
+                  "**/coding-agent/**",
+                  "electron",
+                  "electron/**",
+                  "node:*",
+                  "bun",
+                  "bun:*",
+                  "{_http_agent,_http_client,_http_common,_http_incoming,_http_outgoing,_http_server,_stream_duplex,_stream_passthrough,_stream_readable,_stream_transform,_stream_wrap,_stream_writable,_tls_common,_tls_wrap,assert,async_hooks,buffer,child_process,cluster,console,constants,crypto,dgram,diagnostics_channel,dns,domain,events,fs,http,http2,https,inspector,module,net,os,path,perf_hooks,process,punycode,querystring,readline,repl,stream,string_decoder,sys,timers,tls,trace_events,tty,undici,url,util,v8,vm,wasi,worker_threads,ws,zlib}",
+                  "{_http_agent,_http_client,_http_common,_http_incoming,_http_outgoing,_http_server,_stream_duplex,_stream_passthrough,_stream_readable,_stream_transform,_stream_wrap,_stream_writable,_tls_common,_tls_wrap,assert,async_hooks,buffer,child_process,cluster,console,constants,crypto,dgram,diagnostics_channel,dns,domain,events,fs,http,http2,https,inspector,module,net,os,path,perf_hooks,process,punycode,querystring,readline,repl,stream,string_decoder,sys,timers,tls,trace_events,tty,undici,url,util,v8,vm,wasi,worker_threads,ws,zlib}/**",
+                  "@rukie/server",
+                  "@rukie/server/**",
+                  "@rukie/desktop",
+                  "@rukie/desktop/**",
+                  "**/server/**",
+                  "**/desktop/**"
+                ],
+                "message": "UI must stay browser-compatible."
+              },
+              {
+                "group": [
+                  "**/app",
+                  "**/components",
+                  "**/store",
+                  "**/app/**",
+                  "**/components/**",
+                  "**/store/**",
+                  "@rukie/ui",
+                  "@rukie/ui/**",
+                  "react",
+                  "react/**",
+                  "zustand",
+                  "zustand/**",
+                  "react-dom",
+                  "react-dom/**"
+                ],
+                "message": "Follow ADR-0029 UI layer dependency direction."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["packages/ui/src/host/**"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@rukie/agent", "@rukie/agent/**", "**/agent/**"],
+                "allowTypeImports": true,
+                "message": "UI may import only Agent Core types."
+              },
+              {
+                "group": [
+                  "@rukie/coding-agent",
+                  "@rukie/coding-agent/**",
+                  "**/coding-agent/**",
+                  "electron",
+                  "electron/**",
+                  "node:*",
+                  "bun",
+                  "bun:*",
+                  "{_http_agent,_http_client,_http_common,_http_incoming,_http_outgoing,_http_server,_stream_duplex,_stream_passthrough,_stream_readable,_stream_transform,_stream_wrap,_stream_writable,_tls_common,_tls_wrap,assert,async_hooks,buffer,child_process,cluster,console,constants,crypto,dgram,diagnostics_channel,dns,domain,events,fs,http,http2,https,inspector,module,net,os,path,perf_hooks,process,punycode,querystring,readline,repl,stream,string_decoder,sys,timers,tls,trace_events,tty,undici,url,util,v8,vm,wasi,worker_threads,ws,zlib}",
+                  "{_http_agent,_http_client,_http_common,_http_incoming,_http_outgoing,_http_server,_stream_duplex,_stream_passthrough,_stream_readable,_stream_transform,_stream_wrap,_stream_writable,_tls_common,_tls_wrap,assert,async_hooks,buffer,child_process,cluster,console,constants,crypto,dgram,diagnostics_channel,dns,domain,events,fs,http,http2,https,inspector,module,net,os,path,perf_hooks,process,punycode,querystring,readline,repl,stream,string_decoder,sys,timers,tls,trace_events,tty,undici,url,util,v8,vm,wasi,worker_threads,ws,zlib}/**",
+                  "@rukie/server",
+                  "@rukie/server/**",
+                  "@rukie/desktop",
+                  "@rukie/desktop/**",
+                  "**/server/**",
+                  "**/desktop/**"
+                ],
+                "message": "UI must stay browser-compatible."
+              },
+              {
+                "group": [
+                  "**/app",
+                  "**/components",
+                  "**/store",
+                  "**/client",
+                  "**/app/**",
+                  "**/components/**",
+                  "**/store/**",
+                  "**/client/**",
+                  "@rukie/ui",
+                  "@rukie/ui/**",
+                  "react",
+                  "react/**",
+                  "zustand",
+                  "zustand/**",
+                  "react-dom",
+                  "react-dom/**"
+                ],
+                "message": "Follow ADR-0029 UI layer dependency direction."
+              }
+            ]
+          }
+        ]
+      }
     }
   ],
   "ignorePatterns": ["packages/coding-agent/src/ink/**"]

@@ -46,3 +46,27 @@ await Bun.sleep(30);`,
     ),
   ).not.toHaveLength(0);
 });
+
+test.each([
+  ["packages/ui/tests/app.test.tsx", "bun:test"],
+  ["packages/desktop/tests/main.test.ts", "bun:test"],
+  ["packages/server/tests/server.test.ts", "vitest"],
+  ["packages/agent/tests/session.test.ts", "vitest/browser"],
+])("runner boundary rejects %s importing %s", (file, runner) => {
+  expect(checkTestSource(file, `import { test } from "${runner}";`)).not.toHaveLength(0);
+});
+test.each([
+  ["packages/ui/tests/store.test.ts", "vitest"],
+  ["packages/desktop/tests/main.test.ts", "vitest"],
+  ["packages/server/tests/server.test.ts", "bun:test"],
+])("runner boundary permits %s importing %s", (file, runner) => {
+  expect(checkTestSource(file, `import { test } from "${runner}";`)).toEqual([]);
+});
+
+test.each([
+  'export { test } from "vitest";',
+  'await import("vitest");',
+  'const runner = require("vitest/browser");',
+])("runner boundary catches alternate imports %s", (source) => {
+  expect(checkTestSource("packages/server/tests/wire.test.ts", source)).not.toHaveLength(0);
+});

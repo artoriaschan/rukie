@@ -15,6 +15,15 @@
     },
     {
       "path": "scripts"
+    },
+    {
+      "path": "packages/ui"
+    },
+    {
+      "path": "packages/server"
+    },
+    {
+      "path": "packages/desktop"
     }
   ]
 }
