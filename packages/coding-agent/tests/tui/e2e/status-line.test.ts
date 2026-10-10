@@ -7,6 +7,7 @@ import { createJsonlStore, createSession } from "@rukie/agent";
 import { controlledModel } from "../helpers/model";
 import { join } from "node:path";
 import { count } from "../../../src/view/transcript/metrics";
+import { auxiliaryModels } from "../helpers/auxiliary-model";
 
 test("resumed context bar retains provider input and includes MCP definitions in hover details", async () => {
   const argv: string[] = [];
@@ -217,37 +218,48 @@ test("tps starts after 500ms of decoding and final usage corrects the Run sample
 });
 
 test("tps includes tool-call deltas and completed Turns while excluding time between Turns", async () => {
+  const fake = controlledModel();
   const app = await startWithClock(["tool decode"], {
     advanceTimers: paintAtSampleTime,
     columns: 120,
-    session: { permissionMode: "full-access" },
+    session: {
+      permissionMode: "full-access",
+      model: fake.model,
+      models: auxiliaryModels((...args) => {
+        const stream = fake.provider.streamSimple(...args);
+        if (fake.calls.length === 1) {
+          // The native partial writer can coalesce these into the first visible
+          // message. Queue both before consumption to pin the failing CI order.
+          fake.calls[0]!.thinking("x");
+          fake.calls[0]!.toolDelta("x".repeat(800));
+        }
+        return stream;
+      }),
+    },
   });
   let now = Date.now();
   try {
-    await app.waitFor(() => app.calls.length === 1);
-    testClock.setSystemTime(now);
-    app.calls[0]!.thinking("x");
-    app.calls[0]!.toolDelta("x".repeat(800));
     await app.waitFor(() => app.screen().join("\n").includes("🧠 思考"));
+    now = Date.now();
     now += 500;
     testClock.setSystemTime(now);
-    app.calls[0]!.toolDelta("abcd");
+    fake.calls[0]!.toolDelta("abcd");
     await app.waitFor(() => app.screen().at(-2)?.includes("410 tps") === true);
     now += 500;
     testClock.setSystemTime(now);
-    app.calls[0]!.tool("bash", { command: "printf ok", description: "Run test command" });
-    await app.waitFor(() => app.calls.length === 2);
+    fake.calls[0]!.tool("bash", { command: "printf ok", description: "Run test command" });
+    await app.waitFor(() => fake.calls.length === 2);
     now += 10000;
     testClock.setSystemTime(now);
-    app.calls[1]!.delta("x".repeat(800));
+    fake.calls[1]!.delta("x".repeat(800));
     await app.waitFor(() => app.screen().join("\n").includes("↓ 205 tokens"));
     now += 500;
     testClock.setSystemTime(now);
-    app.calls[1]!.delta("abcd");
+    fake.calls[1]!.delta("abcd");
     await app.waitFor(() => app.screen().at(-2)?.includes("137 tps") === true);
     now += 500;
     testClock.setSystemTime(now);
-    app.calls[1]!.finish(21, 95);
+    fake.calls[1]!.finish(21, 95);
     await app.waitFor(() => !app.isWorking() && app.screen().at(-2)?.includes("▅ 50 tps") === true);
     const fields = app.screen().at(-2)!;
     const x = Bun.stringWidth(fields.slice(0, fields.indexOf("▅"))) + 1;
