@@ -1,3 +1,8 @@
+import {
+  filterModelTabs,
+  modelProviderTabs,
+  modelSelectionNotice,
+} from "../../../view/model-picker";
 import { productVersion } from "../../../version";
 import { useHostSelection } from "../../hooks/host-selection";
 import {
@@ -45,7 +50,7 @@ import {
 import {
   createSession,
   listSkills,
-  listModels,
+  listModelCatalog,
   listSessions,
   type SessionSummary,
   type PromptImage,
@@ -157,7 +162,8 @@ export async function createChat(
   let session = await createSession(sessionOptions);
   const checkpointCwd = await realpath(options.cwd);
   const skills = await listSkills(options);
-  const models = listModels(options.settings);
+  const loadModelCatalog = () => listModelCatalog(options.settings);
+  const models = await loadModelCatalog().catch(() => []);
   let conversation = createConversation(session, model, conversationFacts, locale);
   let binding = { session, conversation };
   const bindingListeners = new Set<() => void>();
@@ -238,10 +244,10 @@ export async function createChat(
                 cwd={options.cwd}
                 checkpointCwd={checkpointCwd}
                 foldTerminalCommand={options.settings?.foldTerminalCommand ?? true}
-                thinking={options.settings?.thinking}
                 locale={locale}
                 onExit={onExit}
                 models={models}
+                loadModelCatalog={loadModelCatalog}
                 sessions={() => listSessions(options)}
                 skills={skills}
                 replaceSession={replaceSession}
@@ -293,14 +299,14 @@ function Chat({
   cwd,
   homeDir,
   checkpointCwd,
-  thinking,
   foldTerminalCommand,
   locale,
   onExit,
   skills,
   replaceSession,
   writeTitle,
-  models,
+  models: initialModels,
+  loadModelCatalog,
   sessions,
 }: {
   session: Session;
@@ -313,11 +319,11 @@ function Chat({
   cwd: string;
   homeDir?: string;
   checkpointCwd: string;
-  thinking?: ThinkingLevel;
   foldTerminalCommand: boolean;
   locale: Locale;
   onExit(): void;
-  models: Readonly<ReturnType<typeof listModels>>;
+  models: Readonly<Awaited<ReturnType<typeof listModelCatalog>>>;
+  loadModelCatalog(): ReturnType<typeof listModelCatalog>;
   sessions(): Promise<SessionSummary[]>;
   skills: readonly { name: string; description: string }[];
   replaceSession(resumeId?: string): Promise<void>;
@@ -325,6 +331,7 @@ function Chat({
 }) {
   const t = createTuiI18n(locale);
   const theme = useTheme();
+  const [models, setModels] = useState(initialModels);
   const [clipboardImage, setClipboardImage] = useState(false);
   useEffect(() => {
     let active = true;
@@ -710,13 +717,35 @@ function Chat({
     mode: number;
     busy: boolean;
   };
-  const [modelPicker, setModelPicker] = useState<number>();
-  const modelPickerRef = useRef<number | undefined>(undefined);
+  const thinking = session.thinkingLevel;
+  type ModelPickerState = {
+    thinkingLevel: ThinkingLevel;
+    tab: number;
+    focuses: number[];
+    query: string;
+    filterFocus: number;
+    loading: boolean;
+    failed: boolean;
+    notice?: string;
+  };
+  const [modelPicker, setModelPicker] = useState<ModelPickerState>();
+  const modelPickerRef = useRef<ModelPickerState | undefined>(undefined);
+  const modelTabs = modelProviderTabs(models, session.model);
   const modelPickerDraftImages = useRef(false);
-  const showModelPicker = (focus: number | undefined) => {
-    modelPickerRef.current = focus;
-    if (focus === undefined) modelPickerDraftImages.current = false;
-    setModelPicker(focus);
+  const modelPickerReading = useRef<ReadingPosition | undefined>(undefined);
+  const showModelPicker = (next: ModelPickerState | undefined) => {
+    if (next && modelPickerRef.current === undefined && !modelPickerReading.current)
+      modelPickerReading.current = captureSourcePosition(
+        readPosition(body.current, columns)!,
+        sources,
+      );
+    if (!next && modelPickerRef.current !== undefined) {
+      pendingRestore.current = modelPickerReading.current;
+      modelPickerReading.current = undefined;
+    }
+    modelPickerRef.current = next;
+    if (next === undefined) modelPickerDraftImages.current = false;
+    setModelPicker(next);
   };
   type ResumePicker = { sessions: readonly SessionSummary[]; focus: number; busy: boolean };
   const [resumePicker, setResumePicker] = useState<ResumePicker>();
@@ -881,7 +910,7 @@ function Chat({
       anchor: saved.anchor ? { ...saved.anchor, sourceOffset: undefined } : undefined,
     });
     pendingRestore.current = undefined;
-  }, [view, columns, sources]);
+  }, [view, columns, sources, modelPicker]);
   const chatScrollRef = usePanelScroll(body, savedChatScroll.current, columns, (position) => {
     if (pendingRestore.current) {
       const saved = pendingRestore.current;
@@ -1254,7 +1283,11 @@ function Chat({
       ),
     );
   };
-  const switchModel = async (spec: string, hadDraftImages = false) => {
+  const switchModel = async (
+    spec: string,
+    hadDraftImages = false,
+    thinkingLevel?: ThinkingLevel,
+  ) => {
     const hadImages =
       hadDraftImages ||
       composer.ordered(draft.current).length > 0 ||
@@ -1264,10 +1297,18 @@ function Chat({
           (entry) => (entry.type === "message" || entry.type === "tool") && !!entry.images?.length,
         );
     try {
-      await session.setModel(spec);
+      const before = { model: session.model, thinkingLevel: session.thinkingLevel };
+      const selection = await session.setModelSelection({ model: spec, thinkingLevel });
       composer.reset();
       pasteEpoch.current++;
-      conversation.notice(t("model.changed", { model: session.model }));
+      const notice = modelSelectionNotice(
+        before,
+        selection,
+        models.find((model) => model.spec === selection.model)?.name,
+        locale,
+        { columns: Math.max(1, columns - 2), measure: Bun.stringWidth },
+      );
+      if (notice) conversation.notice(notice);
       clearTimeout(modelImageNoticeTimer.current);
       setModelImageNotice(undefined);
       if (hadImages) notifyModelImages();
@@ -1276,9 +1317,23 @@ function Chat({
     }
   };
   const selectModel = (index: number) => {
+    const picker = modelPickerRef.current;
+    const selected =
+      picker &&
+      (picker.query ? filterModelTabs(modelTabs, picker.query) : modelTabs[picker.tab]?.models)?.[
+        index
+      ];
+    if (!picker || picker.loading || picker.failed || !selected) return;
+    if (selected.custom && !selected.authenticated) {
+      showModelPicker({
+        ...picker,
+        notice: t("model.credentials-notice", { model: selected.spec }),
+      });
+      return;
+    }
     const hadDraftImages = modelPickerDraftImages.current;
     showModelPicker(undefined);
-    void switchModel(models[index]!.spec, hadDraftImages);
+    void switchModel(selected.spec, hadDraftImages, picker.thinkingLevel);
   };
   const executeCommand = (prompt: string) => {
     const parsed = /^\/([a-z0-9-]+)(?:\s|$)/.exec(prompt);
@@ -1384,16 +1439,53 @@ function Chat({
       if (spec) void switchModel(spec, hadDraftImages);
       else {
         modelPickerDraftImages.current = hadDraftImages;
+        modelPickerReading.current = captureSourcePosition(
+          readPosition(body.current, columns)!,
+          sources,
+        );
         // Submit can run before Chat handles the same Enter event. Open after
         // that event finishes so it cannot also pick the current model.
-        queueMicrotask(() =>
-          showModelPicker(
-            Math.max(
-              0,
-              models.findIndex((model) => model.spec === session.model),
-            ),
-          ),
-        );
+        queueMicrotask(() => {
+          const loading = {
+            tab: 0,
+            focuses: [],
+            query: "",
+            filterFocus: 0,
+            loading: true,
+            failed: false,
+            thinkingLevel: session.thinkingLevel,
+          };
+          showModelPicker(loading);
+          void loadModelCatalog()
+            .then((catalog) => {
+              if (modelPickerRef.current !== loading) return;
+              setModels(catalog);
+              const tabs = modelProviderTabs(catalog, session.model);
+              showModelPicker({
+                thinkingLevel: loading.thinkingLevel,
+                tab: Math.max(
+                  0,
+                  tabs.findIndex((provider) =>
+                    provider.models.some((model) => model.spec === session.model),
+                  ),
+                ),
+                focuses: tabs.map((provider) =>
+                  Math.max(
+                    0,
+                    provider.models.findIndex((model) => model.spec === session.model),
+                  ),
+                ),
+                query: "",
+                filterFocus: 0,
+                loading: false,
+                failed: false,
+              });
+            })
+            .catch(() => {
+              if (modelPickerRef.current === loading)
+                showModelPicker({ ...loading, loading: false, failed: true });
+            });
+        });
       }
     } else if (command.name === "btw") {
       const question = prompt.slice(parsed![0].length).trim();
@@ -1473,7 +1565,12 @@ function Chat({
   const sendInput = (prompt: string) => {
     if (previewRef.current) return;
     if (executeCommand(prompt)) {
-      if (!mcpPanel.getSnapshot() && viewRef.current !== "jobs" && viewRef.current !== "context")
+      if (
+        !modelPickerReading.current &&
+        !mcpPanel.getSnapshot() &&
+        viewRef.current !== "jobs" &&
+        viewRef.current !== "context"
+      )
         body.current?.scrollToBottom();
       change("");
       composer.clear();
@@ -1572,7 +1669,7 @@ function Chat({
     (modelNoticeHeight > 0 &&
       rows - pinnedHeight - footerHeight - panelMinimum - 1 <
         promptMaxLines + 3 + modelNoticeHeight) ||
-    ((!!side || !!rewind || !!resumePicker || mcpVisible) && rows < 20) ||
+    ((!!side || !!rewind || !!resumePicker || !!modelPicker || mcpVisible) && rows < 20) ||
     (!!interaction &&
       rows - pinnedHeight - footerHeight - minimumDialogHeight - dialogGap - panelMinimum <
         promptMaxLines + 3);
@@ -1631,7 +1728,7 @@ function Chat({
         rewindMaxHeight,
       ).height
     : 0;
-  const modelPickerHeight = modelPicker === undefined ? 0 : Math.min(12, available - panelMinimum);
+  const modelPickerHeight = modelPicker === undefined ? 0 : Math.min(14, available - panelMinimum);
   const resumePickerHeight = resumePicker ? Math.min(14, available - panelMinimum) : 0;
   const mcpMaxHeight = mcpVisible ? Math.max(0, Math.min(14, available - panelMinimum)) : 0;
   const mcpHeight = mcpVisible
@@ -1826,19 +1923,74 @@ function Chat({
         }
         return;
       }
-      const modelFocus = modelPickerRef.current;
-      if (modelFocus !== undefined) {
-        if (event.isPasted) return;
+      const modelCursor = modelPickerRef.current;
+      if (modelCursor !== undefined) {
         handledInput.current.add(event);
         const { key } = event;
-        if (event.keypress.name === "escape" || (key.ctrl && event.keypress.name === "c"))
-          showModelPicker(undefined);
-        else if (!small && !key.ctrl && !key.meta && !key.shift) {
-          if (event.keypress.name === "up" || event.keypress.name === "down")
-            showModelPicker(
-              (modelFocus + (event.keypress.name === "up" ? models.length - 1 : 1)) % models.length,
+        const name = event.keypress.name;
+        const updateQuery = (query: string) =>
+          showModelPicker({ ...modelCursor, query, filterFocus: 0, notice: undefined });
+        if (!event.isPasted && name === "escape") {
+          if (modelCursor.query) updateQuery("");
+          else showModelPicker(undefined);
+        } else if (!event.isPasted && key.ctrl && name === "c") showModelPicker(undefined);
+        else if (!small && !key.ctrl && !key.meta && !modelCursor.loading && !modelCursor.failed) {
+          if (event.isPasted) updateQuery(modelCursor.query + event.input);
+          else if (name === "backspace")
+            updateQuery(Array.from(modelCursor.query).slice(0, -1).join(""));
+          else if (name === "tab" && !modelCursor.query && modelTabs.length)
+            showModelPicker({
+              ...modelCursor,
+              tab: (modelCursor.tab + (key.shift ? modelTabs.length - 1 : 1)) % modelTabs.length,
+              notice: undefined,
+            });
+          else if (!key.shift && (name === "up" || name === "down")) {
+            const count = modelCursor.query
+              ? filterModelTabs(modelTabs, modelCursor.query).length
+              : (modelTabs[modelCursor.tab]?.models.length ?? 0);
+            if (count) {
+              const focus = modelCursor.query
+                ? modelCursor.filterFocus
+                : (modelCursor.focuses[modelCursor.tab] ?? 0);
+              const next = (focus + (name === "up" ? count - 1 : 1)) % count;
+              const focuses = [...modelCursor.focuses];
+              if (!modelCursor.query) focuses[modelCursor.tab] = next;
+              showModelPicker({
+                ...modelCursor,
+                focuses,
+                filterFocus: modelCursor.query ? next : modelCursor.filterFocus,
+                notice: undefined,
+              });
+            }
+          } else if (!key.shift && (name === "left" || name === "right")) {
+            const focused = modelCursor.query
+              ? filterModelTabs(modelTabs, modelCursor.query)[modelCursor.filterFocus]
+              : modelTabs[modelCursor.tab]?.models[modelCursor.focuses[modelCursor.tab] ?? 0];
+            const levels = focused?.thinkingLevels ?? [];
+            if (levels.length > 1) {
+              const index = levels.indexOf(modelCursor.thinkingLevel);
+              const next =
+                index < 0
+                  ? name === "left"
+                    ? levels.length - 1
+                    : 0
+                  : Math.max(0, Math.min(levels.length - 1, index + (name === "left" ? -1 : 1)));
+              showModelPicker({ ...modelCursor, thinkingLevel: levels[next]!, notice: undefined });
+            }
+          } else if (!key.shift && name === "return")
+            selectModel(
+              modelCursor.query
+                ? modelCursor.filterFocus
+                : (modelCursor.focuses[modelCursor.tab] ?? 0),
             );
-          else if (event.keypress.name === "return") selectModel(modelFocus);
+          else if (
+            event.input &&
+            Array.from(event.input).every((character) => {
+              const code = character.charCodeAt(0);
+              return code >= 32 && code !== 127;
+            })
+          )
+            updateQuery(modelCursor.query + event.input);
         }
         return;
       }
@@ -2810,7 +2962,7 @@ function Chat({
               key="startup-logo"
               model={state.model}
               cwd={cwd}
-              thinking={thinking}
+              thinking={thinking === "off" ? undefined : thinking}
               working={state.running}
               suspended={!!preview || !!composerPreview}
             />
@@ -3081,12 +3233,51 @@ function Chat({
               )}
               {modelPicker !== undefined && (
                 <ModelPicker
-                  models={models}
-                  focus={modelPicker}
+                  tabs={modelTabs}
+                  thinkingLevel={modelPicker.thinkingLevel}
+                  onThinking={(thinkingLevel) => {
+                    const picker = modelPickerRef.current;
+                    if (picker) showModelPicker({ ...picker, thinkingLevel, notice: undefined });
+                  }}
+                  tab={modelPicker.tab}
+                  focus={
+                    modelPicker.query
+                      ? modelPicker.filterFocus
+                      : (modelPicker.focuses[modelPicker.tab] ?? 0)
+                  }
+                  query={modelPicker.query}
+                  filteredModels={filterModelTabs(modelTabs, modelPicker.query)}
+                  loading={modelPicker.loading}
+                  failed={modelPicker.failed}
+                  notice={modelPicker.notice}
+                  columns={columns}
                   current={session.model}
                   maxHeight={modelPickerHeight}
                   locale={locale}
                   onPick={selectModel}
+                  onWheel={(delta) => {
+                    const picker = modelPickerRef.current;
+                    if (!picker || picker.loading || picker.failed) return;
+                    const count = picker.query
+                      ? filterModelTabs(modelTabs, picker.query).length
+                      : (modelTabs[picker.tab]?.models.length ?? 0);
+                    if (!count) return;
+                    const focus = picker.query
+                      ? picker.filterFocus
+                      : (picker.focuses[picker.tab] ?? 0);
+                    const next = Math.max(0, Math.min(count - 1, focus + (delta > 0 ? 1 : -1)));
+                    const focuses = [...picker.focuses];
+                    if (!picker.query) focuses[picker.tab] = next;
+                    showModelPicker({
+                      ...picker,
+                      focuses,
+                      filterFocus: picker.query ? next : picker.filterFocus,
+                      notice: undefined,
+                    });
+                  }}
+                  onTab={(tab) =>
+                    showModelPicker({ ...modelPickerRef.current!, tab, notice: undefined })
+                  }
                 />
               )}
               {side && (

@@ -218,7 +218,7 @@ test("retained child provider requests keep their native model after parent mode
         if (event.type === "subagent_event") childId ||= event.agentId;
       },
     });
-    await session.setModel("child-pin/second");
+    await session.setModelSelection({ model: "child-pin/second" });
     await session.run("continue and delegate");
     await session.waitForRequest(session.currentRequestId!);
     expect(requested.get("first child request")).toBe("first");

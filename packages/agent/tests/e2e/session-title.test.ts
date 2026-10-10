@@ -466,7 +466,10 @@ test("an idle rename and model selection can persist concurrently without losing
   const session = await createSession({ ...dirs, ...fake, settings });
   try {
     await session.run("Initial work");
-    await Promise.all([session.rename("Chosen name"), session.setModel("title-concurrent/cheap")]);
+    await Promise.all([
+      session.rename("Chosen name"),
+      session.setModelSelection({ model: "title-concurrent/cheap" }),
+    ]);
     await session.close();
     const resumed = await createSession({ ...dirs, ...fake, settings, resumeId: session.id });
     expect(resumed.title).toBe("Chosen name");

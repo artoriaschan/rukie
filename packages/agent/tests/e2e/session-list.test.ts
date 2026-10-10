@@ -167,7 +167,7 @@ test("stored model selection wins over the last answer and delegated children ar
   try {
     await session.rename("Parent");
     await session.run("Delegate inspection");
-    await session.setModel("list-test/selected");
+    await session.setModelSelection({ model: "list-test/selected" });
     await session.close();
     expect(await listSessions(dirs)).toEqual([
       expect.objectContaining({

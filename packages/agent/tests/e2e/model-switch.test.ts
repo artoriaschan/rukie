@@ -6,7 +6,7 @@ import {
 } from "../helpers/auxiliary-model.ts";
 import { afterEach, expect, test } from "bun:test";
 import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
-import { createSession, listModels, type SessionEvent } from "../../src/index.ts";
+import { createSession, listModelCatalog, type SessionEvent } from "../../src/index.ts";
 import { fakeModel } from "../helpers/fake-model.ts";
 import { tempDirs } from "../helpers/temp-dirs.ts";
 
@@ -71,9 +71,9 @@ test("changing a Session model affects the next request and survives resume with
   });
   sessions.push(session);
   await session.run("first question");
-  await session.setModel("switch/second");
+  await session.setModelSelection({ model: "switch/second" });
   expect(session.model).toBe("switch/second");
-  expect(session.toolState("model")).toBe("switch/second");
+  expect(session.toolState("model")).toEqual({ model: "switch/second", thinkingLevel: "off" });
   await session.run("second question");
   await session.close();
   const resumed = await createSession({
@@ -89,11 +89,15 @@ test("changing a Session model affects the next request and survives resume with
   await resumed.close();
 });
 
-test("available models include custom and built-in provider entries without requiring credentials", () => {
+test("available models include custom and built-in provider entries without requiring credentials", async () => {
   delete process.env.RUKIE_SWITCH_TEST_KEY;
-  const choices = listModels(settings);
-  expect(choices).toContainEqual({ spec: "switch/first", name: "first", input: ["text"] });
-  expect(choices).toContainEqual({ spec: "switch/second", name: "second", input: ["text"] });
+  const choices = await listModelCatalog(settings);
+  expect(choices).toContainEqual(
+    expect.objectContaining({ spec: "switch/first", name: "first", input: ["text"] }),
+  );
+  expect(choices).toContainEqual(
+    expect.objectContaining({ spec: "switch/second", name: "second", input: ["text"] }),
+  );
   expect(choices.some((choice) => choice.spec.startsWith("anthropic/"))).toBe(true);
 });
 
@@ -110,19 +114,24 @@ test("invalid and busy model changes preserve the current model and settings fil
     ...switchModels(fake),
   });
   sessions.push(session);
-  await expect(session.setModel("switch/no-such-model")).rejects.toThrow("Unknown model");
+  await expect(session.setModelSelection({ model: "switch/no-such-model" })).rejects.toThrow(
+    "Unknown model",
+  );
+  await expect(session.setModelSelection({ model: "" })).rejects.toThrow("Unknown model");
   expect(session.model).toBe("switch/first");
   expect(session.toolState("model")).toBeUndefined();
   delete process.env.RUKIE_SWITCH_TEST_KEY;
-  await expect(session.setModel("switch/second")).rejects.toThrow("No API key");
+  await expect(session.setModelSelection({ model: "switch/second" })).rejects.toMatchObject({
+    code: "no-api-key",
+  });
   process.env.RUKIE_SWITCH_TEST_KEY = "test-key";
   const run = session.run("question");
-  await expect(session.setModel("switch/second")).rejects.toThrow("idle");
+  await expect(session.setModelSelection({ model: "switch/second" })).rejects.toThrow("idle");
   await run;
-  await session.setModel("switch/second");
+  await session.setModelSelection({ model: "switch/second" });
   expect(await Bun.file(settingsPath).text()).toBe(original);
   await session.close();
-  await expect(session.setModel("switch/first")).rejects.toThrow("closed");
+  await expect(session.setModelSelection({ model: "switch/first" })).rejects.toThrow("closed");
 });
 
 test("new inherited children use the switched model while retained children keep their original model", async () => {
@@ -171,7 +180,7 @@ test("new inherited children use the switched model while retained children keep
     }
   };
   await session.run("delegate old", { onEvent: observe });
-  await session.setModel("switch/second");
+  await session.setModelSelection({ model: "switch/second" });
   await session.run("delegate and continue", { onEvent: observe });
   expect(childModels).toEqual(["switch/first", "switch/first", "switch/second"]);
   await session.close();
@@ -210,7 +219,7 @@ test("manual compaction waits for model selection and summarizes through the sel
   sessions.push(session);
   await session.run("first question");
   await session.run("recent retained task");
-  const switching = session.setModel("switch/second");
+  const switching = session.setModelSelection({ model: "switch/second" });
   await expect(session.compact()).rejects.toThrow("switching models");
   await switching;
   await session.compact();
@@ -221,4 +230,28 @@ test("manual compaction waits for model selection and summarizes through the sel
     ),
   ).toBe(true);
   await session.close();
+});
+
+test("changing only Thinking Level persists the effective level and sends it to the model", async () => {
+  dirs = await tempDirs();
+  const requested: unknown[] = [];
+  const fake = fakeModel([fauxAssistantMessage("answer")], { model: { reasoning: true } });
+  const stream = fake.models.getProviders()[0]!.streamSimple;
+  fake.models = withModelStream(
+    fake.models,
+    withAuxiliaryRequests((model, context, options) => {
+      requested.push(options?.reasoning);
+      return stream(model, context, options);
+    }),
+  );
+  const session = await createSession({ ...dirs, ...fake });
+  sessions.push(session);
+  expect(await session.setModelSelection({ thinkingLevel: "high" })).toEqual({
+    model: session.model,
+    thinkingLevel: "high",
+  });
+  expect(session.thinkingLevel).toBe("high");
+  expect(session.toolState("model")).toEqual({ model: session.model, thinkingLevel: "high" });
+  await session.run("question");
+  expect(requested).toEqual(["high"]);
 });

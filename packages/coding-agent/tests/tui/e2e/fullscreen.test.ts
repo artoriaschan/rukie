@@ -66,6 +66,7 @@ test("mouse motion between consecutive Ctrl+C presses does not cancel idle exit"
 test("startup header receives the configured thinking level and shows cwd on its own row without tips", async () => {
   let cwd = "";
   const app = await start(["--thinking", "high"], {
+    session: { model: { ...controlledModel().model, reasoning: true } },
     prepare(root) {
       cwd = root;
       return Promise.resolve();

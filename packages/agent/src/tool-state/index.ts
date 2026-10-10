@@ -14,6 +14,7 @@ export interface ToolStateDefinition {
   version: number;
   document: ConversationDocToken<{ value: JsonValue }>;
   parse(version: number, value: unknown): JsonValue;
+  migrate?(value: JsonValue, version: number): JsonValue;
   renderReminder?(value: JsonValue): string | undefined;
 }
 
@@ -30,6 +31,13 @@ export function defineToolState(
     version: definition.version,
     scope: "conversation" as const,
     initial: () => ({ value: null as JsonValue }),
+    ...(definition.migrate
+      ? {
+          migrate: (stored: { value: JsonValue }, version: number) => ({
+            value: stored.value === null ? null : definition.migrate!(stored.value, version),
+          }),
+        }
+      : {}),
   };
   const document =
     history === "rewindable"

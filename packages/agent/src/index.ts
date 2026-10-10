@@ -1,4 +1,4 @@
-export { loadSettings, listModels } from "./config/index.ts";
+export { loadSettings, listModelCatalog, type ModelCatalogEntry } from "./config/index.ts";
 export {
   createJsonlStore,
   listSessions,
