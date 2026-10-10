@@ -124,7 +124,8 @@ test.each([false, true])(
     }
     const app = renderComponent(<View />, terminal);
     try {
-      await terminal.flush();
+      // Flushing admitted ANSI does not wait for React's first commit.
+      await terminal.waitFor(() => terminal.screen().some((line) => line.includes("❯ 中文 draft")));
       const row = compact ? 0 : 1;
       const prefix = compact ? "P".repeat(22) : " ".repeat(22);
       expect(terminal.screen()[row]).toBe(prefix + "再按一次 Esc 回退" + (compact ? "P" : ""));

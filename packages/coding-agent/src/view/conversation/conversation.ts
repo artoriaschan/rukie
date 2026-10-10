@@ -925,7 +925,9 @@ function reduceEvent(
             assistant: messageText(event.message),
             toolArgumentsChars: messageToolArguments(event.message),
             reasoning: messageThinking(event.message),
-            reasoningSettled: false,
+            reasoningSettled:
+              !!messageText(event.message) ||
+              event.message.content.some((block) => block.type === "toolCall"),
             reasoningDurationMs: undefined,
             assistantAnchor: crypto.randomUUID(),
             streamedChars:

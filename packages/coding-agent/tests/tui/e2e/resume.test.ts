@@ -309,6 +309,9 @@ test("resume replays the restored compaction suffix without exposing its summary
     fauxAssistantMessage("hidden compaction summary"),
   ]);
   const app = await start(argv, {
+    // Keep the complete replay visible: this checks restored Transcript content,
+    // while a clipped viewport adds scrollbar cells to otherwise exact lines.
+    rows: 60,
     prepare: async (root) => {
       const model = original.getModel();
       await Bun.write(join(root, "old.txt"), "OLD_EVIDENCE widget contract ".repeat(2000));

@@ -37,7 +37,7 @@ import { optimize } from './optimizer.js';
 import Output from './output.js';
 import type { ParsedKey, TerminalResponse } from './parse-keypress.js';
 import reconciler, { dispatcher, getLastCommitMs, getLastYogaMs, isDebugRepaintsEnabled, recordYogaMs, resetProfileCounters } from './reconciler.js';
-import renderNodeToOutput, { consumeFollowScroll, consumeViewportResizes, didLayoutShift } from './render-node-to-output.js';
+import renderNodeToOutput, { consumeFollowScroll, consumeViewportResizes, didLayoutShift, renderNodeForScan } from './render-node-to-output.js';
 import { applyPositionedHighlight, type MatchPosition, scanPositions } from './render-to-screen.js';
 import createRenderer, { type Renderer } from './renderer.js';
 import { CellWidth, CharPool, cellAt, createScreen, HyperlinkPool, isEmptyCellAt, migrateScreenPools, StylePool } from './screen.js';
@@ -2179,17 +2179,12 @@ export default class Ink {
       stylePool: this.stylePool,
       screen
     });
-    renderNodeToOutput(el, output, {
+    renderNodeForScan(el, output, {
       offsetX: -elLeft,
       offsetY: -elTop,
       prevScreen: undefined
     });
     const rendered = output.get();
-    // renderNodeToOutput wrote our offset positions to nodeCache —
-    // corrupts the main render (it'd blit from wrong coords). Mark the
-    // subtree dirty so the next main render repaints + re-caches
-    // correctly. One extra paint of this message, but correct > fast.
-    dom.markDirty(el);
     const positions = scanPositions(rendered, this.searchHighlightQuery);
     logForDebugging(`scanElementSubtree: q='${this.searchHighlightQuery}' ` + `el=${width}x${height}@(${elLeft},${elTop}) n=${positions.length} ` + `[${positions.slice(0, 10).map(p => `${p.row}:${p.col}`).join(',')}` + `${positions.length > 10 ? ',…' : ''}]`);
     return positions;

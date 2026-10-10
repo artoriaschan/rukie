@@ -232,7 +232,7 @@ test("output events coalesce bursts and unsubscribe stops idle observation", asy
   const fake = fakeModel([
     call("bash", {
       command:
-        'i=0; while [ "$i" -lt 35 ]; do printf x; i=$((i+1)); sleep 0.01; done; touch ready; while [ ! -e go ]; do sleep 0.01; done',
+        'i=0; while [ "$i" -lt 18 ]; do printf x; i=$((i+1)); done; while [ ! -e next ]; do sleep 0.01; done; while [ "$i" -lt 35 ]; do printf x; i=$((i+1)); done; touch ready; while [ ! -e go ]; do sleep 0.01; done',
       description: "Observe repeated output writes",
       run_in_background: true,
     }),
@@ -244,10 +244,15 @@ test("output events coalesce bursts and unsubscribe stops idle observation", asy
     if (event.type === "job_event" && event.kind === "output") outputs.push(performance.now());
   });
   await session.run("start");
+  // Real child-process pipes can combine all writes in one read. Acknowledge the
+  // first throttled event before releasing the second burst; shell polling only
+  // crosses the process boundary and does not determine notification timing.
+  await waitUntil(() => outputs.length >= 1);
+  await Bun.write(join(dirs.cwd, "next"), "");
   await waitUntil(() => Bun.file(join(dirs.cwd, "ready")).exists());
   await waitUntil(() => outputs.length >= 2);
   // Real child-process writes exercise the transport as well as the parent throttle.
-  // Shell startup and scheduling change total duration; the contract is event spacing.
+  // Each burst is controlled by an observed event; the contract is event spacing.
   expect(outputs.length).toBeLessThan(35);
   for (let index = 1; index < outputs.length; index++)
     expect(outputs[index]! - outputs[index - 1]!).toBeGreaterThanOrEqual(125);

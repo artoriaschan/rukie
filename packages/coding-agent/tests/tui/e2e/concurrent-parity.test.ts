@@ -202,19 +202,29 @@ test("mixed parent, two Jobs and two Subagents preserve reading, copy and Intera
         "\nFINAL MIXED RESULT",
     );
     completed.add(parent);
-    await waitFor(() => screen().includes("FINAL MIXED RESULT"));
+    // Replacing selected text preserves the reading viewport. The final line
+    // can remain below it; synchronize on the replacement painted here.
+    await waitFor(
+      () =>
+        app.screen().some((line) => /^\s+canonical-\d+$/.test(line)) &&
+        !screen().includes("mixed-32"),
+    );
     release(replacedX + 7, replacedRow);
     await waitFor(() => screen().includes("Selected content changed"));
     expect(copied).toEqual(["选取 🐋 anchor"]);
     expect(screen()).not.toContain("mixed-63");
     await waitFor(() => roots().some((call) => !completed.has(call)));
     const request = roots().find((call) => !completed.has(call))!;
-    app.stdin.write("\x1b[5~");
-    await waitFor(() =>
-      app.screen().some((line) => line.includes("Subagent: Mixed child B") && line.includes("⤢")),
-    );
+    const childVisible = () =>
+      app.screen().some((line) => line.includes("Subagent: Mixed child B") && line.includes("⤢"));
+    // The preserved viewport may already contain this header. Sending PageUp
+    // then accepting the old frame would click coordinates before the scroll.
+    if (!childVisible()) {
+      app.stdin.write("\x1b[5~");
+      await waitFor(childVisible);
+    }
     const childRow = app.screen().findIndex((line) => line.includes("Subagent: Mixed child B"));
-    click(app.screen()[childRow]!.indexOf("⤢"), childRow);
+    click(Bun.stringWidth(app.screen()[childRow]!.split("⤢")[0]!), childRow);
     await waitFor(() => screen().includes("Agent View") && screen().includes("B-63"));
     request.tool("ask_user_question", {
       questions: [
